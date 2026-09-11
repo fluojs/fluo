@@ -55,7 +55,7 @@ FluoBlog이 몇 개의 파일에서 수십 개의 모듈로 성장하면 설정 
 예측 가능성은 `AppModule`을 보는 것만으로 애플리케이션이 어떤 외부 서비스와 설정에 의존하는지 파악할 수 있다는 뜻입니다. 같은 구조는 로컬 개발 환경에서 클라우드 환경으로, 단일 인스턴스에서 글로벌 클러스터로 이동할 때도 도움이 됩니다. 설정 경계가 분명하면 배포 환경이 바뀌어도 확인해야 할 지점이 줄어듭니다.
 
 ### Understanding the Internal Mechanism of Configuration
-fluo 애플리케이션이 시작될 때, `ConfigModule`은 설정 소스를 명시적으로 조합합니다. 먼저, 제공된 `envFile` 경로를 식별합니다. 파일이 존재하면 파서를 사용하여 키-값 쌍을 읽어 비공개 메모리 맵에 저장합니다. 그다음 코드에 정의된 `defaults`, 그리고 필요하다면 `forRoot(...)`에 명시적으로 전달한 `processEnv` 스냅샷을 함께 병합합니다.
+fluo 애플리케이션이 시작될 때, `ConfigModule`은 설정 소스를 명시적으로 조합합니다. 명시적인 순서형 `envFilePaths` 목록이 있으면 이를 읽고, 그 키-값 쌍을 `defaults`와 명시적 `processEnv` 스냅샷에 병합합니다. `envFilePaths`를 생략하면 file-capable load에서만 기본 `.env`를 선택하며, 명시적 in-memory source는 이 기본값을 억제하고 `envFilePaths: []`는 파일 loading을 해제합니다.
 
 이 초기화 단계는 `ConfigModule`이 module graph bootstrap 중 provider를 생성할 때 첫 snapshot을 로드하기 때문에 중요합니다. `AppModule`이 완전히 로드될 때쯤이면 `ConfigService`는 이미 설정의 최종 병합 상태로 채워져 있으며, 가장 필요한 곳에 주입될 준비가 된 상태입니다. `watch: true`를 활성화하면 file watching은 이후 application bootstrap 중에 시작되고, 같은 injected `ConfigService` instance를 성공한 reload와 계속 맞춰 둡니다.
 
@@ -111,18 +111,18 @@ const configSources = {
 } satisfies ConfigModuleOptions;
 
 export const validatedConfig = ConfigModule.load(configSources) as z.infer<typeof ConfigSchema>;
-const configModuleOptions = {
-  defaults: validatedConfig,
-  schema: ConfigSchema,
-} satisfies ConfigModuleOptions;
+const configRegistration = ConfigModule.forRoot({
+  envFilePaths: [],
+  runtimeOverrides: validatedConfig,
+});
 
 @Module({
-  imports: [ConfigModule.forRoot(configModuleOptions)],
+  imports: [configRegistration],
 })
 export class AppModule {}
 ```
 
-`ConfigModule.load(configSources)`는 application boundary에서 package precedence와 동기 schema를 적용합니다. 이후 `ConfigModule`은 결과인 `validatedConfig`를 source로 받고 registration에도 같은 `schema`를 유지하므로 HTTP bootstrap과 injected consumer가 서로 다르게 parse한 environment value를 사용하지 않습니다.
+`ConfigModule.load(configSources)`는 application boundary에서 package precedence와 동기 schema를 적용합니다. Registration은 결과 `validatedConfig`만 `runtimeOverrides`로 받고 `envFilePaths: []`를 설정하므로 injected consumer가 서로 다르게 parse한 environment value를 사용하거나 파일을 다시 읽지 않습니다.
 
 ### Precedence Rules and Conflict Resolution
 `fluo`는 설정 소스를 병합할 때 엄격한 우선순위를 따릅니다. 이 순서는 유연성을 유지하면서도 각 설정에 대해 단일한 진실의 원천을 유지하도록 설계되었습니다.
@@ -146,10 +146,10 @@ const configSources = {
 } satisfies ConfigModuleOptions;
 ```
 
-목록 안의 누락된 파일은 load를 실패시키지 않고 건너뛰므로, 일부 파일만 존재하는 머신에서도 같은 목록을 그대로 사용할 수 있습니다.
+목록 안의 누락된 파일은 load를 실패시키지 않고 건너뛰므로, 일부 파일만 존재하는 머신에서도 같은 목록을 그대로 사용할 수 있습니다. `envFilePaths: []`는 파일 loading을 해제하며, file-capable 기본 `.env` 동작이 의도된 경우에만 option을 생략하세요.
 
 ### Best Practices for Config Defaults
-`ConfigModule.forRoot`에서 `defaults`를 설정할 때, 애플리케이션이 "안전하지만 제한적인" 모드로 시작할 수 있도록 하는 값을 목표로 하세요. 예를 들어, `PORT`를 3000으로 기본 설정하는 것은 표준이지만, `DATABASE_URL`에 대한 기본값을 제공하는 것은 지양해야 합니다. 데이터베이스 설정이 누락된 경우, 일반적인 연결 문자열로 시도하다 실패하는 것보다는 앱이 즉시 중단(Fail-Fast)되는 것이 훨씬 낫습니다.
+`ConfigModule.load`에서 `defaults`를 설정할 때, 애플리케이션이 "안전하지만 제한적인" 모드로 시작할 수 있도록 하는 값을 목표로 하세요. 예를 들어, `PORT`를 3000으로 기본 설정하는 것은 표준이지만, `DATABASE_URL`에 대한 기본값을 제공하는 것은 지양해야 합니다. 데이터베이스 설정이 누락된 경우, 일반적인 연결 문자열로 시도하다 실패하는 것보다는 앱이 즉시 중단(Fail-Fast)되는 것이 훨씬 낫습니다.
 
 또한, 개발 환경에서는 기본적으로 "꺼짐" 상태여야 하지만 프로덕션에서는 "켜짐" 상태여야 하는 기능(예: 외부 서비스에 대한 엄격한 SSL 체크)을 토글하는 데 `defaults`를 사용하는 것을 고려해 보세요. 이러한 기본값을 코드에 명시적으로 유지함으로써 팀에 합류하는 새로운 개발자들의 "온보딩 마찰"을 줄일 수 있습니다.
 
@@ -240,15 +240,13 @@ export const ConfigSchema = z.object({
   JWT_SECRET: z.string().min(32),
 });
 
-const configModuleOptions = {
-  defaults: validatedConfig,
+const validatedConfig = ConfigModule.load({
+  ...configSources,
   schema: ConfigSchema,
-} satisfies ConfigModuleOptions;
-
-ConfigModule.forRoot(configModuleOptions);
+});
 ```
 
-`forRoot` 중에 검증을 수행함으로써, Fluo는 설정이 유효하지 않은 경우 상세한 `INVALID_CONFIG` 에러를 발생시키고 **부트스트랩을 중단**합니다. schema가 검증한 `value`가 최종 config snapshot이 되므로, `PORT`가 숫자로 변환되는 것 같은 coercion 결과도 `ConfigService`에서 관찰됩니다. Config schema는 동기식으로 검증되어야 하며, 비동기 Standard Schema 결과는 동기 config API에서 거부됩니다. 이는 잘못 설정된 노드가 로드 밸런서 회전에 투입되지 않도록 보장합니다.
+`ConfigModule.load(...)`로 검증하면 Fluo는 설정이 유효하지 않은 경우 상세한 `INVALID_CONFIG` 에러를 registration 전에 발생시키고 **부트스트랩을 중단**합니다. schema가 검증한 `value`가 최종 config snapshot이 되므로, `PORT`가 숫자로 변환되는 것 같은 coercion 결과도 `ConfigService`에서 관찰됩니다. Config schema는 동기식으로 검증되어야 하며, 비동기 Standard Schema 결과는 동기 config API에서 거부됩니다. 이는 잘못 설정된 노드가 로드 밸런서 회전에 투입되지 않도록 보장합니다.
 
 프로덕션 환경에서 흔히 발생하는 버그 중 하나는 애플리케이션이 "부분적으로만 유효한" 설정으로 시작되는 것입니다. 어떤 값은 있고 어떤 값은 빠진 상태로 부팅되면, 실제 요청이 들어온 뒤에야 문제가 드러나서 원인을 찾기 더 어려워집니다. `fluo`를 사용하면 부트스트랩 시점에 설정을 검증할 수 있으므로, 반쯤만 설정된 상태를 실행 중에 끌고 가지 않고 시작 단계에서 바로 막을 수 있습니다. 결국 설정 검증은 편의 기능이 아니라, 운영 환경에 잘못된 인스턴스가 들어가는 것을 막는 안전장치입니다.
 
@@ -269,11 +267,11 @@ ConfigModule.forRoot(configModuleOptions);
 2. **서비스를 통한 접근**:
 `main.ts`의 adapter port에는 공유 `validatedConfig`를 사용하고, repository URL 같은 값은 provider 내부에서 `ConfigService`로 조회합니다.
 
-그 다음 `app.module.ts`의 단일 explicit snapshot을 확장합니다. Section 11.2의 `ConfigModule.forRoot(configModuleOptions)` 호출은 결과인 validated snapshot을 계속 등록합니다.
+그 다음 `app.module.ts`의 단일 explicit snapshot을 확장합니다. Section 11.2의 `configRegistration`은 결과인 validated snapshot을 계속 등록합니다. 이전 recipe를 마이그레이션한다면 `envFile: '.env'`를 `envFilePaths: ['.env']`로 바꾸세요. 현재 recipe는 목록을 사용합니다.
 
 ```typescript
 const configSources = {
-  envFile: '.env',
+  envFilePaths: ['.env'],
   processEnv: {
     PORT: process.env.PORT,
     DATABASE_URL: process.env.DATABASE_URL,
@@ -293,11 +291,11 @@ const configSources = {
 3. 실제 비밀 정보는 보안 금고나 공유 팀 비밀번호 관리자를 통해 전달합니다.
 
 ## 11.6 Multi-Environment Patterns
-대규모 프로젝트에서는 보통 `test`, `dev`, `prod` 환경마다 서로 다른 설정이 필요합니다. `envFile`을 동적으로 선택하여 이를 처리할 수 있습니다.
+대규모 프로젝트에서는 보통 `test`, `dev`, `prod` 환경마다 서로 다른 설정이 필요합니다. `envFilePaths` 목록을 동적으로 선택하여 이를 처리할 수 있습니다.
 
 ```typescript
 const configSources = {
-  envFile: process.env.NODE_ENV === 'test' ? '.env.test' : '.env',
+  envFilePaths: [process.env.NODE_ENV === 'test' ? '.env.test' : '.env'],
   processEnv,
   schema: ConfigSchema,
 } satisfies ConfigModuleOptions;
@@ -370,7 +368,17 @@ Docker나 Kubernetes와 같은 컨테이너 환경에서 fluo를 실행할 때�
 이러한 계층적 접근 방식은 전체 서비스 집합에 대해 일관성을 유지하면서도, 각 서비스가 자신의 특정 요구에 맞게 설정을 오버라이드할 수 있는 유연성을 제공합니다. 이는 규모에 맞는 인프라 관리를 위한 강력한 패턴입니다.
 
 ### Dynamic Configuration Reloading
-대부분의 설정은 시작 시점에 로드되지만, 일부 애플리케이션은 재시작 없이 설정을 변경해야 할 수도 있습니다. `ConfigModule.forRoot({ watch: true })`는 env file의 parent directory를 watch하고, 성공한 reload 뒤에는 같은 injected `ConfigService` instance를 갱신할 수 있습니다. 감시 중인 reload가 validation이나 listener 처리에서 실패할 수 있다면, 애플리케이션이 그 실패 경로를 소유하도록 `onReloadError`를 전달하세요.
+대부분의 설정은 시작 시점에 로드되지만, 일부 애플리케이션은 재시작 없이 설정을 변경해야 할 수도 있습니다. Standalone reload에는 명시적 목록과 함께 `ConfigReloadManager.create(...)`를 사용하세요.
+
+```typescript
+const reloader = ConfigReloadManager.create({
+  envFilePaths: ['.env', '.env.local'],
+  watch: true,
+  schema: ConfigSchema,
+});
+```
+
+`ConfigModule.forRoot({ watch: true })`는 대신 성공한 reload 뒤 같은 injected `ConfigService` instance를 갱신할 수 있습니다. 감시 중인 reload가 validation이나 listener 처리에서 실패할 수 있다면, 애플리케이션이 그 실패 경로를 소유하도록 `onReloadError`를 전달하세요.
 
 하지만 동적 리로딩은 경쟁 상태(race conditions)를 유발할 수 있고 애플리케이션의 상태를 추론하기 어렵게 만들 수 있으므로 주의해야 합니다. 대부분의 경우, 컨테이너를 롤링 재시작하는 것이 프로덕션 환경에서 설정 변경을 전파하는 더 안전하고 예측 가능한 방법입니다.
 

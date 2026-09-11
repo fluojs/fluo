@@ -152,13 +152,13 @@ const configRegistration = ConfigModule.forRoot({
 export class AppSettingsModule {}
 ```
 
-The environment decision in this file is our chosen policy, not an automatic Fluo feature. With `NODE_ENV=production`, file input is disabled; other runs read the two files in the specified order. In CI, explicitly set `production` or pass an empty list to the function, as the unit tests do. `envFilePaths: []` also disables fallback to the default `.env`. When files are specified, relative paths are resolved from the startup directory, so always run development commands from the `fluo-blog` root.
+The environment decision in this file is our chosen policy, not an automatic Fluo feature. With `NODE_ENV=production`, file input is disabled; other runs read the two files in the specified order. In CI, explicitly set `production` or pass an empty list to the function, as the unit tests do. `envFilePaths: []` also disables fallback to the default `.env`. Omitting `envFilePaths` selects that default only for a file-capable load; explicit in-memory sources suppress it. When files are specified, relative paths are resolved from the startup directory, so always run development commands from the `fluo-blog` root.
 
 Here, we expose the application's single configuration globally. `ConfigModule` already defaults to `global: true`, but we state it explicitly to make the composition intent clear. An application that isolates configuration per plugin can choose `global: false` and explicit module imports instead. Global exposure does not weaken type or value validation, but it makes dependencies less visible, so consuming classes must still use `@Inject`.
 
-This time, we need the port before creating the adapter, so we validate once with `loadConfig` and register the result. The public return type of `loadConfig` is a general configuration dictionary. The `as BlogConfig` here does not replace input validation; it expresses the correspondence between the output of the `BlogConfigSchema` just executed and its type. Do not apply the same assertion to raw environment variables. We freeze the result, whose fields are all primitive values, and pass only this snapshot to DI so the files are not read twice. Nor do we apply a string-input schema again to a port that is already a number.
+This time, we need the port before creating the adapter, so we validate once with `ConfigModule.load(...)` and register the result. Its public return type is a general configuration dictionary. The `as BlogConfig` here does not replace input validation; it expresses the correspondence between the output of the `BlogConfigSchema` just executed and its type. Do not apply the same assertion to raw environment variables. We freeze the result, whose fields are all primitive values, and pass only this snapshot to DI so the files are not read twice. Nor do we apply a string-input schema again to a port that is already a number.
 
-Registration and validation happen at different times. `ConfigModule.forRoot(...)` registers providers synchronously; in an ordinary schema registration, bootstrap loads configuration when resolving `ConfigService` and validates it synchronously before listen. Here, explicit `loadConfig(...)` runs while this module evaluates, so validation happens earlier. A schema failure is `INVALID_CONFIG`: the dynamic import below fails before reaching `FluoFactory.create()`. Do not confuse this flow, which registers an already validated snapshot, with a claim that calling `forRoot` alone finishes file loading.
+Registration and validation happen at different times. `ConfigModule.forRoot(...)` registers providers synchronously; in an ordinary schema registration, bootstrap loads configuration when resolving `ConfigService` and validates it synchronously before listen. Here, explicit `ConfigModule.load(...)` runs while this module evaluates, so validation happens earlier. A schema failure is `INVALID_CONFIG`: the dynamic import below fails before reaching `FluoFactory.create()`. Do not confuse this flow, which registers an already validated snapshot, with a claim that calling `forRoot` alone finishes file loading.
 
 Import `AppSettingsModule` into the existing `AppModule` in `src/app.ts` and add it to `imports`. The following shows composition with the existing modules, not a file that replaces all HTTP configuration. `PostsModule` is the `src/posts/posts.module.ts` built in the previous chapters. Keep the generated greeting and health registrations and existing features, and compose the original config registration into this snapshot path rather than leaving a second configuration source that reads the same keys again.
 
@@ -235,7 +235,7 @@ Do not verify configuration by printing it in full to production logs. A databas
 The following is the complete `test/config.test.ts` file. Writing this test first reveals that an implementation reading `process.env` directly at each point of use lacks the expected input isolation. The test itself does not change real environment variables, touch files, or depend on waiting. Run it with the Vitest configuration from the previous chapters.
 
 ```ts
-import { ConfigService, loadConfig } from '@fluojs/config';
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { describe, expect, it } from 'vitest';
 import { blogConfigOptions } from '../src/config/blog-config.js';
 
@@ -246,7 +246,7 @@ const validEnv = {
 
 describe('FluoBlog configuration', () => {
   it('transforms inputs and keeps only the explicit application keys', () => {
-    const values = loadConfig(blogConfigOptions({
+    const values = ConfigModule.load(blogConfigOptions({
       ...validEnv,
       PORT: '4100',
       UNRELATED_SECRET: 'not-part-of-the-blog',
@@ -260,13 +260,13 @@ describe('FluoBlog configuration', () => {
   });
 
   it('does not let an absent process value erase the default', () => {
-    const values = loadConfig(blogConfigOptions(validEnv, []));
+    const values = ConfigModule.load(blogConfigOptions(validEnv, []));
     expect(values.PORT).toBe(3000);
   });
 
   it('applies explicit overrides above the environment', () => {
     const options = blogConfigOptions({ ...validEnv, PORT: '4100' }, []);
-    const values = loadConfig({
+    const values = ConfigModule.load({
       ...options,
       runtimeOverrides: { PORT: '4200' },
     });
@@ -276,18 +276,18 @@ describe('FluoBlog configuration', () => {
   it.each(['', '0', '-1', '3.5', '3000oops', '65536'])(
     'rejects invalid PORT %j',
     (PORT) => {
-      expect(() => loadConfig(
+      expect(() => ConfigModule.load(
         blogConfigOptions({ ...validEnv, PORT }, []),
       )).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG' }));
     },
   );
 
   it('rejects a missing database and a public address with a path', () => {
-    expect(() => loadConfig(blogConfigOptions({
+    expect(() => ConfigModule.load(blogConfigOptions({
       PUBLIC_ORIGIN: validEnv.PUBLIC_ORIGIN,
     }, []))).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG' }));
 
-    expect(() => loadConfig(blogConfigOptions({
+    expect(() => ConfigModule.load(blogConfigOptions({
       ...validEnv,
       PUBLIC_ORIGIN: 'https://blog.example.test/private',
     }, []))).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG' }));

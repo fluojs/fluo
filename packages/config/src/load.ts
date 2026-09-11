@@ -833,31 +833,15 @@ function closeReloader(
 }
 
 /**
- * Creates a stateful config reloader that mirrors `loadConfig(...)` semantics and optionally watches the env file.
- *
- * @param options Configuration loading options, including optional watch mode and a synchronous Standard Schema validator.
- * @returns A reloader that exposes the current snapshot, manual reload, subscriptions, and cleanup.
- * @throws {FluoError} When the initial config load or validation fails.
- *
- * @example
- * ```ts
- * const reloader = createConfigReloader({ envFilePaths: ['.env'], watch: true });
- *
- * const subscription = reloader.subscribe((snapshot) => {
- *   console.log(snapshot.PORT);
- * });
- *
- * reloader.reload();
- * subscription.unsubscribe();
- * reloader.close();
- * ```
- */
-/** @internal ConfigModule and ConfigReloadManager own the public creation APIs. */
-export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader {
+/** @internal State builder shared by ConfigModule's static APIs and reload lifecycle. */
+export class ConfigReloadCore {
+  static create(options: ConfigLoadOptions, initialSnapshot?: ConfigDictionary): ConfigReloader {
   const loadOptions = snapshotConfigLoadOptions(options);
   const normalized = normalizeLoadOptions(loadOptions);
   const state: ReloaderState = {
-    current: resolveConfig(normalized),
+    current: initialSnapshot === undefined
+      ? resolveConfig(normalized)
+      : cloneConfigDictionary(initialSnapshot),
     pendingReloadReason: undefined,
     reloading: false,
     watchedEnvFileHash: hashEnvFileListContent(normalized.envFiles),
@@ -886,6 +870,7 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
       return createSubscription(errorListeners, listener);
     },
   };
+  }
 }
 
 /**
@@ -897,7 +882,12 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
  * @returns A detached normalized configuration dictionary for the current load.
  * @throws {FluoError} When validation throws or the config cannot be normalized.
  */
-/** @internal ConfigModule owns the public standalone loading API. */
-export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
-  return cloneConfigDictionary(resolveConfig(normalizeLoadOptions(options)));
+/** @internal Shared normalized input boundary for ConfigModule and ConfigReloadCore. */
+export function normalizeConfigLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
+  return normalizeLoadOptions(options);
+}
+
+/** @internal Shared validation and precedence boundary for ConfigModule and ConfigReloadCore. */
+export function resolveConfigSnapshot(options: NormalizedLoadOptions): ConfigDictionary {
+  return resolveConfig(options);
 }

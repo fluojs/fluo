@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CONFIG_RELOADER, ConfigModule, ConfigReloadManager } from './module.js';
 import { ConfigService } from './service.js';
-import type { ConfigReloader } from './types.js';
+import type { ConfigDictionary, ConfigReloader } from './types.js';
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
 
@@ -86,10 +86,15 @@ function extractProviders(moduleRef: new () => unknown): Provider[] {
   return (getModuleMetadata(moduleRef)?.providers ?? []) as Provider[];
 }
 
-async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  await vi.advanceTimersByTimeAsync(timeoutMs);
-  expect(predicate()).toBe(true);
+async function expectWatchReload(reloader: ConfigReloader, trigger: () => void, predicate: (snapshot: ConfigDictionary, reason: string) => boolean): Promise<void> {
+  const signal = new Promise<void>((resolve) => {
+    const subscription = reloader.subscribe((snapshot, reason) => { if (predicate(snapshot, reason)) { subscription.unsubscribe(); resolve(); } });
+  });
+  trigger();
+  await vi.runOnlyPendingTimersAsync();
+  await signal;
 }
+
 
 beforeEach(() => {
   watchCallbacks.clear();
@@ -131,8 +136,7 @@ describe('ConfigModule watch mode', () => {
       expect(watchCallbacks.size).toBe(1);
 
       writeFileSync(envPath, 'PORT=4100\n');
-      emitWatchChange();
-      await waitForCondition(() => service.get('PORT') === '4100');
+      await expectWatchReload(manager, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === '4100');
 
       expect(reloader.current().PORT).toBe('4100');
       expect(service.get('PORT')).toBe('4100');

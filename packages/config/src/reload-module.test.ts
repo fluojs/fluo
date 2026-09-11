@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CONFIG_RELOADER, ConfigModule, ConfigReloadManager } from './module.js';
 import { ConfigService } from './service.js';
-import type { ConfigDictionary, ConfigLoadOptions, ConfigReloader } from './types.js';
+import type { ConfigDictionary, ConfigLoadOptions, ConfigReloader, ConfigSchema } from './types.js';
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
 
@@ -82,10 +82,15 @@ function installNodeBuiltinMock(): void {
   }) as typeof process.getBuiltinModule);
 }
 
-async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  await vi.advanceTimersByTimeAsync(timeoutMs);
-  expect(predicate()).toBe(true);
+async function expectWatchReload(reloader: ConfigReloader, trigger: () => void, predicate: (snapshot: ConfigDictionary, reason: string) => boolean): Promise<void> {
+  const signal = new Promise<void>((resolve) => {
+    const subscription = reloader.subscribe((snapshot, reason) => { if (predicate(snapshot, reason)) { subscription.unsubscribe(); resolve(); } });
+  });
+  trigger();
+  await vi.runOnlyPendingTimersAsync();
+  await signal;
 }
+
 
 beforeEach(() => {
   watchCallbacks.clear();
@@ -122,6 +127,36 @@ describe('ConfigReloadManager', () => {
     writeFileSync(envPath, 'PORT=4100\n');
     expect(reloader.reload()['PORT']).toBe('4100');
     expect(service.get('PORT')).toBe('4100');
+  });
+
+  it('adopts the static load snapshot when creating a standalone manager', () => {
+    let validationCalls = 0;
+    const schema: ConfigSchema = {
+      '~standard': {
+        validate(value: unknown) {
+          validationCalls += 1;
+          return { value: value as ConfigDictionary };
+        },
+        vendor: 'test',
+        version: 1,
+      },
+    };
+    const manager = ConfigReloadManager.create({
+      envFilePaths: [],
+      processEnv: { PORT: '4000' },
+      schema,
+    });
+
+    try {
+      expect(manager.current()['PORT']).toBe('4000');
+      expect(validationCalls).toBe(1);
+
+      manager.reload();
+
+      expect(validationCalls).toBe(2);
+    } finally {
+      manager.close();
+    }
   });
 
   it('snapshots caller-owned options during ConfigModule registration', () => {
@@ -297,8 +332,7 @@ describe('ConfigReloadManager', () => {
       expect(watchCallbacks.size).toBe(1);
 
       writeFileSync(envPath, 'PORT=4100\n');
-      emitWatchChange();
-      await waitForCondition(() => updates.includes('4100'));
+      await expectWatchReload(manager, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === '4100');
 
       expect(service.get('PORT')).toBe('4100');
 

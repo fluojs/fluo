@@ -93,16 +93,21 @@ function emitWatchChange(): void {
   }
 }
 
-async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  await vi.advanceTimersByTimeAsync(timeoutMs);
-  expect(predicate()).toBe(true);
+async function expectWatchReload(reloader: ConfigReloader, trigger: () => void, predicate: (snapshot: ConfigDictionary, reason: string) => boolean): Promise<void> {
+  const signal = new Promise<void>((resolve) => {
+    const subscription = reloader.subscribe((snapshot, reason) => { if (predicate(snapshot, reason)) { subscription.unsubscribe(); resolve(); } });
+  });
+  trigger();
+  await vi.runOnlyPendingTimersAsync();
+  await signal;
 }
+
 
 type ConfigProvider = { provide?: unknown; useFactory?: () => unknown; useValue?: unknown };
 type WatchManagerConstructor = new (
   config: ConfigService,
   options: ConfigModuleOptions,
-) => { onApplicationBootstrap(): void; onModuleDestroy(): void };
+) => ConfigReloader & { onApplicationBootstrap(): void; onModuleDestroy(): void };
 
 function moduleProviders(moduleType: Constructor): Provider[] {
   const metadata = getModuleMetadata(moduleType);
@@ -191,21 +196,23 @@ describe('ConfigModule watch mode', () => {
 
     expect(service.get('PORT')).toBe('4000');
     expect(manager).toBeDefined();
+    if (manager === undefined) {
+      throw new Error('Expected ConfigReloadManager to be registered.');
+    }
 
     try {
-      manager?.onApplicationBootstrap();
-      manager?.onApplicationBootstrap();
+      manager.onApplicationBootstrap();
+      manager.onApplicationBootstrap();
 
       expect(watchCallbacks.size).toBe(1);
 
       writeFileSync(envPath, 'PORT=4100\n');
-      emitWatchChange();
-      await waitForCondition(() => service.get('PORT') === '4100');
+      await expectWatchReload(manager, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === '4100');
 
       expect(service.get('PORT')).toBe('4100');
       expect(watchCallbacks.size).toBe(1);
     } finally {
-      manager?.onModuleDestroy();
+      manager.onModuleDestroy();
     }
 
     expect(watchCallbacks.size).toBe(0);

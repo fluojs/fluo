@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ConfigModule, ConfigReloadManager } from './module.js';
 import { ConfigService, replaceConfigServiceSnapshot } from './service.js';
-import type { ConfigDictionary, ConfigLoadOptions, ConfigModuleOptions, ConfigSchema } from './types.js';
+import type { ConfigDictionary, ConfigLoadOptions, ConfigModuleOptions, ConfigReloader, ConfigSchema } from './types.js';
 
 const loadConfig = ConfigModule.load;
 const createConfigReloader = ConfigReloadManager.create;
@@ -132,7 +132,7 @@ function getErrorCause(error: unknown): unknown {
   return undefined;
 }
 
-type WatchManagerInstance = {
+type WatchManagerInstance = ConfigReloader & {
   onApplicationBootstrap(): void;
   onModuleDestroy(): void;
 };
@@ -182,10 +182,38 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  await vi.advanceTimersByTimeAsync(timeoutMs);
-  expect(predicate()).toBe(true);
+async function expectWatchReload(
+  reloader: ConfigReloader,
+  trigger: () => void,
+  predicate: (snapshot: ConfigDictionary, reason: string) => boolean,
+): Promise<void> {
+  const signal = new Promise<void>((resolve) => {
+    const subscription = reloader.subscribe((snapshot, reason) => {
+      if (predicate(snapshot, reason)) {
+        subscription.unsubscribe();
+        resolve();
+      }
+    });
+  });
+  trigger();
+  await vi.runAllTimersAsync();
+  await signal;
 }
+
+async function expectWatchError(reloader: ConfigReloader, trigger: () => void, predicate: (reason: string) => boolean): Promise<void> {
+  const signal = new Promise<void>((resolve) => {
+    const subscription = reloader.subscribeError((_error, reason) => {
+      if (predicate(reason)) {
+        subscription.unsubscribe();
+        resolve();
+      }
+    });
+  });
+  trigger();
+  await vi.runAllTimersAsync();
+  await signal;
+}
+
 
 describe('loadConfig', () => {
   it('merges defaults, env file, process env, and runtime overrides in order', () => {
@@ -718,8 +746,7 @@ describe('loadConfig', () => {
       expect(reloader.reload()).toMatchObject({ FEATURE: 'registered', PORT: 4100 });
 
       writeFileSync(envPath, 'PORT:4300\n');
-      emitWatchChange();
-      await waitForCondition(() => updates.some((update) => update.reason === 'watch'));
+      await expectWatchReload(reloader, emitWatchChange, (_snapshot, reason) => reason === 'watch');
 
       expect(updates).toContainEqual({ feature: 'registered', port: 4100, reason: 'manual' });
       expect(updates).toContainEqual({ feature: 'registered', port: 4100, reason: 'watch' });
@@ -875,13 +902,11 @@ describe('loadConfig', () => {
       });
 
       writeFileSync(envPath, 'PORT=oops\n');
-      emitWatchChange();
-      await waitForCondition(() => errors.length > 0);
+      await expectWatchError(reloader, emitWatchChange, (reason) => reason === 'watch');
       expect(reloader.current().PORT).toBe(4000);
 
       writeFileSync(envPath, 'PORT=4300\n');
-      emitWatchChange();
-      await waitForCondition(() => updates.includes(4300));
+      await expectWatchReload(reloader, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === 4300);
       expect(reloader.current().PORT).toBe(4300);
 
       updateSubscription.unsubscribe();
@@ -927,8 +952,7 @@ describe('loadConfig', () => {
       expect(updates).toEqual([]);
 
       writeFileSync(envPath, 'PORT=4200\n');
-      emitWatchChange();
-      await waitForCondition(() => updates.includes('4200'));
+      await expectWatchReload(reloader, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === '4200');
 
       expect(reloader.current()['PORT']).toBe('4200');
     } finally {
@@ -1005,9 +1029,7 @@ describe('loadConfig', () => {
       expect(watchCallbacks.size).toBe(1);
 
       writeFileSync(envPath, 'PORT=4100\n');
-      emitWatchChange();
-
-      await waitForCondition(() => updates.includes('4100'));
+      await expectWatchReload(reloader, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === '4100');
       expect(reloader.current()['PORT']).toBe('4100');
     } finally {
       reloader.close();
@@ -1045,9 +1067,7 @@ describe('loadConfig', () => {
 
       writeFileSync(replacementPath, 'PORT=4100\n');
       renameSync(replacementPath, envPath);
-      emitWatchChange();
-
-      await waitForCondition(() => updates.includes('4100'));
+      await expectWatchReload(reloader, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === '4100');
       expect(reloader.current()['PORT']).toBe('4100');
     } finally {
       reloader.close();
@@ -1183,8 +1203,7 @@ describe('loadConfig', () => {
       });
 
       writeFileSync(envPath, 'PORT=4100\n');
-      emitWatchChange();
-      await waitForCondition(() => errors.length > 0);
+      await expectWatchError(reloader, emitWatchChange, (reason) => reason === 'watch');
 
       expect(errors).toEqual(['watch:listener failed after nested reload']);
       expect(updates).toEqual(['watch:4100']);
@@ -1228,8 +1247,7 @@ describe('loadConfig', () => {
       });
 
       writeFileSync(envPath, 'PORT=4100\n');
-      emitWatchChange();
-      await waitForCondition(() => errorReasons.length > 0);
+      await expectWatchError(reloader, emitWatchChange, (reason) => reason === 'manual');
 
       expect(errorReasons).toEqual(['manual']);
       expect(reloader.current()['PORT']).toBe('4100');
@@ -1307,8 +1325,7 @@ describe('loadConfig', () => {
       });
 
       writeFileSync(envPath, 'PORT=4500\n');
-      emitWatchChange();
-      await waitForCondition(() => observedBySecondListener !== undefined);
+      await expectWatchReload(reloader, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === '4500');
 
       expect(observedBySecondListener).toBe('4500');
     } finally {
@@ -1480,9 +1497,7 @@ describe('ConfigModule', () => {
       manager.onApplicationBootstrap();
 
       writeFileSync(envPath, 'PORT=oops\n');
-      emitWatchChange();
-
-      await waitForCondition(() => errors.length > 0);
+      await expectWatchError(manager, emitWatchChange, (reason) => reason === 'watch');
       expect(errors[0]).toContain('watch:Invalid configuration.');
       expect(service.get('PORT')).toBe(4000);
     } finally {

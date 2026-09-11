@@ -2,7 +2,7 @@ import { Inject, InvariantError } from '@fluojs/core';
 import { defineModuleMetadata, type ModuleMetadata } from '@fluojs/core/internal';
 
 import { cloneConfigDictionary } from './clone.js';
-import { createConfigReloader, loadConfig } from './load.js';
+import { ConfigReloadCore, normalizeConfigLoadOptions, resolveConfigSnapshot } from './load.js';
 import { snapshotConfigModuleOptions } from './options.js';
 import {
   ConfigService,
@@ -71,6 +71,7 @@ export class ConfigReloadManager implements ConfigReloader {
       loadOptions,
     );
 
+    manager.ensureReloader();
     manager.onApplicationBootstrap();
     return manager;
   }
@@ -114,7 +115,7 @@ export class ConfigReloadManager implements ConfigReloader {
       return;
     }
 
-    const reloader = this.ensureReloader();
+    const reloader = this.ensureReloader(true);
     replaceConfigServiceSnapshotUnchecked(this.config, reloader.current());
   }
 
@@ -128,12 +129,13 @@ export class ConfigReloadManager implements ConfigReloader {
     }
   }
 
-  private ensureReloader(): ConfigReloader {
+  private ensureReloader(refreshForWatchBootstrap = false): ConfigReloader {
     if (this.reloader) {
       return this.reloader;
     }
 
-    const reloader = createConfigReloader(this.options);
+    const initialSnapshot = refreshForWatchBootstrap ? undefined : this.config.snapshot();
+    const reloader = ConfigReloadCore.create(this.options, initialSnapshot);
 
     this.reloadForwarder = reloader.subscribe((snapshot, reason) => {
       const previousConfig = this.config.snapshot();
@@ -171,7 +173,8 @@ export class ConfigModule {
    * @returns A detached normalized configuration dictionary.
    */
   static load(options: ConfigLoadOptions): ConfigDictionary {
-    return loadConfig(options);
+    const normalized = normalizeConfigLoadOptions(options);
+    return cloneConfigDictionary(resolveConfigSnapshot(normalized));
   }
 
   /**
@@ -185,7 +188,7 @@ export class ConfigModule {
    * @Module({
    *   imports: [
    *     ConfigModule.forRoot({
-   *       envFile: '.env',
+     *       envFilePaths: ['.env'],
    *       defaults: { PORT: '3000' },
    *     }),
    *   ],

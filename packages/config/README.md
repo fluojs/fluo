@@ -22,7 +22,7 @@ Preparing for the coordinated Node 24 release? Follow the [consumer migration gu
 npm install @fluojs/config
 ```
 
-The package intentionally declares no package-wide `engines.node`. `ConfigService`, merge/validation/clone behavior, and `loadConfig({ defaults, processEnv, runtimeOverrides })` are portable and never resolve `process.cwd()`, a default `.env` path, or Node filesystem/path/crypto builtins. Env-file loading, default `.env` loading, and watch mode are Node-only features: they lazily resolve builtins through `process.getBuiltinModule(...)` (supported on Node.js `>=24.0.0 <27`) and throw `CONFIG_RUNTIME_UNAVAILABLE` with guidance to use in-memory options or run that feature on Node.js when the host cannot provide the boundary. This guard checks feature capabilities; it does not compare Node versions or reject portable root imports.
+The package intentionally declares no package-wide `engines.node`. `ConfigService`, merge/validation/clone behavior, and `ConfigModule.load({ defaults, processEnv, runtimeOverrides })` are portable and never resolve `process.cwd()`, a default `.env` path, or Node filesystem/path/crypto builtins. Env-file loading, default `.env` loading, and watch mode are Node-only features: they lazily resolve builtins through `process.getBuiltinModule(...)` (supported on Node.js `>=24.0.0 <27`) and throw `CONFIG_RUNTIME_UNAVAILABLE` with guidance to use in-memory options or run that feature on Node.js when the host cannot provide the boundary. This guard checks feature capabilities; it does not compare Node versions or reject portable root imports.
 
 ## When to Use
 
@@ -34,7 +34,7 @@ Use this package when you need to:
 
 ## Quick Start
 
-The `ConfigModule` handles loading and validating your configuration during bootstrap.
+Use `ConfigModule.load(...)` to create the one validated snapshot at the application boundary, then register that snapshot for injection.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -46,22 +46,25 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().default(3000),
 });
 
+const config = ConfigModule.load({
+  envFilePaths: ['.env'],
+  processEnv: {
+    DATABASE_URL: process.env.DATABASE_URL,
+  },
+  defaults: { PORT: '3000' },
+  schema: EnvSchema,
+});
+
 @Module({
-  imports: [
-    ConfigModule.forRoot({
-      envFile: '.env',
-      processEnv: {
-        DATABASE_URL: process.env.DATABASE_URL,
-      },
-      defaults: { PORT: '3000' },
-      schema: EnvSchema,
-    }),
-  ],
+  imports: [ConfigModule.forRoot({
+    envFilePaths: [],
+    runtimeOverrides: config,
+  })],
 })
 class AppModule {}
 ```
 
-Use `envFilePath` when the env file lives at an absolute or pre-resolved path, `envFilePaths` when a deployment needs several env files layered in an explicit order, or `parse` when you need a custom flat-file parser instead of the default dotenv parser.
+`envFilePaths` is the only file input: use a one-entry list for one file or an ordered list for layered files. Use `parse` when you need a custom flat-file parser instead of the default dotenv parser.
 
 Once registered, you can inject `ConfigService` to access your values:
 
@@ -102,14 +105,14 @@ Configuration is merged in the following order (highest precedence wins):
 
 `@fluojs/config` does not scan ambient environment variables automatically. Pass an explicit `processEnv` snapshot at the bootstrap boundary when process-backed values should participate in precedence.
 
-`envFilePaths` is the only file input: use a one-entry list for one file and an ordered list for layered files. Relative entries resolve from `cwd`; omitting the option uses the default `<cwd>/.env` only for a file-capable load, while `[]` disables env-file loading for portable or prevalidated snapshots. `envFile` and `envFilePath` are removed and fail with `INVALID_CONFIG` so JavaScript consumers receive the same migration guidance as TypeScript consumers. `parse` lets callers replace dotenv parsing with a custom parser for flat key/value files. Missing env files are treated as empty input during load; watch mode also observes the parent directory so creating the file later can trigger a reload.
+`envFilePaths` is the only file input: use a one-entry list for one file and an ordered list for layered files. Relative entries resolve from `cwd`. Omitting the option selects the default `<cwd>/.env` only for a file-capable load; explicit in-memory `defaults`, `processEnv`, or `runtimeOverrides` sources suppress that default. `envFilePaths: []` disables file loading. `envFile` and `envFilePath` are removed and fail with `INVALID_CONFIG` so JavaScript consumers receive the same migration guidance as TypeScript consumers. `parse` lets callers replace dotenv parsing with a custom parser for flat key/value files. Missing env files are treated as empty input during load; watch mode also observes the parent directory so creating the file later can trigger a reload.
 
 ### Ordered Multi-File Env Loading
 
 `envFilePaths` accepts one explicit, ordered list of env files. The list is merged from lowest to highest precedence into the single env-file tier, so it still sits above `defaults` and below `processEnv` and `runtimeOverrides`.
 
 ```typescript
-ConfigModule.forRoot({
+const config = ConfigModule.load({
   envFilePaths: ['.env', '.env.production', '.env.production.local'],
   processEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
@@ -131,7 +134,19 @@ Contract:
 
 The package does not derive env-file names from `NODE_ENV`. Build the list at the bootstrap boundary when a deployment needs environment-specific layering.
 
-`ConfigModule.forRoot({ watch: true })` is the only module registration path for automatic reload. The same registration exposes one `CONFIG_RELOADER` instance with manual `reload()`, success/error subscriptions, rollback on listener failure, and terminal `close()` behavior; do not register a second reload module.
+For standalone reloads, create one manager with the same explicit file list:
+
+```typescript
+import { ConfigReloadManager } from '@fluojs/config';
+
+const reloader = ConfigReloadManager.create({
+  envFilePaths: ['.env', '.env.local'],
+  watch: true,
+  schema: EnvSchema,
+});
+```
+
+`ConfigModule.forRoot({ watch: true })` is the module-registration path for automatic injected-service reloads. That registration exposes one `CONFIG_RELOADER` instance with manual `reload()`, success/error subscriptions, rollback on listener failure, and terminal `close()` behavior; do not register a second reload manager for the same files.
 
 Importing the root `@fluojs/config` package is safe for in-memory consumers that only need `ConfigService`, option types, or `ConfigModule.load(...)` with explicit in-memory inputs. Non-Node runtimes are supported for those portable paths. Env-file, default `.env`, and watch execution remain Node-only and require a host with `process.getBuiltinModule(...)`; unsupported hosts receive the documented `CONFIG_RUNTIME_UNAVAILABLE` error instead of an eager import failure.
 
@@ -150,7 +165,7 @@ The `schema` option accepts a synchronous [Standard Schema](https://standardsche
 
 Module registration and standalone reloader creation snapshot caller-owned options before storing them, including nested Standard Schema validator objects supplied through `schema`. This capture happens synchronously when `ConfigModule.forRoot(...)` or `ConfigReloadManager.create(...)` is called, before provider resolution or application bootstrap. Config dictionaries, `processEnv`, and the Standard Schema descriptor are detached, while callable values such as `parse`, `onReloadError`, and the schema validator remain the references captured at that call. Later mutations to the option object or its snapshotted nested objects do not affect bootstrap, manual reloads, or watch reloads. When `ConfigModule.forRoot({ watch: true, ... })` is used, the module starts its one env-file watcher during application bootstrap, first aligns the injected `ConfigService` with the watch reloader baseline, and then updates the same injected `ConfigService` instance after successful watch reloads. Pass `onReloadError` when the application needs ownership of automatic watch reload failures from `ConfigModule`. In watch mode, each listed file's parent directory is watched once, so creating or atomically replacing a listed env file can trigger reload. Watch reloads compare the final ordered env-file content with the last committed watch baseline before reloading, so unchanged saves and change-then-revert bursts do not replace the in-process config snapshot.
 
-`ConfigModule` is the only module registration path. It always exports the shared `CONFIG_RELOADER` contract for manual reloads and subscriptions; it creates a Node watcher only when `watch: true`, and closes that watcher during module shutdown. `ConfigReloadManager` shutdown is terminal: after `close()` or `onModuleDestroy()`, the manager never creates another reloader or watcher, `reload()`, `subscribe()`, and `subscribeError()` throw an `InvariantError`, and `current()` keeps returning the last committed snapshot. Inject `CONFIG_RELOADER` from the same `ConfigModule.forRoot(...)` registration rather than importing `ConfigReloadModule`.
+`ConfigModule` is the only module registration path. It always exports the shared `CONFIG_RELOADER` contract for manual reloads and subscriptions; it creates a Node watcher only when `watch: true`, and closes that watcher during module shutdown. `ConfigReloadManager` shutdown is terminal: after `close()` or `onModuleDestroy()`, the manager never creates another reloader or watcher, `reload()`, `subscribe()`, and `subscribeError()` throw an `InvariantError`, and `current()` keeps returning the last committed snapshot. Inject `CONFIG_RELOADER` from the same `ConfigModule.forRoot(...)` registration; no second reload registration is needed.
 
 ## Public API
 

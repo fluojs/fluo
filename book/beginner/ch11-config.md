@@ -55,7 +55,7 @@ Using `ConfigModule` makes the application's configuration path predictable. Man
 Predictability means that by looking at `AppModule`, you can understand which external services and settings the application depends on. The same structure helps when moving from a local development environment to the cloud, or from a single instance to a global cluster. When configuration boundaries are clear, there are fewer points to check as deployment environments change.
 
 ### Understanding the Internal Mechanism of Configuration
-When a fluo application starts, `ConfigModule` explicitly composes configuration sources. First, it identifies the provided `envFile` path. If the file exists, it uses a parser to read key-value pairs and stores them in a private in-memory map. Then it merges them with `defaults` defined in code and, if needed, a `processEnv` snapshot explicitly passed to `forRoot(...)`.
+When a fluo application starts, `ConfigModule` explicitly composes configuration sources. It reads the explicit ordered `envFilePaths` list when one is supplied, then merges those key-value pairs with `defaults` and an explicit `processEnv` snapshot. Omitting `envFilePaths` selects the default `.env` only for a file-capable load; explicit in-memory sources suppress that default, and `envFilePaths: []` disables file loading.
 
 This initialization step is important because `ConfigModule` loads the first snapshot while the provider is created during module graph bootstrap. By the time `AppModule` has fully loaded, `ConfigService` is already populated with the final merged configuration state and ready to be injected where it's needed most. If `watch: true` is enabled, file watching starts later during application bootstrap and keeps the same injected `ConfigService` instance aligned with successful reloads.
 
@@ -111,18 +111,18 @@ const configSources = {
 } satisfies ConfigModuleOptions;
 
 export const validatedConfig = ConfigModule.load(configSources) as z.infer<typeof ConfigSchema>;
-const configModuleOptions = {
-  defaults: validatedConfig,
-  schema: ConfigSchema,
-} satisfies ConfigModuleOptions;
+const configRegistration = ConfigModule.forRoot({
+  envFilePaths: [],
+  runtimeOverrides: validatedConfig,
+});
 
 @Module({
-  imports: [ConfigModule.forRoot(configModuleOptions)],
+  imports: [configRegistration],
 })
 export class AppModule {}
 ```
 
-`ConfigModule.load(configSources)` applies the package precedence and synchronous schema at the application boundary. `ConfigModule` then receives the resulting `validatedConfig` as its source and keeps the same `schema` on registration, so HTTP bootstrap and injected consumers cannot drift onto separately parsed environment values.
+`ConfigModule.load(configSources)` applies the package precedence and synchronous schema at the application boundary. Registration receives only the resulting `validatedConfig` through `runtimeOverrides` and sets `envFilePaths: []`, so injected consumers cannot drift onto separately parsed environment values or reread files.
 
 ### Precedence Rules and Conflict Resolution
 When `fluo` merges configuration sources, it follows a strict priority order. This order is designed to keep flexibility while maintaining a single source of truth for each setting.
@@ -146,10 +146,10 @@ const configSources = {
 } satisfies ConfigModuleOptions;
 ```
 
-Missing files in the list are skipped instead of failing the load, so the same list can cover machines where only some of the files exist.
+Missing files in the list are skipped instead of failing the load, so the same list can cover machines where only some of the files exist. `envFilePaths: []` disables file loading; omit the option only when the file-capable default `.env` behavior is intended.
 
 ### Best Practices for Config Defaults
-When setting `defaults` in `ConfigModule.forRoot`, aim for values that let the application start in a "safe but limited" mode. For example, defaulting `PORT` to 3000 is standard, but you should avoid providing a default for `DATABASE_URL`. If database configuration is missing, it's far better for the app to fail fast than to try a generic connection string and fail later.
+When setting `defaults` in `ConfigModule.load`, aim for values that let the application start in a "safe but limited" mode. For example, defaulting `PORT` to 3000 is standard, but you should avoid providing a default for `DATABASE_URL`. If database configuration is missing, it's far better for the app to fail fast than to try a generic connection string and fail later.
 
 Also consider using `defaults` for toggles that should be off by default in development but on in production, such as strict SSL checks for external services. Keeping these defaults explicit in code reduces onboarding friction for new developers who join the team.
 
@@ -240,15 +240,13 @@ export const ConfigSchema = z.object({
   JWT_SECRET: z.string().min(32),
 });
 
-const configModuleOptions = {
-  defaults: validatedConfig,
+const validatedConfig = ConfigModule.load({
+  ...configSources,
   schema: ConfigSchema,
-} satisfies ConfigModuleOptions;
-
-ConfigModule.forRoot(configModuleOptions);
+});
 ```
 
-By validating during `forRoot`, Fluo raises a detailed `INVALID_CONFIG` error and **stops bootstrap** when configuration is invalid. The schema's validated `value` becomes the final config snapshot, so coercions such as `PORT` becoming a number are visible through `ConfigService`. Config schemas must validate synchronously; async Standard Schema results are rejected by the synchronous config API. This ensures that a misconfigured node is never put into load balancer rotation.
+By validating with `ConfigModule.load(...)`, Fluo raises a detailed `INVALID_CONFIG` error before registration and **stops bootstrap** when configuration is invalid. The schema's validated `value` becomes the final config snapshot, so coercions such as `PORT` becoming a number are visible through `ConfigService`. Config schemas must validate synchronously; async Standard Schema results are rejected by the synchronous config API. This ensures that a misconfigured node is never put into load balancer rotation.
 
 One common production bug is an application starting with only partially valid configuration. If it boots with some values present and others missing, the problem may appear only after a real request arrives, making the root cause harder to find. With `fluo`, you can validate configuration during bootstrap, so a half-configured state is blocked at startup instead of being carried into runtime. Configuration validation is not just a convenience. It is a safety barrier that keeps misconfigured instances out of production traffic.
 
@@ -269,11 +267,11 @@ You now have all the concepts you need. The current FluoBlog project may still c
 2. **Access through the service**:
 Use the shared `validatedConfig` for the adapter port in `main.ts`, and use `ConfigService` inside providers for values such as the repository URL.
 
-Then extend the single explicit snapshot in `app.module.ts`; the `ConfigModule.forRoot(configModuleOptions)` call from Section 11.2 continues to register the resulting validated snapshot.
+Then extend the single explicit snapshot in `app.module.ts`; the `configRegistration` from Section 11.2 continues to register the resulting validated snapshot. If you are migrating an older recipe, replace `envFile: '.env'` with `envFilePaths: ['.env']`; current recipes use the list.
 
 ```typescript
 const configSources = {
-  envFile: '.env',
+  envFilePaths: ['.env'],
   processEnv: {
     PORT: process.env.PORT,
     DATABASE_URL: process.env.DATABASE_URL,
@@ -293,11 +291,11 @@ The standard practice is:
 3. Share real secrets through a secure vault or a shared team password manager.
 
 ## 11.6 Multi-Environment Patterns
-Larger projects usually need different configuration for `test`, `dev`, and `prod` environments. You can handle this by selecting `envFile` dynamically.
+Larger projects usually need different configuration for `test`, `dev`, and `prod` environments. Select an `envFilePaths` list dynamically.
 
 ```typescript
 const configSources = {
-  envFile: process.env.NODE_ENV === 'test' ? '.env.test' : '.env',
+  envFilePaths: [process.env.NODE_ENV === 'test' ? '.env.test' : '.env'],
   processEnv,
   schema: ConfigSchema,
 } satisfies ConfigModuleOptions;
@@ -370,7 +368,17 @@ In large organizations, common configuration may need to be shared across multip
 This layered approach preserves consistency across the full service set while still giving each service the flexibility to override settings for its own needs. It's a strong pattern for infrastructure management at scale.
 
 ### Dynamic Configuration Reloading
-Most configuration is loaded at startup, but some applications may need to change configuration without restarting. `ConfigModule.forRoot({ watch: true })` can watch the env file's parent directory and update the same injected `ConfigService` instance after successful reloads. If a watched reload can fail validation or listener handling, pass `onReloadError` so the application owns that failure path.
+Most configuration is loaded at startup, but some applications may need to change configuration without restarting. For standalone reloads, use `ConfigReloadManager.create(...)` with an explicit list:
+
+```typescript
+const reloader = ConfigReloadManager.create({
+  envFilePaths: ['.env', '.env.local'],
+  watch: true,
+  schema: ConfigSchema,
+});
+```
+
+`ConfigModule.forRoot({ watch: true })` can instead update the same injected `ConfigService` instance after successful reloads. If a watched reload can fail validation or listener handling, pass `onReloadError` so the application owns that failure path.
 
 However, dynamic reloading should be used carefully because it can introduce race conditions and make application state harder to reason about. In most cases, rolling restarts of containers are a safer and more predictable way to propagate configuration changes in production.
 
