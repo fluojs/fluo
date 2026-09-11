@@ -33,6 +33,7 @@ import { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-
 import { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
 import { enforceNextjsPublicImports, nextjsRecipePaths } from './nextjs-public-imports.mjs';
 import { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
+import { enforcePassportCookiePresetContract } from './passport-cookie-preset-contract.mjs';
 import { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 import { enforcePrismaNestjsMigrationDocs } from './prisma-nestjs-migration-docs.mjs';
 import { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
@@ -130,6 +131,7 @@ export { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-
 export { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
 export { enforceGraphqlNestjsMigrationBoundaries } from './graphql-nestjs-migration-boundaries.mjs';
 export { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nestjs-migration.mjs';
+export { enforcePassportCookiePresetContract } from './passport-cookie-preset-contract.mjs';
 export { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 export { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
 export {
@@ -2959,22 +2961,6 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
     'cache-manager package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep async registration and the compatibility export discoverable together.',
   );
   assert(
-    packageSurface.includes('createPassportJsStrategyBridge(...)') &&
-      packageSurface.includes('createCookieAuthPreset(...)') &&
-      docsContext.includes('createPassportJsStrategyBridge(...)') &&
-      docsContext.includes('createCookieAuthPreset(...)') &&
-      docsContext.includes('provider bundle'),
-    'docs/CONTEXT.md must keep Passport bridge and cookie compatibility provider bundles discoverable when package-surface.md documents them.',
-  );
-  assert(
-    packageSurfaceKo.includes('createPassportJsStrategyBridge(...)') &&
-      packageSurfaceKo.includes('createCookieAuthPreset(...)') &&
-      docsContextKo.includes('createPassportJsStrategyBridge(...)') &&
-      docsContextKo.includes('createCookieAuthPreset(...)') &&
-      docsContextKo.includes('provider bundle'),
-    'docs/CONTEXT.ko.md must keep Passport bridge and cookie compatibility provider bundles discoverable when package-surface.ko.md documents them.',
-  );
-  assert(
     packageSurface.includes('createSlackProviders(...)') &&
       docsContext.includes('packages/slack/README.md') &&
       docsContext.includes('abort-signal propagation') &&
@@ -4485,6 +4471,7 @@ export async function main() {
   await enforceJwtLearningPathModuleWiring();
   enforceRuntimeLifecycleNestjsMigrationDocs();
   enforcePassportJsBridgeNestjsMigration();
+  enforcePassportCookiePresetContract();
   enforceExpressApplicationOwnershipDocs();
   enforceExpressSseDocumentationContract();
   enforceExpressRuntimeMigrationDocsSync();

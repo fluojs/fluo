@@ -174,31 +174,25 @@ Access token이 HTTP cookie로 전달되는 앱에서는 `CookieAuthModule.forRo
 ```ts
 import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
-import {
-  CookieAuthModule,
-  CookieAuthStrategy,
-  COOKIE_AUTH_STRATEGY_NAME,
-  PassportModule,
-} from '@fluojs/passport';
+import { CookieAuthModule } from '@fluojs/passport';
 
 @Module({
   imports: [
-    CookieAuthModule.forRoot(),
+    CookieAuthModule.forRoot({
+      accessTokenCookieName: 'session_access',
+      cookieOptions: { path: '/sessions' },
+    }),
     JwtModule.forRoot({
       algorithms: ['HS256'],
       global: true,
       secret: 'your-secure-secret',
     }),
-    PassportModule.forRoot(
-      { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
-      [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
-    ),
   ],
 })
 export class AuthModule {}
 ```
 
-여기서 `CookieAuthModule`과 `JwtModule`은 sibling import입니다. Cookie module이 `CookieAuthStrategy`를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있도록 JWT registration에 `global: true`를 유지하세요.
+`CookieAuthModule`은 cookie strategy, `CookieManager`, `AuthGuard`를 위한 하나의 Passport registry를 소유합니다. Cookie auth를 bearer 또는 Passport.js bridge auth와 조합할 때는 sibling `PassportModule.forRoot(...)`를 import하지 말고 다른 named registration을 세 번째 `forRoot` 인자로 전달하세요. Cookie module이 `CookieAuthStrategy`를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있도록 sibling JWT registration에 `global: true`를 유지하세요. 하나의 cookie-name configuration이 credential reader와 response-cookie writer를 함께 제어하며, 별도로 소유하는 instance에만 `CookieManager.create(config)`를 사용하세요. Auth `cookieOptions.maxAge`는 초 단위이며 portable HTTP `maxAgeSeconds`가 됩니다. Auth 기본값은 `Path=/`, `Secure`, `HttpOnly`, `SameSite=Strict`이고 일반 HTTP `setCookie(...)`에는 이 기본값이 없습니다.
 
 Protected route에는 여전히 `@UseAuth(...)`가 필요합니다. Signed-in caller와 guest caller를 모두 허용하는 route라면 의도적으로 `@UseOptionalAuth(...)`를 사용합니다.
 

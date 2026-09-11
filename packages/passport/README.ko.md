@@ -165,33 +165,28 @@ HTTP 쿠키에서 인증 정보를 읽는 애플리케이션이라면 `CookieAut
 ```typescript
 import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
-import {
-  CookieAuthModule,
-  CookieAuthStrategy,
-  COOKIE_AUTH_STRATEGY_NAME,
-  PassportModule,
-} from '@fluojs/passport';
+import { CookieAuthModule } from '@fluojs/passport';
 
 @Module({
   imports: [
-    CookieAuthModule.forRoot(),
+    CookieAuthModule.forRoot({
+      accessTokenCookieName: 'session_access',
+      refreshTokenCookieName: 'session_refresh',
+      cookieOptions: { path: '/sessions' },
+    }),
     JwtModule.forRoot({
       algorithms: ['HS256'],
       global: true,
       secret: 'your-secure-secret',
     }),
-    PassportModule.forRoot(
-      { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME },
-      [{ name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy }],
-    ),
   ],
 })
 export class AuthModule {}
 ```
 
-애플리케이션 모듈에서 cookie-auth 지원이 필요하면 `CookieAuthModule.forRoot(...)`, `JwtModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. 이 graph에서 `CookieAuthModule`과 `JwtModule`은 sibling import이므로, cookie module이 `CookieAuthStrategy`를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있도록 문서화된 JWT option `global: true`를 설정해야 합니다. Cookie preset은 `CookieAuthStrategy`와 cookie option을 제공하고, JWT 검증은 여전히 `@fluojs/jwt`에서 오며, passport registry는 여전히 `PassportModule.forRoot(...)`에서 옵니다.
+Cookie-auth 지원에는 `CookieAuthModule.forRoot(...)`와 `JwtModule.forRoot(...)`를 함께 import하세요. `CookieAuthModule`은 `CookieAuthStrategy`, `CookieManager`, `AuthGuard`를 등록하는 하나의 `PassportModule` registry를 소유합니다. Cookie auth를 bearer 또는 Passport.js bridge와 조합할 때는 sibling `PassportModule.forRoot(...)`를 import하지 말고, 다른 named registration을 세 번째 `forRoot` 인자로 전달하세요. 추가 strategy provider의 소유자는 계속 애플리케이션입니다. `CookieAuthModule`과 `JwtModule`은 sibling import이므로, cookie strategy가 resolve할 때 `DefaultJwtVerifier`가 보이도록 문서화된 JWT option `global: true`를 설정해야 합니다.
 
-`CookieAuthModule.forRoot(...)`는 애플리케이션 등록을 위한 canonical module-first entrypoint입니다. `createCookieAuthPreset(...)`은 provider graph를 직접 조립하는 host를 위한 compatibility bundle로 공개되어 있으며, 동일한 cookie-auth provider와 대응하는 strategy registration을 반환합니다. 애플리케이션 문서, generated code, 일반 app module에서는 module facade를 우선 사용하세요.
+Cookie 이름은 `CookieAuthModule.forRoot(...)`에 한 번만 전달하세요. 같은 configuration이 `CookieAuthStrategy`의 credential reader와 `CookieManager`의 writer/clearer에 함께 적용됩니다. DI 밖에서 별도로 소유하는 객체는 같은 `CookieManagerConfig`로 `CookieManager.create(config)`를 사용하세요. 제거된 manual helper는 [cookie preset migration](../../docs/getting-started/migrate-passport-cookie-preset.ko.md)을 따르세요.
 
 `CookieAuthStrategy`는 `@fluojs/jwt`가 정규화한 JWT principal 계약을 보존하며, `subject`, `claims`, `issuer`, `audience`, `roles`, `scopes`를 그대로 전달합니다.
 
@@ -199,7 +194,7 @@ Cookie access token은 비어 있지 않은 문자열이어야 합니다. `requi
 
 Cookie 검증 실패는 문서화된 분류를 유지합니다. 만료된 access token은 `AuthenticationExpiredError`, 유효하지 않은 access token은 `AuthenticationFailedError`, 누락되거나 malformed인 access-token cookie는 `AuthenticationRequiredError`를 발생시킵니다. 원본 `@fluojs/jwt` error는 `cause`로 보존되며, `AuthGuard`는 세 경우 모두 HTTP `401`로 응답합니다.
 
-`CookieManagerConfig.cookieOptions`는 `SetCookieOptions`를 받습니다. `accessTokenTtlSeconds`와 `refreshTokenTtlSeconds` field는 positional TTL 인자가 생략되었을 때 해당 token cookie의 기본 `Max-Age`가 되며, 명시적인 positional TTL이 항상 우선합니다.
+`CookieManagerConfig.cookieOptions`는 `SetCookieOptions`를 받습니다. `accessTokenTtlSeconds`와 `refreshTokenTtlSeconds` field는 positional TTL 인자가 생략되었을 때 해당 token cookie의 기본 `Max-Age`가 됩니다. 우선순위는 명시적 positional TTL, 해당 configured TTL, `cookieOptions.maxAge` 순서입니다. `maxAge`는 초 단위이며 portable HTTP `maxAgeSeconds`로 전달됩니다. 일부 host framework의 밀리초 `maxAge` 관례와 다릅니다. Auth cookie의 기본값은 `Path=/`, `Secure`, `HttpOnly`, `SameSite=Strict`이고 기본 domain/lifetime은 없습니다. 일반 `@fluojs/http` `setCookie(...)`는 이 auth 기본값을 추가하지 않습니다.
 
 `CookieManager`는 underlying adapter가 기존 header를 `set-cookie`처럼 다른 casing으로 저장했더라도, response에 이미 설정된 cookie를 덮어쓰지 않고 access-token 및 refresh-token `Set-Cookie` 값을 append합니다. portable HTTP serializer를 사용하므로 cookie 값은 emit 전에 percent-encoding되며, malformed cookie name 또는 attribute는 invalid header를 emit하는 대신 validation에서 실패합니다.
 
@@ -305,9 +300,9 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 ### Cookie auth preset
 - `CookieAuthModule`: 내장 cookie-auth preset의 모듈 진입점입니다.
 - `CookieAuthStrategy`, `COOKIE_AUTH_STRATEGY_NAME`, `COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_AUTH_OPTIONS`, `DEFAULT_COOKIE_OPTIONS`: Cookie strategy wiring token, preset 기본값, response-cookie 기본값입니다.
-- `CookieAuthOptions`, `CookieAuthPresetConfig`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy 및 response cookie 설정 타입입니다. `CookieManagerConfig.cookieOptions`는 `SetCookieOptions`를 받으며, token별 TTL field는 기본 cookie `Max-Age`가 됩니다.
-- `CookieManager`: HttpOnly access/refresh token cookie를 설정하고 제거하는 유틸리티입니다.
-- Cookie helper: `createCookieAuthPreset`(compatibility-only manual provider bundle), `createCookieAuthStrategyRegistration`(low-level registration helper), `createCookieManager`, `normalizeCookieAuthOptions`.
+- `CookieAuthOptions`, `CookieManagerConfig`, `CookieOptions`, `SetCookieOptions`: Cookie strategy 및 response cookie 설정 타입입니다. `CookieManagerConfig.cookieOptions`는 `SetCookieOptions`를 받으며, token별 TTL field는 기본 cookie `Max-Age`가 됩니다.
+- `CookieManager`: HttpOnly access/refresh token cookie를 설정하고 제거하면서 class token을 보존하는 유틸리티입니다. 별도 인스턴스에는 `CookieManager.create(config)`를 사용하세요.
+- `normalizeCookieAuthOptions`: 저수준 cookie option 정규화 helper입니다.
 
 ### Refresh token preset
 - `RefreshTokenModule`: 내장 refresh-token preset의 모듈 진입점입니다.

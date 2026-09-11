@@ -14,6 +14,7 @@ import {
   AuthenticationFailedError,
   AuthenticationRequiredError,
 } from '../errors.js';
+import { AuthGuard } from '../guard.js';
 
 function createMockVerifier(overrides: Partial<DefaultJwtVerifier> = {}): DefaultJwtVerifier {
   return {
@@ -480,17 +481,18 @@ describe('CookieManager', () => {
 describe('CookieAuthModule', () => {
   it('creates a module-first runtime definition for the cookie preset', () => {
     const config = {
-      cookieAuth: { accessTokenCookieName: 'session' },
+      accessTokenCookieName: 'session',
     };
     const moduleDefinition = CookieAuthModule.forRoot(config);
 
     const metadata = getModuleMetadata(moduleDefinition);
 
-    expect(metadata?.exports).toEqual([CookieAuthStrategy, CookieManager]);
+    expect(metadata?.exports).toEqual([AuthGuard, CookieAuthStrategy, CookieManager]);
+    expect(metadata?.imports).toHaveLength(1);
     expect(metadata?.providers).toHaveLength(3);
     expect(metadata?.providers?.[0]).toEqual({
       provide: COOKIE_AUTH_OPTIONS,
-      useValue: { accessTokenCookieName: 'session' },
+      useValue: config,
     });
     expect(metadata?.providers?.[1]).toBe(CookieAuthStrategy);
     expect(metadata?.providers?.[2]).toMatchObject({

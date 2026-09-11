@@ -11,6 +11,13 @@ export interface CookieOptions {
   sameSite?: 'strict' | 'lax' | 'none';
   path?: string;
   domain?: string;
+  /**
+   * Default cookie lifetime in seconds.
+   *
+   * @remarks
+   * This value is forwarded to the portable HTTP serializer as `maxAgeSeconds`;
+   * it is not the millisecond `maxAge` convention used by some host frameworks.
+   */
   maxAge?: number;
 }
 
@@ -21,7 +28,8 @@ export interface CookieOptions {
  * `accessTokenTtlSeconds` and `refreshTokenTtlSeconds` become the default `Max-Age`
  * for the matching token cookie when the positional TTL argument of
  * `CookieManager.setAccessTokenCookie(...)` / `setRefreshTokenCookie(...)` is omitted.
- * An explicit positional TTL always wins over these defaults.
+ * An explicit positional TTL always wins, followed by the matching configured TTL
+ * and then `maxAge`, which is expressed in seconds and forwarded as HTTP `maxAgeSeconds`.
  */
 export interface SetCookieOptions extends CookieOptions {
   accessTokenTtlSeconds?: number;
@@ -88,6 +96,16 @@ export class CookieManager {
   private readonly cookieOptions: NormalizedCookieOptions;
   private readonly accessTokenTtlSeconds: number | undefined;
   private readonly refreshTokenTtlSeconds: number | undefined;
+
+  /**
+   * Creates a cookie manager with shared cookie-auth and response-cookie configuration.
+   *
+   * @param config Optional cookie names and response-cookie defaults.
+   * @returns A cookie manager that preserves its class token and instance identity.
+   */
+  static create(config?: CookieManagerConfig): CookieManager {
+    return new CookieManager(config);
+  }
 
   constructor(config?: CookieManagerConfig) {
     this.options = normalizeCookieAuthOptions(config);
@@ -181,14 +199,4 @@ export class CookieManager {
 
     response.headers['Set-Cookie'] = cookies.length === 1 ? cookies[0] : cookies;
   }
-}
-
-/**
- * Create cookie manager.
- *
- * @param config The config.
- * @returns The create cookie manager result.
- */
-export function createCookieManager(config?: CookieManagerConfig): CookieManager {
-  return new CookieManager(config);
 }

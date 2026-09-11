@@ -115,7 +115,7 @@ it('appends an identical cookie through a replacement-style response', () => {
 
 it('keeps CookieManager declarations available from the package root', () => {
   // Given
-  const manager = new CookieManager();
+  const manager = CookieManager.create();
 
   // When
   const exportedManager = passportPublicApi.CookieManager;
@@ -130,4 +130,7 @@ it('keeps CookieManager declarations available from the package root', () => {
   expectTypeOf<PublicCookieManagerConfig['cookieOptions']>()
     .toEqualTypeOf<PublicSetCookieOptions | undefined>();
   expect(manager).toBeInstanceOf(exportedManager);
+  expect('createCookieAuthPreset' in passportPublicApi).toBe(false);
+  expect('createCookieAuthStrategyRegistration' in passportPublicApi).toBe(false);
+  expect('createCookieManager' in passportPublicApi).toBe(false);
 });
