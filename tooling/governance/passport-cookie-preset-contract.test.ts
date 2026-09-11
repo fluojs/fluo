@@ -7,6 +7,7 @@ import { enforcePassportCookiePresetContract } from './passport-cookie-preset-co
 
 const repoRoot = join(import.meta.dirname, '..', '..');
 const cookieAuthModulePath = 'packages/passport/src/cookie/cookie-auth-module.ts';
+const platformGovernancePath = 'tooling/governance/verify-platform-consistency-governance.mjs';
 
 function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
@@ -39,7 +40,7 @@ describe('Passport cookie preset contract', () => {
     // Given
     const readWithMissingOptionForwarding = (relativePath: string): string =>
       relativePath === cookieAuthModulePath
-        ? read(relativePath).replace(', ...passportOptions', '')
+        ? read(relativePath).replace('            ...passportOptions,\n', '')
         : read(relativePath);
 
     // When
@@ -47,6 +48,78 @@ describe('Passport cookie preset contract', () => {
 
     // Then
     expect(runGovernanceGuard).toThrowError(/passportOptions/u);
+  });
+
+  it.each([
+    [
+      'missing',
+      (source: string): string =>
+        source.replace('PassportModule.forRoot', 'RemovedPassportModule.forRoot'),
+      /exactly one PassportModule\.forRoot.*found 0/u,
+    ],
+    [
+      'detached',
+      (source: string): string => {
+        const registrationStart = source.indexOf('        PassportModule.forRoot(\n');
+        const registrationEnd = source.indexOf('        ),\n      ],\n      providers:', registrationStart)
+          + '        ),\n'.length;
+        const registration = source.slice(registrationStart, registrationEnd).trim();
+        const withoutRegistration = source.slice(0, registrationStart) + source.slice(registrationEnd);
+
+        return withoutRegistration.replace(
+          '    return defineModule(CookieAuthRuntimeModule, {',
+          `    const detachedRegistration = ${registration};\n\n    return defineModule(CookieAuthRuntimeModule, {`,
+        );
+      },
+      /exactly one PassportModule\.forRoot.*found 0/u,
+    ],
+    [
+      'duplicate',
+      (source: string): string => {
+        const registrationStart = source.indexOf('        PassportModule.forRoot(\n');
+        const registrationEnd = source.indexOf('        ),\n      ],\n      providers:', registrationStart)
+          + '        ),\n'.length;
+        const registration = source.slice(registrationStart, registrationEnd).trim();
+
+        return source.slice(0, registrationEnd)
+          + `        ${registration}\n`
+          + source.slice(registrationEnd);
+      },
+      /exactly one PassportModule\.forRoot.*found 2/u,
+    ],
+  ])('rejects a %s Passport registry outside the returned module imports', (_name, mutate, error) => {
+    // Given
+    const readWithInvalidRegistry = (relativePath: string): string =>
+      relativePath === cookieAuthModulePath
+        ? mutate(read(relativePath))
+        : read(relativePath);
+
+    // When
+    const runGovernanceGuard = () => enforcePassportCookiePresetContract(readWithInvalidRegistry);
+
+    // Then
+    expect(runGovernanceGuard).toThrowError(error);
+  });
+
+  it.each([
+    ['deletion', ''],
+    ['dead branch', 'if (false) { enforcePassportCookiePresetContract(); }'],
+    ['duplicate', 'enforcePassportCookiePresetContract();\n  enforcePassportCookiePresetContract();'],
+  ])('rejects %s of the direct central passport cookie preset guard invocation', (_name, replacement) => {
+    // Given
+    const readWithInactiveMainRegistration = (relativePath: string): string =>
+      relativePath === platformGovernancePath
+        ? read(relativePath).replace(
+          '  enforcePassportCookiePresetContract();',
+          replacement ? `  ${replacement}` : replacement,
+        )
+        : read(relativePath);
+
+    // When
+    const runGovernanceGuard = () => enforcePassportCookiePresetContract(readWithInactiveMainRegistration);
+
+    // Then
+    expect(runGovernanceGuard).toThrowError(/main must invoke enforcePassportCookiePresetContract exactly once/u);
   });
 
   it('proves the additional-strategy comparison is required', async () => {

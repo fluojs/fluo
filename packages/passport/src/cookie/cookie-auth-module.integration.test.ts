@@ -218,4 +218,50 @@ describe('CookieAuthModule application wiring', () => {
       await app.close();
     }
   });
+
+  it('keeps the cookie strategy as the registry and guard fallback when defaultStrategy is explicitly undefined', async () => {
+    // Given
+    const cookieConfig = {
+      accessTokenCookieName: 'session_access',
+      refreshTokenCookieName: 'session_refresh',
+    };
+
+    class DefaultCookieRoute {}
+
+    @Module({
+      imports: [
+        CookieAuthModule.forRoot(cookieConfig, { defaultStrategy: undefined }),
+        JwtModule.forRoot({
+          algorithms: ['HS256'],
+          global: true,
+          secret: 'cookie-auth-explicit-undefined-secret',
+        }),
+      ],
+    })
+    class AuthModule {}
+
+    const app = await FluoFactory.createApplicationContext(AuthModule);
+
+    try {
+      const signer = await app.container.resolve(DefaultJwtSigner);
+      const guard = await app.container.resolve(AuthGuard);
+      const token = await signer.signAccessToken({ sub: 'cookie-default-user' });
+      const context = createGuardContext(
+        DefaultCookieRoute,
+        createRequest({
+          cookies: { session_access: token },
+          headers: {},
+        }),
+        app.container,
+      );
+
+      // When
+      await guard.canActivate(context);
+
+      // Then
+      expect(context.requestContext.principal?.subject).toBe('cookie-default-user');
+    } finally {
+      await app.close();
+    }
+  });
 });

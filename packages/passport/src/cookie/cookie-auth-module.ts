@@ -59,7 +59,10 @@ export class CookieAuthModule {
       exports: [AuthGuard, CookieAuthStrategy, CookieManager],
       imports: [
         PassportModule.forRoot(
-          { defaultStrategy: COOKIE_AUTH_STRATEGY_NAME, ...passportOptions },
+          {
+            ...passportOptions,
+            defaultStrategy: passportOptions.defaultStrategy ?? COOKIE_AUTH_STRATEGY_NAME,
+          },
           [
             { name: COOKIE_AUTH_STRATEGY_NAME, token: CookieAuthStrategy },
             ...additionalStrategies,
