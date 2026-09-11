@@ -404,15 +404,15 @@ export default defineConfig({
 }
 
 function createVitestConfig(): string {
-  return `import { defineConfig } from 'vitest/config';
-
-import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';
+  return `import { fluoDecoratorsPlugin } from '@fluojs/vite';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  plugins: [fluoBabelDecoratorsPlugin()],
+  plugins: [fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })],
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
+    setupFiles: ['@fluojs/core/metadata-preload'],
   },
 });
 `;
@@ -943,7 +943,8 @@ function createMainFile(options: BootstrapOptions): string {
   const starter = describeApplicationStarter(options);
 
   if (options.runtime === 'deno') {
-    return `import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';
+    return `import '@fluojs/core/metadata-preload';
+import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';
 import { FluoFactory } from '@fluojs/runtime';
 
 import { AppModule } from './app.ts';
@@ -964,7 +965,8 @@ await app.listen();
   }
 
   if (options.runtime === 'cloudflare-workers') {
-    return `import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
+    return `import '@fluojs/core/metadata-preload';
+import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
 
 import { AppModule } from './app';
 
@@ -988,7 +990,8 @@ export default {
       ? `import { ${starter.adapterFactory}, createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';`
       : `import { ${starter.adapterFactory} } from '${starter.packageName}';
 import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';`;
-    return `${platformImports}
+    return `import '@fluojs/core/metadata-preload';
+${platformImports}
 import { FluoFactory } from '@fluojs/runtime';
 
 import { AppModule } from './app';
@@ -1015,7 +1018,8 @@ await app.listen();
     ? '\n  shutdownRegistration: createBunShutdownSignalRegistration(),'
     : '';
 
-  return `import { ${starter.adapterFactory}${hostShutdownRegistration} } from '${starter.packageName}';
+  return `import '@fluojs/core/metadata-preload';
+import { ${starter.adapterFactory}${hostShutdownRegistration} } from '${starter.packageName}';
 import { FluoFactory } from '@fluojs/runtime';
 
 import { AppModule } from './app';

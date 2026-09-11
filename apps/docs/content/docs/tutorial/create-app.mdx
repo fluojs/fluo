@@ -61,7 +61,7 @@ examples/fluo-blog/
 | `00-start/src/main.ts` | Creates a static Fastify adapter, calls `FluoFactory.create(...)`, then awaits `app.listen()`. |
 | `00-start/test/app.e2e.test.ts` | Checks `/health` and `/ready` through the request pipeline. |
 | `vite.config.ts` | Builds the chosen checkpoint through `fluoDecoratorsPlugin()` with the `node24` target. |
-| `vitest.config.ts` | Runs tests with `fluoBabelDecoratorsPlugin()` from `@fluojs/testing/vitest`. |
+| `vitest.config.ts` | Runs tests with `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })` and preloads `@fluojs/core/metadata-preload`. |
 
 `AppModule` belongs in **`src/app.ts`**, not `src/app.module.ts`. A root module is a composition boundary; it does not automatically create a route at `GET /`.
 

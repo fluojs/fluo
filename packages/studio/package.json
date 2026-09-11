@@ -32,10 +32,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./contracts": {
-      "types": "./dist/contracts.d.ts",
-      "import": "./dist/contracts.js"
-    },
     "./viewer": "./dist/index.html"
   },
   "main": "./dist/index.js",
@@ -54,6 +50,7 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
+    "@fluojs/core": "workspace:^",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

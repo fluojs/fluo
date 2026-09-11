@@ -7,6 +7,7 @@ import { fluoDecoratorsPlugin } from './index.js';
 const fixturePath = fileURLToPath(new URL('../test-fixtures/vite8-field-decorator.ts', import.meta.url));
 const coreEntryPath = fileURLToPath(new URL('../../core/src/index.ts', import.meta.url));
 const coreInternalPath = fileURLToPath(new URL('../../core/src/internal.ts', import.meta.url));
+const coreMetadataPreloadPath = fileURLToPath(new URL('../../core/src/metadata-preload.ts', import.meta.url));
 const coreRequestPipelinePath = fileURLToPath(new URL('../../core/src/request-pipeline.ts', import.meta.url));
 const httpDecoratorsPath = fileURLToPath(new URL('../../http/src/decorators.ts', import.meta.url));
 const decoratorBoundaryProbe: Plugin = {
@@ -30,6 +31,7 @@ describe('fluoDecoratorsPlugin Vite build integration', () => {
       plugins: [decoratorBoundaryProbe, plugin],
       resolve: {
         alias: [
+          { find: '@fluojs/core/metadata-preload', replacement: coreMetadataPreloadPath },
           { find: '@fluojs/core/request-pipeline', replacement: coreRequestPipelinePath },
           { find: '@fluojs/core/internal', replacement: coreInternalPath },
           { find: '@fluojs/core', replacement: coreEntryPath },

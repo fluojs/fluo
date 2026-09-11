@@ -1,1 +1,5 @@
-export { fluoDecoratorsPlugin } from './decorators-plugin.js';
+export {
+  fluoDecoratorsPlugin,
+  type FluoDecoratorsPluginOptions,
+  type FluoDecoratorsTransformBoundary,
+} from './decorators-plugin.js';

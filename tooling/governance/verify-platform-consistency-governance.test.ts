@@ -40,6 +40,7 @@ import {
   enforceReactPageCatalogContract,
   enforceReactPageMetadataIdentityContract,
   enforceReactServerFunctionContract,
+  enforceStudioPublicContractOwnership,
   enforceStudioStaticGraphLimitsContract,
   isGovernedPackageSourcePath,
   isSupportedNodeListenerVersion,
@@ -47,6 +48,47 @@ import {
   migrationGuideSnapshotsFromGit,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
+
+describe('canonical Vite decorator runtime matrix', () => {
+  it('accepts the canonical Vite transform and metadata preload recipe', () => {
+    // Given: the checked-in EN/KO runtime matrix documentation.
+    // When: the canonical Vite decorator discoverability guard runs.
+    // Then: the documented public recipe is accepted.
+    expect(() => enforceCanonicalRuntimeMatrixReferences()).not.toThrow();
+  });
+
+  it('rejects a missing canonical metadata preload import', () => {
+    // Given: the English docs hub without the public metadata-preload subpath.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/CONTEXT.md'
+        ? content.replace('@fluojs/core/metadata-preload', '')
+        : content;
+    };
+
+    // When: the runtime matrix guard evaluates the missing public import.
+    // Then: the canonical recipe is rejected.
+    expect(() => enforceCanonicalRuntimeMatrixReferences(readText)).toThrow(
+      /@fluojs\/core\/metadata-preload/u,
+    );
+  });
+
+  it('rejects the removed testing Vitest subpath', () => {
+    // Given: the English docs hub reintroduces the retired testing subpath.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/CONTEXT.md'
+        ? `${content}\n@fluojs/testing/vitest`
+        : content;
+    };
+
+    // When: the runtime matrix guard evaluates the retired public import.
+    // Then: it rejects the unsupported subpath.
+    expect(() => enforceCanonicalRuntimeMatrixReferences(readText)).toThrow(
+      /@fluojs\/testing\/vitest/u,
+    );
+  });
+});
 
 type GitResult = { status: number; stdout: string };
 type RunCommand = (command: string, args: string[], options?: { allowFailure?: boolean }) => GitResult;
@@ -4511,8 +4553,19 @@ describe('repository governance contracts', () => {
     const nextJobStart = ciWorkflow.indexOf('\n  official-web-runtime-adapter-portability:', studioBrowserStart);
     const studioBrowserJob = ciWorkflow.slice(studioBrowserStart, nextJobStart);
 
-    expect(studioBrowserJob.match(new RegExp(studioVerificationCondition.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'gu'))).toHaveLength(5);
-    expect(studioBrowserJob).toContain(studioNoopCondition);
+    const studioVerificationDirectives = [
+      'uses: actions/checkout@v5',
+      'uses: pnpm/action-setup@v5',
+      'uses: actions/setup-node@v5',
+      'run: pnpm install --frozen-lockfile',
+      'run: node tooling/scripts/run-workspace-build-closure.mjs @fluojs/studio',
+      'run: pnpm --filter @fluojs/studio test:browser',
+    ];
+    for (const directive of studioVerificationDirectives) {
+      expect(studioBrowserJob).toContain(`${studioVerificationCondition}\n        ${directive}`);
+    }
+    expect(studioBrowserJob.match(new RegExp(studioVerificationCondition.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'gu'))).toHaveLength(studioVerificationDirectives.length);
+    expect(studioBrowserJob).toContain(`${studioNoopCondition}\n        run: echo`);
 
     const requiresStudioBrowser = (mode: string, packageNames: readonly string[]): boolean =>
       mode !== 'scoped' || packageNames.includes('@fluojs/studio');
@@ -4919,7 +4972,7 @@ describe('runtime subpath surface discoverability', () => {
 });
 
 describe('Vite decorator tooling discoverability', () => {
-  it('keeps Vite app and Vitest test transform boundaries discoverable in both locales', () => {
+  it('keeps the canonical Vite transform and metadata preload recipe discoverable in both locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
     const englishChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
     const englishToolchainMatrix = readFileSync(join(repoRoot, 'docs/reference/toolchain-contract-matrix.md'), 'utf8');
@@ -4947,9 +5000,10 @@ describe('Vite decorator tooling discoverability', () => {
 
     for (const markdown of [...englishDocs, ...koreanDocs]) {
       expect(markdown).toContain('@fluojs/vite');
-      expect(markdown).toContain('@fluojs/testing/vitest');
+      expect(markdown).toContain('@fluojs/core/metadata-preload');
       expect(markdown).toContain('vite.config.ts');
       expect(markdown).toContain('vitest.config.ts');
+      expect(markdown).not.toContain('@fluojs/testing/vitest');
     }
 
     for (const markdown of [
@@ -6093,6 +6147,36 @@ describe('Studio public docs and migration expectations', () => {
     const { enforceStudioStaticGraphLimitsContract } = await loadGovernanceInternals();
 
     expect(() => enforceStudioStaticGraphLimitsContract()).not.toThrow();
+  });
+
+  it('requires Core internal runtime declarations and rejects Studio imports', () => {
+    // Given: the real governed source reader.
+    const readText = (relativePath: string) => readFileSync(join(repoRoot, relativePath), 'utf8');
+
+    // When / Then: the portable declaration seam is accepted.
+    expect(() => enforceStudioPublicContractOwnership(readText)).not.toThrow();
+    expect(() => enforceStudioPublicContractOwnership((relativePath) => {
+      const content = readText(relativePath);
+      return relativePath === 'packages/studio/package.json'
+        ? content.replace('"./viewer": "./dist/index.html"', '"./contracts": "./dist/contracts.js",\n    "./viewer": "./dist/index.html"')
+        : content;
+    })).toThrow(/contracts subpath/u);
+
+    // When / Then: a Studio root import is rejected from Runtime declarations.
+    expect(() => enforceStudioPublicContractOwnership((relativePath) => {
+      const content = readText(relativePath);
+      return relativePath === 'packages/runtime/src/devtools/contracts.ts'
+        ? content.replace("from '@fluojs/core/internal';", "from '@fluojs/studio';")
+        : content;
+    })).toThrow(/@fluojs\/studio/u);
+
+    // When / Then: removing the Core-internal seam is rejected.
+    expect(() => enforceStudioPublicContractOwnership((relativePath) => {
+      const content = readText(relativePath);
+      return relativePath === 'packages/runtime/src/devtools/contracts.ts'
+        ? content.replace("from '@fluojs/core/internal';", "from '@fluojs/core';")
+        : content;
+    })).toThrow(/@fluojs\/core\/internal/u);
   });
 
   it.each(staticLiveCompanionPairs)(

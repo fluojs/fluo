@@ -160,7 +160,9 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['vite.client.config.ts']).toContain('rolldownOptions:');
     expect(snapshot['vite.server.config.ts']).toContain('rolldownOptions:');
     expect(snapshot['vite.server.config.ts']).toContain('plugins: [fluoDecoratorsPlugin()]');
-    expect(snapshot['vitest.config.ts']).toContain('plugins: [fluoBabelDecoratorsPlugin()]');
+    expect(snapshot['vitest.config.ts']).toContain("plugins: [fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })]");
+    expect(snapshot['vitest.config.ts']).toContain("setupFiles: ['@fluojs/core/metadata-preload']");
+    expect(snapshot['src/main.ts']).toMatch(/^import '@fluojs\/core\/metadata-preload';/u);
     for (const config of ['vite.client.config.ts', 'vite.server.config.ts', 'vitest.config.ts']) {
       expect(snapshot[config]).not.toMatch(/\b(?:rollupOptions|oxc|esbuild)\s*:/u);
     }

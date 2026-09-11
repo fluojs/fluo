@@ -211,6 +211,21 @@ describe('AppModule e2e', () => {
       expect(profileResult.body).toMatchObject({
         user: expect.objectContaining({ subject: 'grace' }),
       });
+      const refreshResult = await app
+        .request('POST', '/auth/refresh')
+        .body({
+          refreshToken: (issueResult.body as { refreshToken: string }).refreshToken,
+        })
+        .send();
+
+      expect(refreshResult.status).toBe(201);
+      expect(refreshResult.body).toMatchObject({
+        claims: {
+          accessToken: expect.any(String),
+          refreshToken: expect.any(String),
+        },
+        subject: 'grace',
+      });
     });
   });
 });

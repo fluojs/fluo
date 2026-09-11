@@ -148,6 +148,10 @@ const token = await jwt.sign({ roles: ['admin'] }, { subject: 'user-123' });
 const principal = await jwt.verify(token);
 ```
 
+### Passport refresh 교환
+
+HTTP endpoint에서 refresh token을 rotate할 때는 전체 refresh 계약을 `JwtModule.forRoot({ global: true, refreshToken: ... })` 한 곳에 구성하고, `@fluojs/passport`의 `RefreshTokenModule.forRoot()`를 등록하세요. Passport strategy는 정확히 그 `RefreshTokenService`를 alias하므로 Passport에 두 번째 secret이나 store를 구성하지 않습니다. `RefreshTokenStrategy`가 canonical endpoint recipe이고 bearer header보다 `body.refreshToken`을 우선합니다. migration 세부 사항과 `AuthenticationRequiredError` / `AuthenticationFailedError` / `AuthenticationExpiredError` 변환은 `@fluojs/passport` 문서를 참조하세요.
+
 ### 주체 정규화 (Principal Normalization)
 
 `@fluojs/jwt`는 `scope` (문자열)와 `scopes` (배열) 클레임을 자동으로 감지하여 `JwtPrincipal`의 단일 `scopes: string[]` 속성으로 통합합니다. 이를 통해 권한 가드에서 일관된 로직을 적용할 수 있습니다.

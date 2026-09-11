@@ -76,9 +76,10 @@ generated baseline은 Vite `^8.2.2`, Vitest 및 `@vitest/coverage-v8` `^4.1.11`�
 - ESM `build.rollupOptions`를 `build.rolldownOptions`로 옮기고 애플리케이션의
   bundler option을 검토하세요. Node starter는 `node24`를 target으로,
   `>=24.0.0 <27`을 engine으로, `@types/node ^24.0.0`을 typings로 사용합니다.
-- Application `.ts` 파일의 `fluoDecoratorsPlugin()`과 별도 testing transform인
-  `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()`을 Babel peer와 함께
-  유지하세요. Direct Oxc/esbuild decorator processing은 지원하지 않습니다.
+- application module에는 `fluoDecoratorsPlugin()`, Vitest module에는
+  `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`를 사용하고
+  decorated module 평가 전에는 `@fluojs/core/metadata-preload`를 설정하세요.
+  Direct Oxc/esbuild decorator processing은 지원하지 않습니다.
 - Babel의 `src/**/*.test.ts` `ignore` entry를 제거해 테스트 안의 decorator도
   변환하세요. Legacy decorator compiler flag 대신 `version: '2023-11'`을
   유지합니다. React SSR은 decorator 선언을 `.ts`, JSX를 `.tsx`에 둡니다.

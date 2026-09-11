@@ -23,15 +23,19 @@ Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전�
 ## 설치
 
 ```bash
-pnpm add -D @fluojs/testing vitest
+pnpm add -D @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript @fluojs/testing @fluojs/vite vitest
 ```
 
-Vitest `^4.1.11`은 mock 헬퍼와 `@fluojs/testing/vitest` 엔트리포인트가 요구하는 peer dependency입니다. `@babel/core`는 Vitest decorators plugin이 사용하는 워크스페이스의 Babel을 로드하기 때문에 peer로 선언되어 있습니다. 따라서 non-Vitest harness subpath만 사용하더라도 패키지 매니저가 해당 peer 경고를 표시할 수 있습니다.
+Vitest `^4.1.11`은 mock 헬퍼가 요구하는 peer dependency입니다. decorator는 single lazy Babel transform을 소유하는 `@fluojs/vite`로 설정하세요:
 
-`@fluojs/testing/vitest`를 사용할 때는 `fluoBabelDecoratorsPlugin()`이 런타임에 Babel을 호출하므로, 사용하는 워크스페이스에 `@babel/core`도 함께 설치해야 합니다. Vitest 플러그인은 `enforce: 'pre'`로 실행되어 decorator가 있는 TypeScript가 Vite 8 normal-stage Rolldown/Oxc transform보다 먼저 Babel에 도달하게 합니다. Vite query/hash suffix를 제거한 뒤 `.ts`, `.tsx`, `.mts`, `.cts` 소스 id를 변환하고, `node_modules`는 건너뛰며, 가장 가까운 root Babel config인 `babel.config.cjs`, `babel.config.mjs`, `babel.config.js`, `babel.config.json`을 해석합니다.
+```ts
+import { fluoDecoratorsPlugin } from '@fluojs/vite';
+import { defineConfig } from 'vitest/config';
 
-```bash
-pnpm add -D @babel/core
+export default defineConfig({
+  plugins: [fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })],
+  test: { setupFiles: ['@fluojs/core/metadata-preload'] },
+});
 ```
 
 ## 사용 시점
@@ -300,13 +304,11 @@ synthetic React test runtime은 필요한 setup을 줄이기보다 coverage를 �
 ## 공개 API
 
 - **루트 패키지**: `Test.createTestingModule(...)`, `Test.createApp(...)`, 모듈 introspection 헬퍼, `ShallowMocked<T>`를 포함한 공용 app/module 테스트 타입
-- **서브패스**: `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (`ShallowMocked<T>` 포함), `@fluojs/testing/types` (`ShallowMocked<T>` 포함), `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
+- **서브패스**: `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (`ShallowMocked<T>` 포함), `@fluojs/testing/types` (`ShallowMocked<T>` 포함)
 - **하니스 서브패스**: `platform-conformance`, `platform-shell-lifecycle-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. HTTP portability harness는 adapter-owned bootstrap typing을 위해 `assertSupportsConditionalRequests()`, `assertSupportsCustomHttpRouteMethods()`, `assertSupportsSingleByteRanges()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `assertSupportsPortableResponseCookies()`, `createConditionalRequestBootstrapOptions`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, `WebHttpErrorRepresentationBootstrapOptions`를 노출합니다.
-- **도구 지원**: `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()` 및 `@fluojs/testing/vitest/tooling`의 Vitest workspace config helper (`vitest`와 `@babel/core`를 함께 요구)
+- **Decorator 도구 지원**: `@fluojs/vite`의 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`
 
 Package manifest는 public body-bearing RFC `QUERY` portability assertion이 사용하는 검증된 Node listener window와 일치하도록 `engines.node >=24.0.0 <27`을 선언합니다. Node 24 미만과 Node 27 이상은 제외됩니다. 문서화된 경우 non-Node runtime 애플리케이션 테스트에서 runtime-native 도구를 사용할 수 있지만, 배포된 `@fluojs/testing` 패키지 자체는 이 정확한 Node.js engine 범위를 따릅니다.
-
-`@fluojs/testing/vitest/tooling`은 각 package의 공개 `exports`에 선언된 entrypoint만 workspace alias로 매핑합니다. Private source file, internal helper, export되지 않은 source entrypoint는 의도적으로 제외하므로 테스트가 published package 소비자에게 제공되는 import boundary와 같은 경계를 검증합니다.
 
 ## 관련 패키지
 

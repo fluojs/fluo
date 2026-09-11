@@ -63,11 +63,11 @@
   "dependencies": {
     "@fluojs/core": "workspace:^",
     "@fluojs/di": "workspace:^",
-    "@fluojs/http": "workspace:^",
-    "@fluojs/studio": "workspace:^"
+    "@fluojs/http": "workspace:^"
   },
   "devDependencies": {
     "@fluojs/serialization": "workspace:^",
+    "@fluojs/studio": "workspace:^",
     "vitest": "^4.1.11"
   }
 }

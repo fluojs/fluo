@@ -93,7 +93,7 @@ type InspectReport = {
   version: 1;
 };
 
-const STUDIO_CONTRACT_ENTRYPOINT = '@fluojs/studio/contracts';
+const STUDIO_CONTRACT_ENTRYPOINT = '@fluojs/studio';
 const RUNTIME_ENTRYPOINT = '@fluojs/runtime';
 const TYPESCRIPT_MODULE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
 const RUNTIME_MISSING_MESSAGE = [
@@ -378,15 +378,17 @@ async function resolveRuntimeInspectionModule(
 }
 
 async function loadStudioMermaidRenderer(cwd: string): Promise<StudioMermaidRenderer | undefined> {
-  const resolvers = [
-    createRequire(resolve(cwd, 'package.json')),
-    createRequire(import.meta.url),
+  const parentUrls = [
+    pathToFileURL(resolve(cwd, 'package.json')).href,
+    import.meta.url,
   ];
 
-  for (const resolver of resolvers) {
+  for (const parentURL of parentUrls) {
     try {
-      const resolvedEntrypoint = resolver.resolve(STUDIO_CONTRACT_ENTRYPOINT);
-      const importedContract = await import(pathToFileURL(resolvedEntrypoint).href) as { renderMermaid?: unknown };
+      const importedContract = await tsImport(
+        STUDIO_CONTRACT_ENTRYPOINT,
+        { parentURL },
+      ) as { renderMermaid?: unknown };
 
       if (typeof importedContract.renderMermaid !== 'function') {
         throw new Error(`${STUDIO_CONTRACT_ENTRYPOINT} does not export renderMermaid(snapshot).`);
@@ -458,7 +460,7 @@ export async function runInspectCommand(argv: string[], runtime: InspectCommandR
 
     const application = await FluoFactory.create(rootModule, {
       diagnostics: parsed.timing || parsed.report ? { timing: true } : undefined,
-      ...(parsed.json || parsed.report ? { logger: createCliDiagnosticsLogger(stderr) } : {}),
+      logger: createCliDiagnosticsLogger(stderr),
     });
 
     try {

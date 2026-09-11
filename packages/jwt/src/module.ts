@@ -5,9 +5,9 @@ import type { Provider } from '@fluojs/di';
 import { JwtConfigurationError } from './errors.js';
 import { normalizeRefreshTokenOptions, RefreshTokenService } from './refresh/refresh-token.js';
 import { JwtService } from './service.js';
-import type { JwtVerifierOptions } from './types.js';
 import { DefaultJwtSigner } from './signing/signer.js';
 import { DefaultJwtVerifier, JWT_OPTIONS } from './signing/verifier.js';
+import type { JwtVerifierOptions } from './types.js';
 
 type ModuleType = Constructor;
 
@@ -34,10 +34,12 @@ function resolveRefreshTokenOptions(value: unknown): NonNullable<JwtVerifierOpti
 
 @Inject(JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier)
 class AsyncRefreshTokenServiceRegistrar {
+  private refreshTokenService: RefreshTokenService | undefined;
+
   constructor(
     private readonly options: JwtVerifierOptions,
-    _signer: DefaultJwtSigner,
-    _verifier: DefaultJwtVerifier,
+    private readonly signer: DefaultJwtSigner,
+    private readonly verifier: DefaultJwtVerifier,
   ) {}
 
   onModuleInit(): void {
@@ -46,6 +48,16 @@ class AsyncRefreshTokenServiceRegistrar {
     }
 
     resolveRefreshTokenOptions(this.options);
+  }
+
+  getRefreshTokenService(): RefreshTokenService {
+    this.refreshTokenService ??= new RefreshTokenService(
+      resolveRefreshTokenOptions(this.options),
+      this.signer,
+      this.verifier,
+    );
+
+    return this.refreshTokenService;
   }
 }
 
@@ -103,24 +115,38 @@ export class JwtModule {
     const providers: Provider[] = [optionsProvider, DefaultJwtVerifier, DefaultJwtSigner, JwtService];
 
     if (includeRefreshTokenService) {
-      providers.push({
-        inject: [JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier],
-        provide: RefreshTokenService,
-        scope: refreshTokenServiceScope,
-        useFactory: (...deps: unknown[]) => {
-          const [options, signer, verifier] = deps;
-          const refreshTokenOptions = resolveRefreshTokenOptions(options);
-
-          return new RefreshTokenService(
-            refreshTokenOptions,
-            signer as DefaultJwtSigner,
-            verifier as DefaultJwtVerifier,
-          );
-        },
-      });
-
       if (deferRefreshTokenServiceRegistration) {
         providers.push(AsyncRefreshTokenServiceRegistrar);
+        providers.push({
+          inject: [AsyncRefreshTokenServiceRegistrar],
+          provide: RefreshTokenService,
+          scope: refreshTokenServiceScope,
+          useFactory: (...deps: unknown[]) => {
+            const [registrar] = deps;
+
+            if (!(registrar instanceof AsyncRefreshTokenServiceRegistrar)) {
+              throw new JwtConfigurationError('JWT refresh token service registrar is not configured.');
+            }
+
+            return registrar.getRefreshTokenService();
+          },
+        });
+      } else {
+        providers.push({
+          inject: [JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier],
+          provide: RefreshTokenService,
+          scope: refreshTokenServiceScope,
+          useFactory: (...deps: unknown[]) => {
+            const [options, signer, verifier] = deps;
+            const refreshTokenOptions = resolveRefreshTokenOptions(options);
+
+            return new RefreshTokenService(
+              refreshTokenOptions,
+              signer as DefaultJwtSigner,
+              verifier as DefaultJwtVerifier,
+            );
+          },
+        });
       }
     }
 

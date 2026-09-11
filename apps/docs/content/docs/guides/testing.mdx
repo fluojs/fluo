@@ -12,14 +12,12 @@ Use `@fluojs/testing` when you need to test providers, module wiring, guards, in
 ## Install
 
 ```bash
-pnpm add -D @fluojs/testing vitest
+pnpm add -D @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript @fluojs/testing @fluojs/vite vitest
 ```
 
-If you use `@fluojs/testing/vitest`, also install `@babel/core` because `fluoBabelDecoratorsPlugin()` invokes Babel at runtime.
-
-```bash
-pnpm add -D @babel/core
-```
+Configure decorated test modules with `@fluojs/vite`: use
+`fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })` and
+`@fluojs/core/metadata-preload` as a Vitest setup file.
 
 ## The fluo testing ladder
 
@@ -164,7 +162,7 @@ Use responsibility-specific subpaths:
 | HTTP helpers | `@fluojs/testing/http` |
 | Mock helpers | `@fluojs/testing/mock` |
 | Types | `@fluojs/testing/types` |
-| Vitest tooling | `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` |
+| Vitest tooling | `@fluojs/vite` with `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })` and `@fluojs/core/metadata-preload` |
 
 ## Common mistakes
 

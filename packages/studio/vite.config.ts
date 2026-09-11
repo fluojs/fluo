@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite';
 
-import { fluoBabelDecoratorsPlugin } from '../../tooling/vite/src/index.ts';
+import { fluoDecoratorsPlugin } from '../vite/src/index.ts';
 
 export default defineConfig({
   base: './',
-  plugins: [fluoBabelDecoratorsPlugin()],
+  plugins: [fluoDecoratorsPlugin()],
 });

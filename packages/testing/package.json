@@ -64,14 +64,6 @@
     "./types": {
       "types": "./dist/types.d.ts",
       "import": "./dist/types.js"
-    },
-    "./vitest": {
-      "types": "./dist/vitest.d.ts",
-      "import": "./dist/vitest.js"
-    },
-    "./vitest/tooling": {
-      "types": "./dist/vitest/tooling.d.ts",
-      "import": "./dist/vitest/tooling.js"
     }
   },
   "main": "./dist/index.js",
@@ -94,7 +86,6 @@
     "@fluojs/runtime": "workspace:^"
   },
   "peerDependencies": {
-    "@babel/core": ">=7.0.0",
     "vitest": "^4.1.11"
   },
   "devDependencies": {

@@ -12,7 +12,7 @@
 | **Babel** | `v7.26+` | 루트 워크스페이스는 `@babel/core` `^7.26.10`, `{ version: '2023-11' }` 구성을 쓰는 `@babel/plugin-proposal-decorators` `^7.28.0`, `@babel/preset-typescript` `^7.27.0`을 고정합니다. |
 | **Vite** | `v8.2+` | 루트 워크스페이스는 Vite `^8.2.2`를 선언하고 정확히 8.2.2로 override합니다. 생성된 non-Deno 프로젝트도 `^8.2.2`를 선언하며 ESM config는 `build.rolldownOptions`를 사용합니다. `fluoDecoratorsPlugin()`이 Rolldown/Oxc보다 먼저 Babel로 애플리케이션 데코레이터를 변환하며 direct Oxc/esbuild decorator processing은 지원하지 않습니다. |
 | **@fluojs/vite** | `v1.0+`; Node.js `>=24.0.0 <27` | 생성된 non-Deno Vite config 파일은 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하며 React SSR starter는 server-build boundary에 이를 적용합니다. 이 플러그인은 Vite 애플리케이션 파일 데코레이터 변환을 소유하고, 배포된 Vite `>=6.2.0` peer 범위를 유지하며, eligible transform이 실행될 때까지 Babel peer loading을 lazy하게 유지하고, 실행 가능한 workspace Vite 8.2.2 coverage로 field-decorator metadata를 검증합니다. |
-| **Vitest** | `v4.1+` | 루트, package-local workspace, 생성된 non-Deno toolchain은 `vitest` `^4.1.11`을 선언합니다. 생성 프로젝트는 `@vitest/coverage-v8` `^4.1.11`을 함께 사용하고 `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()`을 유지합니다. |
+| **Vitest** | `v4.1+` | 루트, package-local workspace, 생성된 non-Deno toolchain은 `vitest` `^4.1.11`을 선언합니다. 생성 프로젝트는 `@vitest/coverage-v8` `^4.1.11`, `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`, `@fluojs/core/metadata-preload`를 함께 사용합니다. |
 | **Node.js** | Root workspace와 Node-bound public package: `>=24.0.0 <27` | Exact `24.0.0`, 최신 `24.x`, 최신 `26.x`는 frozen install 뒤에 로컬 `pnpm verify`와 같은 전체 build, typecheck, lint, test 범위를 분할 job으로 검증하며 생성 starter도 검증합니다. 최신 `24.x`는 `pnpm verify:docs`를 한 번 실행하고 release automation도 담당하며, 최신 `26.x`는 forward compatibility만 검증합니다. Node 22는 새 major 지원 matrix에서 제외됩니다. 8개 portable package의 engine omission과 Bun/Deno/Workers runtime lane은 독립적으로 유지합니다. [지원 및 마이그레이션](./node-support.ko.md)을 참조하세요. |
 
 ## CLI 및 스캐폴딩 계약
@@ -81,6 +81,7 @@ dependency graph를 평가합니다.
 | `--report` | `summary`, route-aware `snapshot`, `timing`, `generatedAt`을 포함한 versioned JSON report. | `artifacts/inspect-report.json` 같은 CI/support artifact에 쓰기 위한 형식입니다. Summary에는 component, diagnostic, warning, error total과 readiness status, health status, total timing milliseconds가 포함됩니다. |
 
 `--timing`은 JSON/report workflow 옆에 bootstrap timing diagnostics를 기록합니다. Mermaid rendering은 timing artifact 형식이 아니라 Studio가 소유한 snapshot rendering 계약이므로 `--mermaid`와 함께 사용할 수 없습니다.
+모든 artifact mode에서 bootstrap diagnostics는 stderr로 보냅니다. Mermaid mode의 stdout에는 graph만 포함되며, `--output <path>`는 terminal payload 출력 없이 graph를 artifact에 씁니다.
 
 ## 명명 규칙 (CLI 출력)
 
@@ -102,7 +103,7 @@ dependency graph를 평가합니다.
 | **Vite 앱 변환** | `@fluojs/vite` | 생성된 `vite.config.ts`는 `fluoDecoratorsPlugin()`을 애플리케이션 `.ts` 파일에 적용하고, 테스트/declaration/dependency/non-TypeScript 파일을 건너뛰며, `@babel/plugin-proposal-decorators`와 `@babel/preset-typescript`를 실행하고, 누락된 Babel peer를 transform hook에서 진단합니다. 따라서 React SSR + Vite starter는 데코레이터 선언을 `src/app.ts`에 두고 JSX는 `.tsx` 모듈에 유지합니다. `@fluojs/vite`를 import하거나 plugin을 생성해도 `@babel/core`를 로드하지 않습니다. Workspace Vite 8.2.2/Rolldown integration gate는 pre-stage 순서를 검증하고 bundle된 field-decorator metadata 결과를 실행합니다. |
 | **번들링** | Vite | 선택한 런타임 대상에 맞게 생성된 애플리케이션을 번들링합니다. |
 | **Next.js 앱 변환 및 번들링** | [`@fluojs/platform-nextjs/next-config`](../../packages/platform-nextjs/README.ko.md#decorator-compiler-연결) + Turbopack | Node.js `>=24.0.0 <27`에서 실행하는 기존 Next.js 16.x application (peer `>=16.0.0 <17`)의 `withFluoNextBackend()`는 packaged `decorators-loader`를 server-side application `*.ts` rule에 추가하고 browser와 dependency 파일은 제외합니다. 기존 config와 rule을 보존하고 Babel decorators `{ version: '2023-11' }`와 TypeScript preset을 실행한 뒤 JavaScript를 Turbopack에 반환합니다. Decorated 선언은 `.tsx`가 아니라 `.ts`에 둡니다. 이 packaged integration은 Turbopack만 지원하며 webpack과 Next.js Edge Runtime은 지원하지 않습니다. Vite plugin이나 CLI starter가 아닙니다. |
-| **검증** | `@fluojs/testing/vitest` + Vitest | 생성된 `vitest.config.ts`는 `*.test.ts`와 `*.spec.ts` 파일을 Vite 애플리케이션 transform 대신 testing-specific Babel decorator transform 경로에 둡니다. |
+| **검증** | `@fluojs/vite` + Vitest | 생성된 `vitest.config.ts`는 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`와 `@fluojs/core/metadata-preload`를 적용하므로 test/spec와 application 모듈이 canonical decorator transform을 공유하고 declaration과 dependency는 계속 제외합니다. |
 | **제약** | 대체 도구 | direct `esbuild` decorator handling 같은 대체 체인은 문서화된 지원 계약 밖에 있습니다. |
 
 ## 관련 참조

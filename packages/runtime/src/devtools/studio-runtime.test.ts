@@ -1,11 +1,14 @@
 import { Container } from '@fluojs/di';
 import type { RequestContext } from '@fluojs/http';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type {
   StudioNormalizedRouteDescriptor,
   StudioParsedLiveSnapshot,
   StudioLiveEvent as StudioWireLiveEvent,
   StudioRouteDescriptor as StudioWireRouteDescriptor,
-} from '@fluojs/studio/contracts';
+} from '@fluojs/studio';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import { FluoFactory, bootstrapModule } from '../bootstrap.js';
@@ -41,6 +44,21 @@ afterEach(() => {
 });
 
 describe('Studio devtools runtime bridge', () => {
+  it('uses the runtime-neutral Core internal seam rather than a Studio production dependency', () => {
+    const packageDirectory = dirname(fileURLToPath(import.meta.url));
+    const packageManifest = JSON.parse(readFileSync(join(packageDirectory, '../../package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const contractsSource = readFileSync(join(packageDirectory, 'contracts.ts'), 'utf8');
+    const coreInternalImport = '@fluojs/core' + '/internal';
+
+    expect(packageManifest.dependencies?.['@fluojs/studio']).toBeUndefined();
+    expect(packageManifest.devDependencies?.['@fluojs/studio']).toBe('workspace:^');
+    expect(contractsSource).toContain(`from '${coreInternalImport}'`);
+    expect(contractsSource).not.toContain("from '@fluojs/studio'");
+  });
+
   it('keeps Runtime producer route fields required while Studio preserves legacy wire inputs', () => {
     type RuntimeSnapshotEvent = Extract<RuntimeStudioLiveEvent, { type: 'snapshot' }>;
 

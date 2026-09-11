@@ -15,7 +15,7 @@ Keep every `00-start/src/` application file from the previous lesson, including 
 
 Import **`../src/app`**, not `../src/main`. `main.ts` opens the Fastify listener. `Test.createApp({ rootModule: AppModule })` instead compiles your real module graph and exercises the HTTP pipeline without a listening port. No running server is required for these tests.
 
-The example's existing `vitest.config.ts` uses the public `fluoBabelDecoratorsPlugin()` and includes both source and test directories. Keep that config; do not enable legacy decorator flags.
+The example's existing `vitest.config.ts` uses `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`, preloads `@fluojs/core/metadata-preload`, and includes both source and test directories. Keep that config; do not enable legacy decorator flags.
 
 ## 2. Write the complete request suite
 

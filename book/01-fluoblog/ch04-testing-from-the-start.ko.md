@@ -18,17 +18,22 @@ FluoBlog에는 아직 쓰기 API가 없으니 데이터가 잘못 바뀔 일이 
 
 테스트를 쓰기 전에 생성된 설정을 확인한다. Node.js 24, pnpm 10을 그대로 사용하며 Vitest는 현재 starter의 4 계열을 따른다. `@fluojs/testing`은 애플리케이션 구성과 요청 테스트를 돕지만 테스트 실행기 자체는 아니다. Vitest와 Babel 의존성이 설치되어 있어야 한다.
 
+```bash
+pnpm add -D @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript @fluojs/testing @fluojs/vite vitest
+```
+
 아래는 `vitest.config.ts`의 **완전한 설정 파일**이다. 생성된 파일이 같다면 그대로 둔다.
 
 ```ts
-import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';
+import { fluoDecoratorsPlugin } from '@fluojs/vite';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  plugins: [fluoBabelDecoratorsPlugin()],
+  plugins: [fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })],
   test: {
     environment: 'node',
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'test/**/*.{test,spec}.{ts,tsx}'],
+    setupFiles: ['@fluojs/core/metadata-preload'],
   },
 });
 ```
@@ -42,9 +47,9 @@ module.exports = {
 };
 ```
 
-테스트 플러그인은 가장 가까운 Babel 루트 설정을 찾아 표준 데코레이터를 변환한다. 테스트 안에 선언한 모듈 클래스도 같은 변환이 필요하다. 과거 설정에서 `src/**/*.test.ts`를 Babel 처리 대상에서 제외했다면 그 제외 규칙을 유지하지 않는다. 테스트 파일이 파싱조차 되지 않는 상태를 DI 실패나 비즈니스 규칙 실패로 읽으면 진단 방향이 틀어진다.
+canonical plugin은 application과 test module의 표준 데코레이터를 변환한다. 테스트 안에 선언한 module class도 같은 변환이 필요하며 평가 전 metadata를 preload해야 한다. 과거 설정에서 `src/**/*.test.ts`를 Babel 처리 대상에서 제외했다면 그 제외 규칙을 유지하지 않는다. 테스트 파일이 파싱조차 되지 않는 상태를 DI 실패나 비즈니스 규칙 실패로 읽으면 진단 방향이 틀어진다.
 
-애플리케이션 빌드에 사용하는 `@fluojs/vite`와 이 플러그인은 역할이 다르다. 테스트에서만 `experimentalDecorators`를 켜거나 다른 reflection 방식을 도입하면 테스트한 클래스와 실제 실행한 클래스의 의미가 달라질 수 있다. 테스트의 편의를 위해 프로덕션과 다른 의존성 추론을 제공하지 않는 것이 Fluo 테스트 경로의 중요한 특성이다.
+Test mode와 application mode는 같은 `@fluojs/vite` 구현을 공유한다. 테스트에서만 `experimentalDecorators`를 켜거나 다른 reflection 방식을 도입하면 테스트한 클래스와 실제 실행한 클래스의 의미가 달라질 수 있다.
 
 ## 가장 작은 테스트: 호출자가 데이터를 바꿀 수 없는가
 
@@ -341,6 +346,6 @@ pnpm exec vitest run \
 - [공식 testing 경로와 TDD 계층](../../packages/testing/README.ko.md), [공개 export](../../packages/testing/src/index.ts), [테스트 요구사항 계약](../../docs/contracts/testing-guide.ko.md)
 - [가상 앱 구현](../../packages/testing/src/module.ts), [요청 builder와 응답 타입](../../packages/testing/src/http.ts), [공개 앱·모듈 타입](../../packages/testing/src/types.ts)
 - [모듈 builder 구현](../../packages/testing/src/module.ts), [컴파일 실패와 정리 회귀 테스트](../../packages/testing/src/module.compile-failure.test.ts)
-- [Vitest 데코레이터 진입점](../../packages/testing/src/vitest.ts), [Babel 변환 플러그인](../../packages/testing/src/babel-decorators-plugin.ts)
+- [Vite 데코레이터 변환 경계](../../packages/vite/README.ko.md#데코레이터-변환-경계), [데코레이터 변환 구현](../../packages/vite/src/decorators-plugin.ts)
 
 [이전: 컨트롤러에서 로직 꺼내기](./ch03-modules-and-di.ko.md) · [1권 목차](./toc.ko.md) · [다음: 초안과 발행된 글은 무엇이 다른가](./ch05-post-domain.ko.md)

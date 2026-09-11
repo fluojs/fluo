@@ -6,7 +6,6 @@ export * from './cookie/cookie-manager.js';
 export * from './decorators.js';
 export * from './errors.js';
 export * from './guard.js';
-export * from './refresh/jwt-refresh-token-adapter.js';
 export * from './metadata.js';
 export * from './module.js';
 export * from './adapters/passport-js.js';

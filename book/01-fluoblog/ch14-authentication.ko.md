@@ -18,6 +18,8 @@ JWT는 payload를 암호화하는 형식이 아니다. 토큰을 가진 사람�
 
 액세스 토큰은 900초 동안 유효하게 한다. 이 값은 다시 로그인하는 불편과 유출된 토큰이 사용될 수 있는 시간을 절충한 제품 설정이다. 긴 유효기간은 로그인 화면을 덜 보여 주지만 폐기 정책의 중요성을 높인다. 토큰만 검증하는 완전한 무상태 방식에서는 비밀번호를 바꾸거나 사용자를 정지해도 만료 전까지 기존 토큰이 살아 있다. FluoBlog는 글을 쓰는 계정을 빠르게 정지할 수 있어야 하므로 현재 계정 상태를 요청마다 확인하는 방식을 선택한다.
 
+FluoBlog가 나중에 session renewal을 추가한다면 한 경로를 따른다. refresh secret, lifetime, rotation, atomic store는 `JwtModule.forRoot({ global: true, refreshToken: ... })`에 구성하고, `RefreshTokenModule.forRoot()`를 등록한 뒤 `@UseAuth('refresh-token')`로 교환 endpoint를 노출한다. Passport는 또 다른 refresh service나 store를 만들지 않는다. 이 endpoint는 bearer header보다 `body.refreshToken`을 먼저 읽고 malformed body 값에는 fallback하지 않으며, 누락·invalid/reused·expired credential을 문서화된 authentication error로 변환한다. 이 장은 위의 더 짧은 access-token-only 제품 흐름을 의도적으로 유지한다.
+
 다음은 **완전한 파일 `src/auth/jwt-options.ts`**이다. 환경 값을 읽는 곳은 애플리케이션 설정 경계다. 9장에서 설정 객체로 값을 관리했다면 같은 검증을 그 경계로 옮기되 JWT 제공자나 요청 핸들러가 매번 환경 변수를 읽게 하지 않는다. 개발 서버를 다시 띄워도 같은 키를 쓰도록 외부 설정으로 주입한다.
 
 ```ts

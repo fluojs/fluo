@@ -1,9 +1,13 @@
 import { fileURLToPath } from 'node:url';
 
-import { createFluoBabelDecoratorsPlugin } from '../../../packages/testing/src/babel-decorators-plugin.js';
+import { fluoDecoratorsPlugin } from '../../../packages/vite/src/index.ts';
 
 const BABEL_CONFIG_FILE = fileURLToPath(new URL('../../babel/babel.config.cjs', import.meta.url));
 
 export function fluoBabelDecoratorsPlugin() {
-  return createFluoBabelDecoratorsPlugin(() => BABEL_CONFIG_FILE);
+  return fluoDecoratorsPlugin({
+    babelConfigFile: BABEL_CONFIG_FILE,
+    sourceMaps: true,
+    transformBoundary: 'test',
+  });
 }

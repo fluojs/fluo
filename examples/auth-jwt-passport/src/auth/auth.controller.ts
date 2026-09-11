@@ -15,6 +15,12 @@ export class AuthController {
   issueToken(dto: LoginDto) {
     return this.authService.issueToken(dto.username);
   }
+
+  @Post('/refresh')
+  @UseAuth('refresh-token')
+  refresh(_input: undefined, context: RequestContext) {
+    return context.principal;
+  }
 }
 
 @Controller('/profile')

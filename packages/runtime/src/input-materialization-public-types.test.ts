@@ -83,7 +83,7 @@ describe('cold public input materialization declarations', () => {
       'package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json',
       'tooling/babel', 'tooling/tsconfig', 'tooling/vite',
       'tooling/scripts/clean-dist.mjs', script,
-      'packages/testing/src/babel-decorators-plugin.ts',
+      'packages/vite',
       ...packages.map((name) => `packages/${name.slice('@fluojs/'.length)}`),
     ]) {
       await cp(join(repositoryRoot, entry), join(root, entry), {

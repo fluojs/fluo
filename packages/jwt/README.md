@@ -148,6 +148,10 @@ const token = await jwt.sign({ roles: ['admin'] }, { subject: 'user-123' });
 const principal = await jwt.verify(token);
 ```
 
+### Passport refresh exchange
+
+When an HTTP endpoint rotates refresh tokens, configure the complete refresh contract once in `JwtModule.forRoot({ global: true, refreshToken: ... })`, then register `RefreshTokenModule.forRoot()` from `@fluojs/passport`. The Passport strategy aliases this exact `RefreshTokenService`; do not configure a second secret or store in Passport. `RefreshTokenStrategy` is the canonical endpoint recipe and prefers `body.refreshToken` over a bearer header. See `@fluojs/passport` for migration details and its `AuthenticationRequiredError` / `AuthenticationFailedError` / `AuthenticationExpiredError` mapping.
+
 ### Principal Normalization
 
 `@fluojs/jwt` automatically unifies `scope` (string) and `scopes` (array) claims into a single `scopes: string[]` property in the `JwtPrincipal`, ensuring consistent behavior for authorization guards.

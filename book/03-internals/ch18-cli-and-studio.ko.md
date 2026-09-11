@@ -94,7 +94,7 @@ viewer는 출력한 HTTP URL로 연다. 패키지의 `dist/index.html`을 파일
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { runInspectCommand } from '@fluojs/cli';
-import { applyFilters, parseStudioPayload, renderMermaid } from '@fluojs/studio/contracts';
+import { applyFilters, parseStudioPayload, renderMermaid } from '@fluojs/studio';
 
 const artifactPath = 'artifacts/inspect-probe-report.json';
 const exitCode = await runInspectCommand([
@@ -179,7 +179,7 @@ live Studio는 Fluo가 소유한 Node restart runner를 요구한다. `--raw-wat
 ```js
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { applyFilters, parseStudioPayload, renderMermaid } from '@fluojs/studio/contracts';
+import { applyFilters, parseStudioPayload, renderMermaid } from '@fluojs/studio';
 
 const raw = await readFile('artifacts/inspect-probe-report.json', 'utf8');
 const { payload } = parseStudioPayload(raw);

@@ -2612,37 +2612,35 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
     'Korean i18n README, package-surface, and docs/CONTEXT.ko.md must keep the root runtime boundary and provider visibility contract discoverable together.',
   );
 
+  const canonicalViteDecoratorRecipeMarkers = [
+    '@fluojs/vite',
+    '@fluojs/core/metadata-preload',
+    'vite.config.ts',
+    'vitest.config.ts',
+  ];
+  const removedTestingVitestSubpath = '@fluojs/testing/vitest';
+
   for (const markdown of [packageChooser, toolchainMatrix, docsContext, viteReadme, quickStart, migrateFromNestjs]) {
     assert(
-      markdown.includes('@fluojs/vite') &&
-        markdown.includes('@fluojs/testing/vitest') &&
-        markdown.includes('vite.config.ts') &&
-        markdown.includes('vitest.config.ts'),
-      'Vite decorator tooling docs must keep @fluojs/vite, @fluojs/testing/vitest, vite.config.ts, and vitest.config.ts discoverable together.',
+      canonicalViteDecoratorRecipeMarkers.every((marker) => markdown.includes(marker)),
+      'Vite decorator tooling docs must keep @fluojs/vite, @fluojs/core/metadata-preload, vite.config.ts, and vitest.config.ts discoverable together.',
+    );
+    assert(
+      !markdown.includes(removedTestingVitestSubpath),
+      'Vite decorator tooling docs must not reference the removed @fluojs/testing/vitest subpath.',
     );
   }
 
   for (const markdown of [packageChooserKo, toolchainMatrixKo, docsContextKo, viteReadmeKo, quickStartKo, migrateFromNestjsKo]) {
     assert(
-      markdown.includes('@fluojs/vite') &&
-        markdown.includes('@fluojs/testing/vitest') &&
-        markdown.includes('vite.config.ts') &&
-        markdown.includes('vitest.config.ts'),
-      'Korean Vite decorator tooling docs must keep @fluojs/vite, @fluojs/testing/vitest, vite.config.ts, and vitest.config.ts discoverable together.',
+      canonicalViteDecoratorRecipeMarkers.every((marker) => markdown.includes(marker)),
+      'Korean Vite decorator tooling docs must keep @fluojs/vite, @fluojs/core/metadata-preload, vite.config.ts, and vitest.config.ts discoverable together.',
+    );
+    assert(
+      !markdown.includes(removedTestingVitestSubpath),
+      'Korean Vite decorator tooling docs must not reference the removed @fluojs/testing/vitest subpath.',
     );
   }
-
-  assert(
-    packageChooser.includes('lazy') && toolchainMatrix.includes('lazy') && docsContext.includes('lazy') && viteReadme.includes('lazily loads Babel'),
-    'Vite decorator tooling docs must preserve lazy Babel loading discoverability.',
-  );
-  assert(
-    packageChooserKo.includes('lazy') &&
-      toolchainMatrixKo.includes('lazy') &&
-      docsContextKo.includes('lazy') &&
-      viteReadmeKo.includes('Babel을 lazy load'),
-    'Korean Vite decorator tooling docs must preserve lazy Babel loading discoverability.',
-  );
 
   assert(
     testingReadme.includes('request-scoped provider isolation') &&
@@ -4393,6 +4391,32 @@ export function enforceStudioStaticGraphLimitsContract(readText = read) {
   }
 }
 
+export function enforceStudioPublicContractOwnership(readText = read) {
+  const studioManifest = JSON.parse(readText('packages/studio/package.json'));
+  const studioExports = studioManifest.exports;
+  const runtimeContracts = readText('packages/runtime/src/devtools/contracts.ts');
+  const cliInspectCommand = readText('packages/cli/src/commands/inspect.ts');
+  const studioContracts = readText('packages/studio/src/contracts.ts');
+
+  assert(
+    !Object.hasOwn(studioExports, './contracts'),
+    'Studio public ownership must not expose the removed contracts subpath.',
+  );
+  assert(
+    runtimeContracts.includes("from '@fluojs/core/internal';") &&
+      !runtimeContracts.includes('@fluojs/studio'),
+    'Runtime Studio contract declarations must use @fluojs/core/internal and must not import @fluojs/studio.',
+  );
+  assert(
+    cliInspectCommand.includes("const STUDIO_CONTRACT_ENTRYPOINT = '@fluojs/studio';"),
+    'CLI Mermaid rendering must resolve the canonical Studio root export.',
+  );
+  assert(
+    !studioContracts.includes('StudioProducer'),
+    'Studio public contracts must not retain producer aliases for normalized values.',
+  );
+}
+
 export function enforceNotificationsQueueCancellationDocumentationContract(readText = read) {
   const contractSentinel =
     '<!-- notifications-queue-cancellation-contract: signal=live;pre-abort=before-handoff;mid-flight=adapter-owned;listener-cleanup=adapter-owned;bulk=native-or-sequential;fallback=stop-after-abort -->';
@@ -4478,6 +4502,7 @@ export async function main() {
   enforceFastifyNativeConfigurationDocsSync();
   enforceStudioRuntimeBridgeDiscoverability();
   enforceStudioStaticGraphLimitsContract();
+  enforceStudioPublicContractOwnership();
   enforceNotificationsStatusDocumentationContract();
   enforceNotificationsQueueCancellationDocumentationContract();
   enforceTerminusRuntimeHealthContract();

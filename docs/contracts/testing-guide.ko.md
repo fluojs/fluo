@@ -54,7 +54,7 @@ fluo의 테스트 설정은 런타임 모델과 같습니다. 표준 decorator, 
 
 Testing-module builder는 `compile()`이 `TestingModuleRef`를 반환할 때까지 내부에서 생성한 container를 소유합니다. Override 적용, bootstrap lifecycle 작업, 최종 singleton 동기화가 실패하면 `compile()`은 reject하기 전에 복구할 수 없는 해당 container를 dispose합니다. Cleanup이 성공하면 원래 compile 실패를 다시 던지고, disposal도 실패하면 원래 실패와 cleanup 실패를 담은 `AggregateError`를 보고합니다. 성공적으로 반환된 `TestingModuleRef`는 caller-owned container lifecycle을 유지합니다. reference를 보관한 뒤 `finally` 또는 `afterEach`에서 `await module.container.dispose()`를 unconditional하게 호출하세요. 그러면 통과, 실패, 조기 반환 테스트 모두 resource를 해제합니다. 완료된 disposal은 idempotent하며 teardown error는 surface됩니다. operation과 teardown이 모두 실패할 수 있는 코드는 operation error를 mask하지 말고 두 오류를 함께 보존해야 합니다.
 
-`@fluojs/testing/vitest`는 `fluoBabelDecoratorsPlugin()`을 위한 지원 Vitest 엔트리포인트입니다. testing package export가 바뀔 때는 package export-map과 build surface 검증에 이 엔트리포인트를 계속 포함하세요.
+`@fluojs/vite`는 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`를 통한 지원 Vitest decorator 엔트리포인트입니다. package export가 바뀔 때는 이 public export와 `@fluojs/core/metadata-preload` setup을 export-map과 build surface 검증에 포함하세요.
 
 `@fluojs/testing`은 public body-bearing RFC `QUERY` portability assertion이 사용하는 검증된 listener window와 일치하도록 `engines.node >=24.0.0 <27`을 선언합니다. Node 24 미만과 Node 27 이상은 제외됩니다. Mock helper와 `ShallowMocked<T>` type은 Vitest-compatible mock type boundary를 의도적으로 사용합니다. `ShallowMocked<T>`는 root `@fluojs/testing` 패키지, `@fluojs/testing/types`, `@fluojs/testing/mock`에서 사용할 수 있습니다. Vitest를 실행하지 않는 소비자는 `@fluojs/testing/module`, harness subpath 같은 non-mock entrypoint를 우선 사용하세요.
 

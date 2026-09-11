@@ -18,17 +18,22 @@ The code in this chapter consists of tests to add to the generated project. Pres
 
 Before writing tests, check the generated configuration. Continue using Node.js 24 and pnpm 10, with Vitest from the 4 series used by the current starter. `@fluojs/testing` helps with application configuration and request testing, but it is not the test runner itself. Vitest and the Babel dependencies must be installed.
 
+```bash
+pnpm add -D @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript @fluojs/testing @fluojs/vite vitest
+```
+
 Below is the **complete configuration file** for `vitest.config.ts`. If the generated file matches, leave it as it is.
 
 ```ts
-import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';
+import { fluoDecoratorsPlugin } from '@fluojs/vite';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  plugins: [fluoBabelDecoratorsPlugin()],
+  plugins: [fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })],
   test: {
     environment: 'node',
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'test/**/*.{test,spec}.{ts,tsx}'],
+    setupFiles: ['@fluojs/core/metadata-preload'],
   },
 });
 ```
@@ -42,9 +47,9 @@ module.exports = {
 };
 ```
 
-The test plugin locates the nearest Babel root configuration and transforms standard decorators. Module classes declared inside tests need the same transformation. If an older configuration excluded `src/**/*.test.ts` from Babel processing, do not retain that exclusion. Interpreting a test file that cannot even be parsed as a DI failure or a business-rule failure sends diagnosis in the wrong direction.
+The canonical plugin transforms standard decorators for application and test modules. Module classes declared inside tests need the same transformation, and metadata must preload before they evaluate. If an older configuration excluded `src/**/*.test.ts` from Babel processing, do not retain that exclusion. Interpreting a test file that cannot even be parsed as a DI failure or a business-rule failure sends diagnosis in the wrong direction.
 
-This plugin has a different role from `@fluojs/vite`, which is used for application builds. Enabling `experimentalDecorators` only in tests, or introducing a different reflection mechanism there, can change the meaning of the tested classes relative to the classes actually run. An important characteristic of Fluo's testing path is that it does not provide different dependency inference from production merely for test convenience.
+Test mode and application mode share the same `@fluojs/vite` implementation. Enabling `experimentalDecorators` only in tests, or introducing a different reflection mechanism there, can change the meaning of the tested classes relative to the classes actually run.
 
 ## The Smallest Test: Can a Caller Change the Data?
 
@@ -341,6 +346,6 @@ In the next chapter, the operator wants to save a post that is not finished yet.
 - [The official testing path and TDD layers](../../packages/testing/README.md), [Public exports](../../packages/testing/src/index.ts), [Testing requirements contract](../../docs/contracts/testing-guide.md)
 - [Virtual app implementation](../../packages/testing/src/module.ts), [Request builder and response types](../../packages/testing/src/http.ts), [Public app and module types](../../packages/testing/src/types.ts)
 - [Module builder implementation](../../packages/testing/src/module.ts), [Compilation failure and disposal regression tests](../../packages/testing/src/module.compile-failure.test.ts)
-- [Vitest decorator entry point](../../packages/testing/src/vitest.ts), [Babel transformation plugin](../../packages/testing/src/babel-decorators-plugin.ts)
+- [Vite decorator transform boundary](../../packages/vite/README.md#decorator-transform-boundary), [Decorator transform implementation](../../packages/vite/src/decorators-plugin.ts)
 
 [Previous: Moving Logic Out of the Controller](./ch03-modules-and-di.md) | [Volume 1 contents](./toc.md) | [Next: What Makes a Draft Different from a Published Post?](./ch05-post-domain.md)
