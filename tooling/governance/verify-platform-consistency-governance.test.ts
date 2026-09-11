@@ -4512,8 +4512,19 @@ describe('repository governance contracts', () => {
     const nextJobStart = ciWorkflow.indexOf('\n  official-web-runtime-adapter-portability:', studioBrowserStart);
     const studioBrowserJob = ciWorkflow.slice(studioBrowserStart, nextJobStart);
 
-    expect(studioBrowserJob.match(new RegExp(studioVerificationCondition.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'gu'))).toHaveLength(5);
-    expect(studioBrowserJob).toContain(studioNoopCondition);
+    const studioVerificationDirectives = [
+      'uses: actions/checkout@v5',
+      'uses: pnpm/action-setup@v5',
+      'uses: actions/setup-node@v5',
+      'run: pnpm install --frozen-lockfile',
+      'run: node tooling/scripts/run-workspace-build-closure.mjs @fluojs/studio',
+      'run: pnpm --filter @fluojs/studio test:browser',
+    ];
+    for (const directive of studioVerificationDirectives) {
+      expect(studioBrowserJob).toContain(`${studioVerificationCondition}\n        ${directive}`);
+    }
+    expect(studioBrowserJob.match(new RegExp(studioVerificationCondition.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'gu'))).toHaveLength(studioVerificationDirectives.length);
+    expect(studioBrowserJob).toContain(`${studioNoopCondition}\n        run: echo`);
 
     const requiresStudioBrowser = (mode: string, packageNames: readonly string[]): boolean =>
       mode !== 'scoped' || packageNames.includes('@fluojs/studio');
