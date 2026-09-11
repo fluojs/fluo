@@ -40,6 +40,15 @@ For atomic cache mutation, start at the [cache-manager API owner](../packages/ca
 
 The [HTTP dependency security update](./reference/dependency-security-update.md) distinguishes root and isolated benchmark resolution from the published Fastify/Express consumer graph, records the nine upstream advisories, and explains application-owned transitive lockfile updates.
 
+## Metrics Registry Ownership
+
+Applications register `MetricsModule.forRoot(...)` and inject `MetricsService`.
+Configure registry sharing only through the `METRICS_REGISTRY` provider passed to
+`FluoFactory.create(...)`; import direct middleware, meter providers, and `Registry`
+from `@fluojs/metrics/integration`. Follow the [Metrics API owner](../packages/metrics/README.md)
+and [observability architecture](./architecture/observability.md) for isolation,
+sharing, and collector ownership.
+
 ## Persistence After-Commit Work
 
 For result-based rollback, first read the [shared transaction owner contract](./architecture/transactions.md#result-based-rollback). The separate `TransactionBoundaryOptions<T = unknown>.shouldRollback` in Prisma, Drizzle, and Mongoose is a consumer-defined synchronous predicate, not a global `Result` shape. An explicit root failure returns the same value after native rollback and cleanup succeed. A nested opted-in failure returns its original value while marking the owner sticky rollback-only; unless the root also rejects its own result, `TransactionRollbackOnlyError` carries the first nested failure as `result: unknown`. Unsupported fallback/legacy targets reject with `TransactionRollbackCapabilityError` before the callback, and native errors are not hidden. Rollback discards hooks; native callback retries use fresh owners. Ordinary caught nested exceptions retain existing commit/hook behavior. External raw transactions, Redis `MULTI/EXEC`, savepoints, and added durability guarantees are unsupported. Each package README owns exact argument positions and consumer examples.

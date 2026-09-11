@@ -28,6 +28,7 @@ import {
   enforceMicroservicesSafetyRuntimeEvidence,
   enforceRedisStreamsSubpathExportEvidence,
 } from './microservices-safety-guidance.mjs';
+import { enforceMetricsRegistryIntegrationBoundary } from './metrics-registry-integration-boundary.mjs';
 import { enforceMicroservicesNestjsMigrationDocs } from './microservices-nestjs-migration-docs.mjs';
 import { enforceMongooseNestjsMigrationDocs } from './mongoose-nestjs-migration-docs.mjs';
 import { enforceNextjsPublicImports, nextjsRecipePaths } from './nextjs-public-imports.mjs';
@@ -4518,6 +4519,12 @@ export async function main() {
   enforceDrizzleNamedClientContract();
   enforceQueueWorkerOwnershipContract();
   enforceMicroservicesNestjsMigrationDocs();
+  enforceMetricsRegistryIntegrationBoundary({
+    integration: read('packages/metrics/src/integration.ts'),
+    manifest: read('packages/metrics/package.json'),
+    module: read('packages/metrics/src/metrics-module.ts'),
+    root: read('packages/metrics/src/index.ts'),
+  });
   enforceMongooseNestjsMigrationDocs();
   enforcePrismaNestjsMigrationDocs();
   enforceMicroservicesSafetyGuidanceParity();
