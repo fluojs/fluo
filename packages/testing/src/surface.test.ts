@@ -102,8 +102,6 @@ const emittedHarnessSubpaths = [
   './web-runtime-adapter-portability',
   './fetch-style-websocket-conformance',
   './types',
-  './vitest',
-  './vitest/tooling',
 ] as const;
 
 const executeTaskkillCommand: TaskkillCommand = async (file, args, options) => {
