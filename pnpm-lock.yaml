@@ -1252,9 +1252,6 @@ importers:
 
   packages/testing:
     dependencies:
-      '@babel/core':
-        specifier: 7.29.7
-        version: 7.29.7
       '@fluojs/config':
         specifier: workspace:^
         version: link:../config
