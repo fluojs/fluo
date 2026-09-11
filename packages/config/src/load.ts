@@ -407,7 +407,14 @@ function resolveEnvFilePaths(envFilePaths: readonly string[], cwd: string | unde
   return resolved;
 }
 
-function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
+/**
+ * Normalizes source options at the shared configuration input boundary.
+ *
+ * @internal
+ * @param options Source selection, parsing, validation, and watch options.
+ * @returns Normalized options shared by static loading and reload ownership.
+ */
+export function normalizeConfigLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
   rejectLegacyValidateOption(options);
   rejectLegacyEnvFileOptions(options);
 
@@ -598,7 +605,14 @@ function validateConfig(options: NormalizedLoadOptions, merged: ConfigDictionary
   }
 }
 
-function resolveConfig(options: NormalizedLoadOptions): ConfigDictionary {
+/**
+ * Merges and validates a detached configuration snapshot.
+ *
+ * @internal
+ * @param options Normalized source and synchronous validation options.
+ * @returns The validated configuration dictionary.
+ */
+export function resolveConfigSnapshot(options: NormalizedLoadOptions): ConfigDictionary {
   return validateConfig(options, buildMergedConfig(options));
 }
 
@@ -681,7 +695,7 @@ function applyReloadNow(
   reason: ConfigReloadReason,
 ): ConfigDictionary {
   const previous = state.current;
-  const next = resolveConfig(normalized);
+  const next = resolveConfigSnapshot(normalized);
 
   state.current = next;
 
@@ -837,10 +851,10 @@ function closeReloader(
 export class ConfigReloadCore {
   static create(options: ConfigLoadOptions, initialSnapshot?: ConfigDictionary): ConfigReloader {
   const loadOptions = snapshotConfigLoadOptions(options);
-  const normalized = normalizeLoadOptions(loadOptions);
+  const normalized = normalizeConfigLoadOptions(loadOptions);
   const state: ReloaderState = {
     current: initialSnapshot === undefined
-      ? resolveConfig(normalized)
+      ? resolveConfigSnapshot(normalized)
       : cloneConfigDictionary(initialSnapshot),
     pendingReloadReason: undefined,
     reloading: false,
@@ -873,21 +887,3 @@ export class ConfigReloadCore {
   }
 }
 
-/**
- * Loads, merges, and validates one configuration snapshot without creating long-lived watcher state.
- *
- * Merge precedence stays aligned with the package README contract: `defaults` < env file < `processEnv` < `runtimeOverrides`.
- *
- * @param options Configuration loading options for source precedence, parsing, and synchronous schema validation.
- * @returns A detached normalized configuration dictionary for the current load.
- * @throws {FluoError} When validation throws or the config cannot be normalized.
- */
-/** @internal Shared normalized input boundary for ConfigModule and ConfigReloadCore. */
-export function normalizeConfigLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
-  return normalizeLoadOptions(options);
-}
-
-/** @internal Shared validation and precedence boundary for ConfigModule and ConfigReloadCore. */
-export function resolveConfigSnapshot(options: NormalizedLoadOptions): ConfigDictionary {
-  return resolveConfig(options);
-}
