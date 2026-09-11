@@ -44,7 +44,7 @@ class AppModule {}
 
 `MetricsModule.forRoot()` exposes `GET /metrics` by default. Pass `http: true` (or an `http` options object) when you want the module to install HTTP request instrumentation middleware. When HTTP instrumentation is enabled, the module records request totals, error counts, and request duration. For production deployments, make the scrape endpoint boundary explicit: either disable it with `path: false` until a platform-level proxy is in place, or attach dedicated endpoint middleware.
 
-The scrape endpoint returns the active `prom-client` registry output with that registry's Prometheus content type. `MetricsModule.forRoot()` creates an isolated registry for each application bootstrap unless the bootstrap configures `METRICS_REGISTRY` or the legacy `registry` option is supplied; reusing the same dynamic module class for another bootstrap receives fresh isolated metrics state. Configure a shared `Registry` at bootstrap only when framework metrics and application-defined metrics intentionally share one scrape surface.
+The scrape endpoint returns the active `prom-client` registry output with that registry's Prometheus content type. `MetricsModule.forRoot()` creates an isolated registry for each application bootstrap; reusing the same dynamic module class for another bootstrap receives fresh isolated metrics state. Configure `METRICS_REGISTRY` at bootstrap only when framework metrics and application-defined metrics intentionally share one scrape surface. The former `registry` module option is removed: migrate each independent application by supplying its own bootstrap provider.
 
 ## Public Responsibilities
 
@@ -52,8 +52,8 @@ The scrape endpoint returns the active `prom-client` registry output with that r
 | --- | --- | --- |
 | `MetricsModule.forRoot(...)` | Wires the Prometheus scrape endpoint, default metrics, optional HTTP instrumentation, platform telemetry, and registry ownership. | `provider` currently accepts only `'prometheus'`; `path: false` disables the scrape route and route-scoped endpoint middleware. |
 | `MetricsService` | Application-facing facade for custom `Counter`, `Gauge`, and `Histogram` metrics on the active registry, plus `getRegistry()` for deliberate advanced registry sharing. | `MetricsService` is non-global: inject it from a module that directly imports a `MetricsModule.forRoot(...)` registration or imports a module that re-exports `MetricsService`; unrelated sibling modules do not receive it automatically. Use collector helpers for business/application metrics. Use `getRegistry()` only when an integration must hand the active `prom-client` Registry to code that cannot receive `METRICS_REGISTRY` at bootstrap. |
-| `METRICS_REGISTRY` | Bootstrap provider token for a shared `prom-client` Registry. | A provider supplied to `FluoFactory.create()` takes ownership over the module's legacy `registry` option. |
-| `Registry` | Re-export of `prom-client`'s `Registry` constructor for shared-registry setups. | It is the same Prometheus registry implementation; duplicate metric names still fail according to Prometheus semantics. |
+| `METRICS_REGISTRY` | Bootstrap provider token for a shared `prom-client` Registry. | Supply it only through `FluoFactory.create(..., { providers })`; it is the sole shared-registry input. |
+| `Registry` | `prom-client`'s `Registry` constructor re-exported by `@fluojs/metrics/integration` for shared-registry setups. | It is the same Prometheus registry implementation; duplicate metric names still fail according to Prometheus semantics. |
 | `METER_PROVIDER` / `PrometheusMeterProvider` / meter types | Low-level meter bridge for first-party package integrations that need a provider token or backend-neutral counter/gauge/histogram facade. | Application code usually does not need this token unless it is composing package-level integrations; the only bundled provider backend today is Prometheus. |
 | `middleware` | Module-level middleware that participates in the module middleware chain after framework HTTP metrics and endpoint-scoped middleware. | It is not route-scoped; use `endpointMiddleware` when only the scrape route should be protected. |
 | `endpointMiddleware` | Class-based `@fluojs/http` middleware constructors bound only to the configured scrape endpoint. | Ignored only when `path: false`; any string `path`, including `''`, remains an active endpoint path. Functions or global middleware declarations are outside this option's contract. |
@@ -164,12 +164,13 @@ pnpm add prom-client
 
 `@fluojs/metrics` uses `prom-client` internally, but its dependency does not make
 `prom-client` a supported transitive import for your application. The setup below
-uses the `Registry` re-export from `@fluojs/metrics`, so it does not require that
+uses the `Registry` re-export from `@fluojs/metrics/integration`, so it does not require that
 direct dependency.
 
 ```ts
 import { Module } from '@fluojs/core';
-import { METRICS_REGISTRY, MetricsModule, Registry } from '@fluojs/metrics';
+import { METRICS_REGISTRY, MetricsModule } from '@fluojs/metrics';
+import { Registry } from '@fluojs/metrics/integration';
 import { FluoFactory } from '@fluojs/runtime';
 
 const registry = new Registry();
@@ -184,7 +185,7 @@ const app = await FluoFactory.create(AppModule, {
 });
 ```
 
-`Registry` is re-exported by `@fluojs/metrics`, so this setup needs no direct `prom-client` dependency. Create application collectors through the `MetricsService` pattern above.
+`Registry` is re-exported by `@fluojs/metrics/integration`, so this setup needs no direct `prom-client` dependency. Create application collectors through the `MetricsService` pattern above.
 
 When multiple metrics module instances intentionally share the same registry, built-in HTTP metrics reuse the existing `http_requests_total`, `http_errors_total`, and `http_request_duration_seconds` collectors instead of registering duplicate framework metrics only when their framework ownership, label schema, and effective HTTP instrumentation configuration match. Compatibility includes `pathLabelMode`, the exact `pathLabelNormalizer` function reference, `unknownPathLabel` fallback semantics, and ordered `durationHistogramBuckets` values, so incompatible module instances fail fast instead of mixing different HTTP series policies into one collector set. Built-in platform telemetry gauges follow the same ownership rule: module-created `fluo_component_ready`, `fluo_component_health`, and `fluo_metrics_registry_mode` gauges are reused only when their framework ownership and label schema match. Platform telemetry state is tracked per reused registry, so a later scrape replaces stale module-owned component readiness and health series from an earlier module instance before metrics are returned. The registry scrape wrapper keeps using the latest active module registration and restores the Registry's original `metrics()` function after the last registration closes. Application-defined duplicate names still fail fast.
 
@@ -198,7 +199,7 @@ The module emits fluo-specific gauges that mirror the platform shell and registe
 
 - `fluo_component_ready`: `1` when a component is ready, otherwise `0`.
 - `fluo_component_health`: `1` when a component is healthy, otherwise `0`.
-- `fluo_metrics_registry_mode`: gauge value `1` with `mode="isolated"` when `MetricsModule.forRoot()` creates its registry, or `mode="shared"` when bootstrap supplies `METRICS_REGISTRY` or the legacy `registry` option is supplied. The label reports the effective registry ownership configuration selected during bootstrap or module registration; it does not infer registry sharing at scrape time.
+- `fluo_metrics_registry_mode`: gauge value `1` with `mode="isolated"` when `MetricsModule.forRoot()` creates its registry, or `mode="shared"` when bootstrap supplies `METRICS_REGISTRY`. The label reports the effective registry ownership configuration selected during bootstrap; it does not infer registry sharing at scrape time.
 
 The platform snapshot is refreshed during each registry scrape, including advanced `MetricsService.getRegistry().metrics()` scrape paths, and you can attach environment labels up front.
 
@@ -239,13 +240,13 @@ MetricsModule.forRoot({
 - Meter abstraction types: `MeterProvider`, `MeterCounter`, `MeterGauge`, and `MeterHistogram`
 - `HttpMetricsMiddleware` and HTTP path-label option types
 - Module options including `provider` (currently only `'prometheus'`), module-level `middleware`, and endpoint-scoped `endpointMiddleware`
-- `Registry`, re-exported from `prom-client`
+- `Registry`, re-exported from `prom-client` by `@fluojs/metrics/integration`
 
 ### Operational defaults
 
 - `path` defaults to `'/metrics'`, any string path including `''` exposes a scrape endpoint, and `path: false` disables the scrape endpoint entirely.
-- When neither bootstrap `METRICS_REGISTRY` nor the legacy `registry` option is supplied, each application bootstrap owns a fresh isolated registry, `MetricsService`, meter provider, and telemetry collector set.
-- A bootstrap `METRICS_REGISTRY` provider takes precedence over the legacy `registry` option; an unrelated module provider with the same token does not configure metrics ownership.
+- When no bootstrap `METRICS_REGISTRY` provider is supplied, each application bootstrap owns a fresh isolated registry, `MetricsService`, meter provider, and telemetry collector set.
+- Supply `METRICS_REGISTRY` only through `FluoFactory.create(..., { providers })`; an unrelated module provider with the same token does not configure metrics ownership.
 - The scrape response uses the active registry's Prometheus content type and registry contents.
 - `defaultMetrics` defaults to `true`, and `defaultMetrics: false` disables Prometheus default process and Node.js collectors for that registry.
 - `endpointMiddleware` binds class-based route-scoped middleware only to the scrape endpoint; with HTTP instrumentation enabled, endpoint middleware failures are counted by the built-in HTTP collectors.

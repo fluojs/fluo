@@ -40,6 +40,15 @@ For atomic cache mutation, start at the [cache-manager API owner](../packages/ca
 
 The [HTTP dependency security update](./reference/dependency-security-update.md) distinguishes root and isolated benchmark resolution from the published Fastify/Express consumer graph, records the nine upstream advisories, and explains application-owned transitive lockfile updates.
 
+## Metrics Registry Ownership
+
+Applications register `MetricsModule.forRoot(...)` and inject `MetricsService`.
+Configure registry sharing only through the `METRICS_REGISTRY` provider passed to
+`FluoFactory.create(...)`; import direct middleware, meter providers, and `Registry`
+from `@fluojs/metrics/integration`. Follow the [Metrics API owner](../packages/metrics/README.md)
+and [observability architecture](./architecture/observability.md) for isolation,
+sharing, and collector ownership.
+
 ## JWT Application API
 
 Use `JwtModule.forRoot(...)` or `JwtModule.forRootAsync(...)` and inject `JwtService`.

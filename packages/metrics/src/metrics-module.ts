@@ -17,34 +17,18 @@ import { collectDefaultMetrics, Gauge, Registry as PrometheusRegistry, type Regi
 import {
   HttpMetricsMiddleware,
   type HttpMetricsMiddlewareOptions,
-  type HttpMetricsPathLabelMode,
-  type HttpMetricsPathLabelNormalizer,
 } from './http-metrics-middleware.js';
 import { MetricsService } from './metrics-service.js';
 import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
 import { SerializedScrapeQueue } from './serialized-scrape-queue.js';
 
-/** HTTP-specific metric labeling options exposed by `MetricsModule.forRoot(...)`. */
-export interface MetricsHttpOptions {
-  /** Duration buckets in seconds for the built-in HTTP request histogram. */
-  durationHistogramBuckets?: readonly number[];
-  /** How request paths are converted into Prometheus label values. Defaults to route templates. */
-  pathLabelMode?: HttpMetricsPathLabelMode;
-  /** Custom path-label normalizer for bounded application-specific label values. */
-  pathLabelNormalizer?: HttpMetricsPathLabelNormalizer;
-  /** Label value used when no normalized path can be derived. */
-  unknownPathLabel?: string;
-  /** Explicit opt-in required before raw URL paths may be used as labels. */
-  allowUnsafeRawPathLabelMode?: boolean;
-}
-
 /**
  * Module options for exposing Prometheus metrics and runtime platform telemetry.
  */
 export interface MetricsModuleOptions {
   /** Enables built-in HTTP request collectors when `true` or configured with path-label options. */
-  http?: boolean | MetricsHttpOptions;
+  http?: boolean | HttpMetricsMiddlewareOptions;
   /** Scrape endpoint path. Defaults to `/metrics`; `false` disables the scrape endpoint and endpoint-scoped middleware. */
   path?: string | false;
   /** Meter provider implementation. Currently only `prometheus` is supported. */
@@ -62,8 +46,6 @@ export interface MetricsModuleOptions {
     /** Instance label value. Defaults to `local`. */
     instance?: string;
   };
-  /** Legacy shared-registry fallback. Prefer the `METRICS_REGISTRY` bootstrap provider. */
-  registry?: Registry;
 }
 
 /** Bootstrap provider token for a Registry shared by metrics module instances. */
@@ -118,7 +100,7 @@ export class MetricsModule {
           ? assertPrometheusRegistry(await runtimeContainer.resolve(METRICS_REGISTRY))
           : undefined;
 
-        return MetricsModule.createRegistry(options, configuredRegistry);
+        return MetricsModule.createRegistry(configuredRegistry, options.defaultMetrics);
       },
     };
     const imports: ModuleType[] = [];
@@ -155,7 +137,7 @@ export class MetricsModule {
         useFactory: (registry: unknown, container: unknown, bootstrapProviderTokens: unknown) => new RuntimePlatformTelemetry(
           assertPrometheusRegistry(registry),
           assertRuntimeContainer(container),
-          resolveRegistryMode(options, assertBootstrapProviderTokens(bootstrapProviderTokens)),
+          resolveRegistryMode(assertBootstrapProviderTokens(bootstrapProviderTokens)),
           options.platformTelemetry,
         ),
       },
@@ -197,10 +179,10 @@ export class MetricsModule {
     return MetricsRuntimeModule;
   }
 
-  private static createRegistry(options: MetricsModuleOptions, configuredRegistry?: Registry): Registry {
-    const registry = configuredRegistry ?? options.registry ?? new PrometheusRegistry();
+  private static createRegistry(configuredRegistry: Registry | undefined, defaultMetrics: boolean | undefined): Registry {
+    const registry = configuredRegistry ?? new PrometheusRegistry();
 
-    if (options.defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
+    if (defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
       assertNoDefaultMetricCollisions(registry);
 
       const existingMetricNames = new Set(registry.getMetricsAsArray().map((metric) => metric.name));
@@ -384,8 +366,8 @@ function assertBootstrapProviderTokens(value: unknown): ReadonlySet<Token> {
   return value as ReadonlySet<Token>;
 }
 
-function resolveRegistryMode(options: MetricsModuleOptions, bootstrapProviderTokens: ReadonlySet<Token>): RegistryMode {
-  return options.registry || bootstrapProviderTokens.has(METRICS_REGISTRY) ? 'shared' : 'isolated';
+function resolveRegistryMode(bootstrapProviderTokens: ReadonlySet<Token>): RegistryMode {
+  return bootstrapProviderTokens.has(METRICS_REGISTRY) ? 'shared' : 'isolated';
 }
 
 function isRuntimeContainer(value: unknown): value is Container {

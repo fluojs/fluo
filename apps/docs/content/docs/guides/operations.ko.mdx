@@ -215,7 +215,7 @@ pnpm vitest run examples/ops-metrics-terminus
 
 | 패키지 | Public API |
 | --- | --- |
-| `@fluojs/metrics` | `MetricsModule.forRoot(options)`, `MetricsService`, `METER_PROVIDER`, `PrometheusMeterProvider`, `HttpMetricsMiddleware`, `Registry` |
+| `@fluojs/metrics` | `MetricsModule.forRoot(options)`, `MetricsService`, `METRICS_REGISTRY`; `METER_PROVIDER`, `PrometheusMeterProvider`, `HttpMetricsMiddleware`, `Registry`는 `@fluojs/metrics/integration`에서 사용합니다. |
 | `@fluojs/terminus` | `TerminusModule.forRoot(options)`, `TerminusHealthService`, `HealthCheckError`, `runHealthCheck`, `assertHealthCheck`, indicator tokens and helpers |
 | `@fluojs/studio` | `parseStudioPayload`, `applyFilters`, `renderMermaid`, snapshot/report types, `@fluojs/studio/viewer` |
 

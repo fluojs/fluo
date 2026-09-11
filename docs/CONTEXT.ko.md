@@ -40,6 +40,14 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 
 [HTTP 의존성 보안 업데이트](./reference/dependency-security-update.ko.md)는 root 및 isolated benchmark resolution과 published Fastify/Express consumer graph를 구분하고, upstream advisory 9개와 application-owned 전이 lockfile 갱신 방법을 기록합니다.
 
+## Metrics Registry Ownership
+
+애플리케이션은 `MetricsModule.forRoot(...)`로 등록하고 `MetricsService`를 주입합니다.
+Registry 공유는 `FluoFactory.create(...)`의 `METRICS_REGISTRY` provider로만 설정하며,
+직접 middleware와 meter provider 및 `Registry`는 `@fluojs/metrics/integration`에서 가져옵니다.
+격리·공유와 collector 소유권은 [Metrics API 원본](../packages/metrics/README.ko.md) 및
+[관측성 아키텍처](./architecture/observability.ko.md)를 따르세요.
+
 ## JWT Application API
 
 `JwtModule.forRoot(...)` 또는 `JwtModule.forRootAsync(...)`로 등록하고 `JwtService`를 주입하세요.
