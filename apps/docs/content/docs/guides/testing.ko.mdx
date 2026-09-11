@@ -53,17 +53,19 @@ import { Test } from '@fluojs/testing';
 
 const app = await Test.createApp({ rootModule: AppModule });
 
-const response = await app
-  .request('POST', '/users/')
-  .header('x-request-id', 'test-request-1')
-  .query('include', 'profile')
-  .principal({ subject: 'user-1', roles: ['admin'] })
-  .body({ name: 'Ada' })
-  .send();
+try {
+  const response = await app
+    .request('POST', '/users/')
+    .header('x-request-id', 'test-request-1')
+    .query('include', 'profile')
+    .principal({ subject: 'user-1', roles: ['admin'] })
+    .body({ name: 'Ada' })
+    .send();
 
-expect(response.status).toBe(201);
-
-await app.close();
+  expect(response.status).toBe(201);
+} finally {
+  await app.close();
+}
 ```
 
 `app.request(...).send()`는 manual `FrameworkRequest`/`FrameworkResponse` stub 없이 HTTP semantics에 가까운 테스트를 작성하게 해 줍니다. Route behavior, guard, interceptor, DTO validation, query parameter, header, request body, synthetic principal, response serialization에 사용하세요.
@@ -87,7 +89,11 @@ const module = await Test.createTestingModule({ rootModule: AppModule })
   })
   .compile();
 
-const service = await module.resolve(UserService);
+try {
+  const service = await module.resolve(UserService);
+} finally {
+  await module.container.dispose();
+}
 ```
 
 Provider override는 `.overrideProvider(token).useValue(value)`, `.useClass(Type)`, `.useFactory(factory, inject?)`, `.useExisting(otherToken)` 중 하나로 provider kind를 명시합니다.
@@ -101,8 +107,12 @@ const module = await Test.createTestingModule({ rootModule: AppModule })
   .overrideModule(StripeModule, FakeStripeModule)
   .compile();
 
-expect(module.rootModule).toBe(AppModule);
-expect(module.modules.some((compiledModule) => compiledModule.type === BillingModule)).toBe(true);
+try {
+  expect(module.rootModule).toBe(AppModule);
+  expect(module.modules.some((compiledModule) => compiledModule.type === BillingModule)).toBe(true);
+} finally {
+  await module.container.dispose();
+}
 ```
 
 ## Mock helpers

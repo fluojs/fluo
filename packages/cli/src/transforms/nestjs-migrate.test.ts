@@ -917,6 +917,64 @@ void createModule();
     expect(secondReport.warningCount).toBe(1);
   });
 
+  it.each([
+    {
+      compileCall: 'compile<NestTestingModule>()',
+      name: 'compile type arguments',
+    },
+    {
+      compileCall: 'compile({ snapshot: true })',
+      name: 'snapshot compile options',
+    },
+    {
+      compileCall: 'compile({ preview: true })',
+      name: 'preview compile options',
+    },
+    {
+      compileCall: 'compile(options)',
+      name: 'arbitrary compile options',
+    },
+    {
+      compileCall: 'compile(firstOption, secondOption)',
+      name: 'multiple compile options',
+    },
+  ])('retains Nest testing chains with $name unchanged and emits one warning', ({ compileCall }) => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+    const sourceFilePath = join(workspaceDirectory, 'users.spec.ts');
+    const source = `import { Test, type TestingModule as NestTestingModule } from '@nestjs/testing';
+import { UsersModule } from './users.module';
+
+declare const firstOption: unknown;
+declare const options: unknown;
+declare const secondOption: unknown;
+
+async function createModule(): Promise<NestTestingModule> {
+  return Test.createTestingModule({ imports: [UsersModule] }).${compileCall};
+}
+
+void createModule();
+`;
+    writeFileSync(sourceFilePath, source);
+
+    // When
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['testing']),
+      targetPath: sourceFilePath,
+    });
+
+    // Then
+    expect(readFileSync(sourceFilePath, 'utf8')).toBe(source);
+    expect(report.changedFiles).toBe(0);
+    expect(report.fileResults.flatMap((result) => result.warnings)).toEqual([
+      expect.objectContaining({
+        category: 'testing-unsupported',
+      }),
+    ]);
+  });
+
   it('keeps mixed Nest testing calls separate from canonical Fluo calls without import collisions', () => {
     const workspaceDirectory = createMigrationFixture();
     const specPath = join(workspaceDirectory, 'src', 'users.spec.ts');

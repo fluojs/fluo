@@ -1980,6 +1980,13 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
       }
 
       if (methodName === 'compile') {
+        if ((call.typeArguments?.length ?? 0) > 0 || call.arguments.length > 0) {
+          return {
+            node: call,
+            warning: 'Unsupported testing compile call. Fluo compile() accepts no type arguments or runtime arguments. Keep Nest testing chain and migrate manually.',
+          };
+        }
+
         reachesCompile = true;
       }
 
