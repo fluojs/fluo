@@ -25,8 +25,8 @@ const boundaryFiles = {
   root: readFileSync(new URL('../../packages/metrics/src/index.ts', import.meta.url), 'utf8'),
 };
 
-function expectBoundaryFailure(run: () => void): void {
-  expect(run).toThrow(/Metrics registry integration boundary/u);
+function expectBoundaryFailure(run: () => void, message: string): void {
+  expect(run).toThrow(message);
 }
 
 function hasGuardRegistration(sourceText: string): boolean {
@@ -73,14 +73,17 @@ describe('Metrics registry integration boundary', () => {
     [
       'a low-level meter provider re-exported from the root entrypoint',
       { ...boundaryFiles, root: `${boundaryFiles.root}export * from './providers/meter-provider.js';\n` },
+      'the root entrypoint must export only MetricsModule and MetricsService source modules.',
     ],
     [
       'the Registry constructor removed from the integration entrypoint',
       { ...boundaryFiles, integration: boundaryFiles.integration.replace("export { Registry } from 'prom-client';\n", '') },
+      'the integration entrypoint must export the prom-client Registry constructor.',
     ],
     [
       'the removed module registry option restored',
       { ...boundaryFiles, module: boundaryFiles.module.replace('  path?: string | false;\n', '  path?: string | false;\n  registry?: Registry;\n') },
+      'MetricsModuleOptions must not restore the removed registry module option.',
     ],
     [
       'the forRoot registry provider no longer resolves the bootstrap METRICS_REGISTRY token',
@@ -93,6 +96,7 @@ describe('Metrics registry integration boundary', () => {
           'const configuredRegistry = undefined;',
         ),
       },
+      'MetricsModule.forRoot must resolve METRICS_REGISTRY through its registry provider bootstrap path.',
     ],
     [
       'the published integration subpath removed from the manifest',
@@ -105,12 +109,13 @@ describe('Metrics registry integration boundary', () => {
           },
         }),
       },
+      'package exports must publish both the root and integration entrypoints with JavaScript and declaration artifacts.',
     ],
-  ])('rejects %s', (_label, files) => {
+  ])('rejects %s', (_label, files, message) => {
     // Given one machine-consumed public artifact regression.
     // When the governance guard evaluates the mutated boundary.
     // Then the artifact regression is rejected.
-    expectBoundaryFailure(() => enforceMetricsRegistryIntegrationBoundary(files));
+    expectBoundaryFailure(() => enforceMetricsRegistryIntegrationBoundary(files), message);
   });
 
   it.each([
@@ -119,12 +124,14 @@ describe('Metrics registry integration boundary', () => {
       'hasExactTargets(rootExports, metricsRootExportTargets)',
       'true',
       { ...boundaryFiles, root: `${boundaryFiles.root}export * from './providers/meter-provider.js';\n` },
+      'the root entrypoint must export only MetricsModule and MetricsService source modules.',
     ],
     [
       'removed registry option comparison',
       "!optionNames.includes('registry')",
       'true',
       { ...boundaryFiles, module: boundaryFiles.module.replace('  path?: string | false;\n', '  path?: string | false;\n  registry?: Registry;\n') },
+      'MetricsModuleOptions must not restore the removed registry module option.',
     ],
     [
       'forRoot registry provider ownership comparison',
@@ -141,14 +148,16 @@ describe('Metrics registry integration boundary', () => {
           'const configuredRegistry = undefined;',
         ),
       },
+      'MetricsModule.forRoot must resolve METRICS_REGISTRY through its registry provider bootstrap path.',
     ],
     [
       'integration export target comparison',
       'hasExactTargets(integrationWildcards, metricsIntegrationWildcardTargets)',
       'true',
       { ...boundaryFiles, integration: boundaryFiles.integration.replace("export * from './providers/meter-provider.js';\n", '') },
+      'the integration entrypoint must own the direct middleware and meter-provider exports.',
     ],
-  ])('fails its negative expectation when the %s is removed', async (_label, target, replacement, files) => {
+  ])('fails its negative expectation when the %s is removed', async (_label, target, replacement, files, message) => {
     // Given one guard comparison disabled in the actual enforcement source.
     const sourceUrl = new URL('./metrics-registry-integration-boundary.mjs', import.meta.url);
     const source = readFileSync(sourceUrl, 'utf8');
@@ -162,7 +171,7 @@ describe('Metrics registry integration boundary', () => {
     // When a matching artifact regression reaches the mutated guard.
     // Then the normal rejection expectation itself fails, proving this comparison is required.
     expect(run).not.toThrow();
-    expect(() => expectBoundaryFailure(run)).toThrowError(expect.objectContaining({ name: 'AssertionError' }));
+    expect(() => expectBoundaryFailure(run, message)).toThrowError(expect.objectContaining({ name: 'AssertionError' }));
   });
 
   it('is imported and directly invoked by the platform governance verifier', () => {

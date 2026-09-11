@@ -164,7 +164,7 @@ pnpm add prom-client
 
 `@fluojs/metrics` uses `prom-client` internally, but its dependency does not make
 `prom-client` a supported transitive import for your application. The setup below
-uses the `Registry` re-export from `@fluojs/metrics`, so it does not require that
+uses the `Registry` re-export from `@fluojs/metrics/integration`, so it does not require that
 direct dependency.
 
 ```ts
@@ -185,7 +185,7 @@ const app = await FluoFactory.create(AppModule, {
 });
 ```
 
-`Registry` is re-exported by `@fluojs/metrics`, so this setup needs no direct `prom-client` dependency. Create application collectors through the `MetricsService` pattern above.
+`Registry` is re-exported by `@fluojs/metrics/integration`, so this setup needs no direct `prom-client` dependency. Create application collectors through the `MetricsService` pattern above.
 
 When multiple metrics module instances intentionally share the same registry, built-in HTTP metrics reuse the existing `http_requests_total`, `http_errors_total`, and `http_request_duration_seconds` collectors instead of registering duplicate framework metrics only when their framework ownership, label schema, and effective HTTP instrumentation configuration match. Compatibility includes `pathLabelMode`, the exact `pathLabelNormalizer` function reference, `unknownPathLabel` fallback semantics, and ordered `durationHistogramBuckets` values, so incompatible module instances fail fast instead of mixing different HTTP series policies into one collector set. Built-in platform telemetry gauges follow the same ownership rule: module-created `fluo_component_ready`, `fluo_component_health`, and `fluo_metrics_registry_mode` gauges are reused only when their framework ownership and label schema match. Platform telemetry state is tracked per reused registry, so a later scrape replaces stale module-owned component readiness and health series from an earlier module instance before metrics are returned. The registry scrape wrapper keeps using the latest active module registration and restores the Registry's original `metrics()` function after the last registration closes. Application-defined duplicate names still fail fast.
 

@@ -164,7 +164,7 @@ pnpm add prom-client
 
 `@fluojs/metrics`는 내부적으로 `prom-client`를 사용하지만, 그 의존성만으로 애플리케이션에서
 `prom-client`를 지원되는 transitive import로 사용할 수 있는 것은 아닙니다. 아래 setup은
-`@fluojs/metrics`가 re-export하는 `Registry`를 사용하므로 해당 direct dependency가 필요하지 않습니다.
+`@fluojs/metrics/integration`이 re-export하는 `Registry`를 사용하므로 해당 direct dependency가 필요하지 않습니다.
 
 ```ts
 import { Module } from '@fluojs/core';
@@ -184,7 +184,7 @@ const app = await FluoFactory.create(AppModule, {
 });
 ```
 
-`Registry`는 `@fluojs/metrics`가 re-export하므로 이 setup에는 `prom-client` 직접 dependency가 필요하지 않습니다. application collector는 위의 `MetricsService` pattern으로 생성하세요.
+`Registry`는 `@fluojs/metrics/integration`이 re-export하므로 이 setup에는 `prom-client` 직접 dependency가 필요하지 않습니다. application collector는 위의 `MetricsService` pattern으로 생성하세요.
 
 여러 `MetricsModule` 인스턴스가 같은 Registry를 의도적으로 공유하는 경우, 내장 HTTP 메트릭은 framework ownership, label schema, effective HTTP instrumentation configuration이 모두 일치할 때만 기존 `http_requests_total`, `http_errors_total`, `http_request_duration_seconds` collector를 재사용합니다. Compatibility 검사는 `pathLabelMode`, 정확히 같은 `pathLabelNormalizer` 함수 참조, `unknownPathLabel` fallback 의미론, 순서가 있는 `durationHistogramBuckets` 값을 포함하므로 서로 다른 HTTP series policy를 하나의 collector set에 섞는 module instance는 빠르게 실패합니다. 내장 플랫폼 텔레메트리 Gauge도 같은 ownership 규칙을 따릅니다. 모듈이 만든 `fluo_component_ready`, `fluo_component_health`, `fluo_metrics_registry_mode` Gauge는 framework ownership과 label schema가 일치할 때만 재사용합니다. 플랫폼 텔레메트리 상태는 재사용된 Registry별로 추적되므로, 이후 스크레이프는 이전 module instance가 남긴 stale component readiness/health series를 제거한 뒤 메트릭을 반환합니다. Registry scrape wrapper는 최신 active module registration을 사용하며 마지막 registration이 종료되면 Registry의 원래 `metrics()` 함수를 복원합니다. 애플리케이션이 직접 등록한 중복 메트릭 이름은 Prometheus Registry 규칙대로 계속 빠르게 실패합니다.
 
