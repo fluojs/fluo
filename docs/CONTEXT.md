@@ -426,7 +426,7 @@ CLI and Studio diagnostics discoverability is split across the CLI package, Stud
 
 Studio sidecar teardown ownership is synchronized across `packages/cli/README.md`, [`docs/reference/package-surface.md`](./reference/package-surface.md), and [`book/advanced/ch15-studio.md`](../book/advanced/ch15-studio.md): repeated or concurrent `StudioSidecar.close()` calls share one deterministic shutdown, tracked SSE responses keep their existing explicit end behavior, and only sockets serving active authenticated runtime ingestion are closed so a client-held incomplete body cannot keep CLI shutdown pending. Completed ordinary requests remain outside that ingestion ownership set.
 
-Studio's published Node.js `>=24.0.0 <27` engine contract is independent from `@fluojs/runtime`: Studio owns runtime-neutral consumer-side snapshot, diagnostic, and timing declarations and keeps runtime only as a development-time drift check, so installing Studio does not inherit runtime's narrower engine range.
+Studio's published Node.js `>=24.0.0 <27` engine contract is package-owned: `@fluojs/studio` does not depend on `@fluojs/runtime`, and Runtime declares no package-wide `engines.node` range. Studio owns runtime-neutral consumer-side snapshot, diagnostic, and timing declarations and keeps Runtime only as a development-time drift check.
 
 Deno signal-close failure status remains host-owned: `createDenoShutdownSignalRegistration(...)` logs and swallows signal-triggered application-close failures without setting an exit status. Deployments that require failure-status propagation or forced termination must omit `shutdownRegistration` and coordinate signals and shutdown themselves.
 

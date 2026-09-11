@@ -45,7 +45,7 @@ pnpm add @fluojs/studio
 
 - `@fluojs/studio`는 fluo의 intended public publish surface에 포함되는 공개 배포 패키지입니다.
 - 애플리케이션 쪽 CLI/viewer 계약은 개발 전용 설치(`pnpm add -D @fluojs/studio`)입니다. Studio helper를 import하는 runtime tooling은 일반 dependency(`pnpm add @fluojs/studio`)로 선언해야 합니다. 저장소 내부 개발 경로는 계속 `pnpm --dir packages/studio dev`를 사용합니다.
-- 공개 패키지 표면은 additive입니다. live devtool 계약을 추가하면서도 file-first parsing, filtering, graph rendering, report artifact 호환성을 유지합니다.
+- 공개 패키지 표면에는 breaking import migration이 포함됩니다. `@fluojs/studio/contracts`는 제거되었으므로 import를 `@fluojs/studio`로 옮기세요. Live devtool 계약, file-first parsing, filtering, graph rendering, report artifact reader는 계속 지원합니다.
 
 ## 빠른 시작: 라이브 개발 도구
 

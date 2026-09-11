@@ -6096,11 +6096,11 @@ describe('Studio public docs and migration expectations', () => {
     expect(() => enforceStudioStaticGraphLimitsContract()).not.toThrow();
   });
 
-  it('rejects the removed Studio contracts subpath in public ownership seams', () => {
-    // Given
+  it('requires Core internal runtime declarations and rejects Studio imports', () => {
+    // Given: the real governed source reader.
     const readText = (relativePath: string) => readFileSync(join(repoRoot, relativePath), 'utf8');
 
-    // When / Then
+    // When / Then: the portable declaration seam is accepted.
     expect(() => enforceStudioPublicContractOwnership(readText)).not.toThrow();
     expect(() => enforceStudioPublicContractOwnership((relativePath) => {
       const content = readText(relativePath);
@@ -6108,12 +6108,22 @@ describe('Studio public docs and migration expectations', () => {
         ? content.replace('"./viewer": "./dist/index.html"', '"./contracts": "./dist/contracts.js",\n    "./viewer": "./dist/index.html"')
         : content;
     })).toThrow(/contracts subpath/u);
+
+    // When / Then: a Studio root import is rejected from Runtime declarations.
     expect(() => enforceStudioPublicContractOwnership((relativePath) => {
       const content = readText(relativePath);
       return relativePath === 'packages/runtime/src/devtools/contracts.ts'
-        ? content.replace("from '@fluojs/studio';", "from '@fluojs/studio/contracts';")
+        ? content.replace("from '@fluojs/core/internal';", "from '@fluojs/studio';")
         : content;
-    })).toThrow(/canonical root/u);
+    })).toThrow(/@fluojs\/studio/u);
+
+    // When / Then: removing the Core-internal seam is rejected.
+    expect(() => enforceStudioPublicContractOwnership((relativePath) => {
+      const content = readText(relativePath);
+      return relativePath === 'packages/runtime/src/devtools/contracts.ts'
+        ? content.replace("from '@fluojs/core/internal';", "from '@fluojs/core';")
+        : content;
+    })).toThrow(/@fluojs\/core\/internal/u);
   });
 
   it.each(staticLiveCompanionPairs)(

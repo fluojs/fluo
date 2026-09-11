@@ -45,7 +45,7 @@ The published package serves these caller-facing entrypoints:
 
 - `@fluojs/studio` is part of the intended public publish surface for fluo.
 - The app-side CLI/viewer contract is development-only installation (`pnpm add -D @fluojs/studio`); runtime tooling that imports Studio helpers should declare a normal dependency (`pnpm add @fluojs/studio`). Local repo development still uses `pnpm --dir packages/studio dev`.
-- The public package surface is additive: live devtool contracts are added while file-first parsing, filtering, graph rendering, and report artifacts remain supported.
+- The public package surface includes a breaking import migration: `@fluojs/studio/contracts` is removed, so migrate imports to `@fluojs/studio`. Live devtool contracts, file-first parsing, filtering, graph rendering, and report artifact readers remain supported.
 
 ## Quick Start: Live Devtool
 

@@ -4405,9 +4405,9 @@ export function enforceStudioPublicContractOwnership(readText = read) {
     'Studio public ownership must not expose the removed contracts subpath.',
   );
   assert(
-    runtimeContracts.includes("from '@fluojs/studio';") &&
-      !runtimeContracts.includes('@fluojs/studio/contracts'),
-    'Runtime Studio contract consumption must use the canonical root export.',
+    runtimeContracts.includes("from '@fluojs/core/internal';") &&
+      !runtimeContracts.includes('@fluojs/studio'),
+    'Runtime Studio contract declarations must use @fluojs/core/internal and must not import @fluojs/studio.',
   );
   assert(
     cliInspectCommand.includes("const STUDIO_CONTRACT_ENTRYPOINT = '@fluojs/studio';"),

@@ -423,7 +423,7 @@ CLI와 Studio diagnostics discoverability는 CLI 패키지, Studio 패키지, go
 
 Studio sidecar teardown ownership은 `packages/cli/README.ko.md`, [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md), [`book/advanced/ch15-studio.ko.md`](../book/advanced/ch15-studio.ko.md)에서 동기화된다. 반복되거나 동시에 호출된 `StudioSidecar.close()`는 하나의 결정적인 shutdown을 공유하고, 추적 중인 SSE response는 기존의 명시적 종료 동작을 유지하며, active authenticated runtime ingestion을 처리하는 socket만 닫기 때문에 client가 incomplete body를 열어 두어도 CLI shutdown이 대기 상태로 남지 않는다. 완료된 일반 요청은 이 ingestion ownership set 밖에 유지된다.
 
-Studio의 배포 Node.js `>=24.0.0 <27` engine contract는 `@fluojs/runtime`과 독립적입니다. Studio가 runtime-neutral consumer-side snapshot, diagnostic, timing declaration을 소유하고 runtime은 development-time drift check로만 유지하므로, Studio 설치는 runtime의 더 좁은 engine range를 상속하지 않습니다.
+Studio의 배포 Node.js `>=24.0.0 <27` engine contract는 package-owned입니다. `@fluojs/studio`는 `@fluojs/runtime`에 의존하지 않으며 Runtime은 package-wide `engines.node` range를 선언하지 않습니다. Studio가 runtime-neutral consumer-side snapshot, diagnostic, timing declaration을 소유하고 Runtime은 development-time drift check로만 유지합니다.
 
 Deno signal-close failure status는 host가 소유합니다. `createDenoShutdownSignalRegistration(...)`은 signal로 트리거된 애플리케이션 close 실패를 log한 뒤 swallow하며 exit status를 설정하지 않습니다. Failure-status propagation 또는 forced termination이 필요한 배포 환경은 `shutdownRegistration`을 생략하고 signal과 shutdown을 직접 조율해야 합니다.
 
