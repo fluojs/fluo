@@ -48,8 +48,8 @@ function findMethod(source, className, methodName) {
  * Binds the governed JWT documentation claims to their implementation.
  *
  * The bilingual JWT contract surfaces state that `JwtService.verify(...)` resolves
- * the verified claim bag rather than a normalized `JwtPrincipal`, that per-call
- * verifier overrides are preserved through `verifyAccessTokenWithOverrides(...)`,
+ * a normalized `JwtPrincipal`, that per-call verification policy is preserved
+ * through `verifyAccessToken(token, policy?)`,
  * and that `iat` is filled from the current signing timestamp instead of a module
  * option. This check fails when the implementation drifts away from those claims.
  *
@@ -64,43 +64,27 @@ export function enforceJwtVerifiedClaimsContract(readText) {
   const verifyBody = verify.body?.getText() ?? '';
 
   assert(
-    /return\s+principal\.claims\s+as\s+T/u.test(verifyBody),
+    /return\s+this\.verifier\.verifyAccessToken\(\s*token\s*,\s*options\s*\)/u.test(verifyBody),
     serviceSourcePath,
-    'JwtService.verify must resolve the verified claim bag (principal.claims), not the normalized JwtPrincipal',
-  );
-  assert(
-    /verifyAccessTokenWithOverrides\(\s*token\s*,\s*options\s*\)/u.test(verifyBody),
-    serviceSourcePath,
-    'JwtService.verify must route per-call options through verifyAccessTokenWithOverrides to preserve verifier overrides',
-  );
-  assert(
-    /verifyAccessToken\(\s*token\s*\)/u.test(verifyBody),
-    serviceSourcePath,
-    'JwtService.verify must use verifyAccessToken when no per-call options are supplied',
+    'JwtService.verify must return the normalized JwtPrincipal through verifyAccessToken(token, options)',
   );
 
   const verifierSource = parseSource(verifierSourcePath, readText(verifierSourcePath));
-  const withOverrides = findMethod(verifierSource, 'DefaultJwtVerifier', 'verifyAccessTokenWithOverrides');
-  const withoutOverrides = findMethod(verifierSource, 'DefaultJwtVerifier', 'verifyAccessToken');
+  const verifyAccessToken = findMethod(verifierSource, 'DefaultJwtVerifier', 'verifyAccessToken');
 
   assert(
-    withOverrides !== undefined,
+    verifyAccessToken !== undefined,
     verifierSourcePath,
-    'must declare DefaultJwtVerifier.verifyAccessTokenWithOverrides for per-call verifier options',
-  );
-  assert(
-    withoutOverrides !== undefined,
-    verifierSourcePath,
-    'must declare DefaultJwtVerifier.verifyAccessToken for normalized JwtPrincipal resolution',
+    'must declare DefaultJwtVerifier.verifyAccessToken for normalized JwtPrincipal resolution and optional policy',
   );
 
-  const overridesBody = withOverrides?.body?.getText() ?? '';
+  const verifyAccessTokenBody = verifyAccessToken?.body?.getText() ?? '';
 
   for (const option of ['algorithms', 'audience', 'clockSkewSeconds', 'issuer', 'maxAge', 'requireExp']) {
     assert(
-      new RegExp(`overrides\\.${option}`, 'u').test(overridesBody),
+      new RegExp(`policy\\?\\.${option}`, 'u').test(verifyAccessTokenBody),
       verifierSourcePath,
-      `verifyAccessTokenWithOverrides must preserve the per-call ${option} override`,
+      `verifyAccessToken must preserve the per-call ${option} policy`,
     );
   }
 

@@ -40,6 +40,15 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 
 [HTTP 의존성 보안 업데이트](./reference/dependency-security-update.ko.md)는 root 및 isolated benchmark resolution과 published Fastify/Express consumer graph를 구분하고, upstream advisory 9개와 application-owned 전이 lockfile 갱신 방법을 기록합니다.
 
+## JWT Application API
+
+`JwtModule.forRoot(...)` 또는 `JwtModule.forRootAsync(...)`로 등록하고 `JwtService`를 주입하세요.
+`verify(token, policy?)`는 정규화된 `JwtPrincipal`을 반환하므로 claims-only 소비자는
+`claims` 필드를 읽습니다. 제거된 provider helper와 override method의 이전 방법은
+[JWT API 원본](../packages/jwt/README.ko.md)에, application과 integration 경계는
+[인증 아키텍처](./architecture/auth-and-jwt.ko.md)에 설명합니다.
+`decode`는 검증하지 않는 inspection으로 유지됩니다.
+
 ## Persistence After-Commit Work
 
 반환값 기반 rollback은 [공유 transaction owner 계약](./architecture/transactions.ko.md#반환값-기반-롤백)을 먼저 읽으세요. Prisma·Drizzle·Mongoose의 별도 `TransactionBoundaryOptions<T = unknown>.shouldRollback`은 소비자가 정의한 동기 predicate이며 전역 `Result` 형태를 만들지 않습니다. 명시적 루트 실패는 native rollback·cleanup 성공 뒤 같은 값을 반환합니다. 중첩 opt-in 실패는 원래 값을 반환하되 owner를 sticky rollback-only로 만들며, 루트도 자기 결과를 거부하지 않으면 첫 중첩 실패값을 `result: unknown`에 담은 `TransactionRollbackOnlyError`가 발생합니다. 미지원 fallback/legacy target은 callback 전에 `TransactionRollbackCapabilityError`로 거부하고 native 오류는 가리지 않습니다. rollback은 hook을 폐기하고 native callback retry는 새 owner를 사용합니다. 일반적인 잡힌 중첩 예외는 기존 commit/hook 동작을 유지하며 raw 외부 transaction·Redis `MULTI/EXEC`·savepoint·durability 확장은 지원하지 않습니다. 정확한 인자 위치와 소비자 예제는 각 패키지 README가 소유합니다.
@@ -531,7 +540,7 @@ Studio bridge discoverability는 [`packages/runtime/README.ko.md`](../packages/r
 | 공개 API 작성 기준과 문서화 기준 확인 | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
 | CLI inspect output mode와 artifact ownership 확인 | `docs/reference/toolchain-contract-matrix.ko.md` | `packages/cli/README.ko.md` 및 `docs/reference/package-surface.ko.md` |
 | 부트스트랩 경로나 시작 순서 사실 확인 | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
-| JWT `iat` 검증과 verifier 마이그레이션 의미론 | `docs/architecture/auth-and-jwt.ko.md` | `JwtService.verify(...)`의 검증된 claims는 `packages/jwt/README.ko.md`에서 확인합니다. `JwtPrincipal`에는 `DefaultJwtVerifier.verifyAccessToken(...)`을, 호출별 verifier options 보존에는 `verifyAccessTokenWithOverrides(...)`을 사용합니다. |
+| JWT `iat` 검증과 verifier 마이그레이션 의미론 | `docs/architecture/auth-and-jwt.ko.md` | `JwtService.verify(token, policy?)`의 정규화된 `JwtPrincipal`과 호출별 검증 options를 `policy`로 전달하는 방법은 `packages/jwt/README.ko.md`에서 확인합니다. |
 | NestJS throttler 마이그레이션 경계 | `docs/getting-started/migrate-from-nestjs.ko.md` | `packages/throttler/README.ko.md` 및 `book/beginner/ch16-throttler.ko.md` |
 | 사람용 학습 흐름이나 튜토리얼 자료 확인 | `book/README.md` | `book/` 아래 관련 챕터 |
 

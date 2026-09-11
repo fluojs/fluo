@@ -53,12 +53,12 @@ async function expectVerifyOverrideParity(
 
   try {
     const mergedVerifier = new DefaultJwtVerifier(mergedOptions);
-    const [serviceClaims, verifierPrincipal] = await Promise.all([
-      service.verify<Record<string, unknown>>(token, overrides),
+    const [servicePrincipal, verifierPrincipal] = await Promise.all([
+      service.verify(token, overrides),
       mergedVerifier.verifyAccessToken(token),
     ]);
 
-    expect(serviceClaims).toEqual(verifierPrincipal.claims);
+    expect(servicePrincipal).toEqual(verifierPrincipal);
   } catch (error) {
     await expect(service.verify(token, overrides)).rejects.toThrow((error as Error).message);
 
@@ -72,7 +72,7 @@ async function expectVerifyOverrideParity(
 }
 
 describe('JwtService', () => {
-  it('signs and verifies payload claims with NestJS-style facade methods', async () => {
+  it('signs and verifies a normalized principal through the application service', async () => {
     const service = createJwtService({
       algorithms: ['HS256'],
       issuer: 'jwt-service-tests',
@@ -80,13 +80,16 @@ describe('JwtService', () => {
     });
     const token = await service.sign({ role: 'admin', sub: 'service-user' });
 
-    await expect(service.verify<{ role?: string; sub?: string }>(token)).resolves.toMatchObject({
-      role: 'admin',
-      sub: 'service-user',
+    await expect(service.verify(token)).resolves.toMatchObject({
+      claims: {
+        role: 'admin',
+        sub: 'service-user',
+      },
+      subject: 'service-user',
     });
   });
 
-  it('returns the verified claim bag rather than a normalized JwtPrincipal', async () => {
+  it('returns a normalized JwtPrincipal instead of the claims-only compatibility result', async () => {
     const options: JwtVerifierOptions = {
       algorithms: ['HS256'],
       issuer: 'jwt-service-tests',
@@ -95,18 +98,18 @@ describe('JwtService', () => {
     const service = createJwtService(options);
     const token = await service.sign({ role: 'admin', sub: 'service-user' });
 
-    const claims = await service.verify<Record<string, unknown>>(token);
-    const principal = await new DefaultJwtVerifier(options).verifyAccessToken(token);
+    const servicePrincipal = await service.verify(token);
+    const verifierPrincipal = await new DefaultJwtVerifier(options).verifyAccessToken(token);
 
-    expect(claims).toEqual(principal.claims);
-    expect(claims).not.toHaveProperty('subject');
-    expect(claims).not.toHaveProperty('roles');
-    expect(claims).not.toHaveProperty('scopes');
-    expect(claims).not.toHaveProperty('claims');
-    expect(principal.subject).toBe('service-user');
+    expect(servicePrincipal).toEqual(verifierPrincipal);
+    expect(servicePrincipal.claims).toMatchObject({
+      role: 'admin',
+      sub: 'service-user',
+    });
+    expect(servicePrincipal.subject).toBe('service-user');
   });
 
-  it('preserves per-call verifier overrides through verifyAccessTokenWithOverrides', async () => {
+  it('preserves per-call verifier policy through the canonical verifyAccessToken method', async () => {
     const options: JwtVerifierOptions = {
       algorithms: ['HS256'],
       issuer: 'jwt-service-tests',
@@ -121,11 +124,11 @@ describe('JwtService', () => {
     await expect(service.verify(token)).rejects.toThrow();
 
     const overrides = { audience: 'fluo-users', issuer: 'other-issuer' } as const;
-    const claims = await service.verify<Record<string, unknown>>(token, overrides);
-    const principal = await new DefaultJwtVerifier(options).verifyAccessTokenWithOverrides(token, overrides);
+    const servicePrincipal = await service.verify(token, overrides);
+    const verifierPrincipal = await new DefaultJwtVerifier(options).verifyAccessToken(token, overrides);
 
-    expect(claims).toEqual(principal.claims);
-    expect(principal.subject).toBe('override-user');
+    expect(servicePrincipal).toEqual(verifierPrincipal);
+    expect(servicePrincipal.subject).toBe('override-user');
   });
 
   it('applies sign and verify options overrides', async () => {
@@ -147,14 +150,17 @@ describe('JwtService', () => {
     );
 
     await expect(
-      service.verify<{ aud?: string; role?: string; sub?: string }>(token, {
+      service.verify(token, {
         audience: 'fluo-users',
         issuer: 'jwt-service-tests',
       }),
     ).resolves.toMatchObject({
-      aud: 'fluo-users',
-      role: 'reader',
-      sub: 'service-overrides-user',
+      claims: {
+        aud: 'fluo-users',
+        role: 'reader',
+        sub: 'service-overrides-user',
+      },
+      subject: 'service-overrides-user',
     });
   });
 
@@ -290,11 +296,11 @@ describe('JwtService', () => {
       });
       const token = createRs256Token(privateKey, 'key-1');
 
-      await expect(service.verify<{ sub?: string }>(token, { audience: 'fluo-users', issuer: 'jwt-service-tests' })).resolves.toMatchObject({
-        sub: 'jwks-user',
+      await expect(service.verify(token, { audience: 'fluo-users', issuer: 'jwt-service-tests' })).resolves.toMatchObject({
+        subject: 'jwks-user',
       });
-      await expect(service.verify<{ sub?: string }>(token, { audience: 'fluo-users', issuer: 'jwt-service-tests' })).resolves.toMatchObject({
-        sub: 'jwks-user',
+      await expect(service.verify(token, { audience: 'fluo-users', issuer: 'jwt-service-tests' })).resolves.toMatchObject({
+        subject: 'jwks-user',
       });
       expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
