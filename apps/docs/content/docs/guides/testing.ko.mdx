@@ -10,14 +10,12 @@ Provider, module wiring, guard, interceptor, DTO validation, request body, synth
 ## 설치
 
 ```bash
-pnpm add -D @fluojs/testing vitest
+pnpm add -D @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript @fluojs/testing @fluojs/vite vitest
 ```
 
-`@fluojs/testing/vitest`를 사용한다면 `@babel/core`도 설치하세요. `fluoBabelDecoratorsPlugin()`이 runtime에 Babel을 호출하기 때문입니다.
-
-```bash
-pnpm add -D @babel/core
-```
+decorated test module은 `@fluojs/vite`로 설정하세요. Vitest에는
+`fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`와
+setup file `@fluojs/core/metadata-preload`를 사용합니다.
 
 ## fluo testing ladder
 
@@ -150,7 +148,7 @@ Responsibility-specific subpath를 사용합니다.
 | HTTP helpers | `@fluojs/testing/http` |
 | Mock helpers | `@fluojs/testing/mock` |
 | Types | `@fluojs/testing/types` |
-| Vitest tooling | `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` |
+| Vitest tooling | `@fluojs/vite`의 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`와 `@fluojs/core/metadata-preload` |
 
 ## 흔한 실수
 

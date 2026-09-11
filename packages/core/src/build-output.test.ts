@@ -10,6 +10,7 @@ const supportedBuildModules = [
   'index',
   'internal',
   'metadata',
+  'metadata-preload',
   'public-token',
   'request-pipeline',
   'studio-contracts',

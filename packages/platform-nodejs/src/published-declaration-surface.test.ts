@@ -39,7 +39,7 @@ describe('@fluojs/platform-nodejs published declarations and exports', () => {
       'package.json', 'pnpm-workspace.yaml', 'tsconfig.base.json',
       'tooling/babel', 'tooling/tsconfig', 'tooling/vite',
       'tooling/scripts/clean-dist.mjs', buildClosureScript,
-      'packages/testing/src/babel-decorators-plugin.ts',
+      'packages/vite',
       ...packages.map((name) => `packages/${name.slice('@fluojs/'.length)}`),
     ]) {
       await cp(join(repoRootPath, entry), join(fixtureRootPath, entry), {

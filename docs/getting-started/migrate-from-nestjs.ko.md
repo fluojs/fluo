@@ -348,7 +348,7 @@ Runtime은 `AsyncIterable`이 아닌 subscription resolver 결과를 거부합�
 - `DrizzleTransactionInterceptor`는 기존 NestJS interceptor import를 위한 deprecated 1.x bridge다. `@fluojs/drizzle`은 서비스 `@Transaction()`을 기본 경계로 사용하고, 새 controller/request-wide boundary에는 명시적 `DrizzleDatabase.requestTransaction(...)`을 사용한다.
 - Drizzle `@Transaction()`은 `this.db`, 직접 host property, 중첩 `.db` property에서 대상을 추론할 수 있다. Drizzle client가 둘 이상인 서비스는 property discovery에 의존하지 말고 `@Transaction((self) => self.ordersDb)` 같은 명시적 accessor를 반드시 사용한다.
 - Drizzle은 등록된 handle에 `database.transaction(...)`이 없고 `strictTransactions`가 `false`이면 fail-open direct execution을 기본값으로 사용한다. rollback 보장이 필요한 production migration 흐름에서는 `strictTransactions: true`를 설정해, transaction 지원 누락이 원자성 없이 조용히 실행되지 않고 readiness 및 helper 호출 실패로 드러나게 한다.
-- Vite build transform과 Vitest test transform은 의도적으로 분리되어 있다. 생성된 non-Deno `vite.config.ts`는 애플리케이션 `.ts` 파일에 Babel `{ version: '2023-11' }` decorator transform을 적용하기 위해 `@fluojs/vite`를 사용하고, 생성된 `vitest.config.ts`는 테스트에 `@fluojs/testing/vitest`를 사용한다. 레거시 decorator compiler flag를 다시 켜거나 하나의 transform config가 build와 test 파일을 모두 소유한다고 가정하지 않는다.
+- Vite build와 Vitest test transform은 같은 `@fluojs/vite` public path를 사용합니다. 생성된 non-Deno `vite.config.ts`는 애플리케이션 `.ts` 파일에 `fluoDecoratorsPlugin()`을 사용하고, 생성된 `vitest.config.ts`는 test/spec module과 그 애플리케이션 import에 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`를 사용합니다. 플러그인은 Babel `{ version: '2023-11' }` decorator transform을 적용하고 decorator가 있는 모든 변환 module에 `@fluojs/core/metadata-preload`를 preload합니다. 레거시 decorator compiler flag를 다시 켜거나 direct esbuild 처리가 어느 경계든 소유한다고 가정하지 않습니다.
 - Mongoose transaction migration도 interceptor-for-interceptor 치환이 아니다. 기존 1.x import는 migration 동안 deprecated `MongooseTransactionInterceptor`를 유지할 수 있지만, 비즈니스 원자성에는 서비스 `@Transaction()`을 사용하고 새 request-wide boundary에는 명시적 `MongooseConnection.requestTransaction(...)`을 사용한다.
 - `@fluojs/mongoose`는 애플리케이션이 Mongoose의 concrete connection을 제공해야 한다. 이 패키지는 연결을 생성하거나, model compilation을 소유하거나, `dispose(connection)` hook이 제공되지 않은 연결을 닫지 않는다.
 - `MongooseConnection.model(...)`은 `create`, `find`, `findOne`, `aggregate`, `bulkWrite`에만 ambient session을 자동 바인딩한다. 지원되지 않는 model 메서드, `doc.save()`, raw `conn.current().model(...)` 사용, 외부 유틸리티에는 명시적인 `conn.currentSession()` 배관이 필요하다.
@@ -1123,7 +1123,7 @@ class ProfileService {
 - Passport.js bridge가 NestJS Passport runtime을 재현한다고 가정하는 방식. fluo는 명시적 bridge provider, named strategy registration, route guard metadata, principal mapping을 요구하고 middleware, session, serializer/deserializer, host ownership은 애플리케이션에 남긴다.
 - emit된 디자인 타임 타입에 기대는 암묵적 DI.
 - 프레임워크 요구 사항으로서의 레거시 데코레이터 컴파일러 모드.
-- 생성된 `@fluojs/vite` 애플리케이션 transform과 `@fluojs/testing/vitest` 테스트 transform을 하나의 파일 경계로 합치는 방식.
+- `vite.config.ts`와 `vitest.config.ts` 모두에서 생성된 `@fluojs/vite` 설정 대신 별도의 test-only decorator transform을 사용하는 방식.
 - 문서화된 모든 플랫폼이 `fluo new`에 포함된다고 가정하는 방식. 스타터 범위는 별도 지원 매트릭스에서 정의된다.
 - `@nestjs/terminus` controller decorator나 별도 default liveness route가 Terminus의 일대일 마이그레이션 대상이라고 가정하는 방식.
 - `@nestjs/throttler`의 named definition, global guard registration, proxy header trust가 명시적인 Fluo wiring 없이 그대로 유지된다고 가정하는 방식.

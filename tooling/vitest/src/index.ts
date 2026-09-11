@@ -192,7 +192,3 @@ export function createFluoVitestWorkspaceConfig(repoRootUrl: string | URL, overr
     defineConfig(overrides),
   );
 }
-
-export function defineFluoVitestConfig() {
-  return createFluoVitestWorkspaceConfig(new URL('../../../', import.meta.url));
-}

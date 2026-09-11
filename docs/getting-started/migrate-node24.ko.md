@@ -164,21 +164,19 @@ pnpm add -D vite@^8.2.2 vitest@^4.1.11 @vitest/coverage-v8@^4.1.11
 Workspace는 Vite `8.2.2`와 Vitest `4.1.11`을 검증합니다. Published
 `@fluojs/vite` peer는 `vite >=6.2.0`을 유지하며, 이 넓은 peer 계약은 생성
 프로젝트가 Vite 6에 남는다는 의미가 아닙니다. `@fluojs/testing`의 required
-Vitest peer는 이전 Vitest 3 line에서 `^4.1.11`로 변경됩니다. Mock helper와
-`@fluojs/testing/vitest` consumer를 업그레이드하고 consuming workspace에
-`@babel/core`를 유지하세요.
+Vitest peer는 이전 Vitest 3 line에서 `^4.1.11`로 변경됩니다. Mock helper
+consumer를 업그레이드하고 decorator transform은 `@fluojs/vite`로 구성하세요.
 
 1. ESM Vite config의 `build.rollupOptions`를 `build.rolldownOptions`로 옮기고
    애플리케이션의 input, output, external option을 Rolldown 기준으로
    검토하세요. 기존 Node starter의 server target은 `node20`에서 `node24`로,
    `engines.node`는 `>=24.0.0 <27`로, `@types/node`는 `^24.0.0`으로 변경하세요.
-2. Application `.ts` decorator를 Rolldown/Oxc보다 먼저 처리하는
-   `@fluojs/vite`의 `fluoDecoratorsPlugin()`을 유지하세요.
-   `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()`은 별도 testing
-   transform으로 유지합니다.
+2. application decorator에는 `@fluojs/vite`의 `fluoDecoratorsPlugin()`을,
+   Vitest에는 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`를
+   사용하세요. decorated module 평가 전에는 `@fluojs/core/metadata-preload`를 구성합니다.
 3. 기존 Babel config에서 생성되었던 `src/**/*.test.ts`의 `ignore` entry를
-   제거하세요. Testing plugin이 테스트 내부에 선언한 decorator를 변환할 수
-   있어야 합니다. Application plugin은 계속 test를 건너뜁니다.
+   제거하세요. Test mode가 테스트 내부에 선언한 decorator를 변환하고,
+   application mode는 계속 test를 건너뜁니다.
 4. Babel decorator proposal 설정 `version: '2023-11'`과 TypeScript preset을
    유지하세요. `experimentalDecorators`, `emitDecoratorMetadata`를 켜거나
    Babel을 direct Oxc/esbuild decorator processing으로 대체하지 마세요.

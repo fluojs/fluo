@@ -1,13 +1,40 @@
+import type { PluginObj } from '@babel/core';
 import type { Plugin, ResolvedConfig } from 'vite';
 
 type BabelCoreModule = Pick<typeof import('@babel/core'), 'transformAsync'>;
 type BabelCoreImporter = () => Promise<BabelCoreModule>;
+
+/**
+ * Selects whether the plugin runs for application modules only or for a Vitest module graph.
+ */
+export type FluoDecoratorsTransformBoundary = 'application' | 'test';
+
+/**
+ * Configuration for the canonical fluo TC39 decorator transform.
+ */
+export interface FluoDecoratorsPluginOptions {
+  /**
+   * Selects the file boundary. Application mode skips test, spec, and declaration files;
+   * test mode includes application and test modules while still skipping declarations.
+   */
+  readonly transformBoundary?: FluoDecoratorsTransformBoundary;
+  /**
+   * Uses this Babel root configuration for every transformed module, or resolves it per module.
+   * The default disables Babel configuration discovery.
+   */
+  readonly babelConfigFile?: false | string | ((filePath: string) => string);
+  /**
+   * Overrides Vite's sourcemap policy. Omit it to use source maps during serve and mapped builds.
+   */
+  readonly sourceMaps?: boolean;
+}
 
 const BABEL_PEER_DEPENDENCIES = [
   '@babel/core',
   '@babel/plugin-proposal-decorators',
   '@babel/preset-typescript',
 ] as const;
+const METADATA_PRELOAD_SOURCE = '@fluojs/core/metadata-preload';
 
 function readErrorCode(value: unknown): string | undefined {
   if (!value || typeof value !== 'object' || !('code' in value)) {
@@ -70,21 +97,68 @@ function isNodeModulesPath(filePath: string): boolean {
 }
 
 function isTypeScriptTestFile(filePath: string): boolean {
-  return /\.(?:test|spec)\.ts$/u.test(filePath);
+  return /\.(?:test|spec)\.(?:cts|mts|ts|tsx)$/u.test(filePath);
 }
 
-function shouldTransformTypeScriptApplicationFile(id: string): boolean {
+function isTypeScriptDeclarationFile(filePath: string): boolean {
+  return /\.d\.(?:cts|mts|ts)$/u.test(filePath);
+}
+
+function isTypeScriptSourceFile(filePath: string): boolean {
+  return /\.(?:cts|mts|ts|tsx)$/u.test(filePath);
+}
+
+function shouldTransformTypeScriptFile(id: string, transformBoundary: FluoDecoratorsTransformBoundary): boolean {
   const normalizedFilePath = readViteFilePath(id).replaceAll('\\', '/');
 
-  if (!normalizedFilePath.endsWith('.ts') || normalizedFilePath.endsWith('.d.ts')) {
+  if (!isTypeScriptSourceFile(normalizedFilePath) || isTypeScriptDeclarationFile(normalizedFilePath)) {
     return false;
   }
 
-  return !isNodeModulesPath(normalizedFilePath) && !isTypeScriptTestFile(normalizedFilePath);
+  return !isNodeModulesPath(normalizedFilePath)
+    && (transformBoundary === 'test' || !isTypeScriptTestFile(normalizedFilePath));
 }
 
 function shouldRequestBabelSourceMaps(config: Pick<ResolvedConfig, 'build' | 'command'>): boolean {
   return config.command === 'serve' || Boolean(config.build.sourcemap);
+}
+
+function createMetadataPreloadPlugin(): PluginObj {
+  return {
+    name: 'fluo-metadata-preload',
+    visitor: {
+      Program(path) {
+        let hasDecorator = false;
+
+        path.traverse({
+          Decorator() {
+            hasDecorator = true;
+          },
+        });
+
+        const hasPreloadImport = path.node.body.some(
+          (statement) =>
+            statement.type === 'ImportDeclaration' && statement.source.value === METADATA_PRELOAD_SOURCE,
+        );
+
+        if (!hasDecorator || hasPreloadImport) {
+          return;
+        }
+
+        path.unshiftContainer('body', {
+          type: 'ImportDeclaration',
+          specifiers: [],
+          source: { type: 'StringLiteral', value: METADATA_PRELOAD_SOURCE },
+        });
+      },
+    },
+  };
+}
+
+function createFluoDecoratorsPreset(): { readonly plugins: readonly [PluginObj, readonly [string, { readonly version: '2023-11' }]] } {
+  return {
+    plugins: [createMetadataPreloadPlugin(), ['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
+  };
 }
 
 /**
@@ -103,9 +177,20 @@ function shouldRequestBabelSourceMaps(config: Pick<ResolvedConfig, 'build' | 'co
  * });
  * ```
  */
-function createFluoDecoratorsPlugin(importBabelCoreModule: BabelCoreImporter): Plugin {
+function resolveBabelConfigFile(
+  babelConfigFile: FluoDecoratorsPluginOptions['babelConfigFile'],
+  filePath: string,
+): false | string {
+  return typeof babelConfigFile === 'function' ? babelConfigFile(filePath) : babelConfigFile ?? false;
+}
+
+function createFluoDecoratorsPlugin(
+  options: FluoDecoratorsPluginOptions,
+  importBabelCoreModule: BabelCoreImporter,
+): Plugin {
   let shouldGenerateSourceMaps = false;
   let babelCore: BabelCoreModule | undefined;
+  const transformBoundary = options.transformBoundary ?? 'application';
 
   return {
     name: 'fluo-babel-decorators',
@@ -114,22 +199,28 @@ function createFluoDecoratorsPlugin(importBabelCoreModule: BabelCoreImporter): P
       shouldGenerateSourceMaps = shouldRequestBabelSourceMaps(config);
     },
     async transform(code: string, id: string) {
-      if (!shouldTransformTypeScriptApplicationFile(id)) {
+      if (!shouldTransformTypeScriptFile(id, transformBoundary)) {
         return null;
       }
 
       const filePath = readViteFilePath(id);
+      const babelConfigFile = resolveBabelConfigFile(options.babelConfigFile, filePath);
       const loadedBabelCore = babelCore ?? (await loadBabelCore(filePath, importBabelCoreModule));
       babelCore = loadedBabelCore;
 
       const result = await loadedBabelCore
         .transformAsync(code, {
           babelrc: false,
-          configFile: false,
+          configFile: babelConfigFile,
           filename: filePath,
-          plugins: [['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
-          presets: [['@babel/preset-typescript', { allowDeclareFields: true }]],
-          sourceMaps: shouldGenerateSourceMaps,
+          plugins: babelConfigFile ? [createMetadataPreloadPlugin()] : [],
+          presets: babelConfigFile
+            ? []
+            : [
+                createFluoDecoratorsPreset,
+                ['@babel/preset-typescript', { allowDeclareFields: true }],
+              ],
+          sourceMaps: options.sourceMaps ?? shouldGenerateSourceMaps,
         })
         .catch((error: unknown) => {
           throw createBabelTransformDiagnostic(error, filePath);
@@ -148,10 +239,11 @@ function createFluoDecoratorsPlugin(importBabelCoreModule: BabelCoreImporter): P
  * Creates the Vite plugin used by generated fluo starter projects to transform
  * TypeScript application files that contain TC39 standard decorators.
  *
+ * @param options - Configuration for the decorator transform boundary, Babel configuration, and source maps.
  * @returns A Vite plugin that lazily loads Babel for eligible application `.ts` files.
  */
-export function fluoDecoratorsPlugin(): Plugin {
-  return createFluoDecoratorsPlugin(importBabelCore);
+export function fluoDecoratorsPlugin(options: FluoDecoratorsPluginOptions = {}): Plugin {
+  return createFluoDecoratorsPlugin(options, importBabelCore);
 }
 
 /**
@@ -162,5 +254,5 @@ export function fluoDecoratorsPlugin(): Plugin {
  * @returns A Vite plugin that preserves the production transform boundary while allowing tests to control Babel loading.
  */
 export function createFluoDecoratorsPluginForTesting(importBabelCoreModule: BabelCoreImporter): Plugin {
-  return createFluoDecoratorsPlugin(importBabelCoreModule);
+  return createFluoDecoratorsPlugin({}, importBabelCoreModule);
 }

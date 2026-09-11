@@ -21,8 +21,6 @@ import * as portability from './portability/http-adapter-portability.js';
 import type { WebHttpErrorRepresentationBootstrapOptions } from './portability/web-runtime-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
 import type { DeepMocked } from './types.js';
-import * as vitestTooling from './vitest/tooling.js';
-import * as vitestEntry from './vitest.js';
 
 type Assert<T extends true> = T;
 type IsAssignable<From, To> = [From] extends [To] ? true : false;
@@ -104,8 +102,6 @@ const emittedHarnessSubpaths = [
   './web-runtime-adapter-portability',
   './fetch-style-websocket-conformance',
   './types',
-  './vitest',
-  './vitest/tooling',
 ] as const;
 
 const executeTaskkillCommand: TaskkillCommand = async (file, args, options) => {
@@ -320,10 +316,6 @@ describe('@fluojs/testing surface', () => {
     expect(portability.createHttpAdapterPortabilityHarness).toBeTypeOf('function');
     expect(webPortability.createWebRuntimeHttpAdapterPortabilityHarness).toBeTypeOf('function');
     expect(fetchStyleWebsocket.createFetchStyleWebSocketConformanceHarness).toBeTypeOf('function');
-    expect(vitestEntry.fluoBabelDecoratorsPlugin).toBeTypeOf('function');
-    expect(vitestTooling.collectWorkspaceAliases).toBeTypeOf('function');
-    expect(vitestTooling.createFluoVitestWorkspaceConfig).toBeTypeOf('function');
-    expect(vitestTooling.defineFluoVitestConfig).toBeTypeOf('function');
   });
 
   it('keeps published subpath metadata aligned with the built surface', () => {
@@ -353,19 +345,7 @@ describe('@fluojs/testing surface', () => {
       types: './dist/conformance/fetch-style-websocket-conformance.d.ts',
       import: './dist/conformance/fetch-style-websocket-conformance.js',
     });
-    expect(packageJson.exports['./vitest']).toEqual({
-      types: './dist/vitest.d.ts',
-      import: './dist/vitest.js',
-    });
-    expect(packageJson.exports['./vitest/tooling']).toEqual({
-      types: './dist/vitest/tooling.d.ts',
-      import: './dist/vitest/tooling.js',
-    });
-    expect(packageJson.peerDependencies['@babel/core']).toBe('>=7.0.0');
     expect(packageJson.peerDependencies.vitest).toBe('^4.1.11');
-    expect(packageJson.peerDependenciesMeta?.['@babel/core']).toBeUndefined();
-    expect(readFileSync(resolve(packageRootPath, 'README.md'), 'utf8')).toContain('pnpm add -D @babel/core');
-    expect(readFileSync(resolve(packageRootPath, 'README.ko.md'), 'utf8')).toContain('pnpm add -D @babel/core');
   });
 
   it('bounds and reports taskkill failures without invoking Windows', async () => {

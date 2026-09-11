@@ -61,7 +61,7 @@ examples/fluo-blog/
 | `00-start/src/main.ts` | Static Fastify adapter와 `FluoFactory.create(...)`로 앱을 생성한 뒤 `app.listen()`을 await합니다. |
 | `00-start/test/app.e2e.test.ts` | 요청 파이프라인으로 `/health`, `/ready`를 확인합니다. |
 | `vite.config.ts` | 선택한 체크포인트를 `fluoDecoratorsPlugin()`과 `node24` 대상으로 빌드합니다. |
-| `vitest.config.ts` | `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()`으로 테스트를 실행합니다. |
+| `vitest.config.ts` | `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`로 테스트를 실행하고 `@fluojs/core/metadata-preload`를 preload합니다. |
 
 `AppModule`은 `src/app.module.ts`가 아니라 <strong><code>src/app.ts</code></strong>에 있습니다. 루트 모듈은 애플리케이션을 조합하는 경계이며 `GET /` 라우트를 자동으로 만들지는 않습니다.
 

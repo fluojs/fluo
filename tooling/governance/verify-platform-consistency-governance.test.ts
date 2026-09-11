@@ -49,6 +49,47 @@ import {
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
 
+describe('canonical Vite decorator runtime matrix', () => {
+  it('accepts the canonical Vite transform and metadata preload recipe', () => {
+    // Given: the checked-in EN/KO runtime matrix documentation.
+    // When: the canonical Vite decorator discoverability guard runs.
+    // Then: the documented public recipe is accepted.
+    expect(() => enforceCanonicalRuntimeMatrixReferences()).not.toThrow();
+  });
+
+  it('rejects a missing canonical metadata preload import', () => {
+    // Given: the English docs hub without the public metadata-preload subpath.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/CONTEXT.md'
+        ? content.replace('@fluojs/core/metadata-preload', '')
+        : content;
+    };
+
+    // When: the runtime matrix guard evaluates the missing public import.
+    // Then: the canonical recipe is rejected.
+    expect(() => enforceCanonicalRuntimeMatrixReferences(readText)).toThrow(
+      /@fluojs\/core\/metadata-preload/u,
+    );
+  });
+
+  it('rejects the removed testing Vitest subpath', () => {
+    // Given: the English docs hub reintroduces the retired testing subpath.
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'docs/CONTEXT.md'
+        ? `${content}\n@fluojs/testing/vitest`
+        : content;
+    };
+
+    // When: the runtime matrix guard evaluates the retired public import.
+    // Then: it rejects the unsupported subpath.
+    expect(() => enforceCanonicalRuntimeMatrixReferences(readText)).toThrow(
+      /@fluojs\/testing\/vitest/u,
+    );
+  });
+});
+
 type GitResult = { status: number; stdout: string };
 type RunCommand = (command: string, args: string[], options?: { allowFailure?: boolean }) => GitResult;
 
@@ -4931,7 +4972,7 @@ describe('runtime subpath surface discoverability', () => {
 });
 
 describe('Vite decorator tooling discoverability', () => {
-  it('keeps Vite app and Vitest test transform boundaries discoverable in both locales', () => {
+  it('keeps the canonical Vite transform and metadata preload recipe discoverable in both locales', () => {
     const englishContext = readFileSync(join(repoRoot, 'docs/CONTEXT.md'), 'utf8');
     const englishChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
     const englishToolchainMatrix = readFileSync(join(repoRoot, 'docs/reference/toolchain-contract-matrix.md'), 'utf8');
@@ -4959,9 +5000,10 @@ describe('Vite decorator tooling discoverability', () => {
 
     for (const markdown of [...englishDocs, ...koreanDocs]) {
       expect(markdown).toContain('@fluojs/vite');
-      expect(markdown).toContain('@fluojs/testing/vitest');
+      expect(markdown).toContain('@fluojs/core/metadata-preload');
       expect(markdown).toContain('vite.config.ts');
       expect(markdown).toContain('vitest.config.ts');
+      expect(markdown).not.toContain('@fluojs/testing/vitest');
     }
 
     for (const markdown of [

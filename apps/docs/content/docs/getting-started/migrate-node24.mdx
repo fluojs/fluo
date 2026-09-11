@@ -74,9 +74,10 @@ The workspace verifies Vite `8.2.2` and Vitest `4.1.11`; `@fluojs/vite` keeps it
 - Migrate ESM `build.rollupOptions` to `build.rolldownOptions` and review the
   application's bundler options. Node starters target `node24`, declare
   `>=24.0.0 <27`, and use `@types/node ^24.0.0`.
-- Keep `fluoDecoratorsPlugin()` for application `.ts` files and the separate
-  `fluoBabelDecoratorsPlugin()` from `@fluojs/testing/vitest` for tests, with Babel
-  peers installed. Direct Oxc/esbuild decorator processing is unsupported.
+- Use `fluoDecoratorsPlugin()` for application modules and
+  `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })` for
+  Vitest modules, with `@fluojs/core/metadata-preload` configured before decorated
+  modules evaluate. Direct Oxc/esbuild decorator processing is unsupported.
 - Remove the Babel `ignore` entry for `src/**/*.test.ts` so decorators declared
   inside tests are transformed. Retain `version: '2023-11'`, not legacy decorator
   compiler flags. React SSR keeps decorated declarations in `.ts` and JSX in `.tsx`.

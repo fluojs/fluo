@@ -64,15 +64,14 @@ fluo는 TC39 표준 데코레이터를 사용하므로 `@Module`, `@Inject`, `@S
 
 core 메타데이터는 fluo가 소유한 저장소와 TC39 `Symbol.metadata` 통합 지점을 통해 기록되며, `reflect-metadata`나 컴파일러가 생성하는 design type 메타데이터를 사용하지 않습니다. `@fluojs/core`를 import하는 것만으로는 전역 `Symbol.metadata` 폴리필을 설치하지 않습니다. fluo 내장 데코레이터는 framework-owned store를 통해 계속 동작하지만, `context.metadata`를 읽는 사용자 정의 표준 데코레이터는 decorated module이 평가되기 전에 `Symbol.metadata`가 필요합니다.
 
-```ts
-// preload.ts — 이 파일을 애플리케이션 entrypoint로 설정합니다.
-import { ensureMetadataSymbol } from '@fluojs/core';
+decorated 선언을 평가할 수 있는 모든 static import보다 먼저 side-effect 전용 preload entry를 사용하세요:
 
-ensureMetadataSymbol();
-await import('./bootstrap.js');
+```ts
+import '@fluojs/core/metadata-preload';
+import './bootstrap.js';
 ```
 
-dynamic import는 의도적인 순서 보장입니다. decorated class를 static import한 일반 bootstrap module에서 나중에 `ensureMetadataSymbol()`을 호출하면 너무 늦습니다. ESM은 bootstrap module body를 실행하기 전에 static import graph를 먼저 평가하기 때문입니다.
+동적 loading 순서를 직접 제어해야 할 때는 `ensureMetadataSymbol()`을 계속 사용할 수 있습니다. decorated class를 static import한 일반 bootstrap module에서 나중에 호출하면 너무 늦습니다. ESM은 bootstrap module body를 실행하기 전에 static import graph를 먼저 평가하기 때문입니다.
 
 ### 빈 module metadata
 
