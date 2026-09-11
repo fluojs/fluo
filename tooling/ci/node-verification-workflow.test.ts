@@ -29,6 +29,22 @@ it('runs all supported Node targets through one sharded verification workflow', 
   expect(workflow).not.toMatch(/^ {2}(build-and-typecheck|lint|test):$/m);
 });
 
+it('builds the Studio dependency closure before browser verification', () => {
+  // Given
+  const studioBrowser = job(workflow, 'studio-browser');
+  const closureBuild = 'node tooling/scripts/run-workspace-build-closure.mjs @fluojs/studio';
+  const browserVerification = 'pnpm --filter @fluojs/studio test:browser';
+
+  // When
+  const commands = [...studioBrowser.matchAll(/run: (.+)/gu)].map((match) => match[1]);
+
+  // Then
+  expect(commands).toContain(closureBuild);
+  expect(commands).toContain(browserVerification);
+  expect(commands.indexOf(closureBuild)).toBeLessThan(commands.indexOf(browserVerification));
+  expect(studioBrowser).not.toMatch(/run: pnpm --filter @fluojs\/studio(?:\.\.\.)? build/u);
+});
+
 it('keeps all four Vitest projects with complete package and tooling shards', () => {
   // Given
   const tests = job(nodeWorkflow, 'test');
