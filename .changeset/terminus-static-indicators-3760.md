@@ -7,4 +7,6 @@ Unify Terminus standalone indicator construction on `XHealthIndicator.create(opt
 
 Remove the redundant runtime `createHealthModule` compatibility helper. `HealthModule.forRoot(options)` remains the sole runtime health module registration path and continues to expose the same `/health` and `/ready` behavior.
 
+Remove `createHttpHealthIndicatorProvider` as well. Replace its entry in `indicatorProviders` with `HttpHealthIndicator.create(options)` in `TerminusModule.forRoot({ indicators: [...] })`; the HTTP indicator is a standalone instance and does not require DI-backed provider assembly.
+
 Migration: replace `createXHealthIndicator(options)` with `XHealthIndicator.create(options)`. Import `MemoryHealthIndicator` and `DiskHealthIndicator` from `@fluojs/terminus/node`; register standalone instances through `TerminusModule.forRoot({ indicators: [...] })`. Keep `createPrismaHealthIndicatorProvider`, `createDrizzleHealthIndicatorProvider`, and `createRedisHealthIndicatorProvider` only when Terminus must resolve those dependencies from DI. Replace `createHealthModule(options)` with `HealthModule.forRoot(options)`.

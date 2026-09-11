@@ -17,6 +17,7 @@ type IsAbsent<Namespace, Symbol extends PropertyKey> = Symbol extends keyof Name
 type RemovedRootExportsStayAbsent = Assert<IsAbsent<
   typeof terminusRoot,
   | 'createHttpHealthIndicator'
+  | 'createHttpHealthIndicatorProvider'
   | 'createDiskHealthIndicator'
   | 'createMemoryHealthIndicator'
   | 'createPrismaHealthIndicator'
