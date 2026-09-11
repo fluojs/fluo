@@ -1,10 +1,7 @@
 export * from './errors.js';
 export * from './signing/jwks.js';
 export * from './module.js';
-export {
-  RefreshTokenService,
-  normalizeRefreshTokenOptions,
-} from './refresh/refresh-token.js';
+export { RefreshTokenService } from './refresh/refresh-token.js';
 export type {
   RefreshTokenConsumeInput,
   RefreshTokenConsumeResult,

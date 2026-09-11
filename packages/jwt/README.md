@@ -106,22 +106,23 @@ Here, `ConfigModule.forRoot(...)` exports `ConfigService` globally by default, s
 
 ### Sign and Verify Tokens
 
-Inject `DefaultJwtSigner` to issue tokens and `DefaultJwtVerifier` to validate them.
+Inject `JwtService` for application token issuance and verification.
 
 ```typescript
-import { DefaultJwtSigner, DefaultJwtVerifier } from '@fluojs/jwt';
+import { JwtService } from '@fluojs/jwt';
 
 // Sign
-const token = await signer.signAccessToken({
-  sub: 'user-123',
-  roles: ['admin'],
-  scopes: ['read:profile'],
-});
+const token = await jwt.sign(
+  { roles: ['admin'], scopes: ['read:profile'] },
+  { subject: 'user-123' },
+);
 
 // Verify
-const principal = await verifier.verifyAccessToken(token);
+const principal = await jwt.verify(token, { audience: 'my-app' });
 // principal: { subject: 'user-123', roles: ['admin'], scopes: ['read:profile'], ... }
 ```
+
+`JwtService.verify(token, policy?)` always returns `JwtPrincipal`. Migrate claims-only callers from `await jwt.verify<T>(token)` to `(await jwt.verify(token)).claims`; pass per-call `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, or `requireExp` as the optional policy. `JwtService.decode()` remains unverified inspection only, never an authorization substitute.
 
 When you use `JwtService.sign(payload, { expiresIn })`, the per-call `expiresIn` override always wins over any pre-existing `payload.exp` value so token lifetime stays deterministic at the call site. `expiresIn` accepts a non-negative number of seconds or short duration strings such as `60s`, `15m`, `1h`, or `7d`. Numeric seconds preserve fractional JWT NumericDate precision; string durations remain whole-second literals.
 
@@ -224,9 +225,8 @@ Lazy loading is an import-time safety property only. It does **not** make signin
 
 ### Core Classes
 - `JwtModule`: The main entry point for DI registration.
-- `DefaultJwtSigner`: Handles token issuance with default claim filling.
-- `DefaultJwtVerifier`: Handles token validation and normalization.
-- `JwtService`: A convenience facade combining signing and verification.
+- `JwtService`: The canonical application-facing token issuance and verification service.
+- `DefaultJwtSigner` and `DefaultJwtVerifier`: Low-level integration providers used by framework integrations and custom provider assembly.
 - `JwksClient`: Fetches and caches remote JWKS keys with bounded request timeouts.
 - `RefreshTokenService`: Issues, rotates, and revokes refresh tokens when `refreshToken` options are configured. `revokePresentedRefreshToken(...)` verifies a compact refresh token before revoking its record; `revokeRefreshToken(tokenId)` is the trusted-ID alternative.
 
@@ -243,9 +243,9 @@ Lazy loading is an import-time safety property only. It does **not** make signin
 - `createJwtPlatformStatusSnapshot(...)` and `createJwtPlatformDiagnosticIssues(...)`: Status and diagnostic helpers.
 - `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: Exported tokens/constants used by the module and verification layer. `HMAC_HASH` and `ASYMMETRIC_HASH` are readonly lookup values; do not mutate them.
 
-### Deprecated compatibility helpers
-- `normalizeRefreshTokenOptions(...)`: Retained only for root-import compatibility with existing callers. Prefer `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)` plus `RefreshTokenService` instead of calling package normalization internals.
-- `createJwtCoreProviders(...)`: Retained only for root-import compatibility with existing direct module composition callers. Prefer `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)` so registration stays aligned with the published module surface.
+### Migration
+- `createJwtCoreProviders(...)` and `normalizeRefreshTokenOptions(...)` are no longer exported. Register with `JwtModule.forRoot(...)` or `JwtModule.forRootAsync(...)`; resolve `RefreshTokenService` only after configuring `refreshToken`.
+- `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, policy)` is replaced by `DefaultJwtVerifier.verifyAccessToken(token, policy)`.
 
 ## Related Packages
 

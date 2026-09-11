@@ -30,7 +30,7 @@
 | `kid` requirements | 다중 키 HMAC 검증, 다중 키 공개키 검증, JWKS 검증은 모두 인식 가능한 `kid`를 요구합니다. 누락되었거나 알 수 없는 `kid`는 검증 실패입니다. | `packages/jwt/src/signing/verifier.ts` |
 | Expiration | `requireExp`의 기본값은 활성화입니다. verifier가 명시적으로 `requireExp: false`를 설정하지 않으면 `exp`가 없는 토큰은 실패합니다. 만료된 토큰은 `JwtExpiredTokenError`를 발생시킵니다. | `packages/jwt/src/signing/verifier.ts` |
 | Activation time | `nbf`가 미래인 토큰은 clock skew 보정 후 `JWT is not active yet.`로 실패합니다. | `packages/jwt/src/signing/verifier.ts` |
-| Issuer and audience | `issuer` 또는 `audience`가 구성된 경우 verifier는 `iss` 또는 `aud`가 일치하지 않는 토큰을 거부해야 합니다. `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)`는 호출 단위로 알고리즘/클레임 정책 필드(`algorithms`, `issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)만 재정의할 수 있으며, 공유 JWKS 상태나 key-resolution 상태를 다시 만들지는 않습니다. | `packages/jwt/src/signing/verifier.ts` |
+| Issuer and audience | `issuer` 또는 `audience`가 구성된 경우 verifier는 `iss` 또는 `aud`가 일치하지 않는 토큰을 거부해야 합니다. `DefaultJwtVerifier.verifyAccessToken(token, policy?)`는 호출 단위로 알고리즘/클레임 정책 필드(`algorithms`, `issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)만 재정의할 수 있으며, 공유 JWKS 상태나 key-resolution 상태를 다시 만들지는 않습니다. | `packages/jwt/src/signing/verifier.ts` |
 | Maximum age | `maxAge`가 구성된 경우 토큰에는 유한한 `iat` 클레임이 있어야 합니다. 미래 `iat` 또는 `maxAge + clockSkewSeconds`를 초과한 토큰은 검증 실패입니다. | `packages/jwt/src/signing/verifier.ts` |
 | JWKS cache lifecycle | `JwtModule`이 관리하는 `DefaultJwtVerifier` 인스턴스는 module shutdown 중 verifier 소유 JWKS client를 dispose합니다. 수동으로 생성한 `DefaultJwtVerifier` 또는 `JwksClient` 인스턴스는 caller 소유이므로 수동 shutdown이나 identity-provider 재설정 시 `dispose()`를 호출해야 합니다. | `packages/jwt/src/signing/verifier.ts`, `packages/jwt/src/module.test.ts` |
 | Refresh-token verification | 리프레시 토큰 검증은 액세스 토큰 verifier에서 파생되지만, HMAC 전용 알고리즘, `requireExp: true`, 리프레시 secret, 선택적 `verifyMaxAgeSeconds`를 강제합니다. | `packages/jwt/src/signing/verifier.ts` |
@@ -56,6 +56,7 @@
 Principal 처리 제약:
 
 - 애플리케이션 코드는 `requestContext.principal`을 활성 인증 전략이 채우는 런타임 소유 신원 경계로 취급해야 합니다.
+- 애플리케이션 코드는 주입된 `JwtService.sign(...)`, `JwtService.verify(...)`를 사용해야 하며, 검증은 원래 claims를 `principal.claims`에서 제공하는 정규화 `JwtPrincipal`을 반환합니다. `DefaultJwtSigner`, `DefaultJwtVerifier`는 strategy와 refresh-token assembly용 integration provider로 남습니다.
 - 전략 구현은 `@fluojs/http`가 허용하는 임의의 `Principal` 형태를 반환할 수 있지만, JWT 기반 전략은 `DefaultJwtVerifier`가 생성한 정규화 `JwtPrincipal`을 반환하는 편이 맞습니다.
 - Scope가 필요한 라우트는 컨트롤러에서 원시 JWT 클레임을 직접 읽기보다 `@RequireScopes(...)`로 scope를 선언해야 합니다.
 

@@ -1,16 +1,15 @@
 import { Inject } from '@fluojs/core';
-import { DefaultJwtSigner } from '@fluojs/jwt';
+import { JwtService } from '@fluojs/jwt';
 
-@Inject(DefaultJwtSigner)
+@Inject(JwtService)
 export class AuthService {
-  constructor(private readonly signer: DefaultJwtSigner) {}
+  constructor(private readonly jwt: JwtService) {}
 
   async issueToken(username: string): Promise<{ accessToken: string }> {
-    const accessToken = await this.signer.signAccessToken({
-      sub: username,
-      roles: ['user'],
-      scopes: ['profile:read'],
-    });
+    const accessToken = await this.jwt.sign(
+      { roles: ['user'], scopes: ['profile:read'] },
+      { subject: username },
+    );
 
     return { accessToken };
   }

@@ -59,20 +59,19 @@ export class AuthModule {}
 Access token을 발급할 때는 `DefaultJwtSigner`, 검증할 때는 `DefaultJwtVerifier`를 주입합니다.
 
 ```ts
-import { DefaultJwtSigner, DefaultJwtVerifier } from '@fluojs/jwt';
+import { JwtService } from '@fluojs/jwt';
 
-const token = await signer.signAccessToken({
-  sub: 'user-123',
-  roles: ['admin'],
-  scopes: ['profile:read'],
-});
+const token = await jwt.sign(
+  { roles: ['admin'], scopes: ['profile:read'] },
+  { subject: 'user-123' },
+);
 
-const principal = await verifier.verifyAccessToken(token);
+const principal = await jwt.verify(token, { audience: 'my-app' });
 // principal.subject === 'user-123'
 // principal.scopes includes 'profile:read'
 ```
 
-`@fluojs/jwt`는 token의 `scope`와 `scopes` claim을 안정적인 `JwtPrincipal.scopes: string[]` 형태로 normalize하므로 authorization guard는 하나의 contract만 읽으면 됩니다.
+`JwtService.verify(token, policy?)`는 정규화 `JwtPrincipal`을 반환하므로 claims-only caller는 `(await jwt.verify(token)).claims`로 이전하세요. `@fluojs/jwt`는 token의 `scope`와 `scopes` claim을 안정적인 `JwtPrincipal.scopes: string[]` 형태로 normalize하므로 authorization guard는 하나의 contract만 읽으면 됩니다. `JwtService.decode()`는 비검증 inspection으로만 남습니다.
 
 ### Async configuration
 

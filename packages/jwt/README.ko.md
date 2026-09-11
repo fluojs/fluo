@@ -106,22 +106,23 @@ export class AuthModule {}
 
 ### 토큰 서명 및 검증
 
-`DefaultJwtSigner`를 주입받아 토큰을 발행하고, `DefaultJwtVerifier`를 통해 검증합니다.
+애플리케이션 토큰 발급과 검증에는 `JwtService`를 주입합니다.
 
 ```typescript
-import { DefaultJwtSigner, DefaultJwtVerifier } from '@fluojs/jwt';
+import { JwtService } from '@fluojs/jwt';
 
 // 서명 (Sign)
-const token = await signer.signAccessToken({
-  sub: 'user-123',
-  roles: ['admin'],
-  scopes: ['read:profile'],
-});
+const token = await jwt.sign(
+  { roles: ['admin'], scopes: ['read:profile'] },
+  { subject: 'user-123' },
+);
 
 // 검증 (Verify)
-const principal = await verifier.verifyAccessToken(token);
+const principal = await jwt.verify(token, { audience: 'my-app' });
 // principal: { subject: 'user-123', roles: ['admin'], scopes: ['read:profile'], ... }
 ```
+
+`JwtService.verify(token, policy?)`는 항상 `JwtPrincipal`을 반환합니다. claims-only 호출자는 `await jwt.verify<T>(token)`에서 `(await jwt.verify(token)).claims`로 이전하고, 호출별 `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, `requireExp`는 optional policy로 전달하세요. `JwtService.decode()`는 권한 확인 대체가 아닌 비검증 inspection으로만 남습니다.
 
 `JwtService.sign(payload, { expiresIn })`를 사용할 때는 payload 안에 기존 `exp` 값이 있더라도 호출 시점의 `expiresIn` 재정의가 항상 우선합니다. 따라서 토큰 수명은 호출 위치에서 결정적으로 제어됩니다. `expiresIn`은 초 단위의 0 이상 숫자 또는 `60s`, `15m`, `1h`, `7d` 같은 짧은 duration 문자열을 받을 수 있습니다. 숫자 초 값은 JWT NumericDate의 소수 정밀도를 보존하며, 문자열 duration은 기존처럼 정수 초 리터럴로 처리됩니다.
 
@@ -243,9 +244,9 @@ Lazy loading은 import-time 안전성 속성일 뿐입니다. 서명이나 검�
 - `createJwtPlatformStatusSnapshot(...)`, `createJwtPlatformDiagnosticIssues(...)`: status 및 diagnostic helper입니다.
 - `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: 모듈과 검증 레이어에서 사용하는 export token/constant입니다. `HMAC_HASH`와 `ASYMMETRIC_HASH`는 readonly lookup 값이므로 변경하지 마세요.
 
-### Deprecated compatibility helper
-- `normalizeRefreshTokenOptions(...)`: 기존 caller의 root import 호환성만을 위해 유지됩니다. package normalization 내부 helper를 직접 호출하기보다 `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)`와 `RefreshTokenService`를 사용하세요.
-- `createJwtCoreProviders(...)`: 기존 direct module composition caller의 root import 호환성만을 위해 유지됩니다. registration이 published module surface와 정렬되도록 `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)`를 사용하세요.
+### 마이그레이션
+- `createJwtCoreProviders(...)`, `normalizeRefreshTokenOptions(...)`는 더 이상 export되지 않습니다. `JwtModule.forRoot(...)` 또는 `JwtModule.forRootAsync(...)`로 등록하고 `refreshToken` 구성 후에만 `RefreshTokenService`를 resolve하세요.
+- `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, policy)`는 `DefaultJwtVerifier.verifyAccessToken(token, policy)`로 대체됩니다.
 
 ## 관련 패키지
 

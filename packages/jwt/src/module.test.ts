@@ -12,16 +12,13 @@ import { JwtService } from './service.js';
 import { DefaultJwtSigner } from './signing/signer.js';
 import { DefaultJwtVerifier } from './signing/verifier.js';
 
-@Inject(DefaultJwtSigner, DefaultJwtVerifier)
+@Inject(JwtService)
 class JwtRoundTripService {
-  constructor(
-    private readonly signer: DefaultJwtSigner,
-    private readonly verifier: DefaultJwtVerifier,
-  ) {}
+  constructor(private readonly jwt: JwtService) {}
 
   async signAndVerify(subject: string): Promise<string> {
-    const token = await this.signer.signAccessToken({ sub: subject });
-    const principal = await this.verifier.verifyAccessToken(token);
+    const token = await this.jwt.sign({ sub: subject });
+    const principal = await this.jwt.verify(token);
 
     return principal.subject;
   }
@@ -57,13 +54,13 @@ async function createJwtApplicationContext(jwtModule: Constructor) {
 }
 
 describe('JwtModule', () => {
-  it('keeps createJwtCoreProviders as an explicit deprecated compatibility root export', () => {
-    expect(jwtRootExports.createJwtCoreProviders).toBeTypeOf('function');
+  it('does not expose the provider-composition helper from the package root', () => {
+    expect(jwtRootExports).not.toHaveProperty('createJwtCoreProviders');
   });
 
-  it('keeps refresh-token normalization as an explicit deprecated compatibility root export', () => {
+  it('does not expose refresh-token normalization from the package root', () => {
     expect(jwtRootExports).toHaveProperty('RefreshTokenService');
-    expect(jwtRootExports).toHaveProperty('normalizeRefreshTokenOptions');
+    expect(jwtRootExports).not.toHaveProperty('normalizeRefreshTokenOptions');
   });
 
   it('disposes verifier-owned JWKS cache entries during module shutdown', async () => {
@@ -108,8 +105,8 @@ describe('JwtModule', () => {
     const jwtService = await container.resolve(JwtService);
     const token = await jwtService.sign({ sub: 'for-root-user' });
 
-    await expect(jwtService.verify<{ sub?: string }>(token)).resolves.toMatchObject({
-      sub: 'for-root-user',
+    await expect(jwtService.verify(token)).resolves.toMatchObject({
+      subject: 'for-root-user',
     });
   });
 

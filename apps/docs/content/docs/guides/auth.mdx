@@ -59,20 +59,19 @@ export class AuthModule {}
 Inject `DefaultJwtSigner` when you need to issue access tokens and `DefaultJwtVerifier` when you need to verify them.
 
 ```ts
-import { DefaultJwtSigner, DefaultJwtVerifier } from '@fluojs/jwt';
+import { JwtService } from '@fluojs/jwt';
 
-const token = await signer.signAccessToken({
-  sub: 'user-123',
-  roles: ['admin'],
-  scopes: ['profile:read'],
-});
+const token = await jwt.sign(
+  { roles: ['admin'], scopes: ['profile:read'] },
+  { subject: 'user-123' },
+);
 
-const principal = await verifier.verifyAccessToken(token);
+const principal = await jwt.verify(token, { audience: 'my-app' });
 // principal.subject === 'user-123'
 // principal.scopes includes 'profile:read'
 ```
 
-`@fluojs/jwt` normalizes `scope` and `scopes` token claims into a stable `JwtPrincipal.scopes: string[]` shape so authorization guards can read one contract.
+`JwtService.verify(token, policy?)` returns the normalized `JwtPrincipal`; migrate claims-only callers to `(await jwt.verify(token)).claims`. `@fluojs/jwt` normalizes `scope` and `scopes` token claims into a stable `JwtPrincipal.scopes: string[]` shape so authorization guards can read one contract. `JwtService.decode()` remains unverified inspection only.
 
 ### Async configuration
 
