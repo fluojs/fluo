@@ -247,9 +247,15 @@ export class AuthController {
     JwtModule.forRoot({
       algorithms: ['HS256'],
       global: true,
+      refreshToken: {
+        expiresInSeconds: 604800,
+        rotation: true,
+        secret: 'your-refresh-token-secret',
+        store: 'memory', // production에서는 application-owned atomic durable store를 사용합니다.
+      },
       secret: 'your-access-token-secret',
     }),
-    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    RefreshTokenModule.forRoot(),
     PassportModule.forRoot(
       { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
       [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
@@ -259,11 +265,13 @@ export class AuthController {
 export class AuthModule {}
 ```
 
-`JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, `PassportModule.forRoot(...)`를 함께 import 하세요. 이 graph에서 `RefreshTokenStrategy`는 `JwtModule`의 sibling인 `RefreshTokenModule`에 속하므로, 이 예제는 문서화된 `global: true` option을 설정해 refresh module이 strategy를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있게 합니다. `RefreshTokenModule.forRoot(MyRefreshTokenService)`는 service class를 refresh module 내부에 등록하고 공유 `REFRESH_TOKEN_SERVICE` alias로 export합니다. 이 class에 constructor dependency가 있다면 application-owned module에서 dependency를 제공하고 export한 뒤 `imports`로 전달하세요. String 및 symbol service token은 `RefreshTokenModule`에서 보여야 합니다. Imported module 또는 global module에서 export하거나 bootstrap runtime provider로 등록하세요. `MyRefreshTokenService`를 application module의 `providers`에 다시 등록하지 마세요. 중복 provider registration이 되며 bootstrap은 기본적으로 warning을 남기고 `duplicateProviderPolicy: 'throw'`에서는 거부할 수 있습니다. Application code가 service를 사용할 때는 export된 `REFRESH_TOKEN_SERVICE` alias를 inject하고, refresh route가 실제로 존재하려면 application module이 `AuthController`를 등록해야 합니다. `PassportModule`은 `@UseAuth('refresh-token')`가 resolve하는 named strategy를 등록합니다.
+`JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot()`, `PassportModule.forRoot(...)`를 함께 import 하세요. `JwtModule`이 refresh-token crypto, expiry, rotation, store 설정을 단독으로 소유합니다. `global: true` option은 export된 `RefreshTokenService`를 sibling `RefreshTokenModule`에서 보이게 하고, 기본 등록은 별도의 service나 store를 만들지 않고 그 service를 alias합니다. 명시적인 `'memory'` store는 개발용 opt-in이며 production에서는 application-owned atomic `RefreshTokenStore`를 제공해야 합니다. `RefreshTokenStrategy`가 기본 endpoint recipe이고 `PassportModule`은 `@UseAuth('refresh-token')` 이름을 등록합니다.
+
+`RefreshTokenStrategy`는 `body.refreshToken`을 `Authorization: Bearer <token>`보다 먼저 추출하며, 존재하지만 malformed인 body 값은 header로 fallback하지 않고 실패합니다. 누락된 credential은 `AuthenticationRequiredError`, malformed credential 및 JWT reuse/invalidity는 `AuthenticationFailedError`, 만료된 JWT refresh token은 `AuthenticationExpiredError`가 됩니다.
 
 교환에 성공하면 `ctx.principal`은 `RefreshTokenPrincipal` shape으로 resolve됩니다. Rotation된 token 쌍은 `claims.accessToken`과 `claims.refreshToken`에 중첩되고, 검증된 `subject`는 최상위에 위치합니다. 별도로 export되는 `RefreshTokenAuthResult` 타입은 refresh endpoint가 client에 반환하는 application-facing 교환 payload를 설명합니다.
 
-`RefreshTokenStrategy`는 `body.refreshToken`, `Authorization: Bearer ...`, `x-refresh-token`에서 token을 읽습니다. Malformed non-string token은 인증 실패로 처리됩니다. Rotation 후에는 `@fluojs/jwt`가 반환한 정규화 access-token principal subject를 신뢰합니다. `JwtRefreshTokenAdapter`는 `secret`과 backing store가 필요하며, `store: 'memory'`는 development 및 single-instance deployment용이고 rotation은 store consume contract를 통해 재사용을 감지합니다.
+`RefreshTokenStrategy`는 `body.refreshToken`, `Authorization: Bearer ...`, `x-refresh-token`에서 token을 읽습니다. Malformed non-string token은 인증 실패로 처리됩니다. Rotation 후에는 `DefaultJwtVerifier`로 반환된 access token을 검증하고 정규화된 subject를 사용합니다. Custom `RefreshTokenServicePort`는 refresh state를 소유할 수 있지만 globally visible `JwtModule` 구성과 함께 등록되고 그 구성이 수락하는 access token을 반환해야 합니다. 이는 non-JWT 교환 경로가 아닙니다.
 
 ### Account linking과 status
 
@@ -307,10 +315,12 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 ### Refresh token preset
 - `RefreshTokenModule`: 내장 refresh-token preset의 모듈 진입점입니다.
 - `RefreshTokenStrategy`, `REFRESH_TOKEN_STRATEGY_NAME`, `REFRESH_TOKEN_SERVICE`: Refresh-token strategy 및 service alias wiring입니다.
-- `RefreshTokenService`, `RefreshTokenInput`, `RefreshTokenAuthResult`, `RefreshTokenPrincipal`: Application service contract, exchange payload shape, 그리고 교환 성공 후 `ctx.principal`에 resolve되는 principal shape입니다.
-- `JwtRefreshTokenAdapter`: `@fluojs/jwt`의 refresh logic을 passport interface로 연결합니다.
-- `REFRESH_TOKEN_MODULE_OPTIONS`, `RefreshTokenModuleOptions`: 필수 `secret`과 `store` 계약을 포함하는 JWT 기반 refresh-token adapter 설정 token 및 option입니다.
+- `RefreshTokenServicePort`, `RefreshTokenInput`, `RefreshTokenAuthResult`, `RefreshTokenPrincipal`: Custom refresh-service port, exchange payload shape, 그리고 교환 성공 후 `ctx.principal`에 resolve되는 principal shape입니다. Custom service도 globally visible `JwtModule` verifier가 필요하고 이 verifier가 수락하는 access token을 반환해야 합니다. JWT가 소유하는 concrete `RefreshTokenService`는 `@fluojs/jwt`에서 import합니다.
 - Refresh helper: `createRefreshTokenStrategyRegistration`.
+
+### Refresh 소유권 마이그레이션
+
+모든 refresh `secret`, `expiresInSeconds`, `rotation`, `store` 값을 `JwtModule.forRoot({ global: true, refreshToken: ... })`로 옮긴 다음 `RefreshTokenModule.forRoot(JwtRefreshTokenAdapter)`를 `RefreshTokenModule.forRoot()`로 교체하세요. `JwtRefreshTokenAdapter`, `REFRESH_TOKEN_MODULE_OPTIONS`, `RefreshTokenModuleOptions` import는 제거합니다. 이전 Passport structural `RefreshTokenService` type을 사용한 consumer는 canonical 경로에서는 `@fluojs/jwt`의 `RefreshTokenService`를 사용해야 합니다. Custom `RefreshTokenServicePort`는 globally visible `JwtModule` verifier 및 그 verifier가 수락하는 JWT access token과 함께만 지원됩니다.
 
 ### Passport.js bridge
 - `createPassportJsStrategyBridge(...)`: Passport.js strategy를 fluo `AuthStrategy`로 변환하고 `PassportModule.forRoot(...)`용 provider와 대응하는 strategy registration을 반환하는 compatibility helper입니다.

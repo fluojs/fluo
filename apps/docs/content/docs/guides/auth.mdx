@@ -246,8 +246,14 @@ export class AuthController {
       algorithms: ['HS256'],
       global: true,
       secret: 'your-access-token-secret',
+      refreshToken: {
+        secret: 'your-refresh-token-secret',
+        expiresInSeconds: 86_400,
+        rotation: true,
+        store: 'memory',
+      },
     }),
-    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    RefreshTokenModule.forRoot(),
     PassportModule.forRoot(
       { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
       [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
@@ -257,9 +263,9 @@ export class AuthController {
 export class AuthModule {}
 ```
 
-`RefreshTokenModule` owns a class passed to `forRoot(...)`. When that class has constructor dependencies, define an application-owned module that provides and exports those dependencies, then pass it through `imports` with `RefreshTokenModule.forRoot(MyRefreshTokenService, { imports: [RefreshTokenDependenciesModule] })`. Do not also register `MyRefreshTokenService` in `AuthModule.providers`; that duplicates the provider and fails with `duplicateProviderPolicy: 'throw'`. `JwtModule` is a sibling import, so keep `global: true` to expose `DefaultJwtVerifier` to `RefreshTokenStrategy`.
+`JwtModule` owns the refresh service, crypto settings, and store; `RefreshTokenModule.forRoot()` aliases that service for the HTTP strategy without creating another owner. Keep `global: true` so the sibling module can resolve the JWT service and verifier. The explicit `store: 'memory'` above is a development example. A custom `RefreshTokenServicePort` can be registered through `RefreshTokenModule.forRoot(MyRefreshTokenService, { imports: [RefreshTokenDependenciesModule] })`, but its access tokens must verify with the globally visible `JwtModule` configuration. Do not register the same custom class again in the parent module.
 
-For production, refresh-token rotation needs an atomic `RefreshTokenStore.consume(...)` implementation so replayed tokens are detected reliably. In-memory stores are only appropriate for development and single-instance deployments.
+For production, supply a durable `RefreshTokenStore` with atomic `rotate(...)` or `consume(...)` support through `JwtModule` so replayed tokens are detected reliably. The in-memory store is not durable across restarts.
 
 ## Rate limiting sensitive routes
 

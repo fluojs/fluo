@@ -5,8 +5,16 @@ import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { FluoFactory } from '@fluojs/runtime';
 
+import { JwtConfigurationError, JwtInvalidTokenError } from './errors.js';
 import { JwtModule } from './module.js';
-import { type RefreshTokenRecord, type RefreshTokenStore, RefreshTokenService } from './refresh/refresh-token.js';
+import {
+  normalizeRefreshTokenOptions,
+  type RefreshTokenRecord,
+  type RefreshTokenStore,
+  RefreshTokenService,
+} from './refresh/refresh-token.js';
+import { DefaultJwtSigner } from './signing/signer.js';
+import { DefaultJwtVerifier } from './signing/verifier.js';
 
 class NoopRefreshTokenStore implements RefreshTokenStore {
   async save(_: RefreshTokenRecord): Promise<void> {}
@@ -53,6 +61,29 @@ async function createJwtApplicationContext(jwtModule: Constructor) {
   class AppModule {}
 
   return FluoFactory.createApplicationContext(AppModule);
+}
+
+async function expectRefreshStateIsolation(jwtModule: Constructor): Promise<void> {
+  const firstApp = await createJwtApplicationContext(jwtModule);
+  const secondApp = await createJwtApplicationContext(jwtModule);
+
+  try {
+    const firstService = await firstApp.container.resolve(RefreshTokenService);
+    const secondService = await secondApp.container.resolve(RefreshTokenService);
+    const firstSigner = await firstApp.container.resolve(DefaultJwtSigner);
+    const secondSigner = await secondApp.container.resolve(DefaultJwtSigner);
+    const firstVerifier = await firstApp.container.resolve(DefaultJwtVerifier);
+    const secondVerifier = await secondApp.container.resolve(DefaultJwtVerifier);
+    const firstToken = await firstService.issueRefreshToken('user-1');
+
+    expect(await firstApp.container.resolve(RefreshTokenService)).toBe(firstService);
+    expect(firstService).not.toBe(secondService);
+    expect(firstSigner).not.toBe(secondSigner);
+    expect(firstVerifier).not.toBe(secondVerifier);
+    await expect(secondService.rotateRefreshToken(firstToken)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+  } finally {
+    await Promise.all([firstApp.close(), secondApp.close()]);
+  }
 }
 
 describe('JwtModule refresh token configuration', () => {
@@ -125,5 +156,92 @@ describe('JwtModule refresh token configuration', () => {
     });
 
     expect(moduleExports(moduleType)).toContain(RefreshTokenService);
+  });
+
+  it('keeps sync refresh services, stores, and crypto providers isolated across applications reusing one module', async () => {
+    // Given
+    const jwtModule = JwtModule.forRoot({
+      algorithms: ['HS256'],
+      refreshToken: {
+        expiresInSeconds: 60,
+        rotation: true,
+        secret: 'refresh-secret',
+        store: 'memory',
+      },
+      secret: 'access-secret',
+    });
+
+    // When / Then
+    await expectRefreshStateIsolation(jwtModule);
+  });
+
+  it('keeps async refresh services, stores, and crypto providers isolated across applications reusing one module', async () => {
+    // Given
+    const jwtModule = JwtModule.forRootAsync({
+      useFactory: async () => ({
+        algorithms: ['HS256'],
+        refreshToken: {
+          expiresInSeconds: 60,
+          rotation: true,
+          secret: 'refresh-secret',
+          store: 'memory',
+        },
+        secret: 'access-secret',
+      }),
+    });
+
+    // When / Then
+    await expectRefreshStateIsolation(jwtModule);
+  });
+
+  it('boots without refresh configuration until the optional service is resolved', async () => {
+    // Given
+    const jwtModule = JwtModule.forRoot({
+      algorithms: ['HS256'],
+      secret: 'access-secret',
+    });
+
+    // When
+    const app = await createJwtApplicationContext(jwtModule);
+
+    // Then
+    await app.close();
+  });
+
+  it('rejects malformed refresh stores before service use in both rotation modes', () => {
+    const invalidStores: unknown[] = [
+      undefined,
+      null,
+      42,
+      {},
+      {
+        find: async () => undefined,
+        revoke: async () => {},
+        revokeBySubject: async () => {},
+      },
+    ];
+
+    for (const rotation of [false, true]) {
+      for (const store of invalidStores) {
+        expect(() => normalizeRefreshTokenOptions({
+          expiresInSeconds: 60,
+          rotation,
+          secret: 'refresh-secret',
+          store,
+        } as never)).toThrow(JwtConfigurationError);
+      }
+    }
+
+    expect(() => normalizeRefreshTokenOptions({
+      expiresInSeconds: 60,
+      rotation: true,
+      secret: 'refresh-secret',
+      store: {
+        find: async () => undefined,
+        revoke: async () => {},
+        revokeBySubject: async () => {},
+        save: async () => {},
+      },
+    })).toThrow(JwtConfigurationError);
   });
 });

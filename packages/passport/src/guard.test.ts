@@ -12,7 +12,7 @@ import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRe
 import { AuthGuard } from './guard.js';
 import { PassportModule } from './module.js';
 import { createPassportJsStrategyBridge } from './adapters/passport-js.js';
-import { REFRESH_TOKEN_SERVICE, RefreshTokenStrategy, type RefreshTokenService } from './refresh/refresh-token.js';
+import { REFRESH_TOKEN_SERVICE, RefreshTokenStrategy, type RefreshTokenServicePort } from './refresh/refresh-token.js';
 import type { AuthStrategy, AuthStrategyResult } from './types.js';
 
 function createPassportModuleProviders(
@@ -1264,7 +1264,7 @@ describe('AuthGuard', () => {
 
   it('rethrows refresh token infrastructure failures through the real guard path', async () => {
     const originalError = new Error('refresh store unavailable');
-    const refreshTokenService: RefreshTokenService = {
+    const refreshTokenService: RefreshTokenServicePort = {
       issueRefreshToken: async () => 'unused',
       rotateRefreshToken: async () => {
         throw originalError;
