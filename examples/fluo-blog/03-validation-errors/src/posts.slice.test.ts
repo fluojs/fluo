@@ -1,6 +1,7 @@
 import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 
+import { withCleanup } from '../../../../tooling/testing/with-cleanup.js';
 import { PostsController } from './posts.controller';
 import { PostsModule } from './posts.module';
 import { PostsService } from './posts.service';
@@ -8,7 +9,8 @@ import { PostsService } from './posts.service';
 it('shares the singleton when the controller creates a post', async () => {
   // Given
   const module = await Test.createTestingModule({ rootModule: PostsModule }).compile();
-  try {
+  await withCleanup(async (defer) => {
+    defer(() => module.container.dispose());
     const controller = await module.resolve(PostsController);
     const service = await module.resolve(PostsService);
 
@@ -20,7 +22,5 @@ it('shares the singleton when the controller creates a post', async () => {
     // Then
     expect(service.get('2')).toBe(post);
     expect(controller.get({ id: '2' })).toBe(post);
-  } finally {
-    await module.container.dispose();
-  }
+  });
 });

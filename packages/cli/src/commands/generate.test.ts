@@ -346,7 +346,7 @@ export { PostModule };
     expect(result.generatedFiles).toContain(slicePath);
     expect(sliceContent).toContain("import { Test } from '@fluojs/testing';");
     expect(sliceContent).toContain('Test.createTestingModule({ rootModule: UserModule })');
-    expect(sliceContent).toMatch(/finally \{\s*await testingModule\.container\.dispose\(\);/);
+    expect(sliceContent).toContain('defer(() => testingModule.container.dispose());');
     expect(sliceContent).toContain('overrideProvider(UserRepo)');
     expect(sliceContent).toContain('.useValue({');
     expect(sliceContent).toContain('await testingModule.resolve<UserService>(UserService)');
@@ -369,7 +369,7 @@ export { PostModule };
     expect(e2eContent).toContain('Test.createApp({ rootModule: AppModule })');
     expect(e2eContent).toContain('try {');
     expect(e2eContent).toContain('finally {');
-    expect(e2eContent).toContain('await app.close();');
+    expect(e2eContent).toContain('defer(() => app.close());');
   });
 
   it('preserves explicit e2e root module import overrides', () => {

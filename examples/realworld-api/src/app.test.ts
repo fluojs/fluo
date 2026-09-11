@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Test } from '@fluojs/testing';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { AppModule } from './app';
 import { UsersRepo } from './users/users.repo';
 import { UsersService } from './users/users.service';
@@ -33,8 +34,8 @@ describe('UsersService', () => {
 describe('AppModule e2e', () => {
   it('serves health, ready, and user CRUD through Test.createApp request helpers', async () => {
     const app = await Test.createApp({ rootModule: AppModule });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
         body: { status: 'ok' },
         status: 200,
@@ -55,23 +56,19 @@ describe('AppModule e2e', () => {
       const listResult = await app.request('GET', '/users/').send();
       expect(listResult.status).toBe(200);
       expect(listResult.body).toEqual([expect.objectContaining({ name: 'Grace' })]);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('returns validation errors for invalid input', async () => {
     const app = await Test.createApp({ rootModule: AppModule });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const result = await app
         .request('POST', '/users/')
         .body({ name: '', email: '' })
         .send();
 
       expect(result.status).toBe(400);
-    } finally {
-      await app.close();
-    }
+    });
   });
 });

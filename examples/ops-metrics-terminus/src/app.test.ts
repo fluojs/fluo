@@ -4,6 +4,7 @@ import { Test } from '@fluojs/testing';
 import { MetricsService } from '@fluojs/metrics';
 import { Registry } from '@fluojs/metrics/integration';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { AppModule, opsMetricsBootstrapProviders } from './app';
 import { OpsMetricsService } from './ops/ops-metrics.service';
 
@@ -21,8 +22,8 @@ describe('OpsMetricsService', () => {
 describe('AppModule e2e', () => {
   it('serves protected metrics and ops routes through Test.createApp request helpers', async () => {
     const app = await Test.createApp({ rootModule: AppModule, providers: opsMetricsBootstrapProviders });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const forbiddenHealthResult = await app.request('GET', '/health').send();
       expect(forbiddenHealthResult.status).toBe(403);
 
@@ -50,16 +51,13 @@ describe('AppModule e2e', () => {
       expect(metricsResult.body).toContain('fluo_component_ready');
       expect(metricsResult.body).toContain('http_requests_total{method="GET",path="/metrics",status="403"} 1');
       expect(metricsResult.body).toContain('http_errors_total{method="GET",path="/metrics",status="403"} 1');
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('reuses the shared custom counter across repeated app bootstraps', async () => {
     const firstApp = await Test.createApp({ rootModule: AppModule, providers: opsMetricsBootstrapProviders });
-    let firstCounterValue: number;
-
-    try {
+    const firstCounterValue = await withCleanup(async (defer) => {
+      defer(() => firstApp.close());
       await expect(firstApp.request('GET', '/ops/jobs/trigger').send()).resolves.toMatchObject({
         status: 200,
       });
@@ -68,21 +66,17 @@ describe('AppModule e2e', () => {
       const firstCounterMatch = String(firstMetricsResult.body).match(/example_ops_jobs_triggered_total (\d+)/);
       expect(firstMetricsResult.status).toBe(200);
       expect(firstCounterMatch).not.toBeNull();
-      firstCounterValue = Number(firstCounterMatch?.[1]);
-    } finally {
-      await firstApp.close();
-    }
+      return Number(firstCounterMatch?.[1]);
+    });
 
     const secondApp = await Test.createApp({ rootModule: AppModule, providers: opsMetricsBootstrapProviders });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => secondApp.close());
       await expect(secondApp.request('GET', '/ops/jobs/trigger').send()).resolves.toMatchObject({ status: 200 });
 
       const metricsResult = await secondApp.request('GET', '/metrics').header('x-metrics-token', 'secret-token').send();
       expect(metricsResult.status).toBe(200);
       expect(String(metricsResult.body)).toContain(`example_ops_jobs_triggered_total ${firstCounterValue + 1}`);
-    } finally {
-      await secondApp.close();
-    }
+    });
   });
 });

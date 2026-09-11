@@ -33,7 +33,8 @@ describe('React Vite SSR starter', () => {
     });
     const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const response = await app.request('GET', '/products/sku-42').query('preview', 'true').send();
       const html = readHtml(response.body);
 
@@ -44,9 +45,7 @@ describe('React Vite SSR starter', () => {
       expect(html).toContain('src="/assets/entry-client.js"');
       expect(html).toContain('href="/assets/styles.css"');
       expect(html).toContain('href="/products/sku-84?preview=false"');
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('keeps route validation on the server DTO boundary', async () => {
@@ -56,12 +55,11 @@ describe('React Vite SSR starter', () => {
     });
     const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const response = await app.request('GET', '/products/x').query('preview', 'maybe').send();
       expect(response.status).toBe(400);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('identifies the application entry files when the Vite manifest is incompatible', () => {
@@ -80,3 +78,37 @@ describe('React Vite SSR starter', () => {
     }
   });
 });
+
+type Cleanup = () => unknown | Promise<unknown>;
+
+async function withCleanup<T>(
+  operation: (defer: (cleanup: Cleanup) => void) => T | Promise<T>,
+): Promise<T> {
+  const cleanups: Cleanup[] = [];
+  const failures: unknown[] = [];
+  let outcome:
+    | { readonly kind: 'failure'; readonly error: unknown }
+    | { readonly kind: 'success'; readonly value: T }
+    | undefined;
+
+  try {
+    outcome = { kind: 'success', value: await operation((cleanup) => { cleanups.push(cleanup); }) };
+  } catch (error) {
+    failures.push(error);
+    outcome = { kind: 'failure', error };
+  } finally {
+    for (const cleanup of cleanups.reverse()) {
+      try {
+        await cleanup();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+  }
+
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, 'Operation and cleanup failed.');
+
+  if (!outcome || outcome.kind === 'failure') throw outcome?.error;
+  return outcome.value;
+}

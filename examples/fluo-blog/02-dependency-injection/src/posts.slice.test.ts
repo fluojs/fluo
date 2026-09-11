@@ -1,6 +1,7 @@
 import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 
+import { withCleanup } from '../../../../tooling/testing/with-cleanup.js';
 import { PostsController } from './posts.controller';
 import { PostsModule } from './posts.module';
 import { PostsService } from './posts.service';
@@ -8,7 +9,8 @@ import { PostsService } from './posts.service';
 it('injects the registered service when the posts module is compiled', async () => {
   // Given
   const module = await Test.createTestingModule({ rootModule: PostsModule }).compile();
-  try {
+  await withCleanup(async (defer) => {
+    defer(() => module.container.dispose());
     const service = await module.resolve(PostsService);
     const controller = await module.resolve(PostsController);
 
@@ -17,7 +19,5 @@ it('injects the registered service when the posts module is compiled', async () 
 
     // Then
     expect(post).toBe(service.get('1'));
-  } finally {
-    await module.container.dispose();
-  }
+  });
 });

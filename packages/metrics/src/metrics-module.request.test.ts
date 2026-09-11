@@ -4,6 +4,7 @@ import { Test } from '@fluojs/testing';
 import { Registry } from 'prom-client';
 import { describe, expect, it } from 'vitest';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { METRICS_REGISTRY, MetricsModule } from './metrics-module.js';
 
 describe('MetricsModule request contract', () => {
@@ -16,7 +17,8 @@ describe('MetricsModule request contract', () => {
 
     const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // Given: the metrics module exposes its default scrape endpoint.
 
       // When: a consumer requests the endpoint through the canonical test app surface.
@@ -26,9 +28,7 @@ describe('MetricsModule request contract', () => {
       expect(response.status).toBe(200);
       expect(response.headers['content-type']).toBe(Registry.PROMETHEUS_CONTENT_TYPE);
       expect(response.body).toEqual(expect.stringContaining('fluo_metrics_registry_mode{mode="isolated"} 1'));
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('returns not found through the request helper when the scrape endpoint is disabled', async () => {
@@ -39,8 +39,8 @@ describe('MetricsModule request contract', () => {
     });
 
     const app = await Test.createApp({ rootModule: AppModule });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // Given: the metrics module disables its scrape endpoint explicitly.
 
       // When: a consumer requests the default metrics path.
@@ -48,9 +48,7 @@ describe('MetricsModule request contract', () => {
 
       // Then: the real request pipeline reports the route as missing.
       expect(response.status).toBe(404);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('records endpoint middleware failures from request helper dispatch', async () => {
@@ -78,8 +76,8 @@ describe('MetricsModule request contract', () => {
       providers: [{ provide: METRICS_REGISTRY, useValue: registry }],
       rootModule: AppModule,
     });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // Given: HTTP instrumentation observes a protected metrics endpoint.
 
       // When: endpoint middleware rejects a request through the canonical helper.
@@ -90,8 +88,6 @@ describe('MetricsModule request contract', () => {
       expect(response.status).toBe(403);
       expect(metricsText).toContain('http_requests_total{method="GET",path="/metrics",status="403"} 1');
       expect(metricsText).toContain('http_errors_total{method="GET",path="/metrics",status="403"} 1');
-    } finally {
-      await app.close();
-    }
+    });
   });
 });

@@ -4,6 +4,7 @@ import { Test } from '@fluojs/testing';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { createReactViteExampleModule } from './app';
 
 const VITE_MANIFEST = {
@@ -55,17 +56,15 @@ describe('react-vite-ssr example', () => {
     class MissingRendererModule {}
 
     const app = await Test.createApp({ rootModule: MissingRendererModule });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When: the virtual HTTP client dispatches the page request.
       const response = await app.request('GET', '/missing-renderer/').send();
 
       // Then: HTTP owns the failure response and React emits its stable configuration diagnostic.
       expect(response.status).toBe(500);
       expect(diagnostics).toEqual(['react-ssr-missing-page-renderer']);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('streams a DTO-bound page with Vite hydration assets', async () => {
@@ -76,7 +75,8 @@ describe('react-vite-ssr example', () => {
     });
     const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When: the HTTP-owned route receives path and search parameters.
       const response = await app.request('GET', '/products/sku-42').query('preview', 'true').send();
       const html = readHtml(response.body);
@@ -95,9 +95,7 @@ describe('react-vite-ssr example', () => {
       expect(html).toContain('Current URL: /products/sku-42?preview=true');
       expect(html).toContain('Current hash: unset');
       expect(html).toContain('href="/products/sku-84?preview=false"');
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('keeps path and query validation on the server-owned DTO boundary', async () => {
@@ -108,15 +106,14 @@ describe('react-vite-ssr example', () => {
     });
     const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When: navigation reaches the server with invalid path and query values.
       const response = await app.request('GET', '/products/x').query('preview', 'maybe').send();
 
       // Then: HTTP DTO validation rejects the request before React rendering.
       expect(response.status).toBe(400);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('protects native form mutations with the ordinary HTTP guard pipeline', async () => {
@@ -127,15 +124,14 @@ describe('react-vite-ssr example', () => {
     });
     const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When: an unauthenticated native-form payload reaches the ordinary POST route.
       const response = await app.request('POST', '/products/sku-42').body({ name: 'Renamed catalog item' }).send();
 
       // Then: the route guard rejects the mutation before application state changes.
       expect(response.status).toBe(403);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('returns a safe 400 representation for invalid native form input', async () => {
@@ -146,7 +142,8 @@ describe('react-vite-ssr example', () => {
     });
     const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When: the submitted product name violates the request DTO contract.
       const response = await app
         .request('POST', '/products/sku-42')
@@ -174,9 +171,7 @@ describe('react-vite-ssr example', () => {
           status: 400,
         },
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('redirects a successful native form mutation with 303 See Other', async () => {
@@ -186,8 +181,8 @@ describe('react-vite-ssr example', () => {
       manifest: VITE_MANIFEST,
     });
     const app = await Test.createApp({ rootModule: AppModule });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When: the ordinary POST handler accepts the bound request DTO.
       const response = await app
         .request('POST', '/products/sku-42')
@@ -200,8 +195,6 @@ describe('react-vite-ssr example', () => {
       expect(response.headers.location).toBe('/products/sku-42?updated=true');
       expect(response.headers['x-example-middleware']).toBe('react-native-form');
       expect(response.headers['x-example-interceptor']).toBe('request-scoped');
-    } finally {
-      await app.close();
-    }
+    });
   });
 });

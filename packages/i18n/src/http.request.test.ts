@@ -3,6 +3,7 @@ import { Controller, Get, type Middleware, type RequestContext } from '@fluojs/h
 import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import {
   getHttpLocale,
   resolveHttpLocale,
@@ -65,9 +66,12 @@ describe('@fluojs/i18n HTTP request-locale composition', () => {
       rootModule: AppModule,
     });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const firstRequest = app.request('GET', '/locale').header('x-locale', 'en').send();
+      defer(() => firstRequest);
+      defer(() => releaseFirstRequest.resolve());
       await firstRequestEntered.promise;
       const secondResponse = await app.request('GET', '/locale').header('x-locale', 'ko').send();
       releaseFirstRequest.resolve();
@@ -82,9 +86,6 @@ describe('@fluojs/i18n HTTP request-locale composition', () => {
         body: { locale: 'en', source: 'custom-header' },
         status: 200,
       });
-    } finally {
-      releaseFirstRequest.resolve();
-      await app.close();
-    }
+    });
   });
 });

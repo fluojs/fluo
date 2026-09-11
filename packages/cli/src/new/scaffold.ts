@@ -878,17 +878,49 @@ describe('Greeting slice', () => {
   it('resolves starter providers from the module graph', async () => {
     const testingModule = await Test.createTestingModule({ rootModule: GreetingModule }).compile();
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
       const repo = await testingModule.resolve(GreetingRepo);
       const service = await testingModule.resolve(GreetingService);
 
       expect(repo.findGreeting()).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
       expect(service.getGreeting()).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
-    } finally {
-      await testingModule.container.dispose();
-    }
+    });
   });
 });
+type Cleanup = () => unknown | Promise<unknown>;
+
+async function withCleanup<T>(
+  operation: (defer: (cleanup: Cleanup) => void) => T | Promise<T>,
+): Promise<T> {
+  const cleanups: Cleanup[] = [];
+  const failures: unknown[] = [];
+  let outcome:
+    | { readonly kind: 'failure'; readonly error: unknown }
+    | { readonly kind: 'success'; readonly value: T }
+    | undefined;
+
+  try {
+    outcome = { kind: 'success', value: await operation((cleanup) => { cleanups.push(cleanup); }) };
+  } catch (error) {
+    failures.push(error);
+    outcome = { kind: 'failure', error };
+  } finally {
+    for (const cleanup of cleanups.reverse()) {
+      try {
+        await cleanup();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+  }
+
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, 'Operation and cleanup failed.');
+
+  if (!outcome || outcome.kind === 'failure') throw outcome?.error;
+  return outcome.value;
+}
 `;
 }
 
@@ -2149,7 +2181,8 @@ describe('AppModule e2e', () => {
   it('serves runtime and starter routes through Test.createApp request helpers', async () => {
     const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
         body: { status: 'ok' },
         status: 200,
@@ -2162,11 +2195,42 @@ describe('AppModule e2e', () => {
         body: { message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) },
         status: 200,
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 });
+type Cleanup = () => unknown | Promise<unknown>;
+
+async function withCleanup<T>(
+  operation: (defer: (cleanup: Cleanup) => void) => T | Promise<T>,
+): Promise<T> {
+  const cleanups: Cleanup[] = [];
+  const failures: unknown[] = [];
+  let outcome:
+    | { readonly kind: 'failure'; readonly error: unknown }
+    | { readonly kind: 'success'; readonly value: T }
+    | undefined;
+
+  try {
+    outcome = { kind: 'success', value: await operation((cleanup) => { cleanups.push(cleanup); }) };
+  } catch (error) {
+    failures.push(error);
+    outcome = { kind: 'failure', error };
+  } finally {
+    for (const cleanup of cleanups.reverse()) {
+      try {
+        await cleanup();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+  }
+
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, 'Operation and cleanup failed.');
+
+  if (!outcome || outcome.kind === 'failure') throw outcome?.error;
+  return outcome.value;
+}
 `;
 }
 

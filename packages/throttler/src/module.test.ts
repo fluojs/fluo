@@ -5,6 +5,7 @@ import { Controller, Get, UseGuards } from '@fluojs/http';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { Test } from '@fluojs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { getThrottleMetadata, SkipThrottle, Throttle } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
 import type {
@@ -249,8 +250,8 @@ describe('ThrottlerModule.forRoot', () => {
     mutableOptions.ttl = 1;
 
     const app = await Test.createApp({ rootModule: ModuleOptionsSnapshotAppModule });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const firstResponse = await app
         .request('GET', '/module-options-snapshot/limited')
         .header('x-real-ip', '198.51.100.60')
@@ -263,9 +264,7 @@ describe('ThrottlerModule.forRoot', () => {
       expect(firstResponse.status).toBe(200);
       expect(secondResponse.status).toBe(429);
       expect(secondResponse.headers['Retry-After']).toBe('60');
-    } finally {
-      await app.close();
-    }
+    });
   });
 });
 
@@ -957,8 +956,8 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
     class RequestPrecedenceAppModule {}
 
     const app = await Test.createApp({ rootModule: RequestPrecedenceAppModule });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const classFirstResponse = await app
         .request('GET', '/request-precedence/class')
         .header('x-real-ip', '198.51.100.20')
@@ -988,9 +987,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
       expect(methodSecondResponse.status).toBe(200);
       expect(methodThirdResponse.status).toBe(429);
       expect(methodThirdResponse.headers['Retry-After']).toBe('60');
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('bypasses class and method throttling when @SkipThrottle is present in the request pipeline', async () => {
@@ -1023,8 +1020,8 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
     class RequestSkipAppModule {}
 
     const app = await Test.createApp({ rootModule: RequestSkipAppModule });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const methodFirstResponse = await app
         .request('GET', '/request-skip-method/public')
         .header('x-real-ip', '198.51.100.30')
@@ -1050,9 +1047,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
       expect(classFirstResponse.body).toEqual({ route: 'class-skip' });
       expect(classSecondResponse.status).toBe(200);
       expect(classSecondResponse.body).toEqual({ route: 'class-skip' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('uses trusted proxy headers before raw socket identity through Test.createApp requests', async () => {
@@ -1075,8 +1070,8 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
       rootModule: RequestProxyAppModule,
       middleware: [createRemoteAddressMiddleware()],
     });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const firstForwardedClientResponse = await app
         .request('GET', '/request-proxy/limited')
         .header('x-forwarded-for', '198.51.100.40, 10.0.0.10')
@@ -1097,9 +1092,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
       expect(secondForwardedClientResponse.status).toBe(200);
       expect(repeatedForwardedClientResponse.status).toBe(429);
       expect(repeatedForwardedClientResponse.headers['Retry-After']).toBe('60');
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('falls back to raw socket identity and ignores spoofed proxy headers by default', async () => {
@@ -1122,8 +1115,8 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
       rootModule: RequestSocketAppModule,
       middleware: [createRemoteAddressMiddleware()],
     });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const firstSocketClientResponse = await app
         .request('GET', '/request-socket/limited')
         .header('x-forwarded-for', '198.51.100.50')
@@ -1144,9 +1137,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
       expect(spoofedHeaderResponse.status).toBe(429);
       expect(spoofedHeaderResponse.headers['Retry-After']).toBe('60');
       expect(secondSocketClientResponse.status).toBe(200);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('enforces @UseGuards(ThrottlerGuard) through Test.createApp requests', async () => {
@@ -1166,8 +1157,8 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
     class ThrottledAppModule {}
 
     const app = await Test.createApp({ rootModule: ThrottledAppModule });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const firstResponse = await app.request('GET', '/throttled/limited').header('x-real-ip', '198.51.100.10').send();
       const secondResponse = await app.request('GET', '/throttled/limited').header('x-real-ip', '198.51.100.10').send();
 
@@ -1175,9 +1166,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
       expect(firstResponse.body).toEqual({ ok: true });
       expect(secondResponse.status).toBe(429);
       expect(secondResponse.headers['Retry-After']).toBe('60');
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('does not throttle routes that omit ThrottlerGuard even when ThrottlerModule is registered', async () => {
@@ -1196,17 +1185,15 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
     class UnguardedAppModule {}
 
     const app = await Test.createApp({ rootModule: UnguardedAppModule });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const firstResponse = await app.request('GET', '/unguarded/open').header('x-real-ip', '198.51.100.10').send();
       const secondResponse = await app.request('GET', '/unguarded/open').header('x-real-ip', '198.51.100.10').send();
 
       expect(firstResponse.status).toBe(200);
       expect(secondResponse.status).toBe(200);
       expect(secondResponse.body).toEqual({ ok: true });
-    } finally {
-      await app.close();
-    }
+    });
   });
 });
 

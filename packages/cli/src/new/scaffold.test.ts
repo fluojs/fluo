@@ -388,13 +388,13 @@ describe('scaffoldBootstrapApp', () => {
     expect(greetingModuleFile).toContain('export class GreetingModule');
     expect(greetingSliceTest).toContain("import { Test } from '@fluojs/testing';");
     expect(greetingSliceTest).toContain('Test.createTestingModule({ rootModule: GreetingModule }).compile()');
-    expect(greetingSliceTest).toMatch(/try \{[\s\S]*expect\([\s\S]*finally \{\s*await testingModule\.container\.dispose\(\);/);
+    expect(greetingSliceTest).toContain('defer(() => testingModule.container.dispose());');
     expect(appE2eTest).toContain("import { Test } from '@fluojs/testing';");
     expect(appE2eTest).toContain('Test.createApp({ rootModule: AppModule })');
     for (const path of ['/health', '/ready', '/greeting/']) {
       expect(appE2eTest).toContain(`app.request('GET', '${path}').send()`);
     }
-    expect(appE2eTest).toMatch(/try \{[\s\S]*await expect\([\s\S]*finally \{\s*await app\.close\(\);/);
+    expect(appE2eTest).toContain('defer(() => app.close());');
     expect(viteConfig).toContain("import { fluoDecoratorsPlugin } from '@fluojs/vite';");
     expect(viteConfig).toContain("import { defineConfig } from 'vite';");
     expect(viteConfig).toContain('rolldownOptions:');

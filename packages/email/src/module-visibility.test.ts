@@ -2,6 +2,7 @@ import { Inject, Module } from '@fluojs/core';
 import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { EmailChannel } from './channel.js';
 import { EmailModule } from './module.js';
 import { EmailService } from './service.js';
@@ -47,16 +48,14 @@ describe('EmailModule provider visibility', () => {
     class AppModule {}
 
     const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
       const probe = await testingModule.resolve(RootEmailProbe);
 
       expect(probe.email).toBeInstanceOf(EmailService);
       expect(probe.channel).toBeInstanceOf(EmailChannel);
       expect(probe.channel.channel).toBe('email');
-    } finally {
-      await testingModule.container.dispose();
-    }
+    });
   });
 
   it('keeps EmailService hidden from root providers when global visibility is disabled', async () => {

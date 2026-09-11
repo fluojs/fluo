@@ -49,7 +49,7 @@ describe('CLI generators', () => {
     expect(content).toContain("import { Test } from '@fluojs/testing';");
     expect(content).toContain('Test.createTestingModule({ rootModule: UserModule })');
     expect(content).toContain('await testingModule.resolve(UserRepo)');
-    expect(content).toMatch(/try \{[\s\S]*await expect\([\s\S]*finally \{\s*await testingModule\.container\.dispose\(\);/);
+    expect(content).toContain('defer(() => testingModule.container.dispose());');
   });
 
   it('emits module and resource slice templates based on stable testing APIs', () => {
@@ -64,7 +64,7 @@ describe('CLI generators', () => {
     expect(resourceSlice).toContain('await testingModule.resolve<UserService>(UserService)');
     for (const content of [moduleSlice, resourceSlice]) {
       expect(content).toContain("import { Test } from '@fluojs/testing';");
-      expect(content).toMatch(/try \{[\s\S]*expect\([\s\S]*finally \{\s*await testingModule\.container\.dispose\(\);/);
+      expect(content).toContain('defer(() => testingModule.container.dispose());');
     }
   });
 
@@ -87,10 +87,13 @@ describe('CLI generators', () => {
     expect(content).toContain('try {');
     expect(content).toContain("app.request('GET', '/users').send()");
     expect(content).toContain('finally {');
-    expect(content).toContain('await app.close();');
+    expect(content).toContain('defer(() => app.close());');
   });
 
-  it.each(['module', 'repo', 'resource', 'e2e'] as const)('cleans up the generated %s fixture when its assertion fails', async (kind) => {
+  it.each((['module', 'repo', 'resource', 'e2e'] as const).flatMap((kind) => [
+    { kind, cleanupFails: false },
+    { kind, cleanupFails: true },
+  ]))('preserves generated $kind assertion failures (cleanup fails: $cleanupFails)', async ({ kind, cleanupFails }) => {
     const files = {
       module: generateModuleFiles('User', { withTest: true }),
       repo: generateRepoFiles('User'),
@@ -98,7 +101,10 @@ describe('CLI generators', () => {
       e2e: generateE2eFiles('Users'),
     }[kind];
     const content = files.at(-1)?.content ?? '';
-    const cleanup = vi.fn(async () => undefined);
+    const cleanupError = new Error('generated cleanup failure');
+    const cleanup = vi.fn(async () => {
+      if (cleanupFails) throw cleanupError;
+    });
     const fixture = {
       container: { dispose: cleanup },
       rootModule: undefined,
@@ -134,7 +140,13 @@ describe('CLI generators', () => {
 
     expect(callbacks).toHaveLength(1);
     for (const callback of callbacks) {
-      await expect(callback()).rejects.toThrow();
+      const outcome = callback();
+      if (cleanupFails) {
+        await expect(outcome).rejects.toBeInstanceOf(AggregateError);
+        await expect(outcome).rejects.toMatchObject({ errors: [expect.objectContaining({ name: 'AssertionError' }), cleanupError] });
+      } else {
+        await expect(outcome).rejects.toMatchObject({ name: 'AssertionError' });
+      }
     }
     expect(kind === 'e2e' ? Test.createApp : Test.createTestingModule).toHaveBeenCalledOnce();
     expect(cleanup).toHaveBeenCalledOnce();

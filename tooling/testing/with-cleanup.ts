@@ -1,32 +1,7 @@
-import { describe, expect, it } from 'vitest';
-
-import { Test } from '@fluojs/testing';
-
-import { <%- resource %>Module } from './<%- kebab %>.module';
-import { <%- repo %> } from './<%- kebab %>.repo';
-import { <%- service %> } from './<%- kebab %>.service';
-
-describe('<%- resource %>Module slice', () => {
-  it('compiles provider wiring with an explicit override', async () => {
-    const testingModule = await Test.createTestingModule({ rootModule: <%- resource %>Module })
-      .overrideProvider(<%- repo %>)
-      .useValue({
-        list<%- resource %>s: async () => [{ id: '<%- kebab %>-1' }],
-      })
-      .compile();
-
-    await withCleanup(async (defer) => {
-      defer(() => testingModule.container.dispose());
-      const service = await testingModule.resolve<<%- service %>>(<%- service %>);
-
-      await expect(service.list<%- resource %>s()).resolves.toEqual([{ id: '<%- kebab %>-1' }]);
-    });
-  });
-});
-
 type Cleanup = () => unknown | Promise<unknown>;
 
-async function withCleanup<T>(
+// Repository-private test ownership; never intercepts Test factories or runner hooks.
+export async function withCleanup<T>(
   operation: (defer: (cleanup: Cleanup) => void) => T | Promise<T>,
 ): Promise<T> {
   const cleanups: Cleanup[] = [];

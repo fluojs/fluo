@@ -147,7 +147,7 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['src/page.tsx']).toContain("router.push('/products/sku-126?preview=true')");
     expect(snapshot['src/app.test.ts']).toContain("import { Test } from '@fluojs/testing';");
     expect(snapshot['src/app.test.ts']?.match(/Test\.createApp\(\{ rootModule: AppModule \}\)/g)).toHaveLength(2);
-    expect(snapshot['src/app.test.ts']?.match(/finally \{\s*await app\.close\(\);/g)).toHaveLength(2);
+    expect(snapshot['src/app.test.ts']?.match(/defer\(\(\) => app\.close\(\)\);/g)).toHaveLength(2);
     expect(snapshot['src/app.test.ts']).toContain("expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8')");
     expect(snapshot['src/load-manifest.test.ts']).toContain("expect(error.code).toBe('react-starter-manifest-missing')");
     expect(snapshot['src/app.test.ts']).toContain("expect(error.message).toContain('vite.client.config.ts')");
