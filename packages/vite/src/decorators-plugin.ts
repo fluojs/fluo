@@ -121,8 +121,84 @@ function shouldRequestBabelSourceMaps(config: Pick<ResolvedConfig, 'build' | 'co
   return config.command === 'serve' || Boolean(config.build.sourcemap);
 }
 
+const decoratorIdentifierStart = /^\p{ID_Start}$/u;
+
+function containsDecoratorSource(code: string): boolean {
+  let previousSourceToken = '';
+  let startsLine = true;
+
+  for (let index = 0; index < code.length; index += 1) {
+    const character = code[index] ?? '';
+    const nextCharacter = code[index + 1] ?? '';
+
+    if (character === '/' && nextCharacter === '/') {
+      const lineEnd = code.indexOf('\n', index + 2);
+
+      if (lineEnd === -1) {
+        return false;
+      }
+
+      index = lineEnd;
+      startsLine = true;
+      continue;
+    }
+
+    if (character === '/' && nextCharacter === '*') {
+      const commentEnd = code.indexOf('*/', index + 2);
+
+      if (commentEnd === -1) {
+        return false;
+      }
+
+      if (code.slice(index + 2, commentEnd).includes('\n')) {
+        startsLine = true;
+      }
+
+      index = commentEnd + 1;
+      continue;
+    }
+
+    if (character === '"' || character === "'" || character === '`') {
+      const delimiter = character;
+
+      for (index += 1; index < code.length; index += 1) {
+        const stringCharacter = code[index] ?? '';
+
+        if (stringCharacter === '\\') {
+          index += 1;
+          continue;
+        }
+
+        if (stringCharacter === delimiter) {
+          break;
+        }
+      }
+
+      previousSourceToken = delimiter;
+      startsLine = false;
+      continue;
+    }
+
+    if (character === '@' && decoratorIdentifierStart.test(nextCharacter) && (startsLine || previousSourceToken === '{' || previousSourceToken === ';')) {
+      return true;
+    }
+
+    if (character === '\n') {
+      startsLine = true;
+      continue;
+    }
+
+    if (!/\s/u.test(character)) {
+      previousSourceToken = character;
+      startsLine = false;
+    }
+  }
+
+  return false;
+}
+
 function withMetadataPreload(code: string): string {
-  return /(?:^|\n)\s*@\p{ID_Start}/u.test(code) || /[;{]\s*@\p{ID_Start}/u.test(code)
+  return containsDecoratorSource(code)
     ? `import '@fluojs/core/metadata-preload';\n${code}`
     : code;
 }

@@ -29,9 +29,10 @@ describe('fluoDecoratorsPlugin transform boundary', () => {
   it('transforms every application TypeScript extension while preserving test and declaration boundaries', async () => {
     // Given
     const plugin = fluoDecoratorsPlugin();
-    const code = 'export const value: number = 1;';
+    const code = '@decorated export class Value { @field value = 1; }';
 
     // When
+    const tsResult = runTransform(plugin, code, '/app/src/component.ts');
     const tsxResult = runTransform(plugin, code, '/app/src/component.tsx');
     const mtsResult = runTransform(plugin, code, '/app/src/module.mts');
     const ctsResult = runTransform(plugin, code, '/app/src/module.cts');
@@ -39,9 +40,18 @@ describe('fluoDecoratorsPlugin transform boundary', () => {
     const declarationResult = runTransform(plugin, code, '/app/src/types.d.mts');
 
     // Then
-    await expect(tsxResult).resolves.toEqual(expect.objectContaining({ code: expect.any(String) }));
-    await expect(mtsResult).resolves.toEqual(expect.objectContaining({ code: expect.any(String) }));
-    await expect(ctsResult).resolves.toEqual(expect.objectContaining({ code: expect.any(String) }));
+    await expect(tsResult).resolves.toEqual(expect.objectContaining({
+      code: expect.stringContaining("@fluojs/core/metadata-preload"),
+    }));
+    await expect(tsxResult).resolves.toEqual(expect.objectContaining({
+      code: expect.stringContaining("@fluojs/core/metadata-preload"),
+    }));
+    await expect(mtsResult).resolves.toEqual(expect.objectContaining({
+      code: expect.stringContaining("@fluojs/core/metadata-preload"),
+    }));
+    await expect(ctsResult).resolves.toEqual(expect.objectContaining({
+      code: expect.stringContaining("@fluojs/core/metadata-preload"),
+    }));
     await expect(specResult).resolves.toBeNull();
     await expect(declarationResult).resolves.toBeNull();
   });
@@ -63,7 +73,7 @@ describe('fluoDecoratorsPlugin transform boundary', () => {
     }));
   });
 
-  it('does not treat TSDoc tags as decorator syntax', async () => {
+  it('does not treat inline TSDoc tags as decorator syntax', async () => {
     // Given
     const plugin = fluoDecoratorsPlugin();
 
@@ -71,7 +81,7 @@ describe('fluoDecoratorsPlugin transform boundary', () => {
     const result = await runTransform(
       plugin,
       `/**
- * @returns the un-decorated value
+ * Resolves a metadata bag through {@link getStandardMetadataBag}.
  */
 export const value: number = 1;`,
       '/app/src/documented-value.ts',
