@@ -34,7 +34,7 @@ npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-deco
 
 ## 런타임 및 peer 계약
 
-`@fluojs/vite`는 `engines.node` 하한을 `>=24.0.0 <27`으로 두는 Node.js 패키지입니다. 생성된 non-Deno starter는 이제 Vite `^8.2.2`, Vitest와 `@vitest/coverage-v8` `^4.1.11`, 그리고 위에 나열한 Babel peer를 선언합니다. 배포된 Vite `>=6.2.0` peer 범위는 바뀌지 않습니다. 생성된 ESM config는 `build.rolldownOptions`를 사용하고, Babel이 Rolldown/Oxc보다 먼저 애플리케이션 데코레이터를 변환하며, `@fluojs/testing/vitest`가 별도 test transform boundary를 유지합니다. Direct Oxc/esbuild decorator processing은 지원하지 않습니다.
+`@fluojs/vite`는 `engines.node` 하한을 `>=24.0.0 <27`으로 두는 Node.js 패키지입니다. 생성된 non-Deno starter는 이제 Vite `^8.2.2`, Vitest와 `@vitest/coverage-v8` `^4.1.11`, 그리고 위에 나열한 Babel peer를 선언합니다. 배포된 Vite `>=6.2.0` peer 범위는 바뀌지 않습니다. 생성된 ESM config는 `build.rolldownOptions`를 사용하고, Babel은 명시적으로 구성한 application 또는 test boundary에서 `fluoDecoratorsPlugin()`을 통해 Rolldown/Oxc보다 먼저 데코레이터를 변환합니다. Direct Oxc/esbuild decorator processing은 지원하지 않습니다.
 
 패키지 root는 Babel이 설치되거나 해석되기 전에 import해도 안전합니다. `@fluojs/vite`를 import하거나 `fluoDecoratorsPlugin()`을 생성해도 `@babel/core`를 로드하지 않습니다. Babel은 eligible 애플리케이션 `.ts` 파일에 대한 Vite `transform` hook에서만 lazy load되며, 누락된 Babel peer도 plugin 생성 시점이 아니라 이 transform 경계에서 보고됩니다.
 
@@ -57,7 +57,7 @@ export default defineConfig({
 });
 ```
 
-이 플러그인은 `.ts`, `.tsx`, `.mts`, `.cts` 파일을 Babel로 변환하며 `2023-11` decorators proposal과 `@babel/preset-typescript`를 사용합니다. 파일 경계를 판단하기 전에 Vite query suffix를 제거하고 declaration 파일, `node_modules`, application mode의 `*.test.*`와 `*.spec.*` 파일을 건너뜁니다. `@fluojs/vite`를 import하거나 `fluoDecoratorsPlugin()`을 생성하는 시점에는 `@babel/core`를 로드하지 않으며, 누락된 Babel peer는 Vite가 변환 중인 소스 파일에 대한 transform-time 진단으로 표시됩니다. 변환된 모든 모듈은 decorated 선언이 평가되기 전에 `@fluojs/core/metadata-preload`를 preload합니다.
+이 플러그인은 `.ts`, `.tsx`, `.mts`, `.cts` 파일을 Babel로 변환하며 `2023-11` decorators proposal과 `@babel/preset-typescript`를 사용합니다. 파일 경계를 판단하기 전에 Vite query suffix를 제거하고 declaration 파일, `node_modules`, application mode의 `*.test.*`와 `*.spec.*` 파일을 건너뜁니다. `@fluojs/vite`를 import하거나 `fluoDecoratorsPlugin()`을 생성하는 시점에는 `@babel/core`를 로드하지 않으며, 누락된 Babel peer는 Vite가 변환 중인 소스 파일에 대한 transform-time 진단으로 표시됩니다. Decorator 구문을 포함한 변환 모듈은 decorated 선언이 평가되기 전에 `@fluojs/core/metadata-preload`를 preload합니다.
 
 ## 데코레이터 변환 경계
 

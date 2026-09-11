@@ -1,5 +1,5 @@
-import type { Plugin } from 'vite';
 import { fileURLToPath } from 'node:url';
+import type { Plugin } from 'vite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { fluoDecoratorsPlugin } from './index.js';
@@ -103,8 +103,12 @@ export { Example };
     expect(transformAsyncMock.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({
         filename: '/app/src/example.ts',
-        plugins: [['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
         presets: [['@babel/preset-typescript', { allowDeclareFields: true }]],
+      }),
+    );
+    expect(transformAsyncMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        plugins: expect.arrayContaining([['@babel/plugin-proposal-decorators', { version: '2023-11' }]]),
       }),
     );
   });

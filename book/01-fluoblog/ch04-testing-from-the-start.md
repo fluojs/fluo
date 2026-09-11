@@ -342,6 +342,6 @@ In the next chapter, the operator wants to save a post that is not finished yet.
 - [The official testing path and TDD layers](../../packages/testing/README.md), [Public exports](../../packages/testing/src/index.ts), [Testing requirements contract](../../docs/contracts/testing-guide.md)
 - [Virtual app implementation](../../packages/testing/src/app.ts), [Request builder and response types](../../packages/testing/src/http.ts), [Public app and module types](../../packages/testing/src/types.ts)
 - [Module builder implementation](../../packages/testing/src/module.ts), [Compilation failure and disposal regression tests](../../packages/testing/src/module.compile-failure.test.ts)
-- [Vitest decorator entry point](../../packages/testing/src/vitest.ts), [Babel transformation plugin](../../packages/testing/src/babel-decorators-plugin.ts)
+- [Vite decorator transform boundary](../../packages/vite/README.md#decorator-transform-boundary), [Decorator transform implementation](../../packages/vite/src/decorators-plugin.ts)
 
 [Previous: Moving Logic Out of the Controller](./ch03-modules-and-di.md) | [Volume 1 contents](./toc.md) | [Next: What Makes a Draft Different from a Published Post?](./ch05-post-domain.md)

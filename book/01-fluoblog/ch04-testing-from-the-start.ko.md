@@ -342,6 +342,6 @@ pnpm exec vitest run \
 - [공식 testing 경로와 TDD 계층](../../packages/testing/README.ko.md), [공개 export](../../packages/testing/src/index.ts), [테스트 요구사항 계약](../../docs/contracts/testing-guide.ko.md)
 - [가상 앱 구현](../../packages/testing/src/app.ts), [요청 builder와 응답 타입](../../packages/testing/src/http.ts), [공개 앱·모듈 타입](../../packages/testing/src/types.ts)
 - [모듈 builder 구현](../../packages/testing/src/module.ts), [컴파일 실패와 정리 회귀 테스트](../../packages/testing/src/module.compile-failure.test.ts)
-- [Vitest 데코레이터 진입점](../../packages/testing/src/vitest.ts), [Babel 변환 플러그인](../../packages/testing/src/babel-decorators-plugin.ts)
+- [Vite 데코레이터 변환 경계](../../packages/vite/README.ko.md#데코레이터-변환-경계), [데코레이터 변환 구현](../../packages/vite/src/decorators-plugin.ts)
 
 [이전: 컨트롤러에서 로직 꺼내기](./ch03-modules-and-di.ko.md) · [1권 목차](./toc.ko.md) · [다음: 초안과 발행된 글은 무엇이 다른가](./ch05-post-domain.ko.md)

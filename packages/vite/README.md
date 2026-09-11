@@ -34,7 +34,7 @@ npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-deco
 
 ## Runtime and Peer Contract
 
-`@fluojs/vite` is a Node.js package with an `engines.node` floor of `>=24.0.0 <27`. Generated non-Deno starters now declare Vite `^8.2.2`, Vitest and `@vitest/coverage-v8` `^4.1.11`, and the Babel peers listed above. The published Vite `>=6.2.0` peer range is unchanged. Generated ESM configs use `build.rolldownOptions`, with Babel transforming application decorators before Rolldown/Oxc and `@fluojs/testing/vitest` retaining the separate test transform boundary; direct Oxc/esbuild decorator processing is unsupported.
+`@fluojs/vite` is a Node.js package with an `engines.node` floor of `>=24.0.0 <27`. Generated non-Deno starters now declare Vite `^8.2.2`, Vitest and `@vitest/coverage-v8` `^4.1.11`, and the Babel peers listed above. The published Vite `>=6.2.0` peer range is unchanged. Generated ESM configs use `build.rolldownOptions`, with Babel transforming decorators before Rolldown/Oxc through `fluoDecoratorsPlugin()` in the explicitly configured application or test boundary; direct Oxc/esbuild decorator processing is unsupported.
 
 The package root is safe to import before Babel is installed or resolved: importing `@fluojs/vite` and creating `fluoDecoratorsPlugin()` do not load `@babel/core`. Babel is loaded lazily only from Vite's `transform` hook for eligible application `.ts` files, and missing Babel peers are reported from that transform boundary instead of plugin creation.
 
@@ -57,7 +57,7 @@ export default defineConfig({
 });
 ```
 
-The plugin transforms `.ts`, `.tsx`, `.mts`, and `.cts` files with Babel using the `2023-11` decorators proposal and `@babel/preset-typescript`. It strips Vite query suffixes before deciding the file boundary, skips declarations, `node_modules`, and (in application mode) `*.test.*` and `*.spec.*`. Importing `@fluojs/vite` or creating `fluoDecoratorsPlugin()` does not load `@babel/core`; missing Babel peers are surfaced as transform-time diagnostics for the source file Vite is transforming. Every transformed module preloads `@fluojs/core/metadata-preload` before its decorated declarations evaluate.
+The plugin transforms `.ts`, `.tsx`, `.mts`, and `.cts` files with Babel using the `2023-11` decorators proposal and `@babel/preset-typescript`. It strips Vite query suffixes before deciding the file boundary, skips declarations, `node_modules`, and (in application mode) `*.test.*` and `*.spec.*`. Importing `@fluojs/vite` or creating `fluoDecoratorsPlugin()` does not load `@babel/core`; missing Babel peers are surfaced as transform-time diagnostics for the source file Vite is transforming. Every transformed module that contains decorator syntax preloads `@fluojs/core/metadata-preload` before its decorated declarations evaluate.
 
 ## Decorator Transform Boundary
 

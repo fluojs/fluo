@@ -73,6 +73,47 @@ describe('fluoDecoratorsPlugin transform boundary', () => {
     }));
   });
 
+  it.each([
+    ['an exported decorated class', 'export @decorated class ExportedValue {}'],
+    ['a default-exported decorated class', 'export default @decorated class DefaultExportedValue {}'],
+    ['a decorated class expression after an assignment', 'const AssignedValue = @decorated class {};'],
+    ['a same-line member decorator after a method body', 'class MemberValue { method() {} @decorated value = 1; }'],
+    ['a decorated class expression in a template substitution', 'const template = `$' + '{@decorated class {}}`;'],
+  ] as const)('preloads metadata exactly once for %s', async (_description, code) => {
+    // Given
+    const plugin = fluoDecoratorsPlugin();
+
+    // When
+    const result = await runTransform(plugin, code, '/app/src/decorated-value.ts');
+
+    // Then
+    const transformedCode = result && typeof result === 'object' && 'code' in result && typeof result.code === 'string'
+      ? result.code
+      : '';
+    expect(transformedCode).toEqual(expect.any(String));
+    expect(transformedCode.match(/@fluojs\/core\/metadata-preload/gu)).toHaveLength(1);
+  });
+
+  it.each([
+    ['a line comment', '// @decorated\nexport const value = 1;'],
+    ['a block comment', '/* @decorated */\nexport const value = 1;'],
+    ['a string literal', "export const value = '@decorated';"],
+    ['raw template text', 'export const value = `@decorated`;'],
+  ] as const)('does not preload metadata for %s', async (_description, code) => {
+    // Given
+    const plugin = fluoDecoratorsPlugin();
+
+    // When
+    const result = await runTransform(plugin, code, '/app/src/undecorated-value.ts');
+
+    // Then
+    const transformedCode = result && typeof result === 'object' && 'code' in result && typeof result.code === 'string'
+      ? result.code
+      : '';
+    expect(transformedCode).toEqual(expect.any(String));
+    expect(transformedCode).not.toContain('@fluojs/core/metadata-preload');
+  });
+
   it('does not treat inline TSDoc tags as decorator syntax', async () => {
     // Given
     const plugin = fluoDecoratorsPlugin();

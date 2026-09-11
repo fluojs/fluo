@@ -1,3 +1,4 @@
+import type { PluginObj } from '@babel/core';
 import type { Plugin, ResolvedConfig } from 'vite';
 
 type BabelCoreModule = Pick<typeof import('@babel/core'), 'transformAsync'>;
@@ -33,6 +34,7 @@ const BABEL_PEER_DEPENDENCIES = [
   '@babel/plugin-proposal-decorators',
   '@babel/preset-typescript',
 ] as const;
+const METADATA_PRELOAD_SOURCE = '@fluojs/core/metadata-preload';
 
 function readErrorCode(value: unknown): string | undefined {
   if (!value || typeof value !== 'object' || !('code' in value)) {
@@ -121,86 +123,36 @@ function shouldRequestBabelSourceMaps(config: Pick<ResolvedConfig, 'build' | 'co
   return config.command === 'serve' || Boolean(config.build.sourcemap);
 }
 
-const decoratorIdentifierStart = /^\p{ID_Start}$/u;
+function createMetadataPreloadPlugin(): PluginObj {
+  return {
+    name: 'fluo-metadata-preload',
+    visitor: {
+      Program(path) {
+        let hasDecorator = false;
 
-function containsDecoratorSource(code: string): boolean {
-  let previousSourceToken = '';
-  let startsLine = true;
+        path.traverse({
+          Decorator() {
+            hasDecorator = true;
+          },
+        });
 
-  for (let index = 0; index < code.length; index += 1) {
-    const character = code[index] ?? '';
-    const nextCharacter = code[index + 1] ?? '';
+        const hasPreloadImport = path.node.body.some(
+          (statement) =>
+            statement.type === 'ImportDeclaration' && statement.source.value === METADATA_PRELOAD_SOURCE,
+        );
 
-    if (character === '/' && nextCharacter === '/') {
-      const lineEnd = code.indexOf('\n', index + 2);
-
-      if (lineEnd === -1) {
-        return false;
-      }
-
-      index = lineEnd;
-      startsLine = true;
-      continue;
-    }
-
-    if (character === '/' && nextCharacter === '*') {
-      const commentEnd = code.indexOf('*/', index + 2);
-
-      if (commentEnd === -1) {
-        return false;
-      }
-
-      if (code.slice(index + 2, commentEnd).includes('\n')) {
-        startsLine = true;
-      }
-
-      index = commentEnd + 1;
-      continue;
-    }
-
-    if (character === '"' || character === "'" || character === '`') {
-      const delimiter = character;
-
-      for (index += 1; index < code.length; index += 1) {
-        const stringCharacter = code[index] ?? '';
-
-        if (stringCharacter === '\\') {
-          index += 1;
-          continue;
+        if (!hasDecorator || hasPreloadImport) {
+          return;
         }
 
-        if (stringCharacter === delimiter) {
-          break;
-        }
-      }
-
-      previousSourceToken = delimiter;
-      startsLine = false;
-      continue;
-    }
-
-    if (character === '@' && decoratorIdentifierStart.test(nextCharacter) && (startsLine || previousSourceToken === '{' || previousSourceToken === ';')) {
-      return true;
-    }
-
-    if (character === '\n') {
-      startsLine = true;
-      continue;
-    }
-
-    if (!/\s/u.test(character)) {
-      previousSourceToken = character;
-      startsLine = false;
-    }
-  }
-
-  return false;
-}
-
-function withMetadataPreload(code: string): string {
-  return containsDecoratorSource(code)
-    ? `import '@fluojs/core/metadata-preload';\n${code}`
-    : code;
+        path.unshiftContainer('body', {
+          type: 'ImportDeclaration',
+          specifiers: [],
+          source: { type: 'StringLiteral', value: METADATA_PRELOAD_SOURCE },
+        });
+      },
+    },
+  };
 }
 
 /**
@@ -250,11 +202,11 @@ function createFluoDecoratorsPlugin(
       babelCore = loadedBabelCore;
 
       const result = await loadedBabelCore
-        .transformAsync(withMetadataPreload(code), {
+        .transformAsync(code, {
           babelrc: false,
           configFile: resolveBabelConfigFile(options.babelConfigFile, filePath),
           filename: filePath,
-          plugins: [['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
+          plugins: [createMetadataPreloadPlugin(), ['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
           presets: [['@babel/preset-typescript', { allowDeclareFields: true }]],
           sourceMaps: options.sourceMaps ?? shouldGenerateSourceMaps,
         })
