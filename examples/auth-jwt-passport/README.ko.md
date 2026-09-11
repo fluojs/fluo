@@ -7,7 +7,9 @@
 ## 이 예제가 보여주는 것
 
 - 주입된 `JwtService`를 통한 access token 발급
+- JWT가 소유하는 `RefreshTokenService`를 통한 refresh token 발급과 rotation
 - `@UseAuth('jwt')`, `@RequireScopes(...)`를 사용한 보호 라우트
+- `@UseAuth('refresh-token')`로 body-presented refresh token 교환
 - `@fluojs/passport`의 내장 `BearerJwtStrategy` preset을 통한 bearer token 검증
 - reflection 기반 주입 대신 명시적 DI token metadata
 - auth 라우트와 함께 동작하는 runtime-owned `/health`, `/ready`
@@ -21,6 +23,7 @@
 ## 라우트
 
 - `POST /auth/token` — username 기준 demo access token 발급
+- `POST /auth/refresh` — 공유 JWT store로 body-presented refresh token rotation
 - `GET /profile/` — bearer auth와 `profile:read`가 필요한 보호 라우트
 - `GET /health`
 - `GET /ready`
@@ -57,7 +60,7 @@ examples/auth-jwt-passport/
 2. `src/auth/auth.service.ts` — JWT 발급
 3. `src/auth/bearer.strategy.ts` — 내장 `BearerJwtStrategy` preset의 re-export
 4. `src/auth/auth.controller.ts` — 토큰 발급 라우트 + 보호된 profile 라우트
-5. `src/auth/auth.module.ts` — `JwtModule.forRoot(...)` + `PassportModule.forRoot(...)`와 안정적인 `createBearerJwtStrategyRegistration()` helper 기반 module-first 등록
+5. `src/auth/auth.module.ts` — `JwtModule.forRoot({ global: true, refreshToken })`, `RefreshTokenModule.forRoot()`, Passport strategy registration 순서의 canonical module-first refresh 등록
 6. `src/app.test.ts` — service/strategy coverage와 `createTestApp(...).request(...).send()` 기반 e2e 스타일 HTTP 점검
 
 ## 관련 문서

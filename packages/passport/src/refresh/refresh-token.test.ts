@@ -5,9 +5,15 @@ import type { DefaultJwtVerifier } from '@fluojs/jwt';
 import { JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from '../errors.js';
-import { REFRESH_TOKEN_SERVICE, RefreshTokenModule, type RefreshTokenPrincipal, type RefreshTokenService, RefreshTokenStrategy } from './refresh-token.js';
+import {
+  REFRESH_TOKEN_SERVICE,
+  RefreshTokenModule,
+  type RefreshTokenPrincipal,
+  type RefreshTokenServicePort,
+  RefreshTokenStrategy,
+} from './refresh-token.js';
 
-function createMockRefreshTokenService(overrides: Partial<RefreshTokenService> = {}): RefreshTokenService {
+function createMockRefreshTokenService(overrides: Partial<RefreshTokenServicePort> = {}): RefreshTokenServicePort {
   return {
     issueRefreshToken: vi.fn().mockResolvedValue('mock-refresh-token'),
     rotateRefreshToken: vi.fn().mockResolvedValue({
@@ -286,7 +292,7 @@ describe('RefreshTokenStrategy', () => {
 
 describe('RefreshTokenService contract', () => {
   it('exposes the shared refresh-token service alias through RefreshTokenModule.forRoot(...)', async () => {
-    class RefreshTokenServiceImpl implements RefreshTokenService {
+    class RefreshTokenServiceImpl implements RefreshTokenServicePort {
       async issueRefreshToken(): Promise<string> {
         return 'refresh-token';
       }
@@ -317,7 +323,7 @@ describe('RefreshTokenService contract', () => {
 
 describe('RefreshTokenModule', () => {
   it('creates a module-first runtime definition for refresh-token strategy support', () => {
-    class RefreshTokenServiceImpl implements RefreshTokenService {
+    class RefreshTokenServiceImpl implements RefreshTokenServicePort {
       async issueRefreshToken(): Promise<string> {
         return 'refresh-token';
       }

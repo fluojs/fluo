@@ -18,6 +18,8 @@ JWT does not encrypt the payload. Anyone holding a token can read its payload. T
 
 Access tokens remain valid for 900 seconds. This is a product setting that balances the inconvenience of logging in again against the time a leaked token can be used. A longer lifetime shows the login screen less often but makes revocation policy more important. With a fully stateless approach that checks only the token, existing tokens remain valid until expiration even after a password change or account suspension. FluoBlog needs to suspend writing accounts promptly, so we choose to check the current account state on every request.
 
+If FluoBlog later adds session renewal, it follows one path: configure the refresh secret, lifetime, rotation, and atomic store in `JwtModule.forRoot({ global: true, refreshToken: ... })`; register `RefreshTokenModule.forRoot()`; and expose the exchange through `@UseAuth('refresh-token')`. Passport does not create another refresh service or store. That endpoint reads `body.refreshToken` before a bearer header, rejects a malformed body value rather than falling back, and maps missing, invalid/reused, and expired credentials to its documented authentication errors. This chapter intentionally keeps the shorter access-token-only product flow above.
+
 The following is the **complete file `src/auth/jwt-options.ts`**. Reading environment values belongs at the application configuration boundary. If you managed values through a configuration object in Chapter 9, move the same validation to that boundary; do not make JWT providers or request handlers read environment variables every time. Inject the key through external configuration so restarting the development server uses the same key.
 
 ```ts

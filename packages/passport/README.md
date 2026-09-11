@@ -252,9 +252,15 @@ export class AuthController {
     JwtModule.forRoot({
       algorithms: ['HS256'],
       global: true,
+      refreshToken: {
+        expiresInSeconds: 604800,
+        rotation: true,
+        secret: 'your-refresh-token-secret',
+        store: 'memory', // Use an application-owned atomic durable store in production.
+      },
       secret: 'your-access-token-secret',
     }),
-    RefreshTokenModule.forRoot(MyRefreshTokenService),
+    RefreshTokenModule.forRoot(),
     PassportModule.forRoot(
       { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
       [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
@@ -264,7 +270,9 @@ export class AuthController {
 export class AuthModule {}
 ```
 
-Import `JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot(...)`, and `PassportModule.forRoot(...)` together. `RefreshTokenStrategy` belongs to `RefreshTokenModule`, which is a sibling of `JwtModule` in this graph, so this example sets the documented `global: true` option to make `DefaultJwtVerifier` visible when the refresh module resolves the strategy. `RefreshTokenModule.forRoot(MyRefreshTokenService)` registers the service class inside the refresh module and exports it through the shared `REFRESH_TOKEN_SERVICE` alias. When that class has constructor dependencies, place those dependencies in an application-owned module that exports them, then pass that module through `imports`. String and symbol service tokens must be visible to `RefreshTokenModule`: export them through an imported module, a global module, or bootstrap runtime providers. Do not also list `MyRefreshTokenService` in the application module's `providers`; that duplicates a provider registration, which bootstrap warns about by default and can reject under `duplicateProviderPolicy: 'throw'`. Inject the exported `REFRESH_TOKEN_SERVICE` alias where application code needs the service, and register `AuthController` in the application module so the refresh route exists. `PassportModule` registers the named strategy resolved by `@UseAuth('refresh-token')`.
+Import `JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot()`, and `PassportModule.forRoot(...)` together. `JwtModule` is the sole owner of refresh-token crypto, expiry, rotation, and store configuration. The `global: true` option makes its exported `RefreshTokenService` visible to the sibling `RefreshTokenModule`, whose default registration aliases that service rather than constructing another service or store. The explicit `'memory'` store is development-only opt-in; production must provide one application-owned atomic `RefreshTokenStore`. `RefreshTokenStrategy` is the default endpoint recipe and `PassportModule` registers its `@UseAuth('refresh-token')` name.
+
+`RefreshTokenStrategy` extracts `body.refreshToken` before `Authorization: Bearer <token>`; a present malformed body value fails rather than falling back to the header. Missing credentials become `AuthenticationRequiredError`, malformed credentials and JWT reuse/invalidity become `AuthenticationFailedError`, and expired JWT refresh tokens become `AuthenticationExpiredError`.
 
 A successful exchange resolves `ctx.principal` to the `RefreshTokenPrincipal` shape: the rotated pair is nested under `claims.accessToken` and `claims.refreshToken`, with the verified `subject` at the top level. The separate exported `RefreshTokenAuthResult` type describes the application-facing exchange payload a refresh endpoint returns to clients.
 
@@ -312,10 +320,12 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 ### Refresh Token Preset
 - `RefreshTokenModule`: Module entry point for the built-in refresh-token preset.
 - `RefreshTokenStrategy`, `REFRESH_TOKEN_STRATEGY_NAME`, `REFRESH_TOKEN_SERVICE`: Refresh-token strategy and service alias wiring.
-- `RefreshTokenService`, `RefreshTokenInput`, `RefreshTokenAuthResult`, `RefreshTokenPrincipal`: Application service contract, exchange payload shapes, and the principal shape resolved onto `ctx.principal` after a successful exchange.
-- `JwtRefreshTokenAdapter`: Bridges `@fluojs/jwt` refresh logic to the passport interface.
-- `REFRESH_TOKEN_MODULE_OPTIONS`, `RefreshTokenModuleOptions`: JWT-backed refresh-token adapter configuration token and options, including the required `secret` and `store` contract.
+- `RefreshTokenServicePort`, `RefreshTokenInput`, `RefreshTokenAuthResult`, `RefreshTokenPrincipal`: Custom non-JWT service port, exchange payload shapes, and the principal shape resolved onto `ctx.principal` after a successful exchange. The JWT-owned concrete `RefreshTokenService` is imported from `@fluojs/jwt`.
 - Refresh helpers: `createRefreshTokenStrategyRegistration`.
+
+### Refresh ownership migration
+
+Move every refresh `secret`, `expiresInSeconds`, `rotation`, and `store` value into `JwtModule.forRoot({ global: true, refreshToken: ... })`, then replace `RefreshTokenModule.forRoot(JwtRefreshTokenAdapter)` with `RefreshTokenModule.forRoot()`. Remove imports of `JwtRefreshTokenAdapter`, `REFRESH_TOKEN_MODULE_OPTIONS`, and `RefreshTokenModuleOptions`. Consumers that used Passport's former structural `RefreshTokenService` type should use `RefreshTokenService` from `@fluojs/jwt` for the canonical path, or `RefreshTokenServicePort` only for a non-JWT integration.
 
 ### Passport.js Bridge
 - `createPassportJsStrategyBridge(...)`: Compatibility helper that adapts Passport.js strategies to fluo `AuthStrategy` and returns providers plus the matching strategy registration for `PassportModule.forRoot(...)`.

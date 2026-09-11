@@ -62,7 +62,68 @@ export interface RefreshTokenOptions {
   readonly expiresInSeconds: number;
   readonly verifyMaxAgeSeconds?: number;
   readonly rotation: boolean;
+  /** Application-owned durable store, or the explicit development-only in-memory store. */
+  readonly store: RefreshTokenStore | 'memory';
+}
+
+type NormalizedRefreshTokenOptions = Omit<RefreshTokenOptions, 'store'> & {
   readonly store: RefreshTokenStore;
+};
+
+class MemoryRefreshTokenStore implements RefreshTokenStore {
+  private readonly records = new Map<string, RefreshTokenRecord>();
+
+  async save(token: RefreshTokenRecord): Promise<void> {
+    this.records.set(token.id, token);
+  }
+
+  async find(tokenId: string): Promise<RefreshTokenRecord | undefined> {
+    return this.records.get(tokenId);
+  }
+
+  async revoke(tokenId: string): Promise<void> {
+    this.records.delete(tokenId);
+  }
+
+  async revokeBySubject(subject: string): Promise<void> {
+    for (const [id, record] of this.records.entries()) {
+      if (record.subject === subject) {
+        this.records.delete(id);
+      }
+    }
+  }
+
+  async revokeByFamily(family: string): Promise<void> {
+    for (const [id, record] of this.records.entries()) {
+      if (record.family === family) {
+        this.records.delete(id);
+      }
+    }
+  }
+
+  async rotate(input: RefreshTokenRotateInput): Promise<RefreshTokenConsumeResult> {
+    const current = this.records.get(input.tokenId);
+
+    if (!current) {
+      return 'not_found';
+    }
+
+    if (current.subject !== input.subject || current.family !== input.family) {
+      return 'mismatch';
+    }
+
+    if (current.expiresAt.getTime() <= input.now.getTime()) {
+      return 'expired';
+    }
+
+    if (current.used) {
+      return 'already_used';
+    }
+
+    this.records.set(current.id, { ...current, used: true });
+    this.records.set(input.replacement.id, input.replacement);
+    return 'consumed';
+  }
 }
 
 /**
@@ -71,7 +132,9 @@ export interface RefreshTokenOptions {
  * @param options The options.
  * @returns The normalize refresh token options result.
  */
-export function normalizeRefreshTokenOptions(options: RefreshTokenOptions | undefined): RefreshTokenOptions {
+export function normalizeRefreshTokenOptions(
+  options: RefreshTokenOptions | undefined,
+): NormalizedRefreshTokenOptions {
   if (!options) {
     throw new JwtConfigurationError('JWT refresh token options are not configured.');
   }
@@ -105,7 +168,9 @@ export function normalizeRefreshTokenOptions(options: RefreshTokenOptions | unde
     throw new JwtConfigurationError('JWT refresh token verifyMaxAgeSeconds must be a non-negative finite number.');
   }
 
-  if (options.rotation && typeof options.store.rotate !== 'function' && typeof options.store.consume !== 'function') {
+  const store: RefreshTokenStore = options.store === 'memory' ? new MemoryRefreshTokenStore() : options.store;
+
+  if (options.rotation && typeof store.rotate !== 'function' && typeof store.consume !== 'function') {
     throw new JwtConfigurationError(
       'Refresh token rotation requires an atomic store.rotate() or store.consume() implementation.',
     );
@@ -113,6 +178,7 @@ export function normalizeRefreshTokenOptions(options: RefreshTokenOptions | unde
 
   return {
     ...options,
+    store,
   };
 }
 
@@ -120,7 +186,7 @@ export function normalizeRefreshTokenOptions(options: RefreshTokenOptions | unde
  * Represents the refresh token service.
  */
 export class RefreshTokenService {
-  private readonly options: RefreshTokenOptions;
+  private readonly options: NormalizedRefreshTokenOptions;
 
   constructor(
     options: RefreshTokenOptions,

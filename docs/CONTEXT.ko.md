@@ -612,3 +612,7 @@ HTTP 생성은 `FluoFactory.create(AppModule, { adapter })` → `app.listen()` �
 ## Node Adapter Creation
 
 Raw Node adapter 생성은 [package README](../packages/platform-nodejs/README.ko.md)의 `NodeHttpApplicationAdapter.create(options)`를 따릅니다. Compression·multipart를 포함하는 단일 options 경로와 삭제된 factory/type alias는 [마이그레이션](./getting-started/migrate-node-adapter-create.ko.md)에 있습니다. `packages/platform-nodejs/src/adapter-create.test.ts`, `src/published-declaration-surface.test.ts`, `packages/cli/src/new/scaffold.test.ts`가 listener·DI identity·배포 import·생성 코드를 검증하고 `tooling/governance/node-adapter-creation.test.ts`가 discoverability/enforcement/regression companion 요구를 검증합니다.
+
+## JWT Refresh Ownership
+
+[Auth & JWT 계약](./architecture/auth-and-jwt.ko.md)은 refresh crypto, configuration, store, rotation state를 `JwtModule`에 할당합니다. [JWT README](../packages/jwt/README.ko.md)와 [Passport README](../packages/passport/README.ko.md)는 하나의 HTTP 경로를 정의합니다. `JwtModule.forRoot({ global: true, refreshToken: ... })`, `RefreshTokenModule.forRoot()`, 그리고 `@UseAuth('refresh-token')` 순서입니다. `tooling/governance/jwt-passport-refresh-ownership.test.ts`는 실제 DI identity, refresh exchange 동작, JWT refresh 설정이 누락된 mutation을 검증합니다.

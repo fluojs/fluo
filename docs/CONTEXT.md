@@ -615,3 +615,7 @@ HTTP creation uses `FluoFactory.create(AppModule, { adapter })` → `app.listen(
 ## Node Adapter Creation
 
 Raw Node adapter creation follows `NodeHttpApplicationAdapter.create(options)` in the [package README](../packages/platform-nodejs/README.md). The [migration guide](./getting-started/migrate-node-adapter-create.md) covers the single options path including compression/multipart and removed factory/type aliases. `packages/platform-nodejs/src/adapter-create.test.ts`, `src/published-declaration-surface.test.ts`, and `packages/cli/src/new/scaffold.test.ts` verify listener behavior, DI identity, published imports, and generated code; `tooling/governance/node-adapter-creation.test.ts` checks discoverability/enforcement/regression companion requirements.
+
+## JWT Refresh Ownership
+
+The [Auth & JWT contract](./architecture/auth-and-jwt.md) assigns refresh crypto, configuration, store, and rotation state to `JwtModule`. The [JWT README](../packages/jwt/README.md) and [Passport README](../packages/passport/README.md) define the one HTTP path: `JwtModule.forRoot({ global: true, refreshToken: ... })`, `RefreshTokenModule.forRoot()`, then `@UseAuth('refresh-token')`. `tooling/governance/jwt-passport-refresh-ownership.test.ts` verifies real DI identity, refresh exchange behavior, and the missing-JWT-refresh configuration mutation.

@@ -103,6 +103,8 @@ export class JwtModule {
     const providers: Provider[] = [optionsProvider, DefaultJwtVerifier, DefaultJwtSigner, JwtService];
 
     if (includeRefreshTokenService) {
+      let refreshTokenService: RefreshTokenService | undefined;
+
       providers.push({
         inject: [JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier],
         provide: RefreshTokenService,
@@ -111,11 +113,13 @@ export class JwtModule {
           const [options, signer, verifier] = deps;
           const refreshTokenOptions = resolveRefreshTokenOptions(options);
 
-          return new RefreshTokenService(
+          refreshTokenService ??= new RefreshTokenService(
             refreshTokenOptions,
             signer as DefaultJwtSigner,
             verifier as DefaultJwtVerifier,
           );
+
+          return refreshTokenService;
         },
       });
 

@@ -1,5 +1,12 @@
 import { Inject, Module } from '@fluojs/core';
-import { JwtModule } from '@fluojs/jwt';
+import {
+  JwtInvalidTokenError,
+  JwtModule,
+  type RefreshTokenRecord,
+  RefreshTokenService as JwtRefreshTokenService,
+  type RefreshTokenRotateInput,
+  type RefreshTokenStore as JwtRefreshTokenStore,
+} from '@fluojs/jwt';
 import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
@@ -8,11 +15,72 @@ import {
   REFRESH_TOKEN_SERVICE,
   REFRESH_TOKEN_STRATEGY_NAME,
   RefreshTokenModule,
-  type RefreshTokenService,
+  type RefreshTokenServicePort,
   RefreshTokenStrategy,
 } from './refresh-token.js';
 
-class ApplicationRefreshTokenService implements RefreshTokenService {
+class RotatingRefreshTokenStore implements JwtRefreshTokenStore {
+  private readonly records = new Map<string, RefreshTokenRecord>();
+  revokeByFamilyCalls = 0;
+  rotateCalls = 0;
+
+  async save(token: RefreshTokenRecord): Promise<void> {
+    this.records.set(token.id, token);
+  }
+
+  async find(tokenId: string): Promise<RefreshTokenRecord | undefined> {
+    return this.records.get(tokenId);
+  }
+
+  async revoke(tokenId: string): Promise<void> {
+    this.records.delete(tokenId);
+  }
+
+  async revokeBySubject(subject: string): Promise<void> {
+    for (const [id, record] of this.records.entries()) {
+      if (record.subject === subject) {
+        this.records.delete(id);
+      }
+    }
+  }
+
+  async revokeByFamily(family: string): Promise<void> {
+    this.revokeByFamilyCalls += 1;
+
+    for (const [id, record] of this.records.entries()) {
+      if (record.family === family) {
+        this.records.delete(id);
+      }
+    }
+  }
+
+  async rotate(input: RefreshTokenRotateInput): Promise<'consumed' | 'already_used' | 'expired' | 'not_found' | 'mismatch' | 'invalid'> {
+    this.rotateCalls += 1;
+    const current = this.records.get(input.tokenId);
+
+    if (!current) {
+      return 'not_found';
+    }
+
+    if (current.subject !== input.subject || current.family !== input.family) {
+      return 'mismatch';
+    }
+
+    if (current.expiresAt.getTime() <= input.now.getTime()) {
+      return 'expired';
+    }
+
+    if (current.used) {
+      return 'already_used';
+    }
+
+    this.records.set(current.id, { ...current, used: true });
+    this.records.set(input.replacement.id, input.replacement);
+    return 'consumed';
+  }
+}
+
+class ApplicationRefreshTokenService implements RefreshTokenServicePort {
   async issueRefreshToken(subject: string): Promise<string> {
     return `refresh:${subject}`;
   }
@@ -34,7 +102,7 @@ class RefreshTokenStore {
 }
 
 @Inject(RefreshTokenStore)
-class DependencyfulRefreshTokenService implements RefreshTokenService {
+class DependencyfulRefreshTokenService implements RefreshTokenServicePort {
   constructor(private readonly store: RefreshTokenStore) {}
 
   async issueRefreshToken(subject: string): Promise<string> {
@@ -54,6 +122,71 @@ class DependencyfulRefreshTokenService implements RefreshTokenService {
 }
 
 describe('RefreshTokenModule application wiring', () => {
+  it('shares JwtModule refresh state with Passport strategy exchanges', async () => {
+    // Given — JwtModule owns the refresh configuration and durable rotation store.
+    const store = new RotatingRefreshTokenStore();
+
+    @Module({
+      imports: [
+        JwtModule.forRoot({
+          algorithms: ['HS256'],
+          global: true,
+          refreshToken: {
+            expiresInSeconds: 60,
+            rotation: true,
+            secret: 'refresh-integration-secret',
+            store,
+          },
+          secret: 'access-integration-secret',
+        }),
+        RefreshTokenModule.forRoot(),
+        PassportModule.forRoot(
+          { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
+          [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
+        ),
+      ],
+    })
+    class AuthModule {}
+
+    const app = await FluoFactory.createApplicationContext(AuthModule);
+
+    try {
+      const refreshTokens = await app.container.resolve(JwtRefreshTokenService);
+      const strategy = await app.container.resolve(RefreshTokenStrategy);
+      const presentedToken = await refreshTokens.issueRefreshToken('user-1');
+      const independentToken = await refreshTokens.issueRefreshToken('user-1');
+
+      // When — Passport rotates a token the JWT service issued.
+      const principal = await strategy.authenticate({
+        handler: {} as never,
+        requestContext: {
+          request: {
+            body: { refreshToken: presentedToken },
+            headers: {},
+          },
+        } as never,
+      });
+
+      // Then — both paths observe one store, one rotation state, and family-only replay revocation.
+      expect(principal).toMatchObject({
+        claims: {
+          accessToken: expect.any(String),
+          refreshToken: expect.any(String),
+        },
+        subject: 'user-1',
+      });
+      expect(store.rotateCalls).toBe(1);
+      await expect(refreshTokens.rotateRefreshToken(presentedToken)).rejects.toBeInstanceOf(JwtInvalidTokenError);
+      expect(store.revokeByFamilyCalls).toBe(1);
+      await expect(refreshTokens.rotateRefreshToken(independentToken)).resolves.toMatchObject({
+        accessToken: expect.any(String),
+        refreshToken: expect.any(String),
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
   it('compiles the documented application graph with module-owned service provider ownership', async () => {
     // Given — the documented topology passes the service class to RefreshTokenModule without
     // re-registering it in the importing application module.
@@ -78,7 +211,7 @@ describe('RefreshTokenModule application wiring', () => {
 
     try {
       const strategy = await app.container.resolve(RefreshTokenStrategy);
-      const service = await app.container.resolve<RefreshTokenService>(REFRESH_TOKEN_SERVICE);
+      const service = await app.container.resolve<RefreshTokenServicePort>(REFRESH_TOKEN_SERVICE);
 
       // Then
       expect(strategy).toBeInstanceOf(RefreshTokenStrategy);
@@ -121,7 +254,7 @@ describe('RefreshTokenModule application wiring', () => {
 
     try {
       const strategy = await app.container.resolve(RefreshTokenStrategy);
-      const service = await app.container.resolve<RefreshTokenService>(REFRESH_TOKEN_SERVICE);
+      const service = await app.container.resolve<RefreshTokenServicePort>(REFRESH_TOKEN_SERVICE);
 
       // Then
       expect(strategy).toBeInstanceOf(RefreshTokenStrategy);

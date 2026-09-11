@@ -1,7 +1,12 @@
 import { Inject, InvariantError, type Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 import type { GuardContext, RequestContext } from '@fluojs/http';
-import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
+import {
+  DefaultJwtVerifier,
+  JwtExpiredTokenError,
+  JwtInvalidTokenError,
+  RefreshTokenService as JwtRefreshTokenService,
+} from '@fluojs/jwt';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import {
@@ -14,7 +19,7 @@ import type { AuthStrategy, AuthStrategyRegistration } from '../types.js';
 /**
  * Defines the operations required to issue, rotate, and revoke refresh tokens.
  */
-export interface RefreshTokenService {
+export interface RefreshTokenServicePort {
   issueRefreshToken(subject: string): Promise<string>;
   rotateRefreshToken(currentToken: string): Promise<{ accessToken: string; refreshToken: string }>;
   revokeRefreshToken(tokenId: string): Promise<void>;
@@ -92,7 +97,7 @@ export interface RefreshTokenModuleImportOptions {
 @Inject(REFRESH_TOKEN_SERVICE, DefaultJwtVerifier)
 export class RefreshTokenStrategy implements AuthStrategy {
   constructor(
-    private readonly refreshTokenService: RefreshTokenService,
+    private readonly refreshTokenService: RefreshTokenServicePort,
     private readonly verifier: DefaultJwtVerifier,
   ) {}
 
@@ -181,8 +186,15 @@ function isClassToken<T>(token: Token<T>): token is Extract<Token<T>, Provider> 
 }
 
 function createRefreshTokenAliasProviders(
-  service: Token<RefreshTokenService>,
+  service: Token<RefreshTokenServicePort> | undefined,
 ): Provider[] {
+  if (service === undefined || service === JwtRefreshTokenService) {
+    return [{
+      provide: REFRESH_TOKEN_SERVICE,
+      useExisting: JwtRefreshTokenService,
+    }];
+  }
+
   return [
     ...(
       isClassToken(service) ? [service] : []
@@ -211,27 +223,22 @@ export function createRefreshTokenStrategyRegistration(): AuthStrategyRegistrati
  */
 export class RefreshTokenModule {
   /**
-   * Registers the shared refresh-token service alias together with `RefreshTokenStrategy`.
+   * Registers `RefreshTokenStrategy` against the refresh service owned by `JwtModule`.
    *
-   * @param service DI token for the concrete refresh-token service implementation.
-   *   Class tokens are registered inside this module.
-   *   String and symbol tokens must be visible to this module through an imported
-   *   module export, a global module export, or bootstrap runtime providers.
-   * @param options Optional module imports that export class-service constructor dependencies.
+   * @param service Optional application-owned refresh service port for a non-JWT integration.
+   *   Class tokens are registered inside this module. Omit this argument for the
+   *   canonical JWT-owned registration path.
+   * @param options Optional module imports that export a custom service token or dependencies.
    * @returns A module definition that exports `RefreshTokenStrategy` and `REFRESH_TOKEN_SERVICE`.
    * @remarks
-   * To register a class service with constructor dependencies, place those
-   * dependencies in an application-owned module, export them, and pass that module
-   * through `options.imports`. This preserves strict
-   * `duplicateProviderPolicy: 'throw'` behavior because the service class remains
-   * registered exactly once by `RefreshTokenModule`. Do not re-register the service
-   * class in the importing application module. String and symbol service tokens
-   * can be exported by a module in `options.imports`; globally exported and
-   * bootstrap runtime provider tokens are also visible.
+   * The canonical path is `JwtModule.forRoot({ global: true, refreshToken })`
+   * followed by `RefreshTokenModule.forRoot()`. Passport aliases the exported JWT
+   * service instead of creating another store, refresh service, or crypto configuration.
+   * A custom port remains available only for integrations that do not use `JwtModule`.
    *
    * @example
    * ```ts
-   * import { Module } from '@fluojs/core';
+   * import { JwtModule } from '@fluojs/jwt';
    * import {
    *   PassportModule,
    *   RefreshTokenModule,
@@ -241,7 +248,12 @@ export class RefreshTokenModule {
    *
    * @Module({
    *   imports: [
-   *     RefreshTokenModule.forRoot(MyRefreshTokenService),
+   *     JwtModule.forRoot({
+   *       global: true,
+   *       refreshToken: { expiresInSeconds: 60, rotation: true, secret, store },
+   *       secret,
+   *     }),
+   *     RefreshTokenModule.forRoot(),
    *     PassportModule.forRoot(
    *       { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
    *       [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
@@ -251,8 +263,13 @@ export class RefreshTokenModule {
    * export class AuthModule {}
    * ```
    */
+  static forRoot(): RefreshTokenModuleType;
   static forRoot(
-    service: Token<RefreshTokenService>,
+    service: Token<RefreshTokenServicePort>,
+    options?: RefreshTokenModuleImportOptions,
+  ): RefreshTokenModuleType;
+  static forRoot(
+    service?: Token<RefreshTokenServicePort>,
     options: RefreshTokenModuleImportOptions = {},
   ): RefreshTokenModuleType {
     class RefreshTokenRuntimeModule extends RefreshTokenModule {}

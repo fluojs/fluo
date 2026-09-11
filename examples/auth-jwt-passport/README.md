@@ -7,7 +7,9 @@ Runnable fluo authentication example that combines `@fluojs/jwt` and `@fluojs/pa
 ## what this example demonstrates
 
 - issuing access tokens with the injected `JwtService`
+- issuing and rotating refresh tokens through the JWT-owned `RefreshTokenService`
 - protecting a route with `@UseAuth('jwt')` and `@RequireScopes(...)`
+- exchanging a body-presented refresh token through `@UseAuth('refresh-token')`
 - verifying bearer tokens through the built-in `BearerJwtStrategy` preset from `@fluojs/passport`
 - explicit DI token metadata instead of reflection-based injection
 - runtime-owned `/health` and `/ready` endpoints alongside auth routes
@@ -21,6 +23,7 @@ Runnable fluo authentication example that combines `@fluojs/jwt` and `@fluojs/pa
 ## routes
 
 - `POST /auth/token` — issues a demo access token for a username
+- `POST /auth/refresh` — rotates a body-presented refresh token through the shared JWT store
 - `GET /profile/` — protected route that requires bearer auth and `profile:read`
 - `GET /health`
 - `GET /ready`
@@ -57,7 +60,7 @@ examples/auth-jwt-passport/
 2. `src/auth/auth.service.ts` — JWT issuance
 3. `src/auth/bearer.strategy.ts` — re-export of the built-in `BearerJwtStrategy` preset
 4. `src/auth/auth.controller.ts` — open token route + protected profile route
-5. `src/auth/auth.module.ts` — module-first registration via `JwtModule.forRoot(...)` + `PassportModule.forRoot(...)` with the stable `createBearerJwtStrategyRegistration()` helper
+5. `src/auth/auth.module.ts` — canonical module-first refresh registration: `JwtModule.forRoot({ global: true, refreshToken })`, `RefreshTokenModule.forRoot()`, then Passport strategy registrations
 6. `src/app.test.ts` — service/strategy coverage plus e2e-style HTTP checks through `createTestApp(...).request(...).send()`
 
 ## related docs

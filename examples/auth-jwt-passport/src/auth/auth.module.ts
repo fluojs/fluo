@@ -4,7 +4,10 @@ import {
   BEARER_JWT_STRATEGY_NAME,
   BearerJwtStrategy,
   createBearerJwtStrategyRegistration,
+  createRefreshTokenStrategyRegistration,
   PassportModule,
+  REFRESH_TOKEN_STRATEGY_NAME,
+  RefreshTokenModule,
 } from '@fluojs/passport';
 
 import { AuthController, ProfileController } from './auth.controller';
@@ -17,12 +20,20 @@ import { AuthService } from './auth.service';
       accessTokenTtlSeconds: 3600,
       algorithms: ['HS256'],
       audience: 'fluo-auth-example-clients',
+      global: true,
       issuer: 'fluo-auth-example',
+      refreshToken: {
+        expiresInSeconds: 604800,
+        rotation: true,
+        secret: 'fluo-auth-example-refresh-secret',
+        store: 'memory',
+      },
       secret: 'fluo-auth-example-secret',
     }),
+    RefreshTokenModule.forRoot(),
     PassportModule.forRoot(
       { defaultStrategy: BEARER_JWT_STRATEGY_NAME },
-      [createBearerJwtStrategyRegistration()],
+      [createBearerJwtStrategyRegistration(), createRefreshTokenStrategyRegistration()],
     ),
   ],
   providers: [
