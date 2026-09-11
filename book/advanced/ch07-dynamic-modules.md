@@ -97,43 +97,42 @@ That is why Fluo can support two authoring styles at the same time.
 - **Static decorator style** uses `@Module(...)` and `@Module({ global: true })` from `path:packages/core/src/decorators.ts:13-34`. These are just syntactic sugar that call metadata setters at declaration time.
 - **Programmatic style** calls `defineModule(...)`, or even `defineModuleMetadata(...)`, directly inside a factory function.
 
-At runtime, both styles converge on the same metadata store. The smallest example is `ConfigReloadModule.forRoot()`. `path:packages/config/src/reload-module.ts:128-153` creates a `ConfigReloadModuleImpl` subclass, snapshots the caller-owned load options, records Module metadata with `defineModuleMetadata(...)`, and returns that subclass. No separate runtime wrapper object or proxy is created.
+At runtime, both styles converge on the same metadata store. `ConfigModule.forRoot()` is the configuration package's module-registration example: it creates a `ConfigModuleImpl` subclass, snapshots the caller-owned options, records its providers and exports with `defineModuleMetadata(...)`, and returns that subclass. No separate runtime wrapper object or proxy is created.
 
-`ConfigReloadModule` is a short example of how subclass identity and metadata binding meet inside one function.
+Standalone reload is deliberately not another module. Use `ConfigReloadManager.create(...)` to create one terminal manager with an explicit env-file list.
 
-`path:packages/config/src/reload-module.ts:128-153`
 ```typescript
-export class ConfigReloadModule {
-  static forRoot(options?: ConfigLoadOptions): new () => ConfigReloadModule {
-    const loadOptions = snapshotConfigLoadOptions(options);
+const reloader = ConfigReloadManager.create({
+  envFilePaths: ['.env', '.env.local'],
+  watch: true,
+});
+```
 
-    class ConfigReloadModuleImpl extends ConfigReloadModule {}
+`ConfigModule.forRoot()` is the short example of how subclass identity and metadata binding meet inside one function.
 
-    defineModuleMetadata(ConfigReloadModuleImpl, {
-      exports: [CONFIG_RELOADER],
-      providers: [
-        {
-          provide: CONFIG_RELOAD_OPTIONS,
-          useValue: loadOptions,
-        },
-        ConfigReloadManager,
-        {
-          provide: CONFIG_RELOADER,
-          useExisting: ConfigReloadManager,
-        },
-      ],
+`path:packages/config/src/module.ts:184-223`
+```typescript
+export class ConfigModule {
+  static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
+    const loadOptions = snapshotConfigModuleOptions(options);
+    class ConfigModuleImpl extends ConfigModule {}
+
+    defineModuleMetadata(ConfigModuleImpl, {
+      exports: [ConfigService, CONFIG_RELOADER],
+      global: loadOptions.global ?? true,
+      providers: [/* ConfigService, ConfigReloadManager, and CONFIG_RELOADER */],
     });
 
-    return ConfigReloadModuleImpl;
+    return ConfigModuleImpl;
   }
 }
 ```
 
-Here, the dynamic result is the `ConfigReloadModuleImpl` class. The option value, manager, and alias Provider all attach to that class's Module metadata, and the returned class becomes a node in the later Module Graph.
+Here, the dynamic result is the `ConfigModuleImpl` class. The option value, `ConfigService`, reload manager, and alias Provider all attach to that class's Module metadata, and the returned class becomes a node in the later Module Graph.
 
-The snapshot call is part of the registration contract, not a cosmetic copy. `path:packages/config/src/options.ts:42-80` detaches config dictionaries, `processEnv`, and the Standard Schema descriptor synchronously during `forRoot(...)`, while callable values remain the references captured at that boundary. Because Module metadata stores `loadOptions` rather than the caller's object, mutations made after `ConfigReloadModule.forRoot(...)` returns cannot change later bootstrap, manual reload, or watch reload inputs. `path:packages/config/src/reload-module.test.ts:135-160` locks that registration-time behavior with a caller-mutation test.
+The snapshot call is part of the registration contract, not a cosmetic copy. `path:packages/config/src/options.ts:42-80` detaches config dictionaries, `processEnv`, and the Standard Schema descriptor synchronously during `forRoot(...)`, while callable values remain the references captured at that boundary. Because Module metadata stores `loadOptions` rather than the caller's object, mutations made after `ConfigModule.forRoot(...)` returns cannot change later bootstrap, manual reload, or watch reload inputs. `ConfigReloadManager.create(...)` captures the same option shape before constructing a standalone manager.
 
-Using a subclass here is a practical technique for preserving type identity. Extending the base Module class lets the Dynamic Module inherit static methods or properties while still having its own metadata. When a new constructor is created inside a factory call, as with `ConfigReloadModuleImpl` above, two Dynamic Modules are treated as separate entities produced by different class constructors even if they have the same Providers.
+Using a subclass here is a practical technique for preserving type identity. Extending the base Module class lets the Dynamic Module inherit static methods or properties while still having its own metadata. When a new constructor is created inside a factory call, as with `ConfigModuleImpl` above, two Dynamic Modules are treated as separate entities produced by different class constructors even if they have the same Providers.
 
 This is the mental model for Dynamic Modules in Fluo. A Dynamic Module is not a secondary escape hatch or a "legacy" feature. It is an ordinary Module type produced by a factory function instead of being written once by hand at declaration time. Therefore, Dynamic Modules pass through the same Module Graph compiler, visibility checks, and Provider registration logic as ordinary Modules.
 
@@ -300,9 +299,9 @@ A typical static Module helper execution flow is:
 
 This pattern makes the Module registration process auditable. Instead of tracing Decorators spread across several files, you can inspect the full registration surface in one helper file.
 
-To see this process in practice, look at how `ConfigModule.forRoot()` wraps the result of configuration loading as a `ConfigService` Provider. The Dynamic Module does not leak env-file options, defaults, or schema validators into global state directly. It synchronously snapshots the caller-owned options, including the env-file path and related options, at registration time and binds the captured options to a service Provider inside a controlled factory function. It does not read env-file content during registration.
+To see this process in practice, look at how `ConfigModule.forRoot()` wraps `ConfigModule.load(...)` as a `ConfigService` Provider. The Dynamic Module does not leak env-file options, defaults, or schema validators into global state directly. It synchronously snapshots the caller-owned options, including the ordered `envFilePaths` list and related options, at registration time and binds the captured options to a service Provider inside a controlled factory function. It does not read env-file content during registration.
 
-`path:packages/config/src/module.ts:85-112`
+`path:packages/config/src/module.ts:184-223`
 ```typescript
 static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
   const loadOptions = snapshotConfigModuleOptions(options);
@@ -310,23 +309,16 @@ static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
   const providers: NonNullable<ModuleMetadata['providers']> = [
     {
       provide: ConfigService,
-      useFactory: () => createConfigServiceFromSnapshot(loadConfig(loadOptions)),
+      useFactory: () => createConfigServiceFromSnapshot(ConfigModule.load(loadOptions)),
     },
+    { provide: CONFIG_MODULE_OPTIONS, useValue: loadOptions },
+    ConfigReloadManager,
+    { provide: CONFIG_RELOADER, useExisting: ConfigReloadManager },
   ];
-
-  if (loadOptions.watch) {
-    providers.push(
-      {
-        provide: CONFIG_MODULE_WATCH_OPTIONS,
-        useValue: loadOptions,
-      },
-      ConfigModuleWatchManager,
-    );
-  }
 
   defineModuleMetadata(ConfigModuleImpl, {
     global: loadOptions.global ?? true,
-    exports: [ConfigService],
+    exports: [ConfigService, CONFIG_RELOADER],
     providers,
   });
 
@@ -334,9 +326,9 @@ static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
 }
 ```
 
-This excerpt follows the same flow. It creates a new Module class, narrows the public export to `ConfigService`, and puts the actual loading inside a Factory Provider. The important timing distinction is that `snapshotConfigModuleOptions(options)` synchronously captures caller-owned options, including the env-file path and related options, during `forRoot(...)` without reading env-file content. The Factory Provider resolves later during bootstrap, when `loadConfig(loadOptions)` reads env-file content and creates the `ConfigService` snapshot. When watch mode is enabled, the initial loader and `ConfigModuleWatchManager` receive the same captured option snapshot. Later caller mutations cannot create a mismatch between the bootstrap snapshot and watch reload inputs. `path:packages/config/src/load.ts:388-402,782-783` shows the later env-file read, and `path:packages/config/src/module.test.ts:123-139` verifies the registration-time boundary for runtime overrides.
+This excerpt follows the same flow. It creates a new Module class, exports `ConfigService` and `CONFIG_RELOADER`, and puts the actual loading inside a Factory Provider. The important timing distinction is that `snapshotConfigModuleOptions(options)` synchronously captures caller-owned options, including the `envFilePaths` list and related options, during `forRoot(...)` without reading env-file content. The Factory Provider resolves later during bootstrap, when `ConfigModule.load(loadOptions)` reads env-file content and creates the `ConfigService` snapshot. `ConfigReloadManager` receives the same captured option snapshot, so later caller mutations cannot create a mismatch between bootstrap, manual reload, and watch reload inputs.
 
-`createConfigReloader(...)` applies the same rule at value-construction time rather than Module registration time. `path:packages/config/src/load.ts:739-752` snapshots and normalizes its input before creating watcher state, and `path:packages/config/src/load.test.ts:613-684` verifies that later mutations do not affect `current()`, manual reloads, or watch reloads. Together, these examples show that a stable Dynamic Module boundary may require both normalization and defensive option snapshotting.
+`ConfigReloadManager.create(...)` applies the same rule at standalone value-construction time rather than Module registration time. It snapshots and normalizes its input before creating watcher state, so later mutations do not affect `current()`, manual reloads, or watch reloads. Together, these examples show that a stable Dynamic Module boundary may require both normalization and defensive option snapshotting.
 
 Another advantage of this manufacturing style is that architectural rules can be enforced at the Module boundary. For example, a Dynamic Module can check whether user options conflict with global application policy before instance creation is allowed. Placing that check at the start of a `forRoot` helper moves the error from "runtime service failure" to "configuration error at Bootstrap time."
 

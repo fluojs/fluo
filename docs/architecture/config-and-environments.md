@@ -10,8 +10,8 @@ This document defines the configuration source model implemented by `@fluojs/con
 
 | Precedence | Source | Entry point | Current rule |
 | --- | --- | --- | --- |
-| 1, lowest | `defaults` | `loadConfig(options)` or `ConfigModule.forRoot(options)` | Base snapshot values. |
-| 2 | env file | `envFile`, `envFilePath`, or `envFilePaths` | Parsed from the configured file path, defaulting to `<cwd>/.env` for empty `loadConfig({})` / `ConfigModule.forRoot()` options. `envFilePaths` merges an explicit ordered list into this same tier. |
+| 1, lowest | `defaults` | `ConfigModule.load(options)` or `ConfigModule.forRoot(options)` | Base snapshot values. |
+| 2 | env file | `envFilePaths` | The sole ordered file input. Relative entries resolve from `cwd`; omission loads `<cwd>/.env` only when `cwd` or watch is set, or no explicit in-memory source is supplied; `[]` disables env-file loading. |
 | 3 | `processEnv` snapshot | explicit `processEnv` option | Only values passed into the loader participate. Ambient `process.env` is not read automatically. |
 | 4, highest | `runtimeOverrides` | explicit `runtimeOverrides` option | Final override layer for explicit runtime values. |
 
@@ -22,12 +22,11 @@ Current merge behavior:
 | Plain objects in multiple sources | Deep-merged by key. | `packages/config/src/load.ts` |
 | Arrays and primitives | Higher-precedence value replaces the lower-precedence value. | `packages/config/src/load.ts`, `packages/config/README.md` |
 | Missing env file | Load continues with `{}` for that source. | `packages/config/src/load.ts` |
-| `envFilePath` and `envFile` both set | `envFilePath` wins. | `packages/config/src/load.ts`, `packages/config/src/load.test.ts` |
+| Removed single-path inputs | `envFile` and `envFilePath` are not public options; migrate either to a one-entry `envFilePaths` list. | `packages/config/src/types.ts`, `packages/config/src/public-api.test.ts` |
 | `envFilePaths` list order | Files merge from lowest to highest precedence, so later entries win. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
 | Relative entries in `envFilePaths` | Resolved against `cwd`, defaulting to `process.cwd()`. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
 | Missing file inside `envFilePaths` | Skipped as empty input; the remaining files still load. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
 | Empty `envFilePaths` list | Explicitly disables env-file loading, including the default `<cwd>/.env` fallback. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
-| `envFilePaths` combined with `envFile` or `envFilePath` | Rejected with `INVALID_CONFIG`; singular and list options must not be mixed. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
 | Duplicate or blank `envFilePaths` entries | Rejected with `INVALID_CONFIG` after path resolution. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
 | Undefined entries inside `processEnv` | Removed during sanitization and do not overwrite lower-precedence values. | `packages/config/src/load.ts`, `packages/config/src/load.test.ts` |
 
@@ -38,7 +37,7 @@ Current merge behavior:
 | Merge before schema validation | The `schema` validator runs after all configured sources are merged. | `packages/config/src/load.ts`, `packages/config/README.md` |
 | Fail-fast startup | If `schema` reports issues during initial load, config loading throws `FluoError` with code `INVALID_CONFIG`. | `packages/config/src/load.ts` |
 | No partial snapshot | Invalid configuration is rejected as a whole. The load path returns no partial merged result. | `packages/config/src/load.ts` |
-| Reload keeps previous snapshot on listener failure | During reload, listener failure restores the previous snapshot. | `packages/config/src/load.ts`, `packages/config/src/reload-module.ts` |
+| Reload keeps previous snapshot on listener failure | During reload, listener failure restores the previous snapshot. | `packages/config/src/module.ts` |
 | Watch reload keeps last valid snapshot on validation failure | Watch-mode validation failure reports the error and keeps the current snapshot unchanged. This also covers `envFilePaths` list reloads. | `packages/config/src/load.ts`, `packages/config/src/load.test.ts`, `packages/config/src/load-env-file-paths.test.ts`, `docs/architecture/dev-reload-architecture.md` |
 | Ordered list validated once | The `schema` validator runs against the fully merged list result, not per file. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
 | Ordered list watch recomputation | Any change to a listed file recomputes the entire list, and deleting a higher-precedence file falls back to the remaining files. Each distinct parent directory is watched once. | `packages/config/src/load.ts`, `packages/config/src/load-env-file-paths.test.ts` |
@@ -55,7 +54,7 @@ const EnvSchema = z.object({
 });
 
 ConfigModule.forRoot({
-  envFile: '.env',
+  envFilePaths: ['.env'],
   processEnv: {
     DATABASE_URL: process.env.DATABASE_URL,
   },
@@ -78,6 +77,8 @@ ConfigModule.forRoot({
 });
 ```
 
+`envFile` and `envFilePath` are removed public options. Migrate either single-path input to `envFilePaths: ['<path>']`; omitted `envFilePaths` loads `<cwd>/.env` only for file-capable loads (`cwd` or watch, or no explicit `defaults`/`processEnv`/`runtimeOverrides`); `envFilePaths: []` disables file loading.
+
 The package performs no automatic profile discovery. Callers own the exact list and its order, so env-file layering stays explicit and deterministic.
 
 ## Access Constraints
@@ -94,5 +95,5 @@ Hard constraints:
 
 - Packages MUST NOT read `process.env` directly.
 - Configuration MUST flow through `@fluojs/config`.
-- Process-backed values belong at the application bootstrap boundary, typically as the explicit `processEnv` snapshot passed into `ConfigModule.forRoot(...)` or `loadConfig(...)`.
+- Process-backed values belong at the application bootstrap boundary, typically as the explicit `processEnv` snapshot passed into `ConfigModule.forRoot(...)` or `ConfigModule.load(...)`.
 - `ConfigService` is the read-only runtime facade. Snapshot replacement stays inside the config reload path.

@@ -96,15 +96,15 @@ describe('NestJS config migration semantics', () => {
   it.each([
     ['packages/config/README.md'],
     ['packages/config/README.ko.md'],
-  ] as const)('preserves the ConfigReloadModule registration contract in %s', (relativePath) => {
+  ] as const)('preserves the ConfigModule watch registration contract in %s', (relativePath) => {
     // Given
     const readWithoutReloadRegistration = (requestedPath: string): string =>
-      requestedPath === relativePath ? read(requestedPath).replace('ConfigReloadModule.forRoot(...)', '') : read(requestedPath);
+      requestedPath === relativePath ? read(requestedPath).replace('ConfigModule.forRoot({ watch: true })', '') : read(requestedPath);
 
     // When
     const runGovernanceGuard = () => enforceConfigNestjsMigrationDocs(readWithoutReloadRegistration);
 
     // Then
-    expect(runGovernanceGuard).toThrow(/ConfigReloadModule\.forRoot/);
+    expect(runGovernanceGuard).toThrow(/ConfigModule\.forRoot\(\{ watch: true \}\)/);
   });
 });

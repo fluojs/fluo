@@ -1,15 +1,14 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ConfigModule } from './module.js';
-import { CONFIG_RELOADER, ConfigReloadManager, ConfigReloadModule } from './reload-module.js';
+import { CONFIG_RELOADER, ConfigModule, ConfigReloadManager } from './module.js';
 import { ConfigService } from './service.js';
-import type { ConfigDictionary, ConfigLoadOptions, ConfigReloader } from './types.js';
+import type { ConfigDictionary, ConfigLoadOptions, ConfigReloader, ConfigSchema } from './types.js';
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
 
@@ -75,6 +74,7 @@ function installNodeBuiltinMock(): void {
         basename,
         dirname,
         join,
+        resolve,
       };
     }
 
@@ -82,26 +82,24 @@ function installNodeBuiltinMock(): void {
   }) as typeof process.getBuiltinModule);
 }
 
-async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeoutMs) {
-    if (predicate()) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-
-  throw new Error('Timed out waiting for condition.');
+async function expectWatchReload(reloader: ConfigReloader, trigger: () => void, predicate: (snapshot: ConfigDictionary, reason: string) => boolean): Promise<void> {
+  const signal = new Promise<void>((resolve) => {
+    const subscription = reloader.subscribe((snapshot, reason) => { if (predicate(snapshot, reason)) { subscription.unsubscribe(); resolve(); } });
+  });
+  trigger();
+  await vi.runOnlyPendingTimersAsync();
+  await signal;
 }
+
 
 beforeEach(() => {
   watchCallbacks.clear();
+  vi.useFakeTimers();
   installNodeBuiltinMock();
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -118,8 +116,7 @@ describe('ConfigReloadManager', () => {
 
     const container = new Container();
     container.register(
-      ...extractProviders(ConfigModule.forRoot({ envFile: envPath, processEnv: {} })),
-      ...extractProviders(ConfigReloadModule.forRoot({ envFile: envPath, processEnv: {} })),
+      ...extractProviders(ConfigModule.forRoot({ envFilePaths: [envPath], processEnv: {} })),
     );
 
     const reloader = await container.resolve<ConfigReloader>(CONFIG_RELOADER);
@@ -132,13 +129,43 @@ describe('ConfigReloadManager', () => {
     expect(service.get('PORT')).toBe('4100');
   });
 
-  it('snapshots caller-owned options during ConfigReloadModule registration', () => {
+  it('adopts the static load snapshot when creating a standalone manager', () => {
+    let validationCalls = 0;
+    const schema: ConfigSchema = {
+      '~standard': {
+        validate(value: unknown) {
+          validationCalls += 1;
+          return { value: value as ConfigDictionary };
+        },
+        vendor: 'test',
+        version: 1,
+      },
+    };
+    const manager = ConfigReloadManager.create({
+      envFilePaths: [],
+      processEnv: { PORT: '4000' },
+      schema,
+    });
+
+    try {
+      expect(manager.current()['PORT']).toBe('4000');
+      expect(validationCalls).toBe(1);
+
+      manager.reload();
+
+      expect(validationCalls).toBe(2);
+    } finally {
+      manager.close();
+    }
+  });
+
+  it('snapshots caller-owned options during ConfigModule registration', () => {
     const options: ConfigLoadOptions = {
       defaults: { nested: { value: 'registered' }, PORT: '4000' },
       processEnv: { PORT: '4100' },
       runtimeOverrides: { FEATURE: 'enabled' },
     };
-    const moduleRef = ConfigReloadModule.forRoot(options);
+    const moduleRef = ConfigModule.forRoot(options);
 
     options.defaults = { nested: { value: 'mutated' }, PORT: '5000' };
     options.processEnv = { PORT: '5100' };
@@ -168,7 +195,7 @@ describe('ConfigReloadManager', () => {
     const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
     const manager = new ConfigReloadManager(service, {
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -207,7 +234,7 @@ describe('ConfigReloadManager', () => {
     const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
     const manager = new ConfigReloadManager(service, {
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -237,7 +264,7 @@ describe('ConfigReloadManager', () => {
     const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
     const manager = new ConfigReloadManager(service, {
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -283,7 +310,7 @@ describe('ConfigReloadManager', () => {
     const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
     const manager = new ConfigReloadManager(service, {
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -305,8 +332,7 @@ describe('ConfigReloadManager', () => {
       expect(watchCallbacks.size).toBe(1);
 
       writeFileSync(envPath, 'PORT=4100\n');
-      emitWatchChange();
-      await waitForCondition(() => updates.includes('4100'));
+      await expectWatchReload(manager, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === '4100');
 
       expect(service.get('PORT')).toBe('4100');
 
@@ -332,7 +358,7 @@ describe('ConfigReloadManager', () => {
     const service = new ConfigService<ConfigDictionary>({ PORT: '4000' });
     const manager = new ConfigReloadManager(service, {
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });

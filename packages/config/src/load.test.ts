@@ -1,14 +1,16 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, renameSync, watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createConfigReloader, loadConfig } from './load.js';
-import { ConfigModule } from './module.js';
+import { ConfigModule, ConfigReloadManager } from './module.js';
 import { ConfigService, replaceConfigServiceSnapshot } from './service.js';
-import type { ConfigDictionary, ConfigLoadOptions, ConfigModuleOptions, ConfigSchema } from './types.js';
+import type { ConfigDictionary, ConfigLoadOptions, ConfigModuleOptions, ConfigReloader, ConfigSchema } from './types.js';
+
+const loadConfig = ConfigModule.load;
+const createConfigReloader = ConfigReloadManager.create;
 
 const watchCallbacks = vi.hoisted(() => new Set<() => void>());
 
@@ -50,6 +52,7 @@ function installNodeBuiltinMock(): void {
         basename,
         dirname,
         join,
+        resolve,
       };
     }
 
@@ -129,7 +132,7 @@ function getErrorCause(error: unknown): unknown {
   return undefined;
 }
 
-type WatchManagerInstance = {
+type WatchManagerInstance = ConfigReloader & {
   onApplicationBootstrap(): void;
   onModuleDestroy(): void;
 };
@@ -169,27 +172,48 @@ function createConfigModuleWatchHarness(moduleRef: new () => ConfigModule): {
 
 beforeEach(() => {
   watchCallbacks.clear();
+  vi.useFakeTimers();
   installNodeBuiltinMock();
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
-async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  const startedAt = Date.now();
-
-  while (Date.now() - startedAt < timeoutMs) {
-    if (predicate()) {
-      return;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-
-  throw new Error('Timed out waiting for condition.');
+async function expectWatchReload(
+  reloader: ConfigReloader,
+  trigger: () => void,
+  predicate: (snapshot: ConfigDictionary, reason: string) => boolean,
+): Promise<void> {
+  const signal = new Promise<void>((resolve) => {
+    const subscription = reloader.subscribe((snapshot, reason) => {
+      if (predicate(snapshot, reason)) {
+        subscription.unsubscribe();
+        resolve();
+      }
+    });
+  });
+  trigger();
+  await vi.runAllTimersAsync();
+  await signal;
 }
+
+async function expectWatchError(reloader: ConfigReloader, trigger: () => void, predicate: (reason: string) => boolean): Promise<void> {
+  const signal = new Promise<void>((resolve) => {
+    const subscription = reloader.subscribeError((_error, reason) => {
+      if (predicate(reason)) {
+        subscription.unsubscribe();
+        resolve();
+      }
+    });
+  });
+  trigger();
+  await vi.runAllTimersAsync();
+  await signal;
+}
+
 
 describe('loadConfig', () => {
   it('merges defaults, env file, process env, and runtime overrides in order', () => {
@@ -201,7 +225,7 @@ describe('loadConfig', () => {
     const loaded = loadConfig({
       cwd,
       defaults: { NAME: 'from-default', PORT: '3000' },
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: { NAME: 'from-process' },
       runtimeOverrides: { NAME: 'from-runtime' },
     });
@@ -258,7 +282,7 @@ describe('loadConfig', () => {
     expect(configProvider?.useFactory().get('MODULE_DEFAULT_ENV')).toBe('loaded');
   });
 
-  it('supports envFilePath as alias for envFile', () => {
+  it('loads a single explicitly ordered env file', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-envpath-'));
     const envPath = join(cwd, '.env.custom');
 
@@ -266,14 +290,14 @@ describe('loadConfig', () => {
 
     const loaded = loadConfig({
       cwd,
-      envFilePath: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
     expect(loaded['API_KEY']).toBe('test-key-123');
   });
 
-  it('prefers envFilePath over envFile when both provided', () => {
+  it('uses the later entry in an ordered env file list', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'fluo-config-envpath-pref-'));
     const envFilePrimary = join(cwd, '.env.primary');
     const envFileAlias = join(cwd, '.env.alias');
@@ -283,8 +307,7 @@ describe('loadConfig', () => {
 
     const loaded = loadConfig({
       cwd,
-      envFile: envFilePrimary,
-      envFilePath: envFileAlias,
+      envFilePaths: [envFilePrimary, envFileAlias],
       processEnv: {},
     });
 
@@ -300,7 +323,7 @@ describe('loadConfig', () => {
     const loaded = loadConfig({
       cwd,
       defaults: { PORT: '3000' },
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: { PORT: undefined },
     });
 
@@ -487,7 +510,7 @@ describe('loadConfig', () => {
 
     writeFileSync(envPath, 'PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\\nMIIEowIBAAKCAQ\\n-----END RSA PRIVATE KEY-----"\n');
 
-    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
+    const loaded = loadConfig({ cwd, envFilePaths: [envPath], processEnv: {} });
 
     expect(loaded['PRIVATE_KEY']).toContain('BEGIN RSA PRIVATE KEY');
     expect(loaded['PRIVATE_KEY']).toContain('\n');
@@ -516,7 +539,7 @@ describe('loadConfig', () => {
       ].join('\n'),
     );
 
-    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
+    const loaded = loadConfig({ cwd, envFilePaths: [envPath], processEnv: {} });
 
     expect(loaded).toMatchObject({
       ACTUAL_NEWLINE: 'first line\nsecond line',
@@ -551,7 +574,7 @@ describe('loadConfig', () => {
       ].join('\n'),
     );
 
-    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
+    const loaded = loadConfig({ cwd, envFilePaths: [envPath], processEnv: {} });
 
     expect(loaded).toMatchObject({
       ADJACENT: 'value',
@@ -571,7 +594,7 @@ describe('loadConfig', () => {
 
     writeFileSync(envPath, 'TOKEN=initial#comment\n');
 
-    const reloader = createConfigReloader({ cwd, envFile: envPath, processEnv: {} });
+    const reloader = createConfigReloader({ cwd, envFilePaths: [envPath], processEnv: {} });
 
     try {
       expect(reloader.current()).toMatchObject({ TOKEN: 'initial' });
@@ -590,7 +613,7 @@ describe('loadConfig', () => {
 
     writeFileSync(envPath, 'DB_HOST=localhost\nDB_PORT=5432\nDATABASE_URL=${DB_HOST}:${DB_PORT}/mydb\n');
 
-    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: {} });
+    const loaded = loadConfig({ cwd, envFilePaths: [envPath], processEnv: {} });
 
     expect(loaded['DATABASE_URL']).toBe('localhost:5432/mydb');
   });
@@ -619,7 +642,7 @@ describe('loadConfig', () => {
       ].join('\n'),
     );
 
-    const loaded = loadConfig({ cwd, envFile: envPath, processEnv: { PROCESS_PRECEDENCE: 'from-process', PUBLIC_HOST: 'example.com' } });
+    const loaded = loadConfig({ cwd, envFilePaths: [envPath], processEnv: { PROCESS_PRECEDENCE: 'from-process', PUBLIC_HOST: 'example.com' } });
 
     expect(loaded).toMatchObject({
       ESCAPED: '$LOCAL_HOST',
@@ -644,7 +667,7 @@ describe('loadConfig', () => {
 
     const loaded = loadConfig({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       parse: (content) => {
         const result: Record<string, string> = {};
@@ -680,7 +703,7 @@ describe('loadConfig', () => {
     const options: ConfigLoadOptions = {
       cwd,
       defaults: { PORT: '3000' },
-      envFile: envPath,
+      envFilePaths: [envPath],
       parse,
       processEnv: { PORT: '4100' },
       runtimeOverrides: { FEATURE: 'registered' },
@@ -723,8 +746,7 @@ describe('loadConfig', () => {
       expect(reloader.reload()).toMatchObject({ FEATURE: 'registered', PORT: 4100 });
 
       writeFileSync(envPath, 'PORT:4300\n');
-      emitWatchChange();
-      await waitForCondition(() => updates.some((update) => update.reason === 'watch'));
+      await expectWatchReload(reloader, emitWatchChange, (_snapshot, reason) => reason === 'watch');
 
       expect(updates).toContainEqual({ feature: 'registered', port: 4100, reason: 'manual' });
       expect(updates).toContainEqual({ feature: 'registered', port: 4100, reason: 'watch' });
@@ -742,7 +764,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -779,7 +801,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -814,7 +836,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -851,7 +873,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       schema: createPortSchema(),
       watch: true,
@@ -880,13 +902,11 @@ describe('loadConfig', () => {
       });
 
       writeFileSync(envPath, 'PORT=oops\n');
-      emitWatchChange();
-      await waitForCondition(() => errors.length > 0);
+      await expectWatchError(reloader, emitWatchChange, (reason) => reason === 'watch');
       expect(reloader.current().PORT).toBe(4000);
 
       writeFileSync(envPath, 'PORT=4300\n');
-      emitWatchChange();
-      await waitForCondition(() => updates.includes(4300));
+      await expectWatchReload(reloader, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === 4300);
       expect(reloader.current().PORT).toBe(4300);
 
       updateSubscription.unsubscribe();
@@ -904,7 +924,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -932,8 +952,7 @@ describe('loadConfig', () => {
       expect(updates).toEqual([]);
 
       writeFileSync(envPath, 'PORT=4200\n');
-      emitWatchChange();
-      await waitForCondition(() => updates.includes('4200'));
+      await expectWatchReload(reloader, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === '4200');
 
       expect(reloader.current()['PORT']).toBe('4200');
     } finally {
@@ -950,7 +969,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -987,7 +1006,7 @@ describe('loadConfig', () => {
     const reloader = createConfigReloader({
       cwd,
       defaults: { PORT: '4000' },
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1010,9 +1029,7 @@ describe('loadConfig', () => {
       expect(watchCallbacks.size).toBe(1);
 
       writeFileSync(envPath, 'PORT=4100\n');
-      emitWatchChange();
-
-      await waitForCondition(() => updates.includes('4100'));
+      await expectWatchReload(reloader, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === '4100');
       expect(reloader.current()['PORT']).toBe('4100');
     } finally {
       reloader.close();
@@ -1028,7 +1045,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1050,9 +1067,7 @@ describe('loadConfig', () => {
 
       writeFileSync(replacementPath, 'PORT=4100\n');
       renameSync(replacementPath, envPath);
-      emitWatchChange();
-
-      await waitForCondition(() => updates.includes('4100'));
+      await expectWatchReload(reloader, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === '4100');
       expect(reloader.current()['PORT']).toBe('4100');
     } finally {
       reloader.close();
@@ -1071,7 +1086,7 @@ describe('loadConfig', () => {
     writeFileSync(envPath, 'PORT=4000\n');
 
     const reloader = createConfigReloader({
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1091,7 +1106,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -1119,7 +1134,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
     });
 
@@ -1163,7 +1178,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1188,8 +1203,7 @@ describe('loadConfig', () => {
       });
 
       writeFileSync(envPath, 'PORT=4100\n');
-      emitWatchChange();
-      await waitForCondition(() => errors.length > 0);
+      await expectWatchError(reloader, emitWatchChange, (reason) => reason === 'watch');
 
       expect(errors).toEqual(['watch:listener failed after nested reload']);
       expect(updates).toEqual(['watch:4100']);
@@ -1207,7 +1221,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1233,8 +1247,7 @@ describe('loadConfig', () => {
       });
 
       writeFileSync(envPath, 'PORT=4100\n');
-      emitWatchChange();
-      await waitForCondition(() => errorReasons.length > 0);
+      await expectWatchError(reloader, emitWatchChange, (reason) => reason === 'manual');
 
       expect(errorReasons).toEqual(['manual']);
       expect(reloader.current()['PORT']).toBe('4100');
@@ -1251,7 +1264,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1284,7 +1297,7 @@ describe('loadConfig', () => {
 
     const reloader = createConfigReloader({
       cwd,
-      envFile: envPath,
+      envFilePaths: [envPath],
       processEnv: {},
       watch: true,
     });
@@ -1312,8 +1325,7 @@ describe('loadConfig', () => {
       });
 
       writeFileSync(envPath, 'PORT=4500\n');
-      emitWatchChange();
-      await waitForCondition(() => observedBySecondListener !== undefined);
+      await expectWatchReload(reloader, emitWatchChange, (snapshot, reason) => reason === 'watch' && snapshot['PORT'] === '4500');
 
       expect(observedBySecondListener).toBe('4500');
     } finally {
@@ -1436,7 +1448,7 @@ describe('ConfigModule', () => {
     writeFileSync(envPath, 'PORT=4000\n');
 
     const ConfigFeatureModule = ConfigModule.forRoot({
-      envFile: envPath,
+      envFilePaths: [envPath],
       parse: (content) => {
         parseCalls += 1;
         if (parseCalls === 1) {
@@ -1470,7 +1482,7 @@ describe('ConfigModule', () => {
     writeFileSync(envPath, 'PORT=4000\n');
 
     const ConfigFeatureModule = ConfigModule.forRoot({
-      envFile: envPath,
+      envFilePaths: [envPath],
       onReloadError: (error, reason) => {
         errors.push(`${reason}:${error instanceof Error ? error.message : String(error)}`);
       },
@@ -1485,9 +1497,7 @@ describe('ConfigModule', () => {
       manager.onApplicationBootstrap();
 
       writeFileSync(envPath, 'PORT=oops\n');
-      emitWatchChange();
-
-      await waitForCondition(() => errors.length > 0);
+      await expectWatchError(manager, emitWatchChange, (reason) => reason === 'watch');
       expect(errors[0]).toContain('watch:Invalid configuration.');
       expect(service.get('PORT')).toBe(4000);
     } finally {
@@ -1503,7 +1513,7 @@ describe('ConfigModule', () => {
     writeFileSync(envPath, 'PORT=4000\n');
 
     const moduleRef = ConfigModule.forRoot({
-      envFile: envPath,
+      envFilePaths: [envPath],
       parse: (content) => {
         parseCalls += 1;
         const result: Record<string, string> = {};

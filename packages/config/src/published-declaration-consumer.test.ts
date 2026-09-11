@@ -25,9 +25,11 @@ const requiredArtifactPaths = [declarationRootPath, declarationTypesPath] as con
 function collectCleanConsumerDiagnostics(): readonly ts.Diagnostic[] {
   const consumerEntryPath = resolve(packageRootPath, 'dist/__fluo-clean-consumer__.ts');
   const consumerEntrySource = [
-    "import type { ConfigModuleOptions } from './index.js';",
+    "import { ConfigModule, ConfigReloadManager, type ConfigModuleOptions } from './index.js';",
     '',
     'export const processEnv: ConfigModuleOptions[\'processEnv\'] = { PORT: \'3000\', UNSET: undefined };',
+    'export const snapshot = ConfigModule.load({ processEnv });',
+    'export const reloader = ConfigReloadManager.create({ envFilePaths: [], processEnv });',
     '',
   ].join('\n');
   const compilerOptions: ts.CompilerOptions = {
@@ -57,6 +59,46 @@ function collectCleanConsumerDiagnostics(): readonly ts.Diagnostic[] {
   const program = ts.createProgram([consumerEntryPath], compilerOptions, host);
 
   return ts.getPreEmitDiagnostics(program);
+}
+
+function collectRemovedConsumerDiagnostics(): readonly ts.Diagnostic[] {
+  const consumerEntryPath = resolve(packageRootPath, 'dist/__fluo-removed-consumer__.ts');
+  const consumerEntrySource = [
+    "import { ConfigModule, ConfigReloadManager, type ConfigModuleOptions, ConfigReloadModule, createConfigReloader, loadConfig } from './index.js';",
+    '',
+    'void ConfigReloadModule;',
+    'void createConfigReloader;',
+    'void loadConfig;',
+    "export const legacyModuleOptions: ConfigModuleOptions = { envFile: '.env' };",
+    "ConfigModule.load({ envFilePath: '.env' });",
+    "ConfigReloadManager.create({ envFile: '.env' });",
+    "ConfigModule.forRoot({ envFilePath: '.env' });",
+    '',
+  ].join('\n');
+  const compilerOptions: ts.CompilerOptions = {
+    declaration: false,
+    esModuleInterop: true,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    noEmit: true,
+    skipLibCheck: false,
+    strict: true,
+    target: ts.ScriptTarget.ES2022,
+    types: [],
+  };
+  const host = ts.createCompilerHost(compilerOptions, true);
+  const originalGetSourceFile = host.getSourceFile.bind(host);
+
+  host.fileExists = ((fileName: string) =>
+    resolve(fileName) === consumerEntryPath || ts.sys.fileExists(fileName)) as typeof host.fileExists;
+  host.readFile = ((fileName: string) =>
+    resolve(fileName) === consumerEntryPath ? consumerEntrySource : ts.sys.readFile(fileName)) as typeof host.readFile;
+  host.getSourceFile = ((fileName: string, languageVersionOrOptions, ...rest) =>
+    resolve(fileName) === consumerEntryPath
+      ? ts.createSourceFile(fileName, consumerEntrySource, languageVersionOrOptions, true, ts.ScriptKind.TS)
+      : originalGetSourceFile(fileName, languageVersionOrOptions, ...rest)) as typeof host.getSourceFile;
+
+  return ts.getPreEmitDiagnostics(ts.createProgram([consumerEntryPath], compilerOptions, host));
 }
 
 function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]): string {
@@ -99,6 +141,24 @@ describe('@fluojs/config published declaration consumer surface', () => {
     // Then: no declaration member depends on an unresolvable ambient Node namespace.
     expect(formatDiagnostics(diagnostics)).toBe('');
   }, 60_000);
+
+  it('rejects all removed declarations while retaining static consumer APIs', () => {
+    // Given: a built-package consumer importing each removed root name.
+    const diagnostics = collectRemovedConsumerDiagnostics();
+    const formattedDiagnostics = formatDiagnostics(diagnostics);
+
+    // Then: each removed surface fails at the published root declaration boundary.
+    expect(diagnostics.some((diagnostic) => diagnostic.code === 2305)).toBe(true);
+    expect(formattedDiagnostics).toContain('ConfigReloadModule');
+    expect(formattedDiagnostics).toContain('createConfigReloader');
+    expect(formattedDiagnostics).toContain('loadConfig');
+    for (const property of ['envFile', 'envFilePath']) {
+      expect(diagnostics.some((diagnostic) =>
+        (diagnostic.code === 2353 || diagnostic.code === 2561)
+        && ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n').includes(`'${property}'`),
+      ), formattedDiagnostics).toBe(true);
+    }
+  });
 
   it('keeps the published process-env option structurally self-contained', () => {
     // Given: the emitted root declaration graph, ignoring documentation prose.

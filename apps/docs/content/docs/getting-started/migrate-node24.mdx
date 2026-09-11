@@ -52,8 +52,9 @@ final Node 24 support range.
 ## 4. Keep config portable
 
 Config's in-memory options remain portable. Pass explicit maps and
-`envFilePaths: []` to opt out of env files. Empty `loadConfig({})` or
-`ConfigModule.forRoot()` still loads default `.env`; env-file/default `.env`
+`envFilePaths: []` to disable file loading. Ordered `envFilePaths` apply from
+lowest to highest precedence. Omitting `envFilePaths` defaults to `.env`, as in
+`ConfigModule.load({})` or `ConfigModule.forRoot()`; env-file/default `.env`
 loading and watch are Node-only features on `>=24.0.0 <27`.
 The existing capability guard raises `CONFIG_RUNTIME_UNAVAILABLE` when Node
 builtins are unavailable; it does not compare Node versions or reject portable imports.

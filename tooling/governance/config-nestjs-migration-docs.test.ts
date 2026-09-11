@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ModuleKind, ScriptTarget, transpileModule } from 'typescript';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs.mjs';
@@ -75,6 +75,104 @@ function appendMergedInterfaceOverload(methodName: SingleKeyMethod): string {
   return `${source}${mergedInterface}`;
 }
 
+const recipePaths = [
+  'docs/getting-started/migrate-from-nestjs.md',
+  'docs/getting-started/migrate-from-nestjs.ko.md',
+  'book/beginner/ch11-config.md',
+  'book/beginner/ch11-config.ko.md',
+] as const;
+
+type RecipePart = 'registration' | 'wiring' | 'adapter';
+
+function matchingNodes<T extends ts.Node>(source: ts.Node, predicate: (node: ts.Node) => node is T): T[] {
+  const matches: T[] = [];
+  function visit(node: ts.Node): void {
+    if (predicate(node)) matches.push(node);
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return matches;
+}
+
+function isCall(node: ts.Node, receiver: string, method: string): node is ts.CallExpression {
+  return ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) && node.expression.expression.text === receiver &&
+    node.expression.name.text === method;
+}
+
+function recipeFence(markdown: string, chapterAdapter = false): string {
+  const candidates = [...markdown.matchAll(/^```(?:ts|typescript)\r?\n([\s\S]*?)^```\s*$/gmu)]
+    .map((match) => match[1] ?? '')
+    .filter((text) => {
+      const source = ts.createSourceFile('recipe.ts', text, ts.ScriptTarget.Latest, true);
+      return chapterAdapter
+        ? source.statements.some((node) => ts.isImportDeclaration(node) &&
+            ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === './app.module')
+        : matchingNodes(source, (node): node is ts.CallExpression => isCall(node, 'ConfigModule', 'load')).length > 0 &&
+          matchingNodes(source, (node): node is ts.CallExpression => isCall(node, 'ConfigModule', 'forRoot')).length > 0;
+    });
+  expect(candidates).toHaveLength(1);
+  return candidates[0] as string;
+}
+
+function replaceOnce(source: string, before: string, after: string): string {
+  expect(source.split(before)).toHaveLength(2);
+  const result = source.replace(before, () => after);
+  expect(result).not.toBe(source);
+  return result;
+}
+
+function mutateRecipe(relativePath: string, part: RecipePart, replacement: (text: string) => string): string {
+  const markdown = read(relativePath);
+  const chapter = relativePath.startsWith('book/');
+  const fence = recipeFence(markdown, chapter && part === 'adapter');
+  const source = ts.createSourceFile('recipe.ts', fence, ts.ScriptTarget.Latest, true);
+  let targets: ts.Node[];
+  if (part === 'registration') {
+    const declarations = matchingNodes(source, (node): node is ts.VariableDeclaration =>
+      ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) &&
+      node.name.text === (chapter ? 'configRegistration' : 'moduleOptions'));
+    expect(declarations).toHaveLength(1);
+    targets = matchingNodes(declarations[0] as ts.VariableDeclaration, ts.isObjectLiteralExpression);
+  } else if (part === 'wiring') {
+    targets = matchingNodes(source, (node): node is ts.CallExpression => isCall(node, 'ConfigModule', 'forRoot'))
+      .flatMap((call) => [...call.arguments]);
+  } else {
+    const calls = matchingNodes(source, (node): node is ts.CallExpression => isCall(node, 'FastifyHttpApplicationAdapter', 'create'));
+    expect(calls).toHaveLength(1);
+    targets = matchingNodes(calls[0] as ts.CallExpression, (node): node is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(node) && ts.isIdentifier(node.name) && node.name.text === 'port')
+      .map((property) => property.initializer);
+  }
+  expect(targets).toHaveLength(1);
+  const target = targets[0] as ts.Node;
+  const before = target.getText(source);
+  const after = replacement(before);
+  expect(after).not.toBe(before);
+  const mutatedFence = fence.slice(0, target.getStart(source)) + after + fence.slice(target.end);
+  return replaceOnce(markdown, fence, mutatedFence);
+}
+
+// This table is deliberately independent of the guard's comparisons: deleting a comparison must
+// make the corresponding isolated bad recipe pass the guard and therefore fail its pinned test.
+const recipeMutations: readonly [string, RecipePart, (text: string) => string, string][] = [
+  ['registration schema', 'registration', (text) => text.replace('{', '{ schema: ConfigSchema,'), 'CONFIG_RECIPE_REVALIDATION'],
+  ['removed envFile', 'registration', (text) => text.replace('{', "{ envFile: '.env',"), 'CONFIG_RECIPE_LEGACY_ENV_INPUT'],
+  ['removed envFilePath', 'registration', (text) => text.replace('{', "{ envFilePath: '.env',"), 'CONFIG_RECIPE_LEGACY_ENV_INPUT'],
+  ['missing envFilePaths', 'registration', (text) => replaceOnce(text, 'envFilePaths: [],', ''), 'CONFIG_RECIPE_ENV_FILES'],
+  ['nonempty envFilePaths', 'registration', (text) => replaceOnce(text, 'envFilePaths: []', "envFilePaths: ['.env']"), 'CONFIG_RECIPE_ENV_FILES'],
+  ['nonarray envFilePaths', 'registration', (text) => replaceOnce(text, 'envFilePaths: []', 'envFilePaths: undefined'), 'CONFIG_RECIPE_ENV_FILES'],
+  ['wrong runtimeOverrides', 'registration', (text) => replaceOnce(text, 'runtimeOverrides: validatedConfig', 'runtimeOverrides: configSources'), 'CONFIG_RECIPE_SNAPSHOT_SOURCE'],
+  ['missing runtimeOverrides', 'registration', (text) => replaceOnce(text, 'runtimeOverrides: validatedConfig,', ''), 'CONFIG_RECIPE_SNAPSHOT_SOURCE'],
+  ['defaults downgrade with comment decoy', 'registration', (text) => replaceOnce(text, 'runtimeOverrides: validatedConfig', 'defaults: validatedConfig /* runtimeOverrides: validatedConfig */'), 'CONFIG_RECIPE_SNAPSHOT_SOURCE'],
+  ['extra defaults', 'registration', (text) => text.replace('{', '{ defaults: {},'), 'CONFIG_RECIPE_SNAPSHOT_SOURCE'],
+  ['extra processEnv', 'registration', (text) => text.replace('{', '{ processEnv: {},'), 'CONFIG_RECIPE_SNAPSHOT_SOURCE'],
+  ['forRoot input wiring', 'wiring', () => 'configSources', 'CONFIG_RECIPE_REGISTRATION'],
+  ['adapter snapshot', 'adapter', () => 'Number(process.env.PORT)', 'CONFIG_RECIPE_ADAPTER_SNAPSHOT'],
+  ['registration spread', 'registration', (text) => text.replace('{', '{ ...configSources,'), 'CONFIG_RECIPE_REGISTRATION'],
+  ['duplicate registration member', 'registration', (text) => text.replace('{', '{ runtimeOverrides: configSources,'), 'CONFIG_RECIPE_REGISTRATION'],
+];
+
 describe('NestJS config migration documentation', () => {
   it('maps the source-backed ConfigModule registration contract in both locales', () => {
     // Given
@@ -133,36 +231,33 @@ describe('NestJS config migration documentation', () => {
     }
   });
 
-  it('uses one validated nested snapshot for module registration and the HTTP adapter', () => {
-    // Given
-    const englishMigration = read('docs/getting-started/migrate-from-nestjs.md');
-    const koreanMigration = read('docs/getting-started/migrate-from-nestjs.ko.md');
+  it.each(recipePaths)('accepts wrapped, reordered registration properties in %s', (relativePath) => {
+    const mutated = mutateRecipe(relativePath, 'registration', () =>
+      '({ "runtimeOverrides": (validatedConfig), /* schema: ConfigSchema */ "envFilePaths": ([]), global: true })');
+    expect(() => enforceConfigNestjsMigrationDocs((path) => path === relativePath ? mutated : read(path))).not.toThrow();
+  });
 
-    // When
-    const migrationDocs = [englishMigration, koreanMigration] as const;
+  it.each(recipePaths.flatMap((path) => recipeMutations.map(([name, part, mutate, code]) =>
+    [path, name, part, mutate, code] as const)))('rejects %s: %s independently', (relativePath, _name, part, mutate, code) => {
+    const mutated = mutateRecipe(relativePath, part, mutate);
+    expect(() => enforceConfigNestjsMigrationDocs()).not.toThrow();
+    expect(() => enforceConfigNestjsMigrationDocs((path) => path === relativePath ? mutated : read(path)))
+      .toThrowError(expect.objectContaining({ code, relativePath }));
+  });
 
-    // Then
-    for (const migrationDoc of migrationDocs) {
-      const configSection = migrationDoc.slice(migrationDoc.indexOf('### NestJS Config'));
-      const codeFence = configSection.match(/```typescript\n([\s\S]*?)```/)?.[1];
+  it.each(recipePaths)('rejects a duplicate actual recipe in %s', (relativePath) => {
+    const markdown = read(relativePath);
+    const mutated = `${markdown}\n\`\`\`typescript\n${recipeFence(markdown)}\`\`\`\n`;
+    expect(() => enforceConfigNestjsMigrationDocs((path) => path === relativePath ? mutated : read(path)))
+      .toThrowError(expect.objectContaining({ code: 'CONFIG_RECIPE_ANCHOR', relativePath }));
+  });
 
-      expect(codeFence).toBeDefined();
-      expect(codeFence).toContain('const namespacedDefaults = await loadNamespacedConfig();');
-      expect(codeFence).toContain('defaults: namespacedDefaults');
-      expect(codeFence).toContain('const validatedConfig = ConfigSchema.parse(loadConfig(configSources));');
-      expect(codeFence).toContain('defaults: validatedConfig');
-      expect(codeFence).toContain('schema: ConfigSchema');
-      expect(codeFence).toContain('port: validatedConfig.http.port');
-      expect(codeFence).not.toContain('ConfigSchema.parse(processEnv)');
-      expect(codeFence?.match(/process\.env\.PORT/g)).toHaveLength(1);
-      expect(transpileModule(codeFence ?? '', {
-        compilerOptions: {
-          module: ModuleKind.ESNext,
-          target: ScriptTarget.ES2022,
-        },
-        reportDiagnostics: true,
-      }).diagnostics).toEqual([]);
-    }
+  it.each(recipePaths)('rejects a recipe replaced by a comment decoy in %s', (relativePath) => {
+    const markdown = read(relativePath);
+    const fence = recipeFence(markdown);
+    const mutated = replaceOnce(markdown, fence, fence.split('\n').map((line) => `// ${line}`).join('\n'));
+    expect(() => enforceConfigNestjsMigrationDocs((path) => path === relativePath ? mutated : read(path)))
+      .toThrowError(expect.objectContaining({ code: 'CONFIG_RECIPE_ANCHOR', relativePath }));
   });
 
   it.each(['get', 'getOrThrow'] as const)(
@@ -307,11 +402,8 @@ describe('NestJS config migration documentation', () => {
     // Then
     for (const chapter of chapters) {
       expect(chapter).toContain("import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';");
-      expect(chapter).toContain('adapter: FastifyHttpApplicationAdapter.create({ port: validatedConfig.PORT })');
       expect(chapter).toContain('await app.listen();');
       expect(chapter).toContain('FluoFactory.createApplicationContext(AppModule)');
-      expect(chapter).toContain('defaults: validatedConfig');
-      expect(chapter).toContain('schema: ConfigSchema');
       expect(chapter).not.toContain('await app.listen(port);');
       expect(chapter).not.toContain('.parse(process.env.PORT)');
     }

@@ -119,7 +119,7 @@ volumes:
 ## 21.5 Environment Strategy
 Use a strict environment strategy. The application should be "Config-Agnostic." In other words, the code should not decide for itself whether it is running in staging or production. It should only read configuration provided by the environment.
 
-Always start bootstrap with an explicit adapter, and pass process-based configuration through an explicit config boundary such as `ConfigModule.forRoot({ processEnv: ... })` or `loadConfig(...)`. It is safer not to rely on undocumented top-level `config` options. Keep the application boundary responsible for selecting and injecting only the keys it needs.
+Always start bootstrap with an explicit adapter, and pass process-based configuration through an explicit config boundary such as `ConfigModule.forRoot({ envFilePaths: [], processEnv: ... })` or `ConfigModule.load(...)`. It is safer not to rely on undocumented top-level `config` options. Keep the application boundary responsible for selecting and injecting only the keys it needs.
 
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';

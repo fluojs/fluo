@@ -49,7 +49,7 @@ const requirements = [
   ['packages/config/README.md', [
     '### NestJS Registration Migration',
     'ConfigModule.forRootAsync(...)',
-    'ConfigReloadModule.forRoot(...)',
+    'ConfigModule.forRoot({ watch: true })',
     'NestJS `load` factories',
     'explicit `processEnv` snapshot',
     'synchronous Standard Schema',
@@ -59,7 +59,7 @@ const requirements = [
   ['packages/config/README.ko.md', [
     '### NestJS 등록 마이그레이션',
     'ConfigModule.forRootAsync(...)',
-    'ConfigReloadModule.forRoot(...)',
+    'ConfigModule.forRoot({ watch: true })',
     'NestJS `load` factory',
     '명시적 `processEnv` snapshot',
     '동기 Standard Schema',
@@ -86,9 +86,6 @@ const requirements = [
   ['docs/getting-started/migrate-from-nestjs.md', [
     '@nestjs/config',
     'ConfigModule.forRoot(...)',
-    'const namespacedDefaults = await loadNamespacedConfig();',
-    'const validatedConfig = ConfigSchema.parse(loadConfig(configSources));',
-    'defaults: validatedConfig',
     "ConfigService.get('http.port')",
     'FluoFactory.createApplicationContext(AppModule)',
     'FluoFactory.create(AppModule, { adapter })',
@@ -99,9 +96,6 @@ const requirements = [
   ['docs/getting-started/migrate-from-nestjs.ko.md', [
     '@nestjs/config',
     'ConfigModule.forRoot(...)',
-    'const namespacedDefaults = await loadNamespacedConfig();',
-    'const validatedConfig = ConfigSchema.parse(loadConfig(configSources));',
-    'defaults: validatedConfig',
     "ConfigService.get('http.port')",
     'FluoFactory.createApplicationContext(AppModule)',
     'FluoFactory.create(AppModule, { adapter })',
@@ -110,19 +104,11 @@ const requirements = [
     'adapter.close(signal?)',
   ]],
   ['book/beginner/ch11-config.md', [
-    'loadConfig(configSources)',
-    'defaults: validatedConfig',
-    'schema: ConfigSchema',
     'FluoFactory.createApplicationContext(AppModule)',
-    'adapter: FastifyHttpApplicationAdapter.create({ port: validatedConfig.PORT })',
     'await app.listen();',
   ]],
   ['book/beginner/ch11-config.ko.md', [
-    'loadConfig(configSources)',
-    'defaults: validatedConfig',
-    'schema: ConfigSchema',
     'FluoFactory.createApplicationContext(AppModule)',
-    'adapter: FastifyHttpApplicationAdapter.create({ port: validatedConfig.PORT })',
     'await app.listen();',
   ]],
   ['docs/CONTEXT.md', [
@@ -371,6 +357,190 @@ function enforceConfigServiceSingleKeyCallShape(sourceText) {
   }
 }
 
+const bootstrapRecipes = [
+  ['docs/getting-started/migrate-from-nestjs.md', 'moduleOptions', 'validatedConfig.http.port'],
+  ['docs/getting-started/migrate-from-nestjs.ko.md', 'moduleOptions', 'validatedConfig.http.port'],
+  ['book/beginner/ch11-config.md', 'configRegistration', 'validatedConfig.PORT'],
+  ['book/beginner/ch11-config.ko.md', 'configRegistration', 'validatedConfig.PORT'],
+];
+
+function failRecipe(relativePath, code) {
+  throw Object.assign(new Error(`${code}: ${relativePath}`), { code, relativePath });
+}
+
+function unwrapRecipeExpression(node) {
+  while (node && (ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isParenthesizedExpression(node))) {
+    node = node.expression;
+  }
+  return node;
+}
+
+function recipePath(node) {
+  node = unwrapRecipeExpression(node);
+  if (node && ts.isIdentifier(node)) {
+    return node.text;
+  }
+  if (node && ts.isPropertyAccessExpression(node) && !node.questionDotToken) {
+    return `${recipePath(node.expression)}.${node.name.text}`;
+  }
+  return undefined;
+}
+
+function recipeCall(node, name) {
+  node = unwrapRecipeExpression(node);
+  return node && ts.isCallExpression(node) && !node.questionDotToken && recipePath(node.expression) === name
+    ? node
+    : undefined;
+}
+
+function recipeNodes(source, predicate) {
+  const matches = [];
+  function visit(node) {
+    if (predicate(node)) {
+      matches.push(node);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  return matches;
+}
+
+function uniqueRecipeNode(matches, relativePath, code) {
+  if (matches.length !== 1) {
+    failRecipe(relativePath, code);
+  }
+  return matches[0];
+}
+
+function recipeVariable(source, name, relativePath, code) {
+  return uniqueRecipeNode(
+    source.statements.filter(ts.isVariableStatement)
+      .flatMap((statement) => [...statement.declarationList.declarations])
+      .filter((declaration) => recipePath(declaration.name) === name),
+    relativePath,
+    code,
+  );
+}
+
+// Spreads, computed keys and duplicate properties make first-member comparisons unsound.
+function recipeProperties(node, relativePath, code) {
+  node = unwrapRecipeExpression(node);
+  if (!node || !ts.isObjectLiteralExpression(node)) {
+    failRecipe(relativePath, code);
+  }
+  const properties = new Map();
+  for (const property of node.properties) {
+    if (!(ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) ||
+        !(ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) ||
+        properties.has(property.name.text)) {
+      failRecipe(relativePath, code);
+    }
+    properties.set(property.name.text, unwrapRecipeExpression(
+      ts.isPropertyAssignment(property) ? property.initializer : property.name,
+    ));
+  }
+  return properties;
+}
+
+function enforceBootstrapRecipe(relativePath, markdown, optionsName, portPath) {
+  const fences = [...markdown.matchAll(/^```(?:ts|typescript)\r?\n([\s\S]*?)^```\s*$/gmu)]
+    .map((match) => ts.createSourceFile(relativePath, match[1], ts.ScriptTarget.Latest, true, ts.ScriptKind.TS));
+  // The preload plus AppModule distinguishes the complete recipe from schema-extension examples.
+  // Neither headings nor expected code copied into comments can act as anchors.
+  const source = uniqueRecipeNode(fences.filter((fence) =>
+    fence.statements.some((node) => ts.isClassDeclaration(node) && node.name?.text === 'AppModule') &&
+    recipeNodes(fence, (node) => recipeCall(node, 'ConfigModule.load') !== undefined).length > 0),
+  relativePath, 'CONFIG_RECIPE_ANCHOR');
+  if (source.parseDiagnostics.length > 0) {
+    failRecipe(relativePath, 'CONFIG_RECIPE_SYNTAX');
+  }
+  const preload = recipeCall(recipeVariable(source, 'validatedConfig', relativePath, 'CONFIG_RECIPE_PRELOAD').initializer,
+    'ConfigModule.load');
+  if (!preload || preload.arguments.length !== 1 || recipePath(preload.arguments[0]) !== 'configSources') {
+    failRecipe(relativePath, 'CONFIG_RECIPE_PRELOAD');
+  }
+  const inputs = recipeProperties(recipeVariable(source, 'configSources', relativePath, 'CONFIG_RECIPE_PRELOAD').initializer,
+    relativePath, 'CONFIG_RECIPE_PRELOAD');
+  if (recipePath(inputs.get('schema')) !== 'ConfigSchema') {
+    failRecipe(relativePath, 'CONFIG_RECIPE_PRELOAD');
+  }
+  if (optionsName === 'moduleOptions') {
+    const defaults = unwrapRecipeExpression(recipeVariable(source, 'namespacedDefaults', relativePath, 'CONFIG_RECIPE_PRELOAD').initializer);
+    if (!defaults || !ts.isAwaitExpression(defaults) || !recipeCall(defaults.expression, 'loadNamespacedConfig') ||
+        recipePath(inputs.get('defaults')) !== 'namespacedDefaults') {
+      failRecipe(relativePath, 'CONFIG_RECIPE_PRELOAD');
+    }
+  }
+
+  const binding = recipeVariable(source, optionsName, relativePath, 'CONFIG_RECIPE_REGISTRATION');
+  const chapterRegistration = optionsName === 'configRegistration'
+    ? recipeCall(binding.initializer, 'ConfigModule.forRoot') : undefined;
+  if (optionsName === 'configRegistration' && (!chapterRegistration || chapterRegistration.arguments.length !== 1)) {
+    failRecipe(relativePath, 'CONFIG_RECIPE_REGISTRATION');
+  }
+  const options = recipeProperties(chapterRegistration ? chapterRegistration.arguments[0] : binding.initializer,
+    relativePath, 'CONFIG_RECIPE_REGISTRATION');
+  if (options.has('schema')) {
+    failRecipe(relativePath, 'CONFIG_RECIPE_REVALIDATION');
+  }
+  if (options.has('envFile') || options.has('envFilePath')) {
+    failRecipe(relativePath, 'CONFIG_RECIPE_LEGACY_ENV_INPUT');
+  }
+  const envFiles = options.get('envFilePaths');
+  if (!envFiles || !ts.isArrayLiteralExpression(envFiles) || envFiles.elements.length !== 0) {
+    failRecipe(relativePath, 'CONFIG_RECIPE_ENV_FILES');
+  }
+  if (recipePath(options.get('runtimeOverrides')) !== 'validatedConfig' || options.has('defaults') || options.has('processEnv')) {
+    failRecipe(relativePath, 'CONFIG_RECIPE_SNAPSHOT_SOURCE');
+  }
+
+  const appModule = uniqueRecipeNode(source.statements.filter((node) =>
+    ts.isClassDeclaration(node) && node.name?.text === 'AppModule'), relativePath, 'CONFIG_RECIPE_REGISTRATION');
+  const decorator = uniqueRecipeNode((ts.getDecorators(appModule) ?? [])
+    .map((node) => recipeCall(node.expression, 'Module')).filter(Boolean), relativePath, 'CONFIG_RECIPE_REGISTRATION');
+  const imports = recipeProperties(decorator.arguments[0], relativePath, 'CONFIG_RECIPE_REGISTRATION').get('imports');
+  if (chapterRegistration) {
+    if (!imports || !ts.isArrayLiteralExpression(imports) || imports.elements.length !== 1 ||
+        recipePath(imports.elements[0]) !== optionsName) {
+      failRecipe(relativePath, 'CONFIG_RECIPE_REGISTRATION');
+    }
+  } else {
+    const registration = uniqueRecipeNode(imports && ts.isArrayLiteralExpression(imports)
+      ? imports.elements.map((node) => recipeCall(node, 'ConfigModule.forRoot')).filter(Boolean) : [],
+    relativePath, 'CONFIG_RECIPE_REGISTRATION');
+    if (registration.arguments.length !== 1 || recipePath(registration.arguments[0]) !== optionsName) {
+      failRecipe(relativePath, 'CONFIG_RECIPE_REGISTRATION');
+    }
+  }
+
+  // Chapter HTTP bootstrap is a separate file fence importing the exported snapshot.
+  const adapterSource = optionsName === 'moduleOptions' ? source : uniqueRecipeNode(fences.filter((fence) =>
+    fence.statements.some((node) => ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) &&
+      node.moduleSpecifier.text === './app.module' && node.importClause?.namedBindings &&
+      ts.isNamedImports(node.importClause.namedBindings) &&
+      ['AppModule', 'validatedConfig'].every((name) => node.importClause.namedBindings.elements.some((binding) =>
+        binding.name.text === name && (binding.propertyName?.text ?? name) === name)))),
+  relativePath, 'CONFIG_RECIPE_ADAPTER_SNAPSHOT');
+  if (adapterSource.parseDiagnostics.length > 0) {
+    failRecipe(relativePath, 'CONFIG_RECIPE_SYNTAX');
+  }
+  const application = uniqueRecipeNode(recipeNodes(adapterSource, (node) =>
+    recipeCall(node, 'FluoFactory.create') !== undefined), relativePath, 'CONFIG_RECIPE_ADAPTER_SNAPSHOT');
+  const applicationOptions = recipeProperties(application.arguments[1], relativePath, 'CONFIG_RECIPE_ADAPTER_SNAPSHOT');
+  let adapter = applicationOptions.get('adapter');
+  if (optionsName === 'moduleOptions' && recipePath(adapter) === 'adapter') {
+    adapter = recipeVariable(source, 'adapter', relativePath, 'CONFIG_RECIPE_ADAPTER_SNAPSHOT').initializer;
+  }
+  const adapterCall = recipeCall(adapter, 'FastifyHttpApplicationAdapter.create');
+  if (recipePath(application.arguments[0]) !== 'AppModule' || !adapterCall || adapterCall.arguments.length !== 1) {
+    failRecipe(relativePath, 'CONFIG_RECIPE_ADAPTER_SNAPSHOT');
+  }
+  const adapterOptions = recipeProperties(adapterCall.arguments[0], relativePath, 'CONFIG_RECIPE_ADAPTER_SNAPSHOT');
+  if (recipePath(adapterOptions.get('port')) !== portPath) {
+    failRecipe(relativePath, 'CONFIG_RECIPE_ADAPTER_SNAPSHOT');
+  }
+}
+
 export function enforceConfigNestjsMigrationDocs(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
@@ -385,6 +555,10 @@ export function enforceConfigNestjsMigrationDocs(
         `Platform consistency governance check failed: ${relativePath} must keep the @nestjs/config migration boundary synchronized; missing: ${missingMarkers.join(', ')}.`,
       );
     }
+  }
+
+  for (const [relativePath, optionsName, portPath] of bootstrapRecipes) {
+    enforceBootstrapRecipe(relativePath, readText(relativePath), optionsName, portPath);
   }
 
   for (const { relativePath, required, forbidden } of semanticRequirements) {

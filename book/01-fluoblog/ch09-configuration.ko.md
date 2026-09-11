@@ -124,7 +124,7 @@ export class AppSettings {
 아래는 `src/config/app-settings.module.ts`의 완전한 파일이다. 클래스 수준의 `@Inject(ConfigService)`만으로 제공자가 생기지는 않는다. `imports`가 설정 등록을 가져오고, `providers`가 `AppSettings`를 만들며, `exports`가 다른 모듈에 공개한다.
 
 ```ts
-import { ConfigModule, loadConfig } from '@fluojs/config';
+import { ConfigModule } from '@fluojs/config';
 import { Module } from '@fluojs/core';
 import { AppSettings } from './app-settings.js';
 import { blogConfigOptions, type BlogConfig } from './blog-config.js';
@@ -134,7 +134,7 @@ const envFiles = process.env.NODE_ENV === 'production'
   : ['.env', '.env.local'];
 
 export const blogConfig: Readonly<BlogConfig> = Object.freeze(
-  loadConfig(blogConfigOptions(process.env, envFiles)) as BlogConfig,
+  ConfigModule.load(blogConfigOptions(process.env, envFiles)) as BlogConfig,
 );
 
 const configRegistration = ConfigModule.forRoot({
@@ -152,13 +152,13 @@ const configRegistration = ConfigModule.forRoot({
 export class AppSettingsModule {}
 ```
 
-이 파일의 환경 판단은 Fluo의 자동 기능이 아니라 우리가 선택한 정책이다. `NODE_ENV=production`에서는 파일 입력을 비활성화하고, 나머지 실행에서는 두 파일을 지정 순서대로 읽는다. CI에서는 `production`을 명시하거나 단위 테스트처럼 함수에 빈 목록을 전달한다. `envFilePaths: []`는 기본 `.env`로의 대체 동작도 비활성화한다. 파일을 지정한 경우 상대 경로는 시작 디렉터리를 기준으로 하므로 개발 명령은 항상 `fluo-blog` 루트에서 실행한다.
+이 파일의 환경 판단은 Fluo의 자동 기능이 아니라 우리가 선택한 정책이다. `NODE_ENV=production`에서는 파일 입력을 비활성화하고, 나머지 실행에서는 두 파일을 지정 순서대로 읽는다. CI에서는 `production`을 명시하거나 단위 테스트처럼 함수에 빈 목록을 전달한다. `envFilePaths: []`는 기본 `.env`로의 대체 동작도 비활성화한다. `envFilePaths`를 생략하면 file-capable load에서만 이 기본값을 선택하고, 명시적 in-memory source는 이를 억제한다. 파일을 지정한 경우 상대 경로는 시작 디렉터리를 기준으로 하므로 개발 명령은 항상 `fluo-blog` 루트에서 실행한다.
 
 여기서는 전체에서 하나만 가지는 설정을 전역으로 공개했다. `ConfigModule`의 기본값도 `global: true`지만 구성 의도를 읽을 수 있도록 명시했다. 설정을 플러그인별로 격리하는 애플리케이션이라면 `global: false`와 명시적 모듈 가져오기를 선택한다. 전역 공개가 타입이나 값 검증을 약하게 하지는 않지만, 의존 관계가 덜 드러나므로 사용하는 클래스에서는 `@Inject`를 생략하지 않는다.
 
-이번에는 어댑터 생성 전에 포트를 알아야 하므로 `loadConfig`로 한 번 검증하고 그 결과를 등록한다. `loadConfig`의 공개 반환 타입은 일반 설정 딕셔너리다. 여기의 `as BlogConfig`는 입력 검증을 대신하는 단언이 아니라, 바로 앞에서 실행한 `BlogConfigSchema`의 출력과 타입 사이의 대응을 나타낸다. 원시 환경 변수에 같은 단언을 붙여서는 안 된다. 모든 필드가 원시값인 결과를 동결하고, DI에는 이 스냅샷만 넘겨 파일을 두 번 읽지 않는다. 이미 숫자가 된 포트에 문자열 입력용 스키마를 다시 적용하지도 않는다.
+이번에는 어댑터 생성 전에 포트를 알아야 하므로 `ConfigModule.load(...)`로 한 번 검증하고 그 결과를 등록한다. 공개 반환 타입은 일반 설정 딕셔너리다. 여기의 `as BlogConfig`는 입력 검증을 대신하는 단언이 아니라, 바로 앞에서 실행한 `BlogConfigSchema`의 출력과 타입 사이의 대응을 나타낸다. 원시 환경 변수에 같은 단언을 붙여서는 안 된다. 모든 필드가 원시값인 결과를 동결하고, DI에는 이 스냅샷만 넘겨 파일을 두 번 읽지 않는다. 이미 숫자가 된 포트에 문자열 입력용 스키마를 다시 적용하지도 않는다.
 
-등록과 검증의 시점은 다르다. `ConfigModule.forRoot(...)`는 동기적으로 provider를 등록하며, 일반적인 schema 등록에서는 bootstrap이 `ConfigService`를 해석할 때 설정을 로드하고 listen 전에 동기 검증한다. 여기서는 명시적 `loadConfig(...)`가 이 모듈을 평가하는 도중 실행되므로 그보다 먼저 검증한다. 스키마 실패는 `INVALID_CONFIG`이며, 아래 dynamic import와 `FluoFactory.create()`까지 도달하지 않는다. 이미 검증한 snapshot을 다시 등록하는 이 흐름을 “`forRoot` 호출만으로 파일 로드가 끝났다”는 설명과 혼동하지 않는다.
+등록과 검증의 시점은 다르다. `ConfigModule.forRoot(...)`는 동기적으로 provider를 등록하며, 일반적인 schema 등록에서는 bootstrap이 `ConfigService`를 해석할 때 설정을 로드하고 listen 전에 동기 검증한다. 여기서는 명시적 `ConfigModule.load(...)`가 이 모듈을 평가하는 도중 실행되므로 그보다 먼저 검증한다. 스키마 실패는 `INVALID_CONFIG`이며, 아래 dynamic import와 `FluoFactory.create()`까지 도달하지 않는다. 이미 검증한 snapshot을 다시 등록하는 이 흐름을 “`forRoot` 호출만으로 파일 로드가 끝났다”는 설명과 혼동하지 않는다.
 
 `src/app.ts`의 기존 `AppModule`에는 `AppSettingsModule`을 가져와 `imports`에 추가한다. 다음은 기존 모듈과의 합성 부분이며 HTTP 설정을 모두 대체하는 파일은 아니다. `PostsModule`은 앞 장까지의 `src/posts/posts.module.ts`다. 생성된 greeting·health와 기존 기능 등록은 유지하며, 생성 때의 config 등록도 같은 키를 다시 읽는 두 번째 설정 원본으로 남기지 않고 이 snapshot 경로로 합성한다.
 
@@ -235,7 +235,7 @@ DATABASE_URL=postgresql://fluo:local_only@127.0.0.1:5432/fluo_blog
 아래는 `test/config.test.ts`의 완전한 파일이다. 먼저 이 테스트를 쓰면 사용처에서 직접 `process.env`를 읽는 구현에는 기대한 입력 격리가 없음을 알 수 있다. 테스트 자체는 실제 환경 변수를 변경하지 않고, 파일도 건드리지 않으며, 대기 시간에도 의존하지 않는다. 앞 장까지의 Vitest 구성으로 실행한다.
 
 ```ts
-import { ConfigService, loadConfig } from '@fluojs/config';
+import { ConfigModule, ConfigService } from '@fluojs/config';
 import { describe, expect, it } from 'vitest';
 import { blogConfigOptions } from '../src/config/blog-config.js';
 
@@ -246,7 +246,7 @@ const validEnv = {
 
 describe('FluoBlog configuration', () => {
   it('transforms inputs and keeps only the explicit application keys', () => {
-    const values = loadConfig(blogConfigOptions({
+    const values = ConfigModule.load(blogConfigOptions({
       ...validEnv,
       PORT: '4100',
       UNRELATED_SECRET: 'not-part-of-the-blog',
@@ -260,13 +260,13 @@ describe('FluoBlog configuration', () => {
   });
 
   it('does not let an absent process value erase the default', () => {
-    const values = loadConfig(blogConfigOptions(validEnv, []));
+    const values = ConfigModule.load(blogConfigOptions(validEnv, []));
     expect(values.PORT).toBe(3000);
   });
 
   it('applies explicit overrides above the environment', () => {
     const options = blogConfigOptions({ ...validEnv, PORT: '4100' }, []);
-    const values = loadConfig({
+    const values = ConfigModule.load({
       ...options,
       runtimeOverrides: { PORT: '4200' },
     });
@@ -276,18 +276,18 @@ describe('FluoBlog configuration', () => {
   it.each(['', '0', '-1', '3.5', '3000oops', '65536'])(
     'rejects invalid PORT %j',
     (PORT) => {
-      expect(() => loadConfig(
+      expect(() => ConfigModule.load(
         blogConfigOptions({ ...validEnv, PORT }, []),
       )).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG' }));
     },
   );
 
   it('rejects a missing database and a public address with a path', () => {
-    expect(() => loadConfig(blogConfigOptions({
+    expect(() => ConfigModule.load(blogConfigOptions({
       PUBLIC_ORIGIN: validEnv.PUBLIC_ORIGIN,
     }, []))).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG' }));
 
-    expect(() => loadConfig(blogConfigOptions({
+    expect(() => ConfigModule.load(blogConfigOptions({
       ...validEnv,
       PUBLIC_ORIGIN: 'https://blog.example.test/private',
     }, []))).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG' }));

@@ -129,9 +129,9 @@ Config의 in-memory load, merge, validation, clone, service access는 portable�
 명시적으로 끄세요.
 
 ```ts
-import { loadConfig } from '@fluojs/config';
+import { ConfigModule } from '@fluojs/config';
 
-const config = loadConfig({
+const config = ConfigModule.load({
   envFilePaths: [],
   defaults: { PORT: 3000 },
   processEnv: { PORT: '8080' },
@@ -140,8 +140,10 @@ const config = loadConfig({
 ```
 
 Config는 ambient environment variable을 자동으로 읽지 않습니다. 애플리케이션
-경계에서 snapshot을 전달하세요. `loadConfig({})`와 `ConfigModule.forRoot()`는
-여전히 기본 `<cwd>/.env`를 선택하므로 in-memory 전용 호출이 아닙니다.
+경계에서 snapshot을 전달하세요. 순서형 `envFilePaths`는 낮은 우선순위에서
+높은 우선순위 순으로 지정합니다. `envFilePaths`를 생략하면
+`ConfigModule.load({})`와 `ConfigModule.forRoot()`처럼 기본 `<cwd>/.env`를
+사용하며, `envFilePaths: []`는 파일 로드를 명시적으로 비활성화합니다.
 명시적 env file, 기본 `.env` loading, `watch: true`는 `>=24.0.0 <27`에서
 지원하는 Node 전용 기능입니다.
 

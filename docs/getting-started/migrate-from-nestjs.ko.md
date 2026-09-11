@@ -462,12 +462,11 @@ class UserWithAuditDto extends IntersectionType(CreateUserDto, AuditDto) {}
 
 ### NestJS Config Registration 및 Bootstrap Migration
 
-동기 registration 호출 전에 async factory를 resolve하되 nested output은 그대로 유지한다. 아래 예시는 `loadConfig(...)`로 문서화된 deep merge, 명시적 `processEnv`, 동기 validation 동작을 적용한 뒤 하나의 validated snapshot을 module registration과 HTTP adapter에 함께 사용한다.
+동기 registration 호출 전에 async factory를 resolve하되 nested output은 그대로 유지한다. 아래 예시는 `ConfigModule.load(...)`로 문서화된 deep merge, 명시적 `processEnv`, 동기 validation 동작을 적용한 뒤 하나의 validated snapshot을 module registration과 HTTP adapter에 함께 사용한다.
 
 ```typescript
 import {
   ConfigModule,
-  loadConfig,
   type ConfigModuleOptions,
 } from '@fluojs/config';
 import { Module } from '@fluojs/core';
@@ -497,15 +496,16 @@ const ConfigSchema = z
 
 const namespacedDefaults = await loadNamespacedConfig();
 const configSources = {
+  envFilePaths: [],
   defaults: namespacedDefaults,
   processEnv: { PORT: process.env.PORT },
   schema: ConfigSchema,
 } satisfies ConfigModuleOptions;
-const validatedConfig = ConfigSchema.parse(loadConfig(configSources));
+const validatedConfig = ConfigModule.load(configSources) as z.infer<typeof ConfigSchema>;
 
 const moduleOptions = {
-  defaults: validatedConfig,
-  schema: ConfigSchema,
+  envFilePaths: [],
+  runtimeOverrides: validatedConfig,
   global: true,
 } satisfies ConfigModuleOptions;
 
@@ -520,7 +520,7 @@ const app = await FluoFactory.create(AppModule, { adapter });
 await app.listen();
 ```
 
-`loadConfig(...)`와 `ConfigModule.forRoot(...)`는 ambient `process.env`를 scan하지 않으며 명시적 snapshot만 precedence에 참여한다. Async factory의 plain nested object는 nested 상태를 유지하며 key별로 deep merge된다. Schema output이 최종 snapshot이므로 injected consumer는 같은 port를 `ConfigService.get('http.port')`로 읽을 수 있다. Module은 기본적으로 global이고 `global: false`로 module-local visibility를 선택한다.
+`ConfigModule.load(...)`와 `ConfigModule.forRoot(...)`는 ambient `process.env`를 scan하지 않으며 명시적 snapshot만 precedence에 참여한다. `envFilePaths`를 생략하면 file-capable load는 기본 `.env`를 사용하고, `[]`는 file loading을 해제한다. Async factory의 plain nested object는 nested 상태를 유지하며 key별로 deep merge된다. Schema output이 최종 snapshot이므로 injected consumer는 같은 port를 `ConfigService.get('http.port')`로 읽을 수 있다. Module은 기본적으로 global이고 `global: false`로 module-local visibility를 선택한다.
 
 NestJS `forRootAsync(...)`와 `load` namespace factory에는 직접 대응하는 registration이 없다. Remote store나 secret manager는 최종 module graph를 정의하기 전에 application-owned bootstrap boundary에서 await하고, nested result는 동기 loader 또는 module option에 그대로 전달한다. Adapterless `FluoFactory.create(AppModule)` application shell과 `FluoFactory.createApplicationContext(AppModule)`도 `ConfigService`를 resolve할 수 있으며 HTTP `listen()`에만 `FluoFactory.create(AppModule, { adapter })`가 필요하다. 최종 HTTP application 전에 공유 validated snapshot을 준비하면 ambient environment를 다시 읽지 않고 adapter와 injected config를 일치시킬 수 있다.
 

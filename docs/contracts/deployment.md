@@ -20,7 +20,7 @@
 | --- | --- |
 | `NODE_ENV` | Set to `production` for production deployments. The existing deployment example Dockerfile and Cloudflare Workers snippet both use that value. |
 | `PORT` | Provide the listener port through application config when the deployment does not use the example default `3000`. The repository examples pass `port: 3000` explicitly to `FastifyHttpApplicationAdapter.create(...)`. |
-| Explicit `processEnv` snapshot | When process-backed configuration is required, pass only the needed keys into `ConfigModule.forRoot({ processEnv: ... })` or `loadConfig(...)`. `@fluojs/config` does not scan ambient `process.env` automatically. |
+| Explicit `processEnv` snapshot | When process-backed configuration is required, pass only the needed keys into `ConfigModule.forRoot({ envFilePaths: [], processEnv: ... })` or `ConfigModule.load(...)`. `@fluojs/config` does not scan ambient `process.env` automatically. |
 | Application-specific secrets | Values such as database or API credentials belong in application bootstrap config, not in package internals. Validation should fail fast when required keys are missing. |
 
 ## Health Check Endpoints
