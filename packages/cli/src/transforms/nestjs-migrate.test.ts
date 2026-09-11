@@ -684,6 +684,41 @@ describe('users', () => {
     expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.message.includes('Unsupported Test.createTestingModule metadata shape'))).toBe(true);
   });
 
+  it('retains spread imports metadata with one fail-closed warning', () => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+    const sourceFilePath = join(workspaceDirectory, 'users.spec.ts');
+    const source = `import { Test } from '@nestjs/testing';
+
+declare const modules: readonly unknown[];
+
+async function createModule() {
+  return Test.createTestingModule({ imports: [...modules] }).compile();
+}
+
+void createModule();
+`;
+    writeFileSync(sourceFilePath, source);
+
+    // When
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['testing']),
+      targetPath: sourceFilePath,
+    });
+
+    // Then
+    expect(readFileSync(sourceFilePath, 'utf8')).toBe(source);
+    expect(report.changedFiles).toBe(0);
+    expect(report.fileResults.flatMap((result) => result.warnings)).toEqual([
+      expect.objectContaining({
+        category: 'testing-unsupported',
+        message: expect.stringContaining('exactly one root module expression'),
+      }),
+    ]);
+  });
+
   it('skips testing rewrite for unsupported builder chains and reports warning', () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
     temporaryDirectories.push(workspaceDirectory);
@@ -720,6 +755,59 @@ describe('users', () => {
     expect(specContent).not.toContain('from "@fluojs/testing"');
     expect(report.warningCount).toBeGreaterThan(0);
     expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.message.includes('Unsupported testing builder method "useMocker"'))).toBe(true);
+  });
+
+  it.each([
+    {
+      name: 'supported later use',
+      source: `import { Test } from '@nestjs/testing';
+import { UsersModule } from './users.module';
+
+async function createModule() {
+  const builder = Test.createTestingModule({ imports: [UsersModule] });
+  return builder.compile();
+}
+
+void createModule();
+`,
+    },
+    {
+      name: 'unsupported later use',
+      source: `import { Test } from '@nestjs/testing';
+import { UsersModule } from './users.module';
+
+async function createModule() {
+  const builder = Test.createTestingModule({ imports: [UsersModule] });
+  builder.useMocker(() => ({}));
+  return builder.compile();
+}
+
+void createModule();
+`,
+    },
+  ])('retains detached Nest testing builders with one warning for $name', ({ source }) => {
+    // Given
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-migrate-'));
+    temporaryDirectories.push(workspaceDirectory);
+    const sourceFilePath = join(workspaceDirectory, 'users.spec.ts');
+    writeFileSync(sourceFilePath, source);
+
+    // When
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['testing']),
+      targetPath: sourceFilePath,
+    });
+
+    // Then
+    expect(readFileSync(sourceFilePath, 'utf8')).toBe(source);
+    expect(report.changedFiles).toBe(0);
+    expect(report.fileResults.flatMap((result) => result.warnings)).toEqual([
+      expect.objectContaining({
+        category: 'testing-unsupported',
+        message: expect.stringContaining('directly inspectable builder chain'),
+      }),
+    ]);
   });
 
   it('normalizes specialized testing overrides to canonical provider strategies', () => {

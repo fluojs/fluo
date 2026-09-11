@@ -1788,7 +1788,7 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
     }
 
     const [rootModuleExpression] = importsProperty.initializer.elements;
-    if (!rootModuleExpression || !ts.isExpression(rootModuleExpression)) {
+    if (!rootModuleExpression || ts.isSpreadElement(rootModuleExpression) || !ts.isExpression(rootModuleExpression)) {
       return {
         warning: 'Unsupported Test.createTestingModule metadata shape. Expected exactly one root module expression.',
       };
@@ -1912,6 +1912,7 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
     const chainFactoryCalls = new Map<ts.CallExpression, readonly ts.Expression[]>();
     const chainSpecializedCalls = new Set<ts.CallExpression>();
     let cursor: ts.Expression = root;
+    let reachesCompile = false;
 
     while (true) {
       const chainExpression = skipOuterTransparentExpressions(cursor);
@@ -1924,7 +1925,12 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
       }
 
       if (!ts.isPropertyAccessExpression(parent) || parent.expression !== chainExpression) {
-        return { factoryCalls: chainFactoryCalls, specializedCalls: chainSpecializedCalls };
+        return reachesCompile
+          ? { factoryCalls: chainFactoryCalls, specializedCalls: chainSpecializedCalls }
+          : {
+              node: root,
+              warning: 'Unsupported testing builder ownership. Automatic migration requires a directly inspectable builder chain ending in .compile(). Keep Nest testing chain and migrate manually.',
+            };
       }
 
       if (parent.questionDotToken) {
@@ -1940,6 +1946,13 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
         return {
           node: parent,
           warning: 'Unsupported testing builder property access. Keep Nest testing chain and migrate manually.',
+        };
+      }
+
+      if (reachesCompile) {
+        return {
+          node: parent,
+          warning: 'Unsupported testing builder use after .compile(). Keep Nest testing chain and migrate manually.',
         };
       }
 
@@ -1964,6 +1977,10 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
         if (factoryConversion.kind === 'converted') {
           chainFactoryCalls.set(call, factoryConversion.arguments);
         }
+      }
+
+      if (methodName === 'compile') {
+        reachesCompile = true;
       }
 
       cursor = call;

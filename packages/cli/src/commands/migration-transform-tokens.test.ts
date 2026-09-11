@@ -53,7 +53,7 @@ export class UsersService {}
 
 class UsersModule {}
 
-void Test.createTestingModule({ imports: [UsersModule] });
+void Test.createTestingModule({ imports: [UsersModule] }).compile();
 `,
     );
 
