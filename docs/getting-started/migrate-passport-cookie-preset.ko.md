@@ -36,11 +36,21 @@ CookieAuthModule.forRoot({
 });
 ```
 
-새 configuration은 credential reader와 response-cookie writer 모두에 전달되므로 access/refresh cookie 이름이 달라질 수 없습니다. `DefaultJwtVerifier`를 위해 `JwtModule.forRoot({ global: true, ... })`는 sibling import로 유지하세요.
+새 configuration은 credential reader와 response-cookie writer 모두에 전달됩니다. access와 refresh 이름은 서로 다른 값으로 설정할 수 있지만, reader와 writer는 설정한 access 이름을 공유하고 설정한 refresh 이름을 공유해야 합니다. `DefaultJwtVerifier`를 위해 `JwtModule.forRoot({ global: true, ... })`는 sibling import로 유지하세요.
+
+Cookie auth를 bearer 또는 Passport.js bridge auth와 함께 쓸 때는 다른 named registration을 `CookieAuthModule.forRoot(...)`로 옮기고 sibling `PassportModule.forRoot(...)`를 제거해 하나의 registry를 유지하세요.
+
+```ts
+CookieAuthModule.forRoot(
+  { accessTokenCookieName: 'session_access' },
+  { defaultStrategy: 'jwt' },
+  [createBearerJwtStrategyRegistration()],
+);
+```
 
 ## 보존되는 capability
 
-`CookieManager`의 public constructor, DI class token, `instanceof` identity, structured cookie option, token별 TTL 우선순위, clear 동작은 유지됩니다. `createPassportJsStrategyBridge(...)`는 cookie preset 등록이 아니라 third-party Passport.js strategy instance를 통합하므로 timeout, shutdown, principal-mapping 동작을 그대로 유지합니다.
+`CookieManager`의 public constructor, DI class token, `instanceof` identity, structured cookie option, token별 TTL 우선순위, clear 동작은 유지됩니다. `cookieOptions.maxAge`는 초 단위이며 portable HTTP `maxAgeSeconds`가 됩니다. 우선순위는 positional TTL, 해당 token별 TTL, `maxAge`입니다. Auth cookie 기본값은 `Path=/`, `Secure`, `HttpOnly`, `SameSite=Strict`이고, 일반 HTTP `setCookie(...)`에는 이 auth 기본값이 없습니다. `createPassportJsStrategyBridge(...)`는 cookie preset 등록이 아니라 third-party Passport.js strategy instance를 통합하므로 timeout, shutdown, principal-mapping 동작을 그대로 유지합니다.
 
 ## release 영향
 

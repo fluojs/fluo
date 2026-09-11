@@ -1,0 +1,77 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import { enforcePassportCookiePresetContract } from './passport-cookie-preset-contract.mjs';
+
+const repoRoot = join(import.meta.dirname, '..', '..');
+const cookieAuthModulePath = 'packages/passport/src/cookie/cookie-auth-module.ts';
+
+function read(relativePath: string): string {
+  return readFileSync(join(repoRoot, relativePath), 'utf8');
+}
+
+describe('Passport cookie preset contract', () => {
+  it('accepts the executable single-registry recipe', () => {
+    // Given
+    const runGovernanceGuard = () => enforcePassportCookiePresetContract();
+
+    // When / Then
+    expect(runGovernanceGuard).not.toThrow();
+  });
+
+  it('rejects source drift that removes composed additional strategies', () => {
+    // Given
+    const readWithMissingComposition = (relativePath: string): string =>
+      relativePath === cookieAuthModulePath
+        ? read(relativePath).replace('            ...additionalStrategies,\n', '')
+        : read(relativePath);
+
+    // When
+    const runGovernanceGuard = () => enforcePassportCookiePresetContract(readWithMissingComposition);
+
+    // Then
+    expect(runGovernanceGuard).toThrowError(/additionalStrategies/u);
+  });
+
+  it('rejects source drift that removes passport option forwarding', () => {
+    // Given
+    const readWithMissingOptionForwarding = (relativePath: string): string =>
+      relativePath === cookieAuthModulePath
+        ? read(relativePath).replace(', ...passportOptions', '')
+        : read(relativePath);
+
+    // When
+    const runGovernanceGuard = () => enforcePassportCookiePresetContract(readWithMissingOptionForwarding);
+
+    // Then
+    expect(runGovernanceGuard).toThrowError(/passportOptions/u);
+  });
+
+  it('proves the additional-strategy comparison is required', async () => {
+    // Given
+    const sourceUrl = new URL('./passport-cookie-preset-contract.mjs', import.meta.url);
+    const source = readFileSync(sourceUrl, 'utf8');
+    const target = '!hasCookieRegistration(strategies) || !hasAdditionalStrategiesSpread(strategies, additionalStrategiesParameter)';
+    const mutated = source
+      .replace(target, 'false')
+      .replace("import ts from 'typescript';", `import ts from '${import.meta.resolve('typescript')}';`)
+      .replaceAll('import.meta.url', JSON.stringify(sourceUrl.href));
+    const readWithMissingComposition = (relativePath: string): string =>
+      relativePath === cookieAuthModulePath
+        ? read(relativePath).replace('            ...additionalStrategies,\n', '')
+        : read(relativePath);
+
+    expect(mutated).not.toBe(source);
+    const governance: Pick<typeof import('./passport-cookie-preset-contract.mjs'), 'enforcePassportCookiePresetContract'> =
+      await import(`data:text/javascript;base64,${Buffer.from(mutated).toString('base64')}`);
+    const runMutatedGuard = () => governance.enforcePassportCookiePresetContract(readWithMissingComposition);
+
+    // When / Then
+    expect(runMutatedGuard).not.toThrow();
+    expect(() => expect(runMutatedGuard).toThrow()).toThrowError(
+      expect.objectContaining({ name: 'AssertionError' }),
+    );
+  });
+});

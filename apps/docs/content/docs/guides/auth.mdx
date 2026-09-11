@@ -187,7 +187,7 @@ import { CookieAuthModule } from '@fluojs/passport';
 export class AuthModule {}
 ```
 
-`CookieAuthModule` registers the cookie strategy, `CookieManager`, `AuthGuard`, and the matching Passport registry entry. Keep `global: true` on the sibling JWT registration so `DefaultJwtVerifier` is visible when the cookie module resolves `CookieAuthStrategy`. The one cookie-name configuration controls both credential reading and response-cookie writing; use `CookieManager.create(config)` only for a separately owned instance.
+`CookieAuthModule` owns one Passport registry for the cookie strategy, `CookieManager`, and `AuthGuard`. For cookie plus bearer or Passport.js bridge auth, pass other named registrations to its third `forRoot` argument instead of importing a sibling `PassportModule.forRoot(...)`. Keep `global: true` on the sibling JWT registration so `DefaultJwtVerifier` is visible when the cookie module resolves `CookieAuthStrategy`. The one cookie-name configuration controls both credential reading and response-cookie writing; use `CookieManager.create(config)` only for a separately owned instance. Auth `cookieOptions.maxAge` is seconds and becomes portable HTTP `maxAgeSeconds`; auth defaults are `Path=/`, `Secure`, `HttpOnly`, and `SameSite=Strict`, while general HTTP `setCookie(...)` adds none of them.
 
 Protected routes still need `@UseAuth(...)`. If a route supports both signed-in and guest callers, use `@UseOptionalAuth(...)` intentionally.
 

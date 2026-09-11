@@ -187,7 +187,7 @@ import { CookieAuthModule } from '@fluojs/passport';
 export class AuthModule {}
 ```
 
-`CookieAuthModule`은 cookie strategy, `CookieManager`, `AuthGuard`, 대응 Passport registry entry를 등록합니다. Cookie module이 `CookieAuthStrategy`를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있도록 sibling JWT registration에 `global: true`를 유지하세요. 하나의 cookie-name configuration이 credential reader와 response-cookie writer를 함께 제어하며, 별도로 소유하는 instance에만 `CookieManager.create(config)`를 사용하세요.
+`CookieAuthModule`은 cookie strategy, `CookieManager`, `AuthGuard`를 위한 하나의 Passport registry를 소유합니다. Cookie auth를 bearer 또는 Passport.js bridge auth와 조합할 때는 sibling `PassportModule.forRoot(...)`를 import하지 말고 다른 named registration을 세 번째 `forRoot` 인자로 전달하세요. Cookie module이 `CookieAuthStrategy`를 resolve할 때 `DefaultJwtVerifier`를 볼 수 있도록 sibling JWT registration에 `global: true`를 유지하세요. 하나의 cookie-name configuration이 credential reader와 response-cookie writer를 함께 제어하며, 별도로 소유하는 instance에만 `CookieManager.create(config)`를 사용하세요. Auth `cookieOptions.maxAge`는 초 단위이며 portable HTTP `maxAgeSeconds`가 됩니다. Auth 기본값은 `Path=/`, `Secure`, `HttpOnly`, `SameSite=Strict`이고 일반 HTTP `setCookie(...)`에는 이 기본값이 없습니다.
 
 Protected route에는 여전히 `@UseAuth(...)`가 필요합니다. Signed-in caller와 guest caller를 모두 허용하는 route라면 의도적으로 `@UseOptionalAuth(...)`를 사용합니다.
 

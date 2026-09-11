@@ -184,7 +184,7 @@ import { CookieAuthModule } from '@fluojs/passport';
 export class AuthModule {}
 ```
 
-Cookie-auth 지원에는 `CookieAuthModule.forRoot(...)`와 `JwtModule.forRoot(...)`를 함께 import하세요. `CookieAuthModule`은 `CookieAuthStrategy`, `CookieManager`, `AuthGuard`, 그리고 대응하는 `PassportModule` registry entry를 등록합니다. `CookieAuthModule`과 `JwtModule`은 sibling import이므로, cookie strategy가 resolve할 때 `DefaultJwtVerifier`가 보이도록 문서화된 JWT option `global: true`를 설정해야 합니다.
+Cookie-auth 지원에는 `CookieAuthModule.forRoot(...)`와 `JwtModule.forRoot(...)`를 함께 import하세요. `CookieAuthModule`은 `CookieAuthStrategy`, `CookieManager`, `AuthGuard`를 등록하는 하나의 `PassportModule` registry를 소유합니다. Cookie auth를 bearer 또는 Passport.js bridge와 조합할 때는 sibling `PassportModule.forRoot(...)`를 import하지 말고, 다른 named registration을 세 번째 `forRoot` 인자로 전달하세요. 추가 strategy provider의 소유자는 계속 애플리케이션입니다. `CookieAuthModule`과 `JwtModule`은 sibling import이므로, cookie strategy가 resolve할 때 `DefaultJwtVerifier`가 보이도록 문서화된 JWT option `global: true`를 설정해야 합니다.
 
 Cookie 이름은 `CookieAuthModule.forRoot(...)`에 한 번만 전달하세요. 같은 configuration이 `CookieAuthStrategy`의 credential reader와 `CookieManager`의 writer/clearer에 함께 적용됩니다. DI 밖에서 별도로 소유하는 객체는 같은 `CookieManagerConfig`로 `CookieManager.create(config)`를 사용하세요. 제거된 manual helper는 [cookie preset migration](../../docs/getting-started/migrate-passport-cookie-preset.ko.md)을 따르세요.
 
@@ -194,7 +194,7 @@ Cookie access token은 비어 있지 않은 문자열이어야 합니다. `requi
 
 Cookie 검증 실패는 문서화된 분류를 유지합니다. 만료된 access token은 `AuthenticationExpiredError`, 유효하지 않은 access token은 `AuthenticationFailedError`, 누락되거나 malformed인 access-token cookie는 `AuthenticationRequiredError`를 발생시킵니다. 원본 `@fluojs/jwt` error는 `cause`로 보존되며, `AuthGuard`는 세 경우 모두 HTTP `401`로 응답합니다.
 
-`CookieManagerConfig.cookieOptions`는 `SetCookieOptions`를 받습니다. `accessTokenTtlSeconds`와 `refreshTokenTtlSeconds` field는 positional TTL 인자가 생략되었을 때 해당 token cookie의 기본 `Max-Age`가 되며, 명시적인 positional TTL이 항상 우선합니다.
+`CookieManagerConfig.cookieOptions`는 `SetCookieOptions`를 받습니다. `accessTokenTtlSeconds`와 `refreshTokenTtlSeconds` field는 positional TTL 인자가 생략되었을 때 해당 token cookie의 기본 `Max-Age`가 됩니다. 우선순위는 명시적 positional TTL, 해당 configured TTL, `cookieOptions.maxAge` 순서입니다. `maxAge`는 초 단위이며 portable HTTP `maxAgeSeconds`로 전달됩니다. 일부 host framework의 밀리초 `maxAge` 관례와 다릅니다. Auth cookie의 기본값은 `Path=/`, `Secure`, `HttpOnly`, `SameSite=Strict`이고 기본 domain/lifetime은 없습니다. 일반 `@fluojs/http` `setCookie(...)`는 이 auth 기본값을 추가하지 않습니다.
 
 `CookieManager`는 underlying adapter가 기존 header를 `set-cookie`처럼 다른 casing으로 저장했더라도, response에 이미 설정된 cookie를 덮어쓰지 않고 access-token 및 refresh-token `Set-Cookie` 값을 append합니다. portable HTTP serializer를 사용하므로 cookie 값은 emit 전에 percent-encoding되며, malformed cookie name 또는 attribute는 invalid header를 emit하는 대신 validation에서 실패합니다.
 

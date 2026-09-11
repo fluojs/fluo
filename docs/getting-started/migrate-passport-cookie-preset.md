@@ -36,11 +36,21 @@ CookieAuthModule.forRoot({
 });
 ```
 
-The new configuration feeds both the credential reader and response-cookie writer, so access and refresh cookie names cannot diverge. Keep `JwtModule.forRoot({ global: true, ... })` as a sibling import for `DefaultJwtVerifier`.
+The new configuration feeds both the credential reader and response-cookie writer. Access and refresh names remain distinct configurable values, but the reader and writer must share the configured access name and must share the configured refresh name. Keep `JwtModule.forRoot({ global: true, ... })` as a sibling import for `DefaultJwtVerifier`.
+
+For cookie plus bearer or Passport.js bridge auth, keep one registry by moving the other named registrations into `CookieAuthModule.forRoot(...)` and removing the sibling `PassportModule.forRoot(...)`:
+
+```ts
+CookieAuthModule.forRoot(
+  { accessTokenCookieName: 'session_access' },
+  { defaultStrategy: 'jwt' },
+  [createBearerJwtStrategyRegistration()],
+);
+```
 
 ## Preserved capabilities
 
-`CookieManager` keeps its public constructor, DI class token, `instanceof` identity, structured cookie options, per-token TTL precedence, and clear behavior. `createPassportJsStrategyBridge(...)` retains its timeout, shutdown, and principal-mapping behavior because it integrates third-party Passport.js strategy instances rather than registering the cookie preset.
+`CookieManager` keeps its public constructor, DI class token, `instanceof` identity, structured cookie options, per-token TTL precedence, and clear behavior. `cookieOptions.maxAge` is seconds and becomes portable HTTP `maxAgeSeconds`; precedence is positional TTL, matching per-token TTL, then `maxAge`. Auth cookies default to `Path=/`, `Secure`, `HttpOnly`, and `SameSite=Strict`, whereas general HTTP `setCookie(...)` adds none of those auth defaults. `createPassportJsStrategyBridge(...)` retains its timeout, shutdown, and principal-mapping behavior because it integrates third-party Passport.js strategy instances rather than registering the cookie preset.
 
 ## Release impact
 

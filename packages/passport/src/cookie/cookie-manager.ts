@@ -6,6 +6,13 @@ import { type CookieAuthOptions, normalizeCookieAuthOptions } from './cookie-aut
  * Describes the cookie options contract.
  */
 export interface CookieOptions {
+  /**
+   * Default cookie lifetime in seconds.
+   *
+   * @remarks
+   * This value is forwarded to the portable HTTP serializer as `maxAgeSeconds`;
+   * it is not the millisecond `maxAge` convention used by some host frameworks.
+   */
   httpOnly?: boolean;
   secure?: boolean;
   sameSite?: 'strict' | 'lax' | 'none';
@@ -21,7 +28,8 @@ export interface CookieOptions {
  * `accessTokenTtlSeconds` and `refreshTokenTtlSeconds` become the default `Max-Age`
  * for the matching token cookie when the positional TTL argument of
  * `CookieManager.setAccessTokenCookie(...)` / `setRefreshTokenCookie(...)` is omitted.
- * An explicit positional TTL always wins over these defaults.
+ * An explicit positional TTL always wins, followed by the matching configured TTL
+ * and then `maxAge`, which is expressed in seconds and forwarded as HTTP `maxAgeSeconds`.
  */
 export interface SetCookieOptions extends CookieOptions {
   accessTokenTtlSeconds?: number;

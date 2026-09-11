@@ -184,7 +184,7 @@ import { CookieAuthModule } from '@fluojs/passport';
 export class AuthModule {}
 ```
 
-Import `CookieAuthModule.forRoot(...)` and `JwtModule.forRoot(...)` together for cookie-auth support. `CookieAuthModule` registers `CookieAuthStrategy`, `CookieManager`, `AuthGuard`, and the matching `PassportModule` registry entry. `CookieAuthModule` and `JwtModule` are sibling imports, so set the documented `global: true` JWT option to make `DefaultJwtVerifier` visible when the cookie strategy resolves.
+Import `CookieAuthModule.forRoot(...)` and `JwtModule.forRoot(...)` together for cookie-auth support. `CookieAuthModule` owns one `PassportModule` registry that registers `CookieAuthStrategy`, `CookieManager`, and `AuthGuard`. To combine cookie auth with bearer or a Passport.js bridge, pass the other named registrations as the third `forRoot` argument instead of importing a sibling `PassportModule.forRoot(...)`; keep the additional strategy providers application-owned. `CookieAuthModule` and `JwtModule` are sibling imports, so set the documented `global: true` JWT option to make `DefaultJwtVerifier` visible when the cookie strategy resolves.
 
 Pass cookie names once to `CookieAuthModule.forRoot(...)`: the same configuration supplies `CookieAuthStrategy`'s credential reader and `CookieManager`'s writer and clearer. For a separately owned object outside DI, use `CookieManager.create(config)` with the same `CookieManagerConfig`. See the [cookie preset migration](../../docs/getting-started/migrate-passport-cookie-preset.md) for removed manual helpers.
 
@@ -194,7 +194,7 @@ Cookie access tokens must be non-empty strings. Missing cookies can resolve to `
 
 Cookie verification failures keep their documented classification: expired access tokens raise `AuthenticationExpiredError`, invalid access tokens raise `AuthenticationFailedError`, and missing or malformed access-token cookies raise `AuthenticationRequiredError`. The originating `@fluojs/jwt` error is preserved as the `cause`, while `AuthGuard` still answers HTTP `401` for every variant.
 
-`CookieManagerConfig.cookieOptions` accepts `SetCookieOptions`. Its `accessTokenTtlSeconds` and `refreshTokenTtlSeconds` fields supply the default `Max-Age` for the matching token cookie when the positional TTL argument is omitted; an explicit positional TTL always wins.
+`CookieManagerConfig.cookieOptions` accepts `SetCookieOptions`. Its `accessTokenTtlSeconds` and `refreshTokenTtlSeconds` fields supply the default `Max-Age` for the matching token cookie when the positional TTL argument is omitted; an explicit positional TTL wins, then the matching configured TTL, then `cookieOptions.maxAge`. `maxAge` is measured in seconds and is forwarded to portable HTTP `maxAgeSeconds`, not the millisecond convention used by some host frameworks. Auth cookies default to `Path=/`, `Secure`, `HttpOnly`, and `SameSite=Strict`, with no default domain or lifetime; general `@fluojs/http` `setCookie(...)` does not add those auth defaults.
 
 `CookieManager` appends access-token and refresh-token `Set-Cookie` values without overwriting cookies that were already placed on the response, even when the underlying adapter stores the existing header with different casing such as `set-cookie`. It uses the portable HTTP serializer, so cookie values are percent-encoded before they are emitted and malformed cookie names or attributes fail validation instead of emitting invalid headers.
 
