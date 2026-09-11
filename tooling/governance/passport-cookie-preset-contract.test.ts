@@ -104,6 +104,8 @@ describe('Passport cookie preset contract', () => {
   it.each([
     ['deletion', ''],
     ['dead branch', 'if (false) { enforcePassportCookiePresetContract(); }'],
+    ['preceding return', 'return;\n  enforcePassportCookiePresetContract();'],
+    ['preceding throw', 'throw new Error("stopped");\n  enforcePassportCookiePresetContract();'],
     ['duplicate', 'enforcePassportCookiePresetContract();\n  enforcePassportCookiePresetContract();'],
   ])('rejects %s of the direct central passport cookie preset guard invocation', (_name, replacement) => {
     // Given

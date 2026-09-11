@@ -117,14 +117,29 @@ function hasOneDirectMainPassportCookiePresetGuardInvocation(sourceFile) {
   const mains = sourceFile.statements.filter((statement) =>
     ts.isFunctionDeclaration(statement) && statement.name?.text === 'main');
 
-  return mains.length === 1
-    && mains[0].body !== undefined
-    && mains[0].body.statements.filter((statement) =>
+  if (mains.length !== 1 || mains[0].body === undefined) {
+    return false;
+  }
+
+  let invocations = 0;
+  let terminated = false;
+  for (const statement of mains[0].body.statements) {
+    if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) {
+      terminated = true;
+    }
+    if (
       ts.isExpressionStatement(statement)
       && ts.isCallExpression(statement.expression)
       && ts.isIdentifier(statement.expression.expression)
-      && statement.expression.expression.text === 'enforcePassportCookiePresetContract',
-    ).length === 1;
+      && statement.expression.expression.text === 'enforcePassportCookiePresetContract'
+    ) {
+      if (terminated) {
+        return false;
+      }
+      invocations += 1;
+    }
+  }
+  return invocations === 1;
 }
 
 /**
