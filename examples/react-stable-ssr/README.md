@@ -52,7 +52,7 @@ examples/react-stable-ssr/
 │   ├── app.ts       # AppModule imports ReactModule.forRoot(...)
 │   ├── main.ts      # Optional Fastify startup for local manual runs
 │   ├── pages.ts     # Router, direct page return, application renderer, and HTTP lifecycle helpers
-│   └── app.test.ts  # createTestApp request-pipeline SSR assertion
+│   └── app.test.ts  # Test.createApp request-pipeline SSR assertion
 ├── README.md
 └── README.ko.md
 ```

@@ -3,7 +3,7 @@ import type { Application } from '@fluojs/runtime';
 import { FluoFactory } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createTestApp } from './app.js';
+import { Test } from './module.js';
 
 vi.mock('@fluojs/runtime', () => ({
   FluoFactory: {
@@ -16,7 +16,7 @@ vi.mock('@fluojs/runtime', () => ({
 
 const mockedCreate = vi.mocked(FluoFactory.create);
 
-describe('createTestApp bootstrap forwarding', () => {
+describe('Test.createApp bootstrap forwarding', () => {
   beforeEach(() => {
     mockedCreate.mockClear();
   });
@@ -35,7 +35,7 @@ describe('createTestApp bootstrap forwarding', () => {
       },
     };
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: AppModule,
       converters: [converter],
       diagnostics: { timing: true },

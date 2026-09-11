@@ -1592,7 +1592,17 @@ function rewriteBootstrap(
 function rewriteTesting(source: string, filePath: string): { changed: boolean; source: string; warnings: MigrationWarning[] } {
   const sourceFile = parseSource(source, filePath);
   const warnings: MigrationWarning[] = [];
-  let convertedCalls = 0;
+  const nestTestImport = sourceFile.statements.find((statement) =>
+    ts.isImportDeclaration(statement)
+    && ts.isStringLiteral(statement.moduleSpecifier)
+    && statement.moduleSpecifier.text === '@nestjs/testing'
+    && getImportBindings(statement).some((binding) => binding.imported === 'Test' && binding.local === 'Test' && !binding.isTypeOnly),
+  );
+  if (!nestTestImport) {
+    return { changed: false, source, warnings };
+  }
+
+  const convertedCalls = new Map<ts.CallExpression, ts.ObjectLiteralExpression>();
   const supportedBuilderMethods = new Set([
     'compile',
     'overrideProvider',
@@ -1670,18 +1680,19 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
     };
   };
 
-  const hasNestTestCreateCall = (file: ts.SourceFile): boolean => {
+  const hasUnconvertedNestTestReference = (file: ts.SourceFile): boolean => {
     let found = false;
 
     const inspect = (node: ts.Node): void => {
-      if (
-        ts.isCallExpression(node)
-        && ts.isPropertyAccessExpression(node.expression)
-        && ts.isIdentifier(node.expression.expression)
-        && node.expression.expression.text === 'Test'
-        && node.expression.name.text === 'createTestingModule'
-      ) {
-        found = true;
+      if (ts.isImportDeclaration(node)) {
+        return;
+      }
+      if (ts.isIdentifier(node) && node.text === 'Test') {
+        const access = node.parent;
+        const call = access.parent;
+        if (!(ts.isPropertyAccessExpression(access) && access.expression === node && ts.isCallExpression(call) && convertedCalls.has(call))) {
+          found = true;
+        }
       }
 
       if (!found) {
@@ -1737,13 +1748,8 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
           return node;
         }
 
-        convertedCalls += 1;
-        return ts.factory.updateCallExpression(
-          node,
-          ts.factory.createIdentifier('createTestingModule'),
-          node.typeArguments,
-          [conversion.convertedArgument],
-        );
+        convertedCalls.set(node, conversion.convertedArgument);
+        return node;
       }
 
       return ts.visitEachChild(node, visit, context);
@@ -1752,8 +1758,8 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
     return (node: T) => ts.visitNode(node, visit);
   };
 
-  const transformed = ts.transform(sourceFile, [transformer]).transformed[0] as ts.SourceFile;
-  if (convertedCalls === 0) {
+  ts.transform(sourceFile, [transformer]).dispose();
+  if (convertedCalls.size === 0) {
     return {
       changed: false,
       source,
@@ -1761,19 +1767,49 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
     };
   }
 
-  let nextSource = printer.printFile(transformed);
+  const retainNestTest = hasUnconvertedNestTestReference(sourceFile);
+  let fluoTestName = 'Test';
+  if (retainNestTest) {
+    const identifiers = new Set<string>();
+    const collectIdentifiers = (node: ts.Node): void => {
+      if (ts.isIdentifier(node)) identifiers.add(node.text);
+      ts.forEachChild(node, collectIdentifiers);
+    };
+    collectIdentifiers(sourceFile);
+    fluoTestName = 'FluoTest';
+    for (let suffix = 2; identifiers.has(fluoTestName); suffix += 1) {
+      fluoTestName = `FluoTest${suffix}`;
+    }
+  }
+
+  const rewritten = ts.transform(sourceFile, [(context) => {
+    const visit = (node: ts.Node): ts.Node => {
+      const metadata = ts.isCallExpression(node) ? convertedCalls.get(node) : undefined;
+      if (metadata && ts.isCallExpression(node)) {
+        return ts.factory.updateCallExpression(
+          node,
+          ts.factory.createPropertyAccessExpression(ts.factory.createIdentifier(fluoTestName), 'createTestingModule'),
+          node.typeArguments,
+          [metadata],
+        );
+      }
+      return ts.visitEachChild(node, visit, context);
+    };
+    return (node) => ts.visitNode(node, visit) as ts.SourceFile;
+  }]);
+  let nextSource = printer.printFile(rewritten.transformed[0] as ts.SourceFile);
+  rewritten.dispose();
+
+  if (!retainNestTest) {
+    const removedTest = removeImportBinding(nextSource, filePath, '@nestjs/testing', 'Test');
+    nextSource = removedTest.source;
+  }
 
   const nextSourceFile = parseSource(nextSource, filePath);
   nextSource = printSourceFile(
     nextSourceFile,
-    mergeNamedImport([...nextSourceFile.statements], '@fluojs/testing', [{ imported: 'createTestingModule', isTypeOnly: false, local: 'createTestingModule' }]),
+    mergeNamedImport([...nextSourceFile.statements], '@fluojs/testing', [{ imported: 'Test', isTypeOnly: false, local: fluoTestName }]),
   );
-
-  const withFluoImportSourceFile = parseSource(nextSource, filePath);
-  if (!hasNestTestCreateCall(withFluoImportSourceFile)) {
-    const removedTest = removeImportBinding(nextSource, filePath, '@nestjs/testing', 'Test');
-    nextSource = removedTest.source;
-  }
 
   return {
     changed: nextSource !== source,

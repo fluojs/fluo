@@ -373,7 +373,7 @@ import {
   RabbitMqMicroserviceTransport,
   type Microservice,
 } from '@fluojs/microservices';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 import { ControlledBroker, DrillInbox } from './doubles.js';
 import { SHIPMENT_INBOX, SHIPMENT_PATTERN } from './shipment-contract.js';
@@ -407,7 +407,7 @@ it('separates publish, failed delivery, and duplicate-safe application', async (
   })
   class DeliveryDrillModule {}
 
-  const module = await createTestingModule({ rootModule: DeliveryDrillModule })
+  const module = await Test.createTestingModule({ rootModule: DeliveryDrillModule })
     .overrideProvider(SHIPMENT_INBOX, inbox)
     .compile();
   let delivery: Promise<void> | undefined;
@@ -566,9 +566,9 @@ dead-letter는 BullMQ job을 다른 큐로 옮기는 기능이 아니다. 재시
 
 상태 전이 실험에서는 주문 버전과 감사 행을 함께 본다. 새 주문은 버전 0이고 성공한 전이마다 규칙에 따라 증가한다. Outbox 행이 있다는 사실만으로 모든 상태 전이 감사가 보존되었다고 할 수 없다. 이벤트 배포 기록과 `OrderTransition`은 목적이 다르다. 하나를 다른 하나의 대용으로 검사하지 않는다.
 
-HTTP 경계는 실제 애플리케이션의 `createTestApp({ rootModule })`으로 검사한다. 인증이 필요한 요청에는 테스트 principal을 명시하고, 생성한 주문을 다시 `/orders/:id`에서 조회하여 같은 사용자에게 같은 상태가 보이는지 확인한다. `principal()`은 synthetic principal 주입이지 JWT 서명 검증 시험이 아니다. JWT 경계를 시험할 때는 실제 검증 경로로 발급·검증한 토큰을 보내고, 이 둘의 증거를 분리한다.
+HTTP 경계는 실제 애플리케이션의 `Test.createApp({ rootModule })`으로 검사한다. 인증이 필요한 요청에는 테스트 principal을 명시하고, 생성한 주문을 다시 `/orders/:id`에서 조회하여 같은 사용자에게 같은 상태가 보이는지 확인한다. `principal()`은 synthetic principal 주입이지 JWT 서명 검증 시험이 아니다. JWT 경계를 시험할 때는 실제 검증 경로로 발급·검증한 토큰을 보내고, 이 둘의 증거를 분리한다.
 
-`createTestingModule(...).overrideProvider(...)`로 결제 어댑터를 기록형 구현으로 바꾸더라도 `PaymentLedger`와 `OrderInventoryService` 자체를 성공 mock으로 바꾸지 않는다. 그렇게 하면 이 장이 확인하려는 멱등성·예약 소비·상태 감사가 테스트에서 사라진다. 외부 효과만 교체하고 내부 트랜잭션은 실제 실습 DB에서 수행하는 통합 시험이 필요하다.
+`Test.createTestingModule(...).overrideProvider(...)`로 결제 어댑터를 기록형 구현으로 바꾸더라도 `PaymentLedger`와 `OrderInventoryService` 자체를 성공 mock으로 바꾸지 않는다. 그렇게 하면 이 장이 확인하려는 멱등성·예약 소비·상태 감사가 테스트에서 사라진다. 외부 효과만 교체하고 내부 트랜잭션은 실제 실습 DB에서 수행하는 통합 시험이 필요하다.
 
 ## 종료는 마지막 요청 다음의 또 하나의 상태 전이다
 

@@ -58,7 +58,7 @@ examples/auth-jwt-passport/
 3. `src/auth/bearer.strategy.ts` — re-export of the built-in `BearerJwtStrategy` preset
 4. `src/auth/auth.controller.ts` — open token route + protected profile route
 5. `src/auth/auth.module.ts` — module-first registration via `JwtModule.forRoot(...)` + `PassportModule.forRoot(...)` with the stable `createBearerJwtStrategyRegistration()` helper
-6. `src/app.test.ts` — service/strategy coverage plus e2e-style HTTP checks through `createTestApp(...).request(...).send()`
+6. `src/app.test.ts` — service/strategy coverage plus e2e-style HTTP checks through `Test.createApp(...).request(...).send()`
 
 ## related docs
 

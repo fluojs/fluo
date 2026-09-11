@@ -187,7 +187,7 @@ ThrottlerModule.forRoot({
 
 ## 예제 소스
 
-- `packages/throttler/src/module.test.ts`: 모듈 설정, 데코레이터 오버라이드, `createTestApp(...)` 기반 HTTP guard 통합 테스트.
+- `packages/throttler/src/module.test.ts`: 모듈 설정, 데코레이터 오버라이드, `Test.createApp(...)` 기반 HTTP guard 통합 테스트.
 - `packages/throttler/src/guard.ts`: 요청 제한 및 헤더 관리 코어 로직.
 - `packages/throttler/src/redis-store.test.ts`: Redis store 계약과 server-time 동작.
 - `packages/throttler/src/status.test.ts`: status 및 diagnostic helper 동작.

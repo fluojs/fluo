@@ -21,7 +21,7 @@ import {
 import { IsInt, ValidateClass, type StandardSchemaV1Like } from '@fluojs/validation';
 import { describe, expect, it } from 'vitest';
 
-import { createTestApp } from './app.js';
+import { Test } from './index.js';
 import type { TestResponse } from './http.js';
 
 function observeSchemaEntry(events: EventTarget): {
@@ -72,7 +72,7 @@ describe('blog input materialization through the application boundary', () => {
     }
     @Module({ controllers: [Posts] })
     class App {}
-    const app = await createTestApp({ rootModule: App });
+    const app = await Test.createApp({ rootModule: App });
     try {
       const response = await app.request('POST', '/posts')
         .body({ post_title: 'Draft', authorId: 'untrusted' }).send();
@@ -193,7 +193,7 @@ describe('blog input materialization through the application boundary', () => {
     })
     class App {}
     let factories = 0;
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: App,
       converters: [{ convert: (value) => Number(value) }],
       binder(defaultBinder) {

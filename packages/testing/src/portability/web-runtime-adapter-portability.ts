@@ -99,6 +99,16 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
   TBootstrapOptions extends object,
   TApp extends WebRuntimePortabilityAppLike = WebRuntimePortabilityAppLike,
 > {
+  /** Creates a web-runtime HTTP adapter portability harness with the provided options. */
+  static create<
+    TBootstrapOptions extends object,
+    TApp extends WebRuntimePortabilityAppLike = WebRuntimePortabilityAppLike,
+  >(
+    options: WebRuntimeHttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TApp>,
+  ): WebRuntimeHttpAdapterPortabilityHarness<TBootstrapOptions, TApp> {
+    return new WebRuntimeHttpAdapterPortabilityHarness(options);
+  }
+
   constructor(private readonly options: WebRuntimeHttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TApp>) {}
 
   /** Verifies JSON, HTML, HEAD, 406, and committed error-response portability. */
@@ -740,21 +750,6 @@ export class WebRuntimeHttpAdapterPortabilityHarness<
       }
     });
   }
-}
-
-/**
- * Create web runtime http adapter portability harness.
- *
- * @param options The options.
- * @returns The create web runtime http adapter portability harness result.
- */
-export function createWebRuntimeHttpAdapterPortabilityHarness<
-  TBootstrapOptions extends object,
-  TApp extends WebRuntimePortabilityAppLike = WebRuntimePortabilityAppLike,
->(
-  options: WebRuntimeHttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TApp>,
-): WebRuntimeHttpAdapterPortabilityHarness<TBootstrapOptions, TApp> {
-  return new WebRuntimeHttpAdapterPortabilityHarness(options);
 }
 
 function sameBytes(left: Uint8Array, right: Uint8Array): boolean {

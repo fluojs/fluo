@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
-import { createTestApp, createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
 import { AppModule } from './app';
@@ -55,7 +55,7 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
 
 describe('AuthService', () => {
   it('issues bearer tokens for a subject', async () => {
-    const module = await createTestingModule({ rootModule: AppModule }).compile();
+    const module = await Test.createTestingModule({ rootModule: AppModule }).compile();
     let testError: unknown;
     let testFailed = false;
     let disposeError: unknown;
@@ -98,7 +98,7 @@ describe('AuthService', () => {
 
 describe('BearerJwtStrategy', () => {
   it('requires a Bearer authorization header', async () => {
-    const module = await createTestingModule({ rootModule: AppModule }).compile();
+    const module = await Test.createTestingModule({ rootModule: AppModule }).compile();
     let testError: unknown;
     let testFailed = false;
     let disposeError: unknown;
@@ -205,8 +205,8 @@ describe('AppModule e2e', () => {
     }
   });
 
-  it('serves health, ready, and auth routes through createTestApp request helpers', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+  it('serves health, ready, and auth routes through Test.createApp request helpers', async () => {
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       await expect(app.request('GET', '/health').send()).resolves.toMatchObject({

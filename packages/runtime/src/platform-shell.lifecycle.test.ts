@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createPlatformShellLifecycleConformanceHarness } from '@fluojs/testing/platform-shell-lifecycle-conformance';
+import { PlatformShellLifecycleConformanceHarness } from '@fluojs/testing/platform-shell-lifecycle-conformance';
 
 import type {
   PlatformComponent,
@@ -140,7 +140,7 @@ function observeImmediate(promise: Promise<void>): Promise<ImmediateResult> {
 describe('RuntimePlatformShell exclusive lifecycle transitions', () => {
   it('satisfies the shared PlatformShell lifecycle exclusivity contract', async () => {
     // Given
-    const harness = createPlatformShellLifecycleConformanceHarness({
+    const harness = PlatformShellLifecycleConformanceHarness.create({
       createShell: (component) => RuntimePlatformShell.fromInputs([component]),
     });
 

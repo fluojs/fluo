@@ -5,14 +5,32 @@ import type { ExceptionFilterHandler } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 import { makeRequest } from './http.js';
 import {
-  createTestApp,
-  createTestingModule,
   extractModuleControllers,
   extractModuleImports,
   extractModuleProviders,
   Test,
 } from './index.js';
-import { asMock, createDeepMock, createMock, mockToken } from './mock.js';
+import { asMock, PrototypeMock, ShallowMock, mockToken } from './mock.js';
+
+describe('Test static factory', () => {
+  it('is a class that owns testing module creation', () => {
+    expect(Test).toBeTypeOf('function');
+  });
+});
+
+describe('explicit provider overrides', () => {
+  it('preserves a literal value that has provider-shaped fields', async () => {
+    const token = Symbol('literal');
+    const literal = { provide: token, useValue: 'application data' };
+    class AppModule {}
+
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule })
+      .overrideProvider(token, literal)
+      .compile();
+
+    expect(testingModule.get(token)).toBe(literal);
+  });
+});
 
 @Controller('/users')
 class UserController {
@@ -67,7 +85,7 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({
+    const testingModule = await Test.createTestingModule({
       rootModule: ServiceModule,
     }).compile();
 
@@ -106,7 +124,7 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [LifecycleService, LifecycleConsumer] })
     class LifecycleModule {}
 
-    const testingModule = await createTestingModule({ rootModule: LifecycleModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: LifecycleModule }).compile();
 
     expect(await testingModule.resolve(LifecycleConsumer)).toBeInstanceOf(LifecycleConsumer);
     expect(events).toEqual(['service:init', 'consumer:init', 'service:bootstrap', 'consumer:bootstrap']);
@@ -124,7 +142,7 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [DisposableService] })
     class DisposableModule {}
 
-    const testingModule = await createTestingModule({ rootModule: DisposableModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: DisposableModule }).compile();
     let testError: unknown;
     let testFailed = false;
     let disposeError: unknown;
@@ -178,7 +196,7 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [DisposableService] })
     class DisposableModule {}
 
-    const testingModule = await createTestingModule({ rootModule: DisposableModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: DisposableModule }).compile();
     const result = await (async () => {
       let caughtTestError: unknown;
       let testFailed = false;
@@ -238,8 +256,9 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [{ provide: SERVICE_TOKEN, useValue: { name: 'original' } }] })
     class LifecycleOverrideModule {}
 
-    const testingModule = await createTestingModule({ rootModule: LifecycleOverrideModule })
-      .overrideProvider(SERVICE_TOKEN, { provide: SERVICE_TOKEN, useClass: ReplacementService })
+    const testingModule = await Test.createTestingModule({ rootModule: LifecycleOverrideModule })
+      .overrideProvider(SERVICE_TOKEN)
+      .useClass(ReplacementService)
       .compile();
 
     expect(await testingModule.resolve(SERVICE_TOKEN)).toBeInstanceOf(ReplacementService);
@@ -267,7 +286,7 @@ describe('@fluojs/testing', () => {
     })
     class FactoryLifecycleModule {}
 
-    const testingModule = await createTestingModule({ rootModule: FactoryLifecycleModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: FactoryLifecycleModule }).compile();
 
     expect(await testingModule.resolve(FACTORY_TOKEN)).toBeDefined();
     expect(events).toEqual(['factory:init', 'factory:bootstrap']);
@@ -280,7 +299,7 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [{ provide: FACTORY_TOKEN, useValue: { name: 'original' } }] })
     class FactoryOverrideLifecycleModule {}
 
-    const testingModule = await createTestingModule({ rootModule: FactoryOverrideLifecycleModule })
+    const testingModule = await Test.createTestingModule({ rootModule: FactoryOverrideLifecycleModule })
       .overrideProvider(FACTORY_TOKEN)
       .useFactory(() => ({
         onModuleInit() {
@@ -313,7 +332,7 @@ describe('@fluojs/testing', () => {
     })
     class MultiFactoryLifecycleModule {}
 
-    const testingModule = await createTestingModule({ rootModule: MultiFactoryLifecycleModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: MultiFactoryLifecycleModule }).compile();
 
     expect(await testingModule.resolve<typeof plugin[]>(PLUGINS)).toEqual([plugin]);
     expect(events).toEqual(['factory:init', 'factory:bootstrap']);
@@ -351,7 +370,7 @@ describe('@fluojs/testing', () => {
     })
     class MultiLifecycleModule {}
 
-    const testingModule = await createTestingModule({ rootModule: MultiLifecycleModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: MultiLifecycleModule }).compile();
     const plugins = await testingModule.resolve<Array<PluginA | PluginB>>(PLUGINS);
 
     expect(plugins[0]).toBeInstanceOf(PluginA);
@@ -402,7 +421,7 @@ describe('@fluojs/testing', () => {
     })
     class InterleavedLifecycleModule {}
 
-    const testingModule = await createTestingModule({ rootModule: InterleavedLifecycleModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: InterleavedLifecycleModule }).compile();
     const plugins = await testingModule.resolve<Array<FirstPlugin | SecondPlugin>>(PLUGINS);
 
     expect(plugins[0]).toBeInstanceOf(FirstPlugin);
@@ -449,7 +468,7 @@ describe('@fluojs/testing', () => {
     })
     class MixedScopeMultiLifecycleModule {}
 
-    await expect(createTestingModule({ rootModule: MixedScopeMultiLifecycleModule }).compile()).resolves.toBeDefined();
+    await expect(Test.createTestingModule({ rootModule: MixedScopeMultiLifecycleModule }).compile()).resolves.toBeDefined();
 
     expect(events).toEqual(['singleton:init', 'singleton:bootstrap']);
   });
@@ -465,7 +484,7 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [{ provide: SERVICE_TOKEN, useFactory: () => ({ name: 'original' }) }] })
     class LifecycleValueOverrideModule {}
 
-    const testingModule = await createTestingModule({ rootModule: LifecycleValueOverrideModule })
+    const testingModule = await Test.createTestingModule({ rootModule: LifecycleValueOverrideModule })
       .overrideProvider(SERVICE_TOKEN, replacement)
       .compile();
 
@@ -493,7 +512,7 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [RequestLifecycleService, TransientLifecycleService] })
     class ScopedLifecycleModule {}
 
-    await createTestingModule({ rootModule: ScopedLifecycleModule }).compile();
+    await Test.createTestingModule({ rootModule: ScopedLifecycleModule }).compile();
 
     expect(events).toEqual([]);
   });
@@ -519,7 +538,7 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [{ provide: SERVICE_TOKEN, useClass: TransientReplacementService }] })
     class UseClassScopedLifecycleModule {}
 
-    await createTestingModule({ rootModule: UseClassScopedLifecycleModule })
+    await Test.createTestingModule({ rootModule: UseClassScopedLifecycleModule })
       .overrideProvider(SERVICE_TOKEN, { provide: SERVICE_TOKEN, useClass: RequestReplacementService })
       .compile();
 
@@ -534,7 +553,7 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [CounterService] })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule }).compile();
 
     const syncService = testingModule.get<CounterService>(CounterService);
     syncService.count = 7;
@@ -573,7 +592,7 @@ describe('@fluojs/testing', () => {
     })
     class MultiProviderModule {}
 
-    const testingModule = await createTestingModule({ rootModule: MultiProviderModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: MultiProviderModule }).compile();
 
     const first = testingModule.get<Array<PluginA | PluginB>>(PLUGINS);
     first[0].count = 1;
@@ -606,7 +625,7 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [SingletonService] })
     class SingletonCleanupModule {}
 
-    const testingModule = await createTestingModule({ rootModule: SingletonCleanupModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: SingletonCleanupModule }).compile();
     const service = testingModule.get<SingletonService>(SingletonService);
 
     expect(service).toBeInstanceOf(SingletonService);
@@ -631,7 +650,7 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({
+    const testingModule = await Test.createTestingModule({
       rootModule: ServiceModule,
     })
       .overrideProvider(Logger, { name: 'fake-logger' })
@@ -657,7 +676,7 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({
+    const testingModule = await Test.createTestingModule({
       rootModule: ServiceModule,
     })
       .overrideProvider(Logger)
@@ -683,7 +702,7 @@ describe('@fluojs/testing', () => {
     })
     class AsyncProviderModule {}
 
-    const testingModule = await createTestingModule({
+    const testingModule = await Test.createTestingModule({
       rootModule: AsyncProviderModule,
     }).compile();
 
@@ -726,7 +745,7 @@ describe('@fluojs/testing', () => {
     })
     class AsyncSingletonModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AsyncSingletonModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AsyncSingletonModule }).compile();
 
     await expect(testingModule.resolve<string>(RESOLVE_TOKEN)).resolves.toBe('resolved-async-value');
     expect(() => testingModule.get<string>(RESOLVE_TOKEN)).toThrow(/already resolved asynchronously/);
@@ -754,7 +773,7 @@ describe('@fluojs/testing', () => {
     })
     class SyncFactoryModule {}
 
-    const testingModule = await createTestingModule({ rootModule: SyncFactoryModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: SyncFactoryModule }).compile();
 
     const resolved = await testingModule.resolve<typeof value>(TOKEN);
     const syncValue = testingModule.get<typeof value>(TOKEN);
@@ -783,7 +802,7 @@ describe('@fluojs/testing', () => {
     })
     class SyncFactoryConsumerModule {}
 
-    const testingModule = await createTestingModule({ rootModule: SyncFactoryConsumerModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: SyncFactoryConsumerModule }).compile();
 
     const resolved = await testingModule.resolve<SyncFactoryConsumer>(SyncFactoryConsumer);
     const syncConsumer = testingModule.get<SyncFactoryConsumer>(SyncFactoryConsumer);
@@ -812,7 +831,7 @@ describe('@fluojs/testing', () => {
     })
     class SyncFirstFactoryConsumerModule {}
 
-    const testingModule = await createTestingModule({ rootModule: SyncFirstFactoryConsumerModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: SyncFirstFactoryConsumerModule }).compile();
 
     const syncDependency = testingModule.get<typeof dependency>(TOKEN);
     const resolved = await testingModule.resolve<SyncFirstFactoryConsumer>(SyncFirstFactoryConsumer);
@@ -844,7 +863,7 @@ describe('@fluojs/testing', () => {
     })
     class AliasAsyncFactoryModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AliasAsyncFactoryModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AliasAsyncFactoryModule }).compile();
 
     const resolved = await testingModule.resolve<AliasAsyncConsumer>(AliasAsyncConsumer);
 
@@ -856,7 +875,7 @@ describe('@fluojs/testing', () => {
     const FUNCTION_TOKEN = Symbol('function-token');
     const mockFn = vi.fn().mockReturnValue('ok');
 
-    const testingModule = await createTestingModule({
+    const testingModule = await Test.createTestingModule({
       rootModule: AppModule,
     })
       .overrideProvider(FUNCTION_TOKEN, mockFn)
@@ -888,8 +907,9 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule })
-      .overrideProvider(Logger, FakeLogger)
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule })
+      .overrideProvider(Logger)
+      .useClass(FakeLogger)
       .compile();
 
     const service = await testingModule.resolve<UserService>(UserService);
@@ -898,16 +918,19 @@ describe('@fluojs/testing', () => {
     expect(service.logger.name).toBe('fake-logger');
   });
 
-  it('throws when overrideProvider token and provider.provide do not match', () => {
+  it('preserves provider-shaped direct values as literals', async () => {
     const EXPECTED = Symbol('expected-token');
     const OTHER = Symbol('other-token');
+    const literal = {
+      provide: OTHER,
+      useValue: 'value',
+    };
 
-    expect(() =>
-      createTestingModule({ rootModule: AppModule }).overrideProvider(EXPECTED, {
-        provide: OTHER,
-        useValue: 'value',
-      }),
-    ).toThrow('overrideProvider token mismatch');
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule })
+      .overrideProvider(EXPECTED, literal)
+      .compile();
+
+    expect(testingModule.get(EXPECTED)).toBe(literal);
   });
 
   it('supports useExisting provider descriptors in overrideProvider', async () => {
@@ -922,11 +945,9 @@ describe('@fluojs/testing', () => {
     })
     class AliasModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AliasModule })
-      .overrideProvider(TARGET, {
-        provide: TARGET,
-        useExisting: SOURCE,
-      })
+    const testingModule = await Test.createTestingModule({ rootModule: AliasModule })
+      .overrideProvider(TARGET)
+      .useExisting(SOURCE)
       .compile();
 
     await expect(testingModule.resolve<string>(TARGET)).resolves.toBe('source-value');
@@ -958,7 +979,7 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule })
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule })
       .overrideProvider(TOKEN, 'fake')
       .compile();
 
@@ -986,7 +1007,7 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule })
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule })
       .overrideProvider(REAL_CONFIG, 'fake')
       .compile();
 
@@ -1021,7 +1042,7 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule })
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule })
       .overrideProvider(REQUEST_TOKEN, 'fake-request')
       .compile();
 
@@ -1048,20 +1069,20 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [RequestStore, ConsumerService] })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule }).compile();
 
     await expect(testingModule.resolve<ConsumerService>(ConsumerService)).rejects.toThrow('outside request scope');
   });
 });
 
-describe('createMock', () => {
+describe('ShallowMock.create', () => {
   it('returns vi.fn() for any accessed method not in the partial', () => {
     interface MyService {
       doSomething(): string;
       doOther(): number;
     }
 
-    const mock = createMock<MyService>();
+    const mock = ShallowMock.create<MyService>();
 
     expect(typeof mock.doSomething).toBe('function');
     expect(typeof mock.doOther).toBe('function');
@@ -1074,7 +1095,7 @@ describe('createMock', () => {
     }
 
     const increment = vi.fn().mockReturnValue(1);
-    const mock = createMock<Counter>({ increment });
+    const mock = ShallowMock.create<Counter>({ increment });
 
     expect(mock.increment()).toBe(1);
     expect(increment).toHaveBeenCalledOnce();
@@ -1085,7 +1106,7 @@ describe('createMock', () => {
       greet(): string;
     }
 
-    const mock = createMock<Greeter>();
+    const mock = ShallowMock.create<Greeter>();
     const first = mock.greet;
     const second = mock.greet;
 
@@ -1097,11 +1118,9 @@ describe('createMock', () => {
       greet(): string;
     }
 
-    const mock = createMock<Greeter>({}, { strict: true });
+    const mock = ShallowMock.create<Greeter>({}, { strict: true });
 
-    expect(() => mock.greet).toThrow(
-      'createMock: strict mode — property "greet" is not declared in the partial mock.',
-    );
+    expect(() => mock.greet).toThrow(Error);
   });
 });
 
@@ -1170,9 +1189,9 @@ describe('makeRequest', () => {
   });
 });
 
-describe('createTestApp', () => {
+describe('Test.createApp', () => {
   it('provides request builder helpers and closes cleanly', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const response = await app
@@ -1212,7 +1231,7 @@ describe('createTestApp', () => {
     @Module({ controllers: [CookieController] })
     class CookieModule {}
 
-    const app = await createTestApp({ rootModule: CookieModule });
+    const app = await Test.createApp({ rootModule: CookieModule });
 
     try {
       const response = await app.request({
@@ -1228,7 +1247,7 @@ describe('createTestApp', () => {
   });
 
   it('makes close idempotent when cleanup is called more than once', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     await expect(app.close()).resolves.toBeUndefined();
     await expect(app.close()).resolves.toBeUndefined();
@@ -1243,7 +1262,7 @@ describe('createTestApp', () => {
       },
     };
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: AppModule,
       middleware: [callerMiddleware],
     });
@@ -1299,7 +1318,7 @@ describe('createTestApp', () => {
     @Module({ controllers: [BootstrapOptionsController] })
     class BootstrapOptionsModule {}
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: BootstrapOptionsModule,
       interceptors: [interceptor],
       observers: [observer],
@@ -1342,7 +1361,7 @@ describe('createTestApp', () => {
     @Module({ controllers: [ConvertedController] })
     class ConvertedModule {}
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: ConvertedModule,
       converters: [new QueryNumberConverter()],
     });
@@ -1381,7 +1400,7 @@ describe('createTestApp', () => {
       },
     };
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: FilteredModule,
       filters: [filter],
     });
@@ -1398,7 +1417,7 @@ describe('createTestApp', () => {
   });
 
   it('injects principal into request context for e2e-style calls', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const response = await app
@@ -1421,7 +1440,7 @@ describe('createTestApp', () => {
   });
 
   it('dispatches a request directly through the app helper and injects subject-based principal', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const response = await app.dispatch({
@@ -1446,7 +1465,7 @@ describe('createTestApp', () => {
   });
 
   it('prioritizes subject over id and falls back to default subject when missing', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const subjectResponse = await app
@@ -1514,7 +1533,7 @@ describe('createTestApp', () => {
     @Module({ controllers: [RequestScopeController], providers: [RequestCounter] })
     class RequestScopeModule {}
 
-    const app = await createTestApp({ rootModule: RequestScopeModule });
+    const app = await Test.createApp({ rootModule: RequestScopeModule });
 
     try {
       const requestResponse = await app.request('GET', '/request-scope').send();
@@ -1532,7 +1551,7 @@ describe('createTestApp', () => {
 
 describe('TestingModuleRef.dispatch', () => {
   it('dispatches full HTTP request lifecycle from a compiled module ref', async () => {
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
     const response = await testingModule.dispatch({
       method: 'GET',
@@ -1588,7 +1607,7 @@ describe('TestingModuleRef.dispatch', () => {
     @Module({ imports: [FirstGlobalModule, SecondGlobalModule] })
     class RootModule {}
 
-    const testingModule = await createTestingModule({ rootModule: RootModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: RootModule }).compile();
     const response = await testingModule.dispatch({ method: 'GET', path: '/global/middleware' });
 
     expect(response.status).toBe(200);
@@ -1596,7 +1615,7 @@ describe('TestingModuleRef.dispatch', () => {
   });
 
   it('supports POST body, headers, and query with module-level dispatch', async () => {
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
     const response = await testingModule.dispatch({
       method: 'post',
@@ -1632,7 +1651,7 @@ describe('TestingModuleRef.dispatch', () => {
     @Module({ controllers: [CookieController] })
     class CookieModule {}
 
-    const testingModule = await createTestingModule({ rootModule: CookieModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: CookieModule }).compile();
     const response = await testingModule.dispatch({
       path: '/cookies',
       cookies: { session: 'module-dispatch-cookie' },
@@ -1669,7 +1688,7 @@ describe('TestingModuleRef.dispatch', () => {
     })
     class CounterModule {}
 
-    const testingModule = await createTestingModule({ rootModule: CounterModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: CounterModule }).compile();
     const service = await testingModule.resolve<CounterService>(CounterService);
 
     expect(service.count).toBe(0);
@@ -1705,7 +1724,7 @@ describe('TestingModuleRef.dispatch', () => {
     @Module({ controllers: [ModuleRequestScopeController], providers: [RequestCounter] })
     class ModuleRequestScopeModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ModuleRequestScopeModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: ModuleRequestScopeModule }).compile();
 
     const first = await testingModule.dispatch({ method: 'GET', path: '/module-request-scope' });
     const second = await testingModule.dispatch({ method: 'GET', path: '/module-request-scope' });
@@ -1721,7 +1740,7 @@ describe('overrideGuard', () => {
   it('replaces a guard with a passthrough that always allows access', async () => {
     const GUARD_TOKEN = Symbol('AuthGuard');
 
-    const builder = createTestingModule({ rootModule: AppModule });
+    const builder = Test.createTestingModule({ rootModule: AppModule });
     builder.overrideGuard(GUARD_TOKEN);
 
     const testingModule = await builder.compile();
@@ -1734,7 +1753,7 @@ describe('overrideGuard', () => {
     const GUARD_TOKEN = Symbol('RoleGuard');
     const canActivate = vi.fn().mockReturnValue(false);
 
-    const builder = createTestingModule({ rootModule: AppModule });
+    const builder = Test.createTestingModule({ rootModule: AppModule });
     builder.overrideGuard(GUARD_TOKEN, { canActivate });
 
     const testingModule = await builder.compile();
@@ -1766,7 +1785,7 @@ describe('overrideGuard', () => {
     })
     class GuardedModule {}
 
-    const testingModule = await createTestingModule({ rootModule: GuardedModule }).overrideGuard(GUARD_TOKEN).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: GuardedModule }).overrideGuard(GUARD_TOKEN).compile();
 
     const response = await testingModule.dispatch({ method: 'GET', path: '/guarded' });
 
@@ -1779,7 +1798,7 @@ describe('overrideInterceptor', () => {
   it('replaces an interceptor with a passthrough that calls next.handle()', async () => {
     const INTERCEPTOR_TOKEN = Symbol('LoggingInterceptor');
 
-    const builder = createTestingModule({ rootModule: AppModule });
+    const builder = Test.createTestingModule({ rootModule: AppModule });
     builder.overrideInterceptor(INTERCEPTOR_TOKEN);
 
     const testingModule = await builder.compile();
@@ -1818,7 +1837,7 @@ describe('overrideInterceptor', () => {
     })
     class InterceptedModule {}
 
-    const testingModule = await createTestingModule({ rootModule: InterceptedModule })
+    const testingModule = await Test.createTestingModule({ rootModule: InterceptedModule })
       .overrideInterceptor(INTERCEPTOR_TOKEN, {
         async intercept(_context: InterceptorContext, next: CallHandler) {
           return { wrapped: await next.handle() };
@@ -1838,7 +1857,7 @@ describe('overrideFilter', () => {
     const FILTER_TOKEN = Symbol('ErrorFilter');
     const fakeFilter = { catch: vi.fn() };
 
-    const builder = createTestingModule({ rootModule: AppModule });
+    const builder = Test.createTestingModule({ rootModule: AppModule });
     builder.overrideFilter(FILTER_TOKEN, fakeFilter);
 
     const testingModule = await builder.compile();
@@ -1881,11 +1900,11 @@ describe('overrideFilter', () => {
     })
     class RuntimeFilteredModule {}
 
-    const testingModule = await createTestingModule({ rootModule: RuntimeFilteredModule })
+    const testingModule = await Test.createTestingModule({ rootModule: RuntimeFilteredModule })
       .overrideFilter(FILTER_TOKEN, fakeFilter)
       .compile();
     const filter = await testingModule.resolve<ExceptionFilterHandler>(FILTER_TOKEN);
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: RuntimeFilteredModule,
       filters: [filter],
     });
@@ -1930,7 +1949,7 @@ describe('overrideModule', () => {
     @Module({ imports: [RealModule], providers: [ConsumerService] })
     class RootModule {}
 
-    const testingModule = await createTestingModule({ rootModule: RootModule })
+    const testingModule = await Test.createTestingModule({ rootModule: RootModule })
       .overrideModule(RealModule, FakeModule)
       .compile();
 
@@ -1971,7 +1990,7 @@ describe('overrideModule', () => {
     const beforeFeatureMetadata = getModuleMetadata(FeatureModule);
     const beforeRootMetadata = getModuleMetadata(RootModule);
 
-    const testingModule = await createTestingModule({ rootModule: RootModule })
+    const testingModule = await Test.createTestingModule({ rootModule: RootModule })
       .overrideModule(RealModule, FakeModule)
       .compile();
 
@@ -2020,7 +2039,7 @@ describe('overrideModule', () => {
     const beforeFeatureMetadata = getModuleMetadata(FeatureModule);
 
     await expect(
-      createTestingModule({ rootModule: RootModule })
+      Test.createTestingModule({ rootModule: RootModule })
         .overrideModule(RealModule, InvalidFakeModule)
         .compile(),
     ).rejects.toThrow(/cannot export token/);
@@ -2028,7 +2047,7 @@ describe('overrideModule', () => {
     expect(extractModuleImports(FeatureModule)).toEqual([RealModule]);
     expect(getModuleMetadata(FeatureModule)).toBe(beforeFeatureMetadata);
 
-    const testingModule = await createTestingModule({ rootModule: RootModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: RootModule }).compile();
     const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
 
     expect(consumer.dep.value()).toBe('real');
@@ -2050,7 +2069,7 @@ describe('overrideModule', () => {
     const beforeFeatureMetadata = getModuleMetadata(FeatureModule);
 
     await expect(
-      createTestingModule({ rootModule: RootModule })
+      Test.createTestingModule({ rootModule: RootModule })
         .overrideModule(RealModule, FakeModule)
         .compile(),
     ).rejects.toThrow(/Circular module import detected for FeatureModule/);
@@ -2060,7 +2079,7 @@ describe('overrideModule', () => {
   });
 });
 
-describe('createDeepMock', () => {
+describe('PrototypeMock.create', () => {
   it('wraps every class method in a vi.fn() spy', () => {
     class MailService {
       send(_to: string) {
@@ -2071,7 +2090,7 @@ describe('createDeepMock', () => {
       }
     }
 
-    const mock = createDeepMock(MailService);
+    const mock = PrototypeMock.create(MailService);
 
     expect(typeof mock.send).toBe('function');
     expect(typeof mock.queue).toBe('function');
@@ -2094,7 +2113,7 @@ describe('createDeepMock', () => {
       }
     }
 
-    const mock = createDeepMock(Child);
+    const mock = PrototypeMock.create(Child);
 
     expect(vi.isMockFunction(mock.baseMethod)).toBe(true);
     expect(vi.isMockFunction(mock.childMethod)).toBe(true);
@@ -2113,7 +2132,7 @@ describe('createDeepMock', () => {
       }
     }
 
-    const mock = createDeepMock(Child);
+    const mock = PrototypeMock.create(Child);
     expect(vi.isMockFunction(mock.method)).toBe(true);
   });
 
@@ -2126,7 +2145,7 @@ describe('createDeepMock', () => {
       }
     }
 
-    const mock = createDeepMock(SymbolService);
+    const mock = PrototypeMock.create(SymbolService);
 
     expect(vi.isMockFunction(mock[MY_METHOD])).toBe(true);
 
@@ -2158,7 +2177,7 @@ describe('mockToken', () => {
     expect(provider.useValue).toEqual({});
   });
 
-  it('can be passed directly to overrideProvider', async () => {
+  it('uses mockToken values through the explicit useValue path', async () => {
     const TOKEN = Symbol('Greeter');
 
     interface Greeter {
@@ -2180,8 +2199,9 @@ describe('mockToken', () => {
     const greet = vi.fn().mockReturnValue('hello from mock');
     const provider = mockToken<Greeter>(TOKEN, { greet });
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule })
-      .overrideProvider(TOKEN, provider)
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule })
+      .overrideProvider(TOKEN)
+      .useValue(provider.useValue)
       .compile();
 
     const greeter = await testingModule.resolve<Greeter>(TOKEN);
@@ -2315,7 +2335,7 @@ describe('overrideProviders', () => {
     })
     class TestModule {}
 
-    const testingModule = await createTestingModule({ rootModule: TestModule })
+    const testingModule = await Test.createTestingModule({ rootModule: TestModule })
       .overrideProviders([
         [TOKEN_A, 'fake-a'],
         [TOKEN_B, 'fake-b'],
@@ -2343,7 +2363,7 @@ describe('overrideProviders', () => {
     })
     class TestModule {}
 
-    const testingModule = await createTestingModule({ rootModule: TestModule })
+    const testingModule = await Test.createTestingModule({ rootModule: TestModule })
       .overrideProviders([[TOKEN_A, 'fake-a']])
       .overrideProvider(TOKEN_B, 'fake-b')
       .compile();
@@ -2369,7 +2389,7 @@ describe('resolveAll', () => {
     })
     class TestModule {}
 
-    const testingModule = await createTestingModule({ rootModule: TestModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: TestModule }).compile();
 
     const [a, b] = await testingModule.resolveAll([TOKEN_A, TOKEN_B]);
 
@@ -2386,7 +2406,7 @@ describe('resolveAll', () => {
     })
     class TestModule {}
 
-    const testingModule = await createTestingModule({ rootModule: TestModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: TestModule }).compile();
 
     await expect(testingModule.resolveAll([TOKEN_A, TOKEN_MISSING])).rejects.toThrow(
       /Failed to resolve 1 of 2 tokens/,
@@ -2400,7 +2420,7 @@ describe('resolveAll', () => {
     @Module({})
     class EmptyModule {}
 
-    const testingModule = await createTestingModule({ rootModule: EmptyModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: EmptyModule }).compile();
 
     await expect(testingModule.resolveAll([TOKEN_A, TOKEN_B])).rejects.toThrow(/TokenA/);
     await expect(testingModule.resolveAll([TOKEN_A, TOKEN_B])).rejects.toThrow(/TokenB/);

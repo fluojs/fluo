@@ -3,7 +3,7 @@ import { getModuleMetadata, metadataSymbol } from '@fluojs/core/internal';
 import type { GuardContext, HandlerDescriptor, Middleware, MiddlewareContext, Next, RequestContext } from '@fluojs/http';
 import { Controller, Get, UseGuards } from '@fluojs/http';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getThrottleMetadata, SkipThrottle, Throttle } from './decorators.js';
 import { ThrottlerGuard } from './guard.js';
@@ -248,7 +248,7 @@ describe('ThrottlerModule.forRoot', () => {
     mutableOptions.limit = 100;
     mutableOptions.ttl = 1;
 
-    const app = await createTestApp({ rootModule: ModuleOptionsSnapshotAppModule });
+    const app = await Test.createApp({ rootModule: ModuleOptionsSnapshotAppModule });
 
     try {
       const firstResponse = await app
@@ -932,7 +932,7 @@ describe('ThrottlerGuard — in-memory store', () => {
 });
 
 describe('ThrottlerGuard — HTTP request pipeline', () => {
-  it('applies class-level policy and method-level override through createTestApp requests', async () => {
+  it('applies class-level policy and method-level override through Test.createApp requests', async () => {
     @Controller('/request-precedence')
     @Throttle({ limit: 1, ttl: 60 })
     class RequestPrecedenceController {
@@ -956,7 +956,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
     })
     class RequestPrecedenceAppModule {}
 
-    const app = await createTestApp({ rootModule: RequestPrecedenceAppModule });
+    const app = await Test.createApp({ rootModule: RequestPrecedenceAppModule });
 
     try {
       const classFirstResponse = await app
@@ -1022,7 +1022,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
     })
     class RequestSkipAppModule {}
 
-    const app = await createTestApp({ rootModule: RequestSkipAppModule });
+    const app = await Test.createApp({ rootModule: RequestSkipAppModule });
 
     try {
       const methodFirstResponse = await app
@@ -1055,7 +1055,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
     }
   });
 
-  it('uses trusted proxy headers before raw socket identity through createTestApp requests', async () => {
+  it('uses trusted proxy headers before raw socket identity through Test.createApp requests', async () => {
     @Controller('/request-proxy')
     class RequestProxyController {
       @Get('/limited')
@@ -1071,7 +1071,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
     })
     class RequestProxyAppModule {}
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: RequestProxyAppModule,
       middleware: [createRemoteAddressMiddleware()],
     });
@@ -1118,7 +1118,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
     })
     class RequestSocketAppModule {}
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: RequestSocketAppModule,
       middleware: [createRemoteAddressMiddleware()],
     });
@@ -1149,7 +1149,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
     }
   });
 
-  it('enforces @UseGuards(ThrottlerGuard) through createTestApp requests', async () => {
+  it('enforces @UseGuards(ThrottlerGuard) through Test.createApp requests', async () => {
     @Controller('/throttled')
     class ThrottledController {
       @Get('/limited')
@@ -1165,7 +1165,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
     })
     class ThrottledAppModule {}
 
-    const app = await createTestApp({ rootModule: ThrottledAppModule });
+    const app = await Test.createApp({ rootModule: ThrottledAppModule });
 
     try {
       const firstResponse = await app.request('GET', '/throttled/limited').header('x-real-ip', '198.51.100.10').send();
@@ -1195,7 +1195,7 @@ describe('ThrottlerGuard — HTTP request pipeline', () => {
     })
     class UnguardedAppModule {}
 
-    const app = await createTestApp({ rootModule: UnguardedAppModule });
+    const app = await Test.createApp({ rootModule: UnguardedAppModule });
 
     try {
       const firstResponse = await app.request('GET', '/unguarded/open').header('x-real-ip', '198.51.100.10').send();

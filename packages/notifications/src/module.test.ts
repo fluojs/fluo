@@ -2,7 +2,7 @@ import { type Constructor, Inject, Module, type Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { FluoFactory } from '@fluojs/runtime';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -225,7 +225,7 @@ describe('NotificationsModule', () => {
     })
     class AppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
     try {
       const probe = await testingModule.resolve<RootNotificationsProbe>(RootNotificationsProbe);
@@ -278,7 +278,7 @@ describe('NotificationsModule', () => {
     })
     class AppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
     try {
       const probe = await testingModule.resolve<LocalNotificationsProbe>(LocalNotificationsProbe);
@@ -323,7 +323,7 @@ describe('NotificationsModule', () => {
     })
     class AppModule {}
 
-    await expect(createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
+    await expect(Test.createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
       /not visible through a global module|NotificationsService/,
     );
   });
@@ -377,7 +377,7 @@ describe('NotificationsModule', () => {
     })
     class AppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
     try {
       const probe = await testingModule.resolve<RootNotificationsTokenProbe>(RootNotificationsTokenProbe);
@@ -426,7 +426,7 @@ describe('NotificationsModule', () => {
     })
     class AppModule {}
 
-    await expect(createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
+    await expect(Test.createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
       /not visible through a global module|NOTIFICATIONS/,
     );
   });
@@ -933,7 +933,7 @@ describe('NotificationsModule', () => {
     })
     class AppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
     try {
       const service = await testingModule.resolve<NotificationsService>(NotificationsService);

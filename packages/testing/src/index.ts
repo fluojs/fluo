@@ -1,7 +1,6 @@
-export * from './app.js';
-export { Test, createTestingModule, extractModuleProviders, extractModuleControllers, extractModuleImports } from './module.js';
+export { Test, extractModuleProviders, extractModuleControllers, extractModuleImports } from './module.js';
 export type {
-  DeepMocked,
+  ShallowMocked,
   OverrideProviderBuilder,
   TestApp,
   TestingApplicationOptions,

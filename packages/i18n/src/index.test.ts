@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { Inject, Module, getModuleMetadata } from '@fluojs/core';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
 import { I18nError, I18nModule, createI18n } from './index.js';
 import { I18nService } from './service.js';
@@ -97,7 +97,7 @@ describe('@fluojs/i18n root public surface', () => {
     })
     class AppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
     const service = await testingModule.resolve<I18nService>(I18nService);
 
     expect(service.translate('app.title', { locale: 'ko', values: { name: 'fluo' } })).toBe('안녕하세요 fluo');
@@ -123,7 +123,7 @@ describe('@fluojs/i18n root public surface', () => {
     })
     class DefaultGlobalAppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: DefaultGlobalAppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: DefaultGlobalAppModule }).compile();
 
     try {
       expect(getModuleMetadata(I18nModule.forRoot())).toMatchObject({ global: true });
@@ -138,7 +138,7 @@ describe('@fluojs/i18n root public surface', () => {
     })
     class LocalAppModule {}
 
-    await expect(createTestingModule({ rootModule: LocalAppModule }).compile()).rejects.toThrow(/not visible through a global module|I18nService/);
+    await expect(Test.createTestingModule({ rootModule: LocalAppModule }).compile()).rejects.toThrow(/not visible through a global module|I18nService/);
   });
 
   it('resolves nested keys and namespace-prefixed keys with explicit locales', () => {

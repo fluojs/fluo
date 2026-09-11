@@ -88,7 +88,7 @@ Generated non-Deno HTTP starters include a TDD-first Vitest layout:
 - fast unit tests colocated under `src/**`,
 - slice tests such as `*.slice.test.ts`,
 - app dispatch tests in `src/app.test.ts`,
-- default e2e-style tests in `test/app.e2e.test.ts` using `createTestApp({ rootModule })`.
+- default e2e-style tests in `test/app.e2e.test.ts` using `Test.createApp({ rootModule })`.
 
 The React starter uses focused streamed SSR, manifest-failure, and hydration tests plus
 `pnpm test:browser`, which starts the production build and rejects missing assets or hydration

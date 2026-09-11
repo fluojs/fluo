@@ -186,8 +186,10 @@ describe('runNestJsMigration', () => {
     expect(typeOnlyControllerContent).toMatch(/import type \{ Controller \} from ['"]@fluojs\/http['"];/);
     expect(typeOnlyProviderContent).toMatch(/import type \{ OnModuleInit \} from ['"]@nestjs\/common['"];/);
     expect(testContent).toContain("from \"@fluojs/testing\"");
-    expect(testContent).toMatch(/createTestingModule\(\{[\s\S]*rootModule:\s*UsersModule[\s\S]*\}\)/);
-    expect(testContent).not.toContain('Test.createTestingModule');
+    expect(testContent).toMatch(/Test\.createTestingModule\(\{[\s\S]*rootModule:\s*UsersModule[\s\S]*\}\)/);
+    expect(testContent).toMatch(/import \{ Test \} from ['"]@fluojs\/testing['"];/);
+    expect(testContent).toMatch(/import type \{ TestingModule \} from ['"]@nestjs\/testing['"];/);
+    expect(testContent).toContain('const moduleRef: TestingModule');
     expect(tsconfigContent).not.toContain('experimentalDecorators');
     expect(tsconfigContent).not.toContain('emitDecoratorMetadata');
     expect(tsconfig.compilerOptions?.baseUrl).toBeUndefined();
@@ -718,6 +720,50 @@ describe('users', () => {
     expect(specContent).not.toContain('from "@fluojs/testing"');
     expect(report.warningCount).toBeGreaterThan(0);
     expect(report.fileResults.flatMap((result) => result.warnings).some((warning) => warning.message.includes('Unsupported testing builder method "useMocker"'))).toBe(true);
+  });
+
+  it('keeps mixed Nest testing calls separate from canonical Fluo calls without import collisions', () => {
+    const workspaceDirectory = createMigrationFixture();
+    const specPath = join(workspaceDirectory, 'src', 'users.spec.ts');
+    writeFileSync(specPath, `import { Test, type TestingModule } from '@nestjs/testing';
+import { UsersModule } from './users.module';
+const FluoTest = 'occupied';
+const supported: TestingModule = await Test.createTestingModule({ imports: [UsersModule] }).compile();
+const unsupported = await Test.createTestingModule({ providers: [] }).compile();
+void [FluoTest, supported, unsupported];
+`);
+
+    const report = runNestJsMigration({
+      apply: true,
+      enabledTransforms: new Set(['testing']),
+      targetPath: specPath,
+    });
+    const content = readFileSync(specPath, 'utf8');
+
+    expect(content).toMatch(/import \{ Test, type TestingModule \} from ['"]@nestjs\/testing['"];/);
+    expect(content).toMatch(/import \{ Test as FluoTest2 \} from ['"]@fluojs\/testing['"];/);
+    expect(content).toMatch(/FluoTest2\.createTestingModule\(\{\s*rootModule: UsersModule\s*\}\)\.compile\(\)/);
+    expect(content).toContain('Test.createTestingModule({ providers: [] }).compile()');
+    expect(report.fileResults.flatMap((result) => result.warnings)).toEqual([
+      expect.objectContaining({ category: 'testing-unsupported' }),
+    ]);
+    expect(runNestJsMigration({ apply: true, enabledTransforms: new Set(['testing']), targetPath: workspaceDirectory }).changedFiles).toBe(0);
+  });
+
+  it('does not rewrite an existing canonical Fluo Test import', () => {
+    const workspaceDirectory = createMigrationFixture();
+    const specPath = join(workspaceDirectory, 'src', 'users.spec.ts');
+    const source = `import { Test, type TestingModuleRef } from '@fluojs/testing';
+import { UsersModule } from './users.module';
+const moduleRef: TestingModuleRef = await Test.createTestingModule({ rootModule: UsersModule }).compile();
+`;
+    writeFileSync(specPath, source);
+
+    const report = runNestJsMigration({ apply: true, enabledTransforms: new Set(['testing']), targetPath: specPath });
+
+    expect(report.changedFiles).toBe(0);
+    expect(report.warningCount).toBe(0);
+    expect(readFileSync(specPath, 'utf8')).toBe(source);
   });
 
   it('applies scope mapping when only scope transform is enabled', () => {

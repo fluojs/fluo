@@ -127,6 +127,13 @@ export interface PlatformShellLifecycleConformanceHarnessOptions {
  * Represents lifecycle exclusivity checks for a PlatformShell implementation.
  */
 export class PlatformShellLifecycleConformanceHarness {
+  /** Creates a PlatformShell lifecycle conformance harness with the provided options. */
+  static create(
+    options: PlatformShellLifecycleConformanceHarnessOptions,
+  ): PlatformShellLifecycleConformanceHarness {
+    return new PlatformShellLifecycleConformanceHarness(options);
+  }
+
   constructor(private readonly options: PlatformShellLifecycleConformanceHarnessOptions) {}
 
   async assertAll(): Promise<void> {
@@ -307,16 +314,4 @@ async function expectTransitionFailure(transition: Promise<void>, operation: Pla
   }
 
   throw new Error(`The first ${operation}() transition must fail before retry conformance is checked.`);
-}
-
-/**
- * Create PlatformShell lifecycle conformance harness.
- *
- * @param options The options.
- * @returns The create PlatformShell lifecycle conformance harness result.
- */
-export function createPlatformShellLifecycleConformanceHarness(
-  options: PlatformShellLifecycleConformanceHarnessOptions,
-): PlatformShellLifecycleConformanceHarness {
-  return new PlatformShellLifecycleConformanceHarness(options);
 }

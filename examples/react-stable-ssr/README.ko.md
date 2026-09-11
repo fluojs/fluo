@@ -51,7 +51,7 @@ examples/react-stable-ssr/
 │   ├── app.ts       # AppModule imports ReactModule.forRoot(...)
 │   ├── main.ts      # 로컬 수동 실행용 optional Fastify startup
 │   ├── pages.ts     # Router, direct page return, application renderer, HTTP lifecycle helper
-│   └── app.test.ts  # createTestApp request-pipeline SSR assertion
+│   └── app.test.ts  # Test.createApp request-pipeline SSR assertion
 ├── README.md
 └── README.ko.md
 ```

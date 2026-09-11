@@ -17,9 +17,24 @@ import type {
   BootstrapResult,
   ModuleType,
 } from '@fluojs/runtime';
-import { bootstrapModule } from '@fluojs/runtime';
-import { createTestRequestContextMiddleware, makeRequest, type TestRequestWithOptions } from './http.js';
-import type { OverrideProviderBuilder, TestingModuleBuilder, TestingModuleOptions, TestingModuleRef } from './types.js';
+import { bootstrapModule, FluoFactory } from '@fluojs/runtime';
+import {
+  createRequestBuilder,
+  createTestRequestContextMiddleware,
+  makeRequest,
+  type TestRequest,
+  type TestRequestWithOptions,
+  type TestResponse,
+} from './http.js';
+import type {
+  OverrideProviderBuilder,
+  TestApp,
+  TestingApplicationOptions,
+  TestingModuleBuilder,
+  TestingModuleOptions,
+  TestingModuleRef,
+  TestRequestOptions,
+} from './types.js';
 
 type ModuleReplacementMap = ReadonlyMap<ModuleType, ModuleType>;
 
@@ -113,33 +128,6 @@ function isProviderDescriptor<T>(value: Provider<T> | T): value is Exclude<Provi
     'provide' in value &&
     ('useClass' in value || 'useFactory' in value || 'useValue' in value || 'useExisting' in value)
   );
-}
-
-function isClassConstructor<T>(value: Provider<T> | T): value is ClassType<T> {
-  if (typeof value !== 'function') {
-    return false;
-  }
-
-  const source = Function.prototype.toString.call(value);
-  return source.startsWith('class ');
-}
-
-function normalizeOverride<T>(token: Token<T>, value: Provider<T> | T): Provider<T> {
-  if (isProviderDescriptor(value)) {
-    if (value.provide !== token) {
-      throw new Error(
-        `overrideProvider token mismatch: expected ${String(token)} but received provider for ${String(value.provide)}.`,
-      );
-    }
-
-    return { ...value, provide: token } as Provider<T>;
-  }
-
-  if (isClassConstructor(value)) {
-    return { provide: token, useClass: value };
-  }
-
-  return { provide: token, useValue: value };
 }
 
 type ContainerIntrospection = ContainerResolutionState;
@@ -595,7 +583,7 @@ class DefaultOverrideProviderBuilder<T> implements OverrideProviderBuilder<T> {
   ) {}
 
   useValue(value: T): TestingModuleBuilder {
-    this.builder.addOverride(normalizeOverride(this.token, value));
+    this.builder.addOverride({ provide: this.token, useValue: value });
     return this.builder;
   }
 
@@ -637,7 +625,7 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     }
 
     const [value] = rest;
-    this.overrides.push(normalizeOverride(token, value));
+    this.overrides.push({ provide: token, useValue: value });
     return this;
   }
 
@@ -777,25 +765,75 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
 }
 
 /**
- * Creates a fluent testing-module builder for overriding providers and compiling a test graph.
- *
- * @param options Bootstrap options plus the root module that should be compiled for the test.
- * @returns A builder that supports provider and module overrides before compilation.
- *
- * @example
- * ```ts
- * const module = await createTestingModule({ rootModule: AppModule })
- *   .overrideProvider(USER_REPOSITORY, fakeUserRepository)
- *   .compile();
- * ```
+ * Creates test application and module fixtures through Fluo's canonical testing API.
  */
-export function createTestingModule(options: TestingModuleOptions): TestingModuleBuilder {
-  return new DefaultTestingModuleBuilder(options);
-}
+export class Test {
+  /**
+   * Creates a builder for an isolated testing module graph.
+ *
+   * @param options Testing module bootstrap options.
+   * @returns A builder that compiles the requested module graph.
+   */
+  static createTestingModule(options: TestingModuleOptions): TestingModuleBuilder {
+    return new DefaultTestingModuleBuilder(options);
+  }
 
-/**
- * Namespace-style access point for `createTestingModule(...)`.
- */
-export const Test = {
-  createTestingModule,
-};
+  /**
+   * Boots a lightweight test app with the real dispatcher and a fluent request client.
+   *
+   * @param options Testing bootstrap options, including the root module and extra providers.
+   * @returns A request-driven test app facade that dispatches through the real runtime stack.
+   */
+  static async createApp(options: TestingApplicationOptions): Promise<TestApp> {
+    const app = await FluoFactory.create(options.rootModule, {
+      ...options,
+      middleware: [createTestRequestContextMiddleware(), ...(options.middleware ?? [])],
+    });
+    let closePromise: Promise<void> | undefined;
+
+    const request: TestApp['request'] = (
+      methodOrRequest: string | TestRequest,
+      pathOrOptions?: string | TestRequestOptions,
+      requestOptions?: TestRequestOptions,
+    ) => createRequestBuilder(app.dispatcher, Test.normalizeRequestInput(methodOrRequest, pathOrOptions, requestOptions));
+
+    const dispatch: TestApp['dispatch'] = async (requestInput: TestRequestWithOptions): Promise<TestResponse> =>
+      makeRequest(app.dispatcher, requestInput);
+
+    return {
+      request,
+      dispatch,
+      close: async () => {
+        closePromise ??= app.close();
+        await closePromise;
+      },
+    };
+  }
+
+  private static normalizeRequestInput(
+    methodOrRequest: string | TestRequest,
+    pathOrOptions?: string | TestRequestOptions,
+    options?: TestRequestOptions,
+  ): TestRequestWithOptions {
+    if (typeof methodOrRequest === 'string') {
+      if (typeof pathOrOptions !== 'string') {
+        throw new Error('Request path is required when using the (method, path, options) overload.');
+      }
+
+      return {
+        ...options,
+        method: methodOrRequest,
+        path: pathOrOptions,
+      };
+    }
+
+    if (typeof pathOrOptions === 'object') {
+      return {
+        ...methodOrRequest,
+        ...pathOrOptions,
+      };
+    }
+
+    return methodOrRequest;
+  }
+}

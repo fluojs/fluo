@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Module } from '@fluojs/core';
 import { getDtoBindingSchema } from '@fluojs/core/request-pipeline';
 import { Controller, FromQuery, Get, RequestDto } from '@fluojs/http';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
 class GreetingRequest {
   @FromQuery('display_name')
@@ -27,7 +27,7 @@ export async function verifyGeneratedDtoBinding(): Promise<void> {
     { metadata: { key: 'display_name', optional: undefined, source: 'query' }, propertyKey: 'name' },
   ]);
 
-  const app = await createTestApp({ rootModule: ToolchainModule });
+  const app = await Test.createApp({ rootModule: ToolchainModule });
   try {
     const response = await app.request('GET', '/toolchain/').query('display_name', 'Ada').send();
     assert.equal(response.status, 200);

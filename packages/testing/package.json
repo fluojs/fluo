@@ -29,10 +29,6 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./app": {
-      "types": "./dist/app.d.ts",
-      "import": "./dist/app.js"
-    },
     "./module": {
       "types": "./dist/module.d.ts",
       "import": "./dist/module.js"

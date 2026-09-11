@@ -278,9 +278,9 @@ pnpm exec vitest run --project examples examples/fluo-blog
 ```
 
 `posts.service.test.ts`는 메모리 저장 동작을 확인합니다.
-`posts.slice.test.ts`는 `createTestingModule`로 실제 모듈 그래프를 구성하고
+`posts.slice.test.ts`는 `Test.createTestingModule`로 실제 모듈 그래프를 구성하고
 등록된 provider를 resolve한 뒤 `finally`에서 컨테이너를 정리합니다.
-`test/app.e2e.test.ts`는 `createTestApp({ rootModule: AppModule })`과
+`test/app.e2e.test.ts`는 `Test.createApp({ rootModule: AppModule })`과
 `app.request(...).body(...).send()`로 실제 요청 파이프라인을 통과하고,
 모든 앱을 `finally`에서 닫습니다.
 

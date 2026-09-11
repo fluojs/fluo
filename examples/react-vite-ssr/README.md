@@ -61,13 +61,13 @@ cover the smaller units and generated types:
 | layer | executable evidence |
 | --- | --- |
 | Render-policy unit | `packages/react/src/render-policy.test.ts` covers composition and diagnostics directly. |
-| Real request dispatch | `src/app.test.ts` uses `createTestApp(...)` for a direct page return, DTO failures, guard/interceptor behavior, and native mutation responses. |
+| Real request dispatch | `src/app.test.ts` uses `Test.createApp(...)` for a direct page return, DTO failures, guard/interceptor behavior, and native mutation responses. |
 | Generated-route compile/check | `packages/cli/src/commands/typegen-navigation.test.ts` compiles positive and negative route-id/params fixtures; `typegen.test.ts` covers non-mutating stale checks. |
 | Hydration | `src/hydration.test.ts` covers both warning-free interaction and mismatch reporting through `onRecoverableError`. |
 | Production and no JavaScript | `tests/production-hydration.spec.ts` verifies built assets and hydration, then submits the native form with `javaScriptEnabled: false`. |
 
 No React-specific testing helper is added. Ordinary fixtures remove repeated setup while
-`createTestApp(...)`, React DOM, TypeScript, and Playwright continue to exercise the real ownership
+`Test.createApp(...)`, React DOM, TypeScript, and Playwright continue to exercise the real ownership
 boundaries.
 
 ## native form mutation workflow

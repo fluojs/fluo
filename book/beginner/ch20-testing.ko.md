@@ -14,9 +14,9 @@
 ## Learning Objectives
 - Vitest와 `@fluojs/testing`을 이용한 테스트 환경을 구축합니다.
 - `fluo`에서 단위 테스트, 통합 테스트, E2E 스타일 HTTP 테스트의 차이점을 이해합니다.
-- `createTestingModule`을 사용하여 모듈 그래프 컴파일과 프로바이더 오버라이드 중심의 통합 테스트를 구성하는 방법을 배웁니다.
+- `Test.createTestingModule`을 사용하여 모듈 그래프 컴파일과 프로바이더 오버라이드 중심의 통합 테스트를 구성하는 방법을 배웁니다.
 - 테스트 중에 프로바이더를 모의 객체나 가짜 객체로 교체합니다.
-- `createTestApp`을 사용하여 실제 요청 파이프라인을 검증하는 HTTP 테스트를 구현합니다.
+- `Test.createApp`을 사용하여 실제 요청 파이프라인을 검증하는 HTTP 테스트를 구현합니다.
 - FluoBlog의 컨트롤러와 서비스를 위한 자동화된 테스트를 작성합니다.
 
 ## Prerequisites
@@ -44,8 +44,8 @@
 건강한 테스트 전략은 "테스트 피라미드"를 따릅니다. fluo에서는 그 피라미드를 실용적인 TDD ladder로 다룹니다. 많은 빠른 unit 테스트로 시작하고, DI wiring이 중요할 때 module-slice integration 테스트를 추가한 뒤, request pipeline에는 더 적은 app-level E2E 스타일 HTTP 테스트를 둡니다. canonical flow는 다음과 같습니다.
 
 1. **Unit**: source 가까이에 `users.service.test.ts` 또는 `users.controller.test.ts`를 작성하고, 클래스를 직접 구성하며 명시적 fake나 `@fluojs/testing/mock` 헬퍼를 넘깁니다.
-2. **Slice/module integration**: `createTestingModule({ rootModule })` 또는 `Test.createTestingModule({ rootModule })` 기반 `users.slice.test.ts`를 작성해 실제 module graph를 컴파일하고, provider registration을 검증하며, `.compile()` 전에 provider override를 적용합니다.
-3. **HTTP e2e-style**: `createTestApp({ rootModule })` 기반 `test/app.e2e.test.ts`를 작성한 뒤 애플리케이션 개발자의 기본 경로인 `app.request(...).send()`로 request-pipeline behavior를 검증합니다.
+2. **Slice/module integration**: `Test.createTestingModule({ rootModule })` 기반 `users.slice.test.ts`를 작성해 실제 module graph를 컴파일하고, provider registration을 검증하며, `.compile()` 전에 provider override를 적용합니다.
+3. **HTTP e2e-style**: `Test.createApp({ rootModule })` 기반 `test/app.e2e.test.ts`를 작성한 뒤 애플리케이션 개발자의 기본 경로인 `app.request(...).send()`로 request-pipeline behavior를 검증합니다.
 4. **Platform/conformance**: testing harness subpath는 일반 FluoBlog 기능 테스트가 아니라 adapter나 runtime package를 작성할 때만 사용합니다.
 
 이 ladder는 fluo의 명시적 runtime model과 일치합니다. NestJS의 metadata 기반 설정과 달리, fluo 테스트는 컴파일할 `rootModule`을 이름으로 지정하며 TypeScript design metadata나 reflection flag로 dependency를 추론하지 않습니다.
@@ -93,8 +93,10 @@ export default defineConfig({
 ### 20.2.2 Coverage and Reporting
 작성한 코드가 얼마나 테스트되었는지 아는 것은 중요합니다. Vitest는 `v8`이나 `istanbul` 같은 도구를 사용하여 코드 커버리지를 측정하는 기능을 내장하고 있습니다. `vitest run --coverage` 명령을 실행하면 코드의 어느 라인이 테스트되었는지 보여주는 보고서를 생성할 수 있습니다. 핵심 비즈니스 로직과 보안이 중요한 영역에서는 높은 커버리지를 목표로 하십시오.
 
-## 20.3 Integration Testing with createTestingModule
-`createTestingModule`은 한 애플리케이션 슬라이스 안에서 실제 모듈 그래프를 컴파일하고, 필요한 프로바이더만 오버라이드하면서 DI 연결 상태를 검증하는 통합 테스트 표면입니다. 테스트 대역을 주입해 특정 의존성을 제어할 수는 있지만, 이 범주는 순수 단위 테스트가 아니라 모듈 그래프 수준의 통합 범위에 해당합니다.
+<a id="203-integration-testing-with-createtestingmodule"></a>
+
+## 20.3 Integration Testing with Test.createTestingModule
+`Test.createTestingModule`은 한 애플리케이션 슬라이스 안에서 실제 모듈 그래프를 컴파일하고, 필요한 프로바이더만 오버라이드하면서 DI 연결 상태를 검증하는 통합 테스트 표면입니다. 테스트 대역을 주입해 특정 의존성을 제어할 수는 있지만, 이 범주는 순수 단위 테스트가 아니라 모듈 그래프 수준의 통합 범위에 해당합니다.
 
 ### The Service to Test
 `PostService`를 예로 보겠습니다:
@@ -113,10 +115,10 @@ export class PostService {
 ```
 
 ### The Test Suite
-`createTestingModule`을 사용하여 테스트를 위한 최소한의 모듈 그래프를 컴파일합니다. 이는 오직 테스트만을 위한 미니 DI 컨테이너처럼 작동합니다.
+`Test.createTestingModule`을 사용하여 테스트를 위한 최소한의 모듈 그래프를 컴파일합니다. 이는 오직 테스트만을 위한 미니 DI 컨테이너처럼 작동합니다.
 
 ```typescript
-import { createTestingModule, type TestingModuleRef } from '@fluojs/testing';
+import { Test, type TestingModuleRef } from '@fluojs/testing';
 import { Module } from '@fluojs/core';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { PostService } from './post.service';
@@ -139,7 +141,7 @@ describe('PostService', () => {
     })
     class PostTestModule {}
 
-    module = await createTestingModule({
+    module = await Test.createTestingModule({
       rootModule: PostTestModule,
     })
       .overrideProvider(PostRepository, mockRepo)
@@ -170,18 +172,18 @@ describe('PostService', () => {
 });
 ```
 
-이 패턴, **모의(Mock) -> 컴파일 -> 해결(Resolve) -> 실행(Act) -> 단언(Assert)** 는 `createTestingModule` 기반 통합 테스트의 핵심입니다. 실제 모듈 그래프와 DI 해석을 유지하면서도 필요한 의존성만 통제할 수 있어서, 테스트가 결정론적이면서도 현재 애플리케이션 슬라이스의 연결 상태를 함께 검증해 줍니다.
+이 패턴, **모의(Mock) -> 컴파일 -> 해결(Resolve) -> 실행(Act) -> 단언(Assert)** 는 `Test.createTestingModule` 기반 통합 테스트의 핵심입니다. 실제 모듈 그래프와 DI 해석을 유지하면서도 필요한 의존성만 통제할 수 있어서, 테스트가 결정론적이면서도 현재 애플리케이션 슬라이스의 연결 상태를 함께 검증해 줍니다.
 
 ### 20.3.2 Testing Asynchronous Logic
-비동기 코드는 백엔드 개발의 일반적인 형태입니다. Fluo의 `createTestingModule`과 Vitest의 `async/await` 지원을 사용하면 이러한 작업을 순서대로 테스트할 수 있습니다. 성공적인 완료, 예상된 거부(rejection), 그리고 여러 비동기 작업이 특정 순서대로 완료되어야 하는 타이밍 문제까지 검증할 수 있습니다. `vi.useFakeTimers()`를 사용하면 실제로 시간을 기다리지 않고도 타임아웃이나 재시도 로직을 테스트할 수 있습니다.
+비동기 코드는 백엔드 개발의 일반적인 형태입니다. Fluo의 `Test.createTestingModule`과 Vitest의 `async/await` 지원을 사용하면 이러한 작업을 순서대로 테스트할 수 있습니다. 성공적인 완료, 예상된 거부(rejection), 그리고 여러 비동기 작업이 특정 순서대로 완료되어야 하는 타이밍 문제까지 검증할 수 있습니다. `vi.useFakeTimers()`를 사용하면 실제로 시간을 기다리지 않고도 타임아웃이나 재시도 로직을 테스트할 수 있습니다.
 
 ### 20.3.3 Lifecycle Hooks in Tests
-때로는 모듈 그래프가 컴파일될 때 프로바이더가 올바르게 초기화되는지 테스트해야 할 때가 있습니다. `createTestingModule()`은 컴파일 시점의 모듈 연결, 프로바이더 가시성, 프로바이더/가드/인터셉터 교체를 검증하는 슬라이스 테스트 표면입니다. 컴파일된 `TestingModuleRef`는 해결(resolve) 및 디스패치 헬퍼를 제공하지만 별도의 `close()` 라이프사이클 단계는 제공하지 않습니다. `compile()`이 해당 reference를 반환할 때까지는 builder가 내부 container를 소유합니다. Override, initialization hook, bootstrap hook, 최종 singleton 동기화가 실패하면 builder는 reject하기 전에 container를 dispose합니다. Cleanup이 성공하면 원래 compile error를 보존하고, cleanup도 실패하면 두 실패를 `AggregateError`로 함께 보고합니다.
+때로는 모듈 그래프가 컴파일될 때 프로바이더가 올바르게 초기화되는지 테스트해야 할 때가 있습니다. `Test.createTestingModule()`은 컴파일 시점의 모듈 연결, 프로바이더 가시성, 프로바이더/가드/인터셉터 교체를 검증하는 슬라이스 테스트 표면입니다. 컴파일된 `TestingModuleRef`는 해결(resolve) 및 디스패치 헬퍼를 제공하지만 별도의 `close()` 라이프사이클 단계는 제공하지 않습니다. `compile()`이 해당 reference를 반환할 때까지는 builder가 내부 container를 소유합니다. Override, initialization hook, bootstrap hook, 최종 singleton 동기화가 실패하면 builder는 reject하기 전에 container를 dispose합니다. Cleanup이 성공하면 원래 compile error를 보존하고, cleanup도 실패하면 두 실패를 `AggregateError`로 함께 보고합니다.
 
-성공적으로 컴파일된 뒤에는 위 suite처럼 `TestingModuleRef`를 보관하고 caller-owned `module.container`를 `finally` 또는 `afterEach`에서 unconditional하게 dispose하세요. 그러면 성공, 실패, 조기 반환 테스트를 모두 처리합니다. 완료된 disposal은 idempotent하며 teardown error는 surface되어야 합니다. Teardown 전에 실패할 수 있는 테스트는 in-flight failure를 대체하지 말고 두 오류를 모두 보존해야 합니다. Request/application lifecycle coverage는 반환된 app이 `close()`를 노출하는 `createTestApp()`에 유지하세요.
+성공적으로 컴파일된 뒤에는 위 suite처럼 `TestingModuleRef`를 보관하고 caller-owned `module.container`를 `finally` 또는 `afterEach`에서 unconditional하게 dispose하세요. 그러면 성공, 실패, 조기 반환 테스트를 모두 처리합니다. 완료된 disposal은 idempotent하며 teardown error는 surface되어야 합니다. Teardown 전에 실패할 수 있는 테스트는 in-flight failure를 대체하지 말고 두 오류를 모두 보존해야 합니다. Request/application lifecycle coverage는 반환된 app이 `close()`를 노출하는 `Test.createApp()`에 유지하세요.
 
 ## 20.4 Provider Overrides
-`fluo`는 실제 컴포넌트를 테스트 대역(test double)으로 교체하는 여러 가지 방법을 제공합니다. 이 기능을 사용하면 외부 시스템의 불안정성은 제거하면서도, 테스트하려는 모듈의 DI 연결과 실행 흐름은 그대로 검증할 수 있습니다. Request-facing guard와 interceptor는 `TestingModuleRef.dispatch(...)` 또는 `createTestApp(...)` 기반 request-path assertion을 추가해 애플리케이션이 사용하는 동일한 pipeline에서 override가 검증되도록 하세요.
+`fluo`는 실제 컴포넌트를 테스트 대역(test double)으로 교체하는 여러 가지 방법을 제공합니다. 이 기능을 사용하면 외부 시스템의 불안정성은 제거하면서도, 테스트하려는 모듈의 DI 연결과 실행 흐름은 그대로 검증할 수 있습니다. Request-facing guard와 interceptor는 `TestingModuleRef.dispatch(...)` 또는 `Test.createApp(...)` 기반 request-path assertion을 추가해 애플리케이션이 사용하는 동일한 pipeline에서 override가 검증되도록 하세요.
 
 - **`overrideProvider(token, value)`**: 특정 토큰을 값(객체 또는 인스턴스)으로 교체합니다.
 - **`overrideProviders([[token, value], ...])`**: 여러 토큰을 한 번에 교체합니다.
@@ -202,7 +204,7 @@ class FakePostRepository {
 @Module({ providers: [PostRepository, PostService] })
 class PostTestModule {}
 
-const module = await createTestingModule({ rootModule: PostTestModule })
+const module = await Test.createTestingModule({ rootModule: PostTestModule })
   .overrideProvider(PostRepository, new FakePostRepository())
   .compile();
 
@@ -254,7 +256,7 @@ if (disposeFailed) {
 @Module({ providers: [ConfigService, PostService] })
 class PostTestModule {}
 
-const module = await createTestingModule({ rootModule: PostTestModule })
+const module = await Test.createTestingModule({ rootModule: PostTestModule })
   .overrideProvider(ConfigService, {
     get: vi.fn().mockReturnValue('test-secret'),
   })
@@ -300,19 +302,21 @@ if (disposeFailed) {
 
 `overrideModule(source, replacement)`는 컴파일된 testing graph를 알아보기 쉬운 상태로 유지합니다. Provider 해석에는 replacement module definition을 사용하지만 `module.rootModule`, `module.modules[].type`, 원본 module metadata는 사용자가 작성한 모듈을 계속 가리킵니다. 이 격리 덕분에 한 테스트가 `StripeModule`을 교체해도 이후 테스트나 원본 module graph를 검사하는 diagnostics에 patched import가 남지 않습니다.
 
-## 20.5 E2E-Style HTTP Testing with createTestApp
-`createTestApp`은 요청 디스패치, 가드, 인터셉터, DTO 검증, 응답 작성을 포함한 실제 HTTP 파이프라인을 실행하는 E2E 스타일 HTTP 테스트 표면입니다. 실제 네트워크 소켓만 열지 않을 뿐, 요청 처리 스택 자체는 프로덕션 경로와 같은 방식으로 검증합니다.
+<a id="205-e2e-style-http-testing-with-createtestapp"></a>
 
-실제 네트워크 서버를 시작하는 대신, 가상 요청 시스템을 제공하는 `createTestApp`을 사용합니다. 애플리케이션 개발자의 기본 경로는 fluent `app.request(...).send()` helper입니다. 이 방식은 HTTP 클라이언트처럼 읽히면서도 framework request pipeline을 그대로 실행합니다. Direct `app.dispatch(...)`와 수동 request/response stub은 dispatch boundary 자체를 검사해야 하는 lower-level framework-internal contract나 adapter/runtime package에 남겨 두세요. 이는 테스트 속도와 안정성을 높이면서도 전체 요청 라이프사이클이 올바르게 구성되었는지 확인합니다.
+## 20.5 E2E-Style HTTP Testing with Test.createApp
+`Test.createApp`은 요청 디스패치, 가드, 인터셉터, DTO 검증, 응답 작성을 포함한 실제 HTTP 파이프라인을 실행하는 E2E 스타일 HTTP 테스트 표면입니다. 실제 네트워크 소켓만 열지 않을 뿐, 요청 처리 스택 자체는 프로덕션 경로와 같은 방식으로 검증합니다.
+
+실제 네트워크 서버를 시작하는 대신, 가상 요청 시스템을 제공하는 `Test.createApp`을 사용합니다. 애플리케이션 개발자의 기본 경로는 fluent `app.request(...).send()` helper입니다. 이 방식은 HTTP 클라이언트처럼 읽히면서도 framework request pipeline을 그대로 실행합니다. Direct `app.dispatch(...)`와 수동 request/response stub은 dispatch boundary 자체를 검사해야 하는 lower-level framework-internal contract나 adapter/runtime package에 남겨 두세요. 이는 테스트 속도와 안정성을 높이면서도 전체 요청 라이프사이클이 올바르게 구성되었는지 확인합니다.
 
 ### The Test Case
 ```typescript
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { AppModule } from './app.module';
 
 describe('PostController (E2E-style HTTP)', () => {
   it('GET /posts should return a list of posts', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const response = await app
@@ -361,44 +365,46 @@ expect(response.status).toBe(200);
 ```
 
 ### 20.5.4 Simulating Network Failures in Integration
-`createTestApp`은 가상 시스템이지만, 기반 데이터 프로바이더를 모의함으로써 네트워크 수준의 실패를 여전히 시뮬레이션할 수 있습니다. 예를 들어 `PrismaService`가 타임아웃 에러를 던지도록 모의하고, 애플리케이션이 적절한 `504 Gateway Timeout` 또는 `503 Service Unavailable` 응답을 반환하는지 확인할 수 있습니다. 이를 통해 네트워크 하드웨어를 실제로 망가뜨리지 않고도 애플리케이션의 복원력을 테스트할 수 있습니다.
+`Test.createApp`은 가상 시스템이지만, 기반 데이터 프로바이더를 모의함으로써 네트워크 수준의 실패를 여전히 시뮬레이션할 수 있습니다. 예를 들어 `PrismaService`가 타임아웃 에러를 던지도록 모의하고, 애플리케이션이 적절한 `504 Gateway Timeout` 또는 `503 Service Unavailable` 응답을 반환하는지 확인할 수 있습니다. 이를 통해 네트워크 하드웨어를 실제로 망가뜨리지 않고도 애플리케이션의 복원력을 테스트할 수 있습니다.
 
-## 20.6 Mocking with createMock and createDeepMock
-복잡한 클래스의 경우 수십 개의 메서드를 수동으로 모의 객체로 만드는 것은 번거롭고 실수가 생기기 쉽습니다. `@fluojs/testing/mock`은 JavaScript Proxy를 사용하여 타입을 자동으로 모의하는 헬퍼를 제공합니다. 덕분에 테스트 설정은 짧아지고, 실제로 검증하고 싶은 동작에 더 많은 주의를 쓸 수 있습니다.
+<a id="206-mocking-with-createmock-and-createdeepmock"></a>
+
+## 20.6 Mocking with ShallowMock.create and PrototypeMock.create
+복잡한 클래스의 경우 수십 개의 메서드를 수동으로 모의 객체로 만드는 것은 번거롭고 실수가 생기기 쉽습니다. `@fluojs/testing/mock`은 shallow proxy mock을 위한 `ShallowMock.create(...)`와 prototype-method spy를 위한 `PrototypeMock.create(Type)`을 제공합니다. 두 헬퍼 모두 중첩 객체나 반환값을 재귀적으로 mock하지 않습니다. Prototype mock은 상속 및 symbol-keyed method를 포함하지만 constructor 실행, accessor 평가, instance field 및 arrow-function member 채우기는 하지 않으므로 해당 값은 직접 제공하세요. 덕분에 테스트 설정은 짧아지고, 실제로 검증하고 싶은 동작에 더 많은 주의를 쓸 수 있습니다.
 
 ```typescript
-import { createMock, createDeepMock } from '@fluojs/testing/mock';
+import { ShallowMock, PrototypeMock } from '@fluojs/testing/mock';
 import { vi } from 'vitest';
 
 // 특정 메서드만 정의하는 얕은 모의 객체 생성
-const repo = createMock<PostRepository>({ 
-  findAll: vi.fn().mockResolvedValue([]) 
+const repo = ShallowMock.create<PostRepository>({
+  findAll: vi.fn().mockResolvedValue([])
 });
 
-// 모든 메서드가 자동으로 모의되는 깊은 모의 객체 생성
-// 의존성이 많은 서비스를 테스트할 때 유용합니다
-const mailer = createDeepMock(MailService);
+// 자체 및 상속 prototype method의 spy 생성
+// Constructor 실행, instance field, 재귀 mocking은 포함하지 않습니다.
+const mailer = PrototypeMock.create(MailService);
 mailer.send.mockResolvedValue(true);
 ```
 
 ### 20.6.1 명시적인 DI Token Override
-`createTestingModule`은 누락된 provider를 자동으로 mock하지 않습니다. module graph는 명시적으로 유지하고, 교체해야 하는 의존성만 `.compile()` 전에 `overrideProvider(...)`, `overrideProviders(...)`, 또는 `mockToken(...)`으로 바꾸세요. 이렇게 하면 fluo의 명시적 DI 계약과 테스트가 일치하면서도 fake가 필요한 의존성의 상용구를 줄일 수 있습니다.
+`Test.createTestingModule`은 누락된 provider를 자동으로 mock하지 않습니다. Module graph는 명시적으로 유지하고, 교체해야 하는 의존성만 `.compile()` 전에 `overrideProvider(...)` 또는 `overrideProviders(...)`로 바꾸세요. 명시적 partial이나 mock을 전달하는 `.overrideProvider(token).useValue(value)`를 우선 사용하세요. `mockToken(token, value)`는 tuple이나 override 동작이 아니라 `ValueProvider` descriptor `{ provide: token, useValue: value }`를 반환하는 provider 등록 헬퍼로 유지됩니다. Override에서 재사용할 때는 descriptor 자체가 아니라 `.overrideProvider(token).useValue(mockToken(token, value).useValue)`로 값만 전달하세요.
 
 ### 20.6.2 The Power of Proxies in Mocking
-`createMock` 헬퍼는 ES6 Proxy를 사용하여 메서드 호출과 속성 접근을 가로챕니다. 이는 모의 객체의 모든 메서드를 일일이 정의할 필요가 없음을 의미합니다. 프록시는 모든 호출을 자동으로 처리하며, 메서드가 명시적으로 정의되지 않은 경우 기본 모의 함수를 반환합니다. 이를 통해 테스트 설정이 더 단순해지고 서비스 인터페이스 변경에도 대응하기 쉬워집니다. 서비스에 새로운 메서드를 추가하더라도, 해당 메서드를 구체적으로 검증해야 하는 테스트가 아니라면 기존의 모든 모의 객체를 업데이트할 필요가 없습니다.
+`ShallowMock.create`는 ES6 Proxy로 제공한 값을 보존하고 누락된 각 속성에 같은 `vi.fn()`을 지연 반환합니다. Runtime reflection은 누락된 data와 method를 구분할 수 없으므로 data property는 명시적으로 제공하세요. Strict mode는 spy를 만드는 대신 누락된 속성 접근을 거부합니다. 이를 통해 테스트 설정이 더 단순해지고 서비스 인터페이스 변경에도 대응하기 쉬워집니다. 서비스에 새로운 메서드를 추가하더라도, 해당 메서드를 구체적으로 검증해야 하는 테스트가 아니라면 기존의 모든 모의 객체를 업데이트할 필요가 없습니다.
 
 ### 20.6.3 Type-Safe Mocks with TypeScript
-Fluo 테스트 유틸리티의 큰 장점 중 하나는 TypeScript와의 깊은 통합입니다. `createMock<T>`를 사용하면 모의하려는 메서드에 대해 전체 자동 완성 및 타입 체크 기능을 활용할 수 있습니다. 이는 메서드 이름의 오타나 잘못된 인자 타입으로 인해 발생하는 테스트 버그를 방지합니다. 타입 안전한 모의 객체는 테스트 코드가 프로덕션 코드와 동기화된 상태를 유지하도록 돕고, 애플리케이션이 성장할수록 유지보수 부담을 줄여줍니다.
+Fluo 테스트 유틸리티의 큰 장점 중 하나는 TypeScript와의 깊은 통합입니다. `ShallowMock.create<T>`를 사용하면 모의하려는 메서드에 대해 전체 자동 완성 및 타입 체크 기능을 활용할 수 있습니다. 이는 메서드 이름의 오타나 잘못된 인자 타입으로 인해 발생하는 테스트 버그를 방지합니다. 타입 안전한 모의 객체는 테스트 코드가 프로덕션 코드와 동기화된 상태를 유지하도록 돕고, 애플리케이션이 성장할수록 유지보수 부담을 줄여줍니다.
 
 ## 20.7 Best Practices for FluoBlog Testing
 1.  **프레임워크를 테스트하지 마세요**: `@Get()`이 작동하는지가 아니라, 애플리케이션의 비즈니스 로직에 집중하세요. `fluo`가 라우팅을 처리한다고 전제하고, 해당 경로가 호출되었을 때 작성한 코드가 무엇을 하는지 테스트하세요.
 2.  **데이터베이스에는 가짜(Fake)를 사용하세요**: 통합 테스트는 실제 테스트용 데이터베이스(예: Docker의 PostgreSQL)를 사용할 수 있지만, 단위 테스트는 속도를 위해 항상 모의 객체나 가짜를 사용해야 합니다.
-3.  **리소스 정리**: request 또는 application lifecycle 테스트에서는 `createTestApp()`으로 앱을 만들고 테스트 후 `finally`에서 `await app.close()`를 호출하세요. `createTestingModule()` slice 테스트에서는 성공한 `TestingModuleRef`를 보관하고 `finally` 또는 `afterEach`에서 caller-owned `module.container.dispose()`를 호출하세요.
+3.  **리소스 정리**: request 또는 application lifecycle 테스트에서는 `Test.createApp()`으로 앱을 만들고 테스트 후 `finally`에서 `await app.close()`를 호출하세요. `Test.createTestingModule()` slice 테스트에서는 성공한 `TestingModuleRef`를 보관하고 `finally` 또는 `afterEach`에서 caller-owned `module.container.dispose()`를 호출하세요.
 4.  **보안을 위한 통합 테스트**: 항상 가드와 RBAC 로직은 통합 테스트에서 테스트하세요. 단위 테스트는 대개 이를 우회하므로, 통합 테스트가 실제 보안을 검증하는 곳입니다.
 5.  **결정론적 테스트**: 테스트에서 `Date.now()`나 랜덤 숫자를 직접 사용하는 것을 피하세요. Vitest의 시간 여행 기능(`vi.useFakeTimers()`)을 사용하여 테스트가 실행될 때마다 동일하게 동작하도록 보장하세요.
 
 ### 20.7.1 Test-Driven Development (TDD) with Fluo
-테스트 주도 개발(TDD)은 실제 구현을 작성하기 *전에* 테스트를 먼저 작성하는 워크플로우입니다. Fluo의 명시적인 의존성 관리는 TDD를 적용하기 좋은 구조를 제공합니다. 서비스의 인터페이스와 동작을 검증하는 직접 unit 테스트로 시작하고, module graph나 provider override가 계약의 일부일 때 `createTestingModule({ rootModule })`로 이동하며, request pipeline을 실행해야 할 때 `createTestApp({ rootModule })`로 기능을 마무리하세요. 이러한 "Red-Green-Refactor" 사이클은 코드가 테스트 커버리지와 명확한 아키텍처를 갖춘 상태로 발전하도록 돕습니다.
+테스트 주도 개발(TDD)은 실제 구현을 작성하기 *전에* 테스트를 먼저 작성하는 워크플로우입니다. Fluo의 명시적인 의존성 관리는 TDD를 적용하기 좋은 구조를 제공합니다. 서비스의 인터페이스와 동작을 검증하는 직접 unit 테스트로 시작하고, module graph나 provider override가 계약의 일부일 때 `Test.createTestingModule({ rootModule })`로 이동하며, request pipeline을 실행해야 할 때 `Test.createApp({ rootModule })`로 기능을 마무리하세요. 이러한 "Red-Green-Refactor" 사이클은 코드가 테스트 커버리지와 명확한 아키텍처를 갖춘 상태로 발전하도록 돕습니다.
 
 ### 20.7.2 Naming and Organizing Your Tests
 대규모 테스트 스위트를 관리하려면 조직화가 핵심입니다. 기본 suffix는 `*.test.ts`를 사용하고, scope가 중요할 때는 test role을 이름에 드러내세요. unit 테스트에는 `users.service.test.ts`와 `users.controller.test.ts`, module-slice integration에는 `users.slice.test.ts`, app-level request-pipeline 점검에는 `test/app.e2e.test.ts`를 사용합니다. 테스트를 모듈이나 기능별로 그룹화하여 찾기 쉽게 만드세요. 각 테스트 파일 내에서는 `describe` 블록을 사용하여 관련 테스트를 묶고, `beforeEach`/`afterEach`를 사용하여 설정 및 정리를 수행하세요. 잘 조직된 테스트 스위트는 FluoBlog 애플리케이션이 수십 개의 서비스와 컨트롤러를 포함할 정도로 성장하더라도 탐색과 유지보수가 쉽습니다.
@@ -428,8 +434,8 @@ Fluo 테스트 유틸리티의 큰 장점 중 하나는 TypeScript와의 깊은 
 `fluo`에서의 테스트는 명시적이고 표준 기반이며 추론하기 쉽다는 핵심 철학의 연장선상에 있습니다. 보이지 않는 동작을 줄이면 테스트 코드도 프로덕션 코드와 같은 구조를 따라갈 수 있습니다.
 
 - 현대적인 개발자 경험과 빠른 실행을 위해 **Vitest**를 사용하세요.
-- 순수 프로바이더 로직의 단위 테스트는 Vitest와 명시적 모의 객체로 작성하고, 모듈 그래프 통합 범위에는 `createTestingModule`을 사용하세요.
-- 가드와 인터셉터를 포함한 실제 요청 파이프라인 검증에는 `createTestApp` 기반 E2E 스타일 HTTP 테스트를 사용하세요.
+- 순수 프로바이더 로직의 단위 테스트는 Vitest와 명시적 모의 객체로 작성하고, 모듈 그래프 통합 범위에는 `Test.createTestingModule`을 사용하세요.
+- 가드와 인터셉터를 포함한 실제 요청 파이프라인 검증에는 `Test.createApp` 기반 E2E 스타일 HTTP 테스트를 사용하세요.
 - 복잡한 설정 없이 보호된 경로를 테스트하기 위해 principal 모의(mocking)를 활용하세요.
 - 일관되고 신뢰할 수 있는 테스트를 위해 "Mock -> Compile -> Resolve" 패턴을 따르세요.
 

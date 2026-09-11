@@ -1,3 +1,4 @@
+import ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 
 import { generateControllerFiles } from './generators/controller.js';
@@ -45,20 +46,25 @@ describe('CLI generators', () => {
   it('emits repo slice templates based on stable testing APIs', () => {
     const content = generateRepoFiles('User')[2]?.content ?? '';
 
-    expect(content).toContain("from '@fluojs/testing'");
-    expect(content).toContain('createTestingModule({ rootModule: UserModule })');
+    expect(content).toContain("import { Test } from '@fluojs/testing';");
+    expect(content).toContain('Test.createTestingModule({ rootModule: UserModule })');
     expect(content).toContain('await testingModule.resolve(UserRepo)');
+    expect(content).toMatch(/try \{[\s\S]*await expect\([\s\S]*finally \{\s*await testingModule\.container\.dispose\(\);/);
   });
 
   it('emits module and resource slice templates based on stable testing APIs', () => {
     const moduleSlice = generateModuleFiles('User', { withTest: true })[1]?.content ?? '';
     const resourceSlice = generateResourceFiles('User', { withSliceTest: true }).at(-1)?.content ?? '';
 
-    expect(moduleSlice).toContain('createTestingModule({ rootModule: UserModule })');
+    expect(moduleSlice).toContain('Test.createTestingModule({ rootModule: UserModule })');
     expect(moduleSlice).toContain('testingModule.rootModule');
-    expect(resourceSlice).toContain('createTestingModule({ rootModule: UserModule })');
+    expect(resourceSlice).toContain('Test.createTestingModule({ rootModule: UserModule })');
     expect(resourceSlice).toContain('overrideProvider(UserRepo');
     expect(resourceSlice).toContain('await testingModule.resolve<UserService>(UserService)');
+    for (const content of [moduleSlice, resourceSlice]) {
+      expect(content).toContain("import { Test } from '@fluojs/testing';");
+      expect(content).toMatch(/try \{[\s\S]*expect\([\s\S]*finally \{\s*await testingModule\.container\.dispose\(\);/);
+    }
   });
 
   it('generates resource modules with internal slice wiring', () => {
@@ -71,16 +77,64 @@ describe('CLI generators', () => {
     expect(content).toContain('providers: [UserRepo, UserService]');
   });
 
-  it('emits e2e templates based on createTestApp', () => {
+  it('emits e2e templates based on the Test static API', () => {
     const content = generateE2eFiles('Users', { e2eRootModuleImport: '../src/app' })[0]?.content ?? '';
 
-    expect(content).toContain("import { createTestApp } from '@fluojs/testing';");
+    expect(content).toContain("import { Test } from '@fluojs/testing';");
     expect(content).toContain("import { AppModule } from '../src/app';");
-    expect(content).toContain('createTestApp({ rootModule: AppModule })');
+    expect(content).toContain('Test.createApp({ rootModule: AppModule })');
     expect(content).toContain('try {');
     expect(content).toContain("app.request('GET', '/users').send()");
     expect(content).toContain('finally {');
     expect(content).toContain('await app.close();');
+  });
+
+  it.each(['module', 'repo', 'resource', 'e2e'] as const)('cleans up the generated %s fixture when its assertion fails', async (kind) => {
+    const files = {
+      module: generateModuleFiles('User', { withTest: true }),
+      repo: generateRepoFiles('User'),
+      resource: generateResourceFiles('User', { withSliceTest: true }),
+      e2e: generateE2eFiles('Users'),
+    }[kind];
+    const content = files.at(-1)?.content ?? '';
+    const cleanup = vi.fn(async () => undefined);
+    const fixture = {
+      container: { dispose: cleanup },
+      rootModule: undefined,
+      resolve: async () => ({ listUsers: async () => ['unexpected'] }),
+    };
+    const builder = {
+      compile: async () => fixture,
+      overrideProvider: () => builder,
+    };
+    const Test = {
+      createTestingModule: vi.fn(() => builder),
+      createApp: vi.fn(async () => ({
+        close: cleanup,
+        request: () => ({ send: async () => ({ status: 503 }) }),
+      })),
+    };
+    const callbacks: Array<() => Promise<void>> = [];
+    const modules: Record<string, unknown> = {
+      '@fluojs/testing': { Test },
+      vitest: { describe: (_name: string, callback: () => void) => callback(), expect, it: (_name: string, callback: () => Promise<void>) => callbacks.push(callback) },
+      './user.module': { UserModule: class UserModule {} },
+      './user.repo': { UserRepo: class UserRepo {} },
+      './user.service': { UserService: class UserService {} },
+      '../src/app': { AppModule: class AppModule {} },
+    };
+    const compiled = ts.transpileModule(content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } });
+    new Function('require', 'exports', compiled.outputText)((specifier: string) => {
+      if (!(specifier in modules)) throw new Error(`Unexpected generated import: ${specifier}`);
+      return modules[specifier];
+    }, {});
+
+    expect(callbacks).toHaveLength(1);
+    for (const callback of callbacks) {
+      await expect(callback()).rejects.toThrow();
+    }
+    expect(kind === 'e2e' ? Test.createApp : Test.createTestingModule).toHaveBeenCalledOnce();
+    expect(cleanup).toHaveBeenCalledOnce();
   });
 
   it('emits generic repository examples without ORM-specific access', () => {
@@ -305,13 +359,13 @@ describe('GeneratorRegistry', () => {
   });
 
   it('keeps generator option schemas explicit for help and docs alignment', () => {
-    expect(generatorOptionSchemas).toEqual([
-      { aliases: ['-o'], description: 'Write generated files under a specific source directory.', name: '--target-directory <path>', value: 'path' },
-      { aliases: ['-f'], description: 'Overwrite files that already exist.', name: '--force', value: 'boolean' },
-      { aliases: [], description: 'Preview planned writes, skips, and module wiring without touching files.', name: '--dry-run', value: 'boolean' },
-      { aliases: [], description: 'Emit a module-level slice test when generating module schematics.', name: '--with-test', value: 'boolean' },
-      { aliases: [], description: 'Emit the resource slice test with createTestingModule provider override coverage.', name: '--with-slice-test', value: 'boolean' },
-      { aliases: ['-h'], description: 'Show help for the generate command.', name: '--help', value: 'boolean' },
+    expect(generatorOptionSchemas.map(({ aliases, name, value }) => ({ aliases, name, value }))).toEqual([
+      { aliases: ['-o'], name: '--target-directory <path>', value: 'path' },
+      { aliases: ['-f'], name: '--force', value: 'boolean' },
+      { aliases: [], name: '--dry-run', value: 'boolean' },
+      { aliases: [], name: '--with-test', value: 'boolean' },
+      { aliases: [], name: '--with-slice-test', value: 'boolean' },
+      { aliases: ['-h'], name: '--help', value: 'boolean' },
     ]);
   });
 

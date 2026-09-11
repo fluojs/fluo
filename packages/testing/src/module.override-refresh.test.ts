@@ -1,7 +1,7 @@
 import { Module } from '@fluojs/core';
 import { describe, expect, it } from 'vitest';
 
-import { createTestingModule } from './index.js';
+import { Test } from './index.js';
 
 type Deferred = {
   readonly promise: Promise<void>;
@@ -34,7 +34,7 @@ describe('TestingModuleRef post-compile overrides', () => {
     @Module({ providers: [{ provide: TOKEN, useValue: originalValue }] })
     class OverrideModule {}
 
-    const testingModule = await createTestingModule({ rootModule: OverrideModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: OverrideModule }).compile();
 
     const original = testingModule.get<ServiceValue>(TOKEN);
     testingModule.container.override({ provide: TOKEN, useValue: replacementValue });
@@ -56,7 +56,7 @@ describe('TestingModuleRef post-compile overrides', () => {
     @Module({ providers: [{ provide: TOKEN, useValue: originalValue }] })
     class OverrideResolveModule {}
 
-    const testingModule = await createTestingModule({ rootModule: OverrideResolveModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: OverrideResolveModule }).compile();
 
     const original = testingModule.get<ServiceValue>(TOKEN);
     testingModule.container.override({ provide: TOKEN, useValue: replacementValue });
@@ -84,7 +84,7 @@ describe('TestingModuleRef post-compile overrides', () => {
     })
     class MultiOverrideResolveModule {}
 
-    const testingModule = await createTestingModule({ rootModule: MultiOverrideResolveModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: MultiOverrideResolveModule }).compile();
 
     const original = testingModule.get<Plugin[]>(PLUGINS);
     testingModule.container.override({ provide: DEPENDENCY, useValue: 'replacement' });
@@ -124,7 +124,7 @@ describe('TestingModuleRef post-compile overrides', () => {
     @Module({ providers: [{ provide: TOKEN, useClass: OriginalService }] })
     class AsyncDisposalOverrideModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AsyncDisposalOverrideModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AsyncDisposalOverrideModule }).compile();
 
     const original = testingModule.get<OriginalService | ReplacementService>(TOKEN);
     testingModule.container.override({ provide: TOKEN, useClass: ReplacementService });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
 import { AppModule } from './app';
 import { HelloService } from './hello.service';
@@ -22,8 +22,8 @@ describe('HelloController', () => {
 });
 
 describe('AppModule e2e', () => {
-  it('serves all routes through createTestApp request helpers', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+  it('serves all routes through Test.createApp request helpers', async () => {
+    const app = await Test.createApp({ rootModule: AppModule });
 
     await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
       body: { status: 'ok' },

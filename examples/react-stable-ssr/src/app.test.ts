@@ -1,4 +1,4 @@
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
 import { AppModule } from './app';
@@ -15,7 +15,7 @@ function readHtml(body: unknown): string {
 
 describe('react-stable-ssr example', () => {
   it('renders a DTO-bound React page through the HTTP lifecycle', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const response = await app.request('GET', '/products/sku-42').query('preview', 'true').send();

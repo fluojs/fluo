@@ -119,16 +119,16 @@ As it supports more edge cases and platform features, the portability harness ac
 
 The Hono project is well known for compliance with "standard" middleware and adapters. Fluo takes a similar approach in `packages/testing/src/conformance`, focusing on explicit contracts rather than implicit assumptions.
 
-For example, `platform-conformance.ts` checks the public component-level contract that platform-facing packages can expose through `createPlatformConformanceHarness(...)`: validation must avoid long-lived side effects, start must be deterministic, stop must be idempotent, degraded/failed snapshots must remain safe, diagnostics must stay stable, and snapshots must be sanitized.
+For example, `platform-conformance.ts` checks the public component-level contract that platform-facing packages can expose through `PlatformConformanceHarness.create(...)`: validation must avoid long-lived side effects, start must be deterministic, stop must be idempotent, degraded/failed snapshots must remain safe, diagnostics must stay stable, and snapshots must be sanitized.
 
 ### Platform Conformance Surface
 
 The platform conformance suite focuses on stable public assertions rather than hidden lifecycle choreography. It does not prove that every provider lifecycle hook fired at a particular network readiness moment, that active connections drained, or that a process exited after bootstrap failure. Those guarantees belong in the adapter or runtime package tests that own the behavior. The published harness gives adapter and tooling authors a reusable baseline for the public component contract: repeated start/stop calls must be predictable, diagnostics and snapshots must remain safe to inspect, and validation must not leave persistent state behind.
 
 ```typescript
-import { createPlatformConformanceHarness } from '@fluojs/testing/platform-conformance';
+import { PlatformConformanceHarness } from '@fluojs/testing/platform-conformance';
 
-const harness = createPlatformConformanceHarness({
+const harness = PlatformConformanceHarness.create({
   createComponent: () => myPlatformComponent,
   // ...
 });
@@ -138,7 +138,7 @@ await harness.assertAll();
 
 This lets someone writing a platform-facing component immediately validate their work against the public component contract. It also acts as expected-behavior documentation for adapter and tooling authors.
 
-`PlatformShell` lifecycle ownership is intentionally separate from component-level `assertAll()`. Platform package suites use `createPlatformShellLifecycleConformanceHarness({ createShell })` from `@fluojs/testing/platform-shell-lifecycle-conformance` to prove all four overlapping `start()` / `stop()` pairs reject with `PlatformLifecycleConflictError`, callback reentry remains conflict-safe before and after arbitrary awaits, and a caller can retry only after a failed transition settles.
+`PlatformShell` lifecycle ownership is intentionally separate from component-level `assertAll()`. Platform package suites use `PlatformShellLifecycleConformanceHarness.create({ createShell })` from `@fluojs/testing/platform-shell-lifecycle-conformance` to prove all four overlapping `start()` / `stop()` pairs reject with `PlatformLifecycleConflictError`, callback reentry remains conflict-safe before and after arbitrary awaits, and a caller can retry only after a failed transition settles.
 
 ### Conformance Testing for Library Authors
 
@@ -178,13 +178,13 @@ If you implemented a custom adapter in Chapter 13, you should now verify it with
 ```typescript
 import { FluoFactory } from '@fluojs/runtime';
 import {
-  createHttpAdapterPortabilityHarness,
+  HttpAdapterPortabilityHarness,
   type NetworkHttpErrorRepresentationBootstrapOptions,
 } from '@fluojs/testing/http-adapter-portability';
 import { myAdapter } from './my-adapter';
 import { TEST_TLS_CERTIFICATE, TEST_TLS_PRIVATE_KEY } from './test-tls-fixture';
 
-const harness = createHttpAdapterPortabilityHarness({
+const harness = HttpAdapterPortabilityHarness.create({
   name: 'MyCustomAdapter',
   createErrorRepresentationBootstrapOptions: (
     options: NetworkHttpErrorRepresentationBootstrapOptions,

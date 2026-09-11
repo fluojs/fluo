@@ -3,11 +3,11 @@ import { CloudflareWorkerHttpApplicationAdapter } from '@fluojs/platform-cloudfl
 import { DenoHttpApplicationAdapter } from '@fluojs/platform-deno';
 import { describe, expect, it } from 'vitest';
 
-import { createFetchStyleWebSocketConformanceHarness } from './fetch-style-websocket-conformance.js';
+import { FetchStyleWebSocketConformanceHarness } from './fetch-style-websocket-conformance.js';
 
 describe('fetch-style websocket conformance harness', () => {
   it('fails when an adapter does not expose a fetch-style capability', () => {
-    const harness = createFetchStyleWebSocketConformanceHarness({
+    const harness = FetchStyleWebSocketConformanceHarness.create({
       createAdapter: () => ({
         async close() {},
         getRealtimeCapability() {
@@ -29,7 +29,7 @@ describe('fetch-style websocket conformance harness', () => {
 
 describe('official fetch-style runtime websocket contract', () => {
   it('keeps Bun on the shared supported websocket expansion seam', () => {
-    const harness = createFetchStyleWebSocketConformanceHarness({
+    const harness = FetchStyleWebSocketConformanceHarness.create({
       createAdapter: () => BunHttpApplicationAdapter.create(),
       expectedSupport: 'supported',
       expectedReason:
@@ -42,7 +42,7 @@ describe('official fetch-style runtime websocket contract', () => {
   });
 
   it('keeps Deno on the shared supported websocket expansion seam', () => {
-    const harness = createFetchStyleWebSocketConformanceHarness({
+    const harness = FetchStyleWebSocketConformanceHarness.create({
       createAdapter: () => DenoHttpApplicationAdapter.create(),
       expectedSupport: 'supported',
       expectedReason:
@@ -54,7 +54,7 @@ describe('official fetch-style runtime websocket contract', () => {
   });
 
   it('keeps Cloudflare Workers on the shared supported websocket expansion seam', () => {
-    const harness = createFetchStyleWebSocketConformanceHarness({
+    const harness = FetchStyleWebSocketConformanceHarness.create({
       createAdapter: () => CloudflareWorkerHttpApplicationAdapter.create(),
       expectedSupport: 'supported',
       expectedReason:

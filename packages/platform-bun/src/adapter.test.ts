@@ -2,8 +2,8 @@ import { type BunTestApplicationOptions, createBunTestApplication, startBunTestA
 import { readFileSync } from 'node:fs';
 import { All, Controller, createAccessLogObserver, createCorrelationMiddleware, createDispatcher, createHandlerMapping, type FrameworkRequest, type FrameworkRequestFile, type FrameworkResponse, Get, Header, HttpCode, type Middleware, type MiddlewareContext, type Next, Post, Query, Redirect, type RequestContext, Route, SseResponse, Version, VersioningType } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
-import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
-import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
+import { FetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
+import { WebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BunHttpApplicationAdapter, type BunServeOptions, type BunServerLike, type BunServerWebSocket, type BunWebSocketBinding, createBunFetchHandler } from './adapter.js';
@@ -335,7 +335,7 @@ function isMockBunRouteMethodSupported(value: NonNullable<BunServeOptions['route
 }
 
 function registerBunWebRuntimePortabilitySuite(): void {
-  const bunPortabilityHarness = createWebRuntimeHttpAdapterPortabilityHarness<BunTestApplicationOptions>({
+  const bunPortabilityHarness = WebRuntimeHttpAdapterPortabilityHarness.create<BunTestApplicationOptions>({
     async bootstrap(rootModule: ModuleType, options: BunTestApplicationOptions) {
       const mockBun = installMockBun();
       const app = await bootstrapAndListenBunApplication(rootModule, options);
@@ -2792,7 +2792,7 @@ describe('@fluojs/platform-bun', () => {
   });
 
   it('reports supported fetch-style websocket hosting for the official Bun binding seam', () => {
-    const harness = createFetchStyleWebSocketConformanceHarness({
+    const harness = FetchStyleWebSocketConformanceHarness.create({
       createAdapter: () => BunHttpApplicationAdapter.create(),
       expectedReason:
         'Bun exposes Bun.serve() + server.upgrade() request-upgrade hosting. Use @fluojs/websockets/bun for the official raw websocket binding.',

@@ -1,6 +1,6 @@
 import { Module } from '@fluojs/core';
 import { Path, ReactModule, Router } from '@fluojs/react';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -54,7 +54,7 @@ describe('react-vite-ssr example', () => {
     })
     class MissingRendererModule {}
 
-    const app = await createTestApp({ rootModule: MissingRendererModule });
+    const app = await Test.createApp({ rootModule: MissingRendererModule });
 
     try {
       // When: the virtual HTTP client dispatches the page request.
@@ -74,7 +74,7 @@ describe('react-vite-ssr example', () => {
       clientDirectory: new URL('../dist/client/', import.meta.url),
       manifest: VITE_MANIFEST,
     });
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       // When: the HTTP-owned route receives path and search parameters.
@@ -106,7 +106,7 @@ describe('react-vite-ssr example', () => {
       clientDirectory: new URL('../dist/client/', import.meta.url),
       manifest: VITE_MANIFEST,
     });
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       // When: navigation reaches the server with invalid path and query values.
@@ -125,7 +125,7 @@ describe('react-vite-ssr example', () => {
       clientDirectory: new URL('../dist/client/', import.meta.url),
       manifest: VITE_MANIFEST,
     });
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       // When: an unauthenticated native-form payload reaches the ordinary POST route.
@@ -144,7 +144,7 @@ describe('react-vite-ssr example', () => {
       clientDirectory: new URL('../dist/client/', import.meta.url),
       manifest: VITE_MANIFEST,
     });
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       // When: the submitted product name violates the request DTO contract.
@@ -185,7 +185,7 @@ describe('react-vite-ssr example', () => {
       clientDirectory: new URL('../dist/client/', import.meta.url),
       manifest: VITE_MANIFEST,
     });
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       // When: the ordinary POST handler accepts the bound request DTO.

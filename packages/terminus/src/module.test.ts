@@ -3,7 +3,7 @@ import type { MiddlewareContext, Next } from '@fluojs/http';
 import { getPrismaClientToken, getPrismaServiceToken } from '@fluojs/prisma';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { defineModule, type PlatformComponent } from '@fluojs/runtime';
-import { createTestApp, createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { HealthCheckError } from './errors.js';
@@ -42,7 +42,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -99,7 +99,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const customHealthResponse = await app.request('GET', '/internal/health').send();
@@ -165,7 +165,7 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       await expect(app.request('GET', '/internal/health').send()).resolves.toMatchObject({
@@ -207,7 +207,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -278,7 +278,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -341,7 +341,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -385,7 +385,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -428,7 +428,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -476,7 +476,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const firstHealth = await app.request('GET', '/health').send();
@@ -527,7 +527,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -569,7 +569,7 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -623,7 +623,7 @@ describe('TerminusModule.forRoot', () => {
       providers: [HealthIndicatorsConsumer, ProviderTokenConsumer],
     });
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
     try {
       const consumer = await testingModule.resolve<ProviderTokenConsumer>(ProviderTokenConsumer);
@@ -663,7 +663,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
     const healthPromise = app.request('GET', '/health').send();
 
     try {
@@ -712,7 +712,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
     try {
       const healthService = await testingModule.resolve<TerminusHealthService>(TerminusHealthService);
@@ -793,7 +793,7 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -897,7 +897,7 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -946,7 +946,7 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -1005,7 +1005,7 @@ describe('TerminusModule.forRoot', () => {
         ],
       });
 
-      const app = await createTestApp({ rootModule: AppModule });
+      const app = await Test.createApp({ rootModule: AppModule });
 
       try {
         const healthResponse = await app.request('GET', '/health').send();
@@ -1058,7 +1058,7 @@ describe('TerminusModule.forRoot', () => {
     });
 
     try {
-      const app = await createTestApp({ rootModule: AppModule });
+      const app = await Test.createApp({ rootModule: AppModule });
 
       try {
         const healthResponse = await app.request('GET', '/health').send();
@@ -1135,7 +1135,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       platform: {
         components: [component],
       },
@@ -1224,7 +1224,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       platform: {
         components: [component],
       },
@@ -1281,7 +1281,7 @@ describe('TerminusModule.forRoot', () => {
       providers: [BlockingShutdownService],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     const readyBeforeClose = await app.request('GET', '/ready').send();
     expect(readyBeforeClose.status).toBe(200);
@@ -1339,7 +1339,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot()],
     });
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       platform: {
         components: [component],
       },
@@ -1420,7 +1420,7 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       platform: {
         components: [component],
       },

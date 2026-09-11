@@ -1,6 +1,6 @@
 import { Module } from '@fluojs/core';
 import { Controller, Get, type Middleware, type RequestContext } from '@fluojs/http';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -60,7 +60,7 @@ describe('@fluojs/i18n HTTP request-locale composition', () => {
     @Module({ controllers: [LocaleController] })
     class AppModule {}
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       middleware: [localeHook],
       rootModule: AppModule,
     });

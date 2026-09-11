@@ -1,1 +1,1 @@
-export type { DeepMocked } from './types.js';
+export type { ShallowMocked } from './types.js';

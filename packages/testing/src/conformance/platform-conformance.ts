@@ -154,6 +154,11 @@ function collectForbiddenKeyPaths(
  * Represents the platform conformance harness.
  */
 export class PlatformConformanceHarness {
+  /** Creates a platform component conformance harness with the provided options. */
+  static create(options: PlatformConformanceHarnessOptions): PlatformConformanceHarness {
+    return new PlatformConformanceHarness(options);
+  }
+
   constructor(private readonly options: PlatformConformanceHarnessOptions) {}
 
   async assertValidationHasNoLongLivedSideEffects(): Promise<void> {
@@ -386,16 +391,4 @@ export class PlatformConformanceHarness {
     await this.assertStableDiagnostics();
     await this.assertSnapshotSanitized();
   }
-}
-
-/**
- * Create platform conformance harness.
- *
- * @param options The options.
- * @returns The create platform conformance harness result.
- */
-export function createPlatformConformanceHarness(
-  options: PlatformConformanceHarnessOptions,
-): PlatformConformanceHarness {
-  return new PlatformConformanceHarness(options);
 }

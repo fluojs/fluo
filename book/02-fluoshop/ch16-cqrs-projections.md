@@ -494,7 +494,7 @@ import { CqrsModule } from '@fluojs/cqrs';
 import { DefaultJwtSigner, JwtModule, type JwtVerifierOptions } from '@fluojs/jwt';
 import { PassportModule } from '@fluojs/passport';
 import { PrismaService } from '@fluojs/prisma';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { test } from 'vitest';
 import { AccountsService } from '../../accounts/accounts.service.js';
 import { BlogJwtStrategy } from '../../auth/blog-jwt.strategy.js';
@@ -583,7 +583,7 @@ for (const scenario of cases) {
     })
     class ReadRouteTestModule {}
 
-    const app = await createTestApp({ rootModule: ReadRouteTestModule });
+    const app = await Test.createApp({ rootModule: ReadRouteTestModule });
     try {
       const request = app.request('GET', `/orders/${scenario.orderId ?? source.id}`)
         .query('customerId', 'reader-7');

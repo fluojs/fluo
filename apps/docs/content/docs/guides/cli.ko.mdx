@@ -88,7 +88,7 @@ Generated non-Deno HTTP starter는 TDD-first Vitest layout을 포함합니다.
 - `src/**` 아래 colocated fast unit tests
 - `*.slice.test.ts` slice tests
 - `src/app.test.ts` app dispatch tests
-- `createTestApp({ rootModule })` 기반 `test/app.e2e.test.ts` default e2e-style tests
+- `Test.createApp({ rootModule })` 기반 `test/app.e2e.test.ts` default e2e-style tests
 
 React starter는 streamed SSR, manifest failure, hydration focused test와 production build를 시작해
 asset 누락이나 hydration warning을 거부하는 `pnpm test:browser`를 사용합니다.

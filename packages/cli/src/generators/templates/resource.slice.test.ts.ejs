@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
 import { <%- resource %>Module } from './<%- kebab %>.module';
 import { <%- repo %> } from './<%- kebab %>.repo';
@@ -8,14 +8,18 @@ import { <%- service %> } from './<%- kebab %>.service';
 
 describe('<%- resource %>Module slice', () => {
   it('compiles provider wiring with an explicit override', async () => {
-    const testingModule = await createTestingModule({ rootModule: <%- resource %>Module })
+    const testingModule = await Test.createTestingModule({ rootModule: <%- resource %>Module })
       .overrideProvider(<%- repo %>, {
         list<%- resource %>s: async () => [{ id: '<%- kebab %>-1' }],
       })
       .compile();
 
-    const service = await testingModule.resolve<<%- service %>>(<%- service %>);
+    try {
+      const service = await testingModule.resolve<<%- service %>>(<%- service %>);
 
-    await expect(service.list<%- resource %>s()).resolves.toEqual([{ id: '<%- kebab %>-1' }]);
+      await expect(service.list<%- resource %>s()).resolves.toEqual([{ id: '<%- kebab %>-1' }]);
+    } finally {
+      await testingModule.container.dispose();
+    }
   });
 });

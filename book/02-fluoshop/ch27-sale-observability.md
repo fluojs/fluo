@@ -313,7 +313,7 @@ it('separates duplicate payments and clears failed activity', async () => {
 });
 ```
 
-For the integration experiment, send requests with `@fluojs/testing`'s `createTestApp` to an app that registers `createOperationsModule`. `/internal/metrics` without a token must return 403; with the correct token it must return a Prometheus content type and metric text. Existing public routes such as `/products` must not require a probe token. Even if collectors work in the unit experiment, route-specific protection may have been applied globally by mistake, so check the actual request boundary too.
+For the integration experiment, send requests with `@fluojs/testing`'s `Test.createApp` to an app that registers `createOperationsModule`. `/internal/metrics` without a token must return 403; with the correct token it must return a Prometheus content type and metric text. Existing public routes such as `/products` must not require a probe token. Even if collectors work in the unit experiment, route-specific protection may have been applied globally by mistake, so check the actual request boundary too.
 
 The readiness experiment can first use a controllable indicator to change results instead of disconnecting a real database. If only an optional indicator is `down`, `/health` must return 503 while `/ready` returns 200 when all other required conditions are healthy. If the required database indicator is `down`, both routes must return 503. Verify actual disconnection in a separate lab database; do not call a simulation result network-failure verification.
 

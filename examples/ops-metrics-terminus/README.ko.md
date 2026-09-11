@@ -52,7 +52,7 @@ examples/ops-metrics-terminus/
 2. `src/ops/metrics-registry.ts` — `FluoFactory.create(..., { providers: opsMetricsBootstrapProviders })`에 전달하는 shared Registry ownership
 3. `src/ops/ops-metrics.service.ts` — application-facing `MetricsService` custom counter 등록과 재사용
 4. `src/ops/ops.controller.ts` — metrics 상태를 바꾸는 라우트
-5. `src/app.test.ts` — `createTestApp(...).request(...).send()` 기반 `/health`, `/ready`, `/metrics`, custom route 검증
+5. `src/app.test.ts` — `Test.createApp(...).request(...).send()` 기반 `/health`, `/ready`, `/metrics`, custom route 검증
 
 ## 관련 문서
 

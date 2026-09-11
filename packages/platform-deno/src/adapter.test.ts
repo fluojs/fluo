@@ -13,8 +13,8 @@ import {
   SseResponse,
 } from '@fluojs/http';
 import { type Application, defineModule, type ModuleType } from '@fluojs/runtime';
-import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
-import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
+import { FetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
+import { HttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { DenoHttpApplicationAdapter, type DenoServeController, type DenoServeFunction, type DenoServeHandler, type DenoServeOptions, type DenoServerWebSocket, type DenoUpgradeWebSocketFunction, type DenoWebSocketBinding, type DenoWebSocketMessage } from './adapter.js';
@@ -686,7 +686,7 @@ describe('@fluojs/platform-deno', () => {
 
   it('satisfies the shared HTTPS startup portability expectation', async () => {
     const createServe = () => createNodeBackedDenoServe();
-    const harness = createHttpAdapterPortabilityHarness<DenoTestApplicationOptions, DenoTestApplicationOptions>({
+    const harness = HttpAdapterPortabilityHarness.create<DenoTestApplicationOptions, DenoTestApplicationOptions>({
       bootstrap: async (rootModule: ModuleType, options: DenoTestApplicationOptions): Promise<Application> => await createDenoTestApplication(rootModule, {
         ...options,
         serve: createServe(),
@@ -1670,7 +1670,7 @@ describe('@fluojs/platform-deno', () => {
   });
 
   it('reports supported fetch-style websocket hosting for the official Deno binding seam', () => {
-    const harness = createFetchStyleWebSocketConformanceHarness({
+    const harness = FetchStyleWebSocketConformanceHarness.create({
       createAdapter: () => DenoHttpApplicationAdapter.create(),
       expectedReason:
         'Deno exposes Deno.upgradeWebSocket(request) request-upgrade hosting. Use @fluojs/websockets/deno for the official raw websocket binding.',

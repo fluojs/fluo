@@ -31,11 +31,20 @@ declare module '@fluojs/testing/http-adapter-portability' {
     run: (rootModule: ModuleType, options: TRunOptions) => Promise<TApp>;
   }
 
-  export interface HttpAdapterPortabilityHarness<
+  export class HttpAdapterPortabilityHarness<
     TBootstrapOptions extends object,
     TRunOptions extends object,
     TApp extends AppLike = AppLike,
   > {
+    static create<
+      TBootstrapOptions extends object,
+      TRunOptions extends object,
+      TApp extends AppLike = AppLike,
+    >(
+      options: HttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TRunOptions, TApp>,
+    ): HttpAdapterPortabilityHarness<TBootstrapOptions, TRunOptions, TApp>;
+    constructor(options: HttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TRunOptions, TApp>);
+
     assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
     assertDefaultsMultipartTotalLimitToMaxBodySize(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
@@ -53,12 +62,4 @@ declare module '@fluojs/testing/http-adapter-portability' {
     assertSupportsSingleByteRanges(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   }
-
-  export function createHttpAdapterPortabilityHarness<
-    TBootstrapOptions extends object,
-    TRunOptions extends object,
-    TApp extends AppLike = AppLike,
-  >(
-    options: HttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TRunOptions, TApp>,
-  ): HttpAdapterPortabilityHarness<TBootstrapOptions, TRunOptions, TApp>;
 }

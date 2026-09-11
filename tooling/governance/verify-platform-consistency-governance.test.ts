@@ -5688,7 +5688,7 @@ describe('Testing request-scope and surface discoverability', () => {
       expect(content).toContain('@fluojs/testing/http');
       expect(content).toContain('app.request(...).send()');
       expect(content).toContain('request-scoped');
-      expect(content).toContain('DeepMocked<T>');
+      expect(content).toContain('ShallowMocked<T>');
     }
 
     for (const content of [englishSurface, koreanSurface]) {

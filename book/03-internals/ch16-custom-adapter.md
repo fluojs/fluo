@@ -185,14 +185,14 @@ The body limit is validated at the external configuration boundary as a nonnegat
 An application test can first establish whether the same `AdapterProbeModule` is actually wired correctly. The following is the complete `src/adapter-probe.slice.test.ts`. It assumes the existing standard-decorator Vitest configuration.
 
 ```typescript
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 import { AdapterProbeModule, ProbeGate } from './adapter-probe.module.js';
 
 it('resolves the registered reader through the real module graph', async () => {
   const gate = new ProbeGate();
   gate.release.resolve();
-  const app = await createTestApp({
+  const app = await Test.createApp({
     rootModule: AdapterProbeModule,
     providers: [{ provide: ProbeGate, useValue: gate }],
   });
@@ -213,7 +213,7 @@ it('resolves the registered reader through the real module graph', async () => {
 });
 ```
 
-The runtime provider input replaces only the gate, while the request still passes through the real exports of `PostsModule` and controller injection. But success with `createTestApp()` is not success for the new adapter. This helper normalizes virtual requests and runs the dispatcher. It does not automatically test native parsing of the Cookie header, consumption of a `Request` body, or shutdown of an actual listener.
+The runtime provider input replaces only the gate, while the request still passes through the real exports of `PostsModule` and controller injection. But success with `Test.createApp()` is not success for the new adapter. This helper normalizes virtual requests and runs the dispatcher. It does not automatically test native parsing of the Cookie header, consumption of a `Request` body, or shutdown of an actual listener.
 
 That is why the following complete `src/hosted-http-adapter.test.ts` uses the adapter itself separately. It creates the same application but enters through the public fetch boundary.
 
@@ -301,7 +301,7 @@ The following is the complete `src/hosted-http-adapter.portability.test.ts`. The
 
 ```typescript
 import { FluoFactory, type CreateApplicationOptions } from '@fluojs/runtime';
-import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
+import { WebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
 import { it } from 'vitest';
 import {
   HostedHttpAdapter,
@@ -313,7 +313,7 @@ type BootstrapOptions =
   HostedAdapterOptions &
   { cors?: false };
 
-const portability = createWebRuntimeHttpAdapterPortabilityHarness<BootstrapOptions>({
+const portability = WebRuntimeHttpAdapterPortabilityHarness.create<BootstrapOptions>({
   name: 'Book hosted adapter',
   createConditionalRequestBootstrapOptions: (options) => options,
   createErrorRepresentationBootstrapOptions: (options) => options,
@@ -382,9 +382,9 @@ Conditional responses and byte ranges are also policies of the shared dispatcher
 
 `HttpApplicationAdapter` and `PlatformComponent` are not the same type. An HTTP adapter implements `listen(dispatcher)` and `close()` to connect the request boundary. A component such as persistence registered in `platform.components` has a different lifecycle, including validate, start, stop, and snapshot. Forcing an HTTP adapter into that list to pass generic conformance is not correct registration.
 
-If you build an adapter that owns an actual Node listener, use `createHttpAdapterPortabilityHarness()` to verify the features it owns, such as listener URLs, TLS, signal listener disposal, and stream drain. For a host interface that already receives Web requests, as in this chapter, use the Web portability harness and separate integration tests on the actual host. This is the same principle that prevented us from claiming support for methods rejected by Next based solely on function tests outside Next.
+If you build an adapter that owns an actual Node listener, use `HttpAdapterPortabilityHarness.create()` to verify the features it owns, such as listener URLs, TLS, signal listener disposal, and stream drain. For a host interface that already receives Web requests, as in this chapter, use the Web portability harness and separate integration tests on the actual host. This is the same principle that prevented us from claiming support for methods rejected by Next based solely on function tests outside Next.
 
-For a new PlatformComponent, `createPlatformConformanceHarness()` is the right choice. For a change to PlatformShell start/stop overlap, a separate shell lifecycle harness is required. Distinguishing these roles is a way to discover missed ownership, not an excuse to reduce the amount of verification. This adapter does not support WebSockets, so it honestly returns an unsupported capability. It does not populate `getServer()` with a fake object that encourages a protocol package to attempt an upgrade.
+For a new PlatformComponent, `PlatformConformanceHarness.create()` is the right choice. For a change to PlatformShell start/stop overlap, a separate shell lifecycle harness is required. Distinguishing these roles is a way to discover missed ownership, not an excuse to reduce the amount of verification. This adapter does not support WebSockets, so it honestly returns an unsupported capability. It does not populate `getServer()` with a fake object that encourages a protocol package to attempt an upgrade.
 
 The request replay tool is the actual usage surface, so test the sequence of reading the body, cancelling it, and closing the application there too. A demo that exits the process immediately after a successful GET is not evidence of drain or disposal. When an error representation provider completes late after a host abort, check that neither HTML nor canonical JSON is newly committed to an already-cancelled request. Database rollback and payment duplicate prevention are outside these adapter checks; retain the tests in the original feature modules.
 

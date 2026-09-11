@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
 import { <%- resource %>Module } from './<%- kebab %>.module';
 import { <%- pascal %> } from './<%- kebab %>.repo';
 
 describe('<%- pascal %> slice template', () => {
   it('resolves from the module graph', async () => {
-    const testingModule = await createTestingModule({ rootModule: <%- resource %>Module }).compile();
-    const repo = await testingModule.resolve(<%- pascal %>);
+    const testingModule = await Test.createTestingModule({ rootModule: <%- resource %>Module }).compile();
 
-    await expect(repo.list<%- resource %>s()).resolves.toEqual([]);
+    try {
+      const repo = await testingModule.resolve(<%- pascal %>);
+
+      await expect(repo.list<%- resource %>s()).resolves.toEqual([]);
+    } finally {
+      await testingModule.container.dispose();
+    }
   });
 });

@@ -15,7 +15,7 @@ Replace `00-start/test/app.e2e.test.ts` with this complete file. It preserves th
 
 {/* fluo-tutorial-source: examples/fluo-blog/01-first-route/test/app.e2e.test.ts */}
 ```ts title="00-start/test/app.e2e.test.ts"
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 
 import { AppModule } from '../src/app';
@@ -25,7 +25,7 @@ it.each([
   ['/ready', 'ready'],
 ])('preserves the starter endpoint when %s is requested', async (path, status) => {
   // Given
-  const app = await createTestApp({ rootModule: AppModule });
+  const app = await Test.createApp({ rootModule: AppModule });
   try {
     // When
     const response = await app.request('GET', path).send();
@@ -40,7 +40,7 @@ it.each([
 
 it('lists the initial post when the first route is requested', async () => {
   // Given
-  const app = await createTestApp({ rootModule: AppModule });
+  const app = await Test.createApp({ rootModule: AppModule });
   try {
     // When
     const response = await app.request('GET', '/posts').send();

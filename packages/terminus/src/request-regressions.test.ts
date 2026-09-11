@@ -1,5 +1,5 @@
 import { defineModule } from '@fluojs/runtime';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
 import { TerminusModule } from './module.js';
@@ -60,7 +60,7 @@ describe('Terminus request regressions', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();

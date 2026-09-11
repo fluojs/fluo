@@ -36,10 +36,18 @@ declare module '@fluojs/testing/web-runtime-adapter-portability' {
     name: string;
   }
 
-  export interface WebRuntimeHttpAdapterPortabilityHarness<
+  export class WebRuntimeHttpAdapterPortabilityHarness<
     TBootstrapOptions extends object,
     TApp extends WebRuntimePortabilityAppLike = WebRuntimePortabilityAppLike,
   > {
+    static create<
+      TBootstrapOptions extends object,
+      TApp extends WebRuntimePortabilityAppLike = WebRuntimePortabilityAppLike,
+    >(
+      options: WebRuntimeHttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TApp>,
+    ): WebRuntimeHttpAdapterPortabilityHarness<TBootstrapOptions, TApp>;
+    constructor(options: WebRuntimeHttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TApp>);
+
     assertDoesNotCommitAbortedHttpErrorRepresentations(): Promise<void>;
     assertExcludesRawBodyForMultipart(): Promise<void>;
     assertPreservesExactRawBodyBytesForByteSensitivePayloads(): Promise<void>;
@@ -52,11 +60,4 @@ declare module '@fluojs/testing/web-runtime-adapter-portability' {
     assertSupportsSingleByteRanges(): Promise<void>;
     assertSupportsSseStreaming(): Promise<void>;
   }
-
-  export function createWebRuntimeHttpAdapterPortabilityHarness<
-    TBootstrapOptions extends object,
-    TApp extends WebRuntimePortabilityAppLike = WebRuntimePortabilityAppLike,
-  >(
-    options: WebRuntimeHttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TApp>,
-  ): WebRuntimeHttpAdapterPortabilityHarness<TBootstrapOptions, TApp>;
 }

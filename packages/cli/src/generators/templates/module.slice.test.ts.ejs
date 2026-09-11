@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
 import { <%- pascal %> } from './<%- kebab %>.module';
 
 describe('<%- pascal %> slice', () => {
   it('compiles the authored module graph', async () => {
-    const testingModule = await createTestingModule({ rootModule: <%- pascal %> }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: <%- pascal %> }).compile();
 
-    expect(testingModule.rootModule).toBe(<%- pascal %>);
+    try {
+      expect(testingModule.rootModule).toBe(<%- pascal %>);
+    } finally {
+      await testingModule.container.dispose();
+    }
   });
 });

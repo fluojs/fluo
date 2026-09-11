@@ -1,4 +1,4 @@
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
 import { AppModule } from '../src/app';
@@ -9,7 +9,7 @@ describe('FluoBlog module and DI checkpoint', () => {
     ['/ready', 'ready'],
   ])('preserves the starter endpoint when %s is requested', async (path, status) => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
     try {
       // When
       const response = await app.request('GET', path).send();
@@ -24,7 +24,7 @@ describe('FluoBlog module and DI checkpoint', () => {
 
   it('preserves the list when the controller delegates to its provider', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
     try {
       // When
       const response = await app.request('GET', '/posts').send();
@@ -41,7 +41,7 @@ describe('FluoBlog module and DI checkpoint', () => {
 
   it('finds a post when its ID is bound from the path', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
     try {
       // When
       const response = await app.request('GET', '/posts/1').send();
@@ -58,7 +58,7 @@ describe('FluoBlog module and DI checkpoint', () => {
 
   it('returns a resource error when the post ID is unknown', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
     try {
       // When
       const response = await app.request('GET', '/posts/999').send();

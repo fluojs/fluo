@@ -1,6 +1,6 @@
 import { ForbiddenException } from '@fluojs/http';
 import { defineModule } from '@fluojs/runtime';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { Registry } from 'prom-client';
 import { describe, expect, it } from 'vitest';
 
@@ -14,7 +14,7 @@ describe('MetricsModule request contract', () => {
       imports: [MetricsModule.forRoot({ defaultMetrics: false })],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       // Given: the metrics module exposes its default scrape endpoint.
@@ -38,7 +38,7 @@ describe('MetricsModule request contract', () => {
       imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       // Given: the metrics module disables its scrape endpoint explicitly.
@@ -74,7 +74,7 @@ describe('MetricsModule request contract', () => {
       ],
     });
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       providers: [{ provide: METRICS_REGISTRY, useValue: registry }],
       rootModule: AppModule,
     });

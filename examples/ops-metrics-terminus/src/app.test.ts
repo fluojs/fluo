@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { MetricsService } from '@fluojs/metrics';
 import { Registry } from '@fluojs/metrics/integration';
 
@@ -19,8 +19,8 @@ describe('OpsMetricsService', () => {
 });
 
 describe('AppModule e2e', () => {
-  it('serves protected metrics and ops routes through createTestApp request helpers', async () => {
-    const app = await createTestApp({ rootModule: AppModule, providers: opsMetricsBootstrapProviders });
+  it('serves protected metrics and ops routes through Test.createApp request helpers', async () => {
+    const app = await Test.createApp({ rootModule: AppModule, providers: opsMetricsBootstrapProviders });
 
     try {
       const forbiddenHealthResult = await app.request('GET', '/health').send();
@@ -56,7 +56,7 @@ describe('AppModule e2e', () => {
   });
 
   it('reuses the shared custom counter across repeated app bootstraps', async () => {
-    const firstApp = await createTestApp({ rootModule: AppModule, providers: opsMetricsBootstrapProviders });
+    const firstApp = await Test.createApp({ rootModule: AppModule, providers: opsMetricsBootstrapProviders });
     let firstCounterValue: number;
 
     try {
@@ -73,7 +73,7 @@ describe('AppModule e2e', () => {
       await firstApp.close();
     }
 
-    const secondApp = await createTestApp({ rootModule: AppModule, providers: opsMetricsBootstrapProviders });
+    const secondApp = await Test.createApp({ rootModule: AppModule, providers: opsMetricsBootstrapProviders });
 
     try {
       await expect(secondApp.request('GET', '/ops/jobs/trigger').send()).resolves.toMatchObject({ status: 200 });

@@ -1,5 +1,5 @@
 import { Inject, Module } from '@fluojs/core';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
 import { EmailChannel } from './channel.js';
@@ -46,7 +46,7 @@ describe('EmailModule provider visibility', () => {
     })
     class AppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
     try {
       const probe = await testingModule.resolve(RootEmailProbe);
@@ -76,7 +76,7 @@ describe('EmailModule provider visibility', () => {
     })
     class AppModule {}
 
-    await expect(createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
+    await expect(Test.createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
       /not visible through a global module|EmailService/,
     );
   });
@@ -98,7 +98,7 @@ describe('EmailModule provider visibility', () => {
     })
     class AppModule {}
 
-    await expect(createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
+    await expect(Test.createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
       /not visible through a global module|fluo.email.channel/,
     );
   });

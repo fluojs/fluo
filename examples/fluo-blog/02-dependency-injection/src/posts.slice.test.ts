@@ -1,4 +1,4 @@
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 
 import { PostsController } from './posts.controller';
@@ -7,7 +7,7 @@ import { PostsService } from './posts.service';
 
 it('injects the registered service when the posts module is compiled', async () => {
   // Given
-  const module = await createTestingModule({ rootModule: PostsModule }).compile();
+  const module = await Test.createTestingModule({ rootModule: PostsModule }).compile();
   try {
     const service = await module.resolve(PostsService);
     const controller = await module.resolve(PostsController);

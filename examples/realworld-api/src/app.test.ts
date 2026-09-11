@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
 import { AppModule } from './app';
 import { UsersRepo } from './users/users.repo';
@@ -31,8 +31,8 @@ describe('UsersService', () => {
 });
 
 describe('AppModule e2e', () => {
-  it('serves health, ready, and user CRUD through createTestApp request helpers', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+  it('serves health, ready, and user CRUD through Test.createApp request helpers', async () => {
+    const app = await Test.createApp({ rootModule: AppModule });
 
     await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
       body: { status: 'ok' },
@@ -59,7 +59,7 @@ describe('AppModule e2e', () => {
   });
 
   it('returns validation errors for invalid input', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     const result = await app
       .request('POST', '/users/')

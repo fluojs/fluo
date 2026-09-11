@@ -618,7 +618,7 @@ fixtures and the real dispatcher remains the subject of request tests.
 1. **Render-policy units**: call pure policy and metadata helpers directly. Cover broad-to-specific
    layout order, nearest fallback or metadata precedence, and configuration diagnostics without
    bootstrapping a browser.
-2. **Request dispatch**: build the authored module with `createTestApp({ rootModule })`, request the
+2. **Request dispatch**: build the authored module with `Test.createApp({ rootModule })`, request the
    explicit `@Path(...)` route through `app.request(...).send()`, and close the app in `finally`.
    Include a direct `ReactElement` return and the missing-renderer diagnostic so the real HTTP
    dispatcher, request scope, response ownership, and application renderer stay covered.

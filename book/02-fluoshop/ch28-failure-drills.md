@@ -373,7 +373,7 @@ import {
   RabbitMqMicroserviceTransport,
   type Microservice,
 } from '@fluojs/microservices';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 import { ControlledBroker, DrillInbox } from './doubles.js';
 import { SHIPMENT_INBOX, SHIPMENT_PATTERN } from './shipment-contract.js';
@@ -407,7 +407,7 @@ it('separates publish, failed delivery, and duplicate-safe application', async (
   })
   class DeliveryDrillModule {}
 
-  const module = await createTestingModule({ rootModule: DeliveryDrillModule })
+  const module = await Test.createTestingModule({ rootModule: DeliveryDrillModule })
     .overrideProvider(SHIPMENT_INBOX, inbox)
     .compile();
   let delivery: Promise<void> | undefined;
@@ -566,9 +566,9 @@ The quantity to check in the inventory experiment is `Stock.available`. It was a
 
 In the state transition experiment, examine the order version and audit row together. A new order is version 0, incremented according to the rules for each successful transition. An Outbox row does not prove that the audit for every state transition has been preserved. Event distribution records and `OrderTransition` serve different purposes. Do not check one as a substitute for the other.
 
-Test the HTTP boundary with the real application's `createTestApp({ rootModule })`. Supply an explicit test principal for authenticated requests, then reread the created order at `/orders/:id` to verify that the same user sees the same state. `principal()` injects a synthetic principal; it does not test JWT signature verification. To test the JWT boundary, send a token issued and verified through the real verification path, and keep the evidence for these two tests separate.
+Test the HTTP boundary with the real application's `Test.createApp({ rootModule })`. Supply an explicit test principal for authenticated requests, then reread the created order at `/orders/:id` to verify that the same user sees the same state. `principal()` injects a synthetic principal; it does not test JWT signature verification. To test the JWT boundary, send a token issued and verified through the real verification path, and keep the evidence for these two tests separate.
 
-Even when `createTestingModule(...).overrideProvider(...)` replaces the payment adapter with a recording implementation, do not replace `PaymentLedger` or `OrderInventoryService` themselves with success mocks. That would remove the idempotency, reservation consumption, and state audit behavior this chapter intends to verify. An integration test must replace only external effects while running internal transactions against the real lab database.
+Even when `Test.createTestingModule(...).overrideProvider(...)` replaces the payment adapter with a recording implementation, do not replace `PaymentLedger` or `OrderInventoryService` themselves with success mocks. That would remove the idempotency, reservation consumption, and state audit behavior this chapter intends to verify. An integration test must replace only external effects while running internal transactions against the real lab database.
 
 ## Shutdown is another state transition after the last request
 

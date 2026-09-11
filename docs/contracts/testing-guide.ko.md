@@ -2,22 +2,26 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./testing-guide.md">English</a></p>
 
+`Test`는 app과 testing module 생성을 위한 유일한 공개 entrypoint이며 `@fluojs/testing` 또는 `@fluojs/testing/module`에서 import합니다. **Breaking migration:** free-function import를 `Test`로 바꾸고 `Test.createApp(options)` / `Test.createTestingModule(options)`를 사용하세요. 기존 app subpath는 제거됩니다. 각 harness class는 기존 conformance/portability subpath에서 import하고 free factory 대신 `XHarness.create(options)`를 호출하세요. Option, override, assertion, cleanup은 유지합니다. [패키지 migration 안내](../../packages/testing/README.ko.md#빠른-시작)를 참고하세요.
+
 ## 테스트 유형 (Test Types)
 
 | 테스트 유형 | 필수 적용 표면 | 저장소 기준 도구 및 패턴 |
 | --- | --- | --- |
-| Unit | 네트워크나 외부 프로세스 의존성이 없는 순수 provider 로직, helper, 실패 분기 | Vitest를 직접 사용합니다. `@fluojs/testing/mock`은 명시적 double을 위한 `createMock(...)`, `createDeepMock(...)`를 제공합니다. |
-| Integration | 하나의 애플리케이션 슬라이스 안에서 수행하는 실제 module graph 컴파일, provider override, DI visibility 점검 | `createTestingModule({ rootModule })`을 사용한 뒤 `.compile()` 전에 `overrideProvider(...)`, `overrideProviders(...)`, `overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`를 적용합니다. Guard와 interceptor override가 request-facing 계약이면 `dispatch(...)` 또는 `createTestApp(...)`으로 함께 검증해야 합니다. |
-| E2E 스타일 HTTP | 실제 HTTP 스택을 통과하는 request dispatch, guard, interceptor, DTO validation, response writing | `@fluojs/testing`의 `createTestApp({ rootModule })`을 사용한 뒤, app-level route assertion에는 `app.request(method, path).header(...).query(...).principal(...).body(...).send()`를 우선 사용합니다. Cookie-bound route는 `cookies`를 받는 object overload를 사용하며, header parsing 없이 정규화된 `FrameworkRequest.cookies`에 직접 매핑합니다. 저장소 예제는 이 방식으로 `/health`, `/ready`, `/metrics`, auth, CRUD route를 검증합니다. |
+| Unit | 네트워크나 외부 프로세스 의존성이 없는 순수 provider 로직, helper, 실패 분기 | Vitest를 직접 사용합니다. `@fluojs/testing/mock`은 명시적 double을 위한 `ShallowMock.create(...)`, `PrototypeMock.create(...)`를 제공합니다. |
+| Integration | 하나의 애플리케이션 슬라이스 안에서 수행하는 실제 module graph 컴파일, provider override, DI visibility 점검 | `Test.createTestingModule({ rootModule })`을 사용한 뒤 `.compile()` 전에 `overrideProvider(...)`, `overrideProviders(...)`, `overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`를 적용합니다. Guard와 interceptor override가 request-facing 계약이면 `dispatch(...)` 또는 `Test.createApp(...)`으로 함께 검증해야 합니다. |
+| E2E 스타일 HTTP | 실제 HTTP 스택을 통과하는 request dispatch, guard, interceptor, DTO validation, response writing | `@fluojs/testing`의 `Test.createApp({ rootModule })`을 사용한 뒤, app-level route assertion에는 `app.request(method, path).header(...).query(...).principal(...).body(...).send()`를 우선 사용합니다. Cookie-bound route는 `cookies`를 받는 object overload를 사용하며, header parsing 없이 정규화된 `FrameworkRequest.cookies`에 직접 매핑합니다. 저장소 예제는 이 방식으로 `/health`, `/ready`, `/metrics`, auth, CRUD route를 검증합니다. |
 | Platform conformance | 프레임워크 지향 플랫폼 패키지와 이식성에 민감한 adapter | 변경이 runtime 또는 adapter contract에 영향을 주는 경우 `@fluojs/testing/platform-conformance`, `@fluojs/testing/http-adapter-portability`, `@fluojs/testing/web-runtime-adapter-portability`, `@fluojs/testing/fetch-style-websocket-conformance`를 사용합니다. |
+
+`ShallowMock.create(...)`는 shallow proxy mock을 만들고, `PrototypeMock.create(Type)`은 constructor 실행이나 재귀 mocking 없이 자체 및 상속 prototype-method spy를 만듭니다. 두 헬퍼는 `ShallowMocked<T>`를 사용합니다. 필요한 data property, instance field, arrow-function member는 명시적으로 제공하세요. `mockToken(token, value)`는 공개 헬퍼로 유지되며 tuple이 아니라 `ValueProvider` descriptor `{ provide: token, useValue: value }`를 반환합니다. Override에는 `.overrideProvider(token).useValue(value)`를 우선 사용하고, descriptor를 재사용할 때는 자체를 넘기지 말고 `.overrideProvider(token).useValue(mockToken(token, value).useValue)`로 값만 전달하세요.
 
 ## canonical fluo TDD ladder (Canonical fluo TDD Ladder)
 
 fluo 기능을 테스트 주도 개발(TDD)로 만들 때는 다음 ladder를 사용합니다.
 
-1. **Unit**: 빠른 service, controller, helper, failure branch 테스트는 `src/**` 아래 source 가까이에 둡니다. 클래스를 직접 구성하고 명시적 fake를 넘기거나, typed double이 설정을 명확하게 만들 때 `@fluojs/testing/mock`의 `createMock(...)`, `createDeepMock(...)`, 함수만 받아 Vitest `Mock<T>`로 좁히는 `asMock(fn)`, `mockToken(...)` 헬퍼를 사용합니다.
-2. **Slice/module integration**: role-specific slice 테스트에서는 `createTestingModule({ rootModule })` 또는 `Test.createTestingModule({ rootModule })`로 프로덕션과 같은 형태의 module graph를 컴파일합니다. 이 계층은 DI wiring, provider visibility, lifecycle hook, 그리고 `.compile()` 전 명시적 provider/guard/interceptor/filter/module override를 검증하는 위치입니다.
-3. **HTTP e2e-style**: request-pipeline 테스트는 전용 app-level test 영역에 두고 `createTestApp({ rootModule })`로 virtual app을 만듭니다. header, query parameter, request body, 정규화된 cookie record, principal, response assertion에는 기본 route assertion helper인 `app.request(...).send()`를 사용하고, assertion 실패 후에도 resource가 해제되도록 app은 `finally`에서 닫습니다. Cookie는 `app.request({ path, cookies })` object overload로 전달하며, helper는 `Cookie` header를 parse하지 않고 해당 record를 `FrameworkRequest.cookies`에 직접 할당합니다. 더 낮은 수준의 dispatch path 자체가 계약일 때만 `app.dispatch(...)`를 사용합니다.
+1. **Unit**: 빠른 service, controller, helper, failure branch 테스트는 `src/**` 아래 source 가까이에 둡니다. 클래스를 직접 구성하고 명시적 fake를 넘기거나, typed double이 설정을 명확하게 만들 때 `@fluojs/testing/mock`의 `ShallowMock.create(...)`, `PrototypeMock.create(...)`, 함수만 받아 Vitest `Mock<T>`로 좁히는 `asMock(fn)`, `mockToken(...)` 헬퍼를 사용합니다.
+2. **Slice/module integration**: role-specific slice 테스트에서는 `Test.createTestingModule({ rootModule })`로 프로덕션과 같은 형태의 module graph를 컴파일합니다. 이 계층은 DI wiring, provider visibility, lifecycle hook, 그리고 `.compile()` 전 명시적 provider/guard/interceptor/filter/module override를 검증하는 위치입니다.
+3. **HTTP e2e-style**: request-pipeline 테스트는 전용 app-level test 영역에 두고 `Test.createApp({ rootModule })`로 virtual app을 만듭니다. header, query parameter, request body, 정규화된 cookie record, principal, response assertion에는 기본 route assertion helper인 `app.request(...).send()`를 사용하고, assertion 실패 후에도 resource가 해제되도록 app은 `finally`에서 닫습니다. Cookie는 `app.request({ path, cookies })` object overload로 전달하며, helper는 `Cookie` header를 parse하지 않고 해당 record를 `FrameworkRequest.cookies`에 직접 할당합니다. 더 낮은 수준의 dispatch path 자체가 계약일 때만 `app.dispatch(...)`를 사용합니다.
 4. **Platform/conformance**: `@fluojs/testing/*-conformance`와 portability harness subpath는 adapter/runtime package 전용으로 남겨 둡니다. 애플리케이션 기능 테스트는 platform-facing contract를 증명하는 경우가 아니면 이 harness를 사용하지 않습니다.
 
 권장 프로젝트 구조:
@@ -36,15 +40,15 @@ NestJS에서 온 경우 metadata 기반 추론을 기대하지 말고 개념을 
 
 | NestJS 패턴 | fluo 패턴 |
 | --- | --- |
-| `Test.createTestingModule({ imports: [...] })` | 검증할 slice를 import하는 명시적 root module과 함께 `createTestingModule({ rootModule })` 또는 `Test.createTestingModule({ rootModule })`을 사용합니다. |
-| 초기화된 Nest app에 대한 Supertest e2e | 네트워크 소켓을 열지 않고 `createTestApp({ rootModule })`을 만든 뒤 `app.request(method, path).send()`를 사용합니다. |
+| `Test.createTestingModule({ imports: [...] })` | 검증할 slice를 import하는 명시적 root module과 함께 `Test.createTestingModule({ rootModule })`을 사용합니다. |
+| 초기화된 Nest app에 대한 Supertest e2e | 네트워크 소켓을 열지 않고 `Test.createApp({ rootModule })`을 만든 뒤 `app.request(method, path).send()`를 사용합니다. |
 | 기본 suffix로 `.spec.ts` 사용 | 기본 suffix는 `.test.ts`를 사용하고, scope가 중요하면 `.slice.test.ts`, `.e2e.test.ts`처럼 role-specific 이름을 사용합니다. |
 
-fluo의 테스트 설정은 런타임 모델과 같습니다. 표준 decorator, 명시적 DI token, 작성자가 정의한 module graph를 따릅니다. 테스트는 컴파일할 `rootModule`을 이름으로 지정해야 하며, fluo는 TypeScript design metadata나 legacy reflection flag로 dependency를 추론하지 않습니다. `compile()`은 `overrideProvider(token).useFactory(...)` replacement를 포함한 effective singleton class 및 factory provider의 lifecycle hook을 실행합니다. NestJS migration에서는 request-level 테스트를 metadata-driven module imports 뒤에 숨은 shared application instance로 다루지 말고, `createTestApp(...)` 또는 `TestingModuleRef.dispatch(...)`를 통한 명시적 route dispatch로 다루세요.
+fluo의 테스트 설정은 런타임 모델과 같습니다. 표준 decorator, 명시적 DI token, 작성자가 정의한 module graph를 따릅니다. 테스트는 컴파일할 `rootModule`을 이름으로 지정해야 하며, fluo는 TypeScript design metadata나 legacy reflection flag로 dependency를 추론하지 않습니다. `compile()`은 `overrideProvider(token).useFactory(...)` replacement를 포함한 effective singleton class 및 factory provider의 lifecycle hook을 실행합니다. NestJS migration에서는 request-level 테스트를 metadata-driven module imports 뒤에 숨은 shared application instance로 다루지 말고, `Test.createApp(...)` 또는 `TestingModuleRef.dispatch(...)`를 통한 명시적 route dispatch로 다루세요.
 
 수동 `FrameworkRequest`/`FrameworkResponse` stub, `makeRequest(...)`, raw `FluoFactory.create(...)`, direct `app.dispatch(...)` 테스트는 framework internal, adapter/runtime, compatibility contract에 남겨 둡니다. 이들은 기본 app-developer HTTP 경로보다 의도적으로 낮은 수준의 테스트입니다.
 
-`createTestApp(...)`은 request-facing 테스트에서 runtime HTTP bootstrap option surface를 따릅니다. 호출자가 app-level middleware를 넘기면, 테스트 헬퍼는 request-context middleware를 추가하면서 호출자의 middleware chain을 제거하지 않습니다.
+`Test.createApp(...)`은 request-facing 테스트에서 runtime HTTP bootstrap option surface를 따릅니다. 호출자가 app-level middleware를 넘기면, 테스트 헬퍼는 request-context middleware를 추가하면서 호출자의 middleware chain을 제거하지 않습니다.
 
 `overrideModule(source, replacement)`는 테스트 전용 module graph rewrite입니다. source module의 decorator metadata를 변경하면 안 되며, 컴파일된 testing module은 provider 해석에는 replacement module definition을 사용하더라도 diagnostics와 graph assertion을 위해 원래 `rootModule`과 `modules[].type` identity를 유지해야 합니다.
 
@@ -52,7 +56,7 @@ Testing-module builder는 `compile()`이 `TestingModuleRef`를 반환할 때까�
 
 `@fluojs/testing/vitest`는 `fluoBabelDecoratorsPlugin()`을 위한 지원 Vitest 엔트리포인트입니다. testing package export가 바뀔 때는 package export-map과 build surface 검증에 이 엔트리포인트를 계속 포함하세요.
 
-`@fluojs/testing`은 public body-bearing RFC `QUERY` portability assertion이 사용하는 검증된 listener window와 일치하도록 `engines.node >=24.0.0 <27`을 선언합니다. Node 24 미만과 Node 27 이상은 제외됩니다. Mock helper와 `DeepMocked<T>` type은 Vitest-compatible mock type boundary를 의도적으로 사용합니다. `DeepMocked<T>`는 root `@fluojs/testing` 패키지, `@fluojs/testing/types`, `@fluojs/testing/mock`에서 사용할 수 있습니다. Vitest를 실행하지 않는 소비자는 `@fluojs/testing/app`, `@fluojs/testing/module`, harness subpath 같은 non-mock entrypoint를 우선 사용하세요.
+`@fluojs/testing`은 public body-bearing RFC `QUERY` portability assertion이 사용하는 검증된 listener window와 일치하도록 `engines.node >=24.0.0 <27`을 선언합니다. Node 24 미만과 Node 27 이상은 제외됩니다. Mock helper와 `ShallowMocked<T>` type은 Vitest-compatible mock type boundary를 의도적으로 사용합니다. `ShallowMocked<T>`는 root `@fluojs/testing` 패키지, `@fluojs/testing/types`, `@fluojs/testing/mock`에서 사용할 수 있습니다. Vitest를 실행하지 않는 소비자는 `@fluojs/testing/module`, harness subpath 같은 non-mock entrypoint를 우선 사용하세요.
 
 ## React Consumer Loop
 
@@ -60,7 +64,7 @@ React consumer coverage는 synthetic React test runtime을 추가하지 않고 �
 
 1. Pure helper를 통해 render policy와 metadata composition을 unit test합니다.
 2. Direct page return, missing-renderer diagnostic, DTO, request scope, response ownership을
-   `createTestApp({ rootModule })`와 `app.request(...).send()`로 검증합니다.
+   `Test.createApp({ rootModule })`와 `app.request(...).send()`로 검증합니다.
 3. Positive/negative generated-route fixture를 TypeScript로 compile하고 CI에서 non-mutating
    `fluo typegen ... --check`를 실행합니다.
 4. Aligned hydration과 `onRecoverableError`로 보고되는 의도적인 mismatch를 검증합니다.
@@ -89,7 +93,7 @@ setup만으로 React-specific helper를 정당화하지 않습니다.
 
 - 저장소는 `package.json`이나 governance tooling에서 단일 전역 라인 커버리지 비율을 정의하지 않습니다. 커버리지는 하나의 숫자 임계값이 아니라 contract surface 기준으로 강제됩니다.
 - 모든 동작 변경은 영향을 받은 package, example, tooling project 안에서 테스트를 추가하거나 갱신해야 합니다. 가장 가까운 기존 `*.test.ts` 파일이 기본 배치 위치입니다.
-- Module wiring 변경은 provider registration, override, DI resolution이 계속 실행되도록 `createTestingModule(...)` 기반 integration coverage를 유지해야 합니다.
-- Request-facing HTTP 변경은 `createTestApp(...).request(...).send()` 기반 request-level coverage를 유지해야 합니다. Direct dispatch test는 low-level dispatch boundary 자체가 검토 대상인 경우에만 적합합니다.
+- Module wiring 변경은 provider registration, override, DI resolution이 계속 실행되도록 `Test.createTestingModule(...)` 기반 integration coverage를 유지해야 합니다.
+- Request-facing HTTP 변경은 `Test.createApp(...).request(...).send()` 기반 request-level coverage를 유지해야 합니다. Direct dispatch test는 low-level dispatch boundary 자체가 검토 대상인 경우에만 적합합니다.
 - Platform 및 adapter 변경은 runtime portability에 영향을 줄 때 `@fluojs/testing` harness subpath를 통한 conformance 또는 portability coverage를 유지해야 합니다.
 - Release-governed testing 변경은 `pnpm verify:release-readiness`가 사용하는 split Vitest project 모델에서 녹색 상태를 유지해야 합니다. 로컬 `pnpm test` 통과만으로 그 split project run을 대체하지 않습니다.

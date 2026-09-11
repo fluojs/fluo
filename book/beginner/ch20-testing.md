@@ -14,9 +14,9 @@ This chapter explains how to verify FluoBlog's services and HTTP flow with autom
 ## Learning Objectives
 - Set up a testing environment with Vitest and `@fluojs/testing`.
 - Understand the differences between unit tests, integration tests, and E2E-style HTTP tests in `fluo`.
-- Learn how to use `createTestingModule` to build integration tests around Module Graph compilation and Provider overrides.
+- Learn how to use `Test.createTestingModule` to build integration tests around Module Graph compilation and Provider overrides.
 - Replace Providers with mocks or fakes during tests.
-- Implement HTTP tests that verify the real request pipeline with `createTestApp`.
+- Implement HTTP tests that verify the real request pipeline with `Test.createApp`.
 - Write automated tests for FluoBlog Controllers and services.
 
 ## Prerequisites
@@ -44,8 +44,8 @@ Writing tests takes time upfront, but the return on investment, ROI, is high. Au
 A healthy testing strategy follows the "testing pyramid." In fluo, treat that pyramid as a practical TDD ladder: start with many fast unit tests, add module-slice integration tests when DI wiring matters, then keep a smaller set of app-level E2E-style HTTP tests for the request pipeline. The canonical flow is:
 
 1. **Unit**: write `users.service.test.ts` or `users.controller.test.ts` near the source, construct classes directly, and pass explicit fakes or `@fluojs/testing/mock` helpers.
-2. **Slice/module integration**: write `users.slice.test.ts` with `createTestingModule({ rootModule })` or `Test.createTestingModule({ rootModule })` to compile the real module graph, verify provider registration, and apply provider overrides before `.compile()`.
-3. **HTTP e2e-style**: write `test/app.e2e.test.ts` with `createTestApp({ rootModule })`, then use `app.request(...).send()` as the default application-developer path for request-pipeline behavior.
+2. **Slice/module integration**: write `users.slice.test.ts` with `Test.createTestingModule({ rootModule })` to compile the real module graph, verify provider registration, and apply provider overrides before `.compile()`.
+3. **HTTP e2e-style**: write `test/app.e2e.test.ts` with `Test.createApp({ rootModule })`, then use `app.request(...).send()` as the default application-developer path for request-pipeline behavior.
 4. **Platform/conformance**: use testing harness subpaths only when authoring adapter or runtime packages, not ordinary FluoBlog feature tests.
 
 This ladder matches fluo's explicit runtime model. Unlike NestJS metadata-based setup, a fluo test names the `rootModule` it wants to compile and does not rely on TypeScript design metadata or reflection flags to infer dependencies.
@@ -93,8 +93,10 @@ Large projects may need work that runs before all tests, such as initializing a 
 ### 20.2.2 Coverage and Reporting
 It is useful to know how much of your code is tested. Vitest has built-in code coverage support through tools such as `v8` or `istanbul`. Running `vitest run --coverage` generates a report that shows which lines of code were exercised by tests. Aim for high coverage in core business logic and security-sensitive areas.
 
-## 20.3 Integration Testing with createTestingModule
-`createTestingModule` is an integration test surface that compiles the real Module Graph inside one application slice and verifies DI wiring while overriding only the Providers you need. You can inject test doubles to control specific dependencies, but this category is not a pure unit test. It belongs to Module Graph-level integration scope.
+<a id="203-integration-testing-with-createtestingmodule"></a>
+
+## 20.3 Integration Testing with Test.createTestingModule
+`Test.createTestingModule` is an integration test surface that compiles the real Module Graph inside one application slice and verifies DI wiring while overriding only the Providers you need. You can inject test doubles to control specific dependencies, but this category is not a pure unit test. It belongs to Module Graph-level integration scope.
 
 ### The Service to Test
 Consider `PostService`:
@@ -113,10 +115,10 @@ export class PostService {
 ```
 
 ### The Test Suite
-Use `createTestingModule` to compile the smallest Module Graph needed for the test. It works like a mini DI container only for tests.
+Use `Test.createTestingModule` to compile the smallest Module Graph needed for the test. It works like a mini DI container only for tests.
 
 ```typescript
-import { createTestingModule, type TestingModuleRef } from '@fluojs/testing';
+import { Test, type TestingModuleRef } from '@fluojs/testing';
 import { Module } from '@fluojs/core';
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { PostService } from './post.service';
@@ -139,7 +141,7 @@ describe('PostService', () => {
     })
     class PostTestModule {}
 
-    module = await createTestingModule({
+    module = await Test.createTestingModule({
       rootModule: PostTestModule,
     })
       .overrideProvider(PostRepository, mockRepo)
@@ -170,16 +172,16 @@ describe('PostService', () => {
 });
 ```
 
-This pattern, **Mock -> Compile -> Resolve -> Act -> Assert**, is the core of `createTestingModule`-based integration tests. It lets you control only the dependencies you need while preserving the real Module Graph and DI resolution, so tests stay deterministic while also verifying the wiring of the current application slice.
+This pattern, **Mock -> Compile -> Resolve -> Act -> Assert**, is the core of `Test.createTestingModule`-based integration tests. It lets you control only the dependencies you need while preserving the real Module Graph and DI resolution, so tests stay deterministic while also verifying the wiring of the current application slice.
 
 ### 20.3.2 Testing Asynchronous Logic
-Asynchronous code is common in backend development. Fluo's `createTestingModule` and Vitest's `async/await` support let you test these operations in order. You can verify successful completion, expected rejections, and timing issues where several asynchronous operations must complete in a specific sequence. With `vi.useFakeTimers()`, you can test timeout or retry logic without actually waiting for time to pass.
+Asynchronous code is common in backend development. Fluo's `Test.createTestingModule` and Vitest's `async/await` support let you test these operations in order. You can verify successful completion, expected rejections, and timing issues where several asynchronous operations must complete in a specific sequence. With `vi.useFakeTimers()`, you can test timeout or retry logic without actually waiting for time to pass.
 
 ### 20.3.3 Lifecycle Hooks in Tests
-Sometimes you need to test whether Providers initialize correctly when a module graph is compiled. `createTestingModule()` is the slice-testing surface for compile-time module wiring, provider visibility, and provider/guard/interceptor overrides; its compiled `TestingModuleRef` exposes resolution and dispatch helpers rather than a separate `close()` lifecycle phase. Until `compile()` returns that reference, the builder owns the internal container. If an override, initialization hook, bootstrap hook, or final singleton synchronization fails, the builder disposes the container before rejecting. It preserves the original compile error when cleanup succeeds and reports both failures with `AggregateError` when cleanup also fails. After a successful compile, retain the `TestingModuleRef` and dispose its caller-owned `module.container` unconditionally in `finally` or `afterEach`, as the suite above does. This covers successful, failing, and early-returning tests. A completed disposal is idempotent; teardown errors must surface, and a test that can fail before teardown must preserve both errors rather than replacing its in-flight failure. Keep request/application lifecycle coverage on `createTestApp()` where the returned app exposes `close()`.
+Sometimes you need to test whether Providers initialize correctly when a module graph is compiled. `Test.createTestingModule()` is the slice-testing surface for compile-time module wiring, provider visibility, and provider/guard/interceptor overrides; its compiled `TestingModuleRef` exposes resolution and dispatch helpers rather than a separate `close()` lifecycle phase. Until `compile()` returns that reference, the builder owns the internal container. If an override, initialization hook, bootstrap hook, or final singleton synchronization fails, the builder disposes the container before rejecting. It preserves the original compile error when cleanup succeeds and reports both failures with `AggregateError` when cleanup also fails. After a successful compile, retain the `TestingModuleRef` and dispose its caller-owned `module.container` unconditionally in `finally` or `afterEach`, as the suite above does. This covers successful, failing, and early-returning tests. A completed disposal is idempotent; teardown errors must surface, and a test that can fail before teardown must preserve both errors rather than replacing its in-flight failure. Keep request/application lifecycle coverage on `Test.createApp()` where the returned app exposes `close()`.
 
 ## 20.4 Provider Overrides
-`fluo` provides several ways to replace real components with test doubles. This lets you remove instability from external systems while still verifying the DI wiring and execution flow of the Module you care about. For request-facing guards and interceptors, add a request-path assertion with `TestingModuleRef.dispatch(...)` or `createTestApp(...)` so the override is proven through the same pipeline the application uses.
+`fluo` provides several ways to replace real components with test doubles. This lets you remove instability from external systems while still verifying the DI wiring and execution flow of the Module you care about. For request-facing guards and interceptors, add a request-path assertion with `TestingModuleRef.dispatch(...)` or `Test.createApp(...)` so the override is proven through the same pipeline the application uses.
 
 - **`overrideProvider(token, value)`**: Replaces a specific Token with a value, object, or instance.
 - **`overrideProviders([[token, value], ...])`**: Replaces several Tokens at once.
@@ -200,7 +202,7 @@ class FakePostRepository {
 @Module({ providers: [PostRepository, PostService] })
 class PostTestModule {}
 
-const module = await createTestingModule({ rootModule: PostTestModule })
+const module = await Test.createTestingModule({ rootModule: PostTestModule })
   .overrideProvider(PostRepository, new FakePostRepository())
   .compile();
 
@@ -252,7 +254,7 @@ In real applications, Providers often depend on configuration values. During tes
 @Module({ providers: [ConfigService, PostService] })
 class PostTestModule {}
 
-const module = await createTestingModule({ rootModule: PostTestModule })
+const module = await Test.createTestingModule({ rootModule: PostTestModule })
   .overrideProvider(ConfigService, {
     get: vi.fn().mockReturnValue('test-secret'),
   })
@@ -298,19 +300,21 @@ Sometimes you need to replace an entire Module, not just a single Provider. Fluo
 
 `overrideModule(source, replacement)` keeps the compiled testing graph recognizable. Provider resolution uses the replacement module definition, but `module.rootModule`, `module.modules[].type`, and the original module metadata still point to the modules you authored. This isolation means one test can replace `StripeModule` without leaving patched imports behind for later tests or for diagnostics that inspect the original module graph.
 
-## 20.5 E2E-Style HTTP Testing with createTestApp
-`createTestApp` is an E2E-style HTTP test surface that runs the real HTTP pipeline, including request dispatch, Guards, Interceptors, DTO validation, and response writing. It does not open a real network socket, but it verifies the request handling stack itself in the same way as the production path.
+<a id="205-e2e-style-http-testing-with-createtestapp"></a>
 
-Instead of starting a real network server, use `createTestApp`, which provides a virtual request system. The default application-developer path is the fluent `app.request(...).send()` helper because it reads like an HTTP client while still exercising the framework request pipeline. Reserve direct `app.dispatch(...)` and manual request/response stubs for lower-level framework-internal contracts or adapter/runtime packages that need to inspect the dispatch boundary itself. This improves test speed and reliability while still checking that the full request lifecycle is configured correctly.
+## 20.5 E2E-Style HTTP Testing with Test.createApp
+`Test.createApp` is an E2E-style HTTP test surface that runs the real HTTP pipeline, including request dispatch, Guards, Interceptors, DTO validation, and response writing. It does not open a real network socket, but it verifies the request handling stack itself in the same way as the production path.
+
+Instead of starting a real network server, use `Test.createApp`, which provides a virtual request system. The default application-developer path is the fluent `app.request(...).send()` helper because it reads like an HTTP client while still exercising the framework request pipeline. Reserve direct `app.dispatch(...)` and manual request/response stubs for lower-level framework-internal contracts or adapter/runtime packages that need to inspect the dispatch boundary itself. This improves test speed and reliability while still checking that the full request lifecycle is configured correctly.
 
 ### The Test Case
 ```typescript
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { AppModule } from './app.module';
 
 describe('PostController (E2E-style HTTP)', () => {
   it('GET /posts should return a list of posts', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const response = await app
@@ -359,44 +363,46 @@ expect(response.status).toBe(200);
 ```
 
 ### 20.5.4 Simulating Network Failures in Integration
-Although `createTestApp` is a virtual system, you can still simulate network-level failures by mocking the underlying data Provider. For example, you can mock `PrismaService` to throw a timeout error and verify that the application returns the proper `504 Gateway Timeout` or `503 Service Unavailable` response. This lets you test application resilience without physically breaking network hardware.
+Although `Test.createApp` is a virtual system, you can still simulate network-level failures by mocking the underlying data Provider. For example, you can mock `PrismaService` to throw a timeout error and verify that the application returns the proper `504 Gateway Timeout` or `503 Service Unavailable` response. This lets you test application resilience without physically breaking network hardware.
 
-## 20.6 Mocking with createMock and createDeepMock
-For complex classes, manually mocking dozens of methods is tedious and error-prone. `@fluojs/testing/mock` provides helpers that use JavaScript Proxy to automatically mock types. This keeps test setup short and lets you spend more attention on the behavior you actually want to verify.
+<a id="206-mocking-with-createmock-and-createdeepmock"></a>
+
+## 20.6 Mocking with ShallowMock.create and PrototypeMock.create
+For complex classes, manually mocking dozens of methods is tedious and error-prone. `@fluojs/testing/mock` provides `ShallowMock.create(...)` for shallow proxy mocks and `PrototypeMock.create(Type)` for prototype-method spies. Neither helper recursively mocks nested objects or return values. Prototype mocks include inherited and symbol-keyed methods but do not run constructors, evaluate accessors, or populate instance fields and arrow-function members; supply those values manually. This keeps test setup short and lets you spend more attention on the behavior you actually want to verify.
 
 ```typescript
-import { createMock, createDeepMock } from '@fluojs/testing/mock';
+import { ShallowMock, PrototypeMock } from '@fluojs/testing/mock';
 import { vi } from 'vitest';
 
 // Create a shallow mock that defines only specific methods.
-const repo = createMock<PostRepository>({ 
-  findAll: vi.fn().mockResolvedValue([]) 
+const repo = ShallowMock.create<PostRepository>({
+  findAll: vi.fn().mockResolvedValue([])
 });
 
-// Create a deep mock where every method is mocked automatically.
-// Useful when testing services with many dependencies.
-const mailer = createDeepMock(MailService);
+// Create spies for own and inherited prototype methods.
+// No constructor execution, instance fields, or recursive mocking.
+const mailer = PrototypeMock.create(MailService);
 mailer.send.mockResolvedValue(true);
 ```
 
 ### 20.6.1 Explicit DI Token Overrides
-`createTestingModule` does not auto-mock missing providers. Keep the module graph explicit, then replace the dependencies that matter with `overrideProvider(...)`, `overrideProviders(...)`, or `mockToken(...)` before calling `.compile()`. This keeps tests aligned with fluo's explicit DI contract while still avoiding boilerplate for dependencies that should be faked.
+`Test.createTestingModule` does not auto-mock missing providers. Keep the module graph explicit, then replace the dependencies that matter with `overrideProvider(...)` or `overrideProviders(...)` before calling `.compile()`. Prefer `.overrideProvider(token).useValue(value)` with an explicit partial or mock. `mockToken(token, value)` remains a provider-registration helper returning a `ValueProvider` descriptor `{ provide: token, useValue: value }`, not a tuple or an override operation. To reuse it in an override, pass only `.overrideProvider(token).useValue(mockToken(token, value).useValue)`, never the descriptor itself.
 
 ### 20.6.2 The Power of Proxies in Mocking
-The `createMock` helper uses an ES6 Proxy to intercept method calls and property access. This means you do not need to define every method on the mock manually. The proxy handles every call automatically and returns a default mock function when a method is not explicitly defined. This makes test setup simpler and easier to adapt when service interfaces change. If you add a new method to a service, you do not need to update every existing mock unless a test specifically verifies that method.
+`ShallowMock.create` uses an ES6 Proxy to preserve supplied values and lazily return a stable `vi.fn()` for each missing property. Supply data properties explicitly because runtime reflection cannot distinguish missing data from methods. Strict mode rejects missing properties instead of creating spies. This makes test setup simpler and easier to adapt when service interfaces change. If you add a new method to a service, you do not need to update every existing mock unless a test specifically verifies that method.
 
 ### 20.6.3 Type-Safe Mocks with TypeScript
-One of the biggest advantages of Fluo's testing utilities is their deep integration with TypeScript. With `createMock<T>`, you get full autocomplete and type checking for the methods you are mocking. This prevents test bugs caused by typos in method names or incorrect argument types. Type-safe mocks help test code stay synchronized with production code and reduce maintenance cost as the application grows.
+One of the biggest advantages of Fluo's testing utilities is their deep integration with TypeScript. With `ShallowMock.create<T>`, you get full autocomplete and type checking for the methods you are mocking. This prevents test bugs caused by typos in method names or incorrect argument types. Type-safe mocks help test code stay synchronized with production code and reduce maintenance cost as the application grows.
 
 ## 20.7 Best Practices for FluoBlog Testing
 1.  **Do not test the framework**: Focus on your application's business logic, not whether `@Get()` works. Assume `fluo` handles routing and test what your code does when that route is called.
 2.  **Use fakes for databases**: Integration tests can use a real test database, such as PostgreSQL in Docker, but unit tests should always use mocks or fakes for speed.
-3.  **Clean up resources**: For request or application lifecycle tests, create the app with `createTestApp()` and call `await app.close()` from `finally` after the test. For `createTestingModule()` slice tests, retain the successfully compiled `TestingModuleRef` and call the caller-owned `module.container.dispose()` from `finally` or `afterEach`.
+3.  **Clean up resources**: For request or application lifecycle tests, create the app with `Test.createApp()` and call `await app.close()` from `finally` after the test. For `Test.createTestingModule()` slice tests, retain the successfully compiled `TestingModuleRef` and call the caller-owned `module.container.dispose()` from `finally` or `afterEach`.
 4.  **Integration tests for security**: Always test Guards and RBAC logic in integration tests. Unit tests usually bypass them, so integration tests are where real security gets verified.
 5.  **Deterministic tests**: Avoid using `Date.now()` or random numbers directly in tests. Use Vitest's time travel features, `vi.useFakeTimers()`, to make sure tests behave the same way every time they run.
 
 ### 20.7.1 Test-Driven Development (TDD) with Fluo
-Test-driven development, TDD, is a workflow where you write tests *before* writing the actual implementation. Fluo's explicit dependency management provides a good structure for TDD. Start with direct unit tests that verify a service's interface and behavior, move to `createTestingModule({ rootModule })` when the module graph or provider overrides are part of the contract, and finish the feature with `createTestApp({ rootModule })` when the request pipeline must be exercised. This "Red-Green-Refactor" cycle helps code evolve with test coverage and a clear architecture.
+Test-driven development, TDD, is a workflow where you write tests *before* writing the actual implementation. Fluo's explicit dependency management provides a good structure for TDD. Start with direct unit tests that verify a service's interface and behavior, move to `Test.createTestingModule({ rootModule })` when the module graph or provider overrides are part of the contract, and finish the feature with `Test.createApp({ rootModule })` when the request pipeline must be exercised. This "Red-Green-Refactor" cycle helps code evolve with test coverage and a clear architecture.
 
 ### 20.7.2 Naming and Organizing Your Tests
 Organization is key to managing a large test suite. Use `*.test.ts` as the default suffix and make the test role visible when scope matters: `users.service.test.ts` and `users.controller.test.ts` for unit tests, `users.slice.test.ts` for module-slice integration, and `test/app.e2e.test.ts` for app-level request-pipeline checks. Group tests by Module or feature so they are easy to find. Inside each test file, use `describe` blocks to group related tests, and use `beforeEach`/`afterEach` for setup and cleanup. A well-organized test suite stays easy to navigate and maintain even as the FluoBlog application grows to include dozens of services and Controllers.
@@ -426,8 +432,8 @@ For mission-critical applications, consider **Chaos Engineering**. This is the p
 Testing in `fluo` is an extension of its core philosophy: explicit, standards-based, and easy to reason about. When invisible behavior is reduced, test code can follow the same structure as production code.
 
 - Use **Vitest** for a modern developer experience and fast execution.
-- Write unit tests for pure Provider logic with Vitest and explicit mocks, and use `createTestingModule` for Module Graph integration scope.
-- Use `createTestApp`-based E2E-style HTTP tests to verify the real request pipeline, including Guards and Interceptors.
+- Write unit tests for pure Provider logic with Vitest and explicit mocks, and use `Test.createTestingModule` for Module Graph integration scope.
+- Use `Test.createApp`-based E2E-style HTTP tests to verify the real request pipeline, including Guards and Interceptors.
 - Use principal mocking to test protected routes without complex setup.
 - Follow the "Mock -> Compile -> Resolve" pattern for consistent, reliable tests.
 

@@ -1,4 +1,4 @@
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
 import { createAppModule } from './app';
@@ -31,7 +31,7 @@ describe('React Vite SSR starter', () => {
       clientDirectory: new URL('../dist/client/', import.meta.url),
       renderPage: createReactPageRenderer(VITE_MANIFEST),
     });
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const response = await app.request('GET', '/products/sku-42').query('preview', 'true').send();
@@ -54,7 +54,7 @@ describe('React Vite SSR starter', () => {
       clientDirectory: new URL('../dist/client/', import.meta.url),
       renderPage: createReactPageRenderer(VITE_MANIFEST),
     });
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const response = await app.request('GET', '/products/x').query('preview', 'maybe').send();

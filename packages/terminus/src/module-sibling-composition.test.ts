@@ -2,7 +2,7 @@ import { DrizzleModule } from '@fluojs/drizzle';
 import { PrismaModule } from '@fluojs/prisma';
 import { getRedisClientToken } from '@fluojs/redis';
 import { defineModule } from '@fluojs/runtime';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createDrizzleHealthIndicatorProvider } from './indicators/drizzle.js';
@@ -68,7 +68,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -123,7 +123,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -161,7 +161,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
       ],
     });
 
-    await expect(createTestApp({ rootModule: AppModule })).rejects.toThrow(
+    await expect(Test.createApp({ rootModule: AppModule })).rejects.toThrow(
       /cannot access token Symbol\(fluo\.redis\.client\)/,
     );
   });
@@ -197,7 +197,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
     let thrownError: unknown;
 
     try {
-      await createTestApp({ rootModule: AppModule });
+      await Test.createApp({ rootModule: AppModule });
     } catch (error: unknown) {
       thrownError = error;
     }
@@ -227,7 +227,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
     let thrownError: unknown;
 
     try {
-      await createTestApp({ rootModule: AppModule });
+      await Test.createApp({ rootModule: AppModule });
     } catch (error: unknown) {
       thrownError = error;
     }
@@ -249,7 +249,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();
@@ -276,7 +276,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       const healthResponse = await app.request('GET', '/health').send();

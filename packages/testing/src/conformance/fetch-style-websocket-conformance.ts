@@ -19,6 +19,13 @@ export interface FetchStyleWebSocketConformanceHarnessOptions<
 export class FetchStyleWebSocketConformanceHarness<
   TAdapter extends HttpApplicationAdapter = HttpApplicationAdapter,
 > {
+  /** Creates a fetch-style websocket conformance harness with the provided options. */
+  static create<TAdapter extends HttpApplicationAdapter = HttpApplicationAdapter>(
+    options: FetchStyleWebSocketConformanceHarnessOptions<TAdapter>,
+  ): FetchStyleWebSocketConformanceHarness<TAdapter> {
+    return new FetchStyleWebSocketConformanceHarness(options);
+  }
+
   constructor(private readonly options: FetchStyleWebSocketConformanceHarnessOptions<TAdapter>) {}
 
   assertExposesRawWebSocketExpansionContract(): void {
@@ -57,18 +64,4 @@ export class FetchStyleWebSocketConformanceHarness<
       throw new Error(`${this.options.name} adapter changed the fetch-style raw websocket contract reason.`);
     }
   }
-}
-
-/**
- * Create fetch style web socket conformance harness.
- *
- * @param options The options.
- * @returns The create fetch style web socket conformance harness result.
- */
-export function createFetchStyleWebSocketConformanceHarness<
-  TAdapter extends HttpApplicationAdapter = HttpApplicationAdapter,
->(
-  options: FetchStyleWebSocketConformanceHarnessOptions<TAdapter>,
-): FetchStyleWebSocketConformanceHarness<TAdapter> {
-  return new FetchStyleWebSocketConformanceHarness(options);
 }

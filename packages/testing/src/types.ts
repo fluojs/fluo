@@ -5,14 +5,14 @@ import type { BootstrapApplicationOptions, BootstrapModuleOptions, BootstrapResu
 import type { RequestBuilder, TestPrincipal, TestRequest, TestRequestWithOptions, TestResponse } from './http.js';
 
 /**
- * Bootstrap options accepted by `createTestingModule(...)`.
+ * Bootstrap options accepted by `Test.createTestingModule(...)`.
  */
 export interface TestingModuleOptions extends BootstrapModuleOptions {
   rootModule: ModuleType;
 }
 
 /**
- * Bootstrap options accepted by `createTestApp(...)`.
+ * Bootstrap options accepted by `Test.createApp(...)`.
  */
 export interface TestingApplicationOptions extends BootstrapApplicationOptions {
   rootModule: ModuleType;
@@ -114,7 +114,7 @@ export interface TestingMockContext<Args extends unknown[] = unknown[], Return =
 }
 
 /**
- * Vitest `Mock<T>`-compatible function shape used to preserve root `DeepMocked<T>` type imports
+ * Vitest `Mock<T>`-compatible function shape used to preserve root `ShallowMocked<T>` type imports
  * without importing Vitest peer declarations through non-mock entrypoints.
  */
 export interface TestingMockFunction<Args extends unknown[] = unknown[], Return = unknown> {
@@ -145,7 +145,9 @@ export interface TestingMockFunction<Args extends unknown[] = unknown[], Return 
 
 /**
  * Shallow method-mocked version of a type where function properties become mock functions.
+ * Nested objects remain unchanged. Migrate `DeepMocked<T>` and `MockedMethods<T>`
+ * imports to `ShallowMocked<T>`; this type never represented recursive mocking.
  */
-export type DeepMocked<T> = {
+export type ShallowMocked<T> = {
   [K in keyof T]: T[K] extends (...args: infer A) => infer R ? TestingMockFunction<A, R> & T[K] : T[K];
 };

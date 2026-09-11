@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
 import { AppModule } from './app';
 
 describe('AppModule e2e', () => {
   it('serves two OpenAPI documents and Swagger UIs at distinct paths', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
     try {
       await expect(app.request('GET', '/openapi/public.json').send()).resolves.toMatchObject({

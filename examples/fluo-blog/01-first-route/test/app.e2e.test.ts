@@ -1,4 +1,4 @@
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 
 import { AppModule } from '../src/app';
@@ -8,7 +8,7 @@ it.each([
   ['/ready', 'ready'],
 ])('preserves the starter endpoint when %s is requested', async (path, status) => {
   // Given
-  const app = await createTestApp({ rootModule: AppModule });
+  const app = await Test.createApp({ rootModule: AppModule });
   try {
     // When
     const response = await app.request('GET', path).send();
@@ -23,7 +23,7 @@ it.each([
 
 it('lists the initial post when the first route is requested', async () => {
   // Given
-  const app = await createTestApp({ rootModule: AppModule });
+  const app = await Test.createApp({ rootModule: AppModule });
   try {
     // When
     const response = await app.request('GET', '/posts').send();

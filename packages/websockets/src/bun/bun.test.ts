@@ -8,7 +8,7 @@ import type {
   BunWebSocketUpgradeHost,
 } from '@fluojs/platform-bun';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
-import { createFetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
+import { FetchStyleWebSocketConformanceHarness } from '@fluojs/testing/fetch-style-websocket-conformance';
 import { describe, expect, it, vi } from 'vitest';
 
 import { OnConnect, OnDisconnect, OnMessage, WebSocketGateway } from '../decorators.js';
@@ -239,7 +239,7 @@ describe('@fluojs/websockets/bun', () => {
   });
 
   it('reports the supported fetch-style websocket contract through the conformance harness', () => {
-    const harness = createFetchStyleWebSocketConformanceHarness({
+    const harness = FetchStyleWebSocketConformanceHarness.create({
       createAdapter: () => new TestBunAdapter(),
       expectedReason: BUN_WEBSOCKET_CAPABILITY_REASON,
       expectedSupport: 'supported',
