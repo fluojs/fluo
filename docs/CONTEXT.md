@@ -40,6 +40,15 @@ For atomic cache mutation, start at the [cache-manager API owner](../packages/ca
 
 The [HTTP dependency security update](./reference/dependency-security-update.md) distinguishes root and isolated benchmark resolution from the published Fastify/Express consumer graph, records the nine upstream advisories, and explains application-owned transitive lockfile updates.
 
+## JWT Application API
+
+Use `JwtModule.forRoot(...)` or `JwtModule.forRootAsync(...)` and inject `JwtService`.
+`verify(token, policy?)` returns a normalized `JwtPrincipal`; claims-only callers
+read its `claims` field. The [JWT API owner](../packages/jwt/README.md) documents
+the removed provider helpers and override method, and
+[authentication architecture](./architecture/auth-and-jwt.md) explains the
+application and integration boundaries. `decode` remains unverified inspection.
+
 ## Persistence After-Commit Work
 
 For result-based rollback, first read the [shared transaction owner contract](./architecture/transactions.md#result-based-rollback). The separate `TransactionBoundaryOptions<T = unknown>.shouldRollback` in Prisma, Drizzle, and Mongoose is a consumer-defined synchronous predicate, not a global `Result` shape. An explicit root failure returns the same value after native rollback and cleanup succeed. A nested opted-in failure returns its original value while marking the owner sticky rollback-only; unless the root also rejects its own result, `TransactionRollbackOnlyError` carries the first nested failure as `result: unknown`. Unsupported fallback/legacy targets reject with `TransactionRollbackCapabilityError` before the callback, and native errors are not hidden. Rollback discards hooks; native callback retries use fresh owners. Ordinary caught nested exceptions retain existing commit/hook behavior. External raw transactions, Redis `MULTI/EXEC`, savepoints, and added durability guarantees are unsupported. Each package README owns exact argument positions and consumer examples.
