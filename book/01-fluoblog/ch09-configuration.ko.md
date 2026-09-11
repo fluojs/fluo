@@ -124,7 +124,7 @@ export class AppSettings {
 아래는 `src/config/app-settings.module.ts`의 완전한 파일이다. 클래스 수준의 `@Inject(ConfigService)`만으로 제공자가 생기지는 않는다. `imports`가 설정 등록을 가져오고, `providers`가 `AppSettings`를 만들며, `exports`가 다른 모듈에 공개한다.
 
 ```ts
-import { ConfigModule, loadConfig } from '@fluojs/config';
+import { ConfigModule } from '@fluojs/config';
 import { Module } from '@fluojs/core';
 import { AppSettings } from './app-settings.js';
 import { blogConfigOptions, type BlogConfig } from './blog-config.js';
@@ -134,7 +134,7 @@ const envFiles = process.env.NODE_ENV === 'production'
   : ['.env', '.env.local'];
 
 export const blogConfig: Readonly<BlogConfig> = Object.freeze(
-  loadConfig(blogConfigOptions(process.env, envFiles)) as BlogConfig,
+  ConfigModule.load(blogConfigOptions(process.env, envFiles)) as BlogConfig,
 );
 
 const configRegistration = ConfigModule.forRoot({

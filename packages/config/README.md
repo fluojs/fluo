@@ -102,7 +102,7 @@ Configuration is merged in the following order (highest precedence wins):
 
 `@fluojs/config` does not scan ambient environment variables automatically. Pass an explicit `processEnv` snapshot at the bootstrap boundary when process-backed values should participate in precedence.
 
-`envFilePaths` is the only file input: use a one-entry list for one file and an ordered list for layered files. Relative entries resolve from `cwd`; omitting the option uses the default `<cwd>/.env`, while `[]` disables env-file loading. `envFile` and `envFilePath` are removed and fail with `INVALID_CONFIG` so JavaScript consumers receive the same migration guidance as TypeScript consumers. `parse` lets callers replace dotenv parsing with a custom parser for flat key/value files. Missing env files are treated as empty input during load; watch mode also observes the parent directory so creating the file later can trigger a reload.
+`envFilePaths` is the only file input: use a one-entry list for one file and an ordered list for layered files. Relative entries resolve from `cwd`; omitting the option uses the default `<cwd>/.env` only for a file-capable load, while `[]` disables env-file loading for portable or prevalidated snapshots. `envFile` and `envFilePath` are removed and fail with `INVALID_CONFIG` so JavaScript consumers receive the same migration guidance as TypeScript consumers. `parse` lets callers replace dotenv parsing with a custom parser for flat key/value files. Missing env files are treated as empty input during load; watch mode also observes the parent directory so creating the file later can trigger a reload.
 
 ### Ordered Multi-File Env Loading
 

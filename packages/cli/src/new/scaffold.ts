@@ -738,7 +738,7 @@ import { GreetingModule } from './greeting/greeting.module${importSuffix}';
   global: true,
   imports: [
     ConfigModule.forRoot({
-      envFile: '.env',
+      envFilePaths: ['.env'],
       processEnv: ${processEnvValue},
     }),
     GreetingModule,

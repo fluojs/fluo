@@ -87,7 +87,6 @@ FluoBlog에서 설정 로직을 중앙 집중화하도록 `AppModule`을 업데�
 ```typescript
 import {
   ConfigModule,
-  loadConfig,
   type ConfigModuleOptions,
 } from '@fluojs/config';
 import { Module } from '@fluojs/core';
@@ -99,7 +98,7 @@ export const ConfigSchema = z.object({
 });
 
 const configSources = {
-  envFile: '.env',
+  envFilePaths: ['.env'],
   processEnv: {
     PORT: process.env.PORT,
     NODE_ENV: process.env.NODE_ENV,
@@ -111,7 +110,7 @@ const configSources = {
   schema: ConfigSchema,
 } satisfies ConfigModuleOptions;
 
-export const validatedConfig = ConfigSchema.parse(loadConfig(configSources));
+export const validatedConfig = ConfigModule.load(configSources) as z.infer<typeof ConfigSchema>;
 const configModuleOptions = {
   defaults: validatedConfig,
   schema: ConfigSchema,
@@ -123,7 +122,7 @@ const configModuleOptions = {
 export class AppModule {}
 ```
 
-`loadConfig(configSources)`는 application boundary에서 package precedence와 동기 schema를 적용합니다. 이후 `ConfigModule`은 결과인 `validatedConfig`를 source로 받고 registration에도 같은 `schema`를 유지하므로 HTTP bootstrap과 injected consumer가 서로 다르게 parse한 environment value를 사용하지 않습니다.
+`ConfigModule.load(configSources)`는 application boundary에서 package precedence와 동기 schema를 적용합니다. 이후 `ConfigModule`은 결과인 `validatedConfig`를 source로 받고 registration에도 같은 `schema`를 유지하므로 HTTP bootstrap과 injected consumer가 서로 다르게 parse한 environment value를 사용하지 않습니다.
 
 ### Precedence Rules and Conflict Resolution
 `fluo`는 설정 소스를 병합할 때 엄격한 우선순위를 따릅니다. 이 순서는 유연성을 유지하면서도 각 설정에 대해 단일한 진실의 원천을 유지하도록 설계되었습니다.

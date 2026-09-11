@@ -87,7 +87,6 @@ Open `src/app.module.ts` and add `ConfigModule` to the `imports` array.
 ```typescript
 import {
   ConfigModule,
-  loadConfig,
   type ConfigModuleOptions,
 } from '@fluojs/config';
 import { Module } from '@fluojs/core';
@@ -99,7 +98,7 @@ export const ConfigSchema = z.object({
 });
 
 const configSources = {
-  envFile: '.env',
+  envFilePaths: ['.env'],
   processEnv: {
     PORT: process.env.PORT,
     NODE_ENV: process.env.NODE_ENV,
@@ -111,7 +110,7 @@ const configSources = {
   schema: ConfigSchema,
 } satisfies ConfigModuleOptions;
 
-export const validatedConfig = ConfigSchema.parse(loadConfig(configSources));
+export const validatedConfig = ConfigModule.load(configSources) as z.infer<typeof ConfigSchema>;
 const configModuleOptions = {
   defaults: validatedConfig,
   schema: ConfigSchema,
@@ -123,7 +122,7 @@ const configModuleOptions = {
 export class AppModule {}
 ```
 
-`loadConfig(configSources)` applies the package precedence and synchronous schema at the application boundary. `ConfigModule` then receives the resulting `validatedConfig` as its source and keeps the same `schema` on registration, so HTTP bootstrap and injected consumers cannot drift onto separately parsed environment values.
+`ConfigModule.load(configSources)` applies the package precedence and synchronous schema at the application boundary. `ConfigModule` then receives the resulting `validatedConfig` as its source and keeps the same `schema` on registration, so HTTP bootstrap and injected consumers cannot drift onto separately parsed environment values.
 
 ### Precedence Rules and Conflict Resolution
 When `fluo` merges configuration sources, it follows a strict priority order. This order is designed to keep flexibility while maintaining a single source of truth for each setting.

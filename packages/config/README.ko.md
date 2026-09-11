@@ -96,7 +96,7 @@ class MyService {
 
 `@fluojs/config`는 주변 환경 변수를 자동으로 스캔하지 않습니다. 환경 기반 값을 우선순위에 포함하려면 부트스트랩 경계에서 `processEnv` 스냅샷을 명시적으로 전달하세요.
 
-`envFilePaths`가 유일한 파일 입력입니다. 한 파일에는 한 항목 목록을, 계층화에는 순서가 있는 목록을 사용하세요. 상대 entry는 `cwd`에서 해석하며, option을 생략하면 기본 `<cwd>/.env`를 사용하고 `[]`는 env-file loading을 해제합니다. `envFile`과 `envFilePath`는 제거되었고 JavaScript consumer도 TypeScript consumer와 같은 migration 안내를 받도록 `INVALID_CONFIG`로 실패합니다. `parse`를 사용하면 flat key/value 파일을 위한 custom parser로 dotenv parsing을 대체할 수 있습니다. 누락된 env file은 load 시 빈 입력처럼 처리됩니다. watch mode에서는 parent directory도 관찰하므로 나중에 파일을 생성해도 reload를 트리거할 수 있습니다.
+`envFilePaths`가 유일한 파일 입력입니다. 한 파일에는 한 항목 목록을, 계층화에는 순서가 있는 목록을 사용하세요. 상대 entry는 `cwd`에서 해석하며, option을 생략하면 file-capable load에서만 기본 `<cwd>/.env`를 사용하고 portable 또는 prevalidated snapshot에는 `[]`가 env-file loading을 해제합니다. `envFile`과 `envFilePath`는 제거되었고 JavaScript consumer도 TypeScript consumer와 같은 migration 안내를 받도록 `INVALID_CONFIG`로 실패합니다. `parse`를 사용하면 flat key/value 파일을 위한 custom parser로 dotenv parsing을 대체할 수 있습니다. 누락된 env file은 load 시 빈 입력처럼 처리됩니다. watch mode에서는 parent directory도 관찰하므로 나중에 파일을 생성해도 reload를 트리거할 수 있습니다.
 
 ### 순서가 있는 다중 env file loading
 

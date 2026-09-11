@@ -20,7 +20,7 @@
 | --- | --- |
 | `NODE_ENV` | 프로덕션 배포에서는 `production`으로 설정해야 합니다. 현재 배포 예제 Dockerfile과 Cloudflare Workers 예시 모두 이 값을 사용합니다. |
 | `PORT` | 배포 환경이 예제 기본값 `3000`을 사용하지 않는다면 listener port를 애플리케이션 설정으로 전달해야 합니다. 저장소 예제는 `FastifyHttpApplicationAdapter.create(...)`에 `port: 3000`을 명시적으로 전달합니다. |
-| 명시적 `processEnv` snapshot | process 기반 설정이 필요하면 필요한 키만 `ConfigModule.forRoot({ processEnv: ... })` 또는 `loadConfig(...)`에 전달해야 합니다. `@fluojs/config`는 ambient `process.env`를 자동 스캔하지 않습니다. |
+| 명시적 `processEnv` snapshot | process 기반 설정이 필요하면 필요한 키만 `ConfigModule.forRoot({ envFilePaths: [], processEnv: ... })` 또는 `ConfigModule.load(...)`에 전달해야 합니다. `@fluojs/config`는 ambient `process.env`를 자동 스캔하지 않습니다. |
 | 애플리케이션별 secret | 데이터베이스나 외부 API 자격 증명 같은 값은 package 내부가 아니라 애플리케이션 bootstrap config에 속합니다. 필수 키가 없으면 validation이 즉시 실패해야 합니다. |
 
 ## 헬스 체크 엔드포인트 (Health Check Endpoints)

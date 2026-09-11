@@ -124,7 +124,7 @@ export class AppSettings {
 The following is the complete `src/config/app-settings.module.ts` file. A class-level `@Inject(ConfigService)` does not create a provider by itself. `imports` brings in the configuration registration, `providers` creates `AppSettings`, and `exports` makes it available to other modules.
 
 ```ts
-import { ConfigModule, loadConfig } from '@fluojs/config';
+import { ConfigModule } from '@fluojs/config';
 import { Module } from '@fluojs/core';
 import { AppSettings } from './app-settings.js';
 import { blogConfigOptions, type BlogConfig } from './blog-config.js';
@@ -134,7 +134,7 @@ const envFiles = process.env.NODE_ENV === 'production'
   : ['.env', '.env.local'];
 
 export const blogConfig: Readonly<BlogConfig> = Object.freeze(
-  loadConfig(blogConfigOptions(process.env, envFiles)) as BlogConfig,
+  ConfigModule.load(blogConfigOptions(process.env, envFiles)) as BlogConfig,
 );
 
 const configRegistration = ConfigModule.forRoot({

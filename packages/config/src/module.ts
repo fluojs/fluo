@@ -67,7 +67,7 @@ export class ConfigReloadManager implements ConfigReloader {
   static create(options: ConfigLoadOptions): ConfigReloadManager {
     const loadOptions = snapshotConfigModuleOptions(options);
     const manager = new ConfigReloadManager(
-      createConfigServiceFromSnapshot(loadConfig(loadOptions)),
+      createConfigServiceFromSnapshot(ConfigModule.load(loadOptions)),
       loadOptions,
     );
 

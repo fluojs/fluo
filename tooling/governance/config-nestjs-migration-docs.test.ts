@@ -149,8 +149,8 @@ describe('NestJS config migration documentation', () => {
       expect(codeFence).toBeDefined();
       expect(codeFence).toContain('const namespacedDefaults = await loadNamespacedConfig();');
       expect(codeFence).toContain('defaults: namespacedDefaults');
-      expect(codeFence).toContain('const validatedConfig = ConfigSchema.parse(loadConfig(configSources));');
-      expect(codeFence).toContain('defaults: validatedConfig');
+      expect(codeFence).toContain('const validatedConfig = ConfigModule.load(configSources) as z.infer<typeof ConfigSchema>;');
+      expect(codeFence).toContain('runtimeOverrides: validatedConfig');
       expect(codeFence).toContain('schema: ConfigSchema');
       expect(codeFence).toContain('port: validatedConfig.http.port');
       expect(codeFence).not.toContain('ConfigSchema.parse(processEnv)');

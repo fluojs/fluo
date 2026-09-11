@@ -55,7 +55,8 @@ export interface ConfigModuleOptions {
    * Entries are resolved against `cwd` when relative, missing files contribute nothing,
    * and the merged result stays below `processEnv` and `runtimeOverrides`. Repeating a
    * resolved path or passing a blank entry fails with `INVALID_CONFIG`. An empty list opts
-   * out of env-file loading entirely; omitting the option loads the default `<cwd>/.env`.
+   * out of env-file loading entirely. Omitting the option loads the default `<cwd>/.env`
+   * only for a file-capable load (no explicit in-memory source, an explicit `cwd`, or watch mode).
    */
   envFilePaths?: readonly string[];
   processEnv?: ConfigProcessEnv;
@@ -103,7 +104,7 @@ export interface ConfigReloadSubscription {
 }
 
 /**
- * Stateful config reloader contract returned by {@link createConfigReloader}.
+ * Stateful config reloader contract exposed by `CONFIG_RELOADER` or {@link ConfigReloadManager.create}.
  */
 export interface ConfigReloader {
   current(): ConfigDictionary;

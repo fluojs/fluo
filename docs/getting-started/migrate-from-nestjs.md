@@ -472,12 +472,11 @@ All four helpers are exported from `@fluojs/validation`; `@fluojs/validation/map
 
 ### NestJS Config Registration and Bootstrap Migration
 
-Resolve asynchronous factories before the synchronous registration call, but keep their nested output intact. The example below uses `loadConfig(...)` for the documented deep-merge, explicit `processEnv`, and synchronous validation behavior, then registers that one validated snapshot and uses it for the HTTP adapter:
+Resolve asynchronous factories before the synchronous registration call, but keep their nested output intact. The example below uses `ConfigModule.load(...)` for the documented deep-merge, explicit `processEnv`, and synchronous validation behavior, then registers that one validated snapshot and uses it for the HTTP adapter:
 
 ```typescript
 import {
   ConfigModule,
-  loadConfig,
   type ConfigModuleOptions,
 } from '@fluojs/config';
 import { Module } from '@fluojs/core';
@@ -507,15 +506,16 @@ const ConfigSchema = z
 
 const namespacedDefaults = await loadNamespacedConfig();
 const configSources = {
+  envFilePaths: [],
   defaults: namespacedDefaults,
   processEnv: { PORT: process.env.PORT },
   schema: ConfigSchema,
 } satisfies ConfigModuleOptions;
-const validatedConfig = ConfigSchema.parse(loadConfig(configSources));
+const validatedConfig = ConfigModule.load(configSources) as z.infer<typeof ConfigSchema>;
 
 const moduleOptions = {
-  defaults: validatedConfig,
-  schema: ConfigSchema,
+  envFilePaths: [],
+  runtimeOverrides: validatedConfig,
   global: true,
 } satisfies ConfigModuleOptions;
 
@@ -530,7 +530,7 @@ const app = await FluoFactory.create(AppModule, { adapter });
 await app.listen();
 ```
 
-`loadConfig(...)` and `ConfigModule.forRoot(...)` do not scan ambient `process.env`; only the explicit snapshot participates in precedence. Plain nested objects from the async factory remain nested and deep-merge by key. The schema's output is the final snapshot, so injected consumers can read the same port with `ConfigService.get('http.port')`. The module is global by default, while `global: false` opts into module-local visibility.
+`ConfigModule.load(...)` and `ConfigModule.forRoot(...)` do not scan ambient `process.env`; only the explicit snapshot participates in precedence. Ordered `envFilePaths` apply from lowest to highest precedence; omission defaults to `.env`, while `[]` disables file loading. The preload validates once before adapter creation; its type assertion describes the schema output, not unvalidated input. Registration receives only that snapshot, without rereading files or reapplying input transforms. The same single `ConfigModule.forRoot(...)` registration exports `ConfigService` and `CONFIG_RELOADER`; standalone reloads use `ConfigReloadManager.create(...)`. Plain nested objects from the async factory remain nested and deep-merge by key. The schema's output is the final snapshot, so injected consumers can read the same port with `ConfigService.get('http.port')`. The module is global by default, while `global: false` opts into module-local visibility.
 
 NestJS `forRootAsync(...)` and `load` namespace factories have no direct registration equivalent. Await remote stores or secret managers at the application-owned bootstrap boundary before defining the final module graph, then pass their nested results to the synchronous loader or module options. An adapterless `FluoFactory.create(AppModule)` application shell and `FluoFactory.createApplicationContext(AppModule)` can resolve `ConfigService`; only HTTP `listen()` requires `FluoFactory.create(AppModule, { adapter })`. Preparing a shared validated snapshot before the final HTTP application avoids a second ambient environment read and keeps the adapter and injected config aligned.
 
