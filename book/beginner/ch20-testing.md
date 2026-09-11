@@ -61,31 +61,30 @@ Install the required dependencies:
 pnpm add -D @fluojs/testing vitest @babel/core
 ```
 
-Install `vitest` as a project dev dependency instead of a global binary. `@fluojs/testing` declares Vitest as a peer dependency for its mock helpers and `@fluojs/testing/vitest` entrypoint, so each consuming workspace must provide the local version used by its tests. `@babel/core` is required because `@fluojs/testing/vitest` uses a Babel plugin to process standard Decorators during test execution. TypeScript handles types, while Babel makes sure tests use the same standard Decorator behavior as the runtime. The package itself declares `engines.node >=24.0.0 <27`; Node versions below 24 and Node 27+ are excluded because the public portability harness exercises listener-level RFC `QUERY`. Runtime-native Deno/Bun test examples should follow their own adapter chapters when they are not executing through Node/Vitest.
+Install `vitest` as a project dev dependency instead of a global binary. `@fluojs/testing` declares Vitest as a peer dependency for its mock helpers, and `@fluojs/vite` owns the Babel transform used by both application and test modules. TypeScript handles types, while Babel makes sure tests use the same standard Decorator behavior as the runtime. The package itself declares `engines.node >=24.0.0 <27`; Node versions below 24 and Node 27+ are excluded because the public portability harness exercises listener-level RFC `QUERY`. Runtime-native Deno/Bun test examples should follow their own adapter chapters when they are not executing through Node/Vitest.
 
 ### Vitest Configuration
 Create a `vitest.config.ts` file at the project root:
 
 ```typescript
+import { fluoDecoratorsPlugin } from '@fluojs/vite';
 import { defineConfig } from 'vitest/config';
-import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';
 
 export default defineConfig({
   plugins: [
-    fluoBabelDecoratorsPlugin(),
+    fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' }),
   ],
   test: {
     globals: true,
     environment: 'node',
     // Include unit/slice tests under src and app-level e2e-style suites under test.
     include: ['src/**/*.test.ts', 'src/**/*.spec.ts', 'test/**/*.test.ts'],
+    setupFiles: ['@fluojs/core/metadata-preload'],
   },
 });
 ```
 
-`fluoBabelDecoratorsPlugin` acts as a bridge that lets Vitest understand `fluo` standard Decorators without complex configuration. This setup aligns the test environment with how the actual production runtime processes Decorators.
-
-Because the plugin resolves the nearest root Babel configuration at runtime, add one of `babel.config.cjs`, `babel.config.mjs`, `babel.config.js`, or `babel.config.json` at the project root. Without that file, the test transform fails early with an error that lists the supported root config names, which is safer than silently running tests with mismatched Decorator semantics.
+`fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })` lets Vitest use the same standard Decorator transform as application builds. The metadata preload setup ensures decorated test modules observe `Symbol.metadata` before evaluation.
 
 ### 20.2.1 Global Setup and Teardown
 Large projects may need work that runs before all tests, such as initializing a test database, and cleanup work after tests finish. Vitest lets you define a `setupFiles` array in the configuration. This is a good place to set global environment variables or register custom matchers that simplify assertions.

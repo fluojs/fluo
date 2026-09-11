@@ -122,7 +122,7 @@ function shouldRequestBabelSourceMaps(config: Pick<ResolvedConfig, 'build' | 'co
 }
 
 function withMetadataPreload(code: string): string {
-  return /(?:^|[\s{;])@\p{ID_Start}/u.test(code)
+  return /(?:^|\n)\s*@\p{ID_Start}/u.test(code) || /[;{]\s*@\p{ID_Start}/u.test(code)
     ? `import '@fluojs/core/metadata-preload';\n${code}`
     : code;
 }

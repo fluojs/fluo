@@ -114,7 +114,7 @@ CLI도 monorepo나 registry 조회 없이 scaffold를 생성합니다. React의 
 
 생성된 non-Deno standard starter의 `vite.config.ts`는 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하고, React SSR + Vite starter는 같은 plugin을 `vite.server.config.ts`에 적용합니다. 따라서 decorator transform 업데이트는 각 신규 프로젝트에 inline 복사되는 대신 유지보수되는 Vite 패키지를 통해 전달됩니다.
 
-새 non-Deno 프로젝트는 Vite `^8.2.2`, Vitest `^4.1.11`, `@vitest/coverage-v8` `^4.1.11`을 선언합니다. 생성된 ESM Vite config는 `build.rolldownOptions`를 사용합니다. Rolldown/Oxc가 애플리케이션 코드를 처리하기 전에 `fluoDecoratorsPlugin()`을 통해 Babel이 표준 데코레이터를 변환하고, `vitest.config.ts`는 `@fluojs/testing/vitest`의 `fluoBabelDecoratorsPlugin()`을 유지합니다. Direct Oxc/esbuild decorator processing은 지원하지 않습니다. Node.js `>=24.0.0 <27`과 runtime-native starter metadata는 바뀌지 않습니다. 기존 프로젝트를 다시 쓰지는 않으므로 업그레이드 시 [생성 toolchain 기준선](../../docs/reference/toolchain-contract-matrix.ko.md)을 명시적으로 적용하세요.
+새 non-Deno 프로젝트는 Vite `^8.2.2`, Vitest `^4.1.11`, `@vitest/coverage-v8` `^4.1.11`을 선언합니다. 생성된 ESM Vite config는 `build.rolldownOptions`를 사용합니다. Rolldown/Oxc가 애플리케이션 코드를 처리하기 전에 `fluoDecoratorsPlugin()`을 통해 Babel이 표준 데코레이터를 변환하고, `vitest.config.ts`는 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`와 `@fluojs/core/metadata-preload`를 사용합니다. Direct Oxc/esbuild decorator processing은 지원하지 않습니다. Node.js `>=24.0.0 <27`과 runtime-native starter metadata는 바뀌지 않습니다. 기존 프로젝트를 다시 쓰지는 않으므로 업그레이드 시 [생성 toolchain 기준선](../../docs/reference/toolchain-contract-matrix.ko.md)을 명시적으로 적용하세요.
 
 기존 starter를 업그레이드할 때는 `babel.config.cjs`에서 `ignore: ['src/**/*.test.ts']` 규칙을 제거하세요. 생성된 Babel config는 더 이상 test file을 제외하지 않으므로 testing plugin이 테스트 내부에 선언된 데코레이터도 Vitest 4 실행 전에 변환합니다.
 

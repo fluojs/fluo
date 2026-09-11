@@ -61,31 +61,30 @@
 pnpm add -D @fluojs/testing vitest @babel/core
 ```
 
-`vitest`는 global binary가 아니라 프로젝트 dev dependency로 설치하세요. `@fluojs/testing`은 mock 헬퍼와 `@fluojs/testing/vitest` 엔트리포인트를 위해 Vitest를 peer dependency로 선언하므로, 각 consuming workspace가 테스트에 사용할 로컬 버전을 제공해야 합니다. `@babel/core`가 필요한 이유는 `@fluojs/testing/vitest`가 테스트 실행 중에 표준 데코레이터를 처리하기 위해 Babel 플러그인을 사용하기 때문입니다. TypeScript가 타입을 처리하는 동안 Babel은 테스트 중에도 런타임과 동일한 표준 데코레이터 동작을 보장합니다. 이 패키지 자체는 `engines.node >=24.0.0 <27`을 선언합니다. Public portability harness가 listener-level RFC `QUERY`를 검증하므로 Node 24 미만과 Node 27 이상은 제외됩니다. Node/Vitest 경로로 실행하지 않는 runtime-native Deno/Bun 테스트 예제는 각 어댑터 장의 지침을 따르세요.
+`vitest`는 global binary가 아니라 프로젝트 dev dependency로 설치하세요. `@fluojs/testing`은 mock 헬퍼를 위해 Vitest를 peer dependency로 선언하며, application과 test module이 쓰는 Babel transform은 `@fluojs/vite`가 소유합니다. TypeScript가 타입을 처리하는 동안 Babel은 테스트 중에도 런타임과 동일한 표준 데코레이터 동작을 보장합니다. 이 패키지 자체는 `engines.node >=24.0.0 <27`을 선언합니다. Public portability harness가 listener-level RFC `QUERY`를 검증하므로 Node 24 미만과 Node 27 이상은 제외됩니다. Node/Vitest 경로로 실행하지 않는 runtime-native Deno/Bun 테스트 예제는 각 어댑터 장의 지침을 따르세요.
 
 ### Vitest Configuration
 프로젝트 루트에 `vitest.config.ts` 파일을 생성합니다:
 
 ```typescript
+import { fluoDecoratorsPlugin } from '@fluojs/vite';
 import { defineConfig } from 'vitest/config';
-import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';
 
 export default defineConfig({
   plugins: [
-    fluoBabelDecoratorsPlugin(),
+    fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' }),
   ],
   test: {
     globals: true,
     environment: 'node',
     // src 아래 unit/slice 테스트와 test 아래 app-level e2e 스타일 suite를 포함합니다.
     include: ['src/**/*.test.ts', 'src/**/*.spec.ts', 'test/**/*.test.ts'],
+    setupFiles: ['@fluojs/core/metadata-preload'],
   },
 });
 ```
 
-`fluoBabelDecoratorsPlugin`은 복잡한 설정 없이도 Vitest가 `fluo`의 표준 데코레이터를 이해할 수 있게 해주는 다리 역할을 합니다. 이 설정을 통해 테스트 환경이 실제 프로덕션 런타임의 데코레이터 처리 방식과 맞춰집니다.
-
-이 플러그인은 런타임에 가장 가까운 root Babel config를 해석하므로 프로젝트 루트에 `babel.config.cjs`, `babel.config.mjs`, `babel.config.js`, `babel.config.json` 중 하나를 추가하세요. 이 파일이 없으면 테스트 transform이 지원되는 root config 이름을 나열하는 오류로 조기에 실패합니다. 이는 테스트가 런타임과 다른 Decorator 의미로 조용히 실행되는 것보다 안전합니다.
+`fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`는 Vitest가 application build와 같은 표준 decorator transform을 쓰게 합니다. Metadata preload setup은 decorated test module이 평가 전 `Symbol.metadata`를 보도록 합니다.
 
 ### 20.2.1 Global Setup and Teardown
 규모가 큰 프로젝트의 경우, 모든 테스트가 실행되기 전에 수행해야 할 작업(예: 테스트 데이터베이스 초기화)과 테스트 종료 후의 정리 작업이 필요할 수 있습니다. Vitest는 설정에서 `setupFiles` 배열을 정의할 수 있게 해줍니다. 이곳은 글로벌 환경 변수를 설정하거나 단언문을 단순화하는 커스텀 매처(matcher)를 등록하기에 적합한 장소입니다.

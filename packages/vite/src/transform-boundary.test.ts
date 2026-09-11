@@ -63,6 +63,26 @@ describe('fluoDecoratorsPlugin transform boundary', () => {
     }));
   });
 
+  it('does not treat TSDoc tags as decorator syntax', async () => {
+    // Given
+    const plugin = fluoDecoratorsPlugin();
+
+    // When
+    const result = await runTransform(
+      plugin,
+      `/**
+ * @returns the un-decorated value
+ */
+export const value: number = 1;`,
+      '/app/src/documented-value.ts',
+    );
+
+    // Then
+    expect(result).toEqual(expect.objectContaining({
+      code: expect.not.stringContaining("@fluojs/core/metadata-preload"),
+    }));
+  });
+
   it('keeps the Vite transform boundary on application TypeScript files', async () => {
     const plugin = fluoDecoratorsPlugin();
 
