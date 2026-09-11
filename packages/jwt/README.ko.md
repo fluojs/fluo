@@ -130,18 +130,22 @@ const principal = await jwt.verify(token, { audience: 'my-app' });
 
 ### 비대칭 서명 (RS256/ES256)
 
-분산 시스템에서 보안을 강화하기 위해 공개키/개인키 쌍을 사용합니다.
+`JwtModule`에 공개키/개인키 쌍을 설정하고 애플리케이션 서비스에 `JwtService`를 주입합니다.
 
 ```typescript
-const signer = new DefaultJwtSigner({
-  algorithms: ['RS256'],
-  privateKey: '...PEM...',
-});
+@Module({
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['RS256'],
+      privateKey: '...PEM...',
+      publicKey: '...PEM...',
+    }),
+  ],
+})
+export class AuthModule {}
 
-const verifier = new DefaultJwtVerifier({
-  algorithms: ['RS256'],
-  publicKey: '...PEM...',
-});
+const token = await jwt.sign({ roles: ['admin'] }, { subject: 'user-123' });
+const principal = await jwt.verify(token);
 ```
 
 ### 주체 정규화 (Principal Normalization)
@@ -153,7 +157,7 @@ const verifier = new DefaultJwtVerifier({
 검증 키를 원격 JWKS 엔드포인트에서 가져올 때는, 느리거나 멈춘 identity provider 때문에 인증 경로가 무한정 대기하지 않도록 fetch budget을 명시적으로 제한하세요.
 
 ```typescript
-const verifier = new DefaultJwtVerifier({
+JwtModule.forRoot({
   algorithms: ['RS256'],
   jwksRequestTimeoutMs: 5_000,
   jwksUri: 'https://issuer.example.com/.well-known/jwks.json',
@@ -225,9 +229,8 @@ Lazy loading은 import-time 안전성 속성일 뿐입니다. 서명이나 검�
 
 ### 주요 클래스
 - `JwtModule`: DI 등록을 위한 기본 진입점입니다.
-- `DefaultJwtSigner`: 클레임 자동 채우기 기능이 포함된 토큰 발행 클래스입니다.
-- `DefaultJwtVerifier`: 토큰 검증 및 정규화를 담당하는 클래스입니다.
-- `JwtService`: 서명과 검증 기능을 결합한 편의용 파사드(facade)입니다.
+- `DefaultJwtSigner`와 `DefaultJwtVerifier`: 프레임워크 integration과 별도 provider 조립을 위한 저수준 provider입니다.
+- `JwtService`: 애플리케이션의 토큰 발행과 검증에 사용하는 canonical 서비스입니다.
 - `JwksClient`: 제한된 요청 시간 안에서 원격 JWKS 키를 가져오고 캐싱합니다.
 - `RefreshTokenService`: `refreshToken` 옵션이 구성된 경우 refresh token을 발행, 회전, 폐기합니다. `revokePresentedRefreshToken(...)`은 compact refresh token을 검증한 뒤 record를 revoke하며, `revokeRefreshToken(tokenId)`는 신뢰된 ID를 받는 대안입니다.
 

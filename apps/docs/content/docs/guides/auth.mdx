@@ -78,29 +78,35 @@ const principal = await jwt.verify(token, { audience: 'my-app' });
 Use `JwtModule.forRootAsync(...)` when keys or issuer settings come from config providers.
 
 ```ts
-import { Module, type Token } from '@fluojs/core';
+import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
 
-const JWT_SETTINGS = Symbol('jwt-settings');
+class JwtSettings {
+  readonly issuer = 'my-api';
+  readonly secret = 'your-secure-secret';
+}
+
+@Module({ global: true, providers: [JwtSettings], exports: [JwtSettings] })
+class JwtSettingsModule {}
 
 @Module({
   imports: [
+    JwtSettingsModule,
     JwtModule.forRootAsync({
-      inject: [JWT_SETTINGS],
-      useFactory: async (settings) => ({
-        accessTokenTtlSeconds: 900,
-        algorithms: ['HS256'],
-        audience: 'my-app',
-        issuer: settings.issuer,
-        secret: settings.secret,
-      }),
+      inject: [JwtSettings],
+      useFactory: async (settings: unknown) => {
+        if (!(settings instanceof JwtSettings)) {
+          throw new TypeError('JwtSettings dependency is required');
+        }
+        return {
+          accessTokenTtlSeconds: 900,
+          algorithms: ['HS256'],
+          audience: 'my-app',
+          issuer: settings.issuer,
+          secret: settings.secret,
+        };
+      },
     }),
-  ],
-  providers: [
-    {
-      provide: JWT_SETTINGS as Token<{ issuer: string; secret: string }>,
-      useValue: { issuer: 'my-api', secret: 'your-secure-secret' },
-    },
   ],
 })
 export class AuthModule {}

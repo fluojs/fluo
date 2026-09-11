@@ -58,18 +58,26 @@ describe('JWT verified claims contract', () => {
     expect(runGovernanceGuard).toThrow(/must return the normalized JwtPrincipal/);
   });
 
-  it('rejects a verifier that discards a documented per-call override', () => {
+  it.each([
+    'algorithms',
+    'audience',
+    'clockSkewSeconds',
+    'issuer',
+    'maxAge',
+    'requireExp',
+  ])('rejects a verifier that discards the per-call %s policy', (option) => {
     // Given
-    const readWithoutAudienceOverride = withSource(verifierSourcePath, (source) => source.replace(
-      'audience: policy?.audience ?? this.options.audience,',
-      'audience: this.options.audience,',
-    ));
+    const readWithoutOverride = withSource(verifierSourcePath, (source) => {
+      const policyAccess = `policy?.${option}`;
+      expect(source).toContain(policyAccess);
+      return source.replaceAll(policyAccess, 'undefined');
+    });
 
     // When
-    const runGovernanceGuard = () => enforceJwtVerifiedClaimsContract(readWithoutAudienceOverride);
+    const runGovernanceGuard = () => enforceJwtVerifiedClaimsContract(readWithoutOverride);
 
     // Then
-    expect(runGovernanceGuard).toThrow(/must preserve the per-call audience policy/);
+    expect(runGovernanceGuard).toThrow(`must preserve the per-call ${option} policy`);
   });
 
   it('rejects a signer that fills iat from a module option instead of the signing timestamp', () => {
