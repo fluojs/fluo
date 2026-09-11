@@ -8,9 +8,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { HealthCheckError } from './errors.js';
 import { TerminusHealthService } from './health-check.js';
-import { createDiskHealthIndicatorProvider } from './indicators/disk.js';
-import { createHttpHealthIndicatorProvider } from './indicators/http.js';
-import { createMemoryHealthIndicatorProvider, MemoryHealthIndicator } from './indicators/memory.js';
+import { DiskHealthIndicator } from './indicators/disk.js';
+import { HttpHealthIndicator } from './indicators/http.js';
+import { MemoryHealthIndicator } from './indicators/memory.js';
 import { createPrismaHealthIndicatorProvider } from './indicators/prisma.js';
 import { createRedisHealthIndicatorProvider, RedisHealthIndicator } from './indicators/redis.js';
 import { TerminusModule } from './module.js';
@@ -617,8 +617,7 @@ describe('TerminusModule.forRoot', () => {
     defineModule(AppModule, {
       imports: [
         TerminusModule.forRoot({
-          indicators: [directIndicator],
-          indicatorProviders: [createMemoryHealthIndicatorProvider({ key: 'memory' })],
+          indicators: [directIndicator, MemoryHealthIndicator.create({ key: 'memory' })],
         }),
       ],
       providers: [HealthIndicatorsConsumer, ProviderTokenConsumer],
@@ -630,8 +629,7 @@ describe('TerminusModule.forRoot', () => {
       const consumer = await testingModule.resolve<ProviderTokenConsumer>(ProviderTokenConsumer);
       const healthConsumer = await testingModule.resolve<HealthIndicatorsConsumer>(HealthIndicatorsConsumer);
 
-      expect(consumer.tokens).toHaveLength(1);
-      expect(typeof consumer.tokens[0]).toBe('symbol');
+      expect(consumer.tokens).toHaveLength(0);
       expect(healthConsumer.indicators).toHaveLength(2);
       expect(healthConsumer.indicators.map((indicator: HealthIndicator) => indicator.key)).toEqual([
         'direct-memory',
@@ -940,9 +938,9 @@ describe('TerminusModule.forRoot', () => {
     defineModule(AppModule, {
       imports: [
         TerminusModule.forRoot({
-          indicatorProviders: [
-            createMemoryHealthIndicatorProvider({ key: 'heap' }),
-            createMemoryHealthIndicatorProvider({ key: 'rss' }),
+          indicators: [
+            MemoryHealthIndicator.create({ key: 'heap' }),
+            MemoryHealthIndicator.create({ key: 'rss' }),
           ],
         }),
       ],
@@ -995,8 +993,8 @@ describe('TerminusModule.forRoot', () => {
       defineModule(AppModule, {
         imports: [
           TerminusModule.forRoot({
-            indicatorProviders: [
-              createDiskHealthIndicatorProvider({
+          indicators: [
+            DiskHealthIndicator.create({
                 key: 'disk',
                 minFreeBytes: 100_000,
                 minFreeRatio: 0.1,
@@ -1051,9 +1049,9 @@ describe('TerminusModule.forRoot', () => {
     defineModule(AppModule, {
       imports: [
         TerminusModule.forRoot({
-          indicatorProviders: [
-            createHttpHealthIndicatorProvider({ key: 'primary-api', url: 'https://example.com/primary/health' }),
-            createHttpHealthIndicatorProvider({ key: 'secondary-api', url: 'https://example.com/secondary/health' }),
+          indicators: [
+            HttpHealthIndicator.create({ key: 'primary-api', url: 'https://example.com/primary/health' }),
+            HttpHealthIndicator.create({ key: 'secondary-api', url: 'https://example.com/secondary/health' }),
           ],
         }),
       ],

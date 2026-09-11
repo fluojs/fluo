@@ -11,7 +11,6 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { FluoFactory, defineModule } from '../bootstrap.js';
-import type { ModuleType } from '../types.js';
 import * as healthModuleExports from './health.js';
 import { HealthModule, type RuntimeHealthModule } from './health.js';
 
@@ -70,14 +69,9 @@ function createResponse(): TestResponse {
   };
 }
 
-describe('createHealthModule', () => {
-  it('preserves the compatibility helper module class name', () => {
-    const compatibilityHelperName = 'createHealthModule' as const;
-    const compatibilityHelper = (healthModuleExports as Record<typeof compatibilityHelperName, () => ModuleType>)[
-      compatibilityHelperName
-    ];
-
-    expect(compatibilityHelper().name).toBe('HealthModule');
+describe('HealthModule', () => {
+  it('owns the sole public runtime health module registration path', () => {
+    expect(healthModuleExports).not.toHaveProperty('createHealthModule');
     expect(HealthModule.forRoot().name).toBe('HealthModule');
   });
 

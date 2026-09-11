@@ -226,7 +226,7 @@ export function createOperationsModule(probeToken: string) {
           }),
         ],
         indicators: [
-          new MemoryHealthIndicator({
+          MemoryHealthIndicator.create({
             key: 'heap',
             heapUsedThresholdRatio: 0.9,
             readiness: false,

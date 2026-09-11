@@ -2,6 +2,18 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  createSourceFile,
+  isExportDeclaration,
+  isFunctionDeclaration,
+  isIdentifier,
+  isNamedExports,
+  isStringLiteral,
+  isVariableStatement,
+  ScriptKind,
+  ScriptTarget,
+  SyntaxKind,
+} from 'typescript';
 
 import { enforceTerminusRuntimeSourceContract } from './terminus-runtime-health-source-contract.mjs';
 
@@ -72,6 +84,53 @@ function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
+function sourceFile(relativePath, source) {
+  return createSourceFile(relativePath, source, ScriptTarget.Latest, true, ScriptKind.TS);
+}
+
+function isReexportFrom(source, moduleSpecifier, symbol) {
+  return source.statements.some((statement) => {
+    if (!isExportDeclaration(statement)
+      || !isStringLiteral(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== moduleSpecifier) {
+      return false;
+    }
+
+    if (symbol === undefined || statement.exportClause === undefined) {
+      return true;
+    }
+
+    return isNamedExports(statement.exportClause)
+      && statement.exportClause.elements.some((element) => element.name.text === symbol);
+  });
+}
+
+function hasExportModifier(statement) {
+  return statement.modifiers?.some((modifier) => modifier.kind === SyntaxKind.ExportKeyword) ?? false;
+}
+
+function exportsNamedDeclaration(source, symbol) {
+  return source.statements.some((statement) => {
+    if (isExportDeclaration(statement)) {
+      return isNamedExports(statement.exportClause)
+        && statement.exportClause.elements.some((element) => element.name.text === symbol);
+    }
+
+    if (!hasExportModifier(statement)) {
+      return false;
+    }
+
+    if (isFunctionDeclaration(statement) && isIdentifier(statement.name)) {
+      return statement.name.text === symbol;
+    }
+
+    return isVariableStatement(statement)
+      && statement.declarationList.declarations.some(
+        (declaration) => isIdentifier(declaration.name) && declaration.name.text === symbol,
+      );
+  });
+}
+
 function runGit(args) {
   return spawnSync('git', args, {
     cwd: repoRoot,
@@ -105,7 +164,42 @@ function changedFilePatchFromGit(relativePath) {
 
 export function enforceTerminusRuntimeHealthContract(readText = read) {
   const runtimeSource = readText('packages/terminus/src/module.ts');
+  const runtimeHealthSource = readText('packages/runtime/src/health/health.ts');
+  const rootEntrySource = readText('packages/terminus/src/index.ts');
+  const rootIndicatorsSource = readText('packages/terminus/src/indicators/index.ts');
+  const nodeIndicatorsSource = readText('packages/terminus/src/node.ts');
   enforceTerminusRuntimeSourceContract(runtimeSource, assertContract);
+  assertContract(
+    !exportsNamedDeclaration(
+      sourceFile('packages/runtime/src/health/health.ts', runtimeHealthSource),
+      'createHealthModule',
+    ),
+    'runtime health registration must remain owned by HealthModule.forRoot without a createHealthModule compatibility export.',
+  );
+  assertContract(
+    !isReexportFrom(sourceFile('packages/terminus/src/index.ts', rootEntrySource), './node.js')
+      && !isReexportFrom(sourceFile('packages/terminus/src/index.ts', rootEntrySource), './indicators/memory.js')
+      && !isReexportFrom(sourceFile('packages/terminus/src/index.ts', rootEntrySource), './indicators/disk.js')
+      && !isReexportFrom(sourceFile('packages/terminus/src/indicators/index.ts', rootIndicatorsSource), './memory.js')
+      && !isReexportFrom(sourceFile('packages/terminus/src/indicators/index.ts', rootIndicatorsSource), './disk.js'),
+    'memory and disk indicators must remain outside the Terminus root export boundary.',
+  );
+  assertContract(
+    isReexportFrom(
+      sourceFile('packages/terminus/src/node.ts', nodeIndicatorsSource),
+      './indicators/memory.js',
+      'MemoryHealthIndicator',
+    ),
+    'MemoryHealthIndicator must remain available from the Terminus node subpath.',
+  );
+  assertContract(
+    isReexportFrom(
+      sourceFile('packages/terminus/src/node.ts', nodeIndicatorsSource),
+      './indicators/disk.js',
+      'DiskHealthIndicator',
+    ),
+    'DiskHealthIndicator must remain available from the Terminus node subpath.',
+  );
 
   for (const path of contractDocuments) {
     assertContract(

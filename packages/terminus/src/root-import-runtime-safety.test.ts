@@ -67,10 +67,12 @@ describe('@fluojs/terminus root import runtime safety', () => {
 
     try {
       const terminus = await import('./index.js');
+      const terminusNode = await import('./node.js');
 
       expect(terminus).toHaveProperty('TerminusModule');
+      expect(terminus).not.toHaveProperty('DiskHealthIndicator');
       expect(filesystemMockState.loads).toBe(0);
-      await expect(new terminus.DiskHealthIndicator({ key: 'disk' }).check('disk')).rejects.toMatchObject({
+      await expect(terminusNode.DiskHealthIndicator.create({ key: 'disk' }).check('disk')).rejects.toMatchObject({
         causes: {
           disk: {
             message: 'disk check should lazy-load node filesystem modules',

@@ -508,6 +508,10 @@ Studio static-graph limit discoverability는 `packages/studio/README.ko.md`, [`b
 | `docs/getting-started/` | 일반적인 시작 경로에 대한 부트스트랩 및 설정 사실을 정리한다. |
 | `docs/reference/` | 조회 중심 표, 용어집, 패키지 매트릭스, 지원 현황 스냅샷을 제공한다. |
 
+## Terminus Health와 Readiness
+
+Dependency health에는 `@fluojs/terminus`의 `TerminusModule`을 import하고, 독립 probe는 `TerminusModule.forRoot({ indicators })`에서 `XHealthIndicator.create(options)`로 등록합니다. Memory와 disk probe는 `@fluojs/terminus/node`에서만 import합니다. Prisma, Drizzle, Redis DI provider factory는 Terminus가 `indicatorProviders`를 통해 해당 dependency를 resolve해야 할 때만 유지합니다. Runtime 소유 기본 endpoint에는 `HealthModule.forRoot(...)`를 사용합니다. Canonical response, readiness, timeout-settlement, ownership 계약은 [`docs/contracts/health-and-readiness.ko.md`](./contracts/health-and-readiness.ko.md)입니다.
+
 ## Cron Scheduling Migration
 
 Scheduling migration contract는 [`packages/cron/README.ko.md`](../packages/cron/README.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`docs/contracts/nestjs-parity-gaps.ko.md`](./contracts/nestjs-parity-gaps.ko.md), [`book/intermediate/ch12-cron.ko.md`](../book/intermediate/ch12-cron.ko.md)에 걸쳐 있습니다. `@fluojs/cron`은 `timezone`을 지원하지만 NestJS `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`은 지원하지 않습니다. Absolute-time `@Cron(Date)` / `@Cron(DateTime)` plan과 disabled/category-specific schedule, threshold/recovery policy는 application-owned로 유지합니다. Named interval/timeout decorator는 `(ms, { name })`로 바꾸고, async schedule configuration은 동기 `CronModule.forRoot(...)` 전에 해석하며, 필요하면 `global: true`를 명시하고 NestJS category switch를 기대하지 마세요.

@@ -27,7 +27,7 @@ import { Exclude, Expose, SerializerInterceptor } from '@fluojs/serialization';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FluoFactory, defineModule } from './bootstrap.js';
 import { ModuleInjectionMetadataError } from './errors.js';
-import { createHealthModule } from './health/health.js';
+import { HealthModule } from './health/health.js';
 import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from './tokens.js';
 import type { ApplicationLogger, CompiledModule, ExceptionFilterContext, ExceptionFilterHandler, OnApplicationBootstrap, OnModuleInit, RuntimeCleanupRegistration } from './types.js';
@@ -1979,7 +1979,7 @@ describe('bootstrapApplication', () => {
   });
 
   it('applies a global prefix to application routes and runtime-owned paths by default', async () => {
-    const HealthModule = createHealthModule();
+    const healthModule = HealthModule.forRoot();
 
     @Controller('')
     class RuntimeOwnedController {
@@ -2010,7 +2010,7 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, {
       controllers: [AppController, RuntimeOwnedController],
-      imports: [HealthModule],
+      imports: [healthModule],
     });
 
     const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {
@@ -2054,7 +2054,7 @@ describe('bootstrapApplication', () => {
   });
 
   it('supports explicit global prefix exclusions for runtime-owned paths', async () => {
-    const HealthModule = createHealthModule();
+    const healthModule = HealthModule.forRoot();
 
     @Controller('')
     class RuntimeOwnedController {
@@ -2075,7 +2075,7 @@ describe('bootstrapApplication', () => {
     class AppModule {}
     defineModule(AppModule, {
       controllers: [AppController, RuntimeOwnedController],
-      imports: [HealthModule],
+      imports: [healthModule],
     });
 
     const app = registerAppForCleanup(await createNodeTestApplication(AppModule, {

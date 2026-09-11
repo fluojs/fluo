@@ -1,5 +1,3 @@
-import type { Provider } from '@fluojs/di';
-
 import { createDownResult, createUpResult, resolveIndicatorKey, throwHealthCheckError } from './utils.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
 
@@ -25,35 +23,20 @@ async function statFilesystem(path: string) {
   return statfs(path);
 }
 
-/**
- * Create a disk-space health indicator.
- *
- * @param options Optional filesystem path and free-space thresholds.
- * @returns A health indicator backed by `statfs()`.
- */
-export function createDiskHealthIndicator(options: DiskHealthIndicatorOptions = {}): HealthIndicator {
-  return new DiskHealthIndicator(options);
-}
-
-/**
- * Create a Terminus indicator provider collection entry for a `DiskHealthIndicator` instance.
- *
- * @param options Optional filesystem path and free-space thresholds.
- * @returns A value provider with a unique internal DI token for `TerminusModule` indicatorProviders.
- */
-export function createDiskHealthIndicatorProvider(options: DiskHealthIndicatorOptions = {}): Provider {
-  const indicatorProviderToken = Symbol('fluo.terminus.disk-health-indicator');
-
-  return {
-    provide: indicatorProviderToken,
-    useValue: new DiskHealthIndicator(options),
-  };
-}
-
 /** Health indicator that inspects free space for one filesystem path. */
 export class DiskHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
   readonly readiness: boolean | undefined;
+
+  /**
+   * Create a disk-space health indicator.
+   *
+   * @param options Optional filesystem path and free-space thresholds.
+   * @returns A health indicator backed by `statfs()`.
+   */
+  static create(options: DiskHealthIndicatorOptions = {}): DiskHealthIndicator {
+    return new DiskHealthIndicator(options);
+  }
 
   constructor(private readonly options: DiskHealthIndicatorOptions = {}) {
     this.key = options.key;
