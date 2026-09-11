@@ -23,7 +23,7 @@ Terminus는 dependency 진단과 readiness 조건을 구성합니다. Socket lis
 | `@fluojs/terminus` | `TerminusModule`, `TerminusHealthService`, `HealthCheckError`, `runHealthCheck`, `assertHealthCheck`; `HealthIndicator`, `HealthIndicatorResult`, `HealthIndicatorState`, `HealthCheckReport`, `HealthCheckExecutionOptions`, `TerminusModuleOptions` 타입 |
 | `@fluojs/terminus` | `HttpHealthIndicator`, `PrismaHealthIndicator`, `DrizzleHealthIndicator` 및 각각의 `create*HealthIndicator`, `create*HealthIndicatorProvider`, `*HealthIndicatorOptions` |
 | `@fluojs/terminus/node` | `MemoryHealthIndicator`, `DiskHealthIndicator` 및 각각의 factory, provider factory, option 타입. 호환성을 위해 root에서도 export합니다. |
-| `@fluojs/terminus/redis` | `RedisHealthIndicator`, `createRedisHealthIndicator`, `createRedisHealthIndicatorProvider`, `RedisHealthIndicatorOptions`. Redis helper는 root export가 아닙니다. |
+| `@fluojs/terminus/redis` | `RedisHealthIndicator.create`, `createRedisHealthIndicatorProvider`, `RedisHealthIndicatorOptions`. Redis helper는 root export가 아닙니다. |
 | `@fluojs/terminus` | `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: module이 export하는 indicator 집합과 provider token 목록 |
 | `@fluojs/runtime` | `ReadinessCheck`: `(ctx: RequestContext) => boolean \| Promise<boolean>`; `HealthModule`은 Terminus가 내부에서 합성하는 runtime route facade입니다. |
 | `@fluojs/core`, `@fluojs/http` | Application의 `Module`; endpoint middleware를 위한 `Middleware`, `MiddlewareContext`, `Next` 타입 등 |

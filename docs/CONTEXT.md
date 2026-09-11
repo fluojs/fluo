@@ -502,6 +502,10 @@ Studio static-graph limit discoverability is split across `packages/studio/READM
 | `docs/getting-started/` | Bootstrap and setup facts for common starting paths. |
 | `docs/reference/` | Lookup-oriented tables, glossary terms, package matrices, and support snapshots. |
 
+## Terminus Health and Readiness
+
+For dependency health, import `TerminusModule` from `@fluojs/terminus` and register standalone probes with `XHealthIndicator.create(options)` in `TerminusModule.forRoot({ indicators })`. Import memory and disk probes only from `@fluojs/terminus/node`; retain the Prisma, Drizzle, and Redis DI provider factories only when Terminus must resolve those dependencies through `indicatorProviders`. Runtime-owned basic endpoints use `HealthModule.forRoot(...)`. The canonical response, readiness, timeout-settlement, and ownership contract is [`docs/contracts/health-and-readiness.md`](./contracts/health-and-readiness.md).
+
 ## Cron Scheduling Migration
 
 The scheduling migration contract spans [`packages/cron/README.md`](../packages/cron/README.md), [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md), [`docs/contracts/nestjs-parity-gaps.md`](./contracts/nestjs-parity-gaps.md), and [`book/intermediate/ch12-cron.md`](../book/intermediate/ch12-cron.md). `@fluojs/cron` supports `timezone`, not NestJS `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, or `initialDelay`; absolute-time `@Cron(Date)` / `@Cron(DateTime)` plans stay application-owned, as do disabled/category-specific schedules and threshold/recovery policy. Named interval/timeout decorators become `(ms, { name })`; resolve async schedule configuration before synchronous `CronModule.forRoot(...)`, use `global: true` explicitly when necessary, and do not expect NestJS category switches.

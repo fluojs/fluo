@@ -86,7 +86,7 @@ fluo의 `MicroservicesModule.forRoot(...)`와 `TcpMicroserviceTransport`를 사�
   imports: [
     MetricsModule.forRoot(),
     TerminusModule.forRoot({
-      indicators: [new MemoryHealthIndicator({ key: 'memory', rssThresholdBytes: Number.MAX_SAFE_INTEGER })],
+      indicators: [MemoryHealthIndicator.create({ key: 'memory', rssThresholdBytes: Number.MAX_SAFE_INTEGER })],
     }),
   ],
 })

@@ -58,8 +58,8 @@ import { MemoryHealthIndicator } from '@fluojs/terminus/node';
   imports: [
     TerminusModule.forRoot({
       indicators: [
-        new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
-        new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+        HttpHealthIndicator.create({ key: 'upstream-api', url: 'https://example.com/health' }),
+        MemoryHealthIndicator.create({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
       ],
     }),
   ],
@@ -76,10 +76,9 @@ The package provides several indicators out of the box:
 - `PrismaHealthIndicator` / `DrizzleHealthIndicator`
 - `RedisHealthIndicator` (from `@fluojs/terminus/redis`)
 - `HttpHealthIndicator`
-- `MemoryHealthIndicator` (root-exported for compatibility and also available from `@fluojs/terminus/node`)
-- `DiskHealthIndicator` (root-exported for compatibility and also available from `@fluojs/terminus/node`)
+- `MemoryHealthIndicator` / `DiskHealthIndicator` (from `@fluojs/terminus/node`)
 
-When migrating from `@nestjs/terminus`, keep ownership boundaries explicit: register custom fluo `HealthIndicator` instances in `indicators`, and use the matching `create*HealthIndicatorProvider()` only when the indicator must resolve its dependency from DI through `indicatorProviders`. Import Node memory/disk helpers from `@fluojs/terminus/node` and Redis helpers from `@fluojs/terminus/redis`; Prisma, Drizzle, and HTTP indicators are root exports. The dedicated Redis subpath keeps its optional peer out of the root import boundary, while Node helpers remain root-exported only for compatibility.
+When migrating from `@nestjs/terminus`, keep ownership boundaries explicit: create standalone indicators with `XHealthIndicator.create(options)` and register them in `indicators`. Use the DI provider factories only for Prisma, Drizzle, or Redis dependencies resolved through `indicatorProviders`. Import Node memory/disk helpers from `@fluojs/terminus/node` and Redis helpers from `@fluojs/terminus/redis`; Prisma, Drizzle, and HTTP indicators are root exports. The Redis and Node subpaths keep their dependency boundaries explicit.
 
 ### DI-Backed Indicators
 
@@ -191,12 +190,12 @@ Every indicator participates in both `/health` and `/ready` by default. Set `rea
 ```typescript
 TerminusModule.forRoot({
   indicators: [
-    new HttpHealthIndicator({
+    HttpHealthIndicator.create({
       key: 'search',
       readiness: false,
       url: 'https://search.example.com/health',
     }),
-    new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+    MemoryHealthIndicator.create({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
   ],
 });
 ```
@@ -273,18 +272,18 @@ Runtime-specific indicators are split by subpath. Use `@fluojs/terminus/node` fo
 
 - `runHealthCheck(...)`, `assertHealthCheck(...)`: Direct aggregation/testing helpers.
 - `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: DI tokens for registered indicators and provider tokens. `TerminusModule.forRoot(...)` exports both tokens so downstream modules can inspect the composed indicator/provider-token set without rebuilding Terminus internals.
-- Built-in indicators also expose `create*HealthIndicator()` and `create*HealthIndicatorProvider()` helpers. Provider helpers are intentional DI-composition exceptions for `indicatorProviders`, while application registration should still go through `TerminusModule.forRoot(...)`.
+- Built-in indicators expose `XHealthIndicator.create()` for standalone objects. Prisma, Drizzle, and Redis also expose DI provider helpers for `indicatorProviders`; application registration still goes through `TerminusModule.forRoot(...)`.
 
 ### `@fluojs/terminus/redis`
 
-- `RedisHealthIndicator`, `createRedisHealthIndicator()`, `createRedisHealthIndicatorProvider()`
+- `RedisHealthIndicator.create()`, `createRedisHealthIndicatorProvider()`
   - Redis-specific indicator helpers are exported from the dedicated subpath so the root package stays import-safe without the optional Redis peer installed.
   - The provider resolves the default `@fluojs/redis` client token by default, or a named token when `clientName` is supplied, and reuses Redis platform status semantics for readiness diagnostics.
 
 ### `@fluojs/terminus/node`
 
-- `MemoryHealthIndicator`, `DiskHealthIndicator`, `createMemoryHealthIndicator()`, `createDiskHealthIndicator()`, `createMemoryHealthIndicatorProvider()`, `createDiskHealthIndicatorProvider()`
-  - Node-specific indicator helpers remain root-exported for compatibility and are also exported from this dedicated subpath. Filesystem access for disk checks is lazy-loaded so importing the root package does not load Node filesystem modules at module initialization time.
+- `MemoryHealthIndicator.create()`, `DiskHealthIndicator.create()`
+  - Node-specific indicators are exported only from this dedicated subpath. Filesystem access for disk checks is lazy-loaded so importing the root package does not load Node filesystem modules at module initialization time.
 
 
 ### `HealthCheckError`

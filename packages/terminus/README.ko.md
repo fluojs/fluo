@@ -58,8 +58,8 @@ import { MemoryHealthIndicator } from '@fluojs/terminus/node';
   imports: [
     TerminusModule.forRoot({
       indicators: [
-        new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
-        new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+        HttpHealthIndicator.create({ key: 'upstream-api', url: 'https://example.com/health' }),
+        MemoryHealthIndicator.create({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
       ],
     }),
   ],
@@ -76,10 +76,9 @@ class AppModule {}
 - `PrismaHealthIndicator` / `DrizzleHealthIndicator`
 - `RedisHealthIndicator` (`@fluojs/terminus/redis`에서 제공)
 - `HttpHealthIndicator`
-- `MemoryHealthIndicator` (호환성을 위해 root에서도 export되며 `@fluojs/terminus/node`에서도 제공)
-- `DiskHealthIndicator` (호환성을 위해 root에서도 export되며 `@fluojs/terminus/node`에서도 제공)
+- `MemoryHealthIndicator` / `DiskHealthIndicator` (`@fluojs/terminus/node`에서 제공)
 
-`@nestjs/terminus`에서 마이그레이션할 때는 소유권 경계를 명시적으로 유지하세요. Custom fluo `HealthIndicator` instance는 `indicators`에 등록하고, indicator가 DI를 통해 dependency를 resolve해야 할 때만 해당 `create*HealthIndicatorProvider()`를 `indicatorProviders`에 사용합니다. Node memory/disk helper는 `@fluojs/terminus/node`에서, Redis helper는 `@fluojs/terminus/redis`에서 import하세요. Prisma, Drizzle, HTTP indicator는 root export입니다. 전용 Redis subpath는 optional peer를 root import 경계 밖에 유지하며, Node helper가 root에서도 export되는 것은 호환성을 위한 것입니다.
+`@nestjs/terminus`에서 마이그레이션할 때는 소유권 경계를 명시적으로 유지하세요. 독립 indicator는 `XHealthIndicator.create(options)`로 만들고 `indicators`에 등록합니다. DI를 통해 Prisma, Drizzle, Redis dependency를 resolve해야 할 때만 provider factory를 `indicatorProviders`에 사용합니다. Node memory/disk helper는 `@fluojs/terminus/node`에서, Redis helper는 `@fluojs/terminus/redis`에서 import하세요. Prisma, Drizzle, HTTP indicator는 root export입니다. Redis와 Node subpath는 dependency 경계를 명시적으로 유지합니다.
 
 ### DI 기반 인디케이터
 
@@ -191,12 +190,12 @@ TerminusModule.forRoot({
 ```typescript
 TerminusModule.forRoot({
   indicators: [
-    new HttpHealthIndicator({
+    HttpHealthIndicator.create({
       key: 'search',
       readiness: false,
       url: 'https://search.example.com/health',
     }),
-    new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+    MemoryHealthIndicator.create({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
   ],
 });
 ```
@@ -273,18 +272,18 @@ Runtime-specific indicator는 subpath별로 분리되어 있습니다. Node.js m
 
 - `runHealthCheck(...)`, `assertHealthCheck(...)`: 직접 aggregation/testing helper입니다.
 - `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: 등록된 indicator와 provider token을 위한 DI token입니다. `TerminusModule.forRoot(...)`는 두 token을 모두 export하므로 downstream module은 Terminus 내부를 재구성하지 않고도 구성된 indicator/provider-token set을 확인할 수 있습니다.
-- Built-in indicator는 `create*HealthIndicator()` 및 `create*HealthIndicatorProvider()` helper도 노출합니다. Provider helper는 `indicatorProviders`를 위한 의도적인 DI composition 예외이며, 애플리케이션 등록은 계속 `TerminusModule.forRoot(...)`를 사용해야 합니다.
+- Built-in indicator는 독립 객체에 `XHealthIndicator.create()`를 노출합니다. Prisma, Drizzle, Redis는 `indicatorProviders`용 DI provider helper도 노출하며, 애플리케이션 등록은 계속 `TerminusModule.forRoot(...)`를 사용해야 합니다.
 
 ### `@fluojs/terminus/redis`
 
-- `RedisHealthIndicator`, `createRedisHealthIndicator()`, `createRedisHealthIndicatorProvider()`
+- `RedisHealthIndicator.create()`, `createRedisHealthIndicatorProvider()`
   - Redis 전용 인디케이터 헬퍼는 선택적 Redis 피어가 설치되지 않은 환경에서도 루트 패키지 import가 안전하도록 전용 subpath에서 export됩니다.
   - Provider는 기본적으로 default `@fluojs/redis` client token을 resolve하고, `clientName`이 있으면 named token을 resolve하며, Redis platform status semantics를 readiness 진단에 재사용합니다.
 
 ### `@fluojs/terminus/node`
 
-- `MemoryHealthIndicator`, `DiskHealthIndicator`, `createMemoryHealthIndicator()`, `createDiskHealthIndicator()`, `createMemoryHealthIndicatorProvider()`, `createDiskHealthIndicatorProvider()`
-  - Node 전용 indicator helper는 호환성을 위해 root에서도 계속 export되며 이 전용 subpath에서도 export됩니다. Disk check의 filesystem access는 lazy-load되므로 root package import 시점에는 Node filesystem module을 load하지 않습니다.
+- `MemoryHealthIndicator.create()`, `DiskHealthIndicator.create()`
+  - Node 전용 indicator는 이 전용 subpath에서만 export됩니다. Disk check의 filesystem access는 lazy-load되므로 root package import 시점에는 Node filesystem module을 load하지 않습니다.
 
 
 ### `HealthCheckError`

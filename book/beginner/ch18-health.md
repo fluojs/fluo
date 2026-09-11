@@ -91,7 +91,7 @@ import { MemoryHealthIndicator } from '@fluojs/terminus/node';
 @Module({
   imports: [
     TerminusModule.forRoot({
-      indicators: [new MemoryHealthIndicator({ key: 'memory', rssThresholdBytes: 150 * 1024 * 1024 })],
+      indicators: [MemoryHealthIndicator.create({ key: 'memory', rssThresholdBytes: 150 * 1024 * 1024 })],
     }),
   ],
 })
@@ -162,12 +162,12 @@ Terminus makes that distinction explicit with an indicator's `readiness` setting
 ```typescript
 TerminusModule.forRoot({
   indicators: [
-    new HttpHealthIndicator({
+    HttpHealthIndicator.create({
       key: 'search',
       readiness: false,
       url: 'https://search.example.com/health',
     }),
-    new MemoryHealthIndicator({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
+    MemoryHealthIndicator.create({ key: 'memory', heapUsedThresholdRatio: 0.9 }),
   ],
 });
 ```

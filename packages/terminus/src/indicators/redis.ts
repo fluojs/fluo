@@ -99,16 +99,6 @@ function createRedisLifecycleUpDetails(options: RedisHealthIndicatorOptions): Re
 }
 
 /**
- * Create a Redis health indicator.
- *
- * @param options Optional Redis client, named-client hint, ping callback, timeout, and key override.
- * @returns A health indicator that checks Redis lifecycle status before `PING` when client state is available.
- */
-export function createRedisHealthIndicator(options: RedisHealthIndicatorOptions = {}): HealthIndicator {
-  return new RedisHealthIndicator(options);
-}
-
-/**
  * Create a provider that resolves a Redis client from DI and wraps it as an indicator.
  *
  * The provider resolves `getRedisClientToken(options.clientName)`, preserving the
@@ -128,7 +118,7 @@ export function createRedisHealthIndicatorProvider(options: Omit<RedisHealthIndi
   return {
     inject: [getRedisClientToken(options.clientName)],
     provide: indicatorProviderToken,
-    useFactory: (client: unknown) => new RedisHealthIndicator({ ...options, client: client as RedisClientLike }),
+    useFactory: (client: unknown) => RedisHealthIndicator.create({ ...options, client: client as RedisClientLike }),
   };
 }
 
@@ -137,6 +127,16 @@ export class RedisHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
   readonly readiness: boolean | undefined;
   private pendingProbeSettlement: Promise<void> | undefined;
+
+  /**
+   * Create a Redis health indicator.
+   *
+   * @param options Optional Redis client, named-client hint, ping callback, timeout, and key override.
+   * @returns A health indicator that checks Redis lifecycle status before `PING` when client state is available.
+   */
+  static create(options: RedisHealthIndicatorOptions = {}): RedisHealthIndicator {
+    return new RedisHealthIndicator(options);
+  }
 
   constructor(private readonly options: RedisHealthIndicatorOptions = {}) {
     this.key = options.key;

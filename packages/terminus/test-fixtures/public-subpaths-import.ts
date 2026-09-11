@@ -1,11 +1,8 @@
 import {
-  createMemoryHealthIndicator,
-  createMemoryHealthIndicatorProvider,
   MemoryHealthIndicator,
   type MemoryHealthIndicatorOptions,
 } from '@fluojs/terminus/node';
 import {
-  createRedisHealthIndicator,
   createRedisHealthIndicatorProvider,
   RedisHealthIndicator,
   type RedisHealthIndicatorOptions,
@@ -23,8 +20,7 @@ const redisOptions = {
 } satisfies RedisHealthIndicatorOptions;
 
 new MemoryHealthIndicator(memoryOptions);
-createMemoryHealthIndicator(memoryOptions);
-createMemoryHealthIndicatorProvider(memoryOptions);
+MemoryHealthIndicator.create(memoryOptions);
 new RedisHealthIndicator(redisOptions);
-createRedisHealthIndicator(redisOptions);
+RedisHealthIndicator.create(redisOptions);
 createRedisHealthIndicatorProvider(redisOptions);

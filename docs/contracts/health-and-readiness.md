@@ -23,7 +23,7 @@ Terminus composes dependency diagnostics and readiness conditions. It does not o
 | `@fluojs/terminus` | `TerminusModule`, `TerminusHealthService`, `HealthCheckError`, `runHealthCheck`, `assertHealthCheck`; types `HealthIndicator`, `HealthIndicatorResult`, `HealthIndicatorState`, `HealthCheckReport`, `HealthCheckExecutionOptions`, `TerminusModuleOptions` |
 | `@fluojs/terminus` | `HttpHealthIndicator`, `PrismaHealthIndicator`, `DrizzleHealthIndicator`, and their respective `create*HealthIndicator`, `create*HealthIndicatorProvider`, `*HealthIndicatorOptions` |
 | `@fluojs/terminus/node` | `MemoryHealthIndicator`, `DiskHealthIndicator`, and their factories, provider factories, and option types. Also root-exported for compatibility. |
-| `@fluojs/terminus/redis` | `RedisHealthIndicator`, `createRedisHealthIndicator`, `createRedisHealthIndicatorProvider`, `RedisHealthIndicatorOptions`. Redis helpers are not root exports. |
+| `@fluojs/terminus/redis` | `RedisHealthIndicator.create`, `createRedisHealthIndicatorProvider`, `RedisHealthIndicatorOptions`. Redis helpers are not root exports. |
 | `@fluojs/terminus` | `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: the indicator set and provider-token list exported by the module |
 | `@fluojs/runtime` | `ReadinessCheck`: `(ctx: RequestContext) => boolean \| Promise<boolean>`; `HealthModule` is the runtime route facade composed internally by Terminus. |
 | `@fluojs/core`, `@fluojs/http` | Application `Module`; types such as `Middleware`, `MiddlewareContext`, and `Next` for endpoint middleware |

@@ -40,7 +40,7 @@ describe('@fluojs/terminus subpath exports', () => {
         [
           '--input-type=module',
           '--eval',
-          "const [node, redis] = await Promise.all([import('@fluojs/terminus/node'), import('@fluojs/terminus/redis')]); const exports = [node.MemoryHealthIndicator, node.createMemoryHealthIndicator, node.createMemoryHealthIndicatorProvider, redis.RedisHealthIndicator, redis.createRedisHealthIndicator, redis.createRedisHealthIndicatorProvider]; if (!exports.every((value) => typeof value === 'function')) process.exitCode = 1;",
+          "const [node, redis] = await Promise.all([import('@fluojs/terminus/node'), import('@fluojs/terminus/redis')]); const exports = [node.MemoryHealthIndicator, node.MemoryHealthIndicator.create, redis.RedisHealthIndicator, redis.RedisHealthIndicator.create, redis.createRedisHealthIndicatorProvider]; if (!exports.every((value) => typeof value === 'function') || 'createMemoryHealthIndicator' in node || 'createMemoryHealthIndicatorProvider' in node || 'createRedisHealthIndicator' in redis) process.exitCode = 1;",
         ],
         { cwd: packageRoot },
       );

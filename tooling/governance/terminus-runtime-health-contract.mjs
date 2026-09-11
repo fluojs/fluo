@@ -105,7 +105,22 @@ function changedFilePatchFromGit(relativePath) {
 
 export function enforceTerminusRuntimeHealthContract(readText = read) {
   const runtimeSource = readText('packages/terminus/src/module.ts');
+  const runtimeHealthSource = readText('packages/runtime/src/health/health.ts');
+  const rootIndicatorsSource = readText('packages/terminus/src/indicators/index.ts');
+  const nodeIndicatorsSource = readText('packages/terminus/src/node.ts');
   enforceTerminusRuntimeSourceContract(runtimeSource, assertContract);
+  assertContract(
+    !runtimeHealthSource.includes('createHealthModule'),
+    'runtime health registration must remain owned by HealthModule.forRoot without a createHealthModule compatibility export.',
+  );
+  assertContract(
+    !rootIndicatorsSource.includes("'./memory.js'") && !rootIndicatorsSource.includes("'./disk.js'"),
+    'memory and disk indicators must remain outside the Terminus root export boundary.',
+  );
+  assertContract(
+    nodeIndicatorsSource.includes("'./indicators/memory.js'") && nodeIndicatorsSource.includes("'./indicators/disk.js'"),
+    'memory and disk indicators must remain available from the Terminus node subpath.',
+  );
 
   for (const path of contractDocuments) {
     assertContract(

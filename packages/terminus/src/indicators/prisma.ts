@@ -179,16 +179,6 @@ function toPrismaService(value: unknown): PrismaServiceLike | undefined {
 }
 
 /**
- * Create a Prisma health indicator.
- *
- * @param options Optional lifecycle-aware service facade, Prisma client, ping callback, timeout, and key override.
- * @returns A health indicator that checks Prisma lifecycle state before executing a lightweight round trip.
- */
-export function createPrismaHealthIndicator(options: PrismaHealthIndicatorOptions = {}): HealthIndicator {
-  return new PrismaHealthIndicator(options);
-}
-
-/**
  * Create a Terminus indicator provider collection entry that resolves Prisma from DI.
  *
  * The provider prefers `getPrismaServiceToken(options.name)` so `@fluojs/prisma`
@@ -224,7 +214,7 @@ export function createPrismaHealthIndicatorProvider(
       const resolvedClientIndex = serviceToken === undefined ? 0 : 1;
       const resolvedClient = clientToken === undefined ? undefined : resolvedDependencies[resolvedClientIndex];
 
-      return new PrismaHealthIndicator({
+      return PrismaHealthIndicator.create({
         ...options,
         client: resolvedClient as PrismaClientLike | undefined,
         service: toPrismaService(resolvedService),
@@ -238,6 +228,16 @@ export class PrismaHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
   readonly readiness: boolean | undefined;
   private pendingProbeSettlement: Promise<void> | undefined;
+
+  /**
+   * Create a Prisma health indicator.
+   *
+   * @param options Optional lifecycle-aware service facade, Prisma client, ping callback, timeout, and key override.
+   * @returns A health indicator that checks Prisma lifecycle state before executing a lightweight round trip.
+   */
+  static create(options: PrismaHealthIndicatorOptions = {}): PrismaHealthIndicator {
+    return new PrismaHealthIndicator(options);
+  }
 
   constructor(private readonly options: PrismaHealthIndicatorOptions = {}) {
     this.key = options.key;

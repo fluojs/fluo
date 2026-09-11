@@ -40,9 +40,9 @@ import {
 } from '@fluojs/http';
 import {
   type Application,
-  createHealthModule,
   defineModule,
   FluoFactory,
+  HealthModule,
 } from '@fluojs/runtime';
 import * as runtimeWeb from '@fluojs/runtime/web';
 import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
@@ -2201,7 +2201,7 @@ describe('@fluojs/platform-fastify', () => {
   });
 
   it('applies a global prefix to runtime-owned paths by default', async () => {
-    const HealthModule = createHealthModule();
+    const healthModule = HealthModule.forRoot();
 
     @Controller('/app')
     class AppController {
@@ -2214,7 +2214,7 @@ describe('@fluojs/platform-fastify', () => {
     class AppModule {}
     defineModule(AppModule, {
       controllers: [AppController],
-      imports: [HealthModule],
+      imports: [healthModule],
     });
 
     const app = await bootstrapFastifyApplication(AppModule, {
@@ -2244,7 +2244,7 @@ describe('@fluojs/platform-fastify', () => {
   });
 
   it('excludes configured paths from the global prefix', async () => {
-    const HealthModule = createHealthModule();
+    const healthModule = HealthModule.forRoot();
 
     @Controller('/app')
     class AppController {
@@ -2257,7 +2257,7 @@ describe('@fluojs/platform-fastify', () => {
     class AppModule {}
     defineModule(AppModule, {
       controllers: [AppController],
-      imports: [HealthModule],
+      imports: [healthModule],
     });
 
     const app = await bootstrapFastifyApplication(AppModule, {
