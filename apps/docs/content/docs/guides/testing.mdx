@@ -81,7 +81,8 @@ import { Test } from '@fluojs/testing';
 import { vi } from 'vitest';
 
 const module = await Test.createTestingModule({ rootModule: AppModule })
-  .overrideProvider(USER_REPOSITORY, {
+  .overrideProvider(USER_REPOSITORY)
+  .useValue({
     create: vi.fn().mockResolvedValue({ id: '1', name: 'Alice' }),
   })
   .compile();
@@ -89,7 +90,7 @@ const module = await Test.createTestingModule({ rootModule: AppModule })
 const service = await module.resolve(UserService);
 ```
 
-The builder also supports `overrideGuard(...)`, `overrideInterceptor(...)`, and `overrideFilter(...)` for route-pipeline tests that need to replace cross-cutting behavior before compilation.
+Every provider replacement uses `.overrideProvider(token).useValue(value)`, `.useClass(Type)`, `.useFactory(factory, inject?)`, or `.useExisting(otherToken)` before compilation.
 
 ### Preserve module identity
 

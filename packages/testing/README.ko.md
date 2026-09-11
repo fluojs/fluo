@@ -127,7 +127,7 @@ if (disposeFailed) {
 }
 ```
 
-Testing builder는 route-pipeline 테스트에서 cross-cutting behavior를 교체할 수 있도록 `overrideProviders([[token, value], ...])`, `overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`도 지원합니다. Guard와 interceptor override는 route가 같은 token을 `@UseGuards(...)` 또는 `@UseInterceptors(...)`로 참조할 때 request path에서도 안전하게 검증할 수 있습니다. Filter override는 컴파일된 module graph의 token을 교체하므로, 해당 filter가 runtime app 표면에 등록되는 경우 request-level coverage와 함께 사용하세요. 성공적으로 컴파일된 모든 `TestingModuleRef`를 보관하고 caller-owned `container`는 `finally`(suite setup은 `afterEach`)에서 dispose하여 통과, 실패, 조기 반환 테스트 모두 lifecycle resource를 해제하세요. 완료된 `container.dispose()` 호출은 idempotent합니다. Teardown 실패는 surface되며, in-flight assertion도 실패할 수 있다면 어느 하나를 suppress하거나 assertion failure를 대체하지 말고(예: `AggregateError`) 두 오류를 함께 보고하세요.
+각 override는 `overrideProvider(token)`으로 시작하고 `.useValue(value)`, `.useClass(Type)`, `.useFactory(factory, inject?)`, `.useExisting(otherToken)` 중 정확히 하나의 provider kind를 선택합니다. 성공적으로 컴파일된 모든 module을 보관하고 caller-owned `container`는 `finally`(suite setup은 `afterEach`)에서 dispose하여 통과, 실패, 조기 반환 테스트 모두 lifecycle resource를 해제하세요. 완료된 `container.dispose()` 호출은 idempotent합니다. Teardown 실패는 surface되며, in-flight assertion도 실패할 수 있다면 어느 하나를 suppress하거나 assertion failure를 대체하지 말고(예: `AggregateError`) 두 오류를 함께 보고하세요.
 
 `compile()`은 module에 선언했거나 override한 factory provider를 포함해 lifecycle hook이 있는 singleton provider에 대해 production module bootstrap과 같은 의미를 따릅니다. effective provider graph를 해석하고, testing module을 반환하기 전에 provider 순서대로 각 instance의 `onModuleInit()`을 실행한 뒤 `onApplicationBootstrap()`을 실행합니다. Builder는 반환 시점까지 내부에서 생성한 container를 소유합니다. Override 적용, lifecycle hook 실행, resolved singleton 동기화가 실패하면 reject하기 전에 container를 dispose합니다. Cleanup이 성공하면 원래 compile 실패를 그대로 보존하고, cleanup도 실패하면 원래 실패와 cleanup 실패를 `AggregateError`로 함께 보고합니다. 성공한 `TestingModuleRef`의 동작은 바뀌지 않으며 호출자는 unconditional `finally` 또는 `afterEach` cleanup을 통해 `module.container.dispose()`의 소유권을 계속 가집니다. `get()`은 synchronous singleton 및 multi-provider 경로에서도 DI ownership 의미를 보존하므로, 반복 sync read는 같은 singleton contribution을 재사용하고 container가 해당 instance를 계속 정리할 수 있습니다.
 
@@ -179,7 +179,7 @@ const response = await app.request({
 }).send();
 ```
 
-`cookies`는 `FrameworkRequest.cookies`에 직접 할당됩니다. `Cookie` header를 parse하거나 adapter별 cookie 의미를 도입하지 않습니다. `TestingModuleRef.dispatch(...)`도 같은 정규화된 cookie record를 받습니다.
+`cookies`는 `FrameworkRequest.cookies`에 직접 할당됩니다. `Cookie` header를 parse하거나 adapter별 cookie 의미를 도입하지 않습니다. Raw dispatcher contract에는 `makeRequest(...)`에 같은 정규화된 cookie record를 전달하세요.
 
 `Test.createApp(...)`은 runtime HTTP bootstrap과 같은 application bootstrap option을 받습니다. 여기에는 `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `conditionalRequest`, `errorRepresentation`, diagnostics option이 포함됩니다. 따라서 application test는 같은 virtual request pipeline으로 canonical JSON, negotiated HTML, conditional `304`/`412`, `HEAD`, 406, provider fallback을 검증할 수 있습니다. 테스트 헬퍼는 request-context middleware를 앞에 추가하되, 호출자가 넘긴 middleware를 같은 app middleware chain 안에 보존합니다.
 
@@ -241,7 +241,7 @@ surface를 통해 abort하고, cancellation 이후 provider result와 canonical 
 
 1. **Unit**: `src/**` 아래 service, controller, helper, failure branch 가까이에 `*.test.ts` 파일을 둡니다. 클래스를 직접 구성하고 명시적 fake를 넘기거나, typed mock이 설정을 읽기 쉽게 만들 때 `@fluojs/testing/mock` 헬퍼를 사용합니다.
 2. **Slice/module integration**: DI wiring과 provider override coverage에는 `Test.createTestingModule({ rootModule })` 기반 `*.slice.test.ts` 파일을 추가합니다.
-3. **HTTP e2e-style**: `test/app.e2e.test.ts` 같은 app-level 테스트는 `Test.createApp({ rootModule })`와 기본 route assertion helper인 `app.request(...).send()`로 virtual request pipeline을 검증합니다. 더 낮은 수준의 dispatch contract 자체가 테스트 대상일 때만 `app.dispatch(...)`를 사용합니다.
+3. **HTTP e2e-style**: `test/app.e2e.test.ts` 같은 app-level 테스트는 `Test.createApp({ rootModule })`와 route assertion helper인 `app.request(...).send()`로 virtual request pipeline을 검증합니다. Raw dispatcher test는 lower-level boundary 자체가 대상인 framework-internal, runtime, adapter, compatibility contract에만 둡니다.
 4. **Platform/conformance**: harness subpath는 일반 애플리케이션 기능 coverage가 아니라 adapter/runtime package contract에만 사용합니다.
 
 ```txt

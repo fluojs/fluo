@@ -36,13 +36,23 @@ export interface TestingModuleRef extends BootstrapResult {
 }
 
 /**
+ * Factory shape accepted by provider overrides.
+ *
+ * Its method signature permits typed injected parameters under
+ * `strictFunctionTypes` while injection tokens remain explicit.
+ */
+export type OverrideFactory<T> = {
+  create(...args: unknown[]): MaybePromise<T>;
+}['create'];
+
+/**
  * Fluent override builder returned by `overrideProvider(token)`.
  */
 export interface OverrideProviderBuilder<T> {
   useValue(value: T): TestingModuleBuilder;
   useClass(cls: ClassType<T>): TestingModuleBuilder;
   useFactory(
-    factory: (...args: unknown[]) => MaybePromise<T>,
+    factory: OverrideFactory<T>,
     inject?: Array<Token | ForwardRefToken | OptionalInjectToken>,
   ): TestingModuleBuilder;
   useExisting(token: Token<T>): TestingModuleBuilder;

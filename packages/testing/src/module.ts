@@ -562,7 +562,7 @@ class DefaultOverrideProviderBuilder<T> implements OverrideProviderBuilder<T> {
   }
 
   useFactory(
-    factory: (...args: unknown[]) => MaybePromise<T>,
+    factory: { create(...args: unknown[]): MaybePromise<T> }['create'],
     inject?: Array<Token | ForwardRefToken | OptionalInjectToken>,
   ): TestingModuleBuilder {
     this.builder.addOverride({ provide: this.token, useFactory: factory, inject });

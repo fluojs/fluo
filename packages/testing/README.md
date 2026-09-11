@@ -84,7 +84,8 @@ import { Test } from '@fluojs/testing';
 import { vi } from 'vitest';
 
 const module = await Test.createTestingModule({ rootModule: AppModule })
-  .overrideProvider(USER_REPOSITORY, {
+  .overrideProvider(USER_REPOSITORY)
+  .useValue({
     create: vi.fn().mockResolvedValue({ id: '1', name: 'Alice' }),
   })
   .compile();
@@ -124,7 +125,7 @@ if (disposeFailed) {
 }
 ```
 
-The testing builder also supports `overrideProviders([[token, value], ...])`, `overrideGuard(...)`, `overrideInterceptor(...)`, and `overrideFilter(...)` for route-pipeline tests that need to replace cross-cutting behavior. Guard and interceptor overrides are request-path safe when the route references the same token via `@UseGuards(...)` or `@UseInterceptors(...)`; filter overrides replace the token in the compiled module graph and should be paired with request-level coverage where that filter is registered in the runtime app surface. Retain every successfully compiled `TestingModuleRef` and dispose its caller-owned `container` from `finally` (or `afterEach` for suite setup) so passing, failing, and early-returning tests all release lifecycle resources. A completed `container.dispose()` is idempotent. Teardown failures surface; when an in-flight assertion can also fail, report both errors (for example with `AggregateError`) rather than suppressing or replacing the assertion failure.
+Each override starts with `overrideProvider(token)` and chooses exactly one provider kind: `.useValue(value)`, `.useClass(Type)`, `.useFactory(factory, inject?)`, or `.useExisting(otherToken)`. Retain every successfully compiled module and dispose its caller-owned `container` from `finally` (or `afterEach` for suite setup) so passing, failing, and early-returning tests all release lifecycle resources. A completed `container.dispose()` is idempotent. Teardown failures surface; when an in-flight assertion can also fail, report both errors (for example with `AggregateError`) rather than suppressing or replacing the assertion failure.
 
 `compile()` follows production module-bootstrap semantics for lifecycle-bearing singleton providers, including module-declared and overridden factory providers: it resolves the effective provider graph, runs `onModuleInit()` for each resolved instance, then runs `onApplicationBootstrap()` in the same provider order before the testing module is returned. The builder owns its internally created container until that return: if applying overrides, running lifecycle hooks, or synchronizing resolved singletons fails, it disposes the container before rejecting. Successful cleanup preserves the original compile failure; a cleanup failure is reported with the original failure in an `AggregateError`. Successful `TestingModuleRef` behavior is unchanged, and callers retain ownership of `module.container.dispose()` through an unconditional `finally` or `afterEach` cleanup. `get()` keeps DI ownership semantics for synchronous singleton and multi-provider paths, so repeated sync reads reuse the same singleton contributions and the container can still clean them up.
 
@@ -238,7 +239,7 @@ For application features, build tests from the smallest explicit dependency boun
 
 1. **Unit**: place `*.test.ts` files next to the service, controller, helper, or failure branch under `src/**`. Construct the class directly with explicit fakes, or use `@fluojs/testing/mock` helpers when typed mocks keep setup readable.
 2. **Slice/module integration**: add `*.slice.test.ts` files for DI wiring and provider override coverage with `Test.createTestingModule({ rootModule })`.
-3. **HTTP e2e-style**: place app-level tests such as `test/app.e2e.test.ts` around the virtual request pipeline with `Test.createApp({ rootModule })` and `app.request(...).send()` as the default route assertion helper. Use `app.dispatch(...)` only when a lower-level dispatch contract is the subject of the test.
+3. **HTTP e2e-style**: place app-level tests such as `test/app.e2e.test.ts` around the virtual request pipeline with `Test.createApp({ rootModule })` and `app.request(...).send()` as the route assertion helper. Keep raw dispatcher tests for framework-internal, runtime, adapter, or compatibility contracts where that lower-level boundary is the subject.
 4. **Platform/conformance**: use harness subpaths only for adapter/runtime package contracts, not ordinary application feature coverage.
 
 ```txt
