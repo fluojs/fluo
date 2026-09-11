@@ -56,7 +56,7 @@ import { JwtModule } from '@fluojs/jwt';
 export class AuthModule {}
 ```
 
-Access token을 발급할 때는 `DefaultJwtSigner`, 검증할 때는 `DefaultJwtVerifier`를 주입합니다.
+애플리케이션 코드에서 access token을 발급하거나 검증할 때는 `JwtService`를 주입합니다.
 
 ```ts
 import { JwtService } from '@fluojs/jwt';

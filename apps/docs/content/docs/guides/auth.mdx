@@ -56,7 +56,7 @@ import { JwtModule } from '@fluojs/jwt';
 export class AuthModule {}
 ```
 
-Inject `DefaultJwtSigner` when you need to issue access tokens and `DefaultJwtVerifier` when you need to verify them.
+Inject `JwtService` when application code needs to issue or verify access tokens.
 
 ```ts
 import { JwtService } from '@fluojs/jwt';
