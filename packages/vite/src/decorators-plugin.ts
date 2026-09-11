@@ -275,6 +275,7 @@ function createFluoDecoratorsPlugin(
  * Creates the Vite plugin used by generated fluo starter projects to transform
  * TypeScript application files that contain TC39 standard decorators.
  *
+ * @param options - Configuration for the decorator transform boundary, Babel configuration, and source maps.
  * @returns A Vite plugin that lazily loads Babel for eligible application `.ts` files.
  */
 export function fluoDecoratorsPlugin(options: FluoDecoratorsPluginOptions = {}): Plugin {
