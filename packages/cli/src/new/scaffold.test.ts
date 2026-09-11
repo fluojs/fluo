@@ -151,6 +151,11 @@ function createDefaultLocalScaffoldOptions(targetDirectory: string, repoRoot: st
   };
 }
 
+function expectGeneratedConfigRegistration(appFile: string): void {
+  expect(appFile).toContain("ConfigModule.forRoot({\n      envFilePaths: ['.env'],\n      processEnv: process.env,\n    })");
+  expect(appFile).not.toContain("envFile: '.env'");
+}
+
 function readLocalDependencyTarballPaths(targetDirectory: string): string[] {
   const packageJson = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8')) as {
     dependencies?: Record<string, string>;
@@ -1167,6 +1172,32 @@ describe('scaffoldBootstrapApp', () => {
       });
 
       assertGeneratedBrokerStarterIsImportAndInspectSafe(targetDirectory);
+    }
+  });
+
+  it('uses envFilePaths for every generated transport and mixed config registration', async () => {
+    const recipes = [
+      ...(['tcp', 'redis-streams', 'mqtt', 'grpc', 'nats', 'kafka', 'rabbitmq'] as const).map((transport) => ({ shape: 'microservice' as const, transport })),
+      { shape: 'mixed' as const, transport: 'tcp' as const },
+    ];
+
+    for (const { shape, transport } of recipes) {
+      const targetDirectory = mkdtempSync(join(tmpdir(), `fluo-scaffold-config-${shape}-${transport}-`));
+      temporaryDirectories.push(targetDirectory);
+      await scaffoldBootstrapApp({
+        packageManager: 'pnpm',
+        platform: shape === 'mixed' ? 'fastify' : 'none',
+        projectName: `starter-${shape}-${transport}`,
+        runtime: 'node',
+        shape,
+        skipInstall: true,
+        targetDirectory,
+        tooling: 'standard',
+        topology: { deferred: true, mode: 'single-package' },
+        transport,
+      });
+
+      expectGeneratedConfigRegistration(readFileSync(join(targetDirectory, 'src', 'app.ts'), 'utf8'));
     }
   });
 

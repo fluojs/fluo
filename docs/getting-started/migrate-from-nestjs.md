@@ -142,7 +142,7 @@ Studio reports are post-bootstrap artifacts: `fluo inspect` must complete applic
 | NestJS request transaction interceptor | Service `@Transaction()` from the persistence package, or explicit `requestTransaction(...)` at the controller/request boundary | `PrismaTransactionInterceptor` and `MongooseTransactionInterceptor` remain deprecated 1.x compatibility bridges for existing imports. New code should keep business transactions on services and use explicit `requestTransaction(...)` only when the entire request must share one boundary, forwarding `RequestContext.request.signal` when available. Drizzle has no compatibility interceptor export. |
 | `@HealthCheck()` controller method with `HealthCheckService.check([...])` | `TerminusModule.forRoot({ indicators, indicatorProviders, readinessChecks })` from `@fluojs/terminus` | Module-level registration is the primary API so runtime `/health` and `/ready` routes include indicator and platform diagnostics consistently. Custom `HealthIndicator` instances belong in `indicators`; DI-backed built-ins belong in `indicatorProviders` through their `create*HealthIndicatorProvider()` factory. Runtime-owned routes do not adopt NestJS controller `@HealthCheck()` or `@UseGuards()` metadata, so apply protection at an application/adapter middleware, network-policy, or deployment boundary. |
 | NestJS Terminus memory/disk, Redis, Prisma, Drizzle, HTTP, or custom checks | `@fluojs/terminus/node`, `@fluojs/terminus/redis`, root built-ins, and `HealthIndicator` | Import Node memory/disk helpers from `@fluojs/terminus/node` and Redis helpers from `@fluojs/terminus/redis`; Prisma, Drizzle, and HTTP indicators are root exports. The Redis subpath preserves the optional-peer boundary, while Node helpers remain root-exported only for compatibility. Port custom checks by implementing `HealthIndicator` and registering the instance in `indicators`, or use the matching provider factory when its dependency comes from DI. |
-| NestJS Prometheus module registration or a shared `prom-client` registry | `MetricsModule.forRoot(...)`, `MetricsService`, and `Registry` from `@fluojs/metrics` | This is a fluo-native Prometheus integration, not a NestJS Dynamic Module compatibility layer. Configure final options synchronously before module composition. `GET /metrics` is the default scrape route, HTTP collectors are opt-in through `http`, and omitting `registry` creates an isolated registry per application bootstrap. Pass a `Registry` explicitly only when framework and application metrics intentionally share one scrape surface. |
+| NestJS Prometheus module registration or a shared `prom-client` registry | `MetricsModule.forRoot(...)`, `MetricsService`, and `METRICS_REGISTRY` from `@fluojs/metrics`; `Registry` from `@fluojs/metrics/integration` | This is a fluo-native Prometheus integration, not a NestJS Dynamic Module compatibility layer. Configure final options synchronously before module composition. `GET /metrics` is the default scrape route and HTTP collectors are opt-in through `http`. Each application bootstrap gets an isolated registry unless `FluoFactory.create(..., { providers: [{ provide: METRICS_REGISTRY, useValue: registry }] })` explicitly supplies a shared registry. |
 | `@nestjs/throttler` global throttler setup | `ThrottlerModule.forRoot(...)` plus explicit `@UseGuards(ThrottlerGuard)` from `@fluojs/throttler` / `@fluojs/http` | Module registration provides the policy and guard provider; route enforcement starts only where the guard is attached. |
 | `@WebSocketGateway()` with `@SubscribeMessage()` and parameter decorators | `@WebSocketGateway()` with `@OnMessage(event?)`, positional handler arguments, and optional `WebSocketRoomService` from `@fluojs/websockets` | fluo websocket handlers receive `(payload, socket, request, socketId)` directly. The stable `socketId` can be passed to `WebSocketRoomService`. There are no Nest-style `@MessageBody()`, `@ConnectedSocket()`, or `@SubscribeMessage()` parameter/decorator rewrites. |
 | NestJS Socket.IO gateway return values, gateway `path`, scoped providers, or `@WebSocketServer()` | `@fluojs/socket.io` plus `@fluojs/websockets` decorators with `@OnMessage(...)`, explicit acknowledgement callbacks, singleton gateway registration, and `@Inject(SOCKETIO_SERVER)` | Socket.IO handlers do not turn return values into implicit emits or ACK replies. fluo maps `@WebSocketGateway({ path: '/chat' })` to the Socket.IO namespace `/chat`, while the Engine.IO request path stays `/socket.io/`; do not carry over a NestJS Engine.IO `path` assumption. Register migrated gateways as singleton providers/controllers because request/transient gateways are warned and skipped. `serverBacked` is unsupported for Socket.IO gateways. Install/import the websockets companion for decorators and inject `SOCKETIO_SERVER` when migrating gateway-server access, multi-room emits, or volatile delivery. |
@@ -365,7 +365,7 @@ The runtime rejects subscription resolver results that are not `AsyncIterable`; 
 - Testing migrations must keep fluo's explicit `rootModule` assumption, authored module identity, request-level guard/interceptor/filter assertions, and metadata-free boundaries visible in tests. Do not port NestJS specs by assuming design metadata, implicit provider discovery, or a singleton application fixture owns cleanup for every request-path test.
 - NestJS Terminus controller-level `@HealthCheck()` handlers SHOULD be migrated to `TerminusModule.forRoot(...)` indicator and readiness registration. Direct `TerminusHealthService.check()` calls are available for tests or custom code, but they are not the primary endpoint registration API.
 - `@fluojs/terminus` does not create a separate process-only liveness route by default. Keep the default `GET /health` aggregated health route and `GET /ready` readiness gate, and define any narrower process probe at the application or deployment layer.
-- NestJS Prometheus migration is not an async Dynamic Module or implicit global-registry replacement. `MetricsModule.forRoot(...)` accepts final synchronous options only, so resolve environment-specific configuration before composing the application module. It creates a fresh `Registry` for each application bootstrap unless you pass `registry` explicitly; do not assume a NestJS or `prom-client` global registry is adopted. `GET /metrics` is enabled by default, `path: false` disables that scrape route, and built-in HTTP request collectors are installed only when `http: true` or an `http` options object is supplied.
+- NestJS Prometheus migration is not an async Dynamic Module or implicit global-registry replacement. `MetricsModule.forRoot(...)` accepts final synchronous options only, so resolve environment-specific configuration before composing the application module. It creates a fresh `Registry` for each application bootstrap unless `METRICS_REGISTRY` is supplied through `FluoFactory.create(..., { providers })`; import `Registry` from `@fluojs/metrics/integration` and do not assume a NestJS or `prom-client` global registry is adopted. The former module `registry` option is removed. `GET /metrics` is enabled by default, `path: false` disables that scrape route, and built-in HTTP request collectors are installed only when `http: true` or an `http` options object is supplied.
 - Throttler migration is not a global-module-for-global-enforcement replacement. `ThrottlerModule.forRoot(...)` registers defaults, while `ThrottlerGuard` must be activated with guard metadata on protected controllers or handlers.
 - `@fluojs/throttler` exposes one module default plus class/method `@Throttle({ ttl, limit })` overrides. Multi-window policies such as burst plus sustained limits require explicit HTTP middleware, a custom `ThrottlerStore`, or an application-owned guard wrapper.
 - `@nestjs/throttler` TTL values are milliseconds, while `@fluojs/throttler` `ttl` values are seconds. Convert the unit explicitly: `ttl: 60_000` in NestJS becomes `ttl: 60` in fluo. Copying the value directly changes a one-minute window into a 1,000-minute window.
@@ -472,12 +472,11 @@ All four helpers are exported from `@fluojs/validation`; `@fluojs/validation/map
 
 ### NestJS Config Registration and Bootstrap Migration
 
-Resolve asynchronous factories before the synchronous registration call, but keep their nested output intact. The example below uses `loadConfig(...)` for the documented deep-merge, explicit `processEnv`, and synchronous validation behavior, then registers that one validated snapshot and uses it for the HTTP adapter:
+Resolve asynchronous factories before the synchronous registration call, but keep their nested output intact. The example below uses `ConfigModule.load(...)` for the documented deep-merge, explicit `processEnv`, and synchronous validation behavior, then registers that one validated snapshot and uses it for the HTTP adapter:
 
 ```typescript
 import {
   ConfigModule,
-  loadConfig,
   type ConfigModuleOptions,
 } from '@fluojs/config';
 import { Module } from '@fluojs/core';
@@ -507,15 +506,16 @@ const ConfigSchema = z
 
 const namespacedDefaults = await loadNamespacedConfig();
 const configSources = {
+  envFilePaths: [],
   defaults: namespacedDefaults,
   processEnv: { PORT: process.env.PORT },
   schema: ConfigSchema,
 } satisfies ConfigModuleOptions;
-const validatedConfig = ConfigSchema.parse(loadConfig(configSources));
+const validatedConfig = ConfigModule.load(configSources) as z.infer<typeof ConfigSchema>;
 
 const moduleOptions = {
-  defaults: validatedConfig,
-  schema: ConfigSchema,
+  envFilePaths: [],
+  runtimeOverrides: validatedConfig,
   global: true,
 } satisfies ConfigModuleOptions;
 
@@ -530,7 +530,7 @@ const app = await FluoFactory.create(AppModule, { adapter });
 await app.listen();
 ```
 
-`loadConfig(...)` and `ConfigModule.forRoot(...)` do not scan ambient `process.env`; only the explicit snapshot participates in precedence. Plain nested objects from the async factory remain nested and deep-merge by key. The schema's output is the final snapshot, so injected consumers can read the same port with `ConfigService.get('http.port')`. The module is global by default, while `global: false` opts into module-local visibility.
+`ConfigModule.load(...)` and `ConfigModule.forRoot(...)` do not scan ambient `process.env`; only the explicit snapshot participates in precedence. Ordered `envFilePaths` apply from lowest to highest precedence; omission defaults to `.env`, while `[]` disables file loading. The preload validates once before adapter creation; its type assertion describes the schema output, not unvalidated input. Registration receives only that snapshot, without rereading files or reapplying input transforms. The same single `ConfigModule.forRoot(...)` registration exports `ConfigService` and `CONFIG_RELOADER`; standalone reloads use `ConfigReloadManager.create(...)`. Plain nested objects from the async factory remain nested and deep-merge by key. The schema's output is the final snapshot, so injected consumers can read the same port with `ConfigService.get('http.port')`. The module is global by default, while `global: false` opts into module-local visibility.
 
 NestJS `forRootAsync(...)` and `load` namespace factories have no direct registration equivalent. Await remote stores or secret managers at the application-owned bootstrap boundary before defining the final module graph, then pass their nested results to the synchronous loader or module options. An adapterless `FluoFactory.create(AppModule)` application shell and `FluoFactory.createApplicationContext(AppModule)` can resolve `ConfigService`; only HTTP `listen()` requires `FluoFactory.create(AppModule, { adapter })`. Preparing a shared validated snapshot before the final HTTP application avoids a second ambient environment read and keeps the adapter and injected config aligned.
 

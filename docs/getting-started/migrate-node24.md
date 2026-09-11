@@ -127,9 +127,9 @@ portable. Pass application-owned maps and explicitly opt out of env files on
 portable hosts:
 
 ```ts
-import { loadConfig } from '@fluojs/config';
+import { ConfigModule } from '@fluojs/config';
 
-const config = loadConfig({
+const config = ConfigModule.load({
   envFilePaths: [],
   defaults: { PORT: 3000 },
   processEnv: { PORT: '8080' },
@@ -138,9 +138,10 @@ const config = loadConfig({
 ```
 
 Config does not read ambient environment variables automatically. Supply a
-snapshot at the application boundary. `loadConfig({})` and
-`ConfigModule.forRoot()` still select the default `<cwd>/.env`; that is not an
-in-memory-only call. Explicit env files, default `.env` loading, and `watch: true`
+snapshot at the application boundary. Use ordered `envFilePaths` from lowest to
+highest precedence. Omitting `envFilePaths` defaults to `<cwd>/.env`, as in
+`ConfigModule.load({})` and `ConfigModule.forRoot()`; `envFilePaths: []` disables
+file loading explicitly. Explicit env files, default `.env` loading, and `watch: true`
 are Node-only features supported on `>=24.0.0 <27`.
 
 The existing lazy `process.getBuiltinModule(...)` capability boundary raises

@@ -49,7 +49,7 @@ examples/ops-metrics-terminus/
 ## recommended reading order
 
 1. `src/app.ts` — metrics + terminus registration, HTTP instrumentation, and scrape endpoint protection
-2. `src/ops/metrics-registry.ts` — shared Registry ownership passed into `MetricsModule.forRoot({ registry })`
+2. `src/ops/metrics-registry.ts` — shared Registry ownership supplied to `FluoFactory.create(..., { providers: opsMetricsBootstrapProviders })`
 3. `src/ops/ops-metrics.service.ts` — application-facing `MetricsService` custom counter registration and reuse
 4. `src/ops/ops.controller.ts` — route that mutates metrics state
 5. `src/app.test.ts` — `/health`, `/ready`, `/metrics`, and custom route verification through `createTestApp(...).request(...).send()`

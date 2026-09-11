@@ -3,24 +3,31 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import * as metrics from './index.js';
+import * as metricsIntegration from './integration.js';
+import {
+  MetricsService,
+} from './index.js';
 import {
   type MeterCounter,
   type MeterGauge,
   type MeterHistogram,
   type MeterProvider,
-  MetricsService,
   Registry,
-} from './index.js';
+} from './integration.js';
 
 describe('@fluojs/metrics public surface', () => {
   it('keeps the documented metrics barrel public while hiding package-only wiring details', () => {
     expect(metrics).toHaveProperty('MetricsModule');
     expect(metrics).toHaveProperty('METRICS_REGISTRY');
     expect(metrics).toHaveProperty('MetricsService');
-    expect(metrics).toHaveProperty('METER_PROVIDER');
-    expect(metrics).toHaveProperty('PrometheusMeterProvider');
-    expect(metrics).toHaveProperty('HttpMetricsMiddleware');
-    expect(metrics).toHaveProperty('Registry');
+    expect(metrics).not.toHaveProperty('METER_PROVIDER');
+    expect(metrics).not.toHaveProperty('PrometheusMeterProvider');
+    expect(metrics).not.toHaveProperty('HttpMetricsMiddleware');
+    expect(metrics).not.toHaveProperty('Registry');
+    expect(metricsIntegration).toHaveProperty('METER_PROVIDER');
+    expect(metricsIntegration).toHaveProperty('PrometheusMeterProvider');
+    expect(metricsIntegration).toHaveProperty('HttpMetricsMiddleware');
+    expect(metricsIntegration).toHaveProperty('Registry');
     expect(metrics).not.toHaveProperty('RuntimePlatformTelemetry');
     expect(metrics).not.toHaveProperty('createMetricsModule');
   });
@@ -39,6 +46,10 @@ describe('@fluojs/metrics public surface', () => {
       '.': {
         import: './dist/index.js',
         types: './dist/index.d.ts',
+      },
+      './integration': {
+        import: './dist/integration.js',
+        types: './dist/integration.d.ts',
       },
     });
     expect(packageJson.main).toBe('./dist/index.js');

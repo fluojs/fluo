@@ -56,7 +56,7 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```ts
 import { Inject } from '@fluojs/core';
 import { UnauthorizedException } from '@fluojs/http';
-import { DefaultJwtSigner } from '@fluojs/jwt';
+import { JwtService } from '@fluojs/jwt';
 import { AccountInputError } from '../accounts/account-input.js';
 import { AccountsService } from '../accounts/accounts.service.js';
 import { ACCESS_TOKEN_TTL_SECONDS } from './jwt-options.js';
@@ -68,11 +68,11 @@ export type LoginResult = {
   user: { id: string; displayName: string };
 };
 
-@Inject(AccountsService, DefaultJwtSigner)
+@Inject(AccountsService, JwtService)
 export class AuthService {
   constructor(
     private readonly accounts: AccountsService,
-    private readonly signer: DefaultJwtSigner,
+    private readonly jwt: JwtService,
   ) {}
 
   async login(input: { email: unknown; password: unknown }): Promise<LoginResult> {
@@ -88,7 +88,7 @@ export class AuthService {
     if (!account) {
       throw new UnauthorizedException('Invalid login credentials.');
     }
-    const accessToken = await this.signer.signAccessToken({
+    const accessToken = await this.jwt.sign({
       sub: account.id,
       authVersion: account.authVersion,
       scopes: ['posts:write'],
@@ -111,27 +111,27 @@ export class AuthService {
 
 ## 서명 검증 다음에 현재 계정을 확인하기
 
-서명·클레임·현재 계정 검증은 transport와 분리한 **`src/auth/blog-token-authenticator.ts` 전체**에 모은다. `authenticateToken(token)`은 검증된 `JwtPrincipal`을 반환한다. 서명·issuer·audience·만료는 같은 `DefaultJwtVerifier`와 `jwtOptions`를 쓰며, 현재 계정과 `authVersion` 확인도 이 경계를 통과한다. 만료·위조·정지는 Passport 인증 오류로, 설정·DB 장애는 원래 오류로 전파된다.
+서명·클레임·현재 계정 검증은 transport와 분리한 **`src/auth/blog-token-authenticator.ts` 전체**에 모은다. `authenticateToken(token)`은 검증된 `JwtPrincipal`을 반환한다. 서명·issuer·audience·만료는 같은 `JwtService`와 `jwtOptions`를 쓰며, 현재 계정과 `authVersion` 확인도 이 경계를 통과한다. 만료·위조·정지는 Passport 인증 오류로, 설정·DB 장애는 원래 오류로 전파된다.
 
 ```ts
 import { Inject } from '@fluojs/core';
 import {
-  DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError, type JwtPrincipal,
+  JwtService, JwtExpiredTokenError, JwtInvalidTokenError, type JwtPrincipal,
 } from '@fluojs/jwt';
 import { AuthenticationExpiredError, AuthenticationFailedError } from '@fluojs/passport';
 import { AccountsService } from '../accounts/accounts.service.js';
 
-@Inject(DefaultJwtVerifier, AccountsService)
+@Inject(JwtService, AccountsService)
 export class BlogTokenAuthenticator {
   constructor(
-    private readonly verifier: DefaultJwtVerifier,
+    private readonly jwt: JwtService,
     private readonly accounts: Pick<AccountsService, 'findActiveSubject'>,
   ) {}
 
   async authenticateToken(token: string): Promise<JwtPrincipal> {
     let principal: JwtPrincipal;
     try {
-      principal = await this.verifier.verifyAccessToken(token);
+      principal = await this.jwt.verify(token);
     } catch (error: unknown) {
       if (error instanceof JwtExpiredTokenError) {
         throw new AuthenticationExpiredError('Access token has expired.', { cause: error });
@@ -313,7 +313,7 @@ import { jwtOptions } from './jwt-options.js';
 export class AuthModule {}
 ```
 
-`src/app.ts`에는 `AuthModule`을 import해 기존 `AppModule.imports`에 추가한다. Prisma 등록은 10장에서 만든 `BlogDatabaseModule`의 단일 비동기 전역 등록을 유지한다. 이 모듈 안의 `BlogTokenAuthenticator`는 import한 `JwtModule`의 `DefaultJwtVerifier`와 `AccountsModule`의 서비스를 보고, `BlogJwtStrategy`는 이 인증기에 위임한다. `AuthService`도 같은 계정 모듈을 사용한다. 표준 class-level `@Inject`의 토큰 순서는 생성자 매개변수 순서와 같다. `experimentalDecorators`나 `emitDecoratorMetadata`를 켜서 누락된 등록을 보완하려 하지 않는다.
+`src/app.ts`에는 `AuthModule`을 import해 기존 `AppModule.imports`에 추가한다. Prisma 등록은 10장에서 만든 `BlogDatabaseModule`의 단일 비동기 전역 등록을 유지한다. 이 모듈 안의 `BlogTokenAuthenticator`는 import한 `JwtModule`의 `JwtService`와 `AccountsModule`의 서비스를 보고, `BlogJwtStrategy`는 이 인증기에 위임한다. `AuthService`도 같은 계정 모듈을 사용한다. 표준 class-level `@Inject`의 토큰 순서는 생성자 매개변수 순서와 같다. `experimentalDecorators`나 `emitDecoratorMetadata`를 켜서 누락된 등록을 보완하려 하지 않는다.
 
 ## 만료·위조·정지를 서로 다른 실패로 시험하기
 
@@ -383,7 +383,7 @@ pnpm exec vitest run src/auth/jwt-policy.test.ts
 
 ```ts
 import { describe, expect, it, vi } from 'vitest';
-import { DefaultJwtSigner, DefaultJwtVerifier, type JwtVerifierOptions } from '@fluojs/jwt';
+import { DefaultJwtSigner, DefaultJwtVerifier, JwtService, type JwtVerifierOptions } from '@fluojs/jwt';
 import { AuthenticationExpiredError, AuthenticationFailedError } from '@fluojs/passport';
 import { BlogTokenAuthenticator } from './blog-token-authenticator.js';
 
@@ -409,7 +409,8 @@ describe('shared blog token authentication', () => {
           : null;
       },
     };
-    const authenticator = new BlogTokenAuthenticator(verifier, accounts);
+    const jwt = new JwtService(options, signer, verifier);
+    const authenticator = new BlogTokenAuthenticator(jwt, accounts);
     try {
       const token = await signer.signAccessToken({
         sub: 'account-a', authVersion: 1, scopes: ['posts:write'],

@@ -21,14 +21,14 @@ Terminus composes dependency diagnostics and readiness conditions. It does not o
 | Public import path | APIs and purpose |
 | --- | --- |
 | `@fluojs/terminus` | `TerminusModule`, `TerminusHealthService`, `HealthCheckError`, `runHealthCheck`, `assertHealthCheck`; types `HealthIndicator`, `HealthIndicatorResult`, `HealthIndicatorState`, `HealthCheckReport`, `HealthCheckExecutionOptions`, `TerminusModuleOptions` |
-| `@fluojs/terminus` | `HttpHealthIndicator`, `PrismaHealthIndicator`, `DrizzleHealthIndicator`, and their respective `create*HealthIndicator`, `create*HealthIndicatorProvider`, `*HealthIndicatorOptions` |
-| `@fluojs/terminus/node` | `MemoryHealthIndicator`, `DiskHealthIndicator`, and their factories, provider factories, and option types. Also root-exported for compatibility. |
-| `@fluojs/terminus/redis` | `RedisHealthIndicator`, `createRedisHealthIndicator`, `createRedisHealthIndicatorProvider`, `RedisHealthIndicatorOptions`. Redis helpers are not root exports. |
+| `@fluojs/terminus` | `HttpHealthIndicator.create`, `PrismaHealthIndicator.create`, `DrizzleHealthIndicator.create`, their option types, and the retained DI helpers `createPrismaHealthIndicatorProvider` / `createDrizzleHealthIndicatorProvider` |
+| `@fluojs/terminus/node` | `MemoryHealthIndicator.create`, `DiskHealthIndicator.create`, and their option types. These Node-only indicators are not root exports. |
+| `@fluojs/terminus/redis` | `RedisHealthIndicator.create`, `createRedisHealthIndicatorProvider`, `RedisHealthIndicatorOptions`. Redis helpers are not root exports. |
 | `@fluojs/terminus` | `TERMINUS_HEALTH_INDICATORS`, `TERMINUS_INDICATOR_PROVIDER_TOKENS`: the indicator set and provider-token list exported by the module |
 | `@fluojs/runtime` | `ReadinessCheck`: `(ctx: RequestContext) => boolean \| Promise<boolean>`; `HealthModule` is the runtime route facade composed internally by Terminus. |
 | `@fluojs/core`, `@fluojs/http` | Application `Module`; types such as `Middleware`, `MiddlewareContext`, and `Next` for endpoint middleware |
 
-Do not import internal `TERMINUS_OPTIONS`, `createTerminusProviders`, or `createTerminusModule` as consumer APIs. Public Node listener helpers belong to `@fluojs/platform-nodejs`, not `@fluojs/runtime/node`.
+Do not import internal `TERMINUS_OPTIONS`, `createTerminusProviders`, or `createTerminusModule` as consumer APIs. Replace removed `createXHealthIndicator` helpers with `XHealthIndicator.create(options)`; use the retained DI provider helpers only for Prisma, Drizzle, or Redis dependency resolution. Do not import `MemoryHealthIndicator` or `DiskHealthIndicator` from the root, or `createHealthModule` from runtime. Public Node listener helpers belong to `@fluojs/platform-nodejs`, not `@fluojs/runtime/node`.
 
 ## Registration inputs and defaults
 
@@ -50,7 +50,7 @@ Expose DI-backed dependency modules directly through `TerminusModule.forRoot({ i
 
 ### Optional probes
 
-None of these probes is registered automatically. Select the class instance or provider factory you need. All option types and DI examples connect to the [package API](../../packages/terminus/README.md#public-api-overview); this table fixes the default behavior relevant to probe selection.
+None of these probes is registered automatically. Create a standalone probe with `XHealthIndicator.create(options)`, or select a retained DI provider factory only when its dependency must resolve through Terminus. All option types and DI examples connect to the [package API](../../packages/terminus/README.md#public-api-overview); this table fixes the default behavior relevant to probe selection.
 
 | Probe | Inputs, defaults, and results |
 | --- | --- |

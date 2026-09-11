@@ -56,52 +56,57 @@ import { JwtModule } from '@fluojs/jwt';
 export class AuthModule {}
 ```
 
-Access token을 발급할 때는 `DefaultJwtSigner`, 검증할 때는 `DefaultJwtVerifier`를 주입합니다.
+애플리케이션 코드에서 access token을 발급하거나 검증할 때는 `JwtService`를 주입합니다.
 
 ```ts
-import { DefaultJwtSigner, DefaultJwtVerifier } from '@fluojs/jwt';
+import { JwtService } from '@fluojs/jwt';
 
-const token = await signer.signAccessToken({
-  sub: 'user-123',
-  roles: ['admin'],
-  scopes: ['profile:read'],
-});
+const token = await jwt.sign(
+  { roles: ['admin'], scopes: ['profile:read'] },
+  { subject: 'user-123' },
+);
 
-const principal = await verifier.verifyAccessToken(token);
+const principal = await jwt.verify(token, { audience: 'my-app' });
 // principal.subject === 'user-123'
 // principal.scopes includes 'profile:read'
 ```
 
-`@fluojs/jwt`는 token의 `scope`와 `scopes` claim을 안정적인 `JwtPrincipal.scopes: string[]` 형태로 normalize하므로 authorization guard는 하나의 contract만 읽으면 됩니다.
+`JwtService.verify(token, policy?)`는 정규화 `JwtPrincipal`을 반환하므로 claims-only caller는 `(await jwt.verify(token)).claims`로 이전하세요. `@fluojs/jwt`는 token의 `scope`와 `scopes` claim을 안정적인 `JwtPrincipal.scopes: string[]` 형태로 normalize하므로 authorization guard는 하나의 contract만 읽으면 됩니다. `JwtService.decode()`는 비검증 inspection으로만 남습니다.
 
 ### Async configuration
 
 Key나 issuer 설정을 config provider에서 가져와야 한다면 `JwtModule.forRootAsync(...)`를 사용합니다.
 
 ```ts
-import { Module, type Token } from '@fluojs/core';
+import { Module } from '@fluojs/core';
 import { JwtModule } from '@fluojs/jwt';
 
-const JWT_SETTINGS = Symbol('jwt-settings');
+class JwtSettings {
+  readonly issuer = 'my-api';
+  readonly secret = 'your-secure-secret';
+}
+
+@Module({ global: true, providers: [JwtSettings], exports: [JwtSettings] })
+class JwtSettingsModule {}
 
 @Module({
   imports: [
+    JwtSettingsModule,
     JwtModule.forRootAsync({
-      inject: [JWT_SETTINGS],
-      useFactory: async (settings) => ({
-        accessTokenTtlSeconds: 900,
-        algorithms: ['HS256'],
-        audience: 'my-app',
-        issuer: settings.issuer,
-        secret: settings.secret,
-      }),
+      inject: [JwtSettings],
+      useFactory: async (settings: unknown) => {
+        if (!(settings instanceof JwtSettings)) {
+          throw new TypeError('JwtSettings dependency is required');
+        }
+        return {
+          accessTokenTtlSeconds: 900,
+          algorithms: ['HS256'],
+          audience: 'my-app',
+          issuer: settings.issuer,
+          secret: settings.secret,
+        };
+      },
     }),
-  ],
-  providers: [
-    {
-      provide: JWT_SETTINGS as Token<{ issuer: string; secret: string }>,
-      useValue: { issuer: 'my-api', secret: 'your-secure-secret' },
-    },
   ],
 })
 export class AuthModule {}

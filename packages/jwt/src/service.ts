@@ -1,7 +1,7 @@
 import { Inject } from '@fluojs/core';
 
 import { DefaultJwtSigner } from './signing/signer.js';
-import type { JwtClaims, JwtVerifierOptions } from './types.js';
+import type { JwtClaims, JwtPrincipal, JwtVerifierOptions, VerifyOptions } from './types.js';
 import { DefaultJwtVerifier, JWT_OPTIONS } from './signing/verifier.js';
 
 type DurationUnit = 's' | 'm' | 'h' | 'd';
@@ -98,55 +98,12 @@ export interface SignOptions {
 }
 
 /**
- * Per-call verification overrides accepted by {@link JwtService.verify}.
- *
- * These options are merged on top of the module-level verifier policy for the
- * current token check only.
- */
-export interface VerifyOptions {
-  /**
-   * Restricts which JWT algorithms are allowed for this verification call.
-   */
-  algorithms?: JwtVerifierOptions['algorithms'];
-  /**
-   * Expected `aud` claim value or values.
-   *
-   * Provide this when a token should only be accepted for a specific API or
-   * client boundary.
-   */
-  audience?: JwtVerifierOptions['audience'];
-  /**
-   * Permitted clock skew in seconds when evaluating `exp`, `nbf`, and age-based
-   * checks.
-   */
-  clockSkewSeconds?: number;
-  /**
-   * Expected `iss` claim value for this verification call.
-   */
-  issuer?: string;
-  /**
-   * Maximum acceptable token age in seconds, calculated from the `iat` claim.
-   *
-   * When set, tokens without a finite `iat` claim are rejected.
-   */
-  maxAge?: number;
-  /**
-   * Controls whether `exp` must be present on the token.
-   *
-   * Leave this enabled for access tokens unless the issuing system explicitly
-   * documents a different contract.
-   */
-  requireExp?: boolean;
-}
-
-/**
- * NestJS-style facade over Fluo's default JWT signer and verifier.
+ * Application-facing JWT service over Fluo's signer and verifier.
  *
  * @remarks
- * This class keeps the low-level JWT behavior from {@link DefaultJwtSigner} and
- * {@link DefaultJwtVerifier}, but exposes a smaller `sign` / `verify` /
- * `decode` surface for applications migrating from similar auth service
- * patterns.
+ * Register {@link JwtModule} and inject this service for application access-token
+ * issuance and verification. Low-level signer and verifier classes remain for
+ * framework integrations that own their own provider assembly.
  */
 @Inject(JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier)
 export class JwtService {
@@ -191,11 +148,11 @@ export class JwtService {
   }
 
   /**
-   * Verifies a JWT and returns the decoded claim bag typed as `T`.
+   * Verifies a JWT and returns its normalized principal.
    *
    * @example
    * ```ts
-   * const claims = await jwtService.verify<{ sub: string; scope?: string }>(token, {
+   * const principal = await jwtService.verify(token, {
    *   audience: 'admin-ui',
    *   issuer: 'my-api',
    *   requireExp: true,
@@ -203,18 +160,14 @@ export class JwtService {
    * ```
    *
    * @param token Compact JWT string to verify.
-   * @param options Optional per-call verifier overrides layered on top of module defaults.
-   * @returns The verified token claims cast to the requested generic type.
+   * @param options Optional per-call verification policy layered on top of module defaults.
+   * @returns The normalized principal and its verified claims.
    * @throws {JwtInvalidTokenError} When the token is malformed or violates issuer/audience/claim requirements.
    * @throws {JwtExpiredTokenError} When the token is expired or exceeds `maxAge`.
    * @throws {JwtConfigurationError} When the active verifier configuration cannot validate the token.
    */
-  async verify<T = unknown>(token: string, options?: VerifyOptions): Promise<T> {
-    const principal = options
-      ? await this.verifier.verifyAccessTokenWithOverrides(token, options)
-      : await this.verifier.verifyAccessToken(token);
-
-    return principal.claims as T;
+  async verify(token: string, options?: VerifyOptions): Promise<JwtPrincipal> {
+    return this.verifier.verifyAccessToken(token, options);
   }
 
   /**

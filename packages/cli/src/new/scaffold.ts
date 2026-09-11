@@ -738,7 +738,7 @@ import { GreetingModule } from './greeting/greeting.module${importSuffix}';
   global: true,
   imports: [
     ConfigModule.forRoot({
-      envFile: '.env',
+      envFilePaths: ['.env'],
       processEnv: ${processEnvValue},
     }),
     GreetingModule,
@@ -1148,7 +1148,7 @@ const writerClient: RedisStreamClientLike = {
 @Module({
   imports: [
     ConfigModule.forRoot({
-      envFile: '.env',
+      envFilePaths: ['.env'],
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
@@ -1177,7 +1177,7 @@ const namespace = process.env.MQTT_NAMESPACE ?? 'fluo.microservices';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      envFile: '.env',
+      envFilePaths: ['.env'],
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
@@ -1207,7 +1207,7 @@ const protoPath = resolve(process.cwd(), 'proto', 'math.proto');
 @Module({
   imports: [
     ConfigModule.forRoot({
-      envFile: '.env',
+      envFilePaths: ['.env'],
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
@@ -1345,7 +1345,7 @@ class LazyNatsTransport implements MicroserviceTransport {
 @Module({
   imports: [
     ConfigModule.forRoot({
-      envFile: '.env',
+      envFilePaths: ['.env'],
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
@@ -1506,7 +1506,7 @@ class LazyKafkaTransport implements MicroserviceTransport {
 @Module({
   imports: [
     ConfigModule.forRoot({
-      envFile: '.env',
+      envFilePaths: ['.env'],
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
@@ -1653,7 +1653,7 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
 @Module({
   imports: [
     ConfigModule.forRoot({
-      envFile: '.env',
+      envFilePaths: ['.env'],
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
@@ -1678,7 +1678,7 @@ const host = process.env.MICROSERVICE_HOST ?? '127.0.0.1';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      envFile: '.env',
+      envFilePaths: ['.env'],
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
@@ -1897,7 +1897,7 @@ const microserviceHost = process.env.MICROSERVICE_HOST ?? '127.0.0.1';
   global: true,
   imports: [
     ConfigModule.forRoot({
-      envFile: '.env',
+      envFilePaths: ['.env'],
       processEnv: process.env,
     }),
     GreetingModule,
@@ -2024,7 +2024,7 @@ describe('AppModule mixed starter', () => {
       global: true,
       imports: [
         ConfigModule.forRoot({
-          envFile: '.env',
+          envFilePaths: ['.env'],
           processEnv: process.env,
         }),
         GreetingModule,

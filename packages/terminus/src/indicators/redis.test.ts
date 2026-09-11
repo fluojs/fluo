@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { getRedisClientToken, type RedisStatusAdapterInput } from '@fluojs/redis';
 
 import type { HealthCheckError } from '../errors.js';
-import { createRedisHealthIndicator, createRedisHealthIndicatorProvider, RedisHealthIndicator } from './redis.js';
+import { createRedisHealthIndicatorProvider, RedisHealthIndicator } from './redis.js';
 
 const unavailableRedisStates = [
   {
@@ -67,7 +67,7 @@ describe('RedisHealthIndicator', () => {
 
   it('uses a custom ping callback without adding lifecycle metadata when client status is absent', async () => {
     const ping = vi.fn(async () => 'PONG');
-    const indicator = createRedisHealthIndicator({ ping });
+    const indicator = RedisHealthIndicator.create({ ping });
 
     await expect(indicator.check('redis')).resolves.toEqual({
       redis: {
@@ -80,7 +80,7 @@ describe('RedisHealthIndicator', () => {
   for (const state of unavailableRedisStates) {
     it(`maps Redis ${state.status} lifecycle readiness before pinging`, async () => {
       const ping = vi.fn(async () => 'PONG');
-      const indicator = createRedisHealthIndicator({
+      const indicator = RedisHealthIndicator.create({
         client: { ping, status: state.status },
       });
 
@@ -107,7 +107,7 @@ describe('RedisHealthIndicator', () => {
 
   it('rejects invalid timeoutMs before starting the Redis probe', async () => {
     const ping = vi.fn(async () => 'PONG');
-    const indicator = createRedisHealthIndicator({
+    const indicator = RedisHealthIndicator.create({
       client: { ping, status: 'ready' },
       timeoutMs: Number.NaN,
     });
@@ -127,7 +127,7 @@ describe('RedisHealthIndicator', () => {
 
   it('uses named Redis lifecycle metadata for named clients', async () => {
     const ping = vi.fn(async () => 'PONG');
-    const indicator = createRedisHealthIndicator({
+    const indicator = RedisHealthIndicator.create({
       client: { ping, status: 'ready' },
       clientName: 'cache',
       key: 'cache-redis',
@@ -148,7 +148,7 @@ describe('RedisHealthIndicator', () => {
   });
 
   it('throws HealthCheckError when ping path is unavailable', async () => {
-    const missingPing = createRedisHealthIndicator({ client: {} });
+    const missingPing = RedisHealthIndicator.create({ client: {} });
 
     await expect(missingPing.check('redis')).rejects.toMatchObject({
       causes: {
@@ -161,7 +161,7 @@ describe('RedisHealthIndicator', () => {
       name: 'HealthCheckError',
     } satisfies Partial<HealthCheckError>);
 
-    const failingPing = createRedisHealthIndicator({
+    const failingPing = RedisHealthIndicator.create({
       ping: vi.fn(async () => {
         throw new Error('redis timeout');
       }),

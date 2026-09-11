@@ -40,6 +40,23 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 
 [HTTP 의존성 보안 업데이트](./reference/dependency-security-update.ko.md)는 root 및 isolated benchmark resolution과 published Fastify/Express consumer graph를 구분하고, upstream advisory 9개와 application-owned 전이 lockfile 갱신 방법을 기록합니다.
 
+## Metrics Registry Ownership
+
+애플리케이션은 `MetricsModule.forRoot(...)`로 등록하고 `MetricsService`를 주입합니다.
+Registry 공유는 `FluoFactory.create(...)`의 `METRICS_REGISTRY` provider로만 설정하며,
+직접 middleware와 meter provider 및 `Registry`는 `@fluojs/metrics/integration`에서 가져옵니다.
+격리·공유와 collector 소유권은 [Metrics API 원본](../packages/metrics/README.ko.md) 및
+[관측성 아키텍처](./architecture/observability.ko.md)를 따르세요.
+
+## JWT Application API
+
+`JwtModule.forRoot(...)` 또는 `JwtModule.forRootAsync(...)`로 등록하고 `JwtService`를 주입하세요.
+`verify(token, policy?)`는 정규화된 `JwtPrincipal`을 반환하므로 claims-only 소비자는
+`claims` 필드를 읽습니다. 제거된 provider helper와 override method의 이전 방법은
+[JWT API 원본](../packages/jwt/README.ko.md)에, application과 integration 경계는
+[인증 아키텍처](./architecture/auth-and-jwt.ko.md)에 설명합니다.
+`decode`는 검증하지 않는 inspection으로 유지됩니다.
+
 ## Persistence After-Commit Work
 
 반환값 기반 rollback은 [공유 transaction owner 계약](./architecture/transactions.ko.md#반환값-기반-롤백)을 먼저 읽으세요. Prisma·Drizzle·Mongoose의 별도 `TransactionBoundaryOptions<T = unknown>.shouldRollback`은 소비자가 정의한 동기 predicate이며 전역 `Result` 형태를 만들지 않습니다. 명시적 루트 실패는 native rollback·cleanup 성공 뒤 같은 값을 반환합니다. 중첩 opt-in 실패는 원래 값을 반환하되 owner를 sticky rollback-only로 만들며, 루트도 자기 결과를 거부하지 않으면 첫 중첩 실패값을 `result: unknown`에 담은 `TransactionRollbackOnlyError`가 발생합니다. 미지원 fallback/legacy target은 callback 전에 `TransactionRollbackCapabilityError`로 거부하고 native 오류는 가리지 않습니다. rollback은 hook을 폐기하고 native callback retry는 새 owner를 사용합니다. 일반적인 잡힌 중첩 예외는 기존 commit/hook 동작을 유지하며 raw 외부 transaction·Redis `MULTI/EXEC`·savepoint·durability 확장은 지원하지 않습니다. 정확한 인자 위치와 소비자 예제는 각 패키지 README가 소유합니다.
@@ -309,9 +326,9 @@ Event-bus 결과형 발행의 소유자는 [패키지 README](../packages/event-
 
 Event-bus runtime compatibility에는 패키지 자체의 지원 계약으로 Node.js `>=24.0.0 <27`이 필요하다. Handler discovery는 normalized effective singleton registration을 읽으므로 duplicate loser를 발견하지 않고 factory-provider scope도 DI normalization을 따른다. `@OnEvent(...)`는 public instance 메서드만 받을 수 있으며, transport와 handler 실패는 log되는 fail-soft publish outcome으로 유지되지만 transport close 실패는 shutdown을 reject하여 runtime이 retry ownership을 유지한다.
 
-Config runtime-boundary discoverability는 `packages/config/README.ko.md`, governed package-surface docs, package folder-structure rule로 나뉜다. `@fluojs/config`는 package-wide Node engine을 선언하지 않으며 root import, `ConfigService`, 명시적 in-memory `loadConfig(...)` 입력은 `process.cwd()`, 기본 `.env`, Node filesystem/path/crypto builtin을 해석하지 않는다. Env-file, 기본 `.env`, watch 경로는 Node 전용 기능이며 `process.getBuiltinModule(...)`을 lazy하게 요구하고 사용할 수 없으면 remediation guidance와 함께 `CONFIG_RUNTIME_UNAVAILABLE`을 던진다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 이 root-import 계약을 기록하고, [`docs/reference/package-folder-structure.ko.md`](./reference/package-folder-structure.ko.md)는 runtime-specific Node builtin에 대한 root-entrypoint 제약을 기록한다.
+Config runtime-boundary discoverability는 `packages/config/README.ko.md`, governed package-surface docs, package folder-structure rule로 나뉜다. `@fluojs/config`는 package-wide Node engine을 선언하지 않으며 root import, `ConfigService`, 명시적 in-memory `ConfigModule.load({ envFilePaths: [], ... })` 입력은 `process.cwd()`, 기본 `.env`, Node filesystem/path/crypto builtin을 해석하지 않는다. Env-file, 기본 `.env`, watch 경로는 Node 전용 기능이며 `process.getBuiltinModule(...)`을 lazy하게 요구하고 사용할 수 없으면 remediation guidance와 함께 `CONFIG_RUNTIME_UNAVAILABLE`을 던진다. [`docs/reference/package-surface.ko.md`](./reference/package-surface.ko.md)는 이 root-import 계약을 기록하고, [`docs/reference/package-folder-structure.ko.md`](./reference/package-folder-structure.ko.md)는 runtime-specific Node builtin에 대한 root-entrypoint 제약을 기록한다.
 
-`@nestjs/config` migration-boundary discoverability는 `packages/config/README.ko.md`, [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`book/beginner/ch11-config.ko.md`](../book/beginner/ch11-config.ko.md)로 나뉜다. `ConfigModule.forRoot(...)`는 동기 방식이며 명시적 `processEnv` snapshot과 동기 Standard Schema `schema`를 받고, `global: false`를 local visibility opt-out으로 두면서 기본적으로 `ConfigService`를 global로 노출한다. NestJS `forRootAsync(...)`와 `load` factory는 module registration 전에 application bootstrap boundary에서 resolve하되 nested result는 plain-object deep merge와 dot-path `ConfigService` access를 위해 그대로 유지한다. `FluoFactory.create(AppModule)`과 `FluoFactory.createApplicationContext(AppModule)`은 HTTP adapter 없이도 configuration을 bootstrap할 수 있고 명시적 adapter requirement는 `listen()`에만 적용된다. `port` 같은 adapter input과 injected config snapshot은 HTTP를 시작하는 `FluoFactory.create(AppModule, { adapter })` 전에 같은 validated source에서 가져와야 한다. `ConfigModule` 자체는 외부 secret Provider에서 값을 읽지 않으며, 그 값은 registration 전에 애플리케이션 entrypoint가 resolve한다. `ConfigService.get(key)`와 `getOrThrow(key)`는 key 하나만 받고 NestJS default-value 또는 options overload를 노출하지 않으므로, 기본값은 `defaults` 또는 `schema` output이 소유하거나 call-site `??` fallback으로 명시적으로 표현한다.
+`@nestjs/config` migration-boundary discoverability는 `packages/config/README.ko.md`, [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`book/beginner/ch11-config.ko.md`](../book/beginner/ch11-config.ko.md)로 나뉜다. `ConfigModule.forRoot(...)`는 동기 방식이며 명시적 `processEnv` snapshot과 동기 Standard Schema `schema`를 받고, `global: false`를 local visibility opt-out으로 두면서 하나의 등록에서 `ConfigService`와 `CONFIG_RELOADER`를 기본적으로 global로 노출한다. Standalone reload에는 `ConfigReloadManager.create(...)`를 사용한다. 순서형 `envFilePaths`는 낮은 우선순위에서 높은 우선순위 순으로 적용되고, 생략하면 기본 `.env`를 사용하며 `[]`는 파일 로드를 비활성화한다. NestJS `forRootAsync(...)`와 `load` factory는 module registration 전에 application bootstrap boundary에서 resolve하되 nested result는 plain-object deep merge와 dot-path `ConfigService` access를 위해 그대로 유지한다. `FluoFactory.create(AppModule)`과 `FluoFactory.createApplicationContext(AppModule)`은 HTTP adapter 없이도 configuration을 bootstrap할 수 있고 명시적 adapter requirement는 `listen()`에만 적용된다. `port` 같은 adapter input과 injected config snapshot은 HTTP를 시작하는 `FluoFactory.create(AppModule, { adapter })` 전에 같은 validated source에서 가져와야 한다. `ConfigModule` 자체는 외부 secret Provider에서 값을 읽지 않으며, 그 값은 registration 전에 애플리케이션 entrypoint가 resolve한다. `ConfigService.get(key)`와 `getOrThrow(key)`는 key 하나만 받고 NestJS default-value 또는 options overload를 노출하지 않으므로, 기본값은 `defaults` 또는 `schema` output이 소유하거나 call-site `??` fallback으로 명시적으로 표현한다.
 
 Vite tooling discoverability는 `packages/vite/README.ko.md`, [`docs/reference/package-chooser.ko.md`](./reference/package-chooser.ko.md), [`docs/reference/toolchain-contract-matrix.ko.md`](./reference/toolchain-contract-matrix.ko.md)로 나뉜다. Node.js `>=24.0.0 <27` Vite 프로젝트가 TC39 표준 데코레이터가 포함된 TypeScript를 Babel의 `@babel/plugin-proposal-decorators` `{ version: '2023-11' }` transform 및 `@babel/preset-typescript`로 빌드해야 하고 fluo의 Vite 파일 경계 skip을 유지해야 할 때 `@fluojs/vite`를 사용한다. 생성된 non-Deno starter는 애플리케이션 파일용 `vite.config.ts`를 `@fluojs/vite`에 두고, 테스트 파일용 `vitest.config.ts`를 `@fluojs/testing/vitest`에 둔다. 따라서 Vite `>=6.2.0`과 `@babel/core`, `@babel/plugin-proposal-decorators`, `@babel/preset-typescript`에 대한 lazy Babel peer 진단은 애플리케이션 transform 경계에 남고, package import, plugin creation, 테스트 transform은 그 lazy-load 경계 밖에 남는다. 워크스페이스 suite는 Vite 8.2.2/Rolldown에서 실행되고, `packages/vite/src/vite8-rolldown.test.ts`는 `enforce: 'pre'` 순서를 고정하면서 field-decorator metadata를 빌드하고 실행한다.
 
@@ -499,6 +516,10 @@ Studio static-graph limit discoverability는 `packages/studio/README.ko.md`, [`b
 | `docs/getting-started/` | 일반적인 시작 경로에 대한 부트스트랩 및 설정 사실을 정리한다. |
 | `docs/reference/` | 조회 중심 표, 용어집, 패키지 매트릭스, 지원 현황 스냅샷을 제공한다. |
 
+## Terminus Health와 Readiness
+
+Dependency health에는 `@fluojs/terminus`의 `TerminusModule`을 import하고, 독립 probe는 `TerminusModule.forRoot({ indicators })`에서 `XHealthIndicator.create(options)`로 등록합니다. Memory와 disk probe는 `@fluojs/terminus/node`에서만 import합니다. Prisma, Drizzle, Redis DI provider factory는 Terminus가 `indicatorProviders`를 통해 해당 dependency를 resolve해야 할 때만 유지합니다. Runtime 소유 기본 endpoint에는 `HealthModule.forRoot(...)`를 사용합니다. Canonical response, readiness, timeout-settlement, ownership 계약은 [`docs/contracts/health-and-readiness.ko.md`](./contracts/health-and-readiness.ko.md)입니다.
+
 ## Cron Scheduling Migration
 
 Scheduling migration contract는 [`packages/cron/README.ko.md`](../packages/cron/README.ko.md), [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), [`docs/contracts/nestjs-parity-gaps.ko.md`](./contracts/nestjs-parity-gaps.ko.md), [`book/intermediate/ch12-cron.ko.md`](../book/intermediate/ch12-cron.ko.md)에 걸쳐 있습니다. `@fluojs/cron`은 `timezone`을 지원하지만 NestJS `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`은 지원하지 않습니다. Absolute-time `@Cron(Date)` / `@Cron(DateTime)` plan과 disabled/category-specific schedule, threshold/recovery policy는 application-owned로 유지합니다. Named interval/timeout decorator는 `(ms, { name })`로 바꾸고, async schedule configuration은 동기 `CronModule.forRoot(...)` 전에 해석하며, 필요하면 `global: true`를 명시하고 NestJS category switch를 기대하지 마세요.
@@ -531,7 +552,7 @@ Studio bridge discoverability는 [`packages/runtime/README.ko.md`](../packages/r
 | 공개 API 작성 기준과 문서화 기준 확인 | `docs/contracts/public-export-tsdoc-baseline.md` | `docs/contracts/platform-conformance-authoring-checklist.md` |
 | CLI inspect output mode와 artifact ownership 확인 | `docs/reference/toolchain-contract-matrix.ko.md` | `packages/cli/README.ko.md` 및 `docs/reference/package-surface.ko.md` |
 | 부트스트랩 경로나 시작 순서 사실 확인 | `docs/getting-started/quick-start.md` | `docs/architecture/lifecycle-and-shutdown.md` |
-| JWT `iat` 검증과 verifier 마이그레이션 의미론 | `docs/architecture/auth-and-jwt.ko.md` | `JwtService.verify(...)`의 검증된 claims는 `packages/jwt/README.ko.md`에서 확인합니다. `JwtPrincipal`에는 `DefaultJwtVerifier.verifyAccessToken(...)`을, 호출별 verifier options 보존에는 `verifyAccessTokenWithOverrides(...)`을 사용합니다. |
+| JWT `iat` 검증과 verifier 마이그레이션 의미론 | `docs/architecture/auth-and-jwt.ko.md` | `JwtService.verify(token, policy?)`의 정규화된 `JwtPrincipal`과 호출별 검증 options를 `policy`로 전달하는 방법은 `packages/jwt/README.ko.md`에서 확인합니다. |
 | NestJS throttler 마이그레이션 경계 | `docs/getting-started/migrate-from-nestjs.ko.md` | `packages/throttler/README.ko.md` 및 `book/beginner/ch16-throttler.ko.md` |
 | 사람용 학습 흐름이나 튜토리얼 자료 확인 | `book/README.md` | `book/` 아래 관련 챕터 |
 

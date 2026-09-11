@@ -14,6 +14,8 @@ import {
 import { FluoFactory, defineModule, PLATFORM_SHELL, type PlatformComponent } from '@fluojs/runtime';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
 import { describe, expect, it, vi } from 'vitest';
+import * as metricsIntegration from './integration.js';
+import * as metricsPublicApi from './index.js';
 import { METRICS_REGISTRY, MetricsModule } from './metrics-module.js';
 import { MetricsService } from './metrics-service.js';
 import { METER_PROVIDER } from './providers/meter-provider.js';
@@ -27,7 +29,6 @@ type Deferred<T> = {
   promise: Promise<T>;
   resolve(value: T): void;
 };
-
 const perfHooks = createRequire(import.meta.url)('node:perf_hooks');
 
 function createDeferred<T>(): Deferred<T> {
@@ -131,6 +132,22 @@ function createPlatformComponent({
 }
 
 describe('MetricsModule', () => {
+  it('keeps application registration APIs separate from low-level integration exports', () => {
+    // Given: the root package namespace that application code imports.
+
+    // When: the public metrics exports are inspected.
+
+    // Then: applications receive the module and service path, not integration-only APIs.
+    expect(metricsPublicApi).not.toHaveProperty('HttpMetricsMiddleware');
+    expect(metricsPublicApi).not.toHaveProperty('METER_PROVIDER');
+    expect(metricsPublicApi).not.toHaveProperty('PrometheusMeterProvider');
+    expect(metricsPublicApi).not.toHaveProperty('Registry');
+    expect(metricsIntegration).toHaveProperty('HttpMetricsMiddleware');
+    expect(metricsIntegration).toHaveProperty('METER_PROVIDER');
+    expect(metricsIntegration).toHaveProperty('PrometheusMeterProvider');
+    expect(metricsIntegration).toHaveProperty('Registry');
+  });
+
   it('can disable the scrape endpoint explicitly', async () => {
     class AppModule {}
 
@@ -455,12 +472,14 @@ describe('MetricsModule', () => {
 
     defineModule(AppModule, {
       imports: [
-        MetricsModule.forRoot({ registry: sharedRegistry, path: '/metrics-a' }),
-        MetricsModule.forRoot({ registry: sharedRegistry, path: '/metrics-b' }),
+        MetricsModule.forRoot({ path: '/metrics-a' }),
+        MetricsModule.forRoot({ path: '/metrics-b' }),
       ],
     });
 
-    const app = await FluoFactory.create(AppModule);
+    const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
 
     try {
       const response = createResponse();
@@ -491,10 +510,12 @@ describe('MetricsModule', () => {
     class FailedAppModule {}
 
     defineModule(FailedAppModule, {
-      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ path: false })],
     });
 
-    await expect(FluoFactory.create(FailedAppModule)).rejects.toThrow(
+    await expect(FluoFactory.create(FailedAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    })).rejects.toThrow(
       'A metric with the name process_cpu_seconds_total has already been registered.',
     );
 
@@ -508,10 +529,12 @@ describe('MetricsModule', () => {
     class CleanAppModule {}
 
     defineModule(CleanAppModule, {
-      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ path: false })],
     });
 
-    const app = await FluoFactory.create(CleanAppModule);
+    const app = await FluoFactory.create(CleanAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
 
     try {
       expect(sharedRegistry.getSingleMetric('process_cpu_user_seconds_total')).toBeDefined();
@@ -536,11 +559,13 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ path: false })],
     });
 
     try {
-      await expect(FluoFactory.create(AppModule)).rejects.toThrow(
+      await expect(FluoFactory.create(AppModule, {
+        providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+      })).rejects.toThrow(
         'A metric with the name nodejs_eventloop_lag_seconds has already been registered.',
       );
 
@@ -565,11 +590,13 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ path: false })],
     });
 
     try {
-      const app = await FluoFactory.create(AppModule);
+      const app = await FluoFactory.create(AppModule, {
+        providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+      });
 
       try {
         expect(sharedRegistry.getSingleMetric('process_open_fds')).toBe(applicationCollector);
@@ -597,11 +624,13 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ path: false })],
     });
 
     try {
-      const app = await FluoFactory.create(AppModule);
+      const app = await FluoFactory.create(AppModule, {
+        providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+      });
 
       try {
         expect(sharedRegistry.getSingleMetric('nodejs_active_handles')).toBe(applicationCollector);
@@ -629,11 +658,13 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ path: false })],
     });
 
     try {
-      const app = await FluoFactory.create(AppModule);
+      const app = await FluoFactory.create(AppModule, {
+        providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+      });
 
       try {
         expect(sharedRegistry.getSingleMetric('nodejs_active_requests')).toBe(applicationCollector);
@@ -661,11 +692,13 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ path: false })],
     });
 
     try {
-      await expect(FluoFactory.create(AppModule)).rejects.toThrow(
+      await expect(FluoFactory.create(AppModule, {
+        providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+      })).rejects.toThrow(
         'A metric with the name process_open_fds has already been registered.',
       );
     } finally {
@@ -1025,10 +1058,11 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
 
     const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
       platform: { components: [component] },
     });
 
@@ -1052,19 +1086,23 @@ describe('MetricsModule', () => {
     class SecondAppModule {}
 
     defineModule(FirstAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
     defineModule(SecondAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
 
-    const firstApp = await FluoFactory.create(FirstAppModule);
+    const firstApp = await FluoFactory.create(FirstAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
 
     try {
       const firstWrapper = sharedRegistry.metrics;
       expect(firstWrapper).not.toBe(originalMetrics);
 
-      const secondApp = await FluoFactory.create(SecondAppModule);
+      const secondApp = await FluoFactory.create(SecondAppModule, {
+        providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+      });
 
       try {
         expect(sharedRegistry.metrics).toBe(firstWrapper);
@@ -1095,18 +1133,20 @@ describe('MetricsModule', () => {
     class SecondAppModule {}
 
     defineModule(FirstAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
     defineModule(SecondAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
 
     const firstApp = await FluoFactory.create(FirstAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
       platform: { components: [firstComponent] },
     });
 
     try {
       const secondApp = await FluoFactory.create(SecondAppModule, {
+        providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
         platform: { components: [secondComponent] },
       });
 
@@ -1154,18 +1194,20 @@ describe('MetricsModule', () => {
     class SecondAppModule {}
 
     defineModule(FirstAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
     defineModule(SecondAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
 
     const firstApp = await FluoFactory.create(FirstAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
       platform: { components: [firstComponent] },
     });
 
     try {
       const secondApp = await FluoFactory.create(SecondAppModule, {
+        providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
         platform: { components: [secondComponent] },
       });
 
@@ -1221,10 +1263,12 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
 
-    const app = await FluoFactory.create(AppModule);
+    const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
 
     try {
       const firstScrape = sharedRegistry.metrics();
@@ -1275,13 +1319,15 @@ describe('MetricsModule', () => {
     class SecondAppModule {}
 
     defineModule(FirstAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
     defineModule(SecondAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
 
-    const firstApp = await FluoFactory.create(FirstAppModule);
+    const firstApp = await FluoFactory.create(FirstAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
     const wrapper = sharedRegistry.metrics;
 
     try {
@@ -1294,7 +1340,9 @@ describe('MetricsModule', () => {
       expect(sharedRegistry.metrics).toBe(wrapper);
 
       const drainingScrape = sharedRegistry.metrics();
-      const secondApp = await FluoFactory.create(SecondAppModule);
+      const secondApp = await FluoFactory.create(SecondAppModule, {
+        providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+      });
 
       try {
         renderReleased.resolve();
@@ -1351,10 +1399,11 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
 
     const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
       platform: {
         components: [createPlatformComponent({ id: 'cache.draining', kind: 'cache' })],
       },
@@ -1461,10 +1510,11 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
 
     const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
       platform: { components: [component] },
     });
 
@@ -1511,16 +1561,17 @@ describe('MetricsModule', () => {
     class RebootedAppModule {}
 
     defineModule(FirstAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
     defineModule(SecondAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
     defineModule(RebootedAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
     });
 
     const firstApp = await FluoFactory.create(FirstAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
       platform: {
         components: [createPlatformComponent({ id: 'cache.closed', kind: 'cache' })],
       },
@@ -1528,6 +1579,7 @@ describe('MetricsModule', () => {
 
     try {
       const secondApp = await FluoFactory.create(SecondAppModule, {
+        providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
         platform: {
           components: [createPlatformComponent({ id: 'queue.active', kind: 'queue' })],
         },
@@ -1553,6 +1605,7 @@ describe('MetricsModule', () => {
         expect(clearedMetrics).not.toContain('fluo_metrics_registry_mode{');
 
         const rebootedApp = await FluoFactory.create(RebootedAppModule, {
+          providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
           platform: {
             components: [createPlatformComponent({ id: 'worker.rebooted', kind: 'worker' })],
           },
@@ -1586,18 +1639,18 @@ describe('MetricsModule', () => {
           defaultMetrics: false,
           http: { durationHistogramBuckets: [0.001, 0.002] },
           path: '/metrics-a',
-          registry: sharedRegistry,
         }),
         MetricsModule.forRoot({
           defaultMetrics: false,
           http: { durationHistogramBuckets: [0.001, 0.002] },
           path: '/metrics-b',
-          registry: sharedRegistry,
         }),
       ],
     });
 
-    const app = await FluoFactory.create(AppModule);
+    const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
 
     const firstResponse = createResponse();
     await app.dispatch(createRequest('/metrics-a'), firstResponse);
@@ -1621,10 +1674,12 @@ describe('MetricsModule', () => {
     class FirstAppModule {}
 
     defineModule(FirstAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a', registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a' })],
     });
 
-    const firstApp = await FluoFactory.create(FirstAppModule);
+    const firstApp = await FluoFactory.create(FirstAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
     const requestsCounter = sharedRegistry.getSingleMetric('http_requests_total') as Counter<string> & { labelNames: string[] };
     requestsCounter.labelNames = ['method'];
 
@@ -1633,10 +1688,12 @@ describe('MetricsModule', () => {
     class SecondAppModule {}
 
     defineModule(SecondAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b', registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b' })],
     });
 
-    await expect(FluoFactory.create(SecondAppModule)).rejects.toThrow(
+    await expect(FluoFactory.create(SecondAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    })).rejects.toThrow(
       'Metric name "http_requests_total" is already registered with labels [method]. Built-in HTTP metrics require labels [method,path,status].',
     );
   });
@@ -1647,10 +1704,12 @@ describe('MetricsModule', () => {
     class FirstAppModule {}
 
     defineModule(FirstAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a', registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a' })],
     });
 
-    const firstApp = await FluoFactory.create(FirstAppModule);
+    const firstApp = await FluoFactory.create(FirstAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
     const durationHistogram = sharedRegistry.getSingleMetric('http_request_duration_seconds') as Histogram<string> & { labelNames: string[] };
     durationHistogram.labelNames = ['method', 'path'];
 
@@ -1659,10 +1718,12 @@ describe('MetricsModule', () => {
     class SecondAppModule {}
 
     defineModule(SecondAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b', registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b' })],
     });
 
-    await expect(FluoFactory.create(SecondAppModule)).rejects.toThrow(
+    await expect(FluoFactory.create(SecondAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    })).rejects.toThrow(
       'Metric name "http_request_duration_seconds" is already registered with labels [method,path]. Built-in HTTP metrics require labels [method,path,status].',
     );
   });
@@ -1680,12 +1741,13 @@ describe('MetricsModule', () => {
             unknownPathLabel: 'FIRST_UNKNOWN',
           },
           path: '/metrics-a',
-          registry: sharedRegistry,
         }),
       ],
     });
 
-    const firstApp = await FluoFactory.create(FirstAppModule);
+    const firstApp = await FluoFactory.create(FirstAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
     await firstApp.close();
 
     class SecondAppModule {}
@@ -1698,12 +1760,13 @@ describe('MetricsModule', () => {
             unknownPathLabel: 'SECOND_UNKNOWN',
           },
           path: '/metrics-b',
-          registry: sharedRegistry,
         }),
       ],
     });
 
-    await expect(FluoFactory.create(SecondAppModule)).rejects.toThrow(
+    await expect(FluoFactory.create(SecondAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    })).rejects.toThrow(
       'Metric name "http_requests_total" is already registered with framework HTTP collector configuration pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="FIRST_UNKNOWN". Built-in HTTP metrics require matching HTTP collector configuration before reuse; received pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="SECOND_UNKNOWN".',
     );
   });
@@ -1719,12 +1782,13 @@ describe('MetricsModule', () => {
           defaultMetrics: false,
           http: { durationHistogramBuckets: [0.001, 0.002] },
           path: '/metrics-a',
-          registry: sharedRegistry,
         }),
       ],
     });
 
-    const firstApp = await FluoFactory.create(FirstAppModule);
+    const firstApp = await FluoFactory.create(FirstAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
     await firstApp.close();
 
     class SecondAppModule {}
@@ -1735,12 +1799,13 @@ describe('MetricsModule', () => {
           defaultMetrics: false,
           http: { durationHistogramBuckets: [0.002, 0.003] },
           path: '/metrics-b',
-          registry: sharedRegistry,
         }),
       ],
     });
 
-    await expect(FluoFactory.create(SecondAppModule)).rejects.toThrow(
+    await expect(FluoFactory.create(SecondAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    })).rejects.toThrow(
       'Metric name "http_requests_total" is already registered with framework HTTP collector configuration pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="UNKNOWN", durationHistogramBuckets=[0.001,0.002]. Built-in HTTP metrics require matching HTTP collector configuration before reuse; received pathLabelMode="template", pathLabelNormalizer=none, unknownPathLabel="UNKNOWN", durationHistogramBuckets=[0.002,0.003].',
     );
   });
@@ -1752,12 +1817,14 @@ describe('MetricsModule', () => {
 
     defineModule(AppModule, {
       imports: [
-        MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-a', registry: sharedRegistry }),
-        MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-b', registry: sharedRegistry }),
+        MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-a' }),
+        MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-b' }),
       ],
     });
 
-    const app = await FluoFactory.create(AppModule);
+    const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
 
     const firstResponse = createResponse();
     await app.dispatch(createRequest('/metrics-a'), firstResponse);
@@ -1791,10 +1858,11 @@ describe('MetricsModule', () => {
     class FirstAppModule {}
 
     defineModule(FirstAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
     });
 
     const firstApp = await FluoFactory.create(FirstAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
       platform: { components: [staleComponent] },
     });
 
@@ -1807,10 +1875,11 @@ describe('MetricsModule', () => {
     class SecondAppModule {}
 
     defineModule(SecondAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
     });
 
     const secondApp = await FluoFactory.create(SecondAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
       platform: { components: [currentComponent] },
     });
 
@@ -1842,10 +1911,12 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
     });
 
-    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    })).rejects.toThrow(
       'Metric name "fluo_component_ready" is already registered by the application. Built-in platform telemetry requires framework-owned gauges.',
     );
   });
@@ -1856,10 +1927,12 @@ describe('MetricsModule', () => {
     class FirstAppModule {}
 
     defineModule(FirstAppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-a', registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-a' })],
     });
 
-    const firstApp = await FluoFactory.create(FirstAppModule);
+    const firstApp = await FluoFactory.create(FirstAppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
 
     try {
       const readinessGauge = sharedRegistry.getSingleMetric('fluo_component_ready') as Gauge<string> & { labelNames: string[] };
@@ -1868,10 +1941,12 @@ describe('MetricsModule', () => {
       class SecondAppModule {}
 
       defineModule(SecondAppModule, {
-        imports: [MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-b', registry: sharedRegistry })],
+        imports: [MetricsModule.forRoot({ defaultMetrics: false, path: '/metrics-b' })],
       });
 
-      await expect(FluoFactory.create(SecondAppModule)).rejects.toThrow(
+      await expect(FluoFactory.create(SecondAppModule, {
+        providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+      })).rejects.toThrow(
         'Metric name "fluo_component_ready" is already registered with labels [component_id]. Built-in platform telemetry requires labels [component_id,component_kind,operation,result,env,instance].',
       );
     } finally {
@@ -2232,10 +2307,12 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot()],
     });
 
-    const app = await FluoFactory.create(AppModule);
+    const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
 
     try {
       const response = createResponse();
@@ -2263,10 +2340,12 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ registry: sharedRegistry, defaultMetrics: false })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false })],
     });
 
-    const app = await FluoFactory.create(AppModule);
+    const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    });
 
     const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
 
@@ -2292,10 +2371,12 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true })],
     });
 
-    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    })).rejects.toThrow(
       'Metric name "http_requests_total" is already registered by the application. Built-in HTTP metrics require framework-owned collectors.',
     );
   });
@@ -2312,10 +2393,12 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true })],
     });
 
-    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    })).rejects.toThrow(
       'Metric name "http_errors_total" is already registered by the application. Built-in HTTP metrics require framework-owned collectors.',
     );
   });
@@ -2332,15 +2415,17 @@ describe('MetricsModule', () => {
     class AppModule {}
 
     defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true, registry: sharedRegistry })],
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, http: true })],
     });
 
-    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
+    await expect(FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+    })).rejects.toThrow(
       'Metric name "http_request_duration_seconds" is already registered by the application. Built-in HTTP metrics require framework-owned collectors.',
     );
   });
 
-  it('creates isolated registry by default when registry option is omitted', async () => {
+  it('creates isolated registry by default when no bootstrap registry is provided', async () => {
     class AppModule {}
 
     defineModule(AppModule, {
@@ -2474,47 +2559,6 @@ describe('MetricsModule', () => {
       // Then: metrics retains isolated bootstrap ownership instead of reading the private provider.
       expect(metricsService.getRegistry()).not.toBe(privateRegistry);
       expect(await metricsService.getRegistry().metrics()).toContain('fluo_metrics_registry_mode{mode="isolated"} 1');
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('prefers the bootstrap registry over the legacy registry option', async () => {
-    const bootstrapRegistry = new Registry();
-    const legacyRegistry = new Registry();
-
-    new Counter({
-      help: 'Bootstrap registry marker',
-      name: 'bootstrap_registry_marker_total',
-      registers: [bootstrapRegistry],
-    }).inc();
-    new Counter({
-      help: 'Legacy registry marker',
-      name: 'legacy_registry_marker_total',
-      registers: [legacyRegistry],
-    }).inc();
-
-    class AppModule {}
-
-    defineModule(AppModule, {
-      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false, registry: legacyRegistry })],
-    });
-
-    const app = await FluoFactory.create(AppModule, {
-      providers: [{ provide: METRICS_REGISTRY, useValue: bootstrapRegistry }],
-    });
-
-    try {
-      // Given: bootstrap and legacy configuration specify distinct registries.
-
-      // When: metrics resolves its active registry.
-      const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
-      const metricsText = await metricsService.getRegistry().metrics();
-
-      // Then: the bootstrap registry has deterministic precedence.
-      expect(metricsService.getRegistry()).toBe(bootstrapRegistry);
-      expect(metricsText).toContain('bootstrap_registry_marker_total 1');
-      expect(metricsText).not.toContain('legacy_registry_marker_total 1');
     } finally {
       await app.close();
     }

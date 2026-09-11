@@ -93,7 +93,7 @@ it('keeps root bootstrap defaults detached from Node-only logger modules', () =>
 it('keeps only bootstrap-scoped operational helpers on the runtime root barrel', () => {
   expect(runtime.HealthModule).toBeTypeOf('function');
   expect(runtime.HealthModule.forRoot).toBeTypeOf('function');
-  expect(runtime).toHaveProperty('createHealthModule');
+  expect(runtime).not.toHaveProperty('createHealthModule');
   expect(runtime.FluoFactory.create).toBeTypeOf('function');
   expect(runtime).not.toHaveProperty('fluoFactory');
   expect(runtime).not.toHaveProperty('bootstrapApplication');

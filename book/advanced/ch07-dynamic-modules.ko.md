@@ -97,43 +97,42 @@ export function defineModuleMetadata(target: Function, metadata: ModuleMetadata)
 - **정적 decorator 스타일**은 `path:packages/core/src/decorators.ts:13-34`의 `@Module(...)`과 `@Module({ global: true })`를 사용하며, 이는 선언 시점에 메타데이터 세터를 호출하는 문법적 설탕(syntactic sugar)에 불과합니다.
 - **programmatic 스타일**은 factory function 내에서 `defineModule(...)` 또는 심지어 `defineModuleMetadata(...)`를 직접 호출합니다.
 
-런타임에서는 둘 다 같은 metadata store로 수렴합니다. 가장 작은 예시는 `ConfigReloadModule.forRoot()`입니다. `path:packages/config/src/reload-module.ts:128-153`는 `ConfigReloadModuleImpl` subclass를 만들고 caller-owned load option을 snapshot으로 분리한 뒤, `defineModuleMetadata(...)`로 module metadata를 기록하고 그 subclass를 반환합니다. 별도의 runtime wrapper object나 proxy는 생성되지 않습니다.
+런타임에서는 둘 다 같은 metadata store로 수렴합니다. `ConfigModule.forRoot()`는 configuration package의 module-registration 사례입니다. `ConfigModuleImpl` subclass를 만들고 caller-owned option을 snapshot으로 분리한 뒤 `defineModuleMetadata(...)`로 provider와 export를 기록하고 그 subclass를 반환합니다. 별도의 runtime wrapper object나 proxy는 생성되지 않습니다.
 
-`ConfigReloadModule`은 subclass identity와 metadata binding이 한 함수 안에서 어떻게 만나는지 보여 주는 짧은 예입니다.
+Standalone reload는 별도 module이 아닙니다. 명시적인 env-file 목록으로 terminal manager 하나를 만들려면 `ConfigReloadManager.create(...)`를 사용하세요.
 
-`path:packages/config/src/reload-module.ts:128-153`
 ```typescript
-export class ConfigReloadModule {
-  static forRoot(options?: ConfigLoadOptions): new () => ConfigReloadModule {
-    const loadOptions = snapshotConfigLoadOptions(options);
+const reloader = ConfigReloadManager.create({
+  envFilePaths: ['.env', '.env.local'],
+  watch: true,
+});
+```
 
-    class ConfigReloadModuleImpl extends ConfigReloadModule {}
+`ConfigModule.forRoot()`는 subclass identity와 metadata binding이 한 함수 안에서 어떻게 만나는지 보여 주는 짧은 예입니다.
 
-    defineModuleMetadata(ConfigReloadModuleImpl, {
-      exports: [CONFIG_RELOADER],
-      providers: [
-        {
-          provide: CONFIG_RELOAD_OPTIONS,
-          useValue: loadOptions,
-        },
-        ConfigReloadManager,
-        {
-          provide: CONFIG_RELOADER,
-          useExisting: ConfigReloadManager,
-        },
-      ],
+`path:packages/config/src/module.ts:184-223`
+```typescript
+export class ConfigModule {
+  static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
+    const loadOptions = snapshotConfigModuleOptions(options);
+    class ConfigModuleImpl extends ConfigModule {}
+
+    defineModuleMetadata(ConfigModuleImpl, {
+      exports: [ConfigService, CONFIG_RELOADER],
+      global: loadOptions.global ?? true,
+      providers: [/* ConfigService, ConfigReloadManager, and CONFIG_RELOADER */],
     });
 
-    return ConfigReloadModuleImpl;
+    return ConfigModuleImpl;
   }
 }
 ```
 
-여기서 동적 결과물은 `ConfigReloadModuleImpl` class입니다. 옵션 값, manager, alias provider는 모두 그 class의 module metadata에 붙고, 반환된 class가 이후 module graph의 노드가 됩니다.
+여기서 동적 결과물은 `ConfigModuleImpl` class입니다. 옵션 값, `ConfigService`, reload manager, alias provider는 모두 그 class의 module metadata에 붙고, 반환된 class가 이후 module graph의 노드가 됩니다.
 
-Snapshot 호출은 단순한 복사가 아니라 registration contract의 일부입니다. `path:packages/config/src/options.ts:42-80`은 `forRoot(...)` 호출 중 config dictionary, `processEnv`, Standard Schema descriptor를 동기적으로 분리하고, callable value는 그 경계에서 캡처한 reference로 유지합니다. Module metadata가 caller object 대신 `loadOptions`를 저장하므로 `ConfigReloadModule.forRoot(...)` 반환 뒤의 mutation은 이후 bootstrap, manual reload, watch reload 입력을 바꾸지 못합니다. `path:packages/config/src/reload-module.test.ts:135-160`은 caller-mutation test로 이 registration-time 동작을 고정합니다.
+Snapshot 호출은 단순한 복사가 아니라 registration contract의 일부입니다. `path:packages/config/src/options.ts:42-80`은 `forRoot(...)` 호출 중 config dictionary, `processEnv`, Standard Schema descriptor를 동기적으로 분리하고, callable value는 그 경계에서 캡처한 reference로 유지합니다. Module metadata가 caller object 대신 `loadOptions`를 저장하므로 `ConfigModule.forRoot(...)` 반환 뒤의 mutation은 이후 bootstrap, manual reload, watch reload 입력을 바꾸지 못합니다. `ConfigReloadManager.create(...)`도 standalone manager를 만들기 전에 같은 option shape를 캡처합니다.
 
-여기서 subclass를 사용하는 것은 type identity를 유지하기 위한 실용적인 기법입니다. 기본 모듈 클래스를 확장하면 동적 모듈은 정적 메서드나 속성을 상속받으면서도 자신만의 메타데이터를 가질 수 있습니다. 위 `ConfigReloadModuleImpl`처럼 factory 호출 안에서 새 constructor를 만들면, 두 동적 모듈이 같은 provider를 갖더라도 서로 다른 class constructor에서 생성된 별개의 entity로 취급됩니다.
+여기서 subclass를 사용하는 것은 type identity를 유지하기 위한 실용적인 기법입니다. 기본 모듈 클래스를 확장하면 동적 모듈은 정적 메서드나 속성을 상속받으면서도 자신만의 메타데이터를 가질 수 있습니다. 위 `ConfigModuleImpl`처럼 factory 호출 안에서 새 constructor를 만들면, 두 동적 모듈이 같은 provider를 갖더라도 서로 다른 class constructor에서 생성된 별개의 entity로 취급됩니다.
 
 이 사실이 곧 Fluo의 dynamic module 정신 모델입니다. dynamic module은 이차적인 escape hatch나 "레거시" 기능이 아닙니다. 선언 시점에 한 번 손으로 적는 대신, factory function이 만들어 내는 ordinary module type입니다. 따라서 dynamic module도 일반 모듈과 똑같이 module-graph compiler, visibility check, provider registration 로직을 모두 통과합니다.
 
@@ -300,9 +299,9 @@ Provider 생성을 `forRoot()` binder에서 분리한 것은 이 접근의 모�
 
 이 패턴은 module registration 과정을 감사 가능하게 만듭니다. 여러 파일에 흩어진 decorator를 추적하는 대신, 단일 helper 파일에서 전체 registration surface를 확인할 수 있습니다.
 
-이 과정을 실제로 보려면 `ConfigModule.forRoot()`가 구성 로딩 결과를 `ConfigService` provider로 감싸는 방식을 보면 됩니다. 동적 모듈은 env-file option, 기본값, schema validator를 직접 전역 상태로 흘리지 않습니다. Env-file path와 관련 option을 포함한 caller-owned option을 registration 시점에 동기적으로 snapshot한 뒤, 제어된 factory function 안에서 service provider로 묶습니다. Registration 중에는 env-file content를 읽지 않습니다.
+이 과정을 실제로 보려면 `ConfigModule.forRoot()`가 `ConfigModule.load(...)`를 `ConfigService` provider로 감싸는 방식을 보면 됩니다. 동적 모듈은 env-file option, 기본값, schema validator를 직접 전역 상태로 흘리지 않습니다. 순서가 있는 `envFilePaths` 목록과 관련 option을 포함한 caller-owned option을 registration 시점에 동기적으로 snapshot한 뒤, 제어된 factory function 안에서 service provider로 묶습니다. Registration 중에는 env-file content를 읽지 않습니다.
 
-`path:packages/config/src/module.ts:85-112`
+`path:packages/config/src/module.ts:184-223`
 ```typescript
 static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
   const loadOptions = snapshotConfigModuleOptions(options);
@@ -310,23 +309,16 @@ static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
   const providers: NonNullable<ModuleMetadata['providers']> = [
     {
       provide: ConfigService,
-      useFactory: () => createConfigServiceFromSnapshot(loadConfig(loadOptions)),
+      useFactory: () => createConfigServiceFromSnapshot(ConfigModule.load(loadOptions)),
     },
+    { provide: CONFIG_MODULE_OPTIONS, useValue: loadOptions },
+    ConfigReloadManager,
+    { provide: CONFIG_RELOADER, useExisting: ConfigReloadManager },
   ];
-
-  if (loadOptions.watch) {
-    providers.push(
-      {
-        provide: CONFIG_MODULE_WATCH_OPTIONS,
-        useValue: loadOptions,
-      },
-      ConfigModuleWatchManager,
-    );
-  }
 
   defineModuleMetadata(ConfigModuleImpl, {
     global: loadOptions.global ?? true,
-    exports: [ConfigService],
+    exports: [ConfigService, CONFIG_RELOADER],
     providers,
   });
 
@@ -334,9 +326,9 @@ static forRoot(options?: ConfigModuleOptions): new () => ConfigModule {
 }
 ```
 
-이 발췌도 같은 흐름입니다. 새 module class를 만들고, public export는 `ConfigService`로 좁히며, 실제 로딩은 factory provider 내부로 넣습니다. 중요한 시점 차이는 `snapshotConfigModuleOptions(options)`가 `forRoot(...)` 중 env-file path와 관련 option을 포함한 caller-owned option을 동기적으로 캡처하지만 env-file content는 읽지 않는다는 점입니다. Factory Provider는 이후 bootstrap 중 resolve되며, 이때 `loadConfig(loadOptions)`가 env-file content를 읽어 `ConfigService` snapshot을 생성합니다. Watch mode가 활성화되면 initial loader와 `ConfigModuleWatchManager`가 동일하게 캡처된 option snapshot을 받습니다. 따라서 나중의 caller mutation이 bootstrap snapshot과 watch reload 입력 사이에 불일치를 만들 수 없습니다. `path:packages/config/src/load.ts:388-402,782-783`은 이후 env-file read를 보여 주고, `path:packages/config/src/module.test.ts:123-139`은 registration-time runtime override에 대해 이 경계를 검증합니다.
+이 발췌도 같은 흐름입니다. 새 module class를 만들고, `ConfigService`와 `CONFIG_RELOADER`를 export하며, 실제 로딩은 factory provider 내부로 넣습니다. 중요한 시점 차이는 `snapshotConfigModuleOptions(options)`가 `forRoot(...)` 중 `envFilePaths` 목록과 관련 option을 포함한 caller-owned option을 동기적으로 캡처하지만 env-file content는 읽지 않는다는 점입니다. Factory Provider는 이후 bootstrap 중 resolve되며, 이때 `ConfigModule.load(loadOptions)`가 env-file content를 읽어 `ConfigService` snapshot을 생성합니다. `ConfigReloadManager`는 같은 캡처 option snapshot을 받으므로 이후 caller mutation이 bootstrap, manual reload, watch reload 입력 사이에 불일치를 만들 수 없습니다.
 
-`createConfigReloader(...)`도 Module registration이 아닌 value construction 시점에 같은 규칙을 적용합니다. `path:packages/config/src/load.ts:739-752`는 watcher state를 만들기 전에 input을 snapshot으로 분리하고 정규화하며, `path:packages/config/src/load.test.ts:613-684`는 이후 mutation이 `current()`, manual reload, watch reload에 영향을 주지 않는지 검증합니다. 이 사례들은 안정적인 dynamic-module boundary에 normalization과 defensive option snapshot이 함께 필요할 수 있음을 보여 줍니다.
+`ConfigReloadManager.create(...)`도 Module registration이 아닌 standalone value construction 시점에 같은 규칙을 적용합니다. Watcher state를 만들기 전에 input을 snapshot으로 분리하고 정규화하므로 이후 mutation이 `current()`, manual reload, watch reload에 영향을 주지 않습니다. 이 사례들은 안정적인 dynamic-module boundary에 normalization과 defensive option snapshot이 함께 필요할 수 있음을 보여 줍니다.
 
 이 "제조(manufacturing)" 방식의 또 다른 장점은 module boundary에서 아키텍처 규칙을 강제할 수 있다는 점입니다. 예를 들어 동적 모듈은 instance 생성이 허용되기 전에 사용자 옵션이 전역 애플리케이션 정책과 충돌하지 않는지 확인할 수 있습니다. 이런 검사를 `forRoot` helper의 시작 부분에 두면, 에러를 "런타임 서비스 실패"가 아니라 "부트스트랩 시점의 설정 에러"로 옮길 수 있습니다.
 

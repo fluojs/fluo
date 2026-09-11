@@ -1,5 +1,6 @@
 import { ForbiddenException, type MiddlewareContext, type Next } from '@fluojs/http';
-import { MetricsModule, Registry } from '@fluojs/metrics';
+import { METRICS_REGISTRY, MetricsModule } from '@fluojs/metrics';
+import { Registry } from '@fluojs/metrics/integration';
 
 class MetricsTokenMiddleware {
   async handle(context: MiddlewareContext, next: Next): Promise<void> {
@@ -29,5 +30,6 @@ export const opsMetricsModule = MetricsModule.forRoot({
     pathLabelMode: 'template',
     unknownPathLabel: 'UNKNOWN',
   },
-  registry: sharedRegistry,
 });
+
+export const opsMetricsBootstrapProviders = [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }];

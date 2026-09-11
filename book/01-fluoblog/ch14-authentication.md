@@ -56,7 +56,7 @@ The following is the **complete file `src/auth/auth.service.ts`**. It delegates 
 ```ts
 import { Inject } from '@fluojs/core';
 import { UnauthorizedException } from '@fluojs/http';
-import { DefaultJwtSigner } from '@fluojs/jwt';
+import { JwtService } from '@fluojs/jwt';
 import { AccountInputError } from '../accounts/account-input.js';
 import { AccountsService } from '../accounts/accounts.service.js';
 import { ACCESS_TOKEN_TTL_SECONDS } from './jwt-options.js';
@@ -68,11 +68,11 @@ export type LoginResult = {
   user: { id: string; displayName: string };
 };
 
-@Inject(AccountsService, DefaultJwtSigner)
+@Inject(AccountsService, JwtService)
 export class AuthService {
   constructor(
     private readonly accounts: AccountsService,
-    private readonly signer: DefaultJwtSigner,
+    private readonly jwt: JwtService,
   ) {}
 
   async login(input: { email: unknown; password: unknown }): Promise<LoginResult> {
@@ -88,7 +88,7 @@ export class AuthService {
     if (!account) {
       throw new UnauthorizedException('Invalid login credentials.');
     }
-    const accessToken = await this.signer.signAccessToken({
+    const accessToken = await this.jwt.sign({
       sub: account.id,
       authVersion: account.authVersion,
       scopes: ['posts:write'],
@@ -111,27 +111,27 @@ A password can change between the account lookup and token signing. The service 
 
 ## Check the Current Account After Verifying the Signature
 
-Signature, claim, and current-account verification are gathered in the transport-independent **complete file `src/auth/blog-token-authenticator.ts`**. `authenticateToken(token)` returns a verified `JwtPrincipal`. Signature, issuer, audience, and expiration use the same `DefaultJwtVerifier` and `jwtOptions`; the current-account and `authVersion` checks also pass through this boundary. Expiration, forgery, and suspension propagate as Passport authentication errors; configuration and database failures propagate as their original errors.
+Signature, claim, and current-account verification are gathered in the transport-independent **complete file `src/auth/blog-token-authenticator.ts`**. `authenticateToken(token)` returns a verified `JwtPrincipal`. Signature, issuer, audience, and expiration use the same `JwtService` and `jwtOptions`; the current-account and `authVersion` checks also pass through this boundary. Expiration, forgery, and suspension propagate as Passport authentication errors; configuration and database failures propagate as their original errors.
 
 ```ts
 import { Inject } from '@fluojs/core';
 import {
-  DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError, type JwtPrincipal,
+  JwtService, JwtExpiredTokenError, JwtInvalidTokenError, type JwtPrincipal,
 } from '@fluojs/jwt';
 import { AuthenticationExpiredError, AuthenticationFailedError } from '@fluojs/passport';
 import { AccountsService } from '../accounts/accounts.service.js';
 
-@Inject(DefaultJwtVerifier, AccountsService)
+@Inject(JwtService, AccountsService)
 export class BlogTokenAuthenticator {
   constructor(
-    private readonly verifier: DefaultJwtVerifier,
+    private readonly jwt: JwtService,
     private readonly accounts: Pick<AccountsService, 'findActiveSubject'>,
   ) {}
 
   async authenticateToken(token: string): Promise<JwtPrincipal> {
     let principal: JwtPrincipal;
     try {
-      principal = await this.verifier.verifyAccessToken(token);
+      principal = await this.jwt.verify(token);
     } catch (error: unknown) {
       if (error instanceof JwtExpiredTokenError) {
         throw new AuthenticationExpiredError('Access token has expired.', { cause: error });
@@ -313,7 +313,7 @@ import { jwtOptions } from './jwt-options.js';
 export class AuthModule {}
 ```
 
-Import `AuthModule` in `src/app.ts` and add it to the existing `AppModule.imports`. Keep Prisma as the single asynchronous global registration in the `BlogDatabaseModule` created in Chapter 10. Within this module, `BlogTokenAuthenticator` can see `DefaultJwtVerifier` from the imported `JwtModule` and the service from `AccountsModule`; `BlogJwtStrategy` delegates to that authenticator. `AuthService` uses the same account module. The token order in standard class-level `@Inject` matches the constructor parameter order. Do not try to compensate for missing registration by enabling `experimentalDecorators` or `emitDecoratorMetadata`.
+Import `AuthModule` in `src/app.ts` and add it to the existing `AppModule.imports`. Keep Prisma as the single asynchronous global registration in the `BlogDatabaseModule` created in Chapter 10. Within this module, `BlogTokenAuthenticator` can see `JwtService` from the imported `JwtModule` and the service from `AccountsModule`; `BlogJwtStrategy` delegates to that authenticator. `AuthService` uses the same account module. The token order in standard class-level `@Inject` matches the constructor parameter order. Do not try to compensate for missing registration by enabling `experimentalDecorators` or `emitDecoratorMetadata`.
 
 ## Test Expiration, Forgery, and Suspension as Distinct Failures
 
@@ -383,7 +383,7 @@ Check the shared authenticator for regressions with the **complete `src/auth/blo
 
 ```ts
 import { describe, expect, it, vi } from 'vitest';
-import { DefaultJwtSigner, DefaultJwtVerifier, type JwtVerifierOptions } from '@fluojs/jwt';
+import { DefaultJwtSigner, DefaultJwtVerifier, JwtService, type JwtVerifierOptions } from '@fluojs/jwt';
 import { AuthenticationExpiredError, AuthenticationFailedError } from '@fluojs/passport';
 import { BlogTokenAuthenticator } from './blog-token-authenticator.js';
 
@@ -409,7 +409,8 @@ describe('shared blog token authentication', () => {
           : null;
       },
     };
-    const authenticator = new BlogTokenAuthenticator(verifier, accounts);
+    const jwt = new JwtService(options, signer, verifier);
+    const authenticator = new BlogTokenAuthenticator(jwt, accounts);
     try {
       const token = await signer.signAccessToken({
         sub: 'account-a', authVersion: 1, scopes: ['posts:write'],

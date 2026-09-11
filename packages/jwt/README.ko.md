@@ -106,22 +106,23 @@ export class AuthModule {}
 
 ### 토큰 서명 및 검증
 
-`DefaultJwtSigner`를 주입받아 토큰을 발행하고, `DefaultJwtVerifier`를 통해 검증합니다.
+애플리케이션 토큰 발급과 검증에는 `JwtService`를 주입합니다.
 
 ```typescript
-import { DefaultJwtSigner, DefaultJwtVerifier } from '@fluojs/jwt';
+import { JwtService } from '@fluojs/jwt';
 
 // 서명 (Sign)
-const token = await signer.signAccessToken({
-  sub: 'user-123',
-  roles: ['admin'],
-  scopes: ['read:profile'],
-});
+const token = await jwt.sign(
+  { roles: ['admin'], scopes: ['read:profile'] },
+  { subject: 'user-123' },
+);
 
 // 검증 (Verify)
-const principal = await verifier.verifyAccessToken(token);
+const principal = await jwt.verify(token, { audience: 'my-app' });
 // principal: { subject: 'user-123', roles: ['admin'], scopes: ['read:profile'], ... }
 ```
+
+`JwtService.verify(token, policy?)`는 항상 `JwtPrincipal`을 반환합니다. claims-only 호출자는 `await jwt.verify<T>(token)`에서 `(await jwt.verify(token)).claims`로 이전하고, 호출별 `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, `requireExp`는 optional policy로 전달하세요. `JwtService.decode()`는 권한 확인 대체가 아닌 비검증 inspection으로만 남습니다.
 
 `JwtService.sign(payload, { expiresIn })`를 사용할 때는 payload 안에 기존 `exp` 값이 있더라도 호출 시점의 `expiresIn` 재정의가 항상 우선합니다. 따라서 토큰 수명은 호출 위치에서 결정적으로 제어됩니다. `expiresIn`은 초 단위의 0 이상 숫자 또는 `60s`, `15m`, `1h`, `7d` 같은 짧은 duration 문자열을 받을 수 있습니다. 숫자 초 값은 JWT NumericDate의 소수 정밀도를 보존하며, 문자열 duration은 기존처럼 정수 초 리터럴로 처리됩니다.
 
@@ -129,18 +130,22 @@ const principal = await verifier.verifyAccessToken(token);
 
 ### 비대칭 서명 (RS256/ES256)
 
-분산 시스템에서 보안을 강화하기 위해 공개키/개인키 쌍을 사용합니다.
+`JwtModule`에 공개키/개인키 쌍을 설정하고 애플리케이션 서비스에 `JwtService`를 주입합니다.
 
 ```typescript
-const signer = new DefaultJwtSigner({
-  algorithms: ['RS256'],
-  privateKey: '...PEM...',
-});
+@Module({
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['RS256'],
+      privateKey: '...PEM...',
+      publicKey: '...PEM...',
+    }),
+  ],
+})
+export class AuthModule {}
 
-const verifier = new DefaultJwtVerifier({
-  algorithms: ['RS256'],
-  publicKey: '...PEM...',
-});
+const token = await jwt.sign({ roles: ['admin'] }, { subject: 'user-123' });
+const principal = await jwt.verify(token);
 ```
 
 ### 주체 정규화 (Principal Normalization)
@@ -152,7 +157,7 @@ const verifier = new DefaultJwtVerifier({
 검증 키를 원격 JWKS 엔드포인트에서 가져올 때는, 느리거나 멈춘 identity provider 때문에 인증 경로가 무한정 대기하지 않도록 fetch budget을 명시적으로 제한하세요.
 
 ```typescript
-const verifier = new DefaultJwtVerifier({
+JwtModule.forRoot({
   algorithms: ['RS256'],
   jwksRequestTimeoutMs: 5_000,
   jwksUri: 'https://issuer.example.com/.well-known/jwks.json',
@@ -163,7 +168,7 @@ const verifier = new DefaultJwtVerifier({
 
 JWKS key는 `jwksCacheTtl` 밀리초 동안 cache되며 기본값은 `600_000`입니다. in-memory cache는 `jwksCacheMaxEntries`로 제한되고 기본값은 `100`입니다. lookup 전 만료된 entry를 정리하고, 제한을 넘으면 가장 오래 보관된 key를 제거합니다. `JwtModule`은 관리 중인 `DefaultJwtVerifier` shutdown hook을 호출하므로 module teardown 중 보관 중인 remote key material이 정리됩니다. 수동으로 생성한 verifier나 client는 수동 shutdown 또는 identity-provider 재설정 시 여전히 `JwksClient.dispose()` / `DefaultJwtVerifier.dispose()`를 호출해야 합니다. 이 dispose method들은 보관 중인 JWKS key material을 정리하고 진행 중인 JWKS fetch를 abort합니다. `jwksCacheTtl`을 `0`으로 설정하면 bounded fetch timeout은 유지하면서 key 보관만 비활성화합니다.
 
-`DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)`는 호출 단위의 알고리즘/클레임 정책 재정의(`algorithms`, `issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)를 적용하더라도, 내부 JWKS client나 정적 key-resolution cache를 다시 만들지 않습니다. 호출 단위 검증은 `jwksUri`, `keys[]`, `publicKey`, `secret`, `secretOrKeyProvider` 같은 구성된 key source 자체를 교체하지는 않습니다.
+`JwtService.verify(token, policy?)`는 호출 단위의 알고리즘/클레임 정책 재정의(`algorithms`, `issuer`, `audience`, `clockSkewSeconds`, `maxAge`, `requireExp`)를 적용하며, `jwksUri`, `keys[]`, `publicKey`, `secret`, `secretOrKeyProvider` 같은 구성된 key source 자체를 교체하지는 않습니다.
 
 호환되는 키가 여러 개 설정되어 있으면 `kid`가 검증 키를 구분합니다. `keys[]`의 모든 entry는 비어 있지 않고 고유한 `kid`를 가져야 합니다. `DefaultJwtSigner`와 `DefaultJwtVerifier`는 key rotation 중 서명과 검증이 서로 다른 키를 선택하지 않도록 construction 시점에 빈 값 또는 중복 값을 `JwtConfigurationError`로 거부합니다. 호환되는 정적 키가 하나뿐이면 `kid` 없이도 토큰을 검증할 수 있고, JWKS 기반 검증은 원격 key set과 cache policy를 따릅니다.
 
@@ -216,7 +221,7 @@ Lazy loading은 import-time 안전성 속성일 뿐입니다. 서명이나 검�
 
 ### `decode()` trust boundary
 
-`JwtService.decode(token)`는 서명, `alg`, `exp`, `nbf`, `iss`, `aud` 또는 기타 클레임을 검증하지 않고 JWT payload segment를 읽습니다. 반환된 객체는 **검증되지 않은 입력(unverified input)**이며, 권한 결정(authorization decisions), 신원 확인(identity resolution), 또는 접근을 허가하는 모든 코드 경로에 사용해서는 안 됩니다. 검증된 클레임은 `JwtService.verify(token, options)`로 얻으세요. 정규화된 `JwtPrincipal`이 필요하면 호출 단위 재정의 없이 `DefaultJwtVerifier.verifyAccessToken(token)`을 사용하고, 호출 단위 `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, `requireExp`를 보존해야 하면 `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, options)`을 사용하세요.
+`JwtService.decode(token)`는 서명, `alg`, `exp`, `nbf`, `iss`, `aud` 또는 기타 클레임을 검증하지 않고 JWT payload segment를 읽습니다. 반환된 객체는 **검증되지 않은 입력(unverified input)**이며, 권한 결정(authorization decisions), 신원 확인(identity resolution), 또는 접근을 허가하는 모든 코드 경로에 사용해서는 안 됩니다. 정규화된 `JwtPrincipal`은 `JwtService.verify(token, policy?)`로 얻고, 호출 단위 `algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, `requireExp`는 `policy`에 전달하세요.
 
 `decode()`는 진단(diagnostics) 및 비권위적 검사(non-authoritative inspection)에만 사용됩니다. 예를 들어 로깅을 위해 토큰 메타데이터를 읽거나 `verify()` 호출 전에 검증 키를 선택할 때 사용할 수 있습니다. `decode()` 출력에서 읽은 모든 클레임 값 — `sub`, `roles`, `scopes`, `iss`, `aud`, `exp` 포함 — 은 `verify()`가 성공하기 전까지 공격자가 제어한 값으로 취급해야 합니다. `decode()` 출력을 기준으로 요청을 허가하거나 거부하는 분기를 만들지 말고, 검증되지 않은 클레임을 검증된 것처럼 downstream 코드에 노출하지 마세요.
 
@@ -224,9 +229,8 @@ Lazy loading은 import-time 안전성 속성일 뿐입니다. 서명이나 검�
 
 ### 주요 클래스
 - `JwtModule`: DI 등록을 위한 기본 진입점입니다.
-- `DefaultJwtSigner`: 클레임 자동 채우기 기능이 포함된 토큰 발행 클래스입니다.
-- `DefaultJwtVerifier`: 토큰 검증 및 정규화를 담당하는 클래스입니다.
-- `JwtService`: 서명과 검증 기능을 결합한 편의용 파사드(facade)입니다.
+- `DefaultJwtSigner`와 `DefaultJwtVerifier`: 프레임워크 integration과 별도 provider 조립을 위한 저수준 provider입니다.
+- `JwtService`: 애플리케이션의 토큰 발행과 검증에 사용하는 canonical 서비스입니다.
 - `JwksClient`: 제한된 요청 시간 안에서 원격 JWKS 키를 가져오고 캐싱합니다.
 - `RefreshTokenService`: `refreshToken` 옵션이 구성된 경우 refresh token을 발행, 회전, 폐기합니다. `revokePresentedRefreshToken(...)`은 compact refresh token을 검증한 뒤 record를 revoke하며, `revokeRefreshToken(tokenId)`는 신뢰된 ID를 받는 대안입니다.
 
@@ -243,9 +247,9 @@ Lazy loading은 import-time 안전성 속성일 뿐입니다. 서명이나 검�
 - `createJwtPlatformStatusSnapshot(...)`, `createJwtPlatformDiagnosticIssues(...)`: status 및 diagnostic helper입니다.
 - `JWT_OPTIONS`, `HMAC_HASH`, `ASYMMETRIC_HASH`: 모듈과 검증 레이어에서 사용하는 export token/constant입니다. `HMAC_HASH`와 `ASYMMETRIC_HASH`는 readonly lookup 값이므로 변경하지 마세요.
 
-### Deprecated compatibility helper
-- `normalizeRefreshTokenOptions(...)`: 기존 caller의 root import 호환성만을 위해 유지됩니다. package normalization 내부 helper를 직접 호출하기보다 `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)`와 `RefreshTokenService`를 사용하세요.
-- `createJwtCoreProviders(...)`: 기존 direct module composition caller의 root import 호환성만을 위해 유지됩니다. registration이 published module surface와 정렬되도록 `JwtModule.forRoot(...)` / `JwtModule.forRootAsync(...)`를 사용하세요.
+### 마이그레이션
+- `createJwtCoreProviders(...)`, `normalizeRefreshTokenOptions(...)`는 더 이상 export되지 않습니다. `JwtModule.forRoot(...)` 또는 `JwtModule.forRootAsync(...)`로 등록하고 `refreshToken` 구성 후에만 `RefreshTokenService`를 resolve하세요.
+- `DefaultJwtVerifier.verifyAccessTokenWithOverrides(token, policy)`는 `DefaultJwtVerifier.verifyAccessToken(token, policy)`로 대체됩니다.
 
 ## 관련 패키지
 

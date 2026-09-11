@@ -1,7 +1,7 @@
 import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 
-import { AppModule } from './app';
+import { AppModule, opsMetricsBootstrapProviders } from './app';
 
 // This example intentionally stays on the default Node.js + Fastify path.
 // Official runtime support also includes Bun, Deno, and Cloudflare Workers
@@ -9,5 +9,6 @@ import { AppModule } from './app';
 
 const app = await FluoFactory.create(AppModule, {
   adapter: FastifyHttpApplicationAdapter.create({ port: 3000 }),
+  providers: opsMetricsBootstrapProviders,
 });
 await app.listen();

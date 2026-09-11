@@ -4,7 +4,7 @@ import { Inject } from '@fluojs/core';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
-import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtPrincipal, JwtVerifierOptions } from '../types.js';
+import type { JwtAlgorithm, JwtClaims, JwtKeyEntry, JwtPrincipal, JwtVerifierOptions, VerifyOptions } from '../types.js';
 import { SUPPORTED_ASYMMETRIC_HASH, SUPPORTED_HMAC_HASH } from './algorithm-policy.js';
 import { JwksClient } from './jwks.js';
 import { assertJwtKeyEntries } from './key-entries.js';
@@ -79,11 +79,6 @@ function resolveClockSkewSeconds(clockSkewSeconds: number | undefined): number {
 
   return clockSkew;
 }
-
-type AccessTokenVerificationOverrides = Pick<
-  JwtVerifierOptions,
-  'algorithms' | 'audience' | 'clockSkewSeconds' | 'issuer' | 'maxAge' | 'requireExp'
->;
 
 interface KeyResolutionState {
   defaultHmacSecret?: string;
@@ -310,8 +305,39 @@ export class DefaultJwtVerifier implements JwtModuleDestroyLifecycle {
     this.refreshKeyResolutionState = createKeyResolutionState(this.refreshVerificationOptions?.keys);
   }
 
-  async verifyAccessToken(token: string): Promise<JwtPrincipal> {
-    return this.verifyToken(token, this.options, this.keyResolutionState, this.jwksClient);
+  /**
+   * Verifies a JWT access token with optional per-call policy while reusing configured key sources.
+   *
+   * @remarks
+   * The optional policy is intentionally limited to algorithm and claim validation.
+   * It does not replace configured JWKS/static keys or the shared `secretOrKeyProvider`.
+   *
+   * @param token Compact JWT string to verify.
+   * @param policy Per-call algorithm and claim-validation policy layered on top of module defaults.
+   * @returns The normalized principal for the verified access token.
+   */
+  async verifyAccessToken(
+    token: string,
+    policy?: VerifyOptions,
+  ): Promise<JwtPrincipal> {
+    const algorithms = policy?.algorithms ?? this.options.algorithms;
+
+    assertJwtAlgorithms(algorithms, 'JWT verifier');
+
+    return this.verifyToken(
+      token,
+      {
+        ...this.options,
+        algorithms,
+        audience: policy?.audience ?? this.options.audience,
+        clockSkewSeconds: policy?.clockSkewSeconds ?? this.options.clockSkewSeconds,
+        issuer: policy?.issuer ?? this.options.issuer,
+        maxAge: policy?.maxAge ?? this.options.maxAge,
+        requireExp: policy?.requireExp ?? this.options.requireExp,
+      },
+      this.keyResolutionState,
+      this.jwksClient,
+    );
   }
 
   /**
@@ -330,41 +356,6 @@ export class DefaultJwtVerifier implements JwtModuleDestroyLifecycle {
    */
   onModuleDestroy(): void {
     this.dispose();
-  }
-
-  /**
-   * Verifies a JWT access token with per-call claim-policy overrides while reusing configured key sources.
-   *
-   * @remarks
-   * This override path is intentionally limited to algorithm and claim-validation policy.
-   * It does not replace configured JWKS/static keys or the shared `secretOrKeyProvider`.
-   *
-   * @param token Compact JWT string to verify.
-   * @param overrides Per-call algorithm and claim-policy overrides layered on top of module defaults.
-   * @returns The normalized principal for the verified access token.
-   */
-  async verifyAccessTokenWithOverrides(
-    token: string,
-    overrides: Partial<AccessTokenVerificationOverrides>,
-  ): Promise<JwtPrincipal> {
-    const algorithms = overrides.algorithms ?? this.options.algorithms;
-
-    assertJwtAlgorithms(algorithms, 'JWT verifier');
-
-    return this.verifyToken(
-      token,
-      {
-        ...this.options,
-        algorithms,
-        audience: overrides.audience ?? this.options.audience,
-        clockSkewSeconds: overrides.clockSkewSeconds ?? this.options.clockSkewSeconds,
-        issuer: overrides.issuer ?? this.options.issuer,
-        maxAge: overrides.maxAge ?? this.options.maxAge,
-        requireExp: overrides.requireExp ?? this.options.requireExp,
-      },
-      this.keyResolutionState,
-      this.jwksClient,
-    );
   }
 
   async verifyRefreshToken(token: string): Promise<JwtPrincipal> {

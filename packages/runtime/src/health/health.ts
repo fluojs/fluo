@@ -55,7 +55,17 @@ export interface RuntimeHealthModule extends ModuleType {
   markStarting(): void;
 }
 
-function createRuntimeHealthModule(options: HealthModuleOptions = {}): RuntimeHealthModule {
+/**
+ * Runtime health module facade for application module imports.
+ */
+export class HealthModule {
+  /**
+   * Creates a runtime-owned `/health` and `/ready` module.
+   *
+   * @param options Runtime health endpoint options.
+   * @returns A module class that can be imported into an application module.
+   */
+  static forRoot(options: HealthModuleOptions = {}): RuntimeHealthModule {
   const basePath = options.path ?? '';
   const readinessChecks: ReadinessCheck[] = [];
   let ready = false;
@@ -110,7 +120,7 @@ function createRuntimeHealthModule(options: HealthModuleOptions = {}): RuntimeHe
     }
   }
 
-  class RuntimeHealthModule {
+  class RuntimeHealthModuleImplementation {
     static addReadinessCheck(fn: ReadinessCheck): void {
       readinessChecks.push(fn);
     }
@@ -124,42 +134,17 @@ function createRuntimeHealthModule(options: HealthModuleOptions = {}): RuntimeHe
     }
   }
 
-  Object.defineProperty(RuntimeHealthModule, 'name', {
+  Object.defineProperty(RuntimeHealthModuleImplementation, 'name', {
     value: 'HealthModule',
   });
 
-  defineModule(RuntimeHealthModule, {
+  defineModule(RuntimeHealthModuleImplementation, {
     controllers: [HealthController],
     middleware: (options.endpointMiddleware ?? []).map((middlewareClass) =>
       forRoutes(middlewareClass, `${basePath}/health`, `${basePath}/ready`),
     ),
   });
 
-  return RuntimeHealthModule;
-}
-
-/**
- * Runtime health module facade for application module imports.
- */
-export class HealthModule {
-  /**
-   * Creates a runtime-owned `/health` and `/ready` module.
-   *
-   * @param options Runtime health endpoint options.
-   * @returns A module class that can be imported into an application module.
-   */
-  static forRoot(options: HealthModuleOptions = {}): RuntimeHealthModule {
-    return createRuntimeHealthModule(options);
+  return RuntimeHealthModuleImplementation;
   }
-}
-
-/**
- * Creates a runtime-owned `/health` and `/ready` module.
- *
- * @deprecated Prefer `HealthModule.forRoot(...)` for application-facing module registration.
- * @param options Runtime health endpoint options.
- * @returns A module class that can be imported into an application module.
- */
-export function createHealthModule(options: HealthModuleOptions = {}): RuntimeHealthModule {
-  return HealthModule.forRoot(options);
 }

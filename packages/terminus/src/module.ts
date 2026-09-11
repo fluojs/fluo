@@ -320,7 +320,7 @@ export class TerminusModule {
    * import { MemoryHealthIndicator } from '@fluojs/terminus/node';
    *
    * TerminusModule.forRoot({
-   *   indicators: [new MemoryHealthIndicator({ key: 'memory' })],
+   *   indicators: [MemoryHealthIndicator.create({ key: 'memory' })],
    * });
    * ```
    *

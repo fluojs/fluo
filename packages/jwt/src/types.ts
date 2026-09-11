@@ -44,6 +44,18 @@ export interface JwtVerifierOptions {
 }
 
 /**
+ * Describes per-call access-token verification policy layered on module defaults.
+ */
+export interface VerifyOptions {
+  algorithms?: JwtVerifierOptions['algorithms'];
+  audience?: JwtVerifierOptions['audience'];
+  clockSkewSeconds?: number;
+  issuer?: string;
+  maxAge?: number;
+  requireExp?: boolean;
+}
+
+/**
  * Describes the jwt claims contract.
  */
 export interface JwtClaims extends Record<string, unknown> {
@@ -73,7 +85,7 @@ export interface JwtPrincipal {
  * Describes the jwt verifier contract.
  */
 export interface JwtVerifier {
-  verifyAccessToken(token: string): Promise<JwtPrincipal>;
+  verifyAccessToken(token: string, policy?: VerifyOptions): Promise<JwtPrincipal>;
 }
 
 /**

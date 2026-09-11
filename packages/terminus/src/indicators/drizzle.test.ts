@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { HealthCheckError } from '../errors.js';
-import { createDrizzleHealthIndicator, createDrizzleHealthIndicatorProvider, DrizzleHealthIndicator } from './drizzle.js';
+import { createDrizzleHealthIndicatorProvider, DrizzleHealthIndicator } from './drizzle.js';
 
 describe('DrizzleHealthIndicator', () => {
   it('supports execute-capable drizzle handles', async () => {
@@ -20,7 +20,7 @@ describe('DrizzleHealthIndicator', () => {
 
   it('rejects invalid timeoutMs before starting the Drizzle probe', async () => {
     const execute = vi.fn(async (_query: unknown) => undefined);
-    const indicator = createDrizzleHealthIndicator({
+    const indicator = DrizzleHealthIndicator.create({
       database: { execute },
       timeoutMs: Number.POSITIVE_INFINITY,
     });
@@ -40,7 +40,7 @@ describe('DrizzleHealthIndicator', () => {
 
   it('maps Drizzle lifecycle readiness before pinging', async () => {
     const execute = vi.fn(async (_query: unknown) => undefined);
-    const indicator = createDrizzleHealthIndicator({
+    const indicator = DrizzleHealthIndicator.create({
       handleProvider: {
         createPlatformStatusSnapshot: () => ({
           details: {
@@ -81,7 +81,7 @@ describe('DrizzleHealthIndicator', () => {
 
   it('includes lifecycle status when lifecycle-aware Drizzle is ready', async () => {
     const execute = vi.fn(async (_query: unknown) => undefined);
-    const indicator = createDrizzleHealthIndicator({
+    const indicator = DrizzleHealthIndicator.create({
       handleProvider: {
         createPlatformStatusSnapshot: () => ({
           details: {
@@ -193,7 +193,7 @@ describe('DrizzleHealthIndicator', () => {
   });
 
   it('supports ping callbacks and throws HealthCheckError for unsupported handles', async () => {
-    const callbackIndicator = createDrizzleHealthIndicator({
+    const callbackIndicator = DrizzleHealthIndicator.create({
       ping: vi.fn(async () => undefined),
     });
 
@@ -203,7 +203,7 @@ describe('DrizzleHealthIndicator', () => {
       },
     });
 
-    const unsupported = createDrizzleHealthIndicator({
+    const unsupported = DrizzleHealthIndicator.create({
       database: {},
     });
 

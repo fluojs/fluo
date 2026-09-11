@@ -27,7 +27,7 @@ vi.mock('node:fs/promises', () => ({
   }),
 }));
 
-import { createDiskHealthIndicator, DiskHealthIndicator } from './disk.js';
+import { DiskHealthIndicator } from './disk.js';
 
 describe('DiskHealthIndicator', () => {
   afterEach(() => {
@@ -71,7 +71,7 @@ describe('DiskHealthIndicator', () => {
       files: 0,
       type: 0,
     };
-    const indicator = createDiskHealthIndicator({
+    const indicator = DiskHealthIndicator.create({
       minFreeRatio: 0.1,
       path: '/data',
     });
@@ -100,7 +100,7 @@ describe('DiskHealthIndicator', () => {
       type: 0,
     };
 
-    const indicator = createDiskHealthIndicator({
+    const indicator = DiskHealthIndicator.create({
       minFreeBytes: 100_000,
       path: '/data',
     });

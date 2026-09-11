@@ -53,9 +53,10 @@ listener는 최종 Node 24 지원 범위를 사용합니다.
 ## 4. Keep config portable
 
 Config의 in-memory option은 portable하게 유지됩니다. 명시적 map과
-`envFilePaths: []`로 env file을 끄세요. 빈 `loadConfig({})`나
-`ConfigModule.forRoot()`는 여전히 기본 `.env`를 로드하며 env-file/기본 `.env`
-loading과 watch는 `>=24.0.0 <27`의 Node 전용 기능입니다.
+`envFilePaths: []`로 파일 로드를 비활성화하세요. 순서형 `envFilePaths`는
+낮은 우선순위에서 높은 우선순위 순으로 적용됩니다. `envFilePaths`를 생략하면
+`ConfigModule.load({})`나 `ConfigModule.forRoot()`처럼 기본 `.env`를 사용하며,
+env-file/기본 `.env` loading과 watch는 `>=24.0.0 <27`의 Node 전용 기능입니다.
 기존 capability guard는 Node builtin이 없으면 `CONFIG_RUNTIME_UNAVAILABLE`을
 발생시킵니다. Node version을 비교하거나 portable import를 거부하지 않습니다.
 

@@ -113,7 +113,7 @@ my-fluo-app/
 
 기준 스타터 매트릭스: [fluo new 지원 매트릭스](../reference/fluo-new-support-matrix.ko.md).
 
-기본 `src/main.ts`는 static `FastifyHttpApplicationAdapter.create(...)`로 adapter를 생성하고, Node logger와 shutdown callback을 명시한 `FluoFactory.create(AppModule, ...)`에 전달한 뒤 `app.listen()`을 await합니다. `src/app.ts`의 `ConfigModule.forRoot({ envFile: '.env', processEnv: process.env })`, `GreetingModule`, `HealthModule.forRoot()`와 starter 테스트를 유지합니다. 루트 모듈을 교체하는 대신 이 import 목록에 기능을 추가합니다.
+기본 `src/main.ts`는 static `FastifyHttpApplicationAdapter.create(...)`로 adapter를 생성하고, Node logger와 shutdown callback을 명시한 `FluoFactory.create(AppModule, ...)`에 전달한 뒤 `app.listen()`을 await합니다. `src/app.ts`의 `ConfigModule.forRoot({ envFilePaths: ['.env'], processEnv: process.env })`, `GreetingModule`, `HealthModule.forRoot()`와 starter 테스트를 유지합니다. 루트 모듈을 교체하는 대신 이 import 목록에 기능을 추가합니다.
 
 Factory 기본값, cleanup, signal, metadata 준비와 config 검증 시점은 [bootstrap recipe](./bootstrap-paths.ko.md)가 소유합니다. 생성 진입점은 `PORT`를 `Number.parseInt(..., 10)`로 파싱하고 결과가 유한하지 않을 때만 `3000`으로 fallback합니다. 이는 Book의 엄격한 10진수 port 정책이 아닙니다. 생성된 표준 decorator application/test transform을 보존하세요. Custom host에 `ensureMetadataSymbol()`이 필요하면 static import 평가가 끝난 뒤가 아니라 decorated module 평가 전에 준비합니다.
 

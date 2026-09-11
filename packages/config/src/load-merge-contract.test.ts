@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { loadConfig } from './load.js';
+import { ConfigModule } from './module.js';
 
-describe('loadConfig deep merge contract', () => {
+describe('ConfigModule.load deep merge contract', () => {
   it('replaces top-level and nested arrays from higher-precedence sources instead of merging elements', () => {
-    const loaded = loadConfig({
+    const loaded = ConfigModule.load({
       defaults: {
         featureFlags: ['default-alpha', 'default-beta'],
         nested: {
@@ -35,7 +35,7 @@ describe('loadConfig deep merge contract', () => {
   });
 
   it('treats empty higher-precedence arrays as explicit replacements', () => {
-    const loaded = loadConfig({
+    const loaded = ConfigModule.load({
       defaults: {
         featureFlags: ['default-alpha'],
         nested: {

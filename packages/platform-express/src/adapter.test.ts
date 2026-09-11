@@ -41,9 +41,9 @@ import {
 } from '@fluojs/http';
 import {
   type Application,
-  createHealthModule,
   defineModule,
   FluoFactory,
+  HealthModule,
 } from '@fluojs/runtime';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import * as runtimeWeb from '@fluojs/runtime/web';
@@ -1883,7 +1883,7 @@ describe('@fluojs/platform-express', () => {
   });
 
   it('applies a global prefix to runtime-owned paths by default', async () => {
-    const HealthModule = createHealthModule();
+    const healthModule = HealthModule.forRoot();
 
     @Controller('/app')
     class AppController {
@@ -1896,7 +1896,7 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, {
       controllers: [AppController],
-      imports: [HealthModule],
+      imports: [healthModule],
     });
 
     const app = await bootstrapExpressApplication(AppModule, {

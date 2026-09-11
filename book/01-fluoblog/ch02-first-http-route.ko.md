@@ -68,7 +68,7 @@ import { PostsController } from './posts/posts.controller';
   global: true,
   imports: [
     ConfigModule.forRoot({
-      envFile: '.env',
+      envFilePaths: ['.env'],
       processEnv: process.env,
     }),
     GreetingModule,

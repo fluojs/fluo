@@ -1,5 +1,3 @@
-import type { Provider } from '@fluojs/di';
-
 import { createDownResult, createUpResult, resolveIndicatorKey, resolveIndicatorTimeoutMs, throwHealthCheckError } from './utils.js';
 import { HealthCheckError } from '../errors.js';
 import type { HealthIndicator, HealthIndicatorResult } from '../types.js';
@@ -44,35 +42,20 @@ function cancelResponseBody(response: Response): void {
   void body.cancel().catch(() => undefined);
 }
 
-/**
- * Create an HTTP-backed health indicator.
- *
- * @param options HTTP probe settings such as URL, method, headers, and accepted status codes.
- * @returns A health indicator that fetches the configured endpoint on each check.
- */
-export function createHttpHealthIndicator(options: HttpHealthIndicatorOptions): HealthIndicator {
-  return new HttpHealthIndicator(options);
-}
-
-/**
- * Create a Terminus indicator provider collection entry for an `HttpHealthIndicator` instance.
- *
- * @param options HTTP probe settings such as URL, method, headers, and accepted status codes.
- * @returns A value provider with a unique internal DI token for `TerminusModule` indicatorProviders.
- */
-export function createHttpHealthIndicatorProvider(options: HttpHealthIndicatorOptions): Provider {
-  const indicatorProviderToken = Symbol('fluo.terminus.http-health-indicator');
-
-  return {
-    provide: indicatorProviderToken,
-    useValue: new HttpHealthIndicator(options),
-  };
-}
-
 /** Health indicator that probes an upstream HTTP endpoint with `fetch()`. */
 export class HttpHealthIndicator implements HealthIndicator {
   readonly key: string | undefined;
   readonly readiness: boolean | undefined;
+
+  /**
+   * Create an HTTP-backed health indicator.
+   *
+   * @param options HTTP probe settings such as URL, method, headers, and accepted status codes.
+   * @returns A health indicator that fetches the configured endpoint on each check.
+   */
+  static create(options: HttpHealthIndicatorOptions): HttpHealthIndicator {
+    return new HttpHealthIndicator(options);
+  }
 
   constructor(private readonly options: HttpHealthIndicatorOptions) {
     this.key = options.key;

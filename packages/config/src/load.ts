@@ -166,7 +166,7 @@ function resolveCurrentWorkingDirectory(): string {
   if (!cwd) {
     throw new FluoError('Node.js configuration loading is unavailable in this runtime.', {
       code: 'CONFIG_RUNTIME_UNAVAILABLE',
-      cause: new Error('The host runtime did not expose process.cwd(). Pass envFilePath or avoid env-file loading outside Node.js.'),
+      cause: new Error('The host runtime did not expose process.cwd(). Pass envFilePaths or avoid env-file loading outside Node.js.'),
     });
   }
 
@@ -364,15 +364,11 @@ function rejectLegacyValidateOption(options: ConfigLoadOptions): void {
   }
 }
 
-function rejectAmbiguousEnvFileOptions(options: ConfigLoadOptions): void {
-  if (options.envFilePaths === undefined) {
-    return;
-  }
-
-  if (options.envFile !== undefined || options.envFilePath !== undefined) {
+function rejectLegacyEnvFileOptions(options: ConfigLoadOptions): void {
+  if ('envFile' in options || 'envFilePath' in options) {
     throw new FluoError('Invalid configuration.', {
       code: 'INVALID_CONFIG',
-      cause: new Error('`envFilePaths` cannot be combined with `envFile` or `envFilePath`. Use one explicit ordered list instead of mixing singular and list env-file options.'),
+      cause: new Error('`envFile` and `envFilePath` were removed. Use the ordered `envFilePaths` list instead.'),
     });
   }
 }
@@ -411,19 +407,24 @@ function resolveEnvFilePaths(envFilePaths: readonly string[], cwd: string | unde
   return resolved;
 }
 
-function normalizeLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
+/**
+ * Normalizes source options at the shared configuration input boundary.
+ *
+ * @internal
+ * @param options Source selection, parsing, validation, and watch options.
+ * @returns Normalized options shared by static loading and reload ownership.
+ */
+export function normalizeConfigLoadOptions(options: ConfigLoadOptions): NormalizedLoadOptions {
   rejectLegacyValidateOption(options);
-  rejectAmbiguousEnvFileOptions(options);
+  rejectLegacyEnvFileOptions(options);
 
-  const hasExplicitEnvFile = options.envFilePath !== undefined || options.envFile !== undefined || options.envFilePaths !== undefined;
   const hasExplicitInMemorySource = options.defaults !== undefined || options.processEnv !== undefined || options.runtimeOverrides !== undefined;
-  const shouldUseDefaultEnvFile = !hasExplicitEnvFile && (options.cwd !== undefined || options.watch === true || !hasExplicitInMemorySource);
+  const shouldUseDefaultEnvFile = options.envFilePaths === undefined && (options.cwd !== undefined || options.watch === true || !hasExplicitInMemorySource);
   const cwd = shouldUseDefaultEnvFile
     ? options.cwd ?? resolveCurrentWorkingDirectory()
     : options.cwd;
-  const singularEnvFile = options.envFilePath ?? options.envFile ?? (shouldUseDefaultEnvFile && cwd ? nodePath().join(cwd, '.env') : undefined);
   const envFiles = options.envFilePaths === undefined
-    ? (singularEnvFile === undefined ? [] : [singularEnvFile])
+    ? (shouldUseDefaultEnvFile && cwd ? [nodePath().join(cwd, '.env')] : [])
     : resolveEnvFilePaths(options.envFilePaths, options.cwd);
   const defaults = options.defaults ?? {};
   const processEnv = options.processEnv ?? {};
@@ -604,7 +605,14 @@ function validateConfig(options: NormalizedLoadOptions, merged: ConfigDictionary
   }
 }
 
-function resolveConfig(options: NormalizedLoadOptions): ConfigDictionary {
+/**
+ * Merges and validates a detached configuration snapshot.
+ *
+ * @internal
+ * @param options Normalized source and synchronous validation options.
+ * @returns The validated configuration dictionary.
+ */
+export function resolveConfigSnapshot(options: NormalizedLoadOptions): ConfigDictionary {
   return validateConfig(options, buildMergedConfig(options));
 }
 
@@ -687,7 +695,7 @@ function applyReloadNow(
   reason: ConfigReloadReason,
 ): ConfigDictionary {
   const previous = state.current;
-  const next = resolveConfig(normalized);
+  const next = resolveConfigSnapshot(normalized);
 
   state.current = next;
 
@@ -839,30 +847,15 @@ function closeReloader(
 }
 
 /**
- * Creates a stateful config reloader that mirrors `loadConfig(...)` semantics and optionally watches the env file.
- *
- * @param options Configuration loading options, including optional watch mode and a synchronous Standard Schema validator.
- * @returns A reloader that exposes the current snapshot, manual reload, subscriptions, and cleanup.
- * @throws {FluoError} When the initial config load or validation fails.
- *
- * @example
- * ```ts
- * const reloader = createConfigReloader({ envFile: '.env', watch: true });
- *
- * const subscription = reloader.subscribe((snapshot) => {
- *   console.log(snapshot.PORT);
- * });
- *
- * reloader.reload();
- * subscription.unsubscribe();
- * reloader.close();
- * ```
- */
-export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader {
+/** @internal State builder shared by ConfigModule's static APIs and reload lifecycle. */
+export class ConfigReloadCore {
+  static create(options: ConfigLoadOptions, initialSnapshot?: ConfigDictionary): ConfigReloader {
   const loadOptions = snapshotConfigLoadOptions(options);
-  const normalized = normalizeLoadOptions(loadOptions);
+  const normalized = normalizeConfigLoadOptions(loadOptions);
   const state: ReloaderState = {
-    current: resolveConfig(normalized),
+    current: initialSnapshot === undefined
+      ? resolveConfigSnapshot(normalized)
+      : cloneConfigDictionary(initialSnapshot),
     pendingReloadReason: undefined,
     reloading: false,
     watchedEnvFileHash: hashEnvFileListContent(normalized.envFiles),
@@ -891,17 +884,6 @@ export function createConfigReloader(options: ConfigLoadOptions): ConfigReloader
       return createSubscription(errorListeners, listener);
     },
   };
+  }
 }
 
-/**
- * Loads, merges, and validates one configuration snapshot without creating long-lived watcher state.
- *
- * Merge precedence stays aligned with the package README contract: `defaults` < env file < `processEnv` < `runtimeOverrides`.
- *
- * @param options Configuration loading options for source precedence, parsing, and synchronous schema validation.
- * @returns A detached normalized configuration dictionary for the current load.
- * @throws {FluoError} When validation throws or the config cannot be normalized.
- */
-export function loadConfig(options: ConfigLoadOptions): ConfigDictionary {
-  return cloneConfigDictionary(resolveConfig(normalizeLoadOptions(options)));
-}
