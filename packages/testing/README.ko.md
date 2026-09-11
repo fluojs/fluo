@@ -140,8 +140,28 @@ const module = await Test.createTestingModule({ rootModule: AppModule })
   .overrideModule(StripeModule, FakeStripeModule)
   .compile();
 
-expect(module.rootModule).toBe(AppModule);
-expect(module.modules.some((compiledModule) => compiledModule.type === BillingModule)).toBe(true);
+let assertionError: unknown;
+
+try {
+  expect(module.rootModule).toBe(AppModule);
+  expect(module.modules.some((compiledModule) => compiledModule.type === BillingModule)).toBe(true);
+} catch (error: unknown) {
+  assertionError = error;
+  throw error;
+} finally {
+  try {
+    await module.container.dispose();
+  } catch (disposeError: unknown) {
+    if (assertionError) {
+      throw new AggregateError(
+        [assertionError, disposeError],
+        'Module override assertion and testing module disposal both failed.',
+      );
+    }
+
+    throw disposeError;
+  }
+}
 ```
 
 <a id="createtestapp-기반-request-level-테스트"></a>

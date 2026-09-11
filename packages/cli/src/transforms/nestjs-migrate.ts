@@ -2058,20 +2058,21 @@ function rewriteTesting(source: string, filePath: string): { changed: boolean; s
   };
   inspectNestTestReferences(sourceFile);
 
-  const hasRetainedNestTest = retainedNestTestSymbols.size > 0;
   const [firstConvertedCall] = convertedCalls.values();
   if (!firstConvertedCall) {
     return { changed: false, source, warnings };
   }
 
+  const convertedNestTestSymbols = new Set<ts.Symbol>([...convertedCalls.values()].map(({ symbol }) => symbol));
   let fluoTestName = firstConvertedCall.receiver.text;
-  if (hasRetainedNestTest) {
+  if (retainedNestTestSymbols.size > 0 || convertedNestTestSymbols.size > 1) {
     const identifiers = new Set<string>();
     const collectIdentifiers = (node: ts.Node): void => {
       if (ts.isIdentifier(node)) identifiers.add(node.text);
       ts.forEachChild(node, collectIdentifiers);
     };
     collectIdentifiers(sourceFile);
+
     fluoTestName = 'FluoTest';
     for (let suffix = 2; identifiers.has(fluoTestName); suffix += 1) {
       fluoTestName = `FluoTest${suffix}`;
