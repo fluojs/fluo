@@ -214,7 +214,7 @@ TerminusModule.forRoot({
     indicatorTimeoutMs: 1_500,
   },
   indicators: [
-    new HttpHealthIndicator({ key: 'upstream-api', url: 'https://example.com/health' }),
+    HttpHealthIndicator.create({ key: 'upstream-api', url: 'https://example.com/health' }),
   ],
 });
 ```
