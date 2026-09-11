@@ -225,16 +225,19 @@ export class RefreshTokenModule {
   /**
    * Registers `RefreshTokenStrategy` against the refresh service owned by `JwtModule`.
    *
-   * @param service Optional application-owned refresh service port for a non-JWT integration.
-   *   Class tokens are registered inside this module. Omit this argument for the
-   *   canonical JWT-owned registration path.
+   * @param service Optional application-owned refresh service port. Its rotated
+   *   access tokens must be accepted by the `DefaultJwtVerifier` configured through
+   *   `JwtModule`. Class tokens are registered inside this module. Omit this
+   *   argument for the canonical JWT-owned registration path.
    * @param options Optional module imports that export a custom service token or dependencies.
    * @returns A module definition that exports `RefreshTokenStrategy` and `REFRESH_TOKEN_SERVICE`.
    * @remarks
    * The canonical path is `JwtModule.forRoot({ global: true, refreshToken })`
    * followed by `RefreshTokenModule.forRoot()`. Passport aliases the exported JWT
    * service instead of creating another store, refresh service, or crypto configuration.
-   * A custom port remains available only for integrations that do not use `JwtModule`.
+   * A custom port remains available for application-owned refresh state, but
+   * `JwtModule` remains required to provide the access-token verifier that
+   * establishes the returned principal subject.
    *
    * @example
    * ```ts

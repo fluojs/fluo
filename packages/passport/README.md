@@ -276,7 +276,7 @@ Import `JwtModule.forRoot(...)`, `RefreshTokenModule.forRoot()`, and `PassportMo
 
 A successful exchange resolves `ctx.principal` to the `RefreshTokenPrincipal` shape: the rotated pair is nested under `claims.accessToken` and `claims.refreshToken`, with the verified `subject` at the top level. The separate exported `RefreshTokenAuthResult` type describes the application-facing exchange payload a refresh endpoint returns to clients.
 
-`RefreshTokenStrategy` reads tokens from `body.refreshToken`, `Authorization: Bearer ...`, or `x-refresh-token`; malformed non-string tokens fail authentication. After rotation, it trusts the normalized access-token principal subject returned by `@fluojs/jwt`. `JwtRefreshTokenAdapter` requires a `secret` and a backing store; `store: 'memory'` is for development and single-instance deployments only, and rotation detects reuse through the store consume contract.
+`RefreshTokenStrategy` reads tokens from `body.refreshToken`, `Authorization: Bearer ...`, or `x-refresh-token`; malformed non-string tokens fail authentication. After rotation, it verifies the returned access token through `DefaultJwtVerifier` and uses its normalized subject. A custom `RefreshTokenServicePort` may own refresh state, but it must be registered alongside a globally visible `JwtModule` configuration and return access tokens that configuration accepts; it is not a non-JWT exchange path.
 
 ### Account Linking and Status
 
@@ -320,12 +320,12 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 ### Refresh Token Preset
 - `RefreshTokenModule`: Module entry point for the built-in refresh-token preset.
 - `RefreshTokenStrategy`, `REFRESH_TOKEN_STRATEGY_NAME`, `REFRESH_TOKEN_SERVICE`: Refresh-token strategy and service alias wiring.
-- `RefreshTokenServicePort`, `RefreshTokenInput`, `RefreshTokenAuthResult`, `RefreshTokenPrincipal`: Custom non-JWT service port, exchange payload shapes, and the principal shape resolved onto `ctx.principal` after a successful exchange. The JWT-owned concrete `RefreshTokenService` is imported from `@fluojs/jwt`.
+- `RefreshTokenServicePort`, `RefreshTokenInput`, `RefreshTokenAuthResult`, `RefreshTokenPrincipal`: Custom refresh-service port, exchange payload shapes, and the principal shape resolved onto `ctx.principal` after a successful exchange. Custom services still require a globally visible `JwtModule` verifier and must return an access token it accepts. The JWT-owned concrete `RefreshTokenService` is imported from `@fluojs/jwt`.
 - Refresh helpers: `createRefreshTokenStrategyRegistration`.
 
 ### Refresh ownership migration
 
-Move every refresh `secret`, `expiresInSeconds`, `rotation`, and `store` value into `JwtModule.forRoot({ global: true, refreshToken: ... })`, then replace `RefreshTokenModule.forRoot(JwtRefreshTokenAdapter)` with `RefreshTokenModule.forRoot()`. Remove imports of `JwtRefreshTokenAdapter`, `REFRESH_TOKEN_MODULE_OPTIONS`, and `RefreshTokenModuleOptions`. Consumers that used Passport's former structural `RefreshTokenService` type should use `RefreshTokenService` from `@fluojs/jwt` for the canonical path, or `RefreshTokenServicePort` only for a non-JWT integration.
+Move every refresh `secret`, `expiresInSeconds`, `rotation`, and `store` value into `JwtModule.forRoot({ global: true, refreshToken: ... })`, then replace `RefreshTokenModule.forRoot(JwtRefreshTokenAdapter)` with `RefreshTokenModule.forRoot()`. Remove imports of `JwtRefreshTokenAdapter`, `REFRESH_TOKEN_MODULE_OPTIONS`, and `RefreshTokenModuleOptions`. Consumers that used Passport's former structural `RefreshTokenService` type should use `RefreshTokenService` from `@fluojs/jwt` for the canonical path. A custom `RefreshTokenServicePort` remains supported only with a globally visible `JwtModule` verifier and JWT access tokens that it accepts.
 
 ### Passport.js Bridge
 - `createPassportJsStrategyBridge(...)`: Compatibility helper that adapts Passport.js strategies to fluo `AuthStrategy` and returns providers plus the matching strategy registration for `PassportModule.forRoot(...)`.

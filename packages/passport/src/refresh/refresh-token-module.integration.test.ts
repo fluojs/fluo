@@ -2,6 +2,7 @@ import { Inject, Module } from '@fluojs/core';
 import {
   JwtInvalidTokenError,
   JwtModule,
+  JwtService,
   type RefreshTokenRecord,
   RefreshTokenService as JwtRefreshTokenService,
   type RefreshTokenRotateInput,
@@ -80,14 +81,17 @@ class RotatingRefreshTokenStore implements JwtRefreshTokenStore {
   }
 }
 
+@Inject(JwtService)
 class ApplicationRefreshTokenService implements RefreshTokenServicePort {
+  constructor(private readonly jwt: JwtService) {}
+
   async issueRefreshToken(subject: string): Promise<string> {
     return `refresh:${subject}`;
   }
 
   async rotateRefreshToken(currentToken: string): Promise<{ accessToken: string; refreshToken: string }> {
     return {
-      accessToken: `access:${currentToken}`,
+      accessToken: await this.jwt.sign({}, { subject: `custom:${currentToken}` }),
       refreshToken: `rotated:${currentToken}`,
     };
   }
@@ -187,9 +191,9 @@ describe('RefreshTokenModule application wiring', () => {
     }
   });
 
-  it('compiles the documented application graph with module-owned service provider ownership', async () => {
-    // Given — the documented topology passes the service class to RefreshTokenModule without
-    // re-registering it in the importing application module.
+  it('exchanges a custom refresh service through the configured JWT access-token verifier', async () => {
+    // Given — the custom port remains application-owned, while JwtModule provides the
+    // verifier required to establish the subject boundary from its returned access token.
     @Module({
       imports: [
         JwtModule.forRoot({
@@ -213,9 +217,27 @@ describe('RefreshTokenModule application wiring', () => {
       const strategy = await app.container.resolve(RefreshTokenStrategy);
       const service = await app.container.resolve<RefreshTokenServicePort>(REFRESH_TOKEN_SERVICE);
 
+      // When
+      const principal = await strategy.authenticate({
+        handler: {} as never,
+        requestContext: {
+          request: {
+            body: { refreshToken: 'custom-token' },
+            headers: {},
+          },
+        } as never,
+      });
+
       // Then
       expect(strategy).toBeInstanceOf(RefreshTokenStrategy);
       expect(service).toBeInstanceOf(ApplicationRefreshTokenService);
+      expect(principal).toMatchObject({
+        claims: {
+          accessToken: expect.any(String),
+          refreshToken: 'rotated:custom-token',
+        },
+        subject: 'custom:custom-token',
+      });
     } finally {
       await app.close();
     }
@@ -267,7 +289,7 @@ describe('RefreshTokenModule application wiring', () => {
   it('resolves an imported symbol service through the exported alias', async () => {
     // Given — the imported module owns and exports the non-class service token.
     const serviceToken = Symbol('fluo.passport.refresh-token-service');
-    const service = new ApplicationRefreshTokenService();
+    const service = new DependencyfulRefreshTokenService(new RefreshTokenStore());
 
     @Module({
       exports: [serviceToken],
@@ -307,7 +329,7 @@ describe('RefreshTokenModule application wiring', () => {
   it('resolves an imported string service through the exported alias under strict policy', async () => {
     // Given — the imported module owns and exports the non-class service token.
     const serviceToken = 'fluo.passport.refresh-token-service';
-    const service = new ApplicationRefreshTokenService();
+    const service = new DependencyfulRefreshTokenService(new RefreshTokenStore());
 
     @Module({
       exports: [serviceToken],

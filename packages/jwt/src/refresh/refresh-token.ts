@@ -70,6 +70,21 @@ type NormalizedRefreshTokenOptions = Omit<RefreshTokenOptions, 'store'> & {
   readonly store: RefreshTokenStore;
 };
 
+function isRefreshTokenStore(value: unknown): value is RefreshTokenStore {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const store = value as Partial<RefreshTokenStore>;
+  return typeof store.save === 'function'
+    && typeof store.find === 'function'
+    && typeof store.revoke === 'function'
+    && typeof store.revokeBySubject === 'function'
+    && (store.revokeByFamily === undefined || typeof store.revokeByFamily === 'function')
+    && (store.consume === undefined || typeof store.consume === 'function')
+    && (store.rotate === undefined || typeof store.rotate === 'function');
+}
+
 class MemoryRefreshTokenStore implements RefreshTokenStore {
   private readonly records = new Map<string, RefreshTokenRecord>();
 
@@ -169,6 +184,12 @@ export function normalizeRefreshTokenOptions(
   }
 
   const store: RefreshTokenStore = options.store === 'memory' ? new MemoryRefreshTokenStore() : options.store;
+
+  if (!isRefreshTokenStore(store)) {
+    throw new JwtConfigurationError(
+      'JWT refresh token store must implement save(), find(), revoke(), and revokeBySubject().',
+    );
+  }
 
   if (options.rotation && typeof store.rotate !== 'function' && typeof store.consume !== 'function') {
     throw new JwtConfigurationError(
