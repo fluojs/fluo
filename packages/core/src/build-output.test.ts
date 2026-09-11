@@ -12,6 +12,7 @@ const supportedBuildModules = [
   'metadata',
   'public-token',
   'request-pipeline',
+  'studio-contracts',
   'types',
   'utils',
 ] as const;
