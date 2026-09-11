@@ -334,6 +334,7 @@ describe('scaffoldBootstrapApp', () => {
     const tsconfig = readFileSync(join(targetDirectory, 'tsconfig.json'), 'utf8');
     const tsconfigBuild = readFileSync(join(targetDirectory, 'tsconfig.build.json'), 'utf8');
     const appFile = readFileSync(join(targetDirectory, 'src', 'app.ts'), 'utf8');
+    const mainFile = readFileSync(join(targetDirectory, 'src', 'main.ts'), 'utf8');
     const greetingControllerFile = readFileSync(join(targetDirectory, 'src', 'greeting', 'greeting.controller.ts'), 'utf8');
     const greetingRepoFile = readFileSync(join(targetDirectory, 'src', 'greeting', 'greeting.repo.ts'), 'utf8');
     const greetingModuleFile = readFileSync(join(targetDirectory, 'src', 'greeting', 'greeting.module.ts'), 'utf8');
