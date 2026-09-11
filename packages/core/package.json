@@ -36,6 +36,10 @@
     "./request-pipeline": {
       "types": "./dist/request-pipeline.d.ts",
       "import": "./dist/request-pipeline.js"
+    },
+    "./metadata-preload": {
+      "types": "./dist/metadata-preload.d.ts",
+      "import": "./dist/metadata-preload.js"
     }
   },
   "main": "./dist/index.js",

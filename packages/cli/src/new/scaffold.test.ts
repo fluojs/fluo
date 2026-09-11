@@ -391,8 +391,10 @@ describe('scaffoldBootstrapApp', () => {
     expect(viteConfig).not.toContain("import { transformAsync } from '@babel/core';");
     expect(viteConfig).not.toContain('function fluoDecoratorsPlugin');
     expect(viteConfig).not.toContain('baseUrl');
-    expect(vitestConfig).toContain("import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';");
+    expect(vitestConfig).toContain("import { fluoDecoratorsPlugin } from '@fluojs/vite';");
     expect(vitestConfig).toContain("include: ['src/**/*.test.ts', 'test/**/*.test.ts']");
+    expect(vitestConfig).toContain("setupFiles: ['@fluojs/core/metadata-preload']");
+    expect(mainFile).toMatch(/^import '@fluojs\/core\/metadata-preload';/u);
     expect(vitestConfig).not.toContain('baseUrl');
   });
 

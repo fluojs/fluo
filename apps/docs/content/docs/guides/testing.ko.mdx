@@ -13,11 +13,9 @@ Provider, module wiring, guard, interceptor, DTO validation, request body, synth
 pnpm add -D @fluojs/testing vitest
 ```
 
-`@fluojs/testing/vitest`를 사용한다면 `@babel/core`도 설치하세요. `fluoBabelDecoratorsPlugin()`이 runtime에 Babel을 호출하기 때문입니다.
-
-```bash
-pnpm add -D @babel/core
-```
+decorated test module은 `@fluojs/vite`로 설정하세요. Vitest에는
+`fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`와
+setup file `@fluojs/core/metadata-preload`를 사용합니다.
 
 ## fluo testing ladder
 

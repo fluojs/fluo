@@ -1,8 +1,8 @@
-import { fluoBabelDecoratorsPlugin } from '@fluojs/testing/vitest';
+import { fluoDecoratorsPlugin } from '@fluojs/vite';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  plugins: [fluoBabelDecoratorsPlugin()],
+  plugins: [fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })],
   test: {
     environment: 'node',
     include: ['*/src/**/*.test.ts', '*/test/**/*.test.ts'],

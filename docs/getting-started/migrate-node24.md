@@ -162,20 +162,20 @@ The workspace verifies Vite `8.2.2` and Vitest `4.1.11`. The published
 `@fluojs/vite` peer remains `vite >=6.2.0`; that broad peer contract is not a claim
 that generated projects remain on Vite 6. `@fluojs/testing` changes its required
 Vitest peer from the previous Vitest 3 line to `^4.1.11`. Upgrade consumers of its
-mock helpers and `@fluojs/testing/vitest`, and keep `@babel/core` installed in the
-consuming workspace.
+mock helpers and configure the decorator transform through `@fluojs/vite`.
 
 1. In ESM Vite configs, migrate `build.rollupOptions` to
    `build.rolldownOptions`, reviewing the application's input, output, and external
    options against Rolldown. Existing Node starters also change the server target
    from `node20` to `node24`, set `engines.node` to `>=24.0.0 <27`, and update
    `@types/node` to `^24.0.0`.
-2. Keep `fluoDecoratorsPlugin()` from `@fluojs/vite` for application `.ts`
-   decorators before Rolldown/Oxc. Keep `fluoBabelDecoratorsPlugin()` from
-   `@fluojs/testing/vitest` as the separate testing transform.
+2. Use `fluoDecoratorsPlugin()` from `@fluojs/vite` for application decorators
+   and `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`
+   for Vitest. Configure `@fluojs/core/metadata-preload` before decorated modules
+   evaluate.
 3. Remove the generated Babel `ignore` entry for `src/**/*.test.ts` from your
-   existing Babel config. The testing plugin must be allowed to transform
-   decorators declared inside tests; the application plugin still skips tests.
+   existing Babel config. Test mode transforms decorators declared inside tests;
+   application mode still skips tests.
 4. Keep the Babel decorator proposal setting `version: '2023-11'` and the
    TypeScript preset. Do not enable `experimentalDecorators` or
    `emitDecoratorMetadata`, or replace Babel with direct Oxc/esbuild decorator

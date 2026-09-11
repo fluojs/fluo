@@ -13,11 +13,9 @@ Use `@fluojs/testing` when you need to test providers, module wiring, guards, in
 pnpm add -D @fluojs/testing vitest
 ```
 
-If you use `@fluojs/testing/vitest`, also install `@babel/core` because `fluoBabelDecoratorsPlugin()` invokes Babel at runtime.
-
-```bash
-pnpm add -D @babel/core
-```
+Configure decorated test modules with `@fluojs/vite`: use
+`fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })` and
+`@fluojs/core/metadata-preload` as a Vitest setup file.
 
 ## The fluo testing ladder
 

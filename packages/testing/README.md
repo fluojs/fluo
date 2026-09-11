@@ -24,12 +24,16 @@ Preparing for the coordinated Node 24 release? Follow the [consumer migration gu
 pnpm add -D @fluojs/testing vitest
 ```
 
-Vitest `^4.1.11` is a required peer dependency for the mock helpers and the `@fluojs/testing/vitest` entrypoint. `@babel/core` is declared as a peer because the Vitest decorators plugin loads Babel from the consuming workspace; package managers may surface that peer even when you only use the non-Vitest harness subpaths.
+Vitest `^4.1.11` is a required peer dependency for the mock helpers. Configure decorators through `@fluojs/vite`, which owns the single lazy Babel transform:
 
-If you use `@fluojs/testing/vitest`, install `@babel/core` in the consuming workspace as well because `fluoBabelDecoratorsPlugin()` invokes Babel at runtime. The Vitest plugin runs with `enforce: 'pre'` so decorator-bearing TypeScript reaches Babel before Vite 8 normal-stage Rolldown/Oxc transforms. It transforms `.ts`, `.tsx`, `.mts`, and `.cts` source ids after removing Vite query/hash suffixes, skips `node_modules`, and resolves the nearest root Babel config named `babel.config.cjs`, `babel.config.mjs`, `babel.config.js`, or `babel.config.json`:
+```ts
+import { fluoDecoratorsPlugin } from '@fluojs/vite';
+import { defineConfig } from 'vitest/config';
 
-```bash
-pnpm add -D @babel/core
+export default defineConfig({
+  plugins: [fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })],
+  test: { setupFiles: ['@fluojs/core/metadata-preload'] },
+});
 ```
 
 ## When to Use
@@ -259,13 +263,11 @@ React test runtime would reduce coverage rather than remove necessary setup.
 ## Public API
 
 - **Root package**: `createTestingModule(...)`, `Test.createTestingModule(...)`, `createTestApp(...)`, module introspection helpers, and shared app/module testing types including `DeepMocked<T>`
-- **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (including `DeepMocked<T>`), `@fluojs/testing/types` (including `DeepMocked<T>`), `@fluojs/testing/vitest`, `@fluojs/testing/vitest/tooling`
+- **Subpaths**: `@fluojs/testing/app`, `@fluojs/testing/module`, `@fluojs/testing/http`, `@fluojs/testing/mock` (including `DeepMocked<T>`), and `@fluojs/testing/types` (including `DeepMocked<T>`)
 - **Harness subpaths**: `platform-conformance`, `platform-shell-lifecycle-conformance`, `http-adapter-portability`, `web-runtime-adapter-portability`, `fetch-style-websocket-conformance`. The HTTP portability harnesses expose `assertSupportsConditionalRequests()`, `assertSupportsCustomHttpRouteMethods()`, `assertSupportsSingleByteRanges()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `assertSupportsPortableResponseCookies()`, `createConditionalRequestBootstrapOptions`, `createErrorRepresentationBootstrapOptions`, `NetworkHttpErrorRepresentationBootstrapOptions`, and `WebHttpErrorRepresentationBootstrapOptions` for adapter-owned bootstrap typing.
-- **Tooling**: `@fluojs/testing/vitest` with `fluoBabelDecoratorsPlugin()` and `@fluojs/testing/vitest/tooling` with Vitest workspace config helpers (requires `vitest` and `@babel/core` in the consuming workspace)
+- **Decorator tooling**: `@fluojs/vite` with `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`
 
 The package manifest declares `engines.node >=24.0.0 <27`, matching the verified Node listener windows used by its public body-bearing RFC `QUERY` portability assertion. Node versions below 24 and Node 27+ are excluded. Non-Node runtime application tests can still use runtime-native tools where documented, but the published `@fluojs/testing` package itself is governed by that exact Node.js engine range.
-
-`@fluojs/testing/vitest/tooling` maps workspace aliases only for each package's declared public `exports`. Private source files, internal helpers, and unexported source entrypoints are intentionally excluded so tests exercise the same import boundaries that consumers receive from published packages.
 
 ## Related Packages
 

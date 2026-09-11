@@ -1,4 +1,5 @@
 import type { Plugin } from 'vite';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { fluoDecoratorsPlugin } from './index.js';
@@ -106,5 +107,24 @@ export { Example };
         presets: [['@babel/preset-typescript', { allowDeclareFields: true }]],
       }),
     );
+  });
+
+  it('uses explicit test-boundary Babel and sourcemap options', async () => {
+    // Given
+    const babelConfigFile = fileURLToPath(new URL('../../../tooling/babel/babel.config.cjs', import.meta.url));
+    const plugin = fluoDecoratorsPlugin({
+      babelConfigFile: () => babelConfigFile,
+      sourceMaps: true,
+      transformBoundary: 'test',
+    });
+
+    // When
+    await runTransform(plugin, 'export const value: number = 1;', '/app/src/example.test.tsx');
+
+    // Then
+    expect(transformAsyncMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      configFile: babelConfigFile,
+      sourceMaps: true,
+    }));
   });
 });

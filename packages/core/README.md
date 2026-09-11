@@ -66,15 +66,14 @@ fluo uses TC39 standard decorators. You do not need `experimentalDecorators: tru
 
 Core metadata is written through fluo-owned stores and TC39 `Symbol.metadata` integration points, never through `reflect-metadata` or compiler-emitted design types. Importing `@fluojs/core` does not install a global `Symbol.metadata` polyfill. Fluo's built-in decorators keep working through framework-owned stores, but a custom standard decorator that reads `context.metadata` needs `Symbol.metadata` before its decorated module is evaluated.
 
-```ts
-// preload.ts — configure this as the application entrypoint
-import { ensureMetadataSymbol } from '@fluojs/core';
+Use the side-effect-only preload entry before every static import that can evaluate decorated declarations:
 
-ensureMetadataSymbol();
-await import('./bootstrap.js');
+```ts
+import '@fluojs/core/metadata-preload';
+import './bootstrap.js';
 ```
 
-The dynamic import is intentional. An ordinary bootstrap module that statically imports decorated classes and then calls `ensureMetadataSymbol()` is too late, because ESM evaluates the static import graph before running the bootstrap module body.
+`ensureMetadataSymbol()` remains available when an application must dynamically control loading. Calling it in an ordinary bootstrap module after a static decorated import is too late, because ESM evaluates the static import graph before running the bootstrap module body.
 
 ### Empty module metadata
 

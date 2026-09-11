@@ -57,29 +57,29 @@ export default defineConfig({
 });
 ```
 
-The plugin transforms `.ts` application files with Babel using the `2023-11` decorators proposal and `@babel/preset-typescript`. It strips Vite query suffixes before deciding the file boundary, then skips declaration files, `*.test.ts` or `*.spec.ts` files, `node_modules`, and non-`.ts` files so generated Vitest test files continue to use the dedicated `@fluojs/testing/vitest` transform path. Importing `@fluojs/vite` or creating `fluoDecoratorsPlugin()` does not load `@babel/core`; missing Babel peers are surfaced as transform-time diagnostics for the source file Vite is transforming.
+The plugin transforms `.ts`, `.tsx`, `.mts`, and `.cts` files with Babel using the `2023-11` decorators proposal and `@babel/preset-typescript`. It strips Vite query suffixes before deciding the file boundary, skips declarations, `node_modules`, and (in application mode) `*.test.*` and `*.spec.*`. Importing `@fluojs/vite` or creating `fluoDecoratorsPlugin()` does not load `@babel/core`; missing Babel peers are surfaced as transform-time diagnostics for the source file Vite is transforming. Every transformed module preloads `@fluojs/core/metadata-preload` before its decorated declarations evaluate.
 
 ## Decorator Transform Boundary
 
-`@fluojs/vite` owns application build transforms, not Vitest test transforms. Generated non-Deno starters keep the file-boundary split explicit:
+`@fluojs/vite` owns the one decorator transform for application and Vitest module graphs. Generated non-Deno starters keep the boundary explicit:
 
 1. `vite.config.ts` imports `fluoDecoratorsPlugin()` from `@fluojs/vite`.
-2. The Vite plugin strips query suffixes, accepts only application `.ts` files, lazily loads Babel on the first eligible transform, and runs `@babel/plugin-proposal-decorators` with `{ version: '2023-11' }` plus `@babel/preset-typescript`.
-3. `vitest.config.ts` imports `fluoBabelDecoratorsPlugin()` from `@fluojs/testing/vitest`, so `*.test.ts` and `*.spec.ts` files stay on the testing-specific transform path.
+2. The Vite plugin strips query suffixes, accepts application `.ts`, `.tsx`, `.mts`, and `.cts` files, lazily loads Babel on the first eligible transform, and runs `@babel/plugin-proposal-decorators` with `{ version: '2023-11' }` plus `@babel/preset-typescript`.
+3. `vitest.config.ts` uses `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`, which includes test/spec modules and their application imports while preserving declaration and `node_modules` exclusions.
 
 The React SSR + Vite starter keeps its decorator-bearing application declarations in `src/app.ts`;
 JSX rendering remains in `.tsx` modules such as `src/page.tsx`.
 
-Keep those boundaries separate when customizing generated projects. Re-enabling `experimentalDecorators`, relying on direct esbuild decorator handling, or routing test files through the Vite application transform is outside the documented fluo support contract.
+Set `babelConfigFile` to a file path or resolver when a test workspace needs a root Babel configuration. Re-enabling `experimentalDecorators` or relying on direct esbuild decorator handling is outside the documented fluo support contract.
 
 ## Public API
 
-- `fluoDecoratorsPlugin()` — creates the Vite plugin used by generated fluo starter projects.
+- `fluoDecoratorsPlugin(options?)` — creates the canonical application or Vitest decorator transform.
 
 ## Related Packages
 
 - [`@fluojs/cli`](../cli/README.md): generates starter projects that import this Vite plugin.
-- [`@fluojs/testing`](../testing/README.md): provides the Vitest-specific decorator transform entrypoint.
+- [`@fluojs/testing`](../testing/README.md): provides application testing helpers.
 
 ## Example Sources
 
