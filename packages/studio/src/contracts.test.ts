@@ -7,6 +7,16 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Root } from 'react-dom/client';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import type {
+  BootstrapTimingDiagnostics as RootBootstrapTimingDiagnostics,
+  BootstrapTimingPhase as RootBootstrapTimingPhase,
+  PlatformCheckResult as RootPlatformCheckResult,
+  PlatformHealthReport as RootPlatformHealthReport,
+  PlatformHealthStatus as RootPlatformHealthStatus,
+  PlatformReadinessReport as RootPlatformReadinessReport,
+  PlatformSnapshot as RootPlatformSnapshot,
+  PlatformState as RootPlatformState,
+} from './index.js';
 import { bootstrapStudioApp } from './app/bootstrap.js';
 import {
   applyFilters,
@@ -560,6 +570,17 @@ describe('parseStudioPayload', () => {
     expect(issue.code).toBe('QUEUE_DEPENDENCY_NOT_READY');
   });
 
+  it('publishes every former contracts-only migration type from the root entrypoint', () => {
+    expectTypeOf<RootBootstrapTimingDiagnostics>().toEqualTypeOf<studio.BootstrapTimingDiagnostics>();
+    expectTypeOf<RootBootstrapTimingPhase>().toEqualTypeOf<studio.BootstrapTimingPhase>();
+    expectTypeOf<RootPlatformCheckResult>().toEqualTypeOf<studio.PlatformCheckResult>();
+    expectTypeOf<RootPlatformHealthReport>().toEqualTypeOf<studio.PlatformHealthReport>();
+    expectTypeOf<RootPlatformHealthStatus>().toEqualTypeOf<studio.PlatformHealthStatus>();
+    expectTypeOf<RootPlatformReadinessReport>().toEqualTypeOf<studio.PlatformReadinessReport>();
+    expectTypeOf<RootPlatformSnapshot>().toEqualTypeOf<studio.PlatformSnapshot>();
+    expectTypeOf<RootPlatformState>().toEqualTypeOf<studio.PlatformState>();
+  });
+
   it('keeps Studio diagnostics contracts independent from the runtime package', () => {
     const packageManifest = JSON.parse(readFileSync(resolve(packageDir, 'package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
@@ -582,14 +603,17 @@ describe('parseStudioPayload', () => {
     expect(runtimeCoupledSources).toEqual([]);
   });
 
-  it('gives runtime live bridge types one Studio-owned wire contract seam', () => {
+  it('gives runtime live bridge types a Core-internal portability seam', () => {
     const runtimeManifest = JSON.parse(readFileSync(resolve(packageDir, '../runtime/package.json'), 'utf8')) as {
       dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
     };
     const runtimeLiveContracts = readFileSync(resolve(packageDir, '../runtime/src/devtools/contracts.ts'), 'utf8');
 
-    expect(runtimeManifest.dependencies?.['@fluojs/studio']).toBe('workspace:^');
-    expect(runtimeLiveContracts).toContain("from '@fluojs/studio';");
+    expect(runtimeManifest.dependencies?.['@fluojs/studio']).toBeUndefined();
+    expect(runtimeManifest.devDependencies?.['@fluojs/studio']).toBe('workspace:^');
+    expect(runtimeLiveContracts).toContain("from '@fluojs/core/internal';");
+    expect(runtimeLiveContracts).not.toContain("from '@fluojs/studio';");
     expect(runtimeLiveContracts).not.toContain('export interface StudioRouteDescriptor');
     expect(runtimeLiveContracts).not.toContain('export type StudioLiveEvent =');
     expect(runtimeLiveContracts).not.toContain('StudioProducer');
@@ -818,6 +842,19 @@ describe('parseStudioPayload', () => {
         }),
       )
     ).toThrow('Invalid bootstrap timing payload.');
+  });
+
+  it('rejects explicitly present malformed static timing values before rendering', () => {
+    for (const timing of [null, false, 'slow', []]) {
+      expect(() =>
+        parseStudioPayload(
+          JSON.stringify({
+            snapshot: snapshotFixture,
+            timing,
+          }),
+        )
+      ).toThrow('Invalid bootstrap timing payload.');
+    }
   });
 
   it('preserves inspect report artifacts with summary, snapshot, and timing', () => {

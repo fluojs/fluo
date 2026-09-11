@@ -157,6 +157,27 @@ describe('Studio live event contracts', () => {
     });
   });
 
+  it('rejects explicitly present malformed timing in live snapshot and timing events', () => {
+    for (const timing of [null, false, 'slow', []]) {
+      const snapshotEvent = {
+        ...liveEvents[0],
+        payload: {
+          ...liveEvents[0].payload,
+          timing,
+        },
+      };
+      const timingEvent = {
+        ...liveEvents[2],
+        payload: timing,
+      };
+
+      expect(isStudioLiveEvent(snapshotEvent)).toBe(false);
+      expect(() => parseStudioLiveEvent(JSON.stringify(snapshotEvent))).toThrow('Invalid bootstrap timing payload.');
+      expect(isStudioLiveEvent(timingEvent)).toBe(false);
+      expect(() => parseStudioLiveEvent(JSON.stringify(timingEvent))).toThrow('Invalid bootstrap timing payload.');
+    }
+  });
+
   it('rejects body-like request fields before Studio state can retain them', () => {
     const bodyLikeFields = ['body', 'headers', 'payload', 'rawBody', 'requestBody', 'responseBody'] as const;
 

@@ -143,10 +143,15 @@ Bootstrap timing phase 이름은 `bootstrap_module`, `register_runtime_tokens`, 
 |---|---|
 | `FilterState` | 원본 snapshot을 변경하지 않고 Studio가 적용하는 query, readiness status, diagnostic severity filter입니다. |
 | `ParsedPayload` | `parseStudioPayload(rawJson)`의 반환 shape로, parsed `StudioPayload`와 원본 JSON string을 포함합니다. |
+| `BootstrapTimingDiagnostics` / `BootstrapTimingPhase` | Versioned bootstrap timing artifact 계약입니다. timing은 생략할 수 있지만, 명시된 malformed 또는 non-finite 값은 거부합니다. |
+| `PlatformCheckResult` | Platform report의 이름 있는 readiness 또는 health check 결과입니다. |
 | `PlatformDiagnosticIssue` | Studio 소비자를 위한 Studio-owned runtime-neutral diagnostic issue 계약입니다. |
 | `PlatformDiagnosticSeverity` | Filter와 live diagnostic에서 사용하는 diagnostic severity union입니다. |
+| `PlatformHealthReport` / `PlatformHealthStatus` | Aggregate health 결과와 status union입니다. |
 | `PlatformReadinessStatus` | Filter와 graph annotation에서 사용하는 readiness status union입니다. |
+| `PlatformReadinessReport` | Platform snapshot의 aggregate readiness 결과입니다. |
 | `PlatformShellSnapshot` | Inspect artifact를 위한 Studio-owned runtime-neutral snapshot 계약입니다. |
+| `PlatformSnapshot` / `PlatformState` | Component별 snapshot 계약과 lifecycle state union입니다. |
 | `StudioInspectionSnapshot` | 검증된 compiled route descriptor를 optional로 포함하는 static inspect snapshot입니다. |
 | `StudioPayload` | Snapshot, timing diagnostics, report artifact를 담을 수 있는 static artifact envelope입니다. |
 | `StudioReportArtifact` | `fluo inspect --report`가 생성하는 CI/support report artifact입니다. |

@@ -50,6 +50,7 @@ describe('runtime peer package internal dependencies', () => {
       const fileOrder = left.file.localeCompare(right.file);
       return fileOrder === 0 ? left.specifier.localeCompare(right.specifier) : fileOrder;
     })).toEqual([
+      { file: 'devtools/contracts.ts', specifier: CORE_INTERNAL_IMPORT },
       { file: 'internal/core-metadata.ts', specifier: CORE_INTERNAL_IMPORT },
       { file: 'internal/http-runtime.ts', specifier: HTTP_INTERNAL_IMPORT },
       { file: 'internal/route-inspection-metadata.ts', specifier: CORE_INTERNAL_IMPORT },

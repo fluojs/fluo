@@ -1,7 +1,3 @@
-/**
- * Studio owns the live wire schema. Runtime produces these values through the
- * public `@fluojs/studio` seam rather than maintaining a duplicate DTO.
- */
 export type {
   StudioDisconnectPayload,
   StudioGraphEdge,
@@ -19,4 +15,4 @@ export type {
   StudioRequestTrace,
   StudioRestartPayload,
   StudioRouteKind,
-} from '@fluojs/studio';
+} from '@fluojs/core/internal';

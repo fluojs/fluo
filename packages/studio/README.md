@@ -143,10 +143,15 @@ Bootstrap timing phase names accept only `bootstrap_module`, `register_runtime_t
 |---|---|
 | `FilterState` | Query, readiness status, and diagnostic severity filters applied by Studio without mutating the source snapshot. |
 | `ParsedPayload` | Return shape from `parseStudioPayload(rawJson)`, including the parsed `StudioPayload` and original JSON string. |
+| `BootstrapTimingDiagnostics` / `BootstrapTimingPhase` | Versioned bootstrap timing artifact contract; timing may be omitted, but present malformed or non-finite values are rejected. |
+| `PlatformCheckResult` | One named readiness or health check outcome in a platform report. |
 | `PlatformDiagnosticIssue` | Studio-owned runtime-neutral diagnostic issue contract for Studio consumers. |
 | `PlatformDiagnosticSeverity` | Diagnostic severity union used by filters and live diagnostics. |
+| `PlatformHealthReport` / `PlatformHealthStatus` | Aggregate health result and its status union. |
 | `PlatformReadinessStatus` | Readiness status union used by filters and graph annotations. |
+| `PlatformReadinessReport` | Aggregate readiness result for a platform snapshot. |
 | `PlatformShellSnapshot` | Studio-owned runtime-neutral snapshot contract for inspect artifacts. |
+| `PlatformSnapshot` / `PlatformState` | Per-component snapshot contract and lifecycle state union. |
 | `StudioInspectionSnapshot` | Static inspect snapshot that optionally carries validated compiled route descriptors. |
 | `StudioPayload` | Static artifact envelope containing a snapshot, timing diagnostics, and/or report artifact. |
 | `StudioReportArtifact` | CI/support report artifact produced by `fluo inspect --report`. |

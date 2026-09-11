@@ -939,20 +939,24 @@ function validateSnapshot(value: unknown): StudioParsedInspectionSnapshot | null
 }
 
 function validateTiming(value: unknown): BootstrapTimingDiagnostics | null {
-  if (!isRecord(value)) {
+  if (value === undefined) {
     return null;
+  }
+
+  if (!isRecord(value) || Array.isArray(value)) {
+    throw new Error('Invalid bootstrap timing payload.');
   }
 
   if (value.version !== 1) {
     throw new Error('Unsupported bootstrap timing version. Expected version: 1.');
   }
 
-  if (typeof value.totalMs !== 'number' || !Array.isArray(value.phases)) {
+  if (!isNumber(value.totalMs) || !Array.isArray(value.phases)) {
     throw new Error('Invalid bootstrap timing payload.');
   }
 
   for (const phase of value.phases) {
-    if (!isRecord(phase) || !isBootstrapTimingPhaseName(phase.name) || typeof phase.durationMs !== 'number') {
+    if (!isRecord(phase) || !isBootstrapTimingPhaseName(phase.name) || !isNumber(phase.durationMs)) {
       throw new Error('Invalid phase entry in bootstrap timing payload.');
     }
   }
