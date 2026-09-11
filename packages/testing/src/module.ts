@@ -10,8 +10,6 @@ import {
   type Provider,
 } from '@fluojs/di';
 import { resolveMultiContribution } from '@fluojs/di/internal';
-import type { Guard, HandlerSource, Interceptor } from '@fluojs/http';
-import { createDispatcher, createHandlerMapping } from '@fluojs/http';
 import type {
   BootstrapModuleOptions,
   BootstrapResult,
@@ -21,10 +19,8 @@ import { bootstrapModule, FluoFactory } from '@fluojs/runtime';
 import {
   createRequestBuilder,
   createTestRequestContextMiddleware,
-  makeRequest,
   type TestRequest,
   type TestRequestWithOptions,
-  type TestResponse,
 } from './http.js';
 import type {
   OverrideProviderBuilder,
@@ -92,33 +88,6 @@ export function extractModuleImports(moduleType: ModuleType): ModuleType[] {
   }
 
   return metadata.imports as ModuleType[];
-}
-
-function createHandlerSources(bootstrappedModules: BootstrapResult['modules']): HandlerSource[] {
-  const globalModules = bootstrappedModules.filter((compiledModule) => compiledModule.definition.global);
-
-  return bootstrappedModules.flatMap((compiledModule) =>
-    (compiledModule.definition.controllers ?? []).map((controllerToken) => ({
-      controllerToken,
-      moduleMiddleware: [
-        ...globalModules
-          .filter((globalModule) => globalModule !== compiledModule)
-          .flatMap((globalModule) => globalModule.definition.middleware ?? []),
-        ...(compiledModule.definition.middleware ?? []),
-      ],
-      moduleType: compiledModule.type,
-    })),
-  );
-}
-
-function createTestingDispatcher(bootstrapped: BootstrapResult): ReturnType<typeof createDispatcher> {
-  const handlerMapping = createHandlerMapping(createHandlerSources(bootstrapped.modules));
-
-  return createDispatcher({
-    appMiddleware: [createTestRequestContextMiddleware()],
-    handlerMapping,
-    rootContainer: bootstrapped.container,
-  });
 }
 
 function isProviderDescriptor<T>(value: Provider<T> | T): value is Exclude<Provider<T>, ClassType<T>> {
@@ -616,42 +585,8 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
     this.overrides.push(provider);
   }
 
-  overrideProvider<T>(token: Token<T>): OverrideProviderBuilder<T>;
-  overrideProvider<T>(token: Token<T>, provider: Provider<T>): this;
-  overrideProvider<T>(token: Token<T>, value: T): this;
-  overrideProvider<T>(token: Token<T>, ...rest: [Provider<T> | T] | []): this | OverrideProviderBuilder<T> {
-    if (rest.length < 1) {
-      return new DefaultOverrideProviderBuilder(this, token);
-    }
-
-    const [value] = rest;
-    this.overrides.push({ provide: token, useValue: value });
-    return this;
-  }
-
-  overrideProviders(overrides: Array<[Token, unknown]>): this {
-    for (const [token, value] of overrides) {
-      this.overrideProvider(token, value);
-    }
-
-    return this;
-  }
-
-  overrideGuard(guard: Token<Guard>, fake: Partial<Guard> = {}): this {
-    const passthrough: Guard = { canActivate: () => true, ...fake };
-    this.overrides.push({ provide: guard as Token<Guard>, useValue: passthrough });
-    return this;
-  }
-
-  overrideInterceptor(interceptor: Token<Interceptor>, fake: Partial<Interceptor> = {}): this {
-    const passthrough: Interceptor = { intercept: (_ctx, next) => next.handle(), ...fake };
-    this.overrides.push({ provide: interceptor as Token<Interceptor>, useValue: passthrough });
-    return this;
-  }
-
-  overrideFilter(filter: Token<unknown>, fake: unknown = {}): this {
-    this.overrides.push({ provide: filter, useValue: fake });
-    return this;
+  overrideProvider<T>(token: Token<T>): OverrideProviderBuilder<T> {
+    return new DefaultOverrideProviderBuilder(this, token);
   }
 
   overrideModule(module: ModuleType, replacement: ModuleType): this {
@@ -699,8 +634,6 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
   }
 
   private createTestingModuleRef(bootstrapped: BootstrapResult, syncResolver: SyncResolver): TestingModuleRef {
-    const dispatcher = createTestingDispatcher(bootstrapped);
-
     return {
       ...bootstrapped,
       has: (token) => bootstrapped.container.has(token),
@@ -727,11 +660,6 @@ class DefaultTestingModuleBuilder implements TestingModuleBuilder {
         }
 
         return results;
-      },
-      dispatch: async (request: TestRequestWithOptions) => {
-        const response = await makeRequest(dispatcher, request);
-        await syncResolver.syncFromContainer();
-        return response;
       },
     };
   }
@@ -789,24 +717,16 @@ export class Test {
       ...options,
       middleware: [createTestRequestContextMiddleware(), ...(options.middleware ?? [])],
     });
-    let closePromise: Promise<void> | undefined;
 
     const request: TestApp['request'] = (
       methodOrRequest: string | TestRequest,
       pathOrOptions?: string | TestRequestOptions,
       requestOptions?: TestRequestOptions,
-    ) => createRequestBuilder(app.dispatcher, Test.normalizeRequestInput(methodOrRequest, pathOrOptions, requestOptions));
-
-    const dispatch: TestApp['dispatch'] = async (requestInput: TestRequestWithOptions): Promise<TestResponse> =>
-      makeRequest(app.dispatcher, requestInput);
+    ) => createRequestBuilder(app, Test.normalizeRequestInput(methodOrRequest, pathOrOptions, requestOptions));
 
     return {
       request,
-      dispatch,
-      close: async () => {
-        closePromise ??= app.close();
-        await closePromise;
-      },
+      close: () => app.close(),
     };
   }
 

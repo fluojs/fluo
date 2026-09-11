@@ -2,7 +2,7 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./testing-guide.md">English</a></p>
 
-`Test`는 app과 testing module 생성을 위한 유일한 공개 entrypoint이며 `@fluojs/testing` 또는 `@fluojs/testing/module`에서 import합니다. **Breaking migration:** free-function import를 `Test`로 바꾸고 `Test.createApp(options)` / `Test.createTestingModule(options)`를 사용하세요. 기존 app subpath는 제거됩니다. 각 harness class는 기존 conformance/portability subpath에서 import하고 free factory 대신 `XHarness.create(options)`를 호출하세요. Option, override, assertion, cleanup은 유지합니다. [패키지 migration 안내](../../packages/testing/README.ko.md#빠른-시작)를 참고하세요.
+`Test`는 app과 testing module 생성을 위한 유일한 공개 entrypoint이며 `@fluojs/testing` 또는 `@fluojs/testing/module`에서 import합니다. **Breaking migration:** free-function import를 `Test`로 바꾸고 `Test.createApp(options)` / `Test.createTestingModule(options)`를 사용하세요. 기존 app subpath는 제거됩니다. Provider override에는 `overrideProvider(token).useValue(value)`, `.useClass(Type)`, `.useFactory(factory, inject?)`, `.useExisting(otherToken)` 중 하나를 사용하고, 제거된 두 인자 호출은 `.useValue(value)`로 바꾸세요. Application HTTP test는 synthetic app/module `dispatch(...)` 경로 대신 `app.request(...).send()`를 사용합니다. 각 harness class는 기존 conformance/portability subpath에서 import하고 free factory 대신 `XHarness.create(options)`를 호출하세요. Option, override, assertion, cleanup은 유지합니다. [패키지 migration 안내](../../packages/testing/README.ko.md#빠른-시작)를 참고하세요.
 
 ## 테스트 유형 (Test Types)
 

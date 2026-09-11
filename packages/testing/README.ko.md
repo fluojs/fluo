@@ -86,7 +86,8 @@ import { Test } from '@fluojs/testing';
 import { vi } from 'vitest';
 
 const module = await Test.createTestingModule({ rootModule: AppModule })
-  .overrideProvider(USER_REPOSITORY, {
+  .overrideProvider(USER_REPOSITORY)
+  .useValue({
     create: vi.fn().mockResolvedValue({ id: '1', name: 'Alice' }),
   })
   .compile();
@@ -167,7 +168,7 @@ try {
 }
 ```
 
-`app.request(...).send()`는 수동 `FrameworkRequest`/`FrameworkResponse` stub 없이 HTTP 의미에 가까운 테스트를 작성하게 해 주고 runtime dispatch와 같은 isolated request-scoped DI boundary를 생성하므로 애플리케이션 개발자의 기본 경로입니다. Assertion 실패가 runtime resource 누수로 이어지지 않도록 반환된 app은 `finally` 블록에서 닫으세요. `app.dispatch(...)`, `makeRequest(...)`, raw `FluoFactory.create(...)` 테스트는 adapter/runtime contract, framework internal, 또는 low-level dispatch boundary 자체를 증명해야 하는 compatibility case에 남겨 둡니다.
+`app.request(...).send()`는 `TestApp`의 유일한 HTTP 경로이며, 수동 `FrameworkRequest`/`FrameworkResponse` stub 없이 HTTP 의미에 가까운 테스트를 작성하게 하고 runtime dispatch와 같은 isolated request-scoped DI boundary를 생성합니다. Assertion 실패가 runtime resource 누수로 이어지지 않도록 반환된 app은 `finally` 블록에서 닫으세요. `makeRequest(...)`와 raw `FluoFactory.create(...)` 테스트는 adapter/runtime contract, framework internal, 또는 low-level dispatch boundary 자체를 증명해야 하는 compatibility case에 남겨 둡니다.
 
 Cookie-bound route에는 adapter가 정규화한 cookie 값을 담는 object request overload를 사용하세요.
 

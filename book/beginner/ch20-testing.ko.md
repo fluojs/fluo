@@ -144,7 +144,8 @@ describe('PostService', () => {
     module = await Test.createTestingModule({
       rootModule: PostTestModule,
     })
-      .overrideProvider(PostRepository, mockRepo)
+      .overrideProvider(PostRepository)
+      .useValue(mockRepo)
       .compile();
 
     // 3. 테스트하려는 인스턴스 해결(resolve)
@@ -178,16 +179,12 @@ describe('PostService', () => {
 비동기 코드는 백엔드 개발의 일반적인 형태입니다. Fluo의 `Test.createTestingModule`과 Vitest의 `async/await` 지원을 사용하면 이러한 작업을 순서대로 테스트할 수 있습니다. 성공적인 완료, 예상된 거부(rejection), 그리고 여러 비동기 작업이 특정 순서대로 완료되어야 하는 타이밍 문제까지 검증할 수 있습니다. `vi.useFakeTimers()`를 사용하면 실제로 시간을 기다리지 않고도 타임아웃이나 재시도 로직을 테스트할 수 있습니다.
 
 ### 20.3.3 Lifecycle Hooks in Tests
-때로는 모듈 그래프가 컴파일될 때 프로바이더가 올바르게 초기화되는지 테스트해야 할 때가 있습니다. `Test.createTestingModule()`은 컴파일 시점의 모듈 연결, 프로바이더 가시성, 프로바이더/가드/인터셉터 교체를 검증하는 슬라이스 테스트 표면입니다. 컴파일된 `TestingModuleRef`는 해결(resolve) 및 디스패치 헬퍼를 제공하지만 별도의 `close()` 라이프사이클 단계는 제공하지 않습니다. `compile()`이 해당 reference를 반환할 때까지는 builder가 내부 container를 소유합니다. Override, initialization hook, bootstrap hook, 최종 singleton 동기화가 실패하면 builder는 reject하기 전에 container를 dispose합니다. Cleanup이 성공하면 원래 compile error를 보존하고, cleanup도 실패하면 두 실패를 `AggregateError`로 함께 보고합니다.
+때로는 모듈 그래프가 컴파일될 때 프로바이더가 올바르게 초기화되는지 테스트해야 할 때가 있습니다. `Test.createTestingModule()`은 컴파일 시점의 모듈 연결과 프로바이더 가시성을 검증하는 슬라이스 테스트 표면입니다. Provider kind는 `.overrideProvider(token).useValue(...)`, `.useClass(...)`, `.useFactory(...)`, `.useExisting(...)`로 명시합니다. 컴파일된 `TestingModuleRef`는 해결(resolve) 헬퍼를 제공하지만 별도의 `close()` 라이프사이클 단계는 제공하지 않습니다. `compile()`이 해당 reference를 반환할 때까지는 builder가 내부 container를 소유합니다. Override, initialization hook, bootstrap hook, 최종 singleton 동기화가 실패하면 builder는 reject하기 전에 container를 dispose합니다. Cleanup이 성공하면 원래 compile error를 보존하고, cleanup도 실패하면 두 실패를 `AggregateError`로 함께 보고합니다.
 
 성공적으로 컴파일된 뒤에는 위 suite처럼 `TestingModuleRef`를 보관하고 caller-owned `module.container`를 `finally` 또는 `afterEach`에서 unconditional하게 dispose하세요. 그러면 성공, 실패, 조기 반환 테스트를 모두 처리합니다. 완료된 disposal은 idempotent하며 teardown error는 surface되어야 합니다. Teardown 전에 실패할 수 있는 테스트는 in-flight failure를 대체하지 말고 두 오류를 모두 보존해야 합니다. Request/application lifecycle coverage는 반환된 app이 `close()`를 노출하는 `Test.createApp()`에 유지하세요.
 
 ## 20.4 Provider Overrides
-`fluo`는 실제 컴포넌트를 테스트 대역(test double)으로 교체하는 여러 가지 방법을 제공합니다. 이 기능을 사용하면 외부 시스템의 불안정성은 제거하면서도, 테스트하려는 모듈의 DI 연결과 실행 흐름은 그대로 검증할 수 있습니다. Request-facing guard와 interceptor는 `TestingModuleRef.dispatch(...)` 또는 `Test.createApp(...)` 기반 request-path assertion을 추가해 애플리케이션이 사용하는 동일한 pipeline에서 override가 검증되도록 하세요.
-
-- **`overrideProvider(token, value)`**: 특정 토큰을 값(객체 또는 인스턴스)으로 교체합니다.
-- **`overrideProviders([[token, value], ...])`**: 여러 토큰을 한 번에 교체합니다.
-- **`overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`**: 컴파일 전에 cross-cutting request pipeline token을 교체합니다. Filter 동작 자체가 계약이면 runtime app registration과 함께 검증하세요.
+`fluo`는 DI 연결을 명확하게 유지하도록 provider 하나를 explicit strategy로 교체합니다. Literal value에는 `.overrideProvider(token).useValue(value)`, construction에는 `.useClass(Type)`, factory resolution에는 `.useFactory(factory, inject?)`, alias에는 `.useExisting(otherToken)`을 사용하세요. Request-facing guard와 interceptor는 `Test.createApp(...).request(...).send()` assertion을 추가해 사용자가 받는 동일한 application pipeline에서 override가 검증되도록 하세요.
 
 ### Mocks vs Fakes
 - **모의 객체(Mock)**: 호출 기록을 남기고 반환 값을 제어할 수 있는 객체입니다(예: `vi.fn()`). 상호작용을 검증하고 "연결 상태를 확인"할 때 좋습니다.
@@ -205,7 +202,8 @@ class FakePostRepository {
 class PostTestModule {}
 
 const module = await Test.createTestingModule({ rootModule: PostTestModule })
-  .overrideProvider(PostRepository, new FakePostRepository())
+  .overrideProvider(PostRepository)
+  .useValue(new FakePostRepository())
   .compile();
 
 let testError: unknown;

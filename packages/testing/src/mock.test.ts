@@ -47,6 +47,21 @@ describe('mock factory contracts', () => {
     expect(() => mock.missing).toThrow(Error);
   });
 
+  it('does not synthesize a thenable when then is absent', async () => {
+    const mock = ShallowMock.create<{ read(): string; then?: unknown }>();
+
+    expect(mock.then).toBeUndefined();
+    await expect(Promise.resolve(mock)).resolves.toBe(mock);
+  });
+
+  it('treats Object.prototype keys as missing shallow properties', () => {
+    const mock = ShallowMock.create<{ read(): string }>();
+    const strictMock = ShallowMock.create<{ read(): string }>({}, { strict: true });
+
+    expect(vi.isMockFunction(mock.toString)).toBe(true);
+    expect(() => strictMock.toString).toThrow(Error);
+  });
+
   it('does not infer missing data properties or recursively mock return values', () => {
     const mock = ShallowMock.create<{ nested: { read(): void }; load(): { read(): void } }>();
     expect(vi.isMockFunction(mock.nested)).toBe(true);

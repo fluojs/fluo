@@ -1,8 +1,7 @@
 import type { MaybePromise, Token } from '@fluojs/core';
-import type { ClassType, Container, ForwardRefToken, OptionalInjectToken, Provider } from '@fluojs/di';
-import type { Guard, Interceptor } from '@fluojs/http';
+import type { ClassType, Container, ForwardRefToken, OptionalInjectToken } from '@fluojs/di';
 import type { BootstrapApplicationOptions, BootstrapModuleOptions, BootstrapResult, ModuleType } from '@fluojs/runtime';
-import type { RequestBuilder, TestPrincipal, TestRequest, TestRequestWithOptions, TestResponse } from './http.js';
+import type { RequestBuilder, TestPrincipal, TestRequest, TestRequestWithOptions } from './http.js';
 
 /**
  * Bootstrap options accepted by `Test.createTestingModule(...)`.
@@ -34,7 +33,6 @@ export interface TestingModuleRef extends BootstrapResult {
   get<T>(token: Token<T>): T;
   resolve<T>(token: Token<T>): Promise<T>;
   resolveAll<T>(tokens: Token<T>[]): Promise<T[]>;
-  dispatch(request: TestRequestWithOptions): Promise<TestResponse>;
 }
 
 /**
@@ -56,12 +54,6 @@ export interface OverrideProviderBuilder<T> {
 export interface TestingModuleBuilder {
   compile(): Promise<TestingModuleRef>;
   overrideProvider<T>(token: Token<T>): OverrideProviderBuilder<T>;
-  overrideProvider<T>(token: Token<T>, provider: Provider<T>): this;
-  overrideProvider<T>(token: Token<T>, value: T): this;
-  overrideProviders(overrides: Array<[Token, unknown]>): this;
-  overrideGuard(guard: Token<Guard>, fake?: Partial<Guard>): this;
-  overrideInterceptor(interceptor: Token<Interceptor>, fake?: Partial<Interceptor>): this;
-  overrideFilter(filter: Token<unknown>, fake?: unknown): this;
   overrideModule(module: ModuleType, replacement: ModuleType): this;
 }
 
@@ -81,7 +73,6 @@ export interface TestApp {
   request(method: string, path: string, options?: TestRequestOptions): RequestBuilder;
   request(request: TestRequest): RequestBuilder;
   request(request: TestRequestWithOptions): RequestBuilder;
-  dispatch(request: TestRequestWithOptions): Promise<TestResponse>;
   close(): Promise<void>;
 }
 

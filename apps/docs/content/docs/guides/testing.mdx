@@ -68,7 +68,7 @@ await app.close();
 
 `app.request(...).send()` keeps tests close to HTTP semantics without requiring manual `FrameworkRequest` or `FrameworkResponse` stubs. Use it for route behavior, guards, interceptors, DTO validation, query parameters, headers, request bodies, synthetic principals, and response serialization.
 
-Keep lower-level helpers such as `app.dispatch(...)`, `makeRequest(...)`, and raw runtime bootstrap tests for adapter/runtime contracts where the dispatch boundary itself is what the test must prove.
+`TestApp` exposes only `request(...).send()` for application HTTP tests. Keep `makeRequest(...)` and raw runtime bootstrap tests for adapter/runtime contracts where the dispatch boundary itself is what the test must prove.
 
 `Test.createApp(...)` accepts the same bootstrap options as the runtime HTTP bootstrap, including providers, filters, converters, interceptors, middleware, observers, versioning, and diagnostics options. The testing helper prepends its request-context middleware while preserving caller-provided middleware in the same app middleware chain.
 

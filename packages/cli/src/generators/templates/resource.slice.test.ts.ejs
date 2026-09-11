@@ -9,7 +9,8 @@ import { <%- service %> } from './<%- kebab %>.service';
 describe('<%- resource %>Module slice', () => {
   it('compiles provider wiring with an explicit override', async () => {
     const testingModule = await Test.createTestingModule({ rootModule: <%- resource %>Module })
-      .overrideProvider(<%- repo %>, {
+      .overrideProvider(<%- repo %>)
+      .useValue({
         list<%- resource %>s: async () => [{ id: '<%- kebab %>-1' }],
       })
       .compile();

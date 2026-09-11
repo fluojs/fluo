@@ -144,7 +144,8 @@ describe('PostService', () => {
     module = await Test.createTestingModule({
       rootModule: PostTestModule,
     })
-      .overrideProvider(PostRepository, mockRepo)
+      .overrideProvider(PostRepository)
+      .useValue(mockRepo)
       .compile();
 
     // 3. Resolve the instance under test.
@@ -178,14 +179,10 @@ This pattern, **Mock -> Compile -> Resolve -> Act -> Assert**, is the core of `T
 Asynchronous code is common in backend development. Fluo's `Test.createTestingModule` and Vitest's `async/await` support let you test these operations in order. You can verify successful completion, expected rejections, and timing issues where several asynchronous operations must complete in a specific sequence. With `vi.useFakeTimers()`, you can test timeout or retry logic without actually waiting for time to pass.
 
 ### 20.3.3 Lifecycle Hooks in Tests
-Sometimes you need to test whether Providers initialize correctly when a module graph is compiled. `Test.createTestingModule()` is the slice-testing surface for compile-time module wiring, provider visibility, and provider/guard/interceptor overrides; its compiled `TestingModuleRef` exposes resolution and dispatch helpers rather than a separate `close()` lifecycle phase. Until `compile()` returns that reference, the builder owns the internal container. If an override, initialization hook, bootstrap hook, or final singleton synchronization fails, the builder disposes the container before rejecting. It preserves the original compile error when cleanup succeeds and reports both failures with `AggregateError` when cleanup also fails. After a successful compile, retain the `TestingModuleRef` and dispose its caller-owned `module.container` unconditionally in `finally` or `afterEach`, as the suite above does. This covers successful, failing, and early-returning tests. A completed disposal is idempotent; teardown errors must surface, and a test that can fail before teardown must preserve both errors rather than replacing its in-flight failure. Keep request/application lifecycle coverage on `Test.createApp()` where the returned app exposes `close()`.
+Sometimes you need to test whether Providers initialize correctly when a module graph is compiled. `Test.createTestingModule()` is the slice-testing surface for compile-time module wiring and provider visibility; provider kinds are selected explicitly with `.overrideProvider(token).useValue(...)`, `.useClass(...)`, `.useFactory(...)`, or `.useExisting(...)`. Its compiled `TestingModuleRef` exposes resolution helpers rather than a separate `close()` lifecycle phase. Until `compile()` returns that reference, the builder owns the internal container. If an override, initialization hook, bootstrap hook, or final singleton synchronization fails, the builder disposes the container before rejecting. It preserves the original compile error when cleanup succeeds and reports both failures with `AggregateError` when cleanup also fails. After a successful compile, retain the `TestingModuleRef` and dispose its caller-owned `module.container` unconditionally in `finally` or `afterEach`, as the suite above does. This covers successful, failing, and early-returning tests. A completed disposal is idempotent; teardown errors must surface, and a test that can fail before teardown must preserve both errors rather than replacing its in-flight failure. Keep request/application lifecycle coverage on `Test.createApp()` where the returned app exposes `close()`.
 
 ## 20.4 Provider Overrides
-`fluo` provides several ways to replace real components with test doubles. This lets you remove instability from external systems while still verifying the DI wiring and execution flow of the Module you care about. For request-facing guards and interceptors, add a request-path assertion with `TestingModuleRef.dispatch(...)` or `Test.createApp(...)` so the override is proven through the same pipeline the application uses.
-
-- **`overrideProvider(token, value)`**: Replaces a specific Token with a value, object, or instance.
-- **`overrideProviders([[token, value], ...])`**: Replaces several Tokens at once.
-- **`overrideGuard(...)`, `overrideInterceptor(...)`, `overrideFilter(...)`**: Replaces cross-cutting request pipeline tokens before compilation; keep filters paired with runtime app registration when the filter behavior itself is the contract.
+`fluo` replaces a specific provider with an explicit strategy so DI wiring remains visible. Use `.overrideProvider(token).useValue(value)` for literal values, `.useClass(Type)` for construction, `.useFactory(factory, inject?)` for factory resolution, and `.useExisting(otherToken)` for aliases. For request-facing guards and interceptors, add a `Test.createApp(...).request(...).send()` assertion so the override is proven through the same application pipeline users receive.
 
 ### Mocks vs Fakes
 - **Mock**: An object that records calls and lets you control return values, for example, `vi.fn()`. It is useful for verifying interactions and "checking the wiring."
@@ -203,7 +200,8 @@ class FakePostRepository {
 class PostTestModule {}
 
 const module = await Test.createTestingModule({ rootModule: PostTestModule })
-  .overrideProvider(PostRepository, new FakePostRepository())
+  .overrideProvider(PostRepository)
+  .useValue(new FakePostRepository())
   .compile();
 
 let testError: unknown;

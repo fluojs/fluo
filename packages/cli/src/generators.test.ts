@@ -59,7 +59,8 @@ describe('CLI generators', () => {
     expect(moduleSlice).toContain('Test.createTestingModule({ rootModule: UserModule })');
     expect(moduleSlice).toContain('testingModule.rootModule');
     expect(resourceSlice).toContain('Test.createTestingModule({ rootModule: UserModule })');
-    expect(resourceSlice).toContain('overrideProvider(UserRepo');
+    expect(resourceSlice).toContain('overrideProvider(UserRepo)');
+    expect(resourceSlice).toContain('.useValue({');
     expect(resourceSlice).toContain('await testingModule.resolve<UserService>(UserService)');
     for (const content of [moduleSlice, resourceSlice]) {
       expect(content).toContain("import { Test } from '@fluojs/testing';");
@@ -105,7 +106,9 @@ describe('CLI generators', () => {
     };
     const builder = {
       compile: async () => fixture,
-      overrideProvider: () => builder,
+      overrideProvider: () => ({
+        useValue: () => builder,
+      }),
     };
     const Test = {
       createTestingModule: vi.fn(() => builder),

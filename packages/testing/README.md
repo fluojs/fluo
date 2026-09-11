@@ -165,7 +165,7 @@ try {
 }
 ```
 
-`app.request(...).send()` is the preferred app-developer path because it keeps tests close to HTTP semantics without manual `FrameworkRequest`/`FrameworkResponse` stubs and creates the same isolated request-scoped DI boundary as runtime dispatch. Close the returned app from a `finally` block so assertion failures do not leak runtime resources. Keep `app.dispatch(...)`, `makeRequest(...)`, and raw `FluoFactory.create(...)` tests for adapter/runtime contracts, framework internals, or compatibility cases where the low-level dispatch boundary itself is what the test must prove.
+`app.request(...).send()` is the only `TestApp` HTTP path: it keeps tests close to HTTP semantics without manual `FrameworkRequest`/`FrameworkResponse` stubs and creates the same isolated request-scoped DI boundary as runtime dispatch. Close the returned app from a `finally` block so assertion failures do not leak runtime resources. Keep `makeRequest(...)` and raw `FluoFactory.create(...)` tests for adapter/runtime contracts, framework internals, or compatibility cases where the low-level dispatch boundary itself is what the test must prove.
 
 For cookie-bound routes, use the object request overload with adapter-normalized cookie values:
 
@@ -176,7 +176,7 @@ const response = await app.request({
 }).send();
 ```
 
-`cookies` is assigned directly to `FrameworkRequest.cookies`; it does not parse a `Cookie` header or introduce adapter-specific cookie semantics. `TestingModuleRef.dispatch(...)` accepts the same normalized cookie record.
+`cookies` is assigned directly to `FrameworkRequest.cookies`; it does not parse a `Cookie` header or introduce adapter-specific cookie semantics. `makeRequest(...)` accepts the same normalized cookie record for raw dispatcher contracts.
 
 `Test.createApp(...)` accepts the same application bootstrap options as the runtime HTTP bootstrap, including `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `conditionalRequest`, `errorRepresentation`, and diagnostics options. This lets application tests assert canonical JSON, negotiated HTML, conditional `304`/`412`, `HEAD`, 406, and provider fallback behavior through the same virtual request pipeline. The testing helper prepends its request-context middleware while preserving caller-provided middleware in the same app middleware chain.
 
@@ -194,7 +194,7 @@ const repo = ShallowMock.create<UserRepository>({ findById: vi.fn() });
 const mailer = PrototypeMock.create(MailService);
 ```
 
-`asMock(fn)` accepts only a function and narrows it to Vitest `Mock<T>`; it is not an arbitrary-value cast. `mockToken(token, value)` creates a `ValueProvider` descriptor shaped as `{ provide: token, useValue: value }` for provider registration, not a tuple. For overrides, prefer `.overrideProvider(token).useValue(value)`; if using this helper, pass only `.overrideProvider(token).useValue(mockToken(token, value).useValue)`, never the descriptor itself. `ShallowMock.create(..., { strict: true })` rejects access to unspecified members. `ShallowMocked<T>` is exposed from the root `@fluojs/testing` package, `@fluojs/testing/types`, and `@fluojs/testing/mock`; all three paths intentionally share the same Vitest-compatible mock type boundary without importing Vitest peer declarations through non-mock runtime helpers. Consumers that do not use Vitest should import only non-mock helpers from `@fluojs/testing/module` or the harness subpaths.
+`asMock(fn)` accepts only a function and narrows it to Vitest `Mock<T>`; it is not an arbitrary-value cast. `mockToken(token, value)` creates a `ValueProvider` descriptor shaped as `{ provide: token, useValue: value }` for provider registration, not a tuple. Provider overrides require `.overrideProvider(token).useValue(value)`, `.useClass(Type)`, `.useFactory(factory, inject?)`, or `.useExisting(otherToken)`; `useValue` preserves every payload as a literal, including provider-shaped objects. `ShallowMock.create(..., { strict: true })` rejects access to unspecified members. `ShallowMocked<T>` is exposed from the root `@fluojs/testing` package, `@fluojs/testing/types`, and `@fluojs/testing/mock`; all three paths intentionally share the same Vitest-compatible mock type boundary without importing Vitest peer declarations through non-mock runtime helpers. Consumers that do not use Vitest should import only non-mock helpers from `@fluojs/testing/module` or the harness subpaths.
 
 Install `vitest` in the consuming workspace before using the mock helpers so the published runtime import resolves consistently.
 

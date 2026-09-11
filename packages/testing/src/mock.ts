@@ -13,9 +13,10 @@ export type { ShallowMocked } from './mock-types.js';
 export class ShallowMock {
   /**
    * Preserves supplied values and lazily creates a stable `vi.fn()` for each missing property.
+   * Missing `then` is always `undefined` so the proxy cannot become an accidental thenable.
    * Nested objects and return values are not mocked. Supply data properties explicitly:
    * runtime reflection cannot distinguish a missing data property from a method.
-   * Strict mode rejects missing properties instead of creating spies.
+   * Strict mode rejects every missing property, including Object.prototype keys.
    */
   static create<T extends object>(
     partial: Partial<{
@@ -27,8 +28,12 @@ export class ShallowMock {
 
     return new Proxy({ ...partial } as ShallowMocked<T>, {
       get(target, prop, receiver) {
-        if (Reflect.has(target, prop)) {
+        if (Object.hasOwn(target, prop)) {
           return Reflect.get(target, prop, receiver);
+        }
+
+        if (prop === 'then') {
+          return undefined;
         }
 
         if (options.strict) {

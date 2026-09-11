@@ -408,7 +408,8 @@ it('separates publish, failed delivery, and duplicate-safe application', async (
   class DeliveryDrillModule {}
 
   const module = await Test.createTestingModule({ rootModule: DeliveryDrillModule })
-    .overrideProvider(SHIPMENT_INBOX, inbox)
+    .overrideProvider(SHIPMENT_INBOX)
+    .useValue(inbox)
     .compile();
   let delivery: Promise<void> | undefined;
   try {

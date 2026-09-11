@@ -347,7 +347,8 @@ export { PostModule };
     expect(sliceContent).toContain("import { Test } from '@fluojs/testing';");
     expect(sliceContent).toContain('Test.createTestingModule({ rootModule: UserModule })');
     expect(sliceContent).toMatch(/finally \{\s*await testingModule\.container\.dispose\(\);/);
-    expect(sliceContent).toContain('overrideProvider(UserRepo');
+    expect(sliceContent).toContain('overrideProvider(UserRepo)');
+    expect(sliceContent).toContain('.useValue({');
     expect(sliceContent).toContain('await testingModule.resolve<UserService>(UserService)');
   });
 

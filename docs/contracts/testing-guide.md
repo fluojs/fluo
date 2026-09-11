@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./testing-guide.ko.md"><kbd>한국어</kbd></a></p>
 
-`Test` is the only public entrypoint for app and testing-module construction, imported from `@fluojs/testing` or `@fluojs/testing/module`. **Breaking migration:** replace free-function imports with `Test` and use `Test.createApp(options)` / `Test.createTestingModule(options)`; the old app subpath is removed. Import each harness class from its existing conformance/portability subpath and call `XHarness.create(options)` instead of a free factory. Preserve options, overrides, assertions, and cleanup. See the [package migration guidance](../../packages/testing/README.md#quick-start).
+`Test` is the only public entrypoint for app and testing-module construction, imported from `@fluojs/testing` or `@fluojs/testing/module`. **Breaking migration:** replace free-function imports with `Test` and use `Test.createApp(options)` / `Test.createTestingModule(options)`; the old app subpath is removed. Provider overrides require `overrideProvider(token).useValue(value)`, `.useClass(Type)`, `.useFactory(factory, inject?)`, or `.useExisting(otherToken)`; replace removed two-argument calls with `.useValue(value)`. Application HTTP tests use `app.request(...).send()`, not a synthetic app or module `dispatch(...)` path. Import each harness class from its existing conformance/portability subpath and call `XHarness.create(options)` instead of a free factory. Preserve options, overrides, assertions, and cleanup. See the [package migration guidance](../../packages/testing/README.md#quick-start).
 
 ## Test Types
 
