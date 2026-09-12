@@ -222,7 +222,7 @@ The following is the **complete `src/audit.test.ts` file** for the extension pro
 ```ts
 import { Inject, Module } from '@fluojs/core';
 import { Container } from '@fluojs/di';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 import {
   AUDIT_OPTIONS,
@@ -280,7 +280,7 @@ it('exports the configured recorder into a consuming module', async () => {
   @Module({ imports: [extension], providers: [Probe] })
   class ProbeModule {}
 
-  const module = await createTestingModule({ rootModule: ProbeModule }).compile();
+  const module = await Test.createTestingModule({ rootModule: ProbeModule }).compile();
   try {
     const probe = await module.resolve(Probe);
     await Promise.all([probe.recorder.record(event), probe.recorder.record(event)]);

@@ -109,14 +109,14 @@ snapshot 배열과 각 행은 동결한다. `useValue`로 전달한 객체 ident
 
 ```ts
 import { FluoFactory, ModuleGraphCompileCache } from '@fluojs/runtime';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 import { ExperimentAppModule, OrderSummary } from './order-bootstrap.fixture.js';
 
 const expected = { paidCount: 500, paidTotalMinor: 12_500_000 };
 
 it('computes the fixed order summary through the module graph', async () => {
-  const module = await createTestingModule({
+  const module = await Test.createTestingModule({
     rootModule: ExperimentAppModule,
   }).compile();
   try {
@@ -305,7 +305,7 @@ pnpm exec vitest run src/experiments/order-bootstrap.test.ts src/experiments/ord
 
 ## 제품의 성능 문제로 돌아오기
 
-판매 이벤트의 주문 지연을 검증하려면 다음 실험은 실제 HTTP 경계를 통과해야 한다. 먼저 `createTestApp` 기반으로 인증, 입력 검증, 상태 전이, 응답 정합성이 동일함을 검증한다. 하지만 virtual request helper의 처리량을 실제 Fastify listener의 네트워크 처리량으로 보고하지 않는다. listener 비용을 포함하려면 실제 호스트에서 같은 요청·동시성·데이터 조건을 가진 별도 부하 실험이 필요하다.
+판매 이벤트의 주문 지연을 검증하려면 다음 실험은 실제 HTTP 경계를 통과해야 한다. 먼저 `Test.createApp` 기반으로 인증, 입력 검증, 상태 전이, 응답 정합성이 동일함을 검증한다. 하지만 virtual request helper의 처리량을 실제 Fastify listener의 네트워크 처리량으로 보고하지 않는다. listener 비용을 포함하려면 실제 호스트에서 같은 요청·동시성·데이터 조건을 가진 별도 부하 실험이 필요하다.
 
 부하 발생기가 응답을 기다린 뒤 다음 요청을 보내면 서버가 느려질수록 스스로 유입량을 줄인다. 그 결과만 보면 대기열이 폭증하는 상황을 놓칠 수 있다. 일정 유입률 실험에서는 예정된 요청과 실제 시작 지연도 기록해야 한다. 성공 응답만의 지연과 timeout·오류 비율을 함께 남기고, 결제나 외부 알림은 테스트 포트로 대체한다. 실제 돈이나 외부 전송을 성능 실험의 부작용으로 만들지 않는다.
 

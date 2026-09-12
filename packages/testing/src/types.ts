@@ -1,18 +1,17 @@
 import type { MaybePromise, Token } from '@fluojs/core';
-import type { ClassType, Container, ForwardRefToken, OptionalInjectToken, Provider } from '@fluojs/di';
-import type { Guard, Interceptor } from '@fluojs/http';
+import type { ClassType, Container, ForwardRefToken, OptionalInjectToken } from '@fluojs/di';
 import type { BootstrapApplicationOptions, BootstrapModuleOptions, BootstrapResult, ModuleType } from '@fluojs/runtime';
-import type { RequestBuilder, TestPrincipal, TestRequest, TestRequestWithOptions, TestResponse } from './http.js';
+import type { RequestBuilder, TestPrincipal, TestRequest, TestRequestWithOptions } from './http.js';
 
 /**
- * Bootstrap options accepted by `createTestingModule(...)`.
+ * Bootstrap options accepted by `Test.createTestingModule(...)`.
  */
 export interface TestingModuleOptions extends BootstrapModuleOptions {
   rootModule: ModuleType;
 }
 
 /**
- * Bootstrap options accepted by `createTestApp(...)`.
+ * Bootstrap options accepted by `Test.createApp(...)`.
  */
 export interface TestingApplicationOptions extends BootstrapApplicationOptions {
   rootModule: ModuleType;
@@ -34,8 +33,17 @@ export interface TestingModuleRef extends BootstrapResult {
   get<T>(token: Token<T>): T;
   resolve<T>(token: Token<T>): Promise<T>;
   resolveAll<T>(tokens: Token<T>[]): Promise<T[]>;
-  dispatch(request: TestRequestWithOptions): Promise<TestResponse>;
 }
+
+/**
+ * Factory shape accepted by provider overrides.
+ *
+ * Its method signature permits typed injected parameters under
+ * `strictFunctionTypes` while injection tokens remain explicit.
+ */
+export type OverrideFactory<T> = {
+  create(...args: unknown[]): MaybePromise<T>;
+}['create'];
 
 /**
  * Fluent override builder returned by `overrideProvider(token)`.
@@ -44,7 +52,7 @@ export interface OverrideProviderBuilder<T> {
   useValue(value: T): TestingModuleBuilder;
   useClass(cls: ClassType<T>): TestingModuleBuilder;
   useFactory(
-    factory: (...args: unknown[]) => MaybePromise<T>,
+    factory: OverrideFactory<T>,
     inject?: Array<Token | ForwardRefToken | OptionalInjectToken>,
   ): TestingModuleBuilder;
   useExisting(token: Token<T>): TestingModuleBuilder;
@@ -56,12 +64,6 @@ export interface OverrideProviderBuilder<T> {
 export interface TestingModuleBuilder {
   compile(): Promise<TestingModuleRef>;
   overrideProvider<T>(token: Token<T>): OverrideProviderBuilder<T>;
-  overrideProvider<T>(token: Token<T>, provider: Provider<T>): this;
-  overrideProvider<T>(token: Token<T>, value: T): this;
-  overrideProviders(overrides: Array<[Token, unknown]>): this;
-  overrideGuard(guard: Token<Guard>, fake?: Partial<Guard>): this;
-  overrideInterceptor(interceptor: Token<Interceptor>, fake?: Partial<Interceptor>): this;
-  overrideFilter(filter: Token<unknown>, fake?: unknown): this;
   overrideModule(module: ModuleType, replacement: ModuleType): this;
 }
 
@@ -81,7 +83,6 @@ export interface TestApp {
   request(method: string, path: string, options?: TestRequestOptions): RequestBuilder;
   request(request: TestRequest): RequestBuilder;
   request(request: TestRequestWithOptions): RequestBuilder;
-  dispatch(request: TestRequestWithOptions): Promise<TestResponse>;
   close(): Promise<void>;
 }
 
@@ -114,7 +115,7 @@ export interface TestingMockContext<Args extends unknown[] = unknown[], Return =
 }
 
 /**
- * Vitest `Mock<T>`-compatible function shape used to preserve root `DeepMocked<T>` type imports
+ * Vitest `Mock<T>`-compatible function shape used to preserve root `ShallowMocked<T>` type imports
  * without importing Vitest peer declarations through non-mock entrypoints.
  */
 export interface TestingMockFunction<Args extends unknown[] = unknown[], Return = unknown> {
@@ -145,7 +146,9 @@ export interface TestingMockFunction<Args extends unknown[] = unknown[], Return 
 
 /**
  * Shallow method-mocked version of a type where function properties become mock functions.
+ * Nested objects remain unchanged. Migrate `DeepMocked<T>` and `MockedMethods<T>`
+ * imports to `ShallowMocked<T>`; this type never represented recursive mocking.
  */
-export type DeepMocked<T> = {
+export type ShallowMocked<T> = {
   [K in keyof T]: T[K] extends (...args: infer A) => infer R ? TestingMockFunction<A, R> & T[K] : T[K];
 };

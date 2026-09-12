@@ -3,9 +3,10 @@ import type { MiddlewareContext, Next } from '@fluojs/http';
 import { getPrismaClientToken, getPrismaServiceToken } from '@fluojs/prisma';
 import { getRedisClientToken, REDIS_CLIENT } from '@fluojs/redis';
 import { defineModule, type PlatformComponent } from '@fluojs/runtime';
-import { createTestApp, createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it, vi } from 'vitest';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { HealthCheckError } from './errors.js';
 import { TerminusHealthService } from './health-check.js';
 import { DiskHealthIndicator } from './indicators/disk.js';
@@ -42,9 +43,10 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(200);
@@ -81,9 +83,7 @@ describe('TerminusModule.forRoot', () => {
 
       expect(readyResponse.status).toBe(200);
       expect(readyResponse.body).toEqual({ status: 'ready' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('mounts /health and /ready under the configured custom path', async () => {
@@ -99,9 +99,10 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const customHealthResponse = await app.request('GET', '/internal/health').send();
 
       expect(customHealthResponse.status).toBe(200);
@@ -126,9 +127,7 @@ describe('TerminusModule.forRoot', () => {
       const defaultReadyResponse = await app.request('GET', '/ready').send();
 
       expect(defaultReadyResponse.status).toBe(404);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('applies DI-backed endpoint middleware to normalized custom health and readiness routes in declaration order', async () => {
@@ -165,9 +164,10 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       await expect(app.request('GET', '/internal/health').send()).resolves.toMatchObject({
         status: 200,
       });
@@ -185,9 +185,7 @@ describe('TerminusModule.forRoot', () => {
         'second:after',
         'first:after',
       ]);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('returns 503 on /health and /ready when indicators fail', async () => {
@@ -207,9 +205,10 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(503);
@@ -248,9 +247,7 @@ describe('TerminusModule.forRoot', () => {
 
       expect(readyResponse.status).toBe(503);
       expect(readyResponse.body).toEqual({ status: 'unavailable' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('returns 503 on /health and /ready when HealthCheckError causes are all up', async () => {
@@ -278,9 +275,10 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(503);
@@ -305,9 +303,7 @@ describe('TerminusModule.forRoot', () => {
 
       expect(readyResponse.status).toBe(503);
       expect(readyResponse.body).toEqual({ status: 'unavailable' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('keeps /ready available when only an indicator excluded from readiness fails', async () => {
@@ -341,9 +337,10 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(503);
@@ -361,9 +358,7 @@ describe('TerminusModule.forRoot', () => {
       expect(readyResponse.body).toEqual({ status: 'ready' });
       expect(optionalDependencyCheck).toHaveBeenCalledTimes(1);
       expect(requiredDependencyCheck).toHaveBeenCalledTimes(2);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('keeps /ready available when a built-in indicator opts out of readiness', async () => {
@@ -385,9 +380,10 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(503);
@@ -403,9 +399,7 @@ describe('TerminusModule.forRoot', () => {
 
       expect(readyResponse.status).toBe(200);
       expect(readyResponse.body).toEqual({ status: 'ready' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('applies execution timeouts through request-facing /health and /ready endpoints', async () => {
@@ -428,9 +422,10 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(503);
@@ -452,9 +447,7 @@ describe('TerminusModule.forRoot', () => {
 
       expect(readyResponse.status).toBe(503);
       expect(readyResponse.body).toEqual({ status: 'unavailable' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('supports custom indicators that transition from up to down after bootstrap', async () => {
@@ -476,9 +469,10 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const firstHealth = await app.request('GET', '/health').send();
       expect(firstHealth.status).toBe(200);
 
@@ -503,9 +497,7 @@ describe('TerminusModule.forRoot', () => {
       const readyResponse = await app.request('GET', '/ready').send();
       expect(readyResponse.status).toBe(503);
       expect(readyResponse.body).toEqual({ status: 'unavailable' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('composes user-provided readiness checks with indicator readiness checks', async () => {
@@ -527,18 +519,17 @@ describe('TerminusModule.forRoot', () => {
       imports: [terminusModule],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
       expect(healthResponse.status).toBe(200);
 
       const readyResponse = await app.request('GET', '/ready').send();
       expect(readyResponse.status).toBe(503);
       expect(readyResponse.body).toEqual({ status: 'unavailable' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('uses indicatorProviders for both /health and /ready checks', async () => {
@@ -569,9 +560,10 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
       expect(healthResponse.status).toBe(503);
       expect(healthResponse.body).toMatchObject({
@@ -591,9 +583,7 @@ describe('TerminusModule.forRoot', () => {
       const readyResponse = await app.request('GET', '/ready').send();
       expect(readyResponse.status).toBe(503);
       expect(readyResponse.body).toEqual({ status: 'unavailable' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('exports indicator provider token lists to downstream DI consumers', async () => {
@@ -623,9 +613,10 @@ describe('TerminusModule.forRoot', () => {
       providers: [HealthIndicatorsConsumer, ProviderTokenConsumer],
     });
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
       const consumer = await testingModule.resolve<ProviderTokenConsumer>(ProviderTokenConsumer);
       const healthConsumer = await testingModule.resolve<HealthIndicatorsConsumer>(HealthIndicatorsConsumer);
 
@@ -635,9 +626,7 @@ describe('TerminusModule.forRoot', () => {
         'direct-memory',
         'memory',
       ]);
-    } finally {
-      await testingModule.container.dispose();
-    }
+    });
   });
 
   it('reports mixed /health and /ready overlap through request-facing routes without starting another probe', async () => {
@@ -663,10 +652,12 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
-    const healthPromise = app.request('GET', '/health').send();
-
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      const healthPromise = app.request('GET', '/health').send();
+      defer(() => healthPromise);
+      defer(() => releaseProbe.resolve());
       await probeStarted.promise;
 
       const readyResponse = await app.request('GET', '/ready').send();
@@ -686,11 +677,7 @@ describe('TerminusModule.forRoot', () => {
         },
         status: 'ok',
       });
-    } finally {
-      releaseProbe.resolve();
-      await healthPromise.catch(() => undefined);
-      await app.close();
-    }
+    });
   });
 
   it('resolves TerminusHealthService from compiled modules for direct check and isHealthy calls', async () => {
@@ -712,9 +699,9 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
-
-    try {
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
       const healthService = await testingModule.resolve<TerminusHealthService>(TerminusHealthService);
       const healthyReport = await healthService.check();
 
@@ -751,9 +738,7 @@ describe('TerminusModule.forRoot', () => {
         },
         status: 'error',
       });
-    } finally {
-      await testingModule.container.dispose();
-    }
+    });
   });
 
   it('supports default and named redis indicator providers without token collisions', async () => {
@@ -793,9 +778,10 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
       expect(healthResponse.status).toBe(200);
       expect(healthResponse.body).toMatchObject({
@@ -821,9 +807,7 @@ describe('TerminusModule.forRoot', () => {
       const readyResponse = await app.request('GET', '/ready').send();
       expect(readyResponse.status).toBe(200);
       expect(readyResponse.body).toEqual({ status: 'ready' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('prefers name-aware Prisma service providers while retaining raw client fallback', async () => {
@@ -897,9 +881,10 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(200);
@@ -927,9 +912,7 @@ describe('TerminusModule.forRoot', () => {
       expect(namedServiceQuery).toHaveBeenCalledWith('SELECT 1');
       expect(rawDefaultQuery).not.toHaveBeenCalled();
       expect(rawNamedQuery).toHaveBeenCalledWith('SELECT 1');
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('supports repeatable same-type indicator providers without token collisions', async () => {
@@ -946,9 +929,10 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(200);
@@ -974,9 +958,7 @@ describe('TerminusModule.forRoot', () => {
 
       expect(readyResponse.status).toBe(200);
       expect(readyResponse.body).toEqual({ status: 'ready' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('wires node disk indicator providers through TerminusModule indicatorProviders', async () => {
@@ -987,7 +969,8 @@ describe('TerminusModule.forRoot', () => {
     }));
     vi.doMock('node:fs/promises', () => ({ statfs }));
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => vi.doUnmock('node:fs/promises'));
       class AppModule {}
 
       defineModule(AppModule, {
@@ -1005,40 +988,35 @@ describe('TerminusModule.forRoot', () => {
         ],
       });
 
-      const app = await createTestApp({ rootModule: AppModule });
+      const app = await Test.createApp({ rootModule: AppModule });
 
-      try {
-        const healthResponse = await app.request('GET', '/health').send();
+      defer(() => app.close());
+      const healthResponse = await app.request('GET', '/health').send();
 
-        expect(healthResponse.status).toBe(200);
-        expect(healthResponse.body).toMatchObject({
-          contributors: {
-            down: [],
-            up: ['disk'],
+      expect(healthResponse.status).toBe(200);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: [],
+          up: ['disk'],
+        },
+        details: {
+          disk: {
+            freeBytes: 2_048_000,
+            freeRatio: 0.5,
+            path: '/data',
+            status: 'up',
+            totalBytes: 4_096_000,
           },
-          details: {
-            disk: {
-              freeBytes: 2_048_000,
-              freeRatio: 0.5,
-              path: '/data',
-              status: 'up',
-              totalBytes: 4_096_000,
-            },
-          },
-          status: 'ok',
-        });
+        },
+        status: 'ok',
+      });
 
-        const readyResponse = await app.request('GET', '/ready').send();
+      const readyResponse = await app.request('GET', '/ready').send();
 
-        expect(readyResponse.status).toBe(200);
-        expect(readyResponse.body).toEqual({ status: 'ready' });
-        expect(statfs).toHaveBeenCalledWith('/data');
-      } finally {
-        await app.close();
-      }
-    } finally {
-      vi.doUnmock('node:fs/promises');
-    }
+      expect(readyResponse.status).toBe(200);
+      expect(readyResponse.body).toEqual({ status: 'ready' });
+      expect(statfs).toHaveBeenCalledWith('/data');
+    });
   });
 
   it('supports repeatable same-type HTTP indicator providers without token collisions', async () => {
@@ -1057,37 +1035,33 @@ describe('TerminusModule.forRoot', () => {
       ],
     });
 
-    try {
-      const app = await createTestApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => fetch.mockRestore());
+      const app = await Test.createApp({ rootModule: AppModule });
 
-      try {
-        const healthResponse = await app.request('GET', '/health').send();
+      defer(() => app.close());
+      const healthResponse = await app.request('GET', '/health').send();
 
-        expect(healthResponse.status).toBe(200);
-        expect(healthResponse.body).toMatchObject({
-          contributors: {
-            down: [],
+      expect(healthResponse.status).toBe(200);
+      expect(healthResponse.body).toMatchObject({
+        contributors: {
+          down: [],
+        },
+        details: {
+          'primary-api': {
+            status: 'up',
           },
-          details: {
-            'primary-api': {
-              status: 'up',
-            },
-            'secondary-api': {
-              status: 'up',
-            },
+          'secondary-api': {
+            status: 'up',
           },
-          status: 'ok',
-        });
-        expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
-          expect.arrayContaining(['primary-api', 'secondary-api']),
-        );
-        expect(fetch).toHaveBeenCalledTimes(2);
-      } finally {
-        await app.close();
-      }
-    } finally {
-      fetch.mockRestore();
-    }
+        },
+        status: 'ok',
+      });
+      expect((healthResponse.body as { contributors: { up: string[] } }).contributors.up).toEqual(
+        expect.arrayContaining(['primary-api', 'secondary-api']),
+      );
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('aligns /health and /ready with runtime platform readiness semantics', async () => {
@@ -1135,14 +1109,15 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       platform: {
         components: [component],
       },
       rootModule: AppModule,
     });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(503);
@@ -1175,9 +1150,7 @@ describe('TerminusModule.forRoot', () => {
 
       expect(readyResponse.status).toBe(503);
       expect(readyResponse.body).toEqual({ status: 'unavailable' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('treats non-critical degraded platform readiness as unavailable for the HTTP readiness gate', async () => {
@@ -1224,14 +1197,15 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       platform: {
         components: [component],
       },
       rootModule: AppModule,
     });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(503);
@@ -1251,14 +1225,25 @@ describe('TerminusModule.forRoot', () => {
 
       expect(readyResponse.status).toBe(503);
       expect(readyResponse.body).toEqual({ status: 'unavailable' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('keeps Terminus HTTP readiness out of rotation while shutdown is in progress', async () => {
+    const admittedReadyRequestCanContinue = createDeferred<void>();
+    const admittedReadyRequestStarted = createDeferred<void>();
     const shutdownBlocker = createDeferred<void>();
     const shutdownStarted = createDeferred<void>();
+    let holdReadyRequests = false;
+
+    class HoldAdmittedReadyRequestMiddleware {
+      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
+        if (holdReadyRequests) {
+          admittedReadyRequestStarted.resolve();
+          await admittedReadyRequestCanContinue.promise;
+        }
+        await next();
+      }
+    }
 
     class BlockingShutdownService {
       onApplicationShutdown() {
@@ -1277,28 +1262,42 @@ describe('TerminusModule.forRoot', () => {
             check: async (key: string) => ({ [key]: { status: 'up' } }),
           },
         ],
+        endpointMiddleware: [HoldAdmittedReadyRequestMiddleware],
       })],
       providers: [BlockingShutdownService],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    const readyBeforeClose = await app.request('GET', '/ready').send();
-    expect(readyBeforeClose.status).toBe(200);
-    expect(readyBeforeClose.body).toEqual({ status: 'ready' });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      let closePromise: Promise<void> | undefined;
+      defer(() => closePromise);
+      defer(() => shutdownBlocker.resolve());
 
-    const closePromise = app.close();
+      const readyBeforeClose = await app.request('GET', '/ready').send();
+      expect(readyBeforeClose.status).toBe(200);
+      expect(readyBeforeClose.body).toEqual({ status: 'ready' });
 
-    try {
+      holdReadyRequests = true;
+      const admittedReadyRequest = app.request('GET', '/ready').send();
+      defer(() => admittedReadyRequest);
+      defer(() => admittedReadyRequestCanContinue.resolve());
+      await admittedReadyRequestStarted.promise;
+
+      closePromise = app.close();
       await shutdownStarted.promise;
 
-      const readyDuringClose = await app.request('GET', '/ready').send();
+      await expect(app.request('GET', '/ready').send()).rejects.toThrow(
+        'Application cannot dispatch after shutdown has started.',
+      );
+
+      admittedReadyRequestCanContinue.resolve();
+      const readyDuringClose = await admittedReadyRequest;
+
       expect(readyDuringClose.status).toBe(503);
       expect(readyDuringClose.body).toEqual({ status: 'starting' });
-    } finally {
-      shutdownBlocker.resolve();
-      await closePromise;
-    }
+    });
   });
 
   it('reports platform health failures as explicit Terminus diagnostics', async () => {
@@ -1339,14 +1338,15 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot()],
     });
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       platform: {
         components: [component],
       },
       rootModule: AppModule,
     });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(503);
@@ -1368,9 +1368,7 @@ describe('TerminusModule.forRoot', () => {
       const readyResponse = await app.request('GET', '/ready').send();
       expect(readyResponse.status).toBe(200);
       expect(readyResponse.body).toEqual({ status: 'ready' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('keeps platform diagnostic payloads under reserved keys when user indicators reuse them', async () => {
@@ -1420,14 +1418,14 @@ describe('TerminusModule.forRoot', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       platform: {
         components: [component],
       },
       rootModule: AppModule,
     });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(503);
@@ -1464,8 +1462,6 @@ describe('TerminusModule.forRoot', () => {
         },
         status: 'error',
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 });

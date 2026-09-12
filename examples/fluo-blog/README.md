@@ -278,9 +278,9 @@ pnpm exec vitest run --project examples examples/fluo-blog
 ```
 
 `posts.service.test.ts` checks in-memory behavior. `posts.slice.test.ts` compiles
-the real module graph with `createTestingModule`, resolves registered providers,
+the real module graph with `Test.createTestingModule`, resolves registered providers,
 and disposes the container in `finally`. `test/app.e2e.test.ts` calls
-`createTestApp({ rootModule: AppModule })`, drives the real request pipeline with
+`Test.createApp({ rootModule: AppModule })`, drives the real request pipeline with
 `app.request(...).body(...).send()`, and closes every application in `finally`.
 
 The request tests cover preserved health/readiness, list/create/get, input

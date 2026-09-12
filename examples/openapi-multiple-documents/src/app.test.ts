@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { AppModule } from './app';
 
 describe('AppModule e2e', () => {
   it('serves two OpenAPI documents and Swagger UIs at distinct paths', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
-
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       await expect(app.request('GET', '/openapi/public.json').send()).resolves.toMatchObject({
         body: {
           info: {
@@ -35,8 +36,6 @@ describe('AppModule e2e', () => {
       const adminUi = await app.request('GET', '/docs/admin').send();
       expect(adminUi.status).toBe(200);
       expect(adminUi.body).toContain('"/openapi/admin.json"');
-    } finally {
-      await app.close();
-    }
+    });
   });
 });

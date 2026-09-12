@@ -15,9 +15,10 @@ description: AppModule에 posts 컨트롤러를 등록하고 첫 HTTP 응답을 
 
 {/* fluo-tutorial-source: examples/fluo-blog/01-first-route/test/app.e2e.test.ts */}
 ```ts title="00-start/test/app.e2e.test.ts"
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 
+import { withCleanup } from '../../../../tooling/testing/with-cleanup.js';
 import { AppModule } from '../src/app';
 
 it.each([
@@ -25,23 +26,23 @@ it.each([
   ['/ready', 'ready'],
 ])('preserves the starter endpoint when %s is requested', async (path, status) => {
   // Given
-  const app = await createTestApp({ rootModule: AppModule });
-  try {
+  const app = await Test.createApp({ rootModule: AppModule });
+  await withCleanup(async (defer) => {
+    defer(() => app.close());
     // When
     const response = await app.request('GET', path).send();
 
     // Then
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ status });
-  } finally {
-    await app.close();
-  }
+  });
 });
 
 it('lists the initial post when the first route is requested', async () => {
   // Given
-  const app = await createTestApp({ rootModule: AppModule });
-  try {
+  const app = await Test.createApp({ rootModule: AppModule });
+  await withCleanup(async (defer) => {
+    defer(() => app.close());
     // When
     const response = await app.request('GET', '/posts').send();
 
@@ -50,9 +51,7 @@ it('lists the initial post when the first route is requested', async () => {
     expect(response.body).toEqual([
       { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
     ]);
-  } finally {
-    await app.close();
-  }
+  });
 });
 ```
 

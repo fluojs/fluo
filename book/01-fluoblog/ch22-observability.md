@@ -273,7 +273,7 @@ The following **complete `src/observability/background-stages.spec.ts`** uses th
 ```typescript
 import { Module } from '@fluojs/core';
 import { CronModule, type CronScheduler } from '@fluojs/cron';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 import { PublishingSchedule } from '../posts/publishing-schedule.js';
 import { ScheduledPublishingService } from '../posts/scheduled-publishing.service.js';
@@ -319,7 +319,7 @@ for (const failure of ['none', 'publication_scan', 'email_dispatch'] as const) {
     })
     class StageProbeModule {}
 
-    const app = await createTestApp({ rootModule: StageProbeModule });
+    const app = await Test.createApp({ rootModule: StageProbeModule });
     try {
       expect(callbacks).toHaveLength(1);
       const tick = callbacks[0];
@@ -418,7 +418,7 @@ The following `src/observability/observability.spec.ts` is a **complete local re
 ```typescript
 import { Module } from '@fluojs/core';
 import { Controller, Get, NotFoundException } from '@fluojs/http';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 import { createObservabilityModule } from './observability.module.js';
 
@@ -450,7 +450,7 @@ it('groups post paths and keeps scrape access separate', async () => {
   })
   class ProbeModule {}
 
-  const app = await createTestApp({ rootModule: ProbeModule });
+  const app = await Test.createApp({ rootModule: ProbeModule });
   try {
     expect((await app.request('GET', '/posts/1').send()).status).toBe(200);
     expect((await app.request('GET', '/posts/2').send()).status).toBe(200);

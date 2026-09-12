@@ -60,8 +60,8 @@ examples/auth-jwt-passport/
 2. `src/auth/auth.service.ts` — JWT 발급
 3. `src/auth/bearer.strategy.ts` — 내장 `BearerJwtStrategy` preset의 re-export
 4. `src/auth/auth.controller.ts` — 토큰 발급 라우트 + 보호된 profile 라우트
-5. `src/auth/auth.module.ts` — `JwtModule.forRoot({ global: true, refreshToken })`, `RefreshTokenModule.forRoot()`, Passport strategy registration 순서의 canonical module-first refresh 등록
-6. `src/app.test.ts` — service/strategy coverage와 `createTestApp(...).request(...).send()` 기반 e2e 스타일 HTTP 점검
+5. `src/auth/auth.module.ts` — `JwtModule.forRoot({ global: true, refreshToken })`, `RefreshTokenModule.forRoot()`, 안정적인 `createBearerJwtStrategyRegistration()` helper를 포함한 Passport strategy registration 기반 canonical module-first refresh 등록
+6. `src/app.test.ts` — service/strategy coverage와 `Test.createApp(...).request(...).send()` 기반 e2e 스타일 HTTP 점검
 
 ## 관련 문서
 

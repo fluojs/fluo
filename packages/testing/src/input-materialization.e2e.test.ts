@@ -21,7 +21,8 @@ import {
 import { IsInt, ValidateClass, type StandardSchemaV1Like } from '@fluojs/validation';
 import { describe, expect, it } from 'vitest';
 
-import { createTestApp } from './app.js';
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
+import { Test } from './index.js';
 import type { TestResponse } from './http.js';
 
 function observeSchemaEntry(events: EventTarget): {
@@ -72,16 +73,15 @@ describe('blog input materialization through the application boundary', () => {
     }
     @Module({ controllers: [Posts] })
     class App {}
-    const app = await createTestApp({ rootModule: App });
-    try {
+    const app = await Test.createApp({ rootModule: App });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const response = await app.request('POST', '/posts')
         .body({ post_title: 'Draft', authorId: 'untrusted' }).send();
       expect(response.status).toBe(201);
       expect(response.body).toEqual({ title: 'Draft' });
       expect(validated).toEqual([{ title: 'Draft' }]);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('replaces projection/context workarounds while retaining guards, aliases, converters and async order', async () => {
@@ -193,7 +193,7 @@ describe('blog input materialization through the application boundary', () => {
     })
     class App {}
     let factories = 0;
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: App,
       converters: [{ convert: (value) => Number(value) }],
       binder(defaultBinder) {
@@ -201,9 +201,13 @@ describe('blog input materialization through the application boundary', () => {
         return new StandardSchemaBinder(defaultBinder);
       },
     });
-    const entry = observeSchemaEntry(schemaEvents);
-    let pending: Promise<TestResponse> | undefined;
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      const entry = observeSchemaEntry(schemaEvents);
+      let pending: Promise<TestResponse> | undefined;
+      defer(() => pending);
+      defer(() => release());
+      defer(() => entry.cancel());
       const body = Object.freeze({ post_title: '  Draft  ', authorId: 'untrusted' });
       pending = app.request('POST', '/posts/7')
         .header('authorization', 'Bearer test')
@@ -260,14 +264,6 @@ describe('blog input materialization through the application boundary', () => {
       expect(legacy.status).toBe(200);
       expect(legacy.body).toEqual({ page: 6 });
       expect(factories).toBe(1);
-    } finally {
-      entry.cancel();
-      release();
-      try {
-        await pending;
-      } finally {
-        await app.close();
-      }
-    }
+    });
   }, 5_000);
 });

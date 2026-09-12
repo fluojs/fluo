@@ -3,16 +3,55 @@ import type { CallHandler, Converter, Dispatcher, Guard, Interceptor, Intercepto
 import { Controller, FromCookie, FromQuery, Get, Post, type RequestContext, RequestDto, UseGuards, UseInterceptors, Version, VersioningType } from '@fluojs/http';
 import type { ExceptionFilterHandler } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { makeRequest } from './http.js';
 import {
-  createTestApp,
-  createTestingModule,
   extractModuleControllers,
   extractModuleImports,
   extractModuleProviders,
   Test,
 } from './index.js';
-import { asMock, createDeepMock, createMock, mockToken } from './mock.js';
+import { asMock, PrototypeMock, ShallowMock, mockToken } from './mock.js';
+
+describe('Test static factory', () => {
+  it('is a class that owns testing module creation', () => {
+    expect(Test).toBeTypeOf('function');
+  });
+});
+
+describe('explicit provider overrides', () => {
+  it('preserves a provider-shaped literal through useValue', async () => {
+    const token = Symbol('literal');
+    const literal = { provide: token, useValue: 'application data' };
+    class AppModule {}
+
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule })
+      .overrideProvider(token)
+      .useValue(literal)
+      .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+
+      expect(testingModule.get(token)).toBe(literal);
+    });
+  });
+
+  it('preserves a class constructor literal through useValue', async () => {
+    const token = Symbol('literal-constructor');
+    class LiteralValue {}
+    class AppModule {}
+
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule })
+      .overrideProvider(token)
+      .useValue(LiteralValue)
+      .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+
+      expect(testingModule.get(token)).toBe(LiteralValue);
+    });
+  });
+});
 
 @Controller('/users')
 class UserController {
@@ -48,8 +87,11 @@ describe('@fluojs/testing', () => {
     const testingModule = await Test.createTestingModule({
       rootModule: NamespaceModule,
     }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    expect(testingModule.get<string>(TOKEN)).toBe('from-test-namespace');
+      expect(testingModule.get<string>(TOKEN)).toBe('from-test-namespace');
+    });
   });
 
   it('creates a testing module and resolves providers from the module graph', async () => {
@@ -67,14 +109,17 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({
+    const testingModule = await Test.createTestingModule({
       rootModule: ServiceModule,
     }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const service = await testingModule.resolve<UserService>(UserService);
+      const service = await testingModule.resolve<UserService>(UserService);
 
-    expect(testingModule.has(UserService)).toBe(true);
-    expect(service.logger.name).toBe('logger');
+      expect(testingModule.has(UserService)).toBe(true);
+      expect(service.logger.name).toBe('logger');
+    });
   });
 
   it('runs bootstrap lifecycle hooks when compiling a testing module', async () => {
@@ -106,10 +151,13 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [LifecycleService, LifecycleConsumer] })
     class LifecycleModule {}
 
-    const testingModule = await createTestingModule({ rootModule: LifecycleModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: LifecycleModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    expect(await testingModule.resolve(LifecycleConsumer)).toBeInstanceOf(LifecycleConsumer);
-    expect(events).toEqual(['service:init', 'consumer:init', 'service:bootstrap', 'consumer:bootstrap']);
+      expect(await testingModule.resolve(LifecycleConsumer)).toBeInstanceOf(LifecycleConsumer);
+      expect(events).toEqual(['service:init', 'consumer:init', 'service:bootstrap', 'consumer:bootstrap']);
+    });
   });
 
   it('disposes successfully compiled module containers after use', async () => {
@@ -124,43 +172,12 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [DisposableService] })
     class DisposableModule {}
 
-    const testingModule = await createTestingModule({ rootModule: DisposableModule }).compile();
-    let testError: unknown;
-    let testFailed = false;
-    let disposeError: unknown;
-    let disposeFailed = false;
-
-    try {
+    const testingModule = await Test.createTestingModule({ rootModule: DisposableModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      defer(() => testingModule.container.dispose());
       expect(await testingModule.resolve(DisposableService)).toBeInstanceOf(DisposableService);
-    } catch (error: unknown) {
-      testError = error;
-      testFailed = true;
-    } finally {
-      try {
-        await Promise.all([
-          testingModule.container.dispose(),
-          testingModule.container.dispose(),
-        ]);
-      } catch (error: unknown) {
-        disposeFailed = true;
-        disposeError = error;
-      }
-    }
-
-    if (testFailed) {
-      if (disposeFailed) {
-        throw new AggregateError(
-          [testError, disposeError],
-          'Test and testing module disposal both failed.',
-        );
-      }
-
-      throw testError;
-    }
-
-    if (disposeFailed) {
-      throw disposeError;
-    }
+    });
 
     expect(events).toEqual(['disposed']);
   });
@@ -178,42 +195,11 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [DisposableService] })
     class DisposableModule {}
 
-    const testingModule = await createTestingModule({ rootModule: DisposableModule }).compile();
-    const result = await (async () => {
-      let caughtTestError: unknown;
-      let testFailed = false;
-      let caughtDisposeError: unknown;
-      let disposeFailed = false;
-
-      try {
-        throw testError;
-      } catch (error: unknown) {
-        caughtTestError = error;
-        testFailed = true;
-      } finally {
-        try {
-          await testingModule.container.dispose();
-        } catch (error: unknown) {
-          disposeFailed = true;
-          caughtDisposeError = error;
-        }
-      }
-
-      if (testFailed) {
-        if (disposeFailed) {
-          throw new AggregateError(
-            [caughtTestError, caughtDisposeError],
-            'Test and testing module disposal both failed.',
-          );
-        }
-
-        throw caughtTestError;
-      }
-
-      if (disposeFailed) {
-        throw caughtDisposeError;
-      }
-    })().catch((error: unknown) => error);
+    const result = await withCleanup(async (defer) => {
+      const testingModule = await Test.createTestingModule({ rootModule: DisposableModule }).compile();
+      defer(() => testingModule.container.dispose());
+      throw testError;
+    }).catch((error: unknown) => error);
 
     expect(result).toBeInstanceOf(AggregateError);
     if (result instanceof AggregateError) {
@@ -238,12 +224,16 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [{ provide: SERVICE_TOKEN, useValue: { name: 'original' } }] })
     class LifecycleOverrideModule {}
 
-    const testingModule = await createTestingModule({ rootModule: LifecycleOverrideModule })
-      .overrideProvider(SERVICE_TOKEN, { provide: SERVICE_TOKEN, useClass: ReplacementService })
+    const testingModule = await Test.createTestingModule({ rootModule: LifecycleOverrideModule })
+      .overrideProvider(SERVICE_TOKEN)
+      .useClass(ReplacementService)
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    expect(await testingModule.resolve(SERVICE_TOKEN)).toBeInstanceOf(ReplacementService);
-    expect(events).toEqual(['replacement:init', 'replacement:bootstrap']);
+      expect(await testingModule.resolve(SERVICE_TOKEN)).toBeInstanceOf(ReplacementService);
+      expect(events).toEqual(['replacement:init', 'replacement:bootstrap']);
+    });
   });
 
   it('runs bootstrap lifecycle hooks returned by singleton module factory providers', async () => {
@@ -267,10 +257,13 @@ describe('@fluojs/testing', () => {
     })
     class FactoryLifecycleModule {}
 
-    const testingModule = await createTestingModule({ rootModule: FactoryLifecycleModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: FactoryLifecycleModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    expect(await testingModule.resolve(FACTORY_TOKEN)).toBeDefined();
-    expect(events).toEqual(['factory:init', 'factory:bootstrap']);
+      expect(await testingModule.resolve(FACTORY_TOKEN)).toBeDefined();
+      expect(events).toEqual(['factory:init', 'factory:bootstrap']);
+    });
   });
 
   it('runs bootstrap lifecycle hooks returned by singleton factory overrides', async () => {
@@ -280,7 +273,7 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [{ provide: FACTORY_TOKEN, useValue: { name: 'original' } }] })
     class FactoryOverrideLifecycleModule {}
 
-    const testingModule = await createTestingModule({ rootModule: FactoryOverrideLifecycleModule })
+    const testingModule = await Test.createTestingModule({ rootModule: FactoryOverrideLifecycleModule })
       .overrideProvider(FACTORY_TOKEN)
       .useFactory(() => ({
         onModuleInit() {
@@ -291,9 +284,12 @@ describe('@fluojs/testing', () => {
         },
       }))
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    expect(await testingModule.resolve(FACTORY_TOKEN)).toBeDefined();
-    expect(events).toEqual(['factory:init', 'factory:bootstrap']);
+      expect(await testingModule.resolve(FACTORY_TOKEN)).toBeDefined();
+      expect(events).toEqual(['factory:init', 'factory:bootstrap']);
+    });
   });
 
   it('runs bootstrap lifecycle hooks returned by singleton multi factory providers', async () => {
@@ -313,10 +309,13 @@ describe('@fluojs/testing', () => {
     })
     class MultiFactoryLifecycleModule {}
 
-    const testingModule = await createTestingModule({ rootModule: MultiFactoryLifecycleModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: MultiFactoryLifecycleModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    expect(await testingModule.resolve<typeof plugin[]>(PLUGINS)).toEqual([plugin]);
-    expect(events).toEqual(['factory:init', 'factory:bootstrap']);
+      expect(await testingModule.resolve<typeof plugin[]>(PLUGINS)).toEqual([plugin]);
+      expect(events).toEqual(['factory:init', 'factory:bootstrap']);
+    });
   });
 
   it('runs bootstrap lifecycle hooks for each singleton multi-provider contribution', async () => {
@@ -351,12 +350,15 @@ describe('@fluojs/testing', () => {
     })
     class MultiLifecycleModule {}
 
-    const testingModule = await createTestingModule({ rootModule: MultiLifecycleModule }).compile();
-    const plugins = await testingModule.resolve<Array<PluginA | PluginB>>(PLUGINS);
+    const testingModule = await Test.createTestingModule({ rootModule: MultiLifecycleModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      const plugins = await testingModule.resolve<Array<PluginA | PluginB>>(PLUGINS);
 
-    expect(plugins[0]).toBeInstanceOf(PluginA);
-    expect(plugins[1]).toBeInstanceOf(PluginB);
-    expect(events).toEqual(['a:init', 'b:init', 'a:bootstrap', 'b:bootstrap']);
+      expect(plugins[0]).toBeInstanceOf(PluginA);
+      expect(plugins[1]).toBeInstanceOf(PluginB);
+      expect(events).toEqual(['a:init', 'b:init', 'a:bootstrap', 'b:bootstrap']);
+    });
   });
 
   it('runs interleaved multi-provider lifecycle hooks in declared runtime order', async () => {
@@ -402,19 +404,22 @@ describe('@fluojs/testing', () => {
     })
     class InterleavedLifecycleModule {}
 
-    const testingModule = await createTestingModule({ rootModule: InterleavedLifecycleModule }).compile();
-    const plugins = await testingModule.resolve<Array<FirstPlugin | SecondPlugin>>(PLUGINS);
+    const testingModule = await Test.createTestingModule({ rootModule: InterleavedLifecycleModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      const plugins = await testingModule.resolve<Array<FirstPlugin | SecondPlugin>>(PLUGINS);
 
-    expect(plugins[0]).toBeInstanceOf(FirstPlugin);
-    expect(plugins[1]).toBeInstanceOf(SecondPlugin);
-    expect(events).toEqual([
-      'first:init',
-      'singleton:init',
-      'second:init',
-      'first:bootstrap',
-      'singleton:bootstrap',
-      'second:bootstrap',
-    ]);
+      expect(plugins[0]).toBeInstanceOf(FirstPlugin);
+      expect(plugins[1]).toBeInstanceOf(SecondPlugin);
+      expect(events).toEqual([
+        'first:init',
+        'singleton:init',
+        'second:init',
+        'first:bootstrap',
+        'singleton:bootstrap',
+        'second:bootstrap',
+      ]);
+    });
   });
 
   it('runs singleton multi-provider lifecycle hooks when another contribution is request scoped', async () => {
@@ -449,9 +454,13 @@ describe('@fluojs/testing', () => {
     })
     class MixedScopeMultiLifecycleModule {}
 
-    await expect(createTestingModule({ rootModule: MixedScopeMultiLifecycleModule }).compile()).resolves.toBeDefined();
+    const testingModule = await Test.createTestingModule({ rootModule: MixedScopeMultiLifecycleModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      expect(testingModule).toBeDefined();
 
-    expect(events).toEqual(['singleton:init', 'singleton:bootstrap']);
+      expect(events).toEqual(['singleton:init', 'singleton:bootstrap']);
+    });
   });
 
   it('runs bootstrap lifecycle hooks from lifecycle-bearing useValue overrides', async () => {
@@ -465,12 +474,16 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [{ provide: SERVICE_TOKEN, useFactory: () => ({ name: 'original' }) }] })
     class LifecycleValueOverrideModule {}
 
-    const testingModule = await createTestingModule({ rootModule: LifecycleValueOverrideModule })
-      .overrideProvider(SERVICE_TOKEN, replacement)
+    const testingModule = await Test.createTestingModule({ rootModule: LifecycleValueOverrideModule })
+      .overrideProvider(SERVICE_TOKEN)
+      .useValue(replacement)
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    expect(await testingModule.resolve(SERVICE_TOKEN)).toBe(replacement);
-    expect(events).toEqual(['value:init', 'value:bootstrap']);
+      expect(await testingModule.resolve(SERVICE_TOKEN)).toBe(replacement);
+      expect(events).toEqual(['value:init', 'value:bootstrap']);
+    });
   });
 
   it('does not run bootstrap lifecycle hooks for decorated request or transient providers', async () => {
@@ -493,9 +506,12 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [RequestLifecycleService, TransientLifecycleService] })
     class ScopedLifecycleModule {}
 
-    await createTestingModule({ rootModule: ScopedLifecycleModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: ScopedLifecycleModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    expect(events).toEqual([]);
+      expect(events).toEqual([]);
+    });
   });
 
   it('uses useClass decorator metadata when deciding bootstrap lifecycle scope', async () => {
@@ -519,11 +535,15 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [{ provide: SERVICE_TOKEN, useClass: TransientReplacementService }] })
     class UseClassScopedLifecycleModule {}
 
-    await createTestingModule({ rootModule: UseClassScopedLifecycleModule })
-      .overrideProvider(SERVICE_TOKEN, { provide: SERVICE_TOKEN, useClass: RequestReplacementService })
+    const testingModule = await Test.createTestingModule({ rootModule: UseClassScopedLifecycleModule })
+      .overrideProvider(SERVICE_TOKEN)
+      .useClass(RequestReplacementService)
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    expect(events).toEqual([]);
+      expect(events).toEqual([]);
+    });
   });
 
   it('shares singleton identity between get() and resolve()', async () => {
@@ -534,15 +554,18 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [CounterService] })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule }).compile();
 
-    const syncService = testingModule.get<CounterService>(CounterService);
-    syncService.count = 7;
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      const syncService = testingModule.get<CounterService>(CounterService);
+      syncService.count = 7;
 
-    const asyncService = await testingModule.resolve<CounterService>(CounterService);
+      const asyncService = await testingModule.resolve<CounterService>(CounterService);
 
-    expect(asyncService).toBe(syncService);
-    expect(asyncService.count).toBe(7);
+      expect(asyncService).toBe(syncService);
+      expect(asyncService.count).toBe(7);
+    });
   });
 
   it('preserves singleton and disposal semantics for sync multi-provider get()', async () => {
@@ -573,25 +596,28 @@ describe('@fluojs/testing', () => {
     })
     class MultiProviderModule {}
 
-    const testingModule = await createTestingModule({ rootModule: MultiProviderModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: MultiProviderModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const first = testingModule.get<Array<PluginA | PluginB>>(PLUGINS);
-    first[0].count = 1;
-    first[1].count = 2;
+      const first = testingModule.get<Array<PluginA | PluginB>>(PLUGINS);
+      first[0].count = 1;
+      first[1].count = 2;
 
-    const second = testingModule.get<Array<PluginA | PluginB>>(PLUGINS);
-    const resolved = await testingModule.resolve<Array<PluginA | PluginB>>(PLUGINS);
+      const second = testingModule.get<Array<PluginA | PluginB>>(PLUGINS);
+      const resolved = await testingModule.resolve<Array<PluginA | PluginB>>(PLUGINS);
 
-    expect(second).not.toBe(first);
-    expect(second[0]).toBe(first[0]);
-    expect(second[1]).toBe(first[1]);
-    expect(resolved[0]).toBe(first[0]);
-    expect(resolved[1]).toBe(first[1]);
-    expect(resolved.map((plugin) => plugin.count)).toEqual([1, 2]);
+      expect(second).not.toBe(first);
+      expect(second[0]).toBe(first[0]);
+      expect(second[1]).toBe(first[1]);
+      expect(resolved[0]).toBe(first[0]);
+      expect(resolved[1]).toBe(first[1]);
+      expect(resolved.map((plugin) => plugin.count)).toEqual([1, 2]);
 
-    await testingModule.container.dispose();
+      await testingModule.container.dispose();
 
-    expect(disposed).toEqual(['b', 'a']);
+      expect(disposed).toEqual(['b', 'a']);
+    });
   });
 
   it('cleans up sync singleton instances materialized through get() when the container is disposed', async () => {
@@ -606,19 +632,22 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [SingletonService] })
     class SingletonCleanupModule {}
 
-    const testingModule = await createTestingModule({ rootModule: SingletonCleanupModule }).compile();
-    const service = testingModule.get<SingletonService>(SingletonService);
+    const testingModule = await Test.createTestingModule({ rootModule: SingletonCleanupModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      const service = testingModule.get<SingletonService>(SingletonService);
 
-    expect(service).toBeInstanceOf(SingletonService);
+      expect(service).toBeInstanceOf(SingletonService);
 
-    await testingModule.container.dispose();
+      await testingModule.container.dispose();
 
-    expect(disposed).toEqual(['singleton']);
+      expect(disposed).toEqual(['singleton']);
+    });
   });
 
   it('overrides providers before resolution', async () => {
     class Logger {
-      readonly name = 'logger';
+      readonly name: string = 'logger';
     }
 
     @Inject(Logger)
@@ -631,15 +660,19 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({
+    const testingModule = await Test.createTestingModule({
       rootModule: ServiceModule,
     })
-      .overrideProvider(Logger, { name: 'fake-logger' })
+      .overrideProvider(Logger)
+      .useValue({ name: 'fake-logger' })
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const service = await testingModule.resolve<UserService>(UserService);
+      const service = await testingModule.resolve<UserService>(UserService);
 
-    expect(service.logger).toEqual({ name: 'fake-logger' });
+      expect(service.logger).toEqual({ name: 'fake-logger' });
+    });
   });
 
   it('supports NestJS-style overrideProvider(token).useValue(value) chain', async () => {
@@ -657,17 +690,20 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({
+    const testingModule = await Test.createTestingModule({
       rootModule: ServiceModule,
     })
       .overrideProvider(Logger)
       .useValue({ name: 'nest-style-fake' })
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const service = await testingModule.resolve<UserService>(UserService);
+      const service = await testingModule.resolve<UserService>(UserService);
 
-    expect(service.logger).toEqual({ name: 'nest-style-fake' });
-    expect(testingModule.get<Logger>(Logger)).toEqual({ name: 'nest-style-fake' });
+      expect(service.logger).toEqual({ name: 'nest-style-fake' });
+      expect(testingModule.get<Logger>(Logger)).toEqual({ name: 'nest-style-fake' });
+    });
   });
 
   it('reports eagerly resolved async providers from get()', async () => {
@@ -683,32 +719,22 @@ describe('@fluojs/testing', () => {
     })
     class AsyncProviderModule {}
 
-    const testingModule = await createTestingModule({
+    const testingModule = await Test.createTestingModule({
       rootModule: AsyncProviderModule,
     }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    expect(() => testingModule.get<string>(TOKEN)).toThrow(/already resolved asynchronously/);
-    await expect(testingModule.resolve<string>(TOKEN)).resolves.toBe('async-value');
+      expect(() => testingModule.get<string>(TOKEN)).toThrow(/already resolved asynchronously/);
+      await expect(testingModule.resolve<string>(TOKEN)).resolves.toBe('async-value');
+    });
   });
 
   it('keeps async factory providers resolve-only after async singleton sync points', async () => {
     const RESOLVE_TOKEN = Symbol('resolve-async-token');
     const RESOLVE_ALL_TOKEN = Symbol('resolve-all-async-token');
-    const DISPATCH_TOKEN = Symbol('dispatch-async-token');
-
-    @Inject(DISPATCH_TOKEN)
-    @Controller('/async-singleton')
-    class AsyncSingletonController {
-      constructor(private readonly value: string) {}
-
-      @Get('/')
-      read() {
-        return { value: this.value };
-      }
-    }
 
     @Module({
-      controllers: [AsyncSingletonController],
       providers: [
         {
           provide: RESOLVE_TOKEN,
@@ -718,26 +744,20 @@ describe('@fluojs/testing', () => {
           provide: RESOLVE_ALL_TOKEN,
           useFactory: async () => 'resolve-all-async-value',
         },
-        {
-          provide: DISPATCH_TOKEN,
-          useFactory: async () => 'dispatch-async-value',
-        },
       ],
     })
     class AsyncSingletonModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AsyncSingletonModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AsyncSingletonModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    await expect(testingModule.resolve<string>(RESOLVE_TOKEN)).resolves.toBe('resolved-async-value');
-    expect(() => testingModule.get<string>(RESOLVE_TOKEN)).toThrow(/already resolved asynchronously/);
+      await expect(testingModule.resolve<string>(RESOLVE_TOKEN)).resolves.toBe('resolved-async-value');
+      expect(() => testingModule.get<string>(RESOLVE_TOKEN)).toThrow(/already resolved asynchronously/);
 
-    await expect(testingModule.resolveAll<string>([RESOLVE_ALL_TOKEN])).resolves.toEqual(['resolve-all-async-value']);
-    expect(() => testingModule.get<string>(RESOLVE_ALL_TOKEN)).toThrow(/already resolved asynchronously/);
-
-    const response = await testingModule.dispatch({ method: 'GET', path: '/async-singleton' });
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ value: 'dispatch-async-value' });
-    expect(() => testingModule.get<string>(DISPATCH_TOKEN)).toThrow(/already resolved asynchronously/);
+      await expect(testingModule.resolveAll<string>([RESOLVE_ALL_TOKEN])).resolves.toEqual(['resolve-all-async-value']);
+      expect(() => testingModule.get<string>(RESOLVE_ALL_TOKEN)).toThrow(/already resolved asynchronously/);
+    });
   });
 
   it('promotes sync useFactory singletons after resolve() while preserving identity for get()', async () => {
@@ -754,13 +774,16 @@ describe('@fluojs/testing', () => {
     })
     class SyncFactoryModule {}
 
-    const testingModule = await createTestingModule({ rootModule: SyncFactoryModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: SyncFactoryModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const resolved = await testingModule.resolve<typeof value>(TOKEN);
-    const syncValue = testingModule.get<typeof value>(TOKEN);
+      const resolved = await testingModule.resolve<typeof value>(TOKEN);
+      const syncValue = testingModule.get<typeof value>(TOKEN);
 
-    expect(resolved).toBe(value);
-    expect(syncValue).toBe(resolved);
+      expect(resolved).toBe(value);
+      expect(syncValue).toBe(resolved);
+    });
   });
 
   it('promotes classes depending on sync factories after resolve() while preserving get() identity', async () => {
@@ -783,13 +806,16 @@ describe('@fluojs/testing', () => {
     })
     class SyncFactoryConsumerModule {}
 
-    const testingModule = await createTestingModule({ rootModule: SyncFactoryConsumerModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: SyncFactoryConsumerModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const resolved = await testingModule.resolve<SyncFactoryConsumer>(SyncFactoryConsumer);
-    const syncConsumer = testingModule.get<SyncFactoryConsumer>(SyncFactoryConsumer);
+      const resolved = await testingModule.resolve<SyncFactoryConsumer>(SyncFactoryConsumer);
+      const syncConsumer = testingModule.get<SyncFactoryConsumer>(SyncFactoryConsumer);
 
-    expect(resolved.value).toBe(dependency);
-    expect(syncConsumer).toBe(resolved);
+      expect(resolved.value).toBe(dependency);
+      expect(syncConsumer).toBe(resolved);
+    });
   });
 
   it('preserves sync factory promotion when the dependency is first materialized through get()', async () => {
@@ -812,15 +838,18 @@ describe('@fluojs/testing', () => {
     })
     class SyncFirstFactoryConsumerModule {}
 
-    const testingModule = await createTestingModule({ rootModule: SyncFirstFactoryConsumerModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: SyncFirstFactoryConsumerModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const syncDependency = testingModule.get<typeof dependency>(TOKEN);
-    const resolved = await testingModule.resolve<SyncFirstFactoryConsumer>(SyncFirstFactoryConsumer);
-    const syncConsumer = testingModule.get<SyncFirstFactoryConsumer>(SyncFirstFactoryConsumer);
+      const syncDependency = testingModule.get<typeof dependency>(TOKEN);
+      const resolved = await testingModule.resolve<SyncFirstFactoryConsumer>(SyncFirstFactoryConsumer);
+      const syncConsumer = testingModule.get<SyncFirstFactoryConsumer>(SyncFirstFactoryConsumer);
 
-    expect(syncDependency).toBe(dependency);
-    expect(resolved.value).toBe(syncDependency);
-    expect(syncConsumer).toBe(resolved);
+      expect(syncDependency).toBe(dependency);
+      expect(resolved.value).toBe(syncDependency);
+      expect(syncConsumer).toBe(resolved);
+    });
   });
 
   it('keeps classes depending on useExisting aliases to async factories resolve-only after resolve()', async () => {
@@ -844,29 +873,36 @@ describe('@fluojs/testing', () => {
     })
     class AliasAsyncFactoryModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AliasAsyncFactoryModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AliasAsyncFactoryModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const resolved = await testingModule.resolve<AliasAsyncConsumer>(AliasAsyncConsumer);
+      const resolved = await testingModule.resolve<AliasAsyncConsumer>(AliasAsyncConsumer);
 
-    expect(resolved.value).toBe('async-aliased-value');
-    expect(() => testingModule.get<AliasAsyncConsumer>(AliasAsyncConsumer)).toThrow(/already resolved asynchronously/);
+      expect(resolved.value).toBe('async-aliased-value');
+      expect(() => testingModule.get<AliasAsyncConsumer>(AliasAsyncConsumer)).toThrow(/already resolved asynchronously/);
+    });
   });
 
-  it('treats direct function mocks in overrideProvider as useValue', async () => {
+  it('preserves function mocks through useValue', async () => {
     const FUNCTION_TOKEN = Symbol('function-token');
     const mockFn = vi.fn().mockReturnValue('ok');
 
-    const testingModule = await createTestingModule({
+    const testingModule = await Test.createTestingModule({
       rootModule: AppModule,
     })
-      .overrideProvider(FUNCTION_TOKEN, mockFn)
+      .overrideProvider(FUNCTION_TOKEN)
+      .useValue(mockFn)
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const resolved = await testingModule.resolve<typeof mockFn>(FUNCTION_TOKEN);
+      const resolved = await testingModule.resolve<typeof mockFn>(FUNCTION_TOKEN);
 
-    expect(resolved).toBe(mockFn);
-    expect(resolved()).toBe('ok');
-    expect(mockFn).toHaveBeenCalledTimes(1);
+      expect(resolved).toBe(mockFn);
+      expect(resolved()).toBe('ok');
+      expect(mockFn).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('supports class constructor overrides via overrideProvider', async () => {
@@ -888,26 +924,37 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule })
-      .overrideProvider(Logger, FakeLogger)
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule })
+      .overrideProvider(Logger)
+      .useClass(FakeLogger)
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const service = await testingModule.resolve<UserService>(UserService);
+      const service = await testingModule.resolve<UserService>(UserService);
 
-    expect(service.logger).toBeInstanceOf(FakeLogger);
-    expect(service.logger.name).toBe('fake-logger');
+      expect(service.logger).toBeInstanceOf(FakeLogger);
+      expect(service.logger.name).toBe('fake-logger');
+    });
   });
 
-  it('throws when overrideProvider token and provider.provide do not match', () => {
+  it('preserves provider-shaped values as literals through useValue', async () => {
     const EXPECTED = Symbol('expected-token');
     const OTHER = Symbol('other-token');
+    const literal = {
+      provide: OTHER,
+      useValue: 'value',
+    };
 
-    expect(() =>
-      createTestingModule({ rootModule: AppModule }).overrideProvider(EXPECTED, {
-        provide: OTHER,
-        useValue: 'value',
-      }),
-    ).toThrow('overrideProvider token mismatch');
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule })
+      .overrideProvider(EXPECTED)
+      .useValue(literal)
+      .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+
+      expect(testingModule.get(EXPECTED)).toBe(literal);
+    });
   });
 
   it('supports useExisting provider descriptors in overrideProvider', async () => {
@@ -922,14 +969,15 @@ describe('@fluojs/testing', () => {
     })
     class AliasModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AliasModule })
-      .overrideProvider(TARGET, {
-        provide: TARGET,
-        useExisting: SOURCE,
-      })
+    const testingModule = await Test.createTestingModule({ rootModule: AliasModule })
+      .overrideProvider(TARGET)
+      .useExisting(SOURCE)
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    await expect(testingModule.resolve<string>(TARGET)).resolves.toBe('source-value');
+      await expect(testingModule.resolve<string>(TARGET)).resolves.toBe('source-value');
+    });
   });
 
   it('applies provider overrides before first provider resolution side effects', async () => {
@@ -958,15 +1006,19 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule })
-      .overrideProvider(TOKEN, 'fake')
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule })
+      .overrideProvider(TOKEN)
+      .useValue('fake')
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    expect(factoryCallCount).toBe(0);
+      expect(factoryCallCount).toBe(0);
 
-    const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
-    expect(consumer.value).toBe('fake');
-    expect(factoryCallCount).toBe(0);
+      const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
+      expect(consumer.value).toBe('fake');
+      expect(factoryCallCount).toBe(0);
+    });
   });
 
   it('applies overrides through aliases across repeated transient resolutions', async () => {
@@ -986,16 +1038,20 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule })
-      .overrideProvider(REAL_CONFIG, 'fake')
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule })
+      .overrideProvider(REAL_CONFIG)
+      .useValue('fake')
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const first = await testingModule.resolve<ConsumerService>(ConsumerService);
-    const second = await testingModule.resolve<ConsumerService>(ConsumerService);
+      const first = await testingModule.resolve<ConsumerService>(ConsumerService);
+      const second = await testingModule.resolve<ConsumerService>(ConsumerService);
 
-    expect(first).not.toBe(second);
-    expect(first.value).toBe('fake');
-    expect(second.value).toBe('fake');
+      expect(first).not.toBe(second);
+      expect(first.value).toBe('fake');
+      expect(second.value).toBe('fake');
+    });
   });
 
   it('keeps testing-module overrides from materializing replaced request-scoped factories', async () => {
@@ -1021,14 +1077,18 @@ describe('@fluojs/testing', () => {
     })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule })
-      .overrideProvider(REQUEST_TOKEN, 'fake-request')
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule })
+      .overrideProvider(REQUEST_TOKEN)
+      .useValue('fake-request')
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
+      const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
 
-    expect(consumer.value).toBe('fake-request');
-    expect(realFactoryCallCount).toBe(0);
+      expect(consumer.value).toBe('fake-request');
+      expect(realFactoryCallCount).toBe(0);
+    });
   });
 
   it('preserves request-scoped testing module provider isolation when no override is applied', async () => {
@@ -1048,20 +1108,23 @@ describe('@fluojs/testing', () => {
     @Module({ providers: [RequestStore, ConsumerService] })
     class ServiceModule {}
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    await expect(testingModule.resolve<ConsumerService>(ConsumerService)).rejects.toThrow('outside request scope');
+      await expect(testingModule.resolve<ConsumerService>(ConsumerService)).rejects.toThrow('outside request scope');
+    });
   });
 });
 
-describe('createMock', () => {
+describe('ShallowMock.create', () => {
   it('returns vi.fn() for any accessed method not in the partial', () => {
     interface MyService {
       doSomething(): string;
       doOther(): number;
     }
 
-    const mock = createMock<MyService>();
+    const mock = ShallowMock.create<MyService>();
 
     expect(typeof mock.doSomething).toBe('function');
     expect(typeof mock.doOther).toBe('function');
@@ -1074,7 +1137,7 @@ describe('createMock', () => {
     }
 
     const increment = vi.fn().mockReturnValue(1);
-    const mock = createMock<Counter>({ increment });
+    const mock = ShallowMock.create<Counter>({ increment });
 
     expect(mock.increment()).toBe(1);
     expect(increment).toHaveBeenCalledOnce();
@@ -1085,7 +1148,7 @@ describe('createMock', () => {
       greet(): string;
     }
 
-    const mock = createMock<Greeter>();
+    const mock = ShallowMock.create<Greeter>();
     const first = mock.greet;
     const second = mock.greet;
 
@@ -1097,11 +1160,9 @@ describe('createMock', () => {
       greet(): string;
     }
 
-    const mock = createMock<Greeter>({}, { strict: true });
+    const mock = ShallowMock.create<Greeter>({}, { strict: true });
 
-    expect(() => mock.greet).toThrow(
-      'createMock: strict mode — property "greet" is not declared in the partial mock.',
-    );
+    expect(() => mock.greet).toThrow(Error);
   });
 });
 
@@ -1170,11 +1231,116 @@ describe('makeRequest', () => {
   });
 });
 
-describe('createTestApp', () => {
-  it('provides request builder helpers and closes cleanly', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+describe('Test.createApp', () => {
+  it('retries only failed lifecycle cleanup through the test app wrapper', async () => {
+    const failedOnDestroy = vi.fn()
+      .mockImplementationOnce(() => {
+        throw new Error('application container destroy failed');
+      });
+    const siblingOnDestroy = vi.fn();
 
-    try {
+    class FailingResource {
+      onDestroy = failedOnDestroy;
+    }
+
+    class SiblingResource {
+      onDestroy = siblingOnDestroy;
+    }
+
+    @Inject(FailingResource)
+    @Inject(SiblingResource)
+    @Controller('/close-retry')
+    class CloseRetryController {
+      constructor(
+        private readonly failingResource: FailingResource,
+        private readonly siblingResource: SiblingResource,
+      ) {}
+
+      @Get('/')
+      read() {
+        return {
+          failing: this.failingResource instanceof FailingResource,
+          sibling: this.siblingResource instanceof SiblingResource,
+        };
+      }
+    }
+
+    @Module({
+      controllers: [CloseRetryController],
+      providers: [FailingResource, SiblingResource],
+    })
+    class CloseRetryModule {}
+
+    const app = await Test.createApp({ rootModule: CloseRetryModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      await app.request('GET', '/close-retry').send();
+
+      await expect(app.close()).rejects.toThrow('application container destroy failed');
+      await expect(app.close()).resolves.toBeUndefined();
+      expect(failedOnDestroy).toHaveBeenCalledTimes(2);
+      expect(siblingOnDestroy).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('runs overridden provider HTTP requests through the application lifecycle', async () => {
+    const MESSAGE = Symbol('message');
+    const events: string[] = [];
+
+    class LifecycleProvider {
+      onApplicationBootstrap() {
+        events.push('bootstrap');
+      }
+
+      onModuleDestroy() {
+        events.push('destroy');
+      }
+
+      onModuleInit() {
+        events.push('init');
+      }
+    }
+
+    @Inject(MESSAGE)
+    @Controller('/overridden-lifecycle')
+    class OverriddenLifecycleController {
+      constructor(private readonly message: string) {}
+
+      @Get('/')
+      read() {
+        events.push('handler');
+        return { message: this.message };
+      }
+    }
+
+    @Module({
+      controllers: [OverriddenLifecycleController],
+      providers: [
+        LifecycleProvider,
+        { provide: MESSAGE, useValue: 'original' },
+      ],
+    })
+    class OverriddenLifecycleModule {}
+
+    const app = await Test.createApp({
+      rootModule: OverriddenLifecycleModule,
+      providers: [{ provide: MESSAGE, useValue: 'overridden' }],
+    });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      const response = await app.request('GET', '/overridden-lifecycle').send();
+
+      expect(response).toMatchObject({ body: { message: 'overridden' }, status: 200 });
+    });
+
+    expect(events).toEqual(['init', 'bootstrap', 'handler', 'destroy']);
+  });
+
+  it('provides request builder helpers and closes cleanly', async () => {
+    const app = await Test.createApp({ rootModule: AppModule });
+
+    await withCleanup(async (defer) => {
+      defer(async () => { await expect(app.close()).resolves.toBeUndefined(); });
       const response = await app
         .request('POST', '/users')
         .header('x-test-id', 'k1')
@@ -1189,9 +1355,7 @@ describe('createTestApp', () => {
         headers: { 'x-test-id': 'k1' },
         query: { page: '1', tag: ['a', 'b'] },
       });
-    } finally {
-      await expect(app.close()).resolves.toBeUndefined();
-    }
+    });
   });
 
   it('binds cookies from object request inputs', async () => {
@@ -1212,9 +1376,9 @@ describe('createTestApp', () => {
     @Module({ controllers: [CookieController] })
     class CookieModule {}
 
-    const app = await createTestApp({ rootModule: CookieModule });
-
-    try {
+    const app = await Test.createApp({ rootModule: CookieModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const response = await app.request({
         path: '/cookies',
         cookies: { session: 'object-request-cookie' },
@@ -1222,16 +1386,17 @@ describe('createTestApp', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ session: 'object-request-cookie' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('makes close idempotent when cleanup is called more than once', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    await expect(app.close()).resolves.toBeUndefined();
-    await expect(app.close()).resolves.toBeUndefined();
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      await expect(app.close()).resolves.toBeUndefined();
+      await expect(app.close()).resolves.toBeUndefined();
+    });
   });
 
   it('preserves caller bootstrap middleware when adding test request context', async () => {
@@ -1243,19 +1408,17 @@ describe('createTestApp', () => {
       },
     };
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: AppModule,
       middleware: [callerMiddleware],
     });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const response = await app.request('GET', '/users/me').send();
 
       expect(response.status).toBe(200);
       expect(middlewareCalls).toEqual(['caller']);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('forwards provider, observer, interceptor, and versioning bootstrap options to the runtime app', async () => {
@@ -1299,23 +1462,21 @@ describe('createTestApp', () => {
     @Module({ controllers: [BootstrapOptionsController] })
     class BootstrapOptionsModule {}
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: BootstrapOptionsModule,
       interceptors: [interceptor],
       observers: [observer],
       providers: [{ provide: MESSAGE_TOKEN, useValue: 'forwarded-provider' }],
       versioning: { header: 'x-api-version', type: VersioningType.HEADER },
     });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const response = await app.request('GET', '/bootstrap-options').header('x-api-version', '2').send();
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ wrapped: { message: 'forwarded-provider' } });
       expect(observerEvents).toEqual(['start', 'interceptor', 'success']);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('forwards converters to the runtime app', async () => {
@@ -1342,19 +1503,17 @@ describe('createTestApp', () => {
     @Module({ controllers: [ConvertedController] })
     class ConvertedModule {}
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: ConvertedModule,
       converters: [new QueryNumberConverter()],
     });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const response = await app.request('GET', '/converted').query('page', '42').send();
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ page: 42 });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('forwards global exception filters to the runtime app', async () => {
@@ -1381,26 +1540,25 @@ describe('createTestApp', () => {
       },
     };
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: FilteredModule,
       filters: [filter],
     });
-
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const response = await app.request('GET', '/filtered/boom').send();
 
       expect(response.status).toBe(418);
       expect(response.body).toEqual({ handled: true });
       expect(caughtErrors).toHaveLength(1);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('injects principal into request context for e2e-style calls', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const response = await app
         .request('GET', '/users/me')
         .principal({
@@ -1415,24 +1573,23 @@ describe('createTestApp', () => {
         roles: ['admin'],
         claims: { id: 'user-1' },
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('dispatches a request directly through the app helper and injects subject-based principal', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
-      const response = await app.dispatch({
-        method: 'GET',
-        path: '/users/me',
-        principal: {
-          subject: 'dispatch-subject',
-          roles: ['ops'],
-          claims: { tenant: 'edge' },
-        },
-      });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+    const response = await app.request({
+      method: 'GET',
+      path: '/users/me',
+      principal: {
+        subject: 'dispatch-subject',
+        roles: ['ops'],
+        claims: { tenant: 'edge' },
+      },
+    }).send();
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
@@ -1440,15 +1597,13 @@ describe('createTestApp', () => {
         roles: ['ops'],
         claims: { tenant: 'edge' },
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('prioritizes subject over id and falls back to default subject when missing', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
-
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const subjectResponse = await app
         .request('GET', '/users/me')
         .principal({
@@ -1489,12 +1644,10 @@ describe('createTestApp', () => {
         roles: ['defaulted'],
         claims: {},
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
-  it('isolates request-scoped providers for request builder sends and direct app dispatch', async () => {
+  it('isolates request-scoped providers for each fluent request', async () => {
     let created = 0;
 
     @ScopeDecorator('request')
@@ -1514,391 +1667,17 @@ describe('createTestApp', () => {
     @Module({ controllers: [RequestScopeController], providers: [RequestCounter] })
     class RequestScopeModule {}
 
-    const app = await createTestApp({ rootModule: RequestScopeModule });
-
-    try {
+    const app = await Test.createApp({ rootModule: RequestScopeModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const requestResponse = await app.request('GET', '/request-scope').send();
-      const dispatchResponse = await app.dispatch({ method: 'GET', path: '/request-scope' });
+      const secondRequestResponse = await app.request({ method: 'GET', path: '/request-scope' }).send();
 
       expect(requestResponse.status).toBe(200);
-      expect(dispatchResponse.status).toBe(200);
+      expect(secondRequestResponse.status).toBe(200);
       expect(requestResponse.body).toEqual({ id: 1 });
-      expect(dispatchResponse.body).toEqual({ id: 2 });
-    } finally {
-      await app.close();
-    }
-  });
-});
-
-describe('TestingModuleRef.dispatch', () => {
-  it('dispatches full HTTP request lifecycle from a compiled module ref', async () => {
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
-
-    const response = await testingModule.dispatch({
-      method: 'GET',
-      path: '/users/me',
-      principal: {
-        id: 'dispatch-user',
-      },
+      expect(secondRequestResponse.body).toEqual({ id: 2 });
     });
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      subject: 'dispatch-user',
-      claims: {
-        id: 'dispatch-user',
-      },
-    });
-  });
-
-  it('applies global middleware to controllers declared by other global modules during dispatch', async () => {
-    const calls: string[] = [];
-
-    const firstGlobalMiddleware = {
-      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
-        calls.push('first:before');
-        await next();
-        calls.push('first:after');
-      },
-    };
-
-    const secondGlobalMiddleware = {
-      async handle(_context: MiddlewareContext, next: Next): Promise<void> {
-        calls.push('second:before');
-        await next();
-        calls.push('second:after');
-      },
-    };
-
-    @Module({ global: true, middleware: [firstGlobalMiddleware] })
-    class FirstGlobalModule {}
-
-    @Controller('/global')
-    class GlobalController {
-      @Get('/middleware')
-      getValue(): { ok: true } {
-        calls.push('controller');
-        return { ok: true };
-      }
-    }
-
-    @Module({ controllers: [GlobalController], global: true, middleware: [secondGlobalMiddleware] })
-    class SecondGlobalModule {}
-
-    @Module({ imports: [FirstGlobalModule, SecondGlobalModule] })
-    class RootModule {}
-
-    const testingModule = await createTestingModule({ rootModule: RootModule }).compile();
-    const response = await testingModule.dispatch({ method: 'GET', path: '/global/middleware' });
-
-    expect(response.status).toBe(200);
-    expect(calls).toEqual(['first:before', 'second:before', 'controller', 'second:after', 'first:after']);
-  });
-
-  it('supports POST body, headers, and query with module-level dispatch', async () => {
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
-
-    const response = await testingModule.dispatch({
-      method: 'post',
-      path: '/users',
-      headers: { 'x-test-id': 'dispatch' },
-      query: { scope: 'all' },
-      body: { name: 'Bob' },
-    });
-
-    expect(response.status).toBe(201);
-    expect(response.body).toEqual({
-      body: { name: 'Bob' },
-      headers: { 'x-test-id': 'dispatch' },
-      query: { scope: 'all' },
-    });
-  });
-
-  it('binds cookies with module-level dispatch', async () => {
-    class CookieRequest {
-      @FromCookie('session')
-      session = '';
-    }
-
-    @Controller('/cookies')
-    class CookieController {
-      @Get('/')
-      @RequestDto(CookieRequest)
-      read(input: CookieRequest) {
-        return { session: input.session };
-      }
-    }
-
-    @Module({ controllers: [CookieController] })
-    class CookieModule {}
-
-    const testingModule = await createTestingModule({ rootModule: CookieModule }).compile();
-    const response = await testingModule.dispatch({
-      path: '/cookies',
-      cookies: { session: 'module-dispatch-cookie' },
-    });
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ session: 'module-dispatch-cookie' });
-  });
-
-  it('shares singleton state between resolve() and dispatch()', async () => {
-    class CounterService {
-      count = 0;
-
-      next() {
-        this.count += 1;
-        return this.count;
-      }
-    }
-
-    @Inject(CounterService)
-    @Controller('/counter')
-    class CounterController {
-      constructor(private readonly counter: CounterService) {}
-
-      @Get('/')
-      read() {
-        return { count: this.counter.next() };
-      }
-    }
-
-    @Module({
-      controllers: [CounterController],
-      providers: [CounterService],
-    })
-    class CounterModule {}
-
-    const testingModule = await createTestingModule({ rootModule: CounterModule }).compile();
-    const service = await testingModule.resolve<CounterService>(CounterService);
-
-    expect(service.count).toBe(0);
-
-    const first = await testingModule.dispatch({ method: 'GET', path: '/counter' });
-    expect(first.status).toBe(200);
-    expect(first.body).toEqual({ count: 1 });
-    expect(service.count).toBe(1);
-
-    const second = await testingModule.dispatch({ method: 'GET', path: '/counter' });
-    expect(second.status).toBe(200);
-    expect(second.body).toEqual({ count: 2 });
-    expect(service.count).toBe(2);
-  });
-
-  it('isolates request-scoped providers for each module dispatch call', async () => {
-    let created = 0;
-
-    @ScopeDecorator('request')
-    class RequestCounter {
-      readonly id = ++created;
-    }
-
-    @Controller('/module-request-scope')
-    class ModuleRequestScopeController {
-      @Get('/')
-      async read(_input: undefined, context: RequestContext) {
-        const counter = await context.container.resolve(RequestCounter);
-        return { id: counter.id };
-      }
-    }
-
-    @Module({ controllers: [ModuleRequestScopeController], providers: [RequestCounter] })
-    class ModuleRequestScopeModule {}
-
-    const testingModule = await createTestingModule({ rootModule: ModuleRequestScopeModule }).compile();
-
-    const first = await testingModule.dispatch({ method: 'GET', path: '/module-request-scope' });
-    const second = await testingModule.dispatch({ method: 'GET', path: '/module-request-scope' });
-
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    expect(first.body).toEqual({ id: 1 });
-    expect(second.body).toEqual({ id: 2 });
-  });
-});
-
-describe('overrideGuard', () => {
-  it('replaces a guard with a passthrough that always allows access', async () => {
-    const GUARD_TOKEN = Symbol('AuthGuard');
-
-    const builder = createTestingModule({ rootModule: AppModule });
-    builder.overrideGuard(GUARD_TOKEN);
-
-    const testingModule = await builder.compile();
-    const guard = await testingModule.resolve<{ canActivate(): boolean }>(GUARD_TOKEN);
-
-    expect(guard.canActivate()).toBe(true);
-  });
-
-  it('merges partial guard override with the passthrough default', async () => {
-    const GUARD_TOKEN = Symbol('RoleGuard');
-    const canActivate = vi.fn().mockReturnValue(false);
-
-    const builder = createTestingModule({ rootModule: AppModule });
-    builder.overrideGuard(GUARD_TOKEN, { canActivate });
-
-    const testingModule = await builder.compile();
-    const guard = await testingModule.resolve<{ canActivate(): boolean }>(GUARD_TOKEN);
-
-    expect(guard.canActivate()).toBe(false);
-    expect(canActivate).toHaveBeenCalledOnce();
-  });
-
-  it('applies the guard override through the request dispatch path', async () => {
-    const GUARD_TOKEN = Symbol('DeniedRouteGuard');
-
-    @UseGuards(GUARD_TOKEN)
-    @Controller('/guarded')
-    class GuardedController {
-      @Get('/')
-      read() {
-        return { allowed: true };
-      }
-    }
-
-    const denyingGuard: Guard = {
-      canActivate: () => false,
-    };
-
-    @Module({
-      controllers: [GuardedController],
-      providers: [{ provide: GUARD_TOKEN, useValue: denyingGuard }],
-    })
-    class GuardedModule {}
-
-    const testingModule = await createTestingModule({ rootModule: GuardedModule }).overrideGuard(GUARD_TOKEN).compile();
-
-    const response = await testingModule.dispatch({ method: 'GET', path: '/guarded' });
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ allowed: true });
-  });
-});
-
-describe('overrideInterceptor', () => {
-  it('replaces an interceptor with a passthrough that calls next.handle()', async () => {
-    const INTERCEPTOR_TOKEN = Symbol('LoggingInterceptor');
-
-    const builder = createTestingModule({ rootModule: AppModule });
-    builder.overrideInterceptor(INTERCEPTOR_TOKEN);
-
-    const testingModule = await builder.compile();
-    const interceptor = await testingModule.resolve<{
-      intercept(_ctx: unknown, next: { handle(): unknown }): unknown;
-    }>(INTERCEPTOR_TOKEN);
-
-    const next = { handle: vi.fn().mockReturnValue('result') };
-    const result = interceptor.intercept({}, next);
-
-    expect(result).toBe('result');
-    expect(next.handle).toHaveBeenCalledOnce();
-  });
-
-  it('applies the interceptor override through the request dispatch path', async () => {
-    const INTERCEPTOR_TOKEN = Symbol('ResponseWrappingInterceptor');
-
-    @UseInterceptors(INTERCEPTOR_TOKEN)
-    @Controller('/intercepted')
-    class InterceptedController {
-      @Get('/')
-      read() {
-        return { value: 'controller' };
-      }
-    }
-
-    const failingInterceptor: Interceptor = {
-      intercept: () => {
-        throw new Error('original interceptor should be replaced');
-      },
-    };
-
-    @Module({
-      controllers: [InterceptedController],
-      providers: [{ provide: INTERCEPTOR_TOKEN, useValue: failingInterceptor }],
-    })
-    class InterceptedModule {}
-
-    const testingModule = await createTestingModule({ rootModule: InterceptedModule })
-      .overrideInterceptor(INTERCEPTOR_TOKEN, {
-        async intercept(_context: InterceptorContext, next: CallHandler) {
-          return { wrapped: await next.handle() };
-        },
-      })
-      .compile();
-
-    const response = await testingModule.dispatch({ method: 'GET', path: '/intercepted' });
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({ wrapped: { value: 'controller' } });
-  });
-});
-
-describe('overrideFilter', () => {
-  it('replaces a filter token with a provided fake value', async () => {
-    const FILTER_TOKEN = Symbol('ErrorFilter');
-    const fakeFilter = { catch: vi.fn() };
-
-    const builder = createTestingModule({ rootModule: AppModule });
-    builder.overrideFilter(FILTER_TOKEN, fakeFilter);
-
-    const testingModule = await builder.compile();
-    const filter = await testingModule.resolve<typeof fakeFilter>(FILTER_TOKEN);
-
-    expect(filter).toBe(fakeFilter);
-  });
-
-  it('pairs filter token overrides with request-level runtime app coverage', async () => {
-    const FILTER_TOKEN = Symbol('RuntimeErrorFilter');
-    const caughtErrors: unknown[] = [];
-
-    @Controller('/runtime-filtered')
-    class RuntimeFilteredController {
-      @Get('/boom')
-      boom() {
-        throw new Error('handled by overridden filter');
-      }
-    }
-
-    const originalFilter: ExceptionFilterHandler = {
-      catch() {
-        throw new Error('original filter should be replaced');
-      },
-    };
-
-    const fakeFilter: ExceptionFilterHandler = {
-      async catch(error, context) {
-        caughtErrors.push(error);
-        context.response.setStatus(409);
-        await context.response.send({ handled: true, source: 'override-filter' });
-
-        return true;
-      },
-    };
-
-    @Module({
-      controllers: [RuntimeFilteredController],
-      providers: [{ provide: FILTER_TOKEN, useValue: originalFilter }],
-    })
-    class RuntimeFilteredModule {}
-
-    const testingModule = await createTestingModule({ rootModule: RuntimeFilteredModule })
-      .overrideFilter(FILTER_TOKEN, fakeFilter)
-      .compile();
-    const filter = await testingModule.resolve<ExceptionFilterHandler>(FILTER_TOKEN);
-    const app = await createTestApp({
-      rootModule: RuntimeFilteredModule,
-      filters: [filter],
-    });
-
-    try {
-      const response = await app.request('GET', '/runtime-filtered/boom').send();
-
-      expect(response.status).toBe(409);
-      expect(response.body).toEqual({ handled: true, source: 'override-filter' });
-      expect(caughtErrors).toHaveLength(1);
-    } finally {
-      await app.close();
-    }
   });
 });
 
@@ -1930,12 +1709,15 @@ describe('overrideModule', () => {
     @Module({ imports: [RealModule], providers: [ConsumerService] })
     class RootModule {}
 
-    const testingModule = await createTestingModule({ rootModule: RootModule })
+    const testingModule = await Test.createTestingModule({ rootModule: RootModule })
       .overrideModule(RealModule, FakeModule)
       .compile();
 
-    const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
-    expect(consumer.dep.value()).toBe('fake');
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
+      expect(consumer.dep.value()).toBe('fake');
+    });
   });
 
   it('preserves original testing module identity while applying replacements', async () => {
@@ -1971,26 +1753,29 @@ describe('overrideModule', () => {
     const beforeFeatureMetadata = getModuleMetadata(FeatureModule);
     const beforeRootMetadata = getModuleMetadata(RootModule);
 
-    const testingModule = await createTestingModule({ rootModule: RootModule })
+    const testingModule = await Test.createTestingModule({ rootModule: RootModule })
       .overrideModule(RealModule, FakeModule)
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const moduleTypes = testingModule.modules.map((compiledModule) => compiledModule.type);
-    const featureModule = testingModule.modules.find((compiledModule) => compiledModule.type === FeatureModule);
-    const realModule = testingModule.modules.find((compiledModule) => compiledModule.type === RealModule);
-    const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
+      const moduleTypes = testingModule.modules.map((compiledModule) => compiledModule.type);
+      const featureModule = testingModule.modules.find((compiledModule) => compiledModule.type === FeatureModule);
+      const realModule = testingModule.modules.find((compiledModule) => compiledModule.type === RealModule);
+      const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
 
-    expect(testingModule.rootModule).toBe(RootModule);
-    expect(moduleTypes).toContain(FeatureModule);
-    expect(moduleTypes).toContain(RealModule);
-    expect(moduleTypes).not.toContain(FakeModule);
-    expect(moduleTypes).not.toContainEqual(expect.objectContaining({ name: 'PatchedModule' }));
-    expect(featureModule?.definition.imports).toEqual([RealModule]);
-    expect(realModule?.definition.providers).toEqual([{ provide: RealService, useClass: FakeService }]);
-    expect(extractModuleImports(FeatureModule)).toEqual([RealModule]);
-    expect(getModuleMetadata(FeatureModule)).toBe(beforeFeatureMetadata);
-    expect(getModuleMetadata(RootModule)).toBe(beforeRootMetadata);
-    expect(consumer.dep.value()).toBe('fake');
+      expect(testingModule.rootModule).toBe(RootModule);
+      expect(moduleTypes).toContain(FeatureModule);
+      expect(moduleTypes).toContain(RealModule);
+      expect(moduleTypes).not.toContain(FakeModule);
+      expect(moduleTypes).not.toContainEqual(expect.objectContaining({ name: 'PatchedModule' }));
+      expect(featureModule?.definition.imports).toEqual([RealModule]);
+      expect(realModule?.definition.providers).toEqual([{ provide: RealService, useClass: FakeService }]);
+      expect(extractModuleImports(FeatureModule)).toEqual([RealModule]);
+      expect(getModuleMetadata(FeatureModule)).toBe(beforeFeatureMetadata);
+      expect(getModuleMetadata(RootModule)).toBe(beforeRootMetadata);
+      expect(consumer.dep.value()).toBe('fake');
+    });
   });
 
   it('restores module metadata when replacement bootstrap fails', async () => {
@@ -2020,7 +1805,7 @@ describe('overrideModule', () => {
     const beforeFeatureMetadata = getModuleMetadata(FeatureModule);
 
     await expect(
-      createTestingModule({ rootModule: RootModule })
+      Test.createTestingModule({ rootModule: RootModule })
         .overrideModule(RealModule, InvalidFakeModule)
         .compile(),
     ).rejects.toThrow(/cannot export token/);
@@ -2028,10 +1813,13 @@ describe('overrideModule', () => {
     expect(extractModuleImports(FeatureModule)).toEqual([RealModule]);
     expect(getModuleMetadata(FeatureModule)).toBe(beforeFeatureMetadata);
 
-    const testingModule = await createTestingModule({ rootModule: RootModule }).compile();
-    const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
+    const testingModule = await Test.createTestingModule({ rootModule: RootModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      const consumer = await testingModule.resolve<ConsumerService>(ConsumerService);
 
-    expect(consumer.dep.value()).toBe('real');
+      expect(consumer.dep.value()).toBe('real');
+    });
   });
 
   it('validates cycles introduced by replacement metadata without mutating source metadata', async () => {
@@ -2050,7 +1838,7 @@ describe('overrideModule', () => {
     const beforeFeatureMetadata = getModuleMetadata(FeatureModule);
 
     await expect(
-      createTestingModule({ rootModule: RootModule })
+      Test.createTestingModule({ rootModule: RootModule })
         .overrideModule(RealModule, FakeModule)
         .compile(),
     ).rejects.toThrow(/Circular module import detected for FeatureModule/);
@@ -2060,7 +1848,7 @@ describe('overrideModule', () => {
   });
 });
 
-describe('createDeepMock', () => {
+describe('PrototypeMock.create', () => {
   it('wraps every class method in a vi.fn() spy', () => {
     class MailService {
       send(_to: string) {
@@ -2071,7 +1859,7 @@ describe('createDeepMock', () => {
       }
     }
 
-    const mock = createDeepMock(MailService);
+    const mock = PrototypeMock.create(MailService);
 
     expect(typeof mock.send).toBe('function');
     expect(typeof mock.queue).toBe('function');
@@ -2094,7 +1882,7 @@ describe('createDeepMock', () => {
       }
     }
 
-    const mock = createDeepMock(Child);
+    const mock = PrototypeMock.create(Child);
 
     expect(vi.isMockFunction(mock.baseMethod)).toBe(true);
     expect(vi.isMockFunction(mock.childMethod)).toBe(true);
@@ -2113,7 +1901,7 @@ describe('createDeepMock', () => {
       }
     }
 
-    const mock = createDeepMock(Child);
+    const mock = PrototypeMock.create(Child);
     expect(vi.isMockFunction(mock.method)).toBe(true);
   });
 
@@ -2126,7 +1914,7 @@ describe('createDeepMock', () => {
       }
     }
 
-    const mock = createDeepMock(SymbolService);
+    const mock = PrototypeMock.create(SymbolService);
 
     expect(vi.isMockFunction(mock[MY_METHOD])).toBe(true);
 
@@ -2158,7 +1946,7 @@ describe('mockToken', () => {
     expect(provider.useValue).toEqual({});
   });
 
-  it('can be passed directly to overrideProvider', async () => {
+  it('uses mockToken values through the explicit useValue path', async () => {
     const TOKEN = Symbol('Greeter');
 
     interface Greeter {
@@ -2180,12 +1968,16 @@ describe('mockToken', () => {
     const greet = vi.fn().mockReturnValue('hello from mock');
     const provider = mockToken<Greeter>(TOKEN, { greet });
 
-    const testingModule = await createTestingModule({ rootModule: ServiceModule })
-      .overrideProvider(TOKEN, provider)
+    const testingModule = await Test.createTestingModule({ rootModule: ServiceModule })
+      .overrideProvider(TOKEN)
+      .useValue(provider.useValue)
       .compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const greeter = await testingModule.resolve<Greeter>(TOKEN);
-    expect(greeter.greet()).toBe('hello from mock');
+      const greeter = await testingModule.resolve<Greeter>(TOKEN);
+      expect(greeter.greet()).toBe('hello from mock');
+    });
   });
 });
 
@@ -2300,62 +2092,6 @@ describe('extractModuleImports', () => {
   });
 });
 
-describe('overrideProviders', () => {
-  it('applies multiple provider overrides at once', async () => {
-    const TOKEN_A = Symbol('TokenA');
-    const TOKEN_B = Symbol('TokenB');
-    const TOKEN_C = Symbol('TokenC');
-
-    @Module({
-      providers: [
-        { provide: TOKEN_A, useValue: 'real-a' },
-        { provide: TOKEN_B, useValue: 'real-b' },
-        { provide: TOKEN_C, useValue: 'real-c' },
-      ],
-    })
-    class TestModule {}
-
-    const testingModule = await createTestingModule({ rootModule: TestModule })
-      .overrideProviders([
-        [TOKEN_A, 'fake-a'],
-        [TOKEN_B, 'fake-b'],
-      ])
-      .compile();
-
-    const a = await testingModule.resolve<string>(TOKEN_A);
-    const b = await testingModule.resolve<string>(TOKEN_B);
-    const c = await testingModule.resolve<string>(TOKEN_C);
-
-    expect(a).toBe('fake-a');
-    expect(b).toBe('fake-b');
-    expect(c).toBe('real-c');
-  });
-
-  it('chains with other override methods', async () => {
-    const TOKEN_A = Symbol('TokenA');
-    const TOKEN_B = Symbol('TokenB');
-
-    @Module({
-      providers: [
-        { provide: TOKEN_A, useValue: 'real-a' },
-        { provide: TOKEN_B, useValue: 'real-b' },
-      ],
-    })
-    class TestModule {}
-
-    const testingModule = await createTestingModule({ rootModule: TestModule })
-      .overrideProviders([[TOKEN_A, 'fake-a']])
-      .overrideProvider(TOKEN_B, 'fake-b')
-      .compile();
-
-    const a = await testingModule.resolve<string>(TOKEN_A);
-    const b = await testingModule.resolve<string>(TOKEN_B);
-
-    expect(a).toBe('fake-a');
-    expect(b).toBe('fake-b');
-  });
-});
-
 describe('resolveAll', () => {
   it('resolves multiple tokens and returns results in order', async () => {
     const TOKEN_A = Symbol('TokenA');
@@ -2369,12 +2105,15 @@ describe('resolveAll', () => {
     })
     class TestModule {}
 
-    const testingModule = await createTestingModule({ rootModule: TestModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: TestModule }).compile();
 
-    const [a, b] = await testingModule.resolveAll([TOKEN_A, TOKEN_B]);
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      const [a, b] = await testingModule.resolveAll([TOKEN_A, TOKEN_B]);
 
-    expect(a).toBe('value-a');
-    expect(b).toBe('value-b');
+      expect(a).toBe('value-a');
+      expect(b).toBe('value-b');
+    });
   });
 
   it('throws aggregated error when some tokens fail to resolve', async () => {
@@ -2386,11 +2125,14 @@ describe('resolveAll', () => {
     })
     class TestModule {}
 
-    const testingModule = await createTestingModule({ rootModule: TestModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: TestModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    await expect(testingModule.resolveAll([TOKEN_A, TOKEN_MISSING])).rejects.toThrow(
-      /Failed to resolve 1 of 2 tokens/,
-    );
+      await expect(testingModule.resolveAll([TOKEN_A, TOKEN_MISSING])).rejects.toThrow(
+        /Failed to resolve 1 of 2 tokens/,
+      );
+    });
   });
 
   it('includes token names in aggregated error message', async () => {
@@ -2400,9 +2142,12 @@ describe('resolveAll', () => {
     @Module({})
     class EmptyModule {}
 
-    const testingModule = await createTestingModule({ rootModule: EmptyModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: EmptyModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    await expect(testingModule.resolveAll([TOKEN_A, TOKEN_B])).rejects.toThrow(/TokenA/);
-    await expect(testingModule.resolveAll([TOKEN_A, TOKEN_B])).rejects.toThrow(/TokenB/);
+      await expect(testingModule.resolveAll([TOKEN_A, TOKEN_B])).rejects.toThrow(/TokenA/);
+      await expect(testingModule.resolveAll([TOKEN_A, TOKEN_B])).rejects.toThrow(/TokenB/);
+    });
   });
 });

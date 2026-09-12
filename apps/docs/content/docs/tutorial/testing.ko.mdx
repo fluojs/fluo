@@ -13,7 +13,7 @@ description: 실제 요청 파이프라인 테스트와 격리된 애플리케�
 
 이전 수업의 `00-start/src/` 애플리케이션 파일을 모두 유지합니다. `src/app.ts`의 `AppModule`도 그대로 사용합니다. `00-start/test/app.e2e.test.ts`만 아래 전체 테스트로 추가하거나 교체합니다.
 
-`../src/main`이 아니라 **`../src/app`**을 import하세요. `main.ts`는 Fastify 리스너를 엽니다. 반면 `createTestApp({ rootModule: AppModule })`은 실제 모듈 그래프를 컴파일하고 수신 포트 없이 HTTP 파이프라인을 실행합니다. 이 테스트에는 실행 중인 서버가 필요하지 않습니다.
+`../src/main`이 아니라 **`../src/app`**을 import하세요. `main.ts`는 Fastify 리스너를 엽니다. 반면 `Test.createApp({ rootModule: AppModule })`은 실제 모듈 그래프를 컴파일하고 수신 포트 없이 HTTP 파이프라인을 실행합니다. 이 테스트에는 실행 중인 서버가 필요하지 않습니다.
 
 예제의 기존 `vitest.config.ts`는 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`를 사용하고 `@fluojs/core/metadata-preload`를 preload하며 source와 test 디렉터리를 모두 포함합니다. 이 설정을 유지하며 기존 방식의 데코레이터 플래그를 켜지 않습니다.
 
@@ -21,9 +21,10 @@ description: 실제 요청 파이프라인 테스트와 격리된 애플리케�
 
 {/* fluo-tutorial-source: examples/fluo-blog/03-validation-errors/test/app.e2e.test.ts */}
 ```ts title="00-start/test/app.e2e.test.ts"
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
+import { withCleanup } from '../../../../tooling/testing/with-cleanup.js';
 import { AppModule } from '../src/app';
 
 describe('FluoBlog request pipeline', () => {
@@ -32,23 +33,23 @@ describe('FluoBlog request pipeline', () => {
     ['/ready', 'ready'],
   ])('preserves the starter endpoint when %s is requested', async (path, status) => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('GET', path).send();
 
       // Then
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ status });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('lists the initial post when no post has been created', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('GET', '/posts').send();
 
@@ -57,15 +58,14 @@ describe('FluoBlog request pipeline', () => {
       expect(response.body).toEqual([
         { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
       ]);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('creates a post when its body satisfies the DTO rules', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('POST', '/posts')
         .body({ title: 'Learning Fluo', content: 'Explicit modules and DI.' })
@@ -78,9 +78,7 @@ describe('FluoBlog request pipeline', () => {
         title: 'Learning Fluo',
         content: 'Explicit modules and DI.',
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it.each([
@@ -88,17 +86,16 @@ describe('FluoBlog request pipeline', () => {
     ['the longest accepted values', { title: 'a'.repeat(120), content: 'b'.repeat(5000) }],
   ])('accepts a post when it uses %s', async (_label, body) => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('POST', '/posts').body(body).send();
 
       // Then
       expect(response.status).toBe(201);
       expect(response.body).toEqual({ id: '2', ...body });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it.each([
@@ -114,8 +111,9 @@ describe('FluoBlog request pipeline', () => {
     ['content is too long', { title: 'Valid title', content: 'a'.repeat(5001) }, 'content'],
   ])('returns field details when %s', async (_label, body, field) => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('POST', '/posts').body(body).send();
 
@@ -130,15 +128,14 @@ describe('FluoBlog request pipeline', () => {
           ]),
         },
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('preserves the list when validation rejects a request', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       await app.request('POST', '/posts').body({ title: null, content: null }).send();
 
       // When
@@ -149,15 +146,14 @@ describe('FluoBlog request pipeline', () => {
       expect(response.body).toEqual([
         { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
       ]);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('retrieves a post when it was created by an earlier request', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       await app.request('POST', '/posts')
         .body({ title: 'Learning Fluo', content: 'Explicit modules and DI.' })
         .send();
@@ -170,15 +166,14 @@ describe('FluoBlog request pipeline', () => {
       expect(response.body).toEqual({
         id: '2', title: 'Learning Fluo', content: 'Explicit modules and DI.',
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('includes a created post when listing subsequent requests', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       await app.request('POST', '/posts')
         .body({ title: 'Learning Fluo', content: 'Explicit modules and DI.' })
         .send();
@@ -192,15 +187,14 @@ describe('FluoBlog request pipeline', () => {
         { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
         { id: '2', title: 'Learning Fluo', content: 'Explicit modules and DI.' },
       ]);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('returns a resource error when the post ID is unknown', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('GET', '/posts/999').send();
 
@@ -209,15 +203,14 @@ describe('FluoBlog request pipeline', () => {
       expect(response.body).toMatchObject({
         error: { code: 'NOT_FOUND', status: 404 },
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('rejects unbound fields when a client supplies an ID or admin flag', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('POST', '/posts')
         .body({ id: '999', title: 'Learning Fluo', content: 'Explicit fields.', admin: true })
@@ -235,23 +228,21 @@ describe('FluoBlog request pipeline', () => {
           ]),
         },
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('starts with seed data when a new application is created', async () => {
     // Given
-    const first = await createTestApp({ rootModule: AppModule });
-    try {
+    const first = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => first.close());
       await first.request('POST', '/posts')
         .body({ title: 'First application', content: 'Not persisted.' })
         .send();
-    } finally {
-      await first.close();
-    }
-    const second = await createTestApp({ rootModule: AppModule });
-    try {
+    });
+    const second = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => second.close());
       // When
       const response = await second.request('GET', '/posts').send();
 
@@ -259,14 +250,12 @@ describe('FluoBlog request pipeline', () => {
       expect(response.body).toEqual([
         { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
       ]);
-    } finally {
-      await second.close();
-    }
+    });
   });
 });
 ```
 
-각 테스트는 자신의 앱을 만들고 요청 완료를 기다린 뒤 assertion이 실패해도 `finally`에서 앱을 종료합니다. 다른 테스트의 POST나 고정된 대기 시간에 의존하지 않습니다. 마지막 테스트는 두 애플리케이션을 의도적으로 생성해 메모리를 공유하지 않는다는 것을 확인합니다.
+각 테스트는 자신의 앱을 만들고 요청 완료를 기다린 뒤 assertion이 실패해도 `withCleanup`에 등록한 정리를 실행합니다. 다른 테스트의 POST나 고정된 대기 시간에 의존하지 않습니다. 마지막 테스트는 두 애플리케이션을 의도적으로 생성해 메모리를 공유하지 않는다는 것을 확인합니다.
 
 입력 테이블은 허용 범위의 양끝과 범위를 벗어난 실패를 모두 확인합니다. 오류 assertion은 사람이 읽는 문구를 고정하는 대신 상태와 구조화된 상세 정보를 검사합니다. 알 수 없는 필드 테스트는 기본 HTTP 바인더가 클라이언트의 `id`, `admin` 필드를 `UNKNOWN_FIELD`로 거부함을 증명합니다. 해당 필드는 조용히 저장되거나 허용되지 않습니다.
 

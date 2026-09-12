@@ -2,7 +2,7 @@ import { Module } from '@fluojs/core';
 import { CircularDependencyError, ScopeMismatchError } from '@fluojs/di';
 import { describe, expect, it } from 'vitest';
 
-import { createTestingModule } from './index.js';
+import { Test } from './index.js';
 
 describe('testing module lifecycle contribution resolution', () => {
   it('rejects a self-referential singleton multi contribution with CircularDependencyError', async () => {
@@ -26,7 +26,7 @@ describe('testing module lifecycle contribution resolution', () => {
     class SelfReferentialLifecycleModule {}
 
     // When
-    const compilation = createTestingModule({ rootModule: SelfReferentialLifecycleModule }).compile();
+    const compilation = Test.createTestingModule({ rootModule: SelfReferentialLifecycleModule }).compile();
 
     // Then
     await expect(compilation).rejects.toBeInstanceOf(CircularDependencyError);
@@ -59,7 +59,7 @@ describe('testing module lifecycle contribution resolution', () => {
     class ScopeMismatchedLifecycleModule {}
 
     // When
-    const compilation = createTestingModule({ rootModule: ScopeMismatchedLifecycleModule }).compile();
+    const compilation = Test.createTestingModule({ rootModule: ScopeMismatchedLifecycleModule }).compile();
 
     // Then
     await expect(compilation).rejects.toBeInstanceOf(ScopeMismatchError);

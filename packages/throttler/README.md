@@ -187,7 +187,7 @@ Method-level `@Throttle(...)` overrides class-level settings, class-level settin
 
 ## Example Sources
 
-- `packages/throttler/src/module.test.ts`: Tests for module configuration, decorator overrides, and HTTP guard integration through `createTestApp(...)`.
+- `packages/throttler/src/module.test.ts`: Tests for module configuration, decorator overrides, and HTTP guard integration through `Test.createApp(...)`.
 - `packages/throttler/src/guard.ts`: The core logic for request throttling and header management.
 - `packages/throttler/src/redis-store.test.ts`: Redis store contract and server-time behavior.
 - `packages/throttler/src/status.test.ts`: Status and diagnostic helper behavior.

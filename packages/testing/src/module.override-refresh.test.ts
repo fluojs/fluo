@@ -1,7 +1,8 @@
 import { Module } from '@fluojs/core';
 import { describe, expect, it } from 'vitest';
 
-import { createTestingModule } from './index.js';
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
+import { Test } from './index.js';
 
 type Deferred = {
   readonly promise: Promise<void>;
@@ -34,14 +35,17 @@ describe('TestingModuleRef post-compile overrides', () => {
     @Module({ providers: [{ provide: TOKEN, useValue: originalValue }] })
     class OverrideModule {}
 
-    const testingModule = await createTestingModule({ rootModule: OverrideModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: OverrideModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const original = testingModule.get<ServiceValue>(TOKEN);
-    testingModule.container.override({ provide: TOKEN, useValue: replacementValue });
-    const replacement = testingModule.get<ServiceValue>(TOKEN);
+      const original = testingModule.get<ServiceValue>(TOKEN);
+      testingModule.container.override({ provide: TOKEN, useValue: replacementValue });
+      const replacement = testingModule.get<ServiceValue>(TOKEN);
 
-    expect(original).toBe(originalValue);
-    expect(replacement).toBe(replacementValue);
+      expect(original).toBe(originalValue);
+      expect(replacement).toBe(replacementValue);
+    });
   });
 
   it('keeps get() aligned after container.override() is repopulated through container.resolve()', async () => {
@@ -56,16 +60,19 @@ describe('TestingModuleRef post-compile overrides', () => {
     @Module({ providers: [{ provide: TOKEN, useValue: originalValue }] })
     class OverrideResolveModule {}
 
-    const testingModule = await createTestingModule({ rootModule: OverrideResolveModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: OverrideResolveModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const original = testingModule.get<ServiceValue>(TOKEN);
-    testingModule.container.override({ provide: TOKEN, useValue: replacementValue });
-    const resolvedReplacement = await testingModule.container.resolve<ServiceValue>(TOKEN);
-    const syncReplacement = testingModule.get<ServiceValue>(TOKEN);
+      const original = testingModule.get<ServiceValue>(TOKEN);
+      testingModule.container.override({ provide: TOKEN, useValue: replacementValue });
+      const resolvedReplacement = await testingModule.container.resolve<ServiceValue>(TOKEN);
+      const syncReplacement = testingModule.get<ServiceValue>(TOKEN);
 
-    expect(original).toBe(originalValue);
-    expect(resolvedReplacement).toBe(replacementValue);
-    expect(syncReplacement).toBe(replacementValue);
+      expect(original).toBe(originalValue);
+      expect(resolvedReplacement).toBe(replacementValue);
+      expect(syncReplacement).toBe(replacementValue);
+    });
   });
 
   it('keeps multi-provider get() aligned when a dependency override is repopulated through container.resolve()', async () => {
@@ -84,16 +91,19 @@ describe('TestingModuleRef post-compile overrides', () => {
     })
     class MultiOverrideResolveModule {}
 
-    const testingModule = await createTestingModule({ rootModule: MultiOverrideResolveModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: MultiOverrideResolveModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
 
-    const original = testingModule.get<Plugin[]>(PLUGINS);
-    testingModule.container.override({ provide: DEPENDENCY, useValue: 'replacement' });
-    const resolvedReplacement = await testingModule.container.resolve<Plugin[]>(PLUGINS);
-    const syncReplacement = testingModule.get<Plugin[]>(PLUGINS);
+      const original = testingModule.get<Plugin[]>(PLUGINS);
+      testingModule.container.override({ provide: DEPENDENCY, useValue: 'replacement' });
+      const resolvedReplacement = await testingModule.container.resolve<Plugin[]>(PLUGINS);
+      const syncReplacement = testingModule.get<Plugin[]>(PLUGINS);
 
-    expect(original.map((plugin) => plugin.value)).toEqual(['original']);
-    expect(resolvedReplacement.map((plugin) => plugin.value)).toEqual(['replacement']);
-    expect(syncReplacement.map((plugin) => plugin.value)).toEqual(['replacement']);
+      expect(original.map((plugin) => plugin.value)).toEqual(['original']);
+      expect(resolvedReplacement.map((plugin) => plugin.value)).toEqual(['replacement']);
+      expect(syncReplacement.map((plugin) => plugin.value)).toEqual(['replacement']);
+    });
   });
 
   it('preserves async stale-disposal ordering after container.override() and replacement get()', async () => {
@@ -124,30 +134,36 @@ describe('TestingModuleRef post-compile overrides', () => {
     @Module({ providers: [{ provide: TOKEN, useClass: OriginalService }] })
     class AsyncDisposalOverrideModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AsyncDisposalOverrideModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AsyncDisposalOverrideModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      let disposePromise: Promise<void> | undefined;
+      defer(() => disposePromise);
+      defer(() => finishOriginalDestroy.resolve());
 
-    const original = testingModule.get<OriginalService | ReplacementService>(TOKEN);
-    testingModule.container.override({ provide: TOKEN, useClass: ReplacementService });
-    const replacement = testingModule.get<OriginalService | ReplacementService>(TOKEN);
+      const original = testingModule.get<OriginalService | ReplacementService>(TOKEN);
+      testingModule.container.override({ provide: TOKEN, useClass: ReplacementService });
+      const replacement = testingModule.get<OriginalService | ReplacementService>(TOKEN);
 
-    expect(original).toBeInstanceOf(OriginalService);
-    expect(replacement).toBeInstanceOf(ReplacementService);
+      expect(original).toBeInstanceOf(OriginalService);
+      expect(replacement).toBeInstanceOf(ReplacementService);
 
-    const disposePromise = testingModule.container.dispose().then(() => {
-      events.push('container:disposed');
+      disposePromise = testingModule.container.dispose().then(() => {
+        events.push('container:disposed');
+      });
+
+      await originalDestroyStarted.promise;
+      expect(events).toEqual(['original:destroy:start']);
+
+      finishOriginalDestroy.resolve();
+      await disposePromise;
+
+      expect(events).toEqual([
+        'original:destroy:start',
+        'original:destroy:end',
+        'replacement:destroy',
+        'container:disposed',
+      ]);
     });
-
-    await originalDestroyStarted.promise;
-    expect(events).toEqual(['original:destroy:start']);
-
-    finishOriginalDestroy.resolve();
-    await disposePromise;
-
-    expect(events).toEqual([
-      'original:destroy:start',
-      'original:destroy:end',
-      'replacement:destroy',
-      'container:disposed',
-    ]);
   });
 });

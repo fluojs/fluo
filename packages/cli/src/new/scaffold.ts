@@ -486,7 +486,7 @@ function createHttpProjectReadme(options: BootstrapOptions): string {
     : `- CORS: no CORS middleware is added by default; pass \`cors\` explicitly to \`FluoFactory.create(AppModule, { adapter, cors })\` to configure it`;
   const testingSection = options.runtime === 'deno'
     ? `## Official generated testing templates\n\n- \`src/app.test.ts\` — Deno-native integration-style dispatch verification for the generated runtime + starter routes.\n\nUse this test when you need confidence that the generated Deno entrypoint and module graph still agree on the same HTTP contract.`
-    : `## Official generated testing templates\n\n- \`src/greeting/greeting.repo.test.ts\`, \`src/greeting/greeting.service.test.ts\`, and \`src/greeting/greeting.controller.test.ts\` — unit templates for the starter-owned greeting slice.\n- \`src/greeting/greeting.slice.test.ts\` — module/slice template via \`createTestingModule\` for real DI graph confidence.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`test/app.e2e.test.ts\` — default HTTP/e2e-style template powered by \`createTestApp\` and \`app.request(...).send()\` from \`@fluojs/testing\`; older \`src/app.e2e.test.ts\` tests can be moved here without changing the request helper.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`createTestingModule\`)\n\nUse unit templates for fast logic checks, \`${createRunCommand(options.packageManager, 'test:e2e')}\` for the dedicated request-level e2e suite, and \`${createRunCommand(options.packageManager, 'test:cov')}\` when your Vitest runtime supports coverage.`;
+    : `## Official generated testing templates\n\n- \`src/greeting/greeting.repo.test.ts\`, \`src/greeting/greeting.service.test.ts\`, and \`src/greeting/greeting.controller.test.ts\` — unit templates for the starter-owned greeting slice.\n- \`src/greeting/greeting.slice.test.ts\` — module/slice template via \`Test.createTestingModule\` for real DI graph confidence.\n- \`src/app.test.ts\` — integration-style dispatch template for runtime + starter routes.\n- \`test/app.e2e.test.ts\` — default HTTP/e2e-style template powered by \`Test.createApp\` and \`app.request(...).send()\` from \`@fluojs/testing\`; older \`src/app.e2e.test.ts\` tests can be moved here without changing the request helper.\n- \`${createExecCommand(options.packageManager, 'fluo g repo User')}\` also adds:\n  - \`src/users/user.repo.test.ts\` (unit template)\n  - \`src/users/user.repo.slice.test.ts\` (slice/integration template via \`Test.createTestingModule\`)\n\nUse unit templates for fast logic checks, \`${createRunCommand(options.packageManager, 'test:e2e')}\` for the dedicated request-level e2e suite, and \`${createRunCommand(options.packageManager, 'test:cov')}\` when your Vitest runtime supports coverage.`;
 
   return `# ${options.projectName}
 
@@ -500,7 +500,7 @@ ${createHttpPackageManagerLine(options)}
 ${corsLine}
 - Observability: /health and /ready endpoints are included by default
 - Runtime path: FluoFactory.create -> handler mapping -> dispatcher -> middleware -> guard -> interceptor -> controller
-- Naming policy: runtime module entrypoints use governed canonical names (\`forRoot(...)\`, optional \`forRootAsync(...)\`, \`register(...)\`, \`forFeature(...)\`); helper/builders stay \`create*\` (for example \`createTestingModule(...)\`)
+- Naming policy: runtime module entrypoints use governed canonical names (\`forRoot(...)\`, optional \`forRootAsync(...)\`, \`register(...)\`, \`forFeature(...)\`); testing builders use \`Test.createTestingModule(...)\` and test apps use \`Test.createApp(...)\`
 
 ## Commands
 
@@ -868,7 +868,7 @@ describe('GreetingController', () => {
 function createGreetingSliceTestFile(importSuffix = ''): string {
   return `import { describe, expect, it } from 'vitest';
 
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
 import { GreetingModule } from './greeting.module${importSuffix}';
 import { GreetingRepo } from './greeting.repo${importSuffix}';
@@ -876,15 +876,51 @@ import { GreetingService } from './greeting.service${importSuffix}';
 
 describe('Greeting slice', () => {
   it('resolves starter providers from the module graph', async () => {
-    const testingModule = await createTestingModule({ rootModule: GreetingModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: GreetingModule }).compile();
 
-    const repo = await testingModule.resolve(GreetingRepo);
-    const service = await testingModule.resolve(GreetingService);
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      const repo = await testingModule.resolve(GreetingRepo);
+      const service = await testingModule.resolve(GreetingService);
 
-    expect(repo.findGreeting()).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
-    expect(service.getGreeting()).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
+      expect(repo.findGreeting()).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
+      expect(service.getGreeting()).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
+    });
   });
 });
+type Cleanup = () => unknown | Promise<unknown>;
+
+async function withCleanup<T>(
+  operation: (defer: (cleanup: Cleanup) => void) => T | Promise<T>,
+): Promise<T> {
+  const cleanups: Cleanup[] = [];
+  const failures: unknown[] = [];
+  let outcome:
+    | { readonly kind: 'failure'; readonly error: unknown }
+    | { readonly kind: 'success'; readonly value: T }
+    | undefined;
+
+  try {
+    outcome = { kind: 'success', value: await operation((cleanup) => { cleanups.push(cleanup); }) };
+  } catch (error) {
+    failures.push(error);
+    outcome = { kind: 'failure', error };
+  } finally {
+    for (const cleanup of cleanups.reverse()) {
+      try {
+        await cleanup();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+  }
+
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, 'Operation and cleanup failed.');
+
+  if (!outcome || outcome.kind === 'failure') throw outcome?.error;
+  return outcome.value;
+}
 `;
 }
 
@@ -2106,27 +2142,33 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
 describe('AppModule', () => {
   it('dispatches the runtime health and readiness routes', async () => {
     const app = await FluoFactory.create(AppModule, {});
-    const healthResponse = createResponse();
-    const readyResponse = createResponse();
 
-    await app.dispatch(createRequest('/health'), healthResponse);
-    await app.dispatch(createRequest('/ready'), readyResponse);
+    try {
+      const healthResponse = createResponse();
+      const readyResponse = createResponse();
 
-    expect(healthResponse.body).toEqual({ status: 'ok' });
-    expect(readyResponse.body).toEqual({ status: 'ready' });
+      await app.dispatch(createRequest('/health'), healthResponse);
+      await app.dispatch(createRequest('/ready'), readyResponse);
 
-    await app.close();
+      expect(healthResponse.body).toEqual({ status: 'ok' });
+      expect(readyResponse.body).toEqual({ status: 'ready' });
+    } finally {
+      await app.close();
+    }
   });
 
   it('dispatches the greeting route', async () => {
     const app = await FluoFactory.create(AppModule, {});
-    const response = createResponse();
 
-    await app.dispatch(createRequest('/greeting/'), response);
+    try {
+      const response = createResponse();
 
-    expect(response.body).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
+      await app.dispatch(createRequest('/greeting/'), response);
 
-    await app.close();
+      expect(response.body).toEqual({ message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) });
+    } finally {
+      await app.close();
+    }
   });
 });
 `;
@@ -2135,30 +2177,64 @@ describe('AppModule', () => {
 function createAppE2eTestFile(importSuffix = ''): string {
   return `import { describe, expect, it } from 'vitest';
 
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
 import { AppModule } from '../src/app${importSuffix}';
 
 describe('AppModule e2e', () => {
-  it('serves runtime and starter routes through createTestApp request helpers', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
+  it('serves runtime and starter routes through Test.createApp request helpers', async () => {
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
-      body: { status: 'ok' },
-      status: 200,
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
+        body: { status: 'ok' },
+        status: 200,
+      });
+      await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
+        body: { status: 'ready' },
+        status: 200,
+      });
+      await expect(app.request('GET', '/greeting/').send()).resolves.toMatchObject({
+        body: { message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) },
+        status: 200,
+      });
     });
-    await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
-      body: { status: 'ready' },
-      status: 200,
-    });
-    await expect(app.request('GET', '/greeting/').send()).resolves.toMatchObject({
-      body: { message: 'Hello from fluo', framework: 'fluo', project: expect.any(String) },
-      status: 200,
-    });
-
-    await app.close();
   });
 });
+type Cleanup = () => unknown | Promise<unknown>;
+
+async function withCleanup<T>(
+  operation: (defer: (cleanup: Cleanup) => void) => T | Promise<T>,
+): Promise<T> {
+  const cleanups: Cleanup[] = [];
+  const failures: unknown[] = [];
+  let outcome:
+    | { readonly kind: 'failure'; readonly error: unknown }
+    | { readonly kind: 'success'; readonly value: T }
+    | undefined;
+
+  try {
+    outcome = { kind: 'success', value: await operation((cleanup) => { cleanups.push(cleanup); }) };
+  } catch (error) {
+    failures.push(error);
+    outcome = { kind: 'failure', error };
+  } finally {
+    for (const cleanup of cleanups.reverse()) {
+      try {
+        await cleanup();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+  }
+
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, 'Operation and cleanup failed.');
+
+  if (!outcome || outcome.kind === 'failure') throw outcome?.error;
+  return outcome.value;
+}
 `;
 }
 

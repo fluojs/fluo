@@ -59,13 +59,13 @@ generated type을 검증합니다.
 | layer | executable evidence |
 | --- | --- |
 | Render-policy unit | `packages/react/src/render-policy.test.ts`가 composition과 diagnostic을 직접 검증합니다. |
-| Real request dispatch | `src/app.test.ts`가 `createTestApp(...)`로 direct page return, DTO failure, guard/interceptor behavior, native mutation response를 검증합니다. |
+| Real request dispatch | `src/app.test.ts`가 `Test.createApp(...)`로 direct page return, DTO failure, guard/interceptor behavior, native mutation response를 검증합니다. |
 | Generated-route compile/check | `packages/cli/src/commands/typegen-navigation.test.ts`가 positive/negative route-id/params fixture를 compile하고 `typegen.test.ts`가 non-mutating stale check를 검증합니다. |
 | Hydration | `src/hydration.test.ts`가 warning-free interaction과 `onRecoverableError` 기반 mismatch reporting을 모두 검증합니다. |
 | Production 및 no JavaScript | `tests/production-hydration.spec.ts`가 build asset과 hydration을 검증한 뒤 `javaScriptEnabled: false`로 native form을 submit합니다. |
 
 React-specific testing helper는 추가하지 않습니다. 일반 fixture가 반복 setup을 제거하는 동안
-`createTestApp(...)`, React DOM, TypeScript, Playwright가 real ownership boundary를 계속 실행합니다.
+`Test.createApp(...)`, React DOM, TypeScript, Playwright가 real ownership boundary를 계속 실행합니다.
 
 ## native form mutation workflow
 

@@ -36,7 +36,7 @@ fluo g e2e <name> [--target-directory <path>] [--force] [--dry-run]
 | 생성기 | 슬라이스 디렉터리에 생성되는 파일 | 모듈 영향 |
 | --- | --- | --- |
 | Module | `post.module.ts`; `--with-test`를 추가하면 `post.slice.test.ts` | 없음. 상위 모듈 import는 별도로 처리합니다. |
-| E2E | `test/post.e2e.test.ts` | 없음. 해석된 source directory에서 `AppModule`을 import하고 `createTestApp({ rootModule })`을 사용합니다. |
+| E2E | `test/post.e2e.test.ts` | 없음. 해석된 source directory에서 `AppModule`을 import하고 `Test.createApp({ rootModule })`을 사용합니다. |
 | Controller | `post.controller.ts`, `post.controller.test.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostController`를 `controllers`에 추가합니다. |
 | Service | `post.service.ts`, `post.service.test.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostService`를 `providers`에 추가합니다. |
 | Repository | `post.repo.ts`, `post.repo.test.ts`, `post.repo.slice.test.ts` | `post.module.ts`를 생성하거나 갱신하고 `PostRepo`를 `providers`에 추가합니다. |
@@ -56,17 +56,17 @@ fluo g e2e <name> [--target-directory <path>] [--force] [--dry-run]
 | `--target-directory <path>` | `-o` | 모든 생성기 | 지정한 소스 디렉터리 아래에 슬라이스를 기록합니다. |
 | `--force` | `-f` | 모든 생성기 | 기존 생성 파일을 건너뛰지 않고 덮어씁니다. |
 | `--dry-run` | 없음 | 모든 생성기 | 디렉터리 생성, 파일 쓰기, 모듈 갱신 없이 예정된 생성, 건너뛰기, 덮어쓰기, 모듈 갱신을 출력합니다. |
-| `--with-test` | 없음 | `module` | `createTestingModule({ rootModule })`로 작성한 모듈을 컴파일하는 `*.slice.test.ts`를 추가합니다. |
-| `--with-slice-test` | 없음 | `resource` | `createTestingModule({ rootModule })`로 provider override와 service resolution을 보여 주는 resource-level `*.slice.test.ts`를 추가합니다. |
+| `--with-test` | 없음 | `module` | `Test.createTestingModule({ rootModule })`로 작성한 모듈을 컴파일하는 `*.slice.test.ts`를 추가합니다. |
+| `--with-slice-test` | 없음 | `resource` | `Test.createTestingModule({ rootModule })`로 provider override와 service resolution을 보여 주는 resource-level `*.slice.test.ts`를 추가합니다. |
 | `--help` | `-h` | `fluo generate`, `fluo g` | generate 명령 사용법과 생성기 메타데이터를 출력합니다. |
 
 ## Generated Test Ladder
 
 - 생성된 unit test(`*.service.test.ts`, `*.controller.test.ts`, `*.repo.test.ts`)는 직접 class를 구성하고 명시적 fake를 넘기는 빠른 동작 검증에 사용합니다.
-- Repository 또는 resource slice test(`*.slice.test.ts`)는 `createTestingModule({ rootModule })`을 통한 DI graph 신뢰도, provider visibility, override 예제가 필요할 때 사용합니다.
+- Repository 또는 resource slice test(`*.slice.test.ts`)는 `Test.createTestingModule({ rootModule })`을 통한 DI graph 신뢰도, provider visibility, override 예제가 필요할 때 사용합니다.
 - Provider를 직접 배선하기 전에 최소 module compilation test가 필요하면 `fluo g module <name> --with-test`를 사용합니다.
 - 생성된 feature slice에 repo slice test 외에도 module-level provider override 패턴을 포함하려면 `fluo g resource <name> --with-slice-test`를 사용합니다.
-- App-level request-pipeline scaffold가 필요하면 `fluo g e2e <name>`을 사용합니다. 이 명령은 `test/<name>.e2e.test.ts`를 쓰고, `AppModule`을 import하며, `createTestApp({ rootModule: AppModule })`을 호출합니다. Route expectation은 생성 또는 작성한 controller에 맞게 개발자가 조정합니다.
+- App-level request-pipeline scaffold가 필요하면 `fluo g e2e <name>`을 사용합니다. 이 명령은 `test/<name>.e2e.test.ts`를 쓰고, `AppModule`을 import하며, `Test.createApp({ rootModule: AppModule })`을 호출합니다. Route expectation은 생성 또는 작성한 controller에 맞게 개발자가 조정합니다.
 
 ## Dry-run Preview
 

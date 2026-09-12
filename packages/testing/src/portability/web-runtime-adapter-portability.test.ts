@@ -19,12 +19,12 @@ import * as FixtureRuntime from '@fluojs/runtime';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createWebRuntimeHttpAdapterPortabilityHarness } from './web-runtime-adapter-portability.js';
+import { WebRuntimeHttpAdapterPortabilityHarness } from './web-runtime-adapter-portability.js';
 
 describe('web runtime portability cleanup reporting', () => {
   it('reports close failures when the assertion path succeeds', async () => {
     const closeError = new Error('close exploded');
-    const harness = createWebRuntimeHttpAdapterPortabilityHarness({
+    const harness = WebRuntimeHttpAdapterPortabilityHarness.create({
       async bootstrap() {
         return {
           async close() {
@@ -57,7 +57,7 @@ describe('web runtime portability cleanup reporting', () => {
 
   it('preserves assertion failures when close also fails', async () => {
     const closeError = new Error('close exploded');
-    const harness = createWebRuntimeHttpAdapterPortabilityHarness({
+    const harness = WebRuntimeHttpAdapterPortabilityHarness.create({
       async bootstrap() {
         return {
           async close() {
@@ -89,7 +89,7 @@ describe('web runtime portability cleanup reporting', () => {
   it('preserves dispatch rejection failures when close also fails', async () => {
     const closeError = new Error('close exploded');
     const dispatchError = new Error('dispatch exploded');
-    const harness = createWebRuntimeHttpAdapterPortabilityHarness({
+    const harness = WebRuntimeHttpAdapterPortabilityHarness.create({
       async bootstrap() {
         return {
           async close() {
@@ -474,7 +474,7 @@ function registerWebRuntimeStaticAssetsPortabilitySuite(
 
 registerWebRuntimePortabilitySuite(
   'bun',
-  createWebRuntimeHttpAdapterPortabilityHarness({
+  WebRuntimeHttpAdapterPortabilityHarness.create({
     async bootstrap(rootModule, options) {
       return await createBunPortabilityApp(rootModule, options);
     },
@@ -535,7 +535,7 @@ describe('bun web runtime adapter cleanup', () => {
 
 registerWebRuntimePortabilitySuite(
   'deno',
-  createWebRuntimeHttpAdapterPortabilityHarness({
+  WebRuntimeHttpAdapterPortabilityHarness.create({
     async bootstrap(rootModule, options) {
       const server = createServeStub();
       const app = await createDenoTestApplication(rootModule, {
@@ -598,7 +598,7 @@ registerWebRuntimeStaticAssetsPortabilitySuite('deno', async (rootModule, option
 
 registerWebRuntimePortabilitySuite(
   'cloudflare-workers',
-  createWebRuntimeHttpAdapterPortabilityHarness({
+  WebRuntimeHttpAdapterPortabilityHarness.create({
     async bootstrap(rootModule, options) {
       const worker = CloudflareWorkerApplicationHost.create(rootModule, options);
       await worker.ready();

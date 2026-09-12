@@ -176,7 +176,7 @@ describe('parsePostId', () => {
 ```ts
 import { Inject, Module } from '@fluojs/core';
 import {
-  createTestingModule,
+  Test,
   type TestingModuleRef,
 } from '@fluojs/testing';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -210,7 +210,7 @@ describe('PostsModule', () => {
   });
 
   it('exports a service that an importing module can inject', async () => {
-    module = await createTestingModule({
+    module = await Test.createTestingModule({
       rootModule: PostsSliceModule,
     }).compile();
 
@@ -219,7 +219,7 @@ describe('PostsModule', () => {
   });
 
   it('accepts an empty seed through a pre-compile override', async () => {
-    module = await createTestingModule({
+    module = await Test.createTestingModule({
       rootModule: PostsSliceModule,
     })
       .overrideProvider<readonly Post[]>(INITIAL_POSTS)
@@ -244,12 +244,12 @@ describe('PostsModule', () => {
 
 ## HTTP 테스트: 컨트롤러 메서드가 아니라 요청 보내기
 
-이제 앱을 사용하는 독자의 계약을 검사한다. `@fluojs/testing`의 `createTestApp()`은 실제 runtime dispatcher를 조립하지만 TCP 포트를 열지 않는다. `app.request(...).send()`가 가상 요청을 전달하고 상태, 헤더, 본문을 돌려준다. 직접 `controller.get({ id: '1' })`를 호출하는 것과 달리 라우트 선택과 DTO 바인딩, 예외 응답 작성이 함께 실행된다.
+이제 앱을 사용하는 독자의 계약을 검사한다. `@fluojs/testing`의 `Test.createApp()`은 실제 runtime dispatcher를 조립하지만 TCP 포트를 열지 않는다. `app.request(...).send()`가 가상 요청을 전달하고 상태, 헤더, 본문을 돌려준다. 직접 `controller.get({ id: '1' })`를 호출하는 것과 달리 라우트 선택과 DTO 바인딩, 예외 응답 작성이 함께 실행된다.
 
 아래는 `test/posts.e2e.test.ts`의 **완전한 파일**이다.
 
 ```ts
-import { createTestApp, type TestApp } from '@fluojs/testing';
+import { Test, type TestApp } from '@fluojs/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app';
 
@@ -265,7 +265,7 @@ describe('Post HTTP contract', () => {
   });
 
   it('returns a collection and the same post as a detail object', async () => {
-    app = await createTestApp({ rootModule: AppModule });
+    app = await Test.createApp({ rootModule: AppModule });
 
     const list = await app.request('GET', '/posts').send();
     const detail = await app.request('GET', '/posts/1').send();
@@ -281,7 +281,7 @@ describe('Post HTTP contract', () => {
     ['/posts/1garbage', 400, 'BAD_REQUEST'],
     ['/posts/9007199254740992', 400, 'BAD_REQUEST'],
   ])('maps %s to %s and %s', async (path, status, code) => {
-    app = await createTestApp({ rootModule: AppModule });
+    app = await Test.createApp({ rootModule: AppModule });
 
     const response = await app.request('GET', path).send();
 
@@ -292,7 +292,7 @@ describe('Post HTTP contract', () => {
   });
 
   it('keeps independent read requests consistent', async () => {
-    app = await createTestApp({ rootModule: AppModule });
+    app = await Test.createApp({ rootModule: AppModule });
 
     const responses = await Promise.all([
       app.request('GET', '/posts/1').send(),
@@ -329,7 +329,7 @@ pnpm exec vitest run \
 
 가상 HTTP 테스트는 네트워크를 열지 않으므로 포트 충돌, 실제 Fastify의 요청 파싱, 실행 산출물의 import 경로를 증명하지 않는다. 그런 문제는 2장의 `scripts/check-posts.mjs`를 실제 서버에 실행해 확인한다. 개발 경로만이 아니라 `pnpm build` 후 `pnpm start`로 시작한 서버에도 같은 검사를 적용하면 빌드와 listener 경계를 별도로 관찰할 수 있다.
 
-테스트에 고정된 대기 시간을 넣지 않는다. `await new Promise(...)`로 몇백 밀리초 쉰 뒤 “아마 준비됐을 것”이라고 가정하는 대신 `compile()`, `createTestApp()`, `send()`, `close()`가 반환하는 Promise를 기다린다. 모두 구체적인 완료 사건이다. 이후 비동기 작업을 검사할 때도 작업 완료 이벤트나 제어 가능한 Promise를 먼저 준비하고 동작을 시작해야 한다. timeout은 실패 상한으로만 사용하고 성공 순서를 우연에 맡기지 않는다.
+테스트에 고정된 대기 시간을 넣지 않는다. `await new Promise(...)`로 몇백 밀리초 쉰 뒤 “아마 준비됐을 것”이라고 가정하는 대신 `compile()`, `Test.createApp()`, `send()`, `close()`가 반환하는 Promise를 기다린다. 모두 구체적인 완료 사건이다. 이후 비동기 작업을 검사할 때도 작업 완료 이벤트나 제어 가능한 Promise를 먼저 준비하고 동작을 시작해야 한다. timeout은 실패 상한으로만 사용하고 성공 순서를 우연에 맡기지 않는다.
 
 목을 많이 쓰는 것이 좋은 격리는 아니다. HTTP 계약을 검사하면서 컨트롤러와 서비스를 모두 가짜로 바꾸면 실제 바인딩이나 호출 누락을 놓칠 수 있다. 지금의 테스트에는 외부 네트워크나 데이터베이스가 없으므로 실제 협력자를 사용하는 비용도 작다. 외부 의존성이 생기면 그 경계만 명시적인 대역으로 교체하고, 실제 연동 검사가 별도로 필요한 사실을 남긴다.
 
@@ -344,7 +344,7 @@ pnpm exec vitest run \
 ## 근거와 더 읽기
 
 - [공식 testing 경로와 TDD 계층](../../packages/testing/README.ko.md), [공개 export](../../packages/testing/src/index.ts), [테스트 요구사항 계약](../../docs/contracts/testing-guide.ko.md)
-- [가상 앱 구현](../../packages/testing/src/app.ts), [요청 builder와 응답 타입](../../packages/testing/src/http.ts), [공개 앱·모듈 타입](../../packages/testing/src/types.ts)
+- [가상 앱 구현](../../packages/testing/src/module.ts), [요청 builder와 응답 타입](../../packages/testing/src/http.ts), [공개 앱·모듈 타입](../../packages/testing/src/types.ts)
 - [모듈 builder 구현](../../packages/testing/src/module.ts), [컴파일 실패와 정리 회귀 테스트](../../packages/testing/src/module.compile-failure.test.ts)
 - [Vite 데코레이터 변환 경계](../../packages/vite/README.ko.md#데코레이터-변환-경계), [데코레이터 변환 구현](../../packages/vite/src/decorators-plugin.ts)
 

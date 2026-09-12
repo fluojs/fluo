@@ -330,7 +330,7 @@ export { PostModule };
       join(sourceDirectory, 'auths', 'auth.slice.test.ts'),
     ]);
     expect(readFileSync(join(sourceDirectory, 'auths', 'auth.slice.test.ts'), 'utf8')).toContain(
-      'createTestingModule({ rootModule: AuthModule })',
+      'Test.createTestingModule({ rootModule: AuthModule })',
     );
   });
 
@@ -344,8 +344,11 @@ export { PostModule };
     const sliceContent = readFileSync(slicePath, 'utf8');
 
     expect(result.generatedFiles).toContain(slicePath);
-    expect(sliceContent).toContain('createTestingModule({ rootModule: UserModule })');
-    expect(sliceContent).toContain('overrideProvider(UserRepo');
+    expect(sliceContent).toContain("import { Test } from '@fluojs/testing';");
+    expect(sliceContent).toContain('Test.createTestingModule({ rootModule: UserModule })');
+    expect(sliceContent).toContain('defer(() => testingModule.container.dispose());');
+    expect(sliceContent).toContain('overrideProvider(UserRepo)');
+    expect(sliceContent).toContain('.useValue({');
     expect(sliceContent).toContain('await testingModule.resolve<UserService>(UserService)');
   });
 
@@ -362,10 +365,11 @@ export { PostModule };
 
     expect(result.generatedFiles).toEqual([e2ePath]);
     expect(e2eContent).toContain("import { AppModule } from '../src/app';");
-    expect(e2eContent).toContain('createTestApp({ rootModule: AppModule })');
+    expect(e2eContent).toContain("import { Test } from '@fluojs/testing';");
+    expect(e2eContent).toContain('Test.createApp({ rootModule: AppModule })');
     expect(e2eContent).toContain('try {');
     expect(e2eContent).toContain('finally {');
-    expect(e2eContent).toContain('await app.close();');
+    expect(e2eContent).toContain('defer(() => app.close());');
   });
 
   it('preserves explicit e2e root module import overrides', () => {

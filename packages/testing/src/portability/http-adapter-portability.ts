@@ -327,6 +327,17 @@ export class HttpAdapterPortabilityHarness<
   TRunOptions extends object,
   TApp extends AppLike = AppLike,
 > {
+  /** Creates an HTTP adapter portability harness with the provided options. */
+  static create<
+    TBootstrapOptions extends object,
+    TRunOptions extends object,
+    TApp extends AppLike = AppLike,
+  >(
+    options: HttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TRunOptions, TApp>,
+  ): HttpAdapterPortabilityHarness<TBootstrapOptions, TRunOptions, TApp> {
+    return new HttpAdapterPortabilityHarness(options);
+  }
+
   /**
    * Creates a new instance of the {@link HttpAdapterPortabilityHarness}.
    *
@@ -1218,25 +1229,6 @@ export class HttpAdapterPortabilityHarness<
       throw new Error(`${this.options.name} adapter leaked shutdown signal listeners after close().`);
     }
   }
-}
-
-/**
- * Creates a new {@link HttpAdapterPortabilityHarness} instance with the provided options.
- *
- * @template TBootstrapOptions - Type for bootstrap-specific options.
- * @template TRunOptions - Type for run-specific options.
- * @template TApp - Type for the application instance.
- * @param options - Configuration options for the harness.
- * @returns A new portability harness instance.
- */
-export function createHttpAdapterPortabilityHarness<
-  TBootstrapOptions extends object,
-  TRunOptions extends object,
-  TApp extends AppLike = AppLike,
->(
-  options: HttpAdapterPortabilityHarnessOptions<TBootstrapOptions, TRunOptions, TApp>,
-): HttpAdapterPortabilityHarness<TBootstrapOptions, TRunOptions, TApp> {
-  return new HttpAdapterPortabilityHarness(options);
 }
 
 function equalByteArrays(left: Uint8Array, right: Uint8Array): boolean {

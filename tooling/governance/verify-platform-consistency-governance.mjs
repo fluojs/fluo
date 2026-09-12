@@ -1370,7 +1370,7 @@ function packageHasConformanceHarness(packageName) {
       }
 
       const source = readFileSync(fullPath, 'utf8');
-      if (source.includes('createPlatformConformanceHarness') || source.includes('assertAll()')) {
+      if (source.includes('PlatformConformanceHarness.create') || source.includes('assertAll()')) {
         return true;
       }
     }
@@ -2646,7 +2646,7 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
     testingReadme.includes('request-scoped provider isolation') &&
       testingReadme.includes('app.request(...).send()') &&
       testingReadme.includes('@fluojs/testing/http') &&
-      testingReadme.includes('DeepMocked<T>') &&
+      testingReadme.includes('ShallowMocked<T>') &&
       packageSurface.includes('@fluojs/testing/http') &&
       packageSurface.includes('request-scoped DI isolation') &&
       docsContext.includes('@fluojs/testing/http') &&
@@ -2657,7 +2657,7 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
     testingReadmeKo.includes('request-scoped provider isolation') &&
       testingReadmeKo.includes('app.request(...).send()') &&
       testingReadmeKo.includes('@fluojs/testing/http') &&
-      testingReadmeKo.includes('DeepMocked<T>') &&
+      testingReadmeKo.includes('ShallowMocked<T>') &&
       packageSurfaceKo.includes('@fluojs/testing/http') &&
       packageSurfaceKo.includes('request-scoped DI isolation') &&
       docsContextKo.includes('@fluojs/testing/http') &&
@@ -3805,7 +3805,7 @@ export function enforceHttpAdapterPortabilityDocumentationContract(readText = re
     }
 
     for (const supportingIdentifier of [
-      'createHttpAdapterPortabilityHarness',
+      'HttpAdapterPortabilityHarness.create',
       'createErrorRepresentationBootstrapOptions',
       'TEST_TLS_CERTIFICATE',
       'TEST_TLS_PRIVATE_KEY',
@@ -3825,7 +3825,7 @@ export function enforceHttpAdapterPortabilityDocumentationContract(readText = re
 
     for (const marker of [
       '## Adapter Portability Requirements',
-      'createHttpAdapterPortabilityHarness(...)',
+      'HttpAdapterPortabilityHarness.create(...)',
       'assertSupportsPortableResponseCookies()',
       'assertSupportsCustomHttpRouteMethods()',
       'assertSupportsSingleByteRanges()',

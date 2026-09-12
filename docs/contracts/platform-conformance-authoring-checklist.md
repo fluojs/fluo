@@ -12,8 +12,8 @@ Use this checklist when authoring or changing official platform-facing packages 
 
 ## Conformance Harness Requirements
 
-- [ ] MUST: Run `createPlatformConformanceHarness(...)` from `@fluojs/testing/platform-conformance` for platform component contract checks.
-- [ ] MUST: Run `createPlatformShellLifecycleConformanceHarness(...)` from `@fluojs/testing/platform-shell-lifecycle-conformance` for PlatformShell lifecycle exclusivity checks.
+- [ ] MUST: Run `PlatformConformanceHarness.create(...)` from `@fluojs/testing/platform-conformance` for platform component contract checks.
+- [ ] MUST: Run `PlatformShellLifecycleConformanceHarness.create(...)` from `@fluojs/testing/platform-shell-lifecycle-conformance` for PlatformShell lifecycle exclusivity checks.
 - [ ] MUST: Verify `validate()` does not transition component state.
 - [ ] MUST: Verify `validate()` does not introduce long-lived side effects when side-effect capture is configured.
 - [ ] MUST: Verify `start()` is deterministic across duplicate calls.
@@ -29,14 +29,14 @@ Use this checklist when authoring or changing official platform-facing packages 
 ## Adapter Portability Requirements
 
 For host-owned route integrations such as Next.js, use
-`createWebRuntimeHttpAdapterPortabilityHarness(...)` from
+`WebRuntimeHttpAdapterPortabilityHarness.create(...)` from
 `@fluojs/testing/web-runtime-adapter-portability` for the Web dispatcher seam and
 real host integration tests for the exposed HTTP boundary. Listener startup logs,
 TLS configuration, and process signal ownership checks apply only when the adapter
 owns those capabilities. Document and verify host-imposed method restrictions
 rather than claiming support for methods the host rejects.
 
-- [ ] MUST: For HTTP adapters, run `createHttpAdapterPortabilityHarness(...)` from `@fluojs/testing/http-adapter-portability`.
+- [ ] MUST: For HTTP adapters, run `HttpAdapterPortabilityHarness.create(...)` from `@fluojs/testing/http-adapter-portability`.
 - [ ] MUST: Run `assertSupportsPortableResponseCookies()` to verify independent, ordered response `Set-Cookie` fields.
 - [ ] MUST: Verify `QUERY` and extension HTTP methods with `assertSupportsCustomHttpRouteMethods()`.
 - [ ] MUST: Verify bounded, suffix, open-ended, malformed, multi-range, unsatisfiable, `HEAD`, and `POST` range cases with `assertSupportsSingleByteRanges()`.
@@ -51,7 +51,7 @@ rather than claiming support for methods the host rejects.
 - [ ] MUST: Verify `assertReportsConfiguredHostInStartupLogs()`.
 - [ ] MUST: Supply a test-owned TLS certificate and key to `assertReportsHttpsStartupUrl(...)`.
 - [ ] MUST: Verify `assertRemovesShutdownSignalListenersAfterClose()`.
-- [ ] MUST: For fetch-style websocket adapters, run `createFetchStyleWebSocketConformanceHarness(...)` from `@fluojs/testing/fetch-style-websocket-conformance`.
+- [ ] MUST: For fetch-style websocket adapters, run `FetchStyleWebSocketConformanceHarness.create(...)` from `@fluojs/testing/fetch-style-websocket-conformance`.
 - [ ] MUST: Keep fetch-style websocket capability fields stable: `kind`, `contract`, `mode`, `version`, `support`, and `reason`. Version 1 capabilities may add the optional, independently versioned `bindingInstallation` extension for protocol bindings that must be installed before adapter `listen()`; adding the extension MUST NOT change the capability `version` field.
 
 ## Package Contract Requirements

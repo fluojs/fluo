@@ -24,9 +24,9 @@
 
 도메인 테스트는 초안에서 발행본으로 가는 규칙과 버전 충돌을 빠르게 확인한다. DB 통합 테스트는 조건부 업데이트와 트랜잭션 롤백을 실제 PostgreSQL에서 확인한다. 요청 테스트는 인증·인가·검증·응답 변환이 HTTP 파이프라인에서 함께 작동하는지 확인한다. 마지막으로 실제 Fastify listener 시험은 포트, header, 종료 signal, 응답 전송이라는 호스트 경계를 확인한다.
 
-`@fluojs/testing`의 `createTestApp`는 세 번째 경계의 기본 도구다. `request(...).send()`가 runtime dispatch와 요청 범위 DI를 실행하므로 controller 메서드를 직접 부르는 것보다 강한 증거를 준다. 하지만 실제 TCP 연결이나 PostgreSQL을 자동으로 만들어 주지는 않는다. 대역을 주입한 경우 그 대역 밖의 시스템은 검증되지 않았다고 남긴다.
+`@fluojs/testing`의 `Test.createApp`는 세 번째 경계의 기본 도구다. `request(...).send()`가 runtime dispatch와 요청 범위 DI를 실행하므로 controller 메서드를 직접 부르는 것보다 강한 증거를 준다. 하지만 실제 TCP 연결이나 PostgreSQL을 자동으로 만들어 주지는 않는다. 대역을 주입한 경우 그 대역 밖의 시스템은 검증되지 않았다고 남긴다.
 
-`createTestingModule`은 DI 가시성과 provider 교체가 주제일 때 선택한다. `.compile()` 전에 `overrideProvider`나 `overrideModule`로 외부 경계를 바꾸고, 실제로 쓰는 root module을 명시한다. Bootstrap과 lifecycle hook도 실행되므로 테스트 종료 시 컨테이너를 정리한다. 테스트의 cleanup을 선택 사항으로 두면 다음 테스트가 이전 연결이나 timer 때문에 통과하거나 실패할 수 있다.
+`Test.createTestingModule`은 DI 가시성과 provider 교체가 주제일 때 선택한다. `.compile()` 전에 `overrideProvider`나 `overrideModule`로 외부 경계를 바꾸고, 실제로 쓰는 root module을 명시한다. Bootstrap과 lifecycle hook도 실행되므로 테스트 종료 시 컨테이너를 정리한다. 테스트의 cleanup을 선택 사항으로 두면 다음 테스트가 이전 연결이나 timer 때문에 통과하거나 실패할 수 있다.
 
 중요한 것은 모든 레벨에서 같은 테스트를 복사하지 않는 일이다. 요청 테스트에서 수십 가지 날짜 문자열을 다시 나열할 필요는 없지만, 검증 실패가 400으로 매핑되고 서비스의 쓰기 경로에 도달하지 않는지는 확인해야 한다. DB 테스트를 메모리 배열의 업데이트로 바꾸고 “동시 발행에 안전하다”고 이름 붙이는 것도 피한다. 실제 동시성의 증거는 실제 저장소 경계에서 얻는다.
 
@@ -39,7 +39,7 @@
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { TerminusModule } from '@fluojs/terminus';
 import { expect, it } from 'vitest';
 import { createObservabilityModule } from '../observability/observability.module.js';
@@ -119,7 +119,7 @@ it('keeps diagnostics available while admitted work drains', async () => {
   })
   class ReleaseProbeModule {}
 
-  const app = await createTestApp({
+  const app = await Test.createApp({
     rootModule: ReleaseProbeModule,
     middleware: [TrafficMiddleware],
   });
@@ -427,7 +427,7 @@ DB 변경은 새 앱 시작과 분리해서 생각한다. 이전 코드와 새 �
 원고 통합 검토에서는 코드·공개 API를 대조하고, 코드 블록을 메모리에서 변환해 기존 패키지 산출물과 연결한 좁은 요청·Cron·lifecycle 시험 6개를 통과했다. 전역 async Prisma 등록과 Terminus 접근 경계도 드라이버 대역으로 확인했다. 운영 코드와 좁은 시험의 TypeScript strict 검사에서는 외부 애플리케이션 연결부 4개를 선언용 대역으로 둔 17개 가상 파일에서 진단이 없었다. 이는 생성된 Prisma 모델을 포함한 전체 앱 typecheck가 아니다. 위 `test/release-app.spec.ts`, 실제 PostgreSQL·Redis·SMTP·브라우저·SIGTERM 시험은 실행하지 않았다. 한국어 book 구조 검사 `pnpm book:check:ko`는 72장 통과했으며 전체 governance·package build suite는 재실행하지 않았다. 독자 앱에서는 `pnpm exec vitest run src/operations/release-boundary.spec.ts test/release-app.spec.ts --maxWorkers=1`로 좁은 gate 시험과 실제 조립 앱 fixture를 모두 검증하고, 별도 브라우저·메일·signal 실험으로 보완한다. 본문의 가상 출시와 회고는 실행 결과가 아니다.
 
 - [공식 테스트 도구와 request-level 시험 경계](../../packages/testing/README.ko.md)
-- [createTestApp의 bootstrap·dispatch·close 구현](../../packages/testing/src/app.ts)
+- [Test.createApp의 bootstrap·dispatch·close 구현](../../packages/testing/src/module.ts)
 - [테스트 앱과 provider override의 공개 타입](../../packages/testing/src/types.ts)
 - [테스트 계층과 lifecycle 정리 계약](../../docs/contracts/testing-guide.ko.md)
 - [Metrics의 HTTP·Registry·platform telemetry 계약](../../packages/metrics/README.ko.md)

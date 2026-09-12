@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
-import { createTestApp, createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { AppModule } from './app';
 import { AuthService } from './auth/auth.service';
 import { BearerJwtStrategy } from './auth/bearer.strategy';
@@ -55,93 +56,37 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
 
 describe('AuthService', () => {
   it('issues bearer tokens for a subject', async () => {
-    const module = await createTestingModule({ rootModule: AppModule }).compile();
-    let testError: unknown;
-    let testFailed = false;
-    let disposeError: unknown;
-    let disposeFailed = false;
-
-    try {
+    const module = await Test.createTestingModule({ rootModule: AppModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => module.container.dispose());
       const service = await module.resolve(AuthService);
 
       await expect(service.issueToken('ada')).resolves.toMatchObject({
         accessToken: expect.any(String),
       });
-    } catch (error: unknown) {
-      testError = error;
-      testFailed = true;
-    } finally {
-      try {
-        await module.container.dispose();
-      } catch (error: unknown) {
-        disposeFailed = true;
-        disposeError = error;
-      }
-    }
-
-    if (testFailed) {
-      if (disposeFailed) {
-        throw new AggregateError(
-          [testError, disposeError],
-          'Test and testing module disposal both failed.',
-        );
-      }
-
-      throw testError;
-    }
-
-    if (disposeFailed) {
-      throw disposeError;
-    }
+    });
   });
 });
 
 describe('BearerJwtStrategy', () => {
   it('requires a Bearer authorization header', async () => {
-    const module = await createTestingModule({ rootModule: AppModule }).compile();
-    let testError: unknown;
-    let testFailed = false;
-    let disposeError: unknown;
-    let disposeFailed = false;
-
-    try {
+    const module = await Test.createTestingModule({ rootModule: AppModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => module.container.dispose());
       const strategy = await module.resolve(BearerJwtStrategy);
+      const requestScope = module.container.createRequestScope();
+      defer(() => requestScope.dispose());
 
       await expect(strategy.authenticate({
         handler: {} as never,
         requestContext: {
-          container: module.container.createRequestScope(),
+          container: requestScope,
           metadata: {},
           request: createRequest('GET', '/profile/'),
           response: createResponse(),
         },
       })).rejects.toThrow('Authorization header is required.');
-    } catch (error: unknown) {
-      testError = error;
-      testFailed = true;
-    } finally {
-      try {
-        await module.container.dispose();
-      } catch (error: unknown) {
-        disposeFailed = true;
-        disposeError = error;
-      }
-    }
-
-    if (testFailed) {
-      if (disposeFailed) {
-        throw new AggregateError(
-          [testError, disposeError],
-          'Test and testing module disposal both failed.',
-        );
-      }
-
-      throw testError;
-    }
-
-    if (disposeFailed) {
-      throw disposeError;
-    }
+    });
   });
 });
 
@@ -205,10 +150,10 @@ describe('AppModule e2e', () => {
     }
   });
 
-  it('serves health, ready, and auth routes through createTestApp request helpers', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
-
-    try {
+  it('serves health, ready, and auth routes through Test.createApp request helpers', async () => {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
         status: 200,
       });
@@ -266,7 +211,6 @@ describe('AppModule e2e', () => {
       expect(profileResult.body).toMatchObject({
         user: expect.objectContaining({ subject: 'grace' }),
       });
-
       const refreshResult = await app
         .request('POST', '/auth/refresh')
         .body({
@@ -282,8 +226,6 @@ describe('AppModule e2e', () => {
         },
         subject: 'grace',
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 });

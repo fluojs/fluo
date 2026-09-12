@@ -313,7 +313,7 @@ it('separates duplicate payments and clears failed activity', async () => {
 });
 ```
 
-통합 실험에서는 `createOperationsModule`을 등록한 앱에 `@fluojs/testing`의 `createTestApp`으로 요청한다. 토큰 없는 `/internal/metrics`는 403, 올바른 토큰을 준 경로는 Prometheus content type과 지표 문자열을 반환해야 한다. `/products` 같은 기존 공개 경로에는 probe 토큰이 필요 없어야 한다. 단위 실험에서 collector가 맞아도 경로별 보호가 전역에 잘못 걸릴 수 있으므로 실제 요청 경계를 한 번 더 본다.
+통합 실험에서는 `createOperationsModule`을 등록한 앱에 `@fluojs/testing`의 `Test.createApp`으로 요청한다. 토큰 없는 `/internal/metrics`는 403, 올바른 토큰을 준 경로는 Prometheus content type과 지표 문자열을 반환해야 한다. `/products` 같은 기존 공개 경로에는 probe 토큰이 필요 없어야 한다. 단위 실험에서 collector가 맞아도 경로별 보호가 전역에 잘못 걸릴 수 있으므로 실제 요청 경계를 한 번 더 본다.
 
 readiness 실험은 실제 DB를 끊는 대신 먼저 제어 가능한 indicator로 결과를 바꾸어 검증할 수 있다. 선택적 indicator만 `down`이면 `/health`는 503이지만 다른 필수 조건이 정상인 `/ready`는 200이어야 한다. 필수 DB indicator가 `down`이면 두 경로 모두 503이어야 한다. 실제 연결 단절은 별도 실습 DB에서 검증하고, 시뮬레이션 결과를 네트워크 장애 검증으로 부르지 않는다.
 

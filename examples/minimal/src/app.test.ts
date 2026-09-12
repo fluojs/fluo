@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { AppModule } from './app';
 import { HelloService } from './hello.service';
 import { HelloController } from './hello.controller';
@@ -22,22 +23,22 @@ describe('HelloController', () => {
 });
 
 describe('AppModule e2e', () => {
-  it('serves all routes through createTestApp request helpers', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
-
-    await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
-      body: { status: 'ok' },
-      status: 200,
+  it('serves all routes through Test.createApp request helpers', async () => {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      await expect(app.request('GET', '/health').send()).resolves.toMatchObject({
+        body: { status: 'ok' },
+        status: 200,
+      });
+      await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
+        body: { status: 'ready' },
+        status: 200,
+      });
+      await expect(app.request('GET', '/hello/').send()).resolves.toMatchObject({
+        body: { message: 'Hello, World!' },
+        status: 200,
+      });
     });
-    await expect(app.request('GET', '/ready').send()).resolves.toMatchObject({
-      body: { status: 'ready' },
-      status: 200,
-    });
-    await expect(app.request('GET', '/hello/').send()).resolves.toMatchObject({
-      body: { message: 'Hello, World!' },
-      status: 200,
-    });
-
-    await app.close();
   });
 });

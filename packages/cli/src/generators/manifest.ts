@@ -47,7 +47,7 @@ export const generatorOptionSchemas = [
   { aliases: ['-f'], description: 'Overwrite files that already exist.', name: '--force', value: 'boolean' },
   { aliases: [], description: 'Preview planned writes, skips, and module wiring without touching files.', name: '--dry-run', value: 'boolean' },
   { aliases: [], description: 'Emit a module-level slice test when generating module schematics.', name: '--with-test', value: 'boolean' },
-  { aliases: [], description: 'Emit the resource slice test with createTestingModule provider override coverage.', name: '--with-slice-test', value: 'boolean' },
+  { aliases: [], description: 'Emit the resource slice test with Test.createTestingModule provider override coverage.', name: '--with-slice-test', value: 'boolean' },
   { aliases: ['-h'], description: 'Show help for the generate command.', name: '--help', value: 'boolean' },
 ] as const satisfies readonly GeneratorOptionSchema[];
 
@@ -64,7 +64,7 @@ const builtInGeneratorDefinitions = [
   },
   {
     aliases: [],
-    description: 'Generate an app-level e2e-style test with createTestApp({ rootModule }).',
+    description: 'Generate an app-level e2e-style test with Test.createApp({ rootModule }).',
     factory: (name, options) => generateE2eFiles(name, options),
     kind: 'e2e',
     nextStepHint: "Run 'pnpm test:e2e' after wiring the route into AppModule, or update the generated path expectation first.",

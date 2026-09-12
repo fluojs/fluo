@@ -609,7 +609,7 @@ helper를 추가할 필요가 없습니다.
 
 1. **Render-policy unit**: Pure policy 및 metadata helper를 직접 호출합니다. Browser bootstrap 없이
    broad-to-specific layout order, nearest fallback 또는 metadata precedence, configuration diagnostic을 검증합니다.
-2. **Request dispatch**: 작성한 module을 `createTestApp({ rootModule })`로 만들고 explicit `@Path(...)` route를
+2. **Request dispatch**: 작성한 module을 `Test.createApp({ rootModule })`로 만들고 explicit `@Path(...)` route를
    `app.request(...).send()`로 요청한 뒤 `finally`에서 app을 닫습니다. Direct `ReactElement` return과
    missing-renderer diagnostic을 포함해 real HTTP dispatcher, request scope, response ownership, application
    renderer를 함께 검증합니다.

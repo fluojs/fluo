@@ -176,7 +176,7 @@ The following is the **complete file** for `src/posts/posts.slice.test.ts`. A te
 ```ts
 import { Inject, Module } from '@fluojs/core';
 import {
-  createTestingModule,
+  Test,
   type TestingModuleRef,
 } from '@fluojs/testing';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -210,7 +210,7 @@ describe('PostsModule', () => {
   });
 
   it('exports a service that an importing module can inject', async () => {
-    module = await createTestingModule({
+    module = await Test.createTestingModule({
       rootModule: PostsSliceModule,
     }).compile();
 
@@ -219,7 +219,7 @@ describe('PostsModule', () => {
   });
 
   it('accepts an empty seed through a pre-compile override', async () => {
-    module = await createTestingModule({
+    module = await Test.createTestingModule({
       rootModule: PostsSliceModule,
     })
       .overrideProvider<readonly Post[]>(INITIAL_POSTS)
@@ -244,12 +244,12 @@ The failure experiment for this boundary is to remove `PostsService` temporarily
 
 ## HTTP Tests: Send a Request Instead of Calling a Controller Method
 
-Now we check the contract for a reader using the app. `createTestApp()` from `@fluojs/testing` assembles the real runtime dispatcher without opening a TCP port. `app.request(...).send()` delivers a virtual request and returns the status, headers, and body. Unlike a direct call to `controller.get({ id: '1' })`, this executes route selection, DTO binding, and error-response writing together.
+Now we check the contract for a reader using the app. `Test.createApp()` from `@fluojs/testing` assembles the real runtime dispatcher without opening a TCP port. `app.request(...).send()` delivers a virtual request and returns the status, headers, and body. Unlike a direct call to `controller.get({ id: '1' })`, this executes route selection, DTO binding, and error-response writing together.
 
 Below is the **complete file** for `test/posts.e2e.test.ts`.
 
 ```ts
-import { createTestApp, type TestApp } from '@fluojs/testing';
+import { Test, type TestApp } from '@fluojs/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app';
 
@@ -265,7 +265,7 @@ describe('Post HTTP contract', () => {
   });
 
   it('returns a collection and the same post as a detail object', async () => {
-    app = await createTestApp({ rootModule: AppModule });
+    app = await Test.createApp({ rootModule: AppModule });
 
     const list = await app.request('GET', '/posts').send();
     const detail = await app.request('GET', '/posts/1').send();
@@ -281,7 +281,7 @@ describe('Post HTTP contract', () => {
     ['/posts/1garbage', 400, 'BAD_REQUEST'],
     ['/posts/9007199254740992', 400, 'BAD_REQUEST'],
   ])('maps %s to %s and %s', async (path, status, code) => {
-    app = await createTestApp({ rootModule: AppModule });
+    app = await Test.createApp({ rootModule: AppModule });
 
     const response = await app.request('GET', path).send();
 
@@ -292,7 +292,7 @@ describe('Post HTTP contract', () => {
   });
 
   it('keeps independent read requests consistent', async () => {
-    app = await createTestApp({ rootModule: AppModule });
+    app = await Test.createApp({ rootModule: AppModule });
 
     const responses = await Promise.all([
       app.request('GET', '/posts/1').send(),
@@ -329,7 +329,7 @@ The expected result is that all selected tests pass. If a test fails, distinguis
 
 Virtual HTTP tests do not open a network connection, so they do not prove behavior involving port conflicts, real Fastify request parsing, or import paths in the execution artifacts. Check those issues by running Chapter 2's `scripts/check-posts.mjs` against a real server. Applying the same check not only to the development path but also to a server started with `pnpm start` after `pnpm build` lets you observe the build and listener boundaries separately.
 
-Do not put fixed waits into tests. Instead of pausing for a few hundred milliseconds with `await new Promise(...)` and assuming things are probably ready, await the Promises returned by `compile()`, `createTestApp()`, `send()`, and `close()`. Each represents a concrete completion event. When testing asynchronous work later, prepare the completion event or a controllable Promise before starting the operation as well. Use timeouts only as failure bounds, and do not leave the successful ordering of events to chance.
+Do not put fixed waits into tests. Instead of pausing for a few hundred milliseconds with `await new Promise(...)` and assuming things are probably ready, await the Promises returned by `compile()`, `Test.createApp()`, `send()`, and `close()`. Each represents a concrete completion event. When testing asynchronous work later, prepare the completion event or a controllable Promise before starting the operation as well. Use timeouts only as failure bounds, and do not leave the successful ordering of events to chance.
 
 Using many mocks is not the same as good isolation. Replacing both the controller and service with fakes while testing an HTTP contract can miss actual binding failures or omitted calls. The current tests have no external network or database, so using real collaborators costs little. When external dependencies appear, replace only those boundaries with explicit test doubles and record that separate real-integration checks are still required.
 
@@ -344,7 +344,7 @@ In the next chapter, the operator wants to save a post that is not finished yet.
 ## Evidence and Further Reading
 
 - [The official testing path and TDD layers](../../packages/testing/README.md), [Public exports](../../packages/testing/src/index.ts), [Testing requirements contract](../../docs/contracts/testing-guide.md)
-- [Virtual app implementation](../../packages/testing/src/app.ts), [Request builder and response types](../../packages/testing/src/http.ts), [Public app and module types](../../packages/testing/src/types.ts)
+- [Virtual app implementation](../../packages/testing/src/module.ts), [Request builder and response types](../../packages/testing/src/http.ts), [Public app and module types](../../packages/testing/src/types.ts)
 - [Module builder implementation](../../packages/testing/src/module.ts), [Compilation failure and disposal regression tests](../../packages/testing/src/module.compile-failure.test.ts)
 - [Vite decorator transform boundary](../../packages/vite/README.md#decorator-transform-boundary), [Decorator transform implementation](../../packages/vite/src/decorators-plugin.ts)
 

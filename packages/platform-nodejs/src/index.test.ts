@@ -16,7 +16,7 @@ import {
   RequestDto,
 } from '@fluojs/http';
 import { defineModule, FluoFactory, type MultipartOptions } from '@fluojs/runtime';
-import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
+import { HttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import * as platformNodejsApi from './index.js';
 import * as platformNodejsInternalApi from './internal.js';
@@ -133,7 +133,7 @@ fHFvqyh6pXZV7XKcPxCTNuIw2rpw2WqY5/H+lTmUFmSXieFZAAMRueGH8Y5trCHU
 JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
-const nodejsPortabilityHarness = createHttpAdapterPortabilityHarness<
+const nodejsPortabilityHarness = HttpAdapterPortabilityHarness.create<
   NodeTestApplicationOptions,
   NodeTestApplicationOptions
 >({

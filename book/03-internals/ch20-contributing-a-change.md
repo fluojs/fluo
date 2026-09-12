@@ -123,7 +123,7 @@ The first test proves metadata recording, but does not pass through the module g
 
 ```ts
 import { Inject, Module } from '@fluojs/core';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 
 const CUSTOMER_ID = Symbol('CUSTOMER_ID');
@@ -153,7 +153,7 @@ it('compiles a consumer graph containing an empty decorated module', async () =>
   @Module({ imports: [OrdersModule] })
   class AppModule {}
 
-  const module = await createTestingModule({ rootModule: AppModule }).compile();
+  const module = await Test.createTestingModule({ rootModule: AppModule }).compile();
   try {
     expect((await module.resolve(OrderOwner)).customerId).toBe('reader-7');
     expect(module.modules.some((entry) => entry.type === EmptyExtensionModule)).toBe(true);
@@ -165,7 +165,7 @@ it('compiles a consumer graph containing an empty decorated module', async () =>
 
 `OrderOwner` is not injected merely because it accepts a string type. The provider and export in `AccountsModule`, the import in `OrdersModule`, and class-level `@Inject` create the connection. Because this slice checks the empty module's presence by graph identity, it can also detect a mutation that treats empty metadata as though it never existed.
 
-The current runtime's `empty-module-default.test.ts` bootstraps an adapterless application, checks that its route list is empty, and verifies that it can be closed again after being closed. There is no reason to add real order HTTP or payment calls here. For a decorator default change, graph and bootstrap regression coverage is sufficient. A contribution that changes the request pipeline, on the other hand, must go beyond this slice and pass through the request surface of `createTestApp({ rootModule })`.
+The current runtime's `empty-module-default.test.ts` bootstraps an adapterless application, checks that its route list is empty, and verifies that it can be closed again after being closed. There is no reason to add real order HTTP or payment calls here. For a decorator default change, graph and bootstrap regression coverage is sufficient. A contribution that changes the request pipeline, on the other hand, must go beyond this slice and pass through the request surface of `Test.createApp({ rootModule })`.
 
 Distinguish resource ownership after a failed compile too. The builder owns the internal container until it returns a reference and performs disposal if compilation fails. Once a reference is returned successfully, the caller disposes of it as in the example above. Do not unconditionally read a module variable that has not yet been assigned in `finally`, or place disposal only on the successful path. Partial initialization failure and normal shutdown are protected by their respective evidence tests.
 

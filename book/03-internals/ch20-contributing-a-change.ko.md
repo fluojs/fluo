@@ -123,7 +123,7 @@ provider의 `useValue` 객체 identity를 보존하는 기존 처리도 유지�
 
 ```ts
 import { Inject, Module } from '@fluojs/core';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 
 const CUSTOMER_ID = Symbol('CUSTOMER_ID');
@@ -153,7 +153,7 @@ it('compiles a consumer graph containing an empty decorated module', async () =>
   @Module({ imports: [OrdersModule] })
   class AppModule {}
 
-  const module = await createTestingModule({ rootModule: AppModule }).compile();
+  const module = await Test.createTestingModule({ rootModule: AppModule }).compile();
   try {
     expect((await module.resolve(OrderOwner)).customerId).toBe('reader-7');
     expect(module.modules.some((entry) => entry.type === EmptyExtensionModule)).toBe(true);
@@ -165,7 +165,7 @@ it('compiles a consumer graph containing an empty decorated module', async () =>
 
 `OrderOwner`가 문자열 타입을 받는다는 이유로 주입된 것이 아니다. `AccountsModule`의 provider와 export, `OrdersModule`의 import, 클래스 수준 `@Inject`가 연결을 만든다. 이 slice에서 빈 모듈의 존재를 graph identity로 확인하므로, 빈 metadata를 없었던 것으로 처리하는 변형도 걸러낼 수 있다.
 
-현재 runtime의 `empty-module-default.test.ts`는 adapterless application을 부트스트랩하고 route 목록이 비어 있는지, 닫은 뒤 다시 닫아도 되는지를 확인한다. 여기에 실제 주문 HTTP나 결제 호출을 추가할 이유는 없다. 변경이 decorator 기본값이라면 graph와 bootstrap의 회귀면 충분하다. 반대로 요청 파이프라인을 바꾸는 기여라면 이 slice만으로 끝내지 말고 `createTestApp({ rootModule })`의 요청 표면을 통과해야 한다.
+현재 runtime의 `empty-module-default.test.ts`는 adapterless application을 부트스트랩하고 route 목록이 비어 있는지, 닫은 뒤 다시 닫아도 되는지를 확인한다. 여기에 실제 주문 HTTP나 결제 호출을 추가할 이유는 없다. 변경이 decorator 기본값이라면 graph와 bootstrap의 회귀면 충분하다. 반대로 요청 파이프라인을 바꾸는 기여라면 이 slice만으로 끝내지 말고 `Test.createApp({ rootModule })`의 요청 표면을 통과해야 한다.
 
 실패한 compile의 자원 소유권도 구분한다. builder는 reference를 돌려주기 전까지 내부 container를 소유하며, compile 실패 때 정리를 수행한다. reference를 성공적으로 받았다면 위 예제처럼 호출자가 정리한다. 아직 할당되지 않은 module 변수를 `finally`에서 무조건 읽거나 성공한 경로에만 dispose를 두지 않는다. 부분 초기화 실패와 일반 종료는 각자의 근거 테스트로 보호한다.
 

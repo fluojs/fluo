@@ -338,6 +338,8 @@ describe('scaffoldBootstrapApp', () => {
     const greetingControllerFile = readFileSync(join(targetDirectory, 'src', 'greeting', 'greeting.controller.ts'), 'utf8');
     const greetingRepoFile = readFileSync(join(targetDirectory, 'src', 'greeting', 'greeting.repo.ts'), 'utf8');
     const greetingModuleFile = readFileSync(join(targetDirectory, 'src', 'greeting', 'greeting.module.ts'), 'utf8');
+    const greetingSliceTest = readFileSync(join(targetDirectory, 'src', 'greeting', 'greeting.slice.test.ts'), 'utf8');
+    const appE2eTest = readFileSync(join(targetDirectory, 'test', 'app.e2e.test.ts'), 'utf8');
     const viteConfig = readFileSync(join(targetDirectory, 'vite.config.ts'), 'utf8');
     const vitestConfig = readFileSync(join(targetDirectory, 'vitest.config.ts'), 'utf8');
     const packageRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -385,6 +387,15 @@ describe('scaffoldBootstrapApp', () => {
     expect(greetingRepoFile).toContain('findGreeting');
     expect(greetingRepoFile).toContain("message: 'Hello from fluo'");
     expect(greetingModuleFile).toContain('export class GreetingModule');
+    expect(greetingSliceTest).toContain("import { Test } from '@fluojs/testing';");
+    expect(greetingSliceTest).toContain('Test.createTestingModule({ rootModule: GreetingModule }).compile()');
+    expect(greetingSliceTest).toContain('defer(() => testingModule.container.dispose());');
+    expect(appE2eTest).toContain("import { Test } from '@fluojs/testing';");
+    expect(appE2eTest).toContain('Test.createApp({ rootModule: AppModule })');
+    for (const path of ['/health', '/ready', '/greeting/']) {
+      expect(appE2eTest).toContain(`app.request('GET', '${path}').send()`);
+    }
+    expect(appE2eTest).toContain('defer(() => app.close());');
     expect(viteConfig).toContain("import { fluoDecoratorsPlugin } from '@fluojs/vite';");
     expect(viteConfig).toContain("import { defineConfig } from 'vite';");
     expect(viteConfig).toContain('rolldownOptions:');

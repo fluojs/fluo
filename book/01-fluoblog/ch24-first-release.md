@@ -24,9 +24,9 @@ This is where the temptation to keep adding features appears. Recommendation alg
 
 Domain tests quickly check the rules for moving from draft to published and for version conflicts. Database integration tests verify conditional updates and transaction rollback in actual PostgreSQL. Request tests check that authentication, authorization, validation, and response transformation work together in the HTTP pipeline. Finally, tests using a real Fastify listener check host boundaries: ports, headers, shutdown signals, and response transfer.
 
-`createTestApp` from `@fluojs/testing` is the default tool for the third boundary. Because `request(...).send()` executes runtime dispatch and request-scoped DI, it provides stronger evidence than calling a controller method directly. It does not, however, automatically create a real TCP connection or PostgreSQL instance. When a test double is injected, record that systems beyond it were not verified.
+`Test.createApp` from `@fluojs/testing` is the default tool for the third boundary. Because `request(...).send()` executes runtime dispatch and request-scoped DI, it provides stronger evidence than calling a controller method directly. It does not, however, automatically create a real TCP connection or PostgreSQL instance. When a test double is injected, record that systems beyond it were not verified.
 
-Choose `createTestingModule` when the subject is DI visibility or provider replacement. Replace external boundaries with `overrideProvider` or `overrideModule` before `.compile()`, and explicitly specify the root module actually used. Bootstrap and lifecycle hooks also run, so dispose of the container at the end of the test. Making test cleanup optional allows the next test to pass or fail because of a previous connection or timer.
+Choose `Test.createTestingModule` when the subject is DI visibility or provider replacement. Replace external boundaries with `overrideProvider` or `overrideModule` before `.compile()`, and explicitly specify the root module actually used. Bootstrap and lifecycle hooks also run, so dispose of the container at the end of the test. Making test cleanup optional allows the next test to pass or fail because of a previous connection or timer.
 
 Avoid copying the same test at every level. A request test need not enumerate dozens of date strings again, but it should verify that validation failure maps to 400 and never reaches the service's write path. Also avoid replacing database tests with updates to an in-memory array and labeling them "safe for concurrent publication." Obtain evidence about real concurrency at the real storage boundary.
 
@@ -39,7 +39,7 @@ This is a narrow integration test of the operational composition, not an accepta
 ```typescript
 import { Inject, Module } from '@fluojs/core';
 import { Controller, Get } from '@fluojs/http';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { TerminusModule } from '@fluojs/terminus';
 import { expect, it } from 'vitest';
 import { createObservabilityModule } from '../observability/observability.module.js';
@@ -119,7 +119,7 @@ it('keeps diagnostics available while admitted work drains', async () => {
   })
   class ReleaseProbeModule {}
 
-  const app = await createTestApp({
+  const app = await Test.createApp({
     rootModule: ReleaseProbeModule,
     middleware: [TrafficMiddleware],
   });
@@ -427,7 +427,7 @@ Completing the first release does not mean implementing future commerce in advan
 During the manuscript's integration review, the code and public APIs were cross-checked, and six narrow request, Cron, and lifecycle tests passed after code blocks were transformed in memory and connected to existing package artifacts. Global async Prisma registration and the Terminus access boundary were also checked with a driver test double. Strict TypeScript checking of the operational code and narrow tests produced no diagnostics across 17 virtual files, with four external application connection points represented by declaration-only doubles. This was not a typecheck of the complete application including generated Prisma models. The `test/release-app.spec.ts` above and actual PostgreSQL, Redis, SMTP, browser, and SIGTERM tests were not run. The Korean book structure check, `pnpm book:check:ko`, passed all 72 chapters; the full governance and package build suite was not rerun. In the reader application, use `pnpm exec vitest run src/operations/release-boundary.spec.ts test/release-app.spec.ts --maxWorkers=1` to verify both the narrow gate test and the actual assembled-app fixture, supplementing them with separate browser, email, and signal experiments. The fictional release and retrospective in this chapter are not execution results.
 
 - [Official testing tools and request-level test boundaries](../../packages/testing/README.md)
-- [createTestApp bootstrap, dispatch, and close implementation](../../packages/testing/src/app.ts)
+- [Test.createApp bootstrap, dispatch, and close implementation](../../packages/testing/src/module.ts)
 - [Public types for test apps and provider overrides](../../packages/testing/src/types.ts)
 - [Test layers and lifecycle disposal contracts](../../docs/contracts/testing-guide.md)
 - [Metrics HTTP, Registry, and platform telemetry contracts](../../packages/metrics/README.md)

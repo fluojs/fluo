@@ -12,8 +12,8 @@
 
 ## Conformance Harness Requirements
 
-- [ ] MUST: 플랫폼 컴포넌트 계약 검사를 위해 `@fluojs/testing/platform-conformance`의 `createPlatformConformanceHarness(...)`를 실행합니다.
-- [ ] MUST: PlatformShell lifecycle exclusivity 검사를 위해 `@fluojs/testing/platform-shell-lifecycle-conformance`의 `createPlatformShellLifecycleConformanceHarness(...)`를 실행합니다.
+- [ ] MUST: 플랫폼 컴포넌트 계약 검사를 위해 `@fluojs/testing/platform-conformance`의 `PlatformConformanceHarness.create(...)`를 실행합니다.
+- [ ] MUST: PlatformShell lifecycle exclusivity 검사를 위해 `@fluojs/testing/platform-shell-lifecycle-conformance`의 `PlatformShellLifecycleConformanceHarness.create(...)`를 실행합니다.
 - [ ] MUST: `validate()`가 컴포넌트 상태를 전이시키지 않는지 검증합니다.
 - [ ] MUST: side-effect capture를 설정한 경우 `validate()`가 장기 지속 부수 효과를 만들지 않는지 검증합니다.
 - [ ] MUST: `start()`가 중복 호출에서도 결정론적인지 검증합니다.
@@ -30,13 +30,13 @@
 
 Next.js처럼 host가 소유하는 route 통합은 Web dispatcher 접점에 대해
 `@fluojs/testing/web-runtime-adapter-portability`의
-`createWebRuntimeHttpAdapterPortabilityHarness(...)`를 사용하고, 외부 HTTP 경계는
+`WebRuntimeHttpAdapterPortabilityHarness.create(...)`를 사용하고, 외부 HTTP 경계는
 실제 host 통합 테스트로 검증합니다. Listener startup log, TLS configuration,
 process signal 소유권 검사는 어댑터가 해당 capability를 소유할 때만 적용합니다.
 Host가 거부하는 method를 지원한다고 주장하지 말고 host의 method 제한을 문서화하고
 검증합니다.
 
-- [ ] MUST: HTTP 어댑터는 `@fluojs/testing/http-adapter-portability`의 `createHttpAdapterPortabilityHarness(...)`를 실행합니다.
+- [ ] MUST: HTTP 어댑터는 `@fluojs/testing/http-adapter-portability`의 `HttpAdapterPortabilityHarness.create(...)`를 실행합니다.
 - [ ] MUST: 독립적이고 순서가 보존되는 응답 `Set-Cookie` field를 검증하려면 `assertSupportsPortableResponseCookies()`를 실행합니다.
 - [ ] MUST: `assertSupportsCustomHttpRouteMethods()`로 `QUERY`와 extension HTTP method를 검증합니다.
 - [ ] MUST: `assertSupportsSingleByteRanges()`로 bounded, suffix, open-ended, malformed, multi-range, unsatisfiable, `HEAD`, `POST` range case를 검증합니다.
@@ -51,7 +51,7 @@ Host가 거부하는 method를 지원한다고 주장하지 말고 host의 metho
 - [ ] MUST: `assertReportsConfiguredHostInStartupLogs()`를 검증합니다.
 - [ ] MUST: test-owned TLS certificate와 key를 `assertReportsHttpsStartupUrl(...)`에 제공합니다.
 - [ ] MUST: `assertRemovesShutdownSignalListenersAfterClose()`를 검증합니다.
-- [ ] MUST: fetch-style websocket 어댑터는 `@fluojs/testing/fetch-style-websocket-conformance`의 `createFetchStyleWebSocketConformanceHarness(...)`를 실행합니다.
+- [ ] MUST: fetch-style websocket 어댑터는 `@fluojs/testing/fetch-style-websocket-conformance`의 `FetchStyleWebSocketConformanceHarness.create(...)`를 실행합니다.
 - [ ] MUST: fetch-style websocket capability 필드 `kind`, `contract`, `mode`, `version`, `support`, `reason`를 안정적으로 유지합니다. Version 1 capability는 adapter `listen()` 전에 설치해야 하는 protocol binding을 위해 별도로 versioned된 optional `bindingInstallation` extension을 추가할 수 있지만 capability `version` field를 바꾸면 안 됩니다.
 
 ## Package Contract Requirements

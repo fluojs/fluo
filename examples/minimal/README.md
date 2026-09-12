@@ -39,7 +39,7 @@ examples/minimal/
 │   ├── hello.controller.ts # GET /hello
 │   ├── hello.service.ts    # Business logic
 │   ├── upload.controller.ts # POST /uploads portable multipart DTO
-│   └── app.test.ts         # Unit + createTestApp request-helper tests
+│   └── app.test.ts         # Unit + Test.createApp request-helper tests
 └── README.md
 ```
 

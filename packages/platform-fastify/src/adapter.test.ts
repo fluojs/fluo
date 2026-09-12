@@ -45,7 +45,7 @@ import {
   HealthModule,
 } from '@fluojs/runtime';
 import * as runtimeWeb from '@fluojs/runtime/web';
-import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
+import { HttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -221,7 +221,7 @@ fHFvqyh6pXZV7XKcPxCTNuIw2rpw2WqY5/H+lTmUFmSXieFZAAMRueGH8Y5trCHU
 JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
-const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness<
+const fastifyPortabilityHarness = HttpAdapterPortabilityHarness.create<
   BootstrapFastifyApplicationOptions,
   BootstrapFastifyApplicationOptions,
   Application

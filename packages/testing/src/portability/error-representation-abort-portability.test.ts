@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  createHttpAdapterPortabilityHarness,
+  HttpAdapterPortabilityHarness,
   type NetworkHttpErrorRepresentationBootstrapOptions,
 } from './http-adapter-portability.js';
 import {
-  createWebRuntimeHttpAdapterPortabilityHarness,
+  WebRuntimeHttpAdapterPortabilityHarness,
   type WebHttpErrorRepresentationBootstrapOptions,
 } from './web-runtime-adapter-portability.js';
 
@@ -16,7 +16,7 @@ describe('HTTP error-representation abort portability', () => {
 
   it('passes a request-finish observer to the network abort bootstrap', async () => {
     const bootstrapInspected = new Error('network abort bootstrap inspected');
-    const harness = createHttpAdapterPortabilityHarness({
+    const harness = HttpAdapterPortabilityHarness.create({
       async bootstrap(_rootModule, options: NetworkHttpErrorRepresentationBootstrapOptions) {
         expect(options.observers).toHaveLength(1);
         expect(options.observers[0]?.onRequestFinish).toEqual(expect.any(Function));
@@ -39,7 +39,7 @@ describe('HTTP error-representation abort portability', () => {
     const dispatchStarted = new Promise<void>((resolve) => {
       dispatchStartedResolve = resolve;
     });
-    const harness = createWebRuntimeHttpAdapterPortabilityHarness({
+    const harness = WebRuntimeHttpAdapterPortabilityHarness.create({
       async bootstrap(_rootModule, options: WebHttpErrorRepresentationBootstrapOptions) {
         return {
           async close() {

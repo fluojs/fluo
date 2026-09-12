@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { Inject, Module, getModuleMetadata } from '@fluojs/core';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { I18nError, I18nModule, createI18n } from './index.js';
 import { I18nService } from './service.js';
 import type {
@@ -97,12 +98,15 @@ describe('@fluojs/i18n root public surface', () => {
     })
     class AppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
-    const service = await testingModule.resolve<I18nService>(I18nService);
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
+      const service = await testingModule.resolve<I18nService>(I18nService);
 
-    expect(service.translate('app.title', { locale: 'ko', values: { name: 'fluo' } })).toBe('안녕하세요 fluo');
-    expect(service.resolveLocales('ko')).toEqual(['ko', 'en']);
-    expect(testingModule.get(I18nService)).toBe(service);
+      expect(service.translate('app.title', { locale: 'ko', values: { name: 'fluo' } })).toBe('안녕하세요 fluo');
+      expect(service.resolveLocales('ko')).toEqual(['ko', 'en']);
+      expect(testingModule.get(I18nService)).toBe(service);
+    });
   });
 
   it('exposes I18nModule providers globally by default and honors global false opt-out', async () => {
@@ -123,22 +127,20 @@ describe('@fluojs/i18n root public surface', () => {
     })
     class DefaultGlobalAppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: DefaultGlobalAppModule }).compile();
-
-    try {
+    const testingModule = await Test.createTestingModule({ rootModule: DefaultGlobalAppModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
       expect(getModuleMetadata(I18nModule.forRoot())).toMatchObject({ global: true });
       expect(getModuleMetadata(I18nModule.forRoot({ global: false }))).toMatchObject({ global: false });
       expect((await testingModule.resolve(SiblingConsumer)).title()).toBe('Global i18n');
-    } finally {
-      await testingModule.container.dispose();
-    }
+    });
 
     @Module({
       imports: [I18nModule.forRoot({ catalogs: { en: { app: { title: 'Local i18n' } } }, defaultLocale: 'en', global: false }), SiblingModule],
     })
     class LocalAppModule {}
 
-    await expect(createTestingModule({ rootModule: LocalAppModule }).compile()).rejects.toThrow(/not visible through a global module|I18nService/);
+    await expect(Test.createTestingModule({ rootModule: LocalAppModule }).compile()).rejects.toThrow(/not visible through a global module|I18nService/);
   });
 
   it('resolves nested keys and namespace-prefixed keys with explicit locales', () => {

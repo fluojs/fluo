@@ -1,5 +1,5 @@
 import { Inject, Module } from '@fluojs/core';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
 import { NotificationsConfigurationError } from './errors.js';
@@ -58,7 +58,7 @@ describe('NotificationsModule configuration', () => {
     })
     class AppModule {}
 
-    await expect(createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrowError(
+    await expect(Test.createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrowError(
       new NotificationsConfigurationError(
         'Notifications queue bulkThreshold must be a finite positive integer.',
       ),

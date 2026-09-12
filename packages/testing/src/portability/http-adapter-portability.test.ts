@@ -15,7 +15,7 @@ import type { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createHttpAdapterPortabilityHarness } from './http-adapter-portability.js';
+import { HttpAdapterPortabilityHarness } from './http-adapter-portability.js';
 
 const TEST_TLS_PRIVATE_KEY = `-----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBbj6DdMPNvDMr
@@ -252,7 +252,7 @@ describe('http adapter portability cleanup reporting', () => {
       }
     }
     const runError = new RunFailure(app);
-    const harness = createHttpAdapterPortabilityHarness({
+    const harness = HttpAdapterPortabilityHarness.create({
       async bootstrap() {
         throw new Error('bootstrap should not be used');
       },
@@ -280,7 +280,7 @@ describe('http adapter portability cleanup reporting', () => {
       }
     }
     const runError = new RunFailure(app);
-    const harness = createHttpAdapterPortabilityHarness({
+    const harness = HttpAdapterPortabilityHarness.create({
       async bootstrap() {
         throw new Error('bootstrap should not be used');
       },
@@ -306,7 +306,7 @@ describe('http adapter portability cleanup reporting', () => {
   it('closes partially bootstrapped apps when listen fails before assertion cleanup registration', async () => {
     const listenError = new Error('listen exploded');
     const close = vi.fn(async () => {});
-    const harness = createHttpAdapterPortabilityHarness({
+    const harness = HttpAdapterPortabilityHarness.create({
       async bootstrap() {
         return {
           close,
@@ -328,7 +328,7 @@ describe('http adapter portability cleanup reporting', () => {
   it('preserves listen and cleanup failures when partially bootstrapped app cleanup fails', async () => {
     const listenError = new Error('listen exploded');
     const closeError = new Error('close exploded');
-    const harness = createHttpAdapterPortabilityHarness({
+    const harness = HttpAdapterPortabilityHarness.create({
       async bootstrap() {
         return {
           async close() {
@@ -361,7 +361,7 @@ describe('http adapter portability cleanup reporting', () => {
   it('closes the error-representation app when network listen fails', async () => {
     const listenError = new Error('representation listen exploded');
     const close = vi.fn(async () => {});
-    const harness = createHttpAdapterPortabilityHarness({
+    const harness = HttpAdapterPortabilityHarness.create({
       async bootstrap() {
         return {
           close,
@@ -384,7 +384,7 @@ describe('http adapter portability cleanup reporting', () => {
   it('preserves error-representation listen and cleanup failures', async () => {
     const listenError = new Error('representation listen exploded');
     const closeError = new Error('representation close exploded');
-    const harness = createHttpAdapterPortabilityHarness({
+    const harness = HttpAdapterPortabilityHarness.create({
       async bootstrap() {
         return {
           async close() {
@@ -419,7 +419,7 @@ describe('http adapter portability cleanup reporting', () => {
     const closeError = new Error('close exploded');
     const signal = 'SIGTERM' as const;
     const listener = () => {};
-    const harness = createHttpAdapterPortabilityHarness({
+    const harness = HttpAdapterPortabilityHarness.create({
       async bootstrap() {
         throw new Error('bootstrap should not be used');
       },
@@ -456,7 +456,7 @@ describe('http adapter portability cleanup reporting', () => {
 
   it('preserves assertion failures when close also fails', async () => {
     const closeError = new Error('close exploded');
-    const harness = createHttpAdapterPortabilityHarness({
+    const harness = HttpAdapterPortabilityHarness.create({
       async bootstrap() {
         throw new Error('bootstrap should not be used');
       },
@@ -489,7 +489,7 @@ describe('http adapter portability cleanup reporting', () => {
 
 registerPortabilitySuite(
   'node',
-  createHttpAdapterPortabilityHarness({
+  HttpAdapterPortabilityHarness.create({
     bootstrap: createNodeTestApplication,
     createConditionalRequestBootstrapOptions: (options): NodeTestApplicationOptions => options,
     createErrorRepresentationBootstrapOptions: (options): NodeTestApplicationOptions => options,
@@ -504,7 +504,7 @@ registerHeaderHelperPortabilitySuite('node', createNodeTestApplication);
 
 registerPortabilitySuite(
   'nodejs-platform',
-  createHttpAdapterPortabilityHarness({
+  HttpAdapterPortabilityHarness.create({
     bootstrap: createNodeTestApplication,
     createConditionalRequestBootstrapOptions: (options): NodeTestApplicationOptions => options,
     createErrorRepresentationBootstrapOptions: (options): NodeTestApplicationOptions => options,
@@ -519,7 +519,7 @@ registerHeaderHelperPortabilitySuite('nodejs-platform', createNodeTestApplicatio
 
 registerPortabilitySuite(
   'express',
-  createHttpAdapterPortabilityHarness({
+  HttpAdapterPortabilityHarness.create({
     bootstrap: createExpressTestApplication,
     createConditionalRequestBootstrapOptions: (options): ExpressTestApplicationOptions => options,
     createErrorRepresentationBootstrapOptions: (options): ExpressTestApplicationOptions => options,
@@ -532,7 +532,7 @@ registerPortabilitySuite(
 );
 registerHeaderHelperPortabilitySuite('express', createExpressTestApplication);
 
-const fastifyPortabilityHarness = createHttpAdapterPortabilityHarness({
+const fastifyPortabilityHarness = HttpAdapterPortabilityHarness.create({
   bootstrap: createFastifyTestApplication,
   createConditionalRequestBootstrapOptions: (options): FastifyTestApplicationOptions => options,
   createErrorRepresentationBootstrapOptions: (options): FastifyTestApplicationOptions => options,

@@ -1,6 +1,7 @@
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
+import { withCleanup } from '../../../../tooling/testing/with-cleanup.js';
 import { AppModule } from '../src/app';
 
 describe('FluoBlog request pipeline', () => {
@@ -9,23 +10,23 @@ describe('FluoBlog request pipeline', () => {
     ['/ready', 'ready'],
   ])('preserves the starter endpoint when %s is requested', async (path, status) => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('GET', path).send();
 
       // Then
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ status });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('lists the initial post when no post has been created', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('GET', '/posts').send();
 
@@ -34,15 +35,14 @@ describe('FluoBlog request pipeline', () => {
       expect(response.body).toEqual([
         { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
       ]);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('creates a post when its body satisfies the DTO rules', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('POST', '/posts')
         .body({ title: 'Learning Fluo', content: 'Explicit modules and DI.' })
@@ -55,9 +55,7 @@ describe('FluoBlog request pipeline', () => {
         title: 'Learning Fluo',
         content: 'Explicit modules and DI.',
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it.each([
@@ -65,17 +63,16 @@ describe('FluoBlog request pipeline', () => {
     ['the longest accepted values', { title: 'a'.repeat(120), content: 'b'.repeat(5000) }],
   ])('accepts a post when it uses %s', async (_label, body) => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('POST', '/posts').body(body).send();
 
       // Then
       expect(response.status).toBe(201);
       expect(response.body).toEqual({ id: '2', ...body });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it.each([
@@ -91,8 +88,9 @@ describe('FluoBlog request pipeline', () => {
     ['content is too long', { title: 'Valid title', content: 'a'.repeat(5001) }, 'content'],
   ])('returns field details when %s', async (_label, body, field) => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('POST', '/posts').body(body).send();
 
@@ -107,15 +105,14 @@ describe('FluoBlog request pipeline', () => {
           ]),
         },
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('preserves the list when validation rejects a request', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       await app.request('POST', '/posts').body({ title: null, content: null }).send();
 
       // When
@@ -126,15 +123,14 @@ describe('FluoBlog request pipeline', () => {
       expect(response.body).toEqual([
         { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
       ]);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('retrieves a post when it was created by an earlier request', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       await app.request('POST', '/posts')
         .body({ title: 'Learning Fluo', content: 'Explicit modules and DI.' })
         .send();
@@ -147,15 +143,14 @@ describe('FluoBlog request pipeline', () => {
       expect(response.body).toEqual({
         id: '2', title: 'Learning Fluo', content: 'Explicit modules and DI.',
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('includes a created post when listing subsequent requests', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       await app.request('POST', '/posts')
         .body({ title: 'Learning Fluo', content: 'Explicit modules and DI.' })
         .send();
@@ -169,15 +164,14 @@ describe('FluoBlog request pipeline', () => {
         { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
         { id: '2', title: 'Learning Fluo', content: 'Explicit modules and DI.' },
       ]);
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('returns a resource error when the post ID is unknown', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('GET', '/posts/999').send();
 
@@ -186,15 +180,14 @@ describe('FluoBlog request pipeline', () => {
       expect(response.body).toMatchObject({
         error: { code: 'NOT_FOUND', status: 404 },
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('rejects unbound fields when a client supplies an ID or admin flag', async () => {
     // Given
-    const app = await createTestApp({ rootModule: AppModule });
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       // When
       const response = await app.request('POST', '/posts')
         .body({ id: '999', title: 'Learning Fluo', content: 'Explicit fields.', admin: true })
@@ -212,23 +205,21 @@ describe('FluoBlog request pipeline', () => {
           ]),
         },
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('starts with seed data when a new application is created', async () => {
     // Given
-    const first = await createTestApp({ rootModule: AppModule });
-    try {
+    const first = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => first.close());
       await first.request('POST', '/posts')
         .body({ title: 'First application', content: 'Not persisted.' })
         .send();
-    } finally {
-      await first.close();
-    }
-    const second = await createTestApp({ rootModule: AppModule });
-    try {
+    });
+    const second = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => second.close());
       // When
       const response = await second.request('GET', '/posts').send();
 
@@ -236,8 +227,6 @@ describe('FluoBlog request pipeline', () => {
       expect(response.body).toEqual([
         { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
       ]);
-    } finally {
-      await second.close();
-    }
+    });
   });
 });

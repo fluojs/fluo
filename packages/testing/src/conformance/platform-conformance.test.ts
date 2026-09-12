@@ -10,7 +10,7 @@ import type {
   PlatformValidationResult,
 } from '@fluojs/runtime';
 
-import { createPlatformConformanceHarness } from './platform-conformance.js';
+import { PlatformConformanceHarness } from './platform-conformance.js';
 
 class TestPlatformComponent implements PlatformComponent {
   private currentState: PlatformState;
@@ -118,7 +118,7 @@ class TestPlatformComponent implements PlatformComponent {
 
 describe('platform conformance harness', () => {
   it('passes full checks for a deterministic, sanitized component', async () => {
-    const harness = createPlatformConformanceHarness({
+    const harness = PlatformConformanceHarness.create({
       createComponent: () =>
         new TestPlatformComponent('queue.default', 'queue', {
           diagnostics: [
@@ -154,7 +154,7 @@ describe('platform conformance harness', () => {
   });
 
   it('fails when validate mutates component state', async () => {
-    const harness = createPlatformConformanceHarness({
+    const harness = PlatformConformanceHarness.create({
       createComponent: () => new TestPlatformComponent('redis.default', 'redis', { mutateOnValidate: true }),
       scenarios: {
         degraded: {
@@ -182,7 +182,7 @@ describe('platform conformance harness', () => {
       }
     }
 
-    const harness = createPlatformConformanceHarness({
+    const harness = PlatformConformanceHarness.create({
       createComponent: () => new CleanupTrackedComponent('redis.default', 'redis'),
     });
 
@@ -194,7 +194,7 @@ describe('platform conformance harness', () => {
   });
 
   it('fails when duplicate start calls are not idempotent', async () => {
-    const harness = createPlatformConformanceHarness({
+    const harness = PlatformConformanceHarness.create({
       createComponent: () => new TestPlatformComponent('cache.default', 'cache', { nonIdempotentStart: true }),
       scenarios: {
         degraded: {
@@ -220,7 +220,7 @@ describe('platform conformance harness', () => {
       }
     }
 
-    const harness = createPlatformConformanceHarness({
+    const harness = PlatformConformanceHarness.create({
       createComponent: () => new StopFailureComponent('cache.default', 'cache'),
     });
 
@@ -249,7 +249,7 @@ describe('platform conformance harness', () => {
       }
     }
 
-    const harness = createPlatformConformanceHarness({
+    const harness = PlatformConformanceHarness.create({
       createComponent: () => new TestPlatformComponent('cache.default', 'cache'),
       scenarios: {
         degraded: {
@@ -280,7 +280,7 @@ describe('platform conformance harness', () => {
   });
 
   it('includes diagnostic messages when fixHint enforcement fails', async () => {
-    const harness = createPlatformConformanceHarness({
+    const harness = PlatformConformanceHarness.create({
       createComponent: () =>
         new TestPlatformComponent('queue.default', 'queue', {
           diagnostics: [
@@ -298,7 +298,7 @@ describe('platform conformance harness', () => {
   });
 
   it('fails when snapshot details leak unsanitized credential keys', async () => {
-    const harness = createPlatformConformanceHarness({
+    const harness = PlatformConformanceHarness.create({
       createComponent: () =>
         new TestPlatformComponent('redis.default', 'redis', {
           snapshotDetails: {

@@ -157,7 +157,7 @@ Bun 또는 application code에서 전파된 error에는 package-owned code를 �
 
 `packages/platform-bun/src/adapter.test.ts`는 문서화된 계약을 검증하는 package-local regression 대상입니다. 이 파일은 conditional request, single-byte range 및 `If-Range`, custom `QUERY`/extension-method fallback, malformed cookie, byte-exact JSON/text raw-body 보존, managed/custom fetch handler의 multipart raw-body 제외, SSE framing, native-route param parity, same-path multi-method handoff, middleware가 request path 또는 method를 rewrite한 뒤의 stale native handoff rematch, versioning fallback, normalization-sensitive fallback, OPTIONS/CORS ownership, same-shape route fallback, TLS listen-target reporting을 검증하는 Bun fetch-style portability assertion과 startup logging, duplicate listen idempotency, shutdown listener cleanup, in-flight drain, 비동기 realtime binding 평가 중 close, binding 완료 후 HTTP fallback, timeout validation/reporting, shutdown 503 ingress rejection, signal-driven close rejection reporting, upgrade-only host를 통한 websocket binding delegation/short-circuit 동작을 검증하는 집중 테스트를 포함합니다.
 
-저장소의 더 넓은 suite도 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`에서 `createWebRuntimeHttpAdapterPortabilityHarness(...)`로 Bun을 Deno 및 Cloudflare Workers와 함께 실행해 fetch-style platform 간 shared web-runtime portability baseline을 맞춥니다.
+저장소의 더 넓은 suite도 `packages/testing/src/portability/web-runtime-adapter-portability.test.ts`에서 `WebRuntimeHttpAdapterPortabilityHarness.create(...)`로 Bun을 Deno 및 Cloudflare Workers와 함께 실행해 fetch-style platform 간 shared web-runtime portability baseline을 맞춥니다.
 
 ## 관련 패키지
 

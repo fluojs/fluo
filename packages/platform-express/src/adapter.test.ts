@@ -47,7 +47,7 @@ import {
 } from '@fluojs/runtime';
 import { HTTP_APPLICATION_ADAPTER } from '@fluojs/runtime/internal';
 import * as runtimeWeb from '@fluojs/runtime/web';
-import { createHttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
+import { HttpAdapterPortabilityHarness } from '@fluojs/testing/http-adapter-portability';
 import type {
   ErrorRequestHandler,
   Request as ExpressRequest,
@@ -273,7 +273,7 @@ fHFvqyh6pXZV7XKcPxCTNuIw2rpw2WqY5/H+lTmUFmSXieFZAAMRueGH8Y5trCHU
 JNCDpGwh8us=
 -----END CERTIFICATE-----`;
 
-const expressPortabilityHarness = createHttpAdapterPortabilityHarness<
+const expressPortabilityHarness = HttpAdapterPortabilityHarness.create<
   BootstrapExpressApplicationOptions,
   BootstrapExpressApplicationOptions,
   Application

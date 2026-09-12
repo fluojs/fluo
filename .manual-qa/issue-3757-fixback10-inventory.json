@@ -1,0 +1,267 @@
+{
+  "totals": {
+    "directFiles": 26,
+    "successApps": 88,
+    "successModules": 60,
+    "rejectedApps": 3,
+    "rejectedModules": 13,
+    "uncovered": 0,
+    "generatedTemplates": 5,
+    "generatedTemplateApps": 3,
+    "generatedTemplateModules": 3,
+    "embeddedScaffoldSnippets": 2,
+    "embeddedScaffoldApps": 1,
+    "embeddedScaffoldModules": 1,
+    "generatedFixtures": 1,
+    "generatedFixtureApps": 1,
+    "generatedSuccessfulCreations": 9,
+    "allSuccessfulCreations": 157
+  },
+  "inventory": [
+    {
+      "file": "examples/auth-jwt-passport/src/app.test.ts",
+      "apps": 1,
+      "modules": 2,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "examples/fluo-blog/00-start/test/app.e2e.test.ts",
+      "apps": 1,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "examples/fluo-blog/01-first-route/test/app.e2e.test.ts",
+      "apps": 2,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "examples/fluo-blog/02-dependency-injection/src/posts.slice.test.ts",
+      "apps": 0,
+      "modules": 1,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "examples/fluo-blog/02-dependency-injection/test/app.e2e.test.ts",
+      "apps": 4,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "examples/fluo-blog/03-validation-errors/src/posts.slice.test.ts",
+      "apps": 0,
+      "modules": 1,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "examples/fluo-blog/03-validation-errors/test/app.e2e.test.ts",
+      "apps": 12,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "examples/minimal/src/app.test.ts",
+      "apps": 1,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "examples/openapi-multiple-documents/src/app.test.ts",
+      "apps": 1,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "examples/ops-metrics-terminus/src/app.test.ts",
+      "apps": 3,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "examples/react-stable-ssr/src/app.test.ts",
+      "apps": 1,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "examples/react-vite-ssr/src/app.test.ts",
+      "apps": 6,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "examples/realworld-api/src/app.test.ts",
+      "apps": 2,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "packages/email/src/module-visibility.test.ts",
+      "apps": 0,
+      "modules": 1,
+      "excludedApps": 0,
+      "excludedModules": 2
+    },
+    {
+      "file": "packages/i18n/src/http.request.test.ts",
+      "apps": 1,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "packages/i18n/src/index.test.ts",
+      "apps": 0,
+      "modules": 2,
+      "excludedApps": 0,
+      "excludedModules": 1
+    },
+    {
+      "file": "packages/metrics/src/metrics-module.request.test.ts",
+      "apps": 3,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "packages/notifications/src/module-configuration.test.ts",
+      "apps": 0,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 1
+    },
+    {
+      "file": "packages/notifications/src/module.test.ts",
+      "apps": 0,
+      "modules": 4,
+      "excludedApps": 0,
+      "excludedModules": 2
+    },
+    {
+      "file": "packages/terminus/src/module-sibling-composition.test.ts",
+      "apps": 4,
+      "modules": 0,
+      "excludedApps": 3,
+      "excludedModules": 0
+    },
+    {
+      "file": "packages/terminus/src/module.test.ts",
+      "apps": 22,
+      "modules": 2,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "packages/terminus/src/request-regressions.test.ts",
+      "apps": 1,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "packages/testing/src/app.test.ts",
+      "apps": 1,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "packages/testing/src/input-materialization.e2e.test.ts",
+      "apps": 2,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "packages/testing/src/module-lifecycle-resolution-regression.test.ts",
+      "apps": 0,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 2
+    },
+    {
+      "file": "packages/testing/src/module.compile-failure.test.ts",
+      "apps": 0,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 3
+    },
+    {
+      "file": "packages/testing/src/module.override-refresh.test.ts",
+      "apps": 0,
+      "modules": 4,
+      "excludedApps": 0,
+      "excludedModules": 0
+    },
+    {
+      "file": "packages/testing/src/module.test.ts",
+      "apps": 13,
+      "modules": 43,
+      "excludedApps": 0,
+      "excludedModules": 2
+    },
+    {
+      "file": "packages/throttler/src/module.test.ts",
+      "apps": 7,
+      "modules": 0,
+      "excludedApps": 0,
+      "excludedModules": 0
+    }
+  ],
+  "generatedInventory": [
+    {
+      "name": "e2e.test.ts.ejs",
+      "apps": 1,
+      "modules": 0
+    },
+    {
+      "name": "module.slice.test.ts.ejs",
+      "apps": 0,
+      "modules": 1
+    },
+    {
+      "name": "repository.slice.test.ts.ejs",
+      "apps": 0,
+      "modules": 1
+    },
+    {
+      "name": "resource.slice.test.ts.ejs",
+      "apps": 0,
+      "modules": 1
+    },
+    {
+      "name": "react-vite-ssr/src/app.test.ts.ejs",
+      "apps": 2,
+      "modules": 0
+    },
+    {
+      "name": "generated-request-dto.ts.fixture",
+      "apps": 1,
+      "modules": 0
+    },
+    {
+      "name": "createGreetingSliceTestFile",
+      "apps": 0,
+      "modules": 1
+    },
+    {
+      "name": "createAppE2eTestFile",
+      "apps": 1,
+      "modules": 0
+    }
+  ]
+}

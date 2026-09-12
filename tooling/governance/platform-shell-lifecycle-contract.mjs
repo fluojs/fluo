@@ -13,22 +13,22 @@ const lifecycleContractRequirements = [
   ['docs/contracts/third-party-extension-contract.ko.md', ['PlatformLifecycleConflictError', 'queue하면 안 됩니다']],
   [
     'docs/contracts/platform-conformance-authoring-checklist.md',
-    ['PlatformLifecycleConflictError', 'all four `start()` / `stop()` overlap pairs', 'createPlatformShellLifecycleConformanceHarness'],
+    ['PlatformLifecycleConflictError', 'all four `start()` / `stop()` overlap pairs', 'PlatformShellLifecycleConformanceHarness.create'],
   ],
   [
     'docs/contracts/platform-conformance-authoring-checklist.ko.md',
-    ['PlatformLifecycleConflictError', '네 가지 `start()` / `stop()` overlap pair', 'createPlatformShellLifecycleConformanceHarness'],
+    ['PlatformLifecycleConflictError', '네 가지 `start()` / `stop()` overlap pair', 'PlatformShellLifecycleConformanceHarness.create'],
   ],
   [
     'docs/CONTEXT.md',
-    ['PlatformShell lifecycle exclusivity', 'PlatformLifecycleConflictError', 'createPlatformShellLifecycleConformanceHarness'],
+    ['PlatformShell lifecycle exclusivity', 'PlatformLifecycleConflictError', 'PlatformShellLifecycleConformanceHarness.create'],
   ],
   [
     'docs/CONTEXT.ko.md',
-    ['PlatformShell lifecycle exclusivity', 'PlatformLifecycleConflictError', 'createPlatformShellLifecycleConformanceHarness'],
+    ['PlatformShell lifecycle exclusivity', 'PlatformLifecycleConflictError', 'PlatformShellLifecycleConformanceHarness.create'],
   ],
   ['packages/testing/package.json', ['./platform-shell-lifecycle-conformance']],
-  ['packages/runtime/src/platform-shell.lifecycle.test.ts', ['createPlatformShellLifecycleConformanceHarness']],
+  ['packages/runtime/src/platform-shell.lifecycle.test.ts', ['PlatformShellLifecycleConformanceHarness.create']],
 ];
 
 function assert(condition, message) {

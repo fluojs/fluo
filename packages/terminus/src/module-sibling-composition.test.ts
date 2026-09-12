@@ -2,9 +2,10 @@ import { DrizzleModule } from '@fluojs/drizzle';
 import { PrismaModule } from '@fluojs/prisma';
 import { getRedisClientToken } from '@fluojs/redis';
 import { defineModule } from '@fluojs/runtime';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it, vi } from 'vitest';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { createDrizzleHealthIndicatorProvider } from './indicators/drizzle.js';
 import { MemoryHealthIndicator } from './indicators/memory.js';
 import { createPrismaHealthIndicatorProvider } from './indicators/prisma.js';
@@ -68,9 +69,10 @@ describe('TerminusModule.forRoot sibling module composition', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(200);
@@ -88,9 +90,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
 
       expect(readyResponse.status).toBe(200);
       expect(readyResponse.body).toEqual({ status: 'ready' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('resolves a named Redis provider through the documented composition path', async () => {
@@ -123,9 +123,10 @@ describe('TerminusModule.forRoot sibling module composition', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(200);
@@ -145,9 +146,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
 
       expect(readyResponse.status).toBe(200);
       expect(readyResponse.body).toEqual({ status: 'ready' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('fails at bootstrap with an actionable error when a required indicator token is not visible', async () => {
@@ -161,7 +160,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
       ],
     });
 
-    await expect(createTestApp({ rootModule: AppModule })).rejects.toThrow(
+    await expect(Test.createApp({ rootModule: AppModule })).rejects.toThrow(
       /cannot access token Symbol\(fluo\.redis\.client\)/,
     );
   });
@@ -197,7 +196,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
     let thrownError: unknown;
 
     try {
-      await createTestApp({ rootModule: AppModule });
+      await Test.createApp({ rootModule: AppModule });
     } catch (error: unknown) {
       thrownError = error;
     }
@@ -227,7 +226,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
     let thrownError: unknown;
 
     try {
-      await createTestApp({ rootModule: AppModule });
+      await Test.createApp({ rootModule: AppModule });
     } catch (error: unknown) {
       thrownError = error;
     }
@@ -249,9 +248,10 @@ describe('TerminusModule.forRoot sibling module composition', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
+    const app = await Test.createApp({ rootModule: AppModule });
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(503);
@@ -260,9 +260,7 @@ describe('TerminusModule.forRoot sibling module composition', () => {
         error: { prisma: { status: 'down' } },
         status: 'error',
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('keeps indicator providers without external dependencies working when no imports are configured', async () => {
@@ -276,9 +274,9 @@ describe('TerminusModule.forRoot sibling module composition', () => {
       ],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
-
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(200);
@@ -286,8 +284,6 @@ describe('TerminusModule.forRoot sibling module composition', () => {
         details: { memory: { status: 'up' } },
         status: 'ok',
       });
-    } finally {
-      await app.close();
-    }
+    });
   });
 });

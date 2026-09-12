@@ -3,49 +3,53 @@ import type { ValueProvider } from '@fluojs/di';
 import type { Mock } from 'vitest';
 import { vi } from 'vitest';
 
-import type { DeepMocked } from './mock-types.js';
+import type { ShallowMocked } from './mock-types.js';
 
-export type { DeepMocked } from './mock-types.js';
-
-/**
- * Defines the mocked methods type.
- */
-export type MockedMethods<T> = {
-  [K in keyof T]: T[K] extends (...args: never[]) => unknown ? Mock<T[K]> : T[K];
-};
+export type { ShallowMocked } from './mock-types.js';
 
 /**
- * Creates a proxy mock object with optional strict missing-property checks.
- *
- * @param partial The partial.
- * @param options The options.
- * @returns The create mock result.
+ * Shallow proxy mocks. Migrate `createMock(...)` to `ShallowMock.create(...)`.
  */
-export function createMock<T extends object>(
-  partial: Partial<MockedMethods<T>> = {},
-  options: { strict?: boolean } = {},
-): MockedMethods<T> {
-  const autoMocks = new Map<PropertyKey, unknown>();
+export class ShallowMock {
+  /**
+   * Preserves supplied values and lazily creates a stable `vi.fn()` for each missing property.
+   * Missing `then` is always `undefined` so the proxy cannot become an accidental thenable.
+   * Nested objects and return values are not mocked. Supply data properties explicitly:
+   * runtime reflection cannot distinguish a missing data property from a method.
+   * Strict mode rejects every missing property, including Object.prototype keys.
+   */
+  static create<T extends object>(
+    partial: Partial<{
+      [K in keyof T]: T[K] extends (...args: never[]) => unknown ? Mock<T[K]> : T[K];
+    }> = {},
+    options: { strict?: boolean } = {},
+  ): ShallowMocked<T> {
+    const autoMocks = new Map<PropertyKey, unknown>();
 
-  return new Proxy({ ...partial } as MockedMethods<T>, {
-    get(target, prop, receiver) {
-      if (Reflect.has(target, prop)) {
-        return Reflect.get(target, prop, receiver);
-      }
+    return new Proxy({ ...partial } as ShallowMocked<T>, {
+      get(target, prop, receiver) {
+        if (Object.hasOwn(target, prop)) {
+          return Reflect.get(target, prop, receiver);
+        }
 
-      if (options.strict) {
-        throw new Error(
-          `createMock: strict mode — property "${String(prop)}" is not declared in the partial mock. Add it to the partial or disable strict mode.`,
-        );
-      }
+        if (prop === 'then') {
+          return undefined;
+        }
 
-      if (!autoMocks.has(prop)) {
-        autoMocks.set(prop, vi.fn());
-      }
+        if (options.strict) {
+          throw new Error(
+            `ShallowMock.create: strict mode — property "${String(prop)}" is not declared in the partial mock. Add it to the partial or disable strict mode.`,
+          );
+        }
 
-      return autoMocks.get(prop);
-    },
-  });
+        if (!autoMocks.has(prop)) {
+          autoMocks.set(prop, vi.fn());
+        }
+
+        return autoMocks.get(prop);
+      },
+    });
+  }
 }
 
 /**
@@ -59,29 +63,37 @@ export function asMock<T extends (...args: never[]) => unknown>(fn: T): Mock<T> 
 }
 
 /**
- * Creates a deep mock by replacing prototype methods with `vi.fn()` spies.
- *
- * @param type The type.
- * @returns The create deep mock result.
+ * Prototype-method mocks. Migrate `createDeepMock(Type)` to `PrototypeMock.create(Type)`.
  */
-export function createDeepMock<T extends object>(type: new (...args: unknown[]) => T): DeepMocked<T> {
-  const spies: Record<string | symbol, unknown> = {};
+export class PrototypeMock {
+  /**
+   * Creates spies for own and inherited prototype methods, including symbol keys.
+   * Does not run constructors, copy instance fields, evaluate accessors, or recurse.
+   * The result is a plain test double, not an instance of the supplied class; fields
+   * and arrow-function members described by `T` must be supplied manually before use.
+   */
+  static create<T extends object>(type: { prototype: T }): ShallowMocked<T> {
+    const spies: Record<string | symbol, unknown> = {};
+    const seen = new Set<PropertyKey>();
 
-  let proto: object | null = type.prototype as object | null;
-  while (proto !== null && proto !== Object.prototype) {
-    for (const key of Reflect.ownKeys(proto)) {
-      if (key === 'constructor') continue;
-      if (key in spies) continue;
+    let proto: object | null = type.prototype;
+    while (proto !== null && proto !== Object.prototype) {
+      for (const key of Reflect.ownKeys(proto)) {
+        if (key === 'constructor' || seen.has(key)) continue;
+        seen.add(key);
 
-      const descriptor = Object.getOwnPropertyDescriptor(proto, key);
-      if (descriptor && typeof descriptor.value === 'function') {
-        spies[key] = vi.fn();
+        const descriptor = Object.getOwnPropertyDescriptor(proto, key);
+        if (descriptor && typeof descriptor.value === 'function') {
+          Object.defineProperty(spies, key, {
+            value: vi.fn(), enumerable: true, configurable: true, writable: true,
+          });
+        }
       }
+      proto = Object.getPrototypeOf(proto) as object | null;
     }
-    proto = Object.getPrototypeOf(proto) as object | null;
-  }
 
-  return spies as DeepMocked<T>;
+    return spies as ShallowMocked<T>;
+  }
 }
 
 /**

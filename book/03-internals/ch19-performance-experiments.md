@@ -109,14 +109,14 @@ The following is the **complete `fluo-blog/src/experiments/order-bootstrap.test.
 
 ```ts
 import { FluoFactory, ModuleGraphCompileCache } from '@fluojs/runtime';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 import { ExperimentAppModule, OrderSummary } from './order-bootstrap.fixture.js';
 
 const expected = { paidCount: 500, paidTotalMinor: 12_500_000 };
 
 it('computes the fixed order summary through the module graph', async () => {
-  const module = await createTestingModule({
+  const module = await Test.createTestingModule({
     rootModule: ExperimentAppModule,
   }).compile();
   try {
@@ -305,7 +305,7 @@ If `moduleMs` decreases while `wallMs` stays similar, you need not immediately c
 
 ## Returning to the Product's Performance Problem
 
-To verify order latency during the sale event, the next experiment must cross the real HTTP boundary. First use `createTestApp` to verify that authentication, input validation, state transitions, and response consistency remain identical. Do not, however, report a virtual request helper's throughput as the network throughput of a real Fastify listener. Including listener costs requires a separate load experiment on a real host with the same request, concurrency, and data conditions.
+To verify order latency during the sale event, the next experiment must cross the real HTTP boundary. First use `Test.createApp` to verify that authentication, input validation, state transitions, and response consistency remain identical. Do not, however, report a virtual request helper's throughput as the network throughput of a real Fastify listener. Including listener costs requires a separate load experiment on a real host with the same request, concurrency, and data conditions.
 
 If a load generator waits for a response before sending the next request, it reduces its own arrival rate as the server slows. Looking only at those results can hide a rapidly growing queue. In a constant-arrival-rate experiment, also record scheduled requests and their actual start delays. Preserve both successful-response latency and timeout/error rates, and replace payments and external notifications with test ports. Real money movements or external deliveries must not become side effects of a performance experiment.
 

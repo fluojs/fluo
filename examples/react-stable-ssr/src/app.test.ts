@@ -1,6 +1,7 @@
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { AppModule } from './app';
 
 const TEXT_DECODER = new TextDecoder();
@@ -15,9 +16,9 @@ function readHtml(body: unknown): string {
 
 describe('react-stable-ssr example', () => {
   it('renders a DTO-bound React page through the HTTP lifecycle', async () => {
-    const app = await createTestApp({ rootModule: AppModule });
-
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const response = await app.request('GET', '/products/sku-42').query('preview', 'true').send();
       const html = readHtml(response.body);
 
@@ -34,8 +35,6 @@ describe('react-stable-ssr example', () => {
       expect(html).toContain('/assets/react-stable-ssr.client.js');
       expect(html).toContain('window.__FLUO_REACT_STABLE_SSR__ = true;');
       expect(html.match(/src="\/assets\/react-stable-ssr\.client\.js"/gu) ?? []).toHaveLength(1);
-    } finally {
-      await app.close();
-    }
+    });
   });
 });

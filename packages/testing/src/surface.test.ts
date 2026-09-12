@@ -12,15 +12,15 @@ import * as fetchStyleWebsocket from './conformance/fetch-style-websocket-confor
 import * as conformance from './conformance/platform-conformance.js';
 import * as platformShellLifecycle from './conformance/platform-shell-lifecycle-conformance.js';
 import * as http from './http.js';
-import type { DeepMocked as RootDeepMocked } from './index.js';
+import type { ShallowMocked as RootShallowMocked } from './index.js';
 import * as testing from './index.js';
-import type { DeepMocked as MockDeepMocked } from './mock.js';
+import type { ShallowMocked as MockShallowMocked } from './mock.js';
 import * as mock from './mock.js';
 import type { NetworkHttpErrorRepresentationBootstrapOptions } from './portability/http-adapter-portability.js';
 import * as portability from './portability/http-adapter-portability.js';
 import type { WebHttpErrorRepresentationBootstrapOptions } from './portability/web-runtime-adapter-portability.js';
 import * as webPortability from './portability/web-runtime-adapter-portability.js';
-import type { DeepMocked } from './types.js';
+import type { ShallowMocked } from './types.js';
 
 type Assert<T extends true> = T;
 type IsAssignable<From, To> = [From] extends [To] ? true : false;
@@ -34,29 +34,29 @@ type DestroyableStdio = {
   destroy(): unknown;
 };
 
-interface LegacyDeepMockedConsumerService {
+interface ShallowMockedConsumerService {
   findById(id: string): Promise<{ id: string }>;
   count(): number;
   readonly name: string;
 }
 
-type _DeepMockedAsyncMethodPreservesVitestMockCompatibility = Assert<
-  IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
+type _ShallowMockedAsyncMethodPreservesVitestMockCompatibility = Assert<
+  IsAssignable<ShallowMocked<ShallowMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
 >;
-type _DeepMockedSyncMethodPreservesVitestMockCompatibility = Assert<
-  IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['count'], Mock<() => number>>
+type _ShallowMockedSyncMethodPreservesVitestMockCompatibility = Assert<
+  IsAssignable<ShallowMocked<ShallowMockedConsumerService>['count'], Mock<() => number>>
 >;
-type _DeepMockedPropertiesRemainUnchanged = Assert<
-  IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['name'], string>
+type _ShallowMockedPropertiesRemainUnchanged = Assert<
+  IsAssignable<ShallowMocked<ShallowMockedConsumerService>['name'], string>
 >;
-type _DeepMockedMockContextPreservesCallTuples = Assert<
-  IsAssignable<DeepMocked<LegacyDeepMockedConsumerService>['findById']['mock']['calls'], [id: string][]>
+type _ShallowMockedMockContextPreservesCallTuples = Assert<
+  IsAssignable<ShallowMocked<ShallowMockedConsumerService>['findById']['mock']['calls'], [id: string][]>
 >;
-type _RootDeepMockedPreservesVitestMockCompatibility = Assert<
-  IsAssignable<RootDeepMocked<LegacyDeepMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
+type _RootShallowMockedPreservesVitestMockCompatibility = Assert<
+  IsAssignable<RootShallowMocked<ShallowMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
 >;
-type _MockDeepMockedPreservesVitestMockCompatibility = Assert<
-  IsAssignable<MockDeepMocked<LegacyDeepMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
+type _MockShallowMockedPreservesVitestMockCompatibility = Assert<
+  IsAssignable<MockShallowMocked<ShallowMockedConsumerService>['findById'], Mock<(id: string) => Promise<{ id: string }>>>
 >;
 type _NetworkErrorRepresentationOptionsArePublic = Assert<
   IsAssignable<
@@ -92,7 +92,6 @@ const DESCENDANT_TIMEOUT_TEST_TIMEOUT_MS =
   DESCENDANT_TIMEOUT_TEST_SCHEDULING_MARGIN_MS;
 const emittedHarnessSubpaths = [
   '.',
-  './app',
   './module',
   './http',
   './mock',
@@ -294,28 +293,46 @@ async function runBuild(): Promise<void> {
 
 describe('@fluojs/testing surface', () => {
   it('keeps the root barrel focused on module/app helpers', () => {
-    expect(testing.createTestingModule).toBeTypeOf('function');
-    expect(testing.createTestApp).toBeTypeOf('function');
+    expect(testing.Test.createTestingModule).toBeTypeOf('function');
+    expect(testing.Test.createApp).toBeTypeOf('function');
+    expect('createTestingModule' in testing).toBe(false);
+    expect('createTestApp' in testing).toBe(false);
     expect(testing.extractModuleProviders).toBeTypeOf('function');
     expect('createMock' in testing).toBe(false);
     expect('makeRequest' in testing).toBe(false);
-    expect('createPlatformConformanceHarness' in testing).toBe(false);
-    expect('createPlatformShellLifecycleConformanceHarness' in testing).toBe(false);
-    expect('createHttpAdapterPortabilityHarness' in testing).toBe(false);
-    expect('createWebRuntimeHttpAdapterPortabilityHarness' in testing).toBe(false);
-    expect('createFetchStyleWebSocketConformanceHarness' in testing).toBe(false);
+    expect('PlatformConformanceHarness' in testing).toBe(false);
+    expect('PlatformShellLifecycleConformanceHarness' in testing).toBe(false);
+    expect('HttpAdapterPortabilityHarness' in testing).toBe(false);
+    expect('WebRuntimeHttpAdapterPortabilityHarness' in testing).toBe(false);
+    expect('FetchStyleWebSocketConformanceHarness' in testing).toBe(false);
   });
 
   it('exposes responsibility-specific helpers from subpaths', () => {
-    expect(mock.createMock).toBeTypeOf('function');
-    expect(mock.createDeepMock).toBeTypeOf('function');
+    expect(mock.ShallowMock.create).toBeTypeOf('function');
+    expect(mock.PrototypeMock.create).toBeTypeOf('function');
+    expect('createMock' in mock).toBe(false);
+    expect('createDeepMock' in mock).toBe(false);
     expect(mock.mockToken).toBeTypeOf('function');
     expect(http.makeRequest).toBeTypeOf('function');
-    expect(conformance.createPlatformConformanceHarness).toBeTypeOf('function');
-    expect(platformShellLifecycle.createPlatformShellLifecycleConformanceHarness).toBeTypeOf('function');
-    expect(portability.createHttpAdapterPortabilityHarness).toBeTypeOf('function');
-    expect(webPortability.createWebRuntimeHttpAdapterPortabilityHarness).toBeTypeOf('function');
-    expect(fetchStyleWebsocket.createFetchStyleWebSocketConformanceHarness).toBeTypeOf('function');
+    expect(conformance.PlatformConformanceHarness.create).toBeTypeOf('function');
+    expect(platformShellLifecycle.PlatformShellLifecycleConformanceHarness.create).toBeTypeOf('function');
+    expect(portability.HttpAdapterPortabilityHarness.create).toBeTypeOf('function');
+    expect(webPortability.WebRuntimeHttpAdapterPortabilityHarness.create).toBeTypeOf('function');
+    expect(fetchStyleWebsocket.FetchStyleWebSocketConformanceHarness.create).toBeTypeOf('function');
+  });
+
+  it('owns harness factories on classes without free factory exports', () => {
+    for (const [subpath, harness] of [
+      [conformance, conformance.PlatformConformanceHarness],
+      [platformShellLifecycle, platformShellLifecycle.PlatformShellLifecycleConformanceHarness],
+      [portability, portability.HttpAdapterPortabilityHarness],
+      [webPortability, webPortability.WebRuntimeHttpAdapterPortabilityHarness],
+      [fetchStyleWebsocket, fetchStyleWebsocket.FetchStyleWebSocketConformanceHarness],
+    ] as const) {
+      expect(Object.hasOwn(harness, 'create')).toBe(true);
+      expect(`create${harness.name}` in subpath).toBe(false);
+      expect(`create${harness.name}` in testing).toBe(false);
+    }
   });
 
   it('keeps published subpath metadata aligned with the built surface', () => {
@@ -578,11 +595,11 @@ describe('@fluojs/testing surface', () => {
       expect(existsSync(resolve(packageRootPath, entry.types)), `${subpath} types output is missing`).toBe(true);
     }
 
-    for (const declarationFile of ['dist/app.d.ts', 'dist/module.d.ts', 'dist/types.d.ts']) {
+    for (const declarationFile of ['dist/module.d.ts', 'dist/types.d.ts']) {
       expect(readFileSync(resolve(packageRootPath, declarationFile), 'utf8')).not.toContain('vitest');
     }
 
-    expect(readFileSync(resolve(packageRootPath, 'dist/types.d.ts'), 'utf8')).toContain('type DeepMocked<T>');
+    expect(readFileSync(resolve(packageRootPath, 'dist/types.d.ts'), 'utf8')).toContain('type ShallowMocked<T>');
     expect(readFileSync(resolve(packageRootPath, 'dist/mock.d.ts'), 'utf8')).toContain('./mock-types.js');
     expect(readFileSync(resolve(packageRootPath, 'dist/index.d.ts'), 'utf8')).not.toContain('TestingMockFunction');
     expect(readFileSync(resolve(packageRootPath, 'dist/portability/http-adapter-portability.d.ts'), 'utf8'))

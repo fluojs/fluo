@@ -2,9 +2,10 @@ import { type Constructor, Inject, Module, type Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { FluoFactory } from '@fluojs/runtime';
-import { createTestingModule } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import {
   NotificationChannelNotFoundError,
   NotificationQueueNotConfiguredError,
@@ -225,9 +226,10 @@ describe('NotificationsModule', () => {
     })
     class AppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
       const probe = await testingModule.resolve<RootNotificationsProbe>(RootNotificationsProbe);
 
       await expect(probe.send()).resolves.toMatchObject({
@@ -236,9 +238,7 @@ describe('NotificationsModule', () => {
         status: 'delivered',
       });
       expect(deliveries).toEqual(['global-visible']);
-    } finally {
-      await testingModule.container.dispose();
-    }
+    });
   });
 
   it('keeps providers usable inside the importing module when global visibility is disabled', async () => {
@@ -278,9 +278,10 @@ describe('NotificationsModule', () => {
     })
     class AppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
       const probe = await testingModule.resolve<LocalNotificationsProbe>(LocalNotificationsProbe);
 
       await expect(probe.send()).resolves.toMatchObject({
@@ -289,9 +290,7 @@ describe('NotificationsModule', () => {
         status: 'delivered',
       });
       expect(deliveries).toEqual(['local-visible']);
-    } finally {
-      await testingModule.container.dispose();
-    }
+    });
   });
 
   it('does not expose module-local providers to sibling/root providers in a real testing module graph', async () => {
@@ -323,7 +322,7 @@ describe('NotificationsModule', () => {
     })
     class AppModule {}
 
-    await expect(createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
+    await expect(Test.createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
       /not visible through a global module|NotificationsService/,
     );
   });
@@ -377,9 +376,10 @@ describe('NotificationsModule', () => {
     })
     class AppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
 
-    try {
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
       const probe = await testingModule.resolve<RootNotificationsTokenProbe>(RootNotificationsTokenProbe);
       const dispatch = await probe.send();
 
@@ -390,9 +390,7 @@ describe('NotificationsModule', () => {
         status: 'delivered',
       });
       expect(deliveries).toEqual(['async-global-visible']);
-    } finally {
-      await testingModule.container.dispose();
-    }
+    });
   });
 
   it('keeps async module-local providers hidden from sibling/root providers in a real testing module graph', async () => {
@@ -426,7 +424,7 @@ describe('NotificationsModule', () => {
     })
     class AppModule {}
 
-    await expect(createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
+    await expect(Test.createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
       /not visible through a global module|NOTIFICATIONS/,
     );
   });
@@ -933,9 +931,9 @@ describe('NotificationsModule', () => {
     })
     class AppModule {}
 
-    const testingModule = await createTestingModule({ rootModule: AppModule }).compile();
-
-    try {
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
+    await withCleanup(async (defer) => {
+      defer(() => testingModule.container.dispose());
       const service = await testingModule.resolve<NotificationsService>(NotificationsService);
 
       await expect(
@@ -950,9 +948,7 @@ describe('NotificationsModule', () => {
         'notification.dispatch.requested',
         'notification.dispatch.queued',
       ]);
-    } finally {
-      await testingModule.container.dispose();
-    }
+    });
 
     expect(resourceLifecycleCalls).toEqual([]);
   });

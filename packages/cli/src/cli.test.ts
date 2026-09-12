@@ -4858,9 +4858,10 @@ exit 7
     expect(resourceExitCode).toBe(0);
     expect(e2eExitCode).toBe(0);
     expect(readFileSync(join(workspaceDirectory, 'src', 'billings', 'billing.slice.test.ts'), 'utf8')).toContain(
-      'createTestingModule({ rootModule: BillingModule })',
+      'Test.createTestingModule({ rootModule: BillingModule })',
     );
-    expect(readFileSync(join(workspaceDirectory, 'src', 'users', 'user.slice.test.ts'), 'utf8')).toContain('overrideProvider(UserRepo');
+    expect(readFileSync(join(workspaceDirectory, 'src', 'users', 'user.slice.test.ts'), 'utf8')).toContain('overrideProvider(UserRepo)');
+    expect(readFileSync(join(workspaceDirectory, 'src', 'users', 'user.slice.test.ts'), 'utf8')).toContain('.useValue({');
     expect(readFileSync(join(workspaceDirectory, 'test', 'users.e2e.test.ts'), 'utf8')).toContain(
       "import { AppModule } from '../src/app';",
     );

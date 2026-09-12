@@ -3,7 +3,8 @@ import type { Application } from '@fluojs/runtime';
 import { FluoFactory } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createTestApp } from './app.js';
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
+import { Test } from './module.js';
 
 vi.mock('@fluojs/runtime', () => ({
   FluoFactory: {
@@ -16,7 +17,7 @@ vi.mock('@fluojs/runtime', () => ({
 
 const mockedCreate = vi.mocked(FluoFactory.create);
 
-describe('createTestApp bootstrap forwarding', () => {
+describe('Test.createApp bootstrap forwarding', () => {
   beforeEach(() => {
     mockedCreate.mockClear();
   });
@@ -35,23 +36,26 @@ describe('createTestApp bootstrap forwarding', () => {
       },
     };
 
-    const app = await createTestApp({
+    const app = await Test.createApp({
       rootModule: AppModule,
       converters: [converter],
       diagnostics: { timing: true },
       middleware: [callerMiddleware],
     });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
 
-    await app.close();
+      await app.close();
 
-    expect(mockedCreate).toHaveBeenCalledTimes(1);
-    expect(mockedCreate).toHaveBeenCalledWith(AppModule, expect.objectContaining({
-      converters: [converter],
-      diagnostics: { timing: true },
-      rootModule: AppModule,
-    }));
-    const forwardedOptions = mockedCreate.mock.calls[0]?.[1];
-    expect(forwardedOptions?.middleware?.at(0)).not.toBe(callerMiddleware);
-    expect(forwardedOptions?.middleware?.at(1)).toBe(callerMiddleware);
+      expect(mockedCreate).toHaveBeenCalledTimes(1);
+      expect(mockedCreate).toHaveBeenCalledWith(AppModule, expect.objectContaining({
+        converters: [converter],
+        diagnostics: { timing: true },
+        rootModule: AppModule,
+      }));
+      const forwardedOptions = mockedCreate.mock.calls[0]?.[1];
+      expect(forwardedOptions?.middleware?.at(0)).not.toBe(callerMiddleware);
+      expect(forwardedOptions?.middleware?.at(1)).toBe(callerMiddleware);
+    });
   });
 });

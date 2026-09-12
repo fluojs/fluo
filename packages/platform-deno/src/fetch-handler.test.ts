@@ -1,13 +1,13 @@
 import { type DenoTestApplicationOptions, createDenoTestApplication } from './test-support/application.js';
 import { Controller, Get } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
-import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
+import { WebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createDenoFetchHandler, type DenoServeFunction } from './index.js';
 
 function registerHostOwnedDenoPortabilitySuite(): void {
-  const harness = createWebRuntimeHttpAdapterPortabilityHarness<DenoTestApplicationOptions>({
+  const harness = WebRuntimeHttpAdapterPortabilityHarness.create<DenoTestApplicationOptions>({
     async bootstrap(rootModule: ModuleType, options: DenoTestApplicationOptions) {
       const serve = vi.fn<DenoServeFunction>();
       const app = await createDenoTestApplication(rootModule, {

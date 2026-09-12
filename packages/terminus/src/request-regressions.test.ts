@@ -1,7 +1,8 @@
 import { defineModule } from '@fluojs/runtime';
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { describe, expect, it } from 'vitest';
 
+import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { TerminusModule } from './module.js';
 import type { HealthIndicator } from './types.js';
 
@@ -60,9 +61,9 @@ describe('Terminus request regressions', () => {
       imports: [TerminusModule.forRoot({ indicators })],
     });
 
-    const app = await createTestApp({ rootModule: AppModule });
-
-    try {
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
       const healthResponse = await app.request('GET', '/health').send();
 
       expect(healthResponse.status).toBe(503);
@@ -142,8 +143,6 @@ describe('Terminus request regressions', () => {
 
       expect(readyResponse.status).toBe(503);
       expect(readyResponse.body).toEqual({ status: 'unavailable' });
-    } finally {
-      await app.close();
-    }
+    });
   });
 });

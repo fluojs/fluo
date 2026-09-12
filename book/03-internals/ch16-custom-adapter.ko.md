@@ -185,14 +185,14 @@ export class HostedHttpAdapter implements HttpApplicationAdapter {
 같은 `AdapterProbeModule`이 실제로 올바르게 연결되었는지는 먼저 application 테스트로 확인할 수 있다. 다음은 완전한 `src/adapter-probe.slice.test.ts`다. 기존 표준 데코레이터 Vitest 설정을 전제로 한다.
 
 ```typescript
-import { createTestApp } from '@fluojs/testing';
+import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 import { AdapterProbeModule, ProbeGate } from './adapter-probe.module.js';
 
 it('resolves the registered reader through the real module graph', async () => {
   const gate = new ProbeGate();
   gate.release.resolve();
-  const app = await createTestApp({
+  const app = await Test.createApp({
     rootModule: AdapterProbeModule,
     providers: [{ provide: ProbeGate, useValue: gate }],
   });
@@ -213,7 +213,7 @@ it('resolves the registered reader through the real module graph', async () => {
 });
 ```
 
-runtime provider 입력으로 관문만 교체하고 `PostsModule`의 실제 export와 controller 주입을 통과한다. 그러나 `createTestApp()`의 성공이 새 adapter의 성공은 아니다. 이 helper는 가상 요청을 정규화하여 dispatcher를 실행한다. Cookie 헤더의 native parsing, `Request` body의 소비, 실제 listener 종료를 자동으로 시험하지 않는다.
+runtime provider 입력으로 관문만 교체하고 `PostsModule`의 실제 export와 controller 주입을 통과한다. 그러나 `Test.createApp()`의 성공이 새 adapter의 성공은 아니다. 이 helper는 가상 요청을 정규화하여 dispatcher를 실행한다. Cookie 헤더의 native parsing, `Request` body의 소비, 실제 listener 종료를 자동으로 시험하지 않는다.
 
 아래 완전한 `src/hosted-http-adapter.test.ts`는 그래서 adapter 자체를 별도로 사용한다. 같은 application을 생성하되 공개 fetch 경계로 들어간다.
 
@@ -301,7 +301,7 @@ it('rejects new ingress while draining the accepted request', async () => {
 
 ```typescript
 import { FluoFactory, type CreateApplicationOptions } from '@fluojs/runtime';
-import { createWebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
+import { WebRuntimeHttpAdapterPortabilityHarness } from '@fluojs/testing/web-runtime-adapter-portability';
 import { it } from 'vitest';
 import {
   HostedHttpAdapter,
@@ -313,7 +313,7 @@ type BootstrapOptions =
   HostedAdapterOptions &
   { cors?: false };
 
-const portability = createWebRuntimeHttpAdapterPortabilityHarness<BootstrapOptions>({
+const portability = WebRuntimeHttpAdapterPortabilityHarness.create<BootstrapOptions>({
   name: 'Book hosted adapter',
   createConditionalRequestBootstrapOptions: (options) => options,
   createErrorRepresentationBootstrapOptions: (options) => options,
@@ -382,9 +382,9 @@ conditional response와 byte range도 공유 dispatcher의 정책이다. adapter
 
 `HttpApplicationAdapter`와 `PlatformComponent`는 같은 타입이 아니다. HTTP adapter는 `listen(dispatcher)`와 `close()`를 구현하여 요청 경계를 연결한다. `platform.components`에 등록되는 persistence 같은 component에는 validate, start, stop, snapshot 등 다른 수명주기가 있다. HTTP adapter를 그 목록에 억지로 넣어 generic conformance를 통과시키는 것은 올바른 등록이 아니다.
 
-실제 Node 리스너를 소유하는 어댑터를 만든다면 `createHttpAdapterPortabilityHarness()`로 listener URL, TLS, signal listener 정리와 stream drain 같은 소유 기능을 검증한다. 이 장처럼 이미 Web request를 받는 호스트 접점은 Web portability 하니스와 실제 호스트의 별도 통합 테스트를 사용한다. Next가 거부하는 메서드를 Next 밖의 함수 테스트만으로 지원한다고 주장해서는 안 되었던 것과 같은 원칙이다.
+실제 Node 리스너를 소유하는 어댑터를 만든다면 `HttpAdapterPortabilityHarness.create()`로 listener URL, TLS, signal listener 정리와 stream drain 같은 소유 기능을 검증한다. 이 장처럼 이미 Web request를 받는 호스트 접점은 Web portability 하니스와 실제 호스트의 별도 통합 테스트를 사용한다. Next가 거부하는 메서드를 Next 밖의 함수 테스트만으로 지원한다고 주장해서는 안 되었던 것과 같은 원칙이다.
 
-PlatformComponent를 새로 만든 경우에는 `createPlatformConformanceHarness()`가 맞고, PlatformShell의 start/stop overlap을 변경한 경우에는 별도의 shell lifecycle 하니스가 필요하다. 역할을 구분하면 검사량을 줄이기 위한 구실이 아니라 빠뜨린 소유권을 찾는 도구가 된다. WebSocket을 지원하지 않는 이 adapter는 unsupported capability를 정직하게 반환한다. `getServer()`를 가짜 객체로 채워 protocol package가 upgrade를 시도하게 만들지 않는다.
+PlatformComponent를 새로 만든 경우에는 `PlatformConformanceHarness.create()`가 맞고, PlatformShell의 start/stop overlap을 변경한 경우에는 별도의 shell lifecycle 하니스가 필요하다. 역할을 구분하면 검사량을 줄이기 위한 구실이 아니라 빠뜨린 소유권을 찾는 도구가 된다. WebSocket을 지원하지 않는 이 adapter는 unsupported capability를 정직하게 반환한다. `getServer()`를 가짜 객체로 채워 protocol package가 upgrade를 시도하게 만들지 않는다.
 
 요청 재현 도구가 실제 사용 표면이므로 거기서도 본문을 읽고, 취소하고, application을 닫는 순서를 시험해야 한다. GET 성공 뒤 바로 프로세스를 종료하는 데모는 drain과 정리의 증거가 아니다. 호스트가 abort한 뒤 오류 표현 provider가 늦게 완료되는 사례에서는 이미 취소된 요청에 HTML이나 canonical JSON이 새로 commit되지 않는지 확인한다. DB rollback이나 결제 중복 방지는 이 adapter 검사 밖이며 원래 기능 모듈의 테스트를 계속 유지한다.
 

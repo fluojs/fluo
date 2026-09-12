@@ -1,6 +1,6 @@
 import { Module } from '@fluojs/core';
 import { describe, expect, it } from 'vitest';
-import { createTestingModule } from './module.js';
+import { Test } from './module.js';
 
 describe('TestingModuleBuilder compile failure cleanup', () => {
   it('disposes lifecycle providers when compile fails during module initialization', async () => {
@@ -22,7 +22,7 @@ describe('TestingModuleBuilder compile failure cleanup', () => {
     class FailingLifecycleModule {}
 
     // When
-    const compilePromise = createTestingModule({ rootModule: FailingLifecycleModule }).compile();
+    const compilePromise = Test.createTestingModule({ rootModule: FailingLifecycleModule }).compile();
 
     // Then
     await expect(compilePromise).rejects.toBe(compileError);
@@ -48,7 +48,7 @@ describe('TestingModuleBuilder compile failure cleanup', () => {
     class FailingLifecycleModule {}
 
     // When
-    const failure: unknown = await createTestingModule({ rootModule: FailingLifecycleModule })
+    const failure: unknown = await Test.createTestingModule({ rootModule: FailingLifecycleModule })
       .compile()
       .then(
         () => undefined,
@@ -83,8 +83,9 @@ describe('TestingModuleBuilder compile failure cleanup', () => {
     class OverrideModule {}
 
     // When
-    const compilePromise = createTestingModule({ rootModule: OverrideModule })
-      .overrideProvider(SERVICE_TOKEN, { provide: SERVICE_TOKEN, useClass: FailingOverrideService })
+    const compilePromise = Test.createTestingModule({ rootModule: OverrideModule })
+      .overrideProvider(SERVICE_TOKEN)
+      .useClass(FailingOverrideService)
       .compile();
 
     // Then

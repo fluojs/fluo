@@ -4,10 +4,10 @@ import {
   type ByteRangeResponseSource,
 } from '@fluojs/http';
 import {
-  createHttpAdapterPortabilityHarness,
+  HttpAdapterPortabilityHarness,
 } from '@fluojs/testing/http-adapter-portability';
 import {
-  createWebRuntimeHttpAdapterPortabilityHarness,
+  WebRuntimeHttpAdapterPortabilityHarness,
 } from '@fluojs/testing/web-runtime-adapter-portability';
 
 const bytes = Uint8Array.from([0, 1, 2]);
@@ -15,5 +15,5 @@ const options: ByteRangeResponseOptions = { contentType: 'application/octet-stre
 const source: ByteRangeResponseSource = bytes;
 
 void createByteRangeResponse(source, options);
-void createHttpAdapterPortabilityHarness;
-void createWebRuntimeHttpAdapterPortabilityHarness;
+void HttpAdapterPortabilityHarness.create;
+void WebRuntimeHttpAdapterPortabilityHarness.create;
