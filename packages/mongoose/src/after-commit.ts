@@ -30,4 +30,3 @@ export class AfterCommitCleanupError extends AggregateError {
     this.name = 'AfterCommitCleanupError';
   }
 }
-
