@@ -24,7 +24,7 @@ export class AfterCommitCapabilityError extends Error {
 /** Reports hook failures after the database has already committed; never retry the transaction for this error. */
 export class AfterCommitError extends AggregateError {
   /** The native transaction committed successfully before these hook results were collected. */
-  readonly committed = true;
+  readonly committed = true as const;
 
   /**
    * Collects all hook outcomes in registration order.

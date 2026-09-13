@@ -1,5 +1,4 @@
 import {
-  TransactionRollbackCapabilityError,
   TransactionRollbackOnlyError,
   TransactionRollbackUnconfirmedError,
 } from '@fluojs/core';

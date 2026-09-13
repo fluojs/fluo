@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { Transaction } from './transaction.js';
 
@@ -22,16 +22,18 @@ describe('Transaction decorator method semantics', () => {
     // Given
     const nativeOptions = { timeout: 1_000 };
     const boundary = {};
-    const transaction = vi.fn(async <T>(
+    let transactionCalls = 0;
+    const transaction = async <T>(
       callback: () => Promise<T>,
       options?: typeof nativeOptions,
       transactionBoundary?: typeof boundary,
     ): Promise<T> => {
+      transactionCalls += 1;
       expect(options).toBe(nativeOptions);
       expect(transactionBoundary).toBe(boundary);
 
       return callback();
-    });
+    };
 
     class UserService {
       prisma = {
@@ -55,7 +57,7 @@ describe('Transaction decorator method semantics', () => {
 
     // Then
     expect(result).toBe('created');
-    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(transactionCalls).toBe(1);
   });
 
   it('propagates return value from decorated method', async () => {
