@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#3781](https://github.com/fluojs/fluo/pull/3781) [`3811ba9`](https://github.com/fluojs/fluo/commit/3811ba9372c4e28f1d686aa6c56760bc00a49690) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate the cookie preset under `CookieAuthModule.forRoot(config)`. One `CookieManagerConfig` now supplies both `CookieAuthStrategy` credential names and `CookieManager` response-cookie names. The module owns one Passport registry for `CookieAuthStrategy`, `CookieManager`, and `AuthGuard`; compose bearer or Passport.js bridge registrations through the additional `forRoot` arguments instead of a sibling `PassportModule.forRoot(...)`.
+
+  Remove `CookieAuthPresetConfig`, `createCookieAuthPreset`, `createCookieAuthStrategyRegistration`, and `createCookieManager` from the public runtime and declaration surfaces. Preserve `CookieManager`'s constructor, class token, instance identity, structured cookie options, token TTL precedence, and clear behavior. Passport.js bridge timeout, shutdown, and principal mapping remain unchanged.
+
+  Migration: replace nested `cookieAuth` / `cookieManager` configuration and manual preset assembly with `CookieAuthModule.forRoot({ accessTokenCookieName, refreshTokenCookieName, cookieOptions })`. Access and refresh names may differ, but each reader/writer pair must use its matching shared name. Replace `createCookieManager(config)` with `CookieManager.create(config)`. `cookieOptions.maxAge` is seconds and maps to portable HTTP `maxAgeSeconds`; auth defaults are `Path=/`, `Secure`, `HttpOnly`, and `SameSite=Strict`, unlike general HTTP `setCookie(...)`. See `docs/getting-started/migrate-passport-cookie-preset.md` and `docs/getting-started/migrate-passport-cookie-preset.ko.md`.
+
+- [#3782](https://github.com/fluojs/fluo/pull/3782) [`f83c9ca`](https://github.com/fluojs/fluo/commit/f83c9ca5f96078ed3cb06a54af5a13b4b7e84529) Thanks [@ayden94](https://github.com/ayden94)! - Make `JwtModule` the sole owner of refresh-token crypto, store, and rotation state. `RefreshTokenModule.forRoot()` now aliases the configured JWT `RefreshTokenService` for the Passport HTTP exchange, including async JWT registration, instead of allowing adapter-owned refresh state.
+
+  Migration: move every refresh `secret`, `expiresInSeconds`, `rotation`, and `store` value into `JwtModule.forRoot({ global: true, refreshToken: ... })`, then replace `RefreshTokenModule.forRoot(JwtRefreshTokenAdapter)` with `RefreshTokenModule.forRoot()`. `JwtRefreshTokenAdapter`, `REFRESH_TOKEN_MODULE_OPTIONS`, and `RefreshTokenModuleOptions` are removed. Replace Passport's former structural `RefreshTokenService` type with `RefreshTokenService` from `@fluojs/jwt` for the canonical path. A custom `RefreshTokenServicePort` remains supported only alongside a globally visible `JwtModule` verifier and JWT access tokens that it accepts.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4), [`ed57b76`](https://github.com/fluojs/fluo/commit/ed57b760ba6f73c38e5a91a77606e4e1c1af74ca), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`30e2295`](https://github.com/fluojs/fluo/commit/30e229563ce56fe20b82fd978883d248f57acd66), [`9aaae92`](https://github.com/fluojs/fluo/commit/9aaae92017450da2109151a40b258d49cc4f9d36), [`5ad001e`](https://github.com/fluojs/fluo/commit/5ad001ecf0bb091a1447930ede22be2e0a17078a), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686), [`146d6a0`](https://github.com/fluojs/fluo/commit/146d6a072e9027a83cb908905047be2f3334d049), [`f83c9ca`](https://github.com/fluojs/fluo/commit/f83c9ca5f96078ed3cb06a54af5a13b4b7e84529)]:
+  - @fluojs/core@2.1.1
+  - @fluojs/di@3.1.1
+  - @fluojs/runtime@3.1.1
+  - @fluojs/http@3.1.1
+  - @fluojs/jwt@2.0.1
+
 ## 2.0.0
 
 ### Major Changes

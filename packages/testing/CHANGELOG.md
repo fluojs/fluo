@@ -2,6 +2,92 @@
 
 ## [Unreleased]
 
+## 3.0.2
+
+### Patch Changes
+
+- [#3768](https://github.com/fluojs/fluo/pull/3768) [`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4) Thanks [@ayden94](https://github.com/ayden94)! - Migrate first-party consumers to the consolidated Core and DI declarations.
+  Generated application and mixed starters retain their global module visibility
+  through `Module({ global: true })`; microservice starters retain local module
+  visibility. Runtime and testing use the shared wrapper type names and scope
+  literals, and Terminus uses `Optional.create` for its existing optional dependencies.
+  Commands, starter modes, provider resolution, and resource ownership are unchanged.
+
+  Upgrade these consumers together with the Core and DI updates.
+  Migration details are in `docs/getting-started/migrate-core-di-declarations.md`
+  and its Korean companion.
+
+- [#3771](https://github.com/fluojs/fluo/pull/3771) [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4) Thanks [@ayden94](https://github.com/ayden94)! - Make `FluoFactory.create(AppModule, { adapter })` the sole HTTP application
+  creation implementation. Remove `fluoFactory` and `bootstrapApplication` from
+  every runtime public entrypoint and emitted JavaScript/declaration surface.
+  Factory accepts `logger` and owns common middleware composition, original-error
+  preserving startup cleanup, and optional host shutdown registration.
+
+  Migration: import `FluoFactory` instead of `fluoFactory`, replace
+  `bootstrapApplication({ rootModule, ...options })` with
+  `FluoFactory.create(rootModule, options)`, then call instance `app.listen()` and
+  `app.close()`. Security headers now default on for direct Factory and testing
+  applications; set `securityHeaders: false` to retain a header-free baseline.
+  Readiness/listen/post-listen setup failure enters terminal shutdown; create a
+  new application instead of retrying listen on the failed shell. A signal
+  unregistration failure is retained for concurrent and later closes without
+  skipping runtime teardown.
+
+  Upgrade `@fluojs/cron` together with `@fluojs/runtime`. Cron retains its mandatory
+  Runtime dependency, and these coordinated updates leave scheduling behavior unchanged.
+
+  Node CLI HTTP and mixed starters now emit Factory creation, the explicit Node
+  console logger, and Node shutdown registration. Add a direct
+  `@fluojs/platform-nodejs` dependency when importing its logger or signals from a
+  Fastify/Express application. Node signal registration rolls back partially
+  installed handlers and attempts every removal after an individual failure.
+  The additive optional `HttpApplicationAdapter.getListenTarget()` capability
+  supplies startup-log metadata without requiring a socket on Fetch hosts.
+
+  See `docs/getting-started/migrate-http-factory.md` and its Korean companion for
+  defaults, ownership, cleanup errors, PublicToken inference, and the distinction
+  between `app.dispatch()` admission and low-level container/dispatcher access.
+  DI class identities, public constructors, instance operations, context-only
+  creation, and microservice creation retain their separate contracts.
+
+  Existing platform bootstrap/run helpers and their host-specific consumers remain
+  supported through Factory until their platform migrations. Other listed package
+  patches only align README imports and recipes shipped in their tarballs; they
+  introduce no independent runtime behavior. Repository Docs, Book, examples, and
+  test-only consumer migrations have no separate package-release effect.
+
+- [#3784](https://github.com/fluojs/fluo/pull/3784) [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711) Thanks [@ayden94](https://github.com/ayden94)! - Unify Vite and Vitest decorator transformation through `fluoDecoratorsPlugin`, add the explicit `@fluojs/core/metadata-preload` entrypoint, and remove the deprecated `@fluojs/testing/vitest` and `@fluojs/testing/vitest/tooling` public subpaths. Migrate Vitest configs to `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })` with `@fluojs/core/metadata-preload` in `setupFiles`.
+
+- [#3785](https://github.com/fluojs/fluo/pull/3785) [`0caae2f`](https://github.com/fluojs/fluo/commit/0caae2f190b57ba6e61ee093993f2ebab6be6648) Thanks [@ayden94](https://github.com/ayden94)! - Name mock factories after their actual behavior and make their static methods the only creation path. Replace `createMock(partial, options)` with `ShallowMock.create(partial, options)` and `createDeepMock(Type)` with `PrototypeMock.create(Type)` from `@fluojs/testing/mock`. Replace `DeepMocked<T>` and `MockedMethods<T>` with `ShallowMocked<T>`; no legacy aliases remain.
+
+  Shallow mocks retain supplied values and lazily create top-level Vitest spies; they do not recursively mock nested objects or return values. Prototype mocks do not construct instances or mock instance fields/accessors. They include inherited and symbol-keyed methods, correctly preserve method shadowing, and mock explicit prototype methods named `toString`. Manual fakes and Vitest mock configuration remain supported.
+
+- [#3785](https://github.com/fluojs/fluo/pull/3785) [`0caae2f`](https://github.com/fluojs/fluo/commit/0caae2f190b57ba6e61ee093993f2ebab6be6648) Thanks [@ayden94](https://github.com/ayden94)! - Unify testing construction behind `Test.createApp(...)` and
+  `Test.createTestingModule(...)`. The former `createTestApp(...)` and
+  `createTestingModule(...)` free-function exports, their `@fluojs/testing/app`
+  subpath, and free portability/conformance harness factories are removed.
+
+  Provider overrides now require `overrideProvider(token).useValue(value)`,
+  `.useClass(Type)`, `.useFactory(factory, inject?)`, or `.useExisting(otherToken)`.
+  The two-argument `overrideProvider` overloads are removed. `useValue` preserves
+  literal identity, including class constructors and provider-shaped objects; it
+  does not instantiate, invoke, or unwrap them.
+
+  Migration: replace free factory imports with `Test`, then call
+  `Test.createApp(...)` or `Test.createTestingModule(...)`. Replace each
+  `createXHarness(options)` call with `XHarness.create(options)`. Regenerate CLI
+  test files or make the same replacements in existing generated tests. Replace
+  `overrideProvider(token, value)` with `overrideProvider(token).useValue(value)`;
+  select the corresponding explicit strategy when construction, factory invocation,
+  or aliasing is intended.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4), [`ed57b76`](https://github.com/fluojs/fluo/commit/ed57b760ba6f73c38e5a91a77606e4e1c1af74ca), [`82c93fa`](https://github.com/fluojs/fluo/commit/82c93fab20f60e8a26245d404bcf3ddaf4df8255), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`30e2295`](https://github.com/fluojs/fluo/commit/30e229563ce56fe20b82fd978883d248f57acd66), [`82c93fa`](https://github.com/fluojs/fluo/commit/82c93fab20f60e8a26245d404bcf3ddaf4df8255), [`5ad001e`](https://github.com/fluojs/fluo/commit/5ad001ecf0bb091a1447930ede22be2e0a17078a), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686), [`146d6a0`](https://github.com/fluojs/fluo/commit/146d6a072e9027a83cb908905047be2f3334d049)]:
+  - @fluojs/core@2.1.1
+  - @fluojs/di@3.1.1
+  - @fluojs/runtime@3.1.1
+  - @fluojs/http@3.1.1
+  - @fluojs/config@2.0.1
+
 ## 3.0.1
 
 ### Patch Changes

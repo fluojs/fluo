@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#3780](https://github.com/fluojs/fluo/pull/3780) [`82c93fa`](https://github.com/fluojs/fluo/commit/82c93fab20f60e8a26245d404bcf3ddaf4df8255) Thanks [@ayden94](https://github.com/ayden94)! - Unify configuration registration, loading, and reload ownership under `ConfigModule`.
+  Fix generated CLI application, microservice, and mixed starter registrations to
+  use `envFilePaths` instead of the removed `envFile` input.
+
+  Migration: replace `loadConfig(options)` with `ConfigModule.load(options)`, replace
+  `createConfigReloader(options)` with `ConfigReloadManager.create(options)`, and inject
+  `CONFIG_RELOADER` from the one `ConfigModule.forRoot(...)` registration instead of
+  registering `ConfigReloadModule`. Replace `envFile` or `envFilePath` with an ordered
+  `envFilePaths` list; use `[]` to explicitly disable env-file loading.
+
+- [#3780](https://github.com/fluojs/fluo/pull/3780) [`82c93fa`](https://github.com/fluojs/fluo/commit/82c93fab20f60e8a26245d404bcf3ddaf4df8255) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate config reload registration into `ConfigModule`: inject `CONFIG_RELOADER` from the same `ConfigModule.forRoot(...)` call instead of `ConfigReloadModule`. `envFile` and `envFilePath` are removed; migrate each single path to `envFilePaths: ['<path>']`. In file-capable loads, omitting `envFilePaths` selects `<cwd>/.env`; explicit in-memory sources suppress that default, while `envFilePaths: []` disables env-file loading.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686)]:
+  - @fluojs/core@2.1.1
+
 ## 2.0.0
 
 ### Major Changes

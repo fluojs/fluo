@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#3783](https://github.com/fluojs/fluo/pull/3783) [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686) Thanks [@ayden94](https://github.com/ayden94)! - Canonical Studio parsing, filtering, Mermaid, and live-contract imports now use the `@fluojs/studio` root export. The `@fluojs/studio/contracts` subpath is removed; migrate its imports to `@fluojs/studio`, where the former contracts-only platform and timing types are available. Persisted inspect artifacts use `fluo inspect <module-path> --report --output <path>`; raw snapshots and timing artifact readers retain compatibility, while explicitly present malformed timing is rejected. Runtime live declarations reference the runtime-neutral `@fluojs/core/internal` seam rather than Studio. Mermaid output keeps stdout graph-only and sends bootstrap diagnostics to stderr.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686)]:
+  - @fluojs/core@2.1.1
+
 ## 2.0.0
 
 ### Major Changes
