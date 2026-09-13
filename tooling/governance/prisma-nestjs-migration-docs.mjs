@@ -4,10 +4,12 @@ import { fileURLToPath } from 'node:url';
 
 import {
   createSourceFile,
+  forEachChild,
   isCallExpression,
   isExpressionStatement,
   isFunctionDeclaration,
   isIdentifier,
+  isPropertyAccessExpression,
   ScriptKind,
   ScriptTarget,
 } from 'typescript';
@@ -32,8 +34,8 @@ const prismaRegistrationContractMarkerPattern =
   /^<!-- fluo-prisma-registration-contract: ([a-z-]+(?:, [a-z-]+)*) -->$/gmu;
 const prismaTransactionBoundaryMarkerName = 'fluo-prisma-transaction-boundary';
 const prismaTransactionBoundaryMarkerPattern = new RegExp(
-  `<!-- ${prismaTransactionBoundaryMarkerName}:\\s*([\\s\\S]*?) -->`,
-  'gu',
+  `^<!-- ${prismaTransactionBoundaryMarkerName}:\\s*([^\\r\\n]*?) -->$`,
+  'gmu',
 );
 const prismaTransactionBoundaryFields = [
   ['interceptor', 'removed'],
@@ -226,6 +228,38 @@ export function hasDirectMainBodyPrismaMigrationGuardCall(source) {
     isCallExpression(statement.expression) &&
     isIdentifier(statement.expression.expression) &&
     statement.expression.expression.text === 'enforcePrismaNestjsMigrationDocs') ?? false;
+}
+
+export function hasPrismaRegistrationContractFieldComparison(source) {
+  const sourceFile = createSourceFile(
+    'prisma-nestjs-migration-docs.mjs',
+    source,
+    ScriptTarget.Latest,
+    true,
+    ScriptKind.JS,
+  );
+  const registrationGuard = sourceFile.statements.find((statement) =>
+    isFunctionDeclaration(statement) &&
+    statement.name?.text === 'enforcePrismaRegistrationContractMarker');
+  let found = false;
+
+  const visit = (node) => {
+    if (
+      isCallExpression(node) &&
+      isPropertyAccessExpression(node.expression) &&
+      isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === 'prismaRegistrationContractFields' &&
+      node.expression.name.text === 'every' &&
+      node.arguments.length === 1 &&
+      node.arguments[0].getText(sourceFile) === '(field) => fields.includes(field)'
+    ) {
+      found = true;
+    }
+    forEachChild(node, visit);
+  };
+
+  if (registrationGuard) visit(registrationGuard);
+  return found;
 }
 
 export function enforcePrismaNestjsMigrationDocs(

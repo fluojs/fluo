@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   enforcePrismaNestjsMigrationDocs,
   hasDirectMainBodyPrismaMigrationGuardCall,
+  hasPrismaRegistrationContractFieldComparison,
 } from './prisma-nestjs-migration-docs.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -222,6 +223,42 @@ class VisibilityModule {}
     },
   );
 
+  it.each(prismaRegistrationContractMarkers)(
+    'rejects mutated Prisma registration contract semantics in $path',
+    ({ path, marker }) => {
+      // Given
+      const semanticMutations = [
+        marker.replace('default-class-token-alias', 'default-class-token-copy'),
+        marker.replace('named-token-isolation', 'named-token-sharing'),
+        marker.replace('no-transaction-interceptor-export', 'transaction-interceptor-export'),
+      ];
+
+      for (const mutatedMarker of semanticMutations) {
+        const readWithMutatedMarker = (relativePath: string): string =>
+          relativePath === path ? read(relativePath).replace(marker, mutatedMarker) : read(relativePath);
+
+        // When / Then
+        expect(() => enforcePrismaNestjsMigrationDocs(readWithMutatedMarker)).toThrow(
+          `${path} must declare each machine-consumed Prisma registration contract field exactly once.`,
+        );
+      }
+    },
+  );
+
+  it('pins the Prisma registration contract field comparison against disabling mutations', () => {
+    // Given
+    const guardSource = read('tooling/governance/prisma-nestjs-migration-docs.mjs');
+    const sourceWithDisabledComparison = guardSource.replace(
+      'prismaRegistrationContractFields.every((field) => fields.includes(field))',
+      'true',
+    );
+    expect(sourceWithDisabledComparison).not.toBe(guardSource);
+
+    // When / Then
+    expect(hasPrismaRegistrationContractFieldComparison(guardSource)).toBe(true);
+    expect(hasPrismaRegistrationContractFieldComparison(sourceWithDisabledComparison)).toBe(false);
+  });
+
   it.each(prismaTransactionBoundaryMarkers)(
     'rejects a missing or duplicated Prisma transaction boundary marker in $path',
     ({ path, marker }) => {
@@ -238,6 +275,24 @@ class VisibilityModule {}
       expect(() => enforcePrismaNestjsMigrationDocs(readWithDuplicateMarker)).toThrow(
         'fluo-prisma-transaction-boundary marker',
       );
+    },
+  );
+
+  it.each(prismaTransactionBoundaryMarkers)(
+    'rejects inline and blockquote Prisma transaction boundary marker decoys in $path',
+    ({ path, marker }) => {
+      // Given
+      const decoys = [`Inline decoy ${marker}`, `> ${marker}`];
+
+      for (const decoy of decoys) {
+        const readWithDecoy = (relativePath: string): string =>
+          relativePath === path ? read(relativePath).replace(marker, decoy) : read(relativePath);
+
+        // When / Then
+        expect(() => enforcePrismaNestjsMigrationDocs(readWithDecoy)).toThrow(
+          `${path} must include exactly one fluo-prisma-transaction-boundary marker; found 0.`,
+        );
+      }
     },
   );
 

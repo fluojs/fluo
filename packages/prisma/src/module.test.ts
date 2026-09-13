@@ -1002,8 +1002,12 @@ describe('@fluojs/prisma', () => {
   it('drains nested request transactions inside manual transactions before disconnecting on shutdown', async () => {
     const events: string[] = [];
     let releaseRollback!: () => void;
+    let notifyRollbackStarted!: () => void;
     const rollbackBarrier = new Promise<void>((resolve) => {
       releaseRollback = resolve;
+    });
+    const rollbackStarted = new Promise<void>((resolve) => {
+      notifyRollbackStarted = resolve;
     });
     const transactionClient = {
       kind: 'transaction' as const,
@@ -1022,6 +1026,7 @@ describe('@fluojs/prisma', () => {
           return await callback(transactionClient);
         } catch (error) {
           events.push('transaction:rollback:pending');
+          notifyRollbackStarted();
           await rollbackBarrier;
           events.push('transaction:rollback:done');
           throw error;
@@ -1056,7 +1061,7 @@ describe('@fluojs/prisma', () => {
       expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 1 });
 
       const shutdown = app.close();
-      await vi.waitFor(() => expect(events).toContain('transaction:rollback:pending'));
+      await rollbackStarted;
 
       expect(events).toContain('transaction:rollback:pending');
       expect(events).not.toContain('disconnect');
@@ -1117,6 +1122,15 @@ describe('@fluojs/prisma', () => {
 
     try {
       const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
+      let notifyShutdownStarted!: () => void;
+      const shutdownStarted = new Promise<void>((resolve) => {
+        notifyShutdownStarted = resolve;
+      });
+      const originalShutdown = prisma.onApplicationShutdown.bind(prisma);
+      const shutdownHook = vi.spyOn(prisma, 'onApplicationShutdown').mockImplementation(() => {
+        notifyShutdownStarted();
+        return originalShutdown();
+      });
       let transactionStarted!: () => void;
       const transactionReady = new Promise<void>((resolve) => {
         transactionStarted = resolve;
@@ -1129,7 +1143,7 @@ describe('@fluojs/prisma', () => {
 
       await transactionReady;
       const shutdown = app.close();
-      await vi.waitFor(() => expect(events).toEqual(['connect', 'transaction:start']));
+      await shutdownStarted;
 
       expect(events).toEqual(['connect', 'transaction:start']);
 
@@ -1137,6 +1151,7 @@ describe('@fluojs/prisma', () => {
 
       await expect(openTransaction).resolves.toBe('settled');
       await shutdown;
+      shutdownHook.mockRestore();
 
       expect(events).toEqual(['connect', 'transaction:start', 'transaction:end', 'disconnect']);
     } finally {
