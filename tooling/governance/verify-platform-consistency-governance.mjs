@@ -4063,6 +4063,52 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
       `${guidePath} @fluojs/drizzle Public API row must include the deprecated DrizzleTransactionInterceptor compatibility export.`,
     );
   }
+
+  const migrationGuideClaims = [
+    [
+      'docs/getting-started/migrate-from-nestjs.md',
+      /^\| NestJS request transaction interceptor \|.*$/mu,
+      '`DrizzleTransactionInterceptor` remains a deprecated 1.x compatibility bridge for existing imports.',
+      'Drizzle has no compatibility interceptor export.',
+    ],
+    [
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      /^\| NestJS 요청 transaction interceptor \|.*$/mu,
+      '`DrizzleTransactionInterceptor`는 기존 import를 위한 deprecated 1.x 호환성 bridge로 유지된다.',
+      'Drizzle은 호환성 interceptor export를 제공하지 않는다.',
+    ],
+  ];
+
+  for (const [guidePath, rowPattern, requiredClaim, staleClaim] of migrationGuideClaims) {
+    const requestTransactionRow = rowPattern.exec(readText(guidePath))?.[0];
+
+    assert(
+      requestTransactionRow?.includes(requiredClaim),
+      `${guidePath} must state DrizzleTransactionInterceptor's deprecated 1.x compatibility export in the request transaction migration row.`,
+    );
+    assert(
+      !requestTransactionRow.includes(staleClaim),
+      `${guidePath} must not claim that the exported DrizzleTransactionInterceptor is absent.`,
+    );
+  }
+
+  const mongooseSurfaceClaims = [
+    [
+      'docs/reference/package-surface.md',
+      '`@fluojs/mongoose` exports neither `createMongooseProviders(...)` nor\n`MongooseTransactionInterceptor`.',
+    ],
+    [
+      'docs/reference/package-surface.ko.md',
+      '`@fluojs/mongoose`는 `createMongooseProviders(...)`와\n`MongooseTransactionInterceptor`를 export하지 않습니다.',
+    ],
+  ];
+
+  for (const [surfacePath, requiredClaim] of mongooseSurfaceClaims) {
+    assert(
+      readText(surfacePath).includes(requiredClaim),
+      `${surfacePath} must state that @fluojs/mongoose exports neither createMongooseProviders(...) nor MongooseTransactionInterceptor.`,
+    );
+  }
 }
 
 function enforceDrizzleNamedClientContract() {

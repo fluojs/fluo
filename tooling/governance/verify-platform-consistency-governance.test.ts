@@ -1146,6 +1146,38 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
 
   it.each([
     [
+      'English Nest migration table claim that Drizzle lacks an interceptor export',
+      'docs/getting-started/migrate-from-nestjs.md',
+      (source: string) => source.replace(
+        '`DrizzleTransactionInterceptor` remains a deprecated 1.x compatibility bridge for existing imports.',
+        'Drizzle has no compatibility interceptor export.',
+      ),
+    ],
+    [
+      'Korean Nest migration table claim that Drizzle lacks an interceptor export',
+      'docs/getting-started/migrate-from-nestjs.ko.md',
+      (source: string) => source.replace(
+        '`DrizzleTransactionInterceptor`는 기존 import를 위한 deprecated 1.x 호환성 bridge로 유지된다.',
+        'Drizzle은 호환성 interceptor export를 제공하지 않는다.',
+      ),
+    ],
+    [
+      'English Mongoose package-surface removal claim',
+      'docs/reference/package-surface.md',
+      (source: string) => source.replace(
+        '`@fluojs/mongoose` exports neither `createMongooseProviders(...)` nor\n`MongooseTransactionInterceptor`.',
+        '`@fluojs/mongoose` exports `createMongooseProviders(...)` and\n`MongooseTransactionInterceptor`.',
+      ),
+    ],
+    [
+      'Korean Mongoose package-surface removal claim',
+      'docs/reference/package-surface.ko.md',
+      (source: string) => source.replace(
+        '`@fluojs/mongoose`는 `createMongooseProviders(...)`와\n`MongooseTransactionInterceptor`를 export하지 않습니다.',
+        '`@fluojs/mongoose`는 `createMongooseProviders(...)`와\n`MongooseTransactionInterceptor`를 export합니다.',
+      ),
+    ],
+    [
       'request transaction lifecycle table entry',
       'apps/docs/content/docs/guides/persistence.mdx',
       (source: string) => source.replace(
