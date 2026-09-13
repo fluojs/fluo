@@ -588,6 +588,16 @@ Queue producer migration discoverability는 `packages/queue/README.ko.md`와 [`d
 
 NestJS Mongoose 마이그레이션과 트랜잭션 의미론은 [트랜잭션 문맥 계약](./architecture/transactions.ko.md)과 [NestJS → fluo 마이그레이션 맵](./getting-started/migrate-from-nestjs.ko.md)에 문서화합니다. `MongooseConnection.model(...)` facade 작업은 지원되는 메서드에 ambient session을 병합합니다. `MongooseConnection.saveDocument(...)`는 기존 document의 opt-in 경로로 native save option과 document identity를 보존하고 ambient session 없이는 fail-closed하며 direct `doc.save()`는 변경하지 않습니다.
 
+## Mongoose API 통합
+
+`@fluojs/mongoose`의 애플리케이션 등록 경로는
+`MongooseModule.forRoot(...)` 또는 `MongooseModule.forRootAsync(...)` 하나입니다.
+model/session/transaction 접근에는 `MongooseConnection`을 주입하세요. 수동
+`createMongooseProviders(...)`와 패키지 `MongooseTransactionInterceptor`
+export는 제거되었으며, request-wide interception은
+`RequestContext.request.signal`을 `requestTransaction(...)`에 전달하는
+애플리케이션 소유 코드입니다.
+
 ## Anti-Patterns at a Glance
 
 - `experimentalDecorators` 또는 `emitDecoratorMetadata`를 활성화하는 것, fluo의 표준 데코레이터 기준을 깨뜨린다.

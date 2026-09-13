@@ -1149,16 +1149,16 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
       'request transaction lifecycle table entry',
       'apps/docs/content/docs/guides/persistence.mdx',
       (source: string) => source.replace(
-        '`PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, and `MongooseTransactionInterceptor`',
-        '`PrismaTransactionInterceptor` and `MongooseTransactionInterceptor`',
+        '`PrismaTransactionInterceptor` and `DrizzleTransactionInterceptor`',
+        '`PrismaTransactionInterceptor`',
       ),
     ],
     [
       'Korean request transaction lifecycle table entry',
       'apps/docs/content/docs/guides/persistence.ko.mdx',
       (source: string) => source.replace(
-        '`PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, `MongooseTransactionInterceptor`',
-        '`PrismaTransactionInterceptor`, `MongooseTransactionInterceptor`',
+        '`PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`',
+        '`PrismaTransactionInterceptor`',
       ),
     ],
     [
@@ -4409,8 +4409,8 @@ describe('repository governance contracts', () => {
 
     expect(transactionsDoc).toContain('Unsupported model methods, `doc.save()`');
     expect(transactionsDocKo).toContain('지원되지 않는 model 메서드, `doc.save()`');
-    expect(nestMigrationDoc).toContain('Mongoose transaction migration is also not an interceptor-for-interceptor replacement');
-    expect(nestMigrationDocKo).toContain('Mongoose transaction migration도 interceptor-for-interceptor 치환이 아니다');
+    expect(nestMigrationDoc).toContain('Mongoose transaction migration is not an interceptor-for-interceptor replacement');
+    expect(nestMigrationDocKo).toContain('Mongoose transaction migration은 interceptor-for-interceptor 치환이 아니다');
     for (const source of [docsContext, transactionsDoc, nestMigrationDoc, mongooseBook, packageSurface, mongooseReadme]) {
       expect(source).toMatch(/concrete (?:Mongoose )?connection/u);
       expect(source).toContain('fail-open');

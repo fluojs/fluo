@@ -68,6 +68,21 @@ const connection = mongoose.createConnection('mongodb://localhost:27017/fluoshop
 export class PersistenceModule {}
 ```
 
+### Async Configuration
+
+When connection construction depends on injected application configuration, use
+the same module entrypoint rather than manually assembling providers:
+
+```typescript
+MongooseModule.forRootAsync({
+  inject: [DatabaseConfig],
+  useFactory: async (config: DatabaseConfig) => ({
+    connection: mongoose.createConnection(config.mongoUrl),
+    dispose: async (connection) => connection.close(),
+  }),
+});
+```
+
 ## 19.4 Repositories and Connection Management
 
 In Fluo, you usually interact with MongoDB through repositories. Instead of depending on the global `mongoose` object, inject the `MongooseConnection` service so the code follows the current connection and session boundary.

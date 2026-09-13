@@ -166,6 +166,14 @@ Raw Node adapter 생성은 `@fluojs/platform-nodejs`의 `NodeHttpApplicationAdap
 
 아키텍처 정의는 [glossary-and-mental-model.ko.md](./glossary-and-mental-model.ko.md)를 참조하세요.
 
+### Mongoose 등록 통합
+
+`@fluojs/mongoose`에는 수동 provider factory나 request transaction
+interceptor export가 없습니다. 애플리케이션이 소유하는 connection은
+`MongooseModule.forRoot(...)` 또는 `MongooseModule.forRootAsync(...)`로만
+등록하고 `MongooseConnection`을 주입하며, 명시적 request boundary는 request
+signal을 `requestTransaction(...)`에 전달하는 애플리케이션 소유 코드로 유지하세요.
+
 Microservices transport 학습 경로는 패키지 계약 원천으로 다시 연결됩니다. [TCP](../../book/intermediate/ch02-tcp.ko.md), [RabbitMQ](../../book/intermediate/ch04-rabbitmq.ko.md), [gRPC](../../book/intermediate/ch08-grpc.ko.md)는 `packages/microservices/README.ko.md`를 보완하지만 facade, shutdown, transport ownership 계약의 기준을 대체하지 않습니다.
 
 ### Notifications 상태 계약

@@ -68,6 +68,21 @@ const connection = mongoose.createConnection('mongodb://localhost:27017/fluoshop
 export class PersistenceModule {}
 ```
 
+### 비동기 구성
+
+연결 생성이 주입된 애플리케이션 구성에 의존한다면 provider를 수동 조합하지 말고
+동일한 module entrypoint를 사용하세요.
+
+```typescript
+MongooseModule.forRootAsync({
+  inject: [DatabaseConfig],
+  useFactory: async (config: DatabaseConfig) => ({
+    connection: mongoose.createConnection(config.mongoUrl),
+    dispose: async (connection) => connection.close(),
+  }),
+});
+```
+
 ## 19.4 Repositories and Connection Management
 
 Fluo에서는 일반적으로 리포지토리를 통해 MongoDB와 상호작용합니다. 전역 `mongoose` 객체에 의존하지 않고 `MongooseConnection` 서비스를 주입받아 현재 연결과 세션 경계를 따릅니다.

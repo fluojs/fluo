@@ -30,8 +30,6 @@ describe('@fluojs/mongoose public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(mongoosePublicApi).toHaveProperty('MongooseConnection');
     expect(mongoosePublicApi).toHaveProperty('MongooseModule');
-    expect(mongoosePublicApi).toHaveProperty('MongooseTransactionInterceptor');
-    expect(mongoosePublicApi).toHaveProperty('createMongooseProviders');
     expect(mongoosePublicApi).toHaveProperty('Transaction');
     expect(mongoosePublicApi).toHaveProperty('createMongoosePlatformStatusSnapshot');
     expect(mongoosePublicApi).toHaveProperty('MONGOOSE_CONNECTION');
@@ -44,6 +42,8 @@ describe('@fluojs/mongoose public API surface', () => {
     expect(mongoosePublicApi).not.toHaveProperty('MONGOOSE_NORMALIZED_OPTIONS');
     expect(mongoosePublicApi).not.toHaveProperty('normalizeMongooseModuleOptions');
     expect(mongoosePublicApi).not.toHaveProperty('createMongooseProvidersAsync');
+    expect(mongoosePublicApi).not.toHaveProperty('createMongooseProviders');
+    expect(mongoosePublicApi).not.toHaveProperty('MongooseTransactionInterceptor');
   });
 
   it('keeps documented type-only inputs importable from the root barrel', () => {

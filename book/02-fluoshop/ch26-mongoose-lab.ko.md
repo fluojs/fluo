@@ -357,6 +357,9 @@ it('keeps review options and attaches only the ambient session', async () => {
     async startSession() { return session; },
     model() { return model; },
   };
+  // This isolated unit test constructs the wrapper directly. Application code
+  // registers `raw` with MongooseModule.forRoot({ connection: raw }) and injects
+  // MongooseConnection instead.
   const conn = new MongooseConnection(raw, undefined, { strictTransactions: true });
   type Model = MongooseModelFacade<Promise<unknown[]>>;
   try {

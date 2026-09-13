@@ -3978,7 +3978,6 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
   const compatibilityExports = [
     ['PrismaTransactionInterceptor', 'packages/prisma/src/index.ts', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
     ['DrizzleTransactionInterceptor', 'packages/drizzle/src/index.ts', 'packages/drizzle/src/named-registration.ts', 'packages/drizzle/src/transaction.ts'],
-    ['MongooseTransactionInterceptor', 'packages/mongoose/src/index.ts', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
   ];
   const contractPaths = [
     'apps/docs/content/docs/guides/persistence.mdx',
@@ -4051,7 +4050,7 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
 
     assert(
       requestTransactionsRow !== undefined &&
-        ['PrismaTransactionInterceptor', 'DrizzleTransactionInterceptor', 'MongooseTransactionInterceptor']
+        ['PrismaTransactionInterceptor', 'DrizzleTransactionInterceptor']
           .every((interceptor) => requestTransactionsRow.includes(interceptor)) &&
         requestTransactionsRow.includes('deprecated') &&
         requestTransactionsRow.includes('1.x'),

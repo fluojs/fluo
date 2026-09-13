@@ -165,6 +165,14 @@ Raw Node adapter creation uses one path: `NodeHttpApplicationAdapter.create(opti
 
 Refer to [glossary-and-mental-model.md](./glossary-and-mental-model.md) for architectural definitions.
 
+### Mongoose registration consolidation
+
+`@fluojs/mongoose` has no manual provider factory or request transaction
+interceptor export. Register application-owned connections only through
+`MongooseModule.forRoot(...)` or `MongooseModule.forRootAsync(...)`, inject
+`MongooseConnection`, and keep an explicit request boundary application-owned
+by forwarding the request signal to `requestTransaction(...)`.
+
 Microservices transport learning paths link back to the package contract source: [TCP](../../book/intermediate/ch02-tcp.md), [RabbitMQ](../../book/intermediate/ch04-rabbitmq.md), and [gRPC](../../book/intermediate/ch08-grpc.md) complement `packages/microservices/README.md` without replacing its facade, shutdown, and transport ownership contracts.
 
 ### Notifications status contract
