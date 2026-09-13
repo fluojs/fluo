@@ -196,10 +196,22 @@ function enforceMongooseRemovalClaim(content, requirement) {
     `${requirement.path} must include exactly one fluo-mongoose-removal marker; found ${markers.length}.`,
   );
 
-  const fields = new Map(markers[0][1].split('; ').map((field) => field.split('=')));
+  const entries = markers[0][1].split('; ').map((field) => field.split('='));
+  const fieldKeys = entries.map(([field]) => field);
+  const duplicateFieldKeys = [
+    ...new Set(fieldKeys.filter((field, index) => fieldKeys.indexOf(field) !== index)),
+  ];
   assert(
-    fields.size === mongooseRemovalFields.size &&
-      [...mongooseRemovalFields].every(([field, value]) => fields.get(field) === value),
+    duplicateFieldKeys.length === 0,
+    `${requirement.path} fluo-mongoose-removal marker must not declare duplicate field keys: ${duplicateFieldKeys.join(', ')}.`,
+  );
+
+  const fields = new Map(entries);
+  assert(
+    entries.length === mongooseRemovalFields.size &&
+      fields.size === mongooseRemovalFields.size &&
+      [...mongooseRemovalFields].every(([field, value]) => fields.get(field) === value) &&
+      [...fields.keys()].every((field) => mongooseRemovalFields.has(field)),
     `${requirement.path} fluo-mongoose-removal marker must declare each machine-consumed Mongoose removal field exactly once.`,
   );
 

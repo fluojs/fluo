@@ -201,6 +201,26 @@ describe('NestJS Mongoose migration documentation', () => {
     },
   );
 
+  it.each(mongooseRemovalRequirements)(
+    'rejects a conflicting duplicate Mongoose removal field in $path',
+    ({ path: driftedPath }) => {
+      const readWithConflictingDuplicateField = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? read(relativePath).replace(
+              'providers=removed',
+              'providers=exported; providers=removed',
+            )
+          : read(relativePath);
+
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithConflictingDuplicateField)).toThrow(
+        driftedPath,
+      );
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithConflictingDuplicateField)).toThrow(
+        'must not declare duplicate field keys: providers.',
+      );
+    },
+  );
+
   it('rejects a disabled MongooseModule barrel export comparison', () => {
     const readWithDisabledBarrelExport = (relativePath: string): string =>
       relativePath === 'packages/mongoose/src/index.ts'
