@@ -88,7 +88,9 @@ function getBoundPort(server: unknown): number {
   return address.port;
 }
 
-function createNodeHttpTestAdapter(): HttpApplicationAdapter & { getServer(): unknown } {
+function createNodeHttpTestAdapter(
+  onFrameworkRequest?: (frameworkRequest: FrameworkRequest) => void,
+): HttpApplicationAdapter & { getServer(): unknown } {
   let server: ReturnType<typeof createServer> | undefined;
 
   return {
@@ -126,15 +128,17 @@ function createNodeHttpTestAdapter(): HttpApplicationAdapter & { getServer(): un
           }
         });
 
+        const frameworkRequest = createRequest(
+          request.url ?? '/',
+          request.method ?? 'GET',
+          undefined,
+          request.headers,
+          controller.signal,
+        );
+        onFrameworkRequest?.(frameworkRequest);
         const frameworkResponse = createResponse();
         void dispatcher.dispatch(
-          createRequest(
-            request.url ?? '/',
-            request.method ?? 'GET',
-            undefined,
-            request.headers,
-            controller.signal,
-          ),
+          frameworkRequest,
           frameworkResponse,
         ).then(() => {
           if (response.destroyed) {
@@ -481,7 +485,10 @@ describe('@fluojs/prisma service boundary primary flow', () => {
       imports: [PrismaModule.forRoot({ client })],
       providers: [OrderRequestTransactionBoundary, OrdersService],
     });
-    const adapter = createNodeHttpTestAdapter();
+    let frameworkRequestSignal: AbortSignal | undefined;
+    const adapter = createNodeHttpTestAdapter((frameworkRequest) => {
+      frameworkRequestSignal = frameworkRequest.signal;
+    });
     const app = await FluoFactory.create(AppModule, { adapter });
     const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
     const requestTransaction = vi.spyOn(prisma, 'requestTransaction');
@@ -504,6 +511,7 @@ describe('@fluojs/prisma service boundary primary flow', () => {
 
       // Then
       expect(requestTransaction).toHaveBeenCalledTimes(1);
+      expect(requestTransaction.mock.calls[0]?.[1]).toBe(frameworkRequestSignal);
       expect(requestTransaction.mock.calls[0]?.[1]?.aborted).toBe(true);
       expect(events).toEqual([
         'connect',

@@ -209,6 +209,29 @@ class VisibilityModule {}
     },
   );
 
+  it.each([
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+  ])('rejects describing PrismaTransactionInterceptor as retained in %s', (path) => {
+    // Given
+    const readWithRetainedPrismaInterceptor = (relativePath: string): string =>
+      relativePath === path
+        ? read(relativePath).replace(
+            path.endsWith('.ko.md')
+              ? '`PrismaTransactionInterceptor`는 제거되어 compatibility export가 없다.'
+              : '`PrismaTransactionInterceptor` is removed and has no compatibility export.',
+            path.endsWith('.ko.md')
+              ? '`PrismaTransactionInterceptor`는 기존 import를 위한 deprecated 1.x compatibility bridge로 유지된다.'
+              : '`PrismaTransactionInterceptor` remains a deprecated 1.x compatibility bridge for existing imports.',
+          )
+        : read(relativePath);
+
+    // When / Then
+    expect(() => enforcePrismaNestjsMigrationDocs(readWithRetainedPrismaInterceptor)).toThrow(
+      'PrismaTransactionInterceptor compatibility description',
+    );
+  });
+
   it('requires the main governance body to invoke the Prisma guard', () => {
     // Given
     const governanceSource = read('tooling/governance/verify-platform-consistency-governance.mjs');

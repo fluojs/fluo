@@ -36,6 +36,16 @@ const prismaRegistrationDocumentationPaths = [
   'docs/reference/package-surface.md',
   'docs/reference/package-surface.ko.md',
 ];
+const prismaCompatibilityDocumentation = [
+  {
+    relativePath: 'docs/getting-started/migrate-from-nestjs.md',
+    requiredDescription: '`PrismaTransactionInterceptor` is removed and has no compatibility export.',
+  },
+  {
+    relativePath: 'docs/getting-started/migrate-from-nestjs.ko.md',
+    requiredDescription: '`PrismaTransactionInterceptor`는 제거되어 compatibility export가 없다.',
+  },
+];
 
 const prismaDocumentationAnchors = [
   {
@@ -163,6 +173,14 @@ function enforceDocumentationClaims(readText) {
 
   for (const relativePath of prismaRegistrationDocumentationPaths) {
     enforcePrismaRegistrationContractMarker(readText(relativePath), relativePath);
+  }
+
+  for (const { relativePath, requiredDescription } of prismaCompatibilityDocumentation) {
+    const documentation = readText(relativePath);
+    assert(
+      documentation.split(requiredDescription).length - 1 === 1,
+      `${relativePath} must describe PrismaTransactionInterceptor compatibility description exactly once.`,
+    );
   }
 }
 
