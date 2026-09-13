@@ -1193,15 +1193,15 @@ Migration MUST remove legacy NestJS-era decorator assumptions from `tsconfig.jso
 fluo migrate ./src
 fluo migrate ./src --dry-run
 fluo migrate ./src --json
+fluo migrate ./src --only imports,injectable
+fluo migrate ./src --skip testing
 ```
 
-`--dry-run` is the explicit canonical preview form; `--apply` is the only switch that writes files, and the two options cannot be combined. Use `--apply` only after reviewing the report and warnings. Use `--only <comma-list>` or `--skip <comma-list>` to focus the enabled transforms when you need a narrower pass:
+`--dry-run` is the explicit canonical preview form; `--apply` is the only switch that writes files, and the two options cannot be combined. Use `--only <comma-list>` or `--skip <comma-list>` to focus a narrower preview. Use `--apply` only after reviewing the report and warnings:
 
 ```bash
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,injectable
-fluo migrate ./src --skip testing
 ```
 
 The canonical `--only` and `--skip` tokens are `imports`, `injectable`, `scope`, `bootstrap`, `testing`, and `tsconfig`. Legacy `inject-params` and `tests` inputs remain accepted for existing scripts, but JSON `transforms` and `appliedTransforms` always emit `injectable` and `testing`.

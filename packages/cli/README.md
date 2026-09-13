@@ -345,8 +345,8 @@ fluo migrate ./src --json
 # Apply transformations
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,injectable
-fluo migrate ./src --skip testing
+fluo migrate ./src --apply --only imports,injectable
+fluo migrate ./src --apply --skip testing
 ```
 
 Migration preview is the default; `--dry-run` is its explicit canonical form, while `--apply` is the only switch that writes files. The canonical `--only` and `--skip` tokens are `imports`, `injectable`, `scope`, `bootstrap`, `testing`, and `tsconfig`. Legacy `inject-params` and `tests` inputs remain accepted for existing scripts, but JSON `transforms` and `appliedTransforms` always emit `injectable` and `testing`.

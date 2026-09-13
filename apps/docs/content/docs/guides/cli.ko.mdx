@@ -211,13 +211,16 @@ Development dependency의 canonical option은 `--dev`이며, `-D`는 입력 shor
 TC39 standard decorator에 맞추려면 `fluo migrate`를 사용합니다.
 
 ```bash
+# 변환 미리보기
 fluo migrate ./src
 fluo migrate ./src --dry-run
 fluo migrate ./src --json
+
+# 변환 적용
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,injectable
-fluo migrate ./src --skip testing
+fluo migrate ./src --apply --only imports,injectable
+fluo migrate ./src --apply --skip testing
 ```
 
 주요 transformation:

@@ -1183,15 +1183,15 @@ CLI로 검증 가능한 fluo baseline을 만든 뒤, NestJS 마이그레이션�
 fluo migrate ./src
 fluo migrate ./src --dry-run
 fluo migrate ./src --json
+fluo migrate ./src --only imports,injectable
+fluo migrate ./src --skip testing
 ```
 
-`--dry-run`은 명시적인 canonical preview form이며, 파일을 쓰는 switch는 `--apply`뿐이고 두 option을 함께 사용할 수 없습니다. Report와 warning을 검토한 뒤에만 `--apply`를 사용하세요. 더 좁은 pass가 필요하면 `--only <comma-list>` 또는 `--skip <comma-list>`로 활성 transform을 제한할 수 있습니다:
+`--dry-run`은 명시적인 canonical preview form이며, 파일을 쓰는 switch는 `--apply`뿐이고 두 option을 함께 사용할 수 없습니다. `--only <comma-list>` 또는 `--skip <comma-list>`로 더 좁은 preview의 활성 transform을 제한할 수 있습니다. Report와 warning을 검토한 뒤에만 `--apply`를 사용하세요:
 
 ```bash
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,injectable
-fluo migrate ./src --skip testing
 ```
 
 정식 `--only` 및 `--skip` 토큰은 `imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`입니다. 기존 script를 위해 legacy 입력 `inject-params`와 `tests`는 계속 허용하지만 JSON `transforms`와 `appliedTransforms`는 항상 `injectable`과 `testing`을 출력합니다.

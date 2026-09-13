@@ -212,13 +212,16 @@ Use `--dev` as the canonical development-dependency option; `-D` is its typing s
 Use `fluo migrate` to align code with TC39 standard decorators.
 
 ```bash
+# Preview transformations
 fluo migrate ./src
 fluo migrate ./src --dry-run
 fluo migrate ./src --json
+
+# Apply transformations
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,injectable
-fluo migrate ./src --skip testing
+fluo migrate ./src --apply --only imports,injectable
+fluo migrate ./src --apply --skip testing
 ```
 
 Key transformations include:

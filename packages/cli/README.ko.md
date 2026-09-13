@@ -343,8 +343,8 @@ fluo migrate ./src --json
 # 변환 적용
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,injectable
-fluo migrate ./src --skip testing
+fluo migrate ./src --apply --only imports,injectable
+fluo migrate ./src --apply --skip testing
 ```
 
 Migration preview는 기본값이며 `--dry-run`은 이를 명시하는 canonical form이고, 파일을 쓰는 switch는 `--apply`뿐입니다. 정식 `--only` 및 `--skip` 토큰은 `imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`입니다. 기존 script를 위해 legacy 입력 `inject-params`와 `tests`는 계속 허용하지만 JSON `transforms`와 `appliedTransforms`는 항상 `injectable`과 `testing`을 출력합니다.
