@@ -331,7 +331,9 @@ class AnalyticsService {
 `getDrizzleHandleProviderToken`은 trim된 이름마다 서로 다른 안정적인 identity를 반환합니다. 이름 있는 client는
 non-global이며 ALS transaction context, shutdown drain, disposal, status를 독립적으로 소유합니다. consumer는 일치하는
 이름 있는 token을 export하는 module을 import해야 하며, 이름이 runtime container를 분리하지는 않습니다. `name`을 생략하면
-기존 default token, `DrizzleDatabase` class token, interceptor 동작이 유지됩니다.
+기존 default token과 `DrizzleDatabase` class token은 유지됩니다. module-owned facade는 직접 Drizzle 호출을
+`DrizzleDatabase.current()`로 전달하며, request-wide transaction에는 명시적
+`DrizzleDatabase.requestTransaction(...)` boundary가 필요합니다.
 
 ### 종료와 상태 계약
 

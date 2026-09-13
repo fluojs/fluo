@@ -331,7 +331,9 @@ class AnalyticsService {
 `getDrizzleHandleProviderToken` return distinct stable identities for each trimmed name. Named clients are
 non-global and independently own ALS transaction context, shutdown drain, disposal, and status. A consumer must import
 a module that exports the matching named token; names do not create isolated runtime containers. Omitting `name`
-preserves the existing default tokens, `DrizzleDatabase` class token, and interceptor behavior.
+preserves the existing default tokens and `DrizzleDatabase` class token. The module-owned facade
+forwards direct Drizzle calls to `DrizzleDatabase.current()`; request-wide transactions require an
+explicit `DrizzleDatabase.requestTransaction(...)` boundary.
 
 ### Shutdown and status contracts
 

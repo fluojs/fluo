@@ -26,7 +26,11 @@ const removedPublicSurfaces = [
   'normalizeDrizzleModuleOptions',
 ] as const;
 
-function parsePnpmImporterDependencies(lockfile: string, importerPath: string): ReadonlySet<string> {
+function parsePnpmImporterDependencySection(
+  lockfile: string,
+  importerPath: string,
+  section: 'dependencies' | 'devDependencies',
+): ReadonlySet<string> {
   const lines = lockfile.split('\n');
   const importerIndex = lines.indexOf(`  ${importerPath}:`);
 
@@ -40,7 +44,7 @@ function parsePnpmImporterDependencies(lockfile: string, importerPath: string): 
   for (const line of lines.slice(importerIndex + 1)) {
     if (/^[ ]{2}\S/.test(line)) break;
 
-    if (line === '    dependencies:') {
+    if (line === `    ${section}:`) {
       inDependencies = true;
       continue;
     }
@@ -120,16 +124,25 @@ describe('@fluojs/drizzle published artifact surface', () => {
     }
   });
 
-  it('does not declare @fluojs/http as a production Drizzle dependency', () => {
+  it('declares @fluojs/http only as a test-only Drizzle dependency', () => {
     const packageManifest = JSON.parse(readFileSync(packageManifestPath, 'utf8')) as {
       dependencies?: Readonly<Record<string, string>>;
+      devDependencies?: Readonly<Record<string, string>>;
     };
-    const importerDependencies = parsePnpmImporterDependencies(
+    const importerDependencies = parsePnpmImporterDependencySection(
       readFileSync(lockfilePath, 'utf8'),
       'packages/drizzle',
+      'dependencies',
+    );
+    const importerDevDependencies = parsePnpmImporterDependencySection(
+      readFileSync(lockfilePath, 'utf8'),
+      'packages/drizzle',
+      'devDependencies',
     );
 
     expect(packageManifest.dependencies).not.toHaveProperty('@fluojs/http');
     expect(importerDependencies).not.toContain('@fluojs/http');
+    expect(packageManifest.devDependencies).toHaveProperty('@fluojs/http', 'workspace:^');
+    expect(importerDevDependencies).toContain('@fluojs/http');
   });
 });
