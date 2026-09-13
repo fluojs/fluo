@@ -2,7 +2,9 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./migrate-prisma-registration.ko.md"><kbd>한국어</kbd></a></p>
 
-`@fluojs/prisma` has one application registration path: import `PrismaModule.forRoot(...)` or `PrismaModule.forRootAsync(...)`, then inject `PrismaService`. Named registrations remain scoped and use `getPrismaServiceToken(name)`.
+`@fluojs/prisma` has one application registration path: import `PrismaModule.forRoot(...)` or `PrismaModule.forRootAsync(...)`, then inject `PrismaService`. A default registration aliases the `PrismaService` class token and `getPrismaServiceToken()` to the same module-owned facade. Named registrations remain scoped, resolve only through `getPrismaServiceToken(name)`, and do not bind or export the `PrismaService` class token.
+
+<!-- fluo-prisma-registration-contract: default-class-token-alias, named-token-isolation, no-transaction-interceptor-export -->
 
 `PrismaService.createFacade(...)` and `PrismaTransactionInterceptor` are removed. This is a breaking migration despite the lane's patch-only Changeset policy.
 
@@ -24,7 +26,7 @@ class UserRepository {
 }
 ```
 
-Inject `getPrismaServiceToken(name)` for a named registration; do not construct a second facade or duplicate lifecycle owner.
+Inject `getPrismaServiceToken(name)` for a named registration; it resolves that named registration's isolated facade and never aliases the `PrismaService` class token. Do not construct a second facade or duplicate lifecycle owner.
 
 ## Replace Request Interceptor Registration
 
@@ -32,4 +34,4 @@ Replace `@UseInterceptors(PrismaTransactionInterceptor)` with an application-own
 
 ## Verification
 
-Verify that the registered service is the same instance resolved through its class and named token, generated delegate calls select the ambient transaction client, request cancellation reaches `requestTransaction(...)`, and application shutdown owns one connect/disconnect lifecycle.
+Verify that a default registration resolves the same facade through `PrismaService` and `getPrismaServiceToken()`. Verify each named registration resolves only through its own `getPrismaServiceToken(name)`, remains isolated from other names, and does not expose the `PrismaService` class token. Also verify generated delegate calls select the ambient transaction client, request cancellation reaches `requestTransaction(...)`, application shutdown owns one connect/disconnect lifecycle, and `PrismaTransactionInterceptor` is not a root-package export.
