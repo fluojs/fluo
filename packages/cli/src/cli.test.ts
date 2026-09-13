@@ -3542,6 +3542,34 @@ void bootstrap();
     expect(stderrBuffer.join('')).toBe('child stderr\n');
   });
 
+  it('forwards help after the lifecycle argument separator without rendering Fluo help', async () => {
+    // Given: a generated project and a child-only help argument.
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    const stdoutBuffer: string[] = [];
+    const spawned: Array<{ args: string[]; command: string }> = [];
+
+    // When: the lifecycle command receives --help after its conventional separator.
+    const exitCode = await runCli(['dev', '--', '--help'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async (command, args) => {
+        spawned.push({ args, command });
+        return 0;
+      },
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    // Then: Fluo starts its child and forwards the help argument without emitting Fluo help.
+    expect(exitCode).toBe(0);
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]?.command).toBe('node');
+    expect(spawned[0]?.args.slice(-2)).toEqual(['--', '--help']);
+    expect(stdoutBuffer.join('')).toBe('');
+  });
+
   it('does not force child color output when NO_COLOR is set in app-only mode', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
