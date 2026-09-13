@@ -684,7 +684,10 @@ export function scriptUsage(command: ScriptCommand): string {
  * @returns Process-style exit code from the lifecycle command.
  */
 export async function runScriptCommand(command: ScriptCommand, argv: string[], runtime: ScriptRuntimeOptions = {}): Promise<number> {
-  if (argv.includes('--help') || argv.includes('-h')) {
+  const separatorIndex = argv.indexOf('--');
+  const scriptArgv = separatorIndex === -1 ? argv : argv.slice(0, separatorIndex);
+
+  if (scriptArgv.includes('--help') || scriptArgv.includes('-h')) {
     (runtime.stdout ?? process.stdout).write(`${scriptUsage(command)}\n`);
     return 0;
   }

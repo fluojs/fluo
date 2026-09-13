@@ -484,6 +484,7 @@ export async function runCli(
   const removedGlobalFlag = globalArgv.find((argument) => REMOVED_UPDATE_CHECK_FLAGS.has(argument));
   const updateFlagResult = removeUpdateCheckFlags(argv);
   const commandArgv = updateFlagResult.argv;
+  const helpArgv = removeUpdateCheckFlags(globalArgv).argv;
 
   try {
     if (removedGlobalFlag) {
@@ -501,7 +502,7 @@ export async function runCli(
       return 0;
     }
 
-    if (!isHelpInvocation(commandArgv) && !isPreviewInvocation(globalArgv)) {
+    if (!isHelpInvocation(helpArgv) && !isPreviewInvocation(globalArgv)) {
       const updateCheckOptions = runtime.updateCheck === false ? undefined : runtime.updateCheck;
       const updateCheckResult = await runCliUpdateCheck(commandArgv, {
         ...updateCheckOptions,
@@ -587,58 +588,58 @@ export async function runCli(
       return 0;
     }
 
-    if (isHelpFlag(commandArgv[0])) {
+    if (isHelpFlag(helpArgv[0])) {
       stdout.write(`${usage()}\n`);
       return 0;
     }
 
-    if ((commandArgv[0] === 'g' || commandArgv[0] === 'generate') && commandArgv.slice(1).some(isHelpFlag)) {
+    if ((helpArgv[0] === 'g' || helpArgv[0] === 'generate') && helpArgv.slice(1).some(isHelpFlag)) {
       stdout.write(`${await generateUsage()}\n`);
       return 0;
     }
 
-    if ((commandArgv[0] === 'doctor' || commandArgv[0] === 'info') && commandArgv.slice(1).some(isHelpFlag)) {
+    if ((helpArgv[0] === 'doctor' || helpArgv[0] === 'info') && helpArgv.slice(1).some(isHelpFlag)) {
       const { diagnosticsUsage } = await import('./commands/diagnostics.js');
-      stdout.write(`${diagnosticsUsage(commandArgv[0])}\n`);
+      stdout.write(`${diagnosticsUsage(helpArgv[0])}\n`);
       return 0;
     }
 
-    if (commandArgv[0] === 'analyze' && commandArgv.slice(1).some(isHelpFlag)) {
+    if (helpArgv[0] === 'analyze' && helpArgv.slice(1).some(isHelpFlag)) {
       const { diagnosticsUsage } = await import('./commands/diagnostics.js');
       stdout.write(`${diagnosticsUsage('analyze')}\n`);
       return 0;
     }
 
-    if ((commandArgv[0] === 'build' || commandArgv[0] === 'dev' || commandArgv[0] === 'start') && commandArgv.slice(1).some(isHelpFlag)) {
+    if ((helpArgv[0] === 'build' || helpArgv[0] === 'dev' || helpArgv[0] === 'start') && helpArgv.slice(1).some(isHelpFlag)) {
       const { scriptUsage } = await import('./commands/scripts.js');
-      stdout.write(`${scriptUsage(commandArgv[0])}\n`);
+      stdout.write(`${scriptUsage(helpArgv[0])}\n`);
       return 0;
     }
 
-    if (commandArgv[0] === 'add' && commandArgv.slice(1).some(isHelpFlag)) {
+    if (helpArgv[0] === 'add' && helpArgv.slice(1).some(isHelpFlag)) {
       const { addUsage } = await import('./commands/package-workflow.js');
       stdout.write(`${addUsage()}\n`);
       return 0;
     }
 
-    if (commandArgv[0] === 'upgrade' && commandArgv.slice(1).some(isHelpFlag)) {
+    if (helpArgv[0] === 'upgrade' && helpArgv.slice(1).some(isHelpFlag)) {
       const { upgradeUsage } = await import('./commands/package-workflow.js');
       stdout.write(`${upgradeUsage()}\n`);
       return 0;
     }
 
-    if (commandArgv[0] === 'migrate' && commandArgv.slice(1).some(isHelpFlag)) {
+    if (helpArgv[0] === 'migrate' && helpArgv.slice(1).some(isHelpFlag)) {
       const { migrateUsage } = await import('./commands/migrate.js');
       stdout.write(`${migrateUsage()}\n`);
       return 0;
     }
 
-    if (commandArgv[0] === 'inspect' && commandArgv.slice(1).some(isHelpFlag)) {
+    if (helpArgv[0] === 'inspect' && helpArgv.slice(1).some(isHelpFlag)) {
       stdout.write(`${inspectUsage()}\n`);
       return 0;
     }
 
-    if (commandArgv[0] === 'typegen' && commandArgv.slice(1).some(isHelpFlag)) {
+    if (helpArgv[0] === 'typegen' && helpArgv.slice(1).some(isHelpFlag)) {
       stdout.write(`${typegenUsage()}\n`);
       return 0;
     }
