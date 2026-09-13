@@ -124,6 +124,7 @@ function expectInjectedConstructorDependency(
   className: string,
   parameterName: string,
   token: string,
+  expectedInjectTokens: readonly string[] = [token],
 ): void {
   const sourceFile = createSourceFile('readme-snippet.ts', sourceText, ScriptTarget.ES2022, true, ScriptKind.TS);
   const declaration = sourceFile.statements
@@ -144,8 +145,13 @@ function expectInjectedConstructorDependency(
   }
 
   const injectedTokens = injectDecorator.expression.arguments.map((argument) => argument.getText(sourceFile));
-  if (injectedTokens.length !== 1 || injectedTokens[0] !== token) {
-    throw new TypeError(`Expected @Inject(${token}) on ${className}; received @Inject(${injectedTokens.join(', ')}).`);
+  if (
+    injectedTokens.length !== expectedInjectTokens.length
+    || injectedTokens.some((injectedToken, index) => injectedToken !== expectedInjectTokens[index])
+  ) {
+    throw new TypeError(
+      `Expected @Inject(${expectedInjectTokens.join(', ')}) on ${className}; received @Inject(${injectedTokens.join(', ')}).`,
+    );
   }
 
   const constructor = declaration.members.find(isConstructorDeclaration);
@@ -190,10 +196,12 @@ describe('@fluojs/prisma README DI snippets', () => {
       )).toThrowError('Expected @Inject(UserRepository) on UserService; received @Inject(PrismaService).');
     });
 
-    it(`compiles the ${locale} interceptor compatibility example against public package types`, () => {
-      const snippet = readmeSnippet(file, ['class OrdersController', '@UseInterceptors(PrismaTransactionInterceptor)']);
+    it(`compiles the ${locale} explicit request transaction example against public package types`, () => {
+      const snippet = readmeSnippet(file, ['class OrdersController', 'requestTransaction(']);
 
-      expectInjectedConstructorDependency(snippet, 'OrdersController', 'orders', 'OrdersService');
+      const expectedInjectTokens = ['PrismaService', 'OrdersService'];
+      expectInjectedConstructorDependency(snippet, 'OrdersController', 'orders', 'OrdersService', expectedInjectTokens);
+      expectInjectedConstructorDependency(snippet, 'OrdersController', 'prisma', 'PrismaService', expectedInjectTokens);
       expect(
         readmeSnippetDiagnostics(
           `${file}-interceptor`,

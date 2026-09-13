@@ -8,7 +8,6 @@ import {
   PRISMA_OPTIONS,
   PrismaModule,
   PrismaService,
-  PrismaTransactionInterceptor,
 } from './index.js';
 
 describe('PrismaModule.forRootAsync global visibility', () => {
@@ -28,11 +27,10 @@ describe('PrismaModule.forRootAsync global visibility', () => {
       },
     };
 
-    @Inject(PrismaService, PrismaTransactionInterceptor)
+    @Inject(PrismaService)
     class ProviderConsumer {
       constructor(
         readonly prisma: PrismaService<typeof client, typeof transactionClient>,
-        readonly interceptor: PrismaTransactionInterceptor,
       ) {}
     }
 
@@ -70,7 +68,6 @@ describe('PrismaModule.forRootAsync global visibility', () => {
 
       // Then
       expect(providerConsumer.prisma.current()).toBe(client);
-      expect(providerConsumer.interceptor).toBeInstanceOf(PrismaTransactionInterceptor);
       expect(tokenConsumer.rawClient).toBe(client);
       expect(tokenConsumer.options).toEqual({ strictTransactions: false });
       expect(tokenConsumer.prisma).toBe(providerConsumer.prisma);

@@ -3,13 +3,12 @@ import type { AsyncModuleOptions, Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 
 import { definePrismaModule, type PrismaModuleType } from './integration.js';
-import { PrismaService } from './service.js';
+import { createPrismaServiceFacade, PrismaService } from './service.js';
 import {
   getPrismaClientToken,
   getPrismaOptionsToken,
   getPrismaServiceToken,
 } from './tokens.js';
-import { PrismaTransactionInterceptor } from './transaction.js';
 import type {
   InferPrismaTransactionClient,
   InferPrismaTransactionOptions,
@@ -111,7 +110,7 @@ function createPrismaServiceProvider<
     inject: [clientToken, optionsToken],
     provide,
     useFactory: (client: unknown, serviceOptions: unknown) =>
-      PrismaService.createFacade<TClient, TTransactionClient, TTransactionOptions>(
+      createPrismaServiceFacade<TClient, TTransactionClient, TTransactionOptions>(
         client as TClient,
         serviceOptions as PrismaRuntimeOptions,
       ),
@@ -158,7 +157,6 @@ function createPrismaRuntimeProviders<
           provide: getPrismaServiceToken(),
           useExisting: PrismaService,
         },
-        PrismaTransactionInterceptor,
       ]
       : [
         createPrismaServiceProvider<TClient, TTransactionClient, TTransactionOptions>(
@@ -170,85 +168,6 @@ function createPrismaRuntimeProviders<
   ];
 }
 
-function buildPrismaModule<
-  TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
-  TTransactionClient = InferPrismaTransactionClient<TClient>,
-  TTransactionOptions = InferPrismaTransactionOptions<TClient>,
->(
-  options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
-): PrismaModuleType {
-  const normalizedOptions = normalizePrismaModuleOptions(options);
-
-  if (normalizedOptions.name !== undefined && normalizedOptions.global) {
-    throw new Error('Named Prisma registrations are scoped and cannot be registered globally.');
-  }
-
-  return definePrismaModule({
-    exports: normalizedOptions.name === undefined
-      ? [
-        PrismaService,
-        PrismaTransactionInterceptor,
-        getPrismaServiceToken(),
-        getPrismaClientToken(),
-        getPrismaOptionsToken(),
-      ]
-      : [
-        getPrismaServiceToken(normalizedOptions.name),
-        getPrismaClientToken(normalizedOptions.name),
-        getPrismaOptionsToken(normalizedOptions.name),
-      ],
-    global: normalizedOptions.name === undefined ? normalizedOptions.global : false,
-    providers: createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>({
-      provide: getPrismaNormalizedOptionsToken(normalizedOptions.name),
-      useValue: normalizedOptions,
-    }, normalizedOptions.name),
-  }, 'PrismaRootModuleDefinition');
-}
-
-function buildPrismaModuleAsync<
-  TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
-  TTransactionClient = InferPrismaTransactionClient<TClient>,
-  TTransactionOptions = InferPrismaTransactionOptions<TClient>,
->(
-  options: PrismaAsyncModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
-): PrismaModuleType {
-  const factory = options.useFactory;
-  const normalizedName = normalizePrismaRegistrationName(options.name);
-
-  if (normalizedName !== undefined && options.global) {
-    throw new Error('Named Prisma registrations are scoped and cannot be registered globally.');
-  }
-
-  const normalizedOptionsProvider = {
-    inject: options.inject,
-    provide: getPrismaNormalizedOptionsToken(normalizedName),
-    scope: 'singleton' as const,
-    useFactory: async (...deps: unknown[]) => {
-      const resolvedOptions = await factory(...deps);
-
-      return normalizePrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>({
-        ...resolvedOptions,
-        global: options.global,
-        name: normalizedName,
-      });
-    },
-  };
-
-  return definePrismaModule({
-    exports: normalizedName === undefined
-      ? [
-        PrismaService,
-        PrismaTransactionInterceptor,
-        getPrismaServiceToken(),
-        getPrismaClientToken(),
-        getPrismaOptionsToken(),
-      ]
-      : [getPrismaServiceToken(normalizedName), getPrismaClientToken(normalizedName), getPrismaOptionsToken(normalizedName)],
-    global: normalizedName === undefined ? options.global ?? false : false,
-    providers: createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>(normalizedOptionsProvider, normalizedName),
-  }, 'PrismaAsyncModuleDefinition');
-}
-
 /**
  * Runtime module entrypoint for Prisma lifecycle and transaction wiring.
  */
@@ -257,7 +176,7 @@ export class PrismaModule {
    * Registers Prisma providers from static options.
    *
    * @param options Prisma module options with client handle and strict transaction mode.
-   * @returns A module definition that exports `PrismaService`, compatibility interceptor, and related Prisma tokens.
+   * @returns A module definition that exports `PrismaService` and related Prisma tokens.
    */
   static forRoot<
     TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
@@ -266,7 +185,31 @@ export class PrismaModule {
   >(
     options: PrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
   ): PrismaModuleType {
-    return buildPrismaModule<TClient, TTransactionClient, TTransactionOptions>(options);
+    const normalizedOptions = normalizePrismaModuleOptions(options);
+
+    if (normalizedOptions.name !== undefined && normalizedOptions.global) {
+      throw new Error('Named Prisma registrations are scoped and cannot be registered globally.');
+    }
+
+    return definePrismaModule({
+      exports: normalizedOptions.name === undefined
+        ? [
+          PrismaService,
+          getPrismaServiceToken(),
+          getPrismaClientToken(),
+          getPrismaOptionsToken(),
+        ]
+        : [
+          getPrismaServiceToken(normalizedOptions.name),
+          getPrismaClientToken(normalizedOptions.name),
+          getPrismaOptionsToken(normalizedOptions.name),
+        ],
+      global: normalizedOptions.name === undefined ? normalizedOptions.global : false,
+      providers: createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>({
+        provide: getPrismaNormalizedOptionsToken(normalizedOptions.name),
+        useValue: normalizedOptions,
+      }, normalizedOptions.name),
+    }, 'PrismaRootModuleDefinition');
   }
 
   /**
@@ -282,6 +225,39 @@ export class PrismaModule {
   >(
     options: PrismaAsyncModuleOptions<TClient, TTransactionClient, TTransactionOptions>,
   ): PrismaModuleType {
-    return buildPrismaModuleAsync<TClient, TTransactionClient, TTransactionOptions>(options);
+    const factory = options.useFactory;
+    const normalizedName = normalizePrismaRegistrationName(options.name);
+
+    if (normalizedName !== undefined && options.global) {
+      throw new Error('Named Prisma registrations are scoped and cannot be registered globally.');
+    }
+
+    const normalizedOptionsProvider = {
+      inject: options.inject,
+      provide: getPrismaNormalizedOptionsToken(normalizedName),
+      scope: 'singleton' as const,
+      useFactory: async (...deps: unknown[]) => {
+        const resolvedOptions = await factory(...deps);
+
+        return normalizePrismaModuleOptions<TClient, TTransactionClient, TTransactionOptions>({
+          ...resolvedOptions,
+          global: options.global,
+          name: normalizedName,
+        });
+      },
+    };
+
+    return definePrismaModule({
+      exports: normalizedName === undefined
+        ? [
+          PrismaService,
+          getPrismaServiceToken(),
+          getPrismaClientToken(),
+          getPrismaOptionsToken(),
+        ]
+        : [getPrismaServiceToken(normalizedName), getPrismaClientToken(normalizedName), getPrismaOptionsToken(normalizedName)],
+      global: normalizedName === undefined ? options.global ?? false : false,
+      providers: createPrismaRuntimeProviders<TClient, TTransactionClient, TTransactionOptions>(normalizedOptionsProvider, normalizedName),
+    }, 'PrismaAsyncModuleDefinition');
   }
 }
