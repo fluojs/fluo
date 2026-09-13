@@ -21,7 +21,7 @@ describe('NestJS cache-manager migration documentation', () => {
   });
 
   it.each([
-    ['packages/cache-manager/src/module.ts', "httpKeyStrategy: options.httpKeyStrategy ?? 'route'"],
+    ['packages/cache-manager/src/module.ts', "httpKeyStrategy: options.httpKeyStrategy ?? 'route+query'"],
     ['packages/cache-manager/src/decorators.ts', 'export function CacheTTL(ttlSeconds: number): StandardMethodDecoratorFn'],
     ['packages/cache-manager/src/types.ts', "store?: 'memory' | 'redis' | CacheStore;"],
   ] as const)('reports source drift in %s', (driftedPath, expectedMarker) => {

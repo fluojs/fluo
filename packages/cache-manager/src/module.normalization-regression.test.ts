@@ -61,7 +61,7 @@ describe('CacheModule.forRoot', () => {
     expect(optionsProvider).toMatchObject({
       useValue: {
         global: false,
-        httpKeyStrategy: 'route',
+        httpKeyStrategy: 'route+query',
         keyPrefix: 'fluo:cache:',
         store: 'memory',
         ttl: 300,

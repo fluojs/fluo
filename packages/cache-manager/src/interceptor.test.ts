@@ -693,8 +693,7 @@ describe('CacheInterceptor', () => {
     it.each([
       ['route', '/users/1', '/users/2'],
       ['route+query', '/users/1?page=1', '/users/2?page=1'],
-      ['full', '/users/1?page=1', '/users/2?page=1'],
-    ] satisfies Array<["route" | "route+query" | "full", string, string]>)(
+    ] satisfies Array<["route" | "route+query", string, string]>)(
       'strategy %j uses concrete request paths for parameterized routes',
       async (strategy, expectedFirstKey, expectedSecondKey) => {
         class UserController {
@@ -1006,27 +1005,5 @@ describe('CacheInterceptor', () => {
       expect(next.handle).toHaveBeenCalledTimes(1);
     });
 
-    it('strategy "full" includes sorted query in cache key (equivalent to route+query)', async () => {
-      class ProductController {
-        @CacheTTL(120)
-        list() {}
-      }
-
-      const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy: 'full' });
-      const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1&sort=asc', '/products'));
-      const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?sort=asc&page=1', '/products'));
-      const thirdContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=2&sort=asc', '/products'));
-      const next: CallHandler = {
-        handle: vi.fn(async () => ({ data: 'response' })),
-      };
-
-      await interceptor.intercept(firstContext, next);
-      await interceptor.intercept(secondContext, next);
-      await interceptor.intercept(thirdContext, next);
-
-      expect(next.handle).toHaveBeenCalledTimes(2);
-      expect(await cacheService.get('/products?page=1&sort=asc')).toEqual({ data: 'response' });
-      expect(await cacheService.get('/products?page=2&sort=asc')).toEqual({ data: 'response' });
-    });
   });
 });

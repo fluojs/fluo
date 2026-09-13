@@ -196,12 +196,12 @@ export interface CacheModuleOptions extends CacheModuleInternalOptions {
 }
 
 /**
- * Compatibility-only public type for normalized cache-module configuration after defaults are applied.
+ * Cache-provider configuration after `CacheModule` applies registration defaults.
  *
  * @remarks
- * Application configuration should use `CacheModuleOptions` with `CacheModule.forRoot(...)`.
- * This type remains exported so consumers that referenced the previously shipped declaration
- * surface can keep compiling, but runtime module registration still normalizes options internally.
+ * This internal assembly shape is not part of the package root API. Applications
+ * configure cache support with `CacheModuleOptions` and consume `CacheService`
+ * through dependency injection.
  */
 export interface NormalizedCacheModuleOptions {
   global: boolean;
@@ -230,12 +230,7 @@ export type CacheAsyncModuleOptions = Omit<AsyncModuleOptions<CacheModuleOptions
     useFactory: (...dependencies: never[]) => Awaitable<CacheModuleOptions>;
   };
 
-/**
- * Normalized TTL jitter configuration after defaults are applied.
- *
- * @remarks
- * Application configuration should use `CacheTtlJitterOptions` with `CacheModule.forRoot(...)`.
- */
+/** Internal normalized TTL-jitter configuration used by cache-provider assembly. */
 export interface NormalizedCacheTtlJitterOptions {
   mode: CacheTtlJitterMode;
   random: (() => number) | undefined;
@@ -268,4 +263,4 @@ export type CacheEvictDecoratorValue = string | readonly string[] | CacheEvictFa
 /**
  * Built-in or custom strategy used by `CacheInterceptor` when no `@CacheKey(...)` override is present.
  */
-export type CacheKeyStrategy = 'route' | 'route+query' | 'full' | ((context: InterceptorContext) => string);
+export type CacheKeyStrategy = 'route' | 'route+query' | ((context: InterceptorContext) => string);

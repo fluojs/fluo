@@ -288,12 +288,13 @@ CacheModule.forRoot({
 
 내장 HTTP 캐시 키 전략은 경로 부분을 route template metadata가 아니라 구체적인 요청 경로(`requestContext.request.path`)에서 계산합니다. 따라서 같은 `@Get('/:id')` 핸들러를 타더라도 `/users/1`과 `/users/2` 같은 요청은 항상 서로 다른 캐시 키로 분리됩니다.
 
-기본적으로 익명 요청은 구체적인 요청 경로만 사용하고 쿼리 매개변수를 무시합니다. 인증된 요청은 principal scope가 있으면 이를 suffix로 덧붙이며, `principalScopeResolver`로 이 suffix를 커스터마이즈할 수 있습니다. 검색 조건 등에 따라 다른 응답을 캐싱하려면 `httpKeyStrategy: 'route+query'`를 활성화하세요. 내장 전략에서는 `full`도 동일하게 query-aware 키를 만듭니다. query-aware 키는 매개변수 이름과 반복 값 모두를 정규화하므로 `/products?tag=a&tag=b`와 `/products?tag=b&tag=a`는 같은 캐시 엔트리를 공유합니다.
+기본적으로 익명 요청은 구체적인 요청 경로와 정규화한 query string을 함께 사용합니다. 인증된 요청은 principal scope가 있으면 이를 suffix로 덧붙이며, `principalScopeResolver`로 이 suffix를 커스터마이즈할 수 있습니다. query-aware 키는 매개변수 이름과 반복 값 모두를 정규화하므로 `/products?tag=a&tag=b`와 `/products?tag=b&tag=a`는 같은 캐시 엔트리를 공유합니다. query 값이 의도적으로 응답에 영향을 주지 않을 때만 `httpKeyStrategy: 'route'`를 설정하세요.
 
 ```typescript
 CacheModule.forRoot({
   store: 'memory',
-  httpKeyStrategy: 'route+query',
+  // 기본값은 route+query이며 query-insensitive 응답에만 route를 사용합니다.
+  httpKeyStrategy: 'route',
 })
 ```
 
@@ -448,7 +449,7 @@ defineModule(ManualCacheModule, {
 | 설치된 underlying `cache-manager` generation이 millisecond를 사용하는 경우의 `ttl` | 초 단위 `ttl` | 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 generation이 TTL을 millisecond로 정의할 때에만 1000으로 나눕니다. `ttl`을 생략하면 memory 경로는 `300`초를, `redis` 및 custom-store 경로는 `0`을 적용합니다. |
 | `ttl: 0` | `ttl: 0` | "캐싱하지 않음"이 아니라 만료 없음을 뜻합니다. 음수이거나 유한하지 않은 값은 잘못된 값으로 처리되어 `CacheService.set(...)`은 쓰기를 건너뛰고 `CacheInterceptor`는 해당 handler의 cache 읽기와 쓰기를 모두 건너뜁니다. |
 | `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | 정적 숫자 하나만 받습니다. 요청마다 달라지는 lifetime은 `CacheService.set(key, value, ttlSeconds)`로 옮기세요. |
-| 암묵적 query 민감 key | `httpKeyStrategy` | 기본값은 path만 사용하는 `'route'`입니다. 응답이 query parameter에 따라 달라지면 `'route+query'`(또는 `'full'`), function strategy, `@CacheKey(...)` 중 하나를 선택하세요. |
+| 암묵적 query 민감 key | `httpKeyStrategy` | 기본값은 query-aware `'route+query'`입니다. query parameter가 응답에 영향을 주지 않을 때만 `'route'`를 선택하고, 명시적 custom key에는 function strategy 또는 `@CacheKey(...)`를 사용하세요. |
 | `isGlobal: true` | `global: true` | NestJS `isGlobal`과 fluo `global`은 모두 기본값이 `false`이므로, 명시적으로 opt-in하거나 cache provider를 resolve하는 모든 module에 import하지 않으면 두 cache module 모두 module-local로 유지됩니다. |
 | `cache-manager-redis-store` 같은 NestJS store adapter | `store: 'redis'` 또는 `CacheStore` 객체 | NestJS adapter는 `CacheStore` 계약을 만족하지 않습니다. 내장 Redis 경로를 쓰거나 callback/options 완료를 Promise로 변환하고, `ttlSeconds`를 legacy TTL 초 단위로 매핑하며, `reset()`이 cache namespace만 비우도록 adapter를 감싸세요. `reset()`을 whole-database `flushDb`로 무분별하게 전달하면 안 됩니다. |
 | adapter가 소유하던 client teardown | store의 `close()` / `dispose()` | 애플리케이션 shutdown은 이 optional hook에만 teardown을 전달합니다. `redis.client`로 전달한 raw client는 애플리케이션 소유로 남아 애플리케이션 lifecycle에서 닫아야 합니다. |
@@ -505,11 +506,10 @@ class ProductController {
 ### 공개 타입
 - `CacheModuleOptions`: `CacheModule.forRoot(...)`가 받는 애플리케이션-facing 설정이며 optional `ttlJitter`와 `observer`를 포함합니다.
 - `CacheTtlJitterOptions`, `CacheTtlJitterMode`: Opt-in 양수 TTL 지터의 범위, 방향, deterministic randomness seam을 정의합니다.
-- `NormalizedCacheTtlJitterOptions`: 기본값이 적용된 정규화 TTL 지터 설정입니다.
 - `CacheObserver`: 단일 `onCacheOperation(observation)` 메서드를 가지는 opt-in 관찰 hook입니다.
 - `CacheObservation`: 각 operation category를 유효한 outcome과 결합하고 `durationMs`를 전달하는 privacy-safe discriminated union입니다.
 - `CacheAsyncModuleOptions`: `CacheModule.forRootAsync(...)`가 받는 injected-factory 설정입니다. `useFactory`는 `CacheModuleOptions`를 반환하며, module visibility는 등록 수준의 `global`만 따릅니다.
-- `NormalizedCacheModuleOptions`: 기본값이 적용된 정규화 설정 모양과 일치하는 compatibility-only type export입니다. 애플리케이션 코드에서는 `CacheModuleOptions`를 우선 사용하세요. 이 타입은 이전에 배포된 declaration surface를 참조한 소비자가 계속 컴파일되도록 공개 상태를 유지합니다.
+- 정규화한 module 및 TTL 지터 shape는 내부 provider assembly 세부사항입니다. 애플리케이션 코드는 `CacheModuleOptions`로 `CacheModule`을 구성하고 DI로 `CacheService`를 받습니다.
 
 ### 서비스
 - `CacheService`: 수동 캐시 작업(`get`, `set`, `update`, `del`, `remember`, `reset`, `close`)을 위한 기본 API입니다. 애플리케이션 shutdown은 같은 `close()` 경로를 호출하며, 이 경로는 `close()` 또는 `dispose()`를 노출하는 custom store로 teardown을 전달하고 동시에 또는 반복해서 호출한 caller가 첫 teardown 완료를 공유하도록 합니다.

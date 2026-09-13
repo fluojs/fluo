@@ -950,10 +950,10 @@ Kafka and RabbitMQ keep inbound consumer callbacks pending until handler executi
 - **TTL unit and defaults.** fluo `ttl` is a number of seconds. Before converting a NestJS TTL, inspect the installed underlying `cache-manager` dependency/version: divide by 1000 only when that dependency generation defines TTLs in milliseconds; copying such a value unchanged inflates expiry by 1000x. When `ttl` is omitted, `CacheModule.forRoot(...)` applies `300` seconds on the default memory path and `0` for the `redis` and custom-store paths.
 - **TTL `0` and invalid values.** `ttl: 0` means "no expiry", not "do not cache". A negative or non-finite TTL is treated as invalid: `CacheService.set(...)` drops the write, and `CacheInterceptor` skips both the cache read and the cache write for that handler, so the route falls through to the handler on every request.
 - **Static `@CacheTTL(...)`.** `@CacheTTL(ttlSeconds: number)` stores one static number as route metadata; it accepts no factory, context argument, or async value. A NestJS handler that computed a per-request lifetime must call `CacheService.set(key, value, ttlSeconds)` explicitly instead.
-- **Query-sensitive keys.** `httpKeyStrategy` defaults to `'route'`, which keys entries on the concrete request path only and ignores query values, so `/search?q=a` and `/search?q=b` would share one entry. Select `httpKeyStrategy: 'route+query'` (or `'full'`), a function strategy, or `@CacheKey(...)` whenever a response varies by query parameters.
+- **Query-sensitive keys.** `httpKeyStrategy` defaults to `'route+query'`, which keys entries on the concrete request path and canonical query values, so `/search?q=a` and `/search?q=b` use separate entries. Select `httpKeyStrategy: 'route'` only when query values intentionally do not affect the response; a function strategy and `@CacheKey(...)` remain available for custom keys.
 - **`isGlobal` to `global`.** Rename `isGlobal` to `global`. Both NestJS `isGlobal` and fluo `global` default to `false`, so both cache modules stay module-local. Either set `global: true` or import the returned module into each module that resolves cache providers; otherwise bootstrap fails to resolve them.
 - **Custom store adaptation.** `store` accepts `'memory'`, `'redis'`, or a `CacheStore` object. NestJS store adapters such as `cache-manager-redis-store` do not satisfy that contract; either use the built-in `store: 'redis'` path or wrap the adapter in an object exposing `get`, `set`, `del`, and `reset`. Convert callback/options completion to the Promise result that `CacheStore` expects, map Fluo `ttlSeconds` to the legacy adapter TTL in seconds, and make `reset()` delete only the cache namespace. Never blindly forward `CacheService.reset()` to a whole-database `flushDb`, because that could delete application-owned data outside the configured cache namespace.
-- **Teardown ownership.** Application shutdown closes `CacheService`, which forwards teardown only to a store's optional `close()` or `dispose()` hook. Implement one of those hooks on a custom store that owns sockets, pools, or timers. A raw client passed through `redis.client` is never closed by the module and must be closed from the application lifecycle, while a client resolved through `@fluojs/redis` keeps that package's own lifecycle ownership.
+- **Teardown ownership.** Application shutdown closes `CacheService`, which forwards teardown to a store `close()` hook. A `dispose()`-only store remains compatible when `close()` is absent, but new custom stores that own sockets, pools, or timers should implement `close()`. A raw client passed through `redis.client` is never closed by the module and must be closed from the application lifecycle, while a client resolved through `@fluojs/redis` keeps that package's own lifecycle ownership.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -971,8 +971,7 @@ const cacheClient = new Redis({ host: 'localhost', port: 6379 });
       ttl: 60,
       // NestJS `isGlobal: true` becomes `global: true`.
       global: true,
-      // Opt in explicitly when responses vary by query parameters.
-      httpKeyStrategy: 'route+query',
+      // route+query is the default; set route only for query-insensitive responses.
       store: 'redis',
       redis: { client: cacheClient },
     }),

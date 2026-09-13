@@ -116,7 +116,7 @@ describe('CacheModule.forRootAsync', () => {
       expect(factoryCalls).toEqual([{ ttl: 42 }]);
       expect(resolvedOptions).toMatchObject({
         global: false,
-        httpKeyStrategy: 'route',
+        httpKeyStrategy: 'route+query',
         keyPrefix: 'async:cache:',
         store: 'memory',
         ttl: 42,

@@ -82,7 +82,7 @@ function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): Normaliz
     store,
     ttl: options.ttl ?? (store === 'memory' ? DEFAULT_MEMORY_STORE_TTL_SECONDS : 0),
     ttlJitter: normalizeCacheTtlJitterOptions(options.ttlJitter),
-    httpKeyStrategy: options.httpKeyStrategy ?? 'route',
+    httpKeyStrategy: options.httpKeyStrategy ?? 'route+query',
     principalScopeResolver: options.principalScopeResolver,
     observer: options.observer,
   };

@@ -2947,16 +2947,16 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
     'Drizzle README.ko, package-surface.ko, package-chooser.ko, and docs/CONTEXT.ko.md must keep the Node-only runtime boundary and raw-provider fallback discoverable together.',
   );
   assert(
-    packageSurface.includes('NormalizedCacheModuleOptions') && packageSurface.includes('CacheModule.forRootAsync') &&
-      docsContext.includes('NormalizedCacheModuleOptions') && docsContext.includes('CacheModule.forRootAsync') &&
-      cacheManagerReadme.includes('NormalizedCacheModuleOptions') && cacheManagerReadme.includes('CacheModule.forRootAsync'),
-    'cache-manager package-surface, docs/CONTEXT.md, and README.md must keep async registration and the compatibility export discoverable together.',
+    packageSurface.includes('CacheModule.forRoot(options)') && packageSurface.includes('CacheModule.forRootAsync') &&
+      docsContext.includes('CacheModule.forRoot(options)') && docsContext.includes('CacheModule.forRootAsync') &&
+      cacheManagerReadme.includes('CacheModule.forRoot(options)') && cacheManagerReadme.includes('CacheModule.forRootAsync'),
+    'cache-manager package-surface, docs/CONTEXT.md, and README.md must keep canonical synchronous and async registration discoverable together.',
   );
   assert(
-    packageSurfaceKo.includes('NormalizedCacheModuleOptions') && packageSurfaceKo.includes('CacheModule.forRootAsync') &&
-      docsContextKo.includes('NormalizedCacheModuleOptions') && docsContextKo.includes('CacheModule.forRootAsync') &&
-      cacheManagerReadmeKo.includes('NormalizedCacheModuleOptions') && cacheManagerReadmeKo.includes('CacheModule.forRootAsync'),
-    'cache-manager package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep async registration and the compatibility export discoverable together.',
+    packageSurfaceKo.includes('CacheModule.forRoot(options)') && packageSurfaceKo.includes('CacheModule.forRootAsync') &&
+      docsContextKo.includes('CacheModule.forRoot(options)') && docsContextKo.includes('CacheModule.forRootAsync') &&
+      cacheManagerReadmeKo.includes('CacheModule.forRoot(options)') && cacheManagerReadmeKo.includes('CacheModule.forRootAsync'),
+    'cache-manager package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep canonical synchronous and async registration discoverable together.',
   );
   assert(
     packageSurface.includes('createSlackProviders(...)') &&

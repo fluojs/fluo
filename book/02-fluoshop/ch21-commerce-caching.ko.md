@@ -168,17 +168,16 @@ import assert from 'node:assert/strict';
 import {
   CacheService,
   MemoryStore,
-  type NormalizedCacheModuleOptions,
 } from '@fluojs/cache-manager';
 
-const options: NormalizedCacheModuleOptions = {
+const options = {
   global: false,
-  httpKeyStrategy: 'route',
+  httpKeyStrategy: 'route+query',
   keyPrefix: 'experiment:',
   principalScopeResolver: undefined,
   store: 'memory',
   ttl: 0,
-};
+} as const;
 
 export async function cacheRaceExperiment(): Promise<void> {
   const store = new MemoryStore();

@@ -245,14 +245,14 @@ await prisma.transaction(async () => {
 ```ts
 import { describe, expect, it } from 'vitest';
 import {
-  CacheService, MemoryStore, type NormalizedCacheModuleOptions,
+  CacheService, MemoryStore,
 } from '@fluojs/cache-manager';
 
-const options: NormalizedCacheModuleOptions = {
+const options = {
   store: 'memory', ttl: 300, global: false,
-  keyPrefix: 'book-test:', httpKeyStrategy: 'route',
+  keyPrefix: 'book-test:', httpKeyStrategy: 'route+query',
   principalScopeResolver: undefined,
-};
+} as const;
 
 describe('cache invalidation boundaries', () => {
   it('does not refill after deletion in the same service', async () => {

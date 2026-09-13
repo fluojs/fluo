@@ -46,8 +46,6 @@ export type {
   CacheStore,
   CacheTtlJitterMode,
   CacheTtlJitterOptions,
-  NormalizedCacheModuleOptions,
-  NormalizedCacheTtlJitterOptions,
   PrincipalScopeResolver,
   RedisAtomicClient,
   RedisAtomicTransaction,

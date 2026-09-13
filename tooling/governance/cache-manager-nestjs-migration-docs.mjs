@@ -13,7 +13,7 @@ const requirements = [
     "ttl: options.ttl ?? (store === 'memory' ? DEFAULT_MEMORY_STORE_TTL_SECONDS : 0)",
     'const DEFAULT_MEMORY_STORE_TTL_SECONDS = 300;',
     'global: options.global ?? false',
-    "httpKeyStrategy: options.httpKeyStrategy ?? 'route'",
+    "httpKeyStrategy: options.httpKeyStrategy ?? 'route+query'",
   ]],
   ['packages/cache-manager/src/decorators.ts', ['export function CacheTTL(ttlSeconds: number): StandardMethodDecoratorFn']],
   ['packages/cache-manager/src/interceptor.ts', [
@@ -31,7 +31,7 @@ const requirements = [
   ['packages/cache-manager/README.md', [
     '### NestJS Cache Migration',
     '`@CacheTTL(ttlSeconds: number)`',
-    "`httpKeyStrategy: 'route+query'`",
+    "`httpKeyStrategy: 'route'`",
     '`isGlobal: true`',
     '`global: true`',
     '`cache-manager-redis-store`',
@@ -40,7 +40,7 @@ const requirements = [
   ['packages/cache-manager/README.ko.md', [
     '### NestJS 캐시 마이그레이션',
     '`@CacheTTL(ttlSeconds: number)`',
-    "`httpKeyStrategy: 'route+query'`",
+    "`httpKeyStrategy: 'route'`",
     '`isGlobal: true`',
     '`global: true`',
     '`cache-manager-redis-store`',
@@ -49,7 +49,7 @@ const requirements = [
   ['docs/getting-started/migrate-from-nestjs.md', [
     '### Cache-Manager TTL, Key, Visibility, and Store Ownership Migration',
     '`@CacheTTL(ttlSeconds: number)`',
-    "`httpKeyStrategy: 'route+query'`",
+    "`httpKeyStrategy: 'route'`",
     '`CacheService.set(key, value, ttlSeconds)`',
     '`isGlobal`',
     '`global`',
@@ -59,7 +59,7 @@ const requirements = [
   ['docs/getting-started/migrate-from-nestjs.ko.md', [
     '### Cache-Manager TTL, Key, Visibility, Store Ownership 마이그레이션',
     '`@CacheTTL(ttlSeconds: number)`',
-    "`httpKeyStrategy: 'route+query'`",
+    "`httpKeyStrategy: 'route'`",
     '`CacheService.set(key, value, ttlSeconds)`',
     '`isGlobal`',
     '`global`',
@@ -69,12 +69,12 @@ const requirements = [
   ['docs/CONTEXT.md', [
     'docs/getting-started/migrate-from-nestjs.md',
     '`@CacheTTL(...)` takes only a static number',
-    '`httpKeyStrategy` defaults to path-only `route`',
+    '`httpKeyStrategy` defaults to query-aware `route+query`',
   ]],
   ['docs/CONTEXT.ko.md', [
     'docs/getting-started/migrate-from-nestjs.ko.md',
     '`@CacheTTL(...)`은 정적 숫자만 받고',
-    'path만 사용하는 `route`가 기본값',
+    '`httpKeyStrategy`의 기본값은 query-aware `route+query`',
   ]],
 ];
 
