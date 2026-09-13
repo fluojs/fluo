@@ -3423,6 +3423,7 @@ void bootstrap();
     const stdoutBuffer: string[] = [];
     const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
     const restartScheduler = createManualRestartScheduler();
+    const killedChild = createTransitionSignal('initial child kill before default runner source restart');
     const restartedChild = createTransitionSignal('restart after the default runner source change');
 
     const runPromise = runNodeRestartRunner({
@@ -3433,6 +3434,14 @@ void bootstrap();
       signalTarget: createSignalTarget().target,
       spawnChild: () => {
         const child = createMockChild();
+        if (children.length === 0) {
+          const killChild = child.kill.bind(child);
+          child.kill = (signal?: NodeJS.Signals) => {
+            const killed = killChild(signal);
+            killedChild.resolve();
+            return killed;
+          };
+        }
         children.push(child);
         if (children.length === 2) {
           restartedChild.resolve();
@@ -3451,8 +3460,10 @@ void bootstrap();
       listener('change', 'main.ts');
     }
     restartScheduler.flush();
+    await killedChild.wait();
     await restartedChild.wait();
     expect(stdoutBuffer.join('')).toBe('');
+    expect(children[0]?.killed).toBe(true);
 
     children[1]?.emit('close', 0);
     await expect(runPromise).resolves.toBe(0);
