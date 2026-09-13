@@ -59,19 +59,22 @@ class AppModule {}
 
 ### 서비스 트랜잭션 경계 (@Transaction)
 
-`@Transaction()` 데코레이터는 서비스 레이어에서 트랜잭션 경계를 정의하는 권장 방법입니다. 이 데코레이터가 적용된 메서드 내부에서 발생하는 모든 리포지토리 호출은 동일한 Prisma 트랜잭션을 공유합니다.
+일반 서비스 트랜잭션 경계에는 명시적인 target accessor를 사용하세요. Prisma의 canonical 형식은 `@Transaction((self) => self.prisma, nativeOptions?, boundary?)`입니다. 첫 인자는 등록된 wrapper를 선택하고, 둘째 인자만 Prisma-native transaction 옵션으로 전달하며, 마지막 인자는 Fluo boundary policy입니다. 이 형식은 여러 persistence handle을 가진 서비스가 잘못된 client를 선택하지 않게 합니다. `@Transaction()`은 단일 target 호환 경로로만 유지되므로 다른 client나 ORM을 추가하기 전에 accessor로 마이그레이션하세요.
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { PrismaService, Transaction, type PrismaServiceFacade } from '@fluojs/prisma';
+import { PrismaService, Transaction } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 import { UserRepository } from './user.repository';
 
-@Inject(UserRepository)
+@Inject(PrismaService, UserRepository)
 export class UserService {
-  constructor(private readonly repo: UserRepository) {}
+  constructor(
+    private readonly prisma: PrismaService<PrismaClient>,
+    private readonly repo: UserRepository,
+  ) {}
 
-  @Transaction()
+  @Transaction((self) => self.prisma)
   async onboardUser(dto: CreateUserDto) {
     const user = await this.repo.create(dto);
     await this.repo.initProfile(user.id);
@@ -80,7 +83,7 @@ export class UserService {
 }
 ```
 
-`@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 Prisma 트랜잭션 안에서 실행됩니다.
+`@Transaction((self) => self.prisma)` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 Prisma 트랜잭션 안에서 실행됩니다.
 
 ### 요청 트랜잭션 경계
 

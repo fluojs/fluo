@@ -101,7 +101,7 @@ type ProfileCreateModel = MongooseModelFacade<Promise<readonly { readonly userId
 
 @Inject(MongooseConnection)
 export class UserRepository {
-  constructor(private readonly conn: MongooseConnection) {}
+  constructor(readonly conn: MongooseConnection) {}
 
   async create(data: CreateUserDto) {
     // model() returns a session-aware facade inside @Transaction().
@@ -119,7 +119,7 @@ export class UserRepository {
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
 
-  @Transaction()
+  @Transaction((self) => self.repo.conn)
   async onboardUser(dto: CreateUserDto) {
     const [user] = await this.repo.create(dto);
     await this.repo.initProfile(user._id);

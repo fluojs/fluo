@@ -120,11 +120,14 @@ export class UserRepository {
   }
 }
 
-@Inject(UserRepository)
+@Inject(DrizzleDatabase, UserRepository)
 export class UserService {
-  constructor(private readonly repo: UserRepository) {}
+  constructor(
+    private readonly db: DrizzleDatabase<AppDatabase>,
+    private readonly repo: UserRepository,
+  ) {}
 
-  @Transaction()
+  @Transaction((self) => self.db)
   async onboardUser(dto: any) {
     const user = await this.repo.create(dto);
     await this.repo.initProfile(user.id);

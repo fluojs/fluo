@@ -5,6 +5,20 @@
 
 이 문서는 `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose` 전반의 현재 트랜잭션 문맥 계약을 정의합니다.
 
+## Canonical 데코레이터 target
+
+일반 서비스 코드는 트랜잭션 owner를 명시적으로 선택합니다.
+
+```ts
+@Transaction((self) => self.prisma, prismaNativeOptions, boundary)
+@Transaction((self) => self.db, drizzleNativeOptions, boundary)
+@Transaction((self) => self.conn, boundary)
+```
+
+첫 인자는 항상 target accessor입니다. Prisma와 Drizzle은 accessor 뒤에서만 driver-native 옵션을 받고, 마지막 `boundary`는 Fluo 소유 policy(`requireAfterCommit` 또는 `shouldRollback`)입니다. Mongoose에는 decorator 수준 native-options 인자가 없으므로 boundary가 두 번째 인자로 남습니다. 이 분리는 driver 옵션이 Fluo policy로 해석되는 일을 막고 여러 database나 ORM에서 자동 선택으로 잘못된 handle을 고르는 일을 막습니다.
+
+무인자 탐색은 기존 단일 target 서비스의 legacy 호환 동작으로 남습니다. 일반 예제나 안전한 migration 목적지는 아니므로 다른 registration, database, ORM을 추가하기 전에 accessor로 교체하세요.
+
 ## 지원되는 연동
 
 | 패키지 | ambient 문맥 운반체 | 주요 접근 API | 요청 경계 API | 현재 지원 범위 |

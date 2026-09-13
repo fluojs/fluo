@@ -59,19 +59,22 @@ class AppModule {}
 
 ### Service Transaction Boundary (@Transaction)
 
-The `@Transaction()` decorator is the recommended way to define transaction boundaries in your service layer. It ensures that all repository calls made within the decorated method share the same Prisma transaction.
+Use an explicit target accessor for normal service transaction boundaries. The canonical Prisma form is `@Transaction((self) => self.prisma, nativeOptions?, boundary?)`: the first argument selects the registered wrapper, the second is forwarded only as Prisma-native transaction options, and the final argument is Fluo boundary policy. This prevents a service with multiple persistence handles from selecting the wrong client. `@Transaction()` remains a legacy single-target compatibility form; migrate it to an accessor before adding another client or ORM.
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { PrismaService, Transaction, type PrismaServiceFacade } from '@fluojs/prisma';
+import { PrismaService, Transaction } from '@fluojs/prisma';
 import { PrismaClient } from '@prisma/client';
 import { UserRepository } from './user.repository';
 
-@Inject(UserRepository)
+@Inject(PrismaService, UserRepository)
 export class UserService {
-  constructor(private readonly repo: UserRepository) {}
+  constructor(
+    private readonly prisma: PrismaService<PrismaClient>,
+    private readonly repo: UserRepository,
+  ) {}
 
-  @Transaction()
+  @Transaction((self) => self.prisma)
   async onboardUser(dto: CreateUserDto) {
     const user = await this.repo.create(dto);
     await this.repo.initProfile(user.id);
@@ -80,7 +83,7 @@ export class UserService {
 }
 ```
 
-Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Prisma transaction.
+Calls to `@Transaction((self) => self.prisma)` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Prisma transaction.
 
 ### Request Transaction Boundaries
 

@@ -1,3 +1,15 @@
+import {
+  TransactionRollbackCapabilityError,
+  TransactionRollbackOnlyError,
+  TransactionRollbackUnconfirmedError,
+} from '@fluojs/core';
+
+export {
+  TransactionRollbackCapabilityError,
+  TransactionRollbackOnlyError,
+  TransactionRollbackUnconfirmedError,
+} from '@fluojs/core';
+
 /** Positive native rollback evidence for exactly one callback attempt. */
 export interface TransactionRollbackObservation {
   /** Rejects with the observed native failure or an unconfirmed-outcome error unless rollback is positively confirmed. */
@@ -15,14 +27,6 @@ export interface TransactionRollbackObserver {
   beginAttempt(transaction: unknown, connection?: unknown): TransactionRollbackObservation;
 }
 
-/** Reports that native rollback could not be positively confirmed; never a normal domain Result. */
-export class TransactionRollbackUnconfirmedError extends Error {
-  constructor(options?: ErrorOptions) {
-    super('Native rollback outcome could not be confirmed.', options);
-    this.name = 'TransactionRollbackUnconfirmedError';
-  }
-}
-
 /**
  * Runs a native invocation under its explicitly registered public observation capability.
  * @param observer Optional registered native observation capability.
@@ -31,26 +35,6 @@ export class TransactionRollbackUnconfirmedError extends Error {
  */
 export function observeRollback<T>(observer: TransactionRollbackObserver | undefined, callback: () => Promise<T>): Promise<T> {
   return observer ? observer.run(callback) : callback();
-}
-
-/** Reports that an opt-in Result policy cannot own a native rollback boundary. */
-export class TransactionRollbackCapabilityError extends Error {
-  constructor() {
-    super('Result rollback requires a Fluo-owned native transaction boundary.');
-    this.name = 'TransactionRollbackCapabilityError';
-  }
-}
-
-/** Reports a sticky nested failure when the outer callback did not return an opted-in failure. */
-export class TransactionRollbackOnlyError extends Error {
-  /**
-   * Identifies the first value that marked the shared owner rollback-only.
-   * @param result Original nested failure value; no Result shape is assumed.
-   */
-  constructor(readonly result: unknown) {
-    super('Transaction is rollback-only because a nested Result policy rejected its value.');
-    this.name = 'TransactionRollbackOnlyError';
-  }
 }
 
 /** Mutable policy state shared only by callbacks in one native attempt. */
@@ -99,3 +83,4 @@ export class ResultBoundary<T> {
     throw error;
   }
 }
+

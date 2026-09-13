@@ -171,10 +171,16 @@ function expectInjectedConstructorDependency(
 
 describe('@fluojs/prisma README DI snippets', () => {
   for (const { file, locale } of readmes) {
-    it(`compiles the ${locale} @Transaction() service example against public package types`, () => {
-      const snippet = readmeSnippet(file, ['class UserService', "from './user.repository'", '@Transaction()']);
+    it(`compiles the ${locale} explicit-target @Transaction service example against public package types`, () => {
+      const snippet = readmeSnippet(file, [
+        'class UserService',
+        "from './user.repository'",
+        '@Transaction((self) => self.prisma)',
+      ]);
 
-      expectInjectedConstructorDependency(snippet, 'UserService', 'repo', 'UserRepository');
+      const expectedInjectTokens = ['PrismaService', 'UserRepository'];
+      expectInjectedConstructorDependency(snippet, 'UserService', 'prisma', 'PrismaService', expectedInjectTokens);
+      expectInjectedConstructorDependency(snippet, 'UserService', 'repo', 'UserRepository', expectedInjectTokens);
       expect(
         readmeSnippetDiagnostics(
           `${file}-transaction`,
@@ -184,16 +190,21 @@ describe('@fluojs/prisma README DI snippets', () => {
       ).toEqual([]);
     });
 
-    it(`rejects the ${locale} @Transaction() service example with the wrong injected token`, () => {
-      const snippet = readmeSnippet(file, ['class UserService', "from './user.repository'", '@Transaction()']);
-      const malformedSnippet = snippet.replace('@Inject(UserRepository)', '@Inject(PrismaService)');
+    it(`rejects the ${locale} explicit-target @Transaction service example with the wrong injected token`, () => {
+      const snippet = readmeSnippet(file, [
+        'class UserService',
+        "from './user.repository'",
+        '@Transaction((self) => self.prisma)',
+      ]);
+      const malformedSnippet = snippet.replace('@Inject(PrismaService, UserRepository)', '@Inject(UserRepository)');
 
       expect(() => expectInjectedConstructorDependency(
         malformedSnippet,
         'UserService',
-        'repo',
-        'UserRepository',
-      )).toThrowError('Expected @Inject(UserRepository) on UserService; received @Inject(PrismaService).');
+        'prisma',
+        'PrismaService',
+        ['PrismaService', 'UserRepository'],
+      )).toThrowError('Expected @Inject(PrismaService, UserRepository) on UserService; received @Inject(UserRepository).');
     });
 
     it(`compiles the ${locale} explicit request transaction example against public package types`, () => {

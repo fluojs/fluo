@@ -5,6 +5,20 @@
 
 This document defines the current transaction-context contract across `@fluojs/prisma`, `@fluojs/drizzle`, and `@fluojs/mongoose`.
 
+## Canonical Decorator Target
+
+Normal service code selects its transaction owner explicitly:
+
+```ts
+@Transaction((self) => self.prisma, prismaNativeOptions, boundary)
+@Transaction((self) => self.db, drizzleNativeOptions, boundary)
+@Transaction((self) => self.conn, boundary)
+```
+
+The first argument is always a target accessor. Prisma and Drizzle accept driver-native options only after that accessor; the final `boundary` is Fluo-owned policy (`requireAfterCommit` or `shouldRollback`). Mongoose has no decorator-level native-options argument, so its boundary remains second. This prevents driver options from being interpreted as Fluo policy and prevents wrong automatic selection across multiple databases or ORMs.
+
+No-argument discovery remains a legacy compatibility behavior for existing single-target services. It is not a normal example or a safe migration destination: replace it with an accessor before adding another registration, database, or ORM.
+
 ## Supported Integrations
 
 | Package | Ambient context carrier | Primary access API | Request boundary API | Current support scope |

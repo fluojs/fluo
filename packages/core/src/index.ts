@@ -2,6 +2,15 @@ export { Inject, Module, Scope } from './decorators.js';
 export { FluoCodeError, FluoError, type FluoErrorOptions, formatTokenName, InvariantError } from './errors.js';
 export { ensureMetadataSymbol, getModuleMetadata } from './metadata.js';
 export { type PublicToken, publicToken } from './public-token.js';
+export {
+  AfterCommitCapabilityError,
+  AfterCommitError,
+  TransactionRollbackCapabilityError,
+  TransactionRollbackOnlyError,
+  TransactionRollbackUnconfirmedError,
+  type AfterCommitCallback,
+  type TransactionBoundaryOptions,
+} from './transaction.js';
 export type {
   AsyncModuleOptions,
   Constructor,

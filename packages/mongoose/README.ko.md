@@ -104,7 +104,7 @@ type ProfileCreateModel = MongooseModelFacade<Promise<readonly { readonly userId
 
 @Inject(MongooseConnection)
 export class UserRepository {
-  constructor(private readonly conn: MongooseConnection) {}
+  constructor(readonly conn: MongooseConnection) {}
 
   async create(data: CreateUserDto) {
     // @Transaction() 내부에서 conn.model()은 세션 인지형 facade를 반환합니다.
@@ -122,7 +122,7 @@ export class UserRepository {
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
 
-  @Transaction()
+  @Transaction((self) => self.repo.conn)
   async onboardUser(dto: CreateUserDto) {
     const [user] = await this.repo.create(dto);
     await this.repo.initProfile(user._id);

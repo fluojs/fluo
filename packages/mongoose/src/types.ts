@@ -1,16 +1,7 @@
 import type { TransactionRollbackObserver } from './result-rollback.js';
-import type { MaybePromise } from '@fluojs/core';
+import type { AfterCommitCallback, MaybePromise, TransactionBoundaryOptions } from '@fluojs/core';
 
-/** Work registered during a transaction callback to run after confirmed native commit. */
-export type AfterCommitCallback = () => void | Promise<void>;
-
-/** Package-owned transaction requirements, separate from native driver options. */
-export interface TransactionBoundaryOptions<T = unknown> {
-  /** Rejects before the user callback when the connection cannot provide native after-commit semantics. */
-  readonly requireAfterCommit?: boolean;
-  /** Rolls back when the application-owned predicate rejects the resolved callback value. */
-  readonly shouldRollback?: (value: T) => boolean;
-}
+export type { AfterCommitCallback, TransactionBoundaryOptions } from '@fluojs/core';
 
 /**
  * Minimal Mongoose connection seam that optionally supports session transaction APIs.
