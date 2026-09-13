@@ -19,8 +19,6 @@ import type {
   CacheStore,
   CacheTtlJitterMode,
   CacheTtlJitterOptions,
-  NormalizedCacheModuleOptions,
-  NormalizedCacheTtlJitterOptions,
   PrincipalScopeResolver,
   RedisCacheOptions,
   RedisCompatibleClient,
@@ -41,7 +39,6 @@ type WriteCacheObservation = Extract<
 type RootCacheKeyStrategy =
   | 'route'
   | 'route+query'
-  | 'full'
   | ((context: Parameters<CacheKeyFactory>[0]) => string);
 
 class CacheSettingsService {
@@ -79,14 +76,10 @@ describe('@fluojs/cache-manager public API surface', () => {
     expectTypeOf<CacheModuleOptions>().toHaveProperty('ttlJitter');
     expectTypeOf<CacheTtlJitterOptions>().toHaveProperty('ratio');
     expectTypeOf<CacheTtlJitterMode>().toEqualTypeOf<'symmetric' | 'shorten' | 'lengthen'>();
-    expectTypeOf<NormalizedCacheTtlJitterOptions>().toHaveProperty('mode');
     expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('useFactory');
     expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('inject');
     expectTypeOf<CacheAsyncModuleOptions>().toHaveProperty('global');
-    expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('keyPrefix');
-    expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('principalScopeResolver');
     expectTypeOf<CacheModuleOptions>().toHaveProperty('observer');
-    expectTypeOf<NormalizedCacheModuleOptions>().toHaveProperty('observer');
     expectTypeOf<CacheObserver>().toHaveProperty('onCacheOperation');
     expectTypeOf<CacheObservation>().toHaveProperty('operation');
     expectTypeOf<CacheObservation>().toHaveProperty('outcome');
@@ -134,10 +127,11 @@ describe('@fluojs/cache-manager public API surface', () => {
     expect(module).toBeDefined();
   });
 
-  it('keeps the normalized options compatibility type on the explicit root barrel', () => {
+  it('keeps normalized module configuration internal to module assembly', () => {
     const indexSource = readFileSync(new URL('./index.ts', import.meta.url), 'utf8');
 
     expect(indexSource).not.toContain("export * from './types.js'");
-    expect(indexSource).toContain('NormalizedCacheModuleOptions');
+    expect(indexSource).not.toContain('NormalizedCacheModuleOptions');
+    expect(indexSource).not.toContain('NormalizedCacheTtlJitterOptions');
   });
 });

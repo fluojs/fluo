@@ -1,8 +1,11 @@
 # Serving Popular Posts Quickly
 
 <!-- book:volume=01-fluoblog;chapter=20 -->
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 [Previous: Notifying Subscribers About New Posts](./ch19-subscriptions-and-email.md) | [Contents](./toc.md) | [Next: Building Scheduled Publishing and Recurring Jobs](./ch21-scheduled-publishing.md)
+
+HTTP cache registration omits `httpKeyStrategy` for the query-aware `route+query` default. Set `httpKeyStrategy: 'route'` only for a response intentionally insensitive to every query value.
 
 ## The Notification Worked, and Readers Arrived at the Same Post
 
@@ -143,7 +146,6 @@ export function createReadingCacheModule(
         redis: { clientName: 'posts-cache' },
         keyPrefix: 'fluo-blog:local:public-cache:',
         ttl: 300,
-        httpKeyStrategy: 'route+query',
         ttlJitter: { ratio: 0.1, mode: 'shorten' },
       }),
     ],
@@ -245,14 +247,14 @@ The following `src/posts/cache-contract.test.ts` is a complete Vitest test using
 ```ts
 import { describe, expect, it } from 'vitest';
 import {
-  CacheService, MemoryStore, type NormalizedCacheModuleOptions,
+  CacheService, MemoryStore,
 } from '@fluojs/cache-manager';
 
-const options: NormalizedCacheModuleOptions = {
+const options = {
   store: 'memory', ttl: 300, global: false,
-  keyPrefix: 'book-test:', httpKeyStrategy: 'route',
+  keyPrefix: 'book-test:', httpKeyStrategy: 'route+query',
   principalScopeResolver: undefined,
-};
+} as const;
 
 describe('cache invalidation boundaries', () => {
   it('does not refill after deletion in the same service', async () => {
@@ -389,7 +391,7 @@ list(input: ListPostsDto) {
 }
 ```
 
-This list is already cursor-based, so the registration above **must set `httpKeyStrategy: 'route+query'`**. The default `'route'` ignores the query and cannot be used here. `/posts?limit=1` and `/posts?limit=2` have different keys, as do the first page and `/posts?cursor=<nextCursor>&limit=1`. `limit=1&cursor=C` and `cursor=C&limit=1`, which differ only in parameter order, have the same key. C is explanatory notation here; actual requests must use a verifiable cursor returned by `PostFeed`. The key also includes the concrete request path, not the route template.
+This list is already cursor-based, so the registration above omits `httpKeyStrategy` and uses the query-aware `'route+query'` default. Select `'route'` only for a response intentionally insensitive to every query value. `/posts?limit=1` and `/posts?limit=2` have different keys, as do the first page and `/posts?cursor=<nextCursor>&limit=1`. `limit=1&cursor=C` and `cursor=C&limit=1`, which differ only in parameter order, have the same key. C is explanatory notation here; actual requests must use a verifiable cursor returned by `PostFeed`. The key also includes the concrete request path, not the route template.
 
 The query-aware strategy sorts repeated values too. Chapter 12's `PostFeed` rejects repeated limit/cursor values arriving as arrays, so it does not interpret them as ordered inputs. Preserve the existing 400 for an invalid cursor rather than turning it into the first page. Adding a constant key such as `@CacheKey('posts')` overrides the configured strategy, so do not use one on this route. If an authentication principal is present, its principal scope is also added to the key, but this GET still queries only public posts.
 

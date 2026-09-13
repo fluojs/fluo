@@ -380,7 +380,7 @@ Runtime은 `AsyncIterable`이 아닌 subscription resolver 결과를 거부합�
 - NestJS-style cache-key customization은 interceptor subclassing 대신 fluo가 문서화한 key seam으로 옮겨야 한다. 애플리케이션 전역 request-aware 정책에는 function-valued `httpKeyStrategy`를 사용하고, handler-local 동작에는 literal key 또는 key factory를 받는 `@CacheKey(...)`를 사용한다.
 - Custom cache tooling은 private metadata key를 다시 구현하지 말고 `getCacheKeyMetadata(...)`, `getCacheTtlMetadata(...)`, `getCacheEvictMetadata(...)` 같은 exported cache metadata helper를 읽어야 한다.
 - Cache TTL 값은 millisecond가 아니라 초 단위이며, `@CacheTTL(ttlSeconds: number)`은 정적 숫자만 받는다. NestJS TTL을 변환하기 전에 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 dependency generation이 TTL을 millisecond로 정의할 때에만 1000으로 나누고, 요청마다 달라지는 lifetime은 `CacheService.set(key, value, ttlSeconds)`로 옮긴다.
-- 기본 HTTP cache key는 path만 사용한다. `httpKeyStrategy`의 기본값이 `'route'`이므로 `'route+query'`, function strategy, `@CacheKey(...)` 중 하나를 선택하기 전까지 query 값은 무시된다.
+- 기본 HTTP cache key는 query-aware `'route+query'`로, 구체적 요청 path와 정규화한 query 값을 함께 사용한다. 이 동작에는 `httpKeyStrategy`를 생략하고, query 값이 의도적으로 응답에 영향을 주지 않을 때만 `'route'`를 선택한다. function strategy와 `@CacheKey(...)`는 custom key에 계속 사용할 수 있다.
 - NestJS `isGlobal`은 fluo `global`이 되며 기본값은 `false`다. Migration이 `global: true`를 설정하거나 소비하는 모든 module에 `CacheModule.forRoot(...)`를 import하지 않으면 cache provider는 module-local로 남는다.
 - `cache-manager-redis-store` 같은 NestJS store adapter는 fluo `CacheStore` 값이 아니다. 내장 `store: 'redis'` 경로를 쓰거나 `get`, `set`, `del`, `reset`을 구현한 객체를 전달하고, teardown 소유권을 명시적으로 유지한다. fluo는 store의 optional `close()`/`dispose()`에만 shutdown을 전달하므로 직접 전달한 `redis.client`는 애플리케이션 소유로 남는다.
 - Event-bus migration은 string pattern 기반이 아니라 class 기반이다. `@OnEvent(EventClass)`를 사용하고, retry 가능하거나 느린 side effect는 idempotent하게 유지하며, 오래 실행되거나 retry가 중요한 작업은 awaited event handler 안에 숨기지 말고 명시적인 queue handoff로 옮겨야 한다.
@@ -934,16 +934,17 @@ gRPC adapter를 사용하기 전에 `@grpc/grpc-js@^1.14.4`와 `@grpc/proto-load
 Kafka와 RabbitMQ는 handler 실행과 request response publication이 settle할 때까지 inbound consumer callback을 pending 상태로 유지하므로 broker adapter가 acknowledgement 또는 retry를 선택할 수 있습니다. 이 consumer-side boundary는 producer-side `emit()` promise와 분리되어 있습니다. Shutdown 시에는 먼저 `Microservice` facade를 닫고, caller-owned broker resource는 application bootstrap layer에서 close 또는 drain하세요.
 
 ### Cache-Manager TTL, Key, Visibility, Store Ownership 마이그레이션
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 `@nestjs/cache-manager`와 `@fluojs/cache-manager`는 cache 개념이 일부 겹치지만 option 이름, 단위, 기본값, 소유권이 모두 그대로 유지되지는 않습니다. NestJS cache 설정을 재사용하기 전에 다음 항목을 각각 변환하세요.
 
 - **TTL 단위와 기본값.** fluo `ttl`은 초 단위입니다. NestJS TTL을 변환하기 전에 설치된 underlying `cache-manager` dependency/version을 확인하세요. 해당 dependency generation이 TTL을 millisecond로 정의할 때에만 1000으로 나누며, 이 값을 그대로 옮기면 만료 시간이 1000배로 늘어납니다. `ttl`을 생략하면 `CacheModule.forRoot(...)`는 기본 memory 경로에 `300`초를, `redis` 및 custom-store 경로에는 `0`을 적용합니다.
 - **TTL `0`과 잘못된 값.** `ttl: 0`은 "캐싱하지 않음"이 아니라 "만료 없음"을 뜻합니다. 음수이거나 유한하지 않은 TTL은 잘못된 값으로 처리되어 `CacheService.set(...)`은 쓰기를 건너뛰고, `CacheInterceptor`는 해당 handler의 cache 읽기와 쓰기를 모두 건너뛰므로 요청마다 handler로 그대로 내려갑니다.
 - **정적 `@CacheTTL(...)`.** `@CacheTTL(ttlSeconds: number)`은 정적 숫자 하나를 route metadata로 저장하며 factory, context 인자, 비동기 값을 받지 않습니다. 요청마다 lifetime을 계산하던 NestJS handler는 `CacheService.set(key, value, ttlSeconds)`를 명시적으로 호출해야 합니다.
-- **Query 민감 key.** `httpKeyStrategy`의 기본값 `'route'`는 구체적인 요청 path만으로 key를 만들고 query 값을 무시하므로 `/search?q=a`와 `/search?q=b`가 하나의 엔트리를 공유하게 됩니다. 응답이 query parameter에 따라 달라진다면 `httpKeyStrategy: 'route+query'`(또는 `'full'`), function strategy, `@CacheKey(...)` 중 하나를 선택하세요.
+- **Query 민감 key.** `httpKeyStrategy`의 기본값 `'route+query'`는 구체적인 요청 path와 정규화한 query 값으로 key를 만들므로 `/search?q=a`와 `/search?q=b`는 서로 다른 엔트리를 사용합니다. query 값이 의도적으로 응답에 영향을 주지 않을 때만 `httpKeyStrategy: 'route'`를 선택하고, custom key에는 function strategy 또는 `@CacheKey(...)`를 사용하세요.
 - **`isGlobal`에서 `global`로.** `isGlobal`을 `global`로 바꾸세요. NestJS `isGlobal`과 fluo `global`은 모두 기본값이 `false`이므로 두 cache module은 module-local로 유지됩니다. `global: true`를 설정하거나 cache provider를 resolve하는 각 module에 반환된 module을 import하세요. 그렇지 않으면 bootstrap이 해당 provider를 resolve하지 못하고 실패합니다.
 - **Custom store 적응.** `store`는 `'memory'`, `'redis'`, 또는 `CacheStore` 객체를 받습니다. `cache-manager-redis-store` 같은 NestJS store adapter는 이 계약을 만족하지 않으므로 내장 `store: 'redis'` 경로를 쓰거나 `get`, `set`, `del`, `reset`을 노출하는 객체로 adapter를 감싸세요. callback/options 완료는 `CacheStore`가 기대하는 Promise 결과로 변환하고, Fluo `ttlSeconds`는 legacy adapter TTL의 초 단위로 매핑하며, `reset()`은 cache namespace만 삭제하게 하세요. 애플리케이션이 소유한 configured cache namespace 밖의 데이터를 삭제할 수 있으므로 `CacheService.reset()`을 whole-database `flushDb`로 무분별하게 전달하면 안 됩니다.
-- **Teardown 소유권.** 애플리케이션 shutdown은 `CacheService`를 닫고, teardown은 store의 optional `close()` 또는 `dispose()` hook에만 전달됩니다. Socket, pool, timer를 소유하는 custom store에는 이 hook 중 하나를 구현하세요. `redis.client`로 직접 전달한 raw client는 module이 닫지 않으므로 애플리케이션 lifecycle에서 닫아야 하고, `@fluojs/redis`로 resolve한 client는 해당 패키지의 lifecycle 소유권을 유지합니다.
+- **Teardown 소유권.** 애플리케이션 shutdown은 `CacheService`를 닫고, teardown은 store의 `close()` hook으로 전달합니다. `close()`가 없는 `dispose()` 전용 store도 계속 호환되지만 socket, pool, timer를 소유하는 새 custom store는 `close()`를 구현해야 합니다. `redis.client`로 직접 전달한 raw client는 module이 닫지 않으므로 애플리케이션 lifecycle에서 닫아야 하고, `@fluojs/redis`로 resolve한 client는 해당 패키지의 lifecycle 소유권을 유지합니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -961,8 +962,8 @@ const cacheClient = new Redis({ host: 'localhost', port: 6379 });
       ttl: 60,
       // NestJS `isGlobal: true` becomes `global: true`.
       global: true,
-      // Opt in explicitly when responses vary by query parameters.
-      httpKeyStrategy: 'route+query',
+      // query-aware route+query entry에는 httpKeyStrategy를 생략하고,
+      // query-insensitive 응답에만 httpKeyStrategy: 'route'를 opt-in합니다.
       store: 'redis',
       redis: { client: cacheClient },
     }),
@@ -1130,7 +1131,7 @@ class ProfileService {
 - `@nestjs/terminus` controller decorator나 별도 default liveness route가 Terminus의 일대일 마이그레이션 대상이라고 가정하는 방식.
 - `@nestjs/throttler`의 named definition, global guard registration, proxy header trust가 명시적인 Fluo wiring 없이 그대로 유지된다고 가정하는 방식.
 - `@nestjs/cache-manager`의 async dynamic-module `imports`, `useClass`, `useExisting`, implicit global cache enforcement, interceptor subclassing이 그대로 유지된다고 가정하는 방식. fluo는 동기 `CacheModule.forRoot(...)`와 injected-factory-only `CacheModule.forRootAsync({ inject, useFactory, global? })`, 명시적 `CacheInterceptor` placement, 문서화된 key strategy hook을 지원한다.
-- NestJS cache option의 단위, 기본값, 소유권이 그대로 유지된다고 가정하는 방식. fluo `ttl`은 초 단위이고 memory 경로 기본값은 `300`이며, `@CacheTTL(...)`은 정적 숫자만 받고, 설치한 underlying `cache-manager` dependency generation이 millisecond를 정의할 때에만 NestJS TTL을 `1000`으로 나누어 변환하며, `httpKeyStrategy` 기본값은 path만 사용하는 `'route'`이고, `global`이 `isGlobal`을 대체하며 기본값은 module-local인 `false`다. NestJS store adapter는 먼저 Fluo `CacheStore` 계약에 맞게 적응해야 하고 adapted custom store의 shutdown은 `close()` 또는 `dispose()`를 통해서만 전달되며, 직접 전달한 Redis client는 애플리케이션 소유로 남는다.
+- NestJS cache option의 단위, 기본값, 소유권이 그대로 유지된다고 가정하는 방식. fluo `ttl`은 초 단위이고 memory 경로 기본값은 `300`이며, `@CacheTTL(...)`은 정적 숫자만 받고, 설치한 underlying `cache-manager` dependency generation이 millisecond를 정의할 때에만 NestJS TTL을 `1000`으로 나누어 변환하며, `httpKeyStrategy`를 생략하면 query-aware `'route+query'`를 사용하고 명시적 `'route'`는 query-insensitive이며, `global`이 `isGlobal`을 대체하며 기본값은 module-local인 `false`다. NestJS store adapter는 먼저 Fluo `CacheStore` 계약에 맞게 적응해야 하고 adapted custom store의 shutdown은 `close()` 또는 `dispose()`를 통해서만 전달되며, 직접 전달한 Redis client는 애플리케이션 소유로 남는다.
 - Deprecated Mongoose 호환성 interceptor나 암묵적 connection ownership을 주요 migration 대상으로 가정하는 방식. fluo는 connection ownership을 애플리케이션 쪽에 두고 서비스 `@Transaction()`과 명시적 `requestTransaction(...)` 경계를 우선 사용한다.
 - NestJS `@SubscribeMessage()`, `@MessageBody()`, `@ConnectedSocket()`, 또는 암묵적 gateway server injection이 fluo websocket gateway에도 있다고 가정하는 방식.
 - Socket.IO gateway return value가 암묵적인 client reply가 된다고 가정하는 방식. fluo에서는 명시적 ACK callback 또는 raw `SOCKETIO_SERVER` emit이 필요합니다.

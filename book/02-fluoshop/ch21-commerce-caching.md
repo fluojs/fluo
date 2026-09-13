@@ -1,8 +1,11 @@
 # Cache Products, but Do Not Trust the Cache Alone for Inventory Decisions
 
 <!-- book:volume=02-fluoshop;chapter=21 -->
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 [Previous: Building a Query API for the Operations Dashboard](./ch20-graphql-dashboard.md) - [Volume 2 Contents](./toc.md) - [Next: Selling to International Readers](./ch22-international-commerce.md)
+
+HTTP cache registration omits `httpKeyStrategy` for the query-aware `route+query` default. Set `httpKeyStrategy: 'route'` only for a response intentionally insensitive to every query value.
 
 ## Fast Product Pages and Correct Purchases Are Different Promises
 
@@ -168,17 +171,16 @@ import assert from 'node:assert/strict';
 import {
   CacheService,
   MemoryStore,
-  type NormalizedCacheModuleOptions,
 } from '@fluojs/cache-manager';
 
-const options: NormalizedCacheModuleOptions = {
+const options = {
   global: false,
-  httpKeyStrategy: 'route',
+  httpKeyStrategy: 'route+query',
   keyPrefix: 'experiment:',
   principalScopeResolver: undefined,
   store: 'memory',
   ttl: 0,
-};
+} as const;
 
 export async function cacheRaceExperiment(): Promise<void> {
   const store = new MemoryStore();
@@ -242,7 +244,7 @@ Verify this DB race using transactions on two separate connections. A sequential
 
 ## The Limits of What a Cache Can Get Wrong
 
-If public PostgreSQL queries are already fast enough for a small shop, choosing not to add a Redis cache is reasonable. The cost of maintaining network round trips, failure modes, and an invalidation policy can exceed the benefit of the hit rate. Separating public cards from authoritative purchase calculations first lets you make this decision without changing the store. When applying an HTTP cache interceptor directly, also remember that its default key ignores the query. Search and filters require query-aware keys, while language, currency, and price lists are even more explicit variation dimensions.
+If public PostgreSQL queries are already fast enough for a small shop, choosing not to add a Redis cache is reasonable. The cost of maintaining network round trips, failure modes, and an invalidation policy can exceed the benefit of the hit rate. Separating public cards from authoritative purchase calculations first lets you make this decision without changing the store. When applying an HTTP cache interceptor directly, its omitted `httpKeyStrategy` uses the query-aware `route+query` default. Select explicit `'route'` only for a response intentionally insensitive to every query value; language, currency, and price lists can require still more explicit variation dimensions.
 
 FluoShop now serves product guidance quickly while leaving decisions about money and inventory in the existing transactions. When international readers arrive in the next chapter, the same SKU will need cards in different languages. We will build on this boundary to keep Korean and English responses out of the same key and to address why translating a number does not change its currency.
 

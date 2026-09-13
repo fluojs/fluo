@@ -1,8 +1,10 @@
 import { type CallHandler, type HttpMethod, type InterceptorContext, type Principal, type RequestContext, SseResponse } from '@fluojs/http';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CacheEvict, CacheKey, CacheTTL } from './decorators.js';
 import { CacheInterceptor } from './interceptor.js';
+import { CacheModule } from './module.js';
 import { CacheService } from './service.js';
 import { MemoryStore } from './stores/memory-store.js';
 import type { NormalizedCacheModuleOptions } from './types.js';
@@ -693,8 +695,7 @@ describe('CacheInterceptor', () => {
     it.each([
       ['route', '/users/1', '/users/2'],
       ['route+query', '/users/1?page=1', '/users/2?page=1'],
-      ['full', '/users/1?page=1', '/users/2?page=1'],
-    ] satisfies Array<["route" | "route+query" | "full", string, string]>)(
+    ] satisfies Array<["route" | "route+query", string, string]>)(
       'strategy %j uses concrete request paths for parameterized routes',
       async (strategy, expectedFirstKey, expectedSecondKey) => {
         class UserController {
@@ -987,13 +988,55 @@ describe('CacheInterceptor', () => {
       expect(await cacheService.get('/products?page=1')).toBeUndefined();
     });
 
-    it('default strategy still ignores query parameters for unauthenticated requests', async () => {
+    it('separates materialized query values when CacheModule.forRoot omits httpKeyStrategy', async () => {
+      class CacheAppModule {}
+
+      defineModule(CacheAppModule, {
+        imports: [CacheModule.forRoot()],
+      });
+
+      const app = await FluoFactory.create(CacheAppModule);
+
+      try {
+        class ProductController {
+          @CacheTTL(120)
+          list() {}
+        }
+
+        const interceptor = await app.container.resolve(CacheInterceptor);
+        const firstContext = createContext(
+          ProductController,
+          'list',
+          createRequestContext('GET', '/products?page=1', '/products'),
+        );
+        const secondContext = createContext(
+          ProductController,
+          'list',
+          createRequestContext('GET', '/products?page=2', '/products'),
+        );
+        const next: CallHandler = {
+          handle: vi
+            .fn()
+            .mockResolvedValueOnce({ page: 1 })
+            .mockResolvedValueOnce({ page: 2 }),
+        };
+
+        await expect(interceptor.intercept(firstContext, next)).resolves.toEqual({ page: 1 });
+        await expect(interceptor.intercept(secondContext, next)).resolves.toEqual({ page: 2 });
+
+        expect(next.handle).toHaveBeenCalledTimes(2);
+      } finally {
+        await app.close();
+      }
+    });
+
+    it('explicit route strategy ignores query parameters for unauthenticated requests', async () => {
       class ProductController {
         @CacheTTL(120)
         list() {}
       }
 
-      const { interceptor } = createInterceptor();
+      const { interceptor } = createInterceptor({ httpKeyStrategy: 'route' });
       const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1', '/products'));
       const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=2', '/products'));
       const next: CallHandler = {
@@ -1006,27 +1049,5 @@ describe('CacheInterceptor', () => {
       expect(next.handle).toHaveBeenCalledTimes(1);
     });
 
-    it('strategy "full" includes sorted query in cache key (equivalent to route+query)', async () => {
-      class ProductController {
-        @CacheTTL(120)
-        list() {}
-      }
-
-      const { interceptor, cacheService } = createInterceptor({ httpKeyStrategy: 'full' });
-      const firstContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=1&sort=asc', '/products'));
-      const secondContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?sort=asc&page=1', '/products'));
-      const thirdContext = createContext(ProductController, 'list', createRequestContext('GET', '/products?page=2&sort=asc', '/products'));
-      const next: CallHandler = {
-        handle: vi.fn(async () => ({ data: 'response' })),
-      };
-
-      await interceptor.intercept(firstContext, next);
-      await interceptor.intercept(secondContext, next);
-      await interceptor.intercept(thirdContext, next);
-
-      expect(next.handle).toHaveBeenCalledTimes(2);
-      expect(await cacheService.get('/products?page=1&sort=asc')).toEqual({ data: 'response' });
-      expect(await cacheService.get('/products?page=2&sort=asc')).toEqual({ data: 'response' });
-    });
   });
 });

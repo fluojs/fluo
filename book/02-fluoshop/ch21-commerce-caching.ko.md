@@ -1,8 +1,11 @@
 # 상품은 캐시해도 재고 판단은 캐시만 믿지 않기
 
 <!-- book:volume=02-fluoshop;chapter=21 -->
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 [이전: 운영 대시보드에 맞는 조회 API 만들기](./ch20-graphql-dashboard.ko.md) · [2권 목차](./toc.ko.md) · [다음: 해외 독자에게도 판매하기](./ch22-international-commerce.ko.md)
+
+HTTP cache 등록에서는 query-aware `route+query` 기본값을 위해 `httpKeyStrategy`를 생략합니다. 모든 query 값이 의도적으로 응답에 영향을 주지 않을 때만 `httpKeyStrategy: 'route'`를 선택합니다.
 
 ## 빠른 상품 페이지와 정확한 구매는 다른 약속이다
 
@@ -168,17 +171,16 @@ import assert from 'node:assert/strict';
 import {
   CacheService,
   MemoryStore,
-  type NormalizedCacheModuleOptions,
 } from '@fluojs/cache-manager';
 
-const options: NormalizedCacheModuleOptions = {
+const options = {
   global: false,
-  httpKeyStrategy: 'route',
+  httpKeyStrategy: 'route+query',
   keyPrefix: 'experiment:',
   principalScopeResolver: undefined,
   store: 'memory',
   ttl: 0,
-};
+} as const;
 
 export async function cacheRaceExperiment(): Promise<void> {
   const store = new MemoryStore();
@@ -242,7 +244,7 @@ RETURNING "sku", "available";
 
 ## 캐시가 감당할 수 있는 거짓말의 범위
 
-작은 상점에서 PostgreSQL 공개 조회가 이미 충분히 빠르면 Redis 캐시를 추가하지 않는 것도 합리적이다. 네트워크 왕복, 장애 모드, 무효화 정책을 유지할 비용이 히트율로 얻는 이득보다 클 수 있다. 먼저 공개 카드와 권위 있는 구매 계산을 분리해 두면 저장소를 바꾸지 않고도 이 판단을 할 수 있다. HTTP 캐시 인터셉터를 바로 붙일 때는 기본 키가 쿼리를 무시한다는 점도 주의한다. 검색·필터에는 query-aware 키가 필요하고 언어·통화·가격표는 그보다 더 명시적인 변형 축이다.
+작은 상점에서 PostgreSQL 공개 조회가 이미 충분히 빠르면 Redis 캐시를 추가하지 않는 것도 합리적이다. 네트워크 왕복, 장애 모드, 무효화 정책을 유지할 비용이 히트율로 얻는 이득보다 클 수 있다. 먼저 공개 카드와 권위 있는 구매 계산을 분리해 두면 저장소를 바꾸지 않고도 이 판단을 할 수 있다. HTTP 캐시 인터셉터를 바로 붙일 때 `httpKeyStrategy`를 생략하면 query-aware `route+query` 기본값을 사용한다. 모든 query 값이 의도적으로 응답에 영향을 주지 않을 때만 명시적 `'route'`를 선택하며, 언어·통화·가격표에는 더 명시적인 variation 축이 필요할 수 있다.
 
 이제 FluoShop은 상품 안내를 빠르게 제공하면서 돈과 재고의 판단을 기존 트랜잭션에 남긴다. 다음 장에서 해외 독자가 들어오면 같은 SKU라도 언어가 다른 카드가 필요하다. 한국어 응답과 영어 응답을 같은 키에 넣지 않는 문제, 숫자를 번역해도 통화가 바뀌지 않는 문제를 이 경계 위에서 이어서 해결한다.
 

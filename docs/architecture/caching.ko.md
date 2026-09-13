@@ -24,7 +24,7 @@
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
 | 기본 키 소스 | `@CacheKey(...)`가 없으면 `CacheInterceptor`가 `httpKeyStrategy`에서 키를 계산합니다. | `packages/cache-manager/src/interceptor.ts`, `packages/cache-manager/src/types.ts` |
-| 내장 전략 | 지원되는 전략 값은 `'route'`, `'route+query'`, `'full'`, 사용자 정의 함수입니다. 인터셉터 구현은 `'route'`를 path-only로 처리하고, 그 외의 내장 값은 path와 정렬된 query string 조합으로 처리합니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/interceptor.ts` |
+| 내장 전략 | 지원되는 전략 값은 `'route'`, `'route+query'`, 사용자 정의 함수입니다. 기본값인 `'route+query'`는 path와 정렬된 query string을 사용하며, query-insensitive 응답에만 `'route'`를 설정합니다. | `packages/cache-manager/src/module.ts`, `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/interceptor.ts` |
 | 확장 경로 | 애플리케이션은 function-based `httpKeyStrategy` 설정 또는 handler-local `@CacheKey(...)` factory로 key 생성을 커스터마이즈합니다. key 생성만 바꾸기 위해 `CacheInterceptor`를 subclass하는 것은 문서화된 확장 경로가 아닙니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/decorators.ts`, `packages/cache-manager/README.md` |
 | query 정규화 | query를 포함하는 키에서는 query 항목을 키 기준으로 정렬하고 반복 값도 정렬한 뒤 직렬화하므로, 순서만 다른 query string은 동일한 키로 매핑됩니다. | `packages/cache-manager/src/interceptor.ts` |
 | principal 격리 | 내장 키 전략은 `principalScopeResolver`가 값을 반환하면 `|principal:<scope>`를 추가합니다. 사용자 정의 resolver가 없으면 인증된 요청은 `requestContext.principal`의 `issuer`와 `subject`를 추가합니다. | `packages/cache-manager/src/interceptor.ts` |
@@ -68,7 +68,7 @@ Custom capability는 무효화를 동기적으로 등록하고 I/O/reducer 작�
 | 진행 중 로드 무효화 | `CacheService.del(...)`은 아직 로딩 중인 키를 표시하여, 같은 로드 주기 중 무효화된 키가 `remember(...)`에 의해 다시 채워지지 않도록 합니다. | `packages/cache-manager/src/service.ts` |
 | 저장소 작업 동시성 | 일반적인 `get`, `set`, `del` store 호출은 동시에 실행되므로 한 키의 느린 store 호출이 관련 없는 키를 지연시키지 않습니다. `reset()`과 저장소 teardown은 배타적으로 실행됩니다. 이후 store 호출을 대기시키고, 이미 시작된 호출이 종료되기를 기다린 뒤 단독으로 실행됩니다. | `packages/cache-manager/src/store-operation-scheduler.ts`, `packages/cache-manager/src/service.ts` |
 | 전체 reset | `CacheService.reset()`은 내부 reset version을 증가시키고, 진행 중/대기 중인 load bookkeeping과 진행 중 무효화 마커를 지운 뒤, 하위 저장소를 reset합니다. | `packages/cache-manager/src/service.ts` |
-| 저장소 teardown | 애플리케이션 종료 중 `CacheService`는 custom store의 `close()` hook을 호출하고, `close()`가 없으면 `dispose()`를 호출하므로 리소스를 소유한 store가 socket, pool, timer 또는 기타 외부 handle을 해제할 수 있습니다. 동시에 또는 반복해서 호출한 service/lifecycle close는 실패를 포함한 첫 teardown promise를 공유하므로, 하나의 authoritative completion boundary 뒤에서 teardown이 한 번만 실행됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
+| 저장소 teardown | 애플리케이션 종료 중 `CacheService`는 custom store의 `close()` hook을 호출하며, `close()`가 없는 기존 `dispose()` 전용 store도 호환됩니다. 새 resource-owning store는 socket, pool, timer 또는 기타 외부 handle을 해제하도록 `close()`를 구현해야 합니다. 동시에 또는 반복해서 호출한 service/lifecycle close는 실패를 포함한 첫 teardown promise를 공유하므로, 하나의 authoritative completion boundary 뒤에서 teardown이 한 번만 실행됩니다. | `packages/cache-manager/src/types.ts`, `packages/cache-manager/src/service.ts` |
 | teardown 소유권 diagnostic | `createCacheManagerPlatformStatusSnapshot(...)`은 store 분류만이 아니라 teardown 책임에서 `storeOwnershipMode`를 해석합니다. 메모리와 custom store는 `CacheService`가 lifecycle teardown 전달을 소유하므로 기본적으로 `framework`입니다. Redis는 `CacheService`에 대해 `external`로 유지됩니다. `@fluojs/redis`를 통해 해석된 client는 해당 integration이 lifecycle을 소유하고, `redis.client`로 직접 전달한 client는 애플리케이션이 lifecycle을 소유합니다. 명시적인 `storeOwnershipMode`는 store 기본값보다 우선합니다. | `packages/cache-manager/src/status.ts`, `packages/cache-manager/src/service.ts` |
 
 ## 관찰 규칙

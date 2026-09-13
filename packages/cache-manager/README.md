@@ -1,6 +1,7 @@
 # @fluojs/cache-manager
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 General-purpose cache manager for fluo with pluggable memory, Redis, and custom store adapters. Provides both decorator-driven HTTP response caching and a standalone cache API for application-level caching.
 
@@ -288,12 +289,13 @@ Every jittered positive TTL remains positive and finite within its selected dire
 
 Built-in HTTP cache key strategies derive their path segment from the concrete request path (`requestContext.request.path`), not the route template metadata. That means requests such as `/users/1` and `/users/2` always resolve to different cache keys even when they hit the same `@Get('/:id')` handler.
 
-By default, anonymous requests use the concrete request path and ignore query parameters. Authenticated requests append a principal scope when one is available; use `principalScopeResolver` to customize that suffix. Enable `httpKeyStrategy: 'route+query'` (or `full`, which is equivalent for the built-in strategy set) to cache different responses for different search parameters. Query-aware keys canonicalize both parameter names and repeated values, so `/products?tag=a&tag=b` and `/products?tag=b&tag=a` share one cache entry.
+By default, anonymous requests use the concrete request path plus its canonical query string. Authenticated requests append a principal scope when one is available; use `principalScopeResolver` to customize that suffix. Query-aware keys canonicalize both parameter names and repeated values, so `/products?tag=a&tag=b` and `/products?tag=b&tag=a` share one cache entry. Set `httpKeyStrategy: 'route'` only when query values intentionally do not affect the response.
 
 ```typescript
 CacheModule.forRoot({
   store: 'memory',
-  httpKeyStrategy: 'route+query',
+  // Opt in only when query values intentionally do not affect the response.
+  httpKeyStrategy: 'route',
 })
 ```
 
@@ -340,7 +342,7 @@ CacheModule.forRoot({
 
 Avoid sharing a Redis cache prefix with non-cache data. `del(key)` removes the exact cache key resolved by this package, while `reset()` removes only the store-owned cache namespace described above.
 
-When the application closes, `CacheService` stops new store reads/writes, waits for already-started store operations, and then forwards shutdown to custom stores that expose `close()` or `dispose()`. Concurrent and repeated `close()` or lifecycle-hook calls share that first teardown completion and failure, so every caller observes the same shutdown boundary while store teardown runs once. Use one of those optional hooks when a store owns sockets, pools, timers, or other external resources.
+When the application closes, `CacheService` stops new store reads/writes, waits for already-started store operations, and then forwards shutdown to a custom store `close()` hook. Existing stores that only expose `dispose()` remain compatible and are called when `close()` is absent. Concurrent and repeated `close()` or lifecycle-hook calls share that first teardown completion and failure, so every caller observes the same shutdown boundary while store teardown runs once. New resource-owning stores should implement `close()` for sockets, pools, timers, or other external resources.
 
 Custom stores can be passed directly through `store` when they implement the `CacheStore` contract. This is the right option for in-process LRU stores, remote caches other than Redis, or test doubles that need to observe cache operations.
 
@@ -448,7 +450,7 @@ defineModule(ManualCacheModule, {
 | `ttl` when the installed underlying `cache-manager` generation uses milliseconds | `ttl` in seconds | Inspect the installed underlying `cache-manager` dependency/version. Divide by 1000 only when that generation defines TTLs in milliseconds. Omitting `ttl` applies `300` seconds on the memory path and `0` for the `redis` and custom-store paths. |
 | `ttl: 0` | `ttl: 0` | Means no expiry, not "do not cache". Negative or non-finite values are invalid: `CacheService.set(...)` drops the write, and `CacheInterceptor` skips both the cache read and write for that handler. |
 | `@CacheTTL(...)` | `@CacheTTL(ttlSeconds: number)` | Accepts one static number only. Move per-request lifetimes to `CacheService.set(key, value, ttlSeconds)`. |
-| implicit query-sensitive keys | `httpKeyStrategy` | Defaults to path-only `'route'`. Select `'route+query'` (or `'full'`), a function strategy, or `@CacheKey(...)` when a response varies by query parameters. |
+| implicit query-sensitive keys | `httpKeyStrategy` | Defaults to query-aware `'route+query'`. Select `'route'` only when query parameters do not affect the response; a function strategy or `@CacheKey(...)` remains available for explicit custom keys. |
 | `isGlobal: true` | `global: true` | Both NestJS `isGlobal` and fluo `global` default to `false`, so both cache modules are module-local unless you opt in or import the module everywhere it is resolved. |
 | NestJS store adapters such as `cache-manager-redis-store` | `store: 'redis'` or a `CacheStore` object | NestJS adapters do not satisfy the `CacheStore` contract; use the built-in Redis path or wrap the adapter so callback/options completion becomes a Promise, `ttlSeconds` maps to the legacy TTL in seconds, and `reset()` clears only the cache namespace. Never forward `reset()` blindly to a whole-database `flushDb`. |
 | adapter-owned client teardown | `close()` / `dispose()` on the store | Application shutdown forwards teardown only to those optional hooks. A raw client passed through `redis.client` stays application-owned and must be closed from the application lifecycle. |
@@ -460,8 +462,8 @@ CacheModule.forRoot({
   ttl: 60,
   // NestJS `isGlobal: true` becomes `global: true`.
   global: true,
-  // Opt in explicitly when responses vary by query parameters.
-  httpKeyStrategy: 'route+query',
+  // Omit httpKeyStrategy for the query-aware route+query default.
+  // Set httpKeyStrategy: 'route' only for query-insensitive responses.
   store: 'redis',
 })
 ```
@@ -505,11 +507,10 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 ### Public types
 - `CacheModuleOptions`: Application-facing configuration accepted by `CacheModule.forRoot(...)`, including optional `ttlJitter` and `observer`.
 - `CacheTtlJitterOptions` and `CacheTtlJitterMode`: Opt-in positive-TTL jitter bounds, direction, and deterministic randomness seam.
-- `NormalizedCacheTtlJitterOptions`: Normalized TTL jitter configuration after defaults are applied.
 - `CacheObserver`: Opt-in observation hook with a single `onCacheOperation(observation)` method.
 - `CacheObservation`: Privacy-safe discriminated union coupling each operation category to its valid outcomes and carrying `durationMs`.
 - `CacheAsyncModuleOptions`: Injected-factory configuration accepted by `CacheModule.forRootAsync(...)`. `useFactory` returns `CacheModuleOptions`; registration-level `global` alone controls module visibility.
-- `NormalizedCacheModuleOptions`: Compatibility-only type export matching the normalized module configuration shape after defaults are applied. Prefer `CacheModuleOptions` for application code; this type remains public so consumers that referenced the previously shipped declaration surface can keep compiling.
+- Normalized module and TTL-jitter shapes are internal provider-assembly details. Application code configures `CacheModule` with `CacheModuleOptions` and receives `CacheService` through DI.
 
 ### Services
 - `CacheService`: Main API for manual cache operations (`get`, `set`, `update`, `del`, `remember`, `reset`, `close`). Application shutdown calls the same `close()` path, which forwards teardown to custom stores exposing `close()` or `dispose()` and shares the first teardown completion across concurrent or repeated callers.
