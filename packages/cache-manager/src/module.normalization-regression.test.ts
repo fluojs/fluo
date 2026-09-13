@@ -3,9 +3,24 @@ import { describe, expect, it } from 'vitest';
 
 import { CacheModule } from './module.js';
 import { CACHE_OPTIONS } from './tokens.js';
-import type { NormalizedCacheModuleOptions } from './types.js';
+import type { CacheModuleOptions, NormalizedCacheModuleOptions } from './types.js';
 
 describe('CacheModule.forRoot', () => {
+  it.each(['full', 'route+queries'])(
+    'rejects unsupported HTTP key strategy %j during registration',
+    (httpKeyStrategy) => {
+      const options: CacheModuleOptions = {};
+      Object.defineProperty(options, 'httpKeyStrategy', {
+        enumerable: true,
+        value: httpKeyStrategy,
+      });
+
+      expect(() => CacheModule.forRoot(options)).toThrow(
+        'httpKeyStrategy must be "route", "route+query", or a function.',
+      );
+    },
+  );
+
   it('reads stateful TTL jitter options once and provides their normalized snapshot', () => {
     let modeReads = 0;
     let randomReads = 0;

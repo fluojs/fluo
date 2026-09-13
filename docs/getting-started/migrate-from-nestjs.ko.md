@@ -934,6 +934,7 @@ gRPC adapter를 사용하기 전에 `@grpc/grpc-js@^1.14.4`와 `@grpc/proto-load
 Kafka와 RabbitMQ는 handler 실행과 request response publication이 settle할 때까지 inbound consumer callback을 pending 상태로 유지하므로 broker adapter가 acknowledgement 또는 retry를 선택할 수 있습니다. 이 consumer-side boundary는 producer-side `emit()` promise와 분리되어 있습니다. Shutdown 시에는 먼저 `Microservice` facade를 닫고, caller-owned broker resource는 application bootstrap layer에서 close 또는 drain하세요.
 
 ### Cache-Manager TTL, Key, Visibility, Store Ownership 마이그레이션
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 `@nestjs/cache-manager`와 `@fluojs/cache-manager`는 cache 개념이 일부 겹치지만 option 이름, 단위, 기본값, 소유권이 모두 그대로 유지되지는 않습니다. NestJS cache 설정을 재사용하기 전에 다음 항목을 각각 변환하세요.
 
@@ -961,7 +962,8 @@ const cacheClient = new Redis({ host: 'localhost', port: 6379 });
       ttl: 60,
       // NestJS `isGlobal: true` becomes `global: true`.
       global: true,
-      // route+query가 기본값이며 query-insensitive 응답에만 route를 설정합니다.
+      // query-aware route+query entry에는 httpKeyStrategy를 생략하고,
+      // query-insensitive 응답에만 httpKeyStrategy: 'route'를 opt-in합니다.
       store: 'redis',
       redis: { client: cacheClient },
     }),

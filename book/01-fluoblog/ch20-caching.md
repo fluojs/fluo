@@ -1,8 +1,11 @@
 # Serving Popular Posts Quickly
 
 <!-- book:volume=01-fluoblog;chapter=20 -->
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 [Previous: Notifying Subscribers About New Posts](./ch19-subscriptions-and-email.md) | [Contents](./toc.md) | [Next: Building Scheduled Publishing and Recurring Jobs](./ch21-scheduled-publishing.md)
+
+HTTP cache registration omits `httpKeyStrategy` for the query-aware `route+query` default. Set `httpKeyStrategy: 'route'` only for a response intentionally insensitive to every query value.
 
 ## The Notification Worked, and Readers Arrived at the Same Post
 

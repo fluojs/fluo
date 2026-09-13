@@ -1,6 +1,7 @@
 # @fluojs/cache-manager
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 General-purpose cache manager for fluo with pluggable memory, Redis, and custom store adapters. Provides both decorator-driven HTTP response caching and a standalone cache API for application-level caching.
 
@@ -293,7 +294,7 @@ By default, anonymous requests use the concrete request path plus its canonical 
 ```typescript
 CacheModule.forRoot({
   store: 'memory',
-  // The default is route+query; use route only for query-insensitive responses.
+  // Opt in only when query values intentionally do not affect the response.
   httpKeyStrategy: 'route',
 })
 ```

@@ -3,6 +3,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const HTTP_KEY_STRATEGY_CONTRACT =
+  '<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->';
 
 // Source-of-truth markers for the cache-manager NestJS migration semantics.
 // Each documentation marker below is an identifier, option value, or literal
@@ -12,8 +14,12 @@ const requirements = [
   ['packages/cache-manager/src/module.ts', [
     "ttl: options.ttl ?? (store === 'memory' ? DEFAULT_MEMORY_STORE_TTL_SECONDS : 0)",
     'const DEFAULT_MEMORY_STORE_TTL_SECONDS = 300;',
+    "const DEFAULT_HTTP_KEY_STRATEGY: CacheKeyStrategy = 'route+query';",
     'global: options.global ?? false',
-    "httpKeyStrategy: options.httpKeyStrategy ?? 'route+query'",
+    'httpKeyStrategy: normalizeHttpKeyStrategy(options.httpKeyStrategy)',
+    'function isCacheKeyStrategy(strategy: unknown): strategy is CacheKeyStrategy',
+    'function normalizeHttpKeyStrategy(strategy: unknown): CacheKeyStrategy',
+    "return strategy === 'route' || strategy === 'route+query' || typeof strategy === 'function';",
   ]],
   ['packages/cache-manager/src/decorators.ts', ['export function CacheTTL(ttlSeconds: number): StandardMethodDecoratorFn']],
   ['packages/cache-manager/src/interceptor.ts', [
@@ -36,6 +42,7 @@ const requirements = [
     '`global: true`',
     '`cache-manager-redis-store`',
     '../../docs/getting-started/migrate-from-nestjs.md',
+    HTTP_KEY_STRATEGY_CONTRACT,
   ]],
   ['packages/cache-manager/README.ko.md', [
     '### NestJS 캐시 마이그레이션',
@@ -45,6 +52,7 @@ const requirements = [
     '`global: true`',
     '`cache-manager-redis-store`',
     '../../docs/getting-started/migrate-from-nestjs.ko.md',
+    HTTP_KEY_STRATEGY_CONTRACT,
   ]],
   ['docs/getting-started/migrate-from-nestjs.md', [
     '### Cache-Manager TTL, Key, Visibility, and Store Ownership Migration',
@@ -55,6 +63,7 @@ const requirements = [
     '`global`',
     '`cache-manager-redis-store`',
     '`redis.client`',
+    HTTP_KEY_STRATEGY_CONTRACT,
   ]],
   ['docs/getting-started/migrate-from-nestjs.ko.md', [
     '### Cache-Manager TTL, Key, Visibility, Store Ownership 마이그레이션',
@@ -65,7 +74,12 @@ const requirements = [
     '`global`',
     '`cache-manager-redis-store`',
     '`redis.client`',
+    HTTP_KEY_STRATEGY_CONTRACT,
   ]],
+  ['book/01-fluoblog/ch20-caching.md', [HTTP_KEY_STRATEGY_CONTRACT]],
+  ['book/01-fluoblog/ch20-caching.ko.md', [HTTP_KEY_STRATEGY_CONTRACT]],
+  ['book/02-fluoshop/ch21-commerce-caching.md', [HTTP_KEY_STRATEGY_CONTRACT]],
+  ['book/02-fluoshop/ch21-commerce-caching.ko.md', [HTTP_KEY_STRATEGY_CONTRACT]],
   ['docs/CONTEXT.md', [
     'docs/getting-started/migrate-from-nestjs.md',
     '`@CacheTTL(...)` takes only a static number',

@@ -1,8 +1,11 @@
 # 상품은 캐시해도 재고 판단은 캐시만 믿지 않기
 
 <!-- book:volume=02-fluoshop;chapter=21 -->
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 [이전: 운영 대시보드에 맞는 조회 API 만들기](./ch20-graphql-dashboard.ko.md) · [2권 목차](./toc.ko.md) · [다음: 해외 독자에게도 판매하기](./ch22-international-commerce.ko.md)
+
+HTTP cache 등록에서는 query-aware `route+query` 기본값을 위해 `httpKeyStrategy`를 생략합니다. 모든 query 값이 의도적으로 응답에 영향을 주지 않을 때만 `httpKeyStrategy: 'route'`를 선택합니다.
 
 ## 빠른 상품 페이지와 정확한 구매는 다른 약속이다
 

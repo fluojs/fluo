@@ -944,6 +944,7 @@ Before adopting the gRPC adapter, install `@grpc/grpc-js@^1.14.4` and `@grpc/pro
 Kafka and RabbitMQ keep inbound consumer callbacks pending until handler execution and any request response publication settle, so the broker adapter can choose acknowledgement or retry. That consumer-side boundary remains separate from the producer-side `emit()` promise. During shutdown, close the `Microservice` facade first, then close or drain caller-owned broker resources from the application bootstrap layer.
 
 ### Cache-Manager TTL, Key, Visibility, and Store Ownership Migration
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 `@nestjs/cache-manager` and `@fluojs/cache-manager` expose overlapping cache concepts, but their option names, units, defaults, and ownership do not all carry over. Convert each of the following before reusing a NestJS cache configuration.
 
@@ -971,7 +972,8 @@ const cacheClient = new Redis({ host: 'localhost', port: 6379 });
       ttl: 60,
       // NestJS `isGlobal: true` becomes `global: true`.
       global: true,
-      // route+query is the default; set route only for query-insensitive responses.
+      // Omit httpKeyStrategy for query-aware route+query entries; opt in to
+      // httpKeyStrategy: 'route' only for query-insensitive responses.
       store: 'redis',
       redis: { client: cacheClient },
     }),

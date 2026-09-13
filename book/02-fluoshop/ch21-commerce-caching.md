@@ -1,8 +1,11 @@
 # Cache Products, but Do Not Trust the Cache Alone for Inventory Decisions
 
 <!-- book:volume=02-fluoshop;chapter=21 -->
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 [Previous: Building a Query API for the Operations Dashboard](./ch20-graphql-dashboard.md) - [Volume 2 Contents](./toc.md) - [Next: Selling to International Readers](./ch22-international-commerce.md)
+
+HTTP cache registration omits `httpKeyStrategy` for the query-aware `route+query` default. Set `httpKeyStrategy: 'route'` only for a response intentionally insensitive to every query value.
 
 ## Fast Product Pages and Correct Purchases Are Different Promises
 

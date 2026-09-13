@@ -1,8 +1,11 @@
 # 인기 글을 빠르게 제공하기
 
 <!-- book:volume=01-fluoblog;chapter=20 -->
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 [이전: 새 글을 구독자에게 알리기](./ch19-subscriptions-and-email.ko.md) · [목차](./toc.ko.md) · [다음: 예약 발행과 정기 작업 만들기](./ch21-scheduled-publishing.ko.md)
+
+HTTP cache 등록에서는 query-aware `route+query` 기본값을 위해 `httpKeyStrategy`를 생략합니다. 모든 query 값이 의도적으로 응답에 영향을 주지 않을 때만 `httpKeyStrategy: 'route'`를 선택합니다.
 
 ## 알림은 성공했고 같은 글에 독자가 몰렸다
 

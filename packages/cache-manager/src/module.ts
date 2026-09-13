@@ -11,6 +11,7 @@ import { CACHE_OPTIONS, CACHE_STORE } from './tokens.js';
 import { normalizeCacheTtlJitterOptions } from './ttl-jitter.js';
 import type {
   CacheAsyncModuleOptions,
+  CacheKeyStrategy,
   CacheModuleOptions,
   NormalizedCacheModuleOptions,
   RedisCompatibleClient,
@@ -18,6 +19,7 @@ import type {
 
 const DEFAULT_MEMORY_STORE_TTL_SECONDS = 300;
 const REDIS_PEER_MODULE_SPECIFIER = '@fluojs/redis';
+const DEFAULT_HTTP_KEY_STRATEGY: CacheKeyStrategy = 'route+query';
 
 interface RedisPeerModule {
   getRedisClientToken(clientName?: string): Token<RedisCompatibleClient>;
@@ -82,10 +84,26 @@ function normalizeCacheModuleOptions(options: CacheModuleOptions = {}): Normaliz
     store,
     ttl: options.ttl ?? (store === 'memory' ? DEFAULT_MEMORY_STORE_TTL_SECONDS : 0),
     ttlJitter: normalizeCacheTtlJitterOptions(options.ttlJitter),
-    httpKeyStrategy: options.httpKeyStrategy ?? 'route+query',
+    httpKeyStrategy: normalizeHttpKeyStrategy(options.httpKeyStrategy),
     principalScopeResolver: options.principalScopeResolver,
     observer: options.observer,
   };
+}
+
+function isCacheKeyStrategy(strategy: unknown): strategy is CacheKeyStrategy {
+  return strategy === 'route' || strategy === 'route+query' || typeof strategy === 'function';
+}
+
+function normalizeHttpKeyStrategy(strategy: unknown): CacheKeyStrategy {
+  if (strategy === undefined) {
+    return DEFAULT_HTTP_KEY_STRATEGY;
+  }
+
+  if (isCacheKeyStrategy(strategy)) {
+    return strategy;
+  }
+
+  throw new Error('httpKeyStrategy must be "route", "route+query", or a function.');
 }
 
 function isNormalizedCacheModuleOptions(value: unknown): value is NormalizedCacheModuleOptions {

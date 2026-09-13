@@ -1,6 +1,7 @@
 # @fluojs/cache-manager
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->
 
 메모리(Memory), Redis, custom store 어댑터를 지원하는 fluo 애플리케이션용 범용 캐시 관리 패키지입니다. 데코레이터 기반의 HTTP 응답 캐싱과 프로그래밍 방식의 애플리케이션 레벨 캐시 API를 모두 제공합니다.
 
@@ -293,7 +294,7 @@ CacheModule.forRoot({
 ```typescript
 CacheModule.forRoot({
   store: 'memory',
-  // 기본값은 route+query이며 query-insensitive 응답에만 route를 사용합니다.
+  // query 값이 의도적으로 응답에 영향을 주지 않을 때만 opt-in합니다.
   httpKeyStrategy: 'route',
 })
 ```
