@@ -1,22 +1,28 @@
+import { createServer, request as httpRequest } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { Inject } from '@fluojs/core';
 import {
+  type CallHandler,
   Controller,
+  type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
   FromBody,
+  type HttpApplicationAdapter,
   HttpCode,
+  type Interceptor,
+  type InterceptorContext,
   Post,
   RequestDto,
   UseInterceptors,
 } from '@fluojs/http';
-import { FluoFactory, defineModule } from '@fluojs/runtime';
-import { describe, expect, it } from 'vitest';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   PrismaModule,
   PrismaService,
   type PrismaServiceFacade,
-  PrismaTransactionInterceptor,
   Transaction,
 } from './index.js';
 
@@ -65,6 +71,90 @@ function createRequest(
     raw: {},
     signal,
     url: path,
+  };
+}
+
+function getBoundPort(server: unknown): number {
+  if (!server || typeof (server as { address?: unknown }).address !== 'function') {
+    throw new Error('Failed to resolve the Node HTTP test server.');
+  }
+
+  const address = (server as { address(): AddressInfo | string | null }).address();
+
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to resolve the Node HTTP test port.');
+  }
+
+  return address.port;
+}
+
+function createNodeHttpTestAdapter(
+  onFrameworkRequest?: (frameworkRequest: FrameworkRequest) => void,
+): HttpApplicationAdapter & { getServer(): unknown } {
+  let server: ReturnType<typeof createServer> | undefined;
+
+  return {
+    async close() {
+      if (!server) {
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        server?.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    },
+    getServer() {
+      return server;
+    },
+    async listen(dispatcher: Dispatcher) {
+      server = createServer((request, response) => {
+        const controller = new AbortController();
+        const abort = () => {
+          if (!controller.signal.aborted) {
+            controller.abort();
+          }
+        };
+        request.once('aborted', abort);
+        response.once('close', () => {
+          if (!response.writableEnded) {
+            abort();
+          }
+        });
+
+        const frameworkRequest = createRequest(
+          request.url ?? '/',
+          request.method ?? 'GET',
+          undefined,
+          request.headers,
+          controller.signal,
+        );
+        onFrameworkRequest?.(frameworkRequest);
+        const frameworkResponse = createResponse();
+        void dispatcher.dispatch(
+          frameworkRequest,
+          frameworkResponse,
+        ).then(() => {
+          if (response.destroyed) {
+            return;
+          }
+
+          response.statusCode = frameworkResponse.statusCode ?? 200;
+          response.end();
+        });
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        server?.once('error', reject);
+        server?.listen(0, '127.0.0.1', resolve);
+      });
+    },
   };
 }
 
@@ -300,8 +390,29 @@ describe('@fluojs/prisma service boundary primary flow', () => {
     }
   });
 
-  it('injects the compatibility interceptor controller dependency before creating an order', async () => {
+  it('forwards a real HTTP request abort signal through an application-owned order boundary', async () => {
+    // Given
     const events: string[] = [];
+    let notifyOrderStarted: () => void = () => undefined;
+    let releaseOrder: () => void = () => undefined;
+    let notifyOrderFinished: () => void = () => undefined;
+    let notifyTransactionAbort: () => void = () => undefined;
+    let notifyTransactionEnd: () => void = () => undefined;
+    const orderStarted = new Promise<void>((resolve) => {
+      notifyOrderStarted = resolve;
+    });
+    const orderReleased = new Promise<void>((resolve) => {
+      releaseOrder = resolve;
+    });
+    const orderFinished = new Promise<void>((resolve) => {
+      notifyOrderFinished = resolve;
+    });
+    const transactionAbortObserved = new Promise<void>((resolve) => {
+      notifyTransactionAbort = resolve;
+    });
+    const transactionEnded = new Promise<void>((resolve) => {
+      notifyTransactionEnd = resolve;
+    });
     const transactionClient = { source: 'transaction' } as const;
     const client = {
       source: 'root' as const,
@@ -311,11 +422,25 @@ describe('@fluojs/prisma service boundary primary flow', () => {
       async $disconnect() {
         events.push('disconnect');
       },
-      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+      async $transaction<T>(
+        callback: (value: typeof transactionClient) => Promise<T>,
+        options?: { signal?: AbortSignal },
+      ): Promise<T> {
         events.push('transaction:start');
-        const result = await callback(transactionClient);
-        events.push('transaction:commit');
-        return result;
+        const signal = options?.signal;
+        const onAbort = () => {
+          events.push('transaction:abort');
+          notifyTransactionAbort();
+        };
+        signal?.addEventListener('abort', onAbort, { once: true });
+
+        try {
+          return await callback(transactionClient);
+        } finally {
+          signal?.removeEventListener('abort', onAbort);
+          events.push('transaction:end');
+          notifyTransactionEnd();
+        }
       },
     };
 
@@ -323,9 +448,22 @@ describe('@fluojs/prisma service boundary primary flow', () => {
     class OrdersService {
       constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
 
-      create() {
-        events.push(`orders:create:${this.prisma.current().source}`);
+      async create() {
+        events.push(`orders:start:${this.prisma.current().source}`);
+        notifyOrderStarted();
+        await orderReleased;
+        events.push('orders:end');
+        notifyOrderFinished();
         return { id: 'order-1' };
+      }
+    }
+
+    @Inject(PrismaService)
+    class OrderRequestTransactionBoundary implements Interceptor {
+      constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
+
+      intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
+        return this.prisma.requestTransaction(() => next.handle(), context.requestContext.request.signal);
       }
     }
 
@@ -335,7 +473,7 @@ describe('@fluojs/prisma service boundary primary flow', () => {
       constructor(private readonly orders: OrdersService) {}
 
       @Post('/')
-      @UseInterceptors(PrismaTransactionInterceptor)
+      @UseInterceptors(OrderRequestTransactionBoundary)
       createOrder() {
         return this.orders.create();
       }
@@ -345,24 +483,57 @@ describe('@fluojs/prisma service boundary primary flow', () => {
     defineModule(AppModule, {
       controllers: [OrdersController],
       imports: [PrismaModule.forRoot({ client })],
-      providers: [OrdersService],
+      providers: [OrderRequestTransactionBoundary, OrdersService],
     });
-    const app = await FluoFactory.create(AppModule);
+    let frameworkRequestSignal: AbortSignal | undefined;
+    const adapter = createNodeHttpTestAdapter((frameworkRequest) => {
+      frameworkRequestSignal = frameworkRequest.signal;
+    });
+    const app = await FluoFactory.create(AppModule, { adapter });
+    const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
+    const requestTransaction = vi.spyOn(prisma, 'requestTransaction');
+    await app.listen();
+    const request = httpRequest({
+      host: '127.0.0.1',
+      method: 'POST',
+      path: '/orders',
+      port: getBoundPort(adapter.getServer()),
+    });
 
     try {
-      const response = createResponse(events);
+      request.on('error', () => undefined);
+      request.end();
+      await orderStarted;
 
-      await app.dispatch(createRequest('/orders', 'POST'), response);
+      // When
+      request.destroy();
+      await transactionAbortObserved;
 
-      expect(response.body).toEqual({ id: 'order-1' });
+      // Then
+      expect(requestTransaction).toHaveBeenCalledTimes(1);
+      expect(requestTransaction.mock.calls[0]?.[1]).toBe(frameworkRequestSignal);
+      expect(requestTransaction.mock.calls[0]?.[1]?.aborted).toBe(true);
       expect(events).toEqual([
         'connect',
         'transaction:start',
-        'orders:create:transaction',
-        'transaction:commit',
-        'response:send',
+        'orders:start:transaction',
+        'transaction:abort',
+      ]);
+
+      releaseOrder();
+      await orderFinished;
+      await transactionEnded;
+      expect(events).toEqual([
+        'connect',
+        'transaction:start',
+        'orders:start:transaction',
+        'transaction:abort',
+        'orders:end',
+        'transaction:end',
       ]);
     } finally {
+      request.destroy();
+      releaseOrder();
       await app.close();
     }
   });

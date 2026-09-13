@@ -152,11 +152,12 @@ Snapshot 호출은 단순한 복사가 아니라 registration contract의 일부
 
 `PrismaModule.forRoot()`는 아주 좋은 참고 구현입니다. `path:packages/prisma/src/module.ts:161-195`는 새로운 class를 만들고, `defineModule(...)`을 호출해 의도된 public provider set을 export하며, 정규화된 옵션 value provider를 내부 normalized-options token 아래에 등록합니다. 나머지 runtime provider(예: 데이터베이스 클라이언트 자체)는 이 내부 options token으로부터 DI를 통해 파생됩니다.
 
-정적 helper의 핵심 형태는 `buildPrismaModule()`에서 바로 보입니다.
+등록 API의 핵심 형태는 `PrismaModule.forRoot()`가 직접 소유합니다.
 
-`path:packages/prisma/src/module.ts:161-195`
+`path:packages/prisma/src/module.ts`
 ```typescript
-function buildPrismaModule<
+class PrismaModule {
+  static forRoot<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
   TTransactionClient = InferPrismaTransactionClient<TClient>,
   TTransactionOptions = InferPrismaTransactionOptions<TClient>,
@@ -174,7 +175,6 @@ function buildPrismaModule<
     exports: normalizedOptions.name === undefined
       ? [
         PrismaService,
-        PrismaTransactionInterceptor,
         getPrismaServiceToken(),
         getPrismaClientToken(),
         getPrismaOptionsToken(),
@@ -190,10 +190,11 @@ function buildPrismaModule<
       useValue: normalizedOptions,
     }, normalizedOptions.name),
   });
+  }
 }
 ```
 
-이 코드는 `forRoot()`가 실질적으로 options provider를 먼저 만들고, 그 provider를 포함한 runtime provider 배열을 새 module class에 묶는 함수임을 보여 줍니다. 이름 없는 등록은 `PrismaService`, deprecated 호환성 interceptor, default token을 export하고, named registration은 대응되는 token만 export하면서 scoped로 유지됩니다. 따라서 helper 호출 하나가 등록 표면 전체를 설명합니다.
+이 코드는 `forRoot()` 자체가 options provider를 먼저 만들고, 그 provider를 포함한 runtime provider 배열을 새 module class에 묶는다는 점을 보여 줍니다. 이름 없는 등록은 `PrismaService`와 default token을 export하고, named registration은 대응되는 token만 export하면서 scoped로 유지됩니다. 따라서 static 호출 하나가 등록 표면 전체를 설명합니다.
 
 이 "옵션 생산"과 "서비스 생산"의 분리는 Fluo의 중요한 설계 특징입니다. 정규화된 옵션을 실제 provider로 등록하면, 모듈 구성이 패키지 내부 provider factory에서 관찰 가능한 값이 됩니다. 소비자 코드는 `PrismaService`, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, 이름 있는 token helper처럼 `@fluojs/prisma`가 export하는 공개 facade token만 주입해야 합니다. normalized-options token은 내부 등록 identity와 visibility metadata도 담기 때문에 의도적으로 구현 세부사항으로 남습니다.
 

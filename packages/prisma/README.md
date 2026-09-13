@@ -11,7 +11,7 @@ Node.js `>=24.0.0 <27` Prisma lifecycle and ALS-backed transaction context for f
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
   - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
-  - [Request Transaction Interceptor Compatibility](#request-transaction-interceptor-compatibility)
+  - [Request Transaction Boundaries](#request-transaction-boundaries)
   - [Named Registrations for Multiple Clients](#named-registrations-for-multiple-clients)
   - [Manual Transactions and current()](#manual-transactions-and-current)
   - [Cache Invalidation After Commit](#cache-invalidation-after-commit)
@@ -82,30 +82,11 @@ export class UserService {
 
 Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Prisma transaction.
 
-### Request Transaction Interceptor Compatibility
+### Request Transaction Boundaries
 
-`PrismaTransactionInterceptor` is restored as a deprecated 1.x compatibility export for existing `@UseInterceptors(...)` request-wide boundaries. The unnamed `PrismaModule.forRoot(...)` and `forRootAsync(...)` registrations provide and export it. It delegates to `PrismaService.requestTransaction(...)` and forwards the request `AbortSignal`.
+Use service-layer `@Transaction()` for business operations. When a complete request truly needs one transaction, application code owns an explicit `PrismaService.requestTransaction(...)` boundary and forwards the request `AbortSignal`. The removed `PrismaTransactionInterceptor` has no replacement export; migrate existing `@UseInterceptors(PrismaTransactionInterceptor)` uses to this application-owned boundary.
 
-```typescript
-import { Inject } from '@fluojs/core';
-import { Controller, Post, UseInterceptors } from '@fluojs/http';
-import { PrismaTransactionInterceptor } from '@fluojs/prisma';
-import { OrdersService } from './orders.service';
-
-@Controller('/orders')
-@Inject(OrdersService)
-export class OrdersController {
-  constructor(private readonly orders: OrdersService) {}
-
-  @Post('/')
-  @UseInterceptors(PrismaTransactionInterceptor)
-  createOrder() {
-    return this.orders.create();
-  }
-}
-```
-
-Prefer service-layer `@Transaction()` for new business operations. Use explicit `requestTransaction(...)` when a complete request truly needs one transaction or named/multiple Prisma registrations must select a specific service; the compatibility interceptor targets only the unnamed default registration.
+See [Migrate Prisma Registration](../../docs/getting-started/migrate-prisma-registration.md) for facade and interceptor migration details.
 
 When request-wide atomicity is genuinely required, make the boundary and cancellation input visible in application code:
 
@@ -134,7 +115,7 @@ export class OrdersController {
 }
 ```
 
-This is a narrow compatibility pattern, not a replacement for service `@Transaction()`. A request-wide transaction can hold database locks for the entire HTTP operation, so keep the boundary short and explicit.
+This is a request-boundary pattern, not a replacement for service `@Transaction()`. A request-wide transaction can hold database locks for the entire HTTP operation, so keep the boundary short and explicit. For an existing global route interceptor, place the same `requestTransaction(() => next.handle(), context.requestContext.request.signal)` call in an application-owned interceptor provider.
 
 ### Named Registrations for Multiple Clients
 
@@ -373,7 +354,7 @@ defineModule(ManualPrismaModule, {
 - `requestTransaction(fn, signal?, nativeOptions?, boundary?): Promise<T>`
   - Specialized transaction boundary for HTTP request lifecycles. It is abort-aware, drains during shutdown before disconnect, and retries without `signal` when a Prisma client rejects that option. Like `transaction()`, nested calls reuse the active transaction context and reject nested native options to avoid silently ignoring transaction settings.
 
-Use `PrismaService<TClient>` when a provider only needs wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or `createPlatformStatusSnapshot()`. Use `PrismaServiceFacade<TClient>` for repository injections that call generated Prisma Client delegates directly; the facade forwards those calls to the active transaction client when one exists and to the root client otherwise. `PrismaService.createFacade(...)` is retained as a low-level compatibility helper for module-provider wiring; application code should prefer `PrismaModule.forRoot(...)` / `forRootAsync(...)`.
+Use `PrismaService<TClient>` when a provider only needs wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or `createPlatformStatusSnapshot()`. Use `PrismaServiceFacade<TClient>` for repository injections that call generated Prisma Client delegates directly; the module-owned injected facade forwards those calls to the active transaction client when one exists and to the root client otherwise. `PrismaService.createFacade(...)` is removed; register with `PrismaModule.forRoot(...)` / `forRootAsync(...)` and inject `PrismaService` instead.
 
 `boundary?: TransactionBoundaryOptions<T>` is a Fluo-only option **after** the existing arguments; do not merge it into Prisma native options. `fn` remains the existing async callback. The commit path returns its original `T` after registered-hook drain; the opt-in rollback path follows the return and error rules in [Choosing Rollback from a Result](#choosing-rollback-from-a-result).
 
@@ -401,11 +382,10 @@ Import all of these from the root `@fluojs/prisma` package.
 - `AfterCommitCapabilityError`: failure when required native commit capability is missing or a hook is registered on an unsupported boundary.
 - `AfterCommitError extends AggregateError`: exposes `readonly committed = true` and `results: readonly PromiseSettledResult<void>[]` for every FIFO outcome, with all failures in inherited `errors`.
 
-### `PrismaTransactionInterceptor` (deprecated compatibility)
+### Request transactions
 
-- Request-wide HTTP compatibility interceptor for existing 1.x imports.
-- Delegates to `PrismaService.requestTransaction(...)` and forwards request cancellation.
-- Prefer service `@Transaction()` or an explicit request boundary in new code.
+- `PrismaService.requestTransaction(...)` opens an explicit application-owned request boundary and accepts the request cancellation signal.
+- `PrismaTransactionInterceptor` is removed; migrate legacy interceptor registrations to an application-owned interceptor or controller boundary that calls `requestTransaction(...)`.
 
 ### `PRISMA_CLIENT` (Token)
 

@@ -4,10 +4,12 @@ import { fileURLToPath } from 'node:url';
 
 import {
   createSourceFile,
+  forEachChild,
   isCallExpression,
   isExpressionStatement,
   isFunctionDeclaration,
   isIdentifier,
+  isPropertyAccessExpression,
   ScriptKind,
   ScriptTarget,
 } from 'typescript';
@@ -23,7 +25,28 @@ const prismaContractFields = [
   'strict-transaction-rollback',
 ];
 const prismaContractMarkerPattern = /^<!-- fluo-prisma-contract: ([a-z-]+(?:, [a-z-]+)*) -->$/gmu;
-
+const prismaRegistrationContractFields = [
+  'default-class-token-alias',
+  'named-token-isolation',
+  'no-transaction-interceptor-export',
+];
+const prismaRegistrationContractMarkerPattern =
+  /^<!-- fluo-prisma-registration-contract: ([a-z-]+(?:, [a-z-]+)*) -->$/gmu;
+const prismaTransactionBoundaryMarkerName = 'fluo-prisma-transaction-boundary';
+const prismaTransactionBoundaryMarkerPattern = new RegExp(
+  `^<!-- ${prismaTransactionBoundaryMarkerName}:\\s*([^\\r\\n]*?) -->$`,
+  'gmu',
+);
+const prismaTransactionBoundaryFields = [
+  ['interceptor', 'removed'],
+  ['replacement', 'application-owned-request-transaction'],
+];
+const prismaRegistrationDocumentationPaths = [
+  'docs/getting-started/migrate-prisma-registration.md',
+  'docs/getting-started/migrate-prisma-registration.ko.md',
+  'docs/reference/package-surface.md',
+  'docs/reference/package-surface.ko.md',
+];
 const prismaDocumentationAnchors = [
   {
     relativePath: 'docs/getting-started/migrate-from-nestjs.md',
@@ -112,6 +135,55 @@ function enforcePrismaContractMarker(section, relativePath) {
   );
 }
 
+function enforcePrismaRegistrationContractMarker(markdown, relativePath) {
+  const markers = [...markdown.matchAll(prismaRegistrationContractMarkerPattern)];
+
+  assert(
+    markers.length === 1,
+    `${relativePath} must include exactly one fluo-prisma-registration-contract marker; found ${markers.length}.`,
+  );
+
+  const fields = markers[0][1].split(', ');
+  assert(
+    fields.length === prismaRegistrationContractFields.length &&
+      new Set(fields).size === prismaRegistrationContractFields.length &&
+      prismaRegistrationContractFields.every((field) => fields.includes(field)),
+    `${relativePath} must declare each machine-consumed Prisma registration contract field exactly once.`,
+  );
+}
+
+function enforcePrismaTransactionBoundaryMarker(markdown, relativePath) {
+  const markers = [...markdown.matchAll(prismaTransactionBoundaryMarkerPattern)];
+
+  assert(
+    markers.length === 1,
+    `${relativePath} must include exactly one ${prismaTransactionBoundaryMarkerName} marker; found ${markers.length}.`,
+  );
+
+  const fields = new Map();
+  for (const rawField of markers[0][1].split(';')) {
+    const separator = rawField.indexOf('=');
+    assert(
+      separator > 0,
+      `${relativePath} ${prismaTransactionBoundaryMarkerName} marker fields must use key=value syntax.`,
+    );
+
+    const key = rawField.slice(0, separator).trim();
+    const value = rawField.slice(separator + 1).trim();
+    assert(
+      key.length > 0 && value.length > 0 && !fields.has(key),
+      `${relativePath} ${prismaTransactionBoundaryMarkerName} marker has an invalid or duplicate ${key || 'unnamed'} field.`,
+    );
+    fields.set(key, value);
+  }
+
+  assert(
+    fields.size === prismaTransactionBoundaryFields.length &&
+      prismaTransactionBoundaryFields.every(([key, value]) => fields.get(key) === value),
+    `${relativePath} has unexpected Prisma transaction boundary fields.`,
+  );
+}
+
 function enforceDocumentationClaims(readText) {
   for (const { relativePath, heading, codeAnchors } of prismaDocumentationAnchors) {
     const section = extractPrismaSection(readText(relativePath), relativePath, heading);
@@ -129,6 +201,14 @@ function enforceDocumentationClaims(readText) {
       completeVisibilityExamples.length === 1,
       `${relativePath} must contain exactly one complete @Module({ global: true }) Prisma visibility example with exported DatabaseConfig, sibling-module import, and injected factory.`,
     );
+  }
+
+  for (const relativePath of prismaRegistrationDocumentationPaths) {
+    enforcePrismaRegistrationContractMarker(readText(relativePath), relativePath);
+  }
+
+  for (const { relativePath } of prismaDocumentationAnchors) {
+    enforcePrismaTransactionBoundaryMarker(readText(relativePath), relativePath);
   }
 }
 
@@ -148,6 +228,38 @@ export function hasDirectMainBodyPrismaMigrationGuardCall(source) {
     isCallExpression(statement.expression) &&
     isIdentifier(statement.expression.expression) &&
     statement.expression.expression.text === 'enforcePrismaNestjsMigrationDocs') ?? false;
+}
+
+export function hasPrismaRegistrationContractFieldComparison(source) {
+  const sourceFile = createSourceFile(
+    'prisma-nestjs-migration-docs.mjs',
+    source,
+    ScriptTarget.Latest,
+    true,
+    ScriptKind.JS,
+  );
+  const registrationGuard = sourceFile.statements.find((statement) =>
+    isFunctionDeclaration(statement) &&
+    statement.name?.text === 'enforcePrismaRegistrationContractMarker');
+  let found = false;
+
+  const visit = (node) => {
+    if (
+      isCallExpression(node) &&
+      isPropertyAccessExpression(node.expression) &&
+      isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === 'prismaRegistrationContractFields' &&
+      node.expression.name.text === 'every' &&
+      node.arguments.length === 1 &&
+      node.arguments[0].getText(sourceFile) === '(field) => fields.includes(field)'
+    ) {
+      found = true;
+    }
+    forEachChild(node, visit);
+  };
+
+  if (registrationGuard) visit(registrationGuard);
+  return found;
 }
 
 export function enforcePrismaNestjsMigrationDocs(

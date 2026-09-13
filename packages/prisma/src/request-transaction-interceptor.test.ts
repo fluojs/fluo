@@ -9,9 +9,9 @@ import {
   UseInterceptors,
 } from '@fluojs/http';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { PrismaModule, PrismaService, PrismaTransactionInterceptor } from './index.js';
+import { PrismaModule, PrismaService, type PrismaClientLike } from './index.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {
   return {
@@ -40,8 +40,17 @@ function createRequest(signal: AbortSignal): FrameworkRequest {
   return { cookies: {}, headers: {}, method: 'GET', params: {}, path: '/compat', query: {}, raw: {}, signal, url: '/compat' };
 }
 
-describe('PrismaTransactionInterceptor compatibility', () => {
-  it('wraps a routed handler in a request transaction when the compatibility export is used', async () => {
+@Inject(PrismaService)
+class RequestTransactionInterceptor implements Interceptor {
+  constructor(private readonly prisma: PrismaService<PrismaClientLike>) {}
+
+  intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
+    return this.prisma.requestTransaction(() => next.handle(), context.requestContext.request.signal);
+  }
+}
+
+describe('application-owned request transaction interceptor', () => {
+  it('wraps a routed handler in a request transaction through the explicit service boundary', async () => {
     // Given
     const events: string[] = [];
     const transactionClient = { source: 'transaction' } as const;
@@ -60,7 +69,7 @@ describe('PrismaTransactionInterceptor compatibility', () => {
       constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
 
       @Get('/compat')
-      @UseInterceptors(PrismaTransactionInterceptor)
+      @UseInterceptors(RequestTransactionInterceptor)
       readSource(): string {
         events.push('handler');
         return this.prisma.current().source;
@@ -71,6 +80,7 @@ describe('PrismaTransactionInterceptor compatibility', () => {
     defineModule(AppModule, {
       controllers: [CompatibilityController],
       imports: [PrismaModule.forRoot<typeof client, typeof transactionClient>({ client })],
+      providers: [RequestTransactionInterceptor],
     });
     const app = await FluoFactory.create(AppModule);
     try {
@@ -106,6 +116,10 @@ describe('PrismaTransactionInterceptor compatibility', () => {
     const transactionCleanupReleased = new Promise<void>((resolve) => {
       releaseTransactionCleanup = resolve;
     });
+    let notifyTransactionCleanupPending: () => void = () => undefined;
+    const transactionCleanupPending = new Promise<void>((resolve) => {
+      notifyTransactionCleanupPending = resolve;
+    });
     const transactionClient = { source: 'transaction' } as const;
     const client = {
       source: 'root' as const,
@@ -133,6 +147,7 @@ describe('PrismaTransactionInterceptor compatibility', () => {
         } finally {
           signal.removeEventListener('abort', onAbort);
           events.push('transaction:cleanup:pending');
+          notifyTransactionCleanupPending();
           await transactionCleanupReleased;
           events.push('transaction:cleanup:done');
         }
@@ -155,7 +170,7 @@ describe('PrismaTransactionInterceptor compatibility', () => {
       constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
 
       @Get('/compat')
-      @UseInterceptors(CallerProbeInterceptor, PrismaTransactionInterceptor)
+      @UseInterceptors(CallerProbeInterceptor, RequestTransactionInterceptor)
       async waitForCancellation(): Promise<string> {
         events.push(`handler:start:${this.prisma.current().source}`);
         notifyHandlerStarted();
@@ -173,7 +188,7 @@ describe('PrismaTransactionInterceptor compatibility', () => {
       imports: [
         PrismaModule.forRoot<typeof client, typeof transactionClient, { signal?: AbortSignal }>({ client }),
       ],
-      providers: [CallerProbeInterceptor],
+      providers: [CallerProbeInterceptor, RequestTransactionInterceptor],
     });
     const app = await FluoFactory.create(AppModule);
     const prisma = await app.container.resolve(
@@ -187,32 +202,30 @@ describe('PrismaTransactionInterceptor compatibility', () => {
       await handlerStarted;
 
       // When
-      controller.abort(new Error('compatibility caller cancelled'));
-      await vi.waitFor(() => expect(events).toContain('transaction:cleanup:pending'));
+      controller.abort(new Error('explicit caller cancelled'));
+      await transactionCleanupPending;
 
       // Then
       expect(events).toEqual([
         'transaction:start',
         'transaction:signal',
         'handler:start:transaction',
-        'transaction:abort:compatibility caller cancelled',
+        'transaction:abort:explicit caller cancelled',
         'transaction:cleanup:pending',
       ]);
       expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 1 });
 
       releaseTransactionCleanup();
       await expect(dispatch).resolves.toBeUndefined();
-      await vi.waitFor(() => {
-        expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
-      });
+      expect(prisma.createPlatformStatusSnapshot().details).toMatchObject({ activeRequestTransactions: 0 });
       expect(events).toEqual([
         'transaction:start',
         'transaction:signal',
         'handler:start:transaction',
-        'transaction:abort:compatibility caller cancelled',
+        'transaction:abort:explicit caller cancelled',
         'transaction:cleanup:pending',
         'transaction:cleanup:done',
-        'caller:rejected:compatibility caller cancelled',
+        'caller:rejected:explicit caller cancelled',
       ]);
 
       releaseHandler();

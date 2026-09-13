@@ -9,9 +9,9 @@
 
 | 패키지 | ambient 문맥 운반체 | 주요 접근 API | 요청 경계 API | 현재 지원 범위 |
 | --- | --- | --- | --- | --- |
-| `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | 서비스의 `@Transaction()` | 명시적 `PrismaService.requestTransaction(...)` 또는 deprecated `PrismaTransactionInterceptor` 호환성 | `$transaction(...)`을 사용할 수 있을 때 활성 Prisma interactive transaction client를 공유합니다. |
-| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | 서비스의 `@Transaction()` | 명시적 `DrizzleDatabase.requestTransaction(...)` | `database.transaction(...)`을 사용할 수 있을 때 활성 Drizzle transaction database handle을 공유합니다. |
-| `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | 서비스의 `@Transaction()` | 명시적 `MongooseConnection.requestTransaction(...)` | `connection.startSession()` 또는 위임된 `connection.transaction(...)`을 사용할 수 있을 때 활성 Mongoose session을 공유합니다. |
+| `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | 서비스의 `@Transaction()` | 명시적 애플리케이션 소유 `PrismaService.requestTransaction(...)` | `$transaction(...)`을 사용할 수 있을 때 활성 Prisma interactive transaction client를 공유합니다. |
+| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | 서비스의 `@Transaction()` | 명시적 애플리케이션 소유 `DrizzleDatabase.requestTransaction(...)` | `database.transaction(...)`을 사용할 수 있을 때 활성 Drizzle transaction database handle을 공유합니다. |
+| `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | 서비스의 `@Transaction()` | 명시적 애플리케이션 소유 `MongooseConnection.requestTransaction(...)` | `connection.startSession()` 또는 위임된 `connection.transaction(...)`을 사용할 수 있을 때 활성 Mongoose session을 공유합니다. |
 
 ## 서비스 트랜잭션 경계 (기본)
 
@@ -140,9 +140,11 @@ Raw-client 외부 transaction, 다른 wrapper 또는 다른 connection의 commit
 | 패턴 | 동작 |
 | --- | --- |
 | 명시적 요청 경계 | 전체 요청을 트랜잭션으로 감싸야 하는 경우 애플리케이션 코드가 controller, route adapter, request orchestration 경계에서 `requestTransaction(...)`을 직접 호출할 수 있습니다. |
-| Deprecated 인터셉터 호환성 | `PrismaTransactionInterceptor`는 기존 1.x import를 위해 유지되며 `PrismaService.requestTransaction(...)`에 위임합니다. Drizzle과 Mongoose는 애플리케이션 소유의 명시적 `requestTransaction(...)` boundary를 사용합니다. 새 코드에는 서비스 `@Transaction()`을 우선 사용하세요. |
+| Deprecated 인터셉터 호환성 | Prisma, Drizzle, Mongoose transaction interceptor는 제거되었습니다. Request-wide 등록은 request `AbortSignal`과 함께 각 wrapper의 명시적 `requestTransaction(...)`을 호출하는 애플리케이션 소유 boundary로 마이그레이션하세요. 비즈니스 원자성에는 서비스 `@Transaction()`을 우선 사용하세요. |
 
-NestJS controller 또는 interceptor transaction 패턴을 마이그레이션할 때 일반적인 비즈니스 원자성은 서비스 `@Transaction()` 메서드에 두세요. 기존 Prisma 애플리케이션은 migration 동안 deprecated 호환성 interceptor를 유지할 수 있습니다. Drizzle request-wide boundary는 `DrizzleDatabase.requestTransaction(...)`을 명시적으로 호출하고, Mongoose 애플리케이션은 `MongooseConnection.requestTransaction(...)`을 호출하는 애플리케이션 소유 interceptor를 유지하세요. 두 경로 모두 request `AbortSignal`을 전달합니다.
+NestJS controller 또는 interceptor transaction 패턴을 마이그레이션할 때 일반적인 비즈니스 원자성은 서비스 `@Transaction()` 메서드에 두세요. Prisma, Drizzle, Mongoose request-wide boundary는 애플리케이션이 소유하며 `PrismaService.requestTransaction(...)`, `DrizzleDatabase.requestTransaction(...)`, `MongooseConnection.requestTransaction(...)`에 request `AbortSignal`을 전달합니다.
+
+제거된 Prisma facade와 interceptor의 마이그레이션 단계는 [Prisma 등록 마이그레이션](../getting-started/migrate-prisma-registration.ko.md)을 참고하세요.
 
 ## 고급 / 탈출구 (Escape Hatch)
 

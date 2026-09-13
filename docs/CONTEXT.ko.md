@@ -1,4 +1,8 @@
 # fluo — AI Context Document
+<!-- fluo:prisma-api-unification: module-owned-registration -->
+
+Prisma 애플리케이션 등록은 `PrismaModule.forRoot(...)` 또는 `PrismaModule.forRootAsync(...)`가 소유하며, 직접 facade를 조립하지 말고 module이 소유한 `PrismaService` facade를 주입하세요. `PrismaService.createFacade(...)`와 `PrismaTransactionInterceptor`는 제거되었습니다. request-wide 경계는 request `AbortSignal`을 전달하는 애플리케이션 소유 `PrismaService.requestTransaction(...)` 호출로 마이그레이션하세요. 자세한 내용은 [Prisma 등록 마이그레이션](./getting-started/migrate-prisma-registration.ko.md)을 참고하세요.
+
 <!-- fluo:cron-nestjs-migration: timezone-mapping -->
 <!-- fluo:cron-nestjs-migration: wait-for-completion -->
 <!-- fluo:cron-nestjs-migration: unsupported-options -->

@@ -11,7 +11,7 @@ fluo 애플리케이션을 위한 Node.js `>=24.0.0 <27` Prisma lifecycle 및 AL
 - [빠른 시작](#빠른-시작)
 - [공통 패턴](#공통-패턴)
   - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
-  - [요청 트랜잭션 인터셉터 호환성](#요청-트랜잭션-인터셉터-호환성)
+  - [요청 트랜잭션 경계](#요청-트랜잭션-경계)
   - [여러 클라이언트를 위한 이름 있는 등록](#여러-클라이언트를-위한-이름-있는-등록)
   - [수동 트랜잭션과 current()](#수동-트랜잭션과-current)
   - [커밋 후 캐시 무효화](#커밋-후-캐시-무효화)
@@ -82,30 +82,11 @@ export class UserService {
 
 `@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 Prisma 트랜잭션 안에서 실행됩니다.
 
-### 요청 트랜잭션 인터셉터 호환성
+### 요청 트랜잭션 경계
 
-`PrismaTransactionInterceptor`는 기존 `@UseInterceptors(...)` request-wide boundary를 위한 deprecated 1.x 호환성 export로 복원되었습니다. 이름 없는 `PrismaModule.forRoot(...)`와 `forRootAsync(...)` 등록이 이 interceptor를 provider 및 export로 제공하며, `PrismaService.requestTransaction(...)`에 위임하고 request `AbortSignal`을 전달합니다.
+비즈니스 작업에는 서비스 계층 `@Transaction()`을 사용하세요. 전체 요청에 하나의 트랜잭션이 정말 필요하면 애플리케이션 코드가 명시적인 `PrismaService.requestTransaction(...)` 경계를 소유하고 request `AbortSignal`을 전달합니다. 제거된 `PrismaTransactionInterceptor`에는 대체 export가 없으므로 기존 `@UseInterceptors(PrismaTransactionInterceptor)` 사용을 이 애플리케이션 소유 경계로 마이그레이션하세요.
 
-```typescript
-import { Inject } from '@fluojs/core';
-import { Controller, Post, UseInterceptors } from '@fluojs/http';
-import { PrismaTransactionInterceptor } from '@fluojs/prisma';
-import { OrdersService } from './orders.service';
-
-@Controller('/orders')
-@Inject(OrdersService)
-export class OrdersController {
-  constructor(private readonly orders: OrdersService) {}
-
-  @Post('/')
-  @UseInterceptors(PrismaTransactionInterceptor)
-  createOrder() {
-    return this.orders.create();
-  }
-}
-```
-
-새 비즈니스 작업에는 서비스 계층 `@Transaction()`을 우선 사용하세요. 전체 요청에 하나의 트랜잭션이 정말 필요하거나 이름 있는/여러 Prisma 등록에서 특정 서비스를 선택해야 한다면 명시적 `requestTransaction(...)`을 사용하세요. 호환성 interceptor는 이름 없는 기본 등록만 대상으로 합니다.
+facade와 interceptor 마이그레이션 세부 사항은 [Prisma 등록 마이그레이션](../../docs/getting-started/migrate-prisma-registration.ko.md)을 참고하세요.
 
 요청 전체 원자성이 정말 필요한 경우에는 application code에서 boundary와 cancellation input을 명시적으로 드러내세요.
 
@@ -134,7 +115,7 @@ export class OrdersController {
 }
 ```
 
-이는 서비스 `@Transaction()`을 대체하는 방식이 아니라 좁은 호환성 패턴입니다. 요청 전체 트랜잭션은 HTTP 작업 전체에서 데이터베이스 lock을 유지할 수 있으므로 boundary를 짧고 명시적으로 유지하세요.
+이는 서비스 `@Transaction()`을 대체하는 방식이 아니라 요청 경계 패턴입니다. 요청 전체 트랜잭션은 HTTP 작업 전체에서 데이터베이스 lock을 유지할 수 있으므로 boundary를 짧고 명시적으로 유지하세요. 기존 전역 route interceptor에는 같은 `requestTransaction(() => next.handle(), context.requestContext.request.signal)` 호출을 애플리케이션 소유 interceptor provider에 두세요.
 
 ### 여러 클라이언트를 위한 이름 있는 등록
 
@@ -372,7 +353,7 @@ defineModule(ManualPrismaModule, {
 - `requestTransaction(fn, signal?, nativeOptions?, boundary?): Promise<T>`
   - HTTP 요청 라이프사이클에 특화된 트랜잭션 경계를 실행합니다. Abort를 인식하고, shutdown 중에는 disconnect 전에 열린 요청 트랜잭션을 drain하며, Prisma client가 `signal` 옵션을 거부하면 해당 옵션 없이 재시도합니다. `transaction()`과 마찬가지로 중첩 호출은 활성 트랜잭션 컨텍스트를 재사용하고, 트랜잭션 설정을 조용히 무시하지 않도록 중첩 native 옵션을 거부합니다.
 
-Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 한다면 `PrismaService<TClient>`를 사용하세요. 생성된 Prisma Client delegate를 직접 호출하는 repository 주입에는 `PrismaServiceFacade<TClient>`를 사용하세요. 이 facade는 활성 트랜잭션이 있으면 해당 트랜잭션 client로, 없으면 root client로 호출을 전달합니다. `PrismaService.createFacade(...)`는 module-provider wiring을 위한 저수준 compatibility helper로 유지되며, 애플리케이션 코드는 `PrismaModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용해야 합니다.
+Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 한다면 `PrismaService<TClient>`를 사용하세요. 생성된 Prisma Client delegate를 직접 호출하는 repository 주입에는 `PrismaServiceFacade<TClient>`를 사용하세요. module이 소유하는 주입 facade는 활성 트랜잭션이 있으면 해당 트랜잭션 client로, 없으면 root client로 호출을 전달합니다. `PrismaService.createFacade(...)`는 제거되었으므로 `PrismaModule.forRoot(...)` / `forRootAsync(...)`로 등록하고 `PrismaService`를 주입하세요.
 
 `boundary?: TransactionBoundaryOptions<T>`는 기존 인자 **뒤**의 Fluo 전용 옵션이며 Prisma에 전달하는 native 옵션과 섞지 않습니다. `fn`은 기존 async callback입니다. commit 경로는 등록 hook drain 뒤 원래 `T`를 반환하고, opt-in rollback 경로는 [반환값으로 롤백 선택](#반환값으로-롤백-선택)의 반환·오류 규칙을 따릅니다.
 
@@ -400,11 +381,10 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 - `AfterCommitCapabilityError`: 요청한 native commit capability가 없거나 미지원 경계에 hook을 등록할 때의 오류.
 - `AfterCommitError extends AggregateError`: `readonly committed = true`, `results: readonly PromiseSettledResult<void>[]`로 모든 FIFO 결과를 제공하고 상속한 `errors`로 모든 실패를 제공합니다.
 
-### `PrismaTransactionInterceptor` (deprecated 호환성)
+### 요청 트랜잭션
 
-- 기존 1.x import를 위한 request-wide HTTP 호환성 interceptor입니다.
-- `PrismaService.requestTransaction(...)`에 위임하고 request cancellation을 전달합니다.
-- 새 코드에서는 서비스 `@Transaction()` 또는 명시적 request boundary를 우선 사용하세요.
+- `PrismaService.requestTransaction(...)`은 명시적인 애플리케이션 소유 요청 경계를 열고 request cancellation signal을 받습니다.
+- `PrismaTransactionInterceptor`는 제거되었습니다. 기존 interceptor 등록은 `requestTransaction(...)`을 호출하는 애플리케이션 소유 interceptor 또는 controller 경계로 마이그레이션하세요.
 
 ### `PRISMA_CLIENT` (Token)
 

@@ -73,13 +73,23 @@ await this.prisma.transaction(async () => {
 });
 ```
 
-`PrismaTransactionInterceptor` remains available as a deprecated 1.x compatibility bridge for request-scoped transactions on the default unnamed client. Prefer service `@Transaction()` or an explicit `requestTransaction(...)` boundary in new code.
+`PrismaTransactionInterceptor` is removed. For a request-scoped transaction, keep service `@Transaction()` for business work and let an application-owned interceptor call the explicit `requestTransaction(...)` boundary with the request signal.
 
 ```ts
-import { Post, UseInterceptors } from '@fluojs/http';
-import { PrismaTransactionInterceptor } from '@fluojs/prisma';
+import { Inject } from '@fluojs/core';
+import { type CallHandler, type Interceptor, type InterceptorContext, Post, UseInterceptors } from '@fluojs/http';
+import { PrismaService } from '@fluojs/prisma';
 
-@UseInterceptors(PrismaTransactionInterceptor)
+@Inject(PrismaService)
+class RequestTransactionInterceptor implements Interceptor {
+  constructor(private readonly prisma: PrismaService) {}
+
+  intercept(context: InterceptorContext, next: CallHandler) {
+    return this.prisma.requestTransaction(() => next.handle(), context.requestContext.request.signal);
+  }
+}
+
+@UseInterceptors(RequestTransactionInterceptor)
 class UserController {
   @Post()
   async create() {
@@ -385,7 +395,7 @@ Queue jobs must be JSON-serializable plain objects. Queue serializes the payload
 | Topic | Rule |
 | --- | --- |
 | Repository access | Use the package's `current()` seam (`PrismaService.current()`, `DrizzleDatabase.current()`, `MongooseConnection.current()`). |
-| Request transactions | Keep only `PrismaTransactionInterceptor` as a deprecated 1.x compatibility export. Drizzle and Mongoose request transactions are application-owned explicit `requestTransaction(...)` boundaries that forward the request `AbortSignal`; prefer service `@Transaction()` for business atomicity. |
+| Request transactions | Prisma, Drizzle, and Mongoose request transactions use application-owned explicit `requestTransaction(...)` boundaries that forward the request `AbortSignal`; prefer service `@Transaction()` for business atomicity. The former transaction interceptors are removed. |
 | Nested transactions | Active boundaries are reused; nested options that would be ignored are rejected. |
 | Shutdown | Packages drain or abort active request transactions before disposing underlying resources. |
 | Strict transactions | Enable strict mode when direct execution fallback would hide a missing driver capability. |
@@ -397,7 +407,7 @@ Queue jobs must be JSON-serializable plain objects. Queue serializes the payload
 
 | Package | Public API |
 | --- | --- |
-| `@fluojs/prisma` | `PrismaModule`, `PrismaService`, deprecated `PrismaTransactionInterceptor` compatibility export, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, named token helpers, status snapshot helper |
+| `@fluojs/prisma` | `PrismaModule`, `PrismaService`, explicit `requestTransaction(...)`, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, named token helpers, status snapshot helper |
 | `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, explicit `DrizzleDatabase.requestTransaction(...)` request transaction boundary, status snapshot helper |
 | `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, explicit `requestTransaction(...)`, `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, status snapshot helper |
 | `@fluojs/redis` | `RedisModule`, `RedisService`, `REDIS_CLIENT`, named client/service token helpers, status snapshot helper |
