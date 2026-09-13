@@ -56,8 +56,7 @@ fluo g e2e <name> [--target-directory <path>] [--force] [--dry-run]
 | `--target-directory <path>` | `-o` | 모든 생성기 | 지정한 소스 디렉터리 아래에 슬라이스를 기록합니다. |
 | `--force` | `-f` | 모든 생성기 | 기존 생성 파일을 건너뛰지 않고 덮어씁니다. |
 | `--dry-run` | 없음 | 모든 생성기 | 디렉터리 생성, 파일 쓰기, 모듈 갱신 없이 예정된 생성, 건너뛰기, 덮어쓰기, 모듈 갱신을 출력합니다. |
-| `--with-slice-test` | 없음 | `module`, `resource` | generator별 `*.slice.test.ts`를 추가합니다. |
-| `--with-slice-test` | 없음 | `resource` | `Test.createTestingModule({ rootModule })`로 provider override와 service resolution을 보여 주는 resource-level `*.slice.test.ts`를 추가합니다. |
+| `--with-slice-test` | 없음 | `module`, `resource` | `module`에는 module compilation `*.slice.test.ts`를 추가하고, `resource`에는 `Test.createTestingModule({ rootModule })`를 통한 provider override와 service resolution coverage가 있는 resource-level `*.slice.test.ts`를 추가합니다. |
 | `--help` | `-h` | `fluo generate`, `fluo g` | generate 명령 사용법과 생성기 메타데이터를 출력합니다. |
 
 ## Generated Test Ladder

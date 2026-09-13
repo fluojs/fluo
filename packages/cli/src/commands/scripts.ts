@@ -699,7 +699,7 @@ export async function runScriptCommand(command: ScriptCommand, argv: string[], r
 
   const parsed = parseScriptArgs(argv);
   if (parsed.packageManager) {
-    throw new Error(`--package-manager does not affect fluo ${command}. Use it with fluo new, add, or upgrade instead.`);
+    throw new Error(`--package-manager does not affect fluo ${command}. Use it with fluo new or add instead.`);
   }
 
   const projectRuntime = detectProjectRuntime(project.manifest);

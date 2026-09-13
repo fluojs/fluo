@@ -3,7 +3,7 @@ import { MIGRATION_TRANSFORMS, type MigrationTransformKind } from '../transforms
 /**
  * Provides canonical migration transform tokens accepted by CLI options.
  */
-export const MIGRATION_TRANSFORM_CLI_TOKENS = ['imports', 'injectable', 'scope', 'bootstrap', 'testing', 'tsconfig'] as const;
+export const MIGRATION_TRANSFORM_CLI_TOKENS = MIGRATION_TRANSFORMS;
 
 const MIGRATION_TRANSFORM_ALIASES: Readonly<Record<string, MigrationTransformKind>> = {
   'inject-params': 'injectable',

@@ -11,6 +11,7 @@ fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 Reac
 - 쓰기를 지원하는 명령의 preview에는 `--dry-run`을 사용합니다. 각 명령의 plan payload를 유지하면서 쓰기, dependency install, git initialization, CLI update 확인을 수행하지 않습니다.
 - 읽기 전용 진단에는 `fluo doctor`를 사용합니다. `info`는 compatibility alias이고 `analyze`는 별도 project summary이며, 세 명령 모두 dependency install 또는 CLI self-update를 수행하지 않습니다. `fluo upgrade`는 latest CLI state와 migration guidance를 보고하지만 read-only가 아닙니다. Interactive TTY에서 새 버전을 찾으면 CLI update를 제안할 수 있고, 명시적 승인 뒤 package-manager global install을 실행할 수 있습니다. 다른 interactive non-preview 명령도 같은 승인형 self-update를 제안할 수 있습니다. `--dry-run` preview와 help/version 경로는 update check를 건너뜁니다.
 - module과 resource generator의 slice test에는 `--with-slice-test`를 사용합니다. 기존 `--with-test` flag는 허용하지 않습니다.
+- Development dependency의 canonical option은 `--dev`이며, `-D`는 입력 shortcut입니다.
 - `--only`와 `--skip`에는 migration transform kind(`imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`)를 사용합니다. JSON `transforms`와 각 파일의 `appliedTransforms`도 같은 token을 사용합니다.
 - `--install`과 `--no-install`은 programmatic installation setting보다 우선합니다. `--package-manager`는 scaffold 또는 package-workflow tool을 선택하며 실행에 영향을 줄 수 없는 lifecycle 명령에서는 거부됩니다.
 

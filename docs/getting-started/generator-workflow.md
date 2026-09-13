@@ -56,8 +56,7 @@ Controller and service templates inspect sibling files before rendering. A contr
 | `--target-directory <path>` | `-o` | All generators | Writes the slice under the provided source directory. |
 | `--force` | `-f` | All generators | Overwrites existing generated files instead of skipping them. |
 | `--dry-run` | None | All generators | Prints the planned creates, skips, overwrites, and module updates without creating directories, writing files, or updating modules. |
-| `--with-slice-test` | None | `module`, `resource` | Adds a generator-specific `*.slice.test.ts`. |
-| `--with-slice-test` | None | `resource` | Adds a resource-level `*.slice.test.ts` that demonstrates provider override and service resolution with `Test.createTestingModule({ rootModule })`. |
+| `--with-slice-test` | None | `module`, `resource` | Adds a module compilation `*.slice.test.ts` for `module`; adds a resource-level `*.slice.test.ts` with provider override and service-resolution coverage through `Test.createTestingModule({ rootModule })` for `resource`. |
 | `--help` | `-h` | `fluo generate`, `fluo g` | Prints generate-command usage and generator metadata. |
 
 ## Generated Test Ladder

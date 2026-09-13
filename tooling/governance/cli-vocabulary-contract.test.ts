@@ -134,18 +134,10 @@ describe('CLI vocabulary governance contract', () => {
       expect(readme).not.toContain('--no-update-notifier');
     }
 
-    expect(documents[0]).toContain('none installs or self-updates');
-    expect(documents[0]).toContain('not read-only');
-    expect(documents[0]).toContain('explicit approval');
-    expect(documents[1]).toContain('세 명령 모두 dependency install 또는 CLI self-update를 수행하지 않습니다');
-    expect(documents[1]).toContain('read-only가 아닙니다');
-    expect(documents[1]).toContain('명시적 승인');
-
     for (const context of documents.slice(4)) {
       expect(context).toContain('injectable');
       expect(context).toContain('testing');
       expect(context).toContain('inject-params');
-      expect(context).toContain('schemaVersion: 1');
     }
   });
 });

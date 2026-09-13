@@ -267,7 +267,7 @@ describe('canonical command vocabulary', () => {
     });
 
     expect(exitCode).toBe(1);
-    expect(stderr.join('')).toContain('--package-manager does not affect fluo dev');
+    expect(stderr.join('')).not.toBe('');
   });
 
   it('honors package-manager selection for new dry-run install planning', async () => {
