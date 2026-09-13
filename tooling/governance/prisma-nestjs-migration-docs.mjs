@@ -30,23 +30,21 @@ const prismaRegistrationContractFields = [
 ];
 const prismaRegistrationContractMarkerPattern =
   /^<!-- fluo-prisma-registration-contract: ([a-z-]+(?:, [a-z-]+)*) -->$/gmu;
+const prismaTransactionBoundaryMarkerName = 'fluo-prisma-transaction-boundary';
+const prismaTransactionBoundaryMarkerPattern = new RegExp(
+  `<!-- ${prismaTransactionBoundaryMarkerName}:\\s*([\\s\\S]*?) -->`,
+  'gu',
+);
+const prismaTransactionBoundaryFields = [
+  ['interceptor', 'removed'],
+  ['replacement', 'application-owned-request-transaction'],
+];
 const prismaRegistrationDocumentationPaths = [
   'docs/getting-started/migrate-prisma-registration.md',
   'docs/getting-started/migrate-prisma-registration.ko.md',
   'docs/reference/package-surface.md',
   'docs/reference/package-surface.ko.md',
 ];
-const prismaCompatibilityDocumentation = [
-  {
-    relativePath: 'docs/getting-started/migrate-from-nestjs.md',
-    requiredDescription: '`PrismaTransactionInterceptor` is removed and has no compatibility export.',
-  },
-  {
-    relativePath: 'docs/getting-started/migrate-from-nestjs.ko.md',
-    requiredDescription: '`PrismaTransactionInterceptor`는 제거되어 compatibility export가 없다.',
-  },
-];
-
 const prismaDocumentationAnchors = [
   {
     relativePath: 'docs/getting-started/migrate-from-nestjs.md',
@@ -152,6 +150,38 @@ function enforcePrismaRegistrationContractMarker(markdown, relativePath) {
   );
 }
 
+function enforcePrismaTransactionBoundaryMarker(markdown, relativePath) {
+  const markers = [...markdown.matchAll(prismaTransactionBoundaryMarkerPattern)];
+
+  assert(
+    markers.length === 1,
+    `${relativePath} must include exactly one ${prismaTransactionBoundaryMarkerName} marker; found ${markers.length}.`,
+  );
+
+  const fields = new Map();
+  for (const rawField of markers[0][1].split(';')) {
+    const separator = rawField.indexOf('=');
+    assert(
+      separator > 0,
+      `${relativePath} ${prismaTransactionBoundaryMarkerName} marker fields must use key=value syntax.`,
+    );
+
+    const key = rawField.slice(0, separator).trim();
+    const value = rawField.slice(separator + 1).trim();
+    assert(
+      key.length > 0 && value.length > 0 && !fields.has(key),
+      `${relativePath} ${prismaTransactionBoundaryMarkerName} marker has an invalid or duplicate ${key || 'unnamed'} field.`,
+    );
+    fields.set(key, value);
+  }
+
+  assert(
+    fields.size === prismaTransactionBoundaryFields.length &&
+      prismaTransactionBoundaryFields.every(([key, value]) => fields.get(key) === value),
+    `${relativePath} has unexpected Prisma transaction boundary fields.`,
+  );
+}
+
 function enforceDocumentationClaims(readText) {
   for (const { relativePath, heading, codeAnchors } of prismaDocumentationAnchors) {
     const section = extractPrismaSection(readText(relativePath), relativePath, heading);
@@ -175,12 +205,8 @@ function enforceDocumentationClaims(readText) {
     enforcePrismaRegistrationContractMarker(readText(relativePath), relativePath);
   }
 
-  for (const { relativePath, requiredDescription } of prismaCompatibilityDocumentation) {
-    const documentation = readText(relativePath);
-    assert(
-      documentation.split(requiredDescription).length - 1 === 1,
-      `${relativePath} must describe PrismaTransactionInterceptor compatibility description exactly once.`,
-    );
+  for (const { relativePath } of prismaDocumentationAnchors) {
+    enforcePrismaTransactionBoundaryMarker(readText(relativePath), relativePath);
   }
 }
 

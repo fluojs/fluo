@@ -75,6 +75,19 @@ const prismaRegistrationContractMarkers = [
   },
 ] as const;
 
+const prismaTransactionBoundaryMarkers = [
+  {
+    path: 'docs/getting-started/migrate-from-nestjs.md',
+    marker:
+      '<!-- fluo-prisma-transaction-boundary: interceptor=removed;replacement=application-owned-request-transaction -->',
+  },
+  {
+    path: 'docs/getting-started/migrate-from-nestjs.ko.md',
+    marker:
+      '<!-- fluo-prisma-transaction-boundary: interceptor=removed;replacement=application-owned-request-transaction -->',
+  },
+] as const;
+
 describe('NestJS Prisma migration documentation', () => {
   it('keeps async registration and rollback guidance synchronized', () => {
     // Given
@@ -209,28 +222,82 @@ class VisibilityModule {}
     },
   );
 
-  it.each([
-    'docs/getting-started/migrate-from-nestjs.md',
-    'docs/getting-started/migrate-from-nestjs.ko.md',
-  ])('rejects describing PrismaTransactionInterceptor as retained in %s', (path) => {
+  it.each(prismaTransactionBoundaryMarkers)(
+    'rejects a missing or duplicated Prisma transaction boundary marker in $path',
+    ({ path, marker }) => {
     // Given
-    const readWithRetainedPrismaInterceptor = (relativePath: string): string =>
-      relativePath === path
-        ? read(relativePath).replace(
-            path.endsWith('.ko.md')
-              ? '`PrismaTransactionInterceptor`는 제거되어 compatibility export가 없다.'
-              : '`PrismaTransactionInterceptor` is removed and has no compatibility export.',
-            path.endsWith('.ko.md')
-              ? '`PrismaTransactionInterceptor`는 기존 import를 위한 deprecated 1.x compatibility bridge로 유지된다.'
-              : '`PrismaTransactionInterceptor` remains a deprecated 1.x compatibility bridge for existing imports.',
-          )
-        : read(relativePath);
+      const readWithoutMarker = (relativePath: string): string =>
+        relativePath === path ? read(relativePath).replace(marker, '') : read(relativePath);
+      const readWithDuplicateMarker = (relativePath: string): string =>
+        relativePath === path ? read(relativePath).replace(marker, `${marker}\n${marker}`) : read(relativePath);
 
-    // When / Then
-    expect(() => enforcePrismaNestjsMigrationDocs(readWithRetainedPrismaInterceptor)).toThrow(
-      'PrismaTransactionInterceptor compatibility description',
-    );
-  });
+      // When / Then
+      expect(() => enforcePrismaNestjsMigrationDocs(readWithoutMarker)).toThrow(
+        'fluo-prisma-transaction-boundary marker',
+      );
+      expect(() => enforcePrismaNestjsMigrationDocs(readWithDuplicateMarker)).toThrow(
+        'fluo-prisma-transaction-boundary marker',
+      );
+    },
+  );
+
+  it.each(prismaTransactionBoundaryMarkers)(
+    'rejects duplicate or conflicting Prisma transaction boundary fields in $path',
+    ({ path, marker }) => {
+      // Given
+      const readWithDuplicateField = (relativePath: string): string =>
+        relativePath === path
+          ? read(relativePath).replace(
+              marker,
+              '<!-- fluo-prisma-transaction-boundary: interceptor=removed;interceptor=removed;replacement=application-owned-request-transaction -->',
+            )
+          : read(relativePath);
+      const readWithConflictingField = (relativePath: string): string =>
+        relativePath === path
+          ? read(relativePath).replace(
+              marker,
+              '<!-- fluo-prisma-transaction-boundary: interceptor=removed;interceptor=retained;replacement=application-owned-request-transaction -->',
+            )
+          : read(relativePath);
+
+      // When / Then
+      expect(() => enforcePrismaNestjsMigrationDocs(readWithDuplicateField)).toThrow(
+        'invalid or duplicate interceptor field',
+      );
+      expect(() => enforcePrismaNestjsMigrationDocs(readWithConflictingField)).toThrow(
+        'invalid or duplicate interceptor field',
+      );
+    },
+  );
+
+  it.each(prismaTransactionBoundaryMarkers)(
+    'rejects retained or exported Prisma transaction interceptor marker meaning in $path',
+    ({ path, marker }) => {
+      // Given
+      const readWithRetainedInterceptor = (relativePath: string): string =>
+        relativePath === path
+          ? read(relativePath).replace(
+              marker,
+              '<!-- fluo-prisma-transaction-boundary: interceptor=retained;replacement=application-owned-request-transaction -->',
+            )
+          : read(relativePath);
+      const readWithExportedInterceptor = (relativePath: string): string =>
+        relativePath === path
+          ? read(relativePath).replace(
+              marker,
+              '<!-- fluo-prisma-transaction-boundary: interceptor=exported;replacement=application-owned-request-transaction -->',
+            )
+          : read(relativePath);
+
+      // When / Then
+      expect(() => enforcePrismaNestjsMigrationDocs(readWithRetainedInterceptor)).toThrow(
+        'unexpected Prisma transaction boundary fields',
+      );
+      expect(() => enforcePrismaNestjsMigrationDocs(readWithExportedInterceptor)).toThrow(
+        'unexpected Prisma transaction boundary fields',
+      );
+    },
+  );
 
   it('requires the main governance body to invoke the Prisma guard', () => {
     // Given
