@@ -8,7 +8,6 @@ import {
   Post,
   RequestDto,
   assertRequestContext,
-  UseInterceptors,
 } from '@fluojs/http';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
@@ -17,7 +16,6 @@ import {
   DrizzleDatabase,
   type DrizzleDatabaseFacade,
   DrizzleModule,
-  DrizzleTransactionInterceptor,
   Transaction,
 } from './index.js';
 
@@ -379,7 +377,7 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
     }
   });
 
-  it('keeps the deprecated request interceptor compatibility boundary transactional', async () => {
+  it('keeps an explicit request transaction boundary transactional', async () => {
     type UserRecord = {
       email: string;
       id: string;
@@ -440,17 +438,19 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
       }
     }
 
-    @Controller('/interceptor-compat/users')
-    @Inject(UserService)
+    @Controller('/request-transaction/users')
+    @Inject(UserService, DrizzleDatabase)
     class UsersController {
-      constructor(private readonly users: UserService) {}
+      constructor(
+        private readonly users: UserService,
+        private readonly db: DrizzleDatabase<typeof database, typeof transactionDatabase>,
+      ) {}
 
       @RequestDto(CreateUserRequest)
       @HttpCode(201)
       @Post('/')
-      @UseInterceptors(DrizzleTransactionInterceptor)
       async create(input: CreateUserRequest): Promise<UserRecord> {
-        return this.users.create(input);
+        return this.db.requestTransaction(() => this.users.create(input));
       }
     }
 
@@ -467,7 +467,7 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
       const response = createResponse(events);
 
       await app.dispatch(
-        createRequest('/interceptor-compat/users', 'POST', { email: 'lin@example.com', name: 'Lin' }),
+        createRequest('/request-transaction/users', 'POST', { email: 'lin@example.com', name: 'Lin' }),
         response,
       );
 
@@ -479,7 +479,7 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
     }
   });
 
-  it('rolls back a staged write when an intercepted app.dispatch handler throws', async () => {
+  it('rolls back a staged write when an explicit request transaction handler throws', async () => {
     type UserRecord = {
       email: string;
       id: string;
@@ -544,17 +544,21 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
       }
     }
 
-    @Controller('/interceptor-error/users')
-    @Inject(UserRepository)
+    @Controller('/request-transaction-error/users')
+    @Inject(UserRepository, DrizzleDatabase)
     class UsersController {
-      constructor(private readonly users: UserRepository) {}
+      constructor(
+        private readonly users: UserRepository,
+        private readonly db: DrizzleDatabase<typeof database, TransactionDatabase>,
+      ) {}
 
       @Post('/')
-      @UseInterceptors(DrizzleTransactionInterceptor)
       async create(): Promise<never> {
-        await this.users.create();
-        events.push('handler:throw');
-        throw failure;
+        return this.db.requestTransaction(async () => {
+          await this.users.create();
+          events.push('handler:throw');
+          throw failure;
+        });
       }
     }
 
@@ -568,11 +572,11 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
 
     const app = await FluoFactory.create(AppModule);
     try {
-      // Given: a real dispatched route wrapped by the deprecated compatibility interceptor.
+      // Given: a real dispatched route with an explicit request transaction boundary.
       const response = createResponse(events);
 
       // When: the route stages a write and then throws.
-      await app.dispatch(createRequest('/interceptor-error/users', 'POST'), response);
+      await app.dispatch(createRequest('/request-transaction-error/users', 'POST'), response);
 
       // Then: the database rolls back before the dispatcher writes its error response.
       expect(response.statusCode).toBe(500);
@@ -589,7 +593,7 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
     }
   });
 
-  it('forwards the dispatched request AbortSignal and rolls back instead of committing', async () => {
+  it('forwards the dispatched request AbortSignal through an explicit boundary', async () => {
     type UserRecord = {
       email: string;
       id: string;
@@ -656,30 +660,34 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
       }
     }
 
-    @Controller('/interceptor-abort/users')
-    @Inject(UserRepository)
+    @Controller('/request-transaction-abort/users')
+    @Inject(UserRepository, DrizzleDatabase)
     class UsersController {
-      constructor(private readonly users: UserRepository) {}
+      constructor(
+        private readonly users: UserRepository,
+        private readonly db: DrizzleDatabase<typeof database, TransactionDatabase>,
+      ) {}
 
       @Post('/')
-      @UseInterceptors(DrizzleTransactionInterceptor)
       async create(): Promise<UserRecord> {
-        const user = await this.users.create();
         const signal = assertRequestContext().request.signal;
 
         if (!signal) {
           throw new Error('Expected dispatched request signal.');
         }
 
-        await new Promise<void>((resolve) => {
-          signal.addEventListener('abort', () => {
-            events.push('handler:observed-abort');
-            resolve();
-          }, { once: true });
-          notifyHandlerReady();
-        });
+        return this.db.requestTransaction(async () => {
+          const user = await this.users.create();
+          await new Promise<void>((resolve) => {
+            signal.addEventListener('abort', () => {
+              events.push('handler:observed-abort');
+              resolve();
+            }, { once: true });
+            notifyHandlerReady();
+          });
 
-        return user;
+          return user;
+        }, signal);
       }
     }
 
@@ -696,7 +704,7 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
       // Given: a dispatched request whose route has subscribed to its exact abort event.
       const controller = new AbortController();
       const response = createResponse(events);
-      const request = createRequest('/interceptor-abort/users', 'POST', undefined, controller.signal);
+      const request = createRequest('/request-transaction-abort/users', 'POST', undefined, controller.signal);
       const dispatch = app.dispatch(request, response);
 
       // When: the handler has staged the write and subscribed, then the request aborts.
@@ -705,7 +713,7 @@ describe('@fluojs/drizzle service boundary primary flow', () => {
       controller.abort(new Error('client disconnected'));
       await dispatch;
 
-      // Then: interceptor forwarding races the request transaction and rolls back the staged write.
+      // Then: the explicit boundary races the request transaction and rolls back the staged write.
       expect(response.committed).toBe(false);
       expect(users).toEqual(new Map<string, UserRecord>());
       expect(events).toEqual([

@@ -135,7 +135,7 @@ export class UserService {
 
 `@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 Drizzle 트랜잭션 안에서 실행됩니다.
 
-기본적으로 `@Transaction()`은 작은 host-object heuristic으로 대상을 고릅니다. 먼저 `this.db`를 확인하고, 그다음 데코레이터가 붙은 인스턴스의 직접 property, 마지막으로 그 값들의 중첩 `.db` property 중 `transaction(...)` 메서드를 노출하는 첫 값을 사용합니다. 이 후보들이 모두 맞지 않으면 데코레이터가 붙은 인스턴스 자체를 transaction 대상으로 사용합니다. 이 덕분에 `constructor(private readonly db: DrizzleDatabase<...>)` 같은 일반 서비스와 자체 facade host는 간결하게 유지할 수 있지만, 하나의 서비스가 Drizzle wrapper를 둘 이상 소유한다면 property 순서에 의존하지 마세요. 데코레이터가 붙은 host가 여러 transaction-capable client를 갖거나 `.db`를 노출하는 repository를 감싸는 경우에는 `@Transaction((self) => self.ordersDb)` 또는 `@Transaction((self) => self.analyticsDb, options)`처럼 명시적 accessor를 전달하세요.
+기본적으로 `@Transaction()`은 작은 host-object heuristic으로 대상을 고릅니다. 먼저 `this.db`를 확인하고, 그다음 데코레이터가 붙은 인스턴스의 직접 property, 마지막으로 그 값들의 중첩 `.db` property 중 `transaction(...)` 메서드를 노출하는 첫 값을 사용합니다. 이 후보들이 모두 맞지 않으면 데코레이터가 붙은 인스턴스 자체를 transaction 대상으로 사용합니다. `DrizzleModule`은 주입된 `DrizzleDatabaseFacade`를 소유하고 직접 Drizzle 호출을 `DrizzleDatabase.current()`로 전달하므로, 일반적인 `constructor(private readonly db: DrizzleDatabase<...>)` 서비스는 간결하게 유지됩니다. Drizzle wrapper가 둘 이상인 서비스는 property 순서에 의존하지 말고, 데코레이터가 붙은 host가 여러 transaction-capable client를 갖거나 `.db`를 노출하는 repository를 감싸는 경우 `@Transaction((self) => self.ordersDb)` 또는 `@Transaction((self) => self.analyticsDb, options)`처럼 명시적 accessor를 전달하세요.
 
 ### 수동 트랜잭션과 current()
 
@@ -277,7 +277,7 @@ Raw-client 외부 transaction·다른 wrapper·connection의 commit은 관찰하
 
 ### 요청 전체 컨트롤러 경계
 
-비즈니스 작업에는 서비스 레벨 `@Transaction()`을 우선 사용하세요. 전체 요청을 하나의 transaction으로 감싸던 NestJS controller/interceptor 패턴을 마이그레이션해야 한다면 controller, route adapter, request orchestration 경계에서 `requestTransaction(...)`을 명시적으로 호출하고 가능한 경우 request `AbortSignal`을 전달하세요.
+비즈니스 작업에는 서비스 레벨 `@Transaction()`을 우선 사용하세요. 전체 요청을 하나의 transaction으로 감싸던 NestJS controller/interceptor 패턴을 마이그레이션해야 한다면 controller, route adapter, request orchestration 경계에서 `DrizzleDatabase.requestTransaction(...)`을 명시적으로 호출하고 가능한 경우 request `AbortSignal`을 전달하세요.
 
 ```ts
 import { Inject } from '@fluojs/core';
@@ -306,7 +306,7 @@ export class CheckoutController {
 }
 ```
 
-`DrizzleTransactionInterceptor`는 기존 NestJS interceptor import를 위한 deprecated 1.x 호환성 bridge입니다. 이 interceptor는 `requestTransaction(...)`에 위임하고 request `AbortSignal`을 전달합니다. 새 코드에서는 비즈니스 transaction boundary를 서비스로 옮기고, 전체 request 작업이 서비스 메서드 하나가 아니라 같은 boundary를 공유해야 하는 드문 controller-level 사례에만 명시적 `requestTransaction(...)`을 사용하세요. controller가 명시적 `DrizzleDatabase` 대상을 소유한다면 controller method에 `@Transaction()`을 붙이는 방식도 호환성 경로로 유지되지만, request `AbortSignal`을 직접 받을 수 있는 `requestTransaction(...)`이 더 명확한 request-wide API입니다.
+`DrizzleDatabase.requestTransaction(...)`은 명시적인 request-wide boundary입니다. 일반적인 비즈니스 원자성은 서비스 `@Transaction()` 메서드에 두고, 전체 request 작업을 하나의 transaction으로 묶어야 하는 드문 controller-level 경우에만 사용하세요. shutdown과 client cancellation이 boundary를 정리할 수 있도록 request `AbortSignal`을 직접 전달하세요.
 
 ### 이름 있는 클라이언트
 
@@ -331,7 +331,9 @@ class AnalyticsService {
 `getDrizzleHandleProviderToken`은 trim된 이름마다 서로 다른 안정적인 identity를 반환합니다. 이름 있는 client는
 non-global이며 ALS transaction context, shutdown drain, disposal, status를 독립적으로 소유합니다. consumer는 일치하는
 이름 있는 token을 export하는 module을 import해야 하며, 이름이 runtime container를 분리하지는 않습니다. `name`을 생략하면
-기존 default token, `DrizzleDatabase` class token, interceptor 동작이 유지됩니다.
+기존 default token과 `DrizzleDatabase` class token은 유지됩니다. module-owned facade는 직접 Drizzle 호출을
+`DrizzleDatabase.current()`로 전달하며, request-wide transaction에는 명시적
+`DrizzleDatabase.requestTransaction(...)` boundary가 필요합니다.
 
 ### 종료와 상태 계약
 
@@ -397,11 +399,9 @@ import {
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
 - `DrizzleDatabaseFacade<TDatabase>`
-- `DrizzleTransactionInterceptor` (deprecated 1.x request-transaction compatibility bridge)
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
 - `getDrizzleDatabaseToken(name?)`, `getDrizzleDisposeToken(name?)`, `getDrizzleHandleProviderToken(name?)`, `getDrizzleOptionsToken(name?)`
-- `DrizzleDatabase.createFacade(...)` (호환성 전용 provider wiring helper; 애플리케이션 등록은 `DrizzleModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용)
 - `createDrizzlePlatformStatusSnapshot(...)`
 - `DrizzleDatabaseLike`
 - `DrizzleModuleOptions`
@@ -411,7 +411,7 @@ import {
 
 `DrizzleModule`은 importing module을 위해 `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_OPTIONS`를 export합니다. `DRIZZLE_DATABASE`는 설정된 raw Drizzle handle을 주입하므로 lifecycle-aware facade와 ambient transaction handle 선택을 우회합니다. 애플리케이션 repository에는 `DrizzleDatabase` 또는 `DrizzleDatabaseFacade`를 우선 사용하고, 설정된 driver handle이 꼭 필요한 integration에만 raw token을 주입하세요. `DRIZZLE_DISPOSE`는 설정된 선택적 cleanup hook을, `DRIZZLE_OPTIONS`는 정규화된 runtime option을 노출합니다.
 
-provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 하면 `DrizzleDatabase<TDatabase>`를 사용하세요. 리포지토리 주입에서 Drizzle query 메서드를 직접 호출해야 한다면 `DrizzleDatabaseFacade<TDatabase>`를 사용합니다. 이 facade는 활성 트랜잭션 handle이 있으면 그 handle로, 없으면 root handle로 호출을 전달합니다. `DrizzleDatabase.createFacade(...)`는 module provider wiring을 위한 low-level compatibility helper로 유지됩니다. 애플리케이션 코드는 `DrizzleModule.forRoot(...)` / `forRootAsync(...)`를 우선 사용하세요.
+애플리케이션 database는 `DrizzleModule.forRoot(...)` 또는 `DrizzleModule.forRootAsync(...)`로 등록하세요. provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 하면 `DrizzleDatabase<TDatabase>`를 사용하세요. 리포지토리 주입에서 Drizzle query 메서드를 직접 호출해야 한다면 `DrizzleDatabaseFacade<TDatabase>`를 사용합니다. 이 module-owned facade는 활성 트랜잭션 handle이 있으면 그 handle로, 없으면 root handle로 호출을 전달합니다.
 
 `Transaction`은 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 데코레이터가 붙은 host에서 `this.db`, 직접 property, 중첩 `.db` property 순서로 transaction-capable 대상을 resolve한 뒤, 후보가 없으면 데코레이터가 붙은 인스턴스 자체로 fallback합니다. 명시적 client 선택에는 accessor를 받을 수 있으며, 외부 경계에는 Drizzle transaction option을 전달할 수 있습니다.
 

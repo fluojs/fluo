@@ -1,6 +1,3 @@
-import { Inject } from '@fluojs/core';
-import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http';
-
 import { AfterCommitCapabilityError, type TransactionBoundaryOptions } from './after-commit.js';
 import { DrizzleDatabase } from './database.js';
 import { TransactionRollbackCapabilityError } from './result-rollback.js';
@@ -24,7 +21,6 @@ function isTransactionCapableDrizzle<TTransactionOptions>(
 ): value is TransactionCapableDrizzle<TTransactionOptions> {
   return typeof (value as { transaction?: unknown } | null)?.transaction === 'function';
 }
-
 function findNestedTransactionTarget<TTransactionOptions>(value: unknown): TransactionCapableDrizzle<TTransactionOptions> | undefined {
   if (!value || (typeof value !== 'object' && typeof value !== 'function')) {
     return undefined;
@@ -110,31 +106,4 @@ export function Transaction<THost, TTransactionOptions = unknown, TResult = unkn
       );
     };
   };
-}
-
-/**
- * Compatibility HTTP interceptor that opens a Drizzle request transaction around a routed handler.
- *
- * @remarks
- * This deprecated 1.x bridge forwards the request `AbortSignal` to `DrizzleDatabase.requestTransaction(...)`.
- * Prefer service-layer `@Transaction()` or an explicit request boundary for new code.
- *
- * @deprecated Prefer service-layer `@Transaction()` or explicit `DrizzleDatabase.requestTransaction(...)`.
- */
-@Inject(DrizzleDatabase)
-export class DrizzleTransactionInterceptor implements Interceptor {
-  constructor(
-    private readonly database: DrizzleDatabase<DrizzleDatabaseLike<unknown, unknown>, unknown, unknown>,
-  ) {}
-
-  /**
-   * Runs the downstream handler inside the compatibility request transaction.
-   *
-   * @param context Interceptor context containing the request cancellation signal.
-   * @param next Downstream handler chain.
-   * @returns The downstream result after the request transaction settles.
-   */
-  async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
-    return this.database.requestTransaction(() => next.handle(), context.requestContext.request.signal);
-  }
 }

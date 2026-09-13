@@ -1110,55 +1110,19 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
 
   it.each([
     [
-      'root barrel export',
-      'packages/drizzle/src/index.ts',
-      (source: string) => source.replace("export * from './transaction.js';\n", ''),
-    ],
-    [
-      'module providers registration',
-      'packages/drizzle/src/registration-providers.ts',
-      (source: string) => source.replace(
-        '        DrizzleTransactionInterceptor,\n      ]\n      : [',
-        '      ]\n      : [',
-      ),
-    ],
-    [
-      'module exports registration',
-      'packages/drizzle/src/named-registration.ts',
-      (source: string) => source.replace(
-        '  DrizzleTransactionInterceptor,\n  DRIZZLE_HANDLE_PROVIDER,',
-        '  DRIZZLE_HANDLE_PROVIDER,',
-      ),
-    ],
-    [
-      'interceptor requestTransaction signal delegation',
-      'packages/drizzle/src/transaction.ts',
-      (source: string) => source.replace('context.requestContext.request.signal', 'undefined'),
-    ],
-  ])('rejects a removed Drizzle %s', (_label, path, mutate) => {
-    // Given: the actual compatibility contract with exactly one structural regression injected.
-    const readText = readWithMutation(path, mutate);
-
-    // When: the governance contract evaluates the mutated source graph.
-    // Then: unrelated mentions cannot satisfy the structural registration requirement.
-    expect(() => enforcePersistenceTransactionInterceptorCompatibility(readText)).toThrow();
-  });
-
-  it.each([
-    [
-      'English Nest migration table claim that Drizzle lacks an interceptor export',
+      'English Nest migration table claim that Drizzle retains an interceptor export',
       'docs/getting-started/migrate-from-nestjs.md',
       (source: string) => source.replace(
-        '`DrizzleTransactionInterceptor` remains a deprecated 1.x compatibility bridge for existing imports.',
         'Drizzle has no compatibility interceptor export.',
+        '`DrizzleTransactionInterceptor` remains a deprecated 1.x compatibility bridge for existing imports.',
       ),
     ],
     [
-      'Korean Nest migration table claim that Drizzle lacks an interceptor export',
+      'Korean Nest migration table claim that Drizzle retains an interceptor export',
       'docs/getting-started/migrate-from-nestjs.ko.md',
       (source: string) => source.replace(
-        '`DrizzleTransactionInterceptor`는 기존 import를 위한 deprecated 1.x 호환성 bridge로 유지된다.',
         'Drizzle은 호환성 interceptor export를 제공하지 않는다.',
+        '`DrizzleTransactionInterceptor`는 기존 import를 위한 deprecated 1.x 호환성 bridge로 유지된다.',
       ),
     ],
     [
@@ -1178,43 +1142,37 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
       ),
     ],
     [
-      'request transaction lifecycle table entry',
+      'English canonical request transaction summary',
       'apps/docs/content/docs/guides/persistence.mdx',
       (source: string) => source.replace(
-        '`PrismaTransactionInterceptor` and `DrizzleTransactionInterceptor`',
-        '`PrismaTransactionInterceptor`',
+        '`DrizzleDatabase.requestTransaction(...)` request transaction boundary',
+        '`DrizzleDatabase.requestBoundary(...)` request transaction boundary',
       ),
     ],
     [
-      'Korean request transaction lifecycle table entry',
+      'Korean canonical request transaction summary',
       'apps/docs/content/docs/guides/persistence.ko.mdx',
       (source: string) => source.replace(
-        '`PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`',
-        '`PrismaTransactionInterceptor`',
+        '`DrizzleDatabase.requestTransaction(...)` request transaction boundary',
+        '`DrizzleDatabase.requestBoundary(...)` request transaction boundary',
       ),
     ],
     [
-      'English Drizzle public API summary entry',
-      'apps/docs/content/docs/guides/persistence.mdx',
-      (source: string) => source.replace(
-        'deprecated `DrizzleTransactionInterceptor` compatibility export',
-        'compatibility export',
-      ),
+      'removed Drizzle interceptor reference',
+      'packages/drizzle/README.md',
+      (source: string) => `${source}\nDrizzleTransactionInterceptor`,
     ],
     [
-      'Korean Drizzle public API summary entry',
-      'apps/docs/content/docs/guides/persistence.ko.mdx',
-      (source: string) => source.replace(
-        'deprecated `DrizzleTransactionInterceptor` 호환성 export',
-        '호환성 export',
-      ),
+      'removed facade constructor reference',
+      'packages/drizzle/README.ko.md',
+      (source: string) => `${source}\nDrizzleDatabase.createFacade`,
     ],
-  ])('rejects a removed Drizzle %s', (_label, path, mutate) => {
-    // Given: the compatibility contract with one required documentation placement removed.
+  ])('rejects a malformed canonical Drizzle %s', (_label, path, mutate) => {
+    // Given: the canonical documentation with one obsolete or missing public path.
     const readText = readWithMutation(path, mutate);
 
     // When: the governance contract evaluates the mutated documentation.
-    // Then: a mention elsewhere cannot satisfy the specific table row requirement.
+    // Then: obsolete public paths and missing canonical request boundaries fail.
     expect(() => enforcePersistenceTransactionInterceptorCompatibility(readText)).toThrow();
   });
 });
@@ -4357,14 +4315,14 @@ describe('repository governance contracts', () => {
     }
 
     for (const source of [docsContext, packageSurface, drizzleReadme]) {
-      expect(source).toContain('DrizzleDatabase.createFacade(...)');
-      expect(source).toContain('compatibility-only');
+      expect(source).not.toContain('DrizzleDatabase.createFacade(...)');
+      expect(source).toContain('DrizzleDatabase.requestTransaction(...)');
       expect(source).toContain('DrizzleModule.forRoot(...)');
     }
 
     for (const source of [docsContextKo, packageSurfaceKo, drizzleReadmeKo]) {
-      expect(source).toContain('DrizzleDatabase.createFacade(...)');
-      expect(source).toMatch(/compatibility-only|호환성 전용/u);
+      expect(source).not.toContain('DrizzleDatabase.createFacade(...)');
+      expect(source).toContain('DrizzleDatabase.requestTransaction(...)');
       expect(source).toContain('DrizzleModule.forRoot(...)');
     }
 
@@ -4401,12 +4359,14 @@ describe('repository governance contracts', () => {
     }
 
     for (const source of [transactionsDoc, nestMigrationDoc, drizzleBook, drizzleReadme]) {
-      expect(source).toMatch(/interceptor/i);
+      expect(source).not.toContain('DrizzleTransactionInterceptor');
+      expect(source).toContain('DrizzleDatabase.requestTransaction(...)');
       expect(source).toContain('controller');
     }
 
     for (const source of [transactionsDocKo, nestMigrationDocKo, drizzleBookKo, drizzleReadmeKo]) {
-      expect(source).toMatch(/interceptor/i);
+      expect(source).not.toContain('DrizzleTransactionInterceptor');
+      expect(source).toContain('DrizzleDatabase.requestTransaction(...)');
       expect(source).toMatch(/controller|컨트롤러/u);
     }
   });

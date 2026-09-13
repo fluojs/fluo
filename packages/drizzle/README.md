@@ -135,7 +135,7 @@ export class UserService {
 
 Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Drizzle transaction.
 
-By default, `@Transaction()` selects its target with a small host-object heuristic: it first checks `this.db`, then direct properties on the decorated instance, then a nested `.db` property on those values, and uses the first value that exposes a `transaction(...)` method. If none of those candidates match, the decorated instance itself becomes the transaction target. This keeps common `constructor(private readonly db: DrizzleDatabase<...>)` services and self-contained facade hosts concise, but services with more than one Drizzle wrapper should not rely on property order. Pass an explicit accessor such as `@Transaction((self) => self.ordersDb)` or `@Transaction((self) => self.analyticsDb, options)` whenever the decorated host owns multiple transaction-capable clients or wraps a repository that also exposes `.db`.
+By default, `@Transaction()` selects its target with a small host-object heuristic: it first checks `this.db`, then direct properties on the decorated instance, then a nested `.db` property on those values, and uses the first value that exposes a `transaction(...)` method. If none of those candidates match, the decorated instance itself becomes the transaction target. `DrizzleModule` owns the injected `DrizzleDatabaseFacade` and forwards its direct Drizzle calls to `DrizzleDatabase.current()`, so common `constructor(private readonly db: DrizzleDatabase<...>)` services stay concise. Services with more than one Drizzle wrapper should not rely on property order; pass an explicit accessor such as `@Transaction((self) => self.ordersDb)` or `@Transaction((self) => self.analyticsDb, options)` whenever the decorated host owns multiple transaction-capable clients or wraps a repository that also exposes `.db`.
 
 ### Manual Transactions and current()
 
@@ -277,7 +277,7 @@ Commits from external raw-client transactions, other wrappers, or other connecti
 
 ### Request-Wide Controller Boundaries
 
-Prefer service-level `@Transaction()` for business operations. If you are migrating a NestJS controller/interceptor pattern where an entire request must be transactional, call `requestTransaction(...)` explicitly at the controller, route adapter, or request orchestration boundary and pass the request `AbortSignal` when one is available:
+Prefer service-level `@Transaction()` for business operations. If you are migrating a NestJS controller/interceptor pattern where an entire request must be transactional, call `DrizzleDatabase.requestTransaction(...)` explicitly at the controller, route adapter, or request orchestration boundary and pass the request `AbortSignal` when one is available:
 
 ```ts
 import { Inject } from '@fluojs/core';
@@ -306,7 +306,7 @@ export class CheckoutController {
 }
 ```
 
-`DrizzleTransactionInterceptor` is a deprecated 1.x compatibility bridge for existing NestJS interceptor imports. It delegates to `requestTransaction(...)` and forwards the request `AbortSignal`. New code should move business transaction boundaries to services and reserve explicit `requestTransaction(...)` for rare controller-level cases where all request work, not just a service method, must share the same boundary. Decorating a controller method with `@Transaction()` remains a compatibility path when the controller owns an explicit `DrizzleDatabase` target, but `requestTransaction(...)` is the clearer request-wide API because it can receive the request `AbortSignal` directly.
+`DrizzleDatabase.requestTransaction(...)` is the explicit request-wide boundary. Move business transaction boundaries to services, and use it only for the rare controller-level case where all request work, rather than one service method, must share a transaction. Pass the request `AbortSignal` directly so shutdown and client cancellation can settle the boundary.
 
 ### Named clients
 
@@ -331,7 +331,9 @@ class AnalyticsService {
 `getDrizzleHandleProviderToken` return distinct stable identities for each trimmed name. Named clients are
 non-global and independently own ALS transaction context, shutdown drain, disposal, and status. A consumer must import
 a module that exports the matching named token; names do not create isolated runtime containers. Omitting `name`
-preserves the existing default tokens, `DrizzleDatabase` class token, and interceptor behavior.
+preserves the existing default tokens and `DrizzleDatabase` class token. The module-owned facade
+forwards direct Drizzle calls to `DrizzleDatabase.current()`; request-wide transactions require an
+explicit `DrizzleDatabase.requestTransaction(...)` boundary.
 
 ### Shutdown and status contracts
 
@@ -397,11 +399,9 @@ import {
 - `DrizzleModule.forRoot(options)` / `DrizzleModule.forRootAsync(options)`
 - `DrizzleDatabase`
 - `DrizzleDatabaseFacade<TDatabase>`
-- `DrizzleTransactionInterceptor` (deprecated 1.x request-transaction compatibility bridge)
 - `Transaction`
 - `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, `DRIZZLE_HANDLE_PROVIDER`, `DRIZZLE_OPTIONS`
 - `getDrizzleDatabaseToken(name?)`, `getDrizzleDisposeToken(name?)`, `getDrizzleHandleProviderToken(name?)`, `getDrizzleOptionsToken(name?)`
-- `DrizzleDatabase.createFacade(...)` (compatibility-only provider wiring helper; prefer `DrizzleModule.forRoot(...)` / `forRootAsync(...)` for application registration)
 - `createDrizzlePlatformStatusSnapshot(...)`
 - `DrizzleDatabaseLike`
 - `DrizzleModuleOptions`
@@ -411,7 +411,7 @@ import {
 
 `DrizzleModule` exports `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, and `DRIZZLE_OPTIONS` for importing modules. `DRIZZLE_DATABASE` injects the configured raw Drizzle handle, so it bypasses the lifecycle-aware facade and ambient transaction-handle selection. Prefer `DrizzleDatabase` or `DrizzleDatabaseFacade` for application repositories; inject the raw token only for integrations that require the configured driver handle. `DRIZZLE_DISPOSE` exposes the configured optional cleanup hook, and `DRIZZLE_OPTIONS` exposes normalized runtime options.
 
-Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or `createPlatformStatusSnapshot()`. Use `DrizzleDatabaseFacade<TDatabase>` for repository injections that call Drizzle query methods directly; the facade forwards those calls to the active transaction handle when one exists and to the root handle otherwise. `DrizzleDatabase.createFacade(...)` is retained as a low-level compatibility helper for module-provider wiring; application code should prefer `DrizzleModule.forRoot(...)` / `forRootAsync(...)`.
+Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or `createPlatformStatusSnapshot()`. Use `DrizzleDatabaseFacade<TDatabase>` for repository injections that call Drizzle query methods directly; the module-owned facade forwards those calls to the active transaction handle when one exists and to the root handle otherwise. Register application handles only through `DrizzleModule.forRoot(...)` or `DrizzleModule.forRootAsync(...)`.
 
 `Transaction` is a standard TC39 method decorator for service-layer transaction boundaries. It resolves a transaction-capable target from the decorated host by checking `this.db`, then direct properties, then nested `.db` properties, then falling back to the decorated instance itself; it also accepts an accessor for explicit client selection and can forward Drizzle transaction options to the outer boundary.
 

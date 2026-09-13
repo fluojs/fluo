@@ -1,7 +1,7 @@
 import { Inject, Module } from '@fluojs/core';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
-import type { DrizzleHandleProvider } from './index.js';
+import type { DrizzleDatabaseFacade, DrizzleHandleProvider } from './index.js';
 import {
   createDrizzlePlatformStatusSnapshot,
   DRIZZLE_DATABASE,
@@ -1496,16 +1496,28 @@ describe('@fluojs/drizzle', () => {
     ).rejects.toThrow('nested request aborted');
   });
 
-  it('binds facade lifecycle methods to the lifecycle owner', async () => {
+  it('binds facade lifecycle methods through module registration', async () => {
     const database = {};
-    const facade = DrizzleDatabase.createFacade<typeof database>(database);
-    const shutdown = facade.onApplicationShutdown;
-    const snapshot = facade.createPlatformStatusSnapshot;
+    const drizzleModule = DrizzleModule.forRoot<typeof database>({ database });
+    class AppModule {}
 
-    expect(snapshot().details.lifecycleState).toBe('ready');
+    defineModule(AppModule, {
+      imports: [drizzleModule],
+    });
 
-    await expect(shutdown()).resolves.toBeUndefined();
-    expect(snapshot().details.lifecycleState).toBe('stopped');
+    const app = await FluoFactory.create(AppModule);
+    const drizzle = await app.container.resolve(DrizzleDatabase<typeof database>);
+    const shutdown = drizzle.onApplicationShutdown;
+    const snapshot = drizzle.createPlatformStatusSnapshot;
+
+    try {
+      expect(snapshot().details.lifecycleState).toBe('ready');
+
+      await expect(shutdown()).resolves.toBeUndefined();
+      expect(snapshot().details.lifecycleState).toBe('stopped');
+    } finally {
+      await app.close();
+    }
   });
 
   it('forwards facade query methods to the root handle outside transactions and ambient handle inside transactions', async () => {
@@ -1528,11 +1540,25 @@ describe('@fluojs/drizzle', () => {
         return result;
       },
     };
-    const facade = DrizzleDatabase.createFacade<typeof database, typeof transactionDatabase>(database);
+    const drizzleModule = DrizzleModule.forRoot<typeof database, typeof transactionDatabase>({ database });
+    class AppModule {}
 
-    expect(facade.query()).toBe('root-result');
-    await expect(facade.transaction(async () => facade.query())).resolves.toBe('tx-result');
-    expect(events).toEqual(['root:query', 'transaction:start', 'tx:query', 'transaction:end']);
+    defineModule(AppModule, {
+      imports: [drizzleModule],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+    const facade = await app.container.resolve(DrizzleDatabase) as DrizzleDatabaseFacade<
+      typeof database,
+      typeof transactionDatabase
+    >;
+    try {
+      expect(facade.query()).toBe('root-result');
+      await expect(facade.transaction(async () => facade.query())).resolves.toBe('tx-result');
+      expect(events).toEqual(['root:query', 'transaction:start', 'tx:query', 'transaction:end']);
+    } finally {
+      await app.close();
+    }
   });
 
   it('reports live createPlatformStatusSnapshot lifecycle transitions through the module facade', async () => {

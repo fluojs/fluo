@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import * as drizzlePublicApi from './index.js';
+import { DrizzleDatabase } from './index.js';
 
 describe('@fluojs/drizzle public API surface', () => {
   it('requires the patched Drizzle ORM peer floor', () => {
@@ -15,7 +16,7 @@ describe('@fluojs/drizzle public API surface', () => {
   it('keeps documented supported root-barrel exports', () => {
     expect(drizzlePublicApi).toHaveProperty('DrizzleDatabase');
     expect(drizzlePublicApi).toHaveProperty('DrizzleModule');
-    expect(drizzlePublicApi).toHaveProperty('DrizzleTransactionInterceptor');
+    expect(drizzlePublicApi).not.toHaveProperty('DrizzleTransactionInterceptor');
     expect(drizzlePublicApi).toHaveProperty('Transaction');
     expect(drizzlePublicApi).toHaveProperty('createDrizzlePlatformStatusSnapshot');
     expect(drizzlePublicApi).toHaveProperty('DRIZZLE_DATABASE');
@@ -46,5 +47,9 @@ describe('@fluojs/drizzle public API surface', () => {
     expect(drizzlePublicApi).not.toHaveProperty('DRIZZLE_NORMALIZED_OPTIONS');
     expect(drizzlePublicApi).not.toHaveProperty('normalizeDrizzleModuleOptions');
     expect(drizzlePublicApi).not.toHaveProperty('createDrizzleProvidersAsync');
+  });
+
+  it('keeps facade construction inside module registration', () => {
+    expect(DrizzleDatabase).not.toHaveProperty('createFacade');
   });
 });
