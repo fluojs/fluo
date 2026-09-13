@@ -143,6 +143,8 @@ export class UserRepository {
 
 ## Mongoose
 
+{/* fluo-mongoose-removal: registration=for-root-or-for-root-async; providers=removed; request-transaction-interceptor=removed */}
+
 `@fluojs/mongoose`는 기존 Mongoose connection을 fluo lifecycle management에 연결합니다. 이 패키지는 raw connection을 직접 만들거나 소유하지 않습니다. 애플리케이션 종료 시 닫아야 한다면 `dispose` hook을 넘기세요.
 
 ```ts
@@ -168,14 +170,21 @@ class AppModule {}
 Mongoose에는 request transaction 호환성 export가 없습니다. request-wide interceptor는 애플리케이션이 소유하고 request `AbortSignal`과 함께 `MongooseConnection.requestTransaction(...)`을 명시적으로 호출하세요. 비즈니스 작업에는 서비스 `@Transaction()`을 사용하세요.
 
 ```ts
-import { MongooseConnection } from '@fluojs/mongoose';
+import { MongooseConnection, type MongooseModelFacade } from '@fluojs/mongoose';
+
+type User = {
+  readonly _id: string;
+  readonly name: string;
+};
+
+type UserModel = MongooseModelFacade<unknown, unknown, Promise<User | null>>;
 
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
   async findById(id: string) {
-    const User = this.conn.model('User');
-    return User.findById(id);
+    const User = this.conn.model<UserModel>('User');
+    return User.findOne({ _id: id });
   }
 }
 ```

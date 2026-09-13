@@ -143,6 +143,8 @@ export class UserRepository {
 
 ## Mongoose
 
+{/* fluo-mongoose-removal: registration=for-root-or-for-root-async; providers=removed; request-transaction-interceptor=removed */}
+
 `@fluojs/mongoose` plugs an existing Mongoose connection into fluo lifecycle management. The package does not create or own the raw connection unless your `dispose` hook does that work.
 
 ```ts
@@ -168,14 +170,21 @@ Use `MongooseConnection.model(...)` for supported operations. Inside `transactio
 Mongoose has no request transaction compatibility export. Keep a request-wide interceptor application-owned and call `MongooseConnection.requestTransaction(...)` explicitly with the request `AbortSignal`; use service `@Transaction()` for business operations.
 
 ```ts
-import { MongooseConnection } from '@fluojs/mongoose';
+import { MongooseConnection, type MongooseModelFacade } from '@fluojs/mongoose';
+
+type User = {
+  readonly _id: string;
+  readonly name: string;
+};
+
+type UserModel = MongooseModelFacade<unknown, unknown, Promise<User | null>>;
 
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
   async findById(id: string) {
-    const User = this.conn.model('User');
-    return User.findById(id);
+    const User = this.conn.model<UserModel>('User');
+    return User.findOne({ _id: id });
   }
 }
 ```
