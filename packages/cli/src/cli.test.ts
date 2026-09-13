@@ -2204,6 +2204,54 @@ void bootstrap();
     expect(stdoutBuffer.join('')).toContain('Watch mode: fluo-restart');
   });
 
+  it('forwards removed global option tokens after the dev pass-through separator without side effects', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    const stdoutBuffer: string[] = [];
+    let installCalls = 0;
+    let updateCheckCalls = 0;
+
+    const exitCode = await runCli(['dev', '--dry-run', '--', '--no-update-notifier'], {
+      cwd: workspaceDirectory,
+      env: {},
+      updateCheck: {
+        fetchLatestVersion: async () => {
+          updateCheckCalls += 1;
+          return '999.0.0';
+        },
+        installPackage: async () => {
+          installCalls += 1;
+          return 0;
+        },
+      },
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain('cli.js __dev-runner --runtime node -- --no-update-notifier');
+    expect(updateCheckCalls).toBe(0);
+    expect(installCalls).toBe(0);
+  });
+
+  it.each([
+    ['--no-update-notifier', 'analyze'],
+    ['analyze', '--no-update-notifier'],
+  ])('rejects removed global options before the pass-through separator: %s %s', async (...argv) => {
+    const stderrBuffer: string[] = [];
+
+    const exitCode = await runCli(argv, {
+      cwd: process.cwd(),
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
+      updateCheck: false,
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('Unknown global option: --no-update-notifier');
+  });
+
   it('keeps the runtime-native Node watcher behind raw watch escape hatches', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);

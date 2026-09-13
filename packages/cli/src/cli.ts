@@ -479,7 +479,9 @@ export async function runCli(
   const stderr = runtime.stderr ?? process.stderr;
   const env = runtime.env ?? process.env;
   const commandRuntime = { ...runtime, env };
-  const removedGlobalFlag = argv.find((argument) => REMOVED_UPDATE_CHECK_FLAGS.has(argument));
+  const separatorIndex = argv.indexOf('--');
+  const globalArgv = separatorIndex === -1 ? argv : argv.slice(0, separatorIndex);
+  const removedGlobalFlag = globalArgv.find((argument) => REMOVED_UPDATE_CHECK_FLAGS.has(argument));
   const updateFlagResult = removeUpdateCheckFlags(argv);
   const commandArgv = updateFlagResult.argv;
 
