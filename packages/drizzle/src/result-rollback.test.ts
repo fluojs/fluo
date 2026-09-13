@@ -9,6 +9,7 @@ import {
   TransactionRollbackCapabilityError,
   TransactionRollbackOnlyError,
 } from './index.js';
+import { createDrizzleDatabaseFacade } from './facade.js';
 
 // Protocol double for these deterministic native-runner fixtures. Real driver
 // confirmation is exercised by rollback-observer tests and the PostgreSQL/Mongo fixture.
@@ -45,7 +46,13 @@ function nativeFixture(beforeRollback?: () => Promise<void>) {
       }
     },
   };
-  const drizzle = DrizzleDatabase.createFacade<typeof database, { readonly id: number }>(database, undefined, { strictTransactions: false, rollbackObserver: observerDouble });
+  const drizzle = createDrizzleDatabaseFacade(
+    new DrizzleDatabase<typeof database, { readonly id: number }>(
+      database,
+      undefined,
+      { strictTransactions: false, rollbackObserver: observerDouble },
+    ),
+  );
   return { database, drizzle, events };
 }
 
@@ -479,7 +486,13 @@ describe('Drizzle opt-in Result rollback', { timeout: 2_000 }, () => {
         return callback({});
       },
     };
-    const drizzle = DrizzleDatabase.createFacade<typeof database, object, Options>(database, undefined, { strictTransactions: false, rollbackObserver: observerDouble });
+    const drizzle = createDrizzleDatabaseFacade(
+      new DrizzleDatabase<typeof database, object, Options>(
+        database,
+        undefined,
+        { strictTransactions: false, rollbackObserver: observerDouble },
+      ),
+    );
     const provider: DrizzleHandleProvider<typeof database, object, Options> = drizzle;
     const boundary: TransactionBoundaryOptions<typeof failure> = { shouldRollback: (value) => value.rejected };
     class Service {

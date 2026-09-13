@@ -20,12 +20,10 @@ import {
   getDrizzleHandleProviderToken,
   getDrizzleOptionsToken,
 } from './tokens.js';
-import { DrizzleTransactionInterceptor } from './transaction.js';
 import type { DrizzleDatabaseLike, DrizzleModuleOptions } from './types.js';
 
 const DRIZZLE_MODULE_EXPORTS = [
   DrizzleDatabase,
-  DrizzleTransactionInterceptor,
   DRIZZLE_HANDLE_PROVIDER,
   DRIZZLE_DATABASE,
   DRIZZLE_DISPOSE,

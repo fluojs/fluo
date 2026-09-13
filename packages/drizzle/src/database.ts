@@ -87,33 +87,6 @@ type RequestAbortSignalView = {
   signal: AbortSignal;
 };
 
-function createCurrentlessDrizzleFacade<TTarget extends { current(): unknown }>(
-  target: TTarget,
-): TTarget {
-  return new Proxy(target, {
-    get(database, prop) {
-      if (prop in database) {
-        const value = Reflect.get(database, prop, database);
-
-        if (typeof value === 'function') {
-          return value.bind(database);
-        }
-
-        return value;
-      }
-
-      const currentDatabase = database.current() as Record<PropertyKey, unknown>;
-      const value = Reflect.get(currentDatabase, prop, currentDatabase);
-
-      if (typeof value === 'function') {
-        return value.bind(currentDatabase);
-      }
-
-      return value;
-    },
-  });
-}
-
 function createRequestAbortSignalView(parentSignal: AbortSignal, signal?: AbortSignal): RequestAbortSignalView {
   if (!signal) {
     return {
@@ -173,34 +146,6 @@ export class DrizzleDatabase<
     private readonly dispose?: (database: TDatabase) => Promise<void> | void,
     private readonly databaseOptions: DrizzleRuntimeOptions = { strictTransactions: false },
   ) {}
-
-  /**
-   * Creates the low-level DI facade that forwards unknown Drizzle API properties to the ambient `current()` handle.
-   *
-   * @remarks
-   * This compatibility helper is used by `DrizzleModule` provider wiring. Application code should prefer
-   * `DrizzleModule.forRoot(...)` or `DrizzleModule.forRootAsync(...)`, then type injected repository handles as
-   * `DrizzleDatabaseFacade<TDatabase>` when direct Drizzle methods are needed. Wrapper and lifecycle methods remain
-   * bound to the lifecycle owner while unknown Drizzle query properties forward to the ambient `current()` handle.
-   *
-   * @param database Root Drizzle database handle registered in the module.
-   * @param dispose Optional shutdown hook used to close pools or driver resources.
-   * @param databaseOptions Runtime transaction options consumed by the Fluo wrapper.
-   * @returns A transaction-aware facade that exposes wrapper methods plus the root Drizzle handle surface.
-   */
-  static createFacade<
-    TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,
-    TTransactionDatabase = TDatabase,
-    TTransactionOptions = unknown,
-  >(
-    database: TDatabase,
-    dispose?: (database: TDatabase) => Promise<void> | void,
-    databaseOptions: DrizzleRuntimeOptions = { strictTransactions: false },
-  ): DrizzleDatabaseFacade<TDatabase, TTransactionDatabase, TTransactionOptions> {
-    return createCurrentlessDrizzleFacade(
-      new DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions>(database, dispose, databaseOptions),
-    ) as DrizzleDatabaseFacade<TDatabase, TTransactionDatabase, TTransactionOptions>;
-  }
 
   /**
    * Returns the active transaction handle when present, otherwise the root Drizzle database handle.

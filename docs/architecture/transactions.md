@@ -10,7 +10,7 @@ This document defines the current transaction-context contract across `@fluojs/p
 | Package | Ambient context carrier | Primary access API | Request boundary API | Current support scope |
 | --- | --- | --- | --- | --- |
 | `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | `@Transaction()` on Services | Explicit `PrismaService.requestTransaction(...)` or deprecated `PrismaTransactionInterceptor` compatibility | Shares the active Prisma interactive transaction client when `$transaction(...)` is available. |
-| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | `@Transaction()` on Services | Explicit `DrizzleDatabase.requestTransaction(...)` or deprecated `DrizzleTransactionInterceptor` compatibility | Shares the active Drizzle transaction database handle when `database.transaction(...)` is available. |
+| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | `@Transaction()` on Services | Explicit `DrizzleDatabase.requestTransaction(...)` | Shares the active Drizzle transaction database handle when `database.transaction(...)` is available. |
 | `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | `@Transaction()` on Services | Explicit `MongooseConnection.requestTransaction(...)` | Shares the active Mongoose session when `connection.startSession()` or delegated `connection.transaction(...)` is available. |
 
 ## Service Transaction Boundary (Primary)
@@ -140,9 +140,9 @@ These paths are #3717 contract verification targets; the list itself is not pass
 | Pattern | Behavior |
 | --- | --- |
 | Explicit request boundary | Application code can call `requestTransaction(...)` at a controller, route adapter, or request orchestration boundary when an entire request must be transactional. |
-| Deprecated interceptor compatibility | `PrismaTransactionInterceptor` and `DrizzleTransactionInterceptor` remain for existing 1.x imports and delegate to each package's `requestTransaction(...)` API. Mongoose request boundaries are application-owned and explicit. |
+| Deprecated interceptor compatibility | `PrismaTransactionInterceptor` remains for existing 1.x imports and delegates to `PrismaService.requestTransaction(...)`. Drizzle and Mongoose use explicit application-owned `requestTransaction(...)` boundaries. Prefer service `@Transaction()` for new code. |
 
-When migrating NestJS controller or interceptor transaction patterns, keep normal business atomicity on service `@Transaction()` methods. Existing Prisma or Drizzle applications may retain the deprecated compatibility interceptor while migrating. For Mongoose, put an application-owned interceptor at the same chain position and call `MongooseConnection.requestTransaction(() => next.handle(), context.requestContext.request.signal)`. Pass the request `AbortSignal` when available.
+When migrating NestJS controller or interceptor transaction patterns, keep normal business atomicity on service `@Transaction()` methods. Existing Prisma applications may retain the deprecated compatibility interceptor while migrating. Drizzle and Mongoose applications put an application-owned interceptor at the same chain position and call their wrapper's explicit `requestTransaction(...)` with the request `AbortSignal`.
 
 ## Advanced / Escape Hatch
 
