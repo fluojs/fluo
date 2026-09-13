@@ -1,16 +1,19 @@
 import { Inject } from '@fluojs/core';
 import {
+  type CallHandler,
   Controller,
   type FrameworkRequest,
   type FrameworkResponse,
   FromBody,
   HttpCode,
+  type Interceptor,
+  type InterceptorContext,
   Post,
   RequestDto,
   UseInterceptors,
 } from '@fluojs/http';
-import { FluoFactory, defineModule } from '@fluojs/runtime';
-import { describe, expect, it } from 'vitest';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   PrismaModule,
@@ -299,8 +302,25 @@ describe('@fluojs/prisma service boundary primary flow', () => {
     }
   });
 
-  it('opens an explicit controller request transaction before creating an order', async () => {
+  it('forwards the dispatched request abort signal through an application-owned order boundary', async () => {
+    // Given
     const events: string[] = [];
+    let notifyOrderStarted: () => void = () => undefined;
+    let releaseOrder: () => void = () => undefined;
+    let notifyOrderFinished: () => void = () => undefined;
+    let notifyTransactionAbort: () => void = () => undefined;
+    const orderStarted = new Promise<void>((resolve) => {
+      notifyOrderStarted = resolve;
+    });
+    const orderReleased = new Promise<void>((resolve) => {
+      releaseOrder = resolve;
+    });
+    const orderFinished = new Promise<void>((resolve) => {
+      notifyOrderFinished = resolve;
+    });
+    const transactionAbortObserved = new Promise<void>((resolve) => {
+      notifyTransactionAbort = resolve;
+    });
     const transactionClient = { source: 'transaction' } as const;
     const client = {
       source: 'root' as const,
@@ -310,11 +330,24 @@ describe('@fluojs/prisma service boundary primary flow', () => {
       async $disconnect() {
         events.push('disconnect');
       },
-      async $transaction<T>(callback: (value: typeof transactionClient) => Promise<T>): Promise<T> {
+      async $transaction<T>(
+        callback: (value: typeof transactionClient) => Promise<T>,
+        options?: { signal?: AbortSignal },
+      ): Promise<T> {
         events.push('transaction:start');
-        const result = await callback(transactionClient);
-        events.push('transaction:commit');
-        return result;
+        const signal = options?.signal;
+        const onAbort = () => {
+          events.push('transaction:abort');
+          notifyTransactionAbort();
+        };
+        signal?.addEventListener('abort', onAbort, { once: true });
+
+        try {
+          return await callback(transactionClient);
+        } finally {
+          signal?.removeEventListener('abort', onAbort);
+          events.push('transaction:end');
+        }
       },
     };
 
@@ -322,23 +355,34 @@ describe('@fluojs/prisma service boundary primary flow', () => {
     class OrdersService {
       constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
 
-      create() {
-        events.push(`orders:create:${this.prisma.current().source}`);
+      async create() {
+        events.push(`orders:start:${this.prisma.current().source}`);
+        notifyOrderStarted();
+        await orderReleased;
+        events.push('orders:end');
+        notifyOrderFinished();
         return { id: 'order-1' };
       }
     }
 
+    @Inject(PrismaService)
+    class OrderRequestTransactionBoundary implements Interceptor {
+      constructor(private readonly prisma: PrismaService<typeof client, typeof transactionClient>) {}
+
+      intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
+        return this.prisma.requestTransaction(() => next.handle(), context.requestContext.request.signal);
+      }
+    }
+
     @Controller('/orders')
-    @Inject(OrdersService, PrismaService)
+    @Inject(OrdersService)
     class OrdersController {
-      constructor(
-        private readonly orders: OrdersService,
-        private readonly prisma: PrismaService<typeof client, typeof transactionClient>,
-      ) {}
+      constructor(private readonly orders: OrdersService) {}
 
       @Post('/')
+      @UseInterceptors(OrderRequestTransactionBoundary)
       createOrder() {
-        return this.prisma.requestTransaction(async () => this.orders.create());
+        return this.orders.create();
       }
     }
 
@@ -346,24 +390,40 @@ describe('@fluojs/prisma service boundary primary flow', () => {
     defineModule(AppModule, {
       controllers: [OrdersController],
       imports: [PrismaModule.forRoot({ client })],
-      providers: [OrdersService],
+      providers: [OrderRequestTransactionBoundary, OrdersService],
     });
     const app = await FluoFactory.create(AppModule);
+    const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
+    const requestTransaction = vi.spyOn(prisma, 'requestTransaction');
+    const controller = new AbortController();
+    const request = createRequest('/orders', 'POST', undefined, {}, controller.signal);
 
     try {
       const response = createResponse(events);
+      const dispatch = app.dispatch(request, response);
+      await orderStarted;
 
-      await app.dispatch(createRequest('/orders', 'POST'), response);
+      // When
+      controller.abort();
+      await transactionAbortObserved;
 
-      expect(response.body).toEqual({ id: 'order-1' });
+      // Then
+      await expect(dispatch).resolves.toBeUndefined();
+      expect(requestTransaction).toHaveBeenCalledTimes(1);
+      expect(requestTransaction.mock.calls[0]?.[1]).toBe(request.signal);
       expect(events).toEqual([
         'connect',
         'transaction:start',
-        'orders:create:transaction',
-        'transaction:commit',
-        'response:send',
+        'orders:start:transaction',
+        'transaction:abort',
+        'transaction:end',
       ]);
+
+      releaseOrder();
+      await orderFinished;
+      expect(events.at(-1)).toBe('orders:end');
     } finally {
+      releaseOrder();
       await app.close();
     }
   });
