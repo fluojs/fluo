@@ -9,7 +9,7 @@ import {
   UseInterceptors,
 } from '@fluojs/http';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { PrismaModule, PrismaService, type PrismaClientLike } from './index.js';
 

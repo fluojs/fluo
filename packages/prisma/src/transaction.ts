@@ -1,4 +1,3 @@
-import { Inject } from '@fluojs/core';
 import { AfterCommitCapabilityError, type TransactionBoundaryOptions } from './after-commit.js';
 
 import { isPrismaServiceHandle } from './prisma-service-brand.js';
