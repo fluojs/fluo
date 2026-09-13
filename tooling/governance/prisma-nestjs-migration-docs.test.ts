@@ -52,6 +52,29 @@ const prismaVisibilityCodeAnchorMutations = prismaVisibilityCodeAnchors.flatMap(
   ]),
 );
 
+const prismaRegistrationContractMarkers = [
+  {
+    path: 'docs/getting-started/migrate-prisma-registration.md',
+    marker:
+      '<!-- fluo-prisma-registration-contract: default-class-token-alias, named-token-isolation, no-transaction-interceptor-export -->',
+  },
+  {
+    path: 'docs/getting-started/migrate-prisma-registration.ko.md',
+    marker:
+      '<!-- fluo-prisma-registration-contract: default-class-token-alias, named-token-isolation, no-transaction-interceptor-export -->',
+  },
+  {
+    path: 'docs/reference/package-surface.md',
+    marker:
+      '<!-- fluo-prisma-registration-contract: default-class-token-alias, named-token-isolation, no-transaction-interceptor-export -->',
+  },
+  {
+    path: 'docs/reference/package-surface.ko.md',
+    marker:
+      '<!-- fluo-prisma-registration-contract: default-class-token-alias, named-token-isolation, no-transaction-interceptor-export -->',
+  },
+] as const;
+
 describe('NestJS Prisma migration documentation', () => {
   it('keeps async registration and rollback guidance synchronized', () => {
     // Given
@@ -166,6 +189,25 @@ class VisibilityModule {}
     // Then
     expect(runGovernanceGuard).toThrow('complete @Module({ global: true }) Prisma visibility example');
   });
+
+  it.each(prismaRegistrationContractMarkers)(
+    'rejects a missing or duplicated Prisma registration contract marker in $path',
+    ({ path, marker }) => {
+      // Given
+      const readWithoutMarker = (relativePath: string): string =>
+        relativePath === path ? read(relativePath).replace(marker, '') : read(relativePath);
+      const readWithDuplicateMarker = (relativePath: string): string =>
+        relativePath === path ? read(relativePath).replace(marker, `${marker}\n${marker}`) : read(relativePath);
+
+      // When / Then
+      expect(() => enforcePrismaNestjsMigrationDocs(readWithoutMarker)).toThrow(
+        'fluo-prisma-registration-contract marker',
+      );
+      expect(() => enforcePrismaNestjsMigrationDocs(readWithDuplicateMarker)).toThrow(
+        'fluo-prisma-registration-contract marker',
+      );
+    },
+  );
 
   it('requires the main governance body to invoke the Prisma guard', () => {
     // Given
