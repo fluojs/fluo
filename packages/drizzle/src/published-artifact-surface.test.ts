@@ -67,12 +67,11 @@ function parsePnpmImporterDependencySection(
   return dependencies;
 }
 
-function collectRemovedDeclarationImportDiagnostics(surface: string): readonly ts.Diagnostic[] {
+function collectRemovedDeclarationImportDiagnostics(): readonly ts.Diagnostic[] {
   const consumerEntryPath = resolve(packageRootPath, 'dist/__fluo-removed-public-consumer__.ts');
-  const consumerEntrySource = [
-    `import { ${surface} } from './index.js';`,
-    '',
-  ].join('\n');
+  const consumerEntrySource = `${removedPublicSurfaces
+    .map((surface) => `import { ${surface} } from './index.js';`)
+    .join('\n')}\n`;
   const compilerOptions: ts.CompilerOptions = {
     declaration: false,
     module: ts.ModuleKind.ESNext,
@@ -117,10 +116,16 @@ describe('@fluojs/drizzle published artifact surface', () => {
   });
 
   it('rejects declaration imports of removed and internal public surfaces', () => {
-    for (const surface of removedPublicSurfaces) {
-      const diagnostics = collectRemovedDeclarationImportDiagnostics(surface);
+    const diagnostics = collectRemovedDeclarationImportDiagnostics();
 
-      expect(diagnostics.some((diagnostic) => diagnostic.code === 2305 || diagnostic.code === 2724)).toBe(true);
+    for (const surface of removedPublicSurfaces) {
+      expect(
+        diagnostics.some(
+          (diagnostic) =>
+            (diagnostic.code === 2305 || diagnostic.code === 2724) &&
+            ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n').includes(`'${surface}'`),
+        ),
+      ).toBe(true);
     }
   });
 
