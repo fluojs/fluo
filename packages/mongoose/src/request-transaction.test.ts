@@ -9,9 +9,9 @@ import {
   UseInterceptors,
 } from '@fluojs/http';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { MongooseConnection, MongooseModule, MongooseTransactionInterceptor } from './index.js';
+import { MongooseConnection, MongooseModule } from './index.js';
 import type { MongooseSessionLike } from './types.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {
@@ -38,12 +38,11 @@ function createResponse(): FrameworkResponse & { body?: unknown } {
 }
 
 function createRequest(signal: AbortSignal): FrameworkRequest {
-  return { cookies: {}, headers: {}, method: 'GET', params: {}, path: '/compat', query: {}, raw: {}, signal, url: '/compat' };
+  return { cookies: {}, headers: {}, method: 'GET', params: {}, path: '/request', query: {}, raw: {}, signal, url: '/request' };
 }
 
-describe('MongooseTransactionInterceptor compatibility', () => {
-  it('wraps a routed handler in a request transaction when the compatibility export is used', async () => {
-    // Given
+describe('application-owned Mongoose request transaction boundary', () => {
+  it('wraps a routed handler in an explicit request transaction', async () => {
     const events: string[] = [];
     const session: MongooseSessionLike = {
       abortTransaction() { events.push('transaction:abort'); },
@@ -59,11 +58,20 @@ describe('MongooseTransactionInterceptor compatibility', () => {
     };
 
     @Inject(MongooseConnection)
-    class CompatibilityController {
+    class RequestTransactionBoundary implements Interceptor {
       constructor(private readonly mongoose: MongooseConnection<typeof connection>) {}
 
-      @Get('/compat')
-      @UseInterceptors(MongooseTransactionInterceptor)
+      async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
+        return this.mongoose.requestTransaction(() => next.handle(), context.requestContext.request.signal);
+      }
+    }
+
+    @Inject(MongooseConnection)
+    class RequestController {
+      constructor(private readonly mongoose: MongooseConnection<typeof connection>) {}
+
+      @Get('/request')
+      @UseInterceptors(RequestTransactionBoundary)
       hasSession(): boolean {
         events.push('handler');
         return this.mongoose.currentSession() === session;
@@ -72,17 +80,16 @@ describe('MongooseTransactionInterceptor compatibility', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      controllers: [CompatibilityController],
+      controllers: [RequestController],
       imports: [MongooseModule.forRoot({ connection })],
+      providers: [RequestTransactionBoundary],
     });
     const app = await FluoFactory.create(AppModule);
     try {
       const response = createResponse();
 
-      // When
       await app.dispatch(createRequest(new AbortController().signal), response);
 
-      // Then
       expect(response.body).toBe(true);
       expect(events).toEqual(['session:start', 'transaction:start', 'handler', 'transaction:commit', 'session:end']);
     } finally {
@@ -90,8 +97,7 @@ describe('MongooseTransactionInterceptor compatibility', () => {
     }
   });
 
-  it('rejects a cancelled routed caller and cleans up the compatibility transaction', async () => {
-    // Given
+  it('forwards caller cancellation and settles the explicit request transaction', async () => {
     const events: string[] = [];
     let notifyHandlerStarted: () => void = () => undefined;
     let releaseHandler: () => void = () => undefined;
@@ -139,11 +145,20 @@ describe('MongooseTransactionInterceptor compatibility', () => {
     }
 
     @Inject(MongooseConnection)
-    class CompatibilityController {
+    class RequestTransactionBoundary implements Interceptor {
       constructor(private readonly mongoose: MongooseConnection<typeof connection>) {}
 
-      @Get('/compat')
-      @UseInterceptors(CallerProbeInterceptor, MongooseTransactionInterceptor)
+      async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
+        return this.mongoose.requestTransaction(() => next.handle(), context.requestContext.request.signal);
+      }
+    }
+
+    @Inject(MongooseConnection)
+    class RequestController {
+      constructor(private readonly mongoose: MongooseConnection<typeof connection>) {}
+
+      @Get('/request')
+      @UseInterceptors(CallerProbeInterceptor, RequestTransactionBoundary)
       async waitForCancellation(): Promise<string> {
         events.push(`handler:start:${this.mongoose.currentSession() === session}`);
         notifyHandlerStarted();
@@ -156,9 +171,9 @@ describe('MongooseTransactionInterceptor compatibility', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      controllers: [CompatibilityController],
+      controllers: [RequestController],
       imports: [MongooseModule.forRoot({ connection })],
-      providers: [CallerProbeInterceptor],
+      providers: [CallerProbeInterceptor, RequestTransactionBoundary],
     });
     const app = await FluoFactory.create(AppModule);
     const mongoose = await app.container.resolve(MongooseConnection<typeof connection>);
@@ -169,12 +184,7 @@ describe('MongooseTransactionInterceptor compatibility', () => {
       const dispatch = app.dispatch(createRequest(controller.signal), response);
       await handlerStarted;
 
-      // When
-      controller.abort(new Error('compatibility caller cancelled'));
-      await new Promise<void>((resolve) => setImmediate(resolve));
-
-      // Then
-      expect(events).toEqual(['session:start', 'transaction:start', 'handler:start:true']);
+      controller.abort(new Error('request caller cancelled'));
       expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
         details: {
           activeRequestTransactions: 1,
@@ -185,13 +195,11 @@ describe('MongooseTransactionInterceptor compatibility', () => {
       releaseHandler();
       await expect(dispatch).resolves.toBeUndefined();
       await sessionEnded;
-      await vi.waitFor(() => {
-        expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
-          details: {
-            activeRequestTransactions: 0,
-            activeSessions: 0,
-          },
-        });
+      expect(mongoose.createPlatformStatusSnapshot()).toMatchObject({
+        details: {
+          activeRequestTransactions: 0,
+          activeSessions: 0,
+        },
       });
       expect(events).toEqual([
         'session:start',
@@ -200,7 +208,7 @@ describe('MongooseTransactionInterceptor compatibility', () => {
         'handler:end',
         'transaction:abort',
         'session:end',
-        'caller:rejected:compatibility caller cancelled',
+        'caller:rejected:request caller cancelled',
       ]);
     } finally {
       releaseHandler();

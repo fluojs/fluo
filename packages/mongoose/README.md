@@ -1,5 +1,7 @@
 # @fluojs/mongoose
 
+<!-- fluo-mongoose-removal: registration=for-root-or-for-root-async; providers=removed; request-transaction-interceptor=removed -->
+
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
@@ -14,7 +16,7 @@ Mongoose integration for fluo with session-aware transaction handling and lifecy
 - [Common Patterns](#common-patterns)
   - [Service Transaction Boundary (@Transaction)](#service-transaction-boundary-transaction)
   - [Saving an Existing Document](#saving-an-existing-document)
-  - [Request Transaction Interceptor Compatibility](#request-transaction-interceptor-compatibility)
+  - [Request Transactions](#request-transactions)
   - [Manual Transactions and currentSession()](#manual-transactions-and-currentsession)
   - [Cache Invalidation After Commit](#cache-invalidation-after-commit)
 - [Public API](#public-api)
@@ -157,25 +159,29 @@ async rename(document: UserDocument) {
 
 The helper forwards native Mongoose save options, attaches the ambient session, and returns the same document instance. It fails closed outside an active transaction and rejects `{ session: null }` or a different explicit session so a save cannot leave the current transaction accidentally. It never patches documents, prototypes, or model caches: calling `doc.save()` directly remains native Mongoose behavior and does not receive an automatic session.
 
-### Request Transaction Interceptor Compatibility
+### Request Transactions
 
-`MongooseTransactionInterceptor` is restored as a deprecated 1.x compatibility export for existing request-wide `@UseInterceptors(...)` boundaries. `MongooseModule.forRoot(...)` and `forRootAsync(...)` provide and export it. It delegates to `MongooseConnection.requestTransaction(...)` and forwards the request `AbortSignal`.
+`MongooseModule` exports `MongooseConnection`; it does not provide a request transaction interceptor. Keep a request-wide boundary application-owned at the same interceptor position and call `MongooseConnection.requestTransaction(...)` explicitly with the request `AbortSignal`.
 
 ```ts
-import { Controller, Post, UseInterceptors } from '@fluojs/http';
-import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
+import { Inject } from '@fluojs/core';
+import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http';
+import { MongooseConnection } from '@fluojs/mongoose';
 
-@Controller('/orders')
-export class OrdersController {
-  @Post('/')
-  @UseInterceptors(MongooseTransactionInterceptor)
-  createOrder() {
-    return this.orders.create();
+@Inject(MongooseConnection)
+export class RequestTransactionBoundary implements Interceptor {
+  constructor(private readonly mongoose: MongooseConnection) {}
+
+  intercept(context: InterceptorContext, next: CallHandler) {
+    return this.mongoose.requestTransaction(
+      () => next.handle(),
+      context.requestContext.request.signal,
+    );
   }
 }
 ```
 
-Prefer service-layer `@Transaction()` for new business operations. Keep this interceptor only while migrating existing request-wide boundaries, or replace it with an explicit `requestTransaction(...)` call when request orchestration must make the boundary visible.
+Use service-layer `@Transaction()` for business operations. Nested `requestTransaction(...)` calls reuse an ambient transaction/session, and shutdown waits for active request transactions before running `dispose(connection)`.
 
 ### Manual Transactions and currentSession()
 
@@ -326,9 +332,7 @@ Additional exports from the root `@fluojs/mongoose` package:
 - `MongooseConnection.createPlatformStatusSnapshot()` — reports health/readiness, resource ownership, active request/session drain counts, and strict transaction support diagnostics for platform observability surfaces.
 - `MongooseConnection.model<TModel>(name, ...args)` — returns the callable, result-specializable `MongooseModelFacade` outside transactions or a session-aware version for `create`, `find`, `findOne`, `aggregate`, and `bulkWrite` inside an active transaction without mutating the underlying Mongoose connection.
 - `Transaction`
-- `MongooseTransactionInterceptor` — deprecated request-wide compatibility interceptor; prefer service `@Transaction()` or explicit `requestTransaction(...)` in new code.
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
-- `createMongooseProviders(options)` — compatibility/manual composition helper; prefer `MongooseModule.forRoot(...)` or `MongooseModule.forRootAsync(...)` for application-facing registration so module exports and provider visibility stay aligned.
 - `createMongoosePlatformStatusSnapshot(...)`
 - `connection` must be a concrete object/function handle for both sync and async registration; missing handles are rejected during module registration or async bootstrap.
 - `Transaction` is a standard TC39 method decorator for service-layer session transaction boundaries. It resolves `this.conn`, the decorated instance itself, or one unique nested `this.*.conn` collaborator by default; pass an accessor when the `MongooseConnection` lives under a different field or resolution would be ambiguous.

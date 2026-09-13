@@ -84,6 +84,21 @@ const saveDocumentMigrationRequirements = [
   { path: 'docs/getting-started/migrate-from-nestjs.md' },
   { path: 'docs/getting-started/migrate-from-nestjs.ko.md' },
 ];
+const mongooseRemovalFields = new Map([
+  ['registration', 'for-root-or-for-root-async'],
+  ['providers', 'removed'],
+  ['request-transaction-interceptor', 'removed'],
+]);
+const mongooseRemovalRequirements = [
+  { heading: '# @fluojs/mongoose', path: 'packages/mongoose/README.md' },
+  { heading: '# @fluojs/mongoose', path: 'packages/mongoose/README.ko.md' },
+  { heading: '## Mongoose', path: 'apps/docs/content/docs/guides/persistence.mdx' },
+  { heading: '## Mongoose', path: 'apps/docs/content/docs/guides/persistence.ko.mdx' },
+];
+const mongooseFacadeExamplePaths = [
+  'apps/docs/content/docs/guides/persistence.mdx',
+  'apps/docs/content/docs/guides/persistence.ko.mdx',
+];
 
 function assert(condition, message) {
   if (!condition) {
@@ -170,6 +185,101 @@ function enforceSaveDocumentMigrationExample(content, requirement) {
   );
 }
 
+function enforceMongooseRemovalClaim(content, requirement) {
+  const markerPattern = requirement.path.endsWith('.mdx')
+    ? /^\{\/\* fluo-mongoose-removal: ([a-z-]+=[a-z-]+(?:; [a-z-]+=[a-z-]+)*) \*\/\}$/gmu
+    : /^<!-- fluo-mongoose-removal: ([a-z-]+=[a-z-]+(?:; [a-z-]+=[a-z-]+)*) -->$/gmu;
+  const markers = [...content.matchAll(markerPattern)];
+
+  assert(
+    markers.length === 1,
+    `${requirement.path} must include exactly one fluo-mongoose-removal marker; found ${markers.length}.`,
+  );
+
+  const entries = markers[0][1].split('; ').map((field) => field.split('='));
+  const fieldKeys = entries.map(([field]) => field);
+  const duplicateFieldKeys = [
+    ...new Set(fieldKeys.filter((field, index) => fieldKeys.indexOf(field) !== index)),
+  ];
+  assert(
+    duplicateFieldKeys.length === 0,
+    `${requirement.path} fluo-mongoose-removal marker must not declare duplicate field keys: ${duplicateFieldKeys.join(', ')}.`,
+  );
+
+  const fields = new Map(entries);
+  assert(
+    entries.length === mongooseRemovalFields.size &&
+      fields.size === mongooseRemovalFields.size &&
+      [...mongooseRemovalFields].every(([field, value]) => fields.get(field) === value) &&
+      [...fields.keys()].every((field) => mongooseRemovalFields.has(field)),
+    `${requirement.path} fluo-mongoose-removal marker must declare each machine-consumed Mongoose removal field exactly once.`,
+  );
+
+  const governedRegion = `${requirement.heading}\n\n${markers[0][0]}`;
+  assert(
+    content.split(governedRegion).length === 2,
+    `${requirement.path} fluo-mongoose-removal marker must anchor its Mongoose removal claim directly below ${requirement.heading}.`,
+  );
+}
+
+function enforceMongooseModuleRemovalSourceStructure(readText) {
+  const moduleSource = readText('packages/mongoose/src/module.ts');
+  const barrelSource = readText('packages/mongoose/src/index.ts');
+
+  assert(
+    /^export class MongooseModule \{$/mu.test(moduleSource) &&
+      /^ {2}static forRoot</mu.test(moduleSource) &&
+      /^ {2}static forRootAsync</mu.test(moduleSource),
+    'packages/mongoose/src/module.ts must expose MongooseModule.forRoot() and MongooseModule.forRootAsync().',
+  );
+  assert(
+    /^export \* from '\.\/module\.js';$/mu.test(barrelSource),
+    'packages/mongoose/src/index.ts must retain the MongooseModule barrel export.',
+  );
+
+  for (const removedExport of ['createMongooseProviders', 'MongooseTransactionInterceptor']) {
+    assert(
+      !new RegExp(
+        `^export\\s+(?:class|const|function)\\s+${removedExport}\\b|^export\\s*\\{[^\\n]*\\b${removedExport}\\b[^\\n]*\\}`,
+        'mu',
+      ).test(moduleSource),
+      `packages/mongoose/src/module.ts must not export ${removedExport}.`,
+    );
+    assert(
+      !new RegExp(
+        `^export\\s+(?:class|const|function)\\s+${removedExport}\\b|^export\\s*\\{[^\\n]*\\b${removedExport}\\b[^\\n]*\\}`,
+        'mu',
+      ).test(barrelSource),
+      `packages/mongoose/src/index.ts must not export ${removedExport}.`,
+    );
+  }
+}
+
+function enforceMongooseFacadeExample(content, relativePath) {
+  const examples = [...content.matchAll(/```(?:ts|typescript)\s*\n([\s\S]*?)```/gu)]
+    .map((match) => match[1] ?? '')
+    .filter(
+      (example) =>
+        example.includes('MongooseConnection') &&
+        example.includes('class UserRepository') &&
+        example.includes('findById'),
+    );
+
+  assert(
+    examples.length === 1,
+    `${relativePath} must include exactly one Mongoose UserRepository facade example.`,
+  );
+
+  const example = examples[0];
+  assert(
+    example.includes("type UserModel = MongooseModelFacade<unknown, unknown, Promise<User | null>>;") &&
+      example.includes("this.conn.model<UserModel>('User')") &&
+      example.includes('User.findOne({ _id: id })') &&
+      !example.includes('User.findById('),
+    `${relativePath} must use a typed MongooseModelFacade.findOne({ _id: id }) example.`,
+  );
+}
+
 export function enforceMongooseNestjsMigrationDocs(
   readText = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8'),
 ) {
@@ -190,6 +300,16 @@ export function enforceMongooseNestjsMigrationDocs(
   for (const requirement of saveDocumentMigrationRequirements) {
     enforceSaveDocumentMigrationExample(readText(requirement.path), requirement);
   }
+
+  for (const requirement of mongooseRemovalRequirements) {
+    enforceMongooseRemovalClaim(readText(requirement.path), requirement);
+  }
+
+  for (const relativePath of mongooseFacadeExamplePaths) {
+    enforceMongooseFacadeExample(readText(relativePath), relativePath);
+  }
+
+  enforceMongooseModuleRemovalSourceStructure(readText);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

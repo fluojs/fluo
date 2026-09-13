@@ -586,6 +586,15 @@ Queue producer migration discoverability is split across `packages/queue/README.
 
 NestJS Mongoose migration and transaction semantics are documented in [Transaction Context Contract](./architecture/transactions.md) and [NestJS → fluo Migration Map](./getting-started/migrate-from-nestjs.md). `MongooseConnection.model(...)` facade operations merge the ambient session for supported methods; `MongooseConnection.saveDocument(...)` is the opt-in path for an existing document, preserves native save options and document identity, fails closed without an ambient session, and leaves direct `doc.save()` unchanged.
 
+## Mongoose API Consolidation
+
+`@fluojs/mongoose` now has one application registration path:
+`MongooseModule.forRoot(...)` or `MongooseModule.forRootAsync(...)`. Inject
+`MongooseConnection` for model/session/transaction access. The manual
+`createMongooseProviders(...)` and package `MongooseTransactionInterceptor`
+exports are removed; request-wide interception stays application-owned and
+forwards `RequestContext.request.signal` to `requestTransaction(...)`.
+
 ## Anti-Patterns at a Glance
 
 - Enabling `experimentalDecorators` or `emitDecoratorMetadata`, this violates fluo's standard-decorator baseline.

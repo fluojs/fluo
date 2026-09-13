@@ -1,5 +1,7 @@
 # @fluojs/mongoose
 
+<!-- fluo-mongoose-removal: registration=for-root-or-for-root-async; providers=removed; request-transaction-interceptor=removed -->
+
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 
@@ -14,7 +16,7 @@
 - [공통 패턴](#공통-패턴)
   - [서비스 트랜잭션 경계 (@Transaction)](#서비스-트랜잭션-경계-transaction)
   - [기존 문서 저장](#기존-문서-저장)
-  - [요청 트랜잭션 인터셉터 호환성](#요청-트랜잭션-인터셉터-호환성)
+  - [요청 트랜잭션](#요청-트랜잭션)
   - [수동 트랜잭션과 currentSession()](#수동-트랜잭션과-currentsession)
   - [커밋 후 캐시 무효화](#커밋-후-캐시-무효화)
 - [공개 API](#공개-api)
@@ -160,25 +162,29 @@ async rename(document: UserDocument) {
 
 helper는 native Mongoose save option을 전달하고 ambient session을 붙인 뒤 동일한 document instance를 반환합니다. 활성 트랜잭션 밖에서는 fail-closed하며, 실수로 현재 트랜잭션을 벗어나지 않도록 `{ session: null }` 또는 다른 명시적 session을 거부합니다. document, prototype, model cache를 patch하지 않으므로 `doc.save()` 직접 호출은 계속 native Mongoose 동작이며 자동 session을 받지 않습니다.
 
-### 요청 트랜잭션 인터셉터 호환성
+### 요청 트랜잭션
 
-`MongooseTransactionInterceptor`는 기존 request-wide `@UseInterceptors(...)` boundary를 위한 deprecated 1.x 호환성 export로 복원되었습니다. `MongooseModule.forRoot(...)`와 `forRootAsync(...)`가 이 interceptor를 provider 및 export로 제공하며, `MongooseConnection.requestTransaction(...)`에 위임하고 request `AbortSignal`을 전달합니다.
+`MongooseModule`은 `MongooseConnection`을 export하며 request transaction interceptor는 제공하지 않습니다. request-wide boundary는 같은 interceptor 위치에서 애플리케이션이 소유하고 request `AbortSignal`과 함께 `MongooseConnection.requestTransaction(...)`을 명시적으로 호출하세요.
 
 ```ts
-import { Controller, Post, UseInterceptors } from '@fluojs/http';
-import { MongooseTransactionInterceptor } from '@fluojs/mongoose';
+import { Inject } from '@fluojs/core';
+import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http';
+import { MongooseConnection } from '@fluojs/mongoose';
 
-@Controller('/orders')
-export class OrdersController {
-  @Post('/')
-  @UseInterceptors(MongooseTransactionInterceptor)
-  createOrder() {
-    return this.orders.create();
+@Inject(MongooseConnection)
+export class RequestTransactionBoundary implements Interceptor {
+  constructor(private readonly mongoose: MongooseConnection) {}
+
+  intercept(context: InterceptorContext, next: CallHandler) {
+    return this.mongoose.requestTransaction(
+      () => next.handle(),
+      context.requestContext.request.signal,
+    );
   }
 }
 ```
 
-새 비즈니스 작업에는 서비스 계층 `@Transaction()`을 우선 사용하세요. 기존 request-wide boundary를 migration하는 동안에만 이 interceptor를 유지하고, request orchestration에서 경계를 명시해야 한다면 `requestTransaction(...)` 직접 호출로 교체하세요.
+비즈니스 작업에는 서비스 계층 `@Transaction()`을 사용하세요. 중첩 `requestTransaction(...)` 호출은 ambient transaction/session을 재사용하며, shutdown은 `dispose(connection)` 전에 활성 request transaction이 settle될 때까지 기다립니다.
 
 ### 수동 트랜잭션과 currentSession()
 
@@ -329,9 +335,7 @@ Root `@fluojs/mongoose`의 추가 export:
 - `MongooseConnection.createPlatformStatusSnapshot()` — platform observability surface를 위해 health/readiness, resource ownership, 활성 request/session drain 수, strict transaction 지원 진단을 보고합니다.
 - `MongooseConnection.model<TModel>(name, ...args)` — 트랜잭션 밖에서는 callable하고 result-specializable한 `MongooseModelFacade`를 반환하고, 활성 트랜잭션 안에서는 underlying Mongoose connection을 변형하지 않으면서 `create`, `find`, `findOne`, `aggregate`, `bulkWrite`에 세션을 주입하는 버전을 반환합니다.
 - `Transaction`
-- `MongooseTransactionInterceptor` — deprecated request-wide 호환성 interceptor입니다. 새 코드에서는 서비스 `@Transaction()` 또는 명시적 `requestTransaction(...)`을 우선 사용하세요.
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
-- `createMongooseProviders(options)` — 호환성/수동 composition helper입니다. 애플리케이션-facing 등록에서는 module export와 provider visibility가 문서화된 namespace facade와 맞도록 `MongooseModule.forRoot(...)` 또는 `MongooseModule.forRootAsync(...)`를 우선 사용하세요.
 - `createMongoosePlatformStatusSnapshot(...)`
 - sync 및 async 등록 모두에서 `connection`은 실제 object/function handle이어야 하며, 누락된 handle은 모듈 등록 또는 async bootstrap 중 거부됩니다.
 - `Transaction`은 서비스 계층 세션 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 `this.conn`, 데코레이터가 적용된 인스턴스 자체, 또는 하나의 고유한 중첩 `this.*.conn` collaborator를 resolve합니다. `MongooseConnection`이 다른 필드에 있거나 resolution이 모호하다면 accessor를 전달하세요.

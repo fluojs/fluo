@@ -33,6 +33,18 @@ const explicitDiExamplePaths = [
 ] as const;
 const saveDocumentContract =
   'fluo-mongoose-save-document-contract: opt-in, active-session, save-compatible-document';
+const mongooseRemovalClaim =
+  'fluo-mongoose-removal: registration=for-root-or-for-root-async; providers=removed; request-transaction-interceptor=removed';
+const mongooseRemovalRequirements = [
+  { path: 'packages/mongoose/README.md', heading: '# @fluojs/mongoose' },
+  { path: 'packages/mongoose/README.ko.md', heading: '# @fluojs/mongoose' },
+  { path: 'apps/docs/content/docs/guides/persistence.mdx', heading: '## Mongoose' },
+  { path: 'apps/docs/content/docs/guides/persistence.ko.mdx', heading: '## Mongoose' },
+] as const;
+const mongooseFacadeExamplePaths = [
+  'apps/docs/content/docs/guides/persistence.mdx',
+  'apps/docs/content/docs/guides/persistence.ko.mdx',
+] as const;
 const saveDocumentRequirements = [
   {
     path: 'packages/mongoose/README.md',
@@ -66,6 +78,12 @@ function mongooseContractMarkerFor(relativePath: string): string {
 
 function saveDocumentContractMarker(): string {
   return `<!-- ${saveDocumentContract} -->`;
+}
+
+function mongooseRemovalClaimMarkerFor(relativePath: string): string {
+  return relativePath.endsWith('.mdx')
+    ? `{/* ${mongooseRemovalClaim} */}`
+    : `<!-- ${mongooseRemovalClaim} -->`;
 }
 
 describe('NestJS Mongoose migration documentation', () => {
@@ -132,6 +150,112 @@ describe('NestJS Mongoose migration documentation', () => {
       );
       expect(() => enforceMongooseNestjsMigrationDocs(readWithoutOptionPreservation)).toThrow(
         driftedPath,
+      );
+    },
+  );
+
+  it.each(mongooseRemovalRequirements)(
+    'rejects a removal-claim marker decoy outside the governed %s region',
+    ({ path: driftedPath }) => {
+      const marker = mongooseRemovalClaimMarkerFor(driftedPath);
+      const readWithDecoy = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? `${read(relativePath).replace(marker, '[removed removal claim]')}\n${marker}\n`
+          : read(relativePath);
+
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithDecoy)).toThrow(driftedPath);
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithDecoy)).toThrow(
+        'fluo-mongoose-removal',
+      );
+    },
+  );
+
+  it.each(mongooseRemovalRequirements)(
+    'rejects a duplicated removal claim in %s',
+    ({ path: driftedPath }) => {
+      const marker = mongooseRemovalClaimMarkerFor(driftedPath);
+      const readWithDuplicate = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? read(relativePath).replace(marker, `${marker}\n${marker}`)
+          : read(relativePath);
+
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithDuplicate)).toThrow(driftedPath);
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithDuplicate)).toThrow(
+        'fluo-mongoose-removal',
+      );
+    },
+  );
+
+  it.each(mongooseRemovalRequirements)(
+    'rejects an inverted Mongoose provider-removal claim in %s',
+    ({ path: driftedPath }) => {
+      const readWithInvertedClaim = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? read(relativePath).replace('providers=removed', 'providers=exported')
+          : read(relativePath);
+
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithInvertedClaim)).toThrow(driftedPath);
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithInvertedClaim)).toThrow(
+        'fluo-mongoose-removal',
+      );
+    },
+  );
+
+  it.each(mongooseRemovalRequirements)(
+    'rejects a conflicting duplicate Mongoose removal field in $path',
+    ({ path: driftedPath }) => {
+      const readWithConflictingDuplicateField = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? read(relativePath).replace(
+              'providers=removed',
+              'providers=exported; providers=removed',
+            )
+          : read(relativePath);
+
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithConflictingDuplicateField)).toThrow(
+        driftedPath,
+      );
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithConflictingDuplicateField)).toThrow(
+        'must not declare duplicate field keys: providers.',
+      );
+    },
+  );
+
+  it('rejects a disabled MongooseModule barrel export comparison', () => {
+    const readWithDisabledBarrelExport = (relativePath: string): string =>
+      relativePath === 'packages/mongoose/src/index.ts'
+        ? read(relativePath).replace(
+            "export * from './module.js';",
+            "// export * from './module.js';",
+          )
+        : read(relativePath);
+
+    expect(() => enforceMongooseNestjsMigrationDocs(readWithDisabledBarrelExport)).toThrow(
+      'packages/mongoose/src/index.ts',
+    );
+    expect(() => enforceMongooseNestjsMigrationDocs(readWithDisabledBarrelExport)).toThrow(
+      'MongooseModule barrel export',
+    );
+  });
+
+  it.each(mongooseFacadeExamplePaths)(
+    'rejects a non-facade findById example in %s',
+    (driftedPath) => {
+      const readWithUnsupportedFacadeMethod = (relativePath: string): string =>
+        relativePath === driftedPath
+          ? read(relativePath)
+              .replace('User.findOne({ _id: id })', 'User.findById(id)')
+              .replace(
+                "type UserModel = MongooseModelFacade<unknown, unknown, Promise<User | null>>;",
+                'type UserModel = MongooseModelFacade;',
+              )
+          : read(relativePath);
+
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithUnsupportedFacadeMethod)).toThrow(
+        driftedPath,
+      );
+      expect(() => enforceMongooseNestjsMigrationDocs(readWithUnsupportedFacadeMethod)).toThrow(
+        'MongooseModelFacade.findOne',
       );
     },
   );

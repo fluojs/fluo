@@ -143,6 +143,8 @@ export class UserRepository {
 
 ## Mongoose
 
+{/* fluo-mongoose-removal: registration=for-root-or-for-root-async; providers=removed; request-transaction-interceptor=removed */}
+
 `@fluojs/mongoose`는 기존 Mongoose connection을 fluo lifecycle management에 연결합니다. 이 패키지는 raw connection을 직접 만들거나 소유하지 않습니다. 애플리케이션 종료 시 닫아야 한다면 `dispose` hook을 넘기세요.
 
 ```ts
@@ -165,17 +167,24 @@ class AppModule {}
 
 지원되는 operation에는 `MongooseConnection.model(...)`을 사용하세요. `transaction(...)` 또는 `@Transaction()` 안에서 이 facade는 기존 operation option을 보존하면서 ambient session을 `create`, `find`, `findOne`, `aggregate`, `bulkWrite`에 자동으로 바인딩합니다. `MongooseConnection.current()`는 raw connection을 반환합니다. `current().model(...)`을 통한 호출, 지원되지 않는 model method, `doc.save()` 같은 document operation에는 `currentSession()`을 사용한 명시적 session 처리가 필요합니다.
 
-`MongooseTransactionInterceptor`도 기존 request-wide interceptor import를 위한 deprecated 1.x 호환성 bridge입니다. 새 코드에서는 서비스 `@Transaction()` 또는 명시적 `MongooseConnection.requestTransaction(...)` boundary를 우선 사용하세요.
+Mongoose에는 request transaction 호환성 export가 없습니다. request-wide interceptor는 애플리케이션이 소유하고 request `AbortSignal`과 함께 `MongooseConnection.requestTransaction(...)`을 명시적으로 호출하세요. 비즈니스 작업에는 서비스 `@Transaction()`을 사용하세요.
 
 ```ts
-import { MongooseConnection } from '@fluojs/mongoose';
+import { MongooseConnection, type MongooseModelFacade } from '@fluojs/mongoose';
+
+type User = {
+  readonly _id: string;
+  readonly name: string;
+};
+
+type UserModel = MongooseModelFacade<unknown, unknown, Promise<User | null>>;
 
 export class UserRepository {
   constructor(private readonly conn: MongooseConnection) {}
 
   async findById(id: string) {
-    const User = this.conn.current().model('User');
-    return User.findById(id);
+    const User = this.conn.model<UserModel>('User');
+    return User.findOne({ _id: id });
   }
 }
 ```
@@ -376,7 +385,7 @@ Queue job은 JSON-serializable plain object여야 합니다. Queue는 enqueue �
 | 주제 | 규칙 |
 | --- | --- |
 | Repository access | Package별 `current()` seam을 사용하세요. (`PrismaService.current()`, `DrizzleDatabase.current()`, `MongooseConnection.current()`) |
-| Request transactions | 복원된 `PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, `MongooseTransactionInterceptor`는 deprecated 1.x 호환성 export로만 유지하고, 특히 named/multiple client에서는 서비스 `@Transaction()` 또는 명시적 request transaction call을 우선 사용합니다. |
+| Request transactions | 복원된 `PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`만 deprecated 1.x 호환성 export로 유지합니다. Mongoose request transaction은 request `AbortSignal`을 전달하는 애플리케이션 소유의 명시적 `MongooseConnection.requestTransaction(...)` 호출입니다. |
 | Nested transactions | Active boundary는 재사용됩니다. 무시될 nested option은 rejected됩니다. |
 | Shutdown | Package는 underlying resource를 dispose하기 전에 active request transaction을 drain 또는 abort합니다. |
 | Strict transactions | Driver capability 누락이 direct execution fallback으로 숨겨지면 안 될 때 strict mode를 켜세요. |
@@ -390,7 +399,7 @@ Queue job은 JSON-serializable plain object여야 합니다. Queue는 enqueue �
 | --- | --- |
 | `@fluojs/prisma` | `PrismaModule`, `PrismaService`, deprecated `PrismaTransactionInterceptor` 호환성 export, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, named token helpers, status snapshot helper |
 | `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, deprecated `DrizzleTransactionInterceptor` 호환성 export, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, 명시적 `requestTransaction(...)`, status snapshot helper |
-| `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, deprecated `MongooseTransactionInterceptor` 호환성 export, `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, status snapshot helper |
+| `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, 명시적 `requestTransaction(...)`, `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, status snapshot helper |
 | `@fluojs/redis` | `RedisModule`, `RedisService`, `REDIS_CLIENT`, named client/service token helpers, status snapshot helper |
 | `@fluojs/cache-manager` | `CacheModule`, `CacheService`, `CacheInterceptor`, `CacheTTL`, `CacheKey`, `CacheEvict`, memory/Redis stores, diagnostics helpers |
 | `@fluojs/queue` | `QueueModule`, `QueueLifecycleService`, `QueueWorker`, `QUEUE`, queue options, status snapshot helper |

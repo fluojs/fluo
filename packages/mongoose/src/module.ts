@@ -5,7 +5,6 @@ import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { MongooseConnection } from './connection.js';
 import { MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS } from './tokens.js';
-import { MongooseTransactionInterceptor } from './transaction.js';
 import type { MongooseConnectionLike, MongooseModuleOptions } from './types.js';
 
 type MongooseRuntimeOptions = {
@@ -32,7 +31,7 @@ export type MongooseAsyncModuleOptions<TConnection extends MongooseConnectionLik
 > & Pick<MongooseModuleOptions<TConnection>, 'global'>;
 
 const MONGOOSE_NORMALIZED_OPTIONS = Symbol('fluo.mongoose.normalized-options');
-const MONGOOSE_MODULE_EXPORTS = [MongooseConnection, MongooseTransactionInterceptor];
+const MONGOOSE_MODULE_EXPORTS = [MongooseConnection];
 
 function isObjectLike(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
@@ -80,11 +79,10 @@ function createMongooseRuntimeProviders<TConnection extends MongooseConnectionLi
         ),
     },
     MongooseConnection,
-    MongooseTransactionInterceptor,
   ];
 }
 
-function createMongooseProvidersAsync<TConnection extends MongooseConnectionLike>(
+function createAsyncMongooseRuntimeProviders<TConnection extends MongooseConnectionLike>(
   options: MongooseAsyncModuleOptions<TConnection>,
 ): Provider[] {
   const factory = options.useFactory;
@@ -107,52 +105,6 @@ function createMongooseProvidersAsync<TConnection extends MongooseConnectionLike
 }
 
 /**
- * Creates Mongoose providers for compatibility-oriented manual module composition.
- *
- * Prefer `MongooseModule.forRoot(...)` for application registration so module
- * exports and provider visibility stay aligned with the documented namespace
- * facade. Use this helper only when hand-assembling providers in advanced
- * compatibility scenarios.
- *
- * @param options Mongoose module options with a connection handle, optional dispose hook, and strict transaction policy.
- * @returns Provider definitions equivalent to `MongooseModule.forRoot(...)`.
- */
-export function createMongooseProviders<TConnection extends MongooseConnectionLike>(
-  options: MongooseModuleOptions<TConnection>,
-): Provider[] {
-  const resolved = normalizeMongooseModuleOptions(options);
-
-  return createMongooseRuntimeProviders<TConnection>({
-    provide: MONGOOSE_NORMALIZED_OPTIONS,
-    useValue: resolved,
-  });
-}
-
-function buildMongooseModule<TConnection extends MongooseConnectionLike>(
-  options: MongooseModuleOptions<TConnection>,
-): ModuleType {
-  class MongooseRootModuleDefinition {}
-
-  return defineModule(MongooseRootModuleDefinition, {
-    exports: MONGOOSE_MODULE_EXPORTS,
-    global: options.global ?? false,
-    providers: createMongooseProviders(options),
-  });
-}
-
-function buildMongooseModuleAsync<TConnection extends MongooseConnectionLike>(
-  options: MongooseAsyncModuleOptions<TConnection>,
-): ModuleType {
-  class MongooseAsyncModuleDefinition {}
-
-  return defineModule(MongooseAsyncModuleDefinition, {
-    exports: MONGOOSE_MODULE_EXPORTS,
-    global: options.global ?? false,
-    providers: createMongooseProvidersAsync(options),
-  });
-}
-
-/**
  * Module entrypoint for wiring a Mongoose connection into the Fluo runtime lifecycle.
  */
 export class MongooseModule {
@@ -160,10 +112,16 @@ export class MongooseModule {
    * Registers Mongoose providers from static options.
    *
    * @param options Mongoose module options with connection handle, optional dispose hook, and strict transaction mode.
-   * @returns A module definition that exports `MongooseConnection` and its compatibility request interceptor.
+   * @returns A module definition that exports `MongooseConnection`.
    */
   static forRoot<TConnection extends MongooseConnectionLike>(options: MongooseModuleOptions<TConnection>): ModuleType {
-    return buildMongooseModule<TConnection>(options);
+    return MongooseModule.createRootModule(
+      options.global,
+      createMongooseRuntimeProviders<TConnection>({
+        provide: MONGOOSE_NORMALIZED_OPTIONS,
+        useValue: normalizeMongooseModuleOptions(options),
+      }),
+    );
   }
 
   /**
@@ -175,6 +133,26 @@ export class MongooseModule {
   static forRootAsync<TConnection extends MongooseConnectionLike>(
     options: MongooseAsyncModuleOptions<TConnection>,
   ): ModuleType {
-    return buildMongooseModuleAsync<TConnection>(options);
+    return MongooseModule.createAsyncRootModule(options.global, createAsyncMongooseRuntimeProviders(options));
+  }
+
+  private static createRootModule(global: boolean | undefined, providers: Provider[]): ModuleType {
+    class MongooseRootModuleDefinition {}
+
+    return defineModule(MongooseRootModuleDefinition, {
+      exports: MONGOOSE_MODULE_EXPORTS,
+      global: global ?? false,
+      providers,
+    });
+  }
+
+  private static createAsyncRootModule(global: boolean | undefined, providers: Provider[]): ModuleType {
+    class MongooseAsyncModuleDefinition {}
+
+    return defineModule(MongooseAsyncModuleDefinition, {
+      exports: MONGOOSE_MODULE_EXPORTS,
+      global: global ?? false,
+      providers,
+    });
   }
 }
