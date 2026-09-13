@@ -2235,6 +2235,144 @@ void bootstrap();
     expect(installCalls).toBe(0);
   });
 
+  it('runs the update check when dev forwards --dry-run after the pass-through separator', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    let updateCheckCalls = 0;
+
+    const exitCode = await runCli(['dev', '--', '--dry-run'], {
+      cwd: workspaceDirectory,
+      env: updateCheckEnv,
+      spawnCommand: async () => 0,
+      stderr: createTtyBufferStream([]),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream([]),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => {
+          updateCheckCalls += 1;
+          return '1.0.0-beta.1';
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(updateCheckCalls).toBe(1);
+  });
+
+  it('skips the update check when dev receives --dry-run before the pass-through separator', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    let updateCheckCalls = 0;
+
+    const exitCode = await runCli(['dev', '--dry-run'], {
+      cwd: workspaceDirectory,
+      env: updateCheckEnv,
+      stderr: createTtyBufferStream([]),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream([]),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => {
+          updateCheckCalls += 1;
+          return '1.0.0-beta.1';
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(updateCheckCalls).toBe(0);
+  });
+
+  it('forwards removed global option tokens to the spawned dev child', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    const spawnedArgs: string[] = [];
+
+    const exitCode = await runCli(['dev', '--', '--no-update-notifier'], {
+      cwd: workspaceDirectory,
+      env: {},
+      spawnCommand: async (_command, args) => {
+        spawnedArgs.push(...args);
+        return 23;
+      },
+      stderr: { write: () => undefined },
+      stdout: { write: () => undefined },
+      updateCheck: false,
+    });
+    const separatorIndex = spawnedArgs.indexOf('--');
+
+    expect(exitCode).toBe(23);
+    expect(separatorIndex).toBeGreaterThanOrEqual(0);
+    expect(spawnedArgs.slice(separatorIndex + 1)).toEqual(['--no-update-notifier']);
+  });
+
+  it('forwards --no-update-check after the dev pass-through separator without suppressing the update check', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    const spawnedArgs: string[] = [];
+    let updateCheckCalls = 0;
+
+    const exitCode = await runCli(['dev', '--', '--no-update-check'], {
+      cwd: workspaceDirectory,
+      env: updateCheckEnv,
+      spawnCommand: async (_command, args) => {
+        spawnedArgs.push(...args);
+        return 0;
+      },
+      stderr: createTtyBufferStream([]),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream([]),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => {
+          updateCheckCalls += 1;
+          return '1.0.0-beta.1';
+        },
+      },
+    });
+    const separatorIndex = spawnedArgs.indexOf('--');
+
+    expect(exitCode).toBe(0);
+    expect(updateCheckCalls).toBe(1);
+    expect(separatorIndex).toBeGreaterThanOrEqual(0);
+    expect(spawnedArgs.slice(separatorIndex + 1)).toEqual(['--no-update-check']);
+  });
+
+  it('suppresses the update check when dev receives --no-update-check before the pass-through separator', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
+    let updateCheckCalls = 0;
+
+    const exitCode = await runCli(['dev', '--no-update-check'], {
+      cwd: workspaceDirectory,
+      env: updateCheckEnv,
+      spawnCommand: async () => 0,
+      stderr: createTtyBufferStream([]),
+      stdin: { isTTY: true },
+      stdout: createTtyBufferStream([]),
+      updateCheck: {
+        cacheFile: createUpdateCacheFile(),
+        currentVersion: '1.0.0-beta.1',
+        fetchLatestVersion: async () => {
+          updateCheckCalls += 1;
+          return '1.0.0-beta.1';
+        },
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(updateCheckCalls).toBe(0);
+  });
+
   it.each([
     ['--no-update-notifier', 'analyze'],
     ['analyze', '--no-update-notifier'],

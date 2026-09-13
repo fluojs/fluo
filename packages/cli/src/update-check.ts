@@ -579,10 +579,13 @@ function shouldRunInteractiveUpdateCheck(options: CliUpdateCheckRuntimeOptions, 
  * @returns The remove update check flags result.
  */
 export function removeUpdateCheckFlags(argv: string[]): { argv: string[]; skipUpdateCheck: boolean } {
+  const separatorIndex = argv.indexOf('--');
+  const globalArgv = separatorIndex === -1 ? argv : argv.slice(0, separatorIndex);
+  const passThroughArgv = separatorIndex === -1 ? [] : argv.slice(separatorIndex);
   const filteredArgv: string[] = [];
   let skipUpdateCheck = false;
 
-  for (const arg of argv) {
+  for (const arg of globalArgv) {
     if (UPDATE_CHECK_FLAGS.has(arg)) {
       skipUpdateCheck = true;
       continue;
@@ -591,7 +594,7 @@ export function removeUpdateCheckFlags(argv: string[]): { argv: string[]; skipUp
     filteredArgv.push(arg);
   }
 
-  return { argv: filteredArgv, skipUpdateCheck };
+  return { argv: [...filteredArgv, ...passThroughArgv], skipUpdateCheck };
 }
 
 /**

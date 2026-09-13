@@ -501,7 +501,7 @@ export async function runCli(
       return 0;
     }
 
-    if (!isHelpInvocation(commandArgv) && !isPreviewInvocation(commandArgv)) {
+    if (!isHelpInvocation(commandArgv) && !isPreviewInvocation(globalArgv)) {
       const updateCheckOptions = runtime.updateCheck === false ? undefined : runtime.updateCheck;
       const updateCheckResult = await runCliUpdateCheck(commandArgv, {
         ...updateCheckOptions,
