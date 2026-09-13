@@ -1,10 +1,14 @@
+import { createServer, request as httpRequest } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { Inject } from '@fluojs/core';
 import {
   type CallHandler,
   Controller,
+  type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
   FromBody,
+  type HttpApplicationAdapter,
   HttpCode,
   type Interceptor,
   type InterceptorContext,
@@ -67,6 +71,86 @@ function createRequest(
     raw: {},
     signal,
     url: path,
+  };
+}
+
+function getBoundPort(server: unknown): number {
+  if (!server || typeof (server as { address?: unknown }).address !== 'function') {
+    throw new Error('Failed to resolve the Node HTTP test server.');
+  }
+
+  const address = (server as { address(): AddressInfo | string | null }).address();
+
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to resolve the Node HTTP test port.');
+  }
+
+  return address.port;
+}
+
+function createNodeHttpTestAdapter(): HttpApplicationAdapter & { getServer(): unknown } {
+  let server: ReturnType<typeof createServer> | undefined;
+
+  return {
+    async close() {
+      if (!server) {
+        return;
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        server?.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    },
+    getServer() {
+      return server;
+    },
+    async listen(dispatcher: Dispatcher) {
+      server = createServer((request, response) => {
+        const controller = new AbortController();
+        const abort = () => {
+          if (!controller.signal.aborted) {
+            controller.abort();
+          }
+        };
+        request.once('aborted', abort);
+        response.once('close', () => {
+          if (!response.writableEnded) {
+            abort();
+          }
+        });
+
+        const frameworkResponse = createResponse();
+        void dispatcher.dispatch(
+          createRequest(
+            request.url ?? '/',
+            request.method ?? 'GET',
+            undefined,
+            request.headers,
+            controller.signal,
+          ),
+          frameworkResponse,
+        ).then(() => {
+          if (response.destroyed) {
+            return;
+          }
+
+          response.statusCode = frameworkResponse.statusCode ?? 200;
+          response.end();
+        });
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        server?.once('error', reject);
+        server?.listen(0, '127.0.0.1', resolve);
+      });
+    },
   };
 }
 
@@ -302,13 +386,14 @@ describe('@fluojs/prisma service boundary primary flow', () => {
     }
   });
 
-  it('forwards the dispatched request abort signal through an application-owned order boundary', async () => {
+  it('forwards a real HTTP request abort signal through an application-owned order boundary', async () => {
     // Given
     const events: string[] = [];
     let notifyOrderStarted: () => void = () => undefined;
     let releaseOrder: () => void = () => undefined;
     let notifyOrderFinished: () => void = () => undefined;
     let notifyTransactionAbort: () => void = () => undefined;
+    let notifyTransactionEnd: () => void = () => undefined;
     const orderStarted = new Promise<void>((resolve) => {
       notifyOrderStarted = resolve;
     });
@@ -320,6 +405,9 @@ describe('@fluojs/prisma service boundary primary flow', () => {
     });
     const transactionAbortObserved = new Promise<void>((resolve) => {
       notifyTransactionAbort = resolve;
+    });
+    const transactionEnded = new Promise<void>((resolve) => {
+      notifyTransactionEnd = resolve;
     });
     const transactionClient = { source: 'transaction' } as const;
     const client = {
@@ -347,6 +435,7 @@ describe('@fluojs/prisma service boundary primary flow', () => {
         } finally {
           signal?.removeEventListener('abort', onAbort);
           events.push('transaction:end');
+          notifyTransactionEnd();
         }
       },
     };
@@ -392,37 +481,50 @@ describe('@fluojs/prisma service boundary primary flow', () => {
       imports: [PrismaModule.forRoot({ client })],
       providers: [OrderRequestTransactionBoundary, OrdersService],
     });
-    const app = await FluoFactory.create(AppModule);
+    const adapter = createNodeHttpTestAdapter();
+    const app = await FluoFactory.create(AppModule, { adapter });
     const prisma = await app.container.resolve(PrismaService<typeof client, typeof transactionClient>);
     const requestTransaction = vi.spyOn(prisma, 'requestTransaction');
-    const controller = new AbortController();
-    const request = createRequest('/orders', 'POST', undefined, {}, controller.signal);
+    await app.listen();
+    const request = httpRequest({
+      host: '127.0.0.1',
+      method: 'POST',
+      path: '/orders',
+      port: getBoundPort(adapter.getServer()),
+    });
 
     try {
-      const response = createResponse(events);
-      const dispatch = app.dispatch(request, response);
+      request.on('error', () => undefined);
+      request.end();
       await orderStarted;
 
       // When
-      controller.abort();
+      request.destroy();
       await transactionAbortObserved;
 
       // Then
-      await expect(dispatch).resolves.toBeUndefined();
       expect(requestTransaction).toHaveBeenCalledTimes(1);
-      expect(requestTransaction.mock.calls[0]?.[1]).toBe(request.signal);
+      expect(requestTransaction.mock.calls[0]?.[1]?.aborted).toBe(true);
       expect(events).toEqual([
         'connect',
         'transaction:start',
         'orders:start:transaction',
         'transaction:abort',
-        'transaction:end',
       ]);
 
       releaseOrder();
       await orderFinished;
-      expect(events.at(-1)).toBe('orders:end');
+      await transactionEnded;
+      expect(events).toEqual([
+        'connect',
+        'transaction:start',
+        'orders:start:transaction',
+        'transaction:abort',
+        'orders:end',
+        'transaction:end',
+      ]);
     } finally {
+      request.destroy();
       releaseOrder();
       await app.close();
     }
