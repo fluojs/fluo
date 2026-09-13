@@ -135,7 +135,7 @@ export class UserService {
 
 `@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 Drizzle 트랜잭션 안에서 실행됩니다.
 
-기본적으로 `@Transaction()`은 작은 host-object heuristic으로 대상을 고릅니다. 먼저 `this.db`를 확인하고, 그다음 데코레이터가 붙은 인스턴스의 직접 property, 마지막으로 그 값들의 중첩 `.db` property 중 `transaction(...)` 메서드를 노출하는 첫 값을 사용합니다. 이 후보들이 모두 맞지 않으면 데코레이터가 붙은 인스턴스 자체를 transaction 대상으로 사용합니다. 이 덕분에 `constructor(private readonly db: DrizzleDatabase<...>)` 같은 일반 서비스와 자체 facade host는 간결하게 유지할 수 있지만, 하나의 서비스가 Drizzle wrapper를 둘 이상 소유한다면 property 순서에 의존하지 마세요. 데코레이터가 붙은 host가 여러 transaction-capable client를 갖거나 `.db`를 노출하는 repository를 감싸는 경우에는 `@Transaction((self) => self.ordersDb)` 또는 `@Transaction((self) => self.analyticsDb, options)`처럼 명시적 accessor를 전달하세요.
+기본적으로 `@Transaction()`은 작은 host-object heuristic으로 대상을 고릅니다. 먼저 `this.db`를 확인하고, 그다음 데코레이터가 붙은 인스턴스의 직접 property, 마지막으로 그 값들의 중첩 `.db` property 중 `transaction(...)` 메서드를 노출하는 첫 값을 사용합니다. 이 후보들이 모두 맞지 않으면 데코레이터가 붙은 인스턴스 자체를 transaction 대상으로 사용합니다. `DrizzleModule`은 주입된 `DrizzleDatabaseFacade`를 소유하고 직접 Drizzle 호출을 `DrizzleDatabase.current()`로 전달하므로, 일반적인 `constructor(private readonly db: DrizzleDatabase<...>)` 서비스는 간결하게 유지됩니다. Drizzle wrapper가 둘 이상인 서비스는 property 순서에 의존하지 말고, 데코레이터가 붙은 host가 여러 transaction-capable client를 갖거나 `.db`를 노출하는 repository를 감싸는 경우 `@Transaction((self) => self.ordersDb)` 또는 `@Transaction((self) => self.analyticsDb, options)`처럼 명시적 accessor를 전달하세요.
 
 ### 수동 트랜잭션과 current()
 
@@ -277,7 +277,7 @@ Raw-client 외부 transaction·다른 wrapper·connection의 commit은 관찰하
 
 ### 요청 전체 컨트롤러 경계
 
-비즈니스 작업에는 서비스 레벨 `@Transaction()`을 우선 사용하세요. 전체 요청을 하나의 transaction으로 감싸던 NestJS controller/interceptor 패턴을 마이그레이션해야 한다면 controller, route adapter, request orchestration 경계에서 `requestTransaction(...)`을 명시적으로 호출하고 가능한 경우 request `AbortSignal`을 전달하세요.
+비즈니스 작업에는 서비스 레벨 `@Transaction()`을 우선 사용하세요. 전체 요청을 하나의 transaction으로 감싸던 NestJS controller/interceptor 패턴을 마이그레이션해야 한다면 controller, route adapter, request orchestration 경계에서 `DrizzleDatabase.requestTransaction(...)`을 명시적으로 호출하고 가능한 경우 request `AbortSignal`을 전달하세요.
 
 ```ts
 import { Inject } from '@fluojs/core';
@@ -306,7 +306,7 @@ export class CheckoutController {
 }
 ```
 
-전체 request 작업을 하나의 controller-level boundary로 묶어야 하면 `DrizzleDatabase.requestTransaction(...)`을 사용하고 request `AbortSignal`을 직접 전달하세요. 일반적인 비즈니스 원자성은 서비스 `@Transaction()` 메서드에 두고, controller-level `@Transaction()`은 controller가 명시적 `DrizzleDatabase` 대상을 소유할 때만 사용하세요.
+`DrizzleDatabase.requestTransaction(...)`은 명시적인 request-wide boundary입니다. 일반적인 비즈니스 원자성은 서비스 `@Transaction()` 메서드에 두고, 전체 request 작업을 하나의 transaction으로 묶어야 하는 드문 controller-level 경우에만 사용하세요. shutdown과 client cancellation이 boundary를 정리할 수 있도록 request `AbortSignal`을 직접 전달하세요.
 
 ### 이름 있는 클라이언트
 

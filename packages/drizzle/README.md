@@ -135,7 +135,7 @@ export class UserService {
 
 Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Drizzle transaction.
 
-By default, `@Transaction()` selects its target with a small host-object heuristic: it first checks `this.db`, then direct properties on the decorated instance, then a nested `.db` property on those values, and uses the first value that exposes a `transaction(...)` method. If none of those candidates match, the decorated instance itself becomes the transaction target. This keeps common `constructor(private readonly db: DrizzleDatabase<...>)` services and self-contained facade hosts concise, but services with more than one Drizzle wrapper should not rely on property order. Pass an explicit accessor such as `@Transaction((self) => self.ordersDb)` or `@Transaction((self) => self.analyticsDb, options)` whenever the decorated host owns multiple transaction-capable clients or wraps a repository that also exposes `.db`.
+By default, `@Transaction()` selects its target with a small host-object heuristic: it first checks `this.db`, then direct properties on the decorated instance, then a nested `.db` property on those values, and uses the first value that exposes a `transaction(...)` method. If none of those candidates match, the decorated instance itself becomes the transaction target. `DrizzleModule` owns the injected `DrizzleDatabaseFacade` and forwards its direct Drizzle calls to `DrizzleDatabase.current()`, so common `constructor(private readonly db: DrizzleDatabase<...>)` services stay concise. Services with more than one Drizzle wrapper should not rely on property order; pass an explicit accessor such as `@Transaction((self) => self.ordersDb)` or `@Transaction((self) => self.analyticsDb, options)` whenever the decorated host owns multiple transaction-capable clients or wraps a repository that also exposes `.db`.
 
 ### Manual Transactions and current()
 
@@ -277,7 +277,7 @@ Commits from external raw-client transactions, other wrappers, or other connecti
 
 ### Request-Wide Controller Boundaries
 
-Prefer service-level `@Transaction()` for business operations. If you are migrating a NestJS controller/interceptor pattern where an entire request must be transactional, call `requestTransaction(...)` explicitly at the controller, route adapter, or request orchestration boundary and pass the request `AbortSignal` when one is available:
+Prefer service-level `@Transaction()` for business operations. If you are migrating a NestJS controller/interceptor pattern where an entire request must be transactional, call `DrizzleDatabase.requestTransaction(...)` explicitly at the controller, route adapter, or request orchestration boundary and pass the request `AbortSignal` when one is available:
 
 ```ts
 import { Inject } from '@fluojs/core';
