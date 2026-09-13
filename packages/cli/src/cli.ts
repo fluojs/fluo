@@ -9,7 +9,7 @@ import type { DevRunnerRuntime } from './dev-runner/node-restart-runner.js';
 import { renderAliasList, renderHelpTable } from './help.js';
 import type { startStudioSidecar } from './studio/sidecar.js';
 import type { GenerateOptions, GeneratorKind } from './types.js';
-import { type CliUpdateCheckRuntimeOptions, removeUpdateCheckFlags, runCliUpdateCheck } from './update-check.js';
+import { type CliUpdateCheckRuntimeOptions, REMOVED_UPDATE_CHECK_FLAGS, removeUpdateCheckFlags, runCliUpdateCheck } from './update-check.js';
 import { inspectUsage, newUsage, typegenUsage } from './usage.js';
 
 type CliStream = {
@@ -479,10 +479,15 @@ export async function runCli(
   const stderr = runtime.stderr ?? process.stderr;
   const env = runtime.env ?? process.env;
   const commandRuntime = { ...runtime, env };
+  const removedGlobalFlag = argv.find((argument) => REMOVED_UPDATE_CHECK_FLAGS.has(argument));
   const updateFlagResult = removeUpdateCheckFlags(argv);
   const commandArgv = updateFlagResult.argv;
 
   try {
+    if (removedGlobalFlag) {
+      throw new Error(`Unknown global option: ${removedGlobalFlag}`);
+    }
+
     if (commandArgv[0] === NODE_DEV_RUNNER_COMMAND || commandArgv[0] === DEV_RUNNER_COMMAND) {
       const runnerInvocation = parseDevRunnerInvocation(commandArgv);
       const { runNodeRestartRunner } = await import('./dev-runner/node-restart-runner.js');
@@ -640,22 +645,22 @@ export async function runCli(
 
     if (parsedCommand.command === 'analyze') {
       const { runAnalyzeCommand } = await import('./commands/diagnostics.js');
-      return runAnalyzeCommand(parsedCommand.argv, commandRuntime);
+      return await runAnalyzeCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'add') {
       const { runAddCommand } = await import('./commands/package-workflow.js');
-      return runAddCommand(parsedCommand.argv, commandRuntime);
+      return await runAddCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'doctor') {
       const { runDoctorCommand } = await import('./commands/diagnostics.js');
-      return runDoctorCommand(parsedCommand.argv, commandRuntime);
+      return await runDoctorCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'info') {
       const { runInfoCommand } = await import('./commands/diagnostics.js');
-      return runInfoCommand(parsedCommand.argv, commandRuntime);
+      return await runInfoCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'build' || parsedCommand.command === 'dev' || parsedCommand.command === 'start') {
@@ -665,27 +670,27 @@ export async function runCli(
 
     if (parsedCommand.command === 'upgrade') {
       const { runUpgradeCommand } = await import('./commands/package-workflow.js');
-      return runUpgradeCommand(parsedCommand.argv, commandRuntime);
+      return await runUpgradeCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'new') {
       const { runNewCommand } = await import('./commands/new.js');
-      return runNewCommand(parsedCommand.argv, commandRuntime);
+      return await runNewCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'migrate') {
       const { runMigrateCommand } = await import('./commands/migrate.js');
-      return runMigrateCommand(parsedCommand.argv, commandRuntime);
+      return await runMigrateCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'inspect') {
       const { runInspectCommand } = await import('./commands/inspect.js');
-      return runInspectCommand(parsedCommand.argv, commandRuntime);
+      return await runInspectCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command === 'typegen') {
       const { runTypegenCommand } = await import('./commands/typegen.js');
-      return runTypegenCommand(parsedCommand.argv, commandRuntime);
+      return await runTypegenCommand(parsedCommand.argv, commandRuntime);
     }
 
     if (parsedCommand.command !== 'generate') {

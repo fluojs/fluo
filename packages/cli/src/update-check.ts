@@ -95,6 +95,8 @@ const DEFAULT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PACKAGE_NAME = '@fluojs/cli';
 const DEFAULT_REGISTRY_TIMEOUT_MS = 5_000;
 const UPDATE_CHECK_FLAGS = new Set(['--no-update-check']);
+/** Removed global update-check flags that must report a normal CLI error. */
+export const REMOVED_UPDATE_CHECK_FLAGS = new Set(['--no-update-notifier']);
 const UPDATE_PACKAGE_MANAGERS = new Set<UpdatePackageManager>(['bun', 'npm', 'pnpm', 'yarn']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {

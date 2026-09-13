@@ -495,15 +495,21 @@ navigation ownership, dual-import tests, bilingual docs, and Changesets intent. 
 add a stable root RSC export. After approval, `@fluojs/react/experimental/rsc` remains a tested
 re-export for the documented deprecation window.
 
-## CLI Migration Transform Tokens
+## CLI Command Vocabulary and Migration Transform Tokens
 
-The migration transform contract is discoverable in `packages/cli/README.md` and
-[`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md):
-`--only` and `--skip` use the canonical `imports`, `inject-params`, `scope`, `bootstrap`,
-`tests`, and `tsconfig` vocabulary, while legacy `injectable` and `testing` remain accepted only
-as aliases for `inject-params` and `tests`. Successful `--json` reports preserve their stable
-transform tokens (`injectable` and `testing`) in `transforms` and per-file
-`appliedTransforms`; CLI input aliases do not change that report contract.
+The CLI command contract is discoverable in `packages/cli/README.md` and
+[`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md).
+`fluo doctor`, `fluo info`, and `fluo analyze` are read-only: they never install dependencies or
+self-update the CLI. Help, version, and `--dry-run` paths skip update checking. `fluo upgrade`
+reports latest-version and migration guidance but is not read-only: it and other interactive
+non-preview commands may offer a CLI update after checking the npm dist-tag and, only with
+explicit approval, run the package-manager global CLI install.
+
+`--only` and `--skip` use the canonical `imports`, `injectable`, `scope`, `bootstrap`,
+`testing`, and `tsconfig` vocabulary. Legacy `inject-params` and `tests` remain accepted input
+for existing scripts only. Successful `--json` reports use `schemaVersion: 1` and preserve
+canonical transform tokens in `transforms` and per-file `appliedTransforms`; input aliases do not
+change that report contract.
 
 ## Studio Static-Graph Limits
 

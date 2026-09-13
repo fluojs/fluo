@@ -9,8 +9,8 @@ The canonical CLI for fluo — bootstrap new applications, generate components a
 
 - Scaffold with `fluo new`; `create` remains a compatibility alias.
 - Preview any supported write command with `--dry-run`. It preserves that command's own plan payload and performs no writes, dependency installation, git initialization, or CLI update check.
-- Use `fluo doctor` for read-only diagnostics. `info` is a compatibility alias; `analyze` is a separate project summary. Install or self-update only through the explicit `fluo upgrade` workflow.
-- Use `--with-slice-test` for module and resource generator slice tests. The former `--with-test` flag is not accepted.
+- Use `fluo doctor` for read-only diagnostics. `info` is a compatibility alias; `analyze` is a separate project summary; none installs or self-updates. `fluo upgrade` reports latest CLI state and migration guidance, but is not read-only: in an interactive TTY with a newer version it may offer, then after explicit approval run, the package-manager global CLI install. Other interactive non-preview commands may offer the same approved self-update. `--dry-run` previews and help/version paths skip update checking.
+- Use `--with-slice-test` for module and resource generator slice tests. The former `--with-test` flag is not accepted. Programmatic `GenerateOptions.withTest` was removed; migrate callers to `withSliceTest`.
 - Use migration transform kinds (`imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`) in `--only` and `--skip`; JSON `transforms` and each file's `appliedTransforms` use the same tokens.
 - `--install` and `--no-install` take precedence over programmatic installation settings. `--package-manager` selects scaffold or package-workflow tools and is rejected for lifecycle commands where it cannot affect execution.
 
@@ -331,6 +331,8 @@ fluo add studio --dev --dry-run
 fluo upgrade
 ```
 
+Use `--dev` as the canonical development-dependency option; `-D` is its typing shortcut.
+
 ### Decorator Codemods
 Run codemods to align your codebase with TC39 standard decorators.
 
@@ -348,7 +350,7 @@ fluo migrate ./src --skip testing
 
 The canonical `--only` and `--skip` tokens are `imports`, `injectable`, `scope`, `bootstrap`, `testing`, and `tsconfig`. Legacy `inject-params` and `tests` inputs remain accepted for existing scripts, but JSON `transforms` and `appliedTransforms` always emit `injectable` and `testing`.
 
-Use `--json` when CI jobs, dashboards, or migration reports need a stable machine-readable result. Human output remains the default. JSON mode writes only the structured report to stdout on success, while parser errors and invalid flag combinations still write their message to stderr and return exit code `1` without partial JSON output. The report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata with `filePath`, `changed`, `appliedTransforms`, `warningCount`, and warnings including category labels and source line numbers.
+Use `--json` when CI jobs, dashboards, or migration reports need a stable machine-readable result. Human output remains the default. JSON mode writes only the structured report to stdout on success, while parser errors and invalid flag combinations still write their message to stderr and return exit code `1` without partial JSON output. The report uses `schemaVersion: 1` and includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata with `filePath`, `changed`, `appliedTransforms`, `warningCount`, and warnings including category labels and source line numbers.
 
 Review every warning before rerunning with `--apply`. Warnings are manual follow-up items rather than permission for an automatic rewrite to be accepted blindly; use the [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.md) as the post-codemod checklist for each warning category.
 
@@ -499,7 +501,7 @@ The package can be used programmatically to trigger CLI actions from within othe
 | `NewCommandRuntimeOptions` | Type for `runNewCommand(...)` runtime overrides such as prompts, filesystem writes, dependency installation, and git initialization; `runCli(...)` also accepts these overrides when it dispatches `new` or `create`. Monorepo-local starter dependency overrides are internal sandbox harness details, not part of this public type. |
 | `CliPromptCancelledError` | Stable sentinel that caller-supplied prompt hooks can throw to report normal cancellation. |
 | `runGenerateCommand(kind, name, baseDirectory, options?)` | Programmatic access to the built-in schematic generator and module auto-registration planner. |
-| `GenerateOptions` | Type for programmatic generator options. |
+| `GenerateOptions` | Type for programmatic generator options. `withTest` was removed; use `withSliceTest` for module and resource slice tests. |
 | `GenerateResult` | Type for generator results, including changed files, dry-run plan entries, module wiring metadata, and next-step hints. |
 | `GeneratePlanEntry` / `GeneratePlanAction` | Types for dry-run and write-plan path actions returned by `runGenerateCommand(...)`. |
 | `GeneratedFile` | Type describing generated file paths and in-memory content before writes. |

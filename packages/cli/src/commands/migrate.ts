@@ -183,6 +183,7 @@ function renderJsonReport(report: MigrationReport, transforms: readonly Migratio
   return `${JSON.stringify(
     {
       command: 'migrate',
+      schemaVersion: 1,
       mode: report.apply ? 'apply' : 'dry-run',
       apply: report.apply,
       dryRun: !report.apply,

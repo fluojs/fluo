@@ -71,6 +71,7 @@ void Test.createTestingModule({ imports: [UsersModule] }).compile();
     expect(stderrBuffer.join('')).toBe('');
     const report: unknown = JSON.parse(stdoutBuffer.join(''));
     expect(report).toMatchObject({
+      schemaVersion: 1,
       transforms: ['injectable', 'testing'],
       files: [
         {

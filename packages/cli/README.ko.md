@@ -9,7 +9,7 @@ fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 Reac
 
 - 새 앱은 `fluo new`로 스캐폴딩합니다. `create`는 compatibility alias로 유지됩니다.
 - 쓰기를 지원하는 명령의 preview에는 `--dry-run`을 사용합니다. 각 명령의 plan payload를 유지하면서 쓰기, dependency install, git initialization, CLI update 확인을 수행하지 않습니다.
-- 읽기 전용 진단에는 `fluo doctor`를 사용합니다. `info`는 compatibility alias이고 `analyze`는 별도 project summary입니다. install 또는 self-update는 명시적인 `fluo upgrade` workflow에서만 수행합니다.
+- 읽기 전용 진단에는 `fluo doctor`를 사용합니다. `info`는 compatibility alias이고 `analyze`는 별도 project summary이며, 세 명령 모두 dependency install 또는 CLI self-update를 수행하지 않습니다. `fluo upgrade`는 latest CLI state와 migration guidance를 보고하지만 read-only가 아닙니다. Interactive TTY에서 새 버전을 찾으면 CLI update를 제안할 수 있고, 명시적 승인 뒤 package-manager global install을 실행할 수 있습니다. 다른 interactive non-preview 명령도 같은 승인형 self-update를 제안할 수 있습니다. `--dry-run` preview와 help/version 경로는 update check를 건너뜁니다.
 - module과 resource generator의 slice test에는 `--with-slice-test`를 사용합니다. 기존 `--with-test` flag는 허용하지 않습니다.
 - `--only`와 `--skip`에는 migration transform kind(`imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`)를 사용합니다. JSON `transforms`와 각 파일의 `appliedTransforms`도 같은 token을 사용합니다.
 - `--install`과 `--no-install`은 programmatic installation setting보다 우선합니다. `--package-manager`는 scaffold 또는 package-workflow tool을 선택하며 실행에 영향을 줄 수 없는 lifecycle 명령에서는 거부됩니다.
@@ -347,7 +347,7 @@ fluo migrate ./src --skip testing
 
 정식 `--only` 및 `--skip` 토큰은 `imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`입니다. 기존 script를 위해 legacy 입력 `inject-params`와 `tests`는 계속 허용하지만 JSON `transforms`와 `appliedTransforms`는 항상 `injectable`과 `testing`을 출력합니다.
 
-CI 작업, 대시보드, migration report에서 안정적인 machine-readable 결과가 필요하면 `--json`을 사용하세요. 사람을 위한 출력은 기본값으로 유지됩니다. JSON 모드는 성공 시 stdout에 structured report만 기록하고, parser 오류나 잘못된 flag 조합은 기존처럼 stderr에 메시지를 기록한 뒤 exit code `1`을 반환하며 partial JSON을 출력하지 않습니다. Report에는 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 그리고 `filePath`, `changed`, `appliedTransforms`, `warningCount`, category label과 source line number가 포함된 warnings per-file metadata가 포함됩니다.
+CI 작업, 대시보드, migration report에서 안정적인 machine-readable 결과가 필요하면 `--json`을 사용하세요. 사람을 위한 출력은 기본값으로 유지됩니다. JSON 모드는 성공 시 stdout에 structured report만 기록하고, parser 오류나 잘못된 flag 조합은 기존처럼 stderr에 메시지를 기록한 뒤 exit code `1`을 반환하며 partial JSON을 출력하지 않습니다. Report는 `schemaVersion: 1`을 사용하며 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 그리고 `filePath`, `changed`, `appliedTransforms`, `warningCount`, category label과 source line number가 포함된 warnings per-file metadata를 포함합니다.
 
 `--apply`로 다시 실행하기 전에는 모든 warning을 검토하세요. Warning은 자동 rewrite를 그대로 수락해도 된다는 뜻이 아니라 수동 follow-up 항목입니다. Warning category별 post-codemod checklist는 [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.ko.md)를 기준으로 확인하세요.
 
@@ -495,7 +495,7 @@ Catalog만으로는 URI versioning과 header, media-type, custom version strateg
 | `NewCommandRuntimeOptions` | prompt, filesystem write, dependency install, git initialization 같은 `runNewCommand(...)` runtime override 타입입니다. `runCli(...)`도 `new` 또는 `create`로 dispatch할 때 이 override를 받습니다. Monorepo-local starter dependency override는 내부 sandbox harness 세부사항이며 이 공개 타입의 일부가 아닙니다. |
 | `CliPromptCancelledError` | 호출자가 제공한 prompt hook이 정상 취소를 알리기 위해 throw할 수 있는 안정적인 sentinel입니다. |
 | `runGenerateCommand(kind, name, baseDirectory, options?)` | built-in schematic generator와 module auto-registration planner에 대한 프로그래밍적 접근을 제공합니다. |
-| `GenerateOptions` | 프로그래밍 방식 generator 옵션 타입입니다. |
+| `GenerateOptions` | 프로그래밍 방식 generator 옵션 타입입니다. `withTest`는 제거되었으므로 module과 resource slice test에는 `withSliceTest`를 사용하세요. |
 | `GenerateResult` | 변경된 파일, dry-run plan entry, module wiring metadata, next-step hint를 포함하는 generator 결과 타입입니다. |
 | `GeneratePlanEntry` / `GeneratePlanAction` | `runGenerateCommand(...)`가 반환하는 dry-run 및 write-plan path action 타입입니다. |
 | `GeneratedFile` | write 전 생성된 파일 경로와 in-memory content를 설명하는 타입입니다. |

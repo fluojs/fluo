@@ -204,6 +204,8 @@ fluo add studio --dev --dry-run
 fluo upgrade
 ```
 
+Development dependency의 canonical option은 `--dev`이며, `-D`는 입력 shortcut입니다.
+
 ## Decorator codemods
 
 TC39 standard decorator에 맞추려면 `fluo migrate`를 사용합니다.
@@ -214,7 +216,7 @@ fluo migrate ./src --json
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
 fluo migrate ./src --only imports,injectable
-fluo migrate ./src --skip tests
+fluo migrate ./src --skip testing
 ```
 
 주요 transformation:
@@ -226,7 +228,7 @@ fluo migrate ./src --skip tests
 - 가능한 test template을 `@fluojs/testing` helper로 migration
 - Standard decorator와 TS6-safe path에 맞게 `tsconfig.json` update
 
-JSON mode는 stable machine-readable report를 출력하고, parser error나 invalid flag는 stderr와 exit code `1`로 보고합니다.
+JSON mode는 stable `schemaVersion: 1` machine-readable report를 출력하고, parser error나 invalid flag는 stderr와 exit code `1`로 보고합니다.
 
 ## Runtime inspection
 

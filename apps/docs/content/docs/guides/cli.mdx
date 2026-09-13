@@ -205,6 +205,8 @@ fluo add studio --dev --dry-run
 fluo upgrade
 ```
 
+Use `--dev` as the canonical development-dependency option; `-D` is its typing shortcut.
+
 ## Decorator codemods
 
 Use `fluo migrate` to align code with TC39 standard decorators.
@@ -215,7 +217,7 @@ fluo migrate ./src --json
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
 fluo migrate ./src --only imports,injectable
-fluo migrate ./src --skip tests
+fluo migrate ./src --skip testing
 ```
 
 Key transformations include:
@@ -227,7 +229,7 @@ Key transformations include:
 - migrating supported test templates toward `@fluojs/testing`,
 - updating `tsconfig.json` for standard decorators and TS6-safe paths.
 
-JSON mode emits a stable machine-readable report and keeps parser errors or invalid flags on stderr with exit code `1`.
+JSON mode emits a stable `schemaVersion: 1` machine-readable report and keeps parser errors or invalid flags on stderr with exit code `1`.
 
 ## Runtime inspection
 

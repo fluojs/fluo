@@ -91,6 +91,11 @@ function parsePackageManager(value: string | undefined): string {
   return value;
 }
 
+/**
+ * Renders usage help for first-party package installation.
+ *
+ * @returns Add-command usage text.
+ */
 export function addUsage(): string {
   return [
     'Usage: fluo add <package...> [options]',
@@ -98,13 +103,18 @@ export function addUsage(): string {
     'Install one or more @fluojs packages with the detected package manager.',
     '',
     'Options',
-    '  --dev                                 Install as a development dependency.',
+    '  --dev, -D                             Install as a development dependency.',
     '  --package-manager <pnpm|npm|yarn|bun> Override package-manager detection.',
     '  --dry-run                             Print the command without running it.',
-    '  --help                                Show help for the add command.',
+    '  --help, -h                            Show help for the add command.',
   ].join('\n');
 }
 
+/**
+ * Renders usage help for the non-mutating CLI upgrade guidance command.
+ *
+ * @returns Upgrade-command usage text.
+ */
 export function upgradeUsage(): string {
   return [
     'Usage: fluo upgrade [options]',
@@ -116,6 +126,13 @@ export function upgradeUsage(): string {
   ].join('\n');
 }
 
+/**
+ * Installs requested first-party packages through the selected package manager.
+ *
+ * @param argv Add-command arguments.
+ * @param runtime Runtime overrides for package-manager execution.
+ * @returns A process-style exit code.
+ */
 export async function runAddCommand(argv: string[], runtime: PackageWorkflowRuntimeOptions = {}): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) {
     (runtime.stdout ?? process.stdout).write(`${addUsage()}\n`);
@@ -168,6 +185,13 @@ export async function runAddCommand(argv: string[], runtime: PackageWorkflowRunt
   });
 }
 
+/**
+ * Reports the latest CLI package state and migration guidance without installing anything.
+ *
+ * @param argv Upgrade-command arguments.
+ * @param runtime Runtime overrides for registry lookup and output.
+ * @returns A process-style exit code.
+ */
 export async function runUpgradeCommand(argv: string[], runtime: PackageWorkflowRuntimeOptions = {}): Promise<number> {
   if (argv.includes('--help') || argv.includes('-h')) {
     (runtime.stdout ?? process.stdout).write(`${upgradeUsage()}\n`);
