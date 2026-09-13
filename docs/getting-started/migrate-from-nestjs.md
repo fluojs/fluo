@@ -1197,7 +1197,7 @@ fluo migrate ./src --only imports,injectable
 fluo migrate ./src --skip testing
 ```
 
-`--dry-run` is the explicit canonical preview form; `--apply` is the only switch that writes files, and the two options cannot be combined. Use `--only <comma-list>` or `--skip <comma-list>` to focus a narrower preview. Use `--apply` only after reviewing the report and warnings:
+Preview is the default mode. `--dry-run` states that mode explicitly; `--apply` is the only switch that writes files, and the two options cannot be combined. Use `--only <comma-list>` or `--skip <comma-list>` to focus a narrower preview. Use `--apply` only after reviewing the report and warnings:
 
 ```bash
 fluo migrate ./src --apply

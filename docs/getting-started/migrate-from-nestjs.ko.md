@@ -1187,7 +1187,7 @@ fluo migrate ./src --only imports,injectable
 fluo migrate ./src --skip testing
 ```
 
-`--dry-run`은 명시적인 canonical preview form이며, 파일을 쓰는 switch는 `--apply`뿐이고 두 option을 함께 사용할 수 없습니다. `--only <comma-list>` 또는 `--skip <comma-list>`로 더 좁은 preview의 활성 transform을 제한할 수 있습니다. Report와 warning을 검토한 뒤에만 `--apply`를 사용하세요:
+Preview가 기본 모드입니다. `--dry-run`은 이 모드를 명시적으로 지정하며, 파일을 쓰는 switch는 `--apply`뿐이고 두 option을 함께 사용할 수 없습니다. `--only <comma-list>` 또는 `--skip <comma-list>`로 더 좁은 preview의 활성 transform을 제한할 수 있습니다. Report와 warning을 검토한 뒤에만 `--apply`를 사용하세요:
 
 ```bash
 fluo migrate ./src --apply
