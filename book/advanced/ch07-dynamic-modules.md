@@ -152,11 +152,12 @@ Once you strip away the syntax, a `forRoot(...)` helper usually does two things.
 
 `PrismaModule.forRoot()` is a very good reference implementation. `path:packages/prisma/src/module.ts:161-195` creates a new class, calls `defineModule(...)`, exports the intended public Provider set, and registers a normalized option value Provider under an internal normalized-options Token. The remaining runtime Providers, such as the database client itself, are derived through DI from that internal options Token.
 
-The core shape of the static helper is visible directly in `buildPrismaModule()`.
+The core shape of the registration API is owned directly by `PrismaModule.forRoot()`.
 
-`path:packages/prisma/src/module.ts:161-195`
+`path:packages/prisma/src/module.ts`
 ```typescript
-function buildPrismaModule<
+class PrismaModule {
+  static forRoot<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,
   TTransactionClient = InferPrismaTransactionClient<TClient>,
   TTransactionOptions = InferPrismaTransactionOptions<TClient>,
@@ -174,7 +175,6 @@ function buildPrismaModule<
     exports: normalizedOptions.name === undefined
       ? [
         PrismaService,
-        PrismaTransactionInterceptor,
         getPrismaServiceToken(),
         getPrismaClientToken(),
         getPrismaOptionsToken(),
@@ -190,10 +190,11 @@ function buildPrismaModule<
       useValue: normalizedOptions,
     }, normalizedOptions.name),
   });
+  }
 }
 ```
 
-This code shows that `forRoot()` is effectively a function that first creates an options Provider, then binds the runtime Provider array containing that Provider to a new Module class. The unnamed registration exports `PrismaService`, the deprecated compatibility interceptor, and default tokens, while named registrations export only their matching tokens and remain scoped. One helper call therefore describes the whole registration surface.
+This code shows that `forRoot()` itself first creates an options Provider, then binds the runtime Provider array containing that Provider to a new Module class. The unnamed registration exports `PrismaService` and default tokens, while named registrations export only their matching tokens and remain scoped. One static call therefore describes the whole registration surface.
 
 This separation between "option production" and "service production" is an important Fluo design trait. When normalized options are registered as an actual Provider, Module configuration becomes observable to the package's own Provider factories. Consumer code should inject only the public facade Tokens exported by `@fluojs/prisma`, such as `PrismaService`, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, or the named-token helpers. The normalized-options Token also carries internal registration identity and visibility metadata, so it intentionally remains an implementation detail.
 

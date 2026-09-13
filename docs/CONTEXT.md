@@ -1,4 +1,8 @@
 # fluo — AI Context Document
+<!-- fluo:prisma-api-unification: module-owned-registration -->
+
+Prisma application registration is owned by `PrismaModule.forRoot(...)` or `PrismaModule.forRootAsync(...)`; inject the module-owned `PrismaService` facade rather than assembling one directly. `PrismaService.createFacade(...)` and `PrismaTransactionInterceptor` are removed. Migrate request-wide boundaries to application-owned `PrismaService.requestTransaction(...)` calls that forward the request `AbortSignal`; see [Prisma Registration Migration](./getting-started/migrate-prisma-registration.md).
+
 <!-- fluo:cron-nestjs-migration: timezone-mapping -->
 <!-- fluo:cron-nestjs-migration: wait-for-completion -->
 <!-- fluo:cron-nestjs-migration: unsupported-options -->

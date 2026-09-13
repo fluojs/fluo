@@ -16,7 +16,6 @@ import {
   PrismaModule,
   PrismaService,
   type PrismaServiceFacade,
-  PrismaTransactionInterceptor,
   Transaction,
 } from './index.js';
 
@@ -300,7 +299,7 @@ describe('@fluojs/prisma service boundary primary flow', () => {
     }
   });
 
-  it('injects the compatibility interceptor controller dependency before creating an order', async () => {
+  it('opens an explicit controller request transaction before creating an order', async () => {
     const events: string[] = [];
     const transactionClient = { source: 'transaction' } as const;
     const client = {
@@ -330,14 +329,16 @@ describe('@fluojs/prisma service boundary primary flow', () => {
     }
 
     @Controller('/orders')
-    @Inject(OrdersService)
+    @Inject(OrdersService, PrismaService)
     class OrdersController {
-      constructor(private readonly orders: OrdersService) {}
+      constructor(
+        private readonly orders: OrdersService,
+        private readonly prisma: PrismaService<typeof client, typeof transactionClient>,
+      ) {}
 
       @Post('/')
-      @UseInterceptors(PrismaTransactionInterceptor)
       createOrder() {
-        return this.orders.create();
+        return this.prisma.requestTransaction(async () => this.orders.create());
       }
     }
 

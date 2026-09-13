@@ -3976,7 +3976,6 @@ export function enforceGraphqlRuntimeBoundaryDiscoverability() {
 
 export function enforcePersistenceTransactionInterceptorCompatibility(readText = read) {
   const compatibilityExports = [
-    ['PrismaTransactionInterceptor', 'packages/prisma/src/index.ts', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
     ['DrizzleTransactionInterceptor', 'packages/drizzle/src/index.ts', 'packages/drizzle/src/named-registration.ts', 'packages/drizzle/src/transaction.ts'],
     ['MongooseTransactionInterceptor', 'packages/mongoose/src/index.ts', 'packages/mongoose/src/module.ts', 'packages/mongoose/src/transaction.ts'],
   ];
@@ -3992,6 +3991,17 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
     'docs/reference/package-surface.md',
     'docs/reference/package-surface.ko.md',
   ];
+
+  for (const sourcePath of [
+    'packages/prisma/src/index.ts',
+    'packages/prisma/src/module.ts',
+    'packages/prisma/src/transaction.ts',
+  ]) {
+    assert(
+      !readText(sourcePath).includes('PrismaTransactionInterceptor'),
+      `${sourcePath} must not retain the removed PrismaTransactionInterceptor API.`,
+    );
+  }
 
   for (const [interceptor, indexPath, modulePath, sourcePath] of compatibilityExports) {
     const indexSource = readText(indexPath);
@@ -4047,15 +4057,23 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
   ]) {
     const guide = readText(guidePath);
     const requestTransactionsRow = /^\| Request transactions \|.*$/mu.exec(guide)?.[0];
+    const prismaPublicApiRow = /^\| `@fluojs\/prisma` \|.*$/mu.exec(guide)?.[0];
     const drizzlePublicApiRow = /^\| `@fluojs\/drizzle` \|.*$/mu.exec(guide)?.[0];
 
     assert(
       requestTransactionsRow !== undefined &&
-        ['PrismaTransactionInterceptor', 'DrizzleTransactionInterceptor', 'MongooseTransactionInterceptor']
+        ['DrizzleTransactionInterceptor', 'MongooseTransactionInterceptor']
           .every((interceptor) => requestTransactionsRow.includes(interceptor)) &&
+        requestTransactionsRow.includes('PrismaTransactionInterceptor') &&
         requestTransactionsRow.includes('deprecated') &&
         requestTransactionsRow.includes('1.x'),
-      `${guidePath} Request transactions row must list all restored interceptors as deprecated 1.x compatibility exports.`,
+      `${guidePath} Request transactions row must migrate Prisma while retaining Drizzle and Mongoose deprecated 1.x compatibility exports.`,
+    );
+    assert(
+      prismaPublicApiRow !== undefined &&
+        !prismaPublicApiRow.includes('PrismaTransactionInterceptor') &&
+        prismaPublicApiRow.includes('requestTransaction'),
+      `${guidePath} @fluojs/prisma Public API row must expose explicit request transactions without the removed interceptor.`,
     );
     assert(
       drizzlePublicApiRow !== undefined &&

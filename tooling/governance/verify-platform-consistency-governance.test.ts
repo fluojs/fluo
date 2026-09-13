@@ -1149,16 +1149,16 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
       'request transaction lifecycle table entry',
       'apps/docs/content/docs/guides/persistence.mdx',
       (source: string) => source.replace(
-        '`PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, and `MongooseTransactionInterceptor`',
-        '`PrismaTransactionInterceptor` and `MongooseTransactionInterceptor`',
+        '`DrizzleTransactionInterceptor` and `MongooseTransactionInterceptor`',
+        '`MongooseTransactionInterceptor`',
       ),
     ],
     [
       'Korean request transaction lifecycle table entry',
       'apps/docs/content/docs/guides/persistence.ko.mdx',
       (source: string) => source.replace(
-        '`PrismaTransactionInterceptor`, `DrizzleTransactionInterceptor`, `MongooseTransactionInterceptor`',
-        '`PrismaTransactionInterceptor`, `MongooseTransactionInterceptor`',
+        '`DrizzleTransactionInterceptor`, `MongooseTransactionInterceptor`',
+        '`MongooseTransactionInterceptor`',
       ),
     ],
     [
