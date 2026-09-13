@@ -5,6 +5,10 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const HTTP_KEY_STRATEGY_CONTRACT =
   '<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->';
+const OBSOLETE_ROUTE_DEFAULT_CLAIMS = [
+  "httpKeyStrategy defaults to 'route'",
+  "`httpKeyStrategy`의 기본값이 `'route'`",
+];
 
 // Source-of-truth markers for the cache-manager NestJS migration semantics.
 // Each documentation marker below is an identifier, option value, or literal
@@ -102,6 +106,14 @@ export function enforceCacheManagerNestjsMigrationDocs(
     if (missingMarkers.length > 0) {
       throw new Error(
         `Platform consistency governance check failed: ${relativePath} must keep the @nestjs/cache-manager migration boundary synchronized; missing: ${missingMarkers.join(', ')}.`,
+      );
+    }
+
+    const obsoleteRouteDefaultClaim = OBSOLETE_ROUTE_DEFAULT_CLAIMS.find((claim) => content.includes(claim));
+
+    if (obsoleteRouteDefaultClaim !== undefined) {
+      throw new Error(
+        `Platform consistency governance check failed: ${relativePath} must not claim the obsolete route default; found: ${obsoleteRouteDefaultClaim}.`,
       );
     }
   }

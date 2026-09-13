@@ -8,6 +8,10 @@ import { enforceCacheManagerNestjsMigrationDocs } from './cache-manager-nestjs-m
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const HTTP_KEY_STRATEGY_CONTRACT =
   '<!-- fluo:cache-http-key-strategy: default=route+query;route=query-insensitive-opt-in;full=removed -->';
+const OBSOLETE_ROUTE_DEFAULT_CLAIMS = [
+  "httpKeyStrategy defaults to 'route'",
+  "`httpKeyStrategy`의 기본값이 `'route'`",
+] as const;
 
 function read(relativePath: string): string {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
@@ -58,5 +62,26 @@ describe('NestJS cache-manager migration documentation', () => {
 
     expect(runGovernanceGuard).toThrow(driftedPath);
     expect(runGovernanceGuard).toThrow(HTTP_KEY_STRATEGY_CONTRACT);
+  });
+
+  it.each([
+    'packages/cache-manager/README.md',
+    'packages/cache-manager/README.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'book/01-fluoblog/ch20-caching.md',
+    'book/01-fluoblog/ch20-caching.ko.md',
+    'book/02-fluoshop/ch21-commerce-caching.md',
+    'book/02-fluoshop/ch21-commerce-caching.ko.md',
+  ])('rejects an obsolete route-default claim injected into %s', (driftedPath) => {
+    const readWithObsoleteRouteDefaultClaim = (relativePath: string): string =>
+      relativePath === driftedPath
+        ? `${read(relativePath)}\n${OBSOLETE_ROUTE_DEFAULT_CLAIMS.join('\n')}`
+        : read(relativePath);
+    const runGovernanceGuard = () =>
+      enforceCacheManagerNestjsMigrationDocs(readWithObsoleteRouteDefaultClaim);
+
+    expect(runGovernanceGuard).toThrow(driftedPath);
+    expect(runGovernanceGuard).toThrow(OBSOLETE_ROUTE_DEFAULT_CLAIMS[0]);
   });
 });

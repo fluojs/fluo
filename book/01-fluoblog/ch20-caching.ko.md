@@ -146,7 +146,6 @@ export function createReadingCacheModule(
         redis: { clientName: 'posts-cache' },
         keyPrefix: 'fluo-blog:local:public-cache:',
         ttl: 300,
-        httpKeyStrategy: 'route+query',
         ttlJitter: { ratio: 0.1, mode: 'shorten' },
       }),
     ],
@@ -392,7 +391,7 @@ list(input: ListPostsDto) {
 }
 ```
 
-이 목록은 이미 cursor 기반이므로 앞의 등록은 `httpKeyStrategy: 'route+query'`를 **필수로 설정했다**. 기본 `'route'`는 query를 무시하므로 사용할 수 없다. `/posts?limit=1`과 `/posts?limit=2`, 첫 페이지와 `/posts?cursor=<nextCursor>&limit=1`은 다른 key다. 파라미터 순서만 뒤집은 `limit=1&cursor=C`와 `cursor=C&limit=1`은 같은 key다. 여기의 C는 설명용 표기이고 실제 요청에는 `PostFeed`가 반환한 검증 가능한 cursor를 사용한다. 라우트 템플릿이 아니라 구체적 요청 경로도 key에 포함된다.
+이 목록은 이미 cursor 기반이므로 앞의 등록은 `httpKeyStrategy`를 생략하고 query-aware `'route+query'` 기본값을 사용한다. 모든 query 값이 의도적으로 응답에 영향을 주지 않을 때만 `'route'`를 선택한다. `/posts?limit=1`과 `/posts?limit=2`, 첫 페이지와 `/posts?cursor=<nextCursor>&limit=1`은 다른 key다. 파라미터 순서만 뒤집은 `limit=1&cursor=C`와 `cursor=C&limit=1`은 같은 key다. 여기의 C는 설명용 표기이고 실제 요청에는 `PostFeed`가 반환한 검증 가능한 cursor를 사용한다. 라우트 템플릿이 아니라 구체적 요청 경로도 key에 포함된다.
 
 query-aware 전략은 반복 값까지 정렬한다. 12장의 `PostFeed`는 배열로 들어온 반복 limit/cursor를 거부하므로 이를 순서 있는 입력으로 해석하지 않는다. 잘못된 cursor를 첫 페이지로 바꾸지 않고 기존 400을 유지한다. `@CacheKey('posts')` 같은 상수 key를 추가하면 설정한 전략을 덮어쓰므로 이 라우트에는 사용하지 않는다. 인증 principal이 있으면 key에 principal scope도 추가되지만 이 GET은 여전히 공개 게시글만 조회한다.
 

@@ -462,8 +462,8 @@ CacheModule.forRoot({
   ttl: 60,
   // NestJS `isGlobal: true` becomes `global: true`.
   global: true,
-  // Opt in explicitly when responses vary by query parameters.
-  httpKeyStrategy: 'route+query',
+  // Omit httpKeyStrategy for the query-aware route+query default.
+  // Set httpKeyStrategy: 'route' only for query-insensitive responses.
   store: 'redis',
 })
 ```

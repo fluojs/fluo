@@ -64,6 +64,7 @@
     }
   },
   "devDependencies": {
+    "@fluojs/testing": "workspace:^",
     "vitest": "^4.1.11"
   }
 }
