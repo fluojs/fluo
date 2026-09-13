@@ -4096,11 +4096,11 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
 
     assert(
       requestTransactionRow?.includes(requiredClaim),
-      `${guidePath} must state DrizzleTransactionInterceptor's deprecated 1.x compatibility export in the request transaction migration row.`,
+      `${guidePath} must state that Drizzle has no compatibility interceptor export in the request transaction migration row.`,
     );
     assert(
       !requestTransactionRow.includes(staleClaim),
-      `${guidePath} must not claim that the exported DrizzleTransactionInterceptor is absent.`,
+      `${guidePath} must not claim that DrizzleTransactionInterceptor remains exported.`,
     );
   }
 
