@@ -3977,7 +3977,6 @@ export function enforceGraphqlRuntimeBoundaryDiscoverability() {
 export function enforcePersistenceTransactionInterceptorCompatibility(readText = read) {
   const compatibilityExports = [
     ['PrismaTransactionInterceptor', 'packages/prisma/src/index.ts', 'packages/prisma/src/module.ts', 'packages/prisma/src/transaction.ts'],
-    ['DrizzleTransactionInterceptor', 'packages/drizzle/src/index.ts', 'packages/drizzle/src/named-registration.ts', 'packages/drizzle/src/transaction.ts'],
   ];
   const contractPaths = [
     'apps/docs/content/docs/guides/persistence.mdx',
@@ -4006,31 +4005,10 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
       `${indexPath} must root-export the deprecated transaction interceptor.`,
     );
 
-    if (interceptor === 'DrizzleTransactionInterceptor') {
-      const exportSection = /const DRIZZLE_MODULE_EXPORTS = \[([\s\S]*?)\];/.exec(moduleSource)?.[1];
-      const providerPath = 'packages/drizzle/src/registration-providers.ts';
-      const providerSection = /function createDrizzleRuntimeProviders[\s\S]*?return \[([\s\S]*?)\n  \];\n}/.exec(
-        readText(providerPath),
-      )?.[1];
-
-      assert(
-        exportSection !== undefined && /^\s*DrizzleTransactionInterceptor,\s*$/m.test(exportSection),
-        `${modulePath} must register DrizzleTransactionInterceptor in DRIZZLE_MODULE_EXPORTS.`,
-      );
-      assert(
-        providerSection !== undefined && /^\s*DrizzleTransactionInterceptor,\s*$/m.test(providerSection),
-        `${providerPath} must register DrizzleTransactionInterceptor as a runtime provider.`,
-      );
-      assert(
-        /return this\.database\.requestTransaction\(\s*\(\) => next\.handle\(\),\s*context\.requestContext\.request\.signal\s*,?\s*\);/.test(source),
-        `${sourcePath} must delegate the request signal to requestTransaction(...).`,
-      );
-    } else {
-      assert(
-        new RegExp(`^\\s*${interceptor},\\s*$`, 'm').test(moduleSource),
-        `${modulePath} must register ${interceptor}.`,
-      );
-    }
+    assert(
+      new RegExp(`^\\s*${interceptor},\\s*$`, 'm').test(moduleSource),
+      `${modulePath} must register ${interceptor}.`,
+    );
 
     for (const contractPath of contractPaths) {
       assert(
@@ -4050,17 +4028,51 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
 
     assert(
       requestTransactionsRow !== undefined &&
-        ['PrismaTransactionInterceptor', 'DrizzleTransactionInterceptor']
-          .every((interceptor) => requestTransactionsRow.includes(interceptor)) &&
+        requestTransactionsRow.includes('PrismaTransactionInterceptor') &&
+        !requestTransactionsRow.includes('DrizzleTransactionInterceptor') &&
+        !requestTransactionsRow.includes('MongooseTransactionInterceptor') &&
         requestTransactionsRow.includes('deprecated') &&
         requestTransactionsRow.includes('1.x'),
-      `${guidePath} Request transactions row must list all restored interceptors as deprecated 1.x compatibility exports.`,
+      `${guidePath} Request transactions row must list only the restored interceptor compatibility exports.`,
     );
     assert(
       drizzlePublicApiRow !== undefined &&
-        drizzlePublicApiRow.includes('DrizzleTransactionInterceptor') &&
-        drizzlePublicApiRow.includes('deprecated'),
-      `${guidePath} @fluojs/drizzle Public API row must include the deprecated DrizzleTransactionInterceptor compatibility export.`,
+        drizzlePublicApiRow.includes('DrizzleDatabase.requestTransaction') &&
+        !drizzlePublicApiRow.includes('DrizzleTransactionInterceptor'),
+      `${guidePath} @fluojs/drizzle Public API row must document the explicit request transaction boundary.`,
+    );
+  }
+
+  for (const contractPath of [
+    'packages/drizzle/README.md',
+    'packages/drizzle/README.ko.md',
+    'book/intermediate/ch20-drizzle.md',
+    'book/intermediate/ch20-drizzle.ko.md',
+    'docs/CONTEXT.md',
+    'docs/CONTEXT.ko.md',
+    'docs/architecture/transactions.md',
+    'docs/architecture/transactions.ko.md',
+    'docs/getting-started/migrate-from-nestjs.md',
+    'docs/getting-started/migrate-from-nestjs.ko.md',
+    'docs/reference/package-surface.md',
+    'docs/reference/package-surface.ko.md',
+  ]) {
+    const contract = readText(contractPath);
+
+    assert(
+      contract.includes('requestTransaction') &&
+        !contract.includes('DrizzleTransactionInterceptor'),
+      `${contractPath} must document only the canonical Drizzle request and registration paths.`,
+    );
+  }
+
+  for (const packageReadmePath of [
+    'packages/drizzle/README.md',
+    'packages/drizzle/README.ko.md',
+  ]) {
+    assert(
+      !readText(packageReadmePath).includes('DrizzleDatabase.createFacade'),
+      `${packageReadmePath} must keep facade construction internal to DrizzleModule registration.`,
     );
   }
 
@@ -4068,14 +4080,14 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
     [
       'docs/getting-started/migrate-from-nestjs.md',
       /^\| NestJS request transaction interceptor \|.*$/mu,
-      '`DrizzleTransactionInterceptor` remains a deprecated 1.x compatibility bridge for existing imports.',
       'Drizzle has no compatibility interceptor export.',
+      '`DrizzleTransactionInterceptor` remains a deprecated 1.x compatibility bridge for existing imports.',
     ],
     [
       'docs/getting-started/migrate-from-nestjs.ko.md',
       /^\| NestJS 요청 transaction interceptor \|.*$/mu,
-      '`DrizzleTransactionInterceptor`는 기존 import를 위한 deprecated 1.x 호환성 bridge로 유지된다.',
       'Drizzle은 호환성 interceptor export를 제공하지 않는다.',
+      '`DrizzleTransactionInterceptor`는 기존 import를 위한 deprecated 1.x 호환성 bridge로 유지된다.',
     ],
   ];
 

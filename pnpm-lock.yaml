@@ -544,9 +544,6 @@ importers:
       '@fluojs/di':
         specifier: workspace:^
         version: link:../di
-      '@fluojs/http':
-        specifier: workspace:^
-        version: link:../http
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
