@@ -5,11 +5,10 @@ import { MIGRATION_TRANSFORMS, type MigrationTransformKind } from '../transforms
  */
 export const MIGRATION_TRANSFORM_CLI_TOKENS = MIGRATION_TRANSFORMS;
 
-const MIGRATION_TRANSFORM_ALIASES: Readonly<Record<string, MigrationTransformKind>> = {
+/** Maps accepted legacy CLI input tokens to canonical migration transform kinds. */
+const LEGACY_MIGRATION_TRANSFORM_ALIASES: Readonly<Record<string, MigrationTransformKind>> = {
   'inject-params': 'injectable',
-  injectable: 'injectable',
   tests: 'testing',
-  testing: 'testing',
 };
 
 /**
@@ -37,7 +36,9 @@ export function parseMigrationTransformList(
   const invalid: string[] = [];
   for (const value of values) {
     const transform = MIGRATION_TRANSFORMS.find((candidate) => candidate === value)
-      ?? (Object.hasOwn(MIGRATION_TRANSFORM_ALIASES, value) ? MIGRATION_TRANSFORM_ALIASES[value] : undefined);
+      ?? (Object.hasOwn(LEGACY_MIGRATION_TRANSFORM_ALIASES, value)
+        ? LEGACY_MIGRATION_TRANSFORM_ALIASES[value]
+        : undefined);
     if (transform) {
       transforms.push(transform);
     } else {

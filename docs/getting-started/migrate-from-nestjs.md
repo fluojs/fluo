@@ -1191,10 +1191,11 @@ Migration MUST remove legacy NestJS-era decorator assumptions from `tsconfig.jso
 
 ```bash
 fluo migrate ./src
+fluo migrate ./src --dry-run
 fluo migrate ./src --json
 ```
 
-Use `--apply` only after reviewing the report and warnings. Use `--only <comma-list>` or `--skip <comma-list>` to focus the enabled transforms when you need a narrower pass:
+`--dry-run` is the explicit canonical preview form; `--apply` is the only switch that writes files, and the two options cannot be combined. Use `--apply` only after reviewing the report and warnings. Use `--only <comma-list>` or `--skip <comma-list>` to focus the enabled transforms when you need a narrower pass:
 
 ```bash
 fluo migrate ./src --apply

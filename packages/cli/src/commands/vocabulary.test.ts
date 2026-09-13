@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -250,6 +250,57 @@ describe('canonical command vocabulary', () => {
       schemaVersion: 1,
       transforms: ['injectable', 'testing'],
     });
+  });
+
+  it('treats migrate --dry-run as the same non-writing preview as the default', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-vocabulary-'));
+    temporaryDirectories.push(workspaceDirectory);
+    const sourcePath = join(workspaceDirectory, 'main.ts');
+    const source = "import { Injectable } from '@nestjs/common';\n\n@Injectable()\nexport class Example {}\n";
+    writeFileSync(sourcePath, source);
+    const defaultOutput: string[] = [];
+    const explicitOutput: string[] = [];
+
+    const defaultExitCode = await runCli(['migrate', '.', '--json'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => defaultOutput.push(message) },
+      updateCheck: false,
+    });
+    const explicitExitCode = await runCli(['migrate', '.', '--json', '--dry-run'], {
+      cwd: workspaceDirectory,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => explicitOutput.push(message) },
+      updateCheck: false,
+    });
+
+    expect(defaultExitCode).toBe(0);
+    expect(explicitExitCode).toBe(0);
+    expect(JSON.parse(explicitOutput.join(''))).toEqual(JSON.parse(defaultOutput.join('')));
+    expect(readFileSync(sourcePath, 'utf8')).toBe(source);
+  });
+
+  it.each([
+    [['migrate', '.', '--dry-run', '--apply'], '--dry-run'],
+    [['migrate', '.', '--unknown-option'], '--unknown-option'],
+  ] as const)('rejects invalid migrate arguments without writes', async (argv, expectedToken) => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-vocabulary-'));
+    temporaryDirectories.push(workspaceDirectory);
+    const sourcePath = join(workspaceDirectory, 'main.ts');
+    const source = 'export const value = 1;\n';
+    writeFileSync(sourcePath, source);
+    const stderr: string[] = [];
+
+    const exitCode = await runCli([...argv], {
+      cwd: workspaceDirectory,
+      stderr: { write: (message) => stderr.push(message) },
+      stdout: { write: () => undefined },
+      updateCheck: false,
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stderr.join('')).toContain(expectedToken);
+    expect(readFileSync(sourcePath, 'utf8')).toBe(source);
   });
 
   it('rejects lifecycle package-manager input because it cannot affect execution', async () => {

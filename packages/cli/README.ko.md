@@ -337,6 +337,7 @@ fluo upgrade
 ```bash
 # 변경 사항 미리보기 (dry-run)
 fluo migrate ./src
+fluo migrate ./src --dry-run
 fluo migrate ./src --json
 
 # 변환 적용
@@ -346,7 +347,7 @@ fluo migrate ./src --only imports,injectable
 fluo migrate ./src --skip testing
 ```
 
-정식 `--only` 및 `--skip` 토큰은 `imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`입니다. 기존 script를 위해 legacy 입력 `inject-params`와 `tests`는 계속 허용하지만 JSON `transforms`와 `appliedTransforms`는 항상 `injectable`과 `testing`을 출력합니다.
+Migration preview는 기본값이며 `--dry-run`은 이를 명시하는 canonical form이고, 파일을 쓰는 switch는 `--apply`뿐입니다. 정식 `--only` 및 `--skip` 토큰은 `imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`입니다. 기존 script를 위해 legacy 입력 `inject-params`와 `tests`는 계속 허용하지만 JSON `transforms`와 `appliedTransforms`는 항상 `injectable`과 `testing`을 출력합니다.
 
 CI 작업, 대시보드, migration report에서 안정적인 machine-readable 결과가 필요하면 `--json`을 사용하세요. 사람을 위한 출력은 기본값으로 유지됩니다. JSON 모드는 성공 시 stdout에 structured report만 기록하고, parser 오류나 잘못된 flag 조합은 기존처럼 stderr에 메시지를 기록한 뒤 exit code `1`을 반환하며 partial JSON을 출력하지 않습니다. Report는 `schemaVersion: 1`을 사용하며 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 그리고 `filePath`, `changed`, `appliedTransforms`, `warningCount`, category label과 source line number가 포함된 warnings per-file metadata를 포함합니다.
 

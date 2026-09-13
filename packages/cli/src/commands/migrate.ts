@@ -46,6 +46,11 @@ type ParsedMigrateArgs = {
 
 const MIGRATE_OPTION_HELP: MigrateOptionHelpEntry[] = [
   {
+    aliases: [],
+    description: 'Preview migration changes without writing files. This is the default mode.',
+    option: '--dry-run',
+  },
+  {
     aliases: ['-a'],
     description: 'Apply file changes. Dry-run is the default mode.',
     option: '--apply',
@@ -84,6 +89,7 @@ function isHelpFlag(value: string | undefined): boolean {
 function parseArgs(argv: string[]): ParsedMigrateArgs {
   let pathArgument: string | undefined;
   let apply = false;
+  let dryRun = false;
   let json = false;
   let onlyTransforms: MigrationTransformKind[] | undefined;
   let platform: BootstrapPlatform | undefined;
@@ -94,6 +100,11 @@ function parseArgs(argv: string[]): ParsedMigrateArgs {
 
     if (arg === '--apply' || arg === '-a') {
       apply = true;
+      continue;
+    }
+
+    if (arg === '--dry-run') {
+      dryRun = true;
       continue;
     }
 
@@ -159,6 +170,10 @@ function parseArgs(argv: string[]): ParsedMigrateArgs {
 
   if (!pathArgument) {
     throw new Error(migrateUsage());
+  }
+
+  if (apply && dryRun) {
+    throw new Error('--apply and --dry-run cannot be used together.');
   }
 
   const enabled = new Set<MigrationTransformKind>(onlyTransforms ?? MIGRATION_TRANSFORMS);

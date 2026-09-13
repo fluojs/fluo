@@ -1181,10 +1181,11 @@ CLI로 검증 가능한 fluo baseline을 만든 뒤, NestJS 마이그레이션�
 
 ```bash
 fluo migrate ./src
+fluo migrate ./src --dry-run
 fluo migrate ./src --json
 ```
 
-Report와 warning을 검토한 뒤에만 `--apply`를 사용하세요. 더 좁은 pass가 필요하면 `--only <comma-list>` 또는 `--skip <comma-list>`로 활성 transform을 제한할 수 있습니다:
+`--dry-run`은 명시적인 canonical preview form이며, 파일을 쓰는 switch는 `--apply`뿐이고 두 option을 함께 사용할 수 없습니다. Report와 warning을 검토한 뒤에만 `--apply`를 사용하세요. 더 좁은 pass가 필요하면 `--only <comma-list>` 또는 `--skip <comma-list>`로 활성 transform을 제한할 수 있습니다:
 
 ```bash
 fluo migrate ./src --apply

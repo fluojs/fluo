@@ -339,6 +339,7 @@ Run codemods to align your codebase with TC39 standard decorators.
 ```bash
 # Preview changes (dry-run)
 fluo migrate ./src
+fluo migrate ./src --dry-run
 fluo migrate ./src --json
 
 # Apply transformations
@@ -348,7 +349,7 @@ fluo migrate ./src --only imports,injectable
 fluo migrate ./src --skip testing
 ```
 
-The canonical `--only` and `--skip` tokens are `imports`, `injectable`, `scope`, `bootstrap`, `testing`, and `tsconfig`. Legacy `inject-params` and `tests` inputs remain accepted for existing scripts, but JSON `transforms` and `appliedTransforms` always emit `injectable` and `testing`.
+Migration preview is the default; `--dry-run` is its explicit canonical form, while `--apply` is the only switch that writes files. The canonical `--only` and `--skip` tokens are `imports`, `injectable`, `scope`, `bootstrap`, `testing`, and `tsconfig`. Legacy `inject-params` and `tests` inputs remain accepted for existing scripts, but JSON `transforms` and `appliedTransforms` always emit `injectable` and `testing`.
 
 Use `--json` when CI jobs, dashboards, or migration reports need a stable machine-readable result. Human output remains the default. JSON mode writes only the structured report to stdout on success, while parser errors and invalid flag combinations still write their message to stderr and return exit code `1` without partial JSON output. The report uses `schemaVersion: 1` and includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata with `filePath`, `changed`, `appliedTransforms`, `warningCount`, and warnings including category labels and source line numbers.
 

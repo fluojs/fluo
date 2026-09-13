@@ -213,6 +213,7 @@ Use `fluo migrate` to align code with TC39 standard decorators.
 
 ```bash
 fluo migrate ./src
+fluo migrate ./src --dry-run
 fluo migrate ./src --json
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
@@ -228,6 +229,8 @@ Key transformations include:
 - removing `@Injectable()` and mapping scopes to `@Scope()`,
 - migrating supported test templates toward `@fluojs/testing`,
 - updating `tsconfig.json` for standard decorators and TS6-safe paths.
+
+Migration preview is the default; `--dry-run` is its explicit canonical form, while `--apply` performs writes.
 
 JSON mode emits a stable `schemaVersion: 1` machine-readable report and keeps parser errors or invalid flags on stderr with exit code `1`.
 

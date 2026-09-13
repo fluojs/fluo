@@ -205,11 +205,12 @@ fluo g service posts
 fluo inspect ./src/app.ts --json
 fluo inspect ./src/app.ts --report --output artifacts/inspect-report.json
 fluo migrate ./src --json
+fluo migrate ./src --dry-run
 ```
 
 - `generate`, or its short alias `g`, creates framework files such as modules, controllers, services, repositories, and request DTOs inside an existing project.
 - `inspect` exports runtime inspection data. JSON is the default snapshot format, `--report --output <path>` writes a support artifact, and `--mermaid` delegates graph rendering to Studio when you need a visual view.
-- `migrate` previews or applies code transforms when moving older decorator-style code toward fluo. Its default mode is a dry run, and `--json` gives automation a stable report.
+- `migrate` previews or applies code transforms when moving older decorator-style code toward fluo. Preview is the default, `--dry-run` is its explicit form, and `--apply` writes changes; `--json` gives automation a stable report.
 
 For now, keep this as a map. Chapter 3 starts using generated building blocks, and Chapter 6 connects generated request DTO files to validation.
 

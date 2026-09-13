@@ -212,6 +212,7 @@ TC39 standard decorator에 맞추려면 `fluo migrate`를 사용합니다.
 
 ```bash
 fluo migrate ./src
+fluo migrate ./src --dry-run
 fluo migrate ./src --json
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
@@ -227,6 +228,8 @@ fluo migrate ./src --skip testing
 - `@Injectable()` 제거 및 scope를 `@Scope()`로 mapping
 - 가능한 test template을 `@fluojs/testing` helper로 migration
 - Standard decorator와 TS6-safe path에 맞게 `tsconfig.json` update
+
+Migration preview는 기본값이며 `--dry-run`은 명시적인 canonical form이고, `--apply`는 파일을 씁니다.
 
 JSON mode는 stable `schemaVersion: 1` machine-readable report를 출력하고, parser error나 invalid flag는 stderr와 exit code `1`로 보고합니다.
 
