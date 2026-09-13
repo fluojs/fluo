@@ -225,7 +225,7 @@ export function persistWithResult<T>(
 }
 ```
 
-`undefined` preserves the native-options position. Request boundaries use `requestTransaction(fn, signal?, nativeOptions?, boundary?)` and decorators use `@Transaction(input?, boundary?)`, for example `@Transaction(undefined, { shouldRollback: (value: Result<string>) => !value.ok })`. Do not merge this into native options; nested native options remain prohibited.
+Request boundaries use `requestTransaction(fn, signal?, nativeOptions?, boundary?)`. The canonical decorator form is `@Transaction(accessor, nativeOptions?, boundary?)`, for example `@Transaction((self) => self.prisma, undefined, { shouldRollback: (value: Result<string>) => !value.ok })`. The accessor selects the wrapper, native options remain second, and Fluo policy remains last. Options-only and no-argument decorator calls are legacy single-target compatibility forms; migrate them before adding another client or ORM.
 
 Returning `{ ok: false, error: 'CONFLICT' }` at the root returns the **same object** after native rollback and required cleanup succeed. Without the option, the value alone does not trigger rollback. A nested predicate selecting failure returns the nested call's original value but marks the shared owner sticky rollback-only. If the root predicate also rejects its own result, that root value is returned; otherwise, `TransactionRollbackOnlyError` is thrown after rollback with the first nested failure in `readonly result: unknown`.
 
@@ -260,7 +260,7 @@ async function renameUser(
 }
 ```
 
-`undefined` preserves the existing native-options position. `requireAfterCommit: true` checks native commit observation capability before the user callback and rejects with `AfterCommitCapabilityError` when it is unavailable. Omitting it or passing `false` preserves existing `strictTransactions` defaults and fail-open fallback, but hooks cannot be registered in a fallback without a native transaction. Use `@Transaction(undefined, { requireAfterCommit: true })`, or supply an explicit accessor as the first argument, to declare the same requirement.
+`requireAfterCommit: true` checks native commit observation capability before the user callback and rejects with `AfterCommitCapabilityError` when it is unavailable. Omitting it or passing `false` preserves existing `strictTransactions` defaults and fail-open fallback, but hooks cannot be registered in a fallback without a native transaction. In service code, keep the canonical explicit target and place the requirement last: `@Transaction((self) => self.prisma, undefined, { requireAfterCommit: true })`.
 
 Hooks run sequentially in FIFO order only after successful outer native commit and scope closure, outside the ended ALS context. They do not run on rollback, failed commit, or discarded callback attempts. Nested boundaries share the queue, so a caught nested exception without a savepoint follows the final outer commit/rollback outcome. Root reads in hooks do not use the old transaction handle, and new transactions own fresh queues. Registration outside a scope, in a closed scope, or late during drain is rejected. Shutdown drains hooks before disconnecting.
 
@@ -366,9 +366,9 @@ Use `PrismaService<TClient>` when a provider only needs wrapper methods such as 
 
 ### `Transaction`
 
-- `Transaction(input?, boundary?)`: `input` remains the existing service accessor or Prisma native transaction options. `boundary` is the second argument; omitting it preserves existing behavior.
+- `Transaction(accessor, nativeOptions?, boundary?)`: canonical explicit-target form. The accessor selects the Prisma wrapper, native options remain separate, and Fluo policy is last. Existing options-only, no-argument, and accessor-plus-boundary calls remain legacy compatibility overloads.
 
-- Standard TC39 method decorator for service-layer transaction boundaries. It resolves a Prisma service/facade-shaped property by default, accepts an accessor for named clients or ambiguous hosts, and can forward Prisma transaction options to the outer boundary.
+- Standard TC39 method decorator for service-layer transaction boundaries. Normal code supplies an accessor; automatic service/facade discovery is retained only for existing single-target services.
 
 ### After-Commit Exports
 

@@ -218,11 +218,21 @@ empty inject list. Module metadata stays class-local. On the request-pipeline se
 `getRequestPipelineMetadataBag` includes inherited keys. These reader distinctions,
 frozen snapshots, and write-version invalidation are not alternate authoring APIs.
 
+The root package also owns the transaction-boundary primitives shared by
+`@fluojs/prisma`, `@fluojs/drizzle`, and `@fluojs/mongoose`. Import
+`AfterCommitCallback`, `TransactionBoundaryOptions`, `AfterCommitCapabilityError`,
+`AfterCommitError`, `TransactionRollbackCapabilityError`,
+`TransactionRollbackOnlyError`, and `TransactionRollbackUnconfirmedError` from
+`@fluojs/core` when framework-level code needs the common identity. Each ORM root
+re-exports these same values and types, so `instanceof` is stable across imports.
+Driver rollback observers and Mongoose `AfterCommitCleanupError` remain
+driver-owned.
+
 - **Decorators**: `Module`, `Inject`, `Scope`
-- **Errors**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`
+- **Errors**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`, `AfterCommitCapabilityError`, `AfterCommitError`, `TransactionRollbackCapabilityError`, `TransactionRollbackOnlyError`, `TransactionRollbackUnconfirmedError`
 - **Metadata runtime**: `ensureMetadataSymbol`, `getModuleMetadata`
 - **Typed public token**: `publicToken<T>(namespace)`, `PublicToken<T>`
-- **Types**: `Constructor<T>`, `Token<T>`, `InjectionToken<T>`, `ForwardRefToken<T>`, `OptionalInjectToken<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`
+- **Types**: `Constructor<T>`, `Token<T>`, `InjectionToken<T>`, `ForwardRefToken<T>`, `OptionalInjectToken<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`, `AfterCommitCallback`, `TransactionBoundaryOptions<T>`
 - **Request-pipeline integration seam**: DTO validation/binding metadata helpers plus standard decorator metadata-bag readers via `@fluojs/core/request-pipeline`
 - **Internal subpath**: broader metadata helpers, controller/route helpers, injection helpers, and clone utilities via `@fluojs/core/internal`
 

@@ -239,7 +239,7 @@ await this.prisma.transaction(async () => {
 }, undefined, { requireAfterCommit: true });
 ```
 
-`undefined`는 Prisma/Drizzle의 기존 native 옵션 자리를 유지합니다. request 경계는 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`이고, Mongoose는 `transaction(fn, boundary?)`와 `requestTransaction(fn, signal?, boundary?)`를 사용합니다. decorator의 boundary는 Prisma `Transaction(input?, boundary?)`, Drizzle `Transaction(accessorOrOptions?, nativeOptions?, boundary?)`, Mongoose `Transaction(accessor?, boundary?)`처럼 기존 인자 뒤에 둡니다.
+Prisma와 Drizzle request 경계는 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`이고, Mongoose는 `transaction(fn, boundary?)`와 `requestTransaction(fn, signal?, boundary?)`를 사용합니다. Canonical decorator는 wrapper를 명시적으로 선택합니다. Prisma `Transaction(accessor, nativeOptions?, boundary?)`, Drizzle `Transaction(accessor, nativeOptions?, boundary?)`, Mongoose `Transaction(accessor, boundary?)`입니다. 무인자 또는 options-only 탐색은 일반 recipe가 아니라 기존 단일 target용 legacy 호환 동작입니다.
 
 `requireAfterCommit: true`는 사용자 callback **전** native capability를 검사하며 미지원이면 각 패키지의 `AfterCommitCapabilityError`로 거부합니다. 기본 native 옵션과 fail-open 동작은 그대로지만 fallback·미지원·scope 밖·닫힌 scope에서는 hook 등록이 거부됩니다. `AfterCommitCallback`과 `TransactionBoundaryOptions`도 각 패키지 root export입니다.
 

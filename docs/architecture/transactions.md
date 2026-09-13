@@ -23,17 +23,17 @@ No-argument discovery remains a legacy compatibility behavior for existing singl
 
 | Package | Ambient context carrier | Primary access API | Request boundary API | Current support scope |
 | --- | --- | --- | --- | --- |
-| `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | `@Transaction()` on Services | Explicit application-owned `PrismaService.requestTransaction(...)` | Shares the active Prisma interactive transaction client when `$transaction(...)` is available. |
-| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | `@Transaction()` on Services | Explicit application-owned `DrizzleDatabase.requestTransaction(...)` | Shares the active Drizzle transaction database handle when `database.transaction(...)` is available. |
-| `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | `@Transaction()` on Services | Explicit application-owned `MongooseConnection.requestTransaction(...)` | Shares the active Mongoose session when `connection.startSession()` or delegated `connection.transaction(...)` is available. |
+| `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | Explicit `@Transaction((self) => self.prisma, nativeOptions?, boundary?)` | Explicit application-owned `PrismaService.requestTransaction(...)` | Shares the active Prisma interactive transaction client when `$transaction(...)` is available. |
+| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | Explicit `@Transaction((self) => self.db, nativeOptions?, boundary?)` | Explicit application-owned `DrizzleDatabase.requestTransaction(...)` | Shares the active Drizzle transaction database handle when `database.transaction(...)` is available. |
+| `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | Explicit `@Transaction((self) => self.conn, boundary?)` | Explicit application-owned `MongooseConnection.requestTransaction(...)` | Shares the active Mongoose session when `connection.startSession()` or delegated `connection.transaction(...)` is available. |
 
 ## Service Transaction Boundary (Primary)
 
-The canonical way to manage transactions in fluo is through the `@Transaction()` decorator at the Service layer. This defines a clear boundary where persistence work is grouped into a single atomic unit.
+The canonical way to manage transactions in fluo is an explicit-target `@Transaction(...)` decorator at the Service layer. This defines a clear boundary and identifies exactly which persistence wrapper owns it.
 
 ```ts
 // service (primary boundary)
-@Transaction()
+@Transaction((self) => self.prisma)
 async createUser(dto) { 
   // All repository calls here share the same ambient transaction
   return this.repo.create(dto); 
@@ -47,7 +47,7 @@ async create(dto) {
 ```
 
 ### Future ORM Adapters
-Any new ORM integration package added to the fluo ecosystem must export a `@Transaction()` decorator that satisfies this Service-boundary contract.
+Any new ORM integration package added to the fluo ecosystem must export an explicit-target `@Transaction(accessor, ...)` decorator that satisfies this Service-boundary contract.
 
 ## Context Resolution Rules
 
@@ -58,17 +58,17 @@ Any new ORM integration package added to the fluo ecosystem must export a `@Tran
 | Named Drizzle handles | Each named Drizzle handle owns a separate ALS context. Multi-client services select a named handle explicitly with `@Transaction((self) => self.analytics)` rather than relying on decorator target discovery. | `packages/drizzle/src/named-registration.ts`, `packages/drizzle/src/transaction.ts` |
 | Mongoose document save helper | `MongooseConnection.saveDocument(document, options?)` is an opt-in path for an existing document: it merges the ambient session with native save options, preserves document identity, and rejects missing or conflicting sessions. It does not change direct `doc.save()` behavior. | `packages/mongoose/src/connection.ts` |
 | Mongoose session auto-binding | Supported `MongooseConnection.model(...)` facade operations (`create`, `find`, `findOne`, `aggregate`, `bulkWrite`) automatically attach the ambient transaction session. Unsupported model methods, `doc.save()`, raw `conn.current().model(...)` calls, and advanced cross-connection scenarios require explicit session passing. | `packages/mongoose/src/connection.ts` |
-| Mongoose decorator target selection | Mongoose `@Transaction()` resolves `this.conn`, the decorated instance when it is transaction-capable, or one unique nested `this.*.conn` collaborator. It rejects multiple nested candidates rather than selecting one arbitrarily; pass an accessor such as `@Transaction((self) => self.analytics.conn)` for multi-connection services or nonstandard fields. | `packages/mongoose/src/transaction.ts` |
+| Mongoose legacy target discovery | No-argument Mongoose `@Transaction()` discovers `this.conn`, the decorated instance, or one unique nested `this.*.conn` collaborator only for existing single-target compatibility. Normal code passes an accessor such as `@Transaction((self) => self.analytics.conn)`. | `packages/mongoose/src/transaction.ts` |
 | Nested boundary reuse | If a transaction is already active, `@Transaction()` reuses the existing boundary instead of opening a new one. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
 | Nested options restriction | Prisma and Drizzle reject nested native transaction options while an ambient transaction is already active. `requireAfterCommit` in the separate `boundary` is a capability requirement on the current boundary, not a native option. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
 | Strict mode | Integration packages can be configured to throw when the registered client/connection does not support transactions. Without strict mode, transaction helpers fall back to direct execution. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
-| Drizzle decorator target selection | Drizzle `@Transaction()` checks the decorated host for `this.db`, then direct properties, then nested `.db` properties that expose `transaction(...)`, and falls back to the decorated instance itself when none match; use an explicit accessor such as `@Transaction((self) => self.ordersDb)` when more than one target is possible. | `packages/drizzle/src/transaction.ts` |
+| Drizzle legacy target discovery | No-argument or options-only Drizzle `@Transaction()` checks `this.db`, direct properties, nested `.db`, then the decorated instance only for existing single-target compatibility. Normal code passes an accessor such as `@Transaction((self) => self.ordersDb)`. | `packages/drizzle/src/transaction.ts` |
 
 ## Boundary Semantics
 
 | Boundary | Current behavior | Source anchor |
 | --- | --- | --- |
-| `@Transaction()` boundary | Wraps the method in a package-specific transaction runner and binds the resulting client/session to ALS. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
+| Explicit-target `@Transaction(...)` boundary | Selects the package wrapper, wraps the method in its transaction runner, and binds the resulting client/session to ALS. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
 | Manual Prisma boundary | `PrismaService.transaction(...)` runs `fn` inside `$transaction(...)` and binds the transaction client into ALS. The [Prisma API](../../packages/prisma/README.md#public-api-overview) owns arguments and return values. | `packages/prisma/src/service.ts` |
 | Manual Drizzle boundary | `DrizzleDatabase.transaction(...)` runs `fn` inside `database.transaction(...)` and binds the transaction database into ALS. The [Drizzle API](../../packages/drizzle/README.md#public-api-overview) owns arguments and return values. | `packages/drizzle/src/database.ts` |
 | Manual Mongoose boundary | `MongooseConnection.transaction(...)` delegates to `connection.transaction(...)` or manages a manual `startTransaction()` cycle. The [Mongoose API](../../packages/mongoose/README.md#public-api) owns arguments and return values. | `packages/mongoose/src/connection.ts` |
@@ -156,7 +156,7 @@ These paths are #3717 contract verification targets; the list itself is not pass
 | Explicit request boundary | Application code can call `requestTransaction(...)` at a controller, route adapter, or request orchestration boundary when an entire request must be transactional. |
 | Deprecated interceptor compatibility | Prisma, Drizzle, and Mongoose transaction interceptors are removed. Migrate request-wide registrations to application-owned boundaries that call the matching wrapper's explicit `requestTransaction(...)` with the request `AbortSignal`. Prefer service `@Transaction()` for business atomicity. |
 
-When migrating NestJS controller or interceptor transaction patterns, keep normal business atomicity on service `@Transaction()` methods. Request-wide Prisma, Drizzle, and Mongoose boundaries are application-owned and call `PrismaService.requestTransaction(...)`, `DrizzleDatabase.requestTransaction(...)`, or `MongooseConnection.requestTransaction(...)` with the request `AbortSignal`.
+When migrating NestJS controller or interceptor transaction patterns, keep normal business atomicity on explicit-target service `@Transaction(...)` methods. Request-wide Prisma, Drizzle, and Mongoose boundaries are application-owned and call `PrismaService.requestTransaction(...)`, `DrizzleDatabase.requestTransaction(...)`, or `MongooseConnection.requestTransaction(...)` with the request `AbortSignal`.
 
 See [Migrate Prisma Registration](../getting-started/migrate-prisma-registration.md) for the removed Prisma facade and interceptor migration steps.
 
@@ -169,7 +169,7 @@ See [Migrate Prisma Registration](../getting-started/migrate-prisma-registration
 
 ## Constraints
 
-- The primary path for transaction management is the Service layer via `@Transaction()`.
+- The primary path for transaction management is the Service layer via explicit-target `@Transaction(accessor, ...)`; no-argument discovery is legacy single-target compatibility.
 - `MongooseConnection.saveDocument(...)` is opt-in and requires an active ambient session; it fails closed outside a transaction, rejects a conflicting explicit `session`, and leaves native `doc.save()` unmodified.
 - Supported Mongoose facade operations automatically participate in the ambient transaction session; explicit session passing is discouraged for those standard flows and still required for unsupported model methods.
 - Rollback is driven by pre-commit exceptions by default. An exception escaping the `@Transaction()` callback to the outer native boundary aborts the transaction. The separate Fluo `boundary.shouldRollback` opts into evaluating normal return values under the shared-owner rules in [Result-Based Rollback](#result-based-rollback). Neither `AfterCommitError` nor Mongoose's `AfterCommitCleanupError` after a successful commit means rollback.

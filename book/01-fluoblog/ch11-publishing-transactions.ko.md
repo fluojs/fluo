@@ -134,7 +134,10 @@ export class PublishingService {
     private readonly publications: PostPublicationsRepository,
   ) {}
 
-  @Transaction({ isolationLevel: 'ReadCommitted', timeout: 5000 })
+  @Transaction(
+    (self: PublishingService) => self.prisma,
+    { isolationLevel: 'ReadCommitted', timeout: 5000 },
+  )
   async publish(command: PublishCommand): Promise<PublicationReceipt> {
     const row = await this.posts.findById(command.postId);
     if (!row) throw new PublishRejected('not_found');
@@ -165,7 +168,7 @@ export class PublishingService {
 }
 ```
 
-`@Transaction`은 현재의 표준 메서드 데코레이터다. 이 코드에서는 인스턴스의 `prisma`와 저장소의 동일한 Prisma 서비스가 하나로 해석되므로, 옵션 객체로 격리 수준과 제한 시간을 전달했다. 여러 Prisma 등록이 섞인 서비스라면 `@Transaction((self: SomeService) => self.prisma)`처럼 접근자를 명시하는 방법이 있다. 옵션 객체와 접근자를 임의의 두 인수로 전달하는 API는 아니다.
+`@Transaction`은 표준 메서드 데코레이터이며 일반 코드는 wrapper를 명시적으로 선택한다. 위 첫 인수는 이 서비스의 `prisma`를 target으로 고르고, 둘째 인수는 Prisma-native 격리 수준과 timeout 옵션이다. 마지막 셋째 인수는 Fluo boundary policy 자리다. Options-only 또는 무인자 탐색은 기존 단일 target 서비스용 legacy 호환 동작이며 migration 목적지가 아니다.
 
 `ReadCommitted`라는 선택만으로 경합을 해결했다고 말할 수는 없다. 첫 조회와 실제 갱신 사이에 다른 요청이 상태를 바꿀 수 있기 때문이다. 정확성을 만드는 핵심은 `updateMany`의 상태·버전 조건이다. PostgreSQL에서 같은 행을 먼저 갱신한 트랜잭션이 확정되면 뒤의 갱신은 조건을 다시 평가하고, 더 이상 초안이 아니거나 버전이 바뀐 행을 갱신하지 않는다. 그 결과를 검사하지 않으면 트랜잭션을 사용하고도 잘못된 성공을 반환할 수 있다.
 
@@ -325,7 +328,7 @@ Fluo는 비동기 로컬 저장소인 `AsyncLocalStorage`로 현재 트랜잭션
 
 캐시 삭제처럼 **성공한 최종 커밋 뒤에만 시작할 작업**은 같은 `PrismaService`의 활성 경계 안에서 `afterCommit(callback: () => void | Promise<void>): void`로 등록할 수 있다. 등록 자체는 작업 완료를 기다리지 않는다. 바깥 네이티브 트랜잭션이 성공적으로 커밋된 뒤 Fluo가 등록 순서(FIFO)대로 하나씩 호출하고 각 Promise를 기다린다. 중첩 경계는 큐를 공유하므로 안쪽 `transaction()`의 반환을 최종 커밋으로 오해하지 않는다. 롤백·커밋 실패 때는 실행하지 않는다. 저장점 없는 중첩 호출의 예외를 바깥에서 잡았다면 별도 중첩 롤백이 생기는 것이 아니라 최종 바깥 결과에 따라 큐가 실행되거나 폐기된다.
 
-이 기능을 필수로 요구하는 경계에는 기존 인수 **뒤에** `{ requireAfterCommit: true }`를 전달한다. Prisma에서는 `transaction(fn, nativeOptions?, boundary?)`, `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, `@Transaction(input?, boundary?)`다. 예를 들어 기존 데코레이터 옵션은 첫 인수에 유지하고 두 번째에 boundary를 추가한다. 생략된 네이티브 옵션과 기본 fail-open 동작은 바뀌지 않는다. 다만 opt-in 경계는 네이티브 커밋을 관찰할 능력이 없으면 콜백 실행 전에 `AfterCommitCapabilityError`로 거부한다. 그 옵션을 생략했더라도 지원 없는 직접 실행 경로나 경계 밖·이미 닫힌 경계에서 훅 등록이 허용되는 것은 아니다.
+이 기능을 필수로 요구하는 경계에는 기존 인수 **뒤에** `{ requireAfterCommit: true }`를 전달한다. Prisma에서는 `transaction(fn, nativeOptions?, boundary?)`, `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, canonical `@Transaction(accessor, nativeOptions?, boundary?)`를 사용한다. 명시적 accessor를 첫째, Prisma-native 옵션을 둘째에 유지하고 Fluo boundary를 셋째에 추가한다. 생략된 네이티브 옵션과 기본 fail-open 동작은 바뀌지 않는다. 다만 opt-in 경계는 네이티브 커밋을 관찰할 능력이 없으면 콜백 실행 전에 `AfterCommitCapabilityError`로 거부한다. 그 옵션을 생략했더라도 지원 없는 직접 실행 경로나 경계 밖·이미 닫힌 경계에서 훅 등록이 허용되는 것은 아니다.
 
 훅 실행 시에는 기존 트랜잭션 scope가 닫혔고 종료된 ALS 바깥이다. `current()`로 새로 읽으면 예전 트랜잭션 핸들을 받지 않으며 새 트랜잭션은 새 큐를 갖는다. 닫힌 큐에 늦게 등록할 수 없다. 첫 훅이 실패해도 나머지는 순서대로 실행한다. 하나라도 실패하면 바깥 호출은 `AggregateError`를 확장한 `AfterCommitError`로 거부되지만 DB는 이미 커밋됐다. `readonly committed = true`, 모든 성공·실패 결과를 FIFO로 담는 `results: readonly PromiseSettledResult<void>[]`, 모든 실패를 담는 `errors`를 구분해서 읽는다. 이를 DB 롤백으로 표시하거나 발행 트랜잭션 전체를 재시도하지 않는다. 이 오류들과 `AfterCommitCallback`, `TransactionBoundaryOptions`는 `@fluojs/prisma` 루트 export이며, 후자의 옵션은 `readonly requireAfterCommit?: boolean`이다.
 

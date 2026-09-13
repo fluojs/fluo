@@ -224,7 +224,7 @@ export function persistWithResult<T>(
 }
 ```
 
-`undefined`는 기존 native 옵션 자리입니다. request 경계는 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, decorator는 `@Transaction(input?, boundary?)`이며, 예를 들어 `@Transaction(undefined, { shouldRollback: (value: Result<string>) => !value.ok })`로 선언합니다. native 옵션과 섞지 않으며 중첩 native 옵션 금지도 유지됩니다.
+Request 경계는 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`입니다. Canonical decorator 형식은 `@Transaction(accessor, nativeOptions?, boundary?)`이며, 예를 들어 `@Transaction((self) => self.prisma, undefined, { shouldRollback: (value: Result<string>) => !value.ok })`로 선언합니다. Accessor가 wrapper를 선택하고 native 옵션은 둘째, Fluo policy는 마지막입니다. Options-only와 무인자 decorator 호출은 기존 단일 target용 legacy 호환 형식이므로 다른 client나 ORM을 추가하기 전에 마이그레이션하세요.
 
 루트에서 `{ ok: false, error: 'CONFLICT' }`를 반환하면 native rollback과 필요한 cleanup이 성공한 뒤 **동일한 객체**를 받습니다. 옵션 생략 시 값 자체는 rollback을 유발하지 않습니다. 중첩 predicate가 실패를 표시하면 중첩 호출은 원래 값을 반환하지만 공유 owner는 sticky rollback-only가 됩니다. 루트 predicate도 루트 결과를 거부하면 그 루트 값을 반환하고, 그렇지 않으면 rollback 뒤 `TransactionRollbackOnlyError`가 첫 중첩 실패값을 `readonly result: unknown`으로 담아 던져집니다.
 
@@ -259,7 +259,7 @@ async function renameUser(
 }
 ```
 
-`undefined`는 기존 native 옵션 자리를 보존합니다. `requireAfterCommit: true`는 사용자 callback 전에 native commit 관찰 capability를 검사하고 없으면 `AfterCommitCapabilityError`로 거부합니다. 생략하거나 `false`로 두어도 기존 `strictTransactions` 기본값과 fail-open fallback은 바뀌지 않지만, native transaction 없는 fallback에서는 hook을 등록할 수 없습니다. `@Transaction(undefined, { requireAfterCommit: true })` 또는 명시적 accessor를 첫 인자로 넘겨 같은 요구를 선언할 수 있습니다.
+`requireAfterCommit: true`는 사용자 callback 전에 native commit 관찰 capability를 검사하고 없으면 `AfterCommitCapabilityError`로 거부합니다. 생략하거나 `false`로 두어도 기존 `strictTransactions` 기본값과 fail-open fallback은 바뀌지 않지만, native transaction 없는 fallback에서는 hook을 등록할 수 없습니다. 서비스 코드에서는 canonical explicit target을 유지하고 요구를 마지막에 둡니다. `@Transaction((self) => self.prisma, undefined, { requireAfterCommit: true })`입니다.
 
 Hook은 outer native commit 성공과 scope 종료 뒤, 종료된 ALS 밖에서 FIFO 순서로 하나씩 await됩니다. rollback·실패한 commit·폐기된 callback attempt에서는 실행하지 않습니다. 중첩 경계는 같은 queue를 공유하므로 savepoint 없이 잡힌 중첩 예외는 최종 outer commit/rollback 결과를 따릅니다. hook 안의 root read는 이전 transaction handle을 사용하지 않으며 새 transaction은 새 queue를 소유합니다. scope 밖·닫힌 scope·drain 중 늦은 등록은 거부되고 shutdown은 hook drain 후 disconnect합니다.
 
@@ -365,9 +365,9 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 
 ### `Transaction`
 
-- `Transaction(input?, boundary?)`: `input`은 기존 service accessor 또는 Prisma native transaction 옵션입니다. `boundary`는 두 번째 인자이며 생략하면 기존 동작을 유지합니다.
+- `Transaction(accessor, nativeOptions?, boundary?)`: canonical explicit-target 형식입니다. Accessor가 Prisma wrapper를 선택하고 native 옵션과 Fluo policy를 분리해 마지막에 둡니다. 기존 options-only, 무인자, accessor-plus-boundary 호출은 legacy 호환 overload로 남습니다.
 
-- 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 Prisma service/facade 형태의 속성을 resolve하고, 이름 있는 client나 모호한 host에는 accessor를 받을 수 있으며, 외부 경계에는 Prisma transaction option을 전달할 수 있습니다.
+- 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 일반 코드는 accessor를 전달하며 자동 service/facade 탐색은 기존 단일 target 서비스에만 호환 동작으로 남습니다.
 
 ### 커밋 후 작업 export
 

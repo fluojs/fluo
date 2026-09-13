@@ -81,7 +81,7 @@ Nested `requestTransaction(...)` calls opened inside an existing manual `transac
 
 ### Service Transaction Boundary (@Transaction)
 
-The `@Transaction()` decorator is the recommended way to define transaction boundaries in your service layer. It ensures that all repository calls made within the decorated method share the same MongoDB session.
+The canonical service boundary selects its connection explicitly with `@Transaction((self) => self.repo.conn, boundary?)`. It ensures that all repository calls made within the decorated method share the same MongoDB session without depending on host-property discovery.
 
 ```ts
 import { Inject } from '@fluojs/core';
@@ -128,9 +128,9 @@ export class UserService {
 }
 ```
 
-Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying MongoDB session. Note that `doc.save()` is not automatically session-aware in v1; use the supported facade operations (`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, or `model.bulkWrite()`) for automatic transaction participation.
+Calls to accessor-targeted `@Transaction(...)` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying MongoDB session. Note that `doc.save()` is not automatically session-aware in v1; use the supported facade operations (`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, or `model.bulkWrite()`) for automatic transaction participation.
 
-`@Transaction()` resolves `this.conn`, the decorated instance when it is transaction-capable, or one unique nested `this.*.conn` collaborator. It does not select arbitrary connection fields. When a service owns multiple connections or stores its connection elsewhere, select the boundary explicitly:
+No-argument `@Transaction()` retains discovery of `this.conn`, the decorated instance, or one unique nested `this.*.conn` collaborator only for legacy single-target compatibility. It is not the normal recipe. Select the boundary explicitly before adding another connection or ORM:
 
 ```ts
 @Inject(MongooseConnection)
@@ -148,10 +148,10 @@ export class AnalyticsService {
 
 <!-- fluo-mongoose-save-document-contract: opt-in, active-session, save-compatible-document -->
 
-Use the opt-in `MongooseConnection.saveDocument(...)` helper when an existing Mongoose document must save inside an active `@Transaction()`, `transaction()`, or `requestTransaction()` boundary:
+Use the opt-in `MongooseConnection.saveDocument(...)` helper when an existing Mongoose document must save inside an active explicit-target `@Transaction(...)`, `transaction()`, or `requestTransaction()` boundary:
 
 ```ts
-@Transaction()
+@Transaction((self) => self.conn)
 async rename(document: UserDocument) {
   return this.conn.saveDocument(document, { validateBeforeSave: false });
 }
@@ -262,7 +262,7 @@ export function persistWithResult<T>(
 }
 ```
 
-Use the existing Fluo boundary position in `transaction(fn, boundary?)`, `requestTransaction(fn, signal?, boundary?)`, and `@Transaction(accessor?, boundary?)`, for example `@Transaction(undefined, { shouldRollback: (value: Result<string>) => !value.ok })`. No Mongoose native-options argument is added.
+Use the existing Fluo boundary position in `transaction(fn, boundary?)`, `requestTransaction(fn, signal?, boundary?)`, and canonical `@Transaction(accessor, boundary?)`, for example `@Transaction((self) => self.conn, { shouldRollback: (value: Result<string>) => !value.ok })`. No Mongoose native-options argument is added. No-argument discovery remains legacy single-target compatibility.
 
 If the root predicate returns `true`, the same root value is returned after native rollback and required session cleanup succeed. A nested predicate returning `true` returns the original nested value while marking the shared owner sticky rollback-only. If the root also rejects its own result, its root failure value is returned; otherwise, `TransactionRollbackOnlyError` is thrown after rollback with the first nested failure in `readonly result: unknown`. Omission preserves existing exception-based behavior.
 
@@ -293,7 +293,7 @@ async function createUser(conn: MongooseConnection, cache: CacheService, name: s
 }
 ```
 
-`requireAfterCommit: true` checks native commit observation capability before the user callback and rejects with `AfterCommitCapabilityError` when it is unavailable. Existing `strictTransactions: false` and direct-execution fallback remain unchanged when the option is omitted or `false`, but hook registration is rejected in a fallback without a native transaction. Services can use `@Transaction(undefined, { requireAfterCommit: true })` or `@Transaction((self) => self.conn, { requireAfterCommit: true })`.
+`requireAfterCommit: true` checks native commit observation capability before the user callback and rejects with `AfterCommitCapabilityError` when it is unavailable. Existing `strictTransactions: false` and direct-execution fallback remain unchanged when the option is omitted or `false`, but hook registration is rejected in a fallback without a native transaction. Services use the canonical explicit target: `@Transaction((self) => self.conn, { requireAfterCommit: true })`.
 
 When delegated `connection.transaction(...)` retries the callback, each attempt owns an isolated queue and only the final successful attempt drains. Hooks from discarded attempts, rollback, and failed commit do not run. A commit-only retry that does not rerun the callback does not register hooks again. Nested boundaries within the same attempt share the queue; when the outer callback catches a nested exception without a savepoint, the final outer commit/rollback outcome applies.
 
@@ -312,7 +312,7 @@ Commits from external raw-client transactions, other wrappers, or other connecti
 | `transaction(fn, boundary?): Promise<T>` | Appends Fluo `boundary` after the existing async `fn`. The commit path returns the original result after hook drain; opt-in rollback follows the return and error rules above. |
 | `requestTransaction(fn, signal?, boundary?): Promise<T>` | Takes `boundary` after the existing request `AbortSignal`. |
 | `afterCommit(callback: AfterCommitCallback): void` | Registers work in an open native scope without running it immediately. Unsupported boundaries, no native transaction, missing scope, and closed scopes reject registration. |
-| `Transaction(accessor?, boundary?)` | Fluo `boundary` is the second argument, after the existing connection accessor. |
+| `Transaction(accessor, boundary?)` | Canonical explicit-target form. Fluo `boundary` is the second argument; no-argument discovery is legacy single-target compatibility. |
 
 The boundary APIs take Fluo-only `boundary?: TransactionBoundaryOptions<T>`; no native Mongoose options argument is added. `afterCommit` itself does not take a boundary argument.
 
@@ -335,7 +335,7 @@ Additional exports from the root `@fluojs/mongoose` package:
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 - `createMongoosePlatformStatusSnapshot(...)`
 - `connection` must be a concrete object/function handle for both sync and async registration; missing handles are rejected during module registration or async bootstrap.
-- `Transaction` is a standard TC39 method decorator for service-layer session transaction boundaries. It resolves `this.conn`, the decorated instance itself, or one unique nested `this.*.conn` collaborator by default; pass an accessor when the `MongooseConnection` lives under a different field or resolution would be ambiguous.
+- `Transaction` is a standard TC39 method decorator for service-layer session transaction boundaries. Normal code passes an accessor; discovery of `this.conn`, the decorated instance, or one unique nested `this.*.conn` collaborator remains legacy single-target compatibility.
 
 ### Related exported types
 

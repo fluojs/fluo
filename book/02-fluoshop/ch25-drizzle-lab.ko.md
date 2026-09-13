@@ -208,7 +208,7 @@ export class PrismaPriceStore implements PriceStore {
 
 가격을 다시 읽지 않고 반환 객체를 만드는 것은 이 표의 변경 규칙이 완전히 정해져 있기 때문이다. DB 트리거가 다른 가격을 계산하거나 서버 기본값이 응답에 필요하다면 `returning` 또는 트랜잭션 안의 재조회로 실제 저장 값을 반환해야 한다. 지금은 `expectedVersion + 1` 외에 버전을 바꾸는 작성자가 없다는 실습 계약을 사용한다.
 
-`transaction()`은 수동으로 보이는 경계가 필요한 비교를 위해 선택했다. Fluo의 서비스 `@Transaction()`도 사용할 수 있지만 ORM마다 대상 해석 규칙이 있으므로 이 실험에서 메서드 이름만 바꾸어 두 래퍼를 혼합하지 않는다. 특히 기본 `strictTransactions: false`의 직접 실행 대체 동작은 원자성이 아니다. 다음 등록에서 반드시 `true`로 지정한다.
+`transaction()`은 수동으로 보이는 경계가 필요한 비교를 위해 선택했다. 서비스 decorator도 `@Transaction((self) => self.prisma, prismaOptions)` 또는 `@Transaction((self) => self.db, drizzleOptions)`처럼 wrapper를 명시적으로 선택한다. Legacy target 탐색으로 두 wrapper를 섞지 않는다. 특히 기본 `strictTransactions: false`의 직접 실행 대체 동작은 원자성이 아니다. 다음 등록에서 반드시 `true`로 지정한다.
 
 ## Drizzle: 반환 행이 쓰기의 증거다
 
@@ -268,7 +268,7 @@ export class DrizzlePriceStore implements PriceStore {
 
 비교 범위를 가격 카드 무효화로 넓힌다면 두 래퍼 모두 `afterCommit(callback: () => void | Promise<void>): void`를 제공한다. 성공한 가격·이력 쓰기 뒤, 아직 활성 콜백 안에서 같은 래퍼에 캐시 삭제를 등록한다. `conflict` 분기에서는 등록하지 않는다. 훅은 성공한 최종 바깥 네이티브 커밋 뒤 등록 순서대로 하나씩 await되므로, 내부 `change()`가 반환됐다고 외부 트랜잭션까지 커밋됐다고 추측하지 않는다. 두 래퍼의 큐는 서로 공유되지 않으며 raw client가 직접 연 트랜잭션도 관찰하지 않는다.
 
-두 패키지의 수동 호출은 `transaction(fn, nativeOptions?, boundary?)`, 요청 호출은 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`다. 기존 옵션·신호를 옮기지 않고 마지막 boundary에 `{ requireAfterCommit: true }`를 추가한다. 데코레이터는 Prisma의 `@Transaction(input?, boundary?)`와 Drizzle의 `@Transaction(accessorOrOptions?, nativeOptions?, boundary?)`를 구별한다. 생략 시 네이티브 기본 옵션과 fail-open 계약은 유지된다. opt-in은 커밋 관찰 능력이 없으면 콜백 실행 전에 `AfterCommitCapabilityError`로 거부하고, opt-in 없이도 지원 없는 경계·경계 밖·닫힌 scope의 훅 등록은 거부된다.
+두 패키지의 수동 호출은 `transaction(fn, nativeOptions?, boundary?)`, 요청 호출은 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`다. Canonical decorator signature는 `@Transaction(accessor, nativeOptions?, boundary?)`다. Prisma 또는 Drizzle wrapper를 먼저 선택하고 `{ requireAfterCommit: true }`는 마지막 boundary 위치에만 추가한다. 무인자 또는 options-only 탐색은 기존 단일 target용 legacy 호환 동작이다. 생략 시 네이티브 기본 옵션과 fail-open 계약은 유지된다. opt-in은 커밋 관찰 능력이 없으면 콜백 실행 전에 `AfterCommitCapabilityError`로 거부하고, opt-in 없이도 지원 없는 경계·경계 밖·닫힌 scope의 훅 등록은 거부된다.
 
 중첩 호출은 같은 큐를 쓰며 롤백·커밋 실패 때 큐를 폐기한다. 저장점 없는 중첩 예외를 잡으면 큐의 운명은 최종 바깥 결과를 따른다. 훅은 닫힌 트랜잭션 ALS 밖에서 실행되므로 새 `current()` 조회는 예전 핸들을 재사용하지 않고, 새 트랜잭션은 독립 큐를 갖는다. 종료는 실행 중 훅도 기다리지만 늦은 등록을 허용하지 않는다. 모든 훅이 끝난 뒤 실패가 있으면 `AfterCommitError`가 `committed: true`, 모든 결과의 FIFO `results`, 모든 실패의 `errors`를 보고한다. 이미 커밋한 가격 변경을 그 오류 때문에 롤백하거나 다시 실행하지 않는다.
 

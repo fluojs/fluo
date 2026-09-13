@@ -75,13 +75,12 @@ function resolveTransactionConnection<THost>(self: THost, accessor?: (self: THos
  * Wraps a service method in a `MongooseConnection.transaction(...)` boundary.
  *
  * @remarks
- * This is a TC39 standard method decorator. By default it uses `this.conn` when present, the decorated instance
- * itself when it is transaction-capable, or one unique nested `this.*.conn` collaborator. Pass an accessor when the
- * connection lives under a different field or more than one nested collaborator exposes a connection; the decorator
- * does not bind arbitrary transaction-capable properties to avoid selecting the wrong persistence handle.
+ * This is a TC39 standard method decorator. The canonical form passes an explicit connection accessor.
+ * No-argument discovery of `this.conn`, the decorated instance, or one unique nested `this.*.conn` collaborator
+ * remains only for legacy single-target compatibility. Migrate before adding another connection or ORM.
  * Nested decorated calls reuse the ambient Mongoose session through `MongooseConnection.transaction(...)`.
  *
- * @param accessor Optional connection resolver for the decorated service instance.
+ * @param accessor Explicit connection resolver, omitted only for legacy single-target compatibility.
  * @param boundary Optional package-owned capability requirements forwarded to the transaction boundary.
  * @returns A standard method decorator that executes the original method inside a Mongoose transaction.
  * @throws {AfterCommitCapabilityError} When opted-in after-commit support is absent from the selected target.

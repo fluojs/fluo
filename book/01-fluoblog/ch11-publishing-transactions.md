@@ -134,7 +134,10 @@ export class PublishingService {
     private readonly publications: PostPublicationsRepository,
   ) {}
 
-  @Transaction({ isolationLevel: 'ReadCommitted', timeout: 5000 })
+  @Transaction(
+    (self: PublishingService) => self.prisma,
+    { isolationLevel: 'ReadCommitted', timeout: 5000 },
+  )
   async publish(command: PublishCommand): Promise<PublicationReceipt> {
     const row = await this.posts.findById(command.postId);
     if (!row) throw new PublishRejected('not_found');
@@ -165,7 +168,7 @@ export class PublishingService {
 }
 ```
 
-`@Transaction` is the current standard method decorator. In this code, the instance's `prisma` and the repositories' identical Prisma service resolve to one service, so we pass the isolation level and timeout in an options object. For a service involving multiple Prisma registrations, an explicit accessor such as `@Transaction((self: SomeService) => self.prisma)` is available. The API does not accept an options object and an accessor as two arbitrary arguments.
+`@Transaction` is the standard method decorator, and normal code selects its wrapper explicitly. The first argument above targets this service's `prisma`; the second carries Prisma-native isolation and timeout options. A final third argument is reserved for Fluo boundary policy. Options-only or no-argument discovery remains legacy compatibility for existing single-target services and is not the migration destination.
 
 Choosing `ReadCommitted` alone does not mean that concurrency is resolved: another request can change the state between the initial read and the actual update. The status and version conditions in `updateMany` are what make this correct. In PostgreSQL, when the transaction that updated the same row first commits, the later update reevaluates its condition and does not update a row that is no longer a draft or whose version has changed. Without checking that result, even code using a transaction can return a false success.
 
@@ -325,7 +328,7 @@ Even if you want to send email after publication, do not add network transmissio
 
 Register **work that must start only after a successful final commit**, such as cache deletion, inside the active boundary of the same `PrismaService` with `afterCommit(callback: () => void | Promise<void>): void`. Registration itself does not wait for the work to complete. After the outer native transaction successfully commits, Fluo invokes callbacks one at a time in registration order (FIFO), awaiting each Promise. Nested boundaries share the queue, so an inner `transaction()` returning must not be mistaken for the final commit. Rollback and failed commit do not run the hooks. If an outer caller catches an exception from a nested call without a savepoint, no separate nested rollback occurs: the final outer outcome determines whether the queue runs or is discarded.
 
-For a boundary that requires this capability, pass `{ requireAfterCommit: true }` **after** the existing arguments. Prisma uses `transaction(fn, nativeOptions?, boundary?)`, `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, and `@Transaction(input?, boundary?)`. For example, retain existing decorator options in the first argument and add the boundary in the second. Omitted native options and the default fail-open behavior are unchanged. An opted-in boundary rejects with `AfterCommitCapabilityError` before invoking the callback if it cannot observe a native commit. Omitting that option does not permit hook registration on an unsupported direct-execution path, outside a boundary, or in an already-closed boundary.
+For a boundary that requires this capability, pass `{ requireAfterCommit: true }` **after** the existing arguments. Prisma uses `transaction(fn, nativeOptions?, boundary?)`, `requestTransaction(fn, signal?, nativeOptions?, boundary?)`, and canonical `@Transaction(accessor, nativeOptions?, boundary?)`. Keep the explicit accessor first, retain Prisma-native options second, and add the Fluo boundary third. Omitted native options and the default fail-open behavior are unchanged. An opted-in boundary rejects with `AfterCommitCapabilityError` before invoking the callback if it cannot observe a native commit. Omitting that option does not permit hook registration on an unsupported direct-execution path, outside a boundary, or in an already-closed boundary.
 
 When hooks run, the old transaction scope is closed and execution is outside its ended ALS context. A fresh `current()` read does not return the old transaction handle, and a new transaction gets a fresh queue. Late registration into the closed queue is rejected. If the first hook fails, the remaining hooks still run in order. Any failure causes the outer call to reject with `AfterCommitError`, which extends `AggregateError`, but the database is already committed. Distinguish `readonly committed = true`, `results: readonly PromiseSettledResult<void>[]` containing every success and failure in FIFO order, and `errors` containing every failure. Do not label this a database rollback or retry the entire publication transaction. These errors, `AfterCommitCallback`, and `TransactionBoundaryOptions` are root exports of `@fluojs/prisma`; the latter exposes `readonly requireAfterCommit?: boolean`.
 

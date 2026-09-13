@@ -59,12 +59,12 @@ function resolveDefaultTransactionTarget<THost, TTransactionOptions>(
  * Standard TC39 method decorator that runs a service method inside a Drizzle transaction boundary.
  *
  * @remarks
- * `@Transaction()` selects the first transaction-capable target by checking `this.db`, then direct host properties,
- * then nested `.db` properties on those values. If none of those candidates exposes `transaction(...)`, the decorated
- * instance itself is used as the transaction target. Pass an accessor such as `@Transaction((self) => self.analyticsDb)`
- * to select another Drizzle wrapper explicitly. Non-function factory input is forwarded as Drizzle transaction options.
+ * The canonical form is `@Transaction((self) => self.db, nativeOptions, boundary)`.
+ * No-argument and options-only calls retain target discovery (`this.db`, direct properties, nested `.db`, then the
+ * decorated instance) only for legacy single-target compatibility. Migrate to an accessor before adding another
+ * database or ORM so property order cannot select the wrong owner.
  *
- * @param accessorOrOptions Optional target accessor, or Drizzle transaction options.
+ * @param accessorOrOptions Explicit target accessor, or legacy compatibility Drizzle transaction options.
  * @param options Optional Drizzle transaction options when an accessor is supplied.
  * @param boundary Optional Fluo capability requirements checked before the method runs.
  * @returns A standard 2023-11 method decorator.
