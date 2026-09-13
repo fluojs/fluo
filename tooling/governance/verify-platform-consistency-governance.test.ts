@@ -1145,16 +1145,16 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
       'English canonical request transaction summary',
       'apps/docs/content/docs/guides/persistence.mdx',
       (source: string) => source.replace(
-        'DrizzleDatabase.requestTransaction(...)',
-        'DrizzleDatabase.requestBoundary(...)',
+        '`DrizzleDatabase.requestTransaction(...)` request transaction boundary',
+        '`DrizzleDatabase.requestBoundary(...)` request transaction boundary',
       ),
     ],
     [
       'Korean canonical request transaction summary',
       'apps/docs/content/docs/guides/persistence.ko.mdx',
       (source: string) => source.replace(
-        'DrizzleDatabase.requestTransaction(...)',
-        'DrizzleDatabase.requestBoundary(...)',
+        '`DrizzleDatabase.requestTransaction(...)` request transaction boundary',
+        '`DrizzleDatabase.requestBoundary(...)` request transaction boundary',
       ),
     ],
     [

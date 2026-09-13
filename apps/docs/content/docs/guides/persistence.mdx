@@ -398,7 +398,7 @@ Queue jobs must be JSON-serializable plain objects. Queue serializes the payload
 | Package | Public API |
 | --- | --- |
 | `@fluojs/prisma` | `PrismaModule`, `PrismaService`, deprecated `PrismaTransactionInterceptor` compatibility export, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, named token helpers, status snapshot helper |
-| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, explicit `requestTransaction(...)`, status snapshot helper |
+| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, explicit `DrizzleDatabase.requestTransaction(...)` request transaction boundary, status snapshot helper |
 | `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, explicit `requestTransaction(...)`, `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, status snapshot helper |
 | `@fluojs/redis` | `RedisModule`, `RedisService`, `REDIS_CLIENT`, named client/service token helpers, status snapshot helper |
 | `@fluojs/cache-manager` | `CacheModule`, `CacheService`, `CacheInterceptor`, `CacheTTL`, `CacheKey`, `CacheEvict`, memory/Redis stores, diagnostics helpers |

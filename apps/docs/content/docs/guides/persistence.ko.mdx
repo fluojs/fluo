@@ -398,7 +398,7 @@ Queue job은 JSON-serializable plain object여야 합니다. Queue는 enqueue �
 | 패키지 | Public API |
 | --- | --- |
 | `@fluojs/prisma` | `PrismaModule`, `PrismaService`, deprecated `PrismaTransactionInterceptor` 호환성 export, `PRISMA_CLIENT`, `PRISMA_OPTIONS`, named token helpers, status snapshot helper |
-| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, 명시적 `requestTransaction(...)`, status snapshot helper |
+| `@fluojs/drizzle` | `DrizzleModule`, `DrizzleDatabase`, `DRIZZLE_DATABASE`, `DRIZZLE_DISPOSE`, 명시적 `DrizzleDatabase.requestTransaction(...)` request transaction boundary, status snapshot helper |
 | `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, 명시적 `requestTransaction(...)`, `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, status snapshot helper |
 | `@fluojs/redis` | `RedisModule`, `RedisService`, `REDIS_CLIENT`, named client/service token helpers, status snapshot helper |
 | `@fluojs/cache-manager` | `CacheModule`, `CacheService`, `CacheInterceptor`, `CacheTTL`, `CacheKey`, `CacheEvict`, memory/Redis stores, diagnostics helpers |
