@@ -116,18 +116,38 @@ function flushMicrotasks(): Promise<void> {
   return new Promise((resolve) => queueMicrotask(resolve));
 }
 
-async function waitForCondition(predicate: () => boolean, timeoutMs = 2_000): Promise<void> {
-  const startedAt = Date.now();
+function createTransitionSignal(transition: string, timeoutMs = 2_000): {
+  resolve(): void;
+  wait(): Promise<void>;
+} {
+  let resolveSignal: (() => void) | undefined;
+  const signal = new Promise<void>((resolve) => {
+    resolveSignal = resolve;
+  });
 
-  while (Date.now() - startedAt < timeoutMs) {
-    if (predicate()) {
-      return;
-    }
+  return {
+    resolve() {
+      resolveSignal?.();
+    },
+    async wait() {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
 
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-
-  throw new Error('Timed out waiting for condition.');
+      try {
+        await Promise.race([
+          signal,
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(() => {
+              reject(new Error(`Timed out waiting for ${transition}.`));
+            }, timeoutMs);
+          }),
+        ]);
+      } finally {
+        if (timeout !== undefined) {
+          clearTimeout(timeout);
+        }
+      }
+    },
+  };
 }
 
 function createSignalTarget(): {
@@ -2986,16 +3006,22 @@ void bootstrap();
     const children: ChildProcess[] = [];
     const spawnedArgs: string[][] = [];
     const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+    const restartScheduler = createManualRestartScheduler();
+    const restartedChild = createTransitionSignal('restarted child to load the updated .env file');
 
     const runPromise = runNodeRestartRunner({
       debounceMs: 1,
       env: { FLUO_DEV_SHOW_RESTART_NOTICE: '1' },
       projectDirectory: workspaceDirectory,
+      restartScheduler,
       signalTarget: signalTarget.target,
       spawnChild: (_command, args) => {
         spawnedArgs.push(args);
         const child = createMockChild();
         children.push(child);
+        if (children.length === 2) {
+          restartedChild.resolve();
+        }
         return child;
       },
       watchTarget: (_target, optionsOrListener, listener) => {
@@ -3011,7 +3037,8 @@ void bootstrap();
       listener('change', '.env');
     }
 
-    await waitForCondition(() => spawnedArgs.length === 2);
+    restartScheduler.flush();
+    await restartedChild.wait();
     expect(spawnedArgs[1]).toEqual(['--env-file=.env', '--import', 'tsx', 'src/main.ts']);
 
     children[1]?.emit('close', 0);
@@ -3132,11 +3159,14 @@ void bootstrap();
     const children: ChildProcess[] = [];
     const signals: Array<NodeJS.Signals | undefined> = [];
     const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+    const restartScheduler = createManualRestartScheduler();
+    const forcedRestart = createTransitionSignal('forced shutdown to start the replacement app child');
 
     const runPromise = runNodeRestartRunner({
       debounceMs: 1,
       env: { FLUO_DEV_CHILD_SHUTDOWN_TIMEOUT_MS: '1' },
       projectDirectory: workspaceDirectory,
+      restartScheduler,
       signalTarget: createSignalTarget().target,
       spawnChild: () => {
         const child = createMockChild();
@@ -3152,6 +3182,9 @@ void bootstrap();
           };
         }
         children.push(child);
+        if (children.length === 2) {
+          forcedRestart.resolve();
+        }
         return child;
       },
       watchTarget: (_target, optionsOrListener, listener) => {
@@ -3165,7 +3198,8 @@ void bootstrap();
       listener('change', 'main.ts');
     }
 
-    await waitForCondition(() => signals.includes('SIGKILL') && children.length === 2);
+    restartScheduler.flush();
+    await forcedRestart.wait();
     expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
 
     children[1]?.emit('close', 0);
@@ -3182,15 +3216,21 @@ void bootstrap();
     writeFileSync(sourceFile, 'export const users = "one";\n');
     const children: ChildProcess[] = [];
     const watchListeners = new Map<string, (event: string, filename: string | Buffer | null) => void>();
+    const restartScheduler = createManualRestartScheduler();
+    const restartedChild = createTransitionSignal('fallback watcher restart for nested source changes');
 
     const runPromise = runNodeRestartRunner({
       debounceMs: 1,
       env: {},
       projectDirectory: workspaceDirectory,
+      restartScheduler,
       signalTarget: createSignalTarget().target,
       spawnChild: () => {
         const child = createMockChild();
         children.push(child);
+        if (children.length === 2) {
+          restartedChild.resolve();
+        }
         return child;
       },
       watchTarget: (target, optionsOrListener, listener) => {
@@ -3208,7 +3248,8 @@ void bootstrap();
     writeFileSync(sourceFile, 'export const users = "two";\n');
     watchListeners.get(nestedDirectory)?.('change', 'users.service.ts');
 
-    await waitForCondition(() => children.length === 2);
+    restartScheduler.flush();
+    await restartedChild.wait();
 
     children[1]?.emit('close', 0);
     await expect(runPromise).resolves.toBe(0);
@@ -3222,15 +3263,24 @@ void bootstrap();
     writeFileSync(join(sourceDirectory, 'main.ts'), 'export const app = "one";\n');
     const children: ChildProcess[] = [];
     const watchListeners = new Map<string, (event: string, filename: string | Buffer | null) => void>();
+    const restartScheduler = createManualRestartScheduler();
+    const fallbackWatcherRegistered = createTransitionSignal('fallback watcher registration for the created source directory');
+    const restartedChild = createTransitionSignal('restart after the created fallback source directory changes');
+    const createdDirectory = join(sourceDirectory, 'generated', 'admin');
+    const createdFile = join(createdDirectory, 'admin.module.ts');
 
     const runPromise = runNodeRestartRunner({
       debounceMs: 1,
       env: {},
       projectDirectory: workspaceDirectory,
+      restartScheduler,
       signalTarget: createSignalTarget().target,
       spawnChild: () => {
         const child = createMockChild();
         children.push(child);
+        if (children.length === 2) {
+          restartedChild.resolve();
+        }
         return child;
       },
       watchTarget: (target, optionsOrListener, listener) => {
@@ -3238,23 +3288,25 @@ void bootstrap();
           throw new Error('recursive watch unavailable');
         }
         watchListeners.set(target, listener ?? optionsOrListener);
+        if (target === createdDirectory) {
+          fallbackWatcherRegistered.resolve();
+        }
 
         return { close: () => undefined } as never;
       },
     });
 
-    const createdDirectory = join(sourceDirectory, 'generated', 'admin');
     mkdirSync(createdDirectory, { recursive: true });
-    const createdFile = join(createdDirectory, 'admin.module.ts');
     writeFileSync(createdFile, 'export const admin = "one";\n');
     watchListeners.get(sourceDirectory)?.('rename', 'generated');
 
-    await waitForCondition(() => watchListeners.has(createdDirectory));
+    await fallbackWatcherRegistered.wait();
 
     writeFileSync(createdFile, 'export const admin = "two";\n');
     watchListeners.get(createdDirectory)?.('change', 'admin.module.ts');
 
-    await waitForCondition(() => children.length === 2);
+    restartScheduler.flush();
+    await restartedChild.wait();
 
     children[1]?.emit('close', 0);
     await expect(runPromise).resolves.toBe(0);
@@ -3271,11 +3323,14 @@ void bootstrap();
     const children: ChildProcess[] = [];
     const signals: Array<NodeJS.Signals | undefined> = [];
     const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+    const restartScheduler = createManualRestartScheduler();
+    const terminalShutdown = createTransitionSignal('terminal shutdown after forced child termination');
 
     const runPromise = runNodeRestartRunner({
       debounceMs: 1,
       env: { FLUO_DEV_CHILD_SHUTDOWN_TIMEOUT_MS: '1' },
       projectDirectory: workspaceDirectory,
+      restartScheduler,
       signalTarget: {
         off: () => undefined,
         once: (signal, listener) => {
@@ -3294,7 +3349,10 @@ void bootstrap();
             if (signal === 'SIGKILL') {
               Object.defineProperty(child, 'killed', { configurable: true, value: true, writable: true });
               Object.defineProperty(child, 'exitCode', { configurable: true, value: 137, writable: true });
-              queueMicrotask(() => child.emit('close', 137));
+              queueMicrotask(() => {
+                child.emit('close', 137);
+                terminalShutdown.resolve();
+              });
             }
             return true;
           };
@@ -3313,7 +3371,8 @@ void bootstrap();
       listener('change', 'main.ts');
     }
 
-    await waitForCondition(() => signals.includes('SIGKILL'));
+    restartScheduler.flush();
+    await terminalShutdown.wait();
     await expect(runPromise).resolves.toBe(137);
     expect(children).toHaveLength(1);
     expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
@@ -3363,15 +3422,21 @@ void bootstrap();
     const children: ChildProcess[] = [];
     const stdoutBuffer: string[] = [];
     const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+    const restartScheduler = createManualRestartScheduler();
+    const restartedChild = createTransitionSignal('restart after the default runner source change');
 
     const runPromise = runNodeRestartRunner({
       debounceMs: 1,
       env: {},
       projectDirectory: workspaceDirectory,
+      restartScheduler,
       signalTarget: createSignalTarget().target,
       spawnChild: () => {
         const child = createMockChild();
         children.push(child);
+        if (children.length === 2) {
+          restartedChild.resolve();
+        }
         return child;
       },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -3385,11 +3450,10 @@ void bootstrap();
     for (const listener of watchListeners) {
       listener('change', 'main.ts');
     }
-    await waitForCondition(() => children[0]?.killed === true);
+    restartScheduler.flush();
+    await restartedChild.wait();
     expect(stdoutBuffer.join('')).toBe('');
 
-    children[0]?.emit('close', 0);
-    await waitForCondition(() => children.length === 2);
     children[1]?.emit('close', 0);
     await expect(runPromise).resolves.toBe(0);
   });
@@ -3404,15 +3468,21 @@ void bootstrap();
     const children: ChildProcess[] = [];
     const stdoutBuffer: string[] = [];
     const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+    const restartScheduler = createManualRestartScheduler();
+    const restartedChild = createTransitionSignal('restart with color preservation after a source change');
 
     const runPromise = runNodeRestartRunner({
       debounceMs: 1,
       env: { FLUO_DEV_PRETTY_TTY_COLOR: '1' },
       projectDirectory: workspaceDirectory,
+      restartScheduler,
       signalTarget: createSignalTarget().target,
       spawnChild: () => {
         const child = createMockChild();
         children.push(child);
+        if (children.length === 2) {
+          restartedChild.resolve();
+        }
         return child;
       },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -3427,7 +3497,8 @@ void bootstrap();
       listener('change', 'main.ts');
     }
 
-    await waitForCondition(() => children.length === 2);
+    restartScheduler.flush();
+    await restartedChild.wait();
     expect(stdoutBuffer).toEqual([]);
 
     children[1]?.emit('close', 0);
@@ -3445,15 +3516,21 @@ void bootstrap();
     const children: ChildProcess[] = [];
     const stdoutBuffer: string[] = [];
     const watchListeners: Array<(event: string, filename: string | Buffer | null) => void> = [];
+    const restartScheduler = createManualRestartScheduler();
+    const restartedChild = createTransitionSignal('restart header redraw after a source change');
 
     const runPromise = runNodeRestartRunner({
       debounceMs: 1,
       env: { FLUO_DEV_PRETTY_TTY_COLOR: '1', FLUO_DEV_SHOW_RESTART_NOTICE: '1' },
       projectDirectory: workspaceDirectory,
+      restartScheduler,
       signalTarget: createSignalTarget().target,
       spawnChild: () => {
         const child = createMockChild();
         children.push(child);
+        if (children.length === 2) {
+          restartedChild.resolve();
+        }
         return child;
       },
       stdout: { write: (message) => stdoutBuffer.push(message) },
@@ -3468,7 +3545,8 @@ void bootstrap();
       listener('change', 'main.ts');
     }
 
-    await waitForCondition(() => children.length === 2);
+    restartScheduler.flush();
+    await restartedChild.wait();
     expect(stdoutBuffer).toEqual([
       '[fluo] restarting after content change: package.json\n',
       '\u001B[2J\u001B[3J\u001B[H',
