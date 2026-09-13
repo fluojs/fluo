@@ -156,7 +156,7 @@ class ReportingService {
 }
 ```
 
-If you are migrating an existing NestJS controller/interceptor transaction import, `DrizzleTransactionInterceptor` is available as a deprecated 1.x bridge. It delegates to `requestTransaction(...)` and forwards the request `AbortSignal`. Keep normal business atomicity on services. For new controller or request orchestration boundaries, use explicit `requestTransaction(...)` only when the whole request must share one transaction, and pass the request `AbortSignal` when your adapter exposes one. Controller-level `@Transaction()` is kept only as a compatibility path for controllers that own an explicit `DrizzleDatabase` target; prefer `requestTransaction(...)` for request-wide work because its cancellation input is explicit.
+Keep normal business atomicity on services. For a controller or request orchestration boundary where the whole request must share one transaction, call `DrizzleDatabase.requestTransaction(...)` explicitly and pass the request `AbortSignal` when the adapter exposes one. Controller-level `@Transaction()` is only a compatibility path for a controller that owns an explicit `DrizzleDatabase` target.
 
 ### Manual Transactions
 In fluo, the recommended way to handle transactions is using the `@Transaction()` decorator on service methods. For manual control, use the block pattern:
@@ -171,7 +171,7 @@ await this.db.transaction(async () => {
 });
 ```
 
-Use `DrizzleTransactionInterceptor` only to retain an existing NestJS interceptor import. For new request-wide boundaries, call `requestTransaction(...)` explicitly:
+Use `requestTransaction(...)` explicitly for a request-wide boundary:
 
 ```typescript
 import { Inject } from '@fluojs/core';

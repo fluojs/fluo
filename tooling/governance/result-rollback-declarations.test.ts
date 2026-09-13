@@ -115,8 +115,7 @@ const prismaProvider: Prisma.PrismaHandleProvider<PrismaNative> = prisma;
 const drizzleProvider: Drizzle.DrizzleHandleProvider<DrizzleNative, NativeHandle, NativeOptions> = drizzle;
 const mongooseProvider: Mongoose.MongooseHandleProvider = mongoose;
 const prismaFacade: Prisma.PrismaServiceFacade<PrismaNative> = Prisma.PrismaService.createFacade(prismaNative);
-const drizzleFacade: Drizzle.DrizzleDatabaseFacade<DrizzleNative, NativeHandle, NativeOptions> =
-  Drizzle.DrizzleDatabase.createFacade<DrizzleNative, NativeHandle, NativeOptions>(drizzleNative);
+declare const drizzleFacade: Drizzle.DrizzleDatabaseFacade<DrizzleNative, NativeHandle, NativeOptions>;
 `;
 
 const surfaces = [

@@ -10,6 +10,7 @@ import {
   Transaction,
   type TransactionBoundaryOptions,
 } from './index.js';
+import { createDrizzleDatabaseFacade } from './facade.js';
 
 function deferred() {
   let resolvePromise: (() => void) | undefined;
@@ -41,11 +42,13 @@ function nativeFixture(beforeCommit?: () => Promise<void>) {
       }
     },
   };
-  const drizzle = DrizzleDatabase.createFacade<typeof database, { readonly id: number }>(
-    database,
-    () => {
-      events.push('dispose');
-    },
+  const drizzle = createDrizzleDatabaseFacade(
+    new DrizzleDatabase<typeof database, { readonly id: number }>(
+      database,
+      () => {
+        events.push('dispose');
+      },
+    ),
   );
   return { database, drizzle, events };
 }
@@ -501,7 +504,7 @@ describe('Drizzle afterCommit', { timeout: 2_000 }, () => {
         return callback({});
       },
     };
-    const drizzle = DrizzleDatabase.createFacade<typeof database, object, Options>(database);
+    const drizzle = new DrizzleDatabase<typeof database, object, Options>(database);
     const provider: DrizzleHandleProvider<typeof database, object, Options> = drizzle;
     const callback: AfterCommitCallback = async () => {};
     const results: readonly PromiseSettledResult<void>[] = [{ status: 'fulfilled', value: undefined }];
@@ -514,7 +517,9 @@ describe('Drizzle afterCommit', { timeout: 2_000 }, () => {
     expectTypeOf(AfterCommitError).constructorParameters.toEqualTypeOf<[results: readonly PromiseSettledResult<void>[]]>();
     expectTypeOf(new AfterCommitError(results).results).toEqualTypeOf<readonly PromiseSettledResult<void>[]>();
     expectTypeOf(new AfterCommitError(results).committed).toEqualTypeOf<true>();
-    expectTypeOf(drizzle).toEqualTypeOf<DrizzleDatabaseFacade<typeof database, object, Options>>();
+    expectTypeOf<DrizzleDatabaseFacade<typeof database, object, Options>>().toMatchTypeOf<
+      DrizzleHandleProvider<typeof database, object, Options>
+    >();
     class Service {
       readonly db = drizzle;
       @Transaction((self: Service) => self.db, options, boundary)

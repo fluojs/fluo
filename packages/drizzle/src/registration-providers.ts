@@ -3,13 +3,13 @@ import type { Token } from '@fluojs/core';
 import type { Provider } from '@fluojs/di';
 
 import { DrizzleDatabase } from './database.js';
+import { createDrizzleDatabaseFacade } from './facade.js';
 import {
   getDrizzleDatabaseToken,
   getDrizzleDisposeToken,
   getDrizzleHandleProviderToken,
   getDrizzleOptionsToken,
 } from './tokens.js';
-import { DrizzleTransactionInterceptor } from './transaction.js';
 import type { DrizzleDatabaseLike, DrizzleModuleOptions } from './types.js';
 
 /**
@@ -171,18 +171,18 @@ export function createDrizzleRuntimeProviders<
         {
           inject: [databaseToken, disposeToken, optionsToken],
           provide: DrizzleDatabase,
-          useFactory: (database: unknown, dispose: unknown, databaseOptions: unknown) =>
-            DrizzleDatabase.createFacade<TDatabase, TTransactionDatabase, TTransactionOptions>(
+          useFactory: (database: unknown, dispose: unknown, databaseOptions: unknown) => createDrizzleDatabaseFacade(
+            new DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions>(
               database as TDatabase,
               dispose as ((database: TDatabase) => Promise<void> | void) | undefined,
               databaseOptions as DrizzleRuntimeOptions,
             ),
+          ),
         },
         {
           provide: handleProviderToken,
           useExisting: DrizzleDatabase,
         },
-        DrizzleTransactionInterceptor,
       ]
       : [
         {
@@ -191,10 +191,12 @@ export function createDrizzleRuntimeProviders<
           useFactory: (...dependencies: unknown[]) => {
             const [database, dispose, databaseOptions] = dependencies.slice(-3);
 
-            return DrizzleDatabase.createFacade<TDatabase, TTransactionDatabase, TTransactionOptions>(
-              database as TDatabase,
-              dispose as ((database: TDatabase) => Promise<void> | void) | undefined,
-              databaseOptions as DrizzleRuntimeOptions,
+            return createDrizzleDatabaseFacade(
+              new DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions>(
+                database as TDatabase,
+                dispose as ((database: TDatabase) => Promise<void> | void) | undefined,
+                databaseOptions as DrizzleRuntimeOptions,
+              ),
             );
           },
         },
