@@ -39,13 +39,13 @@ pnpm dev
 
 `fluo create`는 `fluo new`의 alias입니다.
 
-파일 생성, dependency install, git initialization 없이 resolved starter를 미리 보려면 `--print-plan`을 사용합니다.
+파일 생성, dependency install, git initialization, CLI update 확인 없이 resolved starter를 미리 보려면 `--dry-run`을 사용합니다.
 
 ```bash
-fluo new my-app --shape application --runtime node --platform fastify --print-plan
-fluo new my-react-app --starter react-vite-ssr --print-plan
-fluo new my-service --shape microservice --transport tcp --print-plan
-fluo new my-mixed-app --shape mixed --print-plan
+fluo new my-app --shape application --runtime node --platform fastify --dry-run
+fluo new my-react-app --starter react-vite-ssr --dry-run
+fluo new my-service --shape microservice --transport tcp --dry-run
+fluo new my-mixed-app --shape mixed --dry-run
 ```
 
 ## Application starters
@@ -155,7 +155,7 @@ Feature slice와 framework artifact를 만들 때 `fluo generate`를 사용합�
 
 ```bash
 fluo generate module users
-fluo generate module users --with-test
+fluo generate module users --with-slice-test
 fluo generate resource users
 fluo generate resource users --with-slice-test
 fluo generate e2e users
@@ -189,12 +189,10 @@ Generator discovery는 의도적으로 built-in `@fluojs/cli/builtin` collection
 
 ## Diagnostics commands
 
-CLI 설치, project script, runtime fact, update state를 debug할 때 다음 명령을 사용합니다.
+CLI 설치, project script, runtime fact, update state의 읽기 전용 진단 기본 경로는 `fluo doctor`입니다. `fluo info`는 compatibility alias이고 `fluo analyze`는 별도 project summary입니다.
 
 ```bash
 fluo doctor
-fluo info
-fluo analyze
 ```
 
 `fluo analyze`는 read-only이며 더 깊은 `inspect --report`, `migrate --json` workflow를 안내합니다.
@@ -215,7 +213,7 @@ fluo migrate ./src
 fluo migrate ./src --json
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,inject-params
+fluo migrate ./src --only imports,injectable
 fluo migrate ./src --skip tests
 ```
 

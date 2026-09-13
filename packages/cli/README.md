@@ -5,6 +5,15 @@
 
 The canonical CLI for fluo — bootstrap new applications, generate components and React page types, export runtime inspection data, and run code transforms.
 
+## Canonical command vocabulary
+
+- Scaffold with `fluo new`; `create` remains a compatibility alias.
+- Preview any supported write command with `--dry-run`. It preserves that command's own plan payload and performs no writes, dependency installation, git initialization, or CLI update check.
+- Use `fluo doctor` for read-only diagnostics. `info` is a compatibility alias; `analyze` is a separate project summary. Install or self-update only through the explicit `fluo upgrade` workflow.
+- Use `--with-slice-test` for module and resource generator slice tests. The former `--with-test` flag is not accepted.
+- Use migration transform kinds (`imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`) in `--only` and `--skip`; JSON `transforms` and each file's `appliedTransforms` use the same tokens.
+- `--install` and `--no-install` take precedence over programmatic installation settings. `--package-manager` selects scaffold or package-workflow tools and is rejected for lifecycle commands where it cannot affect execution.
+
 Preparing for the coordinated Node 24 release? Follow the [consumer migration guide](../../docs/getting-started/migrate-node24.md) before upgrading packages.
 
 ## Table of Contents
@@ -57,7 +66,7 @@ When `fluo` runs in an interactive TTY, it checks the public npm `latest` dist-t
 
 `fluo new` and its `fluo create` alias attempt a fresh interactive latest-version check before scaffolding, even when the normal update-check cache is still fresh. This keeps first-run project creation aligned with newly published starter behavior, while day-to-day commands such as `fluo dev`, `fluo build`, `fluo generate`, and `fluo inspect` continue to reuse the cached latest-version result until the normal TTL expires. Pure help and version inspection paths (`fluo help <command>`, `<command> --help`, `fluo version`, `fluo --version`, and `fluo -v`) print immediately without running the interactive update check.
 
-The update check is skipped in CI, non-TTY output, npm-script contexts, rerun-after-update contexts, registry/network failures, and explicit opt-out paths. Use `--no-update-check` (or the compatibility alias `--no-update-notifier`) for one invocation, or set `FLUO_NO_UPDATE_CHECK=1` when automation must never prompt.
+The update check is skipped in CI, non-TTY output, npm-script contexts, rerun-after-update contexts, registry/network failures, and explicit opt-out paths. Use `--no-update-check` for one invocation, or set `FLUO_NO_UPDATE_CHECK=1` when automation must never prompt.
 
 ## When to Use
 
@@ -207,13 +216,13 @@ Scaffolding refuses to overwrite conflicting files in a non-empty target by defa
 fluo new my-app --target-directory ./apps/api --force
 ```
 
-Use `--print-plan` when you want to preview the fully resolved starter without side effects:
+Use `--dry-run` when you want to preview the fully resolved starter without side effects:
 
 ```bash
-fluo new my-app --shape application --runtime node --platform fastify --print-plan
-fluo new my-react-app --starter react-vite-ssr --print-plan
-fluo new my-service --shape microservice --transport tcp --print-plan
-fluo new my-mixed-app --shape mixed --print-plan
+fluo new my-app --shape application --runtime node --platform fastify --dry-run
+fluo new my-react-app --starter react-vite-ssr --dry-run
+fluo new my-service --shape microservice --transport tcp --dry-run
+fluo new my-mixed-app --shape mixed --dry-run
 ```
 
 Plan preview mode resolves the same named starter, project name, shape, runtime, platform, transport, tooling preset, package manager, install choice, and git choice as a real scaffold. It prints both the selected starter and recipe plus their dependency sets, then exits without creating files, installing dependencies, or initializing a git repository.
@@ -225,7 +234,7 @@ Generate a feature slice; some schematics auto-register in the module, while oth
 
 ```bash
 fluo generate module users
-fluo generate module users --with-test
+fluo generate module users --with-slice-test
 fluo generate resource users
 fluo generate resource users --with-slice-test
 fluo generate e2e users
@@ -239,7 +248,7 @@ Supported generator kinds and aliases are `controller`/`co`, `e2e`, `guard`/`gu`
 
 Auto-registered generators are `controller`, `service`, `repo`, `guard`, `interceptor`, and `middleware`. Files-only generators are `e2e`, `module`, `request-dto`, `response-dto`, and `resource`.
 
-`fluo generate module <name> --with-test` adds a `*.slice.test.ts` that compiles the authored module with `Test.createTestingModule({ rootModule })`. `fluo generate resource <name>` creates a complete feature slice with a module, controller, service, repository, request DTO, response DTO, and tests; add `--with-slice-test` to include a resource-level slice test that demonstrates provider override and service resolution. It is a files-only/manual-activation generator: it does not wire the resource module into a parent module automatically, and it should not be treated as a `nest g resource` equivalent that activates routes for you. Import the generated module when you are ready to activate the slice.
+`fluo generate module <name> --with-slice-test` adds a `*.slice.test.ts` that compiles the authored module with `Test.createTestingModule({ rootModule })`. `fluo generate resource <name>` creates a complete feature slice with a module, controller, service, repository, request DTO, response DTO, and tests; add `--with-slice-test` to include a resource-level slice test that demonstrates provider override and service resolution. It is a files-only/manual-activation generator: it does not wire the resource module into a parent module automatically, and it should not be treated as a `nest g resource` equivalent that activates routes for you. Import the generated module when you are ready to activate the slice.
 
 `fluo generate e2e <name>` writes `test/<name>.e2e.test.ts` with `Test.createApp({ rootModule: AppModule })` and imports `AppModule` from the default starter root module at `../src/app`, so request-pipeline tests live in the same app-level test area as generated starters. Use generated unit tests for direct class behavior, slice tests for DI wiring and overrides, and e2e tests for routes, guards, interceptors, DTO validation, and response writing through the virtual app.
 
@@ -337,7 +346,7 @@ fluo migrate ./src --only imports,injectable
 fluo migrate ./src --skip testing
 ```
 
-The canonical `--only` and `--skip` tokens are `imports`, `inject-params`, `scope`, `bootstrap`, `tests`, and `tsconfig`. The legacy `injectable` and `testing` tokens remain accepted aliases for `inject-params` and `tests`.
+The canonical `--only` and `--skip` tokens are `imports`, `injectable`, `scope`, `bootstrap`, `testing`, and `tsconfig`. Legacy `inject-params` and `tests` inputs remain accepted for existing scripts, but JSON `transforms` and `appliedTransforms` always emit `injectable` and `testing`.
 
 Use `--json` when CI jobs, dashboards, or migration reports need a stable machine-readable result. Human output remains the default. JSON mode writes only the structured report to stdout on success, while parser errors and invalid flag combinations still write their message to stderr and return exit code `1` without partial JSON output. The report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata with `filePath`, `changed`, `appliedTransforms`, `warningCount`, and warnings including category labels and source line numbers.
 

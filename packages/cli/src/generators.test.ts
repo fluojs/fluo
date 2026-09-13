@@ -38,7 +38,7 @@ describe('CLI generators', () => {
     expect(generateServiceFiles('User')[1]?.path).toBe('user.service.test.ts');
     expect(generateRepoFiles('User')[1]?.path).toBe('user.repo.test.ts');
     expect(generateRepoFiles('User')[2]?.path).toBe('user.repo.slice.test.ts');
-    expect(generateModuleFiles('User', { withTest: true })[1]?.path).toBe('user.slice.test.ts');
+    expect(generateModuleFiles('User', { withSliceTest: true })[1]?.path).toBe('user.slice.test.ts');
     expect(generateResourceFiles('User', { withSliceTest: true }).at(-1)?.path).toBe('user.slice.test.ts');
     expect(generateE2eFiles('Users')[0]?.path).toBe('users.e2e.test.ts');
   });
@@ -53,7 +53,7 @@ describe('CLI generators', () => {
   });
 
   it('emits module and resource slice templates based on stable testing APIs', () => {
-    const moduleSlice = generateModuleFiles('User', { withTest: true })[1]?.content ?? '';
+    const moduleSlice = generateModuleFiles('User', { withSliceTest: true })[1]?.content ?? '';
     const resourceSlice = generateResourceFiles('User', { withSliceTest: true }).at(-1)?.content ?? '';
 
     expect(moduleSlice).toContain('Test.createTestingModule({ rootModule: UserModule })');
@@ -95,7 +95,7 @@ describe('CLI generators', () => {
     { kind, cleanupFails: true },
   ]))('preserves generated $kind assertion failures (cleanup fails: $cleanupFails)', async ({ kind, cleanupFails }) => {
     const files = {
-      module: generateModuleFiles('User', { withTest: true }),
+      module: generateModuleFiles('User', { withSliceTest: true }),
       repo: generateRepoFiles('User'),
       resource: generateResourceFiles('User', { withSliceTest: true }),
       e2e: generateE2eFiles('Users'),
@@ -378,7 +378,6 @@ describe('GeneratorRegistry', () => {
       { aliases: ['-o'], name: '--target-directory <path>', value: 'path' },
       { aliases: ['-f'], name: '--force', value: 'boolean' },
       { aliases: [], name: '--dry-run', value: 'boolean' },
-      { aliases: [], name: '--with-test', value: 'boolean' },
       { aliases: [], name: '--with-slice-test', value: 'boolean' },
       { aliases: ['-h'], name: '--help', value: 'boolean' },
     ]);

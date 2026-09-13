@@ -169,6 +169,14 @@ function isVersionCommand(value: string | undefined): boolean {
   return value === 'version' || value === '--version' || value === '-v';
 }
 
+function isPreviewInvocation(argv: readonly string[]): boolean {
+  return argv.includes('--dry-run')
+    || (argv[0] === 'migrate' && !argv.includes('--apply'))
+    || argv[0] === 'doctor'
+    || argv[0] === 'info'
+    || argv[0] === 'analyze';
+}
+
 function isCreationCommand(value: string | undefined): boolean {
   return value === 'new' || value === 'create';
 }
@@ -251,7 +259,6 @@ function usage(): string {
     '',
     'Options',
     '  --no-update-check  Skip the interactive CLI update check for this invocation.',
-    '                     Alias: --no-update-notifier.',
     '',
     "Run 'fluo help <command>' for more information on a command.",
     'Docs: https://github.com/fluojs/fluo/tree/main/docs/getting-started/quick-start.md',
@@ -307,7 +314,6 @@ async function parseGenerateArgs(argv: string[]): Promise<ParsedCliArgs> {
   let seenDryRun = false;
   let seenTargetDirectory = false;
   let seenWithSliceTest = false;
-  let seenWithTest = false;
 
   for (let index = 0; index < optionArgs.length; index += 1) {
     const option = optionArgs[index];
@@ -355,16 +361,6 @@ async function parseGenerateArgs(argv: string[]): Promise<ParsedCliArgs> {
       continue;
     }
 
-    if (option === '--with-test') {
-      if (seenWithTest) {
-        throw new Error('Duplicate --with-test option.');
-      }
-
-      parsedOptions.withTest = true;
-      seenWithTest = true;
-      continue;
-    }
-
     if (option === '--with-slice-test') {
       if (seenWithSliceTest) {
         throw new Error('Duplicate --with-slice-test option.');
@@ -378,12 +374,8 @@ async function parseGenerateArgs(argv: string[]): Promise<ParsedCliArgs> {
     throw new Error(`Unknown option: ${option}`);
   }
 
-  if (parsedOptions.withTest && kind !== 'module') {
-    throw new Error('--with-test is only supported for module generation. Use --with-slice-test for resource generation.');
-  }
-
-  if (parsedOptions.withSliceTest && kind !== 'resource') {
-    throw new Error('--with-slice-test is only supported for resource generation.');
+  if (parsedOptions.withSliceTest && kind !== 'module' && kind !== 'resource') {
+    throw new Error('--with-slice-test is only supported for module and resource generation.');
   }
 
   return {
@@ -502,7 +494,7 @@ export async function runCli(
       return 0;
     }
 
-    if (!isHelpInvocation(commandArgv)) {
+    if (!isHelpInvocation(commandArgv) && !isPreviewInvocation(commandArgv)) {
       const updateCheckOptions = runtime.updateCheck === false ? undefined : runtime.updateCheck;
       const updateCheckResult = await runCliUpdateCheck(commandArgv, {
         ...updateCheckOptions,

@@ -165,6 +165,7 @@ export function ensureModuleImport(source: string, className: string, importPath
  * Generate module files.
  *
  * @param name The name.
+ * @param options Generator options.
  * @returns The generate module files result.
  */
 export function generateModuleFiles(name: string, options: GenerateOptions = {}): GeneratedFile[] {
@@ -178,7 +179,7 @@ export function generateModuleFiles(name: string, options: GenerateOptions = {})
     },
   ];
 
-  if (options.withTest) {
+  if (options.withSliceTest) {
     files.push({
       content: renderTemplate('module.slice.test.ts.ejs', { kebab, pascal }),
       path: `${kebab}.slice.test.ts`,

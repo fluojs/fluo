@@ -311,8 +311,9 @@ describe('CLI command runner', () => {
     let confirmMessage = '';
     let confirmDefault = true;
 
-    const exitCode = await runCli(['analyze'], {
+    const exitCode = await runCli(['upgrade'], {
       env: updateCheckEnv,
+      fetchDistTags: async () => ({ latest: '1.0.0-beta.2' }),
       stderr: createTtyBufferStream(stderrBuffer),
       stdin: { isTTY: true },
       stdout: createTtyBufferStream(stdoutBuffer),
@@ -335,7 +336,7 @@ describe('CLI command runner', () => {
     expect(stderrBuffer.join('')).toContain('Continuing with @fluojs/cli@1.0.0-beta.1.');
     expect(confirmMessage).toBe('Install @fluojs/cli@1.0.0-beta.2 now and restart this command?');
     expect(confirmDefault).toBe(false);
-    expect(stdoutBuffer.join('')).toContain('fluo analyze');
+    expect(stdoutBuffer.join('')).toContain('fluo upgrade');
   });
 
   it('routes the default update-check prompt through injected TTY streams', async () => {
@@ -345,8 +346,9 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     stdout.on('data', (chunk: Buffer) => stdoutBuffer.push(chunk.toString('utf8')));
 
-    const runPromise = runCli(['analyze'], {
+    const runPromise = runCli(['upgrade'], {
       env: updateCheckEnv,
+      fetchDistTags: async () => ({ latest: '1.0.0-beta.2' }),
       stderr: createTtyBufferStream(stderrBuffer),
       stdin,
       stdout,
@@ -362,7 +364,7 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('Install @fluojs/cli@1.0.0-beta.2 now and restart this command? (y/N)');
-    expect(stdoutBuffer.join('')).toContain('fluo analyze');
+    expect(stdoutBuffer.join('')).toContain('fluo upgrade');
     expect(stderrBuffer.join('')).toContain('Continuing with @fluojs/cli@1.0.0-beta.1.');
   });
 
@@ -373,7 +375,7 @@ describe('CLI command runner', () => {
     const rerunArgv: string[][] = [];
     const rerunEnvValues: Array<string | undefined> = [];
 
-    const exitCode = await runCli(['analyze'], {
+    const exitCode = await runCli(['upgrade'], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream(stderrBuffer),
       stdin: { isTTY: true },
@@ -399,7 +401,7 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(42);
     expect(installCommands).toEqual(['npm install -g @fluojs/cli@1.0.0-beta.2']);
-    expect(rerunArgv).toEqual([['analyze']]);
+    expect(rerunArgv).toEqual([['upgrade']]);
     expect(rerunEnvValues).toEqual(['1']);
     expect(stderrBuffer.join('')).toContain('Updated @fluojs/cli to 1.0.0-beta.2. Restarting fluo...');
     expect(stdoutBuffer.join('')).toBe('');
@@ -415,7 +417,7 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     const installCommands: string[] = [];
 
-    const exitCode = await runCli(['analyze'], {
+    const exitCode = await runCli(['upgrade'], {
       env: {
         ...updateCheckEnv,
         npm_config_user_agent: `${packageManager}/1.0.0 node/v20.0.0 darwin arm64`,
@@ -453,7 +455,7 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     const installCommands: string[] = [];
 
-    const exitCode = await runCli(['analyze'], {
+    const exitCode = await runCli(['upgrade'], {
       env: {
         ...updateCheckEnv,
         npm_execpath: npmExecPath,
@@ -491,7 +493,7 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     const installCommands: string[] = [];
 
-    const exitCode = await runCli(['analyze'], {
+    const exitCode = await runCli(['upgrade'], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream(stderrBuffer),
       stdin: { isTTY: true },
@@ -522,7 +524,7 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     const installCommands: string[] = [];
 
-    const exitCode = await runCli(['analyze'], {
+    const exitCode = await runCli(['upgrade'], {
       env: {
         ...updateCheckEnv,
         npm_config_user_agent: 'npm/10.0.0 node/v20.0.0 darwin arm64',
@@ -556,8 +558,9 @@ describe('CLI command runner', () => {
     const stderrBuffer: string[] = [];
     let reran = false;
 
-    const exitCode = await runCli(['analyze'], {
+    const exitCode = await runCli(['upgrade'], {
       env: updateCheckEnv,
+      fetchDistTags: async () => ({ latest: '1.0.0-beta.2' }),
       stderr: createTtyBufferStream(stderrBuffer),
       stdin: { isTTY: true },
       stdout: createTtyBufferStream(stdoutBuffer),
@@ -579,7 +582,7 @@ describe('CLI command runner', () => {
     expect(exitCode).toBe(0);
     expect(reran).toBe(false);
     expect(stderrBuffer.join('')).toContain('Update install failed with exit code 7; continuing with @fluojs/cli@1.0.0-beta.1.');
-    expect(stdoutBuffer.join('')).toContain('fluo analyze');
+    expect(stdoutBuffer.join('')).toContain('fluo upgrade');
   });
 
   it('skips the update prompt in CI and non-TTY contexts', async () => {
@@ -648,7 +651,6 @@ describe('CLI command runner', () => {
   });
 
   it.each([
-    ['--no-update-notifier flag', ['--no-update-notifier', 'analyze'], updateCheckEnv],
     ['FLUO_NO_UPDATE_CHECK env', ['analyze'], { ...updateCheckEnv, FLUO_NO_UPDATE_CHECK: '1' }],
     ['npm lifecycle event env', ['analyze'], { ...updateCheckEnv, npm_lifecycle_event: 'dev' }],
     ['npm lifecycle script env', ['analyze'], { ...updateCheckEnv, npm_lifecycle_script: 'fluo dev' }],
@@ -687,7 +689,7 @@ describe('CLI command runner', () => {
     let fetchCount = 0;
     const stdoutBuffer: string[] = [];
 
-    const exitCode = await runCli(argv, {
+    const exitCode = await runCli([...argv], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream([]),
       stdin: { isTTY: true },
@@ -707,7 +709,7 @@ describe('CLI command runner', () => {
     expect(stdoutBuffer.join('')).toContain('Usage: fluo');
   });
 
-  it('uses the update-check cache instead of hitting npm on every invocation', async () => {
+  it('does not check for updates while summarizing diagnostics', async () => {
     const cacheFile = createUpdateCacheFile();
     let fetchCount = 0;
 
@@ -738,12 +740,12 @@ describe('CLI command runner', () => {
     await runCli(['analyze'], createRuntime(firstStdoutBuffer, firstStderrBuffer));
     await runCli(['analyze'], createRuntime(secondStdoutBuffer, secondStderrBuffer));
 
-    expect(fetchCount).toBe(1);
-    expect(firstStderrBuffer.join('')).toContain('A newer @fluojs/cli version is available');
-    expect(secondStderrBuffer.join('')).toContain('A newer @fluojs/cli version is available');
+    expect(fetchCount).toBe(0);
+    expect(firstStderrBuffer.join('')).toBe('');
+    expect(secondStderrBuffer.join('')).toBe('');
   });
 
-  it.each(['new', 'create'] as const)('bypasses a fresh update-check cache for fluo %s', async (command) => {
+  it.each(['new', 'create'] as const)('keeps fluo %s dry-run previews free of update checks', async (command) => {
     const cacheFile = createUpdateCacheFile();
     writeFileSync(cacheFile, `${JSON.stringify({ checkedAt: Date.parse('2026-04-26T00:00:00.000Z'), latestVersion: '1.0.0-beta.2' })}\n`, 'utf8');
 
@@ -770,7 +772,7 @@ describe('CLI command runner', () => {
       'pnpm',
       '--no-install',
       '--no-git',
-      '--print-plan',
+      '--dry-run',
     ], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream(stderrBuffer),
@@ -792,13 +794,13 @@ describe('CLI command runner', () => {
 
     const cache = JSON.parse(readFileSync(cacheFile, 'utf8')) as { latestVersion: string };
     expect(exitCode).toBe(0);
-    expect(fetchCount).toBe(1);
-    expect(cache.latestVersion).toBe('1.0.0-beta.3');
-    expect(stderrBuffer.join('')).toContain('A newer @fluojs/cli version is available: 1.0.0-beta.1 -> 1.0.0-beta.3.');
+    expect(fetchCount).toBe(0);
+    expect(cache.latestVersion).toBe('1.0.0-beta.2');
+    expect(stderrBuffer.join('')).toBe('');
     expect(stdoutBuffer.join('')).toContain('fluo new scaffold plan');
   });
 
-  it('keeps fresh update-check cache behavior for non-creation commands', async () => {
+  it('keeps diagnostic summaries free of update-check cache behavior', async () => {
     const cacheFile = createUpdateCacheFile();
     writeFileSync(cacheFile, `${JSON.stringify({ checkedAt: Date.parse('2026-04-26T00:00:00.000Z'), latestVersion: '1.0.0-beta.2' })}\n`, 'utf8');
 
@@ -827,14 +829,14 @@ describe('CLI command runner', () => {
 
     expect(exitCode).toBe(0);
     expect(fetchCount).toBe(0);
-    expect(stderrBuffer.join('')).toContain('A newer @fluojs/cli version is available: 1.0.0-beta.1 -> 1.0.0-beta.2.');
-    expect(stderrBuffer.join('')).not.toContain('1.0.0-beta.3');
+    expect(stderrBuffer.join('')).toBe('');
     expect(stdoutBuffer.join('')).toContain('fluo analyze');
   });
 
-  it('continues fluo new when a forced update check cannot reach the registry', async () => {
+  it('keeps fluo new dry-run previews independent of registry availability', async () => {
     const stdoutBuffer: string[] = [];
     const stderrBuffer: string[] = [];
+    let fetchCount = 0;
 
     const exitCode = await runCli([
       'new',
@@ -855,7 +857,7 @@ describe('CLI command runner', () => {
       'pnpm',
       '--no-install',
       '--no-git',
-      '--print-plan',
+      '--dry-run',
     ], {
       env: updateCheckEnv,
       stderr: createTtyBufferStream(stderrBuffer),
@@ -865,12 +867,14 @@ describe('CLI command runner', () => {
         cacheFile: createUpdateCacheFile(),
         currentVersion: '1.0.0-beta.1',
         fetchLatestVersion: async () => {
+          fetchCount += 1;
           throw new Error('registry unavailable');
         },
       },
     });
 
     expect(exitCode).toBe(0);
+    expect(fetchCount).toBe(0);
     expect(stderrBuffer.join('')).toBe('');
     expect(stdoutBuffer.join('')).toContain('fluo new scaffold plan');
   });
@@ -1669,7 +1673,7 @@ void bootstrap();
       'http',
       '--install',
       '--git',
-      '--print-plan',
+      '--dry-run',
     ], {
       cwd: workspaceDirectory,
       stderr: { write: () => undefined },
@@ -1707,7 +1711,7 @@ void bootstrap();
       'react-vite-ssr',
       '--no-install',
       '--no-git',
-      '--print-plan',
+      '--dry-run',
     ], {
       cwd: workspaceDirectory,
       stderr: { write: () => undefined },
@@ -1723,7 +1727,7 @@ void bootstrap();
     expect(existsSync(join(workspaceDirectory, 'react-app'))).toBe(false);
   });
 
-  it('keeps --print-plan side-effect free for a non-empty target even with --force', async () => {
+  it('keeps --dry-run side-effect free for a non-empty target even with --force', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     const targetDirectory = join(workspaceDirectory, 'existing-app');
@@ -1738,7 +1742,7 @@ void bootstrap();
       '--target-directory',
       targetDirectory,
       '--force',
-      '--print-plan',
+      '--dry-run',
       '--no-install',
       '--no-git',
     ], {
@@ -1767,7 +1771,7 @@ void bootstrap();
       'tcp',
       '--no-install',
       '--no-git',
-      '--print-plan',
+      '--dry-run',
     ], {
       cwd: workspaceDirectory,
       stderr: { write: () => undefined },
@@ -1794,7 +1798,7 @@ void bootstrap();
     createdDirectories.push(workspaceDirectory);
     const stdoutBuffer: string[] = [];
 
-    const exitCode = await runCli(['new', '--print-plan'], {
+    const exitCode = await runCli(['new', '--dry-run'], {
       cwd: workspaceDirectory,
       interactive: true,
       prompt: {
@@ -2340,6 +2344,30 @@ void bootstrap();
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('cli.js __dev-runner --runtime deno --');
     expect(stdoutBuffer.join('')).toContain('Watch mode: fluo-restart');
+  });
+
+  it.each([
+    { argv: ['dev', '--dry-run', '--runner', 'native'], env: { FLUO_DEV_RUNNER: 'fluo' }, expectedMode: 'runtime-native-watch' },
+    { argv: ['dev', '--dry-run'], env: { FLUO_DEV_RUNNER: 'fluo' }, expectedMode: 'fluo-restart' },
+    { argv: ['dev', '--dry-run'], env: {}, expectedMode: 'runtime-native-watch' },
+  ] as const)('resolves the dev runner with flag then environment then runtime default', async ({ argv, env, expectedMode }) => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(
+      join(workspaceDirectory, 'package.json'),
+      JSON.stringify({ dependencies: { '@fluojs/platform-deno': '^1.0.0' }, name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2),
+    );
+    const stdoutBuffer: string[] = [];
+
+    const exitCode = await runCli([...argv], {
+      cwd: workspaceDirectory,
+      env,
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => stdoutBuffer.push(message) },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdoutBuffer.join('')).toContain(`Watch mode: ${expectedMode}`);
   });
 
   it('supports explicit runtime-native Bun dev dry-runs with pass-through args', async () => {
@@ -3857,23 +3885,21 @@ exit 7
     expect(spawned).toEqual([{ args: ['dist/main.js'], forceColor: undefined, prettyTtyColor: undefined }]);
   });
 
-  it('ignores package-manager overrides for direct lifecycle runners', async () => {
+  it('rejects package-manager overrides for direct lifecycle runners', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
     writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', scripts: { dev: 'fluo dev' } }, null, 2));
-    const stdoutBuffer: string[] = [];
+    const stderrBuffer: string[] = [];
 
     const exitCode = await runCli(['dev', '--dry-run', '--package-manager', 'npm'], {
       cwd: workspaceDirectory,
       env: {},
-      stderr: { write: () => undefined },
-      stdout: { write: (message) => stdoutBuffer.push(message) },
+      stderr: { write: (message) => stderrBuffer.push(message) },
+      stdout: { write: () => undefined },
     });
 
-    expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Would run: node --import tsx');
-    expect(stdoutBuffer.join('')).toContain('cli.js __dev-runner --runtime node --');
-    expect(stdoutBuffer.join('')).toContain('NODE_ENV: development');
+    expect(exitCode).toBe(1);
+    expect(stderrBuffer.join('')).toContain('--package-manager does not affect fluo dev');
   });
 
   it('runs the Node build lifecycle directly with production env defaults', async () => {
@@ -4838,7 +4864,7 @@ exit 7
     mkdirSync(join(workspaceDirectory, 'src'), { recursive: true });
     writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({ name: 'test-app', private: true }, null, 2));
 
-    const moduleExitCode = await runCli(['g', 'module', 'Billing', '--with-test'], {
+    const moduleExitCode = await runCli(['g', 'module', 'Billing', '--with-slice-test'], {
       cwd: workspaceDirectory,
       stderr: { write: () => undefined },
       stdout: { write: () => undefined },
@@ -5496,7 +5522,7 @@ exit 7
     expect(stderrBuffer.join('')).toContain('Expected --target-directory to have a path value.');
   });
 
-  it('rejects --with-test for non-module generators', async () => {
+  it('rejects the removed --with-test flag', async () => {
     const stderrBuffer: string[] = [];
 
     const exitCode = await runCli(['g', 'resource', 'User', '--with-test'], {
@@ -5506,33 +5532,33 @@ exit 7
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('--with-test is only supported for module generation.');
+    expect(stderrBuffer.join('')).toContain('Unknown option: --with-test');
   });
 
-  it('rejects --with-slice-test for non-resource generators', async () => {
+  it('rejects --with-slice-test for generators without slice tests', async () => {
     const stderrBuffer: string[] = [];
 
-    const exitCode = await runCli(['g', 'module', 'User', '--with-slice-test'], {
+    const exitCode = await runCli(['g', 'service', 'User', '--with-slice-test'], {
       cwd: process.cwd(),
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: () => undefined },
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('--with-slice-test is only supported for resource generation.');
+    expect(stderrBuffer.join('')).toContain('--with-slice-test is only supported for module and resource generation.');
   });
 
   it('rejects duplicate generated-test flags', async () => {
     const stderrBuffer: string[] = [];
 
-    const exitCode = await runCli(['g', 'module', 'User', '--with-test', '--with-test'], {
+    const exitCode = await runCli(['g', 'module', 'User', '--with-slice-test', '--with-slice-test'], {
       cwd: process.cwd(),
       stderr: { write: (message) => stderrBuffer.push(message) },
       stdout: { write: () => undefined },
     });
 
     expect(exitCode).toBe(1);
-    expect(stderrBuffer.join('')).toContain('Duplicate --with-test option.');
+    expect(stderrBuffer.join('')).toContain('Duplicate --with-slice-test option.');
   });
 
   it('resolves mi alias to middleware', async () => {

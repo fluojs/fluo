@@ -14,7 +14,7 @@ In Chapter 1, you saw the ideas behind fluo. Now it is time to turn that philoso
 ## Learning Objectives
 - Learn how to install the fluo CLI globally or run it with `pnpm dlx` when you need a one-off execution.
 - Scaffold a new project with the `fluo new` command.
-- Preview scaffold choices with `--print-plan` before files are written.
+- Preview scaffold choices with `--dry-run` before files are written.
 - Recognize the beginner-facing CLI commands you will meet later: `generate`/`g`, `inspect`, and `migrate`.
 - Analyze the generated project structure and the role of each directory.
 - Understand the `package.json` scripts used for local development.
@@ -144,17 +144,17 @@ Keep the package-manager choice on pnpm for this book. Accept immediate dependen
 
 ### Previewing the starter plan
 
-When you are new, it can be helpful to see what the CLI would do before it writes files. Use `--print-plan` for that.
+When you are new, it can be helpful to see what the CLI would do before it writes files. Use `--dry-run` for that.
 
 ```bash
-fluo new fluo-blog --shape application --runtime node --platform fastify --print-plan
+fluo new fluo-blog --shape application --runtime node --platform fastify --dry-run
 ```
 
 Plan preview mode resolves the same project name, shape, runtime, platform, package manager, install choice, and git choice as a real scaffold. Then it prints the selected recipe and exits without creating files, installing dependencies, or initializing git.
 
 The explicit `--platform fastify` path selects `@fluojs/platform-fastify`, so it inherits that package's exact Node.js `>=24.0.0 <27` runtime range. The starter runs plain HTTP for local development; when the Node process should own HTTPS/TLS directly, pass `https` options at the bootstrap boundary as shown in Chapter 21.
 
-For this book, you can treat `--print-plan` as a safe rehearsal. Run it once if you want to understand the choices, then run `fluo new fluo-blog` when you are ready to create the project.
+For this book, you can treat `--dry-run` as a safe rehearsal. Run it once if you want to understand the choices, then run `fluo new fluo-blog` when you are ready to create the project.
 
 ### What happens under the hood?
 
@@ -484,7 +484,7 @@ The more you interact with the framework through the CLI and logs, the more intu
 ## Summary
 - The fluo CLI gives developers new to fluo a consistent starting point.
 - `fluo new` scaffolds not just a folder, but files and conventions together.
-- `--print-plan` lets you preview a starter without writing files.
+- `--dry-run` lets you preview a starter without writing files.
 - `generate`/`g`, `inspect`, and `migrate` are the next CLI commands to recognize, but not memorize yet.
 - The generated source tree shows where Bootstrap, Module composition, and project metadata live.
 - `dev`, `build`, and `start` each handle a different stage of the development lifecycle.

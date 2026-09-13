@@ -27,7 +27,7 @@ The representative sandbox matrix installs, builds, typechecks, and tests React 
 | **Application commands** | Treat explicit `fluo new --shape application --transport http --runtime ... --platform ...` commands for Fastify, Express, raw Node.js, Bun, Deno, and Cloudflare Workers as the runnable starter contract. |
 | **Named starter command** | Treat `fluo new my-app --starter react-vite-ssr` as the runnable Node.js + Fastify React SSR contract; omitting `--starter` or using `--starter standard` preserves the existing backend matrix. |
 | **Microservice commands** | Treat documented `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc` variants as the runnable starter contract. Other adapter or package mentions still describe the broader ecosystem. |
-| **Plan preview** | Treat `fluo new ... --print-plan` as a non-writing preview of the same resolved starter contract. It prints the selected named starter and recipe, package manager, install/git choices, and dependency sets without creating files, installing dependencies, or initializing git. |
+| **Plan preview** | Treat `fluo new ... --dry-run` as a non-writing preview of the same resolved starter contract. It prints the selected named starter and recipe, package manager, install/git choices, and dependency sets without creating files, installing dependencies, initializing git, or checking for CLI updates. |
 
 ## explicit supported starter values
 

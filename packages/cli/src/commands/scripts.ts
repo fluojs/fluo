@@ -698,6 +698,9 @@ export async function runScriptCommand(command: ScriptCommand, argv: string[], r
   }
 
   const parsed = parseScriptArgs(argv);
+  if (parsed.packageManager) {
+    throw new Error(`--package-manager does not affect fluo ${command}. Use it with fluo new, add, or upgrade instead.`);
+  }
 
   const projectRuntime = detectProjectRuntime(project.manifest);
   const defaultNodeEnv = command === 'dev' ? 'development' : 'production';

@@ -135,12 +135,12 @@ fluo new my-fluo-app --target-directory ./apps/api --force
 
 ### Previewing a starter plan
 
-Use `--print-plan` when you need to inspect the resolved starter without touching the filesystem:
+Use `--dry-run` when you need to inspect the resolved starter without touching the filesystem:
 
 ```bash
-fluo new my-fluo-app --print-plan
-fluo new my-service --shape microservice --transport tcp --print-plan
-fluo new my-mixed-app --shape mixed --print-plan
+fluo new my-fluo-app --dry-run
+fluo new my-service --shape microservice --transport tcp --dry-run
+fluo new my-mixed-app --shape mixed --dry-run
 ```
 
 Plan preview mode resolves the same project name, target directory, shape, runtime, platform, transport, tooling preset, package manager, dependency installation choice, and git initialization choice as a real scaffold. It prints the selected starter recipe and runtime/dev dependency sets, then exits with no side effects. It does not create files, install dependencies, or initialize git.
@@ -184,4 +184,4 @@ Expected output:
 - Generated Bun and Deno application production scripts are runtime-native after build, and generated Cloudflare Workers applications use Wrangler `preview`/`deploy` scripts instead of `start`.
 - The default generated application exposes runtime `/health` plus starter-owned `/greeting`.
 - `fluo new` starter variants map to the maintained starter matrix documented in the CLI README and the support matrix.
-- `fluo new --print-plan` is a read-only preview path. It resolves the starter plan and dependency sets without writing project files, running dependency installation, or initializing git.
+- `fluo new --dry-run` is a read-only preview path. It resolves the starter plan and dependency sets without writing project files, running dependency installation, initializing git, or checking for CLI updates.
