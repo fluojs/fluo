@@ -5,6 +5,16 @@
 
 fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 React page type 생성, 런타임 검사 데이터 내보내기, 코드 변환을 지원합니다.
 
+## Canonical command vocabulary
+
+- 새 앱은 `fluo new`로 스캐폴딩합니다. `create`는 compatibility alias로 유지됩니다.
+- 쓰기를 지원하는 명령의 preview에는 `--dry-run`을 사용합니다. 각 명령의 plan payload를 유지하면서 쓰기, dependency install, git initialization, CLI update 확인을 수행하지 않습니다.
+- 읽기 전용 진단에는 `fluo doctor`를 사용합니다. `info`는 compatibility alias이고 `analyze`는 별도 project summary이며, 세 명령 모두 dependency install 또는 CLI self-update를 수행하지 않습니다. `fluo upgrade`는 latest CLI state와 migration guidance를 보고하지만 read-only가 아닙니다. Interactive TTY에서 새 버전을 찾으면 CLI update를 제안할 수 있고, 명시적 승인 뒤 package-manager global install을 실행할 수 있습니다. 다른 interactive non-preview 명령도 같은 승인형 self-update를 제안할 수 있습니다. `--dry-run` preview와 help/version 경로는 update check를 건너뜁니다.
+- module과 resource generator의 slice test에는 `--with-slice-test`를 사용합니다. 기존 `--with-test` flag는 허용하지 않습니다.
+- Development dependency의 canonical option은 `--dev`이며, `-D`는 입력 shortcut입니다.
+- `--only`와 `--skip`에는 migration transform kind(`imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`)를 사용합니다. JSON `transforms`와 각 파일의 `appliedTransforms`도 같은 token을 사용합니다.
+- `--install`과 `--no-install`은 programmatic installation setting보다 우선합니다. `--package-manager`는 scaffold 또는 package-workflow tool을 선택하며 실행에 영향을 줄 수 없는 lifecycle 명령에서는 거부됩니다.
+
 Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전에 [소비자 마이그레이션 가이드](../../docs/getting-started/migrate-node24.ko.md)를 따르세요.
 
 ## 목차
@@ -57,7 +67,7 @@ fluo -v
 
 `fluo new`와 alias인 `fluo create`는 일반 update-check cache가 아직 fresh하더라도 스캐폴딩 전에 interactive 최신 버전 확인을 새로 시도합니다. 이를 통해 첫 프로젝트 생성 경로가 방금 배포된 starter 동작과 더 잘 맞춰지며, `fluo dev`, `fluo build`, `fluo generate`, `fluo inspect` 같은 일상 명령은 기존처럼 일반 TTL이 만료될 때까지 cached latest-version 결과를 재사용합니다. 순수 help 및 version inspection 경로(`fluo help <command>`, `<command> --help`, `fluo version`, `fluo --version`, `fluo -v`)는 interactive update check를 실행하지 않고 즉시 출력합니다.
 
-업데이트 확인은 CI, non-TTY 출력, npm-script context, 업데이트 후 재실행 context, registry/network 실패, 명시적 opt-out 경로에서는 건너뜁니다. 한 번만 끄려면 `--no-update-check`(또는 compatibility alias `--no-update-notifier`)를 사용하고, 자동화에서 절대 prompt가 뜨면 안 되는 경우에는 `FLUO_NO_UPDATE_CHECK=1`을 설정하세요.
+업데이트 확인은 CI, non-TTY 출력, npm-script context, 업데이트 후 재실행 context, registry/network 실패, 명시적 opt-out 경로에서는 건너뜁니다. 한 번만 끄려면 `--no-update-check`를 사용하고, 자동화에서 절대 prompt가 뜨면 안 되는 경우에는 `FLUO_NO_UPDATE_CHECK=1`을 설정하세요.
 
 ## 사용 시점
 
@@ -206,13 +216,13 @@ Scaffold는 기본적으로 비어 있지 않은 대상에서 충돌하는 파�
 fluo new my-app --target-directory ./apps/api --force
 ```
 
-side effect 없이 완전히 resolved starter를 미리 확인하려면 `--print-plan`을 사용하세요:
+side effect 없이 완전히 resolved starter를 미리 확인하려면 `--dry-run`을 사용하세요:
 
 ```bash
-fluo new my-app --shape application --runtime node --platform fastify --print-plan
-fluo new my-react-app --starter react-vite-ssr --print-plan
-fluo new my-service --shape microservice --transport tcp --print-plan
-fluo new my-mixed-app --shape mixed --print-plan
+fluo new my-app --shape application --runtime node --platform fastify --dry-run
+fluo new my-react-app --starter react-vite-ssr --dry-run
+fluo new my-service --shape microservice --transport tcp --dry-run
+fluo new my-mixed-app --shape mixed --dry-run
 ```
 
 plan preview 모드는 실제 scaffold와 같은 named starter, 프로젝트 이름, shape, runtime, platform, transport, tooling preset, package manager, install 선택, git 선택을 resolve합니다. 선택된 starter와 recipe, dependency 세트를 출력한 뒤 파일 생성, dependency 설치, git 저장소 초기화 없이 종료합니다.
@@ -224,7 +234,7 @@ feature slice를 생성합니다. 일부 schematic은 모듈에 자동 등록되
 
 ```bash
 fluo generate module users
-fluo generate module users --with-test
+fluo generate module users --with-slice-test
 fluo generate resource users
 fluo generate resource users --with-slice-test
 fluo generate e2e users
@@ -238,7 +248,7 @@ fluo generate service users --dry-run
 
 자동 등록되는 generator는 `controller`, `service`, `repo`, `guard`, `interceptor`, `middleware`입니다. 파일만 생성하는 generator는 `e2e`, `module`, `request-dto`, `response-dto`, `resource`입니다.
 
-`fluo generate module <name> --with-test`는 작성한 module을 `Test.createTestingModule({ rootModule })`로 컴파일하는 `*.slice.test.ts`를 추가합니다. `fluo generate resource <name>`는 module, controller, service, repository, request DTO, response DTO, test를 포함하는 완전한 feature slice를 생성합니다. `--with-slice-test`를 추가하면 provider override와 service resolution을 보여 주는 resource-level slice test도 포함합니다. 이 명령은 파일만 생성하고 수동 활성화를 요구하는 generator입니다. 생성된 resource module은 parent module에 자동으로 연결하지 않으며, route를 자동 활성화하는 `nest g resource` 동등 명령으로 보면 안 됩니다. Slice를 활성화할 준비가 되었을 때 직접 import하세요.
+`fluo generate module <name> --with-slice-test`는 작성한 module을 `Test.createTestingModule({ rootModule })`로 컴파일하는 `*.slice.test.ts`를 추가합니다. `fluo generate resource <name>`는 module, controller, service, repository, request DTO, response DTO, test를 포함하는 완전한 feature slice를 생성합니다. `--with-slice-test`를 추가하면 provider override와 service resolution을 보여 주는 resource-level slice test도 포함합니다. 이 명령은 파일만 생성하고 수동 활성화를 요구하는 generator입니다. 생성된 resource module은 parent module에 자동으로 연결하지 않으며, route를 자동 활성화하는 `nest g resource` 동등 명령으로 보면 안 됩니다. Slice를 활성화할 준비가 되었을 때 직접 import하세요.
 
 `fluo generate e2e <name>`는 generated starter와 같은 app-level test 영역에 request-pipeline test를 두도록 `Test.createApp({ rootModule: AppModule })`을 사용하는 `test/<name>.e2e.test.ts`를 작성하고, 기본 starter root module인 `../src/app`에서 `AppModule`을 import합니다. 생성된 unit test는 직접 class 동작 검증에, slice test는 DI wiring과 override 검증에, e2e test는 virtual app을 통과하는 route, guard, interceptor, DTO validation, response writing 검증에 사용하세요.
 
@@ -327,18 +337,19 @@ fluo upgrade
 ```bash
 # 변경 사항 미리보기 (dry-run)
 fluo migrate ./src
+fluo migrate ./src --dry-run
 fluo migrate ./src --json
 
 # 변환 적용
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,injectable
-fluo migrate ./src --skip testing
+fluo migrate ./src --apply --only imports,injectable
+fluo migrate ./src --apply --skip testing
 ```
 
-정식 `--only` 및 `--skip` 토큰은 `imports`, `inject-params`, `scope`, `bootstrap`, `tests`, `tsconfig`입니다. 기존 `injectable` 및 `testing` 토큰은 각각 `inject-params` 및 `tests`의 허용되는 별칭으로 유지됩니다.
+Migration preview는 기본값이며 `--dry-run`은 이를 명시하는 canonical form이고, 파일을 쓰는 switch는 `--apply`뿐입니다. 정식 `--only` 및 `--skip` 토큰은 `imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`입니다. 기존 script를 위해 legacy 입력 `inject-params`와 `tests`는 계속 허용하지만 JSON `transforms`와 `appliedTransforms`는 항상 `injectable`과 `testing`을 출력합니다.
 
-CI 작업, 대시보드, migration report에서 안정적인 machine-readable 결과가 필요하면 `--json`을 사용하세요. 사람을 위한 출력은 기본값으로 유지됩니다. JSON 모드는 성공 시 stdout에 structured report만 기록하고, parser 오류나 잘못된 flag 조합은 기존처럼 stderr에 메시지를 기록한 뒤 exit code `1`을 반환하며 partial JSON을 출력하지 않습니다. Report에는 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 그리고 `filePath`, `changed`, `appliedTransforms`, `warningCount`, category label과 source line number가 포함된 warnings per-file metadata가 포함됩니다.
+CI 작업, 대시보드, migration report에서 안정적인 machine-readable 결과가 필요하면 `--json`을 사용하세요. 사람을 위한 출력은 기본값으로 유지됩니다. JSON 모드는 성공 시 stdout에 structured report만 기록하고, parser 오류나 잘못된 flag 조합은 기존처럼 stderr에 메시지를 기록한 뒤 exit code `1`을 반환하며 partial JSON을 출력하지 않습니다. Report는 `schemaVersion: 1`을 사용하며 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 그리고 `filePath`, `changed`, `appliedTransforms`, `warningCount`, category label과 source line number가 포함된 warnings per-file metadata를 포함합니다.
 
 `--apply`로 다시 실행하기 전에는 모든 warning을 검토하세요. Warning은 자동 rewrite를 그대로 수락해도 된다는 뜻이 아니라 수동 follow-up 항목입니다. Warning category별 post-codemod checklist는 [NestJS migration guide](../../docs/getting-started/migrate-from-nestjs.ko.md)를 기준으로 확인하세요.
 
@@ -486,7 +497,7 @@ Catalog만으로는 URI versioning과 header, media-type, custom version strateg
 | `NewCommandRuntimeOptions` | prompt, filesystem write, dependency install, git initialization 같은 `runNewCommand(...)` runtime override 타입입니다. `runCli(...)`도 `new` 또는 `create`로 dispatch할 때 이 override를 받습니다. Monorepo-local starter dependency override는 내부 sandbox harness 세부사항이며 이 공개 타입의 일부가 아닙니다. |
 | `CliPromptCancelledError` | 호출자가 제공한 prompt hook이 정상 취소를 알리기 위해 throw할 수 있는 안정적인 sentinel입니다. |
 | `runGenerateCommand(kind, name, baseDirectory, options?)` | built-in schematic generator와 module auto-registration planner에 대한 프로그래밍적 접근을 제공합니다. |
-| `GenerateOptions` | 프로그래밍 방식 generator 옵션 타입입니다. |
+| `GenerateOptions` | 프로그래밍 방식 generator 옵션 타입입니다. `withTest`는 제거되었으므로 module과 resource slice test에는 `withSliceTest`를 사용하세요. |
 | `GenerateResult` | 변경된 파일, dry-run plan entry, module wiring metadata, next-step hint를 포함하는 generator 결과 타입입니다. |
 | `GeneratePlanEntry` / `GeneratePlanAction` | `runGenerateCommand(...)`가 반환하는 dry-run 및 write-plan path action 타입입니다. |
 | `GeneratedFile` | write 전 생성된 파일 경로와 in-memory content를 설명하는 타입입니다. |

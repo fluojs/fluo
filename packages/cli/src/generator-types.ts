@@ -20,10 +20,8 @@ export interface GenerateOptions {
    * Feature or slice directory that should receive feature-local files such as request DTOs.
    */
   targetFeature?: string;
-  /** Emit resource-level slice test coverage with provider override examples. */
+  /** Emit generator-specific slice test coverage when the selected generator supports it. */
   withSliceTest?: boolean;
-  /** Emit module-level test coverage for schematics that support companion tests. */
-  withTest?: boolean;
 }
 
 /**

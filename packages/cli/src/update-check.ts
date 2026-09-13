@@ -94,7 +94,9 @@ export interface CliUpdateCheckRuntimeOptions {
 const DEFAULT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_PACKAGE_NAME = '@fluojs/cli';
 const DEFAULT_REGISTRY_TIMEOUT_MS = 5_000;
-const UPDATE_CHECK_FLAGS = new Set(['--no-update-check', '--no-update-notifier']);
+const UPDATE_CHECK_FLAGS = new Set(['--no-update-check']);
+/** Removed global update-check flags that must report a normal CLI error. */
+export const REMOVED_UPDATE_CHECK_FLAGS = new Set(['--no-update-notifier']);
 const UPDATE_PACKAGE_MANAGERS = new Set<UpdatePackageManager>(['bun', 'npm', 'pnpm', 'yarn']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -577,10 +579,13 @@ function shouldRunInteractiveUpdateCheck(options: CliUpdateCheckRuntimeOptions, 
  * @returns The remove update check flags result.
  */
 export function removeUpdateCheckFlags(argv: string[]): { argv: string[]; skipUpdateCheck: boolean } {
+  const separatorIndex = argv.indexOf('--');
+  const globalArgv = separatorIndex === -1 ? argv : argv.slice(0, separatorIndex);
+  const passThroughArgv = separatorIndex === -1 ? [] : argv.slice(separatorIndex);
   const filteredArgv: string[] = [];
   let skipUpdateCheck = false;
 
-  for (const arg of argv) {
+  for (const arg of globalArgv) {
     if (UPDATE_CHECK_FLAGS.has(arg)) {
       skipUpdateCheck = true;
       continue;
@@ -589,7 +594,7 @@ export function removeUpdateCheckFlags(argv: string[]): { argv: string[]; skipUp
     filteredArgv.push(arg);
   }
 
-  return { argv: filteredArgv, skipUpdateCheck };
+  return { argv: [...filteredArgv, ...passThroughArgv], skipUpdateCheck };
 }
 
 /**

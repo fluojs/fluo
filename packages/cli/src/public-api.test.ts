@@ -178,7 +178,7 @@ describe('public CLI package API', () => {
       stdout: { write: (message) => stdoutBuffer.push(message) },
     };
 
-    const exitCode = await runNewCommand(['starter-app', '--print-plan', '--no-install', '--no-git'], runtimeOptions);
+    const exitCode = await runNewCommand(['starter-app', '--dry-run', '--no-install', '--no-git'], runtimeOptions);
 
     expect(exitCode).toBe(0);
     expect(stderrBuffer.join('')).toBe('');

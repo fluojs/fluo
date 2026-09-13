@@ -14,7 +14,7 @@ Chapter 1에서 fluo가 어떤 생각으로 만들어졌는지 봤다면, 이제
 ## Learning Objectives
 - fluo CLI를 전역 설치하거나 일회성 실행이 필요할 때 `pnpm dlx`로 실행하는 방법을 익힙니다.
 - `fluo new` 명령으로 새 프로젝트를 스캐폴딩합니다.
-- 파일을 쓰기 전에 `--print-plan`으로 스캐폴드 선택을 미리 확인합니다.
+- 파일을 쓰기 전에 `--dry-run`으로 스캐폴드 선택을 미리 확인합니다.
 - 이후 만나게 될 초보자용 CLI 명령인 `generate`/`g`, `inspect`, `migrate`를 알아봅니다.
 - 생성된 프로젝트 구조와 각 디렉터리의 역할을 분석합니다.
 - 로컬 개발에 사용되는 `package.json` 스크립트를 이해합니다.
@@ -144,17 +144,17 @@ fluo new fluo-blog
 
 ### Previewing the starter plan
 
-처음에는 CLI가 파일을 쓰기 전에 무엇을 하려는지 먼저 보는 편이 도움이 됩니다. 이때 `--print-plan`을 사용합니다.
+처음에는 CLI가 파일을 쓰기 전에 무엇을 하려는지 먼저 보는 편이 도움이 됩니다. 이때 `--dry-run`을 사용합니다.
 
 ```bash
-fluo new fluo-blog --shape application --runtime node --platform fastify --print-plan
+fluo new fluo-blog --shape application --runtime node --platform fastify --dry-run
 ```
 
 Plan preview 모드는 실제 스캐폴딩과 같은 프로젝트 이름, shape, runtime, platform, package manager, install 선택, git 선택을 해석합니다. 그런 다음 선택된 recipe를 출력하고, 파일 생성, 의존성 설치, git 초기화 없이 종료합니다.
 
 명시적인 `--platform fastify` 경로는 `@fluojs/platform-fastify`를 선택하므로 해당 패키지의 정확한 Node.js `>=24.0.0 <27` runtime 범위를 그대로 따릅니다. Starter는 로컬 개발을 위해 일반 HTTP로 실행됩니다. Node 프로세스가 HTTPS/TLS를 직접 소유해야 한다면 Chapter 21에서처럼 bootstrap boundary에 `https` option을 명시적으로 전달하세요.
 
-이 책에서는 `--print-plan`을 안전한 리허설로 생각해도 됩니다. 선택지를 이해하고 싶다면 한 번 실행해 보고, 준비가 되면 `fluo new fluo-blog`로 실제 프로젝트를 생성하세요.
+이 책에서는 `--dry-run`을 안전한 리허설로 생각해도 됩니다. 선택지를 이해하고 싶다면 한 번 실행해 보고, 준비가 되면 `fluo new fluo-blog`로 실제 프로젝트를 생성하세요.
 
 ### What happens under the hood?
 
@@ -205,11 +205,12 @@ fluo g service posts
 fluo inspect ./src/app.ts --json
 fluo inspect ./src/app.ts --report --output artifacts/inspect-report.json
 fluo migrate ./src --json
+fluo migrate ./src --dry-run
 ```
 
 - `generate`, 또는 짧은 별칭인 `g`는 기존 프로젝트 안에 모듈, 컨트롤러, 서비스, 리포지토리, request DTO 같은 프레임워크 파일을 만듭니다.
 - `inspect`는 런타임 검사 데이터를 내보냅니다. JSON이 기본 snapshot 형식이고, `--report --output <path>`는 support artifact를 쓰며, 시각적 그래프가 필요할 때는 `--mermaid`가 렌더링을 Studio에 위임합니다.
-- `migrate`는 오래된 decorator 스타일 코드를 fluo 쪽으로 옮길 때 코드 변환을 미리 보거나 적용합니다. 기본 모드는 dry run이며, `--json`은 자동화가 읽기 좋은 안정적인 report를 제공합니다.
+- `migrate`는 오래된 decorator 스타일 코드를 fluo 쪽으로 옮길 때 코드 변환을 미리 보거나 적용합니다. Preview가 기본값이고 `--dry-run`은 이를 명시하며 `--apply`는 변경 사항을 씁니다. `--json`은 자동화가 읽기 좋은 안정적인 report를 제공합니다.
 
 지금은 이것을 지도로만 기억하세요. Chapter 3부터 생성된 빌딩 블록을 쓰기 시작하고, Chapter 6에서는 생성된 request DTO 파일을 validation과 연결합니다.
 
@@ -484,7 +485,7 @@ CLI와 로그를 통해 프레임워크와 더 많이 상호작용할수록 fluo
 ## Summary
 - fluo CLI는 처음 fluo를 접하는 개발자에게 일관된 출발점을 제공합니다.
 - `fluo new`는 단순한 폴더가 아니라 파일과 관례를 함께 스캐폴딩합니다.
-- `--print-plan`은 파일을 쓰지 않고 스타터 계획을 미리 보여 줍니다.
+- `--dry-run`은 파일을 쓰지 않고 스타터 계획을 미리 보여 줍니다.
 - `generate`/`g`, `inspect`, `migrate`는 다음에 알아볼 CLI 명령이지만, 아직 외울 필요는 없습니다.
 - 생성된 소스 트리는 부트스트랩, 모듈 구성, 프로젝트 메타데이터의 위치를 알려 줍니다.
 - `dev`, `build`, `start`는 개발 생명주기의 서로 다른 단계를 담당합니다.

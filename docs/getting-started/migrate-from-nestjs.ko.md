@@ -27,6 +27,8 @@
 
 이 문서는 마이그레이션 계약 맵으로 사용한다. 각 행은 NestJS 구성 요소에 대해 허용되는 가장 가까운 fluo 대상 구성을 지정하고, 아래 규칙은 일대일 치환이 되지 않는 지점을 명시한다. Terminus는 작성한 module에서 `TerminusModule.forRoot(...)`로 indicator를 구성하세요. `/health`는 집계 진단을 반환하고, `/ready`는 HTTP `200` 또는 `503`으로 binary traffic-admission 결정을 내리면서 body에는 `ready`, `starting`, `unavailable` 중 하나를 보고합니다. Indicator는 기본적으로 readiness를 차단하며, `/health`에는 보이되 트래픽을 차단하지 않아야 하면 해당 indicator에 `readiness: false`를 설정하세요. `readinessChecks`는 application-owned readiness 조건을 추가하며 indicator를 제외하지 않습니다. 기본 liveness route는 없고 runtime-owned route는 controller `@UseGuards()` metadata를 거부하므로 path-scoped application 또는 adapter middleware, network policy, deployment-owned probe boundary를 사용하세요.
 
+`fluo migrate`에는 `--only` 또는 `--skip`과 함께 canonical transform token `imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`을 사용합니다. `--json`의 `transforms`와 각 파일의 `appliedTransforms`도 같은 canonical token을 보고하며, 기존 script 이행을 위해서만 legacy 입력 `inject-params`, `tests`를 허용합니다.
+
 위 Terminus 요약의 canonical owner는 [Health와 Readiness](../contracts/health-and-readiness.ko.md)입니다. Probe를 이전할 때 [package API와 DI 구성](../../packages/terminus/README.ko.md)을 함께 확인하세요. [이전 판 health 장](../../book/beginner/ch18-health.ko.md)은 학습 참고 자료로 유지되며 별도 계약 owner가 아닙니다.
 
 ## GraphQL 비동기 등록 마이그레이션
@@ -1179,23 +1181,24 @@ CLI로 검증 가능한 fluo baseline을 만든 뒤, NestJS 마이그레이션�
 
 ```bash
 fluo migrate ./src
+fluo migrate ./src --dry-run
 fluo migrate ./src --json
-```
-
-Report와 warning을 검토한 뒤에만 `--apply`를 사용하세요. 더 좁은 pass가 필요하면 `--only <comma-list>` 또는 `--skip <comma-list>`로 활성 transform을 제한할 수 있습니다:
-
-```bash
-fluo migrate ./src --apply
-fluo migrate ./src --apply --json
 fluo migrate ./src --only imports,injectable
 fluo migrate ./src --skip testing
 ```
 
-정식 `--only` 및 `--skip` 토큰은 `imports`, `inject-params`, `scope`, `bootstrap`, `tests`, `tsconfig`입니다. 기존 `injectable` 및 `testing` 토큰은 각각 `inject-params` 및 `tests`의 허용되는 별칭으로 유지됩니다.
+Preview가 기본 모드입니다. `--dry-run`은 이 모드를 명시적으로 지정하며, 파일을 쓰는 switch는 `--apply`뿐이고 두 option을 함께 사용할 수 없습니다. `--only <comma-list>` 또는 `--skip <comma-list>`로 더 좁은 preview의 활성 transform을 제한할 수 있습니다. Report와 warning을 검토한 뒤에만 `--apply`를 사용하세요:
+
+```bash
+fluo migrate ./src --apply
+fluo migrate ./src --apply --json
+```
+
+정식 `--only` 및 `--skip` 토큰은 `imports`, `injectable`, `scope`, `bootstrap`, `testing`, `tsconfig`입니다. 기존 script를 위해 legacy 입력 `inject-params`와 `tests`는 계속 허용하지만 JSON `transforms`와 `appliedTransforms`는 항상 `injectable`과 `testing`을 출력합니다.
 
 기본 출력은 사람이 읽는 형식입니다. CI 작업, dashboard, migration report에서 안정적인 machine-readable output이 필요하면 `--json`을 추가하세요. JSON 모드는 성공 시 stdout에 structured migration report만 씁니다. Parser 오류와 잘못된 flag 조합은 기존처럼 stderr에 메시지를 쓰고 exit code `1`을 반환하며 partial JSON을 출력하지 않습니다.
 
-JSON report에는 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 파일별 metadata가 포함됩니다. 각 파일 항목은 `filePath`, 파일 변경 여부, 적용된 transform, warning count, category label과 source line number가 포함된 warning detail을 기록합니다.
+JSON report는 `schemaVersion: 1`을 사용하며 `mode`(`dry-run` 또는 `apply`), `dryRun`, `apply`, 활성화된 `transforms`, `scannedFiles`, `changedFiles`, 전체 `warningCount`, 파일별 metadata를 포함합니다. 각 파일 항목은 `filePath`, 파일 변경 여부, 적용된 transform, warning count, category label과 source line number가 포함된 warning detail을 기록합니다.
 
 Adapter-independent transform(`imports`, `injectable`, `scope`, `testing`, `tsconfig`)은 HTTP adapter 없이 실행됩니다. Bootstrap migration은 명시적입니다. `--platform express`를 선택해야 `NestFactory.create(AppModule)`를 `ExpressHttpApplicationAdapter.create(...)`로 재작성하며, 대응하는 `listen(port)`가 정확히 하나의 numeric literal 인수일 때만 변환합니다. `--platform express`가 없으면 bootstrap은 warning과 함께 변경하지 않으며, 지원하지 않는 bootstrap form도 warning과 함께 보존합니다. 마이그레이션한 애플리케이션을 컴파일하기 전에 `@fluojs/platform-express`와 `express`를 설치하세요. bootstrap을 그대로 두려면 독립 transform만 선택하세요:
 

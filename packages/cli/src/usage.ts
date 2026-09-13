@@ -84,8 +84,8 @@ const NEW_OPTION_HELP: CommandOptionHelpEntry[] = [
   },
   {
     aliases: [],
-    description: 'Print the resolved scaffold plan without writing files, installing dependencies, or initializing git.',
-    option: '--print-plan',
+    description: 'Preview the resolved scaffold plan without writing files, installing dependencies, or initializing git.',
+    option: '--dry-run',
   },
   {
     aliases: ['-h'],

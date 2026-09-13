@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { MIGRATION_TRANSFORMS } from '../transforms/nestjs-migrate.js';
 import { runMigrateCommand } from './migrate.js';
+import { MIGRATION_TRANSFORM_CLI_TOKENS, parseMigrationTransformList } from './migration-transform-tokens.js';
 
 const temporaryDirectories: string[] = [];
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
@@ -19,6 +21,25 @@ afterEach(() => {
 });
 
 describe('documented migration transform tokens', () => {
+  it('shares one canonical transform list with CLI token parsing', () => {
+    expect(MIGRATION_TRANSFORM_CLI_TOKENS).toBe(MIGRATION_TRANSFORMS);
+  });
+
+  it.each([
+    ['inject-params', 'injectable'],
+    ['tests', 'testing'],
+  ] as const)('normalizes legacy token %s to canonical %s', (legacyToken, canonicalToken) => {
+    expect(parseMigrationTransformList(legacyToken, '--only')).toEqual([canonicalToken]);
+  });
+
+  it.each(MIGRATION_TRANSFORMS)('round-trips canonical token %s without aliases', (canonicalToken) => {
+    expect(parseMigrationTransformList(canonicalToken, '--skip')).toEqual([canonicalToken]);
+  });
+
+  it('rejects unknown transform token values', () => {
+    expect(() => parseMigrationTransformList('unknown', '--only')).toThrow(/unknown/);
+  });
+
   it.each([
     'packages/cli/README.md',
     'packages/cli/README.ko.md',
@@ -71,6 +92,7 @@ void Test.createTestingModule({ imports: [UsersModule] }).compile();
     expect(stderrBuffer.join('')).toBe('');
     const report: unknown = JSON.parse(stdoutBuffer.join(''));
     expect(report).toMatchObject({
+      schemaVersion: 1,
       transforms: ['injectable', 'testing'],
       files: [
         {

@@ -39,13 +39,13 @@ pnpm dev
 
 `fluo create` is an alias for `fluo new`.
 
-Use `--print-plan` when you want to preview the resolved starter without creating files, installing dependencies, or initializing git.
+Use `--dry-run` when you want to preview the resolved starter without creating files, installing dependencies, initializing git, or checking for CLI updates.
 
 ```bash
-fluo new my-app --shape application --runtime node --platform fastify --print-plan
-fluo new my-react-app --starter react-vite-ssr --print-plan
-fluo new my-service --shape microservice --transport tcp --print-plan
-fluo new my-mixed-app --shape mixed --print-plan
+fluo new my-app --shape application --runtime node --platform fastify --dry-run
+fluo new my-react-app --starter react-vite-ssr --dry-run
+fluo new my-service --shape microservice --transport tcp --dry-run
+fluo new my-mixed-app --shape mixed --dry-run
 ```
 
 ## Application starters
@@ -156,7 +156,7 @@ Use `fluo generate` to create feature slices and framework artifacts.
 
 ```bash
 fluo generate module users
-fluo generate module users --with-test
+fluo generate module users --with-slice-test
 fluo generate resource users
 fluo generate resource users --with-slice-test
 fluo generate e2e users
@@ -190,12 +190,10 @@ Generator discovery is intentionally limited to the built-in `@fluojs/cli/builti
 
 ## Diagnostics commands
 
-Use these commands when debugging CLI installation, project scripts, runtime facts, or update state.
+Use `fluo doctor` as the read-only diagnostic recipe for CLI installation, project scripts, runtime facts, and update state. `fluo info` is its compatibility alias; `fluo analyze` is a separate project summary.
 
 ```bash
 fluo doctor
-fluo info
-fluo analyze
 ```
 
 `fluo analyze` is read-only and points to deeper `inspect --report` and `migrate --json` workflows.
@@ -207,17 +205,23 @@ fluo add studio --dev --dry-run
 fluo upgrade
 ```
 
+Use `--dev` as the canonical development-dependency option; `-D` is its typing shortcut.
+
 ## Decorator codemods
 
 Use `fluo migrate` to align code with TC39 standard decorators.
 
 ```bash
+# Preview transformations
 fluo migrate ./src
+fluo migrate ./src --dry-run
 fluo migrate ./src --json
+
+# Apply transformations
 fluo migrate ./src --apply
 fluo migrate ./src --apply --json
-fluo migrate ./src --only imports,inject-params
-fluo migrate ./src --skip tests
+fluo migrate ./src --apply --only imports,injectable
+fluo migrate ./src --apply --skip testing
 ```
 
 Key transformations include:
@@ -229,7 +233,9 @@ Key transformations include:
 - migrating supported test templates toward `@fluojs/testing`,
 - updating `tsconfig.json` for standard decorators and TS6-safe paths.
 
-JSON mode emits a stable machine-readable report and keeps parser errors or invalid flags on stderr with exit code `1`.
+Migration preview is the default; `--dry-run` is its explicit canonical form, while `--apply` performs writes.
+
+JSON mode emits a stable `schemaVersion: 1` machine-readable report and keeps parser errors or invalid flags on stderr with exit code `1`.
 
 ## Runtime inspection
 

@@ -27,6 +27,8 @@
 
 Use this document as a migration contract map. Each row identifies the closest allowed fluo target for a NestJS construct, and each rule below marks the places where the migration is not one-to-one. For Terminus, compose indicators in the authored module with `TerminusModule.forRoot(...)`: `/health` returns aggregated diagnostics, while `/ready` makes a binary traffic-admission decision with HTTP `200` or `503` and a body status of `ready`, `starting`, or `unavailable`. Indicators gate readiness by default; set an indicator's `readiness: false` when it should remain visible in `/health` without blocking traffic. `readinessChecks` adds application-owned readiness conditions and does not exclude indicators. No default liveness route exists, and runtime-owned routes reject controller `@UseGuards()` metadata in favor of path-scoped application or adapter middleware, network policy, or deployment-owned probe boundaries.
 
+For `fluo migrate`, use the canonical transform tokens `imports`, `injectable`, `scope`, `bootstrap`, `testing`, and `tsconfig` with `--only` or `--skip`. `--json` reports the same canonical tokens in `transforms` and each file's `appliedTransforms`; the legacy `inject-params` and `tests` inputs remain accepted only to migrate existing scripts.
+
 The canonical owner for the Terminus summary above is [Health and Readiness](../contracts/health-and-readiness.md). Keep [package API and DI composition](../../packages/terminus/README.md) at hand when porting probes; the [previous-edition health chapter](../../book/beginner/ch18-health.md) remains a learning reference, not a separate contract owner.
 
 ## GraphQL async registration migration
@@ -1189,23 +1191,24 @@ Migration MUST remove legacy NestJS-era decorator assumptions from `tsconfig.jso
 
 ```bash
 fluo migrate ./src
+fluo migrate ./src --dry-run
 fluo migrate ./src --json
-```
-
-Use `--apply` only after reviewing the report and warnings. Use `--only <comma-list>` or `--skip <comma-list>` to focus the enabled transforms when you need a narrower pass:
-
-```bash
-fluo migrate ./src --apply
-fluo migrate ./src --apply --json
 fluo migrate ./src --only imports,injectable
 fluo migrate ./src --skip testing
 ```
 
-The canonical `--only` and `--skip` tokens are `imports`, `inject-params`, `scope`, `bootstrap`, `tests`, and `tsconfig`. The legacy `injectable` and `testing` tokens remain accepted aliases for `inject-params` and `tests`.
+Preview is the default mode. `--dry-run` states that mode explicitly; `--apply` is the only switch that writes files, and the two options cannot be combined. Use `--only <comma-list>` or `--skip <comma-list>` to focus a narrower preview. Use `--apply` only after reviewing the report and warnings:
+
+```bash
+fluo migrate ./src --apply
+fluo migrate ./src --apply --json
+```
+
+The canonical `--only` and `--skip` tokens are `imports`, `injectable`, `scope`, `bootstrap`, `testing`, and `tsconfig`. Legacy `inject-params` and `tests` inputs remain accepted for existing scripts, but JSON `transforms` and `appliedTransforms` always emit `injectable` and `testing`.
 
 Human-readable output is the default. Add `--json` when CI jobs, dashboards, or migration reports need stable machine-readable output. JSON mode writes only the structured migration report to stdout on success. Parser errors and invalid flag combinations still write their message to stderr, return exit code `1`, and do not emit partial JSON.
 
-The JSON report includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata. Each file entry records `filePath`, whether the file changed, applied transforms, warning count, and warning details with category labels and source line numbers.
+The JSON report uses `schemaVersion: 1` and includes `mode` (`dry-run` or `apply`), `dryRun`, `apply`, enabled `transforms`, `scannedFiles`, `changedFiles`, aggregate `warningCount`, and per-file metadata. Each file entry records `filePath`, whether the file changed, applied transforms, warning count, and warning details with category labels and source line numbers.
 
 Adapter-independent transforms (`imports`, `injectable`, `scope`, `testing`, and `tsconfig`) run without an HTTP adapter. Bootstrap migration is explicit: select `--platform express` to rewrite `NestFactory.create(AppModule)` with `ExpressHttpApplicationAdapter.create(...)`, and only when its matching `listen(port)` has exactly one numeric literal argument. Without `--platform express`, the bootstrap remains unchanged with a warning; unsupported bootstrap forms also remain unchanged with a warning. Install `@fluojs/platform-express` and `express` before compiling the migrated application. Select only the independent transforms when you want to leave bootstrap unchanged:
 

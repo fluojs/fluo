@@ -113,8 +113,8 @@ function setBooleanSelection(
   return nextValue;
 }
 
-function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolean; printPlan?: boolean } {
-  const parsed: Partial<BootstrapAnswers> & { force?: boolean; printPlan?: boolean } = {};
+function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { dryRun?: boolean; force?: boolean } {
+  const parsed: Partial<BootstrapAnswers> & { dryRun?: boolean; force?: boolean } = {};
   let hasExplicitTargetDirectory = false;
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -241,8 +241,8 @@ function parseArgs(argv: string[]): Partial<BootstrapAnswers> & { force?: boolea
       case '--force':
         parsed.force = true;
         break;
-      case '--print-plan':
-        parsed.printPlan = true;
+      case '--dry-run':
+        parsed.dryRun = true;
         break;
       case '--install':
         parsed.installDependencies = setBooleanSelection(
@@ -348,6 +348,9 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
     }
 
     const parsed = parseArgs(argv);
+    if (runtime.skipInstall === true && (parsed.installDependencies === true || runtime.installDependencies === true)) {
+      throw new Error('Cannot request dependency installation when skipInstall is true.');
+    }
 
     const partialAnswers = {
       ...parsed,
@@ -362,7 +365,7 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
     let usedInteractivePrompt = false;
     const answers = await collectBootstrapAnswers(partialAnswers, runtime.cwd ?? process.cwd(), runtime.userAgent, {
       interactive: runtime.interactive,
-      completionMessage: parsed.printPlan ? 'Scaffold plan resolved. No files were written.' : undefined,
+      completionMessage: parsed.dryRun ? 'Scaffold plan resolved. No files were written.' : undefined,
       onInteractivePrompt: () => {
         usedInteractivePrompt = true;
       },
@@ -372,7 +375,7 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
     });
     const targetDirectory = resolve(runtime.cwd ?? process.cwd(), answers.targetDirectory);
 
-    if (parsed.printPlan) {
+    if (parsed.dryRun) {
       stdout.write(`${renderScaffoldPlanPreview(answers, targetDirectory)}\n`);
       return 0;
     }

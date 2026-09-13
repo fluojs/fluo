@@ -323,7 +323,7 @@ export { PostModule };
     tempDirectories.push(workspaceDirectory);
 
     const sourceDirectory = join(workspaceDirectory, 'src');
-    const result = runGenerateCommand('module', 'Auth', sourceDirectory, { withTest: true });
+    const result = runGenerateCommand('module', 'Auth', sourceDirectory, { withSliceTest: true });
 
     expect(result.generatedFiles).toEqual([
       join(sourceDirectory, 'auths', 'auth.module.ts'),
