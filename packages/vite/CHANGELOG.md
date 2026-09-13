@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#3784](https://github.com/fluojs/fluo/pull/3784) [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711) Thanks [@ayden94](https://github.com/ayden94)! - Unify Vite and Vitest decorator transformation through `fluoDecoratorsPlugin`, add the explicit `@fluojs/core/metadata-preload` entrypoint, and remove the deprecated `@fluojs/testing/vitest` and `@fluojs/testing/vitest/tooling` public subpaths. Migrate Vitest configs to `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })` with `@fluojs/core/metadata-preload` in `setupFiles`.
+
 ## 2.0.0
 
 ### Major Changes

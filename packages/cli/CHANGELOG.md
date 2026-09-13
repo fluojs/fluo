@@ -2,6 +2,101 @@
 
 ## [Unreleased]
 
+## 3.0.2
+
+### Patch Changes
+
+- [#3786](https://github.com/fluojs/fluo/pull/3786) [`0255842`](https://github.com/fluojs/fluo/commit/02558421f94eed168b4b09e26fe76d609a7c9f4f) Thanks [@ayden94](https://github.com/ayden94)! - Unify CLI preview, migration, generator-test, update-check, and lifecycle option vocabulary. Use `--dry-run` for scaffold and explicit migration previews, `--with-slice-test` for module and resource generators, canonical migration transform tokens, and `--no-update-check`; removed legacy `--print-plan`, `--with-test`, and `--no-update-notifier` inputs now fail explicitly. Programmatic `GenerateOptions.withTest` is removed; use `withSliceTest`.
+
+- [#3768](https://github.com/fluojs/fluo/pull/3768) [`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4) Thanks [@ayden94](https://github.com/ayden94)! - Migrate first-party consumers to the consolidated Core and DI declarations.
+  Generated application and mixed starters retain their global module visibility
+  through `Module({ global: true })`; microservice starters retain local module
+  visibility. Runtime and testing use the shared wrapper type names and scope
+  literals, and Terminus uses `Optional.create` for its existing optional dependencies.
+  Commands, starter modes, provider resolution, and resource ownership are unchanged.
+
+  Upgrade these consumers together with the Core and DI updates.
+  Migration details are in `docs/getting-started/migrate-core-di-declarations.md`
+  and its Korean companion.
+
+- [#3771](https://github.com/fluojs/fluo/pull/3771) [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4) Thanks [@ayden94](https://github.com/ayden94)! - Correct the existing Node HTTP and mixed starter bootstrap recipes to use
+  `FluoFactory.create` with an explicit Node console logger and shutdown
+  registration. Starter shapes, platform selections, commands, and transport
+  semantics remain unchanged.
+
+  Generated Fastify and Express applications now declare `@fluojs/platform-nodejs`
+  directly for their logger and signal imports. Existing project files are not
+  rewritten automatically.
+
+  The React SSR starter uses a same-origin SVG favicon under `/assets/`, with
+  `image/svg+xml` responses, so the Factory's default content security policy
+  does not block the placeholder icon. Browser hydration diagnostics remain strict.
+
+  Migration: move existing generated bootstraps to `FluoFactory.create(AppModule,
+{ adapter, logger, shutdownRegistration })`, then call `app.listen()`. Keep the
+  Node host dependency in the application manifest when importing its logger or
+  signal registration. See `docs/getting-started/migrate-http-factory.md` and its
+  Korean companion for the complete recipe and lifecycle changes.
+
+- [#3774](https://github.com/fluojs/fluo/pull/3774) [`ed57b76`](https://github.com/fluojs/fluo/commit/ed57b760ba6f73c38e5a91a77606e4e1c1af74ca) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate managed HTTP startup on concrete adapter static creation and `FluoFactory.create(...)`.
+  Keep migrated GraphQL test fixtures out of published build artifacts.
+
+- [#3780](https://github.com/fluojs/fluo/pull/3780) [`82c93fa`](https://github.com/fluojs/fluo/commit/82c93fab20f60e8a26245d404bcf3ddaf4df8255) Thanks [@ayden94](https://github.com/ayden94)! - Unify configuration registration, loading, and reload ownership under `ConfigModule`.
+  Fix generated CLI application, microservice, and mixed starter registrations to
+  use `envFilePaths` instead of the removed `envFile` input.
+
+  Migration: replace `loadConfig(options)` with `ConfigModule.load(options)`, replace
+  `createConfigReloader(options)` with `ConfigReloadManager.create(options)`, and inject
+  `CONFIG_RELOADER` from the one `ConfigModule.forRoot(...)` registration instead of
+  registering `ConfigReloadModule`. Replace `envFile` or `envFilePath` with an ordered
+  `envFilePaths` list; use `[]` to explicitly disable env-file loading.
+
+- [#3785](https://github.com/fluojs/fluo/pull/3785) [`0caae2f`](https://github.com/fluojs/fluo/commit/0caae2f190b57ba6e61ee093993f2ebab6be6648) Thanks [@ayden94](https://github.com/ayden94)! - Align existing generated tests and Nest testing migrations to use
+  `Test.createApp` and `Test.createTestingModule` from `@fluojs/testing`.
+  Generated resource slice tests use the fluent explicit-kind override API; migrate
+  two-argument overrides to `.overrideProvider(token).useValue(value)`.
+  Generated fixtures dispose their module containers and close test apps in
+  `finally`; existing projects must replace the removed free-function imports
+  explicitly.
+
+- [#3784](https://github.com/fluojs/fluo/pull/3784) [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711) Thanks [@ayden94](https://github.com/ayden94)! - Unify Vite and Vitest decorator transformation through `fluoDecoratorsPlugin`, add the explicit `@fluojs/core/metadata-preload` entrypoint, and remove the deprecated `@fluojs/testing/vitest` and `@fluojs/testing/vitest/tooling` public subpaths. Migrate Vitest configs to `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })` with `@fluojs/core/metadata-preload` in `setupFiles`.
+
+- [#3769](https://github.com/fluojs/fluo/pull/3769) [`30e2295`](https://github.com/fluojs/fluo/commit/30e229563ce56fe20b82fd978883d248f57acd66) Thanks [@ayden94](https://github.com/ayden94)! - Migrate the existing raw Node HTTP starter bootstrap from
+  `runNodejsApplication` to `FluoFactory.create(AppModule, { adapter })`, using
+  `NodeHttpApplicationAdapter.create({ port })`, followed by `app.listen()`.
+  Existing project files are not rewritten automatically.
+
+  The integrated Factory applies default security headers. The starter explicitly
+  supplies the Node console logger and shutdown registration callback. On migration,
+  retain required middleware and logging, and opt into Node signals through that
+  callback. Starter shapes, platform choices, and commands are unchanged.
+
+  Migration details are in `docs/getting-started/migrate-node-adapter-create.md`
+  and its Korean companion.
+
+- [#3775](https://github.com/fluojs/fluo/pull/3775) [`0fc5c54`](https://github.com/fluojs/fluo/commit/0fc5c54633f2633c994a379112296429c224dfb8) Thanks [@ayden94](https://github.com/ayden94)! - Unify Cloudflare Workers application creation on `CloudflareWorkerApplicationHost.create(...)` and adapter creation on `CloudflareWorkerHttpApplicationAdapter.create(...)`. Migrate Worker starter output to the host API. Replace the retired Worker bootstrap and entrypoint helpers with the host's fixed-module and `{ fromEnv }` overloads; env-configured hosts require `ready(env)`.
+
+- [#3783](https://github.com/fluojs/fluo/pull/3783) [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686) Thanks [@ayden94](https://github.com/ayden94)! - Canonical Studio parsing, filtering, Mermaid, and live-contract imports now use the `@fluojs/studio` root export. The `@fluojs/studio/contracts` subpath is removed; migrate its imports to `@fluojs/studio`, where the former contracts-only platform and timing types are available. Persisted inspect artifacts use `fluo inspect <module-path> --report --output <path>`; raw snapshots and timing artifact readers retain compatibility, while explicitly present malformed timing is rejected. Runtime live declarations reference the runtime-neutral `@fluojs/core/internal` seam rather than Studio. Mermaid output keeps stdout graph-only and sends bootstrap diagnostics to stderr.
+
+- [#3785](https://github.com/fluojs/fluo/pull/3785) [`0caae2f`](https://github.com/fluojs/fluo/commit/0caae2f190b57ba6e61ee093993f2ebab6be6648) Thanks [@ayden94](https://github.com/ayden94)! - Unify testing construction behind `Test.createApp(...)` and
+  `Test.createTestingModule(...)`. The former `createTestApp(...)` and
+  `createTestingModule(...)` free-function exports, their `@fluojs/testing/app`
+  subpath, and free portability/conformance harness factories are removed.
+
+  Provider overrides now require `overrideProvider(token).useValue(value)`,
+  `.useClass(Type)`, `.useFactory(factory, inject?)`, or `.useExisting(otherToken)`.
+  The two-argument `overrideProvider` overloads are removed. `useValue` preserves
+  literal identity, including class constructors and provider-shaped objects; it
+  does not instantiate, invoke, or unwrap them.
+
+  Migration: replace free factory imports with `Test`, then call
+  `Test.createApp(...)` or `Test.createTestingModule(...)`. Replace each
+  `createXHarness(options)` call with `XHarness.create(options)`. Regenerate CLI
+  test files or make the same replacements in existing generated tests. Replace
+  `overrideProvider(token, value)` with `overrideProvider(token).useValue(value)`;
+  select the corresponding explicit strategy when construction, factory invocation,
+  or aliasing is intended.
+
 ## 3.0.1
 
 ### Patch Changes

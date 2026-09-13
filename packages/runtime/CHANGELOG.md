@@ -2,6 +2,86 @@
 
 ## [Unreleased]
 
+## 3.1.1
+
+### Patch Changes
+
+- [#3768](https://github.com/fluojs/fluo/pull/3768) [`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4) Thanks [@ayden94](https://github.com/ayden94)! - Migrate first-party consumers to the consolidated Core and DI declarations.
+  Generated application and mixed starters retain their global module visibility
+  through `Module({ global: true })`; microservice starters retain local module
+  visibility. Runtime and testing use the shared wrapper type names and scope
+  literals, and Terminus uses `Optional.create` for its existing optional dependencies.
+  Commands, starter modes, provider resolution, and resource ownership are unchanged.
+
+  Upgrade these consumers together with the Core and DI updates.
+  Migration details are in `docs/getting-started/migrate-core-di-declarations.md`
+  and its Korean companion.
+
+- [#3771](https://github.com/fluojs/fluo/pull/3771) [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4) Thanks [@ayden94](https://github.com/ayden94)! - Make `FluoFactory.create(AppModule, { adapter })` the sole HTTP application
+  creation implementation. Remove `fluoFactory` and `bootstrapApplication` from
+  every runtime public entrypoint and emitted JavaScript/declaration surface.
+  Factory accepts `logger` and owns common middleware composition, original-error
+  preserving startup cleanup, and optional host shutdown registration.
+
+  Migration: import `FluoFactory` instead of `fluoFactory`, replace
+  `bootstrapApplication({ rootModule, ...options })` with
+  `FluoFactory.create(rootModule, options)`, then call instance `app.listen()` and
+  `app.close()`. Security headers now default on for direct Factory and testing
+  applications; set `securityHeaders: false` to retain a header-free baseline.
+  Readiness/listen/post-listen setup failure enters terminal shutdown; create a
+  new application instead of retrying listen on the failed shell. A signal
+  unregistration failure is retained for concurrent and later closes without
+  skipping runtime teardown.
+
+  Upgrade `@fluojs/cron` together with `@fluojs/runtime`. Cron retains its mandatory
+  Runtime dependency, and these coordinated updates leave scheduling behavior unchanged.
+
+  Node CLI HTTP and mixed starters now emit Factory creation, the explicit Node
+  console logger, and Node shutdown registration. Add a direct
+  `@fluojs/platform-nodejs` dependency when importing its logger or signals from a
+  Fastify/Express application. Node signal registration rolls back partially
+  installed handlers and attempts every removal after an individual failure.
+  The additive optional `HttpApplicationAdapter.getListenTarget()` capability
+  supplies startup-log metadata without requiring a socket on Fetch hosts.
+
+  See `docs/getting-started/migrate-http-factory.md` and its Korean companion for
+  defaults, ownership, cleanup errors, PublicToken inference, and the distinction
+  between `app.dispatch()` admission and low-level container/dispatcher access.
+  DI class identities, public constructors, instance operations, context-only
+  creation, and microservice creation retain their separate contracts.
+
+  Existing platform bootstrap/run helpers and their host-specific consumers remain
+  supported through Factory until their platform migrations. Other listed package
+  patches only align README imports and recipes shipped in their tarballs; they
+  introduce no independent runtime behavior. Repository Docs, Book, examples, and
+  test-only consumer migrations have no separate package-release effect.
+
+- [#3774](https://github.com/fluojs/fluo/pull/3774) [`ed57b76`](https://github.com/fluojs/fluo/commit/ed57b760ba6f73c38e5a91a77606e4e1c1af74ca) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate managed HTTP startup on concrete adapter static creation and `FluoFactory.create(...)`.
+  Keep migrated GraphQL test fixtures out of published build artifacts.
+
+- [#3769](https://github.com/fluojs/fluo/pull/3769) [`30e2295`](https://github.com/fluojs/fluo/commit/30e229563ce56fe20b82fd978883d248f57acd66) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate raw Node adapter creation in `NodeHttpApplicationAdapter.create(options)`, including compression and multipart settings. Remove `createNodejsAdapter`, `createNodeHttpAdapter`, `NodejsAdapterOptions`, and `NodejsHttpApplicationAdapter` from public exports and implementations. Preserve the existing adapter class, public positional constructor, DI identity, and instance lifecycle.
+
+  Migration: Import `NodeHttpApplicationAdapter` and `NodeHttpAdapterOptions` from `@fluojs/platform-nodejs`. Replace `createNodejsAdapter(options)` with `NodeHttpApplicationAdapter.create(options)` and `createNodeHttpAdapter(options, compression, multipart)` with `NodeHttpApplicationAdapter.create({ ...options, compression, multipart })`. Replace the Nodejs instance type alias with the concrete class. First-party `/internal` consumers use the same class and options type.
+
+  The raw Node CLI starter now uses `FluoFactory.create(AppModule, { adapter })` followed by `app.listen()`. Existing applications are not rewritten. The integrated Factory applies default security headers; the CLI explicitly supplies its Node console logger and shutdown registration callback. When migrating from a run helper, retain required middleware and logging, and opt into Node signals through that callback. Existing bootstrap/run helper behavior remains supported.
+
+  Align shipped HTTP/runtime README recipes without changing their runtime behavior. Full EN/KO migration guidance: `docs/getting-started/migrate-node-adapter-create.md` and `docs/getting-started/migrate-node-adapter-create.ko.md`.
+
+- [#3783](https://github.com/fluojs/fluo/pull/3783) [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686) Thanks [@ayden94](https://github.com/ayden94)! - Canonical Studio parsing, filtering, Mermaid, and live-contract imports now use the `@fluojs/studio` root export. The `@fluojs/studio/contracts` subpath is removed; migrate its imports to `@fluojs/studio`, where the former contracts-only platform and timing types are available. Persisted inspect artifacts use `fluo inspect <module-path> --report --output <path>`; raw snapshots and timing artifact readers retain compatibility, while explicitly present malformed timing is rejected. Runtime live declarations reference the runtime-neutral `@fluojs/core/internal` seam rather than Studio. Mermaid output keeps stdout graph-only and sends bootstrap diagnostics to stderr.
+
+- [#3777](https://github.com/fluojs/fluo/pull/3777) [`146d6a0`](https://github.com/fluojs/fluo/commit/146d6a072e9027a83cb908905047be2f3334d049) Thanks [@ayden94](https://github.com/ayden94)! - Unify Terminus standalone indicator construction on `XHealthIndicator.create(options)`. Remove the dedicated `createHttpHealthIndicator`, `createMemoryHealthIndicator`, `createDiskHealthIndicator`, `createPrismaHealthIndicator`, `createDrizzleHealthIndicator`, and `createRedisHealthIndicator` free factories. Memory and disk indicators are now exported only from `@fluojs/terminus/node`; their root exports and value-provider helpers are removed. Preserve the DI-backed Prisma, Drizzle, and Redis provider factories, class identity, constructors, readiness behavior, response semantics, and timeout-settlement ownership.
+
+  Remove the redundant runtime `createHealthModule` compatibility helper. `HealthModule.forRoot(options)` remains the sole runtime health module registration path and continues to expose the same `/health` and `/ready` behavior.
+
+  Remove `createHttpHealthIndicatorProvider` as well. Replace its entry in `indicatorProviders` with `HttpHealthIndicator.create(options)` in `TerminusModule.forRoot({ indicators: [...] })`; the HTTP indicator is a standalone instance and does not require DI-backed provider assembly.
+
+  Migration: replace `createXHealthIndicator(options)` with `XHealthIndicator.create(options)`. Import `MemoryHealthIndicator` and `DiskHealthIndicator` from `@fluojs/terminus/node`; register standalone instances through `TerminusModule.forRoot({ indicators: [...] })`. Keep `createPrismaHealthIndicatorProvider`, `createDrizzleHealthIndicatorProvider`, and `createRedisHealthIndicatorProvider` only when Terminus must resolve those dependencies from DI. Replace `createHealthModule(options)` with `HealthModule.forRoot(options)`.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`30e2295`](https://github.com/fluojs/fluo/commit/30e229563ce56fe20b82fd978883d248f57acd66), [`5ad001e`](https://github.com/fluojs/fluo/commit/5ad001ecf0bb091a1447930ede22be2e0a17078a), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686)]:
+  - @fluojs/core@2.1.1
+  - @fluojs/di@3.1.1
+  - @fluojs/http@3.1.1
+
 ## 3.1.0
 
 ### Minor Changes

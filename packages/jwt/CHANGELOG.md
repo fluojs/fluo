@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#3778](https://github.com/fluojs/fluo/pull/3778) [`9aaae92`](https://github.com/fluojs/fluo/commit/9aaae92017450da2109151a40b258d49cc4f9d36) Thanks [@ayden94](https://github.com/ayden94)! - Make `JwtService` the canonical application API for access-token signing and verification. `JwtService.verify(token, policy?)` now returns `JwtPrincipal`; migrate claims-only callers to `(await jwt.verify(token)).claims`. Pass call-specific verification settings as the optional policy.
+
+  Remove `createJwtCoreProviders`, `normalizeRefreshTokenOptions`, and `DefaultJwtVerifier.verifyAccessTokenWithOverrides` from the public API. Register with `JwtModule.forRoot(...)` or `JwtModule.forRootAsync(...)`, use `RefreshTokenService` after configuring `refreshToken`, and replace `verifyAccessTokenWithOverrides(token, policy)` with `verifyAccessToken(token, policy)`.
+
+- [#3782](https://github.com/fluojs/fluo/pull/3782) [`f83c9ca`](https://github.com/fluojs/fluo/commit/f83c9ca5f96078ed3cb06a54af5a13b4b7e84529) Thanks [@ayden94](https://github.com/ayden94)! - Make `JwtModule` the sole owner of refresh-token crypto, store, and rotation state. `RefreshTokenModule.forRoot()` now aliases the configured JWT `RefreshTokenService` for the Passport HTTP exchange, including async JWT registration, instead of allowing adapter-owned refresh state.
+
+  Migration: move every refresh `secret`, `expiresInSeconds`, `rotation`, and `store` value into `JwtModule.forRoot({ global: true, refreshToken: ... })`, then replace `RefreshTokenModule.forRoot(JwtRefreshTokenAdapter)` with `RefreshTokenModule.forRoot()`. `JwtRefreshTokenAdapter`, `REFRESH_TOKEN_MODULE_OPTIONS`, and `RefreshTokenModuleOptions` are removed. Replace Passport's former structural `RefreshTokenService` type with `RefreshTokenService` from `@fluojs/jwt` for the canonical path. A custom `RefreshTokenServicePort` remains supported only alongside a globally visible `JwtModule` verifier and JWT access tokens that it accepts.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686)]:
+  - @fluojs/core@2.1.1
+  - @fluojs/di@3.1.1
+
 ## 2.0.0
 
 ### Major Changes
