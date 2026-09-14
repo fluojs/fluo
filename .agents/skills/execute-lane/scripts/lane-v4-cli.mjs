@@ -21,7 +21,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { applyChildResult, decideNext, summarizeTransitions, trackStalls } from './lane-v4.mjs';
+import { applyChildResult, decideNext, isValidLocalCheck, summarizeTransitions, trackStalls } from './lane-v4.mjs';
 
 const arg = (args, flag, fallback) => {
 	const i = args.indexOf(flag);
@@ -361,8 +361,13 @@ const main = () => {
 	if (command === 'set-fact') {
 		const kind = arg(args, '--kind');
 		if (!['local-checks', 'review'].includes(kind)) throw new TypeError('kind must be local-checks or review');
+		const head = arg(args, '--head');
+		const value = JSON.parse(arg(args, '--value'));
+		if (kind === 'local-checks' && !isValidLocalCheck(value, head)) {
+			throw new TypeError('local-checks requires an explicit valid passed receipt bound to --head');
+		}
 		entry.facts ??= {};
-		entry.facts[kind] = { head: arg(args, '--head'), value: JSON.parse(arg(args, '--value')) };
+		entry.facts[kind] = { head, value };
 		saveLane(lanePath, lane);
 		process.stdout.write('ok\n');
 		return;

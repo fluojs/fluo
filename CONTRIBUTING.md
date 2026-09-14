@@ -28,13 +28,18 @@ fluo uses a monorepo structure managed by `pnpm`.
 
 ## verifying before you push
 
-Run the single verify command before opening or updating a PR:
+Run the baseline workspace verification before opening or updating a PR:
 
 ```sh
 pnpm verify
 ```
 
-This runs `build`, `typecheck`, `lint`, and `test` in sequence — the same checks CI performs. You can also run each step individually:
+This runs `build`, `typecheck`, `lint`, and `test` in sequence. It does not
+claim the CI-only Node matrix, artifact transfer provenance, native runtime
+lanes, generated-starter browser checks, or aggregate GitHub Actions semantics.
+Use `pnpm verify:local` for the exact-head receipt-backed local command plan;
+CI remains the authority for those isolated runner dimensions. You can also run
+each baseline step individually:
 
 ```sh
 pnpm build
@@ -134,4 +139,5 @@ fluo maintains strict behavioral contracts. Before opening a PR, ensure you have
 - Follow the structure in `.github/PULL_REQUEST_TEMPLATE.md`.
 - Link related issues or discussions when they exist. If there is no issue, summarize the problem and intended outcome in the PR description.
 - Include a `.changeset/*.md` file only when the PR has consumer-visible release impact for public `@fluojs/*` packages.
-- Ensure all CI checks pass locally before pushing — run `pnpm verify`.
+- Run `pnpm verify:local` before pushing and attach its exact-head receipt when
+  local verification is required; CI remains required for CI-only dimensions.

@@ -42,6 +42,7 @@
     "bench:runtime-module-graph": "node tooling/benchmarks/runtime-module-graph/run.mjs",
     "lint": "biome lint && pnpm verify:public-export-tsdoc",
     "verify": "pnpm build && pnpm typecheck && pnpm lint && pnpm test:verify",
+    "verify:local": "node tooling/ci/verify-local.mjs",
     "changeset": "changeset",
     "version-packages": "node tooling/release/version-packages.mjs",
     "publish-packages": "changeset publish",

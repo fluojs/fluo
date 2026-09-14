@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { normalizePackageChangelog, runChangesetsVersion, runVersionPackages } from './version-packages.mjs';
+import { changesetsFailureIsTransient, normalizePackageChangelog, runChangesetsVersion, runVersionPackages } from './version-packages.mjs';
 
 describe('runChangesetsVersion', () => {
   const transientStderr = [
@@ -60,6 +60,15 @@ describe('runChangesetsVersion', () => {
       runChangesetsVersion({ attempts: 3, spawn, sleep: () => {}, writeOutput: () => {} }),
     ).toThrowError('Changesets version command failed with exit code 1.');
     expect(spawnCalls).toHaveLength(3);
+  });
+});
+
+describe('changesetsFailureIsTransient', () => {
+  it('retries only recognized GitHub GraphQL parse or query failures', () => {
+    expect(changesetsFailureIsTransient('invalid json response body at https://api.github.com/graphql')).toBe(true);
+    expect(changesetsFailureIsTransient('Something went wrong while executing your query from GitHub GraphQL')).toBe(true);
+    expect(changesetsFailureIsTransient('invalid json response body from a private registry')).toBe(false);
+    expect(changesetsFailureIsTransient('401 bad credentials from GitHub')).toBe(false);
   });
 });
 

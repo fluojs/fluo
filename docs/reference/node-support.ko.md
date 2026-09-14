@@ -13,7 +13,14 @@ Private root workspace와 [`@fluojs/platform-nextjs`](../../packages/platform-ne
 | Latest Node `26.x` | Frozen install, 분할 전체 검증, 생성 starter sandbox matrix | Forward verification 전용이며 publish에 사용하지 않음 |
 | Bun, Deno, Cloudflare Workers | 기존의 독립 adapter/native-runtime lane | Runtime-native 배포 계약 |
 
-`.github/workflows/ci.yml`의 `node-support` matrix는 `.github/workflows/node-verification.yml`을 호출하며 aggregate `verify` gate의 필수 조건입니다. 모든 Node 버전은 로컬 `pnpm verify`와 같은 전체 build, typecheck, lint, test 범위를 검증합니다. CI에서는 `pnpm build`가 끝나면 `pnpm typecheck`와 `pnpm lint`, 분할 테스트, 생성 starter 검증을 독립 job에서 실행합니다. 패키지 테스트는 4개 shard, tooling 테스트는 2개 shard로 나눕니다. Apps와 examples project는 첫 번째 tooling shard job에서 각각 한 번씩 전체 실행하며, 각 테스트 프로세스는 `--maxWorkers=1`을 유지합니다. 변경 범위가 작아도 이 전체 Node 검증은 생략하지 않습니다.
+`.github/workflows/ci.yml`의 `node-support` matrix는 `.github/workflows/node-verification.yml`을 호출하며 aggregate `verify` gate의 필수 조건입니다. deterministic latest-24 preflight는 runtime fan-out 전에 frozen install, build, typecheck, lint, platform governance, full tooling project를 실행합니다. 모든 Node 버전은 로컬 `pnpm verify`와 같은 전체 build, typecheck, lint, test 범위를 검증합니다. CI에서는 `pnpm build`가 끝나면 `pnpm typecheck`와 `pnpm lint`, 분할 테스트, 생성 starter 검증을 독립 job에서 실행합니다. 패키지 테스트는 4개 shard, tooling 테스트는 2개 shard로 나눕니다. Apps와 examples project는 첫 번째 tooling shard job에서 각각 한 번씩 전체 실행하며, 각 테스트 프로세스는 `--maxWorkers=1`을 유지합니다. 변경 범위가 작아도 이 전체 Node 검증은 생략하지 않습니다.
+
+`pnpm verify:local`은 worktree root, head/tree identity, merge-base/diff identity,
+command plan, log, environment, limitation을 exact-head local receipt에 기록합니다.
+head, tree, diff가 바뀌면 receipt는 무효이며 `--plan`은 passing receipt를 만들지
+않습니다. local command는 CI 전용 runner, GitHub artifact transfer, aggregate job
+semantics를 증명하지 않으며 그 차원은 계속 CI evidence가 담당합니다. Failure census는
+나중 rerun이 성공해도 attempt와 완료된 failed job을 보존합니다.
 
 빌드 artifact는 같은 workflow run, commit, Node 버전 안에서만 전달합니다. 패키지의 `dist`와 CLI의 생성 dependency metadata를 tar로 보존하여 실행 권한과 symbolic link를 유지하며, 공개 선언 검증 fixture나 package global setup을 우회하지 않습니다. 생성 starter 검증은 테스트 종료를 기다리지 않고 빌드 뒤에 실행합니다. 최신 `24.x`가 기존의 중복 PR 검증을 통합하고 `pnpm verify:docs`를 한 번 실행합니다. Aggregate gate는 필수 job의 failure, cancellation, skip을 성공으로 처리하지 않습니다.
 

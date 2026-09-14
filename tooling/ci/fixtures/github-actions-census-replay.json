@@ -1,0 +1,18 @@
+{
+  "attempts": [
+    {
+      "created_at": "2026-09-14T12:00:00.000Z",
+      "conclusion": "success",
+      "run_attempt": 2,
+      "jobs": [
+        {
+          "id": 42,
+          "name": "packages",
+          "conclusion": "failure",
+          "completed_at": "2026-09-14T12:01:00.000Z",
+          "html_url": "https://example.test/jobs/42"
+        }
+      ]
+    }
+  ]
+}

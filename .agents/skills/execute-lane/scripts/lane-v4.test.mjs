@@ -29,7 +29,7 @@ const makeObs = (overrides = {}) => ({
 	worktree: '.worktrees/issue-3096-http-integration-seam',
 	headSha: 'a'.repeat(40),
 	hasNewCommits: true,
-	localChecks: { status: 'passed' },
+	localChecks: { status: 'passed', valid: true, head: 'a'.repeat(40), receiptPath: '.omo/verification/receipt.json' },
 	publicPackagesTouched: true,
 	changesetPresent: true,
 	review: { verdict: 'merge', head: 'a'.repeat(40) },
@@ -49,6 +49,11 @@ test('C1: resumes mid-flight issue from observation alone -> review', () => {
 	// No session id, run id, or journal appears anywhere in the inputs.
 	const next = decideNext(makeLane(), makeObs({ review: null }));
 	assert.equal(next.action, 'review');
+});
+
+test('C1: arbitrary local-check facts cannot advance to review', () => {
+	const next = decideNext(makeLane(), makeObs({ localChecks: { status: 'passed' }, review: null }));
+	assert.equal(next.action, 'verify-local');
 });
 
 test('C1: resumes with open PR and pending CI -> wait-ci', () => {

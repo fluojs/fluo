@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fluojs.dev/schemas/local-verification-receipt-v1.json",
+  "type": "object",
+  "required": ["version", "status", "identity", "environment", "commands", "logs", "manifestDigest", "planDigest", "startedAt", "completedAt", "limitations"],
+  "properties": {
+    "version": { "const": 1 },
+    "status": { "enum": ["passed", "failed"] },
+    "identity": {
+      "type": "object",
+      "required": ["root", "headSha", "treeSha", "baseRef", "baseSha", "mergeBase", "changedFilesDigest", "diffDigest"],
+      "properties": {
+        "root": { "type": "string", "minLength": 1 },
+        "headSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "treeSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "baseRef": { "type": "string", "minLength": 1 },
+        "baseSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "mergeBase": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "changedFilesDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "diffDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "commands": { "type": "array", "minItems": 1 },
+    "logs": { "type": "array", "minItems": 1 },
+    "manifestDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "planDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "environment": { "type": "object" },
+    "limitations": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

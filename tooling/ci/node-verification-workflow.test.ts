@@ -29,6 +29,48 @@ it('runs all supported Node targets through one sharded verification workflow', 
   expect(workflow).not.toMatch(/^ {2}(build-and-typecheck|lint|test):$/m);
 });
 
+it('gates every runtime fan-out behind deterministic latest-24 preflight', () => {
+  // Given
+  const preflight = job(workflow, 'deterministic-preflight');
+  const fanout = [
+    'deno-platform',
+    'studio-browser',
+    'official-web-runtime-adapter-portability',
+    'native-response-cookie-conformance',
+    'bun-native-routing-and-lifecycle-conformance',
+    'node-support',
+  ];
+
+  // When
+  const commands = [...preflight.matchAll(/run: (.+)/gu)].map((match) => match[1]);
+
+  // Then
+  expect(commands).toEqual([
+    'pnpm install --frozen-lockfile',
+    'pnpm build',
+    'pnpm typecheck',
+    'pnpm lint',
+    'pnpm verify:platform-consistency-governance',
+    'pnpm vitest run --project tooling --maxWorkers=1',
+  ]);
+  for (const id of fanout) {
+    expect(job(workflow, id)).toContain('      - deterministic-preflight\n');
+  }
+  expect(job(workflow, 'verify')).toContain('      - deterministic-preflight\n');
+});
+
+it('binds every build consumer to immutable producer artifact provenance', () => {
+  const build = job(nodeWorkflow, 'build');
+  expect(build).toContain('id: upload-package-builds');
+  expect(build).toContain('artifact-id: ${{ steps.upload-package-builds.outputs.artifact-id }}');
+  expect(build).toContain('artifact-digest: ${{ steps.upload-package-builds.outputs.artifact-digest }}');
+  for (const id of ['checks', 'test', 'starters']) {
+    const consumer = job(nodeWorkflow, id);
+    expect(consumer).toContain('needs.build.outputs.artifact-id');
+    expect(consumer).toContain('needs.build.outputs.artifact-digest');
+  }
+});
+
 it('builds the Studio dependency closure before browser verification', () => {
   // Given
   const studioBrowser = job(workflow, 'studio-browser');
@@ -108,7 +150,7 @@ it.each(['checks', 'test', 'starters'])('starts %s after its versioned build, wi
 
   // When
   const dependencies = consumer.match(/needs:\n((?: {6}- [\w-]+\n)+)/u)?.[1];
-  const artifactName = /name: node-build-\$\{\{ inputs.node-version \}\}-\$\{\{ github.sha \}\}/u;
+  const artifactName = /node-build-\$\{\{ inputs.node-version \}\}-\$\{\{ github.sha \}\}/u;
 
   // Then
   expect(dependencies?.trim()).toBe('- build');

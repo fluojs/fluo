@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "rules": [
+    { "prefix": "packages/platform-deno/", "argv": ["test:node-floor"] },
+    { "prefix": "packages/studio/", "argv": ["--filter", "@fluojs/studio", "test:browser"] },
+    { "prefix": "packages/cli/src/new/", "argv": ["--dir", "packages/cli", "sandbox:matrix"] }
+  ]
+}

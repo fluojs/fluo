@@ -18,14 +18,17 @@ const CHANGESETS_VERSION_RETRY_LIMIT = 3;
 const CHANGESETS_TRANSIENT_FAILURE_SIGNATURES = [
   'Failed to parse data from GitHub',
   'invalid json response body',
+  'Fetched data from GitHub returned errors',
+  'Something went wrong while executing your query',
 ];
 
 function sleepSync(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function changesetsFailureIsTransient(output) {
-  return CHANGESETS_TRANSIENT_FAILURE_SIGNATURES.some((signature) => output.includes(signature));
+export function changesetsFailureIsTransient(output) {
+  const githubEvidence = /github|graphql/u.test(output.toLowerCase());
+  return githubEvidence && CHANGESETS_TRANSIENT_FAILURE_SIGNATURES.some((signature) => output.includes(signature));
 }
 
 function changesetsRetryDelayMilliseconds(attempt) {

@@ -4537,7 +4537,7 @@ describe('repository governance contracts', () => {
       ).toContain('deno-platform');
     }).toThrow();
     expect(ciWorkflow).toMatch(
-      /studio-browser:\n\s+name: Studio browser\n\s+runs-on: ubuntu-latest\n\s+needs:\n\s+- resolve-pr-verification-scope\n\n\s+steps:/u,
+      /studio-browser:\n\s+name: Studio browser\n\s+runs-on: ubuntu-latest\n\s+needs:\n\s+- resolve-pr-verification-scope\n\s+- deterministic-preflight\n\n\s+steps:/u,
     );
     const studioVerificationCondition = "if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')";
     const studioNoopCondition = "if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && !contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')";

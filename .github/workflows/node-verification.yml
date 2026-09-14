@@ -17,6 +17,11 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    outputs:
+      artifact-id: ${{ steps.upload-package-builds.outputs.artifact-id }}
+      artifact-digest: ${{ steps.upload-package-builds.outputs.artifact-digest }}
+      artifact-sha: ${{ github.sha }}
+      artifact-run-id: ${{ github.run_id }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -40,6 +45,7 @@ jobs:
         run: tar -cf "$RUNNER_TEMP/node-build.tar" packages/*/dist packages/cli/src/new/published-internal-dependencies.ts
 
       - name: Upload package builds
+        id: upload-package-builds
         uses: actions/upload-artifact@v6
         with:
           name: node-build-${{ inputs.node-version }}-${{ github.sha }}
@@ -52,6 +58,9 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build
+    env:
+      FLUO_BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}
+      FLUO_BUILD_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact-digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -70,11 +79,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Download package builds
-        uses: actions/download-artifact@v7
-        with:
-          name: node-build-${{ inputs.node-version }}-${{ github.sha }}
-          path: ${{ runner.temp }}
+      - name: Acquire package builds
+        run: node tooling/ci/acquire-build-artifact.mjs --id "$FLUO_BUILD_ARTIFACT_ID" --digest "$FLUO_BUILD_ARTIFACT_DIGEST" --sha "${{ needs.build.outputs.artifact-sha }}" --name "node-build-${{ inputs.node-version }}-${{ github.sha }}" --run-id "${{ needs.build.outputs.artifact-run-id }}" --output "$RUNNER_TEMP/node-build.tar"
 
       - name: Restore package builds
         run: tar -xf "$RUNNER_TEMP/node-build.tar"
@@ -102,6 +108,9 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build
+    env:
+      FLUO_BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}
+      FLUO_BUILD_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact-digest }}
     strategy:
       fail-fast: false
       matrix:
@@ -144,11 +153,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Download package builds
-        uses: actions/download-artifact@v7
-        with:
-          name: node-build-${{ inputs.node-version }}-${{ github.sha }}
-          path: ${{ runner.temp }}
+      - name: Acquire package builds
+        run: node tooling/ci/acquire-build-artifact.mjs --id "$FLUO_BUILD_ARTIFACT_ID" --digest "$FLUO_BUILD_ARTIFACT_DIGEST" --sha "${{ needs.build.outputs.artifact-sha }}" --name "node-build-${{ inputs.node-version }}-${{ github.sha }}" --run-id "${{ needs.build.outputs.artifact-run-id }}" --output "$RUNNER_TEMP/node-build.tar"
 
       - name: Restore package builds
         run: tar -xf "$RUNNER_TEMP/node-build.tar"
@@ -249,6 +255,9 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build
+    env:
+      FLUO_BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}
+      FLUO_BUILD_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact-digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -265,11 +274,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Download package builds
-        uses: actions/download-artifact@v7
-        with:
-          name: node-build-${{ inputs.node-version }}-${{ github.sha }}
-          path: ${{ runner.temp }}
+      - name: Acquire package builds
+        run: node tooling/ci/acquire-build-artifact.mjs --id "$FLUO_BUILD_ARTIFACT_ID" --digest "$FLUO_BUILD_ARTIFACT_DIGEST" --sha "${{ needs.build.outputs.artifact-sha }}" --name "node-build-${{ inputs.node-version }}-${{ github.sha }}" --run-id "${{ needs.build.outputs.artifact-run-id }}" --output "$RUNNER_TEMP/node-build.tar"
 
       - name: Restore package builds
         run: tar -xf "$RUNNER_TEMP/node-build.tar"
