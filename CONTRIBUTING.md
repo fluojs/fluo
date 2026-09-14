@@ -28,13 +28,18 @@ fluo uses a monorepo structure managed by `pnpm`.
 
 ## verifying before you push
 
-Run the single verify command before opening or updating a PR:
+Run the baseline workspace verification before opening or updating a PR:
 
 ```sh
 pnpm verify
 ```
 
-This runs `build`, `typecheck`, `lint`, and `test` in sequence — the same checks CI performs. You can also run each step individually:
+This runs `build`, `typecheck`, `lint`, and `test` in sequence. It does not
+claim the CI-only Node matrix, artifact transfer provenance, native runtime
+lanes, generated-starter browser checks, or aggregate GitHub Actions semantics.
+Use `pnpm verify:local` for the exact-head receipt-backed local command plan;
+CI remains the authority for those isolated runner dimensions. You can also run
+each baseline step individually:
 
 ```sh
 pnpm build
@@ -42,6 +47,15 @@ pnpm typecheck
 pnpm lint          # Biome — see biome.json
 pnpm test
 ```
+
+The local receipt is valid only while the worktree remains clean: its identity
+includes the Git status digest at startup, every command boundary, and
+finalization. Changes that affect package ownership, manifests, source copies,
+or build tooling perform a cold workspace `dist` cleanup before the build and
+run manifest-selected companion commands. The plan is intentionally
+preflight-first; CI still supplies the Node `24.0.0`/`24.x`/`26.x` matrices,
+four package shards, two tooling shards, native runtimes, Studio browser, and
+aggregate fail-closed semantics.
 
 ## documenting public exports
 
@@ -134,4 +148,5 @@ fluo maintains strict behavioral contracts. Before opening a PR, ensure you have
 - Follow the structure in `.github/PULL_REQUEST_TEMPLATE.md`.
 - Link related issues or discussions when they exist. If there is no issue, summarize the problem and intended outcome in the PR description.
 - Include a `.changeset/*.md` file only when the PR has consumer-visible release impact for public `@fluojs/*` packages.
-- Ensure all CI checks pass locally before pushing — run `pnpm verify`.
+- Run `pnpm verify:local` before pushing and attach its exact-head receipt when
+  local verification is required; CI remains required for CI-only dimensions.

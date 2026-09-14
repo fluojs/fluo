@@ -13,7 +13,25 @@ The private root workspace and 35 Node-bound public packages, including [`@fluoj
 | Latest Node `26.x` | Frozen install, sharded full verification, generated starter sandbox matrix | Forward verification only; never publish |
 | Bun, Deno, Cloudflare Workers | Their existing independent adapter/native-runtime lanes | Runtime-native deployment contracts |
 
-The `node-support` matrix in `.github/workflows/ci.yml` calls `.github/workflows/node-verification.yml` and is required by the aggregate `verify` gate. Every Node version verifies the same full build, typecheck, lint, and test coverage as local `pnpm verify`. In CI, `pnpm build` is followed by independent jobs for `pnpm typecheck` and `pnpm lint`, sharded tests, and generated starter verification. Package tests use four shards and tooling tests use two shards. The apps and examples projects each run in full once in the first tooling shard job; each test process retains `--maxWorkers=1`. A small change scope does not skip this full Node verification.
+The `node-support` matrix in `.github/workflows/ci.yml` calls `.github/workflows/node-verification.yml` and is required by the aggregate `verify` gate. A deterministic latest-24 preflight runs frozen install, build, typecheck, lint, platform governance, and the full tooling project before the runtime fan-out. Every Node version then verifies the same full build, typecheck, lint, and test coverage as local `pnpm verify`. In CI, `pnpm build` is followed by independent jobs for `pnpm typecheck` and `pnpm lint`, sharded tests, and generated starter verification. Package tests use four shards and tooling tests use two shards. The apps and examples projects each run in full once in the first tooling shard job; each test process retains `--maxWorkers=1`. A small change scope does not skip this full Node verification.
+
+`pnpm verify:local` records an exact-head local receipt: worktree root, head and
+tree identities, merge-base and diff identity, command plan, logs, environment,
+and limits. A receipt is invalid when its head, tree, or diff changes, and
+`--plan` never emits a passing receipt. The local command intentionally cannot
+prove CI-only runners, GitHub artifact transfer, or aggregate job semantics.
+Those dimensions remain CI evidence; failure census reports preserve attempts and
+completed failed jobs instead of treating a later rerun as proof that no failure
+occurred.
+
+Receipt identity also binds a clean Git status digest at startup, each command
+boundary, and finalization. Artifact consumers use exact run/name/SHA/digest
+provenance and bounded retries only for observed intermediary `403` and narrow
+transient `5xx` responses; authentication, ordinary authorization, malformed
+metadata, expired artifacts, and digest mismatch fail immediately. The census
+queries attempt details and attempt-specific jobs, applies a strict UTC
+`[since, until)` window, and records pagination/completeness limits rather than
+silently treating unavailable data as success.
 
 Build artifacts are transferred only within the same workflow run, commit, and Node version. A tar archive preserves package `dist` directories and the CLI's generated dependency metadata, including executable permissions and symbolic links; it does not bypass public declaration fixtures or package global setup. Generated starter verification runs after the build without waiting for tests to finish. Latest `24.x` consolidates the former duplicate PR verification and runs `pnpm verify:docs` once. The aggregate gate does not treat a required job's failure, cancellation, or skip as success.
 

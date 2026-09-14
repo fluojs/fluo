@@ -157,23 +157,47 @@ function languageToggle(current) {
   return `<p>${english} ${korean}</p>`;
 }
 
-function run(command, args) {
-  const result = spawnSync(command, args, {
-    cwd: repoRoot,
-    encoding: 'utf8',
-    stdio: 'inherit',
-  });
-
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(' ')} failed with exit code ${result.status ?? 1}.`);
+export class ReleaseCommandError extends Error {
+  constructor(kind, command, args, cwd, result) {
+    const detail = kind === 'spawn'
+      ? result.error?.message ?? 'unknown spawn error'
+      : kind === 'signal'
+        ? `signal ${result.signal}`
+        : `exit code ${result.status}`;
+    super(`${command} ${args.join(' ')} failed: ${detail}.`);
+    this.details = {
+      argv: [...args],
+      command,
+      cwd,
+      kind,
+      signal: result.signal ?? null,
+      status: result.status ?? null,
+      stderr: result.stderr ?? '',
+    };
   }
+}
+
+export function runReleaseCommand(command, args, dependencies = {}) {
+  const cwd = dependencies.cwd ?? repoRoot;
+  const spawn = dependencies.spawn ?? spawnSync;
+  const writeOutput = dependencies.writeOutput ?? ((stream, chunk) => stream.write(chunk));
+  const result = spawn(command, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  if (result.stdout) writeOutput(process.stdout, result.stdout);
+  if (result.stderr) writeOutput(process.stderr, result.stderr);
+  if (result.error) throw new ReleaseCommandError('spawn', command, args, cwd, result);
+  if (result.signal) throw new ReleaseCommandError('signal', command, args, cwd, result);
+  if (result.status !== 0) throw new ReleaseCommandError('exit', command, args, cwd, result);
+}
+
+function run(command, args) {
+  return runReleaseCommand(command, args);
 }
 
 function read(relativePath) {
   return readFileSync(join(repoRoot, relativePath), 'utf8');
 }
 
-function runCanonicalReleaseReadinessVerificationCommands(runCommand, skipBuild) {
+export function runCanonicalReleaseReadinessVerificationCommands(runCommand, skipBuild) {
   // CI may reuse a successful full build from an earlier step on the same checkout.
   if (!skipBuild) {
     runCommand('pnpm', ['build']);

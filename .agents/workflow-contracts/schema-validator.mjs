@@ -2,6 +2,9 @@ export const isRecord = (value) =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const valueTypeMatches = (type, value) => {
+  if (Array.isArray(type)) {
+    return type.some((candidate) => valueTypeMatches(candidate, value));
+  }
   switch (type) {
     case 'object':
       return isRecord(value);

@@ -1,12 +1,14 @@
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
+import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import { REDIS_CLIENT, RedisModule } from '@fluojs/redis';
 import { type ApplicationContext, defineModule, FluoFactory } from '@fluojs/runtime';
 import type { Redis } from 'ioredis';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { startRedisFixture } from '../../../tooling/testing/redis-native-fixture.mjs';
 
 import { CACHE_STORE, CacheModule, CacheService } from '../src/index.js';
 import type { CacheStore, RedisAtomicClient, RedisCompatibleClient } from '../src/index.js';
@@ -33,9 +35,8 @@ function deferred() {
 
 const exec = promisify(execFile);
 const containerName = `fluo-cache-update-${randomUUID()}`;
-const ready = deferred();
-const exited = deferred();
 let port: number;
+let redisFixture: Awaited<ReturnType<typeof startRedisFixture>>;
 let firstClient: Redis;
 let secondClient: Redis;
 let first: CacheService;
@@ -56,25 +57,14 @@ async function createApp(keyPrefix: string) {
 }
 
 beforeAll(async () => {
-  const server = spawn('docker', [
-    'run', '--rm', '--name', containerName, '-p', '127.0.0.1::6379',
-    'redis:7.4-alpine', 'redis-server', '--save', '', '--appendonly', 'no',
-  ]);
-  let output = '';
-  server.stdout.on('data', (chunk: Buffer) => {
-    output += chunk.toString();
-    if (output.includes('Ready to accept connections')) ready.resolve();
+  const diagnosticDirectory = process.env.FLUO_VITEST_SHUTDOWN_DEBUG_DIR ?? '.artifacts/redis-native-fixture';
+  redisFixture = await startRedisFixture({
+    containerName,
+    diagnosticPath: resolve(diagnosticDirectory, 'redis-native-fixture.json'),
+    execFile: exec,
+    spawn,
   });
-  server.stderr.on('data', (chunk: Buffer) => { output += chunk.toString(); });
-  server.once('error', (error) => { ready.reject(error); exited.resolve(); });
-  server.once('close', (code) => {
-    ready.reject(new Error(`Redis fixture exited with ${code}: ${output}`));
-    exited.resolve();
-  });
-  await ready.promise;
-  const address = await exec('docker', ['port', containerName, '6379/tcp']);
-  port = Number(address.stdout.trim().split(':').at(-1));
-  if (!Number.isInteger(port) || port <= 0) throw new Error(`Invalid Redis fixture port: ${address.stdout}`);
+  port = redisFixture.port;
 });
 
 beforeEach(async () => {
@@ -94,8 +84,7 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-  await exec('docker', ['stop', '--time', '1', containerName]);
-  await exited.promise;
+  await redisFixture?.cleanup();
 });
 
 describe('Redis WATCH atomic updates against a native server', () => {

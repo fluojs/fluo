@@ -28,13 +28,18 @@ fluo는 `pnpm`으로 관리되는 모노레포 구조를 사용합니다.
 
 ## 푸시 전 검증
 
-PR을 생성하거나 업데이트하기 전에 다음 검증 명령어를 실행하세요.
+PR을 생성하거나 업데이트하기 전에 baseline workspace 검증 명령어를 실행하세요.
 
 ```sh
 pnpm verify
 ```
 
-이 명령어는 `build`, `typecheck`, `lint`, `test`를 순차적으로 실행하며, 이는 CI에서 수행하는 체크와 동일합니다. 각 단계를 개별적으로 실행할 수도 있습니다.
+이 명령어는 `build`, `typecheck`, `lint`, `test`를 순차적으로 실행합니다.
+CI 전용 Node matrix, artifact transfer provenance, native runtime lane,
+생성 starter browser check, aggregate GitHub Actions semantics까지 로컬에서
+검증한다고 주장하지 않습니다. exact-head receipt-backed local command plan에는
+`pnpm verify:local`을 사용하고, isolated runner 차원은 계속 CI가 권한을 가집니다.
+각 baseline 단계는 개별적으로도 실행할 수 있습니다.
 
 ```sh
 pnpm build
@@ -42,6 +47,13 @@ pnpm typecheck
 pnpm lint          # Biome — biome.json 참고
 pnpm test
 ```
+
+local receipt는 worktree가 clean 상태인 동안에만 유효합니다. 시작 시점, 각 command
+boundary, finalization의 Git status digest를 identity에 포함합니다. Package ownership,
+manifest, source copy, build tooling 변경은 build 전에 cold workspace `dist` cleanup을
+수행하고 manifest가 선택한 companion command를 실행합니다. Plan은 의도적으로
+preflight-first이며 Node `24.0.0`/`24.x`/`26.x` matrix, package 4 shard, tooling 2 shard,
+native runtime, Studio browser, aggregate fail-closed semantics는 계속 CI가 증명합니다.
 
 ## 공개 API 문서화
 
@@ -135,4 +147,5 @@ fluo는 엄격한 동작 계약을 유지합니다. PR을 열기 전에 다음 �
 - `.github/PULL_REQUEST_TEMPLATE.md`의 구조를 따르세요.
 - 관련 이슈나 discussion이 있으면 연결하세요. 이슈가 없다면 PR 설명에 문제와 의도한 결과를 요약하세요.
 - 공개 `@fluojs/*` 패키지에 소비자에게 보이는 release impact가 있을 때만 `.changeset/*.md` 파일을 포함하세요.
-- 푸시하기 전에 로컬에서 모든 CI 체크가 통과하는지 확인하세요 — `pnpm verify` 실행.
+- 푸시하기 전에 `pnpm verify:local`을 실행하고 local verification이 필요한 경우
+  exact-head receipt를 첨부하세요. CI 전용 차원은 계속 CI가 검증합니다.

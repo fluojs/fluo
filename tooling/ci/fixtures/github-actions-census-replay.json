@@ -1,0 +1,129 @@
+{
+  "observed_at": "2026-09-14T12:30:00.000Z",
+  "pagination": { "runs": 1, "jobs": 2 },
+  "workflow_runs": [
+    {
+      "id": 100,
+      "created_at": "2026-09-14T12:00:00.000Z",
+      "conclusion": "success",
+      "html_url": "https://github.com/fluojs/fluo/actions/runs/100",
+      "run_attempt": 2
+    },
+    {
+      "id": 101,
+      "created_at": "2026-09-14T12:10:00.000Z",
+      "conclusion": "cancelled",
+      "html_url": "https://github.com/fluojs/fluo/actions/runs/101",
+      "run_attempt": 1
+    },
+    {
+      "id": 102,
+      "created_at": "2026-09-14T12:15:00.000Z",
+      "conclusion": "action_required",
+      "html_url": "https://github.com/fluojs/fluo/actions/runs/102",
+      "run_attempt": 1
+    },
+    {
+      "id": 103,
+      "created_at": "2026-09-14T12:16:00.000Z",
+      "conclusion": "action_required",
+      "html_url": "https://github.com/fluojs/fluo/actions/runs/103",
+      "run_attempt": 1
+    },
+    {
+      "id": 104,
+      "created_at": "2026-09-14T12:17:00.000Z",
+      "conclusion": "cancelled",
+      "html_url": "https://github.com/fluojs/fluo/actions/runs/104",
+      "run_attempt": 1
+    }
+  ],
+  "attempts": [
+    {
+      "run_id": 100,
+      "run_attempt": 1,
+      "created_at": "2026-09-14T12:00:00.000Z",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "id": 201,
+          "name": "Node support (24.x) / Test (packages-1)",
+          "conclusion": "failure",
+          "completed_at": "2026-09-14T12:01:00.000Z",
+          "html_url": "https://github.com/fluojs/fluo/actions/runs/100/job/201",
+          "steps": [
+            { "number": 1, "name": "Install", "conclusion": "success" },
+            { "number": 2, "name": "Run test", "conclusion": "failure" }
+          ]
+        },
+        {
+          "id": 202,
+          "name": "Verify",
+          "conclusion": "failure",
+          "completed_at": "2026-09-14T12:02:00.000Z",
+          "html_url": "https://github.com/fluojs/fluo/actions/runs/100/job/202",
+          "steps": [{ "number": 1, "name": "Require every verification job to pass", "conclusion": "failure" }]
+        }
+      ]
+    },
+    {
+      "run_id": 100,
+      "run_attempt": 2,
+      "created_at": "2026-09-14T12:00:00.000Z",
+      "conclusion": "success",
+      "jobs": [{
+        "id": 203,
+        "name": "Node support (24.x) / Test (packages-1)",
+        "conclusion": "unknown_vendor_state",
+        "completed_at": "2026-09-14T12:05:00.000Z",
+        "html_url": "https://github.com/fluojs/fluo/actions/runs/100/job/203",
+        "steps": []
+      }]
+    },
+    {
+      "run_id": 101,
+      "run_attempt": 1,
+      "created_at": "2026-09-14T12:10:00.000Z",
+      "conclusion": "cancelled",
+      "jobs": [{
+        "id": 204,
+        "name": "Node support (26.x) / Test (packages-4)",
+        "conclusion": "failure",
+        "completed_at": "2026-09-14T12:11:00.000Z",
+        "html_url": "https://github.com/fluojs/fluo/actions/runs/101/job/204",
+        "steps": [{ "number": 1, "name": "Run test", "conclusion": "failure" }]
+      },
+      {
+        "id": 205,
+        "name": "Deno platform",
+        "conclusion": "timed_out",
+        "completed_at": "2026-09-14T12:12:00.000Z",
+        "html_url": "https://github.com/fluojs/fluo/actions/runs/101/job/205",
+        "steps": [{ "number": 1, "name": "Run Deno journey", "conclusion": "timed_out" }]
+      }]
+    },
+    {
+      "run_id": 102,
+      "run_attempt": 1,
+      "created_at": "2026-09-14T12:15:00.000Z",
+      "conclusion": "action_required",
+      "event": "approval_expired",
+      "jobs": []
+    },
+    {
+      "run_id": 103,
+      "run_attempt": 1,
+      "created_at": "2026-09-14T12:16:00.000Z",
+      "conclusion": "action_required",
+      "event": "workflow_dispatch",
+      "jobs": []
+    },
+    {
+      "run_id": 104,
+      "run_attempt": 1,
+      "created_at": "2026-09-14T12:17:00.000Z",
+      "conclusion": "cancelled",
+      "jobs": []
+    }
+  ]
+}

@@ -29,6 +29,69 @@ it('runs all supported Node targets through one sharded verification workflow', 
   expect(workflow).not.toMatch(/^ {2}(build-and-typecheck|lint|test):$/m);
 });
 
+it('gates every runtime fan-out behind deterministic latest-24 preflight', () => {
+  // Given
+  const preflight = job(workflow, 'deterministic-preflight');
+  const fanout = [
+    'deno-platform',
+    'studio-browser',
+    'official-web-runtime-adapter-portability',
+    'native-response-cookie-conformance',
+    'bun-native-routing-and-lifecycle-conformance',
+    'node-support',
+  ];
+
+  // When
+  const commands = [...preflight.matchAll(/run: (.+)/gu)].map((match) => match[1]);
+
+  // Then
+  expect(commands).toEqual([
+    'pnpm install --frozen-lockfile',
+    'pnpm test:node',
+    'pnpm build',
+    'pnpm typecheck',
+    'pnpm lint',
+    'pnpm verify:platform-consistency-governance',
+    'pnpm vitest run --project tooling --maxWorkers=1',
+  ]);
+  for (const id of fanout) {
+    expect(job(workflow, id)).toContain('      - deterministic-preflight\n');
+  }
+  expect(job(workflow, 'verify')).toContain('      - deterministic-preflight\n');
+});
+
+it('executes the canonical Node regression script before the Vitest verifier', () => {
+  const root = new URL('../..', import.meta.url);
+  const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  expect(packageJson.scripts['test:verify']).toContain('pnpm test:node');
+
+  const result = spawnSync('pnpm', ['test:node'], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 60_000,
+  });
+
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain('local-verification.test.mjs');
+  expect(result.stdout).toContain('redis-native-fixture.test.mjs');
+  expect(result.stdout).toContain('lane-v4.test.mjs');
+});
+
+it('binds every build consumer to immutable producer artifact provenance', () => {
+  const build = job(nodeWorkflow, 'build');
+  expect(build).toContain('id: upload-package-builds');
+  expect(build).toContain('artifact-id: ${{ steps.upload-package-builds.outputs.artifact-id }}');
+  expect(build).toContain('artifact-digest: ${{ steps.upload-package-builds.outputs.artifact-digest }}');
+  expect(build).toContain("artifact-sha: ${{ github.event.pull_request.head.sha || github.sha }}");
+  for (const id of ['checks', 'test', 'starters']) {
+    const consumer = job(nodeWorkflow, id);
+    expect(consumer).toContain('needs.build.outputs.artifact-id');
+    expect(consumer).toContain('needs.build.outputs.artifact-digest');
+    expect(consumer).toContain('needs.build.outputs.artifact-sha');
+    expect(consumer).toContain('GH_TOKEN: $' + '{{ github.token }}');
+  }
+});
+
 it('builds the Studio dependency closure before browser verification', () => {
   // Given
   const studioBrowser = job(workflow, 'studio-browser');
@@ -108,7 +171,7 @@ it.each(['checks', 'test', 'starters'])('starts %s after its versioned build, wi
 
   // When
   const dependencies = consumer.match(/needs:\n((?: {6}- [\w-]+\n)+)/u)?.[1];
-  const artifactName = /name: node-build-\$\{\{ inputs.node-version \}\}-\$\{\{ github.sha \}\}/u;
+  const artifactName = /node-build-\$\{\{ inputs.node-version \}\}-\$\{\{ github.sha \}\}/u;
 
   // Then
   expect(dependencies?.trim()).toBe('- build');
@@ -156,6 +219,8 @@ it('keeps generated browser starters and per-version shutdown evidence', () => {
   expect(tests).toContain("FLUO_VITEST_SHUTDOWN_DEBUG: '1'");
   expect(tests).toMatch(/name: vitest-shutdown-debug-.*inputs.node-version.*matrix.lane.*github.run_id.*github.run_attempt/u);
   expect(tests).toContain('if-no-files-found: error');
+  expect(tests.match(/^ {4}env:$/gmu)).toHaveLength(1);
+  expect(tests).toContain('FLUO_BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}');
 });
 
 it('transfers generated package artifacts without losing executable modes or symbolic links', () => {

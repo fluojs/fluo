@@ -14,6 +14,17 @@
 
 export const ATTEMPT_CEILING = 3;
 
+export const isValidLocalCheck = (value, headSha) =>
+	typeof value === 'object'
+	&& value !== null
+	&& value.status === 'passed'
+	&& value.valid === true
+	&& value.head === headSha
+	&& typeof value.receiptPath === 'string'
+	&& value.receiptPath.length > 0
+	&& typeof value.receiptSha256 === 'string'
+	&& /^[0-9a-f]{64}$/u.test(value.receiptSha256);
+
 const PHASES = new Set([
 	'implement',
 	'verify-local',
@@ -154,11 +165,11 @@ export const decideNext = (lane, obs) => {
 	}
 
 	// 4. Local verification of the current head.
-	if (obs.localChecks === null || obs.localChecks === undefined) {
-		return { action: 'verify-local', head: obs.headSha };
-	}
-	if (obs.localChecks.status === 'failed') {
+	if (obs.localChecks?.status === 'failed') {
 		return { action: 'fix-back', reason: 'local-checks-failed', head: obs.headSha };
+	}
+	if (!isValidLocalCheck(obs.localChecks, obs.headSha)) {
+		return { action: 'verify-local', head: obs.headSha };
 	}
 
 	// 5. Release governance: public package changes ship a changeset

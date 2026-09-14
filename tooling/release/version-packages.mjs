@@ -16,16 +16,20 @@ const repoRoot = resolve(scriptDirectory, '..', '..');
 
 const CHANGESETS_VERSION_RETRY_LIMIT = 3;
 const CHANGESETS_TRANSIENT_FAILURE_SIGNATURES = [
-  'Failed to parse data from GitHub',
-  'invalid json response body',
+  /^(?:🦋\s+error\s+)?(?:Error:\s+)?Failed to parse data from GitHub$/mu,
+  /^(?:🦋\s+error\s+)?invalid json response body at https:\/\/api\.github\.com\/graphql\b/mu,
+  /(?:^|\n)(?:🦋\s+error\s+)?(?:Error:\s+)?Fetched data from GitHub returned errors\s*\n[\s\S]*Something went wrong while executing your query\b/mu,
 ];
+const CHANGESETS_NON_TRANSIENT_FAILURE_SIGNATURE = /\b(?:401|403|auth(?:entication)?|bad credentials|permission|rate[ -]?limit|validation|registry)\b/iu;
 
 function sleepSync(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function changesetsFailureIsTransient(output) {
-  return CHANGESETS_TRANSIENT_FAILURE_SIGNATURES.some((signature) => output.includes(signature));
+export function changesetsFailureIsTransient(output) {
+  return typeof output === 'string'
+    && !CHANGESETS_NON_TRANSIENT_FAILURE_SIGNATURE.test(output)
+    && CHANGESETS_TRANSIENT_FAILURE_SIGNATURES.some((signature) => signature.test(output));
 }
 
 function changesetsRetryDelayMilliseconds(attempt) {

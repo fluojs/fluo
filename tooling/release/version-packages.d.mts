@@ -45,6 +45,7 @@ export type VersionPackagesResult = {
 };
 
 export function normalizePackageChangelog(changelog: string): string;
+export function changesetsFailureIsTransient(output: string): boolean;
 export function runChangesetsVersion(dependencies?: ChangesetsVersionDependencies): void;
 export function runVersionPackages(dependencies?: VersionPackagesDependencies): VersionPackagesResult;
 export function main(): void;

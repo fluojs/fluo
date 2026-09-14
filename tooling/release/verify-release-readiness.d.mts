@@ -45,3 +45,34 @@ export function runReleaseReadinessVerification(
   },
   dependencies?: ReleaseReadinessDependencies,
 ): ReleaseReadinessResult;
+export type ReleaseCommandFailureKind = 'spawn' | 'signal' | 'exit';
+
+export class ReleaseCommandError extends Error {
+  readonly details: {
+    readonly argv: readonly string[];
+    readonly command: string;
+    readonly cwd: string;
+    readonly kind: ReleaseCommandFailureKind;
+    readonly signal: string | null;
+    readonly status: number | null;
+    readonly stderr: string;
+  };
+}
+
+export function runReleaseCommand(
+  command: string,
+  args: readonly string[],
+  dependencies?: {
+    readonly cwd?: string;
+    readonly spawn?: (command: string, args: readonly string[], options: {
+      readonly cwd: string;
+      readonly encoding: 'utf8';
+      readonly stdio: readonly ['ignore', 'pipe', 'pipe'];
+    }) => { readonly error?: Error; readonly signal?: string | null; readonly status?: number | null; readonly stdout?: string; readonly stderr?: string };
+    readonly writeOutput?: (stream: { readonly write: (chunk: string) => unknown }, chunk: string) => unknown;
+  },
+): void;
+export function runCanonicalReleaseReadinessVerificationCommands(
+  runCommand: (command: string, args: readonly string[]) => void,
+  skipBuild: boolean,
+): void;

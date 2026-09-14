@@ -55,12 +55,53 @@ jobs:
         id: resolve
         run: node tooling/ci/detect-pr-verification-scope.mjs
 
+  deterministic-preflight:
+    name: Deterministic preflight
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24.x"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Node regression suites
+        run: pnpm test:node
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Verify platform consistency governance
+        run: pnpm verify:platform-consistency-governance
+
+      - name: Verify full tooling project
+        run: pnpm vitest run --project tooling --maxWorkers=1
+
 
   deno-platform:
     name: Deno platform
     runs-on: ubuntu-latest
     needs:
       - resolve-pr-verification-scope
+      - deterministic-preflight
 
     steps:
       - name: Checkout
@@ -109,6 +150,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - resolve-pr-verification-scope
+      - deterministic-preflight
 
     steps:
       - name: Checkout
@@ -145,6 +187,8 @@ jobs:
   official-web-runtime-adapter-portability:
     name: Official web runtime adapter portability
     runs-on: ubuntu-latest
+    needs:
+      - deterministic-preflight
 
     steps:
       - name: Checkout
@@ -168,6 +212,8 @@ jobs:
   native-response-cookie-conformance:
     name: Native response cookie conformance
     runs-on: ubuntu-latest
+    needs:
+      - deterministic-preflight
 
     steps:
       - name: Checkout
@@ -206,6 +252,8 @@ jobs:
   bun-native-routing-and-lifecycle-conformance:
     name: Bun native routing and lifecycle conformance
     runs-on: ubuntu-latest
+    needs:
+      - deterministic-preflight
 
     steps:
       - name: Checkout
@@ -238,6 +286,7 @@ jobs:
     name: Node support (${{ matrix.node-version }})
     needs:
       - resolve-pr-verification-scope
+      - deterministic-preflight
     strategy:
       fail-fast: false
       matrix:
@@ -253,6 +302,8 @@ jobs:
   verify-platform-consistency-governance:
     name: Verify platform consistency governance
     runs-on: ubuntu-latest
+    needs:
+      - deterministic-preflight
 
     steps:
       - name: Checkout
@@ -288,6 +339,7 @@ jobs:
       - node-support
       - verify-platform-consistency-governance
       - resolve-pr-verification-scope
+      - deterministic-preflight
     runs-on: ubuntu-latest
 
     steps:
