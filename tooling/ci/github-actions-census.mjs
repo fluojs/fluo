@@ -69,7 +69,7 @@ export function classifyAttempt(attempt) {
 function normalizeJobName(name) {
   return String(name ?? 'unknown')
     .replace(/Node support \([^)]*\)\s*\/\s*/iu, '')
-    .replace(/Test \(packages-\d+\)/iu, 'Test')
+    .replace(/Test \((?:packages|tooling)-\d+\)/iu, 'Test')
     .trim();
 }
 

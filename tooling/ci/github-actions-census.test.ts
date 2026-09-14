@@ -211,6 +211,43 @@ describe('GitHub Actions census', () => {
     expect(census.summary.signatures).toHaveLength(3);
   });
 
+  it('deduplicates equivalent package and tooling shard failures without losing occurrences', () => {
+    const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
+    fixture.workflow_runs.push({
+      conclusion: 'failure',
+      created_at: '2026-09-14T12:20:00.000Z',
+      html_url: 'https://github.com/fluojs/fluo/actions/runs/105',
+      id: 105,
+      run_attempt: 1,
+    });
+    fixture.attempts.push({
+      conclusion: 'failure',
+      created_at: '2026-09-14T12:20:00.000Z',
+      jobs: [{
+        completed_at: '2026-09-14T12:21:00.000Z',
+        conclusion: 'failure',
+        html_url: 'https://github.com/fluojs/fluo/actions/runs/105/job/206',
+        id: 206,
+        name: 'Node support (24.0.0) / Test (tooling-2)',
+        steps: [{ conclusion: 'failure', name: 'Run test', number: 1 }],
+      }],
+      run_attempt: 1,
+      run_id: 105,
+    });
+
+    const census = buildCensus({
+      input: fixture,
+      owner: 'fluojs',
+      repo: 'fluo',
+      since: '2026-09-14T00:00:00Z',
+      until: '2026-09-15T00:00:00Z',
+      workflow: 'CI',
+    });
+
+    expect(census.summary.signatures).toHaveLength(2);
+    expect(census.summary.signatures[0]?.occurrences).toHaveLength(3);
+  });
+
   it('rejects conflicting records for the same run attempt', () => {
     const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
     fixture.attempts.push({ ...fixture.attempts[0], conclusion: 'success' });
