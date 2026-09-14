@@ -85,7 +85,7 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
   const cleanDist = changedFiles.some(isCleanDistChange);
   const commands = [
     command('install', ['install', '--frozen-lockfile']),
-    ...(cleanDist ? [command('clean-dist', ['-r', '--filter', './packages/*', '--if-present', 'exec', 'node', '../../tooling/scripts/clean-dist.mjs'])] : []),
+    ...(cleanDist ? [command('clean-dist', ['-r', '--filter', './packages/*', 'exec', 'node', '../../tooling/scripts/clean-dist.mjs'])] : []),
     command('build', ['build']),
     command('typecheck', ['typecheck']),
     command('test', ['test']),

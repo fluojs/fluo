@@ -37,7 +37,7 @@ test('fails closed to full coverage for an unknown or manifest change', () => {
   assert.ok(plan.commands.findIndex(({ id }) => id === 'clean-dist') < plan.commands.findIndex(({ id }) => id === 'build'));
   assert.deepEqual(
     plan.commands.find(({ id }) => id === 'clean-dist')?.argv,
-    ['-r', '--filter', './packages/*', '--if-present', 'exec', 'node', '../../tooling/scripts/clean-dist.mjs'],
+    ['-r', '--filter', './packages/*', 'exec', 'node', '../../tooling/scripts/clean-dist.mjs'],
   );
 });
 
