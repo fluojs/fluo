@@ -7,12 +7,21 @@ export function acquireBuildArtifact(input: {
   readonly attempts?: number;
   readonly deadlineMs?: number;
   readonly now?: () => number;
-}): Promise<{ readonly attempt: number; readonly digest: string; readonly elapsedMs: number; readonly outputPath: string }>;
+}): Promise<{
+  readonly attempt: number;
+  readonly attempts: readonly { readonly attempt: number; readonly elapsedMs: number; readonly status: number }[];
+  readonly digest: string;
+  readonly elapsedMs: number;
+  readonly outputPath: string;
+}>;
 export function main(argv?: readonly string[], dependencies?: {
+  readonly appendFileSync?: (path: string, value: string) => unknown;
   readonly downloadUrl?: string;
   readonly extract?: (archivePath: string, outputDirectory: string) => void;
   readonly fetch?: (url: string) => Promise<{ readonly ok: boolean; readonly status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
   readonly metadataUrl?: string;
   readonly repository?: string;
+  readonly summaryPath?: string;
+  readonly token?: string;
   readonly writeOutput?: (value: string) => unknown;
 }): Promise<void>;

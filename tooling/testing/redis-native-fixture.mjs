@@ -97,25 +97,27 @@ export async function startRedisFixture({
       closed = true;
       resolve({ code, signal });
     }));
-    const ready = phase('readiness-signal', 'docker', runArgs, () => new Promise((resolve, reject) => {
-      const observe = (target) => (chunk) => {
-        target.push(chunk.toString());
-        if (redisReady([...stdoutChunks, ...stderrChunks])) resolve({
-          stderr: stderrChunks.join(''),
-          stdout: stdoutChunks.join(''),
-        });
-      };
-      child.stdout.on('data', observe(stdoutChunks));
-      child.stderr.on('data', observe(stderrChunks));
-      child.once('error', reject);
-      child.once('close', (code, signal) => reject(Object.assign(
-        new Error(`Redis fixture exited code=${code} signal=${signal}`),
-        { code, signal, stderr: stderrChunks.join(''), stdout: stdoutChunks.join('') },
-      )));
-    }));
-    await Promise.race([ready, new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`Redis fixture readiness exceeded total ${budgetMs}ms startup budget`)), bounded('readiness-signal'));
-    })]);
+    await phase('readiness-signal', 'docker', runArgs, () => Promise.race([
+      new Promise((resolve, reject) => {
+        const observe = (target) => (chunk) => {
+          target.push(chunk.toString());
+          if (redisReady([...stdoutChunks, ...stderrChunks])) resolve({
+            stderr: stderrChunks.join(''),
+            stdout: stdoutChunks.join(''),
+          });
+        };
+        child.stdout.on('data', observe(stdoutChunks));
+        child.stderr.on('data', observe(stderrChunks));
+        child.once('error', reject);
+        child.once('close', (code, signal) => reject(Object.assign(
+          new Error(`Redis fixture exited code=${code} signal=${signal}`),
+          { code, signal, stderr: stderrChunks.join(''), stdout: stdoutChunks.join('') },
+        )));
+      }),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Redis fixture readiness exceeded total ${budgetMs}ms startup budget`)), bounded('readiness-signal'));
+      }),
+    ]));
     const address = await exec('port-discovery', ['port', containerName, '6379/tcp']);
     const port = parseRedisPort(address.stdout);
     await phase('host-tcp-readiness', 'tcp', ['127.0.0.1', String(port)], () => waitForTcp(port, bounded('host-tcp-readiness')));
