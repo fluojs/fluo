@@ -82,6 +82,15 @@ function normalizeJobName(name) {
     .trim();
 }
 
+function collectClassificationCounts(attempts) {
+  const counts = new Map();
+  for (const attempt of attempts) {
+    const kind = attempt.classification.kind;
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return Object.fromEntries([...counts.entries()].sort(([left], [right]) => left.localeCompare(right)));
+}
+
 function collectFailureSummary(attempts) {
   const byFingerprint = new Map();
   const derivedAggregateOccurrences = [];
@@ -119,6 +128,7 @@ function collectFailureSummary(attempts) {
     }
   }
   return {
+    classificationCounts: collectClassificationCounts(attempts),
     derivedAggregateOccurrences: derivedAggregateOccurrences.sort((left, right) => left.run.id - right.run.id),
     failureBearingAttempts: attempts.filter((attempt) => attempt.classification.kind === 'failure-bearing').length,
     signatures: [...byFingerprint.values()].sort((left, right) =>

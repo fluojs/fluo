@@ -2,9 +2,12 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 
+import { schemaFailure } from '../../.agents/workflow-contracts/schema-validator.mjs';
+
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
 const REQUIRED = ['install', 'build', 'typecheck', 'test', 'lint', 'platform-governance'];
+const receiptSchema = JSON.parse(readFileSync(new URL('./local-verification-receipt.schema.json', import.meta.url), 'utf8'));
 
 const command = (id, argv) => ({ argv, cwd: '.', executable: 'pnpm', id });
 
@@ -160,6 +163,8 @@ function hasExactIdentity(identity) {
 }
 
 export function validateReceipt(receipt) {
+  const failure = schemaFailure(receiptSchema, receipt, 'receipt');
+  if (failure !== null) return { valid: false, reason: failure };
   if (!receipt || typeof receipt !== 'object' || receipt.version !== 1 || receipt.status !== 'passed') {
     return { valid: false, reason: 'receipt is not a passed v1 receipt' };
   }
@@ -240,13 +245,17 @@ export function validateReceiptEvidence(receipt, { worktree, receiptPath, receip
   }
   let realEvidenceRoot;
   let realReceipt;
+  let realWorktree;
   try {
+    realWorktree = realpathSync(root);
     realEvidenceRoot = realpathSync(evidenceRoot);
     realReceipt = realpathSync(candidateReceipt);
   } catch {
     return { valid: false, reason: 'receipt evidence path is unresolved' };
   }
-  if (!nestedPath(realEvidenceRoot, realReceipt) || digest(readFileSync(realReceipt)) !== receiptSha256) {
+  if (realEvidenceRoot !== resolve(realWorktree, '.omo', 'verification')
+    || !nestedPath(realEvidenceRoot, realReceipt)
+    || digest(readFileSync(realReceipt)) !== receiptSha256) {
     return { valid: false, reason: 'receipt evidence digest is stale' };
   }
   for (const log of receipt.logs) {

@@ -174,8 +174,11 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
     throw error;
   }
   const extract = dependencies.extract ?? ((archive, directory) => (dependencies.execFileSync ?? execFileSync)('unzip', ['-q', archive, '-d', directory]));
-  extract(archivePath, resolve(input.output, '..'));
-  rmSync(archivePath, { force: true });
+  try {
+    extract(archivePath, resolve(input.output, '..'));
+  } finally {
+    rmSync(archivePath, { force: true });
+  }
   const report = { artifactId: expected.id, attempt: result.attempt, digest: expected.digest, elapsedMs: result.elapsedMs, name: expected.name, outcome: 'passed', sha: expected.sha };
   (dependencies.writeOutput ?? ((value) => process.stdout.write(value)))(`${JSON.stringify(report)}\n`);
   appendSummary({ artifactId: expected.id, attempts: result.attempts, digest: expected.digest, name: expected.name, outcome: 'passed', sha: expected.sha });

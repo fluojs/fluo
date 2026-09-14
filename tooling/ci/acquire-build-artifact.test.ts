@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -116,6 +116,36 @@ describe('build artifact acquisition', () => {
 
       // Then
       expect(JSON.parse(output.join(''))).toMatchObject({ artifactId: 1, digest: expected.digest, name: expected.name, sha: expected.sha });
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
+  });
+
+  it('removes acquired archive and staging files when extraction fails without replacing the error', async () => {
+    // Given
+    const directory = mkdtempSync(join(tmpdir(), 'fluo-artifact-extract-failure-'));
+    const outputPath = join(directory, 'node-build.tar');
+    const extractionError = new Error('injected extraction failure');
+    const fetch = async (url: string) => {
+      if (url === 'metadata') return new Response(JSON.stringify(metadata), { status: 200 });
+      return new Response(bytes, { status: 200 });
+    };
+
+    // When
+    try {
+      await expect(main([
+        '--id', '1', '--digest', expected.digest, '--sha', expected.sha, '--name', expected.name, '--run-id', '2', '--output', outputPath,
+      ], {
+        extract: () => { throw extractionError; },
+        fetch,
+        metadataUrl: 'metadata',
+        downloadUrl: 'download',
+        repository: 'fluojs/fluo',
+      })).rejects.toBe(extractionError);
+
+      // Then
+      expect(existsSync(`${outputPath}.zip`)).toBe(false);
+      expect(existsSync(`${outputPath}.zip.attempt-1`)).toBe(false);
     } finally {
       rmSync(directory, { force: true, recursive: true });
     }

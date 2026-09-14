@@ -157,12 +157,14 @@ export function main(argv = process.argv.slice(2)) {
   const finalIdentity = collectIdentity(root, options.baseRef);
   const completed = execution.commands.length === plan.commands.length
     && execution.commands.every((result) => result.exitCode === 0 && result.signal === null && result.spawnError === null);
+  const environment = { arch: arch(), home: homedir(), node: process.version, os: platform(), osRelease: release() };
+  const limitations = plan.mode === 'full' ? ['CI-only runners, artifact transfer, and aggregate semantics require GitHub Actions.'] : [];
   const receipt = {
     commands: execution.commands,
     completedAt: time(),
-    environment: { arch: arch(), home: homedir(), node: process.version, os: platform(), osRelease: release() },
+    environment,
     identity,
-    limitations: plan.mode === 'full' ? ['CI-only runners, artifact transfer, and aggregate semantics require GitHub Actions.'] : [],
+    limitations,
     logs: execution.logs,
     manifestDigest: plan.manifestDigest,
     planDigest: digest(JSON.stringify(plan.commands)),
@@ -170,8 +172,9 @@ export function main(argv = process.argv.slice(2)) {
     status: identity.clean && finalIdentity.clean && completed && receiptMatchesPlan({
       commands: execution.commands,
       completedAt: time(),
+      environment,
       identity,
-      limitations: [],
+      limitations,
       logs: execution.logs,
       manifestDigest: plan.manifestDigest,
       planDigest: digest(JSON.stringify(plan.commands)),

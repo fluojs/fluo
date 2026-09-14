@@ -156,6 +156,52 @@ describe('GitHub Actions census', () => {
     expect(classifyAttempt(attempt).kind).toBe(kind);
   });
 
+  it('summarizes zero-job and unknown-job states without inventing failure signatures', () => {
+    // Given
+    const input = {
+      attempts: [
+        { conclusion: 'failure', created_at: '2026-09-14T00:01:00Z', jobs: [], run_attempt: 1, run_id: 1 },
+        { conclusion: 'timed_out', created_at: '2026-09-14T00:02:00Z', jobs: [], run_attempt: 1, run_id: 2 },
+        { conclusion: 'unknown_vendor_state', created_at: '2026-09-14T00:03:00Z', jobs: [], run_attempt: 1, run_id: 3 },
+        {
+          conclusion: 'success',
+          created_at: '2026-09-14T00:04:00Z',
+          jobs: [{ completed_at: '2026-09-14T00:04:01Z', conclusion: 'unknown_vendor_state' }],
+          run_attempt: 1,
+          run_id: 4,
+        },
+      ],
+      workflow_runs: [1, 2, 3, 4].map((id) => ({
+        created_at: `2026-09-14T00:0${id}:00Z`,
+        id,
+        run_attempt: 1,
+      })),
+    };
+
+    // When
+    const census = buildCensus({
+      input,
+      owner: 'fluojs',
+      repo: 'fluo',
+      since: '2026-09-14T00:00:00Z',
+      until: '2026-09-15T00:00:00Z',
+      workflow: 'CI',
+    });
+
+    // Then
+    expect(census.summary.classificationCounts).toEqual({
+      unknown: 1,
+      'zero-job-failure': 1,
+      'zero-job-timed-out': 1,
+      'zero-job-unknown': 1,
+    });
+    expect(census.summary).toMatchObject({
+      derivedAggregateOccurrences: [],
+      failureBearingAttempts: 0,
+      signatures: [],
+    });
+  });
+
   it('collects each attempt detail and attempt-specific jobs with GET and created bounds', () => {
     const calls: string[][] = [];
     const run = {

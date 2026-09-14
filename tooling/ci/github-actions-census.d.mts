@@ -39,6 +39,7 @@ export function buildCensus(input: {
   readonly pagination: Readonly<Record<string, unknown>>;
   readonly scope: Readonly<Record<string, string>>;
   readonly summary: {
+    readonly classificationCounts: Readonly<Record<string, number>>;
     readonly failureBearingAttempts: number;
     readonly signatures: readonly { readonly fingerprint: string; readonly occurrences: readonly CensusOccurrence[] }[];
     readonly derivedAggregateOccurrences: readonly CensusOccurrence[];

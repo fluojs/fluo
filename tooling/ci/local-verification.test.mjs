@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import test from 'node:test';
@@ -193,6 +193,7 @@ test('accepts only complete successful receipts for the exact current identity',
       startedAt: '2026-09-14T00:00:00.000Z',
     })),
     completedAt: '2026-09-14T00:00:01.000Z',
+    environment: {},
     identity,
     limitations: [],
     logs: [
@@ -282,6 +283,38 @@ test('authenticates exact receipt and command log bytes within evidence root', (
   }
 });
 
+test('rejects an evidence root symlink that escapes the real worktree', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fluo-local-verification-worktree-'));
+  const externalEvidenceRoot = mkdtempSync(join(tmpdir(), 'fluo-local-verification-external-'));
+  const receiptIdentity = { ...identity, root };
+  const plan = buildVerificationPlan({ changedFiles: [], identity: receiptIdentity });
+  const receipt = passingReceipt(plan, receiptIdentity);
+
+  try {
+    mkdirSync(join(root, '.omo'), { recursive: true });
+    symlinkSync(externalEvidenceRoot, join(root, '.omo/verification'));
+    for (const [index, log] of receipt.logs.entries()) {
+      const path = join(root, log.path);
+      mkdirSync(join(path, '..'), { recursive: true });
+      const content = `command ${index}`;
+      writeFileSync(path, content);
+      receipt.logs[index] = { ...log, digest: digest(content) };
+    }
+    const receiptPath = join(root, '.omo/verification/receipt.json');
+    const bytes = `${JSON.stringify(receipt)}\n`;
+    writeFileSync(receiptPath, bytes);
+
+    assert.equal(validateReceiptEvidence(receipt, {
+      receiptPath: relative(root, receiptPath),
+      receiptSha256: digest(bytes),
+      worktree: root,
+    }).valid, false);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+    rmSync(externalEvidenceRoot, { force: true, recursive: true });
+  }
+});
+
 test('rejects malformed receipt timestamps before filesystem validation', () => {
   const plan = buildVerificationPlan({ changedFiles: [], identity });
   const receipt = passingReceipt(plan);
@@ -289,6 +322,31 @@ test('rejects malformed receipt timestamps before filesystem validation', () => 
   assert.equal(validateReceipt({
     ...receipt,
     commands: [{ ...receipt.commands[0], startedAt: 'not-a-timestamp' }, ...receipt.commands.slice(1)],
+  }).valid, false);
+});
+
+test('enforces every canonical receipt schema top-level requirement at runtime', () => {
+  const plan = buildVerificationPlan({ changedFiles: [], identity });
+  const receipt = passingReceipt(plan);
+  const requiredTopLevel = [
+    'version', 'status', 'identity', 'environment', 'commands', 'logs',
+    'manifestDigest', 'planDigest', 'startedAt', 'completedAt', 'limitations',
+  ];
+
+  for (const key of requiredTopLevel) {
+    const malformed = { ...receipt };
+    delete malformed[key];
+    assert.equal(validateReceipt(malformed).valid, false, `missing ${key} must be rejected`);
+  }
+  assert.equal(validateReceipt({ ...receipt, environment: [] }).valid, false);
+  assert.equal(validateReceipt({ ...receipt, limitations: [1] }).valid, false);
+  assert.equal(validateReceipt({
+    ...receipt,
+    commands: [{ ...receipt.commands[0], argv: [1] }, ...receipt.commands.slice(1)],
+  }).valid, false);
+  assert.equal(validateReceipt({
+    ...receipt,
+    logs: [{ ...receipt.logs[0], path: '' }, ...receipt.logs.slice(1)],
   }).valid, false);
 });
 
