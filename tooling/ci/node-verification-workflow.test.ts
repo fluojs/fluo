@@ -64,10 +64,12 @@ it('binds every build consumer to immutable producer artifact provenance', () =>
   expect(build).toContain('id: upload-package-builds');
   expect(build).toContain('artifact-id: ${{ steps.upload-package-builds.outputs.artifact-id }}');
   expect(build).toContain('artifact-digest: ${{ steps.upload-package-builds.outputs.artifact-digest }}');
+  expect(build).toContain("artifact-sha: ${{ github.event.pull_request.head.sha || github.sha }}");
   for (const id of ['checks', 'test', 'starters']) {
     const consumer = job(nodeWorkflow, id);
     expect(consumer).toContain('needs.build.outputs.artifact-id');
     expect(consumer).toContain('needs.build.outputs.artifact-digest');
+    expect(consumer).toContain('needs.build.outputs.artifact-sha');
     expect(consumer).toContain('GH_TOKEN: $' + '{{ github.token }}');
   }
 });

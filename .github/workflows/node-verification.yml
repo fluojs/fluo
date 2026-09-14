@@ -20,7 +20,7 @@ jobs:
     outputs:
       artifact-id: ${{ steps.upload-package-builds.outputs.artifact-id }}
       artifact-digest: ${{ steps.upload-package-builds.outputs.artifact-digest }}
-      artifact-sha: ${{ github.sha }}
+      artifact-sha: ${{ github.event.pull_request.head.sha || github.sha }}
       artifact-run-id: ${{ github.run_id }}
     steps:
       - name: Checkout
