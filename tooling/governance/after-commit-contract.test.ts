@@ -1,8 +1,49 @@
 import { describe, expect, it } from 'vitest';
 
-import { DrizzleDatabase } from '../../packages/drizzle/src/index.js';
-import { MongooseConnection } from '../../packages/mongoose/src/index.js';
-import { PrismaService } from '../../packages/prisma/src/index.js';
+import {
+  AfterCommitCapabilityError as DrizzleAfterCommitCapabilityError,
+  AfterCommitError as DrizzleAfterCommitError,
+  DrizzleDatabase,
+  TransactionRollbackCapabilityError as DrizzleTransactionRollbackCapabilityError,
+  TransactionRollbackOnlyError as DrizzleTransactionRollbackOnlyError,
+  TransactionRollbackUnconfirmedError as DrizzleTransactionRollbackUnconfirmedError,
+} from '../../packages/drizzle/src/index.js';
+import {
+  AfterCommitCapabilityError as MongooseAfterCommitCapabilityError,
+  AfterCommitError as MongooseAfterCommitError,
+  MongooseConnection,
+  TransactionRollbackCapabilityError as MongooseTransactionRollbackCapabilityError,
+  TransactionRollbackOnlyError as MongooseTransactionRollbackOnlyError,
+  TransactionRollbackUnconfirmedError as MongooseTransactionRollbackUnconfirmedError,
+} from '../../packages/mongoose/src/index.js';
+import {
+  AfterCommitCapabilityError as PrismaAfterCommitCapabilityError,
+  AfterCommitError as PrismaAfterCommitError,
+  PrismaService,
+  TransactionRollbackCapabilityError as PrismaTransactionRollbackCapabilityError,
+  TransactionRollbackOnlyError as PrismaTransactionRollbackOnlyError,
+  TransactionRollbackUnconfirmedError as PrismaTransactionRollbackUnconfirmedError,
+} from '../../packages/prisma/src/index.js';
+
+describe('shared transaction error identity', () => {
+  it('re-exports the canonical constructors through every ORM root', () => {
+    expect(PrismaAfterCommitCapabilityError).toBe(DrizzleAfterCommitCapabilityError);
+    expect(PrismaAfterCommitCapabilityError).toBe(MongooseAfterCommitCapabilityError);
+    expect(PrismaAfterCommitError).toBe(DrizzleAfterCommitError);
+    expect(PrismaAfterCommitError).toBe(MongooseAfterCommitError);
+    expect(PrismaTransactionRollbackCapabilityError).toBe(DrizzleTransactionRollbackCapabilityError);
+    expect(PrismaTransactionRollbackCapabilityError).toBe(MongooseTransactionRollbackCapabilityError);
+    expect(PrismaTransactionRollbackOnlyError).toBe(DrizzleTransactionRollbackOnlyError);
+    expect(PrismaTransactionRollbackOnlyError).toBe(MongooseTransactionRollbackOnlyError);
+    expect(PrismaTransactionRollbackUnconfirmedError).toBe(DrizzleTransactionRollbackUnconfirmedError);
+    expect(PrismaTransactionRollbackUnconfirmedError).toBe(MongooseTransactionRollbackUnconfirmedError);
+
+    expect(new PrismaAfterCommitError([])).toBeInstanceOf(MongooseAfterCommitError);
+    expect(new PrismaTransactionRollbackOnlyError('rejected')).toBeInstanceOf(
+      DrizzleTransactionRollbackOnlyError,
+    );
+  });
+});
 
 // A controllable native boundary seam, not evidence of real database integration.
 // The companion packages/prisma/fixtures/after-commit harness runs native drivers.

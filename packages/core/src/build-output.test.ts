@@ -14,6 +14,7 @@ const supportedBuildModules = [
   'public-token',
   'request-pipeline',
   'studio-contracts',
+  'transaction',
   'types',
   'utils',
 ] as const;

@@ -213,11 +213,21 @@ class-local입니다. Request-pipeline seam의 `getOwnConstructorRequestPipeline
 constructor 자체 bag만 읽고 `getRequestPipelineMetadataBag`는 inherited key를 포함합니다.
 이 reader 구분, frozen snapshot, write-version invalidation은 대체 authoring API가 아닙니다.
 
+Root package는 `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`가
+공유하는 transaction boundary primitive도 소유합니다. Framework-level 코드에서는
+`AfterCommitCallback`, `TransactionBoundaryOptions`,
+`AfterCommitCapabilityError`, `AfterCommitError`,
+`TransactionRollbackCapabilityError`, `TransactionRollbackOnlyError`,
+`TransactionRollbackUnconfirmedError`를 `@fluojs/core`에서 import하세요. 각 ORM
+root는 같은 값과 타입을 re-export하므로 import 경로가 달라도 `instanceof` identity가
+유지됩니다. Driver rollback observer와 Mongoose `AfterCommitCleanupError`는 계속
+driver가 소유합니다.
+
 - **데코레이터**: `Module`, `Inject`, `Scope`
-- **에러**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`
+- **에러**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`, `AfterCommitCapabilityError`, `AfterCommitError`, `TransactionRollbackCapabilityError`, `TransactionRollbackOnlyError`, `TransactionRollbackUnconfirmedError`
 - **메타데이터 런타임**: `ensureMetadataSymbol`, `getModuleMetadata`
 - **Typed public token**: `publicToken<T>(namespace)`, `PublicToken<T>`
-- **타입**: `Constructor<T>`, `Token<T>`, `InjectionToken<T>`, `ForwardRefToken<T>`, `OptionalInjectToken<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`
+- **타입**: `Constructor<T>`, `Token<T>`, `InjectionToken<T>`, `ForwardRefToken<T>`, `OptionalInjectToken<T>`, `MaybePromise<T>`, `AsyncModuleOptions`, `MetadataPropertyKey`, `MetadataSource`, `AfterCommitCallback`, `TransactionBoundaryOptions<T>`
 - **Request-pipeline 통합 seam**: `@fluojs/core/request-pipeline`을 통한 DTO validation/binding 메타데이터 헬퍼와 표준 데코레이터 metadata bag reader
 - **내부 서브패스**: `@fluojs/core/internal`을 통한 더 넓은 메타데이터 헬퍼, 컨트롤러/라우트 헬퍼, injection 헬퍼, clone 유틸리티
 

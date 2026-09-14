@@ -18,6 +18,48 @@ function makeMockPrismaService() {
 }
 
 describe('Transaction decorator method semantics', () => {
+  it('forwards native options and Fluo boundary options independently for an explicit target', async () => {
+    // Given
+    const nativeOptions = { timeout: 1_000 };
+    const boundary = {};
+    let transactionCalls = 0;
+    const transaction = async <T>(
+      callback: () => Promise<T>,
+      options?: typeof nativeOptions,
+      transactionBoundary?: typeof boundary,
+    ): Promise<T> => {
+      transactionCalls += 1;
+      expect(options).toBe(nativeOptions);
+      expect(transactionBoundary).toBe(boundary);
+
+      return callback();
+    };
+
+    class UserService {
+      prisma = {
+        createPlatformStatusSnapshot() {
+          return {};
+        },
+        current() {
+          return {};
+        },
+        transaction,
+      };
+
+      @Transaction((self) => self.prisma, nativeOptions, boundary)
+      async createUser(): Promise<string> {
+        return 'created';
+      }
+    }
+
+    // When
+    const result = await new UserService().createUser();
+
+    // Then
+    expect(result).toBe('created');
+    expect(transactionCalls).toBe(1);
+  });
+
   it('propagates return value from decorated method', async () => {
     const prisma = makeMockPrismaService();
 

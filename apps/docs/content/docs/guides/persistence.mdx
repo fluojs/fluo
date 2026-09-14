@@ -239,7 +239,7 @@ await this.prisma.transaction(async () => {
 }, undefined, { requireAfterCommit: true });
 ```
 
-`undefined` preserves Prisma/Drizzle's existing native-options position. Their request boundary is `requestTransaction(fn, signal?, nativeOptions?, boundary?)`; Mongoose uses `transaction(fn, boundary?)` and `requestTransaction(fn, signal?, boundary?)`. Decorator boundary options follow all existing arguments: Prisma `Transaction(input?, boundary?)`, Drizzle `Transaction(accessorOrOptions?, nativeOptions?, boundary?)`, and Mongoose `Transaction(accessor?, boundary?)`.
+Prisma and Drizzle request boundaries use `requestTransaction(fn, signal?, nativeOptions?, boundary?)`; Mongoose uses `transaction(fn, boundary?)` and `requestTransaction(fn, signal?, boundary?)`. Canonical decorators select the wrapper explicitly: Prisma `Transaction(accessor, nativeOptions?, boundary?)`, Drizzle `Transaction(accessor, nativeOptions?, boundary?)`, and Mongoose `Transaction(accessor, boundary?)`. No-argument or options-only discovery remains legacy single-target compatibility, not the normal recipe.
 
 `requireAfterCommit: true` checks native capability **before** the user callback and rejects missing support with the package's `AfterCommitCapabilityError`. Existing native defaults and fail-open behavior remain unchanged, but fallback, unsupported, missing, and closed scopes reject hook registration. `AfterCommitCallback` and `TransactionBoundaryOptions` are also root exports of each package.
 

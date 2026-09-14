@@ -84,7 +84,7 @@ Request cancellation 또는 shutdown이 callback 시작 후 boundary를 abort하
 
 ### 서비스 트랜잭션 경계 (@Transaction)
 
-`@Transaction()` 데코레이터는 서비스 레이어에서 트랜잭션 경계를 정의하는 권장 방법입니다. 이 데코레이터가 적용된 메서드 내부에서 발생하는 모든 리포지토리 호출은 동일한 MongoDB 세션을 공유합니다.
+Canonical 서비스 경계는 `@Transaction((self) => self.repo.conn, boundary?)`로 connection을 명시적으로 선택합니다. Host property 탐색에 의존하지 않으면서 데코레이터가 적용된 메서드 내부의 모든 repository 호출이 같은 MongoDB session을 공유합니다.
 
 ```ts
 import { Inject } from '@fluojs/core';
@@ -104,7 +104,7 @@ type ProfileCreateModel = MongooseModelFacade<Promise<readonly { readonly userId
 
 @Inject(MongooseConnection)
 export class UserRepository {
-  constructor(private readonly conn: MongooseConnection) {}
+  constructor(readonly conn: MongooseConnection) {}
 
   async create(data: CreateUserDto) {
     // @Transaction() 내부에서 conn.model()은 세션 인지형 facade를 반환합니다.
@@ -122,7 +122,7 @@ export class UserRepository {
 export class UserService {
   constructor(private readonly repo: UserRepository) {}
 
-  @Transaction()
+  @Transaction((self) => self.repo.conn)
   async onboardUser(dto: CreateUserDto) {
     const [user] = await this.repo.create(dto);
     await this.repo.initProfile(user._id);
@@ -131,9 +131,9 @@ export class UserService {
 }
 ```
 
-`@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 MongoDB 세션 안에서 실행됩니다. 참고로 v1에서 `doc.save()`는 자동으로 세션을 주입하지 않으므로, 자동 트랜잭션 참여가 필요하다면 지원되는 facade 작업(`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, `model.bulkWrite()`)을 사용하세요.
+Accessor로 target을 지정한 `@Transaction(...)` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 MongoDB 세션 안에서 실행됩니다. 참고로 v1에서 `doc.save()`는 자동으로 세션을 주입하지 않으므로, 자동 트랜잭션 참여가 필요하다면 지원되는 facade 작업(`model.create()`, `model.find()`, `model.findOne()`, `model.aggregate()`, `model.bulkWrite()`)을 사용하세요.
 
-`@Transaction()`은 `this.conn`, transaction-capable한 decorated instance 자체, 또는 하나뿐인 중첩 `this.*.conn` collaborator를 해석합니다. 임의의 connection field를 선택하지는 않습니다. 서비스가 여러 connection을 소유하거나 다른 field에 connection을 저장하는 경우에는 경계를 명시적으로 선택하세요.
+무인자 `@Transaction()`은 `this.conn`, transaction-capable한 decorated instance, 하나뿐인 중첩 `this.*.conn` collaborator 탐색을 기존 단일 target용 legacy 호환 동작으로만 유지합니다. 일반 recipe가 아닙니다. 다른 connection이나 ORM을 추가하기 전에 경계를 명시적으로 선택하세요.
 
 ```ts
 @Inject(MongooseConnection)
@@ -151,10 +151,10 @@ export class AnalyticsService {
 
 <!-- fluo-mongoose-save-document-contract: opt-in, active-session, save-compatible-document -->
 
-기존 Mongoose 문서를 활성 `@Transaction()`, `transaction()`, `requestTransaction()` 경계 안에서 저장해야 하면 opt-in `MongooseConnection.saveDocument(...)` helper를 사용하세요.
+기존 Mongoose 문서를 활성 explicit-target `@Transaction(...)`, `transaction()`, `requestTransaction()` 경계 안에서 저장해야 하면 opt-in `MongooseConnection.saveDocument(...)` helper를 사용하세요.
 
 ```ts
-@Transaction()
+@Transaction((self) => self.conn)
 async rename(document: UserDocument) {
   return this.conn.saveDocument(document, { validateBeforeSave: false });
 }
@@ -265,7 +265,7 @@ export function persistWithResult<T>(
 }
 ```
 
-`transaction(fn, boundary?)`, `requestTransaction(fn, signal?, boundary?)`, `@Transaction(accessor?, boundary?)`의 기존 Fluo boundary 자리를 사용합니다. 예를 들어 `@Transaction(undefined, { shouldRollback: (value: Result<string>) => !value.ok })`로 선언합니다. Mongoose native 옵션 인자는 추가되지 않습니다.
+`transaction(fn, boundary?)`, `requestTransaction(fn, signal?, boundary?)`, canonical `@Transaction(accessor, boundary?)`의 Fluo boundary 자리를 사용합니다. 예를 들어 `@Transaction((self) => self.conn, { shouldRollback: (value: Result<string>) => !value.ok })`로 선언합니다. Mongoose native 옵션 인자는 추가되지 않으며 무인자 탐색은 기존 단일 target용 legacy 호환 동작입니다.
 
 루트 predicate가 `true`이면 native rollback과 필요한 session cleanup 성공 뒤 같은 루트 값이 반환됩니다. 중첩 predicate가 `true`이면 중첩 호출은 원래 값을 반환하면서 공유 owner를 sticky rollback-only로 만듭니다. 루트도 자기 결과를 거부하면 그 루트 실패값을 반환하고, 그렇지 않으면 rollback 뒤 `TransactionRollbackOnlyError`를 던지며 `readonly result: unknown`에 첫 중첩 실패값을 담습니다. 옵션 생략 시 기존 예외 기반 동작을 유지합니다.
 
@@ -296,7 +296,7 @@ async function createUser(conn: MongooseConnection, cache: CacheService, name: s
 }
 ```
 
-`requireAfterCommit: true`는 사용자 callback 전에 native commit 관찰 capability를 검사하고 없으면 `AfterCommitCapabilityError`로 거부합니다. 기존 `strictTransactions: false`와 직접 실행 fallback은 옵션 생략 또는 `false`일 때 그대로지만, native transaction 없는 fallback에서 hook 등록은 거부됩니다. 서비스에서도 `@Transaction(undefined, { requireAfterCommit: true })` 또는 `@Transaction((self) => self.conn, { requireAfterCommit: true })`를 사용할 수 있습니다.
+`requireAfterCommit: true`는 사용자 callback 전에 native commit 관찰 capability를 검사하고 없으면 `AfterCommitCapabilityError`로 거부합니다. 기존 `strictTransactions: false`와 직접 실행 fallback은 옵션 생략 또는 `false`일 때 그대로지만, native transaction 없는 fallback에서 hook 등록은 거부됩니다. 서비스는 canonical explicit target인 `@Transaction((self) => self.conn, { requireAfterCommit: true })`를 사용합니다.
 
 Delegated `connection.transaction(...)`이 callback을 재시도하면 attempt마다 별도 queue를 사용하고 최종 성공한 attempt만 drain합니다. 폐기된 attempt, rollback, 실패한 commit의 hook은 실행하지 않습니다. commit만 재시도하고 callback은 다시 실행하지 않는 경우 hook을 재등록하지 않습니다. 같은 attempt의 중첩 경계는 queue를 공유하며 savepoint 없는 중첩 예외를 outer가 잡으면 최종 outer commit/rollback 결과를 따릅니다.
 
@@ -315,7 +315,7 @@ Session 정리가 성공했는데 hook이 실패하면, 한 실패로 중단하�
 | `transaction(fn, boundary?): Promise<T>` | 기존 async `fn` 뒤에 Fluo `boundary`를 추가합니다. commit 경로는 hook drain 뒤 원래 결과를 반환하며 opt-in rollback은 위의 반환·오류 규칙을 따릅니다. |
 | `requestTransaction(fn, signal?, boundary?): Promise<T>` | 기존 request `AbortSignal` 뒤에 `boundary`를 받습니다. |
 | `afterCommit(callback: AfterCommitCallback): void` | 열린 native scope에 등록하며 즉시 실행하지 않습니다. 미지원·native transaction 없음·scope 밖·닫힌 scope는 거부됩니다. |
-| `Transaction(accessor?, boundary?)` | 기존 connection accessor 뒤의 두 번째 인자가 Fluo `boundary`입니다. |
+| `Transaction(accessor, boundary?)` | Canonical explicit-target 형식입니다. Fluo `boundary`는 둘째 인자이며 무인자 탐색은 기존 단일 target용 legacy 호환 동작입니다. |
 
 경계 API의 `boundary?: TransactionBoundaryOptions<T>`는 Fluo 전용이며 native Mongoose 옵션 인자는 추가하지 않습니다. `afterCommit` 자체에는 boundary 인자가 없습니다.
 
@@ -338,7 +338,7 @@ Root `@fluojs/mongoose`의 추가 export:
 - `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, `MONGOOSE_OPTIONS`
 - `createMongoosePlatformStatusSnapshot(...)`
 - sync 및 async 등록 모두에서 `connection`은 실제 object/function handle이어야 하며, 누락된 handle은 모듈 등록 또는 async bootstrap 중 거부됩니다.
-- `Transaction`은 서비스 계층 세션 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 기본적으로 `this.conn`, 데코레이터가 적용된 인스턴스 자체, 또는 하나의 고유한 중첩 `this.*.conn` collaborator를 resolve합니다. `MongooseConnection`이 다른 필드에 있거나 resolution이 모호하다면 accessor를 전달하세요.
+- `Transaction`은 서비스 계층 세션 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 일반 코드는 accessor를 전달하며 `this.conn`, decorated instance, 하나의 고유한 중첩 `this.*.conn` collaborator 탐색은 legacy 단일 target 호환 동작으로만 남습니다.
 
 ### 관련 export 타입
 

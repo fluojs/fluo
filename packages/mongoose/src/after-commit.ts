@@ -1,21 +1,7 @@
-/**
- * Reports hook failures after the native transaction has already committed.
- *
- * @remarks
- * `results` contains every hook outcome in registration order. `errors` contains only rejected reasons.
- * Retrying the transaction in response to this error would repeat already committed database work.
- */
-export class AfterCommitError extends AggregateError {
-  readonly committed = true;
-
-  constructor(readonly results: readonly PromiseSettledResult<void>[]) {
-    super(
-      results.flatMap((result) => result.status === 'rejected' ? [result.reason] : []),
-      'Mongoose transaction committed, but one or more afterCommit callbacks failed.',
-    );
-    this.name = 'AfterCommitError';
-  }
-}
+export {
+  AfterCommitCapabilityError,
+  AfterCommitError,
+} from '@fluojs/core';
 
 /**
  * Reports manual session cleanup failure after commit, once all registered hooks have settled.
@@ -37,13 +23,5 @@ export class AfterCommitCleanupError extends AggregateError {
       { cause },
     );
     this.name = 'AfterCommitCleanupError';
-  }
-}
-
-/** Reports unavailable native after-commit support or registration outside an active callback. */
-export class AfterCommitCapabilityError extends Error {
-  constructor(message = 'Mongoose afterCommit requires an active native transaction callback; the scope is unavailable or closed.') {
-    super(message);
-    this.name = 'AfterCommitCapabilityError';
   }
 }

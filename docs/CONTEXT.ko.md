@@ -1,6 +1,16 @@
 # fluo — AI Context Document
 <!-- fluo:prisma-api-unification: module-owned-registration -->
 
+<!-- fluo:transaction-contract: explicit-target -->
+
+트랜잭션 데코레이터의 canonical 경로는 명시적인 target accessor입니다.
+Prisma는 `@Transaction((self) => self.prisma, nativeOptions?, boundary?)`,
+Drizzle은 `@Transaction((self) => self.db, nativeOptions?, boundary?)`,
+Mongoose는 `@Transaction((self) => self.conn, boundary?)`를 사용하세요.
+driver-native 옵션은 accessor 뒤에 오고 Fluo boundary policy는 마지막입니다.
+무인자 탐색은 legacy 단일 target 호환 동작일 뿐이므로 다른 database나 ORM을
+추가하기 전에 마이그레이션하세요.
+
 Prisma 애플리케이션 등록은 `PrismaModule.forRoot(...)` 또는 `PrismaModule.forRootAsync(...)`가 소유하며, 직접 facade를 조립하지 말고 module이 소유한 `PrismaService` facade를 주입하세요. `PrismaService.createFacade(...)`와 `PrismaTransactionInterceptor`는 제거되었습니다. request-wide 경계는 request `AbortSignal`을 전달하는 애플리케이션 소유 `PrismaService.requestTransaction(...)` 호출로 마이그레이션하세요. 자세한 내용은 [Prisma 등록 마이그레이션](./getting-started/migrate-prisma-registration.ko.md)을 참고하세요.
 
 <!-- fluo:cron-nestjs-migration: timezone-mapping -->

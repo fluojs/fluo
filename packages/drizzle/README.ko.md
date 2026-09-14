@@ -89,7 +89,7 @@ export class AppModule {}
 
 ### 서비스 트랜잭션 경계 (@Transaction)
 
-`@Transaction()` 데코레이터는 서비스 레이어에서 트랜잭션 경계를 정의하는 권장 방법입니다. 이 데코레이터가 적용된 메서드 내부에서 발생하는 모든 리포지토리 호출은 동일한 Drizzle 트랜잭션을 공유합니다.
+Canonical 서비스 경계는 `@Transaction((self) => self.db, nativeOptions?, boundary?)`로 Drizzle wrapper를 명시적으로 선택합니다. Host property 탐색에 의존하지 않으면서 데코레이터가 적용된 메서드 내부의 모든 repository 호출이 같은 Drizzle transaction을 공유합니다.
 
 ```ts
 import { Inject } from '@fluojs/core';
@@ -120,11 +120,14 @@ export class UserRepository {
   }
 }
 
-@Inject(UserRepository)
+@Inject(DrizzleDatabase, UserRepository)
 export class UserService {
-  constructor(private readonly repo: UserRepository) {}
+  constructor(
+    private readonly db: DrizzleDatabase<AppDatabase>,
+    private readonly repo: UserRepository,
+  ) {}
 
-  @Transaction()
+  @Transaction((self) => self.db)
   async onboardUser(dto: any) {
     const user = await this.repo.create(dto);
     await this.repo.initProfile(user.id);
@@ -133,9 +136,9 @@ export class UserService {
 }
 ```
 
-`@Transaction()` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 Drizzle 트랜잭션 안에서 실행됩니다.
+Accessor로 target을 지정한 `@Transaction(...)` 메서드 호출은 재진입(reentrant)이 가능합니다. 데코레이터가 적용된 메서드가 다른 데코레이터 적용 메서드를 호출하더라도 하나의 동일한 Drizzle 트랜잭션 안에서 실행됩니다.
 
-기본적으로 `@Transaction()`은 작은 host-object heuristic으로 대상을 고릅니다. 먼저 `this.db`를 확인하고, 그다음 데코레이터가 붙은 인스턴스의 직접 property, 마지막으로 그 값들의 중첩 `.db` property 중 `transaction(...)` 메서드를 노출하는 첫 값을 사용합니다. 이 후보들이 모두 맞지 않으면 데코레이터가 붙은 인스턴스 자체를 transaction 대상으로 사용합니다. `DrizzleModule`은 주입된 `DrizzleDatabaseFacade`를 소유하고 직접 Drizzle 호출을 `DrizzleDatabase.current()`로 전달하므로, 일반적인 `constructor(private readonly db: DrizzleDatabase<...>)` 서비스는 간결하게 유지됩니다. Drizzle wrapper가 둘 이상인 서비스는 property 순서에 의존하지 말고, 데코레이터가 붙은 host가 여러 transaction-capable client를 갖거나 `.db`를 노출하는 repository를 감싸는 경우 `@Transaction((self) => self.ordersDb)` 또는 `@Transaction((self) => self.analyticsDb, options)`처럼 명시적 accessor를 전달하세요.
+무인자와 options-only 호출은 기존 단일 target용 legacy 호환 동작으로만 host-object heuristic을 유지합니다. 순서는 `this.db`, 직접 property, 중첩 `.db` property, decorated instance입니다. 이는 일반 recipe가 아닙니다. 다른 database나 ORM을 추가하기 전에 명시적 accessor로 마이그레이션하여 property 순서가 잘못된 owner를 선택하지 않게 하세요.
 
 ### 수동 트랜잭션과 current()
 
@@ -229,7 +232,7 @@ export function persistWithResult<T>(
 }
 ```
 
-request는 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`를, decorator는 `@Transaction(accessorOrOptions?, nativeOptions?, boundary?)`를 유지합니다. 예를 들어 `@Transaction(undefined, undefined, { shouldRollback: (value: Result<string>) => !value.ok })`처럼 세 번째 자리에 선언합니다. native 옵션과 합치지 않으며 중첩 native 옵션도 계속 거부합니다.
+Request는 `requestTransaction(fn, signal?, nativeOptions?, boundary?)`를, canonical decorator는 `@Transaction(accessor, nativeOptions?, boundary?)`를 사용합니다. 예를 들어 `@Transaction((self) => self.db, undefined, { shouldRollback: (value: Result<string>) => !value.ok })`처럼 셋째 자리에 predicate를 선언합니다. 무인자와 options-only 호출은 기존 단일 target용 legacy 호환 동작입니다. Fluo policy를 native 옵션과 합치지 않으며 중첩 native 옵션도 계속 거부합니다.
 
 루트 predicate가 `true`이면 native rollback과 필요한 cleanup 성공 뒤 같은 루트 값이 반환됩니다. 중첩 predicate가 `true`이면 중첩 호출은 원래 값을 반환하면서 공유 owner를 sticky rollback-only로 만듭니다. 루트도 자기 결과를 거부하면 그 루트 실패값을 반환하고, 그렇지 않으면 rollback 뒤 `TransactionRollbackOnlyError`가 첫 중첩 실패값을 `readonly result: unknown`으로 보고합니다. 옵션을 생략하면 기존 예외 기반 동작을 유지합니다.
 
@@ -265,7 +268,7 @@ async function renameUser(
 }
 ```
 
-`undefined`는 기존 native 옵션 자리입니다. `requireAfterCommit: true`는 사용자 callback 전에 native commit 관찰 capability를 검사하고 없으면 `AfterCommitCapabilityError`로 거부합니다. 생략 또는 `false`는 기존 `strictTransactions: false`와 fail-open fallback을 바꾸지 않지만, native transaction 없는 fallback에서 hook 등록은 거부됩니다. decorator는 마지막 세 번째 인자에 요구를 둡니다: `@Transaction(undefined, undefined, { requireAfterCommit: true })` 또는 `@Transaction((self) => self.db, nativeOptions, { requireAfterCommit: true })`.
+`requireAfterCommit: true`는 사용자 callback 전에 native commit 관찰 capability를 검사하고 없으면 `AfterCommitCapabilityError`로 거부합니다. 생략 또는 `false`는 기존 `strictTransactions: false`와 fail-open fallback을 바꾸지 않지만, native transaction 없는 fallback에서 hook 등록은 거부됩니다. Canonical decorator는 명시적 target을 첫째, 요구를 마지막에 둡니다. `@Transaction((self) => self.db, undefined, { requireAfterCommit: true })` 또는 `@Transaction((self) => self.db, nativeOptions, { requireAfterCommit: true })`입니다.
 
 성공한 outer native commit과 scope 종료 뒤, 종료된 ALS 밖에서 hook을 FIFO 순서로 하나씩 await합니다. 중첩 경계는 queue를 공유하며 별도 savepoint가 없으므로 잡힌 중첩 예외는 최종 outer 결과를 따릅니다. rollback·실패한 commit·폐기된 callback attempt의 hook은 실행하지 않습니다. hook의 root read는 종료된 handle을 받지 않고 새 transaction은 새 queue를 소유합니다. scope 밖·닫힌 scope·drain 중의 늦은 등록은 거부되며 shutdown은 hook까지 기다린 뒤 `dispose(database)`를 호출합니다.
 
@@ -379,7 +382,7 @@ defineModule(ManualDrizzleModule, {
 | `transaction(fn, nativeOptions?, boundary?): Promise<T>` | 기존 async `fn`과 Drizzle 옵션 뒤에 `boundary`를 추가합니다. commit 경로는 hook drain 뒤 원래 결과를 반환하며 opt-in rollback은 위의 반환·오류 규칙을 따릅니다. |
 | `requestTransaction(fn, signal?, nativeOptions?, boundary?): Promise<T>` | 기존 request `AbortSignal`과 native 옵션 자리를 유지하며 마지막에 `boundary`를 받습니다. |
 | `afterCommit(callback: AfterCommitCallback): void` | 열린 native scope에 등록합니다. 즉시 실행하지 않으며 미지원·native transaction 없음·scope 밖·닫힌 scope에서는 거부합니다. |
-| `Transaction(accessorOrOptions?, nativeOptions?, boundary?)` | 기존 첫 인자의 accessor 또는 native 옵션 해석을 보존합니다. 두 번째 native 옵션은 accessor 사용 시의 기존 자리이고, Fluo `boundary`는 항상 세 번째입니다. |
+| `Transaction(accessor, nativeOptions?, boundary?)` | Canonical explicit-target 형식입니다. Native 옵션은 둘째, Fluo `boundary`는 셋째이며 무인자와 options-only overload는 기존 단일 target용 legacy 호환 동작입니다. |
 
 다음 값과 타입은 root `@fluojs/drizzle`에서 import합니다.
 
@@ -413,7 +416,7 @@ import {
 
 애플리케이션 database는 `DrizzleModule.forRoot(...)` 또는 `DrizzleModule.forRootAsync(...)`로 등록하세요. provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createPlatformStatusSnapshot()` 같은 wrapper 메서드만 필요로 하면 `DrizzleDatabase<TDatabase>`를 사용하세요. 리포지토리 주입에서 Drizzle query 메서드를 직접 호출해야 한다면 `DrizzleDatabaseFacade<TDatabase>`를 사용합니다. 이 module-owned facade는 활성 트랜잭션 handle이 있으면 그 handle로, 없으면 root handle로 호출을 전달합니다.
 
-`Transaction`은 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. 데코레이터가 붙은 host에서 `this.db`, 직접 property, 중첩 `.db` property 순서로 transaction-capable 대상을 resolve한 뒤, 후보가 없으면 데코레이터가 붙은 인스턴스 자체로 fallback합니다. 명시적 client 선택에는 accessor를 받을 수 있으며, 외부 경계에는 Drizzle transaction option을 전달할 수 있습니다.
+`Transaction`은 서비스 계층 트랜잭션 경계를 위한 표준 TC39 method decorator입니다. Canonical 형식은 `Transaction(accessor, nativeOptions?, boundary?)`입니다. 무인자와 options-only target 탐색은 기존 단일 target용 legacy 호환 동작이며 다른 database나 ORM을 도입하기 전에 마이그레이션해야 합니다.
 
 ### `DrizzleModule`
 

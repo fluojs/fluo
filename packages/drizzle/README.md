@@ -89,7 +89,7 @@ export class AppModule {}
 
 ### Service Transaction Boundary (@Transaction)
 
-The `@Transaction()` decorator is the recommended way to define transaction boundaries in your service layer. It ensures that all repository calls made within the decorated method share the same Drizzle transaction.
+The canonical service boundary selects its Drizzle wrapper explicitly with `@Transaction((self) => self.db, nativeOptions?, boundary?)`. It ensures that all repository calls made within the decorated method share the same Drizzle transaction without depending on host-property discovery.
 
 ```ts
 import { Inject } from '@fluojs/core';
@@ -120,11 +120,14 @@ export class UserRepository {
   }
 }
 
-@Inject(UserRepository)
+@Inject(DrizzleDatabase, UserRepository)
 export class UserService {
-  constructor(private readonly repo: UserRepository) {}
+  constructor(
+    private readonly db: DrizzleDatabase<AppDatabase>,
+    private readonly repo: UserRepository,
+  ) {}
 
-  @Transaction()
+  @Transaction((self) => self.db)
   async onboardUser(dto: any) {
     const user = await this.repo.create(dto);
     await this.repo.initProfile(user.id);
@@ -133,9 +136,9 @@ export class UserService {
 }
 ```
 
-Calls to `@Transaction()` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Drizzle transaction.
+Calls to accessor-targeted `@Transaction(...)` methods are reentrant. If a decorated method calls another decorated method, they share the same underlying Drizzle transaction.
 
-By default, `@Transaction()` selects its target with a small host-object heuristic: it first checks `this.db`, then direct properties on the decorated instance, then a nested `.db` property on those values, and uses the first value that exposes a `transaction(...)` method. If none of those candidates match, the decorated instance itself becomes the transaction target. `DrizzleModule` owns the injected `DrizzleDatabaseFacade` and forwards its direct Drizzle calls to `DrizzleDatabase.current()`, so common `constructor(private readonly db: DrizzleDatabase<...>)` services stay concise. Services with more than one Drizzle wrapper should not rely on property order; pass an explicit accessor such as `@Transaction((self) => self.ordersDb)` or `@Transaction((self) => self.analyticsDb, options)` whenever the decorated host owns multiple transaction-capable clients or wraps a repository that also exposes `.db`.
+No-argument and options-only calls retain the previous host-object heuristic only for legacy single-target compatibility: `this.db`, direct properties, nested `.db` properties, then the decorated instance. This is not the normal recipe. Migrate to an explicit accessor before adding another database or ORM so property order cannot select the wrong owner.
 
 ### Manual Transactions and current()
 
@@ -229,7 +232,7 @@ export function persistWithResult<T>(
 }
 ```
 
-Requests retain `requestTransaction(fn, signal?, nativeOptions?, boundary?)`; decorators retain `@Transaction(accessorOrOptions?, nativeOptions?, boundary?)`. Declare the predicate in the third position, for example `@Transaction(undefined, undefined, { shouldRollback: (value: Result<string>) => !value.ok })`. Do not merge it into native options; nested native options remain rejected.
+Requests use `requestTransaction(fn, signal?, nativeOptions?, boundary?)`; canonical decorators use `@Transaction(accessor, nativeOptions?, boundary?)`. Declare the predicate in the third position, for example `@Transaction((self) => self.db, undefined, { shouldRollback: (value: Result<string>) => !value.ok })`. No-argument and options-only calls are legacy single-target compatibility. Do not merge Fluo policy into native options; nested native options remain rejected.
 
 If the root predicate returns `true`, the same root value is returned after native rollback and required cleanup succeed. A nested predicate returning `true` returns the original nested value while marking the shared owner sticky rollback-only. If the root also rejects its own result, its root failure value is returned; otherwise, `TransactionRollbackOnlyError` reports the first nested failure in `readonly result: unknown` after rollback. Omission preserves existing exception-based behavior.
 
@@ -265,7 +268,7 @@ async function renameUser(
 }
 ```
 
-`undefined` preserves the existing native-options position. `requireAfterCommit: true` checks native commit observation capability before the user callback and rejects with `AfterCommitCapabilityError` when it is unavailable. Omitting it or passing `false` preserves existing `strictTransactions: false` and fail-open fallback, but hook registration is rejected in a fallback without a native transaction. The decorator takes the requirement as its final, third argument: `@Transaction(undefined, undefined, { requireAfterCommit: true })` or `@Transaction((self) => self.db, nativeOptions, { requireAfterCommit: true })`.
+`requireAfterCommit: true` checks native commit observation capability before the user callback and rejects with `AfterCommitCapabilityError` when it is unavailable. Omitting it or passing `false` preserves existing `strictTransactions: false` and fail-open fallback, but hook registration is rejected in a fallback without a native transaction. The canonical decorator keeps the explicit target first and the requirement last: `@Transaction((self) => self.db, undefined, { requireAfterCommit: true })` or `@Transaction((self) => self.db, nativeOptions, { requireAfterCommit: true })`.
 
 After successful outer native commit and scope closure, hooks run sequentially in FIFO order outside the ended ALS context. Nested boundaries share the queue without a separate savepoint, so a caught nested exception follows the final outer outcome. Hooks from rollback, failed commit, and discarded callback attempts do not run. Root reads in hooks do not receive the ended handle; new transactions own fresh queues. Registration outside a scope, in a closed scope, or late during drain is rejected. Shutdown waits for hooks before calling `dispose(database)`.
 
@@ -379,7 +382,7 @@ defineModule(ManualDrizzleModule, {
 | `transaction(fn, nativeOptions?, boundary?): Promise<T>` | Appends `boundary` after the existing async `fn` and Drizzle options. The commit path returns the original result after hook drain; opt-in rollback follows the return and error rules above. |
 | `requestTransaction(fn, signal?, nativeOptions?, boundary?): Promise<T>` | Preserves the existing request `AbortSignal` and native-options positions, with `boundary` last. |
 | `afterCommit(callback: AfterCommitCallback): void` | Registers work in an open native scope without running it immediately. Unsupported boundaries, no native transaction, missing scope, and closed scopes reject registration. |
-| `Transaction(accessorOrOptions?, nativeOptions?, boundary?)` | Preserves the existing interpretation of the first argument as an accessor or native options. The second native-options argument keeps its existing accessor-only role; Fluo `boundary` is always third. |
+| `Transaction(accessor, nativeOptions?, boundary?)` | Canonical explicit-target form. Native options remain second and Fluo `boundary` is third; no-argument and options-only overloads are legacy single-target compatibility. |
 
 Import these values and types from the root `@fluojs/drizzle` package.
 
@@ -413,7 +416,7 @@ import {
 
 Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such as `current()`, `transaction(...)`, `requestTransaction(...)`, or `createPlatformStatusSnapshot()`. Use `DrizzleDatabaseFacade<TDatabase>` for repository injections that call Drizzle query methods directly; the module-owned facade forwards those calls to the active transaction handle when one exists and to the root handle otherwise. Register application handles only through `DrizzleModule.forRoot(...)` or `DrizzleModule.forRootAsync(...)`.
 
-`Transaction` is a standard TC39 method decorator for service-layer transaction boundaries. It resolves a transaction-capable target from the decorated host by checking `this.db`, then direct properties, then nested `.db` properties, then falling back to the decorated instance itself; it also accepts an accessor for explicit client selection and can forward Drizzle transaction options to the outer boundary.
+`Transaction` is a standard TC39 method decorator for service-layer transaction boundaries. Its canonical form is `Transaction(accessor, nativeOptions?, boundary?)`. No-argument and options-only target discovery remains legacy single-target compatibility and should be migrated before introducing another database or ORM.
 
 ### `DrizzleModule`
 

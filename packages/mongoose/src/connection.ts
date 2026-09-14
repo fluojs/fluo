@@ -283,7 +283,9 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
   afterCommit(callback: AfterCommitCallback): void {
     const owner = this.sessions.getStore()?.owner;
     if (!owner?.open) {
-      throw new AfterCommitCapabilityError();
+      throw new AfterCommitCapabilityError(
+        'Mongoose afterCommit requires an active native transaction callback; the scope is unavailable or closed.',
+      );
     }
 
     owner.afterCommitEnabled = true;

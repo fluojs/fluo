@@ -5,21 +5,35 @@
 
 이 문서는 `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose` 전반의 현재 트랜잭션 문맥 계약을 정의합니다.
 
+## Canonical 데코레이터 target
+
+일반 서비스 코드는 트랜잭션 owner를 명시적으로 선택합니다.
+
+```ts
+@Transaction((self) => self.prisma, prismaNativeOptions, boundary)
+@Transaction((self) => self.db, drizzleNativeOptions, boundary)
+@Transaction((self) => self.conn, boundary)
+```
+
+첫 인자는 항상 target accessor입니다. Prisma와 Drizzle은 accessor 뒤에서만 driver-native 옵션을 받고, 마지막 `boundary`는 Fluo 소유 policy(`requireAfterCommit` 또는 `shouldRollback`)입니다. Mongoose에는 decorator 수준 native-options 인자가 없으므로 boundary가 두 번째 인자로 남습니다. 이 분리는 driver 옵션이 Fluo policy로 해석되는 일을 막고 여러 database나 ORM에서 자동 선택으로 잘못된 handle을 고르는 일을 막습니다.
+
+무인자 탐색은 기존 단일 target 서비스의 legacy 호환 동작으로 남습니다. 일반 예제나 안전한 migration 목적지는 아니므로 다른 registration, database, ORM을 추가하기 전에 accessor로 교체하세요.
+
 ## 지원되는 연동
 
 | 패키지 | ambient 문맥 운반체 | 주요 접근 API | 요청 경계 API | 현재 지원 범위 |
 | --- | --- | --- | --- | --- |
-| `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | 서비스의 `@Transaction()` | 명시적 애플리케이션 소유 `PrismaService.requestTransaction(...)` | `$transaction(...)`을 사용할 수 있을 때 활성 Prisma interactive transaction client를 공유합니다. |
-| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | 서비스의 `@Transaction()` | 명시적 애플리케이션 소유 `DrizzleDatabase.requestTransaction(...)` | `database.transaction(...)`을 사용할 수 있을 때 활성 Drizzle transaction database handle을 공유합니다. |
-| `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | 서비스의 `@Transaction()` | 명시적 애플리케이션 소유 `MongooseConnection.requestTransaction(...)` | `connection.startSession()` 또는 위임된 `connection.transaction(...)`을 사용할 수 있을 때 활성 Mongoose session을 공유합니다. |
+| `@fluojs/prisma` | `AsyncLocalStorage<TTransactionClient>` | 명시적 `@Transaction((self) => self.prisma, nativeOptions?, boundary?)` | 명시적 애플리케이션 소유 `PrismaService.requestTransaction(...)` | `$transaction(...)`을 사용할 수 있을 때 활성 Prisma interactive transaction client를 공유합니다. |
+| `@fluojs/drizzle` | `AsyncLocalStorage<TTransactionDatabase>` | 명시적 `@Transaction((self) => self.db, nativeOptions?, boundary?)` | 명시적 애플리케이션 소유 `DrizzleDatabase.requestTransaction(...)` | `database.transaction(...)`을 사용할 수 있을 때 활성 Drizzle transaction database handle을 공유합니다. |
+| `@fluojs/mongoose` | `AsyncLocalStorage<MongooseSessionLike>` | 명시적 `@Transaction((self) => self.conn, boundary?)` | 명시적 애플리케이션 소유 `MongooseConnection.requestTransaction(...)` | `connection.startSession()` 또는 위임된 `connection.transaction(...)`을 사용할 수 있을 때 활성 Mongoose session을 공유합니다. |
 
 ## 서비스 트랜잭션 경계 (기본)
 
-fluo에서 트랜잭션을 관리하는 가장 권장되는 방법은 서비스 계층에서 `@Transaction()` 데코레이터를 사용하는 것입니다. 이는 영속성 작업이 하나의 원자적 단위로 그룹화되는 명확한 경계를 정의합니다.
+fluo에서 트랜잭션을 관리하는 canonical 방법은 서비스 계층의 explicit-target `@Transaction(...)` 데코레이터입니다. 이는 경계를 정의하고 어떤 persistence wrapper가 소유하는지 정확히 지정합니다.
 
 ```ts
 // 서비스 (기본 경계)
-@Transaction()
+@Transaction((self) => self.prisma)
 async createUser(dto) { 
   // 여기의 모든 레포지토리 호출은 동일한 ambient 트랜잭션을 공유합니다
   return this.repo.create(dto); 
@@ -33,7 +47,7 @@ async create(dto) {
 ```
 
 ### 미래의 ORM 어댑터
-fluo 에코시스템에 추가되는 모든 새로운 ORM 연동 패키지는 이 서비스 경계 계약을 충족하는 `@Transaction()` 데코레이터를 노출해야 합니다.
+fluo 에코시스템에 추가되는 모든 새로운 ORM 연동 패키지는 이 서비스 경계 계약을 충족하는 explicit-target `@Transaction(accessor, ...)` 데코레이터를 노출해야 합니다.
 
 ## 문맥 해석 규칙
 
@@ -44,17 +58,17 @@ fluo 에코시스템에 추가되는 모든 새로운 ORM 연동 패키지는 �
 | 이름 있는 Drizzle 핸들 | 이름 있는 Drizzle 핸들은 각각 분리된 ALS context를 소유합니다. multi-client service는 decorator target discovery에 의존하지 않고 `@Transaction((self) => self.analytics)`로 이름 있는 핸들을 명시적으로 선택합니다. | `packages/drizzle/src/named-registration.ts`, `packages/drizzle/src/transaction.ts` |
 | Mongoose 문서 저장 helper | `MongooseConnection.saveDocument(document, options?)`는 기존 문서를 위한 opt-in 경로입니다. ambient session과 native save option을 병합하고 document identity를 보존하며, 누락되거나 충돌하는 session을 거부합니다. 직접 `doc.save()` 동작은 바꾸지 않습니다. | `packages/mongoose/src/connection.ts` |
 | Mongoose 세션 자동 바인딩 | 지원되는 `MongooseConnection.model(...)` facade 작업(`create`, `find`, `findOne`, `aggregate`, `bulkWrite`)은 ambient 트랜잭션 세션을 자동으로 첨부합니다. 지원되지 않는 model 메서드, `doc.save()`, raw `conn.current().model(...)` 호출, 고급 교차 연결 시나리오에는 명시적인 세션 전달이 필요합니다. | `packages/mongoose/src/connection.ts` |
-| Mongoose decorator 대상 선택 | Mongoose `@Transaction()`은 `this.conn`, transaction-capable한 decorated instance 자체, 또는 하나뿐인 중첩 `this.*.conn` collaborator를 해석합니다. 여러 중첩 후보 중 하나를 임의로 선택하지 않고 거부하므로, multi-connection service 또는 비표준 field에는 `@Transaction((self) => self.analytics.conn)` 같은 accessor를 전달하세요. | `packages/mongoose/src/transaction.ts` |
+| Mongoose legacy target 탐색 | 무인자 Mongoose `@Transaction()`은 기존 단일 target 호환을 위해서만 `this.conn`, decorated instance, 하나의 고유한 중첩 `this.*.conn` collaborator를 탐색합니다. 일반 코드는 `@Transaction((self) => self.analytics.conn)` 같은 accessor를 전달합니다. | `packages/mongoose/src/transaction.ts` |
 | 중첩 경계 재사용 | 이미 트랜잭션이 활성화되어 있으면 `@Transaction()`은 새 경계를 열지 않고 기존 경계를 재사용합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
 | 중첩 옵션 제한 | Prisma와 Drizzle은 ambient 트랜잭션이 이미 활성화된 상태에서 중첩 native 트랜잭션 옵션을 허용하지 않습니다. 별도 `boundary`의 `requireAfterCommit`은 native 옵션이 아니라 현재 경계의 capability 요구입니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts` |
 | strict 모드 | 연동 패키지는 등록된 client/connection이 트랜잭션을 지원하지 않을 때 예외를 던지도록 설정할 수 있습니다. strict 모드가 아니면 트랜잭션 헬퍼는 직접 실행으로 폴백합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
-| Drizzle 데코레이터 대상 선택 | Drizzle `@Transaction()`은 데코레이터가 붙은 host에서 `this.db`, 직접 property, 중첩 `.db` property 순서로 `transaction(...)`을 노출하는 값을 찾고, 후보가 없으면 데코레이터가 붙은 인스턴스 자체로 폴백합니다. 대상이 둘 이상 가능하면 `@Transaction((self) => self.ordersDb)` 같은 명시적 accessor를 사용합니다. | `packages/drizzle/src/transaction.ts` |
+| Drizzle legacy target 탐색 | 무인자 또는 options-only Drizzle `@Transaction()`은 기존 단일 target 호환을 위해서만 `this.db`, 직접 property, 중첩 `.db`, decorated instance 순서로 탐색합니다. 일반 코드는 `@Transaction((self) => self.ordersDb)` 같은 accessor를 전달합니다. | `packages/drizzle/src/transaction.ts` |
 
 ## 경계 의미론
 
 | 경계 | 현재 동작 | 소스 기준 |
 | --- | --- | --- |
-| `@Transaction()` 경계 | 메서드를 패키지별 트랜잭션 러너로 감싸고 결과 클라이언트/세션을 ALS에 바인딩합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
+| Explicit-target `@Transaction(...)` 경계 | 패키지 wrapper를 선택하고 메서드를 해당 transaction runner로 감싸며 결과 client/session을 ALS에 바인딩합니다. | `packages/prisma/src/service.ts`, `packages/drizzle/src/database.ts`, `packages/mongoose/src/connection.ts` |
 | 수동 Prisma 경계 | `PrismaService.transaction(...)`은 `fn`을 `$transaction(...)` 내부에서 실행하고 트랜잭션 클라이언트를 ALS에 바인딩합니다. 인자와 반환값은 [Prisma API](../../packages/prisma/README.ko.md#공개-api-개요)가 소유합니다. | `packages/prisma/src/service.ts` |
 | 수동 Drizzle 경계 | `DrizzleDatabase.transaction(...)`은 `fn`을 `database.transaction(...)` 내부에서 실행하고 트랜잭션 데이터베이스를 ALS에 바인딩합니다. 인자와 반환값은 [Drizzle API](../../packages/drizzle/README.ko.md#공개-api-개요)가 소유합니다. | `packages/drizzle/src/database.ts` |
 | 수동 Mongoose 경계 | `MongooseConnection.transaction(...)`은 `connection.transaction(...)`에 위임하거나 수동 `startTransaction()` 사이클을 관리합니다. 인자와 반환값은 [Mongoose API](../../packages/mongoose/README.ko.md#공개-api)가 소유합니다. | `packages/mongoose/src/connection.ts` |
@@ -142,7 +156,7 @@ Raw-client 외부 transaction, 다른 wrapper 또는 다른 connection의 commit
 | 명시적 요청 경계 | 전체 요청을 트랜잭션으로 감싸야 하는 경우 애플리케이션 코드가 controller, route adapter, request orchestration 경계에서 `requestTransaction(...)`을 직접 호출할 수 있습니다. |
 | Deprecated 인터셉터 호환성 | Prisma, Drizzle, Mongoose transaction interceptor는 제거되었습니다. Request-wide 등록은 request `AbortSignal`과 함께 각 wrapper의 명시적 `requestTransaction(...)`을 호출하는 애플리케이션 소유 boundary로 마이그레이션하세요. 비즈니스 원자성에는 서비스 `@Transaction()`을 우선 사용하세요. |
 
-NestJS controller 또는 interceptor transaction 패턴을 마이그레이션할 때 일반적인 비즈니스 원자성은 서비스 `@Transaction()` 메서드에 두세요. Prisma, Drizzle, Mongoose request-wide boundary는 애플리케이션이 소유하며 `PrismaService.requestTransaction(...)`, `DrizzleDatabase.requestTransaction(...)`, `MongooseConnection.requestTransaction(...)`에 request `AbortSignal`을 전달합니다.
+NestJS controller 또는 interceptor transaction 패턴을 마이그레이션할 때 일반적인 비즈니스 원자성은 explicit-target 서비스 `@Transaction(...)` 메서드에 두세요. Prisma, Drizzle, Mongoose request-wide boundary는 애플리케이션이 소유하며 `PrismaService.requestTransaction(...)`, `DrizzleDatabase.requestTransaction(...)`, `MongooseConnection.requestTransaction(...)`에 request `AbortSignal`을 전달합니다.
 
 제거된 Prisma facade와 interceptor의 마이그레이션 단계는 [Prisma 등록 마이그레이션](../getting-started/migrate-prisma-registration.ko.md)을 참고하세요.
 
@@ -155,7 +169,7 @@ NestJS controller 또는 interceptor transaction 패턴을 마이그레이션할
 
 ## 제약 사항
 
-- 트랜잭션 관리의 기본 경로는 `@Transaction()`을 통한 서비스 계층입니다.
+- 트랜잭션 관리의 기본 경로는 explicit-target `@Transaction(accessor, ...)`를 통한 서비스 계층이며 무인자 탐색은 legacy 단일 target 호환 동작입니다.
 - `MongooseConnection.saveDocument(...)`는 opt-in이며 활성 ambient session이 필요합니다. 트랜잭션 밖에서는 fail-closed하고 충돌하는 명시적 `session`을 거부하며 native `doc.save()`는 수정하지 않습니다.
 - 지원되는 Mongoose facade 작업은 자동으로 ambient 트랜잭션 세션에 참여합니다. 해당 표준 흐름에서는 명시적인 세션 전달이 권장되지 않으며, 지원되지 않는 model 메서드에는 여전히 명시적인 세션 전달이 필요합니다.
 - 롤백은 기본적으로 commit 전 예외 기반입니다. `@Transaction()`의 callback에서 outer native boundary까지 전파된 예외는 트랜잭션을 중단합니다. 별도 Fluo `boundary.shouldRollback`은 정상 반환값에 대한 opt-in이며 [반환값 기반 롤백](#반환값-기반-롤백)의 공유 owner 규칙을 따릅니다. 이미 commit한 뒤의 `AfterCommitError`나 Mongoose `AfterCommitCleanupError`는 rollback을 뜻하지 않습니다.

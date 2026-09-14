@@ -73,17 +73,10 @@ function resolveDefaultPrismaService(self: unknown): TransactionalPrismaService 
   throw new Error('Unable to resolve PrismaService for @Transaction(). Provide an accessor function.');
 }
 
-function resolveTransactionInput<THost, TOptions>(
-  input?: TransactionAccessor<THost, TOptions> | TOptions,
-): {
-  accessor?: TransactionAccessor<THost, TOptions>;
-  options?: TOptions;
-} {
-  if (typeof input === 'function') {
-    return { accessor: input as TransactionAccessor<THost, TOptions> };
-  }
-
-  return { options: input };
+function isBoundaryOptions<TResult>(value: unknown): value is TransactionBoundaryOptions<TResult> {
+  return typeof value === 'object'
+    && value !== null
+    && ('requireAfterCommit' in value || 'shouldRollback' in value);
 }
 
 /**
@@ -91,24 +84,38 @@ function resolveTransactionInput<THost, TOptions>(
  *
  * @remarks
  * This is a TC39 standard method decorator (2023-11) and does not use legacy decorator metadata or `reflect-metadata`.
- * `@Transaction()` resolves a Prisma service from the decorated instance, while
- * `@Transaction((self) => self.prisma)` selects an explicit service for named or multi-client registrations.
+ * The canonical form is `@Transaction((self) => self.prisma, nativeOptions, boundary)`, which selects an explicit
+ * service before forwarding Prisma-native options and Fluo boundary policy as separate inputs. `@Transaction()` and
+ * options-only calls remain compatibility forms for existing single-target services.
  * Calls made while a transaction context is already active reuse the existing Prisma transaction through `PrismaService`.
  * Passing Prisma transaction options to a nested call is rejected by `PrismaService.transaction(...)` so option intent is not
  * silently ignored.
  *
- * @param input Optional service accessor or Prisma interactive transaction options.
- * @param boundary Optional Fluo-owned capability requirement and typed Result rollback predicate.
+ * @param input Explicit service accessor, or a compatibility native-options input.
+ * @param options Prisma interactive transaction options for an explicit target, or a compatibility boundary input.
+ * @param boundary Fluo-owned capability requirement and typed Result rollback predicate for an explicit target.
  * @returns A standard method decorator that runs the original method inside a Prisma transaction boundary.
  */
 export function Transaction<THost, TOptions = unknown, TResult = unknown>(
   input?: TransactionAccessor<THost, TOptions> | TOptions,
+  options?: TOptions | TransactionBoundaryOptions<TResult>,
   boundary?: TransactionBoundaryOptions<TResult>,
 ): <TArgs extends unknown[], TReturn extends TResult>(
   value: TransactionMethod<THost, TArgs, TReturn>,
   context: ClassMethodDecoratorContext<THost, TransactionMethod<THost, TArgs, TReturn>>,
 ) => TransactionMethod<THost, TArgs, TReturn> {
-  const { accessor, options } = resolveTransactionInput(input);
+  const accessor = typeof input === 'function'
+    ? input as TransactionAccessor<THost, TOptions>
+    : undefined;
+  const compatibilityBoundary = accessor && boundary === undefined && isBoundaryOptions<TResult>(options)
+    ? options
+    : undefined;
+  const nativeOptions = accessor
+    ? compatibilityBoundary === undefined ? options as TOptions | undefined : undefined
+    : input as TOptions | undefined;
+  const transactionBoundary = accessor
+    ? boundary ?? compatibilityBoundary
+    : options as TransactionBoundaryOptions<TResult> | undefined;
 
   return function transactionDecorator<TArgs extends unknown[], TReturn extends TResult>(
     value: TransactionMethod<THost, TArgs, TReturn>,
@@ -121,16 +128,16 @@ export function Transaction<THost, TOptions = unknown, TResult = unknown>(
     return async function wrappedTransactionMethod(this: THost, ...args: TArgs): Promise<TReturn> {
       const prisma = accessor?.(this) ?? resolveDefaultPrismaService(this);
 
-      if (boundary?.shouldRollback && !(prisma instanceof PrismaService)) {
+      if (transactionBoundary?.shouldRollback && !(prisma instanceof PrismaService)) {
         throw new TransactionRollbackCapabilityError();
       }
-      if (boundary?.requireAfterCommit && typeof readProperty(prisma, 'afterCommit') !== 'function') {
+      if (transactionBoundary?.requireAfterCommit && typeof readProperty(prisma, 'afterCommit') !== 'function') {
         throw new AfterCommitCapabilityError();
       }
 
-      return boundary === undefined
-        ? prisma.transaction(() => value.apply(this, args), options)
-        : prisma.transaction(() => value.apply(this, args), options, boundary);
+      return transactionBoundary === undefined
+        ? prisma.transaction(() => value.apply(this, args), nativeOptions)
+        : prisma.transaction(() => value.apply(this, args), nativeOptions, transactionBoundary);
     };
   };
 }
