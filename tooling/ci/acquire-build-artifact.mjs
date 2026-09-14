@@ -2,11 +2,12 @@
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const SHA = /^[0-9a-f]{40}$/u;
 const DIGEST = /^[0-9a-f]{64}$/u;
+const normalizeDigest = (value) => typeof value === 'string' ? value.replace(/^sha256:/u, '') : '';
 
 export function classifyAcquisitionFailure({ status, text = '' }) {
   const intermediary403 = status === 403 && /intermediary|upstream|timeout|gateway/iu.test(text);
@@ -18,12 +19,15 @@ export function validateArtifactMetadata(metadata, expected) {
   if (metadata.workflow_run?.id !== expected.runId || metadata.workflow_run?.head_sha !== expected.sha || !SHA.test(expected.sha)) {
     throw new TypeError('artifact run or SHA mismatch');
   }
-  if (metadata.digest !== expected.digest || !DIGEST.test(expected.digest)) throw new TypeError('artifact digest mismatch');
+  if (normalizeDigest(metadata.digest) !== normalizeDigest(expected.digest) || !DIGEST.test(normalizeDigest(expected.digest))) {
+    throw new TypeError('artifact digest mismatch');
+  }
   return true;
 }
 
 export async function acquireBuildArtifact({ fetch, expected, outputPath, attempts = 3, now = () => Date.now(), deadlineMs = 60_000 }) {
   const started = now();
+  const attemptRecords = [];
   for (let attempt = 1; attempt <= attempts && now() - started <= deadlineMs; attempt += 1) {
     const stage = `${outputPath}.attempt-${attempt}`;
     rmSync(stage, { force: true });
@@ -35,13 +39,15 @@ export async function acquireBuildArtifact({ fetch, expected, outputPath, attemp
       const downloadResponse = await fetch(expected.downloadUrl);
       const bytes = new Uint8Array(await downloadResponse.arrayBuffer());
       if (!downloadResponse.ok) throw Object.assign(new Error('artifact download request failed'), { status: downloadResponse.status, text: new TextDecoder().decode(bytes) });
-      if (createHash('sha256').update(bytes).digest('hex') !== expected.digest) throw new TypeError('artifact digest mismatch');
+      if (createHash('sha256').update(bytes).digest('hex') !== normalizeDigest(expected.digest)) throw new TypeError('artifact digest mismatch');
       mkdirSync(resolve(outputPath, '..'), { recursive: true });
       writeFileSync(stage, bytes);
       renameSync(stage, outputPath);
-      return { attempt, digest: expected.digest, elapsedMs: now() - started, outputPath };
+      attemptRecords.push({ attempt, elapsedMs: now() - started, status: 200 });
+      return { attempt, attempts: attemptRecords, digest: normalizeDigest(expected.digest), elapsedMs: now() - started, outputPath };
     } catch (error) {
       rmSync(stage, { force: true });
+      attemptRecords.push({ attempt, elapsedMs: now() - started, status: Number(error?.status ?? 0) });
       if (attempt === attempts || now() - started > deadlineMs || !classifyAcquisitionFailure(error).retry) throw error;
     }
   }
@@ -61,51 +67,47 @@ function cliArgs(argv) {
   return input;
 }
 
-function githubFetch(execute) {
+export function githubFetch(fetchImpl, token) {
   return async (url) => {
-    const endpoint = new URL(url).pathname.replace(/^\//u, '');
-    const encoding = endpoint.endsWith('/zip') ? null : 'utf8';
-    try {
-      const body = execute('gh', ['api', endpoint], { encoding });
-      const bytes = Buffer.isBuffer(body) ? body : Buffer.from(body);
-      return {
-        arrayBuffer: async () => bytes,
-        ok: true,
-        status: 200,
-        text: async () => bytes.toString(),
-      };
-    } catch (error) {
-      const text = `${error?.stderr ?? ''}${error?.stdout ?? ''}${error?.message ?? ''}`;
-      const bytes = Buffer.from(text);
-      return {
-        arrayBuffer: async () => bytes,
-        ok: false,
-        status: Number(error?.status ?? 0),
-        text: async () => text,
-      };
+    const response = await fetchImpl(url, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      redirect: 'manual',
+    });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location) throw Object.assign(new Error('artifact redirect is malformed'), { status: response.status });
+      return fetchImpl(location, { redirect: 'error' });
     }
+    return response;
   };
 }
 
 export async function main(argv = process.argv.slice(2), dependencies = {}) {
   const input = cliArgs(argv);
-  const execute = dependencies.execFileSync ?? execFileSync;
   const repository = dependencies.repository ?? process.env.GITHUB_REPOSITORY;
   if (!repository) throw new TypeError('GITHUB_REPOSITORY is required');
-  const expected = { digest: input.digest, id: Number(input.id), name: input.name, runId: Number(input.runId), sha: input.sha };
+  const expected = { digest: normalizeDigest(input.digest), id: Number(input.id), name: input.name, runId: Number(input.runId), sha: input.sha };
   const metadataUrl = dependencies.metadataUrl ?? `https://api.github.com/repos/${repository}/actions/artifacts/${input.id}`;
   const downloadUrl = dependencies.downloadUrl ?? `${metadataUrl}/zip`;
   const archivePath = `${input.output}.zip`;
+  const token = dependencies.token ?? process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
+  if (!dependencies.fetch && !token) throw new TypeError('GH_TOKEN or GITHUB_TOKEN is required');
   const result = await acquireBuildArtifact({
     expected: { ...expected, downloadUrl, metadataUrl },
-    fetch: dependencies.fetch ?? githubFetch(execute),
+    fetch: dependencies.fetch ?? githubFetch(dependencies.fetchImpl ?? globalThis.fetch, token),
     outputPath: archivePath,
   });
-  const extract = dependencies.extract ?? ((archive, directory) => execute('unzip', ['-q', archive, '-d', directory]));
+  const extract = dependencies.extract ?? ((archive, directory) => (dependencies.execFileSync ?? execFileSync)('unzip', ['-q', archive, '-d', directory]));
   extract(archivePath, resolve(input.output, '..'));
   rmSync(archivePath, { force: true });
   const report = { artifactId: expected.id, attempt: result.attempt, digest: expected.digest, elapsedMs: result.elapsedMs, name: expected.name, sha: expected.sha };
   (dependencies.writeOutput ?? ((value) => process.stdout.write(value)))(`${JSON.stringify(report)}\n`);
+  const summary = process.env.GITHUB_STEP_SUMMARY;
+  if (summary) appendFileSync(summary, `${JSON.stringify({ artifactId: expected.id, attempts: result.attempts, digest: expected.digest, name: expected.name, sha: expected.sha })}\n`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === new URL(import.meta.url).pathname) {

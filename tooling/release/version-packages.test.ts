@@ -66,12 +66,24 @@ describe('runChangesetsVersion', () => {
 describe('changesetsFailureIsTransient', () => {
   it('retries only recognized GitHub GraphQL parse or query failures', () => {
     expect(changesetsFailureIsTransient('invalid json response body at https://api.github.com/graphql')).toBe(true);
-    expect(changesetsFailureIsTransient('Something went wrong while executing your query from GitHub GraphQL')).toBe(true);
+    expect(changesetsFailureIsTransient('Something went wrong while executing your query from GitHub GraphQL')).toBe(false);
     expect(changesetsFailureIsTransient('invalid json response body from a private registry')).toBe(false);
     expect(changesetsFailureIsTransient('401 bad credentials from GitHub')).toBe(false);
     expect(changesetsFailureIsTransient('wrapper: invalid json response body at https://api.github.com/graphql')).toBe(false);
     expect(changesetsFailureIsTransient('GitHub GraphQL wrapper text: invalid json response body')).toBe(false);
     expect(changesetsFailureIsTransient('Something went wrong while executing your query')).toBe(false);
+  });
+
+  it('recovers only the observed wrapped GitHub internal-query subtype', () => {
+    const observed = [
+      'Error: Fetched data from GitHub returned errors',
+      '{"errors":[{"message":"Something went wrong while executing your query on 2026-09-14T00:00:00Z"}]}',
+    ].join('\n');
+
+    expect(changesetsFailureIsTransient(observed)).toBe(true);
+    expect(changesetsFailureIsTransient(`${observed}\n401 Bad credentials`)).toBe(false);
+    expect(changesetsFailureIsTransient(`${observed}\nvalidation failed`)).toBe(false);
+    expect(changesetsFailureIsTransient('Error: Fetched data from GitHub returned errors')).toBe(false);
   });
 });
 

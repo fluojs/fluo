@@ -2,11 +2,13 @@ export type VerificationIdentity = {
   readonly baseRef: string;
   readonly baseSha: string;
   readonly changedFilesDigest: string;
+  readonly clean: boolean;
   readonly diffDigest: string;
   readonly headSha: string;
   readonly mergeBase: string;
   readonly root: string;
   readonly treeSha: string;
+  readonly worktreeStatusDigest: string;
 };
 
 export type VerificationPlan = {
@@ -18,10 +20,16 @@ export type VerificationPlan = {
   readonly mode: 'full' | 'scoped';
 };
 
+export type VerificationCommand = {
+  readonly argv: readonly string[];
+  readonly cwd: string;
+  readonly executable: string;
+};
+
 export type VerificationManifest = {
   readonly version: 1;
-  readonly companions: readonly { readonly id: string; readonly when: string }[];
-  readonly rules: readonly { readonly prefix: string; readonly argv: readonly string[] }[];
+  readonly companions: readonly { readonly commands: readonly VerificationCommand[]; readonly id: string; readonly when: string }[];
+  readonly rules: readonly { readonly commands: readonly VerificationCommand[]; readonly prefix: string }[];
   readonly scope: { readonly fullPrefixes: readonly string[]; readonly fullPaths: readonly string[] };
 };
 

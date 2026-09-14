@@ -32,6 +32,7 @@ describe('build artifact acquisition', () => {
 
   it('rejects artifact identity or digest mismatch before restore', () => {
     expect(validateArtifactMetadata(metadata, expected)).toBe(true);
+    expect(validateArtifactMetadata({ ...metadata, digest: `sha256:${expected.digest}` }, expected)).toBe(true);
     expect(() => validateArtifactMetadata({ ...metadata, digest: 'c'.repeat(64) }, expected)).toThrow(/digest/u);
   });
 
@@ -87,5 +88,13 @@ describe('build artifact acquisition', () => {
     } finally {
       rmSync(directory, { force: true, recursive: true });
     }
+  });
+
+  it('requires a token for the real GitHub adapter', async () => {
+    await expect(main([
+      '--id', '1', '--digest', expected.digest, '--sha', expected.sha, '--name', expected.name, '--run-id', '2', '--output', '/tmp/no-token-artifact',
+    ], {
+      repository: 'fluojs/fluo',
+    })).rejects.toThrow(/GH_TOKEN or GITHUB_TOKEN/u);
   });
 });

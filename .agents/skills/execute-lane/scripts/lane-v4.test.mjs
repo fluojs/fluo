@@ -13,6 +13,7 @@ import {
 	isConsumerVisibleFile,
 	laneV2ToInitSpecs,
 	sourceLedgerRef,
+	validateLocalCheckFact,
 } from './lane-v4-cli.mjs';
 
 const makeLane = (overrides = {}) => ({
@@ -29,7 +30,13 @@ const makeObs = (overrides = {}) => ({
 	worktree: '.worktrees/issue-3096-http-integration-seam',
 	headSha: 'a'.repeat(40),
 	hasNewCommits: true,
-	localChecks: { status: 'passed', valid: true, head: 'a'.repeat(40), receiptPath: '.omo/verification/receipt.json' },
+	localChecks: {
+		status: 'passed',
+		valid: true,
+		head: 'a'.repeat(40),
+		receiptPath: '.omo/verification/receipt.json',
+		receiptSha256: 'b'.repeat(64),
+	},
 	publicPackagesTouched: true,
 	changesetPresent: true,
 	review: { verdict: 'merge', head: 'a'.repeat(40) },
@@ -54,6 +61,23 @@ test('C1: resumes mid-flight issue from observation alone -> review', () => {
 test('C1: arbitrary local-check facts cannot advance to review', () => {
 	const next = decideNext(makeLane(), makeObs({ localChecks: { status: 'passed' }, review: null }));
 	assert.equal(next.action, 'verify-local');
+});
+
+test('C1: a revalidated local receipt that becomes invalid routes to fix-back', () => {
+	const next = decideNext(makeLane(), makeObs({ localChecks: { status: 'failed', valid: false } }));
+	assert.deepEqual(next, { action: 'fix-back', reason: 'local-checks-failed', head: 'a'.repeat(40) });
+});
+
+test('C1: receipt references fail closed before filesystem access', () => {
+	assert.throws(
+		() => validateLocalCheckFact('/repo', 'a'.repeat(40), {
+			status: 'passed',
+			valid: true,
+			receiptPath: '../escape',
+			receiptSha256: 'b'.repeat(64),
+		}),
+		/escapes the issue worktree/,
+	);
 });
 
 test('C1: resumes with open PR and pending CI -> wait-ci', () => {

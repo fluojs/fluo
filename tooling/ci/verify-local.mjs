@@ -16,6 +16,11 @@ const text = (root, executable, argv) => {
   if (result.status !== 0) throw new Error(`${executable} ${argv.join(' ')} failed`);
   return result.stdout.trim();
 };
+const rawText = (root, executable, argv) => {
+  const result = run(root, executable, argv);
+  if (result.status !== 0) throw new Error(`${executable} ${argv.join(' ')} failed`);
+  return result.stdout;
+};
 const time = () => new Date().toISOString();
 const hash = (value) => createHash('sha256').update(value).digest('hex');
 
@@ -38,19 +43,22 @@ export function parseArgs(argv) {
 export function collectIdentity(root, baseRef) {
   const headSha = text(root, 'git', ['rev-parse', 'HEAD']);
   const mergeBase = text(root, 'git', ['merge-base', 'HEAD', baseRef]);
-  const changedFiles = text(root, 'git', ['diff', '--name-only', `${mergeBase}...HEAD`])
-    .split('\n').filter(Boolean).sort();
+  const changedFiles = rawText(root, 'git', ['diff', '--name-only', '-z', `${mergeBase}...HEAD`])
+    .split('\0').filter(Boolean).sort();
   const diff = text(root, 'git', ['diff', '--binary', `${mergeBase}...HEAD`]);
+  const status = rawText(root, 'git', ['status', '--porcelain=v1', '--untracked-files=all', '-z']);
   return {
     baseRef,
     baseSha: text(root, 'git', ['rev-parse', baseRef]),
     changedFiles,
     changedFilesDigest: digest(changedFiles.join('\n')),
+    clean: status.length === 0,
     diffDigest: digest(diff),
     headSha,
     mergeBase,
     root,
     treeSha: text(root, 'git', ['rev-parse', 'HEAD^{tree}']),
+    worktreeStatusDigest: digest(status),
   };
 }
 
@@ -61,14 +69,35 @@ function writeReceipt(root, receipt) {
   return path;
 }
 
-function executePlan(root, plan, clean) {
+function sameIdentity(left, right) {
+  return ['baseSha', 'changedFilesDigest', 'clean', 'diffDigest', 'headSha', 'mergeBase', 'treeSha', 'worktreeStatusDigest']
+    .every((key) => left[key] === right[key]);
+}
+
+function executePlan(root, plan, baseRef) {
   const logRoot = resolve(root, '.omo/verification/logs', plan.identity.headSha);
   mkdirSync(logRoot, { recursive: true });
   const commands = [];
   const logs = [];
   for (const item of plan.commands) {
     const startedAt = time();
+    const identityBefore = collectIdentity(root, baseRef);
+    if (!identityBefore.clean || !sameIdentity(plan.identity, identityBefore)) {
+      commands.push({
+        ...item,
+        cwd: root,
+        exitCode: 1,
+        finishedAt: time(),
+        identityAfter: identityBefore,
+        identityBefore,
+        signal: null,
+        spawnError: 'worktree identity changed before command execution',
+        startedAt,
+      });
+      break;
+    }
     const result = run(root, item.executable, item.argv);
+    const identityAfter = collectIdentity(root, baseRef);
     const content = `${result.stdout ?? ''}${result.stderr ?? ''}`;
     const path = resolve(logRoot, `${item.id}.log`);
     writeFileSync(path, content);
@@ -77,14 +106,16 @@ function executePlan(root, plan, clean) {
       cwd: root,
       exitCode: result.status,
       finishedAt: time(),
+      identityAfter,
+      identityBefore,
       signal: result.signal,
       spawnError: result.error ? String(result.error.message) : null,
       startedAt,
     });
     logs.push({ digest: hash(content), path });
-    if (result.status !== 0 || result.signal || result.error) break;
+    if (result.status !== 0 || result.signal || result.error || !identityAfter.clean || !sameIdentity(plan.identity, identityAfter)) break;
   }
-  return { commands, clean, logs };
+  return { commands, logs };
 }
 
 function usage() {
@@ -113,9 +144,8 @@ export function main(argv = process.argv.slice(2)) {
     process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
     return;
   }
-  const clean = text(root, 'git', ['status', '--porcelain']) === '';
   const startedAt = time();
-  const execution = executePlan(root, plan, clean);
+  const execution = executePlan(root, plan, options.baseRef);
   const finalIdentity = collectIdentity(root, options.baseRef);
   const completed = execution.commands.length === plan.commands.length
     && execution.commands.every((result) => result.exitCode === 0 && result.signal === null && result.spawnError === null);
@@ -129,7 +159,7 @@ export function main(argv = process.argv.slice(2)) {
     manifestDigest: plan.manifestDigest,
     planDigest: digest(JSON.stringify(plan.commands)),
     startedAt,
-    status: clean && completed && receiptIsCurrent({
+    status: identity.clean && finalIdentity.clean && completed && receiptIsCurrent({
       commands: execution.commands,
       completedAt: time(),
       identity,

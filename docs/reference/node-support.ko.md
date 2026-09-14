@@ -22,6 +22,14 @@ head, tree, diff가 바뀌면 receipt는 무효이며 `--plan`은 passing receip
 semantics를 증명하지 않으며 그 차원은 계속 CI evidence가 담당합니다. Failure census는
 나중 rerun이 성공해도 attempt와 완료된 failed job을 보존합니다.
 
+Receipt identity는 시작, 각 command boundary, finalization의 clean Git status digest도
+묶습니다. Artifact consumer는 exact run/name/SHA/digest provenance를 사용하며,
+관측된 intermediary `403`와 좁은 transient `5xx`에만 bounded retry를 적용합니다.
+Authentication, 일반 authorization, malformed metadata, expired artifact, digest mismatch는
+즉시 실패합니다. Census는 attempt detail과 attempt별 job을 조회하고 엄격한 UTC
+`[since, until)` window를 적용하며 pagination/completeness limit을 성공으로 숨기지
+않고 기록합니다.
+
 빌드 artifact는 같은 workflow run, commit, Node 버전 안에서만 전달합니다. 패키지의 `dist`와 CLI의 생성 dependency metadata를 tar로 보존하여 실행 권한과 symbolic link를 유지하며, 공개 선언 검증 fixture나 package global setup을 우회하지 않습니다. 생성 starter 검증은 테스트 종료를 기다리지 않고 빌드 뒤에 실행합니다. 최신 `24.x`가 기존의 중복 PR 검증을 통합하고 `pnpm verify:docs`를 한 번 실행합니다. Aggregate gate는 필수 job의 failure, cancellation, skip을 성공으로 처리하지 않습니다.
 
 Node 검증과 별도로 실행하는 web runtime adapter portability suite는 하나의 job에서 Bun, Deno, Cloudflare Workers 사례를 모두 검증하여 프로젝트 초기화의 반복을 피합니다. Native response cookie 검증도 하나의 job에서 HTTP helper를 한 번 빌드한 뒤 세 runtime의 명령을 차례로 실행합니다. 각 명령의 실패는 계속 필수 `Verify` gate를 차단하며, Bun native routing/lifecycle과 Deno platform 검증은 별도 job으로 유지합니다.

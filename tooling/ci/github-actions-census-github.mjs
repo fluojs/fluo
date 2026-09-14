@@ -16,9 +16,20 @@ function request(endpoint, key, execute) {
   }
 }
 
+function requestRecord(endpoint, execute) {
+  try {
+    const value = JSON.parse(execute('gh', ['api', '--method', 'GET', endpoint], { encoding: 'utf8' }));
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('response is malformed');
+    return value;
+  } catch (error) {
+    throw new Error(`GitHub API request failed for ${endpoint}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export function collectGithubActionsCensus({ owner, repo, workflow, since, until, execFileSync: execute = execFileSync, observedAt = () => new Date().toISOString() }) {
   const prefix = `repos/${owner}/${repo}/actions`;
-  const runs = request(`${prefix}/workflows/${workflow}/runs?per_page=100`, 'workflow_runs', execute);
+  const created = encodeURIComponent(`${since}..${until}`);
+  const runs = request(`${prefix}/workflows/${workflow}/runs?per_page=100&created=${created}`, 'workflow_runs', execute);
   const attempts = [];
   let jobsPages = 0;
   for (const run of runs) {
@@ -28,13 +39,15 @@ export function collectGithubActionsCensus({ owner, repo, workflow, since, until
     const created = Date.parse(run.created_at);
     if (Number.isNaN(created) || created < Date.parse(since) || created >= Date.parse(until)) continue;
     for (let number = 1; number <= run.run_attempt; number += 1) {
+      const attempt = requestRecord(`${prefix}/runs/${run.id}/attempts/${number}`, execute);
+      if (!Number.isSafeInteger(attempt.run_attempt) || attempt.run_attempt !== number || !attempt.created_at) {
+        throw new TypeError(`GitHub workflow run ${run.id} attempt ${number} is incomplete`);
+      }
       const attemptRecords = request(`${prefix}/runs/${run.id}/attempts/${number}/jobs?per_page=100`, 'jobs', execute);
       jobsPages += 1;
       attempts.push({
-        conclusion: run.conclusion,
-        created_at: run.created_at,
+        ...attempt,
         jobs: attemptRecords,
-        run_attempt: number,
         run_id: run.id,
       });
     }

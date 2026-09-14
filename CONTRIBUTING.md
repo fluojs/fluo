@@ -48,6 +48,15 @@ pnpm lint          # Biome — see biome.json
 pnpm test
 ```
 
+The local receipt is valid only while the worktree remains clean: its identity
+includes the Git status digest at startup, every command boundary, and
+finalization. Changes that affect package ownership, manifests, source copies,
+or build tooling perform a cold workspace `dist` cleanup before the build and
+run manifest-selected companion commands. The plan is intentionally
+preflight-first; CI still supplies the Node `24.0.0`/`24.x`/`26.x` matrices,
+four package shards, two tooling shards, native runtimes, Studio browser, and
+aggregate fail-closed semantics.
+
 ## documenting public exports
 
 Changed public exports under `packages/*/src` must follow the repo-wide TSDoc minimum baseline.

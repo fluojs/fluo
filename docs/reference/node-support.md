@@ -24,6 +24,15 @@ Those dimensions remain CI evidence; failure census reports preserve attempts an
 completed failed jobs instead of treating a later rerun as proof that no failure
 occurred.
 
+Receipt identity also binds a clean Git status digest at startup, each command
+boundary, and finalization. Artifact consumers use exact run/name/SHA/digest
+provenance and bounded retries only for observed intermediary `403` and narrow
+transient `5xx` responses; authentication, ordinary authorization, malformed
+metadata, expired artifacts, and digest mismatch fail immediately. The census
+queries attempt details and attempt-specific jobs, applies a strict UTC
+`[since, until)` window, and records pagination/completeness limits rather than
+silently treating unavailable data as success.
+
 Build artifacts are transferred only within the same workflow run, commit, and Node version. A tar archive preserves package `dist` directories and the CLI's generated dependency metadata, including executable permissions and symbolic links; it does not bypass public declaration fixtures or package global setup. Generated starter verification runs after the build without waiting for tests to finish. Latest `24.x` consolidates the former duplicate PR verification and runs `pnpm verify:docs` once. The aggregate gate does not treat a required job's failure, cancellation, or skip as success.
 
 Outside Node verification, the web runtime adapter portability suite exercises all Bun, Deno, and Cloudflare Workers cases in one job to avoid repeated project setup. Native response cookie verification also builds the HTTP helper once in one job, then runs the three runtime commands sequentially. A failure in any command still blocks the required `Verify` gate; Bun native routing/lifecycle and Deno platform verification remain separate jobs.

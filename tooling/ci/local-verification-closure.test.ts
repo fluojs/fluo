@@ -8,11 +8,13 @@ const identity = {
   baseRef: 'main',
   baseSha: 'b'.repeat(40),
   changedFilesDigest: 'c'.repeat(64),
+  clean: true,
   diffDigest: 'd'.repeat(64),
   headSha: 'a'.repeat(40),
   mergeBase: 'e'.repeat(40),
   root: '/repo',
   treeSha: 'f'.repeat(40),
+  worktreeStatusDigest: '0'.repeat(64),
 };
 
 describe('local verification companion closure', () => {
@@ -40,7 +42,7 @@ describe('local verification companion closure', () => {
       'source-copy-inventory',
     ]);
     expect(plan.commands.map((command) => command.argv.join(' '))).toContain('verify:docs');
-    expect(plan.commands.map((command) => command.argv.join(' '))).toContain('test:node-floor');
+    expect(plan.commands.map((command) => command.argv.join(' '))).toContain('tooling/scripts/run-workspace-build-closure.mjs @fluojs/platform-deno');
     expect(plan.commands.map((command) => command.argv.join(' '))).toContain('verify:public-export-tsdoc');
   });
 

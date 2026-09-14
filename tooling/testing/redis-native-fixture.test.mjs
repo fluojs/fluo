@@ -22,7 +22,14 @@ test('does not return after Redis log and docker port before host TCP accepts', 
   child.stderr = new EventEmitter();
   let tcpSubscribed;
   let allowTcp;
+  let readinessSubscribed;
   const tcpSubscribedSignal = new Promise((resolve) => { tcpSubscribed = resolve; });
+  const readinessSubscribedSignal = new Promise((resolve) => { readinessSubscribed = resolve; });
+  const stdoutOn = child.stdout.on.bind(child.stdout);
+  child.stdout.on = (event, listener) => {
+    if (event === 'data') readinessSubscribed();
+    return stdoutOn(event, listener);
+  };
   const fixture = startRedisFixture({
     containerName: 'fixture',
     execFile: async () => ({ stdout: '127.0.0.1:6379\n' }),
@@ -32,6 +39,7 @@ test('does not return after Redis log and docker port before host TCP accepts', 
       return new Promise((resolve) => { allowTcp = resolve; });
     },
   });
+  await readinessSubscribedSignal;
   child.stdout.emit('data', Buffer.from('Ready to accept connections'));
   await tcpSubscribedSignal;
   let settled = false;

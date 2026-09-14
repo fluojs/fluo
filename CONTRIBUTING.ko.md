@@ -48,6 +48,13 @@ pnpm lint          # Biome — biome.json 참고
 pnpm test
 ```
 
+local receipt는 worktree가 clean 상태인 동안에만 유효합니다. 시작 시점, 각 command
+boundary, finalization의 Git status digest를 identity에 포함합니다. Package ownership,
+manifest, source copy, build tooling 변경은 build 전에 cold workspace `dist` cleanup을
+수행하고 manifest가 선택한 companion command를 실행합니다. Plan은 의도적으로
+preflight-first이며 Node `24.0.0`/`24.x`/`26.x` matrix, package 4 shard, tooling 2 shard,
+native runtime, Studio browser, aggregate fail-closed semantics는 계속 CI가 증명합니다.
+
 ## 공개 API 문서화
 
 `packages/*/src` 하위의 공개 API(public exports) 변경 시 저장소 전체의 TSDoc 최소 기준을 따라야 합니다.

@@ -12,7 +12,13 @@ const NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/u;
 const LIMITATION = 'Deleted or retention-expired GitHub Actions records cannot be recovered.';
 
 const fingerprint = (value) => createHash('sha256').update(value).digest('hex');
-const validTimestamp = (value) => typeof value === 'string' && UTC.test(value) && !Number.isNaN(Date.parse(value));
+const validTimestamp = (value) => {
+  if (typeof value !== 'string' || !UTC.test(value)) return false;
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return false;
+  const normalized = new Date(timestamp).toISOString();
+  return value.includes('.') ? value === normalized : value === normalized.replace('.000', '');
+};
 const safeRecord = (value, label) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${label} must be an object`);
   return value;

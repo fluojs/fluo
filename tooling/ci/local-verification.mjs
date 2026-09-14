@@ -24,7 +24,7 @@ function isManifestChange(path) {
 }
 
 function isCleanDistChange(path) {
-  return isManifestChange(path) || path.startsWith('tooling/scripts/') || path.includes('/src/') || path.startsWith('tsconfig');
+  return isManifestChange(path) || path.startsWith('tooling/') || path.includes('/src/') || path.startsWith('tsconfig');
 }
 
 function isDocsChange(path) {
@@ -61,6 +61,22 @@ function companionChecks(changedFiles, manifest) {
   return [...checks].sort();
 }
 
+function executableCommands(id, definitions) {
+  const definition = definitions.get(id);
+  if (!definition || !Array.isArray(definition.commands) || definition.commands.length === 0) {
+    throw new TypeError(`local verification companion ${id} has no executable commands.`);
+  }
+  return definition.commands.map((item, index) => {
+    if (!item || typeof item !== 'object' || typeof item.executable !== 'string' || item.executable.length === 0
+      || !Array.isArray(item.argv) || item.argv.some((value) => typeof value !== 'string')
+      || typeof item.cwd !== 'string' || item.cwd.length === 0) {
+      throw new TypeError(`local verification companion ${id} command is malformed.`);
+    }
+    const suffix = definition.commands.length === 1 ? '' : `:${index}`;
+    return { argv: item.argv, cwd: item.cwd, executable: item.executable, id: `companion:${id}${suffix}` };
+  });
+}
+
 export function buildVerificationPlan({ changedFiles, identity, manifest = readVerificationManifest() }) {
   if (!Array.isArray(changedFiles) || changedFiles.some((file) => typeof file !== 'string')) {
     throw new TypeError('changedFiles must be an array of paths.');
@@ -69,6 +85,7 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
   const cleanDist = changedFiles.some(isCleanDistChange);
   const commands = [
     command('install', ['install', '--frozen-lockfile']),
+    ...(cleanDist ? [command('clean-dist', ['-r', '--filter', './packages/*', '--if-present', 'exec', 'node', '../../tooling/scripts/clean-dist.mjs'])] : []),
     command('build', ['build']),
     command('typecheck', ['typecheck']),
     command('test', ['test']),
@@ -81,17 +98,23 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
   if (changedFiles.some(isDocsChange)) {
     commands.push(command('docs', ['verify:docs']));
   }
+  const companionIds = companionChecks(changedFiles, manifest);
+  const companionDefinitions = new Map(manifest.companions.map((item) => [item?.id, item]));
+  for (const id of companionIds) {
+    commands.push(...executableCommands(id, companionDefinitions));
+  }
   for (const rule of manifest.rules) {
-    if (!rule || typeof rule !== 'object' || typeof rule.prefix !== 'string' || !Array.isArray(rule.argv)) {
+    if (!rule || typeof rule !== 'object' || typeof rule.prefix !== 'string' || !Array.isArray(rule.commands)) {
       throw new TypeError('local verification manifest rule is malformed.');
     }
     if (changedFiles.some((file) => file.startsWith(rule.prefix))) {
-      commands.push(command(`manifest:${rule.prefix}`, rule.argv));
+      commands.push(...executableCommands(rule.prefix, new Map([[rule.prefix, rule]]))
+        .map((item) => ({ ...item, id: item.id.replace(`companion:${rule.prefix}`, `manifest:${rule.prefix}`) })));
     }
   }
   return {
     cleanDist,
-    companionChecks: companionChecks(changedFiles, manifest),
+    companionChecks: companionIds,
     commands,
     identity,
     manifestDigest: digest(JSON.stringify(manifest)),
@@ -102,6 +125,7 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
 function hasExactIdentity(identity) {
   return Boolean(
     identity && typeof identity.root === 'string' && identity.root.length > 0
+    && typeof identity.clean === 'boolean' && DIGEST.test(identity.worktreeStatusDigest)
     && [identity.headSha, identity.treeSha, identity.baseSha, identity.mergeBase].every((value) => SHA.test(value))
     && [identity.changedFilesDigest, identity.diffDigest].every((value) => DIGEST.test(value)),
   );
@@ -123,6 +147,12 @@ export function validateReceipt(receipt) {
       || result.exitCode !== 0 || result.signal !== null || result.spawnError !== null || seen.has(result.id)) {
       return { valid: false, reason: 'receipt command evidence is incomplete or failed' };
     }
+    if (!hasExactIdentity(result.identityBefore) || !hasExactIdentity(result.identityAfter)
+      || !result.identityBefore.clean || !result.identityAfter.clean
+      || !['baseSha', 'changedFilesDigest', 'diffDigest', 'headSha', 'mergeBase', 'treeSha', 'worktreeStatusDigest']
+        .every((key) => result.identityBefore[key] === receipt.identity[key] && result.identityAfter[key] === receipt.identity[key])) {
+      return { valid: false, reason: 'receipt command boundary identity is stale or dirty' };
+    }
     seen.add(result.id);
   }
   if (!REQUIRED.every((id) => seen.has(id))) return { valid: false, reason: 'receipt omits a required command' };
@@ -133,8 +163,8 @@ export function validateReceipt(receipt) {
 }
 
 export function receiptIsCurrent(receipt, identity) {
-  return validateReceipt(receipt).valid && hasExactIdentity(identity)
-    && ['root', 'headSha', 'treeSha', 'baseSha', 'mergeBase', 'changedFilesDigest', 'diffDigest']
+  return validateReceipt(receipt).valid && hasExactIdentity(identity) && receipt.identity.clean && identity.clean
+    && ['root', 'headSha', 'treeSha', 'baseSha', 'mergeBase', 'changedFilesDigest', 'diffDigest', 'worktreeStatusDigest']
       .every((key) => receipt.identity[key] === identity[key]);
 }
 
