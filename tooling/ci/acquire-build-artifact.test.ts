@@ -95,6 +95,7 @@ describe('build artifact acquisition', () => {
       '--id', '1', '--digest', expected.digest, '--sha', expected.sha, '--name', expected.name, '--run-id', '2', '--output', '/tmp/no-token-artifact',
     ], {
       repository: 'fluojs/fluo',
+      token: '',
     })).rejects.toThrow(/GH_TOKEN or GITHUB_TOKEN/u);
   });
 
