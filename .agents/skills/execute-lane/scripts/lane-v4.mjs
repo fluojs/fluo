@@ -165,7 +165,7 @@ export const decideNext = (lane, obs) => {
 	}
 
 	// 4. Local verification of the current head.
-	if (obs.localChecks.status === 'failed') {
+	if (obs.localChecks?.status === 'failed') {
 		return { action: 'fix-back', reason: 'local-checks-failed', head: obs.headSha };
 	}
 	if (!isValidLocalCheck(obs.localChecks, obs.headSha)) {

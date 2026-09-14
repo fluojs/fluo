@@ -23,7 +23,14 @@ import { fileURLToPath } from 'node:url';
 
 import { applyChildResult, decideNext, isValidLocalCheck, summarizeTransitions, trackStalls } from './lane-v4.mjs';
 import { collectIdentity } from '../../../../tooling/ci/verify-local.mjs';
-import { receiptIsCurrent, validateReceipt } from '../../../../tooling/ci/local-verification.mjs';
+import {
+	buildVerificationPlan,
+	manifestPath,
+	readVerificationManifest,
+	receiptMatchesPlan,
+	validateReceipt,
+	validateReceiptEvidence,
+} from '../../../../tooling/ci/local-verification.mjs';
 
 const arg = (args, flag, fallback) => {
 	const i = args.indexOf(flag);
@@ -65,15 +72,16 @@ const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
 const nestedPath = (root, candidate) => candidate === root || candidate.startsWith(`${root}${sep}`);
 
-export const validateLocalCheckFact = (worktree, headSha, value) => {
+export const validateLocalCheckFact = (worktree, headSha, baseRef, value) => {
 	if (!value || typeof value !== 'object' || value.status !== 'passed' || value.valid !== true
 		|| typeof value.receiptPath !== 'string' || typeof value.receiptSha256 !== 'string'
 		|| !/^[0-9a-f]{64}$/u.test(value.receiptSha256)) {
 		throw new TypeError('local-checks requires a passed receipt reference and sha256');
 	}
 	const root = resolve(worktree);
+	const evidenceRoot = resolve(root, '.omo', 'verification');
 	const receiptPath = resolve(root, value.receiptPath);
-	if (!nestedPath(root, receiptPath)) throw new TypeError('local-checks receipt path escapes the issue worktree');
+	if (!nestedPath(evidenceRoot, receiptPath)) throw new TypeError('local-checks receipt path escapes verification evidence root');
 	if (!existsSync(receiptPath)) throw new TypeError('local-checks receipt is missing');
 	const bytes = readFileSync(receiptPath);
 	if (sha256(bytes) !== value.receiptSha256) throw new TypeError('local-checks receipt digest mismatch');
@@ -83,11 +91,23 @@ export const validateLocalCheckFact = (worktree, headSha, value) => {
 	} catch {
 		throw new TypeError('local-checks receipt is malformed');
 	}
-	if (!validateReceipt(receipt).valid || receipt.identity.headSha !== headSha) {
+	if (!validateReceiptEvidence(receipt, {
+		receiptPath: value.receiptPath,
+		receiptSha256: value.receiptSha256,
+		worktree: root,
+	}).valid) {
+		throw new TypeError('local-checks receipt evidence is missing or tampered');
+	}
+	const identity = collectIdentity(root, baseRef);
+	const plan = buildVerificationPlan({
+		changedFiles: identity.changedFiles,
+		identity,
+		manifest: readVerificationManifest(manifestPath(root)),
+	});
+	if (!validateReceipt(receipt).valid || receipt.identity.headSha !== headSha
+		|| !receiptMatchesPlan(receipt, identity, plan)) {
 		throw new TypeError('local-checks receipt is not a valid passed receipt for --head');
 	}
-	const identity = collectIdentity(root, receipt.identity.baseRef);
-	if (!receiptIsCurrent(receipt, identity)) throw new TypeError('local-checks receipt is stale for the current checkout');
 	return {
 		head: headSha,
 		receiptPath: relative(root, receiptPath),
@@ -189,7 +209,7 @@ export const observeIssue = (root, lane, issue) => {
 		const fact = factIfCurrent(entry, 'local-checks', headSha);
 		if (!fact || !headSha || !worktreeExists) return fact;
 		try {
-			return validateLocalCheckFact(worktreePath, headSha, fact);
+			return validateLocalCheckFact(worktreePath, headSha, `origin/${lane.base_branch}`, fact);
 		} catch {
 			return { head: headSha, status: 'failed', valid: false };
 		}
@@ -411,7 +431,7 @@ const main = () => {
 		const head = arg(args, '--head');
 		const value = JSON.parse(arg(args, '--value'));
 		const storedValue = kind === 'local-checks'
-			? validateLocalCheckFact(resolve(root, '.worktrees', branchFor(entry)), head, value)
+			? validateLocalCheckFact(resolve(root, '.worktrees', branchFor(entry)), head, `origin/${lane.base_branch}`, value)
 			: value;
 		entry.facts ??= {};
 		entry.facts[kind] = { head, value: storedValue };

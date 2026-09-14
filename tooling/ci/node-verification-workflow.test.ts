@@ -47,6 +47,7 @@ it('gates every runtime fan-out behind deterministic latest-24 preflight', () =>
   // Then
   expect(commands).toEqual([
     'pnpm install --frozen-lockfile',
+    'pnpm test:node',
     'pnpm build',
     'pnpm typecheck',
     'pnpm lint',
@@ -57,6 +58,23 @@ it('gates every runtime fan-out behind deterministic latest-24 preflight', () =>
     expect(job(workflow, id)).toContain('      - deterministic-preflight\n');
   }
   expect(job(workflow, 'verify')).toContain('      - deterministic-preflight\n');
+});
+
+it('executes the canonical Node regression script before the Vitest verifier', () => {
+  const root = new URL('../..', import.meta.url);
+  const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  expect(packageJson.scripts['test:verify']).toContain('pnpm test:node');
+
+  const result = spawnSync('pnpm', ['test:node'], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 60_000,
+  });
+
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain('local-verification.test.mjs');
+  expect(result.stdout).toContain('redis-native-fixture.test.mjs');
+  expect(result.stdout).toContain('lane-v4.test.mjs');
 });
 
 it('binds every build consumer to immutable producer artifact provenance', () => {

@@ -54,7 +54,13 @@ export function classifyAttempt(attempt) {
   const jobs = Array.isArray(attempt?.jobs) ? attempt.jobs : [];
   const failedJobs = jobs.filter((job) => ['failure', 'timed_out'].includes(job?.conclusion) && job.completed_at);
   if (failedJobs.length > 0) return { failedJobs, kind: 'failure-bearing' };
-  if (jobs.length !== 0) return { failedJobs, kind: 'non-failure' };
+  if (jobs.length !== 0) {
+    const knownNonFailure = new Set(['cancelled', 'neutral', 'skipped', 'success']);
+    return {
+      failedJobs,
+      kind: jobs.every((job) => knownNonFailure.has(job?.conclusion)) ? 'non-failure' : 'unknown',
+    };
+  }
   if (attempt?.conclusion === 'action_required' && /approval/iu.test(String(attempt.event ?? ''))) {
     return { failedJobs, kind: 'zero-job-approval' };
   }
@@ -63,7 +69,10 @@ export function classifyAttempt(attempt) {
     return { failedJobs, kind: 'zero-job-replacement-cancelled' };
   }
   if (attempt?.conclusion === 'cancelled') return { failedJobs, kind: 'zero-job-cancelled' };
-  return { failedJobs, kind: 'non-failure' };
+  if (attempt?.conclusion === 'failure') return { failedJobs, kind: 'zero-job-failure' };
+  if (attempt?.conclusion === 'timed_out') return { failedJobs, kind: 'zero-job-timed-out' };
+  if (['neutral', 'skipped', 'success'].includes(attempt?.conclusion)) return { failedJobs, kind: 'non-failure' };
+  return { failedJobs, kind: 'zero-job-unknown' };
 }
 
 function normalizeJobName(name) {

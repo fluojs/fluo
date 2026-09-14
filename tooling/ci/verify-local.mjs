@@ -4,10 +4,15 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { homedir, platform, release, arch } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { buildVerificationPlan, digest, manifestPath, receiptIsCurrent } from './local-verification.mjs';
+import {
+  buildVerificationPlan,
+  digest,
+  readVerificationManifest,
+  receiptMatchesPlan,
+} from './local-verification.mjs';
 
 const scriptPath = fileURLToPath(import.meta.url);
 const run = (root, executable, argv) => spawnSync(executable, argv, { cwd: root, encoding: 'utf8' });
@@ -70,7 +75,7 @@ function writeReceipt(root, receipt) {
 }
 
 function sameIdentity(left, right) {
-  return ['baseSha', 'changedFilesDigest', 'clean', 'diffDigest', 'headSha', 'mergeBase', 'treeSha', 'worktreeStatusDigest']
+  return ['baseRef', 'baseSha', 'changedFilesDigest', 'clean', 'diffDigest', 'headSha', 'mergeBase', 'root', 'treeSha', 'worktreeStatusDigest']
     .every((key) => left[key] === right[key]);
 }
 
@@ -79,7 +84,7 @@ function executePlan(root, plan, baseRef) {
   mkdirSync(logRoot, { recursive: true });
   const commands = [];
   const logs = [];
-  for (const item of plan.commands) {
+  for (const [index, item] of plan.commands.entries()) {
     const startedAt = time();
     const identityBefore = collectIdentity(root, baseRef);
     if (!identityBefore.clean || !sameIdentity(plan.identity, identityBefore)) {
@@ -96,14 +101,17 @@ function executePlan(root, plan, baseRef) {
       });
       break;
     }
-    const result = run(root, item.executable, item.argv);
+    const commandRoot = resolve(root, item.cwd);
+    if (commandRoot !== root && !commandRoot.startsWith(`${root}${sep}`)) {
+      throw new TypeError(`verification command ${item.id} cwd escapes the worktree`);
+    }
+    const result = run(commandRoot, item.executable, item.argv);
     const identityAfter = collectIdentity(root, baseRef);
     const content = `${result.stdout ?? ''}${result.stderr ?? ''}`;
-    const path = resolve(logRoot, `${item.id}.log`);
+    const path = resolve(logRoot, `${index}.log`);
     writeFileSync(path, content);
     commands.push({
       ...item,
-      cwd: root,
       exitCode: result.status,
       finishedAt: time(),
       identityAfter,
@@ -112,7 +120,7 @@ function executePlan(root, plan, baseRef) {
       spawnError: result.error ? String(result.error.message) : null,
       startedAt,
     });
-    logs.push({ digest: hash(content), path });
+    logs.push({ commandId: item.id, digest: hash(content), path: relative(root, path) });
     if (result.status !== 0 || result.signal || result.error || !identityAfter.clean || !sameIdentity(plan.identity, identityAfter)) break;
   }
   return { commands, logs };
@@ -138,7 +146,7 @@ export function main(argv = process.argv.slice(2)) {
   const plan = buildVerificationPlan({
     changedFiles: identity.changedFiles,
     identity,
-    manifest: JSON.parse(text(root, 'node', ['-e', `process.stdout.write(require('node:fs').readFileSync(${JSON.stringify(manifestPath(root))}, 'utf8'))`])),
+    manifest: readVerificationManifest(),
   });
   if (options.plan) {
     process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
@@ -159,7 +167,7 @@ export function main(argv = process.argv.slice(2)) {
     manifestDigest: plan.manifestDigest,
     planDigest: digest(JSON.stringify(plan.commands)),
     startedAt,
-    status: identity.clean && finalIdentity.clean && completed && receiptIsCurrent({
+    status: identity.clean && finalIdentity.clean && completed && receiptMatchesPlan({
       commands: execution.commands,
       completedAt: time(),
       identity,
@@ -170,7 +178,7 @@ export function main(argv = process.argv.slice(2)) {
       startedAt,
       status: 'passed',
       version: 1,
-    }, finalIdentity) ? 'passed' : 'failed',
+    }, finalIdentity, plan) ? 'passed' : 'failed',
     version: 1,
   };
   const path = writeReceipt(root, receipt);

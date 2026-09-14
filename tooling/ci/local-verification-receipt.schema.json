@@ -51,8 +51,9 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["path", "digest"],
+        "required": ["commandId", "path", "digest"],
         "properties": {
+          "commandId": { "type": "string", "minLength": 1 },
           "path": { "type": "string", "minLength": 1 },
           "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
         }

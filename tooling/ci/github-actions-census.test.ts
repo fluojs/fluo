@@ -34,7 +34,7 @@ describe('GitHub Actions census', () => {
     expect(census.attempts).toHaveLength(6);
     expect(census.attempts.map((attempt) => attempt.classification.kind)).toEqual([
       'failure-bearing',
-      'non-failure',
+      'unknown',
       'failure-bearing',
       'zero-job-approval',
       'zero-job-action-required',
@@ -145,6 +145,15 @@ describe('GitHub Actions census', () => {
 
     // Then
     expect(classification.kind).toBe('failure-bearing');
+  });
+
+  it.each([
+    [{ conclusion: 'failure', jobs: [] }, 'zero-job-failure'],
+    [{ conclusion: 'timed_out', jobs: [] }, 'zero-job-timed-out'],
+    [{ conclusion: 'unknown_vendor_state', jobs: [] }, 'zero-job-unknown'],
+    [{ conclusion: 'success', jobs: [{ completed_at: '2026-09-14T00:00:01Z', conclusion: 'unknown_vendor_state' }] }, 'unknown'],
+  ])('does not silently classify incomplete attempt state as non-failure', (attempt, kind) => {
+    expect(classifyAttempt(attempt).kind).toBe(kind);
   });
 
   it('collects each attempt detail and attempt-specific jobs with GET and created bounds', () => {

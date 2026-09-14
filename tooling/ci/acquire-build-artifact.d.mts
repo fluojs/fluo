@@ -1,12 +1,13 @@
 export function classifyAcquisitionFailure(input: { status?: number; text?: string }): { retry: boolean };
 export function validateArtifactMetadata(metadata: unknown, expected: { id: number; name: string; runId: number; sha: string; digest: string }): true;
 export function acquireBuildArtifact(input: {
-  readonly fetch: (url: string) => Promise<{ readonly ok: boolean; readonly status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
+  readonly fetch: (url: string, init?: { readonly signal?: AbortSignal }) => Promise<{ readonly ok: boolean; readonly status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
   readonly expected: { readonly id: number; readonly name: string; readonly runId: number; readonly sha: string; readonly digest: string; readonly metadataUrl: string; readonly downloadUrl: string };
   readonly outputPath: string;
   readonly attempts?: number;
   readonly deadlineMs?: number;
   readonly now?: () => number;
+  readonly scheduleDeadline?: (callback: () => void, delayMs: number) => () => void;
 }): Promise<{
   readonly attempt: number;
   readonly attempts: readonly { readonly attempt: number; readonly elapsedMs: number; readonly status: number }[];
@@ -18,7 +19,7 @@ export function main(argv?: readonly string[], dependencies?: {
   readonly appendFileSync?: (path: string, value: string) => unknown;
   readonly downloadUrl?: string;
   readonly extract?: (archivePath: string, outputDirectory: string) => void;
-  readonly fetch?: (url: string) => Promise<{ readonly ok: boolean; readonly status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
+  readonly fetch?: (url: string, init?: { readonly signal?: AbortSignal }) => Promise<{ readonly ok: boolean; readonly status: number; text(): Promise<string>; arrayBuffer(): Promise<ArrayBuffer> }>;
   readonly metadataUrl?: string;
   readonly repository?: string;
   readonly summaryPath?: string;

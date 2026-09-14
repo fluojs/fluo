@@ -61,6 +61,37 @@ describe('build artifact acquisition', () => {
     rmSync(directory, { force: true, recursive: true });
   });
 
+  it('aborts a metadata request that remains in flight beyond the shared deadline', async () => {
+    // Given
+    const directory = mkdtempSync(join(tmpdir(), 'fluo-artifact-deadline-'));
+    const outputPath = join(directory, 'node-build.tar');
+    let fireDeadline: (() => void) | undefined;
+    let requestSignal: AbortSignal | undefined;
+    const fetch = (_url: string, init?: { signal?: AbortSignal }) => {
+      requestSignal = init?.signal;
+      return new Promise<Response>(() => {});
+    };
+
+    // When
+    const acquisition = acquireBuildArtifact({
+      expected: { ...expected, downloadUrl: 'download', metadataUrl: 'metadata' },
+      fetch,
+      now: () => 0,
+      outputPath,
+      scheduleDeadline: (callback) => {
+        fireDeadline = callback;
+        return () => {};
+      },
+    });
+    await Promise.resolve();
+    fireDeadline?.();
+
+    // Then
+    await expect(acquisition).rejects.toThrow(/deadline exceeded/u);
+    expect(requestSignal?.aborted).toBe(true);
+    rmSync(directory, { force: true, recursive: true });
+  });
+
   it('runs CLI acquisition through the same bounded retry helper', async () => {
     // Given
     const directory = mkdtempSync(join(tmpdir(), 'fluo-artifact-cli-'));

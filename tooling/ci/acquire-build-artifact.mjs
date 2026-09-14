@@ -25,42 +25,86 @@ export function validateArtifactMetadata(metadata, expected) {
   return true;
 }
 
-export async function acquireBuildArtifact({ fetch, expected, outputPath, attempts = 3, now = () => Date.now(), deadlineMs = 60_000 }) {
+const deadlineExceeded = () => Object.assign(
+  new Error('artifact acquisition deadline exceeded'),
+  { code: 'ARTIFACT_DEADLINE_EXCEEDED' },
+);
+
+export async function acquireBuildArtifact({
+  fetch,
+  expected,
+  outputPath,
+  attempts = 3,
+  now = () => Date.now(),
+  deadlineMs = 60_000,
+  scheduleDeadline = (callback, delay) => {
+    const timer = setTimeout(callback, delay);
+    return () => clearTimeout(timer);
+  },
+}) {
   const started = now();
+  const expiresAt = started + deadlineMs;
   const attemptRecords = [];
-  for (let attempt = 1; attempt <= attempts && now() - started <= deadlineMs; attempt += 1) {
-    const stage = `${outputPath}.attempt-${attempt}`;
-    rmSync(stage, { force: true });
-    try {
-      const metadataResponse = await fetch(expected.metadataUrl);
-      const metadataText = await metadataResponse.text();
-      if (!metadataResponse.ok) throw Object.assign(new Error('artifact metadata request failed'), { status: metadataResponse.status, text: metadataText });
-      validateArtifactMetadata(JSON.parse(metadataText), expected);
-      const downloadResponse = await fetch(expected.downloadUrl);
-      const bytes = new Uint8Array(await downloadResponse.arrayBuffer());
-      if (!downloadResponse.ok) throw Object.assign(new Error('artifact download request failed'), { status: downloadResponse.status, text: new TextDecoder().decode(bytes) });
-      if (createHash('sha256').update(bytes).digest('hex') !== normalizeDigest(expected.digest)) throw new TypeError('artifact digest mismatch');
-      mkdirSync(resolve(outputPath, '..'), { recursive: true });
-      writeFileSync(stage, bytes);
-      renameSync(stage, outputPath);
-      attemptRecords.push({ attempt, elapsedMs: now() - started, status: 200 });
-      return { attempt, attempts: attemptRecords, digest: normalizeDigest(expected.digest), elapsedMs: now() - started, outputPath };
-    } catch (error) {
+  const controller = new AbortController();
+  let rejectDeadline;
+  const deadline = new Promise((_, reject) => { rejectDeadline = reject; });
+  const cancelDeadline = scheduleDeadline(() => {
+    const error = deadlineExceeded();
+    controller.abort(error);
+    rejectDeadline(error);
+  }, Math.max(0, deadlineMs));
+  const assertBeforeDeadline = () => {
+    if (controller.signal.aborted || now() >= expiresAt) {
+      const error = deadlineExceeded();
+      controller.abort(error);
+      throw error;
+    }
+  };
+  const bounded = async (operation) => {
+    assertBeforeDeadline();
+    const result = await Promise.race([operation, deadline]);
+    assertBeforeDeadline();
+    return result;
+  };
+
+  try {
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      assertBeforeDeadline();
+      const stage = `${outputPath}.attempt-${attempt}`;
       rmSync(stage, { force: true });
-      attemptRecords.push({ attempt, elapsedMs: now() - started, status: Number(error?.status ?? 0) });
-      if (attempt === attempts || now() - started > deadlineMs || !classifyAcquisitionFailure(error).retry) {
-        if (error && typeof error === 'object') {
-          error.attempts = attemptRecords;
-          error.elapsedMs = now() - started;
+      try {
+        const metadataResponse = await bounded(fetch(expected.metadataUrl, { signal: controller.signal }));
+        const metadataText = await bounded(metadataResponse.text());
+        if (!metadataResponse.ok) throw Object.assign(new Error('artifact metadata request failed'), { status: metadataResponse.status, text: metadataText });
+        validateArtifactMetadata(JSON.parse(metadataText), expected);
+        const downloadResponse = await bounded(fetch(expected.downloadUrl, { signal: controller.signal }));
+        const bytes = new Uint8Array(await bounded(downloadResponse.arrayBuffer()));
+        if (!downloadResponse.ok) throw Object.assign(new Error('artifact download request failed'), { status: downloadResponse.status, text: new TextDecoder().decode(bytes) });
+        if (createHash('sha256').update(bytes).digest('hex') !== normalizeDigest(expected.digest)) throw new TypeError('artifact digest mismatch');
+        assertBeforeDeadline();
+        mkdirSync(resolve(outputPath, '..'), { recursive: true });
+        writeFileSync(stage, bytes);
+        assertBeforeDeadline();
+        renameSync(stage, outputPath);
+        attemptRecords.push({ attempt, elapsedMs: now() - started, status: 200 });
+        return { attempt, attempts: attemptRecords, digest: normalizeDigest(expected.digest), elapsedMs: now() - started, outputPath };
+      } catch (error) {
+        rmSync(stage, { force: true });
+        attemptRecords.push({ attempt, elapsedMs: now() - started, status: Number(error?.status ?? 0) });
+        if (attempt === attempts || error?.code === 'ARTIFACT_DEADLINE_EXCEEDED'
+          || controller.signal.aborted || now() >= expiresAt || !classifyAcquisitionFailure(error).retry) {
+          if (error && typeof error === 'object') {
+            error.attempts = attemptRecords;
+            error.elapsedMs = now() - started;
+          }
+          throw error;
         }
-        throw error;
       }
     }
+    throw deadlineExceeded();
+  } finally {
+    cancelDeadline();
   }
-  const error = new Error('artifact acquisition deadline exceeded');
-  error.attempts = attemptRecords;
-  error.elapsedMs = now() - started;
-  throw error;
 }
 
 function cliArgs(argv) {
@@ -77,7 +121,7 @@ function cliArgs(argv) {
 }
 
 export function githubFetch(fetchImpl, token) {
-  return async (url) => {
+  return async (url, options = {}) => {
     const response = await fetchImpl(url, {
       headers: {
         Accept: 'application/vnd.github+json',
@@ -85,11 +129,12 @@ export function githubFetch(fetchImpl, token) {
         'X-GitHub-Api-Version': '2022-11-28',
       },
       redirect: 'manual',
+      signal: options.signal,
     });
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');
       if (!location) throw Object.assign(new Error('artifact redirect is malformed'), { status: response.status });
-      return fetchImpl(location, { redirect: 'error' });
+      return fetchImpl(location, { redirect: 'error', signal: options.signal });
     }
     return response;
   };

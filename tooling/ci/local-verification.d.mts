@@ -26,6 +26,12 @@ export type VerificationCommand = {
   readonly executable: string;
 };
 
+export type VerificationReceiptEvidence = {
+  readonly receiptPath: string;
+  readonly receiptSha256: string;
+  readonly worktree: string;
+};
+
 export type VerificationManifest = {
   readonly version: 1;
   readonly companions: readonly { readonly commands: readonly VerificationCommand[]; readonly id: string; readonly when: string }[];
@@ -41,4 +47,6 @@ export function buildVerificationPlan(input: {
 }): VerificationPlan;
 export function verificationModeForChanges(changedFiles: readonly string[], manifest?: VerificationManifest): 'full' | 'scoped';
 export function receiptIsCurrent(receipt: unknown, identity: VerificationIdentity): boolean;
+export function receiptMatchesPlan(receipt: unknown, identity: VerificationIdentity, plan: VerificationPlan): boolean;
+export function validateReceiptEvidence(receipt: unknown, evidence: VerificationReceiptEvidence): { readonly valid: boolean; readonly reason?: string };
 export function validateReceipt(receipt: unknown): { readonly valid: boolean; readonly reason?: string };

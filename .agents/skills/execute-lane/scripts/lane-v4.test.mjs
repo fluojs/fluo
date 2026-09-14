@@ -70,14 +70,19 @@ test('C1: a revalidated local receipt that becomes invalid routes to fix-back', 
 
 test('C1: receipt references fail closed before filesystem access', () => {
 	assert.throws(
-		() => validateLocalCheckFact('/repo', 'a'.repeat(40), {
+		() => validateLocalCheckFact('/repo', 'a'.repeat(40), 'origin/main', {
 			status: 'passed',
 			valid: true,
 			receiptPath: '../escape',
 			receiptSha256: 'b'.repeat(64),
 		}),
-		/escapes the issue worktree/,
+		/escapes verification evidence root/,
 	);
+});
+
+test('C1: an implemented issue without a current local-check fact requests verification', () => {
+	const next = decideNext(makeLane(), makeObs({ localChecks: null, review: null }));
+	assert.equal(next.action, 'verify-local');
 });
 
 test('C1: resumes with open PR and pending CI -> wait-ci', () => {

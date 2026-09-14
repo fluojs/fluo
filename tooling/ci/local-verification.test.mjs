@@ -1,15 +1,21 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, relative } from 'node:path';
 import test from 'node:test';
 
 import {
   buildVerificationPlan,
+  digest,
+  readVerificationManifest,
+  receiptMatchesPlan,
   receiptIsCurrent,
+  validateReceiptEvidence,
   validateReceipt,
 } from './local-verification.mjs';
 
 const identity = {
-  baseRef: 'main',
+  baseRef: 'origin/main',
   baseSha: 'b'.repeat(40),
   changedFilesDigest: 'c'.repeat(64),
   clean: true,
@@ -20,6 +26,33 @@ const identity = {
   treeSha: 'f'.repeat(40),
   worktreeStatusDigest: '0'.repeat(64),
 };
+
+const passingReceipt = (plan, receiptIdentity = plan.identity) => ({
+  commands: plan.commands.map((command) => ({
+    ...command,
+    exitCode: 0,
+    finishedAt: '2026-09-14T00:00:01.000Z',
+    identityAfter: receiptIdentity,
+    identityBefore: receiptIdentity,
+    signal: null,
+    spawnError: null,
+    startedAt: '2026-09-14T00:00:00.000Z',
+  })),
+  completedAt: '2026-09-14T00:00:01.000Z',
+  environment: {},
+  identity: receiptIdentity,
+  limitations: [],
+  logs: plan.commands.map((command, index) => ({
+    commandId: command.id,
+    digest: `${index}`.padStart(64, '0'),
+    path: `.omo/verification/logs/${receiptIdentity.headSha}/${index}.log`,
+  })),
+  manifestDigest: plan.manifestDigest,
+  planDigest: digest(JSON.stringify(plan.commands)),
+  startedAt: '2026-09-14T00:00:00.000Z',
+  status: 'passed',
+  version: 1,
+});
 
 test('plans frozen install before build, typecheck, tests, lint, and governance', () => {
   const plan = buildVerificationPlan({ changedFiles: ['packages/core/src/index.ts'], identity });
@@ -80,6 +113,55 @@ test('maps every triggered companion to executable commands', () => {
   assert.ok(companionCommands.every(({ argv, executable }) => executable.length > 0 && argv.length > 0));
 });
 
+test('selects companion commands from the manifest when predicate', () => {
+  const manifest = structuredClone(readVerificationManifest());
+  const closure = manifest.companions.find(({ id }) => id === 'package-dependency-closure');
+  closure.when = 'documentation';
+
+  const packagePlan = buildVerificationPlan({
+    changedFiles: ['packages/core/package.json'],
+    identity,
+    manifest,
+  });
+  assert.equal(
+    packagePlan.commands.some(({ id }) => id === 'companion:package-dependency-closure'),
+    false,
+  );
+
+  const docsPlan = buildVerificationPlan({
+    changedFiles: ['docs/reference/node-support.md'],
+    identity,
+    manifest,
+  });
+  assert.equal(
+    docsPlan.commands.some(({ id }) => id === 'companion:package-dependency-closure'),
+    true,
+  );
+});
+
+test('fails closed for malformed, duplicate, and unknown companion triggers', () => {
+  const malformed = structuredClone(readVerificationManifest());
+  malformed.companions[0].when = '';
+  assert.throws(
+    () => buildVerificationPlan({ changedFiles: ['package.json'], identity, manifest: malformed }),
+    /trigger/u,
+  );
+
+  const duplicate = structuredClone(readVerificationManifest());
+  duplicate.companions[1].id = duplicate.companions[0].id;
+  assert.throws(
+    () => buildVerificationPlan({ changedFiles: ['package.json'], identity, manifest: duplicate }),
+    /duplicate/u,
+  );
+
+  const unknown = structuredClone(readVerificationManifest());
+  unknown.companions[0].when = 'not-a-supported-trigger';
+  assert.throws(
+    () => buildVerificationPlan({ changedFiles: ['package.json'], identity, manifest: unknown }),
+    /unknown/u,
+  );
+});
+
 test('runs native Deno build, check, and test surfaces', () => {
   const plan = buildVerificationPlan({ changedFiles: ['packages/platform-deno/src/adapter.ts'], identity });
 
@@ -102,16 +184,24 @@ test('accepts only complete successful receipts for the exact current identity',
       cwd: '/repo',
       executable: 'pnpm',
       exitCode: 0,
+      finishedAt: '2026-09-14T00:00:01.000Z',
       id,
       identityAfter: identity,
       identityBefore: identity,
       signal: null,
       spawnError: null,
+      startedAt: '2026-09-14T00:00:00.000Z',
     })),
     completedAt: '2026-09-14T00:00:01.000Z',
     identity,
     limitations: [],
-    logs: [{ digest: '1'.repeat(64), path: '.artifacts/local-verification/build.log' }],
+    logs: [
+      'install', 'build', 'typecheck', 'test', 'lint', 'platform-governance',
+    ].map((commandId, index) => ({
+      commandId,
+      digest: `${index}`.padStart(64, '0'),
+      path: `.omo/verification/logs/head/${index}.log`,
+    })),
     manifestDigest: '2'.repeat(64),
     planDigest: '3'.repeat(64),
     startedAt: '2026-09-14T00:00:00.000Z',
@@ -134,6 +224,72 @@ test('accepts only complete successful receipts for the exact current identity',
     }).valid,
     false,
   );
+});
+
+test('requires a receipt to attest the canonical base and exact verification plan', () => {
+  const plan = buildVerificationPlan({ changedFiles: [], identity });
+  const receipt = passingReceipt(plan);
+
+  assert.equal(receiptMatchesPlan(receipt, identity, plan), true);
+  assert.equal(
+    receiptMatchesPlan({ ...receipt, identity: { ...identity, baseRef: 'HEAD' } }, identity, plan),
+    false,
+  );
+
+  const omitted = receipt.commands.slice(1);
+  assert.equal(
+    receiptMatchesPlan({
+      ...receipt,
+      commands: omitted,
+      planDigest: digest(JSON.stringify(omitted.map(({ argv, cwd, executable, id }) => ({ argv, cwd, executable, id })))),
+    }, identity, plan),
+    false,
+  );
+});
+
+test('authenticates exact receipt and command log bytes within evidence root', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fluo-local-verification-'));
+  const receiptIdentity = { ...identity, root };
+  const plan = buildVerificationPlan({ changedFiles: [], identity: receiptIdentity });
+  const receipt = passingReceipt(plan, receiptIdentity);
+
+  try {
+    for (const [index, log] of receipt.logs.entries()) {
+      const path = join(root, log.path);
+      mkdirSync(join(path, '..'), { recursive: true });
+      const content = `command ${index}`;
+      writeFileSync(path, content);
+      receipt.logs[index] = { ...log, digest: digest(content) };
+    }
+    const receiptPath = join(root, '.omo/verification/receipt.json');
+    const bytes = `${JSON.stringify(receipt)}\n`;
+    writeFileSync(receiptPath, bytes);
+
+    assert.equal(validateReceiptEvidence(receipt, {
+      receiptPath: relative(root, receiptPath),
+      receiptSha256: digest(bytes),
+      worktree: root,
+    }).valid, true);
+
+    writeFileSync(join(root, receipt.logs[0].path), 'tampered');
+    assert.equal(validateReceiptEvidence(receipt, {
+      receiptPath: relative(root, receiptPath),
+      receiptSha256: digest(bytes),
+      worktree: root,
+    }).valid, false);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test('rejects malformed receipt timestamps before filesystem validation', () => {
+  const plan = buildVerificationPlan({ changedFiles: [], identity });
+  const receipt = passingReceipt(plan);
+
+  assert.equal(validateReceipt({
+    ...receipt,
+    commands: [{ ...receipt.commands[0], startedAt: 'not-a-timestamp' }, ...receipt.commands.slice(1)],
+  }).valid, false);
 });
 
 test('rejects incomplete, failed, and plan-only receipts', () => {
@@ -175,4 +331,5 @@ test('typed receipt schema requires clean worktree and command-boundary identiti
   assert.equal(identityRequired.includes('worktreeStatusDigest'), true);
   assert.equal(commandItems.required.includes('identityBefore'), true);
   assert.equal(commandItems.required.includes('identityAfter'), true);
+  assert.equal(schema.properties.logs.items.required.includes('commandId'), true);
 });
