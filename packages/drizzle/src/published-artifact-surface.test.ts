@@ -67,7 +67,15 @@ function parsePnpmImporterDependencySection(
   return dependencies;
 }
 
-function collectRemovedDeclarationImportDiagnostics(): readonly ts.Diagnostic[] {
+type DeclarationProgramFactory = (
+  rootNames: readonly string[],
+  options: ts.CompilerOptions,
+  host?: ts.CompilerHost,
+  oldProgram?: ts.Program,
+  configFileParsingDiagnostics?: readonly ts.Diagnostic[],
+) => ts.Program;
+
+function collectRemovedDeclarationImportDiagnostics(createProgram: DeclarationProgramFactory = ts.createProgram): readonly ts.Diagnostic[] {
   const consumerEntryPath = resolve(packageRootPath, 'dist/__fluo-removed-public-consumer__.ts');
   const consumerEntrySource = `${removedPublicSurfaces
     .map((surface) => `import { ${surface} } from './index.js';`)
@@ -94,7 +102,7 @@ function collectRemovedDeclarationImportDiagnostics(): readonly ts.Diagnostic[] 
       ? ts.createSourceFile(fileName, consumerEntrySource, languageVersionOrOptions, true, ts.ScriptKind.TS)
       : originalGetSourceFile(fileName, languageVersionOrOptions, ...rest)) as typeof host.getSourceFile;
 
-  return ts.getPreEmitDiagnostics(ts.createProgram([consumerEntryPath], compilerOptions, host));
+  return ts.getPreEmitDiagnostics(createProgram([consumerEntryPath], compilerOptions, host));
 }
 
 describe('@fluojs/drizzle published artifact surface', () => {
@@ -127,6 +135,22 @@ describe('@fluojs/drizzle published artifact surface', () => {
         ),
       ).toBe(true);
     }
+  });
+
+  it('creates one TypeScript program for the complete removed-surface declaration check', () => {
+    // Given
+    let programs = 0;
+    const createProgram: DeclarationProgramFactory = (...args) => {
+      programs += 1;
+      return ts.createProgram(...args);
+    };
+
+    // When
+    const diagnostics = collectRemovedDeclarationImportDiagnostics(createProgram);
+
+    // Then
+    expect(programs).toBe(1);
+    expect(diagnostics).not.toHaveLength(0);
   });
 
   it('declares @fluojs/http only as a test-only Drizzle dependency', () => {

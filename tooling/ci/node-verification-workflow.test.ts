@@ -198,6 +198,8 @@ it('keeps generated browser starters and per-version shutdown evidence', () => {
   expect(tests).toContain("FLUO_VITEST_SHUTDOWN_DEBUG: '1'");
   expect(tests).toMatch(/name: vitest-shutdown-debug-.*inputs.node-version.*matrix.lane.*github.run_id.*github.run_attempt/u);
   expect(tests).toContain('if-no-files-found: error');
+  expect(tests.match(/^ {4}env:$/gmu)).toHaveLength(1);
+  expect(tests).toContain('FLUO_BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}');
 });
 
 it('transfers generated package artifacts without losing executable modes or symbolic links', () => {

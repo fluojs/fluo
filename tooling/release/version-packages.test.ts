@@ -69,6 +69,9 @@ describe('changesetsFailureIsTransient', () => {
     expect(changesetsFailureIsTransient('Something went wrong while executing your query from GitHub GraphQL')).toBe(true);
     expect(changesetsFailureIsTransient('invalid json response body from a private registry')).toBe(false);
     expect(changesetsFailureIsTransient('401 bad credentials from GitHub')).toBe(false);
+    expect(changesetsFailureIsTransient('wrapper: invalid json response body at https://api.github.com/graphql')).toBe(false);
+    expect(changesetsFailureIsTransient('GitHub GraphQL wrapper text: invalid json response body')).toBe(false);
+    expect(changesetsFailureIsTransient('Something went wrong while executing your query')).toBe(false);
   });
 });
 

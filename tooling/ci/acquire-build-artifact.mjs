@@ -39,7 +39,7 @@ export async function acquireBuildArtifact({ fetch, expected, outputPath, attemp
       mkdirSync(resolve(outputPath, '..'), { recursive: true });
       writeFileSync(stage, bytes);
       renameSync(stage, outputPath);
-      return { attempt, digest: expected.digest, outputPath };
+      return { attempt, digest: expected.digest, elapsedMs: now() - started, outputPath };
     } catch (error) {
       rmSync(stage, { force: true });
       if (attempt === attempts || now() - started > deadlineMs || !classifyAcquisitionFailure(error).retry) throw error;
@@ -61,23 +61,53 @@ function cliArgs(argv) {
   return input;
 }
 
-export function main(argv = process.argv.slice(2), dependencies = {}) {
+function githubFetch(execute) {
+  return async (url) => {
+    const endpoint = new URL(url).pathname.replace(/^\//u, '');
+    const encoding = endpoint.endsWith('/zip') ? null : 'utf8';
+    try {
+      const body = execute('gh', ['api', endpoint], { encoding });
+      const bytes = Buffer.isBuffer(body) ? body : Buffer.from(body);
+      return {
+        arrayBuffer: async () => bytes,
+        ok: true,
+        status: 200,
+        text: async () => bytes.toString(),
+      };
+    } catch (error) {
+      const text = `${error?.stderr ?? ''}${error?.stdout ?? ''}${error?.message ?? ''}`;
+      const bytes = Buffer.from(text);
+      return {
+        arrayBuffer: async () => bytes,
+        ok: false,
+        status: Number(error?.status ?? 0),
+        text: async () => text,
+      };
+    }
+  };
+}
+
+export async function main(argv = process.argv.slice(2), dependencies = {}) {
   const input = cliArgs(argv);
   const execute = dependencies.execFileSync ?? execFileSync;
-  const repository = process.env.GITHUB_REPOSITORY;
+  const repository = dependencies.repository ?? process.env.GITHUB_REPOSITORY;
   if (!repository) throw new TypeError('GITHUB_REPOSITORY is required');
   const expected = { digest: input.digest, id: Number(input.id), name: input.name, runId: Number(input.runId), sha: input.sha };
-  const metadata = JSON.parse(execute('gh', ['api', `repos/${repository}/actions/artifacts/${input.id}`], { encoding: 'utf8' }));
-  validateArtifactMetadata(metadata, expected);
-  const archive = execute('gh', ['api', `repos/${repository}/actions/artifacts/${input.id}/zip`], { encoding: null });
-  if (createHash('sha256').update(archive).digest('hex') !== expected.digest) throw new TypeError('artifact digest mismatch');
-  mkdirSync(resolve(input.output, '..'), { recursive: true });
-  writeFileSync(`${input.output}.zip`, archive);
-  execute('unzip', ['-q', `${input.output}.zip`, '-d', resolve(input.output, '..')]);
-  rmSync(`${input.output}.zip`, { force: true });
-  process.stdout.write(JSON.stringify({ artifactId: expected.id, digest: expected.digest, name: expected.name, sha: expected.sha }) + '\n');
+  const metadataUrl = dependencies.metadataUrl ?? `https://api.github.com/repos/${repository}/actions/artifacts/${input.id}`;
+  const downloadUrl = dependencies.downloadUrl ?? `${metadataUrl}/zip`;
+  const archivePath = `${input.output}.zip`;
+  const result = await acquireBuildArtifact({
+    expected: { ...expected, downloadUrl, metadataUrl },
+    fetch: dependencies.fetch ?? githubFetch(execute),
+    outputPath: archivePath,
+  });
+  const extract = dependencies.extract ?? ((archive, directory) => execute('unzip', ['-q', archive, '-d', directory]));
+  extract(archivePath, resolve(input.output, '..'));
+  rmSync(archivePath, { force: true });
+  const report = { artifactId: expected.id, attempt: result.attempt, digest: expected.digest, elapsedMs: result.elapsedMs, name: expected.name, sha: expected.sha };
+  (dependencies.writeOutput ?? ((value) => process.stdout.write(value)))(`${JSON.stringify(report)}\n`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === new URL(import.meta.url).pathname) {
-  try { main(); } catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 1; }
+  main().catch((error) => { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 1; });
 }

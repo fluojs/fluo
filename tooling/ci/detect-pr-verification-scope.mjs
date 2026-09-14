@@ -5,6 +5,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
+import { readVerificationManifest, verificationModeForChanges } from './local-verification.mjs';
+
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDirectory, '..', '..');
 
@@ -174,6 +176,10 @@ function changedFilesFromGit() {
 }
 
 export function shouldForceFullVerificationByPath(changedFiles) {
+  const scopeFiles = changedFiles.filter((path) => !path.startsWith('.changeset/'));
+  if (scopeFiles.length > 0 && verificationModeForChanges(scopeFiles, readVerificationManifest()) === 'full') {
+    return `changed ${scopeFiles[0]}`;
+  }
   for (const path of changedFiles) {
     if (path.startsWith('.changeset/')) {
       continue;

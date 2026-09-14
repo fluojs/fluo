@@ -41,7 +41,7 @@ test('adds importer declaration parity and docs consumers to the plan', () => {
 
   const commands = plan.commands.map((command) => command.argv.join(' '));
   assert.equal(commands.includes('typecheck'), true);
-  assert.equal(commands.includes('tooling/governance/declaration-parity.test.mjs'), true);
+  assert.equal(commands.includes('verify:public-export-tsdoc'), true);
   assert.equal(commands.includes('verify:docs'), true);
 });
 

@@ -1,5 +1,17 @@
 {
   "version": 1,
+  "scope": {
+    "fullPrefixes": [".github/", "apps/", "docs/", "examples/", "tooling/"],
+    "fullPaths": ["biome.json", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.base.json", "tsconfig.tools.json", "vitest.config.ts"]
+  },
+  "companions": [
+    { "id": "manifest-lockfile", "when": "package-manifest" },
+    { "id": "declaration-importers", "when": "module-importer" },
+    { "id": "source-copy-inventory", "when": "public-source" },
+    { "id": "documentation-governance", "when": "documentation" },
+    { "id": "global-setup-contract", "when": "global-setup" },
+    { "id": "package-dependency-closure", "when": "package-manifest" }
+  ],
   "rules": [
     { "prefix": "packages/platform-deno/", "argv": ["test:node-floor"] },
     { "prefix": "packages/studio/", "argv": ["--filter", "@fluojs/studio", "test:browser"] },

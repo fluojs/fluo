@@ -16,10 +16,10 @@ const repoRoot = resolve(scriptDirectory, '..', '..');
 
 const CHANGESETS_VERSION_RETRY_LIMIT = 3;
 const CHANGESETS_TRANSIENT_FAILURE_SIGNATURES = [
-  'Failed to parse data from GitHub',
-  'invalid json response body',
-  'Fetched data from GitHub returned errors',
-  'Something went wrong while executing your query',
+  /^(?:🦋\s+error\s+)?(?:Error:\s+)?Failed to parse data from GitHub$/mu,
+  /^(?:🦋\s+error\s+)?invalid json response body at https:\/\/api\.github\.com\/graphql\b/mu,
+  /^(?:🦋\s+error\s+)?Fetched data from GitHub returned errors$/mu,
+  /^(?:🦋\s+error\s+)?Something went wrong while executing your query from GitHub GraphQL$/mu,
 ];
 
 function sleepSync(milliseconds) {
@@ -27,8 +27,7 @@ function sleepSync(milliseconds) {
 }
 
 export function changesetsFailureIsTransient(output) {
-  const githubEvidence = /github|graphql/u.test(output.toLowerCase());
-  return githubEvidence && CHANGESETS_TRANSIENT_FAILURE_SIGNATURES.some((signature) => output.includes(signature));
+  return typeof output === 'string' && CHANGESETS_TRANSIENT_FAILURE_SIGNATURES.some((signature) => signature.test(output));
 }
 
 function changesetsRetryDelayMilliseconds(attempt) {

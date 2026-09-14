@@ -1,5 +1,63 @@
 import { describe, expect, it, vi } from 'vitest';
-import { runReleaseReadinessVerification } from './verify-release-readiness.mjs';
+import {
+  ReleaseCommandError,
+  runCanonicalReleaseReadinessVerificationCommands,
+  runReleaseCommand,
+  runReleaseReadinessVerification,
+} from './verify-release-readiness.mjs';
+
+describe('release readiness subprocess diagnostics', () => {
+  it.each([
+    ['exit', { status: 23, stderr: 'typecheck failed\n' }],
+    ['signal', { signal: 'SIGTERM', status: null, stderr: 'terminated\n' }],
+    ['spawn', { error: new Error('pnpm missing'), status: null, stderr: '' }],
+  ] as const)('preserves executable, argv, cwd, stderr, and %s failure', (kind, result) => {
+    // Given
+    const output: string[] = [];
+
+    // When
+    const run = () => runReleaseCommand('pnpm', ['typecheck'], {
+      cwd: '/release-worktree',
+      spawn: () => ({ ...result, stdout: 'diagnostic\n' }),
+      writeOutput: (_stream, chunk) => output.push(chunk),
+    });
+
+    // Then
+    expect(run).toThrow(ReleaseCommandError);
+    try {
+      run();
+    } catch (error) {
+      expect(error).toMatchObject({
+        details: {
+          argv: ['typecheck'],
+          command: 'pnpm',
+          cwd: '/release-worktree',
+          kind,
+          stderr: result.stderr,
+        },
+      });
+    }
+    expect(output).toContain('diagnostic\n');
+    if (result.stderr) expect(output).toContain(result.stderr);
+  });
+
+  it('stops canonical commands at the first subprocess failure', () => {
+    // Given
+    const calls: string[] = [];
+    const failure = new Error('typecheck failed');
+    const run = (command: string, args: readonly string[]) => {
+      calls.push(`${command} ${args.join(' ')}`);
+      if (args[0] === 'typecheck') throw failure;
+    };
+
+    // When
+    const verify = () => runCanonicalReleaseReadinessVerificationCommands(run, false);
+
+    // Then
+    expect(verify).toThrow(failure);
+    expect(calls).toEqual(['pnpm build', 'pnpm typecheck']);
+  });
+});
 
 type WorkspacePackageManifestRecord = {
   manifest: Record<string, unknown> & { name: string };

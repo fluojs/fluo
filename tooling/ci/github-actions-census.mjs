@@ -1,55 +1,166 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { collectGithubActionsCensus } from './github-actions-census-github.mjs';
+
 const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
+const NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/u;
+const LIMITATION = 'Deleted or retention-expired GitHub Actions records cannot be recovered.';
+
+const fingerprint = (value) => createHash('sha256').update(value).digest('hex');
+const validTimestamp = (value) => typeof value === 'string' && UTC.test(value) && !Number.isNaN(Date.parse(value));
+const safeRecord = (value, label) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${label} must be an object`);
+  return value;
+};
 
 export function parseBounds(since, until) {
-  if (![since, until].every((value) => typeof value === 'string' && UTC.test(value))) {
-    throw new TypeError('--since and --until must be UTC ISO timestamps');
+  if (!validTimestamp(since) || !validTimestamp(until)) throw new TypeError('--since and --until must be UTC ISO timestamps');
+  const start = new Date(since);
+  const end = new Date(until);
+  if (start >= end) throw new TypeError('UTC bounds must be valid and half-open');
+  return { since: start.toISOString(), until: end.toISOString() };
+}
+
+export function parseCensusArgs(argv) {
+  const options = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const flag = argv[index];
+    if (flag === '--help') return { help: true };
+    if (!['--input', '--owner', '--repo', '--workflow', '--since', '--until'].includes(flag)) {
+      throw new TypeError(`unknown option: ${flag}`);
+    }
+    const value = argv[++index];
+    if (!value) throw new TypeError(`${flag} requires a value`);
+    options[flag.slice(2)] = value;
   }
-  const parsed = { since: new Date(since), until: new Date(until) };
-  if (Number.isNaN(parsed.since.valueOf()) || Number.isNaN(parsed.until.valueOf()) || parsed.since >= parsed.until) {
-    throw new TypeError('UTC bounds must be valid and half-open');
+  for (const key of ['owner', 'repo', 'workflow']) {
+    if (typeof options[key] !== 'string' || !NAME.test(options[key])) throw new TypeError(`--${key} must be a GitHub identifier`);
   }
-  return { since: parsed.since.toISOString(), until: parsed.until.toISOString() };
+  return { ...options, ...parseBounds(options.since, options.until) };
 }
 
 export function classifyAttempt(attempt) {
   const jobs = Array.isArray(attempt?.jobs) ? attempt.jobs : [];
   const failedJobs = jobs.filter((job) => ['failure', 'timed_out'].includes(job?.conclusion) && job.completed_at);
   if (failedJobs.length > 0) return { failedJobs, kind: 'failure-bearing' };
-  if (jobs.length === 0 && attempt?.conclusion === 'action_required') return { failedJobs, kind: 'zero-job-action-required' };
-  if (jobs.length === 0 && attempt?.conclusion === 'cancelled') return { failedJobs, kind: 'zero-job-cancelled' };
+  if (jobs.length !== 0) return { failedJobs, kind: 'non-failure' };
+  if (attempt?.conclusion === 'action_required' && /approval/iu.test(String(attempt.event ?? ''))) {
+    return { failedJobs, kind: 'zero-job-approval' };
+  }
+  if (attempt?.conclusion === 'action_required') return { failedJobs, kind: 'zero-job-action-required' };
+  if (attempt?.conclusion === 'cancelled' && /replacement/iu.test(String(attempt.event ?? ''))) {
+    return { failedJobs, kind: 'zero-job-replacement-cancelled' };
+  }
+  if (attempt?.conclusion === 'cancelled') return { failedJobs, kind: 'zero-job-cancelled' };
   return { failedJobs, kind: 'non-failure' };
 }
 
-function parseArgs(argv) {
-  const options = {};
-  for (let index = 0; index < argv.length; index += 1) {
-    const flag = argv[index];
-    if (flag === '--help') return { help: true };
-    if (!['--input', '--since', '--until'].includes(flag)) throw new TypeError(`unknown option: ${flag}`);
-    options[flag.slice(2)] = argv[++index];
+function normalizeJobName(name) {
+  return String(name ?? 'unknown')
+    .replace(/Node support \([^)]*\)\s*\/\s*/iu, '')
+    .replace(/Test \(packages-\d+\)/iu, 'Test')
+    .trim();
+}
+
+function collectFailureSummary(attempts) {
+  const byFingerprint = new Map();
+  const derivedAggregateOccurrences = [];
+  for (const attempt of attempts) {
+    if (attempt.classification.kind !== 'failure-bearing') continue;
+    for (const job of attempt.classification.failedJobs) {
+      const failedSteps = Array.isArray(job.steps)
+        ? job.steps.filter((step) => ['failure', 'timed_out'].includes(step?.conclusion)).map((step) => step.name)
+        : [];
+      const jobFingerprint = fingerprint(`${normalizeJobName(job.name)}\n${failedSteps.join('\n')}`);
+      const occurrence = {
+        fingerprints: { job: jobFingerprint, steps: fingerprint(failedSteps.join('\n')) },
+        job: { conclusion: job.conclusion, id: job.id, name: job.name },
+        run: { id: attempt.run.id, attempt: attempt.attempt.run_attempt },
+        urls: {
+          attempt: `${attempt.run.html_url}/attempts/${attempt.attempt.run_attempt}`,
+          job: job.html_url ?? null,
+          run: attempt.run.html_url ?? null,
+        },
+      };
+      if (normalizeJobName(job.name) === 'Verify') {
+        derivedAggregateOccurrences.push(occurrence);
+        continue;
+      }
+      const group = byFingerprint.get(jobFingerprint) ?? { fingerprint: jobFingerprint, occurrences: [] };
+      group.occurrences.push(occurrence);
+      byFingerprint.set(jobFingerprint, group);
+    }
   }
-  return options;
+  return {
+    derivedAggregateOccurrences: derivedAggregateOccurrences.sort((left, right) => left.run.id - right.run.id),
+    failureBearingAttempts: attempts.filter((attempt) => attempt.classification.kind === 'failure-bearing').length,
+    signatures: [...byFingerprint.values()].sort((left, right) =>
+      right.occurrences.length - left.occurrences.length || left.fingerprint.localeCompare(right.fingerprint)),
+  };
+}
+
+function selectedRuns(input, bounds) {
+  if (!Array.isArray(input.workflow_runs) || !Array.isArray(input.attempts)) {
+    throw new TypeError('census input must contain workflow_runs and attempts arrays');
+  }
+  const selected = input.workflow_runs.filter((run) => {
+    safeRecord(run, 'workflow run');
+    if (!Number.isSafeInteger(run.id) || !validTimestamp(run.created_at)) throw new TypeError('workflow run id and created_at are required');
+    const createdAt = Date.parse(run.created_at);
+    return createdAt >= Date.parse(bounds.since) && createdAt < Date.parse(bounds.until);
+  });
+  const attemptsByRun = new Map();
+  for (const attempt of input.attempts) {
+    safeRecord(attempt, 'attempt');
+    if (!Number.isSafeInteger(attempt.run_id) || !Number.isSafeInteger(attempt.run_attempt) || !validTimestamp(attempt.created_at) || !Array.isArray(attempt.jobs)) {
+      throw new TypeError('attempt run_id, run_attempt, created_at, and jobs are required');
+    }
+    attemptsByRun.set(`${attempt.run_id}:${attempt.run_attempt}`, attempt);
+  }
+  return selected.flatMap((run) => {
+    if (!Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) throw new TypeError('workflow run run_attempt is required');
+    return Array.from({ length: run.run_attempt }, (_, index) => {
+      const attempt = attemptsByRun.get(`${run.id}:${index + 1}`);
+      if (!attempt) throw new TypeError(`workflow run ${run.id} is incomplete at attempt ${index + 1}`);
+      return { attempt, classification: classifyAttempt(attempt), jobs: attempt.jobs, run };
+    });
+  });
+}
+
+export function buildCensus({ input, owner, repo, workflow, since, until }) {
+  for (const [key, value] of Object.entries({ owner, repo, workflow })) {
+    if (typeof value !== 'string' || !NAME.test(value)) throw new TypeError(`${key} must be a GitHub identifier`);
+  }
+  const bounds = parseBounds(since, until);
+  const attempts = selectedRuns(safeRecord(input, 'census input'), bounds);
+  return {
+    attempts,
+    limits: [...new Set([...(Array.isArray(input.limits) ? input.limits : []), LIMITATION])].sort(),
+    observedAt: validTimestamp(input.observed_at) ? new Date(input.observed_at).toISOString() : null,
+    pagination: safeRecord(input.pagination ?? {}, 'pagination'),
+    scope: { owner, repo, since: bounds.since, until: bounds.until, workflow },
+    summary: collectFailureSummary(attempts),
+  };
+}
+
+function usage() {
+  return 'Usage: github-actions-census --owner <owner> --repo <repo> --workflow <workflow> --since <UTC> --until <UTC> [--input <replay.json>]';
 }
 
 export function main(argv = process.argv.slice(2)) {
-  const options = parseArgs(argv);
-  if (options.help) return process.stdout.write('Usage: github-actions-census --input <replay.json> --since <UTC> --until <UTC>\n');
-  const bounds = parseBounds(options.since, options.until);
-  if (!options.input) throw new TypeError('--input is required in replay mode');
-  const input = JSON.parse(readFileSync(resolve(options.input), 'utf8'));
-  if (!Array.isArray(input?.attempts)) throw new TypeError('replay input must contain attempts');
-  const attempts = input.attempts
-    .filter((attempt) => attempt.created_at >= bounds.since && attempt.created_at < bounds.until)
-    .map((attempt) => ({ ...attempt, classification: classifyAttempt(attempt) }));
-  process.stdout.write(`${JSON.stringify({ attempts, capturedAt: new Date().toISOString(), scope: bounds })}\n`);
+  const options = parseCensusArgs(argv);
+  if (options.help) return process.stdout.write(`${usage()}\n`);
+  const input = options.input
+    ? JSON.parse(readFileSync(resolve(options.input), 'utf8'))
+    : collectGithubActionsCensus(options);
+  process.stdout.write(`${JSON.stringify(buildCensus({ ...options, input }))}\n`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { main(); } catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 1; }
+  try { main(); } catch (error) { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 1; }
 }
