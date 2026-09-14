@@ -79,12 +79,19 @@ function collectFailureSummary(attempts) {
   for (const attempt of attempts) {
     if (attempt.classification.kind !== 'failure-bearing') continue;
     for (const job of attempt.classification.failedJobs) {
-      const failedSteps = Array.isArray(job.steps)
-        ? job.steps.filter((step) => ['failure', 'timed_out'].includes(step?.conclusion)).map((step) => step.name)
+      const failedStepEvidence = Array.isArray(job.steps)
+        ? job.steps
+          .filter((step) => ['failure', 'timed_out'].includes(step?.conclusion))
+          .map((step) => [String(step.name ?? 'unknown'), String(step.conclusion)])
+          .sort(([left], [right]) => left.localeCompare(right))
         : [];
-      const jobFingerprint = fingerprint(`${normalizeJobName(job.name)}\n${failedSteps.join('\n')}`);
+      const jobFingerprint = fingerprint(JSON.stringify([
+        normalizeJobName(job.name),
+        String(job.conclusion ?? 'unknown'),
+        failedStepEvidence,
+      ]));
       const occurrence = {
-        fingerprints: { job: jobFingerprint, steps: fingerprint(failedSteps.join('\n')) },
+        fingerprints: { job: jobFingerprint, steps: fingerprint(JSON.stringify(failedStepEvidence)) },
         job: { conclusion: job.conclusion, id: job.id, name: job.name },
         run: { id: attempt.run.id, attempt: attempt.attempt.run_attempt },
         urls: {
@@ -126,7 +133,12 @@ function selectedRuns(input, bounds) {
     if (!Number.isSafeInteger(attempt.run_id) || !Number.isSafeInteger(attempt.run_attempt) || !validTimestamp(attempt.created_at) || !Array.isArray(attempt.jobs)) {
       throw new TypeError('attempt run_id, run_attempt, created_at, and jobs are required');
     }
-    attemptsByRun.set(`${attempt.run_id}:${attempt.run_attempt}`, attempt);
+    const key = `${attempt.run_id}:${attempt.run_attempt}`;
+    const previous = attemptsByRun.get(key);
+    if (previous && JSON.stringify(previous) !== JSON.stringify(attempt)) {
+      throw new TypeError(`census input contains conflicting attempt ${key}`);
+    }
+    attemptsByRun.set(key, attempt);
   }
   return selected.flatMap((run) => {
     if (!Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) throw new TypeError('workflow run run_attempt is required');

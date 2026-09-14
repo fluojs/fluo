@@ -97,4 +97,31 @@ describe('build artifact acquisition', () => {
       repository: 'fluojs/fluo',
     })).rejects.toThrow(/GH_TOKEN or GITHUB_TOKEN/u);
   });
+
+  it('writes redacted attempt evidence for an exhausted acquisition', async () => {
+    // Given
+    const directory = mkdtempSync(join(tmpdir(), 'fluo-artifact-summary-'));
+    const summaryPath = join(directory, 'summary.jsonl');
+
+    // When
+    try {
+      await expect(main([
+        '--id', '1', '--digest', expected.digest, '--sha', expected.sha, '--name', expected.name, '--run-id', '2', '--output', join(directory, 'node-build.tar'),
+      ], {
+        fetch: async () => new Response('upstream intermediary timeout', { status: 503 }),
+        metadataUrl: 'https://api.github.test/metadata?signed=secret',
+        downloadUrl: 'https://objects.test/download?signed=secret',
+        repository: 'fluojs/fluo',
+        summaryPath,
+      })).rejects.toThrow(/metadata request failed/u);
+
+      // Then
+      const summary = readFileSync(summaryPath, 'utf8');
+      expect(summary).toContain('"outcome":"failed"');
+      expect(summary).toContain('"status":503');
+      expect(summary).not.toContain('signed=secret');
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
+  });
 });

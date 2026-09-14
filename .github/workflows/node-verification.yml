@@ -61,6 +61,7 @@ jobs:
     env:
       FLUO_BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}
       FLUO_BUILD_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact-digest }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -113,6 +114,7 @@ jobs:
       FLUO_BUILD_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact-digest }}
       FLUO_VITEST_SHUTDOWN_DEBUG: '1'
       FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug
+      GH_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
       matrix:
@@ -256,6 +258,7 @@ jobs:
     env:
       FLUO_BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}
       FLUO_BUILD_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact-digest }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5

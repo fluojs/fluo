@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it, vi } from 'vitest';
@@ -10,6 +10,7 @@ import {
   parseBounds,
   parseCensusArgs,
 } from './github-actions-census.mjs';
+import { collectGithubActionsCensus } from './github-actions-census-github.mjs';
 
 const fixturePath = fileURLToPath(new URL('./fixtures/github-actions-census-replay.json', import.meta.url));
 const cliPath = fileURLToPath(new URL('./github-actions-census.mjs', import.meta.url));
@@ -144,5 +145,83 @@ describe('GitHub Actions census', () => {
 
     // Then
     expect(classification.kind).toBe('failure-bearing');
+  });
+
+  it('collects each attempt detail and attempt-specific jobs with GET and created bounds', () => {
+    const calls: string[][] = [];
+    const run = {
+      conclusion: 'success',
+      created_at: '2026-09-14T00:00:00Z',
+      html_url: 'https://github.test/runs/1',
+      id: 1,
+      run_attempt: 2,
+    };
+    const responses = new Map<string, unknown>([
+      ['runs', { total_count: 1, workflow_runs: [run] }],
+      ['attempt-1', { ...run, conclusion: 'failure', run_attempt: 1 }],
+      ['attempt-2', { ...run, conclusion: 'success', run_attempt: 2 }],
+      ['jobs-1', { total_count: 1, jobs: [{ completed_at: '2026-09-14T00:01:00Z', conclusion: 'failure', id: 11, name: 'Test' }] }],
+      ['jobs-2', { total_count: 1, jobs: [{ completed_at: '2026-09-14T00:02:00Z', conclusion: 'success', id: 12, name: 'Test' }] }],
+    ]);
+    const execute = (_command: string, args: readonly string[]) => {
+      calls.push([...args]);
+      const endpoint = args.at(-1) ?? '';
+      if (endpoint.includes('/workflows/CI/runs?')) return JSON.stringify(responses.get('runs'));
+      if (endpoint.endsWith('/attempts/1')) return JSON.stringify(responses.get('attempt-1'));
+      if (endpoint.endsWith('/attempts/2')) return JSON.stringify(responses.get('attempt-2'));
+      if (endpoint.endsWith('/attempts/1/jobs?per_page=100')) return JSON.stringify(responses.get('jobs-1'));
+      if (endpoint.endsWith('/attempts/2/jobs?per_page=100')) return JSON.stringify(responses.get('jobs-2'));
+      throw new Error(`Unexpected endpoint: ${endpoint}`);
+    };
+
+    const census = collectGithubActionsCensus({
+      execFileSync: execute,
+      observedAt: () => '2026-09-14T03:00:00Z',
+      owner: 'fluojs',
+      repo: 'fluo',
+      since: '2026-09-14T00:00:00.000Z',
+      until: '2026-09-15T00:00:00.000Z',
+      workflow: 'CI',
+    });
+
+    expect(census.attempts.map((attempt) => attempt.conclusion)).toEqual(['failure', 'success']);
+    expect(census.attempts.map((attempt) => attempt.jobs[0]?.id)).toEqual([11, 12]);
+    expect(calls.every((args) => args.includes('--method') && args.includes('GET'))).toBe(true);
+    expect(calls[0]?.at(-1)).toContain('created=');
+  });
+
+  it('rejects calendar-normalized UTC dates', () => {
+    expect(() => parseBounds('2026-02-31T00:00:00Z', '2026-03-02T00:00:00Z')).toThrow(/UTC/u);
+  });
+
+  it('keeps timeout and failure conclusions in separate root signatures', () => {
+    const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
+    fixture.attempts[2].jobs[0].conclusion = 'timed_out';
+    fixture.attempts[2].jobs[0].steps[0].conclusion = 'timed_out';
+
+    const census = buildCensus({
+      input: fixture,
+      owner: 'fluojs',
+      repo: 'fluo',
+      since: '2026-09-14T00:00:00Z',
+      until: '2026-09-15T00:00:00Z',
+      workflow: 'CI',
+    });
+
+    expect(census.summary.signatures).toHaveLength(3);
+  });
+
+  it('rejects conflicting records for the same run attempt', () => {
+    const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
+    fixture.attempts.push({ ...fixture.attempts[0], conclusion: 'success' });
+
+    expect(() => buildCensus({
+      input: fixture,
+      owner: 'fluojs',
+      repo: 'fluo',
+      since: '2026-09-14T00:00:00Z',
+      until: '2026-09-15T00:00:00Z',
+      workflow: 'CI',
+    })).toThrow(/conflicting attempt/u);
   });
 });

@@ -68,6 +68,7 @@ it('binds every build consumer to immutable producer artifact provenance', () =>
     const consumer = job(nodeWorkflow, id);
     expect(consumer).toContain('needs.build.outputs.artifact-id');
     expect(consumer).toContain('needs.build.outputs.artifact-digest');
+    expect(consumer).toContain('GH_TOKEN: $' + '{{ github.token }}');
   }
 });
 

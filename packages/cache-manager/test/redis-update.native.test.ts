@@ -1,6 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
+import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import { REDIS_CLIENT, RedisModule } from '@fluojs/redis';
@@ -56,7 +57,13 @@ async function createApp(keyPrefix: string) {
 }
 
 beforeAll(async () => {
-  redisFixture = await startRedisFixture({ containerName, execFile: exec, spawn });
+  const diagnosticDirectory = process.env.FLUO_VITEST_SHUTDOWN_DEBUG_DIR ?? '.artifacts/redis-native-fixture';
+  redisFixture = await startRedisFixture({
+    containerName,
+    diagnosticPath: resolve(diagnosticDirectory, 'redis-native-fixture.json'),
+    execFile: exec,
+    spawn,
+  });
   port = redisFixture.port;
 });
 

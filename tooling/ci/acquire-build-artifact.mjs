@@ -48,10 +48,19 @@ export async function acquireBuildArtifact({ fetch, expected, outputPath, attemp
     } catch (error) {
       rmSync(stage, { force: true });
       attemptRecords.push({ attempt, elapsedMs: now() - started, status: Number(error?.status ?? 0) });
-      if (attempt === attempts || now() - started > deadlineMs || !classifyAcquisitionFailure(error).retry) throw error;
+      if (attempt === attempts || now() - started > deadlineMs || !classifyAcquisitionFailure(error).retry) {
+        if (error && typeof error === 'object') {
+          error.attempts = attemptRecords;
+          error.elapsedMs = now() - started;
+        }
+        throw error;
+      }
     }
   }
-  throw new Error('artifact acquisition deadline exceeded');
+  const error = new Error('artifact acquisition deadline exceeded');
+  error.attempts = attemptRecords;
+  error.elapsedMs = now() - started;
+  throw error;
 }
 
 function cliArgs(argv) {
@@ -96,18 +105,35 @@ export async function main(argv = process.argv.slice(2), dependencies = {}) {
   const archivePath = `${input.output}.zip`;
   const token = dependencies.token ?? process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
   if (!dependencies.fetch && !token) throw new TypeError('GH_TOKEN or GITHUB_TOKEN is required');
-  const result = await acquireBuildArtifact({
-    expected: { ...expected, downloadUrl, metadataUrl },
-    fetch: dependencies.fetch ?? githubFetch(dependencies.fetchImpl ?? globalThis.fetch, token),
-    outputPath: archivePath,
-  });
+  const summaryPath = dependencies.summaryPath ?? process.env.GITHUB_STEP_SUMMARY;
+  const appendSummary = (value) => {
+    if (summaryPath) (dependencies.appendFileSync ?? appendFileSync)(summaryPath, `${JSON.stringify(value)}\n`);
+  };
+  let result;
+  try {
+    result = await acquireBuildArtifact({
+      expected: { ...expected, downloadUrl, metadataUrl },
+      fetch: dependencies.fetch ?? githubFetch(dependencies.fetchImpl ?? globalThis.fetch, token),
+      outputPath: archivePath,
+    });
+  } catch (error) {
+    appendSummary({
+      artifactId: expected.id,
+      attempts: Array.isArray(error?.attempts) ? error.attempts : [],
+      digest: expected.digest,
+      elapsedMs: Number(error?.elapsedMs ?? 0),
+      name: expected.name,
+      outcome: 'failed',
+      sha: expected.sha,
+    });
+    throw error;
+  }
   const extract = dependencies.extract ?? ((archive, directory) => (dependencies.execFileSync ?? execFileSync)('unzip', ['-q', archive, '-d', directory]));
   extract(archivePath, resolve(input.output, '..'));
   rmSync(archivePath, { force: true });
-  const report = { artifactId: expected.id, attempt: result.attempt, digest: expected.digest, elapsedMs: result.elapsedMs, name: expected.name, sha: expected.sha };
+  const report = { artifactId: expected.id, attempt: result.attempt, digest: expected.digest, elapsedMs: result.elapsedMs, name: expected.name, outcome: 'passed', sha: expected.sha };
   (dependencies.writeOutput ?? ((value) => process.stdout.write(value)))(`${JSON.stringify(report)}\n`);
-  const summary = process.env.GITHUB_STEP_SUMMARY;
-  if (summary) appendFileSync(summary, `${JSON.stringify({ artifactId: expected.id, attempts: result.attempts, digest: expected.digest, name: expected.name, sha: expected.sha })}\n`);
+  appendSummary({ artifactId: expected.id, attempts: result.attempts, digest: expected.digest, name: expected.name, outcome: 'passed', sha: expected.sha });
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === new URL(import.meta.url).pathname) {

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -161,4 +162,17 @@ test('rejects incomplete, failed, and plan-only receipts', () => {
   assert.equal(validateReceipt({ ...base, commands: [] }).valid, false);
   assert.equal(validateReceipt({ ...base, status: 'planned' }).valid, false);
   assert.equal(validateReceipt({ ...base, commands: [{ ...base.commands[0], signal: 'SIGTERM' }] }).valid, false);
+});
+
+test('typed receipt schema requires clean worktree and command-boundary identities', () => {
+  const schema = JSON.parse(
+    readFileSync(new URL('./local-verification-receipt.schema.json', import.meta.url), 'utf8'),
+  );
+  const identityRequired = schema.$defs.identity.required;
+  const commandItems = schema.properties.commands.items;
+
+  assert.equal(identityRequired.includes('clean'), true);
+  assert.equal(identityRequired.includes('worktreeStatusDigest'), true);
+  assert.equal(commandItems.required.includes('identityBefore'), true);
+  assert.equal(commandItems.required.includes('identityAfter'), true);
 });
