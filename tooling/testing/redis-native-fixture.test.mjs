@@ -117,3 +117,52 @@ test('bounds docker commands with the remaining shared startup budget', async ()
   child.emit('close', 0, null);
   await fixture.cleanup();
 });
+
+test('preserves primary and cleanup failures in the diagnostic artifact', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'fluo-redis-cleanup-'));
+  const diagnosticPath = join(directory, 'redis.json');
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  let readinessSubscribed;
+  const readinessSubscribedSignal = new Promise((resolve) => { readinessSubscribed = resolve; });
+  const stdoutOn = child.stdout.on.bind(child.stdout);
+  child.stdout.on = (event, listener) => {
+    if (event === 'data') readinessSubscribed();
+    return stdoutOn(event, listener);
+  };
+  const fixturePromise = startRedisFixture({
+    containerName: 'fixture',
+    diagnosticPath,
+    execFile: async (_command, args) => {
+      if (args[0] === 'stop') {
+        throw Object.assign(new Error('stop failed'), { code: 1, stderr: 'daemon unavailable' });
+      }
+      return { stderr: '', stdout: args[0] === 'port' ? '127.0.0.1:6379\n' : '' };
+    },
+    spawn: () => child,
+    waitForTcp: async () => {},
+  });
+  await readinessSubscribedSignal;
+  child.stdout.emit('data', Buffer.from('Ready to accept connections'));
+  const fixture = await fixturePromise;
+
+  try {
+    const primary = new Error('test failed');
+    await assert.rejects(
+      fixture.cleanup(primary),
+      (error) => error instanceof AggregateError
+        && error.errors[0] === primary
+        && error.errors[1]?.message === 'stop failed',
+    );
+    const diagnostic = JSON.parse(readFileSync(diagnosticPath, 'utf8'));
+    assert.partialDeepStrictEqual(diagnostic.phases.at(-1), {
+      exitCode: 1,
+      name: 'cleanup',
+      status: 'failed',
+      stderr: 'daemon unavailable',
+    });
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
