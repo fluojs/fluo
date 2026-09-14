@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## 2.1.1
+
+### Patch Changes
+
+- [#3791](https://github.com/fluojs/fluo/pull/3791) [`7a50e3e`](https://github.com/fluojs/fluo/commit/7a50e3efcffd96035f8e3a94205c56624eabb32a) Thanks [@ayden94](https://github.com/ayden94)! - Make `route+query` the default HTTP cache key strategy and remove the redundant
+  `full` strategy alias. Normalized module-option and TTL-jitter types are now
+  internal provider-assembly details rather than package-root exports.
+
+  Migration: remove `httpKeyStrategy: 'full'` or replace it with
+  `'route+query'`. Omitting `httpKeyStrategy` now uses query-aware
+  `'route+query'`; select explicit `'route'` only for responses intentionally
+  insensitive to every query value. Application code should register `CacheModule`
+  with `CacheModule.forRoot(...)` or `forRootAsync(...)` and inject `CacheService`;
+  replace root imports of normalized option types with application-facing
+  `CacheModuleOptions` configuration. Memory selector registration still defaults
+  to `300` seconds, while Redis and supplied custom stores default to `0` (no
+  expiry). New resource-owning custom stores should implement `close()`; existing
+  `dispose()`-only stores remain compatible.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4), [`ed57b76`](https://github.com/fluojs/fluo/commit/ed57b760ba6f73c38e5a91a77606e4e1c1af74ca), [`78fed4b`](https://github.com/fluojs/fluo/commit/78fed4bf1fcfd8c6a00c616d87131ec7b92b1a92), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`30e2295`](https://github.com/fluojs/fluo/commit/30e229563ce56fe20b82fd978883d248f57acd66), [`5ad001e`](https://github.com/fluojs/fluo/commit/5ad001ecf0bb091a1447930ede22be2e0a17078a), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686), [`146d6a0`](https://github.com/fluojs/fluo/commit/146d6a072e9027a83cb908905047be2f3334d049)]:
+  - @fluojs/core@2.1.1
+  - @fluojs/di@3.1.1
+  - @fluojs/runtime@3.1.1
+  - @fluojs/http@3.1.1
+
 ## 2.1.0
 
 ### Minor Changes

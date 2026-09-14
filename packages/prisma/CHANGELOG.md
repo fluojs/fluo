@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+## 2.1.1
+
+### Patch Changes
+
+- [#3794](https://github.com/fluojs/fluo/pull/3794) [`5e37b00`](https://github.com/fluojs/fluo/commit/5e37b00bf59315ae17a942e7edd2fcd02815d0d2) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate Prisma registration under `PrismaModule.forRoot(...)` and `PrismaModule.forRootAsync(...)`, with the module-owned `PrismaService` facade as the single injection path.
+
+  **Breaking migration:** `PrismaService.createFacade(...)` and `PrismaTransactionInterceptor` are removed. Register Prisma through `PrismaModule`, inject `PrismaService` (typed as `PrismaServiceFacade<TClient>` where generated delegates are used), and replace interceptor registrations with an application-owned `requestTransaction(...)` boundary that forwards the request `AbortSignal`.
+
+- [#3795](https://github.com/fluojs/fluo/pull/3795) [`78fed4b`](https://github.com/fluojs/fluo/commit/78fed4bf1fcfd8c6a00c616d87131ec7b92b1a92) Thanks [@ayden94](https://github.com/ayden94)! - Unify transaction boundary errors through `@fluojs/core`, so `AfterCommitError`,
+  `AfterCommitCapabilityError`, and Result rollback errors retain one runtime identity
+  when imported from any ORM package. Driver-specific rollback observers and Mongoose
+  session-cleanup errors remain package-owned.
+
+  Prisma now supports the canonical explicit-target form
+  `@Transaction((self) => self.prisma, nativeOptions, boundary)`. Prisma and Drizzle
+  normal usage should select the wrapper first, then pass driver-native options, then
+  the Fluo boundary policy; Mongoose uses
+  `@Transaction((self) => self.conn, boundary)` because it has no decorator-native
+  options. Existing no-argument discovery remains only as legacy single-target
+  compatibility. Migrate it to an accessor before registering another database or ORM
+  to prevent selecting the wrong transaction owner.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4), [`78fed4b`](https://github.com/fluojs/fluo/commit/78fed4bf1fcfd8c6a00c616d87131ec7b92b1a92), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`30e2295`](https://github.com/fluojs/fluo/commit/30e229563ce56fe20b82fd978883d248f57acd66), [`5ad001e`](https://github.com/fluojs/fluo/commit/5ad001ecf0bb091a1447930ede22be2e0a17078a), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686)]:
+  - @fluojs/core@2.1.1
+  - @fluojs/di@3.1.1
+  - @fluojs/http@3.1.1
+
 ## 2.1.0
 
 ### Minor Changes
