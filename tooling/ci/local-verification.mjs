@@ -88,7 +88,7 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
     ...(cleanDist ? [command('clean-dist', ['-r', '--filter', './packages/*', 'exec', 'node', '../../tooling/scripts/clean-dist.mjs'])] : []),
     command('build', ['build']),
     command('typecheck', ['typecheck']),
-    command('test', ['test']),
+    command('test', ['test:verify']),
     command('lint', ['lint']),
     command('platform-governance', ['verify:platform-consistency-governance']),
   ];

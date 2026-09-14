@@ -26,7 +26,7 @@ test('plans frozen install before build, typecheck, tests, lint, and governance'
 
   assert.deepEqual(
     plan.commands.map((command) => command.argv.slice(0, 2).join(' ')),
-    ['install --frozen-lockfile', '-r --filter', 'build', 'typecheck', 'test', 'lint', 'verify:platform-consistency-governance', 'test:verify'],
+    ['install --frozen-lockfile', '-r --filter', 'build', 'typecheck', 'test:verify', 'lint', 'verify:platform-consistency-governance', 'test:verify'],
   );
   assert.equal(plan.mode, 'scoped');
 });
