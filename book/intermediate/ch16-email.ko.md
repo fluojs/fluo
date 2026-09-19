@@ -43,13 +43,13 @@
 ```typescript
 import { Module } from '@fluojs/core';
 import { EmailModule } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 
 @Module({
   imports: [
     EmailModule.forRoot({
       defaultFrom: 'noreply@fluoshop.com',
-      transport: createNodemailerEmailTransportFactory({
+      transport: NodemailerEmailTransport.createFactory({
         smtp: {
           auth: {
             pass: 'secret',
@@ -67,20 +67,20 @@ import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
 export class AppModule {}
 ```
 
-`EmailModule`은 기본적으로 global입니다. `EmailModule.forRoot(...)` 또는 `EmailModule.forRootAsync(...)`를 한 번 import하면 `EmailService`, `EmailChannel`, `EMAIL`, `EMAIL_CHANNEL`이 애플리케이션 module graph에서 사용할 수 있게 됩니다. 이메일 provider를 반환된 module을 명시적으로 import한 module에만 남겨야 할 때만 `global: false`를 설정합니다.
+`EmailModule`은 기본적으로 global입니다. `EmailModule.forRoot(...)` 또는 `EmailModule.forRootAsync(...)`를 한 번 import하면 `EmailService`, `EmailChannel`, `EMAIL_CHANNEL`이 애플리케이션 module graph에서 사용할 수 있게 됩니다. 이메일 provider를 반환된 module을 명시적으로 import한 module에만 남겨야 할 때만 `global: false`를 설정합니다.
 
 설정이 config service 같은 다른 provider에 의존한다면 fluo async factory 형태를 사용합니다:
 
 ```typescript
 import { ConfigService } from '@fluojs/config';
 import { EmailModule } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 
 EmailModule.forRootAsync({
   inject: [ConfigService],
   useFactory: (config) => ({
     defaultFrom: String(config.getOrThrow('MAIL_FROM')),
-    transport: createNodemailerEmailTransportFactory({
+    transport: NodemailerEmailTransport.createFactory({
       smtp: {
         auth: {
           pass: String(config.getOrThrow('SMTP_PASSWORD')),
@@ -109,10 +109,10 @@ Node.js 환경에서 SMTP를 사용할 때는 전용 서브패스를 가져옵�
 
 ```typescript
 import { EmailModule } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 
 EmailModule.forRoot({
-  transport: createNodemailerEmailTransportFactory({
+  transport: NodemailerEmailTransport.createFactory({
     smtp: {
       host: 'smtp.fluoshop.com',
       port: 587,
@@ -158,14 +158,14 @@ Chapter 15에서 구성한 알림 오케스트레이션에 이메일을 추가�
 ```typescript
 import { Module } from '@fluojs/core';
 import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 import { NotificationsModule } from '@fluojs/notifications';
 
 @Module({
   imports: [
     EmailModule.forRoot({
       defaultFrom: 'noreply@fluoshop.com',
-      transport: createNodemailerEmailTransportFactory({
+      transport: NodemailerEmailTransport.createFactory({
         smtp: {
           auth: { pass: 'secret', user: 'api-key' },
           host: 'smtp.fluoshop.com',
@@ -198,7 +198,7 @@ import {
   createEmailNotificationsQueueAdapter,
   EmailNotificationsQueueWorker,
 } from '@fluojs/email/queue';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 import { NotificationsModule } from '@fluojs/notifications';
 import { getQueueToken, QueueModule } from '@fluojs/queue';
 
@@ -207,7 +207,7 @@ import { getQueueToken, QueueModule } from '@fluojs/queue';
     QueueModule.forRoot(),
     EmailModule.forRoot({
       defaultFrom: 'noreply@fluoshop.com',
-      transport: createNodemailerEmailTransportFactory({
+      transport: NodemailerEmailTransport.createFactory({
         smtp: {
           auth: { pass: 'secret', user: 'api-key' },
           host: 'smtp.fluoshop.com',
@@ -242,7 +242,7 @@ export class AppModule {}
 
 ```typescript
 import { EmailModule } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 
 EmailModule.forRoot({
   renderer: {
@@ -252,7 +252,7 @@ EmailModule.forRoot({
       return { html: `<h1>안녕하세요 ${String(data.name)}님</h1>`, subject: template };
     },
   },
-  transport: createNodemailerEmailTransportFactory({
+  transport: NodemailerEmailTransport.createFactory({
     smtp: {
       auth: { pass: 'secret', user: 'api-key' },
       host: 'smtp.fluoshop.com',

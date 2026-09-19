@@ -20,7 +20,6 @@ import type {
   NotificationDispatchRequest,
   NotificationDispatchResult,
   NotificationLifecycleEvent,
-  Notifications,
   NotificationsQueueJob,
 } from './types.js';
 
@@ -33,7 +32,7 @@ import type {
  * lifecycle events through the configured publisher seam.
  */
 @Inject(NOTIFICATIONS_OPTIONS, NOTIFICATION_CHANNELS)
-export class NotificationsService implements Notifications {
+export class NotificationsService {
   private readonly channelsByName = new Map<string, NotificationChannel>();
 
   constructor(
@@ -101,7 +100,6 @@ export class NotificationsService implements Notifications {
         const result: NotificationDispatchResult = {
           channel: dispatchNotification.channel,
           deliveryId,
-          queued: true,
           status: 'queued',
         };
 
@@ -130,16 +128,16 @@ export class NotificationsService implements Notifications {
 
     try {
       const delivery = await channel.send(dispatchNotification, { signal: options.signal });
+      const status = delivery.status ?? 'delivered';
       const result: NotificationDispatchResult = {
         channel: dispatchNotification.channel,
         deliveryId: this.normalizeDeliveryId(delivery.externalId, dispatchNotification),
         metadata: delivery.metadata,
-        queued: delivery.status === 'queued',
-        status: delivery.status ?? 'delivered',
+        status,
       };
 
       await this.publishLifecycleEventBestEffort(
-        result.queued ? 'notification.dispatch.queued' : 'notification.dispatch.delivered',
+        status === 'queued' ? 'notification.dispatch.queued' : 'notification.dispatch.delivered',
         dispatchNotification,
         options,
         result.deliveryId,
@@ -226,7 +224,6 @@ export class NotificationsService implements Notifications {
           return {
             channel: notification.channel,
             deliveryId,
-            queued: true,
             status: 'queued' as const,
           };
         });
@@ -272,7 +269,7 @@ export class NotificationsService implements Notifications {
     return {
       failed: failures.length,
       failures,
-      queued: results.filter((result) => result.queued).length,
+        queued: results.filter((result) => result.status === 'queued').length,
       results,
       succeeded: results.length,
     };
@@ -496,7 +493,6 @@ export class NotificationsService implements Notifications {
         const result: NotificationDispatchResult = {
           channel: notification.channel,
           deliveryId,
-          queued: true,
           status: 'queued',
         };
 

@@ -290,7 +290,6 @@ export interface NotificationDispatchResult {
   channel: string;
   deliveryId: string;
   metadata?: Record<string, unknown>;
-  queued: boolean;
   status: NotificationDispatchStatus;
 }
 
@@ -307,35 +306,6 @@ export interface NotificationDispatchBatchResult<TRequest extends NotificationDi
   queued: number;
   results: readonly NotificationDispatchResult[];
   succeeded: number;
-}
-
-/** Facade exposed to application code and the compatibility token. */
-export interface Notifications {
-  /**
-   * Dispatches one notification to a registered channel or the optional queue seam.
-   *
-   * @typeParam TRequest Shared notification request envelope subtype.
-   * @param notification Request envelope identifying the channel and opaque payload.
-   * @param options Optional abort, queue, and lifecycle-publication controls.
-   * @returns A normalized dispatch result describing whether the delivery was queued or completed directly.
-   */
-  dispatch<TRequest extends NotificationDispatchRequest>(
-    notification: TRequest,
-    options?: NotificationDispatchOptions,
-  ): Promise<NotificationDispatchResult>;
-
-  /**
-   * Dispatches multiple notifications in input order with optional tolerant error handling.
-   *
-   * @typeParam TRequest Shared notification request envelope subtype.
-   * @param notifications Ordered notification envelopes to send or enqueue.
-   * @param options Optional queue preference and bulk error-handling controls.
-   * @returns A batch summary containing normalized results and any captured failures.
-   */
-  dispatchMany<TRequest extends NotificationDispatchRequest>(
-    notifications: readonly TRequest[],
-    options?: NotificationDispatchManyOptions,
-  ): Promise<NotificationDispatchBatchResult<TRequest>>;
 }
 
 /** Async registration options for notifications modules that derive config through DI. */

@@ -5,7 +5,6 @@ import { EmailLifecycleError, EmailMessageValidationError } from './errors.js';
 import { createEmailPlatformStatusSnapshot } from './status.js';
 import { EMAIL_OPTIONS } from './tokens.js';
 import type {
-  Email,
   EmailAddress,
   EmailAddressLike,
   EmailMessage,
@@ -109,7 +108,7 @@ function assertMessageContent(message: NormalizedEmailMessage): void {
  * `@fluojs/notifications` envelopes into concrete email messages.
  */
 @Inject(EMAIL_OPTIONS)
-export class EmailService implements Email, OnModuleInit, OnApplicationShutdown {
+export class EmailService implements OnModuleInit, OnApplicationShutdown {
   private lifecycleState: EmailServiceLifecycleState = 'created';
   private bootstrapPromise: Promise<void> | undefined;
   private shutdownPromise: Promise<void> | undefined;

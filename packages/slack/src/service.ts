@@ -7,7 +7,6 @@ import { SLACK_OPTIONS } from './tokens.js';
 import type {
   NormalizedSlackMessage,
   NormalizedSlackModuleOptions,
-  Slack,
   SlackMessage,
   SlackNotificationDispatchRequest,
   SlackSendBatchResult,
@@ -80,7 +79,7 @@ function assertMessageContent(message: NormalizedSlackMessage): void {
  * `@fluojs/notifications` envelopes into concrete Slack messages.
  */
 @Inject(SLACK_OPTIONS)
-export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown {
+export class SlackService implements OnModuleInit, OnApplicationShutdown {
   private readonly inFlightDeliveries = new Set<Promise<unknown>>();
   private initializationPromise: Promise<void> | undefined;
   private lifecycleState: SlackServiceLifecycleState = 'created';
@@ -461,12 +460,6 @@ export class SlackService implements Slack, OnModuleInit, OnApplicationShutdown 
       throw new SlackMessageValidationError(
         'Slack notifications accept exactly one target channel per dispatch. Use `sendMany(...)` for fan-out delivery.',
       );
-    }
-
-    const payloadChannel = normalizeOptionalString(notification.payload.channel);
-
-    if (payloadChannel) {
-      return payloadChannel;
     }
 
     return recipients[0] ?? this.options.defaultChannel;

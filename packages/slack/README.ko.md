@@ -11,7 +11,6 @@ fluo를 위한 webhook-first, transport-agnostic Slack 전달 코어 패키지�
 - [빠른 시작](#빠른-시작)
 - [일반적인 패턴](#일반적인-패턴)
   - [모듈 visibility와 migration boundary](#모듈-visibility와-migration-boundary)
-  - [`createSlackProviders`를 이용한 수동 provider 조합](#createslackproviders를-이용한-수동-provider-조합)
   - [`SlackService`를 이용한 standalone 전달](#slackservice를-이용한-standalone-전달)
   - [`verifyOnModuleInit`을 이용한 bootstrap 검증](#verifyonmoduleinit을-이용한-bootstrap-검증)
   - [`@fluojs/notifications`와의 통합](#fluojs-notifications와의-통합)
@@ -81,41 +80,11 @@ export class DeployNotifier {
 
 ### 모듈 visibility와 migration boundary
 
-`SlackModule.forRoot(...)`와 `SlackModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 이 module은 `SlackService`, `SlackChannel`, `SLACK`, `SLACK_CHANNEL`을 export하며, migrated code에서 해당 provider를 반환된 module을 명시적으로 import한 module에만 보이게 해야 할 때만 `global: false`를 전달합니다. 옵션 이름은 NestJS `isGlobal`이 아니라 `global?: boolean`입니다.
+`SlackModule.forRoot(...)`와 `SlackModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 이 module은 `SlackService`, `SlackChannel`, `SLACK_CHANNEL`을 export하며, migrated code에서 해당 provider를 반환된 module을 명시적으로 import한 module에만 보이게 해야 할 때만 `global: false`를 전달합니다. 옵션 이름은 NestJS `isGlobal`이 아니라 `global?: boolean`입니다.
 
 Async registration은 injected factory 형태인 `SlackModule.forRootAsync({ inject, useFactory, global? })`만 지원합니다. `inject`와 `useFactory`만 소비하며 NestJS `imports`, `useClass`, `useExisting`은 소비하지 않습니다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열한 뒤, `useFactory`에서 최종 Slack option을 반환하세요.
 
-패키지 수준 registration surface는 의도적으로 singleton 중심입니다. `SLACK`과 `SLACK_CHANNEL`은 하나의 설정된 Slack service와 notifications channel을 위한 compatibility token이며, `createSlackProviders(...)`는 수동 module composition에서도 같은 singleton wiring을 재사용합니다. 여러 Slack client가 필요한 애플리케이션은 package-level multi-client registry를 기대하지 말고, 서로 다른 `SlackTransport` 인스턴스를 감싸는 자체 module/provider를 조합하거나 app-owned facade를 노출해야 합니다.
-
-### `createSlackProviders`를 이용한 수동 provider 조합
-
-`createSlackProviders(...)`는 애플리케이션이 `SlackModule.forRoot(...)` 밖에서 동일한 singleton provider 정규화 구성을 재사용해야 할 때 지원되는 manual-composition helper입니다.
-
-```typescript
-import { Module } from '@fluojs/core';
-import { createSlackProviders, createSlackWebhookTransport } from '@fluojs/slack';
-
-@Module({
-  providers: [
-    ...createSlackProviders({
-      defaultChannel: '#ops',
-      notifications: { channel: 'alerts' },
-      transport: createSlackWebhookTransport({
-        fetch: globalThis.fetch.bind(globalThis),
-        webhookUrl: 'https://hooks.slack.com/services/T000/B000/XXXX',
-      }),
-    }),
-  ],
-  exports: [],
-})
-export class SlackProvidersModule {}
-```
-
-Behavioral contract 메모:
-
-- 이 helper는 `SlackModule.forRoot(...)`가 구성하는 `SLACK`, `SLACK_CHANNEL`, `SlackService` wiring을 동일하게 유지합니다.
-- `createSlackProviders(...)`는 trim된 기본 채널, notification 채널 fallback, transport 소유권 기본값을 포함해 `SlackModule.forRoot(...)`와 동일한 옵션 정규화를 적용합니다.
-- 이 helper도 여전히 명시적인 `transport`를 요구하며, 패키지의 runtime-portable·no-implicit-env 계약을 약화시키지 않습니다.
+패키지 수준 registration surface는 의도적으로 singleton 중심입니다. `SLACK_CHANNEL`은 하나의 설정된 notifications channel을 나타내며, 애플리케이션 코드는 직접 provider 전달을 위해 `SlackService`를 주입합니다. 여러 Slack client가 필요한 애플리케이션은 package-level multi-client registry를 기대하지 말고 서로 다른 `SlackTransport` 인스턴스를 감싸는 자체 module/provider를 조합해야 합니다.
 
 ### `SlackService`를 이용한 standalone 전달
 
@@ -247,14 +216,14 @@ export class AppModule {}
 지원하는 notification payload 필드:
 
 - `text`, `blocks`, `attachments`
-- `channel`, `threadTs`, `replyBroadcast`
+- `threadTs`, `replyBroadcast`
 - `username`, `iconEmoji`, `iconUrl`
 - `mrkdwn`, `unfurlLinks`, `unfurlMedia`, `metadata`
 
 Behavioral contract 메모:
 
-- 하나의 notification dispatch는 정확히 하나의 Slack 대상지로 매핑됩니다. `payload.channel` 또는 `recipients`의 단일 항목을 사용해야 합니다.
-- `payload.channel`이 없으면 `SlackService.sendNotification(...)`는 첫 번째 `recipients` 항목을 사용하고, 그것도 없으면 `defaultChannel`로 폴백합니다.
+- 하나의 notification dispatch는 `recipients`의 단일 항목으로 정확히 하나의 Slack 대상지에 매핑됩니다.
+- `recipients`가 없으면 `SlackService.sendNotification(...)`는 `defaultChannel`로 폴백합니다.
 - notification metadata는 전달 전에 payload metadata, dispatch metadata, subject/template marker를 합쳐 구성됩니다.
 - 여러 Slack 대상지로 fan-out이 필요하다면 하나의 multi-recipient dispatch 대신 `sendMany(...)`를 사용해야 합니다.
 
@@ -335,7 +304,7 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - 자격 증명이나 webhook URL을 `process.env`에서 직접 읽는 동작
 - 공유 루트 패키지 경계에 Node 전용 Slack SDK를 내장하는 것
 - webhook helper와 export된 transport 계약 이상으로 하나의 provider 전략을 강제하는 것
-- singleton module/helper surface를 넘어서는 package-level multi-client registry를 제공하는 것
+- singleton module surface를 넘어서는 package-level multi-client registry를 제공하는 것
 - 하나의 dispatch 호출 안에서 multi-channel fan-out을 자동 변환하는 것
 
 이 제한 사항은 런타임 선택, provider capability, rollout 전략이 애플리케이션 경계에서 명시적으로 결정되도록 하기 위한 package contract의 일부입니다.
@@ -347,19 +316,16 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `SlackModule.forRoot(options)` / `SlackModule.forRootAsync(options)`
 - `SlackModuleOptions`
 - `SlackAsyncModuleOptions`
-- `createSlackProviders(options)`
 - `SlackService`
 - `SlackService.send(message, options)`
 - `SlackService.sendMany(messages, options)`
 - `SlackService.sendNotification(notification, options)`
 - `SlackService.createPlatformStatusSnapshot()`
 - `SlackChannel`
-- `SLACK`
 - `SLACK_CHANNEL`
 
-### Service facade와 result 계약
+### Service와 result 계약
 
-- `Slack`
 - `SlackSendOptions`
 - `SlackSendManyOptions`
 - `SlackSendResult`
@@ -405,7 +371,7 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 ## 예제 소스
 
-- `packages/slack/src/module.test.ts`: 모듈 등록, `createSlackProviders(...)` helper coverage, async wiring, webhook transport, notifications integration 예제.
+- `packages/slack/src/module.test.ts`: 모듈 등록, async wiring, webhook transport, notifications integration 예제.
 - `packages/slack/src/lifecycle-regression.test.ts`: Bootstrap verification과 shutdown 순서의 regression coverage.
 - `packages/slack/src/public-surface.test.ts`: 공개 export와 TypeScript 계약 검증 예제.
 - `packages/slack/src/status.test.ts`: health/readiness 계약 예제.

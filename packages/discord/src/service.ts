@@ -5,7 +5,6 @@ import { DiscordMessageValidationError, DiscordTransportError } from './errors.j
 import { createDiscordPlatformStatusSnapshot, type DiscordStatusAdapterInput } from './status.js';
 import { DISCORD_OPTIONS } from './tokens.js';
 import type {
-  Discord,
   DiscordMessage,
   DiscordNotificationDispatchRequest,
   DiscordSendBatchResult,
@@ -89,7 +88,7 @@ type DiscordServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping
  * `@fluojs/notifications` envelopes into concrete Discord messages.
  */
 @Inject(DISCORD_OPTIONS)
-export class DiscordService implements Discord, OnModuleInit, OnApplicationShutdown {
+export class DiscordService implements OnModuleInit, OnApplicationShutdown {
   private readonly acceptedDeliveryPromises = new Set<Promise<unknown>>();
   private lifecycleFailurePhase: DiscordServiceLifecycleFailurePhase | undefined;
   private lifecycleState: DiscordServiceLifecycleState = 'created';
@@ -352,6 +351,10 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
     const payload = notification.payload;
     const rendered = await this.renderNotification(notification, options.signal);
 
+    if (options.signal?.aborted) {
+      throw createAbortError();
+    }
+
     return this.sendAccepted(
       {
         allowedMentions: payload.allowedMentions,
@@ -490,12 +493,6 @@ export class DiscordService implements Discord, OnModuleInit, OnApplicationShutd
   }
 
   private resolveNotificationThreadId(notification: DiscordNotificationDispatchRequest): string | undefined {
-    const payloadThreadId = normalizeOptionalString(notification.payload.threadId);
-
-    if (payloadThreadId) {
-      return payloadThreadId;
-    }
-
     const recipients = notification.recipients?.map((entry) => entry.trim()).filter((entry) => entry.length > 0) ?? [];
 
     if (recipients.length > 1) {

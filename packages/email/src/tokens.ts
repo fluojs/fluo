@@ -1,10 +1,8 @@
 import type { Token } from '@fluojs/core';
 import type { NotificationChannel } from '@fluojs/notifications';
 
-import type { Email, EmailNotificationDispatchRequest, NormalizedEmailModuleOptions } from './types.js';
+import type { EmailNotificationDispatchRequest, NormalizedEmailModuleOptions } from './types.js';
 
-/** Compatibility token for the facade returned by {@link EmailModule.forRoot}. */
-export const EMAIL: Token<Email> = Symbol.for('fluo.email');
 /** Injection token for the channel implementation consumed by `@fluojs/notifications`. */
 export const EMAIL_CHANNEL: Token<NotificationChannel<EmailNotificationDispatchRequest>> = Symbol.for('fluo.email.channel');
 /** Injection token for normalized email module options consumed internally by providers. */

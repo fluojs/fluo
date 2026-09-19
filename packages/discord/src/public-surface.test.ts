@@ -1,6 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
-  Discord,
   DiscordFetchLike,
   DiscordMessage,
   DiscordModuleOptions,
@@ -20,7 +19,6 @@ describe('@fluojs/discord public API surface', () => {
     expect(discordPublicApi).toHaveProperty('createDiscordWebhookTransport');
     expect(discordPublicApi).toHaveProperty('DiscordService');
     expect(discordPublicApi).toHaveProperty('DiscordChannel');
-    expect(discordPublicApi).toHaveProperty('DISCORD');
     expect(discordPublicApi).toHaveProperty('DISCORD_CHANNEL');
     expect(discordPublicApi).toHaveProperty('createDiscordPlatformStatusSnapshot');
     expect(discordPublicApi).toHaveProperty('DiscordConfigurationError');
@@ -32,9 +30,6 @@ describe('@fluojs/discord public API surface', () => {
     expectTypeOf<DiscordMessage>().toHaveProperty('content');
     expectTypeOf<DiscordMessage>().toHaveProperty('embeds');
     expectTypeOf<DiscordTransport>().toHaveProperty('send');
-    expectTypeOf<Discord>().toHaveProperty('send');
-    expectTypeOf<Discord>().toHaveProperty('sendMany');
-    expectTypeOf<Discord>().toHaveProperty('sendNotification');
     expectTypeOf<DiscordModuleOptions>().toHaveProperty('defaultThreadId');
     expectTypeOf<DiscordModuleOptions>().toHaveProperty('transport');
     expectTypeOf<DiscordTransportFactory>().toHaveProperty('create');
@@ -52,6 +47,7 @@ describe('@fluojs/discord public API surface', () => {
 
   it('keeps internal normalized options token hidden from the root barrel', () => {
     expect(discordPublicApi).not.toHaveProperty('createDiscordProviders');
+    expect(discordPublicApi).not.toHaveProperty('DISCORD');
     expect(discordPublicApi).not.toHaveProperty('DISCORD_OPTIONS');
     expect(discordPublicApi).not.toHaveProperty('NormalizedDiscordModuleOptions');
   });

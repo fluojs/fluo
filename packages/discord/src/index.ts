@@ -8,9 +8,8 @@ export { DiscordModule } from './module.js';
 export { DiscordService } from './service.js';
 export { createDiscordPlatformStatusSnapshot } from './status.js';
 export type { DiscordLifecycleState, DiscordPlatformStatusSnapshot, DiscordStatusAdapterInput } from './status.js';
-export { DISCORD, DISCORD_CHANNEL } from './tokens.js';
+export { DISCORD_CHANNEL } from './tokens.js';
 export type {
-  Discord,
   DiscordAllowedMentions,
   DiscordAsyncModuleOptions,
   DiscordAttachment,

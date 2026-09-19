@@ -4,13 +4,10 @@ import { defineModule, type ModuleType } from '@fluojs/runtime';
 
 import { NotificationsConfigurationError } from './errors.js';
 import { NotificationsService } from './service.js';
-import { NOTIFICATIONS, NOTIFICATION_CHANNELS, NOTIFICATIONS_OPTIONS } from './tokens.js';
+import { NOTIFICATION_CHANNELS, NOTIFICATIONS_OPTIONS } from './tokens.js';
 import type {
   NormalizedNotificationsModuleOptions,
   NotificationChannel,
-  NotificationDispatchManyOptions,
-  NotificationDispatchOptions,
-  NotificationDispatchRequest,
   NotificationsAsyncModuleOptions,
   NotificationsModuleOptions,
 } from './types.js';
@@ -71,20 +68,6 @@ function createNotificationsRuntimeProviders(optionsProvider: Provider): Provide
         (options as NormalizedNotificationsModuleOptions).channels as readonly NotificationChannel[],
     },
     NotificationsService,
-    {
-      inject: [NotificationsService],
-      provide: NOTIFICATIONS,
-      useFactory: (service: unknown) => ({
-        dispatch: <TRequest extends NotificationDispatchRequest>(
-          notification: TRequest,
-          options?: NotificationDispatchOptions,
-        ) => (service as NotificationsService).dispatch(notification, options),
-        dispatchMany: <TRequest extends NotificationDispatchRequest>(
-          notifications: readonly TRequest[],
-          options?: NotificationDispatchManyOptions,
-        ) => (service as NotificationsService).dispatchMany(notifications, options),
-      }),
-    },
   ];
 }
 
@@ -99,7 +82,7 @@ function buildNotificationsModule(options: NotificationsModuleOptions): ModuleTy
   class NotificationsRootModuleDefinition {}
 
   return defineModule(NotificationsRootModuleDefinition, {
-    exports: [NotificationsService, NOTIFICATIONS, NOTIFICATION_CHANNELS],
+    exports: [NotificationsService],
     global: options.global ?? true,
     providers: buildNotificationsProviders(options),
   });
@@ -111,7 +94,7 @@ function buildNotificationsModuleAsync(options: NotificationsAsyncModuleOptions)
   const factory = options.useFactory as (...args: unknown[]) => MaybePromise<NotificationsModuleOptions>;
 
   return defineModule(NotificationsAsyncModuleDefinition, {
-    exports: [NotificationsService, NOTIFICATIONS, NOTIFICATION_CHANNELS],
+    exports: [NotificationsService],
     global: options.global ?? true,
     providers: createNotificationsRuntimeProviders({
       inject: options.inject,
@@ -129,7 +112,7 @@ export class NotificationsModule {
    * Registers notifications providers using static options.
    *
    * @param options Static notifications module options including channels and optional queue/event integrations.
-   * @returns A module definition that exports {@link NotificationsService}, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`; exports are global unless `global: false`.
+   * @returns A module definition that exports {@link NotificationsService}; exports are global unless `global: false`.
    * @throws {NotificationsConfigurationError} When channel registrations are duplicated or `queue.bulkThreshold` is not a finite positive integer.
    *
    * @example
@@ -147,7 +130,7 @@ export class NotificationsModule {
    * Registers notifications providers from an async DI factory.
    *
    * @param options Async module options that resolve channels and optional integration seams.
-   * @returns A module definition that resolves async options once per application container and exports {@link NotificationsService}, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS`; exports are global unless `global: false`.
+   * @returns A module definition that resolves async options once per application container and exports {@link NotificationsService}; exports are global unless `global: false`.
    * @throws {NotificationsConfigurationError} During options resolution when channel registrations are duplicated or `queue.bulkThreshold` is not a finite positive integer.
    *
    * @example

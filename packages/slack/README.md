@@ -11,7 +11,6 @@ Webhook-first, transport-agnostic Slack delivery core for fluo. It provides a Ne
 - [Quick Start](#quick-start)
 - [Common Patterns](#common-patterns)
   - [Module visibility and migration boundaries](#module-visibility-and-migration-boundaries)
-  - [Manual provider composition with `createSlackProviders`](#manual-provider-composition-with-createslackproviders)
   - [Standalone delivery with `SlackService`](#standalone-delivery-with-slackservice)
   - [Bootstrap verification with `verifyOnModuleInit`](#bootstrap-verification-with-verifyonmoduleinit)
   - [Integration with `@fluojs/notifications`](#integration-with-fluojs-notifications)
@@ -81,41 +80,11 @@ export class DeployNotifier {
 
 ### Module visibility and migration boundaries
 
-`SlackModule.forRoot(...)` and `SlackModule.forRootAsync(...)` return a global module by default. The module exports `SlackService`, `SlackChannel`, `SLACK`, and `SLACK_CHANNEL`; pass `global: false` only when migrated code needs those providers to remain visible only to modules that explicitly import the returned module. The option is `global?: boolean`, not NestJS `isGlobal`.
+`SlackModule.forRoot(...)` and `SlackModule.forRootAsync(...)` return a global module by default. The module exports `SlackService`, `SlackChannel`, and `SLACK_CHANNEL`; pass `global: false` only when migrated code needs those providers to remain visible only to modules that explicitly import the returned module. The option is `global?: boolean`, not NestJS `isGlobal`.
 
 Async registration supports the injected factory shape only: `SlackModule.forRootAsync({ inject, useFactory, global? })`. It consumes `inject` and `useFactory`, not NestJS `imports`, `useClass`, or `useExisting`. Register dependencies in the application module graph first, list their tokens in `inject`, then return the final Slack options from `useFactory`.
 
-The package-level registration surface is intentionally singleton-oriented. `SLACK` and `SLACK_CHANNEL` are compatibility tokens for the one configured Slack service and notifications channel, and `createSlackProviders(...)` mirrors that same singleton wiring for manual module composition. Applications that need multiple Slack clients should compose their own modules/providers around distinct `SlackTransport` instances or expose app-owned facades instead of expecting a package-level multi-client registry.
-
-### Manual provider composition with `createSlackProviders`
-
-`createSlackProviders(...)` is the supported manual-composition helper when applications need the same singleton provider normalization outside `SlackModule.forRoot(...)`.
-
-```typescript
-import { Module } from '@fluojs/core';
-import { createSlackProviders, createSlackWebhookTransport } from '@fluojs/slack';
-
-@Module({
-  providers: [
-    ...createSlackProviders({
-      defaultChannel: '#ops',
-      notifications: { channel: 'alerts' },
-      transport: createSlackWebhookTransport({
-        fetch: globalThis.fetch.bind(globalThis),
-        webhookUrl: 'https://hooks.slack.com/services/T000/B000/XXXX',
-      }),
-    }),
-  ],
-  exports: [],
-})
-export class SlackProvidersModule {}
-```
-
-Behavioral contract notes:
-
-- The helper preserves the same `SLACK`, `SLACK_CHANNEL`, and `SlackService` wiring that `SlackModule.forRoot(...)` installs.
-- `createSlackProviders(...)` applies the same option normalization as `SlackModule.forRoot(...)`, including trimmed default channels, notification channel fallback, and transport ownership defaults.
-- The helper still requires an explicit `transport`; it does not weaken the package's runtime-portable, no-implicit-env contract.
+The package-level registration surface is intentionally singleton-oriented. `SLACK_CHANNEL` identifies the one configured notifications channel; application code injects `SlackService` for direct provider delivery. Applications that need multiple Slack clients should compose their own modules/providers around distinct `SlackTransport` instances instead of expecting a package-level multi-client registry.
 
 ### Standalone delivery with `SlackService`
 
@@ -247,14 +216,14 @@ export class AppModule {}
 Supported notification payload fields:
 
 - `text`, `blocks`, `attachments`
-- `channel`, `threadTs`, `replyBroadcast`
+- `threadTs`, `replyBroadcast`
 - `username`, `iconEmoji`, `iconUrl`
 - `mrkdwn`, `unfurlLinks`, `unfurlMedia`, `metadata`
 
 Behavioral contract notes:
 
-- One notification dispatch maps to exactly one Slack destination. Use `payload.channel` or a single entry in `recipients`.
-- If `payload.channel` is omitted, `SlackService.sendNotification(...)` uses the first `recipients` entry or falls back to `defaultChannel`.
+- One notification dispatch maps to exactly one Slack destination from a single entry in `recipients`.
+- If `recipients` is omitted, `SlackService.sendNotification(...)` falls back to `defaultChannel`.
 - Notification metadata is merged from payload metadata, dispatch metadata, and subject/template markers before delivery.
 - If a notification needs fan-out across multiple Slack destinations, call `sendMany(...)` instead of one multi-recipient dispatch.
 
@@ -335,7 +304,7 @@ The Slack package intentionally does **not**:
 - read credentials or webhook URLs from `process.env`
 - ship a Node-only Slack SDK inside the shared root package boundary
 - force one provider strategy beyond the webhook-first helper and exported transport contract
-- provide a package-level multi-client registry beyond the singleton module/helper surface
+- provide a package-level multi-client registry beyond the singleton module surface
 - translate one notification into multi-channel fan-out inside a single dispatch call
 
 These limitations are part of the package contract so runtime choice, provider capability, and rollout strategy stay explicit at the application boundary.
@@ -347,19 +316,16 @@ These limitations are part of the package contract so runtime choice, provider c
 - `SlackModule.forRoot(options)` / `SlackModule.forRootAsync(options)`
 - `SlackModuleOptions`
 - `SlackAsyncModuleOptions`
-- `createSlackProviders(options)`
 - `SlackService`
 - `SlackService.send(message, options)`
 - `SlackService.sendMany(messages, options)`
 - `SlackService.sendNotification(notification, options)`
 - `SlackService.createPlatformStatusSnapshot()`
 - `SlackChannel`
-- `SLACK`
 - `SLACK_CHANNEL`
 
-### Service facade and result contracts
+### Service and result contracts
 
-- `Slack`
 - `SlackSendOptions`
 - `SlackSendManyOptions`
 - `SlackSendResult`
@@ -405,7 +371,7 @@ These limitations are part of the package contract so runtime choice, provider c
 
 ## Example Sources
 
-- `packages/slack/src/module.test.ts`: Module registration, `createSlackProviders(...)` helper coverage, async wiring, webhook transport, and notifications integration examples.
+- `packages/slack/src/module.test.ts`: Module registration, async wiring, webhook transport, and notifications integration examples.
 - `packages/slack/src/lifecycle-regression.test.ts`: Bootstrap verification and shutdown ordering regression coverage.
 - `packages/slack/src/public-surface.test.ts`: Public export and TypeScript contract verification.
 - `packages/slack/src/status.test.ts`: Health/readiness contract examples.

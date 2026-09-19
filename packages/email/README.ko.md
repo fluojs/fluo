@@ -111,7 +111,7 @@ export class WelcomeService {
 
 ### 등록 범위와 async factory
 
-`EmailModule.forRoot(...)`와 `EmailModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 한 번 import하면 export된 `EmailService`, `EmailChannel`, `EMAIL`, `EMAIL_CHANNEL` provider가 애플리케이션 module graph에 표시됩니다. 이메일 provider를 반환된 module을 명시적으로 import한 module에만 보이게 해야 할 때만 `global: false`를 전달합니다.
+`EmailModule.forRoot(...)`와 `EmailModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 한 번 import하면 export된 `EmailService`, `EmailChannel`, `EMAIL_CHANNEL` provider가 애플리케이션 module graph에 표시됩니다. 이메일 provider를 반환된 module을 명시적으로 import한 module에만 보이게 해야 할 때만 `global: false`를 전달합니다.
 
 Async 등록은 의도적으로 fluo의 명시적 factory 형태를 사용합니다:
 
@@ -134,9 +134,9 @@ EmailModule.forRootAsync({
 
 ### NestJS mailer 마이그레이션
 
-<!-- fluo-email-nestjs-migration: async=injected-factory->supported;async-negative=imports->unsupported,useClass->unsupported,useExisting->unsupported;ownership=portable->application,node-factory->email-module,nodemailer->caller;delivery=direct->pre-rendered,template->rendered;precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
+<!-- fluo-email-nestjs-migration: async=injected-factory->supported;async-negative=imports->unsupported,useClass->unsupported,useExisting->unsupported;ownership=portable->application,node-factory->email-module,nodemailer->caller;delivery=direct->pre-rendered,template->rendered;precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,NodemailerEmailTransport.createFactory(...),NodemailerEmailTransport.create(...),EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
 
-완전한 NestJS 마이그레이션 경로는 [마이그레이션 맵](../../docs/getting-started/migrate-from-nestjs.ko.md#이메일-transport-ownership-delivery-마이그레이션)에서 시작하세요. 명시적인 transport 경계 하나를 선택합니다. 애플리케이션이 소유한 이식 가능한 `EmailTransport` / `EmailTransportFactory`, `createNodemailerEmailTransportFactory(...)`로 만든 factory 소유 Node SMTP transport, 또는 기존 호출자 소유 Nodemailer transporter를 감싼 `createNodemailerEmailTransport({ transporter })`입니다. 기존 transporter wrapper는 shutdown ownership을 `EmailService`로 넘기지 않습니다.
+완전한 NestJS 마이그레이션 경로는 [마이그레이션 맵](../../docs/getting-started/migrate-from-nestjs.ko.md#이메일-transport-ownership-delivery-마이그레이션)에서 시작하세요. 명시적인 transport 경계 하나를 선택합니다. 애플리케이션이 소유한 이식 가능한 `EmailTransport` / `EmailTransportFactory`, `NodemailerEmailTransport.createFactory(...)`로 만든 factory 소유 Node SMTP transport, 또는 기존 호출자 소유 Nodemailer transporter를 감싼 `NodemailerEmailTransport.create(...)` (예: `NodemailerEmailTransport.create({ transporter })`)입니다. 기존 transporter wrapper는 shutdown ownership을 `EmailService`로 넘기지 않습니다.
 
 Pre-rendered `MailerService.sendMail(...)` 호출은 `EmailService.send(...)`로 대체합니다. 이때 `EmailMessage`에는 delivery field만 넣고 template field는 넣지 않습니다. Template-backed delivery에는 template key와 renderer 전용 `payload.templateData`를 포함한 `EmailService.sendNotification(...)`을 호출하세요. Template과 module renderer가 모두 있을 때만 renderer가 실행되며, 결과는 fallback content이므로 notification `subject`와 payload `text` / `html`이 계속 우선합니다.
 
@@ -149,13 +149,13 @@ NestJS `imports`, `useClass`, `useExisting`, `MailerService` 호환, implicit tr
 ```typescript
 import { Module } from '@fluojs/core';
 import { EmailModule } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 
 @Module({
   imports: [
     EmailModule.forRoot({
       defaultFrom: 'noreply@example.com',
-      transport: createNodemailerEmailTransportFactory({
+      transport: NodemailerEmailTransport.createFactory({
         smtp: {
           auth: {
             pass: 'smtp-password',
@@ -175,9 +175,9 @@ export class AppModule {}
 
 Behavioral contract 메모:
 
-- `createNodemailerEmailTransportFactory(...)`는 Node 전용이며 `@fluojs/email/node`에서만 export됩니다.
+- `NodemailerEmailTransport.createFactory(...)`는 Node 전용이며 `@fluojs/email/node`에서만 export됩니다.
 - 이 factory는 자신이 생성한 Nodemailer transporter 리소스를 소유하므로 `EmailService`가 bootstrap 시 검증하고 shutdown 시 닫을 수 있습니다.
-- `createNodemailerEmailTransport(...)`는 이미 존재하는 Nodemailer transporter를 감싸지만 리소스 소유권은 호출자에게 남깁니다.
+- `NodemailerEmailTransport.create(...)`는 이미 존재하는 Nodemailer transporter를 감싸지만 리소스 소유권은 호출자에게 남깁니다.
 - Nodemailer display-name 주소는 구조화된 address object로 전달되며, newline 문자가 포함되면 provider handoff 전에 거부됩니다.
 - SMTP 자격 증명은 여전히 명시적인 옵션 또는 DI를 통해 들어와야 합니다. 루트 패키지와 Node 서브패스 모두 `process.env`를 직접 읽지 않습니다.
 
@@ -266,7 +266,7 @@ Behavioral contract 메모:
 ```typescript
 import { Module } from '@fluojs/core';
 import { EmailModule, type EmailTemplateRenderer } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 
 const renderer: EmailTemplateRenderer = {
   render({ payload, template }) {
@@ -286,7 +286,7 @@ const renderer: EmailTemplateRenderer = {
     EmailModule.forRoot({
       defaultFrom: 'noreply@example.com',
       renderer,
-      transport: createNodemailerEmailTransportFactory({
+      transport: NodemailerEmailTransport.createFactory({
         smtp: {
           auth: {
             pass: 'smtp-password',
@@ -424,12 +424,10 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `EmailService.sendNotification(notification, options)`
 - `EmailService.createPlatformStatusSnapshot()`
 - `EmailChannel`
-- `EMAIL`
 - `EMAIL_CHANNEL`
 
 ### 계약과 헬퍼
 
-- `Email`: `EMAIL` 호환성 토큰이 노출하는 애플리케이션용 전송 facade이며 address 값이 아닙니다. `EmailService`가 뒷받침하는 `send(...)`, `sendMany(...)`, `sendNotification(...)` 메서드를 제공합니다.
 - `EmailAddress` / `EmailAddressLike`: `EmailService`가 정규화하기 전에 허용하는 구조화 또는 축약 recipient 값입니다.
 - `EmailAttachment`: `EmailMessage.attachments`에서 허용되고 설정된 transport로 전달되는 file attachment payload입니다. `filename`, `content`, 선택적 `contentType` 필드를 포함합니다.
 - `EmailModuleOptions` / `EmailAsyncModuleOptions`: sender 기본값, renderer, lifecycle 검증, transport factory wiring, 최상위 `global` visibility control, async `inject` + `useFactory` 형태를 포함하는 동기/비동기 모듈 등록 계약입니다.
@@ -448,7 +446,7 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 ### 통합 서브패스
 
-- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`, `EmailQueueWorkerOptions`
+- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`
 
 ### 상태 및 에러
 
@@ -462,8 +460,8 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 ### Node 전용 서브패스
 
-- `createNodemailerEmailTransport(...)`
-- `createNodemailerEmailTransportFactory(...)`
+- `NodemailerEmailTransport.create(...)`
+- `NodemailerEmailTransport.createFactory(...)`
 - `NodemailerEmailTransport`
 - `NodemailerTransporter`
 - `NodemailerEmailTransportOptions`
@@ -473,11 +471,11 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 | 런타임 | 서브패스 | export |
 | --- | --- | --- |
-| Node.js | `@fluojs/email/node` | `createNodemailerEmailTransport(...)`, `createNodemailerEmailTransportFactory(...)`, `NodemailerEmailTransport`, `NodemailerTransporter`, `NodemailerEmailTransportOptions`, `NodemailerEmailTransportFactoryOptions` |
+| Node.js | `@fluojs/email/node` | `NodemailerEmailTransport.create(...)`, `NodemailerEmailTransport.createFactory(...)`, `NodemailerEmailTransport`, `NodemailerTransporter`, `NodemailerEmailTransportOptions`, `NodemailerEmailTransportFactoryOptions` |
 
 | 관심사 | 서브패스 | export |
 | --- | --- | --- |
-| queue 기반 notifications 통합 | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`, `EmailQueueWorkerOptions` |
+| queue 기반 notifications 통합 | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` |
 
 ## 관련 패키지
 

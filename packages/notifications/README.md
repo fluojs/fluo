@@ -91,7 +91,7 @@ export class WelcomeService {
 }
 ```
 
-`NotificationsModule.forRoot(...)` and `NotificationsModule.forRootAsync(...)` export `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` as global providers by default. Set `global: false` when these providers should stay visible only to the module that imports the notifications module. Application services should declare dependencies with fluo's class-level `@Inject(...)` decorator so the standard-decorator DI container can resolve the service without parameter decorators.
+`NotificationsModule.forRoot(...)` and `NotificationsModule.forRootAsync(...)` export `NotificationsService` as a global provider by default. Set `global: false` when this service should stay visible only to the module that imports the notifications module. Application services should inject `NotificationsService` with fluo's class-level `@Inject(...)` decorator and call `dispatch(...)` or `dispatchMany(...)`.
 
 Migration boundary: channel registration is value-based, not metadata-based. Do not rely on NestJS provider discovery, `@Injectable()` metadata, or `emitDecoratorMetadata` to register channels. Build `NotificationChannel` objects in application code or return them from `NotificationsModule.forRootAsync({ inject, useFactory, global? })`, then pass them through the `channels` option.
 
@@ -194,9 +194,6 @@ These limitations are part of the package contract so leaf packages can evolve i
 - `NotificationsModule.forRoot(options)` / `NotificationsModule.forRootAsync(options)`
 - `NotificationsService`
 - `NotificationsService.createPlatformStatusSnapshot()`
-- `Notifications`
-- `NOTIFICATIONS`
-- `NOTIFICATION_CHANNELS`
 
 ### Contracts
 

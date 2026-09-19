@@ -2971,18 +2971,20 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
     'cache-manager package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep canonical synchronous and async registration discoverable together.',
   );
   assert(
-    packageSurface.includes('createSlackProviders(...)') &&
-      docsContext.includes('packages/slack/README.md') &&
+    docsContext.includes('packages/slack/README.md') &&
+      docsContext.includes('SlackService') &&
+      docsContext.includes('SLACK_CHANNEL') &&
       docsContext.includes('abort-signal propagation') &&
       docsContext.includes('platform status snapshots'),
-    'docs/CONTEXT.md must keep Slack manual provider composition, abort propagation, and status snapshot guidance discoverable when package-surface.md documents createSlackProviders(...).',
+    'docs/CONTEXT.md must keep SlackService, SLACK_CHANNEL, abort propagation, and status snapshot guidance discoverable.',
   );
   assert(
-    packageSurfaceKo.includes('createSlackProviders(...)') &&
-      docsContextKo.includes('packages/slack/README.ko.md') &&
+    docsContextKo.includes('packages/slack/README.ko.md') &&
+      docsContextKo.includes('SlackService') &&
+      docsContextKo.includes('SLACK_CHANNEL') &&
       docsContextKo.includes('abort-signal 전파') &&
       docsContextKo.includes('platform status snapshot'),
-    'docs/CONTEXT.ko.md must keep Slack manual provider composition, abort propagation, and status snapshot guidance discoverable when package-surface.ko.md documents createSlackProviders(...).',
+    'docs/CONTEXT.ko.md must keep SlackService, SLACK_CHANNEL, abort propagation, and status snapshot guidance discoverable.',
   );
   assert(
     packageSurface.includes('NotificationsModule.forRootAsync({ inject, useFactory, global? })') &&

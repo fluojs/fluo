@@ -14,13 +14,11 @@ import {
 } from './errors.js';
 import { NotificationsModule } from './module.js';
 import { NotificationsService } from './service.js';
-import { NOTIFICATION_CHANNELS, NOTIFICATIONS } from './tokens.js';
 import type {
   NotificationChannel,
   NotificationDispatchRequest,
   NotificationDispatchResult,
   NotificationLifecycleEvent,
-  Notifications,
   NotificationsEventPublisher,
   NotificationsQueueAdapter,
   NotificationsQueueJob,
@@ -234,7 +232,6 @@ describe('NotificationsModule', () => {
 
       await expect(probe.send()).resolves.toMatchObject({
         deliveryId: 'global-delivery',
-        queued: false,
         status: 'delivered',
       });
       expect(deliveries).toEqual(['global-visible']);
@@ -286,7 +283,6 @@ describe('NotificationsModule', () => {
 
       await expect(probe.send()).resolves.toMatchObject({
         deliveryId: 'local-delivery',
-        queued: false,
         status: 'delivered',
       });
       expect(deliveries).toEqual(['local-visible']);
@@ -327,26 +323,18 @@ describe('NotificationsModule', () => {
     );
   });
 
-  it('makes async default global providers and tokens visible through a real testing module graph', async () => {
+  it('makes the async default-global service visible through a real testing module graph', async () => {
     const deliveries: string[] = [];
 
-    @Inject(NOTIFICATIONS, NOTIFICATION_CHANNELS)
-    class RootNotificationsTokenProbe {
-      constructor(
-        private readonly notifications: Notifications,
-        private readonly channels: readonly NotificationChannel[],
-      ) {}
+    @Inject(NotificationsService)
+    class RootNotificationsServiceProbe {
+      constructor(private readonly notifications: NotificationsService) {}
 
-      async send(): Promise<{ channelNames: readonly string[]; result: NotificationDispatchResult }> {
-        const result = await this.notifications.dispatch({
+      send(): Promise<NotificationDispatchResult> {
+        return this.notifications.dispatch({
           channel: 'email',
           payload: { template: 'async-global-visible' },
         });
-
-        return {
-          channelNames: this.channels.map((channel) => channel.channel),
-          result,
-        };
       }
     }
 
@@ -372,7 +360,7 @@ describe('NotificationsModule', () => {
 
     @Module({
       imports: [NotificationsOwnerModule],
-      providers: [RootNotificationsTokenProbe],
+      providers: [RootNotificationsServiceProbe],
     })
     class AppModule {}
 
@@ -380,13 +368,11 @@ describe('NotificationsModule', () => {
 
     await withCleanup(async (defer) => {
       defer(() => testingModule.container.dispose());
-      const probe = await testingModule.resolve<RootNotificationsTokenProbe>(RootNotificationsTokenProbe);
+      const probe = await testingModule.resolve<RootNotificationsServiceProbe>(RootNotificationsServiceProbe);
       const dispatch = await probe.send();
 
-      expect(dispatch.channelNames).toEqual(['email']);
-      expect(dispatch.result).toMatchObject({
+      expect(dispatch).toMatchObject({
         deliveryId: 'async-global-delivery',
-        queued: false,
         status: 'delivered',
       });
       expect(deliveries).toEqual(['async-global-visible']);
@@ -394,9 +380,9 @@ describe('NotificationsModule', () => {
   });
 
   it('keeps async module-local providers hidden from sibling/root providers in a real testing module graph', async () => {
-    @Inject(NOTIFICATIONS)
-    class RootNotificationsTokenProbe {
-      constructor(readonly notifications: Notifications) {}
+    @Inject(NotificationsService)
+    class RootNotificationsServiceProbe {
+      constructor(readonly notifications: NotificationsService) {}
     }
 
     @Module({
@@ -420,12 +406,12 @@ describe('NotificationsModule', () => {
 
     @Module({
       imports: [NotificationsOwnerModule],
-      providers: [RootNotificationsTokenProbe],
+      providers: [RootNotificationsServiceProbe],
     })
     class AppModule {}
 
     await expect(Test.createTestingModule({ rootModule: AppModule }).compile()).rejects.toThrow(
-      /not visible through a global module|NOTIFICATIONS/,
+      /not visible through a global module|NotificationsService/,
     );
   });
 
@@ -462,7 +448,6 @@ describe('NotificationsModule', () => {
       channel: 'email',
       deliveryId: 'delivery-1',
       metadata: { provider: 'email' },
-      queued: false,
       status: 'delivered',
     });
     expect(deliveries).toEqual([
@@ -531,7 +516,6 @@ describe('NotificationsModule', () => {
     await expect(service.sendWelcomeEmail('user@example.com')).resolves.toMatchObject({
       channel: 'email',
       deliveryId: 'welcome-1',
-      queued: false,
       status: 'delivered',
     });
     expect(deliveries).toEqual(['user@example.com']);
@@ -561,7 +545,7 @@ describe('NotificationsModule', () => {
     const service = await container.resolve(NotificationsService);
     const result = await service.dispatch({ channel: 'email', payload: { template: 'single' } });
 
-    expect(result).toMatchObject({ deliveryId: 'direct-1', queued: false, status: 'delivered' });
+    expect(result).toMatchObject({ deliveryId: 'direct-1', status: 'delivered' });
     expect(deliveries).toEqual(['direct']);
     expect(queue.jobs).toHaveLength(0);
   });
@@ -588,7 +572,7 @@ describe('NotificationsModule', () => {
     const service = await container.resolve(NotificationsService);
     const result = await service.dispatch({ channel: 'email', payload: { template: 'single' } }, { queue: true });
 
-    expect(result).toMatchObject({ deliveryId: 'queued:1', queued: true, status: 'queued' });
+    expect(result).toMatchObject({ deliveryId: 'queued:1', status: 'queued' });
     expect(queue.jobs).toHaveLength(1);
     expectGeneratedQueueJobId(queue.jobs[0]?.id);
     expect(queue.jobs[0]).toMatchObject({
@@ -753,7 +737,7 @@ describe('NotificationsModule', () => {
     const service = await container.resolve(NotificationsService);
     const result = await service.dispatch({ channel: 'email', payload: { template: 'single-direct' } }, { queue: false });
 
-    expect(result).toMatchObject({ deliveryId: 'direct-disabled-queue', queued: false, status: 'delivered' });
+    expect(result).toMatchObject({ deliveryId: 'direct-disabled-queue', status: 'delivered' });
     expect(deliveries).toEqual(['single-direct']);
     expect(queue.jobs).toHaveLength(0);
   });
@@ -884,7 +868,6 @@ describe('NotificationsModule', () => {
         service.dispatch({ channel: 'email', payload: { template: 'queued-owned-by-app' } }, { queue: true }),
       ).resolves.toMatchObject({
         deliveryId: 'queued:1',
-        queued: true,
         status: 'queued',
       });
       expect(queue.jobs).toHaveLength(1);
@@ -940,7 +923,6 @@ describe('NotificationsModule', () => {
         service.dispatch({ channel: 'email', payload: { template: 'queued-owned-by-app' } }, { queue: true }),
       ).resolves.toMatchObject({
         deliveryId: 'queued:1',
-        queued: true,
         status: 'queued',
       });
       expect(queue.jobs).toHaveLength(1);
@@ -1250,17 +1232,13 @@ describe('NotificationsModule', () => {
 
     container.register({ provide: API_KEY as Token<string>, useValue: 'secret-key' }, ...moduleProviders(moduleType));
 
-    const facade = await container.resolve<Notifications>(NOTIFICATIONS);
-    const channels = await container.resolve(NOTIFICATION_CHANNELS);
     const service = await container.resolve(NotificationsService);
 
     await expect(
-      facade.dispatch({ channel: 'slack', payload: { message: 'hello' } }),
-    ).resolves.toMatchObject({ channel: 'slack', deliveryId: 'slack-1', queued: false });
+      service.dispatch({ channel: 'slack', payload: { message: 'hello' } }),
+    ).resolves.toMatchObject({ channel: 'slack', deliveryId: 'slack-1' });
 
     expect(service).toBeInstanceOf(NotificationsService);
-    expect(channels.map((channel: NotificationChannel) => channel.channel)).toEqual(['slack']);
-    expect(Object.isFrozen(channels)).toBe(true);
     expect(factoryCalls).toEqual(['secret-key']);
     expect(deliveries).toEqual(['hello:secret-key']);
     expect(publisher.events.map((event) => event.name)).toEqual([
@@ -1884,7 +1862,6 @@ describe('NotificationsModule', () => {
         {
           channel: 'email',
           deliveryId: 'queued:2',
-          queued: true,
           status: 'queued',
         },
       ]);

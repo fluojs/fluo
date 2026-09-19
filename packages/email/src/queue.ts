@@ -1,14 +1,11 @@
 import { Inject } from '@fluojs/core';
 import type { NotificationsQueueAdapter, NotificationsQueueJob } from '@fluojs/notifications';
-import { QueueWorker, type Queue, type QueueWorkerOptions } from '@fluojs/queue';
+import { QueueWorker, type Queue } from '@fluojs/queue';
 
 import { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
 import { EmailChannel } from './channel.js';
 import { EmailMessageValidationError } from './errors.js';
 import type { EmailNotificationDispatchRequest } from './types.js';
-
-/** Queue worker execution defaults used by the built-in notifications queue integration. */
-export type EmailQueueWorkerOptions = QueueWorkerOptions;
 
 /** Serialized queue payload used by the built-in notifications queue adapter. */
 export class EmailNotificationQueueJob {
