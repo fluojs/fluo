@@ -3872,6 +3872,7 @@ export function enforceHttpAdapterPortabilityDocumentationContract(readText = re
 }
 
 export function enforceOpenApiNullableNormalizationContract() {
+  const rejectionSentinel = '<!-- fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected -->';
   const documentationPaths = [
     'apps/docs/content/docs/guides/http-api.mdx',
     'apps/docs/content/docs/guides/http-api.ko.mdx',
@@ -3890,8 +3891,16 @@ export function enforceOpenApiNullableNormalizationContract() {
   for (const documentationPath of documentationPaths) {
     const documentation = read(documentationPath);
     assert(
-      documentation.includes('OpenAPI 3.1') && documentation.includes('nullable'),
-      `${documentationPath} must keep OpenAPI 3.1 nullable migration rejection discoverable.`,
+      documentation.includes(rejectionSentinel),
+      `${documentationPath} must declare the OpenAPI 3.1 legacy-schema rejection sentinel.`,
+    );
+    assert(
+      ![
+        'accepted legacy `nullable` input',
+        'legacy boolean `exclusiveMinimum`',
+        'legacy boolean `exclusiveMaximum`',
+      ].some((forbidden) => documentation.includes(forbidden)),
+      `${documentationPath} must not claim that legacy OpenAPI schema forms are accepted.`,
     );
   }
 

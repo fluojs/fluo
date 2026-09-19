@@ -130,10 +130,12 @@ projection 규칙일 뿐이며 runtime nested collection traversal은 계속
 `@fluojs/validation`이 담당합니다.
 
 ### OpenAPI 3.1 배타적 경계
-`OpenApiSchemaObject`는 OpenAPI 3.1의 숫자 `exclusiveMinimum` 및 `exclusiveMaximum` 값을 받으면서 기존 boolean metadata와의 호환성도 유지합니다. `minimum` 또는 `maximum`과 함께 사용한 `true` 플래그는 생성 문서에서 대응하는 숫자 배타적 경계로 변환되고, `false` 플래그는 생략되는 대신 포괄 경계는 유지됩니다. 유한한 숫자 배타적 경계는 변경 없이 통과합니다. 유한한 대응 경계가 없는 `true` 플래그나 유한하지 않은 숫자 배타적 경계는 잘못된 OpenAPI 3.1 schema를 생성하는 대신 문서 생성을 실패시킵니다. 같은 정규화는 문서가 노출되기 전에 `documentTransform` 이후에도 실행됩니다.
+`OpenApiSchemaObject`는 유한한 OpenAPI 3.1 숫자 `exclusiveMinimum` 및 `exclusiveMaximum` 값을 받습니다. Legacy boolean `exclusiveMinimum` 및 `exclusiveMaximum` 입력은 untyped `documentTransform`이 넣은 경우를 포함해 거부됩니다.
 
 ### OpenAPI 3.1 Nullable 스키마
-`OpenApiSchemaObject`는 호환성 입력으로 legacy boolean `nullable` keyword를 계속 받지만 생성되는 OpenAPI 3.1 문서에는 이를 내보내지 않습니다. `nullable: true`는 scalar 및 array constraint를 보존하면서 선언된 `type` union에 `null`을 추가합니다. `$ref` schema를 포함해 `type`이 없는 schema는 `{ type: 'null' }`과의 `anyOf` union으로 변환됩니다. `nullable: false`는 schema를 바꾸지 않고 제거됩니다. 기존 null union에는 `null`을 중복 추가하지 않으며, 이 재귀 정규화는 `documentTransform` 뒤에도 실행됩니다.
+`OpenApiSchemaObject`는 legacy `nullable`을 거부합니다. `['string', 'null']` 같은 `type` union 또는 `{ type: 'null' }`을 포함한 `anyOf`를 사용하세요. 이 OpenAPI 3.1 형식은 `documentTransform` 뒤에도 보존됩니다.
+
+<!-- fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected -->
 
 ### 버전 관리 지원
 `@fluojs/http`의 URI 기반 버전 관리를 자동으로 처리합니다. OpenAPI 경로에 해결된 버전 경로가 올바르게 반영됩니다.

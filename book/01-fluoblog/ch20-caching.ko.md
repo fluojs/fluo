@@ -385,7 +385,7 @@ import { CacheInterceptor, CacheTTL } from '@fluojs/cache-manager';
 @CacheTTL(30)
 @RequestDto(ListPostsDto)
 @ApiOperation({ summary: 'List published posts' })
-@ApiResponse(200, { schema: postPageSchema })
+@ApiResponse({ status: 200, schema: postPageSchema })
 list(input: ListPostsDto) {
   return this.feed.list({ limit: input.limit, cursor: input.cursor });
 }

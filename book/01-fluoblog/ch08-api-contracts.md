@@ -48,7 +48,7 @@ Unauthenticated `401` and forbidden `403` are also different contracts. The curr
 
 ## Responses Need Explicit Schemas
 
-The OpenAPI builder reads binding and validation metadata from request DTOs. It does not inspect handler return values or TypeScript return types to infer response bodies. Writing only `@ApiResponse(200, { description: '...' })` creates a description and status, but no body schema. A serialization DTO with `@Expose()` does not remove the need to explicitly declare the response to document.
+The OpenAPI builder reads binding and validation metadata from request DTOs. It does not inspect handler return values or TypeScript return types to infer response bodies. Writing only `@ApiResponse({ status: 200, description: '...' })` creates a description and status, but no body schema. A serialization DTO with `@Expose()` does not remove the need to explicitly declare the response to document.
 
 In this app, we separate serialization DTOs from documentation schemas according to their roles. Output classes serve filters and mappers; OpenAPI declares the exact fields, types, and requiredness of the wire JSON. We could create a component with `type: ResponseDto`, but we do not assume runtime type declarations or serialization decorators can infer every documentation constraint. Explicit schemas for small public responses are easy to compare with actual JSON.
 
@@ -157,9 +157,10 @@ export class PostsController {
 
   @Get()
   @ApiOperation({ summary: 'List published posts' })
-  @ApiResponse(200, {
+  @ApiResponse({
     description: 'Published post summaries.',
     schema: { type: 'array', items: postSummarySchema },
+    status: 200,
   })
   list() {
     return this.posts.listPublished().map(toPostSummary);
@@ -169,8 +170,8 @@ export class PostsController {
   @RequestDto(GetPostDto)
   @ApiOperation({ summary: 'Read one published post' })
   @ApiParam('id', { schema: postIdParameterSchema })
-  @ApiResponse(200, { description: 'Published post.', schema: publicPostSchema })
-  @ApiResponse(404, { description: 'Missing or unpublished post.', schema: errorResponseSchema })
+  @ApiResponse({ status: 200, description: 'Published post.', schema: publicPostSchema })
+  @ApiResponse({ status: 404, description: 'Missing or unpublished post.', schema: errorResponseSchema })
   get(input: GetPostDto) {
     return runPostCommand(() => toPublicPost(this.posts.getPublished(input.id)));
   }
@@ -180,7 +181,7 @@ export class PostsController {
   @RequestDto(CreatePostDto)
   @ApiOperation({ summary: 'Create a draft for the local operator' })
   @ApiBody({ description: 'All three strings are required; empty draft text is allowed.' })
-  @ApiResponse(201, { description: 'Draft created.', schema: postWriteReceiptSchema })
+  @ApiResponse({ status: 201, description: 'Draft created.', schema: postWriteReceiptSchema })
   create(input: CreatePostDto) {
     return runPostCommand(() => toPostWriteReceipt(this.posts.create('author-1', {
       title: input.title, content: input.content, slug: input.slug,
@@ -193,8 +194,8 @@ export class PostsController {
   @ApiOperation({ summary: 'Replace all editable draft text' })
   @ApiParam('id', { schema: postIdParameterSchema })
   @ApiBody({ description: 'Send all text fields and the version last observed.' })
-  @ApiResponse(200, { description: 'Draft updated.', schema: postWriteReceiptSchema })
-  @ApiResponse(409, { description: 'Version or state conflict.', schema: errorResponseSchema })
+  @ApiResponse({ status: 200, description: 'Draft updated.', schema: postWriteReceiptSchema })
+  @ApiResponse({ status: 409, description: 'Version or state conflict.', schema: errorResponseSchema })
   replace(input: ReplacePostDto) {
     return runPostCommand(() => toPostWriteReceipt(
       this.posts.revise(input.id, input.expectedVersion, {
@@ -209,10 +210,11 @@ export class PostsController {
   @ApiOperation({ summary: 'Publish an existing draft' })
   @ApiParam('id', { schema: postIdParameterSchema })
   @ApiBody({ description: 'Publishing checks nonblank text and a unique valid slug.' })
-  @ApiResponse(200, { description: 'Post published.', schema: postWriteReceiptSchema })
-  @ApiResponse(409, {
+  @ApiResponse({ status: 200, description: 'Post published.', schema: postWriteReceiptSchema })
+  @ApiResponse({
     description: 'Version, state, or slug conflict. Read the error code before retrying.',
     schema: errorResponseSchema,
+    status: 409,
   })
   publish(input: PublishPostDto) {
     return runPostCommand(() => toPostWriteReceipt(

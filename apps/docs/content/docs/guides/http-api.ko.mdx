@@ -101,7 +101,9 @@ API contract를 consumer에게 보여줘야 하면 `@fluojs/openapi`를 사용�
 3. OpenAPI docs를 생성하거나 노출합니다.
 4. OpenAPI 페이지를 package docs와 examples에서 연결합니다.
 
-`@fluojs/openapi`는 OpenAPI 3.1 schema를 생성합니다. `type: ['string', 'null']` 같은 JSON Schema null union을 우선 사용하세요. 허용되는 legacy `nullable` 입력은 동등한 type 또는 `anyOf` union으로 정규화되며 문서에는 출력되지 않습니다. Scalar, array, `$ref`, `documentTransform` 동작은 정식 [`@fluojs/openapi` package contract](https://github.com/fluojs/fluo/blob/main/packages/openapi/README.ko.md#openapi-31-nullable-스키마)를 확인하세요.
+`@fluojs/openapi`는 OpenAPI 3.1 schema를 생성합니다. `type: ['string', 'null']` 같은 JSON Schema null union 또는 `{ type: 'null' }`을 포함한 `anyOf`를 사용하세요. Legacy `nullable`과 boolean `exclusiveMinimum` / `exclusiveMaximum` 입력은 `documentTransform` 뒤를 포함해 거부됩니다. 정식 [`@fluojs/openapi` package contract](https://github.com/fluojs/fluo/blob/main/packages/openapi/README.ko.md#openapi-31-nullable-스키마)를 확인하세요.
+
+<!-- fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected -->
 
 ## 패키지 맵
 

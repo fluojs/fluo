@@ -5,6 +5,8 @@
 이 문서는 `@fluojs/openapi`가 구현하는 현재 OpenAPI 문서 생성 계약을 정의합니다.
 breaking API 교체는 짝을 이루는 [OpenAPI 3 마이그레이션 가이드](./openapi-migration.ko.md)를 참고하세요.
 
+<!-- fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected -->
+
 ## 모듈 등록 규칙
 
 | 규칙 | 현재 계약 | 소스 기준 |

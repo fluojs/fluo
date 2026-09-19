@@ -127,10 +127,12 @@ present. These are OpenAPI projection rules only: runtime nested collection
 traversal remains owned by `@fluojs/validation`.
 
 ### OpenAPI 3.1 Exclusive Bounds
-`OpenApiSchemaObject` accepts OpenAPI 3.1 numeric `exclusiveMinimum` and `exclusiveMaximum` values while retaining compatibility with legacy boolean metadata. A `true` flag paired with `minimum` or `maximum` becomes the corresponding numeric exclusive bound in the emitted document, and a `false` flag is omitted while its inclusive bound remains. Finite numeric exclusive bounds pass through unchanged. A `true` flag without a finite paired bound, or a non-finite numeric exclusive bound, fails document generation instead of emitting an invalid OpenAPI 3.1 schema. The same normalization runs after `documentTransform` before the document is exposed.
+`OpenApiSchemaObject` accepts finite OpenAPI 3.1 numeric `exclusiveMinimum` and `exclusiveMaximum` values. Legacy boolean `exclusiveMinimum` and `exclusiveMaximum` inputs are rejected, including when an untyped `documentTransform` introduces them.
 
 ### OpenAPI 3.1 Nullable Schemas
-`OpenApiSchemaObject` continues to accept the legacy boolean `nullable` keyword as compatibility input, but generated OpenAPI 3.1 documents never emit it. `nullable: true` adds `null` to a declared `type` union while preserving scalar and array constraints; schemas without `type`, including `$ref` schemas, become an `anyOf` union with `{ type: 'null' }`. `nullable: false` is removed without changing the schema. Existing null unions are not duplicated, and the recursive normalization also runs after `documentTransform`.
+`OpenApiSchemaObject` rejects legacy `nullable`. Use a `type` union such as `['string', 'null']`, or an `anyOf` branch with `{ type: 'null' }`; those OpenAPI 3.1 forms are preserved after `documentTransform`.
+
+<!-- fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected -->
 
 ### Versioning Support
 Handles URI-based versioning from `@fluojs/http` automatically. Your OpenAPI paths will correctly reflect the resolved versioned routes.

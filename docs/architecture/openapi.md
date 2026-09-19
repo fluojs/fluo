@@ -5,6 +5,8 @@
 This document defines the current OpenAPI document-generation contract implemented by `@fluojs/openapi`.
 For breaking API replacements, see the paired [OpenAPI 3 Migration Guide](./openapi-migration.md).
 
+<!-- fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected -->
+
 ## Module Registration Rules
 
 | Rule | Current contract | Source anchor |

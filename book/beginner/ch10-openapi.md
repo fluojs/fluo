@@ -137,7 +137,7 @@ export class PostsController {
     summary: 'List published posts',
     description: 'Returns posts that are public and visible to every user.' 
   })
-  @ApiResponse(200, { description: 'The post list was loaded successfully.' })
+  @ApiResponse({ status: 200, description: 'The post list was loaded successfully.' })
   @Get('/')
   findAll() {
     return [];
@@ -147,9 +147,9 @@ export class PostsController {
     summary: 'Create a new post',
     description: 'Allows an authenticated author to create a new blog post.' 
   })
-  @ApiResponse(201, { description: 'The post was created successfully.' })
-  @ApiResponse(400, { description: 'Invalid input data.' })
-  @ApiResponse(401, { description: 'Unauthorized. Login is required.' })
+  @ApiResponse({ status: 201, description: 'The post was created successfully.' })
+  @ApiResponse({ status: 400, description: 'Invalid input data.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized. Login is required.' })
   @ApiBearerAuth() // Indicates that this route requires a JWT token.
   @Post('/')
   @RequestDto(CreatePostDto)
@@ -248,6 +248,8 @@ findOne() {
 These small additions are a big help to developers trying to understand the API. Practical examples reduce trial and error, which ultimately helps the team build faster.
 
 OpenAPI 3.1 represents nullable values with JSON Schema unions, such as `type: ['string', 'null']`. Use that form or `anyOf`; legacy `nullable` is rejected, including when added by `documentTransform`. Use finite numeric `exclusiveMinimum` and `exclusiveMaximum` values rather than boolean forms.
+
+<!-- fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected -->
 
 ### Documenting Security Schemas
 
@@ -356,7 +358,7 @@ Following this pattern gives users a clean and organized documentation experienc
 - Documentation Decorators such as `@ApiTag` and `@ApiOperation` provide human context that code alone cannot convey.
 - FluoBlog now exposes machine-readable `/openapi.json` and, because it opts into `ui: true`, a human-readable `/docs` interactive UI; `documentPath` and `uiPath` can separate multiple document instances.
 - Metadata reuse keeps validation rules and DTO shapes synchronized automatically with the documentation.
-- Accepted legacy `nullable` metadata is emitted as valid OpenAPI 3.1 null unions rather than the OpenAPI 3.0-only keyword.
+- Legacy `nullable` metadata is rejected; use an OpenAPI 3.1 null union or `anyOf` instead.
 - Descriptor methods and transformed Path Item keys are validated so runtime-only `ALL` or unknown fields cannot escape into the OpenAPI 3.1 document.
 - Deterministic documentation output helps the API "contract" stay stable and professional.
 - Part 1 is now complete. You have an HTTP API with routing, validation, serialization, protection, and documentation.

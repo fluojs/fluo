@@ -249,6 +249,8 @@ findOne() {
 
 OpenAPI 3.1은 nullable 값을 `type: ['string', 'null']` 같은 JSON Schema union으로 표현합니다. 이 형식 또는 `anyOf`를 사용하세요. legacy `nullable`은 `documentTransform`이 추가한 경우를 포함해 거부됩니다. Boolean 형식 대신 finite numeric `exclusiveMinimum`과 `exclusiveMaximum` 값을 사용하세요.
 
+<!-- fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected -->
+
 ### Documenting Security Schemas
 
 애플리케이션이 일부 경로에는 API 키를 사용하고 다른 경로에는 JWT를 사용하는 등 여러 유형의 인증을 사용하는 경우, 여러 보안 스키마를 정의할 수 있습니다.
@@ -356,7 +358,7 @@ fluo는 HTTP route rule로 이 path들을 정규화합니다. 두 OpenAPI module
 - `@ApiTag`, `@ApiOperation` 같은 문서화 데코레이터는 코드만으로는 전달할 수 없는 인간적인 맥락을 제공합니다.
 - FluoBlog은 이제 기계가 읽는 `/openapi.json`과, `ui: true`로 opt-in했기 때문에 인간이 읽는 `/docs` 인터랙티브 UI를 노출하며, `documentPath`와 `uiPath`로 여러 document instance를 분리할 수 있습니다.
 - 메타데이터 재사용 덕분에 유효성 검사 규칙과 DTO 형태가 문서와 자동으로 동기화됩니다.
-- 허용되는 legacy `nullable` metadata는 OpenAPI 3.0 전용 keyword가 아니라 유효한 OpenAPI 3.1 null union으로 생성됩니다.
+- Legacy `nullable` metadata는 거부되므로 OpenAPI 3.1 null union 또는 `anyOf`를 사용하세요.
 - Descriptor method와 transform된 Path Item key를 검증하여 runtime 전용 `ALL` 또는 알 수 없는 field가 OpenAPI 3.1 문서에 들어가지 못하게 합니다.
 - 결정론적인 문서 출력은 API "계약"이 안정적이고 전문적으로 유지되도록 돕습니다.
 - 이제 Part 1이 끝났습니다. 라우팅, 검증, 직렬화, 보호, 문서화가 완료된 HTTP API를 갖게 되었습니다.
