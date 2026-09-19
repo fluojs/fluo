@@ -394,8 +394,9 @@ function inferNestedSchema(
 }
 
 interface RuleProfile {
-  enumEachRule: Extract<DtoFieldValidationRule, { kind: 'enum' }> | undefined;
-  enumRule: Extract<DtoFieldValidationRule, { kind: 'enum' }> | undefined;
+  enumEachValues: readonly unknown[] | undefined;
+  enumValues: readonly unknown[] | undefined;
+  maxItems: number | undefined;
   hasArrayRule: boolean;
   hasBooleanRule: boolean;
   hasDateRule: boolean;
@@ -410,6 +411,7 @@ interface RuleProfile {
   maxLength: number | undefined;
   maximum: number | undefined;
   minLength: number | undefined;
+  minItems: number | undefined;
   minimum: number | undefined;
   nestedEachRule: Extract<DtoFieldValidationRule, { kind: 'nested' }> | undefined;
   nestedRule: Extract<DtoFieldValidationRule, { kind: 'nested' }> | undefined;
@@ -442,8 +444,9 @@ function resolveValidatorStringFormat(
 
 function createRuleProfile(): RuleProfile {
   return {
-    enumEachRule: undefined,
-    enumRule: undefined,
+    enumEachValues: undefined,
+    enumValues: undefined,
+    maxItems: undefined,
     hasArrayRule: false,
     hasBooleanRule: false,
     hasDateRule: false,
@@ -458,11 +461,16 @@ function createRuleProfile(): RuleProfile {
     maxLength: undefined,
     maximum: undefined,
     minLength: undefined,
+    minItems: undefined,
     minimum: undefined,
     nestedEachRule: undefined,
     nestedRule: undefined,
     stringFormat: undefined,
   };
+}
+
+function intersectEnumValues(current: readonly unknown[] | undefined, next: readonly unknown[]): readonly unknown[] {
+  return current === undefined ? [...next] : current.filter((value) => next.includes(value));
 }
 
 function applyRuleToProfile(profile: RuleProfile, rule: DtoFieldValidationRule): void {
@@ -481,11 +489,11 @@ function applyRuleToProfile(profile: RuleProfile, rule: DtoFieldValidationRule):
     return;
   }
 
-  if (rule.kind === 'enum') {
-    profile.enumRule ??= rule;
-
+  if (rule.kind === 'enum' || rule.kind === 'in') {
     if (rule.each) {
-      profile.enumEachRule ??= rule;
+      profile.enumEachValues = intersectEnumValues(profile.enumEachValues, rule.values);
+    } else {
+      profile.enumValues = intersectEnumValues(profile.enumValues, rule.values);
     }
 
     return;
@@ -542,7 +550,7 @@ function applyRuleToProfile(profile: RuleProfile, rule: DtoFieldValidationRule):
       return;
     }
 
-    profile.minLength = rule.value;
+    profile.minLength = profile.minLength === undefined ? rule.value : Math.max(profile.minLength, rule.value);
     return;
   }
 
@@ -552,7 +560,32 @@ function applyRuleToProfile(profile: RuleProfile, rule: DtoFieldValidationRule):
       return;
     }
 
-    profile.maxLength = rule.value;
+    profile.maxLength = profile.maxLength === undefined ? rule.value : Math.min(profile.maxLength, rule.value);
+    return;
+  }
+
+  if (rule.kind === 'length' && !rule.each) {
+    profile.minLength = profile.minLength === undefined ? rule.min : Math.max(profile.minLength, rule.min);
+
+    if (rule.max !== undefined) {
+      profile.maxLength = profile.maxLength === undefined ? rule.max : Math.min(profile.maxLength, rule.max);
+    }
+
+    return;
+  }
+
+  if (rule.kind === 'arrayNotEmpty' && !rule.each) {
+    profile.minItems = profile.minItems === undefined ? 1 : Math.max(profile.minItems, 1);
+    return;
+  }
+
+  if (rule.kind === 'arrayMinSize' && !rule.each) {
+    profile.minItems = profile.minItems === undefined ? rule.value : Math.max(profile.minItems, rule.value);
+    return;
+  }
+
+  if (rule.kind === 'arrayMaxSize' && !rule.each) {
+    profile.maxItems = profile.maxItems === undefined ? rule.value : Math.min(profile.maxItems, rule.value);
     return;
   }
 
@@ -597,7 +630,7 @@ function inferPrimitiveTypeFromRules(
   context: BuildSchemaContext,
 ): OpenApiSchemaObject | undefined {
   const profile = getRuleProfile(rules);
-  const nestedSchema = inferNestedSchema(profile.nestedRule, context);
+  const nestedSchema = inferNestedSchema(profile.nestedEachRule ?? profile.nestedRule, context);
 
   if (nestedSchema) {
     return nestedSchema;
@@ -607,8 +640,8 @@ function inferPrimitiveTypeFromRules(
     return { items: inferEachItemSchema(rules, context, profile) ?? {}, type: 'array' };
   }
 
-  if (profile.enumRule) {
-    return createEnumSchema(profile.enumRule.values);
+  if (profile.enumValues) {
+    return createEnumSchema(profile.enumValues);
   }
 
   if (profile.hasIntRule) {
@@ -648,8 +681,8 @@ function inferEachItemSchema(
     return createSchemaRef(getDtoSchemaName(resolvedDto, context));
   }
 
-  if (profile.enumEachRule) {
-    return createEnumSchema(profile.enumEachRule.values);
+  if (profile.enumEachValues) {
+    return createEnumSchema(profile.enumEachValues);
   }
 
   if (profile.hasStringRule || profile.hasStringRuleForEach) {
@@ -696,6 +729,16 @@ function applyValidationConstraints(schema: OpenApiSchemaObject, rules: readonly
 
     if (profile.maximum !== undefined) {
       nextSchema.maximum = profile.maximum;
+    }
+  }
+
+  if (nextSchema.type === 'array') {
+    if (profile.minItems !== undefined) {
+      nextSchema.minItems = profile.minItems;
+    }
+
+    if (profile.maxItems !== undefined) {
+      nextSchema.maxItems = profile.maxItems;
     }
   }
 

@@ -10,6 +10,7 @@ import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs
 import { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { behavioralChangedFiles, isNavigationDocument } from './docs-navigation-changes.mjs';
+import { enforceValidationMappedTypesImportBoundary } from './validation-mapped-types-import-boundary.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import {
   emailNestjsMigrationMarkerPrefix,
@@ -4572,6 +4573,7 @@ export async function main() {
   enforceCacheManagerNestjsMigrationDocs();
   enforceCronNestjsMigrationDocs();
   enforceConfigNestjsMigrationDocs();
+  enforceValidationMappedTypesImportBoundary();
   enforceCliMigrationTransformDocs();
   enforceGraphqlAsyncRegistrationContract();
   enforceJwtAsyncRegistrationContract();

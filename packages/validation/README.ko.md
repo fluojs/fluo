@@ -131,7 +131,8 @@ Standard Schema 이슈에서는 값이 없을 수 있습니다.
 ### Mapped DTO 헬퍼
 
 ```ts
-import { IsString, IsEmail, PickType, PartialType } from '@fluojs/validation';
+import { IsString, IsEmail } from '@fluojs/validation';
+import { PickType, PartialType } from '@fluojs/validation/mapped-types';
 
 class UserDto {
   @IsString() name = '';
@@ -146,6 +147,10 @@ Mapped DTO helper는 위와 같은 문서화된 subclassing 패턴에서도 fiel
 validation 및 binding metadata를 보존합니다. `PickType`, `OmitType`,
 `PartialType`은 생략되었거나 optional이 된 필드에 의존할 수 있는 base
 class-level validator를 derived DTO로 전달하지 않습니다.
+이 헬퍼의 유일한 공개 경로는 `@fluojs/validation/mapped-types`이며 root import는
+alias 없이 제거됩니다. 업그레이드 전에 import를 옮기세요. helper identity,
+generic behavior, metadata copy, subclassing, class-rule, nested collision policy는
+그대로 유지됩니다.
 
 `IntersectionType(...)` source가 같은 property에 서로 다른
 `@ValidateNested(...)` target을 선언하면 모든 nested rule이 보존되고 검증됩니다.
@@ -258,8 +263,7 @@ reverse-map 멤버 이름은 값이 아니므로 거부됩니다.
 - **문자열 및 네트워크 데코레이터**: `IsEmail`, `IsUrl`, `IsUUID`, `IsIP`, `IsAlpha`, `IsAlphanumeric`, `IsAscii`, `IsBase64`, `IsBooleanString`, `IsDataURI`, `IsDateString`, `IsDecimal`, `IsFQDN`, `IsHexColor`, `IsHexadecimal`, `IsJSON`, `IsJWT`, `IsLocale`, `IsLowercase`, `IsMagnetURI`, `IsMimeType`, `IsMongoId`, `IsNumberString`, `IsPort`, `IsRFC3339`, `IsSemVer`, `IsUppercase`, `IsISO8601`, `Matches`, `Length`, `MinLength`, `MaxLength`, `Contains`, `NotContains`
 - **숫자, 날짜, 지리, locale 데코레이터**: `Min`, `Max`, `IsPositive`, `IsNegative`, `IsDivisibleBy`, `MinDate`, `MaxDate`, `IsLatitude`, `IsLongitude`, `IsLatLong`, `IsISBN`, `IsISSN`, `IsMobilePhone`, `IsPostalCode`, `IsRgbColor`, `IsCurrency`
 - **배열 데코레이터**: `ArrayContains`, `ArrayNotContains`, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`, `ArrayUnique`
-- **Mapped DTO 헬퍼**: `PickType`, `OmitType`, `PartialType`, `IntersectionType`
-- **Mapped DTO 서브패스**: `@fluojs/validation/mapped-types`
+- **Mapped DTO 헬퍼**: `PickType`, `OmitType`, `PartialType`, `IntersectionType`은 `@fluojs/validation/mapped-types`에서만 제공합니다.
 - **Standard Schema 계약**: schema 타입을 위한 `StandardSchemaV1Like`, 성공한 output parsing을 위한 `parseStandardSchema`, 검증 전용 연동을 위한 `ValidateClass(...)`
 - **검증 흐름**: 실체화 및 검증을 위한 `materialize()`, 단순 검증을 위한 `validate()`
 

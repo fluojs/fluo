@@ -463,7 +463,7 @@ import {
   OmitType,
   PartialType,
   PickType,
-} from '@fluojs/validation';
+} from '@fluojs/validation/mapped-types';
 
 class UpdateUserDto extends PartialType(CreateUserDto) {}
 class PublicUserDto extends OmitType(CreateUserDto, ['address']) {}
@@ -471,7 +471,7 @@ class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {}
 class UserWithAuditDto extends IntersectionType(CreateUserDto, AuditDto) {}
 ```
 
-All four helpers are exported from `@fluojs/validation`; `@fluojs/validation/mapped-types` is also available as the dedicated mapped-type subpath. `PickType`, `OmitType`, and `PartialType` preserve applicable field-level validation and binding metadata but intentionally do not copy base class-level validators, because a subset or optionalized DTO may no longer satisfy those validators' field assumptions. Audit and redeclare any class-level rule that is still valid on the derived DTO. `IntersectionType` preserves field-level and class-level validation from every input DTO because the intersection retains all source contracts. Do not assume NestJS mapped-type class-level metadata behavior carries over implicitly.
+All four helpers are exported only from `@fluojs/validation/mapped-types`; root imports have no compatibility aliases. Migrate `@nestjs/mapped-types` bindings and mapped bindings from `@nestjs/swagger` to that subpath. `PickType`, `OmitType`, and `PartialType` preserve applicable field-level validation and binding metadata but intentionally do not copy base class-level validators, because a subset or optionalized DTO may no longer satisfy those validators' field assumptions. Audit and redeclare any class-level rule that is still valid on the derived DTO. `IntersectionType` preserves field-level and class-level validation from every input DTO because the intersection retains all source contracts. Do not assume NestJS mapped-type class-level metadata behavior carries over implicitly.
 
 ### NestJS Config Registration and Bootstrap Migration
 

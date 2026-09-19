@@ -1,5 +1,17 @@
 import { Controller, createHandlerMapping, FromBody, Get, HttpCode, Post, Produces, RequestDto } from '@fluojs/http';
-import { IsArray, IsEnum, IsOptional, IsString, MinLength, ValidateNested } from '@fluojs/validation';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsEnum,
+  IsIn,
+  IsOptional,
+  IsString,
+  Length,
+  MaxLength,
+  MinLength,
+  ValidateNested,
+} from '@fluojs/validation';
 import { describe, expect, it } from 'vitest';
 
 import { ApiBearerAuth, ApiBody, ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiSecurity, ApiTag } from './decorators.js';
@@ -883,6 +895,92 @@ describe('buildOpenApiDocument', () => {
           },
         },
       },
+    });
+  });
+
+  it('projects combined validation constraints independently of decorator order', () => {
+    class ChildDto {
+      @FromBody('name')
+      @IsString()
+      name = '';
+    }
+
+    enum State {
+      Archived = 'archived',
+      Draft = 'draft',
+      Published = 'published',
+    }
+
+    class ValidationProjectionDto {
+      @FromBody('title')
+      @IsString()
+      @MinLength(3)
+      @MaxLength(6)
+      @Length(4, 5)
+      title = '';
+
+      @FromBody('tags')
+      @IsArray()
+      @IsString({ each: true })
+      @ArrayMaxSize(8)
+      @ArrayMinSize(2)
+      @ArrayMaxSize(5)
+      @ArrayMinSize(4)
+      tags: string[] = [];
+
+      @FromBody('state')
+      @IsEnum(State)
+      @IsIn([State.Draft, State.Published])
+      state = State.Draft;
+
+      @FromBody('children')
+      @ValidateNested(() => ChildDto, { each: true })
+      @ValidateNested(() => ChildDto)
+      children: ChildDto[] = [];
+    }
+
+    @Controller('/validation-projection')
+    class ValidationProjectionController {
+      @RequestDto(ValidationProjectionDto)
+      @Post('/')
+      create() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: ValidationProjectionController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Validation Projection API',
+      version: '1.0.0',
+    });
+
+    expect(document.components?.schemas?.ValidationProjectionDto).toEqual({
+      additionalProperties: false,
+      properties: {
+        children: {
+          items: { $ref: '#/components/schemas/ChildDto' },
+          type: 'array',
+        },
+        state: {
+          enum: ['draft', 'published'],
+          type: 'string',
+        },
+        tags: {
+          items: { type: 'string' },
+          maxItems: 5,
+          minItems: 4,
+          type: 'array',
+        },
+        title: {
+          maxLength: 5,
+          minLength: 4,
+          type: 'string',
+        },
+      },
+      required: ['title', 'tags', 'state', 'children'],
+      type: 'object',
     });
   });
 });

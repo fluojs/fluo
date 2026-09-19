@@ -222,7 +222,7 @@ This keeps the request contract honest: first validate the transport shape, then
 Create DTOs often become the source of update, public, or partial variants. Mapped DTO helpers preserve validation metadata while avoiding manual duplication.
 
 ```ts
-import { OmitType, PartialType, PickType } from '@fluojs/validation';
+import { OmitType, PartialType, PickType } from '@fluojs/validation/mapped-types';
 import { CreatePostDto } from './create-post.dto';
 
 export class UpdatePostDto extends PartialType(CreatePostDto) {}
@@ -232,7 +232,7 @@ export class UpdateTitleDto extends PickType(CreatePostDto, ['title']) {}
 export class PublicCreatePostDto extends OmitType(CreatePostDto, ['published']) {}
 ```
 
-`IntersectionType(A, B)` combines two DTO contracts. The mapped-type helpers are also available from the `@fluojs/validation/mapped-types` subpath.
+`IntersectionType(A, B)` combines two DTO contracts. The mapped-type helpers are available only from the `@fluojs/validation/mapped-types` subpath; root imports have no aliases.
 
 ### Custom rules and Standard Schema
 
@@ -342,7 +342,7 @@ Outside HTTP, obtain the same successful output with `parseStandardSchema(schema
 | Numbers, dates, locale, geo | `Min`, `Max`, `IsPositive`, `IsNegative`, `MinDate`, `MaxDate`, `IsLatitude`, `IsLongitude`, `IsCurrency` |
 | Arrays | `ArrayContains`, `ArrayNotContains`, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`, `ArrayUnique` |
 | Nested and custom rules | `ValidateNested`, `Validate`, `ValidateIf`, `ValidateClass`, `StandardSchemaV1Like` |
-| DTO composition | `PickType`, `OmitType`, `PartialType`, `IntersectionType` |
+| DTO composition | `PickType`, `OmitType`, `PartialType`, `IntersectionType` from `@fluojs/validation/mapped-types` |
 
 ## Response serialization
 

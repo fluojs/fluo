@@ -566,6 +566,7 @@ Studio bridge discoverability는 [`packages/runtime/README.ko.md`](../packages/r
 | NestJS 응답 쿠키 migration과 portable adapter contract 확인 | `docs/getting-started/migrate-from-nestjs.ko.md` | `setCookie`, `clearCookie` 동작은 `packages/http/README.ko.md`에서 확인 |
 | 패키지 계열 조회 또는 런타임 범위 확인 | `docs/reference/package-surface.md` | 선택 로직이 필요하면 `docs/reference/package-chooser.md` |
 | serialization decorator metadata, 상속, NestJS `class-transformer` migration 확인 | `packages/serialization/README.ko.md` | `docs/getting-started/migrate-from-nestjs.ko.md` 및 `docs/contracts/nestjs-parity-gaps.ko.md` |
+| validation mapped DTO import 또는 OpenAPI validation projection 확인 | `packages/validation/README.ko.md` 및 `packages/openapi/README.ko.md` | `@fluojs/validation/mapped-types`, `docs/getting-started/migrate-from-nestjs.ko.md`, `docs/architecture/openapi.ko.md` |
 | i18n ecosystem bridge compatibility와 migration boundary 확인 | `docs/reference/i18n-ecosystem-bridges.ko.md` | third-party bridge 작성 시 `docs/contracts/third-party-extension-contract.ko.md` |
 | behavioral guarantee, Changesets 릴리스 흐름, 버전 정책 확인 | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |
 | 테스트 요구사항과 canonical fluo TDD ladder 확인 | `docs/contracts/testing-guide.md` | `packages/testing/README.md` 및 `book/beginner/ch20-testing.md` |
