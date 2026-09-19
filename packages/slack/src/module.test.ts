@@ -1,18 +1,17 @@
 import { type Constructor, Inject, type Token } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
-import { NOTIFICATION_CHANNELS, NotificationsModule, NotificationsService } from '@fluojs/notifications';
+import { NotificationsModule, NotificationsService } from '@fluojs/notifications';
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SlackChannel } from './channel.js';
 import { SlackConfigurationError, SlackLifecycleError, SlackMessageValidationError, SlackTransportError } from './errors.js';
-import { createSlackProviders, SlackModule } from './module.js';
+import { SlackModule } from './module.js';
 import { SlackService } from './service.js';
-import { SLACK, SLACK_CHANNEL } from './tokens.js';
+import { SLACK_CHANNEL } from './tokens.js';
 import type {
   NormalizedSlackMessage,
-  Slack,
   SlackFetchLike,
   SlackTemplateRenderer,
   SlackTemplateRenderInput,
@@ -227,48 +226,8 @@ describe('SlackModule', () => {
     expect(transportState.closeCalls).toBe(1);
   });
 
-  it('creates helper providers with the same normalized options and facade tokens as SlackModule.forRoot', async () => {
-    const options = {
-      defaultChannel: ' #ops ',
-      notifications: { channel: ' alerts ' },
-      transport: createRecordingTransportFactory(),
-      verifyOnModuleInit: true,
-    };
-    const moduleType = SlackModule.forRoot(options);
-    const helperProviders = createSlackProviders(options);
-    const moduleRuntimeProviders = moduleProviders(moduleType);
-    const helperContainer = new Container();
-
-    expect(helperProviders).toHaveLength(moduleRuntimeProviders.length);
-    expect(helperProviders.map(providerToken)).toEqual(moduleRuntimeProviders.map(providerToken));
-
-    helperContainer.register(...helperProviders);
-
-    const service = await helperContainer.resolve(SlackService);
-    const facade = await helperContainer.resolve<Slack>(SLACK);
-    const channel = await helperContainer.resolve(SlackChannel);
-
-    await service.onModuleInit();
-
-    const result = await facade.send({
-      text: 'helper contract',
-    });
-
-    expect(result.messageTs).toBe('message-1');
-    expect(channel.channel).toBe('alerts');
-    expect(transportState.verifyCalls).toBe(1);
-    expect(transportState.sent[0]).toMatchObject({
-      channel: '#ops',
-      text: 'helper contract',
-    });
-
-    await service.onApplicationShutdown();
-    expect(transportState.closeCalls).toBe(1);
-  });
-
-  it('normalizes missing notification channel fallbacks for module and manual provider registration', async () => {
+  it('normalizes missing notification channel fallbacks through SlackModule.forRoot', async () => {
     const moduleContainer = new Container();
-    const helperContainer = new Container();
 
     moduleContainer.register(
       ...moduleProviders(
@@ -278,23 +237,11 @@ describe('SlackModule', () => {
         }),
       ),
     );
-    helperContainer.register(
-      ...createSlackProviders({
-        defaultChannel: '#ops',
-        notifications: { channel: '   ' },
-        transport: createRecordingTransportFactory(),
-      }),
-    );
-
     const moduleChannel = await moduleContainer.resolve(SlackChannel);
     const moduleChannelToken = await moduleContainer.resolve(SLACK_CHANNEL);
-    const helperChannel = await helperContainer.resolve(SlackChannel);
-    const helperChannelToken = await helperContainer.resolve(SLACK_CHANNEL);
 
     expect(moduleChannel.channel).toBe('slack');
     expect(moduleChannelToken).toBe(moduleChannel);
-    expect(helperChannel.channel).toBe('slack');
-    expect(helperChannelToken).toBe(helperChannel);
   });
 
   it('exposes default-global Slack providers across a real module graph for notifications', async () => {
@@ -347,7 +294,6 @@ describe('SlackModule', () => {
       expect(result).toMatchObject({
         channel: 'alerts',
         deliveryId: 'graph-1',
-        queued: false,
         status: 'delivered',
       });
       expect(transportState.sent[0]).toMatchObject({
@@ -484,7 +430,6 @@ describe('SlackModule', () => {
       expect(result).toMatchObject({
         channel: 'async-alerts',
         deliveryId: 'async-graph-1',
-        queued: false,
         status: 'delivered',
       });
       expect(factoryCalls).toEqual(['async-default-global']);
@@ -568,9 +513,9 @@ describe('SlackModule', () => {
     );
   });
 
-  it('rejects helper-based registration without an explicit transport contract', () => {
+  it('rejects module registration without an explicit transport contract', () => {
     expect(() =>
-      createSlackProviders({
+      SlackModule.forRoot({
         defaultChannel: '#ops',
       } as never),
     ).toThrowError(new SlackConfigurationError('SlackModule requires an explicit `transport` to be configured.'));
@@ -678,7 +623,7 @@ describe('SlackModule', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it('resolves async options once and exposes the compatibility facade and channel token', async () => {
+  it('resolves async options once and exposes the service and channel token', async () => {
     const SLACK_CONFIG = Symbol('slack-config');
     const factoryCalls: string[] = [];
     const container = new Container();
@@ -704,9 +649,9 @@ describe('SlackModule', () => {
     container.register({ provide: SLACK_CONFIG as Token<string>, useValue: '#release' }, ...moduleProviders(moduleType));
 
     await initializeSlackService(container);
-    const facade = await container.resolve<Slack>(SLACK);
+    const service = await container.resolve(SlackService);
     const channel = await container.resolve(SlackChannel);
-    const result = await facade.send({ text: 'Shipped' });
+    const result = await service.send({ text: 'Shipped' });
 
     expect(result.messageTs).toBe('async-1');
     expect(channel.channel).toBe('alerts');
@@ -841,7 +786,6 @@ describe('SlackModule', () => {
 
     await initializeSlackService(container);
     const notifications = await container.resolve(NotificationsService);
-    const channels = await container.resolve(NOTIFICATION_CHANNELS);
     const result = await notifications.dispatch({
       channel: 'alerts',
       metadata: { source: 'ci' },
@@ -854,10 +798,8 @@ describe('SlackModule', () => {
     expect(result).toMatchObject({
       channel: 'alerts',
       deliveryId: 'integration-1',
-      queued: false,
       status: 'delivered',
     });
-    expect(channels.map((channel: { channel: string }) => channel.channel)).toEqual(['alerts']);
     expect(transportState.sent[0]).toMatchObject({
       channel: '#release',
       metadata: {
@@ -1321,7 +1263,7 @@ describe('SlackModule', () => {
     expect(transportState.sent).toHaveLength(0);
   });
 
-  it('prefers payload channel over recipients and default channel for notification routing', async () => {
+  it('uses the envelope recipient over the default channel for notification routing', async () => {
     const container = new Container();
     const moduleType = SlackModule.forRoot({
       defaultChannel: '#default',
@@ -1333,13 +1275,13 @@ describe('SlackModule', () => {
 
     const result = await service.sendNotification({
       channel: 'slack',
-      payload: { channel: ' #payload ', text: 'Route precedence' },
+      payload: { text: 'Route precedence' },
       recipients: ['#recipient'],
     });
 
-    expect(result).toMatchObject({ channel: '#payload', messageTs: 'route-1' });
+    expect(result).toMatchObject({ channel: '#recipient', messageTs: 'route-1' });
     expect(transportState.sent[0]).toMatchObject({
-      channel: '#payload',
+      channel: '#recipient',
       text: 'Route precedence',
     });
   });
@@ -1889,8 +1831,8 @@ describe('SlackModule', () => {
 
     container.register(...moduleProviders(moduleType));
     await initializeSlackService(container);
-    const facade = await container.resolve<Slack>(SLACK);
-    const result = await facade.send({ text: 'Provider transport' });
+    const service = await container.resolve(SlackService);
+    const result = await service.send({ text: 'Provider transport' });
 
     expect(result.ok).toBe(true);
     expect(transport.sent).toEqual(['Provider transport']);

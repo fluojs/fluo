@@ -5927,7 +5927,7 @@ describe('Slack delivery discoverability', () => {
   it('keeps helper, abort, lifecycle, status, verification, and template guidance discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
       expect(content).toContain('@fluojs/slack');
-      expect(content).toContain('createSlackProviders(...)');
+      expect(content).toContain('SlackService');
       expect(content).toContain('verifyOnModuleInit');
       expect(content).toContain('SlackTemplateRenderer');
     }
@@ -5950,7 +5950,6 @@ describe('Slack delivery discoverability', () => {
 
   it('keeps singleton and global module migration boundaries discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
-      expect(content).toContain('SLACK');
       expect(content).toContain('SLACK_CHANNEL');
       expect(content).toContain('global: false');
       expect(content).toContain('singleton');
@@ -6006,7 +6005,6 @@ describe('Discord delivery discoverability', () => {
 
   it('keeps async, global, and internal-provider migration boundaries discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
-      expect(content).toContain('DISCORD');
       expect(content).toContain('DISCORD_CHANNEL');
       expect(content).toContain('global: false');
       expect(content).toContain('private');

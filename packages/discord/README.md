@@ -83,9 +83,9 @@ export class DeployNotifier {
 
 ### Module visibility and migration boundaries
 
-`DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` return a global module by default. The module exports `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL`; pass `global: false` only when migrated code needs those providers to remain visible only to modules that explicitly import the returned module. The option is `global?: boolean`, not NestJS `isGlobal`.
+`DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` return a global module by default. The module exports `DiscordService`, `DiscordChannel`, and `DISCORD_CHANNEL`; pass `global: false` only when migrated code needs those providers to remain visible only to modules that explicitly import the returned module. The option is `global?: boolean`, not NestJS `isGlobal`.
 
-The package-level registration surface is intentionally singleton-oriented. `DISCORD` and `DISCORD_CHANNEL` are compatibility tokens for the one configured Discord service and notifications channel. Applications that need multiple Discord clients should compose app-owned modules/providers around distinct `DiscordTransport` instances or expose app-owned facades instead of importing private provider helpers.
+The package-level registration surface is intentionally singleton-oriented. `DISCORD_CHANNEL` identifies the one configured notifications channel; application code injects `DiscordService` for direct provider delivery. Applications that need multiple Discord clients should compose app-owned modules/providers around distinct `DiscordTransport` instances instead of importing private provider helpers.
 
 ### Standalone delivery with `DiscordService`
 
@@ -174,12 +174,12 @@ Supported notification payload fields:
 
 - `content`, `embeds`, `components`, `attachments`
 - `allowedMentions`, `username`, `avatarUrl`, `tts`
-- `threadId`, `threadName`, `flags`, `poll`, `metadata`
+- `threadName`, `flags`, `poll`, `metadata`
 
 Behavioral contract notes:
 
-- One notification dispatch maps to exactly one Discord thread route. Use `payload.threadId` or a single entry in `recipients`.
-- If `payload.threadId` is omitted, `DiscordService.sendNotification(...)` uses the first `recipients` entry or falls back to `defaultThreadId`.
+- One notification dispatch maps to exactly one Discord thread route from a single entry in `recipients`.
+- If `recipients` is omitted, `DiscordService.sendNotification(...)` falls back to `defaultThreadId`.
 - Notification metadata is merged from payload metadata, dispatch metadata, and template/subject markers. On duplicate keys, dispatch metadata overrides payload metadata, and final `subject` / `template` markers override both. `template` is rendered only when a renderer is configured.
 - Template rendering starts only while the service is ready. The render input includes `signal`, so renderers can stop caller-cancelled work before transport delivery.
 - If a notification workflow needs fan-out across multiple Discord threads, create one concrete Discord message per thread with `DiscordService.sendMany(...)` or issue separate notification dispatches; a single notification dispatch never expands multi-recipient fan-out implicitly.

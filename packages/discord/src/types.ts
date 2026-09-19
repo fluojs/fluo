@@ -271,35 +271,3 @@ export interface NormalizedDiscordModuleOptions {
   verifyOnModuleInit: boolean;
 }
 
-/** Discord facade exposed to application code and the compatibility token. */
-export interface Discord {
-  /**
-   * Sends one Discord message directly through the configured transport.
-   *
-   * @param message Caller-supplied Discord message with content, embeds, or component payloads.
-   * @param options Optional abort signal propagated to the transport.
-   * @returns A normalized delivery receipt describing the transport response.
-   */
-  send(message: DiscordMessage, options?: DiscordSendOptions): Promise<DiscordSendResult>;
-
-  /**
-   * Sends multiple Discord messages in input order with optional tolerant failure handling.
-   *
-   * @param messages Ordered message list to deliver through the configured transport.
-   * @param options Optional tolerant batch controls such as `continueOnError`.
-   * @returns A batch summary containing successes and any captured failures.
-   */
-  sendMany(messages: readonly DiscordMessage[], options?: DiscordSendManyOptions): Promise<DiscordSendBatchResult>;
-
-  /**
-   * Converts one notifications foundation request into a concrete Discord delivery.
-   *
-   * @param notification Shared notification envelope interpreted by the Discord package.
-   * @param options Optional abort signal propagated to rendering and transport work.
-   * @returns A normalized delivery receipt for the resulting Discord message.
-   */
-  sendNotification(
-    notification: DiscordNotificationDispatchRequest,
-    options?: DiscordSendOptions,
-  ): Promise<DiscordSendResult>;
-}

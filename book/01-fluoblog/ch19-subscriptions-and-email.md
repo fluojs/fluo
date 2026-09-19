@@ -510,7 +510,7 @@ export function createSubscriptionsModule(
 +    createSubscriptionsModule({ host: '127.0.0.1', port: 6379 }, new RecordingEmailTransport()),
 ```
 
-Inspect the recording transport instance's messages only in tests; do not log their raw contents. The same port is needed when switching to a production transport. If you choose Node SMTP, `createNodemailerEmailTransportFactory` is available separately in `@fluojs/email/node`. The root import does not configure SMTP automatically.
+Inspect the recording transport instance's messages only in tests; do not log their raw contents. The same port is needed when switching to a production transport. If you choose Node SMTP, `NodemailerEmailTransport.createFactory(...)` is available separately in `@fluojs/email/node`. The root import does not configure SMTP automatically.
 
 The Redis module owns the original Redis connection. Queue creates duplicate connections for BullMQ and closes only its own connections. Workers start after the entire app reaches bootstrap-ready; merely importing a decorated class does not discover it. Register it as a singleton provider as shown above. Once shutdown begins, new enqueue operations are rejected, and each stage of worker close follows the configured timeout budget. EmailService likewise does not accept a new send after shutdown and recreate the transport.
 

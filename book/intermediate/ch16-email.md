@@ -43,13 +43,13 @@ To register the Module, you must provide a transport. This complete Node.js exam
 ```typescript
 import { Module } from '@fluojs/core';
 import { EmailModule } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 
 @Module({
   imports: [
     EmailModule.forRoot({
       defaultFrom: 'noreply@fluoshop.com',
-      transport: createNodemailerEmailTransportFactory({
+      transport: NodemailerEmailTransport.createFactory({
         smtp: {
           auth: {
             pass: 'secret',
@@ -67,20 +67,20 @@ import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
 export class AppModule {}
 ```
 
-`EmailModule` is global by default. After `EmailModule.forRoot(...)` or `EmailModule.forRootAsync(...)` is imported once, `EmailService`, `EmailChannel`, `EMAIL`, and `EMAIL_CHANNEL` are available to the application module graph. Set `global: false` only when you want email providers to remain local to modules that explicitly import the returned module.
+`EmailModule` is global by default. After `EmailModule.forRoot(...)` or `EmailModule.forRootAsync(...)` is imported once, `EmailService`, `EmailChannel`, and `EMAIL_CHANNEL` are available to the application module graph. Set `global: false` only when you want email providers to remain local to modules that explicitly import the returned module.
 
 When configuration depends on another provider such as a config service, use the fluo async factory shape:
 
 ```typescript
 import { ConfigService } from '@fluojs/config';
 import { EmailModule } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 
 EmailModule.forRootAsync({
   inject: [ConfigService],
   useFactory: (config) => ({
     defaultFrom: String(config.getOrThrow('MAIL_FROM')),
-    transport: createNodemailerEmailTransportFactory({
+    transport: NodemailerEmailTransport.createFactory({
       smtp: {
         auth: {
           pass: String(config.getOrThrow('SMTP_PASSWORD')),
@@ -109,10 +109,10 @@ When you use SMTP in a Node.js environment, import the dedicated subpath. This s
 
 ```typescript
 import { EmailModule } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 
 EmailModule.forRoot({
-  transport: createNodemailerEmailTransportFactory({
+  transport: NodemailerEmailTransport.createFactory({
     smtp: {
       host: 'smtp.fluoshop.com',
       port: 587,
@@ -158,14 +158,14 @@ To add email to the notification orchestration configured in Chapter 15, inject 
 ```typescript
 import { Module } from '@fluojs/core';
 import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 import { NotificationsModule } from '@fluojs/notifications';
 
 @Module({
   imports: [
     EmailModule.forRoot({
       defaultFrom: 'noreply@fluoshop.com',
-      transport: createNodemailerEmailTransportFactory({
+      transport: NodemailerEmailTransport.createFactory({
         smtp: {
           auth: { pass: 'secret', user: 'api-key' },
           host: 'smtp.fluoshop.com',
@@ -198,7 +198,7 @@ import {
   createEmailNotificationsQueueAdapter,
   EmailNotificationsQueueWorker,
 } from '@fluojs/email/queue';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 import { NotificationsModule } from '@fluojs/notifications';
 import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
 
@@ -207,7 +207,7 @@ import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
     QueueModule.forRoot(),
     EmailModule.forRoot({
       defaultFrom: 'noreply@fluoshop.com',
-      transport: createNodemailerEmailTransportFactory({
+      transport: NodemailerEmailTransport.createFactory({
         smtp: {
           auth: { pass: 'secret', user: 'api-key' },
           host: 'smtp.fluoshop.com',
@@ -242,7 +242,7 @@ The built-in adapter also carries the deterministic notification queue identity 
 
 ```typescript
 import { EmailModule } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 
 EmailModule.forRoot({
   renderer: {
@@ -252,7 +252,7 @@ EmailModule.forRoot({
       return { html: `<h1>Hello, ${String(data.name)}</h1>`, subject: template };
     },
   },
-  transport: createNodemailerEmailTransportFactory({
+      transport: NodemailerEmailTransport.createFactory({
     smtp: {
       auth: { pass: 'secret', user: 'api-key' },
       host: 'smtp.fluoshop.com',

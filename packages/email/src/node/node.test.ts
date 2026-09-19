@@ -14,11 +14,7 @@ vi.mock('nodemailer', () => ({
 
 import type { NormalizedEmailMessage } from '../types.js';
 import * as nodePublicApi from './node.js';
-import {
-  NodemailerEmailTransport,
-  createNodemailerEmailTransport,
-  createNodemailerEmailTransportFactory,
-} from './node.js';
+import { NodemailerEmailTransport } from './node.js';
 
 function createMessage(): NormalizedEmailMessage {
   return {
@@ -45,8 +41,10 @@ function createMessage(): NormalizedEmailMessage {
 describe('@fluojs/email/node', () => {
   it('exposes the explicit Node-only Nodemailer seam', () => {
     expect(nodePublicApi).toHaveProperty('NodemailerEmailTransport');
-    expect(nodePublicApi).toHaveProperty('createNodemailerEmailTransport');
-    expect(nodePublicApi).toHaveProperty('createNodemailerEmailTransportFactory');
+    expect(NodemailerEmailTransport).toHaveProperty('create');
+    expect(NodemailerEmailTransport).toHaveProperty('createFactory');
+    expect(nodePublicApi).not.toHaveProperty('createNodemailerEmailTransport');
+    expect(nodePublicApi).not.toHaveProperty('createNodemailerEmailTransportFactory');
   });
 
   it('wraps an existing Nodemailer transporter without changing the root transport contract', async () => {
@@ -60,7 +58,7 @@ describe('@fluojs/email/node', () => {
     });
     const verify = vi.fn().mockResolvedValue(true);
     const close = vi.fn();
-    const transport = createNodemailerEmailTransport({
+    const transport = NodemailerEmailTransport.create({
       transporter: {
         close,
         sendMail,
@@ -114,7 +112,7 @@ describe('@fluojs/email/node', () => {
       pending: ['pending-string@example.com', { address: 'pending-structured@example.com', name: 'Pending' }],
       rejected: ['rejected-string@example.com', { address: 'rejected-structured@example.com', name: 'Rejected' }],
     });
-    const transport = createNodemailerEmailTransport({
+    const transport = NodemailerEmailTransport.create({
       transporter: {
         sendMail,
       } as never,
@@ -147,7 +145,7 @@ describe('@fluojs/email/node', () => {
       verify,
     });
 
-    const factory = createNodemailerEmailTransportFactory({
+    const factory = NodemailerEmailTransport.createFactory({
       kind: 'smtp:transactional',
       smtp: {
         auth: { pass: 'secret', user: 'mailer' },
@@ -196,7 +194,7 @@ describe('@fluojs/email/node', () => {
       pending: [],
       rejected: [],
     });
-    const transport = createNodemailerEmailTransport({
+    const transport = NodemailerEmailTransport.create({
       transporter: {
         sendMail,
       } as never,
@@ -225,7 +223,7 @@ describe('@fluojs/email/node', () => {
 
   it('rejects unsafe Nodemailer display names before provider handoff', async () => {
     const sendMail = vi.fn();
-    const transport = createNodemailerEmailTransport({
+    const transport = NodemailerEmailTransport.create({
       transporter: {
         sendMail,
       } as never,

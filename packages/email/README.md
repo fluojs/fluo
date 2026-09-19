@@ -134,9 +134,9 @@ EmailModule.forRootAsync({
 
 ### NestJS mailer migration
 
-<!-- fluo-email-nestjs-migration: async=injected-factory->supported;async-negative=imports->unsupported,useClass->unsupported,useExisting->unsupported;ownership=portable->application,node-factory->email-module,nodemailer->caller;delivery=direct->pre-rendered,template->rendered;precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
+<!-- fluo-email-nestjs-migration: async=injected-factory->supported;async-negative=imports->unsupported,useClass->unsupported,useExisting->unsupported;ownership=portable->application,node-factory->email-module,nodemailer->caller;delivery=direct->pre-rendered,template->rendered;precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,NodemailerEmailTransport.createFactory(...),NodemailerEmailTransport.create(...),EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
 
-For the complete NestJS migration path, start with the [migration map](../../docs/getting-started/migrate-from-nestjs.md#email-transport-ownership-and-delivery-migration). Choose one explicit transport boundary: an application-owned portable `EmailTransport` / `EmailTransportFactory`, the factory-owned Node SMTP transport created by `createNodemailerEmailTransportFactory(...)`, or `createNodemailerEmailTransport({ transporter })` around an existing caller-owned Nodemailer transporter. The existing-transporter wrapper does not transfer shutdown ownership to `EmailService`.
+For the complete NestJS migration path, start with the [migration map](../../docs/getting-started/migrate-from-nestjs.md#email-transport-ownership-and-delivery-migration). Choose one explicit transport boundary: an application-owned portable `EmailTransport` / `EmailTransportFactory`, the factory-owned Node SMTP transport created by `NodemailerEmailTransport.createFactory(...)`, or `NodemailerEmailTransport.create(...)` around an existing caller-owned Nodemailer transporter (via `NodemailerEmailTransport.create({ transporter })`). The existing-transporter wrapper does not transfer shutdown ownership to `EmailService`.
 
 Replace a pre-rendered `MailerService.sendMail(...)` call with `EmailService.send(...)`; its `EmailMessage` carries delivery fields, not template fields. For template-backed delivery, call `EmailService.sendNotification(...)` with a template key and renderer-specific `payload.templateData`. The renderer runs only when both `template` and a module renderer are present; its output is fallback content, so notification `subject` and payload `text` / `html` remain authoritative.
 
@@ -149,13 +149,13 @@ Use the dedicated Node subpath when you want first-party Nodemailer/SMTP deliver
 ```typescript
 import { Module } from '@fluojs/core';
 import { EmailModule } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 
 @Module({
   imports: [
     EmailModule.forRoot({
       defaultFrom: 'noreply@example.com',
-      transport: createNodemailerEmailTransportFactory({
+      transport: NodemailerEmailTransport.createFactory({
         smtp: {
           auth: {
             pass: 'smtp-password',
@@ -175,9 +175,9 @@ export class AppModule {}
 
 Behavioral contract notes:
 
-- `createNodemailerEmailTransportFactory(...)` is Node-only and is exported exclusively from `@fluojs/email/node`.
+- `NodemailerEmailTransport.createFactory(...)` is Node-only and is exported exclusively from `@fluojs/email/node`.
 - The factory owns the Nodemailer transporter it creates, so `EmailService` can verify it on bootstrap and close it during shutdown.
-- `createNodemailerEmailTransport(...)` wraps an existing Nodemailer transporter without transferring resource ownership.
+- `NodemailerEmailTransport.create(...)` wraps an existing Nodemailer transporter without transferring resource ownership.
 - Nodemailer display-name addresses are forwarded as structured address objects and reject newline characters before provider handoff.
 - SMTP credentials still enter through explicit options or DI. Neither the root package nor the Node subpath reads `process.env` directly.
 
@@ -266,7 +266,7 @@ Pass an `EmailTemplateRenderer` together with the required transport when regist
 ```typescript
 import { Module } from '@fluojs/core';
 import { EmailModule, type EmailTemplateRenderer } from '@fluojs/email';
-import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
 
 const renderer: EmailTemplateRenderer = {
   render({ payload, template }) {
@@ -286,7 +286,7 @@ const renderer: EmailTemplateRenderer = {
     EmailModule.forRoot({
       defaultFrom: 'noreply@example.com',
       renderer,
-      transport: createNodemailerEmailTransportFactory({
+      transport: NodemailerEmailTransport.createFactory({
         smtp: {
           auth: {
             pass: 'smtp-password',
@@ -424,12 +424,10 @@ These limitations are part of the package contract so transport selection, templ
 - `EmailService.sendNotification(notification, options)`
 - `EmailService.createPlatformStatusSnapshot()`
 - `EmailChannel`
-- `EMAIL`
 - `EMAIL_CHANNEL`
 
 ### Contracts and helpers
 
-- `Email`: Application-facing sending facade exposed by the `EMAIL` compatibility token, not an address value; it provides `send(...)`, `sendMany(...)`, and `sendNotification(...)` methods backed by `EmailService`.
 - `EmailAddress` / `EmailAddressLike`: Structured or shorthand recipient values accepted by `EmailService` before normalization.
 - `EmailAttachment`: File attachment payload accepted on `EmailMessage.attachments` and forwarded to the configured transport with `filename`, `content`, and optional `contentType` fields.
 - `EmailModuleOptions` / `EmailAsyncModuleOptions`: Synchronous and async module registration contracts, including sender defaults, renderer, lifecycle verification, transport factory wiring, top-level `global` visibility control, and the async `inject` + `useFactory` shape.
@@ -448,7 +446,7 @@ These limitations are part of the package contract so transport selection, templ
 
 ### Integration subpaths
 
-- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`, `EmailQueueWorkerOptions`
+- `@fluojs/email/queue`: `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`
 
 ### Status and errors
 
@@ -462,8 +460,8 @@ These limitations are part of the package contract so transport selection, templ
 
 ### Node-only subpath
 
-- `createNodemailerEmailTransport(...)`
-- `createNodemailerEmailTransportFactory(...)`
+- `NodemailerEmailTransport.create(...)`
+- `NodemailerEmailTransport.createFactory(...)`
 - `NodemailerEmailTransport`
 - `NodemailerTransporter`
 - `NodemailerEmailTransportOptions`
@@ -473,11 +471,11 @@ These limitations are part of the package contract so transport selection, templ
 
 | Runtime | Subpath | Exports |
 | --- | --- | --- |
-| Node.js | `@fluojs/email/node` | `createNodemailerEmailTransport(...)`, `createNodemailerEmailTransportFactory(...)`, `NodemailerEmailTransport`, `NodemailerTransporter`, `NodemailerEmailTransportOptions`, `NodemailerEmailTransportFactoryOptions` |
+| Node.js | `@fluojs/email/node` | `NodemailerEmailTransport.create(...)`, `NodemailerEmailTransport.createFactory(...)`, `NodemailerEmailTransport`, `NodemailerTransporter`, `NodemailerEmailTransportOptions`, `NodemailerEmailTransportFactoryOptions` |
 
 | Concern | Subpath | Exports |
 | --- | --- | --- |
-| Queue-backed notifications integration | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`, `EmailQueueWorkerOptions` |
+| Queue-backed notifications integration | `@fluojs/email/queue` | `createEmailNotificationsQueueAdapter(queue)`, `EmailNotificationQueueJob`, `EmailNotificationsQueueWorker`, `DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS` |
 
 ## Related Packages
 

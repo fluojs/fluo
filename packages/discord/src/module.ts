@@ -5,9 +5,8 @@ import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { DiscordChannel } from './channel.js';
 import { DiscordConfigurationError } from './errors.js';
 import { DiscordService } from './service.js';
-import { DISCORD, DISCORD_CHANNEL, DISCORD_OPTIONS } from './tokens.js';
+import { DISCORD_CHANNEL, DISCORD_OPTIONS } from './tokens.js';
 import type {
-  Discord,
   DiscordAsyncModuleOptions,
   DiscordModuleOptions,
   DiscordTransport,
@@ -55,15 +54,6 @@ function createDiscordRuntimeProviders(optionsProvider: Provider): Provider[] {
     DiscordService,
     DiscordChannel,
     {
-      inject: [DiscordService],
-      provide: DISCORD,
-      useFactory: (service: unknown): Discord => ({
-        send: (message, options) => (service as DiscordService).send(message, options),
-        sendMany: (messages, options) => (service as DiscordService).sendMany(messages, options),
-        sendNotification: (notification, options) => (service as DiscordService).sendNotification(notification, options),
-      }),
-    },
-    {
       inject: [DiscordChannel],
       provide: DISCORD_CHANNEL,
       useFactory: (channel: unknown) => channel,
@@ -88,7 +78,7 @@ function buildDiscordModule(options: DiscordModuleOptions): ModuleType {
   class DiscordRootModuleDefinition {}
 
   return defineModule(DiscordRootModuleDefinition, {
-    exports: [DiscordService, DiscordChannel, DISCORD, DISCORD_CHANNEL],
+    exports: [DiscordService, DiscordChannel, DISCORD_CHANNEL],
     global: options.global ?? true,
     providers: createDiscordProviders(options),
   });
@@ -109,7 +99,7 @@ function buildDiscordModuleAsync(options: DiscordAsyncModuleOptions): ModuleType
   };
 
   return defineModule(DiscordAsyncModuleDefinition, {
-    exports: [DiscordService, DiscordChannel, DISCORD, DISCORD_CHANNEL],
+    exports: [DiscordService, DiscordChannel, DISCORD_CHANNEL],
     global: options.global ?? true,
     providers: createDiscordRuntimeProviders({
       inject: options.inject,
@@ -126,7 +116,7 @@ export class DiscordModule {
    * Registers Discord providers using static options.
    *
    * @param options Static Discord module options including transport wiring and optional template rendering behavior.
-   * @returns A module definition that exports {@link DiscordService}, {@link DiscordChannel}, and compatibility tokens, globally by default unless `global` is `false`.
+   * @returns A module definition that exports {@link DiscordService}, {@link DiscordChannel}, and `DISCORD_CHANNEL`, globally by default unless `global` is `false`.
    *
    * @example
    * ```ts

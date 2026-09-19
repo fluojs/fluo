@@ -510,7 +510,7 @@ export function createSubscriptionsModule(
 +    createSubscriptionsModule({ host: '127.0.0.1', port: 6379 }, new RecordingEmailTransport()),
 ```
 
-기록 transport 인스턴스의 메시지는 테스트에서만 검사하고 원문을 로그에 출력하지 않는다. 운영 transport로 바꿀 때도 같은 포트가 필요하다. Node SMTP를 선택한다면 `@fluojs/email/node`의 `createNodemailerEmailTransportFactory`가 별도로 있고, 루트 import가 SMTP를 자동 설정하지 않는다.
+기록 transport 인스턴스의 메시지는 테스트에서만 검사하고 원문을 로그에 출력하지 않는다. 운영 transport로 바꿀 때도 같은 포트가 필요하다. Node SMTP를 선택한다면 `@fluojs/email/node`의 `NodemailerEmailTransport.createFactory(...)`가 별도로 있고, 루트 import가 SMTP를 자동 설정하지 않는다.
 
 Redis의 원본 연결은 Redis module이 소유한다. Queue는 BullMQ용 duplicate 연결을 만들고 자기 연결만 닫는다. worker는 전체 앱의 bootstrap-ready 이후 시작되며, 단순히 decorated class를 import하는 것만으로 발견되지 않는다. 위처럼 singleton provider로 등록해야 한다. 종료가 시작되면 새 enqueue는 거부되며, worker close의 각 단계는 설정된 timeout budget을 따른다. EmailService도 종료 뒤 새 전송을 받아들여 transport를 다시 만들지 않는다.
 

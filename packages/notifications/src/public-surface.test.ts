@@ -16,7 +16,6 @@ import type {
   NotificationSnapshotSet,
   NotificationSnapshotUrl,
   NotificationSnapshotUrlSearchParams,
-  Notifications,
   NotificationsEventPublisher,
   NotificationsModuleOptions,
   NotificationsQueueAdapter,
@@ -31,8 +30,6 @@ describe('@fluojs/notifications public API surface', () => {
   it('keeps documented supported root-barrel exports stable', () => {
     expect(notificationsPublicApi).toHaveProperty('NotificationsModule');
     expect(notificationsPublicApi).toHaveProperty('NotificationsService');
-    expect(notificationsPublicApi).toHaveProperty('NOTIFICATIONS');
-    expect(notificationsPublicApi).toHaveProperty('NOTIFICATION_CHANNELS');
     expect(notificationsPublicApi).toHaveProperty('createNotificationsPlatformStatusSnapshot');
     expect(notificationsPublicApi).toHaveProperty('NotificationsConfigurationError');
     expect(notificationsPublicApi).toHaveProperty('NotificationChannelNotFoundError');
@@ -65,8 +62,6 @@ describe('@fluojs/notifications public API surface', () => {
       adapter: NotificationsQueueAdapter;
     }>();
     expectTypeOf<NotificationsEventPublisher>().toHaveProperty('publish');
-    expectTypeOf<Notifications>().toHaveProperty('dispatch');
-    expectTypeOf<Notifications>().toHaveProperty('dispatchMany');
     expectTypeOf<NotificationsModuleOptions>().toMatchTypeOf<{
       channels?: readonly NotificationChannel[];
     }>();
@@ -121,6 +116,8 @@ describe('@fluojs/notifications public API surface', () => {
 
   it('hides internal normalized options token from the root barrel', () => {
     expect(notificationsPublicApi).not.toHaveProperty('createNotificationsProviders');
+    expect(notificationsPublicApi).not.toHaveProperty('NOTIFICATIONS');
+    expect(notificationsPublicApi).not.toHaveProperty('NOTIFICATION_CHANNELS');
     expect(notificationsPublicApi).not.toHaveProperty('NOTIFICATIONS_OPTIONS');
     expect(notificationsPublicApi).not.toHaveProperty('NotificationsOperationMode');
   });

@@ -5,9 +5,8 @@ import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { EmailConfigurationError } from './errors.js';
 import { EmailChannel } from './channel.js';
 import { EmailService } from './service.js';
-import { EMAIL, EMAIL_CHANNEL, EMAIL_OPTIONS } from './tokens.js';
+import { EMAIL_CHANNEL, EMAIL_OPTIONS } from './tokens.js';
 import type {
-  Email,
   EmailAddressLike,
   EmailAsyncModuleOptions,
   EmailTransport,
@@ -76,15 +75,6 @@ function createEmailRuntimeProviders(optionsProvider: Provider): Provider[] {
     EmailService,
     EmailChannel,
     {
-      inject: [EmailService],
-      provide: EMAIL,
-      useFactory: (service: unknown): Email => ({
-        send: (message, options) => (service as EmailService).send(message, options),
-        sendMany: (messages, options) => (service as EmailService).sendMany(messages, options),
-        sendNotification: (notification, options) => (service as EmailService).sendNotification(notification, options),
-      }),
-    },
-    {
       inject: [EmailChannel],
       provide: EMAIL_CHANNEL,
       useFactory: (channel: unknown) => channel,
@@ -103,7 +93,7 @@ function buildEmailModule(options: EmailModuleOptions): ModuleType {
   class EmailRootModuleDefinition {}
 
   return defineModule(EmailRootModuleDefinition, {
-    exports: [EmailService, EmailChannel, EMAIL, EMAIL_CHANNEL],
+    exports: [EmailService, EmailChannel, EMAIL_CHANNEL],
     global: options.global ?? true,
     providers: createEmailProviders(options),
   });
@@ -129,7 +119,7 @@ function buildEmailModuleAsync(options: EmailAsyncModuleOptions): ModuleType {
   };
 
   return defineModule(EmailAsyncModuleDefinition, {
-    exports: [EmailService, EmailChannel, EMAIL, EMAIL_CHANNEL],
+    exports: [EmailService, EmailChannel, EMAIL_CHANNEL],
     global: options.global ?? true,
     providers: createEmailRuntimeProviders({
       inject: options.inject,

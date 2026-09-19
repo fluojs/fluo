@@ -91,7 +91,7 @@ export class WelcomeService {
 }
 ```
 
-`NotificationsModule.forRoot(...)`와 `NotificationsModule.forRootAsync(...)`는 기본적으로 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`를 global provider로 export합니다. 이 provider들이 notifications module을 import한 module 안에서만 보이도록 유지하려면 `global: false`를 설정합니다. 애플리케이션 서비스는 fluo의 class-level `@Inject(...)` decorator로 의존성을 선언해야 standard-decorator DI container가 parameter decorator 없이 서비스를 resolve할 수 있습니다.
+`NotificationsModule.forRoot(...)`와 `NotificationsModule.forRootAsync(...)`는 기본적으로 `NotificationsService`를 global provider로 export합니다. 이 service가 notifications module을 import한 module 안에서만 보이도록 유지하려면 `global: false`를 설정합니다. 애플리케이션 서비스는 fluo의 class-level `@Inject(...)` decorator로 `NotificationsService`를 주입하고 `dispatch(...)` 또는 `dispatchMany(...)`를 호출합니다.
 
 Migration boundary: channel registration은 metadata 기반이 아니라 value 기반입니다. NestJS provider discovery, `@Injectable()` metadata, `emitDecoratorMetadata`에 기대어 channel이 등록된다고 가정하지 마세요. 애플리케이션 코드에서 `NotificationChannel` object를 만들거나 `NotificationsModule.forRootAsync({ inject, useFactory, global? })`에서 반환한 뒤, `channels` option으로 전달합니다.
 
@@ -194,9 +194,6 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `NotificationsModule.forRoot(options)` / `NotificationsModule.forRootAsync(options)`
 - `NotificationsService`
 - `NotificationsService.createPlatformStatusSnapshot()`
-- `Notifications`
-- `NOTIFICATIONS`
-- `NOTIFICATION_CHANNELS`
 
 ### 계약(Contracts)
 

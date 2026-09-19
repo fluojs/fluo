@@ -147,9 +147,9 @@ import { DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS } from './constants.js';
 import { EmailNotificationQueueJob, EmailNotificationsQueueWorker, createEmailNotificationsQueueAdapter } from './queue.js';
 import { EmailModule } from './module.js';
 import { EmailService } from './service.js';
-import { EMAIL, EMAIL_OPTIONS } from './tokens.js';
+import { EMAIL_OPTIONS } from './tokens.js';
 import { EmailConfigurationError, EmailLifecycleError, EmailMessageValidationError } from './errors.js';
-import type { Email, EmailTransport, EmailTransportFactory, NormalizedEmailMessage } from './types.js';
+import type { EmailTransport, EmailTransportFactory, NormalizedEmailMessage } from './types.js';
 
 class PartialDeliveryTransport implements EmailTransport {
   async send(): Promise<{ accepted: string[]; messageId: string; pending: string[]; rejected: string[] }> {
@@ -395,7 +395,7 @@ describe('EmailModule', () => {
     expect(asyncMetadata?.global).toBe(false);
   });
 
-  it('normalizes module registration options before exposing facade and channel tokens', async () => {
+  it('normalizes module registration options before exposing service and channel tokens', async () => {
     const options = {
       defaultFrom: ' noreply@example.com ',
       defaultReplyTo: [{ address: ' reply@example.com ', name: 'Support' }],
@@ -408,12 +408,11 @@ describe('EmailModule', () => {
     container.register(...moduleProviders(EmailModule.forRoot(options)));
 
     const service = await container.resolve(EmailService);
-    const facade = await container.resolve<Email>(EMAIL);
     const channel = await container.resolve(EmailChannel);
 
     await service.onModuleInit();
 
-    const result = await facade.send({
+    const result = await service.send({
       subject: 'Module registration',
       text: 'module contract',
       to: ['user@example.com'],
@@ -433,7 +432,7 @@ describe('EmailModule', () => {
     expect(transportState.closeCalls).toBe(1);
   });
 
-  it('resolves async options once and exposes the compatibility facade and channel token', async () => {
+  it('resolves async options once and exposes the service and channel token', async () => {
     const MAIL_HOST = Symbol('mail-host');
     const factoryCalls: string[] = [];
     const container = new Container();
@@ -458,10 +457,10 @@ describe('EmailModule', () => {
 
     container.register({ provide: MAIL_HOST as Token<string>, useValue: 'smtp.local' }, ...moduleProviders(moduleType));
 
-    const facade = await container.resolve<Email>(EMAIL);
+    const service = await container.resolve(EmailService);
     const channel = await container.resolve(EmailChannel);
 
-    const result = await facade.send({
+    const result = await service.send({
       subject: 'Async',
       text: 'factory test',
       to: ['async@example.com'],
@@ -1745,8 +1744,8 @@ describe('EmailModule', () => {
     });
 
     container.register(...moduleProviders(moduleType));
-    const facade = await container.resolve<Email>(EMAIL);
-    const result = await facade.send({
+    const service = await container.resolve(EmailService);
+    const result = await service.send({
       subject: 'Provider transport',
       text: 'hello',
       to: ['provider-user@example.com'],
