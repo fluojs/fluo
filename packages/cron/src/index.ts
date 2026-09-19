@@ -11,8 +11,9 @@ export { SCHEDULING_REGISTRY } from './tokens.js';
 export type {
   CronDistributedOptions,
   CronModuleOptions,
-  CronScheduleOptions,
   CronScheduledJob,
+  CronScheduleOptions,
+  CronScheduler,
   CronShutdownOptions,
   CronTaskDescriptor,
   CronTaskMetadata,

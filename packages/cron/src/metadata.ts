@@ -1,7 +1,7 @@
-import { type MetadataPropertyKey } from '@fluojs/core';
+import type { MetadataPropertyKey } from '@fluojs/core';
 import { ensureSymbolMetadataPolyfill, getStandardConstructorMetadataBag } from '@fluojs/core/internal';
 
-import type { CronTaskMetadata, SchedulingTaskMetadata } from './types.js';
+import type { SchedulingTaskMetadata } from './types.js';
 
 void ensureSymbolMetadataPolyfill();
 

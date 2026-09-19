@@ -97,6 +97,10 @@ export type CronScheduler = (
 
 /** Module configuration accepted by {@link CronModule.forRoot}. */
 export interface CronModuleOptions {
+  /**
+   * Distributed lock configuration for multi-instance scheduling.
+   * Pass an object such as `{ enabled: true }` to configure Redis locking, or omit to keep distributed scheduling disabled.
+   */
   distributed?: CronDistributedOptions;
   /** Whether scheduling providers should be visible globally. Defaults to `false`. */
   global?: boolean;
@@ -184,7 +188,7 @@ export interface SchedulingRegistry {
    * @param name Stable task name used for lookup and distributed lock keys.
    * @param ms Positive interval in milliseconds.
    * @param callback Task body executed on each interval tick.
-   * @param options Optional task hooks, naming overrides, and distributed lock controls.
+   * @param options Optional task hooks and distributed lock controls.
    */
   addInterval(
     name: string,
@@ -198,7 +202,7 @@ export interface SchedulingRegistry {
    * @param name Stable task name used for lookup and distributed lock keys.
    * @param ms Positive delay in milliseconds before the callback runs once.
    * @param callback Task body executed after the delay elapses.
-   * @param options Optional task hooks, naming overrides, and distributed lock controls.
+   * @param options Optional task hooks and distributed lock controls.
    */
   addTimeout(name: string, ms: number, callback: SchedulingTaskCallback, options?: DynamicTimeoutTaskOptions): void;
   /**

@@ -10,7 +10,7 @@ import { getSchedulingTaskMetadataEntries } from './metadata.js';
 import { CronModule, normalizeCronModuleOptions } from './module.js';
 import type { CronLifecycleService } from './service.js';
 import { SCHEDULING_REGISTRY } from './tokens.js';
-import type { CronScheduledJob, CronScheduleOptions, CronScheduler, SchedulingRegistry } from './types.js';
+import type { CronModuleOptions, CronScheduledJob, CronScheduleOptions, CronScheduler, SchedulingRegistry } from './types.js';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -1016,6 +1016,34 @@ describe('@fluojs/cron', () => {
     } finally {
       await closeApplication(app);
     }
+  });
+
+  it('rejects boolean distributed options during module option normalization', () => {
+    expect(() =>
+      normalizeCronModuleOptions({
+        distributed: true as unknown as CronModuleOptions['distributed'],
+      }),
+    ).toThrow('Cron distributed options must be an object when provided.');
+
+    expect(() =>
+      normalizeCronModuleOptions({
+        distributed: false as unknown as CronModuleOptions['distributed'],
+      }),
+    ).toThrow('Cron distributed options must be an object when provided.');
+  });
+
+  it('rejects boolean distributed options when configuring CronModule.forRoot', () => {
+    expect(() =>
+      CronModule.forRoot({
+        distributed: true as unknown as CronModuleOptions['distributed'],
+      }),
+    ).toThrow('Cron distributed options must be an object when provided.');
+
+    expect(() =>
+      CronModule.forRoot({
+        distributed: false as unknown as CronModuleOptions['distributed'],
+      }),
+    ).toThrow('Cron distributed options must be an object when provided.');
   });
 
   it('rejects blank distributed clientName during module option normalization', () => {

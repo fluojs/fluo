@@ -130,7 +130,7 @@ export class CronModule {
    * import { CronModule } from '@fluojs/cron';
    *
    * @Module({
-   *   imports: [CronModule.forRoot({ distributed: true })],
+   *   imports: [CronModule.forRoot({ distributed: { enabled: true } })],
    * })
    * export class AppModule {}
    * ```
