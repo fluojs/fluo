@@ -3872,7 +3872,7 @@ export function enforceHttpAdapterPortabilityDocumentationContract(readText = re
 }
 
 export function enforceOpenApiNullableNormalizationContract() {
-  const rejectionSentinel = '<!-- fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected -->';
+  const rejectionSentinel = 'fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected';
   const documentationPaths = [
     'apps/docs/content/docs/guides/http-api.mdx',
     'apps/docs/content/docs/guides/http-api.ko.mdx',
