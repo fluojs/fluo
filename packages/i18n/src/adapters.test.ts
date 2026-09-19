@@ -3,7 +3,6 @@ import {
   bindLocale,
   createCookieLocaleResolver,
   createHeaderLocalePolicyResolver,
-  createHeaderLocaleResolver,
   createQueryLocaleResolver,
   createStorageLocaleResolver,
   createWeakMapLocaleStore,
@@ -12,7 +11,7 @@ import {
   resolveLocale,
   setAdapterLocale,
 } from './adapters.js';
-import { createAcceptLanguageLocaleResolver, type HttpLocaleResolver, resolveHttpLocale } from './http.js';
+import { createAcceptLanguageLocalePolicyResolver, type HttpLocaleResolver, resolveHttpLocale } from './http.js';
 
 type HttpRequestContext = Parameters<typeof resolveHttpLocale>[0];
 
@@ -70,7 +69,6 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
       'bindLocale',
       'createCookieLocaleResolver',
       'createHeaderLocalePolicyResolver',
-      'createHeaderLocaleResolver',
       'createQueryLocaleResolver',
       'createStorageLocaleResolver',
       'createWeakMapLocaleStore',
@@ -93,7 +91,7 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
       resolvers: [
         createQueryLocaleResolver({ getQueryValue: (ctx) => ctx.query?.locale }),
         createCookieLocaleResolver({ getCookieValue: (ctx) => ctx.cookies?.locale }),
-        createHeaderLocaleResolver({ getHeader: (ctx) => ctx.headers?.['accept-language'] }),
+        createHeaderLocalePolicyResolver({ getHeader: (ctx) => ctx.headers?.['accept-language'], normalizeToSupportedLocale: false }),
         createStorageLocaleResolver({ getStoredLocale: (ctx) => ctx.storage?.locale }),
       ],
       supportedLocales: ['en', 'ko', 'fr', 'ja'],
@@ -109,7 +107,7 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
 
     const locale = resolveLocale(context, {
       defaultLocale: 'en',
-      resolvers: [createHeaderLocaleResolver({ getHeader: (ctx) => ctx.headers?.metadata, source: 'grpc-metadata' })],
+      resolvers: [createHeaderLocalePolicyResolver({ getHeader: (ctx) => ctx.headers?.metadata, normalizeToSupportedLocale: false, source: 'grpc-metadata' })],
       supportedLocales: ['en', 'ko'],
     });
 
@@ -123,7 +121,7 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
 
     const locale = resolveLocale(context, {
       defaultLocale: 'ko-KR',
-      resolvers: [createHeaderLocaleResolver({ getHeader: (ctx) => ctx.headers?.metadata, source: 'grpc-metadata' })],
+      resolvers: [createHeaderLocalePolicyResolver({ getHeader: (ctx) => ctx.headers?.metadata, normalizeToSupportedLocale: false, source: 'grpc-metadata' })],
       supportedLocales: ['en-US', 'ko-KR'],
     });
 
@@ -146,7 +144,7 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
         createCookieLocaleResolver({ getCookieValue: (ctx) => ctx.cookies?.locale }),
         createStorageLocaleResolver({ getStoredLocale: (ctx) => ctx.storage?.locale }),
         wrongCaseCustom,
-        createHeaderLocaleResolver({ getHeader: (ctx) => ctx.headers?.metadata, source: 'grpc-metadata' }),
+        createHeaderLocalePolicyResolver({ getHeader: (ctx) => ctx.headers?.metadata, normalizeToSupportedLocale: false, source: 'grpc-metadata' }),
       ],
       supportedLocales: ['en-US', 'ko-KR'],
     });
@@ -186,7 +184,7 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
       defaultLocale: 'en',
       resolvers: [
         createQueryLocaleResolver({ getQueryValue: (ctx) => ctx.query?.locale }),
-        createHeaderLocaleResolver({ getHeader: (ctx) => ctx.headers?.['accept-language'] }),
+        createHeaderLocalePolicyResolver({ getHeader: (ctx) => ctx.headers?.['accept-language'], normalizeToSupportedLocale: false }),
       ],
       supportedLocales: ['en', 'ko'],
     });
@@ -200,7 +198,7 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
     expect(
       resolveLocale(context, {
         defaultLocale: 'en',
-        resolvers: [createHeaderLocaleResolver({ getHeader: (ctx) => ctx.headers?.['accept-language'] })],
+        resolvers: [createHeaderLocalePolicyResolver({ getHeader: (ctx) => ctx.headers?.['accept-language'], normalizeToSupportedLocale: false })],
         supportedLocales: ['en', 'ko'],
       }),
     ).toEqual({ locale: 'en', source: 'default' });
@@ -265,7 +263,7 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
     expect(() =>
       bindLocale(context, {
         defaultLocale: 'ko-kr',
-        resolvers: [createHeaderLocaleResolver({ getHeader: (ctx) => ctx.headers?.metadata })],
+        resolvers: [createHeaderLocalePolicyResolver({ getHeader: (ctx) => ctx.headers?.metadata, normalizeToSupportedLocale: false })],
         store,
         supportedLocales: ['en-US', 'ko-KR'],
       }),
@@ -301,8 +299,8 @@ describe('@fluojs/i18n/adapters locale adapter surface', () => {
   it('preserves current HTTP helper behavior while sharing locale validation semantics', () => {
     const adapterContext: TransportContext = { headers: { 'accept-language': 'ko;q=1' } };
     const httpContext = createMockHttpContext({ 'accept-language': 'ko;q=1' });
-    const adapterResolver = createHeaderLocaleResolver<TransportContext>({ getHeader: (ctx) => ctx.headers?.['accept-language'] });
-    const httpResolver: HttpLocaleResolver = createAcceptLanguageLocaleResolver();
+    const adapterResolver = createHeaderLocalePolicyResolver<TransportContext>({ getHeader: (ctx) => ctx.headers?.['accept-language'], normalizeToSupportedLocale: false });
+    const httpResolver: HttpLocaleResolver = createAcceptLanguageLocalePolicyResolver({ normalizeToSupportedLocale: false });
 
     expect(
       resolveLocale(adapterContext, {

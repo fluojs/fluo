@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createAcceptLanguageLocalePolicyResolver,
-  createAcceptLanguageLocaleResolver,
   getHttpLocale,
   type HttpLocaleResolver,
   parseAcceptLanguage,
@@ -114,7 +113,7 @@ describe('@fluojs/i18n/http locale context adapter', () => {
   it('runs explicit resolver chains in order', () => {
     const context = createMockContext({ 'accept-language': 'ko;q=1' });
     const first: HttpLocaleResolver = () => 'fr';
-    const second = createAcceptLanguageLocaleResolver();
+    const second = createAcceptLanguageLocalePolicyResolver({ normalizeToSupportedLocale: false });
 
     const locale = resolveHttpLocale(context, {
       defaultLocale: 'en',
@@ -130,7 +129,7 @@ describe('@fluojs/i18n/http locale context adapter', () => {
     const context = createMockContext({ 'Accept-Language': 'fr;q=1, ko;q=0.9' });
     const invalid: HttpLocaleResolver = () => 'invalid locale';
     const unsupported: HttpLocaleResolver = () => ({ locale: 'fr', source: 'unsupported' });
-    const acceptLanguage = createAcceptLanguageLocaleResolver();
+    const acceptLanguage = createAcceptLanguageLocalePolicyResolver({ normalizeToSupportedLocale: false });
 
     const locale = resolveHttpLocale(context, {
       defaultLocale: 'en',
@@ -146,12 +145,36 @@ describe('@fluojs/i18n/http locale context adapter', () => {
 
     const locale = resolveHttpLocale(context, {
       defaultLocale: 'ko-KR',
-      resolvers: [createAcceptLanguageLocaleResolver()],
+      resolvers: [createAcceptLanguageLocalePolicyResolver({ normalizeToSupportedLocale: false })],
       supportedLocales: ['en-US', 'ko-KR'],
     });
 
     expect(locale).toEqual({ locale: 'en-US', source: 'accept-language' });
     expect(getHttpLocale(context)).toEqual({ locale: 'en-US', source: 'accept-language' });
+  });
+
+  it('uses explicit normalization and wildcard policy through the canonical header resolver', () => {
+    const regionalContext = createMockContext({ 'accept-language': 'en-US;q=1' });
+    const wildcardContext = createMockContext({ 'accept-language': '*;q=1' });
+    const resolver = createAcceptLanguageLocalePolicyResolver({
+      normalizeToSupportedLocale: true,
+      wildcardLocale: 'firstSupportedLocale',
+    });
+
+    expect(
+      resolveHttpLocale(regionalContext, {
+        defaultLocale: 'ko',
+        resolvers: [resolver],
+        supportedLocales: ['en', 'ko'],
+      }),
+    ).toEqual({ locale: 'en', source: 'accept-language' });
+    expect(
+      resolveHttpLocale(wildcardContext, {
+        defaultLocale: 'en',
+        resolvers: [resolver],
+        supportedLocales: ['ko', 'en'],
+      }),
+    ).toEqual({ locale: 'ko', source: 'accept-language' });
   });
 
   it('keeps custom resolver locale validation case-sensitive', () => {
@@ -160,7 +183,7 @@ describe('@fluojs/i18n/http locale context adapter', () => {
 
     const locale = resolveHttpLocale(context, {
       defaultLocale: 'ko-KR',
-      resolvers: [wrongCase, createAcceptLanguageLocaleResolver()],
+      resolvers: [wrongCase, createAcceptLanguageLocalePolicyResolver({ normalizeToSupportedLocale: false })],
       supportedLocales: ['en-US', 'ko-KR'],
     });
 
@@ -169,8 +192,9 @@ describe('@fluojs/i18n/http locale context adapter', () => {
 
   it('uses custom Accept-Language header name and source options', () => {
     const context = createMockContext({ 'x-locale-preference': 'fr;q=1, ko;q=0.9' });
-    const resolver = createAcceptLanguageLocaleResolver({
+    const resolver = createAcceptLanguageLocalePolicyResolver({
       headerName: 'X-Locale-Preference',
+      normalizeToSupportedLocale: false,
       source: 'custom-header',
     });
 
@@ -204,7 +228,7 @@ describe('@fluojs/i18n/http locale context adapter', () => {
 
     const locale = resolveHttpLocale(context, {
       defaultLocale: 'en',
-      resolvers: [createAcceptLanguageLocaleResolver()],
+      resolvers: [createAcceptLanguageLocalePolicyResolver({ normalizeToSupportedLocale: false })],
       supportedLocales: ['en', 'ko'],
     });
 
@@ -219,7 +243,7 @@ describe('@fluojs/i18n/http locale context adapter', () => {
     expect(
       resolveHttpLocale(defaultContext, {
         defaultLocale: 'en',
-        resolvers: [createAcceptLanguageLocaleResolver()],
+        resolvers: [createAcceptLanguageLocalePolicyResolver({ normalizeToSupportedLocale: false })],
         supportedLocales: ['en', 'ko'],
       }),
     ).toEqual({ locale: 'en', source: 'default' });
@@ -262,7 +286,7 @@ describe('@fluojs/i18n/http locale context adapter', () => {
     expect(() =>
       resolveHttpLocale(context, {
         defaultLocale: 'invalid locale',
-        resolvers: [createAcceptLanguageLocaleResolver()],
+        resolvers: [createAcceptLanguageLocalePolicyResolver({ normalizeToSupportedLocale: false })],
         supportedLocales: ['en', 'ko'],
       }),
     ).toThrow(TypeError);
@@ -276,7 +300,7 @@ describe('@fluojs/i18n/http locale context adapter', () => {
     expect(() =>
       resolveHttpLocale(context, {
         defaultLocale: 'fr',
-        resolvers: [createAcceptLanguageLocaleResolver()],
+        resolvers: [createAcceptLanguageLocalePolicyResolver({ normalizeToSupportedLocale: false })],
         supportedLocales: ['en', 'ko'],
       }),
     ).toThrow(TypeError);
@@ -290,7 +314,7 @@ describe('@fluojs/i18n/http locale context adapter', () => {
     expect(() =>
       resolveHttpLocale(context, {
         defaultLocale: 'ko-kr',
-        resolvers: [createAcceptLanguageLocaleResolver()],
+        resolvers: [createAcceptLanguageLocalePolicyResolver({ normalizeToSupportedLocale: false })],
         supportedLocales: ['en-US', 'ko-KR'],
       }),
     ).toThrow(TypeError);

@@ -1,5 +1,5 @@
 import { isPlainObject } from './catalog.js';
-import { resolveMessageProvenance } from './message-provenance.js';
+import { type I18nMessageProvenance, resolveMessageProvenance } from './message-provenance.js';
 import { snapshotI18nModuleOptions } from './options.js';
 import { I18nError } from './errors.js';
 import type {
@@ -130,6 +130,16 @@ function isFallbackMap(value: I18nFallbackLocales): value is Readonly<Record<I18
  */
 export class I18nService {
   private readonly options: I18nModuleOptions;
+
+  /**
+   * Creates a standalone service with a detached options snapshot.
+   *
+   * @param options Root i18n options captured at the application boundary.
+   * @returns An `I18nService` configured with a detached options snapshot.
+   */
+  static create(options: I18nModuleOptions = {}): I18nService {
+    return new I18nService(options);
+  }
 
   /**
    * Creates a service with a detached options snapshot.
@@ -368,12 +378,21 @@ export class I18nService {
   }
 }
 
+/**
+ * Resolves the message template and the locale that supplied it for a given translation key.
+ *
+ * @param service Service instance that owns the message catalogs and fallback configuration.
+ * @param key Translation key to look up.
+ * @param locale Target locale requested by the caller.
+ * @param namespace Optional translation namespace prefix.
+ * @returns The message provenance containing the supplying locale and message pattern, or `undefined` when missing.
+ */
 export function resolveI18nMessageProvenance(
   service: I18nService,
   key: string,
   locale: I18nLocale,
   namespace: string | undefined,
-) {
+): I18nMessageProvenance | undefined {
   const options = serviceOptions.get(service);
 
   if (options === undefined) {
@@ -382,14 +401,4 @@ export function resolveI18nMessageProvenance(
 
   const resolvedKey = normalizeTranslationKey(key, namespace);
   return resolveMessageProvenance(options.catalogs, service.resolveLocales(locale), resolvedKey);
-}
-
-/**
- * Creates a standalone i18n service without registering a fluo module.
- *
- * @param options Root i18n options for the standalone service instance.
- * @returns An `I18nService` configured with a detached options snapshot.
- */
-export function createI18n(options: I18nModuleOptions = {}): I18nService {
-  return new I18nService(options);
 }

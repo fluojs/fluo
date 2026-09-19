@@ -2,7 +2,7 @@ import { FormatError, IntlMessageFormat } from 'intl-messageformat';
 import type { Formats } from 'intl-messageformat';
 
 import { I18nError } from './errors.js';
-import { I18nService, createI18n, resolveI18nMessageProvenance } from './service.js';
+import { I18nService, resolveI18nMessageProvenance } from './service.js';
 import type { I18nInterpolationValues, I18nLocale, I18nModuleOptions, I18nTranslateOptions } from './types.js';
 
 /**
@@ -81,9 +81,19 @@ export class IcuI18nService {
    * Creates an ICU MessageFormat service from root options or an existing core service.
    *
    * @param options Root i18n options or an existing `I18nService` instance.
+   * @returns An `IcuI18nService` that preserves core lookup semantics before ICU formatting.
+   */
+  static create(options: I18nModuleOptions | I18nService = {}): IcuI18nService {
+    return new IcuI18nService(options);
+  }
+
+  /**
+   * Creates an ICU MessageFormat service from root options or an existing core service.
+   *
+   * @param options Root i18n options or an existing `I18nService` instance.
    */
   constructor(options: I18nModuleOptions | I18nService = {}) {
-    this.service = options instanceof I18nService ? options : createI18n(options);
+    this.service = options instanceof I18nService ? options : I18nService.create(options);
   }
 
   /**
@@ -127,12 +137,3 @@ export class IcuI18nService {
   }
 }
 
-/**
- * Creates a standalone ICU MessageFormat i18n service.
- *
- * @param options Root i18n options or an existing `I18nService` instance.
- * @returns An `IcuI18nService` that preserves core lookup semantics before ICU formatting.
- */
-export function createIcuI18n(options: I18nModuleOptions | I18nService = {}): IcuI18nService {
-  return new IcuI18nService(options);
-}

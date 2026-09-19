@@ -3,7 +3,6 @@ import {
   isSupportedLocale,
   isValidLocale,
   parseLocalePreferences,
-  resolveSupportedLocale,
   selectLocaleFromAcceptLanguagePolicy,
 } from './locale-resolution.js';
 import { resolveLocaleResolverChain } from './resolver-chain.js';
@@ -87,7 +86,7 @@ export interface HeaderLocaleResolverOptions<TContext> {
 }
 
 /**
- * Options for creating an opt-in `Accept-Language` policy resolver without importing HTTP types.
+ * Options for creating an `Accept-Language` policy resolver without importing HTTP types.
  */
 export interface HeaderLocalePolicyResolverOptions<TContext>
   extends HeaderLocaleResolverOptions<TContext>,
@@ -202,38 +201,10 @@ export function bindLocale<TContext>(context: TContext, options: BindLocaleOptio
 }
 
 /**
- * Creates a resolver that selects the first supported locale from an `Accept-Language`-style header.
+ * Creates a policy resolver that selects a locale from an `Accept-Language`-style header.
  *
- * @param options Header accessor and optional source label.
+ * @param options Header accessor, source label, normalization, and wildcard policy.
  * @returns Locale resolver that remains independent of HTTP, WebSocket, gRPC, and browser APIs.
- */
-export function createHeaderLocaleResolver<TContext>(
-  options: HeaderLocaleResolverOptions<TContext>,
-): LocaleAdapterResolver<TContext> {
-  const source = options.source ?? 'accept-language';
-
-  return ({ context, supportedLocales }) => {
-    for (const preference of parseLocalePreferences(options.getHeader(context))) {
-      if (preference.locale === '*') {
-        continue;
-      }
-
-      const locale = resolveSupportedLocale(preference.locale, supportedLocales);
-
-      if (locale !== undefined) {
-        return { locale, source };
-      }
-    }
-
-    return undefined;
-  };
-}
-
-/**
- * Creates an opt-in header policy resolver that normalizes supported locale ranges and can select wildcard fallbacks.
- *
- * @param options Header accessor, source, normalization, and wildcard policy options.
- * @returns Locale resolver that treats `*` as fallback-only and preserves explicit locale preferences first.
  */
 export function createHeaderLocalePolicyResolver<TContext>(
   options: HeaderLocalePolicyResolverOptions<TContext>,
