@@ -3,6 +3,7 @@
 <p><a href="./openapi.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 이 문서는 `@fluojs/openapi`가 구현하는 현재 OpenAPI 문서 생성 계약을 정의합니다.
+breaking API 교체는 짝을 이루는 [OpenAPI 3 마이그레이션 가이드](./openapi-migration.ko.md)를 참고하세요.
 
 ## 모듈 등록 규칙
 
@@ -20,7 +21,7 @@
 
 | 소스 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
-| 기본 문서 버전 | `buildOpenApiDocument(...)`는 항상 `openapi: '3.1.0'`을 생성합니다. | `packages/openapi/src/schema-builder.ts` |
+| 기본 문서 버전 | `OpenApiDocumentBuilder.build(...)`는 항상 `openapi: '3.1.0'`을 생성합니다. | `packages/openapi/src/schema-builder.ts` |
 | HTTP 라우트 메타데이터 | 경로, HTTP 메서드, 핸들러 이름, 해석된 URI 버전 경로는 fluo HTTP handler descriptor에서 옵니다. Express 스타일 `:id` 경로 세그먼트는 최종 문서에서 `{id}`로 변환됩니다. | `packages/openapi/src/schema-builder.ts` |
 | Descriptor method 검증 | Descriptor operation은 fluo가 작성할 수 있는 OpenAPI Path Item method인 `GET`, `PUT`, `POST`, `DELETE`, `OPTIONS`, `HEAD`, `PATCH`, `TRACE`로 제한됩니다. Runtime 전용 `ALL` 및 향후 또는 custom unsupported method는 operation을 생성하기 전에 문서 생성을 실패시킵니다. | `packages/openapi/src/path-item.ts`, `packages/openapi/src/schema-builder.ts`, `packages/openapi/src/path-item.test.ts` |
 | 컨트롤러 태그 | `@ApiTag(...)`가 컨트롤러 태그를 정의합니다. 없으면 컨트롤러 클래스 이름이 기본 태그가 됩니다. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |
@@ -28,8 +29,7 @@
 | 응답 메타데이터 | `@ApiResponse(...)`는 명시적 status/description/schema/type 메타데이터를 저장합니다. DTO `type` 값은 component schema reference로 변환됩니다. Handler 반환값과 TypeScript 반환 타입은 검사하지 않습니다. `@ApiResponse(...)`가 없으면 builder는 추론된 response schema가 아니라 method-derived 또는 `@HttpCode(...)` success status와 `OK` description만 생성합니다. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |
 | 파라미터 및 body 메타데이터 | `@ApiParam(...)`, `@ApiQuery(...)`, `@ApiHeader(...)`, `@ApiCookie(...)`, `@ApiBody(...)`가 명시적 parameter와 request-body 메타데이터를 제공합니다. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |
 | DTO 스키마 생성 | DTO 스키마는 `getDtoBindingSchema(...)`와 `getDtoValidationSchema(...)`를 통한 바인딩/검증 메타데이터에서 파생되며, `components.schemas`로 출력됩니다. `Length`/`MinLength`/`MaxLength`, array size rule, `IsIn`/`IsEnum`은 가장 강한 bound 또는 enum intersection으로 결정적으로 결합되고, `ValidateNested(..., { each: true })`는 validation traversal을 바꾸지 않고 array schema를 선택합니다. | `packages/openapi/src/schema-builder.ts` |
-| 배타적 스키마 경계 | `OpenApiSchemaObject`는 숫자 및 기존 boolean 배타적 경계 입력을 유지합니다. `minimum`/`maximum`과 짝을 이룬 `true` metadata는 OpenAPI 3.1 숫자 배타적 keyword로 생성되고, `false`는 포괄 경계를 유지한 채 생략되며, 정규화할 수 없는 배타적 값은 문서 생성을 실패시킵니다. | `packages/openapi/src/schema-bounds.ts`, `packages/openapi/src/schema-builder.ts` |
-| Nullable 스키마 | `OpenApiSchemaObject`는 호환성을 위해 legacy boolean `nullable` 입력을 유지하지만 이를 내보내지는 않습니다. `true`는 선언된 scalar 또는 array `type` union에 `null`을 추가하고, `$ref`처럼 `type`이 없는 schema는 `anyOf`로 감쌉니다. `false`는 schema를 바꾸지 않고 제거합니다. | `packages/openapi/src/schema-bounds.ts`, `packages/openapi/src/schema-nullable.test.ts` |
+| Schema 경계와 null | `OpenApiSchemaObject`는 finite numeric exclusive bound와 명시적 null union/`anyOf`만 허용합니다. Legacy `nullable`과 boolean exclusive 형식은 `documentTransform` 뒤에도 결정적으로 실패합니다. | `packages/openapi/src/schema-bounds.ts`, `packages/openapi/src/openapi-document-builder.test.ts` |
 | 보안 메타데이터 | `@ApiBearerAuth()`와 `@ApiSecurity(name, scopes?)`는 operation 수준 보안 요구사항을 추가합니다. `securitySchemes` 옵션은 `components.securitySchemes`를 채웁니다. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-builder.ts` |
 
 ## Empty Decorator Options

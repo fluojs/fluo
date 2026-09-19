@@ -3,6 +3,10 @@
 
 # Chapter 10. OpenAPI Automation
 
+module-owned `OpenApiModule.forRoot(...)` / `forRootAsync(...)`, object-only
+`ApiResponse({ status, ... })`, offline 문서용 `OpenApiDocumentBuilder.build(...)`를 사용하세요.
+현재 마이그레이션은 [OpenAPI 3 마이그레이션 가이드](../../docs/architecture/openapi-migration.ko.md)에 있습니다.
+
 <!-- fluo:docs-navigation:start -->
 > **이전 판 안내 — 기초 개념·애플리케이션 레퍼런스.** 현재 학습은 [제품·패턴 중심 3권 시리즈](../README.ko.md)에서 시작하세요. 이 장은 이전 판의 참고자료입니다. 기존 프로젝트 이야기, 버전·`project-state` 표시, 이전·다음 장 안내는 검증된 누적 실행 스냅샷이나 필수 학습 순서를 뜻하지 않습니다. 현재 API·환경 조건은 [패키지 레퍼런스](../../docs/reference/package-surface.ko.md)와 [toolchain 계약](../../docs/reference/toolchain-contract-matrix.ko.md)에서 확인하세요.
 >
@@ -14,7 +18,7 @@
 ## Learning Objectives
 - 생성된 API 문서가 왜 코드와 가까이 있어야 하는지 이해합니다.
 - FluoBlog에 `OpenApiModule`을 등록하고 생성된 문서를 노출합니다.
-- `@ApiTag(tag)`, `@ApiOperation()`, `@ApiResponse(status, options?)` 같은 문서화 데코레이터를 사용합니다.
+- `@ApiTag(tag)`, `@ApiOperation()`, `@ApiResponse({ status, ... })` 같은 문서화 데코레이터를 사용합니다.
 - DTO와 HTTP 메타데이터가 어떻게 OpenAPI 스키마 정보가 되는지 배웁니다.
 - 보호된 라우트와 버전 경로가 생성 문서에 어떤 영향을 주는지 이해합니다.
 - 문서화된 HTTP API 기반과 함께 Part 1을 마무리합니다.
@@ -133,7 +137,7 @@ export class PostsController {
     summary: '발행된 게시글 목록 조회',
     description: '공개된 상태이며 모든 사용자가 볼 수 있는 게시글 목록을 반환합니다.' 
   })
-  @ApiResponse(200, { description: '게시글 목록을 성공적으로 불러왔습니다.' })
+  @ApiResponse({ status: 200, description: '게시글 목록을 성공적으로 불러왔습니다.' })
   @Get('/')
   findAll() {
     return [];
@@ -143,9 +147,9 @@ export class PostsController {
     summary: '새 게시글 작성',
     description: '인증된 작가가 새로운 블로그 게시글을 작성할 수 있도록 허용합니다.' 
   })
-  @ApiResponse(201, { description: '게시글이 성공적으로 생성되었습니다.' })
-  @ApiResponse(400, { description: '잘못된 입력 데이터입니다.' })
-  @ApiResponse(401, { description: '권한 없음 - 로그인이 필요합니다.' })
+  @ApiResponse({ status: 201, description: '게시글이 성공적으로 생성되었습니다.' })
+  @ApiResponse({ status: 400, description: '잘못된 입력 데이터입니다.' })
+  @ApiResponse({ status: 401, description: '권한 없음 - 로그인이 필요합니다.' })
   @ApiBearerAuth() // 이 라우트가 JWT 토큰을 필요로 함을 나타냅니다.
   @Post('/')
   @RequestDto(CreatePostDto)
@@ -211,10 +215,11 @@ OpenAPI 문서를 생성할 때, DTO 클래스에 부여된 이름이 최종 사
 
 ### Customizing Explicit Schema Surfaces
 
-TypeScript 속성에서 OpenAPI 속성으로의 기본 매핑만으로는 충분하지 않은 경우가 있습니다. 예시 값을 제공하거나 특정 필드를 읽기 전용(read-only)으로 표시하거나, 더 명시적인 조합 스키마를 만들고 싶다면 fluo는 `@ApiBody({ schema })`와 `@ApiResponse(status, { schema })` 스키마 객체를 통해 그 제어 지점을 제공합니다.
+TypeScript 속성에서 OpenAPI 속성으로의 기본 매핑만으로는 충분하지 않은 경우가 있습니다. 예시 값을 제공하거나 특정 필드를 읽기 전용(read-only)으로 표시하거나, 더 명시적인 조합 스키마를 만들고 싶다면 fluo는 명시적 `ApiBody.content`와 object-only `ApiResponse({ status, schema })` 스키마 객체를 통해 그 제어 지점을 제공합니다.
 
 ```typescript
-@ApiResponse(200, {
+@ApiResponse({
+  status: 200,
   description: '게시글 응답',
   schema: {
     properties: {
@@ -242,7 +247,7 @@ findOne() {
 
 이러한 작은 추가 사항들은 API를 이해하려는 개발자에게 큰 도움이 됩니다. 실제적인 예시를 제공하면 시행착오를 줄일 수 있고, 결과적으로 팀의 개발 속도도 높아집니다.
 
-OpenAPI 3.1은 nullable 값을 `type: ['string', 'null']` 같은 JSON Schema union으로 표현합니다. 새 explicit schema에서는 이 형식을 우선 사용하세요. 이전 metadata와의 호환성을 위해 `OpenApiSchemaObject`는 `nullable: true`를 계속 받지만, fluo는 생성 문서에서 legacy keyword를 제거하고 동등한 null union을 내보냅니다. Scalar와 array schema는 constraint를 유지하고, `$ref` schema는 `{ type: 'null' }`과 함께 `anyOf`를 사용하며, `nullable: false`는 단순히 생략됩니다. `documentTransform`으로 추가한 schema에도 같은 규칙이 적용됩니다.
+OpenAPI 3.1은 nullable 값을 `type: ['string', 'null']` 같은 JSON Schema union으로 표현합니다. 이 형식 또는 `anyOf`를 사용하세요. legacy `nullable`은 `documentTransform`이 추가한 경우를 포함해 거부됩니다. Boolean 형식 대신 finite numeric `exclusiveMinimum`과 `exclusiveMaximum` 값을 사용하세요.
 
 ### Documenting Security Schemas
 

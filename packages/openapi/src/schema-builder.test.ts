@@ -20,7 +20,9 @@ import { IntersectionType } from '@fluojs/validation/mapped-types';
 import { describe, expect, it } from 'vitest';
 
 import { ApiBearerAuth, ApiBody, ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiSecurity, ApiTag } from './decorators.js';
-import { buildOpenApiDocument } from './schema-builder.js';
+import { OpenApiDocumentBuilder } from './schema-builder.js';
+
+const buildOpenApiDocument = OpenApiDocumentBuilder.build.bind(OpenApiDocumentBuilder);
 
 describe('buildOpenApiDocument', () => {
   it('generates required path parameters from route templates without DTO bindings', () => {
@@ -322,7 +324,7 @@ describe('buildOpenApiDocument', () => {
     @Controller('/exports')
     class ExportController {
       @Produces('application/json', 'application/problem+json')
-      @ApiResponse(200, { description: 'Exported payload', type: ExportResponse })
+      @ApiResponse({ description: 'Exported payload', status: 200, type: ExportResponse })
       @Get('/')
       list() {
         return { value: 'ok' };
@@ -387,7 +389,7 @@ describe('buildOpenApiDocument', () => {
   it('keeps explicit ApiResponse statuses ahead of HTTP route defaults', () => {
     @Controller('/explicit-status')
     class ExplicitStatusController {
-      @ApiResponse(202, { description: 'Accepted for async processing' })
+      @ApiResponse({ description: 'Accepted for async processing', status: 202 })
       @Post('/')
       create() {
         return { accepted: true };
@@ -682,7 +684,7 @@ describe('buildOpenApiDocument', () => {
   it('emits explicit composition schemas from response and request decorators', () => {
     @Controller('/composition')
     class CompositionController {
-      @ApiResponse(200, {
+      @ApiResponse({
         description: 'Composed response',
         schema: {
           allOf: [
@@ -704,6 +706,7 @@ describe('buildOpenApiDocument', () => {
             propertyName: 'role',
           },
         },
+        status: 200,
       })
       @Get('/response')
       response() {
@@ -711,7 +714,7 @@ describe('buildOpenApiDocument', () => {
       }
 
       @ApiBody({
-        schema: {
+        content: { 'application/json': { schema: {
           oneOf: [
             {
               properties: {
@@ -728,7 +731,7 @@ describe('buildOpenApiDocument', () => {
               type: 'object',
             },
           ],
-        },
+        } } },
       })
       @Post('/request')
       request() {
@@ -801,7 +804,7 @@ describe('buildOpenApiDocument', () => {
   it('preserves explicit OpenAPI schema keywords from request and response decorators', () => {
     @Controller('/schema-surface')
     class SchemaSurfaceController {
-      @ApiResponse(200, {
+      @ApiResponse({ status: 200,
         description: 'Schema keyword response',
         schema: {
           additionalProperties: {
@@ -824,7 +827,7 @@ describe('buildOpenApiDocument', () => {
       }
 
       @ApiBody({
-        schema: {
+        content: { 'application/json': { schema: {
           properties: {
             tags: {
               items: { type: 'string' },
@@ -835,13 +838,12 @@ describe('buildOpenApiDocument', () => {
             },
             title: {
               minLength: 1,
-              nullable: true,
               type: ['string', 'null'],
               writeOnly: true,
             },
           },
           type: 'object',
-        },
+        } } },
       })
       @Post('/request')
       request() {

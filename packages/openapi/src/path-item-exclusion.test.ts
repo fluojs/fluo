@@ -2,7 +2,9 @@ import { All, Controller, createHandlerMapping } from '@fluojs/http';
 import { describe, expect, it } from 'vitest';
 
 import { ApiExcludeEndpoint } from './decorators.js';
-import { buildOpenApiDocument } from './schema-builder.js';
+import { OpenApiDocumentBuilder } from './schema-builder.js';
+
+const buildOpenApiDocument = OpenApiDocumentBuilder.build.bind(OpenApiDocumentBuilder);
 
 describe('OpenAPI Path Item exclusion', () => {
   it('omits excluded ALL descriptors before validating their operation method', () => {

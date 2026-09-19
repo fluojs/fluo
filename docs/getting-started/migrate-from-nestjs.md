@@ -1,6 +1,8 @@
 # NestJS → fluo Migration Map
 
 <p><strong><kbd>English</kbd></strong> <a href="./migrate-from-nestjs.ko.md"><kbd>한국어</kbd></a></p>
+
+For OpenAPI, use module-owned `OpenApiModule.forRoot(...)` / `forRootAsync(...)`, replace numeric `ApiResponse` calls with object options, and use `OpenApiDocumentBuilder.build(...)`; see [OpenAPI 3 Migration Guide](../architecture/openapi-migration.md).
 <!-- fluo:cron-nestjs-migration: timezone-mapping -->
 <!-- fluo:cron-nestjs-migration: wait-for-completion -->
 <!-- fluo:cron-nestjs-migration: unsupported-options -->

@@ -13,6 +13,8 @@ driver-native 옵션은 accessor 뒤에 오고 Fluo boundary policy는 마지막
 
 Prisma 애플리케이션 등록은 `PrismaModule.forRoot(...)` 또는 `PrismaModule.forRootAsync(...)`가 소유하며, 직접 facade를 조립하지 말고 module이 소유한 `PrismaService` facade를 주입하세요. `PrismaService.createFacade(...)`와 `PrismaTransactionInterceptor`는 제거되었습니다. request-wide 경계는 request `AbortSignal`을 전달하는 애플리케이션 소유 `PrismaService.requestTransaction(...)` 호출로 마이그레이션하세요. 자세한 내용은 [Prisma 등록 마이그레이션](./getting-started/migrate-prisma-registration.ko.md)을 참고하세요.
 
+OpenAPI 애플리케이션 등록은 `OpenApiModule.forRoot(...)` 또는 `OpenApiModule.forRootAsync(...)`가 소유하며, offline 문서에만 `OpenApiDocumentBuilder.build(...)`를 사용합니다. Builder는 직접 `sources`와 `descriptors`를 받고 explicit descriptor를 나중에 적용하며 `operationPathPrefix`는 operation에만 적용합니다. object-only `ApiResponse`와 명시적 `ApiBody.content`를 사용하세요. [OpenAPI 3 마이그레이션 가이드](./architecture/openapi-migration.ko.md)를 참고하세요.
+
 <!-- fluo:cron-nestjs-migration: timezone-mapping -->
 <!-- fluo:cron-nestjs-migration: wait-for-completion -->
 <!-- fluo:cron-nestjs-migration: unsupported-options -->

@@ -2,6 +2,8 @@
 
 <p><a href="./decorator-defaults.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+OpenAPI `ApiResponse`는 필수 `status`가 있는 하나의 object를 받고, `ApiBody`는 명시적 media `content`를 사용하며 빈 body와 description-only body는 DTO inference를 보존합니다. [OpenAPI 3 마이그레이션 가이드](../architecture/openapi-migration.ko.md)를 참고하세요.
+
 이 문서는 [#3701](https://github.com/fluojs/fluo/issues/3701)의 조사표를 최종 구현과 대조한 결과입니다.
 조사 기준은 `4a0fd3c37b5b220c3bc38519b8e231bb9e442d37`의 공개 `@fluojs/*` 42개 패키지입니다.
 당시 19개 패키지의 공개 decorator factory 165개 중 정확히 15개에 기본값을 추가하고

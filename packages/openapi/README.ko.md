@@ -39,13 +39,13 @@ import { FluoFactory } from '@fluojs/runtime';
 import { Controller, Get } from '@fluojs/http';
 import { Module } from '@fluojs/core';
 import { NodeHttpApplicationAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
-import { OpenApiModule, ApiOperation, ApiResponse, ApiTag } from '@fluojs/openapi';
+import { OpenApiDocumentBuilder, OpenApiModule, ApiOperation, ApiResponse, ApiTag } from '@fluojs/openapi';
 
 @ApiTag('Users')
 @Controller('/users')
 class UsersController {
   @ApiOperation({ summary: '전체 사용자 목록 조회' })
-  @ApiResponse(200, { description: '성공' })
+  @ApiResponse({ status: 200, description: '성공' })
   @Get('/')
   list() {
     return [];
@@ -87,8 +87,11 @@ await app.listen();
 생성하지 않습니다. 빈 body metadata는 DTO에서 추론한 body를 유지하고, 추론한 body가 없으면
 `requestBody`를 추가하지 않습니다. 빈 write도 stacking의 이전 metadata를 덮어쓸 수 있으므로
 decorator 자체 생략과 항상 같지는 않습니다. 기존 적용 시 `null` 실패를 유지합니다.
-`ApiTag(tag)`, `ApiResponse(status, options?)`, parameter/security name은 계속 필수이며
+`ApiTag(tag)`, object-only `ApiResponse({ status, ... })`, parameter/security name은 계속 필수이며
 지원하는 OpenAPI Path Item method 집합은 바뀌지 않습니다.
+
+breaking module-owned API 마이그레이션은
+[OpenAPI 3 마이그레이션 가이드](../../docs/architecture/openapi-migration.ko.md)를 따르세요.
 
 ### 자동 명세 생성
 fluo는 `sources`와 `descriptors`로 전달된 controller 및 handler descriptor만 조사하여 OpenAPI 3.1.0 문서를 작성합니다. 이 명시적 입력 집합의 경로, 메서드, 파라미터, 요청 바디가 포함되며, controller를 application module에 import하는 것만으로는 자동 추가되지 않습니다.
@@ -193,12 +196,11 @@ fluo는 controller tag, handler name, HTTP method, normalized path에서 각 `op
 - `ApiBearerAuth`, `ApiSecurity`: 보안 요구사항 데코레이터.
 - `ApiExcludeEndpoint`: 특정 핸들러를 문서화에서 제외.
 - `ApiOperationOptions`, `ApiResponseOptions`, `ApiParameterOptions`, `ApiBodyOptions`: `@ApiOperation(...)`, `@ApiResponse(...)`, `@ApiParam(...)`, `@ApiQuery(...)`, `@ApiHeader(...)`, `@ApiCookie(...)`, `@ApiBody(...)`가 받는 데코레이터 옵션 타입.
-- `buildOpenApiDocument`: 프로그래밍 방식의 문서 빌더 (저수준).
-- `OpenApiHandlerRegistry`: 고급 통합에서 문서 생성 전에 handler descriptor를 스냅샷하는 mutable descriptor registry.
+- `OpenApiDocumentBuilder`: 프로그래밍 방식 offline 문서 builder; `OpenApiDocumentBuilder.build(options)`를 호출합니다.
 - `getControllerTags`, `getMethodApiMetadata`: 고급 테스트와 통합 tooling을 위한 metadata reader.
-- `OpenApiModuleOptions`, `OpenApiAsyncModuleOptions`, `OpenApiRouteOptions`, `OpenApiSwaggerUiAssetsOptions`, `BuildOpenApiDocumentOptions`, `DefaultErrorResponsesPolicy`: module과 builder integration을 위한 option type.
+- `OpenApiModuleOptions`, `OpenApiAsyncModuleOptions`, `OpenApiRouteOptions`, `OpenApiSwaggerUiAssetsOptions`, `OpenApiDocumentBuilderOptions`, `DefaultErrorResponsesPolicy`: module과 builder integration을 위한 option type.
 - `OpenApiDocument`, `OpenApiSecuritySchemeObject` 및 관련 OpenAPI shape type: 테스트, tooling, integration을 위한 typed document surface.
-- `OpenApiSchemaObject`: 명시적 `@ApiBody(...)` 및 `@ApiResponse(...)` 스키마를 위한 타입화된 스키마 표면입니다. OpenAPI 3.1 조합(`allOf`, `oneOf`, `anyOf`), legacy `nullable` 입력과 호환되는 null union, 객체/배열 제약, examples/defaults, 읽기/쓰기/Deprecated 주석을 포함합니다.
+- `OpenApiSchemaObject`: 명시적 `@ApiBody(...)` 및 `@ApiResponse(...)` 스키마를 위한 타입화된 스키마 표면입니다. OpenAPI 3.1 조합(`allOf`, `oneOf`, `anyOf`), null union, finite exclusive bound, 객체/배열 제약, examples/defaults, 읽기/쓰기/Deprecated 주석을 포함합니다. Legacy `nullable`과 boolean exclusive bound는 거부됩니다.
 
 ## 관련 패키지
 
@@ -211,3 +213,11 @@ fluo는 controller tag, handler name, HTTP method, normalized path에서 각 `op
 - `packages/openapi/src/openapi-module.test.ts`: 통합 테스트 및 사용 예제.
 - `packages/openapi/src/openapi-module-routes.test.ts`: 기본/custom/multi-document/route-collision 예제.
 - `packages/openapi/src/schema-builder.test.ts`: 문서 builder와 schema generation 예제.
+
+## 3.0 마이그레이션
+
+- `buildOpenApiDocument(options)`를 `OpenApiDocumentBuilder.build(options)`로, `BuildOpenApiDocumentOptions`를 `OpenApiDocumentBuilderOptions`로 바꾸세요.
+- `OpenApiHandlerRegistry`를 제거하고 builder 또는 `OpenApiModule`에 `sources`와 `descriptors`를 직접 전달하세요.
+- `@ApiResponse(status, options)`를 `@ApiResponse({ status, ...options })`로 바꾸세요.
+- `@ApiBody({ schema })`를 `@ApiBody({ content: { 'application/json': { schema } } })`로 바꾸세요.
+- `nullable`은 null type union 또는 `anyOf`로, boolean exclusive bound는 finite numeric 값으로 바꾸세요.

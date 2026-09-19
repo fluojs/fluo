@@ -187,8 +187,8 @@ export class PostEditingController {
       expectedVersion: { type: 'integer', minimum: 1, maximum: 2_147_483_646 },
     },
   } })
-  @ApiResponse(200, { schema: postWriteReceiptSchema })
-  @ApiResponse(409, { schema: errorResponseSchema })
+  @ApiResponse({ status: 200, schema: postWriteReceiptSchema })
+  @ApiResponse({ status: 409, schema: errorResponseSchema })
   edit(input: EditPostDto, context: RequestContext) {
     const principal = context.principal;
     if (!principal) throw new UnauthorizedException();
@@ -447,7 +447,7 @@ Also replace Chapter 8's `src/posts/post-api.test.ts` with the following **compl
 
 ```ts
 import { createHandlerMapping } from '@fluojs/http';
-import { buildOpenApiDocument } from '@fluojs/openapi';
+import { OpenApiDocumentBuilder } from '@fluojs/openapi';
 import { serialize } from '@fluojs/serialization';
 import { describe, expect, it } from 'vitest';
 import { createDraft, publishPost } from './post.js';
@@ -458,7 +458,7 @@ import { PostWritingController } from './post-writing.controller.js';
 import { getAuthRequirement } from '@fluojs/passport';
 
 function buildDocument() {
-  return buildOpenApiDocument({
+  return OpenApiDocumentBuilder.build({
     descriptors: createHandlerMapping([
       { controllerToken: PostsController }, { controllerToken: PostEditingController },
       { controllerToken: PostWritingController },

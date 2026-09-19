@@ -13,7 +13,9 @@ import {
 } from '@fluojs/http';
 import { describe, expect, it } from 'vitest';
 
-import { buildOpenApiDocument } from './schema-builder.js';
+import { OpenApiDocumentBuilder } from './schema-builder.js';
+
+const buildOpenApiDocument = OpenApiDocumentBuilder.build.bind(OpenApiDocumentBuilder);
 
 const DOCUMENT_OPTIONS = {
   defaultErrorResponsesPolicy: 'omit' as const,
@@ -145,12 +147,12 @@ describe('OpenAPI Path Item validation', () => {
     expect(buildDocument).toThrow(`OpenAPI Path Item for path "/health" contains unsupported key "${key}".`);
   });
 
-  it('normalizes schemas in transformed Path Item parameters', () => {
+  it('rejects legacy schemas in transformed Path Item parameters', () => {
     // Given
     const descriptors: readonly [] = [];
 
     // When
-    const document = buildOpenApiDocument({
+    const buildDocument = () => buildOpenApiDocument({
       ...DOCUMENT_OPTIONS,
       descriptors,
       documentTransform: (generatedDocument) => ({
@@ -169,15 +171,11 @@ describe('OpenAPI Path Item validation', () => {
             }],
           },
         },
-      }),
+      }) as unknown as typeof generatedDocument,
     });
 
     // Then
-    expect(document.paths['/scores']?.parameters).toEqual([{
-      in: 'query',
-      name: 'minimum-score',
-      schema: { exclusiveMinimum: 0, type: ['number', 'null'] },
-    }]);
+    expect(buildDocument).toThrowError(/legacy nullable/i);
   });
 
   it('preserves transformed trace, fixed fields, and specification extensions', () => {

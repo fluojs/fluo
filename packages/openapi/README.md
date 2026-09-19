@@ -39,13 +39,13 @@ import { FluoFactory } from '@fluojs/runtime';
 import { Controller, Get } from '@fluojs/http';
 import { Module } from '@fluojs/core';
 import { NodeHttpApplicationAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
-import { OpenApiModule, ApiOperation, ApiResponse, ApiTag } from '@fluojs/openapi';
+import { OpenApiDocumentBuilder, OpenApiModule, ApiOperation, ApiResponse, ApiTag } from '@fluojs/openapi';
 
 @ApiTag('Users')
 @Controller('/users')
 class UsersController {
   @ApiOperation({ summary: 'List all users' })
-  @ApiResponse(200, { description: 'Success' })
+  @ApiResponse({ status: 200, description: 'Success' })
   @Get('/')
   list() {
     return [];
@@ -87,7 +87,7 @@ use the existing `{}` semantics. No summary, description, deprecated flag, requi
 or schema is invented. Empty body metadata preserves a DTO-inferred body and adds no
 `requestBody` when none is inferred. Empty writes can overwrite earlier stacked metadata,
 so these calls are not always equivalent to omitting the decorator. Existing application-time
-`null` failures remain. `ApiTag(tag)`, `ApiResponse(status, options?)`, and parameter/security
+`null` failures remain. `ApiTag(tag)`, object-only `ApiResponse({ status, ... })`, and parameter/security
 names remain required; the supported OpenAPI Path Item methods do not change.
 
 ### Automated Specification Generation
@@ -193,12 +193,11 @@ With `forRootAsync(...)`, `documentPath` and `uiPath` are outer registration opt
 - `ApiBearerAuth`, `ApiSecurity`: Security requirement decorators.
 - `ApiExcludeEndpoint`: Omit specific handlers from documentation.
 - `ApiOperationOptions`, `ApiResponseOptions`, `ApiParameterOptions`, `ApiBodyOptions`: Decorator option types accepted by `@ApiOperation(...)`, `@ApiResponse(...)`, `@ApiParam(...)`, `@ApiQuery(...)`, `@ApiHeader(...)`, `@ApiCookie(...)`, and `@ApiBody(...)`.
-- `buildOpenApiDocument`: Programmatic document builder (low-level).
-- `OpenApiHandlerRegistry`: Mutable descriptor registry used by advanced integrations to snapshot handler descriptors before document generation.
+- `OpenApiDocumentBuilder`: Programmatic offline document builder; call `OpenApiDocumentBuilder.build(options)`.
 - `getControllerTags`, `getMethodApiMetadata`: Metadata readers for advanced tests and integration tooling.
-- `OpenApiModuleOptions`, `OpenApiAsyncModuleOptions`, `OpenApiRouteOptions`, `OpenApiSwaggerUiAssetsOptions`, `BuildOpenApiDocumentOptions`, `DefaultErrorResponsesPolicy`: Option types for module and builder integrations.
+- `OpenApiModuleOptions`, `OpenApiAsyncModuleOptions`, `OpenApiRouteOptions`, `OpenApiSwaggerUiAssetsOptions`, `OpenApiDocumentBuilderOptions`, `DefaultErrorResponsesPolicy`: Option types for module and builder integrations.
 - `OpenApiDocument`, `OpenApiSecuritySchemeObject`, and related OpenAPI shape types: Typed document surface for tests, tooling, and integrations.
-- `OpenApiSchemaObject`: Typed schema surface for explicit `@ApiBody(...)` and `@ApiResponse(...)` schemas, including OpenAPI 3.1 composition (`allOf`, `oneOf`, `anyOf`), null unions with legacy `nullable` input compatibility, object/array constraints, examples/defaults, and read/write/deprecated annotations.
+- `OpenApiSchemaObject`: Typed schema surface for explicit `@ApiBody(...)` and `@ApiResponse(...)` schemas, including OpenAPI 3.1 composition (`allOf`, `oneOf`, `anyOf`), null unions, finite exclusive bounds, object/array constraints, examples/defaults, and read/write/deprecated annotations. Legacy `nullable` and boolean exclusive bounds are rejected.
 
 ## Related Packages
 
@@ -211,3 +210,11 @@ With `forRootAsync(...)`, `documentPath` and `uiPath` are outer registration opt
 - `packages/openapi/src/openapi-module.test.ts`: Integration tests and usage examples.
 - `packages/openapi/src/openapi-module-routes.test.ts`: Default, custom, multi-document, and route-collision examples.
 - `packages/openapi/src/schema-builder.test.ts`: Document builder and schema generation examples.
+
+## Migrating to 3.0
+
+- Replace `buildOpenApiDocument(options)` with `OpenApiDocumentBuilder.build(options)` and replace `BuildOpenApiDocumentOptions` with `OpenApiDocumentBuilderOptions`.
+- Remove `OpenApiHandlerRegistry`; pass `sources` and `descriptors` directly to the builder or `OpenApiModule`.
+- Replace `@ApiResponse(status, options)` with `@ApiResponse({ status, ...options })`.
+- Replace `@ApiBody({ schema })` with `@ApiBody({ content: { 'application/json': { schema } } })`.
+- Replace `nullable` with a null type union or `anyOf`, and replace boolean exclusive bounds with finite numeric values.

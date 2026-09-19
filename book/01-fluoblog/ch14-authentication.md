@@ -4,6 +4,10 @@
 
 [Previous: Modeling Users and Credentials](./ch13-accounts-and-credentials.md) | [Volume 1 Contents](./toc.md) | [Next: Who Can Edit This Post?](./ch15-authorization.md)
 
+When documenting protected routes, retain `@ApiBearerAuth()` and register the live
+document through `OpenApiModule`; use the object-only decorators in the
+[OpenAPI 3 Migration Guide](../../docs/architecture/openapi-migration.md).
+
 ## Carrying a Successful Password Check Across Requests
 
 We try the first editing screen now that FluoBlog has contributor accounts. The login button checks the password and reports success, but the next request to save a post contains nothing that identifies the user. We make the browser send a `userId`, only to find that the server accepts it even when we change it to another account's ID. The ID created during registration is not a secret, so it cannot prove identity. We need a format that distinguishes a login result verified by the server from a user ID asserted by the client.

@@ -3,6 +3,7 @@
 <p><strong><kbd>English</kbd></strong> <a href="./openapi.ko.md"><kbd>한국어</kbd></a></p>
 
 This document defines the current OpenAPI document-generation contract implemented by `@fluojs/openapi`.
+For breaking API replacements, see the paired [OpenAPI 3 Migration Guide](./openapi-migration.md).
 
 ## Module Registration Rules
 
@@ -20,7 +21,7 @@ This document defines the current OpenAPI document-generation contract implement
 
 | Source | Current contract | Source anchor |
 | --- | --- | --- |
-| Base document version | `buildOpenApiDocument(...)` always emits `openapi: '3.1.0'`. | `packages/openapi/src/schema-builder.ts` |
+| Base document version | `OpenApiDocumentBuilder.build(...)` always emits `openapi: '3.1.0'`. | `packages/openapi/src/schema-builder.ts` |
 | HTTP route metadata | Paths, HTTP methods, handler names, and resolved URI-versioned routes come from fluo HTTP handler descriptors. Express-style `:id` path segments are converted to `{id}` in the final document. | `packages/openapi/src/schema-builder.ts` |
 | Descriptor method validation | Descriptor operations are limited to OpenAPI Path Item methods that fluo can author: `GET`, `PUT`, `POST`, `DELETE`, `OPTIONS`, `HEAD`, `PATCH`, and `TRACE`. Runtime-only `ALL` and any future or custom unsupported method fail generation before operation emission. | `packages/openapi/src/path-item.ts`, `packages/openapi/src/schema-builder.ts`, `packages/openapi/src/path-item.test.ts` |
 | Controller tags | `@ApiTag(...)` defines controller tags. If absent, the controller class name becomes the default tag. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |
@@ -28,8 +29,7 @@ This document defines the current OpenAPI document-generation contract implement
 | Response metadata | `@ApiResponse(...)` stores explicit status/description/schema/type metadata. DTO `type` values become component schema references. Handler return values and TypeScript return types are not inspected. Without `@ApiResponse(...)`, the builder emits only a method-derived or `@HttpCode(...)` success status with description `OK`, not an inferred response schema. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |
 | Parameter and body metadata | `@ApiParam(...)`, `@ApiQuery(...)`, `@ApiHeader(...)`, `@ApiCookie(...)`, and `@ApiBody(...)` supply explicit parameter and request-body metadata. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/schema-builder.ts` |
 | DTO schema generation | DTO schemas are derived from binding and validation metadata through `getDtoBindingSchema(...)` and `getDtoValidationSchema(...)`, then emitted into `components.schemas`. `Length`/`MinLength`/`MaxLength`, array size rules, and `IsIn`/`IsEnum` combine deterministically into the strongest bounds or enum intersection; `ValidateNested(..., { each: true })` selects an array schema without changing validation traversal. | `packages/openapi/src/schema-builder.ts` |
-| Exclusive schema bounds | `OpenApiSchemaObject` retains numeric and legacy boolean exclusive-bound inputs. Paired `true` plus `minimum`/`maximum` metadata is emitted as the OpenAPI 3.1 numeric exclusive keyword, `false` is omitted while retaining the inclusive bound, and unnormalizable exclusive values fail document generation. | `packages/openapi/src/schema-bounds.ts`, `packages/openapi/src/schema-builder.ts` |
-| Nullable schemas | `OpenApiSchemaObject` retains the legacy boolean `nullable` input for compatibility but never emits it. `true` adds `null` to declared scalar or array `type` unions, or wraps type-less schemas such as `$ref` in `anyOf`; `false` is removed without changing the schema. | `packages/openapi/src/schema-bounds.ts`, `packages/openapi/src/schema-nullable.test.ts` |
+| Schema bounds and nulls | `OpenApiSchemaObject` accepts finite numeric exclusive bounds and explicit null unions/`anyOf` only. Legacy `nullable` and boolean exclusive forms fail deterministically after `documentTransform`. | `packages/openapi/src/schema-bounds.ts`, `packages/openapi/src/openapi-document-builder.test.ts` |
 | Security metadata | `@ApiBearerAuth()` and `@ApiSecurity(name, scopes?)` contribute operation-level security requirements. `securitySchemes` options populate `components.securitySchemes`. | `packages/openapi/src/decorators.ts`, `packages/openapi/src/openapi-module.ts`, `packages/openapi/src/schema-builder.ts` |
 
 ## Empty Decorator Options

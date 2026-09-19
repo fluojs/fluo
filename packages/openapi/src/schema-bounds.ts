@@ -47,64 +47,31 @@ function normalizeOpenApiSchemaBounds(
     return cachedSchema;
   }
 
-  if (schema.nullable === true && schema.type === undefined) {
-    const nullableUnion: OpenApiSchemaObject = {};
-    const nonNullableSchema: OpenApiSchemaObject = { ...schema };
-    delete nonNullableSchema.nullable;
-    normalizedSchemas.set(schema, nullableUnion);
-    nullableUnion.anyOf = [
-      normalizeOpenApiSchemaBounds(nonNullableSchema, `${path}.anyOf[0]`, normalizedSchemas),
-      { type: 'null' },
-    ];
-    return nullableUnion;
+  const untypedSchema = schema as Record<string, unknown>;
+
+  if ('nullable' in untypedSchema) {
+    throw new TypeError(`OpenAPI schema ${path} has legacy nullable input; use a null type union or anyOf.`);
+  }
+
+  if (typeof untypedSchema.exclusiveMinimum === 'boolean') {
+    throw new TypeError(`OpenAPI schema ${path} has boolean exclusiveMinimum; use a finite number.`);
+  }
+
+  if (typeof untypedSchema.exclusiveMaximum === 'boolean') {
+    throw new TypeError(`OpenAPI schema ${path} has boolean exclusiveMaximum; use a finite number.`);
   }
 
   const normalized: OpenApiSchemaObject = { ...schema };
   normalizedSchemas.set(schema, normalized);
 
-  if (typeof schema.nullable === 'boolean') {
-    delete normalized.nullable;
-  }
-
-  if (schema.nullable === true && schema.type !== undefined) {
-    normalized.type = typeof schema.type === 'string'
-      ? (schema.type === 'null' ? 'null' : [schema.type, 'null'])
-      : (schema.type.includes('null') ? schema.type : [...schema.type, 'null']);
-  }
-
   if (typeof schema.exclusiveMinimum === 'number' && !Number.isFinite(schema.exclusiveMinimum)) {
     throw new TypeError(`OpenAPI schema ${path}.exclusiveMinimum must be a finite number.`);
-  }
-
-  if (typeof schema.exclusiveMinimum === 'boolean') {
-    delete normalized.exclusiveMinimum;
-
-    if (schema.exclusiveMinimum) {
-      if (schema.minimum === undefined || !Number.isFinite(schema.minimum)) {
-        throw new TypeError(`OpenAPI schema ${path}.exclusiveMinimum requires a finite minimum.`);
-      }
-
-      normalized.exclusiveMinimum = schema.minimum;
-      delete normalized.minimum;
-    }
   }
 
   if (typeof schema.exclusiveMaximum === 'number' && !Number.isFinite(schema.exclusiveMaximum)) {
     throw new TypeError(`OpenAPI schema ${path}.exclusiveMaximum must be a finite number.`);
   }
 
-  if (typeof schema.exclusiveMaximum === 'boolean') {
-    delete normalized.exclusiveMaximum;
-
-    if (schema.exclusiveMaximum) {
-      if (schema.maximum === undefined || !Number.isFinite(schema.maximum)) {
-        throw new TypeError(`OpenAPI schema ${path}.exclusiveMaximum requires a finite maximum.`);
-      }
-
-      normalized.exclusiveMaximum = schema.maximum;
-      delete normalized.maximum;
-    }
-  }
 
   if (schema.allOf) {
     normalized.allOf = normalizeSchemaList(schema.allOf, `${path}.allOf`, normalizedSchemas);
@@ -254,7 +221,7 @@ function normalizePaths(
 }
 
 /**
- * Normalize legacy exclusive-bound and nullable metadata before an OpenAPI 3.1 document is exposed.
+ * Validate OpenAPI 3.1 schema bounds before a document is exposed.
  *
  * @param document Generated document, including any final caller transform.
  * @returns A detached document whose schema keywords use OpenAPI 3.1 forms.

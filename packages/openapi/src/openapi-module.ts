@@ -1,7 +1,6 @@
 import { type AsyncModuleOptions, type Constructor, Inject, type InjectionToken, type MaybePromise } from '@fluojs/core';
 import {
   Controller,
-  createHandlerMapping,
   Get,
   type HandlerDescriptor,
   type HandlerSource,
@@ -10,11 +9,10 @@ import {
 } from '@fluojs/http';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
-import { OpenApiHandlerRegistry } from './handler-registry.js';
 import {
-  buildOpenApiDocument,
   type DefaultErrorResponsesPolicy,
   type OpenApiDocument,
+  OpenApiDocumentBuilder,
   type OpenApiSecuritySchemeObject,
 } from './schema-builder.js';
 import { cloneSnapshotValue, createFrozenSnapshot } from './snapshot.js';
@@ -61,6 +59,7 @@ export interface OpenApiModuleOptions extends OpenApiRouteOptions {
   swaggerUiAssets?: OpenApiSwaggerUiAssetsOptions;
   extraModels?: Constructor[];
   documentTransform?: (document: OpenApiDocument) => OpenApiDocument;
+  operationPathPrefix?: string;
 }
 
 /**
@@ -108,6 +107,7 @@ function snapshotOpenApiModuleOptions(options: OpenApiModuleOptions): OpenApiMod
     documentPath: options.documentPath,
     documentTransform: options.documentTransform,
     extraModels: options.extraModels ? [...options.extraModels] : undefined,
+    operationPathPrefix: options.operationPathPrefix,
     securitySchemes: cloneRecord(options.securitySchemes),
     sources: options.sources ? cloneSnapshotValue(options.sources) : undefined,
     swaggerUiAssets: options.swaggerUiAssets ? { ...options.swaggerUiAssets } : undefined,
@@ -135,21 +135,6 @@ function isOpenApiModuleOptions(value: unknown): value is OpenApiModuleOptions {
   const options = value as Record<string, unknown>;
 
   return typeof options.title === 'string' && typeof options.version === 'string';
-}
-
-function resolveOpenApiDescriptors(options: OpenApiModuleOptions): readonly HandlerDescriptor[] {
-  const sourceDescriptors = createHandlerMapping([...(options.sources ?? [])]).descriptors;
-  const explicitDescriptors = [...(options.descriptors ?? [])];
-
-  if (sourceDescriptors.length === 0) {
-    return explicitDescriptors;
-  }
-
-  if (explicitDescriptors.length === 0) {
-    return sourceDescriptors;
-  }
-
-  return [...sourceDescriptors, ...explicitDescriptors];
 }
 
 /**
@@ -264,16 +249,14 @@ export class OpenApiModule {
               throw new Error('OpenApiModule options provider must resolve title and version.');
             }
 
-            const registry = new OpenApiHandlerRegistry();
-
-            registry.setDescriptors(resolveOpenApiDescriptors(options));
-
-            return createFrozenSnapshot(buildOpenApiDocument({
+            return createFrozenSnapshot(OpenApiDocumentBuilder.build({
               documentTransform: options.documentTransform,
               defaultErrorResponsesPolicy: options.defaultErrorResponsesPolicy,
-              descriptors: registry.getDescriptors(),
+              descriptors: options.descriptors,
               extraModels: options.extraModels,
+              operationPathPrefix: options.operationPathPrefix,
               securitySchemes: options.securitySchemes,
+              sources: options.sources,
               title: options.title,
               version: options.version,
             }));

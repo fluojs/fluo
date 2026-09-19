@@ -1,6 +1,6 @@
 import type { Constructor, MetadataPropertyKey } from '@fluojs/core';
 import { type DtoFieldValidationRule, getDtoBindingSchema, getDtoValidationSchema } from '@fluojs/core/request-pipeline';
-import type { HandlerDescriptor, HttpMethod } from '@fluojs/http';
+import { createHandlerMapping, type HandlerDescriptor, type HandlerSource, type HttpMethod } from '@fluojs/http';
 import {
   type ApiParameterMetadata,
   type ApiResponseMetadata,
@@ -76,12 +76,10 @@ export interface OpenApiSchemaObject {
   deprecated?: boolean;
   readOnly?: boolean;
   writeOnly?: boolean;
-  /** Legacy compatibility input normalized to an OpenAPI 3.1 null union before emission. */
-  nullable?: boolean;
   minimum?: number;
   maximum?: number;
-  exclusiveMinimum?: number | boolean;
-  exclusiveMaximum?: number | boolean;
+  exclusiveMinimum?: number;
+  exclusiveMaximum?: number;
   multipleOf?: number;
   minLength?: number;
   maxLength?: number;
@@ -180,7 +178,7 @@ export interface OpenApiOperationObject {
 }
 
 /**
- * Root OpenAPI 3.1.0 document produced by `buildOpenApiDocument(...)`.
+ * Root OpenAPI 3.1.0 document produced by `OpenApiDocumentBuilder.build(...)`.
  */
 export interface OpenApiDocument {
   openapi: '3.1.0';
@@ -190,16 +188,18 @@ export interface OpenApiDocument {
 }
 
 /**
- * Input used by `buildOpenApiDocument(...)` to assemble an OpenAPI document.
+ * Input used by `OpenApiDocumentBuilder.build(...)` to assemble an OpenAPI document.
  *
  * @remarks
  * Most applications should prefer `OpenApiModule.forRoot(...)`. Use this lower
  * level builder when tests or custom tooling need a document without mounting
  * the OpenAPI runtime module.
  */
-export interface BuildOpenApiDocumentOptions {
+export interface OpenApiDocumentBuilderOptions {
   defaultErrorResponsesPolicy?: DefaultErrorResponsesPolicy;
-  descriptors: readonly HandlerDescriptor[];
+  descriptors?: readonly HandlerDescriptor[];
+  sources?: readonly HandlerSource[];
+  operationPathPrefix?: string;
   title: string;
   version: string;
   securitySchemes?: Record<string, OpenApiSecuritySchemeObject>;
@@ -265,6 +265,29 @@ function dedupeDescriptorsByOperation(descriptors: readonly HandlerDescriptor[])
   }
 
   return Array.from(descriptorsByOperation.values());
+}
+
+function normalizeOperationPathPrefix(prefix: string | undefined): string {
+  return `/${(prefix ?? '').split('/').filter(Boolean).join('/')}`;
+}
+
+function prependOperationPath(path: string, prefix: string): string {
+  return `/${[prefix, path].flatMap((part) => part.split('/')).filter(Boolean).join('/')}`;
+}
+
+function resolveBuilderDescriptors(options: OpenApiDocumentBuilderOptions): HandlerDescriptor[] {
+  const sourceDescriptors = options.sources && options.sources.length > 0
+    ? createHandlerMapping([...options.sources]).descriptors
+    : [];
+  const prefix = normalizeOperationPathPrefix(options.operationPathPrefix);
+
+  return [...sourceDescriptors, ...(options.descriptors ?? [])].map((descriptor) => ({
+    ...descriptor,
+    route: {
+      ...descriptor.route,
+      path: prependOperationPath(descriptor.route.path, prefix),
+    },
+  }));
 }
 
 type DtoBindingEntry = ReturnType<typeof getDtoBindingSchema>[number];
@@ -1057,15 +1080,7 @@ function createExplicitRequestBody(methodMeta: MethodApiMetadata | undefined): O
     return undefined;
   }
 
-  const content = requestBodyMeta.content
-    ? requestBodyMeta.content
-    : requestBodyMeta.schema
-      ? {
-          'application/json': {
-            schema: requestBodyMeta.schema,
-          },
-        }
-      : undefined;
+  const content = requestBodyMeta.content;
 
   if (!content) {
     return undefined;
@@ -1376,12 +1391,13 @@ function registerExtraModels(
 }
 
 /**
- * Build an OpenAPI 3.1.0 document directly from handler descriptors.
+ * Static offline OpenAPI 3.1 document builder.
  *
- * @param options Document-generation input including handlers, metadata, and optional schema transforms.
- * @returns A generated OpenAPI document ready to serialize or serve.
+ * Application routes, Swagger UI, and status ownership remain with
+ * `OpenApiModule.forRoot(...)` and `OpenApiModule.forRootAsync(...)`.
  */
-/**
+export class OpenApiDocumentBuilder {
+  /**
  * Build an OpenAPI 3.1 document from discovered Fluo HTTP handler descriptors.
  *
  * @param options Document assembly options, descriptors, and optional schema transforms.
@@ -1389,14 +1405,14 @@ function registerExtraModels(
  *
  * @example
  * ```ts
- * const document = buildOpenApiDocument({
- *   descriptors,
- *   title: 'Public API',
- *   version: '1.0.0',
- * });
- * ```
- */
-export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): OpenApiDocument {
+   * const document = OpenApiDocumentBuilder.build({
+   *   descriptors,
+   *   title: 'Public API',
+   *   version: '1.0.0',
+   * });
+   * ```
+   */
+  static build(options: OpenApiDocumentBuilderOptions): OpenApiDocument {
   const paths: Record<string, OpenApiPathItemObject> = {};
   const componentSchemas: Record<string, OpenApiSchemaObject> = {};
   const defaultErrorResponsesPolicy = options.defaultErrorResponsesPolicy ?? 'inject';
@@ -1410,7 +1426,7 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
 
   registerExtraModels(options.extraModels, componentSchemas, context);
 
-  for (const descriptor of dedupeDescriptorsByOperation(options.descriptors)) {
+  for (const descriptor of dedupeDescriptorsByOperation(resolveBuilderDescriptors(options))) {
     const entry = buildOperationEntry(
       descriptor,
       componentSchemas,
@@ -1448,5 +1464,6 @@ export function buildOpenApiDocument(options: BuildOpenApiDocumentOptions): Open
 
   const transformedDocument = options.documentTransform ? options.documentTransform(document) : document;
   validateOpenApiPathItemKeys(transformedDocument.paths);
-  return normalizeOpenApiDocumentSchemaBounds(transformedDocument);
+    return normalizeOpenApiDocumentSchemaBounds(transformedDocument);
+  }
 }

@@ -12,6 +12,8 @@ single-target compatibility only; migrate it before adding another database or O
 
 Prisma application registration is owned by `PrismaModule.forRoot(...)` or `PrismaModule.forRootAsync(...)`; inject the module-owned `PrismaService` facade rather than assembling one directly. `PrismaService.createFacade(...)` and `PrismaTransactionInterceptor` are removed. Migrate request-wide boundaries to application-owned `PrismaService.requestTransaction(...)` calls that forward the request `AbortSignal`; see [Prisma Registration Migration](./getting-started/migrate-prisma-registration.md).
 
+OpenAPI application registration is owned by `OpenApiModule.forRoot(...)` or `OpenApiModule.forRootAsync(...)`; use `OpenApiDocumentBuilder.build(...)` only for offline documents. The builder accepts direct `sources` and `descriptors`, applies explicit descriptors later, and scopes `operationPathPrefix` to operations. Use object-only `ApiResponse` and explicit `ApiBody.content`; see [OpenAPI 3 Migration Guide](./architecture/openapi-migration.md).
+
 <!-- fluo:cron-nestjs-migration: timezone-mapping -->
 <!-- fluo:cron-nestjs-migration: wait-for-completion -->
 <!-- fluo:cron-nestjs-migration: unsupported-options -->

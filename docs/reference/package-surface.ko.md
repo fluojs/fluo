@@ -2,6 +2,8 @@
 
 <p><strong><kbd>한국어</kbd></strong> <a href="./package-surface.md"><kbd>English</kbd></a></p>
 
+`@fluojs/openapi`는 라이브 문서에 `OpenApiModule.forRoot(...)` / `forRootAsync(...)`를, offline 문서에 `OpenApiDocumentBuilder.build(...)`를 공개합니다. legacy builder function과 registry는 public API가 아닙니다. [OpenAPI 3 마이그레이션 가이드](../architecture/openapi-migration.ko.md)를 참고하세요.
+
 ## Cloudflare Worker close 소유권
 
 `@fluojs/platform-cloudflare-workers`의 exported `fetch` handler에는 host가 호출하는 shutdown callback이 없습니다. `CloudflareWorkerApplicationHost`가 lazy bootstrap 공유, 첫 environment configuration 재사용, retry, generation 교체, drain recovery를 소유하며 직접 application은 adapter Factory와 no-socket `app.listen()`을 사용합니다. `worker.fetch` 밖의 trigger는 `await worker.close()`를 직접 호출할 수 있습니다. 그 fetch 안의 management route는 현재 response를 반환한 뒤 `executionContext.waitUntil(worker.close())` 또는 동등한 non-self-awaiting mechanism으로 close를 관찰해야 합니다. 그 안에서 await하면 자기 자신의 active request drain을 기다리다 shutdown timeout에 도달합니다. 성공한 host close는 재시작 가능합니다. 다음 `fetch(...)`는 새 application을 만들고 bootstrap lifecycle hook을 다시 실행하며 application singleton provider를 다시 생성합니다.

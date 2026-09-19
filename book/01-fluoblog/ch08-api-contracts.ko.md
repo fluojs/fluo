@@ -271,7 +271,7 @@ Swagger UI가 열린다는 사실은 인증 구현의 증거가 아니다. `ApiB
 
 ```ts
 import { createHandlerMapping } from '@fluojs/http';
-import { buildOpenApiDocument } from '@fluojs/openapi';
+import { OpenApiDocumentBuilder } from '@fluojs/openapi';
 import { serialize } from '@fluojs/serialization';
 import { describe, expect, it } from 'vitest';
 import { createDraft, publishPost } from './post.js';
@@ -279,7 +279,7 @@ import { toPublicPost } from './post-response.dto.js';
 import { PostsController } from './posts.controller.js';
 
 function buildDocument() {
-  return buildOpenApiDocument({
+  return OpenApiDocumentBuilder.build({
     descriptors: createHandlerMapping([{ controllerToken: PostsController }]).descriptors,
     title: 'FluoBlog API',
     version: '1.0.0',

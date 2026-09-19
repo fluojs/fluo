@@ -2,6 +2,8 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./decorator-defaults.ko.md"><kbd>한국어</kbd></a></p>
 
+OpenAPI `ApiResponse` accepts one object with its required `status`; `ApiBody` uses explicit media `content` while empty and description-only bodies preserve DTO inference. See [OpenAPI 3 Migration Guide](../architecture/openapi-migration.md).
+
 This is the final implementation reconciliation of [#3701](https://github.com/fluojs/fluo/issues/3701),
 whose audit covered all 42 public `@fluojs/*` packages at
 `4a0fd3c37b5b220c3bc38519b8e231bb9e442d37`. That audit counted 165 owned public decorator
