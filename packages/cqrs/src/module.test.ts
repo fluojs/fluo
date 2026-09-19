@@ -2,6 +2,7 @@ import { Inject, InvariantError } from '@fluojs/core';
 import { Container } from '@fluojs/di';
 import { type EventBus, type EventBusTransport, EVENT_BUS as FLUO_EVENT_BUS, OnEvent } from '@fluojs/event-bus';
 import { type ApplicationLogger, FluoFactory, defineModule, type OnApplicationShutdown, type RuntimeCleanupRegistration } from '@fluojs/runtime';
+import { RUNTIME_CLEANUP_REGISTRATION } from '@fluojs/runtime/internal';
 import { describe, expect, it, vi } from 'vitest';
 import { CommandBusLifecycleService } from './buses/command-bus.js';
 import { CqrsEventBusService } from './buses/event-bus.js';
@@ -107,6 +108,21 @@ function createRuntimeCleanupRegistry(callbacks: Array<() => void>): RuntimeClea
       }
     };
   };
+}
+
+@Inject(RUNTIME_CLEANUP_REGISTRATION, CqrsEventBusService)
+class EventBusShutdownStartProbe {
+  readonly started = createDeferred<void>();
+
+  constructor(
+    registerRuntimeCleanup: RuntimeCleanupRegistration,
+    private readonly eventBus: CqrsEventBusService,
+  ) {
+    registerRuntimeCleanup(() => {
+      expect(this.eventBus.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopping');
+      this.started.resolve();
+    });
+  }
 }
 
 class CreateUserCommand implements ICommand {
@@ -1801,12 +1817,12 @@ describe('@fluojs/cqrs', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
-      providers: [CapturedContextEventHandler, GuardedShutdownEventHandler],
+      providers: [CapturedContextEventHandler, GuardedShutdownEventHandler, EventBusShutdownStartProbe],
     });
 
     const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
-    const eventBusService = await app.container.resolve(CqrsEventBusService);
+    const shutdownStartProbe = await app.container.resolve(EventBusShutdownStartProbe);
 
     await eventBus.publish(new CapturedContextEvent('captured'));
     expect(capturedContext).toBeDefined();
@@ -1817,9 +1833,7 @@ describe('@fluojs/cqrs', () => {
 
     const closePromise = app.close();
 
-    await vi.waitFor(() => {
-      expect(eventBusService.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopping');
-    });
+    await shutdownStartProbe.started.promise;
 
     await expect(eventBus.publish(new GuardedShutdownEvent('late'))).rejects.toBeInstanceOf(InvariantError);
     await expect(eventBus.publish(new GuardedShutdownEvent('stale-context'), capturedContext)).rejects.toBeInstanceOf(InvariantError);
@@ -1879,12 +1893,12 @@ describe('@fluojs/cqrs', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
-      providers: [ShutdownStore, ParentShutdownEventHandler, NestedShutdownEventHandler],
+      providers: [ShutdownStore, ParentShutdownEventHandler, NestedShutdownEventHandler, EventBusShutdownStartProbe],
     });
 
     const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
-    const eventBusService = await app.container.resolve(CqrsEventBusService);
+    const shutdownStartProbe = await app.container.resolve(EventBusShutdownStartProbe);
     const store = await app.container.resolve(ShutdownStore);
 
     const publishPromise = eventBus.publish(new ParentShutdownEvent('parent'));
@@ -1892,9 +1906,7 @@ describe('@fluojs/cqrs', () => {
 
     const closePromise = app.close();
 
-    await vi.waitFor(() => {
-      expect(eventBusService.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopping');
-    });
+    await shutdownStartProbe.started.promise;
 
     releaseNestedPublish.resolve();
 
@@ -1953,12 +1965,12 @@ describe('@fluojs/cqrs', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
-      providers: [ShutdownStore, NestedPublishingSaga, SagaNestedShutdownEventHandler],
+      providers: [ShutdownStore, NestedPublishingSaga, SagaNestedShutdownEventHandler, EventBusShutdownStartProbe],
     });
 
     const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
-    const eventBusService = await app.container.resolve(CqrsEventBusService);
+    const shutdownStartProbe = await app.container.resolve(EventBusShutdownStartProbe);
     const store = await app.container.resolve(ShutdownStore);
 
     const publishPromise = eventBus.publish(new SagaParentShutdownEvent('parent'));
@@ -1966,9 +1978,7 @@ describe('@fluojs/cqrs', () => {
 
     const closePromise = app.close();
 
-    await vi.waitFor(() => {
-      expect(eventBusService.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopping');
-    });
+    await shutdownStartProbe.started.promise;
 
     releaseNestedPublish.resolve();
 
@@ -2000,20 +2010,20 @@ describe('@fluojs/cqrs', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
-      providers: [GuardedSaga],
+      providers: [GuardedSaga, EventBusShutdownStartProbe],
     });
 
     const app = await FluoFactory.create(AppModule);
     const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
+    const shutdownStartProbe = await app.container.resolve(EventBusShutdownStartProbe);
     const dispatchPromise = sagaBus.dispatch(new GuardedSagaEvent('active'));
 
     await Promise.resolve();
 
     const closePromise = app.close();
 
-    await vi.waitFor(() => {
-      expect(sagaBus.getRuntimeSnapshot().lifecycleState).toBe('stopping');
-    });
+    await shutdownStartProbe.started.promise;
+    expect(sagaBus.getRuntimeSnapshot().lifecycleState).toBe('stopping');
 
     await expect(sagaBus.dispatch(new GuardedSagaEvent('late'))).rejects.toBeInstanceOf(InvariantError);
 

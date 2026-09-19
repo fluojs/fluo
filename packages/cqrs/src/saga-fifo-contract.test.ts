@@ -18,21 +18,6 @@ function createDeferred<T = void>() {
   return { promise, resolve: resolvePromise };
 }
 
-async function settleWithin(promise: Promise<void>, timeoutMs: number): Promise<'blocked' | 'settled'> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const blocked = new Promise<'blocked'>((resolve) => {
-    timeoutId = setTimeout(() => resolve('blocked'), timeoutMs);
-  });
-
-  try {
-    return await Promise.race([promise.then(() => 'settled' as const), blocked]);
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-  }
-}
-
 describe('CQRS saga provider-token FIFO contracts', () => {
   it('settles default delegated subscriber re-entry through the active saga token', async () => {
     // Given
@@ -101,17 +86,10 @@ describe('CQRS saga provider-token FIFO contracts', () => {
       // When
       const publishing = eventBus.publish(new InitialEvent());
       await subscriberStarted.promise;
-      const outcome = await settleWithin(publishing, 500);
-
-      if (outcome === 'blocked') {
-        releaseBlockedSubscriber.resolve();
-      }
-
       await publishing;
       await Promise.all(subscriberPublishPromises);
 
       // Then
-      expect(outcome).toBe('settled');
       expect(handledSteps).toEqual([
         'InitialEvent:start',
         'InitialEvent:end',
@@ -136,6 +114,7 @@ describe('CQRS saga provider-token FIFO contracts', () => {
     const handledSteps: string[] = [];
     const initialSagaStarted = createDeferred<void>();
     const releaseInitialSaga = createDeferred<void>();
+    const externalDispatchAdmitted = createDeferred<void>();
 
     class InitialEvent implements IEvent {}
 
@@ -178,6 +157,16 @@ describe('CQRS saga provider-token FIFO contracts', () => {
     const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve(CqrsEventBusService);
     const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
+    const dispatch = sagaBus.dispatch.bind(sagaBus);
+    const dispatchSpy = vi.spyOn(sagaBus, 'dispatch').mockImplementation((event, context, options) => {
+      const dispatchPromise = dispatch(event, context, options);
+
+      if (event instanceof ExternalEvent) {
+        externalDispatchAdmitted.resolve();
+      }
+
+      return dispatchPromise;
+    });
 
     try {
       const publishingInitial = eventBus.publish(new InitialEvent());
@@ -185,9 +174,7 @@ describe('CQRS saga provider-token FIFO contracts', () => {
 
       // When
       const publishingExternal = eventBus.publish(new ExternalEvent());
-      await vi.waitFor(() => {
-        expect(sagaBus.getRuntimeSnapshot().inFlightSagaExecutions).toBe(2);
-      });
+      await externalDispatchAdmitted.promise;
       releaseInitialSaga.resolve();
       await Promise.all([publishingInitial, publishingExternal]);
 
@@ -202,6 +189,7 @@ describe('CQRS saga provider-token FIFO contracts', () => {
       ]);
       expect(maximumActiveHandles).toBe(1);
     } finally {
+      dispatchSpy.mockRestore();
       releaseInitialSaga.resolve();
       await app.close();
     }

@@ -84,26 +84,6 @@ export interface CqrsEventType<TEvent extends IEvent = IEvent> {
   new (...args: never[]): TEvent;
 }
 
-/** Class constructor accepted in {@link CqrsModuleOptions.commandHandlers}. */
-export interface CommandHandlerClass {
-  new (...args: never[]): object;
-}
-
-/** Class constructor accepted in {@link CqrsModuleOptions.queryHandlers}. */
-export interface QueryHandlerClass {
-  new (...args: never[]): object;
-}
-
-/** Class constructor accepted in {@link CqrsModuleOptions.eventHandlers}. */
-export interface EventHandlerClass {
-  new (...args: never[]): object;
-}
-
-/** Class constructor accepted in {@link CqrsModuleOptions.sagas}. */
-export interface SagaClass {
-  new (...args: never[]): object;
-}
-
 /** Metadata stored by {@link CommandHandler}. */
 export interface CommandHandlerMetadata {
   commandType: CommandType;

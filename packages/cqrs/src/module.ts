@@ -9,7 +9,7 @@ import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
 import { CqrsShutdownDeadline } from './buses/shutdown-deadline.js';
 import { CQRS_MODULE_OPTIONS } from './tokens.js';
 
-/** Module options for registering first-party handler classes and event-bus integration. */
+/** Module options for CQRS bus and event-bus integration. */
 export interface CqrsModuleOptions {
   eventBus?: EventBusModuleOptions;
   /** Whether CQRS bus providers should be visible globally. Defaults to `true`. */
