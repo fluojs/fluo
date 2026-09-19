@@ -168,7 +168,6 @@ export interface SlackTemplateRenderer {
 export interface SlackNotificationPayload extends Record<string, unknown> {
   attachments?: readonly SlackAttachment[];
   blocks?: readonly SlackBlock[];
-  channel?: string;
   iconEmoji?: string;
   iconUrl?: string;
   metadata?: Record<string, unknown>;
@@ -224,7 +223,7 @@ export interface SlackModuleOptions {
    *
    * @remarks
    * Defaults to `true` for Nest-like root registration. Set `false` when migrated code needs `SlackService`,
-   * `SlackChannel`, `SLACK`, and `SLACK_CHANNEL` to stay visible only to modules that explicitly import the returned
+   * `SlackChannel` and `SLACK_CHANNEL` to stay visible only to modules that explicitly import the returned
    * module definition.
    */
   global?: boolean;
@@ -255,42 +254,4 @@ export interface NormalizedSlackModuleOptions {
     ownsResources: boolean;
   };
   verifyOnModuleInit: boolean;
-}
-
-/** Slack facade exposed to application code and the compatibility token. */
-export interface Slack {
-  /**
-   * Sends one Slack message directly through the configured transport.
-   *
-   * @param message Caller-supplied Slack message with text and/or block content.
-   * @param options Optional abort signal propagated to the transport.
-   * @returns A normalized delivery receipt describing the transport response.
-   * @throws {SlackMessageValidationError} When the resolved message has no Slack-visible `text`, `blocks`, or `attachments`.
-   * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
-   */
-  send(message: SlackMessage, options?: SlackSendOptions): Promise<SlackSendResult>;
-
-  /**
-   * Sends multiple Slack messages in input order with optional tolerant failure handling.
-   *
-   * @param messages Ordered message list to deliver through the configured transport.
-   * @param options Optional tolerant batch controls such as `continueOnError`.
-   * @returns A batch summary containing successes and any captured failures.
-   * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
-   */
-  sendMany(messages: readonly SlackMessage[], options?: SlackSendManyOptions): Promise<SlackSendBatchResult>;
-
-  /**
-   * Converts one notifications foundation request into a concrete Slack delivery.
-   *
-   * @param notification Shared notification envelope interpreted by the Slack package.
-   * @param options Optional abort signal propagated to rendering and transport work.
-   * @returns A normalized delivery receipt for the resulting Slack message.
-   * @throws {SlackMessageValidationError} When the notification resolves multiple Slack recipients or no Slack-visible content.
-   * @throws {SlackLifecycleError} When delivery is requested before readiness, after initialization failure, or during shutdown.
-   */
-  sendNotification(
-    notification: SlackNotificationDispatchRequest,
-    options?: SlackSendOptions,
-  ): Promise<SlackSendResult>;
 }

@@ -10,6 +10,7 @@ import { enforceConfigNestjsMigrationDocs } from './config-nestjs-migration-docs
 import { enforceCronNestjsMigrationDocs } from './cron-nestjs-migration-docs.mjs';
 import { enforceDenoHostOwnedLifecycleContract } from './deno-host-owned-lifecycle-contract.mjs';
 import { behavioralChangedFiles, isNavigationDocument } from './docs-navigation-changes.mjs';
+import { enforceValidationMappedTypesImportBoundary } from './validation-mapped-types-import-boundary.mjs';
 import { enforceEmailLifecycleDocsContract } from './email-lifecycle-docs-contract.mjs';
 import {
   emailNestjsMigrationMarkerPrefix,
@@ -1681,6 +1682,9 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   const touchedContractGate = changedFiles.some(
     (path) => contractGateTriggers.has(path) && (!nestMigrationGuidePaths.includes(path) || !bootstrapOnlyMigrationGuideUpdate),
   );
+  const touchedQueueProducerDocumentation = changedFiles.some(
+    (path) => path === 'packages/queue/README.md' || path === 'packages/queue/README.ko.md',
+  );
   const touchedHttpLifecycleContract = changedFiles.some((path) => httpLifecycleContractDocs.has(path));
   const fastifyRawContextDocumentation = [
     ...nestMigrationGuidePaths,
@@ -1822,7 +1826,8 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   // and owned transport cleanup serialization docs/tests,
   // plus CQRS provider-token fan-out, private immutable dispatch topology state,
   // single-owner same-token nested saga continuation, full handler/saga/delegated
-  // pipeline ordering, and shutdown authorization,
+  // pipeline ordering, shutdown authorization, and canonical module registration
+  // plus lifecycle service injection boundaries,
   // plus event-bus background handler/transport shutdown drain to live-set
   // quiescence under one deadline, inbound timeout, stable eventKey migration,
   // and CQRS responsibility-boundary docs/tests,
@@ -1872,7 +1877,10 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   // status so configured-but-disabled publishers do not appear as active
   // event-backed dependencies or external owners.
   // and Studio report emission requiring completed bootstrap with no artifact
-  // emitted for failed or hanging bootstrap attempts.
+  // emitted for failed or hanging bootstrap attempts, plus canonical i18n
+  // standalone service and loader static create methods, canonical
+  // createAcceptLanguageLocalePolicyResolver and createHeaderLocalePolicyResolver
+  // policy resolvers, and Accept-Language policy resolver NestJS migration boundaries.
 
   assert(
     contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),
@@ -1887,6 +1895,12 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
     includesAny(changedFiles, (path) => path.endsWith('.test.ts') || path.endsWith('.spec.ts')),
     'contract-governing doc updates must include regression test updates for the changed contract surface.',
   );
+  if (touchedQueueProducerDocumentation) {
+    assert(
+      hasChanged(changedFiles, 'packages/queue/src/public-surface.test.ts'),
+      'Queue producer documentation updates must include packages/queue/src/public-surface.test.ts.',
+    );
+  }
   assert(
     !touchedHttpLifecycleContract || hasChanged(changedFiles, manualSseLifecycleRegressionTest),
     `HTTP lifecycle contract docs must include ${manualSseLifecycleRegressionTest}.`,
@@ -2959,18 +2973,20 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
     'cache-manager package-surface.ko.md, docs/CONTEXT.ko.md, and README.ko.md must keep canonical synchronous and async registration discoverable together.',
   );
   assert(
-    packageSurface.includes('createSlackProviders(...)') &&
-      docsContext.includes('packages/slack/README.md') &&
+    docsContext.includes('packages/slack/README.md') &&
+      docsContext.includes('SlackService') &&
+      docsContext.includes('SLACK_CHANNEL') &&
       docsContext.includes('abort-signal propagation') &&
       docsContext.includes('platform status snapshots'),
-    'docs/CONTEXT.md must keep Slack manual provider composition, abort propagation, and status snapshot guidance discoverable when package-surface.md documents createSlackProviders(...).',
+    'docs/CONTEXT.md must keep SlackService, SLACK_CHANNEL, abort propagation, and status snapshot guidance discoverable.',
   );
   assert(
-    packageSurfaceKo.includes('createSlackProviders(...)') &&
-      docsContextKo.includes('packages/slack/README.ko.md') &&
+    docsContextKo.includes('packages/slack/README.ko.md') &&
+      docsContextKo.includes('SlackService') &&
+      docsContextKo.includes('SLACK_CHANNEL') &&
       docsContextKo.includes('abort-signal 전파') &&
       docsContextKo.includes('platform status snapshot'),
-    'docs/CONTEXT.ko.md must keep Slack manual provider composition, abort propagation, and status snapshot guidance discoverable when package-surface.ko.md documents createSlackProviders(...).',
+    'docs/CONTEXT.ko.md must keep SlackService, SLACK_CHANNEL, abort propagation, and status snapshot guidance discoverable.',
   );
   assert(
     packageSurface.includes('NotificationsModule.forRootAsync({ inject, useFactory, global? })') &&
@@ -4560,6 +4576,7 @@ export async function main() {
   enforceCacheManagerNestjsMigrationDocs();
   enforceCronNestjsMigrationDocs();
   enforceConfigNestjsMigrationDocs();
+  enforceValidationMappedTypesImportBoundary();
   enforceCliMigrationTransformDocs();
   enforceGraphqlAsyncRegistrationContract();
   enforceJwtAsyncRegistrationContract();

@@ -114,6 +114,18 @@ Builder는 handler 반환값이나 TypeScript 반환 타입을 검사해 respons
 ### 통합 DTO 스키마
 `@fluojs/validation`과 함께 DTO binding 및 validation metadata에서 request schema를 파생합니다. Response DTO는 `@ApiResponse(..., { type: ResponseDto })` 또는 `extraModels`처럼 명시적으로 참조할 때만 OpenAPI component가 됩니다.
 
+생성된 request schema에서 반복된 `Min` 규칙은 `Math.max`로 가장 강한 하한
+경계로, 반복된 `Max` 규칙은 `Math.min`으로 가장 강한 상한 경계로 결합됩니다.
+`Length`, `MinLength`, `MaxLength`는 가장 강한 `minLength`/`maxLength` bound로
+결합되고, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`는 `minItems`/`maxItems`에
+같은 방식으로 적용됩니다. `IsIn`과 `IsEnum`은 중복이 제거된 허용 값의
+intersection을 내며 disjoint 제약은 불가능 스키마(`not: {}`)로 표현됩니다.
+서로 다른 `ValidateNested` 대상은 결정론적으로 합성(예: `IntersectionType`
+충돌 시 `allOf`)되며, 두 nested form이 함께 있으면
+`ValidateNested(..., { each: true })`가 array schema를 우선합니다. 이는 OpenAPI
+projection 규칙일 뿐이며 runtime nested collection traversal은 계속
+`@fluojs/validation`이 담당합니다.
+
 ### OpenAPI 3.1 배타적 경계
 `OpenApiSchemaObject`는 OpenAPI 3.1의 숫자 `exclusiveMinimum` 및 `exclusiveMaximum` 값을 받으면서 기존 boolean metadata와의 호환성도 유지합니다. `minimum` 또는 `maximum`과 함께 사용한 `true` 플래그는 생성 문서에서 대응하는 숫자 배타적 경계로 변환되고, `false` 플래그는 생략되는 대신 포괄 경계는 유지됩니다. 유한한 숫자 배타적 경계는 변경 없이 통과합니다. 유한한 대응 경계가 없는 `true` 플래그나 유한하지 않은 숫자 배타적 경계는 잘못된 OpenAPI 3.1 schema를 생성하는 대신 문서 생성을 실패시킵니다. 같은 정규화는 문서가 노출되기 전에 `documentTransform` 이후에도 실행됩니다.
 

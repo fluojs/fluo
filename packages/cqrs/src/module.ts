@@ -7,53 +7,17 @@ import { CqrsEventBusService } from './buses/event-bus.js';
 import { QueryBusLifecycleService } from './buses/query-bus.js';
 import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
 import { CqrsShutdownDeadline } from './buses/shutdown-deadline.js';
-import { COMMAND_BUS, CQRS_MODULE_OPTIONS, EVENT_BUS, QUERY_BUS } from './tokens.js';
-import type {
-  CommandHandlerClass,
-  CqrsDispatchContext,
-  EventHandlerClass,
-  ICommand,
-  IEvent,
-  IQuery,
-  QueryHandlerClass,
-  SagaClass,
-} from './types.js';
+import { CQRS_MODULE_OPTIONS } from './tokens.js';
 
-/** Module options for registering first-party handler classes and event-bus integration. */
+/** Module options for CQRS bus and event-bus integration. */
 export interface CqrsModuleOptions {
-  commandHandlers?: readonly CommandHandlerClass[];
   eventBus?: EventBusModuleOptions;
-  eventHandlers?: readonly EventHandlerClass[];
   /** Whether CQRS bus providers should be visible globally. Defaults to `true`. */
   global?: boolean;
-  queryHandlers?: readonly QueryHandlerClass[];
-  sagas?: readonly SagaClass[];
   /** Shutdown drain policy for CQRS event pipelines and saga execution. `drainTimeoutMs` defaults to 5000ms. */
   shutdown?: {
     drainTimeoutMs?: number;
   };
-}
-
-function collectOptionHandlerProviders(options: CqrsModuleOptions): Provider[] {
-  const providers: Provider[] = [];
-
-  for (const commandHandler of options.commandHandlers ?? []) {
-    providers.push(commandHandler);
-  }
-
-  for (const queryHandler of options.queryHandlers ?? []) {
-    providers.push(queryHandler);
-  }
-
-  for (const eventHandler of options.eventHandlers ?? []) {
-    providers.push(eventHandler);
-  }
-
-  for (const saga of options.sagas ?? []) {
-    providers.push(saga);
-  }
-
-  return providers;
 }
 
 function resolveDelegatedEventBusOptions(options: CqrsModuleOptions): EventBusModuleOptions {
@@ -70,30 +34,7 @@ function resolveDelegatedEventBusOptions(options: CqrsModuleOptions): EventBusMo
   };
 }
 
-function assertCommandBusService(service: unknown): asserts service is CommandBusLifecycleService {
-  if (!(service instanceof CommandBusLifecycleService)) {
-    throw new TypeError('CQRS command bus alias expected CommandBusLifecycleService.');
-  }
-}
-
-function assertQueryBusService(service: unknown): asserts service is QueryBusLifecycleService {
-  if (!(service instanceof QueryBusLifecycleService)) {
-    throw new TypeError('CQRS query bus alias expected QueryBusLifecycleService.');
-  }
-}
-
-function assertCqrsEventBusService(service: unknown): asserts service is CqrsEventBusService {
-  if (!(service instanceof CqrsEventBusService)) {
-    throw new TypeError('CQRS event bus alias expected CqrsEventBusService.');
-  }
-}
-
-/**
- * Creates the providers required for CQRS buses, compatibility aliases, and optional handler registration.
- *
- * @param options CQRS module options including eager handler classes and event-bus configuration.
- * @returns Providers for the command, query, event, and saga runtimes plus compatibility tokens.
- */
+/** Creates the providers required for CQRS buses and event-bus integration. */
 function createCqrsProviders(options: CqrsModuleOptions, shutdownDeadline: CqrsShutdownDeadline): Provider[] {
   return [
     {
@@ -105,44 +46,9 @@ function createCqrsProviders(options: CqrsModuleOptions, shutdownDeadline: CqrsS
       useValue: shutdownDeadline,
     },
     CommandBusLifecycleService,
-    {
-      inject: [CommandBusLifecycleService],
-      provide: COMMAND_BUS,
-      useFactory: (service: unknown) => {
-        assertCommandBusService(service);
-
-        return {
-          execute: (command: ICommand, context?: CqrsDispatchContext) => service.execute(command, context),
-        };
-      },
-    },
     QueryBusLifecycleService,
-    {
-      inject: [QueryBusLifecycleService],
-      provide: QUERY_BUS,
-      useFactory: (service: unknown) => {
-        assertQueryBusService(service);
-
-        return {
-          execute: (query: IQuery<unknown>, context?: CqrsDispatchContext) => service.execute(query, context),
-        };
-      },
-    },
     CqrsSagaLifecycleService,
     CqrsEventBusService,
-    {
-      inject: [CqrsEventBusService],
-      provide: EVENT_BUS,
-      useFactory: (service: unknown) => {
-        assertCqrsEventBusService(service);
-
-        return {
-          publish: (event: IEvent, context?: CqrsDispatchContext) => service.publish(event, context),
-          publishAll: (events: readonly IEvent[], context?: CqrsDispatchContext) => service.publishAll(events, context),
-        };
-      },
-    },
-    ...collectOptionHandlerProviders(options),
   ];
 }
 
@@ -154,8 +60,8 @@ export class CqrsModule {
    * The exported buses are global by default. Set {@link CqrsModuleOptions.global} to `false` to
    * keep them visible only through modules that import this module definition.
    *
-   * @param options CQRS module options including explicit handler classes and event-bus settings.
-   * @returns A module definition that exports the lifecycle services and compatibility tokens.
+   * @param options CQRS module options including event-bus settings.
+   * @returns A module definition that exports the lifecycle services.
    */
   static forRoot(options: CqrsModuleOptions = {}): ModuleType {
     class CqrsModuleDefinition {}
@@ -166,9 +72,6 @@ export class CqrsModule {
         CommandBusLifecycleService,
         QueryBusLifecycleService,
         CqrsEventBusService,
-        COMMAND_BUS,
-        QUERY_BUS,
-        EVENT_BUS,
       ],
       global: options.global ?? true,
       imports: [EventBusModule.forRoot(resolveDelegatedEventBusOptions(options))],

@@ -7,7 +7,6 @@ import { CqrsEventBusService } from './buses/event-bus.js';
 import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
 import { EventHandler, Saga } from './decorators.js';
 import { CqrsModule } from './module.js';
-import { EVENT_BUS } from './tokens.js';
 import type { CqrsEventBus, IEvent, IEventHandler, ISaga } from './types.js';
 
 const DRAIN_TIMEOUT_MS = 20;
@@ -80,7 +79,7 @@ describe('CQRS single shutdown deadline contract', () => {
     });
 
     const app = await FluoFactory.create(AppModule, { logger: createLogger(loggerEvents) });
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
     const publishPromise = eventBus.publish(new DelegatedEvent('delegated-stuck'));
 
     await subscriberStarted.promise;
@@ -219,7 +218,7 @@ describe('CQRS single shutdown deadline contract', () => {
 
     const app = await FluoFactory.create(AppModule);
     const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
     const publishPromise = eventBus.publish(new LateAuthorizedEvent('late-authorized'));
     await handlerStarted.promise;
 
@@ -276,7 +275,7 @@ describe('CQRS single shutdown deadline contract', () => {
     });
 
     const app = await FluoFactory.create(AppModule, { logger: createLogger(loggerEvents) });
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
     const publishPromise = eventBus.publish(new SagaDeadlineEvent('saga-stuck'));
 
     await sagaStarted.promise;
@@ -337,7 +336,7 @@ describe('CQRS single shutdown deadline contract', () => {
 
     const app = await FluoFactory.create(AppModule, { logger: createLogger(loggerEvents) });
     const cqrsEventBus = await app.container.resolve(CqrsEventBusService);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
     const handlerPublishPromise = eventBus.publish(new DegradedHandlerEvent('degraded-handler'));
     const sagaPublishPromise = eventBus.publish(new DegradedSagaEvent('degraded-saga'));
 
@@ -376,5 +375,45 @@ describe('CQRS single shutdown deadline contract', () => {
     }
 
     expectFulfilled(cleanupResults);
+  });
+
+  it('clears descriptors and handlerInstances on shutdown and reports zero handlers in snapshot', async () => {
+    class SampleEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    @EventHandler(SampleEvent)
+    class SampleHandler implements IEventHandler<SampleEvent> {
+      async handle(): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [SampleHandler],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
+
+    const preSnapshot = eventBus.createPlatformStatusSnapshot();
+    expect(preSnapshot.details.eventHandlersDiscovered).toBe(1);
+    expect(eventBus['descriptors'].length).toBe(1);
+    expect(eventBus['handlerInstances'].size).toBe(1);
+
+    await app.close();
+
+    const postSnapshot = eventBus.createPlatformStatusSnapshot();
+    expect(postSnapshot.details.eventHandlersDiscovered).toBe(0);
+    expect(eventBus['descriptors'].length).toBe(0);
+    expect(eventBus['handlerInstances'].size).toBe(0);
+
+    // Idempotent shutdown retry preserves stopped state
+    await expect(eventBus.onApplicationShutdown()).resolves.toBeUndefined();
+
+    // Rejection of new publish work after shutdown
+    await expect(eventBus.publish(new SampleEvent('post-shutdown'))).rejects.toThrow(
+      'CQRS event bus cannot publish after shutdown has started.',
+    );
   });
 });

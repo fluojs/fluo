@@ -5,7 +5,6 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import * as emailPublicApi from './index.js';
 import type {
-  Email,
   EmailMessage,
   EmailModuleOptions,
   EmailNotificationDispatchRequest,
@@ -14,14 +13,13 @@ import type {
   EmailTransportFactory,
 } from './index.js';
 import * as emailQueuePublicApi from './queue-entry.js';
-import type { EmailQueueWorkerOptions } from './queue-entry.js';
+import * as emailNodePublicApi from './node.js';
 
 describe('@fluojs/email public API surface', () => {
   it('keeps documented root-barrel exports stable', () => {
     expect(emailPublicApi).toHaveProperty('EmailModule');
     expect(emailPublicApi).toHaveProperty('EmailService');
     expect(emailPublicApi).toHaveProperty('EmailChannel');
-    expect(emailPublicApi).toHaveProperty('EMAIL');
     expect(emailPublicApi).toHaveProperty('EMAIL_CHANNEL');
     expect(emailPublicApi).toHaveProperty('createEmailPlatformStatusSnapshot');
     expect(emailPublicApi).toHaveProperty('EmailConfigurationError');
@@ -36,8 +34,15 @@ describe('@fluojs/email public API surface', () => {
     expect(emailQueuePublicApi).toHaveProperty('DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS');
     expect(emailQueuePublicApi).toHaveProperty('EmailNotificationQueueJob');
     expect(emailQueuePublicApi).toHaveProperty('EmailNotificationsQueueWorker');
-    expectTypeOf<EmailQueueWorkerOptions>().toHaveProperty('attempts');
-    expectTypeOf<EmailQueueWorkerOptions>().toHaveProperty('concurrency');
+    expect(emailQueuePublicApi).not.toHaveProperty('EmailQueueWorkerOptions');
+  });
+
+  it('keeps Node transport construction on the owning class', () => {
+    expect(emailNodePublicApi).toHaveProperty('NodemailerEmailTransport');
+    expect(emailNodePublicApi.NodemailerEmailTransport).toHaveProperty('create');
+    expect(emailNodePublicApi.NodemailerEmailTransport).toHaveProperty('createFactory');
+    expect(emailNodePublicApi).not.toHaveProperty('createNodemailerEmailTransport');
+    expect(emailNodePublicApi).not.toHaveProperty('createNodemailerEmailTransportFactory');
   });
 
   it('keeps concrete queue dependencies out of the root entrypoint implementation graph', () => {
@@ -91,9 +96,6 @@ describe('@fluojs/email public API surface', () => {
     expectTypeOf<EmailMessage>().toHaveProperty('to');
     expectTypeOf<EmailMessage>().toHaveProperty('subject');
     expectTypeOf<EmailTransport>().toHaveProperty('send');
-    expectTypeOf<Email>().toHaveProperty('send');
-    expectTypeOf<Email>().toHaveProperty('sendMany');
-    expectTypeOf<Email>().toHaveProperty('sendNotification');
     expectTypeOf<EmailModuleOptions>().toHaveProperty('defaultFrom');
     expectTypeOf<EmailModuleOptions>().toHaveProperty('transport');
     expectTypeOf<EmailModuleOptions>().toHaveProperty('verifyOnModuleInit');
@@ -107,6 +109,7 @@ describe('@fluojs/email public API surface', () => {
 
   it('keeps internal normalized options token hidden from the root barrel', () => {
     expect(emailPublicApi).not.toHaveProperty('EMAIL_OPTIONS');
+    expect(emailPublicApi).not.toHaveProperty('EMAIL');
     expect(emailPublicApi).not.toHaveProperty('NormalizedEmailModuleOptions');
     expect(emailPublicApi).not.toHaveProperty('EmailNotificationQueueJob');
     expect(emailPublicApi).not.toHaveProperty('EmailNotificationsQueueWorker');

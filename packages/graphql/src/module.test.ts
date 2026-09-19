@@ -1,18 +1,21 @@
 import { createRequire } from 'node:module';
 import { Inject, Scope } from '@fluojs/core';
+import { Container } from '@fluojs/di';
 import type { MiddlewareContext, Next } from '@fluojs/http';
-import { bootstrapModule, defineModule } from '@fluojs/runtime';
+import { bootstrapModule, type CompiledModule, defineModule } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { IsInt, MinLength } from '@fluojs/validation';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } from 'graphql';
 import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 
+import { OperationScopedDataLoader } from './dataloader/dataloader.js';
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
+import { discoverResolverDescriptors } from './discovery.js';
 import { GraphqlModule } from './module.js';
 import { createGraphqlNetworkFixture } from './network.test-fixture.js';
 import { GraphqlLifecycleService } from './service.js';
-import { GRAPHQL_OPERATION_CONTAINER, type GraphQLContext, listOf } from './types.js';
+import { GRAPHQL_OPERATION_CONTAINER, GRAPHQL_REQUEST_SCOPED_LOADER_CACHE, type GraphQLContext, listOf } from './types.js';
 
 type GraphqlInstanceOf = (value: unknown, constructor: { prototype?: { [Symbol.toStringTag]?: string } }) => boolean;
 
@@ -98,8 +101,14 @@ function onceWebSocketClosed(socket: WebSocket): Promise<void> {
 
 function onceWebSocketCloseEvent(socket: WebSocket): Promise<{ code: number; reason: string }> {
   return new Promise((resolve) => {
-    socket.once('close', (code: number, reason: Uint8Array) => {
-      resolve({ code, reason: new TextDecoder().decode(reason) });
+    socket.once('close', (code: number, reason: unknown) => {
+      const decoded =
+        typeof reason === 'string'
+          ? reason
+          : Buffer.isBuffer(reason) || reason instanceof Uint8Array
+            ? new TextDecoder().decode(reason)
+            : String(reason ?? '');
+      resolve({ code, reason: decoded });
     });
   });
 }
@@ -323,7 +332,7 @@ class GraphqlResolver {
     return this.state.mutableValue;
   }
 
-  @Query('value')
+  @Query({ fieldName: 'value' })
   value(): string {
     return this.state.mutableValue;
   }
@@ -1804,6 +1813,529 @@ describe('@fluojs/graphql', () => {
         ping: 'pong',
       },
     });
+
+    await app.close();
+  });
+
+  it('installs fresh framework-owned loader cache overwriting custom context and isolating DataLoader across HTTP and websocket operations', async () => {
+    const poisonedLoaderCache = new Map<string | symbol, unknown>();
+    let batchCallCount = 0;
+
+    const testLoader = OperationScopedDataLoader.create<string, string>(async (keys) => {
+      batchCallCount += 1;
+      const currentBatch = batchCallCount;
+      return keys.map((key) => `${key}-batch-${currentBatch}`);
+    });
+
+    @Inject()
+    @Resolver('LoaderTestResolver')
+    class LoaderTestResolver {
+      @Query()
+      async itemA(_input: undefined, context: GraphQLContext): Promise<string> {
+        return testLoader(context).load('key-1');
+      }
+
+      @Query()
+      async itemB(_input: undefined, context: GraphQLContext): Promise<string> {
+        return testLoader(context).load('key-1');
+      }
+
+      @Subscription()
+      async *subItem(_input: undefined, context: GraphQLContext): AsyncGenerator<string, void, void> {
+        const value = await testLoader(context).load('ws-key');
+        yield value;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          context: () => ({
+            [GRAPHQL_REQUEST_SCOPED_LOADER_CACHE]: poisonedLoaderCache,
+          }),
+          resolvers: [LoaderTestResolver],
+          subscriptions: {
+            websocket: {
+              enabled: true,
+            },
+          },
+        }),
+      ],
+      providers: [LoaderTestResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    // Operation 1 (HTTP): same operation reuses loader and batches
+    await expect(postGraphql(port, '{ a: itemA, b: itemB }')).resolves.toEqual({
+      data: {
+        a: 'key-1-batch-1',
+        b: 'key-1-batch-1',
+      },
+    });
+    expect(batchCallCount).toBe(1);
+    expect(poisonedLoaderCache.size).toBe(0);
+
+    // Operation 2 (HTTP): separate operation receives fresh loader instance and does not reuse cached value
+    await expect(postGraphql(port, '{ a: itemA }')).resolves.toEqual({
+      data: {
+        a: 'key-1-batch-2',
+      },
+    });
+    expect(batchCallCount).toBe(2);
+    expect(poisonedLoaderCache.size).toBe(0);
+
+    // Operation 3 (WebSocket): websocket operation receives fresh loader instance
+    const socket = await connectGraphqlWebSocket(port);
+    socket.send(JSON.stringify({
+      id: 'sub-op-1',
+      payload: {
+        query: 'subscription { subItem }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(readGraphqlWebSocketMessages(socket, 2)).resolves.toEqual([
+      {
+        id: 'sub-op-1',
+        payload: {
+          data: {
+            subItem: 'ws-key-batch-3',
+          },
+        },
+        type: 'next',
+      },
+      {
+        id: 'sub-op-1',
+        type: 'complete',
+      },
+    ]);
+    expect(batchCallCount).toBe(3);
+    expect(poisonedLoaderCache.size).toBe(0);
+
+    // Operation 4 (WebSocket): subsequent websocket operation is also isolated
+    socket.send(JSON.stringify({
+      id: 'sub-op-2',
+      payload: {
+        query: 'subscription { subItem }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(readGraphqlWebSocketMessages(socket, 2)).resolves.toEqual([
+      {
+        id: 'sub-op-2',
+        payload: {
+          data: {
+            subItem: 'ws-key-batch-4',
+          },
+        },
+        type: 'next',
+      },
+      {
+        id: 'sub-op-2',
+        type: 'complete',
+      },
+    ]);
+    expect(batchCallCount).toBe(4);
+    expect(poisonedLoaderCache.size).toBe(0);
+
+    socket.close();
+    await app.close();
+  });
+
+  it('does not discover resolver classes registered only in controllers', async () => {
+    @Inject()
+    @Resolver('ControllerOnlyResolver')
+    class ControllerOnlyResolver {
+      @Query()
+      controllerQuery(): string {
+        return 'from-controller';
+      }
+    }
+
+    @Inject()
+    @Resolver('ProviderOnlyResolver')
+    class ProviderOnlyResolver {
+      @Query()
+      providerQuery(): string {
+        return 'from-provider';
+      }
+    }
+
+    // Direct discovery candidates check
+    const mockModule: CompiledModule = {
+      accessibleTokens: new Set(),
+      definition: {
+        controllers: [ControllerOnlyResolver],
+        providers: [ProviderOnlyResolver],
+      },
+      exportedTokens: new Set(),
+      importedExportedTokens: new Set(),
+      providerTokens: new Set(),
+      type: class MockFeatureModule {},
+    };
+
+    const descriptors = discoverResolverDescriptors([mockModule], {});
+    const discoveredTargets = descriptors.map((d) => d.token);
+    expect(discoveredTargets).toContain(ProviderOnlyResolver);
+    expect(discoveredTargets).not.toContain(ControllerOnlyResolver);
+
+    // Runtime bootstrap and schema validation check
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ControllerOnlyResolver],
+      imports: [GraphqlModule.forRoot()],
+      providers: [ProviderOnlyResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    // Provider query succeeds
+    await expect(postGraphql(port, '{ providerQuery }')).resolves.toEqual({
+      data: {
+        providerQuery: 'from-provider',
+      },
+    });
+
+    // Controller query fails because it was not discovered and does not exist in schema
+    const controllerQueryResponse = (await postGraphql(port, '{ controllerQuery }')) as {
+      errors?: Array<{ message: string }>;
+    };
+    expect(controllerQueryResponse.errors).toBeDefined();
+    expect(controllerQueryResponse.errors?.[0]?.message).toMatch(
+      /Cannot query field "controllerQuery" on type "Query"/,
+    );
+
+    await app.close();
+  });
+
+  it('does not discover resolver classes registered outside compiled module providers', () => {
+    @Resolver('RuntimeOnlyResolver')
+    class RuntimeOnlyResolver {
+      @Query()
+      runtimeOnlyQuery(): string {
+        return 'runtime-only';
+      }
+    }
+
+    const mockModule: CompiledModule = {
+      accessibleTokens: new Set(),
+      definition: {
+        providers: [],
+      },
+      exportedTokens: new Set(),
+      importedExportedTokens: new Set(),
+      providerTokens: new Set(),
+      type: class ModuleWithoutResolverProviders {},
+    };
+    const runtimeContainer = new Container().register(RuntimeOnlyResolver);
+
+    expect(discoverResolverDescriptors([mockModule], {}, runtimeContainer)).toEqual([]);
+  });
+});
+
+describe('@fluojs/graphql — effective runtime container resolver discovery', () => {
+  it('honors last duplicate winner under duplicate policy and preserves module-name attribution', async () => {
+    const SHARED_TOKEN = Symbol('SHARED_RESOLVER');
+
+    @Resolver('LoserResolver')
+    class LoserResolver {
+      @Query()
+      loserQuery(): string {
+        return 'from-loser';
+      }
+    }
+
+    @Resolver('WinnerResolver')
+    class WinnerResolver {
+      @Query()
+      winnerQuery(): string {
+        return 'from-winner';
+      }
+    }
+
+    class FirstFeatureModule {}
+    defineModule(FirstFeatureModule, {
+      providers: [{ provide: SHARED_TOKEN, useClass: LoserResolver }],
+    });
+
+    class SecondFeatureModule {}
+    defineModule(SecondFeatureModule, {
+      providers: [{ provide: SHARED_TOKEN, useClass: WinnerResolver }],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [FirstFeatureModule, SecondFeatureModule, GraphqlModule.forRoot()],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+    await app.listen();
+
+    // Direct descriptor discovery check with runtime container
+    const descriptors = discoverResolverDescriptors(app.modules, {}, app.container);
+    expect(descriptors).toHaveLength(1);
+    expect(descriptors[0]?.token).toBe(SHARED_TOKEN);
+    expect(descriptors[0]?.targetName).toBe('WinnerResolver');
+    expect(descriptors[0]?.moduleName).toBe('SecondFeatureModule');
+
+    // Winning query succeeds
+    await expect(postGraphql(port, '{ winnerQuery }')).resolves.toEqual({
+      data: { winnerQuery: 'from-winner' },
+    });
+
+    // Losing query fails (not combined with winner instance or present in schema)
+    const loserResponse = (await postGraphql(port, '{ loserQuery }')) as {
+      errors?: Array<{ message: string }>;
+    };
+    expect(loserResponse.errors).toBeDefined();
+    expect(loserResponse.errors?.[0]?.message).toMatch(
+      /Cannot query field "loserQuery" on type "Query"/,
+    );
+
+    await app.close();
+  });
+
+  it('respects optional allowlist matching only the winning duplicate candidate', async () => {
+    const SHARED_TOKEN = Symbol('SHARED_TOKEN');
+
+    @Resolver('CandidateLosingResolver')
+    class CandidateLosingResolver {
+      @Query()
+      loserAllowed(): string {
+        return 'loser';
+      }
+    }
+
+    @Resolver('CandidateWinningResolver')
+    class CandidateWinningResolver {
+      @Query()
+      winnerAllowed(): string {
+        return 'winner';
+      }
+    }
+
+    const mockModuleA: CompiledModule = {
+      accessibleTokens: new Set(),
+      definition: {
+        providers: [{ provide: SHARED_TOKEN, useClass: CandidateLosingResolver }],
+      },
+      exportedTokens: new Set(),
+      importedExportedTokens: new Set(),
+      providerTokens: new Set(),
+      type: class ModuleA {},
+    };
+
+    const mockModuleB: CompiledModule = {
+      accessibleTokens: new Set(),
+      definition: {
+        providers: [{ provide: SHARED_TOKEN, useClass: CandidateWinningResolver }],
+      },
+      exportedTokens: new Set(),
+      importedExportedTokens: new Set(),
+      providerTokens: new Set(),
+      type: class ModuleB {},
+    };
+
+    // When allowlist specifies the winner: it is discovered
+    const winnerDescriptors = discoverResolverDescriptors([mockModuleA, mockModuleB], {
+      resolvers: [CandidateWinningResolver],
+    });
+    expect(winnerDescriptors).toHaveLength(1);
+    expect(winnerDescriptors[0]?.targetName).toBe('CandidateWinningResolver');
+    expect(winnerDescriptors[0]?.moduleName).toBe('ModuleB');
+
+    // When allowlist specifies the loser: it is filtered out (does not match winner candidate)
+    const loserDescriptors = discoverResolverDescriptors([mockModuleA, mockModuleB], {
+      resolvers: [CandidateLosingResolver],
+    });
+    expect(loserDescriptors).toHaveLength(0);
+  });
+
+  it('does not inherit a replaced factory resolverClass when the effective provider omits it', () => {
+    const SHARED_TOKEN = Symbol('SHARED_TOKEN');
+
+    @Resolver('ReplacedFactoryResolver')
+    class ReplacedFactoryResolver {
+      @Query()
+      staleFactoryQuery(): string {
+        return 'stale';
+      }
+    }
+
+    const originalFactoryProvider = {
+      provide: SHARED_TOKEN,
+      resolverClass: ReplacedFactoryResolver,
+      useFactory: () => new ReplacedFactoryResolver(),
+    };
+    const mockModule: CompiledModule = {
+      accessibleTokens: new Set(),
+      definition: {
+        providers: [originalFactoryProvider],
+      },
+      exportedTokens: new Set(),
+      importedExportedTokens: new Set(),
+      providerTokens: new Set(),
+      type: class ModuleWithOriginalFactory {},
+    };
+    const runtimeContainer = new Container().register(originalFactoryProvider);
+
+    runtimeContainer.override({
+      provide: SHARED_TOKEN,
+      useFactory: () => ({ replaced: true }),
+    });
+
+    expect(discoverResolverDescriptors([mockModule], {}, runtimeContainer)).toEqual([]);
+  });
+
+  it('honors FluoFactory.create(..., { providers }) runtime overrides across class/useClass/useValue/singleton useFactory forms', async () => {
+    // 1. useClass override form
+    @Resolver('OriginalUseClassBaseResolver')
+    class OriginalUseClassBaseResolver {
+      @Query()
+      baseUseClassQuery(): string {
+        return 'original-base-useclass';
+      }
+    }
+
+    @Resolver('OverrideUseClassResolver')
+    class OverrideUseClassResolver {
+      @Query()
+      overrideUseClassQuery(): string {
+        return 'override-useclass-success';
+      }
+    }
+
+    // 2. useValue override form
+    @Resolver('OriginalUseValueBaseResolver')
+    class OriginalUseValueBaseResolver {
+      @Query()
+      baseUseValueQuery(): string {
+        return 'original-base-usevalue';
+      }
+    }
+
+    @Resolver('OverrideUseValueResolver')
+    class OverrideUseValueResolver {
+      constructor(private readonly message: string) {}
+
+      @Query()
+      overrideUseValueQuery(): string {
+        return this.message;
+      }
+    }
+
+    // 3. singleton useFactory override form
+    @Resolver('OriginalFactoryBaseResolver')
+    class OriginalFactoryBaseResolver {
+      @Query()
+      baseFactoryQuery(): string {
+        return 'original-base-factory';
+      }
+    }
+
+    @Resolver('OverrideFactoryResolver')
+    class OverrideFactoryResolver {
+      constructor(private readonly prefix: string) {}
+
+      @Query()
+      overrideFactoryQuery(): string {
+        return `${this.prefix}-factory-success`;
+      }
+    }
+
+    // 4. class override form
+    @Resolver('OriginalDirectClassResolver')
+    class OriginalDirectClassResolver {
+      @Query()
+      baseDirectQuery(): string {
+        return 'original-direct';
+      }
+    }
+
+    @Resolver('OverrideDirectClassResolver')
+    class OverrideDirectClassResolver {
+      @Query()
+      overrideDirectQuery(): string {
+        return 'override-direct-success';
+      }
+    }
+
+    class FeatureModule {}
+    defineModule(FeatureModule, {
+      providers: [
+        OriginalUseClassBaseResolver,
+        OriginalUseValueBaseResolver,
+        OriginalFactoryBaseResolver,
+        OriginalDirectClassResolver,
+      ],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [FeatureModule, GraphqlModule.forRoot()],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+      providers: [
+        { provide: OriginalUseClassBaseResolver, useClass: OverrideUseClassResolver },
+        { provide: OriginalUseValueBaseResolver, useValue: new OverrideUseValueResolver('usevalue-success') },
+        {
+          provide: OriginalFactoryBaseResolver,
+          useFactory: () => new OverrideFactoryResolver('singleton'),
+          resolverClass: OverrideFactoryResolver,
+        },
+        { provide: OriginalDirectClassResolver, useClass: OverrideDirectClassResolver },
+      ],
+    });
+
+    await app.listen();
+
+    // Verify all 4 winning override queries succeed
+    await expect(postGraphql(port, '{ overrideUseClassQuery }')).resolves.toEqual({
+      data: { overrideUseClassQuery: 'override-useclass-success' },
+    });
+    await expect(postGraphql(port, '{ overrideUseValueQuery }')).resolves.toEqual({
+      data: { overrideUseValueQuery: 'usevalue-success' },
+    });
+    await expect(postGraphql(port, '{ overrideFactoryQuery }')).resolves.toEqual({
+      data: { overrideFactoryQuery: 'singleton-factory-success' },
+    });
+    await expect(postGraphql(port, '{ overrideDirectQuery }')).resolves.toEqual({
+      data: { overrideDirectQuery: 'override-direct-success' },
+    });
+
+    // Verify all 4 losing base queries do NOT exist in the schema
+    for (const baseField of ['baseUseClassQuery', 'baseUseValueQuery', 'baseFactoryQuery', 'baseDirectQuery']) {
+      const response = (await postGraphql(port, `{ ${baseField} }`)) as {
+        errors?: Array<{ message: string }>;
+      };
+      expect(response.errors).toBeDefined();
+      expect(response.errors?.[0]?.message).toMatch(
+        new RegExp(`Cannot query field "${baseField}" on type "Query"`),
+      );
+    }
 
     await app.close();
   });

@@ -83,9 +83,9 @@ export class DeployNotifier {
 
 ### 모듈 visibility와 migration 경계
 
-`DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 이 모듈은 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 export합니다. 반환된 모듈을 명시적으로 import한 모듈에서만 이 provider들을 보이게 해야 하는 migrated code가 있을 때만 `global: false`를 전달하세요. 이 옵션은 NestJS `isGlobal`이 아니라 `global?: boolean`입니다.
+`DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 이 모듈은 `DiscordService`, `DiscordChannel`, `DISCORD_CHANNEL`을 export합니다. 반환된 모듈을 명시적으로 import한 모듈에서만 이 provider들을 보이게 해야 하는 migrated code가 있을 때만 `global: false`를 전달하세요. 이 옵션은 NestJS `isGlobal`이 아니라 `global?: boolean`입니다.
 
-패키지 수준 registration surface는 의도적으로 singleton 중심입니다. `DISCORD`와 `DISCORD_CHANNEL`은 하나의 구성된 Discord service와 notifications channel을 위한 compatibility token입니다. 여러 Discord client가 필요한 애플리케이션은 private provider helper를 import하지 말고 서로 다른 `DiscordTransport` 인스턴스를 감싼 app-owned module/provider 또는 app-owned facade를 구성해야 합니다.
+패키지 수준 registration surface는 의도적으로 singleton 중심입니다. `DISCORD_CHANNEL`은 하나의 구성된 notifications channel을 나타내며, 애플리케이션 코드는 직접 provider 전달을 위해 `DiscordService`를 주입합니다. 여러 Discord client가 필요한 애플리케이션은 private provider helper를 import하지 말고 서로 다른 `DiscordTransport` 인스턴스를 감싼 app-owned module/provider를 구성해야 합니다.
 
 ### `DiscordService`를 이용한 standalone 전달
 
@@ -108,7 +108,7 @@ DiscordModule.forRootAsync({
 
 Behavioral contract 메모:
 
-- `DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 기본 global로 export합니다. fluo 옵션인 `global?: boolean`을 사용하고, migrated code가 Discord provider를 importing module 안에만 유지해야 할 때만 `global: false`를 설정하세요. NestJS `isGlobal`은 지원하지 않습니다.
+- `DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 `DiscordService`, `DiscordChannel`, `DISCORD_CHANNEL`을 기본 global로 export합니다. fluo 옵션인 `global?: boolean`을 사용하고, migrated code가 Discord provider를 importing module 안에만 유지해야 할 때만 `global: false`를 설정하세요. NestJS `isGlobal`은 지원하지 않습니다.
 - `DiscordService.send(...)`는 전달 전에 `defaultThreadId`를 해석합니다.
 - `DiscordService.sendMany(...)`는 `DiscordMessage[]`를 직접 순차 전송하는 batch API이며 `continueOnError`를 지원합니다. 이는 multi-recipient `@fluojs/notifications` dispatch shortcut이 아닙니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, bootstrap verification 실패와 애플리케이션 shutdown 전반에서 factory-owned 리소스를 정확히 한 번 닫습니다. shutdown 전에 시작된 factory 생성 transport가 아직 완료되지 않았더라도 이를 기다리며, 진행 중인 bootstrap verification이 settle된 뒤에만 factory-owned transport를 닫습니다. Verification 실패 후 owned cleanup도 실패하면 status diagnostics는 이를 `shutdown-cleanup`으로 재분류하지 않고 최초 `initialization` failure phase를 유지하며, reject된 factory creation도 initialization failure로 유지됩니다.
@@ -174,12 +174,12 @@ export class AppModule {}
 
 - `content`, `embeds`, `components`, `attachments`
 - `allowedMentions`, `username`, `avatarUrl`, `tts`
-- `threadId`, `threadName`, `flags`, `poll`, `metadata`
+- `threadName`, `flags`, `poll`, `metadata`
 
 Behavioral contract 메모:
 
-- 하나의 notification dispatch는 정확히 하나의 Discord thread 경로로 매핑됩니다. `payload.threadId` 또는 `recipients`의 단일 항목을 사용해야 합니다.
-- `payload.threadId`가 없으면 `DiscordService.sendNotification(...)`는 첫 번째 `recipients` 항목을 사용하고, 그것도 없으면 `defaultThreadId`로 폴백합니다.
+- 하나의 notification dispatch는 `recipients`의 단일 항목으로 정확히 하나의 Discord thread 경로에 매핑됩니다.
+- `recipients`가 없으면 `DiscordService.sendNotification(...)`는 `defaultThreadId`로 폴백합니다.
 - notification metadata는 payload metadata, dispatch metadata, template/subject marker를 합쳐 구성됩니다. 중복 key에서는 dispatch metadata가 payload metadata를 덮어쓰고, 최종 `subject` / `template` marker가 둘 모두를 덮어씁니다. `template`은 renderer가 구성된 경우에만 렌더링됩니다.
 - Template rendering은 서비스가 ready일 때만 시작합니다. Render input에는 `signal`이 포함되므로 renderer는 transport delivery 전에 caller-cancelled 작업을 중단할 수 있습니다.
 - 여러 Discord thread로 fan-out이 필요한 notification workflow라면 thread별 concrete Discord message를 만들어 `DiscordService.sendMany(...)`로 보내거나 별도 notification dispatch를 실행해야 합니다. 하나의 notification dispatch는 multi-recipient fan-out을 암묵적으로 확장하지 않습니다.
@@ -286,7 +286,6 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 ### 핵심
 
-- `Discord`
 - `DiscordModule.forRoot(options)` / `DiscordModule.forRootAsync(options)`
 - `DiscordModuleOptions`
 - `DiscordAsyncModuleOptions`
@@ -296,7 +295,6 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `DiscordService.sendNotification(notification, options)`
 - `DiscordService.createPlatformStatusSnapshot()`
 - `DiscordChannel`
-- `DISCORD`
 - `DISCORD_CHANNEL`
 
 애플리케이션 구성은 `DiscordModule`로, notifications 연동은 `DISCORD_CHANNEL`과 export된 transport 계약으로 조합합니다.

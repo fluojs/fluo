@@ -3,7 +3,8 @@ import { Container } from '@fluojs/di';
 import { FluoFactory, type CompiledModule, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
-import { EventBusLifecycleService, EventBusModule, OnEvent } from './index.js';
+import { EventBusModule, EventBusService, OnEvent } from './index.js';
+import { EventBusLifecycleService } from './service.js';
 
 class LifecycleEvent {}
 
@@ -33,7 +34,7 @@ describe('result-aware event lifecycle', () => {
     try {
       // When / Then
       await expect(bus.onApplicationBootstrap()).rejects.toThrow();
-      expect(await bus.publishWithResult(new LifecycleEvent())).toEqual({ status: 'rejected', reason: 'failed' });
+      expect(await bus.publish(new LifecycleEvent())).toEqual({ status: 'rejected', reason: 'failed' });
       expect(bus.createPlatformStatusSnapshot().details.lifecycleState).toBe('failed');
     } finally {
       await bus.onApplicationShutdown();
@@ -67,17 +68,18 @@ describe('result-aware event lifecycle', () => {
     });
     const app = await FluoFactory.create(AppModule);
     try {
-      const bus = await app.container.resolve(EventBusLifecycleService);
+      const bus = await app.container.resolve(EventBusService);
+      const lifecycle = await app.container.resolve(EventBusLifecycleService);
 
       // When
-      const publication = bus.publishWithResult(new LifecycleEvent(), { waitForHandlers: false });
-      const shutdown = bus.onApplicationShutdown();
+      const publication = bus.publish(new LifecycleEvent(), { waitForHandlers: false });
+      const shutdown = lifecycle.onApplicationShutdown();
       await started.promise;
       const receipt = await publication;
 
       // Then
       expect(events).toEqual([]);
-      expect(await bus.publishWithResult(new LifecycleEvent())).toEqual({ status: 'rejected', reason: 'stopping' });
+      expect(await bus.publish(new LifecycleEvent())).toEqual({ status: 'rejected', reason: 'stopping' });
       release.resolve();
       if (receipt.status !== 'background') throw new Error('Expected completion receipt');
       expect(await receipt.completion).toMatchObject({
@@ -118,10 +120,10 @@ describe('result-aware event lifecycle', () => {
     });
     const app = await FluoFactory.create(AppModule, { logger });
     try {
-      const bus = await app.container.resolve(EventBusLifecycleService);
+      const bus = await app.container.resolve(EventBusService);
 
       // When
-      const pending = bus.publishWithResult(new LifecycleEvent());
+      const pending = bus.publish(new LifecycleEvent());
       await started.promise;
       const receipt = await pending;
       release.resolve();

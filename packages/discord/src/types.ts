@@ -157,7 +157,9 @@ export interface DiscordWebhookTransportOptions {
 }
 
 /** Template render input used for `NotificationDispatchRequest.template` integration. */
-export interface DiscordTemplateRenderInput<TPayload extends DiscordNotificationPayload = DiscordNotificationPayload> {
+export interface DiscordTemplateRenderInput<
+  TPayload extends DiscordNotificationPayload & Record<string, unknown> = DiscordNotificationPayload & Record<string, unknown>,
+> {
   locale?: string;
   metadata?: Record<string, unknown>;
   payload: TPayload;
@@ -183,13 +185,13 @@ export interface DiscordTemplateRenderer {
    * @param input Template render input including the template key, opaque payload, and caller cancellation signal.
    * @returns Rendered content or embed fragments that are merged with explicit payload overrides.
    */
-  render<TPayload extends DiscordNotificationPayload = DiscordNotificationPayload>(
+  render<TPayload extends DiscordNotificationPayload & Record<string, unknown> = DiscordNotificationPayload & Record<string, unknown>>(
     input: DiscordTemplateRenderInput<TPayload>,
   ): MaybePromise<DiscordTemplateRenderResult>;
 }
 
 /** Notification payload understood by {@link DiscordChannel} and {@link DiscordService.sendNotification}. */
-export interface DiscordNotificationPayload extends Record<string, unknown> {
+export interface DiscordNotificationPayload {
   allowedMentions?: DiscordAllowedMentions;
   attachments?: readonly DiscordAttachment[];
   avatarUrl?: string;
@@ -199,14 +201,14 @@ export interface DiscordNotificationPayload extends Record<string, unknown> {
   flags?: number;
   metadata?: Record<string, unknown>;
   poll?: DiscordPoll;
-  threadId?: string;
   threadName?: string;
   tts?: boolean;
   username?: string;
 }
 
 /** Shared notification request subtype consumed by the Discord channel implementation. */
-export interface DiscordNotificationDispatchRequest extends NotificationDispatchRequest<DiscordNotificationPayload> {
+export interface DiscordNotificationDispatchRequest
+  extends NotificationDispatchRequest<DiscordNotificationPayload & Record<string, unknown>> {
   channel: string;
 }
 
@@ -269,37 +271,4 @@ export interface NormalizedDiscordModuleOptions {
     ownsResources: boolean;
   };
   verifyOnModuleInit: boolean;
-}
-
-/** Discord facade exposed to application code and the compatibility token. */
-export interface Discord {
-  /**
-   * Sends one Discord message directly through the configured transport.
-   *
-   * @param message Caller-supplied Discord message with content, embeds, or component payloads.
-   * @param options Optional abort signal propagated to the transport.
-   * @returns A normalized delivery receipt describing the transport response.
-   */
-  send(message: DiscordMessage, options?: DiscordSendOptions): Promise<DiscordSendResult>;
-
-  /**
-   * Sends multiple Discord messages in input order with optional tolerant failure handling.
-   *
-   * @param messages Ordered message list to deliver through the configured transport.
-   * @param options Optional tolerant batch controls such as `continueOnError`.
-   * @returns A batch summary containing successes and any captured failures.
-   */
-  sendMany(messages: readonly DiscordMessage[], options?: DiscordSendManyOptions): Promise<DiscordSendBatchResult>;
-
-  /**
-   * Converts one notifications foundation request into a concrete Discord delivery.
-   *
-   * @param notification Shared notification envelope interpreted by the Discord package.
-   * @param options Optional abort signal propagated to rendering and transport work.
-   * @returns A normalized delivery receipt for the resulting Discord message.
-   */
-  sendNotification(
-    notification: DiscordNotificationDispatchRequest,
-    options?: DiscordSendOptions,
-  ): Promise<DiscordSendResult>;
 }

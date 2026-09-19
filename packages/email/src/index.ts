@@ -8,9 +8,8 @@ export { EmailModule } from './module.js';
 export { EmailService } from './service.js';
 export { createEmailPlatformStatusSnapshot } from './status.js';
 export type { EmailLifecycleState, EmailPlatformStatusSnapshot, EmailStatusAdapterInput } from './status.js';
-export { EMAIL, EMAIL_CHANNEL } from './tokens.js';
+export { EMAIL_CHANNEL } from './tokens.js';
 export type {
-  Email,
   EmailAddress,
   EmailAddressLike,
   EmailAsyncModuleOptions,

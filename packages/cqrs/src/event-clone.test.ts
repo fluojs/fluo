@@ -9,6 +9,40 @@ afterEach(() => {
 })
 
 describe('createIsolatedEvent', () => {
+  it('preserves symbol-keyed own properties on the normal structuredClone path', () => {
+    const marker = Symbol('marker')
+    const nonEnumMarker = Symbol('nonEnumMarker')
+
+    class DomainEvent {
+      value?: { ok: boolean }
+      [marker]?: { nested: boolean }
+      [nonEnumMarker]?: { secret: string }
+    }
+
+    const payload: Record<PropertyKey, unknown> = {
+      value: { ok: true },
+      [marker]: { nested: true },
+    }
+    Object.defineProperty(payload, nonEnumMarker, {
+      configurable: true,
+      enumerable: false,
+      value: { secret: 'hidden' },
+      writable: true,
+    })
+
+    const isolated = createIsolatedEvent(DomainEvent, payload)
+
+    expect(isolated).toBeInstanceOf(DomainEvent)
+    expect(isolated).not.toBe(payload)
+    expect(isolated.value).toEqual({ ok: true })
+    expect(isolated.value).not.toBe(payload.value)
+    expect(isolated[marker]).toEqual({ nested: true })
+    expect(isolated[marker]).not.toBe(payload[marker])
+    expect(isolated[nonEnumMarker]).toEqual({ secret: 'hidden' })
+    expect(isolated[nonEnumMarker]).not.toBe(payload[nonEnumMarker])
+    expect(Object.prototype.propertyIsEnumerable.call(isolated, nonEnumMarker)).toBe(false)
+  })
+
   it('uses the shared core fallback clone for symbol-keyed payload state', () => {
     const marker = Symbol('marker')
 

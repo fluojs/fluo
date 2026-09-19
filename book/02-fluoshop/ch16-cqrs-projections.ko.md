@@ -426,18 +426,18 @@ export class OrdersModule {}
 
 루트 `AppModule`의 기존 `OrdersModule` import가 이제 GET도 노출한다. `GetOrderSummaryHandler`는 CQRS provider, `OrderSummaryController`는 HTTP controller로 각각 등록한다. query handler를 controller 목록으로 옮기거나 `CqrsModule`을 OrdersModule에 다시 등록하지 않는다. `POST /orders`의 멱등성·인증·201 응답은 8장의 controller에서 그대로 유지된다.
 
-더 중요한 변경은 앞 장 relay의 발행 경로다. `@EventHandler`는 기존 `EventBusLifecycleService.publish()`를 호출한다고 자동 실행되는 것이 아니다. 다음은 14장의 완전한 파일 `src/notifications/paid-outbox-relay.ts`에 적용하는 **정확한 세 곳의 교체**다. 기존 `deliverNext()` 본문, `OrderPaidEvent` import, `await this.events.publish(event)`는 유지한다.
+더 중요한 변경은 앞 장 relay의 발행 경로다. `@EventHandler`는 기존 `EventBusService.publish()`를 호출한다고 자동 실행되는 것이 아니다. 다음은 14장의 완전한 파일 `src/notifications/paid-outbox-relay.ts`에 적용하는 **정확한 세 곳의 교체**다. 기존 `deliverNext()` 본문, `OrderPaidEvent` import, `await this.events.publish(event)`는 유지한다.
 
 ```diff
--import { EventBusLifecycleService } from '@fluojs/event-bus';
+-import { EventBusService } from '@fluojs/event-bus';
 +import { CqrsEventBusService } from '@fluojs/cqrs';
 
--@Inject(PrismaService, EventBusLifecycleService)
+-@Inject(PrismaService, EventBusService)
 +@Inject(PrismaService, CqrsEventBusService)
  export class PaidOutboxRelay {
    constructor(
      private readonly db: PrismaService<PrismaClient>,
--    private readonly events: EventBusLifecycleService,
+-    private readonly events: EventBusService,
 +    private readonly events: CqrsEventBusService,
    ) {}
 ```

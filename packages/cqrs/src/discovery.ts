@@ -1,7 +1,6 @@
-import { formatTokenName, type Token } from '@fluojs/core';
-import type { Container, Provider } from '@fluojs/di';
+import { formatTokenName, InvariantError, type Token } from '@fluojs/core';
+import type { Container, NormalizedProvider, Provider } from '@fluojs/di';
 import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
-import { getRuntimeClassDiMetadata } from '@fluojs/runtime/internal';
 
 import { getCommandHandlerMetadata } from './metadata.js';
 import { getEventHandlerMetadata } from './metadata.js';
@@ -18,37 +17,8 @@ export interface DiscoveryCandidate {
   token: Token;
 }
 
-interface ProviderDiscoveryCandidate {
-  moduleName: string;
-  provider: Provider;
-}
-
-function scopeFromProvider(provider: Provider): 'request' | 'singleton' | 'transient' {
-  if (typeof provider === 'function') {
-    return getRuntimeClassDiMetadata(provider)?.scope ?? 'singleton';
-  }
-
-  if ('useClass' in provider) {
-    return provider.scope ?? getRuntimeClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
-  }
-
-  if ('useFactory' in provider) {
-    const resolverClass = provider.resolverClass;
-
-    return provider.scope ?? (resolverClass ? getRuntimeClassDiMetadata(resolverClass)?.scope : undefined) ?? 'singleton';
-  }
-
-  return 'singleton';
-}
-
-function isClassProvider(provider: Provider): provider is Extract<Provider, { provide: Token; useClass: Function }> {
-  return typeof provider === 'object' && provider !== null && 'useClass' in provider;
-}
-
-function isFactoryOrValueProvider(
-  provider: Provider,
-): provider is Extract<Provider, { useFactory: unknown } | { useValue: unknown }> {
-  return typeof provider === 'object' && provider !== null && ('useFactory' in provider || 'useValue' in provider);
+function providerToken(provider: Provider): Token {
+  return typeof provider === 'function' ? provider : provider.provide;
 }
 
 function hasCqrsMetadata(targetType: Function): boolean {
@@ -97,6 +67,27 @@ export function isSameHandlerRegistration(
 }
 
 /**
+ * Filters discovery candidates so that tokens duplicated across different handler classes
+ * retain only the winning provider identity registered in the application container,
+ * preserving deduplication and distinct token visibility while preventing superseded
+ * handler classes from resolving to the winning provider instance.
+ *
+ * @param candidates Candidates extracted from compiled modules.
+ * @returns Effective candidates with duplicate token conflicts resolved to the winning provider.
+ */
+export function filterEffectiveDiscoveryCandidates(
+  candidates: readonly DiscoveryCandidate[],
+): DiscoveryCandidate[] {
+  const winningTargetTypeByToken = new Map<Token, Function>();
+
+  for (const candidate of candidates) {
+    winningTargetTypeByToken.set(candidate.token, candidate.targetType);
+  }
+
+  return candidates.filter((candidate) => candidate.targetType === winningTargetTypeByToken.get(candidate.token));
+}
+
+/**
  * Represents the cqrs bus base.
  */
 export abstract class CqrsBusBase {
@@ -108,40 +99,40 @@ export abstract class CqrsBusBase {
     protected readonly logger: ApplicationLogger,
   ) {}
 
-  protected discoveryCandidates(): DiscoveryCandidate[] {
-    const candidates: DiscoveryCandidate[] = [];
-    const providerCandidates: ProviderDiscoveryCandidate[] = [];
+  protected async discoveryCandidates(): Promise<DiscoveryCandidate[]> {
+    const moduleNamesByTokenAndType = new Map<Token, Map<Function, string>>();
 
     for (const compiledModule of this.compiledModules) {
       for (const provider of compiledModule.definition.providers ?? []) {
-        if (typeof provider === 'function') {
-          candidates.push({
-            moduleName: compiledModule.type.name,
-            scope: scopeFromProvider(provider),
-            targetType: provider,
-            token: provider,
-          });
+        const token = providerToken(provider);
+        const targetType = this.moduleProviderTargetType(provider);
+
+        if (!targetType || !hasCqrsMetadata(targetType)) {
           continue;
         }
 
-        if (isClassProvider(provider)) {
-          candidates.push({
-            moduleName: compiledModule.type.name,
-            scope: scopeFromProvider(provider),
-            targetType: provider.useClass,
-            token: provider.provide,
-          });
-          continue;
-        }
-
-        if (isFactoryOrValueProvider(provider)) {
-          providerCandidates.push({ moduleName: compiledModule.type.name, provider });
-        }
+        const namesByType = moduleNamesByTokenAndType.get(token) ?? new Map<Function, string>();
+        namesByType.set(targetType, compiledModule.type.name);
+        moduleNamesByTokenAndType.set(token, namesByType);
       }
     }
 
-    for (const candidate of providerCandidates) {
-      const resolvedCandidate = this.resolveProviderDiscoveryCandidate(candidate);
+    const candidates: DiscoveryCandidate[] = [];
+
+    const registrations = this.runtimeContainer.inspectResolutionState().registrations;
+
+    for (const [token, moduleNamesByType] of moduleNamesByTokenAndType) {
+      const provider = registrations.get(token);
+
+      if (!provider) {
+        continue;
+      }
+
+      const resolvedCandidate = await this.resolveEffectiveProviderDiscoveryCandidate(
+        token,
+        provider,
+        moduleNamesByType,
+      );
 
       if (resolvedCandidate) {
         candidates.push(resolvedCandidate);
@@ -151,74 +142,87 @@ export abstract class CqrsBusBase {
     return candidates;
   }
 
-  private resolveProviderDiscoveryCandidate(candidate: ProviderDiscoveryCandidate): DiscoveryCandidate | undefined {
-    const provider = candidate.provider;
-
-    if (!('provide' in provider)) {
-      return undefined;
+  private moduleProviderTargetType(provider: Provider): Function | undefined {
+    if (typeof provider === 'function') {
+      return provider;
     }
 
-    const scope = scopeFromProvider(provider);
-    const token = provider.provide;
-
-    if (scope !== 'singleton') {
-      return this.createUnresolvedProviderDiscoveryCandidate(candidate.moduleName, token, scope);
+    if ('useClass' in provider) {
+      return provider.useClass;
     }
 
-    if ('useValue' in provider) {
-      const instance = provider.useValue;
-
-      if (typeof instance !== 'object' || instance === null) {
-        return undefined;
-      }
-
-      const targetType = instance.constructor;
-
-      if (typeof targetType !== 'function' || !hasCqrsMetadata(targetType)) {
-        return undefined;
-      }
-
-      return {
-        moduleName: candidate.moduleName,
-        scope,
-        targetType,
-        token,
-      };
+    if ('useFactory' in provider) {
+      return typeof provider.provide === 'function' ? provider.provide : undefined;
     }
 
-    if (typeof token !== 'function' || !hasCqrsMetadata(token)) {
-      return undefined;
+    if ('useValue' in provider && typeof provider.useValue === 'object' && provider.useValue !== null) {
+      return provider.useValue.constructor;
     }
 
-    return {
-      moduleName: candidate.moduleName,
-      scope,
-      targetType: token,
-      token,
-    };
+    return undefined;
   }
 
-  private createUnresolvedProviderDiscoveryCandidate(
-    moduleName: string,
+  private async resolveEffectiveProviderDiscoveryCandidate(
     token: Token,
-    scope: 'request' | 'transient',
-  ): DiscoveryCandidate | undefined {
-    const tokenType = typeof token === 'function' ? token : undefined;
+    provider: NormalizedProvider,
+    moduleNamesByType: ReadonlyMap<Function, string>,
+  ): Promise<DiscoveryCandidate | undefined> {
+    const targetType = await this.resolveEffectiveProviderTargetType(token, provider, moduleNamesByType);
 
-    if (!tokenType) {
+    if (!targetType || !hasCqrsMetadata(targetType)) {
       return undefined;
     }
 
     return {
-      moduleName,
-      scope,
-      targetType: tokenType,
+      moduleName: moduleNamesByType.get(targetType) ?? 'RuntimeBootstrap',
+      scope: provider.scope,
+      targetType,
       token,
     };
   }
 
-  protected async preloadHandlerInstance(token: Token): Promise<void> {
+  private async resolveEffectiveProviderTargetType(
+    token: Token,
+    provider: NormalizedProvider,
+    moduleNamesByType: ReadonlyMap<Function, string>,
+  ): Promise<Function | undefined> {
+    if (provider.type === 'class') {
+      return provider.useClass;
+    }
+
+    if (provider.type === 'value') {
+      if (typeof provider.useValue !== 'object' || provider.useValue === null) {
+        return undefined;
+      }
+
+      return provider.useValue.constructor;
+    }
+
+    if (provider.type !== 'factory') {
+      return undefined;
+    }
+
+    if (provider.scope !== 'singleton') {
+      return moduleNamesByType.keys().next().value;
+    }
+
+    const instance = await this.runtimeContainer.resolve(token);
+
+    if (typeof instance !== 'object' || instance === null) {
+      return undefined;
+    }
+
+    return instance.constructor;
+  }
+
+  protected async preloadHandlerInstance(token: Token, expectedType?: Function): Promise<void> {
     if (this.handlerInstances.has(token)) {
+      const existing = await this.handlerInstances.get(token);
+      if (expectedType && !(existing instanceof expectedType)) {
+        throw new InvariantError(
+          `Resolved handler instance for ${formatTokenName(token)} is not an instance of ${expectedType.name}.`,
+        );
+      }
       return;
     }
 
@@ -226,24 +230,41 @@ export abstract class CqrsBusBase {
     this.handlerInstances.set(token, resolving);
 
     try {
-      await resolving;
+      const instance = await resolving;
+      if (expectedType && !(instance instanceof expectedType)) {
+        throw new InvariantError(
+          `Resolved handler instance for ${formatTokenName(token)} is not an instance of ${expectedType.name}.`,
+        );
+      }
     } catch (error) {
       this.handlerInstances.delete(token);
       throw error;
     }
   }
 
-  protected async resolveHandlerInstance(token: Token): Promise<unknown> {
+  protected async resolveHandlerInstance(token: Token, expectedType?: Function): Promise<unknown> {
     const cached = this.handlerInstances.get(token);
 
     if (cached) {
-      return await cached;
+      const instance = await cached;
+      if (expectedType && !(instance instanceof expectedType)) {
+        throw new InvariantError(
+          `Resolved handler instance for ${formatTokenName(token)} is not an instance of ${expectedType.name}.`,
+        );
+      }
+      return instance;
     }
 
     const resolving = this.runtimeContainer.resolve(token);
     this.handlerInstances.set(token, resolving);
 
     try {
+      const instance = await resolving;
+      if (expectedType && !(instance instanceof expectedType)) {
+        throw new InvariantError(
+          `Resolved handler instance for ${formatTokenName(token)} is not an instance of ${expectedType.name}.`,
+        );
+      }
       return await resolving;
     } catch (error) {
       this.handlerInstances.delete(token);

@@ -1,9 +1,10 @@
 import type { Provider } from '@fluojs/di';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
 
-import { EventBusLifecycleService } from './service.js';
-import { EVENT_BUS, EVENT_BUS_OPTIONS } from './tokens.js';
-import type { EventBusModuleOptions, EventPublishOptions } from './types.js';
+import { EVENT_BUS_SHUTDOWN_COORDINATOR } from './integration.js';
+import { EventBusLifecycleService, EventBusService } from './service.js';
+import { EVENT_BUS_OPTIONS } from './tokens.js';
+import type { EventBusModuleOptions } from './types.js';
 
 function createEventBusProviders(options: EventBusModuleOptions = {}): Provider[] {
   return [
@@ -12,14 +13,13 @@ function createEventBusProviders(options: EventBusModuleOptions = {}): Provider[
       useValue: options,
     },
     EventBusLifecycleService,
+    EventBusService,
     {
       inject: [EventBusLifecycleService],
-      provide: EVENT_BUS,
+      provide: EVENT_BUS_SHUTDOWN_COORDINATOR,
       useFactory: (service: unknown) => ({
-        publish: (event: object, publishOptions?: EventPublishOptions) =>
-          (service as EventBusLifecycleService).publish(event, publishOptions),
-        publishWithResult: (event: object, publishOptions?: EventPublishOptions) =>
-          (service as EventBusLifecycleService).publishWithResult(event, publishOptions),
+        adoptShutdownDeadline: (deadlineAtMs: number) =>
+          (service as EventBusLifecycleService).adoptShutdownDeadline(deadlineAtMs),
       }),
     },
   ];
@@ -33,13 +33,13 @@ export class EventBusModule {
    * Registers event-bus providers globally by default, or locally when `options.global` is `false`.
    *
    * @param options Event bus module options for publish defaults and optional transport integration.
-   * @returns A module definition that exports `EventBusLifecycleService` and the compatibility token `EVENT_BUS`.
+   * @returns A module definition that exports `EventBusService` and the integration coordinator.
    */
   static forRoot(options: EventBusModuleOptions = {}): ModuleType {
     class EventBusModuleDefinition {}
 
     return defineModule(EventBusModuleDefinition, {
-      exports: [EventBusLifecycleService, EVENT_BUS],
+      exports: [EventBusService, EVENT_BUS_SHUTDOWN_COORDINATOR],
       global: options.global ?? true,
       providers: createEventBusProviders(options),
     });

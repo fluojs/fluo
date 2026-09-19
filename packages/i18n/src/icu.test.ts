@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { I18nError, createI18n } from './index.js';
-import { IcuI18nService, createIcuI18n } from './icu.js';
+import { I18nError, I18nService } from './index.js';
+import { IcuI18nService } from './icu.js';
 import type { I18nIcuValues } from './icu.js';
 
 function expectI18nCode(action: () => unknown, code: I18nError['code']): void {
@@ -37,12 +37,12 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
   it('exposes ICU helpers on the dedicated subpath', async () => {
     const icu = await import('./icu.js');
 
-    expect(Object.keys(icu).sort()).toEqual(['IcuI18nService', 'createIcuI18n']);
+    expect(Object.keys(icu).sort()).toEqual(['IcuI18nService']);
     expect(hasIcuSubpathExport(readPackageExports())).toBe(true);
   });
 
   it('formats ICU plural messages and preserves core simple interpolation before formatting', () => {
-    const service = createIcuI18n({
+    const service = IcuI18nService.create({
       catalogs: {
         en: {
           inbox: 'Hello {{ name }}. {count, plural, =0 {No messages} one {One message} other {# messages}}.',
@@ -58,7 +58,7 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
   });
 
   it('formats select messages with nested plural branches and nested placeholders', () => {
-    const service = createIcuI18n({
+    const service = IcuI18nService.create({
       catalogs: {
         en: {
           invite:
@@ -78,7 +78,7 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
   });
 
   it('uses core fallback and default-value behavior before ICU formatting', () => {
-    const service = createIcuI18n({
+    const service = IcuI18nService.create({
       catalogs: {
         en: {
           cart: '{count, plural, one {One item} other {# items}} in {place}',
@@ -102,7 +102,7 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
 
   it('formats missing-message ICU patterns with requested values and locale', () => {
     // Given
-    const service = createIcuI18n({
+    const service = IcuI18nService.create({
       defaultLocale: 'en',
       missingMessage: ({ locale }) =>
         locale === 'ar'
@@ -122,7 +122,7 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
   });
 
   it('formats fallback catalog messages with the locale that supplied the message', () => {
-    const service = createIcuI18n({
+    const service = IcuI18nService.create({
       catalogs: {
         en: {
           ordinal: '{count, selectordinal, one {#st result} other {#th results}}',
@@ -138,7 +138,7 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
   });
 
   it('wraps invalid ICU patterns and missing ICU values with stable i18n errors', () => {
-    const service = createIcuI18n({
+    const service = IcuI18nService.create({
       catalogs: {
         en: {
           invalid: '{count, plural, one {One item}}',
@@ -154,7 +154,7 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
   });
 
   it('rejects non-string rich formatting results with the stable invalid format code', () => {
-    const service = createIcuI18n({
+    const service = IcuI18nService.create({
       catalogs: {
         en: {
           rich: 'Click <link>here</link>',
@@ -171,7 +171,7 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
   });
 
   it('can wrap an existing core service without changing core translation behavior', () => {
-    const core = createI18n({
+    const core = I18nService.create({
       catalogs: {
         en: {
           simple: 'Hello {{ name }}',
@@ -188,7 +188,7 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
   });
 
   it('keeps fallback message provenance when wrapping an existing core service', () => {
-    const core = createI18n({
+    const core = I18nService.create({
       catalogs: {
         en: {
           ordinal: '{count, selectordinal, one {#st result} other {#th results}}',

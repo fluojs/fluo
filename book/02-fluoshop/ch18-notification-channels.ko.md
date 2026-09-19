@@ -18,7 +18,7 @@ FluoBlog에서 글을 구독하던 독자는 티셔츠를 주문한 뒤 이메�
 
 `@fluojs/notifications`는 `channel`, `id`, `recipients`, `subject`, `template`, `payload`, `metadata` 등을 가진 요청을 받아 등록된 채널로 보낸다. 이메일이나 Slack 구현을 스스로 발견하거나 설치하지 않는다. `NotificationChannel` 값을 `channels`에 명시적으로 넣어야 한다. 이 장에서는 직접 채널 인터페이스를 흉내 내지 않고 `@fluojs/email`의 `EMAIL_CHANNEL`, `@fluojs/slack`의 `SLACK_CHANNEL`, `@fluojs/discord`의 `DISCORD_CHANNEL`을 사용한다. 그래야 부분 이메일 수락, recipient 해석, 전송 취소 같은 실제 패키지 동작을 함께 검증할 수 있다.
 
-세 채널의 대상 지정은 서로 다르다. 이메일 recipient는 이메일 주소다. Slack의 하나의 dispatch는 하나의 대상 채널로 해석되며 `payload.channel`, 단일 recipient, 기본 채널 순으로 대상을 정한다. Discord recipient는 이메일 주소나 사용자 ID가 아니라 이 통합에서의 thread 경로다. `payload.threadId`, 단일 recipient, 기본 thread가 그 경계다. 여러 Slack 채널이나 Discord thread에 보내려면 요청을 각각 만들거나 해당 서비스의 `sendMany`를 사용한다. 하나의 요청에 여러 recipient를 넣는 것이 세 시스템에서 같은 의미라고 가정하지 않는다.
+세 채널의 대상 지정은 서로 다르다. 이메일 recipient는 이메일 주소다. Slack의 하나의 dispatch는 단일 recipient에서 하나의 대상 채널을 해석하고, 없으면 기본 채널로 폴백한다. Discord recipient는 이메일 주소나 사용자 ID가 아니라 이 통합에서의 thread 경로이며, 단일 recipient에서 해석하고 없으면 기본 thread로 폴백한다. 여러 Slack 채널이나 Discord thread에 보내려면 요청을 각각 만들거나 해당 서비스의 `sendMany`를 사용한다. 하나의 요청에 여러 recipient를 넣는 것이 세 시스템에서 같은 의미라고 가정하지 않는다.
 
 아래 `src/notifications/order-notifications.ts`는 **완전한 애플리케이션 파일**이다. DB 조회나 전송을 하지 않고, 확인된 결제 사건과 기존 계정에서 얻은 수신자 정보로 세 요청을 만든다. 이 장의 `PaidNotice`는 알림용 스냅샷이며 저장소의 주문 모델을 대체하지 않는다. `totalMinor`는 JSON 경계를 넘은 십진 문자열이다. 통화와 금액은 이미 결제 처리 경계에서 검증된 값이며, 코드에서 소수로 다시 계산하지 않는다. 현재 `ProductVariant.priceMinor`를 조회해 과거 결제 금액을 다시 산출하지도 않는다.
 
@@ -231,7 +231,7 @@ export function createNotificationLab() {
 
 이 패키지의 공통 async factory 타입은 주입 값을 `unknown`으로 받는다. 그래서 구성 경계에서 실제 채널 클래스를 확인한 뒤 배열을 만든다. 잘못 연결된 토큰을 정상 채널로 단언해서 넘기는 대신 시작 시 명확하게 거부하며, 업무 서비스에는 이 타입 확인이 퍼지지 않는다.
 
-채널별 `forRootAsync`로 자격 증명을 주입할 때 지원되는 핵심 형태는 `inject`와 `useFactory`다. NestJS의 `imports`, `useClass`, `useExisting` 옵션을 그대로 복사하는 API가 아니다. 설정 provider는 애플리케이션 모듈 그래프에 등록하고 실제 토큰을 연결한다. 운영에서 SMTP를 택한다면 `@fluojs/email/node`의 `createNodemailerEmailTransportFactory` 경계를 사용하고, 기존 SMTP 설정을 그 옵션으로 넘긴다. 이메일 루트 패키지가 SMTP 서버를 자동으로 고르거나 환경변수를 읽는 것은 아니다.
+채널별 `forRootAsync`로 자격 증명을 주입할 때 지원되는 핵심 형태는 `inject`와 `useFactory`다. NestJS의 `imports`, `useClass`, `useExisting` 옵션을 그대로 복사하는 API가 아니다. 설정 provider는 애플리케이션 모듈 그래프에 등록하고 실제 토큰을 연결한다. 운영에서 SMTP를 택한다면 `@fluojs/email/node`의 `NodemailerEmailTransport.createFactory` 경계를 사용하고, 기존 SMTP 설정을 그 옵션으로 넘긴다. 이메일 루트 패키지가 SMTP 서버를 자동으로 고르거나 환경변수를 읽는 것은 아니다.
 
 transport 수명도 발송 기능의 일부다. factory가 생성하고 소유한 transport는 패키지의 초기화·종료 경로에 참여한다. 이미 생성해서 직접 넘긴 transport의 소유권은 기본적으로 호출자에게 남는다. 위 실험의 함수와 배열에는 닫을 외부 리소스가 없다. 실제 연결 풀이나 SDK 클라이언트를 넣을 때에는 어떤 객체가 생성하고 어느 종료 경로가 닫는지 먼저 정해야 이중 종료와 누수가 생기지 않는다.
 

@@ -5,14 +5,13 @@ export {
   SlackTransportError,
 } from './errors.js';
 export { SlackChannel } from './channel.js';
-export { SlackModule, createSlackProviders } from './module.js';
+export { SlackModule } from './module.js';
 export { SlackService } from './service.js';
 export { createSlackPlatformStatusSnapshot } from './status.js';
 export type { SlackLifecycleState, SlackPlatformStatusSnapshot, SlackStatusAdapterInput } from './status.js';
-export { SLACK, SLACK_CHANNEL } from './tokens.js';
+export { SLACK_CHANNEL } from './tokens.js';
 export type {
   NormalizedSlackMessage,
-  Slack,
   SlackAsyncModuleOptions,
   SlackAttachment,
   SlackBlock,

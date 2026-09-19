@@ -1,7 +1,8 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { Container } from '@fluojs/di';
-import { type EventBus, type EventBusTransport, EVENT_BUS as FLUO_EVENT_BUS, OnEvent } from '@fluojs/event-bus';
+import { type EventBusTransport, EventBusService, OnEvent } from '@fluojs/event-bus';
 import { type ApplicationLogger, FluoFactory, defineModule, type OnApplicationShutdown, type RuntimeCleanupRegistration } from '@fluojs/runtime';
+import { RUNTIME_CLEANUP_REGISTRATION } from '@fluojs/runtime/internal';
 import { describe, expect, it, vi } from 'vitest';
 import { CommandBusLifecycleService } from './buses/command-bus.js';
 import { CqrsEventBusService } from './buses/event-bus.js';
@@ -18,7 +19,6 @@ import {
 } from './errors.js';
 import { getCommandHandlerMetadata, getEventHandlerMetadata, getQueryHandlerMetadata, getSagaMetadata } from './metadata.js';
 import { CqrsModule } from './module.js';
-import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type {
   CommandBus,
   CqrsDispatchContext,
@@ -32,6 +32,10 @@ import type {
   ISaga,
   QueryBus,
 } from './types.js';
+
+const COMMAND_BUS = CommandBusLifecycleService;
+const QUERY_BUS = QueryBusLifecycleService;
+const EVENT_BUS = CqrsEventBusService;
 
 function createLogger(events: string[]): ApplicationLogger {
   return {
@@ -48,12 +52,6 @@ function createLogger(events: string[]): ApplicationLogger {
       events.push(`warn:${context ?? 'none'}:${message}`);
     },
   };
-}
-
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
 }
 
 function createDeferred<T = void>() {
@@ -104,6 +102,21 @@ function createRuntimeCleanupRegistry(callbacks: Array<() => void>): RuntimeClea
       }
     };
   };
+}
+
+@Inject(RUNTIME_CLEANUP_REGISTRATION, CqrsEventBusService)
+class EventBusShutdownStartProbe {
+  readonly started = createDeferred<void>();
+
+  constructor(
+    registerRuntimeCleanup: RuntimeCleanupRegistration,
+    private readonly eventBus: CqrsEventBusService,
+  ) {
+    registerRuntimeCleanup(() => {
+      expect(this.eventBus.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopping');
+      this.started.resolve();
+    });
+  }
 }
 
 class CreateUserCommand implements ICommand {
@@ -553,7 +566,7 @@ describe('@fluojs/cqrs', () => {
   });
 
   it('delegates publish and publishAll to the underlying event bus when no CQRS event handlers are registered', async () => {
-    const publish = vi.fn(async () => undefined);
+    const publish = vi.fn(async () => ({ status: 'no-recipients' as const, outcomes: [] as const }));
     const eventBus = { publish };
     const loggerEvents: string[] = [];
     const container = new Container();
@@ -577,6 +590,28 @@ describe('@fluojs/cqrs', () => {
     expect(publish).toHaveBeenNthCalledWith(3, events[1]);
   });
 
+  it('adopts the CQRS shutdown deadline through the narrow event-bus coordinator', async () => {
+    const loggerEvents: string[] = [];
+    const container = new Container();
+    const sagaService = new CqrsSagaLifecycleService(container, [], createLogger(loggerEvents));
+    const adoptShutdownDeadline = vi.fn();
+    const cqrsEventBus = new CqrsEventBusService(
+      { publish: vi.fn(async () => ({ status: 'no-recipients' as const, outcomes: [] as const })) },
+      sagaService,
+      container,
+      [],
+      createLogger(loggerEvents),
+      { shutdown: { drainTimeoutMs: 25 } },
+      () => () => undefined,
+      { adoptShutdownDeadline },
+    );
+
+    await cqrsEventBus.onApplicationBootstrap();
+    await cqrsEventBus.onApplicationShutdown();
+
+    expect(adoptShutdownDeadline).toHaveBeenCalledExactlyOnceWith(expect.any(Number));
+  });
+
   it('keeps EVENT_BUS available as a compatibility CQRS event-bus token', async () => {
     class AppModule {}
     defineModule(AppModule, {
@@ -593,9 +628,9 @@ describe('@fluojs/cqrs', () => {
   });
 
   it('keeps delegated event-bus providers module-local when CQRS global is false', async () => {
-    @Inject(FLUO_EVENT_BUS)
+    @Inject(EventBusService)
     class SiblingEventBusConsumer {
-      constructor(readonly eventBus: EventBus) {}
+      constructor(readonly eventBus: EventBusService) {}
     }
 
     class CqrsHostModule {}
@@ -617,9 +652,9 @@ describe('@fluojs/cqrs', () => {
   });
 
   it('honors an explicit delegated event-bus global override when CQRS global is false', async () => {
-    @Inject(FLUO_EVENT_BUS)
+    @Inject(EventBusService)
     class SiblingEventBusConsumer {
-      constructor(readonly eventBus: EventBus) {}
+      constructor(readonly eventBus: EventBusService) {}
     }
 
     class CqrsHostModule {}
@@ -645,7 +680,7 @@ describe('@fluojs/cqrs', () => {
     await app.close();
   });
 
-  it('accepts CqrsModule.forRoot handler option arrays and registers those classes', async () => {
+  it('discovers handlers registered once by the business module providers', async () => {
     @CommandHandler(CreateUserCommand)
     class OptionCreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
       execute(command: CreateUserCommand): string {
@@ -671,13 +706,13 @@ describe('@fluojs/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [
-        CqrsModule.forRoot({
-          commandHandlers: [OptionCreateUserHandler],
-          eventBus: { publish: { waitForHandlers: true } },
-          eventHandlers: [OptionEventRecorder],
-          queryHandlers: [OptionGetUserHandler],
-        }),
+      imports: [CqrsModule.forRoot({
+        eventBus: { publish: { waitForHandlers: true } },
+      })],
+      providers: [
+        OptionCreateUserHandler,
+        OptionGetUserHandler,
+        OptionEventRecorder,
       ],
     });
 
@@ -822,7 +857,9 @@ describe('@fluojs/cqrs', () => {
     const container = new Container();
     const registerRuntimeCleanup = createRuntimeCleanupRegistry(cleanupCallbacks);
     const sagaBus = new CqrsSagaLifecycleService(container, [], createLogger(loggerEvents), {}, registerRuntimeCleanup);
-    const delegatedEventBus = { publish: vi.fn(async () => undefined) } satisfies EventBus;
+    const delegatedEventBus = {
+      publish: vi.fn(async () => ({ status: 'no-recipients' as const, outcomes: [] as const })),
+    } satisfies Pick<EventBusService, 'publish'>;
     const cqrsEventBus = new CqrsEventBusService(
       delegatedEventBus,
       sagaBus,
@@ -1052,12 +1089,8 @@ describe('@fluojs/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [
-        CqrsModule.forRoot({
-          sagas: [AccountActivationSaga],
-        }),
-      ],
-      providers: [AccountActivationSaga],
+      imports: [CqrsModule.forRoot()],
+      providers: [AccountActivationSaga, AccountActivationSaga],
     });
 
     const app = await FluoFactory.create(AppModule);
@@ -1466,19 +1499,31 @@ describe('@fluojs/cqrs', () => {
     await app.close();
   });
 
-  it('processes saga events in a deterministic order under concurrent publish calls', async () => {
+  it('processes saga events in a deterministic order under concurrent publish calls', { timeout: 10_000 }, async () => {
     let activeHandles = 0;
     let maximumActiveHandles = 0;
 
+    const eventIndices = [1, 2, 3] as const;
+    type EventIndex = (typeof eventIndices)[number];
+    const signals: Record<EventIndex, {
+      readonly entered: ReturnType<typeof createDeferred<void>>;
+      readonly release: ReturnType<typeof createDeferred<void>>;
+    }> = {
+      1: { entered: createDeferred<void>(), release: createDeferred<void>() },
+      2: { entered: createDeferred<void>(), release: createDeferred<void>() },
+      3: { entered: createDeferred<void>(), release: createDeferred<void>() },
+    };
+
+    const entered1 = signals[1].entered.promise;
+    const entered2 = signals[2].entered.promise;
+    const entered3 = signals[3].entered.promise;
+
     class SequenceStore {
-      seen: number[] = [];
+      readonly steps: string[] = [];
     }
 
     class SequencedEvent implements IEvent {
-      constructor(
-        public readonly index: number,
-        public readonly waitMs: number,
-      ) {}
+      constructor(public readonly index: EventIndex) {}
     }
 
     @Inject(SequenceStore)
@@ -1489,12 +1534,14 @@ describe('@fluojs/cqrs', () => {
       async handle(event: SequencedEvent): Promise<void> {
         activeHandles += 1;
         maximumActiveHandles = Math.max(maximumActiveHandles, activeHandles);
+        this.store.steps.push(`start:${String(event.index)}`);
+        signals[event.index].entered.resolve();
 
         try {
-          await delay(event.waitMs);
-          this.store.seen.push(event.index);
+          await signals[event.index].release.promise;
         } finally {
           activeHandles -= 1;
+          this.store.steps.push(`end:${String(event.index)}`);
         }
       }
     }
@@ -1509,16 +1556,49 @@ describe('@fluojs/cqrs', () => {
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(SequenceStore);
 
-    await Promise.all([
-      eventBus.publish(new SequencedEvent(1, 30)),
-      eventBus.publish(new SequencedEvent(2, 0)),
-      eventBus.publish(new SequencedEvent(3, 0)),
-    ]);
+    try {
+      const publishPromise = Promise.all([
+        eventBus.publish(new SequencedEvent(1)),
+        eventBus.publish(new SequencedEvent(2)),
+        eventBus.publish(new SequencedEvent(3)),
+      ]);
 
-    expect(store.seen).toEqual([1, 2, 3]);
-    expect(maximumActiveHandles).toBe(1);
+      await entered1;
+      expect(activeHandles).toBe(1);
+      expect(maximumActiveHandles).toBe(1);
+      expect(store.steps).toEqual(['start:1']);
+      signals[1].release.resolve();
 
-    await app.close();
+      await entered2;
+      expect(activeHandles).toBe(1);
+      expect(maximumActiveHandles).toBe(1);
+      expect(store.steps).toEqual(['start:1', 'end:1', 'start:2']);
+      signals[2].release.resolve();
+
+      await entered3;
+      expect(activeHandles).toBe(1);
+      expect(maximumActiveHandles).toBe(1);
+      expect(store.steps).toEqual(['start:1', 'end:1', 'start:2', 'end:2', 'start:3']);
+      signals[3].release.resolve();
+
+      await publishPromise;
+
+      expect(store.steps).toEqual([
+        'start:1',
+        'end:1',
+        'start:2',
+        'end:2',
+        'start:3',
+        'end:3',
+      ]);
+      expect(maximumActiveHandles).toBe(1);
+      expect(activeHandles).toBe(0);
+    } finally {
+      for (const index of eventIndices) {
+        signals[index].release.resolve();
+      }
+      await app.close();
+    }
   });
 
   it('waits for in-flight saga execution during application shutdown', async () => {
@@ -1802,12 +1882,12 @@ describe('@fluojs/cqrs', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
-      providers: [CapturedContextEventHandler, GuardedShutdownEventHandler],
+      providers: [CapturedContextEventHandler, GuardedShutdownEventHandler, EventBusShutdownStartProbe],
     });
 
     const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
-    const eventBusService = await app.container.resolve(CqrsEventBusService);
+    const shutdownStartProbe = await app.container.resolve(EventBusShutdownStartProbe);
 
     await eventBus.publish(new CapturedContextEvent('captured'));
     expect(capturedContext).toBeDefined();
@@ -1818,9 +1898,7 @@ describe('@fluojs/cqrs', () => {
 
     const closePromise = app.close();
 
-    await vi.waitFor(() => {
-      expect(eventBusService.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopping');
-    });
+    await shutdownStartProbe.started.promise;
 
     await expect(eventBus.publish(new GuardedShutdownEvent('late'))).rejects.toBeInstanceOf(InvariantError);
     await expect(eventBus.publish(new GuardedShutdownEvent('stale-context'), capturedContext)).rejects.toBeInstanceOf(InvariantError);
@@ -1880,12 +1958,12 @@ describe('@fluojs/cqrs', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
-      providers: [ShutdownStore, ParentShutdownEventHandler, NestedShutdownEventHandler],
+      providers: [ShutdownStore, ParentShutdownEventHandler, NestedShutdownEventHandler, EventBusShutdownStartProbe],
     });
 
     const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
-    const eventBusService = await app.container.resolve(CqrsEventBusService);
+    const shutdownStartProbe = await app.container.resolve(EventBusShutdownStartProbe);
     const store = await app.container.resolve(ShutdownStore);
 
     const publishPromise = eventBus.publish(new ParentShutdownEvent('parent'));
@@ -1893,9 +1971,7 @@ describe('@fluojs/cqrs', () => {
 
     const closePromise = app.close();
 
-    await vi.waitFor(() => {
-      expect(eventBusService.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopping');
-    });
+    await shutdownStartProbe.started.promise;
 
     releaseNestedPublish.resolve();
 
@@ -1954,12 +2030,12 @@ describe('@fluojs/cqrs', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
-      providers: [ShutdownStore, NestedPublishingSaga, SagaNestedShutdownEventHandler],
+      providers: [ShutdownStore, NestedPublishingSaga, SagaNestedShutdownEventHandler, EventBusShutdownStartProbe],
     });
 
     const app = await FluoFactory.create(AppModule);
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
-    const eventBusService = await app.container.resolve(CqrsEventBusService);
+    const shutdownStartProbe = await app.container.resolve(EventBusShutdownStartProbe);
     const store = await app.container.resolve(ShutdownStore);
 
     const publishPromise = eventBus.publish(new SagaParentShutdownEvent('parent'));
@@ -1967,9 +2043,7 @@ describe('@fluojs/cqrs', () => {
 
     const closePromise = app.close();
 
-    await vi.waitFor(() => {
-      expect(eventBusService.createPlatformStatusSnapshot().details.lifecycleState).toBe('stopping');
-    });
+    await shutdownStartProbe.started.promise;
 
     releaseNestedPublish.resolve();
 
@@ -2001,20 +2075,20 @@ describe('@fluojs/cqrs', () => {
     class AppModule {}
     defineModule(AppModule, {
       imports: [CqrsModule.forRoot()],
-      providers: [GuardedSaga],
+      providers: [GuardedSaga, EventBusShutdownStartProbe],
     });
 
     const app = await FluoFactory.create(AppModule);
     const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
+    const shutdownStartProbe = await app.container.resolve(EventBusShutdownStartProbe);
     const dispatchPromise = sagaBus.dispatch(new GuardedSagaEvent('active'));
 
     await Promise.resolve();
 
     const closePromise = app.close();
 
-    await vi.waitFor(() => {
-      expect(sagaBus.getRuntimeSnapshot().lifecycleState).toBe('stopping');
-    });
+    await shutdownStartProbe.started.promise;
+    expect(sagaBus.getRuntimeSnapshot().lifecycleState).toBe('stopping');
 
     await expect(sagaBus.dispatch(new GuardedSagaEvent('late'))).rejects.toBeInstanceOf(InvariantError);
 

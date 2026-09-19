@@ -1,7 +1,7 @@
 import type { Token } from '@fluojs/core';
 import type { ApplicationLogger } from '@fluojs/runtime';
 
-import type { DiscoveryCandidate } from '../discovery.js';
+import { filterEffectiveDiscoveryCandidates, type DiscoveryCandidate } from '../discovery.js';
 import { getSagaMetadata } from '../metadata.js';
 import type { CqrsEventType, SagaDescriptor } from '../types.js';
 
@@ -18,8 +18,9 @@ export function discoverSagaDescriptors(
 ): Map<CqrsEventType, SagaDescriptor[]> {
   const descriptorsByEvent = new Map<CqrsEventType, SagaDescriptor[]>();
   const seenEventTypesByToken = new Map<Token, Set<CqrsEventType>>();
+  const effectiveCandidates = filterEffectiveDiscoveryCandidates(candidates);
 
-  for (const candidate of candidates) {
+  for (const candidate of effectiveCandidates) {
     const metadata = getSagaMetadata(candidate.targetType);
 
     if (!metadata) {

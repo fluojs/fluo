@@ -55,7 +55,7 @@ export class OrderWorker {
 
 ### 2. 모듈 등록 및 작업 추가
 
-`QueueModule`을 등록하고 `QueueLifecycleService`를 주입받아 작업을 큐에 추가합니다.
+`QueueModule`을 등록하고 `getQueueToken()`으로 좁은 `Queue` facade를 주입받아 작업을 큐에 추가합니다.
 
 `QueueModule.forRoot(...)`는 애플리케이션 수준 큐 등록을 위한 지원되는 루트 엔트리포인트입니다.
 
@@ -63,12 +63,12 @@ Producer는 job class instance를 넣어 `enqueue(new JobClass(...))`를 호출�
 
 ```typescript
 import { Module, Inject } from '@fluojs/core';
-import { QueueModule, QueueLifecycleService } from '@fluojs/queue';
+import { getQueueToken, type Queue, QueueModule } from '@fluojs/queue';
 import { RedisModule } from '@fluojs/redis';
 
-@Inject(QueueLifecycleService)
+@Inject(getQueueToken())
 export class OrderService {
-  constructor(private readonly queue: QueueLifecycleService) {}
+  constructor(private readonly queue: Queue) {}
 
   async placeOrder(id: string) {
     await this.queue.enqueue(new ProcessOrderJob(id));
@@ -96,7 +96,7 @@ NestJS queue integration에서 이동하는 consumer는 metadata 기반 processo
 **각 job class와 실제 `jobName`은 worker 하나만 소유합니다.** Queue는 BullMQ resource를 만들기 전에 bootstrap 중 singleton 중복 등록을 거부하며, provider discovery 순서와 무관합니다. 마이그레이션하는 NestJS `@Process(...)` handler마다 별도 job class와 `jobName`을 부여하거나, 여러 handler를 worker 하나의 `handle(job)` 뒤로 통합하세요.
 
 4. Worker가 queue registration에서 도달 가능하도록 유지합니다. 기본 global `QueueModule.forRoot()`는 compiled application graph 전체의 singleton worker를 discovery할 수 있습니다. `global: false`에서는 authored imports/exports를 통해 해당 registration에 도달할 수 있는 module로 discovery가 제한되며, 일치하는 Redis provider도 같은 module tree에서 도달 가능해야 합니다.
-5. Processor뿐 아니라 producer도 변환합니다. `@InjectQueue('name')`과 `queue.add('job', payload)`를 `@Inject(QueueLifecycleService)`(또는 `QUEUE` / `getQueueToken(scope)` facade)와 `queue.enqueue(new JobClass(...))`로 바꿉니다. Queue에는 name과 payload를 받는 producer signature가 없으며, plain payload object는 constructor가 `Object`이므로 등록된 JobClass worker를 식별할 수 없습니다.
+5. Processor뿐 아니라 producer도 변환합니다. `@InjectQueue('name')`과 `queue.add('job', payload)`를 `@Inject(getQueueToken(scope?))`, `Queue` facade 의존성, `queue.enqueue(new JobClass(...))`로 바꿉니다. Queue에는 name과 payload를 받는 producer signature가 없으며, plain payload object는 constructor가 `Object`이므로 등록된 JobClass worker를 식별할 수 없습니다.
 6. Queue lifecycle ownership과 중복되는 worker 소유 start/stop hook을 제거합니다. Queue는 application bootstrap 중 resource를 만들고 application bootstrap-ready handoff 이후에만 BullMQ processor를 시작하며, shutdown이 시작된 뒤에는 새 enqueue를 거부하고 graceful close와 필요한 force-close에 각각 `workerShutdownTimeoutMs` budget을 적용합니다.
 
 ### Producer 마이그레이션: Bull/BullMQ에서 Queue로
@@ -122,11 +122,11 @@ fluo에서는 `ProcessOrderJob`을 `@QueueWorker(ProcessOrderJob, { jobName: 'pr
 ```typescript
 // 이후: fluo
 import { Inject } from '@fluojs/core';
-import { QueueLifecycleService } from '@fluojs/queue';
+import { getQueueToken, type Queue } from '@fluojs/queue';
 
-@Inject(QueueLifecycleService)
+@Inject(getQueueToken())
 export class OrdersProducer {
-  constructor(private readonly queue: QueueLifecycleService) {}
+  constructor(private readonly queue: Queue) {}
 
   async placeOrder(orderId: string) {
     await this.queue.enqueue(new ProcessOrderJob(orderId));
@@ -176,10 +176,9 @@ QueueModule.forRoot({
 
 ```typescript
 import { Inject, Module } from '@fluojs/core';
-import { getQueueLifecycleServiceToken, getQueueToken, QueueModule, type Queue } from '@fluojs/queue';
+import { getQueueToken, QueueModule, type Queue } from '@fluojs/queue';
 
 const EMAIL_QUEUE = getQueueToken('email');
-const EMAIL_QUEUE_LIFECYCLE = getQueueLifecycleServiceToken('email');
 
 @Inject(EMAIL_QUEUE)
 export class EmailPublisher {
@@ -193,7 +192,7 @@ export class EmailPublisher {
 export class EmailQueueModule {}
 ```
 
-애플리케이션에 기본 queue 등록이 하나뿐이고 compatibility `QUEUE` 토큰이나 `QueueLifecycleService` 클래스를 직접 주입할 때만 `scope`를 생략하세요. Scoped registration에서는 각 feature module이 기본 compatibility token 대신 자신의 queue instance를 resolve하도록 `getQueueToken(scope)` 또는 `getQueueLifecycleServiceToken(scope)`를 주입하세요.
+애플리케이션에 기본 queue 등록이 하나뿐이면 `scope`를 생략하세요. Producer는 기본 등록에 `getQueueToken()`, scoped registration에 `getQueueToken(scope)`을 주입해 각 feature module이 자신의 좁은 `Queue` facade를 resolve하도록 합니다. `QUEUE`, `QueueLifecycleService`, `getQueueLifecycleServiceToken(scope)`은 producer recipe가 아니라 integration·compatibility 경계로 남습니다.
 
 ### 부트스트랩 및 종료 수명 주기
 
@@ -218,7 +217,7 @@ Queue는 애플리케이션 부트스트랩 중 worker를 탐색하고 Queue가 
 
 `QueueModule.forRoot()`는 기본적으로 작업별 최근 데드 레터 엔트리 `1_000`개만 유지합니다. 무제한 보관이 꼭 필요하면 `defaultDeadLetterMaxEntries: false`로 opt-out 하고, 더 엄격한 운영 예산이 필요하면 더 작은 양의 정수를 지정하세요.
 
-Queue의 Redis key를 직접 읽지 않고 record를 확인하려면 `QueueLifecycleService.inspectDeadLetters(jobName, { limit })` 또는 주입한 `Queue` facade의 같은 메서드를 사용하세요.
+Queue의 Redis key를 직접 읽지 않고 record를 확인하려면 주입한 producer facade의 `Queue.inspectDeadLetters(jobName, { limit })`를 사용하세요.
 
 ```typescript
 const inspection = await queue.inspectDeadLetters('ProcessOrderJob', { limit: 25 });
@@ -265,8 +264,8 @@ Queue는 `new ProcessOrderJob(id)` 같은 class instance를 포함한 job object
 ### 핵심 구성 요소
 - `QueueModule`: 큐 기능을 위한 기본 모듈입니다.
 - `QueueModule.forRoot(options)`: 애플리케이션 수준 큐 등록을 구성합니다.
-- `QueueLifecycleService`: 작업 enqueue, read-only dead-letter inspection, lifecycle/status snapshot 생성(`enqueue(job, options?)`, `enqueueMany(entries)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`)을 위한 기본 서비스입니다.
-- `Queue`: `QUEUE`와 `getQueueToken(scope?)`로 노출되는 공개 producer facade이며, `QueueLifecycleService`와 같은 `enqueue(...)` 및 `enqueueMany(...)` 계약을 제공합니다.
+- `Queue`: `getQueueToken(scope?)`으로 주입하는 좁은 공개 producer facade이며 `enqueue(...)`, `enqueueMany(...)`, read-only `inspectDeadLetters(...)`를 지원합니다.
+- `QueueLifecycleService`: lifecycle/status snapshot을 위한 integration·diagnostics service이며 producer는 좁은 `Queue` facade를 사용합니다.
 - `@QueueWorker(JobClass, options?)`: 특정 작업을 처리할 핸들러를 지정하는 데코레이터입니다.
 - `QUEUE`: queue facade를 위한 호환성 주입 토큰입니다.
 - `getQueueToken(scope?)`: Queue facade token helper입니다. `scope`를 생략하면 기본 `QUEUE` token을 반환하고, 비어 있지 않은 scope는 해당 scoped registration의 facade token을 반환합니다.
@@ -309,7 +308,7 @@ singleton `@QueueWorker()` provider/controller만 등록됩니다. request/trans
 
 ### Atomic producer batch
 
-`Queue.enqueueMany(entries)`와 `QueueLifecycleService.enqueueMany(entries)`는 순서가 있는 `QueueEnqueueManyEntry` 값을 받습니다. 각 entry는 하나의 job instance와 `deduplicationKey`를 포함할 수 있는 entry별 `QueueEnqueueOptions`를 제공합니다.
+`Queue.enqueueMany(entries)`는 순서가 있는 `QueueEnqueueManyEntry` 값을 받습니다. 각 entry는 하나의 job instance와 `deduplicationKey`를 포함할 수 있는 entry별 `QueueEnqueueOptions`를 제공합니다.
 
 모든 entry는 같은 하나의 BullMQ queue에 등록된 worker로 해석되어야 합니다. Queue는 BullMQ를 호출하기 전에 batch 전체를 검증하므로 worker가 없거나 다른 queue로 해석되는 job이 있으면 어떤 entry도 persist하지 않고 reject합니다. 유효한 batch는 한 번의 atomic BullMQ `addBulk(...)` 호출로 persist되며, 반환 job ID의 순서는 입력 순서와 일치합니다.
 

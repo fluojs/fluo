@@ -39,7 +39,7 @@ Use this package when you need a stable fluo-native package boundary for i18n wo
 
 - application-level module registration through `I18nModule.forRoot(...)`
 - a framework-agnostic `I18nService` for explicit-locale translation lookup
-- a standalone `createI18n(...)` entry point for non-module usage
+- `I18nService.create(...)` for standalone non-module usage
 - locale-scoped message catalogs, deterministic fallback resolution, interpolation, and missing-message hooks
 - optional ICU MessageFormat plural/select formatting through `@fluojs/i18n/icu`
 - standard `Intl` formatting helpers with explicit locales
@@ -80,11 +80,11 @@ When migrating from NestJS i18n, load every required locale and namespace before
 ```ts
 import { Module } from '@fluojs/core';
 import { I18nModule } from '@fluojs/i18n';
-import { createFileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
+import { FileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
 
 const locales = ['en', 'ko'] as const;
 const namespaces = ['common', 'validation'] as const;
-const catalogLoader = createFileSystemI18nLoader({
+const catalogLoader = FileSystemI18nLoader.create({
   rootDir: new URL('./locales', import.meta.url).pathname,
 });
 
@@ -141,9 +141,9 @@ This preserves the lookup order: explicit locale, configured fallback chain, `de
 The `I18nService` provides deterministic translation lookup.
 
 ```ts
-import { createI18n } from '@fluojs/i18n';
+import { I18nService } from '@fluojs/i18n';
 
-const i18n = createI18n({
+const i18n = I18nService.create({
   defaultLocale: 'en',
   supportedLocales: ['en', 'ko'],
   fallbackLocales: { ko: ['en'] },
@@ -177,9 +177,9 @@ If no message is found, an `I18nError` is thrown with code `I18N_MISSING_MESSAGE
 Formatting helpers delegate directly to the host standard `Intl` implementation. Locale is explicit on every formatting call, and named formatter options are captured as immutable service-owned snapshots.
 
 ```ts
-import { createI18n } from '@fluojs/i18n';
+import { I18nService } from '@fluojs/i18n';
 
-const i18n = createI18n({
+const i18n = I18nService.create({
   defaultLocale: 'en-US',
   formats: {
     dateTime: {
@@ -204,9 +204,9 @@ i18n.formatCurrency(12900, {
 ICU MessageFormat support lives under `@fluojs/i18n/icu` so the root `@fluojs/i18n` entry point keeps its framework-agnostic simple interpolation contract. The ICU service first resolves messages through the core `I18nService`, preserving locale fallback, per-call `defaultValue`, missing-message hooks, and `{{ name }}` interpolation for compatible primitive values. It then formats the resolved message with ICU plural, select, and nested MessageFormat rules.
 
 ```ts
-import { createIcuI18n } from '@fluojs/i18n/icu';
+import { IcuI18nService } from '@fluojs/i18n/icu';
 
-const i18n = createIcuI18n({
+const i18n = IcuI18nService.create({
   defaultLocale: 'en',
   supportedLocales: ['en', 'ko'],
   fallbackLocales: { ko: ['en'] },
@@ -233,11 +233,11 @@ Invalid ICU patterns, missing ICU values, and non-string rich formatting results
 HTTP request locale helpers live only under the `@fluojs/i18n/http` subpath so the root `@fluojs/i18n` entry point remains framework-agnostic and does not import `@fluojs/http`.
 
 ```ts
-import { createI18n } from '@fluojs/i18n';
-import { createAcceptLanguageLocaleResolver, getHttpLocale, resolveHttpLocale } from '@fluojs/i18n/http';
+import { I18nService } from '@fluojs/i18n';
+import { createAcceptLanguageLocalePolicyResolver, getHttpLocale, resolveHttpLocale } from '@fluojs/i18n/http';
 import type { RequestContext } from '@fluojs/http';
 
-const i18n = createI18n({
+const i18n = I18nService.create({
   defaultLocale: 'en',
   supportedLocales: ['en', 'ko'],
   catalogs: {
@@ -245,7 +245,7 @@ const i18n = createI18n({
   },
 });
 
-const acceptLanguage = createAcceptLanguageLocaleResolver();
+const acceptLanguage = createAcceptLanguageLocalePolicyResolver({ normalizeToSupportedLocale: false });
 
 async function bindRequestLocale(ctx: RequestContext) {
   return resolveHttpLocale(ctx, {
@@ -267,8 +267,7 @@ The adapter is intentionally explicit:
 - `setHttpLocale(ctx, locale, metadata)` stores locale metadata on the current `RequestContext` using `createContextKey(...)`.
 - `getHttpLocale(ctx)` reads the metadata without falling back to globals.
 - `parseAcceptLanguage(header)` parses valid `Accept-Language` ranges by q-value and ignores invalid or q=0 entries.
-- `createAcceptLanguageLocaleResolver(...)` selects the first supported locale from the request header, matches language ranges case-insensitively, and returns the configured `supportedLocales` spelling when a match is found.
-- `createAcceptLanguageLocalePolicyResolver(...)` is opt-in and can normalize regional ranges such as `en-US` to supported `en` or select a wildcard fallback only after explicit supported ranges are exhausted.
+- `createAcceptLanguageLocalePolicyResolver(...)` selects a supported locale from `Accept-Language` headers with explicit normalization (`normalizeToSupportedLocale`, defaults to `true`) and optional wildcard policy (`wildcardLocale`).
 - `resolveHttpLocale(ctx, options)` runs application-provided resolvers in order, ignores invalid or unsupported resolver output, and stores `defaultLocale` with source `default` when nothing matches.
 
 Wildcard `*` ranges are parsed but do not automatically select a locale. Applications that want wildcard-specific behavior can add a resolver before or after the provided `Accept-Language` resolver.
@@ -288,7 +287,7 @@ Non-HTTP locale helpers live under the `@fluojs/i18n/adapters` subpath. They pro
 ```ts
 import {
   bindLocale,
-  createHeaderLocaleResolver,
+  createHeaderLocalePolicyResolver,
   createQueryLocaleResolver,
   createWeakMapLocaleStore,
   getAdapterLocale,
@@ -307,7 +306,7 @@ const queryLocale = createQueryLocaleResolver<SocketContext>({
   getQueryValue: (socket) => socket.handshake.query.locale,
   source: 'socket-query',
 });
-const headerLocale = createHeaderLocaleResolver<SocketContext>({
+const headerLocale = createHeaderLocalePolicyResolver<SocketContext>({
   getHeader: (socket) => socket.handshake.headers['accept-language'],
   source: 'socket-accept-language',
 });
@@ -332,8 +331,7 @@ The generic adapter contract is intentionally explicit:
 - `resolveLocale(context, options)` runs application-provided resolvers in order, ignores empty, invalid, and unsupported resolver output, and returns `defaultLocale` with source `default` when nothing matches.
 - `bindLocale(context, { store, ...options })` resolves a locale and stores immutable metadata in an application-provided `LocaleAdapterStore`.
 - `createWeakMapLocaleStore()` provides per-object metadata storage for socket, call, session, or request objects without mutating those objects.
-- `createHeaderLocaleResolver(...)` parses `Accept-Language`-style values with the same q-value, wildcard behavior, case-insensitive matching, and supported-locale spelling preservation as the HTTP adapter.
-- `createHeaderLocalePolicyResolver(...)` provides the same opt-in regional-locale normalization and wildcard fallback policy without importing HTTP types.
+- `createHeaderLocalePolicyResolver(...)` provides an `Accept-Language`-style resolver with regional-locale normalization and wildcard fallback policy without importing HTTP types.
 - `createQueryLocaleResolver(...)`, `createCookieLocaleResolver(...)`, and `createStorageLocaleResolver(...)` read locale candidates from caller-owned abstractions and never access browser globals or framework internals.
 
 Applications choose the context shape and accessor functions. For example, a gRPC integration can read metadata through `getHeader`, a CLI integration can read a parsed `--locale` option through `getQueryValue` or `getStoredLocale`, and a browser application can pass a safe wrapper around `localStorage` through `getStoredLocale`.
@@ -343,11 +341,11 @@ Applications choose the context shape and accessor functions. For example, a gRP
 Validation issue localization lives under `@fluojs/i18n/validation` so the root `@fluojs/i18n` entry point stays framework-agnostic and does not change `@fluojs/validation` behavior by default. Applications opt in after validation fails by translating `ValidationIssue.message` snapshots explicitly.
 
 ```ts
-import { createI18n } from '@fluojs/i18n';
+import { I18nService } from '@fluojs/i18n';
 import { localizeDtoValidationError } from '@fluojs/i18n/validation';
 import { DefaultValidator, DtoValidationError } from '@fluojs/validation';
 
-const i18n = createI18n({
+const i18n = I18nService.create({
   defaultLocale: 'en',
   supportedLocales: ['en', 'ko'],
   fallbackLocales: { ko: ['en'] },
@@ -376,9 +374,9 @@ This integration is intentionally not an HTTP adapter. Request locale resolution
 Node applications can opt into a JSON filesystem loader from the dedicated subpath:
 
 ```ts
-import { createFileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
+import { FileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
 
-const loader = createFileSystemI18nLoader({
+const loader = FileSystemI18nLoader.create({
   rootDir: new URL('./locales', import.meta.url).pathname,
 });
 
@@ -394,9 +392,9 @@ This subpath imports Node built-ins and is not exported from `@fluojs/i18n` root
 Remote catalog loading lives under a dedicated provider-backed subpath so applications can connect HTTP APIs, object stores, databases, or other asynchronous catalog sources without adding runtime-specific dependencies to the root entry point:
 
 ```ts
-import { createRemoteI18nLoader } from '@fluojs/i18n/loaders/remote';
+import { RemoteI18nLoader } from '@fluojs/i18n/loaders/remote';
 
-const loader = createRemoteI18nLoader({
+const loader = RemoteI18nLoader.create({
   timeoutMs: 5_000,
   provider: async ({ locale, namespace, signal }) => {
     const response = await fetch(`https://catalog.example/${locale}/${namespace}.json`, { signal });
@@ -417,10 +415,10 @@ The remote loader never caches by default: every `load(locale, namespace)` call 
 Applications that want a first-party in-memory policy can wrap the loader explicitly. Cache entries are keyed by `(locale, namespace, version)` unless the caller provides a custom key, begin their TTL only after a successful load, and keep invalidation application-owned through `invalidate(...)` / `clear()`:
 
 ```ts
-import { createCachedRemoteI18nLoader, createRemoteI18nLoader } from '@fluojs/i18n/loaders/remote';
+import { CachedRemoteI18nLoader, RemoteI18nLoader } from '@fluojs/i18n/loaders/remote';
 
-const uncachedLoader = createRemoteI18nLoader({ provider: fetchCatalog });
-const cachedLoader = createCachedRemoteI18nLoader({
+const uncachedLoader = RemoteI18nLoader.create({ provider: fetchCatalog });
+const cachedLoader = CachedRemoteI18nLoader.create({
   loader: uncachedLoader,
   ttlMs: 60_000,
   version: 'catalog-2026-05-11',
@@ -488,8 +486,7 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 | Export | Description |
 |---|---|
 | `I18nModule` | Module facade for registering the core i18n service surface; providers are global by default and can be kept module-local with `global: false`. |
-| `I18nService` | Core service that owns detached options/catalog snapshots, resolves translations, and exposes explicit-locale `Intl` formatting helpers (`formatDateTime`, `formatNumber`, `formatCurrency`, `formatPercent`, `formatList`, `formatRelativeTime`). |
-| `createI18n(options)` | Creates a standalone `I18nService` without module registration. |
+| `I18nService` | Core service that owns detached options/catalog snapshots, resolves translations, exposes static `I18nService.create(options)`, and provides explicit-locale `Intl` formatting helpers (`formatDateTime`, `formatNumber`, `formatCurrency`, `formatPercent`, `formatList`, `formatRelativeTime`). |
 | `I18nError` | Base i18n package error with a stable error code. |
 
 **Types:** `I18nModuleOptions`, `I18nMessageCatalogs`, `I18nMessageTree`, `I18nTranslateOptions`, `I18nInterpolationValues`, `I18nMissingMessageHandler`, `I18nMissingMessageContext`, `I18nLocale`, `I18nTranslationKey`, `I18nErrorCode`, `I18nFallbackLocales`, `I18nFormatOptions`, `I18nFormatterOptions`, `I18nDateTimeFormatOptions`, `I18nNumberFormatOptions`, `I18nCurrencyFormatOptions`, `I18nListFormatOptions`, `I18nRelativeTimeFormatOptions`, `I18nNamedDateTimeFormats`, `I18nNamedNumberFormats`, `I18nNamedListFormats`, `I18nNamedRelativeTimeFormats`.
@@ -501,8 +498,7 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 | `resolveHttpLocale` | Resolves and stores locale metadata on the `RequestContext`. |
 | `getHttpLocale` | Retrieves locale metadata from the `RequestContext`. |
 | `setHttpLocale` | Manually stores locale metadata on the `RequestContext`. |
-| `createAcceptLanguageLocaleResolver` | Creates a resolver for the `Accept-Language` header. |
-| `createAcceptLanguageLocalePolicyResolver` | Creates an opt-in `Accept-Language` policy resolver for regional normalization and wildcard fallback handling. |
+| `createAcceptLanguageLocalePolicyResolver` | Creates a policy resolver for `Accept-Language` headers with regional normalization and wildcard fallback controls. |
 | `parseAcceptLanguage` | Utility to parse `Accept-Language` header into q-value preferences. |
 | `HTTP_LOCALE_CONTEXT_KEY` | Context key used to store locale metadata on `RequestContext`. |
 
@@ -517,8 +513,7 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 | `setAdapterLocale` | Manually stores locale metadata in a caller-provided adapter store. |
 | `getAdapterLocale` | Retrieves locale metadata from a caller-provided adapter store. |
 | `createWeakMapLocaleStore` | Creates per-object metadata storage without mutating transport contexts. |
-| `createHeaderLocaleResolver` | Creates an `Accept-Language`-style resolver for caller-owned header abstractions. |
-| `createHeaderLocalePolicyResolver` | Creates an opt-in header policy resolver for regional normalization and wildcard fallback handling. |
+| `createHeaderLocalePolicyResolver` | Creates a header policy resolver for caller-owned header abstractions with regional normalization and wildcard fallback handling. |
 | `createQueryLocaleResolver` | Creates a resolver for query, CLI option, or request parameter abstractions. |
 | `createCookieLocaleResolver` | Creates a resolver for caller-owned cookie abstractions. |
 | `createStorageLocaleResolver` | Creates a resolver for local storage, server session, socket data, or CLI config abstractions. |
@@ -540,8 +535,7 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 
 | Export | Description |
 |---|---|
-| `createIcuI18n(options)` | Creates a standalone ICU MessageFormat service while preserving core lookup semantics. |
-| `IcuI18nService` | Service that resolves messages through `I18nService` before ICU formatting. |
+| `IcuI18nService` | Service that resolves messages through `I18nService` before ICU formatting; creates standalone instances via static `IcuI18nService.create(options)`. |
 
 **Types:** `I18nIcuTranslateOptions`, `I18nIcuValue`, `I18nIcuValues`.
 
@@ -549,8 +543,7 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 
 | Export | Description |
 |---|---|
-| `createFileSystemI18nLoader` | Creates a Node.js JSON filesystem loader. |
-| `FileSystemI18nLoader` | Class implementation of the filesystem loader. |
+| `FileSystemI18nLoader` | Node.js JSON filesystem loader class with static `FileSystemI18nLoader.create(options)`. |
 
 **Types:** `I18nLoader`, `I18nLoaderLoadOptions`, `FileSystemI18nLoaderOptions`.
 
@@ -558,10 +551,8 @@ Both helpers deduplicate keys across locales, sort output for stable diffs, reje
 
 | Export | Description |
 |---|---|
-| `createRemoteI18nLoader` | Creates a provider-backed remote catalog loader. |
-| `RemoteI18nLoader` | Class implementation of the remote catalog loader. |
-| `createCachedRemoteI18nLoader` | Creates an opt-in in-memory cache wrapper around a remote catalog loader. |
-| `CachedRemoteI18nLoader` | Cache wrapper implementation with explicit `invalidate(...)` and `clear()` controls. |
+| `RemoteI18nLoader` | Provider-backed remote catalog loader class with static `RemoteI18nLoader.create(options)`. |
+| `CachedRemoteI18nLoader` | In-memory cache wrapper implementation with static `CachedRemoteI18nLoader.create(options)` and explicit `invalidate(...)` and `clear()` controls. |
 
 **Types:** `I18nLoader`, `I18nLoaderLoadOptions`, `RemoteI18nCatalogProvider`, `RemoteI18nCatalogRequest`, `RemoteI18nLoaderOptions`, `CachedI18nLoader`, `CachedI18nLoaderKeyInput`, `CachedI18nLoaderOptions`.
 

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import * as corePublicApi from '@fluojs/core';
 import { IsArray, IsBoolean, IsOptional, IsString, MinLength, ValidateNested } from '@fluojs/validation';
-import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation';
+import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation/mapped-types';
 import * as httpPublicApi from '@fluojs/http';
 import { Controller, Get, Post, Produces, Version, createHandlerMapping, type FrameworkRequest, type FrameworkResponse, type HandlerSource } from '@fluojs/http';
 import { FromBody, FromCookie, FromHeader, FromPath, FromQuery, RequestDto } from '@fluojs/http';

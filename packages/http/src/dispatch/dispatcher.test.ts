@@ -1,6 +1,7 @@
 import { Inject, Scope as ScopeDecorator } from '@fluojs/core';
 import { Container } from '@fluojs/di';
-import { IntersectionType, IsNumber, IsString, MinLength, OmitType, PartialType, PickType, ValidateNested } from '@fluojs/validation';
+import { IsNumber, IsString, MinLength, ValidateNested } from '@fluojs/validation';
+import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation/mapped-types';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   CallHandler,

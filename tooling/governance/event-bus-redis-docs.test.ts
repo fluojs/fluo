@@ -286,7 +286,8 @@ describe('Event Bus handler failure isolation documentation', () => {
     // When / Then
     assertMarkers(servicePath, 'local listener settlement', localBody, [
       'const invocationTasks = this.createInvocationTasks',
-      'await Promise.allSettled([...invocationTasks, transportPublish]);',
+      'const transportTasks = this.createTransportPublishTasks',
+      'await completion',
     ]);
     assertMarkers(servicePath, 'inbound listener settlement', inboundBody, [
       'await Promise.allSettled(invocationTasks);',

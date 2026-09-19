@@ -5,10 +5,9 @@ import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { SlackChannel } from './channel.js';
 import { SlackConfigurationError } from './errors.js';
 import { SlackService } from './service.js';
-import { SLACK, SLACK_CHANNEL, SLACK_OPTIONS } from './tokens.js';
+import { SLACK_CHANNEL, SLACK_OPTIONS } from './tokens.js';
 import type {
   NormalizedSlackModuleOptions,
-  Slack,
   SlackAsyncModuleOptions,
   SlackModuleOptions,
   SlackTransport,
@@ -55,15 +54,6 @@ function createSlackRuntimeProviders(optionsProvider: Provider): Provider[] {
     SlackService,
     SlackChannel,
     {
-      inject: [SlackService],
-      provide: SLACK,
-      useFactory: (service: unknown): Slack => ({
-        send: (message, options) => (service as SlackService).send(message, options),
-        sendMany: (messages, options) => (service as SlackService).sendMany(messages, options),
-        sendNotification: (notification, options) => (service as SlackService).sendNotification(notification, options),
-      }),
-    },
-    {
       inject: [SlackChannel],
       provide: SLACK_CHANNEL,
       useFactory: (channel: unknown) => channel,
@@ -71,13 +61,7 @@ function createSlackRuntimeProviders(optionsProvider: Provider): Provider[] {
   ];
 }
 
-/**
- * Creates the singleton Slack providers for manual module composition.
- *
- * @param options Static singleton Slack module options including explicit transport wiring.
- * @returns Provider definitions equivalent to {@link SlackModule.forRoot} wiring for `SlackService`, `SlackChannel`, `SLACK`, and `SLACK_CHANNEL`.
- */
-export function createSlackProviders(options: SlackModuleOptions): Provider[] {
+function createSlackModuleProviders(options: SlackModuleOptions): Provider[] {
   return createSlackRuntimeProviders({
     provide: SLACK_OPTIONS,
     useValue: normalizeSlackModuleOptions(options),
@@ -88,9 +72,9 @@ function buildSlackModule(options: SlackModuleOptions): ModuleType {
   class SlackRootModuleDefinition {}
 
   return defineModule(SlackRootModuleDefinition, {
-    exports: [SlackService, SlackChannel, SLACK, SLACK_CHANNEL],
+    exports: [SlackService, SlackChannel, SLACK_CHANNEL],
     global: options.global ?? true,
-    providers: createSlackProviders(options),
+    providers: createSlackModuleProviders(options),
   });
 }
 
@@ -100,7 +84,7 @@ function buildSlackModuleAsync(options: SlackAsyncModuleOptions): ModuleType {
   const factory = options.useFactory as (...args: unknown[]) => MaybePromise<SlackModuleOptions>;
 
   return defineModule(SlackAsyncModuleDefinition, {
-    exports: [SlackService, SlackChannel, SLACK, SLACK_CHANNEL],
+    exports: [SlackService, SlackChannel, SLACK_CHANNEL],
     global: options.global ?? true,
     providers: createSlackRuntimeProviders({
       inject: options.inject,
@@ -118,7 +102,7 @@ export class SlackModule {
    * Registers Slack providers using static options.
    *
    * @param options Static Slack module options including transport wiring and optional template rendering behavior.
-   * @returns A module definition that exports {@link SlackService}, {@link SlackChannel}, and compatibility tokens.
+   * @returns A module definition that exports {@link SlackService}, {@link SlackChannel}, and `SLACK_CHANNEL`.
    *
    * @example
    * ```ts

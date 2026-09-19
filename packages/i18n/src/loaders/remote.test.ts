@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { I18nError } from '../errors.js';
 import type { I18nErrorCode, I18nMessageTree } from '../types.js';
 import type { I18nLoader, I18nLoaderLoadOptions } from './remote.js';
-import { CachedRemoteI18nLoader, createCachedRemoteI18nLoader, createRemoteI18nLoader, RemoteI18nLoader } from './remote.js';
+import { CachedRemoteI18nLoader, RemoteI18nLoader } from './remote.js';
 
 async function expectI18nRejection(action: () => Promise<unknown>, code: I18nErrorCode): Promise<void> {
   try {
@@ -42,7 +42,7 @@ function waitForAbort(signal: AbortSignal): Promise<void> {
 describe('@fluojs/i18n/loaders/remote', () => {
   it('loads and freezes remote object catalogs from locale and namespace requests', async () => {
     const providerCatalog = { save: 'Save', nested: { cancel: 'Cancel' } };
-    const loader = createRemoteI18nLoader({
+    const loader = RemoteI18nLoader.create({
       provider: ({ locale, namespace, signal }) => {
         expect(locale).toBe('en');
         expect(namespace).toBe('common/actions');
@@ -63,7 +63,7 @@ describe('@fluojs/i18n/loaders/remote', () => {
     // Given: a provider result with an own message key that collides with Object.prototype.
     const providerCatalog: I18nMessageTree = {};
     Object.defineProperty(providerCatalog, '__proto__', { enumerable: true, value: 'Prototype-safe' });
-    const loader = createRemoteI18nLoader({ provider: () => providerCatalog });
+    const loader = RemoteI18nLoader.create({ provider: () => providerCatalog });
 
     // When: the remote loader snapshots that catalog.
     const catalog = await loader.load('en', 'common');
@@ -78,7 +78,7 @@ describe('@fluojs/i18n/loaders/remote', () => {
     // Given: a provider result whose nested catalog tree refers to itself.
     const providerCatalog: Record<string, string | I18nMessageTree> = {};
     providerCatalog.self = providerCatalog;
-    const loader = createRemoteI18nLoader({ provider: () => providerCatalog });
+    const loader = RemoteI18nLoader.create({ provider: () => providerCatalog });
 
     // When/Then: loader validation reports the documented error instead of overflowing recursion.
     await expectI18nRejection(() => loader.load('en', 'common'), 'I18N_INVALID_CATALOG');
@@ -118,7 +118,7 @@ describe('@fluojs/i18n/loaders/remote', () => {
         return { title: `Welcome ${providerCalls}` };
       },
     });
-    const cached = createCachedRemoteI18nLoader({ loader, now: () => now, ttlMs: 100, version: 'v1' });
+    const cached = CachedRemoteI18nLoader.create({ loader, now: () => now, ttlMs: 100, version: 'v1' });
 
     await expect(cached.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
     await expect(cached.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
@@ -137,7 +137,7 @@ describe('@fluojs/i18n/loaders/remote', () => {
         return { title: `Welcome ${providerCalls}` };
       },
     };
-    const cached = createCachedRemoteI18nLoader({ loader, now: () => now, ttlMs: 100 });
+    const cached = CachedRemoteI18nLoader.create({ loader, now: () => now, ttlMs: 100 });
 
     await expect(cached.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
     now = 1_149;
@@ -156,8 +156,8 @@ describe('@fluojs/i18n/loaders/remote', () => {
         return { title: `Welcome ${providerCalls}` };
       },
     });
-    const stableCatalog = createCachedRemoteI18nLoader({ loader, ttlMs: 1_000, version: 'stable' });
-    const canaryCatalog = createCachedRemoteI18nLoader({ loader, ttlMs: 1_000, version: 'canary' });
+    const stableCatalog = CachedRemoteI18nLoader.create({ loader, ttlMs: 1_000, version: 'stable' });
+    const canaryCatalog = CachedRemoteI18nLoader.create({ loader, ttlMs: 1_000, version: 'canary' });
 
     await expect(stableCatalog.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
     await expect(stableCatalog.load('en', 'common')).resolves.toEqual({ title: 'Welcome 1' });
@@ -313,8 +313,7 @@ describe('@fluojs/i18n/loaders/remote', () => {
 
     expect(remote.RemoteI18nLoader).toBe(RemoteI18nLoader);
     expect(remote.CachedRemoteI18nLoader).toBe(CachedRemoteI18nLoader);
-    expect(remote.createCachedRemoteI18nLoader).toBe(createCachedRemoteI18nLoader);
-    expect(remote.createRemoteI18nLoader).toBe(createRemoteI18nLoader);
+    expect(Object.keys(remote).sort()).toEqual(['CachedRemoteI18nLoader', 'RemoteI18nLoader']);
     await expect(loader.load('en', 'common', loaderLoadOptions)).resolves.toEqual({ title: 'typed' });
   });
 });

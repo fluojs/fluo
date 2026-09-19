@@ -5,7 +5,8 @@ import {
   getDtoValidationSchema,
   getRouteMetadata,
 } from '@fluojs/core/internal';
-import { IntersectionType, IsString, MinLength, OmitType, PartialType, PickType, ValidateClass } from '@fluojs/validation';
+import { IsString, MinLength, ValidateClass } from '@fluojs/validation';
+import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation/mapped-types';
 import { describe, expect, it, vi } from 'vitest';
 import {
   Controller,

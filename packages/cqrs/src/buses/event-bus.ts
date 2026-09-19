@@ -1,5 +1,10 @@
 import { Inject, InvariantError } from '@fluojs/core';
-import { type EventBus, EventBusLifecycleService, EVENT_BUS as FLUO_EVENT_BUS } from '@fluojs/event-bus';
+import { Optional } from '@fluojs/di';
+import { EventBusService } from '@fluojs/event-bus';
+import {
+  EVENT_BUS_SHUTDOWN_COORDINATOR,
+  type EventBusShutdownCoordinator,
+} from '@fluojs/event-bus/integration';
 import type { OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -22,6 +27,8 @@ import { QueryBusLifecycleService } from './query-bus.js';
 
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 
+type EventBusPublisher = Pick<EventBusService, 'publish'>;
+
 interface CqrsPublishContext {
   readonly context: CqrsDispatchContext;
   readonly drainToken: symbol;
@@ -42,14 +49,14 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
  * and delegates the final publication step to `@fluojs/event-bus`.
  */
 @Inject(
-  FLUO_EVENT_BUS,
+  EventBusService,
   CqrsSagaLifecycleService,
   RUNTIME_CONTAINER,
   COMPILED_MODULES,
   APPLICATION_LOGGER,
   CQRS_MODULE_OPTIONS,
   RUNTIME_CLEANUP_REGISTRATION,
-  EventBusLifecycleService,
+  Optional.create(EVENT_BUS_SHUTDOWN_COORDINATOR),
   CqrsShutdownDeadline,
   CommandBusLifecycleService,
   QueryBusLifecycleService,
@@ -63,14 +70,14 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   private unregisterShutdownStartCleanup: (() => void) | undefined;
 
   constructor(
-    private readonly eventBus: EventBus,
+    private readonly eventBus: EventBusPublisher,
     private readonly sagaService: CqrsSagaLifecycleService,
     runtimeContainer: ConstructorParameters<typeof CqrsBusBase>[0],
     compiledModules: ConstructorParameters<typeof CqrsBusBase>[1],
     logger: ConstructorParameters<typeof CqrsBusBase>[2],
     private readonly moduleOptions: CqrsModuleOptions = {},
     registerRuntimeCleanup: RuntimeCleanupRegistration = () => () => undefined,
-    private readonly delegatedEventBus: EventBusLifecycleService | undefined = undefined,
+    private readonly delegatedCoordinator: EventBusShutdownCoordinator | undefined = undefined,
     private readonly shutdownDeadline: CqrsShutdownDeadline = new CqrsShutdownDeadline(),
     private readonly commandService: CommandBusLifecycleService | undefined = undefined,
     private readonly queryService: QueryBusLifecycleService | undefined = undefined,
@@ -96,15 +103,22 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   }
 
   async onApplicationShutdown(): Promise<void> {
+    if (this.lifecycleState === 'stopped') {
+      return;
+    }
+
     this.markApplicationShutdownStarted();
     this.unregisterShutdownStartCleanup?.();
     this.unregisterShutdownStartCleanup = undefined;
 
-    if (this.publishDrainTracker.hasActivePipelines) {
-      await this.publishDrainTracker.drain(this.resolveRemainingShutdownDrainTimeoutMs());
+    try {
+      if (this.publishDrainTracker.hasActivePipelines) {
+        await this.publishDrainTracker.drain(this.resolveRemainingShutdownDrainTimeoutMs());
+      }
+    } finally {
+      this.lifecycleState = 'stopped';
+      this.clearStoppedGraphIfQuiescent();
     }
-
-    this.lifecycleState = 'stopped';
   }
 
   /**
@@ -116,11 +130,12 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     const commandSnapshot = this.commandService?.getRuntimeSnapshot();
     const querySnapshot = this.queryService?.getRuntimeSnapshot();
     const sagaSnapshot = this.sagaService.getRuntimeSnapshot();
+    const stopped = this.lifecycleState === 'stopped';
 
     return createCqrsPlatformStatusSnapshot({
       commandHandlersDiscovered: commandSnapshot?.commandHandlersDiscovered,
       commandLifecycleState: commandSnapshot?.lifecycleState,
-      eventHandlersDiscovered: this.descriptors.length,
+      eventHandlersDiscovered: stopped ? 0 : this.descriptors.length,
       inFlightSagaExecutions: sagaSnapshot.inFlightSagaExecutions,
       lifecycleState: this.lifecycleState,
       queryHandlersDiscovered: querySnapshot?.queryHandlersDiscovered,
@@ -171,7 +186,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     await this.ensureDiscovered();
 
     for (const descriptor of this.matchEventDescriptors(event)) {
-      const instance = await this.resolveHandlerInstance(descriptor.token);
+      const instance = await this.resolveHandlerInstance(descriptor.token, descriptor.targetType);
 
       if (!isEventHandler(instance)) {
         throw new InvariantError(`Event handler ${descriptor.targetType.name} must implement handle(event).`);
@@ -184,7 +199,9 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
       event,
       context,
       {
-        afterSagas: async () => this.eventBus.publish(event),
+        afterSagas: async () => {
+          await this.eventBus.publish(event);
+        },
         drainAuthorization: CQRS_SAGA_DRAIN_AUTHORIZATION,
       },
     );
@@ -203,7 +220,22 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
       await this.publishDrainTracker.track(pipeline, publishContext.drainToken);
     } finally {
       releaseSagaGraph();
+      this.clearStoppedGraphIfQuiescent();
     }
+  }
+
+  private clearStoppedGraphIfQuiescent(): void {
+    if (
+      this.lifecycleState !== 'stopped'
+      || this.publishDrainTracker.hasActivePipelines
+    ) {
+      return;
+    }
+
+    this.descriptors = [];
+    this.handlerInstances.clear();
+    this.discovered = false;
+    this.discoveryPromise = undefined;
   }
 
   private assertAcceptingNewWork(operation: 'publish' | 'publishAll', context?: CqrsDispatchContext): void {
@@ -224,8 +256,8 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     this.shutdownDeadline.start(this.resolveShutdownDrainTimeoutMs());
     const deadlineAtMs = this.shutdownDeadline.deadlineAtMs();
 
-    if (deadlineAtMs !== undefined && this.delegatedEventBus) {
-      this.delegatedEventBus.adoptShutdownDeadline(deadlineAtMs);
+    if (deadlineAtMs !== undefined && this.delegatedCoordinator) {
+      this.delegatedCoordinator.adoptShutdownDeadline(deadlineAtMs);
     }
 
     if (this.lifecycleState !== 'stopped') {
@@ -285,11 +317,11 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
 
   private async discoverHandlers(): Promise<void> {
     try {
-      this.descriptors = this.discoverEventDescriptors();
+      this.descriptors = await this.discoverEventDescriptors();
       this.handlerInstances.clear();
 
       for (const descriptor of this.descriptors) {
-        await this.preloadHandlerInstance(descriptor.token);
+        await this.preloadHandlerInstance(descriptor.token, descriptor.targetType);
       }
 
       this.discovered = true;
@@ -298,7 +330,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     }
   }
 
-  private discoverEventDescriptors(): EventHandlerDescriptor[] {
-    return discoverEventHandlerDescriptors(this.discoveryCandidates(), this.logger);
+  private async discoverEventDescriptors(): Promise<EventHandlerDescriptor[]> {
+    return discoverEventHandlerDescriptors(await this.discoveryCandidates(), this.logger);
   }
 }

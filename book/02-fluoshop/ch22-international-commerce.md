@@ -72,7 +72,7 @@ export function resolveShopLocale(context: RequestContext): ShopLocale {
 }
 ```
 
-The default `createAcceptLanguageLocaleResolver()` selects an entry that matches a supported language. Here, we deliberately use the policy resolver to reduce `en-US` to the supported `en` and `ko-KR` to `ko`. This suits the current shop, which does not need a separate catalog for every regional variant. If regional wording or legal notices differ later, change the supported list and normalization policy together.
+With `createAcceptLanguageLocalePolicyResolver()`, passing `normalizeToSupportedLocale: true` reduces `en-US` to the supported `en` and `ko-KR` to `ko`. This suits the current shop, which does not need a separate catalog for every regional variant. If regional wording or legal notices differ later, change the supported list and normalization policy together.
 
 The wildcard `*` is not the name of a particular language. The policy above uses it only for the default language, after checking all explicitly supported languages. The parser excludes `q=0` entries and invalid q-values. However, this helper does not promise strict HTTP negotiation that also prohibits returning the default language when there are no supported candidates at all. The shop chooses to provide a read screen in an available translation; if a separate API must return 406, design that policy separately at its boundary.
 
@@ -235,12 +235,12 @@ The following is the **complete source experiment file** `src/orders/order-prese
 
 ```ts
 import assert from 'node:assert/strict';
-import { createI18n, I18nError } from '@fluojs/i18n';
+import { I18nError, I18nService } from '@fluojs/i18n';
 import { shopI18nOptions } from '../locale/shop-messages.js';
 import { OrderPresenter, readKrwMinor, type OrderView } from './order-presenter.js';
 
 export function orderPresentationExperiment(): void {
-  const i18n = createI18n(shopI18nOptions);
+  const i18n = I18nService.create(shopI18nOptions);
   const presenter = new OrderPresenter(i18n);
   const order: OrderView = {
     id: 'order-1042',

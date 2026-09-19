@@ -2,7 +2,7 @@ import { DefaultValidator, DtoValidationError, IsEmail, IsString, MinLength } fr
 import { describe, expect, it } from 'vitest';
 
 import { I18nError } from './errors.js';
-import { createI18n } from './index.js';
+import { I18nService } from './index.js';
 import type { LocalizeValidationIssuesOptions, ValidationIssueTranslationKeyBuilder } from './validation.js';
 import {
   createValidationIssueTranslationKeys,
@@ -48,7 +48,7 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
   it('localizes validation issues through field/code translation keys', async () => {
     const error = await collectValidationError();
     const originalEmailMessage = error.issues[0]?.message;
-    const i18n = createI18n({
+    const i18n = I18nService.create({
       catalogs: {
         en: {
           validation: {
@@ -89,7 +89,7 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
   });
 
   it('passes code, field, source, and original message values to validation translations', () => {
-    const i18n = createI18n({
+    const i18n = I18nService.create({
       catalogs: {
         en: {
           validation: {
@@ -126,7 +126,7 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
       { code: 'EMAIL', field: 'email', message: 'original email provider message', source: undefined },
       { code: 'MIN_LENGTH', field: 'name', message: 'original name provider message', source: undefined },
     ] as const;
-    const i18n = createI18n({
+    const i18n = I18nService.create({
       catalogs: {
         en: {
           validation: {
@@ -152,7 +152,7 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
 
   it('can make missing validation translations fail explicitly', async () => {
     const error = await collectValidationError();
-    const i18n = createI18n({
+    const i18n = I18nService.create({
       catalogs: { en: { validation: {} } },
       defaultLocale: 'en',
       supportedLocales: ['en'],
@@ -162,7 +162,7 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
   });
 
   it('supports source/path-specific keys, key prefixes, namespaces, and custom key builders', () => {
-    const i18n = createI18n({
+    const i18n = I18nService.create({
       catalogs: {
         en: {
           errors: {
@@ -208,6 +208,42 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
         { keyBuilder, locale: 'en', namespace: 'errors' },
       ),
     ).toEqual([{ code: 'CUSTOM_CODE', field: 'profile', message: 'Custom message for profile.' }]);
+  });
+
+  it('preserves distinct validation issue keys, count, and order during localization', () => {
+    const issues = [
+      { code: 'DATESTRING', field: 'dateText', message: 'dateText is invalid.' },
+      { code: 'ISO8601', field: 'isoText', message: 'isoText is invalid.' },
+      { code: 'ARRAY_MIN_SIZE', field: 'tags', message: 'tags must contain at least 1 items.' },
+      { code: 'ARRAY_NOT_EMPTY', field: 'tags', message: 'tags must not be an empty array.' },
+    ] as const;
+    const i18n = I18nService.create({
+      catalogs: {
+        en: {
+          validation: {
+            ISO8601: 'ISO date is invalid.',
+            dateText: { DATESTRING: 'Date string is invalid.' },
+            tags: {
+              ARRAY_MIN_SIZE: 'Tags need one item.',
+              ARRAY_NOT_EMPTY: 'Tags cannot be empty.',
+            },
+          },
+        },
+      },
+      defaultLocale: 'en',
+      supportedLocales: ['en'],
+    });
+
+    expect(createValidationIssueTranslationKeys(issues[0], 'validation')).toEqual([
+      'validation.dateText.DATESTRING',
+      'validation.DATESTRING',
+    ]);
+    expect(localizeValidationIssues(i18n, issues, { locale: 'en' })).toEqual([
+      { code: 'DATESTRING', field: 'dateText', message: 'Date string is invalid.' },
+      { code: 'ISO8601', field: 'isoText', message: 'ISO date is invalid.' },
+      { code: 'ARRAY_MIN_SIZE', field: 'tags', message: 'Tags need one item.' },
+      { code: 'ARRAY_NOT_EMPTY', field: 'tags', message: 'Tags cannot be empty.' },
+    ]);
   });
 
   it('exposes the validation helpers on the dedicated subpath', async () => {

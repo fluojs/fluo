@@ -4,8 +4,8 @@ import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { EventHandler, Saga } from './decorators.js';
+import { CqrsEventBusService } from './buses/event-bus.js';
 import { CqrsModule } from './module.js';
-import { EVENT_BUS } from './tokens.js';
 import type { CqrsEventBus, IEvent, IEventHandler, ISaga } from './types.js';
 
 function createDeferred<T = void>() {
@@ -84,7 +84,7 @@ describe('CQRS asynchronous ordering contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
     const store = await app.container.resolve(StageStore);
 
     try {
@@ -176,7 +176,7 @@ describe('CQRS asynchronous ordering contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
     const store = await app.container.resolve(TailStore);
 
     try {

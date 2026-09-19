@@ -8,7 +8,6 @@ import {
 import {
   type AcceptLanguageLocalePolicyOptions,
   parseLocalePreferences,
-  resolveSupportedLocale,
   selectLocaleFromAcceptLanguagePolicy,
 } from './locale-resolution.js';
 import { resolveLocaleResolverChain } from './resolver-chain.js';
@@ -84,7 +83,7 @@ export interface AcceptLanguageLocaleResolverOptions {
 }
 
 /**
- * Options for the opt-in `Accept-Language` policy resolver.
+ * Options for the `Accept-Language` policy resolver.
  */
 export interface AcceptLanguageLocalePolicyResolverOptions extends AcceptLanguageLocaleResolverOptions, AcceptLanguageLocalePolicyOptions {}
 
@@ -142,42 +141,10 @@ export function parseAcceptLanguage(header: string | readonly string[] | undefin
 }
 
 /**
- * Creates a resolver that selects the first supported `Accept-Language` locale.
+ * Creates a policy resolver that selects an `Accept-Language` locale.
  *
- * @param options Header name and source label options.
+ * @param options Header name, source label, normalization, and wildcard policy.
  * @returns Locale resolver that inspects the current request headers.
- */
-export function createAcceptLanguageLocaleResolver(
-  options: AcceptLanguageLocaleResolverOptions = {},
-): HttpLocaleResolver {
-  const headerName = options.headerName ?? 'accept-language';
-  const source = options.source ?? DEFAULT_ACCEPT_LANGUAGE_SOURCE;
-
-  return ({ context, supportedLocales }) => {
-    const header = readHeader(context.request, headerName);
-    const preferences = parseAcceptLanguage(header);
-
-    for (const preference of preferences) {
-      if (preference.locale === '*') {
-        continue;
-      }
-
-      const locale = resolveSupportedLocale(preference.locale, supportedLocales);
-
-      if (locale !== undefined) {
-        return { locale, source };
-      }
-    }
-
-    return undefined;
-  };
-}
-
-/**
- * Creates an opt-in resolver that normalizes supported `Accept-Language` ranges and can select a wildcard fallback.
- *
- * @param options Header, source, normalization, and wildcard policy options.
- * @returns Locale resolver that treats `*` as fallback-only and preserves explicit locale preferences first.
  */
 export function createAcceptLanguageLocalePolicyResolver(
   options: AcceptLanguageLocalePolicyResolverOptions = {},

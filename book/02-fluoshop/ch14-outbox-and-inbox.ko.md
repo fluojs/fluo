@@ -155,7 +155,7 @@ Outbox 삽입 실패는 주문 상태·버전, 전이 감사, 예약 소비, 이
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { EventBusLifecycleService } from '@fluojs/event-bus';
+import { EventBusService } from '@fluojs/event-bus';
 import { PrismaService } from '@fluojs/prisma';
 import type { PrismaClient } from '@prisma/client';
 import { OrderPaidEvent } from '../orders/events/order-paid.event.js';
@@ -170,11 +170,11 @@ interface PaidRow {
   occurredAt: Date;
 }
 
-@Inject(PrismaService, EventBusLifecycleService)
+@Inject(PrismaService, EventBusService)
 export class PaidOutboxRelay {
   constructor(
     private readonly db: PrismaService<PrismaClient>,
-    private readonly events: EventBusLifecycleService,
+    private readonly events: EventBusService,
   ) {}
 
   async deliverNext(): Promise<boolean> {

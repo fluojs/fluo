@@ -72,7 +72,7 @@ export function resolveShopLocale(context: RequestContext): ShopLocale {
 }
 ```
 
-기본 `createAcceptLanguageLocaleResolver()`는 지원 언어와 일치하는 항목을 선택한다. 여기서는 의도적으로 policy resolver를 사용해 `en-US`를 지원 목록의 `en`으로, `ko-KR`을 `ko`로 줄인다. 모든 지역 변형을 별도 카탈로그로 만들 필요가 없는 현재 상점에 맞는 선택이다. 나중에 지역별 문구·법적 고지가 달라지면 지원 목록과 정규화 정책을 함께 바꿔야 한다.
+`createAcceptLanguageLocalePolicyResolver()`에서 `normalizeToSupportedLocale: true`를 사용하면 `en-US`를 지원 목록의 `en`으로, `ko-KR`을 `ko`로 줄인다. 모든 지역 변형을 별도 카탈로그로 만들 필요가 없는 현재 상점에 맞는 선택이다. 나중에 지역별 문구·법적 고지가 달라지면 지원 목록과 정규화 정책을 함께 바꿔야 한다.
 
 와일드카드 `*`는 특정 언어의 이름이 아니다. 위 정책은 명시적 지원 언어를 모두 확인한 뒤 기본 언어로만 사용한다. `q=0` 항목과 잘못된 q-value는 파서가 제외한다. 다만 지원 후보가 전혀 없을 때의 기본 언어 반환까지 금지하는 엄격한 HTTP 협상 정책은 이 helper의 계약이 아니다. 상점은 번역 가능한 읽기 화면을 제공하는 정책을 택했으며, 꼭 406 응답이 필요한 별도 API라면 경계에서 따로 설계한다.
 
@@ -235,12 +235,12 @@ JSON 파일이나 원격 카탈로그를 읽고 싶으면 비동기 로딩을 `s
 
 ```ts
 import assert from 'node:assert/strict';
-import { createI18n, I18nError } from '@fluojs/i18n';
+import { I18nError, I18nService } from '@fluojs/i18n';
 import { shopI18nOptions } from '../locale/shop-messages.js';
 import { OrderPresenter, readKrwMinor, type OrderView } from './order-presenter.js';
 
 export function orderPresentationExperiment(): void {
-  const i18n = createI18n(shopI18nOptions);
+  const i18n = I18nService.create(shopI18nOptions);
   const presenter = new OrderPresenter(i18n);
   const order: OrderView = {
     id: 'order-1042',

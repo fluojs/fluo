@@ -43,7 +43,7 @@ export function createRequestScopedDataLoaderFactory<TLoader>(
 }
 
 /**
- * Options accepted by {@link createDataLoader}. Extends the standard
+ * Options accepted by {@link OperationScopedDataLoader.create}. Extends the standard
  * `DataLoader.Options` with an optional `key` used to deduplicate loader
  * instances inside the per-operation request-scoped cache.
  */
@@ -58,54 +58,86 @@ export interface FluoDataLoaderOptions<K, V, C = K> extends DataLoader.Options<K
 }
 
 /**
- * A function returned by {@link createDataLoader} that, given a
+ * A function returned by {@link OperationScopedDataLoader.create} that, given a
  * {@link GraphQLContext}, returns a request-scoped `DataLoader` instance.
  *
  * Call this inside any resolver method to obtain a DataLoader that is
  * automatically scoped to the current GraphQL operation.
  */
-export type RequestScopedDataLoaderAccessor<K, V> = (context: GraphQLContext) => DataLoader<K, V>;
+export type RequestScopedDataLoaderAccessor<K, V, C = K> = (context: GraphQLContext) => DataLoader<K, V, C>;
 
 /**
- * Create a request-scoped `DataLoader` accessor.
+ * Creates operation-scoped `DataLoader` accessors.
  *
- * This is the recommended first-party entry point for DataLoader usage in
- * `@fluojs/graphql`.  It combines the `dataloader` package with Fluo's
- * per-operation request-scoped cache so that:
- *
- * - Each GraphQL operation gets its own `DataLoader` instance (cache isolation).
- * - Concurrent operations never share batched results.
- * - The accessor is safe to call from singleton resolvers — no `@Scope('request')` required.
- *
- * @example
- * ```ts
- * import { createDataLoader, type GraphQLContext } from '@fluojs/graphql';
- *
- * const getUserById = createDataLoader<string, User | null>(async (ids) => {
- *   const users = await userRepo.findManyByIds([...ids]);
- *   const map = new Map(users.map(u => [u.id, u]));
- *   return ids.map(id => map.get(id) ?? null);
- * });
- *
- * // inside a resolver method:
- * const user = await getUserById(context).load(userId);
- * ```
- *
- * @param batchFn DataLoader batch function that maps requested keys to ordered values.
- * @param options Optional DataLoader options plus an optional stable Fluo cache key.
- * @returns A request-scoped accessor that resolves a `DataLoader` for the current operation.
+ * This class owns Fluo's DataLoader integration without re-exporting the
+ * upstream `dataloader` constructor. Use {@link OperationScopedDataLoader.create}
+ * for ordinary resolver batching. The generic cache helpers and typed map remain
+ * available for integration-specific loader shapes.
  */
-export function createDataLoader<K, V, C = K>(
-  batchFn: DataLoader.BatchLoadFn<K, V>,
-  options?: FluoDataLoaderOptions<K, V, C>,
-): RequestScopedDataLoaderAccessor<K, V> {
-  const { key: userKey, ...dataloaderOptions } = options ?? ({} as FluoDataLoaderOptions<K, V, C>);
-  const cacheKey: string | symbol = userKey ?? Symbol('fluo.dataloader');
+export class OperationScopedDataLoader {
+  private constructor() {
+    throw new Error('OperationScopedDataLoader cannot be instantiated directly; use OperationScopedDataLoader.create().');
+  }
 
-  return createRequestScopedDataLoaderFactory<DataLoader<K, V>>(
-    cacheKey,
-    () => new DataLoader<K, V, C>(batchFn, dataloaderOptions as DataLoader.Options<K, V, C>),
-  );
+  /**
+   * Creates a request-scoped `DataLoader` accessor.
+   *
+   * This is the recommended first-party entry point for DataLoader usage in
+   * `@fluojs/graphql`. It combines the `dataloader` package with Fluo's
+   * per-operation request-scoped cache so that:
+   *
+   * - Each GraphQL operation gets its own `DataLoader` instance (cache isolation).
+   * - Concurrent operations never share batched results.
+   * - The accessor is safe to call from singleton resolvers — no `@Scope('request')` required.
+   *
+   * @example
+   * ```ts
+   * import { OperationScopedDataLoader, type GraphQLContext } from '@fluojs/graphql';
+   *
+   * const getUserById = OperationScopedDataLoader.create<string, User | null>(async (ids) => {
+   *   const users = await userRepo.findManyByIds([...ids]);
+   *   const map = new Map(users.map(u => [u.id, u]));
+   *   return ids.map(id => map.get(id) ?? null);
+   * });
+   *
+   * // inside a resolver method:
+   * const user = await getUserById(context).load(userId);
+   * ```
+   *
+   * @param batchFn DataLoader batch function that maps requested keys to ordered values.
+   * @param options Optional DataLoader options plus an optional stable Fluo cache key.
+   * @returns A request-scoped accessor that resolves a `DataLoader` for the current operation.
+   */
+  static create<K, V, C = K>(
+    batchFn: DataLoader.BatchLoadFn<K, V>,
+    options?: FluoDataLoaderOptions<K, V, C>,
+  ): RequestScopedDataLoaderAccessor<K, V, C> {
+    const { key: userKey, ...dataloaderOptions } = options ?? ({} as FluoDataLoaderOptions<K, V, C>);
+    const cacheKey: string | symbol = userKey ?? Symbol('fluo.dataloader');
+
+    return createRequestScopedDataLoaderFactory<DataLoader<K, V, C>>(
+      cacheKey,
+      () => {
+        let loader: DataLoader<K, V, C>;
+        const wrappedBatchFn: DataLoader.BatchLoadFn<K, V> = async (keys) => {
+          const results = await batchFn(keys);
+
+          if (Array.isArray(results) || (typeof results === 'object' && results !== null && 'length' in results)) {
+            for (const [index, key] of keys.entries()) {
+              if (results[index] instanceof Error) {
+                loader.clear(key);
+              }
+            }
+          }
+
+          return results;
+        };
+
+        loader = new DataLoader<K, V, C>(wrappedBatchFn, dataloaderOptions as DataLoader.Options<K, V, C>);
+        return loader;
+      },
+    );
+  }
 }
 
 /**
@@ -134,8 +166,8 @@ export type DataLoaderMap = Record<string, DataLoaderDefinition<any, any, any>>;
  * `DataLoader` instance keyed by the original batch function's types.
  */
 export type ResolvedDataLoaders<TMap extends DataLoaderMap> = {
-  [K in keyof TMap]: TMap[K] extends DataLoaderDefinition<infer TKey, infer TValue, any>
-    ? DataLoader<TKey, TValue>
+  [K in keyof TMap]: TMap[K] extends DataLoaderDefinition<infer TKey, infer TValue, infer TCacheKey>
+    ? DataLoader<TKey, TValue, unknown extends TCacheKey ? TKey : TCacheKey>
     : never;
 };
 
@@ -169,22 +201,20 @@ export type ResolvedDataLoaders<TMap extends DataLoaderMap> = {
 export function createDataLoaderMap<TMap extends DataLoaderMap>(
   definitions: TMap,
 ): (context: GraphQLContext) => ResolvedDataLoaders<TMap> {
-  const accessors = new Map<string, RequestScopedDataLoaderAccessor<unknown, unknown>>();
+  const accessors = new Map<string, RequestScopedDataLoaderAccessor<any, any, any>>();
 
   for (const [name, def] of Object.entries(definitions)) {
     accessors.set(
       name,
-      createDataLoader(def.batch, { ...def.options, key: Symbol(`fluo.dataloader.map.${name}`) }),
+      OperationScopedDataLoader.create(def.batch, { ...def.options, key: Symbol(`fluo.dataloader.map.${name}`) }),
     );
   }
 
   return (context: GraphQLContext): ResolvedDataLoaders<TMap> => {
-    const result: Record<string, DataLoader<unknown, unknown>> = {};
+    const result: Record<string, DataLoader<any, any, any>> = {};
     for (const [name, accessor] of accessors) {
       result[name] = accessor(context);
     }
     return result as ResolvedDataLoaders<TMap>;
   };
 }
-
-export { DataLoader };

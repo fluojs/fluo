@@ -119,7 +119,6 @@ describe('NotificationsService lifecycle snapshots', () => {
     await expect(dispatch).resolves.toMatchObject({
       channel: 'email',
       deliveryId: 'delivered:email',
-      queued: false,
       status: 'delivered',
     });
     expect(deliveries).toEqual([
@@ -181,7 +180,6 @@ describe('NotificationsService lifecycle snapshots', () => {
     await expect(dispatch).resolves.toMatchObject({
       channel: 'email',
       deliveryId: 'queued:email',
-      queued: true,
       status: 'queued',
     });
     expect(queue.jobs).toMatchObject([
@@ -526,8 +524,8 @@ describe('NotificationsService lifecycle snapshots', () => {
       failed: 0,
       queued: 2,
       results: [
-        { channel: 'email', queued: true, status: 'queued' },
-        { channel: 'email', queued: true, status: 'queued' },
+        { channel: 'email', status: 'queued' },
+        { channel: 'email', status: 'queued' },
       ],
       succeeded: 2,
     });
@@ -632,7 +630,6 @@ describe('NotificationsService lifecycle snapshots', () => {
         {
           channel: 'email',
           deliveryId: 'delivered:first',
-          queued: false,
           status: 'delivered',
         },
       ],
@@ -736,7 +733,6 @@ describe('NotificationsService lifecycle snapshots', () => {
         {
           channel: 'email',
           deliveryId: 'queued:batch-one',
-          queued: true,
           status: 'queued',
         },
       ],

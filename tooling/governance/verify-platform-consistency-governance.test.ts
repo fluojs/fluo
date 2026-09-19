@@ -1262,6 +1262,8 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
+        'packages/queue/src/public-surface.test.ts',
+        'packages/queue/src/public-surface.test.ts',
       ]),
     ).not.toThrow();
   });
@@ -1308,6 +1310,7 @@ describe('enforceContractCompanionUpdates', () => {
         'docs/CONTEXT.md',
         'docs/CONTEXT.ko.md',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
+        'packages/queue/src/public-surface.test.ts',
       ]),
     ).not.toThrow();
   });
@@ -1576,7 +1579,7 @@ describe('enforceContractCompanionUpdates', () => {
     ];
     const contextCompanions = ['docs/CONTEXT.md', 'docs/CONTEXT.ko.md'];
     const toolingCompanion = 'tooling/governance/verify-platform-consistency-governance.mjs';
-    const regressionCompanion = 'packages/queue/src/worker-ownership.test.ts';
+    const regressionCompanion = 'packages/queue/src/public-surface.test.ts';
 
     it('rejects a Queue producer migration missing only the English context companion', async () => {
       const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
@@ -1612,6 +1615,7 @@ describe('enforceContractCompanionUpdates', () => {
         ...queueProducerMigrationChangedFiles,
         ...contextCompanions,
         toolingCompanion,
+        regressionCompanion,
       ];
 
       expect(() => enforceContractCompanionUpdates(changedFiles)).not.toThrow();
@@ -1727,6 +1731,7 @@ describe('enforceContractCompanionUpdates', () => {
     const changedFiles = [
       queueReadmePath,
       'tooling/governance/verify-platform-consistency-governance.test.ts',
+      'packages/queue/src/public-surface.test.ts',
     ];
 
     // When: bilingual documentation-hub companions are absent or present.
@@ -3356,6 +3361,7 @@ describe('enforceContractCompanionUpdates', () => {
         'book/intermediate/ch11-queue.ko.md',
         'packages/queue/src/dead-letter-manager.test.ts',
         'packages/queue/src/module.test.ts',
+        'packages/queue/src/public-surface.test.ts',
         'tooling/governance/verify-platform-consistency-governance.test.ts',
       ]),
     ).not.toThrow();
@@ -5927,7 +5933,7 @@ describe('Slack delivery discoverability', () => {
   it('keeps helper, abort, lifecycle, status, verification, and template guidance discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
       expect(content).toContain('@fluojs/slack');
-      expect(content).toContain('createSlackProviders(...)');
+      expect(content).toContain('SlackService');
       expect(content).toContain('verifyOnModuleInit');
       expect(content).toContain('SlackTemplateRenderer');
     }
@@ -5950,7 +5956,6 @@ describe('Slack delivery discoverability', () => {
 
   it('keeps singleton and global module migration boundaries discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
-      expect(content).toContain('SLACK');
       expect(content).toContain('SLACK_CHANNEL');
       expect(content).toContain('global: false');
       expect(content).toContain('singleton');
@@ -6006,7 +6011,6 @@ describe('Discord delivery discoverability', () => {
 
   it('keeps async, global, and internal-provider migration boundaries discoverable', () => {
     for (const content of [englishContext, koreanContext, englishReadme, koreanReadme, englishSurface, koreanSurface]) {
-      expect(content).toContain('DISCORD');
       expect(content).toContain('DISCORD_CHANNEL');
       expect(content).toContain('global: false');
       expect(content).toContain('private');
@@ -6292,6 +6296,22 @@ describe('Auth & JWT contract gate triggers', () => {
 
     expect(() => enforceContractCompanionUpdates([changedPath])).toThrow(
       'contract-governing doc updates must include docs/CONTEXT.md and docs/CONTEXT.ko.md discoverability updates.',
+    );
+  });
+});
+
+describe('Queue producer documentation companion gate', () => {
+  it('requires Queue public-surface coverage when Queue README contracts change', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+
+    expect(() => enforceContractCompanionUpdates([
+      'packages/queue/README.md',
+      'packages/queue/README.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+    ])).toThrow(
+      'Queue producer documentation updates must include packages/queue/src/public-surface.test.ts.',
     );
   });
 });

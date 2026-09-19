@@ -34,6 +34,16 @@ export class FileSystemI18nLoader implements I18nLoader {
   /**
    * Creates a filesystem-backed JSON catalog loader.
    *
+   * @param options Loader options with the root catalog directory.
+   * @returns A filesystem-backed i18n loader instance.
+   */
+  static create(options: FileSystemI18nLoaderOptions): FileSystemI18nLoader {
+    return new FileSystemI18nLoader(options);
+  }
+
+  /**
+   * Creates a filesystem-backed JSON catalog loader.
+   *
    * @param options Loader options with an absolute or relative root catalog directory.
    */
   constructor(options: FileSystemI18nLoaderOptions) {
@@ -83,14 +93,4 @@ export class FileSystemI18nLoader implements I18nLoader {
 
     return snapshotLoaderMessageTree(parsed, `catalogs.${locale}.${namespace}`);
   }
-}
-
-/**
- * Creates a Node-only filesystem JSON catalog loader.
- *
- * @param options Loader options with the root catalog directory.
- * @returns A filesystem-backed i18n loader instance.
- */
-export function createFileSystemI18nLoader(options: FileSystemI18nLoaderOptions): FileSystemI18nLoader {
-  return new FileSystemI18nLoader(options);
 }

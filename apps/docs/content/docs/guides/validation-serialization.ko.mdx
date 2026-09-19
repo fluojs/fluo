@@ -222,7 +222,7 @@ export class PostsController {
 Create DTO는 update, public, partial variant의 기준이 되는 경우가 많습니다. Mapped DTO helper는 validation metadata를 보존하면서 수동 복사를 피하게 해 줍니다.
 
 ```ts
-import { OmitType, PartialType, PickType } from '@fluojs/validation';
+import { OmitType, PartialType, PickType } from '@fluojs/validation/mapped-types';
 import { CreatePostDto } from './create-post.dto';
 
 export class UpdatePostDto extends PartialType(CreatePostDto) {}
@@ -232,7 +232,7 @@ export class UpdateTitleDto extends PickType(CreatePostDto, ['title']) {}
 export class PublicCreatePostDto extends OmitType(CreatePostDto, ['published']) {}
 ```
 
-`IntersectionType(A, B)`는 두 DTO contract를 결합합니다. Mapped-type helper는 `@fluojs/validation/mapped-types` subpath에서도 사용할 수 있습니다.
+`IntersectionType(A, B)`는 두 DTO contract를 결합합니다. Mapped-type helper는 `@fluojs/validation/mapped-types` subpath에서만 제공되며 root import alias는 없습니다.
 
 ### Custom rule과 Standard Schema
 
@@ -342,7 +342,7 @@ HTTP 밖에서는 `@fluojs/validation`의 `parseStandardSchema(schema, value)`�
 | Numbers, dates, locale, geo | `Min`, `Max`, `IsPositive`, `IsNegative`, `MinDate`, `MaxDate`, `IsLatitude`, `IsLongitude`, `IsCurrency` |
 | Arrays | `ArrayContains`, `ArrayNotContains`, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`, `ArrayUnique` |
 | Nested and custom rules | `ValidateNested`, `Validate`, `ValidateIf`, `ValidateClass`, `StandardSchemaV1Like` |
-| DTO composition | `PickType`, `OmitType`, `PartialType`, `IntersectionType` |
+| DTO composition | `@fluojs/validation/mapped-types`의 `PickType`, `OmitType`, `PartialType`, `IntersectionType` |
 
 ## Response serialization
 

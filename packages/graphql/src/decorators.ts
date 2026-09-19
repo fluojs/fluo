@@ -64,30 +64,23 @@ function normalizeResolverTypeName(typeName: string | undefined, fallbackName: s
 
 function normalizeMethodMetadata(
   type: ResolverHandlerMetadata['type'],
-  fieldNameOrOptions: string | ResolverMethodOptions | undefined,
+  options: ResolverMethodOptions | undefined,
 ): ResolverHandlerMetadata {
-  if (typeof fieldNameOrOptions === 'string') {
-    return {
-      fieldName: fieldNameOrOptions.trim() || undefined,
-      type,
-    };
-  }
-
-  if (!fieldNameOrOptions) {
+  if (!options) {
     return { type };
   }
 
-  if ('topics' in fieldNameOrOptions) {
+  if ('topics' in options) {
     throw new Error(
       'Resolver method option "topics" is not supported. GraphQL subscriptions must return an AsyncIterable directly until topic routing becomes a documented runtime feature.',
     );
   }
 
   return {
-    argTypes: fieldNameOrOptions.argTypes,
-    fieldName: fieldNameOrOptions.fieldName?.trim() || undefined,
-    inputClass: fieldNameOrOptions.input,
-    outputType: fieldNameOrOptions.outputType,
+    argTypes: options.argTypes,
+    fieldName: options.fieldName?.trim() || undefined,
+    inputClass: options.input,
+    outputType: options.outputType,
     type,
   };
 }
@@ -154,9 +147,9 @@ function defineStandardArgFieldMetadata(metadata: unknown, propertyKey: string |
 
 function createMethodDecorator(
   type: ResolverHandlerMetadata['type'],
-  fieldNameOrOptions?: string | ResolverMethodOptions,
+  options?: ResolverMethodOptions,
 ): MethodDecoratorLike {
-  const metadata = normalizeMethodMetadata(type, fieldNameOrOptions);
+  const metadata = normalizeMethodMetadata(type, options);
 
   const decorator = (_value: Function, context: ClassMethodDecoratorContext) => {
     const name = type === 'query' ? 'Query' : type === 'mutation' ? 'Mutation' : 'Subscription';
@@ -176,21 +169,31 @@ function createMethodDecorator(
 }
 
 function normalizeFieldResolverMetadata(
-  fieldNameOrOptions: string | FieldResolverOptions | undefined,
+  options: FieldResolverOptions | undefined,
 ): ResolverHandlerMetadata {
-  if (typeof fieldNameOrOptions === 'string') {
-    return {
-      fieldName: fieldNameOrOptions.trim() || undefined,
-      type: 'field',
-    };
+  if (options === undefined) {
+    return { type: 'field' };
+  }
+
+  if (typeof options === 'string') {
+    throw new TypeError(
+      `@FieldResolver(fieldName) string argument has been removed. Pass an options object like @FieldResolver({ fieldName: '${options}' }) instead, or call @FieldResolver() without arguments to use the method name.`,
+    );
+  }
+
+  if (options === null || Array.isArray(options) || typeof options !== 'object') {
+    const received = options === null ? 'null' : Array.isArray(options) ? 'array' : typeof options;
+    throw new TypeError(
+      `@FieldResolver() options must be an options object when provided, received ${received}. Pass an options object like @FieldResolver({ fieldName: '...' }) or call @FieldResolver() without arguments to use the method name.`,
+    );
   }
 
   return {
-    argTypes: fieldNameOrOptions?.argTypes,
-    fieldName: fieldNameOrOptions?.fieldName?.trim() || undefined,
-    inputClass: fieldNameOrOptions?.input,
-    nullable: fieldNameOrOptions?.nullable,
-    outputType: fieldNameOrOptions?.type,
+    argTypes: options.argTypes,
+    fieldName: options.fieldName?.trim() || undefined,
+    inputClass: options.input,
+    nullable: options.nullable,
+    outputType: options.type,
     type: 'field',
   };
 }
@@ -243,41 +246,41 @@ export function Resolver(typeName?: string): ClassDecoratorLike {
 /**
  * Query.
  *
- * @param fieldNameOrOptions The field name or options.
+ * @param options Resolver method options.
  * @returns The query result.
  */
-export function Query(fieldNameOrOptions?: string | ResolverMethodOptions): MethodDecoratorLike {
-  return createMethodDecorator('query', fieldNameOrOptions);
+export function Query(options?: ResolverMethodOptions): MethodDecoratorLike {
+  return createMethodDecorator('query', options);
 }
 
 /**
  * Mutation.
  *
- * @param fieldNameOrOptions The field name or options.
+ * @param options Resolver method options.
  * @returns The mutation result.
  */
-export function Mutation(fieldNameOrOptions?: string | ResolverMethodOptions): MethodDecoratorLike {
-  return createMethodDecorator('mutation', fieldNameOrOptions);
+export function Mutation(options?: ResolverMethodOptions): MethodDecoratorLike {
+  return createMethodDecorator('mutation', options);
 }
 
 /**
  * Subscription.
  *
- * @param fieldNameOrOptions The field name or options.
+ * @param options Resolver method options.
  * @returns The subscription result.
  */
-export function Subscription(fieldNameOrOptions?: string | ResolverMethodOptions): MethodDecoratorLike {
-  return createMethodDecorator('subscription', fieldNameOrOptions);
+export function Subscription(options?: ResolverMethodOptions): MethodDecoratorLike {
+  return createMethodDecorator('subscription', options);
 }
 
 /**
  * Marks a public instance method as the resolver for one field on the object type owned by `@Resolver(typeName)`.
  *
- * @param fieldNameOrOptions Field name or object field resolver options.
+ * @param options Object field resolver options.
  * @returns A TC39 standard method decorator.
  */
-export function FieldResolver(fieldNameOrOptions?: string | FieldResolverOptions): MethodDecoratorLike {
-  const metadata = normalizeFieldResolverMetadata(fieldNameOrOptions);
+export function FieldResolver(options?: FieldResolverOptions): MethodDecoratorLike {
+  const metadata = normalizeFieldResolverMetadata(options);
   const decorator = (_value: Function, context: ClassMethodDecoratorContext) => {
     if (context.private) {
       throw new Error('@FieldResolver() cannot be used on private methods.');

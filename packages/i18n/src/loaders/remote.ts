@@ -176,6 +176,16 @@ export class RemoteI18nLoader implements I18nLoader {
   private readonly timeoutMs: number;
 
   /**
+   * Creates a provider-backed remote JSON catalog loader.
+   *
+   * @param options Remote loader options with a provider and optional timeout.
+   * @returns A remote i18n loader instance.
+   */
+  static create(options: RemoteI18nLoaderOptions): RemoteI18nLoader {
+    return new RemoteI18nLoader(options);
+  }
+
+  /**
    * Creates a provider-backed remote catalog loader.
    *
    * @param options Remote loader options with a provider and optional timeout.
@@ -248,6 +258,16 @@ export class CachedRemoteI18nLoader implements CachedI18nLoader {
   private readonly version: string | undefined;
 
   /**
+   * Creates an opt-in cached remote catalog loader wrapper.
+   *
+   * @param options Loader, TTL, version, key, and clock options for the cache wrapper.
+   * @returns A cached loader wrapper with explicit invalidation controls.
+   */
+  static create(options: CachedI18nLoaderOptions): CachedRemoteI18nLoader {
+    return new CachedRemoteI18nLoader(options);
+  }
+
+  /**
    * Creates an explicit cache wrapper around a remote catalog loader.
    *
    * @param options Loader, TTL, version, key, and clock options for the cache wrapper.
@@ -312,24 +332,4 @@ export class CachedRemoteI18nLoader implements CachedI18nLoader {
   clear(): void {
     this.cache.clear();
   }
-}
-
-/**
- * Creates a provider-backed remote JSON catalog loader.
- *
- * @param options Remote loader options with a provider and optional timeout.
- * @returns A remote i18n loader instance.
- */
-export function createRemoteI18nLoader(options: RemoteI18nLoaderOptions): RemoteI18nLoader {
-  return new RemoteI18nLoader(options);
-}
-
-/**
- * Creates an opt-in cached remote catalog loader wrapper.
- *
- * @param options Loader, TTL, version, key, and clock options for the cache wrapper.
- * @returns A cached loader wrapper with explicit invalidation controls.
- */
-export function createCachedRemoteI18nLoader(options: CachedI18nLoaderOptions): CachedRemoteI18nLoader {
-  return new CachedRemoteI18nLoader(options);
 }

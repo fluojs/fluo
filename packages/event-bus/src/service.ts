@@ -15,7 +15,6 @@ import {
 
 import { getEventHandlerMetadataEntries } from './metadata.js';
 import type {
-  EventBusWithResults,
   EventDeliveryOutcome,
   EventDeliveryStatus,
   EventPublishResult,
@@ -24,7 +23,6 @@ import type {
 import { createEventBusPlatformStatusSnapshot } from './status.js';
 import { EVENT_BUS_OPTIONS } from './tokens.js';
 import type {
-  EventBus,
   EventBusModuleOptions,
   EventBusTransport,
   EventHandlerDescriptor,
@@ -84,13 +82,13 @@ function hasEventHandlerMetadata(targetType: Function): boolean {
 }
 
 /**
- * Lifecycle-managed in-process event bus with optional external transport fan-out.
+ * Internal lifecycle-managed in-process event bus with optional external transport fan-out.
  *
  * The service discovers `@OnEvent()` handlers, clones payloads before dispatch,
  * and can publish the same events to an external transport such as Redis Pub/Sub.
  */
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, EVENT_BUS_OPTIONS)
-export class EventBusLifecycleService implements EventBus, EventBusWithResults, OnApplicationBootstrap, OnApplicationShutdown {
+export class EventBusLifecycleService implements OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
   private discoveryPromise: Promise<void> | undefined;
   private discovered = false;
@@ -163,48 +161,26 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
   }
 
   /**
-   * Publishes one event to matching local handlers and, when configured, to the external transport.
+   * Publishes one event to matching local handlers and the optional external transport.
    *
-   * @param event Event instance to publish.
+   * @param event Event instance whose payload is isolated for each recipient.
    * @param options Optional bounds for matching local handlers and transport publication.
-   * @returns A promise that resolves after publication attempts settle, or after background work is scheduled when
-   * `waitForHandlers` is `false`. Handler and transport failures are recorded without rejecting the caller.
+   * @returns Recipient observations, lifecycle refusal, or a background completion receipt.
    */
-  async publish(event: object, options?: EventPublishOptions): Promise<void> {
-    if (!this.canPublishInCurrentLifecycle()) {
-      this.logger.warn(
-        `EventBus.publish() was ignored because the event bus is ${this.lifecycleState}.`,
-        'EventBusLifecycleService',
-      );
-      return;
-    }
-
-    await this.trackActiveDispatch(this.executePublish(event, options));
-  }
-
-  /**
-   * Publishes with payload-free observations of local handlers and outbound transport channels.
-   *
-   * @param event Event instance to publish using the existing discovery and payload-isolation rules.
-   * @param options Publish bounds; background receipts observe actual settlement without timeout bounds.
-   * @returns Per-recipient outcomes, lifecycle refusal, or a background completion receipt.
-   * @remarks Timeout and cancellation do not terminate started work. Discovery and preparation errors reject.
-   * Transport success is not a remote delivery acknowledgement. Raw handler/transport errors are omitted from logs.
-   */
-  async publishWithResult(event: object, options?: EventPublishOptions): Promise<EventPublishResult> {
+  async publish(event: object, options?: EventPublishOptions): Promise<EventPublishResult> {
     switch (this.lifecycleState) {
       case 'failed':
       case 'stopped':
       case 'stopping':
         this.logger.warn(
-          `EventBus.publishWithResult() was ignored because the event bus is ${this.lifecycleState}.`,
+          `EventBus.publish() was ignored because the event bus is ${this.lifecycleState}.`,
           'EventBusLifecycleService',
         );
         return { status: 'rejected', reason: this.lifecycleState };
       case 'created':
       case 'discovering':
       case 'ready':
-        return await this.trackActiveDispatchWork(this.executePublishWithResult(event, options));
+        return await this.trackActiveDispatchWork(this.executePublish(event, options));
     }
   }
 
@@ -218,42 +194,7 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
     this.shutdownDeadlineAtMs = Math.min(this.shutdownDeadlineAtMs ?? deadlineAtMs, deadlineAtMs);
   }
 
-  private async executePublish(event: object, options?: EventPublishOptions): Promise<void> {
-    await this.ensureDiscovered();
-    const matchingDescriptors = this.matchEventDescriptors(event);
-    const publishOptions = this.resolvePublishOptions(options);
-
-    const transportPayload = createIsolatedEvent(event.constructor as EventType, event);
-
-    if (!publishOptions.waitForHandlers) {
-      const transportPublish = this.publishToTransport(transportPayload, matchingDescriptors, {
-        ...publishOptions,
-        timeoutMs: undefined,
-      });
-      const backgroundTasks = this.createBackgroundInvocationTasks(matchingDescriptors, event, publishOptions.signal);
-      this.runInvocationTasksInBackground([...backgroundTasks, transportPublish]);
-
-      return;
-    }
-
-    const transportPublish = this.publishToTransport(transportPayload, matchingDescriptors, publishOptions);
-
-    if (matchingDescriptors.length === 0) {
-      await transportPublish;
-
-      return;
-    }
-
-    const invocationTasks = this.createInvocationTasks(matchingDescriptors, event, publishOptions);
-
-    await Promise.allSettled([...invocationTasks, transportPublish]);
-  }
-
-  private canPublishInCurrentLifecycle(): boolean {
-    return !['failed', 'stopped', 'stopping'].includes(this.lifecycleState);
-  }
-
-  private async executePublishWithResult(event: object, options?: EventPublishOptions): Promise<EventPublishResult> {
+  private async executePublish(event: object, options?: EventPublishOptions): Promise<EventPublishResult> {
     await this.ensureDiscovered();
     const descriptors = this.matchEventDescriptors(event);
     const resolved = this.resolvePublishOptions(options);
@@ -263,19 +204,9 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
       timeoutMs: resolved.waitForHandlers ? resolved.timeoutMs : undefined,
     };
     const transportPayload = createIsolatedEvent(event.constructor as EventType, event);
-    const localPayloads = descriptors.map((descriptor) => createIsolatedEvent(descriptor.eventType, event));
+    const invocationTasks = this.createInvocationTasks(descriptors, event, publishOptions);
     const transportTasks = this.createTransportPublishTasks(transportPayload, descriptors, publishOptions);
-    const handlerTasks = descriptors.map(async (descriptor, index): Promise<EventDeliveryOutcome> => ({
-      target: {
-        kind: 'handler',
-        index,
-        moduleName: descriptor.moduleName,
-        targetName: descriptor.targetName,
-        methodName: descriptor.methodName,
-      },
-      ...await this.invokeHandlerWithResult(descriptor, localPayloads[index], publishOptions),
-    }));
-    const completion = Promise.all([...handlerTasks, ...transportTasks]).then(
+    const completion = Promise.all([...invocationTasks, ...transportTasks]).then(
       (outcomes): EventPublishSettlement => outcomes.length === 0
         ? { status: 'no-recipients', outcomes: [] }
         : { status: 'settled', outcomes },
@@ -286,6 +217,24 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
     }
 
     return await completion;
+  }
+
+  private createInvocationTasks(
+    descriptors: EventHandlerDescriptor[],
+    event: object,
+    publishOptions: ResolvedPublishOptions,
+  ): Promise<EventDeliveryOutcome>[] {
+    const localPayloads = descriptors.map((descriptor) => createIsolatedEvent(descriptor.eventType, event));
+    return descriptors.map(async (descriptor, index): Promise<EventDeliveryOutcome> => ({
+      target: {
+        kind: 'handler',
+        index,
+        moduleName: descriptor.moduleName,
+        targetName: descriptor.targetName,
+        methodName: descriptor.methodName,
+      },
+      ...await this.invokeHandlerWithResult(descriptor, localPayloads[index], publishOptions),
+    }));
   }
 
   private async invokeHandlerWithResult(
@@ -302,7 +251,7 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
     try {
       return options.waitForHandlers ? await this.awaitInvocationBounds(invocation, options) : await invocation;
     } catch (error) {
-      this.logBoundedInvocationError(descriptor, error, true);
+      this.logBoundedInvocationError(descriptor, error);
       return this.deliveryFailure(error, 'handler');
     }
   }
@@ -392,47 +341,6 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
 
   private matchEventDescriptors(event: object): EventHandlerDescriptor[] {
     return this.descriptors.filter((descriptor) => event instanceof descriptor.eventType);
-  }
-
-  private createInvocationTasks(
-    descriptors: EventHandlerDescriptor[],
-    event: object,
-    publishOptions: ResolvedPublishOptions,
-  ): Promise<void>[] {
-    return descriptors.map((descriptor) => {
-      const isolatedEvent = createIsolatedEvent(descriptor.eventType, event);
-      return this.invokeHandlerWithBounds(descriptor, isolatedEvent, publishOptions);
-    });
-  }
-
-  private createBackgroundInvocationTasks(
-    descriptors: EventHandlerDescriptor[],
-    event: object,
-    signal: AbortSignal | undefined,
-  ): Promise<void>[] {
-    return descriptors.map((descriptor) => {
-      const isolatedEvent = createIsolatedEvent(descriptor.eventType, event);
-      return this.invokeHandlerInBackground(descriptor, isolatedEvent, signal);
-    });
-  }
-
-  private runInvocationTasksInBackground(invocationTasks: Promise<void>[]): void {
-    for (const task of invocationTasks) {
-      void this.trackActiveDispatchWork(task);
-    }
-  }
-
-  private async invokeHandlerInBackground(
-    descriptor: EventHandlerDescriptor,
-    event: object,
-    signal: AbortSignal | undefined,
-  ): Promise<void> {
-    if (signal?.aborted) {
-      this.logPublishCancelledBeforeDispatch(descriptor);
-      return;
-    }
-
-    await this.invokeHandler(descriptor, event);
   }
 
   private async ensureDiscovered(): Promise<void> {
@@ -534,14 +442,6 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
     return eventTypes;
   }
 
-  private async publishToTransport(
-    event: object,
-    descriptors: EventHandlerDescriptor[],
-    publishOptions: ResolvedPublishOptions,
-  ): Promise<void> {
-    await Promise.allSettled(this.createTransportPublishTasks(event, descriptors, publishOptions));
-  }
-
   private createTransportPublishTasks(
     event: object,
     descriptors: EventHandlerDescriptor[],
@@ -573,7 +473,7 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
         return { target, status: 'succeeded' };
       } catch (error) {
         this.transportPublishFailures += 1;
-        this.logBoundedTransportPublishError(channel, error, publishOptions.reportResults);
+        this.logBoundedTransportPublishError(channel, error);
         return { target, ...this.deliveryFailure(error, 'transport') };
       }
     });
@@ -586,7 +486,7 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
     );
   }
 
-  private logBoundedTransportPublishError(channel: string, error: unknown, redactError = false): void {
+  private logBoundedTransportPublishError(channel: string, error: unknown): void {
     if (error instanceof EventPublishTimeoutError) {
       this.logger.warn(
         `EventBusTransport publish to channel "${channel}" exceeded publish timeout of ${String(error.timeoutMs)}ms.`,
@@ -605,7 +505,7 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
 
     this.logger.error(
       `EventBusTransport failed to publish to channel "${channel}".`,
-      redactError ? undefined : error,
+      undefined,
       'EventBusLifecycleService',
     );
   }
@@ -758,7 +658,7 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
     );
   }
 
-  private logBoundedInvocationError(descriptor: EventHandlerDescriptor, error: unknown, redactError = false): void {
+  private logBoundedInvocationError(descriptor: EventHandlerDescriptor, error: unknown): void {
     if (error instanceof EventPublishTimeoutError) {
       this.logger.warn(
         `Event handler ${descriptor.targetName}.${descriptor.methodName} exceeded publish timeout of ${String(error.timeoutMs)}ms.`,
@@ -777,7 +677,7 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
 
     this.logger.error(
       `Event handler ${descriptor.targetName}.${descriptor.methodName} failed while applying publish bounds.`,
-      redactError ? undefined : error,
+      undefined,
       'EventBusLifecycleService',
     );
   }
@@ -1097,5 +997,36 @@ export class EventBusLifecycleService implements EventBus, EventBusWithResults, 
       );
       throw error;
     }
+  }
+}
+
+/**
+ * Application-facing event bus service for publishing in-process events and optional external transport fan-out.
+ *
+ * Exposes a single publication method returning {@link EventPublishResult}. Callers can either await
+ * and inspect the result or ignore it.
+ */
+@Inject(EventBusLifecycleService)
+export class EventBusService {
+  constructor(private readonly lifecycleService: EventBusLifecycleService) {}
+
+  /**
+   * Publishes one event to matching local handlers and the optional external transport.
+   *
+   * @param event Event instance whose payload is isolated for each recipient.
+   * @param options Optional bounds for matching local handlers and transport publication.
+   * @returns Recipient observations, lifecycle refusal, or a background completion receipt.
+   */
+  async publish(event: object, options?: EventPublishOptions): Promise<EventPublishResult> {
+    return await this.lifecycleService.publish(event, options);
+  }
+
+  /**
+   * Creates a platform status snapshot for health checks and diagnostics.
+   *
+   * @returns A structured snapshot describing discovery state, transport wiring, and failure counters.
+   */
+  createPlatformStatusSnapshot() {
+    return this.lifecycleService.createPlatformStatusSnapshot();
   }
 }

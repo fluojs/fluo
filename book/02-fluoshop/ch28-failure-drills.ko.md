@@ -221,7 +221,7 @@ export class ShipmentJob {
 ```ts
 import { Inject } from '@fluojs/core';
 import { EventPattern, MICROSERVICE, type Microservice } from '@fluojs/microservices';
-import { QueueLifecycleService, QueueWorker } from '@fluojs/queue';
+import { getQueueToken, type Queue, QueueWorker } from '@fluojs/queue';
 import {
   parseShipmentRequest,
   SHIPMENT_INBOX,
@@ -256,9 +256,9 @@ export class ShipmentEventHandler {
   }
 }
 
-@Inject(QueueLifecycleService)
+@Inject(getQueueToken())
 export class ShipmentQueuePublisher {
-  constructor(private readonly queue: QueueLifecycleService) {}
+  constructor(private readonly queue: Queue) {}
 
   async publish(request: ShipmentRequest) {
     const value = parseShipmentRequest(request);

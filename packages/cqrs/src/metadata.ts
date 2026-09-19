@@ -114,16 +114,6 @@ function getStandardSagaMetadata(target: Function): SagaMetadata | undefined {
 }
 
 /**
- * Stores command-handler metadata on a class for compatibility with manual metadata registration.
- *
- * @param target Handler class constructor receiving the metadata.
- * @param metadata Command-handler metadata to store.
- */
-export function defineCommandHandlerMetadata(target: Function, metadata: CommandHandlerMetadata): void {
-  commandHandlerMetadataStore.set(target, cloneCommandHandlerMetadata(metadata));
-}
-
-/**
  * Reads command-handler metadata from either the compatibility store or standard decorator metadata.
  *
  * @param target Handler class constructor to inspect.
@@ -138,16 +128,6 @@ export function getCommandHandlerMetadata(target: Function): CommandHandlerMetad
   }
 
   return cloneCommandHandlerMetadata(stored ?? standard!);
-}
-
-/**
- * Stores query-handler metadata on a class for compatibility with manual metadata registration.
- *
- * @param target Handler class constructor receiving the metadata.
- * @param metadata Query-handler metadata to store.
- */
-export function defineQueryHandlerMetadata(target: Function, metadata: QueryHandlerMetadata): void {
-  queryHandlerMetadataStore.set(target, cloneQueryHandlerMetadata(metadata));
 }
 
 /**
@@ -168,16 +148,6 @@ export function getQueryHandlerMetadata(target: Function): QueryHandlerMetadata 
 }
 
 /**
- * Stores event-handler metadata on a class for compatibility with manual metadata registration.
- *
- * @param target Handler class constructor receiving the metadata.
- * @param metadata Event-handler metadata to store.
- */
-export function defineEventHandlerMetadata(target: Function, metadata: EventHandlerMetadata): void {
-  eventHandlerMetadataStore.set(target, cloneEventHandlerMetadata(metadata));
-}
-
-/**
  * Reads event-handler metadata from either the compatibility store or standard decorator metadata.
  *
  * @param target Handler class constructor to inspect.
@@ -192,16 +162,6 @@ export function getEventHandlerMetadata(target: Function): EventHandlerMetadata 
   }
 
   return cloneEventHandlerMetadata(stored ?? standard!);
-}
-
-/**
- * Stores saga metadata on a class for compatibility with manual metadata registration.
- *
- * @param target Saga class constructor receiving the metadata.
- * @param metadata Saga metadata to store.
- */
-export function defineSagaMetadata(target: Function, metadata: SagaMetadata): void {
-  sagaMetadataStore.set(target, cloneSagaMetadata(metadata));
 }
 
 /**

@@ -5,9 +5,8 @@ import { defineModule, type ModuleType } from '@fluojs/runtime';
 import { EmailConfigurationError } from './errors.js';
 import { EmailChannel } from './channel.js';
 import { EmailService } from './service.js';
-import { EMAIL, EMAIL_CHANNEL, EMAIL_OPTIONS } from './tokens.js';
+import { EMAIL_CHANNEL, EMAIL_OPTIONS } from './tokens.js';
 import type {
-  Email,
   EmailAddressLike,
   EmailAsyncModuleOptions,
   EmailTransport,
@@ -76,15 +75,6 @@ function createEmailRuntimeProviders(optionsProvider: Provider): Provider[] {
     EmailService,
     EmailChannel,
     {
-      inject: [EmailService],
-      provide: EMAIL,
-      useFactory: (service: unknown): Email => ({
-        send: (message, options) => (service as EmailService).send(message, options),
-        sendMany: (messages, options) => (service as EmailService).sendMany(messages, options),
-        sendNotification: (notification, options) => (service as EmailService).sendNotification(notification, options),
-      }),
-    },
-    {
       inject: [EmailChannel],
       provide: EMAIL_CHANNEL,
       useFactory: (channel: unknown) => channel,
@@ -103,7 +93,7 @@ function buildEmailModule(options: EmailModuleOptions): ModuleType {
   class EmailRootModuleDefinition {}
 
   return defineModule(EmailRootModuleDefinition, {
-    exports: [EmailService, EmailChannel, EMAIL, EMAIL_CHANNEL],
+    exports: [EmailService, EmailChannel, EMAIL_CHANNEL],
     global: options.global ?? true,
     providers: createEmailProviders(options),
   });
@@ -113,29 +103,16 @@ function buildEmailModuleAsync(options: EmailAsyncModuleOptions): ModuleType {
   class EmailAsyncModuleDefinition {}
 
   const factory = options.useFactory as (...args: unknown[]) => MaybePromise<EmailModuleOptions>;
-  let cachedResult: Promise<NormalizedEmailModuleOptions> | undefined;
-
-  const memoizedFactory = (...deps: unknown[]): Promise<NormalizedEmailModuleOptions> => {
-    if (!cachedResult) {
-      cachedResult = Promise.resolve(factory(...deps))
-        .then((resolved) => normalizeEmailModuleOptions(resolved))
-        .catch((error) => {
-          cachedResult = undefined;
-          throw error;
-        });
-    }
-
-    return cachedResult;
-  };
 
   return defineModule(EmailAsyncModuleDefinition, {
-    exports: [EmailService, EmailChannel, EMAIL, EMAIL_CHANNEL],
+    exports: [EmailService, EmailChannel, EMAIL_CHANNEL],
     global: options.global ?? true,
     providers: createEmailRuntimeProviders({
       inject: options.inject,
       provide: EMAIL_OPTIONS,
       scope: 'singleton',
-      useFactory: (...deps: unknown[]) => memoizedFactory(...deps),
+      useFactory: (...deps: unknown[]) =>
+        Promise.resolve(factory(...deps)).then((resolved) => normalizeEmailModuleOptions(resolved)),
     }),
   });
 }
@@ -146,7 +123,7 @@ export class EmailModule {
    * Registers email providers using static options.
    *
    * @param options Static email module options including transport wiring and optional template rendering behavior.
-   * @returns A module definition that exports {@link EmailService}, {@link EmailChannel}, and email facade tokens globally by default or only to explicit importers when `options.global` is `false`.
+   * @returns A module definition that exports {@link EmailService}, {@link EmailChannel}, and {@link EMAIL_CHANNEL} globally by default or only to explicit importers when `options.global` is `false`.
    *
    * @example
     * ```ts
@@ -167,7 +144,7 @@ export class EmailModule {
    * Registers email providers from an async DI factory.
    *
    * @param options Async module options that resolve email transport and renderer configuration through DI.
-   * @returns A module definition that memoizes async option resolution per module instance and exports its providers globally by default or only to explicit importers when `options.global` is `false`.
+   * @returns A module definition that resolves async options independently for each active application container and exports its providers globally by default or only to explicit importers when `options.global` is `false`.
    *
    * @example
     * ```ts

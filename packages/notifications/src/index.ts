@@ -13,7 +13,6 @@ export type {
   NotificationsStatusDetails,
 } from './status.js';
 export { createNotificationsPlatformStatusSnapshot } from './status.js';
-export { NOTIFICATION_CHANNELS, NOTIFICATIONS } from './tokens.js';
 export type {
   NotificationChannel,
   NotificationChannelContext,
@@ -37,7 +36,6 @@ export type {
   NotificationSnapshotSet,
   NotificationSnapshotUrl,
   NotificationSnapshotUrlSearchParams,
-  Notifications,
   NotificationsAsyncModuleOptions,
   NotificationsEventPublisher,
   NotificationsEventsOptions,

@@ -38,6 +38,8 @@ NestJS application에서 GraphQL option을 비동기로 해석했다면 `Graphql
 
 이는 NestJS dynamic-module 호환성이 아닙니다. `imports`, `useClass`, `useExisting`, 암시적 provider discovery는 거부합니다. 필요한 provider를 application graph에 등록하고 token을 `inject`에 명시적으로 나열하세요. 별도 migration example은 추가하지 않습니다. 유지 관리되는 실행형 예제는 `@fluojs/graphql` README와 [Book Chapter 18](../../book/intermediate/ch18-graphql.ko.md)입니다.
 
+Resolver class는 소유 module의 `providers`에 등록하세요. `resolvers`는 이미 등록된 후보에서 고르는 선택적 allowlist일 뿐이므로, 모든 provider-backed resolver를 발견하려면 생략하거나 `[]`를 전달하세요. Operation 범위 batching은 `createDataLoader(batch, options)` 대신 `OperationScopedDataLoader.create(batch, options)`로 이전하세요. Application에서 upstream `dataloader` constructor나 type이 필요하면 해당 package에서 직접 import하세요. `@Query('name')`, `@FieldResolver('name')` 같은 문자열 decorator shorthand는 각각 `@Query({ fieldName: 'name' })`, `@FieldResolver({ fieldName: 'name' })`로 바꾸세요.
+
 ## 응답 쿠키 마이그레이션
 
 `res.cookie()`와 `res.clearCookie()`를 `@fluojs/http`의 `setCookie(response, name, value, options?)`, `clearCookie(response, name, options?)`로 바꾸세요. 이 free function은 `FrameworkResponse`를 통해 작동하므로 controller가 Express나 Fastify에 결합되지 않습니다.
@@ -128,9 +130,9 @@ Studio report는 bootstrap 이후 artifact다. `fluo inspect`는 snapshot, timin
 | `@Inject(TOKEN) private value` 같은 속성 주입 | 클래스 수준 `@Inject(TOKEN)`과 이에 대응하는 생성자 매개변수 | fluo의 `@Inject(...)`는 생성자 토큰을 매개변수 순서대로 선언하는 표준 클래스 데코레이터다. 속성 또는 생성자 매개변수 데코레이터가 아니다. |
 | `class-validator` / 데코레이터 중심 DTO 검증 | Zod와 Valibot을 포함한 Standard Schema를 지원하는 `@fluojs/validation` | 이는 class-validator 호환 계층이 아니라 fluo 고유 검증 surface다. 일반 validator는 `null` / `undefined`를 건너뛰고, 필수값에는 `@IsDefined()`를 사용하며, plain 객체 materialization은 안전한 own enumerable 추가 속성을 기본적으로 유지하며 `materialize(..., { undeclaredProperties: 'reject' })`를 통한 opt-in 거부를 지원하고 validation group은 지원되지 않는다. |
 | `@ValidateNested()`와 class-transformer `@Type(() => ChildDto)` 조합 | `@fluojs/validation`의 `@ValidateNested(() => ChildDto)` | 중첩 DTO target을 decorator argument로 명시합니다. `@Type(...)`과 class-transformer import를 제거하세요. fluo는 class-transformer metadata나 reflected design type을 소비하지 않습니다. |
-| `nestjs-i18n` `I18nModule.forRoot(...)`, request locale resolver, request-scoped `I18nContext`, localized validation filter | `@fluojs/i18n`의 `I18nModule.forRoot(...)`; `@fluojs/i18n/http`의 `createAcceptLanguageLocaleResolver(...)`, `resolveHttpLocale(...)`, `getHttpLocale(...)`; `@fluojs/i18n/validation`의 `localizeDtoValidationError(...)` | 아래에서 설명하는 동기 root registration 전에 비동기 catalog와 configuration input을 resolve한다. 그런 다음 application-owned request boundary에서 각 locale을 resolve 및 저장하고 translation과 validation localization에 명시적으로 전달한다. fluo는 NestJS resolver class를 discovery하거나 implicit request-locale global을 노출하지 않는다. |
+| `nestjs-i18n` `I18nModule.forRoot(...)`, request locale resolver, request-scoped `I18nContext`, localized validation filter | `@fluojs/i18n`의 `I18nModule.forRoot(...)`; `@fluojs/i18n/http`의 `createAcceptLanguageLocalePolicyResolver(...)`, `resolveHttpLocale(...)`, `getHttpLocale(...)`; `@fluojs/i18n/validation`의 `localizeDtoValidationError(...)` | 아래에서 설명하는 동기 root registration 전에 비동기 catalog와 configuration input을 resolve한다. 그런 다음 application-owned request boundary에서 각 locale을 resolve 및 저장하고 translation과 validation localization에 명시적으로 전달한다. fluo는 NestJS resolver class를 discovery하거나 implicit request-locale global을 노출하지 않는다. |
 | `SwaggerModule.createDocument(...)`와 `SwaggerModule.setup(...)` | `@fluojs/openapi`의 `OpenApiModule.forRoot({ title, version, sources, descriptors, documentPath, ui, uiPath, swaggerUiAssets })` | OpenAPI 도입은 명시적이다. 문서화할 모든 controller를 `sources`에 나열하거나, 미리 만든 HTTP handler mapping을 `descriptors`에 전달하거나, 둘 다 사용한다. fluo는 application module graph에서 controller를 scan하지 않는다. `documentPath`와 `uiPath`의 기본값은 `/openapi.json`과 `/docs`이며, 여러 문서를 제공할 때는 module instance마다 서로 다른 값을 지정한다. Swagger UI는 `ui: true`일 때만 제공되고 `swaggerUiAssets`로 기본 CSS와 JavaScript URL을 교체할 수 있다. 정규화된 runtime route가 충돌하면 bootstrap이 `RouteConflictError`로 실패한다. |
-| `@nestjs/graphql` resolver discovery, reflected return type, parameter decorator, `forRootAsync(...)` | `@fluojs/graphql`의 `GraphqlModule.forRoot(...)`, `GraphqlModule.forRootAsync({ inject, useFactory })`, module provider/controller, `@Resolver`, root operation decorator, `@FieldResolver`, `@Args`, `@Parent`, `@Context`, `listOf(...)` | Resolver class를 compiled module의 provider 또는 controller로 등록한다. `resolvers` option은 discovery 가능한 class에 적용하는 선택적 allowlist/filter다. 이를 생략하거나 빈 list를 전달하면 등록된 decorated candidate를 모두 허용한다. fluo는 metadata에서 provider나 GraphQL output type을 추론하지 않는다. Object 결과에는 `outputType`, array에는 `outputType: listOf(ItemType)`이 필요하며 생략한 output type은 GraphQL `String`을 사용한다. Object field는 `@Resolver('TypeName')`으로 named code-first output type에 연결한다. TC39 표준 데코레이터는 parameter decorator를 지원하지 않으므로 field resolver method에 서로 다른 index의 `@Args(index?)`, `@Parent(index?)`, `@Context(index?)`를 배치한다. Code-first field argument DTO binding은 `@FieldResolver({ input: InputDto })`, 선택적 `argTypes`, `@Args(index?)`로 지원하며 `input`과 `@Args()`는 서로 필요하고 root operation에서는 유효하지 않다. Async registration은 명시적인 `inject` token과 `useFactory`만 지원합니다. NestJS 스타일 `imports`, `useClass`, `useExisting`, 암시적 provider discovery는 계속 지원하지 않으며 schema-first field-resolver attachment와 `@Subscription({ topics })`도 지원하지 않습니다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S adapter가 필요하다. |
+| `@nestjs/graphql` resolver discovery, reflected return type, parameter decorator, `forRootAsync(...)` | `@fluojs/graphql`의 `GraphqlModule.forRoot(...)`, `GraphqlModule.forRootAsync({ inject, useFactory })`, module provider, `@Resolver`, root operation decorator, `@FieldResolver`, `@Args`, `@Parent`, `@Context`, `listOf(...)` | Resolver class를 compiled module의 provider로 등록한다. `resolvers` option은 discovery 가능한 class에 적용하는 선택적 allowlist/filter다. 이를 생략하거나 빈 list를 전달하면 등록된 decorated candidate를 모두 허용한다. fluo는 metadata에서 provider나 GraphQL output type을 추론하지 않는다. Object 결과에는 `outputType`, array에는 `outputType: listOf(ItemType)`이 필요하며 생략한 output type은 GraphQL `String`을 사용한다. Object field는 `@Resolver('TypeName')`으로 named code-first output type에 연결한다. TC39 표준 데코레이터는 parameter decorator를 지원하지 않으므로 field resolver method에 서로 다른 index의 `@Args(index?)`, `@Parent(index?)`, `@Context(index?)`를 배치한다. Code-first field argument DTO binding은 `@FieldResolver({ input: InputDto })`, 선택적 `argTypes`, `@Args(index?)`로 지원하며 `input`과 `@Args()`는 서로 필요하고 root operation에서는 유효하지 않다. Async registration은 명시적인 `inject` token과 `useFactory`만 지원합니다. NestJS 스타일 `imports`, `useClass`, `useExisting`, 암시적 provider discovery는 계속 지원하지 않으며 schema-first field-resolver attachment와 `@Subscription({ topics })`도 지원하지 않습니다. 선택적 WebSocket subscription에는 server-backed Node HTTP/S adapter가 필요하다. |
 | `@Param()`, `@Query()`, `@Body()`, `@Headers()`, `@Req()`, `@Res()` 같은 controller parameter decorator와 `Pipe` / `ValidationPipe` transformation | `@fluojs/http`의 `@RequestDto(...)`와 field-level `@FromPath(...)`, `@FromQuery(...)`, `@FromBody(...)`, `@FromHeader(...)`, `@FromCookie(...)`, `@Convert(...)`; 고급 request/response 접근을 위한 `RequestContext` handler parameter | fluo는 NestJS-style controller parameter decorator나 public parameter Pipe 단계를 노출하지 않는다. 하나의 request DTO를 바인딩하고, 각 field source를 선언하며, number/boolean/date/domain conversion에는 `@Convert(...)`를 사용한 뒤 materialized DTO를 validation package로 검증한다. 고급 접근에는 `RequestContext`의 이식 가능한 request/response facade를 우선 사용하세요. `@fluojs/platform-fastify`에서는 `request.raw`가 Node.js `IncomingMessage`이고 `response.raw`가 `FastifyReply`입니다. |
 | `createApplicationContext()` 단독 부트스트랩 | `FluoFactory.createApplicationContext(AppModule)` | `@fluojs/runtime`에 standalone application context가 존재한다. |
 | `Test.createTestingModule({ imports: [...] }).overrideModule(...)` | `@fluojs/testing`의 `Test.createTestingModule({ rootModule }).overrideModule(...)` | fluo testing은 명시적 `rootModule`과 replacement compile seam을 사용하므로 전역 module metadata를 mutate하지 않고 authored module identity를 보존한다. |
@@ -143,7 +145,7 @@ Studio report는 bootstrap 이후 artifact다. `fluo inspect`는 snapshot, timin
 | `@WebSocketGateway()`와 `@SubscribeMessage()` 및 parameter decorator | `@fluojs/websockets`의 `@WebSocketGateway()`와 `@OnMessage(event?)`, positional handler argument, 선택적 `WebSocketRoomService` | fluo websocket handler는 `(payload, socket, request, socketId)`를 직접 받습니다. 안정적인 `socketId`는 `WebSocketRoomService`에 전달할 수 있습니다. Nest-style `@MessageBody()`, `@ConnectedSocket()`, `@SubscribeMessage()` parameter/decorator rewrite는 없습니다. |
 | NestJS Socket.IO gateway return value, gateway `path`, scoped provider 또는 `@WebSocketServer()` | `@fluojs/socket.io`와 `@fluojs/websockets` decorator, `@OnMessage(...)`, 명시적 acknowledgement callback, singleton gateway 등록, `@Inject(SOCKETIO_SERVER)` | Socket.IO handler 반환값은 암묵적인 emit 또는 ACK reply가 되지 않습니다. fluo의 `@WebSocketGateway({ path: '/chat' })`는 Socket.IO namespace `/chat`에 매핑되고 Engine.IO request path는 `/socket.io/`로 유지되므로 NestJS Engine.IO `path` 가정을 옮기지 마세요. Migration한 gateway는 singleton provider/controller로 등록해야 하며 request/transient gateway는 warning 후 skip됩니다. Socket.IO gateway에서 `serverBacked`는 지원하지 않습니다. Decorator에는 websockets companion을 설치/import하고 gateway server 접근, multi-room emit, volatile delivery를 마이그레이션할 때 `SOCKETIO_SERVER`를 주입하세요. |
 | `@nestjs/cache-manager` / `CacheModule.register(...)` / `registerAsync(...)` | `@fluojs/cache-manager`의 `CacheModule.forRoot(...)`, `CacheModule.forRootAsync({ inject, useFactory, global? })`, `CacheService`, cache decorators | 최종 Redis/custom store를 준비한 뒤 동기 registration을 사용하거나, 최종 store, TTL, namespace, key strategy가 DI나 bootstrap 작업에 의존하면 injected-factory async registration을 사용한다. Async 의존성은 bootstrap runtime provider 또는 globally visible export에서 와야 하며 NestJS `imports`, `useClass`, `useExisting`은 지원하지 않는다. Manual cache operation에는 `CacheService`를 주입하고, request-aware key에는 `httpKeyStrategy` 또는 `@CacheKey(...)`를 사용하며, `ttl`은 초 단위이고 `isGlobal`은 module-local `global`로 바뀌며 NestJS store adapter는 fluo `CacheStore` 값으로 다시 표현해야 한다. |
-| `@nestjs/event-emitter` / `@OnEvent()` handler | `@fluojs/event-bus`의 `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, `@OnEvent(EventClass)` | Event routing은 class 기반이고, `static eventKey`는 distributed transport channel을 안정적으로 유지하며, handler는 singleton provider/controller에서만 discovery되고 awaited/background publish 작업은 shutdown drain tracking에 남는다. Throw하거나 reject한 listener 실패는 local 및 inbound transport dispatch에서 log되고 격리되므로 다른 matching listener는 계속 실행되며, 그 listener 실패만으로 `publish(...)`가 reject되거나 inbound callback completion을 통해 실패가 외부로 드러나지는 않는다. |
+| `@nestjs/event-emitter` / `@OnEvent()` handler | `@fluojs/event-bus`의 `EventBusModule.forRoot(...)`, `EventBusService.publish(event, options?): Promise<EventPublishResult>`, `@OnEvent(EventClass)` | Event routing은 class 기반이고, `static eventKey`는 distributed transport channel을 안정적으로 유지하며, handler는 singleton provider/controller에서만 discovery되고 awaited/background publish 작업은 shutdown drain tracking에 남는다. 이것이 유일한 공개 발행 경로다. Throw하거나 reject한 listener 실패는 local 및 inbound transport dispatch에서 log되고 격리되므로 다른 matching listener는 계속 실행되며, 그 listener 실패만으로 `publish(...)`가 reject되거나 inbound callback completion을 통해 실패가 외부로 드러나지는 않는다. 좁은 `@fluojs/event-bus/integration` 서브패스는 first-party integration용 shutdown coordinator seam일 뿐이다. |
 | `@nestjs/cqrs` command/query/event handler와 saga | `@fluojs/cqrs`의 `CqrsModule.forRoot(...)`, 표준 `@CommandHandler(...)`, `@QueryHandler(...)`, `@EventHandler(...)`, `@Saga(...)` | CQRS discovery는 controller나 emitted design metadata가 아니라 singleton provider만 scan합니다. Command와 Query는 point-to-point이고, Event handler와 saga는 위임 `@fluojs/event-bus` 발행 전에 provider token 기준으로 fan-out됩니다. |
 | `ClientsModule.register(...)`, 주입된 `ClientProxy`, NestJS broker transport option | `MicroservicesModule.forRoot({ transport })`, `Microservice` 타입의 `MICROSERVICE`, `@fluojs/microservices/<transport>`의 transport adapter | Registration과 programmatic facade는 root `@fluojs/microservices`에 남습니다. NATS, Kafka, RabbitMQ collaborator는 application-owned 상태를 유지하며, `send()`, `emit()`, `close()`는 아래에 설명한 서로 다른 완료 경계를 가집니다. |
 | NestJS `@MessagePattern(...)` / `@EventPattern(...)` handler discovery와 provider metadata | `@fluojs/microservices`의 TC39 표준 pattern decorator와 명시적 module `providers` 또는 `controllers` 등록 | fluo는 compiled module graph에 등록된 class의 decorated public instance method만 탐색합니다. NestJS metadata, `reflect-metadata`, emit된 design type은 scan하지 않습니다. |
@@ -152,26 +154,26 @@ Studio report는 bootstrap 이후 artifact다. `fluo inspect`는 snapshot, timin
 | `@InjectQueue('queue')` producer의 `queue.add('job', payload)` 또는 `queue.add(payload)` 호출 | `@fluojs/queue`의 `@Inject(QueueLifecycleService)`(또는 `QUEUE` / `getQueueToken(scope)` facade)에서 `queue.enqueue(new JobClass(...))` 호출 | fluo에는 name과 payload를 받는 producer signature가 없다. `enqueue(job)`은 job instance의 정확한 constructor로 worker를 찾고, BullMQ queue/named job은 해당 worker에 등록된 `jobName`에서 가져오므로 job-name 문자열은 더 이상 producer argument가 아니다. Plain payload object의 constructor는 `Object`이므로 등록된 JobClass worker를 식별할 수 없다. `enqueue<TJob extends object>`는 모든 object를 허용하므로 이 실수는 type-check를 통과하지만 runtime에서 `No @QueueWorker() registered for job type Object.`로 거부된다. |
 | `@nestjs/schedule` decorator, `SchedulerRegistry`, 또는 `CronJob` handle | `@fluojs/cron`의 `CronModule.forRoot(...)`, public-method `@Cron` / `@Interval` / `@Timeout`, `SCHEDULING_REGISTRY` | NestJS `timeZone`을 fluo `timezone`으로 바꾼다. `waitForCompletion`, `utcOffset`, `unrefTimeout`, `disabled`, `threshold`, `initialDelay`은 옮기지 않는다. fluo에는 대응 option이 없다. `@Cron`은 cron-expression string만 받으므로 NestJS `Date` / Luxon `DateTime` absolute schedule은 startup-relative `@Timeout`으로 바꾸지 말고 application code에서 해석한다. Named `@Interval(name, ms)` / `@Timeout(name, ms)` overload는 `(ms, { name })` 형태로 바꾼다. `ScheduleModule.forRootAsync(...)` input은 동기 `CronModule.forRoot(...)` 전에 해석하며, fluo는 module-local visibility가 기본값이므로 NestJS global visibility가 필요하면 `{ global: true }`를 명시한다. NestJS category switch의 대안은 application composition 또는 dynamic registration이 소유한다. fluo는 decorator로 발견한 task를 application bootstrap 중 시작하고, 이미 시작된 registry에 dynamic task가 추가되면 즉시 시작하며, live scheduler handle 대신 read-only task descriptor를 노출한다. |
 | NestJS mailer async registration, implicit transporter discovery, 또는 `MailerService.sendMail(...)` | `@fluojs/email`의 `EmailModule.forRoot(...)` / `forRootAsync({ inject, useFactory, global? })`, 명시적 `EmailTransport` 선택, `EmailService.send(...)` 또는 `sendNotification(...)` | fluo email async registration은 injected factory option만 지원한다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열하며, 기본 global provider visibility에서 벗어나야 할 때만 `global: false`를 설정한다. 애플리케이션이 소유한 이식 가능한 transport, `@fluojs/email/node`의 factory 소유 Node SMTP transport, 또는 기존 호출자 소유 Nodemailer transporter wrapper 중 하나를 선택한다. `MailerService` 호환 API나 implicit transport discovery는 없다. |
-| NestJS-style notification module, decorator-discovered channel provider, 또는 implicit queue/event integration | `@fluojs/notifications`의 `NotificationsModule.forRoot({ channels, queue?, events?, global? })` 또는 `NotificationsModule.forRootAsync({ inject, useFactory, global? })` | fluo notifications registration은 `channels`에 전달된 명시적 `NotificationChannel` 값을 사용한다. Queue adapter와 event publisher는 module-owned resource가 아니라 애플리케이션 소유 seam이며, `global: false`를 설정하지 않으면 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`가 기본 global로 export된다. |
+| NestJS-style notification module, decorator-discovered channel provider, 또는 implicit queue/event integration | `@fluojs/notifications`의 `NotificationsModule.forRoot({ channels, queue?, events?, global? })` 또는 `NotificationsModule.forRootAsync({ inject, useFactory, global? })` | fluo notifications registration은 `channels`에 전달된 명시적 `NotificationChannel` 값을 사용한다. Queue adapter와 event publisher는 module-owned resource가 아니라 애플리케이션 소유 seam이며, `global: false`를 설정하지 않으면 `NotificationsService`가 기본 global로 export된다. |
 | `imports`, `useClass`, `useExisting`, package-level multi-client registry 또는 `isGlobal`을 가정하는 NestJS Slack module | `@fluojs/slack`의 `SlackModule.forRoot({ ..., global? })` 또는 `SlackModule.forRootAsync({ inject, useFactory, global? })` | fluo Slack async registration은 injected factory option만 소비한다. 필요한 의존성은 application module graph에 먼저 등록하고 token을 `inject`에 나열한 뒤, `useFactory`에서 최종 Slack option을 반환한다. 여러 client에는 app-owned module/provider 또는 facade를 조합한다. |
-| `imports`, `useClass`, `useExisting`, `isGlobal`, 또는 custom internal provider token을 가정하는 NestJS Discord module | `@fluojs/discord`의 `DiscordModule.forRoot({ ..., global? })` 또는 `DiscordModule.forRootAsync({ inject, useFactory, global? })` | fluo Discord registration은 singleton 중심이며 async setup은 injected factory만 지원한다. 이 패키지는 `global: false`가 설정되지 않으면 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 기본 global로 export하고, 내부 provider helper와 option token은 의도적으로 private으로 유지한다. |
+| `imports`, `useClass`, `useExisting`, `isGlobal`, 또는 custom internal provider token을 가정하는 NestJS Discord module | `@fluojs/discord`의 `DiscordModule.forRoot({ ..., global? })` 또는 `DiscordModule.forRootAsync({ inject, useFactory, global? })` | fluo Discord registration은 singleton 중심이며 async setup은 injected factory만 지원한다. 이 패키지는 `global: false`가 설정되지 않으면 `DiscordService`, `DiscordChannel`, `DISCORD_CHANNEL`을 기본 global로 export하고, 내부 provider helper와 option token은 의도적으로 private으로 유지한다. |
 
 ## 이메일 Transport, Ownership, Delivery 마이그레이션
 
-<!-- fluo-email-nestjs-migration: async=injected-factory->supported;async-negative=imports->unsupported,useClass->unsupported,useExisting->unsupported;ownership=portable->application,node-factory->email-module,nodemailer->caller;delivery=direct->pre-rendered,template->rendered;precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,createNodemailerEmailTransportFactory,createNodemailerEmailTransport,EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
+<!-- fluo-email-nestjs-migration: async=injected-factory->supported;async-negative=imports->unsupported,useClass->unsupported,useExisting->unsupported;ownership=portable->application,node-factory->email-module,nodemailer->caller;delivery=direct->pre-rendered,template->rendered;precedence=notification.subject->rendered.subject,payload.text->rendered.text,payload.html->rendered.html,payload.to->notification.recipients;api=EmailModule.forRootAsync,inject,useFactory,global: false,EmailTransport,NodemailerEmailTransport.createFactory(...),NodemailerEmailTransport.create(...),EmailService.send(...),EmailService.sendNotification(...),payload.templateData -->
 
 NestJS mailer 설정은 구성 조회, transporter 생성, template rendering, delivery 호출을 한데 섞는 경우가 많습니다. fluo에서는 이 결정을 애플리케이션 경계에서 명시적으로 유지합니다.
 
 주입형 async configuration에는 `EmailModule.forRootAsync({ inject, useFactory, global: false })`를 사용하세요. `global: false`는 선택 사항이며 반환된 module을 local로 유지합니다.
 
 1. 이식 가능한 HTTP, API, Bun, Deno, Cloudflare, custom 구현에는 루트 `@fluojs/email` 패키지에 `EmailTransport` 또는 `EmailTransportFactory`를 전달합니다. 애플리케이션이 `kind`를 정하고 transport를 만들며, email module이 factory가 만든 resource를 닫아야 할 때 `ownsResources`를 설정합니다.
-2. email module이 소유할 1st-party Node SMTP transporter에는 `@fluojs/email/node`의 `createNodemailerEmailTransportFactory(...)`를 사용합니다. 이 factory는 ownership을 알리므로 bootstrap verification과 shutdown close가 자신이 만든 transporter에 적용됩니다.
-3. 다른 애플리케이션 component가 만들고 닫는 기존 Nodemailer transporter에는 `createNodemailerEmailTransport({ transporter })`로 감쌉니다. 이 wrapper는 resource ownership을 넘기지 않고 shared transport contract를 만족하므로 `EmailService`를 통한 두 번째 close 경로를 만들지 마세요.
+2. email module이 소유할 1st-party Node SMTP transporter에는 `@fluojs/email/node`의 `NodemailerEmailTransport.createFactory(...)`를 사용합니다. 이 factory는 ownership을 알리므로 bootstrap verification과 shutdown close가 자신이 만든 transporter에 적용됩니다.
+3. 다른 애플리케이션 component가 만들고 닫는 기존 Nodemailer transporter에는 `NodemailerEmailTransport.create(...)` (예: `NodemailerEmailTransport.create({ transporter })`)로 감쌉니다. 이 wrapper는 resource ownership을 넘기지 않고 shared transport contract를 만족하므로 `EmailService`를 통한 두 번째 close 경로를 만들지 마세요.
 
 ```ts
 import { EmailModule, type EmailTransport } from '@fluojs/email';
 import {
-  createNodemailerEmailTransport,
+  NodemailerEmailTransport,
   type NodemailerTransporter,
 } from '@fluojs/email/node';
 
@@ -186,7 +188,7 @@ const portableTransport = {
 
 EmailModule.forRoot({ transport: portableTransport });
 EmailModule.forRoot({
-  transport: createNodemailerEmailTransport({ transporter: existingTransporter }),
+  transport: NodemailerEmailTransport.create({ transporter: existingTransporter }),
 });
 ```
 
@@ -403,9 +405,9 @@ Runtime은 `AsyncIterable`이 아닌 subscription resolver 결과를 거부합�
 - Email migration은 NestJS dynamic-module 형태를 그대로 복제하지 않는다. `EmailModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`는 소비하지 않는다. `EmailModule`은 기본적으로 global이므로 migrated code에 module-local visibility가 필요할 때만 `global: false`를 설정한다.
 - Notifications migration은 provider-discovery 또는 decorator-metadata clone이 아니다. 명시적인 `NotificationChannel` 값을 `NotificationsModule.forRoot(...)`에 전달하거나 `NotificationsModule.forRootAsync({ inject, useFactory, global? })`에서 반환해야 한다. 이 패키지는 channel 등록을 위해 NestJS provider, `@Injectable()` metadata, emitted design type을 scan하지 않는다.
 - `@fluojs/notifications`는 concrete queue 또는 event-bus resource를 create/import/close/drain하지 않는다. Queue adapter와 event publisher는 애플리케이션 소유 integration이며, status snapshot은 이를 `ownsResources: false`인 externally managed dependency로 보고한다.
-- `NotificationsModule`은 기본적으로 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`에 대해 global이다. Migrated code에 module-local visibility가 필요할 때는 `global: false`를 사용한다.
-- Slack migration은 NestJS async dynamic-module 또는 package-level multi-client registry clone이 아니다. `SlackModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`은 소비하지 않는다. 필요한 의존성은 application module graph에 등록한 뒤 token을 `inject`에 나열하고, `useFactory`에서 최종 Slack option을 반환한다. `@fluojs/slack`은 singleton compatibility token인 `SLACK`과 `SLACK_CHANNEL`을 노출하고 `createSlackProviders(...)`로 같은 singleton wiring을 재사용하며, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용한다.
-- Discord migration은 NestJS async dynamic-module 또는 custom-provider clone이 아니다. `DiscordModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`는 소비하지 않는다. `@fluojs/discord`는 singleton compatibility token인 `DISCORD`와 `DISCORD_CHANNEL`을 노출하고, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용하며, `createDiscordProviders(...)`, `DISCORD_OPTIONS`, `NormalizedDiscordModuleOptions` 같은 내부 provider helper는 private으로 유지한다.
+- `NotificationsModule`은 `NotificationsService`를 export하며 기본적으로 global이다. Migrated code에 module-local visibility가 필요할 때는 `global: false`를 사용한다.
+- Slack migration은 NestJS async dynamic-module 또는 package-level multi-client registry clone이 아니다. `SlackModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`은 소비하지 않는다. 필요한 의존성은 application module graph에 등록한 뒤 token을 `inject`에 나열하고, `useFactory`에서 최종 Slack option을 반환한다. 직접 전달에는 `SlackService`, 알림 통합에는 `SLACK_CHANNEL`을 주입하고, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용한다.
+- Discord migration은 NestJS async dynamic-module 또는 custom-provider clone이 아니다. `DiscordModule.forRootAsync(...)`는 `inject`와 `useFactory`를 받으며, `imports`, `useClass`, `useExisting`는 소비하지 않는다. 직접 전달에는 `DiscordService`, 알림 통합에는 `DISCORD_CHANNEL`을 주입하고, NestJS `isGlobal` 대신 기본 global visibility를 가진 `global?: boolean`을 사용하며, `createDiscordProviders(...)`, `DISCORD_OPTIONS`, `NormalizedDiscordModuleOptions` 같은 내부 provider helper는 private으로 유지한다.
 
 ### Nested DTO and Mapped Type Rewrites
 
@@ -453,7 +455,7 @@ import {
   OmitType,
   PartialType,
   PickType,
-} from '@fluojs/validation';
+} from '@fluojs/validation/mapped-types';
 
 class UpdateUserDto extends PartialType(CreateUserDto) {}
 class PublicUserDto extends OmitType(CreateUserDto, ['address']) {}
@@ -461,7 +463,7 @@ class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {}
 class UserWithAuditDto extends IntersectionType(CreateUserDto, AuditDto) {}
 ```
 
-네 helper는 모두 `@fluojs/validation`에서 export되며 전용 mapped-type subpath인 `@fluojs/validation/mapped-types`도 사용할 수 있습니다. `PickType`, `OmitType`, `PartialType`은 적용 가능한 field-level validation과 binding metadata를 보존하지만, subset 또는 optional DTO가 base class-level validator의 field 가정을 더 이상 만족하지 않을 수 있으므로 해당 validator는 의도적으로 복사하지 않습니다. Derived DTO에서도 여전히 유효한 class-level rule은 검토 후 다시 선언하세요. `IntersectionType`은 모든 source contract를 유지하므로 각 input DTO의 field-level 및 class-level validation을 보존합니다. NestJS mapped-type의 class-level metadata 동작이 암묵적으로 이어진다고 가정하지 마세요.
+네 helper는 `@fluojs/validation/mapped-types`에서만 export되며 root import에는 compatibility alias가 없습니다. `@nestjs/mapped-types` binding과 `@nestjs/swagger`의 mapped binding을 이 subpath로 옮기세요. `PickType`, `OmitType`, `PartialType`은 적용 가능한 field-level validation과 binding metadata를 보존하지만, subset 또는 optional DTO가 base class-level validator의 field 가정을 더 이상 만족하지 않을 수 있으므로 해당 validator는 의도적으로 복사하지 않습니다. Derived DTO에서도 여전히 유효한 class-level rule은 검토 후 다시 선언하세요. `IntersectionType`은 모든 source contract를 유지하므로 각 input DTO의 field-level 및 class-level validation을 보존합니다. NestJS mapped-type의 class-level metadata 동작이 암묵적으로 이어진다고 가정하지 마세요.
 
 ### NestJS Config Registration 및 Bootstrap Migration
 
@@ -617,7 +619,7 @@ Registration 뒤 메시지 lookup 순서는 결정론적으로 유지된다. 명
 import { Module } from '@fluojs/core';
 import { I18nModule, type I18nService } from '@fluojs/i18n';
 import {
-  createAcceptLanguageLocaleResolver,
+  createAcceptLanguageLocalePolicyResolver,
   getHttpLocale,
   resolveHttpLocale,
   type HttpLocaleResolver,
@@ -628,7 +630,7 @@ import { FluoFactory } from '@fluojs/runtime';
 import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import type { DtoValidationError } from '@fluojs/validation';
 
-const acceptLanguage = createAcceptLanguageLocaleResolver();
+const acceptLanguage = createAcceptLanguageLocalePolicyResolver();
 
 class TenantLocaleResolver {
   resolve(context: RequestContext) {
@@ -820,7 +822,7 @@ NestJS의 `imports`, `useClass`, `useExisting`은 `forRootAsync(...)` 호환 fie
 
 <!-- fluo:graphql-resolver-migration: field-argument-dto=code-first-input-args-arg-types; schema-first-field-resolver=unsupported; async-registration=inject-use-factory; nest-dynamic-options=unsupported; subscription-topics=unsupported -->
 
-GraphQL migration에서는 schema와 discovery wiring을 명시적으로 유지한다. 모든 resolver class를 authored module의 provider 또는 controller로 등록해 compiled module graph에서 discovery할 수 있게 한다. `GraphqlModule.forRoot({ resolvers: [...] })`는 이 class들을 등록하지 않으며, `resolvers`를 전달하면 해당 allowlist로 discovery를 제한한다. `resolvers`를 생략하거나 빈 list를 전달하면 provider 또는 controller로 이미 등록된 decorated resolver class를 모두 discovery한다. TypeScript 반환 타입이나 NestJS design metadata가 provider를 등록하거나 output type을 만들지 않는다.
+GraphQL migration에서는 schema와 discovery wiring을 명시적으로 유지한다. 모든 resolver class를 authored module의 provider로 등록해 compiled module graph에서 discovery할 수 있게 한다. `GraphqlModule.forRoot({ resolvers: [...] })`는 이 class들을 등록하지 않으며, `resolvers`를 전달하면 해당 allowlist로 discovery를 제한한다. `resolvers`를 생략하거나 빈 list를 전달하면 provider로 이미 등록된 decorated resolver class를 모두 discovery한다. TypeScript 반환 타입이나 NestJS design metadata가 provider를 등록하거나 output type을 만들지 않는다.
 
 Code-first runtime은 두 category로 제한된 resolver surface를 지원한다. Root `Query`, `Mutation`, `Subscription` operation은 `@Query(...)`, `@Mutation(...)`, `@Subscription(...)`을 사용한다. Object field는 `@Resolver('TypeName')`과 `@FieldResolver(...)`로 연결하지만, 해당 named object type이 code-first root operation output에서 도달 가능할 때만 연결된다. Field resolver를 등록해도 임의의 detached type이 도달 가능해지지는 않는다. TC39 표준 데코레이터는 parameter-decorator 문법을 지원하지 않으므로 `@Parent(index?)`와 `@Context(index?)`는 method decorator이며, 기본값으로 parent/source object를 position `0`에, `GraphQLContext`를 position `1`에 바인딩한다. Code-first field argument DTO binding은 `@FieldResolver({ input, argTypes? })`와 `@Args(index?)`로 지원하며 schema-first field-resolver attachment는 계속 지원하지 않는다.
 
@@ -1042,7 +1044,7 @@ async function handle(event: UserCreatedEvent, context?: CqrsDispatchContext): P
 }
 ```
 
-`DuplicateEventHandlerError`는 호환성을 위해서만 남아 있는 export이며 event-handler discovery는 이를 throw하지 않습니다. 같은 decorated class를 공유하는 서로 다른 singleton token은 별도 fan-out route로 유지됩니다.
+Event-handler discovery는 중복 registration을 failure로 취급하지 않습니다. 같은 decorated class를 공유하는 서로 다른 singleton token은 별도 fan-out route로 유지됩니다.
 
 #### Event clone 의미
 
@@ -1075,13 +1077,12 @@ Fallback은 primitive와 function value를 그대로 유지하지만, open WebSo
 
 모든 CQRS bus는 `onApplicationBootstrap` 중에 handler instance를 discover하고 preload합니다. Discovery는 singleton provider만 허용하고 서로 다른 두 singleton provider가 같은 Command 또는 Query type을 점유하면 `DuplicateCommandHandlerError` 또는 `DuplicateQueryHandlerError`를 throw합니다. Handler shape은 dispatch 시 검사합니다. Command와 Query handler는 `execute(...)`를, Event handler와 saga는 `handle(...)`를 구현해야 하며, 맞지 않으면 `InvariantError`가 발생합니다. Bootstrap failure는 전파되어 application이 `ready` 상태에 진입하지 못하게 합니다.
 
-`CqrsModule.forRoot({ commandHandlers, queryHandlers, eventHandlers, sagas })`로 handler와 saga class를 한 번에 provider로 등록하세요.
+`CqrsModule.forRoot()`를 import하는 업무 module에 각 handler와 saga를 한 번만 등록하세요.
 
 ```ts
-CqrsModule.forRoot({
-  commandHandlers: [SendWelcomeEmailHandler],
-  eventHandlers: [UserCreatedProjection],
-  sagas: [UserSaga],
+defineModule(AppModule, {
+  imports: [CqrsModule.forRoot()],
+  providers: [SendWelcomeEmailHandler, UserCreatedProjection, UserSaga],
 })
 ```
 
@@ -1146,8 +1147,8 @@ class ProfileService {
 - NestJS `SchedulerRegistry`가 mutable `CronJob` handle을 반환하거나 private scheduled method가 유효한 decorator target이라고 가정하는 방식. fluo는 descriptor 기반 scheduling control을 노출하고 scheduled decorator는 public instance method에 요구한다.
 - `EmailModule.forRootAsync(...)`가 NestJS `imports`, `useClass`, `useExisting`를 받거나 email provider가 기본적으로 module-local이라고 가정하는 방식. fluo email은 injected factory registration을 사용하며, `global: false`가 설정되지 않으면 기본 global visibility를 사용한다.
 - Notification channel이 NestJS provider decorator/metadata에서 discovery되거나, queue/event-bus resource를 notifications module이 소유한다고 가정하는 방식. fluo는 명시적 `channels`와 애플리케이션 소유 queue adapter/event publisher lifecycle을 요구한다.
-- `SlackModule.forRootAsync(...)`가 NestJS `imports`, `useClass`, `useExisting`을 받거나 Slack package-level multi-client registry 또는 NestJS `isGlobal` option이 존재한다고 가정하는 방식. fluo Slack은 injected factory registration, singleton `SLACK` / `SLACK_CHANNEL` token, 같은 singleton provider wiring을 위한 `createSlackProviders(...)`, 기본 global module visibility에서 벗어나기 위한 `global?: boolean`을 사용한다.
-- Discord `forRootAsync(...)`가 NestJS `imports`, `useClass`, `useExisting`를 받거나, Discord provider가 기본적으로 module-local이거나, custom wiring을 위해 내부 provider helper/token을 import할 수 있다고 가정하는 방식. fluo Discord는 injected factory registration, singleton `DISCORD` / `DISCORD_CHANNEL` token, private 내부 provider helper, 기본 global module visibility에서 벗어나기 위한 `global?: boolean`을 사용한다.
+- `SlackModule.forRootAsync(...)`가 NestJS `imports`, `useClass`, `useExisting`을 받거나 Slack package-level multi-client registry 또는 NestJS `isGlobal` option이 존재한다고 가정하는 방식. fluo Slack은 injected factory registration, 직접 전달을 위한 `SlackService`, 알림 채널 통합을 위한 `SLACK_CHANNEL`, 기본 global module visibility에서 벗어나기 위한 `global?: boolean`을 사용한다.
+- Discord `forRootAsync(...)`가 NestJS `imports`, `useClass`, `useExisting`를 받거나, Discord provider가 기본적으로 module-local이거나, custom wiring을 위해 내부 provider helper/token을 import할 수 있다고 가정하는 방식. fluo Discord는 injected factory registration, 직접 전달을 위한 `DiscordService`, 알림 채널 통합을 위한 `DISCORD_CHANNEL`, private 내부 provider helper, 기본 global module visibility에서 벗어나기 위한 `global?: boolean`을 사용한다.
 
 ## CLI Starter and Generator Limits
 
@@ -1258,11 +1259,11 @@ const files = assertRequestContext().request.files ?? [];
 
 ## Queue 기반 이메일 알림 batch
 
-병렬 NestJS Bull producer 호출은 `Queue.enqueueMany(entries)` 또는 `QueueLifecycleService.enqueueMany(entries)`로 바꾸세요. 각 `QueueEnqueueManyEntry`는 자신의 `deduplicationKey`를 유지하지만, 모든 entry는 같은 등록된 BullMQ queue로 해석되어야 합니다. Queue는 전체 batch를 검증한 뒤 한 번의 atomic `addBulk(...)` persist를 수행하고 입력 순서대로 backing job ID를 반환합니다. 기존 `enqueue(job, options?)` 호출은 호환되며, 내장 `@fluojs/email/queue` notification adapter는 parallel single-job enqueue 대신 이 atomic batch seam을 사용합니다.
+병렬 NestJS Bull producer 호출은 `@Inject(getQueueToken(scope?))`로 주입한 `Queue.enqueueMany(entries)`로 바꾸세요. 각 `QueueEnqueueManyEntry`는 자신의 `deduplicationKey`를 유지하지만, 모든 entry는 같은 등록된 BullMQ queue로 해석되어야 합니다. Queue는 전체 batch를 검증한 뒤 한 번의 atomic `addBulk(...)` persist를 수행하고 입력 순서대로 backing job ID를 반환합니다. 기존 `enqueue(job, options?)` 호출은 호환되며, 내장 `@fluojs/email/queue` notification adapter는 parallel single-job enqueue 대신 이 atomic batch seam을 사용합니다.
 
 ## Event-bus migration limits
 
-`@OnEvent(...)`는 public instance 메서드만 지원합니다. `EventBusModule.forRoot()`는 기본 global이며 provider를 모듈-local로 유지하려면 `{ global: false }`를 전달하세요. Handler와 transport 실패는 log되고 격리되므로 `publish()`는 attempt가 settle된 뒤 resolve하며(`waitForHandlers: false`이면 shutdown-tracked background work를 scheduling한 뒤 resolve), 패키지는 Node.js `>=24.0.0 <27`이 필요합니다.
+`@OnEvent(...)`는 public instance 메서드만 지원합니다. 유일한 공개 발행 경로는 `EventBusService.publish(event, options?): Promise<EventPublishResult>`입니다. `EventBusModule.forRoot()`는 기본 global이며 provider를 모듈-local로 유지하려면 `{ global: false }`를 전달하세요. Handler와 transport 실패는 log되고 격리되므로 publish result는 attempt가 settle된 뒤 resolve하며(또는 shutdown-tracked background work를 scheduling한 뒤 resolve), 패키지는 Node.js `>=24.0.0 <27`이 필요합니다. 좁은 `@fluojs/event-bus/integration` 서브패스는 first-party integration용 shutdown coordinator seam일 뿐입니다.
 
 ## Related Docs
 
