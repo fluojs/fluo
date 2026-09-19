@@ -9,14 +9,8 @@ exports[`@fluojs/cron root barrel public surface > keeps CronModule.forRoot as t
   "SCHEDULING_REGISTRY",
   "Timeout",
   "createCronPlatformStatusSnapshot",
-  "cronMetadataSymbol",
-  "defineCronTaskMetadata",
-  "defineSchedulingTaskMetadata",
-  "getCronTaskMetadata",
-  "getCronTaskMetadataEntries",
   "getSchedulingTaskMetadata",
   "getSchedulingTaskMetadataEntries",
-  "normalizeCronModuleOptions",
   "schedulingMetadataSymbol",
 ]
 `;

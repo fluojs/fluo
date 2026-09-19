@@ -55,6 +55,10 @@ npm install @fluojs/cron
 
 `@fluojs/cron` 2에서 업그레이드하기 전에 배포 host를 Node.js `>=24.0.0 <27`로 옮기세요. `@fluojs/cron` 3을 설치하기 전에 제거된 Node.js version을 사용하는 runtime image, CI matrix, local development environment를 업데이트해야 합니다.
 
+### 4로 마이그레이션
+
+Dynamic registry task identity는 이제 첫 번째 `name` 인자만 사용합니다. `addCron`, `addInterval`, `addTimeout` 호출에서 `options.name`을 제거하세요. Redis locking을 활성화하려면 `distributed: { enabled: true }`를 사용하고, 비활성 상태를 유지하려면 `distributed`를 생략하세요. boolean `distributed: true`와 `distributed: false`는 더 이상 허용되지 않습니다. Decorator metadata를 읽는 integration 코드는 `getSchedulingTaskMetadata(...)`, `getSchedulingTaskMetadataEntries(...)`, `schedulingMetadataSymbol`을 사용해야 합니다. Cron 전용 metadata alias와 metadata writer는 더 이상 public API가 아닙니다. `normalizeCronModuleOptions(...)`와 `NormalizedCronModuleOptions`는 application configuration API가 아닌 runtime internal입니다.
+
 ## 사용 시점
 
 - 정기적인 백그라운드 작업(예: 데이터베이스 정리, 리포트 생성)이 필요할 때 사용합니다.
@@ -205,9 +209,9 @@ class TaskManager {
 }
 ```
 
-Registry는 `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`, `updateIntervalMs`를 제공합니다. 첫 번째 `name` 인자는 기본 registry key이며, `options.name`을 전달하면 dynamic task의 실제 registry key, scheduler metadata name, 기본 distributed lock key가 이를 사용해 decorator naming semantics와 일치합니다. Registry, decorator, dynamic `options.name` task name은 non-empty string이어야 합니다. Blank dynamic override name은 scheduler 또는 registry state를 남기기 전에 거부됩니다. `get`과 `getAll`은 live `CronJob` handle이나 mutable registry state가 아니라 immutable `SchedulingTaskDescriptor` snapshot을 반환합니다. Timeout task는 한 번 실행된 뒤 비활성화되지만 registry에는 남아 있어 의도적으로 다시 활성화할 수 있습니다.
+Registry는 `addCron`, `addInterval`, `addTimeout`, `remove`, `enable`, `disable`, `get`, `getAll`, `updateCronExpression`, `updateIntervalMs`를 제공합니다. 첫 번째 `name` 인자는 dynamic task의 유일한 registry key, scheduler metadata name, 기본 distributed lock identity입니다. Dynamic option은 task 동작만 구성하며 task 이름을 바꾸지 않습니다. Registry와 decorator task name은 non-empty string이어야 합니다. `get`과 `getAll`은 live `CronJob` handle이나 mutable registry state가 아니라 immutable `SchedulingTaskDescriptor` snapshot을 반환합니다. Timeout task는 한 번 실행된 뒤 비활성화되지만 registry에는 남아 있어 의도적으로 다시 활성화할 수 있습니다.
 
-Dynamic cron 등록은 scheduler startup과 원자적으로 처리됩니다. Scheduler가 새 cron job을 거부하면 registry는 half-registered task를 남기지 않습니다. 실행 중인 cron expression 또는 interval cadence update도 rollback-safe합니다. Provisional replacement는 이전 scheduled handle의 stop이 성공하고 registry가 새 handle token을 commit할 때까지 tick을 실행할 수 없으며, retired handle이 이미 queue한 callback도 무시됩니다. Replacement scheduling이 실패하거나 이전 handle을 stop할 수 없으면 fluo는 provisional replacement를 stop하고 이전 expression 또는 interval milliseconds와 handle을 복원한 뒤 failure를 다시 throw하므로 duplicate schedule을 조용히 남기지 않습니다. Active task를 disable 또는 remove할 때도 `stop()`이 성공한 뒤에만 scheduler handle을 지웁니다. Stop failure는 log로 드러나고 handle은 안전한 retry를 위해 registry에 남으며 operation은 `false`를 반환합니다. 실패한 `disable()`은 task descriptor를 disabled 상태로 두어 다음 tick을 계속 차단하고, 이후 disable 또는 shutdown이 cleanup을 재시도합니다. 실패한 `remove()`는 이후 removal이 성공할 때까지 task를 유지합니다. 첫 shutdown cleanup 시도도 실패하면 다음 shutdown lifecycle hook이 같은 retained handle을 다시 시도하고, `stop()`이 성공한 뒤에만 handle을 지웁니다. Cron task는 scheduler-level no-overlap protection과 fluo의 in-process running guard를 함께 사용하므로 같은 task instance가 overlapping tick으로 실행되지 않습니다.
+Dynamic cron 등록은 scheduler startup과 원자적으로 처리됩니다. Scheduler가 새 cron job을 거부하면 registry는 half-registered task를 남기지 않습니다. 실행 중인 cron expression 또는 interval cadence update도 rollback-safe합니다. Provisional replacement는 이전 scheduled handle의 stop이 성공하고 registry가 새 handle token을 commit할 때까지 tick을 실행할 수 없으며, retired handle이 이미 queue한 callback도 무시됩니다. Replacement scheduling이 실패하면 fluo는 이전 expression 또는 interval milliseconds와 handle을 복원한 뒤 failure를 다시 throw합니다. 이전 handle을 stop할 수 없으면 fluo는 provisional replacement를 stop하고 이전 state를 복원합니다. 이 rollback stop도 실패하면 fluo는 provisional handle을 token을 commit하지 않은 채 제한된 후속 cleanup을 위해 보존하므로 tick을 실행할 수 없습니다. Active task를 disable 또는 remove할 때도 `stop()`이 성공한 뒤에만 scheduler handle을 지웁니다. Stop failure는 log로 드러나고 handle은 안전한 retry를 위해 registry에 남으며 operation은 `false`를 반환합니다. 실패한 `disable()`은 task descriptor를 disabled 상태로 두어 다음 tick을 계속 차단하고, 이후 disable 또는 shutdown이 cleanup을 재시도합니다. 실패한 `remove()`는 이후 removal이 성공할 때까지 task를 유지합니다. 첫 shutdown cleanup 시도도 실패하면 다음 shutdown lifecycle hook은 retained handle마다 한 번씩 재시도하고, `stop()`이 성공한 뒤에만 handle을 지웁니다. Cron task는 scheduler-level no-overlap protection과 fluo의 in-process running guard를 함께 사용하므로 같은 task instance가 overlapping tick으로 실행되지 않습니다.
 
 ### 제한된 종료
 
@@ -243,12 +247,11 @@ singleton provider/controller만 스케줄링됩니다. Request-scoped 및 trans
 ### 상수 및 토큰
 - `CronExpression`: `EVERY_SECOND`, `EVERY_5_SECONDS`, `EVERY_30_SECONDS` 같은 sub-minute preset을 포함한 공통 Cron 패턴 객체입니다.
 - `SCHEDULING_REGISTRY`: `SchedulingRegistry` 서비스를 위한 주입 토큰입니다.
-- `normalizeCronModuleOptions(...)`: module option과 기본값을 정규화합니다.
 - `createCronPlatformStatusSnapshot(...)`: health/readiness 통합을 위한 status snapshot을 생성합니다.
-- 공개 scheduling 타입: `SchedulingTaskKind`, `SchedulingTaskCallback`, `SchedulingTaskOptions`, `CronTaskOptions`, `IntervalTaskOptions`, `TimeoutTaskOptions`, `CronTaskMetadata`, `IntervalTaskMetadata`, `TimeoutTaskMetadata`, `SchedulingTaskMetadata`, `CronTaskDescriptor`, `SchedulingTaskDescriptor`, `SchedulingRegistry`.
-- 공개 module 및 scheduler 타입: `CronModuleOptions`, `NormalizedCronModuleOptions`, `CronDistributedOptions`, `CronShutdownOptions`, `CronScheduleOptions`, `CronScheduler`, `CronScheduledJob`.
+- 공개 scheduling 타입: `SchedulingTaskKind`, `SchedulingTaskCallback`, `SchedulingTaskOptions`, `CronTaskOptions`, `IntervalTaskOptions`, `TimeoutTaskOptions`, `DynamicCronTaskOptions`, `DynamicIntervalTaskOptions`, `DynamicTimeoutTaskOptions`, `CronTaskMetadata`, `IntervalTaskMetadata`, `TimeoutTaskMetadata`, `SchedulingTaskMetadata`, `CronTaskDescriptor`, `SchedulingTaskDescriptor`, `SchedulingRegistry`.
+- 공개 module 및 scheduler 타입: `CronModuleOptions`, `CronDistributedOptions`, `CronShutdownOptions`, `CronScheduleOptions`, `CronScheduler`, `CronScheduledJob`.
 - 공개 status 타입: `CronLifecycleState`, `CronStatusAdapterInput`, `CronPlatformStatusSnapshot`.
-- 메타데이터 헬퍼와 심볼: `defineSchedulingTaskMetadata`, `defineCronTaskMetadata`, `getSchedulingTaskMetadata`, `getCronTaskMetadata`, `getSchedulingTaskMetadataEntries`, `getCronTaskMetadataEntries`, `schedulingMetadataSymbol`, `cronMetadataSymbol`.
+- 메타데이터 integration API: `getSchedulingTaskMetadata`, `getSchedulingTaskMetadataEntries`, `schedulingMetadataSymbol`.
 
 
 ## 관련 패키지

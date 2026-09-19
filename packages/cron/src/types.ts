@@ -23,11 +23,20 @@ export interface CronTaskOptions extends SchedulingTaskOptions {
   timezone?: string;
 }
 
+/** Options for cron tasks added through {@link SchedulingRegistry}. */
+export type DynamicCronTaskOptions = Omit<CronTaskOptions, 'name'>;
+
 /** Options for fixed-interval tasks registered with {@link Interval} or {@link SchedulingRegistry.addInterval}. */
 export type IntervalTaskOptions = SchedulingTaskOptions;
 
+/** Options for interval tasks added through {@link SchedulingRegistry}. */
+export type DynamicIntervalTaskOptions = Omit<IntervalTaskOptions, 'name'>;
+
 /** Options for one-shot delayed tasks registered with {@link Timeout} or {@link SchedulingRegistry.addTimeout}. */
 export type TimeoutTaskOptions = SchedulingTaskOptions;
+
+/** Options for timeout tasks added through {@link SchedulingRegistry}. */
+export type DynamicTimeoutTaskOptions = Omit<TimeoutTaskOptions, 'name'>;
 
 /** Metadata captured for one method decorated with {@link Cron}. */
 export interface CronTaskMetadata {
@@ -88,7 +97,11 @@ export type CronScheduler = (
 
 /** Module configuration accepted by {@link CronModule.forRoot}. */
 export interface CronModuleOptions {
-  distributed?: boolean | CronDistributedOptions;
+  /**
+   * Distributed lock configuration for multi-instance scheduling.
+   * Pass an object such as `{ enabled: true }` to configure Redis locking, or omit to keep distributed scheduling disabled.
+   */
+  distributed?: CronDistributedOptions;
   /** Whether scheduling providers should be visible globally. Defaults to `false`. */
   global?: boolean;
   scheduler?: CronScheduler;
@@ -166,27 +179,32 @@ export interface SchedulingRegistry {
    * @param name Stable task name used for lookup and distributed lock keys.
    * @param expression Cron expression validated before registration.
    * @param callback Task body executed on each schedule tick.
-   * @param options Optional task hooks, naming overrides, and distributed lock controls.
+   * @param options Optional task hooks and distributed lock controls.
    */
-  addCron(name: string, expression: string, callback: SchedulingTaskCallback, options?: CronTaskOptions): void;
+  addCron(name: string, expression: string, callback: SchedulingTaskCallback, options?: DynamicCronTaskOptions): void;
   /**
    * Adds a fixed-interval task to the runtime registry.
    *
    * @param name Stable task name used for lookup and distributed lock keys.
    * @param ms Positive interval in milliseconds.
    * @param callback Task body executed on each interval tick.
-   * @param options Optional task hooks, naming overrides, and distributed lock controls.
+   * @param options Optional task hooks and distributed lock controls.
    */
-  addInterval(name: string, ms: number, callback: SchedulingTaskCallback, options?: IntervalTaskOptions): void;
+  addInterval(
+    name: string,
+    ms: number,
+    callback: SchedulingTaskCallback,
+    options?: DynamicIntervalTaskOptions,
+  ): void;
   /**
    * Adds a one-shot delayed task to the runtime registry.
    *
    * @param name Stable task name used for lookup and distributed lock keys.
    * @param ms Positive delay in milliseconds before the callback runs once.
    * @param callback Task body executed after the delay elapses.
-   * @param options Optional task hooks, naming overrides, and distributed lock controls.
+   * @param options Optional task hooks and distributed lock controls.
    */
-  addTimeout(name: string, ms: number, callback: SchedulingTaskCallback, options?: TimeoutTaskOptions): void;
+  addTimeout(name: string, ms: number, callback: SchedulingTaskCallback, options?: DynamicTimeoutTaskOptions): void;
   /**
    * Removes one registered task from the runtime registry.
    *

@@ -6,11 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Cron, Interval, Timeout } from './decorators.js';
 import { CronExpression } from './expressions.js';
-import { getCronTaskMetadataEntries, getSchedulingTaskMetadataEntries } from './metadata.js';
+import { getSchedulingTaskMetadataEntries } from './metadata.js';
 import { CronModule, normalizeCronModuleOptions } from './module.js';
 import type { CronLifecycleService } from './service.js';
 import { SCHEDULING_REGISTRY } from './tokens.js';
-import type { CronScheduledJob, CronScheduleOptions, CronScheduler, SchedulingRegistry } from './types.js';
+import type { CronModuleOptions, CronScheduledJob, CronScheduleOptions, CronScheduler, SchedulingRegistry } from './types.js';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -320,7 +320,7 @@ describe('@fluojs/cron', () => {
       heartbeat() {}
     }
 
-    const entries = getCronTaskMetadataEntries(TaskService.prototype);
+    const entries = getSchedulingTaskMetadataEntries(TaskService.prototype);
 
     expect(entries).toEqual([
       {
@@ -617,8 +617,10 @@ describe('@fluojs/cron', () => {
     expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
   });
 
-  it('rolls back partially scheduled jobs when startup fails', async () => {
-    const firstStop = vi.fn();
+  it('retries a retained partial-startup handle when rollback cleanup first fails', async () => {
+    const firstStop = vi.fn().mockImplementationOnce(() => {
+      throw new Error('startup rollback stop failed');
+    });
     let scheduleCount = 0;
     const scheduler: CronScheduler = (_expression, _options, _callback) => {
       scheduleCount += 1;
@@ -650,7 +652,7 @@ describe('@fluojs/cron', () => {
       FluoFactory.create(AppModule),
     ).rejects.toThrow('scheduler boom');
 
-    expect(firstStop).toHaveBeenCalledTimes(1);
+    expect(firstStop).toHaveBeenCalledTimes(2);
   });
 
   it('keeps distributed lock clients alive while startup rollback drains active tasks', async () => {
@@ -1016,6 +1018,34 @@ describe('@fluojs/cron', () => {
     } finally {
       await closeApplication(app);
     }
+  });
+
+  it('rejects boolean distributed options during module option normalization', () => {
+    expect(() =>
+      normalizeCronModuleOptions({
+        distributed: true as unknown as CronModuleOptions['distributed'],
+      }),
+    ).toThrow('Cron distributed options must be an object when provided.');
+
+    expect(() =>
+      normalizeCronModuleOptions({
+        distributed: false as unknown as CronModuleOptions['distributed'],
+      }),
+    ).toThrow('Cron distributed options must be an object when provided.');
+  });
+
+  it('rejects boolean distributed options when configuring CronModule.forRoot', () => {
+    expect(() =>
+      CronModule.forRoot({
+        distributed: true as unknown as CronModuleOptions['distributed'],
+      }),
+    ).toThrow('Cron distributed options must be an object when provided.');
+
+    expect(() =>
+      CronModule.forRoot({
+        distributed: false as unknown as CronModuleOptions['distributed'],
+      }),
+    ).toThrow('Cron distributed options must be an object when provided.');
   });
 
   it('rejects blank distributed clientName during module option normalization', () => {
@@ -2287,6 +2317,47 @@ describe('@fluojs/cron', () => {
     await closeApplication(app);
   });
 
+  it('uses the dynamic positional name as the registry and distributed lock identity', async () => {
+    const scheduled = createManualScheduler();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'dynamic-identity',
+            lockTtlMs: 60_000,
+          },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+    });
+
+    const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: REDIS_CLIENT, useValue: new InMemoryLockRedisClient() }],
+    });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    try {
+      registry.addCron(
+        'positional-identity',
+        CronExpression.EVERY_SECOND,
+        () => {},
+        { name: 'legacy-options-name' } as unknown as Parameters<SchedulingRegistry['addCron']>[3],
+      );
+
+      expect(registry.get('positional-identity')).toMatchObject({
+        lockKey: 'dynamic-identity:positional-identity',
+        name: 'positional-identity',
+      });
+      expect(registry.get('legacy-options-name')).toBeUndefined();
+      expect(scheduled.records.at(-1)?.options.name).toBe('positional-identity');
+    } finally {
+      await closeApplication(app);
+    }
+  });
+
   it('rolls back interval reschedules when the next handle cannot be created', async () => {
     vi.useFakeTimers();
 
@@ -2349,6 +2420,52 @@ describe('@fluojs/cron', () => {
     } finally {
       clearIntervalSpy.mockRestore();
       await closeApplication(app);
+    }
+  });
+
+  it('retains a failed interval replacement for shutdown cleanup while it remains token-gated', async () => {
+    vi.useFakeTimers();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot()],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    const events: string[] = [];
+
+    registry.addInterval('dynamic-interval', 1_000, () => {
+      events.push('interval');
+    });
+
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+    clearIntervalSpy
+      .mockImplementationOnce(() => {
+        throw new Error('previous interval stop failed');
+      })
+      .mockImplementationOnce(() => {
+        throw new Error('replacement interval stop failed');
+      });
+
+    try {
+      expect(() => registry.updateIntervalMs('dynamic-interval', 250)).toThrow('previous interval stop failed');
+      expect(registry.get('dynamic-interval')?.ms).toBe(1_000);
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(250);
+      expect(events).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(750);
+      expect(events).toEqual(['interval']);
+
+      await closeApplication(app);
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(4);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(events).toEqual(['interval']);
+    } finally {
+      clearIntervalSpy.mockRestore();
     }
   });
 
@@ -2500,7 +2617,7 @@ describe('@fluojs/cron', () => {
     await app.close();
   });
 
-  it('honors dynamic task option names for registry keys and scheduler metadata', async () => {
+  it('uses positional dynamic task names for registry keys and scheduler metadata', async () => {
     const scheduled = createManualScheduler();
 
     class AppModule {}
@@ -2520,51 +2637,41 @@ describe('@fluojs/cron', () => {
     const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
-    registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {}, { name: 'named-dynamic-cron' });
-    registry.addInterval('dynamic-interval', 1_000, () => {}, { name: 'named-dynamic-interval' });
-    registry.addTimeout('dynamic-timeout', 5_000, () => {}, { name: 'named-dynamic-timeout' });
-
-    expect(registry.get('dynamic-cron')).toBeUndefined();
-    expect(registry.get('named-dynamic-cron')).toMatchObject({
-      lockKey: 'dynamic-option-name:named-dynamic-cron',
-      name: 'named-dynamic-cron',
-    });
-    expect(registry.get('named-dynamic-interval')).toMatchObject({
-      lockKey: 'dynamic-option-name:named-dynamic-interval',
-      name: 'named-dynamic-interval',
-    });
-    expect(registry.get('named-dynamic-timeout')).toMatchObject({
-      lockKey: 'dynamic-option-name:named-dynamic-timeout',
-      name: 'named-dynamic-timeout',
-    });
-    expect(scheduled.records[0]?.options.name).toBe('named-dynamic-cron');
-
-    await closeApplication(app);
-  });
-
-  it('rejects blank dynamic task option names without retaining registry state', async () => {
-    const scheduled = createManualScheduler();
-
-    class AppModule {}
-    defineModule(AppModule, {
-      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
-    });
-
-    const app = await FluoFactory.create(AppModule);
-    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
-
-    expect(() => registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {}, { name: '   ' })).toThrow(
-      /non-empty string/i,
+    registry.addCron(
+      'dynamic-cron',
+      CronExpression.EVERY_SECOND,
+      () => {},
+      { name: 'named-dynamic-cron' } as unknown as Parameters<SchedulingRegistry['addCron']>[3],
     );
-    expect(() => registry.addInterval('dynamic-interval', 1_000, () => {}, { name: '   ' })).toThrow(
-      /non-empty string/i,
+    registry.addInterval(
+      'dynamic-interval',
+      1_000,
+      () => {},
+      { name: 'named-dynamic-interval' } as unknown as Parameters<SchedulingRegistry['addInterval']>[3],
     );
-    expect(() => registry.addTimeout('dynamic-timeout', 1_000, () => {}, { name: '   ' })).toThrow(
-      /non-empty string/i,
+    registry.addTimeout(
+      'dynamic-timeout',
+      5_000,
+      () => {},
+      { name: 'named-dynamic-timeout' } as unknown as Parameters<SchedulingRegistry['addTimeout']>[3],
     );
 
-    expect(registry.getAll()).toHaveLength(0);
-    expect(scheduled.records).toHaveLength(0);
+    expect(registry.get('dynamic-cron')).toMatchObject({
+      lockKey: 'dynamic-option-name:dynamic-cron',
+      name: 'dynamic-cron',
+    });
+    expect(registry.get('dynamic-interval')).toMatchObject({
+      lockKey: 'dynamic-option-name:dynamic-interval',
+      name: 'dynamic-interval',
+    });
+    expect(registry.get('dynamic-timeout')).toMatchObject({
+      lockKey: 'dynamic-option-name:dynamic-timeout',
+      name: 'dynamic-timeout',
+    });
+    expect(registry.get('named-dynamic-cron')).toBeUndefined();
+    expect(registry.get('named-dynamic-interval')).toBeUndefined();
+    expect(registry.get('named-dynamic-timeout')).toBeUndefined();
+    expect(scheduled.records[0]?.options.name).toBe('dynamic-cron');
 
     await closeApplication(app);
   });
@@ -2695,7 +2802,7 @@ describe('@fluojs/cron', () => {
     expect(firstStop).toHaveBeenCalledTimes(1);
   });
 
-  it('rolls back cron expression updates when the previous handle cannot be stopped', async () => {
+  it('retains a failed cron replacement for shutdown cleanup while it remains token-gated', async () => {
     const scheduled = createManualScheduler();
     const events: string[] = [];
 
@@ -2719,6 +2826,15 @@ describe('@fluojs/cron', () => {
     }
 
     previousRecord.stop.mockImplementationOnce(() => {
+      const replacementRecord = scheduled.records[1];
+
+      if (!replacementRecord) {
+        throw new Error('expected replacement cron handle to exist');
+      }
+
+      replacementRecord.stop.mockImplementationOnce(() => {
+        throw new Error('replacement cron stop failed');
+      });
       throw new Error('previous cron stop failed');
     });
 
@@ -2744,6 +2860,9 @@ describe('@fluojs/cron', () => {
     } finally {
       await closeApplication(app);
     }
+
+    expect(previousRecord.stop).toHaveBeenCalledTimes(2);
+    expect(scheduled.records[1]?.stop).toHaveBeenCalledTimes(2);
   });
 
   it('prevents overlapping dynamic cron ticks while forwarding no-overlap scheduler protection', async () => {
