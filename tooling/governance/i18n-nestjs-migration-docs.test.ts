@@ -107,6 +107,8 @@ describe('NestJS i18n migration documentation', () => {
       expect(contextDoc).toContain('resolveHttpLocale(...)');
       expect(contextDoc).toContain('getHttpLocale(...)');
       expect(contextDoc).toContain('localizeDtoValidationError(...)');
+      expect(contextDoc).toContain('createAcceptLanguageLocalePolicyResolver(...)');
+      expect(contextDoc).toContain('I18nService.create(...)');
     }
   });
 });
