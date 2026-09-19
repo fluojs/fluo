@@ -118,7 +118,7 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
       throw new QueryHandlerNotFoundException(`No query handler registered for ${queryType.name}.`);
     }
 
-    const instance = await this.resolveHandlerInstance(descriptor.token);
+    const instance = await this.resolveHandlerInstance(descriptor.token, descriptor.targetType);
 
     if (!isQueryHandler(instance)) {
       throw new InvariantError(`Query handler ${descriptor.targetType.name} must implement execute(query).`);
@@ -155,11 +155,11 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
 
   private async discoverHandlers(): Promise<void> {
     try {
-      this.descriptors = this.discoverQueryDescriptors();
+      this.descriptors = await this.discoverQueryDescriptors();
       this.handlerInstances.clear();
 
       for (const descriptor of this.descriptors.values()) {
-        await this.preloadHandlerInstance(descriptor.token);
+        await this.preloadHandlerInstance(descriptor.token, descriptor.targetType);
       }
 
       this.discovered = true;
@@ -168,10 +168,10 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
     }
   }
 
-  private discoverQueryDescriptors(): Map<QueryType, QueryHandlerDescriptor> {
+  private async discoverQueryDescriptors(): Promise<Map<QueryType, QueryHandlerDescriptor>> {
     const descriptors = new Map<QueryType, QueryHandlerDescriptor>();
 
-    for (const candidate of this.discoveryCandidates()) {
+    for (const candidate of await this.discoveryCandidates()) {
       const metadata = getQueryHandlerMetadata(candidate.targetType);
 
       if (!metadata) {

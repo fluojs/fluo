@@ -1042,7 +1042,7 @@ async function handle(event: UserCreatedEvent, context?: CqrsDispatchContext): P
 }
 ```
 
-`DuplicateEventHandlerError`는 호환성을 위해서만 남아 있는 export이며 event-handler discovery는 이를 throw하지 않습니다. 같은 decorated class를 공유하는 서로 다른 singleton token은 별도 fan-out route로 유지됩니다.
+Event-handler discovery는 중복 registration을 failure로 취급하지 않습니다. 같은 decorated class를 공유하는 서로 다른 singleton token은 별도 fan-out route로 유지됩니다.
 
 #### Event clone 의미
 
@@ -1075,13 +1075,12 @@ Fallback은 primitive와 function value를 그대로 유지하지만, open WebSo
 
 모든 CQRS bus는 `onApplicationBootstrap` 중에 handler instance를 discover하고 preload합니다. Discovery는 singleton provider만 허용하고 서로 다른 두 singleton provider가 같은 Command 또는 Query type을 점유하면 `DuplicateCommandHandlerError` 또는 `DuplicateQueryHandlerError`를 throw합니다. Handler shape은 dispatch 시 검사합니다. Command와 Query handler는 `execute(...)`를, Event handler와 saga는 `handle(...)`를 구현해야 하며, 맞지 않으면 `InvariantError`가 발생합니다. Bootstrap failure는 전파되어 application이 `ready` 상태에 진입하지 못하게 합니다.
 
-`CqrsModule.forRoot({ commandHandlers, queryHandlers, eventHandlers, sagas })`로 handler와 saga class를 한 번에 provider로 등록하세요.
+`CqrsModule.forRoot()`를 import하는 업무 module에 각 handler와 saga를 한 번만 등록하세요.
 
 ```ts
-CqrsModule.forRoot({
-  commandHandlers: [SendWelcomeEmailHandler],
-  eventHandlers: [UserCreatedProjection],
-  sagas: [UserSaga],
+defineModule(AppModule, {
+  imports: [CqrsModule.forRoot()],
+  providers: [SendWelcomeEmailHandler, UserCreatedProjection, UserSaga],
 })
 ```
 

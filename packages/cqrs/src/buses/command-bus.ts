@@ -112,7 +112,7 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
       throw new CommandHandlerNotFoundException(`No command handler registered for ${commandType.name}.`);
     }
 
-    const instance = await this.resolveHandlerInstance(descriptor.token);
+    const instance = await this.resolveHandlerInstance(descriptor.token, descriptor.targetType);
 
     if (!isCommandHandler(instance)) {
       throw new InvariantError(`Command handler ${descriptor.targetType.name} must implement execute(command).`);
@@ -149,11 +149,11 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
 
   private async discoverHandlers(): Promise<void> {
     try {
-      this.descriptors = this.discoverCommandDescriptors();
+      this.descriptors = await this.discoverCommandDescriptors();
       this.handlerInstances.clear();
 
       for (const descriptor of this.descriptors.values()) {
-        await this.preloadHandlerInstance(descriptor.token);
+        await this.preloadHandlerInstance(descriptor.token, descriptor.targetType);
       }
 
       this.discovered = true;
@@ -162,10 +162,10 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
     }
   }
 
-  private discoverCommandDescriptors(): Map<CommandType, CommandHandlerDescriptor> {
+  private async discoverCommandDescriptors(): Promise<Map<CommandType, CommandHandlerDescriptor>> {
     const descriptors = new Map<CommandType, CommandHandlerDescriptor>();
 
-    for (const candidate of this.discoveryCandidates()) {
+    for (const candidate of await this.discoveryCandidates()) {
       const metadata = getCommandHandlerMetadata(candidate.targetType);
 
       if (!metadata) {

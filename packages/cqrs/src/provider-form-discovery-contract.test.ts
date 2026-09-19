@@ -2,8 +2,10 @@ import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { CommandHandler, EventHandler, QueryHandler, Saga } from './decorators.js';
+import { CommandBusLifecycleService } from './buses/command-bus.js';
+import { CqrsEventBusService } from './buses/event-bus.js';
 import { CqrsModule } from './module.js';
-import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
+import { QueryBusLifecycleService } from './buses/query-bus.js';
 import type {
   CommandBus,
   CqrsEventBus,
@@ -55,8 +57,8 @@ describe('CQRS provider-form discovery contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
-    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
+    const commandBus = await app.container.resolve(CommandBusLifecycleService);
+    const queryBus = await app.container.resolve(QueryBusLifecycleService);
 
     await expect(commandBus.execute<ArchiveUserCommand, string>(new ArchiveUserCommand('alice'))).resolves.toBe(
       'factory-command:alice',
@@ -94,8 +96,8 @@ describe('CQRS provider-form discovery contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
-    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
+    const commandBus = await app.container.resolve(CommandBusLifecycleService);
+    const queryBus = await app.container.resolve(QueryBusLifecycleService);
 
     await expect(commandBus.execute<ArchiveUserCommand, string>(new ArchiveUserCommand('bob'))).resolves.toBe(
       'value-command:bob',
@@ -151,7 +153,7 @@ describe('CQRS provider-form discovery contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
 
     await eventBus.publish(new UserArchivedEvent('carol'));
 
@@ -177,7 +179,7 @@ describe('CQRS provider-form discovery contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
+    const commandBus = await app.container.resolve(CommandBusLifecycleService);
 
     await expect(commandBus.execute<ArchiveUserCommand, string>(new ArchiveUserCommand('dave'))).resolves.toBe(
       'from-factory:dave',

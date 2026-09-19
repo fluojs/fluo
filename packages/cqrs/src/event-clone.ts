@@ -1,4 +1,4 @@
-import { cloneWithFallback } from '@fluojs/core/internal';
+import { cloneWithFallback, fallbackClone } from '@fluojs/core/internal';
 import type { CqrsEventType, IEvent } from './types.js';
 
 /**
@@ -15,5 +15,28 @@ export function createIsolatedEvent<TEvent extends IEvent>(eventType: CqrsEventT
     return clonedPayload as TEvent;
   }
 
-  return Object.assign(Object.create(eventType.prototype) as object, clonedPayload) as TEvent;
+  const eventInstance = Object.assign(Object.create(eventType.prototype) as object, clonedPayload) as TEvent;
+
+  if (typeof source === 'object' && source !== null) {
+    for (const symbolKey of Object.getOwnPropertySymbols(source)) {
+      if (Object.prototype.hasOwnProperty.call(eventInstance, symbolKey)) {
+        continue;
+      }
+
+      const descriptor = Object.getOwnPropertyDescriptor(source, symbolKey);
+
+      if (descriptor) {
+        if ('value' in descriptor) {
+          Object.defineProperty(eventInstance, symbolKey, {
+            ...descriptor,
+            value: fallbackClone(descriptor.value),
+          });
+        } else {
+          Object.defineProperty(eventInstance, symbolKey, descriptor);
+        }
+      }
+    }
+  }
+
+  return eventInstance;
 }

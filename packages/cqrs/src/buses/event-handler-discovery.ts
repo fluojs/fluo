@@ -1,7 +1,7 @@
 import type { Token } from '@fluojs/core';
 import type { ApplicationLogger } from '@fluojs/runtime';
 
-import type { DiscoveryCandidate } from '../discovery.js';
+import { filterEffectiveDiscoveryCandidates, type DiscoveryCandidate } from '../discovery.js';
 import { getEventHandlerMetadata } from '../metadata.js';
 import type { CqrsEventType, EventHandlerDescriptor } from '../types.js';
 
@@ -18,8 +18,9 @@ export function discoverEventHandlerDescriptors(
 ): EventHandlerDescriptor[] {
   const descriptors: EventHandlerDescriptor[] = [];
   const seenEventTypesByToken = new Map<Token, Set<CqrsEventType>>();
+  const effectiveCandidates = filterEffectiveDiscoveryCandidates(candidates);
 
-  for (const candidate of candidates) {
+  for (const candidate of effectiveCandidates) {
     const metadata = getEventHandlerMetadata(candidate.targetType);
 
     if (!metadata) {

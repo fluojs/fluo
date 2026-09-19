@@ -4,10 +4,10 @@ import { type ApplicationLogger, FluoFactory, defineModule, type RuntimeCleanupR
 import { describe, expect, it } from 'vitest';
 
 import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
+import { CqrsEventBusService } from './buses/event-bus.js';
 import { Saga } from './decorators.js';
 import { SagaExecutionError, SagaTopologyError } from './errors.js';
 import { CqrsModule } from './module.js';
-import { EVENT_BUS } from './tokens.js';
 import type { CqrsDispatchContext, CqrsEventBus, IEvent, ISaga } from './types.js';
 
 function createLogger(): ApplicationLogger {
@@ -45,7 +45,7 @@ describe('CQRS dispatch topology contracts', () => {
 
     class DecoyEvent implements IEvent {}
 
-    @Inject(EVENT_BUS)
+    @Inject(CqrsEventBusService)
     @Saga(LoopEvent)
     class LoopSaga implements ISaga<LoopEvent> {
       constructor(private readonly eventBus: CqrsEventBus) {}
@@ -69,7 +69,7 @@ describe('CQRS dispatch topology contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
 
     try {
       // When
@@ -95,7 +95,7 @@ describe('CQRS dispatch topology contracts', () => {
 
     class SecondEvent implements IEvent {}
 
-    @Inject(EVENT_BUS)
+    @Inject(CqrsEventBusService)
     @Saga([FirstEvent, SecondEvent])
     class MultiRouteSaga implements ISaga<FirstEvent | SecondEvent> {
       constructor(private readonly eventBus: CqrsEventBus) {}
@@ -123,7 +123,7 @@ describe('CQRS dispatch topology contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
 
     try {
       // When
@@ -154,7 +154,7 @@ describe('CQRS dispatch topology contracts', () => {
 
     class ChildEvent extends ParentEvent {}
 
-    @Inject(EVENT_BUS)
+    @Inject(CqrsEventBusService)
     @Saga([TriggerEvent, ParentEvent, ChildEvent])
     class InheritedRouteSaga implements ISaga<TriggerEvent | ParentEvent | ChildEvent> {
       constructor(private readonly eventBus: CqrsEventBus) {}
@@ -187,7 +187,7 @@ describe('CQRS dispatch topology contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
 
     try {
       // When
@@ -220,7 +220,7 @@ describe('CQRS dispatch topology contracts', () => {
 
     class RecoveryEvent implements IEvent {}
 
-    @Inject(EVENT_BUS)
+    @Inject(CqrsEventBusService)
     @Saga([ParentEvent, FailingContinuationEvent, RecoveryEvent])
     class RecoverableSaga implements ISaga<ParentEvent | FailingContinuationEvent | RecoveryEvent> {
       constructor(private readonly eventBus: CqrsEventBus) {}
@@ -254,7 +254,7 @@ describe('CQRS dispatch topology contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
 
     try {
       // When
@@ -281,7 +281,7 @@ describe('CQRS dispatch topology contracts', () => {
     });
 
     function createDepthSaga(EventType: EventConstructor, NextEventType: EventConstructor | undefined) {
-      @Inject(EVENT_BUS)
+      @Inject(CqrsEventBusService)
       @Saga(EventType)
       class DepthSaga implements ISaga<IEvent> {
         constructor(private readonly eventBus: CqrsEventBus) {}
@@ -318,7 +318,7 @@ describe('CQRS dispatch topology contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
 
     try {
       // When

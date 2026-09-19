@@ -13,7 +13,6 @@ CQRS primitives for fluo applications with bootstrap-time handler discovery, com
   - [Read Projections](#read-projections)
   - [Saga Process Managers](#saga-process-managers)
   - [Event Publishing Contracts](#event-publishing-contracts)
-  - [Symbol Tokens](#symbol-tokens)
 - [Public API Overview](#public-api-overview)
 - [Related Packages](#related-packages)
 - [Example Sources](#example-sources)
@@ -186,25 +185,11 @@ Event classes should keep their payload state cloneable and enumerable. String-k
 
 CQRS handlers, event handlers, and sagas are discovered only on singleton providers. Discovery supports direct class and `useClass` providers, `useFactory` providers whose class token carries CQRS metadata, and `useValue` providers whose instance constructor carries CQRS metadata. Non-singleton registrations are skipped with warnings. Event-handler and saga fan-out is keyed by singleton provider token, so distinct tokens remain distinct routes even when they use the same decorated class.
 
-### Symbol Tokens
-
-Use these exports when you want explicit symbol tokens for the CQRS buses:
-
-```typescript
-import { Inject } from '@fluojs/core';
-import { COMMAND_BUS, QUERY_BUS, EVENT_BUS } from '@fluojs/cqrs';
-
-@Inject(COMMAND_BUS, QUERY_BUS, EVENT_BUS)
-class TokenInjectedService {
-  constructor(commandBus, queryBus, eventBus) {}
-}
-```
-
 ## Public API Overview
 
 ### Modules & Providers
 - `CqrsModule.forRoot(options)`: Main entry point. Registers buses and starts provider-only discovery. Bus providers are global by default; pass `global: false` for module-local visibility.
-- Module options can provide explicit `commandHandlers`, `queryHandlers`, `eventHandlers`, `sagas`, and delegated `eventBus` options.
+- Register each handler or saga once as a singleton provider in its business module. Module options configure only `global`, delegated `eventBus`, and `shutdown` behavior.
 - `CommandBusLifecycleService`: Primary service for executing commands.
 - `QueryBusLifecycleService`: Primary service for executing queries.
 - `CqrsEventBusService`: Primary service for publishing events.
@@ -223,14 +208,11 @@ class TokenInjectedService {
 ### Errors
 - `CommandHandlerNotFoundException`, `QueryHandlerNotFoundException`: Raised when a bus has no matching handler.
 - `DuplicateCommandHandlerError`, `DuplicateQueryHandlerError`: Raised when different singleton providers claim the same command or query type.
-- `DuplicateEventHandlerError`: Retained only as a compatibility export; event-handler discovery does not throw it or treat duplicate registrations as failures. Repeated discovery of the same provider token and event route is silently deduplicated, while distinct singleton provider tokens remain valid fan-out routes in discovery order.
 - `SagaExecutionError`: Wraps unexpected non-Fluo saga failures.
 - `SagaTopologyError`: Raised when saga orchestration detects an active provider-token/event-route cycle or an over-deep in-process saga graph.
 
-### Status and metadata
-- `createCqrsPlatformStatusSnapshot(...)`: Creates CQRS status snapshots for diagnostics and health surfaces. Command and query adapter inputs remain optional for compatibility and default to zero discovered handlers plus the CQRS event lifecycle when omitted.
+### Status
 - `CqrsEventBusService.createPlatformStatusSnapshot()`: Populates all discovery and lifecycle summaries from live bus state. Snapshot details never expose handler descriptors, provider tokens, or saga topology; command and query summaries do not change the existing event/saga readiness or health semantics.
-- Metadata helpers and symbols are exported for framework packages that need to inspect command, query, event, or saga registrations.
 
 #### Status snapshot fields
 
@@ -239,7 +221,7 @@ Every CQRS snapshot has `readiness`, `health`, `ownership`, and `details`. `owne
 | `details` field | Meaning |
 | --- | --- |
 | `dependencies` | Always `['event-bus.default']`, identifying the delegated event-bus dependency. |
-| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | The currently discovered singleton handler or saga counts. Command/query adapter inputs default to `0` when omitted; after shutdown, live-bus counts are `0`. |
+| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | The currently discovered singleton handler or saga counts. After shutdown, live-bus counts are `0`. |
 | `commandLifecycleState`, `queryLifecycleState`, `lifecycleState`, `sagaLifecycleState` | The command, query, event-pipeline, and saga runtime states. When command/query adapter inputs are omitted, their states fall back to `lifecycleState`. |
 | `inFlightSagaExecutions` | Saga executions currently owned by the runtime. |
 | `shutdownDrainTimeoutMs` | The configured bounded shutdown-drain window. |
