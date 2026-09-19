@@ -323,7 +323,7 @@ class GraphqlResolver {
     return this.state.mutableValue;
   }
 
-  @Query('value')
+  @Query({ fieldName: 'value' })
   value(): string {
     return this.state.mutableValue;
   }

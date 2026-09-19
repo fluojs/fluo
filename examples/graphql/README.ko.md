@@ -6,9 +6,9 @@ Module registration, resolver discovery, operation 범위 DataLoader 사용, 하
 
 ## 이 예제가 보여주는 것
 
-- 모든 resolver를 module provider로도 등록하는 `GraphqlModule.forRoot({ resolvers })` 구성
+- Module `providers`에 resolver를 등록하고, `GraphqlModule.forRoot({ resolvers })`는 선택용 allowlist로만 사용하는 구성
 - compiled module graph에서 discovery되는 root `books` query와 `Book.author` field resolver
-- request 경계를 넘지 않으면서 같은 author 조회가 하나의 loader를 공유하도록 GraphQL operation마다 범위가 정해지는 `createDataLoader(...)`
+- request 경계를 넘지 않으면서 같은 author 조회가 하나의 loader를 공유하도록 GraphQL operation마다 범위가 정해지는 `OperationScopedDataLoader.create(...)`
 - `publishBook` mutation이 update를 emit하기 전에 활성화되는 기본 SSE `bookPublished` subscription
 
 ## 실행 방법

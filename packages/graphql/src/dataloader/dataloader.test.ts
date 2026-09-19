@@ -2,10 +2,10 @@ import DataLoader from 'dataloader';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  createDataLoader,
   createDataLoaderMap,
   createRequestScopedDataLoaderFactory,
   getRequestScopedDataLoader,
+  OperationScopedDataLoader,
 } from './dataloader.js';
 import type { GraphQLContext } from '../types.js';
 
@@ -67,7 +67,7 @@ describe('request-scoped DataLoader helpers', () => {
   });
 });
 
-describe('createDataLoader', () => {
+describe('OperationScopedDataLoader.create', () => {
   it('returns a request-scoped DataLoader through the public accessor', async () => {
     const db = new Map<string, string>([
       ['1', 'Alice'],
@@ -79,7 +79,7 @@ describe('createDataLoader', () => {
       ids.map((id) => db.get(id) ?? null),
     );
 
-    const getUserById = createDataLoader<string, string | null>(batchFn);
+    const getUserById = OperationScopedDataLoader.create<string, string | null>(batchFn);
 
     const context = createContext();
     const loader = getUserById(context);
@@ -95,7 +95,7 @@ describe('createDataLoader', () => {
   });
 
   it('reuses the same DataLoader instance within a single operation context', () => {
-    const getUserById = createDataLoader<string, string | null>(async (ids) =>
+    const getUserById = OperationScopedDataLoader.create<string, string | null>(async (ids) =>
       ids.map(() => null),
     );
 
@@ -107,7 +107,7 @@ describe('createDataLoader', () => {
   });
 
   it('creates isolated DataLoader instances across different operation contexts', () => {
-    const getUserById = createDataLoader<string, string | null>(async (ids) =>
+    const getUserById = OperationScopedDataLoader.create<string, string | null>(async (ids) =>
       ids.map(() => null),
     );
 
@@ -122,7 +122,7 @@ describe('createDataLoader', () => {
       ids.map((id) => `value-${id}`),
     );
 
-    const getItem = createDataLoader<string, string>(batchFn);
+    const getItem = OperationScopedDataLoader.create<string, string>(batchFn);
     const context = createContext();
     const loader = getItem(context);
 
@@ -141,7 +141,7 @@ describe('createDataLoader', () => {
       ids.map((id) => `val-${id}`),
     );
 
-    const getItem = createDataLoader<string, string>(batchFn);
+    const getItem = OperationScopedDataLoader.create<string, string>(batchFn);
     const context = createContext();
     const loader = getItem(context);
 
@@ -158,7 +158,7 @@ describe('createDataLoader', () => {
       ids.map((id) => `val-${id}`),
     );
 
-    const getItem = createDataLoader<string, string>(batchFn, { cache: false });
+    const getItem = OperationScopedDataLoader.create<string, string>(batchFn, { cache: false });
     const context = createContext();
     const loader = getItem(context);
 
@@ -171,11 +171,11 @@ describe('createDataLoader', () => {
   it('supports explicit cache key for loader deduplication', () => {
     const loaderKey = Symbol('shared-loader');
 
-    const accessorA = createDataLoader<string, string>(
+    const accessorA = OperationScopedDataLoader.create<string, string>(
       async (ids) => ids.map(() => 'a'),
       { key: loaderKey },
     );
-    const accessorB = createDataLoader<string, string>(
+    const accessorB = OperationScopedDataLoader.create<string, string>(
       async (ids) => ids.map(() => 'b'),
       { key: loaderKey },
     );
@@ -268,7 +268,7 @@ describe('end-to-end: N+1 batching through first-party DataLoader API', () => {
       return ids.map((id) => map.get(id) ?? null);
     });
 
-    const getUserById = createDataLoader<string, User | null>(async (ids) =>
+    const getUserById = OperationScopedDataLoader.create<string, User | null>(async (ids) =>
       findManyByIds(ids),
     );
 
@@ -297,7 +297,7 @@ describe('end-to-end: N+1 batching through first-party DataLoader API', () => {
       ids.map((id) => `result-${id}`),
     );
 
-    const getItem = createDataLoader<string, string>(batchFn);
+    const getItem = OperationScopedDataLoader.create<string, string>(batchFn);
 
     const operationA = createContext();
     const operationB = createContext();

@@ -54,7 +54,6 @@ class GraphqlSettings {
       inject: [GraphqlSettings],
       useFactory: async (settings) => ({
         graphiql: settings.graphiql,
-        resolvers: [HelloResolver],
       }),
     }),
   ],
@@ -65,6 +64,9 @@ export class AppModule {}
 
 No separate example application is added for async registration: this Quick Start and
 [Chapter 18](../../book/intermediate/ch18-graphql.md) are the maintained example surfaces.
+Register resolver classes in the application module's `providers`. The optional `resolvers`
+array is only an allowlist for already registered resolver providers; omit it or pass `[]` to
+discover every registered resolver.
 
 You can also pass an executable `GraphQLSchema` via `schema` when you want schema-first integration instead of code-first resolver discovery.
 
@@ -89,9 +91,7 @@ class HelloResolver {
 
 @Module({
   imports: [
-    GraphqlModule.forRoot({
-      resolvers: [HelloResolver]
-    })
+    GraphqlModule.forRoot()
   ],
   providers: [HelloResolver]
 })
@@ -195,14 +195,14 @@ class BookFieldResolver {
 }
 ```
 
-Register both resolver classes as module providers or controllers and include both when `GraphqlModule.forRoot({ resolvers })` is used as an allowlist. Field resolver DTO inputs follow the same HTTP and subscription operation container scope as root resolvers. Duplicate `TypeName.fieldName` registrations, field targets that are not reachable from a code-first root output, and `@Args()` / `@Parent()` / `@Context()` bindings placed on root operation methods fail during bootstrap. Schema-first field-resolver attachment remains outside this runtime contract. For a field added with an explicit `type`, pass `nullable: false` to expose a non-null GraphQL output; `nullable: true` and an omitted option preserve GraphQL's nullable default. Existing field configurations retain their declared nullability because `nullable` does not change fields the object type already owns.
+Register both resolver classes as module providers or controllers. Use `GraphqlModule.forRoot({ resolvers })` only to select from those registered candidates; omit `resolvers` or pass `[]` to discover all of them. Field resolver DTO inputs follow the same HTTP and subscription operation container scope as root resolvers. Duplicate `TypeName.fieldName` registrations, field targets that are not reachable from a code-first root output, and `@Args()` / `@Parent()` / `@Context()` bindings placed on root operation methods fail during bootstrap. Schema-first field-resolver attachment remains outside this runtime contract. For a field added with an explicit `type`, pass `nullable: false` to expose a non-null GraphQL output; `nullable: true` and an omitted option preserve GraphQL's nullable default. Existing field configurations retain their declared nullability because `nullable` does not change fields the object type already owns.
 
 ### GraphQL-Operation-Scoped DataLoaders
 Efficiently solve the N+1 problem with built-in DataLoader integration. Loaders are automatically isolated per GraphQL operation.
 
 ```typescript
 import { GraphQLObjectType, GraphQLString } from 'graphql';
-import { createDataLoader, type GraphQLContext, Query, Resolver } from '@fluojs/graphql';
+import { OperationScopedDataLoader, type GraphQLContext, Query, Resolver } from '@fluojs/graphql';
 
 const UserType = new GraphQLObjectType({
   name: 'User',
@@ -212,7 +212,7 @@ const UserType = new GraphQLObjectType({
   },
 });
 
-const userLoader = createDataLoader(async (ids: readonly string[]) => {
+const userLoader = OperationScopedDataLoader.create(async (ids: readonly string[]) => {
   const users = await userService.findByIds(ids);
   return ids.map(id => users.find(u => u.id === id));
 });
@@ -244,7 +244,7 @@ class UserResolver {
 - New output fields are non-null only with `nullable: false`; omitted or `nullable: true` fields remain nullable. `@Arg(...)` produces nullable scalar or list arguments, and DTO validation does not make them non-null in the SDL.
 - Resolver methods receive a `GraphQLContext` whose built-in fields expose the underlying fluo `request`, that pre-established authenticated HTTP `principal`, websocket `connectionParams` and `socket` for websocket subscriptions, and any custom fields returned from `GraphqlModule.forRoot({ context })`.
 - Object field resolvers use the same provider scope and operation container as root resolvers; `@Parent()` and `@Context()` only control positional method arguments.
-- GraphQL-operation-scoped DataLoader helpers use the same `GraphQLContext` operation boundary, so loader caches are shared only within one GraphQL operation.
+- `OperationScopedDataLoader.create(...)` uses the `GraphQLContext` operation boundary, so loader caches are shared only within one GraphQL operation. `createDataLoaderMap`, `getRequestScopedDataLoader`, and `createRequestScopedDataLoaderFactory` remain advanced integration helpers.
 - Application shutdown unregisters the websocket transport, closes live websocket clients, and disposes any still-active websocket operation containers through the same request-scoped provider teardown path used when an operation completes normally.
 - Failed HTTP operation-container, websocket operation-container, or websocket transport teardown retains its owner for a later `Application.close()` retry. Shutdown reports every remaining cleanup failure together and never repeats cleanup that already succeeded.
 
@@ -264,7 +264,7 @@ class RequestState {
 class RequestResolver {
   constructor(private readonly state: RequestState) {}
 
-  @Query('requestId')
+  @Query({ fieldName: 'requestId' })
   requestId(): string {
     return this.state.requestId;
   }
@@ -329,7 +329,6 @@ GraphqlModule.forRoot({
       },
     },
   },
-  resolvers: [HelloResolver],
 })
 ```
 
@@ -341,11 +340,12 @@ GraphqlModule.forRoot({
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Resolver and root operation decorators.
 - `FieldResolver`, `Args`, `Parent`, `Context`: Code-first object field resolution and explicit DTO input, parent, and context parameter-index bindings.
 - `Arg`: Input DTO field-to-GraphQL-argument mapping decorator.
-- `createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`: DataLoader factory helpers and types.
+- `OperationScopedDataLoader.create`: Canonical operation-scoped DataLoader accessor creation.
+- `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`: Advanced typed-map and generic loader-cache integration helpers.
 - `listOf`, `isGraphqlListTypeRef`: Helpers for list output type references.
 - `GraphQLContext` and exported option/metadata types: Type definitions for GraphQL execution and module configuration, including `GraphqlWebSocketLimitsOptions` for `subscriptions.websocket.limits`.
 
-Supported synchronous `GraphqlModule.forRoot(...)` options include `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, and `subscriptions.websocket.keepAliveMs`. `GraphqlModule.forRootAsync({ inject, useFactory })` is the separate asynchronous registration API; it accepts only explicit `inject` tokens and `useFactory`.
+Supported synchronous `GraphqlModule.forRoot(...)` options include `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `resolvers` (an allowlist of already registered resolver providers), `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, and `subscriptions.websocket.keepAliveMs`. `GraphqlModule.forRootAsync({ inject, useFactory })` is the separate asynchronous registration API; it accepts only explicit `inject` tokens and `useFactory`.
 
 ## Related Packages
 

@@ -76,8 +76,8 @@ export const ACCOUNT_LABELS_READ = Symbol('accounts.labels.read');
 ```ts
 import { Inject } from '@fluojs/core';
 import {
-  Arg, Context, FieldResolver, Parent, Query, Resolver,
-  createDataLoader, type GraphQLContext,
+  Arg, Context, FieldResolver, OperationScopedDataLoader, Parent, Query, Resolver,
+  type GraphQLContext,
 } from '@fluojs/graphql';
 import {
   GraphQLBoolean, GraphQLError, GraphQLID, GraphQLInt,
@@ -192,7 +192,7 @@ export class DashboardOrderFields {
   private readonly customerById;
 
   constructor(accounts: AccountLabelsRead) {
-    this.customerById = createDataLoader<string, CustomerLabel | null>(
+    this.customerById = OperationScopedDataLoader.create<string, CustomerLabel | null>(
       async ids => {
         const rows = await accounts.findMany(ids);
         const byId = new Map(rows.map(row => [row.id, row]));
@@ -202,7 +202,7 @@ export class DashboardOrderFields {
     );
   }
 
-  @FieldResolver('customer')
+  @FieldResolver({ fieldName: 'customer' })
   @Parent(0)
   @Context(1)
   customer(
@@ -219,7 +219,7 @@ export class DashboardOrderFields {
 
 입력 DTO의 기본값은 인자가 생략되었을 때 사용된다. `first: null`은 생략과 다르며 위 검증에서 거부된다. `@Arg`를 사용했다고 SDL의 인자가 자동으로 non-null이 되는 것도 아니다. 이 구현은 명시적 범위 검증과 `BAD_USER_INPUT`을 사용한다. 제품이 인자 자체의 non-null SDL을 요구한다면 현재 code-first 계약을 확인하고 schema-first 등 다른 조립 방법을 선택해야 한다. 지원하지 않는 데코레이터 옵션을 만들어 넣지 않는다.
 
-`customerById`는 singleton resolver가 갖는 **접근 함수**이지 모든 요청이 공유하는 고객 캐시가 아니다. `createDataLoader`가 각 `GraphQLContext`의 operation 캐시에서 실제 loader를 얻는다. 같은 operation 안에서 여러 주문이 같은 고객을 요구하면 하나의 로드 결과를 공유하고, 다른 operation은 새 loader를 얻는다. 반면 생성자에서 일반 DataLoader 인스턴스를 하나 만들어 계속 재사용하면 사용자 간 데이터와 권한 결과가 섞일 수 있다.
+`customerById`는 singleton resolver가 갖는 **접근 함수**이지 모든 요청이 공유하는 고객 캐시가 아니다. `OperationScopedDataLoader.create`가 각 `GraphQLContext`의 operation 캐시에서 실제 loader를 얻는다. 같은 operation 안에서 여러 주문이 같은 고객을 요구하면 하나의 로드 결과를 공유하고, 다른 operation은 새 loader를 얻는다. 반면 생성자에서 일반 DataLoader 인스턴스를 하나 만들어 계속 재사용하면 사용자 간 데이터와 권한 결과가 섞일 수 있다.
 
 배치 함수가 DB 반환 배열을 그대로 돌려주지 않는 이유도 중요하다. `WHERE id IN (...)`의 결과 순서는 요청한 ID 순서와 같다는 보장이 없다. 빠진 계정도 있을 수 있다. `Map`으로 재배열하여 입력 key마다 같은 위치에 결과 또는 `null`을 돌려줘야 주문 A의 행에 고객 B의 이름이 붙지 않는다. `maxBatchSize`는 한 번의 배치를 제한할 뿐 operation 전체의 요청 수나 DB 비용을 제한하지 않는다.
 
@@ -677,7 +677,7 @@ describe('dashboard authentication boundary', () => {
 
 ## N+1을 숨기는 대신 배치 횟수를 관찰한다
 
-다음 `src/orders/dashboard/resolvers.test.ts`는 **완전한 단위·배치 실험 파일**이다. 위 fixture의 실제 인증 어댑터를 통과한 문맥으로 resolver를 직접 호출한다. 스키마 생성·네트워크 전송은 검증하지 않으며, 실제 `createDataLoader`를 사용하여 동일 operation에서의 중복 제거와 다른 operation의 격리를 확인한다. 가짜 표시 정보 저장소가 입력 순서와 반대 순서로 값을 돌려줘도 고객 매핑이 맞아야 한다.
+다음 `src/orders/dashboard/resolvers.test.ts`는 **완전한 단위·배치 실험 파일**이다. 위 fixture의 실제 인증 어댑터를 통과한 문맥으로 resolver를 직접 호출한다. 스키마 생성·네트워크 전송은 검증하지 않으며, 실제 `OperationScopedDataLoader.create` 경로를 사용하여 동일 operation에서의 중복 제거와 다른 operation의 격리를 확인한다. 가짜 표시 정보 저장소가 입력 순서와 반대 순서로 값을 돌려줘도 고객 매핑이 맞아야 한다.
 
 ```ts
 import { describe, expect, it } from 'vitest';

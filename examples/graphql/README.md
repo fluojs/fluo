@@ -6,9 +6,9 @@ A runnable `@fluojs/graphql` application that keeps module registration, resolve
 
 ## what this example demonstrates
 
-- `GraphqlModule.forRoot({ resolvers })` registration with every resolver also registered as a module provider
+- Resolver registration in module `providers`; `GraphqlModule.forRoot({ resolvers })` is an optional selection allowlist
 - A root `books` query and a `Book.author` field resolver discovered from the compiled module graph
-- `createDataLoader(...)` scoped to one GraphQL operation so repeated author lookups share a loader without crossing request boundaries
+- `OperationScopedDataLoader.create(...)` scoped to one GraphQL operation so repeated author lookups share a loader without crossing request boundaries
 - A default SSE `bookPublished` subscription that is active before the `publishBook` mutation emits its update
 
 ## how to run

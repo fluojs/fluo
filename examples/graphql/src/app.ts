@@ -5,10 +5,10 @@ import type { OnApplicationShutdown } from '@fluojs/runtime';
 import {
   Arg,
   Context,
-  createDataLoader,
   FieldResolver,
   GraphqlModule,
   Mutation,
+  OperationScopedDataLoader,
   Parent,
   Query,
   Resolver,
@@ -186,13 +186,13 @@ class BookResolver {
   private readonly authorById;
 
   constructor(private readonly batches: AuthorBatchRecorder) {
-    this.authorById = createDataLoader<string, Author | null>(async (ids) => {
+    this.authorById = OperationScopedDataLoader.create<string, Author | null>(async (ids) => {
       this.batches.record(ids);
       return ids.map((id) => authors.get(id) ?? null);
     });
   }
 
-  @FieldResolver('author')
+  @FieldResolver({ fieldName: 'author' })
   @Parent()
   @Context()
   async author(book: Book, context: GraphQLContext): Promise<Author | null> {
@@ -219,7 +219,6 @@ class PublicationResolver {
 @Module({
   imports: [
     GraphqlModule.forRoot({
-      resolvers: [CatalogResolver, BookResolver, PublicationResolver],
     }),
   ],
   providers: [

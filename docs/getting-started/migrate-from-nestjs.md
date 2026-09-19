@@ -45,6 +45,15 @@ and list their tokens explicitly in `inject`. No standalone migration example is
 maintained executable-style examples are the `@fluojs/graphql` README and
 [Book Chapter 18](../../book/intermediate/ch18-graphql.md).
 
+Register resolver classes in the owning module's `providers`. `resolvers` is only an optional
+allowlist over those registered candidates: omit it or pass `[]` to discover every provider-backed
+resolver. For operation-scoped batching, replace
+`createDataLoader(batch, options)` with `OperationScopedDataLoader.create(batch, options)`.
+Import the upstream `dataloader` package directly when an application needs its constructor or
+types. Replace string decorator shorthand such as `@Query('name')` or
+`@FieldResolver('name')` with `@Query({ fieldName: 'name' })` or
+`@FieldResolver({ fieldName: 'name' })`.
+
 ## Response cookie migration
 
 Replace `res.cookie()` and `res.clearCookie()` with `setCookie(response, name, value, options?)` and `clearCookie(response, name, options?)` from `@fluojs/http`. These free functions work through `FrameworkResponse`, so they do not couple controllers to Express or Fastify.

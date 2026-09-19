@@ -38,6 +38,8 @@ NestJS application에서 GraphQL option을 비동기로 해석했다면 `Graphql
 
 이는 NestJS dynamic-module 호환성이 아닙니다. `imports`, `useClass`, `useExisting`, 암시적 provider discovery는 거부합니다. 필요한 provider를 application graph에 등록하고 token을 `inject`에 명시적으로 나열하세요. 별도 migration example은 추가하지 않습니다. 유지 관리되는 실행형 예제는 `@fluojs/graphql` README와 [Book Chapter 18](../../book/intermediate/ch18-graphql.ko.md)입니다.
 
+Resolver class는 소유 module의 `providers`에 등록하세요. `resolvers`는 이미 등록된 후보에서 고르는 선택적 allowlist일 뿐이므로, 모든 provider-backed resolver를 발견하려면 생략하거나 `[]`를 전달하세요. Operation 범위 batching은 `createDataLoader(batch, options)` 대신 `OperationScopedDataLoader.create(batch, options)`로 이전하세요. Application에서 upstream `dataloader` constructor나 type이 필요하면 해당 package에서 직접 import하세요. `@Query('name')`, `@FieldResolver('name')` 같은 문자열 decorator shorthand는 각각 `@Query({ fieldName: 'name' })`, `@FieldResolver({ fieldName: 'name' })`로 바꾸세요.
+
 ## 응답 쿠키 마이그레이션
 
 `res.cookie()`와 `res.clearCookie()`를 `@fluojs/http`의 `setCookie(response, name, value, options?)`, `clearCookie(response, name, options?)`로 바꾸세요. 이 free function은 `FrameworkResponse`를 통해 작동하므로 controller가 Express나 Fastify에 결합되지 않습니다.

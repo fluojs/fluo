@@ -76,8 +76,8 @@ The following `src/orders/dashboard/resolvers.ts` is a **complete file**. Storag
 ```ts
 import { Inject } from '@fluojs/core';
 import {
-  Arg, Context, FieldResolver, Parent, Query, Resolver,
-  createDataLoader, type GraphQLContext,
+  Arg, Context, FieldResolver, OperationScopedDataLoader, Parent, Query, Resolver,
+  type GraphQLContext,
 } from '@fluojs/graphql';
 import {
   GraphQLBoolean, GraphQLError, GraphQLID, GraphQLInt,
@@ -192,7 +192,7 @@ export class DashboardOrderFields {
   private readonly customerById;
 
   constructor(accounts: AccountLabelsRead) {
-    this.customerById = createDataLoader<string, CustomerLabel | null>(
+    this.customerById = OperationScopedDataLoader.create<string, CustomerLabel | null>(
       async ids => {
         const rows = await accounts.findMany(ids);
         const byId = new Map(rows.map(row => [row.id, row]));
@@ -202,7 +202,7 @@ export class DashboardOrderFields {
     );
   }
 
-  @FieldResolver('customer')
+  @FieldResolver({ fieldName: 'customer' })
   @Parent(0)
   @Context(1)
   customer(
@@ -219,7 +219,7 @@ When an account has been deleted or display information is missing, `customer` i
 
 Input DTO defaults apply when an argument is omitted. `first: null` is different from omission and is rejected by the validation above. Using `@Arg` does not automatically make the SDL argument non-null either. This implementation uses explicit range validation and `BAD_USER_INPUT`. If the product requires the argument itself to be non-null in the SDL, check the current code-first contract and choose another assembly method, such as schema-first. Do not invent unsupported decorator options.
 
-`customerById` is an **accessor function** held by the singleton resolver, not a customer cache shared by all requests. `createDataLoader` obtains the actual loader from each `GraphQLContext`'s operation cache. When several orders need the same customer within one operation, they share one load result, while a different operation receives a new loader. In contrast, creating a regular DataLoader instance in the constructor and reusing it indefinitely can mix data and authorization results across users.
+`customerById` is an **accessor function** held by the singleton resolver, not a customer cache shared by all requests. `OperationScopedDataLoader.create` obtains the actual loader from each `GraphQLContext`'s operation cache. When several orders need the same customer within one operation, they share one load result, while a different operation receives a new loader. In contrast, creating a regular DataLoader instance in the constructor and reusing it indefinitely can mix data and authorization results across users.
 
 The reason the batch function does not simply return the database result array matters too. There is no guarantee that `WHERE id IN (...)` returns rows in the order of the requested IDs. Some accounts may also be missing. Reorder with a `Map` to return a result or `null` at the same position for each input key; otherwise, order A's row may acquire customer B's name. `maxBatchSize` limits one batch, not the total number of requests or database cost of an operation.
 
@@ -677,7 +677,7 @@ The barrier in the final test is an exact signal that execution has reached the 
 
 ## Observe Batch Counts Instead of Hiding N+1
 
-The following `src/orders/dashboard/resolvers.test.ts` is a **complete unit and batching experiment file**. It calls resolvers directly with contexts that passed through the fixture's actual authentication adapter. It does not verify schema generation or network transport; it uses the real `createDataLoader` to check deduplication within an operation and isolation between operations. Customer mapping must remain correct even when the fake display information store returns values in the reverse of the input order.
+The following `src/orders/dashboard/resolvers.test.ts` is a **complete unit and batching experiment file**. It calls resolvers directly with contexts that passed through the fixture's actual authentication adapter. It does not verify schema generation or network transport; it uses the real `OperationScopedDataLoader.create` path to check deduplication within an operation and isolation between operations. Customer mapping must remain correct even when the fake display information store returns values in the reverse of the input order.
 
 ```ts
 import { describe, expect, it } from 'vitest';
