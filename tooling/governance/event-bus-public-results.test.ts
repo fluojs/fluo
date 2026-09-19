@@ -13,8 +13,9 @@ const repositoryRoot = fileURLToPath(new URL('../../', import.meta.url));
 let root: string;
 let fixture: string;
 const imports = [
-  "import { EVENT_BUS, EventBusLifecycleService } from '@fluojs/event-bus';",
-  "import type { EventBus, EventBusWithResults, EventDeliveryOutcome, EventDeliveryStatus, EventPublishResult, EventPublishSettlement } from '@fluojs/event-bus';",
+  "import { EventBusService } from '@fluojs/event-bus';",
+  "import type { EventDeliveryOutcome, EventDeliveryStatus, EventPublishResult, EventPublishSettlement } from '@fluojs/event-bus';",
+  "import { EVENT_BUS_SHUTDOWN_COORDINATOR, type EventBusShutdownCoordinator } from '@fluojs/event-bus/integration';",
   "import type { Container } from '@fluojs/di';",
 ].join('\n');
 
@@ -73,15 +74,18 @@ describe('event-bus emitted result declarations', () => {
     });
   }, 300_000);
 
-  it('preserves legacy implementations and exposes typed service and token results', () => {
+  it('exposes EventBusService and supports both ignored and observed publication results', () => {
     // Given
     const consumer = `${imports}
 declare const container: Container;
-declare const service: EventBusLifecycleService;
-const legacy: EventBus = { async publish() {} };
-const legacyToken: Promise<EventBus> = container.resolve<EventBus>(EVENT_BUS);
-const facade: Promise<EventBusWithResults> = container.resolve(EVENT_BUS);
-const result: EventPublishResult = await service.publishWithResult({});
+declare const service: EventBusService;
+declare const coordinator: EventBusShutdownCoordinator;
+const coordinatorToken = EVENT_BUS_SHUTDOWN_COORDINATOR;
+coordinator.adoptShutdownDeadline(Date.now());
+// Ignored caller
+await service.publish({});
+// Observed caller
+const result: EventPublishResult = await service.publish({});
 if (result.status === 'background') {
   const completion: Promise<EventPublishSettlement> = result.completion;
 } else if (result.status === 'settled') {
@@ -107,14 +111,21 @@ if (result.status === 'background') {
     expect(diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))).toEqual([]);
   });
 
-  it('rejects un-narrowed results, incomplete statuses and payload/error access', () => {
+  it('rejects removed legacy symbols, un-narrowed results, incomplete statuses and payload/error access', () => {
     // Given
     const setup = `${imports}
-declare const legacy: EventBus;
+declare const service: EventBusService;
 declare const result: EventPublishResult;
 declare const outcome: EventDeliveryOutcome;`;
     const invalid = [
-      'legacy.publishWithResult({});',
+      'service.publishWithResult({});',
+      'const legacy: import("@fluojs/event-bus").EventBus = {} as any;',
+      'const legacyFacade: import("@fluojs/event-bus").EventBusWithResults = {} as any;',
+      'const lifecycle: import("@fluojs/event-bus").EventBusLifecycleService = {} as any;',
+      'const token = ({} as typeof import("@fluojs/event-bus")).EVENT_BUS;',
+      'service.adoptShutdownDeadline(Date.now());',
+      'const descriptor: import("@fluojs/event-bus").EventHandlerDescriptor = {} as any;',
+      'const metadata: import("@fluojs/event-bus").EventHandlerMetadata = {} as any;',
       "const timeout: EventDeliveryStatus = { status: 'timed-out' };",
       "const background: EventPublishResult = { status: 'background', outcomes: [] };",
       'result.outcomes;',

@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import {
-  EVENT_BUS,
   EventBusModule,
-  type EventBusWithResults,
+  EventBusService,
   type EventPublishResult,
   OnEvent,
 } from '@fluojs/event-bus';
@@ -52,7 +51,7 @@ const app = await FluoFactory.create(AppModule, {
 });
 
 try {
-  const bus = await app.container.resolve<EventBusWithResults>(EVENT_BUS);
+  const bus = await app.container.resolve(EventBusService);
 
   // Authentication has already succeeded. Publish only a database record ID, never the API credential.
   // An isolated last-used listener failure must not turn this principal into an authentication error.
@@ -63,7 +62,7 @@ try {
 
   // This application's projection policy requires every selected recipient to succeed.
   // Neither "settled" nor an empty recipient list is proof of required work succeeding.
-  const result: EventPublishResult = await bus.publishWithResult(new RefreshProjection('post-1'));
+  const result: EventPublishResult = await bus.publish(new RefreshProjection('post-1'));
   const projectionReady = result.status === 'settled'
     && result.outcomes.every((outcome) => outcome.status === 'succeeded');
   assert.equal(projectionReady, false);
@@ -73,7 +72,7 @@ try {
   assert.equal(logs.at(-1)?.error, undefined);
 
   // Background publication returns a receipt, not a success claim.
-  const receipt = await bus.publishWithResult(new RefreshProjection('post-1'), { waitForHandlers: false });
+  const receipt = await bus.publish(new RefreshProjection('post-1'), { waitForHandlers: false });
   assert.equal(receipt.status, 'background');
   if (receipt.status !== 'background') throw new Error('Expected completion receipt');
   const completion = await receipt.completion;

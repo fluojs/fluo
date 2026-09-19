@@ -233,9 +233,9 @@ export interface NotificationsEventPublisher {
    * Publishes one notification lifecycle event.
    *
    * @param event Lifecycle event describing a requested, queued, delivered, or failed dispatch step.
-   * @returns A promise that resolves once the caller-visible publication completes.
+   * @returns A promise that resolves once the caller-visible publication completes; implementations may return an ignored observation result.
    */
-  publish(event: NotificationLifecycleEvent): Promise<void>;
+  publish(event: NotificationLifecycleEvent): Promise<unknown>;
 }
 
 /** Queue configuration for optional bulk-delivery offloading. */

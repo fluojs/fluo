@@ -55,17 +55,17 @@ export class NotificationService {
 
 ### 2. Register and Publish
 
-Import `EventBusModule` and inject `EventBusLifecycleService` to publish events.
+Import `EventBusModule` and inject `EventBusService` to publish events.
 
-Use `EventBusModule.forRoot(...)` to wire the in-process event bus. Event-bus providers are global by default (`global: true`), so `EventBusLifecycleService` and the `EVENT_BUS` compatibility token are visible to modules that import the root graph. Pass `EventBusModule.forRoot({ global: false })` when you need module-local visibility instead.
+Use `EventBusModule.forRoot(...)` to wire the in-process event bus. Event-bus providers are global by default (`global: true`), so `EventBusService` is visible to modules that import the root graph. Pass `EventBusModule.forRoot({ global: false })` when you need module-local visibility instead.
 
 ```typescript
 import { Module, Inject } from '@fluojs/core';
-import { EventBusModule, EventBusLifecycleService } from '@fluojs/event-bus';
+import { EventBusModule, EventBusService } from '@fluojs/event-bus';
 
-@Inject(EventBusLifecycleService)
+@Inject(EventBusService)
 export class UserService {
-  constructor(private readonly eventBus: EventBusLifecycleService) {}
+  constructor(private readonly eventBus: EventBusService) {}
 
   async signUp(email: string) {
     // Logic to save user...
@@ -88,9 +88,9 @@ Handler failure isolation is narrower than publish completion. Matching local li
 
 ### Publishing with Results
 
-`publish(...)` remains the existing best-effort API: its `Promise<void>` return type, failure isolation, and existing logging with raw errors do not change. Opt into `EventBusLifecycleService.publishWithResult(event, options?)` only when caller policy needs to evaluate reaction results. This API uses the same module registration, effective singleton handler discovery, and per-recipient payload cloning, and returns `Promise<EventPublishResult>`. The `EVENT_BUS` runtime facade supports it too. Consumers injecting the facade can use the additive `EventBusWithResults` type from the root `@fluojs/event-bus` package. The legacy `EventBus` interface gains no method, so existing implementations remain valid.
+Publication uses one application-facing `EventBusService.publish(event, options?): Promise<EventPublishResult>` execution path. Callers may ignore the returned result for best-effort notification or inspect it to evaluate reaction outcomes.
 
-The `EVENT_BUS` token carries `Token<EventBusWithResults>`, so `container.resolve(EVENT_BUS)` infers the result-aware facade. Existing consumers can still explicitly call `container.resolve<EventBus>(EVENT_BUS)`, which exposes only the legacy `publish` contract.
+The single publication method uses the same module registration, effective singleton handler discovery, and per-recipient payload cloning, and returns `Promise<EventPublishResult>`. The lifecycle implementation remains internal; applications inject `EventBusService`. First-party orchestrators like CQRS coordinate shutdown deadlines through the narrow `@fluojs/event-bus/integration` subpath.
 
 | Inputs and defaults | Contract |
 | --- | --- |
@@ -124,10 +124,10 @@ Awaited `timed-out`/`cancelled` outcomes are caller observations only. Started w
 Discovery and payload preparation errors still reject the promise. There is no separate aggregate-reject API: the caller examines `status` and every outcome to choose a reaction-failure policy. The following is a **scoped consumer function** using an injected service in an application that has already registered `EventBusModule.forRoot()` and the required handlers. It treats the publication as successful only when at least one required reaction exists and all selected attempts succeeded.
 
 ```typescript
-import { EventBusLifecycleService } from '@fluojs/event-bus';
+import { EventBusService } from '@fluojs/event-bus';
 
-async function requireReactions(eventBus: EventBusLifecycleService, event: object): Promise<void> {
-  const result = await eventBus.publishWithResult(event, { waitForHandlers: true });
+async function requireReactions(eventBus: EventBusService, event: object): Promise<void> {
+  const result = await eventBus.publish(event, { waitForHandlers: true });
   if (
     result.status !== 'settled' ||
     result.outcomes.length === 0 ||
@@ -140,7 +140,7 @@ async function requireReactions(eventBus: EventBusLifecycleService, event: objec
 
 Even this policy cannot prove that a missing required handler was configured. Verify required local handler registration in application tests, and design a separate acknowledgement contract if remote processing completion is required. The [two consumer examples in the messaging guide](../../apps/docs/content/docs/guides/messaging-workflows.mdx) contrast legacy best-effort `publish` for last-used bookkeeping after successful authentication, carrying only a token record ID, with explicit checks for result-required reactions.
 
-Handler/transport failure logs reported by `publishWithResult` retain the existing safe target/status messages but do not pass the raw handler/transport error argument to the logger. This matches the result contract that excludes raw errors and handler return values. Logs written directly by application handlers or adapters remain the application's responsibility; this is not a global sanitization policy for legacy `publish` or inbound delivery logs.
+Handler/transport failure logs reported by `publish` retain the existing safe target/status messages but do not pass the raw handler/outbound transport error argument to the logger. This matches the result contract that excludes raw errors and handler return values. Logs written directly by application handlers or adapters remain the application's responsibility; this is not a global sanitization policy for inbound delivery logs.
 
 ## Common Patterns
 
@@ -223,15 +223,14 @@ Handlers are discovered from normalized effective singleton provider registratio
 
 ### Core
 - `EventBusModule.forRoot({ global?, publish?, shutdown?, transport? })`: Main entry point for event bus registration. `global` defaults to `true`; set `global: false` to keep event-bus providers visible only through the module that imports the event-bus module.
-- `EventBusLifecycleService`: Primary service for legacy `publish(event, options?)`, opt-in `publishWithResult(event, options?)`, and platform status snapshots.
+- `EventBusService`: Primary application service for publishing in-process events with `EventPublishResult` and creating platform status snapshots.
 - `@OnEvent(EventClass)`: Decorator to mark a public instance method as an event handler.
-- `EVENT_BUS`: Compatibility injection token for the publish facade.
 - `createEventBusPlatformStatusSnapshot(...)`: Status snapshot helper used by diagnostics and health surfaces.
 
 ### Interfaces
 - `EventBusTransport`: Contract for implementing external transport adapters.
-- `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: Type-only contracts for publishing, defaults, transports, and stable event keys.
-- `EventBusWithResults`: Result-aware facade contract extending the legacy `EventBus`. `EventDeliveryTarget`, `EventDeliveryStatus`, `EventDeliveryOutcome`, `EventPublishSettlement`, and `EventPublishResult` are also type-only root exports.
+- `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: Type-only contracts for publishing options, defaults, transports, and stable event keys.
+- `EventDeliveryTarget`, `EventDeliveryStatus`, `EventDeliveryOutcome`, `EventPublishSettlement`, `EventPublishResult`: Type-only root exports describing publication outcomes, refusal, and background receipts.
 - `EventBusLifecycleState`, `EventBusStatusAdapterInput`, `EventBusPlatformStatusSnapshot`: Status snapshot contracts.
 
 Transport bootstrap subscribes once per unique event channel. `eventKey` controls the transport channel name when present. If a later transport subscription fails during bootstrap, the event bus closes the transport to roll back any channels that were already opened before rethrowing the subscription error. Inbound transport messages that arrive after shutdown starts are ignored before local handler dispatch.
@@ -241,6 +240,7 @@ Transport bootstrap subscribes once per unique event channel. `eventKey` control
 | Concern | Subpath | Exports |
 | --- | --- | --- |
 | Redis Pub/Sub transport | `@fluojs/event-bus/redis` | `RedisEventBusTransport`, `RedisEventBusTransportOptions` |
+| First-party integration | `@fluojs/event-bus/integration` | `EVENT_BUS_SHUTDOWN_COORDINATOR`, `EventBusShutdownCoordinator` |
 
 `RedisEventBusTransport` stays on the explicit `@fluojs/event-bus/redis` subpath so the root `@fluojs/event-bus` entrypoint remains focused on module registration, local publishing, decorators, and type-only contracts. Applications using this subpath must install the optional `ioredis` peer and supply dedicated, separate `publishClient` and `subscribeClient` instances. This Redis adapter JSON-decodes inbound Redis messages and drops malformed JSON before handler dispatch; that parsing rule does not apply to arbitrary `EventBusTransport` implementations. During shutdown, the adapter unsubscribes the channels it registered and detaches its message listener, but `close()` does not disconnect the caller-owned clients. If unsubscribe fails, `close()` still detaches the listener while retaining the registered channels so a later `close()` retries the same cleanup. The application or client-owning module must close those clients separately after event-bus teardown.
 

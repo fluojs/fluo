@@ -1,5 +1,3 @@
-import type { EventBus, EventPublishOptions } from './types.js';
-
 /** Recipient identity within one publication; transport success does not describe remote subscribers. */
 export type EventDeliveryTarget =
   | {
@@ -32,18 +30,3 @@ export type EventPublishResult =
   | EventPublishSettlement
   | { readonly status: 'rejected'; readonly reason: 'stopping' | 'stopped' | 'failed' }
   | { readonly status: 'background'; readonly completion: Promise<EventPublishSettlement> };
-
-/** Additive result-aware facade; existing implementations of {@link EventBus} remain valid. */
-export interface EventBusWithResults extends EventBus {
-  /**
-   * Observes matching local handlers and each outbound transport channel without changing best-effort publish.
-   *
-   * @param event Event instance whose payload is isolated for each recipient.
-   * @param options Existing publish bounds and background selection.
-   * @returns Recipient observations, lifecycle refusal, or a background completion receipt.
-   * @remarks Background completion observes actual settlement and ignores timeout and post-start cancellation.
-   * Awaited timeout/cancellation bounds only the caller's wait; underlying work remains shutdown-tracked.
-   * Discovery and payload preparation errors still reject. No durable delivery or remote handler success is implied.
-   */
-  publishWithResult(event: object, options?: EventPublishOptions): Promise<EventPublishResult>;
-}

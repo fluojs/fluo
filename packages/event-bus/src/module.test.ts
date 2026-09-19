@@ -7,9 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OnEvent } from './decorators.js';
 import { getEventHandlerMetadataEntries } from './metadata.js';
 import { EventBusModule } from './module.js';
-import { EventBusLifecycleService } from './service.js';
-import { EVENT_BUS } from './tokens.js';
-import type { EventBus, EventBusTransport } from './types.js';
+import { EventBusLifecycleService, EventBusService } from './service.js';
+import type { EventBusTransport } from './types.js';
 
 function createLogger(events: string[]): ApplicationLogger {
   return {
@@ -148,7 +147,7 @@ describe('@fluojs/event-bus', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(EventStore);
     const event = new UserCreatedEvent('user-1');
 
@@ -161,18 +160,39 @@ describe('@fluojs/event-bus', () => {
     await app.close();
   });
 
-  it('resolves EventBusLifecycleService directly and keeps EVENT_BUS as a compatibility alias', async () => {
+  it('resolves EventBusService directly as the canonical application facade and ensures same path for ignored and observed callers', async () => {
+    let handledCount = 0;
+    class CounterHandler {
+      @OnEvent(UserCreatedEvent)
+      handle() {
+        handledCount += 1;
+      }
+    }
+
     class AppModule {}
     defineModule(AppModule, {
       imports: [EventBusModule.forRoot()],
+      providers: [CounterHandler],
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBusByClass = await app.container.resolve(EventBusLifecycleService);
-    const eventBusByToken = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
 
-    expect(eventBusByClass).toBeInstanceOf(EventBusLifecycleService);
-    expect(typeof eventBusByToken.publish).toBe('function');
+    expect(eventBus).toBeInstanceOf(EventBusService);
+    expect(typeof eventBus.publish).toBe('function');
+    expect(typeof eventBus.createPlatformStatusSnapshot).toBe('function');
+
+    // Ignored caller: does not inspect returned result
+    await eventBus.publish(new UserCreatedEvent('ignored-1'));
+    expect(handledCount).toBe(1);
+
+    // Observed caller: inspects returned result
+    const observedResult = await eventBus.publish(new UserCreatedEvent('observed-1'));
+    expect(handledCount).toBe(2);
+    expect(observedResult).toMatchObject({
+      status: 'settled',
+      outcomes: [{ target: { kind: 'handler', targetName: 'CounterHandler' }, status: 'succeeded' }],
+    });
 
     await app.close();
   });
@@ -210,10 +230,11 @@ describe('@fluojs/event-bus', () => {
     const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
     });
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(EventStore);
 
-    await expect(eventBus.publish(new UserCreatedEvent('user-2'))).resolves.toBeUndefined();
+    const publishResult = await eventBus.publish(new UserCreatedEvent('user-2'));
+    expect(publishResult.status).toBe('settled');
 
     expect(store.successCalls).toBe(1);
     expect(loggerEvents.some((event) => event.includes('Event handler FailingHandler.handle failed.'))).toBe(true);
@@ -268,7 +289,7 @@ describe('@fluojs/event-bus', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(EventStore);
 
     await eventBus.publish(new MutableEvent({ role: 'original' }));
@@ -325,14 +346,15 @@ describe('@fluojs/event-bus', () => {
     const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
     });
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(EventStore);
 
     const publishPromise = eventBus.publish(new UserCreatedEvent('user-2-timeout'));
 
     await flushAsyncWork();
     await vi.advanceTimersByTimeAsync(20);
-    await expect(publishPromise).resolves.toBeUndefined();
+    const timeoutResult = await publishPromise;
+    expect(timeoutResult.status).toBe('settled');
 
     expect(store.successCalls).toBe(1);
     expect(loggerEvents.some((event) => event.includes('Event handler FailingHandler.onUserCreated failed.'))).toBe(true);
@@ -366,13 +388,14 @@ describe('@fluojs/event-bus', () => {
     const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
     });
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
 
     const publishPromise = eventBus.publish(new UserCreatedEvent('user-per-call-timeout'), { timeoutMs: 12 });
 
     await started.promise;
     await vi.advanceTimersByTimeAsync(12);
-    await expect(publishPromise).resolves.toBeUndefined();
+    const timeoutResult = await publishPromise;
+    expect(timeoutResult.status).toBe('settled');
 
     expect(loggerEvents.some((event) => event.includes('exceeded publish timeout of 12ms.'))).toBe(true);
 
@@ -408,12 +431,13 @@ describe('@fluojs/event-bus', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const publishPromise = eventBus.publish(new UserCreatedEvent('user-local-timeout-drain'));
 
     await started.promise;
     await vi.advanceTimersByTimeAsync(15);
-    await expect(publishPromise).resolves.toBeUndefined();
+    const timeoutResult = await publishPromise;
+    expect(timeoutResult.status).toBe('settled');
 
     let closeResolved = false;
     const closePromise = app.close().then(() => {
@@ -460,7 +484,7 @@ describe('@fluojs/event-bus', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const controller = new AbortController();
     const publishPromise = eventBus.publish(new UserCreatedEvent('user-local-abort-drain'), {
       signal: controller.signal,
@@ -468,7 +492,8 @@ describe('@fluojs/event-bus', () => {
 
     await started.promise;
     controller.abort();
-    await expect(publishPromise).resolves.toBeUndefined();
+    const abortResult = await publishPromise;
+    expect(abortResult.status).toBe('settled');
 
     let closeResolved = false;
     const closePromise = app.close().then(() => {
@@ -519,12 +544,11 @@ describe('@fluojs/event-bus', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(EventStore);
 
-    await expect(
-      eventBus.publish(new UserCreatedEvent('user-non-blocking'), { waitForHandlers: false }),
-    ).resolves.toBeUndefined();
+    const nonBlockingResult = await eventBus.publish(new UserCreatedEvent('user-non-blocking'), { waitForHandlers: false });
+    expect(nonBlockingResult.status).toBe('background');
 
     await started.promise;
 
@@ -572,10 +596,11 @@ describe('@fluojs/event-bus', () => {
     const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
     });
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(EventStore);
 
-    await expect(eventBus.publish(new UserCreatedEvent('user-non-blocking-timeout'))).resolves.toBeUndefined();
+    const nonBlockingTimeoutResult = await eventBus.publish(new UserCreatedEvent('user-non-blocking-timeout'));
+    expect(nonBlockingTimeoutResult.status).toBe('background');
     await started.promise;
     await vi.advanceTimersByTimeAsync(20);
 
@@ -613,15 +638,14 @@ describe('@fluojs/event-bus', () => {
     const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
     });
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(EventStore);
     const controller = new AbortController();
 
     controller.abort();
 
-    await expect(
-      eventBus.publish(new UserCreatedEvent('user-cancelled'), { signal: controller.signal }),
-    ).resolves.toBeUndefined();
+    const cancelledResult = await eventBus.publish(new UserCreatedEvent('user-cancelled'), { signal: controller.signal });
+    expect(cancelledResult.status).toBe('settled');
 
     expect(store.calls).toBe(0);
     expect(
@@ -673,7 +697,7 @@ describe('@fluojs/event-bus', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(EventStore);
 
     await eventBus.publish(new UserCreatedEvent('user-3'));
@@ -706,7 +730,7 @@ describe('@fluojs/event-bus', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(EventStore);
 
     await eventBus.publish(new UserPromotedEvent('user-4', 'admin'));
@@ -727,15 +751,16 @@ describe('@fluojs/event-bus', () => {
     const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
     });
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
 
-    await expect(eventBus.publish(new PasswordResetEvent('user-5'))).resolves.toBeUndefined();
+    const noRecipientsResult = await eventBus.publish(new PasswordResetEvent('user-5'));
+    expect(noRecipientsResult).toEqual({ status: 'no-recipients', outcomes: [] });
     expect(loggerEvents.some((event) => event.includes('error:EventBusLifecycleService'))).toBe(false);
 
     await app.close();
   });
 
-  it('supports DI injection of EVENT_BUS into providers', async () => {
+  it('supports DI injection of EventBusService into providers', async () => {
     class EventStore {
       count = 0;
     }
@@ -750,9 +775,9 @@ describe('@fluojs/event-bus', () => {
       }
     }
 
-    @Inject(EVENT_BUS)
+    @Inject(EventBusService)
     class UserPublisher {
-      constructor(private readonly eventBus: EventBus) {}
+      constructor(private readonly eventBus: EventBusService) {}
 
       async emit(): Promise<void> {
         await this.eventBus.publish(new UserCreatedEvent('user-6'));
@@ -807,7 +832,7 @@ describe('@fluojs/event-bus', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const service = await app.container.resolve(EventBusLifecycleService);
 
     await eventBus.publish(new UserCreatedEvent('user-7'));
@@ -855,7 +880,7 @@ describe('@fluojs/event-bus', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
 
     await eventBus.publish(new UserCreatedEvent('user-factory-value'));
 
@@ -967,7 +992,7 @@ describe('@fluojs/event-bus', () => {
     const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
     });
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
 
     await eventBus.publish(new UserCreatedEvent('user-request-factory'));
 
@@ -1010,7 +1035,7 @@ describe('@fluojs/event-bus', () => {
     const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
     });
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
 
     await eventBus.publish(new UserCreatedEvent('user-8'));
 
@@ -1062,7 +1087,7 @@ describe('@fluojs/event-bus', () => {
     const app = await FluoFactory.create(AppModule, {
       logger: createLogger(loggerEvents),
     });
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
 
     await eventBus.publish(new UserCreatedEvent('user-normalized-class'));
 
@@ -1096,9 +1121,9 @@ describe('@fluojs/event-bus', () => {
   });
 
   it('makes event-bus providers globally visible by default', async () => {
-    @Inject(EVENT_BUS)
+    @Inject(EventBusService)
     class SiblingPublisher {
-      constructor(readonly eventBus: EventBus) {}
+      constructor(readonly eventBus: EventBusService) {}
     }
 
     class EventBusHostModule {}
@@ -1125,9 +1150,9 @@ describe('@fluojs/event-bus', () => {
   });
 
   it('keeps event-bus providers module-local when global is false', async () => {
-    @Inject(EVENT_BUS)
+    @Inject(EventBusService)
     class SiblingPublisher {
-      constructor(readonly eventBus: EventBus) {}
+      constructor(readonly eventBus: EventBusService) {}
     }
 
     class EventBusHostModule {}
@@ -1176,7 +1201,7 @@ describe('@fluojs/event-bus', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(EventStore);
 
     await eventBus.publish(new UserCreatedEvent('user-10'));
@@ -1227,7 +1252,7 @@ describe('@fluojs/event-bus', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(EventStore);
 
     await eventBus.publish(new UserCreatedEvent('user-11'));
@@ -1275,7 +1300,7 @@ describe('@fluojs/event-bus', () => {
       });
 
       const app = await FluoFactory.create(AppModule);
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const eventBus = await app.container.resolve(EventBusService);
 
       await eventBus.publish(new UserCreatedEvent('transport-user-1'));
 
@@ -1311,11 +1336,10 @@ describe('@fluojs/event-bus', () => {
       });
 
       const app = await FluoFactory.create(AppModule);
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const eventBus = await app.container.resolve(EventBusService);
 
-      await expect(
-        eventBus.publish(new UserCreatedEvent('transport-user-nowait'), { waitForHandlers: false }),
-      ).resolves.toBeUndefined();
+      const transportNowaitResult = await eventBus.publish(new UserCreatedEvent('transport-user-nowait'), { waitForHandlers: false });
+      expect(transportNowaitResult.status).toBe('background');
 
       expect(transport.published).toHaveLength(1);
       expect(transport.publishCompleted).toBe(false);
@@ -1350,7 +1374,7 @@ describe('@fluojs/event-bus', () => {
       const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
       });
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const eventBus = await app.container.resolve(EventBusService);
 
       const publishPromise = eventBus.publish(new UserCreatedEvent('transport-user-per-call-timeout'), {
         timeoutMs: 12,
@@ -1360,7 +1384,8 @@ describe('@fluojs/event-bus', () => {
       expect(transport.publishStarted).toBe(true);
 
       await vi.advanceTimersByTimeAsync(12);
-      await expect(publishPromise).resolves.toBeUndefined();
+      const timeoutResult = await publishPromise;
+      expect(timeoutResult.status).toBe('settled');
 
       expect(
         loggerEvents.some((event) =>
@@ -1395,8 +1420,8 @@ describe('@fluojs/event-bus', () => {
       const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
       });
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
-      const service = await app.container.resolve(EventBusLifecycleService);
+      const eventBus = await app.container.resolve(EventBusService);
+      const service = await app.container.resolve(EventBusService);
 
       const publishPromise = eventBus.publish(new UserCreatedEvent('transport-user-timeout'));
 
@@ -1404,7 +1429,8 @@ describe('@fluojs/event-bus', () => {
       expect(transport.publishStarted).toBe(true);
 
       await vi.advanceTimersByTimeAsync(15);
-      await expect(publishPromise).resolves.toBeUndefined();
+      const timeoutResult = await publishPromise;
+      expect(timeoutResult.status).toBe('settled');
 
       expect(
         loggerEvents.some((event) =>
@@ -1440,13 +1466,12 @@ describe('@fluojs/event-bus', () => {
       const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
       });
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const eventBus = await app.container.resolve(EventBusService);
       const controller = new AbortController();
       controller.abort();
 
-      await expect(
-        eventBus.publish(new UserCreatedEvent('transport-user-abort'), { signal: controller.signal }),
-      ).resolves.toBeUndefined();
+      const transportAbortResult = await eventBus.publish(new UserCreatedEvent('transport-user-abort'), { signal: controller.signal });
+      expect(transportAbortResult.status).toBe('settled');
 
       expect(transport.publishCalls).toBe(0);
       expect(
@@ -1479,7 +1504,7 @@ describe('@fluojs/event-bus', () => {
       });
 
       const app = await FluoFactory.create(AppModule);
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const eventBus = await app.container.resolve(EventBusService);
       const publishPromise = eventBus.publish(new UserCreatedEvent('transport-user-drain'));
 
       await flushAsyncWork();
@@ -1529,7 +1554,7 @@ describe('@fluojs/event-bus', () => {
       const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
       });
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const eventBus = await app.container.resolve(EventBusService);
       const publishPromise = eventBus.publish(new UserCreatedEvent('transport-user-stuck-drain'));
 
       await flushAsyncWork();
@@ -1562,7 +1587,7 @@ describe('@fluojs/event-bus', () => {
       });
 
       const app = await FluoFactory.create(AppModule);
-      const service = await app.container.resolve(EventBusLifecycleService);
+      const service = await app.container.resolve(EventBusService);
 
       expect(service.createPlatformStatusSnapshot()).toMatchObject({
         details: {
@@ -1600,11 +1625,12 @@ describe('@fluojs/event-bus', () => {
       const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
       });
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const eventBus = await app.container.resolve(EventBusService);
       const store = await app.container.resolve(EventStore);
 
       await closeApplication(app);
-      await expect(eventBus.publish(new UserCreatedEvent('transport-user-stopped'))).resolves.toBeUndefined();
+      const stoppedResult = await eventBus.publish(new UserCreatedEvent('transport-user-stopped'));
+      expect(stoppedResult).toEqual({ status: 'rejected', reason: 'stopped' });
 
       expect(store.calls).toBe(0);
       expect(transport.published).toHaveLength(0);
@@ -1843,7 +1869,9 @@ describe('@fluojs/event-bus', () => {
       await expect(incomingSubscription!.handler({ userId: 'transport-user-logged' })).resolves.toBeUndefined();
 
       expect(store.successCalls).toBe(1);
-      expect(loggerEvents.some((event) => event.includes('Event handler FailingTransportHandler.onUserCreated failed.'))).toBe(true);
+      expect(loggerEvents).toContain(
+        'error:EventBusLifecycleService:Event handler FailingTransportHandler.onUserCreated failed.:transport handler failed',
+      );
 
       await app.close();
     });
@@ -1883,7 +1911,7 @@ describe('@fluojs/event-bus', () => {
       });
 
       const app = await FluoFactory.create(AppModule);
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const eventBus = await app.container.resolve(EventBusService);
       const store = await app.container.resolve(EventStore);
 
       await eventBus.publish(new UserPromotedEvent('transport-user-3', 'admin'));
@@ -1915,7 +1943,7 @@ describe('@fluojs/event-bus', () => {
       });
 
       const app = await FluoFactory.create(AppModule);
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const eventBus = await app.container.resolve(EventBusService);
 
       await eventBus.publish(new UserPromotedEvent('transport-user-no-local-base', 'admin'));
 
@@ -1955,7 +1983,7 @@ describe('@fluojs/event-bus', () => {
       });
 
       const app = await FluoFactory.create(AppModule);
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const eventBus = await app.container.resolve(EventBusService);
       const store = await app.container.resolve(EventStore);
 
       await eventBus.publish(new InventoryAdjustedEvent('sku-1'));
@@ -1994,7 +2022,7 @@ describe('@fluojs/event-bus', () => {
       });
 
       const app = await FluoFactory.create(AppModule);
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const eventBus = await app.container.resolve(EventBusService);
 
       await eventBus.publish(new DetailedIntegrationEvent('event-1', 'expanded'));
 
@@ -2307,7 +2335,7 @@ describe('@fluojs/event-bus', () => {
       const app = await FluoFactory.create(AppModule, {
         logger: createLogger(loggerEvents),
       });
-      const service = await app.container.resolve(EventBusLifecycleService);
+      const service = await app.container.resolve(EventBusService);
 
       await expect(closeApplication(app)).rejects.toThrow('close failed');
 
@@ -2353,7 +2381,7 @@ describe('@fluojs/event-bus', () => {
       });
 
       const app = await FluoFactory.create(AppModule);
-      const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+      const eventBus = await app.container.resolve(EventBusService);
       const store = await app.container.resolve(EventStore);
 
       await eventBus.publish(new UserCreatedEvent('local-user'));

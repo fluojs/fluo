@@ -1,14 +1,17 @@
 export { OnEvent } from './decorators.js';
 export { EventBusModule } from './module.js';
 export type {
-  EventBusWithResults,
   EventDeliveryOutcome,
   EventDeliveryStatus,
   EventDeliveryTarget,
   EventPublishResult,
   EventPublishSettlement,
 } from './publish-result.js';
-export { EventBusLifecycleService } from './service.js';
+export { EventBusService } from './service.js';
 export * from './status.js';
-export { EVENT_BUS } from './tokens.js';
-export type { EventBus, EventBusModuleOptions, EventBusTransport, EventPublishOptions, EventType } from './types.js';
+export type {
+  EventBusModuleOptions,
+  EventBusTransport,
+  EventPublishOptions,
+  EventType,
+} from './types.js';
