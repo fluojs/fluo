@@ -28,6 +28,30 @@ class InMemoryTopicBus {
   }
 }
 
+function createSignal() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+
+  return {
+    resolve,
+    async wait(): Promise<void> {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          promise,
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(() => reject(new Error('Expected test signal was not received.')), 2_000);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timeout);
+      }
+    },
+  };
+}
+
 function createTransport(
   bus: InMemoryTopicBus,
   options: Partial<KafkaMicroserviceTransportOptions> = {},
@@ -191,6 +215,8 @@ describe('KafkaMicroserviceTransport', () => {
   });
 
   it('rejects send() with AbortSignal after publish', async () => {
+    const handlerStarted = createSignal();
+    const releaseHandler = createSignal();
     const bus = new InMemoryTopicBus();
     const { transport } = createTransport(bus, {
       requestTimeoutMs: 5_000,
@@ -198,7 +224,8 @@ describe('KafkaMicroserviceTransport', () => {
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'message') {
-        await new Promise<void>(() => undefined);
+        handlerStarted.resolve();
+        await releaseHandler.wait();
       }
 
       return undefined;
@@ -206,11 +233,13 @@ describe('KafkaMicroserviceTransport', () => {
 
     const controller = new AbortController();
     const pending = transport.send('aborted.inflight', {}, controller.signal);
+    const aborted = expect(pending).rejects.toThrow('Kafka request aborted.');
 
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await handlerStarted.wait();
     controller.abort();
 
-    await expect(pending).rejects.toThrow('Kafka request aborted.');
+    await aborted;
+    releaseHandler.resolve();
 
     await transport.close();
   });
@@ -221,23 +250,28 @@ describe('KafkaMicroserviceTransport', () => {
       requestTimeoutMs: 2_000,
     });
 
+    const firstStarted = createSignal();
+    const releaseFirst = createSignal();
     await transport.listen(async (packet) => {
       if (packet.kind === 'event') {
         return undefined;
       }
 
-      const input = packet.payload as { delayMs: number; value: number };
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+      const input = packet.payload as { value: number };
+      if (input.value === 1) {
+        firstStarted.resolve();
+        await releaseFirst.wait();
+      }
       return input.value * 2;
     });
 
-    const [first, second] = await Promise.all([
-      transport.send('calc.double', { value: 1, delayMs: 100 }),
-      transport.send('calc.double', { value: 2, delayMs: 10 }),
-    ]);
+    const first = transport.send('calc.double', { value: 1 });
+    await firstStarted.wait();
+    const second = transport.send('calc.double', { value: 2 });
 
-    expect(first).toBe(2);
-    expect(second).toBe(4);
+    await expect(second).resolves.toBe(4);
+    releaseFirst.resolve();
+    await expect(first).resolves.toBe(2);
 
     await transport.close();
   });

@@ -2,41 +2,33 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import * as microservicesPublicApi from './index.js';
 import type {
-  GrpcMicroserviceTransportOptions,
-  KafkaMicroserviceTransportOptions,
   Microservice,
   MicroserviceModuleOptions,
   MicroserviceModuleRegistrationOptions,
   MicroserviceTransport,
-  MqttMicroserviceTransportOptions,
-  NatsMicroserviceTransportOptions,
   Pattern,
-  RabbitMqMicroserviceTransportOptions,
-  RedisPubSubMicroserviceTransportOptions,
+  ServerStreamWriter,
+} from './index.js';
+import type { GrpcMicroserviceTransportOptions } from './transports/grpc-transport.js';
+import type { KafkaMicroserviceTransportOptions } from './transports/kafka-transport.js';
+import type { MqttMicroserviceTransportOptions } from './transports/mqtt-transport.js';
+import type { NatsMicroserviceTransportOptions } from './transports/nats-transport.js';
+import type { RabbitMqMicroserviceTransportOptions } from './transports/rabbitmq-transport.js';
+import type { RedisPubSubMicroserviceTransportOptions } from './transports/redis-transport.js';
+import type {
   RedisStreamClientLike,
   RedisStreamsMicroserviceTransportOptions,
-  ServerStreamWriter,
-  TcpMicroserviceTransportOptions,
-} from './index.js';
+} from './transports/redis-streams-transport.js';
+import type { TcpMicroserviceTransportOptions } from './transports/tcp-transport.js';
 
 describe('@fluojs/microservices public API surface', () => {
-  it('keeps documented supported root-barrel exports', () => {
+  it('keeps documented root registration and facade exports', () => {
     expect(microservicesPublicApi).toHaveProperty('MicroservicesModule');
-    expect(microservicesPublicApi).toHaveProperty('createMicroservicesProviders');
     expect(microservicesPublicApi).toHaveProperty('MessagePattern');
     expect(microservicesPublicApi).toHaveProperty('EventPattern');
     expect(microservicesPublicApi).toHaveProperty('ServerStreamPattern');
     expect(microservicesPublicApi).toHaveProperty('ClientStreamPattern');
     expect(microservicesPublicApi).toHaveProperty('BidiStreamPattern');
-    expect(microservicesPublicApi).toHaveProperty('TcpMicroserviceTransport');
-    expect(microservicesPublicApi).toHaveProperty('RedisPubSubMicroserviceTransport');
-    expect(microservicesPublicApi).toHaveProperty('NatsMicroserviceTransport');
-    expect(microservicesPublicApi).toHaveProperty('KafkaMicroserviceTransport');
-    expect(microservicesPublicApi).toHaveProperty('RabbitMqMicroserviceTransport');
-    expect(microservicesPublicApi).toHaveProperty('RedisStreamsMicroserviceTransport');
-    expect(microservicesPublicApi).toHaveProperty('GrpcMicroserviceTransport');
-    expect(microservicesPublicApi).toHaveProperty('MqttMicroserviceTransport');
-    expect(microservicesPublicApi).toHaveProperty('MicroserviceLifecycleService');
     expect(microservicesPublicApi).toHaveProperty('MICROSERVICE');
     expect(microservicesPublicApi).toHaveProperty('createMicroservicePlatformStatusSnapshot');
   });
@@ -55,9 +47,11 @@ describe('@fluojs/microservices public API surface', () => {
     expectTypeOf<MicroserviceModuleOptions>().toMatchTypeOf<{ transport: MicroserviceTransport }>();
     expectTypeOf<MicroserviceModuleOptions>().toHaveProperty('module');
     expectTypeOf<MicroserviceModuleRegistrationOptions>().toHaveProperty('additionalExports');
-    expectTypeOf<MicroserviceModuleRegistrationOptions>().toHaveProperty('global');
+    expectTypeOf<MicroserviceModuleRegistrationOptions>().not.toHaveProperty('global');
     expectTypeOf<MicroserviceModuleRegistrationOptions>().toHaveProperty('providers');
     expectTypeOf<GrpcMicroserviceTransportOptions>().toHaveProperty('protoPath');
+    expectTypeOf<GrpcMicroserviceTransportOptions>().toHaveProperty('serverCredentials');
+    expectTypeOf<GrpcMicroserviceTransportOptions>().toHaveProperty('channelCredentials');
     expectTypeOf<KafkaMicroserviceTransportOptions>().toHaveProperty('consumer');
     expectTypeOf<MqttMicroserviceTransportOptions>().toHaveProperty('requestTimeoutMs');
     expectTypeOf<NatsMicroserviceTransportOptions>().toHaveProperty('client');

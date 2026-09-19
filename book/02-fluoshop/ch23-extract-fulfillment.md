@@ -467,7 +467,7 @@ The following `src/fulfillment/rabbit-events.ts` is an **event-only composition 
 
 ```ts
 import type { Channel, ConfirmChannel } from 'amqplib';
-import type { RabbitMqMicroserviceTransportOptions } from '@fluojs/microservices';
+import type { RabbitMqMicroserviceTransportOptions } from '@fluojs/microservices/rabbitmq';
 
 const eventQueue = 'shop.fulfillment.requests.v1';
 const failedQueue = 'shop.fulfillment.failed.v1';
@@ -545,11 +545,11 @@ The fulfillment process's `src/app.ts` is the following **complete module compos
 
 ```ts
 import { Module } from '@fluojs/core';
+import { MicroservicesModule } from '@fluojs/microservices';
 import {
-  MicroservicesModule,
   RabbitMqMicroserviceTransport,
   type RabbitMqMicroserviceTransportOptions,
-} from '@fluojs/microservices';
+} from '@fluojs/microservices/rabbitmq';
 import type { PrismaClient } from '@prisma/client';
 import { FULFILLMENT_DB, FulfillmentHandler } from './fulfillment/fulfillment-handler.js';
 
@@ -560,7 +560,7 @@ export function createFulfillmentModule(
   @Module({
     imports: [
       MicroservicesModule.forRoot({
-        transport: new RabbitMqMicroserviceTransport(options),
+        transport: RabbitMqMicroserviceTransport.create(options),
       }),
     ],
     providers: [
@@ -593,7 +593,7 @@ export function createFulfillmentPublisherModule(
   @Module({
     imports: [
       MicroservicesModule.forRoot({
-        transport: new RabbitMqMicroserviceTransport(producerOptions),
+        transport: RabbitMqMicroserviceTransport.create(producerOptions),
       }),
     ],
     providers: [FulfillmentRelay],

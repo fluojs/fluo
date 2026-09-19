@@ -6,7 +6,7 @@ import { FluoFactory } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { BidiStreamPattern, ClientStreamPattern, EventPattern, MessagePattern, ServerStreamPattern } from './decorators.js';
-import { createMicroservicesProviders, MicroservicesModule } from './module.js';
+import { MicroservicesModule } from './module.js';
 import { MicroserviceLifecycleService } from './service.js';
 import { MICROSERVICE, MICROSERVICE_OPTIONS } from './tokens.js';
 import { KafkaMicroserviceTransport } from './transports/kafka-transport.js';
@@ -23,6 +23,30 @@ import type {
 } from './types.js';
 
 const EXTRA_MICROSERVICE_EXPORT = Symbol('extra-microservice-export');
+
+function createSignal() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+
+  return {
+    resolve,
+    async wait(): Promise<void> {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          promise,
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(() => reject(new Error('Expected test signal was not received.')), 2_000);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timeout);
+      }
+    },
+  };
+}
 
 async function* streamFrom(values: readonly unknown[]): AsyncIterable<unknown> {
   for (const value of values) {
@@ -146,6 +170,18 @@ class InMemoryLoopbackTransport implements MicroserviceTransport {
   }
 
   async emit(pattern: string, payload: unknown): Promise<void> {
+    if (!this.handler) {
+      throw new Error('Transport handler is not listening.');
+    }
+
+    try {
+      await this.handler({ kind: 'event', pattern, payload });
+    } catch {
+      // Non-durable loopback emit preserves fire-and-forget semantics for the publisher.
+    }
+  }
+
+  async dispatchInboundEvent(pattern: string, payload: unknown): Promise<void> {
     if (!this.handler) {
       throw new Error('Transport handler is not listening.');
     }
@@ -408,9 +444,9 @@ describe('@fluojs/microservices', () => {
       useValue: 'module-first-registration',
     };
     const microserviceModule = MicroservicesModule.forRoot({
+      global: false,
       module: {
         additionalExports: [EXTRA_MICROSERVICE_EXPORT],
-        global: false,
         providers: [customProvider],
       },
       transport,
@@ -435,42 +471,6 @@ describe('@fluojs/microservices', () => {
     expect(lifecycleService).toBeInstanceOf(MicroserviceLifecycleService);
     expect(compiledMicroserviceModule?.definition.global).toBe(false);
     expect(compiledMicroserviceModule?.definition.exports).toContain(EXTRA_MICROSERVICE_EXPORT);
-
-    await app.close();
-  });
-
-  it('keeps createMicroservicesProviders aligned with the built-in runtime wiring', async () => {
-    const transport = new InMemoryLoopbackTransport();
-    const helperProviders = createMicroservicesProviders({ transport });
-    const optionsProvider = helperProviders.find(
-      (provider) => typeof provider === 'object' && provider !== null && 'provide' in provider && provider.provide === MICROSERVICE_OPTIONS,
-    );
-
-    expect(helperProviders).toHaveLength(3);
-    expect(optionsProvider).toMatchObject({
-      provide: MICROSERVICE_OPTIONS,
-      useValue: { transport },
-    });
-
-    class HelperModule {}
-    defineModuleMetadata(HelperModule, {
-      exports: [MicroserviceLifecycleService, MICROSERVICE],
-      providers: helperProviders,
-    });
-
-    class AppModule {}
-    defineModuleMetadata(AppModule, {
-      imports: [HelperModule],
-    });
-
-    const app = await FluoFactory.create(AppModule);
-    const lifecycleService = await app.container.resolve(MicroserviceLifecycleService);
-    const compatibilityToken = await app.container.resolve(MICROSERVICE);
-    const configuredOptions = await app.container.resolve(MICROSERVICE_OPTIONS);
-
-    expect(lifecycleService).toBeInstanceOf(MicroserviceLifecycleService);
-    expect(typeof compatibilityToken.listen).toBe('function');
-    expect(configuredOptions.transport).toBe(transport);
 
     await app.close();
   });
@@ -779,13 +779,16 @@ describe('@fluojs/microservices', () => {
 
   it('deduplicates concurrent listen() calls against the underlying transport subscription', async () => {
     let listenCalls = 0;
+    const listenStarted = createSignal();
+    const releaseListen = createSignal();
 
     const transport: MicroserviceTransport = {
       async close() {},
       async emit() {},
       async listen(_handler) {
         listenCalls += 1;
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        listenStarted.resolve();
+        await releaseListen.wait();
       },
       async send() {
         return undefined;
@@ -805,7 +808,11 @@ describe('@fluojs/microservices', () => {
 
     const microservice = await FluoFactory.createMicroservice(AppModule);
 
-    await Promise.all([microservice.listen(), microservice.listen()]);
+    const firstListen = microservice.listen();
+    await listenStarted.wait();
+    const secondListen = microservice.listen();
+    releaseListen.resolve();
+    await Promise.all([firstListen, secondListen]);
 
     expect(listenCalls).toBe(1);
 

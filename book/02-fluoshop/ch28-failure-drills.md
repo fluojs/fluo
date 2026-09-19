@@ -288,7 +288,7 @@ Queue uses `enqueue(jobInstance, options?)`, not `enqueue(name, payload)`. An ob
 The complete file `src/fulfillment/drills/doubles.ts` below is a **test-only implementation**. `DrillInbox` provides a signal immediately before commit and does not expose staged values in public state on failure. `ControlledBroker` separates publishing from actual delivery. A fake that immediately invokes a handler on publish can make the test reinforce the false assumption that `emit()` waits for remote completion.
 
 ```ts
-import type { RabbitMqMicroserviceTransportOptions } from '@fluojs/microservices';
+import type { RabbitMqMicroserviceTransportOptions } from '@fluojs/microservices/rabbitmq';
 import type { ShipmentInbox, ShipmentRequest } from './shipment-contract.js';
 
 export class DrillInbox implements ShipmentInbox {
@@ -370,9 +370,9 @@ import { Module } from '@fluojs/core';
 import {
   MICROSERVICE,
   MicroservicesModule,
-  RabbitMqMicroserviceTransport,
   type Microservice,
 } from '@fluojs/microservices';
+import { RabbitMqMicroserviceTransport } from '@fluojs/microservices/rabbitmq';
 import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 import { ControlledBroker, DrillInbox } from './doubles.js';
@@ -392,7 +392,7 @@ it('separates publish, failed delivery, and duplicate-safe application', async (
 
   @Module({
     imports: [MicroservicesModule.forRoot({
-      transport: new RabbitMqMicroserviceTransport({
+      transport: RabbitMqMicroserviceTransport.create({
         publisher: broker.publisher,
         consumer: broker.consumer,
         eventQueue: 'shop.drill.events',

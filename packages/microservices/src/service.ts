@@ -638,8 +638,11 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       singletonDescriptors.map((descriptor) => this.invokeHandler(descriptor, cloneWithFallback(payload))),
     );
 
+    const failures: unknown[] = [];
+
     for (const result of singletonResults) {
       if (result.status === 'rejected') {
+        failures.push(result.reason);
         this.logger.error(
           'Event handler failed during singleton dispatch.',
           result.reason,
@@ -648,45 +651,57 @@ export class MicroserviceLifecycleService implements Microservice, MicroserviceR
       }
     }
 
-    if (scopedDescriptors.length === 0) {
-      return undefined;
-    }
+    if (scopedDescriptors.length > 0) {
+      const perEventScope = this.runtimeContainer.createRequestScope();
+      const scopeErrors: unknown[] = [];
 
-    const perEventScope = this.runtimeContainer.createRequestScope();
-    const scopeErrors: Error[] = [];
+      try {
+        const scopedResults = await Promise.allSettled(
+          scopedDescriptors.map((descriptor) =>
+            this.invokeResolvedHandlerInScope(perEventScope, descriptor, cloneWithFallback(payload)),
+          ),
+        );
 
-    try {
-      const scopedResults = await Promise.allSettled(
-        scopedDescriptors.map((descriptor) =>
-    this.invokeResolvedHandlerInScope(perEventScope, descriptor, cloneWithFallback(payload)),
-        ),
-      );
-
-      for (const result of scopedResults) {
-        if (result.status === 'rejected') {
-          scopeErrors.push(result.reason instanceof Error ? result.reason : new Error(String(result.reason)));
+        for (const result of scopedResults) {
+          if (result.status === 'rejected') {
+            scopeErrors.push(result.reason);
+          }
+        }
+      } finally {
+        try {
+          await perEventScope.dispose();
+        } catch (disposeError) {
+          this.logger.error(
+            'Failed to dispose per-event scope.',
+            disposeError,
+            'MicroserviceLifecycleService',
+          );
         }
       }
-    } finally {
-      try {
-        await perEventScope.dispose();
-      } catch (disposeError) {
-        this.logger.error(
-          'Failed to dispose per-event scope.',
-          disposeError,
-          'MicroserviceLifecycleService',
-        );
+
+      if (scopeErrors.length > 0) {
+        for (const error of scopeErrors) {
+          failures.push(error);
+          this.logger.error(
+            'Scoped event handler failed.',
+            error,
+            'MicroserviceLifecycleService',
+          );
+        }
       }
     }
 
-    if (scopeErrors.length > 0) {
-      for (const error of scopeErrors) {
-        this.logger.error(
-          'Scoped event handler failed.',
-          error,
-          'MicroserviceLifecycleService',
-        );
-      }
+    if (failures.length === 1) {
+      throw failures[0];
+    }
+
+    if (failures.length > 1) {
+      throw new AggregateError(
+        failures,
+        `Event dispatch failed with ${failures.length} errors: ${failures
+          .map((failure) => (failure instanceof Error ? failure.message : String(failure)))
+          .join('; ')}`,
+      );
     }
 
     return undefined;

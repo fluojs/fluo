@@ -94,4 +94,3 @@ export class FileSystemI18nLoader implements I18nLoader {
     return snapshotLoaderMessageTree(parsed, `catalogs.${locale}.${namespace}`);
   }
 }
-

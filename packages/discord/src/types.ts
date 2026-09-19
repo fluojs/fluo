@@ -272,4 +272,3 @@ export interface NormalizedDiscordModuleOptions {
   };
   verifyOnModuleInit: boolean;
 }
-

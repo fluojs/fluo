@@ -90,6 +90,16 @@ export interface MqttMicroserviceTransportOptions {
  * keeping Fluo's message, event, and response channels isolated by topic.
  */
 export class MqttMicroserviceTransport implements MicroserviceTransport {
+  /**
+   * Creates an MQTT transport from a URL or caller-owned client configuration.
+   *
+   * @param options MQTT connection and topic configuration.
+   * @returns A configured MQTT transport.
+   */
+  static create(options: MqttMicroserviceTransportOptions): MqttMicroserviceTransport {
+    return new MqttMicroserviceTransport(options);
+  }
+
   private client: MqttClientLike | undefined;
   private closePromise: Promise<void> | undefined;
   private closing = false;

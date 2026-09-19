@@ -53,6 +53,16 @@ interface PendingRequest {
  * preserving JSON framing and NATS request timeout behavior.
  */
 export class NatsMicroserviceTransport implements MicroserviceTransport {
+  /**
+   * Creates a NATS transport from caller-owned client and codec collaborators.
+   *
+   * @param options NATS collaborators and subject configuration.
+   * @returns A configured NATS transport.
+   */
+  static create(options: NatsMicroserviceTransportOptions): NatsMicroserviceTransport {
+    return new NatsMicroserviceTransport(options);
+  }
+
   private closePromise: Promise<void> | undefined;
   private closing = false;
   private handler: TransportHandler | undefined;

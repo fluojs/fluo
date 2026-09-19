@@ -124,9 +124,9 @@ Factory 클래스를 모듈보다 먼저 선언해야 모듈 데코레이터가 
 Pub/Sub과 달리 Redis Streams는 메시지를 저장합니다. 컨슈머 그룹은 각 메시지가 그룹의 적어도 한 멤버에 의해 처리되도록 보장합니다. 어떤 컨슈머가 메시지를 받은 뒤 확인 응답을 보내기 전에 실패하면, 해당 메시지는 Pending Entries List(PEL)에 남아 다른 컨슈머가 회수할 수 있습니다.
 
 ```typescript
-import { RedisStreamsMicroserviceTransport } from '@fluojs/microservices';
+import { RedisStreamsMicroserviceTransport } from '@fluojs/microservices/redis-streams';
 
-const transport = new RedisStreamsMicroserviceTransport({
+const transport = RedisStreamsMicroserviceTransport.create({
   readerClient: redisClient,
   writerClient: redisClient,
   consumerGroup: 'payment-service-group',

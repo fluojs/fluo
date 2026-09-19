@@ -66,7 +66,7 @@ import { Module } from '@fluojs/core';
 import { MicroservicesModule } from '@fluojs/microservices';
 import { KafkaMicroserviceTransport } from '@fluojs/microservices/kafka';
 
-const transport = new KafkaMicroserviceTransport({
+const transport = KafkaMicroserviceTransport.create({
   consumer: kafkaConsumer, // Provided by kafkajs during bootstrap
   producer: kafkaProducer, // Provided by kafkajs during bootstrap
   eventTopic: 'fluoshop.timeline.events',

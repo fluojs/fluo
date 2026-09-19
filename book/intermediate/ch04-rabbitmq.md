@@ -70,7 +70,7 @@ import { Module } from '@fluojs/core';
 import { MicroservicesModule } from '@fluojs/microservices';
 import { RabbitMqMicroserviceTransport } from '@fluojs/microservices/rabbitmq';
 
-const transport = new RabbitMqMicroserviceTransport({
+const transport = RabbitMqMicroserviceTransport.create({
   consumer: rabbitConsumer, // Passed from the main bootstrap
   publisher: rabbitPublisher, // Passed from the main bootstrap
   eventQueue: 'fluoshop.fulfillment.events',

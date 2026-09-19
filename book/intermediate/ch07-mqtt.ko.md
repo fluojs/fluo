@@ -56,9 +56,10 @@ namespace만 제공해도 transport가 그 아래에서 topic 이름을 파생�
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MicroservicesModule, MqttMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { MqttMicroserviceTransport } from '@fluojs/microservices/mqtt';
 
-const transport = new MqttMicroserviceTransport({
+const transport = MqttMicroserviceTransport.create({
   url: process.env.MQTT_URL,
   namespace: 'fluoshop.devices',
   eventQos: 1,

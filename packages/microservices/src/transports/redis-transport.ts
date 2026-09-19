@@ -41,6 +41,16 @@ export interface RedisPubSubMicroserviceTransportOptions {
  * a transport with durable reply semantics such as TCP, Kafka, or Redis Streams.
  */
 export class RedisPubSubMicroserviceTransport implements MicroserviceTransport {
+  /**
+   * Creates a Redis Pub/Sub transport from caller-owned clients.
+   *
+   * @param options Redis clients and channel configuration.
+   * @returns A configured Redis Pub/Sub transport.
+   */
+  static create(options: RedisPubSubMicroserviceTransportOptions): RedisPubSubMicroserviceTransport {
+    return new RedisPubSubMicroserviceTransport(options);
+  }
+
   private closePromise: Promise<void> | undefined;
   private closing = false;
   private handler: TransportHandler | undefined;

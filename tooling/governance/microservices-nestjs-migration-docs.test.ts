@@ -144,34 +144,36 @@ describe('NestJS microservices migration documentation', () => {
     },
     {
       expectedError: 'MicroserviceLifecycleService must fan out',
-      mutate: (source: string) => source
-        .replace(
-          [
-            '    const singletonResults = await Promise.allSettled(',
-            '      singletonDescriptors.map((descriptor) => this.invokeHandler(descriptor, cloneWithFallback(payload))),',
-            '    );',
-          ].join('\n'),
-          [
-            '    class FanoutLater {',
-            '      async collect(): Promise<PromiseSettledResult<unknown>[]> {',
-            '        return await Promise.allSettled(',
-            '          singletonDescriptors.map((descriptor) => this.invokeHandler(descriptor, cloneWithFallback(payload))),',
-            '        );',
-            '      }',
-            '    }',
-            '    const singletonResults = [];',
-          ].join('\n'),
-        )
-        .replace(
-          [
-            '      const scopedResults = await Promise.allSettled(',
-            '        scopedDescriptors.map((descriptor) =>',
-            '    this.invokeResolvedHandlerInScope(perEventScope, descriptor, cloneWithFallback(payload)),',
-            '        ),',
-            '      );',
-          ].join('\n'),
-          '      const scopedResults = [];',
-        ),
+      mutate: (source: string) => {
+        const mutated = source
+          .replace(
+            [
+              '    const singletonResults = await Promise.allSettled(',
+              '      singletonDescriptors.map((descriptor) => this.invokeHandler(descriptor, cloneWithFallback(payload))),',
+              '    );',
+            ].join('\n'),
+            [
+              '    class FanoutLater {',
+              '      async collect(): Promise<PromiseSettledResult<unknown>[]> {',
+              '        return await Promise.allSettled(',
+              '          singletonDescriptors.map((descriptor) => this.invokeHandler(descriptor, cloneWithFallback(payload))),',
+              '        );',
+              '      }',
+              '    }',
+              '    const singletonResults = [];',
+            ].join('\n'),
+          )
+          .replace(
+            /(\s*)const scopedResults = await Promise\.allSettled\(\s*scopedDescriptors\.map\([\s\S]*?\),\s*\);/,
+            '$1const scopedResults = [];',
+          );
+
+        if (!mutated.includes('class FanoutLater') || mutated.includes('const scopedResults = await Promise.allSettled')) {
+          throw new Error('Fanout mutation failed to transform all executable call sites');
+        }
+
+        return mutated;
+      },
       path: 'packages/microservices/src/service.ts',
     },
     {
@@ -202,5 +204,25 @@ describe('NestJS microservices migration documentation', () => {
 
     // Then
     expect(runGovernanceGuard).toThrow(expectedError);
+  });
+
+  it.each([
+    'RedisStreamsMicroserviceTransport',
+    'RedisStreamsMicroserviceTransportOptions',
+    'RedisStreamClientLike',
+    'TcpMicroserviceTransport',
+    'TcpMicroserviceTransportOptions',
+    'GrpcMicroserviceTransportOptions',
+  ])('rejects root barrel export of transport symbol %s', (symbolName) => {
+    // Given
+    const readWithRootTransportExport = (relativePath: string) =>
+      relativePath === 'packages/microservices/src/index.ts'
+        ? `${read(relativePath)}\nexport type { ${symbolName} } from './transports/index.js';\n`
+        : read(relativePath);
+
+    // When / Then
+    expect(() => enforceMicroservicesRuntimeEvidence(readWithRootTransportExport)).toThrow(
+      'packages/microservices/src/index.ts must keep transport classes and transport options on their dedicated subpaths.',
+    );
   });
 });

@@ -24,7 +24,19 @@ function writeStubPackage(projectDirectory: string, packageName: string, source:
   mkdirSync(packageDirectory, { recursive: true });
   writeFileSync(
     join(packageDirectory, 'package.json'),
-    `${JSON.stringify({ exports: './index.js', name: packageName, type: 'module', version: '0.0.0-test' })}\n`,
+    `${JSON.stringify({
+      exports: packageName === '@fluojs/microservices'
+        ? {
+            '.': './index.js',
+            './kafka': './index.js',
+            './nats': './index.js',
+            './rabbitmq': './index.js',
+          }
+        : './index.js',
+      name: packageName,
+      type: 'module',
+      version: '0.0.0-test',
+    })}\n`,
     'utf8',
   );
   writeFileSync(join(packageDirectory, 'index.js'), source, 'utf8');
@@ -42,6 +54,14 @@ function installCommonStubs(projectDirectory: string): void {
     '@fluojs/microservices',
     `export function MessagePattern() { return () => undefined; }
 class BrokerTransport {
+  static create(options) {
+    globalThis.__lastCreatedOptions = options;
+    return new this(options);
+  }
+  setLogger(logger) {
+    globalThis.__events.push('transport.setLogger');
+    globalThis.__lastLogger = logger;
+  }
   async close() {
     globalThis.__events.push('transport.close');
     if (globalThis.__delegatedCloseFails) {
@@ -73,6 +93,11 @@ function installBrokerStub(projectDirectory: string, transport: BrokerTransport)
       'nats',
       `export function JSONCodec() { return { decode(value) { return value; }, encode(value) { return value; } }; }
 export async function connect() {
+  globalThis.__natsConnectEntered?.resolve();
+  await globalThis.__natsConnectGate;
+  if (globalThis.__natsConnectFails) {
+    throw globalThis.__natsConnectError;
+  }
   return {
     async close() {
       globalThis.__events.push('nats.connection.close');
@@ -137,7 +162,14 @@ export class Kafka {
         globalThis.__startupError = new Error('channel creation failed');
         throw globalThis.__startupError;
       }
-      return { async close() { globalThis.__events.push('rabbitmq.channel.close'); } };
+      return {
+        async close() {
+          globalThis.__events.push('rabbitmq.channel.close');
+          if (globalThis.__channelCleanupFails) throw new Error('channel cleanup failed');
+        },
+        async assertQueue() {},
+        async consume() { return { consumerTag: 'tag-1' }; },
+      };
     },
   };
 }
@@ -202,7 +234,7 @@ for (const event of ${JSON.stringify(expectedEvents)}) {
     );
   });
 
-  it('closes the NATS connection and rethrows the delegated close error when cleanup also fails', async () => {
+  it('aggregates NATS delegated and connection close failures', async () => {
     const projectDirectory = await generateBrokerStarter('nats');
 
     runAssertionScript(
@@ -215,8 +247,10 @@ globalThis.__cleanupFails = true;
 await transport.close().then(
   () => { throw new Error('Expected delegated close failure.'); },
   (error) => {
-    if (error !== globalThis.__delegatedCloseError || error.message !== 'delegated close failed') {
-      throw new Error('NATS starter did not preserve the delegated close error.');
+    const errors = Array.isArray(error.errors) ? error.errors : [];
+    const messages = errors.map((cause) => cause?.message || String(cause));
+    if (!messages.includes('delegated close failed') || !messages.includes('nats cleanup failed')) {
+      throw new Error('NATS starter did not aggregate delegated and connection close errors: ' + messages.join(', '));
     }
   },
 );
@@ -227,7 +261,44 @@ if (!globalThis.__events.includes('nats.connection.close')) {
     );
   });
 
-  it('disconnects both Kafka clients and rethrows the original error when one connect fails', async () => {
+  it('preserves a concurrent NATS initialization failure when close waits for it', async () => {
+    const projectDirectory = await generateBrokerStarter('nats');
+
+    runAssertionScript(
+      projectDirectory,
+      `let rejectConnect;
+globalThis.__natsConnectEntered = {};
+globalThis.__natsConnectEntered.promise = new Promise((resolve) => { globalThis.__natsConnectEntered.resolve = resolve; });
+globalThis.__natsConnectGate = new Promise((_resolve, reject) => { rejectConnect = reject; });
+globalThis.__natsConnectFails = true;
+globalThis.__natsConnectError = new Error('nats initialization failed');
+await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+const starting = transport.listen(() => undefined);
+await globalThis.__natsConnectEntered.promise;
+const closing = transport.close();
+rejectConnect(globalThis.__natsConnectError);
+await starting.then(
+  () => { throw new Error('Expected NATS initialization to fail.'); },
+  (error) => {
+    if (error !== globalThis.__natsConnectError) {
+      throw new Error('NATS listen() did not preserve its initialization error.');
+    }
+  },
+);
+await closing.then(
+  () => { throw new Error('Expected close() to preserve the concurrent initialization failure.'); },
+  (error) => {
+    if (error !== globalThis.__natsConnectError) {
+      throw new Error('NATS close() suppressed the concurrent initialization error.');
+    }
+  },
+);
+`,
+    );
+  });
+
+  it('aggregates Kafka connection and cleanup failures during initialization', async () => {
     const projectDirectory = await generateBrokerStarter('kafka');
 
     runAssertionScript(
@@ -239,8 +310,12 @@ const transport = globalThis.__fluoGeneratedTransport;
 await transport.listen(() => undefined).then(
   () => { throw new Error('Expected consumer connect failure.'); },
   (error) => {
-    if (error !== globalThis.__startupError || error.message !== 'consumer connect failed') {
-      throw new Error('Kafka starter did not preserve the original connection error.');
+    const errors = Array.isArray(error.errors) ? error.errors : [];
+    const messages = errors.map((cause) => cause?.message || String(cause));
+    for (const message of ['consumer connect failed', 'consumer cleanup failed', 'producer cleanup failed']) {
+      if (!messages.includes(message)) {
+        throw new Error('Kafka starter omitted "' + message + '" from initialization errors: ' + messages.join(', '));
+      }
     }
   },
 );
@@ -251,7 +326,7 @@ for (const event of ['kafka.consumer.disconnect', 'kafka.producer.disconnect']) 
     );
   });
 
-  it('closes the RabbitMQ connection and rethrows the original channel creation error', async () => {
+  it('aggregates RabbitMQ channel creation and connection cleanup failures', async () => {
     const projectDirectory = await generateBrokerStarter('rabbitmq');
 
     runAssertionScript(
@@ -263,14 +338,157 @@ const transport = globalThis.__fluoGeneratedTransport;
 await transport.listen(() => undefined).then(
   () => { throw new Error('Expected channel creation failure.'); },
   (error) => {
-    if (error !== globalThis.__startupError || error.message !== 'channel creation failed') {
-      throw new Error('RabbitMQ starter did not preserve the original channel creation error.');
+    const errors = Array.isArray(error.errors) ? error.errors : [];
+    const messages = errors.map((cause) => cause?.message || String(cause));
+    for (const message of ['channel creation failed', 'connection cleanup failed']) {
+      if (!messages.includes(message)) {
+        throw new Error('RabbitMQ starter omitted "' + message + '" from initialization errors: ' + messages.join(', '));
+      }
     }
   },
 );
 if (!globalThis.__events.includes('rabbitmq.connection.close')) {
   throw new Error('RabbitMQ connection was not closed.');
 }
+`,
+    );
+  });
+
+  it.each([
+    ['kafka'],
+    ['rabbitmq'],
+  ] as const)('retries %s initialization after a failed owned-resource cleanup', async (transportName) => {
+    const projectDirectory = await generateBrokerStarter(transportName);
+    const failureSetup = transportName === 'kafka'
+      ? 'globalThis.__consumerConnectFails = true; globalThis.__cleanupFails = true;'
+      : 'globalThis.__channelCreateFails = true; globalThis.__cleanupFails = true;';
+
+    runAssertionScript(
+      projectDirectory,
+      `${failureSetup}
+await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+await transport.listen(() => undefined).then(
+  () => { throw new Error('Expected first initialization to fail.'); },
+  () => undefined,
+);
+globalThis.__consumerConnectFails = false;
+globalThis.__channelCreateFails = false;
+globalThis.__cleanupFails = false;
+await transport.listen(() => undefined);
+await transport.close();
+`,
+    );
+  });
+
+  it.each([
+    ['nats'],
+    ['kafka'],
+    ['rabbitmq'],
+  ] as const)('exposes ownsResources and granular resourceOwnership on %s wrapper', async (transportName) => {
+    const projectDirectory = await generateBrokerStarter(transportName);
+
+    runAssertionScript(
+      projectDirectory,
+      `await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+if (transport.ownsResources !== true) {
+  throw new Error('Expected transport.ownsResources to be true, got: ' + transport.ownsResources);
+}
+if (!transport.resourceOwnership || transport.resourceOwnership.outboundClients !== 'framework' || transport.resourceOwnership.server !== 'framework') {
+  throw new Error('Expected framework resourceOwnership, got: ' + JSON.stringify(transport.resourceOwnership));
+}
+`,
+    );
+  });
+
+  it.each([
+    ['nats'],
+    ['kafka'],
+    ['rabbitmq'],
+  ] as const)('forwards setLogger to concrete %s transport before and after creation', async (transportName) => {
+    const projectDirectory = await generateBrokerStarter(transportName);
+
+    runAssertionScript(
+      projectDirectory,
+      `await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+const loggerA = { tag: 'logger-A' };
+transport.setLogger(loggerA);
+await transport.listen(() => undefined);
+if (globalThis.__lastLogger !== loggerA) {
+  throw new Error('Pre-creation logger was not forwarded to concrete transport.');
+}
+const loggerB = { tag: 'logger-B' };
+transport.setLogger(loggerB);
+if (globalThis.__lastLogger !== loggerB) {
+  throw new Error('Post-creation logger was not forwarded to concrete transport.');
+}
+await transport.close();
+`,
+    );
+  });
+
+  it.each([
+    ['nats', 'nats cleanup failed'],
+    ['kafka', 'cleanup failed'],
+    ['rabbitmq', 'connection cleanup failed'],
+  ] as const)('surfaces broker cleanup failure on %s wrapper when delegated close succeeds', async (transportName, expectedMessage) => {
+    const projectDirectory = await generateBrokerStarter(transportName);
+
+    runAssertionScript(
+      projectDirectory,
+      `await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+await transport.listen(() => undefined);
+globalThis.__cleanupFails = true;
+let caughtError;
+try {
+  await transport.close();
+} catch (err) {
+  caughtError = err;
+}
+if (!caughtError) {
+  throw new Error('Expected transport.close() to reject with cleanup failure.');
+}
+const msg = caughtError.message || String(caughtError);
+const causes = Array.isArray(caughtError.errors) ? caughtError.errors.map((e) => e?.message || String(e)) : [];
+const matches = msg.includes('${expectedMessage}') || causes.some((cause) => cause.includes('${expectedMessage}'));
+if (!matches) {
+  throw new Error('Expected error message or causes to contain "${expectedMessage}", got: ' + msg + '; causes: ' + causes.join(', '));
+}
+`,
+    );
+  });
+
+  it('Kafka starter defaults to instance-scoped random response topic and accepts explicit env destination', async () => {
+    const projectDirectory = await generateBrokerStarter('kafka');
+
+    runAssertionScript(
+      projectDirectory,
+      `await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+await transport.listen(() => undefined);
+if (globalThis.__lastCreatedOptions.responseTopic !== undefined) {
+  throw new Error('Expected default responseTopic to be undefined, got: ' + globalThis.__lastCreatedOptions.responseTopic);
+}
+await transport.close();
+`,
+    );
+  });
+
+  it('RabbitMQ starter defaults to instance-scoped random response queue and accepts explicit env destination', async () => {
+    const projectDirectory = await generateBrokerStarter('rabbitmq');
+
+    runAssertionScript(
+      projectDirectory,
+      `await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+await transport.listen(() => undefined);
+if (globalThis.__lastCreatedOptions.responseQueue !== undefined) {
+  throw new Error('Expected default responseQueue to be undefined, got: ' + globalThis.__lastCreatedOptions.responseQueue);
+}
+await transport.close();
 `,
     );
   });

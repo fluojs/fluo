@@ -43,7 +43,8 @@ gRPC transport는 `@grpc/grpc-js@^1.14.4`와 `@grpc/proto-loader@^0.8.0`을 요�
 ## 빠른 시작
 
 ```ts
-import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MessagePattern, MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 import { Module } from '@fluojs/core';
 import { FluoFactory } from '@fluojs/runtime';
 
@@ -57,7 +58,7 @@ class MathHandler {
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({ port: 4000 }),
+      transport: TcpMicroserviceTransport.create({ port: 4000 }),
     }),
   ],
   providers: [MathHandler],
@@ -135,7 +136,7 @@ Kafka와 RabbitMQ는 일치한 handler와 request response publication이 settle
 - `readerClient.xautoclaim`을 제공하면 Redis Streams는 `pendingReclaimIdleMs` 동안 유휴 상태인 공유 request consumer group의 pending request 엔트리를 reclaim합니다(기본값: `60_000`). 여기에는 crash된 consumer가 남긴 엔트리도 포함됩니다. 또한 같은 listener의 instance-scoped event group에서 실패한 event 엔트리를 reclaim합니다. broadcast delivery를 보존하기 위해 event group은 UUID별로 분리되므로 replacement listener는 crash된 listener의 event PEL을 reclaim할 수 없습니다. 이 옵션을 0 또는 음수로 설정하면 reclaim을 끌 수 있으며, adapter는 다음 `close()`까지 consumer group별 `XAUTOCLAIM` cursor를 유지합니다.
 - Redis Streams는 `close()` 중 인스턴스별 response stream은 항상 삭제하지만, 활성 fleet 전체에서 ownership를 증명할 수 없으면 공유 request consumer group은 보수적으로 유지합니다. lease-capable listener는 coordination metadata만 정리하고, mixed/fallback fleet에서는 살아 있는 다른 listener가 여전히 필요로 할 수 있으므로 공유 request group을 제거하지 않습니다.
 - `messageRetentionMaxLen`과 `eventRetentionMaxLen`은 고급 opt-in 설정으로 남아 있습니다. 이를 켜면 Redis가 ACK 전 pending live-stream 엔트리를 먼저 trim할 수 있으므로 broker-managed recovery 보장을 일부 포기하는 운영 판단이 됩니다.
-- RabbitMQ 요청-응답은 기본적으로 인스턴스별 response queue를 사용합니다. 공유 reply topology를 의도적으로 운영할 때만 `responseQueue`를 명시적으로 지정하세요.
+- Kafka 및 RabbitMQ 요청-응답은 기본적으로 인스턴스별 response destination(랜덤 UUID 접미사가 포함된 `responseTopic` 및 `responseQueue`)을 사용합니다. 공유 reply topology를 의도적으로 소유하고 조정할 때만 `responseTopic` 또는 `responseQueue`를 명시적으로 전달하세요. CLI로 생성된 starter 프로젝트는 이 인스턴스 범위 기본값을 유지하며 환경 변수로 명시 제공될 때만 response destination을 바인딩합니다.
 - caller-owned broker collaborator는 shutdown 중에도 caller-owned로 유지됩니다. NATS, Kafka, RabbitMQ transport는 subscription/consumer를 분리하고 in-flight 요청을 reject하지만, 애플리케이션이 넘긴 client, producer, consumer, publisher, 외부 connection 객체를 close/disconnect하지 않습니다.
 - NATS subscription setup이 `listen()` 중 실패하면 transport는 해당 시도에서 이미 생성한 subscription을 setup의 역순으로 unsubscribe하고 caller-owned NATS client는 열어 둡니다.
 - NATS shutdown 중에는 하나의 unsubscribe가 실패해도 모든 subscription cleanup을 시도하고, 실패한 subscription reference를 이후 `close()` 재시도를 위해 유지합니다. 단일 실패는 그대로 보고하고 여러 실패는 `AggregateError`로 보고하며, 이미 성공한 subscription cleanup은 반복하지 않습니다. 유지된 cleanup이 성공하기 전에는 `listen()`을 다시 시작할 수 없습니다.
@@ -146,6 +147,7 @@ Kafka와 RabbitMQ는 일치한 handler와 request response publication이 settle
 - Root `@fluojs/microservices` barrel import와 `TcpMicroserviceTransport` 생성은 `node:net`을 load하지 않습니다. TCP는 `listen()`이 server를 시작하거나 outbound `send()`/`emit()`이 socket을 생성하는 경로에서만 Node networking을 lazy-load합니다. `close()`가 in-flight listen 시도를 기다리는 중 startup이 실패해도 microservice shutdown은 캡처한 listen error를 다시 surface하기 전에 transport cleanup을 시도합니다.
 - TCP는 테스트와 ephemeral listener를 위해 `port: 0`을 허용하고, listen 중에는 OS가 할당한 포트로 outbound `send()`/`emit()`을 라우팅합니다.
 - Platform status snapshot은 mixed transport resource ownership을 하나의 owner로 축약하지 않고 보고합니다. TCP와 internally-created gRPC server는 framework-owned listener/client resource로 보고하고, MQTT는 client를 직접 생성한 경우에만 framework ownership을 보고하며, caller-owned broker collaborator transport는 externally managed로 남습니다. 전달받은 server를 쓰는 gRPC에서는 `ownership.externallyManaged`와 `ownership.ownsResources`가 모두 `true`이고, `details.transportResourceOwnership`이 caller-supplied gRPC server와 framework-owned cached outbound client를 각각 구분합니다.
+- gRPC 옵션은 인바운드 서버 바인딩을 위한 `serverCredentials`(`grpc.ServerCredentials.createInsecure()` 기본값)와 아웃바운드 클라이언트를 위한 `channelCredentials`(`grpc.credentials.createInsecure()` 기본값)를 구분하여 역할 경계를 넘는 불안전한 credential 재사용을 방지하고 명시적 credential 마이그레이션을 보존합니다.
 - gRPC shutdown은 transport가 server를 직접 생성한 경우 server-level `tryShutdown()`을 사용하고, graceful shutdown을 제공하지 않는 런타임에서만 `forceShutdown()`으로 fallback합니다. Caller-supplied `GrpcMicroserviceTransportOptions.server` 인스턴스는 `close()` 중에도 caller-owned로 유지되며, fluo는 cached outbound client만 닫고 해당 server는 shutdown하지 않습니다. Active unary/streaming call의 AbortSignal 취소는 call-level `cancel()` 또는 stream end 경로를 사용합니다. fluo는 unary call이 settle한 뒤, streaming call이 reader iteration 시작 전에 terminal event를 낸 경우를 포함해 end/error로 끝난 뒤, 또는 reader가 early return한 뒤 각 `AbortSignal` abort listener를 제거합니다. Terminal, cancellation, iterator-return 경로가 겹쳐도 cleanup은 한 번만 수행됩니다.
 - Outbound gRPC `clientStream()`과 `bidiStream()` writer는 `writer.error(err)`를 clean end로 처리하지 않고 그대로 전파합니다. fluo는 call-level `destroy(err)` 경로로 outbound call을 abort하며, 이를 제공하지 않는 런타임에서는 `cancel()`, 마지막으로 `end()` 순으로 fallback합니다. 따라서 remote peer는 성공적인 end-of-stream이 아니라 실패한 RPC를 관측합니다. `clientStream()` result promise를 reject하고 `bidiStream()` reader에 노출되는 것은 abort 뒤에 뒤따르는 transport-level cancellation status가 아니라 caller가 전달한 원본 error입니다. `writer.error()`를 반복 호출하거나 그 뒤에 `end()`를 호출해도 무시되므로, call은 한 번만 abort되고 처음 보고된 원인이 유지됩니다.
 - MQTT는 `listen()` 중 subscription setup이 실패하거나 `close()`가 실패한 in-flight listen 시도를 unwinding할 때 internally-created client를 닫고, 호출자에게는 원래 startup error를 보존해 전달합니다. Caller-supplied MQTT client는 계속 caller-owned로 남습니다.
@@ -155,7 +157,7 @@ Kafka와 RabbitMQ는 일치한 handler와 request response publication이 settle
 
 ### 커스텀 모듈 등록
 
-custom provider/export/non-global 구성이 필요할 때도 raw provider array로 내려가지 말고 `MicroservicesModule.forRoot({ transport, module: { ... } })`를 우선 사용하세요.
+custom provider/export/non-global 구성이 필요할 때도 `MicroservicesModule.forRoot({ transport, global, module: { ... } })`를 사용하세요.
 
 ```ts
 import { Module } from '@fluojs/core';
@@ -167,8 +169,8 @@ const EXTRA_MICROSERVICE_EXPORT = Symbol('extra-microservice-export');
   imports: [
     MicroservicesModule.forRoot({
       transport: customTransport,
+      global: false,
       module: {
-        global: false,
         providers: [{ provide: EXTRA_MICROSERVICE_EXPORT, useValue: 'custom-module-value' }],
         additionalExports: [EXTRA_MICROSERVICE_EXPORT],
       },
@@ -181,43 +183,31 @@ class FeatureModule {}
 Behavioral contract notes:
 
 - 이 모듈 경로는 기본 `MicroservicesModule.forRoot(...)` 호출과 동일한 `MICROSERVICE_OPTIONS`, `MicroserviceLifecycleService`, `MICROSERVICE` wiring을 그대로 설치합니다.
-- Top-level `MicroservicesModule.forRoot({ global })`은 built-in module visibility를 제어하고, `module.global`은 module customization object를 사용할 때 같은 visibility 선택을 적용합니다.
+- Top-level `MicroservicesModule.forRoot({ global })`은 built-in module visibility를 제어합니다.
 - `module.providers`는 내장 런타임 wiring 뒤에 추가 provider를 붙이고, `module.additionalExports`는 기본 export 토큰을 교체하지 않고 확장합니다.
-- `module.global`을 사용하면 등록 범위를 로컬로 제한할 수 있습니다.
-
-### provider 배열 헬퍼
-
-`createMicroservicesProviders(...)`는 커스텀 모듈 조합에 low-level provider array 자체가 필요할 때만 사용하세요. Custom provider/export/non-global registration에는 built-in lifecycle wiring과 export token을 그대로 유지하는 `MicroservicesModule.forRoot({ transport, module: { ... } })` 경로를 우선 사용하세요.
-
-```ts
-import { Module } from '@fluojs/core';
-import { createMicroservicesProviders } from '@fluojs/microservices';
-
-@Module({
-  providers: [...createMicroservicesProviders({ transport: customTransport })],
-})
-class ManualMicroserviceProvidersModule {}
-```
+- local registration이 필요하면 top-level `global: false`를 지정하세요.
 
 ## 공개 API 개요
 
 ### 루트 배럴 (`@fluojs/microservices`)
 
-- `MicroservicesModule`, `createMicroservicesProviders`: 모듈 등록 진입점입니다.
-- `MicroservicesModule.forRoot(...)`: `module: { global, providers, additionalExports }`와 함께 트랜스포트와 모듈 구성을 설정합니다.
-- `createMicroservicesProviders(...)`: 커스텀 모듈 조합용 provider 배열을 생성합니다.
+- `MicroservicesModule.forRoot(...)`: 유일한 모듈 등록 경로이며, 트랜스포트, top-level `global`, 선택적인 `module: { providers, additionalExports }` 구성을 설정합니다.
 - `MessagePattern`, `EventPattern`, `ServerStreamPattern`, `ClientStreamPattern`, `BidiStreamPattern`: 라우팅/스트리밍 데코레이터입니다.
-- `TcpMicroserviceTransport`, `RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `KafkaMicroserviceTransport`, `RabbitMqMicroserviceTransport`, `GrpcMicroserviceTransport`, `MqttMicroserviceTransport`: 루트 배럴에서 제공하는 트랜스포트 어댑터입니다.
-- `MicroserviceLifecycleService`, `MICROSERVICE`: 런타임 접근용 서비스와 토큰입니다.
+- `MicroserviceLifecycleService`: lifecycle/startup 소유 class token입니다.
+- `MICROSERVICE`: 애플리케이션 업무 호출을 위한 canonical injected `Microservice` facade입니다.
 - `createMicroservicePlatformStatusSnapshot`, `ServerStreamWriter`: 상태 스냅샷/TypeScript 계약 헬퍼입니다.
+
+### Transport subpath
+
+각 transport와 option은 전용 subpath `/tcp`, `/redis`, `/redis-streams`, `/nats`, `/kafka`, `/rabbitmq`, `/mqtt`, `/grpc`에서 import하세요. 애플리케이션 recipe에서는 `TransportClass.create(options)`를 사용하며, 기존 instance-oriented integration을 위해 public constructor는 유지됩니다.
 
 ### Programmatic runtime
 
-`MicroserviceLifecycleService`는 programmatic runtime access를 위해 `listen()`, `close(signal?: string)`, `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()`, `createPlatformStatusSnapshot()`을 제공합니다. `MICROSERVICE` 토큰은 raw transport instance가 아니라 같은 programmatic `Microservice` facade로 resolve됩니다.
+`MicroserviceLifecycleService`는 lifecycle startup/shutdown을 소유합니다. 업무 `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()` 호출에는 `MICROSERVICE`를 inject하세요. 이 토큰은 raw transport instance가 아니라 programmatic `Microservice` facade로 resolve됩니다.
 
 ### Type export
 
-Root barrel은 `Microservice`, `MicroserviceLifecycleState`, `MicroserviceHandlerCounts`, `MicroserviceModuleOptions`, `MicroserviceModuleRegistrationOptions`, `MicroservicePlatformStatusSnapshot`, `MicroserviceStatusAdapterInput`, `MicroserviceTransport`, `MicroserviceTransportCapabilities`, `Pattern`, `ServerStreamWriter`와 `GrpcMicroserviceTransportOptions`, `KafkaMicroserviceTransportOptions`, `MqttMicroserviceTransportOptions`, `NatsMicroserviceTransportOptions`, `RabbitMqMicroserviceTransportOptions`, `RedisPubSubMicroserviceTransportOptions`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`, `TcpMicroserviceTransportOptions` 같은 transport option type을 export합니다.
+Root barrel은 `Microservice`, `MicroserviceLifecycleState`, `MicroserviceHandlerCounts`, `MicroserviceModuleOptions`, `MicroserviceModuleRegistrationOptions`, `MicroservicePlatformStatusSnapshot`, `MicroserviceStatusAdapterInput`, `MicroserviceTransport`, `MicroserviceTransportCapabilities`, `Pattern`, `ServerStreamWriter`를 export합니다. `GrpcMicroserviceTransportOptions`, `KafkaMicroserviceTransportOptions`, `MqttMicroserviceTransportOptions`, `NatsMicroserviceTransportOptions`, `RabbitMqMicroserviceTransportOptions`, `RedisPubSubMicroserviceTransportOptions`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`, `TcpMicroserviceTransportOptions` 같은 transport option type은 각 transport 전용 서브패스에서 import합니다.
 
 ### 동작 계약
 
@@ -234,7 +224,7 @@ Payload는 dispatch 전에 clone되고, 동시 `listen()` 호출은 dedupe되며
 - `@fluojs/microservices/grpc`
 - `@fluojs/microservices/mqtt`
 
-`RedisStreamsMicroserviceTransport`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`는 루트 배럴과 전용 `@fluojs/microservices/redis-streams` 서브패스에서 모두 사용할 수 있습니다.
+`RedisStreamsMicroserviceTransport`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`는 전용 `@fluojs/microservices/redis-streams` 서브패스에서 import합니다.
 
 정식 transport 학습 자료는 [TCP](../../book/intermediate/ch02-tcp.ko.md), [RabbitMQ](../../book/intermediate/ch04-rabbitmq.ko.md), [gRPC](../../book/intermediate/ch08-grpc.ko.md) 책 장에 있으며, 이 README는 패키지 수준 동작 계약 기준으로 남습니다.
 
@@ -248,7 +238,7 @@ Payload는 dispatch 전에 clone되고, 동시 `listen()` 호출은 dedupe되며
 ## 예제 소스
 
 - `packages/microservices/src/module.test.ts`: 모든 트랜스포트 통합 계약을 검증합니다.
-- `packages/microservices/src/public-api.test.ts`: 모듈 등록 override와 `createMicroservicesProviders(...)`를 포함한 루트 배럴 export 계약을 검증합니다.
+- `packages/microservices/src/public-api.test.ts`: top-level visibility와 모듈 등록 override를 포함한 루트 배럴 export 계약을 검증합니다.
 - `packages/microservices/src/public-surface.test.ts`: 문서화된 공개 surface를 검증합니다.
 - `packages/microservices/src/public-subpaths.test.ts`: 문서화된 트랜스포트 서브패스 export map 계약을 검증합니다.
 - 실행 가능한 스타터 예제는 지원되는 TCP, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC 트랜스포트 변형에 대해 `fluo new --shape microservice --transport <transport> --runtime node --platform none`로 생성합니다.

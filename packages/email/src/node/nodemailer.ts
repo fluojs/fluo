@@ -185,4 +185,3 @@ export class NodemailerEmailTransport implements EmailTransport {
     this.transporter.close();
   }
 }
-

@@ -255,4 +255,3 @@ export interface NormalizedSlackModuleOptions {
   };
   verifyOnModuleInit: boolean;
 }
-

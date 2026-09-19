@@ -64,7 +64,7 @@ Istio와 같은 전형적인 서비스 메시 설정에서 각 fluo 서비스는
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({
+      transport: TcpMicroserviceTransport.create({
         host: 'order-service-mesh',
         port: 80,
         requestTimeoutMs: 1_000,

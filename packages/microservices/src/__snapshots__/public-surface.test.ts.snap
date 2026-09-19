@@ -1,24 +1,15 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`@fluojs/microservices root barrel public surface > keeps the documented root exports stable for 0.x governance 1`] = `
+exports[`@fluojs/microservices root barrel public surface > keeps registration and facade exports on the root barrel 1`] = `
 [
   "BidiStreamPattern",
   "ClientStreamPattern",
   "EventPattern",
-  "GrpcMicroserviceTransport",
-  "KafkaMicroserviceTransport",
   "MICROSERVICE",
   "MessagePattern",
   "MicroserviceLifecycleService",
   "MicroservicesModule",
-  "MqttMicroserviceTransport",
-  "NatsMicroserviceTransport",
-  "RabbitMqMicroserviceTransport",
-  "RedisPubSubMicroserviceTransport",
-  "RedisStreamsMicroserviceTransport",
   "ServerStreamPattern",
-  "TcpMicroserviceTransport",
   "createMicroservicePlatformStatusSnapshot",
-  "createMicroservicesProviders",
 ]
 `;

@@ -56,9 +56,10 @@ If you provide only a namespace, the transport derives topic names under it. Thi
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MicroservicesModule, MqttMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { MqttMicroserviceTransport } from '@fluojs/microservices/mqtt';
 
-const transport = new MqttMicroserviceTransport({
+const transport = MqttMicroserviceTransport.create({
   url: process.env.MQTT_URL,
   namespace: 'fluoshop.devices',
   eventQos: 1,

@@ -123,6 +123,16 @@ export class RedisStreamsMicroserviceTransport implements MicroserviceTransport 
   private readonly responseRetentionMaxLen: number;
 
   /**
+   * Creates a Redis Streams transport from caller-owned reader and writer clients.
+   *
+   * @param options Redis Streams clients and delivery configuration.
+   * @returns A configured Redis Streams transport.
+   */
+  static create(options: RedisStreamsMicroserviceTransportOptions): RedisStreamsMicroserviceTransport {
+    return new RedisStreamsMicroserviceTransport(options);
+  }
+
+  /**
    * Creates a Redis Streams transport with dedicated reader and writer clients.
    *
    * @param options Namespace, consumer-group, polling, and timeout settings.

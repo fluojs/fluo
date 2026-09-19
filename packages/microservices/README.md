@@ -47,7 +47,8 @@ Define a message handler and bootstrap the microservice using the TCP transport.
 ```typescript
 import { Module } from '@fluojs/core';
 import { FluoFactory } from '@fluojs/runtime';
-import { MicroservicesModule, MessagePattern, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule, MessagePattern } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 
 class MathHandler {
   @MessagePattern('math.sum')
@@ -59,7 +60,7 @@ class MathHandler {
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({ port: 4000 })
+      transport: TcpMicroserviceTransport.create({ port: 4000 })
     })
   ],
   providers: [MathHandler]
@@ -132,7 +133,7 @@ Kafka and RabbitMQ keep each inbound consumer callback pending until the matched
 - When `readerClient.xautoclaim` is available, Redis Streams reclaims pending request entries from the shared request consumer group after `pendingReclaimIdleMs` of inactivity (default: `60_000`), including entries abandoned by a crashed consumer. It also reclaims failed event entries from the same listener's instance-scoped event group. A replacement listener cannot reclaim a crashed listener's event PEL because event groups are UUID-scoped to preserve broadcast delivery. Set that option to zero or a negative value to disable reclaiming; the adapter retains the `XAUTOCLAIM` cursor per consumer group until the next `close()`.
 - Redis Streams always deletes each per-consumer response stream during `close()`, but it retains the shared request consumer group conservatively once ownership cannot be proven across the active fleet. Lease-capable listeners clean up only their coordination metadata, and mixed or fallback listener fleets keep the shared request group in place so one peer cannot destroy a group that another live listener still needs.
 - `messageRetentionMaxLen` and `eventRetentionMaxLen` remain available as advanced opt-in knobs. Enabling them can trade away broker-managed recovery guarantees because Redis may trim pending live-stream entries before they are acknowledged.
-- RabbitMQ request/reply uses an instance-scoped response queue by default. Pass `responseQueue` explicitly only when you intentionally own and coordinate a shared reply topology.
+- Kafka and RabbitMQ request/reply use instance-scoped response destinations by default (`responseTopic` and `responseQueue` with random UUID suffixes). Pass `responseTopic` or `responseQueue` explicitly only when you intentionally own and coordinate a shared reply topology. Generated CLI starter projects preserve these instance-scoped defaults and only bind response destinations when explicitly provided through environment variables.
 - Caller-owned broker collaborators stay caller-owned during shutdown. NATS, Kafka, and RabbitMQ transports detach their subscriptions/consumers and reject in-flight requests, but they do not close or disconnect the client, producer, consumer, publisher, or external connection objects supplied by the application.
 - If NATS subscription setup fails during `listen()`, the transport unsubscribes subscriptions created by that attempt in reverse setup order while leaving the caller-owned NATS client open.
 - During NATS shutdown, the transport attempts every subscription cleanup even when one unsubscribe fails, keeps failed subscription references for a later `close()` retry, and reports one failure directly or multiple failures through `AggregateError`. Successful subscription cleanup is not repeated, and `listen()` cannot resume until the retained cleanup succeeds.
@@ -143,6 +144,7 @@ Kafka and RabbitMQ keep each inbound consumer callback pending until the matched
 - Importing the root `@fluojs/microservices` barrel and constructing `TcpMicroserviceTransport` do not load `node:net`; TCP loads Node networking only when `listen()` starts a server or an outbound `send()`/`emit()` constructs a socket. If startup fails while `close()` is waiting on an in-flight listen attempt, microservice shutdown still attempts transport cleanup before surfacing the captured listen error.
 - TCP accepts `port: 0` for tests and ephemeral listeners, then routes outbound `send()`/`emit()` calls through the OS-assigned port while the transport is listening.
 - Platform status snapshots report mixed transport resource ownership without collapsing it to one owner. TCP and internally-created gRPC servers report framework-owned listener/client resources, MQTT reports framework ownership only when it creates the client, and caller-owned broker collaborator transports remain externally managed. For gRPC with a supplied server, `ownership.externallyManaged` and `ownership.ownsResources` are both `true`, while `details.transportResourceOwnership` reports the caller-supplied gRPC server and framework-owned cached outbound clients separately.
+- gRPC options separate `serverCredentials` (defaulting to `grpc.ServerCredentials.createInsecure()`) for inbound server binding from `channelCredentials` (defaulting to `grpc.credentials.createInsecure()`) for outbound clients, avoiding unsafe credential reuse across role boundaries while preserving explicit credentials migration.
 - gRPC shutdown uses server-level `tryShutdown()` when the transport created the server, and falls back to `forceShutdown()` only for runtimes without graceful shutdown support. Caller-supplied `GrpcMicroserviceTransportOptions.server` instances remain caller-owned during `close()`; fluo closes cached outbound clients but does not shut down that server. AbortSignal cancellation for active unary or streaming calls uses the call-level `cancel()`/stream end path. fluo removes each `AbortSignal` abort listener after a unary call settles and when a streaming call ends or errors, including terminal events before reader iteration starts, or when its reader returns early. Cleanup runs only once when terminal, cancellation, and iterator-return paths overlap.
 - Outbound gRPC `clientStream()` and `bidiStream()` writers propagate `writer.error(err)` instead of ending the call cleanly. fluo aborts the outbound call through the call-level `destroy(err)` path, falling back to `cancel()` and finally `end()` for runtimes that expose neither, so the remote peer observes a failed RPC rather than a successful end-of-stream. The caller's original error — not the transport-level cancellation status that follows the abort — rejects the `clientStream()` result promise and surfaces on the `bidiStream()` reader. Repeated `writer.error()` calls, and an `end()` that follows one, are ignored so the call is aborted once and the first reported cause wins.
 - MQTT closes internally-created clients when subscription setup fails during `listen()` or when `close()` unwinds a failed in-flight listen attempt, while preserving the original startup error for callers. Caller-supplied MQTT clients remain caller-owned.
@@ -152,7 +154,7 @@ Kafka and RabbitMQ keep each inbound consumer callback pending until the matched
 
 ### Custom module registration
 
-Use `MicroservicesModule.forRoot({ transport, module: { ... } })` when you want custom providers, exports, or non-global registration without dropping back to raw provider arrays.
+Use `MicroservicesModule.forRoot({ transport, global, module: { ... } })` when you want custom providers, exports, or non-global registration.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -164,8 +166,8 @@ const EXTRA_MICROSERVICE_EXPORT = Symbol('extra-microservice-export');
   imports: [
     MicroservicesModule.forRoot({
       transport: customTransport,
+      global: false,
       module: {
-        global: false,
         providers: [{ provide: EXTRA_MICROSERVICE_EXPORT, useValue: 'custom-module-value' }],
         additionalExports: [EXTRA_MICROSERVICE_EXPORT],
       },
@@ -178,43 +180,31 @@ class FeatureModule {}
 Behavioral contract notes:
 
 - The module path still installs the same built-in `MICROSERVICE_OPTIONS`, `MicroserviceLifecycleService`, and `MICROSERVICE` wiring as the default `MicroservicesModule.forRoot(...)` call.
-- Top-level `MicroservicesModule.forRoot({ global })` controls the built-in module visibility; `module.global` applies the same visibility choice when using the module customization object.
+- Top-level `MicroservicesModule.forRoot({ global })` controls the built-in module visibility.
 - `module.providers` appends extra providers after the built-in runtime wiring, while `module.additionalExports` extends the default exported tokens instead of replacing them.
-- `module.global` lets advanced callers keep the registration local.
-
-### Provider-array helper
-
-Use `createMicroservicesProviders(...)` only when you need the low-level provider array itself for custom module assembly. Prefer `MicroservicesModule.forRoot({ transport, module: { ... } })` for custom providers, exports, or non-global registration because that path keeps the built-in lifecycle wiring and exported tokens intact.
-
-```typescript
-import { Module } from '@fluojs/core';
-import { createMicroservicesProviders } from '@fluojs/microservices';
-
-@Module({
-  providers: [...createMicroservicesProviders({ transport: customTransport })],
-})
-class ManualMicroserviceProvidersModule {}
-```
+- Set `global: false` at the top level when registration must remain local.
 
 ## Public API Overview
 
 ### Root barrel (`@fluojs/microservices`)
 
-- `MicroservicesModule`, `createMicroservicesProviders`: module registration helpers.
-- `MicroservicesModule.forRoot(...)`: Configures a transport plus optional module customization via `module: { global, providers, additionalExports }`.
-- `createMicroservicesProviders(...)`: Builds provider arrays for custom module assembly.
+- `MicroservicesModule.forRoot(...)`: The only module registration path; configures a transport, top-level `global`, and optional `module: { providers, additionalExports }` customization.
 - `MessagePattern`, `EventPattern`, `ServerStreamPattern`, `ClientStreamPattern`, `BidiStreamPattern`: routing and streaming decorators.
-- `TcpMicroserviceTransport`, `RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `KafkaMicroserviceTransport`, `RabbitMqMicroserviceTransport`, `GrpcMicroserviceTransport`, `MqttMicroserviceTransport`: transport adapters exported from the root barrel.
-- `MicroserviceLifecycleService`, `MICROSERVICE`: programmatic runtime access token and service.
+- `MicroserviceLifecycleService`: lifecycle and startup ownership class token.
+- `MICROSERVICE`: canonical injected `Microservice` facade for application business calls.
 - `createMicroservicePlatformStatusSnapshot`, `ServerStreamWriter`: status and TypeScript contract helpers.
+
+### Transport subpaths
+
+Import each transport and its options from its dedicated subpath: `/tcp`, `/redis`, `/redis-streams`, `/nats`, `/kafka`, `/rabbitmq`, `/mqtt`, or `/grpc`. Use `TransportClass.create(options)` in application recipes; the public constructor remains available for existing instance-oriented integrations.
 
 ### Programmatic runtime
 
-`MicroserviceLifecycleService` exposes `listen()`, `close(signal?: string)`, `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()`, and `createPlatformStatusSnapshot()` for programmatic runtime access. The `MICROSERVICE` token resolves to the same programmatic `Microservice` facade rather than the raw transport instance.
+`MicroserviceLifecycleService` owns lifecycle startup and shutdown. Inject `MICROSERVICE` for `send()`, `emit()`, `serverStream()`, `clientStream()`, and `bidiStream()` business calls; it resolves to a programmatic `Microservice` facade rather than the raw transport instance.
 
 ### Type exports
 
-The root barrel exports `Microservice`, `MicroserviceLifecycleState`, `MicroserviceHandlerCounts`, `MicroserviceModuleOptions`, `MicroserviceModuleRegistrationOptions`, `MicroservicePlatformStatusSnapshot`, `MicroserviceStatusAdapterInput`, `MicroserviceTransport`, `MicroserviceTransportCapabilities`, `Pattern`, `ServerStreamWriter`, and transport option types such as `GrpcMicroserviceTransportOptions`, `KafkaMicroserviceTransportOptions`, `MqttMicroserviceTransportOptions`, `NatsMicroserviceTransportOptions`, `RabbitMqMicroserviceTransportOptions`, `RedisPubSubMicroserviceTransportOptions`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`, and `TcpMicroserviceTransportOptions`.
+The root barrel exports `Microservice`, `MicroserviceLifecycleState`, `MicroserviceHandlerCounts`, `MicroserviceModuleOptions`, `MicroserviceModuleRegistrationOptions`, `MicroservicePlatformStatusSnapshot`, `MicroserviceStatusAdapterInput`, `MicroserviceTransport`, `MicroserviceTransportCapabilities`, `Pattern`, and `ServerStreamWriter`. Transport option types such as `GrpcMicroserviceTransportOptions`, `KafkaMicroserviceTransportOptions`, `MqttMicroserviceTransportOptions`, `NatsMicroserviceTransportOptions`, `RabbitMqMicroserviceTransportOptions`, `RedisPubSubMicroserviceTransportOptions`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`, and `TcpMicroserviceTransportOptions` are imported from their dedicated transport subpaths.
 
 ### Behavioral contracts
 
@@ -231,7 +221,7 @@ Payloads are cloned before dispatch, concurrent `listen()` calls are deduped, re
 - `@fluojs/microservices/grpc`
 - `@fluojs/microservices/mqtt`
 
-`RedisStreamsMicroserviceTransport`, `RedisStreamsMicroserviceTransportOptions`, and `RedisStreamClientLike` are available from the root barrel and the dedicated `@fluojs/microservices/redis-streams` subpath.
+`RedisStreamsMicroserviceTransport`, `RedisStreamsMicroserviceTransportOptions`, and `RedisStreamClientLike` are imported from the dedicated `@fluojs/microservices/redis-streams` subpath.
 
 Canonical transport learning material lives in the book chapters for [TCP](../../book/intermediate/ch02-tcp.md), [RabbitMQ](../../book/intermediate/ch04-rabbitmq.md), and [gRPC](../../book/intermediate/ch08-grpc.md), while this README remains the package-level behavioral contract reference.
 
@@ -245,7 +235,7 @@ Canonical transport learning material lives in the book chapters for [TCP](../..
 ## Example Sources
 
 - `packages/microservices/src/module.test.ts`: Integration tests for all transports.
-- `packages/microservices/src/public-api.test.ts`: Root-barrel export coverage, including module registration overrides and `createMicroservicesProviders(...)`.
+- `packages/microservices/src/public-api.test.ts`: Root-barrel export coverage, including top-level visibility and module registration overrides.
 - `packages/microservices/src/public-surface.test.ts`: Root-barrel snapshot coverage for the documented public surface.
 - `packages/microservices/src/public-subpaths.test.ts`: Export-map coverage for documented transport subpaths.
 - Runnable starter examples are generated with `fluo new --shape microservice --transport <transport> --runtime node --platform none` for the supported TCP, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC transport variants.

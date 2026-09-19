@@ -136,4 +136,3 @@ export class IcuI18nService {
     throw new I18nError(`Invalid ICU MessageFormat result for i18n key: ${key}`, 'I18N_INVALID_MESSAGE_FORMAT');
   }
 }
-

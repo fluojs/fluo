@@ -417,4 +417,3 @@ describe('CQRS single shutdown deadline contract', () => {
     );
   });
 });
-

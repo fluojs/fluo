@@ -61,9 +61,10 @@ FluoShop은 브로커를 통한 디커플링보다 엄격한 계약(strict contr
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { GrpcMicroserviceTransport, MicroservicesModule } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { GrpcMicroserviceTransport } from '@fluojs/microservices/grpc';
 
-const transport = new GrpcMicroserviceTransport({
+const transport = GrpcMicroserviceTransport.create({
   protoPath: new URL('./proto/fluoshop.proto', import.meta.url).pathname,
   packageName: 'fluoshop.checkout',
   url: '0.0.0.0:50051',

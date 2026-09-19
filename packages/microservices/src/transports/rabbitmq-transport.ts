@@ -36,6 +36,16 @@ export interface RabbitMqMicroserviceTransportOptions {
  * a queue-oriented topology while still consuming the generic Fluo transport API.
  */
 export class RabbitMqMicroserviceTransport implements MicroserviceTransport {
+  /**
+   * Creates a RabbitMQ transport from caller-owned publisher and consumer collaborators.
+   *
+   * @param options RabbitMQ collaborators and queue configuration.
+   * @returns A configured RabbitMQ transport.
+   */
+  static create(options: RabbitMqMicroserviceTransportOptions): RabbitMqMicroserviceTransport {
+    return new RabbitMqMicroserviceTransport(options);
+  }
+
   private closePromise: Promise<void> | undefined;
   private closing = false;
   private handler: TransportHandler | undefined;

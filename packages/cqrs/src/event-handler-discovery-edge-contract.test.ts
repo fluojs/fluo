@@ -135,4 +135,3 @@ describe('CQRS event-handler discovery dedupe contracts', () => {
     expect(warnings).toEqual([]);
   });
 });
-

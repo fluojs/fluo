@@ -581,9 +581,9 @@ function describeMicroserviceStarter(options: Pick<BootstrapOptions, 'transport'
           '- NATS broker: configure `NATS_SERVERS` in `.env` before you start the service',
           '- Subject contract: keep `NATS_MESSAGE_SUBJECT` and `NATS_EVENT_SUBJECT` aligned with the peer services that share the broker namespace',
         ],
-        entrypointNote: '`src/app.ts` keeps the caller-owned `nats` client plus `JSONCodec()` contract explicit, but opens the client lazily from the generated transport wrapper when the Fluo lifecycle starts broker work',
+        entrypointNote: '`src/app.ts` keeps the `nats` client plus `JSONCodec()` contract explicit; the generated wrapper creates, owns, and lifecycle-manages that client before supplying it to the concrete transport adapter',
         generatedProjectVerification: 'The generated-project verification path typechecks, builds, and tests the scaffold while asserting the NATS starter keeps the `nats` dependency, `.env` contract, and transport entrypoint wiring intact.',
-        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds the `nats` client because the NATS starter depends on an external broker plus a caller-owned client/bootstrap pair',
+        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds the `nats` client because the NATS starter depends on an external broker plus a wrapper-owned client/bootstrap pair',
         pattern: 'math.sum',
         readmeTransportLabel: 'nats',
         runtimeDependencyNote: 'runtime dependency set: `@fluojs/microservices` plus `nats` for the broker client and codec that `NatsMicroserviceTransport` expects the caller to supply',
@@ -596,9 +596,9 @@ function describeMicroserviceStarter(options: Pick<BootstrapOptions, 'transport'
           '- Kafka brokers: configure `KAFKA_BROKERS` in `.env` before you start the service',
           '- Topic/group contract: `KAFKA_CLIENT_ID`, `KAFKA_CONSUMER_GROUP`, `KAFKA_MESSAGE_TOPIC`, `KAFKA_EVENT_TOPIC`, and `KAFKA_RESPONSE_TOPIC` stay explicit so the starter never hides its shared broker topology',
         ],
-        entrypointNote: '`src/app.ts` keeps the canonical `kafkajs` producer/consumer collaborator contract explicit, but creates them lazily from the generated transport wrapper when the Fluo lifecycle starts broker work',
+        entrypointNote: '`src/app.ts` keeps the canonical `kafkajs` producer/consumer collaborator contract explicit; the generated wrapper creates, owns, and lifecycle-manages those clients before supplying them to the concrete transport adapter',
         generatedProjectVerification: 'The generated-project verification path typechecks, builds, and tests the scaffold while asserting the Kafka starter keeps the `kafkajs` dependency, `.env` contract, and transport entrypoint wiring intact.',
-        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds `kafkajs` because the Kafka starter depends on an external broker plus caller-owned producer/consumer collaborators',
+        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds `kafkajs` because the Kafka starter depends on an external broker plus wrapper-owned producer/consumer collaborators',
         pattern: 'math.sum',
         readmeTransportLabel: 'kafka',
         runtimeDependencyNote: 'runtime dependency set: `@fluojs/microservices` plus `kafkajs` for the generated producer/consumer/bootstrap contract used by `KafkaMicroserviceTransport`',
@@ -611,9 +611,9 @@ function describeMicroserviceStarter(options: Pick<BootstrapOptions, 'transport'
           '- RabbitMQ broker: configure `RABBITMQ_URL` in `.env` before you start the service',
           '- Queue contract: `RABBITMQ_MESSAGE_QUEUE`, `RABBITMQ_EVENT_QUEUE`, and `RABBITMQ_RESPONSE_QUEUE` stay explicit so the starter advertises exactly which queues and reply path it owns',
         ],
-        entrypointNote: '`src/app.ts` keeps the canonical `amqplib` connection/channel pair and caller-owned publisher/consumer collaborator contract explicit, but opens them lazily from the generated transport wrapper when the Fluo lifecycle starts broker work',
+        entrypointNote: '`src/app.ts` keeps the canonical `amqplib` connection/channel pair and publisher/consumer collaborator contract explicit; the generated wrapper creates, owns, and lifecycle-manages them before supplying collaborators to the concrete transport adapter',
         generatedProjectVerification: 'The generated-project verification path typechecks, builds, and tests the scaffold while asserting the RabbitMQ starter keeps the `amqplib` dependency, `.env` contract, and transport entrypoint wiring intact.',
-        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds `amqplib` because the RabbitMQ starter depends on an external broker plus caller-owned publisher/consumer collaborators',
+        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds `amqplib` because the RabbitMQ starter depends on an external broker plus wrapper-owned publisher/consumer collaborators',
         pattern: 'math.sum',
         readmeTransportLabel: 'rabbitmq',
         runtimeDependencyNote: 'runtime dependency set: `@fluojs/microservices`, `amqplib`, and `@types/amqplib` for the generated queue client/bootstrap contract used by `RabbitMqMicroserviceTransport`',
@@ -1043,7 +1043,8 @@ function createMicroserviceAppFile(options: Pick<BootstrapOptions, 'transport'>)
       return `import Redis from 'ioredis';
 import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, RedisStreamsMicroserviceTransport, type RedisStreamClientLike } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { RedisStreamsMicroserviceTransport, type RedisStreamClientLike } from '@fluojs/microservices/redis-streams';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1192,7 +1193,7 @@ const writerClient: RedisStreamClientLike = {
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
-      transport: new RedisStreamsMicroserviceTransport({
+      transport: RedisStreamsMicroserviceTransport.create({
         consumerGroup,
         namespace,
         readerClient,
@@ -1207,7 +1208,8 @@ export class AppModule {}
     case 'mqtt':
       return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, MqttMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { MqttMicroserviceTransport } from '@fluojs/microservices/mqtt';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1221,7 +1223,7 @@ const namespace = process.env.MQTT_NAMESPACE ?? 'fluo.microservices';
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
-      transport: new MqttMicroserviceTransport({
+      transport: MqttMicroserviceTransport.create({
         namespace,
         requestTimeoutMs: 3_000,
         url,
@@ -1237,7 +1239,8 @@ export class AppModule {}
 
 import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { GrpcMicroserviceTransport, MicroservicesModule } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { GrpcMicroserviceTransport } from '@fluojs/microservices/grpc';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1251,7 +1254,7 @@ const protoPath = resolve(process.cwd(), 'proto', 'math.proto');
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
-      transport: new GrpcMicroserviceTransport({
+      transport: GrpcMicroserviceTransport.create({
         packageName: 'fluo.microservices',
         protoPath,
         services: ['MathService'],
@@ -1266,7 +1269,8 @@ export class AppModule {}
     case 'nats':
       return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, NatsMicroserviceTransport, type MicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule, type MicroserviceTransport } from '@fluojs/microservices';
+import { NatsMicroserviceTransport } from '@fluojs/microservices/nats';
 import { JSONCodec, connect, type NatsConnection } from 'nats';
 
 import { MathHandler } from './math/math.handler';
@@ -1280,36 +1284,55 @@ const messageSubject = process.env.NATS_MESSAGE_SUBJECT ?? 'fluo.microservices.m
 const codec = JSONCodec();
 
 class LazyNatsTransport implements MicroserviceTransport {
+  readonly ownsResources = true;
+  readonly resourceOwnership: NonNullable<MicroserviceTransport['resourceOwnership']> = {
+    outboundClients: 'framework',
+    server: 'framework',
+  };
+
   private connection: NatsConnection | undefined;
   private initializing: Promise<NatsMicroserviceTransport> | undefined;
+  private logger: Parameters<NonNullable<MicroserviceTransport['setLogger']>>[0] | undefined;
   private transport: NatsMicroserviceTransport | undefined;
 
+  setLogger(logger: Parameters<NonNullable<MicroserviceTransport['setLogger']>>[0]) {
+    this.logger = logger;
+    this.transport?.setLogger?.(logger);
+  }
+
   async close() {
-    const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
-    let closeError: unknown;
-    let closeFailed = false;
-    try {
-      await transport?.close();
-    } catch (error) {
-      closeError = error;
-      closeFailed = true;
-    } finally {
+    let transport = this.transport;
+    const errors: unknown[] = [];
+
+    if (this.initializing) {
       try {
-        await this.connection?.close();
+        transport = await this.initializing;
       } catch (error) {
-        if (!closeFailed) {
-          closeError = error;
-          closeFailed = true;
-        }
-      } finally {
-        this.initializing = undefined;
-        this.transport = undefined;
-        this.connection = undefined;
+        errors.push(error);
       }
     }
 
-    if (closeFailed) {
-      throw closeError;
+    try {
+      await transport?.close();
+    } catch (error) {
+      errors.push(error);
+    }
+
+    try {
+      await this.connection?.close();
+    } catch (error) {
+      errors.push(error);
+    }
+
+    this.initializing = undefined;
+    this.transport = undefined;
+    this.connection = undefined;
+
+    if (errors.length === 1) {
+      throw errors[0];
+    }
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Multiple NATS transport close failures.');
     }
   }
 
@@ -1348,7 +1371,7 @@ class LazyNatsTransport implements MicroserviceTransport {
       servers,
     });
     this.connection = connection;
-    this.transport = new NatsMicroserviceTransport({
+    this.transport = NatsMicroserviceTransport.create({
       client: {
         publish(subject: string, payload: Uint8Array) {
           connection.publish(subject, payload);
@@ -1378,6 +1401,10 @@ class LazyNatsTransport implements MicroserviceTransport {
       requestTimeoutMs: 3_000,
     });
 
+    if (this.logger) {
+      this.transport.setLogger?.(this.logger);
+    }
+
     return this.transport;
   }
 }
@@ -1400,7 +1427,8 @@ export class AppModule {}
       return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import { Kafka, logLevel, type Consumer, type Producer } from 'kafkajs';
-import { KafkaMicroserviceTransport, MicroservicesModule, type MicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule, type MicroserviceTransport } from '@fluojs/microservices';
+import { KafkaMicroserviceTransport } from '@fluojs/microservices/kafka';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1412,27 +1440,66 @@ const clientId = process.env.KAFKA_CLIENT_ID ?? 'fluo-microservice-starter';
 const consumerGroup = process.env.KAFKA_CONSUMER_GROUP ?? 'fluo-handlers';
 const eventTopic = process.env.KAFKA_EVENT_TOPIC ?? 'fluo.microservices.events';
 const messageTopic = process.env.KAFKA_MESSAGE_TOPIC ?? 'fluo.microservices.messages';
-const responseTopic = process.env.KAFKA_RESPONSE_TOPIC ?? 'fluo.microservices.responses';
+const responseTopic = process.env.KAFKA_RESPONSE_TOPIC;
 
 class LazyKafkaTransport implements MicroserviceTransport {
+  readonly ownsResources = true;
+  readonly resourceOwnership: NonNullable<MicroserviceTransport['resourceOwnership']> = {
+    outboundClients: 'framework',
+    server: 'framework',
+  };
+
   private consumer: Consumer | undefined;
   private initializing: Promise<KafkaMicroserviceTransport> | undefined;
+  private logger: Parameters<NonNullable<MicroserviceTransport['setLogger']>>[0] | undefined;
   private producer: Producer | undefined;
   private transport: KafkaMicroserviceTransport | undefined;
 
+  setLogger(logger: Parameters<NonNullable<MicroserviceTransport['setLogger']>>[0]) {
+    this.logger = logger;
+    this.transport?.setLogger?.(logger);
+  }
+
   async close() {
-    const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
+    let transport = this.transport;
+    const errors: unknown[] = [];
+
+    if (this.initializing) {
+      try {
+        transport = await this.initializing;
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+
     try {
       await transport?.close();
-    } finally {
-      await Promise.all([
-        this.consumer?.disconnect().catch(() => undefined),
-        this.producer?.disconnect().catch(() => undefined),
-      ]);
-      this.initializing = undefined;
-      this.consumer = undefined;
-      this.producer = undefined;
-      this.transport = undefined;
+    } catch (error) {
+      errors.push(error);
+    }
+
+    try {
+      await this.consumer?.disconnect();
+    } catch (error) {
+      errors.push(error);
+    }
+
+    try {
+      await this.producer?.disconnect();
+    } catch (error) {
+      errors.push(error);
+    }
+
+    this.initializing = undefined;
+    this.consumer = undefined;
+    this.producer = undefined;
+    this.transport = undefined;
+
+    if (errors.length === 1) {
+      throw errors[0];
+    }
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Multiple Kafka transport close failures.');
     }
   }
 
@@ -1479,19 +1546,29 @@ class LazyKafkaTransport implements MicroserviceTransport {
       await producer.connect();
       await consumer.connect();
     } catch (error) {
-      await Promise.all([
-        consumer.disconnect().catch(() => undefined),
-        producer.disconnect().catch(() => undefined),
-      ]);
+      const errors = [error];
+      try {
+        await consumer.disconnect();
+      } catch (cleanupError) {
+        errors.push(cleanupError);
+      }
+      try {
+        await producer.disconnect();
+      } catch (cleanupError) {
+        errors.push(cleanupError);
+      }
       this.consumer = undefined;
       this.producer = undefined;
-      throw error;
+      if (errors.length === 1) {
+        throw errors[0];
+      }
+      throw new AggregateError(errors, 'Kafka transport initialization and cleanup failures.');
     }
 
     const handlers = new Map<string, (message: string) => Promise<void> | void>();
     let consumerRunning = false;
 
-    this.transport = new KafkaMicroserviceTransport({
+    this.transport = KafkaMicroserviceTransport.create({
       consumer: {
         async subscribe(topic: string, handler: (message: string) => Promise<void> | void) {
           handlers.set(topic, handler);
@@ -1536,8 +1613,12 @@ class LazyKafkaTransport implements MicroserviceTransport {
         },
       },
       requestTimeoutMs: 3_000,
-      responseTopic,
+      ...(responseTopic ? { responseTopic } : {}),
     });
+
+    if (this.logger) {
+      this.transport.setLogger?.(this.logger);
+    }
 
     return this.transport;
   }
@@ -1562,32 +1643,74 @@ export class AppModule {}
 
 import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, RabbitMqMicroserviceTransport, type MicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule, type MicroserviceTransport } from '@fluojs/microservices';
+import { RabbitMqMicroserviceTransport } from '@fluojs/microservices/rabbitmq';
 
 import { MathHandler } from './math/math.handler';
 
 const url = process.env.RABBITMQ_URL ?? 'amqp://127.0.0.1:5672';
 const eventQueue = process.env.RABBITMQ_EVENT_QUEUE ?? 'fluo.microservices.events';
 const messageQueue = process.env.RABBITMQ_MESSAGE_QUEUE ?? 'fluo.microservices.messages';
-const responseQueue = process.env.RABBITMQ_RESPONSE_QUEUE ?? 'fluo.microservices.responses';
+const responseQueue = process.env.RABBITMQ_RESPONSE_QUEUE;
 
 class LazyRabbitMqTransport implements MicroserviceTransport {
+  readonly ownsResources = true;
+  readonly resourceOwnership: NonNullable<MicroserviceTransport['resourceOwnership']> = {
+    outboundClients: 'framework',
+    server: 'framework',
+  };
+
   private channel: Awaited<ReturnType<Awaited<ReturnType<typeof connect>>['createConfirmChannel']>> | undefined;
   private connection: Awaited<ReturnType<typeof connect>> | undefined;
   private initializing: Promise<RabbitMqMicroserviceTransport> | undefined;
+  private logger: Parameters<NonNullable<MicroserviceTransport['setLogger']>>[0] | undefined;
   private transport: RabbitMqMicroserviceTransport | undefined;
 
+  setLogger(logger: Parameters<NonNullable<MicroserviceTransport['setLogger']>>[0]) {
+    this.logger = logger;
+    this.transport?.setLogger?.(logger);
+  }
+
   async close() {
-    const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
+    let transport = this.transport;
+    const errors: unknown[] = [];
+
+    if (this.initializing) {
+      try {
+        transport = await this.initializing;
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+
     try {
       await transport?.close();
-    } finally {
-      await this.channel?.close().catch(() => undefined);
-      await this.connection?.close().catch(() => undefined);
-      this.initializing = undefined;
-      this.channel = undefined;
-      this.connection = undefined;
-      this.transport = undefined;
+    } catch (error) {
+      errors.push(error);
+    }
+
+    try {
+      await this.channel?.close();
+    } catch (error) {
+      errors.push(error);
+    }
+
+    try {
+      await this.connection?.close();
+    } catch (error) {
+      errors.push(error);
+    }
+
+    this.initializing = undefined;
+    this.channel = undefined;
+    this.connection = undefined;
+    this.transport = undefined;
+
+    if (errors.length === 1) {
+      throw errors[0];
+    }
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Multiple RabbitMQ transport close failures.');
     }
   }
 
@@ -1627,14 +1750,22 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
     try {
       channel = await connection.createConfirmChannel();
     } catch (error) {
-      await connection.close().catch(() => undefined);
+      const errors = [error];
+      try {
+        await connection.close();
+      } catch (cleanupError) {
+        errors.push(cleanupError);
+      }
       this.connection = undefined;
-      throw error;
+      if (errors.length === 1) {
+        throw errors[0];
+      }
+      throw new AggregateError(errors, 'RabbitMQ transport initialization and cleanup failures.');
     }
     const consumerTags = new Map<string, string>();
 
     this.channel = channel;
-    this.transport = new RabbitMqMicroserviceTransport({
+    this.transport = RabbitMqMicroserviceTransport.create({
       consumer: {
         async cancel(queue: string) {
           const consumerTag = consumerTags.get(queue);
@@ -1643,8 +1774,8 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
             return;
           }
 
-          consumerTags.delete(queue);
           await channel.cancel(consumerTag);
+          consumerTags.delete(queue);
         },
         async consume(queue: string, handler: (message: string) => Promise<void> | void) {
           await channel.assertQueue(queue, { durable: true });
@@ -1683,8 +1814,12 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
         },
       },
       requestTimeoutMs: 3_000,
-      responseQueue,
+      ...(responseQueue ? { responseQueue } : {}),
     });
+
+    if (this.logger) {
+      this.transport.setLogger?.(this.logger);
+    }
 
     return this.transport;
   }
@@ -1707,7 +1842,8 @@ export class AppModule {}
     default:
       return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1722,7 +1858,7 @@ const host = process.env.MICROSERVICE_HOST ?? '127.0.0.1';
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({ host, port }),
+      transport: TcpMicroserviceTransport.create({ host, port }),
     }),
   ],
   providers: [MathHandler],
@@ -1923,7 +2059,8 @@ Use the unit templates for fast logic checks. Use the mixed verification templat
 function createMixedAppFile(): string {
   return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 import { HealthModule } from '@fluojs/runtime';
 
 import { GreetingModule } from './greeting/greeting.module';
@@ -1943,7 +2080,7 @@ const microserviceHost = process.env.MICROSERVICE_HOST ?? '127.0.0.1';
     GreetingModule,
     HealthModule.forRoot(),
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({ host: microserviceHost, port: microservicePort }),
+      transport: TcpMicroserviceTransport.create({ host: microserviceHost, port: microservicePort }),
     }),
   ],
   providers: [MathHandler],
@@ -2359,7 +2496,6 @@ KAFKA_CLIENT_ID=fluo-microservice-starter
 KAFKA_CONSUMER_GROUP=fluo-handlers
 KAFKA_EVENT_TOPIC=fluo.microservices.events
 KAFKA_MESSAGE_TOPIC=fluo.microservices.messages
-KAFKA_RESPONSE_TOPIC=fluo.microservices.responses
 PORT=3000
 `;
   }
@@ -2368,7 +2504,6 @@ PORT=3000
     return `RABBITMQ_URL=amqp://127.0.0.1:5672
 RABBITMQ_EVENT_QUEUE=fluo.microservices.events
 RABBITMQ_MESSAGE_QUEUE=fluo.microservices.messages
-RABBITMQ_RESPONSE_QUEUE=fluo.microservices.responses
 PORT=3000
 `;
   }

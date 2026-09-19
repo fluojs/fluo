@@ -234,4 +234,3 @@ export interface NormalizedEmailModuleOptions {
   };
   verifyOnModuleInit: boolean;
 }
-
