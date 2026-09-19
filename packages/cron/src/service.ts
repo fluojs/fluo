@@ -16,19 +16,18 @@ import {
   assertValidSchedulingTaskName,
   createLockKey,
   discoverCronTaskDescriptors,
-  resolveSchedulingTaskName,
 } from './task-discovery.js';
 import { CronTaskRunner } from './task-runner.js';
 import { CRON_OPTIONS } from './tokens.js';
 import type {
   CronTaskDescriptor,
-  CronTaskOptions,
-  IntervalTaskOptions,
+  DynamicCronTaskOptions,
+  DynamicIntervalTaskOptions,
+  DynamicTimeoutTaskOptions,
   NormalizedCronModuleOptions,
   SchedulingRegistry,
   SchedulingTaskCallback,
   SchedulingTaskDescriptor,
-  TimeoutTaskOptions,
 } from './types.js';
 
 interface RuntimeScheduledTask {
@@ -49,10 +48,6 @@ function assertValidLockTtlMs(lockTtlMs: number): void {
   if (!Number.isFinite(lockTtlMs) || !Number.isInteger(lockTtlMs) || lockTtlMs < 1_000) {
     throw new Error('Cron distributed lockTtlMs must be a positive integer greater than or equal to 1000ms.');
   }
-}
-
-function resolveDynamicTaskName(name: string, optionName?: string): string {
-  return resolveSchedulingTaskName(name, optionName);
 }
 
 function assertValidMs(ms: number, context: string): void {
@@ -126,9 +121,10 @@ export class CronLifecycleService
    * @param callback Task body executed on matching cron ticks.
    * @param options Optional hooks, distributed lock overrides, and timezone.
    */
-  addCron(name: string, expression: string, callback: SchedulingTaskCallback, options: CronTaskOptions = {}): void {
+  addCron(name: string, expression: string, callback: SchedulingTaskCallback, options: DynamicCronTaskOptions = {}): void {
     assertValidCronExpression(expression);
-    const taskName = resolveDynamicTaskName(name, options.name);
+    assertValidSchedulingTaskName(name);
+    const taskName = name;
 
     this.registerTask(
       {
@@ -157,9 +153,10 @@ export class CronLifecycleService
    * @param callback Task body executed on each interval.
    * @param options Optional hooks and distributed lock overrides.
    */
-  addInterval(name: string, ms: number, callback: SchedulingTaskCallback, options: IntervalTaskOptions = {}): void {
+  addInterval(name: string, ms: number, callback: SchedulingTaskCallback, options: DynamicIntervalTaskOptions = {}): void {
     assertValidMs(ms, 'scheduling registry');
-    const taskName = resolveDynamicTaskName(name, options.name);
+    assertValidSchedulingTaskName(name);
+    const taskName = name;
 
     this.registerTask(
       {
@@ -187,9 +184,10 @@ export class CronLifecycleService
    * @param callback Task body executed once after the delay.
    * @param options Optional hooks and distributed lock overrides.
    */
-  addTimeout(name: string, ms: number, callback: SchedulingTaskCallback, options: TimeoutTaskOptions = {}): void {
+  addTimeout(name: string, ms: number, callback: SchedulingTaskCallback, options: DynamicTimeoutTaskOptions = {}): void {
     assertValidMs(ms, 'scheduling registry');
-    const taskName = resolveDynamicTaskName(name, options.name);
+    assertValidSchedulingTaskName(name);
+    const taskName = name;
 
     this.registerTask(
       {

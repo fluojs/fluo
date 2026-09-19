@@ -48,7 +48,7 @@ function normalizeDistributedOwnerId(ownerId: string | undefined): string {
 }
 
 function normalizeDistributedOptions(distributed: CronModuleOptions['distributed']): NormalizedCronModuleOptions['distributed'] {
-  if (distributed === undefined || distributed === false) {
+  if (distributed === undefined) {
     return {
       clientName: undefined,
       enabled: false,
@@ -58,14 +58,8 @@ function normalizeDistributedOptions(distributed: CronModuleOptions['distributed
     };
   }
 
-  if (distributed === true) {
-    return {
-      clientName: undefined,
-      enabled: true,
-      keyPrefix: 'fluo:cron:lock',
-      lockTtlMs: 30_000,
-      ownerId: createCronRandomId(),
-    };
+  if (typeof distributed !== 'object' || distributed === null) {
+    throw new Error('Cron distributed options must be an object when provided.');
   }
 
   const normalizedDistributed = {

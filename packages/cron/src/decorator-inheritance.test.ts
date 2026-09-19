@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { Cron, Interval, Timeout } from './decorators.js';
 import { CronExpression } from './expressions.js';
-import { getCronTaskMetadataEntries, getSchedulingTaskMetadataEntries } from './metadata.js';
+import { getSchedulingTaskMetadataEntries } from './metadata.js';
 
 describe('scheduling decorator metadata inheritance', () => {
   it('preserves base scheduling metadata when a derived class declares a task', () => {
@@ -63,7 +63,7 @@ describe('scheduling decorator metadata inheritance', () => {
       override task() {}
     }
 
-    expect(getCronTaskMetadataEntries(BaseTaskService.prototype)).toEqual([
+    expect(getSchedulingTaskMetadataEntries(BaseTaskService.prototype)).toEqual([
       {
         metadata: {
           expression: CronExpression.EVERY_10_SECONDS,
@@ -75,7 +75,7 @@ describe('scheduling decorator metadata inheritance', () => {
         propertyKey: 'task',
       },
     ]);
-    expect(getCronTaskMetadataEntries(DerivedTaskService.prototype)).toEqual([
+    expect(getSchedulingTaskMetadataEntries(DerivedTaskService.prototype)).toEqual([
       {
         metadata: {
           expression: CronExpression.EVERY_MINUTE,

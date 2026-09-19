@@ -15,7 +15,12 @@ describe('@fluojs/cron root barrel public surface', () => {
     expect(cron).toHaveProperty('SCHEDULING_REGISTRY');
     expect(cron).not.toHaveProperty('CRON_OPTIONS');
     expect(cron).toHaveProperty('createCronPlatformStatusSnapshot');
-    expect(cron).toHaveProperty('normalizeCronModuleOptions');
+    expect(cron).not.toHaveProperty('normalizeCronModuleOptions');
+    expect(cron).not.toHaveProperty('defineSchedulingTaskMetadata');
+    expect(cron).not.toHaveProperty('defineCronTaskMetadata');
+    expect(cron).not.toHaveProperty('getCronTaskMetadata');
+    expect(cron).not.toHaveProperty('getCronTaskMetadataEntries');
+    expect(cron).not.toHaveProperty('cronMetadataSymbol');
     expect(Object.keys(cron).sort()).toMatchSnapshot();
   });
 });

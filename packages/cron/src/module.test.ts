@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Cron, Interval, Timeout } from './decorators.js';
 import { CronExpression } from './expressions.js';
-import { getCronTaskMetadataEntries, getSchedulingTaskMetadataEntries } from './metadata.js';
+import { getSchedulingTaskMetadataEntries } from './metadata.js';
 import { CronModule, normalizeCronModuleOptions } from './module.js';
 import type { CronLifecycleService } from './service.js';
 import { SCHEDULING_REGISTRY } from './tokens.js';
@@ -320,7 +320,7 @@ describe('@fluojs/cron', () => {
       heartbeat() {}
     }
 
-    const entries = getCronTaskMetadataEntries(TaskService.prototype);
+    const entries = getSchedulingTaskMetadataEntries(TaskService.prototype);
 
     expect(entries).toEqual([
       {
@@ -2287,6 +2287,47 @@ describe('@fluojs/cron', () => {
     await closeApplication(app);
   });
 
+  it('uses the dynamic positional name as the registry and distributed lock identity', async () => {
+    const scheduled = createManualScheduler();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        CronModule.forRoot({
+          distributed: {
+            enabled: true,
+            keyPrefix: 'dynamic-identity',
+            lockTtlMs: 60_000,
+          },
+          scheduler: scheduled.scheduler,
+        }),
+      ],
+    });
+
+    const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: REDIS_CLIENT, useValue: new InMemoryLockRedisClient() }],
+    });
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+
+    try {
+      registry.addCron(
+        'positional-identity',
+        CronExpression.EVERY_SECOND,
+        () => {},
+        { name: 'legacy-options-name' } as unknown as Parameters<SchedulingRegistry['addCron']>[3],
+      );
+
+      expect(registry.get('positional-identity')).toMatchObject({
+        lockKey: 'dynamic-identity:positional-identity',
+        name: 'positional-identity',
+      });
+      expect(registry.get('legacy-options-name')).toBeUndefined();
+      expect(scheduled.records.at(-1)?.options.name).toBe('positional-identity');
+    } finally {
+      await closeApplication(app);
+    }
+  });
+
   it('rolls back interval reschedules when the next handle cannot be created', async () => {
     vi.useFakeTimers();
 
@@ -2500,7 +2541,7 @@ describe('@fluojs/cron', () => {
     await app.close();
   });
 
-  it('honors dynamic task option names for registry keys and scheduler metadata', async () => {
+  it('uses positional dynamic task names for registry keys and scheduler metadata', async () => {
     const scheduled = createManualScheduler();
 
     class AppModule {}
@@ -2520,51 +2561,41 @@ describe('@fluojs/cron', () => {
     const app = await FluoFactory.create(AppModule);
     const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
 
-    registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {}, { name: 'named-dynamic-cron' });
-    registry.addInterval('dynamic-interval', 1_000, () => {}, { name: 'named-dynamic-interval' });
-    registry.addTimeout('dynamic-timeout', 5_000, () => {}, { name: 'named-dynamic-timeout' });
-
-    expect(registry.get('dynamic-cron')).toBeUndefined();
-    expect(registry.get('named-dynamic-cron')).toMatchObject({
-      lockKey: 'dynamic-option-name:named-dynamic-cron',
-      name: 'named-dynamic-cron',
-    });
-    expect(registry.get('named-dynamic-interval')).toMatchObject({
-      lockKey: 'dynamic-option-name:named-dynamic-interval',
-      name: 'named-dynamic-interval',
-    });
-    expect(registry.get('named-dynamic-timeout')).toMatchObject({
-      lockKey: 'dynamic-option-name:named-dynamic-timeout',
-      name: 'named-dynamic-timeout',
-    });
-    expect(scheduled.records[0]?.options.name).toBe('named-dynamic-cron');
-
-    await closeApplication(app);
-  });
-
-  it('rejects blank dynamic task option names without retaining registry state', async () => {
-    const scheduled = createManualScheduler();
-
-    class AppModule {}
-    defineModule(AppModule, {
-      imports: [CronModule.forRoot({ scheduler: scheduled.scheduler })],
-    });
-
-    const app = await FluoFactory.create(AppModule);
-    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
-
-    expect(() => registry.addCron('dynamic-cron', CronExpression.EVERY_SECOND, () => {}, { name: '   ' })).toThrow(
-      /non-empty string/i,
+    registry.addCron(
+      'dynamic-cron',
+      CronExpression.EVERY_SECOND,
+      () => {},
+      { name: 'named-dynamic-cron' } as unknown as Parameters<SchedulingRegistry['addCron']>[3],
     );
-    expect(() => registry.addInterval('dynamic-interval', 1_000, () => {}, { name: '   ' })).toThrow(
-      /non-empty string/i,
+    registry.addInterval(
+      'dynamic-interval',
+      1_000,
+      () => {},
+      { name: 'named-dynamic-interval' } as unknown as Parameters<SchedulingRegistry['addInterval']>[3],
     );
-    expect(() => registry.addTimeout('dynamic-timeout', 1_000, () => {}, { name: '   ' })).toThrow(
-      /non-empty string/i,
+    registry.addTimeout(
+      'dynamic-timeout',
+      5_000,
+      () => {},
+      { name: 'named-dynamic-timeout' } as unknown as Parameters<SchedulingRegistry['addTimeout']>[3],
     );
 
-    expect(registry.getAll()).toHaveLength(0);
-    expect(scheduled.records).toHaveLength(0);
+    expect(registry.get('dynamic-cron')).toMatchObject({
+      lockKey: 'dynamic-option-name:dynamic-cron',
+      name: 'dynamic-cron',
+    });
+    expect(registry.get('dynamic-interval')).toMatchObject({
+      lockKey: 'dynamic-option-name:dynamic-interval',
+      name: 'dynamic-interval',
+    });
+    expect(registry.get('dynamic-timeout')).toMatchObject({
+      lockKey: 'dynamic-option-name:dynamic-timeout',
+      name: 'dynamic-timeout',
+    });
+    expect(registry.get('named-dynamic-cron')).toBeUndefined();
+    expect(registry.get('named-dynamic-interval')).toBeUndefined();
+    expect(registry.get('named-dynamic-timeout')).toBeUndefined();
+    expect(scheduled.records[0]?.options.name).toBe('dynamic-cron');
 
     await closeApplication(app);
   });
