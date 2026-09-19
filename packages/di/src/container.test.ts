@@ -1554,6 +1554,26 @@ describe('Container', () => {
   });
 
   describe('resolution introspection', () => {
+    it('preserves factory resolverClass in the read-only effective provider snapshot', () => {
+      class FactoryResolver {}
+
+      const token = Symbol('factory-resolver');
+      const container = new Container().register({
+        provide: token,
+        resolverClass: FactoryResolver,
+        useFactory: () => new FactoryResolver(),
+      });
+
+      const provider = container.inspectResolutionState().registrations.get(token);
+
+      if (!provider) {
+        expect.unreachable('expected introspection state to expose the registered factory provider');
+      }
+
+      expect(provider.resolverClass).toBe(FactoryResolver);
+      expect(Object.isFrozen(provider)).toBe(true);
+    });
+
     it('returns read-only map views and frozen provider records', async () => {
       const token = Symbol('introspection-token');
       const plugins = Symbol('introspection-plugins');

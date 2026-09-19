@@ -64,7 +64,7 @@ export interface FluoDataLoaderOptions<K, V, C = K> extends DataLoader.Options<K
  * Call this inside any resolver method to obtain a DataLoader that is
  * automatically scoped to the current GraphQL operation.
  */
-export type RequestScopedDataLoaderAccessor<K, V> = (context: GraphQLContext) => DataLoader<K, V>;
+export type RequestScopedDataLoaderAccessor<K, V, C = K> = (context: GraphQLContext) => DataLoader<K, V, C>;
 
 /**
  * Creates operation-scoped `DataLoader` accessors.
@@ -75,6 +75,10 @@ export type RequestScopedDataLoaderAccessor<K, V> = (context: GraphQLContext) =>
  * available for integration-specific loader shapes.
  */
 export class OperationScopedDataLoader {
+  private constructor() {
+    throw new Error('OperationScopedDataLoader cannot be instantiated directly; use OperationScopedDataLoader.create().');
+  }
+
   /**
    * Creates a request-scoped `DataLoader` accessor.
    *
@@ -107,13 +111,31 @@ export class OperationScopedDataLoader {
   static create<K, V, C = K>(
     batchFn: DataLoader.BatchLoadFn<K, V>,
     options?: FluoDataLoaderOptions<K, V, C>,
-  ): RequestScopedDataLoaderAccessor<K, V> {
+  ): RequestScopedDataLoaderAccessor<K, V, C> {
     const { key: userKey, ...dataloaderOptions } = options ?? ({} as FluoDataLoaderOptions<K, V, C>);
     const cacheKey: string | symbol = userKey ?? Symbol('fluo.dataloader');
 
-    return createRequestScopedDataLoaderFactory<DataLoader<K, V>>(
+    return createRequestScopedDataLoaderFactory<DataLoader<K, V, C>>(
       cacheKey,
-      () => new DataLoader<K, V, C>(batchFn, dataloaderOptions as DataLoader.Options<K, V, C>),
+      () => {
+        let loader: DataLoader<K, V, C>;
+        const wrappedBatchFn: DataLoader.BatchLoadFn<K, V> = async (keys) => {
+          const results = await batchFn(keys);
+
+          if (Array.isArray(results) || (typeof results === 'object' && results !== null && 'length' in results)) {
+            for (const [index, key] of keys.entries()) {
+              if (results[index] instanceof Error) {
+                loader.clear(key);
+              }
+            }
+          }
+
+          return results;
+        };
+
+        loader = new DataLoader<K, V, C>(wrappedBatchFn, dataloaderOptions as DataLoader.Options<K, V, C>);
+        return loader;
+      },
     );
   }
 }
@@ -144,8 +166,8 @@ export type DataLoaderMap = Record<string, DataLoaderDefinition<any, any, any>>;
  * `DataLoader` instance keyed by the original batch function's types.
  */
 export type ResolvedDataLoaders<TMap extends DataLoaderMap> = {
-  [K in keyof TMap]: TMap[K] extends DataLoaderDefinition<infer TKey, infer TValue, any>
-    ? DataLoader<TKey, TValue>
+  [K in keyof TMap]: TMap[K] extends DataLoaderDefinition<infer TKey, infer TValue, infer TCacheKey>
+    ? DataLoader<TKey, TValue, unknown extends TCacheKey ? TKey : TCacheKey>
     : never;
 };
 
@@ -179,7 +201,7 @@ export type ResolvedDataLoaders<TMap extends DataLoaderMap> = {
 export function createDataLoaderMap<TMap extends DataLoaderMap>(
   definitions: TMap,
 ): (context: GraphQLContext) => ResolvedDataLoaders<TMap> {
-  const accessors = new Map<string, RequestScopedDataLoaderAccessor<unknown, unknown>>();
+  const accessors = new Map<string, RequestScopedDataLoaderAccessor<any, any, any>>();
 
   for (const [name, def] of Object.entries(definitions)) {
     accessors.set(
@@ -189,7 +211,7 @@ export function createDataLoaderMap<TMap extends DataLoaderMap>(
   }
 
   return (context: GraphQLContext): ResolvedDataLoaders<TMap> => {
-    const result: Record<string, DataLoader<unknown, unknown>> = {};
+    const result: Record<string, DataLoader<any, any, any>> = {};
     for (const [name, accessor] of accessors) {
       result[name] = accessor(context);
     }

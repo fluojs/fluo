@@ -392,7 +392,7 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
   }
 
   private discoverResolverDescriptors(): ResolverDescriptor[] {
-    return discoverResolverDescriptors(this.compiledModules, this.options);
+    return discoverResolverDescriptors(this.compiledModules, this.options, this.runtimeContainer);
   }
 
   private buildGraphqlContext(

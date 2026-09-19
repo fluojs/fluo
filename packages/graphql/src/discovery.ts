@@ -1,6 +1,5 @@
 import type { MetadataPropertyKey, Token } from '@fluojs/core';
-import { getClassDiMetadata } from '@fluojs/core/internal';
-import type { FactoryProvider, Provider, ValueProvider } from '@fluojs/di';
+import { Container } from '@fluojs/di';
 import type { CompiledModule } from '@fluojs/runtime';
 
 import {
@@ -18,34 +17,6 @@ interface DiscoveryCandidate {
   token: Token;
 }
 
-function scopeFromProvider(provider: Provider, factoryResolverClass?: Function): 'request' | 'singleton' | 'transient' {
-  if (typeof provider === 'function') {
-    return getClassDiMetadata(provider)?.scope ?? 'singleton';
-  }
-
-  if ('useClass' in provider) {
-    return provider.scope ?? getClassDiMetadata(provider.useClass)?.scope ?? 'singleton';
-  }
-
-  if ('useFactory' in provider) {
-    return provider.scope ?? (factoryResolverClass ? getClassDiMetadata(factoryResolverClass)?.scope : undefined) ?? 'singleton';
-  }
-
-  return 'singleton';
-}
-
-function isClassProvider(provider: Provider): provider is Extract<Provider, { provide: Token; useClass: Function }> {
-  return typeof provider === 'object' && provider !== null && 'useClass' in provider;
-}
-
-function isValueProvider(provider: Provider): provider is ValueProvider {
-  return typeof provider === 'object' && provider !== null && 'useValue' in provider;
-}
-
-function isFactoryProvider(provider: Provider): provider is FactoryProvider {
-  return typeof provider === 'object' && provider !== null && 'useFactory' in provider;
-}
-
 function methodKeyToName(methodKey: MetadataPropertyKey): string {
   return typeof methodKey === 'symbol' ? methodKey.toString() : methodKey;
 }
@@ -58,73 +29,85 @@ function normalizeAllowedResolverSet(resolvers: Function[] | undefined): Set<Fun
   return new Set(resolvers);
 }
 
-function discoveryCandidates(compiledModules: readonly CompiledModule[]): DiscoveryCandidate[] {
-  const candidates: DiscoveryCandidate[] = [];
+function createEffectiveContainer(compiledModules: readonly CompiledModule[]): Container {
+  const container = new Container();
 
   for (const compiledModule of compiledModules) {
     for (const provider of compiledModule.definition.providers ?? []) {
-      if (typeof provider === 'function') {
-        candidates.push({
-          moduleName: compiledModule.type.name,
-          scope: scopeFromProvider(provider),
-          targetType: provider,
-          token: provider,
-        });
-        continue;
-      }
+      const token = typeof provider === 'function' ? provider : provider.provide;
 
-      if (isClassProvider(provider)) {
-        candidates.push({
-          moduleName: compiledModule.type.name,
-          scope: scopeFromProvider(provider),
-          targetType: provider.useClass,
-          token: provider.provide,
-        });
-        continue;
-      }
-
-      if (isValueProvider(provider)) {
-        const value = provider.useValue;
-
-        if (typeof value === 'function') {
-          candidates.push({
-            moduleName: compiledModule.type.name,
-            scope: 'singleton',
-            targetType: value,
-            token: provider.provide,
-          });
-          continue;
-        }
-
-        if (typeof value === 'object' && value !== null) {
-          const constructor = value.constructor as Function | undefined;
-
-          if (constructor && constructor !== Object) {
-            candidates.push({
-              moduleName: compiledModule.type.name,
-              scope: 'singleton',
-              targetType: constructor,
-              token: provider.provide,
-            });
-          }
-        }
-
-        continue;
-      }
-
-      if (isFactoryProvider(provider)) {
-        const resolverClass = (provider as FactoryProvider & { resolverClass?: Function }).resolverClass;
-
-        if (resolverClass) {
-          candidates.push({
-            moduleName: compiledModule.type.name,
-            scope: scopeFromProvider(provider, resolverClass),
-            targetType: resolverClass,
-            token: provider.provide,
-          });
-        }
+      if (container.has(token)) {
+        container.override(provider);
+      } else {
+        container.register(provider);
       }
     }
+  }
+
+  return container;
+}
+
+function discoveryCandidates(
+  compiledModules: readonly CompiledModule[],
+  container: Container,
+): DiscoveryCandidate[] {
+  const candidates: DiscoveryCandidate[] = [];
+  const moduleNameByToken = new Map<Token, string>();
+
+  for (const compiledModule of compiledModules) {
+    for (const provider of compiledModule.definition.providers ?? []) {
+      const token = typeof provider === 'function' ? provider : provider.provide;
+      moduleNameByToken.set(token, compiledModule.type.name);
+    }
+  }
+
+  const registrations = container.inspectResolutionState().registrations;
+
+  for (const [token, moduleName] of moduleNameByToken) {
+    const registration = registrations.get(token);
+
+    if (!registration) {
+      continue;
+    }
+
+    let targetType: Function | undefined;
+    let scope: 'request' | 'singleton' | 'transient' = registration.scope;
+
+    if (registration.type === 'class') {
+      targetType = registration.useClass;
+    } else if (registration.type === 'value') {
+      const value = registration.useValue;
+      scope = 'singleton';
+
+      if (typeof value === 'function') {
+        targetType = value;
+      } else if (typeof value === 'object' && value !== null) {
+        const constructor = value.constructor as Function | undefined;
+
+        if (constructor && constructor !== Object) {
+          targetType = constructor;
+        }
+      }
+    } else if (registration.type === 'factory') {
+      targetType = registration.resolverClass;
+    }
+
+    if (!targetType || typeof targetType !== 'function') {
+      continue;
+    }
+
+    const resolverMetadata = getResolverMetadata(targetType);
+
+    if (!resolverMetadata) {
+      continue;
+    }
+
+    candidates.push({
+      moduleName,
+      scope,
+      targetType,
+      token,
+    });
   }
 
   return candidates;
@@ -135,17 +118,20 @@ function discoveryCandidates(compiledModules: readonly CompiledModule[]): Discov
  *
  * @param compiledModules The compiled modules.
  * @param options The options.
+ * @param runtimeContainer The optional runtime container.
  * @returns The discover resolver descriptors result.
  */
 export function discoverResolverDescriptors(
   compiledModules: readonly CompiledModule[],
   options: GraphqlModuleOptions,
+  runtimeContainer?: Container,
 ): ResolverDescriptor[] {
+  const container = runtimeContainer ?? createEffectiveContainer(compiledModules);
   const allowedResolvers = normalizeAllowedResolverSet(options.resolvers);
   const seenTargets = new Set<Function>();
   const descriptors: ResolverDescriptor[] = [];
 
-  for (const candidate of discoveryCandidates(compiledModules)) {
+  for (const candidate of discoveryCandidates(compiledModules, container)) {
     if (allowedResolvers && !allowedResolvers.has(candidate.targetType)) {
       continue;
     }

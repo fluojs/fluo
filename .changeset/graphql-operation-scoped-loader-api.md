@@ -1,8 +1,11 @@
 ---
+"@fluojs/di": patch
 "@fluojs/graphql": major
 ---
 
 Unify GraphQL resolver registration and operation-scoped DataLoader creation around canonical public APIs.
+
+`@fluojs/di` now preserves factory `resolverClass` metadata in normalized provider snapshots so framework integrations can inspect the effective runtime provider without evaluating factories.
 
 Migration:
 
