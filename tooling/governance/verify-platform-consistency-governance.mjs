@@ -1822,7 +1822,8 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   // and owned transport cleanup serialization docs/tests,
   // plus CQRS provider-token fan-out, private immutable dispatch topology state,
   // single-owner same-token nested saga continuation, full handler/saga/delegated
-  // pipeline ordering, and shutdown authorization,
+  // pipeline ordering, shutdown authorization, and canonical module registration
+  // plus lifecycle service injection boundaries,
   // plus event-bus background handler/transport shutdown drain to live-set
   // quiescence under one deadline, inbound timeout, stable eventKey migration,
   // and CQRS responsibility-boundary docs/tests,
