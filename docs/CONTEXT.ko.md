@@ -130,7 +130,7 @@ module을 import해야 하며, 이름이 runtime container를 분리하지는 �
 
 ## CQRS Status snapshot
 
-`@fluojs/cqrs`는 platform diagnostic을 위해 `createCqrsPlatformStatusSnapshot(...)`과 `CqrsEventBusService.createPlatformStatusSnapshot()`을 공개합니다. `details`에는 Command/Query/Event handler/saga discovery와 lifecycle state, 현재 saga execution, bounded shutdown-drain diagnostic, 위임된 `event-bus.default` dependency를 담고, readiness와 health는 event/saga runtime이 정의합니다. 전체 field와 lifecycle 계약은 [CQRS 계약](./architecture/cqrs.ko.md)에, public package 사용 개요는 [CQRS README](../packages/cqrs/README.ko.md)에 있습니다.
+`@fluojs/cqrs`는 platform diagnostic을 위해 `CqrsEventBusService.createPlatformStatusSnapshot()`을 공개합니다. `details`에는 Command/Query/Event handler/saga discovery와 lifecycle state, 현재 saga execution, bounded shutdown-drain diagnostic, 위임된 `event-bus.default` dependency를 담고, readiness와 health는 event/saga runtime이 정의합니다. 전체 field와 lifecycle 계약은 [CQRS 계약](./architecture/cqrs.ko.md)에, public package 사용 개요는 [CQRS README](../packages/cqrs/README.ko.md)에 있습니다.
 
 ## GraphQL NestJS 마이그레이션 경계
 

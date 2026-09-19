@@ -118,7 +118,7 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
       throw new QueryHandlerNotFoundException(`No query handler registered for ${queryType.name}.`);
     }
 
-    const instance = await this.resolveHandlerInstance(descriptor.token);
+    const instance = await this.resolveHandlerInstance(descriptor.token, descriptor.targetType);
 
     if (!isQueryHandler(instance)) {
       throw new InvariantError(`Query handler ${descriptor.targetType.name} must implement execute(query).`);
@@ -159,7 +159,7 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
       this.handlerInstances.clear();
 
       for (const descriptor of this.descriptors.values()) {
-        await this.preloadHandlerInstance(descriptor.token);
+        await this.preloadHandlerInstance(descriptor.token, descriptor.targetType);
       }
 
       this.discovered = true;

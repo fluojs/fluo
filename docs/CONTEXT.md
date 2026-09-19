@@ -131,7 +131,7 @@ The `@fluojs/platform-cloudflare-workers` lifecycle contract is documented in it
 
 ## CQRS Status Snapshot
 
-`@fluojs/cqrs` exposes `createCqrsPlatformStatusSnapshot(...)` and `CqrsEventBusService.createPlatformStatusSnapshot()` for platform diagnostics. Their `details` report command/query/event-handler/saga discovery and lifecycle state, current saga executions, bounded shutdown-drain diagnostics, and the delegated `event-bus.default` dependency; readiness and health are defined by the event/saga runtime. The complete field and lifecycle contract is [CQRS Contract](./architecture/cqrs.md), and the public-package usage overview is [the CQRS README](../packages/cqrs/README.md).
+`@fluojs/cqrs` exposes `CqrsEventBusService.createPlatformStatusSnapshot()` for platform diagnostics. Its `details` report command/query/event-handler/saga discovery and lifecycle state, current saga executions, bounded shutdown-drain diagnostics, and the delegated `event-bus.default` dependency; readiness and health are defined by the event/saga runtime. The complete field and lifecycle contract is [CQRS Contract](./architecture/cqrs.md), and the public-package usage overview is [the CQRS README](../packages/cqrs/README.md).
 
 ## GraphQL NestJS Migration Boundaries
 

@@ -112,7 +112,7 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
       throw new CommandHandlerNotFoundException(`No command handler registered for ${commandType.name}.`);
     }
 
-    const instance = await this.resolveHandlerInstance(descriptor.token);
+    const instance = await this.resolveHandlerInstance(descriptor.token, descriptor.targetType);
 
     if (!isCommandHandler(instance)) {
       throw new InvariantError(`Command handler ${descriptor.targetType.name} must implement execute(command).`);
@@ -153,7 +153,7 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
       this.handlerInstances.clear();
 
       for (const descriptor of this.descriptors.values()) {
-        await this.preloadHandlerInstance(descriptor.token);
+        await this.preloadHandlerInstance(descriptor.token, descriptor.targetType);
       }
 
       this.discovered = true;

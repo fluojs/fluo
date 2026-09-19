@@ -1,4 +1,4 @@
-import { formatTokenName, type Token } from '@fluojs/core';
+import { formatTokenName, InvariantError, type Token } from '@fluojs/core';
 import type { Container, Provider } from '@fluojs/di';
 import type { ApplicationLogger, CompiledModule } from '@fluojs/runtime';
 import { getRuntimeClassDiMetadata } from '@fluojs/runtime/internal';
@@ -97,6 +97,27 @@ export function isSameHandlerRegistration(
 }
 
 /**
+ * Filters discovery candidates so that tokens duplicated across different handler classes
+ * retain only the winning provider identity registered in the application container,
+ * preserving deduplication and distinct token visibility while preventing superseded
+ * handler classes from resolving to the winning provider instance.
+ *
+ * @param candidates Candidates extracted from compiled modules.
+ * @returns Effective candidates with duplicate token conflicts resolved to the winning provider.
+ */
+export function filterEffectiveDiscoveryCandidates(
+  candidates: readonly DiscoveryCandidate[],
+): DiscoveryCandidate[] {
+  const winningTargetTypeByToken = new Map<Token, Function>();
+
+  for (const candidate of candidates) {
+    winningTargetTypeByToken.set(candidate.token, candidate.targetType);
+  }
+
+  return candidates.filter((candidate) => candidate.targetType === winningTargetTypeByToken.get(candidate.token));
+}
+
+/**
  * Represents the cqrs bus base.
  */
 export abstract class CqrsBusBase {
@@ -148,7 +169,7 @@ export abstract class CqrsBusBase {
       }
     }
 
-    return candidates;
+    return filterEffectiveDiscoveryCandidates(candidates);
   }
 
   private resolveProviderDiscoveryCandidate(candidate: ProviderDiscoveryCandidate): DiscoveryCandidate | undefined {
@@ -217,8 +238,14 @@ export abstract class CqrsBusBase {
     };
   }
 
-  protected async preloadHandlerInstance(token: Token): Promise<void> {
+  protected async preloadHandlerInstance(token: Token, expectedType?: Function): Promise<void> {
     if (this.handlerInstances.has(token)) {
+      const existing = await this.handlerInstances.get(token);
+      if (expectedType && !(existing instanceof expectedType)) {
+        throw new InvariantError(
+          `Resolved handler instance for ${formatTokenName(token)} is not an instance of ${expectedType.name}.`,
+        );
+      }
       return;
     }
 
@@ -226,24 +253,41 @@ export abstract class CqrsBusBase {
     this.handlerInstances.set(token, resolving);
 
     try {
-      await resolving;
+      const instance = await resolving;
+      if (expectedType && !(instance instanceof expectedType)) {
+        throw new InvariantError(
+          `Resolved handler instance for ${formatTokenName(token)} is not an instance of ${expectedType.name}.`,
+        );
+      }
     } catch (error) {
       this.handlerInstances.delete(token);
       throw error;
     }
   }
 
-  protected async resolveHandlerInstance(token: Token): Promise<unknown> {
+  protected async resolveHandlerInstance(token: Token, expectedType?: Function): Promise<unknown> {
     const cached = this.handlerInstances.get(token);
 
     if (cached) {
-      return await cached;
+      const instance = await cached;
+      if (expectedType && !(instance instanceof expectedType)) {
+        throw new InvariantError(
+          `Resolved handler instance for ${formatTokenName(token)} is not an instance of ${expectedType.name}.`,
+        );
+      }
+      return instance;
     }
 
     const resolving = this.runtimeContainer.resolve(token);
     this.handlerInstances.set(token, resolving);
 
     try {
+      const instance = await resolving;
+      if (expectedType && !(instance instanceof expectedType)) {
+        throw new InvariantError(
+          `Resolved handler instance for ${formatTokenName(token)} is not an instance of ${expectedType.name}.`,
+        );
+      }
       return await resolving;
     } catch (error) {
       this.handlerInstances.delete(token);

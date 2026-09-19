@@ -310,7 +310,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
   }
 
   private async invokeSaga<TEvent extends IEvent>(descriptor: SagaDescriptor, event: TEvent, context: CqrsDispatchContext): Promise<void> {
-    const instance = await this.resolveHandlerInstance(descriptor.token);
+    const instance = await this.resolveHandlerInstance(descriptor.token, descriptor.targetType);
 
     if (!isSaga(instance)) {
       throw new InvariantError(`Saga ${descriptor.targetType.name} must implement handle(event).`);
@@ -350,7 +350,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
 
       for (const descriptors of this.descriptorsByEvent.values()) {
         for (const descriptor of descriptors) {
-          await this.preloadHandlerInstance(descriptor.token);
+          await this.preloadHandlerInstance(descriptor.token, descriptor.targetType);
         }
       }
 

@@ -211,9 +211,8 @@ CQRS handlers, event handlers, and sagas are discovered only on singleton provid
 - `SagaExecutionError`: Wraps unexpected non-Fluo saga failures.
 - `SagaTopologyError`: Raised when saga orchestration detects an active provider-token/event-route cycle or an over-deep in-process saga graph.
 
-### Status and metadata
+### Status
 - `CqrsEventBusService.createPlatformStatusSnapshot()`: Populates all discovery and lifecycle summaries from live bus state. Snapshot details never expose handler descriptors, provider tokens, or saga topology; command and query summaries do not change the existing event/saga readiness or health semantics.
-- Metadata helpers and symbols are exported for framework packages that need to inspect command, query, event, or saga registrations.
 
 #### Status snapshot fields
 

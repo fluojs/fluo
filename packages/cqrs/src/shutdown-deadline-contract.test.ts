@@ -376,4 +376,45 @@ describe('CQRS single shutdown deadline contract', () => {
 
     expectFulfilled(cleanupResults);
   });
+
+  it('clears descriptors and handlerInstances on shutdown and reports zero handlers in snapshot', async () => {
+    class SampleEvent implements IEvent {
+      constructor(public readonly id: string) {}
+    }
+
+    @EventHandler(SampleEvent)
+    class SampleHandler implements IEventHandler<SampleEvent> {
+      async handle(): Promise<void> {}
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [SampleHandler],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
+
+    const preSnapshot = eventBus.createPlatformStatusSnapshot();
+    expect(preSnapshot.details.eventHandlersDiscovered).toBe(1);
+    expect(eventBus['descriptors'].length).toBe(1);
+    expect(eventBus['handlerInstances'].size).toBe(1);
+
+    await app.close();
+
+    const postSnapshot = eventBus.createPlatformStatusSnapshot();
+    expect(postSnapshot.details.eventHandlersDiscovered).toBe(0);
+    expect(eventBus['descriptors'].length).toBe(0);
+    expect(eventBus['handlerInstances'].size).toBe(0);
+
+    // Idempotent shutdown retry preserves stopped state
+    await expect(eventBus.onApplicationShutdown()).resolves.toBeUndefined();
+
+    // Rejection of new publish work after shutdown
+    await expect(eventBus.publish(new SampleEvent('post-shutdown'))).rejects.toThrow(
+      'CQRS event bus cannot publish after shutdown has started.',
+    );
+  });
 });
+
