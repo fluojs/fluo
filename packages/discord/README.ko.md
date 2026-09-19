@@ -108,7 +108,7 @@ DiscordModule.forRootAsync({
 
 Behavioral contract 메모:
 
-- `DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 `DiscordService`, `DiscordChannel`, `DISCORD`, `DISCORD_CHANNEL`을 기본 global로 export합니다. fluo 옵션인 `global?: boolean`을 사용하고, migrated code가 Discord provider를 importing module 안에만 유지해야 할 때만 `global: false`를 설정하세요. NestJS `isGlobal`은 지원하지 않습니다.
+- `DiscordModule.forRoot(...)`와 `DiscordModule.forRootAsync(...)`는 `DiscordService`, `DiscordChannel`, `DISCORD_CHANNEL`을 기본 global로 export합니다. fluo 옵션인 `global?: boolean`을 사용하고, migrated code가 Discord provider를 importing module 안에만 유지해야 할 때만 `global: false`를 설정하세요. NestJS `isGlobal`은 지원하지 않습니다.
 - `DiscordService.send(...)`는 전달 전에 `defaultThreadId`를 해석합니다.
 - `DiscordService.sendMany(...)`는 `DiscordMessage[]`를 직접 순차 전송하는 batch API이며 `continueOnError`를 지원합니다. 이는 multi-recipient `@fluojs/notifications` dispatch shortcut이 아닙니다.
 - 서비스는 모듈 bootstrap 시 transport를 초기화하고, bootstrap verification 실패와 애플리케이션 shutdown 전반에서 factory-owned 리소스를 정확히 한 번 닫습니다. shutdown 전에 시작된 factory 생성 transport가 아직 완료되지 않았더라도 이를 기다리며, 진행 중인 bootstrap verification이 settle된 뒤에만 factory-owned transport를 닫습니다. Verification 실패 후 owned cleanup도 실패하면 status diagnostics는 이를 `shutdown-cleanup`으로 재분류하지 않고 최초 `initialization` failure phase를 유지하며, reject된 factory creation도 initialization failure로 유지됩니다.
@@ -286,7 +286,6 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 
 ### 핵심
 
-- `Discord`
 - `DiscordModule.forRoot(options)` / `DiscordModule.forRootAsync(options)`
 - `DiscordModuleOptions`
 - `DiscordAsyncModuleOptions`
@@ -296,7 +295,6 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `DiscordService.sendNotification(notification, options)`
 - `DiscordService.createPlatformStatusSnapshot()`
 - `DiscordChannel`
-- `DISCORD`
 - `DISCORD_CHANNEL`
 
 애플리케이션 구성은 `DiscordModule`로, notifications 연동은 `DISCORD_CHANNEL`과 export된 transport 계약으로 조합합니다.

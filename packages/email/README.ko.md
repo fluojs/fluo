@@ -111,7 +111,7 @@ export class WelcomeService {
 
 ### 등록 범위와 async factory
 
-`EmailModule.forRoot(...)`와 `EmailModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 한 번 import하면 export된 `EmailService`, `EmailChannel`, `EMAIL`, `EMAIL_CHANNEL` provider가 애플리케이션 module graph에 표시됩니다. 이메일 provider를 반환된 module을 명시적으로 import한 module에만 보이게 해야 할 때만 `global: false`를 전달합니다.
+`EmailModule.forRoot(...)`와 `EmailModule.forRootAsync(...)`는 기본적으로 global module을 반환합니다. 한 번 import하면 export된 `EmailService`, `EmailChannel`, `EMAIL_CHANNEL` provider가 애플리케이션 module graph에 표시됩니다. 이메일 provider를 반환된 module을 명시적으로 import한 module에만 보이게 해야 할 때만 `global: false`를 전달합니다.
 
 Async 등록은 의도적으로 fluo의 명시적 factory 형태를 사용합니다:
 

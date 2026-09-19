@@ -111,7 +111,7 @@ The root `@fluojs/email` surface is intentionally module-first. Register email d
 
 ### Registration scope and async factories
 
-`EmailModule.forRoot(...)` and `EmailModule.forRootAsync(...)` return a global module by default. After one import, the exported `EmailService`, `EmailChannel`, `EMAIL`, and `EMAIL_CHANNEL` providers are visible to the application module graph. Pass `global: false` only when email providers should stay visible to modules that explicitly import the returned module.
+`EmailModule.forRoot(...)` and `EmailModule.forRootAsync(...)` return a global module by default. After one import, the exported `EmailService`, `EmailChannel`, and `EMAIL_CHANNEL` providers are visible to the application module graph. Pass `global: false` only when email providers should stay visible to modules that explicitly import the returned module.
 
 Async registration intentionally uses fluo's explicit factory shape:
 

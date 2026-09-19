@@ -199,7 +199,8 @@ export interface DiscordNotificationPayload extends Record<string, unknown> {
   flags?: number;
   metadata?: Record<string, unknown>;
   poll?: DiscordPoll;
-  threadId?: string;
+  /** Notification routing belongs to the envelope `recipients`, never the Discord payload. */
+  threadId?: never;
   threadName?: string;
   tts?: boolean;
   username?: string;

@@ -123,7 +123,7 @@ export class EmailModule {
    * Registers email providers using static options.
    *
    * @param options Static email module options including transport wiring and optional template rendering behavior.
-   * @returns A module definition that exports {@link EmailService}, {@link EmailChannel}, and email facade tokens globally by default or only to explicit importers when `options.global` is `false`.
+   * @returns A module definition that exports {@link EmailService}, {@link EmailChannel}, and {@link EMAIL_CHANNEL} globally by default or only to explicit importers when `options.global` is `false`.
    *
    * @example
     * ```ts

@@ -108,7 +108,7 @@ DiscordModule.forRootAsync({
 
 Behavioral contract notes:
 
-- `DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` export `DiscordService`, `DiscordChannel`, `DISCORD`, and `DISCORD_CHANNEL` globally by default. Use the fluo `global?: boolean` option and set `global: false` only when migrated code must keep Discord providers local to importing modules; NestJS `isGlobal` is not supported.
+- `DiscordModule.forRoot(...)` and `DiscordModule.forRootAsync(...)` export `DiscordService`, `DiscordChannel`, and `DISCORD_CHANNEL` globally by default. Use the fluo `global?: boolean` option and set `global: false` only when migrated code must keep Discord providers local to importing modules; NestJS `isGlobal` is not supported.
 - `DiscordService.send(...)` resolves `defaultThreadId` before delivery.
 - `DiscordService.sendMany(...)` is a direct `DiscordMessage[]` batch API that sends messages sequentially and supports `continueOnError`; it is not a multi-recipient `@fluojs/notifications` dispatch shortcut.
 - The service initializes the configured transport during module bootstrap and closes factory-owned resources exactly once across bootstrap verification failure and application shutdown, including any in-flight factory-created transport before shutdown began. Shutdown waits for in-flight bootstrap verification to settle before closing a factory-owned transport. If verification fails and the subsequent owned cleanup also fails, status diagnostics preserve the first `initialization` failure phase instead of reclassifying it as `shutdown-cleanup`; a rejected factory creation likewise remains an initialization failure.
@@ -286,7 +286,6 @@ These limitations are part of the package contract so runtime choice, provider c
 
 ### Core
 
-- `Discord`
 - `DiscordModule.forRoot(options)` / `DiscordModule.forRootAsync(options)`
 - `DiscordModuleOptions`
 - `DiscordAsyncModuleOptions`
@@ -296,7 +295,6 @@ These limitations are part of the package contract so runtime choice, provider c
 - `DiscordService.sendNotification(notification, options)`
 - `DiscordService.createPlatformStatusSnapshot()`
 - `DiscordChannel`
-- `DISCORD`
 - `DISCORD_CHANNEL`
 
 Compose applications through `DiscordModule` and integrate notifications through `DISCORD_CHANNEL` plus the exported transport contracts.
