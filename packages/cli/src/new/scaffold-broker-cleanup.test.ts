@@ -55,7 +55,12 @@ function installCommonStubs(projectDirectory: string): void {
     `export function MessagePattern() { return () => undefined; }
 class BrokerTransport {
   static create(options) {
+    globalThis.__lastCreatedOptions = options;
     return new this(options);
+  }
+  setLogger(logger) {
+    globalThis.__events.push('transport.setLogger');
+    globalThis.__lastLogger = logger;
   }
   async close() {
     globalThis.__events.push('transport.close');
@@ -152,7 +157,14 @@ export class Kafka {
         globalThis.__startupError = new Error('channel creation failed');
         throw globalThis.__startupError;
       }
-      return { async close() { globalThis.__events.push('rabbitmq.channel.close'); } };
+      return {
+        async close() {
+          globalThis.__events.push('rabbitmq.channel.close');
+          if (globalThis.__channelCleanupFails) throw new Error('channel cleanup failed');
+        },
+        async assertQueue() {},
+        async consume() { return { consumerTag: 'tag-1' }; },
+      };
     },
   };
 }
@@ -286,6 +298,118 @@ await transport.listen(() => undefined).then(
 if (!globalThis.__events.includes('rabbitmq.connection.close')) {
   throw new Error('RabbitMQ connection was not closed.');
 }
+`,
+    );
+  });
+
+  it.each([
+    ['nats'],
+    ['kafka'],
+    ['rabbitmq'],
+  ] as const)('exposes ownsResources and granular resourceOwnership on %s wrapper', async (transportName) => {
+    const projectDirectory = await generateBrokerStarter(transportName);
+
+    runAssertionScript(
+      projectDirectory,
+      `await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+if (transport.ownsResources !== true) {
+  throw new Error('Expected transport.ownsResources to be true, got: ' + transport.ownsResources);
+}
+if (!transport.resourceOwnership || transport.resourceOwnership.outboundClients !== 'framework' || transport.resourceOwnership.server !== 'framework') {
+  throw new Error('Expected framework resourceOwnership, got: ' + JSON.stringify(transport.resourceOwnership));
+}
+`,
+    );
+  });
+
+  it.each([
+    ['nats'],
+    ['kafka'],
+    ['rabbitmq'],
+  ] as const)('forwards setLogger to concrete %s transport before and after creation', async (transportName) => {
+    const projectDirectory = await generateBrokerStarter(transportName);
+
+    runAssertionScript(
+      projectDirectory,
+      `await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+const loggerA = { tag: 'logger-A' };
+transport.setLogger(loggerA);
+await transport.listen(() => undefined);
+if (globalThis.__lastLogger !== loggerA) {
+  throw new Error('Pre-creation logger was not forwarded to concrete transport.');
+}
+const loggerB = { tag: 'logger-B' };
+transport.setLogger(loggerB);
+if (globalThis.__lastLogger !== loggerB) {
+  throw new Error('Post-creation logger was not forwarded to concrete transport.');
+}
+await transport.close();
+`,
+    );
+  });
+
+  it.each([
+    ['nats', 'nats cleanup failed'],
+    ['kafka', 'cleanup failed'],
+    ['rabbitmq', 'connection cleanup failed'],
+  ] as const)('surfaces broker cleanup failure on %s wrapper when delegated close succeeds', async (transportName, expectedMessage) => {
+    const projectDirectory = await generateBrokerStarter(transportName);
+
+    runAssertionScript(
+      projectDirectory,
+      `await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+await transport.listen(() => undefined);
+globalThis.__cleanupFails = true;
+let caughtError;
+try {
+  await transport.close();
+} catch (err) {
+  caughtError = err;
+}
+if (!caughtError) {
+  throw new Error('Expected transport.close() to reject with cleanup failure.');
+}
+const msg = caughtError.message || String(caughtError);
+const causes = Array.isArray(caughtError.errors) ? caughtError.errors.map((e) => e?.message || String(e)) : [];
+const matches = msg.includes('${expectedMessage}') || causes.some((cause) => cause.includes('${expectedMessage}'));
+if (!matches) {
+  throw new Error('Expected error message or causes to contain "${expectedMessage}", got: ' + msg + '; causes: ' + causes.join(', '));
+}
+`,
+    );
+  });
+
+  it('Kafka starter defaults to instance-scoped random response topic and accepts explicit env destination', async () => {
+    const projectDirectory = await generateBrokerStarter('kafka');
+
+    runAssertionScript(
+      projectDirectory,
+      `await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+await transport.listen(() => undefined);
+if (globalThis.__lastCreatedOptions.responseTopic !== undefined) {
+  throw new Error('Expected default responseTopic to be undefined, got: ' + globalThis.__lastCreatedOptions.responseTopic);
+}
+await transport.close();
+`,
+    );
+  });
+
+  it('RabbitMQ starter defaults to instance-scoped random response queue and accepts explicit env destination', async () => {
+    const projectDirectory = await generateBrokerStarter('rabbitmq');
+
+    runAssertionScript(
+      projectDirectory,
+      `await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+await transport.listen(() => undefined);
+if (globalThis.__lastCreatedOptions.responseQueue !== undefined) {
+  throw new Error('Expected default responseQueue to be undefined, got: ' + globalThis.__lastCreatedOptions.responseQueue);
+}
+await transport.close();
 `,
     );
   });

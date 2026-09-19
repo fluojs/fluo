@@ -3,6 +3,32 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ServerStreamWriter } from '../types.js';
 import { GrpcMicroserviceTransport } from './grpc-transport.js';
 
+interface FakeServerCredentials {
+  readonly __type: 'ServerCredentials';
+  readonly insecure?: boolean;
+}
+
+interface FakeChannelCredentials {
+  readonly __type: 'ChannelCredentials';
+  readonly insecure?: boolean;
+}
+
+function createFakeServerCredentials(insecure = true): FakeServerCredentials {
+  return { __type: 'ServerCredentials', insecure };
+}
+
+function createFakeChannelCredentials(insecure = true): FakeChannelCredentials {
+  return { __type: 'ChannelCredentials', insecure };
+}
+
+function isFakeServerCredentials(value: unknown): value is FakeServerCredentials {
+  return typeof value === 'object' && value !== null && (value as FakeServerCredentials).__type === 'ServerCredentials';
+}
+
+function isFakeChannelCredentials(value: unknown): value is FakeChannelCredentials {
+  return typeof value === 'object' && value !== null && (value as FakeChannelCredentials).__type === 'ChannelCredentials';
+}
+
 class FakeGrpcMetadata {
   private readonly values = new Map<string, unknown[]>();
 
@@ -65,7 +91,10 @@ class FakeGrpcServer {
   }
 
   bindAsync(address: string, credentials: unknown, callback: (error: Error | null, port: number) => void): void {
-    void credentials;
+    if (!isFakeServerCredentials(credentials)) {
+      callback(new Error('creds must be a ServerCredentials object'), 0);
+      return;
+    }
 
     if (this.bindError) {
       callback(this.bindError, 0);
@@ -223,9 +252,15 @@ class FakeGrpcRuntime {
     UNIMPLEMENTED: 12,
   } as const;
 
+  readonly ServerCredentials = {
+    createInsecure(): FakeServerCredentials {
+      return createFakeServerCredentials(true);
+    },
+  };
+
   readonly credentials = {
-    createInsecure(): string {
-      return 'insecure';
+    createInsecure(): FakeChannelCredentials {
+      return createFakeChannelCredentials(true);
     },
   };
 
@@ -262,7 +297,11 @@ class FakeGrpcRuntime {
     return class FakeGrpcClient {
       [methodName: string]: unknown;
 
-      constructor(private readonly address: string) {
+      constructor(private readonly address: string, credentials?: unknown) {
+        if (!isFakeChannelCredentials(credentials)) {
+          throw new Error('Channel credentials must be a ChannelCredentials object');
+        }
+
         for (const [methodName, methodDef] of Object.entries(serviceDefinition)) {
           if (methodDef.requestStream && methodDef.responseStream) {
             this[methodName] = (
@@ -598,7 +637,12 @@ class FakeGrpcRuntime {
   }
 }
 
-function createGrpcTransport(options: { useSuppliedServer?: boolean } = {}): { runtime: FakeGrpcRuntime; server: FakeGrpcServer | undefined; transport: GrpcMicroserviceTransport } {
+function createGrpcTransport(options: {
+  channelCredentials?: unknown;
+  credentials?: unknown;
+  serverCredentials?: unknown;
+  useSuppliedServer?: boolean;
+} = {}): { runtime: FakeGrpcRuntime; server: FakeGrpcServer | undefined; transport: GrpcMicroserviceTransport } {
   const mathService = class FakeMathService {
     static readonly service = {
       Notify: { requestStream: false, responseStream: false },
@@ -620,6 +664,8 @@ function createGrpcTransport(options: { useSuppliedServer?: boolean } = {}): { r
   const runtime = new FakeGrpcRuntime(packageDefinition);
   const server = options.useSuppliedServer ? new FakeGrpcServer(runtime) : undefined;
   const transport = new GrpcMicroserviceTransport({
+    channelCredentials: options.channelCredentials,
+    credentials: options.credentials,
     grpc: runtime,
     packageName: 'fluo.microservices',
     protoLoader: {
@@ -630,6 +676,7 @@ function createGrpcTransport(options: { useSuppliedServer?: boolean } = {}): { r
     protoPath: '/virtual/microservices.proto',
     requestTimeoutMs: 120,
     server,
+    serverCredentials: options.serverCredentials,
     url: '127.0.0.1:50051',
   });
 
@@ -1908,6 +1955,57 @@ describe('GrpcMicroserviceTransport', () => {
     expect(readerFailure).toBeDefined();
     expect(removeEventListenerSpy).toHaveBeenCalledTimes(2);
 
+    await transport.close();
+  });
+
+  it('binds server with ServerCredentials and outbound client with ChannelCredentials by default', async () => {
+    const { transport } = createGrpcTransport();
+    await transport.listen(async () => ({ sum: 42 }));
+    const result = await transport.send('MathService.Sum', { a: 1, b: 2 });
+    expect(result).toEqual({ sum: 42 });
+    await transport.close();
+  });
+
+  it('accepts role-distinct explicit serverCredentials and channelCredentials', async () => {
+    const customServerCreds = createFakeServerCredentials(false);
+    const customChannelCreds = createFakeChannelCredentials(false);
+    const { transport } = createGrpcTransport({
+      channelCredentials: customChannelCreds,
+      serverCredentials: customServerCreds,
+    });
+    await transport.listen(async () => ({ sum: 10 }));
+    const result = await transport.send('MathService.Sum', { a: 5, b: 5 });
+    expect(result).toEqual({ sum: 10 });
+    await transport.close();
+  });
+
+  it('fails server binding when channel credentials are provided as serverCredentials', async () => {
+    const invalidServerCreds = createFakeChannelCredentials();
+    const { transport } = createGrpcTransport({
+      serverCredentials: invalidServerCreds,
+    });
+    await expect(transport.listen(async () => undefined)).rejects.toThrow('creds must be a ServerCredentials object');
+    await transport.close();
+  });
+
+  it('fails outbound client creation when server credentials are provided as channelCredentials', async () => {
+    const invalidChannelCreds = createFakeServerCredentials();
+    const { transport } = createGrpcTransport({
+      channelCredentials: invalidChannelCreds,
+    });
+    await transport.listen(async () => ({ sum: 7 }));
+    await expect(transport.send('MathService.Sum', { a: 3, b: 4 })).rejects.toThrow('Channel credentials must be a ChannelCredentials object');
+    await transport.close();
+  });
+
+  it('migrates legacy credentials option to server binding without unsafe reuse on outbound clients', async () => {
+    const legacyServerCreds = createFakeServerCredentials(false);
+    const { transport } = createGrpcTransport({
+      credentials: legacyServerCreds,
+    });
+    await transport.listen(async () => ({ sum: 99 }));
+    const result = await transport.send('MathService.Sum', { a: 50, b: 49 });
+    expect(result).toEqual({ sum: 99 });
     await transport.close();
   });
 });

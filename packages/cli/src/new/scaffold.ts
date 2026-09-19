@@ -1284,36 +1284,47 @@ const messageSubject = process.env.NATS_MESSAGE_SUBJECT ?? 'fluo.microservices.m
 const codec = JSONCodec();
 
 class LazyNatsTransport implements MicroserviceTransport {
+  readonly ownsResources = true;
+  readonly resourceOwnership: NonNullable<MicroserviceTransport['resourceOwnership']> = {
+    outboundClients: 'framework',
+    server: 'framework',
+  };
+
   private connection: NatsConnection | undefined;
   private initializing: Promise<NatsMicroserviceTransport> | undefined;
+  private logger: Parameters<NonNullable<MicroserviceTransport['setLogger']>>[0] | undefined;
   private transport: NatsMicroserviceTransport | undefined;
+
+  setLogger(logger: Parameters<NonNullable<MicroserviceTransport['setLogger']>>[0]) {
+    this.logger = logger;
+    this.transport?.setLogger?.(logger);
+  }
 
   async close() {
     const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
-    let closeError: unknown;
-    let closeFailed = false;
+    let primaryError: unknown;
     try {
       await transport?.close();
     } catch (error) {
-      closeError = error;
-      closeFailed = true;
-    } finally {
-      try {
-        await this.connection?.close();
-      } catch (error) {
-        if (!closeFailed) {
-          closeError = error;
-          closeFailed = true;
-        }
-      } finally {
-        this.initializing = undefined;
-        this.transport = undefined;
-        this.connection = undefined;
-      }
+      primaryError = error;
     }
 
-    if (closeFailed) {
-      throw closeError;
+    let connectionError: unknown;
+    try {
+      await this.connection?.close();
+    } catch (error) {
+      connectionError = error;
+    }
+
+    this.initializing = undefined;
+    this.transport = undefined;
+    this.connection = undefined;
+
+    if (primaryError) {
+      throw primaryError;
+    }
+    if (connectionError) {
+      throw connectionError;
     }
   }
 
@@ -1382,6 +1393,10 @@ class LazyNatsTransport implements MicroserviceTransport {
       requestTimeoutMs: 3_000,
     });
 
+    if (this.logger) {
+      this.transport.setLogger?.(this.logger);
+    }
+
     return this.transport;
   }
 }
@@ -1417,27 +1432,64 @@ const clientId = process.env.KAFKA_CLIENT_ID ?? 'fluo-microservice-starter';
 const consumerGroup = process.env.KAFKA_CONSUMER_GROUP ?? 'fluo-handlers';
 const eventTopic = process.env.KAFKA_EVENT_TOPIC ?? 'fluo.microservices.events';
 const messageTopic = process.env.KAFKA_MESSAGE_TOPIC ?? 'fluo.microservices.messages';
-const responseTopic = process.env.KAFKA_RESPONSE_TOPIC ?? 'fluo.microservices.responses';
+const responseTopic = process.env.KAFKA_RESPONSE_TOPIC;
 
 class LazyKafkaTransport implements MicroserviceTransport {
+  readonly ownsResources = true;
+  readonly resourceOwnership: NonNullable<MicroserviceTransport['resourceOwnership']> = {
+    outboundClients: 'framework',
+    server: 'framework',
+  };
+
   private consumer: Consumer | undefined;
   private initializing: Promise<KafkaMicroserviceTransport> | undefined;
+  private logger: Parameters<NonNullable<MicroserviceTransport['setLogger']>>[0] | undefined;
   private producer: Producer | undefined;
   private transport: KafkaMicroserviceTransport | undefined;
 
+  setLogger(logger: Parameters<NonNullable<MicroserviceTransport['setLogger']>>[0]) {
+    this.logger = logger;
+    this.transport?.setLogger?.(logger);
+  }
+
   async close() {
     const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
+    let primaryError: unknown;
     try {
       await transport?.close();
-    } finally {
-      await Promise.all([
-        this.consumer?.disconnect().catch(() => undefined),
-        this.producer?.disconnect().catch(() => undefined),
-      ]);
-      this.initializing = undefined;
-      this.consumer = undefined;
-      this.producer = undefined;
-      this.transport = undefined;
+    } catch (error) {
+      primaryError = error;
+    }
+
+    let consumerError: unknown;
+    try {
+      await this.consumer?.disconnect();
+    } catch (error) {
+      consumerError = error;
+    }
+
+    let producerError: unknown;
+    try {
+      await this.producer?.disconnect();
+    } catch (error) {
+      producerError = error;
+    }
+
+    this.initializing = undefined;
+    this.consumer = undefined;
+    this.producer = undefined;
+    this.transport = undefined;
+
+    if (primaryError) {
+      throw primaryError;
+    }
+
+    const cleanupErrors = [consumerError, producerError].filter(Boolean);
+    if (cleanupErrors.length === 1) {
+      throw cleanupErrors[0];
+    }
+    if (cleanupErrors.length > 1) {
+      throw new AggregateError(cleanupErrors, 'Multiple Kafka client disconnect failures during transport close.');
     }
   }
 
@@ -1484,9 +1536,9 @@ class LazyKafkaTransport implements MicroserviceTransport {
       await producer.connect();
       await consumer.connect();
     } catch (error) {
-      await Promise.all([
-        consumer.disconnect().catch(() => undefined),
-        producer.disconnect().catch(() => undefined),
+      await Promise.allSettled([
+        consumer.disconnect(),
+        producer.disconnect(),
       ]);
       this.consumer = undefined;
       this.producer = undefined;
@@ -1541,8 +1593,12 @@ class LazyKafkaTransport implements MicroserviceTransport {
         },
       },
       requestTimeoutMs: 3_000,
-      responseTopic,
+      ...(responseTopic ? { responseTopic } : {}),
     });
+
+    if (this.logger) {
+      this.transport.setLogger?.(this.logger);
+    }
 
     return this.transport;
   }
@@ -1575,25 +1631,64 @@ import { MathHandler } from './math/math.handler';
 const url = process.env.RABBITMQ_URL ?? 'amqp://127.0.0.1:5672';
 const eventQueue = process.env.RABBITMQ_EVENT_QUEUE ?? 'fluo.microservices.events';
 const messageQueue = process.env.RABBITMQ_MESSAGE_QUEUE ?? 'fluo.microservices.messages';
-const responseQueue = process.env.RABBITMQ_RESPONSE_QUEUE ?? 'fluo.microservices.responses';
+const responseQueue = process.env.RABBITMQ_RESPONSE_QUEUE;
 
 class LazyRabbitMqTransport implements MicroserviceTransport {
+  readonly ownsResources = true;
+  readonly resourceOwnership: NonNullable<MicroserviceTransport['resourceOwnership']> = {
+    outboundClients: 'framework',
+    server: 'framework',
+  };
+
   private channel: Awaited<ReturnType<Awaited<ReturnType<typeof connect>>['createConfirmChannel']>> | undefined;
   private connection: Awaited<ReturnType<typeof connect>> | undefined;
   private initializing: Promise<RabbitMqMicroserviceTransport> | undefined;
+  private logger: Parameters<NonNullable<MicroserviceTransport['setLogger']>>[0] | undefined;
   private transport: RabbitMqMicroserviceTransport | undefined;
+
+  setLogger(logger: Parameters<NonNullable<MicroserviceTransport['setLogger']>>[0]) {
+    this.logger = logger;
+    this.transport?.setLogger?.(logger);
+  }
 
   async close() {
     const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
+    let primaryError: unknown;
     try {
       await transport?.close();
-    } finally {
-      await this.channel?.close().catch(() => undefined);
-      await this.connection?.close().catch(() => undefined);
-      this.initializing = undefined;
-      this.channel = undefined;
-      this.connection = undefined;
-      this.transport = undefined;
+    } catch (error) {
+      primaryError = error;
+    }
+
+    let channelError: unknown;
+    try {
+      await this.channel?.close();
+    } catch (error) {
+      channelError = error;
+    }
+
+    let connectionError: unknown;
+    try {
+      await this.connection?.close();
+    } catch (error) {
+      connectionError = error;
+    }
+
+    this.initializing = undefined;
+    this.channel = undefined;
+    this.connection = undefined;
+    this.transport = undefined;
+
+    if (primaryError) {
+      throw primaryError;
+    }
+
+    const cleanupErrors = [channelError, connectionError].filter(Boolean);
+    if (cleanupErrors.length === 1) {
+      throw cleanupErrors[0];
+    }
+    if (cleanupErrors.length > 1) {
+      throw new AggregateError(cleanupErrors, 'Multiple RabbitMQ close failures during transport close.');
     }
   }
 
@@ -1633,7 +1728,9 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
     try {
       channel = await connection.createConfirmChannel();
     } catch (error) {
-      await connection.close().catch(() => undefined);
+      try {
+        await connection.close();
+      } catch {}
       this.connection = undefined;
       throw error;
     }
@@ -1689,8 +1786,12 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
         },
       },
       requestTimeoutMs: 3_000,
-      responseQueue,
+      ...(responseQueue ? { responseQueue } : {}),
     });
+
+    if (this.logger) {
+      this.transport.setLogger?.(this.logger);
+    }
 
     return this.transport;
   }
@@ -2367,7 +2468,6 @@ KAFKA_CLIENT_ID=fluo-microservice-starter
 KAFKA_CONSUMER_GROUP=fluo-handlers
 KAFKA_EVENT_TOPIC=fluo.microservices.events
 KAFKA_MESSAGE_TOPIC=fluo.microservices.messages
-KAFKA_RESPONSE_TOPIC=fluo.microservices.responses
 PORT=3000
 `;
   }
@@ -2376,7 +2476,6 @@ PORT=3000
     return `RABBITMQ_URL=amqp://127.0.0.1:5672
 RABBITMQ_EVENT_QUEUE=fluo.microservices.events
 RABBITMQ_MESSAGE_QUEUE=fluo.microservices.messages
-RABBITMQ_RESPONSE_QUEUE=fluo.microservices.responses
 PORT=3000
 `;
   }

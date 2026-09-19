@@ -150,6 +150,18 @@ class InMemoryLoopbackTransport implements MicroserviceTransport {
       throw new Error('Transport handler is not listening.');
     }
 
+    try {
+      await this.handler({ kind: 'event', pattern, payload });
+    } catch {
+      // Non-durable loopback emit preserves fire-and-forget semantics for the publisher.
+    }
+  }
+
+  async dispatchInboundEvent(pattern: string, payload: unknown): Promise<void> {
+    if (!this.handler) {
+      throw new Error('Transport handler is not listening.');
+    }
+
     await this.handler({ kind: 'event', pattern, payload });
   }
 

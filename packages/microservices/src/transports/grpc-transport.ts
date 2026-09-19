@@ -12,6 +12,10 @@ interface GrpcServerCredentialsFactoryLike {
   createInsecure(): unknown;
 }
 
+interface GrpcChannelCredentialsFactoryLike {
+  createInsecure(): unknown;
+}
+
 interface GrpcServerLike {
   addService(serviceDefinition: unknown, implementation: Record<string, unknown>): void;
   bindAsync(address: string, credentials: unknown, callback: (error: Error | null, port: number) => void): void;
@@ -68,7 +72,8 @@ interface GrpcServiceConstructorLike {
 interface GrpcJsLike {
   Metadata: new () => GrpcMetadataLike;
   Server: new () => GrpcServerLike;
-  credentials: GrpcServerCredentialsFactoryLike;
+  ServerCredentials?: GrpcServerCredentialsFactoryLike;
+  credentials: GrpcChannelCredentialsFactoryLike;
   loadPackageDefinition(packageDefinition: unknown): unknown;
   makeGenericClientConstructor(
     serviceDefinition: unknown,
@@ -123,6 +128,21 @@ export interface GrpcMicroserviceTransportOptions {
   requestTimeoutMs?: number;
   loaderOptions?: Record<string, unknown>;
   channelOptions?: Record<string, unknown>;
+  /**
+   * Server credentials passed to `Server.bindAsync`.
+   * Defaults to `grpc.ServerCredentials.createInsecure()`.
+   */
+  serverCredentials?: unknown;
+  /**
+   * Channel credentials passed to outbound gRPC client constructors.
+   * Defaults to `grpc.credentials.createInsecure()`.
+   */
+  channelCredentials?: unknown;
+  /**
+   * Explicit server credentials migration fallback for legacy configurations.
+   *
+   * @deprecated Pass `serverCredentials` for inbound server binding or `channelCredentials` for outbound client channels.
+   */
   credentials?: unknown;
   kindMetadataKey?: string;
   messageKindMetadataValue?: string;
@@ -1051,7 +1071,7 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
     }
 
     const serviceConstructor = this.resolveServiceConstructor(this.packageRoot, serviceName);
-    const credentials = this.options.credentials ?? grpc.credentials.createInsecure();
+    const credentials = this.options.channelCredentials ?? grpc.credentials.createInsecure();
     const ClientConstructor = grpc.makeGenericClientConstructor(
       serviceConstructor.service,
       serviceName,
@@ -1142,7 +1162,11 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
   }
 
   private async bindServer(server: GrpcServerLike, grpc: GrpcJsLike): Promise<void> {
-    const credentials = this.options.credentials ?? grpc.credentials.createInsecure();
+    const defaultServerCredentials = grpc.ServerCredentials?.createInsecure?.()
+      ?? grpc.credentials.createInsecure();
+    const credentials = this.options.serverCredentials
+      ?? this.options.credentials
+      ?? defaultServerCredentials;
 
     await new Promise<void>((resolve, reject) => {
       server.bindAsync(this.options.url, credentials, (error) => {

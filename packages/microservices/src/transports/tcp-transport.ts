@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'node:net';
 
-import type { MicroserviceTransport, TransportHandler, TransportPacket } from '../types.js';
+import type { MicroserviceTransport, MicroserviceTransportLogger, TransportHandler, TransportPacket } from '../types.js';
+import { logTransportEventHandlerFailure } from './event-handler-logger.js';
 
 interface WireResponse {
   error?: string;
@@ -54,6 +55,7 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
   private readonly host: string;
   private readonly maxFrameBytes: number;
   private readonly requestTimeoutMs: number;
+  private logger: MicroserviceTransportLogger | undefined;
 
   /**
    * Creates a TCP transport bound to one host/port pair.
@@ -64,6 +66,10 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
     this.host = options.host ?? '127.0.0.1';
     this.maxFrameBytes = options.maxFrameBytes ?? DEFAULT_MAX_FRAME_BYTES;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 3_000;
+  }
+
+  setLogger(logger: MicroserviceTransportLogger): void {
+    this.logger = logger;
   }
 
   /**
@@ -204,7 +210,11 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
     }
 
     if (packet.kind === 'event') {
-      await this.handler(packet);
+      try {
+        await this.handler(packet);
+      } catch (error) {
+        logTransportEventHandlerFailure(this.logger, 'TcpMicroserviceTransport', error);
+      }
       return;
     }
 

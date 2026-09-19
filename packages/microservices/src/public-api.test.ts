@@ -50,6 +50,8 @@ describe('@fluojs/microservices public API surface', () => {
     expectTypeOf<MicroserviceModuleRegistrationOptions>().not.toHaveProperty('global');
     expectTypeOf<MicroserviceModuleRegistrationOptions>().toHaveProperty('providers');
     expectTypeOf<GrpcMicroserviceTransportOptions>().toHaveProperty('protoPath');
+    expectTypeOf<GrpcMicroserviceTransportOptions>().toHaveProperty('serverCredentials');
+    expectTypeOf<GrpcMicroserviceTransportOptions>().toHaveProperty('channelCredentials');
     expectTypeOf<KafkaMicroserviceTransportOptions>().toHaveProperty('consumer');
     expectTypeOf<MqttMicroserviceTransportOptions>().toHaveProperty('requestTimeoutMs');
     expectTypeOf<NatsMicroserviceTransportOptions>().toHaveProperty('client');
