@@ -34,6 +34,7 @@
       "description": "Implements one Fluo issue inside its assigned worktree.",
       "prompt": "Only read, bash, and apply_patch are available. Do not call eval, todo, task, dag, or team tools.",
       "models": [
+        { "model": "opencodex/gemini-3.8-flash", "reasoning": "high" },
         { "model": "openai-codex/gpt-5.6-terra", "reasoning": "high" }
       ],
       "execution_mode": "process",
@@ -59,7 +60,8 @@
     "fluo-contract-reviewer": {
       "description": "Reviews one exact issue head against its canonical contract.",
       "models": [
-        { "model": "openai-codex/gpt-5.6-sol", "reasoning": "high" }
+        { "model": "bai/glm-5.3-flash", "reasoning": "xhigh" },
+        { "model": "openai-codex/gpt-5.6-luna-fast", "reasoning": "max" }
       ],
       "execution_mode": "in-process",
       "tools": {
@@ -111,7 +113,8 @@
     "fluo-verification-reviewer": {
       "description": "Reviews one parent-owned canonical verification receipt.",
       "models": [
-        { "model": "openai-codex/gpt-5.6-sol", "reasoning": "high" }
+        { "model": "bai/glm-5.3-flash", "reasoning": "xhigh" },
+        { "model": "openai-codex/gpt-5.6-luna-fast", "reasoning": "max" }
       ],
       "execution_mode": "in-process",
       "tools": {
@@ -137,6 +140,7 @@
     "fluo-issue-operator": {
       "description": "Performs one issue-bound Git or GitHub lifecycle operation.",
       "models": [
+        { "model": "opencodex/gemini-3.8-flash", "reasoning": "high" },
         { "model": "openai-codex/gpt-5.6-terra", "reasoning": "high" }
       ],
       "execution_mode": "process",
