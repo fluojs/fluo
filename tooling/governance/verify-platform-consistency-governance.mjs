@@ -3891,7 +3891,7 @@ export function enforceOpenApiNullableNormalizationContract() {
     const documentation = read(documentationPath);
     assert(
       documentation.includes('OpenAPI 3.1') && documentation.includes('nullable'),
-      `${documentationPath} must keep OpenAPI 3.1 nullable normalization discoverable.`,
+      `${documentationPath} must keep OpenAPI 3.1 nullable migration rejection discoverable.`,
     );
   }
 
@@ -3899,14 +3899,14 @@ export function enforceOpenApiNullableNormalizationContract() {
   const normalization = read('packages/openapi/src/schema-bounds.ts');
   const regression = read('packages/openapi/src/schema-nullable.test.ts');
 
-  assert(schemaSurface.includes('nullable?: boolean;'), 'OpenApiSchemaObject must continue accepting legacy nullable input.');
+  assert(!schemaSurface.includes('nullable?: boolean;'), 'OpenApiSchemaObject must reject legacy nullable input.');
   assert(
-    normalization.includes('schema.nullable === true') && normalization.includes("{ type: 'null' }"),
-    'OpenAPI schema normalization must keep emitting OpenAPI 3.1 null unions.',
+    normalization.includes("'nullable' in untypedSchema") && normalization.includes('legacy nullable input'),
+    'OpenAPI schema normalization must reject legacy nullable input after untyped transforms.',
   );
   assert(
-    ['nullable: true', 'nullable: false', "type: 'array'", '$ref:'].every((marker) => regression.includes(marker)),
-    'OpenAPI nullable regression coverage must include true, false, array, and $ref inputs.',
+    ['nullable: true', "type: ['string', 'null']", 'anyOf:', 'legacy nullable'].every((marker) => regression.includes(marker)),
+    'OpenAPI nullable regression coverage must include a legacy rejection and OpenAPI 3.1 null unions.',
   );
 }
 
