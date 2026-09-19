@@ -1522,4 +1522,54 @@ describe('DefaultValidator', () => {
       issues: [{ code: 'INVALID_SCHEMA_RESULT', message: 'Standard Schema validator returned malformed issues.' }],
     });
   });
+
+  it('preserves distinct validator issue contracts for equivalent predicates', async () => {
+    enum State {
+      Draft = 'draft',
+      Published = 'published',
+    }
+
+    class CompatibilityDto {
+      @IsDateString()
+      dateText = 'March 1';
+
+      @IsISO8601()
+      isoText = 'March 1';
+
+      @ArrayNotEmpty()
+      @ArrayMinSize(1)
+      tags: string[] = [];
+
+      @Length(2, 4)
+      lengthText = '';
+
+      @MinLength(2)
+      minText = '';
+
+      @MaxLength(1)
+      maxText = 'too long';
+
+      @IsIn([State.Draft])
+      included = State.Published;
+
+      @IsEnum(State)
+      enumerated = 'archived';
+    }
+
+    const validator = new DefaultValidator();
+
+    await expect(validator.validate(new CompatibilityDto(), CompatibilityDto)).rejects.toMatchObject({
+      issues: [
+        { code: 'DATESTRING', field: 'dateText', message: 'dateText is invalid.' },
+        { code: 'ISO8601', field: 'isoText', message: 'isoText is invalid.' },
+        { code: 'ARRAY_MIN_SIZE', field: 'tags', message: 'tags must contain at least 1 items.' },
+        { code: 'ARRAY_NOT_EMPTY', field: 'tags', message: 'tags must not be an empty array.' },
+        { code: 'LENGTH', field: 'lengthText', message: 'lengthText must have a valid length.' },
+        { code: 'MIN_LENGTH', field: 'minText', message: 'minText must have length at least 2.' },
+        { code: 'MAX_LENGTH', field: 'maxText', message: 'maxText must have length at most 1.' },
+        { code: 'IN', field: 'included', message: 'included must be one of the allowed values.' },
+        { code: 'INVALID_ENUM', field: 'enumerated', message: 'enumerated must be a supported enum value.' },
+      ],
+    });
+  });
 });

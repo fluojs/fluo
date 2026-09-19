@@ -166,7 +166,7 @@ Now let’s change the post service to use DTO-based input.
 We will prepare an update DTO too.
 
 ```typescript
-import { PartialType } from '@fluojs/validation';
+import { PartialType } from '@fluojs/validation/mapped-types';
 
 export class UpdatePostDto extends PartialType(CreatePostDto) {}
 ```

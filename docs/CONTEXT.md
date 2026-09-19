@@ -569,6 +569,7 @@ Studio bridge discoverability is split between [`packages/runtime/README.md`](..
 | NestJS response-cookie migration and portable adapter contract | `docs/getting-started/migrate-from-nestjs.md` | `packages/http/README.md` for `setCookie` and `clearCookie` semantics |
 | Package family lookup or runtime coverage | `docs/reference/package-surface.md` | `docs/reference/package-chooser.md` when selection logic is needed |
 | Serialization decorator metadata, inheritance, or NestJS `class-transformer` migration | `packages/serialization/README.md` | `docs/getting-started/migrate-from-nestjs.md` and `docs/contracts/nestjs-parity-gaps.md` |
+| Validation mapped DTO imports or OpenAPI validation projection | `packages/validation/README.md` and `packages/openapi/README.md` | `@fluojs/validation/mapped-types`, `docs/getting-started/migrate-from-nestjs.md`, and `docs/architecture/openapi.md` |
 | i18n ecosystem bridge compatibility and migration boundaries | `docs/reference/i18n-ecosystem-bridges.md` | `docs/contracts/third-party-extension-contract.md` when authoring a third-party bridge |
 | Behavioral guarantees, Changesets release flow, and versioning policy | `docs/contracts/behavioral-contract-policy.md` | `docs/contracts/release-governance.md` |
 | Testing requirements and canonical fluo TDD ladder | `docs/contracts/testing-guide.md` | `packages/testing/README.md` and `book/beginner/ch20-testing.md` |

@@ -136,7 +136,8 @@ metadata; standalone validation and Standard Schema issues may leave it unset.
 ### Mapped DTO helpers
 
 ```ts
-import { IsEmail, IsString, PartialType, PickType } from '@fluojs/validation';
+import { IsEmail, IsString } from '@fluojs/validation';
+import { PartialType, PickType } from '@fluojs/validation/mapped-types';
 
 class UserDto {
   @IsString() name = '';
@@ -151,6 +152,10 @@ Mapped DTO helpers preserve field-level validation and binding metadata through
 the documented subclassing pattern shown above. `PickType`, `OmitType`, and
 `PartialType` do not carry base class-level validators onto derived DTOs because
 those validators can depend on fields that were omitted or made optional.
+They are publicly available only from `@fluojs/validation/mapped-types`; root
+imports are removed without aliases. Migrate imports before upgrading. The
+helpers retain their existing identity, generic behavior, metadata-copy,
+subclassing, class-rule, and nested-collision policies.
 
 When `IntersectionType(...)` sources declare different `@ValidateNested(...)`
 targets for the same property, every nested rule is preserved and validated.
@@ -263,8 +268,7 @@ reverse-map member names are not values and are rejected.
 - **String and network decorators**: `IsEmail`, `IsUrl`, `IsUUID`, `IsIP`, `IsAlpha`, `IsAlphanumeric`, `IsAscii`, `IsBase64`, `IsBooleanString`, `IsDataURI`, `IsDateString`, `IsDecimal`, `IsFQDN`, `IsHexColor`, `IsHexadecimal`, `IsJSON`, `IsJWT`, `IsLocale`, `IsLowercase`, `IsMagnetURI`, `IsMimeType`, `IsMongoId`, `IsNumberString`, `IsPort`, `IsRFC3339`, `IsSemVer`, `IsUppercase`, `IsISO8601`, `Matches`, `Length`, `MinLength`, `MaxLength`, `Contains`, `NotContains`
 - **Number, date, geo, and locale decorators**: `Min`, `Max`, `IsPositive`, `IsNegative`, `IsDivisibleBy`, `MinDate`, `MaxDate`, `IsLatitude`, `IsLongitude`, `IsLatLong`, `IsISBN`, `IsISSN`, `IsMobilePhone`, `IsPostalCode`, `IsRgbColor`, `IsCurrency`
 - **Array decorators**: `ArrayContains`, `ArrayNotContains`, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`, `ArrayUnique`
-- **Mapped DTO helpers**: `PickType`, `OmitType`, `PartialType`, `IntersectionType`
-- **Mapped DTO subpath**: `@fluojs/validation/mapped-types`
+- **Mapped DTO helpers**: `PickType`, `OmitType`, `PartialType`, `IntersectionType` from `@fluojs/validation/mapped-types` only
 - **Standard Schema contract**: `StandardSchemaV1Like` for typing schemas, `parseStandardSchema` for successful output parsing, and `ValidateClass(...)` for validation-only integration
 - **Validation flow**: `materialize()` for hydration + validation, `validate()` for validation-only checks
 

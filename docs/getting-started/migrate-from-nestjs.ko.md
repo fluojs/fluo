@@ -453,7 +453,7 @@ import {
   OmitType,
   PartialType,
   PickType,
-} from '@fluojs/validation';
+} from '@fluojs/validation/mapped-types';
 
 class UpdateUserDto extends PartialType(CreateUserDto) {}
 class PublicUserDto extends OmitType(CreateUserDto, ['address']) {}
@@ -461,7 +461,7 @@ class AddressOnlyDto extends PickType(CreateUserDto, ['address']) {}
 class UserWithAuditDto extends IntersectionType(CreateUserDto, AuditDto) {}
 ```
 
-네 helper는 모두 `@fluojs/validation`에서 export되며 전용 mapped-type subpath인 `@fluojs/validation/mapped-types`도 사용할 수 있습니다. `PickType`, `OmitType`, `PartialType`은 적용 가능한 field-level validation과 binding metadata를 보존하지만, subset 또는 optional DTO가 base class-level validator의 field 가정을 더 이상 만족하지 않을 수 있으므로 해당 validator는 의도적으로 복사하지 않습니다. Derived DTO에서도 여전히 유효한 class-level rule은 검토 후 다시 선언하세요. `IntersectionType`은 모든 source contract를 유지하므로 각 input DTO의 field-level 및 class-level validation을 보존합니다. NestJS mapped-type의 class-level metadata 동작이 암묵적으로 이어진다고 가정하지 마세요.
+네 helper는 `@fluojs/validation/mapped-types`에서만 export되며 root import에는 compatibility alias가 없습니다. `@nestjs/mapped-types` binding과 `@nestjs/swagger`의 mapped binding을 이 subpath로 옮기세요. `PickType`, `OmitType`, `PartialType`은 적용 가능한 field-level validation과 binding metadata를 보존하지만, subset 또는 optional DTO가 base class-level validator의 field 가정을 더 이상 만족하지 않을 수 있으므로 해당 validator는 의도적으로 복사하지 않습니다. Derived DTO에서도 여전히 유효한 class-level rule은 검토 후 다시 선언하세요. `IntersectionType`은 모든 source contract를 유지하므로 각 input DTO의 field-level 및 class-level validation을 보존합니다. NestJS mapped-type의 class-level metadata 동작이 암묵적으로 이어진다고 가정하지 마세요.
 
 ### NestJS Config Registration 및 Bootstrap Migration
 

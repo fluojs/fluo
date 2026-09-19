@@ -210,6 +210,42 @@ describe('@fluojs/i18n/validation localized validation errors', () => {
     ).toEqual([{ code: 'CUSTOM_CODE', field: 'profile', message: 'Custom message for profile.' }]);
   });
 
+  it('preserves distinct validation issue keys, count, and order during localization', () => {
+    const issues = [
+      { code: 'DATESTRING', field: 'dateText', message: 'dateText is invalid.' },
+      { code: 'ISO8601', field: 'isoText', message: 'isoText is invalid.' },
+      { code: 'ARRAY_MIN_SIZE', field: 'tags', message: 'tags must contain at least 1 items.' },
+      { code: 'ARRAY_NOT_EMPTY', field: 'tags', message: 'tags must not be an empty array.' },
+    ] as const;
+    const i18n = I18nService.create({
+      catalogs: {
+        en: {
+          validation: {
+            ISO8601: 'ISO date is invalid.',
+            dateText: { DATESTRING: 'Date string is invalid.' },
+            tags: {
+              ARRAY_MIN_SIZE: 'Tags need one item.',
+              ARRAY_NOT_EMPTY: 'Tags cannot be empty.',
+            },
+          },
+        },
+      },
+      defaultLocale: 'en',
+      supportedLocales: ['en'],
+    });
+
+    expect(createValidationIssueTranslationKeys(issues[0], 'validation')).toEqual([
+      'validation.dateText.DATESTRING',
+      'validation.DATESTRING',
+    ]);
+    expect(localizeValidationIssues(i18n, issues, { locale: 'en' })).toEqual([
+      { code: 'DATESTRING', field: 'dateText', message: 'Date string is invalid.' },
+      { code: 'ISO8601', field: 'isoText', message: 'ISO date is invalid.' },
+      { code: 'ARRAY_MIN_SIZE', field: 'tags', message: 'Tags need one item.' },
+      { code: 'ARRAY_NOT_EMPTY', field: 'tags', message: 'Tags cannot be empty.' },
+    ]);
+  });
+
   it('exposes the validation helpers on the dedicated subpath', async () => {
     const validation = await import('./validation.js');
     const options: LocalizeValidationIssuesOptions = { locale: 'en' };

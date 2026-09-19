@@ -165,7 +165,7 @@ export class PostsController {
 업데이트 DTO도 함께 준비하겠습니다.
 
 ```typescript
-import { PartialType } from '@fluojs/validation';
+import { PartialType } from '@fluojs/validation/mapped-types';
 
 export class UpdatePostDto extends PartialType(CreatePostDto) {}
 ```

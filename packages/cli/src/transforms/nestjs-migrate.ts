@@ -152,6 +152,11 @@ const NEST_COMMON_TO_FLUO: Record<string, '@fluojs/core' | '@fluojs/http'> = {
   UseInterceptors: '@fluojs/http',
 };
 
+const MAPPED_TYPE_HELPERS = new Set(['IntersectionType', 'OmitType', 'PartialType', 'PickType']);
+const NEST_MAPPED_TYPES_SPECIFIER = '@nestjs/mapped-types';
+const NEST_SWAGGER_SPECIFIER = '@nestjs/swagger';
+const FLUO_MAPPED_TYPES_SPECIFIER = '@fluojs/validation/mapped-types';
+
 const REQUEST_DTO_DECORATORS = new Set(['Body', 'Param', 'Query']);
 
 const TRANSFORM_KIND_LABEL: Record<MigrationTransformKind, string> = {
@@ -404,7 +409,12 @@ function rewriteImports(
       continue;
     }
 
-    if (statement.moduleSpecifier.text !== '@nestjs/common') {
+    const moduleSpecifier = statement.moduleSpecifier.text;
+    const isNestCommonImport = moduleSpecifier === '@nestjs/common';
+    const isNestMappedTypesImport = moduleSpecifier === NEST_MAPPED_TYPES_SPECIFIER;
+    const isNestSwaggerImport = moduleSpecifier === NEST_SWAGGER_SPECIFIER;
+
+    if (!isNestCommonImport && !isNestMappedTypesImport && !isNestSwaggerImport) {
       statements.push(statement);
       continue;
     }
@@ -419,6 +429,19 @@ function rewriteImports(
     const remaining: ImportBinding[] = [];
 
     for (const binding of getImportBindings(statement)) {
+      if (isNestMappedTypesImport || isNestSwaggerImport) {
+        if (!MAPPED_TYPE_HELPERS.has(binding.imported)) {
+          remaining.push(binding);
+          continue;
+        }
+
+        touched = true;
+        const moduleBindings = additions.get(FLUO_MAPPED_TYPES_SPECIFIER) ?? [];
+        moduleBindings.push(binding);
+        additions.set(FLUO_MAPPED_TYPES_SPECIFIER, moduleBindings);
+        continue;
+      }
+
       if (binding.isTypeOnly && allowedNestImports) {
         remaining.push(binding);
         continue;
@@ -462,7 +485,12 @@ function rewriteImports(
 
   let nextStatements = statements;
   for (const [moduleSpecifier, bindings] of additions.entries()) {
-    nextStatements = mergeNamedImport(nextStatements, moduleSpecifier, bindings, !!allowedNestImports);
+    nextStatements = mergeNamedImport(
+      nextStatements,
+      moduleSpecifier,
+      bindings,
+      moduleSpecifier !== FLUO_MAPPED_TYPES_SPECIFIER && !!allowedNestImports,
+    );
   }
 
   const nextSource = printSourceFile(sourceFile, nextStatements);
