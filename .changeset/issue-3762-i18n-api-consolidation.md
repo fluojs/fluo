@@ -1,5 +1,5 @@
 ---
-"@fluojs/i18n": patch
+"@fluojs/i18n": major
 ---
 
 Consolidate standalone i18n service, ICU service, and catalog loader creation under static `.create(...)` methods on their owning classes, and unify `Accept-Language` resolution under canonical policy resolvers.
