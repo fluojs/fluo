@@ -582,7 +582,7 @@ Bearer JWT preset failure boundary: `BearerJwtStrategy`는 `JwtExpiredTokenError
 
 Chapter 14의 실행 가능한 JWT 학습 경로는 `JwtModule.forRootAsync(...)`보다 먼저 `ConfigModule.forRoot()`와 global `AuthPersistenceModule`을 import합니다. 이 persistence module은 `REFRESH_TOKEN_STORE` 및 `CREDENTIALS_VERIFIER`를 export하고, 이어서 `AuthModule`이 `AuthService`와 `AuthController`를 local로 등록합니다. 마이그레이션 경계는 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md), 완전한 module snippet은 [`book/beginner/ch14-jwt.ko.md`](../book/beginner/ch14-jwt.ko.md)를 읽으세요.
 
-Queue producer migration discoverability는 `packages/queue/README.ko.md`와 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)에 나뉜다. NestJS Bull/BullMQ의 `@InjectQueue(...)`와 `queue.add(name, payload)`는 `QueueLifecycleService`(또는 `QUEUE` / `getQueueToken(scope)` facade) 및 `queue.enqueue(new JobClass(...))`로 바꾼다. Worker dispatch는 job-name 문자열이나 payload shape가 아니라 `@QueueWorker(JobClass, options?)`로 등록한 정확한 constructor를 사용하므로 producer는 같은 exported `JobClass`를 instance화해야 하며 plain object와 복사한 class 선언은 type-check를 통과해도 runtime에서 거부된다.
+Queue producer migration discoverability는 `packages/queue/README.ko.md`와 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)에 나뉜다. NestJS Bull/BullMQ의 `@InjectQueue(...)`와 `queue.add(name, payload)`는 `@Inject(getQueueToken(scope?))`, 좁은 `Queue` facade, `queue.enqueue(new JobClass(...))`로 바꾼다. Worker dispatch는 job-name 문자열이나 payload shape가 아니라 `@QueueWorker(JobClass, options?)`로 등록한 정확한 constructor를 사용하므로 producer는 같은 exported `JobClass`를 instance화해야 하며 plain object와 복사한 class 선언은 type-check를 통과해도 runtime에서 거부된다.
 
 ## Notifications Queue Cancellation
 
@@ -624,7 +624,7 @@ export는 제거되었으며, request-wide interception은
 
 ## Email queue batch 계약
 
-`Queue`와 `QueueLifecycleService`는 호환되는 `enqueueMany(entries)` producer API를 제공합니다. 순서가 있는 `QueueEnqueueManyEntry` 값은 하나의 등록된 BullMQ queue를 대상으로 해야 하며, Queue는 한 번의 atomic `addBulk(...)` persist 전에 검증하고 입력 순서대로 ID를 반환하며 각 entry의 `deduplicationKey`를 보존합니다. `@fluojs/email/queue` notification adapter는 parallel `enqueue(...)` 호출 대신 이 seam에 bulk 전달을 위임하고, single-job `enqueue(job, options?)` 계약은 바뀌지 않습니다.
+Producer는 `getQueueToken(scope?)`으로 좁은 `Queue`의 `enqueueMany(entries)` API를 주입받습니다. 순서가 있는 `QueueEnqueueManyEntry` 값은 하나의 등록된 BullMQ queue를 대상으로 해야 하며, Queue는 한 번의 atomic `addBulk(...)` persist 전에 검증하고 입력 순서대로 ID를 반환하며 각 entry의 `deduplicationKey`를 보존합니다. `@fluojs/email/queue` notification adapter는 parallel `enqueue(...)` 호출 대신 이 seam에 bulk 전달을 위임하고, single-job `enqueue(job, options?)` 계약은 바뀌지 않습니다.
 
 ## Notifications 상태 계약
 

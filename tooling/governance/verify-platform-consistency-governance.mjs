@@ -1681,6 +1681,9 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   const touchedContractGate = changedFiles.some(
     (path) => contractGateTriggers.has(path) && (!nestMigrationGuidePaths.includes(path) || !bootstrapOnlyMigrationGuideUpdate),
   );
+  const touchedQueueProducerDocumentation = changedFiles.some(
+    (path) => path === 'packages/queue/README.md' || path === 'packages/queue/README.ko.md',
+  );
   const touchedHttpLifecycleContract = changedFiles.some((path) => httpLifecycleContractDocs.has(path));
   const fastifyRawContextDocumentation = [
     ...nestMigrationGuidePaths,
@@ -1887,6 +1890,12 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
     includesAny(changedFiles, (path) => path.endsWith('.test.ts') || path.endsWith('.spec.ts')),
     'contract-governing doc updates must include regression test updates for the changed contract surface.',
   );
+  if (touchedQueueProducerDocumentation) {
+    assert(
+      hasChanged(changedFiles, 'packages/queue/src/public-surface.test.ts'),
+      'Queue producer documentation updates must include packages/queue/src/public-surface.test.ts.',
+    );
+  }
   assert(
     !touchedHttpLifecycleContract || hasChanged(changedFiles, manualSseLifecycleRegressionTest),
     `HTTP lifecycle contract docs must include ${manualSseLifecycleRegressionTest}.`,

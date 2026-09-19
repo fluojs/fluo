@@ -585,7 +585,7 @@ Bearer JWT preset failure boundary: `BearerJwtStrategy` maps only `JwtExpiredTok
 
 Chapter 14's executable JWT learning path imports `ConfigModule.forRoot()` and a global `AuthPersistenceModule` before `JwtModule.forRootAsync(...)`. That persistence module exports `REFRESH_TOKEN_STORE` and `CREDENTIALS_VERIFIER`; `AuthModule` then registers `AuthService` and `AuthController` locally. Read [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md) for the migration boundary and [`book/beginner/ch14-jwt.md`](../book/beginner/ch14-jwt.md) for the complete module snippet.
 
-Queue producer migration discoverability is split across `packages/queue/README.md` and [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md): replace NestJS Bull/BullMQ `@InjectQueue(...)` plus `queue.add(name, payload)` with `QueueLifecycleService` (or the `QUEUE` / `getQueueToken(scope)` facade) and `queue.enqueue(new JobClass(...))`. Worker dispatch uses the exact constructor registered through `@QueueWorker(JobClass, options?)`, not a job-name string or payload shape, so producers must instantiate the same exported `JobClass`; plain objects and copied class declarations type-check but are rejected at runtime.
+Queue producer migration discoverability is split across `packages/queue/README.md` and [`docs/getting-started/migrate-from-nestjs.md`](./getting-started/migrate-from-nestjs.md): replace NestJS Bull/BullMQ `@InjectQueue(...)` plus `queue.add(name, payload)` with `@Inject(getQueueToken(scope?))`, a narrow `Queue` facade, and `queue.enqueue(new JobClass(...))`. Worker dispatch uses the exact constructor registered through `@QueueWorker(JobClass, options?)`, not a job-name string or payload shape, so producers must instantiate the same exported `JobClass`; plain objects and copied class declarations type-check but are rejected at runtime.
 
 ## GraphQL Field Resolver DTO Inputs
 
@@ -620,7 +620,7 @@ Full anti-pattern catalog path: `docs/guides/anti-patterns.md`.
 
 ## Email queue batch contract
 
-`Queue` and `QueueLifecycleService` expose compatible `enqueueMany(entries)` producer APIs. Ordered `QueueEnqueueManyEntry` values must target one registered BullMQ queue; Queue validates before one atomic `addBulk(...)` persistence call, returns IDs in input order, and preserves each entry's `deduplicationKey`. The `@fluojs/email/queue` notification adapter delegates bulk delivery to this seam rather than parallel `enqueue(...)` calls, while the single-job `enqueue(job, options?)` contract is unchanged.
+Producers use `getQueueToken(scope?)` to inject the narrow `Queue` `enqueueMany(entries)` API. Ordered `QueueEnqueueManyEntry` values must target one registered BullMQ queue; Queue validates before one atomic `addBulk(...)` persistence call, returns IDs in input order, and preserves each entry's `deduplicationKey`. The `@fluojs/email/queue` notification adapter delegates bulk delivery to this seam rather than parallel `enqueue(...)` calls, while the single-job `enqueue(job, options?)` contract is unchanged.
 
 ## Notifications Queue Cancellation
 

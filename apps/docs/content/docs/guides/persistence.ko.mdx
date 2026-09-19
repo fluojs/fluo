@@ -17,7 +17,7 @@ Durable record, shared Redis state, HTTP/application caching, background job pro
 | Mongoose ODM | `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection.model(...)` session facade, 명시적 raw-model session |
 | Shared Redis clients | `@fluojs/redis` | `RedisModule`, `RedisService`, named clients |
 | HTTP/application caching | `@fluojs/cache-manager` | `CacheModule`, `CacheInterceptor`, `CacheService` |
-| Background jobs | `@fluojs/queue` | `QueueModule`, `QueueLifecycleService`, `@QueueWorker()` |
+| Background jobs | `@fluojs/queue` | `QueueModule`, `getQueueToken(scope?)`, `Queue`, `@QueueWorker()` |
 
 ## Persistence package 선택하기
 
@@ -362,16 +362,16 @@ export class OrderWorker {
 }
 ```
 
-Redis와 `QueueModule`을 등록한 뒤 `QueueLifecycleService`로 job을 enqueue합니다.
+Redis와 `QueueModule`을 등록한 뒤 `getQueueToken()`으로 `Queue` facade를 주입해 job을 enqueue합니다.
 
 ```ts
 import { Inject, Module } from '@fluojs/core';
-import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
+import { getQueueToken, type Queue, QueueModule } from '@fluojs/queue';
 import { RedisModule } from '@fluojs/redis';
 
-@Inject(QueueLifecycleService)
+@Inject(getQueueToken())
 export class OrderService {
-  constructor(private readonly queue: QueueLifecycleService) {}
+  constructor(private readonly queue: Queue) {}
 
   async placeOrder(id: string) {
     await this.queue.enqueue(new ProcessOrderJob(id));
@@ -412,7 +412,7 @@ Queue job은 JSON-serializable plain object여야 합니다. Queue는 enqueue �
 | `@fluojs/mongoose` | `MongooseModule`, `MongooseConnection`, 명시적 `requestTransaction(...)`, `MONGOOSE_CONNECTION`, `MONGOOSE_DISPOSE`, status snapshot helper |
 | `@fluojs/redis` | `RedisModule`, `RedisService`, `REDIS_CLIENT`, named client/service token helpers, status snapshot helper |
 | `@fluojs/cache-manager` | `CacheModule`, `CacheService`, `CacheInterceptor`, `CacheTTL`, `CacheKey`, `CacheEvict`, memory/Redis stores, diagnostics helpers |
-| `@fluojs/queue` | `QueueModule`, `QueueLifecycleService`, `QueueWorker`, `QUEUE`, queue options, status snapshot helper |
+| `@fluojs/queue` | `QueueModule`, `getQueueToken(scope?)`, `Queue`, `QueueWorker`, queue options, status snapshot helper |
 
 ## 흔한 실수
 

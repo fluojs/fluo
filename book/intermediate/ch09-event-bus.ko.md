@@ -226,11 +226,11 @@ Event handler가 숨겨진 worker가 되어서는 안 됩니다. 빠른 local re
 ```typescript
 import { Inject } from '@fluojs/core';
 import { OnEvent } from '@fluojs/event-bus';
-import { QueueLifecycleService } from '@fluojs/queue';
+import { getQueueToken, type Queue } from '@fluojs/queue';
 
-@Inject(QueueLifecycleService)
+@Inject(getQueueToken())
 export class BillingEventsHandler {
-  constructor(private readonly queue: QueueLifecycleService) {}
+  constructor(private readonly queue: Queue) {}
 
   @OnEvent(OrderPlacedEvent)
   async enqueueInvoice(event: OrderPlacedEvent) {

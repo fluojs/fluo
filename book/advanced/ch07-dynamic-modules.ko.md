@@ -260,11 +260,15 @@ Queue는 정규화, provider assembly, metadata binding을 분리하되 public A
 `path:packages/queue/src/module.ts:69-77`
 ```typescript
 static forRoot(options: QueueModuleOptions = {}): ModuleType {
+  const normalizedOptions = normalizeQueueModuleOptions(options);
+  const tokens = getQueueProviderTokens(normalizedOptions.scope);
   class QueueModuleDefinition {}
 
   return defineModule(QueueModuleDefinition, {
-    exports: [QueueLifecycleService, QUEUE],
-    global: options.global ?? true,
+    exports: normalizedOptions.scope === undefined
+      ? [QueueLifecycleService, tokens.lifecycleServiceToken, tokens.queueToken]
+      : [tokens.lifecycleServiceToken, tokens.queueToken],
+    global: normalizedOptions.global,
     providers: [/* normalized queue providers */],
   });
 }

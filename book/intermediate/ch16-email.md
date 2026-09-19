@@ -200,7 +200,7 @@ import {
 } from '@fluojs/email/queue';
 import { createNodemailerEmailTransportFactory } from '@fluojs/email/node';
 import { NotificationsModule } from '@fluojs/notifications';
-import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
+import { getQueueToken, QueueModule } from '@fluojs/queue';
 
 @Module({
   imports: [
@@ -217,7 +217,7 @@ import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
       }),
     }),
     NotificationsModule.forRootAsync({
-      inject: [EMAIL_CHANNEL, QueueLifecycleService],
+      inject: [EMAIL_CHANNEL, getQueueToken()],
       useFactory: (channel, queue) => ({
         channels: [channel],
         queue: {

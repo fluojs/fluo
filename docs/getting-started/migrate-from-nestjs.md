@@ -1268,7 +1268,7 @@ Each file is a portable `FrameworkRequestFile` with `fieldname`, `originalname`,
 
 ## Queue-backed email notification batches
 
-Replace parallel NestJS Bull producer calls with `Queue.enqueueMany(entries)` or `QueueLifecycleService.enqueueMany(entries)`. Each `QueueEnqueueManyEntry` retains its own `deduplicationKey`, but every entry must resolve to the same registered BullMQ queue. Queue validates the entire batch before one atomic `addBulk(...)` persistence call and returns backing job IDs in input order; existing `enqueue(job, options?)` calls remain compatible. The built-in `@fluojs/email/queue` notification adapter uses this atomic batch seam instead of parallel single-job enqueues.
+Replace parallel NestJS Bull producer calls with `Queue.enqueueMany(entries)` through `@Inject(getQueueToken(scope?))`. Each `QueueEnqueueManyEntry` retains its own `deduplicationKey`, but every entry must resolve to the same registered BullMQ queue. Queue validates the entire batch before one atomic `addBulk(...)` persistence call and returns backing job IDs in input order; existing `enqueue(job, options?)` calls remain compatible. The built-in `@fluojs/email/queue` notification adapter uses this atomic batch seam instead of parallel single-job enqueues.
 
 ## Event-bus migration limits
 

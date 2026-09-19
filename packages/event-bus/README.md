@@ -176,15 +176,15 @@ The `this.reactions` helper in the example below represents an application-owned
 ```typescript
 import { Inject } from '@fluojs/core';
 import { OnEvent } from '@fluojs/event-bus';
-import { QueueLifecycleService } from '@fluojs/queue';
+import { getQueueToken, type Queue } from '@fluojs/queue';
 
 export class GenerateInvoiceJob {
   constructor(public readonly orderId: string) {}
 }
 
-@Inject(QueueLifecycleService)
+@Inject(getQueueToken())
 export class BillingEventsHandler {
-  constructor(private readonly queue: QueueLifecycleService) {}
+  constructor(private readonly queue: Queue) {}
 
   @OnEvent(OrderPlacedEvent)
   async enqueueInvoice(event: OrderPlacedEvent) {

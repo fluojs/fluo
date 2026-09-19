@@ -101,11 +101,11 @@ FluoShop은 domain event나 saga step 뒤에서 job을 enqueue하는 경우가 �
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { QueueLifecycleService } from '@fluojs/queue';
+import { getQueueToken, type Queue } from '@fluojs/queue';
 
-@Inject(QueueLifecycleService)
+@Inject(getQueueToken())
 export class BillingProjectionHandler {
-  constructor(private readonly queue: QueueLifecycleService) {}
+  constructor(private readonly queue: Queue) {}
 
   async onShipmentDispatched(orderId: string) {
     await this.queue.enqueue(new GenerateInvoiceJob(orderId));

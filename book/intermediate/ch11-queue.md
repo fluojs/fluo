@@ -101,11 +101,11 @@ FluoShop often enqueues a job after a domain event or saga step. This keeps the 
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { QueueLifecycleService } from '@fluojs/queue';
+import { getQueueToken, type Queue } from '@fluojs/queue';
 
-@Inject(QueueLifecycleService)
+@Inject(getQueueToken())
 export class BillingProjectionHandler {
-  constructor(private readonly queue: QueueLifecycleService) {}
+  constructor(private readonly queue: Queue) {}
 
   async onShipmentDispatched(orderId: string) {
     await this.queue.enqueue(new GenerateInvoiceJob(orderId));
