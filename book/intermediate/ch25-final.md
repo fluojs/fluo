@@ -64,7 +64,7 @@ While the mesh handles infrastructure-level retries and circuit breaking, fluo h
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({
+      transport: TcpMicroserviceTransport.create({
         host: 'order-service-mesh',
         port: 80,
         requestTimeoutMs: 1_000,

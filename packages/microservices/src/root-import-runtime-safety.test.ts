@@ -25,12 +25,13 @@ describe('@fluojs/microservices root import runtime safety', () => {
       const microservices = await import('./index.js');
 
       expect(microservices).toHaveProperty('MicroservicesModule');
-      expect(microservices).toHaveProperty('TcpMicroserviceTransport');
+      expect(microservices).not.toHaveProperty('TcpMicroserviceTransport');
       expect(netMockState.loads).toBe(0);
 
-      const transport = new microservices.TcpMicroserviceTransport({ port: 0 });
+      const { TcpMicroserviceTransport } = await import('./transports/tcp-transport.js');
+      const transport = new TcpMicroserviceTransport({ port: 0 });
 
-      expect(transport).toBeInstanceOf(microservices.TcpMicroserviceTransport);
+      expect(transport).toBeInstanceOf(TcpMicroserviceTransport);
       expect(netMockState.loads).toBe(0);
       await expect(transport.listen(async () => undefined)).rejects.toThrow(
         'node:net should be loaded lazily by TCP runtime paths only',
@@ -56,7 +57,7 @@ describe('@fluojs/microservices root import runtime safety', () => {
     });
 
     try {
-      const { TcpMicroserviceTransport } = await import('./index.js');
+      const { TcpMicroserviceTransport } = await import('./transports/tcp-transport.js');
       const transport = new TcpMicroserviceTransport({ port: 0 });
 
       await expect(transport.send('lazy.outbound', {})).rejects.toThrow(
@@ -103,7 +104,7 @@ describe('@fluojs/microservices root import runtime safety', () => {
     }));
 
     try {
-      const { TcpMicroserviceTransport } = await import('./index.js');
+      const { TcpMicroserviceTransport } = await import('./transports/tcp-transport.js');
       const transport = new TcpMicroserviceTransport({ port: 0 });
       const listenPromise = transport.listen(async () => undefined);
 
@@ -162,7 +163,7 @@ describe('@fluojs/microservices root import runtime safety', () => {
     }));
 
     try {
-      const { TcpMicroserviceTransport } = await import('./index.js');
+      const { TcpMicroserviceTransport } = await import('./transports/tcp-transport.js');
       const transport = new TcpMicroserviceTransport({ port: 0 });
       const firstListen = transport.listen(async () => undefined);
       const secondListen = transport.listen(async () => undefined);

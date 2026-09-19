@@ -288,7 +288,7 @@ Queue는 `enqueue(name, payload)`가 아니라 `enqueue(jobInstance, options?)`�
 다음 완전한 파일 `src/fulfillment/drills/doubles.ts`는 **테스트 전용 구현**이다. `DrillInbox`는 커밋 직전 신호를 제공하고, 실패하면 staged 값을 공개 상태에 반영하지 않는다. `ControlledBroker`는 publish와 실제 delivery를 분리한다. publish가 즉시 handler를 호출하는 fake를 쓰면 `emit()`이 원격 완료를 기다린다는 잘못된 가정을 테스트가 오히려 강화할 수 있다.
 
 ```ts
-import type { RabbitMqMicroserviceTransportOptions } from '@fluojs/microservices';
+import type { RabbitMqMicroserviceTransportOptions } from '@fluojs/microservices/rabbitmq';
 import type { ShipmentInbox, ShipmentRequest } from './shipment-contract.js';
 
 export class DrillInbox implements ShipmentInbox {
@@ -370,9 +370,9 @@ import { Module } from '@fluojs/core';
 import {
   MICROSERVICE,
   MicroservicesModule,
-  RabbitMqMicroserviceTransport,
   type Microservice,
 } from '@fluojs/microservices';
+import { RabbitMqMicroserviceTransport } from '@fluojs/microservices/rabbitmq';
 import { Test } from '@fluojs/testing';
 import { expect, it } from 'vitest';
 import { ControlledBroker, DrillInbox } from './doubles.js';
@@ -392,7 +392,7 @@ it('separates publish, failed delivery, and duplicate-safe application', async (
 
   @Module({
     imports: [MicroservicesModule.forRoot({
-      transport: new RabbitMqMicroserviceTransport({
+      transport: RabbitMqMicroserviceTransport.create({
         publisher: broker.publisher,
         consumer: broker.consumer,
         eventQueue: 'shop.drill.events',

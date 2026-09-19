@@ -109,10 +109,8 @@ export interface MicroserviceTransport {
 
 /** Optional module-definition overrides for callers that want module-first custom registration. */
 export interface MicroserviceModuleRegistrationOptions {
-  /** Extra tokens exported in addition to `MicroserviceLifecycleService` and `MICROSERVICE`. */
+  /** Extra tokens exported in addition to `MICROSERVICE`. */
   additionalExports?: Token[];
-  /** Whether the configured microservice module should register globally. Defaults to `true`. */
-  global?: boolean;
   /** Additional providers appended after the built-in microservice runtime wiring. */
   providers?: Provider[];
 }
@@ -121,7 +119,7 @@ export interface MicroserviceModuleRegistrationOptions {
 export interface MicroserviceModuleOptions {
   /** Whether microservice providers should be visible globally. Defaults to `true`. */
   global?: boolean;
-  /** Optional module-definition overrides that provide a module-first alternative to raw provider-array composition. */
+  /** Optional module-definition overrides for additional providers and exports. */
   module?: MicroserviceModuleRegistrationOptions;
   transport: MicroserviceTransport;
 }

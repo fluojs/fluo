@@ -42,11 +42,8 @@ The following `src/transport-lab/tcp-probe.ts` is a **complete experiment file**
 ```ts
 import assert from 'node:assert/strict';
 import { Inject, Module } from '@fluojs/core';
-import {
-  MessagePattern,
-  MicroservicesModule,
-  TcpMicroserviceTransport,
-} from '@fluojs/microservices';
+import { MessagePattern, MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 import { FluoFactory } from '@fluojs/runtime';
 
 class ReceiptLedger {
@@ -77,7 +74,7 @@ class ReceiptHandler {
 
 export async function tcpProbe(): Promise<void> {
   const ledger = new ReceiptLedger();
-  const transport = new TcpMicroserviceTransport({
+  const transport = TcpMicroserviceTransport.create({
     host: '127.0.0.1',
     port: 0,
     requestTimeoutMs: 1_000,
@@ -131,7 +128,7 @@ Many test doubles invoke the consumer handler directly inside `publish()` and aw
 
 ```ts
 import assert from 'node:assert/strict';
-import { RabbitMqMicroserviceTransport } from '@fluojs/microservices';
+import { RabbitMqMicroserviceTransport } from '@fluojs/microservices/rabbitmq';
 
 export async function rabbitCompletionProbe(): Promise<void> {
   const callbacks = new Map<string, (message: string) => Promise<void> | void>();
@@ -164,7 +161,7 @@ export async function rabbitCompletionProbe(): Promise<void> {
       closedResources += 1;
     },
   };
-  const transport = new RabbitMqMicroserviceTransport({
+  const transport = RabbitMqMicroserviceTransport.create({
     eventQueue: 'lab.fulfillment.events',
     publisher,
     consumer,

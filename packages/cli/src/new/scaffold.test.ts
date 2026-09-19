@@ -209,7 +209,19 @@ function writeStubPackage(projectDirectory: string, packageName: string, source:
   mkdirSync(packageDirectory, { recursive: true });
   writeFileSync(
     join(packageDirectory, 'package.json'),
-    `${JSON.stringify({ exports: './index.js', name: packageName, type: 'module', version: '0.0.0-test' }, null, 2)}\n`,
+    `${JSON.stringify({
+      exports: packageName === '@fluojs/microservices'
+        ? {
+            '.': './index.js',
+            './kafka': './index.js',
+            './nats': './index.js',
+            './rabbitmq': './index.js',
+          }
+        : './index.js',
+      name: packageName,
+      type: 'module',
+      version: '0.0.0-test',
+    }, null, 2)}\n`,
     'utf8',
   );
   writeFileSync(join(packageDirectory, 'index.js'), source, 'utf8');
@@ -229,7 +241,7 @@ function installImportSafeBrokerStarterStubs(projectDirectory: string): void {
   writeStubPackage(
     projectDirectory,
     '@fluojs/microservices',
-    `export function MessagePattern() {\n  return () => undefined;\n}\nexport class KafkaMicroserviceTransport {\n  constructor(options) {\n    this.options = options;\n  }\n  async close() {}\n  async emit() {}\n  async listen() {}\n  async send() {}\n}\nexport class NatsMicroserviceTransport extends KafkaMicroserviceTransport {}\nexport class RabbitMqMicroserviceTransport extends KafkaMicroserviceTransport {}\nexport class MicroservicesModule {\n  static forRoot(options) {\n    globalThis.__fluoGeneratedTransport = options.transport;\n    return class MicroservicesModuleDefinition {};\n  }\n}\n`,
+    `export function MessagePattern() {\n  return () => undefined;\n}\nexport class KafkaMicroserviceTransport {\n  static create(options) {\n    return new this(options);\n  }\n  constructor(options) {\n    this.options = options;\n  }\n  async close() {}\n  async emit() {}\n  async listen() {}\n  async send() {}\n}\nexport class NatsMicroserviceTransport extends KafkaMicroserviceTransport {}\nexport class RabbitMqMicroserviceTransport extends KafkaMicroserviceTransport {}\nexport class MicroservicesModule {\n  static forRoot(options) {\n    globalThis.__fluoGeneratedTransport = options.transport;\n    return class MicroservicesModuleDefinition {};\n  }\n}\n`,
   );
   writeStubPackage(
     projectDirectory,
@@ -897,7 +909,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(readme).toContain('Shape: `microservice`');
     expect(readme).toContain('Transport: `tcp` is the generated runnable starter contract for this project');
     expect(envFile).toContain('MICROSERVICE_PORT=4000');
-    expect(appFile).toContain('new TcpMicroserviceTransport({ host, port })');
+    expect(appFile).toContain('TcpMicroserviceTransport.create({ host, port })');
     expect(mainFile).toContain('FluoFactory.createMicroservice(AppModule)');
     expect(appTestFile).toContain('InMemoryLoopbackTransport');
   });
@@ -938,7 +950,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(envFile).toContain('REDIS_URL=redis://127.0.0.1:6379');
     expect(envFile).toContain('REDIS_STREAMS_NAMESPACE=fluo:streams');
     expect(appFile).toContain("import Redis from 'ioredis';");
-    expect(appFile).toContain('new RedisStreamsMicroserviceTransport({');
+    expect(appFile).toContain('RedisStreamsMicroserviceTransport.create({');
     expect(appFile).toContain('readerClient');
     expect(appFile).toContain('async get(key)');
     expect(appFile).toContain('async incr(key)');
@@ -981,7 +993,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(readme).toContain('Transport: `mqtt` is the generated runnable starter contract for this project');
     expect(envFile).toContain('MQTT_URL=mqtt://127.0.0.1:1883');
     expect(envFile).toContain('MQTT_NAMESPACE=fluo.microservices');
-    expect(appFile).toContain('new MqttMicroserviceTransport({');
+    expect(appFile).toContain('MqttMicroserviceTransport.create({');
     expect(appFile).toContain('requestTimeoutMs: 3_000');
   });
 
@@ -1022,7 +1034,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(readme).toContain('Transport: `grpc` is the generated runnable starter contract for this project');
     expect(readme).toContain('proto/math.proto');
     expect(envFile).toContain('GRPC_URL=127.0.0.1:50051');
-    expect(appFile).toContain('new GrpcMicroserviceTransport({');
+    expect(appFile).toContain('GrpcMicroserviceTransport.create({');
     expect(appFile).toContain("packageName: 'fluo.microservices'");
     expect(mathHandlerFile).toContain('MathService.Sum');
     expect(protoFile).toContain('service MathService');
@@ -1065,7 +1077,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(envFile).toContain('NATS_SERVERS=nats://127.0.0.1:4222');
     expect(envFile).toContain('NATS_MESSAGE_SUBJECT=fluo.microservices.messages');
     expect(appFile).toContain("import { JSONCodec, connect, type NatsConnection } from 'nats';");
-    expect(appFile).toContain('new NatsMicroserviceTransport({');
+    expect(appFile).toContain('NatsMicroserviceTransport.create({');
     expect(appFile).toContain('class LazyNatsTransport implements MicroserviceTransport');
     expect(appFile).toContain('private initializing: Promise<NatsMicroserviceTransport> | undefined;');
     expect(appFile).toContain('this.initializing ??= this.createTransport();');
@@ -1108,7 +1120,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(envFile).toContain('KAFKA_BROKERS=127.0.0.1:9092');
     expect(envFile).toContain('KAFKA_RESPONSE_TOPIC=fluo.microservices.responses');
     expect(appFile).toContain("import { Kafka, logLevel, type Consumer, type Producer } from 'kafkajs';");
-    expect(appFile).toContain('new KafkaMicroserviceTransport({');
+    expect(appFile).toContain('KafkaMicroserviceTransport.create({');
     expect(appFile).toContain('class LazyKafkaTransport implements MicroserviceTransport');
     expect(appFile).toContain('private initializing: Promise<KafkaMicroserviceTransport> | undefined;');
     expect(appFile).toContain('this.initializing ??= this.createTransport();');
@@ -1157,7 +1169,7 @@ describe('scaffoldBootstrapApp', () => {
     expect(envFile).toContain('RABBITMQ_URL=amqp://127.0.0.1:5672');
     expect(envFile).toContain('RABBITMQ_RESPONSE_QUEUE=fluo.microservices.responses');
     expect(appFile).toContain("import { connect } from 'amqplib';");
-    expect(appFile).toContain('new RabbitMqMicroserviceTransport({');
+    expect(appFile).toContain('RabbitMqMicroserviceTransport.create({');
     expect(appFile).toContain('class LazyRabbitMqTransport implements MicroserviceTransport');
     expect(appFile).toContain('private initializing: Promise<RabbitMqMicroserviceTransport> | undefined;');
     expect(appFile).toContain('this.initializing ??= this.createTransport();');

@@ -71,7 +71,7 @@ import { JSONCodec, connect } from 'nats';
 const client = await connect({ servers: process.env.NATS_URL });
 const codec = JSONCodec();
 
-const transport = new NatsMicroserviceTransport({
+const transport = NatsMicroserviceTransport.create({
   client,
   codec: {
     encode(value) {

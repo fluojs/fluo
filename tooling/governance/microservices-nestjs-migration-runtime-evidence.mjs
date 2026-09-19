@@ -20,7 +20,7 @@ import {
   SyntaxKind,
 } from 'typescript';
 
-const transportSubpaths = ['tcp', 'redis', 'nats', 'kafka', 'rabbitmq', 'grpc', 'mqtt'];
+const transportSubpaths = ['tcp', 'redis', 'redis-streams', 'nats', 'kafka', 'rabbitmq', 'grpc', 'mqtt'];
 
 function assert(condition, message) {
   if (!condition) {
@@ -144,9 +144,17 @@ export function enforceMicroservicesRuntimeEvidence(readText) {
     hasExportedNames(
       indexSource,
       'packages/microservices/src/index.ts',
-      ['BidiStreamPattern', 'ClientStreamPattern', 'ServerStreamPattern', 'RedisPubSubMicroserviceTransport', 'RedisStreamsMicroserviceTransport'],
+      ['BidiStreamPattern', 'ClientStreamPattern', 'ServerStreamPattern'],
     ),
-    'packages/microservices/src/index.ts must structurally export the documented decorator and Redis transport symbols.',
+    'packages/microservices/src/index.ts must structurally export the documented streaming decorators.',
+  );
+  assert(
+    !hasExportedNames(
+      indexSource,
+      'packages/microservices/src/index.ts',
+      ['RedisPubSubMicroserviceTransport', 'RedisStreamsMicroserviceTransport'],
+    ),
+    'packages/microservices/src/index.ts must keep transport classes on their dedicated subpaths.',
   );
 
   const manifest = JSON.parse(readText('packages/microservices/package.json'));

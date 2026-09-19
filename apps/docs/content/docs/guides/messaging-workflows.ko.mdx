@@ -366,7 +366,8 @@ Handler가 같은 application process 안이 아니라 transport boundary 뒤에
 
 ```ts
 import { Module } from '@fluojs/core';
-import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MessagePattern, MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 import { FluoFactory } from '@fluojs/runtime';
 
 class MathHandler {
@@ -379,7 +380,7 @@ class MathHandler {
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({ port: 4000 }),
+      transport: TcpMicroserviceTransport.create({ port: 4000 }),
     }),
   ],
   providers: [MathHandler],
@@ -553,7 +554,7 @@ App-level module과 request test에는 `@fluojs/testing`을 사용하세요. Pac
 | `@fluojs/cqrs` | `CqrsModule.forRoot(...)`, `CommandBusLifecycleService`, `QueryBusLifecycleService`, `CqrsEventBusService`, handler decorators, `SagaTopologyError` |
 | `@fluojs/queue` | `QueueModule.forRoot(...)`, `QueueLifecycleService`, `@QueueWorker`, `QUEUE`, queue status snapshots |
 | `@fluojs/cron` | `CronModule.forRoot(...)`, `@Cron`, `@Interval`, `@Timeout`, `CronExpression`, `SCHEDULING_REGISTRY` |
-| `@fluojs/microservices` | `MicroservicesModule.forRoot(...)`, `createMicroservicesProviders(...)`, pattern decorators, transport adapters, `MicroserviceLifecycleService` |
+| `@fluojs/microservices` | `MicroservicesModule.forRoot(...)`, pattern decorator, `MICROSERVICE`, `MicroserviceLifecycleService`; transport adapter는 전용 subpath 사용 |
 | `@fluojs/notifications` | `NotificationsModule.forRoot(...)`, `NotificationsModule.forRootAsync(...)`, `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS` |
 | `@fluojs/email` | `EmailModule`, `EmailService`, `EMAIL_CHANNEL`, `@fluojs/email/node`, `@fluojs/email/queue` |
 | `@fluojs/slack` | `SlackModule`, `SlackService`, `SLACK_CHANNEL`, `createSlackWebhookTransport(...)` |

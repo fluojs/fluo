@@ -39,6 +39,16 @@ export class TcpMicroserviceTransport implements MicroserviceTransport {
   private handler: TransportHandler | undefined;
   private listenPromise: Promise<void> | undefined;
   private server: Server | undefined;
+
+  /**
+   * Creates a TCP transport from its explicit listener configuration.
+   *
+   * @param options TCP listener and request configuration.
+   * @returns A configured TCP transport.
+   */
+  static create(options: TcpMicroserviceTransportOptions): TcpMicroserviceTransport {
+    return new TcpMicroserviceTransport(options);
+  }
   private serverPromise: Promise<Server> | undefined;
   private readonly sockets = new Set<Socket>();
   private readonly host: string;

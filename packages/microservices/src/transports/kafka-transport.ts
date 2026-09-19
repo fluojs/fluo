@@ -41,6 +41,16 @@ export interface KafkaMicroserviceTransportOptions {
  * replies without leaking cross-request state through the shared producer/consumer pair.
  */
 export class KafkaMicroserviceTransport implements MicroserviceTransport {
+  /**
+   * Creates a Kafka transport from caller-owned producer and consumer collaborators.
+   *
+   * @param options Kafka collaborators and topic configuration.
+   * @returns A configured Kafka transport.
+   */
+  static create(options: KafkaMicroserviceTransportOptions): KafkaMicroserviceTransport {
+    return new KafkaMicroserviceTransport(options);
+  }
+
   private closePromise: Promise<void> | undefined;
   private closing = false;
   private handler: TransportHandler | undefined;

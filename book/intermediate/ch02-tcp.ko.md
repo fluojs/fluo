@@ -33,13 +33,14 @@ TCP로 마이크로서비스를 시작하는 절차는 단순합니다. **FluoSh
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 import { CatalogHandler } from './catalog.handler';
 
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({
+      transport: TcpMicroserviceTransport.create({
         host: '0.0.0.0',
         port: 4000,
       }),
@@ -97,7 +98,7 @@ TCP는 신뢰할 수 있는 트랜스포트이지만 메시지 지속성을 제�
 TCP는 점대점 방식이므로 호출자는 수신자의 가용성에 의존합니다. 요청 타임아웃을 설정하면 게이트웨이가 무기한 대기하지 않도록 할 수 있습니다.
 
 ```typescript
-new TcpMicroserviceTransport({
+TcpMicroserviceTransport.create({
   port: 4000,
   requestTimeoutMs: 5000,
 })

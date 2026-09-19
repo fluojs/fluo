@@ -24,7 +24,19 @@ function writeStubPackage(projectDirectory: string, packageName: string, source:
   mkdirSync(packageDirectory, { recursive: true });
   writeFileSync(
     join(packageDirectory, 'package.json'),
-    `${JSON.stringify({ exports: './index.js', name: packageName, type: 'module', version: '0.0.0-test' })}\n`,
+    `${JSON.stringify({
+      exports: packageName === '@fluojs/microservices'
+        ? {
+            '.': './index.js',
+            './kafka': './index.js',
+            './nats': './index.js',
+            './rabbitmq': './index.js',
+          }
+        : './index.js',
+      name: packageName,
+      type: 'module',
+      version: '0.0.0-test',
+    })}\n`,
     'utf8',
   );
   writeFileSync(join(packageDirectory, 'index.js'), source, 'utf8');
@@ -42,6 +54,9 @@ function installCommonStubs(projectDirectory: string): void {
     '@fluojs/microservices',
     `export function MessagePattern() { return () => undefined; }
 class BrokerTransport {
+  static create(options) {
+    return new this(options);
+  }
   async close() {
     globalThis.__events.push('transport.close');
     if (globalThis.__delegatedCloseFails) {

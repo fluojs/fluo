@@ -1043,7 +1043,8 @@ function createMicroserviceAppFile(options: Pick<BootstrapOptions, 'transport'>)
       return `import Redis from 'ioredis';
 import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, RedisStreamsMicroserviceTransport, type RedisStreamClientLike } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { RedisStreamsMicroserviceTransport, type RedisStreamClientLike } from '@fluojs/microservices/redis-streams';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1192,7 +1193,7 @@ const writerClient: RedisStreamClientLike = {
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
-      transport: new RedisStreamsMicroserviceTransport({
+      transport: RedisStreamsMicroserviceTransport.create({
         consumerGroup,
         namespace,
         readerClient,
@@ -1207,7 +1208,8 @@ export class AppModule {}
     case 'mqtt':
       return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, MqttMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { MqttMicroserviceTransport } from '@fluojs/microservices/mqtt';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1221,7 +1223,7 @@ const namespace = process.env.MQTT_NAMESPACE ?? 'fluo.microservices';
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
-      transport: new MqttMicroserviceTransport({
+      transport: MqttMicroserviceTransport.create({
         namespace,
         requestTimeoutMs: 3_000,
         url,
@@ -1237,7 +1239,8 @@ export class AppModule {}
 
 import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { GrpcMicroserviceTransport, MicroservicesModule } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { GrpcMicroserviceTransport } from '@fluojs/microservices/grpc';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1251,7 +1254,7 @@ const protoPath = resolve(process.cwd(), 'proto', 'math.proto');
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
-      transport: new GrpcMicroserviceTransport({
+      transport: GrpcMicroserviceTransport.create({
         packageName: 'fluo.microservices',
         protoPath,
         services: ['MathService'],
@@ -1266,7 +1269,8 @@ export class AppModule {}
     case 'nats':
       return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, NatsMicroserviceTransport, type MicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule, type MicroserviceTransport } from '@fluojs/microservices';
+import { NatsMicroserviceTransport } from '@fluojs/microservices/nats';
 import { JSONCodec, connect, type NatsConnection } from 'nats';
 
 import { MathHandler } from './math/math.handler';
@@ -1348,7 +1352,7 @@ class LazyNatsTransport implements MicroserviceTransport {
       servers,
     });
     this.connection = connection;
-    this.transport = new NatsMicroserviceTransport({
+    this.transport = NatsMicroserviceTransport.create({
       client: {
         publish(subject: string, payload: Uint8Array) {
           connection.publish(subject, payload);
@@ -1400,7 +1404,8 @@ export class AppModule {}
       return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
 import { Kafka, logLevel, type Consumer, type Producer } from 'kafkajs';
-import { KafkaMicroserviceTransport, MicroservicesModule, type MicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule, type MicroserviceTransport } from '@fluojs/microservices';
+import { KafkaMicroserviceTransport } from '@fluojs/microservices/kafka';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1491,7 +1496,7 @@ class LazyKafkaTransport implements MicroserviceTransport {
     const handlers = new Map<string, (message: string) => Promise<void> | void>();
     let consumerRunning = false;
 
-    this.transport = new KafkaMicroserviceTransport({
+    this.transport = KafkaMicroserviceTransport.create({
       consumer: {
         async subscribe(topic: string, handler: (message: string) => Promise<void> | void) {
           handlers.set(topic, handler);
@@ -1562,7 +1567,8 @@ export class AppModule {}
 
 import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, RabbitMqMicroserviceTransport, type MicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule, type MicroserviceTransport } from '@fluojs/microservices';
+import { RabbitMqMicroserviceTransport } from '@fluojs/microservices/rabbitmq';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1634,7 +1640,7 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
     const consumerTags = new Map<string, string>();
 
     this.channel = channel;
-    this.transport = new RabbitMqMicroserviceTransport({
+    this.transport = RabbitMqMicroserviceTransport.create({
       consumer: {
         async cancel(queue: string) {
           const consumerTag = consumerTags.get(queue);
@@ -1707,7 +1713,8 @@ export class AppModule {}
     default:
       return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 
 import { MathHandler } from './math/math.handler';
 
@@ -1722,7 +1729,7 @@ const host = process.env.MICROSERVICE_HOST ?? '127.0.0.1';
       processEnv: process.env,
     }),
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({ host, port }),
+      transport: TcpMicroserviceTransport.create({ host, port }),
     }),
   ],
   providers: [MathHandler],
@@ -1923,7 +1930,8 @@ Use the unit templates for fast logic checks. Use the mixed verification templat
 function createMixedAppFile(): string {
   return `import { Module } from '@fluojs/core';
 import { ConfigModule } from '@fluojs/config';
-import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 import { HealthModule } from '@fluojs/runtime';
 
 import { GreetingModule } from './greeting/greeting.module';
@@ -1943,7 +1951,7 @@ const microserviceHost = process.env.MICROSERVICE_HOST ?? '127.0.0.1';
     GreetingModule,
     HealthModule.forRoot(),
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({ host: microserviceHost, port: microservicePort }),
+      transport: TcpMicroserviceTransport.create({ host: microserviceHost, port: microservicePort }),
     }),
   ],
   providers: [MathHandler],

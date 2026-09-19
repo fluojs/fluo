@@ -120,12 +120,13 @@ Using fluo's microservices Module gives you the following strategic advantages. 
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({ port: 4000 })
+      transport: TcpMicroserviceTransport.create({ port: 4000 })
     })
   ],
   providers: [OrderHandler]

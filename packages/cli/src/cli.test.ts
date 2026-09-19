@@ -1495,7 +1495,7 @@ void bootstrap();
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('cd ./starter-microservice-redis-streams');
     expect(packageJson).toContain('"ioredis": "^5.0.0"');
-    expect(appFile).toContain('new RedisStreamsMicroserviceTransport({');
+    expect(appFile).toContain('RedisStreamsMicroserviceTransport.create({');
   });
 
   it('scaffolds the MQTT microservice starter when the transport is selected explicitly', async () => {
@@ -1532,7 +1532,7 @@ void bootstrap();
     expect(exitCode).toBe(0);
     expect(stdoutBuffer.join('')).toContain('cd ./starter-microservice-mqtt');
     expect(packageJson).toContain('"mqtt": "^5.0.0"');
-    expect(appFile).toContain('new MqttMicroserviceTransport({');
+    expect(appFile).toContain('MqttMicroserviceTransport.create({');
   });
 
   it('scaffolds the gRPC microservice starter when the transport is selected explicitly', async () => {
@@ -1571,7 +1571,7 @@ void bootstrap();
     expect(stdoutBuffer.join('')).toContain('cd ./starter-microservice-grpc');
     expect(packageJson).toContain('"@grpc/grpc-js": "^1.14.4"');
     expect(packageJson).toContain('"@grpc/proto-loader": "^0.8.0"');
-    expect(appFile).toContain('new GrpcMicroserviceTransport({');
+    expect(appFile).toContain('GrpcMicroserviceTransport.create({');
     expect(protoFile).toContain('service MathService');
   });
 

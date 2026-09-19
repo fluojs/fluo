@@ -43,7 +43,8 @@ gRPC transport는 `@grpc/grpc-js@^1.14.4`와 `@grpc/proto-loader@^0.8.0`을 요�
 ## 빠른 시작
 
 ```ts
-import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MessagePattern, MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 import { Module } from '@fluojs/core';
 import { FluoFactory } from '@fluojs/runtime';
 
@@ -57,7 +58,7 @@ class MathHandler {
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({ port: 4000 }),
+      transport: TcpMicroserviceTransport.create({ port: 4000 }),
     }),
   ],
   providers: [MathHandler],
@@ -155,7 +156,7 @@ Kafka와 RabbitMQ는 일치한 handler와 request response publication이 settle
 
 ### 커스텀 모듈 등록
 
-custom provider/export/non-global 구성이 필요할 때도 raw provider array로 내려가지 말고 `MicroservicesModule.forRoot({ transport, module: { ... } })`를 우선 사용하세요.
+custom provider/export/non-global 구성이 필요할 때도 `MicroservicesModule.forRoot({ transport, global, module: { ... } })`를 사용하세요.
 
 ```ts
 import { Module } from '@fluojs/core';
@@ -167,8 +168,8 @@ const EXTRA_MICROSERVICE_EXPORT = Symbol('extra-microservice-export');
   imports: [
     MicroservicesModule.forRoot({
       transport: customTransport,
+      global: false,
       module: {
-        global: false,
         providers: [{ provide: EXTRA_MICROSERVICE_EXPORT, useValue: 'custom-module-value' }],
         additionalExports: [EXTRA_MICROSERVICE_EXPORT],
       },
@@ -181,39 +182,27 @@ class FeatureModule {}
 Behavioral contract notes:
 
 - 이 모듈 경로는 기본 `MicroservicesModule.forRoot(...)` 호출과 동일한 `MICROSERVICE_OPTIONS`, `MicroserviceLifecycleService`, `MICROSERVICE` wiring을 그대로 설치합니다.
-- Top-level `MicroservicesModule.forRoot({ global })`은 built-in module visibility를 제어하고, `module.global`은 module customization object를 사용할 때 같은 visibility 선택을 적용합니다.
+- Top-level `MicroservicesModule.forRoot({ global })`은 built-in module visibility를 제어합니다.
 - `module.providers`는 내장 런타임 wiring 뒤에 추가 provider를 붙이고, `module.additionalExports`는 기본 export 토큰을 교체하지 않고 확장합니다.
-- `module.global`을 사용하면 등록 범위를 로컬로 제한할 수 있습니다.
-
-### provider 배열 헬퍼
-
-`createMicroservicesProviders(...)`는 커스텀 모듈 조합에 low-level provider array 자체가 필요할 때만 사용하세요. Custom provider/export/non-global registration에는 built-in lifecycle wiring과 export token을 그대로 유지하는 `MicroservicesModule.forRoot({ transport, module: { ... } })` 경로를 우선 사용하세요.
-
-```ts
-import { Module } from '@fluojs/core';
-import { createMicroservicesProviders } from '@fluojs/microservices';
-
-@Module({
-  providers: [...createMicroservicesProviders({ transport: customTransport })],
-})
-class ManualMicroserviceProvidersModule {}
-```
+- local registration이 필요하면 top-level `global: false`를 지정하세요.
 
 ## 공개 API 개요
 
 ### 루트 배럴 (`@fluojs/microservices`)
 
-- `MicroservicesModule`, `createMicroservicesProviders`: 모듈 등록 진입점입니다.
-- `MicroservicesModule.forRoot(...)`: `module: { global, providers, additionalExports }`와 함께 트랜스포트와 모듈 구성을 설정합니다.
-- `createMicroservicesProviders(...)`: 커스텀 모듈 조합용 provider 배열을 생성합니다.
+- `MicroservicesModule.forRoot(...)`: 유일한 모듈 등록 경로이며, 트랜스포트, top-level `global`, 선택적인 `module: { providers, additionalExports }` 구성을 설정합니다.
 - `MessagePattern`, `EventPattern`, `ServerStreamPattern`, `ClientStreamPattern`, `BidiStreamPattern`: 라우팅/스트리밍 데코레이터입니다.
-- `TcpMicroserviceTransport`, `RedisPubSubMicroserviceTransport`, `RedisStreamsMicroserviceTransport`, `NatsMicroserviceTransport`, `KafkaMicroserviceTransport`, `RabbitMqMicroserviceTransport`, `GrpcMicroserviceTransport`, `MqttMicroserviceTransport`: 루트 배럴에서 제공하는 트랜스포트 어댑터입니다.
-- `MicroserviceLifecycleService`, `MICROSERVICE`: 런타임 접근용 서비스와 토큰입니다.
+- `MicroserviceLifecycleService`: lifecycle/startup 소유 class token입니다.
+- `MICROSERVICE`: 애플리케이션 업무 호출을 위한 canonical injected `Microservice` facade입니다.
 - `createMicroservicePlatformStatusSnapshot`, `ServerStreamWriter`: 상태 스냅샷/TypeScript 계약 헬퍼입니다.
+
+### Transport subpath
+
+각 transport와 option은 전용 subpath `/tcp`, `/redis`, `/redis-streams`, `/nats`, `/kafka`, `/rabbitmq`, `/mqtt`, `/grpc`에서 import하세요. 애플리케이션 recipe에서는 `TransportClass.create(options)`를 사용하며, 기존 instance-oriented integration을 위해 public constructor는 유지됩니다.
 
 ### Programmatic runtime
 
-`MicroserviceLifecycleService`는 programmatic runtime access를 위해 `listen()`, `close(signal?: string)`, `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()`, `createPlatformStatusSnapshot()`을 제공합니다. `MICROSERVICE` 토큰은 raw transport instance가 아니라 같은 programmatic `Microservice` facade로 resolve됩니다.
+`MicroserviceLifecycleService`는 lifecycle startup/shutdown을 소유합니다. 업무 `send()`, `emit()`, `serverStream()`, `clientStream()`, `bidiStream()` 호출에는 `MICROSERVICE`를 inject하세요. 이 토큰은 raw transport instance가 아니라 programmatic `Microservice` facade로 resolve됩니다.
 
 ### Type export
 
@@ -248,7 +237,7 @@ Payload는 dispatch 전에 clone되고, 동시 `listen()` 호출은 dedupe되며
 ## 예제 소스
 
 - `packages/microservices/src/module.test.ts`: 모든 트랜스포트 통합 계약을 검증합니다.
-- `packages/microservices/src/public-api.test.ts`: 모듈 등록 override와 `createMicroservicesProviders(...)`를 포함한 루트 배럴 export 계약을 검증합니다.
+- `packages/microservices/src/public-api.test.ts`: top-level visibility와 모듈 등록 override를 포함한 루트 배럴 export 계약을 검증합니다.
 - `packages/microservices/src/public-surface.test.ts`: 문서화된 공개 surface를 검증합니다.
 - `packages/microservices/src/public-subpaths.test.ts`: 문서화된 트랜스포트 서브패스 export map 계약을 검증합니다.
 - 실행 가능한 스타터 예제는 지원되는 TCP, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC 트랜스포트 변형에 대해 `fluo new --shape microservice --transport <transport> --runtime node --platform none`로 생성합니다.

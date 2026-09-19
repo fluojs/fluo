@@ -366,7 +366,8 @@ Use `@fluojs/microservices` when the handler lives behind a transport boundary i
 
 ```ts
 import { Module } from '@fluojs/core';
-import { MessagePattern, MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MessagePattern, MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 import { FluoFactory } from '@fluojs/runtime';
 
 class MathHandler {
@@ -379,7 +380,7 @@ class MathHandler {
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({ port: 4000 }),
+      transport: TcpMicroserviceTransport.create({ port: 4000 }),
     }),
   ],
   providers: [MathHandler],
@@ -553,7 +554,7 @@ Use `@fluojs/testing` for app-level module and request tests. Package-level conf
 | `@fluojs/cqrs` | `CqrsModule.forRoot(...)`, `CommandBusLifecycleService`, `QueryBusLifecycleService`, `CqrsEventBusService`, handler decorators, `SagaTopologyError` |
 | `@fluojs/queue` | `QueueModule.forRoot(...)`, `QueueLifecycleService`, `@QueueWorker`, `QUEUE`, queue status snapshots |
 | `@fluojs/cron` | `CronModule.forRoot(...)`, `@Cron`, `@Interval`, `@Timeout`, `CronExpression`, `SCHEDULING_REGISTRY` |
-| `@fluojs/microservices` | `MicroservicesModule.forRoot(...)`, `createMicroservicesProviders(...)`, pattern decorators, transport adapters, `MicroserviceLifecycleService` |
+| `@fluojs/microservices` | `MicroservicesModule.forRoot(...)`, pattern decorators, `MICROSERVICE`, `MicroserviceLifecycleService`; transport adapters use dedicated subpaths |
 | `@fluojs/notifications` | `NotificationsModule.forRoot(...)`, `NotificationsModule.forRootAsync(...)`, `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS` |
 | `@fluojs/email` | `EmailModule`, `EmailService`, `EMAIL_CHANNEL`, `@fluojs/email/node`, `@fluojs/email/queue` |
 | `@fluojs/slack` | `SlackModule`, `SlackService`, `SLACK_CHANNEL`, `createSlackWebhookTransport(...)` |

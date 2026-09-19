@@ -140,6 +140,16 @@ export interface GrpcMicroserviceTransportOptions {
  * and exposes matching unary/server-stream/client-stream/bidi-stream client calls through one transport surface.
  */
 export class GrpcMicroserviceTransport implements MicroserviceTransport {
+  /**
+   * Creates a gRPC transport from its protobuf and endpoint configuration.
+   *
+   * @param options gRPC service, endpoint, and optional server configuration.
+   * @returns A configured gRPC transport.
+   */
+  static create(options: GrpcMicroserviceTransportOptions): GrpcMicroserviceTransport {
+    return new GrpcMicroserviceTransport(options);
+  }
+
   /** Indicates that gRPC closes the cached outbound clients it creates. */
   readonly ownsResources = true;
   /** Reports server and cached outbound client ownership independently. */

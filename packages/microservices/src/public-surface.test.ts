@@ -6,10 +6,10 @@ import { describe, expect, it } from 'vitest';
 import * as microservices from './index.js';
 
 describe('@fluojs/microservices root barrel public surface', () => {
-  it('keeps the documented root exports stable for 0.x governance', () => {
+  it('keeps registration and facade exports on the root barrel', () => {
     expect(microservices).toHaveProperty('MicroservicesModule');
     expect(microservices).not.toHaveProperty('createMicroservicesModule');
-    expect(microservices).toHaveProperty('createMicroservicesProviders');
+    expect(microservices).not.toHaveProperty('createMicroservicesProviders');
     expect(microservices).toHaveProperty('MessagePattern');
     expect(microservices).toHaveProperty('EventPattern');
     expect(microservices).toHaveProperty('ServerStreamPattern');

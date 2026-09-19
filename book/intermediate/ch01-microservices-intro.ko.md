@@ -120,12 +120,13 @@ fluo의 마이크로서비스 모듈을 사용하면 다음과 같은 전략적 
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({ port: 4000 })
+      transport: TcpMicroserviceTransport.create({ port: 4000 })
     })
   ],
   providers: [OrderHandler]

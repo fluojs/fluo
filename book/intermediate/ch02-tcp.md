@@ -33,13 +33,14 @@ To make the service reachable over TCP, bind it to a host and port.
 
 ```typescript
 import { Module } from '@fluojs/core';
-import { MicroservicesModule, TcpMicroserviceTransport } from '@fluojs/microservices';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
 import { CatalogHandler } from './catalog.handler';
 
 @Module({
   imports: [
     MicroservicesModule.forRoot({
-      transport: new TcpMicroserviceTransport({
+      transport: TcpMicroserviceTransport.create({
         host: '0.0.0.0',
         port: 4000,
       }),
@@ -97,7 +98,7 @@ By default, fluo limits TCP frame size to 1 MiB. This limit prevents a single ma
 Because TCP is point-to-point, the caller depends on receiver availability. Setting a request timeout keeps the gateway from waiting forever.
 
 ```typescript
-new TcpMicroserviceTransport({
+TcpMicroserviceTransport.create({
   port: 4000,
   requestTimeoutMs: 5000,
 })

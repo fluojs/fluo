@@ -124,9 +124,9 @@ Persistence is essential for important work such as order processing or payment 
 Unlike Pub/Sub, Redis Streams stores messages. A consumer group guarantees that each message is processed by at least one member of the group. If a consumer receives a message and fails before sending an acknowledgment, that message remains in the Pending Entries List (PEL), where another consumer can reclaim it.
 
 ```typescript
-import { RedisStreamsMicroserviceTransport } from '@fluojs/microservices';
+import { RedisStreamsMicroserviceTransport } from '@fluojs/microservices/redis-streams';
 
-const transport = new RedisStreamsMicroserviceTransport({
+const transport = RedisStreamsMicroserviceTransport.create({
   readerClient: redisClient,
   writerClient: redisClient,
   consumerGroup: 'payment-service-group',
