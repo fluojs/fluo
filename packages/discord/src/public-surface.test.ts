@@ -4,7 +4,6 @@ import type {
   DiscordMessage,
   DiscordModuleOptions,
   DiscordNotificationDispatchRequest,
-  DiscordNotificationPayload,
   DiscordStatusAdapterInput,
   DiscordTemplateRenderer,
   DiscordTransport,
@@ -13,9 +12,6 @@ import type {
   DiscordWebhookTransportOptions,
 } from './index.js';
 import * as discordPublicApi from './index.js';
-
-type Assert<TValue extends true> = TValue;
-type RejectsThreadId<TValue> = { threadId: string } extends TValue ? false : true;
 
 describe('@fluojs/discord public API surface', () => {
   it('keeps documented root-barrel exports stable', () => {
@@ -47,18 +43,6 @@ describe('@fluojs/discord public API surface', () => {
     expectTypeOf<DiscordStatusAdapterInput>().toHaveProperty('channelName');
     expectTypeOf<DiscordStatusAdapterInput>().toHaveProperty('lifecycleFailurePhase');
     expectTypeOf<DiscordStatusAdapterInput>().toHaveProperty('transportKind');
-  });
-
-  it('rejects threadId payload routing while retaining envelope recipients', () => {
-    const payloadRejectsThreadId: Assert<RejectsThreadId<DiscordNotificationPayload>> = true;
-    const notification: DiscordNotificationDispatchRequest = {
-      channel: 'discord',
-      payload: { content: 'Deploy finished.' },
-      recipients: ['thread-release'],
-    };
-
-    expect(payloadRejectsThreadId).toBe(true);
-    expect(notification.recipients).toEqual(['thread-release']);
   });
 
   it('keeps internal normalized options token hidden from the root barrel', () => {

@@ -157,7 +157,9 @@ export interface DiscordWebhookTransportOptions {
 }
 
 /** Template render input used for `NotificationDispatchRequest.template` integration. */
-export interface DiscordTemplateRenderInput<TPayload extends DiscordNotificationPayload = DiscordNotificationPayload> {
+export interface DiscordTemplateRenderInput<
+  TPayload extends DiscordNotificationPayload & Record<string, unknown> = DiscordNotificationPayload & Record<string, unknown>,
+> {
   locale?: string;
   metadata?: Record<string, unknown>;
   payload: TPayload;
@@ -183,13 +185,13 @@ export interface DiscordTemplateRenderer {
    * @param input Template render input including the template key, opaque payload, and caller cancellation signal.
    * @returns Rendered content or embed fragments that are merged with explicit payload overrides.
    */
-  render<TPayload extends DiscordNotificationPayload = DiscordNotificationPayload>(
+  render<TPayload extends DiscordNotificationPayload & Record<string, unknown> = DiscordNotificationPayload & Record<string, unknown>>(
     input: DiscordTemplateRenderInput<TPayload>,
   ): MaybePromise<DiscordTemplateRenderResult>;
 }
 
 /** Notification payload understood by {@link DiscordChannel} and {@link DiscordService.sendNotification}. */
-export interface DiscordNotificationPayload extends Record<string, unknown> {
+export interface DiscordNotificationPayload {
   allowedMentions?: DiscordAllowedMentions;
   attachments?: readonly DiscordAttachment[];
   avatarUrl?: string;
@@ -199,15 +201,14 @@ export interface DiscordNotificationPayload extends Record<string, unknown> {
   flags?: number;
   metadata?: Record<string, unknown>;
   poll?: DiscordPoll;
-  /** Notification routing belongs to the envelope `recipients`, never the Discord payload. */
-  threadId?: never;
   threadName?: string;
   tts?: boolean;
   username?: string;
 }
 
 /** Shared notification request subtype consumed by the Discord channel implementation. */
-export interface DiscordNotificationDispatchRequest extends NotificationDispatchRequest<DiscordNotificationPayload> {
+export interface DiscordNotificationDispatchRequest
+  extends NotificationDispatchRequest<DiscordNotificationPayload & Record<string, unknown>> {
   channel: string;
 }
 
