@@ -54,12 +54,6 @@ function createLogger(events: string[]): ApplicationLogger {
   };
 }
 
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
 function createDeferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -1481,19 +1475,31 @@ describe('@fluojs/cqrs', () => {
     await app.close();
   });
 
-  it('processes saga events in a deterministic order under concurrent publish calls', async () => {
+  it('processes saga events in a deterministic order under concurrent publish calls', { timeout: 10_000 }, async () => {
     let activeHandles = 0;
     let maximumActiveHandles = 0;
 
+    const eventIndices = [1, 2, 3] as const;
+    type EventIndex = (typeof eventIndices)[number];
+    const signals: Record<EventIndex, {
+      readonly entered: ReturnType<typeof createDeferred<void>>;
+      readonly release: ReturnType<typeof createDeferred<void>>;
+    }> = {
+      1: { entered: createDeferred<void>(), release: createDeferred<void>() },
+      2: { entered: createDeferred<void>(), release: createDeferred<void>() },
+      3: { entered: createDeferred<void>(), release: createDeferred<void>() },
+    };
+
+    const entered1 = signals[1].entered.promise;
+    const entered2 = signals[2].entered.promise;
+    const entered3 = signals[3].entered.promise;
+
     class SequenceStore {
-      seen: number[] = [];
+      readonly steps: string[] = [];
     }
 
     class SequencedEvent implements IEvent {
-      constructor(
-        public readonly index: number,
-        public readonly waitMs: number,
-      ) {}
+      constructor(public readonly index: EventIndex) {}
     }
 
     @Inject(SequenceStore)
@@ -1504,12 +1510,14 @@ describe('@fluojs/cqrs', () => {
       async handle(event: SequencedEvent): Promise<void> {
         activeHandles += 1;
         maximumActiveHandles = Math.max(maximumActiveHandles, activeHandles);
+        this.store.steps.push(`start:${String(event.index)}`);
+        signals[event.index].entered.resolve();
 
         try {
-          await delay(event.waitMs);
-          this.store.seen.push(event.index);
+          await signals[event.index].release.promise;
         } finally {
           activeHandles -= 1;
+          this.store.steps.push(`end:${String(event.index)}`);
         }
       }
     }
@@ -1524,16 +1532,49 @@ describe('@fluojs/cqrs', () => {
     const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
     const store = await app.container.resolve(SequenceStore);
 
-    await Promise.all([
-      eventBus.publish(new SequencedEvent(1, 30)),
-      eventBus.publish(new SequencedEvent(2, 0)),
-      eventBus.publish(new SequencedEvent(3, 0)),
-    ]);
+    try {
+      const publishPromise = Promise.all([
+        eventBus.publish(new SequencedEvent(1)),
+        eventBus.publish(new SequencedEvent(2)),
+        eventBus.publish(new SequencedEvent(3)),
+      ]);
 
-    expect(store.seen).toEqual([1, 2, 3]);
-    expect(maximumActiveHandles).toBe(1);
+      await entered1;
+      expect(activeHandles).toBe(1);
+      expect(maximumActiveHandles).toBe(1);
+      expect(store.steps).toEqual(['start:1']);
+      signals[1].release.resolve();
 
-    await app.close();
+      await entered2;
+      expect(activeHandles).toBe(1);
+      expect(maximumActiveHandles).toBe(1);
+      expect(store.steps).toEqual(['start:1', 'end:1', 'start:2']);
+      signals[2].release.resolve();
+
+      await entered3;
+      expect(activeHandles).toBe(1);
+      expect(maximumActiveHandles).toBe(1);
+      expect(store.steps).toEqual(['start:1', 'end:1', 'start:2', 'end:2', 'start:3']);
+      signals[3].release.resolve();
+
+      await publishPromise;
+
+      expect(store.steps).toEqual([
+        'start:1',
+        'end:1',
+        'start:2',
+        'end:2',
+        'start:3',
+        'end:3',
+      ]);
+      expect(maximumActiveHandles).toBe(1);
+      expect(activeHandles).toBe(0);
+    } finally {
+      for (const index of eventIndices) {
+        signals[index].release.resolve();
+      }
+      await app.close();
+    }
   });
 
   it('waits for in-flight saga execution during application shutdown', async () => {
