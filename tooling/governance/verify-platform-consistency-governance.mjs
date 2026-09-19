@@ -1875,7 +1875,10 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
   // status so configured-but-disabled publishers do not appear as active
   // event-backed dependencies or external owners.
   // and Studio report emission requiring completed bootstrap with no artifact
-  // emitted for failed or hanging bootstrap attempts.
+  // emitted for failed or hanging bootstrap attempts, plus canonical i18n
+  // standalone service and loader static create methods, canonical
+  // createAcceptLanguageLocalePolicyResolver and createHeaderLocalePolicyResolver
+  // policy resolvers, and Accept-Language policy resolver NestJS migration boundaries.
 
   assert(
     contractDiscoverabilityCompanions.every((path) => hasChanged(changedFiles, path)),

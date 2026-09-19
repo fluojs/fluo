@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { I18nError } from '../errors.js';
 import type { I18nErrorCode } from '../types.js';
-import { createFileSystemI18nLoader, FileSystemI18nLoader } from './fs.js';
+import { FileSystemI18nLoader } from './fs.js';
 
 let rootDir: string;
 
@@ -55,7 +55,7 @@ describe('@fluojs/i18n/loaders/fs', () => {
   it('loads and freezes JSON catalogs from locale and namespace paths', async () => {
     await writeCatalog('en', 'common/actions', JSON.stringify({ save: 'Save', nested: { cancel: 'Cancel' } }));
 
-    const loader = createFileSystemI18nLoader({ rootDir });
+    const loader = FileSystemI18nLoader.create({ rootDir });
     const catalog = await loader.load('en', 'common/actions');
 
     expect(catalog).toEqual({ save: 'Save', nested: { cancel: 'Cancel' } });

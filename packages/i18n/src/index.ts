@@ -1,6 +1,6 @@
 export { I18nError } from './errors.js';
 export { I18nModule } from './module.js';
-export { createI18n, I18nService } from './service.js';
+export { I18nService } from './service.js';
 export type {
   I18nErrorCode,
   I18nFallbackLocales,

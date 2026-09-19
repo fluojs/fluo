@@ -6,8 +6,7 @@ import { Inject, Module, getModuleMetadata } from '@fluojs/core';
 import { Test } from '@fluojs/testing';
 
 import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
-import { I18nError, I18nModule, createI18n } from './index.js';
-import { I18nService } from './service.js';
+import { I18nError, I18nModule, I18nService } from './index.js';
 import type {
   I18nErrorCode,
   I18nLocale,
@@ -42,7 +41,7 @@ describe('@fluojs/i18n root public surface', () => {
   it('keeps the root value exports intentionally small', async () => {
     const root = await import('./index.js');
 
-    expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService', 'createI18n']);
+    expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService']);
   });
 
   it('keeps root package metadata free of optional peer and Node engine requirements', () => {
@@ -62,7 +61,7 @@ describe('@fluojs/i18n root public surface', () => {
     });
   });
 
-  it('exposes the module, service, factory, and stable error surface', () => {
+  it('exposes the module, static service creation, and stable error surface', () => {
     const options: I18nModuleOptions = {
       catalogs: {
         en: { app: { title: 'Fluo' } },
@@ -72,7 +71,7 @@ describe('@fluojs/i18n root public surface', () => {
     };
     const key: I18nTranslationKey = 'app.title';
     const code: I18nErrorCode = 'I18N_ERROR';
-    const service = createI18n(options);
+    const service = I18nService.create(options);
     const snapshot = service.snapshotOptions();
 
     expect(key).toBe('app.title');
@@ -144,7 +143,7 @@ describe('@fluojs/i18n root public surface', () => {
   });
 
   it('resolves nested keys and namespace-prefixed keys with explicit locales', () => {
-    const service = createI18n({
+    const service = I18nService.create({
       catalogs: {
         en: {
           app: {
@@ -161,11 +160,11 @@ describe('@fluojs/i18n root public surface', () => {
     });
 
     expect(service.translate('app.title', { locale: 'en', values: { name: 'fluo' } })).toBe('Hello fluo');
-    expect(service.translate('action.save', { locale: 'en', namespace: 'common' })).toBe('Save');
+    expect(service.translate('common.action.save', { locale: 'en' })).toBe('Save');
   });
 
   it('uses deterministic fallback order before default values and missing-message hooks', () => {
-    const service = createI18n({
+    const service = I18nService.create({
       catalogs: {
         en: { greeting: 'Hello {{ name }}' },
         fr: { greeting: 'Bonjour {{ name }}' },
@@ -188,7 +187,7 @@ describe('@fluojs/i18n root public surface', () => {
   });
 
   it('uses global fallback arrays before default values and missing-message hooks', () => {
-    const service = createI18n({
+    const service = I18nService.create({
       catalogs: {
         en: { greeting: 'Hello from fallback' },
         ko: { other: '다른 문장' },
@@ -206,7 +205,7 @@ describe('@fluojs/i18n root public surface', () => {
   });
 
   it('locks interpolation edge cases for primitive, nullish, and absent values', () => {
-    const service = createI18n({
+    const service = I18nService.create({
       catalogs: {
         en: {
           message: 'zero={{ zero }} false={{ enabled }} null={{ empty }} undefined={{ missing }} absent={{ absent }}',
@@ -231,7 +230,7 @@ describe('@fluojs/i18n root public surface', () => {
     } satisfies I18nMessageCatalogs;
     const supportedLocales = ['en', 'ko'];
     const fallbackLocales = ['en'];
-    const service = createI18n({ catalogs, defaultLocale: 'en', fallbackLocales, supportedLocales });
+    const service = I18nService.create({ catalogs, defaultLocale: 'en', fallbackLocales, supportedLocales });
 
     catalogs.en.greeting = 'Changed';
     supportedLocales.push('fr');
@@ -248,7 +247,7 @@ describe('@fluojs/i18n root public surface', () => {
     Object.defineProperty(messages, '__proto__', { enumerable: true, value: 'Prototype-safe' });
 
     // When: the core service captures its catalog snapshot.
-    const service = createI18n({ catalogs: { en: messages }, defaultLocale: 'en' });
+    const service = I18nService.create({ catalogs: { en: messages }, defaultLocale: 'en' });
 
     // Then: the valid own key remains available for translation.
     expect(service.translate('__proto__', { locale: 'en' })).toBe('Prototype-safe');
@@ -260,7 +259,7 @@ describe('@fluojs/i18n root public surface', () => {
     messages.self = messages;
 
     // When/Then: core registration reports the documented catalog error instead of overflowing recursion.
-    expectI18nCode(() => createI18n({ catalogs: { en: messages }, defaultLocale: 'en' }), 'I18N_INVALID_CATALOG');
+    expectI18nCode(() => I18nService.create({ catalogs: { en: messages }, defaultLocale: 'en' }), 'I18N_INVALID_CATALOG');
   });
 
   it('fails with stable errors for invalid catalogs, locale config, and translation options', () => {
@@ -270,24 +269,24 @@ describe('@fluojs/i18n root public surface', () => {
       },
     } as unknown as I18nMessageCatalogs;
 
-    expectI18nCode(() => createI18n({ catalogs: invalidCatalogs, defaultLocale: 'en' }), 'I18N_INVALID_CATALOG');
-    expectI18nCode(() => createI18n({ defaultLocale: 'en', supportedLocales: ['ko'] }), 'I18N_INVALID_LOCALE_CONFIG');
+    expectI18nCode(() => I18nService.create({ catalogs: invalidCatalogs, defaultLocale: 'en' }), 'I18N_INVALID_CATALOG');
+    expectI18nCode(() => I18nService.create({ defaultLocale: 'en', supportedLocales: ['ko'] }), 'I18N_INVALID_LOCALE_CONFIG');
     expectI18nCode(
-      () => createI18n({ defaultLocale: 'en', fallbackLocales: { ko: ['fr'] }, supportedLocales: ['en', 'ko'] }),
+      () => I18nService.create({ defaultLocale: 'en', fallbackLocales: { ko: ['fr'] }, supportedLocales: ['en', 'ko'] }),
       'I18N_INVALID_LOCALE_CONFIG',
     );
     expectI18nCode(
-      () => createI18n({ catalogs: { fr: { greeting: 'Bonjour' } }, defaultLocale: 'en', supportedLocales: ['en'] }),
+      () => I18nService.create({ catalogs: { fr: { greeting: 'Bonjour' } }, defaultLocale: 'en', supportedLocales: ['en'] }),
       'I18N_INVALID_LOCALE_CONFIG',
     );
-    expectI18nCode(() => createI18n({ catalogs: { en: { greeting: 'Hello' } } }), 'I18N_INVALID_OPTIONS');
-    expectI18nCode(() => createI18n(null as unknown as I18nModuleOptions), 'I18N_INVALID_OPTIONS');
+    expectI18nCode(() => I18nService.create({ catalogs: { en: { greeting: 'Hello' } } }), 'I18N_INVALID_OPTIONS');
+    expectI18nCode(() => I18nService.create(null as unknown as I18nModuleOptions), 'I18N_INVALID_OPTIONS');
     expectI18nCode(
-      () => createI18n({ defaultLocale: 'en', missingMessage: 'missing' } as unknown as I18nModuleOptions),
+      () => I18nService.create({ defaultLocale: 'en', missingMessage: 'missing' } as unknown as I18nModuleOptions),
       'I18N_INVALID_OPTIONS',
     );
 
-    const service = createI18n({
+    const service = I18nService.create({
       catalogs: { en: { greeting: 'Hello' } },
       defaultLocale: 'en',
       supportedLocales: ['en'],
@@ -311,7 +310,7 @@ describe('@fluojs/i18n root public surface', () => {
   });
 
   it('formats date/time, numbers, currency, percent, lists, and relative time through standard Intl APIs', () => {
-    const service = createI18n({
+    const service = I18nService.create({
       defaultLocale: 'en-US',
       formats: {
         dateTime: {
@@ -358,7 +357,7 @@ describe('@fluojs/i18n root public surface', () => {
         score: { maximumFractionDigits: 1 },
       },
     } satisfies NonNullable<I18nModuleOptions['formats']>;
-    const service = createI18n({ defaultLocale: 'en', formats, supportedLocales: ['en'] });
+    const service = I18nService.create({ defaultLocale: 'en', formats, supportedLocales: ['en'] });
 
     formats.number.score.maximumFractionDigits = 4;
 
@@ -369,15 +368,15 @@ describe('@fluojs/i18n root public surface', () => {
 
   it('fails with stable errors for missing and invalid named Intl formats', () => {
     expectI18nCode(
-      () => createI18n({ defaultLocale: 'en', formats: { number: { '': { maximumFractionDigits: 1 } } } }),
+      () => I18nService.create({ defaultLocale: 'en', formats: { number: { '': { maximumFractionDigits: 1 } } } }),
       'I18N_INVALID_OPTIONS',
     );
     expectI18nCode(
-      () => createI18n({ defaultLocale: 'en', formats: { dateTime: { short: [] as unknown as Intl.DateTimeFormatOptions } } }),
+      () => I18nService.create({ defaultLocale: 'en', formats: { dateTime: { short: [] as unknown as Intl.DateTimeFormatOptions } } }),
       'I18N_INVALID_OPTIONS',
     );
 
-    const service = createI18n({ defaultLocale: 'en', formats: { number: { whole: { maximumFractionDigits: 0 } } } });
+    const service = I18nService.create({ defaultLocale: 'en', formats: { number: { whole: { maximumFractionDigits: 0 } } } });
 
     expectI18nCode(() => service.formatNumber(1, { format: 'missing', locale: 'en' }), 'I18N_INVALID_OPTIONS');
     expectI18nCode(
@@ -393,7 +392,7 @@ describe('@fluojs/i18n root public surface', () => {
   });
 
   it('wraps invalid inline Intl option values with stable i18n errors', () => {
-    const service = createI18n({ defaultLocale: 'en', supportedLocales: ['en'] });
+    const service = I18nService.create({ defaultLocale: 'en', supportedLocales: ['en'] });
 
     expectI18nCode(
       () =>
@@ -435,7 +434,7 @@ describe('@fluojs/i18n root public surface', () => {
   });
 
   it('wraps invalid named Intl option values with stable i18n errors at use time', () => {
-    const service = createI18n({
+    const service = I18nService.create({
       defaultLocale: 'en',
       formats: {
         dateTime: {
