@@ -147,7 +147,7 @@ describe('GraphQL object field resolver contract governance', () => {
     expect(fieldResolverOptions).toContain('input?: Function');
     expect(fieldResolverOptions).toContain('argTypes?: Record<string, GraphqlArgType>');
     expect(discovery).toContain('for (const provider of compiledModule.definition.providers ?? [])');
-    expect(discovery).toContain('for (const controller of compiledModule.definition.controllers ?? [])');
+    expect(discovery).not.toContain('compiledModule.definition.controllers');
     expect(objectFieldResolvers).toContain('methodArguments[binding.index] = parent;');
     expect(objectFieldResolvers).toContain('methodArguments[binding.index] = contextValue;');
     expect(objectFieldResolvers).toContain('methodArguments[binding.index] = input;');

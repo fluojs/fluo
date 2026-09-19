@@ -241,4 +241,43 @@ describe('GraphQL object field resolvers', () => {
       /@Parent\(\) and @Context\(\) can only bind parameters on @FieldResolver\(\) methods/,
     );
   });
+
+  describe('normalizeFieldResolverMetadata validation', () => {
+    it('rejects removed string fieldName argument with clear migration behavior', () => {
+      expect(() => FieldResolver('author' as unknown as undefined)).toThrow(TypeError);
+      expect(() => FieldResolver('author' as unknown as undefined)).toThrow(
+        /@FieldResolver\(fieldName\) string argument has been removed\. Pass an options object like @FieldResolver\(\{ fieldName: 'author' \}\) instead, or call @FieldResolver\(\) without arguments to use the method name\./,
+      );
+    });
+
+    it('rejects null runtime input with clear migration behavior', () => {
+      expect(() => FieldResolver(null as unknown as undefined)).toThrow(TypeError);
+      expect(() => FieldResolver(null as unknown as undefined)).toThrow(
+        /@FieldResolver\(\) options must be an options object when provided, received null\./,
+      );
+    });
+
+    it('rejects array runtime input with clear migration behavior', () => {
+      expect(() => FieldResolver(['author'] as unknown as undefined)).toThrow(TypeError);
+      expect(() => FieldResolver(['author'] as unknown as undefined)).toThrow(
+        /@FieldResolver\(\) options must be an options object when provided, received array\./,
+      );
+    });
+
+    it.each([
+      ['number', 123],
+      ['boolean', true],
+      ['symbol', Symbol('author')],
+    ])('rejects non-object %s runtime input with clear migration behavior', (type, value) => {
+      expect(() => FieldResolver(value as unknown as undefined)).toThrow(TypeError);
+      expect(() => FieldResolver(value as unknown as undefined)).toThrow(
+        new RegExp(`@FieldResolver\\(\\) options must be an options object when provided, received ${type}\\.`),
+      );
+    });
+
+    it('accepts undefined / omitted options and uses method name', () => {
+      expect(() => FieldResolver()).not.toThrow();
+      expect(() => FieldResolver(undefined)).not.toThrow();
+    });
+  });
 });

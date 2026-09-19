@@ -188,7 +188,7 @@ class BookFieldResolver {
 }
 ```
 
-두 resolver class를 module provider 또는 controller로 등록하세요. `GraphqlModule.forRoot({ resolvers })`는 등록된 후보에서 선택할 때만 사용하고, 모두 발견하려면 `resolvers`를 생략하거나 `[]`를 전달하세요. Field resolver DTO input은 root resolver와 같은 HTTP 및 subscription operation container scope를 따릅니다. 중복 `TypeName.fieldName` 등록, code-first root output에서 도달할 수 없는 field target, root operation method에 배치한 `@Args()` / `@Parent()` / `@Context()` binding은 bootstrap 중 실패합니다. Schema-first field-resolver attachment는 이 runtime 계약 범위 밖입니다. 명시적 `type`으로 추가하는 field에는 `nullable: false`를 전달해 non-null GraphQL output을 노출할 수 있으며, `nullable: true`와 option 생략은 GraphQL의 nullable 기본값을 유지합니다. 기존 field configuration은 object type이 이미 소유하므로 `nullable`이 그 declared nullability를 바꾸지 않습니다.
+두 resolver class를 module provider로 등록하세요. `GraphqlModule.forRoot({ resolvers })`는 등록된 후보에서 선택할 때만 사용하고, 모두 발견하려면 `resolvers`를 생략하거나 `[]`를 전달하세요. Field resolver DTO input은 root resolver와 같은 HTTP 및 subscription operation container scope를 따릅니다. 중복 `TypeName.fieldName` 등록, code-first root output에서 도달할 수 없는 field target, root operation method에 배치한 `@Args()` / `@Parent()` / `@Context()` binding은 bootstrap 중 실패합니다. Schema-first field-resolver attachment는 이 runtime 계약 범위 밖입니다. 명시적 `type`으로 추가하는 field에는 `nullable: false`를 전달해 non-null GraphQL output을 노출할 수 있으며, `nullable: true`와 option 생략은 GraphQL의 nullable 기본값을 유지합니다. 기존 field configuration은 object type이 이미 소유하므로 `nullable`이 그 declared nullability를 바꾸지 않습니다.
 
 ### GraphQL Operation 범위 DataLoaders
 내장된 DataLoader 통합을 통해 N+1 문제를 효율적으로 해결합니다. Loader는 각 GraphQL 작업마다 자동으로 격리됩니다.

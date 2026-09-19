@@ -1,18 +1,20 @@
 import { createRequire } from 'node:module';
 import { Inject, Scope } from '@fluojs/core';
 import type { MiddlewareContext, Next } from '@fluojs/http';
-import { bootstrapModule, defineModule } from '@fluojs/runtime';
+import { bootstrapModule, type CompiledModule, defineModule } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { IsInt, MinLength } from '@fluojs/validation';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLUnionType } from 'graphql';
 import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 
+import { OperationScopedDataLoader } from './dataloader/dataloader.js';
 import { Arg, Mutation, Query, Resolver, Subscription } from './decorators.js';
+import { discoverResolverDescriptors } from './discovery.js';
 import { GraphqlModule } from './module.js';
 import { createGraphqlNetworkFixture } from './network.test-fixture.js';
 import { GraphqlLifecycleService } from './service.js';
-import { GRAPHQL_OPERATION_CONTAINER, type GraphQLContext, listOf } from './types.js';
+import { GRAPHQL_OPERATION_CONTAINER, GRAPHQL_REQUEST_SCOPED_LOADER_CACHE, type GraphQLContext, listOf } from './types.js';
 
 type GraphqlInstanceOf = (value: unknown, constructor: { prototype?: { [Symbol.toStringTag]?: string } }) => boolean;
 
@@ -98,8 +100,14 @@ function onceWebSocketClosed(socket: WebSocket): Promise<void> {
 
 function onceWebSocketCloseEvent(socket: WebSocket): Promise<{ code: number; reason: string }> {
   return new Promise((resolve) => {
-    socket.once('close', (code: number, reason: Uint8Array) => {
-      resolve({ code, reason: new TextDecoder().decode(reason) });
+    socket.once('close', (code: number, reason: unknown) => {
+      const decoded =
+        typeof reason === 'string'
+          ? reason
+          : Buffer.isBuffer(reason) || reason instanceof Uint8Array
+            ? new TextDecoder().decode(reason)
+            : String(reason ?? '');
+      resolve({ code, reason: decoded });
     });
   });
 }
@@ -1804,6 +1812,212 @@ describe('@fluojs/graphql', () => {
         ping: 'pong',
       },
     });
+
+    await app.close();
+  });
+
+  it('installs fresh framework-owned loader cache overwriting custom context and isolating DataLoader across HTTP and websocket operations', async () => {
+    const poisonedLoaderCache = new Map<string | symbol, unknown>();
+    let batchCallCount = 0;
+
+    const testLoader = OperationScopedDataLoader.create<string, string>(async (keys) => {
+      batchCallCount += 1;
+      const currentBatch = batchCallCount;
+      return keys.map((key) => `${key}-batch-${currentBatch}`);
+    });
+
+    @Inject()
+    @Resolver('LoaderTestResolver')
+    class LoaderTestResolver {
+      @Query()
+      async itemA(_input: undefined, context: GraphQLContext): Promise<string> {
+        return testLoader(context).load('key-1');
+      }
+
+      @Query()
+      async itemB(_input: undefined, context: GraphQLContext): Promise<string> {
+        return testLoader(context).load('key-1');
+      }
+
+      @Subscription()
+      async *subItem(_input: undefined, context: GraphQLContext): AsyncGenerator<string, void, void> {
+        const value = await testLoader(context).load('ws-key');
+        yield value;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [
+        GraphqlModule.forRoot({
+          context: () => ({
+            [GRAPHQL_REQUEST_SCOPED_LOADER_CACHE]: poisonedLoaderCache,
+          }),
+          resolvers: [LoaderTestResolver],
+          subscriptions: {
+            websocket: {
+              enabled: true,
+            },
+          },
+        }),
+      ],
+      providers: [LoaderTestResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    // Operation 1 (HTTP): same operation reuses loader and batches
+    await expect(postGraphql(port, '{ a: itemA, b: itemB }')).resolves.toEqual({
+      data: {
+        a: 'key-1-batch-1',
+        b: 'key-1-batch-1',
+      },
+    });
+    expect(batchCallCount).toBe(1);
+    expect(poisonedLoaderCache.size).toBe(0);
+
+    // Operation 2 (HTTP): separate operation receives fresh loader instance and does not reuse cached value
+    await expect(postGraphql(port, '{ a: itemA }')).resolves.toEqual({
+      data: {
+        a: 'key-1-batch-2',
+      },
+    });
+    expect(batchCallCount).toBe(2);
+    expect(poisonedLoaderCache.size).toBe(0);
+
+    // Operation 3 (WebSocket): websocket operation receives fresh loader instance
+    const socket = await connectGraphqlWebSocket(port);
+    socket.send(JSON.stringify({
+      id: 'sub-op-1',
+      payload: {
+        query: 'subscription { subItem }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(readGraphqlWebSocketMessages(socket, 2)).resolves.toEqual([
+      {
+        id: 'sub-op-1',
+        payload: {
+          data: {
+            subItem: 'ws-key-batch-3',
+          },
+        },
+        type: 'next',
+      },
+      {
+        id: 'sub-op-1',
+        type: 'complete',
+      },
+    ]);
+    expect(batchCallCount).toBe(3);
+    expect(poisonedLoaderCache.size).toBe(0);
+
+    // Operation 4 (WebSocket): subsequent websocket operation is also isolated
+    socket.send(JSON.stringify({
+      id: 'sub-op-2',
+      payload: {
+        query: 'subscription { subItem }',
+      },
+      type: 'subscribe',
+    }));
+
+    await expect(readGraphqlWebSocketMessages(socket, 2)).resolves.toEqual([
+      {
+        id: 'sub-op-2',
+        payload: {
+          data: {
+            subItem: 'ws-key-batch-4',
+          },
+        },
+        type: 'next',
+      },
+      {
+        id: 'sub-op-2',
+        type: 'complete',
+      },
+    ]);
+    expect(batchCallCount).toBe(4);
+    expect(poisonedLoaderCache.size).toBe(0);
+
+    socket.close();
+    await app.close();
+  });
+
+  it('does not discover resolver classes registered only in controllers', async () => {
+    @Inject()
+    @Resolver('ControllerOnlyResolver')
+    class ControllerOnlyResolver {
+      @Query()
+      controllerQuery(): string {
+        return 'from-controller';
+      }
+    }
+
+    @Inject()
+    @Resolver('ProviderOnlyResolver')
+    class ProviderOnlyResolver {
+      @Query()
+      providerQuery(): string {
+        return 'from-provider';
+      }
+    }
+
+    // Direct discovery candidates check
+    const mockModule: CompiledModule = {
+      accessibleTokens: new Set(),
+      definition: {
+        controllers: [ControllerOnlyResolver],
+        providers: [ProviderOnlyResolver],
+      },
+      exportedTokens: new Set(),
+      importedExportedTokens: new Set(),
+      providerTokens: new Set(),
+      type: class MockFeatureModule {},
+    };
+
+    const descriptors = discoverResolverDescriptors([mockModule], {});
+    const discoveredTargets = descriptors.map((d) => d.token);
+    expect(discoveredTargets).toContain(ProviderOnlyResolver);
+    expect(discoveredTargets).not.toContain(ControllerOnlyResolver);
+
+    // Runtime bootstrap and schema validation check
+    class AppModule {}
+    defineModule(AppModule, {
+      controllers: [ControllerOnlyResolver],
+      imports: [GraphqlModule.forRoot()],
+      providers: [ProviderOnlyResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, {
+      cors: false,
+      port,
+    });
+
+    await app.listen();
+
+    // Provider query succeeds
+    await expect(postGraphql(port, '{ providerQuery }')).resolves.toEqual({
+      data: {
+        providerQuery: 'from-provider',
+      },
+    });
+
+    // Controller query fails because it was not discovered and does not exist in schema
+    const controllerQueryResponse = (await postGraphql(port, '{ controllerQuery }')) as {
+      errors?: Array<{ message: string }>;
+    };
+    expect(controllerQueryResponse.errors).toBeDefined();
+    expect(controllerQueryResponse.errors?.[0]?.message).toMatch(
+      /Cannot query field "controllerQuery" on type "Query"/,
+    );
 
     await app.close();
   });

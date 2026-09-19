@@ -125,15 +125,6 @@ function discoveryCandidates(compiledModules: readonly CompiledModule[]): Discov
         }
       }
     }
-
-    for (const controller of compiledModule.definition.controllers ?? []) {
-      candidates.push({
-        moduleName: compiledModule.type.name,
-        scope: scopeFromProvider(controller),
-        targetType: controller,
-        token: controller,
-      });
-    }
   }
 
   return candidates;

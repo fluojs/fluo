@@ -171,12 +171,29 @@ function createMethodDecorator(
 function normalizeFieldResolverMetadata(
   options: FieldResolverOptions | undefined,
 ): ResolverHandlerMetadata {
+  if (options === undefined) {
+    return { type: 'field' };
+  }
+
+  if (typeof options === 'string') {
+    throw new TypeError(
+      `@FieldResolver(fieldName) string argument has been removed. Pass an options object like @FieldResolver({ fieldName: '${options}' }) instead, or call @FieldResolver() without arguments to use the method name.`,
+    );
+  }
+
+  if (options === null || Array.isArray(options) || typeof options !== 'object') {
+    const received = options === null ? 'null' : Array.isArray(options) ? 'array' : typeof options;
+    throw new TypeError(
+      `@FieldResolver() options must be an options object when provided, received ${received}. Pass an options object like @FieldResolver({ fieldName: '...' }) or call @FieldResolver() without arguments to use the method name.`,
+    );
+  }
+
   return {
-    argTypes: options?.argTypes,
-    fieldName: options?.fieldName?.trim() || undefined,
-    inputClass: options?.input,
-    nullable: options?.nullable,
-    outputType: options?.type,
+    argTypes: options.argTypes,
+    fieldName: options.fieldName?.trim() || undefined,
+    inputClass: options.input,
+    nullable: options.nullable,
+    outputType: options.type,
     type: 'field',
   };
 }

@@ -36,7 +36,7 @@ import type {
   GraphqlRequestContext,
   ResolverDescriptor,
 } from './types.js';
-import { GRAPHQL_OPERATION_CONTAINER } from './types.js';
+import { GRAPHQL_OPERATION_CONTAINER, GRAPHQL_REQUEST_SCOPED_LOADER_CACHE } from './types.js';
 
 const GRAPHQL_CONTEXT_OVERRIDE = Symbol('fluo.graphql.context.override');
 const runtimeRequire = createRequire(import.meta.url);
@@ -417,6 +417,7 @@ export class GraphqlLifecycleService implements Middleware, OnApplicationBootstr
       request: requestContext.request,
       socket: requestContext.socket,
       [GRAPHQL_OPERATION_CONTAINER]: operationContainer,
+      [GRAPHQL_REQUEST_SCOPED_LOADER_CACHE]: new Map<string | symbol, unknown>(),
     };
   }
 
