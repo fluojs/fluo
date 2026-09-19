@@ -308,7 +308,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
 
   private async discoverHandlers(): Promise<void> {
     try {
-      this.descriptors = this.discoverEventDescriptors();
+      this.descriptors = await this.discoverEventDescriptors();
       this.handlerInstances.clear();
 
       for (const descriptor of this.descriptors) {
@@ -321,7 +321,7 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     }
   }
 
-  private discoverEventDescriptors(): EventHandlerDescriptor[] {
-    return discoverEventHandlerDescriptors(this.discoveryCandidates(), this.logger);
+  private async discoverEventDescriptors(): Promise<EventHandlerDescriptor[]> {
+    return discoverEventHandlerDescriptors(await this.discoveryCandidates(), this.logger);
   }
 }

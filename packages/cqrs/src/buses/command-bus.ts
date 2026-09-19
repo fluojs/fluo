@@ -149,7 +149,7 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
 
   private async discoverHandlers(): Promise<void> {
     try {
-      this.descriptors = this.discoverCommandDescriptors();
+      this.descriptors = await this.discoverCommandDescriptors();
       this.handlerInstances.clear();
 
       for (const descriptor of this.descriptors.values()) {
@@ -162,10 +162,10 @@ export class CommandBusLifecycleService extends CqrsBusBase implements CommandBu
     }
   }
 
-  private discoverCommandDescriptors(): Map<CommandType, CommandHandlerDescriptor> {
+  private async discoverCommandDescriptors(): Promise<Map<CommandType, CommandHandlerDescriptor>> {
     const descriptors = new Map<CommandType, CommandHandlerDescriptor>();
 
-    for (const candidate of this.discoveryCandidates()) {
+    for (const candidate of await this.discoveryCandidates()) {
       const metadata = getCommandHandlerMetadata(candidate.targetType);
 
       if (!metadata) {

@@ -345,7 +345,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
 
   private async discoverHandlers(): Promise<void> {
     try {
-      this.descriptorsByEvent = this.discoverSagaDescriptors();
+      this.descriptorsByEvent = await this.discoverSagaDescriptors();
       this.handlerInstances.clear();
 
       for (const descriptors of this.descriptorsByEvent.values()) {
@@ -360,7 +360,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     }
   }
 
-  private discoverSagaDescriptors(): Map<CqrsEventType, SagaDescriptor[]> {
-    return discoverSagaDescriptors(this.discoveryCandidates(), this.logger);
+  private async discoverSagaDescriptors(): Promise<Map<CqrsEventType, SagaDescriptor[]>> {
+    return discoverSagaDescriptors(await this.discoveryCandidates(), this.logger);
   }
 }

@@ -155,7 +155,7 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
 
   private async discoverHandlers(): Promise<void> {
     try {
-      this.descriptors = this.discoverQueryDescriptors();
+      this.descriptors = await this.discoverQueryDescriptors();
       this.handlerInstances.clear();
 
       for (const descriptor of this.descriptors.values()) {
@@ -168,10 +168,10 @@ export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, O
     }
   }
 
-  private discoverQueryDescriptors(): Map<QueryType, QueryHandlerDescriptor> {
+  private async discoverQueryDescriptors(): Promise<Map<QueryType, QueryHandlerDescriptor>> {
     const descriptors = new Map<QueryType, QueryHandlerDescriptor>();
 
-    for (const candidate of this.discoveryCandidates()) {
+    for (const candidate of await this.discoveryCandidates()) {
       const metadata = getQueryHandlerMetadata(candidate.targetType);
 
       if (!metadata) {

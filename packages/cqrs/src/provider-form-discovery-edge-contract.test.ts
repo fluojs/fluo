@@ -39,8 +39,8 @@ function createLogger(warnings: WarningEvent[]): ApplicationLogger {
 }
 
 class DiscoveryBus extends CqrsBusBase {
-  discover(): readonly DiscoveryCandidate[] {
-    return this.discoveryCandidates();
+  async discover(): Promise<readonly DiscoveryCandidate[]> {
+    return await this.discoveryCandidates();
   }
 }
 
@@ -53,7 +53,7 @@ class CountUsersQuery implements IQuery<number> {
 }
 
 describe('CQRS provider-form discovery edge contracts', () => {
-  it('does not invoke unrelated factory providers during handler discovery', () => {
+  it('does not invoke unrelated factory providers during handler discovery', async () => {
     const invoked: string[] = [];
 
     @CommandHandler(ArchiveUserCommand)
@@ -87,9 +87,11 @@ describe('CQRS provider-form discovery edge contracts', () => {
       providerTokens: new Set(),
       type: AppModule,
     };
-    const discoveryBus = new DiscoveryBus(new Container(), [compiledModule], createLogger([]));
+    const container = new Container();
+    container.register(...(compiledModule.definition.providers ?? []));
+    const discoveryBus = new DiscoveryBus(container, [compiledModule], createLogger([]));
 
-    expect(discoveryBus.discover()).toEqual([
+    expect(await discoveryBus.discover()).toEqual([
       {
         moduleName: AppModule.name,
         scope: 'singleton',
@@ -331,6 +333,131 @@ describe('CQRS provider-form discovery edge contracts', () => {
     expect(firstSagaHandled).toBe(0);
 
     // 4. Snapshots: only winning handlers are counted
+    const snapshot = eventBus.createPlatformStatusSnapshot();
+    expect(snapshot.details.commandHandlersDiscovered).toBe(1);
+    expect(snapshot.details.queryHandlersDiscovered).toBe(1);
+    expect(snapshot.details.eventHandlersDiscovered).toBe(1);
+    expect(snapshot.details.sagasDiscovered).toBe(1);
+
+    await app.close();
+  });
+
+  it('uses runtime bootstrap overrides as the effective command, query, event, and saga providers', async () => {
+    const COMMAND_HANDLER = Symbol('COMMAND_HANDLER');
+    const QUERY_HANDLER = Symbol('QUERY_HANDLER');
+    const EVENT_HANDLER = Symbol('EVENT_HANDLER');
+    const SAGA_HANDLER = Symbol('SAGA_HANDLER');
+
+    class ModuleCommand implements ICommand {}
+    class RuntimeCommand implements ICommand {}
+
+    @CommandHandler(ModuleCommand)
+    class ModuleCommandHandler implements ICommandHandler<ModuleCommand, string> {
+      execute(): string {
+        return 'module-command';
+      }
+    }
+
+    @CommandHandler(RuntimeCommand)
+    class RuntimeCommandHandler implements ICommandHandler<RuntimeCommand, string> {
+      execute(): string {
+        return 'runtime-command';
+      }
+    }
+
+    class ModuleQuery implements IQuery<string> {
+      readonly __queryResultType__?: string;
+    }
+    class RuntimeQuery implements IQuery<string> {
+      readonly __queryResultType__?: string;
+    }
+
+    @QueryHandler(ModuleQuery)
+    class ModuleQueryHandler implements IQueryHandler<ModuleQuery, string> {
+      execute(): string {
+        return 'module-query';
+      }
+    }
+
+    @QueryHandler(RuntimeQuery)
+    class RuntimeQueryHandler implements IQueryHandler<RuntimeQuery, string> {
+      execute(): string {
+        return 'runtime-query';
+      }
+    }
+
+    class ModuleEvent implements IEvent {}
+    class RuntimeEvent implements IEvent {}
+
+    let moduleEventCalls = 0;
+    let runtimeEventCalls = 0;
+    let moduleSagaCalls = 0;
+    let runtimeSagaCalls = 0;
+
+    @EventHandler(ModuleEvent)
+    class ModuleEventHandler implements IEventHandler<ModuleEvent> {
+      handle(): void {
+        moduleEventCalls += 1;
+      }
+    }
+
+    @EventHandler(RuntimeEvent)
+    class RuntimeEventHandler implements IEventHandler<RuntimeEvent> {
+      handle(): void {
+        runtimeEventCalls += 1;
+      }
+    }
+
+    @Saga(ModuleEvent)
+    class ModuleSaga implements ISaga<ModuleEvent> {
+      handle(): void {
+        moduleSagaCalls += 1;
+      }
+    }
+
+    @Saga(RuntimeEvent)
+    class RuntimeSaga implements ISaga<RuntimeEvent> {
+      handle(): void {
+        runtimeSagaCalls += 1;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CqrsModule.forRoot()],
+      providers: [
+        { provide: COMMAND_HANDLER, useClass: ModuleCommandHandler },
+        { provide: QUERY_HANDLER, useClass: ModuleQueryHandler },
+        { provide: EVENT_HANDLER, useClass: ModuleEventHandler },
+        { provide: SAGA_HANDLER, useClass: ModuleSaga },
+      ],
+    });
+
+    const app = await FluoFactory.create(AppModule, {
+      providers: [
+        { provide: COMMAND_HANDLER, useClass: RuntimeCommandHandler },
+        { provide: QUERY_HANDLER, useClass: RuntimeQueryHandler },
+        { provide: EVENT_HANDLER, useClass: RuntimeEventHandler },
+        { provide: SAGA_HANDLER, useClass: RuntimeSaga },
+      ],
+    });
+    const commandBus = await app.container.resolve(CommandBusLifecycleService);
+    const queryBus = await app.container.resolve(QueryBusLifecycleService);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
+
+    await expect(commandBus.execute(new RuntimeCommand())).resolves.toBe('runtime-command');
+    await expect(commandBus.execute(new ModuleCommand())).rejects.toBeInstanceOf(CommandHandlerNotFoundException);
+    await expect(queryBus.execute(new RuntimeQuery())).resolves.toBe('runtime-query');
+    await expect(queryBus.execute(new ModuleQuery())).rejects.toBeInstanceOf(QueryHandlerNotFoundException);
+
+    await eventBus.publish(new ModuleEvent());
+    await eventBus.publish(new RuntimeEvent());
+
+    expect(moduleEventCalls).toBe(0);
+    expect(runtimeEventCalls).toBe(1);
+    expect(moduleSagaCalls).toBe(0);
+    expect(runtimeSagaCalls).toBe(1);
+
     const snapshot = eventBus.createPlatformStatusSnapshot();
     expect(snapshot.details.commandHandlersDiscovered).toBe(1);
     expect(snapshot.details.queryHandlersDiscovered).toBe(1);
