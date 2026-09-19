@@ -39,6 +39,7 @@ interface RuntimeTaskState {
   activeScheduleToken: object | undefined;
   descriptor: CronTaskDescriptor;
   enabled: boolean;
+  pendingStopHandles: Set<RuntimeScheduledTask>;
   running: boolean;
   scheduledHandle: RuntimeScheduledTask | undefined;
   source: 'decorator' | 'dynamic';
@@ -275,7 +276,7 @@ export class CronLifecycleService
       return false;
     }
 
-    if (!task.enabled && !task.scheduledHandle) {
+    if (!task.enabled && !task.scheduledHandle && task.pendingStopHandles.size === 0) {
       return true;
     }
 
@@ -346,8 +347,8 @@ export class CronLifecycleService
       task.scheduledHandle = nextHandle;
       task.activeScheduleToken = nextHandle.token;
     } catch (error) {
-      if (nextHandle) {
-        this.stopScheduledHandle(nextHandle);
+      if (nextHandle && !this.stopScheduledHandle(nextHandle)) {
+        task.pendingStopHandles.add(nextHandle);
       }
 
       task.descriptor.expression = previousExpression;
@@ -399,8 +400,8 @@ export class CronLifecycleService
       task.scheduledHandle = nextHandle;
       task.activeScheduleToken = nextHandle.token;
     } catch (error) {
-      if (nextHandle) {
-        this.stopScheduledHandle(nextHandle);
+      if (nextHandle && !this.stopScheduledHandle(nextHandle)) {
+        task.pendingStopHandles.add(nextHandle);
       }
 
       task.descriptor.ms = previousMs;
@@ -523,7 +524,7 @@ export class CronLifecycleService
 
   private async handleStartupFailure(): Promise<void> {
     this.started = false;
-    this.stopAllScheduledTasks();
+    const scheduledTasksStopped = this.stopAllScheduledTasks();
     const startupRollbackTimedOut = await this.waitForActiveTasks();
 
     if (startupRollbackTimedOut) {
@@ -537,7 +538,9 @@ export class CronLifecycleService
       startupRollbackTimedOut ? this.getRunningDistributedLockKeys() : new Set(),
       this.options.shutdown.timeoutMs,
     );
-    this.tasks.clear();
+    if (scheduledTasksStopped) {
+      this.tasks.clear();
+    }
 
     if (this.activeTasks.size > 0) {
       void this.completeStartupFailureCleanupAfterActiveTasks();
@@ -609,6 +612,7 @@ export class CronLifecycleService
       activeScheduleToken: undefined,
       descriptor,
       enabled: true,
+      pendingStopHandles: new Set(),
       running: false,
       scheduledHandle: undefined,
       source,
@@ -728,19 +732,27 @@ export class CronLifecycleService
   }
 
   private unscheduleTask(task: RuntimeTaskState): boolean {
-    if (!task.scheduledHandle) {
-      return true;
-    }
-
     const scheduledHandle = task.scheduledHandle;
+    let stopped = true;
 
-    if (!this.stopScheduledHandle(scheduledHandle)) {
-      return false;
+    if (scheduledHandle && !this.stopScheduledHandle(scheduledHandle)) {
+      stopped = false;
     }
 
-    task.scheduledHandle = undefined;
-    task.activeScheduleToken = undefined;
-    return true;
+    if (scheduledHandle && stopped) {
+      task.scheduledHandle = undefined;
+      task.activeScheduleToken = undefined;
+    }
+
+    for (const pendingStopHandle of task.pendingStopHandles) {
+      if (this.stopScheduledHandle(pendingStopHandle)) {
+        task.pendingStopHandles.delete(pendingStopHandle);
+      } else {
+        stopped = false;
+      }
+    }
+
+    return stopped;
   }
 
   private stopScheduledHandle(scheduledHandle: RuntimeScheduledTask): boolean {
@@ -902,9 +914,15 @@ export class CronLifecycleService
       taskState.activeScheduleToken = undefined;
     }
   }
-  private stopAllScheduledTasks(): void {
+  private stopAllScheduledTasks(): boolean {
+    let stopped = true;
+
     for (const task of this.tasks.values()) {
-      this.unscheduleTask(task);
+      if (!this.unscheduleTask(task)) {
+        stopped = false;
+      }
     }
+
+    return stopped;
   }
 }

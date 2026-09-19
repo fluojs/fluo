@@ -617,8 +617,10 @@ describe('@fluojs/cron', () => {
     expect(scheduled.records[0]?.stop).toHaveBeenCalledTimes(1);
   });
 
-  it('rolls back partially scheduled jobs when startup fails', async () => {
-    const firstStop = vi.fn();
+  it('retries a retained partial-startup handle when rollback cleanup first fails', async () => {
+    const firstStop = vi.fn().mockImplementationOnce(() => {
+      throw new Error('startup rollback stop failed');
+    });
     let scheduleCount = 0;
     const scheduler: CronScheduler = (_expression, _options, _callback) => {
       scheduleCount += 1;
@@ -650,7 +652,7 @@ describe('@fluojs/cron', () => {
       FluoFactory.create(AppModule),
     ).rejects.toThrow('scheduler boom');
 
-    expect(firstStop).toHaveBeenCalledTimes(1);
+    expect(firstStop).toHaveBeenCalledTimes(2);
   });
 
   it('keeps distributed lock clients alive while startup rollback drains active tasks', async () => {
@@ -2421,6 +2423,52 @@ describe('@fluojs/cron', () => {
     }
   });
 
+  it('retains a failed interval replacement for shutdown cleanup while it remains token-gated', async () => {
+    vi.useFakeTimers();
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [CronModule.forRoot()],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+    const registry = await app.container.resolve<SchedulingRegistry>(SCHEDULING_REGISTRY);
+    const events: string[] = [];
+
+    registry.addInterval('dynamic-interval', 1_000, () => {
+      events.push('interval');
+    });
+
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+    clearIntervalSpy
+      .mockImplementationOnce(() => {
+        throw new Error('previous interval stop failed');
+      })
+      .mockImplementationOnce(() => {
+        throw new Error('replacement interval stop failed');
+      });
+
+    try {
+      expect(() => registry.updateIntervalMs('dynamic-interval', 250)).toThrow('previous interval stop failed');
+      expect(registry.get('dynamic-interval')?.ms).toBe(1_000);
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(250);
+      expect(events).toEqual([]);
+
+      await vi.advanceTimersByTimeAsync(750);
+      expect(events).toEqual(['interval']);
+
+      await closeApplication(app);
+      expect(clearIntervalSpy).toHaveBeenCalledTimes(4);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(events).toEqual(['interval']);
+    } finally {
+      clearIntervalSpy.mockRestore();
+    }
+  });
+
   it('stops and resumes dynamic cron execution while cleaning up old scheduler handles', async () => {
     const scheduled = createManualScheduler();
     const events: string[] = [];
@@ -2754,7 +2802,7 @@ describe('@fluojs/cron', () => {
     expect(firstStop).toHaveBeenCalledTimes(1);
   });
 
-  it('rolls back cron expression updates when the previous handle cannot be stopped', async () => {
+  it('retains a failed cron replacement for shutdown cleanup while it remains token-gated', async () => {
     const scheduled = createManualScheduler();
     const events: string[] = [];
 
@@ -2778,6 +2826,15 @@ describe('@fluojs/cron', () => {
     }
 
     previousRecord.stop.mockImplementationOnce(() => {
+      const replacementRecord = scheduled.records[1];
+
+      if (!replacementRecord) {
+        throw new Error('expected replacement cron handle to exist');
+      }
+
+      replacementRecord.stop.mockImplementationOnce(() => {
+        throw new Error('replacement cron stop failed');
+      });
       throw new Error('previous cron stop failed');
     });
 
@@ -2803,6 +2860,9 @@ describe('@fluojs/cron', () => {
     } finally {
       await closeApplication(app);
     }
+
+    expect(previousRecord.stop).toHaveBeenCalledTimes(2);
+    expect(scheduled.records[1]?.stop).toHaveBeenCalledTimes(2);
   });
 
   it('prevents overlapping dynamic cron ticks while forwarding no-overlap scheduler protection', async () => {
