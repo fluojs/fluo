@@ -18,7 +18,7 @@ This chapter explains how to connect automatic API documentation to FluoBlog so 
 ## Learning Objectives
 - Understand why generated API documentation should stay close to the code.
 - Register `OpenApiModule` in FluoBlog and expose the generated document.
-- Use documentation Decorators such as `@ApiTag(tag)`, `@ApiOperation()`, and `@ApiResponse(status, options?)`.
+- Use documentation Decorators such as `@ApiTag(tag)`, `@ApiOperation()`, and object-only `@ApiResponse({ status, ...options })`.
 - Learn how DTOs and HTTP metadata become OpenAPI schema information.
 - Understand how protected routes and versioned paths affect the generated documentation.
 - Finish Part 1 with a documented HTTP API foundation.

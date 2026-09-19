@@ -112,7 +112,7 @@ When a handler does not declare `@ApiResponse(...)` or `@HttpCode(...)`, the Ope
 The builder does not inspect handler return values or TypeScript return types to infer response content. A default success response contains only its status and the description `OK`. Add `@ApiResponse(...)` with `schema` or `type` when the OpenAPI document must describe a response body; without either field, an explicit response still contains status and description only.
 
 ### Integrated DTO Schemas
-Works with `@fluojs/validation` to derive request schemas from DTO binding and validation metadata. Response DTOs become OpenAPI components only when they are referenced explicitly, such as with `@ApiResponse(..., { type: ResponseDto })` or `extraModels`.
+Works with `@fluojs/validation` to derive request schemas from DTO binding and validation metadata. Response DTOs become OpenAPI components only when they are referenced explicitly, such as with `@ApiResponse({ status, type: ResponseDto })` or `extraModels`.
 
 For generated request schemas, repeated `Min` rules fold the strongest lower
 bound with `Math.max` and repeated `Max` rules fold the strongest upper bound
@@ -217,6 +217,6 @@ With `forRootAsync(...)`, `documentPath` and `uiPath` are outer registration opt
 
 - Replace `buildOpenApiDocument(options)` with `OpenApiDocumentBuilder.build(options)` and replace `BuildOpenApiDocumentOptions` with `OpenApiDocumentBuilderOptions`.
 - Remove `OpenApiHandlerRegistry`; pass `sources` and `descriptors` directly to the builder or `OpenApiModule`.
-- Replace `@ApiResponse(status, options)` with `@ApiResponse({ status, ...options })`.
+- Use object-only `@ApiResponse({ status, ...options })`.
 - Replace `@ApiBody({ schema })` with `@ApiBody({ content: { 'application/json': { schema } } })`.
 - Replace `nullable` with a null type union or `anyOf`, and replace boolean exclusive bounds with finite numeric values.

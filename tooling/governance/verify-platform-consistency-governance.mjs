@@ -3871,7 +3871,7 @@ export function enforceHttpAdapterPortabilityDocumentationContract(readText = re
   }
 }
 
-export function enforceOpenApiNullableNormalizationContract() {
+export function enforceOpenApiNullableNormalizationContract(readText = read) {
   const rejectionSentinel = 'fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected';
   const documentationPaths = [
     'apps/docs/content/docs/guides/http-api.mdx',
@@ -3889,7 +3889,7 @@ export function enforceOpenApiNullableNormalizationContract() {
   ];
 
   for (const documentationPath of documentationPaths) {
-    const documentation = read(documentationPath);
+    const documentation = readText(documentationPath);
     assert(
       documentation.includes(rejectionSentinel),
       `${documentationPath} must declare the OpenAPI 3.1 legacy-schema rejection sentinel.`,
@@ -3902,11 +3902,18 @@ export function enforceOpenApiNullableNormalizationContract() {
       ].some((forbidden) => documentation.includes(forbidden)),
       `${documentationPath} must not claim that legacy OpenAPI schema forms are accepted.`,
     );
+    assert(
+      ![
+        /@ApiResponse\s*\(\s*(?:status|\.\.\.)\s*,\s*options?\s*\)/u,
+        /@ApiResponse\s*\(\s*(?!\{)[^)]*,\s*\{/u,
+      ].some((removedSignature) => removedSignature.test(documentation)),
+      `${documentationPath} must not use the removed positional ApiResponse signature.`,
+    );
   }
 
-  const schemaSurface = read('packages/openapi/src/schema-builder.ts');
-  const normalization = read('packages/openapi/src/schema-bounds.ts');
-  const regression = read('packages/openapi/src/schema-nullable.test.ts');
+  const schemaSurface = readText('packages/openapi/src/schema-builder.ts');
+  const normalization = readText('packages/openapi/src/schema-bounds.ts');
+  const regression = readText('packages/openapi/src/schema-nullable.test.ts');
 
   assert(!schemaSurface.includes('nullable?: boolean;'), 'OpenApiSchemaObject must reject legacy nullable input.');
   assert(

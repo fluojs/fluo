@@ -28,6 +28,7 @@ import {
   enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceHttpAdapterPortabilityDocumentationContract,
   enforceHttpCustomMethodContract,
+  enforceOpenApiNullableNormalizationContract,
   enforceMandatoryFirstPartyDependencyEngineAlignment,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
@@ -48,6 +49,21 @@ import {
   migrationGuideSnapshotsFromGit,
   parsePackageNamesFromFamilyTable,
 } from './verify-platform-consistency-governance.mjs';
+
+describe('OpenAPI documentation migration guard', () => {
+  it('rejects a positional ApiResponse signature', () => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === 'packages/openapi/README.md'
+        ? content.replace('@ApiResponse({ status, type: ResponseDto })', '@ApiResponse(200, { type: ResponseDto })')
+        : content;
+    };
+
+    expect(() => enforceOpenApiNullableNormalizationContract(readText)).toThrow(
+      /removed positional ApiResponse signature/u,
+    );
+  });
+});
 
 describe('canonical Vite decorator runtime matrix', () => {
   it('accepts the canonical Vite transform and metadata preload recipe', () => {

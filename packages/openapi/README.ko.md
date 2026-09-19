@@ -115,7 +115,7 @@ HTTP 핸들러가 `@fluojs/http`의 `@Produces(...)`를 선언하면, 생성된 
 Builder는 handler 반환값이나 TypeScript 반환 타입을 검사해 response content를 추론하지 않습니다. 기본 success response에는 status와 `OK` description만 포함됩니다. OpenAPI 문서에 response body를 설명해야 하면 `@ApiResponse(...)`에 `schema` 또는 `type`을 추가하세요. 둘 중 어느 것도 없으면 명시적 response도 status와 description만 포함합니다.
 
 ### 통합 DTO 스키마
-`@fluojs/validation`과 함께 DTO binding 및 validation metadata에서 request schema를 파생합니다. Response DTO는 `@ApiResponse(..., { type: ResponseDto })` 또는 `extraModels`처럼 명시적으로 참조할 때만 OpenAPI component가 됩니다.
+`@fluojs/validation`과 함께 DTO binding 및 validation metadata에서 request schema를 파생합니다. Response DTO는 `@ApiResponse({ status, type: ResponseDto })` 또는 `extraModels`처럼 명시적으로 참조할 때만 OpenAPI component가 됩니다.
 
 생성된 request schema에서 반복된 `Min` 규칙은 `Math.max`로 가장 강한 하한
 경계로, 반복된 `Max` 규칙은 `Math.min`으로 가장 강한 상한 경계로 결합됩니다.
@@ -220,6 +220,6 @@ fluo는 controller tag, handler name, HTTP method, normalized path에서 각 `op
 
 - `buildOpenApiDocument(options)`를 `OpenApiDocumentBuilder.build(options)`로, `BuildOpenApiDocumentOptions`를 `OpenApiDocumentBuilderOptions`로 바꾸세요.
 - `OpenApiHandlerRegistry`를 제거하고 builder 또는 `OpenApiModule`에 `sources`와 `descriptors`를 직접 전달하세요.
-- `@ApiResponse(status, options)`를 `@ApiResponse({ status, ...options })`로 바꾸세요.
+- object-only `@ApiResponse({ status, ...options })`를 사용하세요.
 - `@ApiBody({ schema })`를 `@ApiBody({ content: { 'application/json': { schema } } })`로 바꾸세요.
 - `nullable`은 null type union 또는 `anyOf`로, boolean exclusive bound는 finite numeric 값으로 바꾸세요.
