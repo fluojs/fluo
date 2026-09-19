@@ -367,30 +367,67 @@ function inferEnumValueType(value: unknown): 'boolean' | 'number' | 'string' {
 }
 
 function createEnumSchema(values: readonly unknown[]): OpenApiSchemaObject {
-  const typeSet = new Set(values.map((value) => inferEnumValueType(value)));
+  if (values.length === 0) {
+    return { not: {} };
+  }
+
+  const deduped = Array.from(new Set(values));
+  const typeSet = new Set(deduped.map((value) => inferEnumValueType(value)));
 
   return {
-    enum: [...values],
-    ...(typeSet.size === 1 && values.length > 0 ? { type: inferEnumValueType(values[0]) } : {}),
+    enum: [...deduped],
+    ...(typeSet.size === 1 && deduped.length > 0 ? { type: inferEnumValueType(deduped[0]) } : {}),
+  };
+}
+
+function composeNestedTargetsSchema(
+  rules: readonly Extract<DtoFieldValidationRule, { kind: 'nested' }>[],
+  context: BuildSchemaContext,
+): OpenApiSchemaObject | undefined {
+  if (rules.length === 0) {
+    return undefined;
+  }
+
+  const seen = new Set<Constructor>();
+  const targets: { dto: Constructor; name: string }[] = [];
+
+  for (const rule of rules) {
+    const resolvedDto = resolveNestedDto(rule.dto);
+    if (!seen.has(resolvedDto)) {
+      seen.add(resolvedDto);
+      targets.push({ dto: resolvedDto, name: getDtoSchemaName(resolvedDto, context) });
+    }
+  }
+
+  if (targets.length === 0) {
+    return undefined;
+  }
+
+  targets.sort((a, b) => a.name.localeCompare(b.name));
+
+  if (targets.length === 1) {
+    return createSchemaRef(targets[0].name);
+  }
+
+  return {
+    allOf: targets.map((target) => createSchemaRef(target.name)),
   };
 }
 
 function inferNestedSchema(
-  nestedRule: Extract<DtoFieldValidationRule, { kind: 'nested' }> | undefined,
+  profile: RuleProfile,
   context: BuildSchemaContext,
 ): OpenApiSchemaObject | undefined {
-  if (!nestedRule) {
-    return undefined;
+  if (profile.nestedEachRules.length > 0) {
+    const itemSchema = composeNestedTargetsSchema(profile.nestedEachRules, context);
+    return itemSchema ? { items: itemSchema, type: 'array' } : undefined;
   }
 
-  const resolvedDto = resolveNestedDto(nestedRule.dto);
-  const schemaName = getDtoSchemaName(resolvedDto, context);
-
-  if (nestedRule.each) {
-    return { items: createSchemaRef(schemaName), type: 'array' };
+  if (profile.nestedRules.length > 0) {
+    return composeNestedTargetsSchema(profile.nestedRules, context);
   }
 
-  return createSchemaRef(schemaName);
+  return undefined;
 }
 
 interface RuleProfile {
@@ -413,8 +450,8 @@ interface RuleProfile {
   minLength: number | undefined;
   minItems: number | undefined;
   minimum: number | undefined;
-  nestedEachRule: Extract<DtoFieldValidationRule, { kind: 'nested' }> | undefined;
-  nestedRule: Extract<DtoFieldValidationRule, { kind: 'nested' }> | undefined;
+  nestedEachRules: readonly Extract<DtoFieldValidationRule, { kind: 'nested' }>[];
+  nestedRules: readonly Extract<DtoFieldValidationRule, { kind: 'nested' }>[];
   stringFormat: OpenApiSchemaObject['format'];
 }
 
@@ -463,22 +500,44 @@ function createRuleProfile(): RuleProfile {
     minLength: undefined,
     minItems: undefined,
     minimum: undefined,
-    nestedEachRule: undefined,
-    nestedRule: undefined,
+    nestedEachRules: [],
+    nestedRules: [],
     stringFormat: undefined,
   };
 }
 
 function intersectEnumValues(current: readonly unknown[] | undefined, next: readonly unknown[]): readonly unknown[] {
-  return current === undefined ? [...next] : current.filter((value) => next.includes(value));
+  const dedupedNext = Array.from(new Set(next));
+
+  if (current === undefined) {
+    return dedupedNext;
+  }
+
+  const nextSet = new Set(dedupedNext);
+  const result: unknown[] = [];
+  const seen = new Set<unknown>();
+
+  for (const value of current) {
+    if (nextSet.has(value) && !seen.has(value)) {
+      seen.add(value);
+      result.push(value);
+    }
+  }
+
+  return result.sort((a, b) => {
+    if (typeof a === 'number' && typeof b === 'number') {
+      return a - b;
+    }
+    return String(a).localeCompare(String(b));
+  });
 }
 
 function applyRuleToProfile(profile: RuleProfile, rule: DtoFieldValidationRule): void {
   if (rule.kind === 'nested') {
-    profile.nestedRule ??= rule;
-
     if (rule.each) {
-      profile.nestedEachRule ??= rule;
+      (profile.nestedEachRules as Extract<DtoFieldValidationRule, { kind: 'nested' }>[]).push(rule);
+    } else {
+      (profile.nestedRules as Extract<DtoFieldValidationRule, { kind: 'nested' }>[]).push(rule);
     }
 
     return;
@@ -590,12 +649,12 @@ function applyRuleToProfile(profile: RuleProfile, rule: DtoFieldValidationRule):
   }
 
   if (rule.kind === 'min' && !rule.each) {
-    profile.minimum = rule.value;
+    profile.minimum = profile.minimum === undefined ? rule.value : Math.max(profile.minimum, rule.value);
     return;
   }
 
   if (rule.kind === 'max' && !rule.each) {
-    profile.maximum = rule.value;
+    profile.maximum = profile.maximum === undefined ? rule.value : Math.min(profile.maximum, rule.value);
     return;
   }
 
@@ -630,7 +689,7 @@ function inferPrimitiveTypeFromRules(
   context: BuildSchemaContext,
 ): OpenApiSchemaObject | undefined {
   const profile = getRuleProfile(rules);
-  const nestedSchema = inferNestedSchema(profile.nestedEachRule ?? profile.nestedRule, context);
+  const nestedSchema = inferNestedSchema(profile, context);
 
   if (nestedSchema) {
     return nestedSchema;
@@ -676,9 +735,8 @@ function inferEachItemSchema(
   context: BuildSchemaContext,
   profile = getRuleProfile(rules),
 ): OpenApiSchemaObject | undefined {
-  if (profile.nestedEachRule) {
-    const resolvedDto = resolveNestedDto(profile.nestedEachRule.dto);
-    return createSchemaRef(getDtoSchemaName(resolvedDto, context));
+  if (profile.nestedEachRules.length > 0) {
+    return composeNestedTargetsSchema(profile.nestedEachRules, context);
   }
 
   if (profile.enumEachValues) {

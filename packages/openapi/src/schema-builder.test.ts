@@ -5,13 +5,18 @@ import {
   IsArray,
   IsEnum,
   IsIn,
+  IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Length,
+  Max,
   MaxLength,
+  Min,
   MinLength,
   ValidateNested,
 } from '@fluojs/validation';
+import { IntersectionType } from '@fluojs/validation/mapped-types';
 import { describe, expect, it } from 'vitest';
 
 import { ApiBearerAuth, ApiBody, ApiExcludeEndpoint, ApiOperation, ApiResponse, ApiSecurity, ApiTag } from './decorators.js';
@@ -933,6 +938,14 @@ describe('buildOpenApiDocument', () => {
       @IsIn([State.Draft, State.Published])
       state = State.Draft;
 
+      @FromBody('score')
+      @IsNumber()
+      @Min(0)
+      @Min(10)
+      @Max(100)
+      @Max(80)
+      score = 10;
+
       @FromBody('children')
       @ValidateNested(() => ChildDto, { each: true })
       @ValidateNested(() => ChildDto)
@@ -963,6 +976,11 @@ describe('buildOpenApiDocument', () => {
           items: { $ref: '#/components/schemas/ChildDto' },
           type: 'array',
         },
+        score: {
+          maximum: 80,
+          minimum: 10,
+          type: 'number',
+        },
         state: {
           enum: ['draft', 'published'],
           type: 'string',
@@ -979,8 +997,357 @@ describe('buildOpenApiDocument', () => {
           type: 'string',
         },
       },
-      required: ['title', 'tags', 'state', 'children'],
+      required: ['title', 'tags', 'state', 'score', 'children'],
       type: 'object',
     });
+  });
+
+  it('folds repeated numeric Min and Max rules independently of decorator order', () => {
+    class NumericBoundsDto {
+      @FromBody('quantity')
+      @IsInt()
+      @Min(5)
+      @Min(10)
+      @Min(2)
+      quantity = 10;
+
+      @FromBody('discount')
+      @IsNumber()
+      @Max(100)
+      @Max(50)
+      @Max(80)
+      discount = 50;
+    }
+
+    class ReorderedNumericBoundsDto {
+      @FromBody('quantity')
+      @IsInt()
+      @Min(2)
+      @Min(10)
+      @Min(5)
+      quantity = 10;
+
+      @FromBody('discount')
+      @IsNumber()
+      @Max(80)
+      @Max(50)
+      @Max(100)
+      discount = 50;
+    }
+
+    @Controller('/numeric-bounds')
+    class NumericBoundsController {
+      @RequestDto(NumericBoundsDto)
+      @Post('/standard')
+      standard() {
+        return { ok: true };
+      }
+
+      @RequestDto(ReorderedNumericBoundsDto)
+      @Post('/reordered')
+      reordered() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: NumericBoundsController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Numeric Bounds API',
+      version: '1.0.0',
+    });
+
+    const expectedProperties = {
+      discount: {
+        maximum: 50,
+        type: 'number',
+      },
+      quantity: {
+        minimum: 10,
+        type: 'integer',
+      },
+    };
+
+    expect(document.components?.schemas?.NumericBoundsDto).toEqual({
+      additionalProperties: false,
+      properties: expectedProperties,
+      required: ['quantity', 'discount'],
+      type: 'object',
+    });
+
+    expect(document.components?.schemas?.ReorderedNumericBoundsDto).toEqual({
+      additionalProperties: false,
+      properties: expectedProperties,
+      required: ['quantity', 'discount'],
+      type: 'object',
+    });
+  });
+
+  it('dedupes enum values, handles reordered IsIn and IsEnum, and emits impossible schema for disjoint constraints', () => {
+    enum Status {
+      Active = 'active',
+      Inactive = 'inactive',
+      Pending = 'pending',
+    }
+
+    class DuplicateAndReorderedDto {
+      @FromBody('statusIsEnumFirst')
+      @IsEnum(Status)
+      @IsIn([Status.Active, Status.Active, Status.Pending])
+      statusIsEnumFirst = Status.Active;
+
+      @FromBody('statusIsInFirst')
+      @IsIn([Status.Active, Status.Active, Status.Pending])
+      @IsEnum(Status)
+      statusIsInFirst = Status.Active;
+
+      @FromBody('standaloneDuplicate')
+      @IsIn(['apple', 'apple', 'banana'])
+      standaloneDuplicate = 'apple';
+    }
+
+    class DisjointDto {
+      @FromBody('disjointEnum')
+      @IsEnum(Status)
+      @IsIn(['unknown', 'other'])
+      disjointEnum = 'unknown';
+
+      @FromBody('disjointIsIn')
+      @IsIn(['a', 'b'])
+      @IsIn(['c', 'd'])
+      disjointIsIn = 'a';
+
+      @FromBody('disjointEach')
+      @IsArray()
+      @IsEnum(Status, { each: true })
+      @IsIn(['unknown'], { each: true })
+      disjointEach: string[] = [];
+    }
+
+    @Controller('/enum-handling')
+    class EnumHandlingController {
+      @RequestDto(DuplicateAndReorderedDto)
+      @Post('/dedupe-reorder')
+      dedupeReorder() {
+        return { ok: true };
+      }
+
+      @RequestDto(DisjointDto)
+      @Post('/disjoint')
+      disjoint() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: EnumHandlingController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Enum Handling API',
+      version: '1.0.0',
+    });
+
+    expect(document.components?.schemas?.DuplicateAndReorderedDto).toEqual({
+      additionalProperties: false,
+      properties: {
+        standaloneDuplicate: {
+          enum: ['apple', 'banana'],
+          type: 'string',
+        },
+        statusIsEnumFirst: {
+          enum: ['active', 'pending'],
+          type: 'string',
+        },
+        statusIsInFirst: {
+          enum: ['active', 'pending'],
+          type: 'string',
+        },
+      },
+      required: ['statusIsEnumFirst', 'statusIsInFirst', 'standaloneDuplicate'],
+      type: 'object',
+    });
+
+    expect(document.components?.schemas?.DisjointDto).toEqual({
+      additionalProperties: false,
+      properties: {
+        disjointEach: {
+          items: { not: {} },
+          type: 'array',
+        },
+        disjointEnum: {
+          not: {},
+        },
+        disjointIsIn: {
+          not: {},
+        },
+      },
+      required: ['disjointEnum', 'disjointIsIn', 'disjointEach'],
+      type: 'object',
+    });
+  });
+
+  it('preserves every distinct ValidateNested target, composing collisions with allOf and deduplicating identical targets', () => {
+    class NamedChildDto {
+      @FromBody('name')
+      @IsString()
+      name = '';
+    }
+
+    class RankedChildDto {
+      @FromBody('rank')
+      @IsNumber()
+      rank = 0;
+    }
+
+    class NamedParentDto {
+      @FromBody('child')
+      @ValidateNested(() => NamedChildDto)
+      child = new NamedChildDto();
+    }
+
+    class RankedParentDto {
+      @FromBody('child')
+      @ValidateNested(() => RankedChildDto)
+      child = new RankedChildDto();
+    }
+
+    class CombinedParentDto extends IntersectionType(NamedParentDto, RankedParentDto) {}
+
+    class ReorderedNestedDto {
+      @FromBody('child')
+      @ValidateNested(() => RankedChildDto)
+      @ValidateNested(() => NamedChildDto)
+      child = new NamedChildDto();
+    }
+
+    class DedupedNestedDto {
+      @FromBody('child')
+      @ValidateNested(() => NamedChildDto)
+      @ValidateNested(() => NamedChildDto)
+      child = new NamedChildDto();
+    }
+
+    class MultiEachNestedDto {
+      @FromBody('items')
+      @ValidateNested(() => NamedChildDto, { each: true })
+      @ValidateNested(() => RankedChildDto, { each: true })
+      items = [];
+    }
+
+    class MixedNestedDto {
+      @FromBody('items')
+      @ValidateNested(() => NamedChildDto)
+      @ValidateNested(() => RankedChildDto, { each: true })
+      items = [];
+    }
+
+    @Controller('/nested-composition')
+    class NestedCompositionController {
+      @RequestDto(CombinedParentDto)
+      @Post('/intersection')
+      intersection() {
+        return { ok: true };
+      }
+
+      @RequestDto(ReorderedNestedDto)
+      @Post('/reordered')
+      reordered() {
+        return { ok: true };
+      }
+
+      @RequestDto(DedupedNestedDto)
+      @Post('/deduped')
+      deduped() {
+        return { ok: true };
+      }
+
+      @RequestDto(MultiEachNestedDto)
+      @Post('/multi-each')
+      multiEach() {
+        return { ok: true };
+      }
+
+      @RequestDto(MixedNestedDto)
+      @Post('/mixed')
+      mixed() {
+        return { ok: true };
+      }
+    }
+
+    const descriptors = createHandlerMapping([{ controllerToken: NestedCompositionController }]).descriptors;
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors,
+      title: 'Nested Composition API',
+      version: '1.0.0',
+    });
+
+    const expectedAllOfChild = {
+      allOf: [
+        { $ref: '#/components/schemas/NamedChildDto' },
+        { $ref: '#/components/schemas/RankedChildDto' },
+      ],
+    };
+
+    // IntersectionType collision must compose allOf and keep both schemas
+    expect(document.components?.schemas?.CombinedParentDto).toEqual({
+      additionalProperties: false,
+      properties: {
+        child: expectedAllOfChild,
+      },
+      required: ['child'],
+      type: 'object',
+    });
+
+    // Reordered decorators must produce identical deterministic allOf
+    expect(document.components?.schemas?.ReorderedNestedDto).toEqual({
+      additionalProperties: false,
+      properties: {
+        child: expectedAllOfChild,
+      },
+      required: ['child'],
+      type: 'object',
+    });
+
+    // Identical targets must dedupe without allOf wrapper
+    expect(document.components?.schemas?.DedupedNestedDto).toEqual({
+      additionalProperties: false,
+      properties: {
+        child: { $ref: '#/components/schemas/NamedChildDto' },
+      },
+      required: ['child'],
+      type: 'object',
+    });
+
+    // Multiple { each: true } targets compose into items.allOf
+    expect(document.components?.schemas?.MultiEachNestedDto).toEqual({
+      additionalProperties: false,
+      properties: {
+        items: {
+          items: expectedAllOfChild,
+          type: 'array',
+        },
+      },
+      required: ['items'],
+      type: 'object',
+    });
+
+    // Scalar and each coexistence gives precedence to each-array
+    expect(document.components?.schemas?.MixedNestedDto).toEqual({
+      additionalProperties: false,
+      properties: {
+        items: {
+          items: { $ref: '#/components/schemas/RankedChildDto' },
+          type: 'array',
+        },
+      },
+      required: ['items'],
+      type: 'object',
+    });
+
+    // Both component schemas must exist
+    expect(document.components?.schemas?.NamedChildDto).toBeDefined();
+    expect(document.components?.schemas?.RankedChildDto).toBeDefined();
   });
 });

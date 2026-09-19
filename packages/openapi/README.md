@@ -114,13 +114,17 @@ The builder does not inspect handler return values or TypeScript return types to
 ### Integrated DTO Schemas
 Works with `@fluojs/validation` to derive request schemas from DTO binding and validation metadata. Response DTOs become OpenAPI components only when they are referenced explicitly, such as with `@ApiResponse(..., { type: ResponseDto })` or `extraModels`.
 
-For generated request schemas, `Length`, `MinLength`, and `MaxLength` combine
-into the strongest `minLength`/`maxLength` bounds; `ArrayNotEmpty`,
-`ArrayMinSize`, and `ArrayMaxSize` do the same for `minItems`/`maxItems`.
-`IsIn` and `IsEnum` emit the intersection of their allowed values. A
-`ValidateNested(..., { each: true })` rule takes array-schema precedence when
-both nested forms are present. These are OpenAPI projection rules only: runtime
-nested collection traversal remains owned by `@fluojs/validation`.
+For generated request schemas, repeated `Min` rules fold the strongest lower
+bound with `Math.max` and repeated `Max` rules fold the strongest upper bound
+with `Math.min`; `Length`, `MinLength`, and `MaxLength` combine into the strongest
+`minLength`/`maxLength` bounds; `ArrayNotEmpty`, `ArrayMinSize`, and
+`ArrayMaxSize` do the same for `minItems`/`maxItems`. `IsIn` and `IsEnum` emit
+the deduped intersection of their allowed values, emitting an impossible schema
+(`not: {}`) for disjoint constraints. Distinct `ValidateNested` targets are
+composed deterministically (such as with `allOf` under `IntersectionType`), with
+`{ each: true }` taking array-schema precedence when both nested forms are
+present. These are OpenAPI projection rules only: runtime nested collection
+traversal remains owned by `@fluojs/validation`.
 
 ### OpenAPI 3.1 Exclusive Bounds
 `OpenApiSchemaObject` accepts OpenAPI 3.1 numeric `exclusiveMinimum` and `exclusiveMaximum` values while retaining compatibility with legacy boolean metadata. A `true` flag paired with `minimum` or `maximum` becomes the corresponding numeric exclusive bound in the emitted document, and a `false` flag is omitted while its inclusive bound remains. Finite numeric exclusive bounds pass through unchanged. A `true` flag without a finite paired bound, or a non-finite numeric exclusive bound, fails document generation instead of emitting an invalid OpenAPI 3.1 schema. The same normalization runs after `documentTransform` before the document is exposed.

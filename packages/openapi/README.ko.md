@@ -114,10 +114,14 @@ Builder는 handler 반환값이나 TypeScript 반환 타입을 검사해 respons
 ### 통합 DTO 스키마
 `@fluojs/validation`과 함께 DTO binding 및 validation metadata에서 request schema를 파생합니다. Response DTO는 `@ApiResponse(..., { type: ResponseDto })` 또는 `extraModels`처럼 명시적으로 참조할 때만 OpenAPI component가 됩니다.
 
-생성된 request schema에서 `Length`, `MinLength`, `MaxLength`는 가장 강한
-`minLength`/`maxLength` bound로 결합되고, `ArrayNotEmpty`, `ArrayMinSize`,
-`ArrayMaxSize`는 `minItems`/`maxItems`에 같은 방식으로 적용됩니다. `IsIn`과
-`IsEnum`은 허용 값의 intersection을 냅니다. 두 nested form이 함께 있으면
+생성된 request schema에서 반복된 `Min` 규칙은 `Math.max`로 가장 강한 하한
+경계로, 반복된 `Max` 규칙은 `Math.min`으로 가장 강한 상한 경계로 결합됩니다.
+`Length`, `MinLength`, `MaxLength`는 가장 강한 `minLength`/`maxLength` bound로
+결합되고, `ArrayNotEmpty`, `ArrayMinSize`, `ArrayMaxSize`는 `minItems`/`maxItems`에
+같은 방식으로 적용됩니다. `IsIn`과 `IsEnum`은 중복이 제거된 허용 값의
+intersection을 내며 disjoint 제약은 불가능 스키마(`not: {}`)로 표현됩니다.
+서로 다른 `ValidateNested` 대상은 결정론적으로 합성(예: `IntersectionType`
+충돌 시 `allOf`)되며, 두 nested form이 함께 있으면
 `ValidateNested(..., { each: true })`가 array schema를 우선합니다. 이는 OpenAPI
 projection 규칙일 뿐이며 runtime nested collection traversal은 계속
 `@fluojs/validation`이 담당합니다.

@@ -14,9 +14,11 @@ root no longer exports runtime or declaration aliases.
 CLI performs that named-import rewrite while preserving aliases and type-only
 bindings, leaving unsupported import forms for manual review.
 
-OpenAPI now projects combined string-length and array-size constraints using the
-strongest bounds, intersects `IsIn` with `IsEnum`, and gives
-`ValidateNested(..., { each: true })` array-schema precedence. Regenerate and
-review committed OpenAPI schema snapshots after upgrading; generated schemas may
-change even though validation traversal and validator issue contracts are
-preserved.
+OpenAPI now projects combined numeric bounds (`Min`/`Max`), string-length, and
+array-size constraints using the strongest bounds, intersects and dedupes
+`IsIn` with `IsEnum` (emitting `{ not: {} }` for disjoint constraints),
+composes distinct `ValidateNested` targets deterministically with `allOf`, and
+gives `ValidateNested(..., { each: true })` array-schema precedence.
+Regenerate and review committed OpenAPI schema snapshots after upgrading;
+generated schemas may change even though validation traversal and validator
+issue contracts are preserved.
