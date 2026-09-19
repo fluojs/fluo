@@ -89,6 +89,8 @@ export interface RequestScopeContainer {
 export interface NormalizedProvider<T = unknown> {
   readonly inject: readonly InjectionToken[];
   readonly provide: Token<T>;
+  /** Class metadata source retained for factory providers. */
+  readonly resolverClass?: ClassType;
   readonly scope: Scope;
   readonly type: 'class' | 'factory' | 'value' | 'existing';
   readonly useClass?: ClassType<T>;

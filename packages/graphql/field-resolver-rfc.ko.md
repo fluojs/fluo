@@ -24,7 +24,7 @@
 ```ts
 @Resolver('User')
 class UserFieldResolver {
-  @FieldResolver('displayName')
+  @FieldResolver({ fieldName: 'displayName' })
   @Parent()
   @Context()
   displayName(user: UserEntity, ctx: GraphQLContext): string {
@@ -35,7 +35,7 @@ class UserFieldResolver {
 
 ### Decorator
 
-- `@FieldResolver(fieldNameOrOptions?)`
+- `@FieldResolver(options?)`
   - `fieldName?: string`
   - `input?: Function`: 기존 `@Arg(...)` DTO materialization 및 validation pipeline을 재사용
   - `argTypes?: Record<string, GraphqlArgType>`: 명시적 scalar 및 list argument type 지원
@@ -98,7 +98,7 @@ TC39 표준 데코레이터는 parameter decorator를 정의하지 않습니다.
 
 ## 호환성/마이그레이션
 
-- 구현은 additive change입니다.
+- `@FieldResolver('fieldName')`는 제거되었습니다. `@FieldResolver({ fieldName: 'fieldName' })`로 이전하세요.
 - 기존 root operation resolver 동작은 유지됩니다.
 - `nullable: false`는 명시적 `type`을 가진 새 object field에만 opt-in으로 적용되므로 기존 schema의 output nullability는 유지됩니다.
 - 원래 draft의 parameter-decorator 문법은 index 기본값을 갖는 TC39 표준 method decorator로 대체됩니다.

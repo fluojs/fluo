@@ -50,7 +50,6 @@ class GraphqlSettings {
       inject: [GraphqlSettings],
       useFactory: async (settings) => ({
         graphiql: settings.graphiql,
-        resolvers: [HelloResolver],
       }),
     }),
   ],
@@ -60,6 +59,7 @@ export class AppModule {}
 ```
 
 Async registration 전용 example application은 추가하지 않습니다. 이 Quick Start와 [Chapter 18](../../book/intermediate/ch18-graphql.ko.md)이 유지 관리되는 example surface입니다.
+Resolver class는 application module의 `providers`에 등록하세요. 선택적인 `resolvers` 배열은 이미 등록된 resolver provider 중에서 고르는 allowlist일 뿐입니다. 모든 등록 resolver를 발견하려면 생략하거나 `[]`를 전달하세요.
 
 Code-first resolver discovery 대신 schema-first 통합을 원하면 executable `GraphQLSchema`를 `schema`로 전달할 수도 있습니다.
 
@@ -84,9 +84,7 @@ class HelloResolver {
 
 @Module({
   imports: [
-    GraphqlModule.forRoot({
-      resolvers: [HelloResolver]
-    })
+    GraphqlModule.forRoot()
   ],
   providers: [HelloResolver]
 })
@@ -190,14 +188,14 @@ class BookFieldResolver {
 }
 ```
 
-두 resolver class를 module provider 또는 controller로 등록하고, `GraphqlModule.forRoot({ resolvers })`를 allowlist로 사용할 때는 둘 다 포함하세요. Field resolver DTO input은 root resolver와 같은 HTTP 및 subscription operation container scope를 따릅니다. 중복 `TypeName.fieldName` 등록, code-first root output에서 도달할 수 없는 field target, root operation method에 배치한 `@Args()` / `@Parent()` / `@Context()` binding은 bootstrap 중 실패합니다. Schema-first field-resolver attachment는 이 runtime 계약 범위 밖입니다. 명시적 `type`으로 추가하는 field에는 `nullable: false`를 전달해 non-null GraphQL output을 노출할 수 있으며, `nullable: true`와 option 생략은 GraphQL의 nullable 기본값을 유지합니다. 기존 field configuration은 object type이 이미 소유하므로 `nullable`이 그 declared nullability를 바꾸지 않습니다.
+두 resolver class를 module provider로 등록하세요. `GraphqlModule.forRoot({ resolvers })`는 등록된 후보에서 선택할 때만 사용하고, 모두 발견하려면 `resolvers`를 생략하거나 `[]`를 전달하세요. Field resolver DTO input은 root resolver와 같은 HTTP 및 subscription operation container scope를 따릅니다. 중복 `TypeName.fieldName` 등록, code-first root output에서 도달할 수 없는 field target, root operation method에 배치한 `@Args()` / `@Parent()` / `@Context()` binding은 bootstrap 중 실패합니다. Schema-first field-resolver attachment는 이 runtime 계약 범위 밖입니다. 명시적 `type`으로 추가하는 field에는 `nullable: false`를 전달해 non-null GraphQL output을 노출할 수 있으며, `nullable: true`와 option 생략은 GraphQL의 nullable 기본값을 유지합니다. 기존 field configuration은 object type이 이미 소유하므로 `nullable`이 그 declared nullability를 바꾸지 않습니다.
 
 ### GraphQL Operation 범위 DataLoaders
 내장된 DataLoader 통합을 통해 N+1 문제를 효율적으로 해결합니다. Loader는 각 GraphQL 작업마다 자동으로 격리됩니다.
 
 ```typescript
 import { GraphQLObjectType, GraphQLString } from 'graphql';
-import { createDataLoader, type GraphQLContext, Query, Resolver } from '@fluojs/graphql';
+import { OperationScopedDataLoader, type GraphQLContext, Query, Resolver } from '@fluojs/graphql';
 
 const UserType = new GraphQLObjectType({
   name: 'User',
@@ -207,7 +205,7 @@ const UserType = new GraphQLObjectType({
   },
 });
 
-const userLoader = createDataLoader(async (ids: readonly string[]) => {
+const userLoader = OperationScopedDataLoader.create(async (ids: readonly string[]) => {
   const users = await userService.findByIds(ids);
   return ids.map(id => users.find(u => u.id === id));
 });
@@ -239,7 +237,7 @@ class UserResolver {
 - 새 output field는 `nullable: false`일 때만 non-null입니다. Option을 생략하거나 `nullable: true`면 nullable이며, `@Arg(...)`는 nullable scalar 또는 list argument를 만들고 DTO validation도 이를 SDL의 non-null로 바꾸지 않습니다.
 - Resolver 메서드는 `GraphQLContext`를 받으며, 내장 필드에는 fluo `request`, 앞서 설정된 인증된 HTTP `principal`, WebSocket subscription의 `connectionParams`와 `socket`, 그리고 `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드가 포함됩니다.
 - Object field resolver는 root resolver와 같은 provider scope 및 operation container를 사용합니다. `@Parent()`와 `@Context()`는 positional method argument만 제어합니다.
-- GraphQL operation 범위 DataLoader helper는 같은 `GraphQLContext` operation 경계를 사용하므로 loader cache는 하나의 GraphQL operation 안에서만 공유됩니다.
+- `OperationScopedDataLoader.create(...)`는 `GraphQLContext` operation 경계를 사용하므로 loader cache는 하나의 GraphQL operation 안에서만 공유됩니다. `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`는 고급 integration helper로 유지됩니다.
 - 애플리케이션 shutdown은 WebSocket transport를 등록 해제하고, 살아 있는 WebSocket client를 닫으며, 아직 활성 상태인 WebSocket operation container를 정상 operation 완료 때와 같은 request-scoped provider teardown 경로로 dispose합니다.
 - HTTP operation-container, WebSocket operation-container 또는 WebSocket transport teardown이 실패하면 소유자를 이후 `Application.close()` 재시도까지 보존합니다. Shutdown은 남은 모든 cleanup 실패를 함께 보고하며, 이미 성공한 cleanup은 반복하지 않습니다.
 
@@ -259,7 +257,7 @@ class RequestState {
 class RequestResolver {
   constructor(private readonly state: RequestState) {}
 
-  @Query('requestId')
+  @Query({ fieldName: 'requestId' })
   requestId(): string {
     return this.state.requestId;
   }
@@ -324,7 +322,6 @@ GraphqlModule.forRoot({
       },
     },
   },
-  resolvers: [HelloResolver],
 })
 ```
 
@@ -336,11 +333,12 @@ GraphqlModule.forRoot({
 - `Resolver`, `Query`, `Mutation`, `Subscription`: Resolver 및 root operation 데코레이터.
 - `FieldResolver`, `Args`, `Parent`, `Context`: Code-first object field resolution과 명시적 DTO input, parent, context parameter-index binding.
 - `Arg`: Input DTO 필드를 GraphQL 인자로 매핑하는 데코레이터.
-- `createDataLoader`, `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`, `DataLoader`: DataLoader factory helper와 type.
+- `OperationScopedDataLoader.create`: Canonical operation 범위 DataLoader accessor 생성 경로입니다.
+- `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`: 고급 typed-map 및 generic loader-cache integration helper입니다.
 - `listOf`, `isGraphqlListTypeRef`: list output type reference helper.
 - `GraphQLContext` 및 export되는 option/metadata type: `subscriptions.websocket.limits`에 사용하는 `GraphqlWebSocketLimitsOptions`를 포함한 GraphQL 실행과 module 설정을 위한 타입 정의.
 
-동기 `GraphqlModule.forRoot(...)` option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, `subscriptions.websocket.keepAliveMs`가 포함됩니다. `GraphqlModule.forRootAsync({ inject, useFactory })`는 별도의 비동기 등록 API이며, 명시적인 `inject` token과 `useFactory`만 받습니다.
+동기 `GraphqlModule.forRoot(...)` option에는 `schema`, `context`, `plugins`, `graphiql`, `introspection`, `limits`, 이미 등록된 resolver provider의 allowlist인 `resolvers`, `subscriptions.websocket.enabled`, `subscriptions.websocket.limits`, `subscriptions.websocket.connectionInitWaitTimeoutMs`, `subscriptions.websocket.keepAliveMs`가 포함됩니다. `GraphqlModule.forRootAsync({ inject, useFactory })`는 별도의 비동기 등록 API이며, 명시적인 `inject` token과 `useFactory`만 받습니다.
 
 ## 관련 패키지
 

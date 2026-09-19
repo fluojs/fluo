@@ -54,6 +54,36 @@ function collectUnsupportedMigrationClaims(content: string): string[] {
 }
 
 describe('GraphQL object field resolver contract governance', () => {
+  it('keeps operation-scoped loader creation and decorator field names canonical', () => {
+    const dataLoader = read('packages/graphql/src/dataloader/dataloader.ts');
+    const decorators = read('packages/graphql/src/decorators.ts');
+    const publicApi = read('packages/graphql/src/public-api.test.ts');
+    const migrationDocs = [
+      read('packages/graphql/README.md'),
+      read('packages/graphql/README.ko.md'),
+      read('docs/getting-started/migrate-from-nestjs.md'),
+      read('docs/getting-started/migrate-from-nestjs.ko.md'),
+      read('docs/CONTEXT.md'),
+      read('docs/CONTEXT.ko.md'),
+    ];
+
+    expect(dataLoader).toContain('export class OperationScopedDataLoader');
+    expect(dataLoader).toContain('static create<K, V, C = K>(');
+    expect(dataLoader).not.toContain('export function createDataLoader<');
+    expect(dataLoader).not.toContain('export { DataLoader };');
+    expect(decorators).toContain('export function Query(options?: ResolverMethodOptions)');
+    expect(decorators).toContain('export function FieldResolver(options?: FieldResolverOptions)');
+    expect(decorators).not.toContain('string | ResolverMethodOptions');
+    expect(decorators).not.toContain('string | FieldResolverOptions');
+    expect(publicApi).toContain("not.toHaveProperty('createDataLoader')");
+    expect(publicApi).toContain("not.toHaveProperty('DataLoader')");
+
+    for (const migrationDoc of migrationDocs) {
+      expect(migrationDoc).toContain('OperationScopedDataLoader');
+      expect(migrationDoc).toContain('{ fieldName');
+    }
+  });
+
   it('keeps field resolver discovery and standard method bindings explicit across bilingual surfaces', () => {
     const contractSurfaces = [
       'packages/graphql/README.md',
@@ -117,7 +147,7 @@ describe('GraphQL object field resolver contract governance', () => {
     expect(fieldResolverOptions).toContain('input?: Function');
     expect(fieldResolverOptions).toContain('argTypes?: Record<string, GraphqlArgType>');
     expect(discovery).toContain('for (const provider of compiledModule.definition.providers ?? [])');
-    expect(discovery).toContain('for (const controller of compiledModule.definition.controllers ?? [])');
+    expect(discovery).not.toContain('compiledModule.definition.controllers');
     expect(objectFieldResolvers).toContain('methodArguments[binding.index] = parent;');
     expect(objectFieldResolvers).toContain('methodArguments[binding.index] = contextValue;');
     expect(objectFieldResolvers).toContain('methodArguments[binding.index] = input;');

@@ -21,7 +21,7 @@ export const GRAPHQL_OPERATION_CONTAINER = Symbol.for('fluo.graphql.operation.co
 /**
  * GraphQL context key that stores the per-operation DataLoader cache.
  *
- * `createDataLoader(...)` and related helpers use this cache so singleton
+ * `OperationScopedDataLoader.create(...)` and related helpers use this cache so singleton
  * resolvers still get loader isolation per GraphQL operation.
  */
 export const GRAPHQL_REQUEST_SCOPED_LOADER_CACHE = Symbol.for('fluo.graphql.request_scoped_loader_cache');

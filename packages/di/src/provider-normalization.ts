@@ -213,6 +213,7 @@ export function normalizeProvider(provider: Provider): NormalizedProvider {
       inject: normalizeInject(objectProvider.inject, objectProvider.provide),
       multi: objectProvider.multi,
       provide: objectProvider.provide,
+      resolverClass: objectProvider.resolverClass,
       scope: explicitScope ?? normalizeProviderScope(metadata?.scope, objectProvider.provide) ?? 'singleton',
       type: 'factory',
       useFactory: objectProvider.useFactory,

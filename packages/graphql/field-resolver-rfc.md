@@ -24,7 +24,7 @@ This RFC defines the implemented minimum API and integration contract for `@Fiel
 ```ts
 @Resolver('User')
 class UserFieldResolver {
-  @FieldResolver('displayName')
+  @FieldResolver({ fieldName: 'displayName' })
   @Parent()
   @Context()
   displayName(user: UserEntity, ctx: GraphQLContext): string {
@@ -35,7 +35,7 @@ class UserFieldResolver {
 
 ### Decorators
 
-- `@FieldResolver(fieldNameOrOptions?)`
+- `@FieldResolver(options?)`
   - `fieldName?: string`
   - `input?: Function` reuses the existing `@Arg(...)` DTO materialization and validation pipeline.
   - `argTypes?: Record<string, GraphqlArgType>` supports explicit scalar and list argument types.
@@ -98,7 +98,7 @@ TC39 standard decorators do not define parameter decorators. The implemented con
 
 ## Compatibility and Migration
 
-- The implementation is additive.
+- `@FieldResolver('fieldName')` was removed. Migrate to `@FieldResolver({ fieldName: 'fieldName' })`.
 - Existing root operation resolvers remain unchanged.
 - `nullable: false` is opt-in for new explicitly typed object fields, so existing schemas retain their output nullability.
 - Parameter-decorator syntax from the original draft is replaced by TC39-standard method decorators with index defaults.

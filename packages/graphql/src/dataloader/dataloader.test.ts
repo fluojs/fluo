@@ -1,11 +1,13 @@
 import DataLoader from 'dataloader';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 import {
-  createDataLoader,
   createDataLoaderMap,
   createRequestScopedDataLoaderFactory,
   getRequestScopedDataLoader,
+  OperationScopedDataLoader,
+  type RequestScopedDataLoaderAccessor,
+  type ResolvedDataLoaders,
 } from './dataloader.js';
 import type { GraphQLContext } from '../types.js';
 
@@ -67,7 +69,7 @@ describe('request-scoped DataLoader helpers', () => {
   });
 });
 
-describe('createDataLoader', () => {
+describe('OperationScopedDataLoader.create', () => {
   it('returns a request-scoped DataLoader through the public accessor', async () => {
     const db = new Map<string, string>([
       ['1', 'Alice'],
@@ -79,7 +81,7 @@ describe('createDataLoader', () => {
       ids.map((id) => db.get(id) ?? null),
     );
 
-    const getUserById = createDataLoader<string, string | null>(batchFn);
+    const getUserById = OperationScopedDataLoader.create<string, string | null>(batchFn);
 
     const context = createContext();
     const loader = getUserById(context);
@@ -95,7 +97,7 @@ describe('createDataLoader', () => {
   });
 
   it('reuses the same DataLoader instance within a single operation context', () => {
-    const getUserById = createDataLoader<string, string | null>(async (ids) =>
+    const getUserById = OperationScopedDataLoader.create<string, string | null>(async (ids) =>
       ids.map(() => null),
     );
 
@@ -107,7 +109,7 @@ describe('createDataLoader', () => {
   });
 
   it('creates isolated DataLoader instances across different operation contexts', () => {
-    const getUserById = createDataLoader<string, string | null>(async (ids) =>
+    const getUserById = OperationScopedDataLoader.create<string, string | null>(async (ids) =>
       ids.map(() => null),
     );
 
@@ -122,7 +124,7 @@ describe('createDataLoader', () => {
       ids.map((id) => `value-${id}`),
     );
 
-    const getItem = createDataLoader<string, string>(batchFn);
+    const getItem = OperationScopedDataLoader.create<string, string>(batchFn);
     const context = createContext();
     const loader = getItem(context);
 
@@ -141,7 +143,7 @@ describe('createDataLoader', () => {
       ids.map((id) => `val-${id}`),
     );
 
-    const getItem = createDataLoader<string, string>(batchFn);
+    const getItem = OperationScopedDataLoader.create<string, string>(batchFn);
     const context = createContext();
     const loader = getItem(context);
 
@@ -158,7 +160,7 @@ describe('createDataLoader', () => {
       ids.map((id) => `val-${id}`),
     );
 
-    const getItem = createDataLoader<string, string>(batchFn, { cache: false });
+    const getItem = OperationScopedDataLoader.create<string, string>(batchFn, { cache: false });
     const context = createContext();
     const loader = getItem(context);
 
@@ -171,11 +173,11 @@ describe('createDataLoader', () => {
   it('supports explicit cache key for loader deduplication', () => {
     const loaderKey = Symbol('shared-loader');
 
-    const accessorA = createDataLoader<string, string>(
+    const accessorA = OperationScopedDataLoader.create<string, string>(
       async (ids) => ids.map(() => 'a'),
       { key: loaderKey },
     );
-    const accessorB = createDataLoader<string, string>(
+    const accessorB = OperationScopedDataLoader.create<string, string>(
       async (ids) => ids.map(() => 'b'),
       { key: loaderKey },
     );
@@ -268,7 +270,7 @@ describe('end-to-end: N+1 batching through first-party DataLoader API', () => {
       return ids.map((id) => map.get(id) ?? null);
     });
 
-    const getUserById = createDataLoader<string, User | null>(async (ids) =>
+    const getUserById = OperationScopedDataLoader.create<string, User | null>(async (ids) =>
       findManyByIds(ids),
     );
 
@@ -297,7 +299,7 @@ describe('end-to-end: N+1 batching through first-party DataLoader API', () => {
       ids.map((id) => `result-${id}`),
     );
 
-    const getItem = createDataLoader<string, string>(batchFn);
+    const getItem = OperationScopedDataLoader.create<string, string>(batchFn);
 
     const operationA = createContext();
     const operationB = createContext();
@@ -311,5 +313,201 @@ describe('end-to-end: N+1 batching through first-party DataLoader API', () => {
     expect(resultB).toBe('result-shared-key');
 
     expect(batchFn).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('OperationScopedDataLoader error key eviction and retry', () => {
+  it('evicts only keys whose batch result is an Error and allows retry within the same operation', async () => {
+    let callCount = 0;
+    const batchFn = vi.fn(async (ids: readonly string[]): Promise<(string | Error)[]> => {
+      callCount++;
+      return ids.map((id) => {
+        if (id === 'flaky' && callCount === 1) {
+          return new Error('transient error for flaky');
+        }
+        return `value-${id}`;
+      });
+    });
+
+    const getResource = OperationScopedDataLoader.create<string, string>(batchFn);
+    const context = createContext();
+    const loader = getResource(context);
+
+    // Initial batch with 3 keys: ok1, flaky, ok2
+    const [resOk1, resFlaky, resOk2] = await Promise.allSettled([
+      loader.load('ok1'),
+      loader.load('flaky'),
+      loader.load('ok2'),
+    ]);
+
+    expect(resOk1.status).toBe('fulfilled');
+    if (resOk1.status === 'fulfilled') {
+      expect(resOk1.value).toBe('value-ok1');
+    }
+
+    expect(resFlaky.status).toBe('rejected');
+    if (resFlaky.status === 'rejected') {
+      expect(resFlaky.reason).toBeInstanceOf(Error);
+      expect((resFlaky.reason as Error).message).toBe('transient error for flaky');
+    }
+
+    expect(resOk2.status).toBe('fulfilled');
+    if (resOk2.status === 'fulfilled') {
+      expect(resOk2.value).toBe('value-ok2');
+    }
+
+    expect(batchFn).toHaveBeenCalledTimes(1);
+    expect(batchFn).toHaveBeenLastCalledWith(['ok1', 'flaky', 'ok2']);
+
+    // Successful keys remain cached: no new batch should be dispatched
+    const cachedOk1 = await loader.load('ok1');
+    const cachedOk2 = await loader.load('ok2');
+    expect(cachedOk1).toBe('value-ok1');
+    expect(cachedOk2).toBe('value-ok2');
+    expect(batchFn).toHaveBeenCalledTimes(1);
+
+    // Flaky key was evicted on error: retrying triggers a second batch containing ONLY flaky
+    const retriedFlaky = await loader.load('flaky');
+    expect(retriedFlaky).toBe('value-flaky');
+    expect(batchFn).toHaveBeenCalledTimes(2);
+    expect(batchFn).toHaveBeenLastCalledWith(['flaky']);
+
+    // Subsequent loads for flaky hit the new cached value
+    const cachedFlaky = await loader.load('flaky');
+    expect(cachedFlaky).toBe('value-flaky');
+    expect(batchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves rejected whole-batch upstream behavior when batchFn throws', async () => {
+    let callCount = 0;
+    const batchFn = vi.fn(async (ids: readonly string[]) => {
+      callCount++;
+      if (callCount === 1) {
+        throw new Error('upstream connection failed');
+      }
+      return ids.map((id) => `recovered-${id}`);
+    });
+
+    const getResource = OperationScopedDataLoader.create<string, string>(batchFn);
+    const context = createContext();
+    const loader = getResource(context);
+
+    const [firstA, firstB] = await Promise.allSettled([
+      loader.load('a'),
+      loader.load('b'),
+    ]);
+
+    expect(firstA.status).toBe('rejected');
+    expect(firstB.status).toBe('rejected');
+    expect(batchFn).toHaveBeenCalledTimes(1);
+
+    // Upstream DataLoader clears all keys on rejected batch: retry should call batchFn again
+    const [retryA, retryB] = await Promise.all([
+      loader.load('a'),
+      loader.load('b'),
+    ]);
+
+    expect(retryA).toBe('recovered-a');
+    expect(retryB).toBe('recovered-b');
+    expect(batchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserves error key eviction and retry with custom cacheKeyFn and cacheMap', async () => {
+    interface CompositeKey {
+      id: string;
+      tenant: string;
+    }
+
+    const customCacheMap = new Map<string, Promise<string>>();
+    let attempts = 0;
+
+    const batchFn = vi.fn(async (keys: readonly CompositeKey[]): Promise<(string | Error)[]> => {
+      attempts++;
+      return keys.map((key) => {
+        if (key.id === 'err' && attempts === 1) {
+          return new Error('transient error on err');
+        }
+        return `${key.tenant}:${key.id}-data`;
+      });
+    });
+
+    const getResource = OperationScopedDataLoader.create<CompositeKey, string, string>(batchFn, {
+      cacheKeyFn: (k) => `${k.tenant}:${k.id}`,
+      cacheMap: customCacheMap,
+    });
+
+    const context = createContext();
+    const loader = getResource(context);
+
+    const keyGood: CompositeKey = { id: 'good', tenant: 't1' };
+    const keyErr: CompositeKey = { id: 'err', tenant: 't1' };
+
+    const [rGood, rErr] = await Promise.allSettled([
+      loader.load(keyGood),
+      loader.load(keyErr),
+    ]);
+
+    expect(rGood.status).toBe('fulfilled');
+    expect(rErr.status).toBe('rejected');
+    expect(batchFn).toHaveBeenCalledTimes(1);
+
+    // CacheMap has good key
+    expect(customCacheMap.has('t1:good')).toBe(true);
+    // CacheMap does NOT retain err key
+    expect(customCacheMap.has('t1:err')).toBe(false);
+
+    // Retry err key: triggers second batch
+    const retried = await loader.load(keyErr);
+    expect(retried).toBe('t1:err-data');
+    expect(batchFn).toHaveBeenCalledTimes(2);
+    expect(customCacheMap.has('t1:err')).toBe(true);
+  });
+});
+
+describe('DataLoader custom cache-key generic C and non-public constructor regressions', () => {
+  it('threads custom cache-key generic C through accessor, loader, and map types where C != K', () => {
+    interface EntityKey {
+      id: string;
+      tenantId: string;
+    }
+
+    type CacheKeyString = string;
+
+    const batchFn = async (keys: readonly EntityKey[]): Promise<string[]> =>
+      keys.map((k) => `${k.tenantId}:${k.id}`);
+
+    const accessor = OperationScopedDataLoader.create<EntityKey, string, CacheKeyString>(batchFn, {
+      cacheKeyFn: (key) => `${key.tenantId}:${key.id}`,
+    });
+
+    expectTypeOf(accessor).toEqualTypeOf<RequestScopedDataLoaderAccessor<EntityKey, string, CacheKeyString>>();
+
+    const context = createContext();
+    const loader = accessor(context);
+
+    expectTypeOf(loader).toEqualTypeOf<DataLoader<EntityKey, string, CacheKeyString>>();
+
+    const definitions = {
+      entityById: {
+        batch: batchFn,
+        options: {
+          cacheKeyFn: (key: EntityKey) => `${key.tenantId}:${key.id}`,
+        },
+      },
+    };
+
+    const mapLoaders = createDataLoaderMap(definitions);
+
+    type ExpectedResolved = {
+      entityById: DataLoader<EntityKey, string, CacheKeyString>;
+    };
+
+    expectTypeOf(mapLoaders(context)).toEqualTypeOf<ExpectedResolved>();
+    expectTypeOf<ResolvedDataLoaders<typeof definitions>>().toEqualTypeOf<ExpectedResolved>();
+  });
+
+  it('rejects new OperationScopedDataLoader at compile time because constructor is private', () => {
+    // @ts-expect-error Constructor of class 'OperationScopedDataLoader' is private and only accessible within the class declaration.
+    expect(() => new OperationScopedDataLoader()).toThrow();
   });
 });

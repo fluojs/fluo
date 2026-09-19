@@ -44,9 +44,8 @@ describe('@fluojs/graphql public API surface', () => {
     expect(graphqlPublicApi).toHaveProperty('Parent');
     expect(graphqlPublicApi).toHaveProperty('Context');
     expect(graphqlPublicApi).toHaveProperty('GraphqlModule');
-    expect(graphqlPublicApi).toHaveProperty('createDataLoader');
+    expect(graphqlPublicApi).toHaveProperty('OperationScopedDataLoader');
     expect(graphqlPublicApi).toHaveProperty('createDataLoaderMap');
-    expect(graphqlPublicApi).toHaveProperty('DataLoader');
     expect(graphqlPublicApi).toHaveProperty('getRequestScopedDataLoader');
     expect(graphqlPublicApi).toHaveProperty('createRequestScopedDataLoaderFactory');
     expect(graphqlPublicApi).toHaveProperty('listOf');
@@ -65,6 +64,8 @@ describe('@fluojs/graphql public API surface', () => {
 
   it('does not expose internal metadata, lifecycle, or descriptor internals', () => {
     expect(graphqlPublicApi).not.toHaveProperty('createGraphqlModule');
+    expect(graphqlPublicApi).not.toHaveProperty('createDataLoader');
+    expect(graphqlPublicApi).not.toHaveProperty('DataLoader');
     expect(graphqlPublicApi).not.toHaveProperty('GRAPHQL_MODULE_OPTIONS');
     expect(graphqlPublicApi).not.toHaveProperty('GRAPHQL_LIFECYCLE_SERVICE');
     expect(graphqlPublicApi).not.toHaveProperty('defineResolverMetadata');
