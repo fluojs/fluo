@@ -471,6 +471,109 @@ describe('DiscordModule', () => {
     expect(factoryCalls).toEqual(['thread-release']);
   });
 
+  it('resolves async options and transport factories independently for each container that reuses one module definition', async () => {
+    const DISCORD_CONFIG = Symbol('isolated-discord-config');
+    const factoryCalls: string[] = [];
+    const transportCreations: string[] = [];
+    const moduleType = DiscordModule.forRootAsync({
+      inject: [DISCORD_CONFIG],
+      useFactory: async (...deps: unknown[]) => {
+        const [defaultThreadId] = deps;
+
+        if (typeof defaultThreadId !== 'string') {
+          throw new Error('default thread id must be a string');
+        }
+
+        factoryCalls.push(defaultThreadId);
+
+        return {
+          defaultThreadId,
+          transport: {
+            create: async () => {
+              transportCreations.push(defaultThreadId);
+              return new RecordingTransport(defaultThreadId);
+            },
+            kind: `factory:${defaultThreadId}`,
+          },
+        };
+      },
+    });
+    const firstContainer = new Container();
+    const secondContainer = new Container();
+
+    firstContainer.register(
+      { provide: DISCORD_CONFIG as Token<string>, useValue: 'thread-first' },
+      ...moduleProviders(moduleType),
+    );
+    secondContainer.register(
+      { provide: DISCORD_CONFIG as Token<string>, useValue: 'thread-second' },
+      ...moduleProviders(moduleType),
+    );
+
+    const firstService = await firstContainer.resolve(DiscordService);
+    const secondService = await secondContainer.resolve(DiscordService);
+    await firstService.onModuleInit();
+    await secondService.onModuleInit();
+
+    await expect(firstService.send({ content: 'First app' })).resolves.toMatchObject({ threadId: 'thread-first' });
+    await expect(secondService.send({ content: 'Second app' })).resolves.toMatchObject({ threadId: 'thread-second' });
+    expect(factoryCalls).toEqual(['thread-first', 'thread-second']);
+    expect(transportCreations).toEqual(['thread-first', 'thread-second']);
+    expect(transportState.sent).toMatchObject([
+      { content: 'First app', threadId: 'thread-first' },
+      { content: 'Second app', threadId: 'thread-second' },
+    ]);
+  });
+
+  it('does not reuse rejected async options when a later container resolves one module definition', async () => {
+    const DISCORD_CONFIG = Symbol('recoverable-discord-config');
+    const configurationFailure = new DiscordConfigurationError('Discord config source is unavailable.');
+    const factoryCalls: string[] = [];
+    const moduleType = DiscordModule.forRootAsync({
+      inject: [DISCORD_CONFIG],
+      useFactory: async (...deps: unknown[]) => {
+        const [defaultThreadId] = deps;
+
+        if (typeof defaultThreadId !== 'string') {
+          throw new Error('default thread id must be a string');
+        }
+
+        factoryCalls.push(defaultThreadId);
+
+        if (defaultThreadId === 'thread-broken') {
+          throw configurationFailure;
+        }
+
+        return {
+          defaultThreadId,
+          transport: createRecordingTransportFactory({ responsePrefix: 'recovered' }),
+        };
+      },
+    });
+    const failingContainer = new Container();
+    const recoveredContainer = new Container();
+
+    failingContainer.register(
+      { provide: DISCORD_CONFIG as Token<string>, useValue: 'thread-broken' },
+      ...moduleProviders(moduleType),
+    );
+    recoveredContainer.register(
+      { provide: DISCORD_CONFIG as Token<string>, useValue: 'thread-recovered' },
+      ...moduleProviders(moduleType),
+    );
+
+    await expect(failingContainer.resolve(DiscordService)).rejects.toThrowError(configurationFailure);
+
+    const recoveredService = await recoveredContainer.resolve(DiscordService);
+    await recoveredService.onModuleInit();
+
+    await expect(recoveredService.send({ content: 'Recovered app' })).resolves.toMatchObject({
+      messageId: 'recovered-1',
+      threadId: 'thread-recovered',
+    });
+    expect(factoryCalls).toEqual(['thread-broken', 'thread-recovered']);
+  });
+
   it('wires module-first async Discord and notifications registration through DISCORD_CHANNEL', async () => {
     const DISCORD_CONFIG = Symbol('discord-config');
     const container = new Container();
@@ -1269,6 +1372,56 @@ describe('DiscordModule', () => {
       name: 'AbortError',
     });
     expect(render).not.toHaveBeenCalled();
+  });
+
+  it('rechecks cancellation after asynchronous template rendering before invoking a transport that ignores aborted signals', async () => {
+    const controller = new AbortController();
+    let providerCalls = 0;
+    const transport = {
+      async send(message: NormalizedDiscordMessage) {
+        providerCalls += 1;
+
+        return {
+          messageId: 'ignored-abort-1',
+          ok: true,
+          response: 'ok',
+          statusCode: 200,
+          threadId: message.threadId,
+          warnings: [],
+        };
+      },
+    } satisfies DiscordTransport;
+    const container = new Container();
+    const moduleType = DiscordModule.forRoot({
+      renderer: {
+        async render() {
+          await Promise.resolve();
+          controller.abort();
+
+          return { content: 'Rendered after cancellation' };
+        },
+      },
+      transport,
+    });
+
+    container.register(...moduleProviders(moduleType));
+    const service = await container.resolve(DiscordService);
+    await service.onModuleInit();
+
+    await expect(
+      service.sendNotification(
+        {
+          channel: 'discord',
+          payload: {},
+          template: 'welcome',
+        },
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({
+      message: 'Discord delivery was aborted.',
+      name: 'AbortError',
+    });
+    expect(providerCalls).toBe(0);
   });
 
   it('normalizes blank-only defaultThreadId and notifications channel to documented defaults', async () => {

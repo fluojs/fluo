@@ -88,15 +88,6 @@ function buildDiscordModuleAsync(options: DiscordAsyncModuleOptions): ModuleType
   class DiscordAsyncModuleDefinition {}
 
   const factory = options.useFactory as (...args: unknown[]) => MaybePromise<DiscordModuleOptions>;
-  let cachedResult: Promise<NormalizedDiscordModuleOptions> | undefined;
-
-  const memoizedFactory = (...deps: unknown[]): Promise<NormalizedDiscordModuleOptions> => {
-    if (!cachedResult) {
-      cachedResult = Promise.resolve(factory(...deps)).then((resolved) => normalizeDiscordModuleOptions(resolved));
-    }
-
-    return cachedResult;
-  };
 
   return defineModule(DiscordAsyncModuleDefinition, {
     exports: [DiscordService, DiscordChannel, DISCORD_CHANNEL],
@@ -105,7 +96,8 @@ function buildDiscordModuleAsync(options: DiscordAsyncModuleOptions): ModuleType
       inject: options.inject,
       provide: DISCORD_OPTIONS,
       scope: 'singleton',
-      useFactory: (...deps: unknown[]) => memoizedFactory(...deps),
+      useFactory: (...deps: unknown[]) =>
+        Promise.resolve(factory(...deps)).then((resolved) => normalizeDiscordModuleOptions(resolved)),
     }),
   });
 }
@@ -133,7 +125,7 @@ export class DiscordModule {
    * Registers Discord providers from an async DI factory.
    *
    * @param options Async module options that resolve Discord transport and renderer configuration through DI.
-   * @returns A module definition that memoizes async option resolution per module instance and is global by default unless `global` is `false`.
+   * @returns A module definition that resolves async options independently for each active application container and is global by default unless `global` is `false`.
    *
    * @example
    * ```ts

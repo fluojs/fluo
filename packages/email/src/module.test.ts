@@ -471,6 +471,62 @@ describe('EmailModule', () => {
     expect(factoryCalls).toEqual(['smtp.local']);
   });
 
+  it('resolves async options and transport factories independently for each container that reuses one module definition', async () => {
+    const MAIL_CREDENTIAL = Symbol('isolated-email-credential');
+    const factoryCalls: string[] = [];
+    const transportCreations: string[] = [];
+    const moduleType = EmailModule.forRootAsync({
+      inject: [MAIL_CREDENTIAL],
+      useFactory: async (...deps: unknown[]) => {
+        const [credential] = deps;
+
+        if (typeof credential !== 'string') {
+          throw new Error('email credential must be a string');
+        }
+
+        factoryCalls.push(credential);
+
+        return {
+          defaultFrom: credential,
+          transport: {
+            create: async () => {
+              transportCreations.push(credential);
+              return new RecordingTransport(credential);
+            },
+            kind: `factory:${credential}`,
+          },
+        };
+      },
+    });
+    const firstContainer = new Container();
+    const secondContainer = new Container();
+
+    firstContainer.register(
+      { provide: MAIL_CREDENTIAL as Token<string>, useValue: 'first@example.com' },
+      ...moduleProviders(moduleType),
+    );
+    secondContainer.register(
+      { provide: MAIL_CREDENTIAL as Token<string>, useValue: 'second@example.com' },
+      ...moduleProviders(moduleType),
+    );
+
+    const firstService = await firstContainer.resolve(EmailService);
+    const secondService = await secondContainer.resolve(EmailService);
+
+    await expect(firstService.send({ subject: 'First', text: 'first', to: ['recipient@example.com'] })).resolves.toMatchObject({
+      messageId: 'first@example.com-1',
+    });
+    await expect(secondService.send({ subject: 'Second', text: 'second', to: ['recipient@example.com'] })).resolves.toMatchObject({
+      messageId: 'second@example.com-2',
+    });
+    expect(factoryCalls).toEqual(['first@example.com', 'second@example.com']);
+    expect(transportCreations).toEqual(['first@example.com', 'second@example.com']);
+    expect(transportState.sent).toMatchObject([
+      { from: { address: 'first@example.com' }, subject: 'First' },
+      { from: { address: 'second@example.com' }, subject: 'Second' },
+    ]);
+  });
+
   it('retries async options resolution after a rejected factory attempt', async () => {
     const MAIL_HOST = Symbol('mail-host');
     let attempts = 0;

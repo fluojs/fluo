@@ -103,20 +103,6 @@ function buildEmailModuleAsync(options: EmailAsyncModuleOptions): ModuleType {
   class EmailAsyncModuleDefinition {}
 
   const factory = options.useFactory as (...args: unknown[]) => MaybePromise<EmailModuleOptions>;
-  let cachedResult: Promise<NormalizedEmailModuleOptions> | undefined;
-
-  const memoizedFactory = (...deps: unknown[]): Promise<NormalizedEmailModuleOptions> => {
-    if (!cachedResult) {
-      cachedResult = Promise.resolve(factory(...deps))
-        .then((resolved) => normalizeEmailModuleOptions(resolved))
-        .catch((error) => {
-          cachedResult = undefined;
-          throw error;
-        });
-    }
-
-    return cachedResult;
-  };
 
   return defineModule(EmailAsyncModuleDefinition, {
     exports: [EmailService, EmailChannel, EMAIL_CHANNEL],
@@ -125,7 +111,8 @@ function buildEmailModuleAsync(options: EmailAsyncModuleOptions): ModuleType {
       inject: options.inject,
       provide: EMAIL_OPTIONS,
       scope: 'singleton',
-      useFactory: (...deps: unknown[]) => memoizedFactory(...deps),
+      useFactory: (...deps: unknown[]) =>
+        Promise.resolve(factory(...deps)).then((resolved) => normalizeEmailModuleOptions(resolved)),
     }),
   });
 }
@@ -157,7 +144,7 @@ export class EmailModule {
    * Registers email providers from an async DI factory.
    *
    * @param options Async module options that resolve email transport and renderer configuration through DI.
-   * @returns A module definition that memoizes async option resolution per module instance and exports its providers globally by default or only to explicit importers when `options.global` is `false`.
+   * @returns A module definition that resolves async options independently for each active application container and exports its providers globally by default or only to explicit importers when `options.global` is `false`.
    *
    * @example
     * ```ts

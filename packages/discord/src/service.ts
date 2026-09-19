@@ -351,6 +351,10 @@ export class DiscordService implements OnModuleInit, OnApplicationShutdown {
     const payload = notification.payload;
     const rendered = await this.renderNotification(notification, options.signal);
 
+    if (options.signal?.aborted) {
+      throw createAbortError();
+    }
+
     return this.sendAccepted(
       {
         allowedMentions: payload.allowedMentions,
