@@ -4,6 +4,9 @@
 
 [이전: 사용자와 자격 증명 모델링하기](./ch13-accounts-and-credentials.ko.md) · [1권 목차](./toc.ko.md) · [다음: 누가 이 글을 수정할 수 있는가](./ch15-authorization.ko.md)
 
+보호 route를 문서화할 때 `@ApiBearerAuth()`를 유지하고 라이브 문서는 `OpenApiModule`로 등록하세요.
+object-only decorator는 [OpenAPI 3 마이그레이션 가이드](../../docs/architecture/openapi-migration.ko.md)를 따르세요.
+
 ## 비밀번호를 맞혔다는 사실을 요청 사이에 전달하기
 
 기고자 계정이 생긴 FluoBlog에서 첫 편집 화면을 시험한다. 로그인 버튼은 비밀번호를 확인하고 성공했다고 표시하지만, 다음 게시글 저장 요청에는 사용자를 구별할 정보가 없다. 브라우저가 `userId`를 보내게 했더니 다른 계정의 ID로 바꿔도 서버가 받아들인다. 가입 때 만든 ID는 비밀이 아니므로 신원 증명이 될 수 없다. 서버가 검증한 로그인 결과와 클라이언트가 주장한 사용자 ID 사이에 구별 가능한 형식이 필요하다.

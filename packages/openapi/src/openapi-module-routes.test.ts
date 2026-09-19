@@ -1,7 +1,11 @@
 import {
+  Controller,
+  createHandlerMapping,
   type FrameworkRequest,
   type FrameworkResponse,
+  Get,
   RouteConflictError,
+  Version,
 } from '@fluojs/http';
 import { FluoFactory, defineModule, type ModuleType } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
@@ -95,6 +99,51 @@ describe('OpenApiModule routes', () => {
       });
       expect(uiResponse.statusCode).toBe(200);
       expect(uiResponse.body).toEqual(expect.stringContaining('/openapi.json'));
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('prefixes only generated operations in the live JSON document', async () => {
+    @Controller('/records')
+    @Version('2')
+    class RecordsController {
+      @Get('/')
+      list() {
+        return [];
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [
+        OpenApiModule.forRoot({
+          descriptors: createHandlerMapping([{ controllerToken: RecordsController }]).descriptors,
+          documentPath: '/contract.json',
+          operationPathPrefix: '//api//',
+          title: 'Prefixed API',
+          ui: true,
+          uiPath: '/reference',
+          version: '9.0.0',
+        }),
+      ],
+    });
+
+    const app = await FluoFactory.create(AppModule);
+
+    try {
+      const documentResponse = createResponse();
+      const uiResponse = createResponse();
+
+      await app.dispatch(createRequest('/contract.json'), documentResponse);
+      await app.dispatch(createRequest('/reference'), uiResponse);
+
+      expect(documentResponse.body).toMatchObject({
+        info: { version: '9.0.0' },
+        paths: { '/api/v2/records': expect.any(Object) },
+      });
+      expect(uiResponse.body).toEqual(expect.stringContaining('/contract.json'));
     } finally {
       await app.close();
     }

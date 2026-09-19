@@ -434,9 +434,10 @@ export class PostsController {
 
   @Get()
   @ApiOperation({ summary: 'List published posts' })
-  @ApiResponse(200, {
+  @ApiResponse({
     description: 'Published post summaries.',
     schema: { type: 'array', items: postSummarySchema },
+    status: 200,
   })
   async list() {
     return (await this.posts.listPublished()).map(toPostSummary);
@@ -446,8 +447,8 @@ export class PostsController {
   @RequestDto(GetPostDto)
   @ApiOperation({ summary: 'Read one published post' })
   @ApiParam('id', { schema: postIdParameterSchema })
-  @ApiResponse(200, { description: 'Published post.', schema: publicPostSchema })
-  @ApiResponse(404, { description: 'Missing or unpublished post.', schema: errorResponseSchema })
+  @ApiResponse({ status: 200, description: 'Published post.', schema: publicPostSchema })
+  @ApiResponse({ status: 404, description: 'Missing or unpublished post.', schema: errorResponseSchema })
   get(input: GetPostDto) {
     return runPostCommand(async () => toPublicPost(await this.posts.getPublished(input.id)));
   }
@@ -457,7 +458,7 @@ export class PostsController {
   @RequestDto(CreatePostDto)
   @ApiOperation({ summary: 'Create a draft for the local operator' })
   @ApiBody({ description: 'All three strings are required; empty draft text is allowed.' })
-  @ApiResponse(201, { description: 'Draft created.', schema: postWriteReceiptSchema })
+  @ApiResponse({ status: 201, description: 'Draft created.', schema: postWriteReceiptSchema })
   create(input: CreatePostDto) {
     return runPostCommand(async () => toPostWriteReceipt(await this.posts.create('author-1', {
       title: input.title, content: input.content, slug: input.slug,
@@ -470,8 +471,8 @@ export class PostsController {
   @ApiOperation({ summary: 'Replace all editable draft text' })
   @ApiParam('id', { schema: postIdParameterSchema })
   @ApiBody({ description: 'Send all text fields and the version last observed.' })
-  @ApiResponse(200, { description: 'Draft updated.', schema: postWriteReceiptSchema })
-  @ApiResponse(409, { description: 'Version or state conflict.', schema: errorResponseSchema })
+  @ApiResponse({ status: 200, description: 'Draft updated.', schema: postWriteReceiptSchema })
+  @ApiResponse({ status: 409, description: 'Version or state conflict.', schema: errorResponseSchema })
   replace(input: ReplacePostDto) {
     return runPostCommand(async () => toPostWriteReceipt(
       await this.posts.revise(input.id, input.expectedVersion, {
@@ -486,10 +487,11 @@ export class PostsController {
   @ApiOperation({ summary: 'Publish an existing draft' })
   @ApiParam('id', { schema: postIdParameterSchema })
   @ApiBody({ description: 'Publishing checks nonblank text and a unique valid slug.' })
-  @ApiResponse(200, { description: 'Post published.', schema: postWriteReceiptSchema })
-  @ApiResponse(409, {
+  @ApiResponse({ status: 200, description: 'Post published.', schema: postWriteReceiptSchema })
+  @ApiResponse({
     description: 'Version, state, or slug conflict. Read the error code before retrying.',
     schema: errorResponseSchema,
+    status: 409,
   })
   publish(input: PublishPostDto) {
     return runPostCommand(async () => toPostWriteReceipt(

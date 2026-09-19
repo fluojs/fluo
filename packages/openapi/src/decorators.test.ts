@@ -41,25 +41,29 @@ describe('OpenAPI decorator metadata readers', () => {
       @ApiHeader('x-request-id', { required: true, schema: { type: 'string' } })
       @ApiCookie('session', { schema: { type: 'string' } })
       @ApiBody({
+        content: {
+          'application/json': {
+            schema: {
+              oneOf: [
+                {
+                  properties: { name: { type: 'string' } },
+                  type: 'object',
+                },
+                {
+                  properties: { email: { format: 'email', type: 'string' } },
+                  type: 'object',
+                },
+              ],
+            },
+          },
+        },
         description: 'Explicit body',
         required: true,
-        schema: {
-          oneOf: [
-            {
-              properties: { name: { type: 'string' } },
-              type: 'object',
-            },
-            {
-              properties: { email: { format: 'email', type: 'string' } },
-              type: 'object',
-            },
-          ],
-        },
       })
       @ApiBearerAuth()
       @ApiSecurity('oauth2Auth', ['read:users'])
       @ApiExcludeEndpoint()
-      @ApiResponse(200, { description: 'OK', schema: responseSchema })
+      @ApiResponse({ status: 200, description: 'OK', schema: responseSchema })
       list() {
         return [{ id: '1' }];
       }
@@ -162,26 +166,30 @@ describe('OpenAPI decorator metadata readers', () => {
         requestBody: {
           description: 'Explicit body',
           required: true,
-          schema: {
-            oneOf: [
-              {
-                properties: {
-                  name: {
-                    type: 'string',
+          content: {
+            'application/json': {
+              schema: {
+                oneOf: [
+                  {
+                    properties: {
+                      name: {
+                        type: 'string',
+                      },
+                    },
+                    type: 'object',
                   },
-                },
-                type: 'object',
-              },
-              {
-                properties: {
-                  email: {
-                    format: 'email',
-                    type: 'string',
+                  {
+                    properties: {
+                      email: {
+                        format: 'email',
+                        type: 'string',
+                      },
+                    },
+                    type: 'object',
                   },
-                },
-                type: 'object',
+                ],
               },
-            ],
+            },
           },
         },
       }),

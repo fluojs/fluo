@@ -78,6 +78,9 @@ export function enforceHttpCustomMethodContract(): void;
 export function enforceHttpAdapterPortabilityDocumentationContract(
   readText?: (relativePath: string) => string,
 ): void;
+export function enforceOpenApiNullableNormalizationContract(
+  readText?: (relativePath: string) => string,
+): void;
 export function isSupportedNodeListenerVersion(version: string): boolean;
 export function enforcePlatformFastifyEngineDocumentation(
   readText?: (relativePath: string) => string,

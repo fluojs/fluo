@@ -39,13 +39,13 @@ import { FluoFactory } from '@fluojs/runtime';
 import { Controller, Get } from '@fluojs/http';
 import { Module } from '@fluojs/core';
 import { NodeHttpApplicationAdapter, createConsoleApplicationLogger } from '@fluojs/platform-nodejs';
-import { OpenApiModule, ApiOperation, ApiResponse, ApiTag } from '@fluojs/openapi';
+import { OpenApiDocumentBuilder, OpenApiModule, ApiOperation, ApiResponse, ApiTag } from '@fluojs/openapi';
 
 @ApiTag('Users')
 @Controller('/users')
 class UsersController {
   @ApiOperation({ summary: 'List all users' })
-  @ApiResponse(200, { description: 'Success' })
+  @ApiResponse({ status: 200, description: 'Success' })
   @Get('/')
   list() {
     return [];
@@ -87,7 +87,7 @@ use the existing `{}` semantics. No summary, description, deprecated flag, requi
 or schema is invented. Empty body metadata preserves a DTO-inferred body and adds no
 `requestBody` when none is inferred. Empty writes can overwrite earlier stacked metadata,
 so these calls are not always equivalent to omitting the decorator. Existing application-time
-`null` failures remain. `ApiTag(tag)`, `ApiResponse(status, options?)`, and parameter/security
+`null` failures remain. `ApiTag(tag)`, object-only `ApiResponse({ status, ... })`, and parameter/security
 names remain required; the supported OpenAPI Path Item methods do not change.
 
 ### Automated Specification Generation
@@ -112,7 +112,7 @@ When a handler does not declare `@ApiResponse(...)` or `@HttpCode(...)`, the Ope
 The builder does not inspect handler return values or TypeScript return types to infer response content. A default success response contains only its status and the description `OK`. Add `@ApiResponse(...)` with `schema` or `type` when the OpenAPI document must describe a response body; without either field, an explicit response still contains status and description only.
 
 ### Integrated DTO Schemas
-Works with `@fluojs/validation` to derive request schemas from DTO binding and validation metadata. Response DTOs become OpenAPI components only when they are referenced explicitly, such as with `@ApiResponse(..., { type: ResponseDto })` or `extraModels`.
+Works with `@fluojs/validation` to derive request schemas from DTO binding and validation metadata. Response DTOs become OpenAPI components only when they are referenced explicitly, such as with `@ApiResponse({ status, type: ResponseDto })` or `extraModels`.
 
 For generated request schemas, repeated `Min` rules fold the strongest lower
 bound with `Math.max` and repeated `Max` rules fold the strongest upper bound
@@ -127,10 +127,12 @@ present. These are OpenAPI projection rules only: runtime nested collection
 traversal remains owned by `@fluojs/validation`.
 
 ### OpenAPI 3.1 Exclusive Bounds
-`OpenApiSchemaObject` accepts OpenAPI 3.1 numeric `exclusiveMinimum` and `exclusiveMaximum` values while retaining compatibility with legacy boolean metadata. A `true` flag paired with `minimum` or `maximum` becomes the corresponding numeric exclusive bound in the emitted document, and a `false` flag is omitted while its inclusive bound remains. Finite numeric exclusive bounds pass through unchanged. A `true` flag without a finite paired bound, or a non-finite numeric exclusive bound, fails document generation instead of emitting an invalid OpenAPI 3.1 schema. The same normalization runs after `documentTransform` before the document is exposed.
+`OpenApiSchemaObject` accepts finite OpenAPI 3.1 numeric `exclusiveMinimum` and `exclusiveMaximum` values. Legacy boolean `exclusiveMinimum` and `exclusiveMaximum` inputs are rejected, including when an untyped `documentTransform` introduces them.
 
 ### OpenAPI 3.1 Nullable Schemas
-`OpenApiSchemaObject` continues to accept the legacy boolean `nullable` keyword as compatibility input, but generated OpenAPI 3.1 documents never emit it. `nullable: true` adds `null` to a declared `type` union while preserving scalar and array constraints; schemas without `type`, including `$ref` schemas, become an `anyOf` union with `{ type: 'null' }`. `nullable: false` is removed without changing the schema. Existing null unions are not duplicated, and the recursive normalization also runs after `documentTransform`.
+`OpenApiSchemaObject` rejects legacy `nullable`. Use a `type` union such as `['string', 'null']`, or an `anyOf` branch with `{ type: 'null' }`; those OpenAPI 3.1 forms are preserved after `documentTransform`.
+
+<!-- fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected -->
 
 ### Versioning Support
 Handles URI-based versioning from `@fluojs/http` automatically. Your OpenAPI paths will correctly reflect the resolved versioned routes.
@@ -193,12 +195,11 @@ With `forRootAsync(...)`, `documentPath` and `uiPath` are outer registration opt
 - `ApiBearerAuth`, `ApiSecurity`: Security requirement decorators.
 - `ApiExcludeEndpoint`: Omit specific handlers from documentation.
 - `ApiOperationOptions`, `ApiResponseOptions`, `ApiParameterOptions`, `ApiBodyOptions`: Decorator option types accepted by `@ApiOperation(...)`, `@ApiResponse(...)`, `@ApiParam(...)`, `@ApiQuery(...)`, `@ApiHeader(...)`, `@ApiCookie(...)`, and `@ApiBody(...)`.
-- `buildOpenApiDocument`: Programmatic document builder (low-level).
-- `OpenApiHandlerRegistry`: Mutable descriptor registry used by advanced integrations to snapshot handler descriptors before document generation.
+- `OpenApiDocumentBuilder`: Programmatic offline document builder; call `OpenApiDocumentBuilder.build(options)`.
 - `getControllerTags`, `getMethodApiMetadata`: Metadata readers for advanced tests and integration tooling.
-- `OpenApiModuleOptions`, `OpenApiAsyncModuleOptions`, `OpenApiRouteOptions`, `OpenApiSwaggerUiAssetsOptions`, `BuildOpenApiDocumentOptions`, `DefaultErrorResponsesPolicy`: Option types for module and builder integrations.
+- `OpenApiModuleOptions`, `OpenApiAsyncModuleOptions`, `OpenApiRouteOptions`, `OpenApiSwaggerUiAssetsOptions`, `OpenApiDocumentBuilderOptions`, `DefaultErrorResponsesPolicy`: Option types for module and builder integrations.
 - `OpenApiDocument`, `OpenApiSecuritySchemeObject`, and related OpenAPI shape types: Typed document surface for tests, tooling, and integrations.
-- `OpenApiSchemaObject`: Typed schema surface for explicit `@ApiBody(...)` and `@ApiResponse(...)` schemas, including OpenAPI 3.1 composition (`allOf`, `oneOf`, `anyOf`), null unions with legacy `nullable` input compatibility, object/array constraints, examples/defaults, and read/write/deprecated annotations.
+- `OpenApiSchemaObject`: Typed schema surface for explicit `@ApiBody(...)` and `@ApiResponse(...)` schemas, including OpenAPI 3.1 composition (`allOf`, `oneOf`, `anyOf`), null unions, finite exclusive bounds, object/array constraints, examples/defaults, and read/write/deprecated annotations. Legacy `nullable` and boolean exclusive bounds are rejected.
 
 ## Related Packages
 
@@ -211,3 +212,11 @@ With `forRootAsync(...)`, `documentPath` and `uiPath` are outer registration opt
 - `packages/openapi/src/openapi-module.test.ts`: Integration tests and usage examples.
 - `packages/openapi/src/openapi-module-routes.test.ts`: Default, custom, multi-document, and route-collision examples.
 - `packages/openapi/src/schema-builder.test.ts`: Document builder and schema generation examples.
+
+## Migrating to 3.0
+
+- Replace `buildOpenApiDocument(options)` with `OpenApiDocumentBuilder.build(options)` and replace `BuildOpenApiDocumentOptions` with `OpenApiDocumentBuilderOptions`.
+- Remove `OpenApiHandlerRegistry`; pass `sources` and `descriptors` directly to the builder or `OpenApiModule`.
+- Use object-only `@ApiResponse({ status, ...options })`.
+- Replace `@ApiBody({ schema })` with `@ApiBody({ content: { 'application/json': { schema } } })`.
+- Replace `nullable` with a null type union or `anyOf`, and replace boolean exclusive bounds with finite numeric values.

@@ -177,7 +177,7 @@ export class PostEditingController {
   @RequestDto(EditPostDto)
   @ApiOperation({ summary: 'Replace all editable text in an owned draft' })
   @ApiParam('id', { schema: postIdParameterSchema })
-  @ApiBody({ schema: {
+  @ApiBody({ content: { 'application/json': { schema: {
     type: 'object', additionalProperties: false,
     required: ['title', 'content', 'slug', 'expectedVersion'],
     properties: {
@@ -186,9 +186,9 @@ export class PostEditingController {
       slug: { type: 'string', maxLength: 80 },
       expectedVersion: { type: 'integer', minimum: 1, maximum: 2_147_483_646 },
     },
-  } })
-  @ApiResponse(200, { schema: postWriteReceiptSchema })
-  @ApiResponse(409, { schema: errorResponseSchema })
+  } } } })
+  @ApiResponse({ status: 200, schema: postWriteReceiptSchema })
+  @ApiResponse({ status: 409, schema: errorResponseSchema })
   edit(input: EditPostDto, context: RequestContext) {
     const principal = context.principal;
     if (!principal) throw new UnauthorizedException();
@@ -227,7 +227,7 @@ export class PostsController {
   @Get()
   @RequestDto(ListPostsDto)
   @ApiOperation({ summary: 'List published posts' })
-  @ApiResponse(200, { schema: postPageSchema })
+  @ApiResponse({ status: 200, schema: postPageSchema })
   list(input: ListPostsDto) {
     return this.feed.list({ limit: input.limit, cursor: input.cursor });
   }
@@ -236,8 +236,8 @@ export class PostsController {
   @RequestDto(GetPostDto)
   @ApiOperation({ summary: 'Read one published post' })
   @ApiParam('id', { schema: postIdParameterSchema })
-  @ApiResponse(200, { schema: publicPostSchema })
-  @ApiResponse(404, { schema: errorResponseSchema })
+  @ApiResponse({ status: 200, schema: publicPostSchema })
+  @ApiResponse({ status: 404, schema: errorResponseSchema })
   get(input: GetPostDto) {
     return runPostCommand(async () => toPublicPost(await this.posts.getPublished(input.id)));
   }
@@ -299,7 +299,7 @@ export class PostWritingController {
   @ApiSecurity('bearer')
   @RequestDto(CreatePostDto)
   @ApiOperation({ summary: 'Create a draft for the authenticated account' })
-  @ApiResponse(201, { schema: postWriteReceiptSchema })
+  @ApiResponse({ status: 201, schema: postWriteReceiptSchema })
   create(input: CreatePostDto, context: RequestContext) {
     const principal = context.principal;
     if (!principal) throw new UnauthorizedException();
@@ -317,8 +317,8 @@ export class PostWritingController {
   @RequestDto(PublishPostDto)
   @ApiOperation({ summary: 'Publish an owned draft' })
   @ApiParam('id', { schema: postIdParameterSchema })
-  @ApiResponse(200, { schema: postWriteReceiptSchema })
-  @ApiResponse(409, { schema: errorResponseSchema })
+  @ApiResponse({ status: 200, schema: postWriteReceiptSchema })
+  @ApiResponse({ status: 409, schema: errorResponseSchema })
   publish(input: PublishPostDto, context: RequestContext) {
     const principal = context.principal;
     if (!principal) throw new UnauthorizedException();
@@ -447,7 +447,7 @@ pnpm exec vitest run src/posts/post-edit-policy.test.ts
 
 ```ts
 import { createHandlerMapping } from '@fluojs/http';
-import { buildOpenApiDocument } from '@fluojs/openapi';
+import { OpenApiDocumentBuilder } from '@fluojs/openapi';
 import { serialize } from '@fluojs/serialization';
 import { describe, expect, it } from 'vitest';
 import { createDraft, publishPost } from './post.js';
@@ -458,7 +458,7 @@ import { PostWritingController } from './post-writing.controller.js';
 import { getAuthRequirement } from '@fluojs/passport';
 
 function buildDocument() {
-  return buildOpenApiDocument({
+  return OpenApiDocumentBuilder.build({
     descriptors: createHandlerMapping([
       { controllerToken: PostsController }, { controllerToken: PostEditingController },
       { controllerToken: PostWritingController },

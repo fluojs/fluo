@@ -88,8 +88,7 @@ const publishedContractProbe = `
           components: {
             schemas: {
               PublishedContract: {
-                nullable: true,
-                type: 'string',
+                type: ['string', 'null'],
               },
             },
           },
@@ -161,6 +160,33 @@ describe('@fluojs/openapi published contract', () => {
     }
   });
 
+  it('exposes only the static offline builder in cold built JavaScript and declarations', () => {
+    const runtimeEntry = readFileSync(resolve(packageRootPath, 'dist/index.js'), 'utf8');
+    const declarationEntry = readFileSync(resolve(packageRootPath, 'dist/index.d.ts'), 'utf8');
+
+    expect(runtimeEntry).toContain('schema-builder');
+    expect(declarationEntry).toContain('schema-builder');
+    expect(runtimeEntry).not.toContain('handler-registry');
+    expect(declarationEntry).not.toContain('handler-registry');
+    expect(runtimeEntry).not.toContain('buildOpenApiDocument');
+    expect(declarationEntry).not.toContain('BuildOpenApiDocumentOptions');
+  });
+
+  it('runs the static offline builder from the published root entrypoint', async () => {
+    const publishedApi = await import('@fluojs/openapi');
+    const document = publishedApi.OpenApiDocumentBuilder.build({
+      defaultErrorResponsesPolicy: 'omit',
+      title: 'Published Offline API',
+      version: '1.0.0',
+    });
+
+    expect(document).toMatchObject({
+      info: { title: 'Published Offline API', version: '1.0.0' },
+      openapi: '3.1.0',
+      paths: {},
+    });
+  });
+
   it('serves normalized custom routes and OpenAPI 3.1 schemas through the published root entrypoint', () => {
     // Given
     expect(requiredArtifactPaths.every((artifactPath) => existsSync(artifactPath))).toBe(true);
@@ -196,15 +222,6 @@ describe('@fluojs/openapi published contract', () => {
       documentStatus: 200,
       uiStatus: 200,
     });
-    expect(publishedResult).not.toEqual(expect.objectContaining({
-      documentBody: expect.objectContaining({
-        components: expect.objectContaining({
-          schemas: expect.objectContaining({
-            PublishedContract: expect.objectContaining({ nullable: true }),
-          }),
-        }),
-      }),
-    }));
     expect(publishedResult).toEqual(expect.objectContaining({
       uiBody: expect.stringContaining('/contracts/openapi.json'),
     }));

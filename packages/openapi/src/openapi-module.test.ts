@@ -326,7 +326,7 @@ describe('OpenApiModule', () => {
     class UsersController {
       @ApiOperation({ description: 'Creates a new user in the starter system.', summary: 'Create user' })
       @ApiBearerAuth()
-      @ApiResponse(201, { description: 'Created', type: UserResponseDto })
+      @ApiResponse({ description: 'Created', status: 201, type: UserResponseDto })
       @Get('/')
       listUsers() {
         return [{ id: '1' }];
@@ -334,7 +334,7 @@ describe('OpenApiModule', () => {
 
       @RequestDto(CreateUserRequest)
       @ApiOperation({ summary: 'Create user' })
-      @ApiResponse(201, { description: 'Created', type: UserResponseDto })
+      @ApiResponse({ description: 'Created', status: 201, type: UserResponseDto })
       @Post('/')
       createUser() {
         return { id: '2' };
@@ -483,7 +483,7 @@ describe('OpenApiModule', () => {
     @Controller('/users')
     class UsersController {
       @ApiOperation({ summary: 'List all users' })
-      @ApiResponse(200, { description: 'Success', type: UserListResponse })
+      @ApiResponse({ description: 'Success', status: 200, type: UserListResponse })
       @Produces('application/json')
       @Get('/')
       list() {
@@ -1195,19 +1195,19 @@ describe('OpenApiModule', () => {
 
     @Controller('/users')
     class UsersController {
-      @ApiResponse(200, { description: 'User summary', type: UserSummaryResponse })
+      @ApiResponse({ description: 'User summary', status: 200, type: UserSummaryResponse })
       @Get('/summary')
       getSummary() {
         return { id: '1', name: 'Alice' };
       }
 
-      @ApiResponse(200, { description: 'User without email', type: UserWithoutEmailResponse })
+      @ApiResponse({ description: 'User without email', status: 200, type: UserWithoutEmailResponse })
       @Get('/no-email')
       getWithoutEmail() {
         return { id: '1', name: 'Alice' };
       }
 
-      @ApiResponse(200, { description: 'Partial user', type: PartialUserResponse })
+      @ApiResponse({ description: 'Partial user', status: 200, type: PartialUserResponse })
       @Get('/partial')
       getPartial() {
         return { id: '1' };
@@ -1508,15 +1508,19 @@ describe('OpenApiModule', () => {
         schema: { pattern: '^session_', type: 'string' },
       })
       @ApiBody({
+        content: {
+          'application/json': {
+            schema: {
+              properties: {
+                displayName: { type: 'string' },
+              },
+              required: ['displayName'],
+              type: 'object',
+            },
+          },
+        },
         description: 'Explicitly documented body',
         required: true,
-        schema: {
-          properties: {
-            displayName: { type: 'string' },
-          },
-          required: ['displayName'],
-          type: 'object',
-        },
       })
       updateUser() {
         return { ok: true };
@@ -1763,8 +1767,8 @@ describe('OpenApiModule', () => {
 
     @Controller('/errors')
     class ErrorsController {
-      @ApiResponse(201, { description: 'Created', type: CreatedResponse })
-      @ApiResponse(400, { description: 'Custom bad request' })
+      @ApiResponse({ description: 'Created', status: 201, type: CreatedResponse })
+      @ApiResponse({ description: 'Custom bad request', status: 400 })
       @Post('/custom')
       create() {
         return { id: '1' };
@@ -1847,7 +1851,7 @@ describe('OpenApiModule', () => {
     @Controller('/collision')
     class CollisionController {
       @RequestDto(SharedRequestDto)
-      @ApiResponse(201, { description: 'Created', type: SharedResponseDto })
+      @ApiResponse({ description: 'Created', status: 201, type: SharedResponseDto })
       @Post('/create')
       create() {
         return { id: '1' };
@@ -2573,7 +2577,7 @@ describe('OpenApiModule', () => {
     @Controller('/users')
     class UsersController {
       @ApiOperation({ summary: 'List all users' })
-      @ApiResponse(200, { description: 'Success' })
+      @ApiResponse({ description: 'Success', status: 200 })
       @Get('/')
       list() {
         return [];

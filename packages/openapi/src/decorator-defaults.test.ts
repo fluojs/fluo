@@ -1,5 +1,5 @@
 import { Controller, createHandlerMapping, FromBody, Get, Post, RequestDto } from '@fluojs/http';
-import { ApiBody, ApiOperation, buildOpenApiDocument, getMethodApiMetadata } from '@fluojs/openapi';
+import { ApiBody, ApiOperation, getMethodApiMetadata, OpenApiDocumentBuilder } from '@fluojs/openapi';
 import { IsString } from '@fluojs/validation';
 import { describe, expect, it } from 'vitest';
 
@@ -45,12 +45,12 @@ describe('OpenAPI empty option defaults', () => {
       @ApiOperation()
       @ApiOperation({ summary: 'Earlier', deprecated: true })
       @ApiBody()
-      @ApiBody({ required: true, schema: { type: 'string' } })
+      @ApiBody({ required: true, content: { 'application/json': { schema: { type: 'string' } } } })
       cleared() {}
 
       @ApiOperation({ summary: 'Later', deprecated: true })
       @ApiOperation(undefined)
-      @ApiBody({ required: true, schema: { type: 'string' } })
+      @ApiBody({ required: true, content: { 'application/json': { schema: { type: 'string' } } } })
       @ApiBody(undefined)
       populated() {}
 
@@ -64,7 +64,7 @@ describe('OpenAPI empty option defaults', () => {
     expect(getMethodApiMetadata(Routes, 'undecorated')).toBeUndefined();
     expect(getMethodApiMetadata(Routes, 'populated')).toMatchObject({
       operation: { summary: 'Later', deprecated: true },
-      requestBody: { required: true, schema: { type: 'string' } },
+      requestBody: { required: true, content: { 'application/json': { schema: { type: 'string' } } } },
     });
     if (!snapshot?.operation || !snapshot.requestBody) {
       throw new TypeError('Expected stored empty OpenAPI metadata.');
@@ -101,7 +101,7 @@ describe('OpenAPI empty option defaults', () => {
     }
 
     // When
-    const document = buildOpenApiDocument({
+    const document = OpenApiDocumentBuilder.build({
       descriptors: createHandlerMapping([{ controllerToken: Routes }]).descriptors,
       defaultErrorResponsesPolicy: 'omit',
       title: 'Defaults',

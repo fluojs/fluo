@@ -3,6 +3,10 @@
 
 # Chapter 10. OpenAPI Automation
 
+Use module-owned `OpenApiModule.forRoot(...)` / `forRootAsync(...)`, object-only
+`ApiResponse({ status, ... })`, and `OpenApiDocumentBuilder.build(...)` for offline
+documents; the current migration is in the [OpenAPI 3 Migration Guide](../../docs/architecture/openapi-migration.md).
+
 <!-- fluo:docs-navigation:start -->
 > **Previous edition — foundations and application reference.** Start the current learning path with the [product and pattern three-volume series](../README.md). This chapter is reference material from the previous edition. Older project narratives, version/`project-state` labels, and previous/next chapter directions are not verified cumulative runnable snapshots or a required learning sequence. Check current API and environment requirements in the [package reference](../../docs/reference/package-surface.md) and [toolchain contract](../../docs/reference/toolchain-contract-matrix.md).
 >
@@ -14,7 +18,7 @@ This chapter explains how to connect automatic API documentation to FluoBlog so 
 ## Learning Objectives
 - Understand why generated API documentation should stay close to the code.
 - Register `OpenApiModule` in FluoBlog and expose the generated document.
-- Use documentation Decorators such as `@ApiTag(tag)`, `@ApiOperation()`, and `@ApiResponse(status, options?)`.
+- Use documentation Decorators such as `@ApiTag(tag)`, `@ApiOperation()`, and object-only `@ApiResponse({ status, ...options })`.
 - Learn how DTOs and HTTP metadata become OpenAPI schema information.
 - Understand how protected routes and versioned paths affect the generated documentation.
 - Finish Part 1 with a documented HTTP API foundation.
@@ -133,7 +137,7 @@ export class PostsController {
     summary: 'List published posts',
     description: 'Returns posts that are public and visible to every user.' 
   })
-  @ApiResponse(200, { description: 'The post list was loaded successfully.' })
+  @ApiResponse({ status: 200, description: 'The post list was loaded successfully.' })
   @Get('/')
   findAll() {
     return [];
@@ -143,9 +147,9 @@ export class PostsController {
     summary: 'Create a new post',
     description: 'Allows an authenticated author to create a new blog post.' 
   })
-  @ApiResponse(201, { description: 'The post was created successfully.' })
-  @ApiResponse(400, { description: 'Invalid input data.' })
-  @ApiResponse(401, { description: 'Unauthorized. Login is required.' })
+  @ApiResponse({ status: 201, description: 'The post was created successfully.' })
+  @ApiResponse({ status: 400, description: 'Invalid input data.' })
+  @ApiResponse({ status: 401, description: 'Unauthorized. Login is required.' })
   @ApiBearerAuth() // Indicates that this route requires a JWT token.
   @Post('/')
   @RequestDto(CreatePostDto)
@@ -211,10 +215,11 @@ Using more specific names such as `PostCreateDto` or `UserCreateDto` is a good h
 
 ### Customizing Explicit Schema Surfaces
 
-The default mapping from TypeScript properties to OpenAPI properties is not always enough. When you need example values, read-only fields, or fully explicit schema composition, fluo exposes those controls through `@ApiBody({ schema })` and `@ApiResponse(status, { schema })` schema objects.
+The default mapping from TypeScript properties to OpenAPI properties is not always enough. When you need example values, read-only fields, or fully explicit schema composition, fluo exposes those controls through explicit `ApiBody.content` and object-only `ApiResponse({ status, schema })` schema objects.
 
 ```typescript
-@ApiResponse(200, {
+@ApiResponse({
+  status: 200,
   description: 'Post response',
   schema: {
     properties: {
@@ -242,7 +247,9 @@ findOne() {
 
 These small additions are a big help to developers trying to understand the API. Practical examples reduce trial and error, which ultimately helps the team build faster.
 
-OpenAPI 3.1 represents nullable values with JSON Schema unions, such as `type: ['string', 'null']`. New explicit schemas should prefer that form. For compatibility with older metadata, `OpenApiSchemaObject` still accepts `nullable: true`, but fluo removes the legacy keyword from generated documents and emits an equivalent null union instead. Scalar and array schemas keep their constraints, `$ref` schemas use `anyOf` with `{ type: 'null' }`, and `nullable: false` is simply omitted. The same rule applies to schemas added by `documentTransform`.
+OpenAPI 3.1 represents nullable values with JSON Schema unions, such as `type: ['string', 'null']`. Use that form or `anyOf`; legacy `nullable` is rejected, including when added by `documentTransform`. Use finite numeric `exclusiveMinimum` and `exclusiveMaximum` values rather than boolean forms.
+
+<!-- fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected -->
 
 ### Documenting Security Schemas
 
@@ -351,7 +358,7 @@ Following this pattern gives users a clean and organized documentation experienc
 - Documentation Decorators such as `@ApiTag` and `@ApiOperation` provide human context that code alone cannot convey.
 - FluoBlog now exposes machine-readable `/openapi.json` and, because it opts into `ui: true`, a human-readable `/docs` interactive UI; `documentPath` and `uiPath` can separate multiple document instances.
 - Metadata reuse keeps validation rules and DTO shapes synchronized automatically with the documentation.
-- Accepted legacy `nullable` metadata is emitted as valid OpenAPI 3.1 null unions rather than the OpenAPI 3.0-only keyword.
+- Legacy `nullable` metadata is rejected; use an OpenAPI 3.1 null union or `anyOf` instead.
 - Descriptor methods and transformed Path Item keys are validated so runtime-only `ALL` or unknown fields cannot escape into the OpenAPI 3.1 document.
 - Deterministic documentation output helps the API "contract" stay stable and professional.
 - Part 1 is now complete. You have an HTTP API with routing, validation, serialization, protection, and documentation.

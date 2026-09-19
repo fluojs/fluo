@@ -36,7 +36,6 @@ export interface ApiParameterOptions {
 export interface ApiBodyOptions {
   description?: string;
   required?: boolean;
-  schema?: OpenApiSchemaObject;
   content?: Record<string, { schema: OpenApiSchemaObject }>;
 }
 
@@ -83,7 +82,6 @@ export interface ApiParameterMetadata {
 export interface ApiBodyMetadata {
   description?: string;
   required?: boolean;
-  schema?: OpenApiSchemaObject;
   content?: Record<string, { schema: OpenApiSchemaObject }>;
 }
 
@@ -187,7 +185,6 @@ function cloneApiBodyMetadata(requestBody: ApiBodyMetadata): ApiBodyMetadata {
     ...(requestBody.content !== undefined ? { content: cloneUnknown(requestBody.content) } : {}),
     ...(requestBody.description !== undefined ? { description: requestBody.description } : {}),
     ...(requestBody.required !== undefined ? { required: requestBody.required } : {}),
-    ...(requestBody.schema !== undefined ? { schema: cloneUnknown(requestBody.schema) } : {}),
   };
 }
 
@@ -452,48 +449,13 @@ export function ApiBody(options: ApiBodyOptions = {}): MethodDecoratorFn {
   };
 }
 
-function normalizeApiResponseOptions(
-  statusOrOptions: number | ApiResponseOptions,
-  options?: Omit<ApiResponseOptions, 'status'>,
-): ApiResponseOptions {
-  if (typeof statusOrOptions === 'number') {
-    return {
-      status: statusOrOptions,
-      ...options,
-    };
-  }
-
-  return statusOrOptions;
-}
-
-/**
- *  Declare an expected HTTP response for a controller method.
- *
- * @param status The status.
- * @param options The options.
- * @returns The api response result.
- */
-export function ApiResponse(status: number, options?: Omit<ApiResponseOptions, 'status'>): MethodDecoratorFn;
-/**
- *  Declare an expected HTTP response for a controller method.
- *
- * @param options The options.
- * @returns The api response result.
- */
-export function ApiResponse(options: ApiResponseOptions): MethodDecoratorFn;
 /**
  * Declare an expected HTTP response for a controller method.
  *
- * @param statusOrOptions Either a numeric status code or full response-options object.
- * @param options Optional response metadata when the first argument is numeric status.
+ * @param options Full response metadata including its required HTTP status.
  * @returns A method decorator that appends response metadata for the method.
  */
-export function ApiResponse(
-  statusOrOptions: number | ApiResponseOptions,
-  options?: Omit<ApiResponseOptions, 'status'>,
-): MethodDecoratorFn {
-  const normalized = normalizeApiResponseOptions(statusOrOptions, options);
-
+export function ApiResponse(options: ApiResponseOptions): MethodDecoratorFn {
   return (_value, context) => {
     const bag = context.metadata as MetadataBag;
     let map = bag[openApiMethodResponsesKey] as Map<MetadataPropertyKey, ApiResponseMetadata[]> | undefined;
@@ -508,10 +470,10 @@ export function ApiResponse(
     map.set(context.name, [
       ...existing,
       cloneApiResponseMetadata({
-        description: normalized.description,
-        schema: normalized.schema,
-        status: normalized.status,
-        type: normalized.type,
+        description: options.description,
+        schema: options.schema,
+        status: options.status,
+        type: options.type,
       }),
     ]);
   };

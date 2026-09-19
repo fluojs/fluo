@@ -16,8 +16,9 @@ describe('@fluojs/openapi public API surface', () => {
     expect(openApiPublicApi).toHaveProperty('ApiBody');
     expect(openApiPublicApi).toHaveProperty('ApiBearerAuth');
     expect(openApiPublicApi).toHaveProperty('OpenApiModule');
-    expect(openApiPublicApi).toHaveProperty('OpenApiHandlerRegistry');
-    expect(openApiPublicApi).toHaveProperty('buildOpenApiDocument');
+    expect(openApiPublicApi).toHaveProperty('OpenApiDocumentBuilder');
+    expect(openApiPublicApi).not.toHaveProperty('OpenApiHandlerRegistry');
+    expect(openApiPublicApi).not.toHaveProperty('buildOpenApiDocument');
     expect(openApiPublicApi).toHaveProperty('getControllerTags');
     expect(openApiPublicApi).toHaveProperty('getMethodApiMetadata');
   });
