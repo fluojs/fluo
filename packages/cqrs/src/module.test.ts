@@ -1055,12 +1055,8 @@ describe('@fluojs/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [
-        CqrsModule.forRoot({
-          sagas: [AccountActivationSaga],
-        }),
-      ],
-      providers: [AccountActivationSaga],
+      imports: [CqrsModule.forRoot()],
+      providers: [AccountActivationSaga, AccountActivationSaga],
     });
 
     const app = await FluoFactory.create(AppModule);
