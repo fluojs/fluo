@@ -1162,11 +1162,15 @@ export class GrpcMicroserviceTransport implements MicroserviceTransport {
   }
 
   private async bindServer(server: GrpcServerLike, grpc: GrpcJsLike): Promise<void> {
-    const defaultServerCredentials = grpc.ServerCredentials?.createInsecure?.()
-      ?? grpc.credentials.createInsecure();
     const credentials = this.options.serverCredentials
       ?? this.options.credentials
-      ?? defaultServerCredentials;
+      ?? grpc.ServerCredentials?.createInsecure?.();
+
+    if (credentials === undefined || credentials === null) {
+      throw new Error(
+        'GrpcMicroserviceTransport requires serverCredentials or grpc.ServerCredentials.createInsecure() to bind the server.',
+      );
+    }
 
     await new Promise<void>((resolve, reject) => {
       server.bindAsync(this.options.url, credentials, (error) => {

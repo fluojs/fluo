@@ -1073,7 +1073,7 @@ describe('scaffoldBootstrapApp', () => {
       nats: '^2.29.3',
     });
     expect(readme).toContain('Transport: `nats` is the generated runnable starter contract for this project');
-    expect(readme).toContain('caller-owned `nats` client plus `JSONCodec()`');
+    expect(readme).toContain('generated wrapper creates, owns, and lifecycle-manages that client');
     expect(envFile).toContain('NATS_SERVERS=nats://127.0.0.1:4222');
     expect(envFile).toContain('NATS_MESSAGE_SUBJECT=fluo.microservices.messages');
     expect(appFile).toContain("import { JSONCodec, connect, type NatsConnection } from 'nats';");

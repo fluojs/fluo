@@ -14,6 +14,7 @@ interface InMemoryStreamEntry {
 }
 
 class InMemoryStreamBus implements RedisStreamClientLike {
+  onEntryDeleted: ((stream: string) => void) | undefined;
   private readonly groupStartIndices = new Map<string, number>();
   private readonly groupToConsumerPositions = new Map<string, Map<string, number>>();
   private readonly streamCounters = new Map<string, number>();
@@ -112,6 +113,7 @@ class InMemoryStreamBus implements RedisStreamClientLike {
         ...entries[index],
         deleted: true,
       };
+      this.onEntryDeleted?.(stream);
     }
   }
 
@@ -492,10 +494,28 @@ class PendingEntriesListBus implements RedisStreamClientLike {
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
+function createSignal() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
   });
+
+  return {
+    resolve,
+    async wait(): Promise<void> {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          promise,
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(() => reject(new Error('Expected test signal was not received.')), 2_000);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timeout);
+      }
+    },
+  };
 }
 
 function createTransport(
@@ -617,6 +637,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
   it('supports request/reply send() and event dispatch', async () => {
     const bus = new InMemoryStreamBus();
     const received: string[] = [];
+    const eventDelivered = createSignal();
     const { published, transport } = createTransport(bus, {
       requestTimeoutMs: 1_000,
     });
@@ -624,6 +645,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await transport.listen(async (packet) => {
       if (packet.kind === 'event') {
         received.push((packet.payload as { message: string }).message);
+        eventDelivered.resolve();
         return undefined;
       }
 
@@ -637,7 +659,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
 
     await transport.emit('audit.login', { message: 'ok' });
     await expect(transport.send('math.sum', { a: 1, b: 2 })).resolves.toBe(3);
-    await sleep(50);
+    await eventDelivered.wait();
 
     expect(received).toEqual(['ok']);
 
@@ -657,6 +679,15 @@ describe('RedisStreamsMicroserviceTransport', () => {
 
   it('keeps live request and event streams untrimmed by default while cleaning up acked request/reply entries', async () => {
     const bus = new InMemoryStreamBus();
+    const requestDeleted = createSignal();
+    const responseDeleted = createSignal();
+    bus.onEntryDeleted = (stream) => {
+      if (stream === 'fluo:streams:messages') {
+        requestDeleted.resolve();
+      } else if (stream.startsWith('fluo:streams:responses:')) {
+        responseDeleted.resolve();
+      }
+    };
     const { published, transport } = createTransport(bus, {
       requestTimeoutMs: 1_000,
       responseRetentionMaxLen: 1,
@@ -675,7 +706,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await transport.emit('audit.event', { value: 3 });
 
     await expect(transport.send('audit.message', { value: 1 })).resolves.toEqual({ value: 1 });
-    await sleep(50);
+    await Promise.all([requestDeleted.wait(), responseDeleted.wait()]);
 
     expect(bus.getStreamEntries('fluo:streams:events')).toHaveLength(3);
     expect(bus.getStreamEntries('fluo:streams:messages')).toHaveLength(0);
@@ -723,7 +754,6 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await transport.emit('audit.event', { value: 3 });
 
     await expect(transport.send('audit.message', { value: 1 })).resolves.toEqual({ value: 1 });
-    await sleep(50);
 
     const eventFrames = published.filter((entry) => entry.stream === 'fluo:streams:events');
     const requestFrame = published.find((entry) => entry.stream === 'fluo:streams:messages');
@@ -762,6 +792,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
   });
 
   it('rejects pending request on timeout', async () => {
+    const releaseHandler = createSignal();
     const bus = new InMemoryStreamBus();
     const { transport } = createTransport(bus, {
       requestTimeoutMs: 30,
@@ -769,7 +800,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'message') {
-        await sleep(120);
+        await releaseHandler.wait();
       }
 
       return undefined;
@@ -779,16 +810,16 @@ describe('RedisStreamsMicroserviceTransport', () => {
       'Redis Streams request timed out after 30ms waiting for pattern "slow.request".',
     );
 
+    releaseHandler.resolve();
     await transport.close();
   });
 
   it('acks request entries only after the handler finishes', async () => {
     const bus = new InMemoryStreamBus();
     const acknowledgements: Array<{ group: string; id: string; stream: string }> = [];
-    let releaseHandler: (() => void) | undefined;
-    const handlerFinished = new Promise<void>((resolve) => {
-      releaseHandler = resolve;
-    });
+    const handlerStarted = createSignal();
+    const releaseHandler = createSignal();
+    const requestAcknowledged = createSignal();
 
     const transport = new RedisStreamsMicroserviceTransport({
       pollBlockMs: 1,
@@ -802,6 +833,9 @@ describe('RedisStreamsMicroserviceTransport', () => {
         xack: async (stream, group, id) => {
           acknowledgements.push({ group, id, stream });
           await bus.xack(stream, group, id);
+          if (stream === 'fluo:streams:messages') {
+            requestAcknowledged.resolve();
+          }
         },
         xgroupCreate: async (stream, group, startId, mkstream) => {
           await bus.xgroupCreate(stream, group, startId, mkstream);
@@ -832,7 +866,8 @@ describe('RedisStreamsMicroserviceTransport', () => {
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'message') {
-        await handlerFinished;
+        handlerStarted.resolve();
+        await releaseHandler.wait();
         return 'ok';
       }
 
@@ -840,13 +875,13 @@ describe('RedisStreamsMicroserviceTransport', () => {
     });
 
     const pending = transport.send('delayed.ack', { value: 1 });
-    await sleep(20);
+    await handlerStarted.wait();
     expect(acknowledgements).toEqual([]);
 
-    releaseHandler?.();
+    releaseHandler.resolve();
 
     await expect(pending).resolves.toBe('ok');
-    await sleep(20);
+    await requestAcknowledged.wait();
 
     expect(acknowledgements.some((entry) => entry.stream === 'fluo:streams:messages')).toBe(true);
 
@@ -854,6 +889,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
   });
 
   it('keeps failed events pending by skipping ack when the handler rejects', async () => {
+    const failureLogged = createSignal();
     const bus = new InMemoryStreamBus();
     const acknowledgements: string[] = [];
     const transport = new RedisStreamsMicroserviceTransport({
@@ -895,7 +931,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
         },
       },
     });
-    const logger = { error: vi.fn() };
+    const logger = { error: vi.fn(() => failureLogged.resolve()) };
 
     transport.setLogger(logger);
 
@@ -908,7 +944,8 @@ describe('RedisStreamsMicroserviceTransport', () => {
     });
 
     await transport.emit('audit.failed', { value: 1 });
-    await sleep(20);
+    await failureLogged.wait();
+    await transport.close();
 
     expect(acknowledgements.some((entry) => entry.startsWith('fluo:streams:events:'))).toBe(false);
     expect(logger.error).toHaveBeenCalledWith(
@@ -916,8 +953,6 @@ describe('RedisStreamsMicroserviceTransport', () => {
       expect.objectContaining({ message: 'event failed' }),
       'RedisStreamsMicroserviceTransport',
     );
-
-    await transport.close();
   });
 
   it('deletes the per-consumer response stream on close()', async () => {
@@ -935,7 +970,6 @@ describe('RedisStreamsMicroserviceTransport', () => {
     });
 
     await expect(transport.send('cleanup.response.stream', { ok: true })).resolves.toEqual({ ok: true });
-    await sleep(20);
 
     const responseStream = bus.getStreamNames().find((name) => name.startsWith('fluo:streams:responses:'));
     expect(responseStream).toBeTypeOf('string');
@@ -1197,6 +1231,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
       writerClient: createFallbackClient(bus, destroyedGroups),
     });
     const receivedEvents: string[] = [];
+    const eventDelivered = createSignal();
 
     await leaseCapable.listen(async (packet) => {
       if (packet.kind === 'event') {
@@ -1214,6 +1249,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
     await fallback.listen(async (packet) => {
       if (packet.kind === 'event') {
         receivedEvents.push(String((packet.payload as { from: string }).from));
+        eventDelivered.resolve();
         return undefined;
       }
 
@@ -1228,7 +1264,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
 
     await expect(fallback.send('mixed.echo', { ok: true })).resolves.toEqual({ ok: true });
     await fallback.emit('mixed.event', { from: 'fallback' });
-    await sleep(20);
+    await eventDelivered.wait();
 
     expect(destroyedGroups).not.toContain(`${namespace}:messages::${consumerGroup}`);
     expect(receivedEvents).toContain('fallback');
@@ -1274,6 +1310,8 @@ describe('RedisStreamsMicroserviceTransport', () => {
   });
 
   it('rejects send() with AbortSignal after publish', async () => {
+    const handlerStarted = createSignal();
+    const releaseHandler = createSignal();
     const bus = new InMemoryStreamBus();
     const { transport } = createTransport(bus, {
       requestTimeoutMs: 5_000,
@@ -1281,7 +1319,8 @@ describe('RedisStreamsMicroserviceTransport', () => {
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'message') {
-        await sleep(200);
+        handlerStarted.resolve();
+        await releaseHandler.wait();
       }
 
       return undefined;
@@ -1289,16 +1328,20 @@ describe('RedisStreamsMicroserviceTransport', () => {
 
     const controller = new AbortController();
     const pending = transport.send('aborted.inflight', {}, controller.signal);
+    const aborted = expect(pending).rejects.toThrow('Redis Streams request aborted.');
 
-    await sleep(20);
+    await handlerStarted.wait();
     controller.abort();
 
-    await expect(pending).rejects.toThrow('Redis Streams request aborted.');
+    await aborted;
+    releaseHandler.resolve();
 
     await transport.close();
   });
 
   it('keeps concurrent request/reply flows correlated by requestId', async () => {
+    const firstStarted = createSignal();
+    const releaseFirst = createSignal();
     const bus = new InMemoryStreamBus();
     const { transport } = createTransport(bus, {
       requestTimeoutMs: 2_000,
@@ -1309,23 +1352,27 @@ describe('RedisStreamsMicroserviceTransport', () => {
         return undefined;
       }
 
-      const input = packet.payload as { delayMs: number; value: number };
-      await sleep(input.delayMs);
+      const input = packet.payload as { value: number };
+      if (input.value === 1) {
+        firstStarted.resolve();
+        await releaseFirst.wait();
+      }
       return input.value * 2;
     });
 
-    const [first, second] = await Promise.all([
-      transport.send('calc.double', { value: 1, delayMs: 100 }),
-      transport.send('calc.double', { value: 2, delayMs: 10 }),
-    ]);
+    const first = transport.send('calc.double', { value: 1 });
+    await firstStarted.wait();
+    const second = transport.send('calc.double', { value: 2 });
+    releaseFirst.resolve();
 
-    expect(first).toBe(2);
-    expect(second).toBe(4);
+    await expect(Promise.all([first, second])).resolves.toEqual([2, 4]);
 
     await transport.close();
   });
 
   it('rejects pending requests when close() runs before a reply', async () => {
+    const handlerStarted = createSignal();
+    const releaseHandler = createSignal();
     const bus = new InMemoryStreamBus();
     const { transport } = createTransport(bus, {
       requestTimeoutMs: 5_000,
@@ -1333,17 +1380,20 @@ describe('RedisStreamsMicroserviceTransport', () => {
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'message') {
-        await sleep(300);
+        handlerStarted.resolve();
+        await releaseHandler.wait();
       }
 
       return undefined;
     });
 
     const pending = transport.send('long.running', { value: 1 });
-    await sleep(20);
-    await transport.close();
-
-    await expect(pending).rejects.toThrow(/Redis Streams microservice transport closed before/);
+    const rejected = expect(pending).rejects.toThrow(/Redis Streams microservice transport closed before/);
+    await handlerStarted.wait();
+    const closing = transport.close();
+    releaseHandler.resolve();
+    await closing;
+    await rejected;
   });
 
   it('rejects emit() after close() starts', async () => {
@@ -1500,6 +1550,8 @@ describe('RedisStreamsMicroserviceTransport', () => {
   });
 
   it('still rejects pending requests when group destroy fails during close', async () => {
+    const handlerStarted = createSignal();
+    const releaseHandler = createSignal();
     const bus = new InMemoryStreamBus();
     const closeError = new Error('group destroy failed');
     const transport = new RedisStreamsMicroserviceTransport({
@@ -1544,25 +1596,30 @@ describe('RedisStreamsMicroserviceTransport', () => {
 
     await transport.listen(async (packet) => {
       if (packet.kind === 'message') {
-        await sleep(300);
+        handlerStarted.resolve();
+        await releaseHandler.wait();
       }
 
       return undefined;
     });
 
     const pending = transport.send('long.running', { value: 1 });
-    await sleep(20);
+    const rejected = expect(pending).rejects.toThrow(/Redis Streams microservice transport closed before/);
+    await handlerStarted.wait();
 
-    await expect(transport.close()).rejects.toBe(closeError);
-    await expect(pending).rejects.toThrow(/Redis Streams microservice transport closed before/);
+    const closing = transport.close();
+    releaseHandler.resolve();
+    await expect(closing).rejects.toBe(closeError);
+    await rejected;
   });
 
   it('captures async callback rejections without leaking them to emit()', async () => {
+    const failureLogged = createSignal();
     const bus = new InMemoryStreamBus();
     const { transport } = createTransport(bus, {
       requestTimeoutMs: 1_000,
     });
-    const logger = { error: vi.fn() };
+    const logger = { error: vi.fn(() => failureLogged.resolve()) };
 
     transport.setLogger(logger);
     await transport.listen(async () => {
@@ -1570,7 +1627,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
     });
 
     await expect(transport.emit('audit.login', { message: 'ok' })).resolves.toBeUndefined();
-    await sleep(30);
+    await failureLogged.wait();
 
     expect(logger.error).toHaveBeenCalledWith(
       'Event handler failed.',
@@ -1582,6 +1639,7 @@ describe('RedisStreamsMicroserviceTransport', () => {
   });
 
   it('does not fall back to console.error when no logger is configured', async () => {
+    const handlerStarted = createSignal();
     const bus = new InMemoryStreamBus();
     const { transport } = createTransport(bus, {
       requestTimeoutMs: 1_000,
@@ -1589,15 +1647,16 @@ describe('RedisStreamsMicroserviceTransport', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     await transport.listen(async () => {
+      handlerStarted.resolve();
       throw new Error('redis streams event handler failed without logger');
     });
 
     await expect(transport.emit('audit.login', { message: 'ok' })).resolves.toBeUndefined();
-    await sleep(30);
+    await handlerStarted.wait();
+    await transport.close();
 
     expect(consoleError).not.toHaveBeenCalled();
-
-    await transport.close();
+    consoleError.mockRestore();
   });
 
   it('reclaims request entries abandoned by a crashed consumer of the shared request group by default', async () => {

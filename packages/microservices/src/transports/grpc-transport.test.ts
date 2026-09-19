@@ -67,6 +67,7 @@ type BidiStreamImplementation = (
 type ServiceImplementation = UnaryImplementation | ServerStreamImplementation | ClientStreamImplementation | BidiStreamImplementation;
 
 class FakeGrpcServer {
+  bindCount = 0;
   forceShutdownCount = 0;
   readonly services = new Map<string, Record<string, ServiceImplementation>>();
   bindError: Error | undefined;
@@ -91,6 +92,8 @@ class FakeGrpcServer {
   }
 
   bindAsync(address: string, credentials: unknown, callback: (error: Error | null, port: number) => void): void {
+    this.bindCount += 1;
+
     if (!isFakeServerCredentials(credentials)) {
       callback(new Error('creds must be a ServerCredentials object'), 0);
       return;
@@ -1963,6 +1966,21 @@ describe('GrpcMicroserviceTransport', () => {
     await transport.listen(async () => ({ sum: 42 }));
     const result = await transport.send('MathService.Sum', { a: 1, b: 2 });
     expect(result).toEqual({ sum: 42 });
+    await transport.close();
+  });
+
+  it('fails before bind when ServerCredentials is unavailable instead of using ChannelCredentials', async () => {
+    const { runtime, transport } = createGrpcTransport();
+    const channelCredentialsFactory = vi.spyOn(runtime.credentials, 'createInsecure');
+    Object.defineProperty(runtime, 'ServerCredentials', { value: undefined });
+
+    await expect(transport.listen(async () => undefined)).rejects.toThrow(
+      'serverCredentials or grpc.ServerCredentials.createInsecure()',
+    );
+
+    expect(channelCredentialsFactory).not.toHaveBeenCalled();
+    expect(runtime.createdServers[0]?.bindCount).toBe(0);
+
     await transport.close();
   });
 

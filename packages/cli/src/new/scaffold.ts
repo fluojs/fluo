@@ -581,9 +581,9 @@ function describeMicroserviceStarter(options: Pick<BootstrapOptions, 'transport'
           '- NATS broker: configure `NATS_SERVERS` in `.env` before you start the service',
           '- Subject contract: keep `NATS_MESSAGE_SUBJECT` and `NATS_EVENT_SUBJECT` aligned with the peer services that share the broker namespace',
         ],
-        entrypointNote: '`src/app.ts` keeps the caller-owned `nats` client plus `JSONCodec()` contract explicit, but opens the client lazily from the generated transport wrapper when the Fluo lifecycle starts broker work',
+        entrypointNote: '`src/app.ts` keeps the `nats` client plus `JSONCodec()` contract explicit; the generated wrapper creates, owns, and lifecycle-manages that client before supplying it to the concrete transport adapter',
         generatedProjectVerification: 'The generated-project verification path typechecks, builds, and tests the scaffold while asserting the NATS starter keeps the `nats` dependency, `.env` contract, and transport entrypoint wiring intact.',
-        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds the `nats` client because the NATS starter depends on an external broker plus a caller-owned client/bootstrap pair',
+        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds the `nats` client because the NATS starter depends on an external broker plus a wrapper-owned client/bootstrap pair',
         pattern: 'math.sum',
         readmeTransportLabel: 'nats',
         runtimeDependencyNote: 'runtime dependency set: `@fluojs/microservices` plus `nats` for the broker client and codec that `NatsMicroserviceTransport` expects the caller to supply',
@@ -596,9 +596,9 @@ function describeMicroserviceStarter(options: Pick<BootstrapOptions, 'transport'
           '- Kafka brokers: configure `KAFKA_BROKERS` in `.env` before you start the service',
           '- Topic/group contract: `KAFKA_CLIENT_ID`, `KAFKA_CONSUMER_GROUP`, `KAFKA_MESSAGE_TOPIC`, `KAFKA_EVENT_TOPIC`, and `KAFKA_RESPONSE_TOPIC` stay explicit so the starter never hides its shared broker topology',
         ],
-        entrypointNote: '`src/app.ts` keeps the canonical `kafkajs` producer/consumer collaborator contract explicit, but creates them lazily from the generated transport wrapper when the Fluo lifecycle starts broker work',
+        entrypointNote: '`src/app.ts` keeps the canonical `kafkajs` producer/consumer collaborator contract explicit; the generated wrapper creates, owns, and lifecycle-manages those clients before supplying them to the concrete transport adapter',
         generatedProjectVerification: 'The generated-project verification path typechecks, builds, and tests the scaffold while asserting the Kafka starter keeps the `kafkajs` dependency, `.env` contract, and transport entrypoint wiring intact.',
-        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds `kafkajs` because the Kafka starter depends on an external broker plus caller-owned producer/consumer collaborators',
+        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds `kafkajs` because the Kafka starter depends on an external broker plus wrapper-owned producer/consumer collaborators',
         pattern: 'math.sum',
         readmeTransportLabel: 'kafka',
         runtimeDependencyNote: 'runtime dependency set: `@fluojs/microservices` plus `kafkajs` for the generated producer/consumer/bootstrap contract used by `KafkaMicroserviceTransport`',
@@ -611,9 +611,9 @@ function describeMicroserviceStarter(options: Pick<BootstrapOptions, 'transport'
           '- RabbitMQ broker: configure `RABBITMQ_URL` in `.env` before you start the service',
           '- Queue contract: `RABBITMQ_MESSAGE_QUEUE`, `RABBITMQ_EVENT_QUEUE`, and `RABBITMQ_RESPONSE_QUEUE` stay explicit so the starter advertises exactly which queues and reply path it owns',
         ],
-        entrypointNote: '`src/app.ts` keeps the canonical `amqplib` connection/channel pair and caller-owned publisher/consumer collaborator contract explicit, but opens them lazily from the generated transport wrapper when the Fluo lifecycle starts broker work',
+        entrypointNote: '`src/app.ts` keeps the canonical `amqplib` connection/channel pair and publisher/consumer collaborator contract explicit; the generated wrapper creates, owns, and lifecycle-manages them before supplying collaborators to the concrete transport adapter',
         generatedProjectVerification: 'The generated-project verification path typechecks, builds, and tests the scaffold while asserting the RabbitMQ starter keeps the `amqplib` dependency, `.env` contract, and transport entrypoint wiring intact.',
-        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds `amqplib` because the RabbitMQ starter depends on an external broker plus caller-owned publisher/consumer collaborators',
+        packageManagerNote: 'runtime choice stays explicit and independent from the package manager you picked; the generated manifest adds `amqplib` because the RabbitMQ starter depends on an external broker plus wrapper-owned publisher/consumer collaborators',
         pattern: 'math.sum',
         readmeTransportLabel: 'rabbitmq',
         runtimeDependencyNote: 'runtime dependency set: `@fluojs/microservices`, `amqplib`, and `@types/amqplib` for the generated queue client/bootstrap contract used by `RabbitMqMicroserviceTransport`',
@@ -1301,30 +1301,38 @@ class LazyNatsTransport implements MicroserviceTransport {
   }
 
   async close() {
-    const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
-    let primaryError: unknown;
+    let transport = this.transport;
+    const errors: unknown[] = [];
+
+    if (this.initializing) {
+      try {
+        transport = await this.initializing;
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+
     try {
       await transport?.close();
     } catch (error) {
-      primaryError = error;
+      errors.push(error);
     }
 
-    let connectionError: unknown;
     try {
       await this.connection?.close();
     } catch (error) {
-      connectionError = error;
+      errors.push(error);
     }
 
     this.initializing = undefined;
     this.transport = undefined;
     this.connection = undefined;
 
-    if (primaryError) {
-      throw primaryError;
+    if (errors.length === 1) {
+      throw errors[0];
     }
-    if (connectionError) {
-      throw connectionError;
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Multiple NATS transport close failures.');
     }
   }
 
@@ -1453,26 +1461,33 @@ class LazyKafkaTransport implements MicroserviceTransport {
   }
 
   async close() {
-    const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
-    let primaryError: unknown;
+    let transport = this.transport;
+    const errors: unknown[] = [];
+
+    if (this.initializing) {
+      try {
+        transport = await this.initializing;
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+
     try {
       await transport?.close();
     } catch (error) {
-      primaryError = error;
+      errors.push(error);
     }
 
-    let consumerError: unknown;
     try {
       await this.consumer?.disconnect();
     } catch (error) {
-      consumerError = error;
+      errors.push(error);
     }
 
-    let producerError: unknown;
     try {
       await this.producer?.disconnect();
     } catch (error) {
-      producerError = error;
+      errors.push(error);
     }
 
     this.initializing = undefined;
@@ -1480,16 +1495,11 @@ class LazyKafkaTransport implements MicroserviceTransport {
     this.producer = undefined;
     this.transport = undefined;
 
-    if (primaryError) {
-      throw primaryError;
+    if (errors.length === 1) {
+      throw errors[0];
     }
-
-    const cleanupErrors = [consumerError, producerError].filter(Boolean);
-    if (cleanupErrors.length === 1) {
-      throw cleanupErrors[0];
-    }
-    if (cleanupErrors.length > 1) {
-      throw new AggregateError(cleanupErrors, 'Multiple Kafka client disconnect failures during transport close.');
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Multiple Kafka transport close failures.');
     }
   }
 
@@ -1536,13 +1546,23 @@ class LazyKafkaTransport implements MicroserviceTransport {
       await producer.connect();
       await consumer.connect();
     } catch (error) {
-      await Promise.allSettled([
-        consumer.disconnect(),
-        producer.disconnect(),
-      ]);
+      const errors = [error];
+      try {
+        await consumer.disconnect();
+      } catch (cleanupError) {
+        errors.push(cleanupError);
+      }
+      try {
+        await producer.disconnect();
+      } catch (cleanupError) {
+        errors.push(cleanupError);
+      }
       this.consumer = undefined;
       this.producer = undefined;
-      throw error;
+      if (errors.length === 1) {
+        throw errors[0];
+      }
+      throw new AggregateError(errors, 'Kafka transport initialization and cleanup failures.');
     }
 
     const handlers = new Map<string, (message: string) => Promise<void> | void>();
@@ -1652,26 +1672,33 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
   }
 
   async close() {
-    const transport = this.initializing ? await this.initializing.catch(() => undefined) : this.transport;
-    let primaryError: unknown;
+    let transport = this.transport;
+    const errors: unknown[] = [];
+
+    if (this.initializing) {
+      try {
+        transport = await this.initializing;
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+
     try {
       await transport?.close();
     } catch (error) {
-      primaryError = error;
+      errors.push(error);
     }
 
-    let channelError: unknown;
     try {
       await this.channel?.close();
     } catch (error) {
-      channelError = error;
+      errors.push(error);
     }
 
-    let connectionError: unknown;
     try {
       await this.connection?.close();
     } catch (error) {
-      connectionError = error;
+      errors.push(error);
     }
 
     this.initializing = undefined;
@@ -1679,16 +1706,11 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
     this.connection = undefined;
     this.transport = undefined;
 
-    if (primaryError) {
-      throw primaryError;
+    if (errors.length === 1) {
+      throw errors[0];
     }
-
-    const cleanupErrors = [channelError, connectionError].filter(Boolean);
-    if (cleanupErrors.length === 1) {
-      throw cleanupErrors[0];
-    }
-    if (cleanupErrors.length > 1) {
-      throw new AggregateError(cleanupErrors, 'Multiple RabbitMQ close failures during transport close.');
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Multiple RabbitMQ transport close failures.');
     }
   }
 
@@ -1728,11 +1750,17 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
     try {
       channel = await connection.createConfirmChannel();
     } catch (error) {
+      const errors = [error];
       try {
         await connection.close();
-      } catch {}
+      } catch (cleanupError) {
+        errors.push(cleanupError);
+      }
       this.connection = undefined;
-      throw error;
+      if (errors.length === 1) {
+        throw errors[0];
+      }
+      throw new AggregateError(errors, 'RabbitMQ transport initialization and cleanup failures.');
     }
     const consumerTags = new Map<string, string>();
 
@@ -1746,8 +1774,8 @@ class LazyRabbitMqTransport implements MicroserviceTransport {
             return;
           }
 
-          consumerTags.delete(queue);
           await channel.cancel(consumerTag);
+          consumerTags.delete(queue);
         },
         async consume(queue: string, handler: (message: string) => Promise<void> | void) {
           await channel.assertQueue(queue, { durable: true });

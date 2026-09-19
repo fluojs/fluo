@@ -93,6 +93,11 @@ function installBrokerStub(projectDirectory: string, transport: BrokerTransport)
       'nats',
       `export function JSONCodec() { return { decode(value) { return value; }, encode(value) { return value; } }; }
 export async function connect() {
+  globalThis.__natsConnectEntered?.resolve();
+  await globalThis.__natsConnectGate;
+  if (globalThis.__natsConnectFails) {
+    throw globalThis.__natsConnectError;
+  }
   return {
     async close() {
       globalThis.__events.push('nats.connection.close');
@@ -229,7 +234,7 @@ for (const event of ${JSON.stringify(expectedEvents)}) {
     );
   });
 
-  it('closes the NATS connection and rethrows the delegated close error when cleanup also fails', async () => {
+  it('aggregates NATS delegated and connection close failures', async () => {
     const projectDirectory = await generateBrokerStarter('nats');
 
     runAssertionScript(
@@ -242,8 +247,10 @@ globalThis.__cleanupFails = true;
 await transport.close().then(
   () => { throw new Error('Expected delegated close failure.'); },
   (error) => {
-    if (error !== globalThis.__delegatedCloseError || error.message !== 'delegated close failed') {
-      throw new Error('NATS starter did not preserve the delegated close error.');
+    const errors = Array.isArray(error.errors) ? error.errors : [];
+    const messages = errors.map((cause) => cause?.message || String(cause));
+    if (!messages.includes('delegated close failed') || !messages.includes('nats cleanup failed')) {
+      throw new Error('NATS starter did not aggregate delegated and connection close errors: ' + messages.join(', '));
     }
   },
 );
@@ -254,7 +261,44 @@ if (!globalThis.__events.includes('nats.connection.close')) {
     );
   });
 
-  it('disconnects both Kafka clients and rethrows the original error when one connect fails', async () => {
+  it('preserves a concurrent NATS initialization failure when close waits for it', async () => {
+    const projectDirectory = await generateBrokerStarter('nats');
+
+    runAssertionScript(
+      projectDirectory,
+      `let rejectConnect;
+globalThis.__natsConnectEntered = {};
+globalThis.__natsConnectEntered.promise = new Promise((resolve) => { globalThis.__natsConnectEntered.resolve = resolve; });
+globalThis.__natsConnectGate = new Promise((_resolve, reject) => { rejectConnect = reject; });
+globalThis.__natsConnectFails = true;
+globalThis.__natsConnectError = new Error('nats initialization failed');
+await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+const starting = transport.listen(() => undefined);
+await globalThis.__natsConnectEntered.promise;
+const closing = transport.close();
+rejectConnect(globalThis.__natsConnectError);
+await starting.then(
+  () => { throw new Error('Expected NATS initialization to fail.'); },
+  (error) => {
+    if (error !== globalThis.__natsConnectError) {
+      throw new Error('NATS listen() did not preserve its initialization error.');
+    }
+  },
+);
+await closing.then(
+  () => { throw new Error('Expected close() to preserve the concurrent initialization failure.'); },
+  (error) => {
+    if (error !== globalThis.__natsConnectError) {
+      throw new Error('NATS close() suppressed the concurrent initialization error.');
+    }
+  },
+);
+`,
+    );
+  });
+
+  it('aggregates Kafka connection and cleanup failures during initialization', async () => {
     const projectDirectory = await generateBrokerStarter('kafka');
 
     runAssertionScript(
@@ -266,8 +310,12 @@ const transport = globalThis.__fluoGeneratedTransport;
 await transport.listen(() => undefined).then(
   () => { throw new Error('Expected consumer connect failure.'); },
   (error) => {
-    if (error !== globalThis.__startupError || error.message !== 'consumer connect failed') {
-      throw new Error('Kafka starter did not preserve the original connection error.');
+    const errors = Array.isArray(error.errors) ? error.errors : [];
+    const messages = errors.map((cause) => cause?.message || String(cause));
+    for (const message of ['consumer connect failed', 'consumer cleanup failed', 'producer cleanup failed']) {
+      if (!messages.includes(message)) {
+        throw new Error('Kafka starter omitted "' + message + '" from initialization errors: ' + messages.join(', '));
+      }
     }
   },
 );
@@ -278,7 +326,7 @@ for (const event of ['kafka.consumer.disconnect', 'kafka.producer.disconnect']) 
     );
   });
 
-  it('closes the RabbitMQ connection and rethrows the original channel creation error', async () => {
+  it('aggregates RabbitMQ channel creation and connection cleanup failures', async () => {
     const projectDirectory = await generateBrokerStarter('rabbitmq');
 
     runAssertionScript(
@@ -290,14 +338,45 @@ const transport = globalThis.__fluoGeneratedTransport;
 await transport.listen(() => undefined).then(
   () => { throw new Error('Expected channel creation failure.'); },
   (error) => {
-    if (error !== globalThis.__startupError || error.message !== 'channel creation failed') {
-      throw new Error('RabbitMQ starter did not preserve the original channel creation error.');
+    const errors = Array.isArray(error.errors) ? error.errors : [];
+    const messages = errors.map((cause) => cause?.message || String(cause));
+    for (const message of ['channel creation failed', 'connection cleanup failed']) {
+      if (!messages.includes(message)) {
+        throw new Error('RabbitMQ starter omitted "' + message + '" from initialization errors: ' + messages.join(', '));
+      }
     }
   },
 );
 if (!globalThis.__events.includes('rabbitmq.connection.close')) {
   throw new Error('RabbitMQ connection was not closed.');
 }
+`,
+    );
+  });
+
+  it.each([
+    ['kafka'],
+    ['rabbitmq'],
+  ] as const)('retries %s initialization after a failed owned-resource cleanup', async (transportName) => {
+    const projectDirectory = await generateBrokerStarter(transportName);
+    const failureSetup = transportName === 'kafka'
+      ? 'globalThis.__consumerConnectFails = true; globalThis.__cleanupFails = true;'
+      : 'globalThis.__channelCreateFails = true; globalThis.__cleanupFails = true;';
+
+    runAssertionScript(
+      projectDirectory,
+      `${failureSetup}
+await import(__MODULE_URL__);
+const transport = globalThis.__fluoGeneratedTransport;
+await transport.listen(() => undefined).then(
+  () => { throw new Error('Expected first initialization to fail.'); },
+  () => undefined,
+);
+globalThis.__consumerConnectFails = false;
+globalThis.__channelCreateFails = false;
+globalThis.__cleanupFails = false;
+await transport.listen(() => undefined);
+await transport.close();
 `,
     );
   });

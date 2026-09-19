@@ -24,6 +24,30 @@ import type {
 
 const EXTRA_MICROSERVICE_EXPORT = Symbol('extra-microservice-export');
 
+function createSignal() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+
+  return {
+    resolve,
+    async wait(): Promise<void> {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          promise,
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(() => reject(new Error('Expected test signal was not received.')), 2_000);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timeout);
+      }
+    },
+  };
+}
+
 async function* streamFrom(values: readonly unknown[]): AsyncIterable<unknown> {
   for (const value of values) {
     yield value;
@@ -755,13 +779,16 @@ describe('@fluojs/microservices', () => {
 
   it('deduplicates concurrent listen() calls against the underlying transport subscription', async () => {
     let listenCalls = 0;
+    const listenStarted = createSignal();
+    const releaseListen = createSignal();
 
     const transport: MicroserviceTransport = {
       async close() {},
       async emit() {},
       async listen(_handler) {
         listenCalls += 1;
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        listenStarted.resolve();
+        await releaseListen.wait();
       },
       async send() {
         return undefined;
@@ -781,7 +808,11 @@ describe('@fluojs/microservices', () => {
 
     const microservice = await FluoFactory.createMicroservice(AppModule);
 
-    await Promise.all([microservice.listen(), microservice.listen()]);
+    const firstListen = microservice.listen();
+    await listenStarted.wait();
+    const secondListen = microservice.listen();
+    releaseListen.resolve();
+    await Promise.all([firstListen, secondListen]);
 
     expect(listenCalls).toBe(1);
 

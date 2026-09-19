@@ -33,6 +33,30 @@ class InMemoryQueueBus {
   }
 }
 
+function createSignal() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+
+  return {
+    resolve,
+    async wait(): Promise<void> {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          promise,
+          new Promise<never>((_resolve, reject) => {
+            timeout = setTimeout(() => reject(new Error('Expected test signal was not received.')), 2_000);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timeout);
+      }
+    },
+  };
+}
+
 describe('RabbitMqMicroserviceTransport', () => {
   it('supports request/reply send() and event dispatch', async () => {
     const bus = new InMemoryQueueBus();
@@ -91,14 +115,17 @@ describe('RabbitMqMicroserviceTransport', () => {
 
     const firstTransport = createTransport();
     const secondTransport = createTransport();
+    const firstStarted = createSignal();
+    const releaseFirst = createSignal();
 
     await firstTransport.listen(async (packet) => {
       if (packet.kind !== 'message') {
         return undefined;
       }
 
-      const input = packet.payload as { delayMs: number; value: string };
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+      const input = packet.payload as { value: string };
+      firstStarted.resolve();
+      await releaseFirst.wait();
       return input.value;
     });
 
@@ -107,15 +134,15 @@ describe('RabbitMqMicroserviceTransport', () => {
         return undefined;
       }
 
-      const input = packet.payload as { delayMs: number; value: string };
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+      const input = packet.payload as { value: string };
       return input.value;
     });
 
-    await expect(Promise.all([
-      firstTransport.send('reply.safe', { delayMs: 40, value: 'first' }),
-      secondTransport.send('reply.safe', { delayMs: 5, value: 'second' }),
-    ])).resolves.toEqual(['first', 'second']);
+    const first = firstTransport.send('reply.safe', { value: 'first' });
+    await firstStarted.wait();
+    await expect(secondTransport.send('reply.safe', { value: 'second' })).resolves.toBe('second');
+    releaseFirst.resolve();
+    await expect(first).resolves.toBe('first');
 
     await firstTransport.close();
     await secondTransport.close();
@@ -183,6 +210,8 @@ describe('RabbitMqMicroserviceTransport', () => {
   });
 
   it('supports concurrent request/reply flows with deterministic correlation', async () => {
+    const firstStarted = createSignal();
+    const releaseFirst = createSignal();
     const bus = new InMemoryQueueBus();
     const transport = new RabbitMqMicroserviceTransport({
       consumer: {
@@ -206,20 +235,28 @@ describe('RabbitMqMicroserviceTransport', () => {
         return undefined;
       }
 
-      const input = packet.payload as { delayMs: number; value: number };
-      await new Promise((resolve) => setTimeout(resolve, input.delayMs));
+      const input = packet.payload as { value: number };
+      if (input.value === 1) {
+        firstStarted.resolve();
+        await releaseFirst.wait();
+      }
       return input.value;
     });
 
-    const first = transport.send('math.delayed', { delayMs: 40, value: 1 });
-    const second = transport.send('math.delayed', { delayMs: 5, value: 2 });
+    const first = transport.send('math.delayed', { value: 1 });
+    await firstStarted.wait();
+    const second = transport.send('math.delayed', { value: 2 });
 
-    await expect(Promise.all([first, second])).resolves.toEqual([1, 2]);
+    await expect(second).resolves.toBe(2);
+    releaseFirst.resolve();
+    await expect(first).resolves.toBe(1);
 
     await transport.close();
   });
 
   it('ignores late replies after timeout and keeps later requests healthy', async () => {
+    const releaseLateReply = createSignal();
+    const lateReplyDelivered = createSignal();
     const bus = new InMemoryQueueBus();
     const transport = new RabbitMqMicroserviceTransport({
       consumer: {
@@ -233,6 +270,10 @@ describe('RabbitMqMicroserviceTransport', () => {
       publisher: {
         async publish(queue, message) {
           await bus.publish(queue, message);
+          const frame = JSON.parse(message) as { kind: string; pattern: string };
+          if (frame.kind === 'response' && frame.pattern === 'slow.once') {
+            lateReplyDelivered.resolve();
+          }
         },
       },
       requestTimeoutMs: 20,
@@ -244,7 +285,7 @@ describe('RabbitMqMicroserviceTransport', () => {
       }
 
       if (packet.pattern === 'slow.once') {
-        await new Promise((resolve) => setTimeout(resolve, 80));
+        await releaseLateReply.wait();
         return 'late';
       }
 
@@ -254,6 +295,8 @@ describe('RabbitMqMicroserviceTransport', () => {
     await expect(transport.send('slow.once', {})).rejects.toThrow(
       /RabbitMQ request timed out after 20ms waiting for pattern "slow.once"/,
     );
+    releaseLateReply.resolve();
+    await lateReplyDelivered.wait();
     await expect(transport.send('fast.next', {})).resolves.toBe('fast');
 
     await transport.close();

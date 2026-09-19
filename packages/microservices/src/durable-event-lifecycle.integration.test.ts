@@ -1,7 +1,7 @@
 import { Inject, Scope } from '@fluojs/core';
 import { defineModuleMetadata } from '@fluojs/core/internal';
 import { FluoFactory } from '@fluojs/runtime';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { EventPattern } from './decorators.js';
 import { MicroservicesModule } from './module.js';
@@ -15,27 +15,47 @@ import {
 
 class MockRedisStreamBus implements RedisStreamClientLike {
   readonly ackedIds: string[] = [];
-  private counter = 0;
+  private readonly ackWaiters = new Map<string, ReturnType<typeof createDeferred<void>>>();
+  private readonly entries = new Map<string, Array<{ id: string; fields: Record<string, string> }>>();
+
+  deliver(stream: string, id: string, fields: Record<string, string>): void {
+    const entries = this.entries.get(stream) ?? [];
+    entries.push({ id, fields });
+    this.entries.set(stream, entries);
+  }
+
+  waitForAcknowledgement(id: string): Promise<void> {
+    const waiter = createDeferred<void>();
+    this.ackWaiters.set(id, waiter);
+    return waiter.promise;
+  }
 
   async xack(stream: string, group: string, id: string): Promise<void> {
     void stream;
     void group;
     this.ackedIds.push(id);
+    this.ackWaiters.get(id)?.resolve();
   }
 
   async xreadgroup(
     _group: string,
     _consumer: string,
-    _streams: readonly string[],
+    streams: readonly string[],
     _options?: { blockMs?: number; count?: number },
   ): Promise<readonly { id: string; fields: Record<string, string> }[] | null> {
-    return null;
+    const stream = streams[0];
+    const entries = this.entries.get(stream);
+
+    if (!entries || entries.length === 0) {
+      return null;
+    }
+
+    return entries.splice(0);
   }
 
   async xadd(stream: string, _fields: Record<string, string>, _options?: RedisStreamWriteOptions): Promise<string> {
     void stream;
-    this.counter += 1;
-    return `0-${String(this.counter)}`;
+    return '0-1';
   }
 
   async xgroupCreate(_stream: string, _group: string, _id: string, _mkstream?: boolean): Promise<void> {
@@ -51,10 +71,44 @@ class MockRedisStreamBus implements RedisStreamClientLike {
   }
 }
 
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  reject(reason?: unknown): void;
+  resolve(value: T | PromiseLike<T>): void;
+} {
+  let reject!: (reason?: unknown) => void;
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, reject, resolve };
+}
+
+async function within<T>(promise: Promise<T>, label: string): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`Timed out waiting for ${label}.`));
+        }, 1_000);
+      }),
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
 describe('Durable event pattern error propagation integration', () => {
   it('prevents Redis Streams from acknowledging when decorated @EventPattern handler fails', async () => {
     const bus = new MockRedisStreamBus();
-    const xackSpy = vi.spyOn(bus, 'xack');
+    const handlerFailed = createDeferred<void>();
 
     const transport = new RedisStreamsMicroserviceTransport({
       consumerGroup: 'test-group',
@@ -67,6 +121,7 @@ describe('Durable event pattern error propagation integration', () => {
     class FailingEventHandler {
       @EventPattern('audit.fail')
       onAudit() {
+        handlerFailed.resolve();
         throw new Error('redis streams handler explosion');
       }
 
@@ -85,38 +140,35 @@ describe('Durable event pattern error propagation integration', () => {
     const microservice = await FluoFactory.createMicroservice(AppModule);
     await microservice.listen();
 
-    // Access the internal handleStreamEntry on the transport by sending stream entries
-    const handleEntry = (transport as unknown as {
-      handleStreamEntry(stream: string, message: unknown): Promise<boolean>;
-      eventStream: string;
-    });
+    const eventStream = 'test-streams:events';
+    const failureId = '0-1';
+    const successId = '0-2';
+    const successAcknowledged = bus.waitForAcknowledgement(successId);
 
-    const eventStream = handleEntry.eventStream;
-
-    // 1. Success event should return true (resulting in xack)
-    const successResult = await handleEntry.handleStreamEntry(eventStream, {
-      kind: 'event',
-      pattern: 'audit.ok',
-      payload: { value: 1 },
-    });
-    expect(successResult).toBe(true);
-
-    // 2. Failing event must return false so xack is withheld
-    const failureResult = await handleEntry.handleStreamEntry(eventStream, {
+    bus.deliver(eventStream, failureId, {
       kind: 'event',
       pattern: 'audit.fail',
-      payload: { value: 2 },
+      payload: JSON.stringify({ value: 2 }),
     });
-    expect(failureResult).toBe(false);
+    bus.deliver(eventStream, successId, {
+      kind: 'event',
+      pattern: 'audit.ok',
+      payload: JSON.stringify({ value: 1 }),
+    });
 
-    // Verify xack was not called for the failure
-    expect(xackSpy).not.toHaveBeenCalled();
+    await within(handlerFailed.promise, 'failing Redis Streams handler delivery');
+    await within(successAcknowledged, 'successful Redis Streams acknowledgement');
+    expect(bus.ackedIds).toContain(successId);
+    expect(bus.ackedIds).not.toContain(failureId);
 
     await microservice.close();
   });
 
   it('rejects Kafka consumer callback when decorated @EventPattern handler fails', async () => {
     const topicHandlers = new Map<string, (message: string) => Promise<void> | void>();
+    const handlerEntered = createDeferred<void>();
+    const releaseHandler = createDeferred<void>();
+    const handlerError = new Error('kafka processing failed');
 
     const transport = new KafkaMicroserviceTransport({
       consumer: {
@@ -133,9 +185,11 @@ describe('Durable event pattern error propagation integration', () => {
 
     class KafkaEventHandler {
       @EventPattern('kafka.order.created')
-      onOrderCreated(payload: { orderId: string }) {
+      async onOrderCreated(payload: { orderId: string }) {
         void payload;
-        throw new Error('kafka processing failed');
+        handlerEntered.resolve();
+        await releaseHandler.promise;
+        throw handlerError;
       }
     }
 
@@ -157,14 +211,19 @@ describe('Durable event pattern error propagation integration', () => {
       payload: { orderId: '123' },
     });
 
-    // Kafka consumer callback must reject when handler fails so kafka adapter can withhold commit/retry
-    await expect(consumerHandler!(rawMessage)).rejects.toThrow('kafka processing failed');
+    const delivery = consumerHandler!(rawMessage);
+    await within(handlerEntered.promise, 'Kafka event handler delivery');
+    releaseHandler.resolve();
+    await expect(delivery).rejects.toBe(handlerError);
 
     await microservice.close();
   });
 
   it('rejects RabbitMQ consumer callback when decorated @EventPattern handler fails', async () => {
     let consumerHandler: ((message: string) => Promise<void> | void) | undefined;
+    const handlerEntered = createDeferred<void>();
+    const releaseHandler = createDeferred<void>();
+    const handlerError = new Error('rabbit payment processing failed');
 
     const transport = new RabbitMqMicroserviceTransport({
       consumer: {
@@ -181,9 +240,11 @@ describe('Durable event pattern error propagation integration', () => {
 
     class RabbitEventHandler {
       @EventPattern('rabbit.payment.received')
-      onPayment(payload: { amount: number }) {
+      async onPayment(payload: { amount: number }) {
         void payload;
-        throw new Error('rabbit payment processing failed');
+        handlerEntered.resolve();
+        await releaseHandler.promise;
+        throw handlerError;
       }
     }
 
@@ -204,8 +265,10 @@ describe('Durable event pattern error propagation integration', () => {
       payload: { amount: 100 },
     });
 
-    // RabbitMQ consumer callback must reject so broker nacks / requeues
-    await expect(consumerHandler!(rawMessage)).rejects.toThrow('rabbit payment processing failed');
+    const delivery = consumerHandler!(rawMessage);
+    await within(handlerEntered.promise, 'RabbitMQ event handler delivery');
+    releaseHandler.resolve();
+    await expect(delivery).rejects.toBe(handlerError);
 
     await microservice.close();
   });
@@ -213,14 +276,22 @@ describe('Durable event pattern error propagation integration', () => {
   it('disposes request-scoped @EventPattern handlers while propagating failure to the transport', async () => {
     const disposedIds: number[] = [];
     const topicHandlers = new Map<string, (message: string) => Promise<void> | void>();
+    const disposalEntered = createDeferred<void>();
+    const disposalReleased = createDeferred<void>();
+    const disposalFinished = createDeferred<void>();
+    const handlerEntered = createDeferred<void>();
+    const handlerError = new Error('scoped event failure');
 
     @Scope('request')
     class RequestContext {
       static count = 0;
       readonly id = ++RequestContext.count;
 
-      onDestroy(): void {
+      async onDestroy(): Promise<void> {
+        disposalEntered.resolve();
+        await disposalReleased.promise;
         disposedIds.push(this.id);
+        disposalFinished.resolve();
       }
     }
 
@@ -232,7 +303,8 @@ describe('Durable event pattern error propagation integration', () => {
       @EventPattern('scoped.durable.event')
       onEvent() {
         void this.ctx;
-        throw new Error('scoped event failure');
+        handlerEntered.resolve();
+        throw handlerError;
       }
     }
 
@@ -267,10 +339,13 @@ describe('Durable event pattern error propagation integration', () => {
       payload: { test: true },
     });
 
-    // Transport callback rejects
-    await expect(consumerHandler!(rawMessage)).rejects.toThrow('scoped event failure');
+    const delivery = consumerHandler!(rawMessage);
+    await within(handlerEntered.promise, 'request-scoped event handler delivery');
+    await within(disposalEntered.promise, 'request scope disposal start');
+    disposalReleased.resolve();
+    await within(disposalFinished.promise, 'request scope disposal completion');
+    await expect(delivery).rejects.toBe(handlerError);
 
-    // Scope was properly disposed
     expect(disposedIds).toEqual([1]);
 
     await microservice.close();
