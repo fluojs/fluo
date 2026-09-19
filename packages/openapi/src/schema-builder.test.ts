@@ -1084,7 +1084,7 @@ describe('buildOpenApiDocument', () => {
     });
   });
 
-  it('dedupes enum values, handles reordered IsIn and IsEnum, and emits impossible schema for disjoint constraints', () => {
+  it('dedupes and deterministically orders enum values across decorator and input order, then emits impossible schemas for disjoint constraints', () => {
     enum Status {
       Active = 'active',
       Inactive = 'inactive',
@@ -1094,17 +1094,29 @@ describe('buildOpenApiDocument', () => {
     class DuplicateAndReorderedDto {
       @FromBody('statusIsEnumFirst')
       @IsEnum(Status)
-      @IsIn([Status.Active, Status.Active, Status.Pending])
+      @IsIn([Status.Pending, Status.Active, Status.Active])
       statusIsEnumFirst = Status.Active;
 
       @FromBody('statusIsInFirst')
-      @IsIn([Status.Active, Status.Active, Status.Pending])
+      @IsIn([Status.Pending, Status.Active, Status.Active])
       @IsEnum(Status)
       statusIsInFirst = Status.Active;
 
       @FromBody('standaloneDuplicate')
       @IsIn(['apple', 'apple', 'banana'])
       standaloneDuplicate = 'apple';
+    }
+
+    class MixedTypeOrderingDto {
+      @FromBody('reversedValuesFirst')
+      @IsIn([2, '2', 1, '1', 1, '1'])
+      @IsIn(['1', 1, '2', 2, '1'])
+      reversedValuesFirst: number | string = 1;
+
+      @FromBody('reversedDecoratorsFirst')
+      @IsIn(['1', 1, '2', 2, '1'])
+      @IsIn([2, '2', 1, '1', 1, '1'])
+      reversedDecoratorsFirst: number | string = 1;
     }
 
     class DisjointDto {
@@ -1130,6 +1142,12 @@ describe('buildOpenApiDocument', () => {
       @RequestDto(DuplicateAndReorderedDto)
       @Post('/dedupe-reorder')
       dedupeReorder() {
+        return { ok: true };
+      }
+
+      @RequestDto(MixedTypeOrderingDto)
+      @Post('/mixed-type-order')
+      mixedTypeOrder() {
         return { ok: true };
       }
 
@@ -1165,6 +1183,20 @@ describe('buildOpenApiDocument', () => {
         },
       },
       required: ['statusIsEnumFirst', 'statusIsInFirst', 'standaloneDuplicate'],
+      type: 'object',
+    });
+
+    expect(document.components?.schemas?.MixedTypeOrderingDto).toEqual({
+      additionalProperties: false,
+      properties: {
+        reversedDecoratorsFirst: {
+          enum: [1, '1', 2, '2'],
+        },
+        reversedValuesFirst: {
+          enum: [1, '1', 2, '2'],
+        },
+      },
+      required: ['reversedValuesFirst', 'reversedDecoratorsFirst'],
       type: 'object',
     });
 

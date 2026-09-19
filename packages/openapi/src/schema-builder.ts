@@ -528,7 +528,9 @@ function intersectEnumValues(current: readonly unknown[] | undefined, next: read
     if (typeof a === 'number' && typeof b === 'number') {
       return a - b;
     }
-    return String(a).localeCompare(String(b));
+
+    const stringComparison = String(a).localeCompare(String(b));
+    return stringComparison !== 0 ? stringComparison : typeof a < typeof b ? -1 : typeof a > typeof b ? 1 : 0;
   });
 }
 
