@@ -13,7 +13,6 @@ fluo 애플리케이션을 위한 CQRS 패키지입니다. 부트스트랩 시�
   - [Read Projection](#read-projection)
   - [Saga 프로세스 매니저](#saga-프로세스-매니저)
   - [Event 발행 계약](#event-발행-계약)
-  - [심볼 토큰](#심볼-토큰)
 - [공개 API 개요](#공개-api-개요)
 - [관련 패키지](#관련-패키지)
 - [예제 소스](#예제-소스)
@@ -186,25 +185,11 @@ Event class는 payload state를 clone 가능하고 enumerable하게 유지해야
 
 CQRS handler, event handler, saga는 singleton provider에서만 discovery됩니다. Discovery는 direct class와 `useClass` provider, class token이 CQRS metadata를 가진 `useFactory` provider, instance constructor가 CQRS metadata를 가진 `useValue` provider를 지원합니다. Non-singleton registration은 경고와 함께 건너뜁니다. Event handler와 saga fan-out은 singleton provider token으로 구분되므로 같은 decorated class를 사용해도 서로 다른 token은 별도 route로 유지됩니다.
 
-### 심볼 토큰
-
-CQRS 버스에 명시적인 Symbol 토큰이 필요하면 다음 익스포트를 사용할 수 있습니다.
-
-```typescript
-import { Inject } from '@fluojs/core';
-import { COMMAND_BUS, QUERY_BUS, EVENT_BUS } from '@fluojs/cqrs';
-
-@Inject(COMMAND_BUS, QUERY_BUS, EVENT_BUS)
-class TokenInjectedService {
-  constructor(commandBus, queryBus, eventBus) {}
-}
-```
-
 ## 공개 API 개요
 
 ### 모듈 및 프로바이더
 - `CqrsModule.forRoot(options)`: 메인 진입점입니다. 버스를 등록하고 provider-only discovery를 시작합니다. Bus provider는 기본적으로 global이며 module-local visibility가 필요하면 `global: false`를 전달합니다.
-- Module option은 명시적인 `commandHandlers`, `queryHandlers`, `eventHandlers`, `sagas`, 위임 `eventBus` option을 받을 수 있습니다.
+- 각 handler와 saga는 업무 module의 singleton provider로 한 번만 등록하세요. Module option은 `global`, 위임 `eventBus`, `shutdown` 동작만 구성합니다.
 - `CommandBusLifecycleService`: Command 실행을 위한 기본 서비스입니다.
 - `QueryBusLifecycleService`: Query 실행을 위한 기본 서비스입니다.
 - `CqrsEventBusService`: Event 발행을 위한 기본 서비스입니다.
@@ -223,12 +208,10 @@ class TokenInjectedService {
 ### 오류
 - `CommandHandlerNotFoundException`, `QueryHandlerNotFoundException`: bus에 일치하는 handler가 없을 때 발생합니다.
 - `DuplicateCommandHandlerError`, `DuplicateQueryHandlerError`: 서로 다른 singleton provider가 같은 command 또는 query type을 claim할 때 발생합니다.
-- `DuplicateEventHandlerError`: 호환성을 위해서만 export가 유지되며, event-handler discovery는 이 오류를 throw하거나 중복 registration을 failure로 취급하지 않습니다. 같은 provider token과 event route가 반복 discovery되면 조용히 deduplicate하고, 서로 다른 singleton provider token은 discovery 순서대로 fan-out되는 유효한 route로 유지합니다.
 - `SagaExecutionError`: 예상하지 못한 non-Fluo saga 실패를 감쌉니다.
 - `SagaTopologyError`: 활성 provider-token/event-route cycle 또는 과도하게 깊은 in-process saga graph를 감지했을 때 발생합니다.
 
 ### status와 metadata
-- `createCqrsPlatformStatusSnapshot(...)`: diagnostics와 health surface를 위한 CQRS status snapshot을 생성합니다. Snapshot `details`는 Command, Query, Event handler, saga의 탐색된 개수와 각 lifecycle summary를 보고합니다. Command와 Query adapter input은 호환성을 위해 optional로 유지하며, 생략하면 탐색된 handler 수는 0이고 lifecycle은 CQRS event lifecycle을 사용합니다.
 - `CqrsEventBusService.createPlatformStatusSnapshot()`: live bus state에서 Command와 Query discovery summary를 채웁니다. Snapshot details는 handler descriptor, provider token, saga topology를 절대 노출하지 않으며 Command와 Query summary는 기존 event/saga readiness 또는 health semantics를 바꾸지 않습니다.
 - command, query, event, saga registration을 검사해야 하는 framework package를 위해 metadata helper와 symbol이 export됩니다.
 
@@ -239,7 +222,7 @@ class TokenInjectedService {
 | `details` field | 의미 |
 | --- | --- |
 | `dependencies` | 위임된 event-bus dependency를 나타내는 항상 `['event-bus.default']` 값입니다. |
-| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | 현재 탐색된 singleton handler 또는 saga의 개수입니다. Command/Query adapter input을 생략하면 `0`을 사용하며, shutdown 후 live-bus count는 `0`입니다. |
+| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | 현재 탐색된 singleton handler 또는 saga의 개수입니다. Shutdown 후 live-bus count는 `0`입니다. |
 | `commandLifecycleState`, `queryLifecycleState`, `lifecycleState`, `sagaLifecycleState` | Command, Query, event-pipeline, saga runtime의 lifecycle state입니다. Command/Query adapter input을 생략하면 `lifecycleState`로 fallback합니다. |
 | `inFlightSagaExecutions` | 현재 runtime이 소유한 saga execution 수입니다. |
 | `shutdownDrainTimeoutMs` | 설정된 bounded shutdown-drain window입니다. |

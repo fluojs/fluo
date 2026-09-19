@@ -3,8 +3,9 @@ import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { CommandHandler, QueryHandler } from './decorators.js';
+import { CommandBusLifecycleService } from './buses/command-bus.js';
 import { CqrsModule } from './module.js';
-import { COMMAND_BUS, QUERY_BUS } from './tokens.js';
+import { QueryBusLifecycleService } from './buses/query-bus.js';
 import type { CommandBus, ICommand, IQuery, QueryBus } from './types.js';
 
 describe('CQRS malformed handler dispatch contracts', () => {
@@ -24,7 +25,7 @@ describe('CQRS malformed handler dispatch contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
+    const commandBus = await app.container.resolve(CommandBusLifecycleService);
 
     try {
       // When
@@ -56,7 +57,7 @@ describe('CQRS malformed handler dispatch contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
+    const queryBus = await app.container.resolve(QueryBusLifecycleService);
 
     try {
       // When

@@ -4,9 +4,9 @@ import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CqrsSagaLifecycleService } from './buses/saga-bus.js';
+import { CqrsEventBusService } from './buses/event-bus.js';
 import { Saga } from './decorators.js';
 import { CqrsModule } from './module.js';
-import { EVENT_BUS } from './tokens.js';
 import type { CqrsDispatchContext, CqrsEventBus, IEvent, ISaga } from './types.js';
 
 function createDeferred<T = void>() {
@@ -49,7 +49,7 @@ describe('CQRS saga provider-token FIFO contracts', () => {
 
     class SubscriberEvent implements IEvent {}
 
-    @Inject(EVENT_BUS)
+    @Inject(CqrsEventBusService)
     @Saga([InitialEvent, NestedEvent, SubscriberEvent])
     class ReentrantSaga implements ISaga<InitialEvent | NestedEvent | SubscriberEvent> {
       constructor(private readonly eventBus: CqrsEventBus) {}
@@ -73,7 +73,7 @@ describe('CQRS saga provider-token FIFO contracts', () => {
       }
     }
 
-    @Inject(EVENT_BUS)
+    @Inject(CqrsEventBusService)
     class NestedEventSubscriber {
       constructor(private readonly eventBus: CqrsEventBus) {}
 
@@ -95,7 +95,7 @@ describe('CQRS saga provider-token FIFO contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
 
     try {
       // When
@@ -143,7 +143,7 @@ describe('CQRS saga provider-token FIFO contracts', () => {
 
     class ExternalEvent implements IEvent {}
 
-    @Inject(EVENT_BUS)
+    @Inject(CqrsEventBusService)
     @Saga([InitialEvent, NestedEvent, ExternalEvent])
     class FifoSaga implements ISaga<InitialEvent | NestedEvent | ExternalEvent> {
       constructor(private readonly eventBus: CqrsEventBus) {}
@@ -176,7 +176,7 @@ describe('CQRS saga provider-token FIFO contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
     const sagaBus = await app.container.resolve(CqrsSagaLifecycleService);
 
     try {

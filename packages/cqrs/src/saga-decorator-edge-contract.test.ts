@@ -2,9 +2,9 @@ import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { Saga } from './decorators.js';
+import { CqrsEventBusService } from './buses/event-bus.js';
 import { getSagaMetadata } from './metadata.js';
 import { CqrsModule } from './module.js';
-import { EVENT_BUS } from './tokens.js';
 import type { CqrsEventBus, IEvent, ISaga } from './types.js';
 
 describe('CQRS saga decorator boundary contracts', () => {
@@ -49,7 +49,7 @@ describe('CQRS saga decorator boundary contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
 
     try {
       // When

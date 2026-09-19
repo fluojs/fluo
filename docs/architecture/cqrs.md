@@ -8,18 +8,18 @@ This document defines the current CQRS contract implemented by `@fluojs/cqrs` an
 
 | Message type | Dispatch surface | Resolution model | Current contract |
 | --- | --- | --- | --- |
-| Command | `CommandBusLifecycleService.execute(...)` or `COMMAND_BUS.execute(...)` | One command type to one singleton handler | A command resolves by constructor identity. Missing handlers fail with `CommandHandlerNotFoundException`. Duplicate singleton handlers for the same command fail discovery with `DuplicateCommandHandlerError`. |
-| Query | `QueryBusLifecycleService.execute(...)` or `QUERY_BUS.execute(...)` | One query type to one singleton handler | A query resolves by constructor identity. Missing handlers fail with `QueryHandlerNotFoundException`. Duplicate singleton handlers for the same query fail discovery with `DuplicateQueryHandlerError`. |
-| Event | `CqrsEventBusService.publish(...)` or `EVENT_BUS.publish(...)` | One event type to zero or more singleton handlers | Event handlers are matched with `instanceof` against the published event type. Fan-out identity is the singleton provider token, so distinct tokens using the same decorated class are each invoked in discovery order. Local handlers run first, then saga dispatch, then delegated publication through `@fluojs/event-bus`. |
+| Command | `CommandBusLifecycleService.execute(...)` | One command type to one singleton handler | A command resolves by constructor identity. Missing handlers fail with `CommandHandlerNotFoundException`. Duplicate singleton handlers for the same command fail discovery with `DuplicateCommandHandlerError`. |
+| Query | `QueryBusLifecycleService.execute(...)` | One query type to one singleton handler | A query resolves by constructor identity. Missing handlers fail with `QueryHandlerNotFoundException`. Duplicate singleton handlers for the same query fail discovery with `DuplicateQueryHandlerError`. |
+| Event | `CqrsEventBusService.publish(...)` | One event type to zero or more singleton handlers | Event handlers are matched with `instanceof` against the published event type. Fan-out identity is the singleton provider token, so distinct tokens using the same decorated class are each invoked in discovery order. Local handlers run first, then saga dispatch, then delegated publication through `@fluojs/event-bus`. |
 | Saga trigger | `@Saga(Event)` or `@Saga([EventA, EventB])` | One singleton provider token to one or more event types | Saga metadata is attached to singleton providers and discovered at bootstrap. One saga may listen to multiple event constructors, and distinct tokens using the same decorated class remain distinct routes. |
 
 ## Handler Registration Rules
 
 | Rule | Current contract | Source anchor |
 | --- | --- | --- |
-| Module entrypoint | Applications register CQRS through `CqrsModule.forRoot(...)`. The module is global by default and exports lifecycle services plus the `COMMAND_BUS`, `QUERY_BUS`, and `EVENT_BUS` compatibility tokens; pass `global: false` to keep bus provider visibility module-local. Low-level provider assembly remains internal to the module implementation. | `packages/cqrs/src/module.ts` |
+| Module entrypoint | Applications register CQRS through `CqrsModule.forRoot(...)`. The module is global by default and exports lifecycle services; pass `global: false` to keep bus provider visibility module-local. Low-level provider assembly remains internal to the module implementation. | `packages/cqrs/src/module.ts` |
 | Decorator metadata | `@CommandHandler(...)`, `@QueryHandler(...)`, `@EventHandler(...)`, and `@Saga(...)` store standard-decorator metadata on the target class. | `packages/cqrs/src/decorators.ts`, `packages/cqrs/src/metadata.ts` |
-| Optional eager registration | `CqrsModule.forRoot({ commandHandlers, queryHandlers, eventHandlers, sagas })` adds those classes to the provider list, but discovery still reads the same handler metadata. | `packages/cqrs/src/module.ts` |
+| Handler registration | Register each decorated handler or saga once in its business module `providers`; discovery reads the same handler metadata from that registration. | `packages/cqrs/src/module.ts` |
 | Discovery candidate boundary | CQRS discovery scans provider registrations only. Module controllers are HTTP/request-boundary classes and are ignored even if they carry CQRS handler decorators. | `packages/cqrs/src/discovery.ts` |
 | Singleton-only discovery | Command handlers, query handlers, event handlers, and sagas are registered only when the provider scope is `singleton`. Non-singleton candidates are skipped with a logger warning. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 | Handler shape | Command and query handlers MUST implement `execute(...)`. Event handlers and sagas MUST implement `handle(...)`. Violations fail at dispatch with `InvariantError`. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
@@ -39,12 +39,12 @@ This document defines the current CQRS contract implemented by `@fluojs/cqrs` an
 
 ## Status Snapshot Contract
 
-`createCqrsPlatformStatusSnapshot(...)` and `CqrsEventBusService.createPlatformStatusSnapshot()` return `readiness`, `health`, `ownership`, and `details`. `ownership` always reports `externallyManaged: false` and `ownsResources: false`; CQRS observes its in-process lifecycle and does not claim caller-owned external resources.
+`CqrsEventBusService.createPlatformStatusSnapshot()` returns `readiness`, `health`, `ownership`, and `details`. `ownership` always reports `externallyManaged: false` and `ownsResources: false`; CQRS observes its in-process lifecycle and does not claim caller-owned external resources.
 
 | `details` field | Contract |
 | --- | --- |
 | `dependencies` | Always `['event-bus.default']`, identifying the delegated event-bus dependency. |
-| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | Current discovered singleton handler or saga counts. Command/query adapter inputs default to `0` when absent; live-bus counts are `0` after shutdown. |
+| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | Current discovered singleton handler or saga counts. Live-bus counts are `0` after shutdown. |
 | `commandLifecycleState`, `queryLifecycleState`, `lifecycleState`, `sagaLifecycleState` | Command, query, event-pipeline, and saga-runtime lifecycle states. Absent command/query adapter inputs fall back to `lifecycleState`. |
 | `inFlightSagaExecutions` | Saga executions currently owned by the runtime. |
 | `shutdownDrainTimeoutMs` | Configured bounded shutdown-drain window. |

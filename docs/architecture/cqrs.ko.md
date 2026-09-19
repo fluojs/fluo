@@ -8,18 +8,18 @@
 
 | 메시지 유형 | 디스패치 표면 | 해석 모델 | 현재 계약 |
 | --- | --- | --- | --- |
-| Command | `CommandBusLifecycleService.execute(...)` 또는 `COMMAND_BUS.execute(...)` | 하나의 Command 타입에 하나의 singleton 핸들러 | Command는 생성자 식별자로 해석됩니다. 핸들러가 없으면 `CommandHandlerNotFoundException`이 발생합니다. 같은 Command에 대한 singleton 핸들러가 둘 이상이면 탐색 단계에서 `DuplicateCommandHandlerError`가 발생합니다. |
-| Query | `QueryBusLifecycleService.execute(...)` 또는 `QUERY_BUS.execute(...)` | 하나의 Query 타입에 하나의 singleton 핸들러 | Query는 생성자 식별자로 해석됩니다. 핸들러가 없으면 `QueryHandlerNotFoundException`이 발생합니다. 같은 Query에 대한 singleton 핸들러가 둘 이상이면 탐색 단계에서 `DuplicateQueryHandlerError`가 발생합니다. |
-| Event | `CqrsEventBusService.publish(...)` 또는 `EVENT_BUS.publish(...)` | 하나의 Event 타입에 0개 이상의 singleton 핸들러 | Event 핸들러는 게시된 이벤트 타입에 대해 `instanceof`로 매칭됩니다. Fan-out identity는 singleton provider token이므로 같은 decorated class를 사용하는 서로 다른 token도 discovery 순서대로 각각 호출됩니다. 로컬 핸들러가 먼저 실행되고, 그다음 saga 디스패치가 수행되며, 마지막으로 `@fluojs/event-bus`를 통한 위임 게시가 수행됩니다. |
+| Command | `CommandBusLifecycleService.execute(...)` | 하나의 Command 타입에 하나의 singleton 핸들러 | Command는 생성자 식별자로 해석됩니다. 핸들러가 없으면 `CommandHandlerNotFoundException`이 발생합니다. 같은 Command에 대한 singleton 핸들러가 둘 이상이면 탐색 단계에서 `DuplicateCommandHandlerError`가 발생합니다. |
+| Query | `QueryBusLifecycleService.execute(...)` | 하나의 Query 타입에 하나의 singleton 핸들러 | Query는 생성자 식별자로 해석됩니다. 핸들러가 없으면 `QueryHandlerNotFoundException`이 발생합니다. 같은 Query에 대한 singleton 핸들러가 둘 이상이면 탐색 단계에서 `DuplicateQueryHandlerError`가 발생합니다. |
+| Event | `CqrsEventBusService.publish(...)` | 하나의 Event 타입에 0개 이상의 singleton 핸들러 | Event 핸들러는 게시된 이벤트 타입에 대해 `instanceof`로 매칭됩니다. Fan-out identity는 singleton provider token이므로 같은 decorated class를 사용하는 서로 다른 token도 discovery 순서대로 각각 호출됩니다. 로컬 핸들러가 먼저 실행되고, 그다음 saga 디스패치가 수행되며, 마지막으로 `@fluojs/event-bus`를 통한 위임 게시가 수행됩니다. |
 | Saga 트리거 | `@Saga(Event)` 또는 `@Saga([EventA, EventB])` | 하나의 singleton provider token에 하나 이상의 이벤트 타입 | Saga 메타데이터는 singleton 프로바이더에 부착되어 부트스트랩 시 탐색됩니다. 하나의 saga는 여러 이벤트 생성자를 수신할 수 있고, 같은 decorated class를 사용하는 서로 다른 token은 별도 route로 유지됩니다. |
 
 ## 핸들러 등록 규칙
 
 | 규칙 | 현재 계약 | 소스 기준 |
 | --- | --- | --- |
-| 모듈 진입점 | 애플리케이션은 `CqrsModule.forRoot(...)`로 CQRS를 등록합니다. 이 모듈은 기본적으로 global이며 lifecycle service와 `COMMAND_BUS`, `QUERY_BUS`, `EVENT_BUS` 호환 토큰을 export합니다. Bus provider visibility를 module-local로 유지하려면 `global: false`를 전달합니다. Low-level provider assembly는 모듈 구현 내부에 유지됩니다. | `packages/cqrs/src/module.ts` |
+| 모듈 진입점 | 애플리케이션은 `CqrsModule.forRoot(...)`로 CQRS를 등록합니다. 이 모듈은 기본적으로 global이며 lifecycle service를 export합니다. Bus provider visibility를 module-local로 유지하려면 `global: false`를 전달합니다. Low-level provider assembly는 모듈 구현 내부에 유지됩니다. | `packages/cqrs/src/module.ts` |
 | 데코레이터 메타데이터 | `@CommandHandler(...)`, `@QueryHandler(...)`, `@EventHandler(...)`, `@Saga(...)`는 표준 데코레이터 메타데이터를 대상 클래스에 저장합니다. | `packages/cqrs/src/decorators.ts`, `packages/cqrs/src/metadata.ts` |
-| 선택적 eager 등록 | `CqrsModule.forRoot({ commandHandlers, queryHandlers, eventHandlers, sagas })`는 해당 클래스를 프로바이더 목록에 추가하지만, 탐색은 동일한 핸들러 메타데이터를 읽습니다. | `packages/cqrs/src/module.ts` |
+| 핸들러 등록 | 각 decorated handler와 saga를 업무 module `providers`에 한 번 등록하면 탐색이 해당 등록에서 동일한 handler metadata를 읽습니다. | `packages/cqrs/src/module.ts` |
 | 탐색 후보 경계 | CQRS discovery는 provider registration만 스캔합니다. Module controller는 HTTP/request boundary class이며 CQRS handler decorator를 가지고 있어도 무시됩니다. | `packages/cqrs/src/discovery.ts` |
 | singleton 전용 탐색 | Command 핸들러, Query 핸들러, Event 핸들러, saga는 프로바이더 스코프가 `singleton`일 때만 등록됩니다. singleton이 아닌 후보는 logger 경고와 함께 건너뜁니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
 | 핸들러 형태 | Command/Query 핸들러는 `execute(...)`를 구현해야 합니다. Event 핸들러와 saga는 `handle(...)`을 구현해야 합니다. 이를 위반하면 디스패치 시 `InvariantError`가 발생합니다. | `packages/cqrs/src/buses/command-bus.ts`, `packages/cqrs/src/buses/query-bus.ts`, `packages/cqrs/src/buses/event-bus.ts`, `packages/cqrs/src/buses/saga-bus.ts` |
@@ -39,12 +39,12 @@
 
 ## Status snapshot 계약
 
-`createCqrsPlatformStatusSnapshot(...)`과 `CqrsEventBusService.createPlatformStatusSnapshot()`은 `readiness`, `health`, `ownership`, `details`를 반환합니다. `ownership`은 항상 `externallyManaged: false`, `ownsResources: false`를 보고합니다. CQRS는 in-process lifecycle을 관찰하며 caller-owned external resource를 소유한다고 주장하지 않습니다.
+`CqrsEventBusService.createPlatformStatusSnapshot()`은 `readiness`, `health`, `ownership`, `details`를 반환합니다. `ownership`은 항상 `externallyManaged: false`, `ownsResources: false`를 보고합니다. CQRS는 in-process lifecycle을 관찰하며 caller-owned external resource를 소유한다고 주장하지 않습니다.
 
 | `details` field | 계약 |
 | --- | --- |
 | `dependencies` | 위임된 event-bus dependency를 나타내는 항상 `['event-bus.default']` 값입니다. |
-| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | 현재 탐색된 singleton handler 또는 saga의 개수입니다. Command/Query adapter input을 생략하면 `0`을 사용하며, live-bus count는 shutdown 후 `0`입니다. |
+| `commandHandlersDiscovered`, `queryHandlersDiscovered`, `eventHandlersDiscovered`, `sagasDiscovered` | 현재 탐색된 singleton handler 또는 saga의 개수입니다. Live-bus count는 shutdown 후 `0`입니다. |
 | `commandLifecycleState`, `queryLifecycleState`, `lifecycleState`, `sagaLifecycleState` | Command, Query, event-pipeline, saga runtime의 lifecycle state입니다. Command/Query adapter input이 없으면 `lifecycleState`로 fallback합니다. |
 | `inFlightSagaExecutions` | 현재 runtime이 소유한 saga execution 수입니다. |
 | `shutdownDrainTimeoutMs` | 설정된 bounded shutdown-drain window입니다. |

@@ -18,7 +18,6 @@ import {
 } from './errors.js';
 import { getCommandHandlerMetadata, getEventHandlerMetadata, getQueryHandlerMetadata, getSagaMetadata } from './metadata.js';
 import { CqrsModule } from './module.js';
-import { COMMAND_BUS, EVENT_BUS, QUERY_BUS } from './tokens.js';
 import type {
   CommandBus,
   CqrsDispatchContext,
@@ -32,6 +31,10 @@ import type {
   ISaga,
   QueryBus,
 } from './types.js';
+
+const COMMAND_BUS = CommandBusLifecycleService;
+const QUERY_BUS = QueryBusLifecycleService;
+const EVENT_BUS = CqrsEventBusService;
 
 function createLogger(events: string[]): ApplicationLogger {
   return {
@@ -645,7 +648,7 @@ describe('@fluojs/cqrs', () => {
     await app.close();
   });
 
-  it('accepts CqrsModule.forRoot handler option arrays and registers those classes', async () => {
+  it('discovers handlers registered once by the business module providers', async () => {
     @CommandHandler(CreateUserCommand)
     class OptionCreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
       execute(command: CreateUserCommand): string {
@@ -671,13 +674,13 @@ describe('@fluojs/cqrs', () => {
 
     class AppModule {}
     defineModule(AppModule, {
-      imports: [
-        CqrsModule.forRoot({
-          commandHandlers: [OptionCreateUserHandler],
-          eventBus: { publish: { waitForHandlers: true } },
-          eventHandlers: [OptionEventRecorder],
-          queryHandlers: [OptionGetUserHandler],
-        }),
+      imports: [CqrsModule.forRoot({
+        eventBus: { publish: { waitForHandlers: true } },
+      })],
+      providers: [
+        OptionCreateUserHandler,
+        OptionGetUserHandler,
+        OptionEventRecorder,
       ],
     });
 

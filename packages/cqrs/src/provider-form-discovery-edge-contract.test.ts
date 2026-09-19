@@ -4,10 +4,11 @@ import { type ApplicationLogger, FluoFactory, type CompiledModule, defineModule 
 import { describe, expect, it } from 'vitest';
 
 import { CommandHandler, QueryHandler } from './decorators.js';
+import { CommandBusLifecycleService } from './buses/command-bus.js';
 import { CqrsBusBase, type DiscoveryCandidate } from './discovery.js';
 import { CommandHandlerNotFoundException, QueryHandlerNotFoundException } from './errors.js';
 import { CqrsModule } from './module.js';
-import { COMMAND_BUS, QUERY_BUS } from './tokens.js';
+import { QueryBusLifecycleService } from './buses/query-bus.js';
 import type { CommandBus, ICommand, ICommandHandler, IQuery, IQueryHandler, QueryBus } from './types.js';
 
 interface WarningEvent {
@@ -140,8 +141,8 @@ describe('CQRS provider-form discovery edge contracts', () => {
     ]);
     expect(factoryCalls).toEqual([]);
 
-    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
-    const queryBus = await app.container.resolve<QueryBus>(QUERY_BUS);
+    const commandBus = await app.container.resolve(CommandBusLifecycleService);
+    const queryBus = await app.container.resolve(QueryBusLifecycleService);
 
     const [commandError, queryError] = await Promise.all([
       commandBus
@@ -176,7 +177,7 @@ describe('CQRS provider-form discovery edge contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const commandBus = await app.container.resolve<CommandBus>(COMMAND_BUS);
+    const commandBus = await app.container.resolve(CommandBusLifecycleService);
 
     await expect(commandBus.execute<ArchiveUserCommand, string>(new ArchiveUserCommand('frank'))).resolves.toBe(
       'alias-command:frank',

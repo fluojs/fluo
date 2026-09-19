@@ -48,24 +48,6 @@ export class DuplicateQueryHandlerError extends FluoError {
   }
 }
 
-/**
- * Compatibility error type retained for existing imports.
- *
- * Event-handler discovery does not throw this error. Repeated discovery of the same singleton provider token and event
- * type is silently deduplicated, while distinct singleton provider tokens remain valid fan-out routes in discovery
- * order.
- */
-export class DuplicateEventHandlerError extends FluoError {
-  /**
-   * Creates a duplicate-event-handler error.
-   *
-   * @param message Human-readable failure description.
-   */
-  constructor(message: string) {
-    super(message, { code: 'CQRS_DUPLICATE_EVENT_HANDLER' });
-  }
-}
-
 /** Raised when a saga throws a non-Fluo error while handling an event. */
 export class SagaExecutionError extends FluoError {
   /**

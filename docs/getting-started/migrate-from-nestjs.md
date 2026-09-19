@@ -1052,7 +1052,7 @@ async function handle(event: UserCreatedEvent, context?: CqrsDispatchContext): P
 }
 ```
 
-`DuplicateEventHandlerError` is retained as a compatibility export only; event-handler discovery does not throw it. Distinct singleton tokens sharing the same decorated class remain separate fan-out routes.
+Event-handler discovery does not treat duplicate registrations as failures. Distinct singleton tokens sharing the same decorated class remain separate fan-out routes.
 
 #### Event clone semantics
 
@@ -1085,13 +1085,12 @@ The fallback preserves primitives and function values as-is, but it does not mak
 
 All CQRS buses discover and preload handler instances during `onApplicationBootstrap`. Discovery accepts singleton providers only and throws `DuplicateCommandHandlerError` or `DuplicateQueryHandlerError` when the same command or query type is claimed by two distinct singleton providers. Handler shapes are checked at dispatch: command and query handlers must implement `execute(...)`, while event handlers and sagas must implement `handle(...)`; a mismatch throws `InvariantError`. Bootstrap failures propagate and prevent the application from entering the `ready` state.
 
-Use `CqrsModule.forRoot({ commandHandlers, queryHandlers, eventHandlers, sagas })` to register handler and saga classes as providers in one step:
+Register each handler and saga once in the business module that imports `CqrsModule.forRoot()`:
 
 ```ts
-CqrsModule.forRoot({
-  commandHandlers: [SendWelcomeEmailHandler],
-  eventHandlers: [UserCreatedProjection],
-  sagas: [UserSaga],
+defineModule(AppModule, {
+  imports: [CqrsModule.forRoot()],
+  providers: [SendWelcomeEmailHandler, UserCreatedProjection, UserSaga],
 })
 ```
 

@@ -4,8 +4,8 @@ import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { EventHandler, Saga } from './decorators.js';
+import { CqrsEventBusService } from './buses/event-bus.js';
 import { CqrsModule } from './module.js';
-import { EVENT_BUS } from './tokens.js';
 import type { CqrsEventBus, IEvent, IEventHandler, ISaga } from './types.js';
 
 describe('CQRS event fan-out contracts', () => {
@@ -36,7 +36,7 @@ describe('CQRS event fan-out contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
 
     try {
       // When
@@ -76,7 +76,7 @@ describe('CQRS event fan-out contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
 
     try {
       // When
@@ -136,7 +136,7 @@ describe('CQRS event fan-out contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
     const store = await app.container.resolve(PipelineStore);
 
     try {
@@ -171,7 +171,7 @@ describe('CQRS event fan-out contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
 
     try {
       // When
@@ -200,7 +200,7 @@ describe('CQRS event fan-out contracts', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<CqrsEventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(CqrsEventBusService);
 
     try {
       // When
