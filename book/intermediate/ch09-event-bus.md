@@ -109,11 +109,11 @@ Think about the checkout write path. A customer confirms a cart. Checkout stores
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { EventBusLifecycleService } from '@fluojs/event-bus';
+import { EventBusService } from '@fluojs/event-bus';
 
-@Inject(EventBusLifecycleService)
+@Inject(EventBusService)
 export class CheckoutService {
-  constructor(private readonly eventBus: EventBusLifecycleService) {}
+  constructor(private readonly eventBus: EventBusService) {}
 
   async placeOrder(input: PlaceOrderInput) {
     const order = await this.orders.create(input);
@@ -131,7 +131,7 @@ This keeps the write path explicit. The service still owns the state change, whi
 
 `publish(...)` completion is a dispatch completion boundary. Matching local listener failures are logged and isolated, while other matching listeners continue. A local listener failure alone does not reject `publish(...)`. Inbound transport listeners follow the same isolation rule, so inbound callback completion does not surface isolated listener failures. Publisher completion does not prove that every listener succeeded. Timeout, cancellation, transport publication, bootstrap, and other publisher failures are outside this listener-failure contract. Those failures retain their own separately documented behavior.
 
-When policy needs a required reaction's result, opt into `EventBusLifecycleService.publishWithResult(event, options?)` without changing legacy `publish`. Legacy raw error logging also remains. `EVENT_BUS` carries `Token<EventBusWithResults>`, so `container.resolve(EVENT_BUS)` infers the additive result-aware facade; the legacy `EventBus` type and explicit `container.resolve<EventBus>(EVENT_BUS)` remain valid. The [package README](../../packages/event-bus/README.md) owns the precise API contract.
+When policy needs a required reaction's result, use `EventBusService.publish(event, options?)`. Raw error logging is not exposed through the result, while safe target/status messages remain. The [package README](../../packages/event-bus/README.md) owns the precise API contract.
 
 A `settled` result can contain both success and failure. Callers must check `status`, a nonempty result, and that every outcome is `succeeded`. Failures carry `reason: 'handler' | 'transport' | 'not-callable'`; timeouts use `timed-out` with `timeoutMs`, and cancellation uses `cancelled` with `started`. With neither local handlers nor a configured transport, the result is `no-recipients`. Lifecycle `stopping`/`stopped`/`failed` states return as a `rejected` reason. Discovery/preparation errors still reject, and there is no aggregate-reject API.
 
@@ -139,7 +139,7 @@ Outcomes list matching effective local handlers in discovery order, with per-pub
 
 Started work remains shutdown-tracked after awaited timeout/cancellation. `waitForHandlers: false` returns `background` with `completion: Promise<EventPublishSettlement>`, ignoring timeout and post-start cancellation to observe actual work results. An already-aborted signal skips unstarted work, but completion can remain pending after bounded shutdown and be lost on process exit.
 
-The [post-authentication bookkeeping and required-result examples](../../apps/docs/content/docs/guides/messaging-workflows.mdx) publish only a token record ID, exclude credentials, and compare a best-effort policy where last-used failures do not reverse successful authentication. The [current Book's failure experiment](../02-fluoshop/ch13-domain-events.md) preserves legacy raw `Error` observation while explaining the new API alongside it. The [executable example](../../packages/event-bus/examples/publish-results.ts), [result tests](../../packages/event-bus/src/publish-result.test.ts), [bound tests](../../packages/event-bus/src/publish-result-bounds.test.ts), and [lifecycle tests](../../packages/event-bus/src/publish-result-lifecycle.test.ts) provide implementation evidence. Owner commands are `pnpm --dir packages/event-bus test` and `pnpm --filter '@fluojs/event-bus...' build`.
+The [post-authentication bookkeeping and required-result examples](../../apps/docs/content/docs/guides/messaging-workflows.mdx) publish only a token record ID, exclude credentials, and compare a best-effort policy where last-used failures do not reverse successful authentication. The [current Book's failure experiment](../02-fluoshop/ch13-domain-events.md) preserves ordinary raw `Error` observation while explaining the result API. The [executable example](../../packages/event-bus/examples/publish-results.ts), [result tests](../../packages/event-bus/src/publish-result.test.ts), [bound tests](../../packages/event-bus/src/publish-result-bounds.test.ts), and [lifecycle tests](../../packages/event-bus/src/publish-result-lifecycle.test.ts) provide implementation evidence. Owner commands are `pnpm --dir packages/event-bus test` and `pnpm --filter '@fluojs/event-bus...' build`.
 
 ### 9.3.2 Why this is better than chained service calls
 

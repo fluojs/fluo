@@ -31,6 +31,10 @@
     "./redis": {
       "types": "./dist/transports/redis-transport.d.ts",
       "import": "./dist/transports/redis-transport.js"
+    },
+    "./integration": {
+      "types": "./dist/integration.d.ts",
+      "import": "./dist/integration.js"
     }
   },
   "main": "./dist/index.js",

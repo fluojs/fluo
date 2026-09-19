@@ -1,6 +1,6 @@
 import { Inject, InvariantError } from '@fluojs/core';
 import { Container } from '@fluojs/di';
-import { type EventBus, type EventBusTransport, EVENT_BUS as FLUO_EVENT_BUS, OnEvent } from '@fluojs/event-bus';
+import { type EventBusTransport, EventBusService, OnEvent } from '@fluojs/event-bus';
 import { type ApplicationLogger, FluoFactory, defineModule, type OnApplicationShutdown, type RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { RUNTIME_CLEANUP_REGISTRATION } from '@fluojs/runtime/internal';
 import { describe, expect, it, vi } from 'vitest';
@@ -566,7 +566,7 @@ describe('@fluojs/cqrs', () => {
   });
 
   it('delegates publish and publishAll to the underlying event bus when no CQRS event handlers are registered', async () => {
-    const publish = vi.fn(async () => undefined);
+    const publish = vi.fn(async () => ({ status: 'no-recipients' as const, outcomes: [] as const }));
     const eventBus = { publish };
     const loggerEvents: string[] = [];
     const container = new Container();
@@ -590,6 +590,28 @@ describe('@fluojs/cqrs', () => {
     expect(publish).toHaveBeenNthCalledWith(3, events[1]);
   });
 
+  it('adopts the CQRS shutdown deadline through the narrow event-bus coordinator', async () => {
+    const loggerEvents: string[] = [];
+    const container = new Container();
+    const sagaService = new CqrsSagaLifecycleService(container, [], createLogger(loggerEvents));
+    const adoptShutdownDeadline = vi.fn();
+    const cqrsEventBus = new CqrsEventBusService(
+      { publish: vi.fn(async () => ({ status: 'no-recipients' as const, outcomes: [] as const })) },
+      sagaService,
+      container,
+      [],
+      createLogger(loggerEvents),
+      { shutdown: { drainTimeoutMs: 25 } },
+      () => () => undefined,
+      { adoptShutdownDeadline },
+    );
+
+    await cqrsEventBus.onApplicationBootstrap();
+    await cqrsEventBus.onApplicationShutdown();
+
+    expect(adoptShutdownDeadline).toHaveBeenCalledExactlyOnceWith(expect.any(Number));
+  });
+
   it('keeps EVENT_BUS available as a compatibility CQRS event-bus token', async () => {
     class AppModule {}
     defineModule(AppModule, {
@@ -606,9 +628,9 @@ describe('@fluojs/cqrs', () => {
   });
 
   it('keeps delegated event-bus providers module-local when CQRS global is false', async () => {
-    @Inject(FLUO_EVENT_BUS)
+    @Inject(EventBusService)
     class SiblingEventBusConsumer {
-      constructor(readonly eventBus: EventBus) {}
+      constructor(readonly eventBus: EventBusService) {}
     }
 
     class CqrsHostModule {}
@@ -630,9 +652,9 @@ describe('@fluojs/cqrs', () => {
   });
 
   it('honors an explicit delegated event-bus global override when CQRS global is false', async () => {
-    @Inject(FLUO_EVENT_BUS)
+    @Inject(EventBusService)
     class SiblingEventBusConsumer {
-      constructor(readonly eventBus: EventBus) {}
+      constructor(readonly eventBus: EventBusService) {}
     }
 
     class CqrsHostModule {}
@@ -835,7 +857,9 @@ describe('@fluojs/cqrs', () => {
     const container = new Container();
     const registerRuntimeCleanup = createRuntimeCleanupRegistry(cleanupCallbacks);
     const sagaBus = new CqrsSagaLifecycleService(container, [], createLogger(loggerEvents), {}, registerRuntimeCleanup);
-    const delegatedEventBus = { publish: vi.fn(async () => undefined) } satisfies EventBus;
+    const delegatedEventBus = {
+      publish: vi.fn(async () => ({ status: 'no-recipients' as const, outcomes: [] as const })),
+    } satisfies Pick<EventBusService, 'publish'>;
     const cqrsEventBus = new CqrsEventBusService(
       delegatedEventBus,
       sagaBus,

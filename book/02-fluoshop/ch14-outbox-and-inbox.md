@@ -155,7 +155,7 @@ The following `src/notifications/paid-outbox-relay.ts` is a complete file. `Paid
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { EventBusLifecycleService } from '@fluojs/event-bus';
+import { EventBusService } from '@fluojs/event-bus';
 import { PrismaService } from '@fluojs/prisma';
 import type { PrismaClient } from '@prisma/client';
 import { OrderPaidEvent } from '../orders/events/order-paid.event.js';
@@ -170,11 +170,11 @@ interface PaidRow {
   occurredAt: Date;
 }
 
-@Inject(PrismaService, EventBusLifecycleService)
+@Inject(PrismaService, EventBusService)
 export class PaidOutboxRelay {
   constructor(
     private readonly db: PrismaService<PrismaClient>,
-    private readonly events: EventBusLifecycleService,
+    private readonly events: EventBusService,
   ) {}
 
   async deliverNext(): Promise<boolean> {

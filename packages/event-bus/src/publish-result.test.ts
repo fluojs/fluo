@@ -1,7 +1,7 @@
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
-import { EVENT_BUS, EventBusLifecycleService, EventBusModule, type EventBusWithResults, OnEvent } from './index.js';
+import { EventBusModule, EventBusService, OnEvent } from './index.js';
 
 class RecordedEvent {
   constructor(readonly secret: string) {}
@@ -31,10 +31,10 @@ describe('explicit event publication results', () => {
     });
     const app = await FluoFactory.create(AppModule, { logger });
     try {
-      const bus = await app.container.resolve(EventBusLifecycleService);
+      const bus = await app.container.resolve(EventBusService);
 
       // When
-      const result = await bus.publishWithResult(new RecordedEvent('payload-secret'));
+      const result = await bus.publish(new RecordedEvent('payload-secret'));
 
       // Then
       expect(result).toEqual({
@@ -106,12 +106,11 @@ describe('explicit event publication results', () => {
     });
     const app = await FluoFactory.create(AppModule, { logger });
     try {
-      const facade = await app.container.resolve<EventBusWithResults>(EVENT_BUS);
-      const bus = await app.container.resolve(EventBusLifecycleService);
+      const bus = await app.container.resolve(EventBusService);
       const event = new ChildEvent({ value: 'original' });
 
       // When
-      const result = await facade.publishWithResult(event);
+      const result = await bus.publish(event);
 
       // Then
       expect(result).toMatchObject({
@@ -141,10 +140,10 @@ describe('explicit event publication results', () => {
     defineModule(AppModule, { imports: [EventBusModule.forRoot()] });
     const app = await FluoFactory.create(AppModule);
     try {
-      const bus = await app.container.resolve(EventBusLifecycleService);
+      const bus = await app.container.resolve(EventBusService);
 
       // When
-      const receipt = await bus.publishWithResult(new RecordedEvent('secret'), { waitForHandlers });
+      const receipt = await bus.publish(new RecordedEvent('secret'), { waitForHandlers });
       const result = receipt.status === 'background' ? await receipt.completion : receipt;
 
       // Then
@@ -164,11 +163,11 @@ describe('explicit event publication results', () => {
     defineModule(AppModule, { imports: [EventBusModule.forRoot()], providers: [Handler] });
     const app = await FluoFactory.create(AppModule);
     try {
-      const bus = await app.container.resolve(EventBusLifecycleService);
+      const bus = await app.container.resolve(EventBusService);
       Reflect.set(await app.container.resolve(Handler), 'handle', undefined);
 
       // When
-      const result = await bus.publishWithResult(new RecordedEvent('secret'));
+      const result = await bus.publish(new RecordedEvent('secret'));
 
       // Then
       expect(result).toMatchObject({ status: 'settled', outcomes: [{ status: 'failed', reason: 'not-callable' }] });

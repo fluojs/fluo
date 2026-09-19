@@ -1,5 +1,10 @@
 import { Inject, InvariantError } from '@fluojs/core';
-import { type EventBus, EventBusLifecycleService, EVENT_BUS as FLUO_EVENT_BUS } from '@fluojs/event-bus';
+import { Optional } from '@fluojs/di';
+import { EventBusService } from '@fluojs/event-bus';
+import {
+  EVENT_BUS_SHUTDOWN_COORDINATOR,
+  type EventBusShutdownCoordinator,
+} from '@fluojs/event-bus/integration';
 import type { OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -22,6 +27,8 @@ import { QueryBusLifecycleService } from './query-bus.js';
 
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 
+type EventBusPublisher = Pick<EventBusService, 'publish'>;
+
 interface CqrsPublishContext {
   readonly context: CqrsDispatchContext;
   readonly drainToken: symbol;
@@ -42,14 +49,14 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
  * and delegates the final publication step to `@fluojs/event-bus`.
  */
 @Inject(
-  FLUO_EVENT_BUS,
+  EventBusService,
   CqrsSagaLifecycleService,
   RUNTIME_CONTAINER,
   COMPILED_MODULES,
   APPLICATION_LOGGER,
   CQRS_MODULE_OPTIONS,
   RUNTIME_CLEANUP_REGISTRATION,
-  EventBusLifecycleService,
+  Optional.create(EVENT_BUS_SHUTDOWN_COORDINATOR),
   CqrsShutdownDeadline,
   CommandBusLifecycleService,
   QueryBusLifecycleService,
@@ -63,14 +70,14 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
   private unregisterShutdownStartCleanup: (() => void) | undefined;
 
   constructor(
-    private readonly eventBus: EventBus,
+    private readonly eventBus: EventBusPublisher,
     private readonly sagaService: CqrsSagaLifecycleService,
     runtimeContainer: ConstructorParameters<typeof CqrsBusBase>[0],
     compiledModules: ConstructorParameters<typeof CqrsBusBase>[1],
     logger: ConstructorParameters<typeof CqrsBusBase>[2],
     private readonly moduleOptions: CqrsModuleOptions = {},
     registerRuntimeCleanup: RuntimeCleanupRegistration = () => () => undefined,
-    private readonly delegatedEventBus: EventBusLifecycleService | undefined = undefined,
+    private readonly delegatedCoordinator: EventBusShutdownCoordinator | undefined = undefined,
     private readonly shutdownDeadline: CqrsShutdownDeadline = new CqrsShutdownDeadline(),
     private readonly commandService: CommandBusLifecycleService | undefined = undefined,
     private readonly queryService: QueryBusLifecycleService | undefined = undefined,
@@ -192,7 +199,9 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
       event,
       context,
       {
-        afterSagas: async () => this.eventBus.publish(event),
+        afterSagas: async () => {
+          await this.eventBus.publish(event);
+        },
         drainAuthorization: CQRS_SAGA_DRAIN_AUTHORIZATION,
       },
     );
@@ -247,8 +256,8 @@ export class CqrsEventBusService extends CqrsBusBase implements CqrsEventBus, On
     this.shutdownDeadline.start(this.resolveShutdownDrainTimeoutMs());
     const deadlineAtMs = this.shutdownDeadline.deadlineAtMs();
 
-    if (deadlineAtMs !== undefined && this.delegatedEventBus) {
-      this.delegatedEventBus.adoptShutdownDeadline(deadlineAtMs);
+    if (deadlineAtMs !== undefined && this.delegatedCoordinator) {
+      this.delegatedCoordinator.adoptShutdownDeadline(deadlineAtMs);
     }
 
     if (this.lifecycleState !== 'stopped') {

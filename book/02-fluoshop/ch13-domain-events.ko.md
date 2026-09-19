@@ -93,12 +93,12 @@ export class PaidPreviewListener {
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { EventBusLifecycleService } from '@fluojs/event-bus';
+import { EventBusService } from '@fluojs/event-bus';
 import { OrderPaidEvent } from './events/order-paid.event.js';
 
-@Inject(EventBusLifecycleService)
+@Inject(EventBusService)
 export class OrderEventsPublisher {
-  constructor(private readonly events: EventBusLifecycleService) {}
+  constructor(private readonly events: EventBusService) {}
 
   async announce(event: OrderPaidEvent): Promise<void> {
     await this.events.publish(event, {
@@ -219,7 +219,7 @@ DB는 1권의 `src/database/blog-database.module.ts`가 export한 **동일한 `B
 
 ```typescript
 import { Inject, Module } from '@fluojs/core';
-import { EventBusLifecycleService, EventBusModule, OnEvent } from '@fluojs/event-bus';
+import { EventBusService, EventBusModule, OnEvent } from '@fluojs/event-bus';
 import { FluoFactory, type ApplicationLogger } from '@fluojs/runtime';
 import { expect, test } from 'vitest';
 import { OrderPaidEvent } from './events/order-paid.event.js';
@@ -258,20 +258,20 @@ test('distinguishes publication completion from reaction success', async () => {
 
   const app = await FluoFactory.create(ExperimentModule, { logger });
   try {
-    const bus = await app.container.resolve(EventBusLifecycleService);
+    const bus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(PaidPreviewStore);
     const attempts = await app.container.resolve(Attempts);
     const event = new OrderPaidEvent(
       'order-paid:order-13:1', 'order-13', 'reader-7', 1, 'KRW', '29000',
       '2026-09-01T03:00:00.000Z',
     );
-    await expect(bus.publish(event)).resolves.toBeUndefined();
+    const initialResult = await bus.publish(event);
+    expect(initialResult.status).toBe('settled');
+    if (initialResult.status !== 'settled') throw new Error('Expected local observations.');
+    expect(initialResult.outcomes.some(outcome => outcome.status === 'failed')).toBe(true);
     expect(attempts.count).toBe(1);
     expect(store.find('order-13')?.totalMinor).toBe('29000');
-    expect(failures.some(
-      value => value instanceof Error &&
-        value.message === 'receipt-store-unavailable',
-    )).toBe(true);
+    expect(failures).toEqual([undefined]);
 
     await bus.publish(event);
     expect(attempts.count).toBe(2);
@@ -284,11 +284,11 @@ test('distinguishes publication completion from reaction success', async () => {
 
 두 번째 발행에서 실패 핸들러의 호출 횟수는 2가 된다. 버스가 같은 `eventId`를 알아보고 중복 전달을 막아 주지 않는다는 증거다. 미리보기 값은 같지만 그 이유는 저장소의 버전 조건이지 버스의 전달 보장이 아니다. `try/finally`는 assertion 실패 때도 애플리케이션 수명주기를 닫는다. 테스트의 5초 제한은 고정 대기가 아니라 멈춘 실험을 실패로 끝내는 상한이다.
 
-기존 `publish`가 raw `Error`를 logger에 전달하는 위 실험은 그대로 유효하다. 이제 opt-in `publishWithResult`를 비교하자. 다음은 **같은 테스트의 두 번째 발행 assertion 뒤, `finally` 앞에 넣는 추가 조각**이다. 기존 실험이나 `OrderEventsPublisher.announce()`의 정책을 교체하지 않는다.
+위 실험은 그대로 유효하다. 모든 `publish` 호출은 관측 결과를 반환하고 Event Bus 로깅은 raw handler error를 제외한다. 다음은 **같은 테스트의 두 번째 발행 assertion 뒤, `finally` 앞에 넣는 추가 조각**이다. 같은 `publish` API를 bound와 함께 사용하며, 기존 실험이나 `OrderEventsPublisher.announce()`의 정책을 교체하지 않는다.
 
 ```typescript
 failures.length = 0;
-const result = await bus.publishWithResult(event, { waitForHandlers: true });
+const result = await bus.publish(event, { waitForHandlers: true });
 expect(result.status).toBe('settled');
 if (result.status !== 'settled') throw new Error('Expected local observations.');
 expect(result.outcomes.map(outcome => outcome.status)).toEqual(['failed', 'succeeded']);
@@ -308,7 +308,7 @@ expect(store.find('order-13')?.orderVersion).toBe(1);
 expect(failures).toEqual([undefined]);
 ```
 
-예상 결과는 `settled` 안에 실패와 성공이 함께 있고, logger가 받은 error 인자에는 raw `Error`가 없다는 것이다. 기존의 안전한 target/status 메시지는 남는다. 결과도 payload, raw error, 핸들러 반환값을 담지 않는다. 이 정제는 새 발행 경로에 한정되며 핸들러나 transport가 직접 남기는 앱 로그까지 정제하지 않는다. `EVENT_BUS` 런타임 facade에서도 additive `EventBusWithResults` 타입으로 같은 API를 사용할 수 있고 기존 `EventBus`는 바뀌지 않는다.
+예상 결과는 `settled` 안에 실패와 성공이 함께 있고, logger가 받은 error 인자에는 raw `Error`가 없다는 것이다. 기존의 안전한 target/status 메시지는 남는다. 결과도 payload, raw error, 핸들러 반환값을 담지 않는다. 이 정제는 `publish`가 반환하는 결과에 적용되며 핸들러나 transport가 직접 남기는 앱 로그까지 정제하지 않는다.
 
 배열은 완료 순서가 아니라 일치하는 effective 로컬 핸들러의 discovery 순서이며, `index`는 이번 발행 안에서만 유효하다. Transport를 구성하면 그 뒤에 channel 순서의 outbound outcome이 붙는다. 원격 핸들러나 subscriber는 열거하지 않으며 subscriber가 없어도 adapter가 성공하면 transport 성공이다. 로컬 핸들러도 구성된 transport도 없을 때만 `no-recipients`와 빈 배열이 나온다. 따라서 필수 반응을 확인하려는 호출자는 `status === 'settled'`, 비어 있지 않은 결과, 모든 outcome의 `succeeded`를 함께 검사하고 필요한 핸들러의 등록도 별도로 검증해야 한다.
 

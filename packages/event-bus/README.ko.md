@@ -55,17 +55,17 @@ export class NotificationService {
 
 ### 2. 모듈 등록 및 이벤트 발행
 
-`EventBusModule`을 등록하고 `EventBusLifecycleService`를 주입받아 이벤트를 발행합니다.
+`EventBusModule`을 등록하고 `EventBusService`를 주입받아 이벤트를 발행합니다.
 
-인프로세스 이벤트 버스 등록은 `EventBusModule.forRoot(...)`로 구성합니다. Event-bus provider는 기본적으로 global(`global: true`)이므로 root graph를 import하는 모듈에서 `EventBusLifecycleService`와 `EVENT_BUS` 호환성 토큰을 사용할 수 있습니다. 모듈-local visibility가 필요하면 `EventBusModule.forRoot({ global: false })`를 전달하세요.
+인프로세스 이벤트 버스 등록은 `EventBusModule.forRoot(...)`로 구성합니다. Event-bus provider는 기본적으로 global(`global: true`)이므로 root graph를 import하는 모듈에서 `EventBusService`를 사용할 수 있습니다. 모듈-local visibility가 필요하면 `EventBusModule.forRoot({ global: false })`를 전달하세요.
 
 ```typescript
 import { Module, Inject } from '@fluojs/core';
-import { EventBusModule, EventBusLifecycleService } from '@fluojs/event-bus';
+import { EventBusModule, EventBusService } from '@fluojs/event-bus';
 
-@Inject(EventBusLifecycleService)
+@Inject(EventBusService)
 export class UserService {
-  constructor(private readonly eventBus: EventBusLifecycleService) {}
+  constructor(private readonly eventBus: EventBusService) {}
 
   async signUp(email: string) {
     // 사용자 저장 로직...
@@ -88,9 +88,7 @@ Handler failure isolation은 publish completion보다 좁은 계약입니다. �
 
 ### 결과가 필요한 발행
 
-`publish(...)`는 기존 best-effort API이며 반환형 `Promise<void>`, 실패 격리, raw error를 포함하는 기존 로깅을 바꾸지 않습니다. 반응 결과를 호출자 정책으로 판단해야 할 때만 `EventBusLifecycleService.publishWithResult(event, options?)`를 선택하세요. 이 API는 같은 모듈 등록, effective singleton handler discovery, 수신자별 payload 복제를 사용하며 `Promise<EventPublishResult>`를 반환합니다. `EVENT_BUS` 런타임 facade도 이를 지원합니다. Facade를 주입하는 소비자는 루트 `@fluojs/event-bus`의 additive type `EventBusWithResults`를 사용하세요. 기존 `EventBus` 인터페이스에는 메서드를 추가하지 않으므로 기존 구현은 그대로 유효합니다.
-
-`EVENT_BUS` 토큰의 타입은 `Token<EventBusWithResults>`이므로 `container.resolve(EVENT_BUS)`가 결과형 facade를 추론합니다. 기존 소비자의 명시적 `container.resolve<EventBus>(EVENT_BUS)`도 유효하며 이 경우에는 기존 `publish` 계약만 보입니다.
+발행은 애플리케이션에서 `EventBusService.publish(event, options?): Promise<EventPublishResult>`라는 하나의 실행 경로를 사용합니다. best-effort 알림에서는 반환 결과를 무시할 수 있고, 반응 결과를 평가할 때는 반환값을 검사할 수 있습니다. 같은 모듈 등록, effective singleton handler discovery, 수신자별 payload 복제를 사용합니다. 애플리케이션은 `EventBusService`를 주입하며 lifecycle 구현은 내부에 있습니다.
 
 | 입력과 기본값 | 계약 |
 | --- | --- |
@@ -124,10 +122,10 @@ Awaited `timed-out`/`cancelled`는 호출자의 관측 결과일 뿐입니다. �
 Discovery와 payload preparation 오류는 여전히 promise를 reject합니다. 별도의 aggregate-reject API는 없으며 호출자가 `status`와 모든 outcome을 검사해 반응 실패 정책을 결정합니다. 아래는 이미 `EventBusModule.forRoot()`와 필요한 핸들러를 등록한 애플리케이션에서 주입받은 서비스를 사용하는 **범위가 한정된 소비자 함수**입니다. 필수 반응이 하나 이상 있고 모두 성공했을 때만 성공으로 취급합니다.
 
 ```typescript
-import { EventBusLifecycleService } from '@fluojs/event-bus';
+import { EventBusService } from '@fluojs/event-bus';
 
-async function requireReactions(eventBus: EventBusLifecycleService, event: object): Promise<void> {
-  const result = await eventBus.publishWithResult(event, { waitForHandlers: true });
+async function requireReactions(eventBus: EventBusService, event: object): Promise<void> {
+  const result = await eventBus.publish(event, { waitForHandlers: true });
   if (
     result.status !== 'settled' ||
     result.outcomes.length === 0 ||
@@ -140,7 +138,7 @@ async function requireReactions(eventBus: EventBusLifecycleService, event: objec
 
 이 정책도 구성되지 않은 필수 핸들러의 존재를 증명하지는 못합니다. 필요한 로컬 핸들러의 등록을 애플리케이션 테스트로 검증하고, 원격 처리 완료가 필요하면 별도 acknowledgement 계약을 설계하세요. [메시징 가이드의 두 소비자 예제](../../apps/docs/content/docs/guides/messaging-workflows.ko.mdx)는 인증이 이미 성공한 뒤 token record ID만 담는 last-used bookkeeping에는 기존 best-effort `publish`를, 결과가 필요한 반응에는 명시적 검사를 사용하는 차이를 보여 줍니다.
 
-`publishWithResult`가 보고하는 handler/transport 실패 로그는 기존의 안전한 target/status 메시지를 유지하지만 raw handler/transport error 인자를 logger에 전달하지 않습니다. 이는 raw error와 handler 반환값을 제외한 결과 계약과 같습니다. 핸들러나 adapter가 직접 쓰는 애플리케이션 로그는 애플리케이션 책임이며, 기존 `publish`와 inbound delivery의 로그까지 정제하는 전역 정책이 아닙니다.
+`publish`가 보고하는 handler/transport 실패 로그는 안전한 target/status 메시지만 유지하며 raw handler/transport error 인자를 logger에 전달하지 않습니다. 이는 raw error와 handler 반환값을 제외한 결과 계약과 같습니다. 핸들러나 adapter가 직접 쓰는 애플리케이션 로그는 애플리케이션 책임이며, 기존 `publish`와 inbound delivery의 로그까지 정제하는 전역 정책이 아닙니다.
 
 ## 일반적인 패턴
 
@@ -223,15 +221,14 @@ class UserRegisteredEvent {
 
 ### 핵심 구성 요소
 - `EventBusModule.forRoot({ global?, publish?, shutdown?, transport? })`: 이벤트 버스 등록을 위한 기본 진입점입니다. `global`의 기본값은 `true`이며, event-bus provider를 event-bus 모듈을 import한 모듈을 통해서만 보이게 하려면 `global: false`를 설정하세요.
-- `EventBusLifecycleService`: 기존 `publish(event, options?)`, opt-in `publishWithResult(event, options?)`, platform status snapshot 생성을 위한 기본 서비스입니다.
+- `EventBusService`: `publish(event, options?)`와 platform status snapshot 생성을 위한 기본 서비스입니다.
 - `@OnEvent(EventClass)`: 특정 메서드를 이벤트 핸들러로 지정하는 데코레이터입니다.
-- `EVENT_BUS`: 발행 facade를 위한 호환성 주입 토큰입니다.
 - `createEventBusPlatformStatusSnapshot(...)`: diagnostics와 health surface에서 사용하는 상태 스냅샷 헬퍼입니다.
 
 ### 인터페이스
 - `EventBusTransport`: 외부 트랜스포트 어댑터 구현을 위한 계약입니다.
-- `EventBus`, `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: 발행, 기본값, 트랜스포트, 안정적인 이벤트 키를 위한 타입 전용 계약입니다.
-- `EventBusWithResults`: 기존 `EventBus`를 확장하는 결과형 facade 계약입니다. `EventDeliveryTarget`, `EventDeliveryStatus`, `EventDeliveryOutcome`, `EventPublishSettlement`, `EventPublishResult`도 루트에서 type-only export됩니다.
+- `EventPublishOptions`, `EventBusModuleOptions`, `EventType`: 발행, 기본값, 트랜스포트, 안정적인 이벤트 키를 위한 타입 전용 계약입니다.
+- `EventDeliveryTarget`, `EventDeliveryStatus`, `EventDeliveryOutcome`, `EventPublishSettlement`, `EventPublishResult`: 발행 결과와 background receipt를 설명하는 루트 type-only export입니다.
 - `EventBusLifecycleState`, `EventBusStatusAdapterInput`, `EventBusPlatformStatusSnapshot`: status snapshot 계약입니다.
 
 Transport bootstrap은 unique event channel마다 한 번만 subscribe합니다. `eventKey`가 있으면 transport channel 이름을 제어합니다. Bootstrap 중 이후 transport subscription이 실패하면 이벤트 버스는 이미 열린 channel을 rollback하기 위해 subscription error를 다시 던지기 전에 transport를 닫습니다. Shutdown 시작 뒤 도착한 inbound transport message는 local handler dispatch 전에 무시됩니다.
@@ -243,6 +240,7 @@ Handler discovery는 normalized effective singleton provider registration과 con
 | 관심사 | 서브패스 | 내보내는 항목 |
 | --- | --- | --- |
 | Redis Pub/Sub 트랜스포트 | `@fluojs/event-bus/redis` | `RedisEventBusTransport`, `RedisEventBusTransportOptions` |
+| First-party 통합 | `@fluojs/event-bus/integration` | `EVENT_BUS_SHUTDOWN_COORDINATOR`, `EventBusShutdownCoordinator` |
 
 `RedisEventBusTransport`는 명시적인 `@fluojs/event-bus/redis` 서브패스에만 유지되어 루트 `@fluojs/event-bus` 진입점이 모듈 등록, 로컬 발행, 데코레이터, 타입 전용 계약에 집중하도록 합니다. 이 서브패스를 사용하는 애플리케이션은 optional `ioredis` peer를 설치하고 transport 전용 `publishClient`와 `subscribeClient`를 서로 다른 instance로 제공해야 합니다. 이 Redis adapter는 inbound Redis message를 JSON decode하고 잘못된 JSON은 handler dispatch 전에 버립니다. 이 parsing 규칙은 임의의 `EventBusTransport` 구현에는 적용되지 않습니다. Shutdown 중 adapter는 자신이 등록한 채널을 unsubscribe하고 message listener를 분리하지만, `close()`는 caller-owned client를 disconnect하지 않습니다. Unsubscribe가 실패하면 `close()`는 listener를 계속 분리하면서 등록된 채널을 유지하므로 이후 `close()`가 동일한 cleanup을 다시 시도합니다. 애플리케이션 또는 client-owning module이 event-bus teardown 후 해당 client를 별도로 닫아야 합니다.
 

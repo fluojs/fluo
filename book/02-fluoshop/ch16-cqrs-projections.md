@@ -426,18 +426,18 @@ export class OrdersModule {}
 
 The existing `OrdersModule` import in the root `AppModule` now exposes GET too. Register `GetOrderSummaryHandler` as a CQRS provider and `OrderSummaryController` as an HTTP controller. Do not move the query handler into the controller list or register `CqrsModule` again in OrdersModule. The idempotency, authentication, and 201 response of `POST /orders` remain in Chapter 8's controller.
 
-The more important change is the previous chapter's relay publication path. Calling the existing `EventBusLifecycleService.publish()` does not automatically run `@EventHandler`. The following gives **the exact three replacements** in Chapter 14's complete `src/notifications/paid-outbox-relay.ts` file. Keep the existing `deliverNext()` body, `OrderPaidEvent` import, and `await this.events.publish(event)`.
+The more important change is the previous chapter's relay publication path. Calling the existing `EventBusService.publish()` does not automatically run `@EventHandler`. The following gives **the exact three replacements** in Chapter 14's complete `src/notifications/paid-outbox-relay.ts` file. Keep the existing `deliverNext()` body, `OrderPaidEvent` import, and `await this.events.publish(event)`.
 
 ```diff
--import { EventBusLifecycleService } from '@fluojs/event-bus';
+-import { EventBusService } from '@fluojs/event-bus';
 +import { CqrsEventBusService } from '@fluojs/cqrs';
 
--@Inject(PrismaService, EventBusLifecycleService)
+-@Inject(PrismaService, EventBusService)
 +@Inject(PrismaService, CqrsEventBusService)
  export class PaidOutboxRelay {
    constructor(
      private readonly db: PrismaService<PrismaClient>,
--    private readonly events: EventBusLifecycleService,
+-    private readonly events: EventBusService,
 +    private readonly events: CqrsEventBusService,
    ) {}
 ```

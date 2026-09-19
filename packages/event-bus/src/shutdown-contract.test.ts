@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OnEvent } from './decorators.js';
 import { EventBusModule } from './module.js';
-import { EVENT_BUS } from './tokens.js';
-import type { EventBus, EventBusTransport } from './types.js';
+import { EventBusService } from './service.js';
+import type { EventBusTransport } from './types.js';
 
 function createDeferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
   let resolve: () => void = () => undefined;
@@ -56,7 +56,7 @@ describe('EventBusLifecycleService shutdown contract', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
 
     await eventBus.publish(new ShutdownEvent('background-handler'), { waitForHandlers: false });
     await handlerStarted.promise;
@@ -97,7 +97,7 @@ describe('EventBusLifecycleService shutdown contract', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
 
     await eventBus.publish(new ShutdownEvent('background-transport'), { waitForHandlers: false });
     await publishStarted.promise;
@@ -138,7 +138,7 @@ describe('EventBusLifecycleService shutdown contract', () => {
     });
 
     const app = await FluoFactory.create(AppModule);
-    const eventBus = await app.container.resolve<EventBus>(EVENT_BUS);
+    const eventBus = await app.container.resolve(EventBusService);
     const controller = new AbortController();
     const publishPromise = eventBus.publish(new ShutdownEvent('aborted-transport'), {
       signal: controller.signal,
@@ -147,7 +147,8 @@ describe('EventBusLifecycleService shutdown contract', () => {
 
     await publishStarted.promise;
     controller.abort();
-    await expect(publishPromise).resolves.toBeUndefined();
+    const publishResult = await publishPromise;
+    expect(publishResult.status).toBe('background');
     await flushAsyncWork();
 
     let closeResolved = false;

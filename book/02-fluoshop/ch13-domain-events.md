@@ -93,12 +93,12 @@ Now add `src/orders/order-events.publisher.ts`. Separate the outlet that receive
 
 ```typescript
 import { Inject } from '@fluojs/core';
-import { EventBusLifecycleService } from '@fluojs/event-bus';
+import { EventBusService } from '@fluojs/event-bus';
 import { OrderPaidEvent } from './events/order-paid.event.js';
 
-@Inject(EventBusLifecycleService)
+@Inject(EventBusService)
 export class OrderEventsPublisher {
-  constructor(private readonly events: EventBusLifecycleService) {}
+  constructor(private readonly events: EventBusService) {}
 
   async announce(event: OrderPaidEvent): Promise<void> {
     await this.events.publish(event, {
@@ -219,7 +219,7 @@ Let us ask the actual package about this distinction. The following is a complet
 
 ```typescript
 import { Inject, Module } from '@fluojs/core';
-import { EventBusLifecycleService, EventBusModule, OnEvent } from '@fluojs/event-bus';
+import { EventBusService, EventBusModule, OnEvent } from '@fluojs/event-bus';
 import { FluoFactory, type ApplicationLogger } from '@fluojs/runtime';
 import { expect, test } from 'vitest';
 import { OrderPaidEvent } from './events/order-paid.event.js';
@@ -258,20 +258,20 @@ test('distinguishes publication completion from reaction success', async () => {
 
   const app = await FluoFactory.create(ExperimentModule, { logger });
   try {
-    const bus = await app.container.resolve(EventBusLifecycleService);
+    const bus = await app.container.resolve(EventBusService);
     const store = await app.container.resolve(PaidPreviewStore);
     const attempts = await app.container.resolve(Attempts);
     const event = new OrderPaidEvent(
       'order-paid:order-13:1', 'order-13', 'reader-7', 1, 'KRW', '29000',
       '2026-09-01T03:00:00.000Z',
     );
-    await expect(bus.publish(event)).resolves.toBeUndefined();
+    const initialResult = await bus.publish(event);
+    expect(initialResult.status).toBe('settled');
+    if (initialResult.status !== 'settled') throw new Error('Expected local observations.');
+    expect(initialResult.outcomes.some(outcome => outcome.status === 'failed')).toBe(true);
     expect(attempts.count).toBe(1);
     expect(store.find('order-13')?.totalMinor).toBe('29000');
-    expect(failures.some(
-      value => value instanceof Error &&
-        value.message === 'receipt-store-unavailable',
-    )).toBe(true);
+    expect(failures).toEqual([undefined]);
 
     await bus.publish(event);
     expect(attempts.count).toBe(2);
@@ -284,11 +284,11 @@ test('distinguishes publication completion from reaction success', async () => {
 
 On the second publication, the failing handler's call count becomes 2. This demonstrates that the bus does not recognize the same `eventId` and prevent duplicate delivery. The preview value stays the same because of the store's version condition, not a delivery guarantee from the bus. `try/finally` closes the application lifecycle even when an assertion fails. The test's five-second limit is not a fixed wait; it is an upper bound that fails a stalled experiment.
 
-The experiment above remains valid: legacy `publish` passes a raw `Error` to the logger. Now compare opt-in `publishWithResult`. The following is an **additional fragment to insert after the second publication's assertions and before `finally` in the same test**. It does not replace the existing experiment or the policy in `OrderEventsPublisher.announce()`.
+The experiment above remains valid: every `publish` call returns its observation result while Event Bus logging omits raw handler errors. The following is an **additional fragment to insert after the second publication's assertions and before `finally` in the same test**. It uses the same `publish` API with bounds and does not replace the existing experiment or the policy in `OrderEventsPublisher.announce()`.
 
 ```typescript
 failures.length = 0;
-const result = await bus.publishWithResult(event, { waitForHandlers: true });
+const result = await bus.publish(event, { waitForHandlers: true });
 expect(result.status).toBe('settled');
 if (result.status !== 'settled') throw new Error('Expected local observations.');
 expect(result.outcomes.map(outcome => outcome.status)).toEqual(['failed', 'succeeded']);
@@ -308,7 +308,7 @@ expect(store.find('order-13')?.orderVersion).toBe(1);
 expect(failures).toEqual([undefined]);
 ```
 
-The expected result is a mixture of failure and success inside `settled`, with no raw `Error` in the error argument received by the logger. Existing safe target/status messages remain. Results also omit payloads, raw errors, and handler return values. This sanitization applies only to the new publication path, not to app logs written directly by handlers or transports. The `EVENT_BUS` runtime facade supports the same API through the additive `EventBusWithResults` type, leaving `EventBus` unchanged.
+The expected result is a mixture of failure and success inside `settled`, with no raw `Error` in the error argument received by the logger. Existing safe target/status messages remain. Results also omit payloads, raw errors, and handler return values. This sanitization applies to the result returned by `publish`, not to app logs written directly by handlers or transports.
 
 The array follows discovery order for matching effective local handlers, not completion order; `index` is scoped to this publication. When a transport is configured, outbound outcomes follow in channel order. Remote handlers or subscribers are not enumerated, and an adapter success remains transport success even without subscribers. Only the absence of both local handlers and a configured transport produces `no-recipients` with an empty array. A caller checking required reactions must therefore check `status === 'settled'`, a nonempty result, and `succeeded` for every outcome, and separately verify the required handler registration.
 

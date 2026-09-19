@@ -20,7 +20,7 @@ business fact
 
 | Need | Package | Primary contract |
 | --- | --- | --- |
-| Local event와 optional Redis fan-out | `@fluojs/event-bus` | `EventBusModule`, `@OnEvent`, `EventBusLifecycleService.publish(...)` |
+| Local event와 optional Redis fan-out | `@fluojs/event-bus` | `EventBusModule`, `@OnEvent`, `EventBusService.publish(...)` |
 | Command, query, event, saga | `@fluojs/cqrs` | `CqrsModule`, `@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga` |
 | Broker-backed service boundary | `@fluojs/microservices` | `MicroservicesModule`, `@MessagePattern`, `@EventPattern`, transport adapter |
 | Redis-backed background job | `@fluojs/queue` | `QueueModule`, `@QueueWorker`, `getQueueToken(scope?)`, `Queue.enqueue(...)` |
@@ -49,7 +49,7 @@ business fact
 
 ```ts
 import { Inject, Module } from '@fluojs/core';
-import { EventBusLifecycleService, EventBusModule, OnEvent } from '@fluojs/event-bus';
+import { EventBusService, EventBusModule, OnEvent } from '@fluojs/event-bus';
 
 class UserSignedUpEvent {
   static readonly eventKey = 'user.signed-up.v1';
@@ -64,9 +64,9 @@ class WelcomeProjection {
   }
 }
 
-@Inject(EventBusLifecycleService)
+@Inject(EventBusService)
 class UsersService {
-  constructor(private readonly eventBus: EventBusLifecycleService) {}
+  constructor(private readonly eventBus: EventBusService) {}
 
   async signUp(email: string) {
     await this.eventBus.publish(new UserSignedUpEvent(email));
@@ -84,19 +84,19 @@ class AppModule {}
 
 ### Best-effort versus required results
 
-`publish`의 완료를 모든 반응의 성공으로 해석하지 마세요. 기존 `publish`와 raw error 로깅은 그대로 유지됩니다. 결과가 필요하면 `EventBusLifecycleService.publishWithResult`를 선택하고, `EVENT_BUS` facade를 주입할 때는 additive type `EventBusWithResults`를 사용합니다. 기존 `EventBus` 타입은 바뀌지 않습니다. 전체 결과·기본값·로깅 계약의 소유자는 [event-bus README](https://github.com/fluojs/fluo/blob/main/packages/event-bus/README.ko.md)입니다.
+`publish`의 완료를 모든 반응의 성공으로 해석하지 마세요. best-effort publication과 필수 결과 확인 모두 `EventBusService.publish(event, options?)`를 사용하고, 결과가 필요하면 반환된 `EventPublishResult`를 확인합니다. 전체 결과·기본값·로깅 계약의 소유자는 [event-bus README](https://github.com/fluojs/fluo/blob/main/packages/event-bus/README.ko.md)입니다.
 
 다음은 **인증이 이미 성공한 뒤** 호출하는 소비자 함수입니다. `EventBusModule.forRoot()`와 `TokenUsedEvent`의 last-used bookkeeping 핸들러가 등록되었다고 가정합니다. 자격 증명 검증·계정 허용 판단은 이 함수 앞에서 끝나며, last-used 저장 실패가 그 인증 결정을 실패로 바꾸면 안 됩니다. 이벤트에는 token record ID만 넣고 bearer token, JWT, API key, credential 원문은 넣지 않습니다.
 
 ```ts
-import { EventBusLifecycleService } from '@fluojs/event-bus';
+import { EventBusService } from '@fluojs/event-bus';
 
 class TokenUsedEvent {
   constructor(public readonly tokenRecordId: string) {}
 }
 
 async function afterAuthentication(
-  eventBus: EventBusLifecycleService,
+  eventBus: EventBusService,
   authenticated: { userId: string; tokenRecordId: string },
 ): Promise<{ userId: string; tokenRecordId: string }> {
   try {
@@ -110,22 +110,22 @@ async function afterAuthentication(
 }
 ```
 
-Handler 실패는 기존 publish 경계에서 격리됩니다. 위 `catch`는 여전히 reject할 수 있는 discovery/preparation 실패도 이미 성립한 인증 결정에 전파하지 않기 위한 애플리케이션 정책입니다. Background work는 shutdown 추적 대상이지만 저장·재시도를 보장하지 않습니다. 이 예제는 last-used를 보안 판단의 필수 조건으로 삼는 정책에는 맞지 않습니다. 기존 버스가 raw error를 기록하고 핸들러/transport도 자체 로그를 쓸 수 있으므로 해당 경로의 민감 정보 제거는 애플리케이션 책임입니다.
+Handler 실패는 호출자와 publish 경계에서 격리됩니다. 위 `catch`는 여전히 reject할 수 있는 discovery/preparation 실패도 이미 성립한 인증 결정에 전파하지 않기 위한 애플리케이션 정책입니다. Background work는 shutdown 추적 대상이지만 저장·재시도를 보장하지 않습니다. 이 예제는 last-used를 보안 판단의 필수 조건으로 삼는 정책에는 맞지 않습니다.
 
 반대로 다음은 **필수 로컬 반응의 결과를 확인한 뒤에만 다음 단계로 진행하는** 소비자 함수입니다. `ReactionRequested`와 필요한 핸들러를 같은 앱에 등록하고 그 등록을 앱 테스트로 검증해야 합니다. `reactionId`와 실패 시 다음 단계를 중단하는 정책은 애플리케이션 소유이며, 이미 커밋된 업무를 rollback하는 API가 아닙니다.
 
 ```ts
-import { EventBusLifecycleService } from '@fluojs/event-bus';
+import { EventBusService } from '@fluojs/event-bus';
 
 class ReactionRequested {
   constructor(public readonly reactionId: string) {}
 }
 
 async function requireReaction(
-  eventBus: EventBusLifecycleService,
+  eventBus: EventBusService,
   reactionId: string,
 ): Promise<void> {
-  const result = await eventBus.publishWithResult(new ReactionRequested(reactionId), {
+  const result = await eventBus.publish(new ReactionRequested(reactionId), {
     waitForHandlers: true,
     timeoutMs: 500,
   });
@@ -143,7 +143,7 @@ async function requireReaction(
 
 결과는 discovery 순서의 일치하는 effective 로컬 핸들러(`index`, `moduleName`, `targetName`, `methodName`) 다음에 channel 순서의 outbound transport를 나열합니다. Index는 해당 발행 안에서만 유효하며, remote handler/subscriber를 열거하지 않습니다. Subscriber가 0이어도 adapter 발행이 성공하면 transport 성공입니다. 따라서 이 검사를 원격 처리 완료나 durability의 증거로 쓰지 마세요.
 
-Awaited timeout/cancellation은 관측만 끝내며 시작된 작업은 shutdown 추적에 남습니다. `waitForHandlers: false`의 `background.completion`은 `Promise<EventPublishSettlement>`이며 timeout과 시작 후 cancellation을 무시해 실제 작업 결과를 기다립니다. 이미 abort된 signal은 시작 전 작업을 건너뛰지만, completion은 bounded shutdown 뒤에도 pending일 수 있고 process exit 시 사라질 수 있습니다. 결과와 새 발행 경로의 버스 로그에는 raw handler/transport error나 handler 반환값이 없으며 기존의 안전한 target/status 메시지만 유지합니다. App-owned handler/transport 로그의 내용은 앱 책임입니다.
+Awaited timeout/cancellation은 관측만 끝내며 시작된 작업은 shutdown 추적에 남습니다. `waitForHandlers: false`의 `background.completion`은 `Promise<EventPublishSettlement>`이며 timeout과 시작 후 cancellation을 무시해 실제 작업 결과를 기다립니다. 이미 abort된 signal은 시작 전 작업을 건너뛰지만, completion은 bounded shutdown 뒤에도 pending일 수 있고 process exit 시 사라질 수 있습니다. 결과와 새 발행 경로의 버스 로그에는 handler 반환값이 없으며 기존의 안전한 target/status 메시지만 유지합니다. App-owned 로그의 내용은 앱 책임입니다.
 
 [실행 가능한 소비자 예제](https://github.com/fluojs/fluo/blob/main/packages/event-bus/examples/publish-results.ts), [결과 테스트](https://github.com/fluojs/fluo/blob/main/packages/event-bus/src/publish-result.test.ts), [bound 테스트](https://github.com/fluojs/fluo/blob/main/packages/event-bus/src/publish-result-bounds.test.ts), [lifecycle 테스트](https://github.com/fluojs/fluo/blob/main/packages/event-bus/src/publish-result-lifecycle.test.ts)를 함께 확인하세요. 저장소 소유자 검증 명령은 `pnpm --dir packages/event-bus test`와 `pnpm --filter '@fluojs/event-bus...' build`입니다.
 
@@ -549,7 +549,7 @@ App-level module과 request test에는 `@fluojs/testing`을 사용하세요. Pac
 
 | Package | Entry APIs |
 | --- | --- |
-| `@fluojs/event-bus` | `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, `@OnEvent`, `EVENT_BUS`, `@fluojs/event-bus/redis` |
+| `@fluojs/event-bus` | `EventBusModule.forRoot(...)`, `EventBusService`, `@OnEvent`, `@fluojs/event-bus/redis` |
 | `@fluojs/cqrs` | `CqrsModule.forRoot(...)`, `CommandBusLifecycleService`, `QueryBusLifecycleService`, `CqrsEventBusService`, handler decorators, `SagaTopologyError` |
 | `@fluojs/queue` | `QueueModule.forRoot(...)`, `getQueueToken(scope?)`, `Queue`, `@QueueWorker`, queue status snapshots |
 | `@fluojs/cron` | `CronModule.forRoot(...)`, `@Cron`, `@Interval`, `@Timeout`, `CronExpression`, `SCHEDULING_REGISTRY` |

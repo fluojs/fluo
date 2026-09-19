@@ -3,13 +3,13 @@ import { describe, expect, it } from 'vitest';
 
 import { OnEvent } from './decorators.js';
 import { EventBusModule } from './module.js';
-import { EventBusLifecycleService } from './service.js';
+import { EventBusService } from './service.js';
 
 class ReplacedProviderEvent {}
 
 class EffectiveProviderEvent {}
 
-describe('EventBusLifecycleService effective provider discovery', () => {
+describe('EventBusService effective provider discovery', () => {
   it('discovers only the effective winner for duplicate provider tokens', async () => {
     const handlerToken = Symbol('event-handler');
     const calls: string[] = [];
@@ -42,7 +42,7 @@ describe('EventBusLifecycleService effective provider discovery', () => {
     const app = await FluoFactory.create(AppModule);
 
     try {
-      const eventBus = await app.container.resolve(EventBusLifecycleService);
+      const eventBus = await app.container.resolve(EventBusService);
 
       expect(eventBus.createPlatformStatusSnapshot().details.handlersDiscovered).toBe(1);
 

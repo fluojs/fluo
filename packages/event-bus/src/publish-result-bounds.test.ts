@@ -1,7 +1,8 @@
 import { FluoFactory, defineModule } from '@fluojs/runtime';
 import { describe, expect, it, vi } from 'vitest';
 
-import { EventBusLifecycleService, EventBusModule, OnEvent } from './index.js';
+import { EventBusModule, EventBusService, OnEvent } from './index.js';
+import { EventBusLifecycleService } from './service.js';
 
 class BoundedEvent {}
 
@@ -43,9 +44,10 @@ async function createBoundedBus() {
     providers: [Handler],
   });
   const app = await FluoFactory.create(AppModule, { logger });
-  const bus = await app.container.resolve(EventBusLifecycleService);
+  const bus = await app.container.resolve(EventBusService);
+  const lifecycle = await app.container.resolve(EventBusLifecycleService);
   return {
-    app, bus, events, logger,
+    app, bus, lifecycle, events, logger,
     started: Promise.all([handlerStarted.promise, transportStarted.promise]),
     release() { handlerGate.resolve(); transportGate.resolve(); },
   };
@@ -68,10 +70,10 @@ describe('result-aware publication bounds', () => {
     const app = await FluoFactory.create(AppModule);
     vi.useFakeTimers();
     try {
-      const bus = await app.container.resolve(EventBusLifecycleService);
+      const bus = await app.container.resolve(EventBusService);
 
       // When
-      const result = await bus.publishWithResult(new BoundedEvent(), { signal: controller.signal, timeoutMs: 100 });
+      const result = await bus.publish(new BoundedEvent(), { signal: controller.signal, timeoutMs: 100 });
 
       // Then
       expect(result).toMatchObject({
@@ -91,7 +93,7 @@ describe('result-aware publication bounds', () => {
     vi.useFakeTimers();
     try {
       // When
-      const pending = fixture.bus.publishWithResult(new BoundedEvent(), {
+      const pending = fixture.bus.publish(new BoundedEvent(), {
         signal: controller.signal, timeoutMs: 12,
       });
       await fixture.started;
@@ -113,8 +115,8 @@ describe('result-aware publication bounds', () => {
       expect(fixture.events).toEqual([]);
       expect(fixture.bus.createPlatformStatusSnapshot().details.transportPublishFailures).toBe(1);
       expect(fixture.logger.warn).toHaveBeenCalledTimes(2);
-      const closing = fixture.bus.onApplicationShutdown();
-      expect(await fixture.bus.publishWithResult(new BoundedEvent())).toEqual({ status: 'rejected', reason: 'stopping' });
+      const closing = fixture.lifecycle.onApplicationShutdown();
+      expect(await fixture.bus.publish(new BoundedEvent())).toEqual({ status: 'rejected', reason: 'stopping' });
       expect(fixture.events).toEqual([]);
       fixture.release();
       await closing;
@@ -136,7 +138,7 @@ describe('result-aware publication bounds', () => {
     controller.abort();
     try {
       // When
-      const receipt = await fixture.bus.publishWithResult(new BoundedEvent(), { signal: controller.signal, waitForHandlers });
+      const receipt = await fixture.bus.publish(new BoundedEvent(), { signal: controller.signal, waitForHandlers });
       const result = receipt.status === 'background' ? await receipt.completion : receipt;
 
       // Then
@@ -160,7 +162,7 @@ describe('result-aware publication bounds', () => {
     vi.useFakeTimers();
     try {
       // When
-      const pending = fixture.bus.publishWithResult(new BoundedEvent(), {
+      const pending = fixture.bus.publish(new BoundedEvent(), {
         waitForHandlers: false, signal: controller.signal, timeoutMs: 1,
       });
       await fixture.started;
@@ -170,7 +172,7 @@ describe('result-aware publication bounds', () => {
       let completed = false;
       const completion = receipt.completion.then((result) => { completed = true; return result; });
       controller.abort();
-      const closing = fixture.bus.onApplicationShutdown();
+      const closing = fixture.lifecycle.onApplicationShutdown();
       await vi.advanceTimersByTimeAsync(50);
       await closing;
 
@@ -179,7 +181,7 @@ describe('result-aware publication bounds', () => {
       expect(fixture.events).toEqual(['transport:close']);
       expect(fixture.bus.createPlatformStatusSnapshot().details.shutdownDrainTimeouts).toBe(1);
       expect(fixture.bus.createPlatformStatusSnapshot().details.transportPublishFailures).toBe(0);
-      expect(await fixture.bus.publishWithResult(new BoundedEvent())).toEqual({ status: 'rejected', reason: 'stopped' });
+      expect(await fixture.bus.publish(new BoundedEvent())).toEqual({ status: 'rejected', reason: 'stopped' });
       fixture.release();
       expect(await completion).toMatchObject({
         status: 'settled', outcomes: [{ status: 'succeeded' }, { status: 'succeeded' }],
