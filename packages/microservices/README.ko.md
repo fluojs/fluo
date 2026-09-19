@@ -206,7 +206,7 @@ Behavioral contract notes:
 
 ### Type export
 
-Root barrel은 `Microservice`, `MicroserviceLifecycleState`, `MicroserviceHandlerCounts`, `MicroserviceModuleOptions`, `MicroserviceModuleRegistrationOptions`, `MicroservicePlatformStatusSnapshot`, `MicroserviceStatusAdapterInput`, `MicroserviceTransport`, `MicroserviceTransportCapabilities`, `Pattern`, `ServerStreamWriter`와 `GrpcMicroserviceTransportOptions`, `KafkaMicroserviceTransportOptions`, `MqttMicroserviceTransportOptions`, `NatsMicroserviceTransportOptions`, `RabbitMqMicroserviceTransportOptions`, `RedisPubSubMicroserviceTransportOptions`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`, `TcpMicroserviceTransportOptions` 같은 transport option type을 export합니다.
+Root barrel은 `Microservice`, `MicroserviceLifecycleState`, `MicroserviceHandlerCounts`, `MicroserviceModuleOptions`, `MicroserviceModuleRegistrationOptions`, `MicroservicePlatformStatusSnapshot`, `MicroserviceStatusAdapterInput`, `MicroserviceTransport`, `MicroserviceTransportCapabilities`, `Pattern`, `ServerStreamWriter`를 export합니다. `GrpcMicroserviceTransportOptions`, `KafkaMicroserviceTransportOptions`, `MqttMicroserviceTransportOptions`, `NatsMicroserviceTransportOptions`, `RabbitMqMicroserviceTransportOptions`, `RedisPubSubMicroserviceTransportOptions`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`, `TcpMicroserviceTransportOptions` 같은 transport option type은 각 transport 전용 서브패스에서 import합니다.
 
 ### 동작 계약
 
@@ -223,7 +223,7 @@ Payload는 dispatch 전에 clone되고, 동시 `listen()` 호출은 dedupe되며
 - `@fluojs/microservices/grpc`
 - `@fluojs/microservices/mqtt`
 
-`RedisStreamsMicroserviceTransport`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`는 루트 배럴과 전용 `@fluojs/microservices/redis-streams` 서브패스에서 모두 사용할 수 있습니다.
+`RedisStreamsMicroserviceTransport`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`는 전용 `@fluojs/microservices/redis-streams` 서브패스에서 import합니다.
 
 정식 transport 학습 자료는 [TCP](../../book/intermediate/ch02-tcp.ko.md), [RabbitMQ](../../book/intermediate/ch04-rabbitmq.ko.md), [gRPC](../../book/intermediate/ch08-grpc.ko.md) 책 장에 있으며, 이 README는 패키지 수준 동작 계약 기준으로 남습니다.
 

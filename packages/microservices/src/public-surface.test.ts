@@ -58,4 +58,21 @@ describe('@fluojs/microservices root barrel public surface', () => {
     expect(readme).toContain('Runnable starter examples are generated with `fluo new --shape microservice --transport <transport> --runtime node --platform none`');
     expect(koreanReadme).toContain('실행 가능한 스타터 예제는 지원되는 TCP, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC 트랜스포트 변형에 대해 `fluo new --shape microservice --transport <transport> --runtime node --platform none`로 생성합니다.');
   });
+
+  it('documents transports and transport options as subpath-only imports in README files', () => {
+    const packageRoot = resolve(import.meta.dirname, '..');
+    const readme = readFileSync(resolve(packageRoot, 'README.md'), 'utf8');
+    const koreanReadme = readFileSync(resolve(packageRoot, 'README.ko.md'), 'utf8');
+
+    expect(readme).not.toContain('available from the root barrel and the dedicated');
+    expect(koreanReadme).not.toContain('루트 배럴과 전용');
+    expect(readme).not.toMatch(/The root barrel exports [^.\n]*TransportOptions/);
+    expect(koreanReadme).not.toMatch(/Root barrel은 [^.\n]*TransportOptions/);
+    expect(readme).toContain(
+      '`RedisStreamsMicroserviceTransport`, `RedisStreamsMicroserviceTransportOptions`, and `RedisStreamClientLike` are imported from the dedicated `@fluojs/microservices/redis-streams` subpath.',
+    );
+    expect(koreanReadme).toContain(
+      '`RedisStreamsMicroserviceTransport`, `RedisStreamsMicroserviceTransportOptions`, `RedisStreamClientLike`는 전용 `@fluojs/microservices/redis-streams` 서브패스에서 import합니다.',
+    );
+  });
 });

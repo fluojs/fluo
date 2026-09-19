@@ -21,6 +21,26 @@ import {
 } from 'typescript';
 
 const transportSubpaths = ['tcp', 'redis', 'redis-streams', 'nats', 'kafka', 'rabbitmq', 'grpc', 'mqtt'];
+const transportSubpathExclusiveNames = [
+  'TcpMicroserviceTransport',
+  'TcpMicroserviceTransportOptions',
+  'RedisPubSubMicroserviceTransport',
+  'RedisPubSubMicroserviceTransportOptions',
+  'RedisStreamsMicroserviceTransport',
+  'RedisStreamsMicroserviceTransportOptions',
+  'RedisStreamClientLike',
+  'RedisStreamWriteOptions',
+  'NatsMicroserviceTransport',
+  'NatsMicroserviceTransportOptions',
+  'KafkaMicroserviceTransport',
+  'KafkaMicroserviceTransportOptions',
+  'RabbitMqMicroserviceTransport',
+  'RabbitMqMicroserviceTransportOptions',
+  'GrpcMicroserviceTransport',
+  'GrpcMicroserviceTransportOptions',
+  'MqttMicroserviceTransport',
+  'MqttMicroserviceTransportOptions',
+];
 
 function assert(condition, message) {
   if (!condition) {
@@ -80,6 +100,22 @@ function hasExportedNames(source, fileName, requiredNames) {
   }
 
   return requiredNames.every((name) => exportedNames.has(name));
+}
+
+function hasAnyExportedName(source, fileName, names) {
+  const exportedNames = new Set();
+
+  for (const statement of parseSource(source, fileName).statements) {
+    if (!isExportDeclaration(statement) || !statement.exportClause || !isNamedExports(statement.exportClause)) {
+      continue;
+    }
+
+    for (const element of statement.exportClause.elements) {
+      exportedNames.add(element.name.text);
+    }
+  }
+
+  return names.some((name) => exportedNames.has(name));
 }
 
 function hasThrowingError(method, marker) {
@@ -149,12 +185,12 @@ export function enforceMicroservicesRuntimeEvidence(readText) {
     'packages/microservices/src/index.ts must structurally export the documented streaming decorators.',
   );
   assert(
-    !hasExportedNames(
+    !hasAnyExportedName(
       indexSource,
       'packages/microservices/src/index.ts',
-      ['RedisPubSubMicroserviceTransport', 'RedisStreamsMicroserviceTransport'],
+      transportSubpathExclusiveNames,
     ),
-    'packages/microservices/src/index.ts must keep transport classes on their dedicated subpaths.',
+    'packages/microservices/src/index.ts must keep transport classes and transport options on their dedicated subpaths.',
   );
 
   const manifest = JSON.parse(readText('packages/microservices/package.json'));

@@ -203,4 +203,24 @@ describe('NestJS microservices migration documentation', () => {
     // Then
     expect(runGovernanceGuard).toThrow(expectedError);
   });
+
+  it.each([
+    'RedisStreamsMicroserviceTransport',
+    'RedisStreamsMicroserviceTransportOptions',
+    'RedisStreamClientLike',
+    'TcpMicroserviceTransport',
+    'TcpMicroserviceTransportOptions',
+    'GrpcMicroserviceTransportOptions',
+  ])('rejects root barrel export of transport symbol %s', (symbolName) => {
+    // Given
+    const readWithRootTransportExport = (relativePath: string) =>
+      relativePath === 'packages/microservices/src/index.ts'
+        ? `${read(relativePath)}\nexport type { ${symbolName} } from './transports/index.js';\n`
+        : read(relativePath);
+
+    // When / Then
+    expect(() => enforceMicroservicesRuntimeEvidence(readWithRootTransportExport)).toThrow(
+      'packages/microservices/src/index.ts must keep transport classes and transport options on their dedicated subpaths.',
+    );
+  });
 });
