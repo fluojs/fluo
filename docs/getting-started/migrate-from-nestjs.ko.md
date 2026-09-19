@@ -1258,7 +1258,7 @@ const files = assertRequestContext().request.files ?? [];
 
 ## Queue 기반 이메일 알림 batch
 
-병렬 NestJS Bull producer 호출은 `Queue.enqueueMany(entries)` 또는 `QueueLifecycleService.enqueueMany(entries)`로 바꾸세요. 각 `QueueEnqueueManyEntry`는 자신의 `deduplicationKey`를 유지하지만, 모든 entry는 같은 등록된 BullMQ queue로 해석되어야 합니다. Queue는 전체 batch를 검증한 뒤 한 번의 atomic `addBulk(...)` persist를 수행하고 입력 순서대로 backing job ID를 반환합니다. 기존 `enqueue(job, options?)` 호출은 호환되며, 내장 `@fluojs/email/queue` notification adapter는 parallel single-job enqueue 대신 이 atomic batch seam을 사용합니다.
+병렬 NestJS Bull producer 호출은 `@Inject(getQueueToken(scope?))`로 주입한 `Queue.enqueueMany(entries)`로 바꾸세요. 각 `QueueEnqueueManyEntry`는 자신의 `deduplicationKey`를 유지하지만, 모든 entry는 같은 등록된 BullMQ queue로 해석되어야 합니다. Queue는 전체 batch를 검증한 뒤 한 번의 atomic `addBulk(...)` persist를 수행하고 입력 순서대로 backing job ID를 반환합니다. 기존 `enqueue(job, options?)` 호출은 호환되며, 내장 `@fluojs/email/queue` notification adapter는 parallel single-job enqueue 대신 이 atomic batch seam을 사용합니다.
 
 ## Event-bus migration limits
 

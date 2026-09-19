@@ -128,15 +128,15 @@ The following `src/notifications/receipt-dispatcher.ts` is a complete file. `Rec
 ```typescript
 import { Inject } from '@fluojs/core';
 import { PrismaService } from '@fluojs/prisma';
-import { QueueLifecycleService } from '@fluojs/queue';
+import { getQueueToken, type Queue } from '@fluojs/queue';
 import type { PrismaClient } from '@prisma/client';
 import { RenderReceiptJob } from './jobs/render-receipt.job.js';
 
-@Inject(PrismaService, QueueLifecycleService)
+@Inject(PrismaService, getQueueToken())
 export class ReceiptDispatcher {
   constructor(
     private readonly db: PrismaService<PrismaClient>,
-    private readonly queue: QueueLifecycleService,
+    private readonly queue: Queue,
   ) {}
 
   async enqueueNext(): Promise<boolean> {

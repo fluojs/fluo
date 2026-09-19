@@ -345,7 +345,7 @@ The renderer runs only when both `template` and `renderer` are present. Its `sub
 
 ### Queue-backed bulk delivery
 
-When `@fluojs/notifications` should offload bulk email delivery to the background, import `QueueModule`, inject `QueueLifecycleService`, call `createEmailNotificationsQueueAdapter(queue)`, and register `EmailNotificationsQueueWorker` as an application provider. The root `EmailModule` does not register the worker automatically, so applications that never import `@fluojs/email/queue` do not need `@fluojs/queue` at runtime.
+When `@fluojs/notifications` should offload bulk email delivery to the background, import `QueueModule`, inject the `Queue` facade with `getQueueToken()`, call `createEmailNotificationsQueueAdapter(queue)`, and register `EmailNotificationsQueueWorker` as an application provider. The root `EmailModule` does not register the worker automatically, so applications that never import `@fluojs/email/queue` do not need `@fluojs/queue` at runtime.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -355,7 +355,7 @@ import {
 } from '@fluojs/email';
 import { createEmailNotificationsQueueAdapter, EmailNotificationsQueueWorker } from '@fluojs/email/queue';
 import { NotificationsModule } from '@fluojs/notifications';
-import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
+import { getQueueToken, QueueModule } from '@fluojs/queue';
 
 @Module({
   imports: [
@@ -369,7 +369,7 @@ import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
       },
     }),
     NotificationsModule.forRootAsync({
-      inject: [EMAIL_CHANNEL, QueueLifecycleService],
+      inject: [EMAIL_CHANNEL, getQueueToken()],
       useFactory: (channel, queue) => ({
         channels: [channel],
         queue: {

@@ -35,7 +35,7 @@ export class EmailNotificationQueueJob {
  * @example
  * ```ts
  * NotificationsModule.forRootAsync({
- *   inject: [EMAIL_CHANNEL, QueueLifecycleService],
+ *   inject: [EMAIL_CHANNEL, getQueueToken()],
  *   useFactory: (channel, queue) => ({
  *     channels: [channel],
  *     queue: {

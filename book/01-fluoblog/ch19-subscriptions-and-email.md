@@ -196,7 +196,7 @@ The following `src/subscriptions/email-jobs.ts` is a complete job file. It reuse
 ```ts
 import { Inject } from '@fluojs/core';
 import { EmailService } from '@fluojs/email';
-import { QueueLifecycleService, QueueWorker } from '@fluojs/queue';
+import { getQueueToken, type Queue, QueueWorker } from '@fluojs/queue';
 import { PrismaService } from '@fluojs/prisma';
 import type { PrismaClient } from '@prisma/client';
 import { AppSettings } from '../config/app-settings.js';
@@ -211,11 +211,11 @@ export class AmbiguousDeliveryError extends Error {
   }
 }
 
-@Inject(PrismaService, QueueLifecycleService)
+@Inject(PrismaService, getQueueToken())
 export class PendingEmailDispatcher {
   constructor(
     private readonly prisma: PrismaService<PrismaClient>,
-    private readonly queue: QueueLifecycleService,
+    private readonly queue: Queue,
   ) {}
 
   async dispatchPending(): Promise<number> {

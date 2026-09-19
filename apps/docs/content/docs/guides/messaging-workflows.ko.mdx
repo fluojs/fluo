@@ -23,7 +23,7 @@ business fact
 | Local event와 optional Redis fan-out | `@fluojs/event-bus` | `EventBusModule`, `@OnEvent`, `EventBusLifecycleService.publish(...)` |
 | Command, query, event, saga | `@fluojs/cqrs` | `CqrsModule`, `@CommandHandler`, `@QueryHandler`, `@EventHandler`, `@Saga` |
 | Broker-backed service boundary | `@fluojs/microservices` | `MicroservicesModule`, `@MessagePattern`, `@EventPattern`, transport adapter |
-| Redis-backed background job | `@fluojs/queue` | `QueueModule`, `@QueueWorker`, `QueueLifecycleService.enqueue(...)` |
+| Redis-backed background job | `@fluojs/queue` | `QueueModule`, `@QueueWorker`, `getQueueToken(scope?)`, `Queue.enqueue(...)` |
 | Scheduled and delayed work | `@fluojs/cron` | `CronModule`, `@Cron`, `@Interval`, `@Timeout`, `SCHEDULING_REGISTRY` |
 | Channel-agnostic notification orchestration | `@fluojs/notifications` | `NotificationsModule`, `NotificationsService`, lifecycle event, queue seam |
 | Email delivery와 notification queue worker | `@fluojs/email` | `EmailModule`, `EmailService`, `EMAIL_CHANNEL`, `@fluojs/email/queue` |
@@ -227,7 +227,7 @@ Work가 느리거나 retry 가능하거나 failure-prone이거나 initiating req
 
 ```ts
 import { Inject, Module } from '@fluojs/core';
-import { QueueLifecycleService, QueueModule, QueueWorker } from '@fluojs/queue';
+import { getQueueToken, type Queue, QueueModule, QueueWorker } from '@fluojs/queue';
 import { RedisModule } from '@fluojs/redis';
 
 class GenerateInvoiceJob {
@@ -244,9 +244,9 @@ class InvoiceWorker {
   }
 }
 
-@Inject(QueueLifecycleService)
+@Inject(getQueueToken())
 class BillingService {
-  constructor(private readonly queue: QueueLifecycleService) {}
+  constructor(private readonly queue: Queue) {}
 
   async afterShipmentDispatched(orderId: string) {
     await this.queue.enqueue(new GenerateInvoiceJob(orderId));
@@ -450,7 +450,7 @@ import { Module } from '@fluojs/core';
 import { EMAIL_CHANNEL, EmailModule } from '@fluojs/email';
 import { createEmailNotificationsQueueAdapter, EmailNotificationsQueueWorker } from '@fluojs/email/queue';
 import { NotificationsModule } from '@fluojs/notifications';
-import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
+import { getQueueToken, QueueModule } from '@fluojs/queue';
 
 @Module({
   imports: [
@@ -464,7 +464,7 @@ import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
       },
     }),
     NotificationsModule.forRootAsync({
-      inject: [EMAIL_CHANNEL, QueueLifecycleService],
+      inject: [EMAIL_CHANNEL, getQueueToken()],
       useFactory: (channel, queue) => ({
         channels: [channel],
         queue: {
@@ -551,7 +551,7 @@ App-level module과 request test에는 `@fluojs/testing`을 사용하세요. Pac
 | --- | --- |
 | `@fluojs/event-bus` | `EventBusModule.forRoot(...)`, `EventBusLifecycleService`, `@OnEvent`, `EVENT_BUS`, `@fluojs/event-bus/redis` |
 | `@fluojs/cqrs` | `CqrsModule.forRoot(...)`, `CommandBusLifecycleService`, `QueryBusLifecycleService`, `CqrsEventBusService`, handler decorators, `SagaTopologyError` |
-| `@fluojs/queue` | `QueueModule.forRoot(...)`, `QueueLifecycleService`, `@QueueWorker`, `QUEUE`, queue status snapshots |
+| `@fluojs/queue` | `QueueModule.forRoot(...)`, `getQueueToken(scope?)`, `Queue`, `@QueueWorker`, queue status snapshots |
 | `@fluojs/cron` | `CronModule.forRoot(...)`, `@Cron`, `@Interval`, `@Timeout`, `CronExpression`, `SCHEDULING_REGISTRY` |
 | `@fluojs/microservices` | `MicroservicesModule.forRoot(...)`, `createMicroservicesProviders(...)`, pattern decorators, transport adapters, `MicroserviceLifecycleService` |
 | `@fluojs/notifications` | `NotificationsModule.forRoot(...)`, `NotificationsModule.forRootAsync(...)`, `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS` |

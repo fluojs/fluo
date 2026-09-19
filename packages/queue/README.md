@@ -55,7 +55,7 @@ export class OrderWorker {
 
 ### 2. Register and Enqueue
 
-Import `QueueModule` and inject `QueueLifecycleService` to enqueue jobs.
+Import `QueueModule` and inject the narrow `Queue` facade with `getQueueToken()` to enqueue jobs.
 
 `QueueModule.forRoot(...)` is the supported root entrypoint for application-level queue registration.
 
@@ -63,12 +63,12 @@ Producers call `enqueue(new JobClass(...))` with a job class instance. There is 
 
 ```typescript
 import { Module, Inject } from '@fluojs/core';
-import { QueueModule, QueueLifecycleService } from '@fluojs/queue';
+import { getQueueToken, type Queue, QueueModule } from '@fluojs/queue';
 import { RedisModule } from '@fluojs/redis';
 
-@Inject(QueueLifecycleService)
+@Inject(getQueueToken())
 export class OrderService {
-  constructor(private readonly queue: QueueLifecycleService) {}
+  constructor(private readonly queue: Queue) {}
 
   async placeOrder(id: string) {
     await this.queue.enqueue(new ProcessOrderJob(id));
@@ -96,7 +96,7 @@ Consumers moving from NestJS queue integrations must replace metadata-driven pro
 **One worker owns each job class and effective `jobName`.** Queue rejects duplicate singleton registrations during bootstrap before creating BullMQ resources, regardless of provider discovery order. Give each migrated NestJS `@Process(...)` handler its own job class and `jobName`, or consolidate multiple handlers behind one worker's `handle(job)`.
 
 4. Keep the worker reachable from the queue registration. The default global `QueueModule.forRoot()` can discover singleton workers across the compiled application graph. With `global: false`, discovery is limited to modules that can reach that specific registration through their authored imports/exports, and the matching Redis provider must be reachable from the same module tree.
-5. Convert producers as well as processors. Replace `@InjectQueue('name')` plus `queue.add('job', payload)` with `@Inject(QueueLifecycleService)` (or the `QUEUE` / `getQueueToken(scope)` facade) and `queue.enqueue(new JobClass(...))`. Queue has no name-and-payload producer signature, and a plain payload object has `Object` as its constructor, so it cannot identify a registered JobClass worker.
+5. Convert producers as well as processors. Replace `@InjectQueue('name')` plus `queue.add('job', payload)` with `@Inject(getQueueToken(scope?))`, a `Queue` facade dependency, and `queue.enqueue(new JobClass(...))`. Queue has no name-and-payload producer signature, and a plain payload object has `Object` as its constructor, so it cannot identify a registered JobClass worker.
 6. Remove worker-owned start/stop hooks that duplicate Queue lifecycle ownership. Queue creates resources during application bootstrap, starts BullMQ processors only after the application bootstrap-ready handoff, rejects new enqueue calls after shutdown starts, and gives graceful close plus any required force-close their own `workerShutdownTimeoutMs` budgets.
 
 ### Producer migration: Bull/BullMQ to Queue
@@ -122,11 +122,11 @@ In fluo, declare and register `ProcessOrderJob` with `@QueueWorker(ProcessOrderJ
 ```typescript
 // After: fluo
 import { Inject } from '@fluojs/core';
-import { QueueLifecycleService } from '@fluojs/queue';
+import { getQueueToken, type Queue } from '@fluojs/queue';
 
-@Inject(QueueLifecycleService)
+@Inject(getQueueToken())
 export class OrdersProducer {
-  constructor(private readonly queue: QueueLifecycleService) {}
+  constructor(private readonly queue: Queue) {}
 
   async placeOrder(orderId: string) {
     await this.queue.enqueue(new ProcessOrderJob(orderId));
@@ -176,10 +176,9 @@ QueueModule.forRoot({
 
 ```typescript
 import { Inject, Module } from '@fluojs/core';
-import { getQueueLifecycleServiceToken, getQueueToken, QueueModule, type Queue } from '@fluojs/queue';
+import { getQueueToken, QueueModule, type Queue } from '@fluojs/queue';
 
 const EMAIL_QUEUE = getQueueToken('email');
-const EMAIL_QUEUE_LIFECYCLE = getQueueLifecycleServiceToken('email');
 
 @Inject(EMAIL_QUEUE)
 export class EmailPublisher {
@@ -193,7 +192,7 @@ export class EmailPublisher {
 export class EmailQueueModule {}
 ```
 
-Omit `scope` only when the application has a single default queue registration and injects the compatibility `QUEUE` token or `QueueLifecycleService` class directly. For scoped registrations, inject `getQueueToken(scope)` or `getQueueLifecycleServiceToken(scope)` so each feature module resolves its own queue instance instead of the default compatibility token.
+Omit `scope` only when the application has a single default queue registration. Producers inject `getQueueToken()` for that default or `getQueueToken(scope)` for a scoped registration, so each feature module resolves its own narrow `Queue` facade. `QUEUE`, `QueueLifecycleService`, and `getQueueLifecycleServiceToken(scope)` remain integration and compatibility boundaries, not producer recipes.
 
 ### Bootstrap and Shutdown Lifecycle
 
@@ -218,7 +217,7 @@ When a worker exhausts its retry attempts, Queue appends a separate dead-letter 
 
 `QueueModule.forRoot()` keeps the most recent `1_000` dead-letter entries per job by default. Set `defaultDeadLetterMaxEntries: false` to opt out, or provide a smaller positive number when operators need a tighter retention budget.
 
-Use `QueueLifecycleService.inspectDeadLetters(jobName, { limit })` or the same method on an injected `Queue` facade to inspect records without reading Queue's Redis keys directly:
+Use `Queue.inspectDeadLetters(jobName, { limit })` on the injected producer facade to inspect records without reading Queue's Redis keys directly:
 
 ```typescript
 const inspection = await queue.inspectDeadLetters('ProcessOrderJob', { limit: 25 });
@@ -265,8 +264,8 @@ Treat low-level provider assembly as an internal implementation detail: low-leve
 ### Core
 - `QueueModule`: Main entry point for queue registration.
 - `QueueModule.forRoot(options)`: Registers queue support for an application module.
-- `QueueLifecycleService`: Primary service for enqueuing jobs, read-only dead-letter inspection, and lifecycle/status snapshots (`enqueue(job, options?)`, `enqueueMany(entries)`, `inspectDeadLetters(jobName, options?)`, `createPlatformStatusSnapshot()`).
-- `Queue`: Public producer facade exposed through `QUEUE` and `getQueueToken(scope?)`; it has the same `enqueue(...)` and `enqueueMany(...)` contract as `QueueLifecycleService`.
+- `Queue`: Narrow public producer facade injected with `getQueueToken(scope?)`; it supports `enqueue(...)`, `enqueueMany(...)`, and read-only `inspectDeadLetters(...)`.
+- `QueueLifecycleService`: Integration and diagnostics service for lifecycle/status snapshots; producers use the narrow `Queue` facade instead.
 - `@QueueWorker(JobClass, options?)`: Decorator to mark a class as a job handler.
 - `QUEUE`: Compatibility injection token for the queue facade.
 - `getQueueToken(scope?)`: Queue facade token helper. Omitting `scope` returns the default `QUEUE` token; a non-empty scope returns that scoped registration's facade token.
@@ -309,7 +308,7 @@ Only singleton `@QueueWorker()` providers/controllers are registered. Request/tr
 
 ### Atomic producer batches
 
-`Queue.enqueueMany(entries)` and `QueueLifecycleService.enqueueMany(entries)` accept ordered `QueueEnqueueManyEntry` values. Each entry supplies one job instance and optional per-entry `QueueEnqueueOptions`, including `deduplicationKey`.
+`Queue.enqueueMany(entries)` accepts ordered `QueueEnqueueManyEntry` values. Each entry supplies one job instance and optional per-entry `QueueEnqueueOptions`, including `deduplicationKey`.
 
 Every entry must resolve to a registered worker on the same single BullMQ queue. Queue validates the full batch before it calls BullMQ, so a missing worker or a job that resolves to another queue rejects without persisting any entry. A valid batch is persisted with one atomic BullMQ `addBulk(...)` call, and its returned job IDs stay aligned with the input order.
 

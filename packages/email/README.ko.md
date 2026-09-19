@@ -345,7 +345,7 @@ export class WelcomeEmailService {
 
 ### 큐 기반 대량 전달
 
-`@fluojs/notifications`가 대량 이메일 전달을 백그라운드로 넘겨야 한다면 `QueueModule`을 import하고, `QueueLifecycleService`를 주입해 `createEmailNotificationsQueueAdapter(queue)`를 만든 뒤, `EmailNotificationsQueueWorker`를 애플리케이션 provider로 등록합니다. 루트 `EmailModule`은 worker를 자동 등록하지 않으므로 `@fluojs/email/queue`를 import하지 않는 애플리케이션은 런타임에서 `@fluojs/queue`를 필요로 하지 않습니다.
+`@fluojs/notifications`가 대량 이메일 전달을 백그라운드로 넘겨야 한다면 `QueueModule`을 import하고, `getQueueToken()`으로 `Queue` facade를 주입해 `createEmailNotificationsQueueAdapter(queue)`를 만든 뒤, `EmailNotificationsQueueWorker`를 애플리케이션 provider로 등록합니다. 루트 `EmailModule`은 worker를 자동 등록하지 않으므로 `@fluojs/email/queue`를 import하지 않는 애플리케이션은 런타임에서 `@fluojs/queue`를 필요로 하지 않습니다.
 
 ```typescript
 import { Module } from '@fluojs/core';
@@ -355,7 +355,7 @@ import {
 } from '@fluojs/email';
 import { createEmailNotificationsQueueAdapter, EmailNotificationsQueueWorker } from '@fluojs/email/queue';
 import { NotificationsModule } from '@fluojs/notifications';
-import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
+import { getQueueToken, QueueModule } from '@fluojs/queue';
 
 @Module({
   imports: [
@@ -369,7 +369,7 @@ import { QueueLifecycleService, QueueModule } from '@fluojs/queue';
       },
     }),
     NotificationsModule.forRootAsync({
-      inject: [EMAIL_CHANNEL, QueueLifecycleService],
+      inject: [EMAIL_CHANNEL, getQueueToken()],
       useFactory: (channel, queue) => ({
         channels: [channel],
         queue: {

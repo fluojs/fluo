@@ -260,11 +260,15 @@ Queue is the shortest example where normalization, Provider assembly, and metada
 `path:packages/queue/src/module.ts:69-77`
 ```typescript
 static forRoot(options: QueueModuleOptions = {}): ModuleType {
+  const normalizedOptions = normalizeQueueModuleOptions(options);
+  const tokens = getQueueProviderTokens(normalizedOptions.scope);
   class QueueModuleDefinition {}
 
   return defineModule(QueueModuleDefinition, {
-    exports: [QueueLifecycleService, QUEUE],
-    global: options.global ?? true,
+    exports: normalizedOptions.scope === undefined
+      ? [QueueLifecycleService, tokens.lifecycleServiceToken, tokens.queueToken]
+      : [tokens.lifecycleServiceToken, tokens.queueToken],
+    global: normalizedOptions.global,
     providers: [/* normalized queue providers */],
   });
 }

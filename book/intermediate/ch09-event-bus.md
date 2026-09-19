@@ -226,11 +226,11 @@ An event handler should not become a hidden worker. Fast local reactions are fin
 ```typescript
 import { Inject } from '@fluojs/core';
 import { OnEvent } from '@fluojs/event-bus';
-import { QueueLifecycleService } from '@fluojs/queue';
+import { getQueueToken, type Queue } from '@fluojs/queue';
 
-@Inject(QueueLifecycleService)
+@Inject(getQueueToken())
 export class BillingEventsHandler {
-  constructor(private readonly queue: QueueLifecycleService) {}
+  constructor(private readonly queue: Queue) {}
 
   @OnEvent(OrderPlacedEvent)
   async enqueueInvoice(event: OrderPlacedEvent) {
