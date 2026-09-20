@@ -59,6 +59,27 @@ describe('$search-issue target intake', () => {
     expect(catalog).toContain('| cli |');
     expect(catalog).toContain('@fluojs/vite');
   });
+
+  it('keeps the canonical package catalog aligned with the workspace', () => {
+    expect(runJson('verify-workspace', process.cwd())).toMatchObject({
+      packages: expect.arrayContaining(['platform-nextjs']),
+    });
+  });
+
+  it('resolves platform-nextjs as a public package target', () => {
+    expect(runJson('resolve', 'package', 'platform-nextjs')).toEqual({
+      mode: 'package',
+      packages: ['platform-nextjs'],
+    });
+  });
+
+  it('includes platform-nextjs in the http-runtime group', () => {
+    expect(runJson('resolve', 'group', 'http-runtime')).toMatchObject({
+      mode: 'group',
+      groups: ['http-runtime'],
+      packages: expect.arrayContaining(['platform-nextjs']),
+    });
+  });
 });
 
 describe('$search-issue purpose intake', () => {
