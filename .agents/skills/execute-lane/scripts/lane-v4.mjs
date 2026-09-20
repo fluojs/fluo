@@ -12,20 +12,38 @@
 // - CI is a subscription (`gh pr checks --watch` in the CLI), never a
 //   polling ceremony.
 
+import { contractDigest, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { validateReviewFact } from '../../review-head/scripts/contracts.mjs';
+
 export const ATTEMPT_CEILING = 3;
 
-export const isValidLocalCheck = (value, headSha) =>
-	typeof value === 'object'
-	&& value !== null
+export const localCheckBinding = (review, acceptedAt) => {
+	if (review?.verdict !== 'pass' || typeof acceptedAt !== 'string'
+		|| !Number.isFinite(Date.parse(acceptedAt)) || new Date(acceptedAt).toISOString() !== acceptedAt) {
+		throw new TypeError('local CI requires a recorded passing review');
+	}
+	return { preflightSha256: review.preflight_sha256, reviewSha256: contractDigest({ review, acceptedAt }), reviewAcceptedAt: acceptedAt };
+};
+
+const isCurrentLocalCheck = (value, headSha, binding) =>
+	typeof value === 'object' && value !== null && binding !== null
+	&& value.head === headSha
+	&& value.preflightSha256 === binding.preflightSha256
+	&& value.reviewSha256 === binding.reviewSha256;
+
+export const isValidLocalCheck = (value, headSha, binding = null) =>
+	isCurrentLocalCheck(value, headSha, binding)
+	&& typeof value.receiptStartedAt === 'string'
+	&& Date.parse(value.receiptStartedAt) > Date.parse(binding.reviewAcceptedAt)
 	&& value.status === 'passed'
 	&& value.valid === true
-	&& value.head === headSha
 	&& typeof value.receiptPath === 'string'
 	&& value.receiptPath.length > 0
 	&& typeof value.receiptSha256 === 'string'
 	&& /^[0-9a-f]{64}$/u.test(value.receiptSha256);
 
 const PHASES = new Set([
+	'preflight',
 	'implement',
 	'verify-local',
 	'review',
@@ -137,9 +155,6 @@ export const decideNext = (lane, obs) => {
 	if (lane.blocker !== null && lane.blocker !== undefined) {
 		return { action: 'blocked', reason: lane.blocker.type, blocker: lane.blocker };
 	}
-	if (obs.review?.verdict === 'needs-human-check') {
-		return { action: 'blocked', reason: 'needs-human-check' };
-	}
 
 	// 2. Merged PR: converge to cleanup, then done.
 	if (obs.pr?.state === 'MERGED') {
@@ -159,34 +174,51 @@ export const decideNext = (lane, obs) => {
 		return { action: 'wait-dependencies', unmet: obs.unmetDependencies };
 	}
 
+	// The issue/base/contract binding survives implementation head movement.
+	// The lead's observed diff may expand the policy, never shrink it.
+	const preflight = evaluatePreflight(obs.preflight, { ...obs, issue: lane.issue });
+	if (!preflight.valid) {
+		return { action: 'preflight', reason: preflight.reason, ...(preflight.files ? { files: preflight.files } : {}) };
+	}
+
 	// 3. Nothing implemented yet (or implementation retry).
 	if (!obs.branch || !obs.worktree || !obs.hasNewCommits) {
 		return { action: 'implement' };
 	}
 
-	// 4. Local verification of the current head.
-	if (obs.localChecks?.status === 'failed') {
-		return { action: 'fix-back', reason: 'local-checks-failed', head: obs.headSha };
-	}
-	if (!isValidLocalCheck(obs.localChecks, obs.headSha)) {
-		return { action: 'verify-local', head: obs.headSha };
-	}
-
-	// 5. Release governance: public package changes ship a changeset
+	// 4. Release governance: public package changes ship a changeset
 	//    before review, so reviewers see the final head.
 	if (obs.publicPackagesTouched === true && obs.changesetPresent !== true) {
 		return { action: 'fix-back', reason: 'changeset-missing', head: obs.headSha };
 	}
 
-	// 6. Read-only review triad, bound to the exact current head.
-	if (!obs.review) {
-		return { action: 'review', head: obs.headSha };
+	// 5. Recompute the selective gate from exact-head, exact-policy evidence.
+	// Legacy arbitrary verdicts (including 'merge') can never advance.
+	let review;
+	try {
+		review = validateReviewFact(obs.review, obs.headSha, preflight.policy);
+	} catch {
+		return { action: 'review', head: obs.headSha, policy: preflight.policy };
 	}
-	if (obs.review.verdict === 'block') {
+	if (review.verdict === 'block') {
 		return { action: 'fix-back', reason: 'review-block', head: obs.headSha };
 	}
-	if (obs.review.head !== obs.headSha) {
-		return { action: 'review', reason: 'stale-review-head', head: obs.headSha };
+	if (review.verdict === 'needs-human-check') {
+		return { action: 'blocked', reason: 'needs-human-check' };
+	}
+
+	// 6. Canonical local CI follows this accepted review, not merely this head.
+	let binding;
+	try {
+		binding = localCheckBinding(review, obs.reviewAcceptedAt);
+	} catch {
+		return { action: 'review', head: obs.headSha, policy: preflight.policy };
+	}
+	if (obs.localChecks?.status === 'failed' && isCurrentLocalCheck(obs.localChecks, obs.headSha, binding)) {
+		return { action: 'fix-back', reason: 'local-checks-failed', head: obs.headSha };
+	}
+	if (!isValidLocalCheck(obs.localChecks, obs.headSha, binding)) {
+		return { action: 'verify-local', head: obs.headSha };
 	}
 
 	// 7. Remote lifecycle. GitHub state is authoritative.

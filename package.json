@@ -25,7 +25,7 @@
     "typecheck": "tsc -p tsconfig.tools.json --noEmit && tsc -p examples/tsconfig.json --noEmit && pnpm -r --filter './packages/*' --if-present run typecheck",
     "pretest": "pnpm --filter '@fluojs/react...' build",
     "test": "vitest run",
-    "test:node": "node --test tooling/ci/local-verification.test.mjs tooling/ci/verify-local.test.mjs tooling/testing/redis-native-fixture.test.mjs .agents/skills/execute-lane/scripts/lane-v4.test.mjs",
+    "test:node": "node --test tooling/ci/local-verification.test.mjs tooling/ci/verify-local.test.mjs tooling/testing/redis-native-fixture.test.mjs .agents/skills/execute-lane/scripts/*.test.mjs",
     "test:verify": "pnpm test:node && vitest run --no-file-parallelism",
     "test:node-floor": "vitest run tooling/governance/node-support-classification.test.ts packages/cli/src/new packages/config/src packages/runtime/src/portable-runtime-boundary.test.ts packages/platform-nodejs/src packages/platform-fastify/src/adapter.test.ts packages/testing/src/portability packages/vite/src/vite8-rolldown.test.ts tooling/governance/vite-compatibility-contract.test.ts --maxWorkers=1",
     "test:watch": "vitest",
