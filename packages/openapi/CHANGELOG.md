@@ -2,6 +2,81 @@
 
 ## [Unreleased]
 
+## 3.0.0
+
+### Major Changes
+
+- [#3807](https://github.com/fluojs/fluo/pull/3807) [`bda71d6`](https://github.com/fluojs/fluo/commit/bda71d6065e957d0543ee8473ecf6a59b539c5f6) Thanks [@ayden94](https://github.com/ayden94)! - OpenAPI is now module-owned: register live JSON, Swagger UI, routes, and status with `OpenApiModule.forRoot(...)` or `OpenApiModule.forRootAsync(...)`. Replace `buildOpenApiDocument(options)` with `OpenApiDocumentBuilder.build(options)`, pass `sources` and/or `descriptors` directly, and remove `OpenApiHandlerRegistry` and `BuildOpenApiDocumentOptions`.
+
+  Replace `@ApiResponse(200, options)` with `@ApiResponse({ status: 200, ...options })`. `ApiBody` now uses explicit media `content` schemas. Use OpenAPI 3.1 null unions or `anyOf` and finite numeric exclusive bounds; legacy `nullable` and boolean exclusive bounds are rejected. `operationPathPrefix` affects only normalized operation paths, never `documentPath`, `uiPath`, `info.version`, or the application global prefix.
+
+### Minor Changes
+
+- [#3803](https://github.com/fluojs/fluo/pull/3803) [`11b9270`](https://github.com/fluojs/fluo/commit/11b9270a3e42a108b4d9b8617690aeddbe98b400) Thanks [@ayden94](https://github.com/ayden94)! - Make `@fluojs/validation/mapped-types` the only public import path for
+  `PickType`, `OmitType`, `PartialType`, and `IntersectionType`. The validation
+  root no longer exports runtime or declaration aliases.
+
+  **Breaking migration:** replace every mapped helper import from
+  `@fluojs/validation`, `@nestjs/mapped-types`, or mapped bindings from
+  `@nestjs/swagger` with `@fluojs/validation/mapped-types`. The Nest migration
+  CLI performs that named-import rewrite while preserving aliases and type-only
+  bindings, leaving unsupported import forms for manual review.
+
+  OpenAPI now projects combined numeric bounds (`Min`/`Max`), string-length, and
+  array-size constraints using the strongest bounds, intersects and dedupes
+  `IsIn` with `IsEnum` (emitting `{ not: {} }` for disjoint constraints),
+  composes distinct `ValidateNested` targets deterministically with `allOf`, and
+  gives `ValidateNested(..., { each: true })` array-schema precedence.
+  Regenerate and review committed OpenAPI schema snapshots after upgrading;
+  generated schemas may change even though validation traversal and validator
+  issue contracts are preserved.
+
+### Patch Changes
+
+- [#3771](https://github.com/fluojs/fluo/pull/3771) [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4) Thanks [@ayden94](https://github.com/ayden94)! - Make `FluoFactory.create(AppModule, { adapter })` the sole HTTP application
+  creation implementation. Remove `fluoFactory` and `bootstrapApplication` from
+  every runtime public entrypoint and emitted JavaScript/declaration surface.
+  Factory accepts `logger` and owns common middleware composition, original-error
+  preserving startup cleanup, and optional host shutdown registration.
+
+  Migration: import `FluoFactory` instead of `fluoFactory`, replace
+  `bootstrapApplication({ rootModule, ...options })` with
+  `FluoFactory.create(rootModule, options)`, then call instance `app.listen()` and
+  `app.close()`. Security headers now default on for direct Factory and testing
+  applications; set `securityHeaders: false` to retain a header-free baseline.
+  Readiness/listen/post-listen setup failure enters terminal shutdown; create a
+  new application instead of retrying listen on the failed shell. A signal
+  unregistration failure is retained for concurrent and later closes without
+  skipping runtime teardown.
+
+  Upgrade `@fluojs/cron` together with `@fluojs/runtime`. Cron retains its mandatory
+  Runtime dependency, and these coordinated updates leave scheduling behavior unchanged.
+
+  Node CLI HTTP and mixed starters now emit Factory creation, the explicit Node
+  console logger, and Node shutdown registration. Add a direct
+  `@fluojs/platform-nodejs` dependency when importing its logger or signals from a
+  Fastify/Express application. Node signal registration rolls back partially
+  installed handlers and attempts every removal after an individual failure.
+  The additive optional `HttpApplicationAdapter.getListenTarget()` capability
+  supplies startup-log metadata without requiring a socket on Fetch hosts.
+
+  See `docs/getting-started/migrate-http-factory.md` and its Korean companion for
+  defaults, ownership, cleanup errors, PublicToken inference, and the distinction
+  between `app.dispatch()` admission and low-level container/dispatcher access.
+  DI class identities, public constructors, instance operations, context-only
+  creation, and microservice creation retain their separate contracts.
+
+  Existing platform bootstrap/run helpers and their host-specific consumers remain
+  supported through Factory until their platform migrations. Other listed package
+  patches only align README imports and recipes shipped in their tarballs; they
+  introduce no independent runtime behavior. Repository Docs, Book, examples, and
+  test-only consumer migrations have no separate package-release effect.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4), [`ed57b76`](https://github.com/fluojs/fluo/commit/ed57b760ba6f73c38e5a91a77606e4e1c1af74ca), [`78fed4b`](https://github.com/fluojs/fluo/commit/78fed4bf1fcfd8c6a00c616d87131ec7b92b1a92), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`30e2295`](https://github.com/fluojs/fluo/commit/30e229563ce56fe20b82fd978883d248f57acd66), [`5ad001e`](https://github.com/fluojs/fluo/commit/5ad001ecf0bb091a1447930ede22be2e0a17078a), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686), [`146d6a0`](https://github.com/fluojs/fluo/commit/146d6a072e9027a83cb908905047be2f3334d049)]:
+  - @fluojs/core@2.1.1
+  - @fluojs/runtime@3.1.1
+  - @fluojs/http@3.1.1
+
 ## 2.0.0
 
 ### Major Changes

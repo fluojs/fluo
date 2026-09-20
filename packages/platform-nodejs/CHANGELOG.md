@@ -2,6 +2,64 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#3771](https://github.com/fluojs/fluo/pull/3771) [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4) Thanks [@ayden94](https://github.com/ayden94)! - Make `FluoFactory.create(AppModule, { adapter })` the sole HTTP application
+  creation implementation. Remove `fluoFactory` and `bootstrapApplication` from
+  every runtime public entrypoint and emitted JavaScript/declaration surface.
+  Factory accepts `logger` and owns common middleware composition, original-error
+  preserving startup cleanup, and optional host shutdown registration.
+
+  Migration: import `FluoFactory` instead of `fluoFactory`, replace
+  `bootstrapApplication({ rootModule, ...options })` with
+  `FluoFactory.create(rootModule, options)`, then call instance `app.listen()` and
+  `app.close()`. Security headers now default on for direct Factory and testing
+  applications; set `securityHeaders: false` to retain a header-free baseline.
+  Readiness/listen/post-listen setup failure enters terminal shutdown; create a
+  new application instead of retrying listen on the failed shell. A signal
+  unregistration failure is retained for concurrent and later closes without
+  skipping runtime teardown.
+
+  Upgrade `@fluojs/cron` together with `@fluojs/runtime`. Cron retains its mandatory
+  Runtime dependency, and these coordinated updates leave scheduling behavior unchanged.
+
+  Node CLI HTTP and mixed starters now emit Factory creation, the explicit Node
+  console logger, and Node shutdown registration. Add a direct
+  `@fluojs/platform-nodejs` dependency when importing its logger or signals from a
+  Fastify/Express application. Node signal registration rolls back partially
+  installed handlers and attempts every removal after an individual failure.
+  The additive optional `HttpApplicationAdapter.getListenTarget()` capability
+  supplies startup-log metadata without requiring a socket on Fetch hosts.
+
+  See `docs/getting-started/migrate-http-factory.md` and its Korean companion for
+  defaults, ownership, cleanup errors, PublicToken inference, and the distinction
+  between `app.dispatch()` admission and low-level container/dispatcher access.
+  DI class identities, public constructors, instance operations, context-only
+  creation, and microservice creation retain their separate contracts.
+
+  Existing platform bootstrap/run helpers and their host-specific consumers remain
+  supported through Factory until their platform migrations. Other listed package
+  patches only align README imports and recipes shipped in their tarballs; they
+  introduce no independent runtime behavior. Repository Docs, Book, examples, and
+  test-only consumer migrations have no separate package-release effect.
+
+- [#3774](https://github.com/fluojs/fluo/pull/3774) [`ed57b76`](https://github.com/fluojs/fluo/commit/ed57b760ba6f73c38e5a91a77606e4e1c1af74ca) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate managed HTTP startup on concrete adapter static creation and `FluoFactory.create(...)`.
+  Keep migrated GraphQL test fixtures out of published build artifacts.
+
+- [#3769](https://github.com/fluojs/fluo/pull/3769) [`30e2295`](https://github.com/fluojs/fluo/commit/30e229563ce56fe20b82fd978883d248f57acd66) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate raw Node adapter creation in `NodeHttpApplicationAdapter.create(options)`, including compression and multipart settings. Remove `createNodejsAdapter`, `createNodeHttpAdapter`, `NodejsAdapterOptions`, and `NodejsHttpApplicationAdapter` from public exports and implementations. Preserve the existing adapter class, public positional constructor, DI identity, and instance lifecycle.
+
+  Migration: Import `NodeHttpApplicationAdapter` and `NodeHttpAdapterOptions` from `@fluojs/platform-nodejs`. Replace `createNodejsAdapter(options)` with `NodeHttpApplicationAdapter.create(options)` and `createNodeHttpAdapter(options, compression, multipart)` with `NodeHttpApplicationAdapter.create({ ...options, compression, multipart })`. Replace the Nodejs instance type alias with the concrete class. First-party `/internal` consumers use the same class and options type.
+
+  The raw Node CLI starter now uses `FluoFactory.create(AppModule, { adapter })` followed by `app.listen()`. Existing applications are not rewritten. The integrated Factory applies default security headers; the CLI explicitly supplies its Node console logger and shutdown registration callback. When migrating from a run helper, retain required middleware and logging, and opt into Node signals through that callback. Existing bootstrap/run helper behavior remains supported.
+
+  Align shipped HTTP/runtime README recipes without changing their runtime behavior. Full EN/KO migration guidance: `docs/getting-started/migrate-node-adapter-create.md` and `docs/getting-started/migrate-node-adapter-create.ko.md`.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4), [`ed57b76`](https://github.com/fluojs/fluo/commit/ed57b760ba6f73c38e5a91a77606e4e1c1af74ca), [`30e2295`](https://github.com/fluojs/fluo/commit/30e229563ce56fe20b82fd978883d248f57acd66), [`5ad001e`](https://github.com/fluojs/fluo/commit/5ad001ecf0bb091a1447930ede22be2e0a17078a), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686), [`146d6a0`](https://github.com/fluojs/fluo/commit/146d6a072e9027a83cb908905047be2f3334d049)]:
+  - @fluojs/runtime@3.1.1
+  - @fluojs/http@3.1.1
+
 ## 2.0.0
 
 ### Major Changes

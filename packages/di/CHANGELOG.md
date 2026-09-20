@@ -2,6 +2,46 @@
 
 ## [Unreleased]
 
+## 3.1.1
+
+### Patch Changes
+
+- [#3768](https://github.com/fluojs/fluo/pull/3768) [`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate Core and DI declarations and migrate first-party consumers and generated starters.
+
+  Migration: replace `@Global()` with `global: true` in `@Module(...)`, legacy
+  `@Inject([A, B])` with `@Inject(A, B)` (or spread an existing list), and DI
+  `Scope.DEFAULT`/`REQUEST`/`TRANSIENT` with `'singleton'`/`'request'`/`'transient'`.
+  The Core `Scope` decorator and DI `Scope` type union remain.
+  Use `ForwardRef.create(fn)` and `Optional.create(token)` from `@fluojs/di`
+  instead of the removed `forwardRef` and `optional` functions. Rename DI
+  `ForwardRefFn<T>` and `OptionalToken<T>` to the shared `ForwardRefToken<T>`
+  and `OptionalInjectToken<T>` names. No compatibility exports remain.
+
+  Empty `@Inject()` still clears inherited tokens. Wrapper freeze, resolver/token
+  identity, explicit provider strategies, class identity, Container construction,
+  instance operations, scope and disposal ownership are preserved. Optional
+  dependencies and deferred references remain distinct; neither bypasses scope or
+  constructor-cycle errors. Upgrade Core, DI, and their first-party consumers together.
+
+  See `docs/getting-started/migrate-core-di-declarations.md` and its Korean companion
+  for the public-surface inventory, entrypoint audiences, unchanged contracts, and
+  executable verification. The documentation and Book updates accompany these
+  breaking public changes; they do not introduce an additional runtime behavior.
+
+- [#3804](https://github.com/fluojs/fluo/pull/3804) [`e0b559c`](https://github.com/fluojs/fluo/commit/e0b559c0e481c48917386e23f0a09af0532cbb1b) Thanks [@ayden94](https://github.com/ayden94)! - Unify GraphQL resolver registration and operation-scoped DataLoader creation around canonical public APIs.
+
+  `@fluojs/di` now preserves factory `resolverClass` metadata in normalized provider snapshots so framework integrations can inspect the effective runtime provider without evaluating factories.
+
+  Migration:
+
+  - Register resolver classes in the owning module's `providers`. Use `resolvers` only as an optional allowlist of registered resolver candidates; omit it or pass `[]` to discover all registered resolvers.
+  - Replace `createDataLoader(batch, options)` with `OperationScopedDataLoader.create(batch, options)`.
+  - Import the upstream `dataloader` package directly when code needs its constructor or types; `@fluojs/graphql` no longer re-exports `DataLoader`.
+  - Replace `@Query('name')`, `@Mutation('name')`, `@Subscription('name')`, and `@FieldResolver('name')` with their `{ fieldName: 'name' }` option-object forms.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`78fed4b`](https://github.com/fluojs/fluo/commit/78fed4bf1fcfd8c6a00c616d87131ec7b92b1a92), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686)]:
+  - @fluojs/core@2.1.1
+
 ## 3.1.0
 
 ### Minor Changes
