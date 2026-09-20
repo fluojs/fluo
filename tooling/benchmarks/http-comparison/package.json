@@ -6,7 +6,7 @@
   "description": "HTTP throughput/latency benchmark: NestJS vs fluo across Fastify and Bun",
   "scripts": {
     "bench": "tsx src/run.ts",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test tests/*.test.mts",
     "build:nestjs": "tsc -p nestjs/tsconfig.json --outDir dist/nestjs && node -e \"require('fs').writeFileSync('dist/nestjs/package.json', '{\\\"type\\\":\\\"commonjs\\\"}\\n')\"",
     "build:fluo": "tsc src/fluo/server.ts --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck --outDir dist/fluo-fastify",
     "build:fluo:bun": "tsc src/fluo-bun/server.ts --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck --outDir dist/fluo-bun",
