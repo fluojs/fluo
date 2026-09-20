@@ -15,6 +15,19 @@ Each stable scenario reports:
 - `cache-off`: repeated compile with `moduleGraphCache` omitted
 - `cache-on`: repeated compile with `moduleGraphCache: true`
 
+## Interpretation
+
+The cache-on measurement follows warm-up and describes repeated compilation of
+the same graph, not cold application startup. The metadata-invalidation scenario
+includes expected failed compilations and must not be compared as successful
+bootstrap throughput.
+
+Each result is one timed batch, with cache-off always preceding cache-on.
+Iterations are not independent experimental samples. Repeat the process and
+alternate revision order before attributing small differences to a code change;
+retain each output with its revision and runtime version. These measurements do
+not establish HTTP throughput or end-to-end startup gains.
+
 ## Run
 
 Build packages first so the benchmark imports local `dist` artifacts:

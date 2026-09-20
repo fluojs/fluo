@@ -1,6 +1,6 @@
 # DI container focused benchmark
 
-This local-only benchmark isolates `@fluojs/di` provider plan cache paths without starting HTTP servers or measuring end-to-end request handling.
+This local-only benchmark measures `@fluojs/di` cold and warm resolution paths without starting HTTP servers or measuring end-to-end request handling.
 
 ## Scenarios
 
@@ -16,6 +16,20 @@ Each scenario reports both:
 - `warm-plan`: repeated lookups against a stable container after warm-up has populated reusable plans
 
 The cold/warm split is intentionally local and deterministic. It does not use HTTP throughput as evidence for DI internals.
+
+## Interpretation
+
+The singleton, alias, and multi-provider cold paths include first-time instance
+creation, while their warm paths can reuse resolved instances. Their difference
+is not a measurement of plan-cache savings alone. The transient scenario still
+creates instances after warm-up; request-scope detection measures dependency
+inspection rather than request-scoped instance resolution.
+
+Each result is one timed batch, and cold always precedes warm. Iterations within
+that batch are not independent experimental samples. Use these numbers for local
+diagnosis, not statistical claims about small improvements. For comparisons,
+repeat the process, alternate revision order, and retain each output alongside
+the exact revision and runtime version. Package builds must match that revision.
 
 ## Run
 

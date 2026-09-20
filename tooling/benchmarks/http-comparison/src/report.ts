@@ -1,150 +1,99 @@
-import type { Result } from 'autocannon';
+import type { EnvironmentSummary } from './provenance';
+import type { Measurement } from './traffic';
 
-export interface TargetResult {
-  label: string;
-  result: Result;
-  samples?: readonly MetricSnapshot[];
-}
-
+export interface TargetResult extends Measurement { readonly label: string }
 export interface ScenarioResult {
-  name: string;
-  description: string;
-  targets: TargetResult[];
+  readonly name: string;
+  readonly description: string;
+  readonly targets: readonly TargetResult[];
 }
 
-export interface MetricSnapshot {
-  errors: number;
-  latencyAverage: number;
-  latencyP50: number;
-  latencyP97_5: number;
-  latencyP99: number;
-  mismatches: number;
-  non2xx: number;
-  requestsAverage: number;
-  throughputAverage: number;
-  timeouts: number;
+export function metricSnapshot(target: Measurement) {
+  const result = target.result;
+  return {
+    errors: result.errors, timeouts: result.timeouts, non2xx: result.non2xx,
+    mismatches: result.mismatches, statusMismatches: target.statusMismatches,
+    requestsAverage: result.requests.average, throughputAverage: result.throughput.average,
+    latencyAverage: result.latency.average, latencyP50: result.latency.p50,
+    latencyP97_5: result.latency.p97_5, latencyP99: result.latency.p99,
+    clientCpu: target.clientCpu,
+  };
 }
 
-function throughputDelta(value: number, baseline: number): string {
-  if (baseline === 0) return 'N/A';
-  const v = ((value - baseline) / baseline) * 100;
-  const s = (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
-  const better = v > 1;
-  const worse = v < -1;
-  return better ? `\x1b[32m${s}\x1b[0m` : worse ? `\x1b[31m${s}\x1b[0m` : `\x1b[33m${s}\x1b[0m`;
-}
-
-function latencyDelta(value: number, baseline: number): string {
-  if (baseline === 0) return 'N/A';
-  const v = ((value - baseline) / baseline) * 100;
-  const s = (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
-  const better = v < -1;
-  const worse = v > 1;
-  return better ? `\x1b[32m${s}\x1b[0m` : worse ? `\x1b[31m${s}\x1b[0m` : `\x1b[33m${s}\x1b[0m`;
-}
-
-function countDelta(value: number, baseline: number): string {
-  if (baseline === 0) {
-    return value === 0 ? '0' : `+${value}`;
-  }
-
-  const v = ((value - baseline) / baseline) * 100;
-  const s = (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
-  const better = value < baseline;
-  const worse = value > baseline;
-  return better ? `\x1b[32m${s}\x1b[0m` : worse ? `\x1b[31m${s}\x1b[0m` : `\x1b[33m${s}\x1b[0m`;
-}
-
-function n(v: number, d = 0): string {
-  return v.toLocaleString('en-US', { maximumFractionDigits: d });
-}
-
-function standardDeviation(values: readonly number[]): number {
-  if (values.length <= 1) return 0;
+export function summarize(values: readonly number[]) {
+  if (values.length === 0) throw new Error('Cannot summarize an empty sample');
+  const sorted = [...values].sort((a, b) => a - b);
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
-  return Math.sqrt(variance);
+  const middle = Math.floor(sorted.length / 2);
+  return {
+    count: values.length, mean,
+    median: sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle],
+    min: sorted[0], max: sorted[sorted.length - 1],
+    standardDeviation: values.length === 1 ? null : Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1)),
+  };
 }
 
-function row(cols: string[], widths: number[]): string {
-  return '  ' + cols.map((c, i) => c.padEnd(widths[i])).join('  ');
+export function summarizeRuns(runs: readonly (readonly ScenarioResult[])[]) {
+  const first = runs[0];
+  if (!first) throw new Error('Cannot summarize an empty run set');
+  return first.map((scenario) => ({
+    name: scenario.name, description: scenario.description,
+    targets: scenario.targets.map((target) => {
+      const samples = runs.map((run) => {
+        const sample = run.find((item) => item.name === scenario.name)?.targets.find((item) => item.label === target.label);
+        if (!sample) throw new Error(`Missing ${target.label} sample for ${scenario.name}`);
+        return metricSnapshot(sample);
+      });
+      return {
+        label: target.label, samples,
+        requestsPerSecond: summarize(samples.map((sample) => sample.requestsAverage)),
+        bytesPerSecond: summarize(samples.map((sample) => sample.throughputAverage)),
+        // Arithmetic mean of independently measured run percentiles, NOT a
+        // percentile of pooled requests. Keep that distinction in the schema.
+        meanOfRunLatencyMs: {
+          average: summarize(samples.map((sample) => sample.latencyAverage)).mean,
+          p50: summarize(samples.map((sample) => sample.latencyP50)).mean,
+          p97_5: summarize(samples.map((sample) => sample.latencyP97_5)).mean,
+          p99: summarize(samples.map((sample) => sample.latencyP99)).mean,
+        },
+        clientCpuCoreEquivalentPercent: summarize(samples.map((sample) => sample.clientCpu.coreEquivalentPercent)),
+      };
+    }),
+  }));
 }
 
 export interface ReportOptions {
-  connections: number;
-  duration: number;
-  environment: EnvironmentSummary;
-  outputJson: string;
-  runs: number;
-  warmup: number;
+  readonly connections: number;
+  readonly duration: number;
+  readonly environment: EnvironmentSummary;
+  readonly outputJson: string;
+  readonly runs: number;
+  readonly warmup: number;
 }
 
-export interface EnvironmentSummary {
-  arch: string;
-  cpuModel: string;
-  cpuCount: number;
-  node: string;
-  platform: string;
+function n(value: number, digits = 2): string {
+  return value.toLocaleString('en-US', { maximumFractionDigits: digits });
 }
 
-export function printReport(results: ScenarioResult[], options: ReportOptions): void {
-  const bar = '═'.repeat(112);
-  const sep = '─'.repeat(108);
-  const W = [22, 16, 14, 14, 18, 18];
-
-  console.log('\n\n' + bar);
-  console.log(`  HTTP runtime benchmark  —  NestJS vs fluo across Fastify and Bun  —  c=${options.connections} warmup=${options.warmup}s d=${options.duration}s runs=${options.runs}`);
-  console.log(`  Environment  —  node=${options.environment.node} platform=${options.environment.platform}/${options.environment.arch} cpu=${options.environment.cpuModel} x${options.environment.cpuCount}`);
-  console.log(`  JSON summary  —  ${options.outputJson}`);
-  console.log(bar);
-
-  for (const r of results) {
-    const baseline = r.targets.find((target) => target.label === 'Nest+Fastify') ?? r.targets[0];
-
-    console.log(`\n  ${r.name.toUpperCase()}  —  ${r.description}`);
-    console.log('  ' + sep);
-    console.log(row(['Target', 'req/s', 'MB/s', 'p50 ms', 'p97.5 ms', 'Δ req/s vs Nest'], W));
-    console.log('  ' + sep);
-    for (const target of r.targets) {
-      console.log(row([
-        target.label,
-        n(target.result.requests.average),
-        n(target.result.throughput.average / 1_048_576, 2),
-        n(target.result.latency.p50, 2),
-        n(target.result.latency.p97_5, 2),
-        throughputDelta(target.result.requests.average, baseline.result.requests.average),
-      ], W));
-    }
-
-    console.log('  ' + sep);
-    console.log(row(['Target', 'samples', 'req/s σ', 'p99 ms', 'errors', 'timeouts'], W));
-    console.log('  ' + sep);
-    for (const target of r.targets) {
-      const samples = target.samples ?? [];
-      console.log(row([
-        target.label,
-        String(samples.length || 1),
-        n(standardDeviation(samples.map((sample) => sample.requestsAverage)), 2),
-        `${n(target.result.latency.p99, 2)} (${latencyDelta(target.result.latency.p99, baseline.result.latency.p99)})`,
-        `${target.result.errors} (${countDelta(target.result.errors, baseline.result.errors)})`,
-        String(target.result.timeouts),
-      ], W));
-    }
-
-    console.log('  ' + sep);
-    console.log(row(['Target', 'non-2xx', 'mismatches', '', '', ''], W));
-    console.log('  ' + sep);
-    for (const target of r.targets) {
-      console.log(row([
-        target.label,
-        String(target.result.non2xx),
-        String(target.result.mismatches),
-        '',
-        '',
-        '',
-      ], W));
+export function printReport(results: ReturnType<typeof summarizeRuns>, options: ReportOptions): void {
+  console.log(`\nHTTP runtime benchmark: c=${options.connections} warmup=${options.warmup}s d=${options.duration}s runs=${options.runs}`);
+  console.log(`node=${options.environment.node} bun=${options.environment.bun ?? 'unavailable'} ${options.environment.platform}/${options.environment.arch} ${options.environment.cpuModel} x${options.environment.cpuCount}`);
+  console.log(`git=${options.environment.git.sha} dirty=${options.environment.git.dirty}; provenance and raw samples: ${options.outputJson}`);
+  console.log('Latency percentiles below are mean-of-run percentiles, not pooled percentiles. Deltas are descriptive, not winner/significance verdicts.');
+  for (const scenario of results) {
+    console.log(`\n${scenario.name}: ${scenario.description}`);
+    const baseline = scenario.targets.find((target) => target.label === 'Nest+Fastify');
+    for (const target of scenario.targets) {
+      const stats = target.requestsPerSecond;
+      const delta = baseline && baseline.requestsPerSecond.mean !== 0
+        ? `${n((stats.mean / baseline.requestsPerSecond.mean - 1) * 100)}%` : 'N/A';
+      console.log(`  ${target.label}: req/s mean=${n(stats.mean)} median=${n(stats.median)} sample SD=${stats.standardDeviation === null ? 'N/A' : n(stats.standardDeviation)} range=${n(stats.min)}..${n(stats.max)} n=${stats.count}; delta mean vs Nest=${delta}`);
+      const latency = target.meanOfRunLatencyMs;
+      console.log(`    MB/s mean=${n(target.bytesPerSecond.mean / 1_048_576)}; mean-of-run latency ms: average=${n(latency.average)} p50=${n(latency.p50)} p97.5=${n(latency.p97_5)} p99=${n(latency.p99)}`);
+      const cpu = target.clientCpuCoreEquivalentPercent;
+      console.log(`    client CPU/core: mean=${n(cpu.mean)}% range=${n(cpu.min)}..${n(cpu.max)}%; errors/timeouts/non2xx/body/status mismatches=0 (validated)`);
+      if (cpu.max >= 100) console.log('    Potential load-generator saturation: client CPU consumed at least one core in a run; this is a diagnostic flag, not proof or a performance verdict.');
     }
   }
-
-  console.log('\n' + bar + '\n');
+  console.log('Client CPU is process user+system time / elapsed wall time (100%=one core), including GC/helper threads and result collection. Near-one-core use can limit the single-threaded generator; lower averages do not rule out bursts. Client and servers share this machine; confirm headroom on a separate load host before attributing a throughput ceiling to a server.');
 }

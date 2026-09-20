@@ -198,9 +198,10 @@ it('preserves full typecheck, lint, one latest-24 docs run and isolated benchmar
   expect(docsRuns).toHaveLength(1);
   expect(checks).toMatch(/if: inputs.node-version == '24.x'\n\s+run: pnpm verify:docs/u);
   expect(caller).toMatch(/verify-isolated-http-benchmark:.*matrix.node-version == '24.x'.*outputs.verify_isolated_http_benchmark == 'true'/u);
-  expect(checks.match(/if: inputs.verify-isolated-http-benchmark/g)).toHaveLength(2);
+  expect(checks.match(/if: inputs.verify-isolated-http-benchmark/g)).toHaveLength(3);
   expect(checks).toContain('pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace install --frozen-lockfile');
   expect(checks).toContain('pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace typecheck');
+  expect(checks).toMatch(/if: inputs.verify-isolated-http-benchmark\n\s+run: pnpm --dir tooling\/benchmarks\/http-comparison --ignore-workspace test/u);
 });
 
 it('keeps generated browser starters and per-version shutdown evidence', () => {

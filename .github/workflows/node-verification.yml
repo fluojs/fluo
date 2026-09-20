@@ -104,6 +104,10 @@ jobs:
         if: inputs.verify-isolated-http-benchmark
         run: pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace typecheck
 
+      - name: Test isolated HTTP benchmark
+        if: inputs.verify-isolated-http-benchmark
+        run: pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace test
+
   test:
     name: Test (${{ matrix.lane }})
     runs-on: ubuntu-latest
