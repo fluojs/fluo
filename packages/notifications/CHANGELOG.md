@@ -2,6 +2,47 @@
 
 ## [Unreleased]
 
+## 2.0.1
+
+### Patch Changes
+
+- [#3801](https://github.com/fluojs/fluo/pull/3801) [`291bff9`](https://github.com/fluojs/fluo/commit/291bff9bd993960c94b92194e6f171afc20827f4) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate notifications on module registration, service dispatch, and explicit channel tokens. Remove compatibility facade tokens, duplicate public creators, single-result `queued`, and Slack/Discord payload destination fields.
+
+  ### Migration Guide
+
+  #### `@fluojs/notifications`
+
+  - **Compatibility facade token removal**: Replace `@Inject(NOTIFICATIONS)` or `container.resolve(NOTIFICATIONS)` with `NotificationsService`. `NotificationsModule.forRoot(...)` and `forRootAsync(...)` now export `NotificationsService` as the single canonical entrypoint.
+  - **Single result `queued` flag**: In `NotificationDispatchResult`, `queued: boolean` has been removed. Check `result.status === 'queued'` (or `'delivered'` / `'failed'`). Batch summary `queued: number` count remains available.
+  - **Channel token**: `NOTIFICATION_CHANNELS` is no longer exported from `NotificationsModule`; supply channels explicitly to `NotificationsModule.forRoot({ channels })`.
+
+  #### `@fluojs/email`
+
+  - **Compatibility facade token removal**: Replace `@Inject(EMAIL)` or `container.resolve(EMAIL)` with `EmailService`. For notifications channel integration, inject `EMAIL_CHANNEL`.
+  - **Nodemailer transport construction (`@fluojs/email/node`)**: Replaced free functions with class static methods on `NodemailerEmailTransport`:
+    - Replace `createNodemailerEmailTransport({ transporter })` with `NodemailerEmailTransport.create({ transporter })`.
+    - Replace `createNodemailerEmailTransportFactory({ smtp, kind? })` with `NodemailerEmailTransport.createFactory({ smtp, kind? })`.
+  - **Queue worker options type alias**: `EmailQueueWorkerOptions` has been removed. Import `QueueWorkerOptions` from `@fluojs/queue`.
+
+  #### `@fluojs/slack`
+
+  - **Manual provider helper and facade removal**: `createSlackProviders(...)` and the `SLACK` injection token have been removed. Use `SlackModule.forRoot(...)` or `SlackModule.forRootAsync(...)` for registration, inject `SlackService` for direct deliveries, and inject `SLACK_CHANNEL` for notifications channel wiring.
+  - **Envelope destination unification**: Removed `channel` from `SlackNotificationPayload`. Provide target channel names in the notification envelope `recipients` (or rely on module `defaultChannel`).
+
+  #### `@fluojs/discord`
+
+  - **Compatibility facade token removal**: The `DISCORD` injection token has been removed. Use `DiscordModule.forRoot(...)` or `DiscordModule.forRootAsync(...)` for registration, inject `DiscordService` for direct deliveries, and inject `DISCORD_CHANNEL` for notifications channel wiring.
+  - **Envelope destination unification**: Removed `threadId` from `DiscordNotificationPayload`. Provide target thread IDs in the notification envelope `recipients` (or rely on module `defaultThreadId`).
+
+- [#3805](https://github.com/fluojs/fluo/pull/3805) [`6c682dc`](https://github.com/fluojs/fluo/commit/6c682dceecaca7588141796a12281551e5c1718c) Thanks [@ayden94](https://github.com/ayden94)! - **BREAKING:** `EventBusService.publish(event, options?)` now returns `Promise<EventPublishResult>` and is the sole public Event Bus publication path. Migrate from `publishWithResult`, `EVENT_BUS`, `EventBus`, `EventBusWithResults`, and root `EventBusLifecycleService` with no compatibility aliases. Inspect `settled` outcomes, `no-recipients`, lifecycle rejection, and background completion on the single result path; outbound handler and transport errors remain safely logged without raw errors. Use `@fluojs/event-bus/integration` only for first-party shutdown coordination.
+
+  CQRS now delegates through `EventBusService` while preserving its own `Promise<void>` event API. Notifications lifecycle publishers may return an ignored publication observation result so they can accept the Event Bus service directly.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`e0b559c`](https://github.com/fluojs/fluo/commit/e0b559c0e481c48917386e23f0a09af0532cbb1b), [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4), [`ed57b76`](https://github.com/fluojs/fluo/commit/ed57b760ba6f73c38e5a91a77606e4e1c1af74ca), [`78fed4b`](https://github.com/fluojs/fluo/commit/78fed4bf1fcfd8c6a00c616d87131ec7b92b1a92), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`30e2295`](https://github.com/fluojs/fluo/commit/30e229563ce56fe20b82fd978883d248f57acd66), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686), [`146d6a0`](https://github.com/fluojs/fluo/commit/146d6a072e9027a83cb908905047be2f3334d049)]:
+  - @fluojs/core@2.1.1
+  - @fluojs/di@3.1.1
+  - @fluojs/runtime@3.1.1
+
 ## 2.0.0
 
 ### Major Changes

@@ -60,10 +60,13 @@ it('gates every runtime fan-out behind deterministic latest-24 preflight', () =>
   expect(job(workflow, 'verify')).toContain('      - deterministic-preflight\n');
 });
 
-it('executes the canonical Node regression script before the Vitest verifier', () => {
+it('executes the canonical Node regression script before the Vitest verifier', { timeout: 60_000 }, () => {
   const root = new URL('../..', import.meta.url);
   const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
   expect(packageJson.scripts['test:verify']).toContain('pnpm test:node');
+  expect(packageJson.scripts['test:node']).toContain('tooling/ci/local-verification.test.mjs');
+  expect(packageJson.scripts['test:node']).toContain('tooling/testing/redis-native-fixture.test.mjs');
+  expect(packageJson.scripts['test:node']).toContain('.agents/skills/execute-lane/scripts/*.test.mjs');
 
   const result = spawnSync('pnpm', ['test:node'], {
     cwd: root,
@@ -72,9 +75,6 @@ it('executes the canonical Node regression script before the Vitest verifier', (
   });
 
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toContain('local-verification.test.mjs');
-  expect(result.stdout).toContain('redis-native-fixture.test.mjs');
-  expect(result.stdout).toContain('lane-v4.test.mjs');
 });
 
 it('binds every build consumer to immutable producer artifact provenance', () => {

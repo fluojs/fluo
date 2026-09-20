@@ -19,7 +19,10 @@ const review = (
   reviewer, reviewed_head_sha: reviewedHeadSha, preflight_sha256: policy.sha256,
   verdict_signal: verdictSignal, blockers,
 });
-const gate = (reviews = policy.active_axes.map((axis) => review(axis)), axes = policy.active_axes) => ({
+const gate = (
+  reviews: readonly Record<string, unknown>[] = policy.active_axes.map((axis) => review(axis)),
+  axes = policy.active_axes,
+) => ({
   head_sha: headSha, preflight_sha256: policy.sha256, active_axes: axes, reviews,
 });
 const blocker = {

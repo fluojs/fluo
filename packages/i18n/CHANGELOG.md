@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## 3.0.1
+
+### Patch Changes
+
+- [#3799](https://github.com/fluojs/fluo/pull/3799) [`a6fabf4`](https://github.com/fluojs/fluo/commit/a6fabf4b10c1b96246f42f9071e8a27a6d7b0715) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate standalone i18n service, ICU service, and catalog loader creation under static `.create(...)` methods on their owning classes, and unify `Accept-Language` resolution under canonical policy resolvers.
+
+  **Breaking migration:**
+
+  - Standalone service creation: replace `createI18n(options)` with `I18nService.create(options)`. The free function `createI18n` is removed from package exports.
+  - ICU service creation: replace `createIcuI18n(options)` with `IcuI18nService.create(options)`. The free function `createIcuI18n` is removed from `@fluojs/i18n/icu`.
+  - Filesystem loader creation: replace `createFileSystemI18nLoader(options)` with `FileSystemI18nLoader.create(options)`. The free function `createFileSystemI18nLoader` is removed from `@fluojs/i18n/loaders/fs`.
+  - Remote loader creation: replace `createRemoteI18nLoader(options)` and `createCachedRemoteI18nLoader(options)` with `RemoteI18nLoader.create(options)` and `CachedRemoteI18nLoader.create(options)`. The free functions `createRemoteI18nLoader` and `createCachedRemoteI18nLoader` are removed from `@fluojs/i18n/loaders/remote`.
+  - Header locale resolution: `createAcceptLanguageLocaleResolver` in `@fluojs/i18n/http` and `createHeaderLocaleResolver` in `@fluojs/i18n/adapters` are removed. Use `createAcceptLanguageLocalePolicyResolver` and `createHeaderLocalePolicyResolver`. For exact match semantics without regional normalization, pass `{ normalizeToSupportedLocale: false }`.
+  - Public constructors: `I18nService`, `IcuI18nService`, `FileSystemI18nLoader`, `RemoteI18nLoader`, and `CachedRemoteI18nLoader` constructors remain public for DI and subclassing.
+
+- Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`78fed4b`](https://github.com/fluojs/fluo/commit/78fed4bf1fcfd8c6a00c616d87131ec7b92b1a92), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686)]:
+  - @fluojs/core@2.1.1
+
 ## 3.0.0
 
 ### Major Changes

@@ -476,6 +476,32 @@ function changelogSectionForVersion(changelog, version) {
   return nextHeadingIndex === -1 ? changelog.slice(headingIndex) : changelog.slice(headingIndex, nextHeadingIndex);
 }
 
+function changelogTopLevelEntries(section) {
+  const entries = [];
+  let currentEntry = [];
+
+  for (const line of section.split('\n')) {
+    if (line.startsWith('- ')) {
+      if (currentEntry.length > 0) {
+        entries.push(currentEntry.join('\n'));
+      }
+
+      currentEntry = [line];
+      continue;
+    }
+
+    if (currentEntry.length > 0) {
+      currentEntry.push(line);
+    }
+  }
+
+  if (currentEntry.length > 0) {
+    entries.push(currentEntry.join('\n'));
+  }
+
+  return entries.length > 0 ? entries : [section];
+}
+
 function collectDependencyOnlyMajorVersionDeltas(versionDeltas, dependencies = {}) {
   const { existsSync: pathExists = existsSync, readFileSync: readFile = readFileSync } = dependencies;
 
@@ -620,7 +646,11 @@ function collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, depend
 
     const section = changelogSectionForVersion(readFile(absoluteChangelogPath, 'utf8'), delta.nextVersion);
 
-    if (!section || !describesPublicCliFeatureAddition(section, dependencies)) {
+    const offendingEntry = section
+      ? changelogTopLevelEntries(section).find((entry) => describesPublicCliFeatureAddition(entry, dependencies))
+      : undefined;
+
+    if (!offendingEntry) {
       return [];
     }
 
@@ -629,7 +659,7 @@ function collectPatchCliFeatureDowngradesFromVersionDeltas(versionDeltas, depend
         changelogPath,
         nextVersion: delta.nextVersion,
         packageName: delta.packageName,
-        releaseText: normalizeReleaseText(section),
+        releaseText: normalizeReleaseText(offendingEntry),
         source: 'package-changelog',
       },
     ];

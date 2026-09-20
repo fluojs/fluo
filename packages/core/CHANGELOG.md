@@ -2,6 +2,50 @@
 
 ## [Unreleased]
 
+## 2.1.1
+
+### Patch Changes
+
+- [#3768](https://github.com/fluojs/fluo/pull/3768) [`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate Core and DI declarations and migrate first-party consumers and generated starters.
+
+  Migration: replace `@Global()` with `global: true` in `@Module(...)`, legacy
+  `@Inject([A, B])` with `@Inject(A, B)` (or spread an existing list), and DI
+  `Scope.DEFAULT`/`REQUEST`/`TRANSIENT` with `'singleton'`/`'request'`/`'transient'`.
+  The Core `Scope` decorator and DI `Scope` type union remain.
+  Use `ForwardRef.create(fn)` and `Optional.create(token)` from `@fluojs/di`
+  instead of the removed `forwardRef` and `optional` functions. Rename DI
+  `ForwardRefFn<T>` and `OptionalToken<T>` to the shared `ForwardRefToken<T>`
+  and `OptionalInjectToken<T>` names. No compatibility exports remain.
+
+  Empty `@Inject()` still clears inherited tokens. Wrapper freeze, resolver/token
+  identity, explicit provider strategies, class identity, Container construction,
+  instance operations, scope and disposal ownership are preserved. Optional
+  dependencies and deferred references remain distinct; neither bypasses scope or
+  constructor-cycle errors. Upgrade Core, DI, and their first-party consumers together.
+
+  See `docs/getting-started/migrate-core-di-declarations.md` and its Korean companion
+  for the public-surface inventory, entrypoint audiences, unchanged contracts, and
+  executable verification. The documentation and Book updates accompany these
+  breaking public changes; they do not introduce an additional runtime behavior.
+
+- [#3795](https://github.com/fluojs/fluo/pull/3795) [`78fed4b`](https://github.com/fluojs/fluo/commit/78fed4bf1fcfd8c6a00c616d87131ec7b92b1a92) Thanks [@ayden94](https://github.com/ayden94)! - Unify transaction boundary errors through `@fluojs/core`, so `AfterCommitError`,
+  `AfterCommitCapabilityError`, and Result rollback errors retain one runtime identity
+  when imported from any ORM package. Driver-specific rollback observers and Mongoose
+  session-cleanup errors remain package-owned.
+
+  Prisma now supports the canonical explicit-target form
+  `@Transaction((self) => self.prisma, nativeOptions, boundary)`. Prisma and Drizzle
+  normal usage should select the wrapper first, then pass driver-native options, then
+  the Fluo boundary policy; Mongoose uses
+  `@Transaction((self) => self.conn, boundary)` because it has no decorator-native
+  options. Existing no-argument discovery remains only as legacy single-target
+  compatibility. Migrate it to an accessor before registering another database or ORM
+  to prevent selecting the wrong transaction owner.
+
+- [#3784](https://github.com/fluojs/fluo/pull/3784) [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711) Thanks [@ayden94](https://github.com/ayden94)! - Unify Vite and Vitest decorator transformation through `fluoDecoratorsPlugin`, add the explicit `@fluojs/core/metadata-preload` entrypoint, and remove the deprecated `@fluojs/testing/vitest` and `@fluojs/testing/vitest/tooling` public subpaths. Migrate Vitest configs to `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })` with `@fluojs/core/metadata-preload` in `setupFiles`.
+
+- [#3783](https://github.com/fluojs/fluo/pull/3783) [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686) Thanks [@ayden94](https://github.com/ayden94)! - Canonical Studio parsing, filtering, Mermaid, and live-contract imports now use the `@fluojs/studio` root export. The `@fluojs/studio/contracts` subpath is removed; migrate its imports to `@fluojs/studio`, where the former contracts-only platform and timing types are available. Persisted inspect artifacts use `fluo inspect <module-path> --report --output <path>`; raw snapshots and timing artifact readers retain compatibility, while explicitly present malformed timing is rejected. Runtime live declarations reference the runtime-neutral `@fluojs/core/internal` seam rather than Studio. Mermaid output keeps stdout graph-only and sends bootstrap diagnostics to stderr.
+
 ## 2.1.0
 
 ### Minor Changes
