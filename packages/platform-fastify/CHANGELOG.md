@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## 2.0.3
+
+### Patch Changes
+
+- [#3813](https://github.com/fluojs/fluo/pull/3813) [`0137d72`](https://github.com/fluojs/fluo/commit/0137d725a565718ab7c7422ca850158187b0e57b) Thanks [@ayden94](https://github.com/ayden94)! - Preserve default security headers while allowing otherwise eligible routes to use
+  the lightweight dispatch path without allocating a scope solely for those headers.
+  Keep controller instance overrides and thrown values intact on the newly eligible path.
+
+  Avoid speculative Fastify native request/response construction for known-full
+  routes, and keep absent request-ID headers and unused cancellation signals lazy
+  on native fast requests. General middleware, cancellation, request scopes and
+  response semantics remain unchanged.
+
+- Updated dependencies [[`0137d72`](https://github.com/fluojs/fluo/commit/0137d725a565718ab7c7422ca850158187b0e57b)]:
+  - @fluojs/http@3.1.2
+
 ## 2.0.2
 
 ### Patch Changes

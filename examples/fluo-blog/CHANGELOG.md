@@ -1,5 +1,13 @@
 # @fluojs/example-fluo-blog
 
+## 0.0.3
+
+### Patch Changes
+
+- Updated dependencies [[`0137d72`](https://github.com/fluojs/fluo/commit/0137d725a565718ab7c7422ca850158187b0e57b)]:
+  - @fluojs/http@3.1.2
+  - @fluojs/platform-fastify@2.0.3
+
 ## 0.0.2
 
 ### Patch Changes
