@@ -2,15 +2,13 @@
 
 ## [Unreleased]
 
-## 4.0.0
+## 3.1.1
 
-### Major Changes
+### Patch Changes
 
 - [#3805](https://github.com/fluojs/fluo/pull/3805) [`6c682dc`](https://github.com/fluojs/fluo/commit/6c682dceecaca7588141796a12281551e5c1718c) Thanks [@ayden94](https://github.com/ayden94)! - **BREAKING:** `EventBusService.publish(event, options?)` now returns `Promise<EventPublishResult>` and is the sole public Event Bus publication path. Migrate from `publishWithResult`, `EVENT_BUS`, `EventBus`, `EventBusWithResults`, and root `EventBusLifecycleService` with no compatibility aliases. Inspect `settled` outcomes, `no-recipients`, lifecycle rejection, and background completion on the single result path; outbound handler and transport errors remain safely logged without raw errors. Use `@fluojs/event-bus/integration` only for first-party shutdown coordination.
 
   CQRS now delegates through `EventBusService` while preserving its own `Promise<void>` event API. Notifications lifecycle publishers may return an ignored publication observation result so they can accept the Event Bus service directly.
-
-### Patch Changes
 
 - [#3798](https://github.com/fluojs/fluo/pull/3798) [`aed615a`](https://github.com/fluojs/fluo/commit/aed615a6803937ec94c3abb1a5728ba0f61cc0d7) Thanks [@ayden94](https://github.com/ayden94)! - Document `getQueueToken(scope?)` and the narrow `Queue` facade as the canonical producer injection path while retaining lifecycle APIs for integration and diagnostics.
 

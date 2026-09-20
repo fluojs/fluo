@@ -58,7 +58,7 @@
 - Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`e0b559c`](https://github.com/fluojs/fluo/commit/e0b559c0e481c48917386e23f0a09af0532cbb1b), [`78fed4b`](https://github.com/fluojs/fluo/commit/78fed4bf1fcfd8c6a00c616d87131ec7b92b1a92), [`11b9270`](https://github.com/fluojs/fluo/commit/11b9270a3e42a108b4d9b8617690aeddbe98b400), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686)]:
   - @fluojs/core@2.1.1
   - @fluojs/di@3.1.1
-  - @fluojs/validation@3.0.0
+  - @fluojs/validation@2.1.1
 
 ## 3.1.0
 

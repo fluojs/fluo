@@ -2,28 +2,7 @@
 
 ## [Unreleased]
 
-## 3.1.0
-
-### Minor Changes
-
-- [#3803](https://github.com/fluojs/fluo/pull/3803) [`11b9270`](https://github.com/fluojs/fluo/commit/11b9270a3e42a108b4d9b8617690aeddbe98b400) Thanks [@ayden94](https://github.com/ayden94)! - Make `@fluojs/validation/mapped-types` the only public import path for
-  `PickType`, `OmitType`, `PartialType`, and `IntersectionType`. The validation
-  root no longer exports runtime or declaration aliases.
-
-  **Breaking migration:** replace every mapped helper import from
-  `@fluojs/validation`, `@nestjs/mapped-types`, or mapped bindings from
-  `@nestjs/swagger` with `@fluojs/validation/mapped-types`. The Nest migration
-  CLI performs that named-import rewrite while preserving aliases and type-only
-  bindings, leaving unsupported import forms for manual review.
-
-  OpenAPI now projects combined numeric bounds (`Min`/`Max`), string-length, and
-  array-size constraints using the strongest bounds, intersects and dedupes
-  `IsIn` with `IsEnum` (emitting `{ not: {} }` for disjoint constraints),
-  composes distinct `ValidateNested` targets deterministically with `allOf`, and
-  gives `ValidateNested(..., { each: true })` array-schema precedence.
-  Regenerate and review committed OpenAPI schema snapshots after upgrading;
-  generated schemas may change even though validation traversal and validator
-  issue contracts are preserved.
+## 3.0.2
 
 ### Patch Changes
 
@@ -73,6 +52,25 @@
   `envFilePaths` list; use `[]` to explicitly disable env-file loading.
 
 - [#3806](https://github.com/fluojs/fluo/pull/3806) [`994c473`](https://github.com/fluojs/fluo/commit/994c47342d3fb6fd297135b823e8115f298a57ac) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate microservice registration on `MicroservicesModule.forRoot(...)`, move transport imports to their dedicated subpaths, and use transport class `create(...)` factories in generated starters. Migrate `module.global` to top-level `global` and replace root transport imports and `createMicroservicesProviders(...)` with the documented module and subpath APIs. Separate gRPC `serverCredentials` and `channelCredentials` in `GrpcMicroserviceTransportOptions` to avoid unsafe reuse of server credentials on outbound clients while preserving explicit migration. Preserve failed `@EventPattern` rejections in `MicroserviceLifecycleService` so durable broker transports (Redis Streams, Kafka, RabbitMQ) can withhold acknowledgement. Ensure CLI generated starters for Kafka and RabbitMQ default to instance-scoped random response destinations and that lazy broker wrappers accurately report framework resource ownership, forward `setLogger()`, and propagate close/cleanup errors.
+
+- [#3803](https://github.com/fluojs/fluo/pull/3803) [`11b9270`](https://github.com/fluojs/fluo/commit/11b9270a3e42a108b4d9b8617690aeddbe98b400) Thanks [@ayden94](https://github.com/ayden94)! - Make `@fluojs/validation/mapped-types` the only public import path for
+  `PickType`, `OmitType`, `PartialType`, and `IntersectionType`. The validation
+  root no longer exports runtime or declaration aliases.
+
+  **Breaking migration:** replace every mapped helper import from
+  `@fluojs/validation`, `@nestjs/mapped-types`, or mapped bindings from
+  `@nestjs/swagger` with `@fluojs/validation/mapped-types`. The Nest migration
+  CLI performs that named-import rewrite while preserving aliases and type-only
+  bindings, leaving unsupported import forms for manual review.
+
+  OpenAPI now projects combined numeric bounds (`Min`/`Max`), string-length, and
+  array-size constraints using the strongest bounds, intersects and dedupes
+  `IsIn` with `IsEnum` (emitting `{ not: {} }` for disjoint constraints),
+  composes distinct `ValidateNested` targets deterministically with `allOf`, and
+  gives `ValidateNested(..., { each: true })` array-schema precedence.
+  Regenerate and review committed OpenAPI schema snapshots after upgrading;
+  generated schemas may change even though validation traversal and validator
+  issue contracts are preserved.
 
 - [#3785](https://github.com/fluojs/fluo/pull/3785) [`0caae2f`](https://github.com/fluojs/fluo/commit/0caae2f190b57ba6e61ee093993f2ebab6be6648) Thanks [@ayden94](https://github.com/ayden94)! - Align existing generated tests and Nest testing migrations to use
   `Test.createApp` and `Test.createTestingModule` from `@fluojs/testing`.

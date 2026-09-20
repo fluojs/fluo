@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 
-## 3.0.0
+## 2.1.1
 
-### Major Changes
+### Patch Changes
 
 - [#3803](https://github.com/fluojs/fluo/pull/3803) [`11b9270`](https://github.com/fluojs/fluo/commit/11b9270a3e42a108b4d9b8617690aeddbe98b400) Thanks [@ayden94](https://github.com/ayden94)! - Make `@fluojs/validation/mapped-types` the only public import path for
   `PickType`, `OmitType`, `PartialType`, and `IntersectionType`. The validation
@@ -24,8 +24,6 @@
   Regenerate and review committed OpenAPI schema snapshots after upgrading;
   generated schemas may change even though validation traversal and validator
   issue contracts are preserved.
-
-### Patch Changes
 
 - Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`78fed4b`](https://github.com/fluojs/fluo/commit/78fed4bf1fcfd8c6a00c616d87131ec7b92b1a92), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686)]:
   - @fluojs/core@2.1.1

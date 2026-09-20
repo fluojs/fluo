@@ -9,7 +9,7 @@
     "decorators",
     "schema"
   ],
-  "version": "3.0.0",
+  "version": "2.1.1",
   "private": false,
   "license": "MIT",
   "repository": {

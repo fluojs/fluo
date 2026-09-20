@@ -2,11 +2,7 @@
 
 ## [Unreleased]
 
-## 3.0.0
-
-### Major Changes
-
-- [#3806](https://github.com/fluojs/fluo/pull/3806) [`994c473`](https://github.com/fluojs/fluo/commit/994c47342d3fb6fd297135b823e8115f298a57ac) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate microservice registration on `MicroservicesModule.forRoot(...)`, move transport imports to their dedicated subpaths, and use transport class `create(...)` factories in generated starters. Migrate `module.global` to top-level `global` and replace root transport imports and `createMicroservicesProviders(...)` with the documented module and subpath APIs. Separate gRPC `serverCredentials` and `channelCredentials` in `GrpcMicroserviceTransportOptions` to avoid unsafe reuse of server credentials on outbound clients while preserving explicit migration. Preserve failed `@EventPattern` rejections in `MicroserviceLifecycleService` so durable broker transports (Redis Streams, Kafka, RabbitMQ) can withhold acknowledgement. Ensure CLI generated starters for Kafka and RabbitMQ default to instance-scoped random response destinations and that lazy broker wrappers accurately report framework resource ownership, forward `setLogger()`, and propagate close/cleanup errors.
+## 2.0.1
 
 ### Patch Changes
 
@@ -48,6 +44,8 @@
   patches only align README imports and recipes shipped in their tarballs; they
   introduce no independent runtime behavior. Repository Docs, Book, examples, and
   test-only consumer migrations have no separate package-release effect.
+
+- [#3806](https://github.com/fluojs/fluo/pull/3806) [`994c473`](https://github.com/fluojs/fluo/commit/994c47342d3fb6fd297135b823e8115f298a57ac) Thanks [@ayden94](https://github.com/ayden94)! - Consolidate microservice registration on `MicroservicesModule.forRoot(...)`, move transport imports to their dedicated subpaths, and use transport class `create(...)` factories in generated starters. Migrate `module.global` to top-level `global` and replace root transport imports and `createMicroservicesProviders(...)` with the documented module and subpath APIs. Separate gRPC `serverCredentials` and `channelCredentials` in `GrpcMicroserviceTransportOptions` to avoid unsafe reuse of server credentials on outbound clients while preserving explicit migration. Preserve failed `@EventPattern` rejections in `MicroserviceLifecycleService` so durable broker transports (Redis Streams, Kafka, RabbitMQ) can withhold acknowledgement. Ensure CLI generated starters for Kafka and RabbitMQ default to instance-scoped random response destinations and that lazy broker wrappers accurately report framework resource ownership, forward `setLogger()`, and propagate close/cleanup errors.
 
 - Updated dependencies [[`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`02678e6`](https://github.com/fluojs/fluo/commit/02678e6bd244d3c3fe51f4264365cbf73ce7c6b4), [`e0b559c`](https://github.com/fluojs/fluo/commit/e0b559c0e481c48917386e23f0a09af0532cbb1b), [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4), [`ed57b76`](https://github.com/fluojs/fluo/commit/ed57b760ba6f73c38e5a91a77606e4e1c1af74ca), [`78fed4b`](https://github.com/fluojs/fluo/commit/78fed4bf1fcfd8c6a00c616d87131ec7b92b1a92), [`0def58e`](https://github.com/fluojs/fluo/commit/0def58eec9c7cd78a260d80c3e7faa85fd7e7711), [`30e2295`](https://github.com/fluojs/fluo/commit/30e229563ce56fe20b82fd978883d248f57acd66), [`7b20f50`](https://github.com/fluojs/fluo/commit/7b20f5038f19c4d3910c5fd0bcdfdad0d5fec686), [`146d6a0`](https://github.com/fluojs/fluo/commit/146d6a072e9027a83cb908905047be2f3334d049)]:
   - @fluojs/core@2.1.1

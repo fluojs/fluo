@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 
-## 4.0.0
+## 3.0.1
 
-### Major Changes
+### Patch Changes
 
 - [#3800](https://github.com/fluojs/fluo/pull/3800) [`bdc383c`](https://github.com/fluojs/fluo/commit/bdc383c7627f9c833eaa52e6ffbdcc2b7b173b1f) Thanks [@ayden94](https://github.com/ayden94)! - Make the dynamic registry's first `name` argument the sole task, scheduler, and
   default distributed-lock identity. Remove dynamic `options.name`, require an
@@ -16,8 +16,6 @@
   with `distributed: { enabled: true }` or omit the option; and use
   `getSchedulingTaskMetadata(...)`, `getSchedulingTaskMetadataEntries(...)`, and
   `schedulingMetadataSymbol` for metadata integration.
-
-### Patch Changes
 
 - [#3771](https://github.com/fluojs/fluo/pull/3771) [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4) Thanks [@ayden94](https://github.com/ayden94)! - Make `FluoFactory.create(AppModule, { adapter })` the sole HTTP application
   creation implementation. Remove `fluoFactory` and `bootstrapApplication` from

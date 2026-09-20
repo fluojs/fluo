@@ -2,13 +2,11 @@
 
 ## [Unreleased]
 
-## 4.0.0
-
-### Major Changes
-
-- [#3802](https://github.com/fluojs/fluo/pull/3802) [`05ad719`](https://github.com/fluojs/fluo/commit/05ad71999982dd34d8ec006f355155a3466614c1) Thanks [@ayden94](https://github.com/ayden94)! - Remove CQRS handler option arrays, Symbol bus tokens, manual metadata helpers, the direct status snapshot helper, and `DuplicateEventHandlerError`. Register handlers and sagas once in business-module providers, then inject lifecycle bus service classes directly.
+## 3.0.1
 
 ### Patch Changes
+
+- [#3802](https://github.com/fluojs/fluo/pull/3802) [`05ad719`](https://github.com/fluojs/fluo/commit/05ad71999982dd34d8ec006f355155a3466614c1) Thanks [@ayden94](https://github.com/ayden94)! - Remove CQRS handler option arrays, Symbol bus tokens, manual metadata helpers, the direct status snapshot helper, and `DuplicateEventHandlerError`. Register handlers and sagas once in business-module providers, then inject lifecycle bus service classes directly.
 
 - [#3805](https://github.com/fluojs/fluo/pull/3805) [`6c682dc`](https://github.com/fluojs/fluo/commit/6c682dceecaca7588141796a12281551e5c1718c) Thanks [@ayden94](https://github.com/ayden94)! - **BREAKING:** `EventBusService.publish(event, options?)` now returns `Promise<EventPublishResult>` and is the sole public Event Bus publication path. Migrate from `publishWithResult`, `EVENT_BUS`, `EventBus`, `EventBusWithResults`, and root `EventBusLifecycleService` with no compatibility aliases. Inspect `settled` outcomes, `no-recipients`, lifecycle rejection, and background completion on the single result path; outbound handler and transport errors remain safely logged without raw errors. Use `@fluojs/event-bus/integration` only for first-party shutdown coordination.
 
@@ -18,7 +16,7 @@
   - @fluojs/core@2.1.1
   - @fluojs/di@3.1.1
   - @fluojs/runtime@3.1.1
-  - @fluojs/event-bus@4.0.0
+  - @fluojs/event-bus@3.1.1
 
 ## 3.0.0
 

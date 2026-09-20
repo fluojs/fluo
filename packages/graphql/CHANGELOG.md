@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 
-## 3.0.0
+## 2.0.1
 
-### Major Changes
+### Patch Changes
 
 - [#3804](https://github.com/fluojs/fluo/pull/3804) [`e0b559c`](https://github.com/fluojs/fluo/commit/e0b559c0e481c48917386e23f0a09af0532cbb1b) Thanks [@ayden94](https://github.com/ayden94)! - Unify GraphQL resolver registration and operation-scoped DataLoader creation around canonical public APIs.
 
@@ -16,8 +16,6 @@
   - Replace `createDataLoader(batch, options)` with `OperationScopedDataLoader.create(batch, options)`.
   - Import the upstream `dataloader` package directly when code needs its constructor or types; `@fluojs/graphql` no longer re-exports `DataLoader`.
   - Replace `@Query('name')`, `@Mutation('name')`, `@Subscription('name')`, and `@FieldResolver('name')` with their `{ fieldName: 'name' }` option-object forms.
-
-### Patch Changes
 
 - [#3771](https://github.com/fluojs/fluo/pull/3771) [`4617a9c`](https://github.com/fluojs/fluo/commit/4617a9c0097281603d6fb5ce97a60941b2f310d4) Thanks [@ayden94](https://github.com/ayden94)! - Make `FluoFactory.create(AppModule, { adapter })` the sole HTTP application
   creation implementation. Remove `fluoFactory` and `bootstrapApplication` from
@@ -65,7 +63,7 @@
   - @fluojs/di@3.1.1
   - @fluojs/runtime@3.1.1
   - @fluojs/http@3.1.1
-  - @fluojs/validation@3.0.0
+  - @fluojs/validation@2.1.1
 
 ## 2.0.0
 

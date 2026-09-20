@@ -10,7 +10,7 @@
   - @fluojs/http@3.1.1
   - @fluojs/platform-fastify@2.0.2
   - @fluojs/react@0.2.1
-  - @fluojs/validation@3.0.0
+  - @fluojs/validation@2.1.1
 
 ## 0.0.4
 

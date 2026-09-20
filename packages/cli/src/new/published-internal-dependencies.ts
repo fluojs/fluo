@@ -5,7 +5,7 @@ export const PUBLISHED_INTERNAL_DEPENDENCIES = {
   "@fluojs/core": "^2.1.1",
   "@fluojs/di": "^3.1.1",
   "@fluojs/http": "^3.1.1",
-  "@fluojs/microservices": "^3.0.0",
+  "@fluojs/microservices": "^2.0.1",
   "@fluojs/platform-bun": "^3.0.1",
   "@fluojs/platform-cloudflare-workers": "^2.1.1",
   "@fluojs/platform-deno": "^2.0.1",
@@ -15,6 +15,6 @@ export const PUBLISHED_INTERNAL_DEPENDENCIES = {
   "@fluojs/react": "^0.2.1",
   "@fluojs/runtime": "^3.1.1",
   "@fluojs/testing": "^3.0.2",
-  "@fluojs/validation": "^3.0.0",
+  "@fluojs/validation": "^2.1.1",
   "@fluojs/vite": "^2.0.1"
 } as const;
