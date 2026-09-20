@@ -1,6 +1,18 @@
 import type { FrameworkRequest, RequestContext } from '../types.js';
 
 const REQUEST_ABORTED_BY_RESPONSE_STREAM = Symbol('fluo.http.requestAbortedByResponseStream');
+const authoritativeProbes = new WeakMap<FrameworkRequest, () => boolean>();
+
+/**
+ * Registers an adapter probe that observes the same cancellation source as its
+ * lazy signal. Ordinary requests with independent probes/signals are not marked.
+ *
+ * @param request The exact adapter request owning both cancellation surfaces.
+ * @param probe Probe that observes the lazy signal's cancellation source.
+ */
+export function registerAuthoritativeAbortProbe(request: FrameworkRequest, probe: () => boolean): void {
+  authoritativeProbes.set(request, probe);
+}
 
 /**
  * Reports whether the adapter-provided request abort probes have fired.
@@ -9,6 +21,10 @@ const REQUEST_ABORTED_BY_RESPONSE_STREAM = Symbol('fluo.http.requestAbortedByRes
  * @returns Whether transport cancellation has been observed.
  */
 export function isRequestAborted(request: FrameworkRequest): boolean {
+  const probe = authoritativeProbes.get(request);
+  if (probe && request.isAborted === probe) {
+    return probe.call(request);
+  }
   return request.isAborted?.() === true || request.signal?.aborted === true;
 }
 

@@ -1,9 +1,11 @@
+import { getSecurityHeadersApplier } from '../../middleware/security-headers.js';
 import type { HandlerDescriptor } from '../../types.js';
 import type { CreateDispatcherOptions } from '../dispatcher.js';
 import { createFastPathStats } from './debug-visibility.js';
 import { compileFastPathEligibility, setHandlerFastPathEligibility } from './eligibility-checker.js';
 import type { FastPathEligibility, FastPathStats } from './eligibility.js';
 
+/** Dispatcher-owned execution decisions and immutable diagnostic snapshots. */
 export interface DispatcherFastPathState {
   readonly stats: FastPathStats;
   describeRoutes(): readonly HandlerDescriptor[];
@@ -29,6 +31,14 @@ function cloneHandlerDescriptor(descriptor: HandlerDescriptor): HandlerDescripto
   };
 }
 
+/**
+ * Compiles route eligibility owned by one dispatcher and rechecks mutable middleware.
+ *
+ * @param descriptors Routes registered with this dispatcher.
+ * @param options Dispatcher features used to select an execution path.
+ * @param adapter Adapter identifier included in diagnostics.
+ * @returns Dispatcher-local route decisions and diagnostic snapshots.
+ */
 export function createDispatcherFastPathState(
   descriptors: readonly HandlerDescriptor[],
   options: CreateDispatcherOptions,
@@ -58,7 +68,17 @@ export function createDispatcherFastPathState(
       });
     },
     getEligibility(descriptor: HandlerDescriptor) {
-      return eligibilities.get(descriptor);
+      const eligibility = eligibilities.get(descriptor);
+
+      // Middleware objects remain mutable after bootstrap. Never execute a replaced
+      // built-in handler through its original framework-only capability.
+      if (eligibility?.executionPath === 'fast'
+        && ((options.appMiddleware?.length ?? 0) > 1
+          || options.appMiddleware?.some((definition) => getSecurityHeadersApplier(definition) === undefined))) {
+        return compileFastPathEligibility(descriptor, options, adapter).eligibility;
+      }
+
+      return eligibility;
     },
     stats: createFastPathStats(compiledEligibilities),
   });
