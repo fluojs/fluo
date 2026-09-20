@@ -5,6 +5,7 @@ import {
 	ATTEMPT_CEILING,
 	applyChildResult,
 	decideNext,
+	localCheckBinding,
 	summarizeTransitions,
 	trackStalls,
 } from './lane-v4.mjs';
@@ -16,6 +17,26 @@ import {
 	validateLocalCheckFact,
 } from './lane-v4-cli.mjs';
 
+import { createPreflight, evaluatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { buildReviewFact } from '../../review-head/scripts/contracts.mjs';
+
+const preflight = createPreflight({
+	issue: 3096, issue_sha256: 'c'.repeat(64), base_sha: 'd'.repeat(40),
+	scope: ['packages/', '.changeset/'], non_scope: [],
+	acceptance: ['Preserve route precedence'], validation: ['node --test'],
+	predicted_files: ['packages/http/src/router.ts'],
+});
+const binding = { issue: 3096, issueSha256: preflight.issue_sha256, baseSha: preflight.base_sha, changedFiles: ['packages/http/src/router.ts'] };
+const policy = evaluatePreflight(preflight, binding).policy;
+const makeReview = (signal = 'PASS', head = 'a'.repeat(40)) => buildReviewFact({
+	head_sha: head, preflight_sha256: policy.sha256, active_axes: policy.active_axes,
+	reviews: policy.active_axes.map((reviewer) => ({
+		reviewer, reviewed_head_sha: head, preflight_sha256: policy.sha256, verdict_signal: signal,
+		blockers: signal === 'BLOCK' ? [{ reviewer, signature: 'route:order', evidence: 'router.ts:1', fix_back_eligible: true, status: 'unresolved' }] : [],
+	})),
+}, head, policy);
+
+const acceptedAt = '2026-01-01T00:00:00.000Z';
 const makeLane = (overrides = {}) => ({
 	issue: 3096,
 	attempts: {},
@@ -25,12 +46,17 @@ const makeLane = (overrides = {}) => ({
 });
 
 const makeObs = (overrides = {}) => ({
+	...binding,
+	preflight,
+	reviewAcceptedAt: acceptedAt,
 	issueState: 'OPEN',
 	branch: 'issue-3096-http-integration-seam',
 	worktree: '.worktrees/issue-3096-http-integration-seam',
 	headSha: 'a'.repeat(40),
 	hasNewCommits: true,
 	localChecks: {
+		...localCheckBinding(makeReview(), acceptedAt),
+		receiptStartedAt: '2026-01-01T00:00:01.000Z',
 		status: 'passed',
 		valid: true,
 		head: 'a'.repeat(40),
@@ -39,9 +65,18 @@ const makeObs = (overrides = {}) => ({
 	},
 	publicPackagesTouched: true,
 	changesetPresent: true,
-	review: { verdict: 'merge', head: 'a'.repeat(40) },
+	review: makeReview(),
 	pr: null,
 	...overrides,
+});
+
+// Regression evidence: legacy facts must not bypass the mandatory gates.
+test('mandatory preflight precedes implementation', () => {
+	assert.equal(decideNext(makeLane(), makeObs({ branch: null, worktree: null, preflight: null })).action, 'preflight');
+});
+
+test('legacy arbitrary review verdict cannot advance', () => {
+	assert.equal(decideNext(makeLane(), makeObs({ review: { verdict: 'anything', head: 'a'.repeat(40) } })).action, 'review');
 });
 
 // --- C1: resume from observed state alone (no session identity) ---
@@ -52,19 +87,19 @@ test('C1: fresh issue with no branch decides implement', () => {
 });
 
 test('C1: resumes mid-flight issue from observation alone -> review', () => {
-	// Branch + commits + local checks passed, review not yet run.
+	// Branch + commits, review not yet run; local CI is not a prerequisite.
 	// No session id, run id, or journal appears anywhere in the inputs.
 	const next = decideNext(makeLane(), makeObs({ review: null }));
 	assert.equal(next.action, 'review');
 });
 
-test('C1: arbitrary local-check facts cannot advance to review', () => {
-	const next = decideNext(makeLane(), makeObs({ localChecks: { status: 'passed' }, review: null }));
+test('C1: arbitrary local-check facts cannot advance beyond passed review', () => {
+	const next = decideNext(makeLane(), makeObs({ localChecks: { status: 'passed' } }));
 	assert.equal(next.action, 'verify-local');
 });
 
 test('C1: a revalidated local receipt that becomes invalid routes to fix-back', () => {
-	const next = decideNext(makeLane(), makeObs({ localChecks: { status: 'failed', valid: false } }));
+	const next = decideNext(makeLane(), makeObs({ localChecks: { ...makeObs().localChecks, status: 'failed', valid: false } }));
 	assert.deepEqual(next, { action: 'fix-back', reason: 'local-checks-failed', head: 'a'.repeat(40) });
 });
 
@@ -80,8 +115,8 @@ test('C1: receipt references fail closed before filesystem access', () => {
 	);
 });
 
-test('C1: an implemented issue without a current local-check fact requests verification', () => {
-	const next = decideNext(makeLane(), makeObs({ localChecks: null, review: null }));
+test('C1: a reviewed issue without a current local-check fact requests verification', () => {
+	const next = decideNext(makeLane(), makeObs({ localChecks: null }));
 	assert.equal(next.action, 'verify-local');
 });
 
@@ -139,7 +174,7 @@ test('C2: success resets the attempt counter', () => {
 });
 
 test('C2: needs-human-check review verdict is a policy block', () => {
-	const next = decideNext(makeLane(), makeObs({ review: { verdict: 'needs-human-check', head: 'a'.repeat(40) } }));
+	const next = decideNext(makeLane(), makeObs({ review: makeReview('NEEDS-HUMAN-CHECK') }));
 	assert.equal(next.action, 'blocked');
 	assert.equal(next.reason, 'needs-human-check');
 });
@@ -238,12 +273,12 @@ test('watch: lane settles when every issue is done or blocked', () => {
 // --- supporting decisions the loop relies on ---
 
 test('stale review head triggers re-review, not merge', () => {
-	const next = decideNext(makeLane(), makeObs({ review: { verdict: 'merge', head: 'b'.repeat(40) } }));
+	const next = decideNext(makeLane(), makeObs({ review: makeReview('PASS', 'b'.repeat(40)) }));
 	assert.equal(next.action, 'review');
 });
 
 test('review block -> fix-back with reason', () => {
-	const next = decideNext(makeLane(), makeObs({ review: { verdict: 'block', head: 'a'.repeat(40) } }));
+	const next = decideNext(makeLane(), makeObs({ review: makeReview('BLOCK') }));
 	assert.equal(next.action, 'fix-back');
 	assert.equal(next.reason, 'review-block');
 });

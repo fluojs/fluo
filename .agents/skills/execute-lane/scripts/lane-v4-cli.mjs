@@ -8,12 +8,14 @@
 //   watch           --root . --lane <path> [--interval 60] [--once] [--stall-after 15]
 //   record          --root . --lane <path> --issue <n> --phase <p> --result-json <json>
 //   set-fact        --root . --lane <path> --issue <n> --kind local-checks|review --head <sha> --value <json>
+//   set-fact        --root . --lane <path> --issue <n> --kind preflight --value <json>
 //   approve-merge   --root . --lane <path> --issue <n>
 //
 // The lane file stores intent (attempts, approvals, blockers) and
-// head-bound semantic facts. Everything else is observed live from
-// git and GitHub on every plan call: there is no session identity and
-// no event journal. A new head silently invalidates stale facts.
+// head-bound review/local-CI facts plus a head-independent preflight contract.
+// Everything else is observed live from git and GitHub on every plan call:
+// no session identity or event journal. Head movement invalidates reviews and
+// local checks, not the issue/base-bound preflight.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -21,7 +23,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { applyChildResult, decideNext, isValidLocalCheck, summarizeTransitions, trackStalls } from './lane-v4.mjs';
+import { applyChildResult, decideNext, localCheckBinding, summarizeTransitions, trackStalls } from './lane-v4.mjs';
+import { evaluatePreflight, issueDigest, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
+import { buildReviewFact, validateReviewFact } from '../../review-head/scripts/contracts.mjs';
 import { collectIdentity } from '../../../../tooling/ci/verify-local.mjs';
 import {
 	buildVerificationPlan,
@@ -41,9 +45,10 @@ const arg = (args, flag, fallback) => {
 	return args[i + 1];
 };
 
-const run = (cwd, cmd, cmdArgs) => {
+const run = (cwd, cmd, cmdArgs, trim = true) => {
 	try {
-		return execFileSync(cmd, cmdArgs, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+		const output = execFileSync(cmd, cmdArgs, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+		return trim ? output.trim() : output;
 	} catch {
 		return null;
 	}
@@ -72,7 +77,7 @@ const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
 const nestedPath = (root, candidate) => candidate === root || candidate.startsWith(`${root}${sep}`);
 
-export const validateLocalCheckFact = (worktree, headSha, baseRef, value) => {
+export const validateLocalCheckFact = (worktree, headSha, baseRef, value, binding) => {
 	if (!value || typeof value !== 'object' || value.status !== 'passed' || value.valid !== true
 		|| typeof value.receiptPath !== 'string' || typeof value.receiptSha256 !== 'string'
 		|| !/^[0-9a-f]{64}$/u.test(value.receiptSha256)) {
@@ -108,8 +113,13 @@ export const validateLocalCheckFact = (worktree, headSha, baseRef, value) => {
 		|| !receiptMatchesPlan(receipt, identity, plan)) {
 		throw new TypeError('local-checks receipt is not a valid passed receipt for --head');
 	}
+	if (!binding || !(Date.parse(receipt.startedAt) > Date.parse(binding.reviewAcceptedAt))) {
+		throw new TypeError('local-checks receipt must start after the current passing review was accepted');
+	}
 	return {
+		...binding,
 		head: headSha,
+		receiptStartedAt: receipt.startedAt,
 		receiptPath: relative(root, receiptPath),
 		receiptSha256: value.receiptSha256,
 		status: 'passed',
@@ -205,25 +215,16 @@ export const observeIssue = (root, lane, issue) => {
 	const headSha = branchExists ? run(root, 'git', ['rev-parse', branch]) : null;
 	const baseSha = run(root, 'git', ['rev-parse', `origin/${lane.base_branch}`]);
 	const mergeBase = branchExists ? run(root, 'git', ['merge-base', branch, `origin/${lane.base_branch}`]) : null;
-	const localChecks = (() => {
-		const fact = factIfCurrent(entry, 'local-checks', headSha);
-		if (!fact || !headSha || !worktreeExists) return fact;
-		try {
-			return validateLocalCheckFact(worktreePath, headSha, `origin/${lane.base_branch}`, fact);
-		} catch {
-			return { head: headSha, status: 'failed', valid: false };
-		}
-	})();
 	const hasNewCommits = branchExists && headSha !== null && headSha !== mergeBase;
 
-	let publicPackagesTouched = false;
-	let changesetPresent = false;
-	if (hasNewCommits) {
-		const changed = run(root, 'git', ['diff', '--name-only', `${mergeBase}...${headSha}`]) ?? '';
-		const files = changed.split('\n').filter(Boolean);
-		publicPackagesTouched = files.some(isConsumerVisibleFile);
-		changesetPresent = files.some(isChangesetFile);
-	}
+	// NUL separation and --no-renames preserve every path, including rename
+	// sources, so a move out of approved scope cannot hide behind rename detection.
+	const changed = hasNewCommits && mergeBase
+		? run(root, 'git', ['diff', '--name-only', '--no-renames', '-z', `${mergeBase}...${headSha}`], false)
+		: baseSha && (!branchExists || mergeBase) ? '' : null;
+	const changedFiles = changed === null ? null : changed.split('\0').filter(Boolean);
+	const publicPackagesTouched = (changedFiles ?? []).some(isConsumerVisibleFile);
+	const changesetPresent = (changedFiles ?? []).some(isChangesetFile);
 
 	let pr = null;
 	const prJson = run(root, 'gh', [
@@ -252,9 +253,32 @@ export const observeIssue = (root, lane, issue) => {
 		};
 	}
 
-	const issueState = (() => {
-		const s = run(root, 'gh', ['issue', 'view', String(issue), '--json', 'state', '--jq', '.state']);
-		return s ?? 'OPEN';
+	const issueJson = run(root, 'gh', ['issue', 'view', String(issue), '--json', 'state,title,body']);
+	const issueData = issueJson === null ? null : JSON.parse(issueJson);
+	const issueState = issueData?.state ?? 'OPEN';
+	const issueSha256 = typeof issueData?.title === 'string' && typeof issueData?.body === 'string'
+		? issueDigest(issueData) : null;
+	const preflight = entry.facts?.preflight?.value ?? null;
+	const reviewAxisFloor = entry.facts?.review?.value?.active_axes ?? [];
+	const preflightStatus = evaluatePreflight(preflight, { issue, issueSha256, baseSha, changedFiles, reviewAxisFloor });
+	const review = headSha ? factIfCurrent(entry, 'review', headSha) : null;
+	const reviewAcceptedAt = review ? entry.facts?.review?.accepted_at ?? null : null;
+	const localChecks = (() => {
+		const fact = factIfCurrent(entry, 'local-checks', headSha);
+		if (!fact || !headSha || !worktreeExists || !preflightStatus.valid) return null;
+		let binding;
+		try {
+			binding = localCheckBinding(validateReviewFact(review, headSha, preflightStatus.policy), reviewAcceptedAt);
+		} catch {
+			return null;
+		}
+		if (fact.preflightSha256 !== binding.preflightSha256 || fact.reviewSha256 !== binding.reviewSha256) return null;
+		if (fact.status === 'failed') return fact;
+		try {
+			return validateLocalCheckFact(worktreePath, headSha, `origin/${lane.base_branch}`, fact, binding);
+		} catch {
+			return { ...fact, status: 'failed', valid: false };
+		}
 	})();
 
 	const unmetDependencies = (entry.depends_on ?? []).filter((dep) => {
@@ -264,6 +288,11 @@ export const observeIssue = (root, lane, issue) => {
 
 	return {
 		issueState,
+		issueSha256,
+		changedFiles,
+		preflight,
+		reviewAxisFloor,
+		preflightPolicy: preflightStatus.valid ? preflightStatus.policy : null,
 		branch: branchExists ? branch : null,
 		worktree: worktreeExists ? worktreePath : null,
 		headSha,
@@ -272,7 +301,8 @@ export const observeIssue = (root, lane, issue) => {
 		localChecks,
 		publicPackagesTouched,
 		changesetPresent,
-		review: headSha ? factIfCurrent(entry, 'review', headSha) : null,
+		review,
+		reviewAcceptedAt,
 		pr,
 		unmetDependencies,
 	};
@@ -420,6 +450,19 @@ const main = () => {
 		const phase = arg(args, '--phase');
 		const result = JSON.parse(arg(args, '--result-json'));
 		const next = applyChildResult(entry, phase, result);
+		if (phase === 'verify-local' && result?.ok === false) {
+			const obs = observeIssue(root, lane, issue);
+			if (result.head_sha !== obs.headSha || !obs.preflightPolicy
+				|| typeof result.evidence !== 'string' || !result.evidence.trim()) {
+				throw new TypeError('failed local CI requires current head_sha and failure evidence');
+			}
+			const binding = localCheckBinding(validateReviewFact(obs.review, obs.headSha, obs.preflightPolicy), obs.reviewAcceptedAt);
+			next.facts ??= {};
+			next.facts['local-checks'] = {
+				head: obs.headSha,
+				value: { ...binding, head: obs.headSha, status: 'failed', valid: false, evidence: result.evidence },
+			};
+		}
 		lane.issues[String(issue)] = next;
 		saveLane(lanePath, lane);
 		process.stdout.write(`${JSON.stringify({ issue, attempts: next.attempts, blocker: next.blocker }, null, 2)}\n`);
@@ -427,14 +470,38 @@ const main = () => {
 	}
 	if (command === 'set-fact') {
 		const kind = arg(args, '--kind');
-		if (!['local-checks', 'review'].includes(kind)) throw new TypeError('kind must be local-checks or review');
-		const head = arg(args, '--head');
+		if (!['preflight', 'local-checks', 'review'].includes(kind)) throw new TypeError('kind must be preflight, local-checks or review');
 		const value = JSON.parse(arg(args, '--value'));
-		const storedValue = kind === 'local-checks'
-			? validateLocalCheckFact(resolve(root, '.worktrees', branchFor(entry)), head, `origin/${lane.base_branch}`, value)
-			: value;
 		entry.facts ??= {};
-		entry.facts[kind] = { head, value: storedValue };
+		if (kind === 'preflight') {
+			validatePreflight(value);
+			const obs = observeIssue(root, lane, issue);
+			const status = evaluatePreflight(value, { ...obs, issue });
+			if (!status.valid) throw new TypeError(`preflight rejected: ${status.reason}`);
+			const previous = obs.preflightPolicy?.active_axes ?? obs.preflight?.active_axes ?? [];
+			if (previous.some((axis) => !value.active_axes.includes(axis))) {
+				throw new TypeError('preflight cannot shrink previously approved review axes');
+			}
+			if (status.policy.active_axes.some((axis) => !value.active_axes.includes(axis))) {
+				throw new TypeError('preflight active_axes must include axes required by the actual diff');
+			}
+			entry.facts.preflight = { value };
+			delete entry.facts.review;
+			delete entry.facts['local-checks'];
+		} else {
+			const head = arg(args, '--head');
+			let storedValue;
+			const obs = observeIssue(root, lane, issue);
+			if (head !== obs.headSha || !obs.preflightPolicy) throw new TypeError(`${kind} requires current head and valid preflight`);
+			if (kind === 'local-checks') {
+				const binding = localCheckBinding(validateReviewFact(obs.review, head, obs.preflightPolicy), obs.reviewAcceptedAt);
+				storedValue = validateLocalCheckFact(resolve(root, '.worktrees', branchFor(entry)), head, `origin/${lane.base_branch}`, value, binding);
+			} else {
+				storedValue = buildReviewFact(value, head, obs.preflightPolicy);
+				delete entry.facts['local-checks'];
+			}
+			entry.facts[kind] = { head, value: storedValue, ...(kind === 'review' ? { accepted_at: new Date().toISOString() } : {}) };
+		}
 		saveLane(lanePath, lane);
 		process.stdout.write('ok\n');
 		return;
