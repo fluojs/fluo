@@ -3,7 +3,7 @@ import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
 import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 
-import { jsonCommandLocal, QUOTE_REQUEST, type QuoteInput, type QuoteItem, readSearchLocal, restRouteMixLocal } from '../shared/workloads.js';
+import { jsonCommandLocal, type QuoteInput, queryValue, readSearchLocal, restRouteMixLocal, toPreviewBody, toQuoteInput } from '../shared/workloads.js';
 
 ensureMetadataSymbol();
 
@@ -91,38 +91,7 @@ function param(context: RequestContext, name: string): string {
 }
 
 function query(context: RequestContext, name: string): string {
-  const value = context.request.query[name];
-  return Array.isArray(value) ? value[0] ?? '' : value ?? '';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function toQuoteInput(value: unknown): QuoteInput {
-  if (!isRecord(value)) return QUOTE_REQUEST;
-  const itemsValue = value.items;
-  const items: QuoteItem[] = Array.isArray(itemsValue)
-    ? itemsValue.filter(isRecord).map((item) => ({
-        sku: typeof item.sku === 'string' ? item.sku : '',
-        quantity: typeof item.quantity === 'number' ? item.quantity : 0,
-        unitPriceCents: typeof item.unitPriceCents === 'number' ? item.unitPriceCents : 0,
-      }))
-    : [];
-  return {
-    customerId: typeof value.customerId === 'string' ? value.customerId : '',
-    coupon: typeof value.coupon === 'string' ? value.coupon : '',
-    shippingRegion: typeof value.shippingRegion === 'string' ? value.shippingRegion : '',
-    items,
-  };
-}
-
-function toPreviewBody(value: unknown): { action: string; estimateHours: number } {
-  if (!isRecord(value)) return { action: '', estimateHours: 0 };
-  return {
-    action: typeof value.action === 'string' ? value.action : '',
-    estimateHours: typeof value.estimateHours === 'number' ? value.estimateHours : 0,
-  };
+  return queryValue(context.request.query[name]);
 }
 
 @Module({ controllers: [ReadSearchController], providers: [UsersReadService] })

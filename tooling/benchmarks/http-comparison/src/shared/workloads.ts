@@ -206,3 +206,37 @@ export const ROUTE_MIX_RESPONSES = [
   JSON.stringify(restRouteMixLocal('preview', { tenantId: 't-001', projectId: 'p-001', taskId: 'task-042', body: { action: 'reassign', estimateHours: 8 } })),
   JSON.stringify(restRouteMixLocal('comments', { tenantId: 't-001', projectId: 'p-001', taskId: 'task-042' })),
 ] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+export function toQuoteInput(value: unknown): QuoteInput {
+  if (!isRecord(value)) throw new TypeError('Quote body must be an object');
+  const itemsValue = value.items;
+  const items: QuoteItem[] = Array.isArray(itemsValue)
+    ? itemsValue.filter(isRecord).map((item) => ({
+        sku: typeof item.sku === 'string' ? item.sku : '',
+        quantity: typeof item.quantity === 'number' ? item.quantity : 0,
+        unitPriceCents: typeof item.unitPriceCents === 'number' ? item.unitPriceCents : 0,
+      }))
+    : [];
+  return {
+    customerId: typeof value.customerId === 'string' ? value.customerId : '',
+    coupon: typeof value.coupon === 'string' ? value.coupon : '',
+    shippingRegion: typeof value.shippingRegion === 'string' ? value.shippingRegion : '',
+    items,
+  };
+}
+
+export function toPreviewBody(value: unknown): { action: string; estimateHours: number } {
+  if (!isRecord(value)) return { action: '', estimateHours: 0 };
+  return {
+    action: typeof value.action === 'string' ? value.action : '',
+    estimateHours: typeof value.estimateHours === 'number' ? value.estimateHours : 0,
+  };
+}
+
+export function queryValue(value: string | readonly string[] | undefined): string {
+  return typeof value === 'string' ? value : value?.[0] ?? '';
+}

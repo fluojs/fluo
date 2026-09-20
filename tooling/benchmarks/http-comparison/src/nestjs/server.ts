@@ -4,7 +4,7 @@ import { Body, Controller, Get, Injectable, Module, Param, Post, Query } from '@
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 
-import { jsonCommandLocal, readSearchLocal, restRouteMixLocal, type QuoteInput } from '../shared/workloads';
+import { jsonCommandLocal, queryValue, readSearchLocal, restRouteMixLocal, toPreviewBody, toQuoteInput, type QuoteInput } from '../shared/workloads';
 
 type AppShape = 'read-search-local' | 'json-command-local' | 'rest-route-mix-local';
 
@@ -34,7 +34,12 @@ class PreviewRequest {
 @Injectable()
 class UsersReadService {
   search(tenantId: string, query: ReadSearchQuery) {
-    return readSearchLocal({ tenantId, ...query });
+    return readSearchLocal({
+      tenantId,
+      role: queryValue(query.role), status: queryValue(query.status),
+      region: queryValue(query.region), sort: queryValue(query.sort),
+      page: queryValue(query.page), limit: queryValue(query.limit),
+    });
   }
 }
 
@@ -48,11 +53,11 @@ class QuoteService {
 @Injectable()
 class ProjectService {
   project(tenantId: string, projectId: string, query: ProjectQuery) {
-    return restRouteMixLocal('project', { tenantId, projectId, include: query.include });
+    return restRouteMixLocal('project', { tenantId, projectId, include: queryValue(query.include) });
   }
 
   tasks(tenantId: string, projectId: string, query: TaskListQuery) {
-    return restRouteMixLocal('task-list', { tenantId, projectId, state: query.state, priority: query.priority });
+    return restRouteMixLocal('task-list', { tenantId, projectId, state: queryValue(query.state), priority: queryValue(query.priority) });
   }
 
   task(tenantId: string, projectId: string, taskId: string) {
@@ -60,7 +65,7 @@ class ProjectService {
   }
 
   preview(tenantId: string, projectId: string, taskId: string, body: PreviewRequest) {
-    return restRouteMixLocal('preview', { tenantId, projectId, taskId, body });
+    return restRouteMixLocal('preview', { tenantId, projectId, taskId, body: toPreviewBody(body) });
   }
 
   comments(tenantId: string, projectId: string, taskId: string) {
@@ -84,7 +89,7 @@ class QuoteController {
 
   @Post()
   quote(@Body() input: QuoteInput) {
-    return this.service.quote(input);
+    return this.service.quote(toQuoteInput(input));
   }
 }
 

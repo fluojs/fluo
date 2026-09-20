@@ -27,5 +27,5 @@
       "@fluojs/validation": ["../../../packages/validation/src/index.ts"]
     }
   },
-  "include": ["src/fluo/**/*", "src/fluo-bun/**/*", "src/shared/**/*", "src/run.ts", "src/report.ts"]
+  "include": ["src/fluo/**/*", "src/fluo-bun/**/*", "src/shared/**/*", "src/*.ts", "tests/**/*.mts"]
 }
