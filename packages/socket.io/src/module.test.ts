@@ -26,7 +26,7 @@ import {
   type WebSocketGatewayHandlerDescriptor,
 } from '@fluojs/websockets';
 import type { Namespace, Socket, Server as SocketIoServer } from 'socket.io';
-import { type Socket as ClientSocket, io as createClient } from 'socket.io-client';
+import { type Socket as ClientSocket, io as createRawClient } from 'socket.io-client';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SocketIoLifecycleService } from './adapter.js';
@@ -311,6 +311,14 @@ function onceDisconnected(socket: ClientSocket): Promise<string> {
   });
 }
 
+const createClient: typeof createRawClient = ((uri: unknown, opts?: unknown) => {
+  if (typeof uri === 'string') {
+    return createRawClient(uri, { forceNew: true, ...(opts as object | undefined) });
+  }
+
+  return createRawClient({ forceNew: true, ...(uri as object | undefined) });
+}) as typeof createRawClient;
+
 interface SupportedSocketIoAdapterScenario {
   createAdapter: (options: { port: number; shutdownTimeoutMs?: number }) => HttpApplicationAdapter;
   name: string;
@@ -399,6 +407,30 @@ describe('@fluojs/socket.io', () => {
 
     expect(resolvedServer).toBe(rawServer);
     expect(roomProvider?.useExisting).toBe(SocketIoLifecycleService);
+  });
+
+  it('isolates socket.io-client Manager instances across clients sharing an origin URL', () => {
+    const origin = 'http://127.0.0.1:4000';
+    const pollingClient = createClient(`${origin}/chat`, {
+      reconnection: false,
+      transports: ['polling'],
+    });
+    const websocketClient = createClient(origin, {
+      reconnection: false,
+      transports: ['websocket'],
+    });
+
+    try {
+      expect(pollingClient.io).not.toBe(websocketClient.io);
+      const transports = websocketClient.io.opts.transports ?? [];
+      const transportNames = transports.map((transport) =>
+        typeof transport === 'function' && 'name' in transport ? transport.name : transport,
+      );
+      expect(transportNames).toEqual(['WS']);
+    } finally {
+      pollingClient.close();
+      websocketClient.close();
+    }
   });
 
   it('creates isolated module metadata for separate forRoot invocations', () => {
