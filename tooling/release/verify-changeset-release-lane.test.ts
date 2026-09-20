@@ -630,6 +630,32 @@ describe('verifyChangesetReleaseLane', () => {
     ).toThrow(/public CLI feature additions classified as patch.*fluo inspect/us);
   });
 
+  it('evaluates generated CLI patch changelog entries independently', () => {
+    const directory = createChangesetDirectory();
+
+    const result = verifyChangesetReleaseLane(
+      { baseRef: 'origin/main', changesetDirectory: directory, lane: 'stable' },
+      {
+        collectPackageVersionDeltas: () => [
+          {
+            bump: 'patch',
+            filePath: 'packages/cli/package.json',
+            nextVersion: '1.0.7',
+            packageName: '@fluojs/cli',
+            previousVersion: '1.0.6',
+          },
+        ],
+        collectStableNodeEngineRangeNarrowings: () => [],
+        existsSync: (targetPath: string) => targetPath.endsWith('packages/cli/CHANGELOG.md'),
+        readCliReadme: () => '# @fluojs/cli\n\nUse `fluo inspect` to inspect an application.\n',
+        readFileSync: () =>
+          '# @fluojs/cli\n\n## 1.0.7\n\n### Patch Changes\n\n- Add an explicit metadata preload entrypoint.\n\n- Fix `fluo inspect` output without changing its contract.\n',
+      },
+    );
+
+    expect(result.checkedPatchCliFeatureDowngrades).toEqual([]);
+  });
+
   it('rejects generated Studio patch changelog sections that narrow route kinds', () => {
     const directory = createChangesetDirectory();
 
