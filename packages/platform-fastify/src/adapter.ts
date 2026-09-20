@@ -21,7 +21,10 @@ import {
   attachFrameworkRequestNativeRouteHandoff,
   bindRawRequestNativeRouteHandoff,
   consumeRawRequestNativeRouteHandoff,
+  getHandlerFastPathEligibility,
   isRoutePathNormalizationSensitive,
+  markAbsentRequestId,
+  registerAuthoritativeAbortProbe,
 } from '@fluojs/http/internal';
 import type { MultipartOptions, UploadedFile } from '@fluojs/runtime';
 import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
@@ -456,7 +459,7 @@ export class FastifyHttpApplicationAdapter implements HttpApplicationAdapter {
 
     const dispatcher = this.dispatcher;
 
-    if (!dispatcher?.dispatchNativeRoute) {
+    if (!dispatcher?.dispatchNativeRoute || getHandlerFastPathEligibility(descriptor)?.executionPath === 'full') {
       bindRawRequestNativeRouteHandoff(request.raw, { descriptor, params });
       await this.handleRequest(request, reply);
       return;
@@ -516,9 +519,19 @@ function createNativeFastFrameworkRequest(
 
   assertBodyWithinMaxBodySize(request.body, maxBodySize);
 
+  const headerSnapshot = cloneRequestHeaders(request.headers);
+  let hasRequestIdHeader = false;
+  for (const name in headerSnapshot) {
+    const lowerName = name.toLowerCase();
+    if ((lowerName === 'x-request-id' || lowerName === 'x-correlation-id') && headerSnapshot[name] !== undefined) {
+      hasRequestIdHeader = true;
+      break;
+    }
+  }
+
   const frameworkRequest = createDeferredFrameworkRequestShell({
-    cookieHeader: cloneHeaderValue(request.headers.cookie),
-    headersFactory: () => normalizeHeaders(cloneRequestHeaders(request.headers)),
+    cookieHeader: headerSnapshot.cookie,
+    headersFactory: () => normalizeHeaders(headerSnapshot),
     method: request.method,
     path: urlParts.path,
     query: readSimpleQueryRecord(request.query),
@@ -531,6 +544,10 @@ function createNativeFastFrameworkRequest(
 
   frameworkRequest.body = request.body;
   frameworkRequest.isAborted = lazySignal.isAborted;
+  if (!hasRequestIdHeader) {
+    markAbsentRequestId(frameworkRequest);
+  }
+  registerAuthoritativeAbortProbe(frameworkRequest, lazySignal.isAborted);
   markNativeFastFrameworkRequest(frameworkRequest);
   return frameworkRequest;
 }

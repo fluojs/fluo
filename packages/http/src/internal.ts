@@ -25,3 +25,6 @@ export {
   readFrameworkRequestNativeRouteHandoff,
 } from './dispatch/native-route-handoff.js';
 export type { Dispatcher } from './types.js';
+export { getHandlerFastPathEligibility } from './dispatch/fast-path/eligibility-checker.js';
+export { markAbsentRequestId } from './context/request-id-snapshot.js';
+export { registerAuthoritativeAbortProbe } from './dispatch/request-abort.js';

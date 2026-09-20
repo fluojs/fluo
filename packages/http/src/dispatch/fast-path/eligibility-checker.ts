@@ -1,6 +1,7 @@
 import type { Container } from '@fluojs/di';
 
 import { getCompiledDtoBindingPlan } from '../../adapters/dto-binding-plan.js';
+import { getSecurityHeadersApplier } from '../../middleware/security-headers.js';
 import type {
   Binder,
   HandlerDescriptor,
@@ -67,7 +68,8 @@ function determineMiddlewareRequirement(
   handler: HandlerDescriptor,
   appMiddleware: readonly MiddlewareLike[],
 ): boolean {
-  if (appMiddleware.length > 0) {
+  if (appMiddleware.length > 1
+    || appMiddleware.some((definition) => getSecurityHeadersApplier(definition) === undefined)) {
     return true;
   }
   const moduleMiddleware = handler.metadata.moduleMiddleware;
@@ -93,7 +95,9 @@ export function compileFastPathEligibility(
     || (options.interceptors?.length ?? 0) > 0;
   const hasPipe = handler.route.request !== undefined;
   const hasRequestScopedDI = determineRequestScopeRequirement(handler, options);
-  const hasMiddleware = determineMiddlewareRequirement(handler, options.appMiddleware ?? []);
+  const hasMiddleware = (options.appMiddleware?.length ?? 0) > 0
+    || handler.metadata.moduleMiddleware.length > 0;
+  const requiresMiddlewareChain = determineMiddlewareRequirement(handler, options.appMiddleware ?? []);
   const hasContentNegotiation = options.contentNegotiation?.formatters !== undefined && options.contentNegotiation.formatters.length > 0;
   const hasConditionalRequest = options.conditionalRequest !== undefined;
   const isSseRoute = handler.route.produces?.some((mediaType) => mediaType.toLowerCase().startsWith('text/event-stream')) === true;
@@ -123,7 +127,7 @@ export function compileFastPathEligibility(
   if (eligibilityBase.hasRequestScopedDI) {
     blockingReasons.push('request-scoped DI');
   }
-  if (eligibilityBase.hasMiddleware) {
+  if (requiresMiddlewareChain) {
     blockingReasons.push('middleware');
   }
   if (eligibilityBase.hasGlobalHook) {

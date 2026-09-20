@@ -702,6 +702,13 @@ Framework integration이 명시적인 request context boundary나 typed per-requ
 
 Dispatcher는 adapter와 diagnostics를 위해 `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`, `formatFastPathStats(...)`, `getDispatcherFastPathStats(...)`로 fast-path observability를 노출합니다. Eligibility 결정은 shared `HandlerMapping`이 아니라 dispatcher instance에 속합니다. 따라서 여러 dispatcher가 서로 다른 middleware, observer, interceptor, binder, adapter option으로 하나의 mapping을 재사용해도 서로의 결정을 덮어쓰지 않습니다. `describeRoutes()`는 cloned descriptor에 frozen eligibility snapshot을 노출하며 dispatcher statistics와 그 route entry도 frozen observability value입니다.
 
+유일한 application middleware가 수정되지 않은 framework 생성 보안 헤더
+instance라면 dispatcher는 헤더를 직접 적용하고, 다른 조건이 허용하는 fast route를
+사용하며 해당 헤더만을 위한 request scope를 만들지 않습니다. 헤더 기본값, override,
+순서는 유지됩니다. 복사되거나 수정된 instance를 포함한 다른 middleware는 일반
+chain을 유지합니다. Request-scoped dependency, guard, interceptor, observer는
+계속 각 기능에 필요한 경로를 사용합니다.
+
 ### Bun decorator bundling compatibility
 
 Fluo의 HTTP 데코레이터는 TC39 표준 데코레이터이며, runtime 또는 compiler가 표준 decorator context를 제공하면 계속 `context.metadata`를 통해 metadata를 기록합니다. Bun이 legacy TypeScript decorator transform으로 애플리케이션을 번들링하는 경우에도 controller, route, DTO binding, guard/interceptor, header, redirect, versioning, status, request DTO, `@Produces(...)` metadata를 Fluo 내부 metadata store에 기록하여 생성된 Bun bundle의 route mapping 동작을 보존합니다.
@@ -788,6 +795,9 @@ Node `AsyncLocalStorage` bootstrap을 eager 초기화하지 않고 HTTP authorin
 - Native route handoff는 framework request에 붙는 시점의 method와 path를 함께 스냅샷합니다. app middleware가 handler matching 전에 둘 중 하나를 rewrite하면 dispatcher는 stale handoff를 무시하고 일반 route matching으로 fallback합니다.
 - `isRoutePathNormalizationSensitive(path)`: duplicate slash와 trailing slash 요청을 generic dispatcher 경로에 남기기 위한 내부 guard.
 - `getCompiledRouteIdentity(descriptor)`: first-party package integration을 위해 `createHandlerMapping(...)`이 할당한 deterministic source/method position을 읽습니다. 수동으로 작성한 descriptor에는 `undefined`를 반환합니다.
+- `getHandlerFastPathEligibility(descriptor)`: dispatcher route snapshot의 실행 결정을 읽어 adapter가 known-full route의 native fast 시도를 생략하게 합니다.
+- `markAbsentRequestId(request)`: 두 종류의 inbound ID header가 모두 없는 adapter snapshot을 기록하여 초기 context 생성 시 header materialization을 피합니다.
+- `registerAuthoritativeAbortProbe(request, probe)`: 해당 request의 probe가 lazy signal과 같은 취소 원천을 관찰함을 선언합니다. Adapter는 이 동등성을 유지해야 하며 일반 request와 복사본은 독립적인 signal 검사를 유지합니다.
 - `resolveClientIdentity(request)`: 속도 제한과 런타임 통합에서 사용하는 보수적 클라이언트 식별 해석기.
 - `createFetchStyleHttpAdapterRealtimeCapability(...)`, `Dispatcher`, `HttpApplicationAdapter`: 전체 HTTP root barrel을 instantiate하면 안 되는 edge/fetch-style platform package를 위한 내부 adapter seam.
 - `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: first-party response integration을 위한 typed response-entry branding seam.

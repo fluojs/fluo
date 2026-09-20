@@ -712,6 +712,13 @@ Use `runWithRequestContext(...)`, `assertRequestContext()`, `createRequestContex
 
 The dispatcher exposes fast-path observability for adapters and diagnostics through `FAST_PATH_ELIGIBILITY_SYMBOL`, `FAST_PATH_STATS_SYMBOL`, `formatFastPathStats(...)`, and `getDispatcherFastPathStats(...)`. Eligibility decisions belong to the dispatcher instance rather than the shared `HandlerMapping`: dispatchers may reuse one mapping with different middleware, observer, interceptor, binder, or adapter options without overwriting one another. `describeRoutes()` exposes frozen eligibility snapshots on its cloned descriptors, and dispatcher statistics plus their route entries are frozen observability values.
 
+When the sole application middleware is an unmodified framework-created security
+headers instance, the dispatcher can apply its headers directly and use an
+otherwise eligible fast route without creating a request scope for those headers.
+All header defaults, overrides and ordering remain unchanged. Other middleware,
+including copied or modified instances, retains the normal chain. Request-scoped
+dependencies, guards, interceptors and observers still require their usual path.
+
 ### Bun decorator bundling compatibility
 
 Fluo's HTTP decorators are standard TC39 decorators and continue to record metadata through `context.metadata` when the runtime or compiler provides the standard decorator context. When Bun bundles an application through its legacy TypeScript decorator transform, the same controller, route, DTO binding, guard/interceptor, header, redirect, versioning, status, request DTO, and `@Produces(...)` metadata is recorded through Fluo's internal metadata stores so generated Bun bundles preserve route mapping behavior.
@@ -799,6 +806,9 @@ The `./internal` subpath exports only the low-level utilities used by platform a
 - Native route handoffs snapshot the framework request method and path when attached; if app middleware rewrites either value before handler matching, the dispatcher ignores the stale handoff and falls back to normal route matching.
 - `isRoutePathNormalizationSensitive(path)`: Internal guard for keeping duplicate-slash and trailing-slash requests on the generic dispatcher path.
 - `getCompiledRouteIdentity(descriptor)`: Reads the deterministic source/method position assigned by `createHandlerMapping(...)` for first-party package integrations. Manually authored descriptors return `undefined`.
+- `getHandlerFastPathEligibility(descriptor)`: Reads a dispatcher route snapshot's execution decision so adapters can avoid a known-full native fast attempt.
+- `markAbsentRequestId(request)`: Records an adapter snapshot with neither supported inbound ID header, avoiding header materialization during initial context creation.
+- `registerAuthoritativeAbortProbe(request, probe)`: Declares that this request's probe observes the same cancellation source as its lazy signal. Adapters must preserve that equivalence; generic requests and copies retain independent signal checks.
 - `resolveClientIdentity(request)`: Conservative client identity resolver used by rate limiting and other runtime integrations.
 - `createFetchStyleHttpAdapterRealtimeCapability(...)`, `Dispatcher`, and `HttpApplicationAdapter`: internal adapter seams for edge/fetch-style platform packages that must avoid instantiating the full HTTP root barrel.
 - `FRAMEWORK_RESPONSE_WRITER` / `registerFrameworkResponseWriter(...)`: Typed response-entry branding seam for first-party response integrations.

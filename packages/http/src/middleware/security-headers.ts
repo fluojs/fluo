@@ -1,4 +1,35 @@
-import type { Middleware } from '../types.js';
+import type { FrameworkResponse, Middleware, MiddlewareSnapshotLike } from '../types.js';
+import { isMiddlewareRouteConfig } from './middleware.js';
+
+type SecurityHeadersApplier = (response: FrameworkResponse) => void;
+
+const securityHeadersCapabilities = new WeakMap<object, {
+  handle: Middleware['handle'];
+  apply: SecurityHeadersApplier;
+}>();
+
+/**
+ * Finds the header effect for an original, unmodified framework middleware instance.
+ *
+ * @param definition Middleware whose framework-owned capability should be inspected.
+ * @returns The header effect, or undefined when the normal middleware chain is required.
+ * @internal
+ */
+export function getSecurityHeadersApplier(definition: MiddlewareSnapshotLike): SecurityHeadersApplier | undefined {
+  if (typeof definition !== 'object' || definition === null) {
+    return undefined;
+  }
+
+  const capability = securityHeadersCapabilities.get(definition);
+  if (!capability || isMiddlewareRouteConfig(definition)) {
+    return undefined;
+  }
+
+  // Accessors, wrappers, copies and replaced handlers are user middleware, not this capability.
+  return Object.getOwnPropertyDescriptor(definition, 'handle')?.value === capability.handle
+    ? capability.apply
+    : undefined;
+}
 
 /**
  * Describes the security headers options contract.
@@ -68,10 +99,12 @@ export function createSecurityHeadersMiddleware(options: SecurityHeadersOptions 
     }
   };
 
-  return {
+  const middleware: Middleware = {
     async handle(context, next) {
       applyHeaders(context.response);
       await next();
     },
   };
+  securityHeadersCapabilities.set(middleware, { apply: applyHeaders, handle: middleware.handle });
+  return middleware;
 }
