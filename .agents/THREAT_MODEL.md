@@ -1,73 +1,44 @@
-# Native workflow threat model
+# Native workflow trust boundaries
 
-## Trust boundary
+## Trusted lead, untrusted claims
 
-The authenticated top-level OMO lead and the repository owner's local
-filesystem are trusted. Direct issue-DAG preflight, implementer, reviewer, and
-operator nodes are untrusted claim producers. Search artifacts, child output,
-GitHub API responses, native DAG projections, persisted state read after
-interruption, and live Git/GitHub state remain untrusted until validated or
-reconciled by the lead.
+The authenticated lead and repository owner's filesystem are trusted. Child
+reports, persisted facts, issue bodies, and GitHub observations are inputs to
+validate, not permission to perform arbitrary operations. This workflow does
+not defend against an owner rewriting code, credentials, and history together.
+Digests detect substitution and stale evidence; they are not signatures.
 
-The workflow does not claim to resist a malicious local repository owner who
-can rewrite code, state, credentials, and history together. Event hashes detect
-accidental corruption, stale/torn writes, and cross-process divergence; they
-are not signatures against that trusted operator.
+## Stage boundaries
 
-## Production authority
+- Preflight reads issue and contract evidence; the lead accepts its scope and
+  review policy. An implementer cannot reduce review axes or redefine acceptance.
+- Implementers edit only the assigned worktree and run focused tests. They
+  cannot push, mutate PRs, merge, or operate another stage.
+- Reviewers read one exact checkout and supplied evidence. They do not write
+  source, run local CI, or mutate GitHub.
+- After review passes, the lead runs local CI and binds its receipt to the same
+  head and accepted contract. Failed or stale evidence cannot publish a PR.
+- PR synchronization, merge, and cleanup remain separate lead-owned actions
+  subject to lane identity and user-granted authority.
 
-- Human approval comes from three separate native question turns observed by
-  the trusted lead. Approval-binding digests prevent accidental plan
-  substitution and consumed IDs prevent replay; neither is an authentication
-  signature.
-- The parent lead owns shared lane state, issue-DAG start/attach/amend/recovery,
-  issue transitions, terminal import, and root synchronization. It persists
-  intent before every native effect and never replaces an attached run or
-  adopts one from another coordinator session.
-- Direct nodes receive one phase-bounded authority block. They never receive
-  orchestration authority. Implementers mutate only the issue worktree;
-  reviewers remain read-only under their axis contract; operators perform one
-  issue-bound Git/GitHub action under existing user-granted lane authority.
-- Successful receipts are written only from fresh live Git/GitHub command
-  output bound to lane, issue, branch, worktree, PR, and head.
-- The parent persists target-bound observations in issue-local atomic state and
-  revalidates receipts and live identity before importing terminal evidence.
-- Native node completion and unvalidated caller-authored JSON can report work
-  but never prove approval or a completed side effect.
+The lead independently observes changed paths and reconciles preflight scope
+before review. Unknown, mixed, or enforcement changes require all axes.
+Missing, duplicate, malformed, unexpected, or stale reviewer envelopes cannot
+produce PASS. Selected-axis PASS is not a merge grant.
 
-## Issue DAG boundary
+## Resume and observations
 
-Each admitted issue owns one native lifecycle v3 key, one immutable run ID, and
-one coordinator parent session. Lifecycle nodes are direct DAG children and
-cannot call `task`, `dag`, team, or task-control tools. Project agent policy
-denies those tools at depth 1; runtime task/session verification detects an
-actual forbidden call.
+The v4 engine derives decisions from a small lane file plus fresh git/GitHub
+observations. It does not use DAG records, task/session ownership, or a native
+run identity as execution authority. A changed head invalidates checks and
+review; a changed contract invalidates evidence tied to its former digest.
+The lead re-observes identity before remote writes and reconciles partial remote
+success before retrying. No child report alone proves a completed side effect.
 
-The parent cross-links the native key record, run checkpoint, generation,
-definition fingerprint, append-only amendment event, node task attachment,
-task owner `{runId,nodeId,fingerprint}`, parent session, terminal dispatch,
-session logs, machine result, current issue event hash, and live Git/GitHub
-state. A stale head, changed/invalidated historical node, substituted owner,
-partial reviewer wave, or conflicting amendment fails closed.
+## Fixtures and historical evidence
 
-## Fixture boundary
-
-Files under a skill's `scripts/fixtures/` directory and
-`search-issue/scripts/run-scenario.mjs` are deterministic contract exercisers.
-They require `--fixture-only`, accept synthetic observations, and must never be
-invoked as a production approval or side-effect authority path. Their
-artifacts, receipts, and events are test evidence only.
-
-## Filesystem controls
-
-Native publishers reject symlinked output directories and exclusive-write
-collisions. Lane and issue-supervisor state stores reject symlinked state
-paths, write transaction journals before transitions, recover incomplete
-transactions, preserve append-only event hashes, and atomically replace
-snapshots and receipt sets. Issue-DAG control bundles bind lane, issue, native
-run, coordinator, generations, current and pending definition digests, native
-fingerprints, phase/node IDs, and terminal issue event hash. Old lane-wide,
-per-issue-v2, and relay state has no production loader and requires an approved
-successor lane.
-Blocked dependent terminalization requires fresh absence observations for its
-issue store, local/remote branch, worktree, native task, and PR.
+Synthetic observations and test receipts exercise contracts only. They never
+constitute production approval, live checks, or permission to mutate GitHub.
+Historical event/DAG schemas may remain for reading prior artifacts; they are
+not required by the active execution engine. Runtime state remains under
+`.omo/` and must not be loaded from the read-only OpenCode archive.

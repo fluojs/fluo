@@ -11,9 +11,12 @@ Runtime state belongs under `.omo/`; skills and memory are not run-state stores.
     { "kind": "entrypoint", "name": "create-lane", "path": ".agents/skills/create-lane/SKILL.md" },
     { "kind": "entrypoint", "name": "docs-sync-guardian", "path": ".agents/skills/docs-sync-guardian/SKILL.md" },
     { "kind": "entrypoint", "name": "execute-lane", "path": ".agents/skills/execute-lane/SKILL.md" },
-    { "kind": "entrypoint", "name": "issue-to-pr", "path": ".agents/skills/issue-to-pr/SKILL.md" },
-    { "kind": "entrypoint", "name": "pr-to-merge", "path": ".agents/skills/pr-to-merge/SKILL.md" },
     { "kind": "entrypoint", "name": "search-issue", "path": ".agents/skills/search-issue/SKILL.md" },
+    { "kind": "stage", "name": "issue-preflight", "path": ".agents/skills/issue-preflight/SKILL.md" },
+    { "kind": "stage", "name": "issue-implement", "path": ".agents/skills/issue-implement/SKILL.md" },
+    { "kind": "stage", "name": "verify-local", "path": ".agents/skills/verify-local/SKILL.md" },
+    { "kind": "stage", "name": "review-head", "path": ".agents/skills/review-head/SKILL.md" },
+    { "kind": "stage", "name": "sync-pr", "path": ".agents/skills/sync-pr/SKILL.md" },
     { "kind": "knowledge", "name": "fluo-contract-governance", "path": ".agents/skills/fluo-contract-governance/SKILL.md" },
     { "kind": "knowledge", "name": "fluo-docs-governance", "path": ".agents/skills/fluo-docs-governance/SKILL.md" },
     { "kind": "knowledge", "name": "fluo-package-audit", "path": ".agents/skills/fluo-package-audit/SKILL.md" },
@@ -38,3 +41,7 @@ Runtime state belongs under `.omo/`; skills and memory are not run-state stores.
 Custom `fluo-*` roles are prompt references, not assumed registered
 `subagent_type` values. Entrypoint leads read the role reference and pass it in
 a self-contained category-routed `task` assignment.
+
+`execute-lane` alone owns execution ordering, retries, CI subscriptions, merge,
+and cleanup. Stage skills perform one lane-bound action and return evidence;
+they are not alternative issue-to-PR or PR-to-merge workflows.

@@ -1,68 +1,49 @@
 # OMO+Senpi workflow migration
 
-The native workflow is:
+## Active workflow
 
 ```text
-$search-issue -> $create-lane -> $execute-lane
-                                  |- $issue-to-pr
-                                  `- $pr-to-merge
+search-issue -> create-lane -> execute-lane
+                              preflight -> implement -> selected review
+                              -> local CI -> PR -> remote CI -> merge -> cleanup
 ```
 
-## Ownership
+The execution stages are `issue-preflight`, `issue-implement`,
+`review-head`, `verify-local`, and `sync-pr`. They return one bounded
+result to `execute-lane`. The previous issue-to-pr and pr-to-merge entrypoints
+are retired, not retained as alternate orchestration paths.
 
-- Skills define inputs, procedure, outputs, authority, and stop conditions.
-- The top-level lead is the only canonical ledger writer.
-- Background tasks implement or review one typed assignment.
-- The parent dispatches eligible issues as independent single-node DAG runs;
-  the persisted ledger remains dependency and resume truth.
-- Goal and todo state are user-facing projections.
-- Memory stores durable preferences and decisions, never issue/PR/retry state.
+## State and authority
 
-## State roots
+- Planning provenance: `.omo/search-issue/artifacts/` and `.omo/lanes/`.
+- Execution intent and contract/head-bound facts: `.omo/lanes-v4/`.
+- Current branch, worktree, PR, checks, and merge state: fresh git/GitHub.
+- Only the lead persists shared execution state and performs remote writes.
+- Children implement or review one assignment; goal/todo state is a projection.
 
-- `.omo/search-issue/runs/<run-id>/`: discovery ledger and task evidence.
-- `.omo/search-issue/artifacts/<artifact-id>.json`: v2 lane handoff.
-- `.omo/lanes/<lane-id>.json`: canonical v2 lane snapshot.
-- `.omo/lane-runs/<lane-id>/events.jsonl`: append-only attempt events.
-
-The former `.opencode` assets are preserved under `.opencode-backup/` after
-cutover. Native workflows must not read that archive as a runtime fallback.
+No DAG bindings, parent-session identities, supervisor stores, event chains,
+or leases are prerequisites for v4 execution. Historical shared schemas remain
+available to validate historical artifacts; they are not active execution inputs.
 
 ## Cutover
 
-1. Quiesce legacy mutation and finish or explicitly park active lanes.
-2. Verify every native entrypoint and machine contract.
-3. Import actionable legacy artifacts with SHA-256 receipts.
-4. Atomically preserve `.opencode` as `.opencode-backup/`.
-5. Confirm active runtime references use only `.agents/**` and `.omo/**`.
+1. Stop dispatch through retired entrypoints; retain existing git/GitHub work.
+2. Import a ready v2 lane with `init --from-lane-v2`. Do not rewrite planning
+   evidence or reset active branch/PR identities.
+3. Run `plan` against live observations. A lane without an accepted preflight
+   must acquire one before further implementation/review/publication.
+4. Reconcile actual diff and collect selected-axis reviews bound to the new
+   contract and current head, then run local CI before publication.
+5. Resume the normal decision loop. Legacy reviewer verdicts are not approval
+   under the new selective-review contract.
 
-The explicit one-time importer is:
+Legacy OpenCode assets remain read-only under `.opencode-backup/` and are
+never a runtime fallback. The explicit search-artifact importer may read archive
+inputs only during an authorized migration:
 
-```bash
-node .agents/skills/search-issue/scripts/migrate-legacy-artifacts.mjs \
-  --source .opencode-backup/search-issue \
-  --target .omo/search-issue/artifacts/legacy \
-  --migrated-at 2026-08-24T00:00:00.000Z
+```text
+node .agents/skills/search-issue/scripts/migrate-legacy-artifacts.mjs --source .opencode-backup/search-issue --target .omo/search-issue/artifacts/legacy --migrated-at 2026-08-24T00:00:00.000Z
 ```
 
-It is the only native asset allowed to read archived search state, and only
-during explicit migration. Runtime search/create/execute entrypoints never
-load archived commands, roles, or state as a fallback.
-
-Direct issue-list lane creation is intentionally replaced by:
-
-```bash
-node .agents/skills/search-issue/scripts/publish-search-artifact.mjs \
-  --run-id manual-<id> --issues <n1,n2> --root .
-$create-lane .omo/search-issue/artifacts/manual-<id>.json main
-```
-
-This preserves existing-issue workflows while making artifact ID and digest
-provenance mandatory.
-
-Rollback restores the control plane only. Remote GitHub issues, PRs, and merges
-are reconciled into the restored ledger; they are never silently undone.
-
-Legacy lane-wide v1 DAG bindings are not upgraded in place. Quiesce their run,
-reconcile terminal issue stores and live state, and carry unfinished issues
-through a newly approved lane identity before using per-issue v2 dispatch.
+Rollback of tooling never silently undoes issues, PRs, or merges. Reconcile those
+from GitHub before resuming with another tooling revision.

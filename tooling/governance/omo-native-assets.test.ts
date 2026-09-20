@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-type SkillKind = 'entrypoint' | 'knowledge';
+type SkillKind = 'entrypoint' | 'stage' | 'knowledge';
 
 type SkillManifestEntry = {
   readonly kind: SkillKind;
@@ -63,9 +63,14 @@ const expectedEntrypoints = [
   'create-lane',
   'docs-sync-guardian',
   'execute-lane',
-  'issue-to-pr',
-  'pr-to-merge',
   'search-issue',
+] as const;
+const expectedStageSkills = [
+  'issue-implement',
+  'issue-preflight',
+  'review-head',
+  'sync-pr',
+  'verify-local',
 ] as const;
 const expectedKnowledgeSkills = [
   'fluo-contract-governance',
@@ -120,7 +125,7 @@ describe('OMO native asset manifest', () => {
     }
   });
 
-  it('declares exactly six entrypoint skills and four knowledge skills', () => {
+  it('separates workflow entrypoints, execution stages, and knowledge skills', () => {
     const manifest = parseNativeAssetManifest();
     const namesFor = (kind: SkillKind): string[] =>
       manifest.skills
@@ -130,8 +135,9 @@ describe('OMO native asset manifest', () => {
 
     expect(manifest.schemaVersion).toBe(1);
     expect(namesFor('entrypoint')).toEqual([...expectedEntrypoints]);
+    expect(namesFor('stage')).toEqual([...expectedStageSkills]);
     expect(namesFor('knowledge')).toEqual([...expectedKnowledgeSkills]);
-    expect(new Set(manifest.skills.map((skill) => skill.path)).size).toBe(10);
+    expect(new Set(manifest.skills.map((skill) => skill.path)).size).toBe(13);
   });
 
   it('binds every manifest skill to matching required frontmatter', () => {
@@ -145,6 +151,14 @@ describe('OMO native asset manifest', () => {
       expect(frontmatter['description']).toBeTruthy();
       if (skill.kind === 'knowledge') {
         expect(frontmatter['compatibility']).toBe('omo');
+      }
+    }
+  });
+
+  it('retires alternate implementation and review workflow assets', () => {
+    for (const retired of ['issue-to-pr', 'pr-to-merge']) {
+      for (const asset of ['SKILL.md', 'scripts/contracts.mjs']) {
+        expect(existsSync(resolve(repoRoot, '.agents/skills', retired, asset))).toBe(false);
       }
     }
   });
