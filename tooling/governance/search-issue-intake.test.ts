@@ -72,6 +72,14 @@ describe('$search-issue target intake', () => {
       packages: ['platform-nextjs'],
     });
   });
+
+  it('includes platform-nextjs in the http-runtime group', () => {
+    expect(runJson('resolve', 'group', 'http-runtime')).toMatchObject({
+      mode: 'group',
+      groups: ['http-runtime'],
+      packages: expect.arrayContaining(['platform-nextjs']),
+    });
+  });
 });
 
 describe('$search-issue purpose intake', () => {
