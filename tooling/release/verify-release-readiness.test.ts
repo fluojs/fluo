@@ -41,6 +41,34 @@ describe('release readiness subprocess diagnostics', () => {
     if (result.stderr) expect(output).toContain(result.stderr);
   });
 
+  it('streams command output without bounded spawn buffers', () => {
+    // Given
+    const spawn = vi.fn(() => ({
+      error: undefined,
+      signal: null,
+      status: 0,
+      stderr: null,
+      stdout: null,
+    }));
+
+    // When
+    runReleaseCommand('pnpm', ['vitest', 'run', '--project', 'packages'], {
+      cwd: '/release-worktree',
+      spawn,
+    });
+
+    // Then
+    expect(spawn).toHaveBeenCalledWith(
+      'pnpm',
+      ['vitest', 'run', '--project', 'packages'],
+      {
+        cwd: '/release-worktree',
+        encoding: 'utf8',
+        stdio: ['ignore', 'inherit', 'inherit'],
+      },
+    );
+  });
+
   it('stops canonical commands at the first subprocess failure', () => {
     // Given
     const calls: string[] = [];

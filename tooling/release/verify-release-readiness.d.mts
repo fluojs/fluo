@@ -67,8 +67,8 @@ export function runReleaseCommand(
     readonly spawn?: (command: string, args: readonly string[], options: {
       readonly cwd: string;
       readonly encoding: 'utf8';
-      readonly stdio: readonly ['ignore', 'pipe', 'pipe'];
-    }) => { readonly error?: Error; readonly signal?: string | null; readonly status?: number | null; readonly stdout?: string; readonly stderr?: string };
+      readonly stdio: readonly ['ignore', 'inherit', 'inherit'];
+    }) => { readonly error?: Error; readonly signal?: string | null; readonly status?: number | null; readonly stdout?: string | null; readonly stderr?: string | null };
     readonly writeOutput?: (stream: { readonly write: (chunk: string) => unknown }, chunk: string) => unknown;
   },
 ): void;

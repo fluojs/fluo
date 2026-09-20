@@ -181,7 +181,7 @@ export function runReleaseCommand(command, args, dependencies = {}) {
   const cwd = dependencies.cwd ?? repoRoot;
   const spawn = dependencies.spawn ?? spawnSync;
   const writeOutput = dependencies.writeOutput ?? ((stream, chunk) => stream.write(chunk));
-  const result = spawn(command, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const result = spawn(command, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'inherit', 'inherit'] });
   if (result.stdout) writeOutput(process.stdout, result.stdout);
   if (result.stderr) writeOutput(process.stderr, result.stderr);
   if (result.error) throw new ReleaseCommandError('spawn', command, args, cwd, result);
