@@ -280,6 +280,11 @@ contribution 하나를 해석하며, container의 scope, cache, cycle, ordering,
 semantics를 보존합니다. 애플리케이션 코드는 `Container.resolve(...)`를 사용해야 하며,
 contribution index는 root `Container` API에 속하지 않습니다.
 
+호환되는 same-realm `@fluojs/di` 사본은 등록한 정확한 container를 통해서만
+순서가 있는 contribution을 해석할 수 있습니다. resolver map은 container-bound
+entry만 공유하며 container, cache, request scope, application graph는 공유하지
+않습니다.
+
 ## 문제 해결
 
 ### CircularDependencyError

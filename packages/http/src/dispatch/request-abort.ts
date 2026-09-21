@@ -1,7 +1,11 @@
 import type { FrameworkRequest, RequestContext } from '../types.js';
+import { getCompatibleHttpSharedState } from '../shared-state.js';
 
 const REQUEST_ABORTED_BY_RESPONSE_STREAM = Symbol('fluo.http.requestAbortedByResponseStream');
-const authoritativeProbes = new WeakMap<FrameworkRequest, () => boolean>();
+const authoritativeProbes = getCompatibleHttpSharedState(
+  Symbol.for('fluo.http.authoritative-abort-probes'),
+  () => new WeakMap<FrameworkRequest, () => boolean>(),
+);
 
 /**
  * Registers an adapter probe that observes the same cancellation source as its
@@ -23,7 +27,7 @@ export function registerAuthoritativeAbortProbe(request: FrameworkRequest, probe
 export function isRequestAborted(request: FrameworkRequest): boolean {
   const probe = authoritativeProbes.get(request);
   if (probe && request.isAborted === probe) {
-    return probe.call(request);
+    return probe.call(request) || request.signal?.aborted === true;
   }
   return request.isAborted?.() === true || request.signal?.aborted === true;
 }

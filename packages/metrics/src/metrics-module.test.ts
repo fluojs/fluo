@@ -2563,4 +2563,28 @@ describe('MetricsModule', () => {
       await app.close();
     }
   });
+
+  it('does not register default collectors twice through compatible package copies', async () => {
+    // Given
+    const registry = new Registry();
+    vi.resetModules();
+    const copyA = await import('./metrics-module.js');
+    vi.resetModules();
+    const copyB = await import('./metrics-module.js');
+    const createRegistryA = Reflect.get(copyA.MetricsModule, 'createRegistry') as (
+      configuredRegistry: Registry,
+      defaultMetrics: boolean,
+    ) => Registry;
+    const createRegistryB = Reflect.get(copyB.MetricsModule, 'createRegistry') as (
+      configuredRegistry: Registry,
+      defaultMetrics: boolean,
+    ) => Registry;
+
+    // When
+    createRegistryA(registry, true);
+    const reusedRegistry = createRegistryB(registry, true);
+
+    // Then
+    expect(reusedRegistry).toBe(registry);
+  });
 });

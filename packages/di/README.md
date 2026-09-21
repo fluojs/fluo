@@ -281,6 +281,11 @@ owning container, preserving the container's scope, cache, cycle, ordering,
 and disposal semantics. Application code must use `Container.resolve(...)`;
 contribution indexes are not part of the root `Container` API.
 
+Compatible same-realm `@fluojs/di` copies can resolve an ordered contribution
+only through the exact container that registered it. The resolver map shares
+container-bound entries, not containers, caches, request scopes, or application
+graphs.
+
 ## Troubleshooting
 
 ### CircularDependencyError

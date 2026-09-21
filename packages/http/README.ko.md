@@ -758,6 +758,10 @@ export class UploadController {
 
 `@FromFiles(...)`는 array-only입니다. `FrameworkRequest.files`가 있으면 `fieldname`으로 필터링된 readonly 배열을 어댑터 도착 순서대로 반환하며, collection이 있지만 일치 항목이 없으면 `[]`가 됩니다. Collection이 없으면 필수 필드는 표준 missing-field 오류를 내고 `@Optional()` 필드는 `undefined`로 남습니다. Converter와 validation은 같은 portable 배열을 받습니다. DTO binder는 다섯 `FrameworkRequestFile` 필드만 projection하므로 adapter-native file property가 DTO 경계를 넘어오지 않습니다. 전체 요청 collection이 필요한 controller와 pipeline stage에서는 기존처럼 `RequestContext.request.files`에 직접 접근할 수 있습니다.
 
+### 호환 가능한 중복 사본
+
+호환되는 same-realm `@fluojs/http` 사본은 active `AsyncLocalStorage` 요청 context, 정확히 같은 raw request에서 소비하는 native route handoff, 이미 없다고 확인한 request ID, authoritative abort probe처럼 request owner에 묶인 상태만 공유합니다. native handoff는 계속 한 번만 소비되고, abort된 signal은 `false` probe보다 항상 우선합니다. 별도 request, application, DI container, transaction context는 공유하지 않습니다.
+
 응답 content negotiation formatter는 `ResponseFormatter.format(...)`에서 `string` 또는 `Uint8Array`를 반환해야 합니다. Node.js `Buffer` 값은 `Buffer`가 `Uint8Array`를 구현하므로 계속 할당 가능하지만, formatter contract는 runtime-neutral byte 동작에만 의존해야 합니다.
 
 ## 공개 API

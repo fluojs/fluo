@@ -229,6 +229,10 @@ Every CQRS snapshot has `readiness`, `health`, `ownership`, and `details`. `owne
 
 The lifecycle states are `created`, `discovering`, `ready`, `stopping`, `stopped`, and `failed`. Readiness evaluates event and saga state in this order: both `ready` reports `ready`; otherwise any `discovering` reports `degraded`; otherwise any `stopping` reports `not-ready`; otherwise any `stopped` or `failed` reports `not-ready`; every remaining combination, including `created`, reports `not-ready`. Health evaluates in this order: any nonzero drain-timeout counter reports `degraded`; otherwise any `stopped` or `failed` reports `unhealthy`; otherwise any `discovering` or `stopping` reports `degraded`; every remaining combination reports `healthy`. Command and query lifecycle fields remain diagnostic only and do not alter these event/saga readiness or health rules.
 
+### Compatible duplicate copies
+
+Compatible same-realm `@fluojs/cqrs` copies retain opaque dispatch provenance for the exact context object. The context remains frozen and fieldless to application handlers; independent buses, applications, and registries do not share dispatch state.
+
 ## Related Packages
 
 - `@fluojs/event-bus`: Underlying event distribution used by `CqrsEventBusService`.

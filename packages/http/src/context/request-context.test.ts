@@ -1,5 +1,5 @@
 import { Container } from '@fluojs/di';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RequestContext } from '../types.js';
 
 import {
@@ -17,6 +17,11 @@ import {
 } from './request-context-node-store.js';
 import { createStackRequestContextStore } from './request-context-stack-store.js';
 import type { RequestContextStore } from './request-context-store.js';
+
+afterEach(() => {
+  Reflect.deleteProperty(globalThis, Symbol.for('fluo.http.shared-state'));
+  vi.resetModules();
+});
 
 class MockAsyncLocalStorage implements RequestContextStore {
   readonly #store = createStackRequestContextStore();

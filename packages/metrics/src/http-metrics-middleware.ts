@@ -2,6 +2,7 @@ import type { FrameworkRequest, Middleware, MiddlewareContext, Next } from '@flu
 import { Counter, Histogram, type Registry } from 'prom-client';
 
 import { createPrometheusCounter, createPrometheusHistogram } from './providers/prometheus-metrics-factory.js';
+import { getCompatibleMetricsSharedState } from './shared-state.js';
 
 type HttpMetricLabels = {
   method: string;
@@ -24,9 +25,21 @@ type HttpMetricsCollectorConfiguration = {
   unknownPathLabel: string;
 };
 
-const FRAMEWORK_HTTP_COUNTERS = new WeakSet<Counter<string>>();
-const FRAMEWORK_HTTP_HISTOGRAMS = new WeakSet<Histogram<string>>();
-const FRAMEWORK_HTTP_COLLECTOR_CONFIGURATION = new WeakMap<Counter<string> | Histogram<string>, HttpMetricsCollectorConfiguration>();
+const FRAMEWORK_HTTP_COLLECTOR_STATE = Symbol.for('fluo.metrics.http-collector-state');
+const frameworkHttpCollectorState = getCompatibleMetricsSharedState(
+  FRAMEWORK_HTTP_COLLECTOR_STATE,
+  () => ({
+    configurations: new WeakMap<
+      Counter<string> | Histogram<string>,
+      HttpMetricsCollectorConfiguration
+    >(),
+    counters: new WeakSet<Counter<string>>(),
+    histograms: new WeakSet<Histogram<string>>(),
+  }),
+);
+const FRAMEWORK_HTTP_COUNTERS = frameworkHttpCollectorState.counters;
+const FRAMEWORK_HTTP_HISTOGRAMS = frameworkHttpCollectorState.histograms;
+const FRAMEWORK_HTTP_COLLECTOR_CONFIGURATION = frameworkHttpCollectorState.configurations;
 
 /** Strategy used to label request paths in emitted HTTP metrics. */
 export type HttpMetricsPathLabelMode = 'raw' | 'template';

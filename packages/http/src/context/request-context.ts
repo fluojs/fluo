@@ -8,10 +8,14 @@ import {
 } from './request-context-node-store.js';
 import { createStackRequestContextStore } from './request-context-stack-store.js';
 import type { RequestContextStore } from './request-context-store.js';
+import { getCompatibleHttpSharedState } from '../shared-state.js';
 
-let requestContextStore: RequestContextStore | undefined;
-let requestContextStoreResolution: Promise<RequestContextStore> | undefined;
-let fallbackRequestContextStore: RequestContextStore | undefined;
+const REQUEST_CONTEXT_STORE_STATE = Symbol.for('fluo.http.request-context-store-state');
+const requestContextStoreState = getCompatibleHttpSharedState(REQUEST_CONTEXT_STORE_STATE, () => ({
+  fallbackRequestContextStore: undefined as RequestContextStore | undefined,
+  requestContextStore: undefined as RequestContextStore | undefined,
+  requestContextStoreResolution: undefined as Promise<RequestContextStore> | undefined,
+}));
 
 /**
  * Runs a callback inside the request-scoped async context.
@@ -124,16 +128,16 @@ function getRequestContextStore(): RequestContextStore {
 }
 
 function getResolvedRequestContextStore(): RequestContextStore | undefined {
-  if (requestContextStore) {
-    return requestContextStore;
+  if (requestContextStoreState.requestContextStore) {
+    return requestContextStoreState.requestContextStore;
   }
 
   const AsyncLocalStorage = resolveImmediateAsyncLocalStorageConstructor();
 
   if (typeof AsyncLocalStorage === 'function') {
-    requestContextStore = new AsyncLocalStorage();
+    requestContextStoreState.requestContextStore = new AsyncLocalStorage();
 
-    return requestContextStore;
+    return requestContextStoreState.requestContextStore;
   }
 
   void resolveRequestContextStore();
@@ -151,29 +155,29 @@ async function runWithResolvedRequestContextStore<T>(
 }
 
 async function resolveRequestContextStore(): Promise<RequestContextStore> {
-  requestContextStoreResolution ??= createRequestContextStore();
+  requestContextStoreState.requestContextStoreResolution ??= createRequestContextStore();
 
-  return requestContextStoreResolution;
+  return requestContextStoreState.requestContextStoreResolution;
 }
 
 async function createRequestContextStore(): Promise<RequestContextStore> {
   const AsyncLocalStorage = await resolveAsyncLocalStorageConstructor();
 
   if (typeof AsyncLocalStorage === 'function') {
-    requestContextStore = new AsyncLocalStorage();
+    requestContextStoreState.requestContextStore = new AsyncLocalStorage();
 
-    return requestContextStore;
+    return requestContextStoreState.requestContextStore;
   }
 
-  requestContextStore = getFallbackRequestContextStore();
+  requestContextStoreState.requestContextStore = getFallbackRequestContextStore();
 
-  return requestContextStore;
+  return requestContextStoreState.requestContextStore;
 }
 
 function getFallbackRequestContextStore(): RequestContextStore {
-  fallbackRequestContextStore ??= createStackRequestContextStore();
+  requestContextStoreState.fallbackRequestContextStore ??= createStackRequestContextStore();
 
-  return fallbackRequestContextStore;
+  return requestContextStoreState.fallbackRequestContextStore;
 }
 
 function isAsyncCallback<T>(callback: () => T): callback is () => T & Promise<Awaited<T>> {

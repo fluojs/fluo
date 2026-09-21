@@ -176,6 +176,36 @@ describe('lazy request context isolation', () => {
       vi.resetModules();
     }
   });
+
+  it('shares one async context store across compatible reloaded copies', async () => {
+    // Given
+    vi.resetModules();
+    const copyA = await import('./request-context.js');
+    vi.resetModules();
+    const copyB = await import('./request-context.js');
+    const context = createContext('shared-between-copies');
+
+    try {
+      // When
+      const observed = await copyA.runWithRequestContext(context, async () => {
+        const beforeAwait = copyB.getCurrentRequestContext()?.requestId;
+        await Promise.resolve();
+        const afterAwait = copyB.getCurrentRequestContext()?.requestId;
+
+        return { afterAwait, beforeAwait };
+      });
+
+      // Then
+      expect(observed).toEqual({
+        afterAwait: 'shared-between-copies',
+        beforeAwait: 'shared-between-copies',
+      });
+      expect(copyB.getCurrentRequestContext()).toBeUndefined();
+    } finally {
+      Reflect.deleteProperty(globalThis, Symbol.for('fluo.http.shared-state'));
+      vi.resetModules();
+    }
+  });
 });
 
 function createDeferred<T>() {

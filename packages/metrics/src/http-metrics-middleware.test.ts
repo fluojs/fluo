@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { FrameworkRequest, FrameworkResponse, MiddlewareContext } from '@fluojs/http';
 import { Counter, Histogram, Registry } from 'prom-client';
@@ -362,5 +362,20 @@ describe('HttpMetricsMiddleware', () => {
         sink: 'errors',
       },
     ]);
+  });
+});
+
+describe('duplicate metrics package copies', () => {
+  it('recognizes framework-owned HTTP collectors created by a compatible copy', async () => {
+    // Given
+    const registry = new Registry();
+    vi.resetModules();
+    const copyA = await import('./http-metrics-middleware.js');
+    vi.resetModules();
+    const copyB = await import('./http-metrics-middleware.js');
+    new copyA.HttpMetricsMiddleware(registry);
+
+    // When / Then
+    expect(() => new copyB.HttpMetricsMiddleware(registry)).not.toThrow();
   });
 });

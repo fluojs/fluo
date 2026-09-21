@@ -1,7 +1,11 @@
 import type { FrameworkRequest, HandlerMatch } from '../types.js';
+import { getCompatibleHttpSharedState } from '../shared-state.js';
 
-const FRAMEWORK_REQUEST_NATIVE_ROUTE_HANDOFF = Symbol('fluo.http.nativeRouteHandoff');
-const RAW_REQUEST_NATIVE_ROUTE_HANDOFFS = new WeakMap<object, HandlerMatch>();
+const FRAMEWORK_REQUEST_NATIVE_ROUTE_HANDOFF = Symbol.for('fluo.http.nativeRouteHandoff');
+const RAW_REQUEST_NATIVE_ROUTE_HANDOFFS = getCompatibleHttpSharedState(
+  Symbol.for('fluo.http.raw-request-native-route-handoffs'),
+  () => new WeakMap<object, HandlerMatch>(),
+);
 const EMPTY_ROUTE_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
 
 interface FrameworkRequestNativeRouteHandoffRecord {

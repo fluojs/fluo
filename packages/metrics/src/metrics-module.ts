@@ -18,6 +18,7 @@ import {
   HttpMetricsMiddleware,
   type HttpMetricsMiddlewareOptions,
 } from './http-metrics-middleware.js';
+import { getCompatibleMetricsSharedState } from './shared-state.js';
 import { MetricsService } from './metrics-service.js';
 import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
@@ -50,11 +51,14 @@ export interface MetricsModuleOptions {
 
 /** Bootstrap provider token for a Registry shared by metrics module instances. */
 export const METRICS_REGISTRY: Token<Registry> = Symbol.for('fluo.metrics.registry');
+const REGISTERED_DEFAULT_METRICS_REGISTRIES = Symbol.for('fluo.metrics.default-metrics-registries');
+const registeredDefaultMetricsRegistries = getCompatibleMetricsSharedState(
+  REGISTERED_DEFAULT_METRICS_REGISTRIES,
+  () => new WeakSet<Registry>(),
+);
 
 /** Module entry point that exposes `/metrics` and optional HTTP/runtime telemetry. */
 export class MetricsModule {
-  private static registeredRegistries = new WeakSet<Registry>();
-
   /**
    * Register framework metrics, optional HTTP middleware, and a scrape endpoint.
    *
@@ -182,7 +186,7 @@ export class MetricsModule {
   private static createRegistry(configuredRegistry: Registry | undefined, defaultMetrics: boolean | undefined): Registry {
     const registry = configuredRegistry ?? new PrometheusRegistry();
 
-    if (defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
+    if (defaultMetrics !== false && !registeredDefaultMetricsRegistries.has(registry)) {
       assertNoDefaultMetricCollisions(registry);
 
       const existingMetricNames = new Set(registry.getMetricsAsArray().map((metric) => metric.name));
@@ -199,7 +203,7 @@ export class MetricsModule {
         throw error;
       }
 
-      MetricsModule.registeredRegistries.add(registry);
+      registeredDefaultMetricsRegistries.add(registry);
     }
 
     return registry;
