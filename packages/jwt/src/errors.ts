@@ -1,4 +1,4 @@
-import { FluoError } from '@fluojs/core';
+import { FluoError, isFluoError, setFluoErrorContract } from '@fluojs/core';
 
 /**
  * Error thrown when JWT verification fails due to signature or structural issues.
@@ -9,6 +9,7 @@ export class JwtVerificationError extends FluoError {
       cause: options.cause,
       code: options.code ?? 'JWT_VERIFICATION_ERROR',
     });
+    setFluoErrorContract(this, '@fluojs/jwt');
   }
 }
 
@@ -36,5 +37,22 @@ export class JwtExpiredTokenError extends JwtVerificationError {
 export class JwtConfigurationError extends FluoError {
   constructor(message: string) {
     super(message, { code: 'JWT_CONFIGURATION_ERROR' });
+    setFluoErrorContract(this, '@fluojs/jwt');
   }
+}
+
+const jwtErrorCodes = new Set([
+  'JWT_VERIFICATION_ERROR',
+  'JWT_INVALID_TOKEN',
+  'JWT_EXPIRED',
+  'JWT_CONFIGURATION_ERROR',
+]);
+
+/**
+ * Recognizes compatible JWT errors across duplicate package copies.
+ * @param value Candidate thrown value.
+ * @returns Whether the value satisfies the JWT error contract.
+ */
+export function isJwtError(value: unknown): value is JwtVerificationError | JwtConfigurationError {
+  return isFluoError(value, '@fluojs/jwt') && jwtErrorCodes.has(value.code);
 }

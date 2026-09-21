@@ -260,6 +260,10 @@ Lazy loading is an import-time safety property only. It does **not** make signin
 - `@fluojs/passport`: The auth execution layer that uses this core for guards and strategies.
 - `@fluojs/config`: Recommended for managing secrets and JWT options across environments.
 
+## Error recognition
+
+Use `isJwtError(...)` plus the stable `code` when JWT errors cross package boundaries. It validates the versioned JWT owner contract and rejects unbranded lookalikes or incompatible versions; Passport's built-in strategies use this path to preserve expired versus invalid classification across compatible duplicate copies.
+
 ## Example Sources
 
 - `packages/jwt/src/module.test.ts`: Module registration and DI patterns.

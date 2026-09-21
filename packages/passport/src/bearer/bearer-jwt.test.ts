@@ -1,12 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
-
 import type { GuardContext, Principal, RequestContext } from '@fluojs/http';
+import type { DefaultJwtVerifier } from '@fluojs/jwt';
 import {
   JwtConfigurationError,
   JwtExpiredTokenError,
   JwtInvalidTokenError,
 } from '@fluojs/jwt';
-import type { DefaultJwtVerifier } from '@fluojs/jwt';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   AuthenticationExpiredError,
@@ -245,6 +244,28 @@ describe('BearerJwtStrategy credential extraction', () => {
 
     expect(failure).toBeInstanceOf(AuthenticationExpiredError);
     expect((failure as Error).cause).toBe(jwtError);
+  });
+
+  it('maps an expired token from a compatible duplicate JWT copy', async () => {
+    const jwtError = new JwtExpiredTokenError();
+    vi.resetModules();
+    const { BearerJwtStrategy: DuplicateBearerJwtStrategy } = await import('./bearer-jwt.js');
+    const verifier = createMockVerifier({ verifyAccessToken: vi.fn().mockRejectedValue(jwtError) });
+    const strategy = new DuplicateBearerJwtStrategy(verifier);
+
+    const failure = await strategy
+      .authenticate(createGuardContext('Bearer duplicate-expired-token'))
+      .catch((error: unknown) => error);
+
+    expect(failure).toMatchObject({ code: 'AUTHENTICATION_EXPIRED', cause: jwtError });
+  });
+
+  it('does not classify an unbranded JWT code lookalike', async () => {
+    const lookalike = Object.assign(new Error('expired'), { code: 'JWT_EXPIRED' });
+    const verifier = createMockVerifier({ verifyAccessToken: vi.fn().mockRejectedValue(lookalike) });
+    const strategy = new BearerJwtStrategy(verifier);
+
+    await expect(strategy.authenticate(createGuardContext('Bearer lookalike-token'))).rejects.toBe(lookalike);
   });
 
   it('maps invalid tokens to AuthenticationFailedError and preserves the verifier cause', async () => {

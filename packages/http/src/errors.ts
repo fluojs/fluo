@@ -1,4 +1,4 @@
-import { FluoError } from '@fluojs/core';
+import { FluoError, isFluoError, setFluoErrorContract } from '@fluojs/core';
 
 /**
  * Error thrown when two or more routes share the same path and method pattern.
@@ -40,7 +40,17 @@ export class HandlerNotFoundError extends FluoError {
 export class RequestAbortedError extends FluoError {
   constructor(message = 'Request aborted before response commit.') {
     super(message, { code: 'REQUEST_ABORTED' });
+    setFluoErrorContract(this, '@fluojs/http');
   }
+}
+
+/**
+ * Recognizes compatible request-abort errors without changing abort state storage.
+ * @param value Candidate thrown value.
+ * @returns Whether the value satisfies the HTTP request-abort error contract.
+ */
+export function isRequestAbortedError(value: unknown): value is RequestAbortedError {
+  return isFluoError(value, '@fluojs/http') && value.code === 'REQUEST_ABORTED';
 }
 
 /** Error thrown when a supported adapter cannot emit one Early Hints response. */

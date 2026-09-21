@@ -242,6 +242,10 @@ driver-owned.
 - `@fluojs/runtime`: compiles the module graph from `@Module` metadata
 - `@fluojs/http`: consumes controller and route metadata built on the same primitives
 
+## Duplicate-copy error identity
+
+Public fluo errors carry a versioned package-owner contract. Use `isFluoError(...)`, or an owner package's narrower predicate, instead of constructor identity when errors can cross package boundaries; unbranded lookalikes and incompatible contract versions are rejected.
+
 ## Example Sources
 
 - `packages/core/src/index.ts`

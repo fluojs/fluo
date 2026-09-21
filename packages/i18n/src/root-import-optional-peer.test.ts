@@ -16,7 +16,7 @@ describe('@fluojs/i18n root optional peer boundary', () => {
     try {
       const root = await import('./index.js');
 
-      expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService']);
+      expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService', 'isI18nError']);
     } finally {
       vi.doUnmock('@fluojs/http');
       vi.doUnmock('@fluojs/validation');

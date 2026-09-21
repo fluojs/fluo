@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { Inject, Module, getModuleMetadata } from '@fluojs/core';
+import { FluoError, Inject, Module, getModuleMetadata, setFluoErrorContract } from '@fluojs/core';
 import { Test } from '@fluojs/testing';
 
 import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
-import { I18nError, I18nModule, I18nService } from './index.js';
+import { I18nError, I18nModule, I18nService, isI18nError } from './index.js';
 import type {
   I18nErrorCode,
   I18nLocale,
@@ -41,7 +41,7 @@ describe('@fluojs/i18n root public surface', () => {
   it('keeps the root value exports intentionally small', async () => {
     const root = await import('./index.js');
 
-    expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService']);
+    expect(Object.keys(root).sort()).toEqual(['I18nError', 'I18nModule', 'I18nService', 'isI18nError']);
   });
 
   it('keeps root package metadata free of optional peer and Node engine requirements', () => {
@@ -79,6 +79,14 @@ describe('@fluojs/i18n root public surface', () => {
     expect(snapshot.supportedLocales).not.toBe(options.supportedLocales);
     expect(I18nModule.forRoot(options)).toBeInstanceOf(Function);
     expect(new I18nError('reserved i18n failure', code).code).toBe('I18N_ERROR');
+  });
+
+  it('recognizes a compatible I18nError from a duplicate package copy', () => {
+    const duplicateCopyError = new FluoError('duplicate i18n failure', { code: 'I18N_ERROR' });
+    setFluoErrorContract(duplicateCopyError, '@fluojs/i18n');
+
+    expect(duplicateCopyError).not.toBeInstanceOf(I18nError);
+    expect(isI18nError(duplicateCopyError)).toBe(true);
   });
 
   it('resolves I18nModule.forRoot providers through a compiled testing module graph', async () => {

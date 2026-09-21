@@ -1,4 +1,4 @@
-import { FluoCodeError, formatTokenName } from '@fluojs/core';
+import { FluoCodeError, formatTokenName, isFluoError, setFluoErrorContract } from '@fluojs/core';
 
 /**
  * Structured context attached to DI errors so logs and tests can inspect the failing contract.
@@ -55,6 +55,7 @@ export class InvalidProviderError extends FluoCodeError {
       'INVALID_PROVIDER',
       context ? { meta: buildMeta(context) } : undefined,
     );
+    setFluoErrorContract(this, '@fluojs/di');
   }
 }
 
@@ -71,6 +72,7 @@ export class ContainerResolutionError extends FluoCodeError {
       'CONTAINER_RESOLUTION_ERROR',
       context ? { meta: buildMeta(context) } : undefined,
     );
+    setFluoErrorContract(this, '@fluojs/di');
   }
 }
 
@@ -87,6 +89,7 @@ export class RequestScopeResolutionError extends FluoCodeError {
       'REQUEST_SCOPE_RESOLUTION_ERROR',
       context ? { meta: buildMeta(context) } : undefined,
     );
+    setFluoErrorContract(this, '@fluojs/di');
   }
 }
 
@@ -100,6 +103,7 @@ export class ScopeMismatchError extends FluoCodeError {
       'SCOPE_MISMATCH',
       context ? { meta: buildMeta(context) } : undefined,
     );
+    setFluoErrorContract(this, '@fluojs/di');
   }
 }
 
@@ -122,6 +126,7 @@ export class CircularDependencyError extends FluoCodeError {
       'CIRCULAR_DEPENDENCY',
       { meta: { chain: chain.map((t) => formatTokenName(t)), hint } },
     );
+    setFluoErrorContract(this, '@fluojs/di');
   }
 }
 
@@ -139,7 +144,26 @@ export class DuplicateProviderError extends FluoCodeError {
       'DUPLICATE_PROVIDER',
       { meta: { token: name, hint } },
     );
+    setFluoErrorContract(this, '@fluojs/di');
   }
+}
+
+const diErrorCodes = new Set([
+  'INVALID_PROVIDER',
+  'CONTAINER_RESOLUTION_ERROR',
+  'REQUEST_SCOPE_RESOLUTION_ERROR',
+  'SCOPE_MISMATCH',
+  'CIRCULAR_DEPENDENCY',
+  'DUPLICATE_PROVIDER',
+]);
+
+/**
+ * Recognizes compatible DI errors across duplicate package copies.
+ * @param value Candidate thrown value.
+ * @returns Whether the value satisfies the DI error contract.
+ */
+export function isDiError(value: unknown): value is FluoCodeError {
+  return isFluoError(value, '@fluojs/di') && diErrorCodes.has(value.code);
 }
 
 function buildMeta(context: DiErrorContext): Record<string, unknown> {

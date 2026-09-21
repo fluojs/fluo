@@ -582,6 +582,10 @@ WebSocket, gRPC, CLI, local storage, request-style abstraction을 위한 core lo
 - **`@fluojs/config`**: module registration 및 option snapshotting convention에 가장 가까운 package layout model입니다.
 - **`@fluojs/validation`**: `@fluojs/i18n/validation`이 소비하는 opt-in validation issue contract를 제공합니다.
 
+## 오류 판별
+
+`isI18nError(...)`는 code 기반 처리 전에 버전이 있는 i18n 소유자 규약을 검증합니다. 따라서 원격 로딩, 취소, validation 현지화는 호환되는 중복 사본 오류를 보존하면서 일반 유사 객체와 호환되지 않는 버전을 거부합니다.
+
 ## 예제 소스
 
 - `packages/i18n/src/module.ts`

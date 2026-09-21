@@ -24,9 +24,11 @@ import {
   type GuardContext,
   Header,
   HttpCode,
+  HttpException,
   type InterceptorContext,
   type MiddlewareContext,
   Post,
+  PayloadTooLargeException,
   Query,
   Redirect,
   type RequestContext,
@@ -1387,6 +1389,58 @@ describe('@fluojs/platform-express', () => {
         hasRawBody: false,
       });
     } finally {
+      await app.close();
+    }
+  });
+
+  it('preserves a compatible duplicate-copy HTTP 413 multipart error', async () => {
+    const duplicateCopyError = Object.create(
+      Error.prototype,
+      Object.getOwnPropertyDescriptors(new HttpException(413, 'Foreign multipart limit.', {
+        code: 'FOREIGN_MULTIPART_LIMIT',
+        details: [{ code: 'FOREIGN_MULTIPART_LIMIT', field: 'attachment', message: 'Foreign multipart limit.' }],
+        meta: { limit: 7 },
+      })),
+    );
+    const parseMultipart = vi.spyOn(runtimeWeb, 'parseMultipart').mockRejectedValue(duplicateCopyError);
+
+    @Controller('/foreign-multipart-limit')
+    class UploadController {
+      @Post('/')
+      upload(_input: undefined, context: RequestContext) {
+        return context.request.body;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, { controllers: [UploadController] });
+
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 }) as ExpressHttpApplicationAdapter;
+    const app = await FluoFactory.create(AppModule, { adapter });
+
+    try {
+      await app.listen();
+      const form = new FormData();
+      form.set('attachment', new Blob(['contents'], { type: 'text/plain' }), 'attachment.txt');
+      const response = await fetch(`${adapter.getListenTarget().url}/foreign-multipart-limit`, {
+        body: form,
+        method: 'POST',
+      });
+
+      expect(duplicateCopyError).not.toBeInstanceOf(HttpException);
+      expect(duplicateCopyError).not.toBeInstanceOf(PayloadTooLargeException);
+      expect(response.status).toBe(413);
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          code: 'FOREIGN_MULTIPART_LIMIT',
+          details: [{ code: 'FOREIGN_MULTIPART_LIMIT', field: 'attachment', message: 'Foreign multipart limit.' }],
+          message: 'Foreign multipart limit.',
+          meta: { limit: 7 },
+          status: 413,
+        },
+      });
+    } finally {
+      parseMultipart.mockRestore();
       await app.close();
     }
   });

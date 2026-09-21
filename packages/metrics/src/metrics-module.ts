@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 import { Inject, type Token } from '@fluojs/core';
-import { type Container, ContainerResolutionError, type Provider } from '@fluojs/di';
+import { type Container, type ContainerResolutionError, isDiError, type Provider } from '@fluojs/di';
 import { Controller, forRoutes, Get, type Middleware, type MiddlewareLike, type RequestContext } from '@fluojs/http';
 import {
   defineModule,
@@ -765,7 +765,7 @@ function hasContainerToken(container: RequestContext['container'], token: Token)
 }
 
 function isMissingPlatformShellResolutionError(error: unknown): error is ContainerResolutionError {
-  if (!(error instanceof ContainerResolutionError)) {
+  if (!isDiError(error) || error.code !== 'CONTAINER_RESOLUTION_ERROR') {
     return false;
   }
 

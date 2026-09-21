@@ -495,7 +495,7 @@ Catalog만으로는 URI versioning과 header, media-type, custom version strateg
 | `newUsage()` | help surface와 test에서 사용하는 현재 `fluo new` usage text를 반환합니다. |
 | `runNewCommand(argv, options?)` | 프로젝트 스캐폴딩 로직에 대한 프로그래밍적 접근을 제공합니다. |
 | `NewCommandRuntimeOptions` | prompt, filesystem write, dependency install, git initialization 같은 `runNewCommand(...)` runtime override 타입입니다. `runCli(...)`도 `new` 또는 `create`로 dispatch할 때 이 override를 받습니다. Monorepo-local starter dependency override는 내부 sandbox harness 세부사항이며 이 공개 타입의 일부가 아닙니다. |
-| `CliPromptCancelledError` | 호출자가 제공한 prompt hook이 정상 취소를 알리기 위해 throw할 수 있는 안정적인 sentinel입니다. |
+| `CliPromptCancelledError`, `isCliPromptCancelledError(...)` | 호출자가 제공한 prompt hook이 호환되는 중복 사본에서도 정상 취소를 알릴 수 있는 안정적인 sentinel과 버전 인식 predicate입니다. 일반 유사 객체는 command failure로 남습니다. |
 | `runGenerateCommand(kind, name, baseDirectory, options?)` | built-in schematic generator와 module auto-registration planner에 대한 프로그래밍적 접근을 제공합니다. |
 | `GenerateOptions` | 프로그래밍 방식 generator 옵션 타입입니다. `withTest`는 제거되었으므로 module과 resource slice test에는 `withSliceTest`를 사용하세요. |
 | `GenerateResult` | 변경된 파일, dry-run plan entry, module wiring metadata, next-step hint를 포함하는 generator 결과 타입입니다. |

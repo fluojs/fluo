@@ -1,3 +1,5 @@
+const cliErrorContractKey = Symbol.for('fluo.error.contract');
+
 /**
  * Stable sentinel error for caller-owned prompt cancellation.
  *
@@ -35,6 +37,11 @@ export class CliPromptCancelledError extends Error {
   constructor(message = 'Operation cancelled.') {
     super(message);
     this.name = 'CliPromptCancelledError';
+    Object.defineProperty(this, 'code', { value: 'CLI_PROMPT_CANCELLED' });
+    Object.defineProperty(this, cliErrorContractKey, {
+      configurable: true,
+      value: Object.freeze({ owner: '@fluojs/cli', version: 1 }),
+    });
   }
 }
 
@@ -45,5 +52,12 @@ export class CliPromptCancelledError extends Error {
  * @returns `true` when the value is a `CliPromptCancelledError`.
  */
 export function isCliPromptCancelledError(error: unknown): error is CliPromptCancelledError {
-  return error instanceof CliPromptCancelledError;
+  if (!(error instanceof Error)) return false;
+  const candidate = error as Error & { code?: unknown; [cliErrorContractKey]?: unknown };
+  const contract = candidate[cliErrorContractKey];
+  return typeof contract === 'object'
+    && contract !== null
+    && (contract as { owner?: unknown }).owner === '@fluojs/cli'
+    && (contract as { version?: unknown }).version === 1
+    && candidate.code === 'CLI_PROMPT_CANCELLED';
 }

@@ -1234,7 +1234,7 @@ This package currently does **not** provide:
 - `REACT_SSR_DIAGNOSTIC_PHASES` and `REACT_SSR_DIAGNOSTIC_CODES` — stable machine-readable SSR
   lifecycle phase and diagnostic code constants.
 - `ReactSsrDiagnosticError` — typed pre-commit configuration/render failure with stable `code` and
-  `phase` metadata.
+  `phase` metadata. `isReactSsrDiagnosticError(...)` validates those fields and the versioned React owner contract across compatible duplicate copies; request-abort state and diagnostic marker-store transport are unchanged.
 - `ReactSsrDiagnostic`, `ReactSsrDiagnosticCode`, `ReactSsrDiagnosticErrorOptions`,
   `ReactSsrDiagnosticHandler`, and `ReactSsrDiagnosticPhase` — type-only contracts for application
   diagnostics tooling.

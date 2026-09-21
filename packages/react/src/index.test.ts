@@ -5,6 +5,8 @@ import { promisify } from 'node:util';
 
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { FluoError, setFluoErrorContract } from '@fluojs/core';
+
 const runtimeStaticModuleSpecifierPattern = /(?:^|\n)\s*(?:import|export)\s+(?!type\b)(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
 
 const forbiddenRootImports = [
@@ -184,9 +186,23 @@ describe('@fluojs/react root package scaffold', () => {
       'getReactPathMetadata',
       'getReactRenderPolicies',
       'getReactRouterMetadata',
+      'isReactSsrDiagnosticError',
       'renderReactResponse',
       'resolveReactPageMetadata',
     ]);
+  });
+
+  it('recognizes a compatible SSR diagnostic error from a duplicate package copy', async () => {
+    const react = await import('./index.js');
+    const duplicateCopyError = new FluoError('duplicate SSR diagnostic', {
+      code: 'react-ssr-pre-commit-shell-failure',
+      meta: { phase: 'pre-commit-shell' },
+    }) as FluoError & { readonly phase: 'pre-commit-shell' };
+    Object.assign(duplicateCopyError, { phase: 'pre-commit-shell' });
+    setFluoErrorContract(duplicateCopyError, '@fluojs/react');
+
+    expect(duplicateCopyError).not.toBeInstanceOf(react.ReactSsrDiagnosticError);
+    expect(react.isReactSsrDiagnosticError(duplicateCopyError)).toBe(true);
   });
 
   it('does not load Node, Vite, SSR, or RSC modules from the root import', async () => {

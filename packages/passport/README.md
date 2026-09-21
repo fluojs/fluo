@@ -295,7 +295,7 @@ Use `createConservativeAccountLinkPolicy(...)` and `resolveAccountLinking(...)` 
 - `AuthStrategy`: The contract for implementing custom authentication logic.
 - `AuthRequirement`: Route-level metadata for the selected strategy, optional-auth mode, and required scopes.
 - `AuthStrategyResult`, `AuthOptionalResult`, `AuthHandledResult`: Strategy return variants for principals, intentionally missing credentials, and fully handled responses.
-- `AuthStrategyResolutionError`, `AuthenticationRequiredError`, `AuthenticationFailedError`, `AuthenticationExpiredError`: Public errors used by guards and strategy adapters for registry misses, missing credentials, invalid credentials, and expired credentials.
+- `AuthStrategyResolutionError`, `AuthenticationRequiredError`, `AuthenticationFailedError`, `AuthenticationExpiredError`: Public errors used by guards and strategy adapters for registry misses, missing credentials, invalid credentials, and expired credentials. `isPassportError(...)` validates their versioned owner contract across compatible duplicate copies; guards preserve the same HTTP 401 classification without accepting plain code-string lookalikes.
 
 ### Metadata and Scope Helpers
 - `defineAuthRequirement(...)`, `getOwnAuthRequirement(...)`, `getAuthRequirement(...)`: Public helpers for reading and writing auth requirement metadata when integrating custom decorators or tooling with `AuthGuard`.

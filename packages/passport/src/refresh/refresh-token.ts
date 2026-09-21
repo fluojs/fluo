@@ -3,8 +3,7 @@ import type { Provider } from '@fluojs/di';
 import type { GuardContext, RequestContext } from '@fluojs/http';
 import {
   DefaultJwtVerifier,
-  JwtExpiredTokenError,
-  JwtInvalidTokenError,
+  isJwtError,
   RefreshTokenService as JwtRefreshTokenService,
 } from '@fluojs/jwt';
 import { defineModule, type ModuleType } from '@fluojs/runtime';
@@ -13,6 +12,7 @@ import {
   AuthenticationExpiredError,
   AuthenticationFailedError,
   AuthenticationRequiredError,
+  isPassportError,
 } from '../errors.js';
 import type { AuthStrategy, AuthStrategyRegistration } from '../types.js';
 
@@ -129,15 +129,17 @@ export class RefreshTokenStrategy implements AuthStrategy {
     try {
       return await this.refreshTokenService.rotateRefreshToken(currentToken);
     } catch (error: unknown) {
-      if (error instanceof AuthenticationRequiredError
-        || error instanceof AuthenticationExpiredError
-        || error instanceof AuthenticationFailedError) {
+      if (isPassportError(error) && (
+        error.code === 'AUTHENTICATION_REQUIRED'
+        || error.code === 'AUTHENTICATION_EXPIRED'
+        || error.code === 'AUTHENTICATION_FAILED'
+      )) {
         throw error;
       }
-      if (error instanceof JwtExpiredTokenError) {
+      if (isJwtError(error) && error.code === 'JWT_EXPIRED') {
         throw new AuthenticationExpiredError('Refresh token has expired.', { cause: error });
       }
-      if (error instanceof JwtInvalidTokenError) {
+      if (isJwtError(error) && error.code === 'JWT_INVALID_TOKEN') {
         throw new AuthenticationFailedError('Refresh token is invalid or has been reused.', { cause: error });
       }
       throw error;

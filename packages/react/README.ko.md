@@ -1214,7 +1214,7 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `REACT_SSR_DIAGNOSTIC_PHASES` 및 `REACT_SSR_DIAGNOSTIC_CODES` — stable machine-readable SSR
   lifecycle phase 및 diagnostic code constant입니다.
 - `ReactSsrDiagnosticError` — stable `code`와 `phase` metadata를 가진 typed pre-commit
-  configuration/render failure입니다.
+  configuration/render failure입니다. `isReactSsrDiagnosticError(...)`는 호환되는 중복 사본의 해당 필드와 버전이 있는 React 소유자 규약을 검증하며 request-abort 상태와 diagnostic marker-store transport는 변경하지 않습니다.
 - `ReactSsrDiagnostic`, `ReactSsrDiagnosticCode`, `ReactSsrDiagnosticErrorOptions`,
   `ReactSsrDiagnosticHandler`, `ReactSsrDiagnosticPhase` — application diagnostics tooling을 위한
   type-only contract입니다.

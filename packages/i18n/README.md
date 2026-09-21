@@ -582,6 +582,10 @@ The core locale-resolution roadmap item for WebSocket, gRPC, CLI, local storage,
 - **`@fluojs/config`**: The closest package layout model for module registration and option snapshotting conventions.
 - **`@fluojs/validation`**: Provides the opt-in validation issue contract consumed by `@fluojs/i18n/validation`.
 
+## Error recognition
+
+`isI18nError(...)` validates the versioned i18n owner contract before code-based handling. Remote loading, cancellation, and validation localization therefore preserve compatible duplicate-copy errors while rejecting plain lookalikes and incompatible versions.
+
 ## Example Sources
 
 - `packages/i18n/src/module.ts`

@@ -1,3 +1,5 @@
+import { isFluoError, setFluoErrorContract } from '@fluojs/core';
+
 /** Explicit mutation returned by an atomic cache reducer. */
 export type CacheUpdate<T> =
   | { readonly action: 'set'; readonly value: T; readonly ttlSeconds?: number }
@@ -62,7 +64,22 @@ export class CacheUpdateError extends Error {
   constructor(readonly code: CacheUpdateErrorCode, options?: ErrorOptions) {
     super(`Cache update ${code}.`, options);
     this.name = 'CacheUpdateError';
+    setFluoErrorContract(this, '@fluojs/cache-manager');
   }
+}
+
+const cacheUpdateErrorCodes = new Set<CacheUpdateErrorCode>([
+  'unsupported', 'invalidated', 'closed', 'cancelled', 'conflict',
+]);
+
+/**
+ * Recognizes compatible cache update errors across duplicate package copies.
+ * @param value Candidate thrown value.
+ * @returns Whether the value satisfies the cache update error contract.
+ */
+export function isCacheUpdateError(value: unknown): value is CacheUpdateError {
+  return isFluoError(value, '@fluojs/cache-manager')
+    && cacheUpdateErrorCodes.has(value.code as CacheUpdateErrorCode);
 }
 
 /** Check cancellation without losing the lifecycle reason.
@@ -70,7 +87,7 @@ export class CacheUpdateError extends Error {
  */
 export function checkUpdateSignal(signal: AbortSignal): void {
   if (signal.aborted) {
-    throw signal.reason instanceof CacheUpdateError
+    throw isCacheUpdateError(signal.reason)
       ? signal.reason
       : new CacheUpdateError('cancelled', { cause: signal.reason });
   }

@@ -1,11 +1,13 @@
 import { HandlerNotFoundError } from '../errors.js';
 import {
   createErrorResponse,
-  HttpException,
+  type HttpException,
   InternalServerErrorException,
+  isHttpException,
   NotAcceptableException,
   NotFoundException,
 } from '../exceptions.js';
+import { appendVaryHeader } from '../header-helpers.js';
 import type {
   DispatcherLogger,
   FrameworkResponse,
@@ -20,7 +22,6 @@ import {
   readAcceptHeader,
   selectErrorRepresentation,
 } from './dispatch-error-negotiation.js';
-import { appendVaryHeader } from '../header-helpers.js';
 import { isRequestAborted } from './request-abort.js';
 
 const HTML_CONTENT_TYPE = 'text/html; charset=utf-8';
@@ -36,7 +37,7 @@ type WriteErrorResponseOptions = {
 };
 
 function toHttpException(error: unknown): HttpException {
-  if (error instanceof HttpException) {
+  if (isHttpException(error)) {
     return error;
   }
 
@@ -49,7 +50,7 @@ function toHttpException(error: unknown): HttpException {
 }
 
 function isHttpRepresentationEligible(error: unknown): boolean {
-  return error instanceof HttpException || error instanceof HandlerNotFoundError;
+  return isHttpException(error) || error instanceof HandlerNotFoundError;
 }
 
 function createRepresentationContext(

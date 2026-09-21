@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { HttpErrorRepresentationContext } from '../index.js';
+import { BadRequestException, type HttpErrorRepresentationContext } from '../index.js';
 import {
   createRequest,
   createResponse,
@@ -8,6 +8,39 @@ import {
 } from './error-representation.test-fixture.js';
 
 describe('HTTP-owned error representations', () => {
+  it.each(['application/json', 'text/html'])('preserves a compatible duplicate-copy HTTP exception for %s', async (accept) => {
+    const duplicateError = new BadRequestException('Invalid request.', {
+      details: [{ code: 'INVALID_NAME', field: 'name', message: 'Name is invalid.' }],
+      meta: { duplicate: true },
+    });
+    vi.resetModules();
+    const { writeErrorResponse } = await import('./dispatch-error-representation.js');
+    const render = vi.fn(({ json }: HttpErrorRepresentationContext) => JSON.stringify(json));
+    const response = createResponse();
+
+    await writeErrorResponse(duplicateError, {
+      container: {} as never,
+      metadata: {},
+      request: createRequest('/duplicate', accept),
+      requestId: 'duplicate-request',
+      response,
+    }, { representation: { html: { render } } });
+
+    expect(response.statusCode).toBe(400);
+    if (accept === 'application/json') {
+      expect(response.body).toMatchObject({
+        error: {
+          code: 'BAD_REQUEST',
+          details: [{ code: 'INVALID_NAME', field: 'name', message: 'Name is invalid.' }],
+          meta: { duplicate: true },
+          status: 400,
+        },
+      });
+    } else {
+      expect(render).toHaveBeenCalledOnce();
+    }
+  });
+
   it.each([
     { accept: 'application/json', contentType: 'application/json; charset=utf-8', htmlCalls: 0, kind: 'json' },
     { accept: 'text/html', contentType: 'text/html; charset=utf-8', htmlCalls: 1, kind: 'html' },

@@ -16,6 +16,7 @@ export {
   REACT_SSR_DIAGNOSTIC_CODES,
   REACT_SSR_DIAGNOSTIC_PHASES,
   ReactSsrDiagnosticError,
+  isReactSsrDiagnosticError,
 } from './diagnostics.js';
 export type {
   ReactErrorDocumentRenderer,

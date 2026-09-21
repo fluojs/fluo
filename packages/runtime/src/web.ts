@@ -6,22 +6,23 @@ import {
   type Dispatcher,
   type FrameworkRequest,
   type FrameworkResponse,
-  HttpException,
+  type HttpException,
   InternalServerErrorException,
+  isHttpException,
   PayloadTooLargeException,
 } from '@fluojs/http/portable';
 
 import {
-  startDispatchWithRequestResponseFactory,
   type RequestResponseFactory,
+  startDispatchWithRequestResponseFactory,
 } from './adapters/request-response-factory.js';
 import {
   attachRuntimeFrameworkRequestNativeRouteHandoff,
   consumeRuntimeRawRequestNativeRouteHandoff,
 } from './internal/http-runtime.js';
 import {
-  markMultipartBodyConsumed,
   type MultipartOptions,
+  markMultipartBodyConsumed,
   parseMultipart,
   parseMultipartStream,
   type UploadedFile,
@@ -79,15 +80,15 @@ export interface WebRequestDispatch {
   readonly response: Promise<Response>;
 }
 
-export {
-  MultipartBodyConsumedError,
-  parseMultipart,
-  parseMultipartStream,
-} from './multipart.js';
 export type {
   MultipartFieldPart,
   MultipartFilePart,
   MultipartPart,
+} from './multipart.js';
+export {
+  MultipartBodyConsumedError,
+  parseMultipart,
+  parseMultipartStream,
 } from './multipart.js';
 
 interface WebFrameworkResponseStream {
@@ -952,7 +953,7 @@ function isJsonContentType(contentType: string | undefined): boolean {
 }
 
 function toHttpException(error: unknown): HttpException {
-  if (error instanceof HttpException) {
+  if (isHttpException(error)) {
     return error;
   }
 

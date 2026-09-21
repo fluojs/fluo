@@ -1,4 +1,4 @@
-import { Inject, Scope as ScopeDecorator } from '@fluojs/core';
+import { FluoError, Inject, Scope as ScopeDecorator, setFluoErrorContract } from '@fluojs/core';
 import { Container } from '@fluojs/di';
 import { IsNumber, IsString, MinLength, ValidateNested } from '@fluojs/validation';
 import { IntersectionType, OmitType, PartialType, PickType } from '@fluojs/validation/mapped-types';
@@ -43,6 +43,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '../index.js';
+import { RequestAbortedError } from '../errors.js';
 import { NotAcceptableException } from '../exceptions.js';
 import { forRoutes, runMiddlewareChain } from '../middleware/middleware.js';
 import { attachFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
@@ -178,6 +179,37 @@ class CountingContainer extends Container {
 }
 
 describe('dispatcher runtime', () => {
+  it('suppresses a compatible RequestAbortedError from a duplicate package copy', async () => {
+    const duplicateCopyAbort = new FluoError('duplicate request abort', { code: 'REQUEST_ABORTED' });
+    setFluoErrorContract(duplicateCopyAbort, '@fluojs/http');
+    const onError = vi.fn();
+    const onRequestError = vi.fn();
+
+    @Controller('/duplicate-abort')
+    class DuplicateAbortController {
+      @Get('/')
+      getValue(): never {
+        throw duplicateCopyAbort;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: DuplicateAbortController }]),
+      observers: [{ onRequestError }],
+      onError,
+      rootContainer: new Container().register(DuplicateAbortController),
+    });
+    const response = createResponse();
+
+    await dispatcher.dispatch(createRequest('/duplicate-abort'), response);
+
+    expect(duplicateCopyAbort).not.toBeInstanceOf(RequestAbortedError);
+    expect(onRequestError).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    expect(response.committed).toBe(false);
+    expect(response.statusSet).toBe(false);
+  });
+
   it('skips request-scope container creation for singleton-only routes', async () => {
     @Controller('/singleton-only')
     class SingletonOnlyController {

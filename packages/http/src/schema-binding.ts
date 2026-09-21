@@ -1,6 +1,6 @@
 import { type Constructor, InvariantError } from '@fluojs/core';
 import {
-  DtoValidationError,
+  isDtoValidationError,
   parseStandardSchema,
   type StandardSchemaV1Like,
 } from '@fluojs/validation';
@@ -152,7 +152,7 @@ export class StandardSchemaBinder implements Binder {
     try {
       return await parseStandardSchema(definition.schema, input);
     } catch (error) {
-      if (error instanceof DtoValidationError) {
+      if (isDtoValidationError(error)) {
         throw new BadRequestException(error.message, {
           details: error.issues.map((issue) => toInputErrorDetail(issue)),
         });
