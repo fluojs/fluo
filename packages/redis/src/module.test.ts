@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import { getModuleMetadata } from '@fluojs/core/internal';
-import { FluoFactory, defineModule } from '@fluojs/runtime';
+import { defineModule, FluoFactory } from '@fluojs/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface MockRedisInstance {
@@ -584,7 +584,7 @@ describe('@fluojs/redis', () => {
     expect(mockRedisState.events).toEqual(['connect', 'connect', 'quit', 'quit']);
   });
 
-  it('keeps redis tokens package-local while preserving stable named lookups', () => {
+  it('uses stable registry identities for default and named Redis tokens', () => {
     const cacheClientToken = getRedisClientToken('cache');
     const cacheClientTokenAgain = getRedisClientToken('cache');
     const jobsClientToken = getRedisClientToken('jobs');
@@ -594,9 +594,9 @@ describe('@fluojs/redis', () => {
     expect(cacheClientToken).toBe(cacheClientTokenAgain);
     expect(cacheServiceToken).toBe(cacheServiceTokenAgain);
     expect(cacheClientToken).not.toBe(jobsClientToken);
-    expect(Symbol.keyFor(REDIS_CLIENT)).toBeUndefined();
-    expect(Symbol.keyFor(cacheClientToken)).toBeUndefined();
-    expect(Symbol.keyFor(cacheServiceToken as symbol)).toBeUndefined();
+    expect(Symbol.keyFor(REDIS_CLIENT)).toBe('fluo.redis.client');
+    expect(Symbol.keyFor(cacheClientToken)).toBe('fluo.redis.client:cache');
+    expect(Symbol.keyFor(cacheServiceToken as symbol)).toBe('fluo.redis.service:cache');
   });
 
   it.each([

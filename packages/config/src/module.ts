@@ -24,7 +24,7 @@ const CONFIG_MODULE_OPTIONS = Symbol('fluo.config.module-options');
 /**
  * Injection token for ConfigModule's shared manual reload and subscription contract.
  */
-export const CONFIG_RELOADER = Symbol('fluo.config.reloader');
+export const CONFIG_RELOADER = Symbol.for('fluo.config.reloader');
 
 function createSubscription<T>(listeners: Set<T>, listener: T): ConfigReloadSubscription {
   listeners.add(listener);

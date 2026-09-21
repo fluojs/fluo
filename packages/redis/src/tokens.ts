@@ -3,7 +3,7 @@
  *
  * @see getRedisClientToken For resolving the default or a named raw-client token through one helper.
  */
-export const REDIS_CLIENT = Symbol('fluo.redis.client');
+export const REDIS_CLIENT = Symbol.for('fluo.redis.client');
 
 /** Stable name used when callers request the default Redis client contract. */
 export const DEFAULT_REDIS_CLIENT_NAME = 'default';
@@ -31,7 +31,7 @@ function getOrCreateNamedRedisClientToken(name: string): symbol {
     return existing;
   }
 
-  const created = Symbol(`fluo.redis.client:${name}`);
+  const created = Symbol.for(`fluo.redis.client:${name}`);
   namedRedisClientTokens.set(name, created);
   return created;
 }

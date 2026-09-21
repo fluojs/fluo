@@ -1,7 +1,7 @@
 import { Inject, type Token } from '@fluojs/core';
 import type Redis from 'ioredis';
 
-import { REDIS_CLIENT, getRedisClientToken } from './tokens.js';
+import { getRedisClientToken, REDIS_CLIENT } from './tokens.js';
 
 const namedRedisServiceTokens = new Map<string, symbol>();
 
@@ -12,7 +12,7 @@ function getOrCreateNamedRedisServiceToken(name: string): symbol {
     return existing;
   }
 
-  const created = Symbol(`fluo.redis.service:${name}`);
+  const created = Symbol.for(`fluo.redis.service:${name}`);
   namedRedisServiceTokens.set(name, created);
   return created;
 }
