@@ -27,5 +27,16 @@
     "@types/pg": "8.15.6",
     "prisma": "7.5.0",
     "typescript": "6.0.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@hono/node-server": "1.19.15",
+      "deepmerge-ts": "8.0.0",
+      "effect": "3.20.0",
+      "hono": "4.13.5",
+      "lodash": "4.18.1",
+      "mysql2": "3.23.1",
+      "valibot": "1.4.2"
+    }
   }
 }
