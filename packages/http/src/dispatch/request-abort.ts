@@ -4,8 +4,13 @@ import { getCompatibleHttpSharedState } from '../shared-state.js';
 const REQUEST_ABORTED_BY_RESPONSE_STREAM = Symbol('fluo.http.requestAbortedByResponseStream');
 const authoritativeProbes = getCompatibleHttpSharedState(
   Symbol.for('fluo.http.authoritative-abort-probes'),
-  () => new WeakMap<FrameworkRequest, () => boolean>(),
+  () => new WeakMap<FrameworkRequest, AuthoritativeAbortProbe>(),
 );
+
+interface AuthoritativeAbortProbe {
+  probe: () => boolean;
+  signalIsAuthoritativelyObserved: boolean;
+}
 
 /**
  * Registers an adapter probe that observes the same cancellation source as its
@@ -14,8 +19,15 @@ const authoritativeProbes = getCompatibleHttpSharedState(
  * @param request The exact adapter request owning both cancellation surfaces.
  * @param probe Probe that observes the lazy signal's cancellation source.
  */
-export function registerAuthoritativeAbortProbe(request: FrameworkRequest, probe: () => boolean): void {
-  authoritativeProbes.set(request, probe);
+export function registerAuthoritativeAbortProbe(
+  request: FrameworkRequest,
+  probe: () => boolean,
+  options: { readonly signalIsAuthoritativelyObserved?: boolean } = {},
+): void {
+  authoritativeProbes.set(request, {
+    probe,
+    signalIsAuthoritativelyObserved: options.signalIsAuthoritativelyObserved === true,
+  });
 }
 
 /**
@@ -25,9 +37,10 @@ export function registerAuthoritativeAbortProbe(request: FrameworkRequest, probe
  * @returns Whether transport cancellation has been observed.
  */
 export function isRequestAborted(request: FrameworkRequest): boolean {
-  const probe = authoritativeProbes.get(request);
-  if (probe && request.isAborted === probe) {
-    return probe.call(request) || request.signal?.aborted === true;
+  const authoritativeProbe = authoritativeProbes.get(request);
+  if (authoritativeProbe && request.isAborted === authoritativeProbe.probe) {
+    return authoritativeProbe.probe.call(request)
+      || (!authoritativeProbe.signalIsAuthoritativelyObserved && request.signal?.aborted === true);
   }
   return request.isAborted?.() === true || request.signal?.aborted === true;
 }

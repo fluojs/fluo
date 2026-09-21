@@ -199,7 +199,9 @@ function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
     rawBody: request.rawBody,
     requestId: request.requestId,
     isAborted: request.isAborted,
-    signal: request.signal,
+    get signal() {
+      return request.signal;
+    },
     url: request.url,
   };
 

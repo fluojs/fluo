@@ -3496,7 +3496,7 @@ describe('dispatcher runtime', () => {
 
     await dispatcher.dispatch(request, response);
 
-    expect(handlerMapping.match).toHaveBeenCalledTimes(1);
+    expect(handlerMapping.match).not.toHaveBeenCalled();
     expect(response.statusCode).toBe(201);
     expect(response.headers['X-Native-Handoff']).toBe('enabled');
     expect(response.body).toEqual({ id: '123' });
@@ -3549,7 +3549,7 @@ describe('dispatcher runtime', () => {
 
     await dispatcher.dispatch(request, response);
 
-    expect(handlerMapping.match).toHaveBeenCalledTimes(1);
+    expect(handlerMapping.match).not.toHaveBeenCalled();
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ id: '123' });
     expect(root.requestScopeCreateCount).toBe(0);
@@ -3748,6 +3748,7 @@ describe('dispatcher runtime', () => {
     const secondResponse = createResponse();
     await dispatcher.dispatch(request, secondResponse);
 
+    expect(handlerMapping.match).toHaveBeenCalledTimes(1);
     expect(secondResponse.body).toEqual({ id: '123' });
   });
 
