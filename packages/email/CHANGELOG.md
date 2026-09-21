@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## 3.0.2
+
+### Patch Changes
+
+- [#3816](https://github.com/fluojs/fluo/pull/3816) [`e0c7312`](https://github.com/fluojs/fluo/commit/e0c73126ecd585ebb9664f0031590a174c48976c) Thanks [@ayden94](https://github.com/ayden94)! - Bump the locked nodemailer dependency to >= 9.1.1 to resolve GHSA-8m3c-c648-2xjj, GHSA-cc9r-2j5m-2m83, and GHSA-wmmp-3585-3rmp.
+
 ## 3.0.1
 
 ### Patch Changes
