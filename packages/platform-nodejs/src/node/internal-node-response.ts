@@ -5,8 +5,9 @@ import {
   type FrameworkResponse,
   type FrameworkResponseCompression,
   type FrameworkResponseStream,
-  HttpException,
+  type HttpException,
   InternalServerErrorException,
+  isHttpException,
 } from '@fluojs/http';
 
 import { createNodeEarlyHintsCapability } from './internal-node-early-hints.js';
@@ -238,7 +239,7 @@ function isJsonContentType(contentType: string | undefined): boolean {
 }
 
 function toHttpException(error: unknown): HttpException {
-  if (error instanceof HttpException) {
+  if (isHttpException(error)) {
     return error;
   }
 

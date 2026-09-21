@@ -606,7 +606,7 @@ const app = await FluoFactory.create(AppModule, {
 });
 ```
 
-HTTP classifies the outcome before representation selection. Route misses become the existing 404
+HTTP classifies the outcome before representation selection. `isHttpException(...)` validates the versioned HTTP owner contract plus status, details, and common error fields, so compatible same-realm duplicate package copies retain their status and JSON/HTML representation. Plain lookalikes and incompatible contract versions remain unhandled server errors. Route misses become the existing 404
 outcome, and uncommitted `HttpException` values from middleware, DTO binding/validation, guards,
 interceptors, and handlers use the same seam. The provider receives the classified exception,
 canonical `ErrorResponse`, request, optional matched handler, request id, and active request-scope

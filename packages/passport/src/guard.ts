@@ -1,13 +1,12 @@
-import { ForbiddenException, UnauthorizedException, type GuardContext } from '@fluojs/http';
-import type { Principal } from '@fluojs/http';
 import { Inject, type Token } from '@fluojs/core';
-import { ContainerResolutionError } from '@fluojs/di';
+import { isDiError } from '@fluojs/di';
+import type { Principal } from '@fluojs/http';
+import { ForbiddenException, type GuardContext, UnauthorizedException } from '@fluojs/http';
 
 import {
-  AuthenticationExpiredError,
   AuthenticationFailedError,
-  AuthenticationRequiredError,
   AuthStrategyResolutionError,
+  isPassportError,
 } from './errors.js';
 import { AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS } from './internal-tokens.js';
 import { getAuthRequirement } from './metadata.js';
@@ -16,8 +15,8 @@ import type {
   AuthHandledResult,
   AuthOptionalResult,
   AuthStrategy,
-  AuthStrategyResult,
   AuthStrategyRegistry,
+  AuthStrategyResult,
   PassportModuleOptions,
 } from './types.js';
 
@@ -90,10 +89,10 @@ function hasRequiredScopes(principal: { scopes?: string[] }, scopes: string[]): 
 }
 
 function isAuthenticationFailure(error: unknown): boolean {
-  return (
-    error instanceof AuthenticationRequiredError
-    || error instanceof AuthenticationExpiredError
-    || error instanceof AuthenticationFailedError
+  return isPassportError(error) && (
+    error.code === 'AUTHENTICATION_REQUIRED'
+    || error.code === 'AUTHENTICATION_EXPIRED'
+    || error.code === 'AUTHENTICATION_FAILED'
   );
 }
 
@@ -161,7 +160,7 @@ export class AuthGuard implements AuthGuardContract {
     const strategyToken = this.strategies[strategyName];
 
     const strategy = await context.requestContext.container.resolve(strategyToken as Token<AuthStrategy>).catch((error: unknown) => {
-      if (error instanceof ContainerResolutionError) {
+      if (isDiError(error) && error.code === 'CONTAINER_RESOLUTION_ERROR') {
         throw new AuthStrategyResolutionError(`Failed to resolve auth strategy "${strategyName}": ${toErrorMessage(error)}`);
       }
 

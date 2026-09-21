@@ -7,7 +7,7 @@ export type {
   CacheUpdateOptions,
   CacheUpdateReducer,
 } from './atomic-update.js';
-export { CacheUpdateError } from './atomic-update.js';
+export { CacheUpdateError, isCacheUpdateError } from './atomic-update.js';
 export {
   CacheEvict,
   CacheKey,

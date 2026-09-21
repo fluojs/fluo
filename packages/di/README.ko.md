@@ -322,7 +322,7 @@ Metadata와 provider 등록은 계속 wrapper record를 snapshot합니다. Core�
 | `NormalizedProvider` | 컨테이너가 검증한 provider record shape를 위한 compatibility-only 공개 타입입니다. provider를 작성할 때는 `Provider`나 구체 provider interface를 우선 사용하세요. normalized record 생성은 컨테이너가 소유합니다. |
 | `@fluojs/di/internal` | sibling fluo package가 자체 순회 전에 컨테이너의 canonical provider validation을 적용할 수 있도록 `validateProviderInputs(...)`를 노출하는 package-integration seam입니다. 애플리케이션 코드는 계속 `Container`를 통해 provider를 등록해야 합니다. |
 | `DiErrorContext` | DI error에 붙는 구조화된 context입니다. 로그와 테스트가 token, scope, module, dependency chain, hint를 검사할 수 있게 합니다. |
-| 에러 클래스 | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. |
+| 에러 클래스 | `InvalidProviderError`, `ContainerResolutionError`, `RequestScopeResolutionError`, `ScopeMismatchError`, `CircularDependencyError`, `DuplicateProviderError`. 패키지 경계에서는 `isDiError(...)`를 사용하세요. 이 함수는 호환되는 중복 사본 사이에서 버전이 있는 DI 소유자 규약과 필수 공통 필드를 검증합니다. |
 
 multi-provider 토큰을 resolve하면 등록 순서대로 해석된 값의 배열이 반환됩니다.
 

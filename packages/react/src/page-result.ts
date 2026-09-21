@@ -1,20 +1,21 @@
 import {
+  type FrameworkResponseValueFinalizerContext,
+  registerFrameworkResponseValueFinalizer,
+} from '@fluojs/http/internal';
+import {
+  isRequestAbortedError,
   type Middleware,
   type MiddlewareContext,
   type Next,
-  RequestAbortedError,
   type RequestContext,
 } from '@fluojs/http/portable';
-import {
-  registerFrameworkResponseValueFinalizer,
-  type FrameworkResponseValueFinalizerContext,
-} from '@fluojs/http/internal';
 import { isValidElement } from 'react';
 
 import { getReactPathMetadata } from './decorators.js';
 import {
   bindReactSsrDiagnosticHandler,
   createReactSsrDiagnostic,
+  isReactSsrDiagnosticError,
   REACT_SSR_DIAGNOSTIC_CODES,
   REACT_SSR_DIAGNOSTIC_PHASES,
   ReactSsrDiagnosticError,
@@ -55,7 +56,7 @@ function reportReactPageFailure(
     return;
   }
 
-  if (error instanceof ReactSsrDiagnosticError) {
+  if (isReactSsrDiagnosticError(error)) {
     reportReactSsrDiagnostic(
       runtime.onDiagnostic,
       createReactSsrDiagnostic({
@@ -69,7 +70,7 @@ function reportReactPageFailure(
     return;
   }
 
-  if (error instanceof RequestAbortedError || isRequestAborted(context)) {
+  if (isRequestAbortedError(error) || isRequestAborted(context)) {
     reportReactSsrDiagnostic(
       runtime.onDiagnostic,
       createReactSsrDiagnostic({

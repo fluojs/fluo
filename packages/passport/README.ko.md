@@ -295,7 +295,7 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 - `AuthStrategy`: 커스텀 인증 로직 구현을 위한 계약입니다.
 - `AuthRequirement`: 선택된 strategy, optional-auth mode, required scope를 담는 route-level metadata입니다.
 - `AuthStrategyResult`, `AuthOptionalResult`, `AuthHandledResult`: Principal, 의도적으로 누락된 credential, 이미 처리된 response를 표현하는 strategy return variant입니다.
-- `AuthStrategyResolutionError`, `AuthenticationRequiredError`, `AuthenticationFailedError`, `AuthenticationExpiredError`: Registry miss, 누락된 credential, 잘못된 credential, 만료된 credential에 대해 guard와 strategy adapter가 사용하는 공개 error입니다.
+- `AuthStrategyResolutionError`, `AuthenticationRequiredError`, `AuthenticationFailedError`, `AuthenticationExpiredError`: Registry miss, 누락된 credential, 잘못된 credential, 만료된 credential에 대해 guard와 strategy adapter가 사용하는 공개 error입니다. `isPassportError(...)`는 호환되는 중복 사본의 버전이 있는 소유자 규약을 검증하며, guard는 code 문자열만 닮은 일반 객체를 허용하지 않고 같은 HTTP 401 분류를 유지합니다.
 
 ### Metadata 및 scope helper
 - `defineAuthRequirement(...)`, `getOwnAuthRequirement(...)`, `getAuthRequirement(...)`: Custom decorator나 tooling을 `AuthGuard`와 통합할 때 auth requirement metadata를 읽고 쓰는 공개 helper입니다.

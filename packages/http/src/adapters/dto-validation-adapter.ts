@@ -1,7 +1,8 @@
-import { type Constructor } from '@fluojs/core';
+import type { Constructor } from '@fluojs/core';
 import {
   DefaultValidator as BaseDefaultValidator,
-  DtoValidationError,
+  type DtoValidationError,
+  isDtoValidationError,
   type MaterializeOptions,
 } from '@fluojs/validation';
 
@@ -32,7 +33,7 @@ export class HttpDtoValidationAdapter implements Validator {
 
       await this.validator.validate(plan.toValidationValue(value), target);
     } catch (error: unknown) {
-      if (error instanceof DtoValidationError) {
+      if (isDtoValidationError(error)) {
         this.throwBadRequestForValidationError(error);
       }
 
@@ -44,7 +45,7 @@ export class HttpDtoValidationAdapter implements Validator {
     try {
       return await this.validator.materialize(value, target, options);
     } catch (error: unknown) {
-      if (error instanceof DtoValidationError) {
+      if (isDtoValidationError(error)) {
         this.throwBadRequestForValidationError(error);
       }
 

@@ -33,7 +33,7 @@ pnpm add @fluojs/validation
 ## 빠른 시작
 
 ```ts
-import { DefaultValidator, DtoValidationError, IsEmail, IsString, MinLength } from '@fluojs/validation';
+import { DefaultValidator, isDtoValidationError, IsEmail, IsString, MinLength } from '@fluojs/validation';
 
 class CreateUserDto {
   @IsEmail()
@@ -54,7 +54,7 @@ try {
 
   console.log(dto instanceof CreateUserDto);
 } catch (error) {
-  if (error instanceof DtoValidationError) {
+  if (isDtoValidationError(error)) {
     console.log(error.issues);
   }
 }
@@ -111,7 +111,7 @@ Derived DTO에 validation decorator를 추가하면 derived DTO가 소유하는 
 
 ### 검증 이슈 형태
 
-`DtoValidationError.issues`는 request-pipeline 오류 상세에 사용하는 안정적인 DTO입니다.
+`DtoValidationError.issues`는 request-pipeline 오류 상세에 사용하는 안정적인 DTO입니다. `isDtoValidationError(...)`는 constructor identity 대신 호환되는 중복 패키지 사본의 버전이 있는 validation 소유자 규약과 issue 필드를 검증합니다.
 
 ```ts
 type ValidationIssue = {

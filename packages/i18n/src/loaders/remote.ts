@@ -1,4 +1,4 @@
-import { I18nError } from '../errors.js';
+import { I18nError, isI18nError } from '../errors.js';
 import type { I18nLocale, I18nMessageTree, I18nTranslationKey } from '../types.js';
 import type { I18nLoader, I18nLoaderLoadOptions } from './shared.js';
 import {
@@ -114,7 +114,7 @@ function parseRemoteCatalog(value: unknown, locale: I18nLocale, namespace: I18nT
     try {
       return snapshotLoaderMessageTree(JSON.parse(value), `catalogs.${locale}.${namespace}`);
     } catch (error) {
-      if (error instanceof I18nError) {
+      if (isI18nError(error)) {
         throw error;
       }
 
@@ -140,7 +140,7 @@ function createAbortError(): I18nError {
 }
 
 function createProviderError(error: unknown): I18nError {
-  if (error instanceof I18nError) {
+  if (isI18nError(error)) {
     return error;
   }
 
@@ -217,7 +217,7 @@ export class RemoteI18nLoader implements I18nLoader {
     const timeout = setTimeout(() => controller.abort(createTimeoutError()), this.timeoutMs);
     let rejectOnAbort: (() => void) | undefined;
     const abortRace = new Promise<never>((_resolve, reject) => {
-      rejectOnAbort = () => reject(controller.signal.reason instanceof I18nError ? controller.signal.reason : createAbortError());
+      rejectOnAbort = () => reject(isI18nError(controller.signal.reason) ? controller.signal.reason : createAbortError());
       controller.signal.addEventListener('abort', rejectOnAbort, { once: true });
     });
 
@@ -227,7 +227,7 @@ export class RemoteI18nLoader implements I18nLoader {
       throwIfAborted(controller.signal);
       return parseRemoteCatalog(rawCatalog, locale, namespace);
     } catch (error) {
-      if (controller.signal.aborted && controller.signal.reason instanceof I18nError) {
+      if (controller.signal.aborted && isI18nError(controller.signal.reason)) {
         throw controller.signal.reason;
       }
 

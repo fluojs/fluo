@@ -1,4 +1,4 @@
-import { FluoError, formatTokenName } from '@fluojs/core';
+import { FluoError, formatTokenName, isFluoError, setFluoErrorContract } from '@fluojs/core';
 
 /**
  * Public lifecycle operations supported by {@link PlatformLifecycleConflictError}.
@@ -36,12 +36,25 @@ export class PlatformLifecycleConflictError extends FluoError {
     );
     this.activeOperation = activeOperation;
     this.requestedOperation = requestedOperation;
+    setFluoErrorContract(this, '@fluojs/runtime');
   }
 }
 
 /**
- * Structured context for runtime-level errors.
+ * Recognizes compatible runtime lifecycle conflict errors across duplicate package copies.
+ * @param value Candidate thrown value.
+ * @returns Whether the value satisfies the platform lifecycle conflict error contract.
  */
+export function isPlatformLifecycleConflictError(value: unknown): value is PlatformLifecycleConflictError {
+  if (!isFluoError(value, '@fluojs/runtime') || value.code !== 'PLATFORM_LIFECYCLE_CONFLICT') return false;
+  const error = value as PlatformLifecycleConflictError;
+  return (error.activeOperation === 'start' || error.activeOperation === 'stop')
+    && (error.requestedOperation === 'start' || error.requestedOperation === 'stop')
+    && error.meta?.activeOperation === error.activeOperation
+    && error.meta?.requestedOperation === error.requestedOperation;
+}
+
+/** Structured context for runtime-level errors. */
 export interface RuntimeErrorContext {
   /** Name of the module where the error occurred. */
   readonly module?: string;

@@ -1,4 +1,3 @@
-import { PlatformLifecycleConflictError } from '@fluojs/runtime';
 import type {
   PlatformComponent,
   PlatformHealthReport,
@@ -9,6 +8,7 @@ import type {
   PlatformState,
   PlatformValidationResult,
 } from '@fluojs/runtime';
+import { isPlatformLifecycleConflictError } from '@fluojs/runtime';
 
 type LifecycleHook = () => Promise<void> | void;
 
@@ -289,7 +289,7 @@ async function assertLifecycleConflict(
     throw new Error(`${requested}() must reject while ${active}() is active.`);
   }
 
-  if (!(outcome.error instanceof PlatformLifecycleConflictError)) {
+  if (!isPlatformLifecycleConflictError(outcome.error)) {
     throw new Error(`${requested}() must reject with PlatformLifecycleConflictError while ${active}() is active.`);
   }
 

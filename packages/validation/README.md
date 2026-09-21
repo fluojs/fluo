@@ -33,7 +33,7 @@ pnpm add @fluojs/validation
 ## Quick Start
 
 ```ts
-import { DefaultValidator, DtoValidationError, IsEmail, IsString, MinLength } from '@fluojs/validation';
+import { DefaultValidator, isDtoValidationError, IsEmail, IsString, MinLength } from '@fluojs/validation';
 
 class CreateUserDto {
   @IsEmail()
@@ -54,7 +54,7 @@ try {
 
   console.log(dto instanceof CreateUserDto);
 } catch (error) {
-  if (error instanceof DtoValidationError) {
+  if (isDtoValidationError(error)) {
     console.log(error.issues);
   }
 }
@@ -116,7 +116,7 @@ when extending a class returned by a mapped DTO helper.
 
 ### Validation issue shape
 
-`DtoValidationError.issues` is a stable DTO for request-pipeline error details:
+`DtoValidationError.issues` is a stable DTO for request-pipeline error details. `isDtoValidationError(...)` validates the versioned validation owner contract and issue fields across compatible duplicate package copies instead of relying on constructor identity:
 
 ```ts
 type ValidationIssue = {

@@ -1,4 +1,4 @@
-import { FluoError } from '@fluojs/core';
+import { FluoError, isFluoError, setFluoErrorContract } from '@fluojs/core';
 import type { FrameworkRequest, RequestContext } from '@fluojs/http/portable';
 
 /** Stable machine-readable phases for the React SSR request lifecycle. */
@@ -77,7 +77,21 @@ export class ReactSsrDiagnosticError extends FluoError {
     });
     this.code = options.code;
     this.phase = options.phase;
+    setFluoErrorContract(this, '@fluojs/react');
   }
+}
+
+/**
+ * Recognizes compatible React SSR diagnostic errors across duplicate package copies.
+ * @param value Candidate thrown value.
+ * @returns Whether the value satisfies the React SSR diagnostic error contract.
+ */
+export function isReactSsrDiagnosticError(value: unknown): value is ReactSsrDiagnosticError {
+  if (!isFluoError(value, '@fluojs/react')) return false;
+  const error = value as ReactSsrDiagnosticError;
+  return Object.values(REACT_SSR_DIAGNOSTIC_CODES).includes(error.code)
+    && Object.values(REACT_SSR_DIAGNOSTIC_PHASES).includes(error.phase)
+    && error.meta?.phase === error.phase;
 }
 
 type ReactSsrDiagnosticMarker = {

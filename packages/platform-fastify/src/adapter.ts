@@ -13,8 +13,9 @@ import {
   type FrameworkResponseStream,
   type HandlerDescriptor,
   type HttpApplicationAdapter,
-  HttpException,
+  type HttpException,
   InternalServerErrorException,
+  isHttpException,
   PayloadTooLargeException,
 } from '@fluojs/http';
 import {
@@ -26,12 +27,6 @@ import {
   markAbsentRequestId,
   registerAuthoritativeAbortProbe,
 } from '@fluojs/http/internal';
-import type { MultipartOptions, UploadedFile } from '@fluojs/runtime';
-import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
-import {
-  dispatchWithRequestResponseFactory,
-  type RequestResponseFactory,
-} from '@fluojs/runtime/internal/request-response-factory';
 import {
   cloneHeaderValue,
   createDeferredFrameworkRequestShell,
@@ -42,6 +37,12 @@ import {
   snapshotSimpleQueryRecord,
   splitRawRequestUrl,
 } from '@fluojs/platform-nodejs/internal';
+import type { MultipartOptions, UploadedFile } from '@fluojs/runtime';
+import {
+  dispatchWithRequestResponseFactory,
+  type RequestResponseFactory,
+} from '@fluojs/runtime/internal/request-response-factory';
+import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
 import fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 
 /**
@@ -1338,7 +1339,7 @@ function resolveNonNegativeIntegerOption(name: string, value: number | undefined
 }
 
 function toHttpException(error: unknown): HttpException {
-  if (error instanceof HttpException) {
+  if (isHttpException(error)) {
     return error;
   }
 

@@ -500,7 +500,7 @@ The package can be used programmatically to trigger CLI actions from within othe
 | `newUsage()` | Returns the current `fluo new` usage text for help surfaces and tests. |
 | `runNewCommand(argv, options?)` | Programmatic access to the project scaffolding logic. |
 | `NewCommandRuntimeOptions` | Type for `runNewCommand(...)` runtime overrides such as prompts, filesystem writes, dependency installation, and git initialization; `runCli(...)` also accepts these overrides when it dispatches `new` or `create`. Monorepo-local starter dependency overrides are internal sandbox harness details, not part of this public type. |
-| `CliPromptCancelledError` | Stable sentinel that caller-supplied prompt hooks can throw to report normal cancellation. |
+| `CliPromptCancelledError`, `isCliPromptCancelledError(...)` | Stable sentinel and version-aware predicate for caller-supplied prompt hooks to report normal cancellation across compatible duplicate copies; plain lookalikes remain command failures. |
 | `runGenerateCommand(kind, name, baseDirectory, options?)` | Programmatic access to the built-in schematic generator and module auto-registration planner. |
 | `GenerateOptions` | Type for programmatic generator options. `withTest` was removed; use `withSliceTest` for module and resource slice tests. |
 | `GenerateResult` | Type for generator results, including changed files, dry-run plan entries, module wiring metadata, and next-step hints. |

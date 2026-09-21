@@ -1,4 +1,4 @@
-export { CliPromptCancelledError } from './prompt-cancel.js';
+export { CliPromptCancelledError, isCliPromptCancelledError } from './prompt-cancel.js';
 export { type GeneratePlanAction, type GeneratePlanEntry, type GenerateResult, runGenerateCommand } from './public-generate.js';
 export { type InspectCommandRuntimeOptions, inspectUsage, runInspectCommand } from './public-inspect.js';
 export { type NewCommandRuntimeOptions, newUsage, runNewCommand } from './public-new.js';

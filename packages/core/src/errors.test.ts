@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { FluoCodeError, FluoError, formatTokenName, InvariantError } from './errors.js';
+import { FluoCodeError, FluoError, formatTokenName, InvariantError, isFluoError } from './errors.js';
 
 class DatabaseError extends FluoCodeError {
   constructor(message: string) {
@@ -66,6 +66,22 @@ describe('public core errors', () => {
     expect(error.name).toBe('DatabaseError');
     expect(error.code).toBe('DATABASE_ERROR');
     expect(error.message).toBe(message);
+  });
+
+  it('recognizes compatible branded errors without trusting plain lookalikes', () => {
+    const error = new FluoError('database unavailable', { code: 'DATABASE_UNAVAILABLE' });
+
+    expect(isFluoError(error)).toBe(true);
+    expect(isFluoError({ name: error.name, message: error.message, code: error.code })).toBe(false);
+
+    const incompatible = new Error('future contract') as Error & { code: string };
+    incompatible.code = 'FUTURE_ERROR';
+    Object.defineProperty(incompatible, Symbol.for('fluo.error.contract'), {
+      value: { owner: '@fluojs/core', version: 2 },
+    });
+    expect(isFluoError(incompatible)).toBe(false);
+
+    expect(isFluoError(Object.assign(error, { code: 42 }))).toBe(false);
   });
 });
 

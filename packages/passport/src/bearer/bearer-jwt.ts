@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
-import { getRequestHeader, type GuardContext } from '@fluojs/http';
-import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
+import { type GuardContext, getRequestHeader } from '@fluojs/http';
+import { DefaultJwtVerifier, isJwtError } from '@fluojs/jwt';
 
 import {
   AuthenticationExpiredError,
@@ -106,12 +106,12 @@ export class BearerJwtStrategy implements AuthStrategy {
     try {
       return await this.verifier.verifyAccessToken(token);
     } catch (error: unknown) {
-      if (error instanceof JwtExpiredTokenError) {
+      if (isJwtError(error) && error.code === 'JWT_EXPIRED') {
         addBearerChallenge(context, 'Bearer error="invalid_token"');
         throw new AuthenticationExpiredError('Access token has expired.', { cause: error });
       }
 
-      if (error instanceof JwtInvalidTokenError) {
+      if (isJwtError(error) && error.code === 'JWT_INVALID_TOKEN') {
         addBearerChallenge(context, 'Bearer error="invalid_token"');
         throw new AuthenticationFailedError('Access token verification failed.', { cause: error });
       }

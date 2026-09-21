@@ -1,7 +1,7 @@
 import type {
+  Server as HttpServer,
   IncomingHttpHeaders,
   IncomingMessage,
-  Server as HttpServer,
 } from 'node:http';
 import { createServer as createHttpServer } from 'node:http';
 import {
@@ -20,8 +20,9 @@ import {
   type FrameworkResponseStream,
   type HandlerDescriptor,
   type HttpApplicationAdapter,
-  HttpException,
+  type HttpException,
   InternalServerErrorException,
+  isHttpException,
   PayloadTooLargeException,
 } from '@fluojs/http';
 import {
@@ -30,17 +31,11 @@ import {
   consumeRawRequestNativeRouteHandoff,
   isRoutePathNormalizationSensitive,
 } from '@fluojs/http/internal';
-import type { MultipartOptions, UploadedFile } from '@fluojs/runtime';
-import {
-  dispatchWithRequestResponseFactory,
-  finalizeRouteOwnedMultipartBody,
-  type RequestResponseFactory,
-} from '@fluojs/runtime/internal/request-response-factory';
 import {
   cloneRequestHeaders,
-  createNodeEarlyHintsCapability,
   createDeferredFrameworkRequestShell,
   createMemoizedAsyncValue,
+  createNodeEarlyHintsCapability,
   createRequestSignal,
   normalizePrimaryContentType,
   parseQueryParamsFromSearch,
@@ -48,13 +43,19 @@ import {
   snapshotSimpleQueryRecord,
   splitRawRequestUrl,
 } from '@fluojs/platform-nodejs/internal';
+import type { MultipartOptions, UploadedFile } from '@fluojs/runtime';
+import {
+  dispatchWithRequestResponseFactory,
+  finalizeRouteOwnedMultipartBody,
+  type RequestResponseFactory,
+} from '@fluojs/runtime/internal/request-response-factory';
 import { parseMultipart, parseMultipartStream } from '@fluojs/runtime/web';
 import express, {
   type ErrorRequestHandler,
   type Express,
   type Request as ExpressRequest,
-  type RequestHandler,
   type Response as ExpressResponse,
+  type RequestHandler,
 } from 'express';
 
 /**
@@ -1113,7 +1114,7 @@ function forceCloseConnections(server: ExpressServer, sockets: ReadonlySet<Socke
 }
 
 function toHttpException(error: unknown): HttpException {
-  if (error instanceof HttpException) {
+  if (isHttpException(error)) {
     return error;
   }
 

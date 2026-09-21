@@ -1,6 +1,6 @@
 import { Inject } from '@fluojs/core';
 import type { GuardContext } from '@fluojs/http';
-import { DefaultJwtVerifier, JwtExpiredTokenError, JwtInvalidTokenError } from '@fluojs/jwt';
+import { DefaultJwtVerifier, isJwtError } from '@fluojs/jwt';
 
 import {
   AuthenticationExpiredError,
@@ -117,11 +117,11 @@ export class CookieAuthStrategy implements AuthStrategy {
         subject: principal.subject,
       };
     } catch (error: unknown) {
-      if (error instanceof JwtExpiredTokenError) {
+      if (isJwtError(error) && error.code === 'JWT_EXPIRED') {
         throw new AuthenticationExpiredError('Access token has expired.', { cause: error });
       }
 
-      if (error instanceof JwtInvalidTokenError) {
+      if (isJwtError(error) && error.code === 'JWT_INVALID_TOKEN') {
         throw new AuthenticationFailedError('Access token is invalid.', { cause: error });
       }
 

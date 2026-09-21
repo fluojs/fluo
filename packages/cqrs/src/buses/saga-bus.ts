@@ -1,4 +1,4 @@
-import { FluoError, Inject, InvariantError, type Token } from '@fluojs/core';
+import { Inject, InvariantError, isFluoError, type Token } from '@fluojs/core';
 import type { OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -11,8 +11,8 @@ import type { CqrsDispatchContext, CqrsEventType, IEvent, ISaga, SagaDescriptor 
 import { drainSagaContinuations, runSerializedSagaContinuationTasks, type SagaDispatchOptions } from './saga-continuation.js';
 import { discoverSagaDescriptors } from './saga-discovery.js';
 import { drainPendingSagaDispatches } from './saga-drain.js';
-import { CqrsShutdownDeadline } from './shutdown-deadline.js';
 import { enterSagaTopology, type SagaTopologyEntry } from './saga-topology.js';
+import { CqrsShutdownDeadline } from './shutdown-deadline.js';
 
 const DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS = 5000;
 
@@ -319,7 +319,7 @@ export class CqrsSagaLifecycleService extends CqrsBusBase implements OnApplicati
     try {
       await instance.handle(createIsolatedEvent(descriptor.eventType as CqrsEventType<TEvent>, event), context);
     } catch (error) {
-      if (error instanceof FluoError) {
+      if (isFluoError(error)) {
         throw error;
       }
 

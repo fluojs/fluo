@@ -1,8 +1,8 @@
 import { DtoValidationError, type ValidationIssue } from '@fluojs/validation';
 
-import { I18nError } from './errors.js';
-import type { I18nInterpolationValues, I18nLocale, I18nTranslationKey } from './types.js';
+import { I18nError, isI18nError } from './errors.js';
 import type { I18nService } from './service.js';
+import type { I18nInterpolationValues, I18nLocale, I18nTranslationKey } from './types.js';
 
 /**
  * Context used to derive translation keys for one validation issue.
@@ -40,7 +40,7 @@ export interface LocalizeValidationIssuesOptions {
 const DEFAULT_VALIDATION_NAMESPACE = 'validation';
 
 function isMissingMessageError(error: unknown): boolean {
-  return error instanceof I18nError && error.code === 'I18N_MISSING_MESSAGE';
+  return isI18nError(error) && error.code === 'I18N_MISSING_MESSAGE';
 }
 
 function appendWithPrefix(keys: string[], keyPrefix: string | undefined, key: string): void {

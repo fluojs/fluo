@@ -1,4 +1,4 @@
-import { FluoError, type MetadataSource } from '@fluojs/core';
+import { FluoError, isFluoError, type MetadataSource, setFluoErrorContract } from '@fluojs/core';
 
 /**
  * Detailed error information for field-level validation or binding failures.
@@ -70,7 +70,33 @@ export class HttpException extends FluoError {
 
     this.details = options.details ? [...options.details] : undefined;
     this.status = status;
+    setFluoErrorContract(this, '@fluojs/http');
   }
+}
+
+function isHttpExceptionDetail(value: unknown): value is HttpExceptionDetail {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const detail = value as Record<string, unknown>;
+  return typeof detail.code === 'string'
+    && typeof detail.message === 'string'
+    && (detail.field === undefined || typeof detail.field === 'string')
+    && (detail.source === undefined || typeof detail.source === 'string');
+}
+
+/**
+ * Recognizes compatible `@fluojs/http` exceptions across duplicate package copies.
+ *
+ * @param value Candidate thrown value.
+ * @returns `true` when the HTTP error contract and serialized fields are valid.
+ */
+export function isHttpException(value: unknown): value is HttpException {
+  if (!isFluoError(value, '@fluojs/http')) return false;
+  const error = value as HttpException;
+  return Number.isInteger(error.status)
+    && error.status >= 400
+    && error.status <= 599
+    && (error.details === undefined
+      || (Array.isArray(error.details) && error.details.every(isHttpExceptionDetail)));
 }
 
 /**

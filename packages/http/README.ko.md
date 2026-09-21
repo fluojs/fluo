@@ -599,7 +599,7 @@ const app = await FluoFactory.create(AppModule, {
 });
 ```
 
-HTTP가 representation selection 전에 outcome을 분류한다. Route miss는 기존 404 outcome이 되고 middleware,
+HTTP가 representation selection 전에 outcome을 분류한다. `isHttpException(...)`은 버전이 있는 HTTP 소유자 규약과 status, details, 공통 오류 필드를 검증하므로 호환되는 same-realm 중복 패키지 사본도 status와 JSON/HTML representation을 유지한다. 일반 유사 객체와 호환되지 않는 규약 버전은 처리되지 않은 server error로 남는다. Route miss는 기존 404 outcome이 되고 middleware,
 DTO binding/validation, guard, interceptor, handler의 uncommitted `HttpException`은 같은 seam을 사용한다.
 Provider는 classified exception, canonical `ErrorResponse`, request, optional matched handler, request id, active
 request-scope container를 받는다. `FrameworkResponse`는 받지 않으므로 status, header, `HEAD`, abort, commit
