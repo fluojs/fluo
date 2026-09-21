@@ -24,6 +24,7 @@ import {
   type GuardContext,
   Header,
   HttpCode,
+  HttpException,
   type InterceptorContext,
   type MiddlewareContext,
   Post,
@@ -40,7 +41,6 @@ import {
   Version,
   VersioningType,
 } from '@fluojs/http';
-import { FluoError, setFluoErrorContract } from '@fluojs/core';
 import {
   type Application,
   defineModule,
@@ -1394,17 +1394,14 @@ describe('@fluojs/platform-express', () => {
   });
 
   it('preserves a compatible duplicate-copy HTTP 413 multipart error', async () => {
-    const duplicateCopyError = Object.assign(
-      new FluoError('Foreign multipart limit.', {
+    const duplicateCopyError = Object.create(
+      Error.prototype,
+      Object.getOwnPropertyDescriptors(new HttpException(413, 'Foreign multipart limit.', {
         code: 'FOREIGN_MULTIPART_LIMIT',
-        meta: { limit: 7 },
-      }),
-      {
         details: [{ code: 'FOREIGN_MULTIPART_LIMIT', field: 'attachment', message: 'Foreign multipart limit.' }],
-        status: 413,
-      },
+        meta: { limit: 7 },
+      })),
     );
-    setFluoErrorContract(duplicateCopyError, '@fluojs/http');
     const parseMultipart = vi.spyOn(runtimeWeb, 'parseMultipart').mockRejectedValue(duplicateCopyError);
 
     @Controller('/foreign-multipart-limit')
@@ -1430,6 +1427,7 @@ describe('@fluojs/platform-express', () => {
         method: 'POST',
       });
 
+      expect(duplicateCopyError).not.toBeInstanceOf(HttpException);
       expect(duplicateCopyError).not.toBeInstanceOf(PayloadTooLargeException);
       expect(response.status).toBe(413);
       await expect(response.json()).resolves.toEqual({
