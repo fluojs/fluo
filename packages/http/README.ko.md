@@ -762,6 +762,8 @@ export class UploadController {
 
 ## 공개 API
 
+`FAST_PATH_ELIGIBILITY_SYMBOL`과 `FAST_PATH_STATS_SYMBOL`은 호환되는 중복 package 사본 사이에서 안정적인 same-realm identity를 사용하므로 adapter와 diagnostics가 dispatcher-owned mutable state를 공유하지 않고 다른 사본이 기록한 metadata를 읽을 수 있습니다.
+
 - **라우팅 데코레이터**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
 - **바인딩 데코레이터**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`, `InputPolicy`
 - **명시적 입력 materialization**: `InputPolicyOptions`, `createSchemaDto`, `StandardSchemaBinder`, `SchemaDtoOptions`, `SchemaBindingField`

@@ -73,7 +73,7 @@ export interface FastPathStats {
  * Adapter and diagnostics integrations can use this key to inspect the route's
  * frozen {@link FastPathEligibility} metadata without accessing dispatcher-owned state.
  */
-export const FAST_PATH_ELIGIBILITY_SYMBOL = Symbol('fastPathEligibility');
+export const FAST_PATH_ELIGIBILITY_SYMBOL = Symbol.for('fluo.http.fast-path.eligibility');
 
 /**
  * Public symbol key for fast path execution statistics attached to a dispatcher.
@@ -82,4 +82,4 @@ export const FAST_PATH_ELIGIBILITY_SYMBOL = Symbol('fastPathEligibility');
  * Adapter and diagnostics integrations can use this key to read the same
  * {@link FastPathStats} value exposed by `getDispatcherFastPathStats(...)`.
  */
-export const FAST_PATH_STATS_SYMBOL = Symbol('fastPathStats');
+export const FAST_PATH_STATS_SYMBOL = Symbol.for('fluo.http.fast-path.stats');

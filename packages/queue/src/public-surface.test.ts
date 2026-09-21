@@ -25,6 +25,7 @@ describe('@fluojs/queue root barrel public surface', () => {
     expect(queue).not.toHaveProperty('createQueueProviders');
     expect(queue).toHaveProperty('QueueLifecycleService');
     expect(queue).toHaveProperty('QUEUE');
+    expect(Symbol.keyFor(queue.QUEUE)).toBe('fluo.queue');
     expect(queue).toHaveProperty('getQueueToken');
     expect(queue).toHaveProperty('getQueueLifecycleServiceToken');
     expect(queue).toHaveProperty('QueueWorker');

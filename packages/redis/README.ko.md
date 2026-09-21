@@ -79,7 +79,7 @@ export class CacheRepository {
 
 ### 수명 주기 소유권
 
-`RedisModule.forRoot(...)` 등록은 각각 새 client를 생성하며, `@fluojs/redis`는 `RedisModule.forRoot({ name, ... })`로 등록한 이름 있는 연결을 포함해 그 client의 lifecycle을 직접 관리합니다. 이 module은 기존 client instance를 채택하지 않습니다. 등록 identity는 애플리케이션 전체에서 유일해야 합니다. 이름 없는 기본 등록은 하나만 허용하고, trim한 각 name도 하나만 허용하며, bootstrap은 Redis client를 만들기 전에 중복 identity를 거부합니다.
+`RedisModule.forRoot(...)` 등록은 각각 새 client를 생성하며, `@fluojs/redis`는 `RedisModule.forRoot({ name, ... })`로 등록한 이름 있는 연결을 포함해 그 client의 lifecycle을 직접 관리합니다. 이 module은 기존 client instance를 채택하지 않습니다. 등록 identity는 애플리케이션 전체에서 유일해야 합니다. 이름 없는 기본 등록은 하나만 허용하고, trim한 각 name도 하나만 허용합니다. 호환되는 중복 package 사본은 exported default/named token identity와 registration marker를 공유하므로 mixed-copy 중복도 Redis client 생성 전 bootstrap에서 거부됩니다. Ownership은 애플리케이션별로 격리되며 private lifecycle/guard token과 기본 `RedisService` constructor token 정책은 유지됩니다.
 
 - 호출자가 옵션을 강제로 캐스팅하더라도 Fluo는 항상 `lazyConnect: true`를 강제하므로, 소켓은 import 시점이 아니라 애플리케이션 bootstrap 중에 열립니다.
 - bootstrap 단계에서는 클라이언트가 ioredis `wait` 상태일 때만 lifecycle service가 `connect()`를 호출합니다.

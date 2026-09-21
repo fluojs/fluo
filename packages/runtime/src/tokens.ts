@@ -19,32 +19,32 @@ export const APPLICATION_LOGGER: Token<ApplicationLogger> = Symbol.for('fluo.run
 /**
  * Injection token for the runtime container.
  */
-export const RUNTIME_CONTAINER: Token<Container> = Symbol('RUNTIME_CONTAINER');
+export const RUNTIME_CONTAINER: Token<Container> = Symbol.for('fluo.runtime.container');
 
 /**
  * Injection token for the effective provider tokens supplied to the application bootstrap.
  */
-export const BOOTSTRAP_PROVIDER_TOKENS: Token<ReadonlySet<Token>> = Symbol('BOOTSTRAP_PROVIDER_TOKENS');
+export const BOOTSTRAP_PROVIDER_TOKENS: Token<ReadonlySet<Token>> = Symbol.for('fluo.runtime.bootstrap-provider-tokens');
 
 /**
  * Injection token for the compiled module list.
  */
-export const COMPILED_MODULES: Token<readonly CompiledModule[]> = Symbol('COMPILED_MODULES');
+export const COMPILED_MODULES: Token<readonly CompiledModule[]> = Symbol.for('fluo.runtime.compiled-modules');
 
 /**
  * Injection token for the HTTP application adapter.
  */
-export const HTTP_APPLICATION_ADAPTER: Token<HttpApplicationAdapter> = Symbol('HTTP_APPLICATION_ADAPTER');
+export const HTTP_APPLICATION_ADAPTER: Token<HttpApplicationAdapter> = Symbol.for('fluo.runtime.http-application-adapter');
 
 /**
  * Injection token for the platform shell.
  */
-export const PLATFORM_SHELL: Token<PlatformShell> = Symbol('PLATFORM_SHELL');
+export const PLATFORM_SHELL: Token<PlatformShell> = Symbol.for('fluo.runtime.platform-shell');
 
 /**
  * Internal injection token for registering runtime-owned cleanup callbacks.
  */
-export const RUNTIME_CLEANUP_REGISTRATION: Token<RuntimeCleanupRegistration> = Symbol('RUNTIME_CLEANUP_REGISTRATION');
+export const RUNTIME_CLEANUP_REGISTRATION: Token<RuntimeCleanupRegistration> = Symbol.for('fluo.runtime.cleanup-registration');
 
 /** Internal injection token for integrations that must defer work until full runtime readiness. */
-export const BOOTSTRAP_READY_SIGNAL: Token<BootstrapReadySignal> = Symbol('BOOTSTRAP_READY_SIGNAL');
+export const BOOTSTRAP_READY_SIGNAL: Token<BootstrapReadySignal> = Symbol.for('fluo.runtime.bootstrap-ready-signal');
