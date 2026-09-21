@@ -5,7 +5,7 @@ import type { QueueLifecycleService } from './service.js';
 import type { NormalizedQueueModuleOptions, Queue } from './types.js';
 
 /** Internal marker that distinguishes queue registration metadata from application value providers. */
-export const QUEUE_MODULE_CONTEXT_MARKER = Symbol('fluo.queue.module-context.marker');
+export const QUEUE_MODULE_CONTEXT_MARKER = Symbol.for('fluo.queue.module-context.marker');
 
 /** Runtime metadata that binds one queue registration to its compiled module graph. */
 export interface QueueModuleContext {
@@ -54,7 +54,7 @@ function getScopedToken<T>(tokens: Map<string, Token<T>>, scope: string, descrip
     return existing;
   }
 
-  const created = Symbol(`${description}:${scope}`) as Token<T>;
+  const created = Symbol.for(`${description}:${scope}`) as Token<T>;
   tokens.set(scope, created);
   return created;
 }

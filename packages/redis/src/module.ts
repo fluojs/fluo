@@ -8,7 +8,7 @@ import { DEFAULT_REDIS_CLIENT_NAME, getRedisClientToken, REDIS_CLIENT } from './
 import type { RedisClientOptions, RedisLifecycleOptions, RedisModuleOptions } from './types.js';
 
 const redisLifecycleTokens = new Map<string, symbol>();
-const REDIS_REGISTRATION_IDENTITIES = Symbol('fluo.redis.registration-identities');
+const REDIS_REGISTRATION_IDENTITIES = Symbol.for('fluo.redis.registration-identities');
 
 function getRedisLifecycleToken(name: string): symbol {
   const existing = redisLifecycleTokens.get(name);

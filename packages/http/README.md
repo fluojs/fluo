@@ -772,6 +772,8 @@ Response content negotiation formatters must return `string` or `Uint8Array` fro
 
 ## Public API
 
+`FAST_PATH_ELIGIBILITY_SYMBOL` and `FAST_PATH_STATS_SYMBOL` have stable same-realm identities across compatible duplicate package copies, so adapters and diagnostics can read metadata written by another copy without sharing dispatcher-owned mutable state.
+
 - **Routing decorators**: `Controller`, `Get`, `Sse`, `Query`, `Route`, `Post`, `Put`, `Patch`, `Delete`, `All`, `Options`, `Head`
 - **Binding decorators**: `FromBody`, `FromQuery`, `FromPath`, `FromHeader`, `FromCookie`, `FromFiles`, `RequestDto`, `Optional`, `Convert`, `InputPolicy`
 - **Explicit input materialization**: `InputPolicyOptions`, `createSchemaDto`, `StandardSchemaBinder`, `SchemaDtoOptions`, `SchemaBindingField`

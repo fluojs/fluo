@@ -408,6 +408,7 @@ class UsersModule {}
 
 ## Behavioral Contracts
 
+- Framework-owned runtime injection tokens use stable same-realm identities, so compatible duplicate copies can register and consume the same application-owned container, adapter, platform-shell, cleanup, compiled-module, provider-set, and bootstrap-readiness contracts. This does not globalize application state or change service constructor-token identity.
 - Runtime lifecycle remains a four-hook contract. Startup completes the provider-ordered `onModuleInit()` phase before `onApplicationBootstrap()`; shutdown reverses lifecycle-instance order for `onModuleDestroy()` and then `onApplicationShutdown(signal?)`. Every eligible singleton `multi: true` contribution participates as its own instance in contribution order. NestJS `beforeApplicationShutdown` is unsupported and has no compatibility shim.
 - Request body parsing enforces `maxBodySize` while bytes are still streaming for both Web-standard and Node-backed requests. Oversized Web bodies settle as HTTP 413 without waiting for stream cancellation, and cancellation failures do not mask that response, including on the default cloned-body path where the original request remains unread.
 - `preferNativeJsonBodyReader` remains accepted by `@fluojs/runtime/web` as a deprecated adapter compatibility option, but it no longer changes parsing. Web JSON bodies always use the bounded streaming reader so native whole-body reads cannot bypass `maxBodySize`.

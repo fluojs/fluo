@@ -156,7 +156,7 @@ QueueModule.forRoot({ clientName: 'jobs' })
 
 ### 범위가 지정된 Queue 등록
 
-애플리케이션이 non-global queue 등록을 둘 이상 가져오면 명시적인 `scope`를 사용하세요. Scope 이름은 trim되며, 비어 있으면 안 되고, 컴파일된 module graph 안에서 고유해야 합니다. `QueueModule.forRoot({ global: false })`를 두 번 가져오는 duplicate default scoped registration이나 `QueueModule.forRoot({ global: false, scope: 'jobs' })`를 두 번 가져오는 duplicate explicit scope는 bootstrap 중 결정적인 오류로 실패합니다.
+애플리케이션이 non-global queue 등록을 둘 이상 가져오면 명시적인 `scope`를 사용하세요. Scope 이름은 trim되며, 비어 있으면 안 되고, 컴파일된 module graph 안에서 고유해야 합니다. 호환되는 중복 package 사본은 default/scoped queue token과 registration-context marker를 공유하므로 `QueueModule.forRoot({ global: false })`를 두 번 가져오는 duplicate default scoped registration이나 `QueueModule.forRoot({ global: false, scope: 'jobs' })`를 두 번 가져오는 duplicate explicit scope는 BullMQ resource 시작 전 bootstrap에서 결정적인 오류로 실패합니다. Ownership은 application 및 scope별로 격리되고 private per-registration state는 process-global이 아닙니다.
 
 Scope는 DI ownership을 격리하지만 Redis에 저장되는 BullMQ queue를 namespace하지는 않습니다. `clientName`은 DI registration을 선택할 뿐 BullMQ backend identity가 아닙니다. 서로 다른 named client가 같은 Redis database와 BullMQ prefix를 가리킬 수 있습니다.
 

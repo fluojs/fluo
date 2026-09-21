@@ -1,7 +1,7 @@
 import { Inject, Scope } from '@fluojs/core';
 import { defineControllerMetadata } from '@fluojs/core/internal';
 import { getRedisClientToken, REDIS_CLIENT, RedisModule } from '@fluojs/redis';
-import { type ApplicationLogger, FluoFactory, defineModule } from '@fluojs/runtime';
+import { type ApplicationLogger, defineModule, FluoFactory } from '@fluojs/runtime';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withTimeout } from './helpers.js';
 
@@ -1284,6 +1284,50 @@ describe('@fluojs/queue', () => {
         providers: [{ provide: REDIS_CLIENT, useValue: redis }],
       }),
     ).rejects.toThrow('Duplicate @fluojs/queue scope "default" registered. Provide a unique QueueModule.forRoot({ scope }) value for each scoped queue registration.');
+  });
+
+  it('allows one scoped registration module to be re-imported through multiple feature modules', async () => {
+    const registration = QueueModule.forRoot({ global: false, scope: 'jobs' });
+    class FirstQueueFeatureModule {}
+    defineModule(FirstQueueFeatureModule, { imports: [registration] });
+    class SecondQueueFeatureModule {}
+    defineModule(SecondQueueFeatureModule, { imports: [registration] });
+    class AppModule {}
+    defineModule(AppModule, { imports: [FirstQueueFeatureModule, SecondQueueFeatureModule] });
+
+    const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: REDIS_CLIENT, useValue: new MockRedisClient() }],
+    });
+
+    await expect(app.container.resolve(getQueueToken('jobs'))).resolves.toBeDefined();
+    await app.close();
+  });
+
+  it('rejects mixed-copy duplicate scoped queue registrations before creating workers', async () => {
+    const moduleUrl = new URL('./module.ts', import.meta.url);
+    const firstCopy = await import(`${moduleUrl.href}?module-copy=first`);
+    const secondCopy = await import(`${moduleUrl.href}?module-copy=second`);
+    class FirstQueueFeatureModule {}
+    defineModule(FirstQueueFeatureModule, {
+      imports: [firstCopy.QueueModule.forRoot({ global: false, scope: 'jobs' })],
+    });
+    class SecondQueueFeatureModule {}
+    defineModule(SecondQueueFeatureModule, {
+      imports: [secondCopy.QueueModule.forRoot({ global: false, scope: 'jobs' })],
+    });
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [FirstQueueFeatureModule, SecondQueueFeatureModule],
+    });
+
+    const redis = new MockRedisClient();
+
+    await expect(
+      FluoFactory.create(AppModule, {
+        providers: [{ provide: REDIS_CLIENT, useValue: redis }],
+      }),
+    ).rejects.toThrow('Duplicate @fluojs/queue scope "jobs" registered.');
+    expect(bullmqState.workers.size).toBe(0);
   });
 
   it('rejects duplicate explicit scoped queue registrations with a deterministic error', async () => {

@@ -156,7 +156,7 @@ When `QueueModule.forRoot({ global: false })` is used, each queue registration o
 
 ### Scoped Queue Registrations
 
-Use an explicit `scope` when an application imports more than one non-global queue registration. Scope names are trimmed, must be non-empty, and must be unique per compiled module graph. Duplicate default scoped registrations such as two `QueueModule.forRoot({ global: false })` imports, or duplicate explicit scopes such as two `QueueModule.forRoot({ global: false, scope: 'jobs' })` imports, fail deterministically during bootstrap.
+Use an explicit `scope` when an application imports more than one non-global queue registration. Scope names are trimmed, must be non-empty, and must be unique per compiled module graph. Compatible duplicate package copies share default/scoped queue tokens and the registration-context marker, so duplicate default scoped registrations such as two `QueueModule.forRoot({ global: false })` imports, or duplicate explicit scopes such as two `QueueModule.forRoot({ global: false, scope: 'jobs' })` imports, fail deterministically during bootstrap before BullMQ resources start. Ownership remains isolated per application and scope; private per-registration state is not process-global.
 
 A scope isolates DI ownership; it does not namespace the BullMQ queue stored in Redis. `clientName` selects a DI registration and is not a BullMQ backend identity: distinct named clients can point to the same Redis database and BullMQ prefix.
 

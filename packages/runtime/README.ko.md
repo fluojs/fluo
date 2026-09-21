@@ -407,6 +407,7 @@ class UsersModule {}
 
 ## 동작 계약
 
+- Framework가 소유하는 runtime injection token은 안정적인 same-realm identity를 사용하므로 호환되는 중복 사본이 동일한 application-owned container, adapter, platform shell, cleanup, compiled-module, provider-set, bootstrap-readiness 계약을 등록하고 소비할 수 있습니다. 이 동작은 application state를 전역화하거나 service constructor-token identity를 바꾸지 않습니다.
 - Runtime lifecycle은 네 hook 계약을 유지합니다. Startup은 provider order의 `onModuleInit()` phase를 끝낸 뒤 `onApplicationBootstrap()`을 실행하고, shutdown은 lifecycle instance 역순으로 `onModuleDestroy()` 다음 `onApplicationShutdown(signal?)`을 실행합니다. 모든 적격 singleton `multi: true` contribution은 contribution 순서에 따른 별도 instance로 참여합니다. NestJS `beforeApplicationShutdown`은 지원하지 않으며 compatibility shim도 없습니다.
 - 요청 바디 파싱은 Web 표준 요청과 Node 기반 요청 모두에서 바이트가 스트리밍되는 동안 `maxBodySize`를 강제합니다. 한도를 넘은 Web 바디는 stream cancellation을 기다리지 않고 HTTP 413으로 완료되며, cancellation 실패도 해당 응답을 가리지 않습니다. 이 계약은 원본 요청을 읽지 않는 기본 cloned-body 경로에도 적용됩니다.
 - `preferNativeJsonBodyReader`는 deprecated adapter compatibility 옵션으로 `@fluojs/runtime/web`에서 계속 허용되지만 더 이상 파싱 동작을 바꾸지 않습니다. Web JSON 바디는 항상 bounded streaming reader를 사용하므로 native whole-body read가 `maxBodySize`를 우회할 수 없습니다.
