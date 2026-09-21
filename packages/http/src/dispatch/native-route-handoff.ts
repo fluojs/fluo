@@ -96,18 +96,23 @@ export function attachFrameworkRequestNativeRouteHandoff(
 }
 
 /**
- * Reads a pre-matched native route handoff from one framework request.
+ * Consumes a pre-matched native route handoff from one framework request.
  *
  * @param request Framework request being dispatched.
  * @returns The cloned handoff when the adapter supplied one.
  */
-export function readFrameworkRequestNativeRouteHandoff(
+export function consumeFrameworkRequestNativeRouteHandoff(
   request: FrameworkRequest,
 ): NativeRouteHandoff | undefined {
   const record = Reflect.get(
     request as FrameworkRequestWithNativeRouteHandoff,
     FRAMEWORK_REQUEST_NATIVE_ROUTE_HANDOFF,
   ) as FrameworkRequestNativeRouteHandoffRecord | undefined;
+
+  Reflect.deleteProperty(
+    request as FrameworkRequestWithNativeRouteHandoff,
+    FRAMEWORK_REQUEST_NATIVE_ROUTE_HANDOFF,
+  );
 
   if (!record || record.method !== request.method || record.path !== request.path) {
     return undefined;

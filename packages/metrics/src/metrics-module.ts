@@ -251,9 +251,18 @@ const DEFAULT_METRIC_COLLECTORS = collectDefaultMetrics.metricsList.map((collect
 
   return { collectorName, metricNames: collector.metricNames };
 });
-const FRAMEWORK_PLATFORM_GAUGES = new WeakSet<Gauge<string>>();
-const PLATFORM_TELEMETRY_REGISTRY_STATES = new WeakMap<Registry, RuntimePlatformTelemetryRegistryState>();
-const HTTP_INSTRUMENTATION_OWNERS = new WeakMap<Container, WeakSet<Registry>>();
+const FRAMEWORK_PLATFORM_GAUGES = getCompatibleMetricsSharedState(
+  Symbol.for('fluo.metrics.framework-platform-gauges'),
+  () => new WeakSet<Gauge<string>>(),
+);
+const PLATFORM_TELEMETRY_REGISTRY_STATES = getCompatibleMetricsSharedState(
+  Symbol.for('fluo.metrics.platform-telemetry-registry-states'),
+  () => new WeakMap<Registry, RuntimePlatformTelemetryRegistryState>(),
+);
+const HTTP_INSTRUMENTATION_OWNERS = getCompatibleMetricsSharedState(
+  Symbol.for('fluo.metrics.http-instrumentation-owners'),
+  () => new WeakMap<Container, WeakSet<Registry>>(),
+);
 const HEALTH_STATUSES = ['healthy', 'unhealthy', 'degraded'] as const satisfies readonly PlatformHealthStatus[];
 const READINESS_STATUSES = ['ready', 'not-ready', 'degraded'] as const satisfies readonly PlatformReadinessStatus[];
 const PLATFORM_SHELL_TOKEN_NAMES = new Set([String(PLATFORM_SHELL)]);

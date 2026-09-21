@@ -2587,4 +2587,60 @@ describe('MetricsModule', () => {
     // Then
     expect(reusedRegistry).toBe(registry);
   });
+
+  it('shares framework metrics ownership across compatible package copies without globalizing registries', async () => {
+    // Given
+    const registry = new Registry();
+    Reflect.deleteProperty(globalThis, Symbol.for('fluo.metrics.shared-state'));
+    vi.resetModules();
+    const copyA = await import('./index.js');
+    vi.resetModules();
+    const copyB = await import('./index.js');
+
+    @Controller('/orders')
+    class OrdersController {
+      @Get('/:orderId')
+      getOrder(): { id: string } {
+        return { id: '123' };
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [OrdersController],
+      imports: [
+        copyA.MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a' }),
+        copyB.MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b' }),
+      ],
+    });
+
+    let dispatchError: unknown;
+    const app = await FluoFactory.create(AppModule, {
+      observers: [{
+        onRequestError(_context, error) {
+          dispatchError = error;
+        },
+      }],
+      providers: [{ provide: METRICS_REGISTRY, useValue: registry }],
+    });
+
+    try {
+      // When
+      const response = createResponse();
+      await app.dispatch(createRequest('/orders/123'), response);
+
+      // Then
+      expect(dispatchError).toBeUndefined();
+      expect(response.statusCode).toBe(200);
+      expect(await registry.metrics()).toContain(
+        'http_requests_total{method="GET",path="/orders/:orderId",status="200"} 1',
+      );
+      expect((await app.container.resolve(copyA.MetricsService)).getRegistry()).toBe(registry);
+    } finally {
+      await app.close();
+      Reflect.deleteProperty(globalThis, Symbol.for('fluo.metrics.shared-state'));
+      vi.resetModules();
+    }
+  });
 });

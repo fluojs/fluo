@@ -163,6 +163,10 @@ async function resolveRequestContextStore(): Promise<RequestContextStore> {
 async function createRequestContextStore(): Promise<RequestContextStore> {
   const AsyncLocalStorage = await resolveAsyncLocalStorageConstructor();
 
+  if (requestContextStoreState.requestContextStore) {
+    return requestContextStoreState.requestContextStore;
+  }
+
   if (typeof AsyncLocalStorage === 'function') {
     requestContextStoreState.requestContextStore = new AsyncLocalStorage();
 

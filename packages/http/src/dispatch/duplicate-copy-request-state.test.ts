@@ -37,7 +37,7 @@ describe('duplicate HTTP-copy request state', () => {
     expect(copyB.consumeRawRequestNativeRouteHandoff(rawRequest)).toBeUndefined();
   });
 
-  it('reads a copy-A framework handoff through copy B only while its method and path match', async () => {
+  it('consumes a copy-A framework handoff through copy B only while its method and path match', async () => {
     // Given
     vi.resetModules();
     const copyA = await import('./native-route-handoff.js');
@@ -54,11 +54,11 @@ describe('duplicate HTTP-copy request state', () => {
     request.path = '/stale';
 
     // Then
-    expect(copyB.readFrameworkRequestNativeRouteHandoff({
+    expect(copyB.consumeFrameworkRequestNativeRouteHandoff({
       ...request,
       path: '/',
     })).toEqual(handoff);
-    expect(copyB.readFrameworkRequestNativeRouteHandoff(request)).toBeUndefined();
+    expect(copyB.consumeFrameworkRequestNativeRouteHandoff(request)).toBeUndefined();
   });
 
   it('shares request-ID absence and authoritative abort state across compatible copies', async () => {

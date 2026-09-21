@@ -60,7 +60,10 @@ import {
   type FastPathStats,
   shouldUseFastPathForRequest,
 } from './fast-path/index.js';
-import { attachFrameworkRequestNativeRouteHandoff, readFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
+import {
+  attachFrameworkRequestNativeRouteHandoff,
+  consumeFrameworkRequestNativeRouteHandoff,
+} from './native-route-handoff.js';
 import { isRequestAborted } from './request-abort.js';
 import { FRAMEWORK_RESPONSE_VALUE_FINALIZER } from './response-integration.js';
 
@@ -200,7 +203,7 @@ function createDispatchRequest(request: FrameworkRequest): FrameworkRequest {
     url: request.url,
   };
 
-  const nativeRouteHandoff = readFrameworkRequestNativeRouteHandoff(request);
+  const nativeRouteHandoff = consumeFrameworkRequestNativeRouteHandoff(request);
 
   const files = (request as FrameworkRequestWithFiles).files;
   const principal = (request as FrameworkRequestWithPrincipal).principal;
@@ -1058,7 +1061,7 @@ async function runDispatchPipeline(context: DispatchPhaseContext): Promise<void>
     }
 
     const match =
-      readFrameworkRequestNativeRouteHandoff(appMiddlewareContext.request)
+      consumeFrameworkRequestNativeRouteHandoff(appMiddlewareContext.request)
       ?? matchHandlerOrThrow(context.options.handlerMapping, appMiddlewareContext.request);
     context.matchedHandler = match.descriptor;
     updateRequestParams(context.requestContext, match.params);

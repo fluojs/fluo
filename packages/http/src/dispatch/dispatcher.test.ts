@@ -3496,7 +3496,7 @@ describe('dispatcher runtime', () => {
 
     await dispatcher.dispatch(request, response);
 
-    expect(handlerMapping.match).not.toHaveBeenCalled();
+    expect(handlerMapping.match).toHaveBeenCalledTimes(1);
     expect(response.statusCode).toBe(201);
     expect(response.headers['X-Native-Handoff']).toBe('enabled');
     expect(response.body).toEqual({ id: '123' });
@@ -3549,7 +3549,7 @@ describe('dispatcher runtime', () => {
 
     await dispatcher.dispatch(request, response);
 
-    expect(handlerMapping.match).not.toHaveBeenCalled();
+    expect(handlerMapping.match).toHaveBeenCalledTimes(1);
     expect(response.statusCode).toBe(200);
     expect(response.body).toEqual({ id: '123' });
     expect(root.requestScopeCreateCount).toBe(0);
@@ -3714,6 +3714,75 @@ describe('dispatcher runtime', () => {
 
     expect(handlerMapping.match).toHaveBeenCalledTimes(1);
     expect(response.body).toEqual({ route: 'rewritten', id: '456' });
+  });
+
+  it('consumes a FrameworkRequest native route handoff after a successful dispatch', async () => {
+    @Controller('/native-once')
+    class NativeOnceController {
+      @Get('/:id')
+      getNative(_input: undefined, context: RequestContext) {
+        return { id: context.request.params.id };
+      }
+    }
+
+    const root = new Container().register(NativeOnceController);
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeOnceController }]);
+    const handlerMapping = {
+      descriptors: baseMapping.descriptors,
+      match: vi.fn(baseMapping.match.bind(baseMapping)),
+    };
+    const dispatcher = createDispatcher({ handlerMapping, rootContainer: root });
+    const descriptor = baseMapping.descriptors[0];
+
+    if (!descriptor) {
+      throw new Error('Expected one native route descriptor.');
+    }
+
+    const request = attachFrameworkRequestNativeRouteHandoff(createRequest('/native-once/123'), {
+      descriptor,
+      params: { id: '123' },
+    });
+
+    await dispatcher.dispatch(request, createResponse());
+    expect(Reflect.get(request, Symbol.for('fluo.http.nativeRouteHandoff'))).toBeUndefined();
+    const secondResponse = createResponse();
+    await dispatcher.dispatch(request, secondResponse);
+
+    expect(secondResponse.body).toEqual({ id: '123' });
+  });
+
+  it('consumes a FrameworkRequest native route handoff after an error dispatch', async () => {
+    @Controller('/native-once-error')
+    class NativeOnceErrorController {
+      @Get('/:id')
+      getNative() {
+        throw new Error('native route failure');
+      }
+    }
+
+    const root = new Container().register(NativeOnceErrorController);
+    const baseMapping = createHandlerMapping([{ controllerToken: NativeOnceErrorController }]);
+    const handlerMapping = {
+      descriptors: baseMapping.descriptors,
+      match: vi.fn(baseMapping.match.bind(baseMapping)),
+    };
+    const dispatcher = createDispatcher({ handlerMapping, rootContainer: root });
+    const descriptor = baseMapping.descriptors[0];
+
+    if (!descriptor) {
+      throw new Error('Expected one native error route descriptor.');
+    }
+
+    const request = attachFrameworkRequestNativeRouteHandoff(createRequest('/native-once-error/123'), {
+      descriptor,
+      params: { id: '123' },
+    });
+
+    await dispatcher.dispatch(request, createResponse());
+    expect(Reflect.get(request, Symbol.for('fluo.http.nativeRouteHandoff'))).toBeUndefined();
+    await dispatcher.dispatch(request, createResponse());
+
+    expect(handlerMapping.match).toHaveBeenCalledTimes(1);
   });
 
   it('returns a canonical 403 response when a guard denies the request', async () => {

@@ -19,10 +19,10 @@ export {
 export {
   attachFrameworkRequestNativeRouteHandoff,
   bindRawRequestNativeRouteHandoff,
+  consumeFrameworkRequestNativeRouteHandoff,
   consumeRawRequestNativeRouteHandoff,
   isRoutePathNormalizationSensitive,
   type NativeRouteHandoff,
-  readFrameworkRequestNativeRouteHandoff,
 } from './dispatch/native-route-handoff.js';
 export type { Dispatcher } from './types.js';
 export { getHandlerFastPathEligibility } from './dispatch/fast-path/eligibility-checker.js';
