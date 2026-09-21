@@ -1,4 +1,11 @@
-import { createContext, createElement, useContext, useEffect, useState } from 'react';
+import {
+  createContext,
+  createElement,
+  type Context,
+  useContext,
+  useEffect,
+  useState,
+} from 'react';
 
 import { ReactClientRouterContextError } from './errors.js';
 import {
@@ -8,7 +15,54 @@ import {
 } from './store.js';
 import type { ReactClientRouterProviderProps } from './types.js';
 
-const ClientRouterContext = createContext<ClientNavigationStore | null>(null);
+const clientRouterContextKey = Symbol.for('fluo.react.client-router-context.v1');
+
+type SharedClientRouterContext = {
+  readonly context: Context<ClientNavigationStore | null>;
+  readonly version: 1;
+};
+
+function isClientRouterContext(value: unknown): value is Context<ClientNavigationStore | null> {
+  return typeof value === 'object'
+    && value !== null
+    && typeof Reflect.get(value, 'Provider') === 'object'
+    && typeof Reflect.get(value, 'Consumer') === 'object';
+}
+
+function isSharedClientRouterContext(value: unknown): value is SharedClientRouterContext {
+  return typeof value === 'object'
+    && value !== null
+    && Reflect.get(value, 'version') === 1
+    && isClientRouterContext(Reflect.get(value, 'context'));
+}
+
+function getClientRouterContext(): Context<ClientNavigationStore | null> {
+  const globalScope = globalThis as typeof globalThis & Record<PropertyKey, unknown>;
+  const existing = globalScope[clientRouterContextKey];
+
+  if (isSharedClientRouterContext(existing)) {
+    return existing.context;
+  }
+
+  const context = createContext<ClientNavigationStore | null>(null);
+  const sharedContext: SharedClientRouterContext = { context, version: 1 };
+  const descriptor = Object.getOwnPropertyDescriptor(globalScope, clientRouterContextKey);
+
+  if (descriptor && !descriptor.configurable) {
+    return context;
+  }
+
+  Object.defineProperty(globalScope, clientRouterContextKey, {
+    configurable: false,
+    enumerable: false,
+    value: sharedContext,
+    writable: false,
+  });
+
+  return context;
+}
+
+const ClientRouterContext = getClientRouterContext();
 
 function createBrowserEnvironment(browser: Window): ClientNavigationEnvironment {
   return {

@@ -830,6 +830,7 @@ const app = (
 
 Navigation contract는 의도적으로 HTTP-first입니다.
 
+- 같은 React installation을 사용하는 호환되는 same-realm `@fluojs/react` 사본은 client router context identity를 공유하므로 한 사본의 Provider가 다른 사본의 hook 및 `Link`에 store를 제공할 수 있습니다. 각 `ReactClientRouterProvider`는 계속 자체 navigation store를 생성하고 소유하므로 nested 및 separate provider는 route snapshot이나 application state를 공유하지 않습니다. 서로 다른 React installation, JavaScript realm, process, worker, serverless instance는 지원하지 않습니다.
 - `Link`는 항상 실제 `<a href>`를 렌더링하므로 pre-hydration click, JavaScript disabled 환경,
   modified click, download, explicit target, cross-origin destination은 native browser behavior를
   유지합니다. Hydration 이후 same-origin HTTP(S) URL을 향한 unmodified primary click은
@@ -1214,7 +1215,7 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `REACT_SSR_DIAGNOSTIC_PHASES` 및 `REACT_SSR_DIAGNOSTIC_CODES` — stable machine-readable SSR
   lifecycle phase 및 diagnostic code constant입니다.
 - `ReactSsrDiagnosticError` — stable `code`와 `phase` metadata를 가진 typed pre-commit
-  configuration/render failure입니다. `isReactSsrDiagnosticError(...)`는 호환되는 중복 사본의 해당 필드와 버전이 있는 React 소유자 규약을 검증하며 request-abort 상태와 diagnostic marker-store transport는 변경하지 않습니다.
+  configuration/render failure입니다. `isReactSsrDiagnosticError(...)`는 호환되는 중복 사본의 해당 field와 versioned React owner contract를 검증합니다. SSR diagnostic marker는 original error identity, code, phase를 보존한 채 호환되는 same-realm 사본을 통과하며 request-local이고 한 번만 consume됩니다.
 - `ReactSsrDiagnostic`, `ReactSsrDiagnosticCode`, `ReactSsrDiagnosticErrorOptions`,
   `ReactSsrDiagnosticHandler`, `ReactSsrDiagnosticPhase` — application diagnostics tooling을 위한
   type-only contract입니다.

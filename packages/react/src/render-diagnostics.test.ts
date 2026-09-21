@@ -32,4 +32,28 @@ describe('React render diagnostics', () => {
     expect(diagnostics.preservePreCommitShellError(duplicateDiagnosticError)).toBe(duplicateDiagnosticError);
     expect(readReactSsrDiagnosticMarker(requestContext, duplicateDiagnosticError)).toBeUndefined();
   });
+
+  it('transports request-local SSR diagnostic markers across compatible module copies once', async () => {
+    // Given: copy A marks the original error inside one request context.
+    const requestContext = createRenderContext();
+    const error = new Error('original error');
+    const diagnosticsA = await import('./diagnostics.js');
+    diagnosticsA.markReactSsrDiagnostic(requestContext, error, {
+      code: 'react-ssr-pre-commit-shell-failure',
+      error,
+      phase: 'pre-commit-shell',
+    });
+
+    // When: copy B consumes the marker.
+    vi.resetModules();
+    const diagnosticsB = await import('./diagnostics.js');
+
+    // Then: the original error identity and classification survive, and consumption is one-shot.
+    expect(diagnosticsB.readReactSsrDiagnosticMarker(requestContext, error)).toEqual({
+      code: 'react-ssr-pre-commit-shell-failure',
+      error,
+      phase: 'pre-commit-shell',
+    });
+    expect(diagnosticsB.readReactSsrDiagnosticMarker(requestContext, error)).toBeUndefined();
+  });
 });

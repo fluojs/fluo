@@ -13,6 +13,7 @@ export {
   getOwnStandardConstructorMetadataBag,
   getStandardConstructorMetadataBag,
   getStandardMetadataBag,
+  getGlobalMetadataWeakMap,
   metadataKeys,
   metadataSymbol,
 } from './metadata/shared.js';

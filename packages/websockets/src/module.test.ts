@@ -415,6 +415,38 @@ describe('@fluojs/websockets', () => {
     ]);
   });
 
+  it('shares explicit gateway and handler metadata across compatible module copies', async () => {
+    // Given: a gateway and handler explicitly marked by one evaluated package copy.
+    const metadataA = await import('./metadata.js');
+    class CompatibleGateway {
+      onMessage(): void {}
+    }
+    metadataA.defineWebSocketGatewayMetadata(CompatibleGateway, {
+      path: '/compatible',
+      serverBacked: { port: 4200 },
+    });
+    metadataA.defineWebSocketHandlerMetadata(CompatibleGateway.prototype, 'onMessage', {
+      event: 'ping',
+      type: 'message',
+    });
+
+    // When: a separately evaluated compatible package copy discovers the gateway.
+    vi.resetModules();
+    const metadataB = await import('./metadata.js');
+
+    // Then: explicit metadata remains discoverable as defensive snapshots, including enumeration.
+    expect(metadataB.getWebSocketGatewayMetadata(CompatibleGateway)).toEqual({
+      path: '/compatible',
+      serverBacked: { port: 4200 },
+    });
+    expect(metadataB.getWebSocketHandlerMetadataEntries(CompatibleGateway.prototype)).toEqual([
+      {
+        metadata: { event: 'ping', type: 'message' },
+        propertyKey: 'onMessage',
+      },
+    ]);
+  });
+
   it('rejects private and static methods for message handlers', () => {
     const decorator = OnMessage('ping');
 
