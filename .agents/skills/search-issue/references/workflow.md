@@ -7,39 +7,68 @@ projections of it.
 ## Intake
 
 Intake is a mode-first state machine. Values explicitly supplied with the
-leading invocation count as answered; begin at the first missing state.
+leading invocation count as answered; begin at the first missing state. Each
+state is one structured question asked through the runtime's structured
+question tool (`ask_user_question` in the current OMO runtime); the lead waits
+for the returned answer and branches on it before the next state. Only the
+lead calls the tool; intake is never delegated to a subagent. The tool accepts
+at most four questions per call and four options per question, so a catalog is
+split across questions of one call — or, only when one call cannot hold it,
+across consecutive calls — offering every entry exactly once. When the runtime
+does not expose the tool, use the numbered plain-text fallback of each state
+instead of claiming or calling an unavailable tool.
 
 1. `target_mode`
    - Ask only whether the target is all packages, one or more package groups, or
      one or more direct packages.
-   - Use runtime structured single-select only when that tool is registered.
-     Otherwise show numbered plain-text choices.
+   - Structured: one single-select question whose options come from
+     `node scripts/intake.mjs modes`, the Korean label as the option label and
+     the catalog description as the option description.
+   - Fallback: show numbered plain-text choices.
 2. `package_scope`
    - `all` resolves every package and needs no follow-up.
-   - `group` and `package` first render the complete package-group/package table
-     from `node scripts/intake.mjs packages`.
-   - Bash output may be collapsed in OMO. Copy every table row into the
-     user-facing response immediately before asking; an ID-only list is not a
-     valid substitute.
-   - Ask for one or more visible names, selection numbers, or canonical slugs.
-     Use multi-select when available, otherwise comma-separated text. Never
-     expose an unexplained internal ID. A bare token that names both a group
-     and package is ambiguous and must be clarified, not guessed.
+   - `group`: present every package group as multi-select chips in one call,
+     split across questions of at most four options each; the Korean group
+     name is the label and the group description plus member packages form the
+     description.
+   - `package`: present every package as multi-select chips paginated over
+     consecutive calls of at most sixteen options each until every package has
+     been offered exactly once; the public `@fluojs/*` name is the label and
+     the owning group name is the description.
+   - On the structured path the populated option descriptions are the
+     user-facing presentation; echoing the stdout table is not required. On the
+     fallback, first render the complete package-group/package table from
+     `node scripts/intake.mjs packages`. Bash output may be collapsed in OMO:
+     copy every table row into the user-facing response immediately before
+     asking; an ID-only list is not a valid substitute. Ask for one or more
+     visible names, selection numbers, or canonical slugs as comma-separated
+     text, and never expose an unexplained internal ID. A bare token that
+     names both a group and package is ambiguous and must be clarified, not
+     guessed.
    - Resolve the immutable package list through
-     `node scripts/intake.mjs resolve <mode> [selection...]`.
+     `node scripts/intake.mjs resolve <mode> [selection...]`, passing the
+     selected labels or slugs — the union across that state's questions — as
+     the selections.
 3. `purposes`
-   - Render the complete purpose/description/reviewer table from
-     `node scripts/intake.mjs purposes`.
-   - Copy every rendered row into the user-facing response immediately before
-     asking. Never rely on collapsed tool output or omit the descriptions.
-   - Ask for one or more visible purpose names, selection numbers, or canonical
-     slugs using multi-select when available or comma-separated text otherwise.
+   - Structured: present every purpose as multi-select chips in one call split
+     across questions of at most four options each; the Korean purpose name is
+     the label and the purpose description plus its reviewer slugs form the
+     description.
+   - Fallback: render the complete purpose/description/reviewer table from
+     `node scripts/intake.mjs purposes`, copy every rendered row into the
+     user-facing response immediately before asking, and never rely on
+     collapsed tool output or omit the descriptions. Ask for one or more
+     visible purpose names, selection numbers, or canonical slugs as
+     comma-separated text.
    - Resolve the response through
      `node scripts/intake.mjs resolve-purposes [selection...]`.
 
 Never open with a free-form request for package names or purpose memory. Empty,
 cancelled, or unsupported answers stop before repository discovery, goal
 creation, todo creation, ledger creation, reviewer tasks, or GitHub access.
+Every structured ask waits for the returned answer before the next state; on a
+timeout result, re-ask that state once, and on a second timeout stop
+fail-closed before any state creation.
 
 An explicit leading `$search-issue` invocation records
 `explicit_harness_invocation: true`. If the user explicitly requests
