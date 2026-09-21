@@ -2588,6 +2588,81 @@ describe('MetricsModule', () => {
     expect(reusedRegistry).toBe(registry);
   });
 
+  it('shares framework gauge, telemetry, and HTTP ownership when an incompatible legacy state is resident', async () => {
+    const registry = new Registry();
+    const sharedStateSymbol = Symbol.for('fluo.metrics.shared-state');
+    const versionedSharedStateSymbol = Symbol.for('fluo.metrics.shared-state.v1');
+    const originalSharedState = Object.getOwnPropertyDescriptor(globalThis, sharedStateSymbol);
+    const originalVersionedSharedState = Object.getOwnPropertyDescriptor(globalThis, versionedSharedStateSymbol);
+    Reflect.defineProperty(globalThis, sharedStateSymbol, {
+      configurable: true,
+      value: { values: new Map(), version: 0 },
+      writable: false,
+    });
+    vi.resetModules();
+    const copyA = await import('./index.js');
+    vi.resetModules();
+    const copyB = await import('./index.js');
+
+    @Controller('/orders')
+    class OrdersController {
+      @Get('/:orderId')
+      getOrder(): { id: string } {
+        return { id: '123' };
+      }
+    }
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      controllers: [OrdersController],
+      imports: [
+        copyA.MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-a' }),
+        copyB.MetricsModule.forRoot({ defaultMetrics: false, http: true, path: '/metrics-b' }),
+      ],
+    });
+
+    const app = await FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: registry }],
+    });
+
+    try {
+      const response = createResponse();
+      await app.dispatch(createRequest('/orders/123'), response);
+
+      const telemetryResponse = createResponse();
+      await app.dispatch(createRequest('/metrics-a'), telemetryResponse);
+
+      expect(response.statusCode).toBe(200);
+      expect(telemetryResponse.statusCode).toBe(200);
+      const metricsText = await registry.metrics();
+      expect(metricsText).toContain(
+        'http_requests_total{method="GET",path="/orders/:orderId",status="200"} 1',
+      );
+      expect(metricsText).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
+      expect(metricsText).toContain('fluo_component_ready{component_id="runtime.shell"');
+      expect(metricsText).toContain('fluo_component_health{component_id="runtime.shell"');
+      expect((await app.container.resolve(copyA.MetricsService)).getRegistry()).toBe(registry);
+      expect((await app.container.resolve(copyB.MetricsService)).getRegistry()).toBe(registry);
+    } finally {
+      await app.close();
+
+      if (originalSharedState) {
+        Reflect.defineProperty(globalThis, sharedStateSymbol, originalSharedState);
+      } else {
+        Reflect.deleteProperty(globalThis, sharedStateSymbol);
+      }
+
+      if (originalVersionedSharedState) {
+        Reflect.defineProperty(globalThis, versionedSharedStateSymbol, originalVersionedSharedState);
+      } else {
+        Reflect.deleteProperty(globalThis, versionedSharedStateSymbol);
+      }
+
+      vi.resetModules();
+    }
+  });
+
   it('shares framework metrics ownership across compatible package copies without globalizing registries', async () => {
     // Given
     const registry = new Registry();

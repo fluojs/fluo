@@ -1,12 +1,11 @@
 const METRICS_SHARED_STATE = Symbol.for('fluo.metrics.shared-state');
 const METRICS_SHARED_STATE_VERSION = 1;
+const VERSIONED_METRICS_SHARED_STATE = Symbol.for(`fluo.metrics.shared-state.v${METRICS_SHARED_STATE_VERSION}`);
 
 type SharedMetricsState = {
   readonly values: Map<symbol, unknown>;
   readonly version: number;
 };
-
-let incompatibleState: SharedMetricsState | undefined;
 
 /**
  * Retrieves versioned ownership state shared only by compatible metrics copies.
@@ -45,8 +44,23 @@ function resolveSharedMetricsState(): SharedMetricsState {
     return state;
   }
 
-  incompatibleState ??= createSharedMetricsState();
-  return incompatibleState;
+  return resolveVersionedSharedMetricsState();
+}
+
+function resolveVersionedSharedMetricsState(): SharedMetricsState {
+  const existing = Reflect.get(globalThis, VERSIONED_METRICS_SHARED_STATE);
+
+  if (isCompatibleSharedMetricsState(existing)) {
+    return existing;
+  }
+
+  const state = createSharedMetricsState();
+  Reflect.defineProperty(globalThis, VERSIONED_METRICS_SHARED_STATE, {
+    configurable: true,
+    value: state,
+    writable: false,
+  });
+  return state;
 }
 
 function createSharedMetricsState(): SharedMetricsState {
