@@ -70,11 +70,13 @@ function compile(source: string): readonly ts.Diagnostic[] {
     // Next's bundled Satori directory and sharp 0.35 omit type export entries.
     // Use their shipped declarations, not stubs or skipLibCheck. Fluo imports
     // still resolve exclusively through the actual published export maps.
+    // sharp 0.35.4 declares SharpConstructor only in its shipped ESM d.mts,
+    // which is the surface Next 16.3+ server declarations reference.
     paths: {
       'next/dist/compiled/@vercel/og/satori': [
         resolve(dirname(nextManifest), 'dist/compiled/@vercel/og/satori/index.d.ts'),
       ],
-      sharp: [resolve(dirname(nextRequire.resolve('sharp')), '../lib/index.d.ts')],
+      sharp: [resolve(dirname(nextRequire.resolve('sharp')), '../dist/index.d.mts')],
     },
   };
   const host = ts.createCompilerHost(options);
