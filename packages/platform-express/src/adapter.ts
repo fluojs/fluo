@@ -859,7 +859,7 @@ async function parseMultipartRequest(
     };
   } catch (error: unknown) {
     if (isExpressMultipartTooLargeError(error)) {
-      if (error instanceof PayloadTooLargeException) {
+      if (isHttpException(error) && error.status === 413) {
         throw error;
       }
 

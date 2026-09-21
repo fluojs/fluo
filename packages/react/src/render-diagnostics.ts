@@ -1,7 +1,8 @@
-import { RequestAbortedError } from '@fluojs/http/portable';
+import { isRequestAbortedError, RequestAbortedError } from '@fluojs/http/portable';
 
 import {
   createReactSsrDiagnostic,
+  isReactSsrDiagnosticError,
   markReactSsrDiagnostic,
   REACT_SSR_DIAGNOSTIC_CODES,
   REACT_SSR_DIAGNOSTIC_PHASES,
@@ -85,8 +86,8 @@ export function createReactRenderDiagnostics(
   return {
     preservePreCommitShellError(error) {
       if (
-        error instanceof RequestAbortedError
-        || error instanceof ReactSsrDiagnosticError
+        isRequestAbortedError(error)
+        || isReactSsrDiagnosticError(error)
         || requestContext.response.committed
       ) {
         return error;

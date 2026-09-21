@@ -1,4 +1,4 @@
-export { I18nError } from './errors.js';
+export { I18nError, isI18nError } from './errors.js';
 export { I18nModule } from './module.js';
 export { I18nService } from './service.js';
 export type {

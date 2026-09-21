@@ -5,7 +5,7 @@ import { createRequestContext, runWithRequestContext } from '../context/request-
 import { resolveRequestId } from '../context/request-id.js';
 import { hasAbsentRequestId } from '../context/request-id-snapshot.js';
 import { isSseMessage, SseResponse, type SseSendOptions, waitForSseResponseCompletion } from '../context/sse.js';
-import { RequestAbortedError } from '../errors.js';
+import { isRequestAbortedError, RequestAbortedError } from '../errors.js';
 import { runGuardChain } from '../guards.js';
 import { runInterceptorChain } from '../interceptors.js';
 import { isMiddlewareRouteConfig, matchRoutePattern, runMiddlewareChain } from '../middleware/middleware.js';
@@ -1137,7 +1137,7 @@ async function handleDispatchError(context: DispatchPhaseContext, error: unknown
   if (
     !managedSseCleanupFailed
     && !managedSseOperationFailed
-    && (error instanceof RequestAbortedError || isRequestAborted(context.requestContext.request))
+    && (isRequestAbortedError(error) || isRequestAborted(context.requestContext.request))
   ) {
     return;
   }
