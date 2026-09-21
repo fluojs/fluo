@@ -1,5 +1,10 @@
 import type { MetadataPropertyKey } from '@fluojs/core';
-import { ensureSymbolMetadataPolyfill, getStandardConstructorMetadataBag, getStandardMetadataBag } from '@fluojs/core/internal';
+import {
+  ensureSymbolMetadataPolyfill,
+  getGlobalMetadataWeakMap,
+  getStandardConstructorMetadataBag,
+  getStandardMetadataBag,
+} from '@fluojs/core/internal';
 
 import type {
   WebSocketGatewayHandlerMetadata,
@@ -13,8 +18,13 @@ void ensureSymbolMetadataPolyfill();
 const standardWebSocketGatewayMetadataKey = Symbol.for('fluo.websocket.standard.gateway');
 const standardWebSocketHandlerMetadataKey = Symbol.for('fluo.websocket.standard.handler');
 
-const gatewayMetadataStore = new WeakMap<object, WebSocketGatewayMetadata>();
-const handlerMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, WebSocketGatewayHandlerMetadata>>();
+const gatewayMetadataStoreKey = Symbol.for('fluo.websocket.gateway-metadata-store');
+const handlerMetadataStoreKey = Symbol.for('fluo.websocket.handler-metadata-store');
+const gatewayMetadataStore = getGlobalMetadataWeakMap<object, WebSocketGatewayMetadata>(gatewayMetadataStoreKey);
+const handlerMetadataStore = getGlobalMetadataWeakMap<
+  object,
+  Map<MetadataPropertyKey, WebSocketGatewayHandlerMetadata>
+>(handlerMetadataStoreKey);
 
 function cloneGatewayMetadata(metadata: WebSocketGatewayMetadata): WebSocketGatewayMetadata {
   return {

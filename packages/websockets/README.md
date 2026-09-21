@@ -63,6 +63,8 @@ export class AppModule {}
 ### Shared Path Gateways
 Multiple gateways can share the same path; their handlers will execute in discovery order.
 
+The public gateway and handler metadata helpers preserve explicit metadata across compatible same-realm `@fluojs/websockets` copies. Readers and discovery receive defensive snapshots, and standard decorator metadata retains its existing precedence. This interoperability does not cover distinct realms, processes, workers, or incompatible package contracts.
+
 ```typescript
 @WebSocketGateway({ path: '/events' })
 class MetricsGateway {

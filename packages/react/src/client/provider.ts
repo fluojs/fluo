@@ -1,4 +1,11 @@
-import { createContext, createElement, useContext, useEffect, useState } from 'react';
+import {
+  createContext,
+  createElement,
+  type Context,
+  useContext,
+  useEffect,
+  useState,
+} from 'react';
 
 import { ReactClientRouterContextError } from './errors.js';
 import {
@@ -8,7 +15,27 @@ import {
 } from './store.js';
 import type { ReactClientRouterProviderProps } from './types.js';
 
-const ClientRouterContext = createContext<ClientNavigationStore | null>(null);
+const clientRouterContextKey = Symbol.for('fluo.react.client-router-context');
+
+function getClientRouterContext(): Context<ClientNavigationStore | null> {
+  const globalScope = globalThis as typeof globalThis & Record<PropertyKey, unknown>;
+  const existing = globalScope[clientRouterContextKey];
+
+  if (existing !== undefined) {
+    return existing as Context<ClientNavigationStore | null>;
+  }
+
+  const context = createContext<ClientNavigationStore | null>(null);
+  Object.defineProperty(globalScope, clientRouterContextKey, {
+    configurable: false,
+    enumerable: false,
+    value: context,
+    writable: false,
+  });
+  return context;
+}
+
+const ClientRouterContext = getClientRouterContext();
 
 function createBrowserEnvironment(browser: Window): ClientNavigationEnvironment {
   return {

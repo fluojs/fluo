@@ -840,6 +840,7 @@ const app = (
 
 The navigation contract is deliberately HTTP-first:
 
+- Compatible same-realm `@fluojs/react` copies using the same React installation share the client router context identity, so a Provider from one copy can supply hooks and `Link` from another. Every `ReactClientRouterProvider` still creates and owns its own navigation store; nested and separate providers never share route snapshots or application state. Different React installations, JavaScript realms, processes, workers, and serverless instances are unsupported.
 - `Link` always renders a real `<a href>` so pre-hydration clicks, disabled JavaScript, modified
   clicks, downloads, explicit targets, and cross-origin destinations keep native browser behavior.
   After hydration, an unmodified primary click to a same-origin HTTP(S) URL delegates to
@@ -1234,7 +1235,7 @@ This package currently does **not** provide:
 - `REACT_SSR_DIAGNOSTIC_PHASES` and `REACT_SSR_DIAGNOSTIC_CODES` — stable machine-readable SSR
   lifecycle phase and diagnostic code constants.
 - `ReactSsrDiagnosticError` — typed pre-commit configuration/render failure with stable `code` and
-  `phase` metadata. `isReactSsrDiagnosticError(...)` validates those fields and the versioned React owner contract across compatible duplicate copies; request-abort state and diagnostic marker-store transport are unchanged.
+  `phase` metadata. `isReactSsrDiagnosticError(...)` validates those fields and the versioned React owner contract across compatible duplicate copies. SSR diagnostic markers cross compatible same-realm copies with original error identity, code, and phase intact; they are request-local and consumed once.
 - `ReactSsrDiagnostic`, `ReactSsrDiagnosticCode`, `ReactSsrDiagnosticErrorOptions`,
   `ReactSsrDiagnosticHandler`, and `ReactSsrDiagnosticPhase` — type-only contracts for application
   diagnostics tooling.
