@@ -1,9 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import type { Token } from '@fluojs/core';
 import { describe, expect, it } from 'vitest';
 
 import * as queue from './index.js';
+
+function getSymbolKey(token: Token): string | undefined {
+  return typeof token === 'symbol' ? Symbol.keyFor(token) : undefined;
+}
 
 describe('@fluojs/queue root barrel public surface', () => {
   it('declares the patched BullMQ dependency floor', () => {
@@ -25,7 +30,7 @@ describe('@fluojs/queue root barrel public surface', () => {
     expect(queue).not.toHaveProperty('createQueueProviders');
     expect(queue).toHaveProperty('QueueLifecycleService');
     expect(queue).toHaveProperty('QUEUE');
-    expect(Symbol.keyFor(queue.QUEUE)).toBe('fluo.queue');
+    expect(getSymbolKey(queue.QUEUE)).toBe('fluo.queue');
     expect(queue).toHaveProperty('getQueueToken');
     expect(queue).toHaveProperty('getQueueLifecycleServiceToken');
     expect(queue).toHaveProperty('QueueWorker');
