@@ -244,3 +244,6 @@ CQRS handler, event handler, saga는 singleton provider에서만 discovery됩니
 - `packages/cqrs/src/public-api.test.ts`: 루트 배럴 공개 API 계약 검증 예제.
 - `packages/cqrs/src/status.test.ts`: CQRS status snapshot 동작 테스트 예제.
 - `packages/cqrs/src/event-clone.test.ts`: event clone fallback 동작 테스트 예제.
+## 호환되는 서비스 사본
+
+공개 CQRS bus lifecycle 클래스는 호환 사본 class injection을 지원하며 event handler와 option token은 기존 소유권과 순서를 유지합니다.

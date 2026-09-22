@@ -269,3 +269,6 @@ JWT 오류가 패키지 경계를 넘으면 안정적인 `code`와 함께 `isJwt
 - `packages/jwt/src/module.test.ts`: 모듈 등록 및 DI 패턴 예제.
 - `packages/jwt/src/signing/signer.test.ts`: 토큰 서명 예제.
 - `examples/auth-jwt-passport/src/auth/auth.service.ts`: 실제 토큰 발행 구현 예제.
+## 호환되는 서비스 사본
+
+`JwtService`, signer, verifier 및 refresh-token 서비스 클래스는 호환되는 동일 realm 사본 사이의 일반 class injection을 지원합니다. JWT option token은 격리된 상태를 유지합니다.

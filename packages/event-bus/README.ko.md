@@ -273,3 +273,6 @@ Build 뒤에는 저장소의 Babel decorator 설정으로 예제를 변환하고
 pnpm exec babel packages/event-bus/examples/publish-results.ts --out-file packages/event-bus/dist/publish-results.example.mjs --config-file ./tooling/babel/babel.config.cjs
 node packages/event-bus/dist/publish-results.example.mjs
 ```
+## 호환되는 서비스 사본
+
+공개 event bus 서비스 클래스는 호환 사본 class injection을 지원하며 event handler discovery와 transport state는 로컬 상태를 유지합니다.

@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 
 import { JwtConfigurationError } from '../errors.js';
 import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
@@ -66,6 +67,7 @@ function resolveAccessTokenTtlSeconds(options: JwtVerifierOptions): number {
  * Issues access and refresh tokens with the configured signing keys and algorithms.
  */
 @Inject(JWT_OPTIONS)
+@FrameworkService({ id: '@fluojs/jwt/DefaultJwtSigner', version: 1 })
 export class DefaultJwtSigner {
   private readonly refreshAlgorithms: JwtAlgorithm[];
 

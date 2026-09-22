@@ -253,3 +253,6 @@ Public fluo errors carry a versioned package-owner contract. Use `isFluoError(..
 - `packages/core/src/index.ts`
 - `packages/core/src/decorators.ts`
 - `packages/core/src/metadata.ts`
+## Compatible framework service copies
+
+Internal framework-owned service compatibility metadata is versioned and opt-in. It is not a public token API and never changes ordinary application constructor identity.

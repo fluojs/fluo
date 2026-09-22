@@ -322,3 +322,6 @@ The package manifest declares `engines.node >=24.0.0 <27`, matching the verified
 - `packages/testing/src/portability/error-representation-portability.ts`
 - `examples/minimal/src/app.test.ts`
 - `examples/auth-jwt-passport/src/app.test.ts`
+## Compatible framework service copies
+
+`Test.createTestingModule()` resolves explicitly designated framework service classes through compatible same-realm package copies while retaining ordinary override and named-token isolation.

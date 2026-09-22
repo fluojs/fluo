@@ -299,3 +299,6 @@ Runtime-specific indicator는 subpath별로 분리되어 있습니다. Node.js m
 
 - `examples/ops-metrics-terminus/src/app.ts`: 헬스 체크와 메트릭의 엔드투엔드 통합 예제.
 - `packages/terminus/src/health-check.test.ts`: 집계 및 단언(assertion) 흐름 예제.
+## 호환되는 서비스 사본
+
+`TerminusHealthService`는 호환 사본 class injection을 지원합니다. 명시적인 indicator import와 provider는 계속 필요합니다.

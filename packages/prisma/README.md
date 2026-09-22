@@ -439,3 +439,6 @@ token are deliberately not exported.
 
 - `packages/prisma/src/vertical-slice.test.ts`: DTO → Service → Repository → Prisma flow.
 - `packages/prisma/src/module.test.ts`: Module lifecycle, named clients, async factories, strict transaction behavior, and status snapshots.
+## Compatible service copies
+
+`PrismaService` supports compatible-copy class injection. Named clients and transactions remain isolated.

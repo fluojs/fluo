@@ -1,4 +1,5 @@
 import { Inject, InvariantError } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import { Optional } from '@fluojs/di';
 import { EventBusService } from '@fluojs/event-bus';
 import {
@@ -48,6 +49,7 @@ function isEventHandler(value: unknown): value is IEventHandler<IEvent> {
  * This service keeps CQRS event handlers singleton-only, fans events into saga orchestration,
  * and delegates the final publication step to `@fluojs/event-bus`.
  */
+@FrameworkService({ id: '@fluojs/cqrs/CqrsEventBusService', version: 1 })
 @Inject(
   EventBusService,
   CqrsSagaLifecycleService,

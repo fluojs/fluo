@@ -1,5 +1,5 @@
 import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
-import { cloneWithFallback } from '@fluojs/core/internal';
+import { cloneWithFallback, FrameworkService } from '@fluojs/core/internal';
 import type { Container, NormalizedProvider } from '@fluojs/di';
 import type {
   ApplicationLogger,
@@ -1006,6 +1006,7 @@ export class EventBusLifecycleService implements OnApplicationBootstrap, OnAppli
  * Exposes a single publication method returning {@link EventPublishResult}. Callers can either await
  * and inspect the result or ignore it.
  */
+@FrameworkService({ id: '@fluojs/event-bus/EventBusService', version: 1 })
 @Inject(EventBusLifecycleService)
 export class EventBusService {
   constructor(private readonly lifecycleService: EventBusLifecycleService) {}

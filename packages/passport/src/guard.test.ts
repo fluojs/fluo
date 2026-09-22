@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { getModuleMetadata } from '@fluojs/core/internal';
+import { Module } from '@fluojs/core';
+import { defineFrameworkServiceIdentity, getModuleMetadata } from '@fluojs/core/internal';
 import { Controller, Get, UnauthorizedException, createDispatcher, createHandlerMapping } from '@fluojs/http';
 import type { Provider } from '@fluojs/di';
 import type { FrameworkRequest, FrameworkResponse, GuardContext } from '@fluojs/http';
 import { Container } from '@fluojs/di';
 import { DefaultJwtVerifier } from '@fluojs/jwt';
+import { FluoFactory } from '@fluojs/runtime';
 
 import { RequireScopes, UseAuth, UseOptionalAuth } from './decorators.js';
 import { AuthenticationExpiredError, AuthenticationFailedError, AuthenticationRequiredError } from './errors.js';
@@ -13,7 +15,7 @@ import { AuthGuard } from './guard.js';
 import { PassportModule } from './module.js';
 import { createPassportJsStrategyBridge } from './adapters/passport-js.js';
 import { REFRESH_TOKEN_SERVICE, RefreshTokenStrategy, type RefreshTokenServicePort } from './refresh/refresh-token.js';
-import type { AuthStrategy, AuthStrategyResult } from './types.js';
+import type { AuthGuardContract, AuthStrategy, AuthStrategyResult } from './types.js';
 
 function createPassportModuleProviders(
   options: Parameters<typeof PassportModule.forRoot>[0],
@@ -1318,5 +1320,139 @@ describe('AuthGuard', () => {
     const guard = await root.resolve(AuthGuard);
 
     await expect(guard.canActivate(guardContext)).rejects.toBe(originalError);
+  });
+
+  it('resolves a compatible AuthGuard copy through the Passport module and enforces the registered strategy', async () => {
+    class AuthGuardCopyB {}
+
+    class AuthGuardConsumer {
+      constructor(readonly guard: AuthGuardCopyB) {}
+    }
+
+    class CompatibleStrategy implements AuthStrategy {
+      async authenticate(): Promise<AuthStrategyResult> {
+        return {
+          claims: { source: 'compatible-copy' },
+          subject: 'compatible-copy-user',
+        };
+      }
+    }
+
+    @Controller('/compatible-copy')
+    class CompatibleCopyController {
+      @Get('/')
+      @UseAuth('compatible')
+      profile(_input: unknown, ctx: { principal?: { subject: string } }) {
+        return { subject: ctx.principal?.subject };
+      }
+    }
+
+    defineFrameworkServiceIdentity(AuthGuardCopyB, {
+      id: '@fluojs/passport/AuthGuard',
+      version: 1,
+    });
+
+    const root = new Container().register(
+      CompatibleCopyController,
+      CompatibleStrategy,
+      {
+        provide: AuthGuardConsumer,
+        useClass: AuthGuardConsumer,
+        inject: [AuthGuardCopyB],
+      },
+      ...createPassportModuleProviders(
+        { defaultStrategy: 'compatible' },
+        [{ name: 'compatible', token: CompatibleStrategy }],
+      ),
+    );
+    const owner = await root.resolve(AuthGuard);
+    const consumer = await root.resolve(AuthGuardConsumer);
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: CompatibleCopyController }]),
+      rootContainer: root,
+    });
+    const response = createResponse();
+
+    expect(consumer.guard).toBe(owner);
+
+    await dispatcher.dispatch(createRequest('/compatible-copy'), response);
+
+    expect(response.body).toEqual({ subject: 'compatible-copy-user' });
+  });
+
+  it('resolves a query-isolated AuthGuard copy through the real module graph and populates its principal', async () => {
+    const guardCopyB = await import(`${new URL('./guard.ts', import.meta.url).href}?module-copy=consumer`);
+    const COPY_B_GUARD = Symbol('copy-b-auth-guard');
+
+    class CopyStrategy implements AuthStrategy {
+      async authenticate(): Promise<AuthStrategyResult> {
+        return {
+          claims: { source: 'query-isolated-copy' },
+          scopes: ['profile:read'],
+          subject: 'query-isolated-user',
+        };
+      }
+    }
+
+    @Controller('/query-isolated')
+    class QueryIsolatedController {
+      @Get('/')
+      @UseAuth('copy')
+      @RequireScopes('profile:read')
+      profile() {
+        return { ok: true };
+      }
+    }
+
+    @Module({
+      imports: [
+        PassportModule.forRoot(
+          { defaultStrategy: 'copy' },
+          [{ name: 'copy', token: CopyStrategy }],
+        ),
+      ],
+      providers: [
+        CopyStrategy,
+        {
+          provide: COPY_B_GUARD,
+          inject: [guardCopyB.AuthGuard],
+          useFactory: (...dependencies: unknown[]) => dependencies.at(0),
+        },
+      ],
+    })
+    class AppModule {}
+
+    const app = await FluoFactory.createApplicationContext(AppModule);
+
+    try {
+      const owner = await app.container.resolve(AuthGuard);
+      const injected = await app.container.resolve<AuthGuardContract>(COPY_B_GUARD);
+      const resolvedCopy = await app.container.resolve<AuthGuardContract>(guardCopyB.AuthGuard);
+      const requestContext = {
+        container: app.container,
+        principal: undefined,
+        request: createRequest('/query-isolated'),
+        requestId: 'req-query-isolated-copy',
+        response: createResponse(),
+      };
+
+      expect(injected).toBe(owner);
+      expect(resolvedCopy).toBe(owner);
+
+      await expect(injected.canActivate({
+        handler: {
+          controllerToken: QueryIsolatedController,
+          methodName: 'profile',
+        },
+        requestContext,
+      } as unknown as GuardContext)).resolves.toBe(true);
+      expect(requestContext.principal).toEqual({
+        claims: { source: 'query-isolated-copy' },
+        scopes: ['profile:read'],
+        subject: 'query-isolated-user',
+      });
+    } finally {
+      await app.close();
+    }
   });
 });

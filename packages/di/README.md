@@ -344,3 +344,6 @@ Resolving a multi-provider token returns an array of resolved values in registra
 - `packages/di/src/container.ts`
 - `packages/di/src/container.test.ts`
 - `examples/minimal/src/app.ts`
+## Compatible framework service copies
+
+Explicitly designated framework service classes resolve across compatible same-realm package copies through ordinary class injection. Unmarked classes, named tokens, scopes, overrides, and module visibility retain their existing semantics.

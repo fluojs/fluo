@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import type { NotificationChannel, NotificationChannelContext, NotificationChannelDelivery } from '@fluojs/notifications';
 
 import { DiscordTransportError } from './errors.js';
@@ -13,6 +14,7 @@ import type { DiscordNotificationDispatchRequest, DiscordSendResult, NormalizedD
  * This class keeps the foundation package channel-agnostic while allowing `@fluojs/discord`
  * to interpret Discord-specific payload fields, webhook delivery, and transport behavior.
  */
+@FrameworkService({ id: '@fluojs/discord/DiscordChannel', version: 1 })
 @Inject(DiscordService, DISCORD_OPTIONS)
 export class DiscordChannel implements NotificationChannel<DiscordNotificationDispatchRequest, DiscordSendResult> {
   readonly channel: string;

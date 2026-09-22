@@ -120,6 +120,55 @@ function moduleProviders(moduleType: Constructor): Provider[] {
 }
 
 describe('ConfigModule registration', () => {
+  it('resolves a compatible copied ConfigService class through the owner module registration', async () => {
+    const ownerModule = await import('./module.js');
+    const ownerService = await import('./service.js');
+    const moduleRef = ownerModule.ConfigModule.forRoot({
+      defaults: { PORT: '4100' },
+      processEnv: {},
+    });
+
+    vi.resetModules();
+
+    const consumerService = await import('./service.js');
+    const { Container: ConsumerContainer } = await import('@fluojs/di');
+    const container = new ConsumerContainer().register(...moduleProviders(moduleRef));
+
+    const owner = await container.resolve(ownerService.ConfigService);
+    const injected = await container.resolve(consumerService.ConfigService);
+
+    expect(owner.get('PORT')).toBe('4100');
+    expect(injected).toBe(owner);
+  });
+
+  it('resolves a compatible copied ConfigService through Test.createTestingModule', async () => {
+    const ownerModule = await import('./module.js');
+    const ownerService = await import('./service.js');
+    const { defineModuleMetadata } = await import('@fluojs/core/internal');
+    const configModule = ownerModule.ConfigModule.forRoot({
+      defaults: { PORT: '4200' },
+      processEnv: {},
+    });
+    class AppModule {}
+    defineModuleMetadata(AppModule, { imports: [configModule] });
+
+    vi.resetModules();
+
+    const consumerService = await import('./service.js');
+    const { Test } = await import('@fluojs/testing');
+    const testingModule = await Test.createTestingModule({ rootModule: AppModule }).compile();
+
+    try {
+      const owner = testingModule.get(ownerService.ConfigService);
+      const injected = testingModule.get(consumerService.ConfigService);
+
+      expect(owner.get('PORT')).toBe('4200');
+      expect(injected).toBe(owner);
+    } finally {
+      await testingModule.container.dispose();
+    }
+  });
+
   it('applies the registration-time runtime overrides snapshot above lower-precedence sources', async () => {
     const runtimeOverrides = { PORT: '4100' };
     const moduleRef = ConfigModule.forRoot({

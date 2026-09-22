@@ -244,3 +244,6 @@ export class RedisConnectionsModule {}
 - `packages/redis/src/module.test.ts`: 모듈 수명 주기 및 DI 연결 예제.
 - `packages/redis/src/public-api.test.ts`: 문서화된 Redis 공개 export를 검증하는 테스트입니다.
 - `packages/redis/src/redis-service.ts`: 파사드 구현 및 코덱 로직.
+## 호환되는 서비스 사본
+
+기본 공개 Redis 서비스 클래스는 호환 사본 class injection을 지원합니다. Named Redis client와 service는 이름별 격리를 유지합니다.

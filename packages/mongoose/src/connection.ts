@@ -1,6 +1,7 @@
 import { observeRollback, type TransactionRollbackObserver } from './result-rollback.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import type { OnApplicationShutdown } from '@fluojs/runtime';
 import {
   createRequestAbortContext,
@@ -225,6 +226,7 @@ async function executeSessionTransaction<T>(
  *
  * @typeParam TConnection Root Mongoose connection shape registered in the module.
  */
+@FrameworkService({ id: '@fluojs/mongoose/MongooseConnection', version: 1 })
 @Inject(MONGOOSE_CONNECTION, MONGOOSE_DISPOSE, MONGOOSE_OPTIONS)
 export class MongooseConnection<TConnection extends MongooseConnectionLike = MongooseConnectionLike>
   implements MongooseHandleProvider<TConnection>, OnApplicationShutdown

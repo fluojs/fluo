@@ -1,4 +1,5 @@
 import { Inject, type Token } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import { isDiError } from '@fluojs/di';
 import type { Principal } from '@fluojs/http';
 import { ForbiddenException, type GuardContext, UnauthorizedException } from '@fluojs/http';
@@ -114,6 +115,7 @@ function toErrorMessage(error: unknown): string {
  * mismatches become `403 Forbidden`, and strategies may short-circuit the
  * response by returning `{ handled: true }` after committing the response.
  */
+@FrameworkService({ id: '@fluojs/passport/AuthGuard', version: 1 })
 @Inject(AUTH_STRATEGY_REGISTRY, PASSPORT_OPTIONS)
 export class AuthGuard implements AuthGuardContract {
   constructor(

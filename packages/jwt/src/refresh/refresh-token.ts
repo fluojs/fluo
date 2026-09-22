@@ -1,3 +1,4 @@
+import { FrameworkService } from '@fluojs/core/internal';
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import { SUPPORTED_HMAC_HASH } from '../signing/algorithm-policy.js';
 import type { DefaultJwtSigner } from '../signing/signer.js';
@@ -206,6 +207,7 @@ export function normalizeRefreshTokenOptions(
 /**
  * Represents the refresh token service.
  */
+@FrameworkService({ id: '@fluojs/jwt/RefreshTokenService', version: 1 })
 export class RefreshTokenService {
   private readonly options: NormalizedRefreshTokenOptions;
 

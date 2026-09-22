@@ -349,3 +349,6 @@ Move every refresh `secret`, `expiresInSeconds`, `rotation`, and `store` value i
 - `packages/passport/src/guard.test.ts`: Guard execution and scope enforcement patterns.
 - `packages/passport/src/adapters/passport-js.ts`: Implementation of the Passport.js bridge.
 - `packages/passport/src/bearer/bearer-jwt.ts`: Built-in bearer JWT strategy preset.
+## Compatible service copies
+
+`AuthGuard` supports ordinary class injection across compatible same-realm copies, including the `UseAuth`/guard path; strategy registries remain isolated.

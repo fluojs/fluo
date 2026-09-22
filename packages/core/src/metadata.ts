@@ -5,6 +5,13 @@ export {
   getOwnClassDiMetadata,
   defineClassDiMetadata,
 } from './metadata/class-di.js';
+export {
+  defineFrameworkServiceIdentity,
+  FrameworkService,
+  getFrameworkServiceIdentity,
+  getFrameworkServiceIdentityVersion,
+  normalizeFrameworkServiceToken,
+} from './metadata/framework-service.js';
 export { defineControllerMetadata, defineRouteMetadata, getControllerMetadata, getRouteMetadata } from './metadata/controller-route.js';
 export { defineInjectionMetadata, getInjectionSchema } from './metadata/injection.js';
 export { defineModuleMetadata, getModuleMetadata, getModuleMetadataVersion } from './metadata/module.js';

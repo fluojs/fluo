@@ -1,4 +1,5 @@
 import type { Token } from '@fluojs/core';
+export { FrameworkService } from '@fluojs/core/internal';
 
 import { ContainerResolutionError } from './errors.js';
 import {

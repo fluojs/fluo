@@ -609,3 +609,6 @@ authentication order, and adapter capabilities, see the
 [HTTP parser contract](../http/README.md#bounded-body-parser-policy).
 Evidence: `src/web-body-parser.test.ts`, `src/web-body-limit.test.ts`, and the
 [Next production example](../platform-nextjs/e2e/fixture/backend.ts).
+## Compatible framework service copies
+
+Module exports remain authoritative when a designated service class comes from a compatible package copy; this behavior does not make unexported providers visible.

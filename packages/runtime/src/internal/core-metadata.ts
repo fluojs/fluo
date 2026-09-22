@@ -1,12 +1,15 @@
 import type { InjectionToken, Token } from '@fluojs/core';
 import {
   defineClassDiMetadata as definePeerClassDiMetadata,
+  defineFrameworkServiceIdentity as definePeerFrameworkServiceIdentity,
   defineModuleMetadata as definePeerModuleMetadata,
   getClassDiMetadata as getPeerClassDiMetadata,
   getClassDiMetadataVersion as getPeerClassDiMetadataVersion,
+  getFrameworkServiceIdentityVersion as getPeerFrameworkServiceIdentityVersion,
   getModuleMetadata as getPeerModuleMetadata,
   getModuleMetadataVersion as getPeerModuleMetadataVersion,
   getOwnClassDiMetadata as getPeerOwnClassDiMetadata,
+  normalizeFrameworkServiceToken as normalizePeerFrameworkServiceToken,
 } from '@fluojs/core/internal';
 import type { Scope } from '@fluojs/di';
 
@@ -68,6 +71,19 @@ export function defineRuntimeClassDiMetadata(target: Function, metadata: Runtime
 }
 
 /**
+ * Writes explicit framework-owned service compatibility metadata through Core's internal seam.
+ *
+ * @param target Public framework service constructor.
+ * @param identity Versioned stable identity owned by that framework service contract.
+ */
+export function defineRuntimeFrameworkServiceIdentity(
+  target: Function,
+  identity: { readonly id: string; readonly version: number },
+): void {
+  definePeerFrameworkServiceIdentity(target, identity);
+}
+
+/**
  * Reads runtime-visible class DI metadata without spreading peer internal imports.
  *
  * @param target Class constructor whose effective DI metadata should be read.
@@ -103,6 +119,25 @@ export function getRuntimeModuleMetadataVersion(): number {
  */
 export function getRuntimeClassDiMetadataVersion(): number {
   return getPeerClassDiMetadataVersion();
+}
+
+/**
+ * Reads the current compatible framework-service metadata version for module graph cache keys.
+ *
+ * @returns Monotonic framework-service metadata version maintained by the core metadata store.
+ */
+export function getRuntimeFrameworkServiceIdentityVersion(): number {
+  return getPeerFrameworkServiceIdentityVersion();
+}
+
+/**
+ * Canonicalizes only explicit framework service class tokens for module graph processing.
+ *
+ * @param token DI token used by runtime module metadata.
+ * @returns The internal stable token for designated framework service classes, otherwise token unchanged.
+ */
+export function normalizeRuntimeFrameworkServiceToken<T>(token: Token<T>): Token<T> {
+  return normalizePeerFrameworkServiceToken(token);
 }
 
 /**

@@ -269,3 +269,6 @@ Use `isJwtError(...)` plus the stable `code` when JWT errors cross package bound
 - `packages/jwt/src/module.test.ts`: Module registration and DI patterns.
 - `packages/jwt/src/signing/signer.test.ts`: Token signing examples.
 - `examples/auth-jwt-passport/src/auth/auth.service.ts`: Real-world token issuance.
+## Compatible service copies
+
+`JwtService`, signer, verifier, and refresh-token service classes support ordinary class injection across compatible same-realm copies. JWT option tokens remain isolated.

@@ -11,8 +11,10 @@ import {
   getOwnRuntimeClassDiMetadata,
   getRuntimeClassDiMetadata,
   getRuntimeClassDiMetadataVersion,
+  getRuntimeFrameworkServiceIdentityVersion,
   getRuntimeModuleMetadata,
   getRuntimeModuleMetadataVersion,
+  normalizeRuntimeFrameworkServiceToken,
 } from './internal/core-metadata.js';
 import type {
   BootstrapModuleOptions,
@@ -30,10 +32,10 @@ import type {
  */
 export function providerToken(provider: Provider): Token {
   if (typeof provider === 'function') {
-    return provider;
+    return normalizeRuntimeFrameworkServiceToken(provider);
   }
 
-  return provider.provide;
+  return normalizeRuntimeFrameworkServiceToken(provider.provide);
 }
 
 type ClassDiMetadataView = {
@@ -43,7 +45,7 @@ type ClassDiMetadataView = {
 const objectTokenIds = new WeakMap<Function, number>();
 const symbolTokenIds = new Map<symbol, number>();
 let nextTokenId = 0;
-const MODULE_GRAPH_COMPILE_ALGORITHM_VERSION = 2;
+const MODULE_GRAPH_COMPILE_ALGORITHM_VERSION = 3;
 const DEFAULT_MODULE_GRAPH_CACHE_ENTRIES = 100;
 const EMPTY_MODULE_REPLACEMENTS: ModuleReplacementMap = new Map<ModuleType, ModuleType>();
 
@@ -253,6 +255,7 @@ export function createModuleGraphCacheKey(rootModule: ModuleType, options: Boots
     `root:${describeTokenForCacheKey(rootModule)}`,
     `module:${getRuntimeModuleMetadataVersion()}`,
     `class-di:${getRuntimeClassDiMetadataVersion()}`,
+    `framework-service:${getRuntimeFrameworkServiceIdentityVersion()}`,
     `algorithm:${MODULE_GRAPH_COMPILE_ALGORITHM_VERSION}`,
     `runtime:${runtimeProviders}`,
     `validation:${validationTokens}`,
@@ -506,9 +509,9 @@ function isOptionalToken(value: unknown): value is OptionalInjectToken {
 }
 
 function resolveInjectionToken(t: InjectionToken): Token {
-  if (isForwardRef(t)) return t.forwardRef();
-  if (isOptionalToken(t)) return t.token;
-  return t;
+  if (isForwardRef(t)) return normalizeRuntimeFrameworkServiceToken(t.forwardRef());
+  if (isOptionalToken(t)) return normalizeRuntimeFrameworkServiceToken(t.token);
+  return normalizeRuntimeFrameworkServiceToken(t);
 }
 
 function providerDependencies(provider: Provider): InjectionToken[] {
@@ -548,7 +551,7 @@ export function createRuntimeTokenSet(providers: Provider[] = []): Set<Token> {
 function mergeRuntimeTokenSets(providers: Provider[] = [], validationTokens: readonly Token[] = []): Set<Token> {
   return new Set<Token>([
     ...createRuntimeTokenSet(providers),
-    ...validationTokens,
+    ...validationTokens.map(normalizeRuntimeFrameworkServiceToken),
   ]);
 }
 
@@ -637,7 +640,7 @@ function normalizeModuleDefinition(rawDefinition: ReturnType<typeof getRuntimeMo
     imports: (rawDefinition.imports as ModuleType[] | undefined) ?? [],
     providers: validateProviderInputs((rawDefinition.providers as Provider[] | undefined) ?? []),
     controllers: (rawDefinition.controllers as ModuleType[] | undefined) ?? [],
-    exports: (rawDefinition.exports as Token[] | undefined) ?? [],
+    exports: ((rawDefinition.exports as Token[] | undefined) ?? []).map(normalizeRuntimeFrameworkServiceToken),
     middleware: (rawDefinition.middleware as MiddlewareLike[] | undefined) ?? [],
   };
 }

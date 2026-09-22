@@ -1,6 +1,7 @@
 import type { KeyObject } from 'node:crypto';
 
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 
 import { JwtConfigurationError, JwtExpiredTokenError, JwtInvalidTokenError } from '../errors.js';
 import { normalizeRefreshTokenOptions } from '../refresh/refresh-token.js';
@@ -284,6 +285,7 @@ function normalizePrincipal(claims: JwtClaims): JwtPrincipal {
 /**
  * Verifies JWT access and refresh tokens against the configured key sources.
  */
+@FrameworkService({ id: '@fluojs/jwt/DefaultJwtVerifier', version: 1 })
 @Inject(JWT_OPTIONS)
 export class DefaultJwtVerifier implements JwtModuleDestroyLifecycle {
   private readonly jwksClient: JwksClient | undefined;

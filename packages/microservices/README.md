@@ -239,3 +239,6 @@ Canonical transport learning material lives in the book chapters for [TCP](../..
 - `packages/microservices/src/public-surface.test.ts`: Root-barrel snapshot coverage for the documented public surface.
 - `packages/microservices/src/public-subpaths.test.ts`: Export-map coverage for documented transport subpaths.
 - Runnable starter examples are generated with `fluo new --shape microservice --transport <transport> --runtime node --platform none` for the supported TCP, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC transport variants.
+## Compatible service copies
+
+`MicroserviceLifecycleService` supports compatible-copy class injection. Transport instances and options remain local registrations.

@@ -440,3 +440,6 @@ import {
 - `packages/drizzle/src/vertical-slice.test.ts`
 - `packages/drizzle/src/module.test.ts`
 - `packages/drizzle/src/public-api.test.ts`
+## 호환되는 서비스 사본
+
+`DrizzleDatabase`는 호환 사본 class injection을 지원합니다. Named database registration은 격리된 상태를 유지합니다.

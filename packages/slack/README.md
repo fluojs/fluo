@@ -375,3 +375,6 @@ These limitations are part of the package contract so runtime choice, provider c
 - `packages/slack/src/lifecycle-regression.test.ts`: Bootstrap verification and shutdown ordering regression coverage.
 - `packages/slack/src/public-surface.test.ts`: Public export and TypeScript contract verification.
 - `packages/slack/src/status.test.ts`: Health/readiness contract examples.
+## Compatible service copies
+
+`SlackService` and `SlackChannel` support compatible-copy class injection; Slack channel tokens remain isolated.

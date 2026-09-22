@@ -490,3 +490,6 @@ These limitations are part of the package contract so transport selection, templ
 - `packages/email/src/public-surface.test.ts`: Public export and TypeScript contract verification.
 - `packages/email/src/node/node.test.ts`: Node-only Nodemailer adapter mapping and lifecycle examples.
 - `packages/email/src/status.test.ts`: Health/readiness contract examples.
+## Compatible service copies
+
+`EmailService` and `EmailChannel` support compatible-copy class injection; email channel tokens remain isolated.

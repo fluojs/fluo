@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
 import { EmailLifecycleError, EmailMessageValidationError } from './errors.js';
@@ -107,6 +108,7 @@ function assertMessageContent(message: NormalizedEmailMessage): void {
  * explicitly injected {@link EmailTransport} contracts, and translates
  * `@fluojs/notifications` envelopes into concrete email messages.
  */
+@FrameworkService({ id: '@fluojs/email/EmailService', version: 1 })
 @Inject(EMAIL_OPTIONS)
 export class EmailService implements OnModuleInit, OnApplicationShutdown {
   private lifecycleState: EmailServiceLifecycleState = 'created';

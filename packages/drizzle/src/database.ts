@@ -1,6 +1,7 @@
 import { observeRollback, type TransactionRollbackObserver } from './result-rollback.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import type { OnApplicationShutdown } from '@fluojs/runtime';
 import {
   createAbortError,
@@ -127,6 +128,7 @@ function createRequestAbortSignalView(parentSignal: AbortSignal, signal?: AbortS
  * @typeParam TTransactionDatabase Transaction-scoped database handle resolved inside `database.transaction(...)` callbacks.
  * @typeParam TTransactionOptions Options forwarded to the underlying Drizzle transaction runner.
  */
+@FrameworkService({ id: '@fluojs/drizzle/DrizzleDatabase', version: 1 })
 @Inject(DRIZZLE_DATABASE, DRIZZLE_DISPOSE, DRIZZLE_OPTIONS)
 export class DrizzleDatabase<
   TDatabase extends DrizzleDatabaseLike<TTransactionDatabase, TTransactionOptions>,

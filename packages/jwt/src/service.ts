@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 
 import { DefaultJwtSigner } from './signing/signer.js';
 import type { JwtClaims, JwtPrincipal, JwtVerifierOptions, VerifyOptions } from './types.js';
@@ -106,6 +107,7 @@ export interface SignOptions {
  * framework integrations that own their own provider assembly.
  */
 @Inject(JWT_OPTIONS, DefaultJwtSigner, DefaultJwtVerifier)
+@FrameworkService({ id: '@fluojs/jwt/JwtService', version: 1 })
 export class JwtService {
   constructor(
     _options: JwtVerifierOptions,

@@ -349,3 +349,6 @@ Identity-link 결정을 모델링하려면 `createConservativeAccountLinkPolicy(
 - `packages/passport/src/guard.test.ts`: 가드 실행 및 권한 강제 패턴 예제.
 - `packages/passport/src/adapters/passport-js.ts`: Passport.js 브릿지 구현체.
 - `packages/passport/src/bearer/bearer-jwt.ts`: 내장 bearer JWT strategy preset.
+## 호환되는 서비스 사본
+
+`AuthGuard`는 `UseAuth`/guard 경로를 포함해 호환되는 동일 realm 사본 사이의 일반 class injection을 지원하며 strategy registry는 격리된 상태를 유지합니다.

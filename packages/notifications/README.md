@@ -256,3 +256,6 @@ Status snapshots include `readiness`, `health`, `ownership`, and a `details` obj
 - `packages/notifications/src/module.test.ts`: Module registration, async wiring, queue seam, and tolerant bulk dispatch examples.
 - `packages/notifications/src/public-surface.test.ts`: Public contract verification for root exports and TypeScript-only types.
 - `packages/notifications/src/status.test.ts`: Health/readiness contract examples.
+## Compatible service copies
+
+`NotificationsService` supports compatible-copy class injection; channels and options remain isolated registrations.

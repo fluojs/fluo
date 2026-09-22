@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
 import { DiscordMessageValidationError, DiscordTransportError } from './errors.js';
@@ -87,6 +88,7 @@ type DiscordServiceLifecycleState = 'created' | 'starting' | 'ready' | 'stopping
  * explicitly injected {@link DiscordTransport} contracts, and translates
  * `@fluojs/notifications` envelopes into concrete Discord messages.
  */
+@FrameworkService({ id: '@fluojs/discord/DiscordService', version: 1 })
 @Inject(DISCORD_OPTIONS)
 export class DiscordService implements OnModuleInit, OnApplicationShutdown {
   private readonly acceptedDeliveryPromises = new Set<Promise<unknown>>();

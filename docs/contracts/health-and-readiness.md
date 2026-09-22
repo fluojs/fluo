@@ -161,3 +161,6 @@ pnpm exec vitest run packages/terminus/src packages/runtime/src/health/health.te
 - [NestJS Migration Map](../getting-started/migrate-from-nestjs.md): the boundary from controller-owned health checks to module composition.
 - [Ops Metrics/Terminus example](../../examples/ops-metrics-terminus/src/app.ts): actual module registration and endpoint middleware composition.
 - [Volume 1, Chapter 23](../../book/01-fluoblog/ch23-lifecycle-and-readiness.md): applying lifecycle/readiness in a product. The [previous-edition health chapter](../../book/beginner/ch18-health.md) remains available as reference material; these Docs are the canonical owner.
+## Compatible Terminus service copies
+
+`TerminusHealthService` can be injected through compatible same-realm package copies only when normal module exports make its owner registration visible. This does not discover or globalize indicators, Prisma, Drizzle, Redis clients, transactions, or private readiness state.

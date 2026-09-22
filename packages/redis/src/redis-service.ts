@@ -1,4 +1,5 @@
 import { Inject, type Token } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import type Redis from 'ioredis';
 
 import { getRedisClientToken, REDIS_CLIENT } from './tokens.js';
@@ -49,6 +50,7 @@ function decodeRedisValue(raw: string): unknown {
  * @see getRedisServiceToken For resolving a named `RedisService` binding.
  */
 @Inject(REDIS_CLIENT)
+@FrameworkService({ id: '@fluojs/redis/RedisService', version: 1 })
 export class RedisService {
   constructor(private readonly client: Redis) {}
 
