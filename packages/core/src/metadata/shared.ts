@@ -153,26 +153,43 @@ interface MetadataCounter {
 }
 
 interface GlobalMetadataRegistry {
+  readonly version: 1;
   counters: Map<symbol, MetadataCounter>;
   weakMaps: Map<symbol, WeakMap<object, unknown>>;
 }
 
-const metadataRegistryKey = Symbol.for('fluo.metadata.registry');
+const metadataRegistryKey = Symbol.for('fluo.metadata.registry.v1');
+
+function isGlobalMetadataRegistry(value: unknown): value is GlobalMetadataRegistry {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  return Reflect.get(value, 'version') === 1
+    && Reflect.get(value, 'counters') instanceof Map
+    && Reflect.get(value, 'weakMaps') instanceof Map;
+}
 
 function getGlobalMetadataRegistry(): GlobalMetadataRegistry {
   const globalScope = globalThis as typeof globalThis & {
-    [metadataRegistryKey]?: GlobalMetadataRegistry;
+    [metadataRegistryKey]?: unknown;
   };
   const existing = globalScope[metadataRegistryKey];
 
-  if (existing) {
+  if (isGlobalMetadataRegistry(existing)) {
     return existing;
   }
 
   const registry: GlobalMetadataRegistry = {
     counters: new Map(),
+    version: 1,
     weakMaps: new Map(),
   };
+  const descriptor = Object.getOwnPropertyDescriptor(globalScope, metadataRegistryKey);
+
+  if (descriptor && !descriptor.configurable) {
+    return registry;
+  }
 
   Object.defineProperty(globalScope, metadataRegistryKey, {
     configurable: false,

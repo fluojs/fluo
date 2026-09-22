@@ -1,5 +1,5 @@
 import type { MetadataPropertyKey } from '@fluojs/core';
-import { getStandardMetadataBag } from '@fluojs/core/internal';
+import { getGlobalMetadataWeakMap, getStandardMetadataBag } from '@fluojs/core/internal';
 import { Controller, Get } from '@fluojs/http/portable';
 import {
   defineLegacyRuntimeRouteInspectionMetadata,
@@ -17,8 +17,13 @@ const reactRouterMetadataKey = Symbol.for('fluo.react.router');
 const reactPathMetadataKey = Symbol.for('fluo.react.path');
 const reactPageInspectionMetadata = Object.freeze({ kind: 'react-page' });
 
-const legacyRouterMetadataStore = new WeakMap<Function, ReactRouterMetadata>();
-const legacyPathMetadataStore = new WeakMap<object, Map<MetadataPropertyKey, ReactPathMetadata>>();
+const legacyRouterMetadataStoreKey = Symbol.for('fluo.react.router.legacy-metadata-store');
+const legacyPathMetadataStoreKey = Symbol.for('fluo.react.path.legacy-metadata-store');
+const legacyRouterMetadataStore = getGlobalMetadataWeakMap<Function, ReactRouterMetadata>(legacyRouterMetadataStoreKey);
+const legacyPathMetadataStore = getGlobalMetadataWeakMap<
+  object,
+  Map<MetadataPropertyKey, ReactPathMetadata>
+>(legacyPathMetadataStoreKey);
 
 /**
  * Additional render-facing metadata stored by `@Path(...)` for the future React renderer.

@@ -1,5 +1,5 @@
 import type { HandlerDescriptor } from '@fluojs/http';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { handlerToStudioRouteDescriptor } from './devtools/snapshot.js';
 import * as runtime from './index.js';
 import { defineStandardRuntimeRouteInspectionMetadata } from './internal.js';
@@ -128,6 +128,37 @@ describe('runtime route inspection', () => {
 
     // Then
     expect(snapshot.routes[0]?.kind).toBe('custom-page');
+  });
+
+  it('reads legacy route inspection metadata from a compatible module copy', async () => {
+    // Given: an integration copy writes a legacy marker onto a controller prototype.
+    const metadataA = await import('./internal/route-inspection-metadata.js');
+    class LegacyMarkerController {
+      show(): void {}
+    }
+    metadataA.defineLegacyRuntimeRouteInspectionMetadata(
+      LegacyMarkerController.prototype,
+      'show',
+      { kind: 'legacy-page' },
+    );
+
+    // When: a separately evaluated runtime copy creates the immutable inspection projection.
+    vi.resetModules();
+    const inspectionB = await import('./route-inspection.js');
+    const snapshot = inspectionB.createRuntimeInspectionSnapshot(
+      {
+        components: [],
+        diagnostics: [],
+        generatedAt: '2026-09-21T00:00:00.000Z',
+        health: { status: 'healthy' as const },
+        readiness: { critical: false, status: 'ready' as const },
+      },
+      [createDescriptor(LegacyMarkerController, 'show', '/legacy', [])],
+    );
+
+    // Then: discovery retains the marker without changing the projection contract.
+    expect(snapshot.routes[0]?.kind).toBe('legacy-page');
+    expect(Object.isFrozen(snapshot.routes[0])).toBe(true);
   });
 
   it('preserves arbitrary package-integration markers at the Studio live wire boundary', () => {

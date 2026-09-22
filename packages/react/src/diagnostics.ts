@@ -1,4 +1,5 @@
 import { FluoError, isFluoError, setFluoErrorContract } from '@fluojs/core';
+import { getGlobalMetadataWeakMap } from '@fluojs/core/internal';
 import type { FrameworkRequest, RequestContext } from '@fluojs/http/portable';
 
 /** Stable machine-readable phases for the React SSR request lifecycle. */
@@ -102,20 +103,10 @@ type ReactSsrDiagnosticMarker = {
 
 const diagnosticHandlerKey = Symbol.for('fluo.react.ssrDiagnosticHandler');
 const diagnosticMarkerKey = Symbol.for('fluo.react.ssrDiagnosticMarker');
-
-class ReactSsrDiagnosticMarkerStore {
-  private readonly markers = new WeakMap<object, ReactSsrDiagnosticMarker>();
-
-  set(error: object, marker: ReactSsrDiagnosticMarker): void {
-    this.markers.set(error, marker);
-  }
-
-  take(error: object): ReactSsrDiagnosticMarker | undefined {
-    const marker = this.markers.get(error);
-    this.markers.delete(error);
-    return marker;
-  }
-}
+const diagnosticMarkerStoreKey = Symbol.for('fluo.react.ssrDiagnosticMarkerStore');
+const diagnosticMarkerStores = getGlobalMetadataWeakMap<object, WeakMap<object, ReactSsrDiagnosticMarker>>(
+  diagnosticMarkerStoreKey,
+);
 
 function isDiagnosticMarkerKey(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
@@ -180,12 +171,13 @@ export function markReactSsrDiagnostic(
 ): void {
   const metadata = readReactSsrDiagnosticMetadata(context);
   if (metadata !== undefined && isDiagnosticMarkerKey(error)) {
-    const state: unknown = Reflect.get(metadata, diagnosticMarkerKey);
-    const store = state instanceof ReactSsrDiagnosticMarkerStore
-      ? state
-      : new ReactSsrDiagnosticMarkerStore();
+    let store = diagnosticMarkerStores.get(metadata);
+    if (store === undefined) {
+      store = new WeakMap<object, ReactSsrDiagnosticMarker>();
+      diagnosticMarkerStores.set(metadata, store);
+    }
     store.set(error, marker);
-    Reflect.set(metadata, diagnosticMarkerKey, store);
+    Reflect.set(metadata, diagnosticMarkerKey, true);
   }
 }
 
@@ -205,12 +197,13 @@ export function readReactSsrDiagnosticMarker(
     return undefined;
   }
 
-  const state: unknown = Reflect.get(metadata, diagnosticMarkerKey);
-  if (!(state instanceof ReactSsrDiagnosticMarkerStore)) {
+  if (Reflect.get(metadata, diagnosticMarkerKey) !== true) {
     return undefined;
   }
-
-  return state.take(error);
+  const store = diagnosticMarkerStores.get(metadata);
+  const marker = store?.get(error);
+  store?.delete(error);
+  return marker;
 }
 
 /**

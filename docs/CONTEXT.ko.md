@@ -301,7 +301,7 @@ NestJS codemod import-safety discoverability는 [`docs/getting-started/migrate-f
 
 Redis 등록 ownership은 [`packages/redis/README.ko.md`](../packages/redis/README.ko.md)에 정의되어 있습니다. bootstrap은 client를 만들기 전에 중복된 이름 없는 기본 등록 또는 trim한 이름이 같은 등록을 거부하므로, 추가 `RedisModule.forRoot(...)` 등록마다 서로 다른 `name`이 필요합니다.
 
-중복 사본 공유 symbol의 discoverability는 Runtime, Redis, Queue, Config, HTTP package README가 소유합니다. 호환되는 same-realm 사본은 framework-owned public/integration token과 registration marker만 공유하며 application/container/name/scope ownership, private per-registration state, service constructor-token 정책은 바뀌지 않습니다.
+중복 사본 공유 symbol의 discoverability는 Runtime, Redis, Queue, Config, HTTP, WebSocket, React package README가 소유합니다. 호환되는 same-realm 사본은 framework-owned public/integration token, metadata, registration marker만 공유하며 application/container/name/scope ownership, private per-registration state, service constructor-token 정책은 바뀌지 않습니다. React의 compatible-copy client context identity는 navigation store를 공유하지 않고 SSR diagnostic marker는 request-local이며 one-shot입니다.
 
 JWT refresh-policy discoverability는 `packages/jwt/README.ko.md`와 [`docs/getting-started/migrate-from-nestjs.ko.md`](./getting-started/migrate-from-nestjs.ko.md)에 나뉜다. `RefreshTokenOptions.algorithms`는 refresh-token 서명과 검증에만 사용되는 선택적 HMAC 전용 allowlist다. 기존 derivation을 유지하려면 설정하지 않고, HMAC refresh token을 구성하기 위해 좁은 비대칭 access-token policy를 넓히지 않는다.
 

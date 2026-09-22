@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   FromPath,
@@ -92,6 +92,35 @@ describe('React router decorators', () => {
       kind: 'path',
       options: { view: 'dashboard-edit' },
       path: '/:id/edit',
+    });
+  });
+
+  it('reads legacy Router and Path metadata from a compatible module copy', async () => {
+    // Given: legacy decorators invoked by one evaluated package copy.
+    const decoratorsA = await import('./decorators.js');
+    class LegacyRouter {
+      show(): void {}
+    }
+    decoratorsA.Router('/legacy')(LegacyRouter);
+    decoratorsA.Path('/show', { view: 'legacy' })(
+      LegacyRouter.prototype,
+      'show',
+      Object.getOwnPropertyDescriptor(LegacyRouter.prototype, 'show'),
+    );
+
+    // When: metadata is queried from a separately evaluated compatible copy.
+    vi.resetModules();
+    const decoratorsB = await import('./decorators.js');
+
+    // Then: the legacy marker remains available as a defensive snapshot.
+    expect(decoratorsB.getReactRouterMetadata(LegacyRouter)).toEqual({
+      basePath: '/legacy',
+      kind: 'router',
+    });
+    expect(decoratorsB.getReactPathMetadata(LegacyRouter, 'show')).toEqual({
+      kind: 'path',
+      options: { view: 'legacy' },
+      path: '/show',
     });
   });
 

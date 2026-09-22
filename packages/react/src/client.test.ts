@@ -137,6 +137,37 @@ describe('@fluojs/react/client', () => {
     expect(html).toContain('sku-42:true');
   });
 
+  it('lets compatible package copies share a Provider context without sharing Provider stores', async () => {
+    // Given: one copy owns the outer provider while another copy supplies the hook.
+    const clientA = await import('./client.js');
+    vi.resetModules();
+    const clientB = await import('./client.js');
+    function CopyBPathname() {
+      return createElement('output', null, clientB.usePathname());
+    }
+
+    // When: the copied hook reads both an outer and a nested provider.
+    const html = renderToStaticMarkup(
+      createElement(
+        clientA.ReactClientRouterProvider,
+        { initialSnapshot: clientA.createReactRouteSnapshot({ url: '/outer' }) },
+        createElement(
+          'section',
+          null,
+          createElement(CopyBPathname),
+          createElement(
+            clientB.ReactClientRouterProvider,
+            { initialSnapshot: clientB.createReactRouteSnapshot({ url: '/inner' }) },
+            createElement(CopyBPathname),
+          ),
+        ),
+      ),
+    );
+
+    // Then: copy B sees copy A's context, while nested providers retain their own snapshots.
+    expect(html).toContain('<section><output>/outer</output><output>/inner</output></section>');
+  });
+
   it('renders Link as a real anchor for progressive enhancement', () => {
     // Given: a client router provider and a same-origin destination.
     const initialSnapshot = createReactRouteSnapshot({ url: '/products/sku-42' });

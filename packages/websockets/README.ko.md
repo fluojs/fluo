@@ -63,6 +63,8 @@ export class AppModule {}
 ### 경로 공유 게이트웨이
 여러 게이트웨이가 동일한 경로를 공유할 수 있으며, 이들의 핸들러는 탐색된 순서대로 실행됩니다.
 
+공개 gateway 및 handler metadata helper는 호환되는 same-realm `@fluojs/websockets` 사본 간에 explicit metadata를 보존합니다. Reader와 discovery는 defensive snapshot을 받고 표준 decorator metadata는 기존 우선순위를 유지합니다. 이 상호 운용성은 서로 다른 realm, process, worker 또는 호환되지 않는 package contract에는 적용되지 않습니다.
+
 ```typescript
 @WebSocketGateway({ path: '/events' })
 class MetricsGateway {

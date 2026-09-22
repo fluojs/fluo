@@ -1,12 +1,13 @@
 import type { MetadataPropertyKey } from '@fluojs/core';
-import { getStandardMetadataBag } from '@fluojs/core/internal';
+import { getGlobalMetadataWeakMap, getStandardMetadataBag } from '@fluojs/core/internal';
 
 const runtimeRouteInspectionMetadataKey = Symbol.for('fluo.runtime.route-inspection');
 
-const legacyRouteInspectionMetadataStore = new WeakMap<
+const legacyRouteInspectionMetadataStoreKey = Symbol.for('fluo.runtime.route-inspection.legacy-metadata-store');
+const legacyRouteInspectionMetadataStore = getGlobalMetadataWeakMap<
   object,
   Map<MetadataPropertyKey, RuntimeRouteInspectionMetadata>
->();
+>(legacyRouteInspectionMetadataStoreKey);
 
 /** Describes package-integration metadata that classifies a compiled runtime route. */
 export interface RuntimeRouteInspectionMetadata {
