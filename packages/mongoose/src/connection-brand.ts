@@ -5,7 +5,13 @@ function hasMethod(value: object, key: PropertyKey): boolean {
   return typeof Reflect.get(value, key) === 'function';
 }
 
-/** @internal */
+/**
+ * Marks a Mongoose connection wrapper with the owner capability consumed by transaction decorators.
+ *
+ * @param handle Wrapper that owns the Mongoose transaction lifecycle.
+ * @returns The same owner wrapper with its non-enumerable capability marker.
+ * @internal
+ */
 export function markMongooseConnectionHandle<THandle extends object>(handle: THandle): THandle {
   Object.defineProperty(handle, MONGOOSE_CONNECTION_OWNER, {
     configurable: false,
@@ -16,7 +22,13 @@ export function markMongooseConnectionHandle<THandle extends object>(handle: THa
   return handle;
 }
 
-/** @internal */
+/**
+ * Checks whether a value exposes the complete compatible Mongoose transaction surface.
+ *
+ * @param value Candidate wrapper received across a same-realm package boundary.
+ * @returns Whether the candidate carries the supported owner marker and every consumed method.
+ * @internal
+ */
 export function isCompatibleMongooseConnectionHandle(value: unknown): value is object {
   return typeof value === 'object'
     && value !== null
