@@ -1,7 +1,4 @@
-import { FrameworkService } from '@fluojs/core/internal';
-
 /** Coordinates one absolute CQRS shutdown deadline across lifecycle drain hooks. */
-@FrameworkService({ id: '@fluojs/cqrs/CqrsShutdownDeadline', version: 1 })
 export class CqrsShutdownDeadline {
   private deadlineMs: number | undefined;
 
