@@ -58,6 +58,48 @@ function createDeferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
+function createDispatcherCompletion(owner: SseResponse, onAwait: () => void): object {
+  return new Proxy(owner.completion, {
+    get(target, property, receiver) {
+      if (property !== 'then') {
+        return Reflect.get(target, property, receiver);
+      }
+
+      return (
+        onfulfilled?: ((value: void) => unknown) | null,
+        onrejected?: ((reason: unknown) => unknown) | null,
+      ) => {
+        onAwait();
+        return target.then(onfulfilled, onrejected);
+      };
+    },
+  });
+}
+
+function createDispatcherSseResponse(owner: SseResponse, onAwait: () => void): object {
+  const response = {};
+  const completion = createDispatcherCompletion(owner, onAwait);
+
+  Object.defineProperty(response, Symbol.for('@fluojs/http/SseResponse.owner'), {
+    configurable: false,
+    enumerable: false,
+    value: Object.freeze({
+      completion,
+      owner: '@fluojs/http' as const,
+      version: 1 as const,
+    }),
+    writable: false,
+  });
+  Object.defineProperty(response, 'completion', {
+    configurable: true,
+    get() {
+      throw new Error('public completion getter must not be read');
+    },
+  });
+
+  return response;
+}
+
 const CLOSE_CASES = [
   {
     async close(fixture: ManualSseFixture): Promise<void> {
@@ -185,22 +227,14 @@ function createFixture(options: ManualSseFixtureOptions = {}): ManualSseFixture 
   @Controller('/events')
   class ManualSseController {
     @Sse()
-    async stream(_input: undefined, context: RequestContext): Promise<SseResponse> {
+    async stream(_input: undefined, context: RequestContext): Promise<object> {
       await context.container.resolve(RequestScopedDisposable);
-      const response = new SseResponse(context);
-      const completion = response.completion;
-
-      Object.defineProperty(response, 'completion', {
-        configurable: true,
-        get() {
-          dispatcherWaiting.resolve();
-          return completion;
-        },
-      });
+      const sseResponse = new SseResponse(context);
+      const dispatcherResponse = createDispatcherSseResponse(sseResponse, dispatcherWaiting.resolve);
 
       events.push('handler');
-      resolveSse(response);
-      return response;
+      resolveSse(sseResponse);
+      return dispatcherResponse;
     }
   }
 
