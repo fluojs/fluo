@@ -2,7 +2,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { FluoError, getModuleMetadata, isFluoError, Module, publicToken } from '@fluojs/core';
+import { FluoError, getModuleMetadata, Inject, isFluoError, Module, publicToken, Scope } from '@fluojs/core';
 import { Container } from '@fluojs/di';
 import {
   assertRequestContext,
@@ -15,7 +15,7 @@ import {
   SseResponse,
   waitForSseResponseCompletion,
 } from '@fluojs/http';
-import { JwtModule } from '@fluojs/jwt';
+import { JwtModule, JwtService } from '@fluojs/jwt';
 import {
   BEARER_JWT_STRATEGY_NAME,
   BearerJwtStrategy,
@@ -24,6 +24,7 @@ import {
   RequireScopes,
   UseAuth,
 } from '@fluojs/passport';
+import { MongooseConnection } from '@fluojs/mongoose';
 import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
@@ -46,7 +47,7 @@ const container = new Container().register(
 const firstRequest = container.createRequestScope();
 const secondRequest = container.createRequestScope();
 const singleton = await container.resolve(singletonToken);
-const error = new FluoError('duplicate module safety', { code: 'DUPLICATE_MODULE_SAFETY', details: { artifact: marker.artifact } });
+const error = new FluoError('duplicate module safety', { code: 'DUPLICATE_MODULE_SAFETY', meta: { artifact: marker.artifact } });
 
 function requestContext(response = { committed: false, headers: {}, redirect() {}, send() {}, setHeader() {}, setStatus() {} }) {
   return createRequestContext({
@@ -142,11 +143,23 @@ async function observeAdapter(kind) {
 }
 
 async function observeJwtPassport() {
-  class ProfileController {
-    get() {
-      return { artifact: marker.artifact, protected: true };
+  class PrincipalProvider {
+    current() {
+      const principal = assertRequestContext().principal;
+      return { scopes: principal?.scopes, subject: principal?.subject };
     }
   }
+  Scope('request')(PrincipalProvider);
+  class ProfileController {
+    constructor(principalProvider) {
+      this.principalProvider = principalProvider;
+    }
+    get() {
+      return { artifact: marker.artifact, principal: this.principalProvider.current(), protected: true };
+    }
+  }
+  Inject(PrincipalProvider)(ProfileController);
+  Scope('request')(ProfileController);
   const metadata = {};
   const classContext = { kind: 'class', metadata, name: 'ProfileController' };
   const methodContext = { kind: 'method', metadata, name: 'get' };
@@ -171,7 +184,7 @@ async function observeJwtPassport() {
         [createBearerJwtStrategyRegistration()],
       ),
     ],
-    providers: [BearerJwtStrategy],
+    providers: [BearerJwtStrategy, PrincipalProvider],
   })(AuthModule);
   const adapter = FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
   const app = await FluoFactory.create(AuthModule, { adapter });
@@ -181,17 +194,70 @@ async function observeJwtPassport() {
     const port = typeof address === 'object' && address !== null ? address.port : undefined;
     if (!Number.isInteger(port) || port <= 0) throw new Error('Packed JWT adapter did not bind an ephemeral port.');
     const origin = `http://127.0.0.1:${port}`;
-    const [missing, invalid] = await Promise.all([
+    const jwt = await app.get(JwtService);
+    const token = await jwt.sign({ scopes: ['fixture:read'] }, { subject: `fixture-${marker.artifact}` });
+    const [missing, invalid, valid] = await Promise.all([
       fetch(`${origin}/profile/`),
       fetch(`${origin}/profile/`, { headers: { authorization: 'Bearer invalid-token' } }),
+      fetch(`${origin}/profile/`, { headers: { authorization: `Bearer ${token}` } }),
     ]);
     return {
       invalid: { status: invalid.status, wwwAuthenticate: invalid.headers.get('www-authenticate') },
       missing: { status: missing.status, wwwAuthenticate: missing.headers.get('www-authenticate') },
       port,
+      valid: { body: await valid.json(), status: valid.status },
     };
   } finally {
     await app.close();
+  }
+}
+
+async function observeRollback() {
+  const events = [];
+  const original = new Error(`original-${marker.artifact}`);
+  const cleanup = new Error(`cleanup-${marker.artifact}`);
+  const session = {
+    async abortTransaction() {
+      events.push('abort');
+      throw cleanup;
+    },
+    async commitTransaction() {
+      events.push('commit');
+    },
+    async endSession() {
+      events.push('end');
+    },
+    async startTransaction() {
+      events.push('start');
+    },
+  };
+  const connection = new MongooseConnection({
+    async startSession() {
+      return session;
+    },
+  }, undefined, {
+    rollbackObserver: {
+      beginAttempt() {
+        return { confirmRollback: () => true };
+      },
+      run(callback) {
+        return callback();
+      },
+    },
+    strictTransactions: true,
+  });
+  try {
+    await connection.transaction(async () => {
+      throw original;
+    }, { shouldRollback: () => true });
+    throw new Error('Expected transaction rollback to reject.');
+  } catch (error) {
+    const errors = error instanceof AggregateError ? error.errors : [];
+    return {
+      cleanupPreserved: errors.includes(cleanup),
+      events,
+      originalPreserved: errors.includes(original),
+    };
   }
 }
 
@@ -218,7 +284,7 @@ export const observation = {
   surfaces: {
     error: {
       code: error.code,
-      details: error.details,
+      meta: error.meta,
       recognized: isFluoError(error, '@fluojs/core'),
     },
     metadata: moduleMetadata?.controllers?.includes(FixtureProvider) && moduleMetadata.providers?.includes(FixtureProvider),
@@ -229,6 +295,7 @@ export const observation = {
     sse: await observeSse(),
     transports: await Promise.all(['node', 'fastify', 'express'].map(observeAdapter)),
     jwtPassport: await observeJwtPassport(),
+    rollback: await observeRollback(),
   },
   version: manifest.version,
 };

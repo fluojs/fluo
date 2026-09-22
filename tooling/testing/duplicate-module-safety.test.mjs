@@ -106,13 +106,13 @@ test('packed runner records distinct artifact paths, topology evidence, and tear
     assert.notEqual(run.consumers.a.marker, run.consumers.b.marker);
     assert.notEqual(run.rootConsumer.a.realPath, run.rootConsumer.b.realPath);
     for (const packageName of ['@fluojs/core', '@fluojs/di', '@fluojs/http', '@fluojs/jwt', '@fluojs/passport',
-      '@fluojs/react', '@fluojs/runtime', '@fluojs/platform-nodejs', '@fluojs/platform-fastify', '@fluojs/platform-express']) {
+      '@fluojs/mongoose', '@fluojs/react', '@fluojs/runtime', '@fluojs/platform-nodejs', '@fluojs/platform-fastify', '@fluojs/platform-express']) {
       assert.ok(run.closure.includes(packageName));
     }
     for (const consumer of [run.rootConsumer.a, run.rootConsumer.b]) {
       assert.deepEqual(consumer.surfaces.error, {
         code: 'DUPLICATE_MODULE_SAFETY',
-        details: { artifact: consumer.artifact },
+        meta: { artifact: consumer.artifact },
         recognized: true,
       });
       assert.equal(consumer.surfaces.metadata, true);
@@ -126,6 +126,19 @@ test('packed runner records distinct artifact paths, topology evidence, and tear
       assert.ok(consumer.surfaces.jwtPassport.port > 0);
       assert.deepEqual(consumer.surfaces.jwtPassport.missing, { status: 401, wwwAuthenticate: 'Bearer' });
       assert.deepEqual(consumer.surfaces.jwtPassport.invalid, { status: 401, wwwAuthenticate: 'Bearer error="invalid_token"' });
+      assert.deepEqual(consumer.surfaces.jwtPassport.valid, {
+        body: {
+          artifact: consumer.artifact,
+          principal: { scopes: ['fixture:read'], subject: `fixture-${consumer.artifact}` },
+          protected: true,
+        },
+        status: 200,
+      });
+      assert.deepEqual(consumer.surfaces.rollback, {
+        cleanupPreserved: true,
+        events: ['start', 'abort', 'end'],
+        originalPreserved: true,
+      });
       assert.equal(consumer.surfaces.react.status, 200);
       assert.equal(consumer.surfaces.react.contentType, 'text/html; charset=utf-8');
       assert.match(consumer.surfaces.react.body, new RegExp(`data-artifact="${consumer.artifact}"`, 'u'));
