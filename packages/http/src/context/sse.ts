@@ -297,5 +297,5 @@ export function waitForSseResponseCompletion(response: unknown): Promise<void> {
   if (!capability) {
     throw new TypeError('Expected a compatible version-1 @fluojs/http SSE response.');
   }
-  return Reflect.get(response as object, 'completion') as Promise<void>;
+  return capability.completion;
 }

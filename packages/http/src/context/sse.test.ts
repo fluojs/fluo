@@ -165,6 +165,38 @@ describe('SseResponse', () => {
     await expect(completion).resolves.toBeUndefined();
   });
 
+  it('uses the validated marker completion without reading the public completion getter', async () => {
+    let resolveMarkerCompletion: () => void = () => undefined;
+    const markerCompletion = new Promise<void>((resolve) => {
+      resolveMarkerCompletion = resolve;
+    });
+    const publicCompletion = vi.fn(() => {
+      throw new Error('public completion getter must not be read');
+    });
+    const response = Object.defineProperties({}, {
+      [Symbol.for('@fluojs/http/SseResponse.owner')]: {
+        value: {
+          completion: markerCompletion,
+          owner: '@fluojs/http',
+          version: 1,
+        },
+      },
+      completion: {
+        get: publicCompletion,
+      },
+    });
+
+    expect(isCompatibleSseResponse(response)).toBe(true);
+
+    const completion = waitForSseResponseCompletion(response);
+
+    expect(completion).toBe(markerCompletion);
+    expect(publicCompletion).not.toHaveBeenCalled();
+
+    resolveMarkerCompletion();
+    await expect(completion).resolves.toBeUndefined();
+  });
+
   it('commits SSE headers and keeps close idempotent', () => {
     const stream = createMockSseStream();
     const response = createMockResponse(stream);
