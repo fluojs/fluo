@@ -16,7 +16,6 @@
     { "prefix": "packages/platform-deno/", "commands": [{ "executable": "node", "argv": ["tooling/scripts/run-workspace-build-closure.mjs", "@fluojs/platform-deno"], "cwd": "." }, { "executable": "deno", "argv": ["check", "--no-lock", "--node-modules-dir=auto", "--config", "packages/platform-deno/deno/deno.json", "npm:@fluojs/platform-deno"], "cwd": "." }, { "executable": "deno", "argv": ["test", "--no-lock", "--config", "packages/platform-deno/deno/deno.json", "--allow-net", "--allow-read", "packages/platform-deno/deno/native-adapter.test.js"], "cwd": "." }] },
     { "prefix": "packages/studio/", "commands": [{ "executable": "pnpm", "argv": ["--filter", "@fluojs/studio", "test:browser"], "cwd": "." }] },
     { "prefix": "packages/cli/src/new/", "commands": [{ "executable": "pnpm", "argv": ["--dir", "packages/cli", "sandbox:matrix"], "cwd": "." }] },
-    { "prefix": "tooling/testing/duplicate-module-safety", "commands": [{ "executable": "pnpm", "argv": ["test:duplicate-module-safety"], "cwd": "." }] },
-    { "prefix": "packages/testing/fixtures/duplicate-module-safety/", "commands": [{ "executable": "pnpm", "argv": ["test:duplicate-module-safety"], "cwd": "." }] }
+    { "prefix": "tooling/testing/duplicate-module-safety", "commands": [{ "executable": "pnpm", "argv": ["test:duplicate-module-safety"], "cwd": "." }] }
   ]
 }

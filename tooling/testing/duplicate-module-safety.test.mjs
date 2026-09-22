@@ -3,11 +3,13 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  commandRecord,
   coverageManifestPath,
   loadCoverageManifest,
   publicPackageNames,
   runDuplicateModuleSafety,
   validateCoverageManifest,
+  workspaceDependencyClosure,
 } from './duplicate-module-safety.mjs';
 
 const root = new URL('../..', import.meta.url);
@@ -35,16 +37,61 @@ test('coverage validation rejects stale, duplicate, unsupported, and invented ev
   assert.ok(failures.some((failure) => failure.includes('evidence path')));
 });
 
+test('packed closure includes every internal dependency of applied packages', () => {
+  const closure = workspaceDependencyClosure(root);
+
+  for (const packageName of ['@fluojs/core', '@fluojs/di', '@fluojs/http', '@fluojs/runtime', '@fluojs/react',
+    '@fluojs/platform-nodejs', '@fluojs/platform-fastify', '@fluojs/platform-express']) {
+    assert.ok(closure.includes(packageName));
+  }
+  assert.ok(closure.indexOf('@fluojs/core') < closure.indexOf('@fluojs/di'));
+  assert.ok(closure.indexOf('@fluojs/http') < closure.indexOf('@fluojs/platform-fastify'));
+});
+
 test('coverage file remains checked JSON rather than generated runtime state', () => {
   const source = readFileSync(coverageManifestPath(root), 'utf8');
-  assert.doesNotMatch(source, /\b42\b/u);
-  assert.deepEqual(JSON.parse(source), loadCoverageManifest(root));
+  assert.deepEqual(JSON.parse(source), { version: 1, packages: [] });
+  assert.equal(loadCoverageManifest(root).packages.length, 43);
+});
+
+test('command records preserve bounded timeout process output and signal evidence', async () => {
+  await assert.rejects(
+    commandRecord(
+      [process.execPath, '--input-type=module', '--eval', "console.log('started'); console.error('diagnostic'); setInterval(() => {}, 1_000);"],
+      root,
+      100,
+    ),
+    (error) => {
+      assert.match(error.message, /timed out/u);
+      assert.equal(error.record.exitCode, null);
+      assert.ok(error.record.signal);
+      assert.match(error.record.stdout, /started/u);
+      assert.match(error.record.stderr, /diagnostic/u);
+      return true;
+    },
+  );
+});
+
+test('command records retain nonzero exit, signal, stdout, and stderr evidence', async () => {
+  await assert.rejects(
+    commandRecord(
+      [process.execPath, '--input-type=module', '--eval', "console.log('stdout evidence'); console.error('stderr evidence'); process.exit(7);"],
+      root,
+      1_000,
+    ),
+    (error) => {
+      assert.equal(error.record.exitCode, 7);
+      assert.equal(error.record.signal, null);
+      assert.match(error.record.stdout, /stdout evidence/u);
+      assert.match(error.record.stderr, /stderr evidence/u);
+      return true;
+    },
+  );
 });
 
 test('packed runner records distinct artifact paths, topology evidence, and teardown', { skip: !process.env.FLUO_RUN_PACKED_DUPLICATE_MODULE_SAFETY }, async () => {
   const result = await runDuplicateModuleSafety({
     root,
-    packageNames: ['@fluojs/core', '@fluojs/di'],
     timeoutMs: 120_000,
   });
 
@@ -55,6 +102,44 @@ test('packed runner records distinct artifact paths, topology evidence, and tear
     assert.notEqual(run.consumers.a.realPath, run.consumers.b.realPath);
     assert.equal(run.consumers.a.artifact, 'A');
     assert.equal(run.consumers.b.artifact, 'B');
+    assert.notEqual(run.consumers.a.integrity, run.consumers.b.integrity);
+    assert.notEqual(run.consumers.a.marker, run.consumers.b.marker);
+    assert.notEqual(run.rootConsumer.a.realPath, run.rootConsumer.b.realPath);
+    for (const packageName of ['@fluojs/core', '@fluojs/di', '@fluojs/http', '@fluojs/jwt', '@fluojs/passport',
+      '@fluojs/react', '@fluojs/runtime', '@fluojs/platform-nodejs', '@fluojs/platform-fastify', '@fluojs/platform-express']) {
+      assert.ok(run.closure.includes(packageName));
+    }
+    for (const consumer of [run.rootConsumer.a, run.rootConsumer.b]) {
+      assert.deepEqual(consumer.surfaces.error, {
+        code: 'DUPLICATE_MODULE_SAFETY',
+        details: { artifact: consumer.artifact },
+        recognized: true,
+      });
+      assert.equal(consumer.surfaces.metadata, true);
+      assert.equal(consumer.surfaces.requestContext.current, `fixture-${consumer.artifact}`);
+      assert.equal(consumer.surfaces.requestContext.principal, `fixture-${consumer.artifact}`);
+      assert.equal(consumer.surfaces.sse.accepted, true);
+      assert.equal(consumer.surfaces.sse.compatible, true);
+      assert.equal(consumer.surfaces.sse.closed, true);
+      assert.match(consumer.surfaces.sse.frame, /event: fixture/u);
+      assert.equal(consumer.surfaces.sse.status, 200);
+      assert.ok(consumer.surfaces.jwtPassport.port > 0);
+      assert.deepEqual(consumer.surfaces.jwtPassport.missing, { status: 401, wwwAuthenticate: 'Bearer' });
+      assert.deepEqual(consumer.surfaces.jwtPassport.invalid, { status: 401, wwwAuthenticate: 'Bearer error="invalid_token"' });
+      assert.equal(consumer.surfaces.react.status, 200);
+      assert.equal(consumer.surfaces.react.contentType, 'text/html; charset=utf-8');
+      assert.match(consumer.surfaces.react.body, new RegExp(`data-artifact="${consumer.artifact}"`, 'u'));
+      assert.deepEqual(consumer.surfaces.transports.map((transport) => transport.kind).sort(), ['express', 'fastify', 'node']);
+      for (const transport of consumer.surfaces.transports) {
+        assert.ok(transport.port > 0);
+        assert.equal(transport.status, 200);
+        assert.deepEqual(transport.body, {
+          artifact: consumer.artifact,
+          kind: transport.kind,
+          request: 'served-by-packed-adapter',
+        });
+      }
+    }
     assert.ok(run.commands.every((command) => command.argv.length > 0 && command.elapsedMs >= 0));
     assert.ok(run.topologies.some((topology) => topology.kind === 'same-version-different-path'));
     assert.ok(run.topologies.some((topology) => topology.kind === 'compatible-patch-skew'));
