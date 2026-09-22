@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -47,10 +48,6 @@ const expectedPublicServiceIdentities = [
   { path: 'packages/throttler/src/guard.ts', id: '@fluojs/throttler/ThrottlerGuard', version: 1 },
 ] as const satisfies readonly ServiceIdentity[];
 
-const frameworkServicePattern = /@FrameworkService\(\{\s*id:\s*(['"])([^'"]+)\1,\s*version:\s*(\d+),?\s*\}\)/gu;
-const directIdentityPattern =
-  /defineFrameworkServiceIdentity\(\s*[\w$]+,\s*\{\s*id:\s*(['"])([^'"]+)\1,\s*version:\s*(\d+),?\s*\}\s*\)/gu;
-
 function read(relativePath: string): string {
   return readFileSync(resolve(repoRoot, relativePath), 'utf8');
 }
@@ -93,19 +90,143 @@ function discoverGovernedSourceFiles(): readonly SourceFile[] {
 
 function discoverServiceIdentities(sourceFiles: readonly SourceFile[]): readonly ServiceIdentity[] {
   return sourceFiles
-    .flatMap((sourceFile) => [
-      ...Array.from(sourceFile.source.matchAll(frameworkServicePattern), (match) => ({
-        path: sourceFile.path,
-        id: match[2],
-        version: Number(match[3]),
-      })),
-      ...Array.from(sourceFile.source.matchAll(directIdentityPattern), (match) => ({
-        path: sourceFile.path,
-        id: match[2],
-        version: Number(match[3]),
-      })),
-    ])
+    .flatMap(discoverSourceServiceIdentities)
     .sort(compareIdentities);
+}
+
+function discoverSourceServiceIdentities(sourceFile: SourceFile): readonly ServiceIdentity[] {
+  const parsedSource = ts.createSourceFile(sourceFile.path, sourceFile.source, ts.ScriptTarget.Latest, true);
+  const identities: ServiceIdentity[] = [];
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const marker = frameworkServiceMarker(node);
+
+      if (marker && !isFrameworkServiceImplementationRelay(node)) {
+        identities.push({
+          path: sourceFile.path,
+          ...resolveServiceIdentity(node, marker, sourceFile.path),
+        });
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(parsedSource);
+  return identities;
+}
+
+function frameworkServiceMarker(call: ts.CallExpression): 'FrameworkService' | 'defineFrameworkServiceIdentity' | undefined {
+  if (!ts.isIdentifier(call.expression)) {
+    return undefined;
+  }
+
+  const name = call.expression.text;
+
+  return name === 'FrameworkService' || name === 'defineFrameworkServiceIdentity' ? name : undefined;
+}
+
+function isFrameworkServiceImplementationRelay(call: ts.CallExpression): boolean {
+  for (let parent = call.parent; parent; parent = parent.parent) {
+    if (
+      ts.isFunctionDeclaration(parent)
+      && parent.name
+      && (parent.name.text === 'FrameworkService' || parent.name.text === 'defineFrameworkServiceIdentity')
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function resolveServiceIdentity(
+  call: ts.CallExpression,
+  marker: 'FrameworkService' | 'defineFrameworkServiceIdentity',
+  path: string,
+): Omit<ServiceIdentity, 'path'> {
+  const argumentIndex = marker === 'FrameworkService' ? 0 : 1;
+  const identityExpression = call.arguments[argumentIndex];
+
+  if (!identityExpression) {
+    throw new Error(`Framework service identity must provide a canonical object literal: ${path}`);
+  }
+
+  const identityObject = ts.isObjectLiteralExpression(identityExpression)
+    ? identityExpression
+    : ts.isIdentifier(identityExpression)
+      ? resolveConstIdentityObject(identityExpression)
+      : undefined;
+
+  if (!identityObject) {
+    throw new Error(`Framework service identity must use an inline or const object literal: ${path}`);
+  }
+
+  return readIdentityObject(identityObject, path);
+}
+
+function resolveConstIdentityObject(identifier: ts.Identifier): ts.ObjectLiteralExpression | undefined {
+  for (let parent = identifier.parent; parent; parent = parent.parent) {
+    if (!ts.isSourceFile(parent) && !ts.isBlock(parent)) {
+      continue;
+    }
+
+    for (const statement of parent.statements) {
+      if (!ts.isVariableStatement(statement) || statement.end > identifier.pos) {
+        continue;
+      }
+
+      for (const declaration of statement.declarationList.declarations) {
+        if (
+          (statement.declarationList.flags & ts.NodeFlags.Const) !== 0
+          && ts.isIdentifier(declaration.name)
+          && declaration.name.text === identifier.text
+          && declaration.initializer
+          && ts.isObjectLiteralExpression(declaration.initializer)
+        ) {
+          return declaration.initializer;
+        }
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function readIdentityObject(identityObject: ts.ObjectLiteralExpression, path: string): Omit<ServiceIdentity, 'path'> {
+  let id: string | undefined;
+  let version: number | undefined;
+
+  for (const property of identityObject.properties) {
+    if (!ts.isPropertyAssignment(property) || ts.isComputedPropertyName(property)) {
+      throw new Error(`Framework service identity must use plain id and version properties: ${path}`);
+    }
+
+    if (!ts.isIdentifier(property.name) && !ts.isStringLiteral(property.name)) {
+      throw new Error(`Framework service identity must use plain id and version properties: ${path}`);
+    }
+
+    const name = property.name.text;
+
+    if (name === 'id' && ts.isStringLiteral(property.initializer)) {
+      id = property.initializer.text;
+      continue;
+    }
+
+    if (name === 'version' && ts.isNumericLiteral(property.initializer)) {
+      version = Number(property.initializer.text);
+      continue;
+    }
+
+    throw new Error(`Framework service identity must use literal id and version properties: ${path}`);
+  }
+
+  if (id === undefined || version === undefined) {
+    throw new Error(`Framework service identity must define literal id and version properties: ${path}`);
+  }
+
+  return { id, version };
 }
 
 function compareIdentities(left: ServiceIdentity, right: ServiceIdentity): number {
@@ -225,5 +346,61 @@ describe('duplicate-copy service token inventory', () => {
         )),
       );
     }).toThrow();
+  });
+
+  it('rejects unlisted reversed decorator and indirect identity markers', () => {
+    const expectedIdentity = expectedPublicServiceIdentities[0];
+    const sourceFile = governedSourceFiles.find((file) => file.path === expectedIdentity.path);
+    const identitySourceFile = governedSourceFiles.find((file) => file.path === 'packages/config/src/service.ts');
+
+    if (!sourceFile || !identitySourceFile) {
+      throw new Error('Expected governed source file is missing.');
+    }
+
+    expect(() => {
+      assertExactDiscoveredSet(
+        expectedPublicServiceIdentities,
+        discoverServiceIdentities(replaceSource(
+          governedSourceFiles,
+          sourceFile.path,
+          `${sourceFile.source}
+@FrameworkService({ version: 1, id: '@fluojs/cache-manager/ReversedService' })`,
+        )),
+      );
+    }).toThrow();
+    expect(() => {
+      assertExactDiscoveredSet(
+        expectedPublicServiceIdentities,
+        discoverServiceIdentities(replaceSource(
+          governedSourceFiles,
+          identitySourceFile.path,
+          `${identitySourceFile.source}
+const identityConstant = { version: 1, id: '@fluojs/cache-manager/IndirectService' };
+defineFrameworkServiceIdentity(Service, identityConstant);`,
+        )),
+      );
+    }).toThrow();
+  });
+
+  it('ignores FrameworkService marker text in comments and strings', () => {
+    const expectedIdentity = expectedPublicServiceIdentities[0];
+    const sourceFile = governedSourceFiles.find((file) => file.path === expectedIdentity.path);
+
+    if (!sourceFile) {
+      throw new Error(`Expected governed source file is missing: ${expectedIdentity.path}`);
+    }
+
+    expect(() => {
+      assertExactDiscoveredSet(
+        expectedPublicServiceIdentities,
+        discoverServiceIdentities(replaceSource(
+          governedSourceFiles,
+          sourceFile.path,
+          `${sourceFile.source}
+// @FrameworkService({ version: 1, id: '@fluojs/cache-manager/CommentMention' })
+const markerText = "@FrameworkService({ version: 1, id: '@fluojs/cache-manager/StringMention' })";`,
+        )),
+      );
+    }).not.toThrow();
   });
 });
