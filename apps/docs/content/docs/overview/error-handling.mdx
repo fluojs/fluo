@@ -1,0 +1,83 @@
+---
+title: Error handling
+description: Return intentional HTTP errors without leaking implementation details.
+---
+
+A valid request can still ask for a resource that does not exist. Distinguish
+that expected application outcome from malformed input and unexpected failures.
+
+Continue after [Serialization](/docs/overview/serialization), in the same app.
+The list and create routes remain unchanged in behavior.
+
+## Bind a resource identifier
+
+Create `src/posts/post-params.dto.ts`:
+
+<CheckpointCode stage="06-errors" file="post-params.dto.ts" />
+
+`@FromPath('id')` binds the `:id` segment. A path DTO is explicit for the same
+reason as the create DTO: parameter types alone do not provide runtime binding.
+
+## Make missing records intentional
+
+Replace `src/posts/posts.service.ts`:
+
+<CheckpointCode stage="06-errors" file="posts.service.ts" />
+
+The lookup throws `NotFoundException` when no record matches. For this small API,
+the service uses an HTTP exception directly. A larger domain layer can instead
+return its own result and let the controller translate it into HTTP behavior.
+Neither choice makes an unexpected programming error a normal `404`.
+
+## Add the read route
+
+Replace `src/posts/posts.controller.ts`:
+
+<CheckpointCode stage="06-errors" file="posts.controller.ts" />
+
+Keep `posts.module.ts`, `create-post.dto.ts` and `post-response.dto.ts` from the
+previous checkpoint. The new route uses the same serializer, so internal fields
+stay private on reads as well as lists and creation.
+
+## Exercise the three outcomes
+
+Restart `pnpm dev` and run:
+
+```bash
+curl -i http://localhost:3000/posts/1
+curl -i http://localhost:3000/posts/does-not-exist
+curl -i -X POST http://localhost:3000/posts \
+  -H 'content-type: application/json' \
+  -d '{"title":"Hi","content":"Too short"}'
+```
+
+Expect `200`, `404`, and `400`, respectively.
+
+The missing-record response has the framework's error envelope:
+
+```json
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Post does-not-exist was not found.",
+    "status": 404
+  }
+}
+```
+
+An application may also provide a request ID. Tests should assert the stable
+machine fields relevant to the contract, not incidental object formatting.
+
+## Unexpected errors are different
+
+Unknown exceptions become server errors without exposing their original message
+to clients. Do not catch every error and return `200` with an error-shaped
+object: callers would lose the HTTP failure signal. Do not return stack traces,
+database errors or connection details in public responses.
+
+A route miss is also `404`, but it means no handler matched the method and path,
+not that `PostsService` failed to find a record. Preserve that distinction when
+debugging.
+
+Previous: [Serialization](/docs/overview/serialization).
+Next: [Testing](/docs/overview/testing).

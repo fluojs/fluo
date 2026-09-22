@@ -1,6 +1,6 @@
 # fluo 문서 허브
 
-이 디렉터리는 fluo의 거버넌스 적용 저장소 문서를 담고 있습니다. 공식 웹사이트 소스는 이제 `apps/docs`에 있으며, Fumadocs를 사용해 영어/한국어 이중 언어 문서 표면을 제공합니다.
+이 디렉터리는 fluo의 거버넌스 적용 저장소 문서를 담고 있습니다. 공식 웹사이트 소스는 이제 `apps/docs`에 있으며, Fumadocs를 사용해 영문 전용 문서 표면을 제공합니다.
 
 Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층이며, Book은 같은 계약에서 파생된 사람 중심의 제품 서사입니다. [문서 권위 정책](./contracts/documentation-authority.ko.md)은 원본 책임, 간결한 Markdown 계약 필드, 충돌 처리와 변경 순서를 정의합니다. 패키지 README는 이 계층에서 패키지 API를 위임받은 원본입니다. 설치·공개 import·필수 사용법·기본값·보장 요약을 유지하고 공통 계약으로 연결하며, API 본문을 `docs/`에 복제하지 않습니다.
 
@@ -10,8 +10,8 @@ Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층이며, Boo
 | --- | --- | --- |
 | AI로 코드 작성·검토하기 | [AI 컨텍스트](./CONTEXT.ko.md) | 제약 확인 → [계약 참조 색인](./knowledge-index.json)과 아래 원본 책임 표·패키지 선택기 → 담당 계약 → 구현·테스트·실행 근거. |
 | 제품을 만들며 백엔드 설계 배우기 | [3권 시리즈](../book/README.ko.md) | FluoBlog → 머천다이즈 숍 → Fluo 내부 구조로 이어지는 72장. |
-| 첫 HTTP 기능을 짧게 확인하기 | [FluoBlog 실습](../apps/docs/content/docs/tutorial/index.ko.mdx) | 초기 라우트·DI·검증 경로의 실행 가능한 보조 과정. |
-| 기존 앱에 기능 추가하기 | [작업별 가이드](../apps/docs/content/docs/guides/index.ko.mdx) | 특정 작업의 방법과 기능 선택 기준이며 별도의 입문 과정은 아닙니다. |
+| 첫 HTTP 기능을 짧게 확인하기 | [FluoBlog 실습](../apps/docs/content/docs/tutorial/index.mdx) | 초기 라우트·DI·검증 경로의 실행 가능한 보조 과정. |
+| 기존 앱에 기능 추가하기 | [작업별 가이드](../apps/docs/content/docs/guides/index.mdx) | 특정 작업의 방법과 기능 선택 기준이며 별도의 입문 과정은 아닙니다. |
 | 프레임워크 구현 이해하기 | [3권 Inside Fluo](../book/03-internals/toc.ko.md) | 두 제품의 실행 경로를 소스와 계약으로 추적하는 심화 과정. |
 | API나 지원 동작 확인하기 | [패키지 선택기](./reference/package-chooser.ko.md) | 담당 패키지 README와 공통 동작 계약. |
 | 실행하거나 내 코드와 비교하기 | [예제](../examples/README.ko.md) | 튜토리얼 단계별 코드를 포함한 실행 가능한 애플리케이션. |
@@ -56,7 +56,7 @@ Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층이며, Boo
 - React RSC graduation policy: [`contracts/react-rsc-graduation.ko.md`](./contracts/react-rsc-graduation.ko.md)
 - 테스트 가이드: [`contracts/testing-guide.ko.md`](./contracts/testing-guide.ko.md)
 - Testing package 계약: [`../packages/testing/README.ko.md`](../packages/testing/README.ko.md)
-- Testing 학습 경로: [FluoBlog 요청 테스트](../apps/docs/content/docs/tutorial/testing.ko.mdx)
+- Testing 학습 경로: [FluoBlog 요청 테스트](../apps/docs/content/docs/tutorial/testing.mdx)
 - Testing 배경 설명: [`../book/beginner/ch20-testing.ko.md`](../book/beginner/ch20-testing.ko.md)
 
 웹사이트는 거버넌스가 적용되는 패키지나 런타임 사실을 요약할 때 source of truth를 중복하지 말고 이 정식 파일로 연결해야 합니다.
@@ -65,8 +65,8 @@ Docs는 AI가 사용하는 프레임워크의 규범적 계약 계층이며, Boo
 
 로컬 설정, 검증 명령, PR 프로세스는 root의 [`CONTRIBUTING.ko.md`](../CONTRIBUTING.ko.md)에서 시작하세요. 문서 변경은 다음 저장소별 체크도 함께 따라야 합니다.
 
-- 변경한 문서 페이지의 영어/한국어 counterpart를 동기화하세요.
-- 웹사이트 페이지와 내비게이션 파일 쌍은 `pnpm docs:sync-check`로 확인하세요. 대응 파일의 존재를 검사하며 번역의 의미를 검사하지는 않습니다.
+- 저장소 문서와 Book의 영어/한국어 counterpart를 동기화하세요. 웹사이트는 영문 전용이며 기존 언어별 URL은 `/docs`로 이동합니다.
+- `pnpm docs:sync-check`로 한국어 웹 파일이 남아 있지 않은지 확인하세요. 저장소 번역 의미 검토는 별도로 유지합니다.
 - `apps/docs`의 웹사이트 소스나 웹사이트가 소비하는 docs content를 바꿀 때는 `pnpm verify:docs`를 실행하세요.
 - 튜토리얼 변경 시 단계별 테스트를 실행하고, 변경한 장을 그 장의 출발 상태에서 따라가세요. 최종 예제만 통과한다고 중간 실습 지침까지 검증되지는 않습니다.
 - Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응 → 인계 순서를 따릅니다. 최초 집필은 한국어 전체를 검토한 뒤 번역하고, 기존 Book 정정은 의존 장을 포함한 영향받는 한국어 묶음 전체를 확정·동결한 뒤 영어로 옮깁니다.

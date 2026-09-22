@@ -14,7 +14,6 @@ const governedDocuments = [
   ['book/intermediate/ch21-express-node.md', 'An existing Express app may be reused by the fluo adapter.'],
   ['book/intermediate/ch21-express-node.ko.md', '기존 Express app을 fluo adapter가 재사용할 수 있습니다.'],
   ['apps/docs/content/docs/guides/runtime-adapters.mdx', 'Post-bootstrap code may call `use(...)` to register another native handler.'],
-  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', 'post-bootstrap code에서 `use(...)`로 native handler를 등록할 수 있습니다.'],
   ['docs/reference/package-surface.md', 'The adapter supports adopting an existing Express application.'],
   ['docs/reference/package-surface.ko.md', 'Adapter는 기존 Express application 채택을 지원합니다.'],
   ['docs/reference/package-chooser.md', 'You may supply an existing Express application to this package.'],

@@ -1,0 +1,105 @@
+---
+title: Modules
+description: Add your first feature to the application you created in Getting started.
+---
+
+A module tells Fluo which pieces belong to an application. A class on disk does
+not become a controller or service until a module registers it. Modules make
+those dependencies explicit without making every feature globally visible.
+
+This is the first chapter in the beginner path. Continue in the **same Node.js
+and Fastify project** from [Getting started](/docs/getting-started/quick-start).
+Do not clone the framework or switch to its repository tutorial.
+
+## The application we will build
+
+We will add a small in-memory posts API to the generated starter:
+
+| Chapter | Change | Observable result |
+| --- | --- | --- |
+| Modules | Register a posts feature | Existing health and greeting routes still work |
+| Controllers | Add the first route | `GET /posts` returns one post |
+| Providers | Move state into an injected service | The same response comes from a service |
+| Validation | Accept a typed create request | Valid input returns `201`; invalid input returns `400` |
+| Serialization | Define the public response | Internal fields are absent from JSON |
+| Error handling | Read a post by ID | Missing records return a structured `404` |
+| Testing | Verify the complete application | Request tests protect success, errors and isolation |
+
+Data is stored in memory. Restarting the process restores the seed post. This
+course does not add a database, authentication or production persistence.
+
+## 1. Create a feature module
+
+Create `src/posts/`. Add this complete file:
+
+<CheckpointCode stage="01-modules" file="posts.module.ts" />
+
+An empty module is useful at this point: it establishes where the feature will
+live without adding behavior. The next chapter will add a controller to it.
+
+## 2. Import it into the generated root
+
+Open the existing `src/app.ts`. Add this import:
+
+```ts
+import { PostsModule } from './posts/posts.module';
+```
+
+Add `PostsModule` to the existing `@Module({ imports: [...] })` array. Keep
+`ConfigModule.forRoot(...)`, `GreetingModule`, `HealthModule.forRoot()` and any
+generated `global` setting exactly as they are. Do not replace the whole root
+module with an abbreviated example.
+
+The dependency direction is now:
+
+```text
+AppModule
+  ConfigModule
+  GreetingModule
+  HealthModule
+  PostsModule
+```
+
+`src/main.ts` remains unchanged. It already calls
+`FluoFactory.create(AppModule, { adapter, ... })` and `app.listen()`.
+Feature modules describe the application; they do not start listeners.
+
+## 3. Check the checkpoint
+
+From your generated project root, run:
+
+```bash
+pnpm test
+pnpm dev
+```
+
+In a second terminal:
+
+```bash
+curl -i http://localhost:3000/health
+curl -i http://localhost:3000/ready
+curl -i http://localhost:3000/greeting
+curl -i http://localhost:3000/posts
+```
+
+The first three requests still return `200`. `/posts` returns `404`: an empty
+module does not declare a route. This is the expected end state, not a failure.
+Keep the generated tests throughout the course so they protect existing routes.
+
+## Module boundaries
+
+The `controllers` array registers HTTP entry points; `providers` registers
+services and other dependencies. `imports` brings in another module, and
+`exports` explicitly exposes providers to its consumers.
+
+For this first feature, keep the posts service private. Register the controller
+and service together in `PostsModule`; the root only needs to import that
+module. Avoid registering the same controller in both modules.
+
+When another feature needs a service, export it from its owning module and
+import that module from the consumer. The
+[dependency injection reference](/docs/fundamentals/dependency-injection)
+explains visibility, tokens and scopes in detail.
+
+Previous: [Getting started](/docs/getting-started/quick-start).
+Next: [Controllers](/docs/overview/controllers#beginner-checkpoint).

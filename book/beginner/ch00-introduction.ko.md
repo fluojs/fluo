@@ -28,7 +28,7 @@ fluo는 완전히 **TC39 Stage 3 Decorator** 사양을 기반으로 구축되었
 
 ## Why This Book?
 
-[현재 튜토리얼](../../apps/docs/content/docs/tutorial/index.ko.mdx)은 앱 생성, 첫 라우트, 의존성 주입, 검증·오류, 테스트를 하나의 과정으로 연결합니다. 이 Book은 그 과정과 경쟁하지 않고 설계의 **이유**와 개념을 보충합니다. 장 번호대로 모든 기능을 설치하거나 구현할 필요는 없습니다.
+[현재 튜토리얼](../../apps/docs/content/docs/tutorial/index.mdx)은 앱 생성, 첫 라우트, 의존성 주입, 검증·오류, 테스트를 하나의 과정으로 연결합니다. 이 Book은 그 과정과 경쟁하지 않고 설계의 **이유**와 개념을 보충합니다. 장 번호대로 모든 기능을 설치하거나 구현할 필요는 없습니다.
 
 ## The FluoBlog Project
 
@@ -72,7 +72,7 @@ fluo는 독자적인 문법을 발명하는 프레임워크에서 생기는 "락
 
 ### Your Journey Starts Here
 
-첫 실행은 [프로젝트 생성](../../apps/docs/content/docs/tutorial/create-app.ko.mdx)에서 시작하세요. 개념을 더 알고 싶을 때 아래 주제별 구성을 참고합니다.
+첫 실행은 [프로젝트 생성](../../apps/docs/content/docs/tutorial/create-app.mdx)에서 시작하세요. 개념을 더 알고 싶을 때 아래 주제별 구성을 참고합니다.
 
 ## How to Read This Book
 
@@ -80,11 +80,11 @@ fluo는 독자적인 문법을 발명하는 프레임워크에서 생기는 "락
 
 ### Part 0. Getting Started
 
-**기초 개념**: 1–4장의 설계 철학, CLI 구조, 모듈·프로바이더, 표준 데코레이터를 참고합니다. 최신 생성 절차는 튜토리얼의 [프로젝트 생성](../../apps/docs/content/docs/tutorial/create-app.ko.mdx)을 따릅니다.
+**기초 개념**: 1–4장의 설계 철학, CLI 구조, 모듈·프로바이더, 표준 데코레이터를 참고합니다. 최신 생성 절차는 튜토리얼의 [프로젝트 생성](../../apps/docs/content/docs/tutorial/create-app.mdx)을 따릅니다.
 
 ### Part 1. Building the HTTP API
 
-**HTTP 레퍼런스**: 5–10장은 라우팅, 검증, 직렬화, 예외, 가드·인터셉터, OpenAPI를 다룹니다. 먼저 [첫 라우트](../../apps/docs/content/docs/tutorial/first-route.ko.mdx)와 [검증·오류](../../apps/docs/content/docs/tutorial/validation-errors.ko.mdx)를 실습한 뒤 필요한 설명을 찾아보세요.
+**HTTP 레퍼런스**: 5–10장은 라우팅, 검증, 직렬화, 예외, 가드·인터셉터, OpenAPI를 다룹니다. 먼저 [첫 라우트](../../apps/docs/content/docs/tutorial/first-route.mdx)와 [검증·오류](../../apps/docs/content/docs/tutorial/validation-errors.mdx)를 실습한 뒤 필요한 설명을 찾아보세요.
 
 ### Part 2. Configuration and Data
 
@@ -100,7 +100,7 @@ fluo는 독자적인 문법을 발명하는 프레임워크에서 생기는 "락
 
 ### Part 5. Testing and Completion
 
-**테스트·배포 레퍼런스**: 20–21장은 테스트와 운영 점검을 보충합니다. 테스트를 마지막까지 미루지 말고 현재 튜토리얼의 [테스트](../../apps/docs/content/docs/tutorial/testing.ko.mdx)에서 체크포인트를 확인하세요.
+**테스트·배포 레퍼런스**: 20–21장은 테스트와 운영 점검을 보충합니다. 테스트를 마지막까지 미루지 말고 현재 튜토리얼의 [테스트](../../apps/docs/content/docs/tutorial/testing.mdx)에서 체크포인트를 확인하세요.
 
 ## Using the Code Examples
 
@@ -148,7 +148,7 @@ node --version
 
 ## Let's Begin
 
-실습은 [현재 튜토리얼](../../apps/docs/content/docs/tutorial/index.ko.mdx)로, 개념 탐색은 [주제별 목차](./toc.ko.md)로 이동하세요.
+실습은 [현재 튜토리얼](../../apps/docs/content/docs/tutorial/index.mdx)로, 개념 탐색은 [주제별 목차](./toc.ko.md)로 이동하세요.
 
 ### A Note on the "Standard-First" Approach
 우리가 "표준 우선"이라고 말할 때, 그것은 장기적인 기술 선택에 대한 기준이기도 합니다. fluo를 배우면서 공식 JavaScript Decorator API를 함께 익히게 됩니다. 나중에 다른 도구나 다른 언어로 옮겨가더라도, 여기서 배우는 의존성 주입, 모듈화, 명시적 설정 패턴은 보편적으로 적용됩니다.
@@ -162,8 +162,8 @@ fluo는 다른 길을 선택합니다. **명시적인 것이 암시적인 것보
 
 ### Preparing Your Workspace
 
-[프로젝트 생성](../../apps/docs/content/docs/tutorial/create-app.ko.mdx)의 Node.js 24·Fastify·pnpm 절차를 따르세요. Book을 위해 별도의 두 번째 FluoBlog 프로젝트를 만들 필요는 없습니다.
+[프로젝트 생성](../../apps/docs/content/docs/tutorial/create-app.mdx)의 Node.js 24·Fastify·pnpm 절차를 따르세요. Book을 위해 별도의 두 번째 FluoBlog 프로젝트를 만들 필요는 없습니다.
 
 ### Roadmap for the First 5 Chapters
 
-1–5장은 설계 철학, CLI, 모듈, 데코레이터, 컨트롤러를 찾아보는 기초 자료입니다. 현재 실습의 [의존성 주입](../../apps/docs/content/docs/tutorial/dependency-injection.ko.mdx)이나 [첫 라우트](../../apps/docs/content/docs/tutorial/first-route.ko.mdx)를 진행하며 필요한 장을 선택하세요.
+1–5장은 설계 철학, CLI, 모듈, 데코레이터, 컨트롤러를 찾아보는 기초 자료입니다. 현재 실습의 [의존성 주입](../../apps/docs/content/docs/tutorial/dependency-injection.mdx)이나 [첫 라우트](../../apps/docs/content/docs/tutorial/first-route.mdx)를 진행하며 필요한 장을 선택하세요.

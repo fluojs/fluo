@@ -1,0 +1,239 @@
+---
+title: Runtime and application bootstrap
+description: How @fluojs/runtime compiles a module graph into a running application - bootstrap phases, lifecycle hooks, health endpoints, and shutdown ownership.
+package: "@fluojs/runtime"
+---
+
+`@fluojs/runtime` is the assembly layer. It takes the static description your modules declare - `@Module` metadata from [`@fluojs/core`](/docs/packages/core) - compiles it into a validated module graph, registers the graph into a [`@fluojs/di`](/docs/fundamentals/dependency-injection) container, runs the application lifecycle, and (for HTTP applications) wires the `@fluojs/http` dispatcher to a host adapter. `FluoFactory` is its facade: one call turns modules into either a listening server or a standalone context.
+
+Runtime is deliberately not three things. It is not the container - resolution, scopes, and disposal belong to `@fluojs/di`. It is not the decorator vocabulary - declaring providers and scopes belongs to `@fluojs/core`. And it is not the Node host - listeners, loggers, filesystem access, and process-signal registration belong to `@fluojs/platform-nodejs`, because the runtime root is shared by Bun, Deno, Cloudflare Workers, and other Web-standard hosts.
+
+## Installation
+
+```bash
+npm install @fluojs/runtime
+```
+
+The package depends on `@fluojs/core`, `@fluojs/di`, and `@fluojs/http`, so installing it brings the declaration layer and the DI container with it. The published package intentionally declares no package-wide `engines.node`: the root and `./web` subpath are runtime-neutral. Node-specific responsibilities require [`@fluojs/platform-nodejs`](https://github.com/fluojs/fluo/blob/main/packages/platform-nodejs/README.md), which declares the verified Node.js engine range (`>=24.0.0 <27`). On Bun, Deno, or Cloudflare Workers, pair the runtime with `@fluojs/runtime/web` helpers and a host-owned adapter instead.
+
+## When to use it, and when not
+
+Reach for `@fluojs/runtime` when you need to:
+
+- **Bootstrap a fluo application** - turn modules into an HTTP server, microservice, or background context
+- **Orchestrate lifecycle** - `onModuleInit`, `onApplicationBootstrap`, `onModuleDestroy`, `onApplicationShutdown`
+- **Run DI without HTTP** - scripts, queue workers, schedulers, tests via `createApplicationContext`
+- **Expose health endpoints** - runtime-owned `/health` and `/ready` with readiness tracking
+
+Do not use it to:
+
+- resolve instances in a unit test - construct or use the container directly; see the [testing section](#testing-runtime-applications)
+- declare providers or scopes - that is `@fluojs/core`
+- open a Node listener, install `SIGINT`/`SIGTERM` handlers, or read files - that is `@fluojs/platform-nodejs` (the removed `@fluojs/runtime/node` subpath is replaced by it, with no compatibility shim)
+
+## A small working example
+
+The canonical HTTP startup path is `FluoFactory.create(AppModule, { adapter })` -> `app.listen()` -> `app.close()`:
+
+```ts title="src/app.ts"
+import { Module } from '@fluojs/core';
+import { Controller, Get } from '@fluojs/http';
+import { FluoFactory } from '@fluojs/runtime';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+
+@Controller('/posts')
+export class PostsController {
+  @Get()
+  list(): readonly string[] {
+    return ['Hello, Fluo!'];
+  }
+}
+
+@Module({
+  controllers: [PostsController],
+})
+export class AppModule {}
+```
+
+```ts title="src/main.ts"
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.js';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
+});
+
+await app.listen();
+// ... the server is serving on http://127.0.0.1:3000 ...
+await app.close();
+```
+
+Run it with `npx tsx src/main.ts` (or any Node >=24 TypeScript runner). `GET /posts` returns `["Hello, Fluo!"]`. The adapter option is what makes this an HTTP application: without it, `FluoFactory.create` still bootstraps the full module graph and lifecycle, just with no listener attached. That is usually a sign you wanted `createApplicationContext` instead - see below.
+
+The `@Controller('/posts')` and `@Get()` decorators come from `@fluojs/http`, not from runtime. Runtime discovers them by compiling your module graph; HTTP owns what they mean.
+
+## How bootstrap works, phase by phase
+
+`FluoFactory.create` is a pipeline. Understanding its phases explains every failure mode you will meet:
+
+**1. Module graph compilation.** Runtime walks `imports` from the root module, collecting every module's `providers`, `controllers`, `exports`, and `middleware` from `@fluojs/core` metadata. Compilation validates aggressively before anything is constructed: malformed provider objects fail with `InvalidProviderError`, invisible dependencies fail with `ModuleVisibilityError`, and duplicate registrations are governed by `duplicateProviderPolicy` (defaulting to `warn`). A module graph that fails compilation produces no container, no instances, and no half-started application - validation errors are the good failures.
+
+**2. Runtime provider registration.** The compiled graph is registered into a fresh `Container`, together with runtime-owned providers (`RUNTIME_CONTAINER`, the adapter, the platform shell, and friends) that integrations can inject through public contracts.
+
+**3. Lifecycle instance resolution.** Every singleton provider that implements a lifecycle hook is resolved before hooks run. Independent singleton lifecycle providers resolve **concurrently**, then hooks execute in deterministic provider order. Each `multi: true` contribution is its own lifecycle instance, ordered by contribution.
+
+**4. Startup hooks.** `onModuleInit()` runs for every eligible instance in provider order, then `onApplicationBootstrap()`. When this phase completes, the application moves to ready. Because resolution happens before hooks, a hook can safely inject its own dependencies directly.
+
+**5. Listen and post-listen registration.** For HTTP applications, `app.listen()` binds the adapter. `Application.state` is `bootstrapped` between factory and listen, `ready` while serving. The optional `shutdownRegistration` callback (supplied by the host - on Node, `createNodeShutdownSignalRegistration()` from `@fluojs/platform-nodejs`) runs only after a successful listen and installs signal handlers that call `app.close()`.
+
+**6. Close.** `app.close(signal?)` is the single teardown path: adapter shutdown first, then `onModuleDestroy()` and `onApplicationShutdown(signal?)` in reverse lifecycle-instance order, then runtime cleanup callbacks and container disposal. Dependents tear down before their dependencies. Starting close opens a terminal gate - `app.get()`, `app.listen()`, `app.dispatch()`, and microservice ingress reject once teardown begins, and lookups admitted just before the gate recheck it after asynchronous resolution, so no stale value escapes a closing application.
+
+**Failure rollback.** If bootstrap itself fails after resources were acquired (for example a lifecycle hook throws), runtime resets readiness, runs registered cleanup callbacks, invokes shutdown hooks for the instances already resolved - with a `bootstrap-failed` signal - disposes the container, and rethrows the original error. A failed listen cleans acquired resources through `close('bootstrap-failed')` and preserves the initiating error. To try again, create a new application; a closed one never reopens.
+
+## Lifecycle hooks: the whole contract
+
+The runtime lifecycle is exactly four hooks:
+
+| Hook | Phase | Order |
+| --- | --- | --- |
+| `onModuleInit()` | Startup | Provider order |
+| `onApplicationBootstrap()` | Startup | Provider order, after all `onModuleInit` |
+| `onModuleDestroy()` | Shutdown | Reverse provider order, before the signal phase |
+| `onApplicationShutdown(signal?)` | Shutdown | Reverse provider order |
+
+```ts title="fragment: a pool that participates in lifecycle"
+import type { OnApplicationBootstrap, OnModuleDestroy } from '@fluojs/runtime';
+
+export class DatabasePool implements OnApplicationBootstrap, OnModuleDestroy {
+  async onApplicationBootstrap(): Promise<void> {
+    // All providers are resolved; safe to accept work.
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    // Release module resources before the application-wide signal phase.
+  }
+}
+```
+
+Two boundaries that surprise NestJS migrants:
+
+- `beforeApplicationShutdown` does not exist here - it is never probed or invoked. Move shutdown preparation into `onModuleDestroy()` (module-scoped teardown) or `onApplicationShutdown(signal?)` (signal-aware cleanup).
+- Hooks are not the listener-drain phase. `app.close()` runs adapter shutdown *before* the hooks, so cleanup that requires a fully drained listener belongs at the adapter or host boundary, not in a lifecycle hook.
+- On Node, signal handling is **opt-in**: nothing installs `SIGINT`/`SIGTERM` handlers unless the host supplies `shutdownRegistration`. This is the counterpart of NestJS's `app.enableShutdownHooks()` - there is no implicit default.
+
+## Standalone application contexts
+
+Background workers and scripts need the graph, the hooks, and the container - not a listener. `createApplicationContext` runs the same bootstrap and shutdown contract without adapter setup:
+
+```ts title="fragment: worker entrypoint"
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.js';
+
+const context = await FluoFactory.createApplicationContext(AppModule);
+
+try {
+  const posts = await context.get(PostsService);
+  await posts.create('from a worker');
+} finally {
+  await context.close();
+}
+```
+
+`context.get(token)` resolves through the same container and memoizes direct root singleton lookups; alias, request, transient, and multi-provider tokens keep their normal resolution semantics. A terminal gate like the application's rejects `get()` once `close()` begins. Contexts do not accept the HTTP-only options (`binder`, `contentNegotiation`, `errorRepresentation`), and they install no signals.
+
+## Health and readiness endpoints
+
+`HealthModule.forRoot()` registers runtime-owned `GET /health` and `GET /ready` routes:
+
+```ts title="fragment: health with readiness checks"
+import { HealthModule } from '@fluojs/runtime';
+
+const health = HealthModule.forRoot({
+  path: '/internal/',
+  healthCheck: (ctx) => ({ status: 'ok' }),
+  endpointMiddleware: [HealthProbeAuthMiddleware],
+});
+
+@Module({
+  imports: [health],
+})
+export class AppModule {}
+```
+
+Behavior worth knowing before you lean on it:
+
+- `/health` returns the `healthCheck` result (`{ status: 'ok' }` by default); `HealthCheckResponse` shapes can set a custom `statusCode` and body.
+- `/ready` answers `503 { status: 'starting' }` until bootstrap completes, then runs registered checks - `health.addReadinessCheck(async () => dbAlive)` - and answers `200 { status: 'ready' }` or `503 { status: 'unavailable' }` if any check returns false.
+- As soon as application or context shutdown begins, `/ready` returns to `503 starting`, even if a shutdown attempt later fails. Load balancers get a truthful answer during the entire drain.
+- `endpointMiddleware` accepts class-based middleware resolved through DI and applies only to the two generated endpoints, under the optional `path` prefix (`/internal/health`, `/internal/ready` above).
+
+## Graph options: caching, duplicates, replacements
+
+- **`duplicateProviderPolicy`** governs duplicate tokens *across module composition*: `warn` (default), `ignore`, or rejection. Prefer fixing the graph over silencing the warning; when a duplicate is tolerated, the effective winning provider seeds the cache and lifecycle hooks, and losers are inert.
+- **`moduleGraphCache: true`** opts into process-local compile-result caching (at most 100 least-recently-used successful snapshots, keyed by root module identity, runtime providers, and metadata versions, returning isolated copies). Pass a `new ModuleGraphCompileCache(maxEntries)` instance instead when the host needs to own the cache lifetime and `dispose()` it.
+- **`moduleReplacements`** on `bootstrapModule(...)` is a testing seam: it compiles replacement module metadata while keeping the original module identity, which lets tests swap a real module for a stub without touching source metadata.
+- **`defineModule(cls, definition)`** attaches module metadata programmatically - the engine behind `forRoot`-style facades such as `HealthModule.forRoot()`, and useful when metadata is computed rather than decorated.
+
+## How runtime composes with other packages
+
+- **`@fluojs/core`**: runtime is core metadata's largest consumer. `defineModule` writes the same records `@Module` does; `getModuleMetadata` is what graph compilation reads.
+- **`@fluojs/di`**: runtime compiles the graph, then hands provider declarations to a container. `Application.get()`/`ApplicationContext.get()` delegate to it with a bootstrap-known memoization for root singletons; request scopes are created per request by the HTTP dispatcher for graphs that need one.
+- **`@fluojs/http`**: controllers, middleware, guards, interceptors, binding, and response policy are HTTP-owned. Runtime composes the configured CORS -> global prefix -> default security headers -> caller middleware pipeline and forwards `contentNegotiation`, `errorRepresentation`, `conditionalRequest`, and `multipart` options unchanged; standalone contexts use none of them.
+- **`@fluojs/config` / `@fluojs/i18n`**: these register through `imports` like any module. Their `forRoot(...)` facades must complete before the graph compiles - which is exactly why both are synchronous and take final values; see their guides for the load-before-bootstrap pattern.
+- **`@fluojs/platform-nodejs`**: supplies the concrete adapter, `createNodeShutdownSignalRegistration()`, logger factories, and Node filesystem asset sources. The runtime root stays portable by importing none of it.
+
+## Defaults and resource ownership
+
+| Concern | Default | Owner |
+| --- | --- | --- |
+| CORS | Off until configured | Runtime composes; HTTP defines policy |
+| Global prefix | Off | Runtime |
+| Security headers | **On**; `securityHeaders: false` opts out | Runtime |
+| Logger | Portable console logger; `logger` option registers exactly the supplied object as `APPLICATION_LOGGER` | Runtime |
+| Signal registration | None, unless the host passes `shutdownRegistration` | Host |
+| Listener and `EADDRINUSE` retry | Adapter-owned; `close()` during a retry cancels it | `@fluojs/platform-nodejs` |
+| Multipart `maxTotalSize` | Falls back to `maxBodySize` unless overridden | Runtime adapters |
+| Body parsing | Bounded streaming; oversized bodies settle as HTTP 413 mid-stream | Runtime/HTTP |
+| Health readiness | `starting` until bootstrap completes; back to `starting` on shutdown | Runtime health module |
+| Microservices | Connected children are owned by the parent `Application`; children close before parent teardown | Runtime |
+
+Every teardown path funnels through `app.close()` / `context.close()`. The shutdown phases are idempotent across retries: a later `close()` skips completed phases and re-enters incomplete ones according to their own retry contracts, container-managed `onDestroy()` hooks retry only what failed, and signal-unregistration failures never skip runtime teardown.
+
+## Failures, limits, and common mistakes
+
+- **Forgetting the adapter.** `FluoFactory.create(AppModule)` without `adapter` produces a bootstrapped application with no listener. That is valid - `dispatch()` works - but `listen()` is a no-op. Use `createApplicationContext` to make the intent explicit.
+- **Overlapping lifecycle transitions.** `listen()` is serialized with shutdown: overlapping startups share one in-flight attempt, and a startup racing shutdown cannot revive a closing application. Components that call `start()`/`stop()` re-entrantly get `PlatformLifecycleConflictError` instead of queued work - give one boundary ownership of each transition.
+- **Expecting `beforeApplicationShutdown`** or implicit signal handlers (see above). Both are intentional absences.
+- **Blocking startup in `onModuleInit`.** Hooks run before `listen()`; a hook that never settles hangs bootstrap. Long-running waits belong in readiness checks (`addReadinessCheck`), which report `starting` without blocking the port.
+- **Caching instances yourself.** `app.get()` already memoizes root singleton lookups known at bootstrap. Multi-provider tokens intentionally bypass that memoization so each `get()` assembles a fresh contribution array.
+- **Reading `process.env` in portable code.** The runtime never reads the environment directly (Studio config is injected, not polled). Applications should follow the same boundary - resolve environment values through [`@fluojs/config`](/docs/packages/config) at bootstrap and inject them.
+- **Importing Node builtins from code that must run on Workers.** Runtime's root import graph is kept Web-standard; the same discipline applies to your feature modules if you target edge hosts. Node-only helpers live behind `@fluojs/platform-nodejs`.
+
+## Meaningful public subpaths
+
+| Subpath | Purpose |
+| --- | --- |
+| `@fluojs/runtime` (root) | `FluoFactory`, `Application`, `ApplicationContext`, lifecycle types, `HealthModule`, graph options, diagnostics, multipart contracts, platform shell contracts |
+| `@fluojs/runtime/web` | Web-standard request/response utilities, buffered `parseMultipart` and streaming `parseMultipartStream` for Bun/Deno/Workers hosts |
+| `@fluojs/runtime/devtools` | `StudioDevtoolsRuntime` bridge contracts for host-owned Studio instrumentation, passed as `studioDevtools` at bootstrap |
+| `@fluojs/runtime/internal` and friends | Package-integration seams for first-party adapters and runtime-aware packages; not user APIs |
+
+`@fluojs/runtime/node` and `@fluojs/runtime/internal-node` were removed without aliases; their replacements live in `@fluojs/platform-nodejs`.
+
+## Testing runtime applications
+
+- Prefer `FluoFactory.createApplicationContext(AppModule)` for DI-level tests: it runs real compilation, hooks, and disposal, and `context.get(...)` behaves exactly like production resolution.
+- `Test.createTestingModule(...)` / `Test.createApp(...)` from `@fluojs/testing` wrap the same bootstrap with provider overrides and a request facade; the [testing section of the DI guide](/docs/fundamentals/dependency-injection#testing-with-overrides) shows the pattern.
+- `moduleReplacements` swaps whole modules in low-level graph tests; `moduleGraphCache` snapshots make repeated bootstraps in one process cheap.
+- Test hook order by recording events: startup order, shutdown reversal, and the `bootstrap-failed` rollback are all deterministic, so they can be asserted without timing.
+
+## Related reading
+
+- [Dependency injection](/docs/fundamentals/dependency-injection) - the container runtime wires and drives.
+- [`@fluojs/core`](/docs/packages/core) - the metadata runtime compiles.
+- [`@fluojs/config`](/docs/packages/config) and [`@fluojs/i18n`](/docs/packages/i18n) - module facades that register through `imports`.
+- [`@fluojs/runtime` package README](https://github.com/fluojs/fluo/blob/main/packages/runtime/README.md) - the owning API reference and behavioral contract list.
+- [Lifecycle and shutdown contract](https://github.com/fluojs/fluo/blob/main/docs/architecture/lifecycle-and-shutdown.md) - the normative shutdown ordering rules.

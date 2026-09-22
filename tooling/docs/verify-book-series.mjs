@@ -84,11 +84,11 @@ export function verifyBookSeries(repoRoot, { locale = 'both' } = {}) {
   const localTarget = (page, target) => {
     if (/^[a-z][a-z0-9+.-]*:/iu.test(target) || target.startsWith('#')) return undefined;
     const pathname = decodeURIComponent(target.split(/[?#]/u)[0]);
-    const website = /^\/(en|ko)\/docs(?:\/(.*))?$/u.exec(pathname);
+    // Only website URLs redirect. Relative repository links must still exist.
+    const website = /^\/(?:(?:en|ko)\/)?docs(?:\/(.*))?$/u.exec(pathname);
     if (website) {
-      const stem = `apps/docs/content/docs/${website[2] ?? 'index'}`;
-      const suffix = website[1] === 'ko' ? '.ko.mdx' : '.mdx';
-      return join(root, existsSync(join(root, stem + suffix)) ? stem + suffix : `${stem}/index${suffix}`);
+      const stem = `apps/docs/content/docs/${website[1] ?? 'index'}`;
+      return join(root, existsSync(join(root, `${stem}.mdx`)) ? `${stem}.mdx` : `${stem}/index.mdx`);
     }
     return resolve(dirname(join(root, page)), pathname);
   };

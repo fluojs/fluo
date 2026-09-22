@@ -314,7 +314,7 @@ expect(failures).toEqual([undefined]);
 
 실패 outcome은 `reason: 'handler' | 'transport' | 'not-callable'`을 가지며, `timed-out`에는 `timeoutMs`, `cancelled`에는 시작 여부인 `started`가 있다. Lifecycle의 `stopping`/`stopped`/`failed`는 `rejected`의 reason이고 discovery/preparation 오류는 여전히 reject한다. 결과를 묶어 자동 reject하는 API는 없다. Awaited timeout/cancellation은 관측만 끝내고 시작된 작업은 shutdown 추적에 남는다. `waitForHandlers: false`는 `background`와 `completion: Promise<EventPublishSettlement>`를 반환하며 timeout과 시작 후 취소를 무시하고 실제 작업을 기다린다. 이미 abort된 signal은 아직 시작하지 않은 작업을 건너뛴다. Completion은 bounded shutdown 뒤에도 pending일 수 있고 process exit 때 사라지므로 영속 outbox를 대신하지 못한다.
 
-인증이 이미 성공한 뒤 token record ID만 담아 last-used 기록을 best-effort `publish`하는 정책과, 반응 결과를 검사해 다음 단계를 결정하는 정책은 [메시징 가이드의 소비자 예제](../../apps/docs/content/docs/guides/messaging-workflows.ko.mdx)에서 비교한다. Credential 원문을 이벤트에 넣지 않으며 bookkeeping 실패로 인증 성공을 뒤집지 않는다. 이 장의 결제도 이미 성립한 사실이므로 관측 실패를 결제 rollback으로 해석하지 않는다.
+인증이 이미 성공한 뒤 token record ID만 담아 last-used 기록을 best-effort `publish`하는 정책과, 반응 결과를 검사해 다음 단계를 결정하는 정책은 [메시징 가이드의 소비자 예제](../../apps/docs/content/docs/guides/messaging-workflows.mdx)에서 비교한다. Credential 원문을 이벤트에 넣지 않으며 bookkeeping 실패로 인증 성공을 뒤집지 않는다. 이 장의 결제도 이미 성립한 사실이므로 관측 실패를 결제 rollback으로 해석하지 않는다.
 
 독자의 `fluo-blog`에서 실행할 명령은 다음과 같다. 이 원고 작성 단계에서는 이 애플리케이션 테스트를 실행하지 않았으며 아래 값은 기대 결과다.
 

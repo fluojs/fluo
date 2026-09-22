@@ -1,0 +1,81 @@
+---
+title: Validation
+description: Bind and validate requests before they reach your posts service.
+---
+
+TypeScript types disappear at runtime. A client can send a number where your
+handler expects a string, omit a required field, or include an unexpected key.
+Validate at the HTTP boundary before the service changes application state.
+
+Continue in the same generated app after [Providers](/docs/overview/providers).
+Keep the root module and `main.ts` unchanged.
+
+## Bind input explicitly
+
+Create `src/posts/create-post.dto.ts`:
+
+<CheckpointCode stage="04-validation" file="create-post.dto.ts" />
+
+`@FromBody()` names where each field comes from. `@IsString()` and the length
+decorators describe acceptable values. Initializers support the standard
+decorator transform; they do not make a required input field optional.
+
+Fluo first binds the request to the declared DTO, then validates it. A handler's
+TypeScript annotation alone does neither. Extra undeclared body fields are
+rejected by the default input policy rather than silently reaching your service.
+
+## Add creation to the service
+
+Replace `src/posts/posts.service.ts`:
+
+<CheckpointCode stage="04-validation" file="posts.service.ts" />
+
+IDs are allocated within this one in-memory application. This is a teaching
+policy, not a globally unique ID strategy or a persistence guarantee.
+
+## Connect the request to the service
+
+Replace `src/posts/posts.controller.ts`:
+
+<CheckpointCode stage="04-validation" file="posts.controller.ts" />
+
+`@RequestDto(CreatePostDto)` passes the bound DTO to the handler. The service
+receives values only after binding and validation succeed. `@HttpCode(201)`
+makes the intended creation status explicit.
+
+Keep the provider registration from the preceding chapter:
+
+<CheckpointCode stage="04-validation" file="posts.module.ts" />
+
+## Check success and failure
+
+Run `pnpm test`, then restart `pnpm dev`. In another terminal:
+
+```bash
+curl -i -X POST http://localhost:3000/posts \
+  -H 'content-type: application/json' \
+  -d '{"title":"Second post","content":"Created through HTTP"}'
+curl -i http://localhost:3000/posts
+```
+
+Expect `201` with the new post, then `200` with both posts. In a fresh process
+the created ID is `"2"`; later successful creations increment it.
+
+Now send a title shorter than three characters:
+
+```bash
+curl -i -X POST http://localhost:3000/posts \
+  -H 'content-type: application/json' \
+  -d '{"title":"Hi","content":"Rejected before creation"}'
+```
+
+Expect `400`. Repeat the list request: the rejected input must not add a post.
+Also try a missing `content` field and an extra `"admin":true` field; the default
+binding policy rejects both with `400`.
+
+This is the distinction between a type and a boundary: incorrect input never
+reaches `PostsService.create`. Avoid disabling validation just to make a client
+request succeed; fix the request or deliberately change the DTO contract.
+
+Previous: [Providers](/docs/overview/providers).
+Next: [Serialization](/docs/overview/serialization).

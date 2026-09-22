@@ -1,0 +1,350 @@
+---
+title: Terminus
+description: Dependency-aware health indicators behind the runtime /health and /ready endpoints, with timeouts, overlap protection, and DI-backed provider indicators.
+package: "@fluojs/terminus"
+---
+
+`@fluojs/terminus` layers dependency-aware health checks on top of the
+runtime's health endpoints. The runtime owns `GET /health` and `GET /ready`
+and asks the platform shell how the application feels; terminus feeds that
+pipeline with **indicators** - probes for databases, Redis, upstream HTTP
+services, memory, disk - and aggregates their results into a structured
+report. `/health` returns the full diagnostic picture (HTTP `200` only when
+everything is up, otherwise `503` with the failure details), while `/ready`
+makes the binary traffic-admission decision load balancers need: `200`
+admits traffic, `503` with `{ status: 'starting' | 'unavailable' }` removes
+the instance from rotation.
+
+The normative endpoint contract lives in
+[Health and Readiness](https://github.com/fluojs/fluo/blob/main/docs/contracts/health-and-readiness.md);
+this page explains the package that implements it. Use terminus when
+dependency failures should influence rotation, when you need a structured
+JSON health report, or when optional dependencies should stay *visible* in
+diagnostics without blocking readiness. It is not a metrics system (pair it
+with [`@fluojs/metrics`](/docs/packages/metrics)) and it does not create a
+NestJS-style process-liveness route by default - if your deployment needs one,
+build it at the application or deployment layer.
+
+## Installation
+
+```bash
+npm install @fluojs/terminus
+```
+
+Optional peers, installed only for the indicator seams you enable:
+
+```bash
+npm install @fluojs/redis ioredis      # Redis indicators
+npm install @fluojs/prisma @prisma/client   # Prisma indicators
+npm install @fluojs/drizzle drizzle-orm     # Drizzle indicators
+```
+
+The root package stays import-safe when those peers are absent. The package
+supports Node.js `>=24.0.0 <27` as its package-owned support contract.
+
+## A small working example
+
+An application that probes an upstream API and its own heap. Two files: the
+module registration and the resulting endpoints.
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { HttpHealthIndicator, TerminusModule } from '@fluojs/terminus';
+import { MemoryHealthIndicator } from '@fluojs/terminus/node';
+
+@Module({
+  imports: [
+    TerminusModule.forRoot({
+      indicators: [
+        HttpHealthIndicator.create({
+          key: 'upstream-api',
+          url: 'https://api.example.com/health',
+        }),
+        MemoryHealthIndicator.create({
+          heapUsedThresholdRatio: 0.9,
+          key: 'memory',
+        }),
+      ],
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+```bash
+curl -s http://localhost:3000/health
+```
+
+With both probes up, the response is HTTP `200` with a report like:
+
+```json
+{
+  "status": "ok",
+  "checkedAt": "2026-09-21T10:00:00.000Z",
+  "info": {
+    "upstream-api": { "status": "up", "statusCode": 200, "responseTimeMs": 31 },
+    "memory": { "status": "up", "heapUsed": 41984000 }
+  },
+  "details": { "upstream-api": { "status": "up" }, "memory": { "status": "up" } },
+  "error": {},
+  "contributors": { "up": ["upstream-api", "memory"], "down": [] }
+}
+```
+
+When `upstream-api` starts failing, `/health` returns `503` with that
+indicator under `error` and `contributors.down` - and because every indicator
+participates in readiness by default, `/ready` also returns `503 { status:
+'unavailable' }`, taking the instance out of rotation.
+
+## How the mechanics work
+
+### `TerminusModule.forRoot(...)` composes, the runtime serves
+
+`forRoot(...)` is application-owned registration - it wraps the runtime's
+`HealthModule.forRoot(...)`, which owns the actual `/health` and `/ready`
+routes. The terminus module contributes three things to that pipeline:
+
+1. a `TerminusHealthService` that runs your indicators and aggregates the
+   `HealthCheckReport`;
+2. a `/health` handler that merges the indicator report with platform
+   health/readiness from `PLATFORM_SHELL` - platform failures surface as
+   reserved `fluo-platform-health` and `fluo-platform-readiness` contributors,
+   and a `platform` block carries the underlying runtime reports;
+3. a readiness check registered at bootstrap that gates `/ready` on
+   `TerminusHealthService.isReady()` **and** platform readiness.
+
+Indicators are plain objects implementing
+`{ check(key): Promise<HealthIndicatorResult>; key?; readiness? }` - there is
+no base class to extend and no decorator. Bundled indicators are created
+through static `create(...)` factories, which keeps ownership explicit: the
+application constructs probes, terminus only runs them.
+
+### Reading the report
+
+`HealthCheckReport` is stable JSON: `status` (`'ok' | 'error'`), `checkedAt`,
+`contributors.up` / `contributors.down`, and `info` / `error` / `details`
+maps keyed by indicator key. The aggregation has deliberate edge-case rules
+so a broken indicator degrades loudly instead of silently:
+
+- an indicator may return **multiple keyed entries** in one check; every
+  entry is preserved;
+- unsupported, empty (`{}`), or non-object results become `down` diagnostics
+  instead of being dropped;
+- blank result keys (including whitespace) are reported as
+  `*-blank-key-error` down entries;
+- a duplicate key keeps the first entry and adds a deterministic
+  `*-duplicate-key-error` contributor;
+- if a user indicator returns a reserved platform key during a platform
+  failure, the platform payload wins the reserved key and a
+  `*-user-key-collision` diagnostic records the collision.
+
+### Indicator catalog and subpaths
+
+| Indicator | Subpath | Probes |
+| --- | --- | --- |
+| `HttpHealthIndicator` | root | upstream HTTP endpoint via `fetch()`; expected statuses, headers, method, `timeoutMs` (default 2s) |
+| `MemoryHealthIndicator` | `@fluojs/terminus/node` | heap and RSS thresholds (bytes or ratio; ratio defaults to `0.95`) |
+| `DiskHealthIndicator` | `@fluojs/terminus/node` | free space for a path via lazy `statfs()` (`minFreeBytes` / `minFreeRatio`, ratio defaults to `0.1`) |
+| `RedisHealthIndicator` | `@fluojs/terminus/redis` | Redis client lifecycle state, then `PING` |
+| `PrismaHealthIndicator` | root (DI provider) | Prisma service lifecycle, then a current-connection query |
+| `DrizzleHealthIndicator` | root (DI provider) | Drizzle lifecycle, then a lightweight SQL probe |
+
+Node filesystem access stays lazy (importing the root package never loads
+`node:fs` for disk probes), and Redis/Node helpers live behind subpaths so
+dependency boundaries stay explicit. Custom indicators implement the same
+interface and throw `HealthCheckError(message, causes)` to signal `down`.
+
+### DI-backed indicators and the `imports` rule
+
+Probes that need a live client (Redis, Prisma, Drizzle) resolve it through
+DI via `indicatorProviders` - provider factories that register the indicator
+under its own token, repeatable with distinct keys or client names:
+
+```ts title="fragment: DI-backed indicators with explicit imports"
+import { DrizzleModule } from '@fluojs/drizzle';
+import { TerminusModule } from '@fluojs/terminus';
+import { createDrizzleHealthIndicatorProvider } from '@fluojs/terminus';
+
+const drizzleModule = DrizzleModule.forRoot({ database, dispose });
+
+@Module({
+  imports: [
+    drizzleModule,
+    TerminusModule.forRoot({
+      imports: [drizzleModule],
+      indicatorProviders: [createDrizzleHealthIndicatorProvider({ key: 'drizzle' })],
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+The `imports` line is the part that surprises people: **terminus resolves
+`indicatorProviders` inside its own module scope.** Importing
+`PrismaModule`, `DrizzleModule`, or a named `RedisModule` registration into
+the application module alone does not make their exported tokens visible to
+the indicators - ordinary module visibility rules apply (see
+[Dependency injection](/docs/fundamentals/dependency-injection)). The
+consequences are asymmetric by design:
+
+- a **named Redis** client is a required dependency - if no imported or
+  global module supplies its token, bootstrap fails with
+  `MODULE_VISIBILITY_ERROR`;
+- Prisma and Drizzle dependencies are optional only when their owner tokens
+  are absent from the whole graph - the app boots and the indicator reports
+  `down` at request time. But if an owner module *exists elsewhere* in the
+  application and you omitted it from Terminus `imports`, bootstrap fails
+  with `MODULE_VISIBILITY_ERROR`; optional injection never bypasses module
+  visibility.
+
+The lifecycle-aware providers map client state *before* probing: a Redis
+client in `connecting`/`end`, a Drizzle database that is shutting down, or a
+Prisma service that is not yet connected marks `/health` and `/ready`
+unavailable even though the raw client handle is still callable. Multiple
+providers from the same factory coexist when each uses a distinct key (or
+`clientName`), because each registers under its own DI token.
+
+### Guardrails: timeouts and overlap protection
+
+Two execution rules make probes safe around slow or hung downstreams:
+
+- **`execution.indicatorTimeoutMs`** bounds each indicator execution; a probe
+  that exceeds it is marked `down` instead of hanging the endpoint forever.
+  Built-in HTTP indicators abort their own `fetch` on timeout; other drivers
+  may not expose cancellation, so the timeout still bounds the *report*, not
+  necessarily the underlying work.
+- **Per-indicator serialization**: while a slow (or timed-out) probe is still
+  in flight inside one application container, a new `/health` or `/ready`
+  request reports that indicator as `down` instead of starting an overlapping
+  probe against the same downstream. Separate application containers keep
+  independent in-flight state - useful for tests and multi-app processes.
+
+### Readiness participation
+
+Every indicator gates `/ready` by default. Set `readiness: false` on
+indicators that must remain visible in `/health` diagnostics without removing
+a ready instance from rotation (a search cluster, a cache). `readinessChecks`
+compose additional application-specific conditions - they only **add**
+conditions to the readiness gate; they never exclude indicators or platform
+readiness.
+
+### Protecting the endpoints
+
+`endpointMiddleware` binds class-based `@fluojs/http` middleware to the
+generated endpoints only, and `path` remounts them (normalized, so
+`path: '/internal/'` yields `/internal/health` and `/internal/ready`).
+Runtime-owned health routes reject NestJS controller metadata (`@HealthCheck`,
+`@UseGuards`) - protect them with middleware, network policy, or the
+deployment boundary. `TerminusHealthService.check()`, `isHealthy()`, and
+`isReady()` remain callable directly from tests or custom code, but keep
+production endpoint wiring in module options so platform diagnostics stay
+consistent.
+
+## Composition with neighboring packages
+
+**With `@fluojs/runtime`.** Terminus never serves routes itself - it feeds
+the runtime `HealthModule` pipeline and merges `PLATFORM_SHELL` state into
+every `/health` response. That is why platform failures appear even when all
+your indicators pass, and why `/ready` gates on both.
+
+**With `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/redis`.** The DI-backed
+providers prefer lifecycle-aware wrappers over raw clients, so "the client
+object exists" no longer implies "the dependency is usable". Register owner
+modules in `imports` (the rule above).
+
+**With `@fluojs/metrics`.** The canonical ops pairing: terminus answers
+"should this instance receive traffic", metrics answer "how is it
+performing", and the metrics module's platform telemetry gauges mirror the
+same component readiness/health snapshots terminus reports on.
+
+**With `@fluojs/notifications`.** A degraded dependency can do more than
+fail a probe: dispatch a page through the notifications foundation from
+inside a custom indicator's `check()` when a threshold breach needs a human.
+
+## Defaults, ownership, and lifecycle
+
+| Concern | Default | Owner |
+| --- | --- | --- |
+| Endpoints | `/health` + `/ready` from the runtime | `path` remounts them; the runtime owns serving |
+| Indicator readiness | Every indicator gates `/ready` | `readiness: false` per indicator |
+| HTTP indicator timeout | `2000`ms | `timeoutMs` per indicator; `execution.indicatorTimeoutMs` globally |
+| Overlapping probes | Rejected (`down`) while in flight | Per indicator instance, per container |
+| Client resources | Never owned | Indicators probe; your modules own clients |
+| Registration | `TerminusModule.forRoot(...)` | Application-owned; no auto-registration |
+
+Terminus owns no external resources: indicators are stateless probe objects,
+clients belong to their owner modules, and the module adds no shutdown phase
+of its own. Both `TERMINUS_HEALTH_INDICATORS` and
+`TERMINUS_INDICATOR_PROVIDER_TOKENS` are exported so downstream modules can
+inspect the composed indicator set without rebuilding terminus internals.
+
+## Failures, limits, and common mistakes
+
+- **`MODULE_VISIBILITY_ERROR` at bootstrap.** An `indicatorProviders`
+  dependency is not visible from Terminus's module scope. Add the owner
+  module to `TerminusModule.forRoot({ imports: [...] })`; importing it only
+  in the application module is not enough.
+- **"The indicator is down but the client works."** Lifecycle-aware
+  providers deliberately report `down` when the client is connecting,
+  reconnecting, or shutting down, before any probe runs. Fix the lifecycle
+  state, not the probe.
+- **"My hanging probe froze `/health`."** It did not - the default global
+  timeout marks it `down`, and concurrent requests get `down` instead of a
+  second overlapping probe. Pass `execution.indicatorTimeoutMs` tuned to
+  your slowest acceptable downstream.
+- **A `readiness: false` indicator failed and `/ready` went `503` anyway.**
+  Then the failure came from somewhere else: platform readiness, another
+  indicator, or a `readinessChecks` entry. Read the `contributors.down`
+  list in the `/health` body.
+- **Expecting controller-based checks.** NestJS's
+  `@HealthCheck()`-controller model is not the fluo contract. Indicators and
+  readiness hooks belong in module options.
+- **Expecting a liveness route.** There is none by default; `/health` is
+  aggregated diagnostics, not a process-aliveness probe.
+
+## Testing
+
+Test indicators and endpoints with `Test.createApp(...)` - the report and
+status codes are the whole contract:
+
+```ts title="fragment: health endpoint test (app built via Test.createApp)"
+const failing: HealthIndicator = {
+  key: 'database',
+  async check() {
+    return { database: { message: 'connection refused', status: 'down' } };
+  },
+};
+
+class AppModule {}
+
+defineModule(AppModule, {
+  imports: [TerminusModule.forRoot({ indicators: [failing] })],
+});
+
+const app = await Test.createApp({ rootModule: AppModule });
+try {
+  const response = await app.request('GET', '/health').send();
+
+  expect(response.status).toBe(503);
+  expect(response.body).toMatchObject({
+    contributors: { down: ['database'], up: [] },
+    status: 'error',
+  });
+} finally {
+  await app.close();
+}
+```
+
+For timeout and overlap behavior, drive probes with manually resolved
+deferred promises instead of sleeps: start a request whose indicator never
+resolves, fire a second request, assert the second sees `down`, then settle
+the deferred and assert the first report. That covers the serialization
+contract deterministically.
+
+## Related reading
+
+- [`@fluojs/metrics`](/docs/packages/metrics) - the scrape endpoint that pairs with these probes.
+- [`@fluojs/runtime`](/docs/packages/runtime) - the health endpoints and platform shell terminus feeds.
+- [`@fluojs/prisma`](/docs/packages/prisma) / [`@fluojs/drizzle`](/docs/packages/drizzle) / [`@fluojs/redis`](/docs/packages/redis) - lifecycle-aware indicator dependencies.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - the module visibility rules behind the `imports` requirement.
+- [`@fluojs/terminus` package README](https://github.com/fluojs/fluo/blob/main/packages/terminus/README.md) - the owning API reference.

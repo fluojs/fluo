@@ -538,14 +538,14 @@ The service can use richer internal records. The public response remains stable 
 - Assert that response DTOs do not expose sensitive fields.
 - Test controller-level and method-level `SerializerInterceptor` usage.
 - Include cases for circular or shared references if your response graph can contain them.
-- Keep examples and docs aligned with [Testing](./testing) and the runnable examples under [Examples](../examples).
+- Keep examples and docs aligned with [Testing](/docs/guides/testing) and the runnable examples under [Examples](/docs/examples).
 
 ## Related reading
 
 - [Book: Turning External Input into Internal Data](https://github.com/fluojs/fluo/blob/main/book/01-fluoblog/ch06-request-boundaries.md)
 - [Application input conformance](https://github.com/fluojs/fluo/blob/main/packages/testing/src/input-materialization.e2e.test.ts), [native Next App Router requests](https://github.com/fluojs/fluo/blob/main/packages/platform-nextjs/src/schema-input-materialization.test.ts), [cold public declarations](https://github.com/fluojs/fluo/blob/main/packages/runtime/src/input-materialization-public-types.test.ts): regression evidence locations, not substitutes for executing the preview example above.
-- [HTTP API](./http-api)
-- [Testing](./testing)
-- [Package Selection](./package-selection)
-- [Package Reference](../packages)
-- [RealWorld API Example](../examples/realworld-api)
+- [HTTP API](/docs/guides/http-api)
+- [Testing](/docs/guides/testing)
+- [Package Selection](/docs/guides/package-selection)
+- [Package Reference](/docs/packages)
+- [RealWorld API Example](/docs/examples/realworld-api)

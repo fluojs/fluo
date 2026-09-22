@@ -1,0 +1,285 @@
+---
+title: React pages
+description: HTTP-first React SSR for fluo - @Router/@Path page handlers, ReactModule.forRoot, the application page renderer, hydration assets, client navigation, and the experimental RSC prototype.
+package: "@fluojs/react"
+---
+
+`@fluojs/react` renders React pages through fluo's existing HTTP pipeline. `@Router(...)` and `@Path(...)` look like React routing decorators, but they write the same controller and `GET` route metadata that [`@fluojs/http`](/docs/packages/http) already understands. URL matching, DTO binding and validation, middleware, guards, interceptors, versioning, request scopes, and not-found behavior therefore keep their existing owners; React only takes over the final HTML rendering step for handlers that produce a React element.
+
+This design is deliberate. The package is **not** a Next.js App Router, a React Server Components framework, a TanStack route tree, or a file-route scanner. There is no React-owned `routes: []` table, no client route grammar, and no route matcher of its own. Treat React routers as page-shaped HTTP handlers: if you need a mutation, write an ordinary `@Post(...)` handler; if you need JSON, return an object from the same handler style you already use.
+
+## Installation
+
+```bash
+npm install @fluojs/react react react-dom
+```
+
+`react` and `react-dom` (`^18.3.0 || ^19.0.0`) are peer dependencies, so your application owns the React runtime version. The root import is runtime-neutral: importing `@fluojs/react` never eagerly loads Node.js built-ins, Vite, `react-dom/server`, or any browser code. `react-dom/server` resolves lazily only when a server entry is actually rendered, which is why the same package root also works in bundler-neutral tooling.
+
+The root export is intentionally small, and the rest lives behind explicit subpaths:
+
+| Subpath | Owns |
+| --- | --- |
+| `@fluojs/react` (root) | `ReactModule.forRoot(...)`, `@Router`, `@Path`, render policies, SSR helpers, page catalog, metadata readers |
+| `@fluojs/react/vite` | Parsing an already-loaded Vite manifest into hydration options (`createReactViteAssetManifest(...)`) |
+| `@fluojs/react/client` | Browser navigation: `Link`, `ReactClientRouterProvider`, `useRouter`, `usePathname`, `useSearchParams`, `useNavigation` |
+| `@fluojs/react/typegen` | `generateReactPageTypes(...)`, artifact inspection, and the generated route-id contracts |
+| `@fluojs/react/experimental/rsc` | The unstable RSC and Server Functions prototype (never re-exported from the root) |
+
+When you want the whole wiring - streamed SSR, hydration, Vite assets, and a first editable page - generated for you, use the CLI starter instead of assembling every seam by hand:
+
+```bash
+fluo new my-react-app --starter react-vite-ssr
+```
+
+The generated application keeps every seam visible and replaceable (`src/entry-server.tsx`, `src/react-app.tsx`, `src/entry-client.tsx`); the contracts below are what those files compose.
+
+## A small working example
+
+A catalog page needs a service, one React router, and one application-owned document renderer. Three files wire that up:
+
+```ts title="src/catalog.service.ts"
+import { Inject, Module } from '@fluojs/core';
+
+export class CatalogService {
+  find(sku: string): { sku: string; title: string } {
+    return { sku, title: `Item ${sku}` };
+  }
+}
+
+@Module({
+  providers: [CatalogService],
+  exports: [CatalogService],
+})
+export class CatalogModule {}
+```
+
+```tsx title="src/catalog.router.tsx"
+import { Inject } from '@fluojs/core';
+import { RequestDto, FromPath } from '@fluojs/http';
+import { Path, Router, type ReactRenderContext } from '@fluojs/react';
+
+import { CatalogService } from './catalog.service';
+
+class SkuRequest {
+  @FromPath('sku')
+  sku = '';
+}
+
+@Inject(CatalogService)
+@Router('/catalog')
+export class CatalogRouter {
+  constructor(private readonly catalog: CatalogService) {}
+
+  @Path('/:sku')
+  @RequestDto(SkuRequest)
+  show(input: SkuRequest, _context: ReactRenderContext) {
+    return <main>{this.catalog.find(input.sku).title}</main>;
+  }
+}
+```
+
+The application registers one `renderPage` callback when every page should share the same document shell and hydration assets. The callback receives the page element, the active `ReactRenderContext`, and the resolved render policies, and must return a `ReactServerEntry`:
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import {
+  ReactModule,
+  createReactServerEntry,
+  type ReactPageRenderer,
+} from '@fluojs/react';
+
+import { CatalogModule } from './catalog.module';
+import { CatalogRouter } from './catalog.router';
+
+const renderPage: ReactPageRenderer = (page) =>
+  createReactServerEntry(
+    <html lang="en">
+      <body>{page}</body>
+    </html>,
+  );
+
+@Module({
+  imports: [CatalogModule, ReactModule.forRoot({ controllers: [CatalogRouter], renderPage })],
+})
+export class AppModule {}
+```
+
+Booting this module through [`@fluojs/runtime`](/docs/packages/runtime) (`FluoFactory.create(AppModule, { adapter })` followed by `app.listen()`) serves `GET /catalog/sku-42` as streamed HTML. Because `@Router`/`@Path` wrote ordinary HTTP metadata, the same module graph compiles through `Test.createApp({ rootModule: AppModule })` without a browser:
+
+```ts
+import { Test } from '@fluojs/testing';
+
+const app = await Test.createApp({ rootModule: AppModule });
+try {
+  const response = await app.request('GET', '/catalog/sku-42').send();
+  expect(response.status).toBe(200);
+} finally {
+  await app.close();
+}
+```
+
+## How the mechanics work
+
+### `@Router` and `@Path` are metadata facades
+
+`@Router(basePath)` marks a class as a React router and writes HTTP controller metadata equivalent to `@Controller(basePath)`, plus a React marker readable through `getReactRouterMetadata(...)`. `@Path(path, options?)` marks a method as a React page route and writes HTTP `GET` metadata equivalent to `@Get(path)`, plus `getReactPathMetadata(...)`. `@Path()` and `@Path(undefined)` mean `''`, so `@Router('/cats')` serves `GET /cats` and `@Router()` serves `GET /`.
+
+Page paths use the exact [`@fluojs/http`](/docs/packages/http) route grammar: literal segments and full-segment `:param` placeholders only. Wildcards, optional segments, regex tokens, mixed segments like `user-:id`, and suffix params like `:id.json` are rejected. Route conflicts with ordinary controllers are detected by the same HTTP machinery.
+
+The optional `options` object on `@Path` is metadata only; it never changes matching or dispatch.
+
+### What `ReactModule.forRoot(...)` actually registers
+
+`ReactModule.forRoot(options)` returns an ordinary fluo module definition. Its required `controllers` array becomes module controller metadata; `imports`, `providers`, `exports`, and `middleware` keep the same visibility and lifecycle rules as [`@Module(...)`](/docs/fundamentals/dependency-injection). Two things are added for you:
+
+- a module middleware that inspects each response and hands valid React elements to the configured renderer, and
+- when `renderPage` is configured, a value provider under the exported `REACT_PAGE_RENDERER` token, so other providers can inject and invoke the same renderer explicitly.
+
+The middleware rule is narrow: only a value that React's `isValidElement` recognizes as one element is routed to `renderPage`. Plain objects, strings, arrays, and `null` keep the normal HTTP response path, and an explicit `createReactServerEntry(...)` return bypasses the callback entirely. Returning an element without configuring `renderPage` fails before the response commits with `ReactSsrDiagnosticError`, code `react-ssr-missing-page-renderer`.
+
+### The application page renderer owns the document
+
+`renderPage` is application code. It composes the document shell, wires providers such as `ReactClientRouterProvider`, and returns `createReactServerEntry(element, options?)`. The entry's hydration options mirror React DOM's bootstrap contract: `bootstrapScripts`, `bootstrapModules`, trusted `bootstrapScriptContent`, `nonce`, `identifierPrefix`, and an `assetMap` snapshot of build-produced logical names to public URLs. Duplicate bootstrap entries with the same `src` are removed before React DOM sees them.
+
+Render policies keep per-route composition declarative while the application keeps one renderer:
+
+```tsx title="fragment: render policies"
+import {
+  PageLayout,
+  PageMetadata,
+  Path,
+  Router,
+  SuspenseFallback,
+} from '@fluojs/react';
+
+@PageLayout(ShopLayout)
+@Router('/products')
+class ProductRouter {
+  @PageMetadata(({ request }) => ({ title: `Product ${request.params.id}` }))
+  @SuspenseFallback(ProductFallback)
+  @Path('/:id')
+  show() {
+    return <ProductPage />;
+  }
+}
+```
+
+Layouts compose outermost-to-innermost across inheritance (base class, derived class, base method, derived method); the nearest `@SuspenseFallback` wins; a site may declare each policy kind once, and duplicates fail bootstrap with `ReactRenderPolicyConfigurationError`. The renderer reads the composed policies through its third callback parameter and resolves metadata factories with `resolveReactPageMetadata(...)`; `createReactPageMetadataElements(...)` turns a resolved snapshot into ordinary escaped React `<title>`/`<meta>`/`<link>` elements. Metadata factories are synchronous and receive the request and request-scope container - deliberately not the response, so metadata cannot change status, headers, or commit timing.
+
+### Streaming, phases, and diagnostics
+
+When a handler returns an element (or an explicit `ReactServerEntry`), the response streams through `react-dom/server`'s `renderToReadableStream(...)`, preserving Suspense. Shell render failures throw before any response bytes commit; recoverable errors after the shell are reported through the entry's `onRecoverableError` and never rewrite an already committed status. Register `onDiagnostic` on `ReactModule.forRoot(...)` for one stable event shape across boundaries:
+
+| Phase | Code | Boundary |
+| --- | --- | --- |
+| `http-pipeline` | `react-ssr-http-pipeline-failure` | DTO binding, middleware, guards, interceptors, handlers - failures before React rendering |
+| `http-pipeline` | `react-ssr-missing-page-renderer` | An element reached an `@Path` response with no `renderPage` configured |
+| `pre-commit-shell` | `react-ssr-pre-commit-shell-failure` | Shell creation or buffered stream collection failed before commit |
+| `request-abort` | `react-ssr-request-abort` | The request signal stopped rendering; existing abort behavior applies |
+| `post-shell-recoverable` | `react-ssr-post-shell-recoverable-error` | Recoverable error after the shell was written |
+
+`REACT_SSR_DIAGNOSTIC_PHASES` and `REACT_SSR_DIAGNOSTIC_CODES` expose these values for comparisons, and the callback is observational: throwing inside it never replaces the request outcome.
+
+### Errors as HTML, owned by HTTP
+
+`createReactErrorRepresentationProvider(...)` adapts a React error document to the HTTP error representation contract. `@fluojs/http` performs route-miss conversion and `Accept` negotiation first; the callback receives the canonical JSON error document plus the request-scope container, and its rendered entry is fully buffered before HTTP applies status, `Content-Type`, `Vary`, and `HEAD` suppression:
+
+```ts
+import { FluoFactory } from '@fluojs/runtime';
+import { createReactErrorRepresentationProvider } from '@fluojs/react';
+
+const app = await FluoFactory.create(AppModule, {
+  errorRepresentation: {
+    html: createReactErrorRepresentationProvider({
+      renderDocument({ json }) {
+        return createReactServerEntry(
+          <html lang="en"><body>{json.error.status}: {json.error.message}</body></html>,
+        );
+      },
+    }),
+  },
+});
+```
+
+The provider never calls the page renderer or the catalog and never matches URLs; a render failure inside it falls back to HTTP's canonical JSON. Request-derived content is JSX-escaped as text children - keep it out of `dangerouslySetInnerHTML` unless it passed an application sanitizer.
+
+## Composition with neighboring packages
+
+- **`@fluojs/http`** owns everything before markup: matching, versioning, DTO materialization and validation, guards, interceptors, module middleware, headers, request scopes, abort propagation, and not-found behavior. React page handlers inherit all of it because they are HTTP handlers.
+- **`@fluojs/runtime`** owns bootstrap, lifecycle, and shutdown; `ReactModule.forRoot(...)` only produces module metadata for it to compile. The optional HTML error representation attaches through the runtime's `errorRepresentation` option.
+- **`@fluojs/vite`** owns the TC39 decorator transform used by every fluo application (including this one's `.tsx`/`.ts` modules). It does **not** parse React assets. **`@fluojs/react/vite`** does the opposite: `createReactViteAssetManifest(...)` turns an already-loaded Vite manifest into hydration options and stylesheet/JavaScript ordering for `createReactServerEntry(...)`. It accepts a manifest value, never reads the filesystem, and reports expected failures (`react-vite-manifest-missing-server-entry`, `react-vite-manifest-malformed`, ...) as diagnostics instead of throwing.
+- **`@fluojs/cli`** owns `fluo typegen` (below) and the `react-vite-ssr` starter that wires these seams together.
+- **`@fluojs/testing`** runs the same graph through the real dispatcher with `Test.createApp({ rootModule })` - no React-specific test helper exists or is needed.
+
+### Path-only route types
+
+`@fluojs/react/typegen` projects the bootstrap-resolved page catalog into an application-owned TypeScript artifact with absolute `href` builders and typed `Link`/`push`/`replace` helpers. The catalog itself is built after HTTP compilation, so controller composition and URI versioning are already reflected:
+
+```ts
+import { createHandlerMapping } from '@fluojs/http';
+import { createReactPageCatalog } from '@fluojs/react';
+
+const mapping = createHandlerMapping([{ controllerToken: CatalogRouter }]);
+const pages = createReactPageCatalog(mapping.descriptors);
+// [{ kind: 'react-page', method: 'GET', path: '/catalog/:sku',
+//    params: ['sku'], router: 'CatalogRouter', handler: 'show', id: 'GET /catalog/:sku CatalogRouter show' }]
+```
+
+Generate the artifact from a bootstrapped module:
+
+```bash
+fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts
+fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts --check
+```
+
+`fluo typegen` bootstraps the application, reads `app.dispatcher.describeRoutes()`, generates, and closes the application. `--check` compares exact bytes and exits `0` for `UNCHANGED`, `2` `MISSING`, `3` `STALE`, `4` `MALFORMED`, `5` `UNSUPPORTED_VERSION`; the CLI exports `TYPEGEN_EXIT_CODES` for programmatic callers. Generated ids are the stable catalog ids, and dynamic builders require every catalog path parameter:
+
+```tsx
+import { Link } from '@fluojs/react/client';
+import { reactPageRoutes } from './generated/react-pages.js';
+
+const show = reactPageRoutes['GET /catalog/:sku CatalogRouter show'];
+<Link {...show.link({ sku: 'sku-42' })}>Item</Link>;
+```
+
+Typegen is deliberately path-only: it rejects versioned catalog entries (the catalog cannot tell URI versioning from header or media-type strategies), and it does not generate query strings, fragments, or a client route table.
+
+### Client navigation stays HTTP-first
+
+`@fluojs/react/client` renders `Link` as a real anchor, so pre-hydration clicks, disabled JavaScript, and modified clicks keep native browser behavior. After hydration, same-origin primary clicks delegate to `router.push(...)`, which performs full-document navigation through `window.location.assign(...)` - the destination is matched and validated by the HTTP dispatcher again. `usePathname`, `useSearchParams`, `useParams`, and `useNavigation` read an immutable snapshot created from the active request via `createReactRouteSnapshot({ url, params })`; cross-origin destinations and non-HTTP(S) URLs reject with `ReactClientNavigationError`. There is no prefetch, no client data cache, and no SPA document swapping - the server stays authoritative.
+
+## Experimental RSC and Server Functions
+
+`@fluojs/react/experimental/rsc` is explicitly unstable and pinned to exact versions (`react@19.2.6`, `react-dom@19.2.6`, matching Flight renderer). It provides `inspectReactRscEnvironment(...)` for compatibility diagnostics, `createReactRscManifest(...)` for a bundler-neutral client-reference seam, `createReactFlightResponse(...)` for Flight payloads through ordinary HTTP handlers, and an HMAC-SHA-256 Server Function transport (`createReactServerFunctionRegistry(...)` / `createReactServerFunctionClient(...)`) mounted on your own `@Post(...)` route. The transport rejects non-JSON media types, unapproved origins, tampered references, and oversized or unsafe payloads with stable `REACT_SERVER_FUNCTION_*` error codes; a valid reference is not authorization. Nothing from this subpath is re-exported from the root, and graduation to a stable `@fluojs/react/rsc` is blocked until the documented policy gates pass.
+
+## Defaults, ownership, and limits
+
+- **Defaults**: `@Path()` serves the router base path; the stream renderer is `renderToReadableStream(...)`; `Content-Type` is `text/html; charset=utf-8`; metadata factories and policy components are plain application code, never DI-instantiated.
+- **Ownership**: `@fluojs/http` owns matching and dispatch; the application owns the document (`renderPage`) and hydration asset ordering; the package owns the element-to-entry rendering step and diagnostics. The package never scans the filesystem, discovers manifests, or generates bundles.
+- **Startup/shutdown**: React routers participate in the ordinary module lifecycle; there is no React-specific bootstrap phase and nothing to close.
+- **Limits to predict**: no `renderToPipeableStream` (Web Streams only), no page-local error or not-found presentation (HTTP error representation is application-global), `@SuspenseFallback` covers SSR descendants only (not handler `await`, effects, or navigation pending state), no href generation for versioned pages, and no serialization of untrusted data into `bootstrapScriptContent`.
+
+Common failures and their owners: a missing `renderPage` is a pre-commit `react-ssr-missing-page-renderer` diagnostic; an invalid policy site fails bootstrap with `ReactRenderPolicyConfigurationError`; a path outside the HTTP grammar is a route-definition error from `@fluojs/http`; a hydration mismatch surfaces through `onRecoverableError` in the browser, not as a server failure.
+
+## Testing
+
+Use the layered loop that the package's own tests use:
+
+1. **Policy and metadata units**: call `getReactRenderPolicies`, `resolveReactPageMetadata`, and the metadata readers directly - no browser, no bootstrap.
+2. **Request dispatch**: `Test.createApp({ rootModule })` with `app.request('GET', path).send()`, covering direct element returns, the missing-renderer diagnostic, DTO validation, and plain-value passthrough; close the app in `finally`.
+3. **Generated-route checks**: compile generated-route fixtures with TypeScript and run `fluo typegen ... --check` in CI.
+4. **Hydration**: render the same component server-side and `hydrateRoot(...)` it; capture `onRecoverableError` for one deliberately mismatched tree.
+5. **Production browser**: run Playwright against built assets, plus a `javaScriptEnabled: false` context for the native form `POST -> 303 -> GET` fallback.
+
+Native form mutations need no React transport: submit to an ordinary `@Post(...)` route with `@RequestDto`, keep the canonical `400` validation envelope, and redirect with `303 See Other`. Authorization and CSRF policy remain application responsibilities.
+
+## Related reading
+
+- [`@fluojs/http`](/docs/packages/http) - the route, DTO, guard, and interceptor pipeline React pages inherit.
+- [`@fluojs/runtime`](/docs/packages/runtime) - bootstrap, lifecycle, and the `errorRepresentation` contract.
+- [`@fluojs/vite`](/docs/packages/vite) - the decorator transform used by the same application build.
+- [`@fluojs/cli`](/docs/packages/cli) - `fluo typegen`, `fluo new --starter react-vite-ssr`, and programmatic generation.
+- [`@fluojs/testing`](/docs/packages/testing) - `Test.createApp` request-level testing used by the loop above.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - how `ReactModule.forRoot(...)` providers and `@Inject` tokens resolve.
+- [`@fluojs/react` package README](https://github.com/fluojs/fluo/blob/main/packages/react/README.md) - the owning API reference, including the experimental RSC tables.

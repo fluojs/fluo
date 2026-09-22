@@ -1,0 +1,290 @@
+---
+title: Fastify platform
+description: Run fluo on a Fastify 5 listener with @fluojs/platform-fastify — native route fast paths with safe fallback, bundled multipart and raw-body handling, and explicit TLS and shutdown ownership.
+package: "@fluojs/platform-fastify"
+---
+
+`@fluojs/platform-fastify` hosts a fluo application on a
+[Fastify](https://fastify.dev) 5 listener. It is the throughput-oriented
+production adapter: the adapter README's `wrk` benchmark on a `/health`
+endpoint measures roughly 58,000 requests/second at ~2.1 ms average latency for
+the Fastify adapter versus ~31,000 at ~4.0 ms for the raw Node adapter. Fastify
+supplies the HTTP engine; everything framework-defined — routing semantics,
+guards, interceptors, DTO binding, CORS, error envelopes — stays owned by the
+shared fluo dispatcher, so your `AppModule` runs unchanged across
+[raw Node](/docs/packages/platform-nodejs), Fastify, and
+[Express](/docs/packages/platform-express).
+
+## When to use this adapter
+
+Use it for production fluo services that need high concurrency and want native
+route registration with wildcard fallback, bundled multipart handling, and a
+controlled escape hatch into Fastify-native configuration.
+
+Choose something else when:
+
+- the deployment host is Bun, Deno, or Cloudflare Workers — use the fetch-style
+  platform adapters for those runtimes; this is a Node-only adapter and
+  declares `engines.node >=24.0.0 <27`;
+- you need WebSocket upgrades or custom HTTP methods end-to-end on a raw Node
+  listener — the [Node platform](/docs/packages/platform-nodejs) owns a plain
+  server (Fastify still dispatches validated custom methods, but via wildcard
+  fallback rather than native fast paths);
+- the HTTP server is owned by another host such as Next.js — the
+  [Next platform](/docs/packages/platform-nextjs) opens no socket at all;
+- your team wants to hand request handling to the Fastify plugin ecosystem
+  directly — the adapter owns routing, CORS, multipart, raw body, and response
+  semantics, and does not adopt an existing Fastify instance. The
+  `configureFastify` seam below is the only supported native configuration
+  point.
+
+## Installation
+
+```bash
+npm install @fluojs/platform-fastify
+```
+
+`fastify`, `@fastify/multipart`, and `fastify-raw-body` ship as runtime
+dependencies of this package, so applications do not need their own `fastify`
+dependency unless they call Fastify APIs directly outside fluo (for example, to
+type a `configureFastify` callback parameter).
+
+## A complete working example
+
+The adapter options are transport-only; the logger and signal registration come
+from `@fluojs/platform-nodejs`, which this package builds on — a deliberate
+composition, not a coincidence.
+
+```ts title="src/main.ts"
+import { FluoFactory } from '@fluojs/runtime';
+import {
+  createConsoleApplicationLogger,
+  createNodeShutdownSignalRegistration,
+} from '@fluojs/platform-nodejs';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
+
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: FastifyHttpApplicationAdapter.create({
+    host: '127.0.0.1',
+    port: 3000,
+    maxBodySize: 1_048_576,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+
+await app.listen();
+```
+
+Startup logs the listening target and the runtime's ready message:
+
+```text
+[fluo] 12345 - 9/21/2026, 10:00:00 AM LOG [FluoFactory] Listening on http://127.0.0.1:3000
+[fluo] 12345 - 9/21/2026, 10:00:00 AM LOG [FluoApplication] fluo application successfully started.
+```
+
+The example keeps the posts feature module from the
+[Node platform guide](/docs/packages/platform-nodejs); the
+application code — controllers, providers, middleware — is identical across
+adapters. Changing platforms is a one-line adapter swap plus the install.
+
+## Defaults and options
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `port` | `3000` | Ignored value of `process.env.PORT`; the CLI generator's entrypoint applies its own `PORT` policy on top. |
+| `host` | Fastify chooses | Omitted binds all interfaces. |
+| `maxBodySize` | `1048576` (1 MiB) | `0` allows only empty bodies; also the default `multipart.maxTotalSize`. |
+| `rawBody` | `false` | Preserves original bytes on `context.request.rawBody` for non-multipart requests. |
+| `retryDelayMs` / `retryLimit` | `150` / `20` | `EADDRINUSE` retry loop; bounded by the adapter remaining open. |
+| `shutdownTimeoutMs` | `10_000` | Bound for the close wait; `0` starts Fastify close immediately. |
+| `https` | unset | Node `https.ServerOptions` for TLS owned by this process. |
+| `multipart` | buffered | Limits plus `strategy: 'stream'` (below). |
+| `configureFastify` | unset | Native configuration callback (below). |
+
+Invalid explicit numeric options (`port`, `maxBodySize`, `retryDelayMs`,
+`retryLimit`, `shutdownTimeoutMs`) throw during adapter creation, before
+anything listens.
+
+## How request handling works: native routes with a safe fallback
+
+This adapter's defining mechanic is a two-tier routing strategy:
+
+1. **Native Fastify routes for the common cases.** When fluo route metadata can
+   be translated directly, the adapter registers Fastify-native per-route
+   handlers for explicit `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, and `HEAD`
+   routes. Those handlers hand a pre-matched descriptor and params to the
+   shared fluo dispatcher, so duplicate route matching is skipped — but guards,
+   interceptors, observers, body parsing, raw-body capture, SSE, and error
+   handling still run on the framework-owned path. Eligible singleton-safe
+   handlers can complete on the dispatcher fast path.
+
+2. **Wildcard fallback for everything else.** Requests that would change
+   documented fluo semantics stay on a catch-all route: `@All(...)` handlers,
+   overlapping same-shape params (`/:id` and `/:slug`), non-URI versioning,
+   duplicate-slash/trailing-slash variants, and multipart requests that must
+   preserve the shared body/materialization path. `ALL` is never registered as
+   a wire method, and unsupported methods such as `OPTIONS` fall through to the
+   dispatcher unless a fluo route explicitly owns them.
+
+Validated custom methods such as `QUERY` and `PURGE` get a hybrid treatment:
+the adapter registers their method names with Fastify (as body-bearing methods,
+so Fastify's router accepts the request) but leaves route selection to the
+wildcard dispatch, preserving fluo's matching semantics.
+
+Two correctness rules make the tiering safe:
+
+- **Stale handoffs are ignored.** If application middleware rewrites the
+  request method or path after a native handoff was attached, the dispatcher
+  rematches the rewritten request instead of trusting the original match.
+- **Normalization stays aligned.** The adapter enables Fastify's
+  trailing-slash/duplicate-slash normalization so native selection matches
+  fluo's documented route path contract; requests Express-style normalization
+  would treat differently resolve through fallback dispatch.
+
+## The `configureFastify` seam
+
+When a migration must retain a Fastify-native plugin, hook, or instance
+customization, configure it at construction time:
+
+```ts title="fragment: native configuration"
+const adapter = FastifyHttpApplicationAdapter.create({
+  configureFastify: async (fastify) => {
+    fastify.addHook('onRequest', async (request, reply) => {
+      reply.header('x-native-request-id', request.id);
+    });
+  },
+  port: 3000,
+});
+```
+
+The callback runs **once per Fastify instance the adapter creates, before fluo
+registers its multipart, raw-body, native-route, and wildcard handling**. A
+thrown or rejected configuration prevents that `listen()` call from starting;
+the failed instance is not reconfigured, while a later `listen()` after a
+successful `close()` configures the newly created instance once.
+
+Respect the seam's limits. The adapter serializes fluo response payloads before
+handing them to Fastify, so `setReplySerializer(...)` does not customize fluo
+responses. Do not retain or mutate the instance after bootstrap, adopt an
+existing Fastify instance, or use the hook as a native-route bypass — move
+portable request behavior into fluo `middleware` instead.
+
+## Request and response bodies
+
+- **Raw body preservation** is opt-in (`rawBody: true`) and skipped for
+  multipart requests, including mixed-case `Content-Type` values such as
+  `Multipart/Form-Data`. With it enabled, `context.request.rawBody` replays the
+  exact request bytes for webhook signature verification.
+- **Multipart** defaults to buffered parsing with `request.files` populated
+  after materialization; limits come from `options.multipart`. When
+  `multipart.maxTotalSize` is omitted it inherits `maxBodySize`, so size limits
+  stay portable across adapters. `strategy: 'stream'` exposes
+  `context.request.body` as an on-demand `AsyncIterable` instead (file parts
+  are then not materialized into `request.files`).
+- **Multipart limit errors** surface across Fastify error shapes through the
+  exported `isFastifyMultipartTooLargeError(error)` helper.
+- **Native object asymmetry is intentional.** `context.request.raw` is the
+  underlying Node `IncomingMessage`, while `context.response.raw` is Fastify's
+  `FastifyReply` — not a Node `ServerResponse`. Both are typed `unknown` on the
+  portable interface; do not cast them casually, and prefer the portable
+  `RequestContext` surface so controllers stay adapter-independent.
+
+## TLS, startup, and shutdown
+
+**TLS.** When the Fastify process owns TLS, pass Node `https.ServerOptions`
+through the `https` option; startup logs then report the `https://` URL. Load
+certificates from your configuration or secret-management boundary before
+constructing the adapter — the package never reads certificate files,
+environment variables, or `PORT` itself. Behind a TLS-terminating load balancer
+or ingress, leave `https` unset and run plain HTTP.
+
+**Startup concurrency.** Concurrent `listen()` calls share one startup promise
+and preserve the first call's dispatcher. After startup, repeated `listen()`
+calls are no-ops that keep the live listener and dispatcher. A `listen()` made
+while `close()` is in flight waits for shutdown to settle, then starts a fresh
+listener and resolves only when that listener is ready.
+
+**Shutdown.** `close()` drains connections under `shutdownTimeoutMs`. Calling
+`close()` while startup is retrying a busy port cancels the retry loop and
+waits for it to settle before reporting completion — a closed adapter cannot
+bind later without an explicit `listen()`. If an adapter instance is listened
+again after close, native route handlers refresh their dispatcher descriptors
+before serving traffic, so handoff metadata cannot point at a previous
+application graph. When startup and Fastify `onClose` both fail, callers
+receive the original startup rejection (with the close failure in `cause` when
+that round-trips) or a startup-first `AggregateError` whose `errors[0]` is the
+startup rejection and `errors[1]` the close failure.
+
+Zero-valued bounds are meaningful: `maxBodySize: 0` accepts only empty bodies,
+and `shutdownTimeoutMs: 0` starts the close immediately — the zero bounds only
+the *wait*, so if close has not settled, the wait times out on the next timer
+turn while the underlying Fastify close continues.
+
+## Composition with neighboring packages
+
+- **Pipeline options live on Factory, not the adapter.** `cors` (a string
+  origin, an options object, or `false`), `globalPrefix` with
+  `globalPrefixExclude`, fluo `middleware`, and security headers compose in a
+  fixed order: configured CORS, configured prefix, security headers, caller
+  middleware. CORS is fluo middleware — Fastify's native CORS plugin is not
+  registered, and adding one would bypass the documented behavior.
+- **Logging.** The native Fastify logger is disabled. Select
+  `createConsoleApplicationLogger()` or `createJsonApplicationLogger()` from
+  `@fluojs/platform-nodejs`, or pass any `ApplicationLogger`.
+- **Realtime.** `getRealtimeCapability()` exposes a server-backed capability, so
+  `@fluojs/websockets` gateways (`@WebSocketGateway({ path: '/ws' })`) attach
+  to the same underlying Node server Fastify listens on.
+- **Streaming and informational responses.** Response streams honor the shared
+  backpressure contract (`response.stream.waitForDrain()` settles on `drain`,
+  `close`, or `error`), and `context.response.earlyHints` writes `103` Early
+  Hints through `reply.raw` without committing the final response.
+- **OpenAPI.** Route metadata is adapter-neutral, so API publication layers
+  apply to Fastify-hosted applications the same as any other HTTP platform.
+
+## Failures, limits, and common mistakes
+
+- **Registering Fastify plugins for what fluo already owns.** CORS, routing,
+  logging, multipart, and raw body are adapter-owned. Duplicate plugins produce
+  undefined behavior, not layered behavior.
+- **Passing Express/Connect-style functions to `middleware`.** The Factory
+  option accepts fluo `MiddlewareLike` handlers only. Native Fastify behavior
+  goes through `configureFastify`, once, before fluo's plugins.
+- **Casting the `raw` fields.** `request.raw` is `IncomingMessage`, not a
+  `FastifyRequest`; `response.raw` is a `FastifyReply`, not a `ServerResponse`.
+  If a portable operation cannot express a native requirement, request a
+  contract-preserving accessor instead of coupling controllers to casts.
+- **Expecting every route to be Fastify-native.** Fallback dispatch for
+  `@All`, overlapping param shapes, custom methods, and normalization-sensitive
+  paths is deliberate, not a bug — it keeps fluo's matching semantics
+  authoritative.
+- **Retaining the Fastify instance.** Anything captured from
+  `configureFastify` beyond the callback scope is unsupported; the instance is
+  recreated across close/listen cycles.
+- **Relying on `process.env.PORT`.** The adapter does not read it; resolve
+  environment values at the application boundary and pass them in.
+- **Node versions outside `>=24.0.0 <27`.** Listener-level RFC `QUERY`
+  behavior and the rest of the conformance suite are verified only on the
+  declared range.
+
+## Testing at this seam
+
+`Test.createApp({ rootModule })` dispatches through the compiled graph without
+a socket and is adapter-independent. For behavior that only exists on a real
+listener — bind targets, native route selection over HTTP, drain — create the
+adapter with `host: '127.0.0.1', port: 0`, resolve `adapter.getListenTarget()`
+after `app.listen()`, and `fetch` real requests; close in a `finally`. The
+package's own `adapter.test.ts` runs the shared
+`HttpAdapterPortabilityHarness.create(...)` conformance checks plus
+Fastify-specific regressions (native-route fallback parity, listen idempotency,
+retry cancellation, zero-limit boundaries, and more).
+
+## Related reading
+
+- [`@fluojs/platform-fastify` package README](https://github.com/fluojs/fluo/blob/main/packages/platform-fastify/README.md) — the owning contract and conformance list.
+- [Node platform](/docs/packages/platform-nodejs) — the foundation package supplying logger and shutdown registration.
+- [Express platform](/docs/packages/platform-express) — the alternative framework adapter and its native-middleware boundary.
+- [Dependency injection](/docs/fundamentals/dependency-injection) — the module graph served by the dispatcher.
+- [Runtime adapters guide](/docs/guides/runtime-adapters) — task-oriented adapter selection.

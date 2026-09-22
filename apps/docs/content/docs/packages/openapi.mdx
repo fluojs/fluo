@@ -1,0 +1,225 @@
+---
+title: OpenAPI
+description: How @fluojs/openapi generates OpenAPI 3.1 documents and Swagger UI from fluo controllers and DTO metadata, with explicit sources and deterministic output.
+package: "@fluojs/openapi"
+---
+
+`@fluojs/openapi` generates an OpenAPI 3.1.0 document from fluo controllers and handler descriptors, serves it as JSON, and optionally serves Swagger UI. It reads the same route and DTO metadata the dispatcher uses, plus explicit documentation decorators where you want richer descriptions — documentation stays next to the code that implements it.
+
+The generation model is **opt-in per controller**. Importing a controller into a module does not document it; you pass `sources: [{ controllerToken: UsersController }]` (or prebuilt `descriptors`) to the module, and only that explicit input set appears in the document. This is deliberate: internal endpoints never leak into public documents by accident, and one application can serve multiple documents for different audiences.
+
+It documents; it does not enforce. Nothing here validates requests at runtime — that is [`@fluojs/validation`](/docs/packages/validation) behind [`@fluojs/http`](/docs/packages/http). And it is not a GraphQL documentation tool: only standard HTTP Path Item operations (`get`, `put`, `post`, `delete`, `options`, `head`, `patch`, `trace`) are emitted; custom `@Route(...)` extension methods and `@All()` catch-alls are rejected as document input.
+
+Prerequisites: Node.js `>=24.0.0 <27` (the package's `engines.node` contract — earlier 1.x releases advertised `>=20`). It depends on `@fluojs/core`, `@fluojs/http`, and `@fluojs/runtime`; Swagger UI assets are referenced from a pinned `swagger-ui-dist` version, not bundled into your application.
+
+```bash
+pnpm add @fluojs/openapi
+```
+
+## A small working example
+
+```ts title="src/users.controller.ts"
+import { Controller, FromBody, Get, Post, Produces, RequestDto } from '@fluojs/http';
+import { IsEmail, IsString, MinLength } from '@fluojs/validation';
+import { ApiOperation, ApiResponse, ApiTag } from '@fluojs/openapi';
+
+class CreateUserDto {
+  @FromBody()
+  @IsEmail()
+  email = '';
+
+  @FromBody()
+  @IsString()
+  @MinLength(2)
+  name = '';
+}
+
+export class UserResponseDto {
+  id = '';
+  email = '';
+  name = '';
+}
+
+@ApiTag('Users')
+@Controller('/users')
+export class UsersController {
+  @ApiOperation({ summary: 'List users' })
+  @ApiResponse({ status: 200, description: 'The user list', type: UserResponseDto })
+  @Get()
+  list(): UserResponseDto[] {
+    return [{ id: '1', email: 'ada@example.com', name: 'Ada' }];
+  }
+
+  @ApiOperation({ summary: 'Create a user' })
+  @ApiResponse({ status: 201, description: 'Created user', type: UserResponseDto })
+  @Produces('application/json')
+  @Post()
+  @RequestDto(CreateUserDto)
+  create(input: CreateUserDto): UserResponseDto {
+    return { id: '2', email: input.email, name: input.name };
+  }
+}
+```
+
+```ts title="src/main.ts"
+import { Module } from '@fluojs/core';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { OpenApiModule } from '@fluojs/openapi';
+import { UsersController } from './users.controller';
+
+@Module({
+  imports: [
+    OpenApiModule.forRoot({
+      title: 'Users API',
+      version: '1.0.0',
+      sources: [{ controllerToken: UsersController }],
+      ui: true,
+    }),
+  ],
+  controllers: [UsersController],
+})
+export class AppModule {}
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
+});
+
+await app.listen();
+// OpenAPI JSON: http://localhost:3000/openapi.json
+// Swagger UI:   http://localhost:3000/docs
+```
+
+Note that `controllers: [UsersController]` and `sources: [...]` are two different declarations: the first registers the controller for routing, the second includes it in the document. Both are needed.
+
+## How the mechanics work
+
+### Document assembly
+
+At registration, `OpenApiModule` snapshots and freezes its options — mutating the original options object, `sources`, `securitySchemes`, `extraModels`, or paths after registration never changes the served output. When the application boots, the module resolves the supplied sources into handler descriptors, builds the document once, and serves it through defensive copies, so a response serializer or a test mutating the received JSON cannot corrupt later responses.
+
+Request bodies are derived from DTO binding and validation metadata: `@RequestDto(CreateUserDto)` plus the `@FromBody()`/`@IsEmail()`/`@MinLength(2)` rules produce a real JSON Schema with `required` fields and folded constraints. Repeated numeric rules fold to the strongest bound (`Min` rules combine with `Math.max`, `Max` with `Math.min`), `Length`/`MinLength`/`MaxLength` fold into `minLength`/`maxLength`, array-size rules fold into `minItems`/`maxItems`, and `IsIn`/`IsEnum` emit the deduplicated intersection of allowed values — disjoint constraints emit an impossible schema (`not: {}`) rather than silently widening. Distinct `ValidateNested` targets compose deterministically (`allOf` under `IntersectionType`), with `{ each: true }` taking array-schema precedence when both nested forms are present. These are projection rules only — runtime traversal stays owned by validation.
+
+Responses are **never inferred from handler return values or TypeScript types**. A handler without `@ApiResponse(...)` gets a method-default success response (`POST` → 201, others → 200) with the description `OK` and nothing else. To document a body, declare `@ApiResponse({ status: 201, type: UserResponseDto })` (referenced as a component) or `schema: {...}` inline. When a handler declares `@Produces('application/json', 'application/problem+json')`, those media types become the response `content` keys sharing the same schema.
+
+### Explicit documentation decorators
+
+| Decorator | Purpose |
+| --- | --- |
+| `@ApiTag('Users')` | Controller-level tag; feeds groupings and `operationId` derivation |
+| `@ApiOperation({ summary, description, deprecated })` | Operation metadata; `@ApiOperation()` with no options contributes nothing invented |
+| `@ApiResponse({ status, description?, schema?, type? })` | Explicit response; object-only options |
+| `@ApiBody({ content: { 'application/json': { schema } } })` | Explicit request body; overrides DTO-inferred bodies on name overlap |
+| `@ApiParam` / `@ApiQuery` / `@ApiHeader` / `@ApiCookie` | Parameter documentation; names are required |
+| `@ApiBearerAuth()` / `@ApiSecurity(name, scopes?)` | Security requirements against `securitySchemes` |
+| `@ApiExcludeEndpoint()` | Omits a handler from the document |
+
+Stacking `@ApiSecurity(...)` for the same scheme merges scopes into one cumulative requirement (deterministic for OAuth-style overlapping scopes); different schemes remain separate requirements.
+
+### Defaults you can predict
+
+- **Default error responses**: every operation receives `400`, `401`, `403`, `404`, and `500` responses plus the shared `ErrorResponse` schema, which do not replace explicitly declared responses. This differs from NestJS Swagger output — verify generated client contracts before regenerating, or set `defaultErrorResponsesPolicy: 'omit'` to restore a legacy document.
+- **`operationId`** is derived deterministically from controller tag, handler name, HTTP method, and normalized path; collisions receive numeric suffixes. Rename in `documentTransform` if generated clients rely on legacy identifiers.
+- **URI versioning** from `@fluojs/http` is reflected in resolved document paths automatically.
+
+### OpenAPI 3.1 strictness
+
+The builder validates documents instead of emitting near-misses:
+
+- Legacy `nullable: true` is rejected — use a type union (`type: ['string', 'null']`) or an `anyOf` branch with `{ type: 'null' }`.
+- Boolean `exclusiveMinimum`/`exclusiveMaximum` are rejected — OpenAPI 3.1 finite numeric values only, including inside `documentTransform` output.
+- Every Path Item must contain only standard operations, fixed fields (`$ref`, `summary`, `description`, `servers`, `parameters`), and `x-*` extensions. Nonstandard keys such as `all` or `query` — including ones a `documentTransform` introduces — fail generation before the document is served.
+
+`documentTransform(document) => document` runs after generation and before serving: use it for `operationId` renames, server injection, or house-style rewrites, knowing the result is re-validated against the same 3.1 rules.
+
+### Routes, conflicts, and multiple documents
+
+Each registration serves JSON at `documentPath` (default `/openapi.json`) and reserves `uiPath` (default `/docs`). Paths follow the normal HTTP route grammar and normalize duplicate/trailing slashes. Collisions are bootstrap failures, not precedence rules: two registrations claiming the same normalized `GET` route — with each other or with an application controller — fail with `RouteConflictError`. The UI route stays reserved even with `ui: false`, answering with a documented not-found response, so enabling the UI later needs no route changes.
+
+For multiple documents, give each registration distinct paths:
+
+```ts title="fragment: public and admin documents"
+OpenApiModule.forRoot({
+  documentPath: '/openapi/public.json',
+  uiPath: '/docs/public',
+  sources: [{ controllerToken: PublicController }],
+  title: 'Public API',
+  version: '1.0.0',
+  ui: true,
+}),
+OpenApiModule.forRoot({
+  documentPath: '/openapi/admin.json',
+  uiPath: '/docs/admin',
+  sources: [{ controllerToken: AdminController }],
+  title: 'Admin API',
+  version: '1.0.0',
+  ui: true,
+}),
+```
+
+### Async registration
+
+`OpenApiModule.forRootAsync(...)` resolves document options from the application graph. `documentPath` and `uiPath` are **outer** registration options — routes compile before the factory resolves — while the factory returns the document configuration (`sources`, `descriptors`, `securitySchemes`, `extraModels`, `defaultErrorResponsesPolicy`, `documentTransform`, `ui`, `swaggerUiAssets`). A path returned by the factory cannot reconfigure the already-registered routes, and factory failures propagate during bootstrap:
+
+```ts title="fragment: async registration"
+OpenApiModule.forRootAsync({
+  documentPath: '/openapi.json',
+  uiPath: '/docs',
+  inject: [ApiSettings],
+  useFactory: (settings: ApiSettings) => ({
+    title: settings.apiTitle,
+    version: settings.apiVersion,
+    sources: [{ controllerToken: UsersController }],
+  }),
+}),
+```
+
+### Offline generation
+
+Documents do not require a running server. `OpenApiDocumentBuilder.build(options)` builds the same document programmatically — useful for contract tests and CI drift checks. This replaces the removed 1.x `buildOpenApiDocument(...)`; `OpenApiHandlerRegistry` was also removed (pass `sources`/`descriptors` directly), `@ApiResponse` is object-only, and `@ApiBody({ schema })` became the content-map form. These breaking changes landed in 2.0; migration notes live in the package README.
+
+## Composing with neighboring packages
+
+- **`@fluojs/http`** supplies everything: routes, parameters, `@Produces` media types, DTO binding metadata. The module registers real routes for the document and UI endpoints, so document paths participate in normal collision detection.
+- **`@fluojs/validation`** metadata becomes request schemas — the folds and intersections described above. Keep validation decorators truthful; the document inherits their strength.
+- **`@fluojs/serialization`** output DTOs are the right `type:` values for `@ApiResponse` — document the shape you actually emit after serialization, not the entity you store.
+- **`@fluojs/graphql`** endpoints are documented through this package only as an application-owned extension; generated documents cover HTTP Path Item operations, not GraphQL operations.
+
+## Testing at the documentation seam
+
+Assert on the generated document, not on prose:
+
+```ts title="fragment: document test"
+import { OpenApiDocumentBuilder } from '@fluojs/openapi';
+import { expect, it } from 'vitest';
+import { UsersController } from '../src/users.controller';
+
+it('derives the create-user request body from DTO metadata', () => {
+  const document = OpenApiDocumentBuilder.build({
+    title: 'Users API',
+    version: '1.0.0',
+    sources: [{ controllerToken: UsersController }],
+  });
+
+  const create = document.paths['/users']?.post;
+  expect(create?.requestBody?.content?.['application/json']).toBeDefined();
+  expect(Object.keys(document.components?.schemas ?? {})).toContain('UserResponseDto');
+});
+```
+
+For serving behavior — document route, disabled-UI response, multi-document routing — boot through `Test.createApp(...)` and request `/openapi.json` like any other endpoint. Both seams are exercised in this guide's fixture under `tooling/docs/fixtures/package-guides/http/`.
+
+## Limits and common mistakes
+
+- Handlers appear in the document **only** through `sources`/`descriptors` — a controller registered solely in `@Module({ controllers })` produces routes but no documentation.
+- `@All()` and custom-method descriptors are rejected as document input; split them into per-method routes or exclude and document them application-side.
+- The builder does not inspect return types: an explicit `@ApiResponse` without `schema` or `type` still documents only status and description.
+- Options are snapshotted at registration — mutating `sources` after `forRoot(...)` changes nothing; rebuild the module instead.
+- `documentTransform` output is re-validated; a transform that introduces `nullable` or boolean exclusive bounds fails the build rather than degrading the document.
+
+## Related reading
+
+- [HTTP](/docs/packages/http) — route metadata, `@Produces`, and the lifecycle the document routes join.
+- [Validation](/docs/packages/validation) — the DTO metadata behind generated request schemas.
+- [Serialization](/docs/packages/serialization) — output DTOs to reference in `@ApiResponse`.
+- [Dependency injection](/docs/fundamentals/dependency-injection) — where `forRootAsync` dependencies resolve from.

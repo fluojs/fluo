@@ -1,0 +1,245 @@
+---
+title: Microservices
+description: Transport-driven microservice runtime with pattern decorators, request-scoped DI, and swappable TCP, Redis, NATS, Kafka, RabbitMQ, MQTT, and gRPC transports.
+package: "@fluojs/microservices"
+---
+
+`@fluojs/microservices` runs fluo applications as message-driven services. Handler methods are decorated with patterns (`@MessagePattern('math.sum')`, `@EventPattern(/^audit\./)`), the runtime discovers them through the module graph, and a pluggable transport moves the frames - TCP, Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, or gRPC, each on its own import subpath with the same handler code.
+
+The package solves one problem well: the same handler, scopes, and DI composition across transports that behave very differently underneath. Choose it when isolated services exchange messages or events. For browser-facing realtime use [WebSockets](/docs/packages/websockets) or [Socket.IO](/docs/packages/socket-io); for in-process reactions without a transport, an event bus is the lighter tool; and a plain HTTP route beats a microservice hop when both sides are the same deployment.
+
+Prerequisites: [Dependency injection](/docs/fundamentals/dependency-injection) and the runtime factory. The package requires Node.js `>=24.0.0 <27` under its package-owned support contract.
+
+## Installation
+
+```bash
+pnpm add @fluojs/microservices
+```
+
+Transport clients come in two ownership flavors, and the split matters for shutdown (see [Resource ownership](#resource-ownership-startup-and-shutdown)):
+
+- **Package-managed optional peers** loaded by the package itself: `@grpc/grpc-js` + `@grpc/proto-loader` (gRPC), `ioredis` (both Redis transports), `mqtt` (MQTT). Install the one your transport needs.
+- **Caller-owned broker clients** you construct and pass in explicitly: `nats` (with its `JSONCodec()`), `kafkajs`, `amqplib`. These are not package peers - the generated `fluo new` starters wire them visibly in `src/app.ts` so the external dependency stays in your control.
+
+## A small working example
+
+A TCP microservice with one request-response route, one event route, and constructor DI:
+
+```ts title="src/math.handlers.ts"
+import { Inject } from '@fluojs/core';
+import { EventPattern, MessagePattern } from '@fluojs/microservices';
+
+export class AuditLog {
+  readonly events: string[] = [];
+}
+
+@Inject(AuditLog)
+export class MathHandlers {
+  constructor(private readonly audit: AuditLog) {}
+
+  @MessagePattern('math.sum')
+  sum(input: { a: number; b: number }): number {
+    this.audit.events.push('math.sum');
+    return input.a + input.b;
+  }
+
+  @EventPattern(/^audit\./)
+  onAuditEvent(input: { message: string }): void {
+    this.audit.events.push(input.message);
+  }
+}
+```
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
+
+import { AuditLog, MathHandlers } from './math.handlers';
+
+@Module({
+  imports: [
+    MicroservicesModule.forRoot({
+      transport: TcpMicroserviceTransport.create({ port: 4000 }),
+    }),
+  ],
+  providers: [AuditLog, MathHandlers],
+})
+export class AppModule {}
+```
+
+```ts title="src/main.ts"
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.module';
+
+const microservice = await FluoFactory.createMicroservice(AppModule);
+await microservice.listen();
+```
+
+`createMicroservice` boots the module graph without an HTTP listener and resolves the runtime from DI; `listen()` starts the transport. A peer speaking the same framing sends the newline-delimited JSON frame `{"kind":"message","pattern":"math.sum","payload":{"a":3,"b":4},"requestId":"..."}` and receives `{"payload":7,"requestId":"..."}`; events arrive as `kind: 'event'` frames with no reply. The full lifecycle (facade calls, status, shutdown, scopes, and an HTTP composition) is exercised by `tooling/docs/fixtures/package-guides/transports/microservices-guide.test.ts`.
+
+## How the mechanics work
+
+### Handler discovery
+
+Pattern decorators are TC39 standard method decorators - no `reflect-metadata`, no `emitDecoratorMetadata`. Discovery happens when `listen()` starts: every compiled module's `providers` and `controllers` are scanned for decorated public instance methods. The corollaries:
+
+- **Registration is required.** A decorated class that no module lists produces no handlers.
+- **Public instance methods only.** Private and static targets are rejected at decoration time.
+- **Message patterns must match exactly one handler.** A `send()` to a pattern with zero handlers rejects with `No message handler registered for pattern "..."`, and a graph with two matching `@MessagePattern`s for one pattern fails deterministically instead of picking a winner. `@EventPattern`s fan out to every match.
+- **Patterns are strings or `RegExp`s**, matched against the transport packet's `pattern` field.
+
+Payloads are cloned before dispatch in both directions (inbound to handlers, outbound from `send()`/`emit()`), so a handler mutating its input cannot leak into the caller's object and vice versa.
+
+### Scopes
+
+Handlers participate in DI scopes like any provider:
+
+- **Singleton** (default) handlers resolve once and are cached.
+- **Request-scoped** handlers get a fresh container per message or per event, disposed after the handler settles - on success and on failure. Concurrent messages each get their own scope, so request-scoped state is safe under concurrency.
+- Event fan-out shares one scope across all handlers of a single event dispatch, so two `@EventPattern` handlers reacting to the same event see one consistent per-event container.
+
+This is the same scope model as [Dependency injection](/docs/fundamentals/dependency-injection), just driven by transport packets instead of HTTP requests.
+
+### The `MICROSERVICE` facade
+
+`MicroservicesModule.forRoot({ transport })` registers the lifecycle service and a programmatic facade under the `MICROSERVICE` token. The facade is not the raw transport - it adds the completion and ownership boundaries that make calls predictable:
+
+| Call | Completion boundary |
+| --- | --- |
+| `await microservice.send(pattern, payload, signal?)` | Settles with the correlated remote response; rejects on remote handler error, abort, timeout, or shutdown. |
+| `await microservice.emit(pattern, payload)` | Settles when the transport **publishes** the event. It does not wait for remote handlers and adds no delivery guarantees beyond the transport's publish contract. |
+| `await microservice.close()` | Shares one shutdown result across repeated calls; drains already-admitted inbound handlers before transport teardown and pending-request cleanup. |
+| `serverStream` / `clientStream` / `bidiStream` | gRPC streaming; the transport must implement the corresponding capability or the call throws. |
+
+After `close()` starts, a terminal gate rejects new `send()`/`emit()`/`listen()`/stream calls with `InvariantError` - including while a racing `listen()` is still settling. Concurrent `listen()` calls dedupe into one startup; a failed startup marks the lifecycle `failed` and surfaces through the status snapshot.
+
+### Status and health
+
+`MicroserviceLifecycleService.createPlatformStatusSnapshot()` reports what a health endpoint needs: readiness (`ready` / `degraded` / `not-ready` with reasons), health, the lifecycle state machine (`created → starting → ready → stopping → stopped | failed` plus `lastListenError`), per-kind handler counts, transport capabilities (`send`/`emit`/streaming), and resource ownership. It plugs into the platform status model that [HTTP](/docs/packages/http) applications already expose.
+
+## Transports
+
+Import each transport and its options from its subpath and construct with `TransportClass.create(options)` (the public constructor remains for existing integrations):
+
+| Subpath | `send()` | `emit()` | Streaming | Durability | Resource ownership |
+| --- | --- | --- | --- | --- | --- |
+| `/tcp` | Yes - correlated response | Yes - frame write | No | None - no broker | fluo owns listener and sockets |
+| `/redis` (Pub/Sub) | No - always rejects; event-only | Yes | No | None - live subscribers only | Caller owns clients; adapter unsubscribes only |
+| `/redis-streams` | Yes | Yes (`XADD`) | No | Built in - consumer groups, late `XACK`, recoverable pending entries | Caller owns clients; adapter manages groups and response streams |
+| `/nats` | Yes - request/reply | Yes | No | None in this adapter - no JetStream contract | Caller owns client/codec; adapter unsubscribes only |
+| `/kafka` | Yes - correlated response topic | Yes | No | Broker/config dependent - caller owns retention, ACKs, offsets | Caller owns producer/consumer; adapter unsubscribes only |
+| `/rabbitmq` | Yes - correlated response queue | Yes | No | Topology/collaborator dependent | Caller owns publisher/consumer/channel/connection; adapter cancels consumers |
+| `/mqtt` | Yes - correlated reply topic | Yes | No | QoS/retain dependent | fluo closes only a client it created from a URL |
+| `/grpc` | Yes - unary | Yes | Yes - server, client, bidi | None - point-to-point RPC | fluo closes cached outbound clients and a server it created; a supplied server stays caller-owned |
+
+Two rows deserve emphasis. **Redis Pub/Sub implements the common transport shape but its `send()` intentionally throws** - Pub/Sub has no request/response, so use it for events only. **TCP is a first-party loopback-shaped transport**: one transport instance listens, and its outbound `send()`/`emit()` routes to that own listener while it is up (that is how the example and the generated `mixed` starter call their own handlers programmatically). External peers can speak the same newline-delimited JSON framing, but the fluo adapter itself does not wire point-to-point remote clients - for broker-mediated topologies, pick the matching transport.
+
+Delivery-safety defaults worth knowing before you configure anything:
+
+- **TCP frames are bounded** to 1 MiB per newline-delimited message (`maxFrameBytes`) and each complete frame is decoded once as UTF-8, so a multibyte code point split across socket chunks survives; oversized frames destroy the socket instead of growing a buffer.
+- **Redis Streams acknowledges after handlers finish** (`XACK` on completion, not receipt), reclaims abandoned pending entries after `pendingReclaimIdleMs` (default 60s) when `xautoclaim` is available, keeps per-consumer response streams bounded (`responseRetentionMaxLen: 1000`), and deletes them on `close()`. Opt-in trimming (`messageRetentionMaxLen`/`eventRetentionMaxLen`) trades away broker-managed recovery.
+- **Kafka and RabbitMQ keep the consumer callback pending** until the handler and any response publication settle, so the broker layer can decide to acknowledge or retry; instance-scoped response destinations (UUID-suffixed `responseTopic`/`responseQueue`) are the default - pass explicit shared ones only when you own the reply topology.
+- **Caller-owned collaborators stay caller-owned.** NATS, Kafka, and RabbitMQ shutdown detaches subscriptions/consumers and rejects in-flight requests but never closes your client, producer, consumer, publisher, or connection objects; NATS/RabbitMQ keep failed cleanups for a later `close()` retry and report them (single failure directly, multiple as `AggregateError`).
+- **Event-handler failures are logger-driven.** Transports report them through the configured transport logger; without one, fluo adds no raw `console.error` fallback and does not close caller-owned subscribers.
+
+## Composition with HTTP applications
+
+An HTTP application can host a microservice runtime in the same module graph - the shape the `fluo new --shape mixed` starter generates:
+
+```ts title="fragment: mixed HTTP + microservice app"
+import { Inject, Module } from '@fluojs/core';
+import { Controller, FromBody, Post, RequestDto } from '@fluojs/http';
+import { type Microservice, MICROSERVICE, MicroservicesModule } from '@fluojs/microservices';
+import { TcpMicroserviceTransport } from '@fluojs/microservices/tcp';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+
+class SumDto {
+  @FromBody()
+  a = 0;
+
+  @FromBody()
+  b = 0;
+}
+
+@Inject(MICROSERVICE)
+@Controller('/math')
+class MathController {
+  constructor(private readonly microservice: Microservice) {}
+
+  @Post('/sum')
+  @RequestDto(SumDto)
+  async sum(input: SumDto): Promise<{ sum: unknown }> {
+    return { sum: await this.microservice.send('math.sum', { a: input.a, b: input.b }) };
+  }
+}
+
+@Module({
+  imports: [MicroservicesModule.forRoot({ transport: TcpMicroserviceTransport.create({ port: 0 }) })],
+  controllers: [MathController],
+  providers: [AuditLog, MathHandlers],
+})
+class AppModule {}
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
+});
+await app.connectMicroservice();
+await app.startAllMicroservices();
+await app.listen();
+```
+
+`connectMicroservice()` resolves the runtime from DI and attaches it to the shell; `startAllMicroservices()` starts every attached runtime (rolling back already-started ones on failure); `app.close()` closes microservices first - detaching transport callbacks so handler work stops - after which the application layer closes its own broker collaborators. Because the TCP transport routes outbound calls to its own listener, the HTTP handler's `send()` lands on the handlers registered in this same app; the HTTP layer becomes the public face of the message API.
+
+For gRPC, protocol dependencies differ: the `/grpc` subpath pairs a proto loader with server- and channel-credential options (`serverCredentials` for the inbound server, `channelCredentials` for outbound clients - defaults are the respective insecure credentials, never cross-reused).
+
+## Resource ownership, startup, and shutdown
+
+The lifecycle service owns discovery, dispatch, the admission gate, and the status state. Ownership of *transport resources* is per-transport and deliberately mixed: fluo closes what it created (TCP listener/sockets, MQTT clients it constructed from a URL, gRPC outbound clients and servers it created, Redis Streams coordination artifacts it manages) and leaves caller-owned broker collaborators open for the application to close after `microservice.close()` returns. The status snapshot reports this mix (`ownership.ownsResources`, `ownership.externallyManaged`, `details.transportResourceOwnership`) instead of collapsing it into one boolean.
+
+Shutdown ordering that keeps caller resources safe: close the `Microservice` facade first (it detaches transport callbacks and drains admitted work), then close or drain your own clients, producers, consumers, and connections from the bootstrap layer. `MicroserviceLifecycleService.close(signal)` also accepts the shutdown signal for runtime hook integration, while individual transports keep their no-argument `close()` unless their own documentation says otherwise.
+
+## Failures, limits, and common mistakes
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `No message handler registered for pattern "..."` | No handler matches, or the class is not registered in `providers`/`controllers` | Register the handler class; check the pattern string |
+| `Multiple message handlers matched pattern "..."` | Two `@MessagePattern`s overlap for one packet | Keep exactly one match per message pattern (events may fan out) |
+| `Microservice cannot send after shutdown has started.` | The terminal gate closed via `close()`/`markShutdownStarted()` | Treat it as terminal; recreate the runtime for new work |
+| `TcpMicroserviceTransport is not listening. Call listen() before send().` | Facade calls before `listen()` | Call `await microservice.listen()` first |
+| Redis Pub/Sub `send()` throws | Pub/Sub is event-only by design | Use `emit()`, or Redis Streams/NATS for request-response |
+| Broker clients still open after `close()` | NATS/Kafka/RabbitMQ collaborators are caller-owned by contract | Close them yourself after the facade closes |
+| Duplicate responses on a shared reply topic | Explicit `responseTopic`/`responseQueue` shared across instances | Keep the default instance-scoped UUID-suffixed destinations |
+| Handler state leaks between messages on a singleton | Singleton scope shares the instance | Use `@Scope('request')` for per-message state |
+| `Timeout after 3000ms` on TCP sends | Default `requestTimeoutMs` exceeded | Configure `requestTimeoutMs`, or check the peer is listening |
+
+Two limits shape architecture decisions: `emit()` settling is a publish acknowledgement, not an end-to-end delivery guarantee - durability comes from the transport you chose (Redis Streams consumer groups, Kafka retention, RabbitMQ queues), and only gRPC supports streaming patterns in this package.
+
+## Testing
+
+The TCP loopback makes handler tests real without a broker: boot with `port: 0`, call through the facade, and await the RPC result:
+
+```ts title="fragment: handler test skeleton"
+const microservice = await FluoFactory.createMicroservice(AppModule);
+
+try {
+  await microservice.listen();
+  await expect(microservice.send('math.sum', { a: 3, b: 4 })).resolves.toBe(7);
+  await microservice.emit('audit.login', { message: 'ok' }); // pair with a deferred/barrier, not a sleep
+} finally {
+  await microservice.close();
+}
+```
+
+For event handlers, resolve a deferred from inside the handler instead of polling. `@fluojs/testing` overrides compose normally for swapping repositories behind handlers, and the transport contract (`MicroserviceTransport`) is a public interface, so a small in-memory transport is a legitimate seam for unit-testing modules without sockets - the package's own suite uses one. `createPlatformStatusSnapshot()` assertions (readiness, handler counts) pin the wiring without opening a port.
+
+## Related reading
+
+- [WebSockets](/docs/packages/websockets) and [Socket.IO](/docs/packages/socket-io) - browser-facing realtime over the same DI substrate.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - tokens, visibility, and the scope model handlers use.
+- [HTTP](/docs/packages/http) - the mixed application shape and the status/health model.
+- [Runtime](/docs/packages/runtime) - `FluoFactory.createMicroservice`, application shells, and shutdown signals.
+- [`@fluojs/microservices` package README](https://github.com/fluojs/fluo/blob/main/packages/microservices/README.md) - the owning behavioral contract, including the full transport capability matrix and delivery-safety defaults.
+- [Realtime & messaging packages](/docs/packages/realtime-messaging) - where microservices sit among events, CQRS, and scheduling.

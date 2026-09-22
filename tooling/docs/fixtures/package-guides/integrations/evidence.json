@@ -1,0 +1,195 @@
+{
+  "@fluojs/notifications": {
+    "page": "apps/docs/content/docs/packages/notifications.mdx",
+    "sources": [
+      "packages/notifications/README.md",
+      "packages/notifications/package.json",
+      "packages/notifications/src/index.ts",
+      "packages/notifications/src/module.ts",
+      "packages/notifications/src/service.ts",
+      "packages/notifications/src/types.ts",
+      "packages/notifications/src/status.ts",
+      "packages/notifications/src/errors.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/integrations/notifications/notifications.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/integrations/email/email.test.ts (EMAIL_CHANNEL routed through NotificationsModule.forRootAsync)",
+      "tooling/docs/fixtures/package-guides/integrations/slack/slack.test.ts (SLACK_CHANNEL routed through NotificationsModule.forRootAsync)",
+      "tooling/docs/fixtures/package-guides/integrations/discord/discord.test.ts (DISCORD_CHANNEL routed through NotificationsModule.forRootAsync)",
+      "tooling/docs/fixtures/package-guides/integrations/composition/notify-ops-app.ts",
+      "tooling/docs/fixtures/package-guides/integrations/composition/composition.test.ts"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/integrations --maxWorkers=1 -> Test Files 7 passed (7), Tests 46 passed (46)",
+      "npx tsc -p tsconfig.tools.json --noEmit -> 0 errors in tooling/docs/fixtures/package-guides/integrations",
+      "npx biome check tooling/docs/fixtures/package-guides/integrations -> clean (0 errors, 0 warnings)",
+      "LSP diagnostics tooling/docs/fixtures/package-guides/integrations -> 8 files scanned, 0 errors"
+    ],
+    "unexecuted": [
+      "Queue seam exercised with an in-memory adapter only; durable broker delivery and deduplication on a real queue are not fixture-proven.",
+      "Lifecycle events exercised with an in-memory publisher; forwarding to @fluojs/event-bus is documented from contracts, not executed here."
+    ]
+  },
+  "@fluojs/email": {
+    "page": "apps/docs/content/docs/packages/email.mdx",
+    "sources": [
+      "packages/email/README.md",
+      "packages/email/package.json",
+      "packages/email/src/index.ts",
+      "packages/email/src/module.ts",
+      "packages/email/src/service.ts",
+      "packages/email/src/channel.ts",
+      "packages/email/src/types.ts",
+      "packages/email/src/errors.ts",
+      "packages/email/src/queue.ts",
+      "packages/email/src/node/nodemailer.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/integrations/email/email.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/integrations/composition/notify-ops-app.ts",
+      "tooling/docs/fixtures/package-guides/integrations/composition/composition.test.ts"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/integrations --maxWorkers=1 -> Test Files 7 passed (7), Tests 46 passed (46)",
+      "npx tsc -p tsconfig.tools.json --noEmit -> 0 errors in tooling/docs/fixtures/package-guides/integrations",
+      "npx biome check tooling/docs/fixtures/package-guides/integrations -> clean (0 errors, 0 warnings)",
+      "LSP diagnostics tooling/docs/fixtures/package-guides/integrations -> 8 files scanned, 0 errors"
+    ],
+    "unexecuted": [
+      "Native SMTP delivery via @fluojs/email/node not executed (no SMTP fixture); Nodemailer adapter claims are source-backed only.",
+      "@fluojs/email/queue worker path not executed (BullMQ/Redis not wired in this fixture directory)."
+    ]
+  },
+  "@fluojs/slack": {
+    "page": "apps/docs/content/docs/packages/slack.mdx",
+    "sources": [
+      "packages/slack/README.md",
+      "packages/slack/package.json",
+      "packages/slack/src/index.ts",
+      "packages/slack/src/module.ts",
+      "packages/slack/src/service.ts",
+      "packages/slack/src/channel.ts",
+      "packages/slack/src/types.ts",
+      "packages/slack/src/webhook.ts",
+      "packages/slack/src/errors.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/integrations/slack/slack.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/integrations/composition/notify-ops-app.ts",
+      "tooling/docs/fixtures/package-guides/integrations/composition/composition.test.ts"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/integrations --maxWorkers=1 -> Test Files 7 passed (7), Tests 46 passed (46)",
+      "npx tsc -p tsconfig.tools.json --noEmit -> 0 errors in tooling/docs/fixtures/package-guides/integrations",
+      "npx biome check tooling/docs/fixtures/package-guides/integrations -> clean (0 errors, 0 warnings)",
+      "LSP diagnostics tooling/docs/fixtures/package-guides/integrations -> 8 files scanned, 0 errors"
+    ],
+    "unexecuted": [
+      "Transient-retry path (408/429/5xx with internal backoff constants) not executed; permanent-4xx fail-fast and success paths are proven with a recording fetch.",
+      "No real Slack webhook is called; payload construction and abort handling are proven against an injected fetch boundary."
+    ]
+  },
+  "@fluojs/discord": {
+    "page": "apps/docs/content/docs/packages/discord.mdx",
+    "sources": [
+      "packages/discord/README.md",
+      "packages/discord/package.json",
+      "packages/discord/src/index.ts",
+      "packages/discord/src/module.ts",
+      "packages/discord/src/service.ts",
+      "packages/discord/src/channel.ts",
+      "packages/discord/src/types.ts",
+      "packages/discord/src/webhook.ts",
+      "packages/discord/src/errors.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/integrations/discord/discord.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/integrations/composition/notify-ops-app.ts",
+      "tooling/docs/fixtures/package-guides/integrations/composition/composition.test.ts"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/integrations --maxWorkers=1 -> Test Files 7 passed (7), Tests 46 passed (46)",
+      "npx tsc -p tsconfig.tools.json --noEmit -> 0 errors in tooling/docs/fixtures/package-guides/integrations",
+      "npx biome check tooling/docs/fixtures/package-guides/integrations -> clean (0 errors, 0 warnings)",
+      "LSP diagnostics tooling/docs/fixtures/package-guides/integrations -> 8 files scanned, 0 errors"
+    ],
+    "unexecuted": [
+      "Retry backoff executed with baseDelayMs: 0 only (real timing distribution with nonzero delays is not fixture-proven).",
+      "No real Discord webhook is called; URL construction, retry decisions, and lifecycle gating are proven against a recording fetch."
+    ]
+  },
+  "@fluojs/metrics": {
+    "page": "apps/docs/content/docs/packages/metrics.mdx",
+    "sources": [
+      "packages/metrics/README.md",
+      "packages/metrics/package.json",
+      "packages/metrics/src/index.ts",
+      "packages/metrics/src/metrics-module.ts",
+      "packages/metrics/src/metrics-service.ts",
+      "packages/metrics/src/http-metrics-middleware.ts",
+      "packages/metrics/src/serialized-scrape-queue.ts",
+      "packages/metrics/src/integration.ts",
+      "packages/metrics/src/providers/prometheus-meter-provider.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/integrations/metrics/metrics.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/integrations/composition/notify-ops-app.ts",
+      "tooling/docs/fixtures/package-guides/integrations/composition/composition.test.ts (HTTP instrumentation of a real app observed from /metrics)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/integrations --maxWorkers=1 -> Test Files 7 passed (7), Tests 46 passed (46)",
+      "npx tsc -p tsconfig.tools.json --noEmit -> 0 errors in tooling/docs/fixtures/package-guides/integrations",
+      "npx biome check tooling/docs/fixtures/package-guides/integrations -> clean (0 errors, 0 warnings)",
+      "LSP diagnostics tooling/docs/fixtures/package-guides/integrations -> 8 files scanned, 0 errors"
+    ],
+    "unexecuted": [
+      "Shared-registry mode (METRICS_REGISTRY via FluoFactory.create providers) not exercised here: the Registry constructor is exported from @fluojs/metrics/integration, whose type declarations the lead-owned tsconfig.tools.json cannot resolve; isolated mode is fully fixture-proven and shared mode is claimed from the package's own tests.",
+      "METER_PROVIDER / PrometheusMeterProvider low-level seam not exercised (package-author surface)."
+    ]
+  },
+  "@fluojs/terminus": {
+    "page": "apps/docs/content/docs/packages/terminus.mdx",
+    "sources": [
+      "packages/terminus/README.md",
+      "packages/terminus/package.json",
+      "packages/terminus/src/index.ts",
+      "packages/terminus/src/module.ts",
+      "packages/terminus/src/health-check.ts",
+      "packages/terminus/src/types.ts",
+      "packages/terminus/src/tokens.ts",
+      "packages/terminus/src/errors.ts",
+      "packages/terminus/src/indicators/http.ts",
+      "packages/terminus/src/indicators/memory.ts",
+      "packages/terminus/src/indicators/disk.ts",
+      "packages/terminus/src/indicators/redis.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/integrations/terminus/terminus.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/integrations/composition/notify-ops-app.ts",
+      "tooling/docs/fixtures/package-guides/integrations/composition/composition.test.ts (/health and /ready over the composed six-package graph)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/integrations --maxWorkers=1 -> Test Files 7 passed (7), Tests 46 passed (46)",
+      "npx tsc -p tsconfig.tools.json --noEmit -> 0 errors in tooling/docs/fixtures/package-guides/integrations",
+      "npx biome check tooling/docs/fixtures/package-guides/integrations -> clean (0 errors, 0 warnings)",
+      "LSP diagnostics tooling/docs/fixtures/package-guides/integrations -> 8 files scanned, 0 errors"
+    ],
+    "unexecuted": [
+      "DI-backed indicatorProviders (Prisma/Drizzle/Redis) not executed: optional peers, @fluojs/terminus/redis subpath type declarations unresolved by the lead-owned tsconfig.tools.json, and native services required.",
+      "Redis client lifecycle-to-PING mapping claimed from packages/terminus tests and README, not fixture-proven here; the repository's native Redis harness (tooling/testing/redis-native-fixture.mjs) was not wired into this directory.",
+      "HttpHealthIndicator/MemoryHealthIndicator/DiskHealthIndicator exercised only via contract-equivalent custom indicators because their exports live in @fluojs/terminus/node (subpath type mapping gap); their probe logic is covered by the package's own tests."
+    ]
+  }
+}

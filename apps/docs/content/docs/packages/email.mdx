@@ -1,0 +1,399 @@
+---
+title: Email
+description: Transport-agnostic email delivery with explicit transport ownership, template fallback rendering, a notifications channel, and a Node-only SMTP subpath.
+package: "@fluojs/email"
+---
+
+`@fluojs/email` delivers email through a transport you choose explicitly. The
+root entrypoint is transport-agnostic: an application injects `EmailService`,
+calls `send(...)` with a message, and the configured `EmailTransport` - your
+code, a provider SDK wrapper, or the first-party Nodemailer adapter from
+`@fluojs/email/node` - performs the delivery. The same package also exports a
+ready-made `EMAIL_CHANNEL` so [`@fluojs/notifications`](/docs/packages/notifications)
+can route dispatches into email without this package leaking email payload
+semantics into the shared contract.
+
+Use it when one application should send email directly *and* plug into
+notifications, when transport choice must stay explicit and portable across
+Node, Bun, Deno, and Cloudflare-compatible boundaries, or when transport
+resources must join application bootstrap/shutdown. Do not reach for it as a
+templating framework: the renderer is an optional fallback-content hook, and
+the package ships no template engine, no SMTP server, and no environment
+reads. Credentials enter only through explicit options or DI.
+
+## Installation
+
+```bash
+npm install @fluojs/email
+```
+
+Optional peers, installed only for the seams you enable:
+
+```bash
+# Notifications channel and queue-backed bulk delivery:
+npm install @fluojs/notifications @fluojs/queue
+
+# Node-only SMTP delivery via @fluojs/email/node:
+npm install nodemailer@^9.0.1
+npm install --save-dev @types/nodemailer@^8.0.0
+```
+
+`nodemailer` is declared as an optional peer of the Node subpath, and
+`@fluojs/queue` as an optional peer of the queue subpath; the root entrypoint
+loads neither. The package manifest declares no `engines` range of its own -
+the root surface is portable by contract - while `@fluojs/email/node`
+additionally requires Node.js (Nodemailer is a Node library). Consumers
+upgrading from Nodemailer 6, 7, or 8 must move to `^9.0.1` and refresh their
+lockfile before adopting this major release.
+
+## A small working example
+
+A portable in-memory-style transport is the smallest complete setup. Three
+declarations: the transport, the module registration, and the sender.
+
+```ts title="src/http-mail-transport.ts"
+import type { EmailTransport, EmailTransportReceipt } from '@fluojs/email';
+
+// Any HTTP email API (Postmark, SES, Mailgun, your mailer) wrapped once.
+export function createHttpMailTransport(apiKey: string): EmailTransport {
+  return {
+    async send(message, context): Promise<EmailTransportReceipt> {
+      const response = await fetch('https://mail.example.com/v1/send', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(message),
+        signal: context.signal,
+      });
+
+      return (await response.json()) as EmailTransportReceipt;
+    },
+    // verify and close are optional capability hooks - see lifecycle below.
+  };
+}
+```
+
+```ts title="src/welcome.service.ts"
+import { Inject } from '@fluojs/core';
+import { EmailService } from '@fluojs/email';
+
+@Inject(EmailService)
+export class WelcomeService {
+  constructor(private readonly email: EmailService) {}
+
+  async sendWelcome(address: string): Promise<void> {
+    const receipt = await this.email.send({
+      to: [address],
+      subject: 'Welcome to fluo',
+      text: 'Your account is ready.',
+    });
+
+    // receipt.accepted / pending / rejected stay separated, so partial
+    // provider failures remain caller-visible instead of collapsing
+    // into a boolean.
+    if (receipt.accepted.length === 0) {
+      throw new Error(`Welcome email to ${address} was not accepted`);
+    }
+  }
+}
+```
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { EmailModule } from '@fluojs/email';
+
+import { createHttpMailTransport } from './http-mail-transport';
+import { WelcomeService } from './welcome.service';
+
+@Module({
+  imports: [
+    EmailModule.forRoot({
+      defaultFrom: 'noreply@example.com',
+      transport: {
+        kind: 'example-http-transport',
+        create: () => createHttpMailTransport(process.env.MAIL_API_KEY ?? ''),
+        ownsResources: false,
+      },
+    }),
+  ],
+  providers: [WelcomeService],
+})
+export class AppModule {}
+```
+
+`EmailModule.forRoot(...)` exports `EmailService`, `EmailChannel`, and the
+`EMAIL_CHANNEL` token **globally by default**; pass `global: false` to keep
+them visible only to explicit importers. Reading `process.env` above happens
+in *application* code at the composition root - the package itself never
+reads the environment. Expected outcome: `sendWelcome('dev@example.com')`
+resolves with a receipt whose `messageId` comes from the transport response,
+and the transport receives a normalized message with `from` resolved to
+`noreply@example.com`.
+
+## How the mechanics work
+
+### Transports, factories, and ownership
+
+The `transport` option accepts either shape, and the distinction decides who
+closes the resource:
+
+| Shape | `ownsResources` default | Meaning |
+| --- | --- | --- |
+| An `EmailTransport` instance | `false` (caller owns it) | The package uses it, never closes it |
+| An `EmailTransportFactory` (`{ create, kind? }`) | `true` | The service creates the transport lazily and closes it on shutdown |
+
+`kind` is a diagnostic label surfaced through status snapshots, so operators
+can tell which adapter is wired without reading provider option types.
+
+### Message normalization and validation
+
+`send(...)` normalizes before touching the transport, so invalid input never
+initializes transport resources: addresses are trimmed into structured
+`{ address, name? }` values, `defaultFrom`/`defaultReplyTo` fill in sender
+defaults, and empty `replyTo` lists fall back to the module default. Then
+validation enforces the minimum deliverable message:
+
+- at least one non-empty `to` recipient;
+- a resolved `from` (message-level or `defaultFrom`);
+- `html` or `text` content.
+
+Violations reject with `EmailMessageValidationError` before any transport
+work. An already-aborted `AbortSignal` rejects the call immediately, before
+rendering or transport handoff.
+
+### Lifecycle: bootstrap, verification, shutdown
+
+`EmailService` implements the runtime lifecycle hooks. On `onModuleInit` it
+creates the configured transport (sharing one creation promise across
+concurrent callers) and, when `verifyOnModuleInit: true` and the transport
+exposes `verify()`, awaits verification before the service becomes `ready`.
+While that gate is enabled, `send(...)` waits for bootstrap verification to
+finish before transport handoff - a failed verification marks the service
+`failed`, and later sends reject with `EmailLifecycleError` instead of
+retrying against a broken transport.
+
+During `onApplicationShutdown` the service stops accepting new deliveries
+(`EmailLifecycleError` on `send(...)`/`sendNotification(...)`), awaits
+in-flight factory-owned transport creation, drains active `verify()`/`send()`
+calls, then closes an owned transport exactly once. Concurrent and repeated
+shutdown calls share the same completion promise, and provider errors from
+`verify()`/`close()` are preserved as the `cause` of lifecycle failures.
+
+A rejected `forRootAsync` factory is not memoized permanently: the next
+provider resolution retries configuration lookup, so a transient config-store
+failure during startup does not permanently poison the module.
+
+### Templates are fallbacks, not overrides
+
+`sendNotification(...)` adapts a notifications envelope into an email. An
+optional `renderer` runs only when both `notification.template` and a module
+renderer are present, and its output is fallback content with deterministic
+precedence:
+
+| Field | Winner |
+| --- | --- |
+| `subject` | explicit `notification.subject`, else rendered `subject` |
+| `text` / `html` | explicit `payload.text` / `payload.html`, else rendered |
+| `to` | explicit `payload.to`, else `notification.recipients` |
+| `metadata` | payload metadata merged with dispatch metadata plus a `template` marker; later entries win |
+
+The renderer receives `{ template, payload, metadata, locale, subject }`, and
+`payload.templateData` stays opaque - the package never interprets its keys.
+Call `sendNotification(...)` directly, or let the notifications foundation
+route to it through `EmailChannel`.
+
+### The notifications channel
+
+`EmailChannel` implements `NotificationChannel` and is exported twice - as
+its class token and as the `EMAIL_CHANNEL` token - so
+[`@fluojs/notifications`](/docs/packages/notifications) can consume it without
+importing email internals:
+
+```ts title="fragment: registering the email channel"
+import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
+import { NotificationsModule } from '@fluojs/notifications';
+
+@Module({
+  imports: [
+    EmailModule.forRoot({ /* transport wiring as above */ }),
+    NotificationsModule.forRootAsync({
+      inject: [EMAIL_CHANNEL],
+      useFactory: (channel) => ({ channels: [channel] }),
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+The channel treats a transport receipt with zero accepted recipients or any
+`pending`/`rejected` recipients as a **failed** dispatch (it throws, and the
+notifications foundation publishes a `failed` lifecycle event) rather than
+reporting success. Supported payload fields are `to`, `cc`, `bcc`, `from`,
+`replyTo`, `text`, `html`, `attachments`, `headers`, `metadata`, and
+`templateData` when a renderer is configured. The channel name defaults to
+`email`; rename it via `EmailModule.forRoot({ notifications: { channel: ... } })`.
+
+### `@fluojs/email/node`: first-party SMTP on Node
+
+The Node subpath isolates Nodemailer behind an explicit import:
+
+```ts title="fragment: SMTP with a factory-owned transporter"
+import { EmailModule } from '@fluojs/email';
+import { NodemailerEmailTransport } from '@fluojs/email/node';
+
+EmailModule.forRoot({
+  defaultFrom: 'noreply@example.com',
+  transport: NodemailerEmailTransport.createFactory({
+    smtp: {
+      auth: { user: 'smtp-user', pass: 'smtp-password' },
+      host: 'smtp.example.com',
+      port: 587,
+      secure: false,
+    },
+  }),
+  verifyOnModuleInit: true,
+});
+```
+
+`createFactory(...)` returns a factory with `ownsResources: true`, so
+`EmailService` verifies SMTP connectivity at bootstrap (with
+`verifyOnModuleInit`) and closes the transporter during shutdown. If you
+already own a Nodemailer transporter, `NodemailerEmailTransport.create({
+transporter })` wraps it **without** transferring ownership - shutdown will
+not close it. Display-name addresses are forwarded as structured address
+objects, and newline characters in address parts are rejected before provider
+handoff as `EmailMessageValidationError`.
+
+### `@fluojs/email/queue`: queue-backed bulk delivery
+
+The queue subpath pairs the notifications foundation's queue seam with
+[`@fluojs/queue`](/docs/packages/queue):
+
+```ts title="fragment: queue-backed notifications wiring"
+import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
+import { createEmailNotificationsQueueAdapter, EmailNotificationsQueueWorker } from '@fluojs/email/queue';
+import { NotificationsModule } from '@fluojs/notifications';
+import { getQueueToken, QueueModule } from '@fluojs/queue';
+
+@Module({
+  imports: [
+    QueueModule.forRoot(),
+    EmailModule.forRoot({ /* transport wiring */ }),
+    NotificationsModule.forRootAsync({
+      inject: [EMAIL_CHANNEL, getQueueToken()],
+      useFactory: (channel, queue) => ({
+        channels: [channel],
+        queue: {
+          adapter: createEmailNotificationsQueueAdapter(queue),
+          bulkThreshold: 25,
+        },
+      }),
+    }),
+  ],
+  // The root EmailModule never registers the worker automatically.
+  providers: [EmailNotificationsQueueWorker],
+})
+export class AppModule {}
+```
+
+The adapter preserves each deterministic `NotificationsQueueJob.id` as the
+Queue `deduplicationKey` (BullMQ-safe) and delegates bulk enqueues to Queue's
+atomic `enqueueMany(...)`. The worker reuses `EmailChannel` delivery
+semantics - incomplete deliveries fail the job so Queue retries and
+dead-letters them - and rejects jobs whose channel does not exactly match the
+configured email channel. Built-in worker defaults (`attempts: 3`,
+exponential backoff `1000`ms, `concurrency: 5`, rate limit `50` per `1000`ms,
+job name `fluo.email.notification`) are exported as
+`DEFAULT_EMAIL_QUEUE_WORKER_OPTIONS`.
+
+## Composition with neighboring packages
+
+**With `@fluojs/notifications`.** The channel registration shown above is the
+whole integration. Keep email-specific payload interpretation inside this
+package - application services dispatch envelopes, not email messages.
+
+**With `@fluojs/config`.** Resolve `defaultFrom`, transport credentials, and
+transport kind in `forRootAsync({ inject: [ConfigService], useFactory })`.
+The supported async shape is `inject` plus `useFactory` only; NestJS
+`imports`, `useClass`, and `useExisting` are not part of the contract.
+
+**With `@fluojs/queue`.** Enable it when bulk email must not block request
+paths. Queue-backed delivery is opt-in: without the `queue` registration,
+`dispatchMany(...)` delivers directly through the channel.
+
+## Defaults, ownership, and lifecycle
+
+| Concern | Default | Owner |
+| --- | --- | --- |
+| Module visibility | `global: true` | `forRoot({ global })` / `forRootAsync({ global })` |
+| Transport creation | Lazy, at first bootstrap | `EmailService` (factory-owned transports only) |
+| Resource ownership | Factory `true`, instance `false` | `transport.ownsResources` |
+| Bootstrap verification | Off | `verifyOnModuleInit: true` + transport `verify()` |
+| Notifications channel name | `'email'` | `notifications.channel` |
+| Template rendering | Off (direct payload passthrough) | `renderer` + `notification.template` |
+| Queue worker registration | Not registered | Your `providers` list |
+
+Shutdown order is the service's own contract: refuse new sends, drain
+in-flight work, close owned transport once. The package owns no other
+resources; `createPlatformStatusSnapshot()` reports `lifecycleState`
+(`created`, `starting`, `ready`, `stopping`, `stopped`, `failed`), transport
+`kind` and ownership, verification state, and channel name for diagnostics.
+
+## Failures, limits, and common mistakes
+
+- **`EmailConfigurationError` at registration.** No `transport` was
+  configured. There is no implicit transport discovery - choose one
+  explicitly.
+- **`EmailMessageValidationError`.** Missing/blank `to`, unresolved `from`
+  (set `defaultFrom`), or a message with neither `html` nor `text`. For
+  notifications dispatches this usually means the payload had no body fields
+  and no renderer produced one.
+- **`EmailLifecycleError`.** Sends racing with shutdown, sends before
+  bootstrap finished under `verifyOnModuleInit`, or a failed
+  `verify()`/initialization. Catch it where sends can race teardown.
+- **"My template output was ignored."** Explicit payload fields win. The
+  renderer is fallback content; pass `payload.templateData` and let the
+  renderer read it, but override `subject`/`text`/`html` only when you mean
+  to.
+- **"Partial failures disappeared."** They don't - `accepted`, `pending`,
+  and `rejected` are preserved separately, and the channel converts
+  incomplete receipts into failed dispatches so queues retry them.
+- **Expecting the worker to exist.** Queue-backed delivery requires
+  registering `EmailNotificationsQueueWorker` yourself; the root module never
+  imports `@fluojs/queue`.
+
+## Testing
+
+Inject a recording transport and assert on what `EmailService` hands it -
+that seam is the package's whole delivery contract:
+
+```ts title="fragment: transport seam test"
+const sent: NormalizedEmailMessage[] = [];
+const transport: EmailTransport = {
+  async send(message) {
+    sent.push(message);
+    return { accepted: message.to.map((entry) => entry.address), messageId: 't-1' };
+  },
+};
+
+const module = await Test.createTestingModule({
+  rootModule: AppModule, // imports EmailModule.forRoot({ transport, defaultFrom })
+}).compile();
+const email = await module.resolve(EmailService);
+
+const receipt = await email.send({ to: ['dev@example.com'], text: 'hi' });
+
+expect(receipt.messageId).toBe('t-1');
+expect(sent[0]?.from).toEqual({ address: 'noreply@example.com' });
+```
+
+Close apps in `finally` (`await app.close()`), then assert that a follow-up
+`send(...)` rejects with `EmailLifecycleError` - that pins the shutdown
+contract without timing tricks.
+
+## Related reading
+
+- [`@fluojs/notifications`](/docs/packages/notifications) - the dispatch layer that consumes `EMAIL_CHANNEL`.
+- [`@fluojs/queue`](/docs/packages/queue) - durable delivery behind the queue subpath.
+- [`@fluojs/config`](/docs/packages/config) - validated configuration for transport credentials.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - module visibility and async factory registration.
+- [`@fluojs/email` package README](https://github.com/fluojs/fluo/blob/main/packages/email/README.md) - the owning API reference.

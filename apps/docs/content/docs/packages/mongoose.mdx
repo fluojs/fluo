@@ -1,0 +1,371 @@
+---
+title: Mongoose
+description: Register an application-owned Mongoose connection with fluo, share MongoDB sessions across services through an ambient context, and drain them before shutdown.
+package: "@fluojs/mongoose"
+---
+
+`@fluojs/mongoose` plugs an existing Mongoose connection into the fluo module
+system and adds the same ambient transaction model as
+[`@fluojs/prisma`](/docs/packages/prisma) and
+[`@fluojs/drizzle`](/docs/packages/drizzle), adapted to how MongoDB actually
+does transactions: **sessions**. A service opens one session-scoped
+transaction with the `@Transaction` decorator, and every supported model
+operation it triggers - at any call depth - joins that session without anyone
+passing a `session` argument.
+
+One design decision shapes the whole package: fluo **observes your connection,
+it does not create or own it**. You call `mongoose.createConnection(...)` with
+your connection string, pool sizing, plugins, and model compilation; fluo
+registers a wrapper around that handle, tracks transaction sessions opened
+through it, and (optionally) closes it during shutdown via a `dispose` hook you
+provide. If you are happy managing sessions yourself, keep doing that and skip
+this package; it earns its keep when services and repositories must share one
+transaction, or when shutdown must not race an in-flight transaction.
+
+Runtime: Node.js `>=24.0.0 <27` - the ambient session context is built on
+`node:async_hooks`, and non-Node runtimes should register raw Mongoose
+handles behind application-owned providers instead.
+
+## Installation
+
+```bash
+pnpm add @fluojs/mongoose mongoose
+```
+
+- Peer dependency: `mongoose >=7.0.0` (optional peer).
+- MongoDB transactions require a replica set or sharded cluster; a standalone
+  `mongod` cannot run them. Without transaction support the package falls back
+  to direct execution (see [Strictness](#strictness-and-fail-open)).
+
+## A small working example
+
+An articles feature. The service opens a session transaction; both repository
+calls automatically participate. The first example is complete; later ones are
+fragments.
+
+```ts title="src/articles.feature.ts"
+import { Inject, Module } from '@fluojs/core';
+import { MongooseConnection, MongooseModule, Transaction, type MongooseModelFacade } from '@fluojs/mongoose';
+import mongoose, { Schema } from 'mongoose';
+
+const connection = mongoose.createConnection(process.env.MONGO_URL ?? 'mongodb://127.0.0.1:27017/blog');
+
+const articleSchema = new Schema({
+  title: { type: String, required: true },
+  body: { type: String, required: true },
+  revision: { type: Number, default: 0 },
+});
+
+type ArticleModel = MongooseModelFacade<
+  Promise<readonly { _id: unknown; title: string }[]> // create
+>;
+
+@Inject(MongooseConnection)
+export class ArticlesRepository {
+  constructor(readonly conn: MongooseConnection) {}
+
+  create(title: string, body: string) {
+    // model() returns a session-aware facade inside @Transaction():
+    // create, find, findOne, aggregate, and bulkWrite automatically
+    // join the ambient session.
+    return this.conn.model<ArticleModel>('Article').create([{ title, body }]);
+  }
+
+  bumpRevision(title: string) {
+    const Article = this.conn.model('Article');
+    return Article.findOne({ title }) as Promise<unknown>;
+  }
+}
+
+@Inject(ArticlesRepository)
+export class ArticlesService {
+  constructor(private readonly repo: ArticlesRepository) {}
+
+  @Transaction((self) => self.repo.conn)
+  async publish(title: string, body: string) {
+    const [article] = await this.repo.create(title, body);
+    await this.repo.bumpRevision(title);
+    return article;
+  }
+}
+
+@Module({
+  imports: [
+    MongooseModule.forRoot({
+      connection,
+      dispose: async (conn) => conn.close(),
+    }),
+  ],
+  providers: [ArticlesRepository, ArticlesService],
+})
+export class ArticlesModule {}
+```
+
+Import `ArticlesModule` into the root module and start with
+`FluoFactory.create(AppModule, { adapter })` followed by `app.listen()`. The
+package adds no startup hook - your connection connects per its own
+configuration. On shutdown, open request transactions are aborted, active
+sessions finish `abortTransaction()` / `endSession()` after their callbacks
+settle, and only then does `dispose(connection)` close the connection.
+
+## How the mechanics work
+
+### Registration
+
+`MongooseModule.forRoot(options)` returns a fresh module definition:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `connection` | required | A concrete connection object or function. Missing handles are rejected at registration. |
+| `dispose` | - | Optional shutdown hook receiving the connection. |
+| `strictTransactions` | `false` | Throw instead of failing open when the connection supports neither `transaction(...)` nor `startSession()`. |
+| `global` | `false` | Export `MongooseConnection` globally instead of per-module. |
+| `rollbackObserver` | - | Native rollback observation for the opt-in `shouldRollback` boundary. |
+
+The module exports exactly one token: the `MongooseConnection` class. There is
+no `name` option and no named-registration helpers - one application registers
+one connection. `forRootAsync(...)` exists with the same shape (`inject` +
+`useFactory`, plus top-level `global`) and resolves options once per
+application container.
+
+### The wrapper surface
+
+Injecting `MongooseConnection` gives you:
+
+- `current()` - always the root connection. Unlike the SQL packages, the
+  connection itself never changes inside a transaction; what changes is the
+  ambient **session**.
+- `currentSession()` - the ambient `ClientSession` inside a transaction
+  boundary, `undefined` outside one. Use it to pass the session to APIs fluo
+  does not wrap: `User.find({...}).session(conn.currentSession() ?? null)`.
+- `model(name)` - the core seam. Outside transactions it returns the real
+  model. Inside one, it returns a facade that merges the ambient session into
+  the options of `create`, `find`, `findOne`, `aggregate`, and `bulkWrite`.
+- `transaction(fn, boundary?)` and `requestTransaction(fn, signal?, boundary?)`
+  - session transaction boundaries. Note there is **no native-options
+  argument**: MongoDB transaction options are not part of this API.
+- `saveDocument(document, options?)` - the opt-in way to save an existing
+  document inside the ambient session.
+- `afterCommit(callback)` and `createPlatformStatusSnapshot()`.
+
+### Session injection rules
+
+The facade merges the ambient session into the correct options argument while
+preserving everything else you passed. The rules are strict so sessions are
+never lost or duplicated:
+
+- `create(...)` receives the session only through Mongoose's array overload -
+  `create([doc], options?)`. Positional arguments `create(docA, docB)` are
+  forwarded unchanged and do **not** participate; use the array form inside
+  transactions.
+- `find`/`findOne` accept a projection as a second argument, so the session
+  merges into the third options argument when both are present.
+- Passing an explicit `{ session: null }` or a different session while one is
+  ambient throws a session-conflict error - a silent session drop could put a
+  write outside the transaction you think you are in.
+
+`doc.save()` is **not** automatically session-aware; fluo never patches
+documents or prototypes. Saving an existing document inside a transaction is
+the opt-in helper's job:
+
+```ts title="fragment: saving an existing document"
+@Transaction((self) => self.conn)
+async rename(document: ArticleDocument) {
+  return this.conn.saveDocument(document, { validateBeforeSave: false });
+}
+```
+
+`saveDocument` attaches the ambient session, forwards your native save
+options, returns the same document instance, and fails closed outside an
+active transaction or on a conflicting explicit session.
+
+### `@Transaction` and nesting
+
+The canonical form selects the connection explicitly:
+`@Transaction((self) => self.repo.conn)` or
+`@Transaction((self) => self.conn)`. The no-argument form survives only as
+legacy single-target compatibility (discovering `this.conn`); switch to the
+accessor before adding a second connection or ORM. Decorated methods are
+reentrant - inner decorated methods join the outer session.
+
+Under the hood the wrapper prefers the delegated path when the connection
+implements `connection.transaction(...)` (native mongoose connections do),
+letting Mongoose own retries and commit results. Otherwise it drives a session
+manually: `startSession()` then `startTransaction()` / `commitTransaction()` /
+`abortTransaction()` / `endSession()`.
+
+### Request-wide boundaries
+
+Keep business transactions in services. For a request-wide boundary, own it
+explicitly - the package ships no request interceptor:
+
+```ts title="fragment: application-owned request interceptor"
+import { Inject } from '@fluojs/core';
+import type { CallHandler, Interceptor, InterceptorContext } from '@fluojs/http';
+import { MongooseConnection } from '@fluojs/mongoose';
+
+@Inject(MongooseConnection)
+export class RequestTransactionBoundary implements Interceptor {
+  constructor(private readonly mongoose: MongooseConnection) {}
+
+  intercept(context: InterceptorContext, next: CallHandler) {
+    return this.mongoose.requestTransaction(
+      () => next.handle(),
+      context.requestContext.request.signal,
+    );
+  }
+}
+```
+
+Register the class in a module's `providers` and apply it with
+`@UseInterceptors(RequestTransactionBoundary)`. Nested
+`requestTransaction(...)` calls reuse the ambient session and are aborted
+during shutdown so the outer boundary can roll back before `dispose` runs.
+
+## Composing with other packages
+
+### Cache invalidation after commit
+
+`afterCommit(callback)` registers work that runs in FIFO order after the outer
+native transaction commits and the owned session's cleanup settles - outside
+the ended session context. With
+[`@fluojs/cache-manager`](/docs/packages/cache-manager) this invalidates cached
+reads exactly once the database is durably updated:
+
+```ts title="fragment: after-commit cache invalidation"
+import type { CacheService } from '@fluojs/cache-manager';
+import { MongooseConnection, type MongooseModelFacade } from '@fluojs/mongoose';
+
+type UserCreateModel = MongooseModelFacade<Promise<readonly { name: string }[]>>;
+
+async function createUser(conn: MongooseConnection, cache: CacheService, name: string) {
+  return conn.transaction(async () => {
+    const users = await conn.model<UserCreateModel>('User').create([{ name }]);
+    conn.afterCommit(async () => {
+      await cache.del('users:list');
+    });
+    return users;
+  }, { requireAfterCommit: true });
+}
+```
+
+`requireAfterCommit: true` preflights native commit observation before the
+callback; hook registration is rejected in a fail-open fallback. Hooks from
+discarded callback attempts, rollback, and failed commits never run, and a
+commit-only retry does not re-register them.
+
+### Health and diagnostics
+
+There is no built-in terminus indicator for Mongoose. The wrapper exposes
+`createPlatformStatusSnapshot()` (and the exported
+`createMongoosePlatformStatusSnapshot(...)` helper) reporting readiness,
+`shutting-down` while draining, `stopped` after disposal, session strategy,
+ambient transaction context, and active request/session counts - wire it into
+whatever diagnostics surface your application already runs.
+
+## Strictness and fail-open
+
+Real MongoDB connections implement both `transaction(...)` and
+`startSession()`, so the strict path is the normal one. When the registered
+connection implements neither and `strictTransactions` is `false` (the
+default), transaction helpers fail open by executing the callback directly -
+useful for local fakes and staged migrations, but it provides **no** rollback
+atomicity, and open fail-open callbacks still drain during shutdown. Set
+`strictTransactions: true` for production flows that require transaction
+guarantees: missing support then makes readiness `not-ready` and transaction
+helpers throw `Transaction not supported: Mongoose connection does not
+implement startSession.`
+
+## Defaults, ownership, and shutdown
+
+- **Resource ownership.** The application creates and configures the
+  connection; fluo tracks the sessions opened through the wrapper and runs
+  `dispose(connection)` last. Status snapshots report the split explicitly.
+- **No startup phase.** There is no connect hook; connection behavior follows
+  your `mongoose.createConnection` options.
+- **Shutdown order.** (1) Open request-scoped transactions are aborted with
+  `Application shutdown interrupted an open request transaction.`; (2) active
+  ambient sessions, original request callbacks, and fail-open callbacks are
+  tracked until they settle; (3) their sessions finish `abortTransaction()` /
+  `endSession()` only after started callbacks settle; (4) `dispose(connection)`
+  runs last. This prevents async work from continuing against an
+  already-cleaned-up session.
+- **Observability.** `createPlatformStatusSnapshot()` reports lifecycle state,
+  `sessionStrategy`, `transactionContext: 'als'`, active request/session
+  counts, and strict/session support diagnostics.
+
+## Failures and common mistakes
+
+- **Positional `create(docA, docB)`.** Inside a transaction this does not
+  receive the session - use the array overload `create([docA, docB])`.
+- **Calling `doc.save()` directly.** Native Mongoose behavior, no ambient
+  session. Use `saveDocument(document)`.
+- **Passing a different session.** An explicit `session` that conflicts with
+  the ambient one - including `{ session: null }` - throws instead of
+  silently overriding.
+- **Standalone MongoDB.** Transactions require a replica set; on a standalone
+  server the strict path fails at `startSession`/`startTransaction` time.
+  Decide deliberately between `strictTransactions: true` and accepting the
+  fail-open path for non-transactional workloads.
+- **Error taxonomy.** `AfterCommitError` (extends `AggregateError`,
+  `committed: true`) covers hook failures after a committed transaction.
+  `AfterCommitCleanupError` is a **separate** class (also `AggregateError`)
+  for manual-session cleanup failure after confirmed commit - `instanceof
+  AfterCommitError` alone does not catch it, so import and test for it
+  separately. `AfterCommitCapabilityError` rejects preflight; native
+  commit/rollback errors propagate unchanged.
+- **Rollback expectations.** A returned error-shaped value does not roll back
+  by itself; `shouldRollback` requires `createMongooseRollbackObserver(...)`
+  registered via `rollbackObserver` and rejects with
+  `TransactionRollbackCapabilityError` before the callback when missing.
+  Redis `MULTI/EXEC` and external raw transactions are not observed.
+
+## Testing
+
+Tests supply a connection double implementing the seams the wrapper drives -
+`startSession()` returning a session object with
+`startTransaction` / `commitTransaction` / `abortTransaction` / `endSession`,
+plus a `model` factory - and assert on real session lifecycle calls:
+
+```ts title="fragment: testing with a connection double"
+function createFakeSession() {
+  const calls: string[] = [];
+  return {
+    calls,
+    session: {
+      startTransaction: async () => { calls.push('start'); },
+      commitTransaction: async () => { calls.push('commit'); },
+      abortTransaction: async () => { calls.push('abort'); },
+      endSession: async () => { calls.push('end'); },
+    },
+  };
+}
+
+MongooseModule.forRoot({
+  connection: {
+    startSession: async () => fake.session,
+    model: (name: string) => fakeModels[name],
+  },
+  dispose: async () => { calls.push('dispose'); },
+});
+```
+
+This proves wrapper session ordering, facade session injection, and shutdown
+drain sequencing. It does **not** prove MongoDB transaction atomicity - the
+package-owned native fixture (`packages/prisma/fixtures/after-commit/` with the
+shared Mongo acceptance, and `packages/mongoose/src/after-commit.test.ts`)
+covers real-server behavior. Close apps in `finally` so sessions and `dispose`
+run in every outcome.
+
+## Related reading
+
+- [Dependency injection](/docs/fundamentals/dependency-injection) - tokens,
+  visibility, and scopes used throughout this page.
+- [Prisma](/docs/packages/prisma) and [Drizzle](/docs/packages/drizzle) - the
+  same transaction-context model for SQL databases.
+- [Cache manager](/docs/packages/cache-manager) - the `CacheService` used in
+  the after-commit example.
+- [`@fluojs/mongoose` README](https://github.com/fluojs/fluo/blob/main/packages/mongoose/README.md) -
+  the owning API reference, including the full result-rollback contract.
+- [Transaction context contract](https://github.com/fluojs/fluo/blob/main/docs/architecture/transactions.md) -
+  normative after-commit and rollback semantics.

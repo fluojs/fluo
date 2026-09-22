@@ -1,24 +1,205 @@
 ---
-title: Standard Decorators
-description: Understand fluo's TC39 decorator baseline and metadata-free dependency model.
+title: Standard decorators
+description: Understand what Fluo decorators record, how the runtime uses that information, and why explicit dependencies replace reflected types.
 ---
 
-fluo treats TC39 standard decorators as a design boundary, not as a syntax preference. Public APIs must work without legacy decorator emit or compiler-generated type metadata.
+Decorators connect ordinary TypeScript classes to Fluo's application model.
+`@Module` describes composition, `@Inject` declares dependencies, and HTTP
+decorators describe routes and request binding. They do not make an application
+run simply because a class exists in a file.
 
-## The baseline
+Fluo uses **TC39 standard decorator semantics**, not TypeScript's older
+experimental decorator emit. The distinction affects which declarations can be
+decorated, how metadata is recorded, and how application code is compiled.
+You do not need to write a custom decorator to use Fluo, but understanding this
+boundary explains many setup and migration errors.
 
-- No `experimentalDecorators`.
-- No `emitDecoratorMetadata`.
-- No package-internal `process.env` access.
-- Public exports are documented with TSDoc.
-- Runtime behavior is protected by behavioral contracts.
+## What a decorator actually does
 
-## Why it matters
+A standard decorator receives the decorated value and a context describing that
+declaration. A class decorator sees a class; a method decorator sees a method;
+a field decorator participates in field initialization. The context identifies
+the declaration and exposes standard initialization and metadata mechanisms.
 
-The dependency graph should be visible in source code and testable without hidden metadata. This keeps applications portable across runtimes and avoids framework magic that only works under a specific compiler mode.
+Fluo's decorators record information that another package consumes later:
 
-## Related references
+| Declaration | Example | Recorded responsibility | Consumer |
+| --- | --- | --- | --- |
+| Class | `@Module({ providers: [...] })` | Module composition | Runtime graph compiler |
+| Class | `@Inject(PostsService)` | Constructor tokens in parameter order | DI container |
+| Class | `@Scope('request')` | Provider lifetime | DI container |
+| Class | `@Controller('/posts')` | HTTP path prefix | HTTP route compiler |
+| Method | `@Get()` | Method and relative route path | HTTP dispatcher |
+| Method | `@RequestDto(CreatePostDto)` | Input DTO class | Request binding pipeline |
+| Field | `@FromBody()` | Input source | Request binder |
+| Field | `@IsString()` | Validation rule | Validation engine |
 
-- Repository context: `docs/CONTEXT.md`
-- Behavioral policy: `docs/contracts/behavioral-contract-policy.md`
-- Package surface: `docs/reference/package-surface.md`
+The same mechanism also supports non-HTTP packages. Event handlers, scheduled
+tasks and queue workers declare metadata which their owning modules discover.
+Each package still decides which declarations are valid and when they activate.
+A decorator is not an independent scheduler, queue or dependency container.
+
+## Follow one complete request
+
+Start from the supported toolchain in
+[Getting started](/docs/getting-started/quick-start). The following module is a
+complete small application graph. It requires `@fluojs/core`, `@fluojs/http`,
+`@fluojs/validation`, the runtime and the testing package for the test below.
+Save it as `src/app.ts` in a dedicated example project using that toolchain.
+
+<ExampleCode file="concepts/decorators-app.ts" title="src/app.ts" />
+
+Read the example in two phases:
+
+1. **Declaration time.** Importing the file evaluates its classes. Decorators
+   record the body binding and validation rules, constructor token, route and
+   module registration.
+2. **Application time.** The runtime compiles `AppModule`, checks the graph and
+   connects the controller to the service. A request is bound to `CreateMessage`,
+   validated, and passed to the handler. The handler delegates to the injected
+   `MessagesService`.
+
+`POST /messages` with `{"text":"hello"}` produces status `201` and
+`{"message":"received: hello"}`. A numeric `text` produces `400` before the
+service is called. The TypeScript parameter annotation helps the editor;
+`@RequestDto(CreateMessage)` is what makes runtime binding happen.
+
+This source is displayed directly from the executable documentation fixture.
+Its test uses `Test.createApp` to exercise the actual graph and request pipeline,
+not a direct call that bypasses metadata:
+
+<ExampleCode file="concepts/decorators.test.ts" title="fixture: request contract test" />
+
+The fixture imports `./decorators-app`; in the example project, import `AppModule`
+from `../src/app` when placing this test under `test/`.
+
+## Why constructor types do not wire dependencies
+
+An interface disappears when TypeScript becomes JavaScript. A constructor
+annotation cannot identify which registered implementation should satisfy that
+interface. Fluo does not ask the compiler to emit `design:paramtypes` or consult
+`reflect-metadata` to guess an answer.
+
+Use a class token for a concrete dependency:
+
+```ts
+@Inject(MessagesService)
+class MessagesController {
+  constructor(private readonly messages: MessagesService) {}
+}
+```
+
+For an interface boundary, declare a typed public token and register a provider
+under it. `publicToken<T>(namespace)` supplies a stable symbol identity in the
+same process; it does not register a provider or validate values at runtime.
+The [DI guide](/docs/fundamentals/dependency-injection) explains that composition
+with `useClass`, `useValue`, `useFactory` and `useExisting`.
+
+`@Inject(A, B)` means the first constructor argument receives `A` and the second
+receives `B`. Do not use a constructor-parameter decorator or the removed array
+form `@Inject([A, B])`.
+
+## Metadata is explicit, not absent
+
+“No reflected type metadata” does **not** mean “no metadata.” Fluo owns records
+for modules, injection, routes, binding and validation. The runtime reads those
+records rather than scanning your source files or inferring behavior from
+unrelated class names.
+
+Only evaluated declarations register metadata. A file that is never imported
+cannot contribute to the graph. A decorated controller still needs a module's
+`controllers` registration; a provider still needs a visible registration.
+Metadata cannot bypass module visibility.
+
+The standard metadata bag is anchored by `Symbol.metadata` when available.
+Importing the core root does not globally install that symbol. Core's own
+class decorators also use framework-owned stores, but custom decorators and
+metadata-dependent integrations can require the standard bag before evaluation.
+
+Use the generated toolchain's preload configuration. An explicit application
+entrypoint can start with:
+
+```ts title="src/main.ts: import ordering"
+import '@fluojs/core/metadata-preload';
+import './bootstrap.js';
+```
+
+Calling `ensureMetadataSymbol()` in a module body *after a static import of
+decorated declarations* is too late: ESM evaluates the imported graph before
+executing that module body. When loading dynamically, initialize the symbol
+before `await import(...)`.
+
+## Configure the application and its tests
+
+Keep `experimentalDecorators` and `emitDecoratorMetadata` disabled or absent.
+Those flags describe a different compiler contract; enabling them is not a fix
+for a missing token or DTO binding rule.
+
+For a Vite application, use the maintained
+[`@fluojs/vite`](/docs/packages/vite) transform:
+
+```ts title="vite.config.ts"
+import { fluoDecoratorsPlugin } from '@fluojs/vite';
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  plugins: [fluoDecoratorsPlugin()],
+  build: { ssr: 'src/main.ts', target: 'node24' },
+});
+```
+
+Vitest needs the test boundary, which includes test files that contain decorated
+classes as well as application imports:
+
+```ts title="vitest.config.ts"
+import { fluoDecoratorsPlugin } from '@fluojs/vite';
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  plugins: [fluoDecoratorsPlugin({
+    sourceMaps: true,
+    transformBoundary: 'test',
+  })],
+  test: { environment: 'node' },
+});
+```
+
+The plugin applies Babel's standard decorator transform before the rest of the
+build pipeline and prepares metadata for decorated modules. Install its listed
+Babel peers; importing the plugin does not mean those peers have already loaded.
+Do not run the same declarations through incompatible decorator transforms.
+
+Initialize decorated DTO fields, such as `text = ''`, rather than relying on
+definite-assignment syntax. The initializer is not permission to omit a required
+request field: binding policy and validation decide that separately.
+
+## Migration from legacy decorators
+
+The familiar names do not make Fluo a drop-in metadata compatibility layer:
+
+| Legacy habit | Fluo approach |
+| --- | --- |
+| Infer constructor tokens from parameter types | Class-level `@Inject(...)` or provider `inject` |
+| Parameter decorators such as `@Body()` | A DTO with source-bound fields and `@RequestDto` |
+| Add `reflect-metadata` to repair registration | Check explicit tokens, imports and providers |
+| Assume a decorated class is globally discoverable | Register it in its owning module |
+| Enable old compiler flags when tests fail | Use the standard decorator transform for tests |
+
+Move one feature at a time and run its request tests after each change. An
+adapter change, such as choosing Express, does not restore legacy decorators.
+
+## Diagnose failures at the right layer
+
+| Symptom | Check |
+| --- | --- |
+| Decorator syntax fails to compile | Application/test transform boundary and Babel peers |
+| Required constructor token is missing | `@Inject` argument order and provider registration |
+| A registered token is invisible | Module imports and exports, not metadata generation |
+| A DTO is never bound | The method's `@RequestDto` and each field's input source |
+| A custom decorator has no metadata bag | Preload before the decorated module evaluates |
+| A route returns the wrong status or error | HTTP contract and pipeline, not compiler flags |
+
+Start with [Core contracts](/docs/packages/core) for declaration details,
+[Dependency injection](/docs/fundamentals/dependency-injection) for resolution,
+and [Runtime](/docs/packages/runtime) for bootstrap and lifecycle. These packages
+share the metadata model but own different parts of execution.

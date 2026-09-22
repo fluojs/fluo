@@ -73,7 +73,6 @@ describe('Express SSE documentation contract', () => {
 
   it.each([
     ['English', 'apps/docs/content/docs/guides/runtime-adapters.mdx'],
-    ['Korean', 'apps/docs/content/docs/guides/runtime-adapters.ko.mdx'],
   ])('rejects an additive @Res decorator in the %s runtime-adapter example', (_locale, targetPath) => {
     const mutation = addUnsupportedResDecorator(readFileSync(join(repoRoot, targetPath), 'utf8'));
     expect(mutation.mutations).toBe(1);

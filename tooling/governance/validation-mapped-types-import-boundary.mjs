@@ -18,7 +18,6 @@ const governedPaths = [
   'docs/contracts/nestjs-parity-gaps.md',
   'docs/contracts/nestjs-parity-gaps.ko.md',
   'apps/docs/content/docs/guides/validation-serialization.mdx',
-  'apps/docs/content/docs/guides/validation-serialization.ko.mdx',
   'book/beginner/ch06-validation.md',
   'book/beginner/ch06-validation.ko.md',
   'docs/reference/package-surface.md',

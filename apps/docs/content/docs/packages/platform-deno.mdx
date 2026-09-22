@@ -1,0 +1,231 @@
+---
+title: Deno platform
+description: Run fluo applications on the Deno runtime through native Deno.serve, with permission-scoped networking, host-owned or managed server lifecycles, and signal-driven shutdown.
+package: "@fluojs/platform-deno"
+---
+
+`@fluojs/platform-deno` is the HTTP adapter that runs a fluo application on the [Deno](https://deno.com/) runtime. It implements the framework's `HttpApplicationAdapter` contract on native `Deno.serve`, translating Deno's standard `Request`/`Response` objects into the same shared fluo dispatch pipeline that every other fetch-style adapter uses.
+
+Use this package when your deployment target is Deno. Use [`@fluojs/platform-bun`](/docs/packages/platform-bun) for Bun, the Node.js adapters for Node, and [`@fluojs/platform-cloudflare-workers`](/docs/packages/platform-cloudflare-workers) for Workers. Like the other platform adapters it is not a module: there is no `forRoot`/`forRootAsync` registration and nothing to import into a provider list. You construct the adapter, pass it to `FluoFactory.create(...)`, and call `app.listen()`.
+
+The package depends on `@fluojs/http` and `@fluojs/runtime` and requires `globalThis.Deno.serve` when the managed server starts. It declares no `engines.node` constraint because its runtime contract is Deno; the repository's Node.js requirement applies only to the maintainer toolchain.
+
+## A complete working example
+
+Install with Deno's npm integration and run with network access:
+
+```bash
+deno add npm:@fluojs/platform-deno npm:@fluojs/runtime npm:@fluojs/http
+deno run --allow-net main.ts
+```
+
+Two files are enough for a running application. The module and controller are ordinary fluo declarations; only the entrypoint knows about Deno.
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { Controller, Get } from '@fluojs/http';
+
+@Controller('/health')
+export class HealthController {
+  @Get('/status')
+  status(): { status: string } {
+    return { status: 'ok' };
+  }
+}
+
+@Module({
+  controllers: [HealthController],
+})
+export class AppModule {}
+```
+
+```ts title="src/main.ts"
+import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.module.ts';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({ port: 3000 }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
+});
+
+await app.listen();
+```
+
+```bash
+curl http://localhost:3000/health/status
+# {"status":"ok"}
+```
+
+The adapter opens the network listener itself, so the entrypoint needs `--allow-net` and nothing else. Signal listener registration (`Deno.addSignalListener`) requires no separate Deno permission, and the adapter never reads environment variables - add a scoped grant such as `--allow-env=PORT,DATABASE_URL` only when your *application* code reads those keys.
+
+## How a request travels
+
+The managed path wires one handler chain:
+
+```txt
+Deno.serve(request)
+  -> adapter.handle(request)
+  -> shared fluo dispatcher (routing, guards, middleware, handlers)
+```
+
+1. `handle(request)` checks shutdown state first: a request arriving while shutdown is in progress receives the JSON `503` immediately.
+2. The request is registered as in-flight so `close()` can wait for it.
+3. If a websocket binding is configured and the request carries an `upgrade: websocket` header, the request is offered to the binding; without a binding, upgrade requests continue through normal HTTP dispatch instead of being upgraded implicitly.
+4. Everything else flows through the shared web dispatch pipeline: body parsing, cookie and query decoding, then the fluo dispatcher's full route pipeline. Malformed cookies are preserved, JSON/text bodies can be retained byte-exact with `rawBody: true`, SSE framing works, and conditional requests follow the shared `Range`/`If-Range` policy.
+
+Because the dispatcher and parser are shared, an application module written for any fluo adapter behaves identically here. Runtime differences live entirely in the entrypoint and options.
+
+### Options and normalization
+
+`DenoHttpApplicationAdapter.create(options)` and direct construction (`new DenoHttpApplicationAdapter(options)`) apply exactly the same validation and normalization:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `port` | `3000` | Integer `0`-`65535`; with port `0` the adapter waits for the `onListen` callback before `listen()` resolves, so the reported target reflects the ephemeral port actually bound. |
+| `hostname` | `'0.0.0.0'` | Deno-native bind hostname. `host` is accepted as a portability alias; when both are set, `hostname` wins for the bind target and the reported listen URL. |
+| `https` | - | `{ cert, key }` PEM material forwarded to `Deno.serve` as `cert`/`key`; startup logs report an `https://` URL. |
+| `maxBodySize` | shared runtime default | Non-multipart body cap enforced by the shared parser; invalid values throw during setup. |
+| `rawBody` | `false` | Retains byte-exact JSON/text bodies. Multipart requests never expose `rawBody`. |
+| `multipart` | shared parser defaults | `MultipartOptions` limits for the shared parser. |
+| `onListen` | - | Extra callback receiving the resolved `{ hostname, port }` after the listener opens. |
+| `serve` | `globalThis.Deno.serve` | Injectable serve seam for tests or non-hosted runtimes. |
+| `upgradeWebSocket` | `globalThis.Deno.upgradeWebSocket` | Injectable upgrade seam for tests or non-hosted runtimes. |
+
+`hostname`/`port` are forwarded to `Deno.serve`; wildcard binds (`0.0.0.0`, `::`) are reported as `localhost` in the public listen URL while the bind target keeps the real address. Invalid `port` or `maxBodySize` values throw before any listener exists.
+
+When a seam is not injected, the managed adapter falls back to the global `Deno.serve` and `Deno.upgradeWebSocket` at listen/upgrade time - so test doubles are opt-in, not implicit.
+
+### HTTPS
+
+TLS terminates inside `Deno.serve`. Load certificate material at your configuration boundary and pass it through the adapter:
+
+```ts title="fragment: HTTPS startup"
+import { DenoHttpApplicationAdapter, createDenoShutdownSignalRegistration } from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.module.ts';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: DenoHttpApplicationAdapter.create({
+    hostname: '127.0.0.1',
+    port: 3443,
+    https: {
+      cert: await Deno.readTextFile('./cert.pem'),
+      key: await Deno.readTextFile('./key.pem'),
+    },
+  }),
+  shutdownRegistration: createDenoShutdownSignalRegistration(),
+});
+
+await app.listen();
+```
+
+Reading the PEM files requires read permissions for those paths; the adapter itself performs no filesystem access.
+
+## Shutdown, step by step
+
+`app.close()` runs the adapter's close sequence with a **fixed 10-second bound** (there is no adapter option to change it):
+
+1. New requests receive the JSON `503` (`error.code: 'SERVICE_UNAVAILABLE'`, message `Server is shutting down.`) as soon as close begins.
+2. `server.shutdown()` and the in-flight drain run together. If graceful shutdown settles successfully, the server lifecycle completes normally.
+3. If the bound is exceeded, the adapter aborts the serve signal to stop ingress but keeps the server controller until `server.finished` settles, then releases the managed lifecycle and rethrows the original shutdown error - the abort is an escalation, not a replacement for the failure.
+4. A graceful-shutdown rejection is retained and rethrown after `server.finished` settles.
+
+Duplicate `listen(...)` calls on a running adapter are no-ops that preserve the original dispatcher pipeline, and a failed `listen()` restores the adapter's previous state before rethrowing.
+
+`createDenoShutdownSignalRegistration()` connects `SIGINT`/`SIGTERM` to that sequence:
+
+- Pass a custom signal list or `false` to opt out; duplicates in the list are registered once.
+- Registration failures roll back listeners that were already attached (`AggregateError` on rollback failure); removal attempts every listener removal and aggregates errors.
+- The Factory removes the listeners when `app.close()` begins.
+- A signal-triggered close failure is **logged and swallowed** - unlike the Bun registration, it does not set an exit status. If your supervisor needs a failure exit code or forced termination on timeout, omit Factory `shutdownRegistration` and coordinate signals and shutdown yourself.
+
+## Hosting `Deno.serve` yourself
+
+When a surrounding host owns the server, bootstrap fluo without calling `app.listen()` and build a handler from the public dispatcher:
+
+```ts title="fragment: host-owned Deno.serve"
+import { DenoHttpApplicationAdapter, createDenoFetchHandler } from '@fluojs/platform-deno';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.module.ts';
+
+const adapter = DenoHttpApplicationAdapter.create();
+const app = await FluoFactory.create(AppModule, { adapter });
+
+const handler = createDenoFetchHandler({
+  dispatcher: app.dispatcher,
+  rawBody: true,
+});
+
+const server = Deno.serve({ port: 3000 }, handler);
+
+try {
+  await server.finished;
+} finally {
+  await app.close();
+}
+```
+
+`createDenoFetchHandler(...)` is synchronous, never starts a server, and owns no shutdown, signals, or websocket upgrades - it only translates and dispatches requests, preserving the same parsing options (`rawBody`, `maxBodySize`, `multipart`) and byte-exact raw-body capture as the managed path. Note the ownership split in the fragment: your host decides when to stop the server, and `app.close()` still runs the framework's lifecycle teardown in a `finally` block.
+
+Two adapter behaviors matter for custom hosts that call `adapter.handle(request)` directly:
+
+- Before `listen(dispatcher)` has bound the runtime dispatcher, `handle(...)` returns a JSON `500` whose message is `Deno adapter received a request before dispatcher binding completed.` - including for websocket upgrade requests. Bootstrap first, then route.
+- While shutdown is in progress, `handle(...)` returns the JSON `503` shutdown response.
+
+## WebSockets and realtime composition
+
+Deno upgrades are opt-in through `@fluojs/websockets/deno`. Import and register the module before `app.listen()` binds the server; the binding installs through the adapter's version-1 realtime capability during module registration:
+
+```ts title="fragment: Deno websocket binding"
+import { Module } from '@fluojs/core';
+import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+import { DenoWebSocketModule } from '@fluojs/websockets/deno';
+
+@WebSocketGateway({ path: '/ws' })
+export class PingGateway {
+  @OnMessage('ping')
+  handlePing(_payload: unknown, socket: { send(data: string): void }): void {
+    socket.send(JSON.stringify({ event: 'pong', data: 'hello from deno' }));
+  }
+}
+
+@Module({
+  imports: [DenoWebSocketModule.forRoot()],
+  providers: [PingGateway],
+})
+export class RealtimeModule {}
+```
+
+The mechanics behind that registration:
+
+- The installer rejects values without a `fetch` host contract; binding configuration after the server started fails instead of mutating a live listener. Direct configure/setter APIs on the adapter were removed.
+- Without a binding, upgrade requests continue through normal HTTP dispatch - nothing upgrades implicitly.
+- Inbound payloads arrive as `DenoWebSocketMessage`: `ArrayBuffer | ArrayBufferView | Blob | string`. If you narrow this public union exhaustively in your own handlers, include the binary branches; the `@fluojs/websockets/deno` binding normalizes binary payloads before dispatching to gateways.
+
+## Errors, limits, and common mistakes
+
+- **Early Hints are unsupported.** Deno's fetch `Response` cannot represent an informational response before the final response, so `context.response.earlyHints` is absent. Check for capability presence; the adapter never turns a requested `103` into a silent no-op or a final-response header.
+- **No raw body for multipart.** Multipart requests never expose `rawBody`, with or without `rawBody: true`.
+- **Streaming multipart ownership.** With `multipart: { strategy: 'stream' }`, `context.request.body` is an `AsyncIterableIterator<MultipartPart>`; finish or cancel each file stream before requesting the next part. Route dispatch auto-closes the iterator it creates; a standalone `parseMultipartStream(...)` consumer owns that call.
+- **Bootstrapping lazily and then handling traffic.** The dispatcher binds only at `listen(dispatcher)` (managed path) or when you pass `app.dispatcher` to `createDenoFetchHandler(...)`; until then `handle(...)` answers `500`.
+- **Expecting a configurable close timeout.** The 10-second drain bound is fixed in this adapter; only Bun's adapter exposes `shutdownTimeoutMs`.
+- **Assuming signal-close failures surface as exit codes.** The Deno registration logs and swallows close failures; hosts needing status propagation must own signals themselves.
+- **Reading `process.env.PORT`.** The adapter never reads environment variables; pass configuration explicitly and keep `--allow-env` scoped to the keys your application actually reads.
+
+## Testing at this seam
+
+The package's regression targets are `packages/platform-deno/src/adapter.test.ts` (managed contract: option normalization, HTTPS forwarding, signal registration and rollback, websocket gating, 500/503 handling, drain and shutdown-failure ownership) and `packages/platform-deno/src/fetch-handler.test.ts` (host-owned handler portability). `packages/platform-deno/deno/native-adapter.test.js` runs the *built* package natively under Deno, and the shared harness in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` keeps Deno aligned with Bun and Cloudflare Workers.
+
+For your own tests, use the injected `serve` seam to run the managed adapter without a network listener, or boot on port `0` and read the resolved target from `adapter.getListenTarget()`. Always `await app.close()` in a `finally` block so lifecycle hooks release. For request-level assertions without a transport, use [`Test.createApp(...)`](/docs/guides/testing) and reserve this adapter for transport-specific tests.
+
+## Related reading
+
+- [`@fluojs/platform-bun`](/docs/packages/platform-bun) - the sibling fetch-style adapter for the Bun runtime.
+- [`@fluojs/platform-cloudflare-workers`](/docs/packages/platform-cloudflare-workers) - the edge fetch adapter and its lazy Worker host.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - how the providers behind your controllers compose.
+- [Runtime Adapters](/docs/guides/runtime-adapters) - choosing between adapters and the portability matrix.
+- [`packages/platform-deno/README.md`](https://github.com/fluojs/fluo/blob/main/packages/platform-deno/README.md) - the owning package contract.

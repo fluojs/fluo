@@ -1,27 +1,121 @@
 ---
-title: Package Reference
-description: Discover all official fluo packages by family and responsibility.
+title: Package guides
+description: Understand each Fluo package, use it in an application, and compose it with its neighbors.
 ---
 
-fluo is a modular ecosystem of 40 official packages. Use this reference when you know the area you need and want the package that owns it.
+Fluo's packages share a module graph, explicit dependencies and lifecycle
+contracts. You can adopt the capabilities you need without treating every
+package as a prerequisite.
 
-## Package families
+Each guide explains the package's purpose, installation, working setup,
+mechanics, defaults, failures, ownership and tests. It also shows how the
+package fits into an application with its neighbors. These are explanatory
+guides, not a separate generated API reference or a copy of the Book.
 
-| Family | Packages | Start here |
-| --- | ---: | --- |
-| Foundation | 6 | [Foundation](./foundation) |
-| HTTP & Platform | 8 | [HTTP & Platform](./http-platform) |
-| Data & Storage | 6 | [Data](./data) |
-| Auth & Security | 3 | [Auth & Security](./auth-security) |
-| Realtime & Messaging | 7 | [Realtime & Messaging](./realtime-messaging) |
-| Integrations | 4 | [Integrations](./integrations) |
-| Operations | 3 | [Operations](./operations) |
-| Tooling & Testing | 4 | [Tooling](./tooling) |
+New to Fluo? Complete [Getting started](/docs/getting-started/quick-start) and
+the [Overview](/docs/overview/modules) first. For a script or worker, read
+[Standalone applications](/docs/concepts/standalone-applications).
 
-The canonical source of truth for supported runtime/package coverage remains `docs/reference/package-surface.md` in the repository. This website reference makes that surface discoverable for readers.
+## Application foundations
 
-## How to read package pages
+| Package | What you will learn |
+| --- | --- |
+| [Core](/docs/packages/core) | Standard decorators, typed tokens and module metadata |
+| [Dependency injection](/docs/fundamentals/dependency-injection) | Provider resolution, visibility, scopes and overrides |
+| [Runtime](/docs/packages/runtime) | Bootstrap, application contexts, readiness and shutdown |
+| [Configuration](/docs/packages/config) | Validated inputs, source precedence and reload ownership |
+| [Internationalization](/docs/packages/i18n) | Catalogs, locale resolution, ICU and validation messages |
 
-- Use guides when you are following a task.
-- Use package reference pages when you need package ownership, responsibilities, and related docs.
-- Use package README files for deeper package-specific examples until a dedicated website page exists.
+Core describes a graph, DI resolves it, and Runtime runs its lifecycle.
+Configuration and i18n register services in that same graph.
+
+## Requests and representations
+
+| Package | What you will learn |
+| --- | --- |
+| [HTTP](/docs/packages/http) | Request binding, routing, guards, interceptors and responses |
+| [Validation](/docs/packages/validation) | DTO materialization, rule evaluation and Standard Schema |
+| [Serialization](/docs/packages/serialization) | Public response shapes and committed-response boundaries |
+| [OpenAPI](/docs/packages/openapi) | Describing the same routes and DTOs as an API contract |
+| [GraphQL](/docs/packages/graphql) | Schema assembly, operation scope and the HTTP host |
+| [React](/docs/packages/react) | Server rendering through Fluo's HTTP and DI model |
+
+Validation controls inputs; serialization controls outputs. Neither replaces
+authorization. OpenAPI describes the contract rather than executing it.
+
+## Choose a host
+
+| Package | Hosting model |
+| --- | --- |
+| [Fastify](/docs/packages/platform-fastify) | Recommended Node HTTP starter |
+| [Node.js](/docs/packages/platform-nodejs) | Direct Node listener and process-owned shutdown |
+| [Express](/docs/packages/platform-express) | Express hosting and native middleware boundaries |
+| [Next.js](/docs/packages/platform-nextjs) | A host-owned request path without a second listener |
+| [Bun](/docs/packages/platform-bun) | Native Bun server and realtime capabilities |
+| [Deno](/docs/packages/platform-deno) | Native Deno serving and permissions |
+| [Cloudflare Workers](/docs/packages/platform-cloudflare-workers) | Fetch lifecycle, bindings and generation ownership |
+
+An adapter's runtime support does not make every database driver or transport
+portable. Check the selected package's installation and runtime section.
+
+## Data and consistency
+
+| Package | What you will learn |
+| --- | --- |
+| [Prisma](/docs/packages/prisma) | Module-owned clients, ambient transactions and after-commit work |
+| [Drizzle](/docs/packages/drizzle) | Driver handles, transaction participation and disposal |
+| [Mongoose](/docs/packages/mongoose) | Sessions, model facades and document operations |
+| [Redis](/docs/packages/redis) | Shared and named connections, values and lifecycle |
+| [Cache manager](/docs/packages/cache-manager) | Read-through caching, HTTP caching and atomic updates |
+
+Use a database for durable records and a cache for derived state. Read
+[Database transactions](/docs/techniques/database-transactions) before assuming
+that a database write and cache invalidation are one atomic operation.
+
+## Identity and access
+
+| Package | What you will learn |
+| --- | --- |
+| [JWT](/docs/packages/jwt) | Signing, verified principals, keys and refresh-token policy |
+| [Passport](/docs/packages/passport) | Strategy registration and authentication in the request pipeline |
+| [Throttler](/docs/packages/throttler) | Rate-limit policies, storage and client identity |
+
+## Events, transports and background work
+
+| Package | What you will learn |
+| --- | --- |
+| [Event bus](/docs/packages/event-bus) | In-process events, results and optional Redis fan-out |
+| [CQRS](/docs/packages/cqrs) | Commands, queries, events and saga coordination |
+| [Queue](/docs/packages/queue) | Durable background jobs, retries and worker ownership |
+| [Cron](/docs/packages/cron) | Scheduling, named tasks and distributed locks |
+| [Microservices](/docs/packages/microservices) | Message handlers and transport-specific capabilities |
+| [WebSockets](/docs/packages/websockets) | Gateways, rooms and runtime-specific upgrades |
+| [Socket.IO](/docs/packages/socket-io) | Socket.IO protocol behavior on supported hosts |
+
+The [composition guide](/docs/guides/package-composition) separates synchronous
+calls, transient events, durable jobs and network messages so their guarantees
+do not get mixed together.
+
+## Delivery and operations
+
+| Package | What you will learn |
+| --- | --- |
+| [Notifications](/docs/packages/notifications) | Channel orchestration and delivery outcomes |
+| [Email](/docs/packages/email) | Portable message composition, SMTP and queue adapters |
+| [Slack](/docs/packages/slack) | Webhook transport and channel integration |
+| [Discord](/docs/packages/discord) | Webhook payloads, retries and failures |
+| [Metrics](/docs/packages/metrics) | Registry ownership, instruments and HTTP exposure |
+| [Terminus](/docs/packages/terminus) | Indicators, readiness and bounded health reports |
+
+## Development tools
+
+| Package | What you will learn |
+| --- | --- |
+| [CLI](/docs/packages/cli) | Generate, run, migrate and inspect applications |
+| [Testing](/docs/packages/testing) | Module overrides, request tests and conformance seams |
+| [Vite](/docs/packages/vite) | The standard decorator transform for app and test builds |
+| [Studio](/docs/packages/studio) | Inspect the graph and runtime through supported snapshots |
+
+Package-specific API owners remain the maintained package READMEs and shared
+contracts. These guides explain those same behaviors, with linked execution
+evidence and explicit limits where a native integration was not exercised.

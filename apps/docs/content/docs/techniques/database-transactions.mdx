@@ -1,0 +1,334 @@
+---
+title: Database transactions
+description: Group multiple writes into one atomic operation with service-layer @Transaction boundaries and ambient transaction context.
+---
+
+When one business operation writes to several tables, a failure halfway through must not leave the database half-changed. fluo's transaction support makes that boundary a line of application code: decorate a service method, and every persistence call inside it made through the same wrapper's service - the injected facade or `current()` - participates in that one atomic operation. Calls through a raw client (for example the `PRISMA_CLIENT` token or a separately constructed `PrismaClient`) stay outside the boundary by design.
+
+The design rests on two decisions:
+
+- **The service layer owns the boundary.** Business atomicity is declared where the business operation lives, with `@Transaction(...)` on a service method. Repositories stay unaware of transactions.
+- **The transaction context is ambient.** While a transaction is open, the wrapper binds its transaction-scoped client into host async-context storage (`AsyncLocalStorage`). Repository code that resolves the client through `current()` or the injected facade automatically lands on the transaction client - no `tx` parameter threaded through every function.
+
+Each ORM has a wrapper package that implements this contract: `@fluojs/prisma`, `@fluojs/drizzle`, and `@fluojs/mongoose`. This page teaches the model with Prisma; the [other integrations](#other-orm-integrations) section maps the same ideas onto Drizzle and Mongoose. The owning contract is the [Transaction Context Contract](https://github.com/fluojs/fluo/blob/main/docs/architecture/transactions.md); when this page and the contract ever disagree, the contract wins.
+
+## A small working example
+
+These are application fragments, not a database setup tutorial. They assume a
+generated Prisma client with a `User` model accepting `email` and `displayName`,
+a string user ID, and a `Profile` model accepting `userId`. Configure and migrate
+that schema using your installed Prisma version before adding these files.
+Use a client with native interactive transaction support; a fake client without
+`$transaction` cannot demonstrate rollback.
+
+A user onboarding flow writes a user row and a profile row. If the profile write fails, the user row must roll back:
+
+```ts title="src/users.service.ts"
+import { Inject } from '@fluojs/core';
+import { PrismaService, Transaction } from '@fluojs/prisma';
+import type { PrismaClient } from '@prisma/client';
+
+import { UserRepository } from './user.repository';
+
+@Inject(PrismaService, UserRepository)
+export class UserService {
+  constructor(
+    private readonly prisma: PrismaService<PrismaClient>,
+    private readonly repo: UserRepository,
+  ) {}
+
+  @Transaction((self) => self.prisma)
+  async onboardUser(input: { email: string; displayName: string }) {
+    const user = await this.repo.create(input);
+    await this.repo.initProfile(user.id);
+    return user;
+  }
+}
+```
+
+```ts title="src/user.repository.ts"
+import { Inject } from '@fluojs/core';
+import { PrismaService, type PrismaServiceFacade } from '@fluojs/prisma';
+import type { PrismaClient } from '@prisma/client';
+
+@Inject(PrismaService)
+export class UserRepository {
+  constructor(private readonly prisma: PrismaServiceFacade<PrismaClient>) {}
+
+  async create(input: { email: string; displayName: string }) {
+    return this.prisma.user.create({ data: input });
+  }
+
+  async initProfile(userId: string) {
+    return this.prisma.profile.create({ data: { userId } });
+  }
+}
+```
+
+The repository never opens, commits, or rolls back anything. Its calls forward to the ambient transaction client while `onboardUser` is running and to the root client otherwise.
+
+Registration happens once, and every module that injects the wrapper must import the same registration instance. The unnamed registration exports its service and client tokens, but it is not global by default:
+
+```ts title="fragment: module registration"
+import { Module } from '@fluojs/core';
+import { PrismaModule } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
+
+import { UserService } from './users.service';
+import { UserRepository } from './user.repository';
+
+const prisma = new PrismaClient();
+
+const PrismaFeature = PrismaModule.forRoot({ client: prisma });
+
+@Module({
+  imports: [PrismaFeature],
+  providers: [UserService, UserRepository],
+})
+export class UsersModule {}
+
+@Module({
+  imports: [UsersModule],
+})
+export class AppModule {}
+```
+
+A sibling `AppModule` cannot inject `PrismaService` into `UsersModule` providers without this import - module visibility rules from [Dependency injection](/docs/fundamentals/dependency-injection) apply to wrapper services like any other provider. The [docs foundation fixtures](https://github.com/fluojs/fluo/tree/main/tooling/docs/fixtures/docs-foundation) execute exactly this composition.
+
+`PrismaModule.forRoot(...)` owns the client lifecycle: it connects on startup (`$connect`) and disconnects on shutdown (`$disconnect`). With this wiring, a failed `initProfile` aborts the whole native transaction - `user.create` leaves no row behind.
+
+## How the mechanics work
+
+### The explicit target accessor
+
+The canonical decorator form is:
+
+```ts
+@Transaction((self) => self.prisma, prismaNativeOptions?, boundary?)
+```
+
+The first argument is always a **target accessor**: an arrow function that receives the service instance and returns the persistence wrapper that should own the transaction. The accessor answers a question that reflection cannot reliably answer - *which* database does this method atomically use? A service with two clients (`this.prisma`, `this.analytics`) names its owner explicitly instead of letting property order decide.
+
+Arguments after the accessor have distinct owners. Prisma and Drizzle accept **driver-native options** (such as an isolation level) as the second argument; the final `boundary` argument is Fluo-owned policy (`shouldRollback`, `requireAfterCommit`). Keeping them in separate positions prevents a native option from being misread as framework policy.
+
+No-argument `@Transaction()` still works for existing single-target services but is legacy compatibility, not the normal recipe: migrate to an accessor before adding another client or ORM.
+
+### What the boundary actually does
+
+When `onboardUser` is called, the decorator:
+
+1. Selects the wrapper through the accessor (`self.prisma`).
+2. Opens one native Prisma interactive transaction (`$transaction`).
+3. Binds the transaction-scoped client into the wrapper's `AsyncLocalStorage` context.
+4. Runs the method body. Every `this.prisma.current()` or facade call inside - in the service, in repositories, in anything they call - resolves that transaction client.
+5. On normal completion, commits and drains any after-commit hooks; on an exception escaping the method, aborts the transaction and rethrows.
+
+Calls to `@Transaction(...)` methods are **reentrant**: a decorated method calling another decorated method on the same wrapper shares the outer transaction instead of opening a nested one. Passing native transaction options to a nested call is rejected - there is no new native boundary to apply them to, and silently dropping them would hide caller intent.
+
+### Read-through facades and `current()`
+
+Repositories have two supported ways to reach the right client:
+
+- The module-owned **facade** (`PrismaServiceFacade<PrismaClient>` from `@fluojs/prisma`) forwards generated Prisma delegate calls (`this.prisma.user.create(...)`) to the active transaction client when one exists, otherwise to the root client.
+- `PrismaService.current()` returns the ambient transaction client or the root client. Use it when a utility expects a raw `PrismaClient` handle.
+
+Both resolve through the ambient context; neither requires the caller to know whether a transaction is open.
+
+## Integrating transactions into an application
+
+Production registration can resolve the client from configuration through
+`forRootAsync`. The following PostgreSQL fragment assumes a generated Prisma
+client compatible with `@prisma/adapter-pg`; install the matching adapter
+version alongside that client. The Prisma module owns the registered client's
+connect/disconnect lifecycle.
+
+```ts title="fragment: async PostgreSQL registration"
+import { ConfigModule, ConfigService } from '@fluojs/config';
+import { Module } from '@fluojs/core';
+import { PrismaModule } from '@fluojs/prisma';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      global: true,
+      processEnv: { DATABASE_URL: process.env.DATABASE_URL },
+    }),
+    PrismaModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        client: new PrismaClient({
+          adapter: new PrismaPg({
+            connectionString: config.getOrThrow<string>('DATABASE_URL'),
+          }),
+        }),
+        strictTransactions: true,
+      }),
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+`strictTransactions: true` rejects transaction boundaries when the client lacks
+interactive `$transaction` support, and reports that missing capability through
+readiness. It does not mean that module registration itself always throws.
+The default (`false`) falls back to direct execution on such clients, with **no
+rollback guarantees**. The async factory is resolved once per application
+container; separate bootstraps get independent lifecycle ownership. Match the
+generated client and adapter to your installed Prisma version.
+
+Feature modules then inject the module-owned `PrismaService` and decorate their service methods. Controllers stay transaction-free - they call services, and the services own atomicity.
+
+## Advanced uses
+
+### Request-wide boundaries
+
+Some flows need one transaction across an entire HTTP request. fluo removed its transaction interceptors deliberately: a request-wide boundary can hold database locks for the whole HTTP operation, so it belongs in visible application code. Call `requestTransaction(...)` explicitly at the controller boundary and forward the request's abort signal:
+
+```ts title="fragment: request-wide boundary"
+import { Inject } from '@fluojs/core';
+import { Controller, FromBody, Post, RequestDto, type RequestContext } from '@fluojs/http';
+import { PrismaService } from '@fluojs/prisma';
+import type { PrismaClient } from '@prisma/client';
+
+import { OrdersService } from './orders.service';
+
+class CheckoutDto {
+  @FromBody()
+  cartId = '';
+}
+
+@Inject(PrismaService, OrdersService)
+@Controller('/orders')
+export class OrdersController {
+  constructor(
+    private readonly prisma: PrismaService<PrismaClient>,
+    private readonly orders: OrdersService,
+  ) {}
+
+  @Post('/checkout')
+  @RequestDto(CheckoutDto)
+  checkout(input: CheckoutDto, context: RequestContext) {
+    return this.prisma.requestTransaction(
+      () => this.orders.checkout(input.cartId),
+      context.request.signal,
+    );
+  }
+}
+```
+
+`requestTransaction(fn, signal?)` is abort-aware: it forwards the request's `AbortSignal`, so Fluo's boundary stops admitting new work and settles when the request aborts instead of holding a transaction no one observes. Whether in-flight SQL statements themselves are cancelled remains driver-owned behavior. The boundary reuses the ambient context when called inside an existing transaction. Keep request-wide boundaries rare and short; prefer service `@Transaction(...)` for normal business atomicity.
+
+### Choosing rollback from a result
+
+By default only an **exception** rolls a transaction back. Some operations express failure as a normal return value. The opt-in `shouldRollback` predicate lets the boundary treat such a result as a rollback trigger:
+
+```ts title="fragment: result-based rollback"
+import type { TransactionBoundaryOptions } from '@fluojs/prisma';
+
+type TransferResult =
+  | { readonly ok: true; readonly receiptId: string }
+  | { readonly ok: false; readonly reason: string };
+
+const boundary: TransactionBoundaryOptions<TransferResult> = {
+  shouldRollback: (value) => !value.ok,
+};
+
+const result = await this.prisma.transaction(() => this.ledger.transfer(input), undefined, boundary);
+```
+
+The contract to internalize:
+
+- At the **root** boundary, a predicate-selected failure is rolled back natively and the **same object** (`{ ok: false, ... }`) is returned to the caller. Nothing is copied, and no synthetic error replaces it.
+- A **nested** boundary on the same wrapper that selects failure marks the shared owner irrevocably rollback-only and retains the first failure value. Later successes cannot clear it; there are no savepoints in between.
+- If the root's own predicate accepts its result while the owner is rollback-only, the transaction still rolls back and `TransactionRollbackOnlyError` is thrown, carrying the first nested failure in its `readonly result` field.
+- Result-based rollback requires **native confirmation**: register the observer from `createPrismaRollbackObserver(new PrismaPg({ connectionString }))` in `PrismaModule.forRoot(...)` (the helper returns both the adapter for the client and the paired observer). Without it, supplying `shouldRollback` rejects with `TransactionRollbackCapabilityError` before the callback runs - even in fail-open mode, the opt-in never pretends a direct execution was atomic.
+
+### Work after commit
+
+Cache invalidation and notification work should not run inside the transaction - a rollback would have already "un-done" their preconditions, and a rollback after deleting a cache key would leave the cache wrong. Register the work on the open transaction instead:
+
+```ts title="fragment: after-commit cache invalidation"
+return prisma.transaction(async () => {
+  const user = await prisma.current().user.update({ where: { id }, data: { name } });
+  prisma.afterCommit(async () => {
+    await cache.del(`user:${id}`);
+  });
+  return user;
+}, undefined, { requireAfterCommit: true });
+```
+
+Hooks run one at a time in registration order, only after a confirmed native commit, and never on rollback or discarded attempts. `requireAfterCommit: true` verifies commit-observation capability before the callback and rejects with `AfterCommitCapabilityError` when the boundary cannot guarantee the ordering. If a hook fails, the remaining hooks still run and the boundary throws `AfterCommitError` - an `AggregateError` whose `committed` is `true`, meaning the database write stands: recover with an application-owned idempotent path, never by retrying the original write.
+
+### Multiple databases
+
+Register each additional client under a `name` and inject it by token:
+
+```ts title="fragment: named clients"
+import { getPrismaServiceToken, PrismaModule } from '@fluojs/prisma';
+
+const usersPrismaModule = PrismaModule.forRoot({ name: 'users', client: usersPrisma });
+const analyticsPrismaModule = PrismaModule.forRoot({ name: 'analytics', client: analyticsPrisma });
+
+// Inject with getPrismaServiceToken('users') / getPrismaServiceToken('analytics')
+// and target each with its own accessor: @Transaction((self) => self.users)
+```
+
+Two named clients are two independent transaction contexts. Writes through `this.analytics` from inside a `@Transaction((self) => self.users)` method are **not** part of that transaction - cross-database atomicity is out of scope by design.
+
+### Other ORM integrations
+
+The same model maps onto the other wrappers:
+
+| Concept | Prisma | Drizzle | Mongoose |
+| --- | --- | --- | --- |
+| Wrapper service | `PrismaService` | `DrizzleDatabase` | `MongooseConnection` |
+| Accessor target | `(self) => self.prisma` | `(self) => self.db` | `(self) => self.conn` |
+| Ambient access | `current()` / facade | `current()` / facade | `model(...)` facade ops auto-bind the session |
+| Manual boundary | `transaction(fn, ...)` | `transaction(fn, ...)` | `transaction(fn, ...)` |
+| Request boundary | `requestTransaction(fn, signal?, ...)` | `requestTransaction(fn, signal?, ...)` | `requestTransaction(fn, ...)` |
+
+Drizzle named handles (for example `@Transaction((self) => self.analytics)`) each own a separate context. Mongoose merges the ambient session into supported facade operations (`create`, `find`, `findOne`, `aggregate`, `bulkWrite`) and offers `saveDocument(document)` as an opt-in path for existing documents.
+
+## Limitations and errors
+
+- **Exceptions roll back; nothing else does, unless you opt in.** An exception escaping the decorated method aborts the native transaction and propagates. A normal return value commits, whatever it looks like, unless `shouldRollback` says otherwise.
+- **No savepoints or partial rollback.** Nested boundaries share the outer transaction. A nested failure either marks the whole owner rollback-only (with the result-based contract) or is an ordinary exception you may catch - catching one does not by itself roll back the outer work already performed.
+- **No cross-resource atomicity.** Redis `MULTI/EXEC`, message brokers, and commits from external raw-client transactions are not observed or coordinated. Calling Redis from an after-commit hook does not make DB+Redis atomic. Durable delivery requires an application-owned Outbox design.
+- **The context needs `AsyncLocalStorage`, with per-wrapper behavior.** All three wrappers run on Node.js `>=24.0.0 <27`. `@fluojs/prisma` resolves `AsyncLocalStorage` through the host at runtime and, when none is available, refuses to open transactions before any callback runs and reports `transactionContext: 'unavailable'` in its readiness snapshot. `@fluojs/drizzle` and `@fluojs/mongoose` root packages are Node-only: they import `node:async_hooks` directly, so a host without Node's async-context support cannot load them at all.
+- **Shutdown drains, then disconnects.** Once shutdown starts, new transaction boundaries are rejected; open boundaries (including request transactions, whose signals are aborted) are drained before `$disconnect()`. A slow transaction delays shutdown - keep boundaries short.
+- **Capability rejections happen before work.** `TransactionRollbackCapabilityError` and `AfterCommitCapabilityError` reject before the user callback when the boundary cannot honor the opt-in. Distinguish them from `TransactionRollbackOnlyError` (a nested failure the root tried to ignore) and from `AfterCommitError` (post-commit hook failures - the commit stands).
+
+## Testing transactions
+
+Two layers are worth testing, and they prove different things:
+
+**Contract behavior in-process.** With `strictTransactions` left at `false` and a client handle that lacks `$transaction`, boundaries run in fail-open mode - which the container treats as a boundary that **cannot** support the opt-in paths. This makes it executable evidence of the capability contract without a database:
+
+```ts title="fixture excerpt: capability preflight without a database"
+import { PrismaModule, PrismaService, TransactionRollbackCapabilityError } from '@fluojs/prisma';
+
+const fakeClient = {
+  $connect: async () => {},
+  $disconnect: async () => {},
+};
+
+// PrismaModule.forRoot({ client: fakeClient }) + Test.createApp(...)
+// prisma.transaction(fn, undefined, { shouldRollback: () => true })
+// rejects with TransactionRollbackCapabilityError BEFORE fn runs.
+```
+
+The [docs foundation fixtures](https://github.com/fluojs/fluo/tree/main/tooling/docs/fixtures/docs-foundation) contain the complete runnable version: module registration through `PrismaModule.forRoot(...)`, direct execution in fail-open mode, ambient `current()` resolution, nested reuse, and both capability rejections.
+
+**Native behavior against a real database.** Wrapper-level regressions and the shared behavior matrix exercise contract logic with in-process doubles; passing doubles alone is not native evidence. The native evidence for commit, rollback observation, and hook ordering on real engines is the fixture under `packages/prisma/fixtures/after-commit/`, whose documented run starts PostgreSQL 16 and MongoDB 8 containers and exercises built public imports of all three wrappers. Application tests should mock at the service seam (`overrideProvider`) and reserve native verification for that fixture.
+
+## Related reading
+
+- [Transaction Context Contract](https://github.com/fluojs/fluo/blob/main/docs/architecture/transactions.md) - the normative owner of boundary, rollback, and after-commit rules.
+- [`@fluojs/prisma` package README](https://github.com/fluojs/fluo/blob/main/packages/prisma/README.md) - Prisma arguments, named clients, and registration options.
+- [`@fluojs/drizzle` package README](https://github.com/fluojs/fluo/blob/main/packages/drizzle/README.md) and [`@fluojs/mongoose` package README](https://github.com/fluojs/fluo/blob/main/packages/mongoose/README.md) - the other wrapper owners.
+- [Prisma registration migration](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-prisma-registration.md) - moving from removed facades and interceptors to current APIs.
+- [Persistence guide](/docs/guides/persistence) - choosing among database, cache, and queue packages.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - how services and repositories receive their wrappers.

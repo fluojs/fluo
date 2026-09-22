@@ -5,6 +5,12 @@
     "types": ["node"],
     "paths": {
       "@fluojs/*": ["./packages/*/dist/index.d.ts"],
+      "@fluojs/core/metadata-preload": ["./packages/core/dist/metadata-preload.d.ts"],
+      "@fluojs/i18n/*": ["./packages/i18n/dist/*.d.ts"],
+      "@fluojs/react/*": ["./packages/react/dist/*.d.ts"],
+      "@fluojs/testing/mock": ["./packages/testing/dist/mock.d.ts"],
+      "@fluojs/event-bus/redis": ["./packages/event-bus/dist/transports/redis-transport.d.ts"],
+      "@fluojs/microservices/*": ["./packages/microservices/dist/transports/*-transport.d.ts"],
       "@fluojs/websockets/*": ["./packages/websockets/dist/*.d.ts"],
       "socket.io-client": ["./packages/socket.io/node_modules/socket.io-client"]
     }

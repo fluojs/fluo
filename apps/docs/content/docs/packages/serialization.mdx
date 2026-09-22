@@ -1,0 +1,172 @@
+---
+title: Serialization
+description: How @fluojs/serialization shapes handler output with @Expose, @Exclude, and @Transform, and applies those rules automatically through SerializerInterceptor.
+package: "@fluojs/serialization"
+---
+
+`@fluojs/serialization` is the output-side counterpart of validation: it shapes what leaves your application. A decorated DTO declares which fields are exposed, which are stripped, and which get lightweight synchronous transforms — and `serialize(value)` walks any object graph, applying those rules recursively. An HTTP interceptor applies the same rules to handler results automatically.
+
+It is a small package by design: an engine (`serialize`), three decorators (`@Expose`, `@Exclude`, `@Transform`), and one interceptor (`SerializerInterceptor`). There is no module to register and no configuration surface. It does not handle input (that is [`@fluojs/validation`](/docs/packages/validation)), does not parse or coerce JSON strings, and does not replace the response writer — it produces plain, response-shaped objects that the normal write path then serializes.
+
+Use it when responses must expose a controlled subset of fields, when sensitive values (password hashes, internal identifiers) must never cross the response boundary, or when output needs value-only transforms. If you return plain JSON objects and never filter fields, you do not need this package.
+
+Prerequisites: Node.js `>=24.0.0 <27`, and one setup step most runtimes need — read the next section before writing decorated classes.
+
+```bash
+pnpm add @fluojs/serialization
+```
+
+## Decorator metadata preload
+
+The decorators record their rules through TC39 standard decorator metadata, which the runtime exposes as `Symbol.metadata`. `@fluojs/serialization` does not install that symbol as an import side effect — a dedicated regression test pins this behavior — and on Node.js 24 the global `Symbol.metadata` does not exist yet. Evaluating a decorated class before the symbol is installed throws `Decorator metadata is not available`.
+
+Install it once, before any module that evaluates `@Expose()`/`@Exclude()`/`@Transform()` classes, as the application entrypoint:
+
+```ts title="src/preload.ts"
+import { ensureMetadataSymbol } from '@fluojs/core';
+
+ensureMetadataSymbol();
+await import('./main.js');
+```
+
+ES module imports execute in listed order, so `ensureMetadataSymbol()` runs before `./main.js` — and therefore before every decorated class it transitively evaluates — is evaluated. The same preload covers any other fluo package that reads standard decorator metadata; packages such as [`@fluojs/graphql`](/docs/packages/graphql) call the equivalent ensure internally when their decorators are imported, but `@fluojs/serialization` intentionally leaves the entrypoint in your hands. On runtimes that provide `Symbol.metadata` natively, `ensureMetadataSymbol()` is a no-op that returns the active symbol.
+
+## A small working example
+
+```ts title="src/user-entity.dto.ts"
+import { Exclude, Expose, Transform } from '@fluojs/serialization';
+
+export class UserEntity {
+  @Expose()
+  id = '';
+
+  @Expose()
+  @Transform((value) => String(value).toUpperCase())
+  username = '';
+
+  @Expose()
+  role = 'member';
+
+  @Exclude()
+  passwordHash = '';
+}
+```
+
+```ts title="src/users.controller.ts"
+import { Controller, Get, UseInterceptors } from '@fluojs/http';
+import { SerializerInterceptor } from '@fluojs/serialization';
+import { UserEntity } from './user-entity.dto';
+
+@Controller('/users')
+@UseInterceptors(SerializerInterceptor)
+export class UsersController {
+  @Get()
+  list(): UserEntity[] {
+    const user = new UserEntity();
+    user.id = '1';
+    user.username = 'fluo';
+    user.passwordHash = '$2b$10$...';
+
+    return [user];
+  }
+}
+```
+
+The handler returns real entities — including the password hash — and the response contains only `{ id: '1', username: 'FLUO', role: 'member' }`. `SerializerInterceptor` runs after the handler, sees the uncommitted response, and rewrites the result through `serialize(...)` before the dispatcher commits it.
+
+## How the mechanics work
+
+### `serialize(value)`
+
+The engine recursively walks class instances, arrays, plain objects, and mixed graphs:
+
+- **`@Expose()` on a field** marks it for emission. `@Expose()` on a *class* with `{ excludeExtraneous: true }` inverts the default: only fields with field-level `@Expose()` are emitted, and undeclared fields are dropped.
+
+  ```ts title="fragment: expose-only DTO"
+  import { Expose } from '@fluojs/serialization';
+
+  @Expose({ excludeExtraneous: true })
+  class SecureDto {
+    @Expose()
+    publicData = 'visible';
+
+    internalData = 'hidden'; // dropped
+  }
+  ```
+
+- **`@Exclude()`** removes a field from the output regardless of exposure policy.
+- **`@Transform((value) => ...)`** applies a synchronous value-only transform during serialization. Multiple transforms on one field (base class then derived class) run in declaration order. The callback receives only the current field value — no DTO access, no property metadata, no async work; use it for value shaping, not orchestration.
+
+The walk itself has a precise, tested semantics worth knowing before you rely on it:
+
+- **Cycles are cut, references are kept.** A value encountered again while it is still being serialized (an active back edge) is cut to `undefined`; completed shared references are reused, so two fields pointing at the same source object serialize to the same output object rather than being duplicated or dropped.
+- **Opaque built-ins pass through unchanged**: `Date`, `Map`, `Set`, `WeakMap`, `WeakSet`, `URL`, `URLSearchParams`, `RegExp`, `Error`, `ArrayBuffer`, typed arrays, and `Promise` are not flattened as DTO-like instances. The response writer's JSON step owns their final encoding — values JSON cannot represent (`bigint`, functions, symbols) must be normalized with `@Transform(...)` or before writing, or the write itself fails.
+- **Plain objects and null-prototype records are data containers**, not decorated instances: enumerable symbol keys serialize, and own `__proto__`/`constructor`/`prototype` keys are treated as data — never as prototype mutations.
+- **Undecorated instances are still traversed**, so decorated nested descendants are respected even when the parent has no metadata.
+
+### Inheritance
+
+Base-class metadata flows into derived DTOs: `@Expose()`/`@Exclude()`/`@Transform()` rules on shared base fields still apply to subclass instances, and class-level `excludeExtraneous` follows the nearest inherited setting — an expose-only base stays expose-only in subclasses. Re-enable ordinary enumerable fields on a derived class with `@Expose({ excludeExtraneous: false })` while inherited field-level `@Exclude()` rules still hold. Derived decorators own their updates; overriding a field never changes how the base DTO or a sibling serializes.
+
+### The interceptor and response ownership
+
+`SerializerInterceptor` implements the HTTP `Interceptor` contract: it awaits `next.handle()`, then either serializes the result (response still uncommitted) or returns it unchanged (response already committed by the handler). That bypass is a documented guarantee of this interceptor specifically — once a handler calls `context.response.send(...)`, `redirect(...)`, or a streaming helper, the payload is final and serialization cannot post-process it. Apply any required filtering or encoding before the commit on handler-owned responses.
+
+```ts title="fragment: handler-owned response bypass"
+import { Controller, Get, type RequestContext, UseInterceptors } from '@fluojs/http';
+import { SerializerInterceptor } from '@fluojs/serialization';
+
+@Controller('/exports')
+@UseInterceptors(SerializerInterceptor)
+class ExportController {
+  @Get('/users.csv')
+  async usersCsv(_input: undefined, context: RequestContext) {
+    context.response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    await context.response.send('id,username\n1,fluo');
+    // Committed: SerializerInterceptor returns the value from next.handle() untouched.
+  }
+}
+```
+
+## Composing with neighboring packages
+
+- **`@fluojs/http`** hosts the interceptor: register it with `@UseInterceptors(SerializerInterceptor)` at controller or route level. It runs in the interceptor stage — after guards and binding, around the handler — and the dispatcher skips its own success write when the handler already committed. See the lifecycle order in the [HTTP guide](/docs/packages/http).
+- **`@fluojs/validation`** is the input-side mirror. A common API shape pairs them: validated input DTOs in, expose-only output DTOs out, with the same class-based authoring style on both sides.
+- **`@fluojs/openapi`** documents output types only when you declare them explicitly — `@ApiResponse({ status: 200, type: UserEntity })` or `extraModels: [UserEntity]`. Serialization metadata (`@Exclude`) does not silently shrink generated schemas; document the shape you actually emit.
+- **DI** treats output DTOs as plain classes; they need no registration. `SerializerInterceptor` itself, when referenced as a class in `@UseInterceptors(...)`, is resolved from the request container — register it as a provider in the controller's module (`providers: [SerializerInterceptor]`).
+
+## Defaults, limits, and common mistakes
+
+- **Defaults**: without metadata, instances serialize as walked plain objects (all own enumerable fields); `excludeExtraneous` is off; no transforms run; opaque built-ins pass through.
+- **Not a deep sanitizer**: serialization projects fields at the object boundary it walks; it does not recursively scrub Maps, Dates, or other opaque leaves — shape those before they reach the response.
+- **No async transforms**: `TransformFunction` is synchronous by contract; schedule async work in the handler or an interceptor of your own.
+- **Ordering with other interceptors**: interceptors compose in registration order; an outer interceptor sees the serialized result of `SerializerInterceptor` if serialization ran first. When in doubt, register `SerializerInterceptor` last so it observes the handler's own result.
+- **Forgetting the preload** is the one setup mistake this package makes loud and early: decorated classes evaluated before `ensureMetadataSymbol()` throw `Decorator metadata is not available`. Put the preload at the entrypoint, not in a lazily imported feature module.
+
+## Testing at the serialization seam
+
+The engine is standalone; most coverage needs no HTTP:
+
+```ts title="fragment: engine test"
+import { serialize } from '@fluojs/serialization';
+import { expect, it } from 'vitest';
+import { UserEntity } from '../src/user-entity.dto';
+
+it('strips excluded fields and applies transforms', () => {
+  const user = new UserEntity();
+  user.id = '1';
+  user.username = 'fluo';
+  user.passwordHash = 'secret';
+
+  expect(serialize(user)).toEqual({ id: '1', username: 'FLUO', role: 'member' });
+});
+```
+
+For interceptor behavior, boot the controller through `Test.createApp(...)` and assert the response body — that exercises the uncommitted-result path end to end. Both seams are exercised in this guide's fixture under `tooling/docs/fixtures/package-guides/http/`.
+
+## Related reading
+
+- [HTTP](/docs/packages/http) — interceptor ordering and response ownership.
+- [Validation](/docs/packages/validation) — the input-side DTO contract.
+- [OpenAPI](/docs/packages/openapi) — declaring output DTOs in generated documents.
+- [Dependency injection](/docs/fundamentals/dependency-injection) — how interceptor classes resolve.

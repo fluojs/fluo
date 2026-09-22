@@ -1,0 +1,401 @@
+---
+title: Notifications
+description: One channel-agnostic dispatch contract for email, Slack, Discord, and custom channels, with optional queue offload and lifecycle event publication.
+package: "@fluojs/notifications"
+---
+
+`@fluojs/notifications` gives application code one place to say *what should be
+sent* and one service to call, while the *how* lives in swappable channel
+objects. A service injects `NotificationsService`, calls `dispatch(...)`
+with a request envelope naming a channel, and the registered channel for that
+name performs the delivery. The package freezes that shared contract so
+[`@fluojs/email`](/docs/packages/email), [`@fluojs/slack`](/docs/packages/slack),
+and [`@fluojs/discord`](/docs/packages/discord) can each implement it without
+knowing about each other, and so your own channels (SMS, push, webhooks) plug
+into the same seam.
+
+Two optional seams round out the package, and both are application-owned:
+
+- a **queue seam** that hands batches to your queue when dispatch volume
+  crosses a threshold, so bulk sends stop blocking request paths;
+- an **event publication seam** that emits `requested` / `queued` /
+  `delivered` / `failed` lifecycle events through a publisher you provide,
+  typically [`@fluojs/event-bus`](/docs/packages/event-bus).
+
+The foundation package deliberately ships **no** built-in email, Slack, or
+Discord implementation, never reads `process.env`, and never creates, closes,
+or drains a concrete queue or event-bus resource. If you need exactly one
+delivery mechanism and nothing else, inject that package's service directly
+(`EmailService`, `SlackService`, `DiscordService`) and skip this orchestration
+layer. The orchestration pays for itself when several channels coexist, when
+you want dispatch decisions (direct vs queued) in one place, or when lifecycle
+visibility matters more than channel specifics.
+
+## Installation
+
+```bash
+npm install @fluojs/notifications
+```
+
+The package supports Node.js `>=24.0.0 <27` as its package-owned support
+contract. Channels, queue adapters, and event publishers are wired from the
+packages that provide them - see each guide for its own installation step.
+
+## A small working example
+
+An order service notifies customers over a channel called `email`. Three
+declarations wire it up: the channel object, the module registration, and the
+consuming service.
+
+```ts title="src/channels.ts"
+import type { NotificationChannel } from '@fluojs/notifications';
+
+export const emailChannel: NotificationChannel = {
+  channel: 'email',
+  async send(notification, context) {
+    // Hand the envelope to your email transport here. The envelope is the
+    // shared contract: channel, recipients, subject, template, opaque payload.
+    const receipt = await sendEmail(notification, context.signal);
+
+    return {
+      externalId: receipt.messageId,
+      metadata: { provider: 'example-email' },
+    };
+  },
+};
+```
+
+```ts title="src/welcome.service.ts"
+import { Inject } from '@fluojs/core';
+import { NotificationsService } from '@fluojs/notifications';
+
+@Inject(NotificationsService)
+export class WelcomeService {
+  constructor(private readonly notifications: NotificationsService) {}
+
+  async sendWelcome(userId: string, address: string): Promise<void> {
+    const result = await this.notifications.dispatch({
+      channel: 'email',
+      recipients: [address],
+      subject: 'Welcome to fluo',
+      payload: { template: 'welcome-email', userId },
+    });
+
+    // result.status is 'delivered' (or 'queued' for queue-backed sends) and
+    // result.deliveryId carries the channel's external id or a derived key.
+    if (result.status !== 'delivered') {
+      throw new Error(`Welcome notification for ${userId} was not delivered`);
+    }
+  }
+}
+```
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { NotificationsModule } from '@fluojs/notifications';
+
+import { emailChannel } from './channels';
+import { WelcomeService } from './welcome.service';
+
+@Module({
+  imports: [NotificationsModule.forRoot({ channels: [emailChannel] })],
+  providers: [WelcomeService],
+})
+export class AppModule {}
+```
+
+`NotificationsModule.forRoot(...)` exports `NotificationsService` **globally by
+default**, so `WelcomeService` injects it without importing anything else.
+Pass `global: false` when the service should stay visible only to modules that
+explicitly import the returned module definition - the same visibility rules
+described in [Dependency injection](/docs/fundamentals/dependency-injection).
+
+Expected outcome: `sendWelcome('u_1', 'dev@example.com')` calls the email
+channel once and resolves with
+`{ channel: 'email', deliveryId: '<message id>', status: 'delivered' }`.
+Dispatching to a channel name that was never registered rejects with
+`NotificationChannelNotFoundError`.
+
+## How the mechanics work
+
+### Registration is value-based
+
+Channels are plain objects passed through module options - there is no
+`@Injectable()` marker, no provider discovery, and no reliance on compiler
+metadata. `forRoot(...)` normalizes the options once at registration:
+
+- duplicate channel names throw `NotificationsConfigurationError` immediately;
+- `queue.bulkThreshold` must be a finite positive integer (default `10`) or
+  registration throws the same error;
+- normalized options are frozen and registered under internal tokens, and
+  `NotificationsService` resolves its channel map from them.
+
+Because normalization happens at registration time for `forRoot(...)` and at
+factory resolution time for `forRootAsync(...)`, a bad configuration fails
+during bootstrap, before the service can accept a dispatch.
+
+### `forRootAsync` and configuration through DI
+
+Channels often need configuration (SMTP settings, webhook URLs) resolved from
+[`@fluojs/config`](/docs/packages/config) or another provider. The async
+registration shape takes an `inject` token list plus `useFactory`:
+
+```ts title="fragment: async registration"
+import { ConfigService } from '@fluojs/config';
+import { NotificationsModule } from '@fluojs/notifications';
+
+NotificationsModule.forRootAsync({
+  inject: [ConfigService],
+  useFactory: (config: ConfigService) => ({
+    channels: [emailChannel], // built with values read from config
+  }),
+});
+```
+
+The factory may be async and runs once per application container. `global`
+belongs on the top-level options object, not inside the factory result. NestJS
+dynamic-module forms (`imports`, `useClass`, `useExisting`) are not part of
+this contract.
+
+### Dispatch results and delivery ids
+
+`dispatch(...)` resolves with a normalized `NotificationDispatchResult`. The
+`deliveryId` is chosen deterministically: the channel's `externalId` when it
+returns one, otherwise the caller's `notification.id`, otherwise a fallback
+key derived from the channel name and a stable hash of the envelope. Channel
+receipts stay visible through `result.metadata`, so provider-specific details
+survive without the foundation package interpreting them.
+
+### The queue seam
+
+Configure a queue adapter when bulk delivery should be offloaded. The adapter
+is your code - the package only calls the contract:
+
+```ts title="fragment: queue wiring"
+NotificationsModule.forRoot({
+  channels: [emailChannel],
+  queue: {
+    adapter: {
+      async enqueue(job, context) {
+        return myQueue.enqueue(job, { signal: context?.signal });
+      },
+      // enqueueMany is optional; without it, bulk sends fall back to
+      // sequential single enqueues in input order.
+      async enqueueMany(jobs, context) {
+        return myQueue.enqueueMany(jobs, { signal: context?.signal });
+      },
+    },
+    bulkThreshold: 50,
+  },
+});
+```
+
+The rules that govern when work reaches the queue:
+
+| Call | Behavior |
+| --- | --- |
+| `dispatch(n)` | Direct delivery, even with an adapter configured. `{ queue: true }` opts one send into the queue; `{ queue: false }` forces direct. |
+| `dispatchMany(list)` | Queued when `list.length >= bulkThreshold`, direct below it. `{ queue: true }` forces queueing at any size; `{ queue: false }` forces direct. |
+| Pre-aborted signal | `requested` is published, then the dispatch fails - the adapter is never called. |
+| Abort after enqueue | The queue job stands. A queue cannot revoke an accepted job; cancellation policy is adapter-owned. |
+
+Every queue job carries an `id` that preserves the caller's `notification.id`
+when set, otherwise a deterministic key derived from the envelope. Pass it to
+backing queues that support deduplication. Adapter results are validated: an
+empty or non-string identifier, or an `enqueueMany` result that is sparse,
+accessor-backed, or misaligned with the admitted job count, rejects the whole
+dispatch with `NotificationQueueResultIntegrityError` rather than fabricating
+a delivery id.
+
+### Lifecycle events
+
+Configure `events.publisher` and every dispatch step becomes observable.
+Publication defaults to on once a publisher is configured; set
+`publishLifecycleEvents: false` to keep the wiring but silence the events, or
+pass `publishLifecycleEvents: false` per call. Four event names are emitted in
+order as a dispatch progresses:
+`notification.dispatch.requested`, `notification.dispatch.queued`,
+`notification.dispatch.delivered`, `notification.dispatch.failed`. Each event
+carries a snapshot of the notification envelope, an `occurredAt` timestamp,
+and the `deliveryId` or error when known.
+
+Snapshots are immutable data, not live references: `Date` values become
+`NotificationSnapshotDate` (epoch milliseconds), `Map`, `Set`, `URL`,
+`URLSearchParams`, `RegExp`, and `ArrayBuffer` views each have a dedicated
+frozen representation, and plain objects/arrays are copied recursively. A
+publisher that forwards events to `@fluojs/event-bus` therefore cannot be
+corrupted by a late mutation of the caller's payload.
+
+A publisher failure never fails the dispatch - publication is best-effort, and
+the dispatch result or error is decided by the channel and queue, not by
+observers.
+
+### Batch results
+
+`dispatchMany(...)` returns a batch summary instead of throwing on the first
+problem when you pass `continueOnError: true`:
+
+```ts title="fragment: tolerant batch"
+const batch = await notifications.dispatchMany(requests, {
+  continueOnError: true,
+});
+
+// batch: { results, failures, succeeded, failed, queued }
+// results holds every successful NotificationDispatchResult in input order;
+// failures pairs each error with its original notification.
+```
+
+Without `continueOnError`, the first failure rejects the whole call. Either
+way, every notification that already emitted `requested` also receives a
+terminal `queued` or `failed` lifecycle event, so observers never see a
+half-announced dispatch.
+
+## Composition with neighboring packages
+
+**With `@fluojs/email`, `@fluojs/slack`, `@fluojs/discord`.** Each leaf
+package exports a channel token (`EMAIL_CHANNEL`, `SLACK_CHANNEL`,
+`DISCORD_CHANNEL`) that implements `NotificationChannel`. Register them
+through `forRootAsync` and the foundation package stays the only place that
+routes by channel name:
+
+```ts title="fragment: leaf channels in one app"
+import { EmailModule, EMAIL_CHANNEL } from '@fluojs/email';
+import { NotificationsModule } from '@fluojs/notifications';
+import { SlackModule, SLACK_CHANNEL } from '@fluojs/slack';
+
+@Module({
+  imports: [
+    EmailModule.forRoot({ /* transport wiring */ }),
+    SlackModule.forRoot({ /* transport wiring */ }),
+    NotificationsModule.forRootAsync({
+      inject: [EMAIL_CHANNEL, SLACK_CHANNEL],
+      useFactory: (email, slack) => ({
+        channels: [email, slack],
+        queue: { bulkThreshold: 25 /* adapter omitted here */ },
+      }),
+    }),
+  ],
+})
+export class NotificationChannelsModule {}
+```
+
+Application code then dispatches by name - `channel: 'email'` or
+`channel: 'slack'` - without importing either leaf service. The channel name
+each leaf package registers is configurable through its own
+`notifications.channel` option.
+
+**With `@fluojs/queue`.** The queue seam is contract-only by design, so a
+queue-backed rollout is explicit: build an adapter over
+[`@fluojs/queue`](/docs/packages/queue) (or any broker), register it in
+`queue.adapter`, and register that package's worker to consume the jobs. The
+foundation package never starts a worker or drains a queue.
+
+**With `@fluojs/event-bus`.** Forward lifecycle events to the bus with a
+two-line publisher. The indirection keeps the foundation package decoupled
+from the bus implementation and lets tests substitute an in-memory collector.
+
+**With `@fluojs/config`.** Resolve channel configuration in `forRootAsync` so
+neither the foundation package nor its channels touch `process.env`.
+
+## Defaults, ownership, and lifecycle
+
+| Concern | Default | Owner |
+| --- | --- | --- |
+| Module visibility | `global: true` | `forRoot({ global })` / `forRootAsync({ global })` |
+| Queue bulk threshold | `10` | `queue.bulkThreshold` (finite positive integer) |
+| Single dispatch routing | Direct | Per-call `{ queue }` option |
+| Lifecycle publication | On when a publisher is configured | `events.publishLifecycleEvents`, per-call override |
+| Queue clients and workers | Not created | Your adapter and worker |
+| Event bus resources | Not created | Your publisher |
+| External resources owned | None | `ownership.ownsResources` is always `false` |
+
+The package registers no lifecycle hooks that allocate anything, so
+application shutdown has no notifications-specific phase: queue jobs already
+accepted belong to your queue, and in-flight channel `send(...)` promises
+belong to your channels.
+
+### Status snapshots
+
+`NotificationsService.createPlatformStatusSnapshot()` (and the standalone
+`createNotificationsPlatformStatusSnapshot(...)` helper) report readiness,
+health, ownership, and a `details` object for platform diagnostics:
+`operationMode` (`direct-only`, `direct-with-events`, `queue-backed`,
+`queue-backed-with-events`, `unconfigured`), `channelsRegistered`,
+`bulkQueueThreshold`, `queueConfigured`, `eventPublisherConfigured`,
+`eventPublicationEnabled`, and `dependencies`. With zero channels registered,
+readiness reports `not-ready`; health reports `degraded` when only seams are
+configured and `unhealthy` when the module is empty. A configured publisher
+with `publishLifecycleEvents: false` shows up as configured but does not add
+an active event dependency - wiring and enablement are reported separately.
+
+## Failures, limits, and common mistakes
+
+- **`NotificationChannelNotFoundError`.** The `channel` string in the request
+  does not match any registered channel. Registration is case-sensitive and
+  whitespace-exact; leaf packages trim their configured channel names, so a
+  typo in `dispatch({ channel: ... })` is the usual culprit.
+- **`NotificationsConfigurationError` at bootstrap.** Two channels share a
+  name, or `queue.bulkThreshold` is zero, negative, fractional, or infinite.
+  Fix the options; the module never partially registers.
+- **`NotificationQueueNotConfiguredError`.** A call forced queue delivery
+  (`{ queue: true }` or an above-threshold `dispatchMany`) with no adapter
+  registered. Configure the adapter or drop the forced queue flag.
+- **"My batch silently stopped at the first failure."** That is fail-fast
+  semantics. Pass `continueOnError: true` to collect a batch summary instead.
+- **Expecting built-in providers.** The package ships no transports. Install
+  the leaf packages for email/Slack/Discord, or implement `NotificationChannel`
+  yourself.
+- **Expecting queue workers to start.** Registering an adapter enqueues jobs;
+  something must consume them. That consumer is your code (or
+  `@fluojs/email`'s built-in worker for the email channel).
+- **Relying on generated ids across releases.** The fallback id is a stable
+  hash of the envelope, not a durable identity contract. Set
+  `notification.id` when deduplication must survive upgrades.
+
+## Testing
+
+Test the dispatch seam with real channel objects; mocking
+`NotificationsService` would only prove your mock was called. Register the
+module with an in-memory channel and assert on the returned result and the
+channel's recorded calls:
+
+```ts title="fragment: dispatch seam test (module compiled via Test.createTestingModule)"
+const sent: NotificationDispatchRequest[] = [];
+const channel: NotificationChannel = {
+  channel: 'email',
+  async send(notification) {
+    sent.push(notification);
+    return { externalId: 'test-1' };
+  },
+};
+
+const module = await Test.createTestingModule({
+  rootModule: AppModule, // imports NotificationsModule.forRoot({ channels: [channel] })
+}).compile();
+
+const notifications = await module.resolve(NotificationsService);
+const result = await notifications.dispatch({
+  channel: 'email',
+  payload: { text: 'hi' },
+});
+
+expect(result).toMatchObject({ channel: 'email', status: 'delivered', deliveryId: 'test-1' });
+expect(sent).toHaveLength(1);
+```
+
+For the queue seam, capture the jobs your adapter receives and assert on
+`job.id` and `job.notification` - the deterministic id and envelope snapshot
+are exactly what a real worker consumes. Lifecycle events are easiest to
+observe through a collecting publisher, since publication completes before
+`dispatch(...)` resolves.
+
+## Related reading
+
+- [`@fluojs/email`](/docs/packages/email) - the first-party email channel and its Node SMTP subpath.
+- [`@fluojs/slack`](/docs/packages/slack) - webhook-first Slack delivery as a channel.
+- [`@fluojs/discord`](/docs/packages/discord) - webhook-first Discord delivery as a channel.
+- [`@fluojs/queue`](/docs/packages/queue) - durable background jobs for the queue seam's consumer side.
+- [`@fluojs/event-bus`](/docs/packages/event-bus) - in-process events for the lifecycle publication seam.
+- [`@fluojs/config`](/docs/packages/config) - validated configuration for `forRootAsync` factories.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - module visibility rules behind `global`.
+- [`@fluojs/notifications` package README](https://github.com/fluojs/fluo/blob/main/packages/notifications/README.md) - the owning API reference.

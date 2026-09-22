@@ -1,0 +1,205 @@
+---
+title: Configuration
+description: "@fluojs/config loads, merges, validates, and reloads one application config snapshot - explicit sources, strict precedence, synchronous Standard Schema validation."
+package: "@fluojs/config"
+---
+
+`@fluojs/config` produces one thing: a validated, immutable configuration snapshot your whole application reads through a typed `ConfigService`. Sources are merged under strict precedence, validated by a synchronous Standard Schema validator before the application starts, and (optionally) hot-reloaded through an injected manager that preserves service identity.
+
+Two design choices define the package. First, **nothing ambient**: it never scans `process.env` on its own - you pass an explicit snapshot of the process environment you want to participate. Second, **loading is synchronous**: there is no `forRootAsync`, no async schema, no async merge. Asynchronous sources (secret managers, remote config) are resolved at the application-owned bootstrap boundary *before* the module graph is defined, and their final values are passed in. This keeps the entire config layer auditable: at bootstrap time the snapshot is already complete, or the application does not start.
+
+## Installation
+
+```bash
+npm install @fluojs/config
+```
+
+The package depends on `@fluojs/core` and `@standard-schema/spec`. The core surface - `ConfigService`, merge/validation/clone behavior, and `ConfigModule.load(...)` with explicit in-memory inputs - is portable and never touches Node builtins, `process.cwd()`, or a default `.env` path. Env-file loading, the default `.env` fallback, and watch mode are Node-only features that lazily resolve builtins through `process.getBuiltinModule(...)`; on hosts that cannot provide them they throw `CONFIG_RUNTIME_UNAVAILABLE` with guidance instead of failing the import. That guard checks feature capabilities rather than comparing Node versions; on Node.js `>=24.0.0 <27` all features work.
+
+Schema validation accepts any synchronous [Standard Schema](https://standardschema.dev) validator - Zod, Valibot, ArkType - which the application installs as its own dependency.
+
+## When to use it, and when not
+
+Use `@fluojs/config` when you need:
+
+- layered `.env` files with deterministic precedence and deep merging
+- startup-time validation so a bad deployment fails before the first request
+- dot-path, typed read access injected into services
+- hot-reload of env-file changes without restarting the process
+
+It is the wrong tool when you need:
+
+- **Per-request configuration** - inject request-scoped values instead; config is a singleton snapshot
+- **A secret manager client** - fetch secrets however your platform does, then hand the *result* to config
+- **NestJS-style async module registration** - `ConfigModule.forRootAsync(...)` does not exist and will not; resolve async values yourself before registration
+- **Ambient environment access everywhere** - services should receive typed config values, not import `process.env`; that boundary is the point of the package
+
+## A small working example
+
+A complete application boundary: define a schema, register the module, inject the service.
+
+```ts title="src/config.ts"
+import { z } from 'zod';
+
+export const AppSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  PORT: z.coerce.number().default(3000),
+  APP: z.object({
+    NAME: z.string().default('fluo-blog'),
+  }),
+});
+
+export type AppConfig = z.infer<typeof AppSchema>;
+```
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { ConfigModule } from '@fluojs/config';
+
+import { AppSchema } from './config.js';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      envFilePaths: ['.env'],
+      processEnv: {
+        DATABASE_URL: process.env.DATABASE_URL,
+      },
+      defaults: { APP: { NAME: 'fluo-blog' } },
+      schema: AppSchema,
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+```ts title="fragment: consuming config"
+import { Inject } from '@fluojs/core';
+import { ConfigService } from '@fluojs/config';
+
+@Inject(ConfigService)
+export class DatabaseService {
+  constructor(private readonly config: ConfigService) {
+    const url = this.config.getOrThrow('DATABASE_URL'); // required
+    const port = this.config.get('PORT') ?? 3000; // optional with a local fallback
+    const name = this.config.get('APP.NAME'); // dot-path into nested objects
+  }
+}
+```
+
+Register the module once at the root. `ConfigModule` is global by default (`global: false` opts into module-local visibility), so `ConfigService` is injectable everywhere without re-importing.
+
+For scripts and tools that need the snapshot without a module graph, `ConfigModule.load(...)` returns the same validated dictionary standalone:
+
+```ts title="fragment: standalone load"
+import { ConfigModule } from '@fluojs/config';
+
+import { AppSchema } from './config.js';
+
+const config = ConfigModule.load({
+  envFilePaths: ['.env'],
+  processEnv: { DATABASE_URL: process.env.DATABASE_URL },
+  schema: AppSchema,
+});
+```
+
+## How loading works, step by step
+
+Given one `forRoot(...)`/`load(...)` call, the snapshot is computed in five steps:
+
+**1. Source collection.** The env-file tier is read first. `envFilePaths` is the *only* file input: an ordered list merged lowest-to-highest into a single tier. Relative entries resolve from `cwd` (or the `cwd` option for `load`); missing files contribute nothing and never fail; `envFilePaths: []` disables file loading outright. Omitting `envFilePaths` selects the default `<cwd>/.env` only for a *file-capable* load - pass any explicit in-memory source (`defaults`, `processEnv`, `runtimeOverrides`) and the silent default disappears. A custom `parse(content)` function can replace dotenv parsing for flat key/value formats.
+
+**2. Precedence merge.** Four tiers, highest wins:
+
+1. `runtimeOverrides` - explicit values passed in code
+2. `processEnv` - your explicit snapshot of process environment variables
+3. env files - the merged `envFilePaths` tier
+4. `defaults` - checked-in fallbacks
+
+Plain objects deep-merge by key at every tier boundary; arrays and primitives from a higher tier replace lower values wholesale. Nested objects in `defaults` and `runtimeOverrides` are preserved as trees, which is what makes dot-path access work.
+
+**3. Validation.** The `schema` runs **once against the fully merged result** - not per file. It must be synchronous; an async validator is rejected with `INVALID_CONFIG`. The schema's validated output becomes the final snapshot, so coercion (like `z.coerce.number()`) and defaults applied by the schema are part of the snapshot. Validation issues fail the load, the bootstrap, and any reload with `INVALID_CONFIG`.
+
+**4. Snapshot capture.** `forRoot(...)` snapshots caller-owned options *synchronously at the call site* - dictionaries, `processEnv`, and the schema descriptor are detached, while callables (`parse`, `onReloadError`, the validator) are captured by reference. Mutating your options object after registration has no effect; the module is immutable from creation.
+
+**5. Registration.** The module registers four providers: `ConfigService` (built from the snapshot), the captured options, a `ConfigReloadManager`, and `CONFIG_RELOADER` as an alias to it. It exports `ConfigService` and `CONFIG_RELOADER`, and is `global` unless you opted out.
+
+### Reading values
+
+`ConfigService.get(key)` and `getOrThrow(key)` take exactly one key; there is no default-value argument. Dot paths walk each segment (`'APP.NAME'`). Three behaviors to internalize:
+
+- **Object reads are detached clones.** `get('APP')` returns a deep clone, so mutating the result cannot corrupt the active snapshot - and mutating it also changes nothing, which is the same fact from the other side. Clone cost is proportional to the returned subtree; deep snapshots in hot loops are cheaper to take once via `snapshot()` than re-cloned per key.
+- **Missing keys resolve to `undefined`** from `get`, and throw `FluoError` with code `CONFIG_KEY_MISSING` from `getOrThrow`. Own optionality in the schema (`z.default(...)`) rather than fallback arguments at every call site.
+- **Lookup cost is proportional to path depth.** Keys are walked segment by segment; there is no flat index to misspell. `snapshot()` returns the whole dictionary, cloned.
+
+## Hot reload without restarts
+
+Register `ConfigModule.forRoot({ watch: true, ... })` and inject `CONFIG_RELOADER` for reload control:
+
+```ts title="fragment: reload subscriptions"
+import { Inject } from '@fluojs/core';
+import { CONFIG_RELOADER, ConfigReloader } from '@fluojs/config';
+
+@Inject(ConfigService, CONFIG_RELOADER)
+export class AdminService {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly reloader: ConfigReloader,
+  ) {
+    this.reloader.subscribe((snapshot, reason) => {
+      // reason is 'manual' | 'watch'; snapshot is the new committed dictionary
+    });
+    this.reloader.subscribeError((error, reason) => {
+      // watch reload failed validation or IO
+    });
+  }
+}
+```
+
+The contract is precise:
+
+- The manager **preserves `ConfigService` identity**: the injected service instance never changes; its internal snapshot is replaced in place. Consumers do not re-resolve.
+- `reload()` calls are serialized. A request arriving while listeners are being notified is queued and applied after; if the active notification throws, the previous snapshot is restored and the queued reload is discarded.
+- If a reload listener throws, the manager rolls the snapshot back to the previous value and rethrows the listener error. A listener that cannot accept a snapshot must not leave the process in a half-observed state.
+- Watch reloads compare final env-file content with the last committed baseline: unchanged saves and change-then-revert bursts do not replace the snapshot. Each listed file's parent directory is watched, so creating or atomically replacing a listed file triggers reload, and deleting a higher-precedence file falls back to the remaining list. Validation failures during watch keep the last valid snapshot and surface through `subscribeError` / `onReloadError`.
+- `ConfigModule` creates its watcher during application bootstrap and closes it during module shutdown. There is exactly one manager per registration; do not register a second reload manager for the same files.
+
+For standalone use outside a module graph, `ConfigReloadManager.create(options)` builds a terminal manager with its own `ConfigService`: it is active immediately, `close()` is permanent (later `reload()`/`subscribe()` throw `InvariantError`, while `current()` keeps returning the last committed snapshot), and `onModuleDestroy()` closes it in module-based setups.
+
+## Defaults, ownership, and lifecycle
+
+| Concern | Default |
+| --- | --- |
+| `envFilePaths` | Omitted = default `<cwd>/.env` **only** when the load is file-capable; any explicit in-memory source suppresses it; `[]` always disables |
+| `global` | `true` - `ConfigService` and `CONFIG_RELOADER` are exported globally |
+| `watch` | `false` - no watcher is created, and no watcher exists to close |
+| Schema | Optional; without one, merged values pass through unvalidated |
+| Precedence | `runtimeOverrides` > `processEnv` > env files > `defaults` |
+
+Ownership is narrow and easy to reason about: the module owns one `ConfigService` and one optional watcher; the watcher's lifecycle is bootstrap-to-module-destroy; the snapshot is immutable to consumers (clones on read); and `process.env` itself is never touched or mutated - you pass the slice you want. Nothing else in the process is owned or blocked, so the module is safe to compose alongside anything else that reads environment variables.
+
+## Failures, limits, and common mistakes
+
+- **`INVALID_CONFIG`** - the shared failure code for validation issues *and* invalid options: duplicate or blank `envFilePaths` entries, async schema results, and the removed `envFile`/`envFilePath` options (JavaScript consumers get the same migration guidance as TypeScript ones). Check the error detail before assuming a validator problem.
+- **`CONFIG_RUNTIME_UNAVAILABLE`** - env-file, default-`.env`, or watch features requested on a host without `process.getBuiltinModule`. Use in-memory inputs on that host, or run the feature on Node.
+- **`CONFIG_KEY_MISSING`** - `getOrThrow` on a key that is absent. Prefer schema defaults over call-site fallbacks so the contract lives in one place.
+- **Expecting `NODE_ENV`-derived file discovery.** The package never builds `.env.production` from an environment variable. Compute the list at the bootstrap boundary - that is why `envFilePaths` is an ordered array.
+- **Passing the whole `process.env`.** Technically assignable (`NodeJS.ProcessEnv` matches the structural type), but it defeats the auditability of an explicit snapshot; pass the variables your schema actually consumes.
+- **Async validators.** Rejected up front. If a validator must fetch something, fetch it before registration and validate the *result*.
+- **Second registrations.** One `ConfigModule.forRoot(...)` per application. A second one creates a second snapshot and a second reload manager; inject `CONFIG_RELOADER` from the registration you actually bootstrapped.
+- **Relying on silent `.env` pickup in tests.** An omitted `envFilePaths` silently loads `<cwd>/.env` on Node. Tests should pass `envFilePaths: []` and explicit in-memory sources to stay hermetic.
+
+## Testing configuration
+
+- For unit tests, skip the module: `ConfigModule.load({ defaults: {...}, schema })` builds a validated snapshot, and `new ConfigService(snapshot)` (via `ConfigReloadManager.create` or the exported service) gives you real dot-path and clone semantics without a bootstrap.
+- For integration tests, register `ConfigModule.forRoot({ envFilePaths: [], runtimeOverrides: {...} })` - fully in-memory, hermetic, no filesystem, works on any host.
+- Reload behavior is testable deterministically with `ConfigReloadManager.create({...})`: call `reload()` (manual, serialized) rather than waiting on filesystem watch events, subscribe with `subscribe()` before triggering, and assert snapshot transitions and rollback-on-listener-failure. Terminal `close()` semantics are observable the same way.
+- Dispose/teardown: module-managed watchers close at module shutdown; standalone managers are closed in a `finally` block when the test owns them.
+
+## Related reading
+
+- [Dependency injection](/docs/fundamentals/dependency-injection) - how `forRoot` modules become providers.
+- [`@fluojs/runtime`](/docs/packages/runtime) - where `ConfigModule.forRoot(...)` runs in the bootstrap sequence.
+- [`@fluojs/i18n`](/docs/packages/i18n) - the sibling facade with the same synchronous-registration philosophy.
+- [`@fluojs/config` package README](https://github.com/fluojs/fluo/blob/main/packages/config/README.md) - the owning API reference.
+- [Config and environments contract](https://github.com/fluojs/fluo/blob/main/docs/architecture/config-and-environments.md) - the normative precedence and reload rules.

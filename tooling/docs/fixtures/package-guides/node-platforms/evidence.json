@@ -1,0 +1,119 @@
+{
+  "@fluojs/platform-nodejs": {
+    "page": "apps/docs/content/docs/packages/platform-nodejs.mdx",
+    "sources": [
+      "packages/platform-nodejs/README.md",
+      "packages/platform-nodejs/src/index.ts",
+      "packages/platform-nodejs/src/node/internal-node.ts",
+      "packages/platform-nodejs/src/node/internal-node-shutdown.ts",
+      "packages/platform-nodejs/src/node/internal-node-response.ts",
+      "packages/platform-nodejs/src/node/logger.ts",
+      "packages/platform-nodejs/src/node/json-logger.ts",
+      "packages/platform-nodejs/src/node/node-static-assets.ts",
+      "packages/http/src/static-assets.ts",
+      "packages/http/src/exceptions.ts",
+      "packages/http/README.md"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/node-platforms/node-adapter.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/http createStaticAssetsMiddleware + @fluojs/platform-nodejs createNodeFileSystemAssetSource over a real Node listener (identity and .gz representations, fall-through 404)",
+      "FluoFactory.create + NodeHttpApplicationAdapter real-listener posts/health round trip with x-request-id propagation into the 404 envelope"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/node-platforms --maxWorkers=1 -> Test Files 4 passed (4), Tests 13 passed (13)",
+      "pnpm exec tsc -p tsconfig.tools.json --noEmit -> 0 errors under tooling/docs/fixtures/package-guides/node-platforms",
+      "pnpm exec biome check tooling/docs/fixtures/package-guides/node-platforms -> clean"
+    ],
+    "unexecuted": [
+      "packages/platform-nextjs/e2e/next.test.mjs (real Next 16 dev/build/start): requires next install + production build; Next routing/compilation/bundling is not exercised by next-adapter.test.ts, which drives instance fetch() only",
+      "HTTPS/TLS listeners, EADDRINUSE retry exhaustion, forced close after shutdownTimeoutMs, streaming multipart, early hints over the wire, realtime upgrades: covered by package-local HttpAdapterPortabilityHarness suites, not duplicated in this track",
+      "docs production build, rendered desktop/mobile review, and navigation/meta wiring: lead-owned publication-gate items"
+    ]
+  },
+  "@fluojs/platform-fastify": {
+    "page": "apps/docs/content/docs/packages/platform-fastify.mdx",
+    "sources": [
+      "packages/platform-fastify/README.md",
+      "packages/platform-fastify/src/index.ts",
+      "packages/platform-fastify/src/adapter.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/node-platforms/fastify-adapter.test.ts"
+    ],
+    "compositions": [
+      "FluoFactory.create + FastifyHttpApplicationAdapter real-listener posts/health/404 round trip",
+      "rawBody: true byte-exact replay through /posts/raw (multibyte payload)",
+      "buffered multipart upload materialized into the portable context.request.files seam"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/node-platforms --maxWorkers=1 -> Test Files 4 passed (4), Tests 13 passed (13)",
+      "pnpm exec tsc -p tsconfig.tools.json --noEmit -> 0 errors under tooling/docs/fixtures/package-guides/node-platforms",
+      "pnpm exec biome check tooling/docs/fixtures/package-guides/node-platforms -> clean"
+    ],
+    "unexecuted": [
+      "packages/platform-nextjs/e2e/next.test.mjs (real Next 16 dev/build/start): requires next install + production build; Next routing/compilation/bundling is not exercised by next-adapter.test.ts, which drives instance fetch() only",
+      "HTTPS/TLS listeners, EADDRINUSE retry exhaustion, forced close after shutdownTimeoutMs, streaming multipart, early hints over the wire, realtime upgrades: covered by package-local HttpAdapterPortabilityHarness suites, not duplicated in this track",
+      "docs production build, rendered desktop/mobile review, and navigation/meta wiring: lead-owned publication-gate items"
+    ]
+  },
+  "@fluojs/platform-express": {
+    "page": "apps/docs/content/docs/packages/platform-express.mdx",
+    "sources": [
+      "packages/platform-express/README.md",
+      "packages/platform-express/src/index.ts",
+      "packages/platform-express/src/adapter.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/node-platforms/express-adapter.test.ts"
+    ],
+    "compositions": [
+      "nativeMiddleware handoff: native handler next() into fluo dispatch (header observable on fluo responses)",
+      "native handler ends the response before fluo dispatch (/native-only)",
+      "native next(error) answered inside the Express error chain (arity-4 error handler), never reaching fluo error filters"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/node-platforms --maxWorkers=1 -> Test Files 4 passed (4), Tests 13 passed (13)",
+      "pnpm exec tsc -p tsconfig.tools.json --noEmit -> 0 errors under tooling/docs/fixtures/package-guides/node-platforms",
+      "pnpm exec biome check tooling/docs/fixtures/package-guides/node-platforms -> clean"
+    ],
+    "unexecuted": [
+      "packages/platform-nextjs/e2e/next.test.mjs (real Next 16 dev/build/start): requires next install + production build; Next routing/compilation/bundling is not exercised by next-adapter.test.ts, which drives instance fetch() only",
+      "HTTPS/TLS listeners, EADDRINUSE retry exhaustion, forced close after shutdownTimeoutMs, streaming multipart, early hints over the wire, realtime upgrades: covered by package-local HttpAdapterPortabilityHarness suites, not duplicated in this track",
+      "docs production build, rendered desktop/mobile review, and navigation/meta wiring: lead-owned publication-gate items"
+    ]
+  },
+  "@fluojs/platform-nextjs": {
+    "page": "apps/docs/content/docs/packages/platform-nextjs.mdx",
+    "sources": [
+      "packages/platform-nextjs/README.md",
+      "packages/platform-nextjs/src/index.ts",
+      "packages/platform-nextjs/src/adapter.ts",
+      "packages/platform-nextjs/src/app-router.ts",
+      "packages/platform-nextjs/src/pages-router.ts",
+      "packages/platform-nextjs/src/lazy-adapter.ts",
+      "packages/platform-nextjs/src/next-config.ts",
+      "packages/platform-nextjs/src/application-accessor.ts",
+      "packages/platform-nextjs/src/pages-bridge.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/node-platforms/next-adapter.test.ts"
+    ],
+    "compositions": [
+      "FluoFactory.create + NextHttpApplicationAdapter instance fetch() dispatch through the shared pipeline (health, posts list/create, 404 envelope)",
+      "503 application/problem+json before dispatcher binding and after app.close()",
+      "headRouting: 'explicit-or-get' bodyless HEAD with status/headers preserved"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/node-platforms --maxWorkers=1 -> Test Files 4 passed (4), Tests 13 passed (13)",
+      "pnpm exec tsc -p tsconfig.tools.json --noEmit -> 0 errors under tooling/docs/fixtures/package-guides/node-platforms",
+      "pnpm exec biome check tooling/docs/fixtures/package-guides/node-platforms -> clean"
+    ],
+    "unexecuted": [
+      "packages/platform-nextjs/e2e/next.test.mjs (real Next 16 dev/build/start): requires next install + production build; Next routing/compilation/bundling is not exercised by next-adapter.test.ts, which drives instance fetch() only",
+      "HTTPS/TLS listeners, EADDRINUSE retry exhaustion, forced close after shutdownTimeoutMs, streaming multipart, early hints over the wire, realtime upgrades: covered by package-local HttpAdapterPortabilityHarness suites, not duplicated in this track",
+      "docs production build, rendered desktop/mobile review, and navigation/meta wiring: lead-owned publication-gate items"
+    ]
+  }
+}

@@ -10,7 +10,6 @@ describe('Next.js public import contract companions', () => {
     'book/03-internals/ch15-nextjs-hosting.md',
     'book/03-internals/ch15-nextjs-hosting.ko.md',
     'apps/docs/content/docs/packages/http-platform.mdx',
-    'apps/docs/content/docs/packages/http-platform.ko.mdx',
   ])('requires discoverability and enforcement when %s changes', (path) => {
     // Given a governed recipe changed without its companion evidence.
     // When the existing changed-path gate evaluates the increment.

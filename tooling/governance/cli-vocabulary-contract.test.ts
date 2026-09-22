@@ -118,7 +118,6 @@ describe('CLI vocabulary governance contract', () => {
       'packages/cli/README.md',
       'packages/cli/README.ko.md',
       'apps/docs/content/docs/guides/cli.mdx',
-      'apps/docs/content/docs/guides/cli.ko.mdx',
       'docs/CONTEXT.md',
       'docs/CONTEXT.ko.md',
     ].map((path) => readFileSync(join(repoRoot, path), 'utf8'));
@@ -134,7 +133,7 @@ describe('CLI vocabulary governance contract', () => {
       expect(readme).not.toContain('--no-update-notifier');
     }
 
-    for (const context of documents.slice(4)) {
+    for (const context of documents.slice(3)) {
       expect(context).toContain('injectable');
       expect(context).toContain('testing');
       expect(context).toContain('inject-params');

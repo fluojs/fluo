@@ -1,0 +1,418 @@
+---
+title: Cache manager
+description: Decorator-driven HTTP response caching and a standalone CacheService with memory and Redis stores, TTL jitter, atomic updates, and privacy-safe observation.
+package: "@fluojs/cache-manager"
+---
+
+`@fluojs/cache-manager` gives a fluo application two caching tools that share
+one store and one lifecycle:
+
+1. **HTTP response caching** - put `CacheInterceptor` on a controller and
+   successful GET responses are served from cache; write handlers evict their
+   dependencies with `@CacheEvict`.
+2. **Application-level caching** - inject `CacheService` for the classic
+   read-through `remember(...)` pattern, plain `get`/`set`/`del`, and the
+   opt-in atomic `update(...)` for read-modify-write cycles.
+
+Both run over pluggable stores: a built-in in-process memory store, a Redis
+store (over [`@fluojs/redis`](/docs/packages/redis) or an application-owned
+client), or any custom object implementing the `CacheStore` contract.
+
+Do not reach for this package when you need correctness, not speed: it is a
+cache, not a source of truth. Reads may miss, writes may be skipped, and the
+interceptor deliberately fails soft. For queue-free single-key mutations that
+must not lose updates, use `CacheService.update` - not a `get`/`set` pair -
+but understand it as a per-key cache mutation, not a database transaction.
+
+## Installation
+
+```bash
+pnpm add @fluojs/cache-manager
+```
+
+For the Redis-backed store path, add the Redis integration too:
+
+```bash
+pnpm add @fluojs/cache-manager @fluojs/redis ioredis
+```
+
+- Memory-only installs need nothing else; the Redis client is an optional peer
+  resolved only when `store: 'redis'` is selected. Alternatively pass an
+  application-owned compatible client through `redis.client` and install
+  whichever package provides it.
+- Runtime: Node.js `>=24.0.0 <27`, declared through `engines.node`.
+
+## A small working example
+
+A product catalog with HTTP caching and programmatic caching side by side. The
+first example is complete; later ones are fragments.
+
+```ts title="src/products.feature.ts"
+import { Inject } from '@fluojs/core';
+import { CacheEvict, CacheInterceptor, CacheService, CacheTTL } from '@fluojs/cache-manager';
+import { Body, Controller, FromBody, Get, Post, RequestDto, UseInterceptors } from '@fluojs/http';
+
+class CreateProductDto {
+  @FromBody()
+  name = '';
+}
+
+@Controller('/products')
+export class ProductsController {
+  constructor(private readonly products: ProductsService) {}
+
+  @Get()
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(60) // cache this listing for 60 seconds
+  list() {
+    return this.products.list();
+  }
+
+  @Post()
+  @UseInterceptors(CacheInterceptor)
+  @RequestDto(CreateProductDto)
+  @CacheEvict('/products') // the cached listing is stale after a create
+  create(input: CreateProductDto) {
+    return this.products.create(input.name);
+  }
+}
+
+@Inject(CacheService)
+export class ProductsService {
+  private readonly items: { id: number; name: string }[] = [];
+  private nextId = 1;
+
+  constructor(private readonly cache: CacheService) {}
+
+  list() {
+    // Read-through: the loader runs only on a cache miss.
+    return this.cache.remember('products:all', async () => this.items.slice(), 300);
+  }
+
+  create(name: string) {
+    const product = { id: this.nextId++, name };
+    this.items.push(product);
+    return product;
+  }
+}
+```
+
+```ts title="src/products.module.ts"
+import { Module } from '@fluojs/core';
+import { CacheModule } from '@fluojs/cache-manager';
+
+import { ProductsController, ProductsService } from './products.feature';
+
+@Module({
+  imports: [CacheModule.forRoot({ store: 'memory' })],
+  controllers: [ProductsController],
+  providers: [ProductsService],
+})
+export class ProductsModule {}
+```
+
+Import `ProductsModule` into the root module and start with
+`FluoFactory.create(AppModule, { adapter })` followed by `app.listen()`. The
+first `GET /products` runs the handler and caches the response under the
+default key strategy; the second GET is answered from the cache (the handler
+does not run); `POST /products` evicts `/products` after the write, so the
+next GET re-runs the handler. When the application closes, `CacheService`'s
+lifecycle hook stops new operations, drains in-flight work, and tears the
+store down once.
+
+## How the mechanics work
+
+### Registration and defaults
+
+`CacheModule.forRoot(options)` returns a fresh module definition exporting
+`CacheService` and `CacheInterceptor`. The defaults:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `store` | `'memory'` | `'memory'`, `'redis'`, or a custom `CacheStore` object. |
+| `ttl` | `300` (memory), `0` (redis/custom) | Module TTL in **seconds**. `0` means no expiry; negative or non-finite values make writes a no-op. |
+| `keyPrefix` | `'fluo:cache:'` | Redis namespace used for reset ownership. |
+| `httpKeyStrategy` | `'route+query'` | Cache-key derivation for GET handlers; see below. |
+| `global` | `false` | Export the cache providers globally. |
+| `ttlJitter` | disabled | Opt-in TTL spreading; see below. |
+| `observer` | - | Opt-in operation observer; see below. |
+
+`CacheModule.forRootAsync(...)` resolves options through DI (`inject` +
+`useFactory`) and normalizes the result with the same defaults. Module
+visibility is fixed before the factory runs, so `global` belongs on the
+registration call; a `global` returned by the factory is ignored. A rejected
+factory fails bootstrap rather than registering a half-configured cache.
+Factory dependencies must be visible to the generated async module - provide
+them globally (see
+[Dependency injection](/docs/fundamentals/dependency-injection)).
+
+### HTTP caching rules
+
+`CacheInterceptor` caches only what can safely be replayed:
+
+- **Method.** GET reads the cache and stores the result; non-GET handlers skip
+  caching entirely.
+- **Outcome.** Only successful, uncommitted responses with a replayable value
+  are stored: `undefined`, SSE streams, already-committed responses, and
+  non-2xx statuses (including redirects) are never cached.
+- **Keys.** The default `'route+query'` strategy builds the key from the
+  concrete request path plus a canonical query string: `/users/1` and
+  `/users/2` are always different keys (the concrete path, not the route
+  template), and `/products?tag=a&tag=b` shares one entry with
+  `/products?tag=b&tag=a` (parameters and repeated values are sorted). Use
+  `'route'` only when query values intentionally do not affect the response.
+- **Principal scoping.** Authenticated requests append a
+  `|principal:issuer:subject` scope so one user's cached response never serves
+  another; `principalScopeResolver` customizes that suffix.
+- **Per-route overrides.** `@CacheTTL(seconds)` overrides the module TTL
+  (`0` = no expiry). `@CacheKey(literalOrFactory)` replaces the derived key;
+  `@CacheKey('')` is a valid explicit key - only absent metadata selects the
+  strategy. `@CacheEvict(keys)` runs after a successful non-GET handler and
+  deduplicates its targets.
+- **Fail-soft.** Store failures are swallowed on the HTTP path: a broken cache
+  cannot fail an otherwise successful handler. Use the observer (below) to
+  alert on degraded caches.
+
+### The CacheService API
+
+| Method | Contract |
+| --- | --- |
+| `get<T>(key)` | The cached value, or `undefined` when missing/expired. |
+| `set(key, value, ttlSeconds?)` | Per-call TTL overrides the module default. Invalid TTLs skip the write; `0` persists. |
+| `remember(key, loader, ttlSeconds?)` | Read-through: the loader runs only on a miss. Concurrent misses for the same key are coalesced into one load. |
+| `del(key)` | Deletes the entry and cancels in-flight loaders/updates for it. |
+| `reset()` | Clears every entry **owned by the store**, serializes reads/writes across the boundary, and invalidates in-flight `remember` loaders so stale entries cannot repopulate. |
+| `close()` | Stops new operations, waits for started work, and calls the store's `close()` (or legacy `dispose()`) hook. Shared and idempotent. |
+| `update(key, reducer, options?)` | Atomic read-modify-write through the store's capability; see below. |
+
+`remember` is the workhorse:
+
+```ts title="fragment: read-through loading"
+@Inject(CacheService)
+export class ProfileService {
+  constructor(
+    private readonly cache: CacheService,
+    private readonly http: OriginClient,
+  ) {}
+
+  getProfile(userId: string) {
+    return this.cache.remember(`user:${userId}`, async () => {
+      return this.http.fetchUserProfile(userId); // runs only on a miss
+    }, 300);
+  }
+}
+```
+
+### Atomic updates
+
+`cache.update<T>(key, reducer, { signal?, maxAttempts? })` replaces
+application-owned per-key promise queues around read/modify/write. The reducer
+receives a detached snapshot (or `undefined` for a missing/expired entry) plus
+`{ attempt, signal }`, and returns `{ action: 'set', value, ttlSeconds? }` or
+`{ action: 'delete' }`:
+
+```ts title="fragment: atomic counter"
+@Inject(CacheService)
+export class Counters {
+  constructor(private readonly cache: CacheService) {}
+
+  increment(key: string) {
+    return this.cache.update<number>(key, (value) => ({
+      action: 'set',
+      value: (value ?? 0) + 1,
+    }));
+  }
+}
+```
+
+The rules that make it safe:
+
+- **Pure reducers only.** Competing writes can re-run the reducer with a fresh
+  snapshot; no I/O, messaging, or external side effects inside it. Never nest a
+  same-key update or await `reset()`/`close()` from a reducer - that deadlocks
+  the drain.
+- **Attempts.** `maxAttempts` defaults to `16` (including the first) and must
+  be a positive safe integer.
+- **TTLs.** Omitting `ttlSeconds` on a live entry preserves its absolute expiry
+  (it does not restart a sliding window); creating an entry uses the module
+  default; `0` persists; negative/non-finite values reject with `RangeError`.
+  Update TTLs are never jittered.
+- **Failures.** `CacheUpdateError` carries a `code`: `unsupported` (store lacks
+  the capability - there is no non-atomic fallback), `invalidated`
+  (deletion/reset/expiry), `closed`, `cancelled`, or `conflict` (attempt budget
+  exhausted). Reducer, store, and serialization failures propagate unchanged.
+- **Scope.** Both built-in stores admit updates FIFO per key within one store
+  instance; independent keys run concurrently. Redis's opt-in capability uses
+  server-side transactions across participating clients, not a global FIFO
+  across processes.
+
+### Redis storage
+
+Set `store: 'redis'` and choose one of two client paths:
+
+1. **DI path (recommended).** Register a default or named client with
+   `@fluojs/redis`; the cache resolves it through the container:
+   `redis: { clientName: 'cache' }` targets a named registration; leaving it
+   unset uses the default `REDIS_CLIENT`.
+2. **Direct path.** Pass `redis: { client }` with any object satisfying the
+   exported `RedisCompatibleClient` contract. `@fluojs/redis` is not required
+   on this path, and **you** own that client's startup and shutdown.
+
+```ts title="fragment: redis-backed cache"
+import { CacheModule } from '@fluojs/cache-manager';
+import { RedisModule } from '@fluojs/redis';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ name: 'cache', host: 'localhost', port: 6379 }),
+    CacheModule.forRoot({
+      store: 'redis',
+      ttl: 600,
+      keyPrefix: 'myapp:cache:',
+      redis: { clientName: 'cache' },
+    }),
+  ],
+})
+export class CacheStackModule {}
+```
+
+Semantics worth knowing before you rely on them:
+
+- **Entries are JSON.** The store persists `JSON.stringify`-ed entries, so
+  plain objects, arrays, strings, numbers, booleans, and `null` round-trip;
+  `Date` comes back as an ISO string, `undefined`/functions/symbols do not
+  survive, and `bigint` or cyclic values must be normalized first.
+- **Expiry is two-layered.** Redis expiry is rounded up to whole seconds
+  (`EX`), while the entry also records a millisecond-precision `expiresAt`
+  that fluo treats as authoritative; unusually large TTLs are capped at the
+  largest safe timestamp. `ttl: 0` writes without Redis expiry.
+- **Reset is prefix-scoped.** `reset()` deletes only keys under the configured
+  `keyPrefix` (glob metacharacters in the prefix are escaped before `SCAN`),
+  so application data outside the prefix is preserved. Avoid sharing a cache
+  prefix with non-cache data.
+- **Atomic updates are opt-in.** Enable `redis: { atomicUpdates: true }` for
+  WATCH-based distributed updates. They require Redis 6.2+ (`PXAT`), a
+  non-empty prefix, and a client whose `duplicate()` yields the
+  `RedisAtomicClient` seam; each operation owns an isolated duplicate and
+  disconnects it in `finally`. Namespace participants must all opt in for
+  invalidation-identity guarantees, metadata keys (`\0`-prefixed) are
+  reserved, and Redis Cluster is not claimed. Once `EXEC` is dispatched,
+  cancellation cannot undo the commit.
+
+### TTL jitter
+
+Popular keys written together expire together and stampede the origin. Opt in
+with `ttlJitter: { ratio: 0.1, mode: 'symmetric' }`: every positive `set` /
+`remember` TTL is jittered once before store handoff (`symmetric` spreads
+within `ttl ± ttl*ratio`; `shorten` and `lengthen` are one-sided). `ratio` must
+be in `(0, 1]`; `ttl: 0` stays no-expiry; the optional `random` function is a
+deterministic test seam. Jitter spreads expiry only - it is not locking,
+refresh-ahead, or stampede coordination.
+
+### Observing operations
+
+Pass an `observer` to measure hit rate, latency, and errors:
+
+```ts title="fragment: cache observer"
+import { type CacheObservation, CacheModule } from '@fluojs/cache-manager';
+
+CacheModule.forRoot({
+  store: 'memory',
+  observer: {
+    onCacheOperation(observation: CacheObservation) {
+      cacheOperationCounter.inc({ operation: observation.operation, outcome: observation.outcome });
+      cacheOperationLatency.observe(observation.durationMs);
+    },
+  },
+});
+```
+
+The contract is intentionally narrow: observations carry only `operation`
+(`get`, `set`, `del`, `remember`, `reset`, `close`), an outcome coupled to the
+operation kind (reads: `hit`/`miss`/`error`; writes and lifecycle:
+`success`/`error`), and `durationMs`. Keys, values, loader results, and error
+objects are never exposed. Observer failures are swallowed and never affect
+callers. `update` emits no observations; a `remember` that joined an in-flight
+load reports `miss`.
+
+### Custom stores
+
+Any object implementing `CacheStore` - `get`, `set`, `del`, `reset`, plus
+optional `close()`/`dispose()` and the optional `atomicUpdate` capability -
+can be passed as `store`. This is the right seam for in-process LRU variants,
+remote caches other than Redis, and test doubles that record operations.
+Resource-owning stores should implement `close()`; legacy `dispose()` remains
+supported. Status snapshots treat custom stores as framework-owned by default;
+set `storeOwnershipMode: 'external'` when your application retains teardown
+responsibility.
+
+## Defaults, ownership, and shutdown
+
+- **Memory store.** Bounded by default: 300-second TTL when `ttl` is omitted
+  and at most 1,000 live entries before the oldest are evicted. Values are
+  cloned on the way in and out, so callers cannot corrupt the cache by
+  mutating a returned object.
+- **Lifecycle.** `CacheService` implements the application shutdown hook: it
+  stops new store reads/writes, waits for started operations and queued
+  updates (including reducers that must settle), then forwards teardown to the
+  store's `close()`/`dispose()`. Concurrent and repeated closes share the
+  first outcome.
+- **Redis client ownership.** The cache never closes the Redis client. A
+  client resolved through `@fluojs/redis` is closed by that module; a client
+  supplied via `redis.client` is closed by the application.
+- **Observability.** `createCacheManagerPlatformStatusSnapshot(...)` reports
+  availability and store kind, resolving ownership from lifecycle
+  responsibility (memory: framework; Redis: external; custom: framework by
+  default with an explicit override).
+
+## Failures and common mistakes
+
+- **Treating the cache as durable.** Writes can be skipped (invalid TTL),
+  reads can miss, and the HTTP path deliberately fails soft. Never put the
+  only copy of important state here.
+- **Second-granularity confusion.** TTLs are seconds everywhere in this
+  package. NestJS `@nestjs/cache-manager` generations that used milliseconds
+  need conversion when migrating; `ttl: 0` means "no expiry", not "do not
+  cache".
+- **Query-insensitive keys by accident.** `httpKeyStrategy: 'route'` ignores
+  the query string entirely - only choose it when query values provably do not
+  affect the response. The default `'route+query'` canonicalizes, so parameter
+  order does not fragment the cache.
+- **Impure or blocking reducers.** `update` re-runs reducers under contention;
+  side effects double-apply, and awaiting `reset()`/`close()` inside a reducer
+  deadlocks shutdown.
+- **Subclassing `CacheInterceptor`.** Cache-key customization belongs to
+  `httpKeyStrategy`, `@CacheKey(...)`, and `principalScopeResolver` - those
+  are the supported extension points.
+- **Cross-store atomicity assumptions.** Redis atomic updates cover one
+  namespace on one primary; they are not database transactions, provide no
+  DB+Redis atomicity, and make no failover durability promises.
+
+## Testing
+
+The memory store makes service-level behavior deterministic in-process: boot a
+module with `CacheModule.forRoot({ store: 'memory' })`, resolve
+`CacheService`, and assert `remember`/`update`/`reset`/`close` semantics
+directly. For HTTP behavior, boot the real app with
+`Test.createApp({ rootModule: AppModule })` and assert the second GET is
+served from cache (the loader ran once) and that `@CacheEvict` clears the
+entry after a write. For Redis-specific claims - prefix-scoped reset, JSON
+entries, WATCH-based updates - use a real Redis server; the package's native
+suite (`packages/cache-manager/test/redis-update.native.test.ts`, run with
+`pnpm --filter @fluojs/cache-manager test:redis`) owns that verification. A
+mock store can prove wiring, never server behavior. Close apps in `finally`
+so the shutdown drain runs in every outcome.
+
+## Related reading
+
+- [Dependency injection](/docs/fundamentals/dependency-injection) - tokens and
+  visibility used throughout this page.
+- [Redis](/docs/packages/redis) - the lifecycle-managed client behind the
+  Redis store path.
+- [Prisma](/docs/packages/prisma), [Drizzle](/docs/packages/drizzle), and
+  [Mongoose](/docs/packages/mongoose) - `afterCommit` cache invalidation after
+  database transactions.
+- [`@fluojs/cache-manager` README](https://github.com/fluojs/fluo/blob/main/packages/cache-manager/README.md) -
+  the owning API reference, including the full atomic-update contract.
+- [Caching architecture](https://github.com/fluojs/fluo/blob/main/docs/architecture/caching.md) -
+  shared caching semantics.

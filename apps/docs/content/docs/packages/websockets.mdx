@@ -1,0 +1,280 @@
+---
+title: WebSockets
+description: Decorator-based WebSocket gateways on raw websocket connections, with explicit Node, Bun, Deno, and Cloudflare Workers runtime bindings.
+package: "@fluojs/websockets"
+---
+
+`@fluojs/websockets` adds raw WebSocket gateways to a fluo application. A gateway is a class: `@WebSocketGateway()` marks it, `@OnMessage()`, `@OnConnect()`, and `@OnDisconnect()` mark its handler methods, and the runtime does the rest - accepting upgrades, matching messages, tracking connections, and cleaning up on shutdown. The package splits deliberately in two:
+
+- The root `@fluojs/websockets` entrypoint is runtime-neutral: gateway decorators, metadata helpers, and shared contracts (`WebSocketRoomService`, `WebSocketModuleOptions`, upgrade types).
+- Runtime subpaths - `@fluojs/websockets/node`, `@fluojs/websockets/bun`, `@fluojs/websockets/deno`, `@fluojs/websockets/cloudflare-workers` - each export their registration module (`NodeWebSocketModule`, ...) and lifecycle-service token, plus runtime-specific handler and guard projections.
+
+Use this package when clients should speak plain WebSocket framing and you want gateway code that looks the same on every runtime. Reach for `@fluojs/socket.io` instead when you want Socket.IO's reconnection, ACK envelopes, and namespace ecosystem on top; reach for `@fluojs/microservices` when the participants are services rather than browsers. There is no client-side story here - this package is the server.
+
+Prerequisites: the DI model ([Dependency injection](/docs/fundamentals/dependency-injection)) and an HTTP application hosted by a platform adapter. Node.js hosts are supported on `>=24.0.0 <27` under the package-owned support contract; Bun, Deno, and Cloudflare Workers hosts use their fetch-style subpaths.
+
+## Installation
+
+```bash
+npm install @fluojs/websockets
+```
+
+The Node subpath uses the package-owned `ws` dependency (`^8.21.0`) - you do not install `ws` yourself unless your own code imports it. The Bun, Deno, and Cloudflare Workers subpaths use their runtime-owned WebSocket implementations and load no Node networking code.
+
+## A small working example
+
+A chat gateway on the `/chat` path with a room-backed presence service. The first example is complete; later fragments assume it.
+
+```ts title="src/chat.gateway.ts"
+import { Inject } from '@fluojs/core';
+import {
+  OnConnect,
+  OnDisconnect,
+  OnMessage,
+  WebSocketGateway,
+} from '@fluojs/websockets';
+
+export class ChatAudit {
+  readonly joins: string[] = [];
+}
+
+@Inject(ChatAudit)
+@WebSocketGateway({ path: '/chat' })
+export class ChatGateway {
+  constructor(private readonly audit: ChatAudit) {}
+
+  @OnConnect()
+  handleConnect(): void {}
+
+  @OnMessage('join')
+  handleJoin(
+    _payload: unknown,
+    socket: { send(data: string): void },
+    _request: unknown,
+    socketId: string,
+  ): void {
+    this.audit.joins.push(socketId);
+    socket.send(JSON.stringify({ event: 'joined', data: { socketId } }));
+  }
+
+  @OnMessage('ping')
+  handlePing(payload: unknown, socket: { send(data: string): void }): void {
+    socket.send(JSON.stringify({ event: 'pong', data: payload }));
+  }
+
+  @OnDisconnect()
+  handleDisconnect(): void {}
+}
+```
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { NodeWebSocketModule } from '@fluojs/websockets/node';
+
+import { ChatAudit, ChatGateway } from './chat.gateway';
+
+@Module({
+  imports: [NodeWebSocketModule.forRoot()],
+  providers: [ChatAudit, ChatGateway],
+})
+export class AppModule {}
+```
+
+```ts title="src/main.ts"
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
+});
+await app.listen();
+```
+
+A client speaking the wire protocol sends `{"event":"ping","data":{"seq":1}}` and receives `{"event":"pong","data":{"seq":1}}`; sending `{"event":"join"}` receives `{"event":"joined","data":{"socketId":"..."}}`. Everything in this example is exercised end-to-end by `tooling/docs/fixtures/package-guides/transports/websockets-guide.test.ts`.
+
+## How the mechanics work
+
+### Registration and discovery
+
+Gateway classes register as ordinary providers. During application bootstrap, the runtime lifecycle service compiles the module graph, scans every module's providers and controllers for gateway metadata, and binds each discovered gateway to its normalized `path`. Three rules follow from that design:
+
+- **Gateways must be singletons.** A `@Scope('request')` or transient gateway is logged as a warning and skipped - it is never instantiated, and the application still boots.
+- **One path, many gateways** is supported: each gateway on the same path gets the connection event, and message handlers run in discovery order per socket.
+- **Decoration alone does nothing.** A decorated class that no module registers is invisible to the runtime.
+
+The decorator writes TC39 standard metadata (`Symbol.metadata`). There is no `emitDecoratorMetadata`, no parameter decorators, and nothing to enable in `tsconfig.json` - the same contract as [Dependency injection](/docs/fundamentals/dependency-injection). `@OnMessage()` and friends reject private and static methods at decoration time.
+
+### The message envelope
+
+Every inbound frame is normalized into an event envelope before dispatch:
+
+- Text frames are parsed as JSON when possible and otherwise delivered as strings.
+- Binary frames are decoded as UTF-8 first, then run through the same JSON-or-string step, whether the runtime surfaces them as Node `Buffer`, Bun/Deno views, or Workers `Blob`.
+- `@OnMessage('ping')` matches the envelope's `event` field; `@OnMessage()` without an event is a wildcard that receives every message.
+- Handlers receive `(payload, socket, request, socketId)`. The `socketId` is the stable connection identity the room service accepts, so a handler never needs adapter-specific socket inspection.
+
+Replies are explicit by default. Handler return values are awaited for ordering and error containment, then ignored; send through the `socket` argument. To opt into return-based replies, configure `replies: { mode: 'event-envelope' }`:
+
+```ts title="fragment: event-envelope replies"
+import { NodeWebSocketModule } from '@fluojs/websockets/node';
+
+// AppModule imports NodeWebSocketModule.forRoot({ replies: { mode: 'event-envelope' } })
+
+@OnMessage('ping')
+handlePing(payload: unknown, _socket: unknown, _request: unknown, socketId: string) {
+  return { event: 'pong', data: { payload, socketId } };
+}
+```
+
+A valid `{ event: string, data?: unknown }` return is serialized and sent after the handler settles; invalid returns stay ignored. Room broadcasts use the same `{ event, data }` frame shape, so client code has one parser for both.
+
+### Upgrades, guards, and limits
+
+`NodeWebSocketModule.forRoot()` configures the whole connection surface:
+
+```ts title="fragment: guarded and bounded options"
+import { UnauthorizedException } from '@fluojs/http';
+import { NodeWebSocketModule } from '@fluojs/websockets/node';
+
+NodeWebSocketModule.forRoot({
+  limits: {
+    maxConnections: 500,
+    maxPayloadBytes: 65_536,
+  },
+  upgrade: {
+    guard(request) {
+      if (request.headers.authorization !== 'Bearer demo-token') {
+        throw new UnauthorizedException('Authentication required.');
+      }
+    },
+  },
+});
+```
+
+A guard may allow with `true`, `undefined`, or no return; reject with `false` (which becomes a 403), or with `{ status, body?, headers? }`; or throw an `HttpException`-like error, which converts to the same pre-handshake response. Guards run before the WebSocket handshake completes, so a rejected client sees an ordinary HTTP response. When an async guard is still pending, the connection counts against `maxConnections` (a second upgrade during the first guard's wait gets 429), and once shutdown has started, in-flight upgrades get 503.
+
+When omitted, the bounded defaults are:
+
+| Option | Default | Behavior at the limit |
+| --- | --- | --- |
+| `limits.maxConnections` | `1000` | further upgrades rejected with 429 |
+| `limits.maxPayloadBytes` | `1 MiB` | oversized accepted socket closed with 1009 |
+| `buffer.maxPendingMessagesPerSocket` | `256` | `overflowPolicy` (default `drop-oldest`) applies to messages that arrive before connection handlers are ready and to the ready-state dispatch queue; `'close'` terminates the socket |
+| `backpressure.maxBufferedAmountBytes` | `1 MiB` | `policy` (default `drop`) skips the send; `'close'` terminates the socket |
+| `heartbeat.intervalMs` / `timeoutMs` | `30000` / `30000` | a socket that misses its pong is terminated; `enabled: false` disables |
+| `shutdown.timeoutMs` | `5000` | bounds the wait for in-flight connect/disconnect handlers during close; timeouts are logged, not thrown |
+
+### Rooms and broadcast
+
+`WebSocketRoomService` is the shared room contract: `joinRoom(socketId, room)`, `leaveRoom(socketId, room)`, `broadcastToRoom(room, event, data)`, and `getRooms(socketId)`. The runtime lifecycle service implements it. `joinRoom` only accepts `socketId`s that identify a currently open, runtime-registered socket, and membership dies with the connection, so rooms never leak closed sockets.
+
+One boundary matters when you compose rooms with your own services. The runtime module registers the lifecycle service **for its own dispatch work and does not export the token**, so an application provider that declares `@Inject(NodeWebSocketGatewayLifecycleService)` fails module-graph validation with `ModuleVisibilityError` at bootstrap. Resolve the token from the application container instead and hand it to your service, typed against the shared contract:
+
+```ts title="fragment: room-backed application service"
+import { NodeWebSocketGatewayLifecycleService } from '@fluojs/websockets/node';
+import { type WebSocketRoomService } from '@fluojs/websockets';
+
+export class PresenceService {
+  constructor(private readonly rooms: WebSocketRoomService) {}
+
+  broadcastToLobby(event: string, data: unknown): void {
+    this.rooms.broadcastToRoom('chat:lobby', event, data);
+  }
+}
+
+// at composition time:
+const presence = new PresenceService(await app.container.resolve(NodeWebSocketGatewayLifecycleService));
+```
+
+This is stricter than `packages/websockets/README.md`, which shows `@Inject(NodeWebSocketGatewayLifecycleService)` directly on an application class; as implemented, that pattern does not pass graph validation. Prefer the container-resolution shape above (or track the discrepancy in the package README's room section) rather than exporting the token through wrapper modules, which would freeze the runtime's current visibility decision into your own API.
+
+### Dedicated listeners with `serverBacked`
+
+Node server-backed adapters (raw Node, Express, Fastify) can host a gateway on its own port instead of the application listener:
+
+```ts title="fragment: dedicated listener"
+@WebSocketGateway({ path: '/telemetry', serverBacked: { port: 3101 } })
+class TelemetryGateway {}
+```
+
+`port: 0` lets the OS allocate the listener atomically - use it in tests and dynamic hosts. The transport owns that listener, closes it during application shutdown, and enables heartbeat timers for it. Fetch-style runtimes (Bun, Deno, Workers) reject `serverBacked` because their WebSocket lifecycle is owned by `Bun.serve`/`Deno.serve`/the Workers runtime; Socket.IO gateways reject it on every runtime because they always share the application listener.
+
+## Runtime subpaths
+
+The root barrel owns only runtime-neutral authoring; runtime modules and tokens never leak into it, and decorators never re-export from subpaths:
+
+| Runtime | Subpath | Module | Lifecycle token |
+| --- | --- | --- | --- |
+| Node.js | `@fluojs/websockets/node` | `NodeWebSocketModule` | `NodeWebSocketGatewayLifecycleService` |
+| Bun | `@fluojs/websockets/bun` | `BunWebSocketModule` | `BunWebSocketGatewayLifecycleService` |
+| Deno | `@fluojs/websockets/deno` | `DenoWebSocketModule` | `DenoWebSocketGatewayLifecycleService` |
+| Cloudflare Workers | `@fluojs/websockets/cloudflare-workers` | `CloudflareWorkersWebSocketModule` | `CloudflareWorkersWebSocketGatewayLifecycleService` |
+
+Gateway code moves between runtimes unchanged - decorators and handler signatures come from the root, and only the `forRoot` import changes. Guard and handler request types stay runtime-specific: the Node guard receives `IncomingMessage`, fetch-style guards receive the web-standard `Request`. Native socket and host types remain owned by the platform packages (`@fluojs/platform-bun`, `@fluojs/platform-deno`, `@fluojs/platform-cloudflare-workers`), not re-exported here. The removed root-level Node registration and lifecycle alias have no compatibility export; import them from `@fluojs/websockets/node`.
+
+## Composition with neighboring packages
+
+- **`@fluojs/http`** owns the application listener the Node runtime shares. Upgrade requests for registered gateway paths are intercepted before HTTP routing; an upgrade for an unregistered path is delegated to later `upgrade` listeners, and 404s when nobody claims it. Malformed upgrade URLs answer 400 without crashing the server. Guards can reuse the same `UnauthorizedException` family the HTTP layer throws.
+- **`@fluojs/core` and `@fluojs/di`** are the composition substrate: gateways are providers, room services are resolved tokens, and the same `@Inject` rules apply as everywhere else in fluo.
+- **`@fluojs/socket.io`** is the alternative transport for the same gateway authoring API - see [Socket.IO](/docs/packages/socket-io) for how its namespaces, ACKs, and guards differ from raw framing.
+- **Platform packages** own the listener lifecycle: [platform-nodejs](/docs/packages/platform-nodejs) for Node hosts, plus the Bun/Deno/Workers adapters for fetch-style runtimes.
+
+## Resource ownership, startup, and shutdown
+
+The lifecycle service owns its tracking state: registered sockets, room indexes, heartbeat timers, and any `serverBacked` listeners it created. Your code owns nothing inside it - send through `socket`, broadcast through the room contract, and let the runtime release everything.
+
+Shutdown runs through the application lifecycle (`onApplicationShutdown` then `onModuleDestroy` semantics, sharing one terminal close result). It establishes a terminal admission gate, rechecks it immediately before handing a matching upgrade to `ws`, closes tracked clients, and waits for already-accepted connect/disconnect handlers to settle within `shutdown.timeoutMs` before clearing registries. Two properties are worth internalizing:
+
+- **Handler work drains before state clears.** An `@OnDisconnect()` that is still awaiting when `app.close()` starts holds shutdown open (bounded by the timeout), so last-write bookkeeping in disconnect handlers is safe.
+- **Timeouts degrade to logs.** A socket whose disconnect never settles produces an error log after `shutdown.timeoutMs`; shutdown still finishes. Errors on individual sockets are logged through the application logger and never crash the process.
+
+## Failures, limits, and common mistakes
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `ModuleVisibilityError` naming `NodeWebSocketGatewayLifecycleService` at bootstrap | The lifecycle token is not exported by the runtime module (see [Rooms](#rooms-and-broadcast)) | Resolve it from `app.container` instead of constructor injection |
+| Gateway handlers never run | The class is decorated but not registered as a provider, or it is request/transient scoped | Add it to `providers`; keep gateways singleton |
+| Client gets 404 on upgrade | No gateway owns that path and no later listener claimed it | Register the gateway with the right `path` |
+| Client gets 429 on upgrade | `maxConnections` reached, including reservations held by pending async guards | Raise the limit or close stale connections |
+| Socket closes with 1009 | Inbound frame exceeded `maxPayloadBytes` | Raise the limit or chunk the payload |
+| `@OnMessage() cannot be used on private methods.` | Decorator used on a private or static method | Make the handler a public instance method |
+| Handler silently never fires for one event | Two gateways share the path and an earlier wildcard `@OnMessage()` handles it first | Narrow the wildcard or split paths |
+| `@WebSocketGateway({ serverBacked })` rejected | Fetch-style runtimes and Socket.IO do not support dedicated listeners | Share the application listener or move that gateway to `@fluojs/websockets/node` |
+
+Two hard limits to keep in mind: there are no parameter decorators or property injection - constructor tokens and handler arguments are the whole surface - and there is no cluster/redis broadcast layer; rooms live inside one process, and horizontal scaling is your architecture's job.
+
+## Testing
+
+Gateway tests need a real upgrade surface, so boot the real adapter on an ephemeral port and drive it with a real client. Node 24 ships a browser-compatible `WebSocket` global, which is enough for message flows; use raw sockets for guard outcomes:
+
+```ts title="fragment: gateway test skeleton"
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+
+const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
+const app = await FluoFactory.create(AppModule, { adapter, cors: false });
+
+try {
+  await app.listen();
+  const port = (adapter.getServer()!.address() as { port: number }).port;
+
+  const socket = new WebSocket(`ws://127.0.0.1:${String(port)}/chat`);
+  // subscribe to the expected frame BEFORE triggering, then bound the wait
+  socket.send(JSON.stringify({ event: 'ping', data: 1 }));
+} finally {
+  await app.close();
+}
+```
+
+Rules that keep these tests honest: never sleep - subscribe first and await the exact frame with a timeout; close sockets and the app in `finally`; assert on parsed envelopes, not raw strings. For pure handler logic, `@fluojs/testing` overrides compose normally because gateways are just providers. The workstream fixtures at `tooling/docs/fixtures/package-guides/transports/websockets-guide.test.ts` show reply flows, room cleanup after shutdown, and 401/101 guard probes.
+
+## Related reading
+
+- [Socket.IO](/docs/packages/socket-io) - namespaces, ACKs, and guards over the same gateway authoring API.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - tokens, visibility, and scopes this package composes with.
+- [HTTP](/docs/packages/http) - the shared listener and the exception family guards reuse.
+- [platform-nodejs](/docs/packages/platform-nodejs), [platform-bun](/docs/packages/platform-bun), [platform-deno](/docs/packages/platform-deno), [platform-cloudflare-workers](/docs/packages/platform-cloudflare-workers) - the listener owners.
+- [`@fluojs/websockets` package README](https://github.com/fluojs/fluo/blob/main/packages/websockets/README.md) - the owning API contract, including the Bun/Deno/Workers projection tables.
+- [Realtime & messaging packages](/docs/packages/realtime-messaging) - where raw sockets sit among event buses, CQRS, and microservice transports.

@@ -1,0 +1,220 @@
+---
+title: The fluo CLI
+description: Scaffold, generate, migrate, inspect, and run fluo applications with @fluojs/cli - starters, programmatic APIs, lifecycle commands, and deterministic exit codes.
+package: "@fluojs/cli"
+---
+
+`@fluojs/cli` is the canonical entry point for fluo application work: it scaffolds new projects (`fluo new`), generates feature files with automatic module wiring (`fluo generate`), aligns existing codebases with fluo's decorator model (`fluo migrate`), exports runtime inspection data (`fluo inspect`), generates React page types (`fluo typegen`), and runs the application lifecycle (`fluo dev`, `fluo build`, `fluo start`). Everything the CLI writes is ordinary project code - there is no daemon, no hidden state, and no config file it owns.
+
+The CLI runs on Node.js `>=24.0.0 <27` (its published `engines.node` contract). Generated Bun, Deno, and Cloudflare Workers starters may target those native runtimes, but the CLI process itself is always Node.js.
+
+## Installation
+
+```bash
+pnpm add -g @fluojs/cli
+# or run without installing:
+pnpm dlx @fluojs/cli new my-app
+```
+
+Check the version without triggering the interactive update check with `fluo version` (also `--version` / `-v`).
+
+In an interactive TTY the CLI checks the npm `latest` dist-tag through a local cache and may offer to update itself; accepting runs the package-manager global install and restarts with the same arguments. `fluo new`/`fluo create` attempt a fresh check before scaffolding. The check is skipped in CI, non-TTY output, npm-script contexts, registry failures, and explicit opt-outs - `--no-update-check` for one invocation, or `FLUO_NO_UPDATE_CHECK=1` when automation must never prompt. Help and version paths never run it.
+
+## When to use it, and when not
+
+Use the CLI to:
+
+- bootstrap a verifiable project structure instead of hand-wiring a starter
+- create modules, controllers, services, DTOs, and tests with consistent naming and automatic wiring
+- run NestJS-to-fluo codemods with a preview-first, JSON-reportable workflow
+- export inspection snapshots and delegate graph rendering to [`@fluojs/studio`](/docs/packages/studio)
+- run the generated `dev`/`build`/`start` lifecycle with the fluo-owned restart boundary
+
+Do not use it to:
+
+- discover third-party generators - `fluo generate` is intentionally limited to the built-in collection and does not scan config files or load external packages
+- replace a package manager or deploy tool - it invokes your package manager and runtime tools; it does not own registries or hosts
+- replace tests - generated slice/e2e templates call [`@fluojs/testing`](/docs/packages/testing); the CLI itself does not run your test suite
+
+## Scaffolding with `fluo new`
+
+```bash
+fluo new my-app --package-manager pnpm
+cd my-app
+pnpm dev
+```
+
+Every successful pinned-manager scaffold ends with the same completion block (`Done.` plus next steps). `fluo create` is a compatibility alias. Omit `--package-manager` and the CLI selects one from invocation/workspace signals, falling back to pnpm.
+
+The starter matrix covers the application shapes:
+
+```bash
+# Node.js HTTP applications (Fastify, Express, or raw Node adapter)
+fluo new my-app --shape application --transport http --runtime node --platform fastify
+fluo new my-express-app --shape application --transport http --runtime node --platform express
+fluo new my-node-app --shape application --transport http --runtime node --platform nodejs
+
+# Runtime-native applications
+fluo new my-bun-app --shape application --transport http --runtime bun --platform bun
+fluo new my-deno-app --shape application --transport http --runtime deno --platform deno
+fluo new my-worker-app --shape application --transport http --runtime cloudflare-workers --platform cloudflare-workers
+
+# Microservices (tcp is the default transport)
+fluo new my-microservice --shape microservice --transport tcp --runtime node --platform none
+fluo new my-redis-streams-service --shape microservice --transport redis-streams --runtime node --platform none
+
+# One package: Fastify HTTP app plus attached TCP microservice
+fluo new my-mixed-app --shape mixed --transport tcp --runtime node --platform fastify
+
+# The official React SSR + Vite application (fixed Node.js + Fastify HTTP)
+fluo new my-react-app --starter react-vite-ssr
+```
+
+Supported microservice `--transport` values are exactly `tcp`, `redis-streams`, `nats`, `kafka`, `rabbitmq`, `mqtt`, and `grpc`. NATS/Kafka/RabbitMQ starters wire the caller-owned client libraries (`nats`, `kafkajs`, `amqplib`) directly in `src/app.ts` - the base fluo packages do not hide those dependencies.
+
+Preview a fully resolved scaffold without side effects, write to a different directory than the project name, or overwrite conflicting files deliberately:
+
+```bash
+fluo new my-app --shape application --runtime node --platform fastify --dry-run
+fluo new my-app --target-directory ./apps/api
+fluo new my-app --target-directory ./apps/api --force
+```
+
+`--dry-run` resolves the same starter, recipe, dependency set, and install/git choices as a real run, prints the plan, and exits without creating files, installing dependencies, or initializing git. Non-empty targets refuse conflicting files unless `--force`.
+
+Generated Node.js projects start with `FluoFactory.create(AppModule, { adapter })` followed by `app.listen()`, with explicit `createConsoleApplicationLogger()` and `createNodeShutdownSignalRegistration()` imports from `@fluojs/platform-nodejs`. See [`@fluojs/runtime`](/docs/packages/runtime) for the startup and shutdown ownership model.
+
+## The application lifecycle
+
+For generated Node.js projects, `fluo dev`, `fluo build`, and `fluo start` run the generated lifecycle directly, prepending project-local `node_modules/.bin` and defaulting `NODE_ENV` to `development` for `dev` and `production` for `build`/`start` when unset. Preview them with `--dry-run` (`fluo dev --dry-run` also reports the watch boundary).
+
+By default `fluo dev` runs through a fluo-owned restart boundary: it watches source and config inputs, debounces atomic-save bursts, hashes content so an unchanged Ctrl+S cannot restart, and reloads `.env` per child process. Restarts send `SIGTERM` first, then force-kill after a bounded grace period; a terminal child exit closes watchers, unregisters signal handlers, and exits with the child's code. This is full-process restart, not module-level HMR. `--raw-watch` (or `FLUO_DEV_RAW_WATCH=1`) falls back to the runtime-native Node watcher for debugging. Bun, Deno, and Workers projects default to their native watch loops (`bun --watch`, `deno run --watch ...`, `wrangler dev`); use `--runner fluo` (or `FLUO_DEV_RUNNER=fluo`) to restore the CLI-owned boundary, and `FLUO_DEV_WATCH_IGNORE` to add ignored paths.
+
+Output is tuned per process boundary, not per log line: `fluo dev` shows app output only, `--reporter pretty` adds fluo-branded lifecycle status, `--reporter stream`/`--verbose` expose raw tooling output, and `--reporter silent` suppresses wrapper status for `fluo build`. Application logging is configured separately through `ApplicationLogger` (for example `createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' })`).
+
+### `fluo dev --studio`
+
+```bash
+fluo dev --studio
+fluo dev --studio --studio-port 51234
+```
+
+Starts a token-protected local Studio sidecar alongside the app, injects explicit Studio config into the Node app child before it imports `@fluojs/runtime`, and prints a URL such as `http://127.0.0.1:51234/?token=...`. Live mode requires the fluo-owned Node restart runner, so it rejects `--raw-watch` and native runners. Bun, Deno, and Workers projects are rejected for the live MVP - export static artifacts instead (`fluo inspect ... --json --output <path>` / `--report --output <path>`). See [`@fluojs/studio`](/docs/packages/studio) for the security model and what live mode shows.
+
+## Generating features
+
+```bash
+fluo generate module users
+fluo generate module users --with-slice-test
+fluo generate resource users
+fluo generate service users --dry-run
+fluo generate request-dto users CreateUser
+fluo generate e2e users
+```
+
+Kinds and aliases: `controller`/`co`, `e2e`, `guard`/`gu`, `interceptor`/`in`, `middleware`/`mi`, `module`/`mo`, `repo`/`repository`, `request-dto`/`req`, `resource`/`resrc`, `response-dto`/`res`, `service`/`s`.
+
+Two wiring behaviors matter:
+
+- **Auto-registered** (`controller`, `service`, `repo`, `guard`, `interceptor`, `middleware`): the generator inserts the import and registration entry into the target module file, reusing an existing module file when it already matches.
+- **Files-only** (`e2e`, `module`, `request-dto`, `response-dto`, `resource`): files are written but nothing is activated. `fluo generate resource users` creates a complete slice (module, controller, service, repository, DTOs, tests) that stays inert until you import the generated module yourself - it is not a `nest g resource` equivalent.
+
+`--with-slice-test` adds `*.slice.test.ts` files that compile the authored module with `Test.createTestingModule({ rootModule })`. The former `--with-test` flag is not accepted, and the programmatic `GenerateOptions.withTest` option was removed - migrate callers to `withSliceTest`. `fluo generate e2e users` writes `test/users.e2e.test.ts` importing `AppModule` from the starter root module. Request DTO generation accepts the feature directory separately from the class name (`fluo generate request-dto users CreateUser`), so several input contracts can live in one slice.
+
+`--dry-run` previews target resolution, skipped/overwritten file decisions, the module auto-registration plan, and next-step hints without writing anything; `--force` flips `SKIP` plan entries to `OVERWRITE` where content would change.
+
+## Migrating from NestJS
+
+```bash
+fluo migrate ./src            # preview (the default), --dry-run is the explicit form
+fluo migrate ./src --json     # machine-readable report
+fluo migrate ./src --apply    # the only switch that writes files
+fluo migrate ./src --apply --only imports,injectable,scope,testing,tsconfig
+fluo migrate ./src --apply --platform express
+```
+
+Canonical `--only`/`--skip` tokens are `imports`, `injectable`, `scope`, `bootstrap`, `testing`, and `tsconfig`. The codemod rewrites `@nestjs/common` imports to [`@fluojs/core`](/docs/packages/core)/[`@fluojs/http`](/docs/packages/http), removes `@Injectable()`, maps scopes to `@Scope()`, migrates constructor parameter injection, updates test templates toward `@fluojs/testing`, and rewrites `tsconfig.json` away from `experimentalDecorators`.
+
+Bootstrap rewrites never infer a platform: without `--platform express` and exactly one numeric-literal single-argument `app.listen(port)`, the codemod leaves bootstrap unchanged and emits a required adapter-selection warning. Host callbacks, string/environment-derived ports, and multiple `listen` calls stay untouched on purpose.
+
+Review every warning before `--apply` - warnings are manual follow-up items, not silent rewrites. The JSON report (`schemaVersion: 1`) includes mode, enabled transforms, `scannedFiles`, `changedFiles`, and per-file `appliedTransforms` with warnings; JSON mode writes only the report to stdout and never emits partial output on failure.
+
+## Inspecting runtime structure
+
+```bash
+# Default recipe for newly stored artifacts
+fluo inspect ./src/app.ts --report --output artifacts/inspect-report.json
+
+# Snapshot JSON for @fluojs/studio, stdout or explicit artifact path
+fluo inspect ./src/app.ts --json --output artifacts/inspect-snapshot.json
+
+# Include bootstrap timing next to the snapshot
+fluo inspect ./src/app.ts --timing
+
+# Mermaid graph through the optional Studio renderer
+fluo inspect ./src/app.ts --mermaid
+
+# Inspect a named module export (defaults to AppModule)
+fluo inspect ./src/app.ts --export AdminModule --json
+```
+
+`fluo inspect` bootstraps an adapterless application, so the authoritative HTTP dispatcher descriptors exist without opening a listener, then closes the application. The CLI owns orchestration, serialization, report wrapping, and `--output` writes; the runtime produces the snapshot; [Studio](/docs/packages/studio) owns parsing, filtering, and Mermaid rendering (`--mermaid` requires `@fluojs/studio` in the project and fails fast in non-interactive runs when missing). `--format json` is explicitly equivalent to `--json`; `--timing` cannot combine with Mermaid.
+
+Each `routes[]` entry carries `id`, `kind` (`http`, or `react-page` for React page handlers), `method`, effective `path`, optional `version`, `params`, and the originating `module`/`controller`/`handler`. Artifacts never contain parameter values, request bodies, cookies, headers, or query values, and the projection does not participate in matching or dispatch.
+
+## Related commands
+
+- `fluo typegen` - React page type generation; the mechanics and artifact contract live in the [`@fluojs/react` guide](/docs/packages/react). `--check` exits `0`/`2`/`3`/`4`/`5` for `UNCHANGED`/`MISSING`/`STALE`/`MALFORMED`/`UNSUPPORTED_VERSION`.
+- `fluo doctor` (alias `info`) - read-only diagnostics for the installed CLI, update-check cache, runtime, and project scripts. `fluo analyze` is a separate read-only project summary pointing at deeper `inspect --report`/`migrate --json` workflows.
+- `fluo add <package>` - first-party package installation shortcuts (`--dev` canonical, `-D` shortcut; preview with `--dry-run`).
+- `fluo upgrade` - reports latest CLI state and migration guidance; unlike the read-only commands it may offer an approved global install in an interactive TTY.
+
+## Programmatic API
+
+Every command is available as a library, and the entry points preserve caller process ownership - they return numeric exit codes instead of calling `process.exit(...)`:
+
+| Export | Purpose |
+| --- | --- |
+| `runCli(argv?, options?)` | Execute any CLI command; `CliRuntimeOptions` overrides streams, cwd, environment, and update-check hooks. |
+| `runNewCommand(argv, options?)` | Programmatic scaffolding; `NewCommandRuntimeOptions` overrides prompts, filesystem writes, installation, and git init. |
+| `runGenerateCommand(kind, name, baseDirectory, options?)` | Run one built-in schematic and get a structured `GenerateResult` (`generatedFiles`, `moduleRegistered`, `modulePath`, `plannedFiles`, `wiringBehavior`, `nextStepHint`); pass `dryRun: true` to preview without writes. |
+| `runInspectCommand(argv, options?)` | Programmatic inspect orchestration and Studio Mermaid delegation. |
+| `runTypegenCommand(argv, options?)` | Programmatic React page generation/check/watch; compare results with `TYPEGEN_EXIT_CODES`. |
+| `CliPromptCancelledError` | Throw from caller-supplied prompt hooks to express normal cancellation (resolves as exit code `0`). |
+| `newUsage()`, `inspectUsage()`, `typegenUsage()` | Current usage text for help surfaces and tests. |
+
+```ts
+import { runGenerateCommand } from '@fluojs/cli';
+
+const result = runGenerateCommand('service', 'Users', './src');
+console.log(result.moduleRegistered, result.generatedFiles);
+```
+
+Programmatic generation is synchronous file planning and template rendering (EJS-based); it does not start watchers, servers, or installs unless the resolved options request them for `new`.
+
+## Composition with neighboring packages
+
+- **`@fluojs/testing`** - generated slice and e2e templates import `Test` from `@fluojs/testing`; upgrading the CLI never rewrites your existing tests.
+- **`@fluojs/studio`** - `fluo inspect --mermaid` and `fluo dev --studio` delegate rendering and live tooling to Studio; the CLI owns launch and export only.
+- **`@fluojs/react`** - `fluo typegen` and the `react-vite-ssr` starter; the generated artifact is application-owned code documented in the React guide.
+- **`@fluojs/vite`** - generated non-Deno starter configs import `fluoDecoratorsPlugin()` rather than copying Babel configuration inline.
+- **`@fluojs/runtime`** - `fluo inspect` bootstraps your module graph adapterlessly through the runtime; lifecycle commands own only the process boundary around your app.
+
+## Failures, limits, and common mistakes
+
+- **CI hangs on prompts** - update checks and installs are TTY-gated; still, set `FLUO_NO_UPDATE_CHECK=1` and pass explicit flags (`--package-manager`, `--no-install`) when automating `fluo new`.
+- **`--package-manager` in the wrong place** - it selects scaffold/package-workflow tools and is rejected for lifecycle commands where it cannot affect execution.
+- **Resource modules that never activate** - `fluo generate resource` is files-only; forgetting to import the generated module means the routes never exist.
+- **Bootstrap codemod silently skipped** - without `--platform express` and a literal `app.listen(port)`, `fluo migrate` intentionally leaves bootstrap untouched with a warning; migrate those call sites by hand.
+- **`inspect --mermaid` fails in CI** - Studio is an optional peer; install `@fluojs/studio` in the project that runs the command, or export JSON/report artifacts instead.
+- **`fluo typegen --watch` misses files** - the watch boundary covers the module directory only; files outside it are intentionally outside the watch and require rerunning with a different module path.
+
+## Related reading
+
+- [`@fluojs/runtime`](/docs/packages/runtime) - what the generated startup path and adapterless inspection bootstrap.
+- [`@fluojs/testing`](/docs/packages/testing) - the helpers generated test templates call.
+- [`@fluojs/studio`](/docs/packages/studio) - the viewer and live devtool the CLI launches and feeds.
+- [`@fluojs/react`](/docs/packages/react) - the page catalog and typegen artifact the CLI writes.
+- [`@fluojs/vite`](/docs/packages/vite) - the decorator plugin generated configs import.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - the module metadata your generated code registers into.
+- [`@fluojs/cli` package README](https://github.com/fluojs/fluo/blob/main/packages/cli/README.md) - the owning command reference.

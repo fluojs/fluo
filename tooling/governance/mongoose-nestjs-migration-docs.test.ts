@@ -18,7 +18,6 @@ const governedDocumentationPaths = [
   'packages/mongoose/README.md',
   'packages/mongoose/README.ko.md',
   'apps/docs/content/docs/guides/persistence.mdx',
-  'apps/docs/content/docs/guides/persistence.ko.mdx',
   'book/intermediate/ch19-mongoose.md',
   'book/intermediate/ch19-mongoose.ko.md',
 ] as const;
@@ -39,11 +38,9 @@ const mongooseRemovalRequirements = [
   { path: 'packages/mongoose/README.md', heading: '# @fluojs/mongoose' },
   { path: 'packages/mongoose/README.ko.md', heading: '# @fluojs/mongoose' },
   { path: 'apps/docs/content/docs/guides/persistence.mdx', heading: '## Mongoose' },
-  { path: 'apps/docs/content/docs/guides/persistence.ko.mdx', heading: '## Mongoose' },
 ] as const;
 const mongooseFacadeExamplePaths = [
   'apps/docs/content/docs/guides/persistence.mdx',
-  'apps/docs/content/docs/guides/persistence.ko.mdx',
 ] as const;
 const saveDocumentRequirements = [
   {

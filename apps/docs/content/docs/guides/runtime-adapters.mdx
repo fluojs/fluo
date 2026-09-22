@@ -258,7 +258,7 @@ If you manage `Bun.serve()` yourself, create a fetch handler directly.
 import { createBunFetchHandler } from '@fluojs/platform-bun';
 
 const handler = createBunFetchHandler({
-  dispatcher: app.getHttpDispatcher(),
+  dispatcher: app.dispatcher,
 });
 
 Bun.serve({
@@ -393,7 +393,14 @@ Worker fetch dispatch preserves the shared single-byte-range and `If-Range` poli
 
 Worker requests register active HTTP, SSE-body, and upgraded WebSocket work with `executionContext.waitUntil(...)`. During shutdown, new HTTP and WebSocket ingress receives JSON `503`, and active work gets a bounded 10-second drain window. A lazy host whose `close()` times out keeps that shutdown gate until the underlying drain settles, then permits a later request to bootstrap a fresh generation.
 
-The Worker `env` object is available per request at `request.cloudflare.env`. Direct `FluoFactory.create(...)` finishes module registration before its exported `fetch(...)` handles traffic. `CloudflareWorkerApplicationHost.create(AppModule, options)` starts its first bootstrap only when `ready()` has not already started it. In either path, only the predeclared root module and options participate in module registration; that request's `env` is attached during dispatch. Fetch-time bindings therefore cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Keep bootstrap configuration limited to values available before module registration. Use `CloudflareWorkerApplicationHost.create({ fromEnv })` only when the first environment must select that configuration. Read, validate, and narrow selected fetch-time bindings from the handler's `RequestContext`, then pass only application-shaped values into an injected provider method. Register the provider and controller in the owning module.
+The owning contract makes the Worker `env` object available per request at `request.cloudflare.env`. Direct `FluoFactory.create(...)` finishes module registration before its exported `fetch(...)` handles traffic. `CloudflareWorkerApplicationHost.create(AppModule, options)` starts its first bootstrap only when `ready()` has not already started it. In either path, only the predeclared root module and options participate in module registration; that request's `env` is attached during dispatch. Fetch-time bindings therefore cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Keep bootstrap configuration limited to values available before module registration. Use `CloudflareWorkerApplicationHost.create({ fromEnv })` only when the first environment must select that configuration. Read, validate, and narrow selected fetch-time bindings from the handler's `RequestContext`, then pass only application-shaped values into an injected provider method. Register the provider and controller in the owning module.
+
+**Current implementation discrepancy:** the adapter attaches `cloudflare`, but
+the shared dispatcher drops that field when rebuilding the request. The handler
+pattern below therefore currently fails its missing-binding check. It documents
+the intended contract, not a passing recipe. Use the verified `fromEnv` bootstrap
+composition in the [Workers guide](/docs/packages/platform-cloudflare-workers)
+for deployment bindings while that handler-level issue remains unresolved.
 
 ```ts
 import { Inject, Module } from '@fluojs/core';
@@ -472,7 +479,7 @@ export class WorkerBindingsModule {}
 
 ## Related reading
 
-- [HTTP API](./http-api)
-- [Realtime](./realtime)
-- [Operations](./operations)
-- [HTTP & Platform Packages](../packages/http-platform)
+- [HTTP API](/docs/guides/http-api)
+- [Realtime](/docs/guides/realtime)
+- [Operations](/docs/guides/operations)
+- [HTTP & Platform Packages](/docs/packages/http-platform)

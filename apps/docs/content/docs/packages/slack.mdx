@@ -1,0 +1,287 @@
+---
+title: Slack
+description: Webhook-first Slack delivery with an explicit fetch boundary, transport verification, template fallbacks, and a notifications channel.
+package: "@fluojs/slack"
+---
+
+`@fluojs/slack` sends Slack messages through a transport you inject. The
+built-in helper posts to an incoming webhook over any fetch-compatible HTTP
+boundary; richer integrations (`chat.postMessage`, bot tokens) implement the
+exported `SlackTransport` contract instead. An application injects
+`SlackService` for direct delivery, and `SLACK_CHANNEL` lets
+[`@fluojs/notifications`](/docs/packages/notifications) route dispatches into
+Slack - exactly the same shape as [`@fluojs/email`](/docs/packages/email) and
+[`@fluojs/discord`](/docs/packages/discord).
+
+Use it when Slack is one of several notification channels, when delivery must
+stay portable across Node, Bun, Deno, and Cloudflare-compatible runtimes (the
+transport only assumes `fetch`), and when bootstrap verification should gate
+readiness. Do not use it as a Slack SDK replacement: there is no socket-mode
+client, no events API receiver, no multi-workspace registry (one module, one
+configured transport), and no `process.env` reads. Webhook URLs and tokens
+enter through explicit options or DI.
+
+## Installation
+
+```bash
+npm install @fluojs/slack @fluojs/notifications
+```
+
+`@fluojs/notifications` provides the shared channel contract the package
+implements. The package supports Node.js `>=24.0.0 <27` as its package-owned
+support contract; the delivery boundary itself stays transport-agnostic at
+runtime.
+
+## A small working example
+
+A deploy notifier that posts to an ops channel. Three declarations: the
+transport, the module registration, and the sender.
+
+```ts title="src/deploy-notifier.ts"
+import { Inject } from '@fluojs/core';
+import { SlackService } from '@fluojs/slack';
+
+@Inject(SlackService)
+export class DeployNotifier {
+  constructor(private readonly slack: SlackService) {}
+
+  async announce(version: string): Promise<void> {
+    const result = await this.slack.send({
+      blocks: [
+        { type: 'section', text: { type: 'mrkdwn', text: `*Deploy ${version}* finished` } },
+      ],
+      text: `Deploy ${version} finished successfully.`,
+    });
+
+    // result.ok mirrors the transport receipt; warnings surface non-standard
+    // webhook success bodies instead of swallowing them.
+    if (!result.ok) {
+      throw new Error(`Slack announcement for ${version} failed`);
+    }
+  }
+}
+```
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { SlackModule, createSlackWebhookTransport } from '@fluojs/slack';
+
+import { DeployNotifier } from './deploy-notifier';
+
+// Resolved from your configuration layer (config file, DI provider, or a
+// config module) - the package itself never reads process.env.
+const slackWebhookUrl = 'https://hooks.slack.com/services/T000/B000/XXXX';
+
+@Module({
+  imports: [
+    SlackModule.forRoot({
+      defaultChannel: '#ops',
+      transport: createSlackWebhookTransport({
+        fetch: globalThis.fetch.bind(globalThis),
+        webhookUrl: slackWebhookUrl,
+      }),
+    }),
+  ],
+  providers: [DeployNotifier],
+})
+export class AppModule {}
+```
+
+`SlackModule.forRoot(...)` exports `SlackService`, `SlackChannel`, and
+`SLACK_CHANNEL` **globally by default**; pass `global: false` to scope them to
+importing modules. Expected outcome: `announce('v1.2.3')` POSTs one JSON
+payload to the webhook URL and resolves with
+`{ ok: true, statusCode: 200, warnings: [] }`.
+
+## How the mechanics work
+
+### Transports, factories, and ownership
+
+Like email, the `transport` option accepts an instance (caller-owned,
+`ownsResources` defaults to `false`) or a factory (`{ create, kind? }`,
+`ownsResources` defaults to `true`, closed by the service on shutdown).
+`createSlackWebhookTransport(...)` returns a plain instance with no resources
+- it closes nothing and only calls the fetch boundary you handed it.
+
+### The webhook transport's fetch boundary
+
+`createSlackWebhookTransport({ fetch, webhookUrl })` is portable by
+construction:
+
+- **Pass `fetch` explicitly** - that is the recommended path on every
+  runtime. Omitting it falls back to `globalThis.fetch` for backward
+  compatibility, and runtimes without that ambient API fail fast with
+  `SlackConfigurationError` instead of crashing later at send time.
+- Transient failures (`408`, `429`, `5xx`) and transport-level exceptions are
+  retried with bounded exponential backoff before an error surfaces; the
+  retry policy's constants are internal and not configurable. The response
+  body of a failed attempt is consumed before retrying so sockets are not
+  leaked, and permanent statuses are never retried.
+- Caller-visible `SlackTransportError` messages omit raw upstream response
+  bodies by default - webhook bodies can contain workspace-internal detail
+  that should not leak into logs.
+- Abort signals flow into the injected `fetch` and cancel retry backoff
+  without re-wrapping `AbortError` values, so callers can distinguish
+  cancellation from delivery failure.
+
+### Messages and validation
+
+`send(...)` resolves `defaultChannel` before delivery and forwards Block Kit
+blocks, attachments, `threadTs`, `username`, `iconEmoji`/`iconUrl`, `mrkdwn`,
+and unfurl flags. A direct message with no Slack-visible `text`, `blocks`, or
+`attachments` rejects with `SlackMessageValidationError` - a webhook call with
+an empty payload would silently post nothing.
+
+`sendMany(...)` sends sequentially in input order. It is fail-fast by
+default; `continueOnError: true` collects a batch result with
+`results`/`failures`/`succeeded`/`failed`. Cancellation is stronger than
+tolerance: an aborted signal or a transport `AbortError` rejects the batch
+even with `continueOnError` enabled.
+
+### Bootstrap verification
+
+`verifyOnModuleInit: true` makes the service call `transport.verify()` - when
+the transport exposes it - during `onModuleInit()`, before the service is
+marked ready. Verification is capability-based: the webhook transport has no
+`verify()` and simply skips the step, while a bot-token transport can run
+`auth.test` at bootstrap so a bad token fails startup instead of the first
+deploy message. A rejected `verify()` fails bootstrap with
+`SlackLifecycleError`, marks the lifecycle `failed`, and closes an already
+resolved factory-owned transport exactly once (sharing that cleanup with a
+concurrent shutdown if one starts mid-verification).
+
+Direct sends are lifecycle-gated: calls before bootstrap finishes, after a
+failed bootstrap, or during/after shutdown reject with `SlackLifecycleError`
+instead of lazily creating transports.
+
+### Notifications: one dispatch, one destination
+
+`SlackService.sendNotification(...)` maps one notifications envelope to
+exactly one Slack destination:
+
+- `recipients[0]` is the target channel; with `recipients` omitted the
+  configured `defaultChannel` is used. A dispatch resolving **multiple**
+  recipients rejects with `SlackMessageValidationError` - fan-out is your
+  job, via `sendMany(...)` or separate dispatches.
+- Supported payload fields: `text`, `blocks`, `attachments`, `threadTs`,
+  `replyBroadcast`, `username`, `iconEmoji`, `iconUrl`, `mrkdwn`,
+  `unfurlLinks`, `unfurlMedia`, `metadata`.
+- An optional `SlackTemplateRenderer` runs when both `notification.template`
+  and a module renderer are present, producing fallback `text`/`blocks`/
+  `attachments`. Non-blank `payload.text` beats rendered text, which beats
+  `notification.subject`; payload `blocks`/`attachments` beat rendered ones
+  when defined. Metadata merges as payload metadata, dispatch metadata, then
+  subject/template markers - later entries win.
+
+Register the channel exactly like email's:
+
+```ts title="fragment: registering the Slack channel"
+import { NotificationsModule } from '@fluojs/notifications';
+import { SLACK_CHANNEL, SlackModule } from '@fluojs/slack';
+
+@Module({
+  imports: [
+    SlackModule.forRoot({ /* transport wiring */ }),
+    NotificationsModule.forRootAsync({
+      inject: [SLACK_CHANNEL],
+      useFactory: (channel) => ({ channels: [channel] }),
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+The channel name defaults to `slack`; rename it via
+`notifications: { channel: ... }`.
+
+## Composition with neighboring packages
+
+**With `@fluojs/notifications`.** `SLACK_CHANNEL` is the entire integration
+surface. Application services inject `NotificationsService` and dispatch
+envelopes; only this package knows what a Slack payload looks like.
+
+**With `@fluojs/config`.** Resolve the webhook URL and default channel in
+`forRootAsync({ inject: [ConfigService], useFactory })` - the async shape is
+`inject` plus `useFactory` only (no NestJS `imports`/`useClass`/
+`useExisting`).
+
+**With `@fluojs/event-bus`.** When a Slack message is one side effect among
+several reactions to a domain event, publish the event and let an
+[`@fluojs/event-bus`](/docs/packages/event-bus) handler call
+`SlackService` (or dispatch through the notifications foundation) - the
+transport stays free of event-routing concerns.
+
+## Defaults, ownership, and lifecycle
+
+| Concern | Default | Owner |
+| --- | --- | --- |
+| Module visibility | `global: true` | `forRoot({ global })` / `forRootAsync({ global })` |
+| Fetch boundary | `globalThis.fetch` fallback | Pass `fetch` explicitly for portability |
+| Webhook retries | Bounded, internal constants | Not configurable |
+| Transport resources | Instance `false`, factory `true` | `transport.ownsResources` |
+| Bootstrap verification | Off | `verifyOnModuleInit: true` + capability-based `verify()` |
+| Notifications channel name | `'slack'` | `notifications.channel` |
+| Multi-destination fan-out | Never implicit | `sendMany(...)` or separate dispatches |
+
+The webhook transport owns nothing; factory-owned transports are closed once
+during shutdown after in-flight deliveries drain.
+`createPlatformStatusSnapshot()` reports lifecycle state, readiness, and
+transport kind/ownership for ops surfaces.
+
+## Failures, limits, and common mistakes
+
+- **`SlackConfigurationError`.** Empty `webhookUrl`, or no `fetch` on a
+  runtime without `globalThis.fetch`. Pass the fetch implementation
+  explicitly.
+- **`SlackMessageValidationError`.** An empty message (no `text`/`blocks`/
+  `attachments`), or one notification dispatch with multiple recipients -
+  split it with `sendMany(...)`.
+- **`SlackTransportError` after "retries worked yesterday".** The built-in
+  retry only covers `408`/`429`/`5xx` and network-level exceptions; a `4xx`
+  (bad payload, revoked webhook) fails immediately by design. Inspect
+  `statusCode` in the transport receipt path for diagnostics.
+- **`SlackLifecycleError`.** Sends racing bootstrap or shutdown, or a failed
+  `verifyOnModuleInit` verification. Catch it where sends can race teardown.
+- **"I need two Slack workspaces."** The package surface is singleton by
+  design. Compose two app-owned modules around distinct `SlackTransport`
+  instances instead of expecting a client registry.
+- **Leaking webhook internals.** Caller-visible error messages deliberately
+  omit upstream bodies; don't stringify raw responses into your own logs
+  without the same care.
+
+## Testing
+
+Inject a recording fetch and assert on the request the transport produces -
+no network, no sleeps:
+
+```ts title="fragment: webhook transport seam test"
+const bodies: Array<Record<string, unknown>> = [];
+const fetchLike: SlackFetchLike = async (_input, init) => {
+  bodies.push(JSON.parse(init?.body ?? '{}') as Record<string, unknown>);
+  return { ok: true, status: 200, text: async () => 'ok' };
+};
+
+const transport = createSlackWebhookTransport({ fetch: fetchLike, webhookUrl: 'https://hooks.slack.com/services/T/B/X' });
+await transport.send(
+  { blocks: [], attachments: [], text: 'Deploy finished' },
+  {},
+);
+
+expect(bodies[0]?.text).toBe('Deploy finished');
+```
+
+At the module level, register `SlackModule.forRoot(...)` with the recording
+transport, `Test.createApp(...)` the graph, call `SlackService`, and assert
+both the receipt and the captured payload. For the transient-retry path, a
+fake fetch that fails once with `503` then succeeds is deterministic - the
+backoff waits are the transport's own bounded behavior, and the test asserts
+the call count, not timing.
+
+## Related reading
+
+- [`@fluojs/notifications`](/docs/packages/notifications) - the dispatch layer that consumes `SLACK_CHANNEL`.
+- [`@fluojs/discord`](/docs/packages/discord) - the sibling webhook-first channel, with a configurable retry policy.
+- [`@fluojs/email`](/docs/packages/email) - transport-agnostic email on the same module pattern.
+- [`@fluojs/config`](/docs/packages/config) - validated configuration for webhook URLs.
+- [`@fluojs/event-bus`](/docs/packages/event-bus) - event-driven side effects around Slack delivery.
+- [`@fluojs/slack` package README](https://github.com/fluojs/fluo/blob/main/packages/slack/README.md) - the owning API reference.

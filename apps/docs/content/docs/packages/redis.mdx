@@ -1,0 +1,356 @@
+---
+title: Redis
+description: Share lifecycle-managed ioredis clients across a fluo application, with a JSON-aware facade, named registrations, and bounded startup/shutdown.
+package: "@fluojs/redis"
+---
+
+`@fluojs/redis` provides the shared Redis connection layer for a fluo
+application. One `RedisModule.forRoot(...)` registration creates an `ioredis`
+client, opens the socket during bootstrap, exposes it through dependency
+injection, and closes it gracefully during shutdown - so caching, queue, and
+throttler features all resolve the same lifecycle-managed connection instead of
+each opening their own.
+
+The package owns the client it creates. `forRoot(...)` is intentionally
+synchronous and **always constructs a new client from the options you pass**;
+it never adopts an externally constructed `ioredis` instance. That is a
+deliberate contrast with [`@fluojs/prisma`](/docs/packages/prisma) and friends:
+there is no `forRootAsync(...)` and no `client:` escape hatch. Resolve secrets,
+environment-specific hosts, and TLS options at the application boundary first,
+then pass the final constructor options. If you need a client fluo should not
+own, keep it outside this module and close it from your own lifecycle.
+
+Use this package when several modules need one Redis connection with automatic
+connect/quit handling, or when you want a small JSON-aware facade over
+common key-value operations. For HTTP response caching and application-level
+caching, [`@fluojs/cache-manager`](/docs/packages/cache-manager) builds on top
+of it.
+
+## Installation
+
+```bash
+pnpm add @fluojs/redis ioredis
+```
+
+- Peer dependency: `ioredis ^5.10.0`.
+- Runtime: Node.js `>=24.0.0 <27` (see the repository's
+  [Node.js support](https://github.com/fluojs/fluo/blob/main/docs/reference/node-support.md)
+  reference before upgrading).
+
+## A small working example
+
+A session store backed by the default client. The first example is complete;
+later ones are fragments.
+
+```ts title="src/sessions.store.ts"
+import { Inject } from '@fluojs/core';
+import { RedisService } from '@fluojs/redis';
+
+export interface SessionRecord {
+  userId: string;
+  createdAt: string;
+}
+
+@Inject(RedisService)
+export class SessionStore {
+  constructor(private readonly redis: RedisService) {}
+
+  async save(sessionId: string, userId: string) {
+    // JSON-serialized, expires after one hour (Redis EX 3600).
+    await this.redis.set(`session:${sessionId}`, { userId, createdAt: new Date().toISOString() }, 3600);
+  }
+
+  async find(sessionId: string) {
+    // Parsed JSON, or null when the key is missing or expired.
+    return this.redis.get<SessionRecord>(`session:${sessionId}`);
+  }
+
+  async destroy(sessionId: string) {
+    await this.redis.del(`session:${sessionId}`);
+  }
+}
+```
+
+```ts title="src/sessions.controller.ts"
+import { Controller, FromPath, Get, RequestDto } from '@fluojs/http';
+
+import { SessionStore } from './sessions.store';
+
+export class FindSessionParams {
+  @FromPath('id')
+  id = '';
+}
+
+@Controller('/sessions')
+@Inject(SessionStore)
+export class SessionsController {
+  constructor(private readonly sessions: SessionStore) {}
+
+  @Get('/:id')
+  @RequestDto(FindSessionParams)
+  find(input: FindSessionParams) {
+    return this.sessions.find(input.id);
+  }
+}
+```
+
+```ts title="src/sessions.module.ts"
+import { Module } from '@fluojs/core';
+import { RedisModule } from '@fluojs/redis';
+
+import { SessionsController } from './sessions.controller';
+import { SessionStore } from './sessions.store';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+  ],
+  controllers: [SessionsController],
+  providers: [SessionStore],
+})
+export class SessionsModule {}
+```
+
+Import `SessionsModule` into the root module and start with
+`FluoFactory.create(AppModule, { adapter })` followed by `app.listen()`.
+Because `lazyConnect` is forced on, the socket opens during application
+bootstrap (not at import time), and `quit()` runs during shutdown - both
+bounded by lifecycle timeouts so a stalled Redis server cannot hang your
+process forever.
+
+## How the mechanics work
+
+### `forRoot(...)` and option normalization
+
+`RedisModule.forRoot(options)` is the only registration method. Its options
+are ordinary `ioredis` constructor options **except** `lazyConnect` and `name`
+(both reserved), plus four fluo-only fields that are stripped before the
+client is constructed:
+
+| Field | Meaning |
+| --- | --- |
+| `name` | Fluo registration identity and DI token key. Never passed to ioredis; each trimmed name can be registered once per application. |
+| `global` | Module visibility. The default registration is global unless `global: false`; named registrations are always scoped and reject `global: true`. |
+| `lifecycle` | `{ connectTimeoutMs?, quitTimeoutMs? }` bounds on fluo-owned `connect()` and `quit()`, default `10_000` ms each. Pass `0` only when the host process should own an unbounded wait. |
+| `sentinelName` | Forwarded to ioredis as its constructor `name` (Sentinel master name), since fluo reserves `name` for registration identity. |
+
+After normalization the provider constructs the client with
+`{ ...clientOptions, lazyConnect: true }` - the forced assignment always wins,
+even if a caller casts `lazyConnect: false` into the input. The
+`RedisClientOptions` type describes this normalized constructor-facing shape;
+`RedisModuleOptions` is the caller-facing input, and they are not synonyms.
+
+### The facade and the raw client
+
+Inject `RedisService` for everyday key-value work:
+
+- `get<T>(key)` - parses JSON when possible, falls back to the raw string, and
+  returns `null` for missing keys.
+- `set(key, value, ttlSeconds?)` - serializes with `JSON.stringify`. A finite
+  positive integer TTL uses Redis `EX` (seconds); a finite positive fraction
+  uses `PX` with milliseconds rounded up; omitting the TTL or passing a
+  non-positive/non-finite value writes a persistent key.
+- `del(key)` - deletes one key.
+- `getRawClient()` - the underlying `ioredis` instance for pipelines, Lua
+  scripts, `multi`, `watch`, and anything else the facade does not cover.
+
+Inject the raw client directly with the `REDIS_CLIENT` token when a class
+never uses the facade:
+
+```ts title="fragment: raw client access"
+import { Inject } from '@fluojs/core';
+import { REDIS_CLIENT } from '@fluojs/redis';
+import type Redis from 'ioredis';
+
+@Inject(REDIS_CLIENT)
+export class RateLimiter {
+  constructor(private readonly client: Redis) {}
+
+  hit(bucket: string) {
+    // Pipelines and other advanced commands stay on the lifecycle-managed client.
+    return this.client.pipeline().incr(bucket).expire(bucket, 60).exec();
+  }
+}
+```
+
+`@Inject(...)` only declares tokens; the class still needs a `providers` entry
+in a module that imports the Redis registration (see
+[Dependency injection](/docs/fundamentals/dependency-injection)).
+
+### Lifecycle ownership
+
+Every `forRoot(...)` registration creates one client that the package owns:
+
+- Bootstrap calls `connect()` only while the client is still in ioredis `wait`
+  state, bounded by `lifecycle.connectTimeoutMs`.
+- Shutdown prefers `quit()` for ready/connecting clients (graceful), and uses
+  `disconnect()` directly for monitoring, wait, and closed-transition states.
+  If `quit()` fails, fluo falls back to `disconnect()` and only rethrows when
+  the client remains open afterward.
+- Duplicate registration identities (two unnamed registrations, or two with the
+  same `name`) are rejected during bootstrap **before** a second client is
+  created.
+
+### Named clients
+
+One application often needs more than one connection - a cache pool and a
+pub/sub subscriber, for example. Register each with a distinct `name`:
+
+```ts title="fragment: named registrations"
+import { Inject, Module } from '@fluojs/core';
+import { getRedisClientToken, getRedisServiceToken, RedisModule, RedisService } from '@fluojs/redis';
+import type Redis from 'ioredis';
+
+const ANALYTICS_REDIS = getRedisServiceToken('analytics');
+const ANALYTICS_REDIS_CLIENT = getRedisClientToken('analytics');
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    RedisModule.forRoot({ name: 'analytics', host: 'localhost', port: 6380 }),
+    RedisModule.forRoot({
+      name: 'sentinel-cache',
+      sentinelName: 'mymaster',
+      sentinels: [{ host: 'localhost', port: 26379 }],
+    }),
+  ],
+  providers: [AnalyticsStore],
+})
+export class RedisConnectionsModule {}
+
+@Inject(RedisService, ANALYTICS_REDIS, ANALYTICS_REDIS_CLIENT)
+export class AnalyticsStore {
+  constructor(
+    private readonly defaultRedis: RedisService,
+    private readonly analyticsRedis: RedisService,
+    private readonly analyticsClient: Redis,
+  ) {}
+}
+```
+
+Only the unnamed registration exports the `REDIS_CLIENT` / `RedisService`
+aliases; named registrations resolve through
+`getRedisClientToken(name)` / `getRedisServiceToken(name)`, which return the
+default tokens when `name` is omitted. Named clients follow the same
+bootstrap/shutdown contract, and `getRedisComponentId(name)` builds the stable
+status id (`redis.default`, `redis.analytics`, ...) used by platform health
+surfaces.
+
+## Composing with other packages
+
+### Cache manager
+
+[`@fluojs/cache-manager`](/docs/packages/cache-manager) resolves its Redis
+store client through this module - either the default client or a named one:
+
+```ts title="fragment: cache-manager over a named Redis client"
+import { CacheModule } from '@fluojs/cache-manager';
+import { RedisModule } from '@fluojs/redis';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ name: 'cache', host: 'localhost', port: 6379 }),
+    CacheModule.forRoot({
+      store: 'redis',
+      ttl: 600,
+      keyPrefix: 'myapp:cache:',
+      redis: { clientName: 'cache' },
+    }),
+  ],
+})
+export class CacheStackModule {}
+```
+
+The cache module never closes the client - the Redis registration that owns it
+does. Atomic cache updates (`redis: { atomicUpdates: true }`) reuse the raw
+client's `duplicate()` seam; `RedisService` gains no update API and the Redis
+module options gain no cache-specific fields.
+
+### Queue and throttler
+
+[`@fluojs/queue`](/docs/packages/queue) (Redis-backed jobs and workers) and
+[`@fluojs/throttler`](/docs/packages/throttler) (distributed rate limiting)
+consume the same lifecycle-managed client. Register Redis once and let those
+features resolve it.
+
+### Pub/Sub needs a second connection
+
+Redis switches a subscribed connection into subscribe mode, so never use the
+shared `REDIS_CLIENT` (or a `getRawClient()` result) as both publisher and
+subscriber. Either register a dedicated named client - which gives you
+fluo-owned connect/quit timeouts - or create a `client.duplicate()` and own
+its lifecycle yourself:
+
+```ts title="fragment: pub/sub connections"
+import { getRedisClientToken, RedisModule } from '@fluojs/redis';
+import { RedisPubSubMicroserviceTransport } from '@fluojs/microservices';
+
+const COMMAND_REDIS = getRedisClientToken();
+const SUBSCRIBER_REDIS = getRedisClientToken('subscriber');
+
+// Two registrations: the command client doubles as the default client.
+RedisModule.forRoot({ host: 'localhost', port: 6379 });
+RedisModule.forRoot({ name: 'subscriber', host: 'localhost', port: 6379 });
+
+// new RedisPubSubMicroserviceTransport({
+//   publishClient: commandClient,
+//   subscribeClient: subscriberClient,
+// })
+```
+
+## Defaults, ownership, and shutdown
+
+- **Ownership.** Every registration owns exactly the client it creates:
+  `lazyConnect: true` is forced, bootstrap connects it, shutdown closes it.
+  Externally constructed clients are never adopted and stay application-owned.
+- **Timeouts.** Fluo-owned `connect()` and `quit()` are bounded (10 seconds by
+  default) so bootstrap and shutdown cannot wait forever on a stalled server.
+- **Registration identity.** Names are trimmed; blank names are rejected;
+  duplicates are rejected at bootstrap before client construction.
+- **Visibility.** The default registration is global by default so feature
+  modules can inject `RedisService` without importing it; named registrations
+  are scoped and must be imported by their consumers.
+- **Observability.** `createRedisPlatformStatusSnapshot(...)` adapts ioredis
+  connection state into the platform health/readiness snapshot contract.
+
+## Failures and common mistakes
+
+- **Expecting `forRootAsync`.** It does not exist. Read the environment before
+  building the module list; that keeps module wiring synchronous and
+  predictable. Migrating from NestJS async dynamic modules means resolving
+  configuration earlier, not wrapping the client in a factory.
+- **Passing an existing client.** Not supported - the module always creates
+  its own. Keep application-owned clients outside this module.
+- **Publishing and subscribing on one client.** A subscribed connection cannot
+  run ordinary commands. Use a named subscriber registration or a
+  self-managed `duplicate()`.
+- **Cache data outside the cache prefix.** That is a cache-manager ownership
+  concern (`keyPrefix` scoping), but the client is shared - remember that
+  everything on `REDIS_CLIENT` shares one server namespace.
+- **Blank or duplicate names.** Rejected eagerly; trim or deduplicate before
+  registering.
+- **Sentinel confusion.** The ioredis Sentinel master name goes in
+  `sentinelName`, not `name` - `name` is the fluo registration identity.
+
+## Testing
+
+Tests boot the real module against a real Redis server when the claim depends
+on the server (TTL semantics, codecs, publish/subscribe); the package's own
+tests (`packages/redis/src/module.test.ts`) cover module lifecycle and DI
+wiring, and `packages/redis/src/public-api.test.ts` guards the exported
+surface. A representative fixture spins up an isolated Redis container on an
+ephemeral port and asserts the documented behavior end to end - see the
+repository fixture suite for the native harness. Dispose apps in `finally` so
+`quit()` runs in every outcome; never present a mock client as proof of
+server-side behavior.
+
+## Related reading
+
+- [Dependency injection](/docs/fundamentals/dependency-injection) - tokens and
+  module visibility used throughout this page.
+- [Cache manager](/docs/packages/cache-manager) - HTTP and application caching
+  backed by this package.
+- [Queue](/docs/packages/queue) and [Throttler](/docs/packages/throttler) -
+  Redis-backed job processing and rate limiting.
+- [`@fluojs/redis` README](https://github.com/fluojs/fluo/blob/main/packages/redis/README.md) -
+  the owning API reference, including full normalization rules.

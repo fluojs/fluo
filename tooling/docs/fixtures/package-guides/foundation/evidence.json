@@ -1,0 +1,126 @@
+{
+  "@fluojs/core": {
+    "page": "apps/docs/content/docs/packages/core.mdx",
+    "sources": [
+      "packages/core/README.md",
+      "packages/core/package.json",
+      "packages/core/src/index.ts",
+      "packages/core/src/decorators.ts",
+      "packages/core/src/public-token.ts",
+      "packages/core/src/types.ts",
+      "packages/core/src/metadata/module.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/foundation/core/core.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/foundation/core/posts.contract.ts",
+      "tooling/docs/fixtures/package-guides/foundation/core/posts.service.ts",
+      "tooling/docs/fixtures/package-guides/foundation/core/posts.module.ts"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/foundation --maxWorkers=1 -> Test Files 6 passed (6), Tests 29 passed (29)",
+      "npx tsc -p tsconfig.tools.json --noEmit -> no core-fixture errors (3 unrelated TS2307 subpath gaps documented in README)",
+      "npx biome check tooling/docs/fixtures/package-guides/foundation -> clean",
+      "LSP diagnostics tooling/docs/fixtures/package-guides/foundation -> 0 errors"
+    ]
+  },
+  "@fluojs/di": {
+    "page": "apps/docs/content/docs/fundamentals/dependency-injection.mdx",
+    "sources": [
+      "packages/di/README.md",
+      "packages/di/package.json",
+      "packages/di/src/index.ts",
+      "packages/di/src/container.ts",
+      "packages/di/src/types.ts",
+      "packages/di/src/errors.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/foundation/di/di.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/foundation/core/core.test.ts (contract-token alias resolution through Container)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/foundation --maxWorkers=1 -> Test Files 6 passed (6), Tests 29 passed (29)",
+      "npx biome check tooling/docs/fixtures/package-guides/foundation -> clean"
+    ]
+  },
+  "@fluojs/runtime": {
+    "page": "apps/docs/content/docs/packages/runtime.mdx",
+    "sources": [
+      "packages/runtime/README.md",
+      "packages/runtime/package.json",
+      "packages/runtime/src/index.ts",
+      "packages/runtime/src/bootstrap.ts",
+      "packages/runtime/src/types.ts",
+      "packages/runtime/src/health/health.ts",
+      "packages/runtime/src/module-definition.ts",
+      "packages/runtime/src/module-graph.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/foundation/runtime/runtime.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/foundation/runtime/lifecycle.module.ts",
+      "tooling/docs/fixtures/package-guides/foundation/composition/composition.test.ts (Test.createApp + createApplicationContext with config and i18n modules)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/foundation --maxWorkers=1 -> Test Files 6 passed (6), Tests 29 passed (29)"
+    ]
+  },
+  "@fluojs/config": {
+    "page": "apps/docs/content/docs/packages/config.mdx",
+    "sources": [
+      "packages/config/README.md",
+      "packages/config/package.json",
+      "packages/config/src/index.ts",
+      "packages/config/src/module.ts",
+      "packages/config/src/service.ts",
+      "packages/config/src/types.ts",
+      "packages/config/src/load.ts",
+      "packages/config/src/options.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/foundation/config/config.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/foundation/composition/app.ts (ConfigModule.forRoot consumed by a DI factory provider)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/foundation --maxWorkers=1 -> Test Files 6 passed (6), Tests 29 passed (29)"
+    ],
+    "unexecuted": [
+      "watch mode (FSWatcher events) - reload contract exercised through deterministic manual reload() only"
+    ]
+  },
+  "@fluojs/i18n": {
+    "page": "apps/docs/content/docs/packages/i18n.mdx",
+    "sources": [
+      "packages/i18n/README.md",
+      "packages/i18n/package.json",
+      "packages/i18n/src/index.ts",
+      "packages/i18n/src/module.ts",
+      "packages/i18n/src/service.ts",
+      "packages/i18n/src/options.ts",
+      "packages/i18n/src/types.ts",
+      "packages/i18n/src/http.ts",
+      "packages/i18n/src/loaders/fs.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/foundation/i18n/i18n.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/foundation/i18n/locales/en/common.json",
+      "tooling/docs/fixtures/package-guides/foundation/i18n/locales/ko/common.json",
+      "tooling/docs/fixtures/package-guides/foundation/composition/app.ts (I18nModule.forRoot + resolveHttpLocale in a real test app)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/foundation --maxWorkers=1 -> Test Files 6 passed (6), Tests 29 passed (29)"
+    ],
+    "unexecuted": [
+      "@fluojs/i18n/icu runtime behavior - intl-messageformat peer not installed at repo root; documented from source and README only",
+      "@fluojs/i18n/loaders/remote, @fluojs/i18n/adapters, @fluojs/i18n/validation, @fluojs/i18n/typegen - documented from source and README, not executed here"
+    ]
+  }
+}

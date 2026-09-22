@@ -1,0 +1,162 @@
+---
+title: Standalone applications
+description: Run scripts and workers with Fluo's module graph and lifecycle, without starting an HTTP server.
+---
+
+An application is not necessarily a web server. A data export, maintenance task
+or long-running worker can need configuration, dependency injection and orderly
+resource cleanup without accepting HTTP requests.
+
+`FluoFactory.createApplicationContext(AppModule)` starts that application graph
+without an HTTP adapter. It resolves providers and participates in lifecycle
+hooks, but it does not open a listener or create an HTTP request context.
+
+Use it when a process owns a task. Use a hosted adapter when another framework
+owns incoming requests, and use a queue when work must survive process restarts.
+Those are different ownership models, not interchangeable startup shortcuts.
+
+## Build a small export job
+
+Use the supported TypeScript/decorator toolchain from
+[Getting started](/docs/getting-started/quick-start). The example needs
+`@fluojs/core`, `@fluojs/di` and `@fluojs/runtime`.
+Save this complete module as `src/export-app.ts`:
+
+<ExampleCode file="concepts/standalone-app.ts" title="src/export-app.ts" />
+
+The module registers a value under an application-owned symbol, a resource
+holder, and the job which consumes them. `@Inject` declares the two constructor
+dependencies in order. Nothing in the job imports an HTTP request or controller.
+
+`JobResources` deliberately uses a small observable flag rather than pretending
+to be a database connection. A real provider would release the resource it owns
+in the same lifecycle hook. Returning a result from `run()` does not itself close
+the application.
+
+## Give the process one entrypoint
+
+Create `src/export.ts`:
+
+```ts title="src/export.ts"
+import '@fluojs/core/metadata-preload';
+import { FluoFactory } from '@fluojs/runtime';
+import { AppModule, ExportJob } from './export-app';
+
+const context = await FluoFactory.createApplicationContext(AppModule);
+try {
+  const job = await context.get(ExportJob);
+  const result = await job.run();
+  console.log(JSON.stringify(result));
+} finally {
+  await context.close();
+}
+```
+
+The output is `["exported: first","exported: second"]`. The `finally` block closes
+resources whether work succeeds or throws. There is no `listen()` call because
+there is no listener.
+
+For a dedicated worker project, point the generated Vite build's `build.ssr` at
+`src/export.ts` and keep its standard decorator plugin and `node24` target.
+Run `pnpm build`, then run the emitted `dist/export.js` with Node. Do not use an
+HTTP starter's `start` script unchanged if it still points at `dist/main.js`.
+If this worker lives beside an HTTP app, give it a separate build output and
+entrypoint rather than importing the HTTP bootstrap.
+
+## What startup and shutdown mean
+
+The runtime compiles module metadata, checks dependency visibility and creates
+the application container. Providers with lifecycle responsibilities
+participate in startup and shutdown. A service retrieved through `context.get`
+comes from that graph, not from an unrelated manually constructed container.
+
+| Owner | Responsibility |
+| --- | --- |
+| Root module | Declare dependencies and feature imports |
+| Providers | Own clients, handles and application behavior |
+| Job entrypoint | Decide when to run work and when to close the context |
+| Runtime | Coordinate the module graph and supported lifecycle hooks |
+| Process host | Decide signal handling, exit policy and restart behavior |
+
+The context does not infer that your promise finishing means the whole process
+should terminate. Conversely, calling `process.exit()` can prevent asynchronous
+cleanup from completing. Await the close path and let the host handle the result.
+
+For a long-running process, explicitly register the host's supported shutdown
+mechanism. A short one-shot script can simply await its work and close in
+`finally`. Do not install a second competing signal handler when the selected
+runtime integration already owns one.
+
+## Compose configuration and external resources
+
+The same packages work without controllers:
+
+1. [`ConfigModule`](/docs/packages/config) loads and validates application inputs.
+2. A module uses explicit injected options to create the selected
+   [database](/docs/packages/prisma) or [Redis](/docs/packages/redis) service.
+3. The job injects the facade it needs, not an HTTP controller.
+4. Lifecycle owners close the connections after the work has settled.
+
+A singleton job cannot depend on an implicit HTTP request scope. If work genuinely
+needs a per-task scope, create and dispose that scope explicitly according to
+the [DI contract](/docs/fundamentals/dependency-injection#scopes). A background
+operation does not inherit a caller's authentication or transaction merely
+because both operations happen in the same process.
+
+## Choose the execution model
+
+| Need | Choose | What this does not provide |
+| --- | --- | --- |
+| One export or maintenance command | Standalone application context | Automatic persistence or retries |
+| React to an in-process event | [Event bus](/docs/packages/event-bus) | Durable delivery across a crash |
+| Run on a schedule | [Cron](/docs/packages/cron) | Automatic business idempotency |
+| Persist retryable background work | [Queue](/docs/packages/queue) | Exactly-once external side effects |
+| Handle transport messages | [Microservices](/docs/packages/microservices) | A universal transaction across services |
+
+A schedule chooses *when* work starts. A queue manages an accepted job's
+execution and retry policy. A standalone context supplies the application
+graph. An application may compose all three, but they solve different problems.
+
+## Failures and retry ownership
+
+Missing providers and invalid module visibility are bootstrap failures: fix the
+graph instead of retrying the job indefinitely. A business error from `run()`
+belongs to the task's caller. A cleanup error is a separate failure that can
+occur even after the work completed.
+
+Before retrying, identify which side effects already happened. An export may
+have uploaded a file before cleanup failed. Retrying without an application
+idempotency key can produce duplicates. Fluo's lifecycle does not turn arbitrary
+work into a durable transaction.
+
+Never interpret successful `context.close()` as proof that an external system
+committed a business operation. Use that system's actual completion contract.
+
+## Test work and cleanup together
+
+The executable fixture creates a real standalone context, resolves the job,
+checks its result and confirms that shutdown ran:
+
+<ExampleCode file="concepts/standalone.test.ts" title="fixture: standalone application test" />
+
+When copying the test into your own project, change the fixture-local
+`./standalone-app` import to your `src/export-app` path.
+This test has no socket and no HTTP simulation. Add separate integration
+evidence when replacing `JobResources` with a real client.
+
+## Common mistakes
+
+- Importing `src/main.ts` from a task: that can start the HTTP listener as a side
+  effect. Import the module or a dedicated worker entrypoint instead.
+- Constructing the job manually: `new ExportJob(...)` bypasses module visibility,
+  overrides and lifecycle coordination.
+- Sharing a request-scoped provider with a singleton job: scope ownership must
+  be explicit outside HTTP.
+- Forgetting `finally`: assertion failures and task errors still need cleanup.
+- Retrying all thrown errors: distinguish bootstrap, business and cleanup
+  failures before repeating side effects.
+
+Continue with [Runtime](/docs/packages/runtime) for the complete lifecycle model,
+[Providers](/docs/overview/providers) for basic injection, and
+[background work](/docs/packages/queue) when the process alone is not a reliable
+place to hold pending work.

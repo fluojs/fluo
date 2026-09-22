@@ -1,0 +1,141 @@
+{
+  "@fluojs/prisma": {
+    "page": "apps/docs/content/docs/packages/prisma.mdx",
+    "sources": [
+      "packages/prisma/README.md",
+      "packages/prisma/package.json",
+      "packages/prisma/src/index.ts",
+      "packages/prisma/src/module.ts",
+      "packages/prisma/src/service.ts",
+      "packages/prisma/src/tokens.ts",
+      "packages/prisma/src/types.ts",
+      "packages/terminus/src/indicators/prisma.ts",
+      "packages/terminus/src/types.ts"
+    ],
+    "tests": ["tooling/docs/fixtures/package-guides/data/prisma-catalog.test.ts"],
+    "compositions": [
+      "afterCommit hook -> CacheService.del with requireAfterCommit preflight (prisma-catalog.example.ts createCatalogCacheApp)",
+      "forRootAsync factory resolving options from a globally visible config module (prisma-catalog.example.ts createAsyncCatalogApp)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/data/prisma-catalog.test.ts --maxWorkers=1 -> 9 passed"
+    ],
+    "unexecuted": [
+      "native Prisma transaction atomicity/rollback/commit observation (packages/prisma/fixtures/after-commit/ not run in this track)",
+      "guide snippets importing a real PrismaClient from @prisma/client (no generated client here; fixtures run the compiled equivalent with the client handle injected)",
+      "published-tarball compatibility (tests run via workspace source aliases; typecheck resolves packages/*/dist declarations)"
+    ]
+  },
+  "@fluojs/drizzle": {
+    "page": "apps/docs/content/docs/packages/drizzle.mdx",
+    "sources": [
+      "packages/drizzle/README.md",
+      "packages/drizzle/package.json",
+      "packages/drizzle/src/index.ts",
+      "packages/drizzle/src/database.ts",
+      "packages/drizzle/src/facade.ts",
+      "packages/drizzle/src/module.ts",
+      "packages/drizzle/src/named-registration.ts",
+      "packages/drizzle/src/registration-providers.ts",
+      "packages/drizzle/src/tokens.ts",
+      "packages/drizzle/src/types.ts",
+      "packages/terminus/src/indicators/drizzle.ts"
+    ],
+    "tests": ["tooling/docs/fixtures/package-guides/data/drizzle-orders.test.ts"],
+    "compositions": [
+      "forRootAsync factory with injected ConfigService from a global ConfigModule (drizzle-orders.example.ts createAsyncOrdersApp)",
+      "afterCommit hook -> CacheService.del with requireAfterCommit preflight (drizzle-orders.example.ts createOrdersCacheApp)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/data/drizzle-orders.test.ts --maxWorkers=1 -> 7 passed"
+    ],
+    "unexecuted": [
+      "native Drizzle transaction/rollback/commit behavior (packages/drizzle/src/after-commit.test.ts and the shared native fixture, not run in this track)",
+      "published-tarball compatibility (tests run via workspace source aliases; typecheck resolves packages/*/dist declarations)"
+    ]
+  },
+  "@fluojs/mongoose": {
+    "page": "apps/docs/content/docs/packages/mongoose.mdx",
+    "sources": [
+      "packages/mongoose/README.md",
+      "packages/mongoose/package.json",
+      "packages/mongoose/src/index.ts",
+      "packages/mongoose/src/connection.ts",
+      "packages/mongoose/src/module.ts",
+      "packages/mongoose/src/tokens.ts",
+      "packages/mongoose/src/types.ts"
+    ],
+    "tests": ["tooling/docs/fixtures/package-guides/data/mongoose-articles.test.ts"],
+    "compositions": [
+      "afterCommit hook -> CacheService.del with requireAfterCommit over the manual session path (mongoose-articles.example.ts createArticlesCacheApp)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/data/mongoose-articles.test.ts --maxWorkers=1 -> 7 passed"
+    ],
+    "unexecuted": [
+      "MongoDB server transaction atomicity and failpoint behavior (packages/mongoose/src/after-commit.test.ts and the shared native Mongo fixture, not run in this track)",
+      "published-tarball compatibility (tests run via workspace source aliases; typecheck resolves packages/*/dist declarations)"
+    ]
+  },
+  "@fluojs/redis": {
+    "page": "apps/docs/content/docs/packages/redis.mdx",
+    "sources": [
+      "packages/redis/README.md",
+      "packages/redis/package.json",
+      "packages/redis/src/index.ts",
+      "packages/redis/src/module.ts",
+      "packages/redis/src/redis-service.ts",
+      "packages/redis/src/service.ts",
+      "packages/redis/src/tokens.ts",
+      "packages/redis/src/duplicate-registration.test.ts",
+      "tooling/testing/redis-native-fixture.mjs"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/data/redis-sessions.test.ts",
+      "tooling/docs/fixtures/package-guides/data/cache-redis.integration.test.ts"
+    ],
+    "compositions": [
+      "CacheModule store:'redis' resolving the lifecycle-managed client through the default and named RedisModule registrations (cache-redis.integration.test.ts)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/data/redis-sessions.test.ts --maxWorkers=1 -> 5 passed against a native redis:7.4-alpine container (isolated, ephemeral loopback port)",
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/data/cache-redis.integration.test.ts --maxWorkers=1 -> 5 passed against a native redis:7.4-alpine container (shared with @fluojs/cache-manager)"
+    ],
+    "unexecuted": [
+      "Sentinel options, pub/sub duplicate() pattern, and lifecycle timeout overrides (documented from packages/redis/src/service.ts and README; packages/redis/src/module.test.ts owns them)"
+    ]
+  },
+  "@fluojs/cache-manager": {
+    "page": "apps/docs/content/docs/packages/cache-manager.mdx",
+    "sources": [
+      "packages/cache-manager/README.md",
+      "packages/cache-manager/package.json",
+      "packages/cache-manager/src/index.ts",
+      "packages/cache-manager/src/module.ts",
+      "packages/cache-manager/src/service.ts",
+      "packages/cache-manager/src/decorators.ts",
+      "packages/cache-manager/src/interceptor.ts",
+      "packages/cache-manager/src/types.ts",
+      "packages/cache-manager/src/ttl-jitter.ts",
+      "packages/cache-manager/src/stores/memory-store.ts",
+      "packages/cache-manager/src/stores/redis-store.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/data/cache-products.test.ts",
+      "tooling/docs/fixtures/package-guides/data/cache-redis.integration.test.ts"
+    ],
+    "compositions": [
+      "CacheInterceptor + @CacheTTL + @CacheEvict over the memory store through Test.createApp HTTP dispatch (cache-products.example.ts)",
+      "Redis-backed store over a lifecycle-managed @fluojs/redis client with prefix-scoped reset and opt-in WATCH atomic updates (cache-redis.integration.test.ts)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/data/cache-products.test.ts --maxWorkers=1 -> 10 passed",
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/data/cache-redis.integration.test.ts --maxWorkers=1 -> 5 passed against a native redis:7.4-alpine container (isolated, ephemeral loopback port)"
+    ],
+    "unexecuted": [
+      "1,000-entry memory bound (verified in packages/cache-manager/src/stores/memory-store.ts source, not fixture-exercised)",
+      "httpKeyStrategy:'route', principalScopeResolver, @CacheEvict factory forms (documented from src/interceptor.ts and README, not fixture-exercised)",
+      "full Redis WATCH conflict matrix (packages/cache-manager/test/redis-update.native.test.ts via pnpm --filter @fluojs/cache-manager test:redis, not run in this track)"
+    ]
+  }
+}

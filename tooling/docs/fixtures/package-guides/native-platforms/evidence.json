@@ -1,0 +1,78 @@
+{
+  "@fluojs/platform-bun": {
+    "page": "apps/docs/content/docs/packages/platform-bun.mdx",
+    "sources": [
+      "packages/platform-bun/README.md",
+      "packages/platform-bun/package.json",
+      "packages/platform-bun/src/index.ts",
+      "packages/platform-bun/src/adapter.ts",
+      "packages/platform-bun/src/shutdown.ts",
+      "packages/platform-bun/src/adapter.test.ts",
+      "packages/runtime/src/bootstrap.ts",
+      "packages/runtime/src/types.ts",
+      "packages/http/src/adapter.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/native-platforms/bun/bun-native.test.ts",
+      "tooling/docs/fixtures/package-guides/native-platforms/bun/bun-adapter-contract.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/native-platforms/bun/bun-server-app.ts: real Bun.serve() managed adapter path - FluoFactory.create + BunHttpApplicationAdapter.create({ port: 0 }) + app.listen() + createBunShutdownSignalRegistration(['SIGTERM']); real HTTP fetch of a DI-injected controller route; SIGTERM close observed by OnApplicationShutdown sentinel (shutdown signal=SIGTERM) and child exit code 0",
+      "tooling/docs/fixtures/package-guides/native-platforms/bun/bun-adapter-contract.test.ts: BUN_ADAPTER_INVALID_OPTION construction validation (port 70000, shutdownTimeoutMs -1, maxBodySize 1.5); BUN_ADAPTER_RUNTIME_UNAVAILABLE via FluoFactory.create + app.listen under Node.js; close() before listen() clears state"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/native-platforms --maxWorkers=1: Test Files 4 passed (4); Tests 10 passed (10); exit 0; two consecutive runs (~2.0s each) on worktree head e0c73126e"
+    ]
+  },
+  "@fluojs/platform-deno": {
+    "page": "apps/docs/content/docs/packages/platform-deno.mdx",
+    "sources": [
+      "packages/platform-deno/README.md",
+      "packages/platform-deno/package.json",
+      "packages/platform-deno/src/index.ts",
+      "packages/platform-deno/src/adapter.ts",
+      "packages/platform-deno/src/options.ts",
+      "packages/platform-deno/src/fetch-handler.ts",
+      "packages/platform-deno/src/shutdown.ts",
+      "packages/platform-deno/deno/native-adapter.test.js",
+      "packages/runtime/src/types.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/native-platforms/deno/deno-native.test.ts"
+    ],
+    "compositions": [
+      "tooling/docs/fixtures/package-guides/native-platforms/deno/deno-server-app.ts: real Deno.serve managed adapter path - FluoFactory.create + DenoHttpApplicationAdapter.create({ hostname: '127.0.0.1', port: 0 }) + app.listen() + createDenoShutdownSignalRegistration(['SIGTERM']); real HTTP fetch of a DI-injected controller route; SIGTERM close observed by OnApplicationShutdown sentinel (shutdown signal=SIGTERM) and child exit code 0",
+      "tooling/docs/fixtures/package-guides/native-platforms/deno/deno-native.test.ts: spawn flags deno run --no-check --node-modules-dir=manual --allow-net --allow-read --allow-write=<scratch> --sloppy-imports; ephemeral-port URL read from the FLUO_LISTENING stdout sentinel; bounded event barriers, no polling delays"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/native-platforms --maxWorkers=1: Test Files 4 passed (4); Tests 10 passed (10); exit 0; two consecutive runs (~2.0s each) on worktree head e0c73126e; deno 2.9.7 native child verified serving and draining"
+    ]
+  },
+  "@fluojs/platform-cloudflare-workers": {
+    "page": "apps/docs/content/docs/packages/platform-cloudflare-workers.mdx",
+    "sources": [
+      "packages/platform-cloudflare-workers/README.md",
+      "packages/platform-cloudflare-workers/package.json",
+      "packages/platform-cloudflare-workers/src/index.ts",
+      "packages/platform-cloudflare-workers/src/adapter.ts",
+      "packages/platform-cloudflare-workers/src/adapter.test.ts",
+      "packages/platform-cloudflare-workers/src/adapter-lifecycle.test.ts",
+      "packages/http/src/dispatch/dispatcher.ts",
+      "packages/runtime/src/adapters/request-response-factory.ts",
+      "packages/runtime/src/web.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/native-platforms/cloudflare-workers/cloudflare-workers.test.ts"
+    ],
+    "compositions": [
+      "cloudflare-workers.test.ts 'routes a real factory application through adapter.fetch and registers its lifecycle with waitUntil': FluoFactory.create + CloudflareWorkerHttpApplicationAdapter.create + app.listen; adapter.fetch with a real Request; dispatch lifecycle registered once with executionContext.waitUntil and settles after the response",
+      "cloudflare-workers.test.ts 'attaches Worker env and execution context to the framework request at the adapter dispatch boundary': adapter-boundary contract against a minimal dispatcher (same seam as packages/platform-cloudflare-workers/src/adapter.test.ts); handler-level visibility NOT asserted - see fixture README discrepancy 2",
+      "cloudflare-workers.test.ts 'gates new ingress behind 503 during close and rejects listen() while draining': deterministic adapter.close() gate (in-flight tracking is synchronous), JSON 503 SERVICE_UNAVAILABLE body, exact listen-while-draining rejection message, slow request drains to 200 after release, 503 persists after settled close",
+      "cloudflare-workers.test.ts 'restarts the lazy host into a fresh generation that reruns bootstrap lifecycle hooks': CloudflareWorkerApplicationHost.create(AppModule, { globalPrefix: 'api' }); OnModuleInit probe records one boot per generation across host.close() restart; globalPrefix applied on both generations",
+      "cloudflare-workers.test.ts 'caches the env-derived configuration so the fromEnv factory runs once per host': create({ fromEnv }) factory invoked exactly once across two generations separated by host.close()"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/native-platforms --maxWorkers=1: Test Files 4 passed (4); Tests 10 passed (10); exit 0; two consecutive runs (~2.0s each) on worktree head e0c73126e; Node.js vitest runtime, no workerd/miniflare/wrangler available - local Web conformance only, not deployed-isolate proof"
+    ]
+  }
+}

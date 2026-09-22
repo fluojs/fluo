@@ -10,7 +10,6 @@ const governedDocuments = [
   ['book/intermediate/ch23-deno.md', 'en'],
   ['book/intermediate/ch23-deno.ko.md', 'ko'],
   ['apps/docs/content/docs/guides/runtime-adapters.mdx', 'en'],
-  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', 'ko'],
 ];
 const migrationDocuments = [
   ['docs/getting-started/migrate-from-nestjs.md', 'en'],

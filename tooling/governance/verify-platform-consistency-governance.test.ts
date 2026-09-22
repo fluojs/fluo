@@ -641,41 +641,34 @@ describe('FluoBlog tutorial source copies', () => {
   ] as const;
 
   for (const lesson of sourceLessons) {
-    it(`ships the tested checkpoint files in both locales for ${lesson}`, () => {
-      // Given: both translations identify their complete source-file examples.
-      const sourcePaths = [];
-      for (const suffix of ['', '.ko']) {
-        const page = readFileSync(
-          join(repoRoot, 'apps/docs/content/docs/tutorial', `${lesson}${suffix}.mdx`),
-          'utf8',
-        );
-        const copies = [...page.matchAll(
-          /\{\/\* fluo-tutorial-source: (examples\/fluo-blog\/[^\s]+) \*\/\}\s*\n```[^\n]*\n([\s\S]*?)\n```/g,
-        )];
-        expect(copies.length, `${lesson}${suffix} must identify its source copies`).toBeGreaterThan(0);
-        const paths = [];
+    it(`ships the tested checkpoint files for ${lesson}`, () => {
+      // Given: the tutorial page identifies its complete source-file examples.
+      const page = readFileSync(
+        join(repoRoot, 'apps/docs/content/docs/tutorial', `${lesson}.mdx`),
+        'utf8',
+      );
+      const copies = [...page.matchAll(
+        /\{\/\* fluo-tutorial-source: (examples\/fluo-blog\/[^\s]+) \*\/\}\s*\n```[^\n]*\n([\s\S]*?)\n```/g,
+      )];
+      expect(copies.length, `${lesson} must identify its source copies`).toBeGreaterThan(0);
 
-        for (const copy of copies) {
-          const sourcePath = copy[1];
-          const printedSource = copy[2];
-          if (sourcePath === undefined || printedSource === undefined) {
-            throw new Error('A tutorial source marker must include a path and code fence');
-          }
-
-          // When: the complete snippet is compared with the executable source.
-          const source = readFileSync(join(repoRoot, sourcePath), 'utf8');
-
-          // Then: documentation cannot silently diverge from its tested example.
-          expect(printedSource.trimEnd(), sourcePath).toBe(source.trimEnd());
-          paths.push(sourcePath);
+      for (const copy of copies) {
+        const sourcePath = copy[1];
+        const printedSource = copy[2];
+        if (sourcePath === undefined || printedSource === undefined) {
+          throw new Error('A tutorial source marker must include a path and code fence');
         }
-        sourcePaths.push(paths);
+
+        // When: the complete snippet is compared with the executable source.
+        const source = readFileSync(join(repoRoot, sourcePath), 'utf8');
+
+        // Then: documentation cannot silently diverge from its tested example.
+        expect(printedSource.trimEnd(), sourcePath).toBe(source.trimEnd());
       }
-      expect(sourcePaths[0]).toEqual(sourcePaths[1]);
     });
   }
 
-  for (const suffix of ['', '.ko']) {
+  for (const suffix of ['']) {
     it(`builds every cumulative source state from the starter and ${suffix || 'English'} lesson edits`, () => {
       // Given: the learner begins with the health-only application.
       const exampleRoot = join(repoRoot, 'examples/fluo-blog');
@@ -1160,14 +1153,6 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
     [
       'English canonical request transaction summary',
       'apps/docs/content/docs/guides/persistence.mdx',
-      (source: string) => source.replace(
-        '`DrizzleDatabase.requestTransaction(...)` request transaction boundary',
-        '`DrizzleDatabase.requestBoundary(...)` request transaction boundary',
-      ),
-    ],
-    [
-      'Korean canonical request transaction summary',
-      'apps/docs/content/docs/guides/persistence.ko.mdx',
       (source: string) => source.replace(
         '`DrizzleDatabase.requestTransaction(...)` request transaction boundary',
         '`DrizzleDatabase.requestBoundary(...)` request transaction boundary',
@@ -2092,10 +2077,9 @@ describe('enforceMandatoryFirstPartyDependencyEngineAlignment', () => {
 describe('enforcePlatformFastifyEngineDocumentation', () => {
   const fastifyGuidePaths = [
     'apps/docs/content/docs/guides/runtime-adapters.mdx',
-    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   ] as const;
 
-  it('pins both Fastify guide engine ranges to the platform manifest', async () => {
+  it('pins the Fastify guide engine range to the platform manifest', async () => {
     const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
 
     expect(() => enforcePlatformFastifyEngineDocumentation()).not.toThrow();
@@ -2153,7 +2137,7 @@ describe('enforcePlatformFastifyEngineDocumentation', () => {
     },
   );
 
-  it('rejects Fastify manifest engine drift from both guide sections', async () => {
+  it('rejects Fastify manifest engine drift from the guide section', async () => {
     const { enforcePlatformFastifyEngineDocumentation } = await loadGovernanceInternals();
     const readText = (relativePath: string) => {
       const content = readFileSync(join(repoRoot, relativePath), 'utf8');
@@ -2214,7 +2198,6 @@ describe('enforcePlatformNodejsEngineDocumentation', () => {
 
   it.each([
     'apps/docs/content/docs/guides/runtime-adapters.mdx',
-    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   ])('rejects a level-three Raw Node.js heading in %s', async (targetPath) => {
     const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
     const readText = (relativePath: string) => {
@@ -2232,7 +2215,6 @@ describe('enforcePlatformNodejsEngineDocumentation', () => {
 
   it.each([
     'apps/docs/content/docs/guides/runtime-adapters.mdx',
-    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   ])('rejects a duplicate Raw Node.js heading in %s', async (targetPath) => {
     const { enforcePlatformNodejsEngineDocumentation } = await loadGovernanceInternals();
     const readText = (relativePath: string) => {
@@ -2430,7 +2412,6 @@ describe('enforceDenoPermissionGuidance', () => {
       'packages/platform-deno/README.md',
       'packages/platform-deno/README.ko.md',
       'apps/docs/content/docs/guides/runtime-adapters.mdx',
-      'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
       'book/intermediate/ch23-deno.md',
       'book/intermediate/ch23-deno.ko.md',
       'docs/CONTEXT.md',
@@ -2559,10 +2540,6 @@ describe('enforceCloudflareWorkersLifecycleDocsSync', () => {
     [
       'apps/docs/content/docs/guides/runtime-adapters.mdx',
       'Map request-bound Worker env into `@fluojs/config` during bootstrap.',
-    ],
-    [
-      'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
-      'Worker env binding은 매핑해야 하며 `ConfigModule.forRoot(...)` bootstrap provider에서 사용합니다.',
     ],
     [
       'docs/CONTEXT.md',
@@ -4210,7 +4187,6 @@ describe('repository governance contracts', () => {
     const customAdapter = readFileSync(resolve(repoRoot, 'book/advanced/ch13-custom-adapter.md'), 'utf8');
     const customAdapterKo = readFileSync(resolve(repoRoot, 'book/advanced/ch13-custom-adapter.ko.md'), 'utf8');
     const runtimeAdaptersGuide = readFileSync(resolve(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.mdx'), 'utf8');
-    const runtimeAdaptersGuideKo = readFileSync(resolve(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.ko.mdx'), 'utf8');
     const fastifyAdapterSource = readFileSync(resolve(repoRoot, 'packages/platform-fastify/src/adapter.ts'), 'utf8');
     const fastifyReadme = readFileSync(resolve(repoRoot, 'packages/platform-fastify/README.md'), 'utf8');
     const fastifyReadmeKo = readFileSync(resolve(repoRoot, 'packages/platform-fastify/README.ko.md'), 'utf8');
@@ -4243,18 +4219,15 @@ describe('repository governance contracts', () => {
       expect(source).toMatch(/^<!-- packages: .*@fluojs\/platform-fastify.* -->/u);
     }
 
-    for (const source of [runtimeAdaptersGuide, runtimeAdaptersGuideKo]) {
-      expect(source).toContain('### Fastify HTTPS/TLS');
-      expect(source).toContain('Node.js `https.ServerOptions`');
-      expect(source).toContain('FastifyHttpApplicationAdapter.create');
-      expect(source).not.toContain('bootstrapFastifyApplication(...)');
-      expect(source).not.toContain('runFastifyApplication(...)');
-    }
+    expect(runtimeAdaptersGuide).toContain('### Fastify HTTPS/TLS');
+    expect(runtimeAdaptersGuide).toContain('Node.js `https.ServerOptions`');
+    expect(runtimeAdaptersGuide).toContain('FastifyHttpApplicationAdapter.create');
+    expect(runtimeAdaptersGuide).not.toContain('bootstrapFastifyApplication(...)');
+    expect(runtimeAdaptersGuide).not.toContain('runFastifyApplication(...)');
 
     expect(runtimeAdaptersGuide).toContain('plain HTTP behind that infrastructure boundary');
-    expect(runtimeAdaptersGuideKo).toContain('infrastructure boundary 뒤에서 Fastify를 일반 HTTP로 실행');
     expect(docsContext).toContain('apps/docs/content/docs/guides/runtime-adapters.mdx');
-    expect(docsContextKo).toContain('apps/docs/content/docs/guides/runtime-adapters.ko.mdx');
+    expect(docsContextKo).toContain('apps/docs/content/docs/guides/runtime-adapters.mdx');
 
     expect(fastifyReadme).toContain('`shutdownTimeoutMs: 0` starts Fastify close immediately');
     expect(fastifyReadme).toContain('the wait may time out on the next timer turn');

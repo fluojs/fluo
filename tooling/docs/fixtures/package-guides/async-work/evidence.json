@@ -1,0 +1,131 @@
+{
+  "@fluojs/event-bus": {
+    "page": "apps/docs/content/docs/packages/event-bus.mdx",
+    "sources": [
+      "packages/event-bus/README.md",
+      "packages/event-bus/src/index.ts",
+      "packages/event-bus/src/module.ts",
+      "packages/event-bus/src/types.ts",
+      "packages/event-bus/src/publish-result.ts",
+      "packages/event-bus/src/service.ts",
+      "packages/event-bus/src/decorators.ts",
+      "packages/event-bus/src/integration.ts",
+      "packages/event-bus/src/transports/redis-transport.ts",
+      "packages/event-bus/src/status.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/async-work/event-bus-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/event-bus + @fluojs/redis: native RedisEventBusTransport over a real redis:7.4-alpine container (tooling/testing/redis-native-fixture.mjs) - subclass publication fans out to the concrete plus base class channels, the subscribed base channel delivers one inbound message, and each delivery arrives as a rehydrated prototype",
+      "@fluojs/event-bus + @fluojs/runtime: application-context lifecycle via FluoFactory.createApplicationContext, per-call timeoutMs bounds with the started handler still completing afterwards, waitForHandlers:false background completion, and post-close rejection with reason 'stopped'",
+      "@fluojs/event-bus + DI singleton discovery: @OnEvent methods discovered from singleton providers; clones restored to the matched event type's prototype carrying the published subclass state"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/async-work --maxWorkers=1 — exit 0, Test Files 4 passed (4), Tests 24 passed (24), no unhandled errors (Node v24.20.0, native redis:7.4-alpine container)",
+      "pnpm exec tsc -p tsconfig.tools.json --noEmit — exit 2 overall; 0 async-work errors except the one pre-existing tools-config gap: TS2307 for the documented public subpath @fluojs/event-bus/redis (tsconfig.tools.json has no subpath mapping; runtime resolution works through the vitest workspace alias factory). Suggested lead-owned fix: add \"@fluojs/event-bus/redis\": [\"./packages/event-bus/dist/transports/redis-transport.d.ts\"]"
+    ],
+    "unexecuted": [
+      "Inbound transport dispatch for eventKey-overridden channels (fixture covers class-name lineage channels); drain-timeout expiry/degraded diagnostic path; non-Redis EventBusTransport implementations - covered by packages/event-bus tests or documented from source only",
+      "Remote subscriber visibility and cross-process acknowledgement semantics - out of contract scope by design (transport success describes publication only)"
+    ]
+  },
+  "@fluojs/cqrs": {
+    "page": "apps/docs/content/docs/packages/cqrs.mdx",
+    "sources": [
+      "packages/cqrs/README.md",
+      "packages/cqrs/src/index.ts",
+      "packages/cqrs/src/module.ts",
+      "packages/cqrs/src/types.ts",
+      "packages/cqrs/src/decorators.ts",
+      "packages/cqrs/src/dispatch-context.ts",
+      "packages/cqrs/src/errors.ts",
+      "packages/cqrs/src/buses/command-bus.ts",
+      "packages/cqrs/src/buses/event-bus.ts",
+      "packages/cqrs/src/event-clone.ts",
+      "packages/cqrs/src/status.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/async-work/cqrs-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/cqrs + @fluojs/event-bus: CqrsModule.forRoot() delegates the final publication step - fixture proves the documented order (event handler, saga with nested execute + CqrsDispatchContext pass-through, delegated @OnEvent observer last) and that delegated subscribers observe the caller-owned payload values on their own bus-level copies",
+      "@fluojs/cqrs + @fluojs/di: bootstrap-time singleton handler discovery, DuplicateCommandHandlerError when two providers claim one command type, CommandHandlerNotFoundException for unregistered commands, preloaded handler instances",
+      "@fluojs/cqrs + @fluojs/runtime: status snapshot readiness 'ready', discovery counts, ownership externallyManaged:false/ownsResources:false, dependencies ['event-bus.default']"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/async-work --maxWorkers=1 — exit 0, Test Files 4 passed (4), Tests 24 passed (24), no unhandled errors (Node v24.20.0)",
+      "pnpm exec tsc -p tsconfig.tools.json --noEmit — exit 2 overall; 0 async-work errors except the shared @fluojs/event-bus/redis subpath gap described under @fluojs/event-bus"
+    ],
+    "unexecuted": [
+      "Saga FIFO continuation chains, deadlock avoidance under default waitForHandlers re-entry, the 32-hop topology limit, and SagaExecutionError wrapping - covered by packages/cqrs tests, not exercised here",
+      "Redis transport fan-out of CQRS-published events (the event-bus fixture covers the transport composition separately)"
+    ]
+  },
+  "@fluojs/queue": {
+    "page": "apps/docs/content/docs/packages/queue.mdx",
+    "sources": [
+      "packages/queue/README.md",
+      "packages/queue/src/index.ts",
+      "packages/queue/src/module.ts",
+      "packages/queue/src/types.ts",
+      "packages/queue/src/decorators.ts",
+      "packages/queue/src/service.ts",
+      "packages/queue/src/tokens.ts",
+      "packages/queue/src/dead-letter-manager.ts",
+      "packages/queue/src/worker-discovery.ts",
+      "packages/queue/src/status.ts",
+      "packages/queue/src/helpers.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/async-work/queue-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/queue + @fluojs/redis: RedisModule-owned lifecycle client with queue-owned BullMQ duplicate connections (maxRetriesPerRequest:null) running against a real redis:7.4-alpine container from the repository native fixture harness",
+      "@fluojs/queue + @fluojs/runtime: processors start after the bootstrap-ready handoff, status snapshot reports started with 2 discovered workers / 2 ready queues, and shutdown drains pending dead-letter writes before close returns (making dead-letter arrival deterministic without polling)",
+      "@fluojs/queue producer contract: constructor-identity enqueue with worker-side prototype rehydration, repeated deduplicationKey mapping to one backing job id with one delivery, atomic enqueueMany with aligned ids, and runtime rejection of plain payloads and unregistered job classes while a live queue keeps serving"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/async-work --maxWorkers=1 — exit 0, Test Files 4 passed (4), Tests 24 passed (24), no unhandled errors (Node v24.20.0)",
+      "pnpm exec tsc -p tsconfig.tools.json --noEmit — exit 2 overall; 0 async-work errors except the shared @fluojs/event-bus/redis subpath gap described under @fluojs/event-bus"
+    ],
+    "unexecuted": [
+      "Worker concurrency and rateLimiter execution settings, ownershipEnforcement:'reject' collisions, enqueueMany cross-queue rejection, and force-close paths after workerShutdownTimeoutMs - covered by packages/queue tests (BullMQ mocked) or documented from source only",
+      "Named Redis client (clientName) topology and distinct ownershipNamespace backends - source-documented only in this workstream"
+    ]
+  },
+  "@fluojs/cron": {
+    "page": "apps/docs/content/docs/packages/cron.mdx",
+    "sources": [
+      "packages/cron/README.md",
+      "packages/cron/src/index.ts",
+      "packages/cron/src/module.ts",
+      "packages/cron/src/types.ts",
+      "packages/cron/src/decorators.ts",
+      "packages/cron/src/expressions.ts",
+      "packages/cron/src/service.ts",
+      "packages/cron/src/task-runner.ts",
+      "packages/cron/src/task-discovery.ts",
+      "packages/cron/src/scheduler.ts",
+      "packages/cron/src/distributed-lock-manager.ts",
+      "packages/cron/src/tokens.ts",
+      "packages/cron/src/status.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/async-work/cron-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/cron + @fluojs/redis: native distributed locking over a real redis:7.4-alpine container - a task-level distributed interval acquires the lease (GET on fluo:cron:guide:locked-poll returns a non-empty token inside the callback) and the lease is released before the next tick re-acquires it, evidencing the post-run release path",
+      "@fluojs/cron + DI: decorator tasks discovered from singleton providers and exposed as immutable SchedulingTaskDescriptor snapshots; default task name is <ClassName>.<methodName> (BillingTasks.initialSync) feeding the default lock key",
+      "@fluojs/cron + @fluojs/runtime: registry lifecycle inside a real application context - dynamic timeout fires once and self-disables, duplicate dynamic names and invalid expressions are rejected atomically, and a failed updateCronExpression replacement rolls back to the previous expression"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/async-work --maxWorkers=1 — exit 0, Test Files 4 passed (4), Tests 24 passed (24), no unhandled errors (Node v24.20.0)",
+      "pnpm exec tsc -p tsconfig.tools.json --noEmit — exit 2 overall; 0 async-work errors except the shared @fluojs/event-bus/redis subpath gap described under @fluojs/event-bus"
+    ],
+    "unexecuted": [
+      "A successful live updateCronExpression on a started named task with the default croner scheduler - currently impossible (create-before-stop collides with croner's process-global job-name registry); the fixture asserts the transactional rollback instead and the discrepancy is reported in tooling/docs/fixtures/package-guides/async-work/README.md",
+      "Custom CronScheduler injection, timezone-specific scheduling, and genuine multi-instance lock contention between two processes - package tests or source-documented only; the native fixture evidences acquire/hold/release/re-acquire on one instance"
+    ]
+  }
+}

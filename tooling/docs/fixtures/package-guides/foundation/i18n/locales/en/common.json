@@ -1,0 +1,4 @@
+{
+  "welcome": "Welcome {{ name }}!",
+  "onlyEnglish": "EN only"
+}

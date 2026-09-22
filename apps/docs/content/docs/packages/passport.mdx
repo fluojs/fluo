@@ -1,0 +1,352 @@
+---
+title: Passport
+description: How @fluojs/passport routes auth strategies through AuthGuard onto requestContext.principal, with bearer, cookie, refresh-token, and Passport.js bridge presets.
+package: "@fluojs/passport"
+---
+
+`@fluojs/passport` is the auth execution layer. It answers one question on every protected route: *who is calling, and may they proceed?* A strategy produces a `Principal`; the shared `AuthGuard` writes it to `requestContext.principal` and enforces declared scopes. Everything else — token crypto, credential formats, session state — lives elsewhere on purpose.
+
+The package ships one core (`PassportModule` + `AuthGuard` + decorators) and four first-party presets built on that core: the **bearer JWT strategy**, the **cookie-auth module**, the **refresh-token module**, and the **Passport.js bridge** for adapting existing `passport-*` strategies. It does *not* verify tokens itself (that is [`@fluojs/jwt`](/docs/packages/jwt)), does not manage users or sessions, and does not enforce anything on routes that lack an auth decorator or guard metadata.
+
+Prerequisites: Node.js `>=24.0.0 <27`. The package depends on `@fluojs/core`, `@fluojs/di`, `@fluojs/http`, `@fluojs/jwt`, and `@fluojs/runtime`; the `passport` npm package itself is only needed when you use the bridge with real Passport.js strategies.
+
+```bash
+pnpm add @fluojs/passport
+```
+
+## A small working example
+
+The bearer preset authenticates `Authorization: Bearer <token>` against the JWT module's verifier. One module wires both halves:
+
+```ts title="src/auth/auth.module.ts"
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+import {
+  BEARER_JWT_STRATEGY_NAME,
+  BearerJwtStrategy,
+  createBearerJwtStrategyRegistration,
+  PassportModule,
+} from '@fluojs/passport';
+
+@Module({
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      audience: 'my-app',
+      issuer: 'my-api',
+      secret: 'your-secure-secret',
+    }),
+    PassportModule.forRoot(
+      { defaultStrategy: BEARER_JWT_STRATEGY_NAME },
+      [createBearerJwtStrategyRegistration()],
+    ),
+  ],
+  providers: [BearerJwtStrategy],
+})
+export class AuthModule {}
+```
+
+Three pieces of wiring are all required, and each has a distinct job:
+
+1. `JwtModule.forRoot(...)` registers and exports `DefaultJwtVerifier` — the token crypto and its configuration stay owned by [`@fluojs/jwt`](/docs/packages/jwt).
+2. `providers: [BearerJwtStrategy]` exposes the strategy class so the guard can resolve it from DI. There is no combined "auth module" facade; you compose the pieces.
+3. `PassportModule.forRoot(..., [createBearerJwtStrategyRegistration()])` registers the *named* strategy (`'jwt'`) that `@UseAuth('jwt')` looks up.
+
+Protected routes declare the requirement inline:
+
+```ts title="src/profile/profile.controller.ts"
+import { Controller, Get, type RequestContext } from '@fluojs/http';
+import { RequireScopes, UseAuth } from '@fluojs/passport';
+
+@Controller('/profile')
+export class ProfileController {
+  @Get()
+  @UseAuth('jwt')
+  @RequireScopes('profile:read')
+  async getProfile(_input: unknown, ctx: RequestContext) {
+    return { user: ctx.principal?.subject };
+  }
+}
+```
+
+A request without a token gets `401`; a valid token whose principal lacks `profile:read` gets `403`; a valid token with the scope gets `200` with the normalized principal's subject. No application-owned parsing or verification code exists anywhere in this flow.
+
+## How the mechanics work
+
+### What `PassportModule.forRoot(...)` registers
+
+`forRoot(options?, strategies?)` returns a module with three providers: `PASSPORT_OPTIONS` (the options, captured by value), `AUTH_STRATEGY_REGISTRY` (a frozen name → token map built from `strategies`), and `AuthGuard`. Only `AuthGuard` is exported. Two registration rules fire immediately, at `forRoot` call time:
+
+- **Duplicate strategy names** throw `AuthStrategyResolutionError` — a registry with two `'jwt'` entries can never be built.
+- `global` defaults to `false`. Controllers in other modules can only use the guard when their module can see it: import the module that registered passport, or set `global: true`. A guard class that is not visible to the controller's module fails guard resolution at request time, so keep the passport registration on the same module path as the controllers it protects.
+
+### The decorator set
+
+| Decorator | Effect |
+| --- | --- |
+| `@UseAuth(strategy)` | Requires the named strategy; attaches `AuthGuard` |
+| `@UseOptionalAuth(strategy)` | Lets routes without scopes continue when the strategy **reports** missing credentials (see below) |
+| `@RequireScopes(...scopes)` | Adds scope requirements; attaches `AuthGuard` |
+
+All three are class-or-method decorators that write requirement metadata **and** apply `@UseGuards(AuthGuard)`, so a plain `@UseAuth('jwt')` route needs no separate guard annotation. Class-level and method-level metadata merge:
+
+- A method-level `@UseAuth(...)` overrides the class-level strategy.
+- `@RequireScopes(...)` unions with any class-level scopes (trimmed, deduplicated).
+- Method-level `optional` wins when explicitly declared; a method strategy also re-tightens an inherited optional requirement back to mandatory.
+
+The lower-level helpers `defineAuthRequirement`, `getOwnAuthRequirement`, and `getAuthRequirement` are public for custom decorators and tooling that must integrate with `AuthGuard` metadata.
+
+### Guard execution, step by step
+
+`AuthGuard.canActivate(context)` runs this sequence for each request:
+
+1. **Read the requirement** for the controller + handler. If no strategy name comes from metadata or `defaultStrategy`, a route with declared scopes fails with `AuthStrategyResolutionError` (that is a wiring bug, not an auth failure), and a route without scopes is allowed through — `@RequireScopes` alone is not authentication.
+2. **Look up the strategy token** in the registry. An unknown name throws `AuthStrategyResolutionError`.
+3. **Resolve the strategy from the request container.** Resolution happens per request, so strategies may be request-scoped, and a resolution failure (the token is not a visible provider) surfaces as `AuthStrategyResolutionError`.
+4. **Call `strategy.authenticate(context)`** and interpret the result:
+   - a `Principal` object — validated (non-empty `subject`, object `claims`, well-typed `roles`/`scopes`/`audience`) and written to `requestContext.principal`;
+   - `{ authenticated: false }` — continues only when the route used `@UseOptionalAuth` **and** declares no scopes; otherwise `AuthenticationFailedError`;
+   - `{ handled: true }` — the strategy already committed the response; the guard verifies `response.committed` and returns without touching the handler. A `handled` result that did not commit is an authentication failure.
+5. **Enforce scopes.** Every required scope must be present on the principal's scopes; a miss throws `ForbiddenException` → HTTP `403`.
+6. **Map failures.** `AuthenticationRequiredError`, `AuthenticationFailedError`, and `AuthenticationExpiredError` become `UnauthorizedException` → HTTP `401` with the original error preserved as `cause`. Any other error (JWT misconfiguration, registry misses) propagates unchanged and surfaces as a server error — misconfiguration should look like misconfiguration, not like a rejected login.
+
+### Writing a custom strategy
+
+`AuthStrategy` is a one-method contract, and it is the supported extension point for token revocation checks, account-state checks, or alternate credential extraction:
+
+```ts title="fragment: API-key strategy"
+import { Inject } from '@fluojs/core';
+import type { GuardContext } from '@fluojs/http';
+import type { AuthStrategy, AuthStrategyResult } from '@fluojs/passport';
+import { AuthenticationFailedError, AuthenticationRequiredError } from '@fluojs/passport';
+
+@Inject(ApiKeyStore)
+export class ApiKeyStrategy implements AuthStrategy {
+  constructor(private readonly keys: ApiKeyStore) {}
+
+  async authenticate(context: GuardContext): Promise<AuthStrategyResult> {
+    const header = context.requestContext.request.headers['x-api-key'];
+    const apiKey = Array.isArray(header) ? header[0] : header;
+
+    if (!apiKey) {
+      throw new AuthenticationRequiredError('x-api-key header is required.');
+    }
+
+    const owner = await this.keys.findOwner(apiKey);
+    if (!owner) {
+      throw new AuthenticationFailedError('Unknown API key.');
+    }
+
+    return { subject: owner.id, claims: { roles: ['service'] } };
+  }
+}
+```
+
+Register the class as a provider in the module that imports `PassportModule.forRoot(...)` and pass `{ name: 'api-key', token: ApiKeyStrategy }` in the strategies array — the same shape `createBearerJwtStrategyRegistration()` returns for the preset.
+
+### The bearer JWT preset
+
+`BearerJwtStrategy` resolves `DefaultJwtVerifier` and returns its `JwtPrincipal` unchanged — subject, claims, issuer, audience, roles, and scopes normalization stay owned by `@fluojs/jwt`. Its credential extraction is deliberately strict:
+
+- The header must match RFC 6750 `b64token`: ASCII letters, digits, `-`, `.`, `_`, `~`, `+`, `/`, with only trailing `=` padding. `?`, internal `=`, Unicode, whitespace, and control characters are rejected before verification. The scheme is case-insensitive and separated by one or more spaces; with an array-valued header only the first entry is read.
+- Missing or empty header → `AuthenticationRequiredError` with a bare `WWW-Authenticate: Bearer` challenge. Wrong scheme or malformed credential → `AuthenticationFailedError`.
+- Expired token → `AuthenticationExpiredError`; invalid token → `AuthenticationFailedError` — both preserve the original `JwtExpiredTokenError`/`JwtInvalidTokenError` as `cause` and serialize `WWW-Authenticate: Bearer error="invalid_token"`.
+- `JwtConfigurationError` and verifier-infrastructure failures propagate unchanged rather than masquerading as credential failures.
+
+### The cookie-auth preset
+
+`CookieAuthModule.forRoot(...)` is a complete module recipe: it builds one `PassportModule` registry internally (defaulting `defaultStrategy` to `'cookie'`), registers `CookieAuthStrategy` and `CookieManager`, and exports `AuthGuard`, `CookieAuthStrategy`, and `CookieManager`:
+
+```ts title="fragment: cookie module"
+@Module({
+  imports: [
+    CookieAuthModule.forRoot({
+      accessTokenCookieName: 'session_access',
+      refreshTokenCookieName: 'session_refresh',
+      cookieOptions: { path: '/sessions' },
+    }),
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      global: true, // required: the sibling cookie module must see DefaultJwtVerifier
+      secret: 'your-secure-secret',
+    }),
+  ],
+})
+export class SessionModule {}
+```
+
+The two modules are siblings, so the JWT providers must be globally visible — that is what `global: true` buys here. To combine cookie auth with bearer or a bridge strategy, pass the additional registrations as `CookieAuthModule.forRoot`'s **third argument** instead of importing a second `PassportModule.forRoot`; the recipe owns the single registry. Additional strategy classes stay application-owned providers.
+
+`CookieAuthStrategy` verifies the access-token cookie through the JWT module and classifies failures exactly like the bearer preset (expired → `AuthenticationExpiredError`, invalid → `AuthenticationFailedError`, missing/malformed cookie → `AuthenticationRequiredError`, all → 401 at the guard). Two behaviors are easy to get wrong:
+
+- **Malformed present cookies always fail.** Only a *missing* cookie can resolve to `{ authenticated: false }`, and only when `requireAccessToken: false` — at which point protected routes still reject the request, and the pass-through only happens on `@UseOptionalAuth('cookie')` routes.
+- **Cookie names are shared configuration.** The same `config` supplies the strategy's reader and the manager's writer/clearer.
+
+`CookieManager` writes and clears the auth cookies. Its defaults are strict session-cookie defaults — `Path=/`, `Secure`, `HttpOnly`, `SameSite=Strict`, no domain, no lifetime — and it appends `Set-Cookie` values without dropping cookies already placed on the response, percent-encodes values, and fails validation on malformed names or attributes instead of emitting invalid headers. TTL resolution order for `Max-Age`: explicit positional argument → the matching `cookieOptions.accessTokenTtlSeconds`/`refreshTokenTtlSeconds` → `cookieOptions.maxAge` — all in **seconds** (forwarded to the portable serializer as `maxAgeSeconds`, not the millisecond convention of some host frameworks).
+
+```ts title="fragment: issuing cookies"
+@Inject(CookieManager)
+export class SessionController {
+  constructor(private readonly cookies: CookieManager) {}
+
+  @Post('/login')
+  login(_input: unknown, ctx: RequestContext) {
+    // accessToken/refreshToken come from your token issuance — @fluojs/jwt owns
+    // that configuration (see its guide's refresh-token section).
+    this.cookies.setAuthCookies(ctx.response, accessToken, 900, refreshToken, 604_800);
+    return { subject: 'user-123' };
+  }
+
+  @Post('/logout')
+  logout(_input: unknown, ctx: RequestContext) {
+    this.cookies.clearAllCookies(ctx.response);
+    return { ok: true };
+  }
+}
+```
+
+For a cookie manager outside DI, `CookieManager.create(config)` builds one with the same config contract.
+
+### The refresh-token lifecycle
+
+The canonical refresh wiring makes `@fluojs/jwt` the sole owner of refresh crypto and state. Passport contributes the endpoint recipe — a strategy that turns a presented refresh token into a rotated pair:
+
+```ts title="fragment: refresh wiring"
+@Module({
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      global: true, // RefreshTokenModule must see the exported RefreshTokenService
+      secret: 'your-access-token-secret',
+      refreshToken: {
+        expiresInSeconds: 604_800,
+        rotation: true,
+        secret: 'your-refresh-token-secret',
+        store: 'memory', // development-only; provide an atomic durable store in production
+      },
+    }),
+    RefreshTokenModule.forRoot(),
+    PassportModule.forRoot(
+      { defaultStrategy: REFRESH_TOKEN_STRATEGY_NAME },
+      [{ name: REFRESH_TOKEN_STRATEGY_NAME, token: RefreshTokenStrategy }],
+    ),
+  ],
+})
+export class AuthModule {}
+```
+
+`RefreshTokenModule.forRoot()` does not build a service — it registers an alias (`REFRESH_TOKEN_SERVICE` → `useExisting`) pointing at the `RefreshTokenService` the JWT module exports, so there is exactly one store and one crypto configuration. `RefreshTokenStrategy` extracts the presented token in priority order: `body.refreshToken` → `Authorization: Bearer ...` → `x-refresh-token`; a present-but-malformed body value fails rather than falling back to the header. On success it rotates, verifies the returned access token, and resolves `ctx.principal` to the `RefreshTokenPrincipal` shape — the verified `subject` at the top level, the rotated pair nested under `claims.accessToken` / `claims.refreshToken`:
+
+```ts title="fragment: refresh endpoint"
+@Controller('/auth')
+export class AuthController {
+  @Post('/refresh')
+  @UseAuth('refresh-token')
+  async refresh(_input: unknown, ctx: RequestContext) {
+    const claims = ctx.principal?.claims as { accessToken: string; refreshToken: string };
+    // RefreshTokenAuthResult is the application-facing payload for clients:
+    return { accessToken: claims.accessToken, refreshToken: claims.refreshToken, subject: ctx.principal?.subject };
+  }
+}
+```
+
+Failure classification matches the other presets (missing → required, reuse/invalidity → failed, expired JWT → expired). A custom `RefreshTokenServicePort` (the four-method port: `issueRefreshToken`, `rotateRefreshToken`, `revokeRefreshToken`, `revokeAllForSubject`) may own refresh state instead, but it must be registered alongside a globally visible JWT module and return access tokens that the configured verifier accepts — it is an alternate *state* backend, not a non-JWT exchange path. The former `JwtRefreshTokenAdapter`, `RefreshTokenModuleOptions`, and passport-owned `RefreshTokenService` are removed; move every refresh `secret`/`expiresInSeconds`/`rotation`/`store` value into `JwtModule.forRoot(...)`.
+
+### The Passport.js bridge
+
+`createPassportJsStrategyBridge(name, Strategy, options?)` adapts an existing Passport.js strategy (for example `passport-google-oauth20`) into an `AuthStrategy` plus its provider bundle:
+
+```ts title="fragment: bridge composition"
+const googleBridge = createPassportJsStrategyBridge('google', GoogleStrategy, {
+  mapPrincipal: ({ user }) => ({ subject: user.id, claims: user }),
+});
+
+@Module({
+  imports: [PassportModule.forRoot({ defaultStrategy: 'google' }, [googleBridge.strategy])],
+  providers: [GoogleStrategy, ...googleBridge.providers],
+})
+export class SocialLoginModule {}
+```
+
+The bridge is a documented manual-composition helper — the one sanctioned exception to the "register strategies through presets" pattern, because third-party strategy instances must be bound as providers before the guard can execute them. Its settlement contract is strict and worth understanding before cutover:
+
+- The strategy must settle by calling exactly one bound Passport action — `success`, `fail`, `redirect`, `pass`, or `error`. The bridge ignores `authenticate()` return values; a promise that resolves without an action, or a rejection, becomes an authentication failure instead of a hanging request.
+- `actionTimeoutMs` (default `30_000`) bounds callback-style strategies; `0` settles on the next timer turn, and negative/`NaN`/infinite values throw `RangeError` at construction. Application shutdown cancels every in-flight execution rather than holding request state through the timeout.
+- `mapPrincipal` must return a valid fluo `Principal` — non-empty string `subject`, object `claims`.
+- `redirect()` commits the response and skips the protected handler; `handled: true` results are terminal after the strategy commits, even when they also carry a principal.
+- The bridge passes the active platform adapter's raw host request when one exists (the normalized fluo request otherwise) and **never** creates a Passport-initialized request: strategies that rely on `request.logIn`, `request.user`, or session middleware need the migration compatibility checklist before they will work.
+
+### Account linking
+
+For external-identity login, `resolveAccountLinking(context, policy?, options?)` turns an identity plus candidate accounts into a deterministic decision. `createConservativeAccountLinkPolicy()` is the documented default: exactly one existing link → `link`; multiple existing links → `conflict`; an unconfirmed attempt → `reject` (`ACCOUNT_LINK_CONFIRMATION_REQUIRED`); a confirmed attempt against a real candidate → `link`; no candidates → `create-account`; anything ambiguous → `conflict`. `resolveAccountLinking` maps decisions to `{ status: 'linked' | 'create-account' | 'skipped' }` or throws `AccountLinkRejectedError` / `AccountLinkConflictError` (carrying the conflicting candidate IDs). With no policy registered, the resolver does nothing by default (`skipped`) or creates accounts when `{ fallback: 'create-account' }` is passed — the framework never invents linking behavior you did not configure. Policies are plain objects registered under the `ACCOUNT_LINKING_POLICY` token when DI resolution is desired.
+
+## Composing with neighboring packages
+
+- **`@fluojs/jwt`** owns every byte of token crypto. The bearer and cookie strategies wrap its verifier; the refresh module aliases its `RefreshTokenService`. Configure `algorithms`, secrets, TTLs, and stores in `JwtModule.forRoot(...)` (with `global: true` when a sibling preset needs the exports), never in passport.
+- **`@fluojs/http`** provides `GuardContext`, the guard pipeline, `requestContext.principal`, and the canonical 401/403 error envelopes. `AuthGuard` is an ordinary fluo guard, so it composes with other guards — `@UseGuards(A, B)` order, route middleware, and interceptors all behave as the HTTP guide describes.
+- **`@fluojs/throttler`** belongs on the routes this package *unlocks*: login, cookie issuance, and especially `POST /auth/refresh` are brute-force targets. Apply `@UseGuards(ThrottlerGuard)` with a tight `@Throttle(...)` next to `@UseAuth('refresh-token')`.
+- **`@fluojs/testing`** drives both seams: `Test.createApp({ rootModule })` for full request/response behavior, and direct `guard.canActivate(...)` with synthetic contexts for strategy-branch coverage.
+
+## Errors, limits, and common mistakes
+
+| Error | `code` | HTTP surface | Meaning |
+| --- | --- | --- | --- |
+| `AuthStrategyResolutionError` | `AUTH_STRATEGY_RESOLUTION_ERROR` | 500 | Registry miss, duplicate name, unresolved strategy token, or a scoped route with no strategy — a wiring defect |
+| `AuthenticationRequiredError` | `AUTHENTICATION_REQUIRED` | 401 | No credentials presented |
+| `AuthenticationFailedError` | `AUTHENTICATION_FAILED` | 401 | Credentials presented and rejected |
+| `AuthenticationExpiredError` | `AUTHENTICATION_EXPIRED` | 401 | Credentials valid in form but expired |
+
+Limits and sharp edges:
+
+- **`@RequireScopes` without `@UseAuth` is not authentication.** If no strategy name is resolvable, a scoped route fails guard wiring (`AuthStrategyResolutionError`); scope checks only run after a principal exists.
+- **Optional auth is narrow.** `@UseOptionalAuth` passes only when the strategy reports missing credentials — returning `{ authenticated: false }` — *and* the route declares no scopes. Strategies that *raise* on missing credentials (the bearer preset) still produce 401 on optional routes; the cookie preset reports only when `requireAccessToken: false`.
+- **`handled: true` requires a committed response.** The guard double-checks `response.committed` and converts a claim without a commit into an authentication failure.
+- **Guard visibility follows module visibility.** `PassportModule.forRoot(...)` defaults `global: false`; controllers outside the importing module need the registration on their import path or `global: true`.
+- **The bridge does not emulate Passport sessions.** No `request.logIn`, no `request.user`, no session middleware — strategies depending on them fail in documented ways, not silently.
+- **Cookie defaults are secure defaults.** `Secure` cookies will not round-trip over plain HTTP during local development; relax `cookieOptions` explicitly rather than fighting the serializer.
+- **Refresh state is not provided for you.** `'memory'` is an explicit dev-only store; production refresh rotation requires an application-owned atomic store (see the [JWT guide](/docs/packages/jwt#the-store-contract)).
+
+## Testing at the auth seam
+
+Two levels cover the real risks. Route level through `Test.createApp` — real guard dispatch, real error envelopes, no port:
+
+```ts title="fragment: route-level test"
+import { Test } from '@fluojs/testing';
+import { expect, it } from 'vitest';
+import { JwtService } from '@fluojs/jwt';
+import { AuthModule } from '../src/auth/auth.module';
+
+it('rejects anonymous and scope-less callers', async () => {
+  const module = await Test.createTestingModule({ rootModule: AuthModule }).compile();
+
+  let token: string;
+  try {
+    const jwt = await module.resolve(JwtService);
+    token = await jwt.sign({ scopes: ['other:scope'] }, { subject: 'u1' });
+  } finally {
+    await module.container.dispose();
+  }
+
+  const app = await Test.createApp({ rootModule: AuthModule });
+
+  try {
+    const anonymous = await app.request('GET', '/profile').send();
+    expect(anonymous.status).toBe(401);
+
+    const scoped = await app.request('GET', '/profile').header('Authorization', `Bearer ${token}`).send();
+    expect(scoped.status).toBe(403);
+  } finally {
+    await app.close();
+  }
+});
+```
+
+Guard level with synthetic contexts — the pattern the package's own integration tests use — exercises strategy result variants (`{ authenticated: false }`, `{ handled: true }`, invalid principals) by calling `guard.canActivate(...)` directly and asserting on `requestContext.principal`. Assert on typed errors and status codes, never on message strings. The rotation, reuse, and family-revocation behavior of refresh tokens is `@fluojs/jwt` behavior; test it there or through the refresh endpoint with a fake store, as shown in the JWT guide.
+
+## Related reading
+
+- [`@fluojs/jwt`](/docs/packages/jwt) — the token core every JWT-based strategy depends on.
+- [`@fluojs/throttler`](/docs/packages/throttler) — rate-limit the endpoints that mint or exchange credentials.
+- [`@fluojs/http`](/docs/packages/http) — guard pipeline ordering and the canonical error envelope.
+- [Auth guide](/docs/guides/auth) — the end-to-end protected-application walkthrough.
+- [`@fluojs/passport` package README](https://github.com/fluojs/fluo/blob/main/packages/passport/README.md) — the owning API reference for presets, bridge options, and account-linking contracts.

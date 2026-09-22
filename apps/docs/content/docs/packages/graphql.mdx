@@ -1,0 +1,269 @@
+---
+title: GraphQL
+description: How @fluojs/graphql mounts a Yoga-powered, decorator-first GraphQL endpoint on the fluo pipeline with operation-scoped DI and DataLoaders.
+package: "@fluojs/graphql"
+---
+
+`@fluojs/graphql` adds a GraphQL endpoint to a fluo application. It is built on GraphQL Yoga and follows the same authoring model as the rest of fluo: standard TC39 decorators, explicit DI, and strict defaults. Resolvers are ordinary providers; GraphQL arguments are ordinary DTOs; validation errors arrive as `BAD_USER_INPUT` with the same issue codes the HTTP pipeline produces.
+
+Three boundaries define the package. The endpoint is fixed at `/graphql` — there is no path option, by contract. Resolvers do not receive positional magic: because TC39 decorators have no parameter decorators, `@Args()`, `@Parent()`, and `@Context()` are method decorators that bind zero-based parameter indexes explicitly. And output types are explicit: TypeScript return types are never read, so an operation without `outputType` produces GraphQL `String`, and object results must name a `GraphQLObjectType`.
+
+Use it when you want a code-first GraphQL API with DI-integrated resolvers, or when you have an existing executable `GraphQLSchema` you want to mount (`schema` option). Do not use it to expose a REST API in disguise — there is no per-route guard model here (see the authorization boundary below), and there is no topic-based subscription layer.
+
+Prerequisites: Node.js `>=24.0.0 <27` (the package's own `engines.node` contract). Install the package plus its schema-stack peers — `graphql` and `graphql-yoga` are regular dependencies of `@fluojs/graphql`, but the README recommends installing them explicitly so your application owns their versions:
+
+```bash
+pnpm add @fluojs/graphql graphql graphql-yoga
+```
+
+## A small working example
+
+A complete application with one query, one validated input DTO, and one mutation:
+
+```ts title="src/messages.resolver.ts"
+import { Inject, Scope } from '@fluojs/core';
+import { Arg, Mutation, Query, Resolver } from '@fluojs/graphql';
+import { IsString, MinLength } from '@fluojs/validation';
+
+class EchoInput {
+  @Arg('value')
+  @IsString()
+  @MinLength(2)
+  value = '';
+}
+
+class SetMessageInput {
+  @Arg('message')
+  @IsString()
+  message = '';
+}
+
+@Scope('request')
+export class MessageStore {
+  message = 'initial';
+}
+
+@Inject(MessageStore)
+@Scope('request')
+@Resolver()
+export class MessagesResolver {
+  constructor(private readonly store: MessageStore) {}
+
+  @Query({ input: EchoInput })
+  echo(input: EchoInput): string {
+    return `echo: ${input.value}`;
+  }
+
+  @Mutation({ input: SetMessageInput })
+  setMessage(input: SetMessageInput): string {
+    this.store.message = input.message;
+    return this.store.message;
+  }
+
+  @Query({ fieldName: 'currentMessage' })
+  currentMessage(): string {
+    return this.store.message;
+  }
+}
+```
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { GraphqlModule } from '@fluojs/graphql';
+import { MessagesResolver, MessageStore } from './messages.resolver';
+
+@Module({
+  imports: [GraphqlModule.forRoot()],
+  providers: [MessageStore, MessagesResolver],
+})
+export class AppModule {}
+```
+
+```ts title="src/main.ts"
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
+});
+
+await app.listen();
+// curl -X POST http://localhost:3000/graphql \
+//   -H 'Content-Type: application/json' \
+//   -d '{"query": "{ echo(value: \"hello\") }"}'
+```
+
+Resolver classes are registered in the application module's `providers`. `GraphqlModule.forRoot({ resolvers: [...] })` is only an allowlist over already-registered providers — omit it or pass `[]` and every registered resolver is discovered. This is different from frameworks where the module's `resolvers` array is what registers classes; here registration and discovery are separate concerns.
+
+`forRootAsync(...)` exists for options that must come from the application graph. It accepts only `inject` and `useFactory` — NestJS-style `imports`, `useClass`, and `useExisting` are rejected with `TypeError` at registration:
+
+```ts title="fragment: async registration"
+class GraphqlSettings {
+  graphiql = true;
+}
+
+@Module({
+  imports: [
+    GraphqlModule.forRootAsync({
+      inject: [GraphqlSettings],
+      useFactory: (settings: GraphqlSettings) => ({ graphiql: settings.graphiql }),
+    }),
+  ],
+  providers: [GraphqlSettings, MessagesResolver],
+})
+export class AppModule {}
+```
+
+## How the mechanics work
+
+### Schema construction
+
+At bootstrap, the lifecycle middleware discovers registered resolvers, reads their handler metadata (`@Query`, `@Mutation`, `@Subscription`, `@FieldResolver`), and builds a `GraphQLSchema`. Input DTO fields decorated with `@Arg('name')` become GraphQL arguments; the `input` option on an operation names the DTO whose fields become that operation's argument set. Scalar argument types come from `argTypes` (`'string' | 'int' | 'float' | 'boolean' | 'id'`, or `listOf(...)` of those); without it, arguments are nullable scalars inferred from the field decorators' DTO shape.
+
+Output rules are strict and worth memorizing:
+
+| Declared output | Resulting GraphQL type |
+| --- | --- |
+| no `outputType` | `String` |
+| `outputType: UserType` | the `GraphQLObjectType` you supplied |
+| `outputType: listOf(UserType)` | `[UserType]` |
+| `outputType: listOf('string')` | `[String]` |
+
+New fields added by `@FieldResolver` are non-null only with `nullable: false`; omitted or `nullable: true` fields remain nullable, and `@Arg(...)` arguments are always nullable in the SDL regardless of DTO validation.
+
+### The operation container
+
+Every HTTP GraphQL request and every WebSocket subscription operation gets its own operation-scoped DI container. Resolvers share that container across all calls within one operation, and it is disposed when the operation completes or the WebSocket operation disconnects. A resolver that injects request-scoped providers must itself be `@Scope('request')` — the singleton default cannot capture per-operation state, and mis-scoped graphs fail the same `ScopeMismatchError` contract as the base DI. The example above uses exactly this shape: a request-scoped `MessageStore` plus a request-scoped resolver, which is why `currentMessage` reflects mutations from the same operation's perspective.
+
+Application shutdown unregisters the WebSocket transport, closes live clients, and disposes still-active operation containers through the same request-scoped teardown path as normal completion. Failed teardown retains its owner for a later `app.close()` retry, and shutdown never repeats cleanup that already succeeded.
+
+### Authorization boundary
+
+Only middleware registered **before** GraphQL consumes a request can establish `context.principal`; HTTP route guards registered after `GraphqlModule` do not run for GraphQL operations. Authorize inside resolvers using `context.principal`, or install principal-establishing middleware at bootstrap. WebSocket `connectionParams` is untrusted client input — parse and authorize it in your subscription setup before creating any stream.
+
+### Field resolvers
+
+`@FieldResolver(...)` attaches a provider method to a field on an object type owned by `@Resolver('TypeName')`. The field must already exist on that `GraphQLObjectType`, or the resolver must declare `type` so the schema builder can add it:
+
+```ts title="fragment: field resolver"
+import { GraphQLObjectType, GraphQLString } from 'graphql';
+import { Args, Context, FieldResolver, Parent, Resolver, type GraphQLContext } from '@fluojs/graphql';
+
+const AuthorType = new GraphQLObjectType({
+  name: 'Author',
+  fields: { id: { type: GraphQLString }, name: { type: GraphQLString } },
+});
+
+class LocaleInput {
+  @Arg('locale')
+  locale = 'en';
+}
+
+@Resolver('Book')
+class BookFieldResolver {
+  @FieldResolver({ fieldName: 'author', input: LocaleInput, type: AuthorType })
+  @Args(0)
+  @Parent(1)
+  @Context(2)
+  author(input: LocaleInput, book: { authorId: string }, context: GraphQLContext) {
+    return loadAuthor(context, input.locale, book.authorId);
+  }
+}
+```
+
+The three parameter-binding decorators are positional: `@Args()` defaults to index `0` (and requires an `input` DTO), `@Parent()` defaults to `0`, `@Context()` defaults to `1`. Binding the same index twice fails during decorator evaluation. Both the field-resolver class and the root resolver class must be registered as module providers; duplicate `TypeName.fieldName` registrations and field targets unreachable from a code-first root output fail at bootstrap. Schema-first field-resolver attachment is not supported — this is a code-first contract.
+
+### DataLoaders, scoped per operation
+
+`OperationScopedDataLoader.create(...)` builds a loader whose cache lives exactly one GraphQL operation, keyed off the operation container boundary. Singleton resolvers can therefore batch without leaking caches across requests:
+
+```ts title="fragment: operation-scoped loader"
+import { GraphQLObjectType, GraphQLString } from 'graphql';
+import { OperationScopedDataLoader, Query, Resolver, type GraphQLContext } from '@fluojs/graphql';
+
+const UserType = new GraphQLObjectType({
+  name: 'User',
+  fields: { id: { type: GraphQLString }, name: { type: GraphQLString } },
+});
+
+const userLoader = OperationScopedDataLoader.create(async (ids: readonly string[]) => {
+  return loadUsersByIds(ids);
+});
+
+class UserInput {
+  @Arg('id')
+  id = '';
+}
+
+@Resolver()
+class UserResolver {
+  @Query({ input: UserInput, outputType: UserType })
+  user(input: UserInput, context: GraphQLContext) {
+    return userLoader(context).load(input.id);
+  }
+}
+```
+
+`createDataLoaderMap`, `getRequestScopedDataLoader`, and `createRequestScopedDataLoaderFactory` are advanced helpers for typed loader registries; `OperationScopedDataLoader.create` is the canonical path.
+
+### Subscriptions
+
+Subscription resolvers return an `AsyncIterable` — there is no `@Subscription({ topics })` routing. The default transport is Server-Sent Events over the fixed `/graphql` endpoint; optional WebSocket support (`graphql-ws`) is enabled explicitly and requires an adapter exposing a server-backed Node HTTP/S upgrade surface:
+
+```ts title="fragment: websocket subscriptions"
+GraphqlModule.forRoot({
+  subscriptions: {
+    websocket: {
+      enabled: true,
+      limits: {
+        maxConnections: 100,
+        maxPayloadBytes: 64 * 1024,
+        maxOperationsPerConnection: 25,
+      },
+    },
+  },
+});
+```
+
+Those three limits are the defaults. `limits: false` and `subscriptions.websocket.limits = false` disable the budgets — only do this when equivalent controls exist outside fluo.
+
+## Guardrails and defaults
+
+- **Introspection** is disabled by default. It turns on when you enable `graphiql: true` or set `introspection: true` explicitly; production apps stay private by default.
+- **`graphiql`** defaults to `false`; the IDE is served on `GET /graphql` when enabled.
+- **Request budgets** (`maxDepth`, `maxComplexity`, `maxCost`) are enabled with conservative defaults; `limits: false` opts out.
+- **Validation failures** map to GraphQL `BAD_USER_INPUT` with the DTO's issue list under `extensions.issues`, and the affected field resolves to `null` — the rest of the operation still executes.
+- **Streaming cleanup**: SSE response streams cancel the upstream body when the downstream closes, so subscription resources release promptly; downstream failures stay observable even when upstream cancellation cleanup fails only best-effort.
+- **Node support**: the `>=24.0.0 <27` range is this package's verified contract. HTTP queries/mutations and SSE use Web-standard primitives internally, which is an implementation detail — it does not establish Bun, Deno, or Cloudflare Workers support.
+
+Common mistakes: expecting `outputType` to be inferred from a TypeScript return type (it never is); marking a resolver singleton while injecting request-scoped state; registering resolvers only in `forRoot({ resolvers })` without adding them to module `providers` (the array is an allowlist, not a registry); and relying on route guards for GraphQL authorization (they do not run — use `context.principal`).
+
+## Testing at the GraphQL seam
+
+The package's own integration tests boot a real Node listener on an available port and issue plain `fetch` calls — the same composition a production app uses. In your fixtures, pick a free port, boot `FluoFactory.create(...)` with `NodeHttpApplicationAdapter`, and assert on JSON responses:
+
+```ts title="fragment: integration test shape"
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port }),
+});
+try {
+  const response = await fetch(`http://127.0.0.1:${port}/graphql`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query: '{ echo(value: "hello") }' }),
+  });
+  expect(await response.json()).toEqual({ data: { echo: 'echo: hello' } });
+} finally {
+  await app.close();
+}
+```
+
+A failed DTO rule produces `{ data: { echo: null }, errors: [{ extensions: { code: 'BAD_USER_INPUT' } }] }` — assert on `extensions.code` and `extensions.issues` rather than on error message prose.
+
+## Related reading
+
+- [HTTP](/docs/packages/http) — the pipeline this package mounts onto; middleware and request scopes carry over.
+- [Validation](/docs/packages/validation) — the DTO rules behind `BAD_USER_INPUT` issues.
+- [Dependency injection](/docs/fundamentals/dependency-injection) — scopes and the operation container contract.
+- `@fluojs/graphql` package README — the owning API reference for every option accepted by `forRoot`.

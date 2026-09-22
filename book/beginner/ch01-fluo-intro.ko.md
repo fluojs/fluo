@@ -398,4 +398,4 @@ fluo는 설계상 모듈형입니다. 하나의 거대한 모놀리식 패키지
 이 장이 끝났을 때 모든 API를 외울 필요는 없습니다. 대신 fluo가 어떤 종류의 프레임워크인지, 왜 명시적인 스타일이 중요한지, FluoBlog가 그 아이디어를 어떤 순서로 보여 줄 것인지 이해하면 충분합니다.
 
 ## Next Chapter Preview
-첫 실행은 현재 튜토리얼의 [프로젝트 생성](../../apps/docs/content/docs/tutorial/create-app.ko.mdx)으로 이어가세요. 기존 [CLI 장](./ch02-cli-setup.ko.md)은 생성 구조와 도구를 더 자세히 살펴보는 보충 자료입니다.
+첫 실행은 현재 튜토리얼의 [프로젝트 생성](../../apps/docs/content/docs/tutorial/create-app.mdx)으로 이어가세요. 기존 [CLI 장](./ch02-cli-setup.ko.md)은 생성 구조와 도구를 더 자세히 살펴보는 보충 자료입니다.

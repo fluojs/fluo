@@ -1,0 +1,221 @@
+---
+title: Testing
+description: Request-level testing and module construction for fluo - Test.createApp, Test.createTestingModule, provider overrides, mock helpers, and platform conformance harnesses.
+package: "@fluojs/testing"
+---
+
+`@fluojs/testing` compiles the module graph you authored and drives it through fluo's real machinery, with surgical replacement of individual providers. It gives you two entry points on one `Test` facade: `Test.createTestingModule(...)` compiles a module graph with targeted overrides for slice and wiring assertions, and `Test.createApp(...)` boots the same graph through the real HTTP dispatch stack - matching, DTO binding and validation, guards, interceptors, request scopes, and response serialization - without opening a network listener.
+
+The package requires Node.js `>=24.0.0 <27` (`engines.node`) and declares `vitest` `^4.1.11` as a required peer for the mock helpers. There is exactly one public construction entrypoint: `Test`. The free functions `createTestApp` / `createTestingModule` and the `@fluojs/testing/app` subpath are removed, not compatibility aliases - migrate imports to `Test`.
+
+## Installation
+
+```bash
+pnpm add -D @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript @fluojs/testing @fluojs/vite vitest
+```
+
+Configure decorators through [`@fluojs/vite`](/docs/packages/vite), which owns the single lazy Babel transform, and preload the metadata side effects in your `vitest.config.ts`:
+
+```ts
+import { fluoDecoratorsPlugin } from '@fluojs/vite';
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  plugins: [fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })],
+  test: { setupFiles: ['@fluojs/core/metadata-preload'] },
+});
+```
+
+The `test` transform boundary includes test and spec modules (and their application imports) so decorators declared inside tests compile; the application boundary used by `vite.config.ts` skips them. This is the same plugin, not a second transform.
+
+## When to use it, and when not
+
+Use `@fluojs/testing` when:
+
+- route-level tests should run through fluo's real dispatch stack without a listener or process signals
+- a slice needs the real module graph but a few explicit providers must be fakes
+- starter templates need a stable unit -> slice -> e2e baseline
+- you are authoring a platform/adapter package and need the conformance and portability harnesses
+
+Do not use it to:
+
+- unit-test a pure class - construct it directly with explicit fakes (or the mock helpers) instead of bootstrapping a graph
+- test framework or adapter internals at the raw dispatch boundary - keep `makeRequest(...)` and raw `FluoFactory.create(...)` tests for those compatibility cases
+- replace browser or hydration evidence - React applications add those layers at their own seams (see the [`@fluojs/react` testing loop](/docs/packages/react#testing))
+
+## Quick start
+
+```ts
+import { Test } from '@fluojs/testing';
+import { describe, expect, it } from 'vitest';
+
+import { AppModule } from '../src/app';
+
+describe('POST /users', () => {
+  it('creates a user through the real dispatch stack', async () => {
+    const app = await Test.createApp({ rootModule: AppModule });
+
+    try {
+      const response = await app
+        .request('POST', '/users/')
+        .header('x-request-id', 'test-request-1')
+        .query('include', 'profile')
+        .principal({ subject: 'user-1', roles: ['admin'] })
+        .body({ name: 'Ada' })
+        .send();
+
+      expect(response.status).toBe(201);
+    } finally {
+      await app.close();
+    }
+  });
+});
+```
+
+`app.request(...).send()` is the only `TestApp` HTTP path. It creates the same isolated request-scoped DI boundary as runtime dispatch and returns a serialized `TestResponse` (`status`, `body`, `headers`). Close the app from `finally` so assertion failures never leak runtime resources. The cookie-bound routes use the object request overload with adapter-normalized values - `app.request({ path: '/session', cookies: { session: 'test-session' } }).send()` assigns `cookies` directly; it does not parse a `Cookie` header.
+
+`Test.createApp(...)` accepts the same application bootstrap options as production HTTP bootstrap - `providers`, `filters`, `converters`, `interceptors`, `middleware`, `observers`, `versioning`, `conditionalRequest`, `errorRepresentation`, and diagnostics options - so canonical JSON, negotiated HTML, conditional `304`/`412`, `HEAD`, 406, and provider-fallback behavior are all assertable through the same virtual pipeline. Security headers default on, matching real applications; pass `securityHeaders: false` when a test explicitly needs a header-free baseline. Caller middleware stays in the chain after the helper's request-context middleware.
+
+## Overriding providers before compilation
+
+`Test.createTestingModule({ rootModule })` requires an explicit root module - fluo compiles the graph you authored and never infers dependencies from TypeScript design metadata. Overrides chain fluently, and each override chooses exactly one provider kind:
+
+```ts
+import { Test } from '@fluojs/testing';
+import { vi } from 'vitest';
+
+const module = await Test.createTestingModule({ rootModule: AppModule })
+  .overrideProvider(USER_REPOSITORY)                     // class or token
+  .useValue({ create: vi.fn().mockResolvedValue({ id: '1', name: 'Alice' }) })
+  .overrideProvider(MAILER)
+  .useFactory((config) => createFakeMailer(config), [CONFIG_SERVICE])
+  .overrideProvider(POSTS_READER)
+  .useExisting(PostsService)
+  .overrideProvider(SpyyedService)
+  .useClass(SpyyedServiceStub)
+  .compile();
+```
+
+`.useValue(...)` preserves every payload literally, including provider-shaped objects. `.useFactory(factory, inject?)` resolves the `inject` tokens before the factory runs. `.useExisting(token)` forwards resolution to another provider. Overrides apply before the graph compiles, so guards, interceptors, and downstream consumers see the fakes as if they were registered.
+
+`compile()` follows production module-bootstrap semantics for lifecycle-bearing singleton providers: it resolves the effective provider graph, runs `onModuleInit()` for each resolved instance, then `onApplicationBootstrap()` in the same provider order before the testing module is returned. The builder owns its internally created container until that return - if overrides, lifecycle hooks, or singleton synchronization fail, it disposes the container before rejecting, and a cleanup failure is reported with the original failure in an `AggregateError`.
+
+Then resolve, assert, and release:
+
+```ts
+let assertionError: unknown;
+
+try {
+  const service = module.get(UserService);          // sync singleton reads
+  expect(service.greet()).toBe('hi');
+} catch (error: unknown) {
+  assertionError = error;
+  throw error;
+} finally {
+  try {
+    await module.container.dispose();
+  } catch (disposeError: unknown) {
+    if (assertionError) {
+      throw new AggregateError([assertionError, disposeError], 'Test and disposal both failed.');
+    }
+
+    throw disposeError;
+  }
+}
+```
+
+`module.container.dispose()` belongs in `finally` (or `afterEach`) so passing, failing, and early-returning tests all release lifecycle resources. A completed `container.dispose()` is idempotent, and teardown failures surface - when an in-flight assertion may also fail, report both errors rather than suppressing one. `module.get(...)` keeps DI ownership semantics for synchronous singleton and multi-provider paths: repeated sync reads reuse the same singleton contributions, and the container can still clean them up. Async dependencies use `await module.resolve(token)`.
+
+### Preserving module identity with `overrideModule`
+
+When `overrideModule(source, replacement)` swaps an imported module, the compiled testing module keeps the original `rootModule` and `modules[].type` identities while resolving providers through the replacement imports - diagnostics and module introspection stay tied to the classes you authored instead of synthetic wrappers:
+
+```ts
+const module = await Test.createTestingModule({ rootModule: AppModule })
+  .overrideModule(StripeModule, FakeStripeModule)
+  .compile();
+
+try {
+  expect(module.rootModule).toBe(AppModule);
+  const client = await module.resolve(StripeClient); // provided by FakeStripeModule
+  expect(client).toBeInstanceOf(FakeStripeClient);
+} finally {
+  await module.container.dispose();
+}
+```
+
+Module introspection helpers (`extractModuleProviders`, `extractModuleControllers`, `extractModuleImports`) read declared metadata from a module type and are exported from the same root package - useful for asserting what a dynamic module (for example a `forRoot(...)`) actually registered.
+
+## Mock helpers
+
+Import mock helpers from the explicit `@fluojs/testing/mock` subpath. `createMock` / `createDeepMock` are removed and neither replacement recurses - nested objects and return values are never mocked:
+
+- `ShallowMock.create(partial, options?)` preserves supplied values and lazily creates a stable `vi.fn()` for each missing property. Supply data properties explicitly; missing `then` is always `undefined` so the proxy cannot become an accidental thenable. `{ strict: true }` rejects access to every unspecified member.
+- `PrototypeMock.create(Type)` creates spies for own and inherited prototype methods, including symbol keys, without running constructors or evaluating accessors. The result is a plain test double, not a class instance - supply instance fields and arrow-function members manually.
+- `asMock(fn)` accepts only a function and narrows it to a Vitest `Mock<T>`; it is not an arbitrary-value cast.
+- `mockToken(token, partial)` creates a `ValueProvider` descriptor (`{ provide, useValue }`) for provider registration.
+
+```ts
+import { PrototypeMock, ShallowMock, mockToken } from '@fluojs/testing/mock';
+import { vi } from 'vitest';
+
+const repo = ShallowMock.create<UserRepository>({ findById: vi.fn() });
+const mailer = PrototypeMock.create(MailService);
+const override = mockToken(USER_REPOSITORY, { findById: vi.fn() });
+```
+
+`ShallowMocked<T>` is exposed from the root package, `@fluojs/testing/types`, and `@fluojs/testing/mock` - three paths sharing the same Vitest-compatible type boundary. Consumers that do not use Vitest should import only non-mock helpers from `@fluojs/testing/module` or the harness subpaths, and install `vitest` before using the mock helpers so the runtime import resolves.
+
+## Conformance and portability harnesses
+
+Platform and adapter authors get responsibility-specific subpaths, each constructed through a static `create(options)` method (the `create*Harness` free-factory functions are removed):
+
+| Subpath | Construction |
+| --- | --- |
+| `@fluojs/testing/platform-conformance` | `PlatformConformanceHarness.create(options)` |
+| `@fluojs/testing/platform-shell-lifecycle-conformance` | `PlatformShellLifecycleConformanceHarness.create(options)` |
+| `@fluojs/testing/http-adapter-portability` | `HttpAdapterPortabilityHarness.create(options)` |
+| `@fluojs/testing/web-runtime-adapter-portability` | `WebRuntimeHttpAdapterPortabilityHarness.create(options)` |
+| `@fluojs/testing/fetch-style-websocket-conformance` | `FetchStyleWebSocketConformanceHarness.create(options)` |
+
+The portability harnesses expose focused assertions instead of hand-rolled equivalents: `assertSupportsCustomHttpRouteMethods()` (body-bearing `QUERY` and `PURGE` through the real dispatch seam), `assertSupportsSingleByteRanges()`, `assertSupportsConditionalRequests()`, `assertSupportsHttpErrorRepresentations()`, `assertDoesNotCommitAbortedHttpErrorRepresentations()`, `assertSupportsPortableResponseCookies()`, `assertPreservesMalformedCookieValues()`, `assertPreservesRawBodyForJsonAndText()`, `assertPreservesExactRawBodyBytesForByteSensitivePayloads()`, `assertExcludesRawBodyForMultipart()`, and more. Cleanup is part of the contract: if setup, `listen()`, or an assertion fails after an app was bootstrapped, the harness closes the partial app and aggregates the failures.
+
+Use these harnesses only for adapter/runtime package contracts, not ordinary feature coverage.
+
+## The canonical TDD ladder
+
+For application features, build tests from the smallest explicit dependency boundary outward:
+
+1. **Unit** - `*.test.ts` beside the class under `src/**`; construct directly with explicit fakes or the mock helpers.
+2. **Slice** - `*.slice.test.ts` compiling the authored module with `Test.createTestingModule({ rootModule })` and provider overrides.
+3. **HTTP e2e-style** - app-level tests such as `test/app.e2e.test.ts` around `Test.createApp({ rootModule })` and `app.request(...).send()`.
+4. **Platform/conformance** - harness subpaths only for adapter and runtime package contracts.
+
+```txt
+src/users/
+  users.service.test.ts
+  users.controller.test.ts
+  users.slice.test.ts
+
+test/
+  app.e2e.test.ts
+```
+
+Unlike NestJS, fluo requires tests to name an explicit `rootModule` - the same graph shape production bootstrap compiles is the graph your tests compile. [`@fluojs/cli`](/docs/packages/cli) generates exactly this layout (`--with-slice-test`, `fluo generate e2e`), so generated templates and this ladder stay aligned.
+
+## Failures and common mistakes
+
+- **Leaked containers** - a missing `await module.container.dispose()` / `await app.close()` in `finally` keeps lifecycle hooks and request-scoped state alive across tests.
+- **Legacy entrypoints** - `createTestApp`, `createTestingModule`, and `@fluojs/testing/app` are removed; only `Test` exists.
+- **Recursive-mock expectations** - `ShallowMock`/`PrototypeMock` never mock nested objects or return values; missing data properties are test bugs, not auto-mocks.
+- **Missing metadata preload** - running decorated modules without `fluoDecoratorsPlugin({ transformBoundary: 'test' })` and the `@fluojs/core/metadata-preload` setup file produces missing-injection failures, not decorator errors.
+- **Stubbing the dispatch boundary** - replacing `app.request(...).send()` with manual `FrameworkRequest` objects drops the request-scope isolation the helper exists to exercise.
+
+## Related reading
+
+- [Dependency injection](/docs/fundamentals/dependency-injection) - the resolution, scope, and disposal semantics your overrides plug into, including the testing-with-overrides section.
+- [`@fluojs/runtime`](/docs/packages/runtime) - the bootstrap and lifecycle behavior `compile()` mirrors.
+- [`@fluojs/http`](/docs/packages/http) - the dispatch pipeline `Test.createApp` drives.
+- [`@fluojs/vite`](/docs/packages/vite) - the decorator transform and its test boundary.
+- [`@fluojs/cli`](/docs/packages/cli) - the generated test layout that follows this ladder.
+- [`@fluojs/testing` package README](https://github.com/fluojs/fluo/blob/main/packages/testing/README.md) - the owning API reference and harness tables.

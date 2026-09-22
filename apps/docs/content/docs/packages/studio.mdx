@@ -1,0 +1,130 @@
+---
+title: Studio devtool
+description: The @fluojs/studio sidecar and React viewer - live diagnostics through fluo dev --studio, static inspect/report artifacts, and the snapshot parsing, filtering, and Mermaid helper contracts.
+package: "@fluojs/studio"
+---
+
+`@fluojs/studio` is fluo's diagnostics viewer: a local, token-protected sidecar plus a packaged React app that shows what a running fluo application is doing. It has two compatible modes. **Live mode** streams a compiled module/provider/controller/route graph, request flow, bootstrap timing, and diagnostics from a Node dev process started with `fluo dev --studio`. **Static mode** loads the JSON artifacts that `fluo inspect` writes, which makes it the compatibility path for CI, support handoffs, architecture reviews, and non-Node runtimes.
+
+Studio is launched by the [CLI](/docs/packages/cli) as a sidecar and viewed in a browser. It is **not** an application module - never mount it inside your fluo runtime, and your application runtime does not import it. The published package requires Node.js `>=24.0.0 <27` (`engines.node`), matching the CLI; Studio deliberately owns runtime-neutral consumer-side declarations instead of re-exporting them from [`@fluojs/runtime`](/docs/packages/runtime), so its engine floor is not coupled to the runtime package.
+
+## Installation
+
+Most application projects install it as a development dependency:
+
+```bash
+pnpm add -D @fluojs/studio
+```
+
+Use a regular dependency only when a published package or runtime automation imports the Studio helpers at runtime. The package ships three caller-facing entrypoints:
+
+| Entrypoint | Purpose |
+| --- | --- |
+| `@fluojs/studio` | Canonical snapshot parsing, filtering, Mermaid rendering helpers, and live event contracts |
+| `fluo-studio-viewer` | CLI launch path for the packaged React viewer |
+| `@fluojs/studio/viewer` | Asset-resolution subpath that resolves the packaged `dist/index.html` file path |
+
+`@fluojs/studio/viewer` resolves a file path, not a JavaScript module. `@fluojs/studio/contracts` is removed and has no compatibility shim - migrate every helper and type import to the root export (behavior and wire contracts are unchanged).
+
+## Live devtool
+
+```bash
+fluo dev --studio
+# [fluo] Studio listening at http://127.0.0.1:51234/?token=...
+```
+
+The CLI starts the normal dev process, starts the sidecar, injects explicit Studio runtime config into the Node app child before it imports `@fluojs/runtime`, and prints the tokenized URL. Live mode shows:
+
+- connection state (`connecting`, `connected`, `restarting`, `reconnecting`, `stale`, `disconnected`, `error`);
+- module/provider/controller/route graph nodes with import/export/ownership/dependency edges;
+- route descriptors that label `react-page` handlers separately from ordinary `http` handlers (from [`@fluojs/react`](/docs/packages/react) page metadata) with effective path parameter names;
+- recent request flow with route/handler correlation, success/error, status code, and duration;
+- bootstrap timing summaries and runtime/request diagnostics with severity, target, message, and fix hints.
+
+Runtime support is explicit for this MVP: the Node dev runner is the live target; Bun, Deno, and Cloudflare Workers projects are rejected by `fluo dev --studio` until dedicated bridges exist - use the static workflow below instead.
+
+Live request flow means route/handler and dependency-graph correlation, not full method-level service call tracing.
+
+## Static and report artifacts
+
+```bash
+# 1. Export the versioned report (the default recipe for newly stored artifacts)
+fluo inspect ./src/app.ts --report --output inspect-report.json
+
+# 2. Launch the packaged viewer
+pnpm exec fluo-studio-viewer
+
+# 3. Drag and drop inspect-report.json into the browser UI
+```
+
+`fluo-studio-viewer` serves the viewer from `127.0.0.1` and prints its URL - open that URL instead of opening `dist/index.html` directly. The static path accepts raw snapshots, snapshot-plus-timing envelopes, standalone timing JSON, and `fluo inspect --report` artifacts, keeping older artifacts backward compatible. Static snapshots describe reported platform components and their dependencies; they do not contain the compiled module/provider graph or provider scope metadata that live mode derives at runtime - workflows that need the compiled DI graph must use the Node live path.
+
+## The helper contracts
+
+The root export owns the public automation surface. Treat it as the canonical owner of parsing, filtering, Mermaid rendering, and live event validation semantics:
+
+| Contract | Description |
+| --- | --- |
+| `parseStudioPayload(rawJson)` | Parses a raw snapshot, standalone timing JSON, snapshot+timing envelope, or report artifact; returns the parsed payload plus the original JSON string. |
+| `applyFilters(snapshot, filter)` | Applies readiness/severity/query filters without mutating the source snapshot. |
+| `renderMermaid(snapshot)` | Produces Mermaid graph text; filtered snapshots render deterministically, so identical snapshots produce identical text before and after JSON round-trips. |
+| `parseStudioLiveEvent(rawJson)` / `validateStudioLiveEvent(value)` | Validate sidecar/SSE envelopes and return normalized route entries before UI state consumes them. |
+| `isStudioLiveEvent(value)` | Runtime-safe type guard for envelopes before parsing or dispatch. |
+
+The parsed payload is normalized while the persisted artifact stays optional-field compatible:
+
+- Route entries carry `kind`, method/effective path, parameter names, and controller-handler identity. Omitted legacy `kind` defaults to `http`, `params` defaults to `[]`, and a missing `graphNodeId` derives the previous `route:<sanitized-route-id>` correlation key. Supplied `kind` values must be strings and are preserved end-to-end (`react-page` stays distinct); non-string kinds are rejected.
+- Bootstrap timing accepts only the five phase names `bootstrap_module`, `register_runtime_tokens`, `resolve_lifecycle_instances`, `run_bootstrap_lifecycle`, and `create_dispatcher`; malformed or non-finite values are rejected.
+- Request traces must not carry body-like fields. `body`, `headers`, `payload`, `rawBody`, `requestBody`, and `responseBody` are rejected before any UI state can retain them.
+
+A minimal round-trip through the three static helpers:
+
+```ts
+import { applyFilters, parseStudioPayload, renderMermaid } from '@fluojs/studio';
+
+const { payload } = parseStudioPayload(reportArtifactJson);
+
+if (payload.snapshot) {
+  const failing = applyFilters(payload.snapshot, {
+    query: 'queue',
+    readinessStatuses: ['degraded', 'not-ready'],
+    severities: ['error'],
+  });
+
+  const mermaid = renderMermaid(failing);
+  // Deterministic: JSON.parse(JSON.stringify(failing)) renders the same text.
+}
+```
+
+The type exports mirror the wire contracts (`StudioPayload`, `StudioReportArtifact`, `StudioReportSummary`, `PlatformShellSnapshot`, `StudioLiveEvent`, `StudioLiveSnapshot`, `StudioNormalizedRouteDescriptor`, `FilterState`, `BootstrapTimingDiagnostics`, and friends), so automation can type both sides of an export without importing runtime internals.
+
+## Local security model
+
+The defaults are deliberately local-first:
+
+- the sidecar binds `127.0.0.1` by default;
+- runtime ingestion and browser state/SSE APIs require generated per-run tokens;
+- CORS is not enabled by default;
+- request bodies are not captured - live request events carry method/path/url/request id/route/handler/status/duration/error metadata only;
+- runtime Studio instrumentation activates only on explicit CLI-injected config. Runtime source never reads `process.env` directly, and without valid injected config the instrumentation is a no-op.
+
+These are shipped defaults, not configuration knobs to relax for the MVP. Treat any exposure beyond localhost as a deployment decision that requires its own review.
+
+## Defaults, ownership, and limits
+
+- **Ownership**: the [CLI](/docs/packages/cli) owns sidecar launch and artifact export; [`@fluojs/runtime`](/docs/packages/runtime) produces snapshots, request traces, timing, and diagnostics; Studio owns parsing, filtering, graph rendering, validation semantics, and the viewer surface. Nothing in Studio writes to your application.
+- **Startup/shutdown**: the sidecar's lifecycle belongs to `fluo dev` - it starts with the dev session and tears down with it, including deterministic close while an authenticated ingestion body is still incomplete, so a stuck local client cannot hang CLI shutdown.
+- **Predictable limits**: static artifacts lack the compiled DI graph; request flow is route/handler correlation only; there is no cloud hosting, accounts, team sharing, production monitoring, or bidirectional commands (documented future direction, not shipped features); route `kind` is an open string at the integration boundary, so custom markers are preserved but only `react-page` gets dedicated labeling.
+- **Common mistakes**: opening `dist/index.html` from the filesystem instead of serving `fluo-studio-viewer`; importing the removed `@fluojs/studio/contracts` subpath; expecting live events from a Bun/Deno/Workers dev session; treating a valid live event's route list as a matching authority (Studio never participates in routing).
+
+## Testing
+
+Studio's own suite combines Node-level contract tests for the helpers with browser evidence for the packaged viewer (`tests/installed-viewer.spec.ts` runs the built bundle under Playwright). When your tooling consumes Studio contracts, assert them through the public helpers - for example, feed your artifact-producing pipeline into `parseStudioPayload` and `renderMermaid` and pin the normalized route shapes, rather than re-implementing the validation rules.
+
+## Related reading
+
+- [`@fluojs/cli`](/docs/packages/cli) - `fluo dev --studio`, `fluo inspect`, and the artifact recipes.
+- [`@fluojs/runtime`](/docs/packages/runtime) - what produces snapshots, timing, and live events.
+- [`@fluojs/react`](/docs/packages/react) - where `react-page` route labels come from.
+- [`@fluojs/cli` package README](https://github.com/fluojs/fluo/blob/main/packages/cli/README.md) - the launch-side contract.
+- [`@fluojs/studio` package README](https://github.com/fluojs/fluo/blob/main/packages/studio/README.md) - the owning API and type tables.

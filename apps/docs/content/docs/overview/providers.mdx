@@ -1,0 +1,78 @@
+---
+title: Providers
+description: Move posts behavior into a service and inject it into the same controller.
+---
+
+A provider is an object the application container creates or supplies. Services
+are the most common kind: they own behavior that should not depend on how an HTTP
+request arrived. Controllers translate requests into service calls.
+
+Continue after the [Controllers checkpoint](/docs/overview/controllers#beginner-checkpoint).
+Your existing project already has `PostsModule`, a controller and `GET /posts`.
+Keep editing `src/posts/`; leave the generated root and bootstrap unchanged.
+
+## 1. Add the service
+
+Create `src/posts/posts.service.ts`:
+
+<CheckpointCode stage="03-providers" file="posts.service.ts" />
+
+The collection belongs to a service instance. It is not a database, and a server
+restart resets it. This small example returns the stored collection directly;
+application code should let the service own mutations rather than modifying
+the returned array. A defensive copy can provide stronger isolation when needed.
+
+## 2. Declare the controller dependency
+
+Replace `src/posts/posts.controller.ts`:
+
+<CheckpointCode stage="03-providers" file="posts.controller.ts" />
+
+`@Inject(PostsService)` is a **class decorator**. Its token corresponds to the
+constructor parameter. The TypeScript parameter type helps your editor; Fluo
+does not infer dependencies from emitted type metadata.
+
+The controller now owns routing, and the service owns posts behavior. You can
+test the service without making an HTTP request.
+
+## 3. Register the provider
+
+Replace `src/posts/posts.module.ts`:
+
+<CheckpointCode stage="03-providers" file="posts.module.ts" />
+
+The controller and service share one module, so the service does not need to be
+exported. Importing `PostsModule` in the root is still enough to mount its routes.
+Do not construct `new PostsService()` inside the controller: that would bypass
+the application's dependency graph and test overrides.
+
+## 4. Verify unchanged behavior
+
+Run `pnpm test`, start or restart `pnpm dev`, then:
+
+```bash
+curl -i http://localhost:3000/posts
+```
+
+Expect `200` and:
+
+```json
+[{"id":"1","title":"Hello Fluo","content":"First post"}]
+```
+
+This refactoring deliberately keeps the HTTP result unchanged. The next chapter
+adds creation and gives the service a reason to hold application state.
+
+## Scope and configuration
+
+Services use singleton scope by default. Here, all posts requests in one
+application see the same collection; separately bootstrapped test applications
+get separate instances.
+
+You can also register a ready value, factory, alias or explicit class provider.
+Those options, request scopes, and module visibility are covered by
+[Dependency injection](/docs/fundamentals/dependency-injection). Read that
+reference when needed; it is not a second application to build before continuing.
+
+Previous: [Controllers](/docs/overview/controllers#beginner-checkpoint).
+Next: [Validation](/docs/overview/validation).

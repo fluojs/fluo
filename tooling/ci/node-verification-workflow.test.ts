@@ -204,6 +204,26 @@ it('preserves full typecheck, lint, one latest-24 docs run and isolated benchmar
   expect(checks).toMatch(/if: inputs.verify-isolated-http-benchmark\n\s+run: pnpm --dir tooling\/benchmarks\/http-comparison --ignore-workspace test/u);
 });
 
+it('installs verified native runtimes before running documentation fixtures in tooling shards', () => {
+  const tests = job(nodeWorkflow, 'test');
+  const toolingCommand = tests.indexOf('run: pnpm vitest run --project tooling');
+  expect(tests).toMatch(/if: matrix.project == 'tooling'\n\s+uses: oven-sh\/setup-bun@v2\n\s+with:\n\s+bun-version: '1.4.0'/u);
+  expect(tests).toMatch(/if: matrix.project == 'tooling'\n\s+uses: denoland\/setup-deno@v2\n\s+with:\n\s+deno-version: 'v2.9.7'/u);
+  expect(tests.indexOf('uses: oven-sh/setup-bun@v2')).toBeLessThan(toolingCommand);
+  expect(tests.indexOf('uses: denoland/setup-deno@v2')).toBeLessThan(toolingCommand);
+});
+
+it('uploads a source-bound documentation artifact only after the standalone smoke gate', () => {
+  const checks = job(nodeWorkflow, 'checks');
+  const pack = checks.indexOf('run: pnpm docs:package');
+  const verify = checks.indexOf('run: pnpm docs:release-check --require-clean');
+  const upload = checks.search(/name: docs-site-\$\{\{ github\.sha \}\}/u);
+  expect(pack).toBeGreaterThan(0);
+  expect(verify).toBeGreaterThan(pack);
+  expect(upload).toBeGreaterThan(verify);
+  expect(checks).toContain('path: .artifacts/docs-site');
+});
+
 it('keeps generated browser starters and per-version shutdown evidence', () => {
   // Given
   const starters = job(nodeWorkflow, 'starters');

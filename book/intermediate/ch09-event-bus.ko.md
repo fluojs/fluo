@@ -139,7 +139,7 @@ Outcome은 일치하는 effective 로컬 핸들러의 discovery 순서로 발행
 
 Awaited timeout/cancellation 뒤에도 시작된 작업은 shutdown 추적 대상입니다. `waitForHandlers: false`는 `background`와 `completion: Promise<EventPublishSettlement>`를 반환하며 timeout과 시작 후 cancellation을 무시하고 실제 작업 결과를 관찰합니다. 이미 abort된 signal은 시작 전 작업을 건너뛰지만 completion은 bounded shutdown 뒤에도 pending일 수 있고 process exit 때 사라질 수 있습니다.
 
-[인증 후 bookkeeping과 필수 결과 검사 예제](../../apps/docs/content/docs/guides/messaging-workflows.ko.mdx)는 token record ID만 발행하고 credential은 제외하며, last-used 실패가 이미 성공한 인증을 뒤집지 않는 best-effort 정책을 비교합니다. [현재 Book의 실패 실험](../02-fluoshop/ch13-domain-events.ko.md)은 일반 raw `Error` 관측을 보존하면서 결과 API를 설명합니다. [실행 예제](../../packages/event-bus/examples/publish-results.ts), [결과 테스트](../../packages/event-bus/src/publish-result.test.ts), [bound 테스트](../../packages/event-bus/src/publish-result-bounds.test.ts), [lifecycle 테스트](../../packages/event-bus/src/publish-result-lifecycle.test.ts)가 구현 근거이며, 소유자 명령은 `pnpm --dir packages/event-bus test`와 `pnpm --filter '@fluojs/event-bus...' build`입니다.
+[인증 후 bookkeeping과 필수 결과 검사 예제](../../apps/docs/content/docs/guides/messaging-workflows.mdx)는 token record ID만 발행하고 credential은 제외하며, last-used 실패가 이미 성공한 인증을 뒤집지 않는 best-effort 정책을 비교합니다. [현재 Book의 실패 실험](../02-fluoshop/ch13-domain-events.ko.md)은 일반 raw `Error` 관측을 보존하면서 결과 API를 설명합니다. [실행 예제](../../packages/event-bus/examples/publish-results.ts), [결과 테스트](../../packages/event-bus/src/publish-result.test.ts), [bound 테스트](../../packages/event-bus/src/publish-result-bounds.test.ts), [lifecycle 테스트](../../packages/event-bus/src/publish-result-lifecycle.test.ts)가 구현 근거이며, 소유자 명령은 `pnpm --dir packages/event-bus test`와 `pnpm --filter '@fluojs/event-bus...' build`입니다.
 
 ### 9.3.2 Why this is better than chained service calls
 

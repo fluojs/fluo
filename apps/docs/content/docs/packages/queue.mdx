@@ -1,0 +1,321 @@
+---
+title: Queue
+description: Redis-backed background job processing with decorator-discovered workers, constructor-identity enqueueing, atomic batches, and dead-letter inspection.
+package: "@fluojs/queue"
+---
+
+`@fluojs/queue` runs background jobs on Redis through BullMQ. A producer
+enqueues a job **class instance**; a worker class decorated with
+`@QueueWorker(JobClass)` receives rehydrated instances of that exact class and
+processes them with retries, backoff, and concurrency control. Jobs survive
+process restarts because they live in Redis, and failures that exhaust their
+attempts land in a per-job dead-letter list an operator can inspect.
+
+Choose this package when work must outlive the request that started it or the
+process it ran on: emails, media processing, billing runs, anything with
+retry semantics. For in-process reactions that may safely be lost, use
+[`@fluojs/event-bus`](/docs/packages/event-bus); for *when* work should start
+on a schedule, combine with [`@fluojs/cron`](/docs/packages/cron).
+
+## Installation
+
+```bash
+npm install @fluojs/queue @fluojs/redis
+```
+
+`@fluojs/queue` bundles BullMQ `^5.81.1` as a runtime dependency and requires
+[`@fluojs/redis`](/docs/packages/redis) (which needs the `ioredis` peer) as
+its backing store. Node.js `>=24.0.0 <27` is the package-owned support
+contract; refresh your lockfile when upgrading so BullMQ's patched dependency
+graph is installed.
+
+## A small working example
+
+One job class, one worker, one producer, and the module that wires them to a
+Redis client:
+
+```ts title="src/orders/jobs.ts"
+export class ProcessOrderJob {
+  constructor(public readonly orderId: string) {}
+}
+```
+
+```ts title="src/orders/order.worker.ts"
+import { QueueWorker } from '@fluojs/queue';
+
+import { ProcessOrderJob } from './jobs';
+
+@QueueWorker(ProcessOrderJob, {
+  attempts: 3,
+  backoff: { type: 'fixed', delayMs: 5_000 },
+})
+export class OrderWorker {
+  async handle(job: ProcessOrderJob): Promise<void> {
+    // Your logic here. Thrown errors are retried per `attempts`; the last
+    // failure appends a dead-letter record.
+  }
+}
+```
+
+`@QueueWorker(ProcessOrderJob, ...)` is a TC39 standard class decorator. The
+worker must expose a callable `handle(job)` method, and the class must be
+registered as a **singleton provider** - request/transient workers are
+skipped during discovery with a warning.
+
+```ts title="src/orders/order.service.ts"
+import { Inject } from '@fluojs/core';
+import { getQueueToken, type Queue } from '@fluojs/queue';
+
+import { ProcessOrderJob } from './jobs';
+
+@Inject(getQueueToken())
+export class OrderService {
+  constructor(private readonly queue: Queue) {}
+
+  async placeOrder(orderId: string): Promise<void> {
+    await this.queue.enqueue(new ProcessOrderJob(orderId));
+  }
+}
+```
+
+```ts title="src/orders/orders.module.ts"
+import { Module } from '@fluojs/core';
+import { QueueModule } from '@fluojs/queue';
+import { RedisModule } from '@fluojs/redis';
+
+import { OrderService } from './order.service';
+import { OrderWorker } from './order.worker';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    QueueModule.forRoot(),
+  ],
+  providers: [OrderService, OrderWorker],
+})
+export class OrdersModule {}
+```
+
+Two details matter in that module. First, `QueueModule.forRoot()` needs a
+reachable `RedisModule.forRoot(...)` registration - with the default `global:
+true` queue registration any earlier registration works; with `global: false`
+the Redis provider must be reachable from the same module tree. Second, the
+producer injects the narrow `Queue` facade through `getQueueToken()`, not the
+lifecycle service; `QueueLifecycleService` and the `QUEUE` token remain
+integration and diagnostics boundaries.
+
+## How the mechanics work
+
+### Constructor identity selects the worker
+
+`enqueue(job)` looks up `job.constructor` in the workers discovered from
+`@QueueWorker(JobClass, options?)` and rejects the call with `No
+@QueueWorker() registered for job type <name>.` when that exact constructor is
+not registered. This is deliberate and worth internalizing, because the
+signature accepts any object:
+
+```ts title="fragment: enqueue acceptance and rejection (QueueModule.forRoot() registered, OrderWorker discovered)"
+// Accepted: the instance's constructor is the registered class.
+await queue.enqueue(new ProcessOrderJob(id));
+
+// Type-checks, rejected at runtime: a plain object's constructor is Object.
+await queue.enqueue({ orderId: id });
+
+// Also rejected: a structurally identical class that was never registered.
+await queue.enqueue(new UnregisteredOrderJob(id));
+```
+
+The worker's `jobName` (optionally set in `@QueueWorker` options, otherwise
+the job class name) becomes both the BullMQ queue name and the named job -
+fluo creates one queue/worker pair per job type. A worker handles exactly one
+job class and one effective `jobName`; duplicate registrations by job type or
+job name fail bootstrap before any BullMQ resource is created. The job
+payload is JSON-serialized and must serialize to a non-null, non-array JSON
+object; on the worker side the registered class prototype is rehydrated over
+that object, so `handle` receives a real `ProcessOrderJob` instance, not a
+bare record.
+
+### Retries, backoff, and deduplication
+
+`QueueWorkerOptions` forwards execution settings to BullMQ: `attempts`,
+`backoff` (`type: 'fixed' | 'exponential'` with `delayMs`), `concurrency`, and
+a distributed `rateLimiter` (`max` per `duration` ms). Module-level
+`defaultAttempts`, `defaultBackoff`, `defaultConcurrency`, and
+`defaultRateLimiter` fill in whatever a worker omits.
+
+For repeated dispatch of one caller-owned identity, pass a
+`deduplicationKey`:
+
+```ts title="fragment: idempotent enqueue (preceding setup: ProcessOrderJob registered as in the example)"
+// Deterministically maps to a BullMQ-safe backing job id (fluo-<sha256>),
+// so callers avoid BullMQ's colon/numeric-id restrictions.
+await queue.enqueue(new ProcessOrderJob(id), { deduplicationKey: `order:${id}` });
+```
+
+While the backing job for that id still exists, BullMQ deduplicates the
+repeat attempt. The key is caller-owned identity - choose something with
+business meaning, not a random UUID per call.
+
+### Atomic batches
+
+`enqueueMany(entries)` validates every entry first (registered worker, same
+target queue) and then persists the whole batch with one BullMQ `addBulk(...)`
+call. A batch mixing job types that resolve to different queues is rejected
+without persisting anything; returned ids stay aligned with the input order.
+Each entry carries its own optional `QueueEnqueueOptions`, including its own
+deduplication key.
+
+### Scoped registrations and ownership namespaces
+
+Most applications need one `QueueModule.forRoot()`. Two options matter when
+an application runs several non-global registrations:
+
+- `scope` names the registration. Scope names are trimmed, must be non-empty,
+  and must be unique per compiled module graph; two `global: false`
+  registrations without distinct scopes fail deterministically at bootstrap.
+  Producers inject `getQueueToken(scope)` for that registration.
+- `ownershipNamespace` is a stable, application-supplied identity for the
+  Redis database plus BullMQ prefix the registration writes to. A scope
+  isolates DI ownership, not Redis keys: distinct named Redis clients can
+  point at the same database. Queue validates each `(ownershipNamespace,
+  jobName)` pair and, with `ownershipEnforcement: 'reject'`, fails a collision
+  before creating BullMQ resources (the 2.x default is `'warn'`).
+
+### Resource ownership and connection topology
+
+Queue resolves the shared `@fluojs/redis` client (`clientName` selects a named
+registration) and then creates **queue-owned duplicate connections** for
+BullMQ, configured with BullMQ's required `maxRetriesPerRequest: null`. The
+shared client stays owned by `RedisModule`; Queue closes only the duplicates
+it created. This split is why a queue registration can never adopt an
+externally constructed client - the duplicate-connection contract requires
+the RedisModule lifecycle.
+
+### Bootstrap and shutdown lifecycle
+
+During application bootstrap, Queue discovers workers and creates queue-owned
+BullMQ resources, but **processors start only after the runtime's
+bootstrap-ready handoff** - jobs enqueued by other `onApplicationBootstrap()`
+hooks are accepted, yet cannot race ahead of later async bootstrap hooks or
+readiness. Status reports degraded readiness until every processor actually
+started; a processor start failure moves the lifecycle to `failed` and
+surfaces in status snapshots instead of silently idle workers.
+
+On shutdown, Queue rejects new enqueues, closes workers gracefully and, if
+needed, force-closes them - each phase bounded by
+`workerShutdownTimeoutMs` (default `30_000`) - then closes its queues and
+connections, and finally drains pending dead-letter writes (each bounded by
+`5_000`ms). A close phase that fails or times out is logged and does not
+block the remaining cleanup, so a stuck BullMQ force-close cannot hang
+`app.close()` forever.
+
+The documentation fixture also exposed a current idle-worker shutdown issue:
+closing immediately after bootstrap, before any job has run, can produce an
+unhandled ioredis `Connection is closed.` rejection. The passing composition
+tests exercise workers that have processed work; they do not prove that idle
+edge case is fixed. Do not add a dummy production job as a workaround or infer
+clean process termination solely from the close promise. This is an existing
+runtime issue recorded in the fixture evidence, not a new delivery guarantee.
+
+### Dead letters
+
+When a worker's `attemptsMade` reaches its configured attempts, Queue appends
+a JSON record to the Redis list `fluo:queue:dead-letter:<jobName>`. BullMQ
+itself does not move the job there; Queue writes a separate record containing
+`jobId`, `jobName`, `attemptsMade`, `errorMessage`, an ISO `failedAt`, and the
+cloned payload. The list is trimmed to `defaultDeadLetterMaxEntries` per job
+(default `1_000`; `false` disables trimming).
+
+Inspection goes through the producer facade, never direct Redis reads:
+
+```ts title="fragment: operator-style inspection (queue resolved from getQueueToken())"
+const inspection = await queue.inspectDeadLetters('ProcessOrderJob', { limit: 25 });
+
+for (const record of inspection.records) {
+  console.log(record.jobId, record.failedAt, record.errorMessage);
+}
+console.log(inspection.malformedRecordCount); // malformed entries omitted from the window
+```
+
+Inspection is read-only, returns valid records newest-first, defaults to
+`100` entries, and caps at `1_000`. It is not lifecycle-gated - it works
+while the lifecycle is `idle` or after worker startup reached `failed`, as
+long as the backing Redis client is reachable. It never deletes, replays, or
+mutates anything, and `payload` is typed `unknown` so application code narrows
+it deliberately. After `RedisModule` shuts the shared client down, inspection
+propagates the Redis error rather than promising post-shutdown availability.
+
+## Composition with neighboring packages
+
+**With `@fluojs/event-bus`.** Event handlers are the natural producers for
+durable handoffs: a fast `@OnEvent` handler claims the work and enqueues a
+job, and the queue owns retries and dead letters. The bus neither persists
+events nor deduplicates, so gate the handoff behind an application-owned claim
+(claim before enqueue, release on failure) to make duplicate events safe. See
+the [event bus guide](/docs/packages/event-bus) for the full pattern.
+
+**With `@fluojs/cron`.** A scheduled tick is a great producer: an
+`@Interval` task or a `SchedulingRegistry` callback enqueues jobs for the
+work it wants done, keeping the scheduler tick short and letting workers
+spread the load. Conversely, a worker can publish a domain event through CQRS
+or the event bus when a job completes.
+
+**With `@fluojs/redis`.** RedisModule owns the shared client and its
+connect/quit lifecycle; Queue borrows it to derive BullMQ connections.
+`clientName` selects among named Redis registrations, which is how two queue
+registrations can target different Redis instances - pair each distinct
+backend with a distinct `ownershipNamespace`.
+
+## Defaults, ownership, and lifecycle
+
+| Concern | Default | Notes |
+| --- | --- | --- |
+| Module visibility | `global: true` | `global: false` restricts discovery and requires same-tree Redis reachability |
+| `defaultAttempts` / `defaultConcurrency` | `1` each | Per-worker options override |
+| Dead-letter retention | `1_000` per job | `defaultDeadLetterMaxEntries: false` disables trimming |
+| Worker close budgets | `30_000`ms | Graceful close, then force close, each bounded by `workerShutdownTimeoutMs` |
+| Dead-letter drain at shutdown | `5_000`ms per pending write | Timeout logs and continues shutdown |
+| `ownershipEnforcement` | `'warn'` | Set `'reject'` to fail `(namespace, jobName)` collisions at bootstrap |
+| Redis client | Owned by `RedisModule` | Queue creates and closes only its duplicate BullMQ connections |
+
+## Failures and common mistakes
+
+- **"No @QueueWorker() registered for job type Object."** You enqueued a
+  plain payload or a copy of the job class. The constructor reference is the
+  identity - export the same class you decorated.
+- **Two workers, one job type (or one `jobName`).** Bootstrap fails with a
+  duplicate-registration error before creating BullMQ resources. Split the
+  job classes or consolidate handlers behind one `handle(job)`.
+- **Enqueue after shutdown.** Rejected with the lifecycle state; producers
+  that may fire during close should treat rejection as expected, not as a bug.
+- **Assuming a legacy topology migrates automatically.** NestJS Bull/BullMQ
+  can persist several named jobs under one queue name; fluo uses the worker's
+  `jobName` as both queue name and named job. Plan a cutover (drain legacy
+  workers, or re-enqueue compatible payloads) rather than renaming alone.
+- **Reading Redis keys directly.** The dead-letter list format is an
+  implementation detail behind `inspectDeadLetters`; direct key reads bypass
+  malformed-record accounting and retention behavior.
+- **Expecting worker-attempt errors in the response path.** `enqueue` returns
+  the backing job id; processing outcomes arrive via the worker, logs, and
+  dead letters - there is no per-job completion callback in the facade.
+
+## Testing
+
+The meaningful seam is the whole registration: boot
+`RedisModule.forRoot(...) + QueueModule.forRoot()` against a real Redis
+(Fluo's fixture harness starts a disposable `redis:7.4-alpine` container when
+Docker is available), enqueue, and await an event barrier from the worker -
+never a sleep. Assert on constructor identity and rehydration (`worker
+received instanceof ProcessOrderJob`), on dead-letter records after a failing
+worker exhausts `attempts: 1`, and on rejection errors for unregistered job
+types. The [async-work
+fixtures](https://github.com/fluojs/fluo/tree/main/tooling/docs/fixtures/package-guides/async-work)
+exercise all of these against native Redis with bounded, event-driven waits.
+
+## Related reading
+
+- [`@fluojs/redis`](/docs/packages/redis) - the lifecycle-managed client Queue derives its BullMQ connections from.
+- [`@fluojs/event-bus`](/docs/packages/event-bus) - in-process reactions; the durable-handoff pattern lives in its guide.
+- [`@fluojs/cron`](/docs/packages/cron) - scheduled producers for queued work.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - singleton discovery and module visibility rules behind worker discovery.
+- [`@fluojs/queue` package README](https://github.com/fluojs/fluo/blob/main/packages/queue/README.md) - the owning API reference and the NestJS/Bull migration contract.

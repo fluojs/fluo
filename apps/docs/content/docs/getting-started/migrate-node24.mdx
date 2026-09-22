@@ -1,12 +1,12 @@
 ---
-title: Upcoming Node 24 Migration
-description: Prepare for the coordinated Fluo release without implying publication.
+title: Node.js support
+description: Use the current Node.js 24 baseline and update applications on older runtimes.
 ---
 
-This is **release preparation**, not a release announcement. The maintainer owns
-the actual package release and migration-document publication. Follow the
-[complete consumer guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.md)
-when the upcoming release becomes available.
+Fluo's Node.js support range is **`>=24.0.0 <27`**. Node 24 is the current
+minimum, not an upcoming requirement. For a new application, install a supported
+Node version and follow [Getting started](/docs/getting-started/quick-start).
+Use the steps below when updating an application that still uses an older runtime.
 
 ## 1. Upgrade Node everywhere first
 
@@ -24,16 +24,11 @@ upgrade their Node-hosted developer tooling separately.
 
 ## 2. Upgrade Fluo packages together
 
-The current 42 public packages participate with explicit intent: 41 stable
-packages receive a major bump, while `@fluojs/react@0.1.0` receives a minor bump
-to `0.2.0`. React stays on `0.x`, not `1.0`. Inventory installed dependencies with
-`pnpm list --depth 0`, then use each package's Changesets-generated coordinated
-version after publication, including adapters, integrations, and dev tooling.
-Versions differ by package; dependency propagation is not a migration plan.
-
-Retained listener, Vite compatibility, Vitest peer, generated-starter, and unrelated
-feature/fix notes aggregate into one next release per package. Read those
-package-specific migrations too; no second Vite or CLI release is scheduled.
+Inventory installed dependencies with `pnpm list --depth 0`, then review the
+published versions and migration notes for the adapters, integrations and
+development tools your app uses. Fluo packages have independent versions;
+do not force them all to the same version number. Changesets-generated
+changelogs describe package-specific compatibility changes.
 
 ## 3. Replace moved Node imports
 
@@ -88,9 +83,7 @@ The workspace verifies Vite `8.2.2` and Vitest `4.1.11`; `@fluojs/vite` keeps it
 Refresh the lockfile and run application install, build, typecheck, and tests.
 Exercise real listeners and startup/shutdown, configured microservice transports,
 and React production assets/hydration where applicable. Resolve peer and engine
-diagnostics. No new boundary or Node-floor backports are part of this program.
-
-The [full guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-node24.md)
-includes exact package examples and maintainer verification commands. Local checks
-do not prove npm publication or document deployment; #3169 remains the umbrella
-until the maintainer-run release through the canonical Changesets workflow on `main`.
+diagnostics. Consult the
+[runtime support matrix](https://github.com/fluojs/fluo/blob/main/docs/reference/package-surface.md)
+for package-specific restrictions: a compatible Node version does not make every
+integration portable to Bun, Deno or Workers.

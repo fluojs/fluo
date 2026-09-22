@@ -187,4 +187,32 @@ describe('book series verification', () => {
     const result = verifyBookSeries(root, { locale: 'ko' });
     expect(result.issues.some((issue) => issue.code === 'manifest-shape')).toBe(true);
   });
+
+  it('resolves legacy locale website references to the English website owner', () => {
+    // Given: legacy website URLs redirect, unlike relative repository file paths.
+    const root = fixture();
+    put(root, 'apps/docs/content/docs/tutorial/index.mdx', '# Tutorial\n');
+    put(root, 'book/01-volume/README.ko.md', [
+      '[Legacy Korean URL](/ko/docs/tutorial/index)',
+      '[Legacy English URL](/en/docs/tutorial/index)',
+      '[Canonical URL](/docs/tutorial/index)',
+      '',
+    ].join('\n'));
+
+    // When / Then: every legacy locale reference resolves to the English owner.
+    expect(verifyBookSeries(root, { locale: 'ko' }).issues).toEqual([]);
+  });
+
+  it('rejects a deleted relative Korean source even when an English source exists', () => {
+    const root = fixture();
+    put(root, 'apps/docs/content/docs/tutorial/index.mdx', '# Tutorial\n');
+    put(root, 'book/01-volume/README.ko.md', '[Legacy page path](../../apps/docs/content/docs/tutorial/index.ko.mdx)\n');
+    const result = verifyBookSeries(root, { locale: 'ko' });
+
+    expect(result.issues).toContainEqual({
+      code: 'broken-link',
+      path: 'book/01-volume/README.ko.md',
+      target: '../../apps/docs/content/docs/tutorial/index.ko.mdx',
+    });
+  });
 });

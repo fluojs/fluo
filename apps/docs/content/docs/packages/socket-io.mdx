@@ -1,0 +1,239 @@
+---
+title: Socket.IO
+description: Socket.IO v4 namespaces, rooms, ACKs, and auth guards over fluo's shared WebSocket gateway authoring API.
+package: "@fluojs/socket.io"
+---
+
+`@fluojs/socket.io` adapts Socket.IO v4 into fluo's decorator architecture. You author gateways with the same `@WebSocketGateway()` / `@OnMessage()` decorators as raw websockets, but the connections speak the Socket.IO protocol: automatic reconnection and fallback transports on the client, rooms with native `join`/`leave` semantics, acknowledgement callbacks, and connection- and message-level auth guards.
+
+The package has exactly one entrypoint and one registration path. `SocketIoModule.forRoot(options)` creates a global module that binds a Socket.IO `Server` to the application listener and exposes two DI tokens: `SOCKETIO_SERVER` for the raw server and `SOCKETIO_ROOM_SERVICE` for the namespace-aware room helper.
+
+Use it when Socket.IO's feature set is the requirement - reconnecting browser clients, ACK-based request/response over the socket, namespace-scoped broadcasting. Use `@fluojs/websockets` when plain WebSocket framing is the requirement; the two packages share authoring decorators but not a wire protocol, and a given gateway is one or the other. For service-to-service messaging (no browsers, no Socket.IO client), see [Microservices](/docs/packages/microservices).
+
+Platform support is explicit: Node.js (`>=24.0.0 <27`) server-backed adapters (raw Node, Express, Fastify) and Bun (via the official `@socket.io/bun-engine`) are fully supported; Deno and Cloudflare Workers are not supported by this adapter. Install the Socket.IO peer explicitly:
+
+```bash
+npm install @fluojs/core @fluojs/socket.io @fluojs/websockets socket.io@^4.8.3
+```
+
+`@fluojs/websockets` is a hard companion: gateway authoring reuses its decorators and shared contracts. Socket.IO `^4.8.3` is required - older v4 peers must upgrade and refresh their lockfile with it.
+
+## A small working example
+
+A `/chat` namespace whose `chat:join` event moves the socket into a room and answers through the acknowledgement, plus a service that broadcasts to the room through the raw server:
+
+```ts title="src/chat.gateway.ts"
+import { Inject } from '@fluojs/core';
+import { OnMessage, WebSocketGateway } from '@fluojs/websockets';
+import { SOCKETIO_ROOM_SERVICE, type SocketIoRoomService } from '@fluojs/socket.io';
+
+@Inject(SOCKETIO_ROOM_SERVICE)
+@WebSocketGateway({ path: '/chat' })
+export class ChatGateway {
+  constructor(private readonly rooms: SocketIoRoomService) {}
+
+  @OnMessage('chat:join')
+  handleJoin(
+    payload: { room?: string },
+    socket: { readonly id: string },
+    _request: unknown,
+    ack?: (response: unknown) => void,
+  ): void {
+    const room = payload.room ?? 'chat:lobby';
+
+    this.rooms.joinRoom(socket.id, room);
+    ack?.({ joined: room });
+  }
+}
+```
+
+```ts title="src/announcements.service.ts"
+import { Inject } from '@fluojs/core';
+import { SOCKETIO_SERVER } from '@fluojs/socket.io';
+import type { Server } from 'socket.io';
+
+@Inject(SOCKETIO_SERVER)
+export class AnnouncementService {
+  constructor(private readonly io: Server) {}
+
+  broadcastToLobby(event: string, data: unknown): void {
+    this.io.of('/chat').to('chat:lobby').emit(event, data);
+  }
+}
+```
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { SocketIoModule } from '@fluojs/socket.io';
+
+import { ChatGateway } from './chat.gateway';
+import { AnnouncementService } from './announcements.service';
+
+@Module({
+  imports: [SocketIoModule.forRoot()],
+  providers: [AnnouncementService, ChatGateway],
+})
+export class AppModule {}
+```
+
+```ts title="src/main.ts"
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
+});
+await app.listen();
+```
+
+A `socket.io-client` connection to `http://localhost:3000/chat` that emits `chat:join` with `{ room: 'chat:lobby' }` receives the acknowledgement `{ joined: 'chat:lobby' }` and then any `notice` events the `AnnouncementService` broadcasts. This composition is exercised end-to-end by `tooling/docs/fixtures/package-guides/transports/socket-io-guide.test.ts`.
+
+## How the mechanics work
+
+### Namespaces, not paths
+
+The most common migration mistake: `@WebSocketGateway({ path: '/chat' })` maps `path` to the **Socket.IO namespace** `/chat`. It does not change the Engine.IO HTTP request path, which stays `/socket.io/`. A client connects to `http://host:port` (Engine.IO negotiates over `/socket.io/`) and then joins the `/chat` namespace; with `socket.io-client` that is `io('http://host:port/chat')`. NestJS used the gateway `path` for the Engine.IO route - that is not what fluo's adapter does, and there is no option that changes it.
+
+Gateways that share a namespace stack their handlers in discovery order, exactly as raw websocket gateways on a shared path do. Registration rules carry over from the websockets package: gateways must be singleton providers, decoration without module registration does nothing, and private/static handler methods are rejected at decoration time.
+
+`@WebSocketGateway({ serverBacked })` is rejected on every Socket.IO runtime. Socket.IO gateways always share the application listener. To expose a gateway on a dedicated port, either migrate it to the raw `@fluojs/websockets/node` adapter or run a separate Socket.IO server you own outside this module.
+
+### Handler arguments and ACKs
+
+Message handlers receive the shared positional model `(payload, socket, request, acknowledgement)`; connect handlers receive `(socket, request)`. The socket is the Socket.IO `Socket` (with `id`, `handshake`, `rooms`, ...), and `request` is the runtime handshake request - a Node-like request on Node adapters, a web-standard `Request` on Bun.
+
+Return values are awaited for ordering and error containment, then **ignored**. fluo never converts a handler's return value into an implicit emit or ACK reply - use the `acknowledgement` callback:
+
+```ts title="fragment: explicit ACK"
+@OnMessage('get:profile')
+getProfile(payload: { id: string }, _socket: Socket, _request: unknown, ack?: (response: unknown) => void) {
+  ack?.(this.profiles.find(payload.id));
+}
+```
+
+Migrated NestJS `@SubscribeMessage()` handlers that returned an ACK payload must be rewritten to call `ack` explicitly, or to emit through `SOCKETIO_SERVER`.
+
+### Auth guards
+
+`SocketIoModule.forRoot({ auth })` installs two optional guards, both optional per level:
+
+- `auth.connection` runs before the namespace's connect handlers, receiving `{ socket, request, namespacePath, activeConnectionCount }`. Use `socket.handshake.auth` for token checks.
+- `auth.message` runs before each matched message handler, receiving `{ socket, request, event, payload, namespacePath, activeConnectionCount }`.
+
+Both accept with `true`, `undefined`, or no return, and reject with `false` or a `{ message?, data?, disconnect? }` rejection. The rejection paths differ, and the difference is the contract:
+
+- A **connection** rejection goes through Socket.IO's namespace connection-error path: the client's connect attempt fails with `connect_error` carrying the rejection message (and `data`, if provided).
+- A **message** rejection is reported **only through that event's acknowledgement callback**, as `{ error, data }`. Without an ACK callback the rejection is invisible to the client - no implicit error event is emitted. An explicit `disconnect: true` disconnects the socket after the rejection is reported.
+
+```ts title="fragment: namespace and message guards"
+SocketIoModule.forRoot({
+  auth: {
+    connection({ socket }) {
+      return socket.handshake.auth.token === 'demo-token'
+        ? true
+        : { message: 'Authentication required.' };
+    },
+    message({ event, payload }) {
+      return event === 'chat:join' || payload === 'allowed'
+        ? true
+        : { data: { code: 'E_FORBIDDEN' }, message: 'Forbidden event.' };
+    },
+  },
+});
+```
+
+One wiring detail to know before testing: guards attach to namespaces created from **discovered gateways** during bootstrap. A module with guard options but no registered gateway binds no guard middleware; register at least one gateway on the namespace you want guarded.
+
+### Rooms
+
+`SocketIoRoomService` implements the shared `WebSocketRoomService` contract - `joinRoom`, `leaveRoom`, `broadcastToRoom`, `getRooms` - with Socket.IO semantics and one addition over the raw contract: every helper takes an optional trailing `namespacePath`.
+
+Inside a gateway handler, the namespace is inferred from AsyncLocalStorage context, so `this.rooms.joinRoom(socket.id, room)` targets the gateway's own namespace. Outside handler context (an HTTP controller, a cron job), the current namespace is unknown and room helpers require the explicit namespace path - `broadcastToRoom(room, event, data, '/chat')` - or they throw. Pass it whenever a helper runs outside a gateway.
+
+### Defaults and bounded options
+
+`SocketIoModuleOptions` validates numeric options as positive integers at `forRoot` time (misconfiguration fails fast, before bootstrap):
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `global` | `true` | keeps `SOCKETIO_SERVER` and `SOCKETIO_ROOM_SERVICE` visible app-wide; set `false` for module-local visibility |
+| `engine.maxHttpBufferSize` | `1 MiB` | forwarded to Engine.IO; rejects oversized polls/frames |
+| `buffer.maxPendingMessagesPerSocket` | `128` | events arriving before connection handlers are ready; `overflowPolicy` default `drop-oldest`, with `drop-newest` and `close` alternatives |
+| `shutdown.timeoutMs` | `5000` | bounds graceful close before force-disconnecting managed clients |
+| `cors` | `{ credentials: false, origin: false }` | deny-by-default; cross-origin exposure is opt-in |
+| `transports` | Socket.IO defaults | restrict to `['websocket']` to disable polling |
+
+The CORS default is deliberate: a Socket.IO server without explicit CORS is reachable from any origin, so fluo starts closed. On Bun, CORS must additionally be static - no delegate functions, no boolean entries inside `cors.origin` arrays - because the Bun engine host cannot evaluate dynamic origin functions. Bun also maps `engine.maxHttpBufferSize` onto both its HTTP body limit and WebSocket frame limit, so polling requests and websocket frames share one bound.
+
+## Resource ownership, startup, and shutdown
+
+At bootstrap the lifecycle service discovers gateways, creates the Socket.IO `Server` bound to the adapter's realtime capability (attaching to the shared HTTP server on Node; installing the versioned realtime binding through `@socket.io/bun-engine` on Bun before `listen()`), and prepares one attachment per gateway namespace. The HTTP server itself stays owned by the platform adapter - Socket.IO never closes it.
+
+Shutdown is bounded and retry-friendly: the adapter detaches the HTTP server reference before `io.close(...)` so client cleanup runs without closing adapter-owned listeners; accepted gateway work (connect/message/disconnect handlers) drains within `shutdown.timeoutMs`; if graceful close exceeds the bound, managed clients are force-disconnected and the timeout is logged. If force cleanup or the drain fails, managed state is **retained** so a later close attempt can retry rather than leaving a half-torn registry. Inject `SOCKETIO_SERVER` for low-level emits, not for lifecycle control - closing it yourself would fight the lifecycle service.
+
+Static gateway namespaces are owned by fluo's discovery, and Socket.IO's `cleanupEmptyChildNamespaces` behavior stays disabled for them. If you create dynamic child namespaces through raw `SOCKETIO_SERVER` access, their ownership and cleanup policy are yours.
+
+## Composition with neighboring packages
+
+- **`@fluojs/websockets`** supplies the decorators, the discovery model, and the shared room contract; the same gateway class shape works on both adapters, and `SOCKETIO_ROOM_SERVICE` extends `WebSocketRoomService` rather than replacing it.
+- **`@fluojs/core` / `@fluojs/di`**: `forRoot` is a global module by default, so any provider can inject the two tokens without re-export chains. Set `global: false` when module-local visibility is the goal.
+- **`@fluojs/http`**: the Engine.IO route lives on the shared listener; CORS defaults, DTO-style input validation, and the exception family compose as everywhere else in fluo.
+- **`@fluojs/platform-nodejs` / `@fluojs/platform-bun`**: the supported listener owners. Unsupported or noop adapters fail fast during bootstrap.
+
+## Failures, limits, and common mistakes
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Client connects but never reaches `/chat` handlers | The client treated the gateway `path` as an Engine.IO route | Connect to the app origin, then join the `/chat` namespace (`io('http://host/chat')`) |
+| `Unsupported adapter` / fail-fast at bootstrap | Noop or unsupported realtime capability | Host with a supported Node server-backed adapter or Bun |
+| `@WebSocketGateway({ serverBacked })` rejected at bootstrap | Dedicated listeners are a raw-websockets feature | Remove the option; expose the namespace through the app listener |
+| Message guard "does nothing" in a test | The module registered guards but no gateway, so no attachment (and no guard) was bound | Register a gateway on the guarded namespace |
+| Rejected message seems invisible | Message rejections surface only via ACK `{ error, data }` | Provide an ack callback from the client or emit errors yourself |
+| Room helper throws outside handlers | No current namespace without handler context | Pass the trailing `namespacePath` argument |
+| Cross-origin client cannot connect | Default CORS is deny-by-default | Set `cors: { origin: [...] }` explicitly |
+| `Error: ... must be a positive integer` | `engine.maxHttpBufferSize`, `buffer.maxPendingMessagesPerSocket`, or `shutdown.timeoutMs` was not a positive integer | Fix the option; validation runs at `forRoot` |
+
+Limits to plan around: Deno and Cloudflare Workers are not supported; a single adapter owns one Socket.IO server, so per-tenant listener isolation means separate applications; and because message rejections have no implicit client-visible error event, error signaling for non-ACK clients is application work.
+
+## Testing
+
+Boot the real adapter on an ephemeral port and drive it with `socket.io-client`:
+
+```ts title="fragment: socket.io test skeleton"
+import { io, type Socket as ClientSocket } from 'socket.io-client';
+
+const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
+const app = await FluoFactory.create(AppModule, { adapter, cors: false });
+
+try {
+  await app.listen();
+  const port = (adapter.getServer()!.address() as { port: number }).port;
+
+  const client: ClientSocket = io(`http://127.0.0.1:${String(port)}/chat`, {
+    reconnection: false,
+  });
+
+  const ack = await new Promise<unknown>((resolve, reject) => {
+    client.timeout(5_000).emit('chat:join', { room: 'chat:lobby' }, (error: unknown, response: unknown) => {
+      if (error) reject(error instanceof Error ? error : new Error(String(error)));
+      else resolve(response);
+    });
+  });
+} finally {
+  client.disconnect();
+  await app.close();
+}
+```
+
+Guard rejections need a client that observes `connect_error` or ACK payloads - `socket.io-client` gives you both (`client.on('connect_error', ...)` and the timeout-based emit helper). Close clients and the app in `finally`, and keep assertions on parsed payloads. The workstream fixtures at `tooling/docs/fixtures/package-guides/transports/socket-io-guide.test.ts` verify the namespace/Engine.IO path split, join ACKs, room broadcasts, and both guard rejection paths end-to-end.
+
+## Related reading
+
+- [WebSockets](/docs/packages/websockets) - the raw-framing adapter sharing these decorators, and the owner of the `serverBacked` feature Socket.IO rejects.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - global modules, provider visibility, and scopes.
+- [HTTP](/docs/packages/http) - the shared listener and request pipeline Socket.IO attaches to.
+- [platform-bun](/docs/packages/platform-bun) - the Bun listener whose realtime binding hosts the Bun path.
+- [`@fluojs/socket.io` package README](https://github.com/fluojs/fluo/blob/main/packages/socket.io/README.md) - the owning API contract, including the NestJS migration notes for `path`, ACKs, and `serverBacked`.
+- [Realtime & messaging packages](/docs/packages/realtime-messaging) - the surrounding realtime package family.

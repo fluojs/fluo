@@ -2,6 +2,7 @@
   "title": "Guides",
   "pages": [
     "index",
+    "package-composition",
     "first-feature",
     "package-selection",
     "http-api",

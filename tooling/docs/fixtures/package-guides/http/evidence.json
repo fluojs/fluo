@@ -1,0 +1,110 @@
+{
+  "@fluojs/http": {
+    "page": "apps/docs/content/docs/packages/http.mdx",
+    "sources": [
+      "packages/http/README.md",
+      "packages/http/src/index.ts",
+      "packages/http/src/index.portable.ts",
+      "packages/http/src/decorators.ts",
+      "packages/http/src/exceptions.ts",
+      "packages/http/src/types.ts",
+      "packages/http/src/guards.ts",
+      "packages/http/src/interceptors.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/http/http-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/http + @fluojs/validation: DTO binding, IsDefined/IsString/MinLength, 400 details MISSING_FIELD and UNKNOWN_FIELD, canonical 404 envelope, InputPolicy strip vs reject, class guard resolved from the request container (registered provider), 403 FORBIDDEN",
+      "@fluojs/http + @fluojs/testing: Test.createApp request pipeline without a port, app.close() in finally"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/http --maxWorkers=1 — exit 0, 4 files / 14 tests passed (Node v24.20.0)",
+      "pnpm exec tsc -p tsconfig.tools.json --noEmit — 0 errors under tooling/docs/fixtures/package-guides/http (pre-existing errors exist in other workstreams' fixture dirs)"
+    ]
+  },
+  "@fluojs/graphql": {
+    "page": "apps/docs/content/docs/packages/graphql.mdx",
+    "sources": [
+      "packages/graphql/README.md",
+      "packages/graphql/src/module.ts",
+      "packages/graphql/src/types.ts",
+      "packages/graphql/src/decorators.ts",
+      "packages/graphql/src/service.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/http/graphql-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/graphql + @fluojs/validation: resolver input DTO rules surface as BAD_USER_INPUT with extensions.issues field paths",
+      "@fluojs/graphql + DI scopes: @Scope('request') MessageStore and resolver share one operation container; a new HTTP request observes fresh state (operation-scoped isolation)",
+      "@fluojs/graphql + @fluojs/runtime + @fluojs/platform-nodejs: native Node HTTP server via FluoFactory.create(AppModule, { adapter: NodeHttpApplicationAdapter.create({ host, port }) }) with app.listen()/app.close()"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/http --maxWorkers=1 — exit 0 (graphql-guide.test.ts boots the native adapter and passes)"
+    ]
+  },
+  "@fluojs/validation": {
+    "page": "apps/docs/content/docs/packages/validation.mdx",
+    "sources": [
+      "packages/validation/README.md",
+      "packages/validation/src/validation.ts",
+      "packages/validation/src/errors.ts",
+      "packages/validation/src/types.ts",
+      "packages/validation/src/decorators.ts",
+      "packages/validation/src/mapped-types.ts",
+      "packages/validation/src/standard-schema.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/http/http-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/validation inside the @fluojs/http pipeline: binding selects sources and converts, validation rules fail with field-scoped issues serialized into HTTP 400 details",
+      "@fluojs/validation engine contract used standalone per DefaultValidator.materialize/validate (documented; HTTP-path behavior verified here)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/http --maxWorkers=1 — exit 0 (validation assertions run through http-guide.test.ts)"
+    ]
+  },
+  "@fluojs/serialization": {
+    "page": "apps/docs/content/docs/packages/serialization.mdx",
+    "sources": [
+      "packages/serialization/README.md",
+      "packages/serialization/src/serialize.ts",
+      "packages/serialization/src/serializer-interceptor.ts",
+      "packages/serialization/src/metadata.ts",
+      "packages/serialization/src/import-side-effects.test.ts",
+      "packages/serialization/src/decorators/expose.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/http/serialization-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/serialization + @fluojs/http: SerializerInterceptor registered as a module provider shapes uncommitted handler results; @Exclude strips passwordHash from the response body",
+      "ensureMetadataSymbol() application preload (metadata-preload.ts) kept as the documented entrypoint pattern; no-op under the repo vitest setup"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/http --maxWorkers=1 — exit 0 (engine semantics: cycle cut to undefined, shared references preserved; interceptor response body asserted)",
+      "node -e \"console.log(typeof Symbol.metadata)\" — undefined on Node v24.20.0, confirming the preload requirement"
+    ]
+  },
+  "@fluojs/openapi": {
+    "page": "apps/docs/content/docs/packages/openapi.mdx",
+    "sources": [
+      "packages/openapi/README.md",
+      "packages/openapi/src/openapi-module.ts",
+      "packages/openapi/src/schema-builder.ts",
+      "packages/openapi/src/decorators.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/http/openapi-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/openapi + @fluojs/http + @fluojs/validation: explicit sources controller, DTO binding + validation metadata derived into the request body schema, default 201/400 responses, UserResponseDto component via @ApiResponse({ type })",
+      "@fluojs/openapi offline: OpenApiDocumentBuilder.build mirrors the served document structure without a server"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/http --maxWorkers=1 — exit 0 (served /openapi.json assertions, controller/document route coexistence, offline builder)"
+    ]
+  }
+}
