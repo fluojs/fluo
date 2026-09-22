@@ -544,4 +544,6 @@ class ProductController {
 - `packages/cache-manager/src/cache-observer.test.ts`: 캐시 관찰 계약 테스트.
 ## 호환되는 서비스 사본
 
+Cache interception은 complete versioned owner capability를 통해 다른 same-realm `@fluojs/http` 사본의 호환 manual `SseResponse`를 인식합니다. 해당 response를 cache하거나 replay하지 않으며 dispatcher completion은 원래 HTTP 사본의 소유로 유지됩니다.
+
 `CacheService`와 `CacheInterceptor`는 호환 사본 class injection을 지원하며 cache store와 option token은 격리된 상태를 유지합니다.

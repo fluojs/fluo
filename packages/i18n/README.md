@@ -600,4 +600,4 @@ The core locale-resolution roadmap item for WebSocket, gRPC, CLI, local storage,
 - `packages/i18n/src/typegen.ts`
 ## Compatible service copies
 
-`I18nService` supports ordinary class injection across compatible same-realm package copies; option tokens remain isolated.
+`I18nService` supports ordinary class injection across compatible same-realm package copies; option tokens remain isolated. `IcuI18nService` also accepts a compatible foreign service only after verifying the non-enumerable versioned owner capability and the complete lookup and formatting surface. It keeps the foreign service's catalog snapshot and locale resolution, so a fallback message is formatted using its supplying locale while `defaultValue` and missing-message handling retain the requested locale.

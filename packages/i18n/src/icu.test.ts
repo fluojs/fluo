@@ -204,4 +204,25 @@ describe('@fluojs/i18n/icu MessageFormat subpath', () => {
 
     expect(icu.translate('ordinal', { locale: 'ko', values: { count: 1 } })).toBe('1st result');
   });
+
+  it('keeps fallback provenance when wrapping a compatible query-isolated core service', async () => {
+    const copyA = await import(`${new URL('./service.ts', import.meta.url).href}?copy-a`);
+    const foreign = copyA.I18nService.create({
+      catalogs: {
+        en: {
+          ordinal: '{count, selectordinal, one {#st result} other {#th results}}',
+        },
+        ko: {},
+      },
+      defaultLocale: 'en',
+      fallbackLocales: { ko: ['en'] },
+      supportedLocales: ['en', 'ko'],
+    });
+
+    const icu = new IcuI18nService(foreign);
+
+    expect(foreign).not.toBeInstanceOf(I18nService);
+    expect(icu.getCoreService()).toBe(foreign);
+    expect(icu.translate('ordinal', { locale: 'ko', values: { count: 1 } })).toBe('1st result');
+  });
 });

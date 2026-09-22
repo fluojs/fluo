@@ -362,4 +362,6 @@ Additional exports from the root `@fluojs/mongoose` package:
 - `packages/mongoose/src/public-api.test.ts`
 ## Compatible service copies
 
+`@Transaction()` accepts a compatible same-realm `MongooseConnection` only after complete versioned owner capability validation. It keeps native rollback confirmation, after-commit hook lifecycle, cleanup, and result identity local to the original connection wrapper.
+
 `MongooseConnection` supports compatible-copy class injection. Named connections remain isolated.

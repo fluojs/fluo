@@ -442,4 +442,6 @@ import {
 - `packages/drizzle/src/public-api.test.ts`
 ## 호환되는 서비스 사본
 
+`@Transaction()`은 complete versioned owner capability를 통해서만 호환 same-realm `DrizzleDatabase` 또는 facade를 받습니다. package 사본 사이의 transaction state를 병합하지 않고 native transaction lifecycle, rollback policy, after-commit hook drain/discard, cleanup, result identity를 보존합니다.
+
 `DrizzleDatabase`는 호환 사본 class injection을 지원합니다. Named database registration은 격리된 상태를 유지합니다.

@@ -2,7 +2,7 @@ import { FormatError, IntlMessageFormat } from 'intl-messageformat';
 import type { Formats } from 'intl-messageformat';
 
 import { I18nError } from './errors.js';
-import { I18nService, resolveI18nMessageProvenance } from './service.js';
+import { I18nService, isCompatibleI18nService, resolveI18nMessageProvenance } from './service.js';
 import type { I18nInterpolationValues, I18nLocale, I18nModuleOptions, I18nTranslateOptions } from './types.js';
 
 /**
@@ -93,7 +93,7 @@ export class IcuI18nService {
    * @param options Root i18n options or an existing `I18nService` instance.
    */
   constructor(options: I18nModuleOptions | I18nService = {}) {
-    this.service = options instanceof I18nService ? options : I18nService.create(options);
+    this.service = isCompatibleI18nService(options) ? options : I18nService.create(options);
   }
 
   /**

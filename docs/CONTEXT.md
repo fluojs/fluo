@@ -2,6 +2,7 @@
 <!-- fluo:prisma-api-unification: module-owned-registration -->
 
 <!-- fluo:transaction-contract: explicit-target -->
+<!-- fluo:transaction-compatible-copy: same-realm-owner-version, complete-consumed-surface, original-receiver, separate-rollback-after-commit-cleanup-result-identity -->
 
 Transaction decorators use an explicit target accessor as the canonical path:
 `@Transaction((self) => self.prisma, nativeOptions?, boundary?)` for Prisma,
@@ -9,6 +10,10 @@ Transaction decorators use an explicit target accessor as the canonical path:
 `@Transaction((self) => self.conn, boundary?)` for Mongoose. Driver-native options
 follow the accessor and Fluo boundary policy is last. No-argument discovery is legacy
 single-target compatibility only; migrate it before adding another database or ORM.
+Compatible same-realm wrapper and facade copies are accepted only after their
+non-enumerable package owner/version capability and complete consumed transaction
+surface validate together. That recognition preserves original-receiver calls and
+never merges rollback confirmation, after-commit hooks, cleanup, or result identity.
 
 Prisma application registration is owned by `PrismaModule.forRoot(...)` or `PrismaModule.forRootAsync(...)`; inject the module-owned `PrismaService` facade rather than assembling one directly. `PrismaService.createFacade(...)` and `PrismaTransactionInterceptor` are removed. Migrate request-wide boundaries to application-owned `PrismaService.requestTransaction(...)` calls that forward the request `AbortSignal`; see [Prisma Registration Migration](./getting-started/migrate-prisma-registration.md).
 

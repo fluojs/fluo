@@ -441,4 +441,6 @@ token are deliberately not exported.
 - `packages/prisma/src/module.test.ts`: Module lifecycle, named clients, async factories, strict transaction behavior, and status snapshots.
 ## Compatible service copies
 
+`@Transaction()` recognizes a compatible Prisma service or module facade from another same-realm copy only after validating its non-enumerable owner/version capability and complete transaction surface. Explicit accessors, restricted unambiguous implicit discovery, rollback confirmation, after-commit hooks, cleanup, and result identity remain owned by that wrapper.
+
 `PrismaService` supports compatible-copy class injection. Named clients and transactions remain isolated.

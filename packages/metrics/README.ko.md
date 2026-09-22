@@ -259,7 +259,7 @@ MetricsModule.forRoot({
 
 ### 호환 가능한 중복 사본
 
-호환되는 same-realm `@fluojs/metrics` 사본은 정확히 같은 `Registry`에 이미 등록된 framework-owned HTTP collector와 default collector를 인식합니다. Registry-bound ownership metadata만 재사용하며 독립 Registry, application telemetry, capability detection은 공유하지 않습니다. platform capability detection은 이 contract와 별도이며 #3822의 범위입니다.
+호환되는 same-realm `@fluojs/metrics` 사본은 정확히 같은 `Registry`에 이미 등록된 framework-owned HTTP collector와 default collector를 인식합니다. Registry-bound ownership metadata만 재사용하며 독립 Registry, application telemetry, capability detection은 공유하지 않습니다. platform capability detection은 이 contract와 별도이며 #3822의 범위입니다. 호환되는 물리 `prom-client` 사본의 실제 `Registry`는 collector나 telemetry mutation 전에 complete public Registry surface를 검증한 경우에만 bootstrap provider boundary에서 허용하며, 불완전한 lookalike는 거부합니다.
 
 ## 관련 패키지
 

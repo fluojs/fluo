@@ -2,6 +2,7 @@
 <!-- fluo:prisma-api-unification: module-owned-registration -->
 
 <!-- fluo:transaction-contract: explicit-target -->
+<!-- fluo:transaction-compatible-copy: same-realm-owner-version, complete-consumed-surface, original-receiver, separate-rollback-after-commit-cleanup-result-identity -->
 
 트랜잭션 데코레이터의 canonical 경로는 명시적인 target accessor입니다.
 Prisma는 `@Transaction((self) => self.prisma, nativeOptions?, boundary?)`,
@@ -10,6 +11,10 @@ Mongoose는 `@Transaction((self) => self.conn, boundary?)`를 사용하세요.
 driver-native 옵션은 accessor 뒤에 오고 Fluo boundary policy는 마지막입니다.
 무인자 탐색은 legacy 단일 target 호환 동작일 뿐이므로 다른 database나 ORM을
 추가하기 전에 마이그레이션하세요.
+호환 same-realm wrapper와 facade 사본은 non-enumerable package owner/version
+capability와 complete consumed transaction surface를 함께 검증한 경우에만
+허용합니다. 이 인식은 원래 receiver 호출을 보존하며 rollback confirmation,
+after-commit hook, cleanup, result identity를 병합하지 않습니다.
 
 Prisma 애플리케이션 등록은 `PrismaModule.forRoot(...)` 또는 `PrismaModule.forRootAsync(...)`가 소유하며, 직접 facade를 조립하지 말고 module이 소유한 `PrismaService` facade를 주입하세요. `PrismaService.createFacade(...)`와 `PrismaTransactionInterceptor`는 제거되었습니다. request-wide 경계는 request `AbortSignal`을 전달하는 애플리케이션 소유 `PrismaService.requestTransaction(...)` 호출로 마이그레이션하세요. 자세한 내용은 [Prisma 등록 마이그레이션](./getting-started/migrate-prisma-registration.ko.md)을 참고하세요.
 

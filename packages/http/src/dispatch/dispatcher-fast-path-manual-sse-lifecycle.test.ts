@@ -101,7 +101,6 @@ describe('fast-path manual SSE lifecycle', () => {
   ])('keeps a delayed fast-path manual SSE pending until $label', async ({ close }) => {
     const abortController = new AbortController();
     const stream = createStream();
-    const dispatcherWaiting = createDeferred<void>();
     const handlerReturned = createDeferred<SseResponse>();
 
     @Controller('/events')
@@ -109,13 +108,11 @@ describe('fast-path manual SSE lifecycle', () => {
       @Get('/')
       stream(_input: undefined, context: RequestContext): SseResponse {
         const sse = new SseResponse(context);
-        const completion = sse.completion;
 
         Object.defineProperty(sse, 'completion', {
           configurable: true,
           get() {
-            dispatcherWaiting.resolve();
-            return completion;
+            throw new Error('public completion getter must not be read');
           },
         });
 
@@ -135,7 +132,6 @@ describe('fast-path manual SSE lifecycle', () => {
     });
 
     const sse = await handlerReturned.promise;
-    await dispatcherWaiting.promise;
 
     expect(getDispatcherFastPathStats(dispatcher)?.routes).toMatchObject([
       { executionPath: 'fast', routeId: 'GET:/events' },

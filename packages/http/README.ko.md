@@ -634,6 +634,8 @@ const connection = resolveHttpConnection(context.request, {
 
 ### 서버 전송 이벤트
 
+호환 same-realm `@fluojs/http` 사본의 manual `SseResponse`는 complete non-enumerable versioned owner capability를 통해서만 인식합니다. full·fast dispatch 모두 observer와 request-scoped resource를 정확히 한 번 dispose하기 전에 해당 response의 원래 lifecycle completion을 기다립니다.
+
 ```ts
 import { Controller, Sse, type SseMessage } from '@fluojs/http';
 

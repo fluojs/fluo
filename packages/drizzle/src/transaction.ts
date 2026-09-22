@@ -1,5 +1,5 @@
 import { AfterCommitCapabilityError, type TransactionBoundaryOptions } from './after-commit.js';
-import { DrizzleDatabase } from './database.js';
+import { isCompatibleDrizzleDatabaseHandle } from './database-brand.js';
 import { TransactionRollbackCapabilityError } from './result-rollback.js';
 import type { DrizzleDatabaseLike } from './types.js';
 
@@ -90,7 +90,7 @@ export function Transaction<THost, TTransactionOptions = unknown, TResult = unkn
     return async function transactionMethod(this: THost, ...args: TArgs): Promise<TMethodResult> {
       const drizzleDatabase = accessor ? accessor(this) : resolveDefaultTransactionTarget<THost, TTransactionOptions>(this);
 
-      if (boundary?.shouldRollback && !(drizzleDatabase instanceof DrizzleDatabase)) {
+      if (boundary?.shouldRollback && !isCompatibleDrizzleDatabaseHandle(drizzleDatabase)) {
         throw new TransactionRollbackCapabilityError();
       }
 

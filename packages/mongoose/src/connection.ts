@@ -1,4 +1,5 @@
 import { observeRollback, type TransactionRollbackObserver } from './result-rollback.js';
+import { markMongooseConnectionHandle } from './connection-brand.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Inject } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/core/internal';
@@ -241,7 +242,9 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     private readonly connection: TConnection,
     private readonly dispose?: (connection: TConnection) => Promise<void> | void,
     private readonly connectionOptions: MongooseRuntimeOptions = { strictTransactions: false },
-  ) {}
+  ) {
+    markMongooseConnectionHandle(this);
+  }
 
   /**
    * Returns the root Mongoose connection handle.

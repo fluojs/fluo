@@ -610,4 +610,6 @@ Callback/default 위임, 빈 body와 부재, abort 협력, 인증 순서, adapte
 [Next production 예제](../platform-nextjs/e2e/fixture/backend.ts).
 ## 호환되는 프레임워크 서비스 사본
 
+`compileModuleGraph()`는 complete versioned owner capability를 검증한 경우에만 호환 same-realm runtime 사본의 caller-owned `ModuleGraphCompileCache`를 받습니다. cache snapshot은 계속 clone되고, LRU와 size는 해당 cache의 소유로 남으며 disposal은 원래 method를 통해 관찰됩니다.
+
 지정된 서비스 클래스가 호환되는 패키지 사본에서 왔더라도 module export가 가시성을 결정합니다. 이 동작은 export되지 않은 provider를 보이게 만들지 않습니다.

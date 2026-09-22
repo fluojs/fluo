@@ -19,6 +19,81 @@ type Result = { readonly ok: boolean; readonly id: string };
 const policy: TransactionBoundaryOptions<Result> = { shouldRollback: (value) => !value.ok };
 
 describe('Prisma Result policy public seam', () => {
+  it('accepts a query-isolated copy-A owner through the copy-B decorator capability contract', async () => {
+    const copyA = await import(`${new URL('./service.ts', import.meta.url).href}?copy-a-owner`);
+    const copyB = await import(`${new URL('./transaction.ts', import.meta.url).href}?copy-b-decorator`);
+    const events: string[] = [];
+    const owner = new copyA.PrismaService({
+      async $transaction<T>(callback: (client: object) => Promise<T>): Promise<T> {
+        events.push('begin');
+        try {
+          const value = await callback({});
+          events.push('commit');
+          return value;
+        } catch (error) {
+          events.push('rollback');
+          throw error;
+        }
+      },
+    }, { strictTransactions: false, rollbackObserver: observerDouble });
+    const boundary: TransactionBoundaryOptions<Result> = {
+      requireAfterCommit: true,
+      shouldRollback: (value) => !value.ok,
+    };
+    const rejected: Result = { ok: false, id: 'rejected' };
+    const accepted: Result = { ok: true, id: 'accepted' };
+    class Service {
+      readonly owner = owner;
+
+      @copyB.Transaction((self: Service) => self.owner, undefined, boundary)
+      async reject(): Promise<Result> {
+        this.owner.afterCommit(() => { events.push('rejected-hook'); });
+        return rejected;
+      }
+
+      @copyB.Transaction((self: Service) => self.owner, undefined, boundary)
+      async accept(): Promise<Result> {
+        this.owner.afterCommit(() => { events.push('accepted-hook'); });
+        return accepted;
+      }
+    }
+
+    expect(await new Service().reject()).toBe(rejected);
+    expect(events).toEqual(['begin', 'rollback']);
+    expect(await new Service().accept()).toBe(accepted);
+    expect(events).toEqual(['begin', 'rollback', 'begin', 'commit', 'accepted-hook']);
+  });
+
+  it.each(['unbranded', 'incomplete'] as const)(
+    'rejects a query-isolated copy-B decorator %s owner lookalike before lifecycle work',
+    async (kind) => {
+      const copyB = await import(`${new URL('./transaction.ts', import.meta.url).href}?copy-b-negative`);
+      let transactionCalls = 0;
+      let methodCalls = 0;
+      const target = {
+        afterCommit() {},
+        createPlatformStatusSnapshot() { return {}; },
+        current() { return {}; },
+        requestTransaction<T>(callback: () => Promise<T>) { return callback(); },
+        transaction<T>(callback: () => Promise<T>) { transactionCalls += 1; return callback(); },
+      };
+      if (kind === 'incomplete') {
+        Object.defineProperty(target, Symbol.for('@fluojs/prisma/PrismaService.owner'), { value: 1 });
+        Reflect.deleteProperty(target, 'requestTransaction');
+      }
+      class Service {
+        @copyB.Transaction(() => target, undefined, {
+          requireAfterCommit: true,
+          shouldRollback: () => true,
+        })
+        async run() { methodCalls += 1; return false; }
+      }
+
+      await expect(new Service().run()).rejects.toBeInstanceOf(TransactionRollbackCapabilityError);
+      expect({ transactionCalls, methodCalls }).toEqual({ transactionCalls: 0, methodCalls: 0 });
+    },
+  );
+
   it('preserves native options and inferred Result types through service, request, and decorator boundaries', async () => {
     // Given: native options have their own typed input, apart from the Fluo policy.
     const options = { isolationLevel: 'Serializable' as const, timeout: 5000 };

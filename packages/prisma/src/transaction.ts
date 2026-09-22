@@ -1,8 +1,7 @@
 import { AfterCommitCapabilityError, type TransactionBoundaryOptions } from './after-commit.js';
 
-import { isPrismaServiceHandle } from './prisma-service-brand.js';
+import { isCompatiblePrismaServiceHandle } from './prisma-service-brand.js';
 import { TransactionRollbackCapabilityError } from './result-rollback.js';
-import { PrismaService } from './service.js';
 
 type TransactionalPrismaService<TOptions = unknown> = {
   createPlatformStatusSnapshot(): unknown;
@@ -20,7 +19,7 @@ type TransactionMethod<THost, TArgs extends unknown[], TResult> = (
 function isPrismaServiceLike(value: unknown): value is TransactionalPrismaService {
   return typeof value === 'object'
     && value !== null
-    && isPrismaServiceHandle(value)
+    && isCompatiblePrismaServiceHandle(value)
     && 'createPlatformStatusSnapshot' in value
     && typeof value.createPlatformStatusSnapshot === 'function'
     && 'current' in value
@@ -128,7 +127,7 @@ export function Transaction<THost, TOptions = unknown, TResult = unknown>(
     return async function wrappedTransactionMethod(this: THost, ...args: TArgs): Promise<TReturn> {
       const prisma = accessor?.(this) ?? resolveDefaultPrismaService(this);
 
-      if (transactionBoundary?.shouldRollback && !(prisma instanceof PrismaService)) {
+      if (transactionBoundary?.shouldRollback && !isCompatiblePrismaServiceHandle(prisma)) {
         throw new TransactionRollbackCapabilityError();
       }
       if (transactionBoundary?.requireAfterCommit && typeof readProperty(prisma, 'afterCommit') !== 'function') {

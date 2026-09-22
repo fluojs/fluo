@@ -1,5 +1,5 @@
 import { AfterCommitCapabilityError } from './after-commit.js';
-import { MongooseConnection } from './connection.js';
+import { isCompatibleMongooseConnectionHandle } from './connection-brand.js';
 import { TransactionRollbackCapabilityError } from './result-rollback.js';
 import type { MongooseConnectionLike, TransactionBoundaryOptions } from './types.js';
 
@@ -99,7 +99,7 @@ export function Transaction<THost, TBoundaryResult = unknown>(
   ) {
     return async function transactionWrappedMethod(this: THost, ...args: TArgs): Promise<TResult> {
       const connection = resolveTransactionConnection(this, accessor);
-      if (boundary?.shouldRollback && !(connection instanceof MongooseConnection)) {
+      if (boundary?.shouldRollback && !isCompatibleMongooseConnectionHandle(connection)) {
         throw new TransactionRollbackCapabilityError();
       }
       if (boundary?.requireAfterCommit && (

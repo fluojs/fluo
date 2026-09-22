@@ -5,6 +5,7 @@ import {
   SseResponse,
   encodeSseComment,
   encodeSseMessage,
+  isCompatibleSseResponse,
   isSseMessage,
   waitForSseResponseCompletion,
 } from './sse.js';
@@ -145,6 +146,55 @@ describe('SseResponse', () => {
     expect(isSseMessage({ data: { count: 1 }, event: 'update' })).toBe(true);
     expect(isSseMessage({ count: 1 })).toBe(false);
     expect(isSseMessage(null)).toBe(false);
+  });
+
+  it('recognizes a compatible query-isolated owner while rejecting incomplete lookalikes', async () => {
+    const copyA = await import(`${new URL('./sse.ts', import.meta.url).href}?copy-a`);
+    const stream = createMockSseStream();
+    const foreign = new copyA.SseResponse(createContext(createMockResponse(stream)));
+
+    expect(foreign).not.toBeInstanceOf(SseResponse);
+    expect(isCompatibleSseResponse(foreign)).toBe(true);
+    expect(isCompatibleSseResponse({ completion: Promise.resolve() })).toBe(false);
+    expect(isCompatibleSseResponse({
+      [Symbol.for('@fluojs/http/SseResponse.owner')]: { owner: '@fluojs/http', version: 1 },
+    })).toBe(false);
+
+    const completion = waitForSseResponseCompletion(foreign);
+    foreign.close();
+    await expect(completion).resolves.toBeUndefined();
+  });
+
+  it('uses the validated marker completion without reading the public completion getter', async () => {
+    let resolveMarkerCompletion: () => void = () => undefined;
+    const markerCompletion = new Promise<void>((resolve) => {
+      resolveMarkerCompletion = resolve;
+    });
+    const publicCompletion = vi.fn(() => {
+      throw new Error('public completion getter must not be read');
+    });
+    const response = Object.defineProperties({}, {
+      [Symbol.for('@fluojs/http/SseResponse.owner')]: {
+        value: {
+          completion: markerCompletion,
+          owner: '@fluojs/http',
+          version: 1,
+        },
+      },
+      completion: {
+        get: publicCompletion,
+      },
+    });
+
+    expect(isCompatibleSseResponse(response)).toBe(true);
+
+    const completion = waitForSseResponseCompletion(response);
+
+    expect(completion).toBe(markerCompletion);
+    expect(publicCompletion).not.toHaveBeenCalled();
+
+    resolveMarkerCompletion();
+    await expect(completion).resolves.toBeUndefined();
   });
 
   it('commits SSE headers and keeps close idempotent', () => {

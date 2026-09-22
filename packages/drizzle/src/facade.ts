@@ -1,5 +1,6 @@
 import type { DrizzleDatabase, DrizzleDatabaseFacade } from './database.js';
 import type { DrizzleDatabaseLike } from './types.js';
+import { markDrizzleDatabaseHandle } from './database-brand.js';
 
 /**
  * Builds the module-owned facade that forwards direct Drizzle calls to `current()`.
@@ -15,7 +16,7 @@ export function createDrizzleDatabaseFacade<
 >(
   database: DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions>,
 ): DrizzleDatabaseFacade<TDatabase, TTransactionDatabase, TTransactionOptions> {
-  return new Proxy(database, {
+  const facade = new Proxy(database, {
     get(target, property) {
       if (property in target) {
         const value = Reflect.get(target, property, target);
@@ -28,5 +29,7 @@ export function createDrizzleDatabaseFacade<
 
       return typeof value === 'function' ? value.bind(currentDatabase) : value;
     },
-  }) as DrizzleDatabaseFacade<TDatabase, TTransactionDatabase, TTransactionOptions>;
+  });
+
+  return markDrizzleDatabaseHandle(facade) as DrizzleDatabaseFacade<TDatabase, TTransactionDatabase, TTransactionOptions>;
 }

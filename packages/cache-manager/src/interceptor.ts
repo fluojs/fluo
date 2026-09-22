@@ -1,7 +1,7 @@
 import { Inject } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/di/internal';
 import { getRequestPipelineMetadataBag } from '@fluojs/core/request-pipeline';
-import { type CallHandler, type Interceptor, type InterceptorContext, SseResponse } from '@fluojs/http';
+import { type CallHandler, type Interceptor, type InterceptorContext, isCompatibleSseResponse } from '@fluojs/http';
 
 import { cacheRouteMetadataKey, getCacheEvictMetadata, getCacheKeyMetadata, getCacheTtlMetadata } from './decorators.js';
 import { installDeferredEviction } from './deferred-eviction.js';
@@ -266,7 +266,7 @@ export class CacheInterceptor implements Interceptor {
       return false;
     }
 
-    if (value instanceof SseResponse) {
+    if (isCompatibleSseResponse(value)) {
       return false;
     }
 

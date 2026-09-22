@@ -442,4 +442,6 @@ Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such
 - `packages/drizzle/src/public-api.test.ts`
 ## Compatible service copies
 
+`@Transaction()` accepts a compatible same-realm `DrizzleDatabase` or facade only through its complete versioned owner capability. It preserves native transaction lifecycle, rollback policy, after-commit hook drain/discard, cleanup, and result identity without merging transaction state between package copies.
+
 `DrizzleDatabase` supports compatible-copy class injection. Named database registrations remain isolated.

@@ -15,7 +15,8 @@ import type {
   I18nTranslateOptions,
 } from './types.js';
 
-const serviceOptions = new WeakMap<I18nService, I18nModuleOptions>();
+const I18N_SERVICE_OWNER = Symbol.for('@fluojs/i18n/I18nService.owner');
+const I18N_SERVICE_OWNER_VERSION = 1;
 
 function normalizeTranslationKey(key: unknown, namespace: unknown): string {
   if (typeof key !== 'string') {
@@ -150,7 +151,12 @@ export class I18nService {
    */
   constructor(options: I18nModuleOptions = {}) {
     this.options = snapshotI18nModuleOptions(options);
-    serviceOptions.set(this, this.options);
+    Object.defineProperty(this, I18N_SERVICE_OWNER, {
+      configurable: false,
+      enumerable: false,
+      value: I18N_SERVICE_OWNER_VERSION,
+      writable: false,
+    });
   }
 
   /**
@@ -378,6 +384,31 @@ export class I18nService {
 
     throw new I18nError(`Missing i18n message: ${resolvedKey}`, 'I18N_MISSING_MESSAGE');
   }
+
+}
+
+/**
+ * Checks whether a service from a compatible I18n package copy has the complete consumed surface.
+ *
+ * @param value Candidate I18n service.
+ * @returns Whether the service has the current owner brand and complete capability.
+ * @internal
+ */
+export function isCompatibleI18nService(value: unknown): value is I18nService {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  return Reflect.get(value, I18N_SERVICE_OWNER) === I18N_SERVICE_OWNER_VERSION
+    && typeof Reflect.get(value, 'snapshotOptions') === 'function'
+    && typeof Reflect.get(value, 'translate') === 'function'
+    && typeof Reflect.get(value, 'resolveLocales') === 'function'
+    && typeof Reflect.get(value, 'formatDateTime') === 'function'
+    && typeof Reflect.get(value, 'formatNumber') === 'function'
+    && typeof Reflect.get(value, 'formatCurrency') === 'function'
+    && typeof Reflect.get(value, 'formatPercent') === 'function'
+    && typeof Reflect.get(value, 'formatList') === 'function'
+    && typeof Reflect.get(value, 'formatRelativeTime') === 'function';
 }
 
 /**
@@ -395,12 +426,10 @@ export function resolveI18nMessageProvenance(
   locale: I18nLocale,
   namespace: string | undefined,
 ): I18nMessageProvenance | undefined {
-  const options = serviceOptions.get(service);
-
-  if (options === undefined) {
+  if (!isCompatibleI18nService(service)) {
     return undefined;
   }
-
+  const options = service.snapshotOptions();
   const resolvedKey = normalizeTranslationKey(key, namespace);
   return resolveMessageProvenance(options.catalogs, service.resolveLocales(locale), resolvedKey);
 }

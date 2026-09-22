@@ -57,6 +57,81 @@ function nativeFixture(beforeRollback?: () => Promise<void>) {
 }
 
 describe('Drizzle opt-in Result rollback', { timeout: 2_000 }, () => {
+  it('accepts a query-isolated copy-A owner through the copy-B decorator capability contract', async () => {
+    const copyA = await import(`${new URL('./database.ts', import.meta.url).href}?copy-a-owner`);
+    const copyB = await import(`${new URL('./transaction.ts', import.meta.url).href}?copy-b-decorator`);
+    const events: string[] = [];
+    const owner = new copyA.DrizzleDatabase({
+      async transaction<T>(callback: (handle: object) => Promise<T>): Promise<T> {
+        events.push('begin');
+        try {
+          const value = await callback({});
+          events.push('commit');
+          return value;
+        } catch (error) {
+          events.push('rollback');
+          throw error;
+        }
+      },
+    }, undefined, { strictTransactions: false, rollbackObserver: observerDouble });
+    const boundary: TransactionBoundaryOptions<{ readonly rejected: boolean }> = {
+      requireAfterCommit: true,
+      shouldRollback: (value) => value.rejected,
+    };
+    const rejected = { rejected: true };
+    const accepted = { rejected: false };
+    class Service {
+      readonly owner = owner;
+
+      @copyB.Transaction((self: Service) => self.owner, undefined, boundary)
+      async reject() {
+        this.owner.afterCommit(() => { events.push('rejected-hook'); });
+        return rejected;
+      }
+
+      @copyB.Transaction((self: Service) => self.owner, undefined, boundary)
+      async accept() {
+        this.owner.afterCommit(() => { events.push('accepted-hook'); });
+        return accepted;
+      }
+    }
+
+    expect(await new Service().reject()).toBe(rejected);
+    expect(events).toEqual(['begin', 'rollback']);
+    expect(await new Service().accept()).toBe(accepted);
+    expect(events).toEqual(['begin', 'rollback', 'begin', 'commit', 'accepted-hook']);
+  });
+
+  it.each(['unbranded', 'incomplete'] as const)(
+    'rejects a query-isolated copy-B decorator %s owner lookalike before lifecycle work',
+    async (kind) => {
+      const copyB = await import(`${new URL('./transaction.ts', import.meta.url).href}?copy-b-negative`);
+      let transactionCalls = 0;
+      let methodCalls = 0;
+      const target = {
+        afterCommit() {},
+        createPlatformStatusSnapshot() { return {}; },
+        current() { return {}; },
+        requestTransaction<T>(callback: () => Promise<T>) { return callback(); },
+        transaction<T>(callback: () => Promise<T>) { transactionCalls += 1; return callback(); },
+      };
+      if (kind === 'incomplete') {
+        Object.defineProperty(target, Symbol.for('@fluojs/drizzle/DrizzleDatabase.owner'), { value: 1 });
+        Reflect.deleteProperty(target, 'requestTransaction');
+      }
+      class Service {
+        @copyB.Transaction(() => target, undefined, {
+          requireAfterCommit: true,
+          shouldRollback: () => true,
+        })
+        async run() { methodCalls += 1; return false; }
+      }
+
+      await expect(new Service().run()).rejects.toBeInstanceOf(TransactionRollbackCapabilityError);
+      expect({ transactionCalls, methodCalls }).toEqual({ transactionCalls: 0, methodCalls: 0 });
+    },
+  );
+
   it.each(['transaction', 'requestTransaction'] as const)(
     'returns the same root failure only after native rollback settles through %s',
     async (entry) => {
