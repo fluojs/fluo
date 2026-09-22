@@ -244,3 +244,6 @@ export class RedisConnectionsModule {}
 - `packages/redis/src/module.test.ts`: Module lifecycle and DI wiring.
 - `packages/redis/src/public-api.test.ts`: Root-barrel export guard for the documented Redis surface.
 - `packages/redis/src/redis-service.ts`: Facade implementation and codec logic.
+## Compatible service copies
+
+Default public Redis service classes support compatible-copy class injection. Named Redis clients and services remain name-isolated.

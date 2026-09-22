@@ -375,3 +375,6 @@ Slack 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `packages/slack/src/lifecycle-regression.test.ts`: Bootstrap verification과 shutdown 순서의 regression coverage.
 - `packages/slack/src/public-surface.test.ts`: 공개 export와 TypeScript 계약 검증 예제.
 - `packages/slack/src/status.test.ts`: health/readiness 계약 예제.
+## 호환되는 서비스 사본
+
+`SlackService`와 `SlackChannel`은 호환 사본 class injection을 지원하며 Slack channel token은 격리된 상태를 유지합니다.

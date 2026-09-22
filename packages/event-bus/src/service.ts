@@ -1,5 +1,5 @@
 import { Inject, type MetadataPropertyKey, type Token } from '@fluojs/core';
-import { cloneWithFallback } from '@fluojs/core/internal';
+import { cloneWithFallback, FrameworkService } from '@fluojs/core/internal';
 import type { Container, NormalizedProvider } from '@fluojs/di';
 import type {
   ApplicationLogger,
@@ -87,6 +87,7 @@ function hasEventHandlerMetadata(targetType: Function): boolean {
  * The service discovers `@OnEvent()` handlers, clones payloads before dispatch,
  * and can publish the same events to an external transport such as Redis Pub/Sub.
  */
+@FrameworkService({ id: '@fluojs/event-bus/EventBusLifecycleService', version: 1 })
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, EVENT_BUS_OPTIONS)
 export class EventBusLifecycleService implements OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];
@@ -1006,6 +1007,7 @@ export class EventBusLifecycleService implements OnApplicationBootstrap, OnAppli
  * Exposes a single publication method returning {@link EventPublishResult}. Callers can either await
  * and inspect the result or ignore it.
  */
+@FrameworkService({ id: '@fluojs/event-bus/EventBusService', version: 1 })
 @Inject(EventBusLifecycleService)
 export class EventBusService {
   constructor(private readonly lifecycleService: EventBusLifecycleService) {}

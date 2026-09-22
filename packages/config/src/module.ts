@@ -1,5 +1,5 @@
 import { Inject, InvariantError } from '@fluojs/core';
-import { defineModuleMetadata, type ModuleMetadata } from '@fluojs/core/internal';
+import { defineFrameworkServiceIdentity, defineModuleMetadata, type ModuleMetadata } from '@fluojs/core/internal';
 
 import { cloneConfigDictionary } from './clone.js';
 import { ConfigReloadCore, normalizeConfigLoadOptions, resolveConfigSnapshot } from './load.js';
@@ -161,6 +161,11 @@ export class ConfigReloadManager implements ConfigReloader {
     return reloader;
   }
 }
+
+defineFrameworkServiceIdentity(ConfigReloadManager, {
+  id: '@fluojs/config/ConfigReloadManager',
+  version: 1,
+});
 
 /**
  * Module facade that wires normalized configuration into the application container.

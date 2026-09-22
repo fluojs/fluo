@@ -440,3 +440,6 @@ Use `DrizzleDatabase<TDatabase>` when a provider only needs wrapper methods such
 - `packages/drizzle/src/vertical-slice.test.ts`
 - `packages/drizzle/src/module.test.ts`
 - `packages/drizzle/src/public-api.test.ts`
+## Compatible service copies
+
+`DrizzleDatabase` supports compatible-copy class injection. Named database registrations remain isolated.

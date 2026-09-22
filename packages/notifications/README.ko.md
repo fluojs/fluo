@@ -256,3 +256,6 @@ foundation 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `packages/notifications/src/module.test.ts`: 모듈 등록, async wiring, queue seam, tolerant bulk dispatch 예제.
 - `packages/notifications/src/public-surface.test.ts`: 루트 export와 TypeScript-only 타입에 대한 공개 계약 검증 예제.
 - `packages/notifications/src/status.test.ts`: health/readiness 계약 예제.
+## 호환되는 서비스 사본
+
+`NotificationsService`는 호환 사본 class injection을 지원하며 channel과 option은 격리된 registration을 유지합니다.

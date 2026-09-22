@@ -1,5 +1,5 @@
 import { Inject } from '@fluojs/core';
-import { getStandardMetadataBag } from '@fluojs/core/internal';
+import { FrameworkService, getStandardMetadataBag } from '@fluojs/core/internal';
 import {
   type Guard,
   type GuardContext,
@@ -92,6 +92,7 @@ function resolveRetryAfterSeconds(entry: ThrottlerStoreEntry, now: number): numb
 /**
  * Guard that enforces module-, class-, and method-level throttling policies.
  */
+@FrameworkService({ id: '@fluojs/throttler/ThrottlerGuard', version: 1 })
 @Inject(THROTTLER_OPTIONS)
 export class ThrottlerGuard implements Guard {
   private readonly options: ThrottlerModuleOptions;

@@ -352,3 +352,6 @@ Discord 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `packages/discord/src/module.test.ts`: 모듈 등록, async wiring, webhook transport, notifications integration 예제.
 - `packages/discord/src/public-surface.test.ts`: 공개 export와 TypeScript 계약 검증 예제.
 - `packages/discord/src/status.test.ts`: health/readiness 계약 예제.
+## 호환되는 서비스 사본
+
+`DiscordService`와 `DiscordChannel`은 호환 사본 class injection을 지원하며 Discord channel token은 격리된 상태를 유지합니다.

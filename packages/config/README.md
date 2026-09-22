@@ -194,3 +194,6 @@ The package also exports option and subscription types such as `ConfigModuleOpti
 - `packages/config/src/load.test.ts`
 - [Config and Environments](../../docs/architecture/config-and-environments.md)
 - [Dev Reload Architecture](../../docs/architecture/dev-reload-architecture.md)
+## Compatible service copies
+
+`ConfigService` and `ConfigReloadManager` support ordinary class injection from compatible same-realm `@fluojs/config` copies. `CONFIG_RELOADER` remains a name-isolated symbol contract.

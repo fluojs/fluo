@@ -188,3 +188,6 @@ Module registration과 standalone reloader 생성은 `schema`로 전달한 neste
 - `packages/config/src/load.test.ts`
 - [구성 및 환경](../../docs/architecture/config-and-environments.ko.md)
 - [개발 리로드 아키텍처](../../docs/architecture/dev-reload-architecture.ko.md)
+## 호환되는 서비스 사본
+
+`ConfigService`와 `ConfigReloadManager`는 호환되는 동일 realm `@fluojs/config` 사본의 일반 class injection을 지원합니다. `CONFIG_RELOADER`는 이름별로 격리된 symbol 계약을 유지합니다.

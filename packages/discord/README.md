@@ -352,3 +352,6 @@ The package intentionally keeps `createDiscordProviders(...)`, `DISCORD_OPTIONS`
 - `packages/discord/src/module.test.ts`: Module registration, async wiring, webhook transport, and notifications integration examples.
 - `packages/discord/src/public-surface.test.ts`: Public export and TypeScript contract verification.
 - `packages/discord/src/status.test.ts`: Health/readiness contract examples.
+## Compatible service copies
+
+`DiscordService` and `DiscordChannel` support compatible-copy class injection; Discord channel tokens remain isolated.

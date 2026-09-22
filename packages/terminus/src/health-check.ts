@@ -1,3 +1,5 @@
+import { FrameworkService } from '@fluojs/core/internal';
+
 import { HealthCheckError } from './errors.js';
 import type {
   HealthCheckExecutionOptions,
@@ -416,6 +418,7 @@ export function assertHealthCheck(report: HealthCheckReport, message = 'Health c
 }
 
 /** Service facade that resolves and runs the health indicators registered in Terminus. */
+@FrameworkService({ id: '@fluojs/terminus/TerminusHealthService', version: 1 })
 export class TerminusHealthService {
   private readonly runningIndicatorChecks: RunningIndicatorChecks = new WeakMap();
 

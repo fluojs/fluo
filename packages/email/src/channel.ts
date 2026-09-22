@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import type { NotificationChannel, NotificationChannelDelivery, NotificationChannelContext } from '@fluojs/notifications';
 
 import { EmailService } from './service.js';
@@ -20,6 +21,7 @@ function createIncompleteDeliveryError(receipt: EmailSendResult): Error {
  * This class keeps the foundation package channel-agnostic while allowing `@fluojs/email`
  * to interpret email-specific payload fields, template rendering, and transport delivery.
  */
+@FrameworkService({ id: '@fluojs/email/EmailChannel', version: 1 })
 @Inject(EmailService, EMAIL_OPTIONS)
 export class EmailChannel implements NotificationChannel<EmailNotificationDispatchRequest, EmailSendResult> {
   readonly channel: string;

@@ -191,3 +191,6 @@ ThrottlerModule.forRoot({
 - `packages/throttler/src/guard.ts`: 요청 제한 및 헤더 관리 코어 로직.
 - `packages/throttler/src/redis-store.test.ts`: Redis store 계약과 server-time 동작.
 - `packages/throttler/src/status.test.ts`: status 및 diagnostic helper 동작.
+## 호환되는 서비스 사본
+
+`ThrottlerGuard`는 호환 사본 class injection을 지원하며 throttler option은 격리된 상태를 유지합니다.

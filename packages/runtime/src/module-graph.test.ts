@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   defineRuntimeClassDiMetadata,
+  defineRuntimeFrameworkServiceIdentity,
   defineRuntimeModuleMetadata,
   getRuntimeModuleMetadata,
 } from './internal/core-metadata.js';
@@ -90,7 +91,7 @@ describe('module graph cache-key prerequisites', () => {
     class AppModule {}
     defineRuntimeModuleMetadata(AppModule, {});
 
-    expect(createModuleGraphCacheKey(AppModule)).toContain('algorithm:2');
+    expect(createModuleGraphCacheKey(AppModule)).toContain('algorithm:3');
   });
 
   it('changes when module metadata changes', () => {
@@ -125,6 +126,45 @@ describe('module graph cache-key prerequisites', () => {
     });
 
     expect(createModuleGraphCacheKey(AppModule)).not.toBe(initialKey);
+  });
+
+  it('keeps compatible copied service classes subject to normal module export visibility', () => {
+    class OwnerService {}
+    class ConsumerService {
+      constructor(readonly owner: ConsumerServiceCopy) {}
+    }
+    class ConsumerServiceCopy {}
+
+    defineRuntimeFrameworkServiceIdentity(OwnerService, {
+      id: '@fluojs/test/module-service',
+      version: 1,
+    });
+    defineRuntimeFrameworkServiceIdentity(ConsumerServiceCopy, {
+      id: '@fluojs/test/module-service',
+      version: 1,
+    });
+    defineRuntimeClassDiMetadata(ConsumerService, {
+      inject: [ConsumerServiceCopy],
+    });
+
+    class OwnerModule {}
+    class ConsumerModule {}
+    class HiddenConsumerModule {}
+
+    defineRuntimeModuleMetadata(OwnerModule, {
+      exports: [OwnerService],
+      providers: [OwnerService],
+    });
+    defineRuntimeModuleMetadata(ConsumerModule, {
+      imports: [OwnerModule],
+      providers: [ConsumerService],
+    });
+    defineRuntimeModuleMetadata(HiddenConsumerModule, {
+      providers: [ConsumerService],
+    });
+
+    expect(() => compileModuleGraph(ConsumerModule)).not.toThrow();
+    expect(() => compileModuleGraph(HiddenConsumerModule)).toThrow('not local, not exported by an imported module');
   });
 
   it('does not cache failed module graph compilation as a successful reusable result', () => {

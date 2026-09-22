@@ -161,3 +161,6 @@ pnpm exec vitest run packages/terminus/src packages/runtime/src/health/health.te
 - [NestJS Migration Map](../getting-started/migrate-from-nestjs.ko.md): controller-owned health check에서 module 구성으로 전환하는 경계.
 - [Ops Metrics/Terminus 예제](../../examples/ops-metrics-terminus/src/app.ts): 실제 module 등록과 endpoint middleware 구성.
 - [1권 23장](../../book/01-fluoblog/ch23-lifecycle-and-readiness.ko.md): 제품의 lifecycle/readiness 적용. [이전 판 health 장](../../book/beginner/ch18-health.ko.md)은 계속 참고 자료로 접근할 수 있으며 canonical owner는 이 Docs입니다.
+## 호환되는 Terminus 서비스 사본
+
+`TerminusHealthService`는 일반 module export가 소유 registration을 보이게 할 때만 호환되는 동일 realm 패키지 사본을 통해 주입할 수 있습니다. 이 동작은 indicator, Prisma, Drizzle, Redis client, transaction 또는 private readiness state를 자동 발견하거나 전역화하지 않습니다.

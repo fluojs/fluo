@@ -244,3 +244,6 @@ Compatible same-realm `@fluojs/cqrs` copies retain opaque dispatch provenance fo
 - `packages/cqrs/src/public-api.test.ts`: Root-barrel public API contract coverage.
 - `packages/cqrs/src/status.test.ts`: CQRS status snapshot behavior.
 - `packages/cqrs/src/event-clone.test.ts`: Event clone fallback behavior.
+## Compatible service copies
+
+Public CQRS bus lifecycle classes support compatible-copy class injection; event handlers and option tokens retain existing ownership and ordering.

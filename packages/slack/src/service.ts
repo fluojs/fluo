@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
 import { SlackLifecycleError, SlackMessageValidationError } from './errors.js';
@@ -78,6 +79,7 @@ function assertMessageContent(message: NormalizedSlackMessage): void {
  * explicitly injected {@link SlackTransport} contracts, and translates
  * `@fluojs/notifications` envelopes into concrete Slack messages.
  */
+@FrameworkService({ id: '@fluojs/slack/SlackService', version: 1 })
 @Inject(SLACK_OPTIONS)
 export class SlackService implements OnModuleInit, OnApplicationShutdown {
   private readonly inFlightDeliveries = new Set<Promise<unknown>>();

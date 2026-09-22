@@ -1,4 +1,5 @@
 import { getModuleMetadata, type MaybePromise, type Token } from '@fluojs/core';
+import { normalizeFrameworkServiceToken } from '@fluojs/core/internal';
 import {
   type ClassType,
   type ContainerResolutionState,
@@ -149,17 +150,18 @@ function hasAnyBootstrapLifecycleHook(value: unknown): boolean {
 }
 
 function providerToken(provider: Provider): Token {
-  return isProviderDescriptor(provider) ? provider.provide : provider;
+  return normalizeFrameworkServiceToken(isProviderDescriptor(provider) ? provider.provide : provider);
 }
 
 function effectiveProvidersForToken(introspection: ContainerIntrospection, token: Token): NormalizedProvider[] {
-  const multiProviders = collectMultiProviders(introspection, token);
+  const normalizedToken = normalizeFrameworkServiceToken(token);
+  const multiProviders = collectMultiProviders(introspection, normalizedToken);
 
   if (multiProviders.length > 0) {
     return multiProviders;
   }
 
-  const provider = lookupProvider(introspection, token);
+  const provider = lookupProvider(introspection, normalizedToken);
   return provider ? [provider] : [];
 }
 
@@ -456,28 +458,30 @@ function resolveSyncMultiProvider(provider: NormalizedProvider, state: SyncResol
 }
 
 function resolveSyncToken(token: Token, state: SyncResolverState): unknown {
-  if (state.resolutionChain.has(token)) {
-    throw new Error(`Circular dependency detected while resolving token ${String(token)} via get().`);
+  const normalizedToken = normalizeFrameworkServiceToken(token);
+
+  if (state.resolutionChain.has(normalizedToken)) {
+    throw new Error(`Circular dependency detected while resolving token ${String(normalizedToken)} via get().`);
   }
 
-  state.resolutionChain.add(token);
+  state.resolutionChain.add(normalizedToken);
 
   try {
-    const multiProviders = collectMultiProviders(state.introspection, token);
+    const multiProviders = collectMultiProviders(state.introspection, normalizedToken);
 
     if (multiProviders.length > 0) {
       return multiProviders.map((provider) => resolveSyncMultiProvider(provider, state));
     }
 
-    const provider = lookupProvider(state.introspection, token);
+    const provider = lookupProvider(state.introspection, normalizedToken);
 
     if (!provider) {
-      throw new Error(`No provider registered for token ${String(token)}.`);
+      throw new Error(`No provider registered for token ${String(normalizedToken)}.`);
     }
 
     return resolveSyncProvider(provider, state);
   } finally {
-    state.resolutionChain.delete(token);
+    state.resolutionChain.delete(normalizedToken);
   }
 }
 

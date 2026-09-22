@@ -598,3 +598,6 @@ WebSocket, gRPC, CLI, local storage, request-style abstraction을 위한 core lo
 - `packages/i18n/src/index.test.ts`
 - `packages/i18n/src/loaders/remote.ts`
 - `packages/i18n/src/typegen.ts`
+## 호환되는 서비스 사본
+
+`I18nService`는 호환되는 동일 realm 패키지 사본 사이의 일반 class injection을 지원하며 option token은 격리된 상태를 유지합니다.

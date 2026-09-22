@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 
 import {
   NotificationChannelNotFoundError,
@@ -32,6 +33,7 @@ import type {
  * lifecycle events through the configured publisher seam.
  */
 @Inject(NOTIFICATIONS_OPTIONS, NOTIFICATION_CHANNELS)
+@FrameworkService({ id: '@fluojs/notifications/NotificationsService', version: 1 })
 export class NotificationsService {
   private readonly channelsByName = new Map<string, NotificationChannel>();
 

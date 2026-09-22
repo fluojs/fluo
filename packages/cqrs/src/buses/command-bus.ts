@@ -1,4 +1,5 @@
 import { Inject, InvariantError } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import type { Container } from '@fluojs/di';
 import type { ApplicationLogger, CompiledModule, OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
@@ -28,6 +29,7 @@ function isCommandHandler(value: unknown): value is ICommandHandler<ICommand, un
  * The command bus resolves singleton handlers only, warns on unsupported scopes,
  * and throws explicit contract errors when no handler or multiple handlers exist.
  */
+@FrameworkService({ id: '@fluojs/cqrs/CommandBusLifecycleService', version: 1 })
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, RUNTIME_CLEANUP_REGISTRATION)
 export class CommandBusLifecycleService extends CqrsBusBase implements CommandBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors = new Map<CommandType, CommandHandlerDescriptor>();

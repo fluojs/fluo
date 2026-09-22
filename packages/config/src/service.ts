@@ -1,4 +1,5 @@
 import { FluoError } from '@fluojs/core';
+import { defineFrameworkServiceIdentity } from '@fluojs/core/internal';
 
 import { cloneConfigDictionary } from './clone.js';
 import type { ConfigDictionary, DotPaths, DotValue } from './types.js';
@@ -77,6 +78,11 @@ export class ConfigService<T extends Record<string, unknown> = ConfigDictionary>
     return resolved;
   }
 }
+
+defineFrameworkServiceIdentity(ConfigService, {
+  id: '@fluojs/config/ConfigService',
+  version: 1,
+});
 
 /**
  * Replaces the underlying configuration snapshot of a `ConfigService`.

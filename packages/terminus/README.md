@@ -299,3 +299,6 @@ Runtime-specific indicators are split by subpath. Use `@fluojs/terminus/node` fo
 
 - `examples/ops-metrics-terminus/src/app.ts`: End-to-end integration of health and metrics.
 - `packages/terminus/src/health-check.test.ts`: Demonstrates aggregation and assertion flow.
+## Compatible service copies
+
+`TerminusHealthService` supports compatible-copy class injection. Explicit indicator imports and providers remain required.

@@ -360,3 +360,6 @@ Additional exports from the root `@fluojs/mongoose` package:
 - `packages/mongoose/src/vertical-slice.test.ts`
 - `packages/mongoose/src/module.test.ts`
 - `packages/mongoose/src/public-api.test.ts`
+## Compatible service copies
+
+`MongooseConnection` supports compatible-copy class injection. Named connections remain isolated.

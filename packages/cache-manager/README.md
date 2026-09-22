@@ -542,3 +542,6 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 - `packages/cache-manager/src/service.ts`: Core `CacheService` implementation.
 - `packages/cache-manager/src/status.test.ts`: Status and diagnostic helper tests.
 - `packages/cache-manager/src/cache-observer.test.ts`: Cache observation contract tests.
+## Compatible service copies
+
+`CacheService` and `CacheInterceptor` support compatible-copy class injection; cache store and option tokens remain isolated.

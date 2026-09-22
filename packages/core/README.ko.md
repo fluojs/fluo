@@ -248,3 +248,6 @@ driver가 소유합니다.
 - `packages/core/src/index.ts`
 - `packages/core/src/decorators.ts`
 - `packages/core/src/metadata.ts`
+## 호환되는 프레임워크 서비스 사본
+
+내부 프레임워크 소유 서비스 호환성 메타데이터는 버전이 지정된 명시적 opt-in입니다. 이는 공개 토큰 API가 아니며 일반 애플리케이션 생성자 식별을 바꾸지 않습니다.

@@ -1,5 +1,6 @@
 import { observeRollback, type TransactionRollbackObserver } from './result-rollback.js';
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import {
   type AfterCommitCallback,
   AfterCommitCapabilityError,
@@ -180,6 +181,7 @@ function createTransactionContextStore<TTransactionClient>(): TransactionContext
  * @typeParam TTransactionClient Transaction-scoped client resolved inside `$transaction(...)` callbacks.
  * @typeParam TTransactionOptions Options forwarded to Prisma interactive transactions.
  */
+@FrameworkService({ id: '@fluojs/prisma/PrismaService', version: 1 })
 @Inject(PRISMA_CLIENT, PRISMA_OPTIONS)
 export class PrismaService<
   TClient extends PrismaClientLike<TTransactionClient, TTransactionOptions>,

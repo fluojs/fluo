@@ -608,3 +608,6 @@ Callback/default 위임, 빈 body와 부재, abort 협력, 인증 순서, adapte
 [HTTP parser 계약](../http/README.ko.md#bounded-body-parser-policy)을 참고하세요.
 근거: `src/web-body-parser.test.ts`, `src/web-body-limit.test.ts`,
 [Next production 예제](../platform-nextjs/e2e/fixture/backend.ts).
+## 호환되는 프레임워크 서비스 사본
+
+지정된 서비스 클래스가 호환되는 패키지 사본에서 왔더라도 module export가 가시성을 결정합니다. 이 동작은 export되지 않은 provider를 보이게 만들지 않습니다.

@@ -1,4 +1,5 @@
 import { Inject, InvariantError } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import type { Container } from '@fluojs/di';
 import type {
   ApplicationLogger,
@@ -34,6 +35,7 @@ function isQueryHandler(value: unknown): value is IQueryHandler<IQuery<unknown>,
  * The query bus resolves singleton handlers only, warns on unsupported scopes,
  * and preserves the one-query-to-one-handler contract used by the CQRS surface.
  */
+@FrameworkService({ id: '@fluojs/cqrs/QueryBusLifecycleService', version: 1 })
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, RUNTIME_CLEANUP_REGISTRATION)
 export class QueryBusLifecycleService extends CqrsBusBase implements QueryBus, OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors = new Map<QueryType, QueryHandlerDescriptor>();

@@ -342,3 +342,6 @@ multi-provider 토큰을 resolve하면 등록 순서대로 해석된 값의 배�
 - `packages/di/src/container.ts`
 - `packages/di/src/container.test.ts`
 - `examples/minimal/src/app.ts`
+## 호환되는 프레임워크 서비스 사본
+
+명시적으로 지정된 프레임워크 서비스 클래스는 일반 class injection으로 호환되는 동일 realm 패키지 사본 사이에서 해결됩니다. 표식 없는 클래스, named token, scope, override 및 module visibility는 기존 의미를 유지합니다.

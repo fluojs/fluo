@@ -1,3 +1,4 @@
+import { FrameworkService } from '@fluojs/core/internal';
 import { isPlainObject } from './catalog.js';
 import { type I18nMessageProvenance, resolveMessageProvenance } from './message-provenance.js';
 import { snapshotI18nModuleOptions } from './options.js';
@@ -128,6 +129,7 @@ function isFallbackMap(value: I18nFallbackLocales): value is Readonly<Record<I18
  * Locale selection is explicit per call. The core service performs deterministic catalog lookup and string
  * interpolation only; request locale detection, loaders, ICU/messageformat, and framework adapters remain out of scope.
  */
+@FrameworkService({ id: '@fluojs/i18n/I18nService', version: 1 })
 export class I18nService {
   private readonly options: I18nModuleOptions;
 

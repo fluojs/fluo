@@ -322,3 +322,6 @@ Package manifest는 public body-bearing RFC `QUERY` portability assertion이 사
 - `packages/testing/src/portability/error-representation-portability.ts`
 - `examples/minimal/src/app.test.ts`
 - `examples/auth-jwt-passport/src/app.test.ts`
+## 호환되는 프레임워크 서비스 사본
+
+`Test.createTestingModule()`은 명시적으로 지정된 프레임워크 서비스 클래스를 호환되는 동일 realm 패키지 사본을 통해 해결하며 일반 override와 named-token 격리를 유지합니다.

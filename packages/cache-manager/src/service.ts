@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 
 import {
   CacheUpdateError,
@@ -29,6 +30,7 @@ const systemCacheClock: MonotonicClock = globalThis.performance;
  * Application-level cache facade used for direct cache reads, writes, and read-through loading.
  */
 @Inject(CACHE_STORE, CACHE_OPTIONS)
+@FrameworkService({ id: '@fluojs/cache-manager/CacheService', version: 1 })
 export class CacheService {
   private readonly inflight = new Map<string, InflightLoad>();
   private readonly pendingLoads = new Map<string, Map<number, number>>();

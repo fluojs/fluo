@@ -1,4 +1,5 @@
 import { Inject, Scope as ScopeDecorator, type Token } from '@fluojs/core';
+import { defineFrameworkServiceIdentity } from '@fluojs/core/internal';
 import { describe, expect, it, vi } from 'vitest';
 
 import { Container } from './container.js';
@@ -15,6 +16,66 @@ describe('Container', () => {
     const second = await container.resolve(Logger);
 
     expect(first).toBe(second);
+  });
+
+  it('resolves an explicitly designated compatible framework service copy to its owner instance', async () => {
+    const disposed = vi.fn();
+
+    class ServiceCopyA {
+      onDestroy(): void {
+        disposed();
+      }
+    }
+
+    class ServiceCopyB {}
+
+    class Consumer {
+      constructor(readonly service: ServiceCopyB) {}
+    }
+
+    defineFrameworkServiceIdentity(ServiceCopyA, {
+      id: '@fluojs/test/service',
+      version: 1,
+    });
+    defineFrameworkServiceIdentity(ServiceCopyB, {
+      id: '@fluojs/test/service',
+      version: 1,
+    });
+
+    const container = new Container().register(
+      ServiceCopyA,
+      { provide: Consumer, useClass: Consumer, inject: [ServiceCopyB] },
+    );
+
+    const resolvedCopy = await container.resolve(ServiceCopyB);
+    const consumer = await container.resolve(Consumer);
+
+    expect(consumer.service).toBe(resolvedCopy);
+
+    await container.dispose();
+
+    expect(disposed).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps unmarked same-name classes and incompatible framework contracts distinct', async () => {
+    const UserServiceA = class UserService {};
+    const UserServiceB = class UserService {};
+    class CompatibleService {}
+    class IncompatibleService {}
+
+    defineFrameworkServiceIdentity(CompatibleService, {
+      id: '@fluojs/test/service',
+      version: 1,
+    });
+    defineFrameworkServiceIdentity(IncompatibleService, {
+      id: '@fluojs/test/service',
+      version: 2,
+    });
+
+    const container = new Container().register(UserServiceA, CompatibleService);
+
+    await expect(container.resolve(UserServiceB)).rejects.toThrow('No provider registered');
+    await expect(container.resolve(IncompatibleService)).rejects.toThrow('No provider registered');
   });
 
   it('supports factory providers with injected dependencies', async () => {

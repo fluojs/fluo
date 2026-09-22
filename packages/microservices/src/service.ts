@@ -1,5 +1,5 @@
 import { Inject, InvariantError, type MetadataPropertyKey, type Token } from '@fluojs/core';
-import { cloneWithFallback, getClassDiMetadata } from '@fluojs/core/internal';
+import { cloneWithFallback, FrameworkService, getClassDiMetadata } from '@fluojs/core/internal';
 import type { Container, Provider } from '@fluojs/di';
 import type { ApplicationLogger, CompiledModule, MicroserviceRuntime, OnApplicationShutdown } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
@@ -51,6 +51,7 @@ function isClassProvider(provider: Provider): provider is Extract<Provider, { pr
  * send/emit/stream APIs, and delegates transport-specific I/O to the configured adapter.
  */
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, MICROSERVICE_OPTIONS)
+@FrameworkService({ id: '@fluojs/microservices/MicroserviceLifecycleService', version: 1 })
 export class MicroserviceLifecycleService implements Microservice, MicroserviceRuntime, OnApplicationShutdown {
   private readonly descriptors: HandlerDescriptor[] = [];
   private readonly handlerInstances = new Map<Token, Promise<unknown>>();

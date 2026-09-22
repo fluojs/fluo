@@ -436,3 +436,6 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 
 - `packages/prisma/src/vertical-slice.test.ts`: 표준 DTO → 서비스 → 리포지토리 → Prisma 흐름 예제.
 - `packages/prisma/src/module.test.ts`: 모듈 라이프사이클, 이름 있는 클라이언트, async factory, strict transaction 동작, status snapshot 테스트.
+## 호환되는 서비스 사본
+
+`PrismaService`는 호환 사본 class injection을 지원합니다. Named client와 transaction은 격리된 상태를 유지합니다.

@@ -490,3 +490,6 @@ email 패키지는 의도적으로 다음을 **포함하지 않습니다**:
 - `packages/email/src/public-surface.test.ts`: 공개 export와 TypeScript 계약 검증 예제.
 - `packages/email/src/node/node.test.ts`: Node 전용 Nodemailer adapter 매핑과 lifecycle 예제.
 - `packages/email/src/status.test.ts`: health/readiness 계약 예제.
+## 호환되는 서비스 사본
+
+`EmailService`와 `EmailChannel`은 호환 사본 class injection을 지원하며 email channel token은 격리된 상태를 유지합니다.

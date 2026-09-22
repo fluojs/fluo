@@ -363,3 +363,6 @@ Root `@fluojs/mongoose`의 추가 export:
 - `packages/mongoose/src/vertical-slice.test.ts`
 - `packages/mongoose/src/module.test.ts`
 - `packages/mongoose/src/public-api.test.ts`
+## 호환되는 서비스 사본
+
+`MongooseConnection`은 호환 사본 class injection을 지원합니다. Named connection은 격리된 상태를 유지합니다.

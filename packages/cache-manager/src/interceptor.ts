@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/di/internal';
 import { getRequestPipelineMetadataBag } from '@fluojs/core/request-pipeline';
 import { type CallHandler, type Interceptor, type InterceptorContext, SseResponse } from '@fluojs/http';
 
@@ -148,6 +149,7 @@ async function resolveCacheKeyValue(
 /**
  * Caches GET responses and evicts related entries after successful write operations.
  */
+@FrameworkService({ id: '@fluojs/cache-manager/CacheInterceptor', version: 1 })
 @Inject(CacheService, CACHE_OPTIONS)
 export class CacheInterceptor implements Interceptor {
   constructor(

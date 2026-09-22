@@ -1,4 +1,5 @@
 import { Inject } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import type { NotificationChannel, NotificationChannelContext, NotificationChannelDelivery } from '@fluojs/notifications';
 
 import { SlackTransportError } from './errors.js';
@@ -13,6 +14,7 @@ import type { NormalizedSlackModuleOptions, SlackNotificationDispatchRequest, Sl
  * This class keeps the foundation package channel-agnostic while allowing `@fluojs/slack`
  * to interpret Slack-specific payload fields, webhook delivery, and transport behavior.
  */
+@FrameworkService({ id: '@fluojs/slack/SlackChannel', version: 1 })
 @Inject(SlackService, SLACK_OPTIONS)
 export class SlackChannel implements NotificationChannel<SlackNotificationDispatchRequest, SlackSendResult> {
   readonly channel: string;

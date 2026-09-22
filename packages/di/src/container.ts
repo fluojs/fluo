@@ -1,5 +1,5 @@
 import { formatTokenName, InvariantError, type PublicToken, type Token } from '@fluojs/core';
-import { getClassDiMetadata } from '@fluojs/core/internal';
+import { getClassDiMetadata, normalizeFrameworkServiceToken } from '@fluojs/core/internal';
 
 import {
   CircularDependencyError,
@@ -525,7 +525,8 @@ export class Container {
    * @returns `true` when a single or multi provider exists for the token.
    */
   has(token: Token): boolean {
-    return this.lookupProvider(token) !== undefined || this.hasMulti(token);
+    const normalizedToken = normalizeFrameworkServiceToken(token);
+    return this.lookupProvider(normalizedToken) !== undefined || this.hasMulti(normalizedToken);
   }
 
   /**
@@ -605,7 +606,8 @@ export class Container {
    * @returns `true` when the provider graph contains request-scoped dependencies or is cyclic.
    */
   hasRequestScopedDependency(token: Token): boolean {
-    const cached = this.readCachedPlan(this.requestScopeVerdictPlanCache, token);
+    const normalizedToken = normalizeFrameworkServiceToken(token);
+    const cached = this.readCachedPlan(this.requestScopeVerdictPlanCache, normalizedToken);
 
     if (cached) {
       return cached.value;
@@ -613,8 +615,8 @@ export class Container {
 
     return this.writePlanCache(
       this.requestScopeVerdictPlanCache,
-      token,
-      this.providerGraphRequiresRequestScope(token, new Set<Token>()),
+      normalizedToken,
+      this.providerGraphRequiresRequestScope(normalizedToken, new Set<Token>()),
     );
   }
 
@@ -661,7 +663,7 @@ export class Container {
 
     await this.assertStaleDisposalsSettled();
 
-    return this.resolveWithChain(token, [], new Set<Token>());
+    return this.resolveWithChain(normalizeFrameworkServiceToken(token), [], new Set<Token>());
   }
 
   private async resolveMultiContribution(token: Token, contributionIndex: number): Promise<unknown> {
@@ -674,7 +676,8 @@ export class Container {
 
     await this.assertStaleDisposalsSettled();
 
-    const providers = this.collectMultiProviders(token);
+    const normalizedToken = normalizeFrameworkServiceToken(token);
+    const providers = this.collectMultiProviders(normalizedToken);
     const provider = providers[contributionIndex];
 
     if (!provider) {
@@ -686,7 +689,7 @@ export class Container {
 
     this.assertSingletonDependencyScopes(provider);
 
-    return await this.withTokenInChain(token, [], new Set<Token>(), async (chain, activeTokens) =>
+    return await this.withTokenInChain(normalizedToken, [], new Set<Token>(), async (chain, activeTokens) =>
       this.resolveMultiProviderInstance(provider, chain, activeTokens),
     );
   }
@@ -1160,7 +1163,7 @@ export class Container {
     activeTokens: Set<Token>,
   ): Promise<unknown> {
     if (isOptionalToken(depEntry)) {
-      const innerToken = depEntry.token;
+      const innerToken = normalizeFrameworkServiceToken(depEntry.token);
 
       if (!this.has(innerToken)) {
         return undefined;
@@ -1175,7 +1178,7 @@ export class Container {
       return this.resolveWithChain(resolvedToken, chain, activeTokens, /* allowForwardRef */ true);
     }
 
-    return this.resolveWithChain(depEntry as Token, chain, activeTokens);
+    return this.resolveWithChain(normalizeFrameworkServiceToken(depEntry as Token), chain, activeTokens);
   }
 
   private async withTokenInChain<T>(
@@ -1833,10 +1836,10 @@ export class Container {
     }
 
     if (isOptionalToken(depEntry)) {
-      return depEntry.token;
+      return normalizeFrameworkServiceToken(depEntry.token);
     }
 
-    return depEntry as Token;
+    return normalizeFrameworkServiceToken(depEntry as Token);
   }
 
   private resolveForwardRefToken(forwardRefEntry: ForwardRefToken): Token {
@@ -1844,7 +1847,7 @@ export class Container {
       return this.forwardRefTokenCache.get(forwardRefEntry)!;
     }
 
-    const resolvedToken = forwardRefEntry.forwardRef();
+    const resolvedToken = normalizeFrameworkServiceToken(forwardRefEntry.forwardRef());
     this.forwardRefTokenCache.set(forwardRefEntry, resolvedToken);
     return resolvedToken;
   }

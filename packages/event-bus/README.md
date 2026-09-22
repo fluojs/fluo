@@ -273,3 +273,6 @@ After building, transform the example with the repository's Babel decorator conf
 pnpm exec babel packages/event-bus/examples/publish-results.ts --out-file packages/event-bus/dist/publish-results.example.mjs --config-file ./tooling/babel/babel.config.cjs
 node packages/event-bus/dist/publish-results.example.mjs
 ```
+## Compatible service copies
+
+Public event bus service classes support compatible-copy class injection; event handler discovery and transport state remain local.

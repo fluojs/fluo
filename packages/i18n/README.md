@@ -598,3 +598,6 @@ The core locale-resolution roadmap item for WebSocket, gRPC, CLI, local storage,
 - `packages/i18n/src/index.test.ts`
 - `packages/i18n/src/loaders/remote.ts`
 - `packages/i18n/src/typegen.ts`
+## Compatible service copies
+
+`I18nService` supports ordinary class injection across compatible same-realm package copies; option tokens remain isolated.

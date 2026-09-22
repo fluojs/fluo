@@ -542,3 +542,6 @@ class ProductController {
 - `packages/cache-manager/src/service.ts`: 코어 `CacheService` 구현.
 - `packages/cache-manager/src/status.test.ts`: status 및 diagnostic helper 테스트.
 - `packages/cache-manager/src/cache-observer.test.ts`: 캐시 관찰 계약 테스트.
+## 호환되는 서비스 사본
+
+`CacheService`와 `CacheInterceptor`는 호환 사본 class injection을 지원하며 cache store와 option token은 격리된 상태를 유지합니다.

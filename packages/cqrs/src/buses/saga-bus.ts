@@ -1,4 +1,5 @@
 import { Inject, InvariantError, isFluoError, type Token } from '@fluojs/core';
+import { FrameworkService } from '@fluojs/core/internal';
 import type { OnApplicationBootstrap, OnApplicationShutdown, RuntimeCleanupRegistration } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, RUNTIME_CLEANUP_REGISTRATION, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 
@@ -41,6 +42,7 @@ function toErrorMessage(error: unknown): string {
  * The service prevents re-entrant dispatch loops within the same explicit dispatch context and waits for
  * in-flight saga chains during shutdown so lifecycle guarantees remain predictable.
  */
+@FrameworkService({ id: '@fluojs/cqrs/CqrsSagaLifecycleService', version: 1 })
 @Inject(
   RUNTIME_CONTAINER,
   COMPILED_MODULES,
