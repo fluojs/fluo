@@ -13,6 +13,10 @@ type SharedMetricsState = {
  * Values in this registry retain their concrete Registry or collector owner as
  * the weak-map key; it never makes separate registries or applications global.
  *
+ * @param key Symbol identifying the shared state entry.
+ * @param create Factory that initializes the entry when absent.
+ * @returns The existing or newly created value for the entry.
+ *
  * @internal
  */
 export function getCompatibleMetricsSharedState<T>(key: symbol, create: () => T): T {

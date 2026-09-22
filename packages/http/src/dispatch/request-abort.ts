@@ -18,6 +18,7 @@ interface AuthoritativeAbortProbe {
  *
  * @param request The exact adapter request owning both cancellation surfaces.
  * @param probe Probe that observes the lazy signal's cancellation source.
+ * @param options Whether the probe authoritatively observes the request signal.
  */
 export function registerAuthoritativeAbortProbe(
   request: FrameworkRequest,

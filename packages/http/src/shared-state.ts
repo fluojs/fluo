@@ -14,6 +14,10 @@ let incompatibleState: SharedHttpState | undefined;
  * State is always keyed by its owning request or adapter object. Independent
  * requests and applications therefore retain their own state boundaries.
  *
+ * @param key Symbol identifying the shared state entry.
+ * @param create Factory that initializes the entry when absent.
+ * @returns The existing or newly created value for the entry.
+ *
  * @internal
  */
 export function getCompatibleHttpSharedState<T>(key: symbol, create: () => T): T {
