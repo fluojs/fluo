@@ -309,11 +309,31 @@ function claimsHttpInstrumentationOwnership(container: Container, registry: Regi
 }
 
 function assertPrometheusRegistry(value: unknown): Registry {
-  if (!(value instanceof PrometheusRegistry)) {
+  if (!isCompatiblePrometheusRegistry(value)) {
     throw new Error('MetricsModule registry provider resolved an invalid Prometheus registry.');
   }
 
   return value;
+}
+
+function isCompatiblePrometheusRegistry(value: unknown): value is Registry {
+  if (typeof value !== 'object' || value === null || typeof Reflect.get(value, 'contentType') !== 'string') {
+    return false;
+  }
+
+  return [
+    'clear',
+    'getMetricsAsJSON',
+    'getMetricsAsArray',
+    'getSingleMetricAsString',
+    'getSingleMetric',
+    'metrics',
+    'registerMetric',
+    'removeSingleMetric',
+    'resetMetrics',
+    'setDefaultLabels',
+    'setContentType',
+  ].every((key) => typeof Reflect.get(value, key) === 'function');
 }
 
 function hasDefaultMetricNames(value: unknown): value is { metricNames: readonly string[] } {

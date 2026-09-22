@@ -1,6 +1,35 @@
 import type { FrameworkResponse, FrameworkResponseStream, RequestContext } from '../types.js';
 import { markRequestContextAborted } from '../dispatch/request-abort.js';
 
+const SSE_RESPONSE_OWNER = Symbol.for('@fluojs/http/SseResponse.owner');
+const SSE_RESPONSE_OWNER_VERSION = 1 as const;
+
+type SseResponseCapability = {
+  readonly completion: Promise<void>;
+  readonly owner: '@fluojs/http';
+  readonly version: 1;
+};
+
+function resolveSseResponseCapability(value: unknown): SseResponseCapability | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+
+  const capability = Reflect.get(value, SSE_RESPONSE_OWNER);
+  if (typeof capability !== 'object' || capability === null) {
+    return undefined;
+  }
+
+  const candidate = capability as Partial<SseResponseCapability>;
+  return candidate.owner === '@fluojs/http'
+    && candidate.version === SSE_RESPONSE_OWNER_VERSION
+    && typeof candidate.completion === 'object'
+    && candidate.completion !== null
+    && typeof candidate.completion.then === 'function'
+    ? candidate as SseResponseCapability
+    : undefined;
+}
+
 /** Options that customize the fields emitted for one server-sent event frame. */
 export interface SseSendOptions {
   /** Optional SSE event name. Newline characters are stripped before writing. */
@@ -133,6 +162,16 @@ export class SseResponse {
   };
 
   constructor(private readonly context: RequestContext) {
+    Object.defineProperty(this, SSE_RESPONSE_OWNER, {
+      configurable: false,
+      enumerable: false,
+      value: Object.freeze({
+        completion: this.completionPromise,
+        owner: '@fluojs/http' as const,
+        version: SSE_RESPONSE_OWNER_VERSION,
+      }),
+      writable: false,
+    });
     this.stream = resolveSseStream(context.response);
 
     if (context.response.statusSet !== true) {
@@ -231,6 +270,21 @@ export class SseResponse {
 }
 
 /**
+ * Checks whether a manual SSE response belongs to a compatible HTTP package owner.
+ *
+ * The non-enumerable owner marker is only a version gate. Consumers also require
+ * the complete lifecycle surface they invoke, so marker-only lookalikes are not
+ * accepted as manual SSE responses.
+ *
+ * @param value Value returned by a route handler.
+ * @returns Whether the value is a compatible manual SSE response.
+ * @internal
+ */
+export function isCompatibleSseResponse(value: unknown): value is Pick<SseResponse, 'completion'> {
+  return resolveSseResponseCapability(value) !== undefined;
+}
+
+/**
  * Resolves after a manual SSE response closes through any supported termination path.
  *
  * @param response Manual SSE response whose lifecycle is observed.
@@ -238,6 +292,10 @@ export class SseResponse {
  *
  * @internal
  */
-export function waitForSseResponseCompletion(response: SseResponse): Promise<void> {
-  return response.completion;
+export function waitForSseResponseCompletion(response: unknown): Promise<void> {
+  const capability = resolveSseResponseCapability(response);
+  if (!capability) {
+    throw new TypeError('Expected a compatible version-1 @fluojs/http SSE response.');
+  }
+  return Reflect.get(response as object, 'completion') as Promise<void>;
 }

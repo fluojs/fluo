@@ -378,6 +378,27 @@ describe('module graph cache-key prerequisites', () => {
     expect(cache.size).toBe(0);
   });
 
+  it('accepts a compatible query-isolated caller-owned cache without sharing snapshots', async () => {
+    const copyA = await import(`${new URL('./module-graph.ts', import.meta.url).href}?cache-copy-a`);
+    const copyB = await import(`${new URL('./module-graph.ts', import.meta.url).href}?cache-copy-b`);
+    class Logger {}
+    class AppModule {}
+    defineRuntimeModuleMetadata(AppModule, { providers: [Logger] });
+    const cache = new copyA.ModuleGraphCompileCache(2);
+
+    const first = copyB.compileModuleGraph(AppModule, { moduleGraphCache: cache });
+    first[0]?.providerTokens.clear();
+    const second = copyB.compileModuleGraph(AppModule, { moduleGraphCache: cache });
+
+    expect(cache).not.toBeInstanceOf(ModuleGraphCompileCache);
+    expect(cache.size).toBe(1);
+    expect(second[0]?.providerTokens.has(Logger)).toBe(true);
+
+    cache.dispose();
+    copyB.compileModuleGraph(AppModule, { moduleGraphCache: cache });
+    expect(cache.size).toBe(0);
+  });
+
   it('compiles replacement metadata under the original logical module identity', () => {
     class RealService {
       value() {

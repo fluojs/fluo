@@ -313,6 +313,37 @@ describe('CacheInterceptor', () => {
     await expect(cacheService.get('/events')).resolves.toBeUndefined();
   });
 
+  it('does not cache compatible query-isolated SseResponse values', async () => {
+    class EventsController {
+      @CacheTTL(120)
+      stream() {}
+    }
+
+    const copyA = await import(`${new URL('../../http/src/context/sse.ts', import.meta.url).href}?copy-a`);
+    const { interceptor, cacheService } = createInterceptor({ ttl: 120 });
+    const firstRequestContext = createRequestContext('GET', '/events', '/events');
+    const secondRequestContext = createRequestContext('GET', '/events', '/events');
+    installSseStream(firstRequestContext);
+    installSseStream(secondRequestContext);
+    const first = new copyA.SseResponse(firstRequestContext);
+    const second = new copyA.SseResponse(secondRequestContext);
+    firstRequestContext.response.committed = false;
+    secondRequestContext.response.committed = false;
+    const set = vi.spyOn(cacheService, 'set');
+    const next: CallHandler = {
+      handle: vi.fn<CallHandler['handle']>()
+        .mockResolvedValueOnce(first)
+        .mockResolvedValueOnce(second),
+    };
+
+    await expect(interceptor.intercept(createContext(EventsController, 'stream', firstRequestContext), next)).resolves.toBe(first);
+    await expect(interceptor.intercept(createContext(EventsController, 'stream', secondRequestContext), next)).resolves.toBe(second);
+
+    expect(first).not.toBeInstanceOf(SseResponse);
+    expect(next.handle).toHaveBeenCalledTimes(2);
+    expect(set).not.toHaveBeenCalled();
+  });
+
   it('does not cache undefined GET handler results', async () => {
     class ProductController {
       @CacheTTL(120)

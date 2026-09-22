@@ -1,4 +1,7 @@
+import { cpSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 
 import { getModuleMetadata, Inject } from '@fluojs/core';
 import { ContainerResolutionError } from '@fluojs/di';
@@ -1043,6 +1046,98 @@ describe('MetricsModule', () => {
       expect(String(response.body)).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
     } finally {
       await app.close();
+    }
+  });
+
+  it('accepts a compatible Registry from a separate physical prom-client copy at bootstrap', async () => {
+    const fixtureRoot = join(tmpdir(), `fluo-metrics-prom-client-${crypto.randomUUID()}`);
+    const fixtureNodeModules = join(fixtureRoot, 'node_modules');
+    const localRequire = createRequire(import.meta.url);
+    const localPromClientEntry = localRequire.resolve('prom-client');
+
+    mkdirSync(fixtureNodeModules, { recursive: true });
+    cpSync(dirname(localPromClientEntry), join(fixtureNodeModules, 'prom-client'), { recursive: true });
+
+    for (const dependency of ['@opentelemetry/api', 'tdigest']) {
+      const dependencyRoot = join(dirname(localPromClientEntry), '..', ...dependency.split('/'));
+      const fixtureDependencyRoot = join(fixtureNodeModules, ...dependency.split('/'));
+      mkdirSync(dirname(fixtureDependencyRoot), { recursive: true });
+      symlinkSync(dependencyRoot, fixtureDependencyRoot, 'dir');
+    }
+
+    try {
+      const physicalPromClient = createRequire(join(fixtureRoot, 'fixture.cjs'))('prom-client') as typeof import('prom-client');
+      const sharedRegistry = new physicalPromClient.Registry();
+
+      expect(physicalPromClient.Registry).not.toBe(Registry);
+      expect(sharedRegistry).not.toBeInstanceOf(Registry);
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        imports: [MetricsModule.forRoot({ defaultMetrics: false })],
+      });
+
+      const app = await FluoFactory.create(AppModule, {
+        providers: [{ provide: METRICS_REGISTRY, useValue: sharedRegistry }],
+      });
+
+      try {
+        const metricsService = (await app.container.resolve(MetricsService)) as MetricsService;
+        const counter = metricsService.counter({
+          help: 'Collector registered through the MetricsModule service.',
+          name: 'physical_registry_bootstrap_total',
+        });
+        counter.inc();
+
+        expect(metricsService.getRegistry()).toBe(sharedRegistry);
+
+        const response = createResponse();
+        await app.dispatch(createRequest('/metrics'), response);
+
+        expect(response.statusCode).toBe(200);
+        expect(response.headers['content-type']).toBe(sharedRegistry.contentType);
+        expect(String(response.body)).toContain('physical_registry_bootstrap_total 1');
+        expect(String(response.body)).toContain('fluo_metrics_registry_mode{mode="shared"} 1');
+      } finally {
+        await app.close();
+      }
+    } finally {
+      rmSync(fixtureRoot, { force: true, recursive: true });
+    }
+  });
+
+  it('rejects an incomplete Registry shape at bootstrap before mutating it', async () => {
+    const mutationMethods = {
+      clear: vi.fn(),
+      registerMetric: vi.fn(),
+      removeSingleMetric: vi.fn(),
+      resetMetrics: vi.fn(),
+      setDefaultLabels: vi.fn(),
+    };
+    const incompleteRegistry = {
+      contentType: Registry.PROMETHEUS_CONTENT_TYPE,
+      getMetricsAsArray: vi.fn(() => []),
+      getMetricsAsJSON: vi.fn(async () => []),
+      getSingleMetric: vi.fn(),
+      getSingleMetricAsString: vi.fn(async () => ''),
+      metrics: vi.fn(async () => ''),
+      ...mutationMethods,
+      // setContentType is intentionally absent.
+    };
+
+    class AppModule {}
+
+    defineModule(AppModule, {
+      imports: [MetricsModule.forRoot({ defaultMetrics: false, path: false })],
+    });
+
+    await expect(FluoFactory.create(AppModule, {
+      providers: [{ provide: METRICS_REGISTRY, useValue: incompleteRegistry as unknown as Registry }],
+    })).rejects.toThrow('MetricsModule registry provider resolved an invalid Prometheus registry.');
+
+    for (const mutationMethod of Object.values(mutationMethods)) {
+      expect(mutationMethod).not.toHaveBeenCalled();
     }
   });
 

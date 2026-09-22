@@ -438,4 +438,6 @@ Provider가 `current()`, `transaction(...)`, `requestTransaction(...)`, `createP
 - `packages/prisma/src/module.test.ts`: 모듈 라이프사이클, 이름 있는 클라이언트, async factory, strict transaction 동작, status snapshot 테스트.
 ## 호환되는 서비스 사본
 
+`@Transaction()`은 non-enumerable owner/version capability와 complete transaction surface를 검증한 경우에만 다른 same-realm 사본의 호환 Prisma service 또는 module facade를 인식합니다. explicit accessor, 제한된 unambiguous implicit discovery, rollback confirmation, after-commit hook, cleanup, result identity는 해당 wrapper의 소유로 유지됩니다.
+
 `PrismaService`는 호환 사본 class injection을 지원합니다. Named client와 transaction은 격리된 상태를 유지합니다.

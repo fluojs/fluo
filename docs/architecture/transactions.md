@@ -2,8 +2,13 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./transactions.ko.md"><kbd>한국어</kbd></a></p>
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
+<!-- fluo:transaction-compatible-copy: same-realm-owner-version, complete-consumed-surface, original-receiver, separate-rollback-after-commit-cleanup-result-identity -->
 
 This document defines the current transaction-context contract across `@fluojs/prisma`, `@fluojs/drizzle`, and `@fluojs/mongoose`.
+
+## Compatible wrapper copies
+
+Transaction decorators accept a wrapper or module-owned facade from a compatible same-realm package copy only when its non-enumerable package owner/version capability and complete consumed wrapper surface validate together. They call that wrapper with its original receiver and preserve explicit accessors; legacy Prisma discovery remains restricted to one unambiguous supported handle. This recognition never merges transaction state: native rollback confirmation, `shouldRollback`, `requireAfterCommit`, hook discard/drain, cleanup, and result identity remain owned by the originating wrapper.
 
 ## Canonical Decorator Target
 

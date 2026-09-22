@@ -4,7 +4,7 @@ import { getCompiledDtoBindingPlan } from '../adapters/dto-binding-plan.js';
 import { createRequestContext, runWithRequestContext } from '../context/request-context.js';
 import { resolveRequestId } from '../context/request-id.js';
 import { hasAbsentRequestId } from '../context/request-id-snapshot.js';
-import { isSseMessage, SseResponse, type SseSendOptions, waitForSseResponseCompletion } from '../context/sse.js';
+import { isCompatibleSseResponse, isSseMessage, SseResponse, type SseSendOptions, waitForSseResponseCompletion } from '../context/sse.js';
 import { isRequestAbortedError, RequestAbortedError } from '../errors.js';
 import { runGuardChain } from '../guards.js';
 import { runInterceptorChain } from '../interceptors.js';
@@ -797,7 +797,7 @@ async function dispatchMatchedHandler(
 
   ensureRequestNotAborted(requestContext.request);
 
-  if (conditionalOutcome === undefined && result instanceof SseResponse) {
+  if (conditionalOutcome === undefined && isCompatibleSseResponse(result)) {
     await waitForSseResponseCompletion(result);
     ensureRequestNotAborted(requestContext.request);
   } else if (

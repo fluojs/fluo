@@ -544,4 +544,6 @@ On that supported HTTP path, eviction is deferred until a framework response wri
 - `packages/cache-manager/src/cache-observer.test.ts`: Cache observation contract tests.
 ## Compatible service copies
 
+Cache interception recognizes a compatible manual `SseResponse` from another same-realm `@fluojs/http` copy through its complete versioned owner capability. It never caches or replays that response, and dispatcher completion remains owned by the originating HTTP copy.
+
 `CacheService` and `CacheInterceptor` support compatible-copy class injection; cache store and option tokens remain isolated.

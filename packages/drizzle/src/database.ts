@@ -1,4 +1,5 @@
 import { observeRollback, type TransactionRollbackObserver } from './result-rollback.js';
+import { markDrizzleDatabaseHandle } from './database-brand.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Inject } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/core/internal';
@@ -147,7 +148,9 @@ export class DrizzleDatabase<
     private readonly database: TDatabase,
     private readonly dispose?: (database: TDatabase) => Promise<void> | void,
     private readonly databaseOptions: DrizzleRuntimeOptions = { strictTransactions: false },
-  ) {}
+  ) {
+    markDrizzleDatabaseHandle(this);
+  }
 
   /**
    * Returns the active transaction handle when present, otherwise the root Drizzle database handle.

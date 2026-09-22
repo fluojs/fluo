@@ -4393,6 +4393,25 @@ describe('repository governance contracts', () => {
     }
   });
 
+  it('keeps compatible-copy transaction capability provenance synchronized across transaction docs', () => {
+    // Given: the AI context and normative transaction contract in both supported locales.
+    const sources = [
+      readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8'),
+      readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8'),
+      readFileSync(resolve(repoRoot, 'docs/architecture/transactions.md'), 'utf8'),
+      readFileSync(resolve(repoRoot, 'docs/architecture/transactions.ko.md'), 'utf8'),
+    ];
+
+    // When: governance verifies the machine-consumed duplicate-copy contract sentinel.
+    const compatibleCopyTransactionContract =
+      '<!-- fluo:transaction-compatible-copy: same-realm-owner-version, complete-consumed-surface, original-receiver, separate-rollback-after-commit-cleanup-result-identity -->';
+
+    // Then: every governed discoverability document publishes the same ownership boundary.
+    for (const source of sources) {
+      expect(source).toContain(compatibleCopyTransactionContract);
+    }
+  });
+
   it('keeps Mongoose ambient-session facade scope discoverable across governed docs', () => {
     const docsContext = readFileSync(resolve(repoRoot, 'docs/CONTEXT.md'), 'utf8');
     const docsContextKo = readFileSync(resolve(repoRoot, 'docs/CONTEXT.ko.md'), 'utf8');

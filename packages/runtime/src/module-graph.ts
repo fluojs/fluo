@@ -48,6 +48,28 @@ let nextTokenId = 0;
 const MODULE_GRAPH_COMPILE_ALGORITHM_VERSION = 3;
 const DEFAULT_MODULE_GRAPH_CACHE_ENTRIES = 100;
 const EMPTY_MODULE_REPLACEMENTS: ModuleReplacementMap = new Map<ModuleType, ModuleType>();
+const MODULE_GRAPH_COMPILE_CACHE_OWNER = Symbol.for('@fluojs/runtime/ModuleGraphCompileCache.owner');
+const MODULE_GRAPH_COMPILE_CACHE_OWNER_VERSION = 1;
+
+/** Complete caller-owned cache capability accepted by compatible runtime copies. */
+export interface ModuleGraphCompileCacheHandle {
+  dispose(): void;
+  get(key: string): readonly CompiledModule[] | undefined;
+  readonly size: number;
+  set(key: string, snapshot: readonly CompiledModule[]): void;
+}
+
+function isCompatibleModuleGraphCompileCache(value: unknown): value is ModuleGraphCompileCache {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  return Reflect.get(value, MODULE_GRAPH_COMPILE_CACHE_OWNER) === MODULE_GRAPH_COMPILE_CACHE_OWNER_VERSION
+    && typeof Reflect.get(value, 'get') === 'function'
+    && typeof Reflect.get(value, 'set') === 'function'
+    && typeof Reflect.get(value, 'dispose') === 'function'
+    && typeof Reflect.get(value, 'size') === 'number';
+}
 
 /**
  * Bounds retained module graph compile snapshots for an owning application or host.
@@ -70,6 +92,12 @@ export class ModuleGraphCompileCache {
     if (!Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
       throw new RangeError('Module graph cache maxEntries must be a positive safe integer.');
     }
+    Object.defineProperty(this, MODULE_GRAPH_COMPILE_CACHE_OWNER, {
+      configurable: false,
+      enumerable: false,
+      value: MODULE_GRAPH_COMPILE_CACHE_OWNER_VERSION,
+      writable: false,
+    });
   }
 
   /**
@@ -940,7 +968,7 @@ function validateCompiledModules(
 export function compileModuleGraph(rootModule: ModuleType, options: BootstrapModuleOptions = {}): CompiledModule[] {
   const cache = options.moduleGraphCache === true
     ? moduleGraphCompileCache
-    : options.moduleGraphCache instanceof ModuleGraphCompileCache
+    : isCompatibleModuleGraphCompileCache(options.moduleGraphCache)
       ? options.moduleGraphCache
       : undefined;
   const cacheKey = cache !== undefined

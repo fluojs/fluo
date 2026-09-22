@@ -365,4 +365,6 @@ Root `@fluojs/mongoose`의 추가 export:
 - `packages/mongoose/src/public-api.test.ts`
 ## 호환되는 서비스 사본
 
+`@Transaction()`은 complete versioned owner capability를 검증한 후에만 호환 same-realm `MongooseConnection`을 받습니다. native rollback confirmation, after-commit hook lifecycle, cleanup, result identity는 원래 connection wrapper의 로컬 상태로 유지됩니다.
+
 `MongooseConnection`은 호환 사본 class injection을 지원합니다. Named connection은 격리된 상태를 유지합니다.

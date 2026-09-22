@@ -611,4 +611,6 @@ Evidence: `src/web-body-parser.test.ts`, `src/web-body-limit.test.ts`, and the
 [Next production example](../platform-nextjs/e2e/fixture/backend.ts).
 ## Compatible framework service copies
 
+`compileModuleGraph()` accepts a caller-owned `ModuleGraphCompileCache` from a compatible same-realm runtime copy only after validating its complete versioned owner capability. Cache snapshots remain cloned, LRU and size remain owned by that cache, and disposal is observed through its original methods.
+
 Module exports remain authoritative when a designated service class comes from a compatible package copy; this behavior does not make unexported providers visible.

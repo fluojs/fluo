@@ -644,6 +644,8 @@ const connection = resolveHttpConnection(context.request, {
 
 ### Server-sent events
 
+Manual `SseResponse` values from a compatible same-realm `@fluojs/http` copy are recognized only through their complete non-enumerable versioned owner capability. Full and fast dispatch both wait for that response's original lifecycle completion before observers and request-scoped resources dispose, exactly once.
+
 ```ts
 import { Controller, Sse, type SseMessage } from '@fluojs/http';
 

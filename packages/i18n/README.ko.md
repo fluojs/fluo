@@ -600,4 +600,4 @@ WebSocket, gRPC, CLI, local storage, request-style abstraction을 위한 core lo
 - `packages/i18n/src/typegen.ts`
 ## 호환되는 서비스 사본
 
-`I18nService`는 호환되는 동일 realm 패키지 사본 사이의 일반 class injection을 지원하며 option token은 격리된 상태를 유지합니다.
+`I18nService`는 호환되는 동일 realm 패키지 사본 사이의 일반 class injection을 지원하며 option token은 격리된 상태를 유지합니다. `IcuI18nService`도 non-enumerable versioned owner capability와 완전한 lookup·formatting surface를 검증한 경우에만 호환되는 foreign service를 받습니다. foreign service의 catalog snapshot과 locale resolution을 유지하므로 fallback message는 해당 메시지를 제공한 locale로 format되고, `defaultValue` 및 missing-message 처리는 요청 locale을 유지합니다.

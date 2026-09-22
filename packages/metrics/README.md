@@ -260,7 +260,7 @@ MetricsModule.forRoot({
 
 ### Compatible duplicate copies
 
-Compatible same-realm `@fluojs/metrics` copies recognize framework-owned HTTP collectors and default collectors already registered on the exact `Registry`. They reuse that registry-bound ownership metadata without sharing independent registries, application telemetry, or capability detection; platform capability detection remains separate from this contract.
+Compatible same-realm `@fluojs/metrics` copies recognize framework-owned HTTP collectors and default collectors already registered on the exact `Registry`. They reuse that registry-bound ownership metadata without sharing independent registries, application telemetry, or capability detection; platform capability detection remains separate from this contract. A real `Registry` from a compatible physical `prom-client` copy is accepted at the bootstrap provider boundary only after its full public Registry surface is validated before any collector or telemetry mutation; incomplete lookalikes are rejected.
 
 ## Related Packages
 

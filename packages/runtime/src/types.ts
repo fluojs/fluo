@@ -19,7 +19,7 @@ import type {
 import type { StudioDevtoolsRuntime } from './devtools/studio-runtime.js';
 import type { BootstrapTimingDiagnostics } from './health/diagnostics.js';
 import type { HttpAdapterMiddlewareOptions } from './http-application-options.js';
-import type { ModuleGraphCompileCache } from './module-graph.js';
+import type { ModuleGraphCompileCacheHandle } from './module-graph.js';
 import type { PlatformComponentInput } from './platform-contract.js';
 
 /** Module class accepted by bootstrap and module-graph compilation helpers. */
@@ -52,7 +52,7 @@ export interface BootstrapModuleOptions {
    * Failed compilations are never cached. Pass a {@link ModuleGraphCompileCache}
    * to bound and dispose cache retention under the caller's ownership.
    */
-  moduleGraphCache?: boolean | ModuleGraphCompileCache;
+  moduleGraphCache?: boolean | ModuleGraphCompileCacheHandle;
   /**
    * Low-level testing seam for compiling a module with replacement metadata while
    * preserving the original logical module identity in the compiled graph.
@@ -173,7 +173,7 @@ export interface BootstrapApplicationOptions extends HttpAdapterMiddlewareOption
    * {@link ModuleGraphCompileCache} to retain a bounded, caller-owned cache that
    * can be disposed with its application lifecycle.
    */
-  moduleGraphCache?: boolean | ModuleGraphCompileCache;
+  moduleGraphCache?: boolean | ModuleGraphCompileCacheHandle;
   /**
    * Policy for duplicate provider tokens across modules.
    *
