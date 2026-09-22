@@ -17,6 +17,11 @@ type SourceFile = Readonly<{
   source: string;
 }>;
 
+type ServiceIdentityDiscoveryContext = Readonly<{
+  checker: ts.TypeChecker;
+  sourceFilesByPath: ReadonlyMap<string, ts.SourceFile>;
+}>;
+
 const expectedPublicServiceIdentities = [
   { path: 'packages/cache-manager/src/interceptor.ts', id: '@fluojs/cache-manager/CacheInterceptor', version: 1 },
   { path: 'packages/cache-manager/src/service.ts', id: '@fluojs/cache-manager/CacheService', version: 1 },
@@ -92,21 +97,62 @@ function discoverGovernedSourceFiles(): readonly SourceFile[] {
 }
 
 function discoverServiceIdentities(sourceFiles: readonly SourceFile[]): readonly ServiceIdentity[] {
+  const context = createServiceIdentityDiscoveryContext(sourceFiles);
+
   return sourceFiles
-    .flatMap((sourceFile) => discoverSourceServiceIdentities(sourceFile, sourceFiles))
+    .flatMap((sourceFile) => discoverSourceServiceIdentities(sourceFile, sourceFiles, context))
     .sort(compareIdentities);
+}
+
+function createServiceIdentityDiscoveryContext(
+  sourceFiles: readonly SourceFile[],
+): ServiceIdentityDiscoveryContext {
+  const sourceTextsByPath = new Map(sourceFiles.map((sourceFile) => [sourceFile.path, sourceFile.source]));
+  const compilerHost: ts.CompilerHost = {
+    fileExists: (path) => sourceTextsByPath.has(path),
+    getCanonicalFileName: (path) => path,
+    getCurrentDirectory: () => '',
+    getDefaultLibFileName: () => '',
+    getNewLine: () => '\n',
+    getSourceFile: (path, languageVersion) => {
+      const source = sourceTextsByPath.get(path);
+      return source === undefined ? undefined : ts.createSourceFile(path, source, languageVersion, true);
+    },
+    readFile: (path) => sourceTextsByPath.get(path),
+    useCaseSensitiveFileNames: () => true,
+    writeFile: () => {},
+  };
+  const program = ts.createProgram({
+    rootNames: sourceFiles.map((sourceFile) => sourceFile.path),
+    options: { noLib: true, noResolve: true, target: ts.ScriptTarget.Latest },
+    host: compilerHost,
+  });
+  const parsedSourceFiles = new Map(
+    sourceFiles.flatMap((sourceFile) => {
+      const parsedSource = program.getSourceFile(sourceFile.path);
+      return parsedSource ? [[sourceFile.path, parsedSource] as const] : [];
+    }),
+  );
+
+  return { checker: program.getTypeChecker(), sourceFilesByPath: parsedSourceFiles };
 }
 
 function discoverSourceServiceIdentities(
   sourceFile: SourceFile,
   sourceFiles: readonly SourceFile[],
+  context: ServiceIdentityDiscoveryContext,
 ): readonly ServiceIdentity[] {
-  const parsedSource = ts.createSourceFile(sourceFile.path, sourceFile.source, ts.ScriptTarget.Latest, true);
+  const parsedSource = context.sourceFilesByPath.get(sourceFile.path);
+
+  if (!parsedSource) {
+    return [];
+  }
+
   const identities: ServiceIdentity[] = [];
 
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
-      const marker = frameworkServiceMarker(node, parsedSource, sourceFiles);
+      const marker = frameworkServiceMarker(node, parsedSource, sourceFiles, context.checker);
 
       if (marker && !isFrameworkServiceImplementationRelay(node, sourceFile.path)) {
         identities.push({
@@ -127,9 +173,10 @@ function frameworkServiceMarker(
   call: ts.CallExpression,
   sourceFile: ts.SourceFile,
   sourceFiles: readonly SourceFile[],
+  checker: ts.TypeChecker,
 ): 'FrameworkService' | 'defineFrameworkServiceIdentity' | undefined {
   if (ts.isIdentifier(call.expression)) {
-    return namedImportMarker(call.expression, sourceFile, sourceFiles);
+    return namedImportMarker(call.expression, sourceFile, sourceFiles, checker);
   }
 
   if (!ts.isPropertyAccessExpression(call.expression) || !ts.isIdentifier(call.expression.expression)) {
@@ -138,7 +185,7 @@ function frameworkServiceMarker(
 
   const marker = markerName(call.expression.name.text);
 
-  return marker && namespaceImportProvidesMarker(call.expression.expression, marker, sourceFile, sourceFiles)
+  return marker && namespaceImportProvidesMarker(call.expression.expression, marker, sourceFile, sourceFiles, checker)
     ? marker
     : undefined;
 }
@@ -151,11 +198,8 @@ function namedImportMarker(
   identifier: ts.Identifier,
   sourceFile: ts.SourceFile,
   sourceFiles: readonly SourceFile[],
+  checker: ts.TypeChecker,
 ): 'FrameworkService' | 'defineFrameworkServiceIdentity' | undefined {
-  if (isLexicallyShadowed(identifier)) {
-    return undefined;
-  }
-
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement) || !statement.importClause || !ts.isStringLiteral(statement.moduleSpecifier)) {
       continue;
@@ -168,14 +212,11 @@ function namedImportMarker(
     }
 
     for (const element of bindings.elements) {
-      if (element.name.text !== identifier.text) {
-        continue;
-      }
-
       const marker = markerName(element.propertyName?.text ?? element.name.text);
 
       if (
         marker
+        && identifierResolvesToImportBinding(identifier, element.name, checker)
         && moduleExportOriginatesFromCoreInternal(statement.moduleSpecifier.text, element.propertyName?.text ?? element.name.text, marker, sourceFiles)
       ) {
         return marker;
@@ -191,20 +232,28 @@ function namespaceImportProvidesMarker(
   marker: 'FrameworkService' | 'defineFrameworkServiceIdentity',
   sourceFile: ts.SourceFile,
   sourceFiles: readonly SourceFile[],
+  checker: ts.TypeChecker,
 ): boolean {
-  if (isLexicallyShadowed(identifier)) {
-    return false;
-  }
-
   return sourceFile.statements.some((statement) => (
     ts.isImportDeclaration(statement)
     && statement.importClause
     && ts.isStringLiteral(statement.moduleSpecifier)
     && statement.importClause.namedBindings
     && ts.isNamespaceImport(statement.importClause.namedBindings)
-    && statement.importClause.namedBindings.name.text === identifier.text
+    && identifierResolvesToImportBinding(identifier, statement.importClause.namedBindings.name, checker)
     && moduleExportOriginatesFromCoreInternal(statement.moduleSpecifier.text, marker, marker, sourceFiles)
   ));
+}
+
+function identifierResolvesToImportBinding(
+  identifier: ts.Identifier,
+  importBinding: ts.Identifier,
+  checker: ts.TypeChecker,
+): boolean {
+  const identifierSymbol = checker.getSymbolAtLocation(identifier);
+  const importBindingSymbol = checker.getSymbolAtLocation(importBinding);
+
+  return identifierSymbol !== undefined && identifierSymbol === importBindingSymbol;
 }
 
 function moduleExportOriginatesFromCoreInternal(
@@ -257,72 +306,6 @@ function moduleExportOriginatesFromCoreInternal(
       )
     ));
   });
-}
-
-function isLexicallyShadowed(identifier: ts.Identifier): boolean {
-  for (let parent = identifier.parent; parent; parent = parent.parent) {
-    if (
-      (ts.isBlock(parent) || ts.isModuleBlock(parent))
-      && parent.statements.some((statement) => statementDeclaresName(statement, identifier.text))
-    ) {
-      return true;
-    }
-
-    if (ts.isFunctionLike(parent) && parent.parameters.some((parameter) => bindingNameDeclaresName(parameter.name, identifier.text))) {
-      return true;
-    }
-
-    if (
-      ts.isCatchClause(parent)
-      && parent.variableDeclaration
-      && bindingNameDeclaresName(parent.variableDeclaration.name, identifier.text)
-    ) {
-      return true;
-    }
-
-    if (ts.isForStatement(parent) && variableDeclarationListDeclaresName(parent.initializer, identifier.text)) {
-      return true;
-    }
-
-    if (
-      (ts.isForInStatement(parent) || ts.isForOfStatement(parent))
-      && variableDeclarationListDeclaresName(parent.initializer, identifier.text)
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function statementDeclaresName(statement: ts.Statement, name: string): boolean {
-  if (ts.isVariableStatement(statement)) {
-    return statement.declarationList.declarations.some((declaration) => bindingNameDeclaresName(declaration.name, name));
-  }
-
-  return (
-    (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isEnumDeclaration(statement))
-    && statement.name?.text === name
-  );
-}
-
-function variableDeclarationListDeclaresName(
-  declarationList: ts.ForInitializer | undefined,
-  name: string,
-): boolean {
-  return declarationList !== undefined
-    && ts.isVariableDeclarationList(declarationList)
-    && declarationList.declarations.some((declaration) => bindingNameDeclaresName(declaration.name, name));
-}
-
-function bindingNameDeclaresName(bindingName: ts.BindingName, name: string): boolean {
-  if (ts.isIdentifier(bindingName)) {
-    return bindingName.text === name;
-  }
-
-  return bindingName.elements.some((element) => (
-    !ts.isOmittedExpression(element) && bindingNameDeclaresName(element.name, name)
-  ));
 }
 
 function isFrameworkServiceImplementationRelay(call: ts.CallExpression, sourcePath: string): boolean {
@@ -642,6 +625,97 @@ function invokeShadowedFrameworkService(
           `${identitySourceFile.source}
 function FrameworkService(_identity: { readonly id: string; readonly version: number }): void {}
 FrameworkService({ id: '@fluojs/config/UnrelatedLocalService', version: 1 });`,
+        )),
+      );
+    }).not.toThrow();
+  });
+
+  it('ignores marker-named callees bound by nested var and switch case declarations', () => {
+    const expectedIdentity = expectedPublicServiceIdentities[0];
+    const sourceFile = governedSourceFiles.find((file) => file.path === expectedIdentity.path);
+
+    if (!sourceFile) {
+      throw new Error(`Expected governed source file is missing: ${expectedIdentity.path}`);
+    }
+
+    expect(() => {
+      assertExactDiscoveredSet(
+        expectedPublicServiceIdentities,
+        discoverServiceIdentities(replaceSource(
+          governedSourceFiles,
+          sourceFile.path,
+          `${sourceFile.source}
+function invokeNestedVarShadow(): void {
+  if (Math.random() > 0.5) {
+    var FrameworkService = (_identity: { readonly id: string; readonly version: number }): void => {};
+  }
+
+  FrameworkService({ id: '@fluojs/cache-manager/NestedVarShadow', version: 1 });
+}
+
+function invokeSwitchCaseShadow(caseValue: number): void {
+  switch (caseValue) {
+    case 0:
+      const FrameworkService = (_identity: { readonly id: string; readonly version: number }): void => {};
+    case 1:
+      FrameworkService({ id: '@fluojs/cache-manager/SwitchCaseShadow', version: 1 });
+  }
+}`,
+        )),
+      );
+    }).not.toThrow();
+  });
+
+  it('ignores marker-named callees bound by local namespace, function, and class declarations', () => {
+    const expectedIdentity = expectedPublicServiceIdentities[0];
+    const sourceFile = governedSourceFiles.find((file) => file.path === expectedIdentity.path);
+
+    if (!sourceFile) {
+      throw new Error(`Expected governed source file is missing: ${expectedIdentity.path}`);
+    }
+
+    expect(() => {
+      assertExactDiscoveredSet(
+        expectedPublicServiceIdentities,
+        discoverServiceIdentities(replaceSource(
+          governedSourceFiles,
+          sourceFile.path,
+          `${sourceFile.source}
+import * as CoreMetadata from '@fluojs/core/internal';
+
+function invokeLocalNamespaceShadow(
+  CoreMetadata: {
+    defineFrameworkServiceIdentity(
+      service: unknown,
+      identity: { readonly id: string; readonly version: number },
+    ): void;
+  },
+): void {
+  CoreMetadata.defineFrameworkServiceIdentity({}, {
+    id: '@fluojs/cache-manager/NamespaceParameterShadow',
+    version: 1,
+  });
+}
+
+function invokeNamedFunctionShadow(): void {
+  function FrameworkService(_identity: { readonly id: string; readonly version: number }): void {}
+
+  FrameworkService({ id: '@fluojs/cache-manager/FunctionShadow', version: 1 });
+}
+
+function invokeNamedClassShadow(): void {
+  class CoreMetadata {
+    static defineFrameworkServiceIdentity(
+      _service: unknown,
+      _identity: { readonly id: string; readonly version: number },
+    ): void {}
+  }
+
+  CoreMetadata.defineFrameworkServiceIdentity({}, {
+    id: '@fluojs/cache-manager/ClassShadow',
+    version: 1,
+  });
+}`,
         )),
       );
     }).not.toThrow();
