@@ -48,6 +48,9 @@ const expectedPublicServiceIdentities = [
   { path: 'packages/throttler/src/guard.ts', id: '@fluojs/throttler/ThrottlerGuard', version: 1 },
 ] as const satisfies readonly ServiceIdentity[];
 
+const inventoryMismatchError = 'Framework service identity inventory does not match the discovered source set.';
+const canonicalIdentitySyntaxError = 'Framework service identity must use an inline canonical object literal';
+
 function read(relativePath: string): string {
   return readFileSync(resolve(repoRoot, relativePath), 'utf8');
 }
@@ -90,19 +93,22 @@ function discoverGovernedSourceFiles(): readonly SourceFile[] {
 
 function discoverServiceIdentities(sourceFiles: readonly SourceFile[]): readonly ServiceIdentity[] {
   return sourceFiles
-    .flatMap(discoverSourceServiceIdentities)
+    .flatMap((sourceFile) => discoverSourceServiceIdentities(sourceFile, sourceFiles))
     .sort(compareIdentities);
 }
 
-function discoverSourceServiceIdentities(sourceFile: SourceFile): readonly ServiceIdentity[] {
+function discoverSourceServiceIdentities(
+  sourceFile: SourceFile,
+  sourceFiles: readonly SourceFile[],
+): readonly ServiceIdentity[] {
   const parsedSource = ts.createSourceFile(sourceFile.path, sourceFile.source, ts.ScriptTarget.Latest, true);
   const identities: ServiceIdentity[] = [];
 
   const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      const marker = frameworkServiceMarker(node);
+    if (ts.isCallExpression(node)) {
+      const marker = frameworkServiceMarker(node, parsedSource, sourceFiles);
 
-      if (marker && !isFrameworkServiceImplementationRelay(node)) {
+      if (marker && !isFrameworkServiceImplementationRelay(node, sourceFile.path)) {
         identities.push({
           path: sourceFile.path,
           ...resolveServiceIdentity(node, marker, sourceFile.path),
@@ -117,22 +123,224 @@ function discoverSourceServiceIdentities(sourceFile: SourceFile): readonly Servi
   return identities;
 }
 
-function frameworkServiceMarker(call: ts.CallExpression): 'FrameworkService' | 'defineFrameworkServiceIdentity' | undefined {
-  if (!ts.isIdentifier(call.expression)) {
+function frameworkServiceMarker(
+  call: ts.CallExpression,
+  sourceFile: ts.SourceFile,
+  sourceFiles: readonly SourceFile[],
+): 'FrameworkService' | 'defineFrameworkServiceIdentity' | undefined {
+  if (ts.isIdentifier(call.expression)) {
+    return namedImportMarker(call.expression, sourceFile, sourceFiles);
+  }
+
+  if (!ts.isPropertyAccessExpression(call.expression) || !ts.isIdentifier(call.expression.expression)) {
     return undefined;
   }
 
-  const name = call.expression.text;
+  const marker = markerName(call.expression.name.text);
 
+  return marker && namespaceImportProvidesMarker(call.expression.expression, marker, sourceFile, sourceFiles)
+    ? marker
+    : undefined;
+}
+
+function markerName(name: string): 'FrameworkService' | 'defineFrameworkServiceIdentity' | undefined {
   return name === 'FrameworkService' || name === 'defineFrameworkServiceIdentity' ? name : undefined;
 }
 
-function isFrameworkServiceImplementationRelay(call: ts.CallExpression): boolean {
-  for (let parent = call.parent; parent; parent = parent.parent) {
+function namedImportMarker(
+  identifier: ts.Identifier,
+  sourceFile: ts.SourceFile,
+  sourceFiles: readonly SourceFile[],
+): 'FrameworkService' | 'defineFrameworkServiceIdentity' | undefined {
+  if (isLexicallyShadowed(identifier)) {
+    return undefined;
+  }
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || !statement.importClause || !ts.isStringLiteral(statement.moduleSpecifier)) {
+      continue;
+    }
+
+    const bindings = statement.importClause.namedBindings;
+
+    if (!bindings || !ts.isNamedImports(bindings)) {
+      continue;
+    }
+
+    for (const element of bindings.elements) {
+      if (element.name.text !== identifier.text) {
+        continue;
+      }
+
+      const marker = markerName(element.propertyName?.text ?? element.name.text);
+
+      if (
+        marker
+        && moduleExportOriginatesFromCoreInternal(statement.moduleSpecifier.text, element.propertyName?.text ?? element.name.text, marker, sourceFiles)
+      ) {
+        return marker;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function namespaceImportProvidesMarker(
+  identifier: ts.Identifier,
+  marker: 'FrameworkService' | 'defineFrameworkServiceIdentity',
+  sourceFile: ts.SourceFile,
+  sourceFiles: readonly SourceFile[],
+): boolean {
+  if (isLexicallyShadowed(identifier)) {
+    return false;
+  }
+
+  return sourceFile.statements.some((statement) => (
+    ts.isImportDeclaration(statement)
+    && statement.importClause
+    && ts.isStringLiteral(statement.moduleSpecifier)
+    && statement.importClause.namedBindings
+    && ts.isNamespaceImport(statement.importClause.namedBindings)
+    && statement.importClause.namedBindings.name.text === identifier.text
+    && moduleExportOriginatesFromCoreInternal(statement.moduleSpecifier.text, marker, marker, sourceFiles)
+  ));
+}
+
+function moduleExportOriginatesFromCoreInternal(
+  moduleSpecifier: string,
+  exportName: string,
+  marker: 'FrameworkService' | 'defineFrameworkServiceIdentity',
+  sourceFiles: readonly SourceFile[],
+  visited = new Set<string>(),
+): boolean {
+  if (moduleSpecifier === '@fluojs/core/internal') {
+    return exportName === marker;
+  }
+
+  const sourcePath = /^@fluojs\/([^/]+)\/internal$/.exec(moduleSpecifier)?.[1];
+
+  if (!sourcePath || visited.has(`${moduleSpecifier}\u0000${exportName}`)) {
+    return false;
+  }
+
+  visited.add(`${moduleSpecifier}\u0000${exportName}`);
+  const sourceFile = sourceFiles.find((candidate) => candidate.path === `packages/${sourcePath}/src/internal.ts`);
+
+  if (!sourceFile) {
+    return false;
+  }
+
+  const parsedSource = ts.createSourceFile(sourceFile.path, sourceFile.source, ts.ScriptTarget.Latest, true);
+
+  return parsedSource.statements.some((statement) => {
     if (
-      ts.isFunctionDeclaration(parent)
-      && parent.name
+      !ts.isExportDeclaration(statement)
+      || !statement.exportClause
+      || !ts.isNamedExports(statement.exportClause)
+      || !statement.moduleSpecifier
+      || !ts.isStringLiteral(statement.moduleSpecifier)
+    ) {
+      return false;
+    }
+
+    const moduleSpecifier = statement.moduleSpecifier;
+
+    return statement.exportClause.elements.some((element) => (
+      element.name.text === exportName
+      && moduleExportOriginatesFromCoreInternal(
+        moduleSpecifier.text,
+        element.propertyName?.text ?? element.name.text,
+        marker,
+        sourceFiles,
+        visited,
+      )
+    ));
+  });
+}
+
+function isLexicallyShadowed(identifier: ts.Identifier): boolean {
+  for (let parent = identifier.parent; parent; parent = parent.parent) {
+    if (
+      (ts.isBlock(parent) || ts.isModuleBlock(parent))
+      && parent.statements.some((statement) => statementDeclaresName(statement, identifier.text))
+    ) {
+      return true;
+    }
+
+    if (ts.isFunctionLike(parent) && parent.parameters.some((parameter) => bindingNameDeclaresName(parameter.name, identifier.text))) {
+      return true;
+    }
+
+    if (
+      ts.isCatchClause(parent)
+      && parent.variableDeclaration
+      && bindingNameDeclaresName(parent.variableDeclaration.name, identifier.text)
+    ) {
+      return true;
+    }
+
+    if (ts.isForStatement(parent) && variableDeclarationListDeclaresName(parent.initializer, identifier.text)) {
+      return true;
+    }
+
+    if (
+      (ts.isForInStatement(parent) || ts.isForOfStatement(parent))
+      && variableDeclarationListDeclaresName(parent.initializer, identifier.text)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function statementDeclaresName(statement: ts.Statement, name: string): boolean {
+  if (ts.isVariableStatement(statement)) {
+    return statement.declarationList.declarations.some((declaration) => bindingNameDeclaresName(declaration.name, name));
+  }
+
+  return (
+    (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isEnumDeclaration(statement))
+    && statement.name?.text === name
+  );
+}
+
+function variableDeclarationListDeclaresName(
+  declarationList: ts.ForInitializer | undefined,
+  name: string,
+): boolean {
+  return declarationList !== undefined
+    && ts.isVariableDeclarationList(declarationList)
+    && declarationList.declarations.some((declaration) => bindingNameDeclaresName(declaration.name, name));
+}
+
+function bindingNameDeclaresName(bindingName: ts.BindingName, name: string): boolean {
+  if (ts.isIdentifier(bindingName)) {
+    return bindingName.text === name;
+  }
+
+  return bindingName.elements.some((element) => (
+    !ts.isOmittedExpression(element) && bindingNameDeclaresName(element.name, name)
+  ));
+}
+
+function isFrameworkServiceImplementationRelay(call: ts.CallExpression, sourcePath: string): boolean {
+  for (let parent = call.parent; parent; parent = parent.parent) {
+    if (!ts.isFunctionDeclaration(parent) || !parent.name) {
+      continue;
+    }
+
+    if (
+      sourcePath === 'packages/core/src/metadata/framework-service.ts'
       && (parent.name.text === 'FrameworkService' || parent.name.text === 'defineFrameworkServiceIdentity')
+    ) {
+      return true;
+    }
+
+    if (
+      sourcePath === 'packages/runtime/src/internal/core-metadata.ts'
+      && parent.name.text === 'defineRuntimeFrameworkServiceIdentity'
     ) {
       return true;
     }
@@ -150,48 +358,16 @@ function resolveServiceIdentity(
   const identityExpression = call.arguments[argumentIndex];
 
   if (!identityExpression) {
-    throw new Error(`Framework service identity must provide a canonical object literal: ${path}`);
+    throw new Error(`${canonicalIdentitySyntaxError}: ${path}`);
   }
 
-  const identityObject = ts.isObjectLiteralExpression(identityExpression)
-    ? identityExpression
-    : ts.isIdentifier(identityExpression)
-      ? resolveConstIdentityObject(identityExpression)
-      : undefined;
+  const identityObject = ts.isObjectLiteralExpression(identityExpression) ? identityExpression : undefined;
 
   if (!identityObject) {
-    throw new Error(`Framework service identity must use an inline or const object literal: ${path}`);
+    throw new Error(`${canonicalIdentitySyntaxError}: ${path}`);
   }
 
   return readIdentityObject(identityObject, path);
-}
-
-function resolveConstIdentityObject(identifier: ts.Identifier): ts.ObjectLiteralExpression | undefined {
-  for (let parent = identifier.parent; parent; parent = parent.parent) {
-    if (!ts.isSourceFile(parent) && !ts.isBlock(parent)) {
-      continue;
-    }
-
-    for (const statement of parent.statements) {
-      if (!ts.isVariableStatement(statement) || statement.end > identifier.pos) {
-        continue;
-      }
-
-      for (const declaration of statement.declarationList.declarations) {
-        if (
-          (statement.declarationList.flags & ts.NodeFlags.Const) !== 0
-          && ts.isIdentifier(declaration.name)
-          && declaration.name.text === identifier.text
-          && declaration.initializer
-          && ts.isObjectLiteralExpression(declaration.initializer)
-        ) {
-          return declaration.initializer;
-        }
-      }
-    }
-  }
-
-  return undefined;
 }
 
 function readIdentityObject(identityObject: ts.ObjectLiteralExpression, path: string): Omit<ServiceIdentity, 'path'> {
@@ -315,7 +491,7 @@ describe('duplicate-copy service token inventory', () => {
 
     expect(() => {
       assertExactDiscoveredSet(expectedPublicServiceIdentities.slice(1), discoverServiceIdentities(governedSourceFiles));
-    }).toThrow();
+    }).toThrowError(new Error(inventoryMismatchError));
     expect(() => {
       assertExactDiscoveredSet(
         expectedPublicServiceIdentities,
@@ -325,7 +501,7 @@ describe('duplicate-copy service token inventory', () => {
           sourceFile.source.replace(marker, marker.replace('version: 1', 'version: 2')),
         )),
       );
-    }).toThrow();
+    }).toThrowError(new Error(inventoryMismatchError));
     expect(() => {
       assertExactDiscoveredSet(
         expectedPublicServiceIdentities,
@@ -335,7 +511,9 @@ describe('duplicate-copy service token inventory', () => {
           `${sourceFile.source}\n${marker}`,
         )),
       );
-    }).toThrow();
+    }).toThrowError(new Error(
+      'Framework service identity has more than one owner: @fluojs/cache-manager/CacheInterceptor\u00001',
+    ));
     expect(() => {
       assertExactDiscoveredSet(
         expectedPublicServiceIdentities,
@@ -345,10 +523,93 @@ describe('duplicate-copy service token inventory', () => {
           `${sourceFile.source}\n@FrameworkService({ id: '@fluojs/cache-manager/UnlistedService', version: 1 })`,
         )),
       );
-    }).toThrow();
+    }).toThrowError(new Error(inventoryMismatchError));
   });
 
-  it('rejects unlisted reversed decorator and indirect identity markers', () => {
+  it('rejects unlisted reversed, aliased, and namespace service markers', () => {
+    const expectedIdentity = expectedPublicServiceIdentities[0];
+    const sourceFile = governedSourceFiles.find((file) => file.path === expectedIdentity.path);
+
+    if (!sourceFile) {
+      throw new Error('Expected governed source file is missing.');
+    }
+
+    expect(() => {
+      assertExactDiscoveredSet(
+        expectedPublicServiceIdentities,
+        discoverServiceIdentities(replaceSource(
+          governedSourceFiles,
+          sourceFile.path,
+          `${sourceFile.source}
+@FrameworkService({ version: 1, id: '@fluojs/cache-manager/ReversedService' })`,
+        )),
+      );
+    }).toThrowError(new Error(inventoryMismatchError));
+    expect(() => {
+      assertExactDiscoveredSet(
+        expectedPublicServiceIdentities,
+        discoverServiceIdentities(replaceSource(
+          governedSourceFiles,
+          sourceFile.path,
+          `${sourceFile.source}
+import { FrameworkService as CoreFrameworkService } from '@fluojs/core/internal';
+@CoreFrameworkService({ id: '@fluojs/cache-manager/AliasedService', version: 1 })
+class AliasedService {}`,
+        )),
+      );
+    }).toThrowError(new Error(inventoryMismatchError));
+    expect(() => {
+      assertExactDiscoveredSet(
+        expectedPublicServiceIdentities,
+        discoverServiceIdentities(replaceSource(
+          governedSourceFiles,
+          sourceFile.path,
+          `${sourceFile.source}
+import * as CoreMetadata from '@fluojs/core/internal';
+class NamespaceService {}
+CoreMetadata.defineFrameworkServiceIdentity(NamespaceService, {
+  id: '@fluojs/cache-manager/NamespaceService',
+  version: 1,
+});`,
+        )),
+      );
+    }).toThrowError(new Error(inventoryMismatchError));
+  });
+
+  it('rejects indirect and shadowed identity expressions with the canonical-syntax guard', () => {
+    const identitySourceFile = governedSourceFiles.find((file) => file.path === 'packages/config/src/service.ts');
+
+    if (!identitySourceFile) {
+      throw new Error('Expected governed source file is missing: packages/config/src/service.ts');
+    }
+
+    expect(() => {
+      discoverServiceIdentities(replaceSource(
+        governedSourceFiles,
+        identitySourceFile.path,
+        `${identitySourceFile.source}
+const indirectIdentity = { id: '@fluojs/config/IndirectService', version: 1 };
+class IndirectService {}
+defineFrameworkServiceIdentity(IndirectService, indirectIdentity);`,
+      ));
+    }).toThrowError(new Error(`${canonicalIdentitySyntaxError}: ${identitySourceFile.path}`));
+    expect(() => {
+      discoverServiceIdentities(replaceSource(
+        governedSourceFiles,
+        identitySourceFile.path,
+        `${identitySourceFile.source}
+const outerIdentity = { id: '@fluojs/config/OuterIdentity', version: 1 };
+function defineShadowedIdentity(
+  identity: { readonly id: string; readonly version: number },
+): void {
+  class ShadowedIdentityService {}
+  defineFrameworkServiceIdentity(ShadowedIdentityService, identity);
+}`,
+      ));
+    }).toThrowError(new Error(`${canonicalIdentitySyntaxError}: ${identitySourceFile.path}`));
+  });
+
+  it('ignores locally shadowed and unrelated marker-named callees', () => {
     const expectedIdentity = expectedPublicServiceIdentities[0];
     const sourceFile = governedSourceFiles.find((file) => file.path === expectedIdentity.path);
     const identitySourceFile = governedSourceFiles.find((file) => file.path === 'packages/config/src/service.ts');
@@ -364,10 +625,14 @@ describe('duplicate-copy service token inventory', () => {
           governedSourceFiles,
           sourceFile.path,
           `${sourceFile.source}
-@FrameworkService({ version: 1, id: '@fluojs/cache-manager/ReversedService' })`,
+function invokeShadowedFrameworkService(
+  FrameworkService: (identity: { readonly id: string; readonly version: number }) => void,
+): void {
+  FrameworkService({ id: '@fluojs/cache-manager/ShadowedService', version: 1 });
+}`,
         )),
       );
-    }).toThrow();
+    }).not.toThrow();
     expect(() => {
       assertExactDiscoveredSet(
         expectedPublicServiceIdentities,
@@ -375,11 +640,11 @@ describe('duplicate-copy service token inventory', () => {
           governedSourceFiles,
           identitySourceFile.path,
           `${identitySourceFile.source}
-const identityConstant = { version: 1, id: '@fluojs/cache-manager/IndirectService' };
-defineFrameworkServiceIdentity(Service, identityConstant);`,
+function FrameworkService(_identity: { readonly id: string; readonly version: number }): void {}
+FrameworkService({ id: '@fluojs/config/UnrelatedLocalService', version: 1 });`,
         )),
       );
-    }).toThrow();
+    }).not.toThrow();
   });
 
   it('ignores FrameworkService marker text in comments and strings', () => {
