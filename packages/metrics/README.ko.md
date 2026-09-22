@@ -257,6 +257,10 @@ MetricsModule.forRoot({
 - 플랫폼 텔레메트리는 `PLATFORM_SHELL`이 실제로 누락된 경우에만 생략되며, 그 외 resolve 실패는 스크레이프를 실패시킵니다.
 - 직전 성공 스크레이프에서 노출된 플랫폼 텔레메트리 시리즈는 `PLATFORM_SHELL`을 사용할 수 없게 된 스크레이프 또는 이후 module instance가 재사용된 Registry를 다른 플랫폼 snapshot으로 갱신한 스크레이프에서 제거됩니다.
 
+### 호환 가능한 중복 사본
+
+호환되는 same-realm `@fluojs/metrics` 사본은 정확히 같은 `Registry`에 이미 등록된 framework-owned HTTP collector와 default collector를 인식합니다. Registry-bound ownership metadata만 재사용하며 독립 Registry, application telemetry, capability detection은 공유하지 않습니다. platform capability detection은 이 contract와 별도이며 #3822의 범위입니다.
+
 ## 관련 패키지
 
 - `@fluojs/http`: 컨트롤러 및 미들웨어 인프라를 제공합니다.

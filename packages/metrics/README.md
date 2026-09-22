@@ -258,6 +258,10 @@ MetricsModule.forRoot({
 - Platform telemetry is omitted only when `PLATFORM_SHELL` is genuinely missing; other resolution failures fail the scrape.
 - Stale platform telemetry series are removed when `PLATFORM_SHELL` becomes unavailable after the last successful scrape or when a later module instance refreshes a reused registry with a different platform snapshot.
 
+### Compatible duplicate copies
+
+Compatible same-realm `@fluojs/metrics` copies recognize framework-owned HTTP collectors and default collectors already registered on the exact `Registry`. They reuse that registry-bound ownership metadata without sharing independent registries, application telemetry, or capability detection; platform capability detection remains separate from this contract.
+
 ## Related Packages
 
 - `@fluojs/http`: contributes the request lifecycle that HTTP metrics observe

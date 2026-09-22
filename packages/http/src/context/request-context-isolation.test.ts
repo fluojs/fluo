@@ -1,4 +1,5 @@
 import { Container } from '@fluojs/di';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { RequestContext } from '../types.js';
@@ -173,6 +174,93 @@ describe('lazy request context isolation', () => {
       if (getBuiltinModuleDescriptor) {
         Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
       }
+      vi.resetModules();
+    }
+  });
+
+  it('shares one async context store across compatible reloaded copies', async () => {
+    // Given
+    vi.resetModules();
+    const copyA = await import('./request-context.js');
+    vi.resetModules();
+    const copyB = await import('./request-context.js');
+    const context = createContext('shared-between-copies');
+
+    try {
+      // When
+      const observed = await copyA.runWithRequestContext(context, async () => {
+        const beforeAwait = copyB.getCurrentRequestContext()?.requestId;
+        await Promise.resolve();
+        const afterAwait = copyB.getCurrentRequestContext()?.requestId;
+
+        return { afterAwait, beforeAwait };
+      });
+
+      // Then
+      expect(observed).toEqual({
+        afterAwait: 'shared-between-copies',
+        beforeAwait: 'shared-between-copies',
+      });
+      expect(copyB.getCurrentRequestContext()).toBeUndefined();
+    } finally {
+      Reflect.deleteProperty(globalThis, Symbol.for('fluo.http.shared-state'));
+      vi.resetModules();
+    }
+  });
+
+  it('keeps a compatible copy store published while lazy resolution completes', async () => {
+    // Given
+    vi.resetModules();
+    Reflect.deleteProperty(globalThis, Symbol.for('fluo.http.shared-state'));
+    const getBuiltinModuleDescriptor = Object.getOwnPropertyDescriptor(process, 'getBuiltinModule');
+    const releaseA = createDeferred<void>();
+    const releaseB = createDeferred<void>();
+    const copyAStoreStarted = createDeferred<void>();
+    const resolveNodeAsyncHooks = createDeferred<{ AsyncLocalStorage: typeof AsyncLocalStorage }>();
+
+    Object.defineProperty(process, 'getBuiltinModule', {
+      configurable: true,
+      value: undefined,
+    });
+    vi.doMock('node:async_hooks', () => resolveNodeAsyncHooks.promise);
+
+    try {
+      const copyA = await import('./request-context.js');
+      const requestA = copyA.runWithRequestContext(createContext('copy-a'), async () => {
+        copyAStoreStarted.resolve();
+        await releaseA.promise;
+      });
+
+      Object.defineProperty(process, 'getBuiltinModule', {
+        configurable: true,
+        value: () => ({ AsyncLocalStorage }),
+      });
+
+      vi.resetModules();
+      const copyB = await import('./request-context.js');
+      const requestB = copyB.runWithRequestContext(createContext('copy-b'), async () => {
+        await releaseB.promise;
+        return copyA.getCurrentRequestContext()?.requestId;
+      });
+
+      resolveNodeAsyncHooks.resolve({ AsyncLocalStorage });
+      await copyAStoreStarted.promise;
+      releaseB.resolve();
+
+      // Then
+      await expect(requestB).resolves.toBe('copy-b');
+      releaseA.resolve();
+      await requestA;
+    } finally {
+      releaseA.resolve();
+      releaseB.resolve();
+      if (getBuiltinModuleDescriptor) {
+        Object.defineProperty(process, 'getBuiltinModule', getBuiltinModuleDescriptor);
+      } else {
+        Reflect.deleteProperty(process, 'getBuiltinModule');
+      }
+      vi.doUnmock('node:async_hooks');
+      Reflect.deleteProperty(globalThis, Symbol.for('fluo.http.shared-state'));
       vi.resetModules();
     }
   });

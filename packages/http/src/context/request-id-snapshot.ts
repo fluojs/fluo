@@ -1,6 +1,11 @@
 import type { FrameworkRequest } from '../types.js';
+import { getCompatibleHttpSharedState } from '../shared-state.js';
 
-const absentRequestIds = new WeakSet<FrameworkRequest>();
+const ABSENT_REQUEST_IDS = Symbol.for('fluo.http.absent-request-ids');
+const absentRequestIds = getCompatibleHttpSharedState(
+  ABSENT_REQUEST_IDS,
+  () => new WeakSet<FrameworkRequest>(),
+);
 
 /**
  * Records that the adapter snapshot contains neither supported inbound ID header.

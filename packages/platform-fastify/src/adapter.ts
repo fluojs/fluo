@@ -548,7 +548,9 @@ function createNativeFastFrameworkRequest(
   if (!hasRequestIdHeader) {
     markAbsentRequestId(frameworkRequest);
   }
-  registerAuthoritativeAbortProbe(frameworkRequest, lazySignal.isAborted);
+  registerAuthoritativeAbortProbe(frameworkRequest, lazySignal.isAborted, {
+    signalIsAuthoritativelyObserved: true,
+  });
   markNativeFastFrameworkRequest(frameworkRequest);
   return frameworkRequest;
 }

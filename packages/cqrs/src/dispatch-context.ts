@@ -23,7 +23,17 @@ export interface InternalCqrsDispatchContextState {
   readonly sagaTopology: CqrsSagaTopologyState | undefined;
 }
 
-const internalContextStates = new WeakMap<CqrsDispatchContext, InternalCqrsDispatchContextState>();
+const INTERNAL_CONTEXT_STATES = Symbol.for('fluo.cqrs.internal-dispatch-context-states');
+const INTERNAL_CONTEXT_STATES_VERSION = 1;
+
+type SharedInternalContextStates = {
+  readonly states: WeakMap<CqrsDispatchContext, InternalCqrsDispatchContextState>;
+  readonly version: number;
+};
+
+let incompatibleContextStates: SharedInternalContextStates | undefined;
+
+const internalContextStates = resolveInternalContextStates().states;
 
 function freezeSagaTopology(state: CqrsSagaTopologyState): CqrsSagaTopologyState {
   return Object.freeze({
@@ -64,4 +74,39 @@ export function getInternalCqrsDispatchContextState(
   context: CqrsDispatchContext | undefined,
 ): InternalCqrsDispatchContextState | undefined {
   return context ? internalContextStates.get(context) : undefined;
+}
+
+function resolveInternalContextStates(): SharedInternalContextStates {
+  const existing = Reflect.get(globalThis, INTERNAL_CONTEXT_STATES);
+
+  if (isCompatibleInternalContextStates(existing)) {
+    return existing;
+  }
+
+  if (existing === undefined) {
+    const states = createInternalContextStates();
+    Reflect.defineProperty(globalThis, INTERNAL_CONTEXT_STATES, {
+      configurable: true,
+      value: states,
+      writable: false,
+    });
+    return states;
+  }
+
+  incompatibleContextStates ??= createInternalContextStates();
+  return incompatibleContextStates;
+}
+
+function createInternalContextStates(): SharedInternalContextStates {
+  return Object.freeze({
+    states: new WeakMap<CqrsDispatchContext, InternalCqrsDispatchContextState>(),
+    version: INTERNAL_CONTEXT_STATES_VERSION,
+  });
+}
+
+function isCompatibleInternalContextStates(value: unknown): value is SharedInternalContextStates {
+  return typeof value === 'object'
+    && value !== null
+    && Reflect.get(value, 'version') === INTERNAL_CONTEXT_STATES_VERSION
+    && Reflect.get(value, 'states') instanceof WeakMap;
 }

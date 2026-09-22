@@ -229,6 +229,10 @@ CQRS handler, event handler, saga는 singleton provider에서만 discovery됩니
 
 유효한 lifecycle state는 `created`, `discovering`, `ready`, `stopping`, `stopped`, `failed`입니다. Readiness는 event와 saga state를 다음 순서로 평가합니다. 둘 다 `ready`이면 `ready`, 그 외에는 하나라도 `discovering`이면 `degraded`, 그 외에는 하나라도 `stopping`이면 `not-ready`, 그 외에는 하나라도 `stopped` 또는 `failed`이면 `not-ready`, `created`를 포함한 나머지 조합은 `not-ready`입니다. Health는 다음 순서로 평가합니다. 0이 아닌 drain-timeout counter가 하나라도 있으면 `degraded`, 그 외에는 하나라도 `stopped` 또는 `failed`이면 `unhealthy`, 그 외에는 하나라도 `discovering` 또는 `stopping`이면 `degraded`, 나머지 조합은 `healthy`입니다. Command와 Query lifecycle field는 diagnostic 전용이며 기존 event/saga readiness 또는 health rule을 바꾸지 않습니다.
 
+### 호환 가능한 중복 사본
+
+호환되는 same-realm `@fluojs/cqrs` 사본은 정확히 같은 context object의 opaque dispatch provenance를 유지합니다. context는 application handler에 계속 frozen fieldless 값으로 전달되며, 별도 bus, application, registry는 dispatch state를 공유하지 않습니다.
+
 ## 관련 패키지
 
 - `@fluojs/event-bus`: `CqrsEventBusService`에서 사용하는 하위 이벤트 분산 패키지입니다.

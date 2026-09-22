@@ -731,6 +731,10 @@ The dispatcher binds `RequestContext` with host async-context storage for the ac
 
 Adapters should pass an `AbortSignal` on `FrameworkRequest.signal` when the platform exposes one, or an `isAborted()` probe when allocating a signal is not practical. The dispatcher preserves both abort surfaces on its per-dispatch request clone and treats the request as aborted when either surface reports cancellation, so a `false` probe never masks an aborted signal. It checks both surfaces before and after handler work so adapters without `AbortSignal` can still stop abandoned requests. For SSE, adapters should also expose `FrameworkResponse.stream.onClose(...)` when possible; `SseResponse` listens to both request abort and raw stream close, closes idempotently, and removes registered listeners when either side terminates first.
 
+### Compatible duplicate copies
+
+Compatible same-realm `@fluojs/http` copies share only request-owner-bound state: the active `AsyncLocalStorage` request context, native route handoff consumed from the exact raw request, known-absent request IDs, and authoritative abort probes. A native handoff is still consumed once, and an aborted signal still wins over a `false` probe. Separate requests, applications, DI containers, and transaction context are never shared.
+
 Adapters that parse multipart uploads should attach runtime-neutral `FrameworkRequestFile` values to `FrameworkRequest.files` rather than augmenting the shared HTTP contract with adapter-specific file types. The seam intentionally models the portable fields every HTTP adapter can provide (`fieldname`, `originalname`, `mimetype`, `buffer`, and `size`); platform packages may keep richer native file objects on their raw request surfaces, but guards, binders, middleware, interceptors, and controllers should read files through `RequestContext.request.files` when they need cross-runtime behavior.
 
 ### Multipart DTO fields
@@ -804,7 +808,7 @@ The `./internal` subpath exports only the low-level utilities used by platform a
 
 - `DefaultBinder`: Default DTO/request binder used by the runtime bootstrap path.
 - `bindRawRequestNativeRouteHandoff(...)` / `attachFrameworkRequestNativeRouteHandoff(...)`: Internal adapter/runtime helpers for reusing semantically safe native route matches without widening the public dispatcher API.
-- `consumeRawRequestNativeRouteHandoff(...)` / `readFrameworkRequestNativeRouteHandoff(...)`: Internal helpers for reading or consuming native route handoffs.
+- `consumeRawRequestNativeRouteHandoff(...)` / `consumeFrameworkRequestNativeRouteHandoff(...)`: Internal helpers for consuming native route handoffs.
 - Native route handoffs snapshot the framework request method and path when attached; if app middleware rewrites either value before handler matching, the dispatcher ignores the stale handoff and falls back to normal route matching.
 - `isRoutePathNormalizationSensitive(path)`: Internal guard for keeping duplicate-slash and trailing-slash requests on the generic dispatcher path.
 - `getCompiledRouteIdentity(descriptor)`: Reads the deterministic source/method position assigned by `createHandlerMapping(...)` for first-party package integrations. Manually authored descriptors return `undefined`.

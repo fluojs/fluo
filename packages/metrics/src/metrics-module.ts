@@ -18,6 +18,7 @@ import {
   HttpMetricsMiddleware,
   type HttpMetricsMiddlewareOptions,
 } from './http-metrics-middleware.js';
+import { getCompatibleMetricsSharedState } from './shared-state.js';
 import { MetricsService } from './metrics-service.js';
 import { METER_PROVIDER } from './providers/meter-provider.js';
 import { PrometheusMeterProvider } from './providers/prometheus-meter-provider.js';
@@ -50,11 +51,14 @@ export interface MetricsModuleOptions {
 
 /** Bootstrap provider token for a Registry shared by metrics module instances. */
 export const METRICS_REGISTRY: Token<Registry> = Symbol.for('fluo.metrics.registry');
+const REGISTERED_DEFAULT_METRICS_REGISTRIES = Symbol.for('fluo.metrics.default-metrics-registries');
+const registeredDefaultMetricsRegistries = getCompatibleMetricsSharedState(
+  REGISTERED_DEFAULT_METRICS_REGISTRIES,
+  () => new WeakSet<Registry>(),
+);
 
 /** Module entry point that exposes `/metrics` and optional HTTP/runtime telemetry. */
 export class MetricsModule {
-  private static registeredRegistries = new WeakSet<Registry>();
-
   /**
    * Register framework metrics, optional HTTP middleware, and a scrape endpoint.
    *
@@ -182,7 +186,7 @@ export class MetricsModule {
   private static createRegistry(configuredRegistry: Registry | undefined, defaultMetrics: boolean | undefined): Registry {
     const registry = configuredRegistry ?? new PrometheusRegistry();
 
-    if (defaultMetrics !== false && !MetricsModule.registeredRegistries.has(registry)) {
+    if (defaultMetrics !== false && !registeredDefaultMetricsRegistries.has(registry)) {
       assertNoDefaultMetricCollisions(registry);
 
       const existingMetricNames = new Set(registry.getMetricsAsArray().map((metric) => metric.name));
@@ -199,7 +203,7 @@ export class MetricsModule {
         throw error;
       }
 
-      MetricsModule.registeredRegistries.add(registry);
+      registeredDefaultMetricsRegistries.add(registry);
     }
 
     return registry;
@@ -247,9 +251,18 @@ const DEFAULT_METRIC_COLLECTORS = collectDefaultMetrics.metricsList.map((collect
 
   return { collectorName, metricNames: collector.metricNames };
 });
-const FRAMEWORK_PLATFORM_GAUGES = new WeakSet<Gauge<string>>();
-const PLATFORM_TELEMETRY_REGISTRY_STATES = new WeakMap<Registry, RuntimePlatformTelemetryRegistryState>();
-const HTTP_INSTRUMENTATION_OWNERS = new WeakMap<Container, WeakSet<Registry>>();
+const FRAMEWORK_PLATFORM_GAUGES = getCompatibleMetricsSharedState(
+  Symbol.for('fluo.metrics.framework-platform-gauges'),
+  () => new WeakSet<Gauge<string>>(),
+);
+const PLATFORM_TELEMETRY_REGISTRY_STATES = getCompatibleMetricsSharedState(
+  Symbol.for('fluo.metrics.platform-telemetry-registry-states'),
+  () => new WeakMap<Registry, RuntimePlatformTelemetryRegistryState>(),
+);
+const HTTP_INSTRUMENTATION_OWNERS = getCompatibleMetricsSharedState(
+  Symbol.for('fluo.metrics.http-instrumentation-owners'),
+  () => new WeakMap<Container, WeakSet<Registry>>(),
+);
 const HEALTH_STATUSES = ['healthy', 'unhealthy', 'degraded'] as const satisfies readonly PlatformHealthStatus[];
 const READINESS_STATUSES = ['ready', 'not-ready', 'degraded'] as const satisfies readonly PlatformReadinessStatus[];
 const PLATFORM_SHELL_TOKEN_NAMES = new Set([String(PLATFORM_SHELL)]);

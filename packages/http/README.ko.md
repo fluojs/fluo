@@ -758,6 +758,10 @@ export class UploadController {
 
 `@FromFiles(...)`는 array-only입니다. `FrameworkRequest.files`가 있으면 `fieldname`으로 필터링된 readonly 배열을 어댑터 도착 순서대로 반환하며, collection이 있지만 일치 항목이 없으면 `[]`가 됩니다. Collection이 없으면 필수 필드는 표준 missing-field 오류를 내고 `@Optional()` 필드는 `undefined`로 남습니다. Converter와 validation은 같은 portable 배열을 받습니다. DTO binder는 다섯 `FrameworkRequestFile` 필드만 projection하므로 adapter-native file property가 DTO 경계를 넘어오지 않습니다. 전체 요청 collection이 필요한 controller와 pipeline stage에서는 기존처럼 `RequestContext.request.files`에 직접 접근할 수 있습니다.
 
+### 호환 가능한 중복 사본
+
+호환되는 same-realm `@fluojs/http` 사본은 active `AsyncLocalStorage` 요청 context, 정확히 같은 raw request에서 소비하는 native route handoff, 이미 없다고 확인한 request ID, authoritative abort probe처럼 request owner에 묶인 상태만 공유합니다. native handoff는 계속 한 번만 소비되고, abort된 signal은 `false` probe보다 항상 우선합니다. 별도 request, application, DI container, transaction context는 공유하지 않습니다.
+
 응답 content negotiation formatter는 `ResponseFormatter.format(...)`에서 `string` 또는 `Uint8Array`를 반환해야 합니다. Node.js `Buffer` 값은 `Buffer`가 `Uint8Array`를 구현하므로 계속 할당 가능하지만, formatter contract는 runtime-neutral byte 동작에만 의존해야 합니다.
 
 ## 공개 API
@@ -793,7 +797,7 @@ Node `AsyncLocalStorage` bootstrap을 eager 초기화하지 않고 HTTP authorin
 
 - `DefaultBinder`: 런타임 부트스트랩 경로에서 사용하는 기본 DTO/요청 바인더.
 - `bindRawRequestNativeRouteHandoff(...)` / `attachFrameworkRequestNativeRouteHandoff(...)`: public dispatcher API를 넓히지 않고 의미 보존이 가능한 native route match를 재사용하기 위한 내부 adapter/runtime 헬퍼.
-- `consumeRawRequestNativeRouteHandoff(...)` / `readFrameworkRequestNativeRouteHandoff(...)`: native route handoff를 읽거나 소비하기 위한 내부 helper.
+- `consumeRawRequestNativeRouteHandoff(...)` / `consumeFrameworkRequestNativeRouteHandoff(...)`: native route handoff를 소비하기 위한 내부 helper.
 - Native route handoff는 framework request에 붙는 시점의 method와 path를 함께 스냅샷합니다. app middleware가 handler matching 전에 둘 중 하나를 rewrite하면 dispatcher는 stale handoff를 무시하고 일반 route matching으로 fallback합니다.
 - `isRoutePathNormalizationSensitive(path)`: duplicate slash와 trailing slash 요청을 generic dispatcher 경로에 남기기 위한 내부 guard.
 - `getCompiledRouteIdentity(descriptor)`: first-party package integration을 위해 `createHandlerMapping(...)`이 할당한 deterministic source/method position을 읽습니다. 수동으로 작성한 descriptor에는 `undefined`를 반환합니다.
