@@ -6,6 +6,11 @@ import { Container } from './container.js';
 import { CircularDependencyError, ContainerResolutionError, DuplicateProviderError, InvalidProviderError, RequestScopeResolutionError, ScopeMismatchError } from './errors.js';
 import { ForwardRef, Optional, type Provider } from './types.js';
 
+function defineCompatibleCopies(copyA: Function, copyB: Function, id: string): void {
+  defineFrameworkServiceIdentity(copyA, { id, version: 1 });
+  defineFrameworkServiceIdentity(copyB, { id, version: 1 });
+}
+
 describe('Container', () => {
   it('caches singleton providers', async () => {
     class Logger {}
@@ -76,6 +81,183 @@ describe('Container', () => {
 
     await expect(container.resolve(UserServiceB)).rejects.toThrow('No provider registered');
     await expect(container.resolve(IncompatibleService)).rejects.toThrow('No provider registered');
+  });
+
+  it('normalizes compatible copies through useClass, useExisting, useFactory, and override providers', async () => {
+    class OwnerCopyA {
+      readonly owner = 'copy-a';
+    }
+    class OwnerCopyB {}
+    class AliasCopyA {}
+    class AliasCopyB {}
+    class FactoryCopyA {}
+    class FactoryCopyB {}
+
+    defineCompatibleCopies(OwnerCopyA, OwnerCopyB, '@fluojs/test/owner');
+    defineCompatibleCopies(AliasCopyA, AliasCopyB, '@fluojs/test/alias');
+    defineCompatibleCopies(FactoryCopyA, FactoryCopyB, '@fluojs/test/factory');
+
+    const container = new Container().register(
+      { provide: OwnerCopyA, useClass: OwnerCopyA },
+      { provide: AliasCopyA, useExisting: OwnerCopyB },
+      {
+        provide: FactoryCopyA,
+        useFactory: (owner) => owner,
+        inject: [OwnerCopyB],
+      },
+    );
+    const owner = await container.resolve(OwnerCopyA);
+
+    expect(container.has(OwnerCopyB)).toBe(true);
+    expect(container.has(FactoryCopyB)).toBe(true);
+    expect(await container.resolve(OwnerCopyB)).toBe(owner);
+    expect(await container.resolve(AliasCopyB)).toBe(owner);
+    expect(await container.resolve(FactoryCopyB)).toBe(owner);
+    expect(container.inspectResolutionState().registrations).toHaveLength(3);
+    expect(container.inspectResolutionState().singletonCache).toHaveLength(2);
+
+    const replacement = { owner: 'override-copy-b' };
+    container.override({ provide: OwnerCopyB, useValue: replacement });
+
+    await expect(container.resolve(OwnerCopyA)).resolves.toBe(replacement);
+    expect(container.inspectResolutionState().registrations).toHaveLength(3);
+  });
+
+  it('keeps one compatible-copy singleton cache entry through override and disposal', async () => {
+    class ServiceCopyA {}
+    class ServiceCopyB {}
+
+    defineCompatibleCopies(ServiceCopyA, ServiceCopyB, '@fluojs/test/override-cache');
+
+    const destroyFirst = vi.fn();
+    const destroySecond = vi.fn();
+    const first = { onDestroy: destroyFirst, version: 'first' };
+    const second = { onDestroy: destroySecond, version: 'second' };
+    const container = new Container().register({
+      provide: ServiceCopyA,
+      useFactory: () => first,
+    });
+
+    expect(await container.resolve(ServiceCopyB)).toBe(first);
+    expect(await container.resolve(ServiceCopyA)).toBe(first);
+    expect(container.inspectResolutionState().registrations).toHaveLength(1);
+    expect(container.inspectResolutionState().singletonCache).toHaveLength(1);
+
+    container.override({
+      provide: ServiceCopyB,
+      useFactory: () => second,
+    });
+
+    expect(await container.resolve(ServiceCopyA)).toBe(second);
+    expect(await container.resolve(ServiceCopyB)).toBe(second);
+    expect(destroyFirst).toHaveBeenCalledTimes(1);
+    expect(container.inspectResolutionState().singletonCache).toHaveLength(1);
+
+    await container.dispose();
+    await container.dispose();
+
+    expect(destroyFirst).toHaveBeenCalledTimes(1);
+    expect(destroySecond).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves compatible-copy multi-provider order and one-owner disposal', async () => {
+    const disposed = vi.fn();
+
+    class PluginCopyA {
+      onDestroy(): void {
+        disposed();
+      }
+    }
+    class PluginCopyB {}
+
+    defineCompatibleCopies(PluginCopyA, PluginCopyB, '@fluojs/test/multi-plugin');
+
+    const container = new Container().register(
+      { provide: PluginCopyA, useValue: 'first', multi: true },
+      { provide: PluginCopyB, useClass: PluginCopyA, multi: true },
+      { provide: PluginCopyA, useValue: 'third', multi: true },
+    );
+    await expect(container.resolve(PluginCopyB)).resolves.toEqual([
+      'first',
+      expect.any(PluginCopyA),
+      'third',
+    ]);
+
+    container.override(
+      { provide: PluginCopyB, useValue: 'replacement-first', multi: true },
+      { provide: PluginCopyA, useValue: 'replacement-second', multi: true },
+    );
+
+    await expect(container.resolve(PluginCopyA)).resolves.toEqual([
+      'replacement-first',
+      'replacement-second',
+    ]);
+
+    await container.dispose();
+
+    expect(disposed).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps compatible-copy request and transient cache ownership scoped to their providers', async () => {
+    class RequestCopyA {}
+    class RequestCopyB {}
+    class TransientCopyA {}
+    class TransientCopyB {}
+
+    defineCompatibleCopies(RequestCopyA, RequestCopyB, '@fluojs/test/request-cache');
+    defineCompatibleCopies(TransientCopyA, TransientCopyB, '@fluojs/test/transient-cache');
+
+    const root = new Container().register(
+      { provide: RequestCopyA, scope: 'request', useClass: RequestCopyA },
+      { provide: TransientCopyA, scope: 'transient', useClass: TransientCopyA },
+    );
+    const requestA = root.createRequestScope();
+    const requestB = root.createRequestScope();
+    const [firstRequestA, secondRequestA, firstRequestB, transientOne, transientTwo] = await Promise.all([
+      requestA.resolve(RequestCopyB),
+      requestA.resolve(RequestCopyA),
+      requestB.resolve(RequestCopyB),
+      root.resolve(TransientCopyB),
+      root.resolve(TransientCopyA),
+    ]);
+
+    expect(firstRequestA).toBe(secondRequestA);
+    expect(firstRequestA).not.toBe(firstRequestB);
+    expect(transientOne).not.toBe(transientTwo);
+  });
+
+  it('retains cycle and scope protections when the requested token is a compatible copy', async () => {
+    class RequestCopyA {}
+    class RequestCopyB {}
+    class CycleCopyA {}
+    class CycleCopyB {}
+    class SingletonConsumer {
+      constructor(readonly requestDependency: RequestCopyB) {}
+    }
+
+    defineCompatibleCopies(RequestCopyA, RequestCopyB, '@fluojs/test/request-scope');
+    defineCompatibleCopies(CycleCopyA, CycleCopyB, '@fluojs/test/cycle');
+
+    const scoped = new Container().register({
+      provide: RequestCopyA,
+      scope: 'request',
+      useClass: RequestCopyA,
+    }, {
+      provide: SingletonConsumer,
+      useClass: SingletonConsumer,
+      inject: [RequestCopyB],
+    });
+    const cyclic = new Container().register({
+      provide: CycleCopyA,
+      useClass: CycleCopyA,
+      inject: [CycleCopyB],
+    });
+
+    await expect(scoped.resolve(RequestCopyB)).rejects.toThrow(RequestScopeResolutionError);
+    expect(scoped.hasRequestScopedDependency(RequestCopyB)).toBe(true);
+    expect(scoped.hasRequestScopedDependency(SingletonConsumer)).toBe(true);
+    await expect(scoped.resolve(SingletonConsumer)).rejects.toThrow(ScopeMismatchError);
+    await expect(cyclic.resolve(CycleCopyB)).rejects.toThrow(CircularDependencyError);
   });
 
   it('supports factory providers with injected dependencies', async () => {

@@ -1,5 +1,4 @@
 import { Inject } from '@fluojs/core';
-import { FrameworkService } from '@fluojs/core/internal';
 import type Redis from 'ioredis';
 import type { OnApplicationShutdown, OnModuleInit } from '@fluojs/runtime';
 
@@ -61,7 +60,6 @@ async function withLifecycleTimeout<T>(operation: Promise<T>, timeoutMs: number,
 /**
  * Manages Redis client startup and shutdown as part of the application lifecycle.
  */
-@FrameworkService({ id: '@fluojs/redis/RedisLifecycleService', version: 1 })
 @Inject(REDIS_CLIENT)
 export class RedisLifecycleService implements OnModuleInit, OnApplicationShutdown {
   constructor(

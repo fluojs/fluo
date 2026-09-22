@@ -87,7 +87,6 @@ function hasEventHandlerMetadata(targetType: Function): boolean {
  * The service discovers `@OnEvent()` handlers, clones payloads before dispatch,
  * and can publish the same events to an external transport such as Redis Pub/Sub.
  */
-@FrameworkService({ id: '@fluojs/event-bus/EventBusLifecycleService', version: 1 })
 @Inject(RUNTIME_CONTAINER, COMPILED_MODULES, APPLICATION_LOGGER, EVENT_BUS_OPTIONS)
 export class EventBusLifecycleService implements OnApplicationBootstrap, OnApplicationShutdown {
   private descriptors: EventHandlerDescriptor[] = [];

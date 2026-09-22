@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { Inject, Module, type Constructor, type Token } from '@fluojs/core';
-import { getModuleMetadata } from '@fluojs/core/internal';
+import { defineFrameworkServiceIdentity, getModuleMetadata } from '@fluojs/core/internal';
 import { Container, type Provider } from '@fluojs/di';
 import { FluoFactory } from '@fluojs/runtime';
 
@@ -108,6 +108,132 @@ describe('JwtModule', () => {
     await expect(jwtService.verify(token)).resolves.toMatchObject({
       subject: 'for-root-user',
     });
+  });
+
+  it('resolves compatible signer, verifier, and service copy tokens to the forRoot owners', async () => {
+    class JwtServiceCopyB {}
+    class JwtSignerCopyB {}
+    class JwtVerifierCopyB {}
+
+    defineFrameworkServiceIdentity(JwtServiceCopyB, {
+      id: '@fluojs/jwt/JwtService',
+      version: 1,
+    });
+    defineFrameworkServiceIdentity(JwtSignerCopyB, {
+      id: '@fluojs/jwt/DefaultJwtSigner',
+      version: 1,
+    });
+    defineFrameworkServiceIdentity(JwtVerifierCopyB, {
+      id: '@fluojs/jwt/DefaultJwtVerifier',
+      version: 1,
+    });
+
+    const container = new Container().register(
+      ...moduleProviders(JwtModule.forRoot({
+        algorithms: ['HS256'],
+        issuer: 'jwt-compatible-copy-tests',
+        secret: 'compatible-copy-secret',
+      })),
+    );
+    const [service, signer, verifier, serviceCopy, signerCopy, verifierCopy] = await Promise.all([
+      container.resolve(JwtService),
+      container.resolve(DefaultJwtSigner),
+      container.resolve(DefaultJwtVerifier),
+      container.resolve(JwtServiceCopyB),
+      container.resolve(JwtSignerCopyB),
+      container.resolve(JwtVerifierCopyB),
+    ]);
+    const token = await service.sign({ sub: 'compatible-copy-user' });
+
+    expect(serviceCopy).toBe(service);
+    expect(signerCopy).toBe(signer);
+    expect(verifierCopy).toBe(verifier);
+    await expect(verifier.verifyAccessToken(token)).resolves.toMatchObject({
+      subject: 'compatible-copy-user',
+    });
+  });
+
+  it('resolves query-isolated JWT service copies through the real module graph and preserves behavior', async () => {
+    const signerCopyB = await import(`${new URL('./signing/signer.ts', import.meta.url).href}?module-copy=consumer`);
+    const verifierCopyB = await import(`${new URL('./signing/verifier.ts', import.meta.url).href}?module-copy=consumer`);
+    const serviceCopyB = await import(`${new URL('./service.ts', import.meta.url).href}?module-copy=consumer`);
+    const refreshCopyB = await import(`${new URL('./refresh/refresh-token.ts', import.meta.url).href}?module-copy=consumer`);
+    const COPY_B_SERVICES = Symbol('copy-b-jwt-services');
+
+    @Module({
+      imports: [
+        JwtModule.forRoot({
+          algorithms: ['HS256'],
+          issuer: 'jwt-query-isolated-copy-tests',
+          refreshToken: {
+            expiresInSeconds: 60,
+            rotation: true,
+            secret: 'query-isolated-refresh-secret',
+            store: 'memory',
+          },
+          secret: 'query-isolated-access-secret',
+        }),
+      ],
+      providers: [
+        {
+          provide: COPY_B_SERVICES,
+          inject: [
+            signerCopyB.DefaultJwtSigner,
+            verifierCopyB.DefaultJwtVerifier,
+            serviceCopyB.JwtService,
+            refreshCopyB.RefreshTokenService,
+          ],
+          useFactory: (...dependencies: unknown[]) => dependencies,
+        },
+      ],
+    })
+    class AppModule {}
+
+    const app = await FluoFactory.createApplicationContext(AppModule);
+
+    try {
+      const [injectedSigner, injectedVerifier, injectedService, injectedRefresh] =
+        await app.container.resolve<unknown[]>(COPY_B_SERVICES);
+      const ownerSigner = await app.container.resolve(DefaultJwtSigner);
+      const ownerVerifier = await app.container.resolve(DefaultJwtVerifier);
+      const ownerService = await app.container.resolve(JwtService);
+      const ownerRefresh = await app.container.resolve(RefreshTokenService);
+      const resolvedSigner = await app.container.resolve(signerCopyB.DefaultJwtSigner);
+      const resolvedVerifier = await app.container.resolve(verifierCopyB.DefaultJwtVerifier);
+      const resolvedService = await app.container.resolve(serviceCopyB.JwtService);
+      const resolvedRefresh = await app.container.resolve(refreshCopyB.RefreshTokenService);
+
+      expect(injectedSigner).toBe(ownerSigner);
+      expect(injectedVerifier).toBe(ownerVerifier);
+      expect(injectedService).toBe(ownerService);
+      expect(injectedRefresh).toBe(ownerRefresh);
+      expect(resolvedSigner).toBe(ownerSigner);
+      expect(resolvedVerifier).toBe(ownerVerifier);
+      expect(resolvedService).toBe(ownerService);
+      expect(resolvedRefresh).toBe(ownerRefresh);
+
+      const lowLevelToken = await ownerSigner.signAccessToken({ sub: 'low-level-copy-user' });
+      await expect(ownerVerifier.verifyAccessToken(lowLevelToken)).resolves.toMatchObject({
+        subject: 'low-level-copy-user',
+      });
+
+      const serviceToken = await ownerService.sign({ sub: 'service-copy-user' });
+      await expect(ownerService.verify(serviceToken)).resolves.toMatchObject({
+        subject: 'service-copy-user',
+      });
+
+      const refreshToken = await ownerRefresh.issueRefreshToken('refresh-copy-user');
+      await expect(ownerVerifier.verifyRefreshToken(refreshToken)).resolves.toMatchObject({
+        subject: 'refresh-copy-user',
+      });
+
+      const rotated = await ownerRefresh.rotateRefreshToken(refreshToken);
+      await expect(ownerService.verify(rotated.accessToken)).resolves.toMatchObject({
+        subject: 'refresh-copy-user',
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('registers JwtService provider in module metadata', () => {
