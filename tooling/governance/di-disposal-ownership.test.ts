@@ -186,11 +186,11 @@ describe('DI disposal ownership governance', () => {
     const ownershipEvidence = read('packages/di/src/container-disposal-ownership.test.ts');
     const retryEvidence = read('packages/di/src/container-disposal-retry.test.ts');
     const sourceExcerpts = [
-      ['path:packages/di/src/container.ts:715-736', 715, 736],
-      ['path:packages/di/src/container.ts:738-775', 738, 775],
-      ['path:packages/di/src/container.ts:1299-1315', 1299, 1315],
-      ['path:packages/di/src/container.ts:1317-1345', 1317, 1345],
-      ['path:packages/di/src/container.ts:1455-1611', 1455, 1611],
+      ['path:packages/di/src/container.ts:718-739', 718, 739],
+      ['path:packages/di/src/container.ts:741-778', 741, 778],
+      ['path:packages/di/src/container.ts:1302-1318', 1302, 1318],
+      ['path:packages/di/src/container.ts:1320-1348', 1320, 1348],
+      ['path:packages/di/src/container.ts:1458-1614', 1458, 1614],
     ] as const;
 
     // When / Then
