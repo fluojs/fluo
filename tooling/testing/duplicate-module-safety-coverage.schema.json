@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "packages"],
+  "properties": {
+    "version": { "const": 1 },
+    "packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["package", "status", "topologies", "surfaces", "platforms", "evidence", "rationale"],
+        "properties": {
+          "package": { "type": "string", "pattern": "^@fluojs/" },
+          "status": { "enum": ["applied", "not-applicable"] },
+          "topologies": { "type": "array", "items": { "type": "string" } },
+          "surfaces": { "type": "array", "items": { "type": "string" } },
+          "evidence": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "rationale": { "type": "string", "minLength": 1 },
+          "platforms": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["node", "bun", "deno", "workers", "next"],
+            "properties": {
+              "node": { "enum": ["native", "host-evidence", "not-applicable"] },
+              "bun": { "enum": ["native", "host-evidence", "not-applicable"] },
+              "deno": { "enum": ["native", "host-evidence", "not-applicable"] },
+              "workers": { "enum": ["native", "host-evidence", "not-applicable"] },
+              "next": { "enum": ["native", "host-evidence", "not-applicable"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

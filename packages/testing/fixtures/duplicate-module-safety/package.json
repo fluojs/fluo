@@ -1,0 +1,5 @@
+{
+  "name": "duplicate-module-safety-fixture",
+  "private": true,
+  "type": "module"
+}
