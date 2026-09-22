@@ -1,0 +1,435 @@
+---
+title: Node.js platform
+description: Run a fluo application directly on Node.js built-in http and https servers with @fluojs/platform-nodejs, and reuse its logger, shutdown, and filesystem utilities in every Node-hosted adapter.
+package: "@fluojs/platform-nodejs"
+---
+
+`@fluojs/platform-nodejs` owns the lowest level of HTTP hosting in fluo: it runs
+your module graph directly on Node.js's built-in `node:http` / `node:https`
+servers, with no intermediate framework between the socket and the fluo
+dispatcher. It is also the **foundation package for every Node-hosted adapter** —
+[`@fluojs/platform-fastify`](/docs/packages/platform-fastify) and
+[`@fluojs/platform-express`](/docs/packages/platform-express) both depend on it
+and reuse its logger, shutdown registration, and transport internals. The
+concepts on this page therefore apply even when a framework adapter owns the
+listener.
+
+The package declares `engines.node >=24.0.0 <27`. That range is a support
+contract, not a suggestion: listener-level behavior (including RFC `QUERY`
+requests) is verified only on those runtimes. For Bun, Deno, or Cloudflare
+Workers use the fetch-style platform adapters instead of importing this
+Node-specific package.
+
+## When to use this adapter
+
+Use the raw Node adapter when you want:
+
+- the smallest possible HTTP footprint, with standard Node APIs as the transport;
+- to own server construction settings directly (`maxHeaderSize`,
+  `insecureHTTPParser`, TLS material) without framework layers in between;
+- a server-backed realtime listener for `@fluojs/websockets` without paying for
+  framework routing you do not use.
+
+Reach for a different platform when those constraints do not apply:
+
+- [Fastify](/docs/packages/platform-fastify) is the throughput-oriented choice —
+  the adapter README measures roughly double the requests per second of the raw
+  Node adapter on a `/health` benchmark — and it adds native route matching,
+  multipart plugins, and the `configureFastify` seam.
+- [Express](/docs/packages/platform-express) fits when existing Express
+  operational assets must stay near the platform boundary.
+- [Next.js](/docs/packages/platform-nextjs) hosts a fluo backend inside an
+  existing Next.js application, where Next owns the HTTP server and the adapter
+  opens no socket at all.
+
+This adapter never reads `process.env.PORT` and never registers process signal
+handlers on its own. Creation does not bind a port. Everything that touches the
+process is an explicit selection you make through `FluoFactory.create` options.
+
+## Installation
+
+```bash
+npm install @fluojs/platform-nodejs
+```
+
+The package depends on `@fluojs/http` and `@fluojs/runtime`, which install with
+it. Decorated classes need the same TC39 standard-decorator toolchain every fluo
+application uses; the [dependency injection guide](/docs/fundamentals/dependency-injection)
+covers the authoring model and the tooling reference covers compiler setup.
+
+## A complete working example
+
+Three files run a small posts API on a raw Node listener. The first two are
+application code; the third is the platform boundary this package owns.
+
+```ts title="src/posts.ts"
+import { Inject, Module } from '@fluojs/core';
+import { Controller, Get, Post, RequestDto, FromBody } from '@fluojs/http';
+
+class CreatePostDto {
+  @FromBody()
+  title = '';
+}
+
+export class PostsService {
+  private readonly posts: string[] = ['Hello, Fluo!'];
+
+  list(): readonly string[] {
+    return this.posts;
+  }
+
+  create(title: string): string {
+    this.posts.push(title);
+    return title;
+  }
+}
+
+@Inject(PostsService)
+@Controller('/posts')
+export class PostsController {
+  constructor(private readonly posts: PostsService) {}
+
+  @Get()
+  list(): readonly string[] {
+    return this.posts.list();
+  }
+
+  @Post()
+  @RequestDto(CreatePostDto)
+  create(input: CreatePostDto): string {
+    return this.posts.create(input.title);
+  }
+}
+
+@Module({
+  controllers: [PostsController],
+  providers: [PostsService],
+})
+export class PostsModule {}
+```
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { HealthModule } from '@fluojs/runtime';
+
+import { PostsModule } from './posts';
+
+@Module({
+  imports: [HealthModule.forRoot(), PostsModule],
+})
+export class AppModule {}
+```
+
+```ts title="src/main.ts"
+import { FluoFactory } from '@fluojs/runtime';
+import {
+  createConsoleApplicationLogger,
+  createNodeShutdownSignalRegistration,
+  NodeHttpApplicationAdapter,
+} from '@fluojs/platform-nodejs';
+
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({
+    host: '127.0.0.1',
+    port: 3000,
+    shutdownTimeoutMs: 10_000,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
+});
+
+await app.listen();
+```
+
+Run it through your project's usual TypeScript entrypoint (a CLI-generated
+fluo application already wires the compiler and `main` module); with the
+console logger selected above, startup prints the listening
+target and the runtime's ready message (timestamps and pid vary):
+
+```text
+[fluo] 12345 - 9/21/2026, 10:00:00 AM LOG [FluoFactory] Listening on http://127.0.0.1:3000
+[fluo] 12345 - 9/21/2026, 10:00:00 AM LOG [FluoApplication] fluo application successfully started.
+```
+
+`GET http://127.0.0.1:3000/posts` returns `["Hello, Fluo!"]` and
+`GET /health` returns `{"status":"ok"}`. Sending `SIGINT` drains connections and
+closes the module graph before the process exits.
+
+## How the adapter executes a request
+
+Understanding the pipeline explains every default and every error you will see:
+
+1. **Creation validates and constructs, but does not bind.**
+   `NodeHttpApplicationAdapter.create(options)` validates every numeric option
+   eagerly — `port` must be an integer in `0..65535`, and `maxBodySize`,
+   `retryDelayMs`, `retryLimit`, and `shutdownTimeoutMs` must be non-negative
+   integers. Supplying both `http` and `https` throws
+   (`Plain HTTP and HTTPS server options cannot be used together.`) *before* any
+   server exists, so no option is silently ignored. The constructor then builds
+   the `node:http` or `node:https` server with your construction options, but
+   nothing listens yet.
+
+2. **Bootstrap compiles the graph and hands over a dispatcher.**
+   `FluoFactory.create(AppModule, { adapter })` compiles the module graph,
+   validates injection and visibility (see the
+   [DI guide](/docs/fundamentals/dependency-injection)), and calls
+   `adapter.listen(dispatcher)`. The listen lifecycle binds host and port,
+   retrying `EADDRINUSE` every `retryDelayMs` (default `150`) up to `retryLimit`
+   (default `20`) times before rejecting. Only after the listener is up does the
+   runtime invoke your `shutdownRegistration` callback.
+
+3. **Each request becomes a deferred framework request.**
+   For every `IncomingMessage`, the adapter creates a deferred request shell and
+   a request abort signal, then hands both to the shared runtime dispatch. The
+   body is **materialized lazily** — nothing is buffered until the route graph
+   actually needs it.
+
+4. **Body limits are enforced while bytes are still streaming.**
+   When the accumulated body exceeds `maxBodySize` (default 1 MiB), the adapter
+   answers `413` immediately without waiting for the rest of the upload. The
+   same limit becomes the default multipart total-size cap unless
+   `multipart.maxTotalSize` overrides it.
+
+5. **Request identity and content types are normalized.**
+   The request id is read from `x-request-id` with `x-correlation-id` as the
+   fallback and is propagated into the request context and error responses.
+   Mixed-case `Content-Type` values (`application/json`, `multipart/form-data`)
+   are normalized before parsing.
+
+6. **The dispatcher owns everything framework-defined.**
+   Middleware, guards, interceptors, observers, DTO binding, serialization, SSE,
+   and error envelopes run identically on this adapter and on the Fastify and
+   Express adapters. Only the socket, the body pump, and (optionally) response
+   compression are adapter-specific here.
+
+7. **Responses stream back with optional compression.**
+   With `compression: true`, responses negotiate `gzip`/`deflate`/`br` against
+   the request's `Accept-Encoding`. Range responses keep identity bytes and
+   range metadata — the adapter never recompresses a `206`.
+
+## Defaults and options
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `port` | `3000` | Never read from `process.env.PORT`; explicit `0` binds an OS-assigned port (useful in tests). |
+| `host` | Node chooses | Omitted means the OS binds all interfaces; `getListenTarget()` reports the real bind address. |
+| `maxBodySize` | `1048576` (1 MiB) | Non-negative integer bytes; `0` allows only empty bodies; also the default multipart total cap. |
+| `compression` | `false` | Negotiates against `Accept-Encoding`; range responses stay identity. |
+| `rawBody` | `false` | Preserve original request bytes on `context.request.rawBody` for byte-sensitive flows. |
+| `retryDelayMs` / `retryLimit` | `150` / `20` | `EADDRINUSE` retry loop for `listen()`. |
+| `shutdownTimeoutMs` | `10_000` | Connection-drain bound for `close()`. |
+| `http` / `https` | neither | Node server construction options; mutually exclusive. `https` enables TLS. |
+| `multipart` | buffered parsing | `strategy: 'stream'` switches to streaming (below). |
+
+## Resource ownership: who closes what
+
+Ownership is split deliberately, and predicting shutdown means knowing the
+three owners:
+
+- **The adapter owns the server and its sockets.** `close()` first stops idle
+  keep-alive connections, then waits up to `shutdownTimeoutMs` for active
+  requests to settle, then force-closes remaining connections. Force-close is a
+  last resort, not an error path: the close itself resolves normally.
+- **The runtime owns the module graph.** `app.close()` disposes providers in
+  reverse creation order and runs shutdown lifecycle hooks
+  (`onModuleDestroy`, then `onApplicationShutdown(signal?)`).
+- **You own the process.** The adapter force-closing sockets does not exit the
+  process; it does not own timers, workers, or clients your code created. Signal
+  handling is likewise opt-in, described next.
+
+## Signal-driven shutdown
+
+Without a `shutdownRegistration`, `SIGINT`/`SIGTERM` kill the process with
+Node's default disposition and no graceful drain. The package ships the
+registration you almost always want:
+
+```ts
+import { createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+
+const registration = createNodeShutdownSignalRegistration(['SIGINT', 'SIGTERM']);
+// FluoFactory.create(AppModule, { adapter, shutdownRegistration: registration })
+```
+
+- `defaultNodeShutdownSignals()` returns `['SIGINT', 'SIGTERM']`; passing it
+  explicitly is equivalent to omitting the argument. Pass `false` to disable.
+- Each signal handler is registered with `process.once`. If registration fails
+  partway (an invalid signal name, for example), already-installed handlers are
+  rolled back before the error propagates.
+- On a signal, the helper awaits `app.close(signal)` under a
+  `forceExitTimeoutMs` bound (default `30_000`). If shutdown exceeds the bound,
+  the helper logs an error and sets `process.exitCode = 1` — it does **not**
+  kill the process. Final termination belongs to the surrounding host
+  (container orchestrator, process manager, or your own `process.exit`).
+- The returned unregistration callback removes the handlers. The runtime calls
+  it once during close; if any removal fails, the failures are aggregated
+  (a single error, or an `AggregateError`) and retained for later close callers
+  rather than skipping runtime teardown.
+
+`registerShutdownSignals(app, logger, signals, forceExitTimeoutMs)` is the
+lower-level form for hosts that manage registration timing themselves.
+
+## Choosing a logger
+
+Factory defaults to a transport-neutral logger that writes
+`[fluo] LEVEL [context] message` through `console`; Node hosts select a
+concrete one explicitly. Both creators below live in this
+package and are shared by the Fastify and Express adapters:
+
+```ts
+import { createConsoleApplicationLogger, createJsonApplicationLogger } from '@fluojs/platform-nodejs';
+
+const pretty = createConsoleApplicationLogger();            // human format, level: debug
+const quiet = createConsoleApplicationLogger({ mode: 'minimal', level: 'warn' });
+const off = createConsoleApplicationLogger({ mode: 'silent' });
+const structured = createJsonApplicationLogger();          // one JSON object per line
+```
+
+`createConsoleApplicationLogger` writes the historical
+`[fluo] <pid> - <timestamp> LEVEL [context] message` format in `pretty` mode
+(the default), `[fluo] LEVEL [context] message` in `minimal` mode, and nothing
+in `silent` mode. The `level` option sets the lowest severity emitted
+(`debug` by default), and color detection is TTY-aware with explicit
+`NO_COLOR`/`FORCE_COLOR` overrides accepted through the `environment` option —
+the logger reads process globals only through that explicit parameter, which
+keeps it deterministic in tests.
+
+`createJsonApplicationLogger` writes one JSON line per entry — `debug`/`log` to
+stdout, `warn`/`error` to stderr — with ISO timestamps and, when a request
+context is active, the current `requestId` on every line. It is the right
+selection for log shippers; the console logger is the right selection for
+humans watching a terminal.
+
+## Serving static files from disk
+
+The portable `@fluojs/http` package defines static asset delivery but never
+assumes filesystem access — Web and edge targets have no `fs`. This package
+provides the Node source implementation, and the two compose in Factory
+middleware:
+
+```ts title="fragment: static assets (extends src/main.ts above)"
+import { createStaticAssetsMiddleware } from '@fluojs/http';
+import { createNodeFileSystemAssetSource } from '@fluojs/platform-nodejs';
+
+const assets = createStaticAssetsMiddleware({
+  cacheControl: 'public, max-age=3600',
+  index: ['index.html'],
+  prefix: '/assets',
+  source: createNodeFileSystemAssetSource({ root: './public', precompressed: true }),
+});
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ port: 3000 }),
+  middleware: [assets],
+});
+```
+
+The source resolves each URL path against a `realpath`-verified root with
+`O_NOFOLLOW` opens and device/inode re-checks, and the middleware rejects
+traversal, encoded separators, backslashes, and NUL bytes before the source is
+consulted. With `precompressed: true` (or per-encoding `{ brotli, gzip }`
+flags), `.br` and `.gz` siblings are served when the client accepts them, with
+`Vary: Accept-Encoding` whenever selection can vary. Validators (strong SHA-256
+`ETag`, `Last-Modified`) come from the exact bytes served, so conditional
+requests and byte ranges stay coherent.
+
+Know the memory model: resolution **eagerly snapshots the selected file into
+memory** and replays that immutable snapshot. That is a correctness feature —
+the bytes cannot change between `ETag` computation and streaming — but it makes
+the source wrong for large media files; serve those from object storage or a
+CDN instead.
+
+## Multipart: buffered by default, streaming on request
+
+The default buffered parser materializes fields and files, exposing files on
+`context.request.files` as `UploadedFile` values with limits from
+`multipart.maxFileSize` / `maxFiles` / `maxTotalSize`. For large uploads, switch
+the request body to a stream:
+
+```ts title="fragment: streaming multipart"
+const adapter = NodeHttpApplicationAdapter.create({
+  port: 3000,
+  multipart: { strategy: 'stream' },
+});
+```
+
+With `strategy: 'stream'`, `context.request.body` becomes an `AsyncIterable`
+that pulls part bytes on demand — nothing is pre-read or buffered. When the
+iterator is created for a route, the dispatcher owns cleanup and calls
+`return()` after the handler finishes. Consume it to completion, or end early
+and let dispatch release it; standalone consumers own their own `return()`.
+
+## Composition with neighboring packages
+
+- **`@fluojs/http`** owns everything request-semantics-shaped: controllers,
+  DTO binding, guards, interceptors, the `Middleware` contract, SSE, and the
+  static-asset middleware used above. Adapters are interchangeable from the
+  application's point of view — the same `AppModule` and middleware run
+  unchanged on Node, Fastify, and Express.
+- **`@fluojs/websockets`** attaches to this adapter's *server-backed* realtime
+  capability: `adapter.getRealtimeCapability()` exposes the underlying Node
+  server so gateways upgrade over the same listener. The Next.js adapter, by
+  contrast, reports an unsupported capability because Route Handlers have no
+  upgrade seam.
+- **Factory-owned pipeline composition.** `FluoFactory.create` options compose
+  with the adapter in a fixed order: configured CORS, configured global prefix,
+  security headers (on unless `securityHeaders: false`), then your `middleware`
+  array. CORS and prefixing are runtime middleware, not adapter features — the
+  same `cors` option works on every HTTP platform.
+- **Fastify and Express adapters** consume this package's logger, shutdown
+  registration, early-hints plumbing, and request/response internals. Switching
+  adapters is a one-line change in `FluoFactory.create`, plus the install.
+
+## Failures, limits, and common mistakes
+
+- **Expecting `process.env.PORT` to work.** The adapter ignores it by design
+  (a test in this package pins that isolation). Read the environment at your
+  application boundary and pass the value explicitly.
+- **Passing both `http` and `https`.** This throws at `create()` — before any
+  server exists — rather than silently preferring one.
+- **Assuming signals are handled.** They are not, unless you pass
+  `createNodeShutdownSignalRegistration(...)`. In containers without it,
+  `SIGTERM` skips drain and in-flight requests die with the process.
+- **Blocking `close()` on your own resources.** The adapter closes its sockets;
+  database pools, timers, or clients captured by your providers must be
+  released through lifecycle hooks.
+- **Treating `@fluojs/platform-nodejs/internal` as a public API.** That subpath
+  is the first-party integration seam (the replacement for the removed
+  `@fluojs/runtime/internal-node`) used by the Fastify and Express adapters.
+  Its shape can change with any release; build only on the package root.
+- **Looking for the removed bootstrap helpers.** Former entrypoints such as
+  `@fluojs/runtime/node` and the standalone run helpers were removed without
+  shims: create with `NodeHttpApplicationAdapter.create(options)` and run
+  through `FluoFactory.create` + `app.listen()`.
+- **Very large static files.** The filesystem asset source snapshots files into
+  memory per resolution; move large media to a CDN or object storage.
+- **Unsupported runtime versions.** Node 27+ or versions below 24 are outside the declared
+  support contract; listener behavior on those versions is unverified.
+
+## Testing at this seam
+
+Two layers, both without real network flakiness:
+
+- **Dispatch without a socket.** `Test.createApp({ rootModule })` from
+  `@fluojs/testing` boots the same graph and dispatches requests directly —
+  adapter-independent, ideal for controller/DTO behavior.
+- **Real listener on an ephemeral port.** Create the adapter with
+  `port: 0`, resolve the actual URL with `adapter.getListenTarget()` after
+  `app.listen()`, and exercise real HTTP with `fetch`. Always `await app.close()`
+  in a `finally` block so a failing assertion cannot leak the listener.
+
+The package's own conformance runs the shared
+`HttpAdapterPortabilityHarness.create(...)` checks (raw-body capture, byte
+ranges, SSE framing, shutdown cleanup, and more). It deliberately does **not**
+run the generic `PlatformComponent` lifecycle harness — an adapter is an
+`HttpApplicationAdapter`, not a runtime-managed platform component, and the
+docs keep that distinction.
+
+## Related reading
+
+- [`@fluojs/platform-nodejs` package README](https://github.com/fluojs/fluo/blob/main/packages/platform-nodejs/README.md) — the owning contract, including the portability conformance list.
+- [Fastify platform](/docs/packages/platform-fastify) and [Express platform](/docs/packages/platform-express) — framework adapters built on this package.
+- [Next.js platform](/docs/packages/platform-nextjs) — hosting where no adapter owns the socket.
+- [Dependency injection](/docs/fundamentals/dependency-injection) — the module graph the adapter serves.
+- [Runtime adapters guide](/docs/guides/runtime-adapters) — task-oriented adapter selection.

@@ -1,0 +1,370 @@
+---
+title: Event bus
+description: Publish in-process domain events to decorator-discovered handlers with result-aware outcomes, optional Redis fan-out, and a bounded shutdown drain.
+package: "@fluojs/event-bus"
+---
+
+`@fluojs/event-bus` lets one part of an application announce that something
+happened without knowing who reacts. A publisher injects `EventBusService`,
+calls `publish(event)` with a plain class instance, and every method marked
+with `@OnEvent(EventClass)` in the module graph receives its own copy of that
+instance. Publication returns an `EventPublishResult`, so a publisher that
+needs to know how its reactions ended can inspect outcomes instead of
+guessing.
+
+The bus is deliberately **in-process and non-durable**. It has no persistence,
+no retry, and no acknowledgement: if the process dies, pending reactions die
+with it. That is the right tool when reactions are fast, local, and safe to
+lose (cache invalidation, projections, notifications). When a reaction must
+survive a crash, retry with backoff, or be inspected by an operator, hand the
+work to [`@fluojs/queue`](/docs/packages/queue) instead. When you need formal
+command/query separation and saga orchestration, build on
+[`@fluojs/cqrs`](/docs/packages/cqrs), which delegates its final publication
+step to this bus.
+
+## Installation
+
+```bash
+npm install @fluojs/event-bus
+
+# Only when using the Redis Pub/Sub transport subpath:
+npm install @fluojs/event-bus ioredis
+```
+
+`ioredis` is an optional peer dependency: the root entrypoint never loads it,
+and only `@fluojs/event-bus/redis` needs it. The package supports Node.js
+`>=24.0.0 <27` as its package-owned support contract.
+
+## A small working example
+
+A sign-up flow publishes a fact, and a notification handler reacts. Four
+declarations wire it up: the event class, the handler, the publisher, and the
+module that registers them.
+
+```ts title="src/events.ts"
+export class UserSignedUpEvent {
+  // A stable event key keeps the transport channel name stable even if the
+  // class is renamed or minified. Local matching does not need it.
+  static readonly eventKey = 'account.signed-up.v1';
+
+  constructor(public readonly email: string) {}
+}
+```
+
+```ts title="src/notification.service.ts"
+import { OnEvent } from '@fluojs/event-bus';
+
+import { UserSignedUpEvent } from './events';
+
+export class NotificationService {
+  sentTo: string[] = [];
+
+  @OnEvent(UserSignedUpEvent)
+  async sendWelcomeEmail(event: UserSignedUpEvent): Promise<void> {
+    this.sentTo.push(event.email);
+  }
+}
+```
+
+`@OnEvent(UserSignedUpEvent)` is a **method** decorator. It must be applied to
+a public instance method - private and static methods are rejected when the
+class is defined. The handler receives an isolated clone of the published
+event, so mutating it cannot leak into other handlers or the publisher.
+
+```ts title="src/user.service.ts"
+import { Inject } from '@fluojs/core';
+import { EventBusService } from '@fluojs/event-bus';
+
+import { UserSignedUpEvent } from './events';
+
+@Inject(EventBusService)
+export class UserService {
+  constructor(private readonly events: EventBusService) {}
+
+  async signUp(email: string): Promise<void> {
+    // ...save the user...
+    await this.events.publish(new UserSignedUpEvent(email));
+  }
+}
+```
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { EventBusModule } from '@fluojs/event-bus';
+
+import { NotificationService } from './notification.service';
+import { UserService } from './user.service';
+
+@Module({
+  imports: [EventBusModule.forRoot()],
+  providers: [NotificationService, UserService],
+})
+export class AppModule {}
+```
+
+`EventBusModule.forRoot()` registers `EventBusService` **globally by default**,
+so any provider in the graph can inject it without importing a feature module.
+Pass `EventBusModule.forRoot({ global: false })` when the bus should be visible
+only to modules that import it. Publish from a script or test without HTTP by
+booting the same module through `FluoFactory.createApplicationContext(AppModule)`.
+
+## How the mechanics work
+
+### Handler discovery
+
+At bootstrap, the bus scans the compiled module graph for methods carrying
+`@OnEvent` metadata and resolves every handler target **before** the
+application reports ready. Discovery reads normalized singleton provider
+registrations (and controller classes) across imported modules:
+
+- A decorated class registered as a plain provider, or through `useClass`, is
+  discovered once per registration token.
+- A `useValue` provider is discovered when its instance's constructor carries
+  handler metadata; a `useFactory` provider only when the provider token is
+  itself the handler class. Unrelated factories are never invoked during
+  bootstrap.
+- When the same token is registered twice, only the DI winner is discovered.
+  Registering one decorated class under two distinct tokens intentionally
+  produces two dispatch routes.
+- A handler target that fails to resolve fails bootstrap loudly instead of
+  silently skipping reactions.
+
+Only singletons are discovered. A request-scoped or transient class carrying
+`@OnEvent` methods is skipped with a warning - there is no per-request
+subscription model.
+
+### Event matching, inheritance, and event keys
+
+A handler matches an event when the published instance is an `instanceof` the
+decorated event class, so a handler for a base event class also receives
+subclass publications. Each handler still receives its own clone with the
+matched prototype restored.
+
+Channels for the optional external transport follow the event's
+concrete-to-base class lineage. A `static eventKey` on an event class replaces
+the class name for that class's channel; a subclass uses its own `eventKey`
+only when it declares one directly. With a transport configured, publishing a
+subclass fans out to the subclass channel **and** every inherited channel in
+its prototype chain, even when the publishing process has no local handler for
+those types.
+
+### `publish()` and the result contract
+
+`publish(event, options?)` is the single publication path. It matches local
+handlers, fans out to the configured transport (if any), and returns a
+structured result instead of throwing for reaction failures:
+
+| Inputs | Contract |
+| --- | --- |
+| `event` | An instance of an event class. Sensitive-data filtering is application work, not bus work. |
+| `options.waitForHandlers` | Selected from call options, then module `publish` defaults, then `true`. `false` schedules work in the background and skips timeout bounds. |
+| `options.timeoutMs` | Selected in the same order; omitted means unbounded. Positive finite values are floored to whole milliseconds; non-positive or non-finite values disable the bound. Ignored when `waitForHandlers` is `false`. |
+| `options.signal` | Per-call `AbortSignal`. An already-aborted signal skips work that has not started; aborting mid-wait settles the caller's wait without killing the underlying work. |
+
+| `result.status` | Meaning |
+| --- | --- |
+| `settled` | `outcomes` holds one observation per selected local handler and outbound transport channel. This does **not** mean every reaction succeeded - inspect each outcome. |
+| `no-recipients` | No local handler matched and no transport is configured; `outcomes` is empty. |
+| `rejected` | The lifecycle refused publication: `reason` is `'stopping'`, `'stopped'`, or `'failed'`. |
+| `background` | Work was scheduled with `waitForHandlers: false`; `result.completion` is a promise resolving to the eventual settlement. |
+
+Each `EventDeliveryOutcome` pairs a `target` with a status. Handler targets
+carry `kind: 'handler'` plus `index`, `moduleName`, `targetName`, and
+`methodName`; that `index` is a zero-based position within this publication,
+not a persistent ID. Transport targets carry `kind: 'transport'` plus the
+`channel`. Outcome statuses are `succeeded`, `failed` (with `reason:
+'handler' | 'transport' | 'not-callable'`), `timed-out` (with `timeoutMs`),
+and `cancelled` (with `started: boolean`). The array lists local handlers in
+discovery order first, then transport channels; it is **not** completion
+order and does not imply serialized execution.
+
+Failure isolation is narrower than publish completion: a failing local
+listener is logged (without the raw error) and isolated so other matching
+listeners still run, and a local listener failure alone never rejects
+`publish()`. Discovery and payload-preparation errors, in contrast, reject the
+promise. A `timed-out` or `cancelled` outcome is the caller's observation
+only - the started handler keeps running and remains tracked by shutdown.
+
+### The Redis Pub/Sub transport
+
+`@fluojs/event-bus/redis` exports `RedisEventBusTransport`, an
+`EventBusTransport` adapter for cross-process fan-out. The transport
+implements three operations: `publish(channel, payload)` writes JSON to Redis
+Pub/Sub, `subscribe(channel, handler)` registers one local dispatcher per
+channel, and `close()` cleans the adapter up. You implement the same contract
+to integrate any other broker.
+
+```ts title="fragment: transport wiring (Redis is running on localhost:6379)"
+import { EventBusModule } from '@fluojs/event-bus';
+import { RedisEventBusTransport } from '@fluojs/event-bus/redis';
+import Redis from 'ioredis';
+
+const redisOptions = { host: 'localhost', port: 6379 };
+// Dedicated, separate clients: Redis puts a subscribed connection into
+// Pub/Sub mode, so the subscriber must not publish or run other commands.
+const publishClient = new Redis(redisOptions);
+const subscribeClient = new Redis(redisOptions);
+
+EventBusModule.forRoot({
+  transport: new RedisEventBusTransport({ publishClient, subscribeClient }),
+});
+```
+
+Ownership is explicit: both clients are **caller-owned**. The transport's
+`close()` unsubscribes the channels it registered and detaches its message
+listener but never disconnects either client; close them from your own
+lifecycle after event-bus teardown. If unsubscribe fails, the adapter still
+detaches the listener and retains the registered channels so a later `close()`
+retries the cleanup. Inbound messages are JSON-decoded and malformed JSON is
+dropped before handler dispatch - that parsing rule belongs to this adapter,
+not to arbitrary transport implementations.
+
+Redis Pub/Sub is a fan-out transport, not a durable queue. When several
+instances subscribe to the same channel, each sees the same fact, so handlers
+that mutate state or call external systems must be idempotent: carry a stable
+business key in the payload and make repeat deliveries converge. A transport
+`succeeded` outcome means only that Redis accepted the publication - it says
+nothing about remote subscribers, and an adapter success with zero subscribers
+is still a transport success, never `no-recipients`.
+
+### Shutdown drain
+
+During `app.close()`, the bus stops accepting new publications, drains
+in-flight awaited and background publish work plus inbound transport work, and
+then closes the transport. Inbound transport callbacks that arrive after
+shutdown begins are ignored. The drain rechecks live work under one absolute
+deadline - `EventBusModule.forRoot({ shutdown: { drainTimeoutMs } })`, default
+`5000`ms. If work is still stuck when the bound expires, the bus records a
+degraded status diagnostic, logs a warning, and lets application close
+continue instead of hanging forever. Background `completion` promises can
+still remain pending after bounded shutdown and be lost at process exit.
+
+## Composition with neighboring packages
+
+**With `@fluojs/cqrs`.** `CqrsModule.forRoot(...)` imports
+`EventBusModule.forRoot(...)` itself and delegates the final step of
+`CqrsEventBusService.publish(...)` to `EventBusService.publish(...)`. The
+delegated publication receives the **original** event after CQRS event
+handlers and sagas have run on their isolated copies, so `@OnEvent`
+subscribers observe the caller-owned payload. Application code does not wire
+this integration; the only first-party integration surface is the
+`@fluojs/event-bus/integration` subpath (`EVENT_BUS_SHUTDOWN_COORDINATOR`,
+`EventBusShutdownCoordinator`), which owning orchestrators use to cap the bus
+drain at their own deadline.
+
+**With `@fluojs/queue`.** Keep `@OnEvent` handlers small and bounded. When a
+reaction is slow, retryable, or needs dead-letter handling, enqueue a durable
+job from the handler instead of doing the work inline:
+
+```ts title="fragment: event handler handing off to a durable queue"
+// Preceding setup: EventBusModule.forRoot() registered, OrderPlacedEvent
+// published somewhere, a QueueModule registration present, and an
+// application-owned claim store injected as `this.reactions`.
+import { OnEvent } from '@fluojs/event-bus';
+import { getQueueToken, type Queue } from '@fluojs/queue';
+
+class GenerateInvoiceJob {
+  constructor(public readonly orderId: string) {}
+}
+
+export class BillingEventsHandler {
+  constructor(
+    private readonly queue: Queue, // resolved from getQueueToken()
+    private readonly reactions: ReactionStore, // application-owned claim store
+  ) {}
+
+  @OnEvent(OrderPlacedEvent)
+  async enqueueInvoice(event: OrderPlacedEvent): Promise<void> {
+    const handoffKey = `${event.orderId}:invoice`;
+    if (!(await this.reactions.claimPending(handoffKey))) return;
+    try {
+      await this.queue.enqueue(new GenerateInvoiceJob(event.orderId));
+      await this.reactions.markEnqueued(handoffKey);
+    } catch (error) {
+      await this.reactions.releasePending(handoffKey);
+      throw error;
+    }
+  }
+}
+```
+
+The `reactions` claim store is application code, not an API of either
+package: it exists because the bus neither persists events nor deduplicates
+redeliveries. Claiming before enqueue and releasing on failure makes a
+duplicate event retry safely. See the [queue guide](/docs/packages/queue) for
+the enqueue contract.
+
+**With DI scopes.** Handler discovery is singleton-only by design: a
+subscription model tied to request scopes would silently drop events published
+outside that request. Handlers that need per-request state should resolve it
+from a request scope inside the handler body.
+
+## Defaults, ownership, and lifecycle
+
+| Concern | Default | Owner |
+| --- | --- | --- |
+| Module visibility | `global: true` | `EventBusModule.forRoot({ global })` |
+| `waitForHandlers` | `true` | Call options, then `publish` defaults |
+| Per-call timeout | None | `timeoutMs` (positive finite) |
+| Shutdown drain | `5000`ms | `shutdown.drainTimeoutMs` |
+| Transport clients (Redis) | Caller-owned | The adapter closes subscriptions only; you close the clients |
+| Persistence / retry / ack | None | Move durable work to `@fluojs/queue` |
+
+The bus owns no external resource: it observes its own lifecycle, and
+`createEventBusPlatformStatusSnapshot(...)` reports that lifecycle state
+(`created`, `discovering`, `ready`, `stopping`, `stopped`, `failed`) for
+health surfaces without exposing handler descriptors.
+
+## Failures, limits, and common mistakes
+
+- **"My handler didn't run."** The class was not registered as a singleton
+  provider in a module the bus can see, the method is private or static, or
+  the published value is not an instance of the decorated class. A publish on
+  an unregistered event with no transport returns `no-recipients` - it does
+  not throw. Verify required handler wiring in application tests; a settled
+  result cannot prove a missing handler was configured.
+- **"`publish()` resolved but my reaction failed."** Expected. Listener
+  failures are logged and isolated; the outcome array is the observation
+  surface, and a `succeeded` transport outcome proves publication, not remote
+  processing.
+- **"The handler ran but the test ended first."** With
+  `waitForHandlers: false`, work continues in the background; await
+  `result.completion` or budget for the shutdown drain.
+- **Cloning surprise.** Each handler receives an isolated clone; keep event
+  payload state cloneable and enumerable. Non-cloneable resources (sockets,
+  functions) should be represented by IDs before publishing.
+- **No cross-process semantics without a transport.** Local handlers run in
+  the publishing process only. Fan-out, idempotency, and delivery guarantees
+  beyond "Redis accepted the write" are yours to design.
+
+## Testing
+
+Test the publish seam with real handlers and the real bus - mocking
+`EventBusService` would only prove that your mock was called. Compile the
+module with `Test.createTestingModule`, publish, and assert on the structured
+result:
+
+```ts title="fragment: result-driven test (module compiled via Test.createTestingModule)"
+const result = await events.publish(new UserSignedUpEvent('dev@fluo.dev'));
+
+expect(result.status).toBe('settled');
+expect(result.outcomes).toHaveLength(1);
+expect(result.outcomes[0]).toMatchObject({
+  status: 'succeeded',
+  target: { kind: 'handler', targetName: 'NotificationService', methodName: 'sendWelcomeEmail' },
+});
+```
+
+For time-bounded behavior, subscribe before triggering and bound the wait with
+deferred promises rather than sleeps - the [async-work
+fixtures](https://github.com/fluojs/fluo/tree/main/tooling/docs/fixtures/package-guides/async-work)
+demonstrate timeout, background completion, and post-shutdown rejection with
+no fixed delays.
+
+## Related reading
+
+- [`@fluojs/cqrs`](/docs/packages/cqrs) - commands, queries, and sagas built on top of this bus.
+- [`@fluojs/queue`](/docs/packages/queue) - durable, retryable background jobs for reactions that must not be lost.
+- [`@fluojs/redis`](/docs/packages/redis) - lifecycle-managed Redis clients you can hand to `RedisEventBusTransport`.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - provider visibility and the singleton discovery model this bus builds on.
+- [`@fluojs/event-bus` package README](https://github.com/fluojs/fluo/blob/main/packages/event-bus/README.md) - the owning API reference and migration notes.

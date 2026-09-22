@@ -16,7 +16,7 @@ TypeScript의 함수, 클래스, Promise와 기본 HTTP 개념을 알고 있다�
 
 독자가 만드는 앱은 CLI로 생성한 fluo-blog다. 애플리케이션의 파일 경로와 Fluo 저장소의 구현 근거 경로를 구분한다. 예제 블록이 완전한 파일인지, 기존 코드에 적용할 부분 구현인지 본문에서 밝힌다. 패키지의 실제 동작은 현재 README와 행동 계약을 기준으로 한다.
 
-[짧은 HTTP 실습](../../apps/docs/content/docs/tutorial/index.ko.mdx)과 [실행 가능한 초기 체크포인트](../../examples/fluo-blog/README.ko.md)는 첫 HTTP·DI·검증 흐름을 비교할 때 쓸 수 있다. 이 자료가 이 권의 데이터베이스, 인증, 구독 기능까지 구현한 완성 앱을 제공하는 것은 아니다.
+[짧은 HTTP 실습](../../apps/docs/content/docs/tutorial/index.mdx)과 [실행 가능한 초기 체크포인트](../../examples/fluo-blog/README.ko.md)는 첫 HTTP·DI·검증 흐름을 비교할 때 쓸 수 있다. 이 자료가 이 권의 데이터베이스, 인증, 구독 기능까지 구현한 완성 앱을 제공하는 것은 아니다.
 
 ## 권의 진행
 

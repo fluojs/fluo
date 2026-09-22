@@ -1,4 +1,4 @@
 import { source } from '@/lib/source';
-import { createFromSource } from 'fumadocs-core/search/server';
+import { flexsearchFromSource } from 'fumadocs-core/search/flexsearch';
 
-export const { GET } = createFromSource(source);
+export const { GET } = flexsearchFromSource(source);

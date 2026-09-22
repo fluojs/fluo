@@ -9,9 +9,7 @@ export const nextjsRecipePaths = [
   'book/03-internals/ch15-nextjs-hosting.md',
   'book/03-internals/ch15-nextjs-hosting.ko.md',
   'apps/docs/content/docs/guides/runtime-adapters.mdx',
-  'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   'apps/docs/content/docs/packages/http-platform.mdx',
-  'apps/docs/content/docs/packages/http-platform.ko.mdx',
 ];
 
 const root = '@fluojs/platform-nextjs';

@@ -1,0 +1,113 @@
+{
+  "@fluojs/jwt": {
+    "page": "apps/docs/content/docs/packages/jwt.mdx",
+    "sources": [
+      "packages/jwt/README.md",
+      "packages/jwt/src/index.ts",
+      "packages/jwt/src/module.ts",
+      "packages/jwt/src/service.ts",
+      "packages/jwt/src/types.ts",
+      "packages/jwt/src/errors.ts",
+      "packages/jwt/src/signing/signer.ts",
+      "packages/jwt/src/signing/verifier.ts",
+      "packages/jwt/src/signing/jwks.ts",
+      "packages/jwt/src/refresh/refresh-token.ts",
+      "packages/jwt/src/module-async-visibility.test.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/security/jwt-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/jwt + @fluojs/core DI: JwtModule.forRoot registers DefaultJwtSigner/DefaultJwtVerifier/JwtService; TokenService consumes JwtService via @Inject class tokens and the guide example compiles and runs as jwt-guide-app.ts",
+      "sign/verify round trip through registered providers: principal normalization unifies scope string and scopes array, roles filtered, sub required; audience/issuer per-call policy layered on module defaults",
+      "per-call expiresIn overrides a pre-existing payload exp; expired and audience-mismatched tokens fail with JwtExpiredTokenError/JwtInvalidTokenError; decode() returns null for malformed input and is documented as unverified inspection only"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/security --maxWorkers=1 — exit 0, 4 files / 27 tests passed (Node v24.20.0)",
+      "pnpm exec tsc -p tsconfig.tools.json --noEmit — 0 errors under tooling/docs/fixtures/package-guides/security (pre-existing errors exist in other workstreams' fixture dirs)"
+    ],
+    "unexecuted": [
+      "Remote JWKS fetches against a network identity provider (documented from packages/jwt/src/signing/jwks.ts defaults and README; fixture signs/verifies with static keys)",
+      "forRootAsync end to end with @fluojs/config (documented from src/module.ts and module-async-visibility.test.ts; fixture uses the synchronous path)",
+      "RefreshTokenService rotation against a durable application-owned store (fixture uses the documented development-only 'memory' store)"
+    ]
+  },
+  "@fluojs/passport": {
+    "page": "apps/docs/content/docs/packages/passport.mdx",
+    "sources": [
+      "packages/passport/README.md",
+      "packages/passport/src/index.ts",
+      "packages/passport/src/module.ts",
+      "packages/passport/src/guard.ts",
+      "packages/passport/src/decorators.ts",
+      "packages/passport/src/metadata.ts",
+      "packages/passport/src/scope.ts",
+      "packages/passport/src/types.ts",
+      "packages/passport/src/errors.ts",
+      "packages/passport/src/bearer/bearer-jwt.ts",
+      "packages/passport/src/cookie/cookie-auth.ts",
+      "packages/passport/src/cookie/cookie-auth-module.ts",
+      "packages/passport/src/cookie/cookie-manager.ts",
+      "packages/passport/src/refresh/refresh-token.ts",
+      "packages/passport/src/adapters/passport-js.ts",
+      "packages/passport/src/account/account-linking.ts",
+      "packages/passport/src/cookie/cookie-auth-module.integration.test.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/security/passport-guide.test.ts",
+      "tooling/docs/fixtures/package-guides/security/cookie-guide.test.ts",
+      "tooling/docs/fixtures/package-guides/security/security-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/passport + @fluojs/jwt: bearer preset wiring (JwtModule.forRoot + PassportModule.forRoot + providers [BearerJwtStrategy]) admits verified tokens, returns 401 with WWW-Authenticate: Bearer for anonymous, and maps expired tokens to 401 with WWW-Authenticate: Bearer error=\"invalid_token\"; scope misses return the canonical 403 envelope",
+      "@fluojs/passport custom AuthStrategy: ApiKeyStrategy registered as { name: 'api-key', token: ApiKeyStrategy } authenticates through the same AuthGuard; an unregistered strategy name surfaces as 500 INTERNAL_SERVER_ERROR, not 401",
+      "@fluojs/passport cookie preset + @fluojs/jwt (global): CookieAuthModule.forRoot owns the single registry (cookie default + bearer registration), CookieManager writes Path=/ Secure HttpOnly SameSite=Strict cookies and clears both on logout; missing cookies with requireAccessToken:false resolve to { authenticated: false } for @UseOptionalAuth routes while a mandatory @UseAuth route still rejects, and malformed present cookies always fail",
+      "@fluojs/passport refresh strategy + @fluojs/jwt refresh service: RefreshTokenModule.forRoot() aliases the JWT-owned RefreshTokenService; POST /auth/refresh rotates a presented token and replay of the consumed token yields 401 and revokes the family (successor token also 401)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/security --maxWorkers=1 — exit 0, 4 files / 27 tests passed (Node v24.20.0)",
+      "pnpm exec tsc -p tsconfig.tools.json --noEmit — 0 errors under tooling/docs/fixtures/package-guides/security (pre-existing errors exist in other workstreams' fixture dirs)"
+    ],
+    "unexecuted": [
+      "Passport.js bridge against a real passport-* strategy (documented from src/adapters/passport-js.ts and README; no third-party strategy installed or run)",
+      "Account-linking flows (createConservativeAccountLinkPolicy / resolveAccountLinking documented from src/account/account-linking.ts; not fixture-executed)",
+      "createPassportPlatformStatusSnapshot / createPassportPlatformDiagnosticIssues (documented from src/status.ts; not fixture-executed)"
+    ]
+  },
+  "@fluojs/throttler": {
+    "page": "apps/docs/content/docs/packages/throttler.mdx",
+    "sources": [
+      "packages/throttler/README.md",
+      "packages/throttler/src/index.ts",
+      "packages/throttler/src/module.ts",
+      "packages/throttler/src/guard.ts",
+      "packages/throttler/src/decorators.ts",
+      "packages/throttler/src/store.ts",
+      "packages/throttler/src/redis-store.ts",
+      "packages/throttler/src/validation.ts",
+      "packages/throttler/src/tokens.ts",
+      "packages/throttler/src/types.ts",
+      "packages/throttler/src/status.ts",
+      "packages/throttler/src/module.test.ts",
+      "packages/throttler/src/redis-store.test.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/security/security-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/throttler + @fluojs/http: @UseGuards(ThrottlerGuard) with @Throttle({ ttl: 60, limit: 3 }) returns 429 with a Retry-After header (>= 1) once the route budget is spent, through Test.createApp without a port",
+      "@fluojs/throttler keyGenerator: API-key header generates per-client buckets — client-b keeps its own budget after client-a is limited, and a request with no key-generator identity throws (500) instead of collapsing into a shared bucket",
+      "@fluojs/throttler + @fluojs/passport + @fluojs/jwt: credential routes (login, refresh) are throttled while @SkipThrottle() exempts the providers route even with exhausted buckets",
+      "@fluojs/throttler + Redis structural client: RedisThrottlerStore.consume parses the Lua result [count, resetAt, ttlMsLeft] into { count, resetAt, retryAfterMs } and sends the expected EVAL arguments (contract-level, not a live Redis server)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/security --maxWorkers=1 — exit 0, 4 files / 27 tests passed (Node v24.20.0)",
+      "pnpm exec tsc -p tsconfig.tools.json --noEmit — 0 errors under tooling/docs/fixtures/package-guides/security (pre-existing errors exist in other workstreams' fixture dirs)"
+    ],
+    "unexecuted": [
+      "Live Redis connectivity and cross-process window sharing (fixture verifies the structural RedisThrottlerClient contract and Lua-script arguments; package tests use the same mock level)",
+      "createThrottlerPlatformStatusSnapshot / createThrottlerPlatformDiagnosticIssues (documented from src/status.ts; not fixture-executed)",
+      "Non-HTTP transports (guard is HTTP-only by contract; no fixture attempts WebSocket/GraphQL enforcement)"
+    ]
+  }
+}

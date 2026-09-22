@@ -1,6 +1,6 @@
 # fluo Docs Hub
 
-This directory contains governed repository documentation for fluo. The official website source now lives in `apps/docs` and uses Fumadocs to publish a bilingual English/Korean documentation surface.
+This directory contains governed repository documentation for fluo. The official website source now lives in `apps/docs` and uses Fumadocs to publish an English-only documentation surface.
 
 Docs is the normative framework contract layer for AI; the Book is the human product narrative derived from those same contracts. The [documentation authority policy](./contracts/documentation-authority.md) defines ownership, concise Markdown contract fields, conflict resolution, and change order. Package READMEs are delegated package API owners within this layer. They retain installation, public imports, essential usage, defaults, and guarantee summaries and link shared contracts without duplicating API bodies into `docs/`.
 
@@ -65,8 +65,8 @@ The website should link to these canonical files when a page summarizes governed
 
 Start with the root [`CONTRIBUTING.md`](../CONTRIBUTING.md) for local setup, verification commands, and the PR process. Documentation changes should also follow these repository-specific checks:
 
-- Keep English and Korean counterparts synchronized for changed docs pages.
-- Run `pnpm docs:sync-check` for website page and navigation file pairs. This checks counterpart existence, not translation meaning.
+- Keep English and Korean counterparts synchronized for repository docs and Books. The website is English-only; redirect old localized URLs to `/docs`.
+- Run `pnpm docs:sync-check` to reject translated website files. Repository translation review remains separate.
 - Run `pnpm verify:docs` when changing the website source in `apps/docs` or docs content consumed by the website.
 - For tutorial changes, run the checkpoint tests and follow the changed lesson against its starting state. A passing final example alone does not prove that intermediate instructions work.
 - Follow Docs contract establishment -> evidence verification -> Korean Book application -> English alignment -> handoff. Initial authoring reviews the entire Korean edition before translation; existing Book corrections finalize and freeze the whole affected Korean set, including dependent chapters, before English translation.

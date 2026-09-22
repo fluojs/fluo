@@ -1,0 +1,397 @@
+---
+title: Controllers
+description: How fluo controllers turn HTTP requests into application operations with explicit DTO binding.
+---
+
+Controllers are the transport boundary of a fluo application. A controller declares which URLs the application answers, how request data is bound into typed objects, and what the response looks like. Everything below that boundary - services, repositories, transactions - stays free of HTTP concepts.
+
+fluo controllers will feel familiar if you have used NestJS, but the mechanics are deliberately different: fluo uses TC39 standard decorators with explicit DTO binding, not parameter decorators or `emitDecoratorMetadata` reflection. There is no `@Body()`, `@Param()`, or `@Query()` argument decorator to sprinkle on handler parameters. Instead, each handler declares one DTO class, and each DTO field names the request source it reads from.
+
+This page explains the model and shows a complete runnable application. Fragments later in the page are scoped excerpts; the first example is the whole app.
+
+## Beginner checkpoint
+
+If you are following the beginner path, continue from
+[Modules](/docs/overview/modules) in the same generated application.
+This checkpoint adds only `GET /posts`; the extended reference example farther
+down this page is not a second application you need to build.
+
+Create `src/posts/posts.controller.ts`:
+
+<CheckpointCode stage="02-controllers" file="posts.controller.ts" />
+
+Replace `src/posts/posts.module.ts` with:
+
+<CheckpointCode stage="02-controllers" file="posts.module.ts" />
+
+Keep the existing `PostsModule` import in your generated root and leave
+`src/main.ts` unchanged. Run `pnpm test`, then start or restart `pnpm dev`.
+
+```bash
+curl -i http://localhost:3000/posts
+```
+
+Expect `200` and `[{"id":"1","title":"Hello Fluo","content":"First post"}]`.
+The controller prefix `/posts` and `@Get()` combine into this route; there is no
+separate Fastify route registration.
+
+Continue to [Providers](/docs/overview/providers). The remaining sections are
+reference material for deeper controller behavior.
+
+## Reference example prerequisites
+
+The runnable example assumes a generated fluo application and a supported toolchain:
+
+- Node.js `>=24.0.0 <27` with pnpm installed.
+- A project scaffolded with `fluo new my-app --package-manager pnpm`, which produces the Node.js Fastify starter the bootstrap below matches (replace `my-app/src` contents as shown).
+- `@fluojs/validation` installed in the app for the DTO validation decorator (for example `pnpm add @fluojs/validation`). `@fluojs/core`, `@fluojs/http`, `@fluojs/runtime`, `@fluojs/platform-fastify`, and `@fluojs/platform-nodejs` come with the scaffold.
+
+## The role of a controller
+
+A fluo controller answers three questions for one group of routes:
+
+- **Where** - the path prefix and per-route sub-paths.
+- **What comes in** - DTO classes that bind path, body, query, header, and cookie data.
+- **What goes out** - the handler return value, which the pipeline serializes to JSON.
+
+A controller owns transport concerns only. Lookups, invariants, and persistence belong in services that the controller resolves through dependency injection (see [Dependency injection](/docs/fundamentals/dependency-injection)).
+
+## A small working example
+
+This application is complete and runnable. It defines one controller with a list route and a create route, registers it in the root module, and starts a Fastify listener.
+
+```ts title="src/posts.controller.ts"
+import { Controller, FromBody, FromPath, Get, NotFoundException, Post, RequestDto } from '@fluojs/http';
+import { MinLength } from '@fluojs/validation';
+
+export interface PostRecord {
+  readonly id: string;
+  readonly title: string;
+  readonly content: string;
+}
+
+class FindPostParamsDto {
+  @FromPath('id')
+  id = '';
+}
+
+class CreatePostDto {
+  @FromBody()
+  @MinLength(3)
+  title = '';
+
+  @FromBody()
+  content = '';
+}
+
+@Controller('/posts')
+export class PostsController {
+  private readonly posts: PostRecord[] = [
+    { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+  ];
+
+  @Get()
+  list(): readonly PostRecord[] {
+    return [...this.posts];
+  }
+
+  @Get('/:id')
+  @RequestDto(FindPostParamsDto)
+  get(input: FindPostParamsDto): PostRecord {
+    const post = this.posts.find((candidate) => candidate.id === input.id);
+    if (!post) {
+      throw new NotFoundException(`Post ${input.id} was not found.`);
+    }
+    return post;
+  }
+
+  @Post()
+  @RequestDto(CreatePostDto)
+  create(input: CreatePostDto): PostRecord {
+    const post: PostRecord = { id: '2', title: input.title, content: input.content };
+    this.posts.push(post);
+    return post;
+  }
+}
+```
+
+Every decorated DTO field is initialized (`id = ''`, not `id!: string`). Fluo's Babel decorator build configuration rejects a definite assignment assertion on a decorated class field, so initialize decorated fields or declare them optional with the HTTP `@Optional()` decorator. The example names its record type `PostRecord` rather than `Post` because `Post` is already a route decorator imported from `@fluojs/http`.
+
+Register the controller and start the application:
+
+```ts title="src/app.ts"
+import { Module } from '@fluojs/core';
+import { HealthModule } from '@fluojs/runtime';
+
+import { PostsController } from './posts.controller';
+
+@Module({
+  imports: [HealthModule.forRoot()],
+  controllers: [PostsController],
+})
+export class AppModule {}
+```
+
+```ts title="src/main.ts"
+import { FluoFactory } from '@fluojs/runtime';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
+
+import { AppModule } from './app';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: FastifyHttpApplicationAdapter.create({
+    host: '127.0.0.1',
+    port: Number(process.env.PORT ?? '3000'),
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
+```
+
+`FluoFactory.create(AppModule, { adapter })` followed by `await app.listen()` is the canonical bootstrap. The module describes the application; `main.ts` starts its listener. Keeping them separate lets request tests import `AppModule` without opening a socket.
+
+With the server running:
+
+```bash
+curl -i http://127.0.0.1:3000/posts
+curl -i http://127.0.0.1:3000/posts/1
+curl -i -X POST http://127.0.0.1:3000/posts \
+  -H 'content-type: application/json' \
+  -d '{"title":"Second post","content":"Bound from the body."}'
+```
+
+The first request returns `200` with the array; the second returns `200` with the requested post; a request for an unknown ID returns `404` through the `NotFoundException` in the controller. The third returns `201` - `POST` routes default to `201` for created representations - with an object built from the bound body fields.
+
+## How the mechanics work
+
+### Decorators record metadata; the module graph turns it into routes
+
+`@Controller('/posts')` and `@Get()` are standard TC39 decorators that record route metadata through fluo-owned metadata stores. No `reflect-metadata` polyfill and no compiler-emitted design types are involved; you do not enable `experimentalDecorators` or `emitDecoratorMetadata`. At bootstrap, `@fluojs/runtime` compiles the module graph, collects controller metadata from registered controllers, and hands the resulting route table to the dispatcher of the selected platform adapter.
+
+Two consequences matter in practice:
+
+- A controller class on disk does nothing until it appears in a module's `controllers` array.
+- Route metadata is read from the class, not from the handler's TypeScript types. The `input` parameter type of `get(input: FindPostParamsDto)` helps your editor; it is `@RequestDto(FindPostParamsDto)` that tells the pipeline to bind the argument.
+
+### One DTO per handler, explicit sources per field
+
+`@RequestDto(DtoClass)` on a route method declares the handler's input contract. Fields inside the DTO name their source:
+
+| Decorator | Source |
+| --- | --- |
+| `@FromPath('id')` | Named path parameter |
+| `@FromBody()` or `@FromBody('alias')` | Body field, optionally under a transport alias |
+| `@FromQuery('page')` | Query parameter |
+| `@FromHeader('x-request-id')` | Request header |
+| `@FromCookie('session')` | Request cookie |
+| `@FromFiles('attachments')` | Multipart file collection |
+
+Binding is strict by default. A body field the DTO does not declare fails the request with `UNKNOWN_FIELD`; a declared field missing from the request fails with `MISSING_FIELD`; a non-object body fails with `INVALID_BODY`. All three produce HTTP `400`. The strictness is per-DTO configurable with `@InputPolicy({ unknownFields: 'strip' })` when an endpoint genuinely wants to ignore extra keys - the default rejects them so typos and smuggled fields cannot pass silently.
+
+Validation runs after binding. Decorators from `@fluojs/validation` such as `@IsString()` and `@MinLength(3)` describe rules for the bound values, and violations also become HTTP `400`. Binding and validation are two steps: binding decides where a value comes from, validation decides whether the value is acceptable.
+
+### Handler signatures and the request context
+
+After DTO binding the dispatcher calls the handler with the bound DTO. A handler may additionally accept a second argument, the `RequestContext`:
+
+```ts title="fragment: reading the request context"
+import { Controller, Get, type RequestContext } from '@fluojs/http';
+
+@Controller('/session')
+export class SessionController {
+  @Get('/whoami')
+  whoami(_input: undefined, context: RequestContext) {
+    return {
+      requestId: context.requestId,
+      principal: context.principal?.subject ?? null,
+    };
+  }
+}
+```
+
+`RequestContext` exposes `request`, `response`, an optional `requestId`, the authenticated `principal`, a per-request `metadata` record, and the request-scoped DI `container`. It is the one place where transport and request state meet; pass it explicitly rather than reaching for globals.
+
+### Route path rules
+
+Route decorators accept literal segments and full-segment path parameters: `/users`, `/:id`, `/users/:userId/posts/:postId`. Trailing and duplicate slashes are normalized, so `//users///:id/` resolves to `/users/:id`. Wildcards, regex fragments, and mixed-segment patterns (`*`, `/(.*)`, `user-:id`, `:id.json`) are not supported in controller routes; wildcard matching exists only for middleware through `forRoutes('/users/*')`. Verb factories (`@Get()`, `@Post()`, `@Put()`, `@Patch()`, `@Delete()`, `@Options()`, `@Head()`, `@All()`) accept an omitted path meaning the controller prefix itself, so `@Controller('cats')` with `@Get()` dispatches `GET /cats`. An explicit `'/'` never escapes the prefix.
+
+Duplicate detection rejects two routes that would claim the same method and path with a conflict error at registration, which surfaces during bootstrap rather than as a runtime surprise.
+
+## Integrating controllers into an application
+
+A growing application groups controllers into feature modules. Each feature module registers its own controllers and providers; the root module imports features:
+
+```ts title="fragment: feature module and root composition"
+import { Module } from '@fluojs/core';
+
+import { PostsController } from './posts.controller';
+import { PostsService } from './posts.service';
+
+@Module({
+  controllers: [PostsController],
+  providers: [PostsService],
+})
+export class PostsModule {}
+
+@Module({
+  imports: [HealthModule.forRoot(), PostsModule, CommentsModule],
+})
+export class AppModule {}
+```
+
+Registering `PostsController` directly in `AppModule` while it is also in `PostsModule` is a mistake - pick one owner. The controller resolves `PostsService` through DI; because the service is not exported, it stays private to the feature.
+
+Response status, headers, redirects, and content type are declared on the route with execution decorators: `@HttpCode(201)`, `@Header('cache-control', 'no-store')`, `@Redirect('/posts')`, and `@Produces('application/json', 'text/plain')`. Without an explicit `@HttpCode`, the dispatcher picks the default success status by method: `200` for `GET`, `PUT`, and `PATCH`; `201` for `POST`; and `204` for `DELETE` and `OPTIONS` when the handler returns nothing.
+
+## Advanced uses
+
+### Guards
+
+A guard runs after middleware and before DTO binding. It resolves authorization and precondition decisions from the request context:
+
+```ts
+import {
+  Controller,
+  Get,
+  UseGuards,
+  type Guard,
+  type GuardContext,
+} from '@fluojs/http';
+
+class AdminGuard implements Guard {
+  canActivate(context: GuardContext): void | boolean {
+    if (context.requestContext.principal?.roles.includes('admin')) {
+      return true;
+    }
+    return false;
+  }
+}
+
+@Controller('/admin')
+@UseGuards(AdminGuard)
+export class AdminController {
+  @Get('/stats')
+  stats() {
+    return { requests: 42 };
+  }
+}
+```
+
+Returning `false` (or throwing `ForbiddenException`) stops the pipeline with a `403` response. A guard runs before DTO binding, so it never receives the bound handler argument; it reads the request context (`requestContext.request`, `principal`, headers) rather than future handler input. `@UseGuards(...)` accepts guard class tokens, which the dispatcher resolves through the request-scope container, or already-constructed guard objects.
+
+### Interceptors
+
+An interceptor wraps the handler and everything after it:
+
+```ts
+import { Controller, Get, UseInterceptors, type CallHandler, type Interceptor, type InterceptorContext } from '@fluojs/http';
+
+class TimingInterceptor implements Interceptor {
+  async intercept(context: InterceptorContext, next: CallHandler) {
+    const startedAt = performance.now();
+    const result = await next.handle();
+    context.requestContext.metadata.handlerMs = performance.now() - startedAt;
+    return result;
+  }
+}
+
+@Controller('/reports')
+@UseInterceptors(TimingInterceptor)
+export class ReportController {
+  @Get('/')
+  report() {
+    return { ok: true };
+  }
+}
+```
+
+`next.handle()` continues into the next interceptor and the handler. The pipeline order is: transport parsing, middleware, guards, interceptor-before code, then binding and validation, then the handler, then interceptor-after code. Interceptor-before code sees the original parsed input, not the bound DTO; interceptor-after code receives the handler result. That is why the timing interceptor above records its duration in `context.requestContext.metadata` instead of trying to read a bound input.
+
+### Custom HTTP methods and server-sent events
+
+Standard verbs cover most APIs. For extension methods, `@Route(method, path)` accepts a non-empty token such as `purge` or `PROPFIND` and canonicalizes it to uppercase; `ALL` is reserved for the framework-owned `@All(...)` wildcard. `@Query(path)` declares an RFC `QUERY` route, which is a method, not query-string binding. `@Sse(path)` registers a GET route that streams `text/event-stream` from an async iterable handler.
+
+```ts
+import { Controller, Query, Route } from '@fluojs/http';
+
+@Controller('/operations')
+export class OperationsController {
+  @Query('/search')
+  search() {
+    return { method: 'QUERY' };
+  }
+
+  @Route('purge', '/cache')
+  purgeCache() {
+    return { method: 'PURGE' };
+  }
+}
+```
+
+## Limitations and errors
+
+- **No parameter decorators.** Handler input always flows through `@RequestDto` DTOs. This is deliberate: binding stays explicit, and the framework never reads emitted type metadata.
+- **No wildcard or regex routes.** Path support is literals plus full-segment parameters. Catch-all behavior is deferred by contract; middleware owns wildcard matching.
+- **Strict input by default.** `UNKNOWN_FIELD`, `MISSING_FIELD`, and `INVALID_BODY` are `400`s you will see in tests when clients send unexpected shapes. Configure `@InputPolicy` per DTO or route when the default is too strict.
+- **Thrown `HttpException` subclasses become responses.** `throw new NotFoundException('Post 999 was not found.')` in a handler or service produces the canonical JSON envelope:
+
+```json
+{"error":{"code":"NOT_FOUND","message":"Post 999 was not found.","status":404}}
+```
+
+  Available exception classes include `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `NotFoundException`, `ConflictException`, and `TooManyRequestsException`. The framework may add `error.requestId` when a request ID exists. Any other thrown value becomes a `500` without leaking its message.
+- **Route misses are `404`s** produced by the dispatcher, not by your code.
+- **Decorated DTO fields must be initialized or optional.** A definite assignment assertion (`title!: string`) does not compile under Fluo's decorator build configuration.
+
+## Testing controllers
+
+Request-level tests exercise the real module graph and pipeline without opening a socket. `Test.createApp` bootstraps the application exactly like production and dispatches virtual requests:
+
+```ts title="test/posts.controller.test.ts"
+import { Test } from '@fluojs/testing';
+import { describe, expect, it } from 'vitest';
+
+import { AppModule } from '../src/app';
+
+describe('PostsController', () => {
+  it('answers the list route', async () => {
+    const app = await Test.createApp({ rootModule: AppModule });
+    try {
+      const response = await app.request('GET', '/posts').send();
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([
+        { id: '1', title: 'Hello, Fluo!', content: 'My first post.' },
+      ]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('binds the path parameter and returns 404 for unknown posts', async () => {
+    const app = await Test.createApp({ rootModule: AppModule });
+    try {
+      const missing = await app.request('GET', '/posts/999').send();
+
+      expect(missing.status).toBe(404);
+      expect(missing.body).toMatchObject({
+        error: { code: 'NOT_FOUND', status: 404 },
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+```
+
+`app.request(...).send()` runs the same middleware, guard, binding, and error pipeline as a real request. Close the app in a `finally` block so assertion failures do not leak runtime resources. The [docs foundation fixtures](https://github.com/fluojs/fluo/tree/main/tooling/docs/fixtures/docs-foundation) contain a passing version of these tests together with the controller above.
+
+## Related reading
+
+- [Your first route](/docs/tutorial/first-route) - the tutorial checkpoint that builds a controller step by step.
+- [HTTP API guide](/docs/guides/http-api) - routes, adapters, and publishing API contracts.
+- [Validation & Serialization guide](/docs/guides/validation-serialization) - DTO validation rules in depth.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - how controllers receive services.
+- [`@fluojs/http` package README](https://github.com/fluojs/fluo/blob/main/packages/http/README.md) - the owning API reference for every decorator named here.

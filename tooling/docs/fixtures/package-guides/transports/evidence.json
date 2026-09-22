@@ -1,0 +1,108 @@
+{
+  "@fluojs/websockets": {
+    "page": "apps/docs/content/docs/packages/websockets.mdx",
+    "sources": [
+      "packages/websockets/README.md",
+      "packages/websockets/package.json",
+      "packages/websockets/src/index.ts",
+      "packages/websockets/src/decorators.ts",
+      "packages/websockets/src/types.ts",
+      "packages/websockets/src/metadata.ts",
+      "packages/websockets/src/node/node-module.ts",
+      "packages/websockets/src/node/node-service-token.ts",
+      "packages/websockets/src/node/node-types.ts",
+      "packages/websockets/src/node/node-service.ts",
+      "packages/websockets/src/public-surface.test.ts",
+      "packages/websockets/src/module.test.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/transports/websockets-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/websockets + @fluojs/websockets/node: root-authored @WebSocketGateway/@OnMessage gateway registered as providers; NodeWebSocketModule.forRoot() supplies upgrade handling, limits, heartbeat, and shutdown on the real Node HTTP adapter (FluoFactory.create + NodeHttpApplicationAdapter.create({ port: 0 }))",
+      "@fluojs/websockets + @fluojs/core DI: ChatGateway injects ChatAudit through constructor DI; handler args (payload, socket, request, socketId) expose the stable connection identity used for room joins",
+      "@fluojs/websockets rooms: PresenceService wraps WebSocketRoomService backed by the container-resolved NodeWebSocketGatewayLifecycleService; joinRoom/broadcastToRoom frames reach the connected client as { event, data }, and membership is released after app.close() completes disconnect cleanup",
+      "replies contract: default returns-ignored behavior with explicit socket.send pong, and opt-in replies.mode 'event-envelope' echoing a returned { event, data } envelope",
+      "upgrade guard: allow (true) completes a 101 handshake via raw socket probe; reject ({ status: 401, body }) answers before the handshake with 'Authentication required.'"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/transports --maxWorkers=1 — exit 0, websockets-guide.test.ts 4/4 passed (Node v24.20.0); full suite repeated 3x consecutively",
+      "pnpm exec tsc -p tooling/docs/fixtures/package-guides/transports/tsconfig.json --noEmit — exit 0, 0 errors for this workstream's files (see typecheck note in README)"
+    ],
+    "unexecuted": [
+      "@fluojs/websockets/bun, /deno, /cloudflare-workers runtime subpaths were not booted on native hosts here; documented from README, sources, and package tests (native-platform evidence belongs to the platform-guide workstream fixtures)",
+      "limits.maxPayloadBytes close code 1009 and buffer/overflow policies are cited from packages/websockets/src/node/node-service.ts behavior and its package tests, not re-run in this fixture",
+      "serverBacked dedicated listeners were not exercised here (documented from README and the package's server-backed scenario matrix)"
+    ]
+  },
+  "@fluojs/socket.io": {
+    "page": "apps/docs/content/docs/packages/socket-io.mdx",
+    "sources": [
+      "packages/socket.io/README.md",
+      "packages/socket.io/package.json",
+      "packages/socket.io/src/index.ts",
+      "packages/socket.io/src/module.ts",
+      "packages/socket.io/src/adapter.ts",
+      "packages/socket.io/src/tokens.ts",
+      "packages/socket.io/src/types.ts",
+      "packages/socket.io/src/config.internal.ts",
+      "packages/socket.io/src/shutdown.internal.ts",
+      "packages/socket.io/src/public-surface.test.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/transports/socket-io-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/socket.io + @fluojs/websockets: Socket.IO gateway authoring reuses @WebSocketGateway/@OnMessage from the root websockets barrel; gateway path '/chat' maps to the Socket.IO namespace while the Engine.IO path stays /socket.io/ (proven on the wire)",
+      "@fluojs/socket.io + @fluojs/core DI: ChatGateway injects SOCKETIO_ROOM_SERVICE (module exports the token globally); AnnouncementService broadcasts through the raw SOCKETIO_SERVER token to the '/chat' namespace room",
+      "acknowledgement contract: chat:join completes through the handler's ack callback; auth.message rejection is reported only through the event ACK as { error, data } and disconnects only when disconnect: true is set",
+      "auth.connection guard: rejects before connect handlers via the namespace middleware path; client observes connect_error { message: 'Authentication required.' }; a passing token connects normally",
+      "guard binding boundary: namespace attachments (and guards) are created from discovered gateways during onApplicationBootstrap — a module with options but no gateway binds no guard middleware (surfaced by the fixtures, documented in the guide)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/transports --maxWorkers=1 — exit 0, socket-io-guide.test.ts 3/3 passed (Node v24.20.0); full suite repeated 3x consecutively",
+      "pnpm exec tsc -p tooling/docs/fixtures/package-guides/transports/tsconfig.json --noEmit — exit 0, 0 errors for this workstream's files (see typecheck note in README)"
+    ],
+    "unexecuted": [
+      "Client role uses a fixture-local Engine.IO v4 wire client because socket.io-client does not resolve from tooling/ without a lead-owned manifest change; no evidence about socket.io-client itself is claimed",
+      "Bun path (@socket.io/bun-engine, static CORS shapes, mapped body/frame limits) documented from README/sources only",
+      "polling transport, multi-argument event frames, volatile/binary emits, and dynamic child namespaces were not exercised",
+      "shutdown drain/force-disconnect paths are documented from src/shutdown.internal.ts and package tests, not re-run here (fixture clients disconnect before close)"
+    ]
+  },
+  "@fluojs/microservices": {
+    "page": "apps/docs/content/docs/packages/microservices.mdx",
+    "sources": [
+      "packages/microservices/README.md",
+      "packages/microservices/package.json",
+      "packages/microservices/src/index.ts",
+      "packages/microservices/src/module.ts",
+      "packages/microservices/src/service.ts",
+      "packages/microservices/src/decorators.ts",
+      "packages/microservices/src/types.ts",
+      "packages/microservices/src/status.ts",
+      "packages/microservices/src/tokens.ts",
+      "packages/microservices/src/transports/tcp-transport.ts",
+      "packages/cli/src/new/scaffold.ts"
+    ],
+    "tests": [
+      "tooling/docs/fixtures/package-guides/transports/microservices-guide.test.ts"
+    ],
+    "compositions": [
+      "@fluojs/microservices + @fluojs/runtime: FluoFactory.createMicroservice(AppModule) + listen()/send()/emit()/close() lifecycle with terminal post-close send() rejection (InvariantError)",
+      "@fluojs/microservices + @fluojs/core DI: MathHandlers injects AuditLog; @Scope('request') handler gets a fresh scope per message (two counter.bump sends both return 1); duplicate/missing message matches reject deterministically ('No message handler registered for pattern \"math.missing\".')",
+      "@fluojs/microservices + @fluojs/http mixed app: @Controller POST /math/sum injects the MICROSERVICE facade and calls the TCP loopback through startAllMicroservices(); response 201 { sum: 14 } (mirrors the fluo new mixed starter)",
+      "status snapshot: MicroserviceLifecycleService.createPlatformStatusSnapshot() reports readiness 'ready', handler counts, transport capabilities, and transportOwnsResources for the TCP transport",
+      "TCP transport contract: newline-delimited JSON frames over real node:net sockets, ephemeral port 0 binding, and loopback outbound routing to the transport's own listener (source-backed, documented in the guide)"
+    ],
+    "verifiedCommands": [
+      "pnpm vitest run --project tooling tooling/docs/fixtures/package-guides/transports --maxWorkers=1 — exit 0, microservices-guide.test.ts 4/4 passed (Node v24.20.0); full suite repeated 3x consecutively",
+      "pnpm exec tsc -p tooling/docs/fixtures/package-guides/transports/tsconfig.json --noEmit — exit 0, 0 errors for this workstream's files (see typecheck note in README)"
+    ],
+    "unexecuted": [
+      "Redis Pub/Sub, Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC transports were not exercised: their broker clients (ioredis, nats, kafkajs, amqplib, mqtt, @grpc/grpc-js) do not resolve from tooling/ without lead-owned manifest changes and no broker/Docker service was required for the TCP claims made here; transport choice and durability are documented from the README capability matrix and transport sources",
+      "gRPC streaming APIs (serverStream/clientStream/bidiStream) documented from src/types.ts, src/service.ts, and the gRPC transport sources only",
+      "AbortSignal cancellation and requestTimeoutMs expiry are cited from tcp-transport.ts and package tests, not re-run in this fixture"
+    ]
+  }
+}

@@ -1,0 +1,274 @@
+---
+title: Bun platform
+description: Run fluo applications on the Bun runtime through native Bun.serve(), with fetch-style dispatch, native route acceleration, and signal-driven graceful shutdown.
+package: "@fluojs/platform-bun"
+---
+
+`@fluojs/platform-bun` is the HTTP adapter that runs a fluo application on the [Bun](https://bun.sh/) runtime. It implements the framework's `HttpApplicationAdapter` contract on top of native `Bun.serve()`, so controllers, providers, middleware, and shutdown hooks behave exactly as they do on Node.js-based adapters while the transport uses Bun's `Request`/`Response` bridge.
+
+Use this package when your deployment target is Bun. Use [`@fluojs/platform-nodejs`](/docs/packages/platform-nodejs), [`@fluojs/platform-fastify`](/docs/packages/platform-fastify), or [`@fluojs/platform-express`](/docs/packages/platform-express) when the target is Node.js, and [`@fluojs/platform-deno`](/docs/packages/platform-deno) or [`@fluojs/platform-cloudflare-workers`](/docs/packages/platform-cloudflare-workers) for the other fetch-style runtimes. The adapter is not a module: there is no `forRoot`/`forRootAsync` registration, no `@Module` to import, and nothing to add to a provider list. You construct the adapter, hand it to `FluoFactory.create(...)`, and call `app.listen()`.
+
+The package depends on `@fluojs/http` and `@fluojs/runtime` and requires `globalThis.Bun.serve()` when the server starts. It declares no `engines.node` constraint because its runtime contract is Bun, not Node.js; the repository's Node.js requirement applies only to the maintainer toolchain that builds and tests it.
+
+## A complete working example
+
+Two files run a fluo application on Bun. The module and controller are ordinary fluo declarations; only the entrypoint is Bun-specific.
+
+```ts title="src/posts.controller.ts"
+import { Controller, Get, Post, RequestDto, FromBody } from '@fluojs/http';
+
+class CreatePostDto {
+  @FromBody()
+  title = '';
+}
+
+@Controller('/posts')
+export class PostsController {
+  @Get()
+  list(): readonly string[] {
+    return ['Hello, Fluo!'];
+  }
+
+  @Post()
+  @RequestDto(CreatePostDto)
+  create(input: CreatePostDto): string {
+    return input.title;
+  }
+}
+```
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+
+import { PostsController } from './posts.controller';
+
+@Module({
+  controllers: [PostsController],
+})
+export class AppModule {}
+```
+
+```ts title="src/main.ts"
+import { BunHttpApplicationAdapter, createBunShutdownSignalRegistration } from '@fluojs/platform-bun';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: BunHttpApplicationAdapter.create({ port: 3000 }),
+  shutdownRegistration: createBunShutdownSignalRegistration(),
+});
+
+await app.listen();
+```
+
+Run it with Bun and send requests to it:
+
+```bash
+bun run src/main.ts
+curl http://localhost:3000/posts
+# ["Hello, Fluo!"]
+```
+
+`FluoFactory.create(...)` compiles the module graph, resolves providers, and builds the HTTP dispatcher exactly as on every other platform. `await app.listen()` starts `Bun.serve()` and binds the dispatcher to it. `Ctrl+C` or `SIGTERM` then triggers `app.close()` through the shutdown registration, which stops new ingress and drains accepted requests before Bun's process exits.
+
+## How a request travels
+
+Every request crosses three layers:
+
+```txt
+Bun.serve fetch(request, server)
+  -> BunHttpApplicationAdapter request handler
+  -> shared fluo dispatcher (routing, guards, middleware, handlers)
+```
+
+1. Bun hands the adapter a standard `Request` object.
+2. The adapter checks shutdown state (a request arriving after `close()` began receives a JSON `503` immediately) and registers the request as in-flight.
+3. If a websocket binding is configured, upgrade requests are offered to the binding first; anything the binding upgrades or answers never reaches HTTP dispatch.
+4. The remaining request goes through the shared web dispatch pipeline: body parsing (including raw-body capture and multipart), cookie and query decoding, then the fluo dispatcher's full route pipeline. The response is Bun's standard `Response`.
+
+Because step 4 is the shared runtime pipeline, malformed cookies are preserved rather than dropped, JSON and text bodies can be retained byte-exact when `rawBody: true`, SSE framing works, and conditional requests follow the same single-byte `Range`/`If-Range` policy as every other adapter. Nothing about the Bun transport changes application-visible HTTP semantics.
+
+### Native `routes` acceleration
+
+On Bun `>=1.2.3` the adapter additionally registers *semantically safe* fluo routes through `Bun.serve({ routes })`. Bun then pre-matches the path and hands the matched descriptor and params to the shared dispatcher, skipping duplicate route matching while raw body parsing, multipart, SSE, error responses, shutdown behavior, and websocket upgrades stay on the same code path as before.
+
+A route is only pre-registered when the shape cannot change fluo semantics. These stay on the regular `fetch` path instead:
+
+- `ALL`-method handlers and methods Bun's `routes` map does not model, including `OPTIONS`/CORS preflight and custom methods such as `QUERY` and `PURGE` (the shared dispatcher performs exact-method matching before `ALL` for those).
+- Versioned routes and any path that also exists in a versioned variant.
+- Same-shape parameter routes with different parameter names (for example `/:id` and `/:slug`).
+- Normalization-sensitive paths (duplicate or trailing slashes).
+- Parameter values that contain `/` - the pre-matched params cannot represent them, so the handoff is skipped and the dispatcher rematches.
+
+If application middleware rewrites the request method or path after a native handoff was attached, the dispatcher discards the stale handoff and rematches the rewritten request. The acceleration is a performance detail; a route is never given different behavior because Bun matched it natively.
+
+### Options
+
+`BunHttpApplicationAdapter.create(options)` validates numeric options at construction and throws `BUN_ADAPTER_INVALID_OPTION` for invalid values, before any server exists.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `port` | `3000` | Forwarded to `Bun.serve()`; integer `0`-`65535`. Port `0` lets Bun pick an ephemeral port. |
+| `hostname` | - (Bun default) | Bind hostname forwarded to `Bun.serve()`. |
+| `tls` | - | TLS options forwarded to `Bun.serve()` unchanged; startup logs report an `https://` URL when set. |
+| `idleTimeout` | - | Forwarded to `Bun.serve()`. |
+| `maxBodySize` | shared runtime default | Forwarded as Bun's `maxRequestBodySize`. |
+| `rawBody` | `false` | Retains byte-exact JSON/text bodies on the framework request. Multipart requests never expose `rawBody`. |
+| `multipart` | shared parser defaults | `MultipartOptions` limits for the shared web parser. |
+| `development` | - | Forwarded to `Bun.serve()` development-mode behavior. |
+| `shutdownTimeoutMs` | `10000` | Bounds how long `close()` waits for server termination and in-flight drain. |
+| `stopActiveConnections` | - | Forwarded to `server.stop(...)`: terminate active connections instead of waiting for them. |
+
+The adapter never reads `process.env`; pass configuration explicitly.
+
+## Shutdown, step by step
+
+Shutdown has two independent pieces: the adapter's `close()` and the host's signal registration.
+
+`app.close()` triggers the adapter's close sequence:
+
+1. New HTTP requests and websocket upgrade attempts receive a JSON `503` (`error.code: 'SERVICE_UNAVAILABLE'`, message `Server is shutting down.`).
+2. `server.stop(stopActiveConnections)` starts, in parallel with a wait for every accepted in-flight request to finish - from realtime binding evaluation through its HTTP response or upgrade outcome.
+3. When Bun's server has terminated and the drain has settled, adapter state (server handle, dispatcher, websocket binding) is cleared. The realtime binding also stays available for the accepted upgrade whose binding evaluation raced the shutdown start.
+4. The wait is bounded by `shutdownTimeoutMs`. The bounded timeout only rejects the caller-facing `close()` promise - accepted work and adapter state are retained until the underlying drain settles on its own, and the timeout never forces a second teardown.
+
+Calling `close()` again while a close is in flight awaits the same close under the same bound. Calling `listen()` on an already-started adapter is an idempotent no-op that keeps the original dispatcher.
+
+`createBunShutdownSignalRegistration()` connects Bun's process signals to that sequence:
+
+```ts title="fragment: signals and force exit"
+import { BunHttpApplicationAdapter, createBunShutdownSignalRegistration } from '@fluojs/platform-bun';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: BunHttpApplicationAdapter.create({ port: 3000 }),
+  shutdownRegistration: createBunShutdownSignalRegistration(['SIGINT', 'SIGTERM']),
+  forceExitTimeoutMs: 30_000,
+});
+
+await app.listen();
+```
+
+The Factory calls the registration once after a successful listen; the handler runs `app.close(signal)` when `SIGINT` or `SIGTERM` arrives, and the listeners are removed again when `app.close()` begins, before the adapter drains. Its behavior on completion is deliberately modest:
+
+- Success sets `process.exitCode = 0`; a close failure is logged and sets `process.exitCode = 1`.
+- If shutdown exceeds `forceExitTimeoutMs` (default `30_000`), the timeout is logged, `process.exitCode` becomes `1`, and the process is *not* killed - final termination belongs to Bun or the surrounding host.
+- Partial signal registration rolls back listeners that were already attached; removing listeners aggregates failures in an `AggregateError`.
+- Pass `false` to leave shutdown entirely to the host, or omit `shutdownRegistration` when something else (a supervisor, tests, a custom wrapper) owns signals.
+
+Omitting the registration does not strand the server: it just means nothing calls `app.close()` for you. On long-lived Bun deployments, either pass this registration or handle signals yourself.
+
+## WebSockets and realtime composition
+
+The adapter exposes Bun's native `server.upgrade()` through the versioned realtime capability. First-party realtime modules install their binding through that capability during module registration, *before* `app.listen()` starts the server:
+
+```ts title="fragment: Bun websocket binding"
+import { Module } from '@fluojs/core';
+import { WebSocketGateway } from '@fluojs/websockets';
+import { BunWebSocketModule } from '@fluojs/websockets/bun';
+
+@WebSocketGateway({ path: '/ws' })
+class MyGateway {}
+
+@Module({
+  imports: [BunWebSocketModule.forRoot()],
+  providers: [MyGateway],
+})
+export class AppModule {}
+```
+
+The mechanics, and the rules worth knowing before you rely on them:
+
+- `@fluojs/websockets/bun` discovers registered gateways at bootstrap and installs a `BunWebSocketBinding` through `getRealtimeCapability()`'s version-1 `bindingInstallation` contract. Direct configure/setter APIs on the adapter were removed; the capability installer is the only configuration path.
+- The installer rejects values that lack the `fetch` and `websocket` host contracts with a `TypeError` carrying `BUN_ADAPTER_REALTIME_BINDING_INVALID`.
+- The binding must be installed before `listen()`; changing or clearing it after the server started throws `BUN_ADAPTER_REALTIME_BINDING_LOCKED` instead of silently rewiring a live server.
+- During dispatch, upgrade requests are offered to the binding before normal HTTP routing, and the binding receives only an upgrade-capable host (`upgrade(...)`). Adapter-owned `server.stop()` and the raw fetch handler stay outside the realtime seam, so a websocket module can never stop your server or capture your dispatcher.
+- `@fluojs/socket.io` uses the same native Bun engine and requires no extra adapter configuration.
+
+## Hosting `Bun.serve()` yourself
+
+If your application already runs a managed `Bun.serve()` call, you can bootstrap fluo without letting the adapter own the server:
+
+```ts title="fragment: custom Bun.serve host"
+import { createBunFetchHandler } from '@fluojs/platform-bun';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, { adapter: BunHttpApplicationAdapter.create() });
+
+const handler = createBunFetchHandler({
+  dispatcher: app.dispatcher,
+  rawBody: true,
+});
+
+Bun.serve({
+  fetch: handler,
+  port: 3000,
+});
+```
+
+`createBunFetchHandler(...)` is synchronous and only builds the fetch bridge: it translates native requests, preserves raw-body and multipart parsing, and hands everything to the dispatcher from the already bootstrapped application. It never starts a server, owns shutdown, handles websocket upgrades, or registers native `routes` acceleration - the surrounding `Bun.serve(...)` host owns all of that. The dispatcher comes from `app.dispatcher` on the application the Factory returned. Use the managed adapter path when you want fluo to own those lifecycle seams.
+
+## Errors you will actually see
+
+Package-generated caller-visible failures keep their original `Error`/`TypeError` class and message and add a stable `error.code`:
+
+| Code | Error class | When |
+| --- | --- | --- |
+| `BUN_ADAPTER_INVALID_OPTION` | `Error` | A numeric adapter or shutdown option is outside its documented range (checked at construction). |
+| `BUN_ADAPTER_RUNTIME_UNAVAILABLE` | `Error` | `listen()` found no callable `globalThis.Bun.serve()` - typically the code ran under Node.js. |
+| `BUN_ADAPTER_REALTIME_BINDING_INVALID` | `TypeError` | The realtime installer received a value without the required `fetch`/`websocket` contracts. |
+| `BUN_ADAPTER_REALTIME_BINDING_LOCKED` | `Error` | An attempt to change the websocket binding after `listen()` started the server. |
+| `BUN_ADAPTER_SHUTDOWN_TIMEOUT` | `Error` | The caller-facing `close()` wait exceeded `shutdownTimeoutMs`. |
+
+Errors thrown by Bun itself or by application code keep their original class, message, and metadata.
+
+## Limits and common mistakes
+
+- **Early Hints are unsupported.** Bun uses fluo's Web-standard response facade, so `context.response.earlyHints` is absent. Check for capability presence before use; the adapter neither ignores a requested `103` silently nor copies early fields into the final response. If you need observable `103` responses, use a Node.js-based adapter.
+- **No raw body for multipart.** With `rawBody: true`, JSON and text bodies are retained byte-exact, but multipart requests never expose `rawBody`. Use the multipart APIs instead.
+- **Streaming multipart ownership.** With `multipart: { strategy: 'stream' }`, `context.request.body` is an `AsyncIterableIterator<MultipartPart>`; finish or cancel each file stream before requesting the next part. Route dispatch owns the iterator it creates and calls `return()` automatically; a standalone `parseMultipartStream(...)` consumer owns that responsibility itself.
+- **Running under Node.js.** The adapter does not check the runtime until `listen()`, so an accidental Node.js start fails there with `BUN_ADAPTER_RUNTIME_UNAVAILABLE`, not at import time.
+- **Assuming the shutdown timeout force-kills.** Exceeding `shutdownTimeoutMs` rejects `close()` and exceeding `forceExitTimeoutMs` sets `process.exitCode = 1`; neither terminates the process. Bun or your supervisor owns final termination.
+- **Changing the websocket binding late.** After `listen()`, the binding is frozen for the live server. Create a new adapter if a host genuinely needs different upgrade ownership.
+- **Expecting `QUERY`/`PURGE` to be accelerated.** Custom methods intentionally stay on the fetch fallback, where the shared dispatcher performs exact-method matching before `ALL`.
+
+## Testing at this seam
+
+The package's own regression target is `packages/platform-bun/src/adapter.test.ts`, which exercises the documented contract with a Bun-compatible server double: portability assertions (conditional requests, byte ranges, malformed cookies, raw-body preservation, multipart exclusion, SSE), native-route param parity and every documented fallback, shutdown drain, signal cleanup, 503 ingress rejection, and websocket binding delegation. The shared harness in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` runs the same baseline against Deno and Cloudflare Workers.
+
+For your own tests, boot the real factory on an ephemeral port and talk HTTP:
+
+```ts title="fragment: ephemeral-port test"
+import { BunHttpApplicationAdapter } from '@fluojs/platform-bun';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.module';
+
+const adapter = BunHttpApplicationAdapter.create({ port: 0 });
+const app = await FluoFactory.create(AppModule, { adapter });
+try {
+  await app.listen();
+
+  const { url } = adapter.getListenTarget();
+  const response = await fetch(`${url}/posts`);
+  // assertions on status and body
+} finally {
+  await app.close();
+}
+```
+
+Port `0` selects an ephemeral port and `getListenTarget()` reports the actual URL after listen, so concurrent tests never collide. Always close the application in a `finally` block so lifecycle hooks release even when assertions fail. For request-level tests without a real server, use [`Test.createApp(...)`](/docs/guides/testing) and keep this adapter for the tests that specifically exercise the transport.
+
+## Related reading
+
+- [`@fluojs/platform-deno`](/docs/packages/platform-deno) - the sibling fetch-style adapter for the Deno runtime.
+- [`@fluojs/platform-cloudflare-workers`](/docs/packages/platform-cloudflare-workers) - the edge fetch adapter and its lazy Worker host.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - how the providers behind your controllers compose.
+- [Runtime Adapters](/docs/guides/runtime-adapters) - choosing between adapters and the portability matrix.
+- [Socket.IO](/docs/packages/socket-io) - realtime engine composition on Bun.
+- [`packages/platform-bun/README.md`](https://github.com/fluojs/fluo/blob/main/packages/platform-bun/README.md) - the owning package contract.

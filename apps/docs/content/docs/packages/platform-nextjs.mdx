@@ -1,0 +1,421 @@
+---
+title: Next.js platform
+description: Host a fluo backend inside Next.js 16 App Router and Pages Router with @fluojs/platform-nextjs — request-lazy bootstrap, decorator compiler wiring, and opt-in shared application access.
+package: "@fluojs/platform-nextjs"
+---
+
+`@fluojs/platform-nextjs` connects an existing fluo backend to a Next.js
+application without replacing fluo's decorators, modules, factory, or
+dependency injection. Next.js keeps owning the HTTP server, the filesystem
+router, and the process; the adapter is a thin facade that dispatches Web
+`Request`s through the same fluo dispatcher every other platform uses. Unlike
+the [Node](/docs/packages/platform-nodejs),
+[Fastify](/docs/packages/platform-fastify), and
+[Express](/docs/packages/platform-express) adapters, it opens **no socket**,
+registers **no process signals**, and never terminates the process — lifecycle
+boundaries follow Next's server model.
+
+## When to use this adapter
+
+Use it when a Next.js application should serve a fluo backend from its own
+routing tree: App Router Route Handlers for the modern surface, Pages Router
+API Routes for hybrid applications, or both.
+
+Use a Node-hosted adapter instead when the application needs raw Node transport
+ownership, WebSocket upgrades (Route Handlers expose no upgrade seam — the
+adapter reports an unsupported realtime capability), or HTTP methods beyond
+what Next routing forwards (`QUERY` and other custom methods are not added at
+this host boundary).
+
+Supported hosts: Next.js **16.x** (`next >=16.0.0 <17` peer), Node.js
+`>=24.0.0 <27`, `@fluojs/runtime >=3.0.0 <4`. Next.js Edge Runtime is not
+supported — Route Handlers must run on the default Node.js runtime, which is
+also what fluo backends require.
+
+## Installation
+
+```bash
+pnpm add @fluojs/platform-nextjs
+```
+
+If the application does not already use fluo, add the packages your backend
+source imports as direct dependencies too:
+
+```bash
+pnpm add @fluojs/core @fluojs/http @fluojs/runtime @fluojs/platform-nextjs
+```
+
+No separate Babel or loader package is required: the adapter ships the
+Next-specific decorator loader consumed by the config helper.
+
+## Shared setup
+
+Three pieces wire a backend into an existing Next.js project: compiler
+configuration, the fluo module, and a lazily bootstrapped backend entrypoint.
+
+```ts title="next.config.ts"
+import { withFluoNextBackend } from '@fluojs/platform-nextjs/next-config';
+
+export default withFluoNextBackend({});
+```
+
+The helper appends the packaged decorator loader to Turbopack's server-side
+`*.ts` rule (details below). It copies existing options and rules into a new
+configuration object and never mutates its input; existing Turbopack aliases,
+options, and rules are preserved, and an existing `*.ts` rule gains the Fluo
+decorator rule appended to it.
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
+
+@Controller('/api')
+class ApiController {
+  @Get('/health')
+  health() {
+    return { status: 'ok' };
+  }
+
+  @Post('/echo')
+  echo(_input: undefined, context: RequestContext) {
+    return { body: context.request.body };
+  }
+}
+
+@Module({ controllers: [ApiController] })
+export class AppModule {}
+```
+
+```ts title="src/backend.ts"
+import { NextHttpApplicationAdapter } from '@fluojs/platform-nextjs';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.module';
+
+export const nextAdapter = NextHttpApplicationAdapter.create();
+export const app = await FluoFactory.create(AppModule, {
+  adapter: nextAdapter,
+});
+await app.listen();
+```
+
+Top-level `await` here is the bootstrap point: importing the module runs the
+ordinary fluo startup — graph compilation, provider instantiation, lifecycle
+hooks, dispatcher binding — exactly like `main.ts` on a Node-hosted platform.
+Nothing executes during `next build`; the backend chunk is compiled but the
+bootstrap runs only when a request first imports the module.
+
+## App Router facade
+
+One optional catch-all Route Handler forwards requests to the adapter:
+
+```ts title="app/api/[[...path]]/route.ts"
+import { createNextAppRouterHandler } from '@fluojs/platform-nextjs/app-router';
+
+export const {
+  GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS,
+} = createNextAppRouterHandler(() =>
+  import('../../../src/backend').then(({ nextAdapter }) => nextAdapter),
+);
+```
+
+Next still discovers exactly one filesystem route; fluo owns decorator
+metadata, route matching, module bootstrap, dependency injection, request
+scope, body parsing, errors, and dispatch behind that facade. The handler
+caches one loader promise per closure, so concurrent first requests share the
+same backend import and startup, and handlers can never observe an unbound
+adapter — import completion includes the top-level `FluoFactory.create()` and
+`app.listen()`.
+
+Import ownership matters: `createNextAppRouterHandler` lives only in
+`@fluojs/platform-nextjs/app-router`, the adapter class only at the package
+root, and the compiler helper only in `/next-config`. Root-level handler
+exports were removed in the current major release without aliases.
+
+## Pages Router facade
+
+One optional catch-all API Route bridges Node's raw request stream to fluo:
+
+```ts title="pages/api/[[...path]].ts"
+import {
+  createNextPagesRouterHandler,
+  type NextPagesRouterConfig,
+} from '@fluojs/platform-nextjs/pages-router';
+
+export default createNextPagesRouterHandler(() =>
+  import('../../src/backend').then(({ nextAdapter }) => nextAdapter),
+);
+
+export const config = {
+  api: { bodyParser: false },
+} satisfies NextPagesRouterConfig;
+```
+
+`bodyParser: false` is required, not stylistic: fluo must receive the original
+request stream to own body parsing and size limits authoritatively — an
+upstream parsed host body cannot recover original bytes, so `rawBody`
+preservation depends on it. The bridge converts `IncomingMessage` into a Web
+request, keeps fluo's parsing and `maxBodySize` authoritative, and streams the
+Web response back through `ServerResponse`. Input is read on demand rather
+than queued ahead of the parser, so an oversized upload can receive `413`
+before it finishes; only after the response is sent does the bridge discard
+remaining input, without taking ownership of the socket. Client disconnects
+propagate to `context.request.signal` and cancel response stream reads; a
+disconnect during lazy bootstrap ends that request without dispatching it or
+cancelling the shared backend startup.
+
+## How requests flow
+
+1. **First request, lazy bootstrap.** The facade's dynamic import runs
+   `src/backend.ts` top-level bootstrap once per bundle; the loader promise is
+   memoized so overlapping first requests await the same startup.
+2. **Dispatch.** The adapter's `fetch(request)` hands the Web request to the
+   shared dispatcher through the Web request/response factory — the same
+   pipeline as every other platform: cookies and `@FromCookie`, response
+   headers and multiple independent `Set-Cookie` values, application and module
+   middleware, guards, interceptors, exception filters, request observers,
+   `RequestDto` binding with global converters and field-level `@Convert`,
+   request scope, multipart handling, and raw-body preservation.
+3. **States before dispatch.** A request arriving before the dispatcher is
+   bound, or after `app.close()`, receives a `503` `application/problem+json`
+   response (`next_backend_adapter_not_ready` / `next_backend_adapter_closed`)
+   rather than a crash.
+4. **Response.** The Web `Response` produced by the dispatcher returns through
+   Next's Route Handler (or is streamed through `ServerResponse` in Pages).
+
+### Opt-in HEAD routing
+
+By default, method matching is unchanged: a GET-only fluo route does not
+implicitly answer Next's automatic `HEAD`. Passing
+`headRouting: 'explicit-or-get'` at adapter construction opts in: the shared
+matcher selects one eligible explicit `@Head` route, otherwise `@All`,
+otherwise `@Get` — method priority precedes path specificity across those
+groups, with normal static/parameter and version rules within each group.
+Selection happens once before module middleware, guards, and the controller;
+a route miss is `404`, and a selected handler's own `404` is final.
+
+The request keeps its original `HEAD` method everywhere — middleware, guards,
+version extraction, and handlers observe HEAD, while the selected descriptor
+still identifies its declared method (so conditional-request and byte-range
+rules stay active). Every opted-in HEAD response returns a null body — direct
+sends, misses, errors, and 503s included — preserving status, status text,
+representation headers, and independent cookies without inventing a
+`content-length`. Active response streams are cancelled before the dispatch
+lifecycle completes; prefer a `createByteRangeResponse` stream factory when
+HEAD must avoid opening a byte source at all.
+
+### Bounded body parsing
+
+`NextAdapterOptions.bodyParser` accepts `'default'` (the omitted default),
+`'text'`, or a callback that decides per path:
+
+```ts title="fragment: per-path body policy"
+const nextAdapter = NextHttpApplicationAdapter.create({
+  maxBodySize: 1_048_576,
+  rawBody: true,
+  bodyParser(text, context) {
+    if (context.path === '/api/posts/draft') return text;
+    return context.parseDefault();
+  },
+});
+```
+
+Paths are original URL pathnames before fluo route matching — no params or
+route metadata exist yet. Bounded reading and custom callbacks precede
+middleware, guards, and filters, so they form the authentication boundary: to
+return `401` before malformed-JSON `400`, receive text, authenticate
+explicitly, then parse JSON later, translating syntax errors to
+`BadRequestException`. Oversized input still returns `413` before
+authentication. Multipart keeps its existing parser and limits and never
+invokes the callback.
+
+## Decorator compiler wiring
+
+`withFluoNextBackend()` exists because Next's Turbopack does not run fluo's
+TC39 decorator transform by default. The helper adds one rule for `*.ts` files
+with conditions — not `foreign`, not `browser`, content matching `@\w+` — that
+run the packaged Babel loader (the same `2023-11` decorator transform
+`@fluojs/vite` uses) and return JavaScript to Turbopack. It supports Turbopack
+only, not webpack, and applies to `.ts` backend files; there is no `.tsx` rule.
+
+Scope compilation explicitly when client code shares the tree:
+
+```ts title="fragment: scoped compiler configuration"
+import { type FluoNextBackendOptions, withFluoNextBackend } from '@fluojs/platform-nextjs/next-config';
+
+const backend = {
+  include: 'src/backend/**',
+  exclude: '**/*.test.ts',
+  preserveModulePaths: true,
+} satisfies FluoNextBackendOptions;
+
+export default withFluoNextBackend({}, backend);
+```
+
+`include`/`exclude` are Turbopack project-relative path globs or `RegExp`s that
+augment the existing server/application/content conditions — they cannot
+re-include browser or dependency files. `preserveModulePaths` keeps the
+original `.ts` module path instead of the default `as: '*.js'` output rename.
+Scope and path preservation are independent opt-ins, and both exist for a real
+failure: in the package's Next 16.3.4 production fixture, the legacy broad
+scope resolved a client store's SSR import as `./store.ts.js`, failing dev
+`GET /` and the production build. Include every backend declaration and DTO in
+the scope — decorated files outside it may not compile.
+
+## Sharing one application across bundles
+
+A hybrid application with both catch-alls compiles them as separate server
+bundles, so the default per-closure recipe boots **one fluo application per
+bundle**. When RSC components, auth callbacks, and Route Handlers must share
+one graph, opt into the process-local accessor:
+
+```ts title="src/application.ts"
+import { defineNextApplication } from '@fluojs/platform-nextjs';
+
+export const getApplication = defineNextApplication({
+  key: 'my-blog/application/v1',
+  load: () => import('./backend'),
+});
+```
+
+```ts title="app/api/[[...path]]/route.ts"
+import { createNextAppRouterHandler } from '@fluojs/platform-nextjs/app-router';
+import { getApplication } from '../../../src/application';
+
+export const { GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS } =
+  createNextAppRouterHandler(() =>
+    getApplication().then(({ nextAdapter }) => nextAdapter),
+  );
+```
+
+The contract is deliberately small: the first invocation for a key publishes a
+promise **before** running the loader (reentrant loader calls see it), and
+every later call with that key returns the exact same promise. Synchronous
+throws and async rejections stay cached; redefining the accessor with another
+loader retains the first result. There is no retry, no reset or eviction API,
+and no HMR replacement of a live graph — after `app.close()`, the promise
+still yields the closed graph; restart the host to apply a new bootstrap.
+
+Isolation boundaries are part of the guarantee: sharing happens only within
+one key in one JS global (`globalThis`). Different processes, workers,
+serverless instances, and JS globals remain isolated — this is not a
+distributed singleton. Never capture request, actor, or session data in `key`
+or `load`; only application resource promises belong in the cache, and all
+loaders sharing one key must agree on the application type.
+
+### Resolving services from RSC and auth callbacks
+
+The same accessor removes repeated `container.resolve` calls and runtime class
+imports outside Route Handlers. Keep service contracts separate from runtime
+classes with `publicToken`, register the provider and alias once in the owning
+module, and export the token:
+
+```ts title="src/posts-contract.ts"
+import { publicToken } from '@fluojs/core';
+
+export interface PostsReader { title(): string }
+export const POSTS = publicToken<PostsReader>('my-blog/posts/v1');
+```
+
+```ts title="src/posts.module.ts"
+import { Module } from '@fluojs/core';
+import { POSTS, type PostsReader } from './posts-contract';
+
+class PostsService implements PostsReader {
+  title() { return 'FluoBlog'; }
+}
+
+@Module({
+  providers: [PostsService, { provide: POSTS, useExisting: PostsService }],
+  exports: [POSTS],
+})
+export class PostsModule {}
+```
+
+```ts title="src/posts.ts"
+import { getApplication } from './application';
+import { POSTS } from './posts-contract';
+
+export async function getPosts() {
+  return (await getApplication()).app.container.resolve(POSTS); // Promise<PostsReader>
+}
+```
+
+`publicToken` types `resolve()`; the `useExisting` alias plus module `exports`
+make the token resolvable across modules. Tokens injected from other modules
+must be exported — module visibility rules apply unchanged. See the
+[dependency injection guide](/docs/fundamentals/dependency-injection) for the
+full token and visibility model.
+
+## Lifecycle and shutdown
+
+Application code owns the fluo `Application` created in `src/backend.ts`.
+Calling `app.close('manual shutdown')` runs the standard shutdown lifecycle and
+closes the adapter; requests afterward receive the `503` closed problem
+response. The package registers no process signal handlers, does not create a
+second application after explicit close, and does not own process termination —
+Next.js owns process startup and shutdown.
+
+## Options and defaults
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `maxBodySize` | HTTP-owned default | Non-negative safe integer bytes; invalid values throw `InvalidNextAdapterOptionError`. |
+| `rawBody` | `false` | Preserves parsed request bytes on `context.request.rawBody`. |
+| `headRouting` | unset | `'explicit-or-get'` enables bodyless HEAD selection; omission preserves ordinary matching. |
+| `bodyParser` | `'default'` | MIME-based parsing; `'text'` or a callback for bounded/per-path policy. |
+| `NextAdapterOptions` on the root | — | The adapter also exports `NextAdapterLoader` and `InvalidNextAdapterOptionError`. |
+
+Ordinary `FluoFactory.create()` options (`logger`, `cors`, `middleware`,
+`filters`, and the rest) remain unchanged on the Factory call.
+
+## Failures, limits, and common mistakes
+
+- **Eager backend imports in route files.** Replace lazy bootstrap with a
+  direct `import` and the backend boots during `next build`'s module
+  evaluation on some hosts and cold-starts every bundle separately; keep the
+  dynamic `import()` inside the facade loader.
+- **Missing `bodyParser: false` in Pages Router.** Next's parsed body cannot
+  recover original bytes, breaking raw-body preservation and fluo's size
+  limits; the exported `config` type enforces the literal `false`.
+- **Removing route exports.** Do not delete `GET`/`POST`/`HEAD`/... exports
+  from route modules; Next routes only the methods exported.
+- **Assuming one application per process.** With the default per-closure
+  recipe, each catch-all bundle bootstraps its own graph. Sharing requires
+  `defineNextApplication` with the same key on **every** consumer; mixing it
+  with direct backend imports can bootstrap outside the cache.
+- **Expecting signal-driven shutdown.** Nothing registers signals; container
+  orchestrators that SIGTERM the Next server rely on Next's own drain. Call
+  `app.close()` explicitly where your code owns shutdown.
+- **Requesting a closed application through the accessor.** Failure and close
+  states are cached promises; there is no reopen. Restart the host or run a
+  fresh process.
+- **Treating the compiler helper as a webpack feature.** Turbopack only, and
+  decorated backend declarations must live in `.ts` files inside the declared
+  scope.
+- **Edge Runtime.** Unsupported; Route Handlers must use the Node.js runtime
+  (the default).
+
+## Testing and evidence
+
+The package ships a real Next 16 production E2E (`e2e/next.test.mjs`) that
+builds and starts an actual Next application and exercises App Router, Pages
+Router, HEAD routing, the body-parser policy, and accessor sharing over HTTP.
+Unit suites cover creation, import ownership, HEAD public types, and the
+Pages bridge against native transports.
+
+For application-level verification without standing up Next, the adapter's
+instance `fetch(request)` is the real dispatch surface used by Route Handlers:
+bootstrap an application with `NextHttpApplicationAdapter.create()`, pass it
+to `FluoFactory.create`, call `await app.listen()` (which only binds the
+dispatcher), and dispatch `new Request('http://localhost/api/health')` objects
+directly. That exercises everything except Next's own routing and compilation
+— label such tests accordingly rather than presenting them as Next E2E
+coverage.
+
+## Related reading
+
+- [`@fluojs/platform-nextjs` package README](https://github.com/fluojs/fluo/blob/main/packages/platform-nextjs/README.md) — the owning contract, options table, and API migration list.
+- [HTTP & platform packages overview](/docs/packages/http-platform) — where this adapter sits among the platform packages.
+- [Node platform](/docs/packages/platform-nodejs) / [Fastify platform](/docs/packages/platform-fastify) / [Express platform](/docs/packages/platform-express) — adapters that own the HTTP server.
+- [Dependency injection](/docs/fundamentals/dependency-injection) — tokens, visibility, and the `publicToken` recipe used for RSC access.

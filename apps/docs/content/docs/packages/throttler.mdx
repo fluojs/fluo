@@ -1,0 +1,230 @@
+---
+title: Throttler
+description: How @fluojs/throttler applies decorator-based rate limits through ThrottlerGuard, with route-scoped bucket keys, in-memory and Redis stores, and a custom store contract.
+package: "@fluojs/throttler"
+---
+
+`@fluojs/throttler` protects expensive or sensitive routes from being overwhelmed: fixed-window rate limiting with a module default, per-controller and per-route overrides, and in-memory or Redis-backed counters. It is a **guard-stage package** — registering the module makes `ThrottlerGuard` available, but nothing is limited until a route activates the guard with fluo guard metadata. That explicitness is the package's most important behavior, and its biggest surprise for NestJS migrants: there is no drop-in global limiter.
+
+Use it when a route's cost or abuse potential is uneven — login, token refresh, registration, search, export endpoints. Do not reach for it when you need per-user fair scheduling, sliding windows, or quotas tied to billing plans out of the box; the public policy shape is exactly one module default plus `{ ttl, limit }` overrides, and anything richer (burst + sustained windows, tiered plans) is application composition on top of the store contract. The guard is HTTP-only: WebSocket, GraphQL, RPC, and queue throttling need transport-owned guards.
+
+Prerequisites: Node.js `>=24.0.0 <27` (the package's `engines.node` contract). The package depends on `@fluojs/core`, `@fluojs/di`, `@fluojs/http`, and `@fluojs/runtime`; `@fluojs/redis` (or any compatible Redis client) is an optional peer used only when you adopt `RedisThrottlerStore`.
+
+```bash
+pnpm add @fluojs/throttler
+```
+
+## A small working example
+
+A login endpoint gets its own tight budget inside a module-wide default, and a status route opts out entirely:
+
+```ts title="src/auth/auth.controller.ts"
+import { Controller, Post, UseGuards } from '@fluojs/http';
+import { SkipThrottle, Throttle, ThrottlerGuard, ThrottlerModule } from '@fluojs/throttler';
+
+@Controller('/auth')
+@UseGuards(ThrottlerGuard)
+export class AuthController {
+  @Post('/login')
+  @Throttle({ ttl: 60, limit: 5 }) // route override: 5 attempts per minute
+  login() {
+    return { ok: true };
+  }
+
+  @Post('/register')
+  @Throttle({ ttl: 3600, limit: 3 }) // one hour window
+  register() {
+    return { ok: true };
+  }
+
+  @Get('/providers')
+  @SkipThrottle() // exempt from throttling
+  providers() {
+    return { providers: ['password'] };
+  }
+}
+```
+
+```ts title="fragment: module registration"
+import { Module } from '@fluojs/core';
+import { ThrottlerModule } from '@fluojs/throttler';
+
+@Module({
+  imports: [
+    ThrottlerModule.forRoot({
+      ttl: 60, // seconds — the default window for guarded routes
+      limit: 100, // the default request cap for guarded routes
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+The eleventh login attempt from one client within a minute receives HTTP `429` with a `Retry-After` header; the twelfth request to `/auth/providers` from the same client is unaffected. `ttl` is **seconds** everywhere in this package.
+
+## How the mechanics work
+
+### Registration and validation
+
+`ThrottlerModule.forRoot(options)` validates the whole options object and registers two providers: the validated options under an internal token and `ThrottlerGuard` as an injectable class. The module exports `ThrottlerGuard` and — unlike passport — defaults `global: true`, so every module in the application can apply the guard without importing anything. Pass `global: false` when the throttler should stay scoped to the importing module.
+
+Validation is strict and eager:
+
+- `ttl` and `limit` must be positive finite integers, at module level and in every `@Throttle(...)` — a bad decorator argument throws while the class is being *defined*, not on the first request.
+- `trustProxy`, `trustProxyHeaders`, and `keyGenerator` are type-checked at registration (details below).
+- A provided `store` must expose a `consume(...)` function.
+- Options are captured by value: mutating the object you passed to `forRoot` after registration changes nothing.
+
+There is no `forRootAsync`. Resolve secrets, environment-dependent limits, and store construction *before* calling the synchronous `forRoot` — for example by building the options in an async bootstrap step — rather than expecting the module to await them.
+
+### Policy resolution per route
+
+When `ThrottlerGuard` runs for a handler, it resolves one policy:
+
+1. Method-level `@Throttle(...)` wins,
+2. then class-level `@Throttle(...)`,
+3. then the module default.
+
+The result is cached per handler, so decorator metadata is read once per route rather than per request. `@SkipThrottle()` on a class or method marks the route exempt; skips combine additively — there is no named or `false` form that "un-skips" a route inside a skipped controller. Move a reactivated method to a non-skipped controller or wrap the guard yourself.
+
+### Bucket identity: route + client
+
+The counter key is `throttler:<handlerKey>:<clientKey>`, and both halves matter.
+
+The **handler key** is built from the compiled route: module name, controller name, HTTP method, path, version (or `unversioned`), handler method name, and the deterministic compiled-route identity assigned by the HTTP route compiler. Consequences:
+
+- Distinct handlers stay isolated even when their display names and emitted paths collide after encoding.
+- The identity is deterministic across application instances with identical artifact layouts — this is what makes Redis-backed buckets *shareable* in a distributed deployment.
+
+The **client key** comes from `keyGenerator` when configured, and otherwise from the request's trusted transport identity. By default that is the raw socket `remoteAddress` only — forwarded headers are ignored, because trusting them blindly lets callers forge new buckets. For deployments behind a proxy that rewrites `Forwarded` / `X-Forwarded-For` / `X-Real-IP`, declare the boundary explicitly:
+
+```ts title="fragment: proxy boundary"
+ThrottlerModule.forRoot({
+  ttl: 60,
+  limit: 100,
+  trustProxy: ['192.0.2.10/32'], // accept forwarding metadata only from this proxy
+});
+```
+
+`trustProxy` accepts `false`, a trusted-hop count, address/CIDR rules, or a predicate, and is the recommended form for new deployments. `trustProxyHeaders: true` is broad legacy compatibility — it trusts the complete forwarding chain, not just the direct peer, and is not recommended. If no trusted socket or proxy identity can be resolved, the default generator **throws** instead of collapsing unrelated callers into one shared bucket; in that environment you must supply a `keyGenerator`.
+
+A custom generator receives the middleware context and can bucket by anything the request carries:
+
+```ts title="fragment: custom key generator"
+ThrottlerModule.forRoot({
+  ttl: 60,
+  limit: 100,
+  keyGenerator: (context) => {
+    const header = context.request.headers['x-api-key'];
+    const apiKey = Array.isArray(header) ? header[0] : header;
+
+    if (!apiKey) {
+      throw new Error('Missing API key for throttler tracking.');
+    }
+
+    return `api-key:${apiKey}`;
+  },
+});
+```
+
+### The consume cycle
+
+For each guarded request the guard:
+
+1. Resolves the handler policy and client key (above).
+2. Calls `store.consume(storeKey, { now: Date.now(), ttlSeconds })` — the store returns `{ count, resetAt, retryAfterMs? }` where `count` is the post-consume request count for the active window and `resetAt` is the epoch-millisecond reset boundary.
+3. Validates the returned entry (positive integer `count`, finite integer `resetAt`).
+4. If `count > limit`, sets `Retry-After` (from the store's authoritative `retryAfterMs` when present, otherwise `ceil((resetAt - now) / 1000)`, minimum one second) and throws the HTTP package's `TooManyRequestsException` → a canonical `429` response with the `Retry-After` header.
+
+`429` + `Retry-After` is the guaranteed response contract. Additional rate-limit headers (`X-RateLimit-*`) or custom bodies are application-boundary work, for example an exception filter — the package does not emit them.
+
+### Stores
+
+**In-memory (default).** When no `store` option is supplied, each `ThrottlerGuard` instance owns its own in-memory store: a map of window entries with lazy sweeping of expired buckets on the next consume after expiry. Counters are isolated to the current process — correct for single-instance deployments, silently wrong for horizontal scaling (each replica enforces its own limit).
+
+**Redis (`RedisThrottlerStore`).** For multi-instance deployments, the store executes one atomic Lua script per consume: it reads the current entry, anchors `now` to **Redis server time** (`TIME`), increments or resets the window, writes the entry back with a millisecond `PX` expiry equal to the remaining window, and returns `{ count, resetAt, ttlMsLeft }`. Because the window is anchored to Redis's clock, app nodes with clock skew still enforce one shared reset boundary — and the returned `ttlMsLeft` becomes the `retryAfterMs` the guard prefers for `Retry-After`, since the backing store's clock is the more authoritative one.
+
+```ts title="fragment: redis store"
+import { RedisThrottlerStore, ThrottlerModule } from '@fluojs/throttler';
+import { REDIS_CLIENT } from '@fluojs/redis';
+
+const redisClient = await container.resolve(REDIS_CLIENT);
+const store = new RedisThrottlerStore(redisClient);
+
+ThrottlerModule.forRoot({ ttl: 60, limit: 100, store });
+```
+
+The store accepts the structural `RedisThrottlerClient` contract — any client with `eval(script, numberOfKeys, ...args)`. `@fluojs/redis`, `ioredis`, and compatible custom clients all satisfy it without the root package depending on a concrete client type. The Redis client's connection lifecycle stays owned by your Redis module; the store neither opens nor closes connections.
+
+**Custom stores.** Implement `ThrottlerStore.consume(key, input)` and pass it as `store`. Returning `retryAfterMs` is optional and exists precisely so a backing store with a better clock can drive `Retry-After`. Report your store's shape to the platform diagnostics helpers via `createThrottlerPlatformStatusSnapshot(...)` / `createThrottlerPlatformDiagnosticIssues(...)`, which classify stores as `memory` / `redis` / `custom`, ownership as framework-owned (memory) or external, and operation mode as `local-only` / `distributed` / `local-fallback` / `custom`.
+
+## Composing with neighboring packages
+
+- **`@fluojs/http`** is the enforcement substrate: the guard runs in the HTTP guard pipeline, and `TooManyRequestsException` produces the canonical `429` envelope with `Retry-After`. The compiled-route identity that buckets rely on comes from the HTTP route compiler, so route composition behaves consistently across adapters.
+- **`@fluojs/redis`** supplies the shared client for distributed counters (above). Keep connection ownership in the Redis module; pass the resolved client into the store.
+- **`@fluojs/passport`** protects identity, this package protects the door. The highest-value composition is throttling credential endpoints — login, registration, and `POST /auth/refresh` — so brute-force pressure on token exchange is bounded before authentication runs:
+
+```ts title="fragment: throttled auth composition"
+@Controller('/auth')
+@UseGuards(ThrottlerGuard)
+export class TokenAuthController {
+  @Post('/refresh')
+  @UseAuth('refresh-token')
+  @Throttle({ ttl: 60, limit: 10 })
+  async refresh(_input: unknown, ctx: RequestContext) {
+    // rotated pair handled by @fluojs/passport's refresh strategy
+  }
+}
+```
+
+- **`@fluojs/testing`** drives the whole pipeline through `Test.createApp(...)` without a port — the natural seam for asserting 200/429 behavior (below).
+
+## Limits, errors, and common mistakes
+
+- **Registering the module enforces nothing.** Routes activate `ThrottlerGuard` via `@UseGuards(...)`; forgetting the guard decorator is the most common "why is this not limited?" mistake.
+- **`ttl` is seconds here, milliseconds in `@nestjs/throttler`.** Copying `ttl: 60_000` from NestJS creates a thousand-minute window.
+- **No async registration.** Unlike several fluo modules, `ThrottlerModule` has no `forRootAsync`; resolve configuration first.
+- **No named multi-window policies.** One resolved `{ ttl, limit }` per route; burst + sustained requires composing HTTP middleware, a custom store, or an application-owned guard wrapper.
+- **`@SkipThrottle()` is unconditional.** Skips accumulate additively across class and method levels with no opt-back-out.
+- **The in-memory store is per instance and per guard.** Two `ThrottlerGuard` instances (two modules, `global: false`) do not share counters, and neither do two app replicas. Distributed limits require a shared store.
+- **Forwarded headers are ignored by default** — and unresolvable identity throws rather than bucketing everyone together. Configure `trustProxy` or a `keyGenerator` in proxied environments.
+- **Persisted NestJS windows do not continue.** Bucket keys and the storage call contract differ from `@nestjs/throttler`; migrate with a cutover or an application-owned compatibility store.
+- **HTTP-only.** Applying `ThrottlerGuard` to non-HTTP transports does nothing; write transport-owned guards there.
+
+The failure surface is deliberately small: misconfiguration throws at registration or class-definition time; runtime rejection is the `429` contract; store misbehavior (non-numeric counters, missing entries) is validated per consume and surfaces as a thrown error rather than a silently permissive limit.
+
+## Testing at the throttler seam
+
+The memory store advances on consume, not on wall-clock waits, so limit tests are fast and deterministic: fire requests in a loop, assert the boundary. Through the real pipeline:
+
+```ts title="fragment: route-level limit test"
+import { Test } from '@fluojs/testing';
+import { expect, it } from 'vitest';
+import { AppModule } from '../src/app';
+
+it('returns 429 with Retry-After after the route budget is spent', async () => {
+  const app = await Test.createApp({ rootModule: AppModule });
+
+  try {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const allowed = await app.request('POST', '/auth/login').body({}).send();
+      expect(allowed.status).toBe(200);
+    }
+
+    const rejected = await app.request('POST', '/auth/login').body({}).send();
+    expect(rejected.status).toBe(429);
+    expect(rejected.headers['Retry-After']).toBeDefined();
+  } finally {
+    await app.close();
+  }
+});
+```
+
+Store contracts need no HTTP: instantiate `RedisThrottlerStore` against a structural client that records `eval` calls to assert the script arguments, and test custom stores by calling `consume` directly with fixed `now` values. Be precise about what such tests prove: a structural-client test verifies the store's Lua-script contract, not connectivity to a live Redis server — native window sharing across processes deserves a test against a real Redis instance if your deployment depends on it. Assert status codes and headers, never response prose.
+
+## Related reading
+
+- [`@fluojs/passport`](/docs/packages/passport) — the auth guards that pair naturally with throttled credential routes.
+- [`@fluojs/redis`](/docs/packages/redis) — the shared Redis client for `RedisThrottlerStore`.
+- [`@fluojs/http`](/docs/packages/http) — guard pipeline ordering and the 429 error envelope.
+- [`@fluojs/throttler` package README](https://github.com/fluojs/fluo/blob/main/packages/throttler/README.md) — the owning API reference, including the NestJS migration boundaries.

@@ -96,6 +96,31 @@ jobs:
         if: inputs.node-version == '24.x'
         run: pnpm verify:docs
 
+      - name: Report package documentation impact
+        if: inputs.node-version == '24.x' && github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mapfile -t changed_files < <(git diff --name-only "$BASE_SHA" HEAD -- packages apps/docs/content/docs)
+          node tooling/docs/verify-package-guides.mjs "${changed_files[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Package documentation preview
+        if: inputs.node-version == '24.x'
+        run: pnpm docs:package
+
+      - name: Verify standalone documentation artifact
+        if: inputs.node-version == '24.x'
+        run: pnpm docs:release-check --require-clean
+
+      - name: Upload documentation preview
+        if: inputs.node-version == '24.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-site-${{ github.sha }}
+          path: .artifacts/docs-site
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Install isolated HTTP benchmark dependencies
         if: inputs.verify-isolated-http-benchmark
         run: pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace install --frozen-lockfile
@@ -162,6 +187,18 @@ jobs:
 
       - name: Restore package builds
         run: tar -xf "$RUNNER_TEMP/node-build.tar"
+
+      - name: Install Bun for documentation fixtures
+        if: matrix.project == 'tooling'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+
+      - name: Install Deno for documentation fixtures
+        if: matrix.project == 'tooling'
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: 'v2.9.7'
 
       - name: Test packages shard
         if: matrix.project == 'packages'

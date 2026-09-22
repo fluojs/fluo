@@ -5,7 +5,7 @@ description: Prepare the repository-backed FluoBlog workspace and verify its Fas
 
 ## Goal and starting point
 
-Start after the [course introduction](/en/docs/tutorial). You need Git, Node.js `>=24.0.0 <27`, and pnpm 10. No earlier application checkpoint is required.
+Start after the [course introduction](/docs/tutorial). You need Git, Node.js `>=24.0.0 <27`, and pnpm 10. No earlier application checkpoint is required.
 
 Your goal is to build and start the health-only learning app and receive `200` with `{"status":"ok"}` from `/health`. This course uses **the example inside the Fluo repository** so lesson source, dependencies, and recovery snapshots come from the same checkout. You will edit `examples/fluo-blog/00-start` for every lesson.
 
@@ -115,7 +115,7 @@ The published CLI's standard Node/Fastify starter is a different setup. Its gene
 
 Do **not** paste this example's whole `app.ts` over a generated app and leave the starter tests behind: that removes the greeting registration while its tests still expect it. In a generated app, a posts feature must be added to the existing `AppModule`, preserving its config, greeting, health imports, and tests. This course's complete-file replacements target only `examples/fluo-blog/00-start`.
 
-The workspace filter, numbered build scripts, `workspace:*` dependency versions, and mode-based Vite configuration are repository-specific. A generated external app uses its own package scripts and registry dependencies. This course does not assume that the repository's upcoming package versions have already been published. For creating a separate app after the course, use [Quick Start](/en/docs/getting-started/quick-start) and its published-CLI instructions; do not mix that working directory with this one.
+The workspace filter, numbered build scripts, `workspace:*` dependency versions, and mode-based Vite configuration are repository-specific. A generated external app uses its own package scripts and registry dependencies. This course does not assume that the repository's upcoming package versions have already been published. For creating a separate app after the course, use [Quick Start](/docs/getting-started/quick-start) and its published-CLI instructions; do not mix that working directory with this one.
 
 ## Recovery
 
@@ -129,4 +129,4 @@ Use the [complete starting app](https://github.com/fluojs/fluo/tree/main/example
 | Port already in use | Stop the earlier course server before restarting your learning app. |
 | `/health` returns `404` | Compare `src/app.ts` with the checkpoint and keep `HealthModule.forRoot()` registered. |
 
-Previous: [Build FluoBlog](/en/docs/tutorial). Next: [Your first route](/en/docs/tutorial/first-route).
+Previous: [Build FluoBlog](/docs/tutorial). Next: [Your first route](/docs/tutorial/first-route).

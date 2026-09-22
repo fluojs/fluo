@@ -1,4 +1,23 @@
 {
-  "title": "Package Reference",
-  "pages": ["index", "matrix", "foundation", "http-platform", "data", "auth-security", "realtime-messaging", "integrations", "operations", "tooling"]
+  "title": "Package guides",
+  "pages": [
+    "index",
+    "---Foundations---",
+    "core", "runtime", "config", "i18n",
+    "---Requests and representations---",
+    "http", "validation", "serialization", "openapi", "graphql", "react",
+    "---Hosts---",
+    "platform-fastify", "platform-nodejs", "platform-express", "platform-nextjs",
+    "platform-bun", "platform-deno", "platform-cloudflare-workers",
+    "---Data---",
+    "prisma", "drizzle", "mongoose", "redis", "cache-manager",
+    "---Security---",
+    "jwt", "passport", "throttler",
+    "---Events and work---",
+    "event-bus", "cqrs", "queue", "cron", "microservices", "websockets", "socket-io",
+    "---Delivery and operations---",
+    "notifications", "email", "slack", "discord", "metrics", "terminus",
+    "---Tools---",
+    "cli", "testing", "vite", "studio"
+  ]
 }

@@ -15,7 +15,6 @@ const governedDocuments = [
   ['book/intermediate/ch21-express-node.md', 'en'],
   ['book/intermediate/ch21-express-node.ko.md', 'ko'],
   ['apps/docs/content/docs/guides/runtime-adapters.mdx', 'en'],
-  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', 'ko'],
   ['docs/reference/package-surface.md', 'en'],
   ['docs/reference/package-surface.ko.md', 'ko'],
   ['docs/reference/package-chooser.md', 'en'],

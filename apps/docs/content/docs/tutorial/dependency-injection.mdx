@@ -5,7 +5,7 @@ description: Move post storage into a registered service while preserving the fi
 
 ## Goal and prior checkpoint
 
-Start with the working [first route](/en/docs/tutorial/first-route). You have proved the shape of `GET /posts`. Now keep that response unchanged, move its data into `PostsService`, and add `GET /posts/:id`.
+Start with the working [first route](/docs/tutorial/first-route). You have proved the shape of `GET /posts`. Now keep that response unchanged, move its data into `PostsService`, and add `GET /posts/:id`.
 
 Work in `examples/fluo-blog/00-start`. Keep your terminal at the repository root. Your app currently matches checkpoint 01. Apply the following edits to this same app; keep the completed snapshots unchanged.
 
@@ -249,4 +249,4 @@ The framework may also include `error.requestId`. Here the route exists but the 
 
 Use the [complete DI checkpoint](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog/02-dependency-injection). If bootstrap cannot resolve `PostsService`, check both `@Inject(PostsService)` and `PostsModule.providers`. If every posts request is `404`, check that the root `AppModule` imports `PostsModule` and that `start:00` is the process you are running.
 
-Previous: [Your first route](/en/docs/tutorial/first-route). Next: [Validation and errors](/en/docs/tutorial/validation-errors).
+Previous: [Your first route](/docs/tutorial/first-route). Next: [Validation and errors](/docs/tutorial/validation-errors).

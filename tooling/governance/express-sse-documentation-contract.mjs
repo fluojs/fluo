@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const runtimeAdapterGuides = [
   'apps/docs/content/docs/guides/runtime-adapters.mdx',
-  'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
 ];
 
 function assert(condition, message) {

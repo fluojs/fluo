@@ -23,9 +23,7 @@ import {
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const guidePaths = [
   'apps/docs/content/docs/guides/http-api.mdx',
-  'apps/docs/content/docs/guides/http-api.ko.mdx',
   'apps/docs/content/docs/guides/first-feature.mdx',
-  'apps/docs/content/docs/guides/first-feature.ko.mdx',
 ] as const;
 
 function read(relativePath: string): string {
@@ -54,9 +52,7 @@ function importedHttpNames(source: string): readonly string[] {
 describe('HTTP website guide snippets', () => {
   it.each([
     ['apps/docs/content/docs/guides/http-api.mdx', 1],
-    ['apps/docs/content/docs/guides/http-api.ko.mdx', 1],
     ['apps/docs/content/docs/guides/first-feature.mdx', 2],
-    ['apps/docs/content/docs/guides/first-feature.ko.mdx', 2],
   ])('%s selects every intended HTTP TypeScript snippet', (relativePath, expectedCount) => {
     // Given
     const snippets = codeSnippets(relativePath);
@@ -145,7 +141,7 @@ ${source}\`\`\``;
     );
 
     // Then
-    expect(injectionArguments).toEqual([['UsersService'], ['UsersService']]);
+    expect(injectionArguments).toEqual([['UsersService']]);
   });
 
   it('binds every Get and Post handler to its own request DTO source', () => {
@@ -161,7 +157,7 @@ ${source}\`\`\``;
     ]);
 
     // Then
-    expect(routes).toHaveLength(8);
+    expect(routes).toHaveLength(4);
 
     for (const route of routes) {
       expect(route.requestDto).toBe(route.parameterDto);

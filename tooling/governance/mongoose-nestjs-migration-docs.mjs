@@ -56,10 +56,6 @@ const documentationRequirements = [
     path: 'apps/docs/content/docs/guides/persistence.mdx',
   },
   {
-    heading: '## Mongoose',
-    path: 'apps/docs/content/docs/guides/persistence.ko.mdx',
-  },
-  {
     heading: '# Chapter 19. MongoDB and Mongoose',
     path: 'book/intermediate/ch19-mongoose.md',
   },
@@ -93,11 +89,9 @@ const mongooseRemovalRequirements = [
   { heading: '# @fluojs/mongoose', path: 'packages/mongoose/README.md' },
   { heading: '# @fluojs/mongoose', path: 'packages/mongoose/README.ko.md' },
   { heading: '## Mongoose', path: 'apps/docs/content/docs/guides/persistence.mdx' },
-  { heading: '## Mongoose', path: 'apps/docs/content/docs/guides/persistence.ko.mdx' },
 ];
 const mongooseFacadeExamplePaths = [
   'apps/docs/content/docs/guides/persistence.mdx',
-  'apps/docs/content/docs/guides/persistence.ko.mdx',
 ];
 
 function assert(condition, message) {

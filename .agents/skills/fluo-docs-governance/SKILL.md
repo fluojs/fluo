@@ -6,8 +6,12 @@ compatibility: omo
 
 # Fluo docs governance
 
-Maintain parity across root READMEs, `apps/docs/content/docs/`, `docs/`, `book/`,
+Maintain parity across root READMEs, `docs/`, `book/`,
 example READMEs, and package READMEs.
+The official website under `apps/docs/content/docs/` is English-only.
+Do not add localized website files or locale selection. Old `/en/docs` and
+`/ko/docs` URLs redirect to the canonical `/docs` pages.
+This website exception does not change repository or Book translation rules.
 Update English and Korean companions together, preserve canonical links, and
 align tooling claims with `docs/reference/toolchain-contract-matrix.md`.
 
@@ -49,8 +53,8 @@ until their owners, triggers, assertions, and negative regressions migrate toget
 without weaker detection. Authority guidance alone does not establish complete
 package/chapter migration.
 
-`docs:sync-check` verifies website counterpart-file existence, not semantic
-translation parity. Review changed EN/KO instructions together and exercise
+`docs:sync-check` rejects localized website files, not semantic translation
+differences. Review repository EN/KO instructions together and exercise
 the affected tutorial checkpoints, including intermediate states.
 
 Use `pnpm book:check:ko` during Korean authoring and `pnpm book:check` after

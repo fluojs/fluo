@@ -623,7 +623,6 @@ export function enforcePlatformFastifyEngineDocumentation(readText = read) {
 
   for (const relativePath of [
     'apps/docs/content/docs/guides/runtime-adapters.mdx',
-    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   ]) {
     const content = readText(relativePath);
     const fastifyHeadingMatches = [...content.matchAll(/^## Fastify\s*$/gmu)];
@@ -658,7 +657,6 @@ export function enforcePlatformNodejsEngineDocumentation(readText = read) {
 
   for (const relativePath of [
     'apps/docs/content/docs/guides/runtime-adapters.mdx',
-    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   ]) {
     const content = readText(relativePath);
     const headingMatches = [...content.matchAll(/^## Raw Node\.js\s*$/gmu)];
@@ -765,11 +763,8 @@ const contractGateTriggers = new Set([
   // pre-listen realtime binding, WebSocket runtime-subpath/return-value, and
   // metadata migration boundaries.
   'apps/docs/content/docs/guides/realtime.mdx',
-  'apps/docs/content/docs/guides/realtime.ko.mdx',
   'apps/docs/content/docs/guides/runtime-adapters.mdx',
-  'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
   'apps/docs/content/docs/guides/auth.mdx',
-  'apps/docs/content/docs/guides/auth.ko.mdx',
   // Queue worker ownership and NestJS/Bull migration boundaries.
   'packages/queue/README.md',
   'packages/queue/README.ko.md',
@@ -2078,10 +2073,6 @@ const denoPermissionGuidanceRequirements = [
     [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'does not read environment variables', 'does not require a separate Deno permission'],
   ],
   [
-    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
-    [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'environment variable을 읽지 않습니다', '별도의 Deno permission이 필요하지 않'],
-  ],
-  [
     'book/intermediate/ch23-deno.md',
     [denoManagedStartupCommand, '--allow-env=PORT,DATABASE_URL', 'shutdownRegistration', 'does not read environment variables', 'does not require a separate Deno permission'],
   ],
@@ -2157,7 +2148,6 @@ const cloudflareWorkerFetchEnvGovernedDocs = [
   ['docs/getting-started/migrate-from-nestjs.md', cloudflareWorkerFetchEnvForbiddenClaims.english],
   ['docs/getting-started/migrate-from-nestjs.ko.md', cloudflareWorkerFetchEnvForbiddenClaims.korean],
   ['apps/docs/content/docs/guides/runtime-adapters.mdx', cloudflareWorkerFetchEnvForbiddenClaims.english],
-  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', cloudflareWorkerFetchEnvForbiddenClaims.korean],
   ['docs/CONTEXT.md', cloudflareWorkerFetchEnvForbiddenClaims.english],
   ['docs/CONTEXT.ko.md', cloudflareWorkerFetchEnvForbiddenClaims.korean],
 ];
@@ -2172,9 +2162,7 @@ const cloudflareWorkersLifecycleDocRequirements = [
   ['docs/getting-started/migrate-from-nestjs.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config', 'no host-invoked shutdown callback', 'successful host `close()` is restartable', ...cloudflareWorkerFetchEnvMarkers.english]],
   ['docs/getting-started/migrate-from-nestjs.ko.md', ['fetch(request, env, ctx)', 'CloudflareWorkersWebSocketModule.forRoot()', 'ctx.waitUntil(...)', '@fluojs/config', 'host가 호출하는 shutdown callback이 없으므로', '성공한 host `close()`는 재시작 가능', ...cloudflareWorkerFetchEnvMarkers.korean]],
   ['apps/docs/content/docs/guides/runtime-adapters.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', 'host-invoked shutdown callback', 'successful host close is restartable', ...cloudflareWorkerFetchEnvMarkers.english, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule']],
-  ['apps/docs/content/docs/guides/runtime-adapters.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'request.cloudflare.env', 'underlying drain', 'host가 호출하는 shutdown callback', '성공한 host close는 재시작 가능', ...cloudflareWorkerFetchEnvMarkers.korean, 'Partial<WorkerEnv>', 'export class WorkerBindingsModule']],
   ['apps/docs/content/docs/guides/realtime.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`', 'does not send a shutdown callback', 'successful host close is restartable']],
-  ['apps/docs/content/docs/guides/realtime.ko.mdx', ['CloudflareWorkersWebSocketModule.forRoot()', 'executionContext.waitUntil(...)', 'JSON `503`', 'shutdown callback을 보내지 않습니다', '성공한 host close는 재시작 가능']],
   ['docs/CONTEXT.md', ['packages/platform-cloudflare-workers/README.md', 'docs/getting-started/migrate-from-nestjs.md', 'website runtime/realtime guides', 'fetch-time `env` boundary is mirrored specifically in the package README, intermediate book, NestJS migration map, and website runtime guide', 'request-bound bindings are validated and narrowed', 'A Worker `fetch` handler has no host-invoked shutdown callback', 'successful host close is restartable']],
   ['docs/CONTEXT.ko.md', ['packages/platform-cloudflare-workers/README.ko.md', 'docs/getting-started/migrate-from-nestjs.ko.md', 'website runtime/realtime guide', 'Fetch-time `env` boundary는 package README, intermediate book, NestJS migration map, website runtime guide에만 명시적으로 반영', 'request-bound binding은 application-shaped 값이 provider method에 전달되기 전에 검증하고 좁혀야 합니다', 'Worker `fetch` handler에는 host가 호출하는 shutdown callback이 없으므로', '성공한 host close는 재시작 가능']],
 ];
@@ -2386,10 +2374,6 @@ const expressRuntimeMigrationDocRequirements = [
     [nodeListenerEngineRange, 'engines.node', 'getListenTarget()', 'explicit DI/module wiring'],
   ],
   [
-    'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
-    [nodeListenerEngineRange, 'engines.node', 'getListenTarget()', '명시적 DI/module wiring'],
-  ],
-  [
     'docs/CONTEXT.md',
     [nodeListenerEngineRange, 'engines.node', 'getListenTarget()', 'explicit DI/module wiring'],
   ],
@@ -2403,7 +2387,6 @@ const expressListenTargetExamplePaths = [
   'book/intermediate/ch21-express-node.md',
   'book/intermediate/ch21-express-node.ko.md',
   'apps/docs/content/docs/guides/runtime-adapters.mdx',
-  'apps/docs/content/docs/guides/runtime-adapters.ko.mdx',
 ];
 
 function includesMarkersInOrder(content, markers) {
@@ -2554,9 +2537,7 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
   const bunChapter = readFileSync(join(repoRoot, 'book/intermediate/ch22-bun.md'), 'utf8');
   const bunChapterKo = readFileSync(join(repoRoot, 'book/intermediate/ch22-bun.ko.md'), 'utf8');
   const runtimeAdaptersGuide = readFileSync(join(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.mdx'), 'utf8');
-  const runtimeAdaptersGuideKo = readFileSync(join(repoRoot, 'apps/docs/content/docs/guides/runtime-adapters.ko.mdx'), 'utf8');
   const realtimeGuide = readFileSync(join(repoRoot, 'apps/docs/content/docs/guides/realtime.mdx'), 'utf8');
-  const realtimeGuideKo = readFileSync(join(repoRoot, 'apps/docs/content/docs/guides/realtime.ko.mdx'), 'utf8');
   const viteReadme = readFileSync(join(repoRoot, 'packages/vite/README.md'), 'utf8');
   const viteReadmeKo = readFileSync(join(repoRoot, 'packages/vite/README.ko.md'), 'utf8');
   const quickStart = readFileSync(join(repoRoot, 'docs/getting-started/quick-start.md'), 'utf8');
@@ -2781,17 +2762,14 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
       packageChooserKo.includes('Fastify가 HTTPS/TLS 시작을 직접 소유해야 함') &&
       packageChooserKo.includes('일반 HTTP로 유지하세요') &&
       docsContextKo.includes('Fastify adapter discoverability') &&
-      docsContextKo.includes('apps/docs/content/docs/guides/runtime-adapters.ko.mdx') &&
+      docsContextKo.includes('apps/docs/content/docs/guides/runtime-adapters.mdx') &&
       docsContextKo.includes(nodeListenerEngineMarker) &&
       beginnerIntroKo.includes(nodeListenerEngineRange) &&
       beginnerCliSetupKo.includes('일반 HTTP로 실행') &&
       beginnerProductionKo.includes('Fastify adapter `https` option') &&
       beginnerProductionKo.startsWith('<!-- packages: @fluojs/core, @fluojs/http, @fluojs/platform-fastify -->') &&
-      customAdapterKo.startsWith('<!-- packages: @fluojs/http, @fluojs/core, @fluojs/di, @fluojs/platform-fastify -->') &&
-      runtimeAdaptersGuideKo.includes('### Fastify HTTPS/TLS') &&
-      runtimeAdaptersGuideKo.includes('Node.js `https.ServerOptions`') &&
-      runtimeAdaptersGuideKo.includes('infrastructure boundary 뒤에서 Fastify를 일반 HTTP로 실행'),
-    'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, book metadata, and website guidance must keep the Node.js 24 runtime floor and HTTPS/TLS startup boundary discoverable together.',
+      customAdapterKo.startsWith('<!-- packages: @fluojs/http, @fluojs/core, @fluojs/di, @fluojs/platform-fastify -->'),
+    'Korean Fastify README, package-surface, package-chooser, docs/CONTEXT.ko.md, and book metadata must keep the Node.js 24 runtime floor and HTTPS/TLS startup boundary discoverable together.',
   );
   assert(
     fastifyReadme.includes('`shutdownTimeoutMs: 0` starts Fastify close immediately') &&
@@ -2835,10 +2813,6 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
       bunChapterKo.includes('BunHttpApplicationAdapter.create({') &&
       bunChapterKo.includes('shutdownRegistration: createBunShutdownSignalRegistration(),') &&
       bunChapterKo.includes('await app.listen();') &&
-      runtimeAdaptersGuideKo.includes('const handler = createBunFetchHandler({') &&
-      !runtimeAdaptersGuideKo.includes('await createBunFetchHandler') &&
-      runtimeAdaptersGuideKo.includes('수동 `Bun.serve(...)` 호출') &&
-      realtimeGuideKo.includes('`upgrade(...)` host만 노출') &&
       migrateFromNestjsKo.includes('manual host는 shutdown, websocket upgrade, native `routes` acceleration을 직접 소유') &&
       docsContextKo.includes('동기 `createBunFetchHandler(...)` 사용법'),
     'Korean Bun adapter docs must keep synchronous manual fetch hosting, pre-listen realtime binding, and signal-driven shutdown ownership discoverable together.',
@@ -3875,7 +3849,6 @@ export function enforceOpenApiNullableNormalizationContract(readText = read) {
   const rejectionSentinel = 'fluo:openapi-31-rejection: legacy-nullable-and-boolean-exclusive-bounds-rejected';
   const documentationPaths = [
     'apps/docs/content/docs/guides/http-api.mdx',
-    'apps/docs/content/docs/guides/http-api.ko.mdx',
     'book/beginner/ch10-openapi.md',
     'book/beginner/ch10-openapi.ko.md',
     'docs/CONTEXT.md',
@@ -4010,7 +3983,6 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
   const compatibilityExports = [];
   const contractPaths = [
     'apps/docs/content/docs/guides/persistence.mdx',
-    'apps/docs/content/docs/guides/persistence.ko.mdx',
     'docs/CONTEXT.md',
     'docs/CONTEXT.ko.md',
     'docs/architecture/transactions.md',
@@ -4061,7 +4033,6 @@ export function enforcePersistenceTransactionInterceptorCompatibility(readText =
 
   for (const guidePath of [
     'apps/docs/content/docs/guides/persistence.mdx',
-    'apps/docs/content/docs/guides/persistence.ko.mdx',
   ]) {
     const guide = readText(guidePath);
     const requestTransactionsRow = /^\| Request transactions \|.*$/mu.exec(guide)?.[0];

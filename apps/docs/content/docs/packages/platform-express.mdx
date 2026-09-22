@@ -1,0 +1,278 @@
+---
+title: Express platform
+description: Host a fluo application on Express 5 with @fluojs/platform-express — fluo owns the request pipeline while Express operational assets and native handlers stay at the platform boundary.
+package: "@fluojs/platform-express"
+---
+
+`@fluojs/platform-express` runs a fluo application with
+[Express](https://expressjs.com) 5 as the host HTTP engine. The intent is
+specific: keep existing Express operational assets — hosting conventions,
+server integrations, migration-only native handlers — near the platform
+boundary, while controllers, providers, guards, interceptors, and middleware
+keep using fluo's runtime contracts. The adapter constructs and owns its own
+Express application; it does not adopt an existing one and does not expose
+post-bootstrap `use(...)` mutation.
+
+Express being the host does **not** make this a NestJS compatibility layer.
+Migrating an existing Express/NestJS codebase means moving to TC39 standard
+decorators, declaring constructor tokens with class-level `@Inject(...)`, and
+registering providers explicitly — with `experimentalDecorators` and
+`emitDecoratorMetadata` kept disabled. The
+[dependency injection guide](/docs/fundamentals/dependency-injection) maps the
+NestJS mechanics to fluo equivalents, and the
+[migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-nestjs.md)
+provides a pattern-by-pattern table.
+
+## When to use this adapter
+
+Use it when Express-specific operational surface (reverse-proxy conventions,
+existing deployment scripts, native handler reuse during a staged migration)
+matters more than raw throughput. For high-concurrency services with no
+Express investment, [Fastify](/docs/packages/platform-fastify) is the
+recommended production adapter. For Bun, Deno, or Cloudflare Workers hosts, use
+the fetch-style adapters — this package declares `engines.node >=24.0.0 <27`
+so listener-level RFC `QUERY` requests reach Express and fluo dispatch on the
+supported range only.
+
+## Installation
+
+```bash
+npm install @fluojs/platform-express express
+```
+
+The adapter declares `express ^5` as its own runtime dependency, so the second
+install is for *your* code: authoring `nativeMiddleware` handlers with explicit
+`express` types (and `@types/express` for them) needs the package as a direct
+dependency of the application.
+
+## A complete working example
+
+```ts title="src/main.ts"
+import { FluoFactory } from '@fluojs/runtime';
+import {
+  createConsoleApplicationLogger,
+  createNodeShutdownSignalRegistration,
+} from '@fluojs/platform-nodejs';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
+
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: ExpressHttpApplicationAdapter.create({
+    host: '127.0.0.1',
+    port: 3000,
+  }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+
+await app.listen();
+```
+
+With the posts feature module from the
+[Node platform guide](/docs/packages/platform-nodejs) registered
+in `AppModule`, `GET /posts` and `POST /posts` behave identically on Express,
+Fastify, and raw Node. Startup logs the listening target and ready message in
+the same shape as every other Node-hosted adapter.
+
+## The Express/Connect middleware boundary
+
+This is the adapter's most important contract, and the source of most migration
+mistakes. Express preserves the host engine, but the request pipeline remains
+dispatcher-owned — and fluo's application `middleware` option accepts only fluo
+middleware:
+
+```ts title="fragment: portable fluo middleware"
+import type { Middleware } from '@fluojs/http';
+
+const varyOnEncoding: Middleware = {
+  async handle(context, next) {
+    context.response.setHeader('vary', 'Accept-Encoding');
+    await next();
+  },
+};
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: ExpressHttpApplicationAdapter.create({ port: 3000 }),
+  middleware: [varyOnEncoding],
+});
+```
+
+A native Express/Connect function such as `compression()` cannot be passed
+there — it does not implement `handle(context, next)` and would break
+portability to Fastify, raw Node, Bun, Deno, and Workers. When a migration must
+retain a native handler, register it explicitly at construction time:
+
+```ts title="fragment: migration-only native handler"
+import type { RequestHandler } from 'express';
+
+const legacyRequestTag: RequestHandler = (_request, response, next) => {
+  response.setHeader('x-migration-host', 'express');
+  next();
+};
+
+const adapter = ExpressHttpApplicationAdapter.create({
+  nativeMiddleware: [legacyRequestTag],
+  port: 3000,
+});
+```
+
+`nativeMiddleware` accepts `RequestHandler | ErrorRequestHandler` values,
+mounted in array order **before** the adapter's Express Router and the catch-all
+fluo dispatch. Its semantics are Express's, not fluo's:
+
+- `next()` continues into fluo middleware, guards, interceptors, and handlers.
+- Ending the native response stops the chain there; nothing enters fluo
+  dispatch.
+- Thrown errors and `next(error)` remain in the **Express error chain**, not
+  fluo's. Place any native Express error handler after the middleware it
+  handles in the same array; fluo error filters and envelopes do not translate
+  failures that occur before dispatch.
+- The native stack is fixed when the adapter is created. Later `use(...)` calls
+  are not a supported surface.
+
+Ownership follows the same line: the adapter closes its Node listener and
+connections on shutdown, but it does not discover or dispose timers, clients,
+or other resources captured by native middleware — application bootstrap code
+must release those. Prefer rewriting portable behavior as fluo `Middleware`
+and shrinking `nativeMiddleware` to a migration vehicle.
+
+## How request handling works
+
+1. **Native route registration with safe fallback.** The adapter pre-registers
+   Express Router handlers for explicit `GET`, `POST`, `PUT`, `PATCH`,
+   `DELETE`, and `HEAD` routes and hands the pre-matched descriptor and params
+   to the shared fluo dispatcher — eligible singleton-safe handlers complete on
+   the dispatcher fast path, and everything else falls back without duplicate
+   route matching. To avoid narrowing documented semantics, overlapping
+   same-shape param routes (`/:id`, `/:slug`), `@All(...)` handlers, non-URI
+   versioning, and duplicate-slash/trailing-slash variants stay on the
+   catch-all path.
+2. **`OPTIONS` parity.** The adapter prevents Express Router from
+   auto-answering `OPTIONS` for native routes, so unsupported methods fall
+   through to fluo dispatcher semantics and `@All(...)` handlers keep owning
+   `OPTIONS` when defined.
+3. **Rewrite parity.** If app middleware rewrites the framework request method
+   or path after a native handoff was attached, the dispatcher treats that
+   handoff as stale and rematches the rewritten request.
+4. **Versioning parity.** Header/media-type/custom version selection remains
+   dispatcher-owned even when Express Router performs the initial path match.
+5. **Serialization parity.** String responses default to `text/plain`,
+   objects/arrays serialize as JSON, binary payloads default to
+   `application/octet-stream`, and `set-cookie` values are merged — the same
+   response contract as the other adapters.
+
+Everything downstream of the match — guards, interceptors, observers, DTO
+binding, SSE, error envelopes — is the framework-owned path, so behavior does
+not fork between native-matched and fallback-dispatched requests.
+
+## Defaults and options
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `port` | `3000` | `process.env.PORT` is not read; `0` binds an OS-assigned port. |
+| `host` | Node chooses | Omitted binds all interfaces. |
+| `maxBodySize` | `1048576` (1 MiB) | `0` allows only empty bodies; default multipart total cap. |
+| `rawBody` | `false` | Opt-in original-byte preservation; multipart requests never expose `rawBody`. |
+| `multipart` | buffered | Limits plus `strategy: 'stream'`; `maxTotalSize` defaults to `maxBodySize`. |
+| `nativeMiddleware` | `[]` | Express-native handlers mounted before routing; fixed at construction. |
+| `https` | unset | Node `https.ServerOptions`; TLS owned by this process. |
+| `retryDelayMs` / `retryLimit` | `150` / `20` | `EADDRINUSE` retry while the adapter remains open. |
+| `shutdownTimeoutMs` | `10_000` | Drain bound; `0` force-closes connections as soon as shutdown yields to the timer queue. |
+
+Invalid explicit numeric options throw during adapter creation, before
+anything listens.
+
+## Server ownership and infrastructure seams
+
+The adapter owns its Node HTTP/HTTPS server and connections. For narrow
+platform integrations — custom health probes, socket activation, external
+shutdown coordination — the class exposes infrastructure seams that should not
+leak into ordinary application code:
+
+- `getServer()` returns the adapter-owned `node:http` or `node:https` server as
+  the exported `ExpressServer` union type.
+- `getListenTarget()` reports the resolved bind target and public URL after
+  startup (wildcard binds are reported as `localhost`).
+- `getRealtimeCapability()` returns the server-backed capability that lets
+  `@fluojs/websockets` attach gateways to the same listener.
+
+Startup and shutdown follow the shared Node-hosted contract: `listen()` retries
+`EADDRINUSE` per the retry options, concurrent callers share one in-flight
+startup lifecycle and dispatcher, duplicate `listen()` on a started adapter is
+idempotent, `close()` aborts and joins a retry in progress, rejects
+`listen()` while close is running, drains idle keep-alive sockets, and
+force-closes remaining connections after the shutdown timeout.
+
+## Composition with neighboring packages
+
+- **`@fluojs/platform-nodejs`** supplies the logger creators
+  (`createConsoleApplicationLogger`, `createJsonApplicationLogger`) and the
+  shutdown registration used in the quick start; this adapter consumes its
+  transport internals for early hints (backed by the underlying Node
+  `ServerResponse`) and request plumbing.
+- **Factory pipeline options** compose as everywhere else: configured CORS,
+  configured global prefix, security headers, then caller middleware. CORS is
+  fluo-owned middleware — do not add an Express `cors()` middleware for it.
+- **SSE** uses the shared `@fluojs/http` stream utilities:
+
+  ```ts title="fragment: SSE handler"
+  import { Sse, SseResponse, type RequestContext } from '@fluojs/http';
+
+  @Sse('events')
+  async streamEvents(_input: undefined, ctx: RequestContext) {
+    const events = new SseResponse(ctx);
+    events.send({ data: 'hello' }, { event: 'ready' });
+    return events;
+  }
+  ```
+
+  Response streams honor the shared backpressure contract:
+  `response.stream.waitForDrain()` settles on `drain`, `close`, or `error`, so
+  streaming writers do not hang when a client disconnects.
+- **Multipart** follows the shared contract — buffered parsing with
+  `request.files` by default, `multipart: { strategy: 'stream' }` for
+  on-demand `AsyncIterable` consumption, and
+  `isExpressMultipartTooLargeError(error)` for limit detection across adapter
+  error shapes.
+
+## Failures, limits, and common mistakes
+
+- **Treating the adapter as a NestJS compatibility layer.** Legacy decorator
+  and reflection-metadata semantics are not preserved; migrate decorators and
+  `@Inject` declarations explicitly and keep `emitDecoratorMetadata` off.
+- **Passing native middleware to the Factory `middleware` option.** Only fluo
+  `MiddlewareLike` handlers are accepted there; native handlers belong in
+  `nativeMiddleware`, or better, rewritten as portable middleware.
+- **Expecting fluo error filters to catch native failures.** Errors from
+  `nativeMiddleware` stay in the Express error chain; only the native error
+  handlers you supply can respond to them.
+- **Mutating the Express app after construction.** The native stack is fixed;
+  there is no supported post-bootstrap `use(...)`.
+- **Assuming `rawBody` on multipart requests.** Raw-body capture is skipped for
+  multipart, including mixed-case `Content-Type` spellings.
+- **Reading `process.env.PORT` through the adapter.** It never does; resolve
+  the environment in your own entrypoint.
+- **Node versions outside `>=24.0.0 <27`.** Behavior, including RFC `QUERY`
+  fallback, is verified only on the declared range.
+
+## Testing at this seam
+
+`Test.createApp({ rootModule })` covers controller and pipeline behavior
+without a socket. Native-middleware ordering, termination, and error-chain
+behavior need a real Express host: create the adapter with
+`host: '127.0.0.1', port: 0`, resolve `adapter.getListenTarget()` after
+`app.listen()`, assert the native header over `fetch`, and close in a
+`finally`. The package's own `adapter.test.ts` runs the shared
+`HttpAdapterPortabilityHarness.create(...)` conformance checks plus
+Express-specific regressions (native middleware ordering and error
+propagation, native-route fallback parity, descriptor refresh after
+close/relisten, retry exhaustion, idle keep-alive drain, forced shutdown).
+
+## Related reading
+
+- [`@fluojs/platform-express` package README](https://github.com/fluojs/fluo/blob/main/packages/platform-express/README.md) — the owning contract and adapter-contract list.
+- [Node platform](/docs/packages/platform-nodejs) — foundation package and raw-listener alternative.
+- [Fastify platform](/docs/packages/platform-fastify) — the throughput-oriented adapter and its native configuration seam.
+- [Dependency injection](/docs/fundamentals/dependency-injection) — module-graph mechanics and the NestJS migration mapping.
+- [Runtime adapters guide](/docs/guides/runtime-adapters) — task-oriented adapter selection.

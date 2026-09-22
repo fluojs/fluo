@@ -1,30 +1,99 @@
 ---
 title: Introduction
-description: Build your first fluo application, solve a specific task, or find a maintained contract.
+description: Build structured TypeScript applications with standard decorators and explicit dependencies.
 ---
 
-fluo is a standard-first TypeScript backend framework built on TC39 standard decorators, explicit dependency boundaries, and metadata-free runtime wiring.
+Fluo is a TypeScript backend framework for applications that benefit from modules,
+controllers and dependency injection. It connects these building blocks to HTTP
+servers, databases and background work without relying on TypeScript's legacy
+decorator metadata.
+
+Start with a small application, then add the capabilities you need. You do not
+need to install every Fluo package or understand its internals before writing
+your first endpoint.
+
+**New to Fluo?** [Create your first application](/docs/getting-started/quick-start),
+then follow the Overview chapters with the same project. The recommended path
+uses Node.js `>=24.0.0 <27`, TypeScript and Fastify.
 
 ## Why fluo?
 
 Most decorator-heavy TypeScript frameworks depend on legacy compiler behavior. fluo keeps the programming model close to the JavaScript language path: no `experimentalDecorators`, no `emitDecoratorMetadata`, and no hidden reflection requirement.
 
+Dependencies are explicit: a provider declares the tokens it needs, and a module
+declares which providers and controllers belong together. This makes application
+assembly visible in the code and lets tests replace dependencies deliberately.
+
+Fluo is a good fit when an application needs a shared structure across several
+features, testable services and clearly owned startup and shutdown work. If you
+only need a single stateless handler, consider whether modules and dependency
+injection add enough value for that application.
+
+## How an application fits together
+
+An HTTP application has four main pieces:
+
+| Piece | Responsibility | Example |
+| --- | --- | --- |
+| Controller | Connect an incoming request to application work | A posts endpoint |
+| Provider | Implement reusable behavior and dependencies | A posts service |
+| Module | Register and expose related pieces | A posts feature module |
+| Adapter | Connect the application to its host | A Fastify listener |
+
+A request enters through the adapter and is dispatched to a controller. The
+controller delegates business work to injected providers. Modules determine
+which providers are available; they are not request handlers themselves.
+
+The runtime assembles this graph before the application starts serving requests.
+For a listener-based application, the standard entry point is
+`FluoFactory.create(AppModule, { adapter })`, followed by `app.listen()`.
+The [Getting started guide](/docs/getting-started/quick-start) generates a
+complete entry point, including logging and host shutdown registration, so you
+do not have to assemble those prerequisites from isolated fragments.
+
+## Read the fundamentals in order
+
+1. [Getting started](/docs/getting-started/quick-start) creates an application
+   and checks its development and production paths.
+2. [Modules](/docs/overview/modules) adds a feature to that same app.
+3. [Controllers](/docs/overview/controllers#beginner-checkpoint) adds its first route.
+4. [Providers](/docs/overview/providers) moves behavior into an injected service.
+5. [Validation](/docs/overview/validation) rejects invalid input before mutation.
+6. [Serialization](/docs/overview/serialization) defines the public response.
+7. [Error handling](/docs/overview/error-handling) handles missing resources.
+8. [Testing](/docs/overview/testing) verifies the complete request path.
+
+Keep one generated project throughout this sequence. The
+[DI reference](/docs/fundamentals/dependency-injection) and
+[transaction guide](/docs/techniques/database-transactions) are deeper reading,
+not extra prerequisites. The [repository tutorial](/docs/tutorial) remains
+a separate exercise for readers who want to work inside the framework checkout.
+
+## Choose a platform deliberately
+
+For a first local application, use Node.js and the Fastify adapter from Getting
+started. Other adapters support different hosting models, including Bun, Deno
+and Cloudflare Workers. A runtime adapter does not make every database driver,
+transport or Node-specific package portable.
+
+Check the [runtime adapter guide](/docs/guides/runtime-adapters) before moving
+an application between hosts. In particular, a host-owned request handler has
+different startup and shutdown responsibilities from a process-owned listener.
+The supported package combinations matter as much as the language runtime.
+
 ## Choose your next step
 
 | I want to... | Start here |
 | --- | --- |
-| Learn code and backend patterns through a product | [FluoBlog -> FluoShop -> Inside Fluo](https://github.com/fluojs/fluo/blob/main/book/README.md) |
-| Practice the first route, DI, and validation quickly | [FluoBlog HTTP exercise](/en/docs/tutorial) |
-| Check that the CLI and runtime work on my machine | [Quick Start](/en/docs/getting-started/quick-start) |
-| Add a capability to an existing application | [Task guides](/en/docs/guides) |
-| Understand standard decorators | [Concepts](/en/docs/concepts/standard-decorators) |
-| Find an API, runtime limit, or package | [Package Reference](/en/docs/packages) |
-| Run an existing application | [Examples](/en/docs/examples) |
+| Build my first application | [Getting started](/docs/getting-started/quick-start), then [Overview](/docs/overview/modules) |
+| Add a capability to an existing application | [Task guides](/docs/guides) |
+| Understand standard decorators | [Concepts](/docs/concepts/standard-decorators) |
+| Find an API, runtime limit, or package | [Package Reference](/docs/packages) |
+| Run an existing application | [Examples](/docs/examples) |
 
 ## Three volumes following a growing product
 
-[Volume 1](https://github.com/fluojs/fluo/blob/main/book/01-fluoblog/toc.md) develops a small blog into an operable service. [Volume 2](https://github.com/fluojs/fluo/blob/main/book/02-fluoshop/toc.md) adds merchandise sales to that same successful blog. [Volume 3](https://github.com/fluojs/fluo/blob/main/book/03-internals/toc.md) explores the Fluo internals and extension points that execute both products.
-
-The Book is the primary path for learning code and backend design. The short HTTP exercise is a companion for checking the initial execution path; guides help add a specific capability to an existing application. Package READMEs and repository contracts own detailed APIs and support boundaries.
-
-To compare frameworks first, read [Why fluo?](/en/docs/why-fluo). Start the complete learning path with [volume 1: FluoBlog](https://github.com/fluojs/fluo/blob/main/book/01-fluoblog/README.md).
+For a longer course in backend design, the
+[Book](https://github.com/fluojs/fluo/blob/main/book/README.md) follows a blog,
+its merchandise shop and the framework internals. It is a separate curriculum,
+not a prerequisite for this documentation's beginner path.

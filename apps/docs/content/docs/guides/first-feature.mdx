@@ -3,22 +3,22 @@ title: First Feature
 description: Find the guided first-feature lesson or the reference for an existing application.
 ---
 
-The [three-volume Book series](https://github.com/fluojs/fluo/blob/main/book/README.md) is the primary learning path. The [FluoBlog tutorial](/en/docs/tutorial) is a short companion exercise for the initial HTTP, DI, and validation flow. It builds one posts API through complete, executable checkpoints instead of leaving module registration, validation, or tests for you to fill in.
+The [three-volume Book series](https://github.com/fluojs/fluo/blob/main/book/README.md) is the primary learning path. The [FluoBlog tutorial](/docs/tutorial) is a short companion exercise for the initial HTTP, DI, and validation flow. It builds one posts API through complete, executable checkpoints instead of leaving module registration, validation, or tests for you to fill in.
 
 ## Build your first feature
 
-Start with [Create an application](/en/docs/tutorial/create-app), then continue in order:
+Start with [Create an application](/docs/tutorial/create-app), then continue in order:
 
-1. [Return your first posts response](/en/docs/tutorial/first-route).
-2. [Connect a module and service with explicit DI](/en/docs/tutorial/dependency-injection).
-3. [Validate input and handle errors](/en/docs/tutorial/validation-errors).
-4. [Prove the request behavior with tests](/en/docs/tutorial/testing).
+1. [Return your first posts response](/docs/tutorial/first-route).
+2. [Connect a module and service with explicit DI](/docs/tutorial/dependency-injection).
+3. [Validate input and handle errors](/docs/tutorial/validation-errors).
+4. [Prove the request behavior with tests](/docs/tutorial/testing).
 
 Use the same FluoBlog project throughout. Each lesson states the required starting state, exact file changes, expected responses, and a recovery checkpoint.
 
 ## Add a feature to an existing application
 
-If your app already runs, use the [feature structure reference](https://github.com/fluojs/fluo/blob/main/docs/getting-started/first-feature-path.md) to check module registration and file responsibilities. Use [HTTP API](/en/docs/guides/http-api), [Validation & Serialization](/en/docs/guides/validation-serialization), and [Testing](/en/docs/guides/testing) for the specific capability you are adding.
+If your app already runs, use the [feature structure reference](https://github.com/fluojs/fluo/blob/main/docs/getting-started/first-feature-path.md) to check module registration and file responsibilities. Use [HTTP API](/docs/guides/http-api), [Validation & Serialization](/docs/guides/validation-serialization), and [Testing](/docs/guides/testing) for the specific capability you are adding.
 
 ### HTTP and DI wiring
 
@@ -76,6 +76,6 @@ export class CreateUserDto {
 }
 ```
 
-Field initializers make these declarations compatible with Fluo's standard decorator toolchain. `@FromBody()` identifies the input source; it does not validate that `name` is a string or non-empty. This structural example does not implement value validation, persistence, or a `404` response for a missing user. Before accepting real external input, follow the `@fluojs/validation` wiring in [Validation & Serialization](/en/docs/guides/validation-serialization) and the [validation and error handling exercise](/en/docs/tutorial/validation-errors), then prove the behavior with [request tests](/en/docs/tutorial/testing).
+Field initializers make these declarations compatible with Fluo's standard decorator toolchain. `@FromBody()` identifies the input source; it does not validate that `name` is a string or non-empty. This structural example does not implement value validation, persistence, or a `404` response for a missing user. Before accepting real external input, follow the `@fluojs/validation` wiring in [Validation & Serialization](/docs/guides/validation-serialization) and the [validation and error handling exercise](/docs/tutorial/validation-errors), then prove the behavior with [request tests](/docs/tutorial/testing).
 
-The [RealWorld API example](/en/docs/examples/realworld-api) is a separate reference application, not the next state of the tutorial project.
+The [RealWorld API example](/docs/examples/realworld-api) is a separate reference application, not the next state of the tutorial project.

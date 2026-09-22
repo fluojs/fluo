@@ -32,7 +32,7 @@
 
 새 본문은 book/01-fluoblog, book/02-fluoshop, book/03-internals에 있다. 독자가 작성하는 애플리케이션 파일, 설명용 부분 구현, 실제 저장소의 구현 근거를 구분한다. 본문이 모든 장의 완성 애플리케이션을 저장소에 이미 제공한다고 가정하지 않는다. 외부 데이터베이스·메일·브로커·결제사 실험에는 필요한 환경과 재현 절차가 있다.
 
-[짧은 FluoBlog HTTP 실습](../apps/docs/content/docs/tutorial/index.ko.mdx)과 [초기 실행 체크포인트](../examples/fluo-blog/README.ko.md)는 첫 라우트·DI·검증 경로를 확인하는 보조 자료다. 책 전체를 대체하거나 뒤의 데이터베이스·인증·상거래 기능까지 구현한 완성본은 아니다. [공식 예제 목록](../examples/README.ko.md)은 각 예제의 검증 범위를 설명한다.
+[짧은 FluoBlog HTTP 실습](../apps/docs/content/docs/tutorial/index.mdx)과 [초기 실행 체크포인트](../examples/fluo-blog/README.ko.md)는 첫 라우트·DI·검증 경로를 확인하는 보조 자료다. 책 전체를 대체하거나 뒤의 데이터베이스·인증·상거래 기능까지 구현한 완성본은 아니다. [공식 예제 목록](../examples/README.ko.md)은 각 예제의 검증 범위를 설명한다.
 
 패키지 API와 수명주기는 [행동 계약](../docs/contracts/behavioral-contract-policy.ko.md)과 담당 README가 기준이다. Outbox, 영속 Saga 상태, 결제 대사, 파일 저장소와 같은 애플리케이션 설계를 패키지가 자동 제공하는 기능으로 설명하지 않는다. 프레임워크 계약과 제품의 정책은 서로 다른 책임이다.
 

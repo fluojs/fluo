@@ -1,0 +1,318 @@
+---
+title: Internationalization
+description: "@fluojs/i18n provides explicit-locale translation, Intl formatting, optional ICU, HTTP and transport locale adapters, loaders, and catalog typegen."
+package: "@fluojs/i18n"
+---
+
+`@fluojs/i18n` is a framework-agnostic internationalization core built close to the TC39 `Intl` baseline. Its heart is `I18nService`: deterministic, explicit-locale message lookup over locale-scoped catalogs, with `{{ name }}` interpolation, a documented fallback chain, and named `Intl` formatting helpers. Everything transport-specific - HTTP locale resolution, WebSocket/gRPC/CLI adapters, ICU plurals, validation-error localization, filesystem and remote catalog loading, key typegen - is an opt-in subpath that never leaks back into the root contract.
+
+Three boundaries make the package predictable. **Locales are always explicit**: the core service never guesses a locale from a request, a cookie, or ambient state; adapters resolve one and hand it to you. **Registration is synchronous**: `I18nModule.forRoot(...)` captures final options when the module graph is defined - there is no `forRootAsync`, and asynchronous catalog loading happens at the application boundary *before* registration. **The root stays portable**: the root entry depends only on `@fluojs/core`, so bundles for any host can translate without pulling in HTTP or Node.
+
+## Installation
+
+```bash
+npm install @fluojs/i18n
+```
+
+The root entry point depends only on `@fluojs/core` and declares no Node engine floor. Optional subpaths keep their integration dependencies as optional peers - install what you import:
+
+| You import | You must install | Runtime boundary |
+| --- | --- | --- |
+| `@fluojs/i18n` (root) | nothing extra | Any host |
+| `@fluojs/i18n/icu` | `intl-messageformat` | Any host with `Intl` |
+| `@fluojs/i18n/http` | `@fluojs/http` | Any host |
+| `@fluojs/i18n/validation` | `@fluojs/validation` | Any host |
+| `@fluojs/i18n/loaders/fs` | nothing extra | **Node only** (imports Node builtins) |
+| `@fluojs/i18n/loaders/remote` | nothing extra | Any host (you own `fetch`) |
+| `@fluojs/i18n/typegen` | nothing extra | Node-oriented tooling subpath |
+
+## When to use it, and when not
+
+Use `@fluojs/i18n` when you need:
+
+- application-level registration via `I18nModule.forRoot(...)` or standalone use via `I18nService.create(...)`
+- locale-scoped catalogs with namespace boundaries, deterministic fallback, and missing-message hooks
+- standard `Intl` date/number/currency/percent/list/relative-time formatting with explicit locales
+- opt-in ICU plural/select formatting, HTTP or transport locale resolution, and DTO validation localization
+- Node filesystem or provider-backed remote catalog loading, and generated catalog key types
+
+It is intentionally not the right tool when you want:
+
+- **Implicit request locale detection in the core service** - resolve a locale with `@fluojs/i18n/http` or `@fluojs/i18n/adapters`, then pass it; the service itself takes `locale` on every call
+- **Runtime interop with i18next/next-intl/NestJS i18n** - the package deliberately ships migration guidance instead of bridges
+- **A translation database or CMS** - the remote loader is a provider seam; the catalog store stays yours
+
+## A small working example
+
+Registration and translation, end to end:
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { I18nModule } from '@fluojs/i18n';
+
+@Module({
+  imports: [
+    I18nModule.forRoot({
+      defaultLocale: 'en',
+      supportedLocales: ['en', 'ko'],
+      fallbackLocales: { ko: ['en'] },
+      catalogs: {
+        en: { app: { title: 'Hello {{ name }}' } },
+        ko: { app: { title: '안녕하세요 {{ name }}' } },
+      },
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+```ts title="fragment: translating"
+import { Inject } from '@fluojs/core';
+import { I18nService } from '@fluojs/i18n';
+
+@Inject(I18nService)
+export class GreetingService {
+  constructor(private readonly i18n: I18nService) {}
+
+  greet(name: string): string {
+    return this.i18n.translate('app.title', {
+      locale: 'ko',
+      values: { name },
+    });
+  }
+}
+```
+
+`I18nModule.forRoot(...)` is synchronous and captures final options at definition time. The service is registered under the `I18nService` class token and exported **globally by default** - every module can inject it once the root module is imported; pass `global: false` to keep it module-local. Outside a module graph, `I18nService.create({...})` builds the same service standalone with identical behavior.
+
+For catalogs that live on disk, load them at the bootstrap boundary and pass the final values in:
+
+```ts title="src/i18n.bootstrap.ts"
+import { I18nModule } from '@fluojs/i18n';
+import { FileSystemI18nLoader } from '@fluojs/i18n/loaders/fs';
+
+const locales = ['en', 'ko'] as const;
+const namespaces = ['common', 'validation'] as const;
+const loader = FileSystemI18nLoader.create({
+  rootDir: new URL('./locales', import.meta.url).pathname,
+});
+
+export async function loadI18nModule() {
+  const catalogEntries = await Promise.all(
+    locales.map(async (locale) => [
+      locale,
+      Object.fromEntries(
+        await Promise.all(
+          namespaces.map(async (namespace) => [namespace, await loader.load(locale, namespace)] as const),
+        ),
+      ),
+    ] as const),
+  );
+  const catalogs = Object.fromEntries(catalogEntries);
+
+  return I18nModule.forRoot({
+    defaultLocale: 'en',
+    supportedLocales: locales,
+    fallbackLocales: { ko: ['en'] },
+    catalogs,
+  });
+}
+```
+
+The loader reads `${rootDir}/${locale}/${namespace}.json` - `locales/ko/common.json` becomes namespace `common`. Aggregation happens entirely in your bootstrap function: a missing catalog file rejects the load with `I18N_MISSING_CATALOG` *before* any module exists, which is the intended place to discover it. The aggregate preserves namespace boundaries - there is no shallow merge of namespace trees - so `translate('title', { namespace: 'common' })` resolves the same key the file defined.
+
+## How translation works, step by step
+
+`i18n.translate(key, options)` is synchronous and resolves in this exact order:
+
+1. **The requested locale** (`options.locale`, required). If `supportedLocales` is configured, the locale must be on the list; an unsupported or empty locale fails immediately with `I18nError` code `I18N_INVALID_OPTIONS` rather than silently falling back.
+2. **The fallback chain** for that locale, from `fallbackLocales` - either a global array or a per-locale map like `{ ko: ['en'] }`.
+3. **`defaultLocale`**.
+4. **`options.defaultValue`** - a caller-provided fallback string, interpolated with the same values.
+5. **`missingMessage`** - the configured hook, receiving `{ locale, key, attemptedLocales, values }` and returning a string (or `undefined` to give up).
+
+If all five fail, `translate` throws `I18nError` with code `I18N_MISSING_MESSAGE`. The chain is computed per call as a frozen locale list, deduplicated, with the default locale always last.
+
+Key resolution details:
+
+- **Namespaces prefix the key**: `translate('title', { namespace: 'common' })` looks up `common.title`. Nested catalogs nest keys: `{ app: { title: ... } }` is `app.title`. These are the same fully qualified keys the [typegen subpath](#catalog-type-generation) emits.
+- **Interpolation** replaces `{{ name }}` placeholders from `values` (a plain object of primitives; anything else is rejected with `I18N_INVALID_OPTIONS`). A missing value leaves the placeholder untouched; `undefined`/`null` values render as empty strings.
+- **Catalogs are detached snapshots.** Options and catalogs are captured immutably at creation; mutating the objects you passed in afterwards changes nothing. The service holds no other state, so one instance is safely shared app-wide.
+
+### Formatting with standard `Intl`
+
+Formatting helpers delegate to the host `Intl` implementation with the locale passed explicitly on every call. Named option bags registered at creation (`formats.dateTime.invoice`, `formats.number.percent`, ...) are captured as immutable snapshots and referenced by name per call:
+
+```ts title="fragment: Intl formatting"
+const i18n = I18nService.create({
+  defaultLocale: 'en-US',
+  formats: {
+    dateTime: { invoice: { dateStyle: 'medium', timeZone: 'UTC' } },
+  },
+});
+
+i18n.formatDateTime(new Date(), { format: 'invoice', locale: 'en-US' });
+i18n.formatCurrency(12900, { currency: 'KRW', locale: 'ko-KR' });
+i18n.formatPercent(0.42, { locale: 'de-DE' });
+i18n.formatList(['a', 'b', 'c'], { locale: 'en-US' });
+```
+
+Unknown format names and missing locales fail with `I18N_INVALID_OPTIONS`. There is no formatter cache to tune and no locale default to forget: every call names its locale.
+
+## Locale resolution for HTTP requests
+
+`@fluojs/i18n/http` adds explicit `RequestContext` helpers without importing HTTP behavior into the core:
+
+```ts title="fragment: Accept-Language binding"
+import { I18nService } from '@fluojs/i18n';
+import { createAcceptLanguageLocalePolicyResolver, resolveHttpLocale } from '@fluojs/i18n/http';
+
+const i18n = I18nService.create({ /* catalogs as above */ });
+const acceptLanguage = createAcceptLanguageLocalePolicyResolver();
+
+function handle(ctx: RequestContext): string {
+  // Synchronous: resolution and storage happen inline on the request context.
+  const resolved = resolveHttpLocale(ctx, {
+    defaultLocale: 'en',
+    supportedLocales: ['en', 'ko'],
+    resolvers: [acceptLanguage],
+  });
+
+  return i18n.translate('app.title', { locale: resolved.locale });
+}
+```
+
+- `resolveHttpLocale(ctx, options)` runs the application-supplied resolvers in order, ignores invalid or unsupported output, and stores the winner on the `RequestContext` (source `default` when nothing matched).
+- `getHttpLocale(ctx)` reads the stored metadata; `setHttpLocale(ctx, locale, metadata)` writes it manually. Storage uses a context key - there are no globals to clear between requests.
+- `parseAcceptLanguage(header)` parses q-values and ignores invalid or `q=0` ranges; the policy resolver normalizes regional matches (`en-GB` -> `en`) when `normalizeToSupportedLocale` is true (default), and never auto-selects on `*` - pass `wildcardLocale: 'firstSupportedLocale'` to make the wildcard meaningful, or add a custom resolver.
+
+The same resolver/store contract exists transport-agnostically under `@fluojs/i18n/adapters`: `bindLocale` / `resolveLocale` / `getAdapterLocale` with `createWeakMapLocaleStore()` for socket, gRPC, CLI, or session objects and per-transport resolvers (`createHeaderLocalePolicyResolver`, `createQueryLocaleResolver`, `createCookieLocaleResolver`, `createStorageLocaleResolver`). The context shape and accessors are yours; the package never reaches into globals.
+
+## Localizing validation errors
+
+`@fluojs/i18n/validation` translates `@fluojs/validation` issue snapshots *after* a DTO validation fails - it does not change validation behavior:
+
+```ts title="fragment: localized DTO errors"
+import { localizeDtoValidationError } from '@fluojs/i18n/validation';
+import { DtoValidationError } from '@fluojs/validation';
+
+try {
+  await validator.materialize(input, CreateUserDto);
+} catch (error) {
+  if (error instanceof DtoValidationError) {
+    throw localizeDtoValidationError(i18n, error, { locale: 'ko' });
+  }
+  throw error;
+}
+```
+
+For each issue, candidate keys are tried most-specific first: `source.field.code`, `field.code`, `source.code`, then `code`, inside the `validation` namespace by default (`keyPrefix`, `namespace`, or a custom `keyBuilder` retarget the lookup). Translation values include `code`, `field`, `source`, and the original `message`. A message with no catalog entry keeps the original validation message unless `fallbackToIssueMessage: false` demands a hard `I18N_MISSING_MESSAGE`. The locale comes from wherever your application resolved it - HTTP, CLI, session - keeping the validation integration transport-free.
+
+## Loaders: filesystem and remote
+
+**Node filesystem loader** (`@fluojs/i18n/loaders/fs`): `FileSystemI18nLoader.create({ rootDir })` reads one `${rootDir}/${locale}/${namespace}.json` per `load(locale, namespace)` call and returns an immutable `I18nMessageTree`. Namespaces may be path segments like `admin/common`; locale/namespace values are validated before disk access - `.`/`..`, absolute paths, empty segments, extension-bearing names, and traversal attempts fail with `I18N_INVALID_LOADER_OPTIONS`; missing files throw `I18N_MISSING_CATALOG`; malformed JSON or trees throw `I18N_INVALID_CATALOG`. The subpath imports Node builtins and is deliberately absent from the root export; do not import it in Workers, browsers, or Deno bundles.
+
+**Remote loader** (`@fluojs/i18n/loaders/remote`): `RemoteI18nLoader.create({ provider, timeoutMs })` calls your provider with the validated `{ locale, namespace, signal }` per load. Providers return a message tree, a JSON string, or `undefined`/`null` for missing catalogs (`I18N_MISSING_CATALOG`); malformed results throw `I18N_INVALID_CATALOG`; provider errors are wrapped as `I18N_LOADER_FAILED`; the timeout raises `I18N_LOADER_TIMEOUT` (a positive integer, at most `2_147_483_647` ms) and caller cancellation raises `I18N_LOADER_ABORTED`. **The loader never caches by default** - every `load` hits the provider. Applications wanting first-party caching wrap it explicitly:
+
+```ts title="fragment: cached remote catalogs"
+import { CachedRemoteI18nLoader, RemoteI18nLoader } from '@fluojs/i18n/loaders/remote';
+
+const cached = CachedRemoteI18nLoader.create({
+  loader: RemoteI18nLoader.create({ provider: fetchCatalog }),
+  ttlMs: 60_000,
+  version: 'catalog-2026-05-11',
+});
+
+await cached.load('en', 'common');
+cached.invalidate('en', 'common'); // application-owned invalidation
+```
+
+Cache entries are keyed by `(locale, namespace, version)`, the TTL starts only after a successful load, and `invalidate(...)`/`clear()` stay application-owned - stale-while-revalidate or CDN policies belong in the provider, at the boundary that knows them.
+
+## Catalog type generation
+
+`@fluojs/i18n/typegen` produces deterministic TypeScript declarations from catalog trees - fully qualified key unions (`admin/common.dashboard.title`), namespace unions, namespace-to-leaf-key maps, and opt-in typed facade types:
+
+```ts title="fragment: generating key types"
+import { generateI18nCatalogTypesFromDirectory } from '@fluojs/i18n/typegen';
+
+const declarations = await generateI18nCatalogTypesFromDirectory({
+  rootDir: new URL('./locales', import.meta.url).pathname,
+});
+// write `declarations` to a file your tsconfig includes
+```
+
+The directory variant scans `${rootDir}/${locale}/**/*.json`, validates every file as a message tree, preserves filesystem namespaces (`admin/common`), and deduplicates/sorts keys for stable diffs. `generateI18nCatalogTypes(inputs)` does the same from in-memory trees for remote catalogs and custom pipelines. The output is **type-only and application-owned**: it does not wrap `I18nService`, does not add runtime code, and does not narrow the broad `translate(key: string, ...)` signature. A typed facade is opt-in:
+
+```ts title="fragment: typed facade"
+import type { I18nCatalogTypedService } from './generated-i18n-catalog.d';
+
+const typedI18n = {
+  translate: i18n.translate.bind(i18n),
+  translateInNamespace: (namespace, key, options) => i18n.translate(key, { ...options, namespace }),
+} satisfies I18nCatalogTypedService;
+
+typedI18n.translate('admin/common.dashboard.title', { locale: 'en' });
+```
+
+Invalid catalog shapes and unsafe locale/namespace paths reject with the loader error codes; invalid output names reject with `I18N_INVALID_OPTIONS`.
+
+## ICU MessageFormat, opt-in
+
+Plural and select logic lives behind `@fluojs/i18n/icu` so the root interpolation contract stays simple. `IcuI18nService.create(...)` resolves messages through the core service first - the same fallback chain, `defaultValue`, missing-message hook, and `{{ name }}` interpolation - then formats the resolved pattern with ICU rules:
+
+```ts title="fragment: ICU plurals"
+import { IcuI18nService } from '@fluojs/i18n/icu';
+
+const i18n = IcuI18nService.create({
+  defaultLocale: 'en',
+  supportedLocales: ['en', 'ko'],
+  catalogs: {
+    en: { inbox: 'Hello {{ name }}. {count, plural, =0 {No messages} one {One message} other {# messages}}.' },
+  },
+});
+
+i18n.translate('inbox', { locale: 'en', values: { count: 3, name: 'Mina' } });
+// 'Hello Mina. 3 messages.'
+```
+
+Invalid patterns, missing ICU values, and non-string rich-formatting results throw `I18nError` with code `I18N_INVALID_MESSAGE_FORMAT`. The subpath uses the host `Intl.PluralRules`/`NumberFormat`/`DateTimeFormat` through `intl-messageformat` - install the peer before importing.
+
+## How i18n composes with other packages
+
+- **`@fluojs/runtime`**: `I18nModule.forRoot(...)` is listed in `imports` like any module; the service is global by default, so controllers and services inject it without wiring. Because registration is synchronous, the runtime module graph sees final catalogs - load them before the graph exists.
+- **`@fluojs/config`**: resolve catalog locations and toggles from config at the bootstrap boundary (`ConfigModule.load` first, then pass values into `I18nModule.forRoot`). Both facades share the same snapshot-at-registration philosophy.
+- **`@fluojs/http`**: resolve the request locale in middleware or at the top of a handler via `@fluojs/i18n/http`, then translate with that locale. The adapter stores metadata on the request context, so nothing crosses requests.
+- **`@fluojs/validation`**: catch `DtoValidationError`, pass it through `localizeDtoValidationError` with the resolved locale, and surface the localized error through your normal error path.
+
+## Defaults, ownership, and lifecycle
+
+- **No resources, no shutdown.** The service holds immutable option/catalog snapshots; there are no timers, watchers, sockets, or handles to close. `I18nService` needs no cleanup, and neither `forRoot` nor `create` registers lifecycle hooks.
+- **Immutability is the interface.** Catalogs passed in are captured as detached snapshots; trees returned by loaders are immutable; `snapshotOptions()` returns a captured copy. Mutating inputs after registration is a silent no-op.
+- **Globality default.** `I18nModule.forRoot(...)` exports `I18nService` globally (`global: false` opts out) - mirroring `ConfigModule`'s convention.
+- **Loader ownership.** The filesystem loader owns no long-lived resources (one read per load). The remote loader owns none either - caching is explicit and application-owned, including `CachedRemoteI18nLoader` invalidation.
+
+## Failures, limits, and common mistakes
+
+- **`I18N_MISSING_MESSAGE`** - the lookup chain exhausted. Either add the message, add `fallbackLocales`, pass `defaultValue`, or install `missingMessage`; the error's message names the resolved key.
+- **`I18N_INVALID_OPTIONS`** - the usage was wrong, not the data: empty or unsupported locale (when `supportedLocales` is configured), non-plain-object `values`, non-string `defaultValue`, unknown named format. Because an unsupported locale throws rather than falls back, treat `supportedLocales` as the allow-list it is.
+- **`I18N_MISSING_CATALOG` at aggregation time** - a loader could not produce a namespace. Fix the file list before the application starts; this failure is intentionally not deferrable.
+- **Shallow-merging catalogs yourself.** Namespace trees must stay intact; `Object.assign` over locale roots destroys boundaries and makes fallback resolution ambiguous. Aggregate per namespace, as the bootstrap example does.
+- **Expecting plurals from the root service.** `{{ name }}` interpolation is deliberately primitive; plurals and selects require `@fluojs/i18n/icu` and its peer dependency.
+- **Importing `@fluojs/i18n/loaders/fs` on an edge host.** The subpath imports Node builtins by design; use the remote loader with an application-owned provider there.
+- **Forgetting optional peers.** Importing `@fluojs/i18n/icu` without `intl-messageformat` (or the http/validation subpaths without their peers) fails at integration time; add peers to the application manifest when you opt into a subpath.
+- **Assuming `forRootAsync`.** It does not exist, by contract. Aggregate catalogs in your bootstrap and pass final values - the synchronous boundary is what keeps fallback behavior deterministic.
+
+## Testing translations
+
+- Standalone first: `I18nService.create({...})` in a unit test exercises the exact lookup chain - no module, no bootstrap. Assert on the fallback order, `defaultValue` precedence, and `missingMessage` invocation with explicit catalogs.
+- Use `missingMessage` hooks as test sentinels: a hook that records its `attemptedLocales` makes fallback behavior directly assertable.
+- HTTP binding: with `Test.createApp({ rootModule })` from `@fluojs/testing`, send requests with `Accept-Language` headers and assert that `resolveHttpLocale` picked the expected locale - the resolvers are deterministic, so no timing is involved.
+- Loaders: point `FileSystemI18nLoader` at a fixture directory of real JSON files for read-shape tests; remote behavior is testable through a fake provider (throwing, timing out via `AbortSignal`, returning invalid shapes) without any network.
+
+## Related reading
+
+- [`@fluojs/runtime`](/docs/packages/runtime) - where `I18nModule.forRoot(...)` participates in bootstrap.
+- [`@fluojs/config`](/docs/packages/config) - the sibling synchronous-registration facade for configuration.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - how the globally exported service reaches consumers.
+- [`@fluojs/i18n` package README](https://github.com/fluojs/fluo/blob/main/packages/i18n/README.md) - the owning API reference, including the full subpath export tables.

@@ -1,0 +1,300 @@
+---
+title: JWT
+description: How @fluojs/jwt signs access tokens, verifies them into a normalized JwtPrincipal, and runs refresh-token rotation with replay detection.
+package: "@fluojs/jwt"
+---
+
+`@fluojs/jwt` is the token core of fluo's security stack. It signs JWT access tokens, verifies them into a single normalized identity shape (`JwtPrincipal`), and — when configured — runs the refresh-token lifecycle: issuance, rotation, replay detection, and revocation. It is deliberately HTTP-agnostic: nothing in this package reads requests, sets status codes, or knows what a controller is. Route protection lives in [`@fluojs/passport`](/docs/packages/passport), which consumes this package's verifier.
+
+Three boundaries define what the package is *not*:
+
+- **It is not a session framework.** There is no user store, login flow, or cookie handling here. You issue a token for a subject your application has already authenticated.
+- **It is not an HTTP guard.** A verified `JwtPrincipal` only becomes `requestContext.principal` when a passport strategy puts it there.
+- **It is not portable across runtimes.** Signing and verification execute Node.js `node:crypto` primitives (`createHmac`, `createSign`, `createVerify`, `createPublicKey`, `timingSafeEqual`, `randomUUID`). Bun satisfies these through its Node compatibility layer; Deno and Cloudflare Workers do not and are not supported JWT execution runtimes. Importing the root entry point is safe on any runtime — the crypto imports load lazily on first use — but the first sign or verify will fail on a non-Node-compatible surface.
+
+Prerequisites: Node.js `>=24.0.0 <27` (the package's `engines.node` contract). The package depends on `@fluojs/core` and `@fluojs/di`; install it alongside the modules that will consume it.
+
+```bash
+pnpm add @fluojs/jwt
+```
+
+## A small working example
+
+A blog API issues a short-lived access token after its own login check, then verifies tokens on every authenticated operation. Two files and one module registration:
+
+```ts title="src/auth/token.service.ts"
+import { Inject } from '@fluojs/core';
+import { JwtService } from '@fluojs/jwt';
+
+@Inject(JwtService)
+export class TokenService {
+  constructor(private readonly jwt: JwtService) {}
+
+  async issueSession(userId: string): Promise<string> {
+    return this.jwt.sign(
+      { roles: ['member'], scopes: ['profile:read'] },
+      { subject: userId, expiresIn: '15m' },
+    );
+  }
+
+  authenticate(token: string) {
+    return this.jwt.verify(token, { issuer: 'my-api', audience: 'my-app' });
+  }
+}
+```
+
+```ts title="src/auth/auth.module.ts"
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+
+import { TokenService } from './token.service';
+
+@Module({
+  imports: [
+    JwtModule.forRoot({
+      algorithms: ['HS256'],
+      secret: 'your-secure-secret',
+      issuer: 'my-api',
+      audience: 'my-app',
+      accessTokenTtlSeconds: 3600,
+    }),
+  ],
+  providers: [TokenService],
+  exports: [TokenService],
+})
+export class AuthModule {}
+```
+
+`@Inject(JwtService)` is the fluo DI class decorator that names `JwtService` as the first constructor token; `JwtModule.forRoot(...)` registers that provider and exports it from the module, so the importing module's `TokenService` resolves it. Using the service is a sign/verify round trip:
+
+```ts title="fragment: issue and verify"
+const token = await tokens.issueSession('user-123');
+// eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlcyI6...
+
+const principal = await tokens.authenticate(token);
+// {
+//   subject: 'user-123',
+//   issuer: 'my-api',
+//   audience: 'my-app',
+//   roles: ['member'],
+//   scopes: ['profile:read'],
+//   claims: { roles: [...], scopes: [...], sub: 'user-123', iss: 'my-api', aud: 'my-app', iat: ..., exp: ... }
+// }
+```
+
+`verify` never returns raw claims for authorization use. It returns the normalized `JwtPrincipal`: `subject` (from a required, non-empty `sub` claim), `issuer`, `audience`, `roles`, `scopes`, and the full verified claim set under `claims`. Callers that only want the claim payload use `(await jwt.verify(token)).claims` — `verify<T>()` generics no longer exist.
+
+## What `JwtModule.forRoot(...)` registers
+
+`forRoot` turns one options object into five providers:
+
+| Provider | Registered | Notes |
+| --- | --- | --- |
+| `JWT_OPTIONS` | Always | `Symbol.for('fluo.jwt.options')`; holds the options by value |
+| `DefaultJwtSigner` | Always | Validates algorithms and keys at construction |
+| `DefaultJwtVerifier` | Always | Also implements `onModuleDestroy` to release JWKS resources |
+| `JwtService` | Always | The application-facing facade over signer + verifier |
+| `RefreshTokenService` | Always registered | Resolving it **throws** `JwtConfigurationError` unless `refreshToken` options are configured |
+
+All five are exported, and `global` defaults to `false`: modules that do not import your auth module cannot see `JwtService`. For cross-cutting use — a passport module, feature modules — either import the module that owns the registration or set `global: true` in the options (the JWT providers then become visible without imports; this is required by `RefreshTokenModule` and the cookie preset, as shown in the [Passport guide](/docs/packages/passport)).
+
+### Async registration
+
+`JwtModule.forRootAsync(...)` resolves the same `JwtVerifierOptions` from providers:
+
+```ts title="fragment: async registration"
+import { ConfigModule, ConfigService } from '@fluojs/config';
+import { JwtModule, type JwtVerifierOptions } from '@fluojs/jwt';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ processEnv: { JWT_SECRET: process.env.JWT_SECRET } }),
+    JwtModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: async (...deps: unknown[]): Promise<JwtVerifierOptions> => {
+        const [config] = deps;
+        const secret = config.snapshot()['JWT_SECRET'];
+        if (typeof secret !== 'string') {
+          throw new TypeError('JWT_SECRET must be a string');
+        }
+        return { algorithms: ['HS256'], issuer: 'my-api', audience: 'my-app', secret };
+      },
+      global: true,
+    }),
+  ],
+})
+export class AuthModule {}
+```
+
+The visibility contract here is stricter than it looks: the `inject` dependencies must already be **globally visible** when the JWT options provider resolves — `ConfigService` qualifies because `ConfigModule` exports it globally, and bootstrap runtime providers qualify — but an ordinary sibling module's export or a provider local to `AuthModule.providers` does not. `forRootAsync` performs no module discovery of its own. The top-level `global` controls the returned module's provider visibility and is distinct from the options object `useFactory` returns. NestJS-style `imports`, `useClass`, and `useExisting` are not part of the typed contract, and extra JavaScript properties on the options object are unread at runtime — not validated, not rejected.
+
+## How signing works
+
+`jwt.sign(payload, options?)` assembles the claim set before handing it to the signer:
+
+1. `now` is captured as a whole-second epoch.
+2. Each per-call `SignOptions` field wins over the same-named claim in `payload`: `subject` → `sub`, `audience` → `aud`, `issuer` → `iss`, `notBefore` → `nbf`.
+3. `expiresIn` computes `exp = now + seconds`. **A per-call `expiresIn` always overrides a pre-existing `payload.exp`**, so token lifetime is decided at the call site, never by stale claims smuggled into the payload.
+4. Anything absent falls back to module defaults: `exp` from `accessTokenTtlSeconds` (default `3600`), `aud` from `audience`, `iss` from `issuer`, and `iat` is stamped with `now` unless the payload already carries one.
+
+`expiresIn` accepts non-negative seconds (fractional values preserve JWT NumericDate precision) or duration strings — `'60s'`, `'15m'`, `'1h'`, `'7d'`. Anything else, including negative or non-finite numbers, throws before a token is issued. A module-level `accessTokenTtlSeconds` of `0`, negative, or non-finite likewise fails signing with `JwtConfigurationError` before any token exists.
+
+**Algorithm selection is position-based:** the signer uses the *first* supported entry in `algorithms` (`HS256/384/512`, `RS256/384/512`, `ES256/384/512`). An empty list fails at construction. To sign with RS256 while allowing HS256 somewhere, order the list so the intended signing algorithm is first — verification, by contrast, treats the whole list as an allowlist. HMAC algorithms need `secret`, asymmetric algorithms need `privateKey` (PEM string or `KeyObject`); the emitted header includes `kid` when the signing key comes from a `keys[]` entry.
+
+## How verification works
+
+`jwt.verify(token, policy?)` runs in a fixed order, failing closed at each step:
+
+1. **Structure.** Three dot-separated, base64url-decodable segments; header and payload must be JSON objects. Anything else is `JwtInvalidTokenError`.
+2. **Algorithm allowlist.** The header `alg` must be a supported algorithm *and* appear in the active `algorithms` list (module default, or the per-call policy's list).
+3. **Key resolution** (see below). Signature checking uses constant-time comparison for HMAC and `ieee-p1363` DSA encoding for ES* curves.
+4. **Claim validation.** With `clockSkewSeconds` (default `0`) applied:
+   - `exp` is required unless `requireExp: false` is configured, must be a finite NumericDate, and a token is expired once `exp + skew <= now` — **equality counts as expired**.
+   - `nbf` must be finite; `nbf - skew > now` means not yet active.
+   - `maxAge` (seconds, when configured) requires a finite `iat`; a future `iat` is invalid, and `now - iat > maxAge + skew` is expired.
+   - `iss` must equal the configured `issuer` when one is set; `aud` must intersect the configured `audience` list when one is set.
+5. **Normalization.** The claims become a `JwtPrincipal` with string-array `roles`, and `scopes` unified from either a `scopes` string array or a space-delimited `scope` string — guards downstream can rely on one shape.
+
+A missing or empty `sub` fails verification (`JWT is missing a valid subject claim.`), so a principal without a subject cannot exist.
+
+### Key sources and precedence
+
+The verifier resolves one key per token from, in order:
+
+1. `secretOrKeyProvider(header)` — called with the **decoded token header only** (`alg`, `kid`, extension fields). Request headers, route parameters, and tenant hints are not visible here; multi-tenant selection belongs in application strategy code.
+2. `jwksUri` — remote key set (asymmetric algorithms only; see below).
+3. Static configuration — `keys[]` entries, or the top-level `secret` / `publicKey`.
+
+`keys[]` entries (`{ kid, secret?, privateKey?, publicKey? }`) are the rotation mechanism. Every `kid` must be non-empty and unique — duplicates fail the signer and verifier at construction, so a rotated key set cannot select different material for signing and verification. With multiple compatible keys configured, a token's `kid` header selects the entry, and a token without a recognized `kid` is rejected (`JWT key id (kid) is not recognized.`). A single static key verifies tokens without a `kid`; a stray `kid` header is ignored in that case.
+
+Per-call `VerifyOptions` (`algorithms`, `audience`, `issuer`, `clockSkewSeconds`, `maxAge`, `requireExp`) layer *claim and algorithm policy only* — they cannot replace configured key sources.
+
+### Remote JWKS verification
+
+```ts
+JwtModule.forRoot({
+  algorithms: ['RS256'],
+  jwksUri: 'https://issuer.example.com/.well-known/jwks.json',
+  jwksRequestTimeoutMs: 5_000, // default: abort stalled fetches at 5s
+});
+```
+
+The built-in `JwksClient` fetches on first miss, caches parsed keys, and prunes before every lookup:
+
+| Setting | Default | Behavior |
+| --- | --- | --- |
+| `jwksCacheTtl` | `600_000` ms | Key retention window; `0` disables retention entirely |
+| `jwksRequestTimeoutMs` | `5_000` ms | Aborts the outbound fetch past the budget |
+| `jwksCacheMaxEntries` | `100` | Oldest retained key is evicted when exceeded |
+
+JWKS resolution requires a `kid` header — a token without one is rejected, and a `kid` absent from the remote set is `JWT key id was not found in JWKS.` Resource ownership is explicit: `DefaultJwtVerifier` implements `onModuleDestroy`, so a module-registered verifier clears its retained key material and aborts in-flight fetches during application shutdown. Verifiers constructed manually must call `dispose()` (or `JwksClient.dispose()`) themselves.
+
+## `decode()` is unverified input
+
+`jwt.decode(token)` base64-decodes the payload segment — no signature check, no `alg`/`exp`/`iss`/`aud` validation — and returns `null` for anything malformed. Every value it returns is attacker-controlled until `verify` succeeds. Use it for diagnostics: logging token metadata, or choosing a verification key before calling `verify`. Never branch authorization on `decode` output, and never hand decoded claims to code that treats them as verified identity.
+
+## Refresh tokens
+
+`RefreshTokenService` (exported from `@fluojs/jwt`) runs a dedicated HMAC path: refresh tokens carry `{ sub, jti, family, type: 'refresh', iat, exp }` and are signed with the refresh secret — configure it separately from access-token signing material:
+
+```ts title="fragment: refresh configuration"
+JwtModule.forRoot({
+  algorithms: ['RS256'], // asymmetric access tokens
+  privateKey: '...PEM...',
+  publicKey: '...PEM...',
+  refreshToken: {
+    algorithms: ['HS256'], // explicit HMAC allowlist for the refresh path
+    secret: 'refresh-secret',
+    expiresInSeconds: 300,
+    rotation: true,
+    store, // application-owned durable store
+  },
+});
+```
+
+`refreshToken.algorithms` accepts only HS256/HS384/HS512; when omitted, the refresh path derives from the top-level `algorithms` filtered to HMAC entries. If that filtered set is empty — an asymmetric-only configuration with no explicit refresh algorithms — the verifier fails at construction instead of first use. Refresh verification always requires `exp` and uses `verifyMaxAgeSeconds` (when set) as its `maxAge` policy.
+
+The service surface:
+
+| Method | Behavior |
+| --- | --- |
+| `issueRefreshToken(subject)` | Creates a new token family and stores its record |
+| `rotateRefreshToken(currentToken)` | Verifies, consumes, and replaces the token (when `rotation: true`) |
+| `revokeRefreshToken(tokenId)` | Revokes by trusted record ID — never pass a raw token here |
+| `revokePresentedRefreshToken(token)` | Verifies the presented compact token first, then revokes its record |
+| `revokeAllForSubject(subject)` | Revokes every record for the subject |
+
+### The store contract
+
+`refreshToken.store` is application-owned. `'memory'` is an explicit development-only opt-in that keeps records in process memory; production deployments provide a `RefreshTokenStore`:
+
+- Required: `save`, `find`, `revoke`, `revokeBySubject` — a store missing any of these fails option normalization with `JwtConfigurationError`.
+- Optional: `revokeByFamily(family)`, `consume(input)`, `rotate(input)`.
+
+**Rotation must be atomic.** With `rotation: true`, a store that implements `rotate({ tokenId, subject, family, now, replacement })` marks the presented token consumed and persists its replacement in one durable operation — a successful rotation can never consume the old token without a stored successor. Stores that only implement the older `consume(...)` hook still work: the service consumes, then saves the replacement as a second write. Without either hook, rotation fails configuration immediately.
+
+**Replay detection revokes families.** Presenting a consumed token is reuse. If the store implements `revokeByFamily`, only the compromised family is revoked and other devices stay signed in; otherwise the service conservatively falls back to `revokeBySubject`, which also kills independent families for that subject. Implement `revokeByFamily` when per-device session isolation matters.
+
+Rotation returns `{ accessToken, refreshToken }` — a fresh access token signed for the verified subject, plus the replacement refresh token. With `rotation: false`, the same refresh token keeps working until expiry; reuse of a `used` record is still treated as compromise.
+
+## Composing with neighboring packages
+
+- **`@fluojs/passport`** is the execution layer. Its `BearerJwtStrategy` wraps `DefaultJwtVerifier.verifyAccessToken` and maps JWT errors to canonical 401s; its `RefreshTokenStrategy` resolves `RefreshTokenService` from the JWT module — with `JwtModule.forRoot({ global: true, refreshToken: ... })`, the passport module *aliases* that exact service rather than constructing a second one. Never configure refresh secrets or stores in passport; `JwtModule` is the sole owner.
+- **`@fluojs/config`** feeds secrets through `forRootAsync` (the example above). `ConfigModule` exports `ConfigService` globally, which satisfies the visibility contract.
+- **`@fluojs/http`** has no direct integration point with this package — that is intentional. Token handling attaches to HTTP only through passport strategies and guards.
+- **`@fluojs/di`** underlies the whole registration: the JWT providers are ordinary providers, so `Test.createTestingModule(...)` can override `DefaultJwtVerifier` (or `JWT_OPTIONS`) for tests.
+
+## Errors, limits, and common mistakes
+
+Every JWT failure extends `FluoError` and carries a stable `code`:
+
+| Error | `code` | Thrown when |
+| --- | --- | --- |
+| `JwtVerificationError` | `JWT_VERIFICATION_ERROR` | Base class of verification failures |
+| `JwtInvalidTokenError` | `JWT_INVALID_TOKEN` | Malformed structure, disallowed `alg`, bad signature, claim mismatch, missing `sub`, missing/invalid `kid` |
+| `JwtExpiredTokenError` | `JWT_EXPIRED` | `exp` reached (equality counts) or `maxAge` exceeded |
+| `JwtConfigurationError` | `JWT_CONFIGURATION_ERROR` | Misconfiguration: empty algorithms, bad TTLs, duplicate `kid`s, unresolved refresh options, JWKS parse failure |
+
+Practical limits worth knowing:
+
+- **Runtime boundary is execution-time, not import-time.** Importing `@fluojs/jwt` anywhere is safe; the first sign, verify, JWKS parse, or refresh-token ID generation requires a compatible `node:crypto`.
+- **`decode()` output is never authorization input** (see above).
+- **The first `algorithms` entry signs; the whole list verifies.** A list like `['HS256', 'RS256']` signs HMAC tokens even if you intended RS256.
+- **Token clocks are the server clock.** `exp`/`nbf`/`iat` validation uses `Date.now()` at verification time; equality at the boundary is expired. Positive `clockSkewSeconds` widens every time check symmetrically.
+- **`RefreshTokenService` resolves only when configured.** It is always registered and exported, but resolving it without `refreshToken` options throws `JwtConfigurationError` — fail loudly rather than silently issuing refresh tokens.
+- **Removed APIs are not aliased.** `createJwtCoreProviders` and `normalizeRefreshTokenOptions` are no longer exported; `DefaultJwtVerifier.verifyAccessTokenWithOverrides` is replaced by `verifyAccessToken(token, policy)`.
+
+## Testing at the JWT seam
+
+The module registers real providers, so composition tests sign and verify actual tokens with short lifetimes instead of mocking crypto:
+
+```ts title="fragment: round-trip test"
+import { Test } from '@fluojs/testing';
+import { expect, it } from 'vitest';
+import { JwtModule, JwtService } from '@fluojs/jwt';
+import { AuthModule } from '../src/auth/auth.module';
+
+it('issues and verifies a token with normalized scopes', async () => {
+  const module = await Test.createTestingModule({ rootModule: AuthModule }).compile();
+
+  try {
+    const jwt = await module.resolve(JwtService);
+    const token = await jwt.sign({ scopes: ['profile:read'] }, { subject: 'user-1', expiresIn: 5 });
+    const principal = await jwt.verify(token);
+
+    expect(principal.subject).toBe('user-1');
+    expect(principal.scopes).toEqual(['profile:read']);
+  } finally {
+    await module.container.dispose();
+  }
+});
+```
+
+Assert on typed errors and their `code` values (`JwtExpiredTokenError`, `'JWT_EXPIRED'`) rather than message text, and remember that `decode()` assertions test diagnostics, not authorization. For route-level behavior — 401 vs 403, `WWW-Authenticate` headers — test through the passport seam shown in the [Passport guide](/docs/packages/passport); a JWT-verified round trip there exercises this package's real verifier.
+
+## Related reading
+
+- [`@fluojs/passport`](/docs/packages/passport) — guards, strategies, and the bearer preset that put verified principals onto requests.
+- [`@fluojs/throttler`](/docs/packages/throttler) — rate-limit the login and token-exchange endpoints that issue these tokens.
+- [Dependency injection](/docs/fundamentals/dependency-injection) — the module, provider, and visibility model `JwtModule` builds on.
+- [`@fluojs/jwt` package README](https://github.com/fluojs/fluo/blob/main/packages/jwt/README.md) — the owning API reference, including the full configuration guardrails.

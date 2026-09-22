@@ -1,0 +1,438 @@
+---
+title: Drizzle
+description: Register a Drizzle database handle with fluo, keep an ambient transaction context across repositories, and dispose driver resources on shutdown.
+package: "@fluojs/drizzle"
+---
+
+`@fluojs/drizzle` integrates a Drizzle ORM database handle into the fluo module
+system. It gives repositories a single `current()` seam that transparently
+switches between the root handle and the active transaction handle, so a
+service can open one transaction and every query it triggers - at any call
+depth - runs inside it. On shutdown it drains open transaction boundaries
+before running your optional `dispose` hook, which is where pools and other
+driver resources get closed.
+
+The package deliberately does **not** own your driver. You construct the Drizzle
+handle from whichever driver you use (`pg`, `mysql2`, `libsql`, ...), and you
+tell fluo how to clean that driver up. Unlike
+[`@fluojs/prisma`](/docs/packages/prisma), there is no connection step to
+manage: pools connect lazily on first query, and the integration's shutdown
+job is settlement ordering plus disposal, not socket ownership.
+
+Use this package when an application on Node.js `>=24.0.0 <27` wants Drizzle to
+participate in the same module, DI, and lifecycle model as the rest of the app.
+Drizzle itself can target non-Node drivers (Bun SQL, Cloudflare D1), but those
+runtimes are outside this wrapper: the ambient transaction context is built on
+`node:async_hooks`, and the root package hard-imports it. On Bun, Deno, or
+Workers, register the raw Drizzle handle behind an application-owned provider
+(`{ provide, useValue }`) instead of importing `@fluojs/drizzle`.
+
+## Installation
+
+```bash
+pnpm add @fluojs/drizzle drizzle-orm@^0.45.2 pg
+```
+
+- Peer dependency: `drizzle-orm >=0.45.2` (optional peer). Older Drizzle
+  releases must be upgraded and the lockfile refreshed before adopting this
+  package.
+- Install the driver package your dialect needs - `pg` for `node-postgres`,
+  `mysql2` for MySQL, and so on.
+- Runtime: Node.js `>=24.0.0 <27`, declared in the package manifest. Node 20/22
+  hosts must upgrade; Node 27+ is unsupported.
+
+## A small working example
+
+An orders feature on PostgreSQL. The service opens the transaction with the
+`@Transaction` decorator; both repository calls share the transaction's
+database handle. The first example is complete; later ones are fragments.
+
+```ts title="src/db/schema.ts"
+import { integer, pgTable, serial, text } from 'drizzle-orm/pg-core';
+
+export const orders = pgTable('orders', {
+  id: serial('id').primaryKey(),
+  customerId: text('customer_id').notNull(),
+  totalCents: integer('total_cents').notNull(),
+});
+
+export const orderItems = pgTable('order_items', {
+  id: serial('id').primaryKey(),
+  orderId: integer('order_id').notNull(),
+  sku: text('sku').notNull(),
+});
+```
+
+```ts title="src/orders.feature.ts"
+import { Inject, Module } from '@fluojs/core';
+import { DrizzleDatabase, DrizzleModule, Transaction, type DrizzleDatabaseFacade } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+
+import { orderItems, orders } from './db/schema';
+
+type AppDatabase = ReturnType<typeof drizzle>;
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+@Inject(DrizzleDatabase)
+export class OrdersRepository {
+  constructor(private readonly db: DrizzleDatabaseFacade<AppDatabase>) {}
+
+  create(customerId: string, totalCents: number) {
+    // The facade forwards query calls to the ambient handle: inside
+    // @Transaction this insert runs on the transaction database.
+    return this.db.insert(orders).values({ customerId, totalCents }).returning();
+  }
+
+  addItem(orderId: number, sku: string) {
+    return this.db.insert(orderItems).values({ orderId, sku });
+  }
+}
+
+@Inject(DrizzleDatabase, OrdersRepository)
+export class OrdersService {
+  constructor(
+    private readonly db: DrizzleDatabase<AppDatabase>,
+    private readonly repo: OrdersRepository,
+  ) {}
+
+  @Transaction((self) => self.db)
+  async placeOrder(customerId: string, sku: string) {
+    const [order] = await this.repo.create(customerId, 1000);
+    if (!order) {
+      throw new Error('Order insert did not return a row.');
+    }
+    await this.repo.addItem(order.id, sku);
+    return order;
+  }
+}
+
+@Module({
+  imports: [
+    DrizzleModule.forRoot({
+      database: drizzle(pool),
+      dispose: () => pool.end(),
+    }),
+  ],
+  providers: [OrdersRepository, OrdersService],
+})
+export class OrdersModule {}
+```
+
+Import `OrdersModule` into the root module and start the application with
+`FluoFactory.create(AppModule, { adapter })` followed by `app.listen()`. There
+is no startup hook to wait for - the pool opens connections on first query. On
+shutdown, open transaction boundaries are drained, and then `dispose` closes
+the pool. If you omit `dispose`, the package finishes draining and leaves the
+driver entirely to you.
+
+## How the mechanics work
+
+### Registration shapes
+
+`DrizzleModule.forRoot(options)` returns a fresh module definition each call.
+The options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `database` | required | The concrete Drizzle handle. A missing handle is rejected at registration time. |
+| `dispose` | - | Optional shutdown hook receiving the root handle; runs after transaction drain. |
+| `strictTransactions` | `false` | Throw instead of failing open when the handle lacks `transaction(...)`. |
+| `global` | `false` | Export providers globally (unnamed registrations only). |
+| `name` | - | Register an additional named database; see [Multiple databases](#multiple-databases). |
+| `rollbackObserver` | - | Native rollback observation for the opt-in `shouldRollback` boundary. |
+
+The unnamed registration exports the `DrizzleDatabase` class token (bound to
+the facade), the raw `DRIZZLE_DATABASE` handle, `DRIZZLE_DISPOSE`, and
+`DRIZZLE_OPTIONS`. `DRIZZLE_HANDLE_PROVIDER` aliases the wrapper - that is the
+token health integrations read for `createPlatformStatusSnapshot()`.
+
+### Wrapper and facade: which injection does what
+
+Injecting the `DrizzleDatabase` class gives you the wrapper. Because the
+module binds a facade in front of it, **query properties on the injected
+service forward to `current()`**: `this.db.insert(...)` inside
+`@Transaction` runs on the transaction handle, and outside transactions it runs
+on the root handle. This is why `OrdersRepository` above never touches a `tx`
+variable.
+
+The wrapper's own methods are always available through the same injection:
+
+- `current()` - the ambient transaction handle, or the root handle outside one.
+- `transaction(fn, nativeOptions?, boundary?)` - opens a Drizzle transaction.
+- `requestTransaction(fn, signal?, nativeOptions?, boundary?)` - the
+  abort-aware request-wide boundary.
+- `afterCommit(callback)` - registers post-commit work.
+- `createPlatformStatusSnapshot()` - lifecycle/capability diagnostics.
+
+If you need the raw driver handle (for a driver-specific API that fluo does not
+wrap), inject `DRIZZLE_DATABASE` instead - it bypasses the wrapper and the
+ambient selection, so queries through it never join a transaction.
+
+### Transactions and nesting
+
+```ts title="fragment: manual transaction block"
+await this.db.transaction(async () => {
+  const tx = this.db.current(); // transaction handle inside this block
+  await tx.insert(orders).values({ customerId: 'c1', totalCents: 42 });
+});
+```
+
+A nested `transaction()` reuses the active boundary instead of opening a nested
+Drizzle transaction, and a nested call that passes native options (isolation
+levels, access modes) is rejected - options are never silently dropped onto an
+existing transaction. `@Transaction((self) => self.db)` behaves the same way
+and is reentrant: an inner decorated method joins the outer transaction.
+
+### Fail-open, and when to forbid it
+
+Drizzle handles that implement `transaction(...)` - all real dialect handles do
+- run real transactions. When the handle does **not** implement it and
+`strictTransactions` is `false` (the default), `transaction()` and
+`requestTransaction()` fail open: the callback runs directly against the root
+handle inside a tracked fallback boundary. That is useful for local fakes and
+read-only adapters, but it is not atomic. Nested helpers still see a fallback
+context (so `current()` keeps resolving), and shutdown still drains the
+callback. Set `strictTransactions: true` for production paths that need
+guarantees - missing support then fails readiness and transaction helpers
+throw `Transaction not supported: ...` instead.
+
+### Request-wide boundaries
+
+Prefer service `@Transaction()`. For the rare request-wide case (an entire HTTP
+operation in one transaction), own the boundary explicitly at the controller or
+an application-owned interceptor, and pass the request `AbortSignal`:
+
+```ts title="fragment: request-wide boundary"
+import { Inject } from '@fluojs/core';
+import { Controller, Post, type RequestContext } from '@fluojs/http';
+import { DrizzleDatabase } from '@fluojs/drizzle';
+
+@Inject(DrizzleDatabase, CheckoutService)
+@Controller('/checkout')
+export class CheckoutController {
+  constructor(
+    private readonly db: DrizzleDatabase<AppDatabase>,
+    private readonly checkout: CheckoutService,
+  ) {}
+
+  @Post()
+  create(input: CheckoutInput, context: RequestContext) {
+    return this.db.requestTransaction(
+      () => this.checkout.createOrder(input),
+      context.request.signal,
+    );
+  }
+}
+```
+
+The signal aborts the boundary on client cancellation or shutdown. Two
+orderings are guaranteed: a late abort after the callback completed waits for
+the underlying commit/rollback to settle before rejecting with the abort
+reason, and a boundary that registered `afterCommit` hooks (or required
+`requireAfterCommit`) lets confirmed commit success take precedence over a
+late abort, then reports hook failures as `AfterCommitError`.
+
+## Composing with other packages
+
+### Configuration
+
+`forRootAsync` resolves the module options through DI. The generated async
+module has **no imports of its own** and only honors `inject` + `useFactory`,
+so factory dependencies must come from a globally visible module:
+
+```ts title="fragment: async registration with ConfigService"
+import { ConfigModule, ConfigService } from '@fluojs/config';
+import { Module } from '@fluojs/core';
+import { DrizzleModule } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      global: true,
+      processEnv: { DATABASE_URL: process.env.DATABASE_URL },
+    }),
+    DrizzleModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => {
+        const pool = new Pool({ connectionString: config.getOrThrow('DATABASE_URL') });
+        return {
+          database: drizzle(pool),
+          dispose: async () => pool.end(),
+        };
+      },
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+The factory resolves once per application container. Reusing the same module
+definition across test bootstraps yields independent database and dispose
+results per container - never a shared memoized handle. See
+[Dependency injection](/docs/fundamentals/dependency-injection) for the
+visibility rules that make `ConfigService` resolvable here.
+
+### Cache invalidation after commit
+
+`afterCommit(callback)` registers work that runs in FIFO order after the outer
+native transaction commits, outside the ended transaction context. Combined
+with [`@fluojs/cache-manager`](/docs/packages/cache-manager) this is the
+read-your-writes pattern for cached queries:
+
+```ts title="fragment: after-commit cache invalidation"
+import type { CacheService } from '@fluojs/cache-manager';
+import { DrizzleDatabase } from '@fluojs/drizzle';
+import { eq } from 'drizzle-orm';
+import { users } from './db/schema';
+
+async function renameUser(
+  db: DrizzleDatabase<AppDatabase>,
+  cache: CacheService,
+  id: string,
+  name: string,
+) {
+  return db.transaction(async () => {
+    await db.current().update(users).set({ name }).where(eq(users.id, id));
+    db.afterCommit(async () => {
+      await cache.del(`user:${id}`);
+    });
+  }, undefined, { requireAfterCommit: true });
+}
+```
+
+`requireAfterCommit: true` preflights the capability before the callback; hook
+registration is rejected in a fail-open fallback (there is no commit to observe).
+Hooks do not run on rollback, and a failing hook does not undo the commit -
+all remaining hooks still run, then `AfterCommitError` is thrown with
+`committed: true`.
+
+### Health checks
+
+[`@fluojs/terminus`](https://github.com/fluojs/fluo/blob/main/packages/terminus/README.md)
+ships a Drizzle indicator: wire `createDrizzleHealthIndicatorProvider()` the
+same way as the Prisma indicator - pass it in `TerminusModule.forRoot`'s
+`indicatorProviders` and import the Drizzle registration module under
+Terminus's `imports` so `DRIZZLE_HANDLE_PROVIDER` is resolvable. The indicator
+maps `createPlatformStatusSnapshot()` first and falls back to a database ping.
+
+## Multiple databases
+
+Register each additional handle with a distinct `name` and inject through the
+matching token helper. Names are trimmed, blank names are rejected, and
+registering the same name twice is rejected at bootstrap:
+
+```ts title="fragment: named registrations"
+import { getDrizzleHandleProviderToken, DrizzleModule, Transaction } from '@fluojs/drizzle';
+
+const ANALYTICS_DRIZZLE = getDrizzleHandleProviderToken('analytics');
+
+@Module({
+  imports: [
+    DrizzleModule.forRoot({ database: primaryDatabase }),
+    DrizzleModule.forRoot({ database: analyticsDatabase, name: 'analytics' }),
+  ],
+})
+export class DataModule {}
+
+@Inject(ANALYTICS_DRIZZLE)
+export class AnalyticsService {
+  constructor(private readonly analytics: DrizzleDatabase<AnalyticsDatabase>) {}
+
+  @Transaction((self) => self.analytics)
+  async rebuild() {
+    // Only the analytics handle participates in this boundary.
+  }
+}
+```
+
+Named registrations are non-global and must be imported by the consuming
+module; each owns an independent transaction context, drain, disposal, and
+status. Names do not create isolated runtime containers - a consumer still
+needs module visibility for the token.
+
+## Defaults, ownership, and shutdown
+
+- **Resource ownership.** `ownership.externallyManaged: true` and
+  `ownership.ownsResources: false`: the package runs your `dispose` hook but
+  never claims the underlying driver. Close pools, clients, and sockets through
+  `dispose`, and only there.
+- **No startup phase.** There is no `onModuleInit` equivalent; the first query
+  opens driver connections. Bootstrap cannot fail on an unreachable database -
+  readiness surfaces that through status snapshots and health checks instead.
+- **Fail-open default.** `strictTransactions: false` keeps legacy behavior for
+  handles without `transaction(...)`; real Drizzle handles always have it, so
+  the practical effect is on test doubles and exotic adapters.
+- **Shutdown order.** New `transaction()` / `requestTransaction()` calls are
+  rejected once shutdown begins; active request transactions are aborted;
+  open manual boundaries, fail-open callbacks, and continuation roots
+  (fresh boundaries started by continuations of settled transactions) are
+  awaited; then `dispose(database)` runs.
+- **Observability.** `createPlatformStatusSnapshot()` reports readiness, health
+  (`degraded` while draining, `unhealthy` after disposal), active request
+  transaction count, strictness, and `database.transaction` support.
+
+## Failures and common mistakes
+
+- **Forgetting `dispose`.** Without it, the pool outlives the process's graceful
+  shutdown and tests hang on open handles. It is the only place the package
+  closes anything.
+- **Injecting the raw token by accident.** `DRIZZLE_DATABASE` skips the
+  transaction-aware facade entirely. Repositories should inject
+  `DrizzleDatabase` / `DrizzleDatabaseFacade`; reserve the raw token for
+  integrations that need the exact configured handle.
+- **Legacy discovery forms.** `@Transaction()` with no arguments resolves by
+  host-property discovery and only supports the single-target case. Migrate to
+  an explicit accessor before adding a second database or ORM.
+- **Nested native options.** Rejected, not ignored - move options to the outer
+  boundary that actually opens the transaction.
+- **Cross-store expectations.** `afterCommit` observes only transactions opened
+  through this wrapper. External raw-client transactions, other connections,
+  and Redis `MULTI/EXEC` are invisible; there is no DB+Redis atomicity and no
+  durable outbox.
+- **Rollback expectations.** Returning an error-shaped value does not roll back
+  by itself; the opt-in `shouldRollback` boundary requires
+  `createDrizzleRollbackObserver(pool)` wired through `rollbackObserver`, and
+  rejects with `TransactionRollbackCapabilityError` before the callback when it
+  is missing. Confirmation failure surfaces as a native error or
+  `TransactionRollbackUnconfirmedError`, never as a normal result.
+
+## Testing
+
+Tests inject a database double that implements the one method the wrapper
+cares about - `transaction(callback, options)` - plus whatever query surface
+your repositories use:
+
+```ts title="fragment: testing with a database double"
+const database = {
+  transaction: async <T>(callback: (tx: typeof database) => Promise<T>) => callback(database),
+};
+
+DrizzleModule.forRoot({ database, strictTransactions: true });
+```
+
+With `strictTransactions: true` a handle missing `transaction(...)` throws
+instead of failing open - assert that when your production handle is expected
+to be transactional. Without it, the documented fail-open path runs callbacks
+directly; that proves wiring, not atomicity. Native commit/rollback behavior
+against real PostgreSQL is the package-owned fixture's job
+(`packages/drizzle/src/after-commit.test.ts` and the shared native fixture under
+`packages/prisma/fixtures/after-commit/`); a double proves registration,
+decoration, and drain ordering only. Close test apps in `finally` so `dispose`
+and drain run in every outcome.
+
+## Related reading
+
+- [Dependency injection](/docs/fundamentals/dependency-injection) - tokens,
+  visibility, and scopes used throughout this page.
+- [Prisma](/docs/packages/prisma) and [Mongoose](/docs/packages/mongoose) - the
+  same transaction-context model for Prisma and MongoDB.
+- [Cache manager](/docs/packages/cache-manager) - the `CacheService` used in
+  the after-commit example.
+- [`@fluojs/drizzle` README](https://github.com/fluojs/fluo/blob/main/packages/drizzle/README.md) -
+  the owning API reference, including the full result-rollback contract.
+- [Transaction context contract](https://github.com/fluojs/fluo/blob/main/docs/architecture/transactions.md) -
+  normative after-commit and rollback semantics.

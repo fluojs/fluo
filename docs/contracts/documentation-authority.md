@@ -59,6 +59,12 @@ Resolve conflicts in the owning document before updating Books and summaries. If
 
 ## Change sequence and bilingual increments
 
+Website language exception: `apps/docs/content/docs/` is English-only.
+Previous localized website URLs redirect to `/docs`; translated website files
+are removed. The bilingual sequence
+below still governs repository contracts, package READMEs and Books; an
+English-only website explanation does not waive those source-owner obligations.
+
 1. **Establish the Docs contract:** Identify the owner pair and affected contracts and Book chapters, then resolve conflicts with existing promises.
 2. **Verify evidence:** Compare implementation and tests and exercise affected execution paths. Keep commands, results, and limitations in a receipt.
 3. **Apply to the Korean Book:** Derive the product narrative from verified Docs. Initial authoring reviews all 72 Korean chapters first. Corrections to an existing Book review, finalize, and freeze the entire affected Korean set, including interdependent chapters.
@@ -67,4 +73,4 @@ Resolve conflicts in the owning document before updating Books and summaries. If
 
 Review Book impact for every Docs change. Update affected chapters for semantic changes; record why Book edits are unnecessary for editorial-only changes. Do not replace essential Book explanations with links. Distinguish KRW choices, post/order states, app addresses, and persistence/retry policies as application-owned policies. Clearly separate intentionally failing intermediate code and comparison experiments from the final recommended implementation.
 
-When migrating existing machine sentinels, stable links, and checker consumers, align the owner document, triggers, assertions, and negative regressions in the same verified change without reducing detection strength. Use `pnpm book:check:ko` during Korean authoring and `pnpm book:check` for bilingual increments. `pnpm docs:sync-check` checks website counterpart existence and does not replace EN/KO meaning review. Do not add tests that pin natural-language sentences or prompts.
+When migrating existing machine sentinels, stable links, and checker consumers, align the owner document, triggers, assertions, and negative regressions in the same verified change without reducing detection strength. Use `pnpm book:check:ko` during Korean authoring and `pnpm book:check` for bilingual increments. `pnpm docs:sync-check` rejects translated website files and does not replace EN/KO meaning review. Do not add tests that pin natural-language sentences or prompts.

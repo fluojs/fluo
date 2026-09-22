@@ -5,7 +5,7 @@ description: Create posts through a bound and validated DTO, then observe 201, 4
 
 ## Goal and prior checkpoint
 
-Start after [Dependency injection](/en/docs/tutorial/dependency-injection). Checkpoint 02 lists posts, looks them up by ID, and returns a resource error for an unknown ID.
+Start after [Dependency injection](/docs/tutorial/dependency-injection). Checkpoint 02 lists posts, looks them up by ID, and returns a resource error for an unknown ID.
 
 Now work in `examples/fluo-blog/00-start`. Add `src/create-post.dto.ts`; replace `src/posts.controller.ts` and `src/posts.service.ts`. Keep `src/post.ts`, `src/post-params.dto.ts`, `src/posts.module.ts`, `src/app.ts`, and `src/main.ts` from checkpoint 02. The complete root registration is repeated below so the new route is not left disconnected.
 
@@ -13,7 +13,7 @@ Your observable goal is: valid JSON creates post `2` with `201`; an invalid titl
 
 ## 1. Define and bind the input
 
-The example already declares `@fluojs/validation` as a workspace dependency. The root install from [Create the app](/en/docs/tutorial/create-app) supplies it; do not add an invented registry version.
+The example already declares `@fluojs/validation` as a workspace dependency. The root install from [Create the app](/docs/tutorial/create-app) supplies it; do not add an invented registry version.
 
 {/* fluo-tutorial-source: examples/fluo-blog/03-validation-errors/src/create-post.dto.ts */}
 ```ts title="00-start/src/create-post.dto.ts"
@@ -263,4 +263,4 @@ Expected: your earlier health, list, lookup, and missing-resource tests still pa
 
 Use the [complete validation checkpoint](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog/03-validation-errors). If short titles are accepted, compare the DTO imports and `@RequestDto(CreatePostDto)` registration, then rebuild the server. If `/posts/2` disappears after restarting, that is the documented in-memory behavior: restart restores only post `1`.
 
-Previous: [Dependency injection](/en/docs/tutorial/dependency-injection). Next: [Testing the whole feature](/en/docs/tutorial/testing).
+Previous: [Dependency injection](/docs/tutorial/dependency-injection). Next: [Testing the whole feature](/docs/tutorial/testing).

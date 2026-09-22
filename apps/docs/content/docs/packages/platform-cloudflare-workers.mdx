@@ -1,0 +1,239 @@
+---
+title: Cloudflare Workers platform
+description: Deploy fluo applications to Cloudflare Workers with waitUntil-aware request tracking, a restartable lazy application host, and WebSocketPair-based realtime.
+package: "@fluojs/platform-cloudflare-workers"
+---
+
+`@fluojs/platform-cloudflare-workers` is the HTTP adapter that runs a fluo application as a [Cloudflare Worker](https://workers.cloudflare.com/): an edge `fetch` handler instead of a listening server. It implements the framework's `HttpApplicationAdapter` contract on the Workers Web APIs, registering every request's lifecycle with `executionContext.waitUntil(...)` so Worker shutdown does not drop active work.
+
+Use this package when your deployment target is Cloudflare Workers. Use [`@fluojs/platform-bun`](/docs/packages/platform-bun), [`@fluojs/platform-deno`](/docs/packages/platform-deno), or the Node.js adapters for long-running servers. The adapter is not a module: there is no `forRoot`/`forRootAsync` registration. You either create the adapter directly and export a `fetch` handler, or use the package's lazy `CloudflareWorkerApplicationHost` when the isolate must own bootstrap.
+
+The package depends on `@fluojs/http` and `@fluojs/runtime` and declares no `engines.node` constraint because its runtime contract is the Workers runtime; the repository's Node.js requirement applies only to the maintainer toolchain.
+
+## Two creation models
+
+Pick the model by who owns bootstrap - not by preference. They are different capabilities, not two spellings of the same setup.
+
+**Direct application creation** bootstraps eagerly at module load. The module graph compiles when the script is evaluated, and the exported `fetch` starts serving once `app.listen()` has bound the dispatcher (Workers open no socket; `listen()` is a binding step, not a network call):
+
+```ts title="src/worker.ts (direct)"
+import { CloudflareWorkerHttpApplicationAdapter } from '@fluojs/platform-cloudflare-workers';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app.module';
+
+const adapter = CloudflareWorkerHttpApplicationAdapter.create();
+const app = await FluoFactory.create(AppModule, { adapter });
+
+await app.listen();
+
+export default {
+  fetch: (request, env, ctx) => adapter.fetch(request, env, ctx),
+};
+```
+
+Use this when the root module and its bootstrap configuration are known before the first request. It is the simplest shape and makes cold starts pay bootstrap once per isolate.
+
+**The lazy application host** bootstraps on the first request, owns generation replacement, retry, and close/drain recovery, and supports selecting bootstrap configuration from the first Worker `env`:
+
+```ts title="src/worker.ts (lazy host)"
+import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
+
+import { AppModule } from './app.module';
+
+const worker = CloudflareWorkerApplicationHost.create(AppModule);
+
+export default {
+  fetch: worker.fetch,
+};
+```
+
+`worker.fetch` is a bound arrow property, so exporting it directly keeps host ownership intact. Routing and middleware options (`globalPrefix`, `cors`, `middleware`, `securityHeaders`) and adapter parsing options (`maxBodySize`, `multipart`, `rawBody`, `bodyParser`, `createWebSocketPair`) go to the host's options object; everything else from `FluoFactory.create(...)` (logger, observers, filters, versioning, and so on) is accepted there too.
+
+The adapter's `fetch(request, env, executionContext)` contract **requires the real third argument**: direct callers must pass the Worker's `ctx` so HTTP, SSE, and WebSocket ingress all register with `waitUntil(...)`. Direct two-argument adapter calls are a removed API; replace them with the three-argument call.
+
+## How a request travels
+
+```txt
+Worker fetch(request, env, ctx)
+  -> adapter.fetch(request, env, ctx)
+  -> shared fluo dispatcher (routing, guards, middleware, handlers)
+```
+
+1. Shutdown gating runs first: after `close()` has started - and, for direct adapters, permanently after close - requests receive the JSON `503` (`error.code: 'SERVICE_UNAVAILABLE'`, message `Server is shutting down.`). The same gate applies to websocket upgrade attempts.
+2. The request is registered as in-flight, and a lifecycle promise covering the dispatch is registered with `executionContext.waitUntil(...)`.
+3. If a websocket binding is configured and the request is an upgrade, the binding owns it; the upgraded server socket's terminal `close` event extends the tracked lifecycle until the socket closes.
+4. Otherwise the request flows through the shared web dispatch pipeline, and the adapter attaches the Worker `env` and execution context to the framework request it assembles for the dispatcher as `request.cloudflare.env` / `request.cloudflare.executionContext`. Body-bearing `QUERY` routes and uppercase extension methods such as `PURGE` reach registered routes with their method token and parsed body through the same fetch seam, and conditional requests follow the shared `Range`/`If-Range` policy.
+
+The `cloudflare` request field is typed by this package: `CloudflareWorkerRequestContext` augments the framework request when you import from `@fluojs/platform-cloudflare-workers`, and Worker-specific seam types (`CloudflareWorkerExecutionContext`, `CloudflareWorkerWebSocketBinding`, and the other public types) are exported from the package root instead of internal subpaths.
+
+## Ownership of close on an edge runtime
+
+Cloudflare Workers gives an exported `fetch` handler no host-invoked shutdown callback, so *your application* must own the close trigger. There are two supported shapes:
+
+- **Out-of-band trigger** (a cron handler, a queue consumer, an external control plane): call `await worker.close()` from code that is not running inside a `worker.fetch` invocation.
+- **Management route inside a request**: return the route's response first, then observe the close with `executionContext.waitUntil(worker.close())`. Awaiting `close()` inside the same request deadlocks: `close()` waits for that active request to drain, so it reaches the 10-second shutdown timeout.
+
+The close sequence itself:
+
+1. New HTTP and websocket ingress begin receiving the JSON `503` immediately.
+2. Active work drains under a bounded **10-second** window (not configurable on this adapter). If it exceeds the bound, `close()` rejects with `Cloudflare Workers adapter shutdown timeout exceeded 10000ms.`
+3. While that drain is still in progress, a concurrent `listen()` rejects with `Cloudflare Workers adapter cannot listen while shutdown is still draining.` - the adapter will not quietly reopen a closing Worker.
+4. Once the underlying drain eventually settles, adapter state clears. A timed-out close therefore does not strand the isolate: lazy hosts clear the temporary gate once the drain settles, and a later request can bootstrap a fresh application.
+
+For a direct adapter, a settled close leaves `fetch(...)` answering `503` until the adapter is explicitly listened again. For the lazy host, a **successful** close is intentionally restartable:
+
+```ts title="fragment: restartable generations"
+const worker = CloudflareWorkerApplicationHost.create(AppModule);
+
+// first request -> generation 1 (bootstrap lifecycle hooks run, singletons construct)
+await worker.fetch(request, env, ctx);
+
+await worker.close();
+// generation 1 released; admission gate set while draining
+
+// next request -> generation 2: bootstrap hooks rerun, singletons reconstruct
+const response = await worker.fetch(anotherRequest, env, ctx);
+```
+
+Do not treat `close()` as a terminal Worker shutdown signal - if your application needs terminal behavior, it must own and enforce that state explicitly.
+
+### The env-aware host overload
+
+Use `CloudflareWorkerApplicationHost.create({ fromEnv })` only when the **first** Worker environment must select the root module or final bootstrap options before module registration:
+
+```ts title="fragment: env-aware bootstrap"
+import { CloudflareWorkerApplicationHost } from '@fluojs/platform-cloudflare-workers';
+
+import { createAppModule } from './app.module';
+
+interface WorkerEnv {
+  API_PREFIX: string;
+  DB: D1Database;
+}
+
+const worker = CloudflareWorkerApplicationHost.create<WorkerEnv>({
+  fromEnv: (env) => ({
+    rootModule: createAppModule({ database: env.DB }),
+    options: {
+      globalPrefix: env.API_PREFIX,
+    },
+  }),
+});
+
+export default {
+  fetch: worker.fetch,
+};
+```
+
+The rules that keep this honest:
+
+- The factory runs once per host instance; its returned configuration is cached and reused by every later generation - including a generation restarted after a successful close, which does not call the factory again.
+- If the factory throws, nothing is cached and a later call may retry. Separate host instances never share configuration or generations.
+- `worker.ready(env)` (which resolves to a `CloudflareWorkerApplicationGeneration` with the `app`, the concrete `adapter`, an extractable `fetch`, and `close(...)`) requires an explicit `env` in this mode for the same reason.
+- In the fixed-module host, request-bound `env` cannot supply `ConfigModule.forRoot(...)` or singleton bootstrap providers. Read, validate, and narrow request-varying bindings from the request, then pass application-shaped values to provider methods. One evidence-backed caveat: the adapter attaches `cloudflare` at its dispatch boundary, but the shared dispatcher currently reconstructs the framework request from a fixed property allowlist, so middleware and handlers do not yet observe `request.cloudflare` even though the owning package contract documents that access (`packages/platform-cloudflare-workers/README.md`). The fixture in `tooling/docs/fixtures/package-guides/native-platforms` records the observed boundary behavior; treat handler-level reads as pending the owning package's fix:
+
+The fragment below illustrates the **documented but currently broken handler
+pattern**, not a working recipe. It currently reaches the missing-binding error.
+Use the `fromEnv` host factory above for bootstrap-level bindings. Do not rely
+on handler-level per-request bindings until the owning implementation is fixed.
+
+```ts title="known failing pattern: handler-level bindings"
+import { Inject, Module } from '@fluojs/core';
+import { Controller, Get, type RequestContext } from '@fluojs/http';
+
+export class CatalogService {
+  read(input: { apiKey: string }) {
+    return { configured: input.apiKey.length > 0 };
+  }
+}
+
+@Inject(CatalogService)
+@Controller('/worker')
+export class WorkerController {
+  constructor(private readonly catalog: CatalogService) {}
+
+  @Get('/catalog')
+  readCatalog(_input: undefined, context: RequestContext) {
+    const env = context.request.cloudflare?.env as { API_KEY?: string } | undefined;
+    const apiKey = env?.API_KEY;
+    if (typeof apiKey !== 'string' || apiKey.length === 0) {
+      throw new Error('API_KEY Worker binding is required.');
+    }
+
+    return this.catalog.read({ apiKey });
+  }
+}
+
+@Module({
+  controllers: [WorkerController],
+  providers: [CatalogService],
+})
+export class WorkerBindingsModule {}
+```
+
+## WebSockets and realtime composition
+
+Workers upgrade requests through `WebSocketPair` rather than `server.upgrade()`. Realtime is opt-in via `@fluojs/websockets/cloudflare-workers`; register the module in the application graph before bootstrap so the binding installs through the version-1 realtime capability before the listen boundary:
+
+```ts title="fragment: Workers websocket binding"
+import { Module } from '@fluojs/core';
+import { WebSocketGateway } from '@fluojs/websockets';
+import { CloudflareWorkersWebSocketModule } from '@fluojs/websockets/cloudflare-workers';
+
+@WebSocketGateway({ path: '/ws' })
+class EdgeGateway {}
+
+@Module({
+  imports: [CloudflareWorkersWebSocketModule.forRoot()],
+  providers: [EdgeGateway],
+})
+export class RealtimeModule {}
+```
+
+The binding rules are stricter than on the other fetch-style adapters because upgrade ownership cannot change underneath a live isolate boundary:
+
+- Upgrade requests before `listen()` do not reach the configured binding (they follow the pre-binding request path instead).
+- Once the adapter has ever listened, the binding identity is frozen: replacing or clearing it is rejected **even after `close()`**. Create a new adapter when a host needs a different websocket binding.
+- Upgraded server sockets keep their `waitUntil` lifecycle open until the terminal `close` event, so Worker eviction does not drop an open socket mid-conversation.
+- For non-hosted tests, `createWebSocketPair` is an injectable pair factory on the adapter options; without it, the adapter requires `globalThis.WebSocketPair` at upgrade time.
+
+## Options
+
+`CloudflareWorkerHttpApplicationAdapter.create(options)` accepts the shared Web parsing policy plus one Workers-specific knob. Numeric options are validated at construction.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `maxBodySize` | shared runtime default | Non-multipart body cap enforced by the shared parser. |
+| `rawBody` | `false` | Retains byte-exact JSON/text bodies. Multipart requests never expose `rawBody`. |
+| `multipart` | shared parser defaults | `MultipartOptions` limits for the shared parser. |
+| `bodyParser` | MIME-based parsing | `'text'`, `'default'`, or a custom callback for non-multipart bodies; parsing precedes middleware and guards. |
+| `createWebSocketPair` | `globalThis.WebSocketPair` | Injectable `WebSocketPair` factory for non-hosted test runtimes. |
+
+Application-level options (`globalPrefix`, `cors`, `securityHeaders`, `middleware`, `logger`, filters, versioning) belong to `FluoFactory.create(...)` or the host options - not to the adapter.
+
+## Errors, limits, and common mistakes
+
+- **Early Hints are unsupported.** The Workers `Response` API has no request-handler write primitive for an informational response, so `context.response.earlyHints` is absent. Cloudflare's own Early Hints features are host configuration and are not exposed as a fluo response writer.
+- **No raw body for multipart.** Multipart requests never expose `rawBody`, regardless of `rawBody: true`.
+- **Streaming multipart ownership.** With `multipart: { strategy: 'stream' }`, `context.request.body` is an `AsyncIterableIterator<MultipartPart>`; finish or cancel each file stream before requesting the next part. Route dispatch auto-closes the iterator it creates; a standalone `parseMultipartStream(...)` consumer owns that call.
+- **Dropping `ctx` in a custom export.** `fetch(request, env)` without the execution context is a removed contract; without `waitUntil` registration, Worker shutdown can drop in-flight dispatches, SSE bodies, and open websockets.
+- **Awaiting `worker.close()` inside a request.** That request is active work; close waits for it and hits the timeout. Return the response, then hand the close promise to `executionContext.waitUntil(...)`.
+- **Treating close as terminal.** A successful host close is restartable by design; enforce terminal state in application code if you need it.
+- **Expecting a configurable drain window.** The 10-second close bound is fixed on this adapter.
+- **Feeding fetch-time `env` into bootstrap.** Only the predeclared root module and options participate in module registration; use the `{ fromEnv }` overload when bootstrap truly depends on the first environment.
+- **Binding changes after the listen boundary.** The websocket binding freezes permanently once the adapter has listened; later mutation attempts fail fast instead of rewiring upgrade ownership.
+
+## Testing at this seam
+
+The package's regression targets are `packages/platform-cloudflare-workers/src/adapter.test.ts` and `adapter-lifecycle.test.ts` (request attachment, `waitUntil` SSE tracking, upgrade binding, host generations and restart, timeout recovery, 503 gating, drain-time `listen()` rejection), with `portability-smoke.test.ts`, `body-parser.test.ts`, and `websocket-conformance.test.ts` covering the shared wire behavior. The shared harness in `packages/testing/src/portability/web-runtime-adapter-portability.test.ts` runs the same baseline against Bun and Deno. These run the adapter in a Web-API-conformant local runtime; they are local Web conformance, not a deployed-isolate guarantee - claims about isolate eviction or Workers-only behavior come from the documented lifecycle contract, not from a test double.
+
+For your own tests, pass the adapter a minimal `executionContext` (an object with `waitUntil`) and real `Request` objects - the adapter needs no network listener. Boot on the factory, dispatch with `adapter.fetch(new Request(url), env, ctx)`, and always `await app.close()` in a `finally` block. For request-level assertions without the adapter, use [`Test.createApp(...)`](/docs/guides/testing).
+
+## Related reading
+
+- [`@fluojs/platform-bun`](/docs/packages/platform-bun) - the sibling fetch-style adapter for the Bun runtime.
+- [`@fluojs/platform-deno`](/docs/packages/platform-deno) - the sibling fetch-style adapter for the Deno runtime.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - how the providers behind your controllers compose, and why each generation reconstructs singletons.
+- [Runtime Adapters](/docs/guides/runtime-adapters) - choosing between adapters, close ownership, and the portability matrix.
+- [`packages/platform-cloudflare-workers/README.md`](https://github.com/fluojs/fluo/blob/main/packages/platform-cloudflare-workers/README.md) - the owning package contract and realtime capability JSON.

@@ -1,0 +1,388 @@
+---
+title: CQRS
+description: Command and query buses with bootstrap-time handler discovery, saga process managers, and event publication delegated to the fluo event bus.
+package: "@fluojs/cqrs"
+---
+
+`@fluojs/cqrs` separates **intent** from **execution**. A controller or
+service constructs a command or query object and hands it to a bus; a handler
+class decorated for that exact message type executes it. The same package
+adds a third channel - domain events published to `@EventHandler(...)` methods
+and `@Saga(...)` process managers - with the final publication step delegated
+to [`@fluojs/event-bus`](/docs/packages/event-bus).
+
+Use it when the write side and read side of a feature genuinely diverge
+(commands mutate, queries serve a denormalized view), when several reactions
+must be orchestrated in response to one domain fact, or when you want every
+mutation to be an inspectable, named message. Skip it when you only need "one
+thing happened, some services react": the event bus alone is lighter. And
+remember the buses are **in-process**: there is no persistence, no retry, and
+no cross-process delivery. Durable side effects belong behind
+[`@fluojs/queue`](/docs/packages/queue).
+
+## Installation
+
+```bash
+npm install @fluojs/cqrs
+```
+
+`@fluojs/cqrs` depends on `@fluojs/core`, `@fluojs/di`, `@fluojs/runtime`,
+and `@fluojs/event-bus`; installing it brings the event bus transitively. The
+package supports Node.js `>=24.0.0 <27` as its package-owned support contract.
+
+## A small working example
+
+A command that creates a user, its handler, and the service that dispatches
+it:
+
+```ts title="src/users/commands.ts"
+import type { ICommand } from '@fluojs/cqrs';
+
+export class CreateUserCommand implements ICommand {
+  constructor(public readonly name: string) {}
+}
+```
+
+```ts title="src/users/create-user.handler.ts"
+import { CommandHandler, type ICommandHandler } from '@fluojs/cqrs';
+
+import { CreateUserCommand } from './commands';
+
+@CommandHandler(CreateUserCommand)
+export class CreateUserHandler implements ICommandHandler<CreateUserCommand, string> {
+  async execute(command: CreateUserCommand): Promise<string> {
+    // ...persist the user...
+    return `user-${command.name}`;
+  }
+}
+```
+
+```ts title="src/users/user.service.ts"
+import { Inject } from '@fluojs/core';
+import { CommandBusLifecycleService } from '@fluojs/cqrs';
+
+import { CreateUserCommand } from './commands';
+
+@Inject(CommandBusLifecycleService)
+export class UserService {
+  constructor(private readonly commandBus: CommandBusLifecycleService) {}
+
+  create(name: string): Promise<string> {
+    return this.commandBus.execute(new CreateUserCommand(name));
+  }
+}
+```
+
+```ts title="src/users/users.module.ts"
+import { Module } from '@fluojs/core';
+import { CqrsModule } from '@fluojs/cqrs';
+
+import { CreateUserHandler } from './create-user.handler';
+import { UserService } from './user.service';
+
+@Module({
+  imports: [CqrsModule.forRoot()],
+  providers: [CreateUserHandler, UserService],
+})
+export class UsersModule {}
+```
+
+`CqrsModule.forRoot()` registers the command, query, and event buses and
+exports them **globally by default**, so `UserService` can inject
+`CommandBusLifecycleService` without importing anything else. Pass
+`global: false` to keep the buses module-local. Handler registration is just
+DI registration: add the decorated handler class as a singleton provider and
+discovery finds it at bootstrap.
+
+## How the mechanics work
+
+### Discovery is bootstrap-time and singleton-only
+
+During application bootstrap, each bus scans the compiled module graph for
+classes carrying its decorator (`@CommandHandler`, `@QueryHandler`,
+`@EventHandler`, `@Saga`) and preloads every discovered handler instance
+before the application reports ready. The discovery rules are strict:
+
+- **Singleton providers only.** Request-scoped and transient registrations
+  carrying CQRS decorators are skipped with a warning. A handler must not
+  depend on per-request state.
+- **Provider forms.** Plain class providers and `useClass` providers are
+  discovered directly; `useFactory` providers only when their class token
+  carries the metadata; `useValue` providers when the instance's constructor
+  carries it.
+- **Controllers are ignored.** HTTP controllers stay on the request boundary;
+  a controller class that accidentally carries a CQRS decorator is not
+  discovered.
+- **Fan-out follows the provider token.** Registering one decorated handler
+  class under two distinct tokens intentionally invokes both registrations.
+  Repeated discovery of the same token and message route is deduplicated.
+- **Conflicts fail fast.** Two *different* providers claiming the same
+  command or query type fail bootstrap with `DuplicateCommandHandlerError` or
+  `DuplicateQueryHandlerError`.
+
+Dispatch keys on the message's exact constructor. `commandBus.execute(new
+CreateUserCommand(name))` looks up `command.constructor` and throws
+`CommandHandlerNotFoundException` when no handler is registered for it - a
+structural copy of the class in another module is a different constructor and
+does not match.
+
+### Queries carry their result type
+
+`IQuery<TResult>` makes query dispatch statically typed: the bus infers the
+result from the query's generic parameter.
+
+```ts title="fragment: typed query (AppModule from the example imports CqrsModule.forRoot())"
+import { Inject } from '@fluojs/core';
+import { QueryBusLifecycleService, QueryHandler, type IQuery, type IQueryHandler } from '@fluojs/cqrs';
+
+export interface UserView {
+  id: string;
+  name: string;
+}
+
+export class GetUserQuery implements IQuery<UserView | undefined> {
+  // Optional marker property carrying the result type: it satisfies the
+  // IQuery structural contract and drives the bus's typed result inference.
+  readonly __queryResultType__?: UserView | undefined;
+
+  constructor(public readonly userId: string) {}
+}
+
+@QueryHandler(GetUserQuery)
+export class GetUserHandler implements IQueryHandler<GetUserQuery, UserView | undefined> {
+  async execute(query: GetUserQuery): Promise<UserView | undefined> {
+    return { id: query.userId, name: 'fluo' }; // replace with a real lookup
+  }
+}
+
+@Inject(QueryBusLifecycleService)
+export class UserQueries {
+  constructor(private readonly queryBus: QueryBusLifecycleService) {}
+
+  find(userId: string): Promise<UserView | undefined> {
+    return this.queryBus.execute(new GetUserQuery(userId));
+  }
+}
+```
+
+### Events: handlers, sagas, and the delegated pipeline
+
+`CqrsEventBusService.publish(event)` runs a fixed pipeline:
+
+1. Matching `@EventHandler(...)` providers, each receiving an **isolated copy**
+   of the event with the matched prototype restored.
+2. Matching `@Saga(...)` providers, also on isolated copies.
+3. One delegated `EventBusService.publish(...)` call with the **original**
+   event. Each `@OnEvent(...)` method still receives its own event-bus-level
+   copy, but the values are the caller-owned payload - never a CQRS handler's
+   mutated clone - and configured transports serialize that same payload.
+
+`publishAll(events)` preserves input order by fully processing each event
+before starting the next. Both methods return `Promise<void>`; CQRS
+intentionally does not re-export the event bus's `EventPublishResult` surface.
+
+Keep event payloads cloneable and enumerable: string-keyed and symbol-keyed
+enumerable fields survive the shared clone fallback, but sockets, functions,
+and other process-local handles do not - represent them with IDs. Projection
+handlers should be idempotent regardless, because replays, retries, or an
+external transport can deliver the same fact more than once.
+
+```ts title="fragment: read projection (registered as a singleton provider in a module importing CqrsModule.forRoot())"
+import { Inject } from '@fluojs/core';
+import { EventHandler, type IEvent, type IEventHandler } from '@fluojs/cqrs';
+
+export class OrderPlacedEvent implements IEvent {
+  constructor(
+    public readonly orderId: string,
+    public readonly customerId: string,
+  ) {}
+}
+
+export interface OrderSummaryView {
+  id: string;
+  customerId: string;
+  status: 'placed';
+}
+
+export class OrderSummaryProjectionStore {
+  private readonly rows = new Map<string, OrderSummaryView>();
+
+  upsert(view: OrderSummaryView): void {
+    this.rows.set(view.id, view);
+  }
+
+  findById(id: string): OrderSummaryView | undefined {
+    return this.rows.get(id);
+  }
+}
+
+@Inject(OrderSummaryProjectionStore)
+@EventHandler(OrderPlacedEvent)
+export class OrderSummaryProjectionHandler implements IEventHandler<OrderPlacedEvent> {
+  constructor(private readonly store: OrderSummaryProjectionStore) {}
+
+  async handle(event: OrderPlacedEvent): Promise<void> {
+    await this.store.upsert({
+      id: event.orderId,
+      customerId: event.customerId,
+      status: 'placed',
+    });
+  }
+}
+```
+
+### Sagas orchestrate follow-up work
+
+A saga reacts to an event and typically dispatches commands. The
+`CqrsDispatchContext` argument is how nested dispatch stays inside the same
+topology check: pass it through unchanged to every nested `execute(...)`,
+`publish(...)`, or `publishAll(...)` call made from a handler or saga.
+
+```ts title="fragment: saga (same module graph as the examples above)"
+import { Inject } from '@fluojs/core';
+import { Saga, type ISaga, type CqrsDispatchContext } from '@fluojs/cqrs';
+import { CommandBusLifecycleService } from '@fluojs/cqrs';
+
+export class UserCreatedEvent implements IEvent {
+  constructor(public readonly userId: string) {}
+}
+
+export class SendWelcomeEmailCommand implements ICommand {
+  constructor(public readonly userId: string) {}
+}
+
+@Inject(CommandBusLifecycleService)
+@Saga(UserCreatedEvent)
+export class UserOnboardingSaga implements ISaga<UserCreatedEvent> {
+  constructor(private readonly commandBus: CommandBusLifecycleService) {}
+
+  async handle(event: UserCreatedEvent, context?: CqrsDispatchContext): Promise<void> {
+    await this.commandBus.execute(new SendWelcomeEmailCommand(event.userId), context);
+  }
+}
+```
+
+The context is opaque and frozen - a fieldless pass-through with private
+topology state behind it. Never construct, clone, inspect, or mutate one:
+caller-shaped objects carry no trusted state and behave like external calls.
+
+Saga execution keeps **one active `handle(...)` per singleton provider
+token**. When a saga publishes a different event route owned by that same
+token (directly, through nested sagas, or through awaited `@OnEvent(...)`
+subscribers), CQRS records a serialized continuation on the token's FIFO
+chain, lets the current `handle(...)` finish, then runs queued work in enqueue
+order - so default `waitForHandlers` re-entry does not deadlock. Two guards
+fail fast: re-entering an already-active provider-token/event route throws
+`SagaTopologyError`, and exceeding 32 nested saga hops throws as well. Move
+intentionally cyclic or long-running feedback loops behind an external
+transport, scheduler, or queue instead of stretching the in-process chain.
+
+### Shutdown drains before it stops
+
+When the application closes, CQRS waits for active `publish(...)` pipelines,
+`publishAll(...)` sequences, and saga execution chains to settle inside one
+absolute window - `CqrsModule.forRoot({ shutdown: { drainTimeoutMs } })`,
+default `5000`ms. The delegated event bus inherits the remaining budget from
+that deadline; an explicit `eventBus.shutdown.drainTimeoutMs` may tighten it
+but never extends it. Command and query buses reject new `execute(...)` calls
+once shutdown starts and clear their preloaded handler caches, so post-close
+dispatch cannot reuse stale provider instances. Brand-new external
+`publish(...)`/`publishAll(...)` calls are rejected too; a nested call from an
+already-active handler or saga may continue only when it passes the
+`CqrsDispatchContext` through. If work is still stuck when the window closes,
+CQRS records degraded status diagnostics, logs a warning, and lets
+application close continue.
+
+## Composition with neighboring packages
+
+**With `@fluojs/event-bus`.** The delegation is automatic - `CqrsModule`
+imports `EventBusModule.forRoot(...)` with your `eventBus` options and
+`@OnEvent(...)` subscribers run last in the pipeline, on the original event.
+The module option surface is deliberately small: `global`, `eventBus`
+(publish defaults, transport, and shutdown), and `shutdown`. There is no
+`forRootAsync`; resolve async configuration before calling `forRoot(...)`.
+
+**With `@fluojs/queue`.** Sagas and event handlers decide *what* should
+happen; the queue makes it durable. Dispatch a command that enqueues a job
+rather than performing slow or retryable work inline - the saga finishes in
+milliseconds, the worker owns retries, and a crash between the two is healed
+by the queue's own deduplication and dead-letter contract.
+
+**With DI visibility.** Buses are exported globally by default. With
+`global: false`, importing modules forward them; handlers still need to be
+reachable as singleton providers in the compiled graph. Because fan-out is
+keyed by provider token, keep one canonical registration per handler class.
+
+## Defaults, ownership, and lifecycle
+
+| Concern | Default | Notes |
+| --- | --- | --- |
+| Module visibility | `global: true` | `CqrsModule.forRoot({ global: false })` for module-local buses |
+| Shutdown drain | `5000`ms | Shared CQRS deadline; delegated bus inherits the remainder |
+| Async registration | None | `forRoot` is synchronous; there is no `forRootAsync` |
+| Resource ownership | None | `ownership` in status snapshots reports `externallyManaged: false`, `ownsResources: false` - CQRS observes its own lifecycle and owns no external resource |
+| Handler scope | Singleton only | Non-singleton registrations are skipped with a warning |
+
+`CqrsEventBusService.createPlatformStatusSnapshot()` exposes readiness and
+health from live bus state: discovered handler/saga counts, lifecycle states
+(`created`, `discovering`, `ready`, `stopping`, `stopped`, `failed`),
+in-flight saga executions, and recorded drain timeouts. Readiness evaluates
+event and saga state (both `ready` -> `ready`; any `discovering` ->
+`degraded`; `stopping`/`stopped`/`failed` -> `not-ready`), and health only
+degrades - a nonzero drain-timeout counter reports `degraded` even after
+work settles.
+
+## Errors and common mistakes
+
+| Error | Thrown when | Typical fix |
+| --- | --- | --- |
+| `CommandHandlerNotFoundException` / `QueryHandlerNotFoundException` | `execute(...)` received a message constructor with no discovered handler | Register the handler as a singleton provider; check the exact class reference |
+| `DuplicateCommandHandlerError` / `DuplicateQueryHandlerError` | Two different singleton providers claim one command or query type | Keep one canonical registration per message type |
+| `SagaTopologyError` | A saga route re-entered an active provider-token/event route, or the in-process chain exceeded 32 hops | Break the cycle behind a queue, transport, or scheduler |
+| `SagaExecutionError` | A saga threw a non-fluo error while handling an event | Inspect the wrapped cause |
+| `InvariantError` on dispatch | A resolved handler does not implement `execute(command)` (commands/queries) | Implement the handler contract |
+
+Common mistakes:
+
+- **Dispatching a structurally identical copy.** The constructor reference is
+  the identity; a re-declared class in another module never matches.
+- **Injecting request-scoped state into handlers.** Discovery is
+  singleton-only; such handlers fail to see request context or are skipped
+  with a warning.
+- **Assuming `publish()` returned nothing means nothing happened.** The
+  pipeline is sequential and awaited; failures in command handlers dispatch by
+  a saga propagate to the saga, and delegated publication follows the event
+  bus's own failure contract (listener isolation, no rejection).
+- **Expecting durability.** In-process only. If the process exits, queued
+  saga continuations and undrained publications are gone.
+
+## Testing
+
+Handlers are plain classes; unit-test `execute(...)`/`handle(...)` directly.
+For bus wiring - discovery, ordering, clone isolation - compile the real
+module graph and drive the buses:
+
+```ts title="fragment: wiring test (module compiled via Test.createTestingModule)"
+const commandBus = await module.resolve(CommandBusLifecycleService);
+const result = await commandBus.execute(new CreateUserCommand('fluo'));
+
+expect(result).toBe('user-fluo');
+
+// A missing handler fails deterministically:
+await expect(commandBus.execute(new UnknownCommand())).rejects.toBeInstanceOf(
+  CommandHandlerNotFoundException,
+);
+```
+
+For saga ordering and context pass-through, capture a timeline array from
+handlers and assert the pipeline order - event handlers before sagas before
+delegated `@OnEvent` subscribers. The [async-work
+fixtures](https://github.com/fluojs/fluo/tree/main/tooling/docs/fixtures/package-guides/async-work)
+run that composition end to end with no sleeps.
+
+## Related reading
+
+- [`@fluojs/event-bus`](/docs/packages/event-bus) - the delegated publication layer, its result contract, and the Redis transport.
+- [`@fluojs/queue`](/docs/packages/queue) - durable execution for side effects that must survive a crash.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - provider scopes, visibility, and the singleton discovery model CQRS builds on.
+- [`@fluojs/cqrs` package README](https://github.com/fluojs/fluo/blob/main/packages/cqrs/README.md) - the owning API reference, status field tables, and event-sourcing notes.

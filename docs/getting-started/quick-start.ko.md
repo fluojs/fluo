@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-이 문서는 CLI 설정 명령 레퍼런스입니다. 첫 앱을 순서대로 만들려면 [FluoBlog 튜토리얼](../../apps/docs/content/docs/tutorial/create-app.ko.mdx)을 이용하세요.
+이 문서는 CLI 설정 명령 레퍼런스입니다. 첫 앱을 순서대로 만들려면 [FluoBlog 튜토리얼](../../apps/docs/content/docs/tutorial/create-app.mdx)을 이용하세요.
 
 - 호스트 시스템에 Node.js `>=24.0.0 <27`이 있어야 합니다.
 - 호스트 시스템에 `pnpm`이 있어야 합니다.

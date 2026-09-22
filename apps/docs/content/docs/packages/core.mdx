@@ -1,0 +1,274 @@
+---
+title: Core contracts and decorators
+description: What @fluojs/core guarantees - module, injection, and scope metadata, typed tokens, and the metadata runtime every fluo package shares.
+package: "@fluojs/core"
+---
+
+`@fluojs/core` is the contract layer of the framework. It owns the three standard decorators that describe a fluo application (`@Module`, `@Inject`, `@Scope`), typed tokens shared across package boundaries in one process, the shared error hierarchy, and the metadata runtime that records all of it. Every other fluo package - the DI container, the runtime bootstrap, HTTP, config, i18n - reads metadata written through this package instead of maintaining its own model.
+
+Just as important is what core does **not** do. It never constructs an instance, never resolves a dependency, never starts a listener, and never touches the filesystem or the network. There is no container here and nothing to `await`. If your code imports `@fluojs/core`, the only runtime work that happens is metadata being written onto classes as they are evaluated.
+
+## Installation
+
+```bash
+npm install @fluojs/core
+```
+
+The package has no runtime dependencies and no peer dependencies. The package contract requires Node.js `>=24.0.0 <27`; see [Node.js support and migration](https://github.com/fluojs/fluo/blob/main/docs/reference/node-support.md) before upgrading.
+
+fluo uses TC39 standard decorators. You do **not** enable `experimentalDecorators` or `emitDecoratorMetadata` - in fact, remove both from `tsconfig.json` if you are migrating from NestJS. fluo never reads compiler-emitted type metadata and does not load `reflect-metadata`.
+
+## When to use it, and when not
+
+Reach for `@fluojs/core` when you are:
+
+- declaring modules, providers, and scopes in an application or library
+- defining a stable cross-module contract token (`publicToken`)
+- building a framework extension that must read module metadata (tests, CLI tooling, custom integrations)
+- implementing packages that need the shared error hierarchy or the `AsyncModuleOptions` registration contract
+
+Do not use it to:
+
+- resolve or register providers at runtime - that is the [`@fluojs/di` container](/docs/fundamentals/dependency-injection)
+- bootstrap an application - that is [`@fluojs/runtime`](/docs/packages/runtime)
+- load configuration or translate messages - `@fluojs/config` and `@fluojs/i18n` build *on* core but own those capabilities
+
+## A small working example
+
+Start in a generated application from [Getting started](/docs/getting-started/quick-start).
+The feature below uses `posts.service.ts`, `posts.module.ts` and
+`posts.contract.ts` (shown in the typed-token section). Import `PostsModule`
+into the existing root module's `imports` array, preserving its configuration
+and health modules. The existing entrypoint owns startup; these files only
+describe the feature's wiring.
+
+```ts title="src/posts.service.ts"
+import { Inject, Scope } from '@fluojs/core';
+
+export class AuditLog {
+  entries: string[] = [];
+}
+
+@Scope('singleton')
+@Inject(AuditLog)
+export class PostsService {
+  constructor(private readonly audit: AuditLog) {}
+
+  list(): readonly string[] {
+    return [...this.audit.entries];
+  }
+
+  create(title: string): string {
+    this.audit.entries.push(`created: ${title}`);
+    return title;
+  }
+}
+```
+
+```ts title="src/posts.module.ts"
+import { Module } from '@fluojs/core';
+
+import { POSTS_READER } from './posts.contract';
+import { AuditLog, PostsService } from './posts.service';
+
+@Module({
+  providers: [
+    PostsService,
+    AuditLog,
+    { provide: POSTS_READER, useExisting: PostsService },
+  ],
+  exports: [POSTS_READER],
+})
+export class PostsModule {}
+```
+
+Because `PostsModule` exports the `POSTS_READER` contract token, another module that imports it can inject `PostsReader` without ever seeing the implementing class. Nothing has executed yet - at this point the classes carry metadata, and the graph is only a description.
+
+The interesting question is "what did those decorators actually record?" The package's public reader answers it:
+
+```ts title="fragment: metadata inspection"
+import { getModuleMetadata } from '@fluojs/core';
+
+import { PostsModule } from './posts.module';
+
+const metadata = getModuleMetadata(PostsModule);
+// metadata.providers -> [PostsService, AuditLog, { provide: POSTS_READER, useExisting: PostsService }]
+// metadata.exports   -> [POSTS_READER]
+```
+
+`getModuleMetadata(AppModule)` returns a frozen snapshot of the module contract, or `undefined` when the class was never decorated. This is the supported read path for tests and tooling; there is no mutable back door into another class's metadata.
+
+## How the mechanics work
+
+### The metadata store
+
+Decorators in fluo do not mutate `reflect-metadata` or compiler-emitted `design:*` types. Each decorator writes a normalized record into framework-owned stores keyed by the class, and the stores are versioned: every write advances a process-local metadata version so graph compilation can detect stale caches. Three properties follow from this design:
+
+1. **Decoration order does not matter.** `@Inject(A)` before or after `@Scope('singleton')` records both fields on the same class record.
+2. **Writes merge, not replace.** Decorating a class twice keeps previously declared fields - see the empty-module rule below.
+3. **Module reads are frozen.** `getModuleMetadata()` returns a snapshot you must treat as immutable. The same reference may be reused between writes. Mutation does not update the graph and can throw in strict mode; use declarations or the supported programmatic registration API instead.
+
+### `@Module` - the unit of composition
+
+`@Module(definition)` records `imports`, `providers`, `controllers`, `exports`, `middleware`, and the `global` flag on the decorated class. Two details are load-bearing:
+
+- **Empty modules are real modules.** `@Module()` and `@Module(undefined)` are shorthand for `@Module({})`. They still register module metadata, preserve previously declared partial fields, and can be combined with `@Module({ global: true })` in either order. An *undecorated* class is different - it is not a module, and listing it in `imports` fails graph compilation.
+- **`global` is an option, not a decorator.** `@Module({ global: true })` makes the module's *exported* tokens visible to every module without an import. Non-exported providers of a global module stay private.
+
+### `@Inject` - explicit constructor tokens
+
+`@Inject(...)` is a class decorator whose arguments are the constructor tokens of the class it decorates, in parameter order:
+
+```ts
+import { Inject } from '@fluojs/core';
+
+@Inject(AuditLog)
+class PostsService {
+  constructor(private readonly audit: AuditLog) {}
+}
+```
+
+The rules are strict and deliberate:
+
+- Tokens go in **variadically**: `@Inject(A, B)` for two parameters, `@Inject(...tokens)` to spread a list. The array form `@Inject([A, B])` was removed - it is a type error, and at runtime it throws `TypeError` with guidance to spread the list.
+- `@Inject()` with no arguments records an **explicit empty** token list. Subclasses inherit their base class's injection metadata unless they redeclare it; an empty `@Inject()` is how a subclass deliberately clears inherited tokens.
+- There are no parameter decorators and no property injection. The TypeScript annotation (`audit: AuditLog`) documents intent; the `@Inject(...)` list is the contract the container uses.
+- Tokens must exist at decoration time. If a token is only available later in the file, wrap that one token with `ForwardRef.create(...)` from `@fluojs/di`; if it may legitimately be absent, wrap it with `Optional.create(...)`. Core accepts both wrapper shapes in `@Inject(...)` lists but does not create them - the wrappers are runtime DI helpers owned by `@fluojs/di`.
+
+### `@Scope` - instance lifetime
+
+`@Scope('singleton' | 'request' | 'transient')` records the lifetime strategy the container applies when the class is registered as a provider. `singleton` is the default. The decorator only writes metadata - what each scope means at resolution time, and the two scope-boundary errors, are container behavior covered in [Dependency injection](/docs/fundamentals/dependency-injection#scopes).
+
+### `publicToken` - typed cross-boundary tokens
+
+Classes are the most common tokens, but a class is the wrong tool when a module wants to publish a *contract* without leaking its implementing class:
+
+```ts title="src/posts.contract.ts"
+import { publicToken } from '@fluojs/core';
+
+export interface PostsReader {
+  list(): readonly string[];
+}
+
+export const POSTS_READER = publicToken<PostsReader>('my-blog/posts/v1');
+```
+
+`publicToken<T>(namespace)` returns exactly `Symbol.for(namespace)` - the global symbol registry, so every declaration of the same namespace in the same process resolves to the same symbol - while carrying `T` for type inference at `resolve()` and injection sites. The namespace is application-owned: include an application and version segment (`my-blog/posts/v1`) and change it when the contract changes incompatibly, because `Symbol.for` unifies names across any code that uses them.
+
+A public token does not register or export anything by itself. The owning module declares one alias provider and exports the token - exactly what the example's `PostsModule` above does. Consumers then inject `POSTS_READER` (typed as `PostsReader`) instead of `PostsService`. Re-evaluated classes with identical names are never unified; the registry symbol is what makes this stable.
+
+### `metadata-preload` and `ensureMetadataSymbol`
+
+Custom standard decorators that read `context.metadata` need `Symbol.metadata` to exist *before* their decorated declarations are evaluated. Importing `@fluojs/core` does not install a global polyfill. If you author your own standard decorators, load the side-effect-only preload entry before every static import that can evaluate a decorated declaration:
+
+```ts title="src/bootstrap.ts"
+import '@fluojs/core/metadata-preload';
+import './app.js';
+```
+
+`ensureMetadataSymbol()` is also exported when an application must control loading dynamically. Calling it inside an ordinary bootstrap module after a static decorated import is too late - ESM evaluates the static import graph before the bootstrap module body runs. fluo's own decorators do not need the preload; they work through framework-owned stores regardless of `Symbol.metadata` timing.
+
+### `AsyncModuleOptions` - the registration contract other packages implement
+
+`AsyncModuleOptions<T>` is the shared shape for "dynamic module" registration - a factory plus an optional inject list - that sibling packages build their `forRootAsync`-style facades on:
+
+```ts title="fragment: building on AsyncModuleOptions"
+import { type AsyncModuleOptions, Module } from '@fluojs/core';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
+
+export interface CacheConfig {
+  ttlSeconds: number;
+}
+
+export class CacheModule {
+  static forRootAsync(options: AsyncModuleOptions<CacheConfig>): ModuleType {
+    class CacheRuntimeModule {}
+
+    return defineModule(CacheRuntimeModule, {
+      providers: [
+        {
+          provide: 'CACHE_CONFIG',
+          useFactory: options.useFactory,
+          inject: options.inject,
+        },
+      ],
+      exports: ['CACHE_CONFIG'],
+    });
+  }
+}
+```
+
+This is a pattern core enables, not a service core provides: whether a given module actually exposes `forRootAsync` is decided by its owning package. `ConfigModule` and `I18nModule` are intentionally synchronous-only, for example - see their guides before assuming the shape exists.
+
+### Shared errors and transaction-boundary primitives
+
+The root entrypoint exports the framework-wide error hierarchy (`FluoError`, `FluoCodeError`, `InvariantError`, `formatTokenName`) and the transaction-boundary primitives shared by `@fluojs/prisma`, `@fluojs/drizzle`, and `@fluojs/mongoose` (`AfterCommitCallback`, `TransactionBoundaryOptions`, and their error classes). Each ORM package re-exports the same values, so `instanceof` checks stay stable no matter which import path an application used.
+
+### Meaningful public subpaths
+
+| Subpath | Purpose |
+| --- | --- |
+| `@fluojs/core` (root) | Decorators, tokens, errors, `ensureMetadataSymbol`, `getModuleMetadata`, `AsyncModuleOptions`, shared types |
+| `@fluojs/core/metadata-preload` | Side-effect-only `Symbol.metadata` preload for custom standard decorators |
+| `@fluojs/core/request-pipeline` | Documented seam for request-pipeline packages (validation, serialization, OpenAPI) to read DTO binding/validation metadata bags |
+| `@fluojs/core/internal` | Reserved for first-party fluo packages that need broader metadata records and helpers; not a user API |
+
+The `request-pipeline` seam exists so DTO-oriented packages can integrate without importing private paths; application code should not need it.
+
+## How core composes with other packages
+
+- **`@fluojs/di`** consumes `@Inject`/`@Scope` metadata at resolution time and owns the token wrappers (`ForwardRef`, `Optional`) that core's `@Inject(...)` accepts. The decorator/record side lives in core; the resolve/cache/dispose side lives in di.
+- **`@fluojs/runtime`** compiles `@Module` metadata into a module graph, validates visibility and duplicates, and feeds the result to a di container. `defineModule` is runtime's programmatic equivalent of `@Module` for metadata that is computed instead of decorated.
+- **`@fluojs/http`** builds controller and route metadata on the same primitives; a `@Controller` class is just another decorated class from core's point of view.
+- **`@fluojs/config` and `@fluojs/i18n`** are the reference implementations of "package as dynamic module": their `forRoot(...)` facades write module metadata through core's store, register a service, and export it - globally by default.
+
+The division of labor is strict enough to predict: if a capability *describes* an application, it is core; if it *runs* one, it is runtime or di.
+
+## Defaults, ownership, and lifecycle
+
+- **No resources, no lifecycle.** Core creates no sockets, watchers, timers, or processes; it has nothing to start or shut down, and it contributes no lifecycle hooks to a running application.
+- **Process-local metadata.** Metadata stores live in the importing process. Two copies of the same module loaded from different resolvers are two classes with two metadata records; the symbol registry (`Symbol.for`) is the only cross-copy identity core provides, and only for `publicToken`.
+- **Frozen reads, versioned writes.** `getModuleMetadata()` snapshots are frozen and may be reference-reused between writes. Treat them as immutable rather than trying to mutate the compiled graph.
+- **`useValue` payloads stay yours.** Frozen snapshots cover metadata structures, not the objects you register as values - a `useValue` object remains a live, mutable reference shared by every consumer.
+
+## Failures, limits, and common mistakes
+
+- **`TypeError` from `@Inject([A, B])`.** Arrays are not tokens; spread them. This is checked at typecheck time and enforced at runtime so JavaScript consumers get the same guidance.
+- **Missing tokens at bootstrap, not at request time.** A class whose `@Inject` list is shorter than its required constructor parameters fails module-graph validation when the application starts - the failure is deliberately loud and early, which is only useful if you let it be: do not catch-and-ignore around `FluoFactory.create`.
+- **Decorated class evaluated before the preload.** With custom standard decorators that read `context.metadata`, importing the decorated module before `@fluojs/core/metadata-preload` produces "metadata not found"-style failures. Put the preload import first in the entry file.
+- **`reflect-metadata` conflicts.** NestJS habits die hard: `experimentalDecorators` and `emitDecoratorMetadata` both change what the compiler emits and can silently break fluo's decorator model. Remove them.
+- **Mutating frozen metadata.** `metadata.providers.push(...)` on a snapshot does not update the graph. If you need programmatic module metadata, use `defineModule` from `@fluojs/runtime` at definition time.
+- **Assuming type inference from constructor signatures.** fluo never reads emitted types; an abstract class or interface dependency is injectable only through an explicit token, typically `publicToken` plus an alias provider.
+- **Reusing a namespace across incompatible contracts.** `Symbol.for('posts')` is global to the process. Version namespaces (`posts/v1`) and keep one owner per namespace.
+
+## Testing with core
+
+The package's read path is designed for assertions. Because `getModuleMetadata` is a public export, module wiring can be tested without bootstrapping anything:
+
+```ts title="test/posts.module.test.ts"
+import { getModuleMetadata } from '@fluojs/core';
+import { describe, expect, it } from 'vitest';
+
+import { POSTS_READER } from '../src/posts.contract';
+import { PostsModule } from '../src/posts.module';
+import { PostsService } from '../src/posts.service';
+
+describe('PostsModule metadata', () => {
+  it('publishes the public token and keeps the service exported', () => {
+    const metadata = getModuleMetadata(PostsModule);
+
+    expect(metadata?.exports).toContain(POSTS_READER);
+    expect(metadata?.providers).toContain(PostsService);
+  });
+});
+```
+
+This checks the *declaration* contract cheaply. For resolution behavior - scopes, visibility errors, overrides - use the container or the testing helpers described in [Dependency injection](/docs/fundamentals/dependency-injection#testing-with-overrides).
+
+## Related reading
+
+- [Dependency injection](/docs/fundamentals/dependency-injection) - how the metadata core records becomes live instances.
+- [`@fluojs/runtime`](/docs/packages/runtime) - the assembly layer that compiles module graphs.
+- [`@fluojs/i18n`](/docs/packages/i18n) and [`@fluojs/config`](/docs/packages/config) - reference implementations of core-based module facades.
+- [`@fluojs/core` package README](https://github.com/fluojs/fluo/blob/main/packages/core/README.md) - the owning API reference, including the full export list.
+- [Core and DI migration guide](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-core-di-declarations.md) - declaration changes for consumers coming from 2.x.

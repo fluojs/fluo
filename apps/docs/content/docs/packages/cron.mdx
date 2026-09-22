@@ -1,0 +1,297 @@
+---
+title: Cron
+description: Decorator-based task scheduling with cron expressions, intervals, and one-shot timeouts, lifecycle-managed by the application and optionally locked across instances with Redis.
+package: "@fluojs/cron"
+---
+
+`@fluojs/cron` schedules methods inside a fluo application. Decorate a
+provider method with `@Cron(expression)`, `@Interval(ms)`, or `@Timeout(ms)`
+and the package runs it on that cadence for the lifetime of the application,
+starting after bootstrap and stopping (with a bounded drain) at shutdown. For
+multi-instance deployments it can hold a Redis distributed lock per task so
+only one instance runs each tick.
+
+The scheduling engine is [croner](https://github.com/hexagon/croner), owned as
+a runtime dependency - you never install it directly. Every task gets
+scheduler-level no-overlap protection plus an in-process running guard: if a
+tick fires while the same task is still running, that tick is skipped, not
+queued. That guard covers **one task instance in one process**; cross-instance
+exclusivity is what distributed locking adds.
+
+## Installation
+
+```bash
+npm install @fluojs/cron
+```
+
+Add [`@fluojs/redis`](/docs/packages/redis) only when you enable distributed
+locking: the Redis peer is loaded and resolved solely when `distributed.enabled`
+is `true`. Non-distributed scheduling never touches Redis - not at import, not
+at module registration, not during status snapshot creation. Node.js
+`>=24.0.0 <27` is the package-owned support contract.
+
+## A small working example
+
+Three decorators cover the common shapes - a cron schedule, a fixed interval,
+and a one-shot delayed run:
+
+```ts title="src/billing/billing.service.ts"
+import { Cron, CronExpression, Interval, Timeout } from '@fluojs/cron';
+
+export class BillingService {
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'billing.reconcile' })
+  async reconcilePendingInvoices(): Promise<void> {
+    // Runs on a cron schedule. No-overlap: a tick arriving while this
+    // method is still running is skipped.
+  }
+
+  @Interval(15_000)
+  async pollPaymentStatus(): Promise<void> {
+    // Runs every 15 seconds.
+  }
+
+  @Timeout(5_000)
+  async initialSync(): Promise<void> {
+    // Runs once, 5 seconds after application startup, then disables itself.
+  }
+}
+```
+
+```ts title="src/billing/billing.module.ts"
+import { Module } from '@fluojs/core';
+import { CronModule } from '@fluojs/cron';
+
+import { BillingService } from './billing.service';
+
+@Module({
+  imports: [CronModule.forRoot()],
+  providers: [BillingService],
+})
+export class BillingModule {}
+```
+
+The decorators apply to **public instance methods only** - decorating a
+private or static method throws at class-definition time. Decorator tasks
+without an explicit `name` are keyed as `<ClassName>.<methodName>` (for
+example `BillingTasks.initialSync`), which also feeds the default
+distributed-lock key; explicit `name` options must be non-empty strings and
+replace that default. Cron expressions may use five fields
+(`minute hour day month weekday`) or six (with seconds); `CronExpression`
+presets such as `EVERY_SECOND` use six fields, and an invalid expression
+throws when the decorator is evaluated, long before bootstrap.
+
+One visibility surprise to internalize: `CronModule.forRoot()` is **local by
+default** (unlike the event-bus and CQRS modules). Inject
+`SCHEDULING_REGISTRY` from a module that imports the cron module, or pass
+`CronModule.forRoot({ global: true })` explicitly when a widely-shared
+registry is intended.
+
+## How the mechanics work
+
+### Discovery and startup
+
+At bootstrap, the scheduler scans compiled module graph registrations for
+methods carrying scheduling metadata and registers each one. Only singleton
+providers and controllers are scheduled - a request-scoped or transient class
+is skipped with a warning. Decorator tasks start when the application
+bootstrap completes; tasks added later through the registry start immediately
+if the scheduler is already running. The registry exposes every known task as
+an immutable `SchedulingTaskDescriptor` snapshot (`get`/`getAll`), including
+its `source` (`'decorator'` or `'dynamic'`), kind, cadence, lock key, and
+enabled state.
+
+### Task options and hooks
+
+All three decorators accept shared options: `name`, a `key` (lock-key
+override), `distributed` (task-level opt-in to locking), `lockTtlMs`, and the
+hooks `beforeRun`, `afterRun`, `onSuccess`, and `onError`. Cron tasks
+additionally accept `timezone` (an IANA string, forwarded to the engine). The
+hooks make cross-cutting concerns - metrics, logging, per-run context - first
+class without wrapping every method.
+
+```ts title="fragment: hooks and timezone (BillingModule imports CronModule.forRoot())"
+import { Cron } from '@fluojs/cron';
+
+export class ReportingService {
+  @Cron('0 9 * * *', {
+    name: 'reports.daily',
+    timezone: 'Asia/Seoul',
+    beforeRun: () => metrics.increment('reports.daily.start'),
+    onError: (error) => logger.error('daily report failed', error),
+  })
+  async generateDailyReport(): Promise<void> {
+    // ...
+  }
+}
+```
+
+### Dynamic scheduling through the registry
+
+Inject `SCHEDULING_REGISTRY` to manage tasks at runtime. The first `name`
+argument is the sole identity - registry key, scheduler metadata name, and
+default lock key; dynamic options configure behavior only and never rename a
+task.
+
+```ts title="fragment: registry-driven tasks (SCHEDULING_REGISTRY injected as `registry`)"
+// Schedule, inspect, and mutate at runtime:
+registry.addCron('cleanup.sessions', '0 * * * *', () => purgeExpiredSessions());
+registry.addInterval('inventory.poll', 5_000, () => pollInventory());
+registry.addTimeout('cache.warm', 1_000, () => warmCaches());
+
+const task = registry.get('inventory.poll'); // immutable descriptor snapshot
+registry.updateCronExpression('cleanup.sessions', '0 */2 * * *');
+registry.disable('inventory.poll'); // stops ticks, keeps the descriptor
+registry.remove('cache.warm');
+```
+
+Mutations are rollback-safe by contract. Dynamic cron registration is atomic
+with scheduler startup: if the scheduler rejects the new job, the registry
+does not retain a half-registered task. Updating the expression of a task
+that is disabled - or not yet started - replaces it directly, and a failed
+replacement of a running task restores the previous state instead of leaving
+a half-applied cadence. One current limitation to plan around: with the
+built-in croner scheduler, replacing the handle of a started **named** task
+throws because croner checks its process-global job-name registry before the
+previous handle stops; use remove-and-re-add, disable-then-update, or inject
+a custom `CronScheduler` when you need live expression swaps. `remove()` and
+`disable()` clear the scheduler handle only after `stop()` succeeds; a failed
+stop is logged and retried, and the operation returns `false`. `@Timeout`-shaped tasks
+run once, then disable themselves while remaining registered so they can be
+re-enabled deliberately.
+
+### Distributed locking across instances
+
+With distributed mode enabled, each tick of a distributed task must acquire a
+Redis lock (`SET key value PX ttl NX` under `fluo:cron:lock:<name>` by
+default) before running; release runs in a `finally` path after execution.
+Each acquisition derives a unique lease token from the configured `ownerId`,
+and renewal and release compare that exact token, so a delayed release from an
+expired lease cannot delete a newer one.
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { CronModule } from '@fluojs/cron';
+import { RedisModule } from '@fluojs/redis';
+
+@Module({
+  imports: [
+    RedisModule.forRoot({ host: 'localhost', port: 6379 }),
+    CronModule.forRoot({
+      distributed: {
+        enabled: true,
+        keyPrefix: 'fluo:cron:lock',
+        lockTtlMs: 30_000, // minimum 1_000; validated before Redis is touched
+      },
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+Omit `distributed` entirely to keep locking disabled. If you pass a
+`distributed` object, `enabled` defaults to `true`, so
+`distributed: { enabled: false }` is the explicit opt-out. Use
+`distributed.clientName` to lock through a non-default named Redis
+registration, and set `ownerId` only when your deployment has a stronger
+stable-owner convention (a platform-neutral random id is generated by
+default). Lock renewal timers are `unref()`ed so they renew while the event
+loop stays alive without holding the process hostage.
+
+Treat TTL-based locking as **coordination, not fencing**: TTLs expire, clocks
+drift, and a paused process can lose a lease mid-run. Long-running jobs should
+stay idempotent and carry application-level fencing when stale execution would
+be unsafe.
+
+### Bounded shutdown
+
+Shutdown closes tick admission first, so callbacks already queued cannot start
+task bodies or acquire leases after draining begins, then stops scheduled
+handles and waits for running tasks - by default up to `10_000`ms
+(`shutdown.timeoutMs`). Exceeding the bound logs a warning and continues
+shutdown; a hung task cannot block process termination. The same deadline
+bounds Redis release I/O: a release that fails or times out preserves local
+owned-lock visibility for a later retry, while a release where Redis reports
+another owner clears local ownership. Locks held by still-running tasks are
+**not** eagerly released on timeout - they remain owned until the task settles
+or Redis expires them after the process exits.
+
+## Composition with neighboring packages
+
+**With `@fluojs/queue`.** A scheduler tick should be short. The strongest
+combination is a scheduled producer: the cron task enqueues durable jobs and
+finishes, while workers own the long-running, retryable execution. This keeps
+tick overhead flat regardless of workload and pairs the cron no-overlap guard
+with queue-level concurrency.
+
+**With `@fluojs/redis`.** Redis provides both the lock backend and, through
+named clients, lock isolation: `distributed.clientName` selects a
+`RedisModule.forRoot({ name, ... })` registration so scheduling locks can live
+on their own Redis instance.
+
+**With `@fluojs/event-bus` / `@fluojs/cqrs`.** A task body can publish a
+domain event ("nightly reconciliation ran") instead of doing all the work
+itself, letting handlers and sagas react in-process - keep those reactions
+fast, or enqueue instead.
+
+## Defaults, ownership, and lifecycle
+
+| Concern | Default | Notes |
+| --- | --- | --- |
+| Module visibility | `global: false` | Unlike event-bus/CQRS; pass `global: true` for a shared registry |
+| Distributed mode | Disabled | Passing any `distributed` object defaults `enabled` to `true` |
+| `keyPrefix` | `fluo:cron:lock` | Lock keys are `<keyPrefix>:<options.key ?? taskName>` |
+| `lockTtlMs` | `30_000` | Minimum `1_000`; validated only when the relevant locking is enabled |
+| `ownerId` | Random per scheduler | Trimmed and rejected when blank; each acquisition derives a unique lease token |
+| Shutdown drain | `10_000`ms | Tick admission closes first; the same deadline bounds Redis release I/O |
+| Overlap | Never (per process) | Croner `protect` plus the in-process running guard skip overlapping ticks |
+
+Cron claims no external resource beyond the locks it acquires while running;
+`createCronPlatformStatusSnapshot(...)` reports lifecycle state, task
+inventory, and Redis dependency identity for health surfaces without exposing
+callback internals.
+
+## Failures and common mistakes
+
+- **"The task ran on every instance."** Distributed locking was not enabled,
+  or the task's effective locking is disabled (task-level `distributed: false`
+  wins over module settings). Locking is opt-in per module object.
+- **"The tick never fired."** The class is not a registered singleton, the
+  method is private/static (a decoration-time throw, so you would usually see
+  that earlier), or the module's visibility keeps `SCHEDULING_REGISTRY`
+  unreachable. Remember tasks start only after bootstrap.
+- **"Two ticks overlapped and I expected queuing."** Overlapping ticks are
+  skipped by design. Work that must not be dropped behind a slow run belongs
+  in a queue.
+- **`lockTtlMs` below `1000` with locking enabled** fails option
+  normalization before Redis is ever loaded; task-level overrides are
+  validated only when module and task locking are both enabled.
+- **NestJS imports that silently change behavior.** `timeZone` -> `timezone`;
+  `waitForCompletion` has no equivalent (no-overlap is always on);
+  `@Cron(Date)` has no equivalent - resolve absolute-time plans in
+  application code rather than substituting a startup-relative `@Timeout`;
+  `cronJobs`/`intervals`/`timeouts` category switches do not exist - own
+  conditional composition in application modules. The package README carries
+  the full migration table.
+
+## Testing
+
+Decorators validate eagerly and discovery is observable through the registry,
+so most scheduling tests need no real time: compile the module, assert
+`registry.getAll()` contains the decorator tasks with the expected cadence and
+`source`, then exercise behavior through `addTimeout(name, 1, callback)`-style
+dynamic tasks and await the callback through an event barrier with a bounded
+timeout - never a sleep. For distributed locking, run a real Redis (Fluo's
+fixture harness starts a disposable container when Docker is available),
+enable distributed mode, and assert lock behavior through Redis state during a
+live tick. The [async-work
+fixtures](https://github.com/fluojs/fluo/tree/main/tooling/docs/fixtures/package-guides/async-work)
+cover discovery, dynamic registry semantics, and a native distributed tick
+this way.
+
+## Related reading
+
+- [`@fluojs/queue`](/docs/packages/queue) - durable execution for work a tick discovers or produces.
+- [`@fluojs/redis`](/docs/packages/redis) - the lifecycle-managed clients behind distributed locks.
+- [`@fluojs/event-bus`](/docs/packages/event-bus) - publish a fact when a scheduled run completes.
+- [Dependency injection](/docs/fundamentals/dependency-injection) - singleton scheduling and module visibility defaults.
+- [`@fluojs/cron` package README](https://github.com/fluojs/fluo/blob/main/packages/cron/README.md) - the owning API reference and the complete NestJS migration table.

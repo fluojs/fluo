@@ -1,28 +1,33 @@
 ---
-title: EN/KO Sync Policy
-description: Locale parity rules for official fluo documentation.
+title: Website language policy
+description: English-only website publishing and bilingual repository source ownership.
 ---
 
-English and Korean docs are first-class surfaces.
+The official website is English-only. All pages use the `/docs` path without
+a language selector. Previous `/en/docs` and `/ko/docs` URLs redirect to English.
+Repository documentation, package READMEs and the Book keep their bilingual
+authoring policy.
 
-## Required parity
+## Source ownership
 
-- Same slug structure.
-- Same navigation metadata coverage.
-- Same package names and command snippets unless a locale-specific explanation is required.
-- Same source-of-truth references.
+- Do not add translated website pages or navigation metadata.
+- Preserve Korean repository documents, package READMEs and Book chapters.
+- Keep public behavior aligned with the owning contracts in both repository languages.
 
 ## Verification
 
-`pnpm docs:sync-check` walks `apps/docs/content/docs` and fails when an English page or navigation metadata file has no Korean counterpart, or when a Korean page has no English counterpart.
+`pnpm docs:sync-check` walks `apps/docs/content/docs` and rejects translated
+website filenames. It does not check translation meaning in repository sources.
 
-It checks file pairs, not the contents of navigation metadata or the meaning of a translation. The separate platform governance gate checks selected contract heading structures and contract-specific evidence. Review commands, defaults, limitations, and expected responses in both languages even when these gates pass.
+The separate platform governance gate checks contract-specific evidence.
+Review commands, defaults, limitations and expected responses against their
+owning repository documents even when these gates pass.
 
 ## Tutorial source ownership
 
-The [three-volume Book series](https://github.com/fluojs/fluo/blob/main/book/README.md) is the source for the complete product and pattern learning path. The [short FluoBlog exercise](/en/docs/tutorial) is a companion for checking the initial HTTP path. Review the entire Korean manuscript first, then translate it into English while preserving chapter/section structure and every code and command block.
+The [three-volume Book series](https://github.com/fluojs/fluo/blob/main/book/README.md) is the source for the complete product and pattern learning path. The [short FluoBlog exercise](/docs/tutorial) is a companion for checking the initial HTTP path. Review the entire Korean manuscript first, then translate it into English while preserving chapter/section structure and every code and command block.
 
-Complete source examples use a `fluo-tutorial-source` MDX comment followed by a code fence. The marker names the file under `examples/fluo-blog/`; both locales must print that tested file unchanged. Short explanatory excerpts do not carry this marker.
+Complete source examples use a `fluo-tutorial-source` MDX comment followed by a code fence. The marker names the file under `examples/fluo-blog/`; the website must print that tested file unchanged. Short explanatory excerpts do not carry this marker.
 
 From the repository root:
 

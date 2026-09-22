@@ -1,0 +1,240 @@
+---
+title: Composing packages
+description: Build one application graph while keeping configuration, requests, transactions, jobs and resource ownership distinct.
+---
+
+Installing two packages does not automatically connect them. Fluo composition
+comes from module imports, provider tokens, application options and the host's
+lifecycle. Understanding those boundaries is more useful than memorizing a
+large list of `forRoot` calls.
+
+This guide connects the package-specific explanations into application patterns.
+Use the [package guides](/docs/packages) for each option's precise behavior.
+There is no single application which should install every package.
+
+## Start with ownership, not imports
+
+For every capability, answer three questions:
+
+1. **Who constructs it?** A module factory, the host, or application code?
+2. **Who may resolve it?** Its owning module, explicit importers, or every module
+   when the package deliberately registers globally?
+3. **Who closes it?** The creator, a module lifecycle owner, or an external host?
+
+These answers prevent duplicate database clients, controllers which cannot see
+their services, and two shutdown handlers racing to close the same listener.
+
+```text
+Host and entrypoint
+  Runtime: module graph, lifecycle, readiness
+    Feature modules: explicit imports, providers and exports
+      Application behavior: services and domain operations
+        Integrations: clients, transports, stores and adapters
+```
+
+Modules are graph boundaries, not just folders. Two modules imported as siblings
+do not automatically see each other's private providers. Export the intended
+token and import its owner from the consumer; do not make every module global
+to conceal an incorrect dependency graph.
+
+## A complete foundation composition
+
+This executable example combines Core, DI, Runtime, Config, i18n and HTTP.
+Use a separate example project with the supported generated Node/Fastify
+toolchain, and install `@fluojs/config` and `@fluojs/i18n` alongside its standard
+runtime, HTTP, core and platform packages.
+Save the following files together under `src/welcome/`.
+
+<ExampleCode file="package-guides/foundation/composition/contract.ts" title="src/welcome/contract.ts" />
+
+<ExampleCode file="package-guides/foundation/composition/app.ts" title="src/welcome/app.ts" />
+
+This example owns its configuration, so bootstrap its root directly rather than
+importing a second global `ConfigModule` beside an existing starter registration.
+For the Node/Fastify example, use this entrypoint:
+
+```ts title="src/main.ts"
+import '@fluojs/core/metadata-preload';
+import { FluoFactory } from '@fluojs/runtime';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
+import { createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { CompositionRootModule } from './welcome/app';
+
+const app = await FluoFactory.create(CompositionRootModule, {
+  adapter: FastifyHttpApplicationAdapter.create({ port: 3000 }),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
+```
+
+Run the project's development entrypoint or build and run `dist/main.js`.
+This separate example serves `/welcome`; it does not claim to preserve the
+starter's greeting and health routes. In an existing application, merge the
+validated configuration into its owner instead of copying two registrations.
+
+Request the English catalog explicitly:
+
+```bash
+curl -i -H 'Accept-Language: en' http://localhost:3000/welcome
+```
+
+Expect `200` with `Welcome Fluo!`. The sample catalog also demonstrates a second
+locale; its configured default is application data, not a website language.
+
+The execution order is deliberate:
+
+1. Config loads and validates the application snapshot.
+2. A DI factory reads `ConfigService` and provides the selected locale under
+   the typed `WELCOME_LOCALE` token.
+3. The controller injects that token and `I18nService`.
+4. The HTTP locale resolver selects a supported request locale, falling back
+   to the application's configured default.
+5. i18n formats the selected message using the supplied interpolation values.
+
+No package guesses a constructor dependency from its TypeScript type. A typed
+token preserves identity; the provider declaration is what connects it to a value.
+The fixture tests both the HTTP path and a standalone context using the same graph.
+
+## HTTP, identity and persistent data
+
+A typical request-oriented service composes:
+
+```text
+HTTP adapter
+  Authentication and policy guards
+    DTO binding and validation
+      Controller
+        Domain service
+          Database transaction
+        Response mapping and serialization
+```
+
+The exact guard/binding order belongs to the [HTTP pipeline](/docs/packages/http).
+Do not assume a guard receives a bound DTO or that validating input authorizes
+the caller.
+
+- [JWT](/docs/packages/jwt) verifies tokens and claims.
+- [Passport](/docs/packages/passport) connects a strategy to the request's
+  authentication decision.
+- [Validation](/docs/packages/validation) checks the request shape.
+- A service uses [Prisma](/docs/packages/prisma),
+  [Drizzle](/docs/packages/drizzle) or [Mongoose](/docs/packages/mongoose)
+  through the owning wrapper.
+- [Serialization](/docs/packages/serialization) controls the outgoing shape.
+- [OpenAPI](/docs/packages/openapi) describes the same public HTTP contract.
+
+Keep transaction boundaries in the application operation, not in every
+repository method independently. Calls through a raw client or another
+registration do not magically join the active transaction.
+
+### Database commit and cache invalidation
+
+Use the transaction's supported after-commit mechanism when invalidation must
+follow a committed write. A cache failure after commit cannot undo that write.
+Conversely, invalidating before commit can expose stale or missing data if the
+database operation rolls back.
+
+[Cache manager](/docs/packages/cache-manager) owns cache semantics;
+[Redis](/docs/packages/redis) owns the shared connection when that is the chosen
+store. The cache does not own a database transaction or close a client it was
+only given to use. Native rollback evidence is separate from a mocked client
+which only proves that DI wiring is correct.
+
+## Events, schedules, jobs and messages
+
+These capabilities answer different questions:
+
+| Capability | Question answered | Do not assume |
+| --- | --- | --- |
+| [Event bus](/docs/packages/event-bus) | Who reacts to an event in this application? | Crash-safe delivery |
+| [CQRS](/docs/packages/cqrs) | Which handler owns a command or query? | A transaction across services |
+| [Cron](/docs/packages/cron) | When should work be triggered? | Exactly-once execution |
+| [Queue](/docs/packages/queue) | How is accepted background work processed and retried? | Exactly-once external side effects |
+| [Microservices](/docs/packages/microservices) | How does a message reach a transport handler? | Identical guarantees across brokers |
+
+A schedule can enqueue a job rather than doing slow work in its callback.
+A worker can send notifications after a database operation. A command handler
+can publish an in-process event after its own operation succeeds. None of those
+connections makes all the systems one atomic unit.
+
+Choose an idempotency key from the business operation, not a random retry
+attempt. Specify which failures are retryable and what happens after the retry
+budget. If delivery must survive a crash between a database commit and enqueue,
+design an application-owned durable handoff rather than relying on an in-memory
+callback alone.
+
+## Notification delivery and operations
+
+[Notifications](/docs/packages/notifications) coordinates channel objects.
+[Email](/docs/packages/email), [Slack](/docs/packages/slack) and
+[Discord](/docs/packages/discord) expose channel tokens which an injected
+notifications factory can consume.
+
+```text
+Feature operation
+  NotificationService
+    EMAIL_CHANNEL -> email transport
+    SLACK_CHANNEL -> Slack transport
+    DISCORD_CHANNEL -> Discord transport
+```
+
+A channel's successful acceptance is not proof that a person read the message.
+A webhook response and SMTP acceptance also have different meanings. Preserve
+per-channel outcomes rather than collapsing partial success into a boolean.
+
+The integration fixture at
+`tooling/docs/fixtures/package-guides/integrations/composition/notify-ops-app.ts`
+combines those channels with [Metrics](/docs/packages/metrics),
+[Terminus](/docs/packages/terminus) and HTTP. It uses injected recording
+transports to test orchestration; it is not evidence of live SMTP or external
+webhook delivery.
+
+Terminus produces health/readiness information from indicators. Metrics exposes
+measurements through its registry. Neither replaces the host's traffic-admission
+policy. A readiness timeout can bound a report without cancelling the native
+operation which produced it.
+
+## Match realtime to the host
+
+[WebSockets](/docs/packages/websockets) and [Socket.IO](/docs/packages/socket-io)
+are distinct protocol choices. Select the package and host integration together,
+register the gateway in the module graph, and bind upgrades before the adapter's
+listen boundary.
+
+A host-owned [Next.js](/docs/packages/platform-nextjs) request path is not a
+second Node listener. [Workers](/docs/packages/platform-cloudflare-workers)
+uses fetch and execution-context ownership rather than process signals.
+Native [Bun](/docs/packages/platform-bun) and
+[Deno](/docs/packages/platform-deno) adapters have their own shutdown semantics.
+Do not transfer a Node-specific client or upgrade recipe just because the
+controller code is portable.
+
+## Test the seams you actually compose
+
+Use [Testing](/docs/packages/testing) to assemble the real feature graph and
+exercise request or module behavior. Overrides should replace an external
+boundary, not erase the interaction under test.
+
+Then add native evidence where the guarantee depends on it:
+
+- A real listener for socket ownership and HTTP transport behavior.
+- A real database for rollback, sessions and after-commit ordering.
+- Redis or the selected broker for durable queue/transport behavior.
+- A rendered app for React output and client behavior.
+
+The documentation's package-guide fixtures record which of these were executed.
+An `unexecuted` entry is an evidence limit, not permission to claim a native
+guarantee from a fake.
+
+## A practical review checklist
+
+- Each provider has one clear owner and visible registration.
+- Runtime options are passed to the layer that actually consumes them.
+- Request, transaction, job and connection scopes are not confused.
+- Startup failures and shutdown failures remain observable.
+- Retries do not repeat irreversible work without an idempotency policy.
+- Tests cover the composition, including at least one failure path.
+
+Use [Studio](/docs/packages/studio) and [CLI inspection](/docs/packages/cli)
+to inspect the graph you built. They make the application visible; they do not
+repair missing imports or change its ownership rules.

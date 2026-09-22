@@ -1,23 +1,21 @@
 ---
 title: Quick Start
-description: Create, run, inspect, and verify your first fluo application.
+description: Create, run, test, and build your first fluo application with the recommended Node.js + Fastify starter.
 ---
 
-This guide takes you from an empty terminal to a running fluo app with a health endpoint. It is intentionally short, but every step has a visible success signal.
+This chapter takes you from an empty terminal to a running, tested, and built fluo application. The workflow was verified end to end on 2026-09-21 against published npm packages with `@fluojs/cli` `3.0.2`, invoked as `pnpm dlx @fluojs/cli@3.0.2` rather than through the global install command; the full record is in [About the versions in this chapter](#about-the-versions-in-this-chapter). Commands and outputs are real. The verification project was named `quick-start-app`; this page shows `my-backend`, and the greeting response's `project` field is the only output that changes with the name - the generator bakes your project name into that field at scaffold time.
 
-Want to learn while building a feature? Start the [FluoBlog tutorial](/en/docs/tutorial) instead. This page is only the installation and runtime smoke check.
+Want to learn while building a feature instead? Start the [FluoBlog tutorial](/docs/tutorial). This chapter stays with the generated starter and keeps every step to one visible success signal.
 
-## Before you start
+## Prerequisites
 
-You need:
+- Node.js `>=24.0.0 <27`. The CLI, the generated project, and the `@fluojs/*` runtime packages declare this range in `engines`; it is the supported runtime range, and whether a package manager hard-refuses outside it depends on its engine-strict configuration. Stay inside the range rather than relying on a refusal.
+- pnpm 10 or newer. npm, yarn, and bun are also supported package managers; pass `--package-manager npm` (or `yarn` or `bun`) when creating the project.
+- A terminal where your global pnpm binaries are on `PATH`.
 
-- Node.js `>=24.0.0 <27`.
-- pnpm 10 or newer.
-- A terminal where global npm/pnpm binaries are available on `PATH`.
+fluo is designed around TC39 standard decorators and explicit runtime wiring. Generated `tsconfig.json` files intentionally omit `experimentalDecorators` and `emitDecoratorMetadata` - do not add them. Decorator transforms for application files, builds, and tests are owned by the generated `@fluojs/vite` plugin configuration and the `@fluojs/core/metadata-preload` import.
 
-fluo projects are standard TypeScript projects. You should not enable `experimentalDecorators` or `emitDecoratorMetadata`; fluo is designed around TC39 standard decorators and explicit runtime wiring.
-
-Upgrading an existing project for the upcoming release? Follow the Node, packages, then imports order in [Node 24 Migration](/docs/getting-started/migrate-node24). This is release preparation; actual publication belongs to the maintainer.
+Upgrading an existing project instead of starting one? Follow the Node, packages, then imports order in [Node 24 Migration](/docs/getting-started/migrate-node24).
 
 ## 1. Install the CLI
 
@@ -26,78 +24,300 @@ pnpm add -g @fluojs/cli
 fluo --version
 ```
 
-Expected result: the second command prints a fluo CLI version instead of `command not found`.
+Expected result: the second command prints the installed CLI version.
 
-## 2. Create an application
+```text
+3.0.2
+```
+
+Prefer not to install globally? `pnpm dlx @fluojs/cli` downloads the package into a temporary store, runs the command once, and discards it - no global or project install:
+
+```bash
+pnpm dlx @fluojs/cli new my-backend
+```
+
+This chapter itself was verified through the `pnpm dlx` path with a pinned version, `pnpm dlx @fluojs/cli@3.0.2`.
+
+pnpm 10 may print `Ignored build scripts: esbuild` while installing. In this chapter's verification (pnpm 10.4.1, this starter), that warning was informational: the starter does not depend on the skipped build step - esbuild ships its platform binary as an optional dependency - and every command ran with the warning present.
+
+## 2. Create the application
 
 ```bash
 fluo new my-backend --shape application --transport http --runtime node --platform fastify --package-manager pnpm
 cd my-backend
-pnpm install
 ```
 
-The generated project gives you:
+This is the recommended starter: a Node.js HTTP application served by Fastify. It is also the default recipe - omitting `--shape`, `--transport`, `--runtime`, and `--platform` resolves the same Node.js + Fastify application. The scaffold writes the project files, then installs dependencies with the selected package manager. Observed completion output:
 
-- an application module,
-- a runtime adapter,
-- lifecycle scripts delegated to the fluo CLI,
-- health/readiness routes in the starter shape,
-- TypeScript settings that do not rely on legacy decorator metadata.
+```text
+Installing dependencies with pnpm...
+Packages: +233
+...
+Done.
+Next steps:
+  cd ./my-backend
+  pnpm dev  # runs fluo dev
+```
 
-This is a `generated-app` with registry dependencies, not the repository's `examples/fluo-blog` workspace. `src/app.ts` registers `ConfigModule`, `GreetingModule`, and `HealthModule.forRoot()`; preserve those imports and their tests when adding a feature. Keep the generated application and test decorator transforms, including metadata preparation before decorated declarations evaluate.
+Two properties of this project matter for everything that follows:
 
-The default `src/main.ts` imports `FastifyHttpApplicationAdapter` from `@fluojs/platform-fastify`, `createConsoleApplicationLogger` and `createNodeShutdownSignalRegistration` from `@fluojs/platform-nodejs`, and `AppModule` from `./app`. It composes `FluoFactory.create(AppModule, { adapter, logger, shutdownRegistration })`, then awaits `app.listen()`. The host owns callback failure handling; Factory owns middleware, creation cleanup, and lifecycle activation. The [bootstrap owner](https://github.com/fluojs/fluo/blob/main/docs/getting-started/bootstrap-paths.md) defines these boundaries and config validation timing.
+- It is a `generated-app`: a separate project whose `dependencies` are registry ranges (for example `"@fluojs/runtime": "^3.1.1"`), not the fluo repository workspace. Repository examples such as `examples/fluo-blog` use workspace dependencies and their own scripts; do not mix the two.
+- The generated lifecycle scripts delegate to the fluo CLI: `dev` runs `fluo dev`, `build` runs `fluo build`, and `start` runs `fluo start`. Those runners default `NODE_ENV` to `development` for dev and `production` for build/start unless you already set it. `test` runs `vitest run` directly.
 
-The generated `PORT` parser uses `Number.parseInt(..., 10)` with a `3000` fallback for non-finite results. It is not the repository checkpoint's `Number(...)` conversion or the Book's strict decimal port policy.
+## 3. Understand the generated structure
 
-## 3. Run the dev server
+The generated project:
+
+```text
+my-backend/
+├── .env                          # PORT=3000
+├── .gitignore
+├── babel.config.cjs              # decorator transform used by the CLI lifecycle runners
+├── package.json                  # scripts delegate to the fluo CLI
+├── pnpm-lock.yaml                # present after dependency installation
+├── README.md
+├── tsconfig.json                 # strict TS; no legacy decorator flags
+├── tsconfig.build.json
+├── vite.config.ts                # fluoDecoratorsPlugin() + SSR build of src/main.ts
+├── vitest.config.ts              # decorator transforms for tests, metadata preload
+├── test/
+│   └── app.e2e.test.ts           # end-to-end route assertions
+└── src/
+    ├── main.ts                   # bootstrap: create the app, then listen
+    ├── app.ts                    # root AppModule
+    ├── app.test.ts
+    └── greeting/                 # one vertical slice, NestJS-style layout
+        ├── greeting.controller.ts
+        ├── greeting.controller.test.ts
+        ├── greeting.module.ts
+        ├── greeting.repo.ts
+        ├── greeting.repo.test.ts
+        ├── greeting.response.dto.ts
+        ├── greeting.service.ts
+        ├── greeting.service.test.ts
+        └── greeting.slice.test.ts
+```
+
+### The bootstrap entrypoint
+
+`src/main.ts` is the whole bootstrap:
+
+```ts title="src/main.ts"
+import '@fluojs/core/metadata-preload';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
+import { createConsoleApplicationLogger, createNodeShutdownSignalRegistration } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+
+import { AppModule } from './app';
+
+const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
+const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: FastifyHttpApplicationAdapter.create({ port }),
+  logger: createConsoleApplicationLogger(),
+  shutdownRegistration: createNodeShutdownSignalRegistration(),
+});
+await app.listen();
+```
+
+Keep these properties when you edit it:
+
+- The `@fluojs/core/metadata-preload` import stays first so decorator metadata exists before decorated declarations evaluate.
+- `FluoFactory.create(AppModule, { adapter, ... })` followed by `await app.listen()` is the supported startup path. Factory owns middleware composition, creation-time cleanup, and lifecycle activation; the caller supplies the adapter, optional logger, and an optional host shutdown registration. The [bootstrap owner](https://github.com/fluojs/fluo/blob/main/docs/getting-started/bootstrap-paths.md) defines these boundaries in full.
+- Port parsing is application policy in the entrypoint: `Number.parseInt(..., 10)` with a `3000` fallback for non-finite results (`PORT=3000oops` becomes `3000`).
+
+### The root module
+
+`src/app.ts` registers the starter modules:
+
+```ts title="src/app.ts"
+import { Module } from '@fluojs/core';
+import { ConfigModule } from '@fluojs/config';
+import { HealthModule } from '@fluojs/runtime';
+
+import { GreetingModule } from './greeting/greeting.module';
+
+@Module({
+  global: true,
+  imports: [
+    ConfigModule.forRoot({
+      envFilePaths: ['.env'],
+      processEnv: process.env,
+    }),
+    GreetingModule,
+    HealthModule.forRoot(),
+  ],
+})
+export class AppModule {}
+```
+
+`ConfigModule.forRoot(...)` loads `.env` values, `GreetingModule` is the starter feature slice, and `HealthModule.forRoot()` registers the runtime-owned `/health` and `/ready` endpoints. Preserve these imports and their tests when you add a feature; add new modules beside them instead of replacing the root module.
+
+### One vertical slice
+
+The `greeting` directory is a complete feature slice: a controller, a service, a repository, a response DTO, and tests for each layer. The controller:
+
+```ts title="src/greeting/greeting.controller.ts"
+import { Inject } from '@fluojs/core';
+import { Controller, Get } from '@fluojs/http';
+
+import { GreetingService } from './greeting.service';
+import { GreetingResponseDto } from './greeting.response.dto';
+
+@Inject(GreetingService)
+@Controller('/greeting')
+export class GreetingController {
+  constructor(private readonly service: GreetingService) {}
+
+  @Get('/')
+  getGreeting(): GreetingResponseDto {
+    return this.service.getGreeting();
+  }
+}
+```
+
+A request to `/greeting` flows through `GreetingController.getGreeting()` to `GreetingService.getGreeting()` to `GreetingRepo.findGreeting()` and comes back as a `GreetingResponseDto`. If you have used NestJS, the shape is familiar - modules, controllers, services, repositories - but injection is explicit: dependencies are named with `@Inject(Token)` above the constructor rather than with parameter decorators. [Controllers](/docs/overview/controllers) and [Dependency injection](/docs/fundamentals/dependency-injection) explain both halves in depth.
+
+## 4. Run in development and call the endpoints
 
 ```bash
 pnpm dev
 ```
 
-Keep this process running. In a second terminal, verify the app responds:
+Observed startup log:
+
+```text
+[fluo] 57697 - ... LOG [RoutesResolver] GreetingController {/greeting}
+[fluo] 57697 - ... LOG [RouterExplorer] Mapped {/greeting, GET} route
+[fluo] 57697 - ... LOG [RouterExplorer] Mapped {/health, GET} route
+[fluo] 57697 - ... LOG [RouterExplorer] Mapped {/ready, GET} route
+[fluo] 57697 - ... LOG [FluoApplication] fluo application successfully started.
+[fluo] 57697 - ... LOG [FluoFactory] Listening on http://[::1]:3000
+```
+
+Keep this process running. In a second terminal, call the endpoints:
 
 ```bash
 curl http://localhost:3000/health
+```
+
+```text
+{"status":"ok"}
+```
+
+```bash
 curl http://localhost:3000/ready
 ```
 
-If your generated starter uses a different port, use the port printed by `pnpm dev`.
+```text
+{"status":"ready"}
+```
 
-## 4. Build before you trust it
+```bash
+curl http://localhost:3000/greeting
+```
 
-Stop `pnpm dev` with Ctrl+C before starting the built app, so both processes do not try to use the same port.
+```text
+{"message":"Hello from fluo","framework":"fluo","project":"my-backend"}
+```
+
+What each endpoint is:
+
+- `/health` is the liveness probe. Without a custom `healthCheck` it always answers `{"status":"ok"}`.
+- `/ready` is the readiness probe owned by `HealthModule`. It answers `503 {"status":"starting"}` until the application finishes booting and `503 {"status":"unavailable"}` when a registered readiness check fails; once the startup log shows `successfully started`, it answers `{"status":"ready"}`. Boot is fast - the verification run for this chapter never caught the `503` window.
+- `/greeting` answers with the greeting DTO. The `project` field echoes your project name, and both `/greeting` and `/greeting/` return the same response.
+
+A path without a handler answers with a structured 404 you can assert against in integration tests:
+
+```bash
+curl http://localhost:3000/nope
+```
+
+```text
+{"error":{"code":"NOT_FOUND","message":"No handler registered for GET /nope.","status":404}}
+```
+
+To run on another port, set `PORT` before the lifecycle command. `PORT=3100 pnpm start` printed `Listening on http://[::1]:3100` during verification and served the same endpoints on port 3100.
+
+## 5. Run the tests
+
+```bash
+pnpm test
+```
+
+Observed output:
+
+```text
+ Test Files  6 passed (6)
+      Tests  7 passed (7)
+```
+
+The six files cover the layers you just read: unit tests for the repository, service, and controller; a slice test that wires the greeting module together; `src/app.test.ts` for the root module graph; and `test/app.e2e.test.ts`, which builds the real application through `Test.createApp({ rootModule: AppModule })` from `@fluojs/testing`, dispatches actual `GET /health`, `GET /ready`, and `GET /greeting/` requests in-process, and asserts the exact response bodies. No free port or socket is needed for the e2e suite.
+
+Additional scripts: `pnpm test:watch`, `pnpm test:cov` (coverage via `@vitest/coverage-v8`), `pnpm test:e2e` (the `test/` suite only), and `pnpm typecheck` (`tsc --noEmit`).
+
+## 6. Build and run for production
+
+Stop `pnpm dev` with Ctrl+C first so the two processes do not fight over port 3000, then:
 
 ```bash
 pnpm build
+```
+
+Observed output:
+
+```text
+vite v8.3.0  building ssr environment for production...
+✓ 7 modules transformed.
+dist/main.js  21.46 kB │ gzip: 3.11 kB
+✓ built in 121ms
+```
+
+```bash
 pnpm start
 ```
 
-`pnpm build` proves the project compiles. `pnpm start` proves the production lifecycle script can boot the built app.
+`pnpm start` runs `fluo start`, which boots the built bundle with `NODE_ENV=production` (unless you already set it). Verify it the same way as in development:
 
-## 5. Know what to inspect
+```bash
+curl http://localhost:3000/health
+```
 
-Start with these files in the generated app:
+```text
+{"status":"ok"}
+```
 
-| File or directory | Why it matters |
-| --- | --- |
-| `src/app.ts` | The root `AppModule` and application assembly. |
-| `src/**/*.controller.ts` | HTTP entrypoints. |
-| `src/**/*.service.ts` | Business logic providers. |
-| `package.json` | Runtime lifecycle scripts. |
-| `tsconfig.json` | Standard decorator baseline. |
+The startup log is the same sequence as `pnpm dev`, ending with `Listening on http://[::1]:3000`. `SIGINT`/`SIGTERM` shut the application down through the registered Node shutdown callback.
+
+## 7. Continue learning
+
+- Continue in this same generated project: [Modules](/docs/overview/modules)
+  starts the beginner path through controllers, providers, validation,
+  serialization, errors and testing.
+- Wire services, tokens, and scopes explicitly: [Dependency injection](/docs/fundamentals/dependency-injection).
+- Optional separate repository exercise: the [FluoBlog tutorial](/docs/tutorial).
+- Other starters (Express, raw Node.js, Bun, Deno, Cloudflare Workers, microservice transports): the [fluo new support matrix](https://github.com/fluojs/fluo/blob/main/docs/reference/fluo-new-support-matrix.md).
 
 ## Troubleshooting
 
-| Symptom | Check |
+| Symptom | Cause and fix |
 | --- | --- |
-| `fluo` command is missing | Re-run `pnpm add -g @fluojs/cli` and check your global binary path. |
-| Dev server starts but `curl` fails | Confirm the printed port and route path. |
-| TypeScript asks for legacy decorator flags | Do not add them; check that the generated project uses fluo's supported config. |
+| `fluo: command not found` after installing | The global pnpm bin directory is not on `PATH`. Re-open the shell or fix `PATH`, or use `pnpm dlx @fluojs/cli ...` for one-off commands. |
+| `pnpm` prints `Ignored build scripts: esbuild` | Informational, not an error. The starter runs correctly without that build step (verified for this chapter). |
+| `curl` fails to connect right after `pnpm dev` | Check the `Listening on` line for the actual address and port, and wait for `fluo application successfully started.` The verified environment resolved `localhost` to `[::1]`; do not assume that an IPv6 loopback listener also accepts `127.0.0.1`. |
+| `EADDRINUSE` or port 3000 already in use | A previous `pnpm dev` or `pnpm start` is still running in another terminal. Stop it with Ctrl+C, or start on another port with `PORT=3100`. |
+| `/ready` returns `503` with `{"status":"starting"}` | The application is still booting. Retry after the `successfully started` log line. `{"status":"unavailable"}` means a registered readiness check failed. |
+| 404 on `{"error":{"code":"NOT_FOUND",...}}` | The path or method has no handler. Compare with the `Mapped {/path, GET}` lines in the startup log. |
+| Editor suggests `experimentalDecorators` | Do not enable it. fluo uses TC39 standard decorators; transforms are owned by the generated `@fluojs/vite` plugin and `@fluojs/core/metadata-preload`. |
+| pnpm refuses to install with a Node version error | The `engines` range is `>=24.0.0 <27`. Install a supported Node 24+ runtime; do not use `--ignore-engines`. |
 
-## Next steps
+## About the versions in this chapter
 
-- Build and test a posts API with the [FluoBlog tutorial](/en/docs/tutorial).
-- Learn the route layer in [HTTP API](/en/docs/guides/http-api).
-- Choose packages with [Package Selection](/en/docs/guides/package-selection).
+The chapter workflow was executed on 2026-09-21 (macOS, Apple Silicon) with Node `v24.20.0` and pnpm `10.4.1` against packages installed from the npm registry. Scope of the executed verification:
+
+- CLI: `@fluojs/cli` `3.0.2` (npm `latest` at the time), executed via the pinned `pnpm dlx @fluojs/cli@3.0.2`. The global install command `pnpm add -g @fluojs/cli` shown in step 1 was not separately executed.
+- Project name: the verification project was `quick-start-app`; commands on this page are shown as `my-backend`. The greeting `project` field echoes the generated package name (`scaffold.ts` writes it into the repository template at scaffold time), which is the only name-dependent output shown.
+- Resolved registry dependencies of the generated app: `@fluojs/config` `2.0.1`, `@fluojs/core` `2.1.1`, `@fluojs/di` `3.1.1`, `@fluojs/http` `3.1.2`, `@fluojs/platform-fastify` `2.0.3`, `@fluojs/platform-nodejs` `2.0.1`, `@fluojs/runtime` `3.1.1`, `@fluojs/validation` `2.1.1`, plus dev dependencies `@fluojs/testing` `3.0.2`, `@fluojs/vite` `2.0.1`, `vite` `8.3.0`, `vitest` `4.1.11`, and `typescript` `6.0.3`.
+
+Behavior described from source rather than executed here - the `/ready` `503` states, the `PORT` parse fallback, and the shutdown sequence - follows the fluo repository contracts and implementation (`packages/runtime/src/health/health.ts`, `packages/runtime/src/bootstrap.ts`). A command-by-command verification receipt lives in the fluo repository under `tooling/docs/fixtures/quick-start-foundation/`. This chapter makes no compatibility claim about registry releases newer than the versions listed above.

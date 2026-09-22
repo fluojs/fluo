@@ -5,7 +5,7 @@ description: Protect FluoBlog's HTTP contract with real request-pipeline tests a
 
 ## Goal and prior checkpoint
 
-Start with [Validation and errors](/en/docs/tutorial/validation-errors) completed. Keep editing `examples/fluo-blog/00-start`, whose application source now matches `03-validation-errors`. This lesson adds no new routes and does not switch to the reference app.
+Start with [Validation and errors](/docs/tutorial/validation-errors) completed. Keep editing `examples/fluo-blog/00-start`, whose application source now matches `03-validation-errors`. This lesson adds no new routes and does not switch to the reference app.
 
 Your goal is to prove that the same application can list, create, and retrieve posts; reject invalid requests without changing state; return resource errors; and start cleanly for each new application instance. Tests were part of the first route and DI lessons. Now expand that evidence to the full feature.
 
@@ -293,6 +293,6 @@ On this fresh process, expect `201` then `200`, both with `{"id":"2","title":"Le
 
 ## Recovery
 
-Compare with the [complete request test file](https://github.com/fluojs/fluo/blob/main/examples/fluo-blog/03-validation-errors/test/app.e2e.test.ts) and [full final checkpoint](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog/03-validation-errors). If tests cannot import framework packages, repeat the repository setup from [Create the app](/en/docs/tutorial/create-app). If tests pass but curl fails, check the build, running checkpoint, and port rather than changing the test to mock the route.
+Compare with the [complete request test file](https://github.com/fluojs/fluo/blob/main/examples/fluo-blog/03-validation-errors/test/app.e2e.test.ts) and [full final checkpoint](https://github.com/fluojs/fluo/tree/main/examples/fluo-blog/03-validation-errors). If tests cannot import framework packages, repeat the repository setup from [Create the app](/docs/tutorial/create-app). If tests pass but curl fails, check the build, running checkpoint, and port rather than changing the test to mock the route.
 
-Previous: [Validation and errors](/en/docs/tutorial/validation-errors). Next: [Next steps](/en/docs/tutorial/next-steps).
+Previous: [Validation and errors](/docs/tutorial/validation-errors). Next: [Next steps](/docs/tutorial/next-steps).

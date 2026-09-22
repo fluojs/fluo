@@ -1,0 +1,118 @@
+---
+title: Vite decorator transform
+description: The @fluojs/vite plugin - the one TC39 decorator transform for fluo applications and Vitest module graphs, with lazy Babel loading and explicit transform boundaries.
+package: "@fluojs/vite"
+---
+
+`@fluojs/vite` owns the decorator transform for fluo projects built with Vite. Fluo uses TC39 standard decorators, and neither Rolldown/Oxc nor esbuild may process them directly in a supported fluo setup - this plugin runs Babel first, on an explicitly configured boundary, so application code and Vitest module graphs compile through one maintained transform instead of copied-inline Babel configuration.
+
+It is a small, single-purpose package: one public function (`fluoDecoratorsPlugin(...)`), no config file, no resources, no process of its own. It is a build-time Vite plugin and has nothing to do at application runtime. The package requires Node.js `>=24.0.0 <27` (`engines.node`).
+
+## Installation
+
+```bash
+npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-decorators @babel/preset-typescript
+```
+
+All four peers are deliberate: `vite >=6.2.0` because the plugin is a Vite plugin, and `@babel/core >=7.26.0`, `@babel/plugin-proposal-decorators >=7.28.0`, `@babel/preset-typescript >=7.27.0` because the plugin itself loads Babel, resolves the decorator plugin and TypeScript preset, and reports missing peers from the Vite `transform` hook. The package root is safe to import before Babel resolves - creating `fluoDecoratorsPlugin()` never loads `@babel/core`.
+
+## When to use it, and when not
+
+Use it when:
+
+- a fluo application built with Vite contains TypeScript with TC39 standard decorators
+- starter projects should import the maintained transform instead of copying Babel configuration
+- a Vitest module graph needs the same transform for decorators declared inside tests
+
+Do not use it to:
+
+- run general Babel transforms - the plugin runs exactly one decorator preset plus TypeScript stripping
+- parse React build assets - that is `@fluojs/react/vite` (`createReactViteAssetManifest(...)`), a different package despite the similar name
+- replace `tsconfig` handling - fluo runs with `experimentalDecorators` disabled; re-enabling it or relying on direct esbuild decorator handling is outside the documented support contract
+
+## Quick start
+
+```ts title="vite.config.ts"
+import { fluoDecoratorsPlugin } from '@fluojs/vite';
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  plugins: [fluoDecoratorsPlugin()],
+  build: {
+    ssr: 'src/main.ts',
+    target: 'node24',
+  },
+});
+```
+
+```ts title="vitest.config.ts"
+import { fluoDecoratorsPlugin } from '@fluojs/vite';
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  plugins: [fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })],
+  test: { setupFiles: ['@fluojs/core/metadata-preload'] },
+});
+```
+
+Generated starters from [`@fluojs/cli`](/docs/packages/cli) use exactly these two files, keeping the application boundary (`vite.config.ts`) and the test boundary (`vitest.config.ts`) explicit. Generated ESM configs use `build.rolldownOptions` and rely on this plugin running before Rolldown/Oxc sees the code.
+
+## How the transform boundary works
+
+`fluoDecoratorsPlugin(options?)` accepts three options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `transformBoundary` | `'application'` | `'application'` transforms application modules and skips `*.test.*`/`*.spec.*`; `'test'` includes application and test modules for a Vitest graph. Both skip declarations and `node_modules`. |
+| `babelConfigFile` | `false` | `false` disables Babel configuration discovery (`babelrc: false`, `configFile: false`) so behavior cannot drift with a repo root `.babelrc`. A file path (or per-file resolver function) opts a test workspace into a root Babel configuration. |
+| `sourceMaps` | Vite's policy | Omitted means source maps during serve and mapped builds; a boolean overrides Vite's sourcemap policy. |
+
+For each eligible module the plugin:
+
+1. strips Vite query suffixes before deciding the boundary, then accepts only `.ts`, `.tsx`, `.mts`, and `.cts` files outside `node_modules` that are not `.d.*` declarations (and, in application mode, not test or spec files);
+2. lazily loads `@babel/core` on the first eligible transform and reuses the loaded module afterwards - a failed load is **not** cached, so installing the missing peer fixes the next transform without restarting;
+3. runs `@babel/plugin-proposal-decorators` with `{ version: '2023-11' }` plus `@babel/preset-typescript` (`allowDeclareFields: true`);
+4. injects an `import '@fluojs/core/metadata-preload'` side effect before decorated declarations evaluate, in every transformed module that contains decorator syntax, so decorator metadata registration is loaded exactly once and early enough.
+
+The plugin is registered with `enforce: 'pre'` and must keep that position: the transform has to run before normal-stage transforms (including Rolldown/Oxc in Vite 8). The package suite runs under the workspace-pinned Vite 8.2.2 Rolldown pipeline with an integration gate that fails if `enforce: 'pre'` regresses or field-decorator binding metadata is lost. The published peer range stays `vite >=6.2.0`; consumers selecting Vite 8 must also satisfy Vite's own Node.js engine range.
+
+Missing Babel peers are reported as transform-time diagnostics for the exact source file Vite was transforming - never as plugin-creation errors:
+
+```text
+[fluo-babel-decorators] Failed to resolve a Babel peer dependency while transforming /app/src/app.ts.
+Install @babel/core, @babel/plugin-proposal-decorators, and @babel/preset-typescript in the Vite project. ...
+```
+
+This design is why the peers are `peerDependencies` rather than dependencies: the failure surfaces in the project that actually forgot them, with an actionable message, and the plugin stays neutral about which Babel version the workspace resolves.
+
+## Composition with neighboring packages
+
+- **[`@fluojs/core`](/docs/packages/core)** - the injected `@fluojs/core/metadata-preload` import is the runtime side effect that makes `@Inject`/`@Module` metadata registration deterministic; the `vitest.config.ts` `setupFiles` entry loads it for modules whose decorators were compiled outside this plugin's per-module injection.
+- **[`@fluojs/testing`](/docs/packages/testing)** - the `transformBoundary: 'test'` mode exists so decorators declared inside test files compile; the testing guide's `vitest.config.ts` is the canonical example.
+- **[`@fluojs/cli`](/docs/packages/cli)** - generated starters import `fluoDecoratorsPlugin()` instead of embedding Babel config, so transform updates ship through this package.
+- **[`@fluojs/react`](/docs/packages/react)** - the same application build carries React pages, but React hydration assets are parsed by `@fluojs/react/vite` at application runtime, not by this plugin. The two packages never own each other's seams. The React SSR starter keeps decorator-bearing declarations in `src/app.ts` and JSX rendering in `.tsx` modules, which is why the supported `.ts` transform boundary stays explicit.
+
+## Defaults, limits, and common mistakes
+
+- **Defaults**: application boundary, Babel config discovery disabled, source maps following Vite, `enforce: 'pre'`, metadata preload injected only when decorator syntax is present.
+- **Startup/shutdown**: none - the plugin exists only inside the Vite build/transform lifecycle and holds no resources.
+- **Predictable limits**: only TypeScript file extensions transform (plain `.js` modules pass through untouched); declarations, `node_modules`, and (in application mode) tests are skipped by design; there is no cache of transformed output beyond Vite's own; there is exactly one supported decorators version (`2023-11`).
+
+Common failures and their owners:
+
+- *`Failed to resolve a Babel peer dependency...`* - install the three Babel peers in the Vite project; the error names the file that triggered the transform.
+- *Decorator metadata missing at bootstrap* - the module was compiled without the plugin (wrong boundary, or a `.test.ts` file under the application boundary). Use the `test` boundary in Vitest and keep `@fluojs/core/metadata-preload` in `setupFiles`.
+- *Transform silently skipped* - the file was a declaration, under `node_modules`, or matched the skipped test pattern; check the boundary option before widening file globs.
+- *Build order regressions* - another plugin consumed the file first; keep `fluoDecoratorsPlugin()` first (`enforce: 'pre'` is already set - do not wrap or reorder it).
+
+## Testing
+
+The package's own suite proves the contract at the transform-hook level: plugin creation loads no Babel; the first eligible transform loads it exactly once and reuses it; concurrent first transforms stay on the lazy path; each missing peer produces the actionable transform-time message; test-file names that merely contain "test" or "spec" substrings still transform in application mode while real `*.test.ts` files do not. When you extend a fluo build setup, assert at the same seam - call the plugin's `transform` hook directly with a decorated module and pin the boundary decisions - instead of booting Vite for every case.
+
+## Related reading
+
+- [`@fluojs/core`](/docs/packages/core) - the metadata the preload side effect registers.
+- [`@fluojs/testing`](/docs/packages/testing) - the Vitest boundary in its canonical `vitest.config.ts`.
+- [`@fluojs/cli`](/docs/packages/cli) - the starters that import this plugin.
+- [`@fluojs/react`](/docs/packages/react) - the application build that pairs with `@fluojs/react/vite` for hydration assets.
+- [`@fluojs/vite` package README](https://github.com/fluojs/fluo/blob/main/packages/vite/README.md) - the owning reference and supported Vite matrix.

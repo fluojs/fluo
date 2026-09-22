@@ -1,0 +1,79 @@
+---
+title: Serialization
+description: Keep internal state out of the JSON your posts API returns.
+---
+
+Input validation protects what enters an application. Response serialization
+controls what leaves it. Returning a service's internal object directly couples
+the public API to every field added to that object later.
+
+Continue after [Validation](/docs/overview/validation). Install the response
+serialization package in the same generated project:
+
+```bash
+pnpm add @fluojs/serialization
+```
+
+## Declare the public response
+
+Create `src/posts/post-response.dto.ts`:
+
+<CheckpointCode stage="05-serialization" file="post-response.dto.ts" />
+
+Class-level `@Expose({ excludeExtraneous: true })` selects an allowlist:
+only fields marked with `@Expose()` are emitted. This is a runtime class, not a
+TypeScript interface.
+
+## Keep internal data in the service
+
+Create `src/posts/post.ts` for the service's internal record type:
+
+<CheckpointCode stage="05-serialization" file="post.ts" />
+
+Replace `src/posts/posts.service.ts`:
+
+<CheckpointCode stage="05-serialization" file="posts.service.ts" />
+
+The records now contain `internalNotes`, an application-only field. It must not
+appear in either list or create responses.
+
+## Apply the response boundary
+
+Replace `src/posts/posts.controller.ts`:
+
+<CheckpointCode stage="05-serialization" file="posts.controller.ts" />
+
+The controller constructs response DTO **instances** and uses
+`SerializerInterceptor`. A plain object with a matching TypeScript type does
+not acquire a class's decorator metadata. Keep the DTO mapping and interceptor
+together; an annotation is not a security filter.
+
+The module remains:
+
+<CheckpointCode stage="05-serialization" file="posts.module.ts" />
+
+Keep `create-post.dto.ts` from Validation unchanged.
+
+## Verify the public shape
+
+Run `pnpm test`, restart `pnpm dev`, and call:
+
+```bash
+curl -i http://localhost:3000/posts
+curl -i -X POST http://localhost:3000/posts \
+  -H 'content-type: application/json' \
+  -d '{"title":"Public post","content":"Only public fields"}'
+```
+
+The list returns `200`, creation returns `201`, and each record has only
+`id`, `title` and `content`. Search the response for `internalNotes`: it must be
+absent even though the service stores it. The request validation from the
+previous chapter must still reject invalid input.
+
+These examples return values through the framework-managed response pipeline.
+Writing directly with `context.response.send(...)` commits a response and bypasses
+this interceptor's shaping. If you take ownership of writing a response, filter
+its data before sending it.
+
+Previous: [Validation](/docs/overview/validation).
+Next: [Error handling](/docs/overview/error-handling).

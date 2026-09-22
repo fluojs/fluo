@@ -1,0 +1,245 @@
+---
+title: HTTP
+description: How @fluojs/http turns decorated controllers into a request pipeline of binding, validation, guards, interceptors, and response writing.
+package: "@fluojs/http"
+---
+
+`@fluojs/http` is the HTTP execution layer of fluo. It owns everything that happens between a parsed request and a written response: route metadata, DTO binding, validation, guards, interceptors, content negotiation, error serialization, and request-scoped lifecycle. It does not own a socket. Listening on a port is an adapter's job (`@fluojs/platform-nodejs`, Fastify, Express, or a fetch-style host), and application assembly is `@fluojs/runtime`'s job. This split is the package's central design decision: the same controllers run behind a Node listener in production and behind `Test.createApp(...)` in tests, and the same route metadata runs on a laptop and on a worker runtime.
+
+There is no `HttpModule.forRoot(...)`. HTTP is not a module; it is the pipeline that every module's controllers plug into. You decorate classes, register them as `controllers` in a module, and hand the root module to `FluoFactory.create(AppModule, { adapter })`. If you find yourself looking for an HTTP module factory, the piece you are missing is the runtime bootstrap, not this package.
+
+Use `@fluojs/http` when you are defining REST-style endpoints: controllers with `@Controller`, `@Get`, and `@Post`, request data bound into DTOs with `@FromBody`/`@FromPath`/`@FromQuery`, guards and interceptors in a predictable order. For GraphQL endpoints use [`@fluojs/graphql`](/docs/packages/graphql), which rides on top of this pipeline rather than replacing it. For pure message-driven systems without HTTP boundaries, you may not need this package at all.
+
+Prerequisites: a fluo application on Node.js `>=24.0.0 <27` (the range `@fluojs/http` declares in `engines.node`). `@fluojs/http` depends on `@fluojs/core`, `@fluojs/di`, and `@fluojs/validation` — validation ships as a hard dependency because DTO binding and validation are one pipeline stage, not two optional add-ons.
+
+```bash
+npm install @fluojs/http @fluojs/core @fluojs/runtime @fluojs/platform-nodejs
+```
+
+## A small working example
+
+The example below is a complete, runnable application: a controller with two routes, one with a body DTO and one with a path DTO. It uses the canonical startup shape — `FluoFactory.create(AppModule, { adapter })` followed by `app.listen()`, and `app.close()` at the host boundary.
+
+```ts title="src/users.controller.ts"
+import { Controller, FromBody, FromPath, Get, NotFoundException, Post, RequestDto } from '@fluojs/http';
+import { IsString, MinLength } from '@fluojs/validation';
+
+class CreateUserDto {
+  @FromBody()
+  @IsString()
+  @MinLength(3)
+  name = '';
+}
+
+class FindUserParamsDto {
+  @FromPath('id')
+  id = '';
+}
+
+@Controller('/users')
+export class UserController {
+  private readonly users = [{ id: '1', name: 'Ada' }];
+
+  @Get()
+  list() {
+    return this.users;
+  }
+
+  @Get('/:id')
+  @RequestDto(FindUserParamsDto)
+  get(input: FindUserParamsDto) {
+    const user = this.users.find((candidate) => candidate.id === input.id);
+    if (!user) {
+      throw new NotFoundException(`User ${input.id} was not found.`);
+    }
+    return user;
+  }
+
+  @Post()
+  @RequestDto(CreateUserDto)
+  create(input: CreateUserDto) {
+    const user = { id: '2', name: input.name };
+    this.users.push(user);
+    return user;
+  }
+}
+```
+
+```ts title="src/app.module.ts"
+import { Module } from '@fluojs/core';
+import { UserController } from './users.controller';
+
+@Module({
+  controllers: [UserController],
+})
+export class AppModule {}
+```
+
+```ts title="src/main.ts"
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
+import { FluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 3000 }),
+});
+
+await app.listen();
+// POST /users {"name":"Grace"} -> 201 {"id":"2","name":"Grace"}
+// GET /users/99 -> 404 {"error":{"code":"NOT_FOUND","status":404,...}}
+```
+
+The application owns shutdown: call `app.close()` from your host boundary (or install signal handlers yourself). Bootstrap fragments in this package's README omit signal installation on purpose; the runtime contract, not the HTTP package, owns process lifecycle.
+
+## How the mechanics work
+
+### Decorators record metadata; the dispatcher acts on it
+
+`@Controller('/users')`, `@Get()`, `@Post()`, and `@RequestDto(...)` are standard TC39 decorators. They write route metadata into class metadata bags; nothing else happens at declaration time. At bootstrap, the runtime compiles the module graph, hands registered controllers to a `HandlerMapping`, and the `Dispatcher` turns an incoming request into a pipeline execution. Two consequences matter in practice:
+
+- **Route grammar is strict.** Paths accept literal segments (`/users`) and full-segment params (`/:id`, `/users/:userId/posts/:postId`). Wildcards, regex fragments, partial-segment params (`user-:id`, `:id.json`) are rejected for routes; `*` matching exists only in middleware route selection via `forRoutes('/users/*')`. Trailing and duplicate slashes are normalized, so `//users///:id/` resolves to `/users/:id`.
+- **Path and method decorators are factories.** `@Get()` with an omitted path means `''` — with `@Controller('cats')` that dispatches `GET /cats`, with `@Controller()` it dispatches `GET /`. The same default applies to `Post`, `Put`, `Patch`, `Delete`, `Options`, `Head`, `All`, `Sse`, and the RFC `QUERY` method decorator `Query`. `@Route(method, path)` registers extension methods such as `PURGE`; it uppercases the token and rejects invalid ones with `InvalidHttpMethodError`, and `ALL` is reserved for the `@All(...)` wildcard.
+
+`Query()` is an HTTP method (RFC QUERY), not query-string binding — query values are read through `@FromQuery` or `RequestContext.request.query`. Duplicate detection runs over normalized paths, so two handlers claiming the same method and path fail registration with `RouteConflictError` rather than shadowing each other.
+
+### The request lifecycle
+
+A dispatched request flows through fixed stages. Knowing the order is what lets you decide where a given concern belongs:
+
+1. **Transport parsing** — the adapter produces `FrameworkRequest` (method, path, headers, query, cookies, params, body, files, abort signal). Parser failures happen before any of your code.
+2. **Middleware** — application-level middleware (`createCorsMiddleware`, `createSecurityHeadersMiddleware`, `createRateLimitMiddleware`, `createCorrelationMiddleware`, static assets) runs in registration order. Middleware sees the raw parsed input, before DTO binding.
+3. **Guards** — `@UseGuards(...)` run after middleware. A guard returning `false` ends the request with `403 FORBIDDEN`. Guards never see bound DTO values — identity and authorization decisions run on the raw request, by design.
+4. **Binding and validation** — `@RequestDto(Dto)` triggers the binder: source decorators (`@FromBody`, `@FromPath`, `@FromQuery`, `@FromHeader`, `@FromCookie`, `@FromFiles`) select transport values, converters (`@Convert`) run, unknown-field and body-shape policy is enforced, and validation decorators from `@fluojs/validation` run. Failures become HTTP 400 with structured details.
+5. **Interceptors** — `@UseInterceptors(...)` wrap the handler: code before `next.handle()` runs before the handler, code after it wraps the result. This is where response shaping such as `SerializerInterceptor` from [`@fluojs/serialization`](/docs/packages/serialization) lives.
+6. **Handler and response** — the handler receives the materialized DTO plus `RequestContext`. If it returns a value and the response is uncommitted, the dispatcher serializes and writes it. A handler that calls `context.response.send(...)` itself owns the response; the dispatcher skips the second write.
+7. **Observers and cleanup** — `onRequestSuccess`/`onRequestError`/`onRequestFinish` observers see the settled outcome, and any request-scoped DI container created for the dispatch is disposed from a `finally` path after observers finish.
+
+Configured conditional-request validation (ETag/If-None-Match) finishes after guards and before interceptors, so interceptors observe the final short-circuit or continue decision.
+
+### DTO binding and input policy
+
+Every DTO field declares its transport source and starts with a field initializer — `name = ''` — or is marked `@Optional()`. A definite-assignment assertion (`name!: string`) does not compile under the Babel decorator configuration fluo ships.
+
+Unknown body fields are rejected by default: `{ name: 'Grace', admin: true }` against `CreateUserDto` fails with HTTP 400 and an `UNKNOWN_FIELD` detail. Arrays, primitives, and other non-plain bodies fail with `INVALID_BODY`. The `@InputPolicy(...)` decorator relaxes exactly these two decisions per DTO class or per route:
+
+| Option | Default | Alternative |
+| --- | --- | --- |
+| `unknownFields` | `'reject'` | `'strip'` projects only declared body source keys, including aliases |
+| `nonObjects` | `'reject'` | `'empty'` binds arrays/primitives as an empty body |
+
+Projection is shallow and binding-local — `RequestContext.request.body` still holds the original parsed input for later readers. Dangerous keys (`__proto__`, `constructor`, `prototype`) stay blocked even under `strip`. Field initializers do not satisfy required transport fields: an omitted body field is a `MISSING_FIELD` failure unless `@Optional()` permits it.
+
+When your input contract is a schema rather than a class — Zod, Valibot, any Standard Schema v1 implementation — `createSchemaDto(schema, { fields })` produces an opaque token for `@RequestDto`, and `StandardSchemaBinder` (registered through bootstrap `binder: (default) => new StandardSchemaBinder(default)`) returns the schema's validated output directly, transformations and defaults included. Schema tokens cannot feed the mapped-class DTO helpers and do not auto-generate OpenAPI schemas; keep ordinary class DTOs where those contracts matter.
+
+### Guards and interceptors
+
+Guards implement `canActivate(context)`; interceptors implement `intercept(context, next)`. Both accept class instances or class references — a class reference is resolved from the request container, so register the class as a provider in the controller's module (or pass an already-built instance to bypass DI). Resolved guards and interceptors can themselves declare constructor dependencies with `@Inject`:
+
+```ts title="fragment: guard and interceptor"
+import { Inject } from '@fluojs/core';
+import {
+  type CallHandler,
+  ForbiddenException,
+  type Guard,
+  type GuardContext,
+  type Interceptor,
+  type InterceptorContext,
+} from '@fluojs/http';
+
+export class BearerGuard implements Guard {
+  canActivate(context: GuardContext): boolean {
+    const header = context.requestContext.request.headers['authorization'];
+    return typeof header === 'string' && header.startsWith('Bearer ');
+  }
+}
+
+export class EnrichResultInterceptor implements Interceptor {
+  async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
+    const result = await next.handle();
+    return { data: result, requestId: context.requestContext.requestId };
+  }
+}
+```
+
+Interfaces evolve with the dispatcher; import the `*Like` structural variants (`GuardLike`, `InterceptorLike`) when you want to implement loosely without pinning the full interface. Decorate controllers or single routes with `@UseGuards(BearerGuard)` and `@UseInterceptors(EnrichResultInterceptor)`.
+
+### Errors are a canonical envelope
+
+Throw `HttpException` subclasses (`BadRequestException`, `UnauthorizedException`, `NotFoundException`, `ConflictException`, `TooManyRequestsException`, `PayloadTooLargeException`, `InternalServerErrorException`, and friends) from anywhere in the pipeline. Uncommitted exceptions from middleware, binding, guards, interceptors, and handlers all serialize to the same JSON envelope:
+
+```json
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "User 99 was not found.",
+    "status": 404
+  }
+}
+```
+
+`code` defaults per exception class (`BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `NOT_ACCEPTABLE`, `TOO_MANY_REQUESTS`, `PAYLOAD_TOO_LARGE`, `INTERNAL_SERVER_ERROR`); pass `HttpExceptionOptions` to attach a custom `code`, `details` (field-level issues with stable codes such as `UNKNOWN_FIELD` or `MISSING_FIELD`), `meta`, and `cause`. Route misses become canonical 404s; a committed response is never rewritten; request aborts surface as `RequestAbortedError`. An optional application-owned HTML error representation can be registered at bootstrap for browser-facing errors — the provider's return value is trusted application HTML that you must escape yourself.
+
+### Request context and scopes
+
+`RequestContext` carries `request`, `response`, an optional `requestId`, an optional `principal` (set by your auth middleware), a `metadata` bag typed by `createContextKey<T>(...)`, and `container` — the request-scoped DI container. The dispatcher creates that container lazily, only when the route's provider graph needs a request scope, and disposes it after observers finish. Inside handlers, services, guards, and interceptors, `context.container` resolves request-scoped providers safely (`@Scope('request')` classes); resolving a request-scoped provider from the root container is a bootstrap-time `RequestScopeResolutionError` by contract, so mis-scoped graphs fail at startup.
+
+For deep helpers that are not handed a context object, `getCurrentRequestContext()` returns the active context via host async-context storage (Node registers `AsyncLocalStorage`; hosts without an async-context primitive get a synchronous-only fallback that clears after `await`). `assertRequestContext()` throws instead of returning `undefined`.
+
+## Composing with neighboring packages
+
+- **`@fluojs/validation`** runs inside stage 4 of the lifecycle described above. Binding owns source selection and scalar conversion; validation owns rules and issue codes. See [Validation](/docs/packages/validation) for the decorator catalog and issue shape.
+- **`@fluojs/serialization`** plugs into stage 5: `SerializerInterceptor` rewrites handler results through `@Expose()`/`@Exclude()`/`@Transform()` metadata before the response is written, and deliberately bypasses handler-owned responses. See [Serialization](/docs/packages/serialization).
+- **`@fluojs/openapi`** reads the same route and DTO metadata to generate an OpenAPI 3.1 document and optional Swagger UI at `/openapi.json` and `/docs`. It documents only the controllers you pass via `sources` — registration is explicit. See [OpenAPI](/docs/packages/openapi).
+- **`@fluojs/graphql`** mounts a fixed `/graphql` controller on this pipeline, inheriting middleware and request-scope behavior. See [GraphQL](/docs/packages/graphql).
+- **DI** is the composition substrate throughout: controllers, guards, interceptors, and services all resolve through the module system described in [Dependency injection](/docs/fundamentals/dependency-injection).
+
+### Portability: root vs `/portable`
+
+The root export registers Node's `AsyncLocalStorage` during module initialization and is the right import for Node and Bun applications. `@fluojs/http/portable` exports the same decorators, exceptions, contracts, and authoring helpers without eagerly initializing any async-context store — use it from runtime-neutral integrations (Deno, workers, browsers). The `./internal` subpath exists for platform adapters and first-party integrations; it is not a user API and may change.
+
+## Defaults, ownership, and limits
+
+- **Defaults**: unknown body fields rejected (`UNKNOWN_FIELD`), non-object bodies rejected (`INVALID_BODY`), `POST` success status 201 (override with `@HttpCode(...)`), other methods 200, canonical JSON error envelope, `GET`-only static asset serving, no request ID unless correlation middleware is installed.
+- **Ownership**: the adapter owns sockets and abort surfaces; the dispatcher owns response commit, `Vary`/`Content-Type` on negotiated responses, and request-scope disposal; your handler owns the response once it calls `send(...)`/`redirect(...)` or streams — after commit, neither interceptors nor the dispatcher rewrite it.
+- **Content negotiation**: `@Produces(...)` restricts a route to the representations it can return; formatter selection, canonical 406, and `Vary: Accept` belong to the dispatcher.
+- **SSE**: `@Sse(path)` handlers return `AsyncIterable<SseMessage<T>>` for managed streaming or an `SseResponse` for manual control. Managed SSE requires an adapter exposing `FrameworkResponse.stream`; the dispatcher cancels the source on request abort or stream close and awaits iterator cleanup before disposing request-scoped resources.
+- **Limits**: no catch-all route grammar (deferred by an architecture decision record — no syntax described there is active), no parameter decorators, no automatic OpenAPI for custom `@Route(...)` methods, `CONNECT` outside ordinary conformance.
+
+Common mistakes worth naming: mounting static assets for `POST` (unsupported — static middleware serves `GET`/`HEAD` only); trusting `trustProxyHeaders: true` in new deployments (use `trustProxy` with an explicit hop/CIDR policy); expecting `@All()` routes to appear in OpenAPI documents (they are runtime routing inputs, not documentable operations); and reading pagination from `@FromBody()` on a `GET` (body binding is a `POST`-style contract — use `@FromQuery`).
+
+## Testing at the HTTP seam
+
+`Test.createApp({ rootModule })` from `@fluojs/testing` boots the same module graph through the real dispatcher without allocating a port:
+
+```ts title="test/users.controller.test.ts"
+import { Test } from '@fluojs/testing';
+import { describe, expect, it } from 'vitest';
+import { AppModule } from '../src/app.module';
+
+describe('UserController', () => {
+  it('binds and validates the create body', async () => {
+    const app = await Test.createApp({ rootModule: AppModule });
+    try {
+      const rejected = await app.request('POST', '/users').body({ name: 'ab' }).send();
+      expect(rejected.status).toBe(400);
+      expect(rejected.body).toMatchObject({ error: { code: 'BAD_REQUEST', status: 400 } });
+
+      const created = await app.request('POST', '/users').body({ name: 'Grace' }).send();
+      expect(created.status).toBe(201);
+      expect(created.body).toEqual({ id: '2', name: 'Grace' });
+    } finally {
+      await app.close();
+    }
+  });
+});
+```
+
+`app.close()` belongs in `finally` so failing tests release lifecycle resources. Assert machine-observable outcomes — status, body, error codes — not prose. For listener-level behavior (ports, signals), boot `FluoFactory.create(...)` against `port: 0` and close it in `finally`, exactly as production does.
+
+## Related reading
+
+- [Controllers](/docs/overview/controllers) — the consumer-facing guide to controllers, routes, and DTOs.
+- [Validation](/docs/packages/validation) — the rule decorators and issue contract behind stage 4.
+- [Serialization](/docs/packages/serialization) — output shaping in stage 5.
+- [OpenAPI](/docs/packages/openapi) — documentation generated from the same metadata.
+- [Dependency injection](/docs/fundamentals/dependency-injection) — tokens, scopes, and module visibility.

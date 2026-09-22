@@ -1,0 +1,221 @@
+---
+title: Validation
+description: How @fluojs/validation turns raw input into validated DTO instances with stable issue codes, mapped DTO helpers, and Standard Schema integration.
+package: "@fluojs/validation"
+---
+
+`@fluojs/validation` is the input-side contract layer. It defines how raw values — request bodies, path parameters, GraphQL arguments, or any plain object your code receives — become validated, typed DTO instances before business logic runs. It ships three things: a catalog of field-validation decorators, an engine (`DefaultValidator`) that hydrates and validates DTO graphs, and the `ValidationIssue` shape every consumer downstream can rely on.
+
+The package is deliberately narrow. It validates; it does not bind, parse, or coerce. When a transport delivers `'42'` for a `number` field, validation fails — conversion belongs to the transport or binding layer ([`@fluojs/http`](/docs/packages/http) owns that boundary and runs this engine after binding). If your need is pure parse-and-transform with no class model, skip DTOs and use `parseStandardSchema(...)` with a schema library directly; this package then only normalizes failures into `DtoValidationError`.
+
+Prerequisites: Node.js `>=24.0.0 <27` (the package's `engines.node` contract). It depends on `@fluojs/core` and the `validator` library; schema libraries (Zod, Valibot, Arktype) are application dependencies you install only when you use Standard Schema integration.
+
+```bash
+pnpm add @fluojs/validation
+```
+
+## A small working example
+
+Standalone use needs no HTTP stack — the engine is directly constructible:
+
+```ts title="src/create-user.dto.ts"
+import { IsEmail, IsInt, IsDefined, Min } from '@fluojs/validation';
+
+export class CreateUserDto {
+  @IsDefined()
+  @IsEmail()
+  email = '';
+
+  @IsDefined()
+  @IsString()
+  name = '';
+
+  @IsDefined()
+  @IsInt()
+  @Min(0)
+  age = 0;
+}
+```
+
+```ts title="fragment: materialize and handle failure"
+import { DefaultValidator, DtoValidationError } from '@fluojs/validation';
+import { CreateUserDto } from './create-user.dto';
+
+const validator = new DefaultValidator();
+
+try {
+  const dto = await validator.materialize(
+    { email: 'ada@example.com', name: 'Ada', age: 36 },
+    CreateUserDto,
+  );
+
+  dto instanceof CreateUserDto; // true — a hydrated instance, not the plain input
+} catch (error) {
+  if (error instanceof DtoValidationError) {
+    for (const issue of error.issues) {
+      // { code: 'IS_EMAIL', field: 'email', message: '...' }
+    }
+  }
+}
+```
+
+`materialize(value, Target)` copies safe own enumerable properties from the plain input onto a new DTO instance (field initializers run first), recursively hydrates `@ValidateNested(...)` fields, and validates the whole graph. It throws `DtoValidationError` — message `'Validation failed.'`, `issues` populated — when any rule fails, and returns the typed instance otherwise. To also reject safe-but-undeclared input keys instead of preserving them, pass `{ undeclaredProperties: 'reject' }` as the third argument; violations arrive as `UNDECLARED_PROPERTY` issues. Dangerous keys (`__proto__`, `constructor`, `prototype`), inherited properties, and non-enumerable properties are always excluded regardless of policy.
+
+The root value must already be a plain object or an instance of the target DTO. Strings, arrays, and `null` are rejected deterministically before any field initializer runs.
+
+## How the mechanics work
+
+### `materialize()` vs `validate()`
+
+| | `materialize(value, Target, options?)` | `validate(value, Target)` |
+| --- | --- | --- |
+| Returns | A hydrated `Target` instance | `void` or throws |
+| Nested plain values | Recursively hydrated into DTO instances | Temporarily materialized for rule checking; caller's properties never replaced |
+| Already-instantiated nested DTOs | Preserved as-is | Preserved as-is |
+| Root must be | Plain object or `Target` instance | Plain object or `Target` instance |
+
+`validate()` exists for pipelines that already built their DTO (the HTTP binder binds first, then validates) and for plain root objects whose nested DTO rules still need checking. Both entry points share the same rule execution and issue production; pick `materialize()` when you need the instance, `validate()` when you only need the verdict.
+
+### Missing values and optionality
+
+Ordinary field validators skip both `null` and `undefined` — a `@IsString()` field passes when the input omits it. Two decorators change that:
+
+- `@IsDefined()` makes either `null` or `undefined` a missing-field failure. Combine it with type rules for genuinely required fields.
+- `@IsOptional()` documents the optional contract and short-circuits the other validators on that field when the value is absent.
+
+Field initializers in the DTO class do not satisfy required transport fields — they are compile-time defaults, and validation still reports a missing input when `@IsDefined()` demands it.
+
+### Issue shape
+
+`DtoValidationError.issues` is a stable, machine-consumable array:
+
+```ts
+type ValidationIssue = {
+  code: string;
+  field?: string;
+  message: string;
+  source?: 'path' | 'query' | 'header' | 'cookie' | 'body';
+};
+```
+
+Nested DTOs use dot paths and collection indexes: `address.city`, `items[0].name`. The `source` discriminator is attached by HTTP binding metadata; standalone validation leaves it unset. The package always emits its human-readable `message` values in English — applications that need localized messages opt into `@fluojs/i18n/validation` after validation fails, mapping `source`/`field`/`code` to translation keys without changing validator execution.
+
+### Rule execution semantics
+
+- **No implicit scalar coercion.** Numeric validators, including `@IsLatitude()` and `@IsLongitude()`, validate numeric values without treating numeric strings as converted. If a transport gives you `'42'`, the transport layer converts it first.
+- **`@IsEnum(...)`** accepts declared enum values only. For numeric TypeScript enums, generated reverse-map member names are not values and are rejected.
+- **`@IsObject()`** accepts only plain objects, including null-prototype records; class instances, `Date`, `Map`, and `Set` are rejected.
+- **No validation groups.** Decorator options carry `message`, `code`, and `each` — there is no class-validator-style `groups` or `always`, and neither engine method accepts a group selection. Model different workflows with separate DTOs, mapped helpers, `@ValidateIf(...)`, or class-level validation.
+- **Nested traversal** covers object fields, arrays, `Set`, and `Map` automatically — `each: true` is not required to enable collection traversal (the option remains accepted for existing DTOs). Cycles are detected safely and shared references are allowed. Pass a DTO class or a lazy factory (`() => ChildDto`) when nested types need deferred resolution.
+- **Inheritance.** Derived DTOs inherit field-level and class-level rules from their base; adding decorators to the derived class creates derived-owned metadata and never mutates how the base validates.
+
+### Custom and conditional rules
+
+`@Validate(callback)` attaches a field-level rule; the callback receives `(value, context)` with `context.dto` (the containing DTO) and `context.propertyKey`. `@ValidateIf(predicate)` short-circuits the other validators on a field when its predicate returns false. At class level, `@ValidateClass(validator)` runs a custom class validator or a Standard Schema implementation after field rules:
+
+```ts title="fragment: custom rules"
+import { Validate, ValidateClass, ValidateIf } from '@fluojs/validation';
+import { z } from 'zod';
+
+const PasswordPolicy = z.object({ password: z.string().min(8) });
+
+@ValidateClass(PasswordPolicy)
+class SignupDto {
+  @Validate((value: unknown) => typeof value === 'string' && value.trim().length > 0, {
+    message: 'Name must not be blank.',
+  })
+  name = '';
+
+  @ValidateIf((dto: SignupDto) => dto.name === 'admin')
+  @IsDefined()
+  inviteToken = '';
+}
+```
+
+Standard Schema integration through `@ValidateClass` is **validation-only**: a schema result without issues (including the explicit `issues: []` case) counts as success, and a successful transformed output never replaces the DTO instance or its fields. The schema adds rules; it does not become the value pipeline.
+
+### Standard Schema output parsing
+
+When you *do* want the schema's output — transforms, defaults, coercion included — `parseStandardSchema(schema, value)` returns it:
+
+```ts title="fragment: output parsing"
+import { parseStandardSchema } from '@fluojs/validation';
+import { z } from 'zod';
+
+const DraftSchema = z.object({
+  title: z.string().trim(),
+  count: z.coerce.number().int().default(1),
+});
+
+const draft = await parseStandardSchema(DraftSchema, { title: '  Draft  ' });
+// { title: 'Draft', count: 1 }
+```
+
+The helper awaits sync or async validation and returns the successful `value` unchanged. Any returned issues array — including an empty one — rejects with `DtoValidationError`; non-object results, non-array issues, and results with neither issues nor a success value reject with `TypeError`; exceptions thrown by the schema implementation propagate unchanged. The caller owns the schema and the input; this helper creates no resources and isolates nothing. Note the deliberate split: `@ValidateClass` for adding schema rules to a class DTO, `parseStandardSchema` when the schema output itself is the deliverable, and [`createSchemaDto` + `StandardSchemaBinder`](/docs/packages/http) when HTTP binding should produce schema output directly.
+
+### Mapped DTO helpers
+
+`PickType`, `OmitType`, `PartialType`, and `IntersectionType` are available **only** from the `@fluojs/validation/mapped-types` subpath — root imports were removed without aliases:
+
+```ts title="fragment: mapped types"
+import { IsEmail, IsString } from '@fluojs/validation';
+import { PartialType, PickType } from '@fluojs/validation/mapped-types';
+
+class UserDto {
+  @IsString()
+  name = '';
+
+  @IsEmail()
+  email = '';
+}
+
+class EmailOnlyDto extends PickType(UserDto, ['email']) {}
+class UpdateUserDto extends PartialType(UserDto) {}
+```
+
+The helpers preserve field-level validation and binding metadata through the subclassing pattern shown above — always extend the returned class. Two boundaries matter: mapped helpers do not carry base **class-level** validators onto derived DTOs (those can depend on fields that were omitted or made optional), and when `IntersectionType(...)` sources declare different `@ValidateNested(...)` targets for the same property, every nested rule is preserved and validated — plain values stay plain during initial hydration so each target materializes independently.
+
+## Composing with neighboring packages
+
+- **`@fluojs/http`** is the primary consumer and the reason `source` exists. The binder selects transport sources (`@FromBody`, `@FromPath`, ...), applies converters, then runs this engine; `DtoValidationError` becomes HTTP 400 with the issues serialized into the error envelope's `details`. Binding metadata also feeds [OpenAPI](/docs/packages/openapi) request-schema generation.
+- **`@fluojs/graphql`** validates resolver input DTOs with the same engine; failures surface as GraphQL `BAD_USER_INPUT` errors carrying `extensions.issues`.
+- **`@fluojs/serialization`** is the output-side counterpart: validation shapes what comes in, serialization shapes what goes out. The two never share decorators.
+- **`@fluojs/di`** registers `DefaultValidator` as a regular provider when you want a single configured engine injected into services rather than constructed ad hoc.
+
+## Limits and common mistakes
+
+- Validation never mutates the input object; `materialize()` builds a new instance tree (already-instantiated nested DTOs are preserved by reference).
+- `undeclaredProperties: 'reject'` applies recursively to plain nested values, but existing DTO instances are not an undeclared-property boundary — they arrive with whatever they already carry.
+- Constructing `DtoValidationError` yourself is unusual; the stable surface is `error.issues`, not the message string (always `'Validation failed.'`).
+- Forgetting `@IsDefined()` on required fields is the most common silent bug: the field passes when absent because validators skip `null`/`undefined`.
+- Expecting Zod-style coercion inside class DTOs fails by design; coerce in the transport layer or move that field to a schema-based DTO token.
+- Pinning localized message text in tests breaks by design — assert on `code`, `field`, and `source`, which are stable, and treat `message` as display text.
+
+## Testing at the validation seam
+
+Because the engine is standalone, most rule coverage needs no HTTP:
+
+```ts title="fragment: engine test"
+import { DefaultValidator, DtoValidationError } from '@fluojs/validation';
+import { expect, it } from 'vitest';
+import { CreateUserDto } from '../src/create-user.dto';
+
+it('rejects a bad email with a field-scoped issue', async () => {
+  const validator = new DefaultValidator();
+  const failure = await validator
+    .materialize({ email: 'not-an-email', name: 'Ada', age: 1 }, CreateUserDto)
+    .catch((error: unknown) => error as DtoValidationError);
+
+  expect(failure).toBeInstanceOf(DtoValidationError);
+  expect(failure.issues).toMatchObject([{ field: 'email' }]);
+});
+```
+
+For end-to-end behavior — status codes, `details` in the response envelope — test through `Test.createApp(...)` as shown in the [HTTP guide](/docs/packages/http#testing-at-the-http-seam); that seam already includes binding, conversion, and 400 mapping.
+
+## Related reading
+
+- [HTTP](/docs/packages/http) — where validation runs in the request lifecycle.
+- [Serialization](/docs/packages/serialization) — the output-side DTO shaping.
+- [OpenAPI](/docs/packages/openapi) — how validation metadata becomes request schemas.
+- [Dependency injection](/docs/fundamentals/dependency-injection) — registering a shared validator engine.

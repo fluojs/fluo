@@ -59,6 +59,10 @@ Docs는 AI가 Fluo 코드를 작성하고 검토할 때 사용하는 프레임�
 
 ## Change sequence and bilingual increments
 
+웹사이트 언어 예외: `apps/docs/content/docs/`는 영문 전용이다. 한국어 웹 파일은
+제거하고 기존 언어별 URL은 `/docs`로 이동한다. 아래 양언어 순서는 저장소 계약, 패키지 README와 Book에
+계속 적용한다. 영문 전용 웹 설명이 원본 문서의 양언어 의무를 면제하지는 않는다.
+
 1. **Docs 기준 확정:** 담당 문서 쌍과 영향받는 계약·Book 장을 식별하고 기존 약속과 충돌을 해결한다.
 2. **근거 검증:** 구현과 테스트를 대조하고 영향받는 실행 경로를 검증한다. 명령·결과·한계는 receipt로 남긴다.
 3. **Book 한국어 적용:** 검증한 Docs를 제품 서사에 반영한다. 최초 집필은 한국어 72장 전체를 먼저 검토한다. 기존 Book의 정정은 서로 의존하는 장을 포함한 영향받는 한국어 묶음 전체를 검토·확정한 뒤 동결한다.
@@ -67,4 +71,4 @@ Docs는 AI가 Fluo 코드를 작성하고 검토할 때 사용하는 프레임�
 
 Docs 변경마다 Book 영향을 검토한다. 의미가 바뀌면 해당 장을 수정하고, 편집만 바뀌어 Book 수정이 불필요하면 그 근거를 기록한다. Book의 필수 설명을 링크로 대체하지 않는다. KRW 선택, 게시글·주문 상태, 앱 주소, 영속성·재시도 정책은 앱 소유 정책으로 구분한다. 의도적으로 실패하는 중간 코드나 비교 실험은 최종 권장 구현과 명확히 구별한다.
 
-기존 machine sentinel, 안정 링크와 검사 소비자를 이전할 때는 담당 문서·trigger·assertion·negative regression을 같은 검증된 변경에서 맞추고 검출력을 낮추지 않는다. 한국어 집필 중에는 `pnpm book:check:ko`, 양언어 증분에는 `pnpm book:check`를 사용한다. `pnpm docs:sync-check`는 웹사이트 counterpart 존재 검사이며 EN/KO 의미 검토를 대신하지 않는다. 자연어 문장이나 prompt를 고정하는 테스트는 추가하지 않는다.
+기존 machine sentinel, 안정 링크와 검사 소비자를 이전할 때는 담당 문서·trigger·assertion·negative regression을 같은 검증된 변경에서 맞추고 검출력을 낮추지 않는다. 한국어 집필 중에는 `pnpm book:check:ko`, 양언어 증분에는 `pnpm book:check`를 사용한다. `pnpm docs:sync-check`는 한국어 웹 파일이 남아 있지 않은지 확인하는 검사이며 EN/KO 의미 검토를 대신하지 않는다. 자연어 문장이나 prompt를 고정하는 테스트는 추가하지 않는다.

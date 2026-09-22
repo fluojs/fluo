@@ -1,0 +1,399 @@
+---
+title: Dependency injection
+package: "@fluojs/di"
+description: How fluo composes services with explicit tokens, provider declarations, module visibility, and scopes.
+---
+
+Following the beginner path? [Providers](/docs/overview/providers) applies
+these concepts to the same app you created in Getting started. This page is the
+deeper reference for tokens, scopes and module visibility; you do not need to
+replace your learning app with the separate examples below.
+
+Dependency injection (DI) is how a fluo application composes itself. Services never construct their own collaborators; each class declares the tokens it needs, and modules declare which providers exist and who may see them. At bootstrap, `@fluojs/runtime` compiles the module graph, validates every dependency, and hands the resulting provider graph to a `@fluojs/di` container that resolves instances on demand.
+
+The design goal is visibility: when you read a class, its dependencies are written on the class. fluo uses explicit token-based injection with TC39 standard decorators. It has no parameter decorators, no `@Injectable()` marker, and never reads compiler-emitted type metadata. If you are coming from NestJS, the mental model carries over - modules, providers, scopes - but the mechanics are stricter and quieter: fewer decorators, more explicit declarations.
+
+This page uses a small blog application as its running example. The first example is complete; later ones are scoped fragments that show one mechanic at a time.
+
+Prerequisites: a generated fluo application (`fluo new my-app --package-manager pnpm`, Node.js `>=24.0.0 <27`), which already wires the scaffold's root module. The example adds three files under `src/` and registers the feature in the root module.
+
+## A small working example
+
+A controller needs a service; the service needs a logger. Three declarations wire that up:
+
+```ts title="src/posts.service.ts"
+import { Inject, Scope } from '@fluojs/core';
+
+export class AuditLog {
+  entries: string[] = [];
+}
+
+@Scope('singleton')
+@Inject(AuditLog)
+export class PostsService {
+  constructor(private readonly audit: AuditLog) {}
+
+  list(): readonly string[] {
+    return ['Hello, Fluo!'];
+  }
+
+  create(title: string): string {
+    this.audit.entries.push(`created: ${title}`);
+    return title;
+  }
+}
+```
+
+```ts title="src/posts.controller.ts"
+import { Inject } from '@fluojs/core';
+import { Controller, Get, Post, RequestDto, FromBody } from '@fluojs/http';
+
+import { PostsService } from './posts.service';
+
+class CreatePostDto {
+  @FromBody()
+  title = '';
+}
+
+@Inject(PostsService)
+@Controller('/posts')
+export class PostsController {
+  constructor(private readonly posts: PostsService) {}
+
+  @Get()
+  list(): readonly string[] {
+    return this.posts.list();
+  }
+
+  @Post()
+  @RequestDto(CreatePostDto)
+  create(input: CreatePostDto): string {
+    return this.posts.create(input.title);
+  }
+}
+```
+
+```ts title="src/posts.module.ts"
+import { Module } from '@fluojs/core';
+
+import { PostsController } from './posts.controller';
+import { AuditLog, PostsService } from './posts.service';
+
+@Module({
+  controllers: [PostsController],
+  providers: [PostsService, AuditLog],
+})
+export class PostsModule {}
+```
+
+`@Inject(AuditLog)` and `@Inject(PostsService)` are class decorators. Each lists the constructor tokens of the class it decorates, in constructor parameter order. The TypeScript annotations (`audit: AuditLog`) document intent; the `@Inject(...)` tokens are the DI metadata the container actually uses. `PostsModule.providers` registers the classes, and `controllers` registers the controller that consumes them.
+
+Root assembly imports the feature into the root module the scaffold generated:
+
+```ts title="src/app.ts"
+import { Module } from '@fluojs/core';
+
+import { PostsModule } from './posts.module';
+
+@Module({
+  imports: [PostsModule],
+})
+export class AppModule {}
+```
+
+## How the mechanics work
+
+### Tokens
+
+A token is the key a dependency is looked up under. fluo accepts four kinds:
+
+- a **class** - the most common token; the class constructor doubles as its own token
+- a **string or symbol** - useful for configuration values and cross-cutting constants
+- a **typed public token** - `publicToken<T>('my-blog/posts/v1')` from `@fluojs/core`, a `Symbol.for`-backed token that types `resolve()` and cross-application boundaries
+- a **wrapper** - `ForwardRef.create(...)` or `Optional.create(...)` from `@fluojs/di`, used inside token lists
+
+```ts
+import { publicToken } from '@fluojs/core';
+
+export interface PostsReader {
+  list(): readonly string[];
+}
+
+export const POSTS_READER = publicToken<PostsReader>('my-blog/posts/v1');
+```
+
+Tokens must exist when the metadata that references them is created. A `null` or `undefined` token is invalid and is rejected before it can affect the graph.
+
+### The `@Inject` contract
+
+`@Inject(...)` takes the dependency tokens as variadic arguments: `@Inject(A, B)` for two constructor parameters, or `@Inject(...tokens)` to spread a list. The rules are strict:
+
+- Every **required** constructor parameter needs a token. A class whose `@Inject` list is shorter than its required parameters fails module-graph validation with `ModuleInjectionMetadataError` during bootstrap.
+- `@Inject()` with no arguments records an explicit empty override and clears tokens inherited from a base class. This is a feature, not an error: subclasses that change their constructor dependencies redeclare them.
+- Parameter decorators do not exist in fluo, and there is nothing to enable in `tsconfig.json`. fluo never runs with `emitDecoratorMetadata`.
+
+### Provider shapes
+
+A module's `providers` array accepts five shapes:
+
+| Shape | Registers | Notes |
+| --- | --- | --- |
+| `PostsService` | The class under its own token | Class shorthand; scope and dependencies come from the class decorators |
+| `{ provide: POSTS_READER, useClass: PostsService }` | A class under an explicit token | Dependencies resolve from `inject` if present, otherwise from the class's `@Inject` metadata |
+| `{ provide: 'APP_NAME', useValue: 'fluo-blog' }` | A ready value | Must not declare `inject` |
+| `{ provide: 'DB_POOL', useFactory: (config) => createPool(config), inject: [ConfigService] }` | A factory result | Dependencies come **only** from the `inject` array |
+| `{ provide: POSTS_READER, useExisting: PostsService }` | An alias to another token | Resolution forwards to the existing provider |
+
+Malformed provider objects - a missing `provide`, two strategies at once, an `inject` on a value provider - throw `InvalidProviderError` at registration time, before the graph is built. A factory provider that should inherit the referenced class's DI metadata (such as `@Scope(...)`) adds `resolverClass`; an explicit provider `scope` still wins.
+
+### Module visibility
+
+Providers are private to their module by default. Another module sees a provider only when the owning module exports it and the consuming module imports the owner:
+
+```ts title="fragment: cross-module visibility"
+@Module({
+  providers: [PostsService],
+  exports: [PostsService],
+})
+export class PostsModule {}
+
+@Module({
+  imports: [PostsModule],
+  providers: [CommentsService],
+})
+export class CommentsModule {}
+```
+
+`CommentsService` may now inject `PostsService`. Removing the `exports` entry makes the same injection fail at bootstrap with `ModuleVisibilityError` - the graph cannot be compiled, so nothing partially starts. A module marked `@Module({ global: true })` makes its **exported** tokens visible everywhere without imports; non-exported providers of a global module stay private. These rules are the whole visibility model: there is no ambient container to reach into.
+
+### Scopes
+
+| Scope | Created | Typical use |
+| --- | --- | --- |
+| `singleton` (default) | Once per container | Services, repositories, connection wrappers |
+| `request` | Once per request scope | Per-request context, request IDs, unit-of-work state |
+| `transient` | Every resolution | Lightweight helpers that must not share state |
+
+Declare a scope with the `@Scope('request')` class decorator or a provider `scope: 'request'` field. Two boundaries protect the model:
+
+- Resolving a request-scoped provider from the root container throws `RequestScopeResolutionError`. Request-scoped instances live in request scopes.
+- A singleton depending on a request-scoped provider throws `ScopeMismatchError` before any constructor in the graph runs. Long-lived objects cannot capture per-request state.
+
+In HTTP applications, the dispatcher creates a request scope per request (lazily, only when the route's graph needs one) and disposes it after the response. Inside a controller or anything downstream of it, `RequestContext.container` resolves request-scoped providers safely. Outside HTTP, request scopes are explicit: `container.createRequestScope()` creates a child container that shares the root's singleton cache and disposes its own request instances on `dispose()`.
+
+## Using the container directly
+
+Everything above describes the container as it is *driven by* a compiled module graph. `@fluojs/di` is also a standalone library, and using it without modules is the right tool for scripts, workers, and focused unit tests that need real resolution semantics without a bootstrap:
+
+```ts title="fragment: standalone container"
+import { Container } from '@fluojs/di';
+
+const container = new Container().register(
+  AuditLog,
+  PostsService,
+  { provide: POSTS_READER, useExisting: PostsService },
+);
+
+try {
+  const posts = await container.resolve(POSTS_READER); // typed as PostsReader
+  posts.list();
+} finally {
+  await container.dispose();
+}
+```
+
+`register(...providers)` accepts the same provider shapes as a module's `providers` array and returns the container, so registration chains. Three rules define the boundary of a container instance:
+
+- **Construction is zero-argument.** `new Container()` always creates a root container with its own singleton cache. Any constructor argument throws `ContainerResolutionError`; child scopes are package-owned and created only through `createRequestScope()`.
+- **Duplicates are rejected, replacements are explicit.** Registering a token that already exists fails with `DuplicateProviderError`. The supported replacement API is `override(...providers)`, which validates the whole batch atomically before any registration or cache change, disposes stale instances before replacements resolve, and replaces the full multi-provider set for a multi token.
+- **Introspection is cheap and supported.** `container.has(token)` checks registration through the parent chain, and `container.hasRequestScopedDependency(token)` answers "will resolving this need a request scope?" - useful for workers that create scopes only when the resolved graph actually contains request-scoped providers.
+
+Disposal is ordered and forgiving to retry. `container.dispose()` first tears down live request-scope children it owns, then cached instances in reverse creation order, so dependents are destroyed before their dependencies. Multiple failures aggregate into an `AggregateError` rather than abandoning the remaining cleanup. Starting `dispose()` is terminal for `resolve()`, `register()`, `override()`, and `createRequestScope()`; concurrent callers share the active attempt. A failed `onDestroy()` hook is retained and retried by a later explicit `dispose()`, hooks that already succeeded never run twice, and once every retained hook succeeds the container is fully disposed.
+
+## Integrating DI into an application
+
+Real applications configure external resources through factory providers and async module options. The canonical shape is a `forRoot`/`forRootAsync` static method that owns a client and exposes a service facade. `AsyncModuleOptions<T>` is the shared contract for modules that need injected, asynchronous configuration:
+
+```ts title="fragment: async configuration"
+import { type AsyncModuleOptions, Module } from '@fluojs/core';
+import { defineModule, type ModuleType } from '@fluojs/runtime';
+
+export interface CacheConfig {
+  ttlSeconds: number;
+}
+
+export class CacheModule {
+  static forRootAsync(options: AsyncModuleOptions<CacheConfig>): ModuleType {
+    class CacheRuntimeModule {}
+
+    return defineModule(CacheRuntimeModule, {
+      providers: [
+        {
+          provide: 'CACHE_CONFIG',
+          useFactory: options.useFactory,
+          inject: options.inject,
+        },
+      ],
+      exports: ['CACHE_CONFIG'],
+    });
+  }
+}
+```
+
+The factory's `inject` array names the tokens resolved before the factory runs, and the resolved value is registered under `CACHE_CONFIG` for consumers that import the module.
+
+Async registration is a per-module contract, not a framework-wide guarantee.
+`PrismaModule.forRootAsync(...)` and `DrizzleModule.forRootAsync(...)` support
+injected async factories. `ConfigModule` and `CronModule` do not expose that
+registration method; check the owning package contract rather than assuming
+every module has the same configuration API.
+
+An optional dependency is declared with `Optional.create(...)` in the `@Inject(...)` list and typed as `T | undefined` in the constructor. The wrapped class is declared in the usual way; the point is that no module registers it as a provider:
+
+```ts title="fragment: optional dependency"
+import { Inject } from '@fluojs/core';
+import { Optional } from '@fluojs/di';
+
+class TelemetrySink {
+  record(event: string): void {
+    // ship to your telemetry backend
+  }
+}
+
+@Inject(Optional.create(TelemetrySink))
+export class DiagnosticsRecorder {
+  constructor(private readonly telemetry: TelemetrySink | undefined) {}
+
+  record(event: string): void {
+    this.telemetry?.record(event);
+  }
+}
+```
+
+With no `TelemetrySink` provider registered in the module graph, the constructor argument resolves as `undefined` instead of failing the graph, and the recorder degrades through optional chaining. To make the dependency resolvable, a module must register the class under the `TelemetrySink` class token itself. This is the supported way to express "use it when present"; there is no `@Optional()` parameter decorator.
+
+For scripts, workers, and tests without HTTP, the same module graph starts as a standalone application context:
+
+```ts title="fragment: standalone context"
+import { FluoFactory } from '@fluojs/runtime';
+
+const context = await FluoFactory.createApplicationContext(AppModule);
+const posts = await context.get(PostsService);
+await posts.create('from a worker');
+await context.close();
+```
+
+`createApplicationContext` runs the same bootstrap, lifecycle hooks, and shutdown contract as the HTTP factory without adapter setup.
+
+## Advanced uses
+
+### Lifecycle hooks
+
+A resolved singleton provider participates in the application lifecycle by implementing hook methods. Startup runs `onModuleInit()` for every eligible instance in provider order, then `onApplicationBootstrap()`. Shutdown runs `onModuleDestroy()` and then `onApplicationShutdown(signal?)` in reverse order, so dependents tear down before their dependencies:
+
+```ts title="fragment: lifecycle hooks"
+import type { OnApplicationBootstrap, OnModuleDestroy } from '@fluojs/runtime';
+
+export class PoolHolder implements OnApplicationBootstrap, OnModuleDestroy {
+  async onApplicationBootstrap(): Promise<void> {
+    // All providers are instantiated; the runtime moves to its serving phases.
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    // Release module resources before the signal phase.
+  }
+}
+```
+
+NestJS `beforeApplicationShutdown` has no fluo counterpart and is never invoked.
+
+### Multi providers and aliases
+
+A provider registered with `multi: true` contributes to a list instead of claiming a token. Resolving that token returns every contribution in registration order - useful for plugin registries and pipeline steps:
+
+```ts title="fragment: multi providers"
+import { Module } from '@fluojs/core';
+
+const RENDERER = Symbol('RENDERER');
+
+@Module({
+  providers: [
+    { provide: RENDERER, useClass: MarkdownRenderer, multi: true },
+    { provide: RENDERER, useClass: PlainTextRenderer, multi: true },
+  ],
+})
+export class RenderModule {}
+```
+
+Aliases with `useExisting` point one token at another existing provider. The `publicToken` + `useExisting` + `exports` recipe exposes a stable contract token while keeping the implementing class private to its module.
+
+### Circular dependencies and forward refs
+
+The container rejects dependency cycles - direct, two-node, and deep - with `CircularDependencyError`. `ForwardRef.create(() => OtherService)` defers token lookup when declaration order would otherwise reference a token before it is defined, but it does not make a true constructor cycle resolvable. When the compiler reports a cycle, break it by extracting shared state into a third provider, not by wrapping both sides in forward refs.
+
+## Limitations and errors
+
+- **No reflection.** Constructor types are never read. A missing `@Inject` token is a bootstrap validation error, which is the point: the graph fails loudly at startup, not mysteriously at request time.
+- **No scope bubbling.** NestJS-style controller-scoped trees that silently re-instantiate parent services do not exist. A request scope contains exactly its request-scoped providers.
+- **Duplicate tokens.** Registering the same token twice in one container fails. Across module composition, duplicates are governed by `duplicateProviderPolicy` and default to `warn` - prefer renaming tokens or consolidating providers over silencing the warning.
+- **Disposal is ordered and forgiving to retry.** `container.dispose()` tears down cached instances in reverse creation order, disposes request-scope children first, and aggregates multiple failures in an `AggregateError`. A failed `onDestroy` hook is retried by a later explicit `dispose()`; hooks that already succeeded never run twice.
+- **No injection into plain objects or functions.** Providers are classes, factories, values, or aliases. There is no property injection.
+
+The error taxonomy is small enough to memorize, and each error names the phase that produced it:
+
+| Error | Thrown when | Typical fix |
+| --- | --- | --- |
+| `InvalidProviderError` | A provider object is malformed - missing `provide`, two strategies, `inject` on a value provider, bad token or scope | Fix the provider shape before it reaches the graph |
+| `ModuleInjectionMetadataError` | A class's `@Inject` list does not cover its required constructor parameters | Add the missing token, or mark it `Optional.create(...)` |
+| `ModuleVisibilityError` | A consumer injects a provider its module cannot see | Export from the owner, import the owner, or use `global: true` |
+| `CircularDependencyError` | A true constructor cycle exists in the dependency graph | Extract shared state into a third provider |
+| `RequestScopeResolutionError` | A request-scoped provider is resolved from the root container | Resolve from a request scope (`createRequestScope()` or the HTTP request context) |
+| `ScopeMismatchError` | A singleton depends on a request-scoped provider | Break the dependency: move state into the request scope or make the parent request/transient |
+| `DuplicateProviderError` | The same token is registered twice in one container | Register once; use `override(...)` to replace deliberately |
+| `ContainerResolutionError` | Resolution failed for reasons the other errors do not cover, including constructor arguments passed to `new Container()` | Read the structured `DiErrorContext` on the error for tokens, scopes, and the dependency chain |
+
+DI errors carry a structured `DiErrorContext` (tokens, scopes, modules, dependency chains, hints) so logs and test assertions can inspect the failing graph without string matching.
+
+## Testing with overrides
+
+Tests replace providers through `override(...)`, which is atomic: the whole batch is validated before any registration or cache change, and stale instances are disposed before replacements resolve:
+
+```ts title="test/posts.service.test.ts"
+import { Test } from '@fluojs/testing';
+import { describe, expect, it } from 'vitest';
+
+import { AppModule } from '../src/app';
+import { AuditLog, PostsService } from '../src/posts.service';
+
+describe('PostsService', () => {
+  it('records an audit entry when a post is created', async () => {
+    const audit: AuditLog = { entries: [] };
+    const module = await Test.createTestingModule({ rootModule: AppModule })
+      .overrideProvider(AuditLog)
+      .useValue(audit)
+      .compile();
+
+    try {
+      const posts = await module.resolve(PostsService);
+      posts.create('from a test');
+
+      expect(audit.entries).toEqual(['created: from a test']);
+    } finally {
+      await module.container.dispose();
+    }
+  });
+});
+```
+
+`module.container.dispose()` belongs in a `finally` block so passing, failing, and early-returning tests all release lifecycle resources. For HTTP behavior, `Test.createApp({ rootModule: AppModule })` runs the same graph through real request dispatch; overrides compose the same way before the app boots.
+
+## Related reading
+
+- [`@fluojs/core`](/docs/packages/core) - the decorators, tokens, and metadata contracts that feed the container.
+- [`@fluojs/runtime`](/docs/packages/runtime) - the assembly layer that compiles module graphs and drives this container.
+- [`@fluojs/di` package README](https://github.com/fluojs/fluo/blob/main/packages/di/README.md) - the owning API reference for the container, scopes, and errors.
+- [`@fluojs/core` package README](https://github.com/fluojs/fluo/blob/main/packages/core/README.md) - decorators, tokens, and metadata contracts.
+- [DI Resolution Rules contract](https://github.com/fluojs/fluo/blob/main/docs/architecture/di-and-modules.md) - the normative registration, injection, and visibility rules.
+- [Migrating from NestJS](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-from-nestjs.md) - a mapping table from NestJS patterns to fluo equivalents.
+- [Testing guide](/docs/guides/testing) - request-level testing and mock helpers.
+- [Controllers](/docs/overview/controllers) - the consumer side of injection in HTTP applications.
