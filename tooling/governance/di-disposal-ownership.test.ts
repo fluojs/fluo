@@ -185,6 +185,9 @@ describe('DI disposal ownership governance', () => {
     const containerSource = read('packages/di/src/container.ts');
     const ownershipEvidence = read('packages/di/src/container-disposal-ownership.test.ts');
     const retryEvidence = read('packages/di/src/container-disposal-retry.test.ts');
+    const inlineDisposalCitation = 'path:packages/di/src/container.ts:710-739';
+    const staleInlineDisposalCitation = 'path:packages/di/src/container.ts:707-736';
+    const inlineDisposalSource = sourceRange(containerSource, 710, 739);
     const sourceExcerpts = [
       ['path:packages/di/src/container.ts:718-739', 718, 739],
       ['path:packages/di/src/container.ts:741-778', 741, 778],
@@ -195,12 +198,23 @@ describe('DI disposal ownership governance', () => {
 
     // When / Then
     for (const chapter of chapters) {
+      expect(chapter).toContain(inlineDisposalCitation);
+      expect(chapter).not.toContain(staleInlineDisposalCitation);
+
       for (const [citation, start, end] of sourceExcerpts) {
         assertSourceExcerpt(chapter, citation, sourceRange(containerSource, start, end));
       }
 
       expect(chapter).not.toContain('if (completed && this.parent && this.trackedByParent)');
       expect(chapter).not.toContain('Array.from(this.childScopes).map((child) => child.dispose()),');
+    }
+
+    for (const marker of [
+      'async dispose(): Promise<void> {',
+      'private async disposeFromParent(): Promise<void> {',
+      'private async disposeWithOrigin(origin: DisposalAttemptOrigin): Promise<void> {',
+    ]) {
+      expect(inlineDisposalSource).toContain(marker);
     }
 
     for (const companion of [...packageReadmes, ...chapters]) {
