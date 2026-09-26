@@ -143,7 +143,7 @@ module을 import해야 하며, 이름이 runtime container를 분리하지는 �
 
 ## GraphQL NestJS 마이그레이션 경계
 
-NestJS GraphQL 마이그레이션에서는 [GraphQL 마이그레이션 경계](./getting-started/migrate-from-nestjs.ko.md#graphql-마이그레이션-경계)를 application-owned 인가, 생성 SDL nullability 검사, operation 범위 resolver disposal, 고정 `/graphql` endpoint, public-instance decorator target, application-owned `AsyncIterable` subscription의 canonical 계약으로 사용합니다.
+NestJS GraphQL 마이그레이션에서는 [GraphQL 마이그레이션 경계](./getting-started/migrate-from-nestjs.ko.md#graphql-마이그레이션-경계)를 application-owned 인가, 생성 SDL nullability 검사, operation 범위 resolver disposal, 고정 `/graphql` endpoint, public-instance decorator target, application-owned `AsyncIterable` subscription의 canonical 마이그레이션 계약으로 사용합니다. Root `@Query`, `@Mutation`, `@Subscription` 반환값은 기본 `String`을 포함해 기본적으로 nullable이며, 필수 root 반환값마다 `nullable: false`를 지정해도 list item이나 argument nullability는 바뀌지 않습니다. Decorator option은 [GraphQL API 원본](../packages/graphql/README.ko.md), 이행 검사는 마이그레이션 계약을 참고하세요.
 
 ## Terminus NestJS 마이그레이션
 
