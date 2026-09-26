@@ -483,6 +483,7 @@ export class QueueLifecycleService implements Queue, OnApplicationBootstrap, OnA
       resources.queue = this.createQueueInstance(descriptor, resources.queueConnection);
       resources.worker = this.createWorkerInstance(descriptor, resources.workerConnection);
       this.attachWorkerFailureHandler(descriptor, resources.worker);
+      await Promise.all([resources.queue.waitUntilReady(), resources.worker.waitUntilReady()]);
 
       return {
         queue: resources.queue,
