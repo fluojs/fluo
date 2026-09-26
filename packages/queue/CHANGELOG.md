@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## 3.0.2
+
+### Patch Changes
+
+- [#3826](https://github.com/fluojs/fluo/pull/3826) [`c8a2906`](https://github.com/fluojs/fluo/commit/c8a29069f758341f6b9103a3419c9a194d79a6fa) Thanks [@ayden94](https://github.com/ayden94)! - Stabilize framework-owned shared symbol identities across compatible same-realm duplicate package copies. Redis and Queue now preserve application- and scope-owned duplicate registration checks across copies before external clients or workers start.
+
+- [#3847](https://github.com/fluojs/fluo/pull/3847) [`56fcaa3`](https://github.com/fluojs/fluo/commit/56fcaa3aa014907f34db1cbcf20cffefae673c12) Thanks [@ayden94](https://github.com/ayden94)! - Wait for BullMQ queue and worker connections to finish initializing before completing bootstrap, preventing unhandled Redis rejections when idle workers shut down immediately.
+
+- Updated dependencies [[`862fb52`](https://github.com/fluojs/fluo/commit/862fb52acb2d2a67c4aa6667f93d8a7c4f82718d), [`96a0180`](https://github.com/fluojs/fluo/commit/96a0180f00f14296e9961d703de2ede386a8489a), [`5ff6861`](https://github.com/fluojs/fluo/commit/5ff686131040d9b02fdc79cfc9da849e98bb4744), [`c8a2906`](https://github.com/fluojs/fluo/commit/c8a29069f758341f6b9103a3419c9a194d79a6fa), [`10b121f`](https://github.com/fluojs/fluo/commit/10b121fc044fa1e348dfd95af26798c65597a631), [`f4b7257`](https://github.com/fluojs/fluo/commit/f4b72574ecf3f57ca22716fe334ce2a0629357f5)]:
+  - @fluojs/runtime@3.1.2
+  - @fluojs/core@2.1.2
+  - @fluojs/di@3.1.2
+  - @fluojs/redis@2.0.2
+
 ## 3.0.1
 
 ### Patch Changes
