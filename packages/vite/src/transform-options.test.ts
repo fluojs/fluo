@@ -160,21 +160,26 @@ export class LoginDto {
     expect(transformedCode).toContain('_init_username');
   });
 
-  it('locks Babel decorator transforms to the documented 2023-11 proposal version', async () => {
+  it('compiles 2023-11 decorated TypeScript fields with the built-in preset', async () => {
     const plugin = fluoDecoratorsPlugin();
 
-    await runTransform(plugin, 'export class Example {}', '/app/src/example.ts?import');
+    const result = await runTransform(
+      plugin,
+      `function Field(_value: undefined, _context: ClassFieldDecoratorContext) {}
+export class Example {
+  declare readonly code: string;
+  @Field
+  name!: string;
+}`,
+      '/app/src/example.ts?import',
+    );
 
     expect(transformAsyncMock).toHaveBeenCalledTimes(1);
-    expect(transformAsyncMock.mock.calls[0]?.[1]).toEqual(
-      expect.objectContaining({
-        filename: '/app/src/example.ts',
-        presets: [
-          expect.any(Function),
-          ['@babel/preset-typescript', { allowDeclareFields: true }],
-        ],
-      }),
-    );
+    const code = result && typeof result === 'object' && 'code' in result && typeof result.code === 'string'
+      ? result.code
+      : '';
+    expect(code).toContain('_init_name');
+    expect(code).not.toContain('name!: string');
   });
 
   it('uses explicit test-boundary Babel and sourcemap options', async () => {

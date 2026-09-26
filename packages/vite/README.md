@@ -59,6 +59,8 @@ export default defineConfig({
 
 The plugin transforms `.ts`, `.tsx`, `.mts`, and `.cts` files with Babel using the `2023-11` decorators proposal and `@babel/preset-typescript`. It strips Vite query suffixes before deciding the file boundary, skips declarations, `node_modules`, and (in application mode) `*.test.*` and `*.spec.*`. Importing `@fluojs/vite` or creating `fluoDecoratorsPlugin()` does not load `@babel/core`; missing Babel peers are surfaced as transform-time diagnostics for the source file Vite is transforming. Every transformed module that contains decorator syntax preloads `@fluojs/core/metadata-preload` before its decorated declarations evaluate.
 
+The built-in preset retains `allowDeclareFields` only with Babel 7, where it is needed for declaration-only fields, and omits the removed option with Babel 8. Decorated TypeScript fields work with both versions. The workspace still pins Babel 7; this change does not upgrade its dependencies or change the published peer ranges.
+
 ## Decorator Transform Boundary
 
 `@fluojs/vite` owns the one decorator transform for application and Vitest module graphs. Generated non-Deno starters keep the boundary explicit:

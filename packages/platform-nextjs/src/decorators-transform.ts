@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import {
   type TransformOptions,
   transformAsync,
+  version as babelVersion,
 } from '@babel/core';
 
 const require = createRequire(import.meta.url);
@@ -50,7 +51,9 @@ export async function transformFluoDecorators(
     filename: filePath,
     inputSourceMap,
     plugins: [[decoratorsPluginPath, { version: '2023-11' }]],
-    presets: [[typescriptPresetPath, { allowDeclareFields: true }]],
+    presets: [babelVersion.startsWith('7.')
+      ? [typescriptPresetPath, { allowDeclareFields: true }]
+      : typescriptPresetPath],
     sourceMaps: true,
   });
 

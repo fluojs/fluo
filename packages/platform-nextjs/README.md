@@ -283,6 +283,10 @@ sharing, or host Fluo separately when deterministic single-instance ownership ma
 Turbopack `*.ts` rule for application files, excluding browser and dependency
 files. The loader applies the same Babel TC39 decorators
 `2023-11` transform used by `@fluojs/vite` and returns JavaScript to Turbopack.
+Its TypeScript preset retains `allowDeclareFields` for declaration-only fields
+with Babel 7 and omits the removed option with isolated Babel 8 dependencies.
+Both versions retain decorated field handling.
+The packaged Next adapter continues to declare Babel 7 dependencies.
 
 The packaged compiler integration supports Turbopack only, not webpack.
 Keep decorated backend declarations in `.ts` files; the helper does not add

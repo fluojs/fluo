@@ -284,7 +284,12 @@ function assertGeneratedBrokerStarterIsImportAndInspectSafe(projectDirectory: st
 }
 
 describe('scaffoldBootstrapApp', () => {
-  it('transforms decorated test files through the generated Babel config', async () => {
+  it.each([
+    { babelRoot: undefined, version: 'workspace Babel 7' },
+    ...(process.env.FLUO_BABEL8_ROOT
+      ? [{ babelRoot: process.env.FLUO_BABEL8_ROOT, version: 'isolated Babel 8' }]
+      : []),
+  ])('transforms decorated application and test files through the generated config with $version', async ({ babelRoot }) => {
     const targetDirectory = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-scaffold-test-decorators-')));
     temporaryDirectories.push(targetDirectory);
     await scaffoldBootstrapApp({
@@ -295,34 +300,44 @@ describe('scaffoldBootstrapApp', () => {
       targetDirectory,
     });
     symlinkSync(
-      fileURLToPath(new URL('../../../../node_modules', import.meta.url)),
+      babelRoot ? join(babelRoot, 'node_modules') : fileURLToPath(new URL('../../../../node_modules', import.meta.url)),
       join(targetDirectory, 'node_modules'),
       'dir',
     );
 
-    const transformed = await transformAsync(`
+    const babel: typeof import('@babel/core') = babelRoot
+      ? await import(pathToFileURL(join(babelRoot, 'node_modules/@babel/core/lib/index.js')).href)
+      : { transformAsync };
+    for (const file of ['src/dto.ts', 'src/dto.test.ts']) {
+      const transformed = await babel.transformAsync(`
       const bindings: string[] = [];
       function Field(_value: undefined, context: ClassFieldDecoratorContext) {
         bindings.push(String(context.name));
       }
-      class TestDto {
+      class BaseDto {
+        code = 'base';
+      }
+      class TestDto extends BaseDto {
+        declare readonly code: string;
         @Field
         name = '';
       }
-      export default bindings;
+      const dto = new TestDto();
+      export default { bindings, code: dto.code };
     `, {
       babelrc: false,
       configFile: join(targetDirectory, 'babel.config.cjs'),
       cwd: targetDirectory,
-      filename: join(targetDirectory, 'src', 'dto.test.ts'),
+      filename: join(targetDirectory, file),
     });
 
-    expect(transformed).not.toBeNull();
-    if (!transformed?.code) {
-      throw new TypeError('Expected generated Babel config to transform the decorated test file.');
+      expect(transformed).not.toBeNull();
+      if (!transformed?.code) {
+        throw new TypeError(`Expected generated Babel config to transform ${file}.`);
+      }
+      const module = await import(`data:text/javascript;base64,${Buffer.from(transformed.code).toString('base64')}`);
+      expect(module.default).toEqual({ bindings: ['name'], code: 'base' });
     }
-    const module = await import(`data:text/javascript;base64,${Buffer.from(transformed.code).toString('base64')}`);
-    expect(module.default).toEqual(['name']);
   });
 
   it('generates TS6 starter configs without deprecated baseUrl aliases', async () => {

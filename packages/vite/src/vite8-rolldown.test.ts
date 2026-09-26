@@ -1,3 +1,6 @@
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, type Plugin, type PluginOption, version as viteVersion } from 'vite';
 import { describe, expect, it } from 'vitest';
@@ -5,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { fluoDecoratorsPlugin } from './index.js';
 
 const fixturePath = fileURLToPath(new URL('../test-fixtures/vite8-field-decorator.ts', import.meta.url));
+const babel8Root = process.env.FLUO_BABEL8_ROOT;
 const coreEntryPath = fileURLToPath(new URL('../../core/src/index.ts', import.meta.url));
 const coreInternalPath = fileURLToPath(new URL('../../core/src/internal.ts', import.meta.url));
 const coreMetadataPreloadPath = fileURLToPath(new URL('../../core/src/metadata-preload.ts', import.meta.url));
@@ -20,23 +24,24 @@ const decoratorBoundaryProbe: Plugin = {
     return null;
   },
 };
-const vitePipeline = { build, name: `workspace Vite ${viteVersion} Rolldown` };
+const aliases = [
+  { find: '@fluojs/core/metadata-preload', replacement: coreMetadataPreloadPath },
+  { find: '@fluojs/core/request-pipeline', replacement: coreRequestPipelinePath },
+  { find: '@fluojs/core/internal', replacement: coreInternalPath },
+  { find: '@fluojs/core', replacement: coreEntryPath },
+  { find: '@fluojs/http', replacement: httpDecoratorsPath },
+];
 
 describe('fluoDecoratorsPlugin Vite build integration', () => {
-  it.each([vitePipeline])('$name preserves field decorator metadata through its real build pipeline', async ({ build, name }) => {
+  it('preserves field decorator metadata through the workspace Vite build pipeline', async () => {
+    const name = `workspace Vite ${viteVersion} Rolldown with Babel 7`;
     const plugin = fluoDecoratorsPlugin() as unknown as PluginOption;
     const result = await build({
       configFile: false,
       logLevel: 'silent',
       plugins: [decoratorBoundaryProbe, plugin],
       resolve: {
-        alias: [
-          { find: '@fluojs/core/metadata-preload', replacement: coreMetadataPreloadPath },
-          { find: '@fluojs/core/request-pipeline', replacement: coreRequestPipelinePath },
-          { find: '@fluojs/core/internal', replacement: coreInternalPath },
-          { find: '@fluojs/core', replacement: coreEntryPath },
-          { find: '@fluojs/http', replacement: httpDecoratorsPath },
-        ],
+        alias: aliases,
       },
       build: {
         minify: false,
@@ -64,5 +69,35 @@ describe('fluoDecoratorsPlugin Vite build integration', () => {
         propertyKey: 'name',
       },
     ]);
+  });
+
+  it('executes a real SSR build using the packaged plugin and isolated Babel 8 dependencies', () => {
+    if (!babel8Root) {
+      return;
+    }
+
+    const isolatedFixturePath = join(babel8Root, 'src/vite8-field-decorator.ts');
+    mkdirSync(join(babel8Root, 'src'), { recursive: true });
+    writeFileSync(isolatedFixturePath, readFileSync(fixturePath));
+    const script = `
+      import { build } from 'vite';
+      import { fluoDecoratorsPlugin } from '@fluojs/vite';
+      const result = await build({
+        configFile: false,
+        logLevel: 'silent',
+        plugins: [fluoDecoratorsPlugin()],
+        resolve: { alias: ${JSON.stringify(aliases)} },
+        build: { minify: false, ssr: ${JSON.stringify(isolatedFixturePath)}, write: false },
+      });
+      const chunk = result.output.find((output) => output.type === 'chunk');
+      if (!chunk) throw new Error('Expected a Vite SSR output chunk.');
+      const emitted = await import('data:text/javascript;base64,' + Buffer.from(chunk.code).toString('base64'));
+      process.stdout.write(JSON.stringify(emitted.default));
+    `;
+    const output = execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+      cwd: babel8Root,
+      encoding: 'utf8',
+    });
+    expect(JSON.parse(output)).toEqual([{ metadata: { key: 'display_name', source: 'body' }, propertyKey: 'name' }]);
   });
 });

@@ -59,6 +59,8 @@ export default defineConfig({
 
 이 플러그인은 `.ts`, `.tsx`, `.mts`, `.cts` 파일을 Babel로 변환하며 `2023-11` decorators proposal과 `@babel/preset-typescript`를 사용합니다. 파일 경계를 판단하기 전에 Vite query suffix를 제거하고 declaration 파일, `node_modules`, application mode의 `*.test.*`와 `*.spec.*` 파일을 건너뜁니다. `@fluojs/vite`를 import하거나 `fluoDecoratorsPlugin()`을 생성하는 시점에는 `@babel/core`를 로드하지 않으며, 누락된 Babel peer는 Vite가 변환 중인 소스 파일에 대한 transform-time 진단으로 표시됩니다. Decorator 구문을 포함한 변환 모듈은 decorated 선언이 평가되기 전에 `@fluojs/core/metadata-preload`를 preload합니다.
 
+내장 preset은 선언 전용 필드를 처리하는 Babel 7에서만 `allowDeclareFields`를 유지하고, 해당 옵션이 제거된 Babel 8에서는 전달하지 않습니다. 두 버전 모두 decorated TypeScript field를 처리합니다. Workspace는 계속 Babel 7에 고정되며, 이 변경은 dependency나 배포된 peer 범위를 올리지 않습니다.
+
 ## 데코레이터 변환 경계
 
 `@fluojs/vite`는 application과 Vitest module graph의 단일 decorator transform을 소유합니다. 생성된 non-Deno starter는 파일 경계를 명시적으로 유지합니다:
