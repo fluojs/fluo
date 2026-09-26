@@ -272,6 +272,8 @@ vi.mock('bullmq', () => ({
       this.queue = bullmqState.createQueue(name);
     }
 
+    async waitUntilReady(): Promise<void> {}
+
     async add(_jobName: string, data: Record<string, unknown>, opts: MockQueueJob['opts'] = {}): Promise<{ id: string }> {
       this.queue.addCalls += 1;
 
@@ -414,11 +416,7 @@ vi.mock('bullmq', () => ({
       return bullmqState.runWorker(this.worker);
     }
 
-    async waitUntilReady(): Promise<void> {
-      if (bullmqState.failWorkerRun.has(this.worker.name)) {
-        throw new Error(`worker run fail:${this.worker.name}`);
-      }
-    }
+    async waitUntilReady(): Promise<void> {}
   },
 }));
 
