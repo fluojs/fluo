@@ -48,6 +48,19 @@ describe('queue guide fixtures: native Redis job processing', () => {
     await fixture?.cleanup();
   });
 
+  it('closes idle workers without requiring a warmup delivery', async () => {
+    const { AppModule, QueueProbe: Probe } = createQueueGuideApp({ host: '127.0.0.1', port: fixture!.port });
+    const context = await FluoFactory.createApplicationContext(AppModule);
+
+    try {
+      const probe = await context.get(Probe);
+      expect(probe.handledJobs).toHaveLength(0);
+      expect(probe.attempts).toHaveLength(0);
+    } finally {
+      await context.close();
+    }
+  }, 30_000);
+
   it('enqueues by constructor identity and rehydrates the job prototype on the worker', async () => {
     const { AppModule, QueueProbe: Probe } = createQueueGuideApp({ host: '127.0.0.1', port: fixture!.port });
     const context = await FluoFactory.createApplicationContext(AppModule);
@@ -132,10 +145,7 @@ describe('queue guide fixtures: native Redis job processing', () => {
       const queue = await context.get<Queue>(getQueueToken());
       const probe = await context.get(Probe);
 
-      // One real delivery first, so the rejections are exercised against a
-      // live worker and shutdown closes workers that have served the queue
-      // (closing fully idle workers surfaces an unrelated BullMQ/ioredis
-      // shutdown rejection; see the fixture README discrepancy notes).
+      // One real delivery first proves the rejections leave a live queue intact.
       await queue.enqueue(new ProcessOrderJob('warmup'));
       const warmup = await boundedWait(probe.waitHandled(), 'warmup delivery');
       expect(warmup.orderId).toBe('warmup');
