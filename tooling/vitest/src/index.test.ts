@@ -1,12 +1,15 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
+import type { ViteUserConfig } from 'vitest/config';
+import { createVitest } from 'vitest/node';
 
-import { FLUO_VITEST_SHUTDOWN_DEBUG_ENV } from './shutdown-debug.js';
+import workspaceConfig from '../../../vitest.config.js';
 import { collectWorkspaceAliases, createFluoVitestWorkspaceConfig } from './index.js';
+import { FLUO_VITEST_SHUTDOWN_DEBUG_ENV } from './shutdown-debug.js';
 
 type TestPackageManifestOptions = {
   exports?: unknown;
@@ -135,6 +138,48 @@ afterEach(() => {
 });
 
 describe('createFluoVitestWorkspaceConfig', () => {
+  it('collects app source tests without collecting generated Next build copies', async () => {
+    const config: ViteUserConfig = workspaceConfig;
+    const project = config.test?.projects?.find(
+      (candidate) => typeof candidate === 'object' && candidate !== null &&
+        'test' in candidate && candidate.test?.name === 'apps',
+    );
+    if (typeof project !== 'object' || project === null || !('test' in project)) {
+      throw new Error('Missing apps test project');
+    }
+
+    const candidates = [
+      'apps/docs/src/example.test.ts',
+      'apps/docs/.next/standalone/tooling/docs/fixtures/example.test.ts',
+      'apps/docs/.next/server/example.test.ts',
+    ];
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-vitest-app-collection-')));
+    try {
+      for (const candidate of candidates) {
+        const path = join(root, candidate);
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, 'export {};\n');
+      }
+      const runner = await createVitest('test', {
+        config: false,
+        root,
+        watch: false,
+        include: project.test?.include,
+        exclude: project.test?.exclude,
+      });
+      try {
+        const specifications = await runner.globTestSpecifications();
+        expect(specifications.map((specification) => specification.moduleId)).toEqual([
+          join(root, 'apps/docs/src/example.test.ts'),
+        ]);
+      } finally {
+        await runner.close();
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('keeps shutdown debug hooks disabled by default', () => {
     delete process.env[FLUO_VITEST_SHUTDOWN_DEBUG_ENV];
 
