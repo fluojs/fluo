@@ -9,6 +9,8 @@ export {
   useSearchParams,
 } from './client/hooks.js';
 export { Link } from './client/link.js';
+export type { ReactNavigationLoadResult, ReactNavigationModules } from './client/navigation-payload.js';
+export { loadReactNavigationDestination } from './client/navigation-payload.js';
 export type { LinkProps } from './client/link.js';
 export { ReactClientRouterProvider } from './client/provider.js';
 export { createReactRouteSnapshot } from './client/snapshot.js';
