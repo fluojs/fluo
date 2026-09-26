@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { constants, realpathSync, statSync } from 'node:fs';
-import { open, realpath, stat } from 'node:fs/promises';
+import { type FileHandle, open, realpath, statfs } from 'node:fs/promises';
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path';
 
 import type {
@@ -172,25 +172,10 @@ async function openContainedAsset(
       return undefined;
     }
 
-    const expected = await stat(resolvedPath, { bigint: true });
-    if (!expected.isFile()) {
-      return undefined;
-    }
-
-    const handle = await open(resolvedPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const handle = await openPinnedAsset(resolvedPath);
     try {
       const metadata = await handle.stat({ bigint: true });
-      if (!metadata.isFile() || metadata.dev !== expected.dev || metadata.ino !== expected.ino) {
-        return undefined;
-      }
-
-      const openedPath = await realpath(resolvedPath);
-      const openedFromRoot = relative(root, openedPath);
-      if (openedFromRoot === '..' || openedFromRoot.startsWith(`..${sep}`) || isAbsolute(openedFromRoot)) {
-        return undefined;
-      }
-      const current = await stat(openedPath, { bigint: true });
-      if (!current.isFile() || current.dev !== metadata.dev || current.ino !== metadata.ino) {
+      if (!metadata.isFile()) {
         return undefined;
       }
 
@@ -206,4 +191,51 @@ async function openContainedAsset(
     }
     throw error;
   }
+}
+
+async function openPinnedAsset(path: string): Promise<FileHandle> {
+  if (process.platform === 'darwin') {
+    // Darwin O_NOFOLLOW_ANY rejects symlinks in every component of this open.
+    return await open(path, constants.O_RDONLY | constants.O_NONBLOCK | 0x20000000);
+  }
+
+  if (process.platform === 'linux') {
+    // A non-procfs /proc/self/fd cannot supply a trusted directory capability.
+    let procfsType: number;
+    try {
+      procfsType = (await statfs('/proc/self/fd')).type;
+    } catch {
+      throw new Error('Bun filesystem static assets require procfs on Linux.');
+    }
+    if (procfsType !== 0x9fa0) {
+      throw new Error('Bun filesystem static assets require procfs on Linux.');
+    }
+
+    const components = path.slice(1).split('/');
+    const leaf = components.pop();
+    if (!leaf) {
+      throw new Error('Bun filesystem static asset path must name a file.');
+    }
+
+    let parent = await open('/', constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    try {
+      for (const component of components) {
+        const next = await open(
+          `/proc/self/fd/${parent.fd}/${component}`,
+          constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+        );
+        const previous = parent;
+        parent = next;
+        await previous.close();
+      }
+      return await open(
+        `/proc/self/fd/${parent.fd}/${leaf}`,
+        constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW,
+      );
+    } finally {
+      await parent.close();
+    }
+  }
+
+  throw new Error('Bun filesystem static assets require Darwin or Linux.');
 }

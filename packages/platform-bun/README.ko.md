@@ -91,6 +91,8 @@ await app.listen();
 
 Source는 검증한 파일을 snapshot으로 만든 뒤 정확한 byte, length, MIME type, strong `ETag`, `Last-Modified`를 반환하고 symlink를 통한 root 이탈도 거부합니다. 없는 파일은 이후 경로로 넘깁니다. 선택적인 `precompressed: true`는 request가 허용하는 `.br` 또는 `.gz` sibling을 고르고 `Vary: Accept-Encoding`을 설정합니다. 공유 middleware는 dotfile 및 trailing-slash index policy(기본값은 각각 `ignore`, 비활성), cache control, body 없는 `HEAD`, conditional `304`/`412`, 단일 range `206`/`416`, 요청 정리를 소유합니다.
 
+안전한 filesystem open에는 macOS 또는 `/proc/self/fd`에 procfs가 mount된 Linux가 필요합니다. 이를 사용할 수 없는 환경에서는 root 이탈 방지 없이 경로를 제공하지 않고 실패합니다.
+
 ### 수동 Fetch 처리
 Bun 서버를 직접 관리하려는 경우 fetch 핸들러를 직접 사용할 수 있습니다.
 `dispatcher`는 이미 bootstrap된 application의 `app.getHttpDispatcher()`에서 가져와야 합니다. `createBunFetchHandler(...)`는 동기적으로 fetch bridge를 만들고 raw-body와 multipart request parsing을 보존하지만, shutdown ownership, websocket upgrade, native `routes` acceleration은 주변 `Bun.serve(...)` host 또는 managed adapter 경로가 소유합니다.

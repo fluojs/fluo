@@ -91,6 +91,8 @@ await app.listen();
 
 The source snapshots each verified file before returning exact bytes, length, MIME type, strong `ETag`, and `Last-Modified`; it rejects paths escaping the root even through symlinks. Missing files fall through. Optional `precompressed: true` selects accepted `.br` or `.gz` siblings and sets `Vary: Accept-Encoding`. The shared middleware owns dotfile and trailing-slash index policy (`ignore` and disabled by default), cache control, bodyless `HEAD`, conditional `304`/`412`, single-range `206`/`416`, and request cleanup.
 
+Secure filesystem opening requires macOS or Linux with mounted procfs at `/proc/self/fd`; unavailable support fails closed rather than serving a path without containment.
+
 ### Manual Fetch Handling
 If you prefer to manage the Bun server yourself, you can use the fetch handler directly.
 The `dispatcher` should come from the already bootstrapped application via `app.getHttpDispatcher()`. `createBunFetchHandler(...)` synchronously creates the fetch bridge and preserves raw-body and multipart request parsing, while shutdown ownership, websocket upgrades, and native `routes` acceleration remain responsibilities of the surrounding `Bun.serve(...)` host or the managed adapter path.

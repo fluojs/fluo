@@ -136,11 +136,12 @@ try {
 
   const controller = new AbortController();
   const request = get('/assets/cancel.txt', { signal: controller.signal });
+  const rejected = assert.rejects(request);
   await bounded(entered.promise, 'cancellation source entry');
   controller.abort();
   await bounded(aborted.promise, 'source cancellation notification');
   await bounded(cleaned.promise, 'source cleanup');
-  await assert.rejects(request);
+  await rejected;
   console.log('Bun native static assets: GET/HEAD, MIME, containment, validators, ranges, encoding, cancellation passed');
 } finally {
   await app?.close();

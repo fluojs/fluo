@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createBunFileSystemAssetSource } from './index.js';
 
 const fileProbe = vi.hoisted(() => ({
+  onRealpath: undefined as undefined | ((path: string) => Promise<void>),
   onStat: undefined as undefined | ((path: string) => Promise<void>),
   onOpen: undefined as undefined | ((path: string) => Promise<void>),
   opened: 0,
@@ -17,6 +18,10 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...actual,
+    async realpath(...args: Parameters<typeof actual.realpath>) {
+      await fileProbe.onRealpath?.(String(args[0]));
+      return actual.realpath(...args);
+    },
     async stat(...args: Parameters<typeof actual.stat>) {
       await fileProbe.onStat?.(String(args[0]));
       return actual.stat(...args);
@@ -59,6 +64,7 @@ async function bytes(asset: Awaited<ReturnType<typeof selected>>): Promise<Uint8
 }
 
 afterEach(async () => {
+  fileProbe.onRealpath = undefined;
   fileProbe.onStat = undefined;
   fileProbe.onOpen = undefined;
   expect(fileProbe.closed).toBe(fileProbe.opened);
@@ -107,6 +113,17 @@ describe('Bun filesystem static asset source', () => {
     }
   });
 
+  it('serves symlinks whose canonical target stays inside the root', async () => {
+    const root = await assetRoot();
+    await mkdir(join(root, 'assets'));
+    await writeFile(join(root, 'assets', 'app.js'), 'inside');
+    await symlink(join(root, 'assets'), join(root, 'shortcut'));
+    const source = createBunFileSystemAssetSource({ root });
+
+    expect(new TextDecoder().decode(await bytes(await selected(source, 'shortcut/app.js')))).toBe('inside');
+    await expect(source.resolve('assets', { acceptedEncodings: ['identity'] })).resolves.toBeUndefined();
+  });
+
   it('does not open a replaced intermediate directory outside the root', async () => {
     const root = await assetRoot();
     const outside = await assetRoot();
@@ -126,18 +143,57 @@ describe('Bun filesystem static asset source', () => {
     })).resolves.toBeUndefined();
   });
 
-  it('rejects a directory replaced between realpath and stat', async () => {
+  it('rejects an intermediate directory replaced before canonical resolution', async () => {
     const root = await assetRoot();
     const outside = await assetRoot();
     await mkdir(join(root, 'assets'));
     await writeFile(join(root, 'assets', 'app.js'), 'inside');
     await writeFile(join(outside, 'app.js'), 'outside');
-    fileProbe.onStat = async (path) => {
-      fileProbe.onStat = undefined;
+    fileProbe.onRealpath = async (path) => {
+      fileProbe.onRealpath = undefined;
       if (path.endsWith('/assets/app.js')) {
         await rename(join(root, 'assets'), join(root, 'original'));
         await symlink(outside, join(root, 'assets'));
       }
+    };
+
+    await expect(createBunFileSystemAssetSource({ root }).resolve('assets/app.js', {
+      acceptedEncodings: ['identity'],
+    })).resolves.toBeUndefined();
+  });
+
+  it('never serves outside bytes when an intermediate directory is swapped ABA', async () => {
+    const root = await assetRoot();
+    const outside = await assetRoot();
+    await mkdir(join(root, 'assets'));
+    await writeFile(join(root, 'assets', 'app.js'), 'inside');
+    await writeFile(join(outside, 'app.js'), 'outside');
+    const assets = join(root, 'assets');
+    let outsideLinked = false;
+
+    fileProbe.onStat = async (path) => {
+      if (!path.endsWith('/assets/app.js') || outsideLinked) {
+        return;
+      }
+      await rename(assets, join(root, 'original'));
+      await symlink(outside, assets);
+      outsideLinked = true;
+    };
+    fileProbe.onOpen = async (path) => {
+      if (!path.endsWith('/assets/app.js') || outsideLinked) {
+        return;
+      }
+      await rename(assets, join(root, 'original'));
+      await symlink(outside, assets);
+      outsideLinked = true;
+    };
+    fileProbe.onRealpath = async (path) => {
+      if (!path.endsWith('/assets/app.js') || !outsideLinked) {
+        return;
+      }
+      await rm(assets);
+      await rename(join(root, 'original'), assets);
+      outsideLinked = false;
     };
 
     await expect(createBunFileSystemAssetSource({ root }).resolve('assets/app.js', {
