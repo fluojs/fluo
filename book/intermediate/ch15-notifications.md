@@ -78,7 +78,7 @@ import { NotificationsModule } from '@fluojs/notifications';
 export class AppModule {}
 ```
 
-After this registration, you can inject `NotificationsService`. The service uses the registered channel list to pass each notification to the right transport or queue boundary. `NotificationsModule.forRoot(...)` and `NotificationsModule.forRootAsync(...)` export `NotificationsService`, `NOTIFICATIONS`, and `NOTIFICATION_CHANNELS` globally by default. Set `global: false` when those providers should stay visible only to the module that imports the notifications module.
+After this registration, import `NotificationsService` from `@fluojs/notifications` and inject it with class-level `@Inject(NotificationsService)`. The service uses the registered channel list to pass each notification to the right transport or queue boundary. `NotificationsModule.forRoot(...)` and `NotificationsModule.forRootAsync(...)` export only `NotificationsService`, globally by default. Set `global: false` when the service should stay visible only to the module that imports the notifications module.
 
 Use `forRootAsync(...)` when channels or optional seams come from DI-resolved settings instead of static module options:
 
@@ -314,7 +314,7 @@ The base package follows fluo's **Explicit Boundaries** philosophy. Channel sele
 
 1. **No Default Implementations or Discovery**: It doesn't provide built-in email, Slack, Discord, queue, or event-bus implementations, and it does not discover channels from provider decorators or emitted metadata. Those live in dedicated packages or application code and are passed as explicit `NotificationChannel` values.
 2. **No Implicit Env**: It doesn't read `process.env`. Every setting must be passed explicitly through static options or `forRootAsync(...)`.
-3. **Transport Agnostic**: It works on Node.js, Bun, Deno, and Workers because queue and event publication are abstract seams.
+3. **Implementation-Agnostic Integration Seams**: Queues and event publishers are supplied through abstract seams, while the supported host range for `@fluojs/notifications` is Node.js `>=24.0.0 <27`.
 4. **No Resource Ownership**: Status snapshots report queue/event-bus integrations as externally managed; the foundation package does not create, import, close, or drain those resources.
 
 These limitations keep the orchestration layer stable even when the underlying transport changes. When an extension is needed, a new channel, queue adapter, or event publisher can be added through the same contract without changing existing callers much.
@@ -327,9 +327,8 @@ These limitations keep the orchestration layer stable even when the underlying t
 
 ### Services and Tokens
 - `NotificationsService`: The primary API for `dispatch(...)`, `dispatchMany(...)`, and `createPlatformStatusSnapshot()`.
-- `Notifications`: Compatibility facade interface implemented by the `NOTIFICATIONS` token value.
-- `NOTIFICATIONS`: Compatibility facade token exposing `dispatch(...)` and `dispatchMany(...)`.
-- `NOTIFICATION_CHANNELS`: Token for the normalized channel list.
+
+There are no public injection tokens. Register `NotificationsModule` and inject the service with class-level `@Inject(NotificationsService)`. Both `forRoot(...)` and `forRootAsync(...)` export only this service, globally by default or only to the importing module with `global: false`.
 
 ### Dispatch and Channel Contracts
 - `NotificationChannel`: Contract for a new delivery Provider.
