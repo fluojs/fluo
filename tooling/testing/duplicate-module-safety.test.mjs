@@ -62,6 +62,22 @@ test('coverage file remains checked JSON rather than generated runtime state', (
   assert.deepEqual(loadCoverageManifest(root).packages.map((entry) => entry.package), publicPackageNames(root));
 });
 
+test('non-packed hosts cite their own executable checks without claiming Node execution', () => {
+  const coverage = loadCoverageManifest(root);
+  for (const [packageName, platform, check] of [
+    ['@fluojs/platform-bun', 'bun', 'tooling/native-runtime/platform-bun-native-conformance.test.mjs'],
+    ['@fluojs/platform-cloudflare-workers', 'workers', 'tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs'],
+    ['@fluojs/platform-deno', 'deno', 'packages/platform-deno/deno/native-adapter.test.js'],
+    ['@fluojs/platform-nextjs', 'next', 'packages/platform-nextjs/e2e/next.test.mjs'],
+  ]) {
+    const entry = coverage.packages.find((row) => row.package === packageName);
+    assert.equal(entry.status, 'not-applicable');
+    assert.equal(entry.platforms.node, 'not-applicable');
+    assert.equal(entry.platforms[platform], 'host-evidence');
+    assert.ok(entry.evidence.includes(check));
+  }
+});
+
 test('command records preserve bounded timeout process output and signal evidence', async () => {
   await assert.rejects(
     commandRecord(

@@ -405,15 +405,16 @@
       "surfaces": [],
       "platforms": {
         "node": "not-applicable",
-        "bun": "not-applicable",
+        "bun": "host-evidence",
         "deno": "not-applicable",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
       "evidence": [
-        "packages/platform-bun/package.json"
+        "tooling/native-runtime/platform-bun-native-conformance.test.mjs",
+        ".github/workflows/ci.yml"
       ],
-      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+      "rationale": "Not packed here; the Bun-native routing and lifecycle suite runs the built adapter under Bun in CI, not in the Node fixture."
     },
     {
       "package": "@fluojs/platform-cloudflare-workers",
@@ -424,13 +425,15 @@
         "node": "not-applicable",
         "bun": "not-applicable",
         "deno": "not-applicable",
-        "workers": "not-applicable",
+        "workers": "host-evidence",
         "next": "not-applicable"
       },
       "evidence": [
-        "packages/platform-cloudflare-workers/package.json"
+        "tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs",
+        "tooling/native-runtime/cloudflare-workers-response-cookie-conformance-harness.mjs",
+        ".github/workflows/ci.yml"
       ],
-      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+      "rationale": "Not packed here; the existing response-cookie conformance suite runs a real workerd host in CI, without claiming duplicate package interoperability."
     },
     {
       "package": "@fluojs/platform-deno",
@@ -440,14 +443,15 @@
       "platforms": {
         "node": "not-applicable",
         "bun": "not-applicable",
-        "deno": "not-applicable",
+        "deno": "host-evidence",
         "workers": "not-applicable",
         "next": "not-applicable"
       },
       "evidence": [
-        "packages/platform-deno/package.json"
+        "packages/platform-deno/deno/native-adapter.test.js",
+        ".github/workflows/ci.yml"
       ],
-      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+      "rationale": "Not packed here; the Deno-native adapter journey runs a built listener and fetch handler in CI, separate from this duplicate-copy matrix."
     },
     {
       "package": "@fluojs/platform-express",
@@ -505,12 +509,13 @@
         "bun": "not-applicable",
         "deno": "not-applicable",
         "workers": "not-applicable",
-        "next": "not-applicable"
+        "next": "host-evidence"
       },
       "evidence": [
-        "packages/platform-nextjs/package.json"
+        "packages/platform-nextjs/e2e/next.test.mjs",
+        "packages/platform-nextjs/e2e/fixture/app/api/app/[[...path]]/route.ts"
       ],
-      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+      "rationale": "Not packed here; the existing Next.js production e2e fixture owns hosted routing evidence and is not presented as duplicate-copy execution."
     },
     {
       "package": "@fluojs/platform-nodejs",
