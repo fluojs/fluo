@@ -26,6 +26,9 @@ parameter를 `"1"`로 직렬화하고 `charset=utf-8`을 추가할 수 있습니
 `Accept`를 추가하고 `Set-Cookie`와 다른 header를 유지하며 기존 `Cache-Control`에
 `private, no-store`를 더합니다. 특히 cookie나 인증의 영향을 받는 navigation result는
 client 또는 중간 cache가 재사용하면 안 됩니다.
+Configured page renderer의 entry status와 header는 일반 document와 협상된 결과에 모두
+적용됩니다. 협상된 결과를 위해 HTML stream을 열지 않습니다. Renderer status가 `404`처럼
+2xx가 아니면 browser helper는 이를 거부하고 full-document fallback을 선택합니다.
 
 ```json
 {
@@ -61,10 +64,12 @@ same-origin HTTP(S)만 받습니다. `credentials: 'same-origin'`, `cache: 'no-s
 `Set-Cookie`를 포함한 browser cookie 처리는 browser에 맡깁니다. Helper는 response를 저장하거나
 prefetch하지 않습니다. Import/render 전에 status, media type, protocol version, server-confirmed
 same-origin URL, string path param, JSON object props, 제공된 build-produced importer map의 module
-key를 검증합니다. Malformed JSON, 지원하지 않는 version/module/URL, non-HTML 또는 다른
-예상 밖 media type, network error, redirect, 404, 401/403, DTO failure, server failure에는
+key를 검증합니다. 로드한 module의 default export도 렌더링 가능한 component인지 확인한
+뒤에만 성공으로 보고합니다. Malformed JSON, 지원하지 않는 version/module/URL, non-HTML 또는
+다른 예상 밖 media type, network error, redirect, 404, 401/403, DTO failure, server failure에는
 application-owned full-document fallback을 위한 non-success result를 반환합니다. 취소는
-`cancelled`를 반환하며 rendering이나 fallback navigation을 시작하지 않습니다. 외부 또는
+`cancelled`를 반환하며 response body를 읽는 동안 발생한 경우에도 import, rendering 또는
+fallback navigation을 시작하지 않습니다. 외부 또는
 non-HTTP(S) URL은 fetch 전에 거부하므로 일반 anchor를 사용하세요.
 
 Browser는 React-owned HTML을 교체하거나 path param을 추측하거나 `pushState`를 호출하거나

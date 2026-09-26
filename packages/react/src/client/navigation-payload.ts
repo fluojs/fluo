@@ -104,6 +104,9 @@ export async function loadReactNavigationDestination(
       return { ok: false, reason: 'unavailable' };
     }
     const parsed: unknown = await response.json();
+    if (options.signal?.aborted) {
+      return { ok: false, reason: 'cancelled' };
+    }
     const payload = parseNavigationPayload(parsed, destination, modules);
     if (payload === undefined) {
       return { ok: false, reason: 'invalid-payload' };
@@ -115,6 +118,9 @@ export async function loadReactNavigationDestination(
     const module = await loader();
     if (options.signal?.aborted) {
       return { ok: false, reason: 'cancelled' };
+    }
+    if (typeof module.default !== 'function') {
+      return { ok: false, reason: 'invalid-payload' };
     }
     return { ok: true, payload, component: module.default };
   } catch (error) {

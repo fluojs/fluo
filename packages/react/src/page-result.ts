@@ -1,5 +1,6 @@
 import {
   type FrameworkResponseValueFinalizerContext,
+  type FrameworkResponseWriterContext,
   registerFrameworkResponseValueFinalizer,
   registerFrameworkResponseWriter,
 } from '@fluojs/http/internal';
@@ -24,8 +25,8 @@ import {
   readReactSsrDiagnosticMarker,
   reportReactSsrDiagnostic,
 } from './diagnostics.js';
-import type { ReactPageRenderer } from './page-renderer.js';
 import { isReactNavigationPage, type ReactNavigationPayload } from './navigation-payload.js';
+import type { ReactPageRenderer } from './page-renderer.js';
 import { getReactRenderPolicies } from './render-policy.js';
 import { isReactServerEntry } from './server-entry.js';
 
@@ -139,15 +140,30 @@ function finalizeReactPageResult(
       enumerable: false,
       value: {
         mediaType: 'application/vnd.fluo.react-navigation+json;v=1',
-        body: ({ request }: FrameworkResponseValueFinalizerContext): ReactNavigationPayload => ({
-          version: 1,
-          url: request.url,
-          params: { ...request.params },
-          destination: {
-            module: destination.module,
-            props: JSON.parse(JSON.stringify(destination.props)),
-          },
-        }),
+        body: ({ request, requestContext, response, applySuccessResponseMetadata }: FrameworkResponseWriterContext): ReactNavigationPayload => {
+          const entry = renderPage(
+            node,
+            requestContext,
+            getReactRenderPolicies(context.handler.controllerToken, context.handler.methodName),
+          );
+          const payload: ReactNavigationPayload = {
+            version: 1,
+            url: request.url,
+            params: { ...request.params },
+            destination: {
+              module: destination.module,
+              props: JSON.parse(JSON.stringify(destination.props)),
+            },
+          };
+          applySuccessResponseMetadata();
+          if (entry.status !== undefined) {
+            response.setStatus(entry.status);
+          }
+          for (const [name, value] of Object.entries(entry.headers)) {
+            response.setHeader(name, typeof value === 'string' ? value : [...value]);
+          }
+          return payload;
+        },
       },
     });
     return page;

@@ -1,19 +1,19 @@
 import { Inject, Module, Scope } from '@fluojs/core';
 import {
-  ForbiddenException,
-  FromPath,
-  RequestDto,
-  UseGuards,
-  UseInterceptors,
-  Version,
   type CallHandler,
+  ForbiddenException,
   type FrameworkRequest,
   type FrameworkResponse,
+  FromPath,
   type GuardContext,
   type InterceptorContext,
   type MiddlewareContext,
   type Next,
   type RequestContext,
+  RequestDto,
+  UseGuards,
+  UseInterceptors,
+  Version,
 } from '@fluojs/http';
 import { FluoFactory } from '@fluojs/runtime';
 import { createElement } from 'react';
@@ -62,8 +62,8 @@ function response(): FrameworkResponse & { body?: unknown } {
   };
 }
 
-it('does not start HTML rendering for a negotiated destination', async () => {
-  // Given: a matched page with a server renderer that would fail if called.
+it('does not start an HTML stream for a negotiated destination', async () => {
+  // Given: a matched page with a renderer that returns entry metadata without opening a stream.
   let renderCalls = 0;
   @Router('/destination')
   class DestinationRouter {
@@ -94,7 +94,52 @@ it('does not start HTML rendering for a negotiated destination', async () => {
     // Then: JSON is committed without opening a React stream or rendering HTML.
     expect(result.statusCode).toBe(200);
     expect(result.body).toMatchObject({ version: 1, destination: { module: './destination.ts' } });
-    expect(renderCalls).toBe(0);
+    expect(renderCalls).toBe(1);
+  } finally {
+    await app.close();
+  }
+});
+
+it('preserves renderer-owned status and headers for document and negotiated page results', async () => {
+  // Given: a matched page whose renderer selects a not-found status and a refreshed session cookie.
+  @Router('/destination')
+  class DestinationRouter {
+    @Path('/')
+    show() {
+      return ReactNavigationPage.create(createElement('main', null, 'Unavailable'), {
+        module: './destination.ts',
+        props: {},
+      });
+    }
+  }
+  @Module({
+    imports: [ReactModule.forRoot({
+      controllers: [DestinationRouter],
+      renderPage: (page) => createReactServerEntry(page, {
+        status: 404,
+        headers: { 'Set-Cookie': 'session=renewed; HttpOnly', 'X-Page': 'unavailable' },
+      }),
+    })],
+  })
+  class AppModule {}
+  const app = await FluoFactory.create(AppModule);
+  try {
+    // When: the same route receives ordinary and explicitly negotiated GETs.
+    const document = response();
+    const navigation = response();
+    await app.dispatch({ ...request(), headers: { accept: 'text/html' } }, document);
+    await app.dispatch(request(), navigation);
+
+    // Then: both retain the renderer's response metadata, with distinct body representations.
+    expect(document.statusCode).toBe(404);
+    expect(navigation.statusCode).toBe(404);
+    for (const result of [document, navigation]) {
+      expect(result.headers['Set-Cookie']).toBe('session=renewed; HttpOnly');
+      expect(result.headers['X-Page']).toBe('unavailable');
+    }
+    expect(document.headers['Content-Type']).toBe('text/html; charset=utf-8');
+    expect(navigation.headers['Content-Type']).toBe('application/vnd.fluo.react-navigation+json;v=1');
+    expect(navigation.body).toMatchObject({ version: 1, destination: { module: './destination.ts' } });
   } finally {
     await app.close();
   }

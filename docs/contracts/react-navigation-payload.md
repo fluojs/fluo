@@ -26,6 +26,9 @@ returns JSON with that media type (a host may serialize its `v` parameter as `"1
 `charset=utf-8`). It adds `Accept` to existing `Vary`, retains `Set-Cookie` and other headers,
 and appends `private, no-store` to an existing `Cache-Control` value. No client or intermediary
 may reuse a navigation result, especially one influenced by cookies or authentication.
+The configured page renderer's entry status and headers apply to both the document and negotiated
+result without opening an HTML stream for the negotiated result. A non-2xx renderer status (for
+example `404`) is still rejected by the browser helper and takes the full-document fallback.
 
 ```json
 {
@@ -62,10 +65,12 @@ header. Browser cookie handling, including `Set-Cookie`, stays with the browser;
 never stores responses or prefetches. It validates status, media type, protocol version,
 server-confirmed same-origin URL, string path params, JSON-object props, and a module key present
 in the supplied build-produced importer map **before** importing or rendering anything.
+It also requires the loaded module to export a usable default component before reporting success.
 Malformed JSON, unsupported versions/modules/URLs, non-HTML or other unexpected media types,
 network errors, redirects, 404, 401/403, DTO failures, and server failures return a non-success
 result for an application-owned full-document fallback. Cancellation returns `cancelled` and
-does not render or initiate fallback navigation. An external or non-HTTP(S) URL is rejected before
+does not import or render, including when cancellation occurs during the response body read, or
+initiate fallback navigation. An external or non-HTTP(S) URL is rejected before
 any fetch; use a normal anchor for it.
 
 The browser does not rewrite React-owned HTML, infer path params, call `pushState`, or install a

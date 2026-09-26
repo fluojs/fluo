@@ -133,3 +133,53 @@ it('does not import or render a destination after cancellation', async () => {
   expect(result).toEqual({ ok: false, reason: 'cancelled' });
   expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
 });
+
+it('does not import a destination when cancellation settles a pending JSON body read', async () => {
+  // Given: a successful response whose body read resolves on the exact abort event.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  const controller = new AbortController();
+  let bodyReadStarted = () => {};
+  const readingBody = new Promise<void>((resolve) => { bodyReadStarted = resolve; });
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    ok: true,
+    redirected: false,
+    headers: new Headers({ 'Content-Type': MEDIA_TYPE }),
+    json: () => {
+      bodyReadStarted();
+      return new Promise((resolve) => {
+        controller.signal.addEventListener('abort', () => resolve(payload), { once: true });
+      });
+    },
+  })));
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  // When: cancellation happens after response acceptance, while JSON is pending.
+  const loading = loadReactNavigationDestination('/products/sku-84?preview=false', modules, {
+    signal: controller.signal,
+  });
+  await readingBody;
+  controller.abort();
+  const result = await loading;
+
+  // Then: no import starts after the cancelled read settles.
+  expect(result).toEqual({ ok: false, reason: 'cancelled' });
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+});
+
+it('falls back when a mapped module has no usable default component', async () => {
+  // Given: a build-mapped module that loads but cannot be rendered as a component.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(payload), {
+    headers: { 'Content-Type': MEDIA_TYPE },
+  })));
+  const module = { default: () => null };
+  Object.defineProperty(module, 'default', { value: undefined });
+  const modules = { './navigation-product.ts': vi.fn(async () => module) };
+
+  // When: the browser loads the mapped module.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', modules);
+
+  // Then: it reports fallback instead of treating an unrenderable module as success.
+  expect(result).toEqual({ ok: false, reason: 'invalid-payload' });
+  expect(modules['./navigation-product.ts']).toHaveBeenCalledOnce();
+});
