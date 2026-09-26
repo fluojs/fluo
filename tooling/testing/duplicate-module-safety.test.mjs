@@ -78,6 +78,18 @@ test('non-packed hosts cite their own executable checks without claiming Node ex
   }
 });
 
+test('full tooling CI prepares native runtimes before host fixtures run', () => {
+  const workflow = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const preflight = workflow.split('  deterministic-preflight:\n')[1]?.split('\n  duplicate-module-safety:')[0];
+  assert.ok(preflight);
+  const tooling = preflight.indexOf('run: pnpm vitest run --project tooling --maxWorkers=1');
+  assert.ok(tooling > 0);
+  for (const action of ['uses: oven-sh/setup-bun@v2', 'uses: denoland/setup-deno@v2']) {
+    const setup = preflight.indexOf(action);
+    assert.ok(setup > 0 && setup < tooling, `${action} must prepare the full tooling project`);
+  }
+});
+
 test('command records preserve bounded timeout process output and signal evidence', async () => {
   await assert.rejects(
     commandRecord(

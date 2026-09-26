@@ -92,6 +92,16 @@ jobs:
       - name: Verify platform consistency governance
         run: pnpm verify:platform-consistency-governance
 
+      - name: Setup Bun for native tooling fixtures
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.3"
+
+      - name: Setup Deno for native tooling fixtures
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.5.0
+
       - name: Verify full tooling project
         run: pnpm vitest run --project tooling --maxWorkers=1
 
