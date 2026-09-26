@@ -35,6 +35,14 @@ test('coverage validation rejects stale, duplicate, unsupported, and invented ev
   assert.ok(failures.some((failure) => failure.includes('duplicate')));
   assert.ok(failures.some((failure) => failure.includes('topology')));
   assert.ok(failures.some((failure) => failure.includes('evidence path')));
+
+  const missing = structuredClone(coverage);
+  missing.packages.pop();
+  assert.ok(validateCoverageManifest(missing, { root }).some((failure) => failure.includes('derived public package inventory')));
+
+  const overClaim = structuredClone(coverage);
+  overClaim.packages.find((entry) => entry.package === '@fluojs/di').topologies.push('incompatible-major-strict-peer');
+  assert.ok(validateCoverageManifest(overClaim, { root }).some((failure) => failure.includes('only demonstrated for @fluojs/core')));
 });
 
 test('packed closure includes every internal dependency of applied packages', () => {
@@ -50,8 +58,8 @@ test('packed closure includes every internal dependency of applied packages', ()
 
 test('coverage file remains checked JSON rather than generated runtime state', () => {
   const source = readFileSync(coverageManifestPath(root), 'utf8');
-  assert.deepEqual(JSON.parse(source), { version: 1, packages: [] });
-  assert.equal(loadCoverageManifest(root).packages.length, 43);
+  assert.equal(JSON.parse(source).packages.length, 43);
+  assert.deepEqual(loadCoverageManifest(root).packages.map((entry) => entry.package), publicPackageNames(root));
 });
 
 test('command records preserve bounded timeout process output and signal evidence', async () => {
@@ -60,6 +68,8 @@ test('command records preserve bounded timeout process output and signal evidenc
       [process.execPath, '--input-type=module', '--eval', "console.log('started'); console.error('diagnostic'); setInterval(() => {}, 1_000);"],
       root,
       100,
+      {},
+      { stdout: 'started', stderr: 'diagnostic' },
     ),
     (error) => {
       assert.match(error.message, /timed out/u);
@@ -102,9 +112,38 @@ test('packed runner records distinct artifact paths, topology evidence, and tear
     assert.notEqual(run.consumers.a.realPath, run.consumers.b.realPath);
     assert.equal(run.consumers.a.artifact, 'A');
     assert.equal(run.consumers.b.artifact, 'B');
-    assert.notEqual(run.consumers.a.integrity, run.consumers.b.integrity);
+    assert.equal(run.consumers.a.integrity, run.consumers.b.integrity);
     assert.notEqual(run.consumers.a.marker, run.consumers.b.marker);
     assert.notEqual(run.rootConsumer.a.realPath, run.rootConsumer.b.realPath);
+    for (const packageName of run.closure) {
+      const first = run.consumers.a.packages[packageName];
+      const second = run.consumers.b.packages[packageName];
+      assert.notEqual(first.realPath, second.realPath);
+      assert.notEqual(first.marker, second.marker);
+      for (const [consumer, side] of [[run.consumers.a, 'A'], [run.consumers.b, 'B'],
+        [run.rootConsumer.a, 'A'], [run.rootConsumer.b, 'B']]) {
+        const installed = consumer.packages[packageName];
+        assert.equal(installed.package, packageName);
+        assert.equal(installed.artifact, side);
+        assert.equal(installed.installedSha256, installed.entrySha256);
+      }
+    }
+    for (const [cross, side] of [[run.rootConsumer.cross.aToB, 'A'], [run.rootConsumer.cross.bToA, 'B']]) {
+      assert.equal(cross.error, true);
+      assert.equal(cross.singleton, 'singleton');
+      assert.equal(cross.request, 'request');
+      assert.equal(cross.context, `fixture-${side}`);
+      assert.equal(cross.metadata, true);
+      assert.equal(cross.sse, true);
+      assert.deepEqual(cross.jwt, { status: 200, subject: `fixture-${side}` });
+      assert.deepEqual(cross.rollback, {
+        cleanupPreserved: true,
+        events: ['start', 'abort', 'end'],
+        originalPreserved: true,
+      });
+      assert.equal(cross.react.status, 200);
+      assert.match(cross.react.body, new RegExp(`data-artifact="${side}"`, 'u'));
+    }
     for (const packageName of ['@fluojs/core', '@fluojs/di', '@fluojs/http', '@fluojs/jwt', '@fluojs/passport',
       '@fluojs/mongoose', '@fluojs/react', '@fluojs/runtime', '@fluojs/platform-nodejs', '@fluojs/platform-fastify', '@fluojs/platform-express']) {
       assert.ok(run.closure.includes(packageName));

@@ -26,23 +26,6 @@ export const coverageManifestPath = (root = defaultRoot) => join(filesystemRoot(
 const topologyKinds = new Set(['same-version-different-path', 'compatible-patch-skew', 'incompatible-major-strict-peer']);
 const platformStatuses = new Set(['native', 'host-evidence', 'not-applicable']);
 const surfaces = new Set(['errors', 'di-singleton', 'di-request', 'request-context', 'sse', 'jwt-passport', 'rollback', 'react-render', 'metadata', 'adapter-listener']);
-const fixtureEvidence = [
-  'tooling/testing/duplicate-module-safety.test.mjs',
-  'tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs',
-  '.github/workflows/ci.yml',
-];
-const appliedCoverage = new Map([
-  ['@fluojs/core', ['errors', 'metadata']],
-  ['@fluojs/di', ['di-singleton', 'di-request']],
-  ['@fluojs/http', ['request-context', 'sse']],
-  ['@fluojs/jwt', ['jwt-passport']],
-  ['@fluojs/mongoose', ['rollback']],
-  ['@fluojs/passport', ['jwt-passport']],
-  ['@fluojs/react', ['react-render']],
-  ['@fluojs/platform-nodejs', ['adapter-listener']],
-  ['@fluojs/platform-fastify', ['adapter-listener']],
-  ['@fluojs/platform-express', ['adapter-listener']],
-]);
 const exercisedPackageSeeds = [
   '@fluojs/core',
   '@fluojs/di',
@@ -70,34 +53,7 @@ export function publicPackageNames(root = defaultRoot) {
 }
 
 export function loadCoverageManifest(root = defaultRoot) {
-  const checked = JSON.parse(readFileSync(coverageManifestPath(filesystemRoot(root)), 'utf8'));
-  if (!checked || checked.version !== 1 || !Array.isArray(checked.packages) || checked.packages.length !== 0) {
-    throw new TypeError('duplicate-module safety coverage manifest must contain the checked dynamic inventory marker.');
-  }
-  return {
-    version: 1,
-    packages: publicPackageNames(root).map((packageName) => {
-      const packageSurfaces = appliedCoverage.get(packageName) ?? [];
-      const applied = packageSurfaces.length > 0;
-      return {
-        evidence: fixtureEvidence,
-        package: packageName,
-        platforms: {
-          bun: 'not-applicable',
-          deno: 'not-applicable',
-          next: 'not-applicable',
-          node: applied ? 'native' : 'not-applicable',
-          workers: 'not-applicable',
-        },
-        rationale: applied
-          ? 'The packed private wrapper root executes this public package from separate physical artifacts.'
-          : 'This package is not exercised by the packed duplicate-copy fixture; its package-owned integration remains authoritative.',
-        status: applied ? 'applied' : 'not-applicable',
-        surfaces: packageSurfaces,
-        topologies: applied ? [...topologyKinds] : [],
-      };
-    }),
-  };
+  return JSON.parse(readFileSync(coverageManifestPath(filesystemRoot(root)), 'utf8'));
 }
 
 function checkedPath(root, candidate) {
@@ -141,13 +97,16 @@ export function validateCoverageManifest(manifest, { root = defaultRoot } = {}) 
     if (entry.status === 'not-applicable' && entry.surfaces.length !== 0) {
       failures.push(`${location} is not-applicable but claims a surface.`);
     }
+    if (entry.package !== '@fluojs/core' && entry.topologies.includes('incompatible-major-strict-peer')) {
+      failures.push(`${location} claims incompatible-major strict-peer evidence only demonstrated for @fluojs/core.`);
+    }
   }
   if (actual.length !== expected.length) failures.push(`coverage rows (${actual.length}) do not match derived public package inventory (${expected.length}).`);
   if (JSON.stringify(actual) !== JSON.stringify(expected)) failures.push('coverage rows are not the lexicographically ordered derived public package inventory.');
   return failures;
 }
 
-export function commandRecord(argv, cwd, timeoutMs, environment = {}) {
+export function commandRecord(argv, cwd, timeoutMs, environment = {}, ready = null) {
   const startedAt = Date.now();
   return new Promise((resolveCommand, rejectCommand) => {
     const child = spawn(argv[0], argv.slice(1), {
@@ -160,6 +119,7 @@ export function commandRecord(argv, cwd, timeoutMs, environment = {}) {
     let stderr = '';
     let timedOut = false;
     let escalation;
+    let timer;
     const terminateProcessGroup = (signal) => {
       if (child.pid === undefined) return;
       try {
@@ -168,20 +128,36 @@ export function commandRecord(argv, cwd, timeoutMs, environment = {}) {
         if (error?.code !== 'ESRCH') throw error;
       }
     };
-    const timer = setTimeout(() => {
-      timedOut = true;
+    const startTimeout = () => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        terminateProcessGroup('SIGTERM');
+        escalation = setTimeout(() => terminateProcessGroup('SIGKILL'), Math.min(1_000, timeoutMs));
+      }, timeoutMs);
+    };
+    const readinessTimer = ready && setTimeout(() => {
       terminateProcessGroup('SIGTERM');
-      escalation = setTimeout(() => terminateProcessGroup('SIGKILL'), Math.min(1_000, timeoutMs));
-    }, timeoutMs);
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
+      rejectCommand(timeoutError(`${argv.join(' ')} readiness`, 10_000));
+    }, 10_000);
+    const checkReady = () => {
+      if (ready && stdout.includes(ready.stdout) && stderr.includes(ready.stderr)) {
+        clearTimeout(readinessTimer);
+        ready = null;
+        startTimeout();
+      }
+    };
+    if (!ready) startTimeout();
+    child.stdout.on('data', (chunk) => { stdout += chunk; checkReady(); });
+    child.stderr.on('data', (chunk) => { stderr += chunk; checkReady(); });
     child.once('error', (error) => {
       clearTimeout(timer);
+      clearTimeout(readinessTimer);
       clearTimeout(escalation);
       rejectCommand(error);
     });
     child.once('close', (exitCode, signal) => {
       clearTimeout(timer);
+      clearTimeout(readinessTimer);
       clearTimeout(escalation);
       const record = { argv, elapsedMs: Date.now() - startedAt, exitCode, signal, stderr, stdout };
       if (timedOut) {
@@ -263,6 +239,7 @@ async function packPackage({ root, sandbox, packageName, side, timeoutMs, comman
   const markerPath = join(packageRoot, 'fixture-artifact.json');
   const manifestPath = join(packageRoot, 'package.json');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const entrySha256 = sha256(readFileSync(join(packageRoot, 'dist/index.js')));
   for (const dependencyKind of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
     for (const [dependency, tarball] of Object.entries(packedArtifacts)) {
       if (manifest[dependencyKind]?.[dependency] !== undefined) {
@@ -272,11 +249,11 @@ async function packPackage({ root, sandbox, packageName, side, timeoutMs, comman
   }
   manifest.fluoDuplicateModuleSafety = { artifact: side, marker, version: 1 };
   writeJson(manifestPath, manifest);
-  writeJson(markerPath, { artifact: side, marker, package: packageName, version: 1 });
+  writeJson(markerPath, { artifact: side, entrySha256, marker, package: packageName, version: 1 });
   const target = join(sandbox, 'artifacts', side, `${packageSlug}.tgz`);
   mkdirSync(dirname(target), { recursive: true });
   commands.push(await commandRecord(['tar', '-czf', target, '-C', stagedRoot, 'package'], sandbox, timeoutMs));
-  return { integrity: sha256(readFileSync(target)), marker, tarball: target };
+  return { entrySha256, integrity: sha256(readFileSync(target)), marker, tarball: target };
 }
 
 async function createCompatiblePatchArtifact({ source, sandbox, timeoutMs, commands }) {
@@ -326,9 +303,32 @@ function createRootConsumer({ sandbox, consumers }) {
       .map(([side, path]) => [`duplicate-module-safety-consumer-${side.toLowerCase()}`, `file:${path}`])),
   });
   writeFileSync(join(rootConsumer, 'root.mjs'), [
-    "import { observation as a } from 'duplicate-module-safety-consumer-a';",
-    "import { observation as b } from 'duplicate-module-safety-consumer-b';",
-    'console.log(JSON.stringify({ a, b }));',
+    "import { observation as a, interop as apiA } from 'duplicate-module-safety-consumer-a';",
+    "import { observation as b, interop as apiB } from 'duplicate-module-safety-consumer-b';",
+    'async function crossCopy(owner, consumer, ownerObservation) {',
+    '  const sse = owner.createSse();',
+    '  const completion = consumer.waitForSseResponseCompletion(sse);',
+    '  const sseCompatible = consumer.isCompatibleSseResponse(sse);',
+    '  sse.close();',
+    '  await completion;',
+    '  const [jwt, rollback, react] = await Promise.all([',
+    '    consumer.authenticateToken(ownerObservation.surfaces.jwtPassport.token),',
+    '    consumer.rollbackForeignError(owner.error),',
+    '    consumer.renderForeignReact(owner.createReactEntry(), ownerObservation.artifact),',
+    '  ]);',
+    '  return {',
+    "    error: consumer.isFluoError(owner.error, '@fluojs/core'),",
+    '    singleton: (await owner.container.resolve(consumer.singletonToken)).kind,',
+    '    request: (await owner.container.createRequestScope().resolve(consumer.requestToken)).kind,',
+    '    context: await owner.runWithRequestContext(owner.requestContext(), () => consumer.getCurrentRequestContext()?.requestId),',
+    '    metadata: consumer.getModuleMetadata(owner.module)?.providers?.length > 0,',
+    '    sse: sseCompatible,',
+    '    jwt: { status: jwt.status, subject: jwt.body?.principal?.subject },',
+    '    rollback,',
+    '    react: { status: react.status, body: react.body },',
+    '  };',
+    '}',
+    'console.log(JSON.stringify({ a, b, cross: { aToB: await crossCopy(apiA, apiB, a), bToA: await crossCopy(apiB, apiA, b) } }));',
     '',
   ].join('\n'));
   return rootConsumer;
@@ -346,7 +346,7 @@ function parseStructuredOutput(stdout, label) {
   throw new Error(`${label} did not emit a final JSON record: ${stdout.slice(-2_000)}`);
 }
 
-async function inspectConsumer({ root, consumerRoot, side, timeoutMs, commands }) {
+async function inspectConsumer({ root, consumerRoot, side, timeoutMs, commands, packageClosure }) {
   const install = await commandRecord(
     ['pnpm', '--dir', consumerRoot, 'install', '--config.node-linker=isolated', '--ignore-workspace', '--offline', '--ignore-scripts', '--lockfile=false'],
     root,
@@ -354,12 +354,14 @@ async function inspectConsumer({ root, consumerRoot, side, timeoutMs, commands }
     { npm_config_offline: 'true' },
   );
   commands.push(install);
-  const inspected = await commandRecord(['node', 'consumer.mjs'], consumerRoot, timeoutMs);
+  const inspected = await commandRecord(['node', 'consumer.mjs'], consumerRoot, timeoutMs, {
+    FLUO_DUPLICATE_PACKAGE_NAMES: JSON.stringify(packageClosure),
+  });
   commands.push(inspected);
   return parseStructuredOutput(inspected.stdout, `consumer ${side}`);
 }
 
-async function inspectRootConsumer({ root, consumerRoot, timeoutMs, commands }) {
+async function inspectRootConsumer({ root, consumerRoot, timeoutMs, commands, packageClosure }) {
   const install = await commandRecord(
     ['pnpm', '--dir', consumerRoot, 'install', '--config.node-linker=isolated', '--ignore-workspace', '--offline', '--ignore-scripts', '--lockfile=false'],
     root,
@@ -367,7 +369,9 @@ async function inspectRootConsumer({ root, consumerRoot, timeoutMs, commands }) 
     { npm_config_offline: 'true' },
   );
   commands.push(install);
-  const inspected = await commandRecord(['node', 'root.mjs'], consumerRoot, timeoutMs);
+  const inspected = await commandRecord(['node', 'root.mjs'], consumerRoot, timeoutMs, {
+    FLUO_DUPLICATE_PACKAGE_NAMES: JSON.stringify(packageClosure),
+  });
   commands.push(inspected);
   return parseStructuredOutput(inspected.stdout, 'root consumer');
 }
@@ -430,8 +434,8 @@ export async function runDuplicateModuleSafety({
         side: 'C',
       });
       const [a, b] = await Promise.all([
-        inspectConsumer({ root, consumerRoot: consumerA, side: 'A', timeoutMs, commands }),
-        inspectConsumer({ root, consumerRoot: consumerB, side: 'B', timeoutMs, commands }),
+        inspectConsumer({ root, consumerRoot: consumerA, side: 'A', timeoutMs, commands, packageClosure }),
+        inspectConsumer({ root, consumerRoot: consumerB, side: 'B', timeoutMs, commands, packageClosure }),
       ]);
       const compatible = await inspectConsumer({
         root,
@@ -439,6 +443,7 @@ export async function runDuplicateModuleSafety({
         side: 'C',
         timeoutMs,
         commands,
+        packageClosure,
       });
       const rootConsumer = createRootConsumer({
         consumers: { A: consumerA, B: consumerB },
@@ -449,7 +454,28 @@ export async function runDuplicateModuleSafety({
         consumerRoot: rootConsumer,
         root,
         timeoutMs,
+        packageClosure,
       });
+      for (const packageName of packageClosure) {
+        const expectedA = artifactRecords.A[packageName];
+        const expectedB = artifactRecords.B[packageName];
+        for (const [observed, expected, side] of [
+          [a, expectedA, 'A'], [b, expectedB, 'B'],
+          [simultaneous.a, expectedA, 'A'], [simultaneous.b, expectedB, 'B'],
+        ]) {
+          const installed = observed.packages?.[packageName];
+          if (installed?.package !== packageName || installed.artifact !== side
+            || installed.marker !== expected.marker || installed.entrySha256 !== expected.entrySha256
+            || installed.installedSha256 !== expected.entrySha256
+            || !installed.realPath.includes('/node_modules/') || !installed.version) {
+            throw new Error(`Installed ${packageName} ${side} does not match packed artifact: ${JSON.stringify(installed)}`);
+          }
+        }
+        if (a.packages[packageName].realPath === b.packages[packageName].realPath
+          || simultaneous.a.packages[packageName].realPath === simultaneous.b.packages[packageName].realPath) {
+          throw new Error(`Installed ${packageName} A and B resolve to one physical copy.`);
+        }
+      }
       if (simultaneous.a.realPath === simultaneous.b.realPath
         || simultaneous.a.marker !== a.marker || simultaneous.b.marker !== b.marker) {
         throw new Error(`Private root consumer did not retain simultaneously installed wrapper A and B copies: ${JSON.stringify({
@@ -457,11 +483,23 @@ export async function runDuplicateModuleSafety({
           root: { a: simultaneous.a.realPath, b: simultaneous.b.realPath },
         })}`);
       }
+      for (const [cross, side] of [[simultaneous.cross?.aToB, 'A'], [simultaneous.cross?.bToA, 'B']]) {
+        if (!cross?.error || cross.singleton !== 'singleton' || cross.request !== 'request'
+          || cross.context !== `fixture-${side}` || !cross.metadata || !cross.sse
+          || cross.jwt?.status !== 200 || cross.jwt.subject !== `fixture-${side}`
+          || !cross.rollback?.originalPreserved || !cross.rollback.cleanupPreserved
+          || cross.react?.status !== 200 || !cross.react.body.includes(`data-artifact="${side}"`)) {
+          throw new Error(`Cross-copy public capabilities failed: ${JSON.stringify(cross)}`);
+        }
+      }
       if (a.realPath === b.realPath || a.version !== b.version || a.realPath === compatible.realPath
         || a.version === compatible.version || a.package !== '@fluojs/core' || b.package !== '@fluojs/core') {
         throw new Error('Packed consumers did not resolve distinct @fluojs/core artifacts.');
       }
-      if (a.integrity === b.integrity || a.marker === b.marker
+      if (a.integrity !== artifactRecords.A['@fluojs/core'].entrySha256
+        || b.integrity !== artifactRecords.B['@fluojs/core'].entrySha256
+        || artifactRecords.A['@fluojs/core'].integrity === artifactRecords.B['@fluojs/core'].integrity
+        || a.marker === b.marker
         || a.marker !== artifactRecords.A['@fluojs/core'].marker
         || b.marker !== artifactRecords.B['@fluojs/core'].marker) {
         throw new Error('Packed consumers did not retain distinct staged artifact markers and integrity.');

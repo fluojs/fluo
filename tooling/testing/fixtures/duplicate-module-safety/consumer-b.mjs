@@ -1,7 +1,7 @@
-import { observation } from './consumer-a.mjs';
+import { interop, observation } from './consumer-a.mjs';
 
-export { observation };
+export { interop, observation };
 
-if (process.argv[1] && process.argv[1].endsWith('consumer.mjs')) {
+if (process.argv[1]?.endsWith('consumer.mjs')) {
   console.log(JSON.stringify(observation));
 }

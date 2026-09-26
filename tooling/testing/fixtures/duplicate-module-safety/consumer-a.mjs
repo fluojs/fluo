@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -38,6 +39,23 @@ let directory = dirname(resolvedPath);
 while (!existsSync(join(directory, 'package.json'))) directory = dirname(directory);
 const manifest = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'));
 const marker = JSON.parse(readFileSync(join(directory, 'fixture-artifact.json'), 'utf8'));
+const installedPackages = Object.fromEntries(
+  JSON.parse(process.env.FLUO_DUPLICATE_PACKAGE_NAMES ?? '[]').map((packageName) => {
+    const entryPath = realpathSync(fileURLToPath(import.meta.resolve(packageName)));
+    const packageRoot = dirname(dirname(entryPath));
+    const packageManifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
+    const packageMarker = JSON.parse(readFileSync(join(packageRoot, 'fixture-artifact.json'), 'utf8'));
+    return [packageName, {
+      artifact: packageMarker.artifact,
+      entrySha256: packageMarker.entrySha256,
+      installedSha256: createHash('sha256').update(readFileSync(entryPath)).digest('hex'),
+      marker: packageMarker.marker,
+      package: packageManifest.name,
+      realPath: entryPath,
+      version: packageManifest.version,
+    }];
+  }),
+);
 const singletonToken = publicToken('fluo.duplicate-module-safety.singleton');
 const requestToken = publicToken('fluo.duplicate-module-safety.request');
 const container = new Container().register(
@@ -85,7 +103,10 @@ function observeSse() {
   return completion.then(() => ({ accepted, compatible: isCompatibleSseResponse(sse), closed, frame: frames.join(''), status: response.status }));
 }
 
-async function observeReact() {
+async function observeReact(
+  entry = createReactServerEntry(createElement('main', { 'data-artifact': marker.artifact }, 'packed fixture')),
+  artifact = marker.artifact,
+) {
   const chunks = [];
   let closed = false;
   const response = {
@@ -102,11 +123,10 @@ async function observeReact() {
       write(chunk) { chunks.push(new TextDecoder().decode(chunk)); return true; },
     },
   };
-  const entry = createReactServerEntry(createElement('main', { 'data-artifact': marker.artifact }, 'packed fixture'));
   await renderReactResponse(entry, requestContext(response), {
     renderToReadableStream: async () => new ReadableStream({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode(`<main data-artifact="${marker.artifact}">packed fixture</main>`));
+        controller.enqueue(new TextEncoder().encode(`<main data-artifact="${artifact}">packed fixture</main>`));
         controller.close();
       },
     }),
@@ -142,7 +162,7 @@ async function observeAdapter(kind) {
   }
 }
 
-async function observeJwtPassport() {
+async function observeJwtPassport(externalToken) {
   class PrincipalProvider {
     current() {
       const principal = assertRequestContext().principal;
@@ -199,12 +219,13 @@ async function observeJwtPassport() {
     const [missing, invalid, valid] = await Promise.all([
       fetch(`${origin}/profile/`),
       fetch(`${origin}/profile/`, { headers: { authorization: 'Bearer invalid-token' } }),
-      fetch(`${origin}/profile/`, { headers: { authorization: `Bearer ${token}` } }),
+      fetch(`${origin}/profile/`, { headers: { authorization: `Bearer ${externalToken ?? token}` } }),
     ]);
     return {
       invalid: { status: invalid.status, wwwAuthenticate: invalid.headers.get('www-authenticate') },
       missing: { status: missing.status, wwwAuthenticate: missing.headers.get('www-authenticate') },
       port,
+      token,
       valid: { body: await valid.json(), status: valid.status },
     };
   } finally {
@@ -212,9 +233,8 @@ async function observeJwtPassport() {
   }
 }
 
-async function observeRollback() {
+async function observeRollback(original = new Error(`original-${marker.artifact}`)) {
   const events = [];
-  const original = new Error(`original-${marker.artifact}`);
   const cleanup = new Error(`cleanup-${marker.artifact}`);
   const session = {
     async abortTransaction() {
@@ -275,10 +295,11 @@ const scopedContext = await runWithRequestContext(requestContext(), async () => 
 
 export const observation = {
   artifact: marker.artifact,
-  integrity: marker.marker,
+  integrity: installedPackages['@fluojs/core']?.installedSha256,
   manifestName: manifest.name,
   marker: manifest.fluoDuplicateModuleSafety?.marker,
   package: manifest.name,
+  packages: installedPackages,
   realPath: resolvedPath,
   resolvedUrl,
   surfaces: {
@@ -298,6 +319,37 @@ export const observation = {
     rollback: await observeRollback(),
   },
   version: manifest.version,
+};
+
+export const interop = {
+  authenticateToken: async (token) => (await observeJwtPassport(token)).valid,
+  container,
+  createReactEntry: () => createReactServerEntry(createElement('main', { 'data-artifact': marker.artifact }, 'packed fixture')),
+  createSse() {
+    const sse = new SseResponse(requestContext({
+      committed: false,
+      headers: {},
+      redirect() {},
+      send() {},
+      setHeader() {},
+      setStatus() {},
+      stream: { closed: false, close() { this.closed = true; }, write() { return true; } },
+    }));
+    return sse;
+  },
+  error,
+  getCurrentRequestContext,
+  getModuleMetadata,
+  isCompatibleSseResponse,
+  isFluoError,
+  module: FixtureModule,
+  requestContext,
+  requestToken,
+  renderForeignReact: observeReact,
+  rollbackForeignError: observeRollback,
+  runWithRequestContext,
+  singletonToken,
+  waitForSseResponseCompletion,
 };
 
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
