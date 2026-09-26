@@ -1,0 +1,811 @@
+{
+  "version": 1,
+  "packages": [
+    {
+      "package": "@fluojs/cache-manager",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/cache-manager/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/cli",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/cli/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/config",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/config/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/core",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew",
+        "incompatible-major-strict-peer"
+      ],
+      "surfaces": [
+        "errors",
+        "metadata"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/cqrs",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/cqrs/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/cron",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/cron/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/di",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "di-singleton",
+        "di-request"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/discord",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/discord/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/drizzle",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/drizzle/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/email",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/email/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/event-bus",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/event-bus/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/graphql",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/graphql/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/http",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "request-context",
+        "sse"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/i18n",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/i18n/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/jwt",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "jwt-passport"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/metrics",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/metrics/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/microservices",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/microservices/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/mongoose",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "rollback"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/notifications",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/notifications/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/openapi",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/openapi/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/passport",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "jwt-passport"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/platform-bun",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "host-evidence",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/native-runtime/platform-bun-native-conformance.test.mjs",
+        ".github/workflows/ci.yml"
+      ],
+      "rationale": "Not packed here; the Bun-native routing and lifecycle suite runs the built adapter under Bun in CI, not in the Node fixture."
+    },
+    {
+      "package": "@fluojs/platform-cloudflare-workers",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "host-evidence",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs",
+        "tooling/native-runtime/cloudflare-workers-response-cookie-conformance-harness.mjs",
+        ".github/workflows/ci.yml"
+      ],
+      "rationale": "Not packed here; the existing response-cookie conformance suite runs a real workerd host in CI, without claiming duplicate package interoperability."
+    },
+    {
+      "package": "@fluojs/platform-deno",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "host-evidence",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/platform-deno/deno/native-adapter.test.js",
+        ".github/workflows/ci.yml"
+      ],
+      "rationale": "Not packed here; the Deno-native adapter journey runs a built listener and fetch handler in CI, separate from this duplicate-copy matrix."
+    },
+    {
+      "package": "@fluojs/platform-express",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "adapter-listener"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/platform-fastify",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "adapter-listener"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/platform-nextjs",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "host-evidence"
+      },
+      "evidence": [
+        "packages/platform-nextjs/e2e/next.test.mjs",
+        "packages/platform-nextjs/e2e/fixture/app/api/app/[[...path]]/route.ts"
+      ],
+      "rationale": "Not packed here; the existing Next.js production e2e fixture owns hosted routing evidence and is not presented as duplicate-copy execution."
+    },
+    {
+      "package": "@fluojs/platform-nodejs",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "adapter-listener"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/prisma",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/prisma/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/queue",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/queue/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/react",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "react-render"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/redis",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/redis/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/runtime",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "adapter-listener"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
+    },
+    {
+      "package": "@fluojs/serialization",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/serialization/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/slack",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/slack/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/socket.io",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/socket.io/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/studio",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/studio/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/terminus",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/terminus/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/testing",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/testing/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/throttler",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/throttler/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/validation",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/validation/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/vite",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/vite/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    },
+    {
+      "package": "@fluojs/websockets",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/websockets/package.json"
+      ],
+      "rationale": "Not exercised by the packed Node fixture; the package-owned checks govern this package."
+    }
+  ]
+}
