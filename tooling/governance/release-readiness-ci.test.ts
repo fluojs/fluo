@@ -17,6 +17,10 @@ it('runs full same-commit release readiness before the stable lane gate and Chan
   // Then
   const buildStep = workflow.indexOf('      - name: Build packages');
   const bunStep = workflow.indexOf('      - name: Verify Bun native routing and lifecycle');
+  const denoSetup = workflow.indexOf('uses: denoland/setup-deno@');
+  expect(denoSetup).toBeGreaterThanOrEqual(0);
+  expect(denoSetup).toBeLessThan(readinessStep);
+  expect(workflow.slice(denoSetup, readinessStep)).toMatch(/deno-version: ['"]?v2\.\d+\.\d+/u);
   expect(buildStep).toBeGreaterThanOrEqual(0);
   expect(buildStep).toBeLessThan(bunStep);
   expect(bunStep).toBeLessThan(readinessStep);

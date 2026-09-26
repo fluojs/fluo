@@ -78,7 +78,7 @@ import { NotificationsModule } from '@fluojs/notifications';
 export class AppModule {}
 ```
 
-이 등록 이후 `NotificationsService`를 주입할 수 있습니다. 서비스는 등록된 채널 목록을 기준으로 요청된 알림을 적절한 transport나 queue 경계로 넘깁니다. `NotificationsModule.forRoot(...)`와 `NotificationsModule.forRootAsync(...)`는 기본적으로 `NotificationsService`, `NOTIFICATIONS`, `NOTIFICATION_CHANNELS`를 global로 export합니다. 이 provider들이 notifications module을 import한 module 안에서만 보이도록 유지하려면 `global: false`를 설정합니다.
+이 등록 이후 `@fluojs/notifications`에서 `NotificationsService`를 import하고 class-level `@Inject(NotificationsService)`로 주입할 수 있습니다. 서비스는 등록된 채널 목록을 기준으로 요청된 알림을 적절한 transport나 queue 경계로 넘깁니다. `NotificationsModule.forRoot(...)`와 `NotificationsModule.forRootAsync(...)`는 `NotificationsService`만 export하며, 기본적으로 global로 노출합니다. 이 서비스를 notifications module을 import한 module 안에서만 보이도록 유지하려면 `global: false`를 설정합니다.
 
 채널이나 optional seam이 정적 module option이 아니라 DI로 해석된 설정에서 나와야 한다면 `forRootAsync(...)`를 사용합니다.
 
@@ -314,7 +314,7 @@ async onOrderPlaced(event: OrderPlacedEvent) {
 
 1. **기본 구현 또는 discovery 없음(No Default Implementations or Discovery)**: 내장된 email, Slack, Discord, queue, event-bus 구현을 제공하지 않고, provider decorator나 emitted metadata에서 channel을 discovery하지 않습니다. 이들은 전용 패키지나 애플리케이션 코드에 존재하며 명시적인 `NotificationChannel` 값으로 전달됩니다.
 2. **암시적 환경 변수 없음(No Implicit Env)**: `process.env`를 읽지 않습니다. 모든 설정은 static option 또는 `forRootAsync(...)`를 통해 명시적으로 전달되어야 합니다.
-3. **트랜스포트 불가지론(Transport Agnostic)**: queue와 event publication이 abstract seam이기 때문에 Node.js, Bun, Deno, Workers에서 작동합니다.
+3. **구현 중립적인 통합 경계**: queue와 event publication은 abstract seam을 통해 애플리케이션 구현을 받습니다. `@fluojs/notifications`가 지원하는 host 범위는 Node.js `>=24.0.0 <27`입니다.
 4. **리소스 소유 없음(No Resource Ownership)**: Status snapshot은 queue/event-bus integration을 externally managed로 보고하며, foundation 패키지는 해당 resource를 create/import/close/drain하지 않습니다.
 
 이 제한은 기본 transport가 변경되더라도 orchestration 계층이 안정적으로 유지되도록 합니다. 확장이 필요할 때도 새 채널, queue adapter, event publisher를 같은 계약으로 추가하면 되므로 기존 호출부를 크게 바꿀 필요가 없습니다.
@@ -327,9 +327,8 @@ async onOrderPlaced(event: OrderPlacedEvent) {
 
 ### Services and Tokens
 - `NotificationsService`: `dispatch(...)`, `dispatchMany(...)`, `createPlatformStatusSnapshot()`을 위한 기본 API.
-- `Notifications`: `NOTIFICATIONS` token 값이 구현하는 compatibility facade interface.
-- `NOTIFICATIONS`: `dispatch(...)`와 `dispatchMany(...)`를 노출하는 compatibility facade token.
-- `NOTIFICATION_CHANNELS`: 정규화된 channel list를 위한 token.
+
+공개 injection token은 없습니다. `NotificationsModule`을 등록한 뒤 class-level `@Inject(NotificationsService)`로 서비스를 주입합니다. `forRoot(...)`와 `forRootAsync(...)` 모두 이 서비스만 export하며, 기본값은 global이고 `global: false`에서는 import한 module에만 보입니다.
 
 ### Dispatch and Channel Contracts
 - `NotificationChannel`: 새로운 delivery Provider를 위한 계약.
