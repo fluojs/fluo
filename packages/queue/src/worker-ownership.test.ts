@@ -22,6 +22,8 @@ vi.mock('bullmq', () => ({
     }
 
     async close(): Promise<void> {}
+
+    async waitUntilReady(): Promise<void> {}
   },
   Worker: class MockBullWorker {
     constructor(name: string) {

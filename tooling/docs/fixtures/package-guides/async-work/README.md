@@ -194,16 +194,13 @@ to documented behavior:
    (`packages/cron/src/module.test.ts` uses `createManualScheduler()`).
    The guide documents the limitation with the working alternatives
    (remove-and-re-add, disable-then-update, custom scheduler).
-2. **`@fluojs/queue` graceful close of fully idle workers surfaces an
-   unhandled ioredis rejection.** Closing an application context whose
-   discovered BullMQ workers are blocking but have never processed a job
-   rejects with `Error: Connection is closed.`
-   (`ioredis@5.10.0/built/Redis.js` `connectionCloseHandler`) as an unhandled
-   rejection; vitest reports it as a run error and exits 1 even though all
-   tests pass. Closing after the workers have processed at least one job is
-   clean (verified by bisecting the two shapes solo). The rejections fixture
-   therefore processes one real job before asserting enqueue-time rejections
-   and closing, which also proves the rejections leave a live queue intact.
+
+The previously observed idle Queue shutdown rejection is covered by
+`queue-guide.test.ts`'s idle-worker shutdown case. Queue awaits both BullMQ
+queue and worker connection readiness before completing bootstrap, so shutdown
+does not interrupt their initialization. The enqueue-rejection case retains one real
+delivery to verify that invalid enqueues leave a live queue intact; idle
+shutdown does not require that warmup.
 
 ## Not executed (explicit gaps)
 
