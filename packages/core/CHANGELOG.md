@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## 2.1.2
+
+### Patch Changes
+
+- [#3828](https://github.com/fluojs/fluo/pull/3828) [`96a0180`](https://github.com/fluojs/fluo/commit/96a0180f00f14296e9961d703de2ede386a8489a) Thanks [@ayden94](https://github.com/ayden94)! - Preserve public error classification and structured fields across compatible same-realm duplicate package copies by using validated, version-aware owner contracts at first-party package boundaries.
+
+- [#3829](https://github.com/fluojs/fluo/pull/3829) [`5ff6861`](https://github.com/fluojs/fluo/commit/5ff686131040d9b02fdc79cfc9da849e98bb4744) Thanks [@ayden94](https://github.com/ayden94)! - Share explicit metadata, React client context identity, and request-local SSR diagnostic markers across compatible same-realm package copies without globalizing application state.
+
+- [#3831](https://github.com/fluojs/fluo/pull/3831) [`f4b7257`](https://github.com/fluojs/fluo/commit/f4b72574ecf3f57ca22716fe334ce2a0629357f5) Thanks [@ayden94](https://github.com/ayden94)! - Make explicitly designated framework-owned public service classes resolve through compatible same-realm package copies while preserving named token isolation and existing module visibility rules.
+
 ## 2.1.1
 
 ### Patch Changes

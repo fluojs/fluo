@@ -102,6 +102,8 @@ vi.mock('bullmq', () => ({
       this.queue = bullmqState.createQueue(name);
     }
 
+    async waitUntilReady(): Promise<void> {}
+
     async add(_jobName: string, data: Record<string, unknown>, opts: MockQueueJob['opts'] = {}): Promise<{ id: string }> {
       const job: MockQueueJob = {
         attemptsMade: 0,
@@ -126,6 +128,8 @@ vi.mock('bullmq', () => ({
     constructor(name: string, processor: (job: MockQueueJob) => Promise<unknown>) {
       this.worker = bullmqState.createWorker(name, processor);
     }
+
+    async waitUntilReady(): Promise<void> {}
 
     on(event: string, listener: FailedListener): this {
       if (event === 'failed') {
