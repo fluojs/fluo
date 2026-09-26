@@ -2,7 +2,7 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-Node.js 전용 트랜잭션 인지형 데이터베이스 래퍼와 선택적 dispose hook을 제공하는 fluo용 Drizzle ORM 통합 패키지입니다.
+트랜잭션 인지형 데이터베이스 래퍼와 선택적 dispose hook을 제공하는 fluo용 Drizzle ORM 통합 패키지입니다. Node.js는 전체 지원 범위이고 Bun 1.4는 비동기 트랜잭션 드라이버를 사용할 때 조건부로 지원합니다.
 
 ## 목차
 
@@ -34,15 +34,30 @@ npm install pg
 
 ## 런타임 지원
 
-루트 `@fluojs/drizzle` 패키지는 Node.js `>=24.0.0 <27`을 요구합니다. ambient transaction context를 유지하기 위해 Node의 `node:async_hooks` 모듈을 import하며 패키지 자체의 지원 범위를 package manifest에 선언합니다. Node 20 및 Node 22 host를 Node.js `>=24.0.0 <27`로 올리세요. Node 24 미만과 Node 27 이상은 지원하지 않습니다.
+루트 `@fluojs/drizzle` 패키지의 전체 Node.js 지원 범위는 `>=24.0.0 <27`입니다. `engines.node` 선언은 지원하는 Node 버전을 지정하며 Bun import 금지가 아닙니다. Ambient transaction context에는 `node:async_hooks`를 사용합니다. Node 20 및 Node 22 host를 Node.js `>=24.0.0 <27`로 올리세요. Node 24 미만과 Node 27 이상은 지원하지 않습니다.
 
-Drizzle ORM 자체는 Bun SQL이나 Cloudflare D1 같은 driver도 대상으로 할 수 있지만, 비 Node transaction-context adapter가 문서화되기 전까지 해당 driver runtime은 이 fluo wrapper 범위 밖입니다.
+Bun 1.4에서는 드라이버가 **비동기 transaction callback을 commit 또는 rollback까지 await할 때** 루트 wrapper import, `DrizzleModule` bootstrap, 트랜잭션 범위의 `current()` 선택을 사용할 수 있습니다. 예를 들어 로컬 `file:` SQLite database와 `@libsql/client`를 사용하는 `drizzle-orm/libsql` 드라이버가 있습니다. 두 패키지를 설치하고 비동기 handle을 일반적인 방식으로 등록합니다.
 
-비 Node 런타임에서는 루트 패키지를 import하지 마세요. Bun, Deno, Cloudflare Workers 또는 다른 비 Node Drizzle driver에서는 raw Drizzle driver handle을 `{ provide, useFactory }`나 `{ provide, useValue }` 같은 애플리케이션 소유 fluo provider 뒤에 등록하고, repository에는 해당 애플리케이션 토큰을 주입하세요. Canonical package chooser/surface 문서와 Bun/Cloudflare book 장에서 이런 raw-provider 패턴을 보여 줍니다.
+```ts
+import { createClient } from '@libsql/client';
+import { DrizzleModule } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/libsql';
+
+const client = createClient({ url: 'file:app.db' });
+const persistence = DrizzleModule.forRoot({
+  database: drizzle(client),
+  dispose: () => client.close(),
+});
+```
+
+동기식 `drizzle-orm/bun-sqlite` transaction runner는 이 wrapper에서 **지원하지 않습니다**. 비동기 callback이 완료되기 전에 commit할 수 있어 `current()`는 여전히 트랜잭션 handle을 선택하지만, 이후 callback 예외가 발생해도 write가 남습니다. `strictTransactions: true`는 `database.transaction(...)`의 존재만 검사하며 callback을 await하지 않는 runner를 판별하지 못합니다. 사용자 작업 전에 모든 동기 드라이버를 부작용 없이 판별하는 방법이 입증되지 않았으므로 일반적인 runtime guard를 추가하지 않습니다. 비동기 드라이버를 선택하고 실제 database에서 rollback을 확인하세요. 여기서 Bun 검증 범위는 예외 기반 commit/rollback과 module lifecycle이며, Node 범위의 Result rollback observer 및 after-commit 보장까지 포함하지 않습니다.
+
+Deno, Cloudflare Workers와 그 밖의 검증되지 않은 비 Node host는 이 루트 wrapper 지원 범위 밖입니다. 이들 host 또는 wrapper와 맞지 않는 드라이버에서는 raw Drizzle handle을 `{ provide, useFactory }`나 `{ provide, useValue }` 같은 애플리케이션 소유 fluo provider 뒤에 등록하세요. Package chooser/surface 문서와 Bun/Cloudflare book 장에서 raw-provider 패턴을 보여 줍니다.
 
 ## 사용 시점
 
 - Node.js `>=24.0.0 <27` 애플리케이션에서 Drizzle을 다른 fluo 모듈과 같은 DI·모듈·라이프사이클 모델 안에 넣고 싶을 때
+- Bun 1.4 애플리케이션에서 `drizzle-orm/libsql`처럼 검증된 비동기 트랜잭션 드라이버로 예외 기반 트랜잭션을 사용할 때
 - repository 코드가 root handle과 현재 트랜잭션 handle 사이를 `current()` 하나로 다루고 싶을 때
 - 애플리케이션 종료 시 underlying driver 정리 로직도 함께 실행해야 할 때
 
@@ -176,7 +191,9 @@ await this.db.transaction(async () => {
 
 중첩 호출은 활성 transaction boundary를 재사용합니다. 이미 boundary가 활성화되어 있는데 중첩 호출이 native transaction option을 전달하면, 기존 transaction을 조용히 바꾸지 않고 해당 중첩 option을 거부합니다. 별도 `boundary`의 `requireAfterCommit`은 native 옵션이 아니라 현재 경계의 capability 요구입니다.
 
-`database.transaction(...)`을 사용할 수 없고 `strictTransactions`가 `false`(기본값)이면 `transaction()`과 `requestTransaction()`은 의도적으로 fail-open(fail-open fallback)하여 callback을 root handle에서 직접 실행합니다. 이는 local fake, read-only adapter, 점진적 migration에는 유용하지만 원자적이지 않으므로 실제 데이터베이스 transaction으로 취급하면 안 됩니다. rollback 보장이 필요한 production 경로에서는 `strictTransactions: true`를 설정하세요. 그러면 startup 및 readiness 진단에서 누락된 `database.transaction(...)` 지원을 드러내고, transaction helper는 트랜잭션 없이 조용히 실행하는 대신 예외를 던집니다. Fail-open callback도 root-handle ALS context에서 실행되므로 중첩 helper는 fallback boundary를 재사용하고, 중첩 request 작업은 ambient request `AbortSignal`을 상속하며, shutdown은 dispose 전에 중첩 직접 실행을 drain합니다. 이 context 보존은 rollback 원자성을 추가하지 않습니다.
+`database.transaction(...)`을 사용할 수 없고 `strictTransactions`가 `false`(기본값)이면 `transaction()`과 `requestTransaction()`은 의도적으로 fail-open(fail-open fallback)하여 callback을 root handle에서 직접 실행합니다. 이는 local fake, read-only adapter, 점진적 migration에는 유용하지만 원자적이지 않으므로 실제 데이터베이스 transaction으로 취급하면 안 됩니다. 누락된 `database.transaction(...)` method를 거부하려면 `strictTransactions: true`를 설정하세요. Startup 및 readiness 진단에서 해당 누락을 드러내고 transaction helper는 직접 실행하는 대신 예외를 던집니다. 이 설정은 기존 드라이버가 callback을 await하는지 확인하지 않습니다. Fail-open callback도 root-handle ALS context에서 실행되므로 중첩 helper는 fallback boundary를 재사용하고, 중첩 request 작업은 ambient request `AbortSignal`을 상속하며, shutdown은 dispose 전에 중첩 직접 실행을 drain합니다. 이 context 보존은 rollback 원자성을 추가하지 않습니다.
+
+`strictTransactions: true`는 누락된 transaction method를 거부할 뿐 `drizzle-orm/bun-sqlite` 같은 기존 동기 runner를 거부하지 않습니다. ALS 선택과 readiness 상태는 해당 드라이버의 rollback 증거가 아닙니다.
 
 Transaction 안에서 생성된 async 작업은 소유 transaction이 commit, rollback 또는 다른 방식으로 settle된 뒤 실행되더라도 ALS context를 상속할 수 있습니다. 이렇게 상속된 continuation에서 나중에 호출하는 `transaction(...)` 또는 `requestTransaction(...)`은 닫힌 transaction handle을 재사용하지 않고 lifecycle tracking이 적용된 새 root로 처리됩니다. Shutdown은 `dispose(database)` 전에 이 새 root를 drain하며, owner가 settle되기 전에 시작한 호출은 계속 활성 boundary를 공유합니다.
 
