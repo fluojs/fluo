@@ -18,6 +18,7 @@ it('accepts the current matching HTTP and browser navigation machine contract', 
 });
 
 it.each([
+  [clientPath, "const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1'", "const MEDIA_TYPE = 'application/json'"],
   [clientPath, "credentials: 'same-origin'", "credentials: 'omit'"],
   [clientPath, "cache: 'no-store'", "cache: 'force-cache'"],
   [clientPath, "redirect: 'manual'", "redirect: 'follow'"],
