@@ -777,6 +777,11 @@ schema는 Vite client manifest 형태와 호환됩니다.
 transform이 필요하면 `@fluojs/vite`를 사용하세요. React SSR code에서 React build asset을 파싱해 기존 hydration
 contract에 공급해야 하면 `@fluojs/react/vite`를 사용하세요. 두 패키지 모두 file route, React-only route grammar,
 Next.js route segment convention, RSC bundler behavior, URL matching을 소유하지 않습니다.
+Manifest integration은 CSS/JS와 icon asset URL을 매핑하지만 해당 byte를 제공하지 않습니다. Bun 호스팅
+애플리케이션은 기존 Vite client output 디렉터리를
+`createStaticAssetsMiddleware({ prefix: '/assets', source: createBunFileSystemAssetSource({ root: './dist/client' }) })`
+로 제공하고 Factory `middleware`에 등록하세요(각각 `@fluojs/http`, `@fluojs/platform-bun`에서 import).
+URL prefix는 manifest `base`와 일치해야 하며 public icon도 해당 output 경로 아래에 배치해야 합니다.
 실행 가능한 `examples/react-vite-ssr/` 애플리케이션은 생성된 asset, streamed Suspense content,
 직접적인 React DOM hydration, client navigation subpath를 통해 이 경계를 보여줍니다.
 

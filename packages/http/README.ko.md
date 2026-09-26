@@ -52,6 +52,20 @@ const assets = createStaticAssetsMiddleware({
 
 Runtime bootstrap의 `middleware`에 `assets`를 등록하세요. 선택된 representation은 MIME type, 정확한 byte와 length, `ETag`, `Last-Modified`, 선택적 `Content-Encoding`을 소유합니다. static write는 adapter의 dynamic compression을 우회하므로 full `GET`, `HEAD`, conditional field, `Range`, `If-Range`에서도 이 값이 일관됩니다. Source는 request가 허용한 `br`, `gzip`, identity byte만 선택하고, 허용되는 representation이 없으면 bodyless `406`을 명시적으로 반환하며, 선택이 달라질 수 있을 때 `Vary: Accept-Encoding`을 사용합니다. Byte range는 선택된 encoded representation을 대상으로 합니다.
 
+Bun에서는 Node 전용 source를 import하지 말고 같은 middleware를 Bun 지원 source와 함께 애플리케이션의 Factory `middleware`에 등록하세요.
+
+```ts
+import { createStaticAssetsMiddleware } from '@fluojs/http';
+import { createBunFileSystemAssetSource } from '@fluojs/platform-bun';
+
+const assets = createStaticAssetsMiddleware({
+  prefix: '/assets',
+  source: createBunFileSystemAssetSource({ root: './dist/client', precompressed: true }),
+});
+```
+
+`root` 디렉터리는 이미 존재해야 합니다. Source는 내부의 검증된 파일을 snapshot으로 만들고 symlink 이탈을 거부하며, 없는 파일은 다음 경로로 넘깁니다. Dotfile, index, conditional, range, cache, cancellation policy는 middleware가 유지합니다.
+
 ## 사용 시점
 
 - `@Controller`, `@Get`, `@Post` 같은 데코레이터로 REST 스타일 엔드포인트를 선언할 때

@@ -52,6 +52,20 @@ const assets = createStaticAssetsMiddleware({
 
 Register `assets` in runtime bootstrap `middleware`. The selected representation owns MIME type, exact bytes and length, `ETag`, `Last-Modified`, and optional `Content-Encoding`; static writes bypass adapter dynamic compression so those values remain coherent for full `GET`, `HEAD`, conditional fields, `Range`, and `If-Range`. A source selects only request-acceptable `br`, `gzip`, or identity bytes, returns an explicit no-representation outcome for bodyless `406`, and uses `Vary: Accept-Encoding` whenever selection can vary. Byte ranges address the selected encoded representation.
 
+On Bun, use the same middleware and register it in the application's Factory `middleware` with the Bun-supported source instead of importing the Node-only source:
+
+```ts
+import { createStaticAssetsMiddleware } from '@fluojs/http';
+import { createBunFileSystemAssetSource } from '@fluojs/platform-bun';
+
+const assets = createStaticAssetsMiddleware({
+  prefix: '/assets',
+  source: createBunFileSystemAssetSource({ root: './dist/client', precompressed: true }),
+});
+```
+
+The `root` directory must exist. The source snapshots verified files beneath it, rejects symlink escapes, and lets missing files fall through; middleware retains dotfile, index, conditional, range, cache, and cancellation policy.
+
 ## When to Use
 
 Use this package when you need to:

@@ -69,6 +69,28 @@ active source를 cancel하고 release합니다. Standalone `parseMultipartStream
 
 Bun은 fetch dispatch를 통해 공유 `@fluojs/http` 단일 byte-range 및 `If-Range` contract를 보존합니다. Conditional-request 평가가 cache validator를 선택한 뒤 유효한 `Range: bytes=` 요청은 portable `206` identity-byte response를 만들고, `If-Range`는 선택된 validator를 재사용합니다. Malformed 또는 multi-range field는 전체 response를 유지하고 충족 불가능한 range는 body 없는 `416`을 만들며, `HEAD`는 stream을 소비하지 않고 GET metadata를 반영합니다.
 
+### Filesystem 정적 에셋
+
+Bun 지원 filesystem source를 portable middleware와 함께 사용하세요. `root`는 Vite client output처럼 파일이 들어 있는 기존 디렉터리여야 합니다. `app.listen()` 전에 Factory bootstrap의 middleware에 등록합니다.
+
+```typescript
+import { createStaticAssetsMiddleware } from '@fluojs/http';
+import { BunHttpApplicationAdapter, createBunFileSystemAssetSource } from '@fluojs/platform-bun';
+import { FluoFactory } from '@fluojs/runtime';
+import { AppModule } from './app.module';
+
+const app = await FluoFactory.create(AppModule, {
+  adapter: BunHttpApplicationAdapter.create({ port: 3000 }),
+  middleware: [createStaticAssetsMiddleware({
+    prefix: '/assets',
+    source: createBunFileSystemAssetSource({ root: './dist/client' }),
+  })],
+});
+await app.listen();
+```
+
+Source는 검증한 파일을 snapshot으로 만든 뒤 정확한 byte, length, MIME type, strong `ETag`, `Last-Modified`를 반환하고 symlink를 통한 root 이탈도 거부합니다. 없는 파일은 이후 경로로 넘깁니다. 선택적인 `precompressed: true`는 request가 허용하는 `.br` 또는 `.gz` sibling을 고르고 `Vary: Accept-Encoding`을 설정합니다. 공유 middleware는 dotfile 및 trailing-slash index policy(기본값은 각각 `ignore`, 비활성), cache control, body 없는 `HEAD`, conditional `304`/`412`, 단일 range `206`/`416`, 요청 정리를 소유합니다.
+
 ### 수동 Fetch 처리
 Bun 서버를 직접 관리하려는 경우 fetch 핸들러를 직접 사용할 수 있습니다.
 `dispatcher`는 이미 bootstrap된 application의 `app.getHttpDispatcher()`에서 가져와야 합니다. `createBunFetchHandler(...)`는 동기적으로 fetch bridge를 만들고 raw-body와 multipart request parsing을 보존하지만, shutdown ownership, websocket upgrade, native `routes` acceleration은 주변 `Bun.serve(...)` host 또는 managed adapter 경로가 소유합니다.
@@ -117,6 +139,7 @@ Native handoff가 붙은 뒤 app middleware가 framework request의 method 또�
 
 - `BunHttpApplicationAdapter.create(options)`: Bun 어댑터를 위한 권장 팩토리입니다.
 - `createBunFetchHandler(options)`: 커스텀 `Bun.serve()` 설정을 위한 네이티브 `fetch(request)` 핸들러를 생성합니다.
+- `createBunFileSystemAssetSource({ root, precompressed? })`: `createStaticAssetsMiddleware(...)`에서 쓰는 Bun 지원 filesystem `StaticAssetSource`입니다. `BunFileSystemAssetSourceOptions` 및 `BunFileSystemAssetPrecompression`이 option을 설명합니다.
 
 어댑터는 realtime 패키지가 사용하는 타입 지정 Bun 통합 seam도 함께 내보냅니다.
 
