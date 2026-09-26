@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## 2.0.2
+
+### Patch Changes
+
+- [#3828](https://github.com/fluojs/fluo/pull/3828) [`96a0180`](https://github.com/fluojs/fluo/commit/96a0180f00f14296e9961d703de2ede386a8489a) Thanks [@ayden94](https://github.com/ayden94)! - Preserve public error classification and structured fields across compatible same-realm duplicate package copies by using validated, version-aware owner contracts at first-party package boundaries.
+
+- [#3831](https://github.com/fluojs/fluo/pull/3831) [`f4b7257`](https://github.com/fluojs/fluo/commit/f4b72574ecf3f57ca22716fe334ce2a0629357f5) Thanks [@ayden94](https://github.com/ayden94)! - Make explicitly designated framework-owned public service classes resolve through compatible same-realm package copies while preserving named token isolation and existing module visibility rules.
+
+- Updated dependencies [[`96a0180`](https://github.com/fluojs/fluo/commit/96a0180f00f14296e9961d703de2ede386a8489a), [`5ff6861`](https://github.com/fluojs/fluo/commit/5ff686131040d9b02fdc79cfc9da849e98bb4744), [`10b121f`](https://github.com/fluojs/fluo/commit/10b121fc044fa1e348dfd95af26798c65597a631), [`f4b7257`](https://github.com/fluojs/fluo/commit/f4b72574ecf3f57ca22716fe334ce2a0629357f5)]:
+  - @fluojs/core@2.1.2
+  - @fluojs/di@3.1.2
+
 ## 2.0.1
 
 ### Patch Changes
