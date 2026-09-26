@@ -128,13 +128,22 @@ test('packed runner records distinct artifact paths, topology evidence, and tear
         assert.equal(installed.installedSha256, installed.entrySha256);
       }
     }
-    for (const [cross, side] of [[run.rootConsumer.cross.aToB, 'A'], [run.rootConsumer.cross.bToA, 'B']]) {
+    assert.notEqual(run.rootConsumer.a.realPath, run.rootConsumer.c.realPath);
+    assert.notEqual(run.rootConsumer.a.version, run.rootConsumer.c.version);
+    for (const [cross, side] of [
+      [run.rootConsumer.cross.aToB, 'A'],
+      [run.rootConsumer.cross.bToA, 'B'],
+      [run.rootConsumer.cross.aToC, 'A'],
+      [run.rootConsumer.cross.cToA, 'B'],
+    ]) {
       assert.equal(cross.error, true);
       assert.equal(cross.singleton, 'singleton');
       assert.equal(cross.request, 'request');
-      assert.equal(cross.context, `fixture-${side}`);
+      assert.deepEqual(cross.context, { requestId: `fixture-${side}`, principal: `fixture-${side}` });
       assert.equal(cross.metadata, true);
-      assert.equal(cross.sse, true);
+      assert.equal(cross.sse.compatible, true);
+      assert.equal(cross.sse.accepted, true);
+      assert.match(cross.sse.frame, new RegExp(`event: fixture\\nid: 1\\ndata: \\{"artifact":"${side}"\\}`, 'u'));
       assert.deepEqual(cross.jwt, { status: 200, subject: `fixture-${side}` });
       assert.deepEqual(cross.rollback, {
         cleanupPreserved: true,

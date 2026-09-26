@@ -105,7 +105,6 @@ function observeSse() {
 
 async function observeReact(
   entry = createReactServerEntry(createElement('main', { 'data-artifact': marker.artifact }, 'packed fixture')),
-  artifact = marker.artifact,
 ) {
   const chunks = [];
   let closed = false;
@@ -124,12 +123,18 @@ async function observeReact(
     },
   };
   await renderReactResponse(entry, requestContext(response), {
-    renderToReadableStream: async () => new ReadableStream({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode(`<main data-artifact="${artifact}">packed fixture</main>`));
-        controller.close();
-      },
-    }),
+    renderToReadableStream: async (node) => {
+      const artifact = node?.props?.['data-artifact'];
+      if (typeof artifact !== 'string' || node.props.children !== 'packed fixture') {
+        throw new Error('React renderer did not receive the packed server entry node.');
+      }
+      return new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(`<main data-artifact="${artifact}">packed fixture</main>`));
+          controller.close();
+        },
+      });
+    },
   });
   return { body: chunks.join(''), contentType: response.headers['Content-Type'], status: response.status };
 }
@@ -326,6 +331,7 @@ export const interop = {
   container,
   createReactEntry: () => createReactServerEntry(createElement('main', { 'data-artifact': marker.artifact }, 'packed fixture')),
   createSse() {
+    const frames = [];
     const sse = new SseResponse(requestContext({
       committed: false,
       headers: {},
@@ -333,9 +339,9 @@ export const interop = {
       send() {},
       setHeader() {},
       setStatus() {},
-      stream: { closed: false, close() { this.closed = true; }, write() { return true; } },
+      stream: { closed: false, close() { this.closed = true; }, write(frame) { frames.push(frame); return true; } },
     }));
-    return sse;
+    return { frames, sse };
   },
   error,
   getCurrentRequestContext,

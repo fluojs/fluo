@@ -305,30 +305,38 @@ function createRootConsumer({ sandbox, consumers }) {
   writeFileSync(join(rootConsumer, 'root.mjs'), [
     "import { observation as a, interop as apiA } from 'duplicate-module-safety-consumer-a';",
     "import { observation as b, interop as apiB } from 'duplicate-module-safety-consumer-b';",
+    "import { observation as c, interop as apiC } from 'duplicate-module-safety-consumer-c';",
     'async function crossCopy(owner, consumer, ownerObservation) {',
-    '  const sse = owner.createSse();',
+    '  const { sse, frames } = owner.createSse();',
     '  const completion = consumer.waitForSseResponseCompletion(sse);',
     '  const sseCompatible = consumer.isCompatibleSseResponse(sse);',
+    "  const frameAccepted = sse.send({ artifact: ownerObservation.artifact }, { event: 'fixture', id: '1' });",
     '  sse.close();',
     '  await completion;',
     '  const [jwt, rollback, react] = await Promise.all([',
     '    consumer.authenticateToken(ownerObservation.surfaces.jwtPassport.token),',
     '    consumer.rollbackForeignError(owner.error),',
-    '    consumer.renderForeignReact(owner.createReactEntry(), ownerObservation.artifact),',
+    '    consumer.renderForeignReact(owner.createReactEntry()),',
     '  ]);',
     '  return {',
     "    error: consumer.isFluoError(owner.error, '@fluojs/core'),",
     '    singleton: (await owner.container.resolve(consumer.singletonToken)).kind,',
     '    request: (await owner.container.createRequestScope().resolve(consumer.requestToken)).kind,',
-    '    context: await owner.runWithRequestContext(owner.requestContext(), () => consumer.getCurrentRequestContext()?.requestId),',
+    '    context: await owner.runWithRequestContext(owner.requestContext(), () => {',
+    '      const context = consumer.getCurrentRequestContext();',
+    '      return { requestId: context?.requestId, principal: context?.principal?.subject };',
+    '    }),',
     '    metadata: consumer.getModuleMetadata(owner.module)?.providers?.length > 0,',
-    '    sse: sseCompatible,',
+    "    sse: { compatible: sseCompatible, accepted: frameAccepted, frame: frames.join('') },",
     '    jwt: { status: jwt.status, subject: jwt.body?.principal?.subject },',
     '    rollback,',
     '    react: { status: react.status, body: react.body },',
     '  };',
     '}',
-    'console.log(JSON.stringify({ a, b, cross: { aToB: await crossCopy(apiA, apiB, a), bToA: await crossCopy(apiB, apiA, b) } }));',
+    'console.log(JSON.stringify({ a, b, c, cross: {',
+    '  aToB: await crossCopy(apiA, apiB, a), bToA: await crossCopy(apiB, apiA, b),',
+    '  aToC: await crossCopy(apiA, apiC, a), cToA: await crossCopy(apiC, apiA, c),',
+    '} }));',
     '',
   ].join('\n'));
   return rootConsumer;
@@ -446,7 +454,7 @@ export async function runDuplicateModuleSafety({
         packageClosure,
       });
       const rootConsumer = createRootConsumer({
-        consumers: { A: consumerA, B: consumerB },
+        consumers: { A: consumerA, B: consumerB, C: consumerCompatible },
         sandbox,
       });
       const simultaneous = await inspectRootConsumer({
@@ -477,15 +485,26 @@ export async function runDuplicateModuleSafety({
         }
       }
       if (simultaneous.a.realPath === simultaneous.b.realPath
-        || simultaneous.a.marker !== a.marker || simultaneous.b.marker !== b.marker) {
+        || simultaneous.a.realPath === simultaneous.c.realPath
+        || simultaneous.c.version !== compatible.version
+        || simultaneous.a.marker !== a.marker || simultaneous.b.marker !== b.marker
+        || simultaneous.c.marker !== compatible.marker) {
         throw new Error(`Private root consumer did not retain simultaneously installed wrapper A and B copies: ${JSON.stringify({
           direct: { a: a.realPath, b: b.realPath },
-          root: { a: simultaneous.a.realPath, b: simultaneous.b.realPath },
+          root: { a: simultaneous.a.realPath, b: simultaneous.b.realPath, c: simultaneous.c.realPath },
         })}`);
       }
-      for (const [cross, side] of [[simultaneous.cross?.aToB, 'A'], [simultaneous.cross?.bToA, 'B']]) {
+      for (const [cross, side] of [
+        [simultaneous.cross?.aToB, 'A'],
+        [simultaneous.cross?.bToA, 'B'],
+        [simultaneous.cross?.aToC, 'A'],
+        [simultaneous.cross?.cToA, 'B'],
+      ]) {
         if (!cross?.error || cross.singleton !== 'singleton' || cross.request !== 'request'
-          || cross.context !== `fixture-${side}` || !cross.metadata || !cross.sse
+          || cross.context?.requestId !== `fixture-${side}`
+          || cross.context?.principal !== `fixture-${side}` || !cross.metadata
+          || !cross.sse?.compatible || !cross.sse.accepted
+          || !cross.sse.frame.includes(`"artifact":"${side}"`)
           || cross.jwt?.status !== 200 || cross.jwt.subject !== `fixture-${side}`
           || !cross.rollback?.originalPreserved || !cross.rollback.cleanupPreserved
           || cross.react?.status !== 200 || !cross.react.body.includes(`data-artifact="${side}"`)) {
