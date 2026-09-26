@@ -285,11 +285,15 @@ function assertGeneratedBrokerStarterIsImportAndInspectSafe(projectDirectory: st
 
 describe('scaffoldBootstrapApp', () => {
   it.each([
-    { babelRoot: undefined, version: 'workspace Babel 7' },
-    ...(process.env.FLUO_BABEL8_ROOT
-      ? [{ babelRoot: process.env.FLUO_BABEL8_ROOT, version: 'isolated Babel 8' }]
-      : []),
-  ])('transforms decorated application and test files through the generated config with $version', async ({ babelRoot }) => {
+    { version: 'workspace Babel 7' },
+    { version: 'isolated Babel 8' },
+  ])('transforms decorated application and test files through the generated config with $version', async ({ version }) => {
+    const babelRoot = version === 'isolated Babel 8'
+      ? execFileSync(process.execPath, [fileURLToPath(new URL('../../../../tooling/babel/babel8-fixture.mjs', import.meta.url))], { encoding: 'utf8' })
+      : undefined;
+    if (babelRoot) {
+      temporaryDirectories.push(babelRoot);
+    }
     const targetDirectory = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-scaffold-test-decorators-')));
     temporaryDirectories.push(targetDirectory);
     await scaffoldBootstrapApp({

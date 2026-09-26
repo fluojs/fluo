@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, type Plugin, type PluginOption, version as viteVersion } from 'vite';
@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { fluoDecoratorsPlugin } from './index.js';
 
 const fixturePath = fileURLToPath(new URL('../test-fixtures/vite8-field-decorator.ts', import.meta.url));
-const babel8Root = process.env.FLUO_BABEL8_ROOT;
+const babel8FixtureScript = fileURLToPath(new URL('../../../tooling/babel/babel8-fixture.mjs', import.meta.url));
 const coreEntryPath = fileURLToPath(new URL('../../core/src/index.ts', import.meta.url));
 const coreInternalPath = fileURLToPath(new URL('../../core/src/internal.ts', import.meta.url));
 const coreMetadataPreloadPath = fileURLToPath(new URL('../../core/src/metadata-preload.ts', import.meta.url));
@@ -72,16 +72,16 @@ describe('fluoDecoratorsPlugin Vite build integration', () => {
   });
 
   it('executes a real SSR build using the packaged plugin and isolated Babel 8 dependencies', () => {
-    if (!babel8Root) {
-      return;
-    }
-
-    const isolatedFixturePath = join(babel8Root, 'src/vite8-field-decorator.ts');
-    mkdirSync(join(babel8Root, 'src'), { recursive: true });
-    writeFileSync(isolatedFixturePath, readFileSync(fixturePath));
-    const script = `
+    const babel8Root = execFileSync(process.execPath, [babel8FixtureScript], { encoding: 'utf8' });
+    try {
+      const isolatedFixturePath = join(babel8Root, 'src/vite8-field-decorator.ts');
+      mkdirSync(join(babel8Root, 'src'), { recursive: true });
+      writeFileSync(isolatedFixturePath, readFileSync(fixturePath));
+      const script = `
       import { build } from 'vite';
+      import { version as babelVersion } from '@babel/core';
       import { fluoDecoratorsPlugin } from '@fluojs/vite';
+      if (!babelVersion.startsWith('8.')) throw new Error('Expected isolated Babel 8.');
       const result = await build({
         configFile: false,
         logLevel: 'silent',
@@ -94,10 +94,13 @@ describe('fluoDecoratorsPlugin Vite build integration', () => {
       const emitted = await import('data:text/javascript;base64,' + Buffer.from(chunk.code).toString('base64'));
       process.stdout.write(JSON.stringify(emitted.default));
     `;
-    const output = execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
-      cwd: babel8Root,
-      encoding: 'utf8',
-    });
-    expect(JSON.parse(output)).toEqual([{ metadata: { key: 'display_name', source: 'body' }, propertyKey: 'name' }]);
+      const output = execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+        cwd: babel8Root,
+        encoding: 'utf8',
+      });
+      expect(JSON.parse(output)).toEqual([{ metadata: { key: 'display_name', source: 'body' }, propertyKey: 'name' }]);
+    } finally {
+      rmSync(babel8Root, { recursive: true, force: true });
+    }
   });
 });
