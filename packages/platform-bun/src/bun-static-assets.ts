@@ -184,6 +184,16 @@ async function openContainedAsset(
         return undefined;
       }
 
+      const openedPath = await realpath(resolvedPath);
+      const openedFromRoot = relative(root, openedPath);
+      if (openedFromRoot === '..' || openedFromRoot.startsWith(`..${sep}`) || isAbsolute(openedFromRoot)) {
+        return undefined;
+      }
+      const current = await stat(openedPath, { bigint: true });
+      if (!current.isFile() || current.dev !== metadata.dev || current.ino !== metadata.ino) {
+        return undefined;
+      }
+
       const bytes = new Uint8Array(await handle.readFile());
       return { bytes, lastModified: new Date(Number(metadata.mtimeMs)) };
     } finally {

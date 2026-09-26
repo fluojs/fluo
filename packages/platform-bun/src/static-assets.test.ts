@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createBunFileSystemAssetSource } from './index.js';
 
 const fileProbe = vi.hoisted(() => ({
+  onStat: undefined as undefined | ((path: string) => Promise<void>),
   onOpen: undefined as undefined | ((path: string) => Promise<void>),
   opened: 0,
   closed: 0,
@@ -16,6 +17,10 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...actual,
+    async stat(...args: Parameters<typeof actual.stat>) {
+      await fileProbe.onStat?.(String(args[0]));
+      return actual.stat(...args);
+    },
     async open(...args: Parameters<typeof actual.open>) {
       await fileProbe.onOpen?.(String(args[0]));
       const handle = await actual.open(...args);
@@ -54,6 +59,7 @@ async function bytes(asset: Awaited<ReturnType<typeof selected>>): Promise<Uint8
 }
 
 afterEach(async () => {
+  fileProbe.onStat = undefined;
   fileProbe.onOpen = undefined;
   expect(fileProbe.closed).toBe(fileProbe.opened);
   fileProbe.opened = 0;
@@ -109,6 +115,25 @@ describe('Bun filesystem static asset source', () => {
     await writeFile(join(outside, 'app.js'), 'outside');
     fileProbe.onOpen = async (path) => {
       fileProbe.onOpen = undefined;
+      if (path.endsWith('/assets/app.js')) {
+        await rename(join(root, 'assets'), join(root, 'original'));
+        await symlink(outside, join(root, 'assets'));
+      }
+    };
+
+    await expect(createBunFileSystemAssetSource({ root }).resolve('assets/app.js', {
+      acceptedEncodings: ['identity'],
+    })).resolves.toBeUndefined();
+  });
+
+  it('rejects a directory replaced between realpath and stat', async () => {
+    const root = await assetRoot();
+    const outside = await assetRoot();
+    await mkdir(join(root, 'assets'));
+    await writeFile(join(root, 'assets', 'app.js'), 'inside');
+    await writeFile(join(outside, 'app.js'), 'outside');
+    fileProbe.onStat = async (path) => {
+      fileProbe.onStat = undefined;
       if (path.endsWith('/assets/app.js')) {
         await rename(join(root, 'assets'), join(root, 'original'));
         await symlink(outside, join(root, 'assets'));
