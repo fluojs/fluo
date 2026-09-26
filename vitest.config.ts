@@ -37,7 +37,7 @@ export default mergeConfig(
           extends: true,
           test: {
             name: 'apps',
-            exclude: configDefaults.exclude,
+            exclude: [...configDefaults.exclude, '**/.next/**'],
             include: ['apps/**/*.test.ts'],
           },
         },
