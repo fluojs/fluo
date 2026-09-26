@@ -8,7 +8,7 @@ import { createBunFileSystemAssetSource } from './index.js';
 
 const fileProbe = vi.hoisted(() => ({
   onRealpath: undefined as undefined | ((path: string) => Promise<void>),
-  onStat: undefined as undefined | ((path: string) => Promise<void>),
+  onResolved: undefined as undefined | ((path: string) => Promise<void>),
   onOpen: undefined as undefined | ((path: string) => Promise<void>),
   opened: 0,
   closed: 0,
@@ -20,11 +20,9 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     ...actual,
     async realpath(...args: Parameters<typeof actual.realpath>) {
       await fileProbe.onRealpath?.(String(args[0]));
-      return actual.realpath(...args);
-    },
-    async stat(...args: Parameters<typeof actual.stat>) {
-      await fileProbe.onStat?.(String(args[0]));
-      return actual.stat(...args);
+      const resolved = await actual.realpath(...args);
+      await fileProbe.onResolved?.(String(args[0]));
+      return resolved;
     },
     async open(...args: Parameters<typeof actual.open>) {
       await fileProbe.onOpen?.(String(args[0]));
@@ -65,7 +63,7 @@ async function bytes(asset: Awaited<ReturnType<typeof selected>>): Promise<Uint8
 
 afterEach(async () => {
   fileProbe.onRealpath = undefined;
-  fileProbe.onStat = undefined;
+  fileProbe.onResolved = undefined;
   fileProbe.onOpen = undefined;
   expect(fileProbe.closed).toBe(fileProbe.opened);
   fileProbe.opened = 0;
@@ -130,9 +128,13 @@ describe('Bun filesystem static asset source', () => {
     await mkdir(join(root, 'assets'));
     await writeFile(join(root, 'assets', 'app.js'), 'inside');
     await writeFile(join(outside, 'app.js'), 'outside');
+    let swapped = false;
     fileProbe.onOpen = async (path) => {
-      fileProbe.onOpen = undefined;
-      if (path.endsWith('/assets/app.js')) {
+      const acquiringAssets = process.platform === 'linux'
+        ? path.startsWith('/proc/self/fd/') && path.endsWith('/assets')
+        : path.endsWith('/assets/app.js');
+      if (acquiringAssets && !swapped) {
+        swapped = true;
         await rename(join(root, 'assets'), join(root, 'original'));
         await symlink(outside, join(root, 'assets'));
       }
@@ -141,6 +143,37 @@ describe('Bun filesystem static asset source', () => {
     await expect(createBunFileSystemAssetSource({ root }).resolve('assets/app.js', {
       acceptedEncodings: ['identity'],
     })).resolves.toBeUndefined();
+    expect(swapped).toBe(true);
+  });
+
+  it('reads the pinned inside directory when its pathname is replaced before the leaf open', async () => {
+    const root = await assetRoot();
+    const outside = await assetRoot();
+    await mkdir(join(root, 'assets'));
+    await writeFile(join(root, 'assets', 'app.js'), 'inside');
+    await writeFile(join(outside, 'app.js'), 'outside');
+    let swapped = false;
+    fileProbe.onOpen = async (path) => {
+      const openingLeaf = process.platform === 'linux'
+        ? (path.startsWith('/proc/self/fd/') && path.endsWith('/app.js'))
+          || path.endsWith('/assets/app.js')
+        : path.endsWith('/assets/app.js');
+      if (openingLeaf && !swapped) {
+        swapped = true;
+        await rename(join(root, 'assets'), join(root, 'original'));
+        await symlink(outside, join(root, 'assets'));
+      }
+    };
+
+    const source = createBunFileSystemAssetSource({ root });
+    if (process.platform === 'linux') {
+      expect(new TextDecoder().decode(await bytes(await selected(source, 'assets/app.js')))).toBe('inside');
+    } else {
+      await expect(source.resolve('assets/app.js', {
+        acceptedEncodings: ['identity'],
+      })).resolves.toBeUndefined();
+    }
+    expect(swapped).toBe(true);
   });
 
   it('rejects an intermediate directory replaced before canonical resolution', async () => {
@@ -169,36 +202,30 @@ describe('Bun filesystem static asset source', () => {
     await writeFile(join(root, 'assets', 'app.js'), 'inside');
     await writeFile(join(outside, 'app.js'), 'outside');
     const assets = join(root, 'assets');
-    let outsideLinked = false;
-
-    fileProbe.onStat = async (path) => {
-      if (!path.endsWith('/assets/app.js') || outsideLinked) {
+    const transitions: string[] = [];
+    fileProbe.onResolved = async (path) => {
+      if (!path.endsWith('/assets/app.js')) {
         return;
       }
       await rename(assets, join(root, 'original'));
       await symlink(outside, assets);
-      outsideLinked = true;
+      transitions.push('outside');
     };
     fileProbe.onOpen = async (path) => {
-      if (!path.endsWith('/assets/app.js') || outsideLinked) {
-        return;
-      }
-      await rename(assets, join(root, 'original'));
-      await symlink(outside, assets);
-      outsideLinked = true;
-    };
-    fileProbe.onRealpath = async (path) => {
-      if (!path.endsWith('/assets/app.js') || !outsideLinked) {
+      const acquiringAssets = process.platform === 'linux'
+        ? path.startsWith('/proc/self/fd/') && path.endsWith('/assets')
+        : path.endsWith('/assets/app.js');
+      if (!acquiringAssets || transitions.length !== 1) {
         return;
       }
       await rm(assets);
       await rename(join(root, 'original'), assets);
-      outsideLinked = false;
+      transitions.push('inside');
     };
 
-    await expect(createBunFileSystemAssetSource({ root }).resolve('assets/app.js', {
-      acceptedEncodings: ['identity'],
-    })).resolves.toBeUndefined();
+    const source = createBunFileSystemAssetSource({ root });
+    expect(new TextDecoder().decode(await bytes(await selected(source, 'assets/app.js')))).toBe('inside');
+    expect(transitions).toEqual(['outside', 'inside']);
   });
 
   it('does not follow a leaf replaced by an outside symlink during resolution', async () => {
