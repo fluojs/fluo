@@ -114,6 +114,19 @@ The builder does not inspect handler return values or TypeScript return types to
 ### Integrated DTO Schemas
 Works with `@fluojs/validation` to derive request schemas from DTO binding and validation metadata. Response DTOs become OpenAPI components only when they are referenced explicitly, such as with `@ApiResponse({ status, type: ResponseDto })` or `extraModels`.
 
+In DTO-inferred request bodies, each `@FromBody('post_title')` field is documented
+under its body source key (`post_title`), including symbol-backed DTO fields with
+explicit keys. Fields without an override keep their property names. The default
+strict HTTP binder accepts those source keys and rejects unknown body keys; use
+the documented keys when submitting JSON. Response and `extraModels` schemas
+retain DTO property names, even when the same class also supplies a request body.
+
+`@ApiBody({ description: 'Article input' })` adds a description to an inferred
+body without replacing its JSON content. Likewise, `@ApiBody({ required: false })`
+overrides inferred requiredness. Supplying `content` explicitly replaces inferred
+content. Metadata alone never creates a `requestBody` without inferred content;
+empty `@ApiBody()` retains the behavior described above.
+
 For generated request schemas, repeated `Min` rules fold the strongest lower
 bound with `Math.max` and repeated `Max` rules fold the strongest upper bound
 with `Math.min`; `Length`, `MinLength`, and `MaxLength` combine into the strongest
@@ -191,7 +204,7 @@ With `forRootAsync(...)`, `documentPath` and `uiPath` are outer registration opt
 
 - `OpenApiModule`: Main entry point for OpenAPI integration.
 - `ApiTag`, `ApiOperation`, `ApiResponse`: Documentation decorators.
-- `ApiBody`, `ApiParam`, `ApiQuery`, `ApiHeader`, `ApiCookie`: Explicit request-body and parameter documentation decorators that override inferred request documentation when names overlap.
+- `ApiBody`, `ApiParam`, `ApiQuery`, `ApiHeader`, `ApiCookie`: Request-body and parameter documentation decorators; `ApiBody` metadata augments inferred content, while explicit body `content` replaces it.
 - `ApiBearerAuth`, `ApiSecurity`: Security requirement decorators.
 - `ApiExcludeEndpoint`: Omit specific handlers from documentation.
 - `ApiOperationOptions`, `ApiResponseOptions`, `ApiParameterOptions`, `ApiBodyOptions`: Decorator option types accepted by `@ApiOperation(...)`, `@ApiResponse(...)`, `@ApiParam(...)`, `@ApiQuery(...)`, `@ApiHeader(...)`, `@ApiCookie(...)`, and `@ApiBody(...)`.

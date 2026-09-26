@@ -152,6 +152,137 @@ describe('buildOpenApiDocument', () => {
     `);
   });
 
+  it('uses body source keys only for request components, including symbol fields', () => {
+    const secret = Symbol('secret');
+
+    class ArticleDto {
+      @FromBody('post_title')
+      @IsString()
+      title = '';
+
+      @FromBody('secret_token')
+      @IsString()
+      [secret] = '';
+
+      @FromBody()
+      @IsOptional()
+      @IsString()
+      category?: string;
+    }
+
+    @Controller('/articles')
+    class ArticlesController {
+      @RequestDto(ArticleDto)
+      @ApiResponse({ status: 200, type: ArticleDto })
+      @Post('/')
+      create() {
+        return { title: 'Example' };
+      }
+    }
+
+    for (const extraModels of [undefined, [ArticleDto]]) {
+      const document = buildOpenApiDocument({
+        defaultErrorResponsesPolicy: 'omit',
+        descriptors: createHandlerMapping([{ controllerToken: ArticlesController }]).descriptors,
+        extraModels,
+        title: 'Articles API',
+        version: '1.0.0',
+      });
+
+      expect(document.paths['/articles']?.post?.requestBody?.content['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/ArticleDtoRequestBody',
+      });
+      expect(document.components?.schemas?.ArticleDtoRequestBody).toEqual({
+        additionalProperties: false,
+        properties: {
+          post_title: { type: 'string' },
+          secret_token: { type: 'string' },
+          category: { type: 'string' },
+        },
+        required: ['post_title', 'secret_token'],
+        type: 'object',
+      });
+      expect(document.paths['/articles']?.post?.responses['200']?.content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/ArticleDto',
+      });
+      expect(document.components?.schemas?.ArticleDto).toEqual({
+        additionalProperties: false,
+        properties: {
+          title: { type: 'string' },
+          [String(secret)]: { type: 'string' },
+          category: { type: 'string' },
+        },
+        required: ['title', String(secret)],
+        type: 'object',
+      });
+    }
+  });
+
+  it.each([
+    { body: { description: 'Create an article' }, description: 'Create an article', required: true },
+    { body: { required: false }, description: undefined, required: false },
+  ])('augments inferred body content with ApiBody metadata: $body', ({ body, description, required }) => {
+    class ArticleDto {
+      @FromBody('post_title')
+      @IsString()
+      title = '';
+    }
+
+    @Controller('/articles')
+    class ArticlesController {
+      @ApiBody(body)
+      @RequestDto(ArticleDto)
+      @Post('/')
+      create() {}
+    }
+
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors: createHandlerMapping([{ controllerToken: ArticlesController }]).descriptors,
+      title: 'Articles API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/articles']?.post?.requestBody).toEqual({
+      content: { 'application/json': { schema: { $ref: '#/components/schemas/ArticleDtoRequestBody' } } },
+      ...(description !== undefined && { description }),
+      required,
+    });
+  });
+
+  it('uses explicit ApiBody content instead of inferred content and omits metadata-only bodies without DTOs', () => {
+    class ArticleDto {
+      @FromBody('post_title')
+      @IsString()
+      title = '';
+    }
+
+    @Controller('/articles')
+    class ArticlesController {
+      @ApiBody({ content: { 'text/plain': { schema: { type: 'string' } } }, required: false })
+      @RequestDto(ArticleDto)
+      @Post('/')
+      create() {}
+
+      @ApiBody({ description: 'No inferred content', required: false })
+      @Post('/empty')
+      empty() {}
+    }
+
+    const document = buildOpenApiDocument({
+      defaultErrorResponsesPolicy: 'omit',
+      descriptors: createHandlerMapping([{ controllerToken: ArticlesController }]).descriptors,
+      title: 'Articles API',
+      version: '1.0.0',
+    });
+
+    expect(document.paths['/articles']?.post?.requestBody).toEqual({
+      content: { 'text/plain': { schema: { type: 'string' } } },
+      required: false,
+    });
+    expect(document.paths['/articles/empty']?.post?.requestBody).toBeUndefined();
+  });
+
   it('emits only accepted numeric enum values with a numeric type', () => {
     enum NumericStatus {
       __proto__ = 0,

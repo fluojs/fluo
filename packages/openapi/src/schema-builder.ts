@@ -845,6 +845,7 @@ function ensureComponentSchemaFromEntries(
   entries: readonly CollectedDtoEntry[],
   componentSchemas: Record<string, OpenApiSchemaObject>,
   context: BuildSchemaContext,
+  requestBody = false,
 ): OpenApiSchemaObject {
   if (componentSchemas[schemaName]) {
     return createSchemaRef(schemaName);
@@ -856,7 +857,7 @@ function ensureComponentSchemaFromEntries(
     type: 'object',
   };
 
-  const { properties, required } = buildComponentSchemaShape(entries, componentSchemas, context);
+  const { properties, required } = buildComponentSchemaShape(entries, componentSchemas, context, requestBody);
 
   componentSchemas[schemaName] = {
     additionalProperties: false,
@@ -884,6 +885,7 @@ function buildComponentSchemaShape(
   entries: readonly CollectedDtoEntry[],
   componentSchemas: Record<string, OpenApiSchemaObject>,
   context: BuildSchemaContext,
+  requestBody: boolean,
 ): {
   properties: Record<string, OpenApiSchemaObject>;
   required: string[];
@@ -896,10 +898,11 @@ function buildComponentSchemaShape(
     ensureNestedSchemasFromRules(rules, componentSchemas, context);
 
     const inferred = inferPrimitiveTypeFromRules(rules, context) ?? {};
-    properties[entry.name] = applyValidationConstraints(inferred, rules);
+    const name = requestBody ? entry.binding?.metadata.key ?? entry.name : entry.name;
+    properties[name] = applyValidationConstraints(inferred, rules);
 
     if (isPropertyRequired(entry.binding, entry.validation)) {
-      required.push(entry.name);
+      required.push(name);
     }
   }
 
@@ -1059,9 +1062,10 @@ function createRequestBody(
   }
 
   const schemaName = entries.length === dtoEntries.length
+    && entries.every((entry) => entry.binding?.metadata.key === undefined || entry.binding.metadata.key === entry.name)
     ? getDtoSchemaName(dto, context)
     : getDtoSchemaName(dto, context, 'RequestBody');
-  ensureComponentSchemaFromEntries(schemaName, entries, componentSchemas, context);
+  ensureComponentSchemaFromEntries(schemaName, entries, componentSchemas, context, true);
 
   return {
     content: {
@@ -1070,26 +1074,6 @@ function createRequestBody(
       },
     },
     ...(entries.some((entry) => isPropertyRequired(entry.binding, entry.validation)) ? { required: true } : {}),
-  };
-}
-
-function createExplicitRequestBody(methodMeta: MethodApiMetadata | undefined): OpenApiRequestBodyObject | undefined {
-  const requestBodyMeta = methodMeta?.requestBody;
-
-  if (!requestBodyMeta) {
-    return undefined;
-  }
-
-  const content = requestBodyMeta.content;
-
-  if (!content) {
-    return undefined;
-  }
-
-  return {
-    content,
-    ...(requestBodyMeta.description !== undefined ? { description: requestBodyMeta.description } : {}),
-    ...(requestBodyMeta.required !== undefined ? { required: requestBodyMeta.required } : {}),
   };
 }
 
@@ -1175,19 +1159,25 @@ function mergeOperationRequestBody(
   inferred: OpenApiRequestBodyObject | undefined,
   methodMeta: MethodApiMetadata | undefined,
 ): OpenApiRequestBodyObject | undefined {
-  const explicit = createExplicitRequestBody(methodMeta);
-
-  if (!explicit) {
-    return inferred;
-  }
+  const metadata = methodMeta?.requestBody;
 
   if (!inferred) {
-    return explicit;
+    if (!metadata?.content) {
+      return undefined;
+    }
+
+    return {
+      content: metadata.content,
+      ...(metadata.description !== undefined && { description: metadata.description }),
+      ...(metadata.required !== undefined && { required: metadata.required }),
+    };
   }
 
   return {
     ...inferred,
-    ...explicit,
+    ...(metadata?.content !== undefined && { content: metadata.content }),
+    ...(metadata?.description !== undefined && { description: metadata.description }),
+    ...(metadata?.required !== undefined && { required: metadata.required }),
   };
 }
 
