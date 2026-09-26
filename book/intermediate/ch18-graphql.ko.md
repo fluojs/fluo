@@ -80,7 +80,7 @@ export class ProductResolver {
     return this.productService.findById(input.id);
   }
 
-  @Query({ outputType: listOf(ProductType) })
+  @Query({ nullable: false, outputType: listOf(ProductType) })
   async products() {
     return this.productService.findAll();
   }
@@ -89,7 +89,7 @@ export class ProductResolver {
 
 `@Arg(...)`는 resolver input DTO용 필드 데코레이터입니다. GraphQL 인자로 노출할 DTO 필드에 표시한 뒤, operation의 `input` 옵션으로 해당 DTO 클래스를 전달합니다.
 
-fluo는 TypeScript 반환 타입이나 emit된 metadata에서 GraphQL output type을 추론하지 않습니다. `outputType`이 없는 operation은 GraphQL `String`을 사용하므로, 위 예제처럼 object 결과에는 GraphQL output type을 선언하고 array에는 `listOf(itemType)`을 사용해야 합니다.
+fluo는 TypeScript 반환 타입이나 emit된 metadata에서 GraphQL output type을 추론하지 않습니다. `outputType`이 없는 operation은 GraphQL `String`을 사용하므로, 위 예제처럼 object 결과에는 GraphQL output type을 선언하고 array에는 `listOf(itemType)`을 사용해야 합니다. Root `@Query`, `@Mutation`, `@Subscription` 반환값은 기본 `String`을 포함해 기본적으로 nullable이며 `nullable: true`도 nullable입니다. `products` query는 `nullable: false`로 list 반환값을 필수로 만들어 `[Product]!`를 생성하지만 item은 계속 nullable입니다. 필수 root가 `null`을 반환하면 GraphQL 오류와 null top-level data가 발생하므로 값을 반환하거나 오류를 던지는 resolver에만 지정하세요. Object field nullability는 별개이며 `@Arg(...)` argument는 계속 nullable입니다.
 
 Resolver 메서드는 `context: GraphQLContext`도 받을 수 있습니다. 이 context에는 기반 fluo request, GraphQL이 request를 소비하기 전에 bootstrap/application middleware가 설정한 인증된 `principal`, `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드, 그리고 선택적 WebSocket transport로 들어온 operation의 `connectionParams`/`socket` 값이 포함됩니다.
 
@@ -100,7 +100,7 @@ NestJS resolver guard와 `GqlExecutionContext`는 fluo로 이전되지 않습니
 
 WebSocket `context.connectionParams`는 인증된 identity가 아니라 client가 제공한 `Record<string, unknown>`입니다. Subscription setup을 application-owned로 두고 stream을 만들기 전에 이를 parse 및 authorize하세요. GraphQL endpoint는 `/graphql`로 고정되므로 NestJS `GraphQLModule.forRoot({ path })` 설정에 대응하는 fluo option은 없습니다.
 
-Resolver decorator에는 public instance target이 필요합니다. Root 및 field operation decorator는 private/static method를 거부하고, `@Arg()`는 private/static input field를 거부합니다. Cutover 전에 생성 SDL을 비교하세요. `outputType`은 추론되지 않고 `String`으로 fallback하며, list output은 `listOf(...)`로 보존하고, 새 object field는 `nullable: false`일 때만 non-null이며, `@Arg(...)`는 nullable scalar 또는 list argument를 만듭니다. DTO validation은 argument를 non-null schema argument로 바꾸지 않으므로 NestJS의 required argument는 SDL이 그 요구사항을 보존할 때까지 migration gap입니다.
+Resolver decorator에는 public instance target이 필요합니다. Root 및 field operation decorator는 private/static method를 거부하고, `@Arg()`는 private/static input field를 거부합니다. Cutover 전에 생성 SDL을 비교하세요. `outputType`은 추론되지 않고 nullable `String`으로 fallback하며, list output은 `listOf(...)`로 보존하고, root operation과 새 object field는 각각 `nullable: false`를 지정해야 non-null이며, `@Arg(...)`는 nullable scalar 또는 list argument를 만듭니다. DTO validation은 argument를 non-null schema argument로 바꾸지 않으므로 NestJS의 required argument는 SDL이 그 요구사항을 보존할 때까지 migration gap입니다.
 
 Request-scoped provider를 주입하는 resolver에는 resolver 자체에도 반드시 `@Scope('request')`를 붙여야 합니다. fluo는 해당 resolver를 operation container에 두고 HTTP 또는 WebSocket operation이 완료되거나 disconnect될 때 그 container를 dispose합니다.
 

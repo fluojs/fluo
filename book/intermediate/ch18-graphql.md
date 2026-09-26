@@ -80,7 +80,7 @@ export class ProductResolver {
     return this.productService.findById(input.id);
   }
 
-  @Query({ outputType: listOf(ProductType) })
+  @Query({ nullable: false, outputType: listOf(ProductType) })
   async products() {
     return this.productService.findAll();
   }
@@ -89,7 +89,7 @@ export class ProductResolver {
 
 `@Arg(...)` is a field decorator for resolver input DTOs. Mark the DTO fields you want to expose as GraphQL arguments, then pass that DTO class through the operation's `input` option.
 
-fluo does not infer GraphQL output types from TypeScript return types or emitted metadata. Operations without `outputType` use GraphQL `String`, so object results must declare a GraphQL output type and arrays must use `listOf(itemType)` as shown above.
+fluo does not infer GraphQL output types from TypeScript return types or emitted metadata. Operations without `outputType` use GraphQL `String`, so object results must declare a GraphQL output type and arrays must use `listOf(itemType)` as shown above. Root `@Query`, `@Mutation`, and `@Subscription` returns are nullable by default, including the fallback `String`; `nullable: true` is also nullable. The `products` query explicitly requires its list return with `nullable: false`, producing `[Product]!` while its items remain nullable. Apply that option only when the root resolver returns a value or throws, since a null required return causes a GraphQL error and null top-level data. Object field nullability is independent, and `@Arg(...)` arguments remain nullable.
 
 Resolver methods can also receive `context: GraphQLContext`. That context carries the underlying fluo request, any authenticated `principal` established by bootstrap/application middleware before GraphQL consumes the request, custom fields returned from `GraphqlModule.forRoot({ context })`, and websocket `connectionParams`/`socket` values when the operation arrives through the optional websocket transport.
 
@@ -100,7 +100,7 @@ NestJS resolver guards and `GqlExecutionContext` do not carry into fluo. Only bo
 
 WebSocket `context.connectionParams` is client-provided `Record<string, unknown>`, not an authenticated identity. Parse and authorize it in application-owned subscription setup before using it to create a stream. The GraphQL endpoint is fixed at `/graphql`, so a NestJS `GraphQLModule.forRoot({ path })` configuration has no fluo equivalent.
 
-Resolver decorators require public instance targets: root and field operation decorators reject private and static methods, and `@Arg()` rejects private and static input fields. Compare the generated SDL before cutover: `outputType` is not inferred and falls back to `String`, `listOf(...)` preserves list output, new object fields are non-null only with `nullable: false`, and `@Arg(...)` creates nullable scalar or list arguments. DTO validation does not turn an argument into a non-null schema argument, so a required NestJS argument remains a migration gap until the SDL preserves that requirement.
+Resolver decorators require public instance targets: root and field operation decorators reject private and static methods, and `@Arg()` rejects private and static input fields. Compare the generated SDL before cutover: `outputType` is not inferred and falls back to nullable `String`, `listOf(...)` preserves list output, root operations and new object fields each require their own `nullable: false` for non-null returns, and `@Arg(...)` creates nullable scalar or list arguments. DTO validation does not turn an argument into a non-null schema argument, so a required NestJS argument remains a migration gap until the SDL preserves that requirement.
 
 A resolver that injects request-scoped providers must itself use `@Scope('request')`; fluo keeps that resolver in the operation container and disposes the container when the HTTP or WebSocket operation completes or disconnects.
 
