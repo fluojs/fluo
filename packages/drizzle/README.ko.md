@@ -338,6 +338,13 @@ non-global이며 ALS transaction context, shutdown drain, disposal, status를 �
 `DrizzleDatabase.current()`로 전달하며, request-wide transaction에는 명시적
 `DrizzleDatabase.requestTransaction(...)` boundary가 필요합니다.
 
+애플리케이션 container당 이름을 생략한 `DrizzleModule.forRoot(...)` 또는 `forRootAsync(...)`는 하나만 등록하세요.
+이름을 생략한 등록이 둘이면 sync/async 조합을 포함해 async options factory나 lifecycle wrapper를
+실행하기 전에 bootstrap이 실패합니다. 추가 client마다 서로 다른 `name`을 지정하고 해당 이름의 token을
+주입하세요. 명시적인 `name: 'default'`는 이름 없는 등록과 별개의 이름 있는 client입니다. 기존에 이름을
+생략한 등록을 여러 개 조합했다면 업그레이드 전에 default 하나만 남기고 나머지에 이름을 붙이세요.
+그러면 종료 시 각 등록이 자체 `dispose(database)` hook을 소유합니다.
+
 ### 종료와 상태 계약
 
 애플리케이션 종료 중에는 `DrizzleDatabase`가 아직 활성 상태인 요청 트랜잭션을 abort하고, 열린 요청 및 수동 transaction callback이 settle되거나 rollback될 때까지 기다린 뒤 선택적 `dispose(database)` hook을 실행합니다. 여기에는 `database.transaction(...)`을 사용할 수 없고 `strictTransactions`가 `false`일 때의 fail-open 수동 `transaction(...)` callback도 포함되므로, 직접 실행 fallback도 pool이나 외부 관리 리소스를 닫기 전에 drain됩니다.

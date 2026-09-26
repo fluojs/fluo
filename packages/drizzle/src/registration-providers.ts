@@ -37,6 +37,7 @@ export type ResolvedDrizzleModuleOptions<
 
 const DRIZZLE_NORMALIZED_OPTIONS = Symbol('fluo.drizzle.normalized-options');
 const DRIZZLE_REGISTRATION_IDENTITIES = Symbol.for('fluo.drizzle.registration-identities');
+const DRIZZLE_DEFAULT_REGISTRATION_IDENTITY = Symbol.for('fluo.drizzle.default-registration');
 
 /**
  * Returns the internal options token for a default or named registration.
@@ -52,23 +53,26 @@ export function getNormalizedOptionsToken(name?: string): symbol {
 }
 
 /**
- * Returns the globally stable duplicate-registration guard token for a name.
+ * Returns the globally stable duplicate-registration guard token for a registration.
  *
  * @internal
- * @param name Normalized named-registration identity.
- * @returns The guard token shared by registrations using the same name.
+ * @param name Optional normalized named-registration identity.
+ * @returns The guard token shared by registrations using the same identity.
  */
-export function getRegistrationGuardToken(name: string): symbol {
-  return Symbol.for(`fluo.drizzle.registration-guard:${name}`);
+export function getRegistrationGuardToken(name?: string): symbol {
+  return Symbol.for(name === undefined
+    ? 'fluo.drizzle.unnamed-registration-guard'
+    : `fluo.drizzle.registration-guard:${name}`);
 }
 
-function assertUniqueDrizzleRegistrationIdentities(identities: readonly string[]): void {
-  const seen = new Set<string>();
+function assertUniqueDrizzleRegistrationIdentities(identities: readonly (string | symbol)[]): void {
+  const seen = new Set<string | symbol>();
 
   for (const identity of identities) {
     if (seen.has(identity)) {
+      const label = identity === DRIZZLE_DEFAULT_REGISTRATION_IDENTITY ? 'default (unnamed)' : String(identity);
       throw new Error(
-        `Duplicate @fluojs/drizzle registration identity "${identity}". Every named DrizzleModule.forRoot(...) registration owns one lifecycle-managed database, so pass a distinct name to each additional registration.`,
+        `Duplicate @fluojs/drizzle registration identity "${label}". Each DrizzleModule registration owns one lifecycle-managed database; use at most one unnamed registration and pass a distinct name to each additional registration.`,
       );
     }
 
@@ -101,28 +105,24 @@ export function createDrizzleRuntimeProviders<
   const disposeToken = getDrizzleDisposeToken(name);
   const optionsToken = getDrizzleOptionsToken(name);
   const handleProviderToken = getDrizzleHandleProviderToken(name);
-  const registrationGuardToken = name === undefined ? undefined : getRegistrationGuardToken(name);
-  const registrationProviders: Provider[] = registrationGuardToken === undefined
-    ? []
-    : [
-      {
-        multi: true,
-        provide: DRIZZLE_REGISTRATION_IDENTITIES,
-        useValue: name,
+  const registrationGuardToken = getRegistrationGuardToken(name);
+  const registrationProviders: Provider[] = [
+    {
+      multi: true,
+      provide: DRIZZLE_REGISTRATION_IDENTITIES,
+      useValue: name ?? DRIZZLE_DEFAULT_REGISTRATION_IDENTITY,
+    },
+    {
+      inject: [DRIZZLE_REGISTRATION_IDENTITIES],
+      provide: registrationGuardToken,
+      scope: 'singleton',
+      useFactory: (identities: unknown) => {
+        assertUniqueDrizzleRegistrationIdentities(identities as readonly (string | symbol)[]);
       },
-      {
-        inject: [DRIZZLE_REGISTRATION_IDENTITIES],
-        provide: registrationGuardToken,
-        scope: 'singleton',
-        useFactory: (identities: unknown) => {
-          assertUniqueDrizzleRegistrationIdentities(identities as readonly string[]);
-        },
-      },
-    ];
+    },
+  ];
   const withRegistrationGuard = (dependencies: readonly Token[]): Token[] =>
-    registrationGuardToken === undefined
-      ? [...dependencies]
-      : [registrationGuardToken, ...dependencies];
+    [registrationGuardToken, ...dependencies];
 
   return [
     ...registrationProviders,
@@ -169,9 +169,9 @@ export function createDrizzleRuntimeProviders<
     ...(name === undefined
       ? [
         {
-          inject: [databaseToken, disposeToken, optionsToken],
+          inject: withRegistrationGuard([databaseToken, disposeToken, optionsToken]),
           provide: DrizzleDatabase,
-          useFactory: (database: unknown, dispose: unknown, databaseOptions: unknown) => createDrizzleDatabaseFacade(
+          useFactory: (_guard: unknown, database: unknown, dispose: unknown, databaseOptions: unknown) => createDrizzleDatabaseFacade(
             new DrizzleDatabase<TDatabase, TTransactionDatabase, TTransactionOptions>(
               database as TDatabase,
               dispose as ((database: TDatabase) => Promise<void> | void) | undefined,
