@@ -1,4 +1,5 @@
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,7 +11,7 @@ import {
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -159,7 +160,7 @@ export function commandRecord(argv, cwd, timeoutMs, environment = {}, ready = nu
       clearTimeout(timer);
       clearTimeout(readinessTimer);
       clearTimeout(escalation);
-      const record = { argv, elapsedMs: Date.now() - startedAt, exitCode, signal, stderr, stdout };
+      const record = { argv, cacheHome: environment.XDG_CACHE_HOME ?? null, elapsedMs: Date.now() - startedAt, exitCode, signal, stderr, stdout };
       if (timedOut) {
         const error = timeoutError(argv.join(' '), timeoutMs);
         error.record = record;
@@ -217,6 +218,86 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+async function packExternalDependencies({ root, sandbox, packageClosure, timeoutMs, commands }) {
+  const workspace = new Map(workspacePackageManifests(root).map((record) => [record.manifest.name, record]));
+  const queue = packageClosure.map((name) => ({
+    directory: packageDirectory(workspace.get(name)),
+    manifest: workspace.get(name).manifest,
+  }));
+  const external = new Map();
+  const references = new Map();
+
+  while (queue.length > 0) {
+    const { directory, manifest } = queue.shift();
+    const resolved = new Map();
+    references.set(directory, resolved);
+    for (const name of new Set([
+      ...Object.keys(manifest.dependencies ?? {}),
+      ...Object.keys(manifest.optionalDependencies ?? {}),
+      ...Object.keys(manifest.peerDependencies ?? {}),
+    ])) {
+      if (workspace.has(name)) continue;
+      let current = directory;
+      let installed;
+      while (true) {
+        const candidate = join(current, 'node_modules', name, 'package.json');
+        if (existsSync(candidate)) {
+          installed = realpathSync(dirname(candidate));
+          break;
+        }
+        const parent = dirname(current);
+        if (parent === current) break;
+        current = parent;
+      }
+      if (!installed) {
+        if (manifest.optionalDependencies?.[name] !== undefined || manifest.peerDependenciesMeta?.[name]?.optional) continue;
+        throw new Error(`Installed dependency ${name} required by ${manifest.name} is missing from the workspace lockfile install.`);
+      }
+      resolved.set(name, installed);
+      if (!external.has(installed)) {
+        const installedManifest = JSON.parse(readFileSync(join(installed, 'package.json'), 'utf8'));
+        const slug = sha256(installed).slice(0, 16);
+        external.set(installed, {
+          manifest: installedManifest,
+          tarball: join(sandbox, 'artifacts', 'external', `${slug}.tgz`),
+          slug,
+        });
+        queue.push({ directory: installed, manifest: installedManifest });
+      }
+    }
+  }
+
+  for (const [directory, artifact] of external) {
+    const staged = join(sandbox, 'external-stage', artifact.slug, 'package');
+    mkdirSync(dirname(staged), { recursive: true });
+    cpSync(directory, staged, {
+      recursive: true,
+      filter: (source) => source === directory || !relative(directory, source).split(sep).includes('node_modules'),
+    });
+    const manifest = structuredClone(artifact.manifest);
+    for (const kind of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
+      for (const name of Object.keys(manifest[kind] ?? {})) {
+        if (workspace.has(name)) continue;
+        const installed = references.get(directory).get(name);
+        if (installed) {
+          manifest[kind][name] = `file:${external.get(installed).tarball}`;
+        } else {
+          delete manifest[kind][name];
+        }
+      }
+    }
+    writeJson(join(staged, 'package.json'), manifest);
+    mkdirSync(dirname(artifact.tarball), { recursive: true });
+    commands.push(await commandRecord(['tar', '-czf', artifact.tarball, '-C', dirname(staged), 'package'], sandbox, timeoutMs));
+  }
+
+  return (name) => {
+    const record = workspace.get(name);
+    return Object.fromEntries([...references.get(packageDirectory(record))]
+      .map(([dependency, directory]) => [dependency, external.get(directory).tarball]));
+  };
+}
+
 async function packPackage({ root, sandbox, packageName, side, timeoutMs, commands, packedArtifacts = {} }) {
   const record = packageRecord(root, packageName);
   const packageSlug = packageName.replace('@fluojs/', '').replaceAll('/', '-');
@@ -271,12 +352,9 @@ async function createCompatiblePatchArtifact({ source, sandbox, timeoutMs, comma
   return target;
 }
 
-function createConsumer({ root, sandbox, side, artifacts, fixtureRoot }) {
+function createConsumer({ sandbox, side, artifacts, fixtureRoot, externalArtifacts }) {
   const consumerRoot = join(sandbox, `consumer-${side.toLowerCase()}`);
   mkdirSync(consumerRoot, { recursive: true });
-  const externalDependencies = {
-    react: `file:${realpathSync(join(root, 'packages', 'react', 'node_modules', 'react'))}`,
-  };
   writeJson(join(consumerRoot, 'package.json'), {
     name: `duplicate-module-safety-consumer-${side.toLowerCase()}`,
     private: true,
@@ -284,7 +362,7 @@ function createConsumer({ root, sandbox, side, artifacts, fixtureRoot }) {
     exports: './consumer.mjs',
     dependencies: {
       ...Object.fromEntries(Object.entries(artifacts).map(([name, tarball]) => [name, tarball])),
-      ...externalDependencies,
+      react: externalArtifacts('@fluojs/react').react,
     },
     pnpm: { overrides: Object.fromEntries(Object.entries(artifacts).map(([name, tarball]) => [name, `file:${tarball}`])) },
   });
@@ -359,7 +437,7 @@ async function inspectConsumer({ root, consumerRoot, side, timeoutMs, commands, 
     ['pnpm', '--dir', consumerRoot, 'install', '--config.node-linker=isolated', '--ignore-workspace', '--offline', '--ignore-scripts', '--lockfile=false'],
     root,
     timeoutMs,
-    { npm_config_offline: 'true' },
+    { npm_config_offline: 'true', XDG_CACHE_HOME: join(dirname(consumerRoot), 'empty-pnpm-cache') },
   );
   commands.push(install);
   const inspected = await commandRecord(['node', 'consumer.mjs'], consumerRoot, timeoutMs, {
@@ -374,7 +452,7 @@ async function inspectRootConsumer({ root, consumerRoot, timeoutMs, commands, pa
     ['pnpm', '--dir', consumerRoot, 'install', '--config.node-linker=isolated', '--ignore-workspace', '--offline', '--ignore-scripts', '--lockfile=false'],
     root,
     timeoutMs,
-    { npm_config_offline: 'true' },
+    { npm_config_offline: 'true', XDG_CACHE_HOME: join(dirname(consumerRoot), 'empty-pnpm-cache') },
   );
   commands.push(install);
   const inspected = await commandRecord(['node', 'root.mjs'], consumerRoot, timeoutMs, {
@@ -415,12 +493,15 @@ export async function runDuplicateModuleSafety({
     try {
       const artifactRecords = { A: {}, B: {} };
       const artifacts = { A: {}, B: {} };
+      const externalArtifacts = await packExternalDependencies({
+        root, sandbox, packageClosure, timeoutMs, commands,
+      });
       for (const packageName of packageClosure) {
         artifactRecords.A[packageName] = await packPackage({
-          commands, packedArtifacts: artifacts.A, packageName, root, sandbox, side: 'A', timeoutMs,
+          commands, packedArtifacts: { ...externalArtifacts(packageName), ...artifacts.A }, packageName, root, sandbox, side: 'A', timeoutMs,
         });
         artifactRecords.B[packageName] = await packPackage({
-          commands, packedArtifacts: artifacts.B, packageName, root, sandbox, side: 'B', timeoutMs,
+          commands, packedArtifacts: { ...externalArtifacts(packageName), ...artifacts.B }, packageName, root, sandbox, side: 'B', timeoutMs,
         });
         artifacts.A[packageName] = artifactRecords.A[packageName].tarball;
         artifacts.B[packageName] = artifactRecords.B[packageName].tarball;
@@ -432,14 +513,14 @@ export async function runDuplicateModuleSafety({
         source: artifacts.B['@fluojs/core'],
         timeoutMs,
       });
-      const consumerA = createConsumer({ root, sandbox, side: 'A', artifacts: artifacts.A, fixtureRoot });
-      const consumerB = createConsumer({ root, sandbox, side: 'B', artifacts: artifacts.B, fixtureRoot });
+      const consumerA = createConsumer({ sandbox, side: 'A', artifacts: artifacts.A, fixtureRoot, externalArtifacts });
+      const consumerB = createConsumer({ sandbox, side: 'B', artifacts: artifacts.B, fixtureRoot, externalArtifacts });
       const consumerCompatible = createConsumer({
         artifacts: compatibleArtifacts,
         fixtureRoot,
-        root,
         sandbox,
         side: 'C',
+        externalArtifacts,
       });
       const [a, b] = await Promise.all([
         inspectConsumer({ root, consumerRoot: consumerA, side: 'A', timeoutMs, commands, packageClosure }),
@@ -563,9 +644,9 @@ export async function runDuplicateModuleSafety({
         ['pnpm', '--dir', peerConsumer, 'install', '--ignore-workspace', '--offline', '--ignore-scripts', '--lockfile=false', '--strict-peer-dependencies'],
         root,
         timeoutMs,
-        { npm_config_offline: 'true' },
+        { npm_config_offline: 'true', XDG_CACHE_HOME: join(sandbox, 'empty-pnpm-cache') },
       ).then(() => null, (error) => String(error));
-      if (!rejected?.includes('@fluojs/core') || !rejected.includes('999')) {
+      if (!rejected?.includes('ERR_PNPM_PEER_DEP_ISSUES') || !rejected.includes('@fluojs/core@^999.0.0')) {
         throw new Error('Incompatible strict-peer topology did not reject the declared @fluojs/core range before runtime load.');
       }
       runs.push({

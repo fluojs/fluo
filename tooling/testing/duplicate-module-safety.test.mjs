@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 
 import {
@@ -230,6 +231,17 @@ test('packed runner records distinct artifact paths, topology evidence, and tear
       }
     }
     assert.ok(run.commands.every((command) => command.argv.length > 0 && command.elapsedMs >= 0));
+    const installs = run.commands.filter((command) => command.argv[0] === 'pnpm'
+      && command.argv.includes('install') && command.argv.includes('--offline')
+      && command.argv.includes('--ignore-workspace'));
+    assert.equal(installs.length, 4);
+    for (const install of installs) {
+      assert.equal(install.cacheHome, join(dirname(install.argv[2]), 'empty-pnpm-cache'));
+      assert.ok(install.argv.includes('--ignore-scripts'));
+      assert.ok(install.argv.includes('--lockfile=false'));
+    }
+    assert.ok(run.commands.some((command) => command.argv[0] === 'tar'
+      && command.argv[1] === '-czf' && command.argv[2].includes('/artifacts/external/')));
     assert.ok(run.topologies.some((topology) => topology.kind === 'same-version-different-path'));
     assert.ok(run.topologies.some((topology) => topology.kind === 'compatible-patch-skew'));
     assert.ok(run.topologies.some((topology) => topology.kind === 'incompatible-major-strict-peer'));
