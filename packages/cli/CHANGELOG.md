@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## 3.0.3
+
+### Patch Changes
+
+- [#3828](https://github.com/fluojs/fluo/pull/3828) [`96a0180`](https://github.com/fluojs/fluo/commit/96a0180f00f14296e9961d703de2ede386a8489a) Thanks [@ayden94](https://github.com/ayden94)! - Preserve public error classification and structured fields across compatible same-realm duplicate package copies by using validated, version-aware owner contracts at first-party package boundaries.
+
 ## 3.0.2
 
 ### Patch Changes
