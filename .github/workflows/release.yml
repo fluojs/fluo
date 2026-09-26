@@ -45,6 +45,11 @@ jobs:
       - name: Verify Bun native routing and lifecycle
         run: bun test tooling/native-runtime/platform-bun-native-conformance.test.mjs
 
+      - name: Setup Deno for native tooling fixtures
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
+        with:
+          deno-version: 'v2.9.7'
+
       - name: Verify release readiness
         # Reuse the successful build above on this same checkout; all other gates still run.
         run: pnpm verify:release-readiness --skip-build
