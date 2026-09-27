@@ -50,6 +50,9 @@ function isHttpProtocol(protocol: string): boolean {
   return protocol === 'http:' || protocol === 'https:';
 }
 
+/** Idle lifecycle published when invalidation cancels in-flight navigation without a replacement. */
+const IDLE_NAVIGATION: ReactNavigationSnapshot = Object.freeze({ status: 'idle', type: null });
+
 /**
  * Create the client navigation store used by `ReactClientRouterProvider`.
  *
@@ -125,7 +128,13 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
   const invalidate = (): void => {
     cached.clear();
     discardPrefetches();
+    const hadPendingNavigation = pending !== null;
     cancelPending();
+    if (hadPendingNavigation) {
+      // Publish a terminal state when invalidation cancels in-flight navigation: settle to
+      // idle over the retained committed route without history writes or document fallback.
+      publish(createSnapshotWithNavigation(snapshot, IDLE_NAVIGATION));
+    }
   };
 
   const requireEnvironment = (): ClientNavigationEnvironment => {

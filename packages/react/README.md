@@ -884,8 +884,10 @@ Both require a hydrated provider with `navigationModules` and an explicit applic
 `prefetchScope` string for the current auth/session epoch. Hover begins on eligible pointer entry;
 viewport begins on intersection and cancels on exit. Neither runs for disabled JavaScript, an
 ineligible anchor, unsupported destination, or fragment-only navigation. `router.invalidate()`
-cancels pending prefetches and clears the provider-local cache: call it and/or update
-`prefetchScope` **before** further in-document navigation after mutations and auth changes.
+cancels pending prefetches and clears the provider-local cache; canceling an in-flight soft
+navigation settles `useNavigation()` to idle over the retained committed route without a
+history entry or document fallback. Call it and/or update `prefetchScope` **before** further
+in-document navigation after mutations and auth changes.
 Scope changes and unmount also clear/cancel; full-document navigation discards the cache.
 There is no automatic detection of external `HttpOnly` cookie changes. Public pages must remain
 identity-independent even if an application misses that notification.

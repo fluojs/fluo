@@ -489,6 +489,81 @@ describe('@fluojs/react/client', () => {
     expect(load).toHaveBeenCalledOnce();
   });
 
+  it('settles in-flight navigation to idle when invalidate cancels it', async () => {
+    // Given: a committed soft page, a completed prefetch entry, and a deferred in-flight push.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const committedPage = vi.fn(() => null);
+    const approvedLoad = (href: string, page: () => null) => {
+      const approved = approvedPrefetch(href);
+      if (!approved.ok) {
+        throw new Error('approvedPrefetch always resolves ok');
+      }
+      return { ...approved, component: page };
+    };
+    const requests: { href: string; resolve: (result: ReactNavigationLoadResult) => void }[] = [];
+    const load = vi.fn((href: string) => new Promise<ReactNavigationLoadResult>((resolve) => {
+      requests.push({ href, resolve });
+    }));
+    const prefetch = vi.fn(async (href: string) => approvedPrefetch(href));
+    const pushState = vi.fn();
+    const replaceState = vi.fn();
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch, load, pushState, replaceState });
+    const statuses: string[] = [];
+    store.subscribe(() => statuses.push(store.getSnapshot().navigation.status));
+    const completed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().navigation.status === 'complete') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    store.router.push('/products/sku-84');
+    requests[0]?.resolve(approvedLoad('https://example.test/products/sku-84', committedPage));
+    await completed;
+    const committedElement = store.getDestination();
+    await store.prefetch('/products/sku-210', {});
+    store.router.push('/products/sku-126');
+    expect(store.getSnapshot().navigation).toEqual({
+      destination: '/products/sku-126',
+      status: 'navigating',
+      type: 'push',
+    });
+
+    // When: the application invalidates while the credentialed navigation is still in flight.
+    store.router.invalidate();
+
+    // Then: navigation settles immediately to idle over the retained committed route and element.
+    expect(statuses.at(-1)).toBe('idle');
+    expect(store.getSnapshot().navigation).toEqual({ status: 'idle', type: null });
+    expect(store.getSnapshot().pathname).toBe('/products/sku-84');
+    expect(store.getSnapshot().url).toBe('/products/sku-84');
+    expect(store.getSnapshot().params).toEqual({ sku: 'sku-84' });
+    expect(store.getDestination()).toBe(committedElement);
+    expect(pushState).toHaveBeenCalledOnce();
+    expect(pushState).toHaveBeenCalledWith('https://example.test/products/sku-84');
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(browser.assign).not.toHaveBeenCalled();
+    expect(browser.replace).not.toHaveBeenCalled();
+    expect(browser.reload).not.toHaveBeenCalled();
+
+    // And: invalidation cleared the completed prefetch entry, so a fresh HTTP approval is required.
+    await store.prefetch('/products/sku-210', {});
+    expect(prefetch).toHaveBeenCalledTimes(2);
+
+    // And: the late response cannot change the settled state.
+    requests[1]?.resolve(approvedLoad('https://example.test/products/sku-126', () => null));
+    await Promise.resolve();
+    expect(store.getSnapshot().navigation).toEqual({ status: 'idle', type: null });
+    expect(store.getSnapshot().pathname).toBe('/products/sku-84');
+    expect(store.getDestination()).toBe(committedElement);
+    expect(pushState).toHaveBeenCalledOnce();
+    expect(browser.assign).not.toHaveBeenCalled();
+    expect(browser.replace).not.toHaveBeenCalled();
+  });
+
   it('discards public entries and pending responses when the provider scope changes', async () => {
     // Given: a completed anonymous page and a second anonymous response still in flight.
     const browser = createEnvironment();

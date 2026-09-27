@@ -140,8 +140,10 @@ import 완료 후 15초 **및** 남은 server freshness 중 빠른 시점입니�
 Validation/import 시간으로 server freshness가 새로 시작되지는 않습니다. 성공한 opt-in
 click은 entry를 제거하고, 재방문과 back/forward는 새 HTTP 승인을 받아야 하며 refresh는
 document를 reload합니다. Unmount/disconnect, scope 변경, `router.invalidate()`, 이전 activation을
-대체하는 이동은 진행 중인 작업을 abort하고 무효 entry를 지웁니다. In-document mutation이나
-auth 변경 후에는 다음 same-document navigation **이전에** application이 `prefetchScope`를
+document를 reload합니다. Unmount/disconnect, scope 변경, `router.invalidate()`, 이전 activation을
+대체하는 이동은 진행 중인 작업을 abort하고 무효 entry를 지웁니다. 진행 중인 soft navigation을
+취소하는 invalidation은 커밋된 route를 유지한 채 idle lifecycle을 발행하며 history 기록이나
+document fallback을 시작하지 않습니다. In-document mutation이나
 갱신하거나 `router.invalidate()`를 호출해야 합니다. 전체 문서 이동은 cache를 파기합니다.
 외부 `HttpOnly` cookie 변경은 자동으로 감지하지 않으므로 notification 누락 시에도 opt-in
 public page는 identity에 영향을 받지 않아야 합니다.
