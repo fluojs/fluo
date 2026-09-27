@@ -41,7 +41,12 @@ export class ReactNavigationPage {
   }
 }
 
-/** Returns whether the value is an explicitly opted-in React page. */
+/**
+ * Returns whether the value is an explicitly opted-in React page.
+ *
+ * @param value The value to check for an explicitly opted-in React page.
+ * @returns Whether the value is a React navigation page result.
+ */
 export function isReactNavigationPage(value: unknown): value is ReactNavigationPageResult {
   return typeof value === 'object'
     && value !== null
