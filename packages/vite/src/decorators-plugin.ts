@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { PluginObj } from '@babel/core';
-import type { Plugin, ResolvedConfig } from 'vite';
+import type { PluginObject, PresetObject } from '@babel/core';
+import type { Plugin, ResolvedConfig, TransformResult } from 'vite';
 
 type BabelCoreModule = Pick<typeof import('@babel/core'), 'transformAsync' | 'version'>;
 type BabelCoreImporter = () => Promise<BabelCoreModule>;
@@ -149,7 +149,7 @@ function shouldRequestBabelSourceMaps(config: Pick<ResolvedConfig, 'build' | 'co
   return config.command === 'serve' || Boolean(config.build.sourcemap);
 }
 
-function createMetadataPreloadPlugin(): PluginObj {
+function createMetadataPreloadPlugin(): PluginObject {
   return {
     name: 'fluo-metadata-preload',
     visitor: {
@@ -181,9 +181,20 @@ function createMetadataPreloadPlugin(): PluginObj {
   };
 }
 
-function createFluoDecoratorsPreset(): { readonly plugins: readonly [PluginObj, readonly [string, { readonly version: '2023-11' }]] } {
+// Babel 8 no longer enables JSX parsing implicitly for `.tsx` files, so the
+// built-in transform restores the Babel 7 behavior with an inline syntax plugin.
+function createJsxSyntaxPlugin(): PluginObject {
   return {
-    plugins: [createMetadataPreloadPlugin(), ['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
+    name: 'fluo-jsx-syntax',
+    manipulateOptions(_options, parserOpts) {
+      parserOpts.plugins.push('jsx');
+    },
+  };
+}
+
+function createFluoDecoratorsPreset(): PresetObject {
+  return {
+    plugins: [() => createMetadataPreloadPlugin(), ['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
   };
 }
 
@@ -250,20 +261,19 @@ function createFluoDecoratorsPlugin(
       const loadedBabelCore = babelCore ?? (await loadBabelCore(filePath, importBabelCoreModule));
       babelCore = loadedBabelCore;
 
+      const plugins = [
+        ...(babelConfigFile ? [() => createMetadataPreloadPlugin()] : []),
+        ...(filePath.endsWith('.tsx') ? [() => createJsxSyntaxPlugin()] : []),
+      ];
       const result = await loadedBabelCore
         .transformAsync(code, {
           babelrc: false,
           configFile: babelConfigFile,
           filename: filePath,
-          plugins: babelConfigFile ? [createMetadataPreloadPlugin()] : [],
+          plugins,
           presets: babelConfigFile
             ? []
-            : [
-                createFluoDecoratorsPreset,
-                loadedBabelCore.version.startsWith('7.')
-                  ? ['@babel/preset-typescript', { allowDeclareFields: true }]
-                  : '@babel/preset-typescript',
-              ],
+            : [createFluoDecoratorsPreset, '@babel/preset-typescript'],
           sourceMaps: options.sourceMaps ?? shouldGenerateSourceMaps,
         })
         .catch((error: unknown) => {
@@ -274,7 +284,9 @@ function createFluoDecoratorsPlugin(
         return null;
       }
 
-      return { code: result.code, map: result.map ?? null };
+      const map = result.map;
+
+      return { code: result.code, map: (map ?? null) as unknown as TransformResult['map'] };
     },
   };
 }

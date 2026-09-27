@@ -285,7 +285,7 @@ function assertGeneratedBrokerStarterIsImportAndInspectSafe(projectDirectory: st
 
 describe('scaffoldBootstrapApp', () => {
   it.each([
-    { version: 'workspace Babel 7' },
+    { version: 'workspace Babel 8' },
     { version: 'isolated Babel 8' },
   ])('transforms decorated application and test files through the generated config with $version', async ({ version }) => {
     const babelRoot = version === 'isolated Babel 8'
@@ -381,7 +381,7 @@ describe('scaffoldBootstrapApp', () => {
     };
 
     expect(packageJson.devDependencies?.typescript).toBe('^6.0.2');
-    expect(packageJson.engines?.node).toBe('>=24.0.0 <27');
+    expect(packageJson.engines?.node).toBe('>=24.11.0 <27');
     expect(packageJson.dependencies).toMatchObject({
       '@fluojs/config': publishedRange('config'),
       '@fluojs/core': publishedRange('core'),
@@ -666,7 +666,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-express': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
-    expect(packageJson.engines?.node).toBe('>=24.0.0 <27');
+    expect(packageJson.engines?.node).toBe('>=24.11.0 <27');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.dependencies).toHaveProperty('@fluojs/platform-nodejs');
     expect(mainFile).toContain('const app = await FluoFactory.create(AppModule, {');
@@ -766,7 +766,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-nodejs': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
-    expect(packageJson.engines?.node).toBe('>=24.0.0 <27');
+    expect(packageJson.engines?.node).toBe('>=24.11.0 <27');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-express');
     expect(mainFile).toContain('const app = await FluoFactory.create(AppModule, {');
@@ -918,7 +918,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/microservices': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
-    expect(packageJson.engines?.node).toBe('>=24.0.0 <27');
+    expect(packageJson.engines?.node).toBe('>=24.11.0 <27');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/http');
     expect(packageJson.dependencies).not.toHaveProperty('@fluojs/platform-fastify');
     expect(packageJson.scripts?.build).toBe('fluo build');
@@ -1293,7 +1293,7 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-fastify': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
-    expect(packageJson.engines?.node).toBe('>=24.0.0 <27');
+    expect(packageJson.engines?.node).toBe('>=24.11.0 <27');
     expect(packageJson.scripts?.build).toBe('fluo build');
     expect(packageJson.scripts?.dev).toBe('fluo dev');
     expect(packageJson.scripts?.start).toBe('fluo start');

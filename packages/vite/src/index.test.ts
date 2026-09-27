@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { FileResult } from '@babel/core';
 import type { Plugin } from 'vite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +11,18 @@ import { createFluoDecoratorsPluginForTesting } from './decorators-plugin.js';
 import { fluoDecoratorsPlugin } from './index.js';
 
 type BabelTransformAsync = typeof import('@babel/core').transformAsync;
+
+function createFileResult(code: string): FileResult {
+  return {
+    ast: null,
+    code,
+    externalDependencies: new Set<string>(),
+    map: null,
+    metadata: {},
+    options: {},
+    sourceType: 'module',
+  };
+}
 
 const babelCoreMockState = vi.hoisted(() => ({
   loadCount: 0,
@@ -78,7 +91,7 @@ describe('fluoDecoratorsPlugin', () => {
   });
 
   it('reuses a successfully loaded Babel module after the first eligible transform', async () => {
-    const transformAsync = vi.fn<BabelTransformAsync>().mockResolvedValue({ code: 'export const transformed = true;', map: null });
+    const transformAsync = vi.fn<BabelTransformAsync>().mockResolvedValue(createFileResult('export const transformed = true;'));
     let importerCallCount = 0;
     const plugin = createFluoDecoratorsPluginForTesting(async () => {
       importerCallCount += 1;

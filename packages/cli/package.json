@@ -18,7 +18,7 @@
     "directory": "packages/cli"
   },
   "engines": {
-    "node": ">=24.0.0 <27"
+    "node": ">=24.11.0 <27"
   },
   "publishConfig": {
     "access": "public"

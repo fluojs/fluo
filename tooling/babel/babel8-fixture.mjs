@@ -25,7 +25,8 @@ try {
       babelrc: false,
       configFile: false,
       filename: source,
-      presets: [['@babel/preset-typescript', { allowDeclareFields: true }]],
+      presets: ['@babel/preset-typescript'],
+      plugins: [['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
     });
     if (!result?.code) {
       throw new Error(`Failed to compile Babel 8 regression fixture source: ${source}`);

@@ -30,8 +30,8 @@ function normalizeSlackModuleOptions(options: SlackModuleOptions): NormalizedSla
 
   const transport = options.transport;
   const createTransport = isTransportFactory(transport)
-    ? async (): Promise<SlackTransport> => transport.create()
-    : async (): Promise<SlackTransport> => transport as SlackTransport;
+    ? (async (): Promise<SlackTransport> => transport.create())
+    : (async (): Promise<SlackTransport> => transport as SlackTransport);
 
   return {
     defaultChannel: normalizeOptionalString(options.defaultChannel),

@@ -30,8 +30,8 @@ function normalizeDiscordModuleOptions(options: DiscordModuleOptions): Normalize
 
   const transport = options.transport;
   const createTransport = isTransportFactory(transport)
-    ? async (): Promise<DiscordTransport> => transport.create()
-    : async (): Promise<DiscordTransport> => transport as DiscordTransport;
+    ? (async (): Promise<DiscordTransport> => transport.create())
+    : (async (): Promise<DiscordTransport> => transport as DiscordTransport);
 
   return {
     defaultThreadId: normalizeOptionalString(options.defaultThreadId),

@@ -195,11 +195,23 @@ export class Example {
     await runTransform(plugin, 'export const value: number = 1;', '/app/src/example.test.tsx');
 
     // Then
-    expect(transformAsyncMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+    const options = transformAsyncMock.mock.calls[0]?.[1];
+    expect(options).toEqual(expect.objectContaining({
       configFile: babelConfigFile,
-      plugins: [expect.objectContaining({ name: 'fluo-metadata-preload' })],
       presets: [],
       sourceMaps: true,
     }));
+    expect(Array.isArray(options?.plugins)).toBe(true);
+    const pluginNames = options?.plugins?.map((factory) => {
+      if (typeof factory !== 'function') {
+        throw new Error('Expected a Babel plugin factory.');
+      }
+      const configured: unknown = Reflect.apply(factory, undefined, []);
+      if (typeof configured !== 'object' || configured === null) {
+        throw new Error('Expected a Babel plugin object.');
+      }
+      return Reflect.get(configured, 'name');
+    });
+    expect(pluginNames).toEqual(['fluo-metadata-preload', 'fluo-jsx-syntax']);
   });
 });

@@ -83,7 +83,7 @@ await app.listen();
 
 ## 빠른 시작
 
-**준비:** Node.js 24.x와 pnpm 10을 설치하세요. CLI와 Node.js 경로의 지원 범위는 `>=24.0.0 <27`입니다. 다른 런타임을 대상으로 생성하더라도 CLI 자체는 Node.js에서 실행됩니다.
+**준비:** Node.js 24.x와 pnpm 10을 설치하세요. CLI와 Babel 8 compiler toolchain은 Node.js `>=24.11.0 <27`을, Node.js runtime package는 `>=24.0.0 <27`을 지원합니다. 다른 런타임을 대상으로 생성하더라도 CLI 자체는 Node.js에서 실행됩니다.
 
 저장소를 clone하지 않고 npm에 공개된 CLI로 시작할 수 있습니다.
 

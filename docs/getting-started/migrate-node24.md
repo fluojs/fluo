@@ -22,7 +22,7 @@ third**, then configuration and toolchain adjustments.
 ## 1. Upgrade Node everywhere
 
 Move local development, CI runners, container build and runtime stages, and
-production hosts to Node.js `>=24.0.0 <27` before installing the new Fluo packages.
+production hosts to Node.js `>=24.0.0 <27` — or `>=24.11.0 <27` for Babel 8 compiler toolchain hosts — before installing the new Fluo packages.
 Use latest Node 24 LTS for the normal development and production path. Node 20
 and Node 22 support is removed; all versions below 24 and Node 27+ are unsupported.
 This is a support-policy decision, not a claim that a new dependency requires
@@ -35,9 +35,11 @@ Node 24.
   addons under the new runtime. Do not bypass the migration with `--ignore-engines`.
 - Keep the lockfile, refresh it under Node 24 when updating dependencies, and use
   the refreshed lockfile for frozen CI installs.
-- Exact Node `24.0.0`, latest `24.x`, and latest `26.x` are distinct verification
-  targets. Test those targets if your application advertises the full range.
-  Latest Node `24.x` owns Fluo release automation; Node 26 is never a publish runtime.
+- Exact Node `24.0.0` remains a distinct runtime-floor verification target (fluo
+  runs its required runtime-only lane there); full verification runs on exact
+  `24.11.0`, latest `24.x`, and latest `26.x`. Test those targets if your
+  application advertises the full range. Latest Node `24.x` owns Fluo release
+  automation; Node 26 is never a publish runtime.
 
 The eight engine omissions below remain intentional. Bun, Deno, and Cloudflare
 Workers deployments keep their native runtime metadata and deployment commands.
@@ -152,7 +154,7 @@ version comparison and does not reject portable root imports.
 ## 5. Migrate the Vite and testing toolchain
 
 Existing generated projects are **not** rewritten when you upgrade the CLI.
-For projects adopting the new non-Deno generated baseline, update these together:
+For projects adopting the new non-Deno generated baseline, update these together and move Babel-using projects to the Babel 8 baseline (`@babel/core` `^8.0.6`, `@babel/plugin-proposal-decorators` `^8.0.2`, `@babel/preset-typescript` `^8.0.1`), removing any `allowDeclareFields` option from `babel.config.cjs`:
 
 ```bash
 pnpm add -D vite@^8.2.2 vitest@^4.1.11 @vitest/coverage-v8@^4.1.11
@@ -167,7 +169,7 @@ mock helpers and configure the decorator transform through `@fluojs/vite`.
 1. In ESM Vite configs, migrate `build.rollupOptions` to
    `build.rolldownOptions`, reviewing the application's input, output, and external
    options against Rolldown. Existing Node starters also change the server target
-   from `node20` to `node24`, set `engines.node` to `>=24.0.0 <27`, and update
+   from `node20` to `node24`, set `engines.node` to `>=24.11.0 <27` for the Babel 8 compiler toolchain, and update
    `@types/node` to `^24.0.0`.
 2. Use `fluoDecoratorsPlugin()` from `@fluojs/vite` for application decorators
    and `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`

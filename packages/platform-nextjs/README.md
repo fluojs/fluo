@@ -26,7 +26,8 @@ dependency injection.
 ## Installation
 
 Supported hosts are Next.js **16.x** (peer `>=16.0.0 <17`) on Node.js
-`>=24.0.0 <27`, with `@fluojs/runtime` `>=3.0.0 <4`. Next.js Edge Runtime is
+`>=24.11.0 <27` (the Babel 8 compiler toolchain floor), with `@fluojs/runtime`
+`>=3.0.0 <4`. Next.js Edge Runtime is
 not supported. See the [Node.js support contract](../../docs/reference/node-support.md).
 
 If the application already uses Fluo, add only the adapter:
@@ -283,10 +284,11 @@ sharing, or host Fluo separately when deterministic single-instance ownership ma
 Turbopack `*.ts` rule for application files, excluding browser and dependency
 files. The loader applies the same Babel TC39 decorators
 `2023-11` transform used by `@fluojs/vite` and returns JavaScript to Turbopack.
-Its TypeScript preset retains `allowDeclareFields` for declaration-only fields
-with Babel 7 and omits the removed option with isolated Babel 8 dependencies.
-Both versions retain decorated field handling.
-The packaged Next adapter continues to declare Babel 7 dependencies.
+The removed `allowDeclareFields` preset option is never passed; declaration-only
+and decorated fields keep their handling with Babel 8.
+The packaged Next adapter declares Babel 8 dependencies
+(`@babel/core ^8.0.6`, `@babel/plugin-proposal-decorators ^8.0.2`, and
+`@babel/preset-typescript ^8.0.1`).
 
 The packaged compiler integration supports Turbopack only, not webpack.
 Keep decorated backend declarations in `.ts` files; the helper does not add
@@ -495,7 +497,7 @@ await app.listen();
 
 - App Router Route Handlers and Pages Router API Routes
 - Next.js 16.x (peer `>=16.0.0 <17`)
-- Node.js `>=24.0.0 <27` hosting only; no Edge Runtime
+- Node.js `>=24.11.0 <27` hosting only; no Edge Runtime
 - `@fluojs/runtime` peer `>=3.0.0 <4`
 - `withFluoNextBackend()` in `next.config.ts` for Turbopack only
 - request-lazy dynamic backend module import

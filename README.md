@@ -83,7 +83,7 @@ Here, `GET /greeting` returns `{"message":"Hello from fluo"}`. Generated project
 
 ## Quick Start
 
-**Prerequisites:** Install Node.js 24.x and pnpm 10. The CLI and Node.js path support `>=24.0.0 <27`. The CLI itself runs on Node.js even when generating a project for another runtime.
+**Prerequisites:** Install Node.js 24.x and pnpm 10. The CLI and Babel 8 compiler toolchain require Node.js `>=24.11.0 <27`; Node.js runtime packages support `>=24.0.0 <27`. The CLI itself runs on Node.js even when generating a project for another runtime.
 
 Start with the CLI published on npm; no repository clone is needed.
 

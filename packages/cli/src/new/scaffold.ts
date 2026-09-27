@@ -11,11 +11,10 @@ import type { StarterScaffoldRecipeId } from './starter-profiles.js';
 import type { BootstrapOptions, PackageManager } from './types.js';
 
 const PUBLISHED_DEV_DEPENDENCIES = {
-  '@babel/cli': '^7.26.4',
-  '@babel/core': '^7.26.10',
-  '@babel/plugin-proposal-decorators': '^7.28.0',
-  '@babel/preset-typescript': '^7.27.1',
-  '@types/babel__core': '^7.20.5',
+  '@babel/cli': '^8.0.6',
+  '@babel/core': '^8.0.6',
+  '@babel/plugin-proposal-decorators': '^8.0.2',
+  '@babel/preset-typescript': '^8.0.1',
   '@types/node': '^22.13.10',
   '@vitest/coverage-v8': '^4.1.11',
   tsx: '^4.23.1',
@@ -41,7 +40,7 @@ const PUBLISHED_RUNTIME_DEPENDENCIES = {
   'react-dom': '^19.2.6',
 } as const;
 
-const NODE_HTTP_LISTENER_ENGINE = '>=24.0.0 <27';
+const NODE_HTTP_LISTENER_ENGINE = '>=24.11.0 <27';
 
 type ApplicationStarterDescriptor = {
   adapterCall?: string;
@@ -373,9 +372,7 @@ function createProjectTsconfigBuild(): string {
 
 function createBabelConfig(): string {
   return `module.exports = {
-  presets: [require('@babel/preset-typescript/package.json').version.startsWith('7.')
-    ? ['@babel/preset-typescript', { allowDeclareFields: true }]
-    : '@babel/preset-typescript'],
+  presets: ['@babel/preset-typescript'],
   plugins: [['@babel/plugin-proposal-decorators', { version: '2023-11' }]],
 };
 `;
@@ -2554,7 +2551,7 @@ function emitSharedScaffoldFiles(
     {
       content: createProjectReadme(options, bootstrapPlan)
         + (bootstrapPlan.schema.runtime === 'node'
-          ? '\n## Node.js support\n\nRequires Node.js `>=24.0.0 <27`. Use Node 24 LTS for local development, CI, and container images. Node builds target `node24` and use `@types/node@^24.0.0`.\n'
+          ? '\n## Node.js support\n\nRequires Node.js `>=24.11.0 <27` for the Babel 8 compiler toolchain. Use latest Node 24 LTS for local development, CI, and container images. Node builds target `node24` and use `@types/node@^24.0.0`.\n'
           : ''),
       path: 'README.md',
     },

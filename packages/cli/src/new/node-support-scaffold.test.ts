@@ -32,7 +32,7 @@ describe('generated Node support', () => {
     // Then: Node projects agree on engines, emitted code target, and Node typings.
     const manifest = JSON.parse(readFileSync(join(targetDirectory, 'package.json'), 'utf8'));
     if (profile.schema.runtime === 'node') {
-      expect(manifest.engines).toEqual({ node: '>=24.0.0 <27' });
+      expect(manifest.engines).toEqual({ node: '>=24.11.0 <27' });
       expect(manifest.devDependencies['@types/node']).toMatch(/^\^24\./u);
       const configPath = profile.starter === 'react-vite-ssr' ? 'vite.server.config.ts' : 'vite.config.ts';
       const config = readFileSync(join(targetDirectory, configPath), 'utf8');
@@ -43,7 +43,7 @@ describe('generated Node support', () => {
       expect(manifest.engines).toEqual({ deno: '>=2.0.0' });
     } else {
       // Workers' Node metadata belongs to shared local CLI/Wrangler tooling.
-      expect(manifest.engines).toEqual({ node: '>=24.0.0 <27' });
+      expect(manifest.engines).toEqual({ node: '>=24.11.0 <27' });
     }
   });
 });

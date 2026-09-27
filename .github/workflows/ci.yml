@@ -361,13 +361,23 @@ jobs:
       fail-fast: false
       matrix:
         node-version:
-          - "24.0.0"
+          - "24.11.0"
           - "24.x"
           - "26.x"
     uses: ./.github/workflows/node-verification.yml
     with:
       node-version: ${{ matrix.node-version }}
       verify-isolated-http-benchmark: ${{ matrix.node-version == '24.x' && needs.resolve-pr-verification-scope.outputs.verify_isolated_http_benchmark == 'true' }}
+
+  node-runtime-floor:
+    name: Node runtime floor (24.0.0)
+    needs:
+      - resolve-pr-verification-scope
+      - deterministic-preflight
+    uses: ./.github/workflows/node-runtime-floor.yml
+    with:
+      node-version: "24.0.0"
+      compiler-node-version: "24.x"
 
   verify-platform-consistency-governance:
     name: Verify platform consistency governance
@@ -408,6 +418,7 @@ jobs:
       - bun-native-routing-and-lifecycle-conformance
       - bun-drizzle-conformance
       - node-support
+      - node-runtime-floor
       - verify-platform-consistency-governance
       - duplicate-module-safety
       - resolve-pr-verification-scope
