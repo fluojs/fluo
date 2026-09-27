@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { fluoDecoratorsPlugin } from './index.js';
 
 const fixturePath = fileURLToPath(new URL('../test-fixtures/vite8-field-decorator.ts', import.meta.url));
+const babelConfigUrl = new URL('../../../tooling/babel/babel.config.cjs', import.meta.url).href;
 const babel8FixtureScript = fileURLToPath(new URL('../../../tooling/babel/babel8-fixture.mjs', import.meta.url));
 const coreEntryPath = fileURLToPath(new URL('../../core/src/index.ts', import.meta.url));
 const coreInternalPath = fileURLToPath(new URL('../../core/src/internal.ts', import.meta.url));
@@ -33,9 +34,12 @@ const aliases = [
 ];
 
 describe('fluoDecoratorsPlugin Vite build integration', () => {
-  it('preserves field decorator metadata through the workspace Vite build pipeline', async () => {
+  it.each([
+    ['built-in preset', undefined],
+    ['file URL config', babelConfigUrl],
+  ])('preserves field decorator metadata through the workspace Vite build pipeline with %s', async (_label, babelConfigFile) => {
     const name = `workspace Vite ${viteVersion} Rolldown with Babel 7`;
-    const plugin = fluoDecoratorsPlugin() as unknown as PluginOption;
+    const plugin = fluoDecoratorsPlugin(babelConfigFile ? { babelConfigFile } : {}) as unknown as PluginOption;
     const result = await build({
       configFile: false,
       logLevel: 'silent',

@@ -72,7 +72,7 @@ export default defineConfig({
 React SSR + Vite starter는 데코레이터가 있는 애플리케이션 선언을 `src/app.ts`에 두고,
 `src/page.tsx` 같은 `.tsx` 모듈에는 JSX 렌더링을 유지합니다.
 
-test workspace가 root Babel configuration을 써야 한다면 `babelConfigFile`에 file path 또는 resolver를 설정하세요. `experimentalDecorators`를 다시 활성화하거나 direct esbuild decorator handling에 의존하는 방식은 문서화된 fluo 지원 계약 밖에 있습니다.
+workspace에서 root Babel configuration이 필요하다면 `babelConfigFile`에 기존 filesystem path, `new URL('./babel.config.cjs', import.meta.url).href`와 같은 `file://` URL 문자열 또는 `(filePath) => string` resolver를 설정하세요. Resolver는 eligible source module마다 실행되며 두 형태의 문자열을 모두 반환할 수 있습니다. URL 문자열은 Babel에 전달되기 전에 filesystem path로 변환됩니다. 기본값 `false`는 Babel 설정 탐색을 비활성화합니다. 선택한 config가 없거나 로드되지 않으면 transform 진단에 source와 config가 표시되고 원래 오류가 `cause`로 보존되며 Babel peer 재설치를 권하지 않습니다. 실제로 Babel peer가 없으면 설치 안내를 유지합니다. `experimentalDecorators`를 다시 활성화하거나 direct esbuild decorator handling에 의존하는 방식은 문서화된 fluo 지원 계약 밖에 있습니다.
 
 ## 공개 API
 

@@ -1,3 +1,5 @@
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { PluginObj } from '@babel/core';
 import type { Plugin, ResolvedConfig } from 'vite';
 
@@ -19,8 +21,10 @@ export interface FluoDecoratorsPluginOptions {
    */
   readonly transformBoundary?: FluoDecoratorsTransformBoundary;
   /**
-   * Uses this Babel root configuration for every transformed module, or resolves it per module.
-   * The default disables Babel configuration discovery.
+   * Uses a Babel config filesystem path or `file://` URL string for every eligible module,
+   * or resolves either string per module from its source file path. The default `false`
+   * disables Babel configuration discovery. Missing or unloadable custom configs report
+   * the source and config paths with the underlying error as their cause.
    */
   readonly babelConfigFile?: false | string | ((filePath: string) => string);
   /**
@@ -52,26 +56,48 @@ function readErrorMessage(value: unknown): string {
 
 function isMissingPeerDependencyError(error: unknown): boolean {
   const code = readErrorCode(error);
-  const message = readErrorMessage(error);
+  const firstLine = readErrorMessage(error).split('\n', 1)[0] ?? '';
 
   return (
-    (code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND' || message.includes('Cannot find package')) &&
-    BABEL_PEER_DEPENDENCIES.some((dependencyName) => message.includes(dependencyName))
+    (code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND' || firstLine.includes('Cannot find package')) &&
+    BABEL_PEER_DEPENDENCIES.some((dependencyName) =>
+      firstLine.includes(`Cannot find module '${dependencyName}'`) ||
+      firstLine.includes(`Cannot find package '${dependencyName}'`))
   );
 }
 
-function createBabelTransformDiagnostic(error: unknown, filePath: string): Error {
+function createBabelTransformDiagnostic(error: unknown, filePath: string, configFile: false | string = false): Error {
   const message = readErrorMessage(error);
+  const firstLine = message.split('\n', 1)[0] ?? '';
+  const missingConfig = configFile && (readErrorCode(error) === 'MODULE_NOT_FOUND' || readErrorCode(error) === 'ERR_MODULE_NOT_FOUND')
+    && firstLine.includes(`Cannot find module '${configFile}'`);
 
-  if (!isMissingPeerDependencyError(error)) {
-    return error instanceof Error ? error : new Error(message);
+  if (missingConfig) {
+    return new Error(
+      `[fluo-babel-decorators] babelConfigFile not found at ${configFile} while transforming ${filePath}. Original error: ${message}`,
+      { cause: error },
+    );
   }
 
-  return new Error(
-    `[fluo-babel-decorators] Failed to resolve a Babel peer dependency while transforming ${filePath}. ` +
-      'Install @babel/core, @babel/plugin-proposal-decorators, and @babel/preset-typescript in the Vite project. ' +
-      `Original error: ${message}`,
-  );
+  if (isMissingPeerDependencyError(error)) {
+    return new Error(
+      `[fluo-babel-decorators] Failed to resolve a Babel peer dependency while transforming ${filePath}. ` +
+        'Install @babel/core, @babel/plugin-proposal-decorators, and @babel/preset-typescript in the Vite project. ' +
+        `Original error: ${message}`,
+    );
+  }
+
+  if (configFile && (
+    (error instanceof Error && error.stack?.includes(resolve(configFile))) ||
+    firstLine.startsWith('Error while parsing config')
+  )) {
+    return new Error(
+      `[fluo-babel-decorators] Failed to load babelConfigFile ${configFile} while transforming ${filePath}. Original error: ${message}`,
+      { cause: error },
+    );
+  }
+
+  return error instanceof Error ? error : new Error(message);
 }
 
 async function importBabelCore(): Promise<BabelCoreModule> {
@@ -181,7 +207,23 @@ function resolveBabelConfigFile(
   babelConfigFile: FluoDecoratorsPluginOptions['babelConfigFile'],
   filePath: string,
 ): false | string {
-  return typeof babelConfigFile === 'function' ? babelConfigFile(filePath) : babelConfigFile ?? false;
+  const resolved = typeof babelConfigFile === 'function' ? babelConfigFile(filePath) : babelConfigFile ?? false;
+  if (typeof resolved === 'string' && resolved.startsWith('file://')) {
+    try {
+      return fileURLToPath(resolved);
+    } catch (error) {
+      if (!(error instanceof Error)) {
+        throw error;
+      }
+
+      throw new Error(
+        `[fluo-babel-decorators] Failed to resolve babelConfigFile ${resolved} while transforming ${filePath}. Original error: ${error.message}`,
+        { cause: error },
+      );
+    }
+  }
+
+  return resolved;
 }
 
 function createFluoDecoratorsPlugin(
@@ -225,7 +267,7 @@ function createFluoDecoratorsPlugin(
           sourceMaps: options.sourceMaps ?? shouldGenerateSourceMaps,
         })
         .catch((error: unknown) => {
-          throw createBabelTransformDiagnostic(error, filePath);
+          throw createBabelTransformDiagnostic(error, filePath, babelConfigFile);
         });
 
       if (!result?.code) {
