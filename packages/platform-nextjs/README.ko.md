@@ -25,7 +25,7 @@ Fluo backend를 Next.js App Router Route Handlers와 Pages Router API Routes에
 
 ## 설치
 
-지원 host는 Node.js `>=24.0.0 <27`에서 실행하는 Next.js **16.x**
+지원 host는 Node.js `>=24.11.0 <27`(Babel 8 compiler toolchain 하한)에서 실행하는 Next.js **16.x**
 (peer `>=16.0.0 <17`)이며 `@fluojs/runtime` `>=3.0.0 <4`가 필요합니다.
 Next.js Edge Runtime은 지원하지 않습니다.
 [Node.js 지원 계약](../../docs/reference/node-support.ko.md)을 참조하세요.
@@ -285,10 +285,11 @@ application `*.ts` rule에 추가하며 browser와 dependency 파일은 제외�
 Loader는 `@fluojs/vite`와 동일한 Babel TC39
 decorators `2023-11` transform을 적용하고 JavaScript를 Turbopack에
 반환합니다.
-TypeScript preset은 선언 전용 필드를 처리하는 Babel 7에서만 `allowDeclareFields`를
-유지하고 격리된 Babel 8 의존성에서는 제거된 옵션을 전달하지 않습니다.
-두 버전에서 decorated field 처리를 유지합니다.
-배포되는 Next adapter의 dependency 선언은 계속 Babel 7을 가리킵니다.
+제거된 `allowDeclareFields` preset 옵션은 전달하지 않으며, declaration-only
+field와 decorated field는 Babel 8에서 기존 처리를 유지합니다.
+배포되는 Next adapter는 Babel 8 의존성을 선언합니다
+(`@babel/core ^8.0.6`, `@babel/plugin-proposal-decorators ^8.0.2`,
+`@babel/preset-typescript ^8.0.1`).
 
 Packaged compiler integration은 Turbopack만 지원하며 webpack은 지원하지
 않습니다. Decorated backend 선언은 `.ts` 파일에 두세요. Helper는 `.tsx`
@@ -497,7 +498,7 @@ await app.listen();
 
 - App Router Route Handlers와 Pages Router API Routes
 - Next.js 16.x (peer `>=16.0.0 <17`)
-- Node.js `>=24.0.0 <27` hosting 전용; Edge Runtime 미지원
+- Node.js `>=24.11.0 <27` hosting 전용; Edge Runtime 미지원
 - `@fluojs/runtime` peer `>=3.0.0 <4`
 - Turbopack 전용 `next.config.ts`의 `withFluoNextBackend()`
 - request-lazy dynamic backend module import

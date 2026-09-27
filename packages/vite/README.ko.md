@@ -34,7 +34,7 @@ npm install --save-dev @fluojs/vite vite @babel/core @babel/plugin-proposal-deco
 
 ## 런타임 및 peer 계약
 
-`@fluojs/vite`는 `engines.node` 하한을 `>=24.0.0 <27`으로 두는 Node.js 패키지입니다. 생성된 non-Deno starter는 이제 Vite `^8.2.2`, Vitest와 `@vitest/coverage-v8` `^4.1.11`, 그리고 위에 나열한 Babel peer를 선언합니다. 배포된 Vite `>=6.2.0` peer 범위는 바뀌지 않습니다. 생성된 ESM config는 `build.rolldownOptions`를 사용하고, Babel은 명시적으로 구성한 application 또는 test boundary에서 `fluoDecoratorsPlugin()`을 통해 Rolldown/Oxc보다 먼저 데코레이터를 변환합니다. Direct Oxc/esbuild decorator processing은 지원하지 않습니다.
+`@fluojs/vite`는 Babel 8 compiler toolchain floor인 `engines.node` 하한 `>=24.11.0 <27`을 두는 Node.js 패키지입니다. 생성된 non-Deno starter는 이제 Vite `^8.2.2`, Vitest와 `@vitest/coverage-v8` `^4.1.11`, 그리고 위에 나열한 Babel 8 peer를 선언합니다. 배포된 Vite `>=6.2.0` peer 범위는 바뀌지 않습니다. 생성된 ESM config는 `build.rolldownOptions`를 사용하고, Babel은 명시적으로 구성한 application 또는 test boundary에서 `fluoDecoratorsPlugin()`을 통해 Rolldown/Oxc보다 먼저 데코레이터를 변환합니다. Direct Oxc/esbuild decorator processing은 지원하지 않습니다.
 
 패키지 root는 Babel이 설치되거나 해석되기 전에 import해도 안전합니다. `@fluojs/vite`를 import하거나 `fluoDecoratorsPlugin()`을 생성해도 `@babel/core`를 로드하지 않습니다. Babel은 eligible 애플리케이션 `.ts` 파일에 대한 Vite `transform` hook에서만 lazy load되며, 누락된 Babel peer도 plugin 생성 시점이 아니라 이 transform 경계에서 보고됩니다.
 
@@ -59,7 +59,7 @@ export default defineConfig({
 
 이 플러그인은 `.ts`, `.tsx`, `.mts`, `.cts` 파일을 Babel로 변환하며 `2023-11` decorators proposal과 `@babel/preset-typescript`를 사용합니다. 파일 경계를 판단하기 전에 Vite query suffix를 제거하고 declaration 파일, `node_modules`, application mode의 `*.test.*`와 `*.spec.*` 파일을 건너뜁니다. `@fluojs/vite`를 import하거나 `fluoDecoratorsPlugin()`을 생성하는 시점에는 `@babel/core`를 로드하지 않으며, 누락된 Babel peer는 Vite가 변환 중인 소스 파일에 대한 transform-time 진단으로 표시됩니다. Decorator 구문을 포함한 변환 모듈은 decorated 선언이 평가되기 전에 `@fluojs/core/metadata-preload`를 preload합니다.
 
-내장 preset은 선언 전용 필드를 처리하는 Babel 7에서만 `allowDeclareFields`를 유지하고, 해당 옵션이 제거된 Babel 8에서는 전달하지 않습니다. 두 버전 모두 decorated TypeScript field를 처리합니다. Workspace는 계속 Babel 7에 고정되며, 이 변경은 dependency나 배포된 peer 범위를 올리지 않습니다.
+Workspace와 배포되는 Babel peer 기준선은 Babel 8입니다(`@babel/core` `>=8.0.0`, `@babel/plugin-proposal-decorators` `>=8.0.0`, `@babel/preset-typescript` `>=8.0.0`). 제거된 `allowDeclareFields` 옵션은 전달하지 않으며, declaration-only field와 decorated TypeScript field는 이 옵션 없이 동작합니다. Babel 8은 `.tsx` 파일에 JSX 파싱을 더 이상 암시적으로 활성화하지 않으므로 `fluoDecoratorsPlugin()`이 eligible `.tsx` 모듈에 이를 활성화하며, custom `babelConfigFile`을 전달한 경우에도 적용됩니다.
 
 ## 데코레이터 변환 경계
 

@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24.0.0 <27"
+    "node": ">=24.11.0 <27"
   },
   "scripts": {
     "build": "vite build --config vite.client.config.ts && vite build --config vite.server.config.ts",
@@ -25,9 +25,9 @@
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
-    "@babel/core": "^7.26.10",
-    "@babel/plugin-proposal-decorators": "^7.28.0",
-    "@babel/preset-typescript": "^7.27.1",
+    "@babel/core": "^8.0.6",
+    "@babel/plugin-proposal-decorators": "^8.0.2",
+    "@babel/preset-typescript": "^8.0.1",
     "@fluojs/testing": "workspace:*",
     "@fluojs/vite": "workspace:*",
     "@playwright/test": "^1.51.1",

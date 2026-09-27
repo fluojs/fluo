@@ -182,6 +182,22 @@ export class Example {
     expect(code).not.toContain('name!: string');
   });
 
+  it('preserves JSX when an explicit Babel config is supplied', async () => {
+    // Given: the shared config supplies TypeScript and decorators without a JSX syntax plugin.
+    const babelConfigFile = fileURLToPath(new URL('../../../tooling/babel/babel.config.cjs', import.meta.url));
+    const plugin = fluoDecoratorsPlugin({ babelConfigFile });
+
+    // When: an eligible TSX module crosses the same custom-config transform path.
+    const result = await runTransform(plugin, 'export const view: unknown = <div />;', '/app/src/view.tsx');
+
+    // Then: TypeScript is removed while JSX remains available to Vite's next transform.
+    if (!result || typeof result !== 'object' || !('code' in result)) {
+      throw new TypeError('Expected transformed TSX code.');
+    }
+    expect(result.code).toContain('<div />');
+    expect(result.code).not.toContain(': unknown');
+  });
+
   it('uses explicit test-boundary Babel and sourcemap options', async () => {
     // Given
     const babelConfigFile = fileURLToPath(new URL('../../../tooling/babel/babel.config.cjs', import.meta.url));
@@ -195,11 +211,23 @@ export class Example {
     await runTransform(plugin, 'export const value: number = 1;', '/app/src/example.test.tsx');
 
     // Then
-    expect(transformAsyncMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+    const options = transformAsyncMock.mock.calls[0]?.[1];
+    expect(options).toEqual(expect.objectContaining({
       configFile: babelConfigFile,
-      plugins: [expect.objectContaining({ name: 'fluo-metadata-preload' })],
       presets: [],
       sourceMaps: true,
     }));
+    expect(Array.isArray(options?.plugins)).toBe(true);
+    const pluginNames = options?.plugins?.map((factory) => {
+      if (typeof factory !== 'function') {
+        throw new Error('Expected a Babel plugin factory.');
+      }
+      const configured: unknown = Reflect.apply(factory, undefined, []);
+      if (typeof configured !== 'object' || configured === null) {
+        throw new Error('Expected a Babel plugin object.');
+      }
+      return Reflect.get(configured, 'name');
+    });
+    expect(pluginNames).toEqual(['fluo-metadata-preload', 'fluo-jsx-syntax']);
   });
 });

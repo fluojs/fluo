@@ -4,16 +4,17 @@
 
 ## Support matrix
 
-Private root workspace와 [`@fluojs/platform-nextjs`](../../packages/platform-nextjs/README.ko.md)를 포함한 35개 Node-bound public package는 `engines.node: ">=24.0.0 <27"`을 선언합니다. Node 24 LTS 채택은 lifecycle 및 지원 정책 결정이며 dependency나 새 runtime API가 Node 24를 요구한다는 주장이 아닙니다. 다음 major release부터 Node 20과 Node 22는 지원하지 않습니다.
+Node floor는 역할별로 분류됩니다. 순수 runtime인 32개 Node-bound public package([`@fluojs/platform-fastify`](../../packages/platform-fastify/README.ko.md) 포함)는 `engines.node: ">=24.0.0 <27"`을 유지합니다. Babel 8 compiler tooling package인 [`@fluojs/cli`](../../packages/cli/README.ko.md), [`@fluojs/vite`](../../packages/vite/README.ko.md), [`@fluojs/platform-nextjs`](../../packages/platform-nextjs/README.ko.md)와 private root workspace, examples, 생성 Node toolchain 프로젝트는 `engines.node: ">=24.11.0 <27"`으로 올립니다. Babel 8은 upstream에서 Node `^22.18.0 || >=24.11.0`을 요구하고 fluo는 Node 22를 계속 제외하기 때문입니다. 컴파일하지 않는 package에 대해 exact Node `24.0.0`은 여전히 지원되는 runtime floor입니다. Node 24 LTS 채택은 lifecycle 및 지원 정책 결정이며 dependency나 새 runtime API가 Node 24를 요구한다는 주장이 아닙니다. 다음 major release부터 Node 20과 Node 22는 지원하지 않습니다.
 
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
-| Exact Node `24.0.0` | Frozen install, 분할 전체 검증, 생성 starter sandbox matrix | 최소 지원 floor이며 release runtime은 아님 |
+| Exact Node `24.0.0` | Runtime-only floor lane: 지원되는 compiler Node에서 빌드한 artifact로 실제 public runtime entry import와 HTTP listener, dispatch, config, shutdown 동작을 수행; Babel 8 로딩과 24.0.0 설치 없음 | 최소 지원 runtime floor이며 release runtime은 아님 |
+| Exact Node `24.11.0` | Frozen install, 분할 전체 검증, 생성 starter sandbox matrix | Babel 8의 최소 compiler toolchain floor |
 | Latest Node `24.x` | Frozen install, 분할 전체 검증, `pnpm verify:docs`, 생성 starter sandbox matrix | Canonical 개발 및 Changesets release runtime |
 | Latest Node `26.x` | Frozen install, 분할 전체 검증, 생성 starter sandbox matrix | Forward verification 전용이며 publish에 사용하지 않음 |
 | Bun, Deno, Cloudflare Workers | 기존의 독립 adapter/native-runtime lane | Runtime-native 배포 계약 |
 
-`.github/workflows/ci.yml`의 `node-support` matrix는 `.github/workflows/node-verification.yml`을 호출하며 aggregate `verify` gate의 필수 조건입니다. deterministic latest-24 preflight는 runtime fan-out 전에 frozen install, build, typecheck, lint, platform governance, full tooling project를 실행합니다. 모든 Node 버전은 로컬 `pnpm verify`와 같은 전체 build, typecheck, lint, test 범위를 검증합니다. CI에서는 `pnpm build`가 끝나면 `pnpm typecheck`와 `pnpm lint`, 분할 테스트, 생성 starter 검증을 독립 job에서 실행합니다. 패키지 테스트는 4개 shard, tooling 테스트는 2개 shard로 나눕니다. Apps와 examples project는 첫 번째 tooling shard job에서 각각 한 번씩 전체 실행하며, 각 테스트 프로세스는 `--maxWorkers=1`을 유지합니다. 변경 범위가 작아도 이 전체 Node 검증은 생략하지 않습니다.
+`.github/workflows/ci.yml`의 `node-support` matrix는 `.github/workflows/node-verification.yml`을 호출하며 aggregate `verify` gate의 필수 조건입니다. deterministic latest-24 preflight는 runtime fan-out 전에 frozen install, build, typecheck, lint, platform governance, full tooling project를 실행합니다. full matrix의 모든 Node 버전은 로컬 `pnpm verify`와 같은 전체 build, typecheck, lint, test 범위를 검증합니다. 별도의 `node-runtime-floor` job은 `.github/workflows/node-runtime-floor.yml`을 호출합니다. compiler Node `24.x`에서 워크스페이스를 빌드하고 자기완결형 runtime exercise를 bundle하고 같은 artifact provenance 계약으로 전달한 뒤 exact Node `24.0.0`에서 root install과 Babel 로딩 없이 실행합니다. CI에서는 `pnpm build`가 끝나면 `pnpm typecheck`와 `pnpm lint`, 분할 테스트, 생성 starter 검증을 독립 job에서 실행합니다. 패키지 테스트는 4개 shard, tooling 테스트는 2개 shard로 나눕니다. Apps와 examples project는 첫 번째 tooling shard job에서 각각 한 번씩 전체 실행하며, 각 테스트 프로세스는 `--maxWorkers=1`을 유지합니다. 변경 범위가 작아도 이 전체 Node 검증은 생략하지 않습니다.
 
 `pnpm verify:local`은 worktree root, head/tree identity, merge-base/diff identity,
 command plan, log, environment, limitation을 exact-head local receipt에 기록합니다.
@@ -30,11 +31,11 @@ Authentication, 일반 authorization, malformed metadata, expired artifact, dige
 `[since, until)` window를 적용하며 pagination/completeness limit을 성공으로 숨기지
 않고 기록합니다.
 
-빌드 artifact는 같은 workflow run, commit, Node 버전 안에서만 전달합니다. 패키지의 `dist`와 CLI의 생성 dependency metadata를 tar로 보존하여 실행 권한과 symbolic link를 유지하며, 공개 선언 검증 fixture나 package global setup을 우회하지 않습니다. 생성 starter 검증은 테스트 종료를 기다리지 않고 빌드 뒤에 실행합니다. 최신 `24.x`가 기존의 중복 PR 검증을 통합하고 `pnpm verify:docs`를 한 번 실행합니다. Aggregate gate는 필수 job의 failure, cancellation, skip을 성공으로 처리하지 않습니다.
+전체 검증의 package build는 같은 workflow run, commit, Node 버전 안에서만 전달합니다. Runtime-floor bundle은 compiler Node에서 exact Node `24.0.0`으로 의도적으로 전달하되 같은 run, commit, artifact identity, digest 검증을 유지합니다. 패키지의 `dist`와 CLI의 생성 dependency metadata를 tar로 보존하여 실행 권한과 symbolic link를 유지하며, 공개 선언 검증 fixture나 package global setup을 우회하지 않습니다. 생성 starter 검증은 테스트 종료를 기다리지 않고 빌드 뒤에 실행합니다. 최신 `24.x`가 기존의 중복 PR 검증을 통합하고 `pnpm verify:docs`를 한 번 실행합니다. Aggregate gate는 필수 job의 failure, cancellation, skip을 성공으로 처리하지 않습니다.
 
 Node 검증과 별도로 실행하는 web runtime adapter portability suite는 하나의 job에서 Bun, Deno, Cloudflare Workers 사례를 모두 검증하여 프로젝트 초기화의 반복을 피합니다. Native response cookie 검증도 하나의 job에서 HTTP helper를 한 번 빌드한 뒤 세 runtime의 명령을 차례로 실행합니다. 각 명령의 실패는 계속 필수 `Verify` gate를 차단하며, Bun native routing/lifecycle과 Deno platform 검증은 별도 job으로 유지합니다.
 
-집중 검증 명령인 `test:node-floor`는 로컬 확인용으로 유지하며 전체 CI 검증을 대체하지 않습니다. 이 명령은 manifest 분류, 모든 scaffold profile, config env-file/watch 동작, 배포 portable runtime import, Node HTTP listener, adapter portability, 기존 Vite compatibility seam을 검증합니다. CI는 exact 24.0.0 검증을 더 최신인 24.x patch로 대체하지 않습니다.
+집중 검증 명령인 `test:node-floor`는 로컬 확인용으로 유지하며 전체 CI 검증을 대체하지 않습니다. 이 명령은 manifest 분류, 모든 scaffold profile, config env-file/watch 동작, 배포 portable runtime import, Node HTTP listener, adapter portability, 기존 Vite compatibility seam을 검증합니다. 필수 runtime-only lane은 exact Node `24.0.0`에서 실행되므로 CI는 runtime floor 검증을 더 최신인 24.x patch로 대체하지 않습니다.
 
 ## Portable package boundaries
 
@@ -42,13 +43,13 @@ Node 검증과 별도로 실행하는 web runtime adapter portability suite는 �
 
 Package-wide Node metadata는 모든 conditional export나 runtime-native adapter에 대한 주장이 아닙니다. 기존 Bun, Deno, Workers 동작은 각 package README의 계약을 따릅니다. Config의 in-memory root는 portable하게 유지됩니다. Env-file/기본 `.env` loading과 watch mode는 `>=24.0.0 <27`에서 지원하는 Node 전용 기능입니다. 기존 capability guard는 host가 builtin 경계를 제공하지 못할 때 계속 `CONFIG_RUNTIME_UNAVAILABLE`을 발생시킵니다. Import나 feature 호출에 새 Node version 검사는 없습니다.
 
-생성된 Node HTTP(Fastify, Express, raw Node), mixed, 7개 microservice transport, React SSR + Fastify starter는 같은 engine range를 선언하고 `node24`로 빌드하며 `@types/node@^24.0.0`을 사용합니다. Bun과 Deno의 engine 및 native build/start 명령은 유지됩니다. Workers의 기존 Node engine은 배포 isolate가 아니라 로컬 CLI/Wrangler tooling을 설명합니다.
+생성된 Node HTTP(Fastify, Express, raw Node), mixed, 7개 microservice transport, React SSR + Fastify starter는 compiler toolchain engine range인 `>=24.11.0 <27`을 선언하고 `node24`로 빌드하며 `@types/node@^24.0.0`을 사용하고 Babel 8 의존성과 호환되는 Babel 8 config를 생성합니다. Bun과 Deno의 engine 및 native build/start 명령은 유지됩니다. Workers의 기존 Node engine은 배포 isolate가 아니라 로컬 CLI/Wrangler tooling을 설명합니다.
 
 ## Migration
 
-1. 영향받는 package를 업그레이드하기 전에 Node 20/22 로컬 설치, CI runner, 배포 host를 최신 Node 24 LTS로 교체하세요. 애플리케이션 `engines.node`에는 `>=24.0.0 <27`을 사용하고, `--ignore-engines`를 migration 대신 사용하지 마세요.
+1. 영향받는 package를 업그레이드하기 전에 Node 20/22 로컬 설치, CI runner, 배포 host를 최신 Node 24 LTS로 교체하세요. 애플리케이션 `engines.node`에는 runtime package의 경우 `>=24.0.0 <27`을, CLI 생성 프로젝트 같은 Babel 8 compiler toolchain host는 `>=24.11.0 <27`을 사용하고, `--ignore-engines`를 migration 대신 사용하지 마세요.
 2. Build 및 runtime stage의 `node:20-slim` 같은 container base image를 `node:24-slim`으로 교체하세요. 이미지를 다시 빌드하고 native addon을 포함한 dependency를 새 runtime에서 다시 설치하세요.
-3. CLI를 업그레이드해도 기존 생성 Node 프로젝트는 자동 수정되지 않습니다. Vite server build target을 `node20`에서 `node24`로, Node typings를 `@types/node@^24.0.0`으로 변경하고 프로젝트에서 선택한 package manager로 lockfile을 갱신하세요.
+3. CLI를 업그레이드해도 기존 생성 Node 프로젝트는 자동 수정되지 않습니다. Vite server build target을 `node20`에서 `node24`로, Node typings를 `@types/node@^24.0.0`으로, Babel dependency를 Babel 8 기준선으로, `engines.node`를 `>=24.11.0 <27`로 변경하고 프로젝트에서 선택한 package manager로 lockfile을 갱신하세요.
 4. Node 24에서 애플리케이션 install, build, typecheck, test를 실행하세요. HTTP listener와 microservice startup/shutdown, 해당하는 경우 첫 React page 및 hydration도 확인하세요. 애플리케이션이 이 전체 범위를 광고한다면 exact `24.0.0`과 최신 `26.x` 검증도 유지하세요.
 5. 비 Node 배포에서는 native engine metadata와 배포 명령을 유지하고 Node-hosted 개발 tooling만 업그레이드하세요. Portable host에서는 Node env-file/watch 지원을 가정하지 말고 명시적인 in-memory config map을 전달하세요.
 

@@ -14,19 +14,62 @@ function job(source: string, id: string): string {
   return source.slice(start).split(/\n(?= {2}[a-z][a-z-]*:\n)/u)[0] ?? '';
 }
 
-it('runs all supported Node targets through one sharded verification workflow', () => {
+it('runs full compiler-capable Node targets through one sharded verification workflow', () => {
   // Given
   const nodeSupport = job(workflow, 'node-support');
 
   // When
-  const versions = [...nodeSupport.matchAll(/^\s+- "(24\.0\.0|24\.x|26\.x)"$/gm)].map((match) => match[1]);
+  const versions = [...nodeSupport.matchAll(/^\s+- "(24\.11\.0|24\.x|26\.x)"$/gm)].map((match) => match[1]);
 
-  // Then
-  expect(versions).toEqual(['24.0.0', '24.x', '26.x']);
+  // Then: the full verification matrix never runs the Babel 8 compiler toolchain
+  // on a version below its 24.11 upstream engine floor.
+  expect(versions).toEqual(['24.11.0', '24.x', '26.x']);
   expect(nodeSupport).toContain('uses: ./.github/workflows/node-verification.yml');
   expect(nodeSupport).toMatch(/node-version: \$\{\{ matrix.node-version \}\}/u);
   expect(nodeSupport).not.toContain('run: pnpm verify');
   expect(workflow).not.toMatch(/^ {2}(build-and-typecheck|lint|test):$/m);
+});
+
+it('runs the exact 24.0.0 runtime floor as a separately required runtime-only lane', () => {
+  // Given
+  const runtimeFloor = job(workflow, 'node-runtime-floor');
+
+  // When: the caller binds the runtime floor and a supported compiler Node.
+  // Then: the lane is required by the aggregate gate and excluded from full lanes.
+  expect(runtimeFloor).toContain('uses: ./.github/workflows/node-runtime-floor.yml');
+  expect(runtimeFloor).toContain('node-version: "24.0.0"');
+  expect(runtimeFloor).toContain('compiler-node-version: "24.x"');
+  expect(runtimeFloor).toContain('      - deterministic-preflight\n');
+  expect(job(workflow, 'verify')).toContain('      - node-runtime-floor\n');
+  expect(job(workflow, 'node-support')).not.toContain('24.0.0');
+});
+
+it('builds the runtime floor lane under a supported compiler Node and verifies on exact 24.0.0 without a root install', () => {
+  // Given
+  const runtimeWorkflow = readFileSync(new URL('../../.github/workflows/node-runtime-floor.yml', import.meta.url), 'utf8');
+  const build = job(runtimeWorkflow, 'build');
+  const runtimeVerify = job(runtimeWorkflow, 'runtime-verify');
+
+  // When: the lane compiles under the supported compiler Node input.
+  // Then: the runtime job consumes provenance-bound artifacts on exact 24.0.0
+  // and never installs workspace dependencies or loads Babel there.
+  expect(build).toMatch(/node-version: \$\{\{ inputs\.compiler-node-version \}\}/u);
+  expect(build).toContain('pnpm install --frozen-lockfile');
+  expect(build).toContain('pnpm build');
+  expect(build).toContain('node tooling/testing/node-runtime-floor.mjs --bundle --dist');
+  expect(build).toContain('node tooling/testing/node-runtime-floor.mjs "$RUNNER_TEMP/runtime-floor/runtime-floor-exercise.mjs" --self-test');
+  expect(runtimeVerify).toMatch(/node-version: \$\{\{ inputs\.node-version \}\}/u);
+  const runtimeNodeSetup = runtimeVerify.split(/\n {6}- /u).filter(
+    (step) => /^ {8}uses: actions\/setup-node@/mu.test(step),
+  );
+  expect(runtimeNodeSetup).toHaveLength(1);
+  expect(runtimeNodeSetup[0]).toMatch(/^ {10}package-manager-cache: false$/mu);
+  expect(runtimeVerify).not.toContain('pnpm install');
+  expect(runtimeVerify).toContain('node tooling/ci/acquire-build-artifact.mjs');
+  expect(runtimeVerify).toContain('needs.build.outputs.artifact-id');
+  expect(runtimeVerify).toContain('needs.build.outputs.artifact-digest');
+  expect(runtimeVerify).toContain("node tooling/testing/node-runtime-floor.mjs \"$RUNNER_TEMP/runtime-floor/runtime-floor-exercise.mjs\"");
+  expect(runtimeVerify).not.toMatch(/run: pnpm\b/u);
 });
 
 it('gates every runtime fan-out behind deterministic latest-24 preflight', () => {
@@ -39,6 +82,7 @@ it('gates every runtime fan-out behind deterministic latest-24 preflight', () =>
     'native-response-cookie-conformance',
     'bun-native-routing-and-lifecycle-conformance',
     'node-support',
+    'node-runtime-floor',
   ];
 
   // When

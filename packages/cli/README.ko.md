@@ -43,10 +43,10 @@ pnpm dlx @fluojs/cli new my-app
 
 ## 릴리스 계약
 
-- `@fluojs/cli`와 생성된 모든 Node HTTP, mixed, microservice, React SSR + Fastify 프로젝트는 Node.js `>=24.0.0 <27`을 요구합니다. Node build target은 `node24`, Node starter typings는 `@types/node@^24.0.0`입니다. Bun과 Deno starter는 native engine을 유지하고 Workers의 Node engine은 로컬 CLI/Wrangler tooling만 제한합니다. 업그레이드 전에 [Node.js 마이그레이션](../../docs/reference/node-support.ko.md)을 적용하세요.
-- `@fluojs/cli`는 Node.js `>=24.0.0 <27`을 요구합니다. 생성된 Bun, Deno, Cloudflare Workers starter가 비 Node runtime을 대상으로 할 수는 있지만 CLI process 자체는 Node.js에서 실행됩니다. 생성된 Node HTTP 및 mixed 프로젝트는 listener-level RFC `QUERY`가 framework dispatch에 도달하도록 Node.js `>=24.0.0 <27`을 선언합니다. Node 24 미만과 Node 27 이상은 제외되며, Node microservice-only 프로젝트는 독립적인 `>=24.0.0 <27` 하한을 유지합니다.
-- `inspect`는 검사를 실행할 때만, 그리고 검사 대상 프로젝트의 dependency tree에서만 `@fluojs/runtime`을 해석합니다. `fluo inspect`를 사용하기 전에 현재 Node.js 버전과 호환되는 runtime 버전을 설치하세요. 다른 CLI 명령은 CLI 전체 Node.js `>=24.0.0 <27` 범위에서 계속 사용할 수 있습니다.
-- 대화형 `new` 흐름과 선택적인 대화형 `inspect --mermaid` 안내는 필요할 때만 `@clack/prompts`를 해석합니다. CLI가 지원하는 Node.js `>=24.0.0 <27` 전체 범위에서 대화형 및 비대화형 명령을 사용할 수 있습니다.
+- `@fluojs/cli`와 생성된 모든 Node HTTP, mixed, microservice, React SSR + Fastify 프로젝트는 Babel 8 compiler toolchain floor인 Node.js `>=24.11.0 <27`을 요구합니다. Node build target은 `node24`, Node starter typings는 `@types/node@^24.0.0`입니다. Bun과 Deno starter는 native engine을 유지하고 Workers의 Node engine은 로컬 CLI/Wrangler tooling만 제한합니다. 업그레이드 전에 [Node.js 마이그레이션](../../docs/reference/node-support.ko.md)을 적용하세요.
+- `@fluojs/cli`는 Node.js `>=24.11.0 <27`을 요구합니다. 생성된 Bun, Deno, Cloudflare Workers starter가 비 Node runtime을 대상으로 할 수는 있지만 CLI process 자체는 Node.js에서 실행됩니다. 생성된 Node HTTP 및 mixed 프로젝트는 listener-level RFC `QUERY`가 framework dispatch에 도달하도록 하고 생성 Babel 8 toolchain이 지원되는 engine 범위 안에 있도록 Node.js `>=24.11.0 <27`을 선언합니다. Node 24.11 미만과 Node 27 이상은 제외되며, Node microservice-only 프로젝트는 같은 `>=24.11.0 <27` 하한을 유지합니다.
+- `inspect`는 검사를 실행할 때만, 그리고 검사 대상 프로젝트의 dependency tree에서만 `@fluojs/runtime`을 해석합니다. `fluo inspect`를 사용하기 전에 현재 Node.js 버전과 호환되는 runtime 버전을 설치하세요. 다른 CLI 명령은 CLI 전체 Node.js `>=24.11.0 <27` 범위에서 계속 사용할 수 있습니다.
+- 대화형 `new` 흐름과 선택적인 대화형 `inspect --mermaid` 안내는 필요할 때만 `@clack/prompts`를 해석합니다. CLI가 지원하는 Node.js `>=24.11.0 <27` 전체 범위에서 대화형 및 비대화형 명령을 사용할 수 있습니다.
 - CLI와 생성된 Node.js starter toolchain은 `tsx@^4.23.1`을 사용하며, 생성된 gRPC starter는 `@grpc/grpc-js@^1.14.4`를 요구합니다. 이 패치된 floor를 적용할 때 기존 project lockfile을 갱신하세요.
 - 지원되는 설치 경로는 전역 패키지(`npm install -g @fluojs/cli`, `pnpm add -g @fluojs/cli`, `bun add -g @fluojs/cli`, `yarn global add @fluojs/cli`)와 무설치 실행 경로(`pnpm dlx @fluojs/cli ...`)입니다.
 - 배포되는 `fluo` bin은 `package.json`에 선언된 `./bin/fluo.mjs` wrapper이며, 이 wrapper가 dist 빌드 CLI 엔트리포인트인 `../dist/cli.js`를 로드합니다.
@@ -124,11 +124,11 @@ CLI도 monorepo나 registry 조회 없이 scaffold를 생성합니다. React의 
 
 생성된 non-Deno standard starter의 `vite.config.ts`는 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하고, React SSR + Vite starter는 같은 plugin을 `vite.server.config.ts`에 적용합니다. 따라서 decorator transform 업데이트는 각 신규 프로젝트에 inline 복사되는 대신 유지보수되는 Vite 패키지를 통해 전달됩니다.
 
-새 non-Deno 프로젝트는 Vite `^8.2.2`, Vitest `^4.1.11`, `@vitest/coverage-v8` `^4.1.11`을 선언합니다. 생성된 ESM Vite config는 `build.rolldownOptions`를 사용합니다. Rolldown/Oxc가 애플리케이션 코드를 처리하기 전에 `fluoDecoratorsPlugin()`을 통해 Babel이 표준 데코레이터를 변환하고, `vitest.config.ts`는 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`와 `@fluojs/core/metadata-preload`를 사용합니다. Direct Oxc/esbuild decorator processing은 지원하지 않습니다. Node.js `>=24.0.0 <27`과 runtime-native starter metadata는 바뀌지 않습니다. 기존 프로젝트를 다시 쓰지는 않으므로 업그레이드 시 [생성 toolchain 기준선](../../docs/reference/toolchain-contract-matrix.ko.md)을 명시적으로 적용하세요.
+새 non-Deno 프로젝트는 Vite `^8.2.2`, Vitest `^4.1.11`, `@vitest/coverage-v8` `^4.1.11`을 선언합니다. 생성된 ESM Vite config는 `build.rolldownOptions`를 사용합니다. Rolldown/Oxc가 애플리케이션 코드를 처리하기 전에 `fluoDecoratorsPlugin()`을 통해 Babel이 표준 데코레이터를 변환하고, `vitest.config.ts`는 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`와 `@fluojs/core/metadata-preload`를 사용합니다. Direct Oxc/esbuild decorator processing은 지원하지 않습니다. 생성 프로젝트는 Babel 8 compiler toolchain floor인 Node.js `>=24.11.0 <27`을 선언하고, runtime-native starter metadata는 바뀌지 않습니다. 기존 프로젝트를 다시 쓰지는 않으므로 업그레이드 시 [생성 toolchain 기준선](../../docs/reference/toolchain-contract-matrix.ko.md)을 명시적으로 적용하세요.
 
 기존 starter를 업그레이드할 때는 `babel.config.cjs`에서 `ignore: ['src/**/*.test.ts']` 규칙을 제거하세요. 생성된 Babel config는 더 이상 test file을 제외하지 않으므로 testing plugin이 테스트 내부에 선언된 데코레이터도 Vitest 4 실행 전에 변환합니다.
 
-새 non-Deno 프로젝트의 Babel config는 선언 전용 필드를 처리하는 Babel 7에서만 `allowDeclareFields`를 유지하고 Babel 8에서는 제거된 옵션을 전달하지 않습니다. `2023-11` decorator transform은 두 버전에서 application 및 test TypeScript의 decorated field를 계속 처리합니다. 생성 dependency는 Babel 7 기준선을 유지하며 기존 프로젝트의 config는 다시 쓰지 않습니다.
+새 non-Deno 프로젝트는 Babel 8 의존성(`@babel/core ^8.0.6`, `@babel/cli ^8.0.6`, `@babel/plugin-proposal-decorators ^8.0.2`, `@babel/preset-typescript ^8.0.1`)을 선언하고 제거된 `allowDeclareFields` 옵션을 전달하지 않는 Babel config를 생성합니다. `2023-11` decorator transform은 application 및 test TypeScript의 decorated field를 계속 처리합니다. 기존 프로젝트의 config는 다시 쓰지 않습니다.
 
 생성된 standard non-Deno HTTP starter는 TDD-first Vitest 레이아웃을 사용합니다. 빠른 greeting unit test와 `greeting.slice.test.ts`는 `src/greeting/` 아래에 colocate하고, 앱 dispatch test는 `src/app.test.ts`에 유지하며, 기본 e2e 스타일 request-pipeline test는 `Test.createApp({ rootModule })`와 `app.request(...).send()`를 사용해 `test/app.e2e.test.ts`에 둡니다. React starter는 대신 streamed SSR, DOM hydration, production Playwright hydration에 집중한 test를 포함합니다. `test:browser` script는 build된 Fastify server를 시작하며 asset 누락, hydration warning, server-owned route를 우회하는 navigation이 있으면 실패합니다.
 

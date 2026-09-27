@@ -161,6 +161,7 @@ const nodeListenerEngineRange = nodeListenerEngineWindows
     `>=${minimumMajor}.${minimumMinor}.${minimumPatch} <${maximumMajorExclusive}`)
   .join(' || ');
 const nodeListenerEngineMarker = `engines.node ${nodeListenerEngineRange}`;
+const compilerToolchainEngineRange = '>=24.11.0 <27';
 
 function parseNodeEngineVersion(value) {
   const match = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?$/u.exec(value);
@@ -3279,14 +3280,14 @@ function enforceViteToolingDiscoverability() {
   }
 
   assert(
-    vitePackageJson.engines?.node === '>=24.0.0 <27',
-    'packages/vite/package.json must keep the documented Node.js >=24.0.0 <27 engine floor.',
+    vitePackageJson.engines?.node === '>=24.11.0 <27',
+    'packages/vite/package.json must keep the documented Node.js >=24.11.0 <27 Babel 8 compiler toolchain floor.',
   );
 
   for (const markdown of [englishContext, englishPackageSurface, englishToolchainMatrix, englishViteReadme]) {
     assert(
-      markdown.includes('Node.js') && markdown.includes('>=24.0.0 <27'),
-      'English Vite tooling docs must keep the @fluojs/vite Node.js >=24.0.0 <27 engine floor discoverable.',
+      markdown.includes('Node.js') && markdown.includes('>=24.11.0 <27'),
+      'English Vite tooling docs must keep the @fluojs/vite Node.js >=24.11.0 <27 engine floor discoverable.',
     );
     assert(
       markdown.includes('Vite `>=6.2.0`'),
@@ -3300,8 +3301,8 @@ function enforceViteToolingDiscoverability() {
 
   for (const markdown of [koreanContext, koreanPackageSurface, koreanToolchainMatrix, koreanViteReadme]) {
     assert(
-      markdown.includes('Node.js') && markdown.includes('>=24.0.0 <27'),
-      'Korean Vite tooling docs must keep the @fluojs/vite Node.js >=24.0.0 <27 engine floor discoverable.',
+      markdown.includes('Node.js') && markdown.includes('>=24.11.0 <27'),
+      'Korean Vite tooling docs must keep the @fluojs/vite Node.js >=24.11.0 <27 engine floor discoverable.',
     );
     assert(
       markdown.includes('Vite `>=6.2.0`'),
@@ -3782,13 +3783,13 @@ export function enforceHttpCustomMethodContract() {
     'Fastify and Bun adapters must preserve the documented custom-method fallback boundary.',
   );
   assert(
-    scaffold.includes(`const NODE_HTTP_LISTENER_ENGINE = '${expectedNodeListenerEngine}';`) &&
+    scaffold.includes(`const NODE_HTTP_LISTENER_ENGINE = '${compilerToolchainEngineRange}';`) &&
       scaffold.includes("case 'application-node-fastify-http':") &&
       scaffold.includes("case 'application-node-fastify-react-vite-ssr':") &&
       scaffold.includes("case 'application-node-express-http':") &&
       scaffold.includes("case 'application-node-nodejs-http':") &&
       scaffold.includes("case 'mixed-node-fastify-tcp':"),
-    `Generated Node HTTP listener projects must declare Node.js ${expectedNodeListenerEngine}.`,
+    `Generated Node HTTP listener projects must declare the Babel 8 compiler toolchain floor Node.js ${compilerToolchainEngineRange}.`,
   );
 }
 

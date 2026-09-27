@@ -17,7 +17,7 @@
     "directory": "packages/platform-nextjs"
   },
   "engines": {
-    "node": ">=24.0.0 <27"
+    "node": ">=24.11.0 <27"
   },
   "publishConfig": {
     "access": "public"
@@ -57,9 +57,9 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
-    "@babel/core": "^7.29.7",
-    "@babel/plugin-proposal-decorators": "^7.28.0",
-    "@babel/preset-typescript": "^7.27.1",
+    "@babel/core": "^8.0.6",
+    "@babel/plugin-proposal-decorators": "^8.0.2",
+    "@babel/preset-typescript": "^8.0.1",
     "@fluojs/http": "workspace:^"
   },
   "peerDependencies": {

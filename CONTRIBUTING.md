@@ -12,7 +12,7 @@ fluo is built on standard TypeScript decorators and explicit contract discipline
 
 fluo uses a monorepo structure managed by `pnpm`.
 
-1. **Prerequisites**: Node.js `>=24.0.0 <27` and `pnpm` for the private development workspace.
+1. **Prerequisites**: Node.js `>=24.11.0 <27` and `pnpm` for the private development workspace (the Babel 8 compiler toolchain floor).
 2. **Install dependencies**:
    ```sh
    pnpm install
@@ -53,7 +53,7 @@ includes the Git status digest at startup, every command boundary, and
 finalization. Changes that affect package ownership, manifests, source copies,
 or build tooling perform a cold workspace `dist` cleanup before the build and
 run manifest-selected companion commands. The plan is intentionally
-preflight-first; CI still supplies the Node `24.0.0`/`24.x`/`26.x` matrices,
+preflight-first; CI still supplies the Node `24.11.0`/`24.x`/`26.x` full-verification matrices plus a separately required exact `24.0.0` runtime-only floor lane,
 four package shards, two tooling shards, native runtimes, Studio browser, and
 aggregate fail-closed semantics.
 

@@ -1,0 +1,89 @@
+name: Node runtime floor
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        required: true
+        type: string
+      compiler-node-version:
+        required: true
+        type: string
+
+env:
+  CI: '1'
+
+jobs:
+  build:
+    name: Build under compiler Node (${{ inputs.compiler-node-version }})
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-id: ${{ steps.upload-runtime-floor.outputs.artifact-id }}
+      artifact-digest: ${{ steps.upload-runtime-floor.outputs.artifact-digest }}
+      artifact-sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      artifact-run-id: ${{ github.run_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.compiler-node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Bundle runtime floor exercise from built packages
+        run: node tooling/testing/node-runtime-floor.mjs --bundle --dist --output "$RUNNER_TEMP/runtime-floor"
+
+      - name: Self-test runtime floor exercise on the compiler Node
+        run: node tooling/testing/node-runtime-floor.mjs "$RUNNER_TEMP/runtime-floor/runtime-floor-exercise.mjs" --self-test
+
+      - name: Archive runtime floor exercise
+        run: tar -cf "$RUNNER_TEMP/runtime-floor.tar" -C "$RUNNER_TEMP/runtime-floor" .
+
+      - name: Upload runtime floor exercise
+        id: upload-runtime-floor
+        uses: actions/upload-artifact@v6
+        with:
+          name: node-runtime-floor-${{ inputs.node-version }}-${{ github.sha }}
+          path: ${{ runner.temp }}/runtime-floor.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  runtime-verify:
+    name: Runtime-only verify on Node ${{ inputs.node-version }}
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    env:
+      FLUO_RUNTIME_FLOOR_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}
+      FLUO_RUNTIME_FLOOR_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact-digest }}
+      FLUO_RUNTIME_FLOOR_ARTIFACT_SHA: ${{ needs.build.outputs.artifact-sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ inputs.node-version }}
+          package-manager-cache: false
+
+      - name: Acquire runtime floor exercise artifact
+        run: node tooling/ci/acquire-build-artifact.mjs --id "$FLUO_RUNTIME_FLOOR_ARTIFACT_ID" --digest "$FLUO_RUNTIME_FLOOR_ARTIFACT_DIGEST" --sha "${{ needs.build.outputs.artifact-sha }}" --name "node-runtime-floor-${{ inputs.node-version }}-${{ github.sha }}" --run-id "${{ needs.build.outputs.artifact-run-id }}" --output "$RUNNER_TEMP/runtime-floor.tar"
+
+      - name: Restore runtime floor exercise
+        run: mkdir -p "$RUNNER_TEMP/runtime-floor" && tar -xf "$RUNNER_TEMP/runtime-floor.tar" -C "$RUNNER_TEMP/runtime-floor"
+
+      - name: Execute runtime-only floor verification
+        run: node tooling/testing/node-runtime-floor.mjs "$RUNNER_TEMP/runtime-floor/runtime-floor-exercise.mjs"

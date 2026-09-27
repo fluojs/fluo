@@ -1,9 +1,8 @@
 import { createRequire } from 'node:module';
 
 import {
-  type TransformOptions,
+  type InputOptions,
   transformAsync,
-  version as babelVersion,
 } from '@babel/core';
 
 const require = createRequire(import.meta.url);
@@ -43,7 +42,7 @@ export class FluoDecoratorsTransformError extends Error {
 export async function transformFluoDecorators(
   source: string,
   filePath: string,
-  inputSourceMap?: TransformOptions['inputSourceMap'],
+  inputSourceMap?: InputOptions['inputSourceMap'],
 ): Promise<FluoDecoratorsTransformResult> {
   const result = await transformAsync(source, {
     babelrc: false,
@@ -51,9 +50,7 @@ export async function transformFluoDecorators(
     filename: filePath,
     inputSourceMap,
     plugins: [[decoratorsPluginPath, { version: '2023-11' }]],
-    presets: [babelVersion.startsWith('7.')
-      ? [typescriptPresetPath, { allowDeclareFields: true }]
-      : typescriptPresetPath],
+    presets: [typescriptPresetPath],
     sourceMaps: true,
   });
 

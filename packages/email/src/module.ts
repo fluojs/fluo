@@ -50,8 +50,8 @@ function normalizeEmailModuleOptions(options: EmailModuleOptions): NormalizedEma
 
   const transport = options.transport;
   const createTransport = isTransportFactory(transport)
-    ? async (): Promise<EmailTransport> => transport.create()
-    : async (): Promise<EmailTransport> => transport as EmailTransport;
+    ? (async (): Promise<EmailTransport> => transport.create())
+    : (async (): Promise<EmailTransport> => transport as EmailTransport);
 
   return {
     defaultFrom: normalizeAddress(options.defaultFrom),

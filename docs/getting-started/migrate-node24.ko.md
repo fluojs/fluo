@@ -22,7 +22,7 @@ fix 노트는 패키지별 하나의 다음 Changesets 릴리스에 함께 반�
 ## 1. Upgrade Node everywhere
 
 새 Fluo 패키지를 설치하기 전에 로컬 개발, CI runner, container build/runtime
-stage, production host를 Node.js `>=24.0.0 <27`로 옮기세요. 일반적인 개발 및
+stage, production host를 Node.js `>=24.0.0 <27`(Babel 8 compiler toolchain host는 `>=24.11.0 <27`)로 옮기세요. 일반적인 개발 및
 production 경로는 최신 Node 24 LTS를 사용합니다. Node 20과 Node 22 지원은
 제거되며 Node 24 미만과 Node 27 이상은 지원하지 않습니다. 이는 지원 정책
 결정이며 새 dependency가 Node 24를 요구한다는 주장이 아닙니다.
@@ -34,10 +34,11 @@ production 경로는 최신 Node 24 LTS를 사용합니다. Node 20과 Node 22 �
   addon을 새 runtime에서 재설치하세요. `--ignore-engines`로 우회하지 마세요.
 - Lockfile을 유지하고 Node 24에서 dependency를 변경할 때 갱신한 뒤, 갱신된
   lockfile로 CI frozen install을 수행하세요.
-- Exact Node `24.0.0`, 최신 `24.x`, 최신 `26.x`는 별개 검증 대상입니다.
-  애플리케이션이 전체 범위를 지원한다고 명시한다면 각 대상을 검증하세요.
-  Fluo release automation은 최신 Node `24.x`를 사용하며 Node 26은 publish
-  runtime이 아닙니다.
+- Exact Node `24.0.0`는 별개 runtime floor 검증 대상으로 유지됩니다(fluo는 필수
+  runtime-only lane를 해당 버전에서 실행합니다). 전체 검증은 exact `24.11.0`,
+  최신 `24.x`, 최신 `26.x`에서 실행합니다. 애플리케이션이 전체 범위를 지원한다고
+  명시한다면 각 대상을 검증하세요. Fluo release automation은 최신 Node `24.x`를
+  사용하며 Node 26은 publish runtime이 아닙니다.
 
 아래 8개 engine omission은 의도적으로 유지합니다. Bun, Deno, Cloudflare Workers
 배포는 native runtime metadata와 deployment 명령을 유지하세요. Node-hosted
@@ -155,7 +156,7 @@ Config는 ambient environment variable을 자동으로 읽지 않습니다. 애�
 ## 5. Migrate the Vite and testing toolchain
 
 CLI를 업그레이드해도 기존 생성 프로젝트는 **자동 수정되지 않습니다**.
-새 non-Deno generated baseline을 채택하는 프로젝트는 다음을 함께 변경하세요.
+새 non-Deno generated baseline을 채택하는 프로젝트는 다음을 함께 변경하고, Babel을 사용하는 프로젝트는 Babel 8 기준선(`@babel/core` `^8.0.6`, `@babel/plugin-proposal-decorators` `^8.0.2`, `@babel/preset-typescript` `^8.0.1`)으로 이동해 `babel.config.cjs`에서 `allowDeclareFields` 옵션을 제거하세요.
 
 ```bash
 pnpm add -D vite@^8.2.2 vitest@^4.1.11 @vitest/coverage-v8@^4.1.11
@@ -170,7 +171,7 @@ consumer를 업그레이드하고 decorator transform은 `@fluojs/vite`로 구�
 1. ESM Vite config의 `build.rollupOptions`를 `build.rolldownOptions`로 옮기고
    애플리케이션의 input, output, external option을 Rolldown 기준으로
    검토하세요. 기존 Node starter의 server target은 `node20`에서 `node24`로,
-   `engines.node`는 `>=24.0.0 <27`로, `@types/node`는 `^24.0.0`으로 변경하세요.
+   `engines.node`는 Babel 8 compiler toolchain을 위해 `>=24.11.0 <27`로, `@types/node`는 `^24.0.0`으로 변경하세요.
 2. application decorator에는 `@fluojs/vite`의 `fluoDecoratorsPlugin()`을,
    Vitest에는 `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`를
    사용하세요. decorated module 평가 전에는 `@fluojs/core/metadata-preload`를 구성합니다.
