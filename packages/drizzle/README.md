@@ -355,6 +355,13 @@ preserves the existing default tokens and `DrizzleDatabase` class token. The mod
 forwards direct Drizzle calls to `DrizzleDatabase.current()`; request-wide transactions require an
 explicit `DrizzleDatabase.requestTransaction(...)` boundary.
 
+Register at most one unnamed `DrizzleModule.forRoot(...)` or `forRootAsync(...)` per application container.
+Two unnamed registrations, including a sync/async combination, fail bootstrap before async options factories
+or lifecycle wrappers run. Give each additional client a distinct `name` and inject its named tokens; an
+explicit `name: 'default'` is a separate named client, not the unnamed registration. If an application
+previously composed multiple unnamed registrations, retain one default and name the others before upgrading.
+Each registration then owns its own `dispose(database)` hook during shutdown.
+
 ### Shutdown and status contracts
 
 During application shutdown, `DrizzleDatabase` aborts any still-active request transaction, waits for open request and manual transaction callbacks to settle or roll back, and only then runs the optional `dispose(database)` hook. This includes fail-open manual `transaction(...)` callbacks when `database.transaction(...)` is unavailable and `strictTransactions` is `false`, so direct-execution fallbacks still drain before pools or externally managed resources are closed.
