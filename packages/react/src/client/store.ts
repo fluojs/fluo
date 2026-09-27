@@ -1,5 +1,5 @@
-import { ReactClientNavigationError } from './errors.js';
 import { createElement, type ReactElement } from 'react';
+import { ReactClientNavigationError } from './errors.js';
 import { connectClientNavigationHistory } from './history.js';
 import type { ReactNavigationLoadResult } from './navigation-payload.js';
 import {
@@ -124,14 +124,17 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       let result: ReactNavigationLoadResult;
       try {
         result = await load(destination.href, controller.signal);
-      } catch (error) {
+      } catch {
         if (controller.signal.aborted || requestGeneration !== generation) {
           return;
         }
         result = { ok: false, reason: 'unavailable' };
       }
+      const currentHref = browser.currentHref();
       if (controller.signal.aborted || requestGeneration !== generation
-        || browser.currentHref() !== expectedHref) {
+        || (type === 'back'
+          ? currentHref.split('#', 1)[0] !== expectedHref.split('#', 1)[0]
+          : currentHref !== expectedHref)) {
         return;
       }
       pending = null;
@@ -140,13 +143,13 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
           if (type === 'replace') {
             browser.replace(destination.href);
           } else {
-            browser.assign(destination.href);
+            browser.assign(type === 'back' ? currentHref : destination.href);
           }
         }
         return;
       }
       const confirmed = new URL(result.payload.url, destination.origin);
-      const confirmedHref = `${confirmed.href}${destination.hash}`;
+      const confirmedHref = `${confirmed.href}${type === 'back' ? new URL(currentHref).hash : destination.hash}`;
       if (type === 'push') {
         browser.pushState?.(confirmedHref);
       } else if (type === 'replace') {

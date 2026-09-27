@@ -10,13 +10,13 @@ import {
   createReactRouteSnapshot,
   Link,
   ReactClientRouterProvider,
+  type ReactNavigationLoadResult,
   useNavigation,
   useParams,
   usePathname,
   useRouter,
   useRouterState,
   useSearchParams,
-  type ReactNavigationLoadResult,
 } from './client.js';
 
 function createEnvironment(href = 'https://example.test/products/sku-42?preview=true') {
@@ -56,6 +56,7 @@ function createEnvironment(href = 'https://example.test/products/sku-42?preview=
   return {
     assign,
     back,
+    changeFragment: updateHref,
     environment,
     navigateFromHistory(nextHref: string) {
       const previousHash = new URL(currentHref).hash;
@@ -521,6 +522,64 @@ describe('@fluojs/react/client', () => {
       params: { sku: 'sku-42' },
       url: '/products/sku-42?preview=false#second',
     });
+  });
+
+  it('commits a cross-path popstate approval after its activated fragment changes', async () => {
+    // Given: history activates a different page while its HTTP approval is pending.
+    const browser = createEnvironment('https://example.test/admin/qr');
+    let approve: ((result: ReactNavigationLoadResult) => void) | undefined;
+    const load = vi.fn((_href: string) => new Promise<ReactNavigationLoadResult>((resolve) => {
+      approve = resolve;
+    }));
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/admin/qr' }));
+    store.connect({ ...browser.environment, load, pushState: vi.fn(), replaceState: vi.fn() });
+
+    // When: the activated page gains a fragment before its approval resolves.
+    browser.navigateFromHistory('https://example.test/admin/songs');
+    browser.changeFragment('https://example.test/admin/songs#details');
+    approve?.({
+      ok: true,
+      payload: {
+        version: 1,
+        url: '/admin/songs',
+        params: {},
+        destination: { module: './navigation-admin.ts', props: {} },
+      },
+      component: () => null,
+    });
+    await Promise.resolve();
+
+    // Then: one approval installs the new page and current fragment, not stale route state.
+    expect(load).toHaveBeenCalledOnce();
+    expect(store.getDestination()).not.toBeNull();
+    expect(store.getSnapshot()).toMatchObject({
+      pathname: '/admin/songs',
+      url: '/admin/songs#details',
+      hash: '#details',
+      navigation: { status: 'complete', type: 'back' },
+    });
+    expect(browser.assign).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the activated fragment when cross-path history approval is rejected', async () => {
+    // Given: a history activation is awaiting HTTP approval for another page.
+    const browser = createEnvironment('https://example.test/admin/qr');
+    let reject: ((result: ReactNavigationLoadResult) => void) | undefined;
+    const load = vi.fn(() => new Promise<ReactNavigationLoadResult>((resolve) => {
+      reject = resolve;
+    }));
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/admin/qr' }));
+    store.connect({ ...browser.environment, load, pushState: vi.fn(), replaceState: vi.fn() });
+
+    // When: its fragment changes before the HTTP response rejects the destination.
+    browser.navigateFromHistory('https://example.test/admin/songs');
+    browser.changeFragment('https://example.test/admin/songs#details');
+    reject?.({ ok: false, reason: 'unavailable' });
+    await Promise.resolve();
+
+    // Then: the document fallback loads the currently activated browser URL.
+    expect(load).toHaveBeenCalledOnce();
+    expect(browser.assign).toHaveBeenCalledWith('https://example.test/admin/songs#details');
   });
 
   it('honors activation of the prior URL while a popstate approval is pending', async () => {
