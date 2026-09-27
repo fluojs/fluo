@@ -72,7 +72,7 @@ The built-in preset retains `allowDeclareFields` only with Babel 7, where it is 
 The React SSR + Vite starter keeps its decorator-bearing application declarations in `src/app.ts`;
 JSX rendering remains in `.tsx` modules such as `src/page.tsx`.
 
-Set `babelConfigFile` to a file path or resolver when a test workspace needs a root Babel configuration. Re-enabling `experimentalDecorators` or relying on direct esbuild decorator handling is outside the documented fluo support contract.
+Set `babelConfigFile` to an existing filesystem path, a `file://` URL string such as `new URL('./babel.config.cjs', import.meta.url).href`, or a `(filePath) => string` resolver when a workspace needs a root Babel configuration. The resolver runs for each eligible source module and may return either form; URL strings are converted to filesystem paths before Babel loads the config. The default `false` disables Babel configuration discovery. If the selected config is missing or cannot load, the transform diagnostic identifies the source and config, preserves the original error as `cause`, and does not recommend reinstalling Babel peers. Genuine missing Babel peers retain the install guidance. Re-enabling `experimentalDecorators` or relying on direct esbuild decorator handling is outside the documented fluo support contract.
 
 ## Public API
 

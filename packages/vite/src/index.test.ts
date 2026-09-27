@@ -1,3 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -125,6 +130,134 @@ describe('fluoDecoratorsPlugin', () => {
     await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/component.ts')).rejects.toThrow(
       `[fluo-babel-decorators] Failed to resolve a Babel peer dependency while transforming /app/src/component.ts. Install @babel/core, @babel/plugin-proposal-decorators, and @babel/preset-typescript in the Vite project. Original error: Cannot find package '${dependencyName}' imported from vite.config.ts`,
     );
+  });
+
+  it.each([
+    ['file URL', new URL('../../../tooling/babel/babel.config.cjs', import.meta.url).href],
+    ['filesystem path', fileURLToPath(new URL('../../../tooling/babel/babel.config.cjs', import.meta.url))],
+  ])('loads an existing Babel config from a %s for eligible transforms', async (_kind, babelConfigFile) => {
+    // Given
+    const plugin = fluoDecoratorsPlugin({ babelConfigFile, sourceMaps: true });
+
+    // When
+    const result = await runTransform(
+      plugin,
+      `function Field(_value: undefined, _context: ClassFieldDecoratorContext) {}
+export class Example {
+  @Field
+  name = '';
+}`,
+      '/app/src/example.ts',
+    );
+
+    // Then
+    expect(result).toEqual(expect.objectContaining({
+      code: expect.stringContaining('@fluojs/core/metadata-preload'),
+      map: expect.any(Object),
+    }));
+    expect(transformAsyncMock.mock.calls[0]?.[1]?.configFile).toBe(fileURLToPath(new URL('../../../tooling/babel/babel.config.cjs', import.meta.url)));
+  });
+
+  it('resolves file URL and path callback results per eligible module', async () => {
+    // Given
+    const babelConfigUrl = new URL('../../../tooling/babel/babel.config.cjs', import.meta.url);
+    const resolvedFiles: string[] = [];
+    const plugin = fluoDecoratorsPlugin({
+      babelConfigFile: (filePath) => {
+        resolvedFiles.push(filePath);
+        return filePath.endsWith('first.ts') ? babelConfigUrl.href : fileURLToPath(babelConfigUrl);
+      },
+    });
+
+    // When
+    await runTransform(plugin, 'export const first: number = 1;', '/app/src/first.ts');
+    await runTransform(plugin, 'export const second: number = 2;', '/app/src/second.ts?import');
+
+    // Then
+    expect(resolvedFiles).toEqual(['/app/src/first.ts', '/app/src/second.ts']);
+    expect(transformAsyncMock.mock.calls.map(([, options]) => options?.configFile)).toEqual([
+      fileURLToPath(babelConfigUrl),
+      fileURLToPath(babelConfigUrl),
+    ]);
+  });
+
+  it('reports a missing custom config as a config failure with the Babel cause', async () => {
+    // Given
+    const directory = mkdtempSync(join(tmpdir(), 'fluo-3835-missing-config-'));
+    const babelConfigFile = join(directory, 'babel.config.cjs');
+    const plugin = fluoDecoratorsPlugin({ babelConfigFile });
+
+    try {
+      // When / Then
+      await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/example.ts')).rejects.toMatchObject({
+        message: expect.stringContaining(`babelConfigFile not found at ${babelConfigFile} while transforming /app/src/example.ts`),
+        cause: expect.objectContaining({ code: 'MODULE_NOT_FOUND' }),
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('reports an invalid file URL as a config resolution failure with its cause', async () => {
+    // Given
+    const babelConfigFile = 'file://example.invalid/babel.config.cjs';
+    const plugin = fluoDecoratorsPlugin({ babelConfigFile });
+
+    // When / Then
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/example.ts')).rejects.toMatchObject({
+      message: expect.stringContaining(`Failed to resolve babelConfigFile ${babelConfigFile} while transforming /app/src/example.ts`),
+      cause: expect.objectContaining({ code: 'ERR_INVALID_FILE_URL_HOST' }),
+    });
+  });
+
+  it.each([
+    ['with invalid syntax', 'module.exports = {', 'Unexpected end of input'],
+    ['with a missing dependency', "require('@babel/fluo-3835-absent'); module.exports = {};", '@babel/fluo-3835-absent'],
+  ])('reports an existing config %s as a config load failure', async (_kind, content, causeMessage) => {
+    // Given
+    const directory = mkdtempSync(join(tmpdir(), 'fluo-3835-config-'));
+    const babelConfigFile = join(directory, 'babel.config.cjs');
+    writeFileSync(babelConfigFile, content);
+    const plugin = fluoDecoratorsPlugin({ babelConfigFile });
+
+    try {
+      // When / Then
+      await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/example.ts')).rejects.toMatchObject({
+        message: expect.stringContaining(`Failed to load babelConfigFile ${babelConfigFile} while transforming /app/src/example.ts`),
+        cause: expect.objectContaining({ message: expect.stringContaining(causeMessage) }),
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps peer-install advice for a real missing Babel core resolution', async () => {
+    // Given
+    const directory = mkdtempSync(join(tmpdir(), 'fluo-3835-absent-peers-'));
+    const isolatedRequire = createRequire(join(directory, 'vite.config.mjs'));
+    const plugin = createFluoDecoratorsPluginForTesting(async () => {
+      isolatedRequire.resolve('@babel/core');
+      return await import('@babel/core');
+    });
+
+    try {
+      // When / Then
+      await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/example.ts')).rejects.toThrow(
+        'Failed to resolve a Babel peer dependency while transforming /app/src/example.ts.',
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('skips ineligible files without resolving a custom Babel config', async () => {
+    // Given
+    const plugin = fluoDecoratorsPlugin({ babelConfigFile: 'file://example.invalid/babel.config.cjs' });
+
+    // When / Then
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/example.test.ts')).resolves.toBeNull();
+    await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/example.d.ts')).resolves.toBeNull();
+    expect(transformAsyncMock).not.toHaveBeenCalled();
   });
 
   it('transforms application TypeScript files whose names contain test or spec substrings', async () => {
