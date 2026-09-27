@@ -44,8 +44,13 @@ when the contract needs them; omission requires an empty review scope.
 Use `scripts/contracts.mjs` and the `execute-lane` CLI to validate and persist
 the contract. Bind it to the lane issue and its source/base evidence, not each
 future implementation head. Ordinary implementation commits retain the
-contract; changed issue intent, base evidence, or out-of-scope paths require
-preflight again.
+contract; advancing `origin/<base_branch>` alone does too. The accepted
+`base_sha` is an immutable anchor, not a comparison with the latest branch
+tip. It must exist as a commit and remain an ancestor of the base branch and
+the issue head (if present). Changed issue intent, invalid or changed
+approved base, or out-of-scope paths require preflight again. Registering
+the identical digest preserves review and local-check facts and timestamps;
+a different digest invalidates them.
 
 Before review, the lead independently captures the actual base-to-head diff.
 It reconciles every changed path against approved scope and the review policy.

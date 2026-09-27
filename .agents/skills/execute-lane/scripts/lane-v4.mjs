@@ -240,6 +240,9 @@ export const decideNext = (lane, obs) => {
 	if (obs.pr.ciStatus !== 'passing') {
 		return { action: 'wait-ci', pr: obs.pr.number };
 	}
+	if (obs.pr.mergeable !== 'MERGEABLE') {
+		return { action: 'wait-mergeability', pr: obs.pr.number };
+	}
 
 	// 8. Merge gate: explicit approval is a hard contract (AGENTS.md).
 	if (lane.approvals?.merge !== true) {

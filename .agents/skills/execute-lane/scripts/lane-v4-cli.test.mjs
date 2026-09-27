@@ -87,7 +87,8 @@ if (args[0] === 'pr' && args[1] === 'view') {
         preflight_sha256: obs.preflightPolicy.sha256, verdict_signal: 'PASS', blockers: [] })) };
   };
   const verify = (ok = true) => {
-    const result = spawnSync(process.execPath, [join(worktree, 'tooling/ci/verify-local.mjs')], { cwd: worktree, env, encoding: 'utf8', timeout: 20_000 });
+    const base = JSON.parse(readFileSync(lanePath, 'utf8')).issues['42'].facts.preflight.value.base_sha;
+    const result = spawnSync(process.execPath, [join(worktree, 'tooling/ci/verify-local.mjs'), '--base-ref', base], { cwd: worktree, env, encoding: 'utf8', timeout: 20_000 });
     assert.equal(result.status, ok ? 0 : 1, result.stderr + result.stdout);
     const output = JSON.parse(result.stdout);
     assert.equal(output.status, ok ? 'passed' : 'failed');
@@ -255,10 +256,66 @@ test('CLI: title/body, base and accepted contract edits invalidate old evidence'
   f.set('preflight', f.preflight());
   assert.equal(f.plan().decision.action, 'review');
   f.git(f.root, 'update-ref', 'refs/remotes/origin/main', review.head_sha);
-  assert.equal(f.plan().decision.reason, 'stale-preflight-binding');
+  assert.equal(f.plan().decision.action, 'review');
   f.state.unavailable = true;
   f.update();
   assert.equal(f.plan().decision.action, 'preflight');
+});
+
+test('CLI: unrelated main advancement preserves preflight, review and canonical receipt', (t) => {
+  const f = fixture(t);
+  const preflight = f.preflight();
+  f.set('preflight', preflight);
+  f.implement();
+  const review = f.review();
+  f.set('review', review, review.head_sha);
+  const lane = JSON.parse(readFileSync(f.lanePath, 'utf8'));
+  lane.issues['42'].facts.review.accepted_at = '2000-01-01T00:00:00.000Z';
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  const receipt = f.verify();
+  f.set('local-checks', receipt, review.head_sha);
+  const accepted = f.plan();
+  assert.equal(accepted.decision.action, 'create-pr');
+  const receiptBody = JSON.parse(readFileSync(join(f.worktree, receipt.receiptPath), 'utf8'));
+  assert.equal(receiptBody.identity.baseRef, preflight.base_sha);
+  assert.equal(receiptBody.identity.baseSha, preflight.base_sha);
+  const original = JSON.parse(readFileSync(f.lanePath, 'utf8')).issues['42'].facts;
+
+  writeFileSync(join(f.root, 'unrelated.md'), 'merged unrelated work\n');
+  f.git(f.root, 'add', 'unrelated.md');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture unrelated merge');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  const after = f.plan();
+  assert.notEqual(f.git(f.root, 'rev-parse', 'origin/main'), preflight.base_sha);
+  assert.equal(after.obs.baseSha, preflight.base_sha);
+  assert.deepEqual(after.obs.changedFiles, ['docs/guide.md']);
+  assert.equal(after.decision.action, 'create-pr');
+  assert.equal(after.obs.localChecks.valid, true);
+
+  f.set('preflight', preflight);
+  assert.deepEqual(JSON.parse(readFileSync(f.lanePath, 'utf8')).issues['42'].facts, original);
+  assert.equal(f.plan().decision.action, 'create-pr');
+  f.set('preflight', f.preflight({ base_sha: f.git(f.root, 'rev-parse', 'origin/main') }), undefined, false);
+  assert.deepEqual(JSON.parse(readFileSync(f.lanePath, 'utf8')).issues['42'].facts, original);
+});
+
+test('CLI: missing, unrelated or disconnected base anchors fail closed', (t) => {
+  const f = fixture(t);
+  f.set('preflight', f.preflight({ base_sha: 'f'.repeat(40) }), undefined, false);
+  const preflight = f.preflight();
+  f.set('preflight', preflight);
+  f.implement();
+  const other = f.git(f.root, 'commit-tree', 'HEAD^{tree}', '-m', 'unrelated root');
+  f.set('preflight', f.preflight({ base_sha: other }), undefined, false);
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', other);
+  assert.equal(f.plan().decision.action, 'preflight');
+  assert.equal(f.plan().decision.reason, 'stale-preflight-binding');
+  f.set('preflight', preflight, undefined, false);
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', preflight.base_sha);
+  f.git(f.root, 'update-ref', 'refs/heads/issue-42', other);
+  assert.equal(f.plan().decision.reason, 'stale-preflight-binding');
+  f.git(f.root, 'update-ref', '-d', 'refs/remotes/origin/main');
+  assert.equal(f.plan().decision.reason, 'stale-preflight-binding');
 });
 
 test('CLI: canonical receipts bind to passing review, execution order and current policy', (t) => {

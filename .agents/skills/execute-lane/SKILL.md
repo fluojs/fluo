@@ -65,7 +65,13 @@ Preflight is mandatory before implementation, including resumed lanes without
 an accepted contract. It fixes scope, non-goals, acceptance and verification
 criteria, source/base bindings, expected paths, and review axes. A normal
 implementation commit does not itself invalidate the contract. Changed intent,
-base evidence, or out-of-scope changes require preflight again.
+invalid or changed approved base, or out-of-scope changes require preflight
+again. The accepted `base_sha` is a pinned commit: validate that it remains
+an ancestor of both the issue head (when present) and the observed
+`origin/<base_branch>`. Advancing that branch alone does not change the
+approved base, diff, review, or local receipt. Re-registering the same
+preflight digest keeps existing head-bound facts and timestamps; changing
+the digest invalidates them.
 
 | Actual change role | Minimum review axes |
 | --- | --- |
@@ -112,8 +118,11 @@ must never run concurrently with a child writing the same worktree. A new head
 or accepted contract invalidates earlier evidence.
 
 Before merge, require current-head review and local CI, green current-head
-remote CI, mergeable state, and a merge grant. Publishing stays GitHub Actions
-and Changesets only. The lead owns merge and cleanup, never a stage reviewer.
+remote CI, an explicit `MERGEABLE` state, and a merge grant. `UNKNOWN`
+mergeability waits; a real conflict resolves on a new head and repeats reviews
+and local CI. Advancing main alone does not mandate merging it into the issue
+branch. Publishing stays GitHub Actions and Changesets only. The lead owns
+merge and cleanup, never a stage reviewer.
 
 For conflicts, preserve both intended behaviors and return the resolved new
 head through review and local CI. Do not reuse old approvals by claiming the

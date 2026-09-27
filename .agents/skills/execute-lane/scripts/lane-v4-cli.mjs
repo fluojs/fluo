@@ -206,22 +206,29 @@ export const laneV2ToInitSpecs = (laneV2) => {
 	};
 };
 
-export const observeIssue = (root, lane, issue) => {
+export const observeIssue = (root, lane, issue, candidateBase = null) => {
 	const entry = issueEntry(lane, issue);
 	const branch = branchFor(entry);
 	const branchExists = run(root, 'git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]) !== null;
 	const worktreePath = resolve(root, '.worktrees', branch);
 	const worktreeExists = existsSync(worktreePath);
 	const headSha = branchExists ? run(root, 'git', ['rev-parse', branch]) : null;
-	const baseSha = run(root, 'git', ['rev-parse', `origin/${lane.base_branch}`]);
+	const sourceSha = run(root, 'git', ['rev-parse', '--verify', `refs/remotes/origin/${lane.base_branch}^{commit}`]);
+	const preflight = entry.facts?.preflight?.value ?? null;
+	const anchor = candidateBase ?? preflight?.base_sha ?? sourceSha;
+	const baseSha = sourceSha && anchor
+		&& run(root, 'git', ['rev-parse', '--verify', `${anchor}^{commit}`]) === anchor
+		&& run(root, 'git', ['merge-base', '--is-ancestor', anchor, sourceSha]) !== null
+		&& (!branchExists || run(root, 'git', ['merge-base', '--is-ancestor', anchor, headSha]) !== null)
+		? anchor : null;
 	const mergeBase = branchExists ? run(root, 'git', ['merge-base', branch, `origin/${lane.base_branch}`]) : null;
-	const hasNewCommits = branchExists && headSha !== null && headSha !== mergeBase;
+	const hasNewCommits = branchExists && headSha !== null && headSha !== (preflight ? baseSha : mergeBase);
 
 	// NUL separation and --no-renames preserve every path, including rename
 	// sources, so a move out of approved scope cannot hide behind rename detection.
-	const changed = hasNewCommits && mergeBase
-		? run(root, 'git', ['diff', '--name-only', '--no-renames', '-z', `${mergeBase}...${headSha}`], false)
-		: baseSha && (!branchExists || mergeBase) ? '' : null;
+	const changed = baseSha && branchExists
+		? run(root, 'git', ['diff', '--name-only', '--no-renames', '-z', `${baseSha}...${headSha}`], false)
+		: baseSha ? '' : null;
 	const changedFiles = changed === null ? null : changed.split('\0').filter(Boolean);
 	const publicPackagesTouched = (changedFiles ?? []).some(isConsumerVisibleFile);
 	const changesetPresent = (changedFiles ?? []).some(isChangesetFile);
@@ -258,7 +265,6 @@ export const observeIssue = (root, lane, issue) => {
 	const issueState = issueData?.state ?? 'OPEN';
 	const issueSha256 = typeof issueData?.title === 'string' && typeof issueData?.body === 'string'
 		? issueDigest(issueData) : null;
-	const preflight = entry.facts?.preflight?.value ?? null;
 	const reviewAxisFloor = entry.facts?.review?.value?.active_axes ?? [];
 	const preflightStatus = evaluatePreflight(preflight, { issue, issueSha256, baseSha, changedFiles, reviewAxisFloor });
 	const review = headSha ? factIfCurrent(entry, 'review', headSha) : null;
@@ -275,7 +281,7 @@ export const observeIssue = (root, lane, issue) => {
 		if (fact.preflightSha256 !== binding.preflightSha256 || fact.reviewSha256 !== binding.reviewSha256) return null;
 		if (fact.status === 'failed') return fact;
 		try {
-			return validateLocalCheckFact(worktreePath, headSha, `origin/${lane.base_branch}`, fact, binding);
+			return validateLocalCheckFact(worktreePath, headSha, baseSha, fact, binding);
 		} catch {
 			return { ...fact, status: 'failed', valid: false };
 		}
@@ -475,19 +481,22 @@ const main = () => {
 		entry.facts ??= {};
 		if (kind === 'preflight') {
 			validatePreflight(value);
-			const obs = observeIssue(root, lane, issue);
+			const previousObs = observeIssue(root, lane, issue);
+			const obs = observeIssue(root, lane, issue, value.base_sha);
 			const status = evaluatePreflight(value, { ...obs, issue });
 			if (!status.valid) throw new TypeError(`preflight rejected: ${status.reason}`);
-			const previous = obs.preflightPolicy?.active_axes ?? obs.preflight?.active_axes ?? [];
+			const previous = previousObs.preflightPolicy?.active_axes ?? previousObs.preflight?.active_axes ?? [];
 			if (previous.some((axis) => !value.active_axes.includes(axis))) {
 				throw new TypeError('preflight cannot shrink previously approved review axes');
 			}
 			if (status.policy.active_axes.some((axis) => !value.active_axes.includes(axis))) {
 				throw new TypeError('preflight active_axes must include axes required by the actual diff');
 			}
-			entry.facts.preflight = { value };
-			delete entry.facts.review;
-			delete entry.facts['local-checks'];
+			if (entry.facts.preflight?.value?.sha256 !== value.sha256) {
+				entry.facts.preflight = { value };
+				delete entry.facts.review;
+				delete entry.facts['local-checks'];
+			}
 		} else {
 			const head = arg(args, '--head');
 			let storedValue;
@@ -495,7 +504,7 @@ const main = () => {
 			if (head !== obs.headSha || !obs.preflightPolicy) throw new TypeError(`${kind} requires current head and valid preflight`);
 			if (kind === 'local-checks') {
 				const binding = localCheckBinding(validateReviewFact(obs.review, head, obs.preflightPolicy), obs.reviewAcceptedAt);
-				storedValue = validateLocalCheckFact(resolve(root, '.worktrees', branchFor(entry)), head, `origin/${lane.base_branch}`, value, binding);
+				storedValue = validateLocalCheckFact(resolve(root, '.worktrees', branchFor(entry)), head, obs.baseSha, value, binding);
 			} else {
 				storedValue = buildReviewFact(value, head, obs.preflightPolicy);
 				delete entry.facts['local-checks'];
