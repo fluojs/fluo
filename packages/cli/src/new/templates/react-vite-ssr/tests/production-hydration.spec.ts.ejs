@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test('hydrates production HTML and preserves HTTP-first navigation', async ({ page }) => {
+  const development = process.env.FLUO_REACT_STARTER_SERVER_COMMAND === 'dev';
   const browserDiagnostics: string[] = [];
   const assetResponses = new Map<string, number>();
 
@@ -12,7 +13,7 @@ test('hydrates production HTML and preserves HTTP-first navigation', async ({ pa
   page.on('pageerror', (error) => browserDiagnostics.push(`pageerror: ${error.message}`));
   page.on('response', (response) => {
     const pathname = new URL(response.url()).pathname;
-    if (pathname.startsWith('/assets/')) {
+    if (pathname.startsWith('/assets/') || pathname.startsWith('/src/')) {
       assetResponses.set(pathname, response.status());
     }
   });
@@ -36,7 +37,7 @@ test('hydrates production HTML and preserves HTTP-first navigation', async ({ pa
   const favicon = await page.request.get('/assets/favicon.svg');
   expect(favicon.status()).toBe(200);
   expect(favicon.headers()['content-type']).toContain('image/svg+xml');
-  expect(bootstrapPaths).toContain('/assets/entry-client.js');
+  expect(bootstrapPaths).toContain(development ? '/src/entry-client.tsx' : '/assets/entry-client.js');
   expect(stylesheetPaths).toHaveLength(1);
   for (const pathname of [...bootstrapPaths, ...stylesheetPaths]) {
     expect(assetResponses.get(pathname)).toBe(200);

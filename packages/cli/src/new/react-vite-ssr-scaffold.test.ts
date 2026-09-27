@@ -98,7 +98,7 @@ describe('React SSR + Vite scaffold', () => {
       }),
       scripts: expect.objectContaining({
         build: 'vite build --config vite.client.config.ts && vite build --config vite.server.config.ts',
-        dev: 'vite build --config vite.client.config.ts && vite build --config vite.server.config.ts && node dist/server/main.js',
+        dev: 'fluo dev',
         start: 'node dist/server/main.js',
         test: 'vitest run',
         'test:browser': 'playwright test --config playwright.config.ts',
@@ -159,7 +159,8 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['vite.server.config.ts']).toContain("ssr: 'src/main.ts'");
     expect(snapshot['vite.client.config.ts']).toContain('rolldownOptions:');
     expect(snapshot['vite.server.config.ts']).toContain('rolldownOptions:');
-    expect(snapshot['vite.server.config.ts']).toContain('plugins: [fluoDecoratorsPlugin()]');
+    expect(snapshot['vite.server.config.ts']).toContain('plugins: [');
+    expect(snapshot['vite.server.config.ts']).toContain('fluoDecoratorsPlugin()');
     expect(snapshot['vitest.config.ts']).toContain("plugins: [fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })]");
     expect(snapshot['vitest.config.ts']).toContain("setupFiles: ['@fluojs/core/metadata-preload']");
     expect(snapshot['src/main.ts']).toMatch(/^import '@fluojs\/core\/metadata-preload';/u);

@@ -182,7 +182,7 @@ function createProjectScripts(bootstrapPlan: ResolvedBootstrapPlan): Record<stri
     case 'application-node-fastify-react-vite-ssr':
       return {
         build: 'vite build --config vite.client.config.ts && vite build --config vite.server.config.ts',
-        dev: 'vite build --config vite.client.config.ts && vite build --config vite.server.config.ts && node dist/server/main.js',
+        dev: 'fluo dev',
         start: 'node dist/server/main.js',
         test: 'vitest run',
         'test:browser': 'playwright test --config playwright.config.ts',
@@ -202,11 +202,11 @@ function createProjectScripts(bootstrapPlan: ResolvedBootstrapPlan): Record<stri
       };
     case 'application-deno-deno-http':
       return {
-        build: 'deno compile --allow-env --allow-net --output dist/app src/main.ts',
+        build: 'deno compile --allow-env --allow-net --allow-read=.env --output dist/app src/main.ts',
         dev: 'fluo dev',
         start: './dist/app',
-        test: 'deno test --allow-env --allow-net',
-        'test:watch': 'deno test --allow-env --allow-net --watch',
+        test: 'deno test --allow-env --allow-net --allow-read=.env',
+        'test:watch': 'deno test --allow-env --allow-net --allow-read=.env --watch',
         typecheck: 'deno check src/main.ts src/app.test.ts',
       };
     case 'application-cloudflare-workers-cloudflare-workers-http':
@@ -437,7 +437,7 @@ function createHttpPackageManagerLine(options: BootstrapOptions): string {
     case 'bun':
       return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} keeps the \`fluo dev\` abstraction while defaulting to Bun's native watch loop (\`bun --watch src/main.ts\`) for fewer Node-supervised dev processes, \`fluo dev --runner fluo\` restores the Node-backed fluo restart supervisor when you need its debounce/hash reporter contract, and ${createRunCommand(options.packageManager, 'build')} plus ${createRunCommand(options.packageManager, 'start')} run Bun-native production commands (\`bun build ./src/main.ts --outdir ./dist --target bun\` then \`bun dist/main.js\`) so deployment targets do not need Node just to start the built app`;
     case 'deno':
-      return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} keeps the \`fluo dev\` abstraction while defaulting to Deno's native watch loop (\`deno run --watch --allow-env --allow-net src/main.ts\`) for fewer Node-supervised dev processes, \`fluo dev --runner fluo\` restores the Node-backed fluo restart supervisor when you need its debounce/hash reporter contract, and ${createRunCommand(options.packageManager, 'build')} plus ${createRunCommand(options.packageManager, 'start')} run Deno-native production commands (\`deno compile --allow-env --allow-net --output dist/app src/main.ts\` then \`./dist/app\`) so deployment targets can run the compiled app without Node`;
+      return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} keeps the \`fluo dev\` abstraction while defaulting to Deno's native watch loop (\`deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts\`) for fewer Node-supervised dev processes, \`fluo dev --runner fluo\` restores the Node-backed fluo restart supervisor when you need its debounce/hash reporter contract, and ${createRunCommand(options.packageManager, 'build')} plus ${createRunCommand(options.packageManager, 'start')} run Deno-native production commands (\`deno compile --allow-env --allow-net --allow-read=.env --output dist/app src/main.ts\` then \`./dist/app\`) so deployment targets can run the compiled app without Node`;
     case 'cloudflare-workers':
       return `- Package manager: install/run commands can use ${options.packageManager}; ${createRunCommand(options.packageManager, 'dev')} keeps the \`fluo dev\` abstraction while defaulting to Wrangler's native dev loop (\`wrangler dev --show-interactive-dev-session=false\`) for Wrangler-owned reloads, \`fluo dev --runner fluo\` restores the Node-backed fluo restart supervisor when you need its debounce/hash reporter contract, and ${createRunCommand(options.packageManager, 'preview')} plus ${createRunCommand(options.packageManager, 'deploy')} run Wrangler-native preview/deploy commands; Wrangler tooling requires Node/npm-compatible tooling locally, but deployed Workers run on Cloudflare's isolate runtime`;
     default:

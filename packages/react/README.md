@@ -70,6 +70,12 @@ cd my-react-app
 pnpm dev
 ```
 
+The generated `dev` script and direct `fluo dev` share one CLI-owned restart lifecycle:
+after installing dependencies, Vite transforms the SSR entry and serves client
+modules/styles through the development server without production `dist` or a
+user-run build. Server/client edits restart the app. Production `build`/`start`
+still consume the generated Vite manifest; this path does not promise HMR.
+
 Open `/products/sku-42?preview=true` and edit `src/page.tsx`. The explicit `@Router(...)` / `@Path(...)`
 handler remains in `src/app.ts` and returns `createElement(ProductPage)`, one `ReactElement`, so `@fluojs/http` still
 owns matching, DTO binding and validation, middleware, guards, interceptors, request scopes, and

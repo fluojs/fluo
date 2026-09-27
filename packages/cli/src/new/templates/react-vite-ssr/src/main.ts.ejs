@@ -1,19 +1,44 @@
 import '@fluojs/core/metadata-preload';
 import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
+import type { ViteDevServer } from 'vite';
 
 import { createAppModule } from './app';
-import { createReactPageRenderer } from './entry-server';
+import { createReactDevelopmentPageRenderer, createReactPageRenderer } from './entry-server';
 import { loadReactViteManifest } from './load-manifest';
 
-const manifest = await loadReactViteManifest(new URL('../client/.vite/manifest.json', import.meta.url));
-const AppModule = createAppModule({
-  clientDirectory: new URL('../client/', import.meta.url),
-  renderPage: createReactPageRenderer(manifest),
-});
-const port = Number(process.env.PORT ?? '3000');
-const app = await FluoFactory.create(AppModule, {
-  adapter: FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port }),
-});
+export async function startReactViteApp(vite?: ViteDevServer) {
+  const manifest = vite ? undefined : await loadReactViteManifest(new URL('../client/.vite/manifest.json', import.meta.url));
+  const AppModule = createAppModule({
+    clientDirectory: new URL(vite ? '../public/' : '../client/', import.meta.url),
+    renderPage: vite ? createReactDevelopmentPageRenderer() : createReactPageRenderer(manifest),
+  });
+  const port = Number(process.env.PORT ?? '3000');
+  const app = await FluoFactory.create(AppModule, {
+    adapter: FastifyHttpApplicationAdapter.create({
+      host: '127.0.0.1',
+      port,
+      configureFastify: vite ? (server) => {
+        server.addHook('onRequest', (request, reply, done) => {
+          if (request.raw.method !== 'GET' || !/^\/(?:src|node_modules|@id|@fs|@vite)\//u.test(request.raw.url ?? '')) {
+            done();
+            return;
+          }
 
-await app.listen();
+          reply.hijack();
+          vite.middlewares(request.raw, reply.raw, (error: unknown) => {
+            reply.raw.statusCode = error ? 500 : 404;
+            reply.raw.end(error instanceof Error ? error.message : 'Asset not found.');
+          });
+        });
+      } : undefined,
+    }),
+  });
+
+  await app.listen();
+  return app;
+}
+
+if (process.env.FLUO_REACT_VITE_DEV !== '1') {
+  await startReactViteApp();
+}

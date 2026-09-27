@@ -1,5 +1,9 @@
-import { spawnSync } from 'node:child_process';
+import assert from 'node:assert/strict';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { createConnection, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -72,29 +76,14 @@ const { sandboxRoot, warning: sandboxRootWarning } = resolveSandboxRoot(process.
 const defaultProjectName = 'starter-app';
 
 function resolveStarterArgsFromEnv(env) {
-  const starter = env.FLUO_CLI_SANDBOX_STARTER;
-  const shape = env.FLUO_CLI_SANDBOX_SHAPE;
-  const args = starter ? ['--starter', starter] : [];
-
-  if (!shape) {
-    return args;
-  }
-
-  args.push('--shape', shape);
-
-  if (env.FLUO_CLI_SANDBOX_TRANSPORT) {
-    args.push('--transport', env.FLUO_CLI_SANDBOX_TRANSPORT);
-  }
-
-  if (env.FLUO_CLI_SANDBOX_RUNTIME) {
-    args.push('--runtime', env.FLUO_CLI_SANDBOX_RUNTIME);
-  }
-
-  if (env.FLUO_CLI_SANDBOX_PLATFORM) {
-    args.push('--platform', env.FLUO_CLI_SANDBOX_PLATFORM);
-  }
-
-  return args;
+  return [
+    '--starter', env.FLUO_CLI_SANDBOX_STARTER ?? 'standard',
+    '--shape', env.FLUO_CLI_SANDBOX_SHAPE ?? 'application',
+    '--transport', env.FLUO_CLI_SANDBOX_TRANSPORT ?? 'http',
+    '--runtime', env.FLUO_CLI_SANDBOX_RUNTIME ?? 'node',
+    '--platform', env.FLUO_CLI_SANDBOX_PLATFORM ?? 'fastify',
+    '--tooling', 'standard',
+  ];
 }
 
 function run(command, args, cwd) {
@@ -298,7 +287,7 @@ async function runRepresentativeStarterSmokeMatrix() {
     await withStarterEnv(scenario.env, async () => {
       log(`Running representative starter smoke: ${scenario.label}`);
       await createSandboxProject(scenario.projectName);
-      verifySandboxProject(scenario.projectName);
+      await verifySandboxProject(scenario.projectName);
     });
   }
 }
@@ -317,6 +306,8 @@ async function createSandboxProject(projectName) {
       projectName,
       '--package-manager',
       'pnpm',
+      '--install',
+      '--no-git',
       '--target-directory',
       projectDirectory,
       ...starterArgs,
@@ -337,7 +328,190 @@ async function createSandboxProject(projectName) {
   return projectDirectory;
 }
 
-function verifySandboxProject(projectName) {
+function waitForDevReady(child, marker) {
+  return new Promise((resolve, reject) => {
+    let output = '';
+    const timeout = setTimeout(() => finish(new Error(`fluo dev did not report "${marker}" within 60 seconds.`)), 60_000);
+    const onData = (chunk) => {
+      output = (output + String(chunk)).slice(-4096);
+      if (output.includes(marker)) {
+        finish();
+      }
+    };
+    const onClose = (code) => finish(new Error(`fluo dev exited before readiness with code ${code}.`));
+    const finish = (error) => {
+      clearTimeout(timeout);
+      child.stdout.off('data', onData);
+      child.off('close', onClose);
+      if (error) reject(error);
+      else resolve();
+    };
+    child.stdout.on('data', onData);
+    child.once('close', onClose);
+  });
+}
+
+async function availablePort() {
+  const server = createServer();
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const address = server.address();
+  if (typeof address !== 'object' || address === null) {
+    throw new Error('Expected an ephemeral TCP port for the React dev fixture.');
+  }
+  const closed = once(server, 'close');
+  server.close();
+  await closed;
+  return address.port;
+}
+
+function requestTcpSum(port) {
+  return new Promise((resolve, reject) => {
+    const socket = createConnection({ host: '127.0.0.1', port });
+    const signal = AbortSignal.timeout(10_000);
+    let response = '';
+    const finish = (error, value) => {
+      signal.removeEventListener('abort', onTimeout);
+      socket.removeAllListeners();
+      socket.destroy();
+      if (error) reject(error);
+      else resolve(value);
+    };
+    const onTimeout = () => finish(new Error('TCP starter did not answer math.sum within 10 seconds.'));
+    signal.addEventListener('abort', onTimeout, { once: true });
+    socket.once('error', finish);
+    socket.once('connect', () => {
+      socket.write(`${JSON.stringify({ kind: 'message', pattern: 'math.sum', payload: { a: 3, b: 5 }, requestId: 'sandbox-dev' })}\n`);
+    });
+    socket.on('data', (chunk) => {
+      response += String(chunk);
+      const newline = response.indexOf('\n');
+      if (newline >= 0) {
+        const packet = JSON.parse(response.slice(0, newline));
+        finish(undefined, packet.payload);
+      }
+    });
+  });
+}
+
+async function verifyStandardColdDev(projectDirectory, starterContract) {
+  assert.equal(existsSync(join(projectDirectory, 'dist')), false, `${starterContract} dev must start without application dist.`);
+  const port = await availablePort();
+  const microservicePort = await availablePort();
+  const child = spawn(join(projectDirectory, 'node_modules', '.bin', 'fluo'), ['dev', '--reporter', 'pretty'], {
+    cwd: projectDirectory,
+    env: {
+      ...process.env,
+      CI: '1',
+      MICROSERVICE_HOST: '127.0.0.1',
+      MICROSERVICE_PORT: String(microservicePort),
+      PORT: String(port),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  child.stdout.on('data', (chunk) => process.stdout.write(chunk));
+  child.stderr.on('data', (chunk) => process.stderr.write(chunk));
+
+  try {
+    await waitForDevReady(
+      child,
+      starterContract === 'microservice' ? 'fluo microservice successfully started.' : 'Listening on http',
+    );
+    if (starterContract !== 'microservice') {
+      const response = await fetch(`http://127.0.0.1:${port}/health`);
+      assert.equal(response.status, 200, `${starterContract} HTTP health response`);
+    }
+    if (starterContract !== 'application') {
+      assert.equal(await requestTcpSum(microservicePort), 8, `${starterContract} TCP math.sum response`);
+    }
+    assert.equal(existsSync(join(projectDirectory, 'dist')), false, `${starterContract} dev must not build production output.`);
+    log(`Installed ${starterContract} fluo dev: cold response passed`);
+  } finally {
+    const closed = once(child, 'close', { signal: AbortSignal.timeout(10_000) });
+    child.kill('SIGINT');
+    const [code] = await closed;
+    assert.equal(code, 0, `${starterContract} dev must release its watcher and child on shutdown.`);
+    log(`Installed ${starterContract} fluo dev: shutdown passed`);
+  }
+}
+
+async function verifyReactColdDev(projectDirectory) {
+  assert.equal(existsSync(join(projectDirectory, 'dist')), false, 'React dev must start without application dist.');
+  const port = await availablePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const appPath = join(projectDirectory, 'src', 'app.ts');
+  const pagePath = join(projectDirectory, 'src', 'page.tsx');
+  const originalApp = readFileSync(appPath, 'utf8');
+  const originalPage = readFileSync(pagePath, 'utf8');
+  const requireFromProject = createRequire(join(projectDirectory, 'package.json'));
+  const { chromium } = requireFromProject('@playwright/test');
+  const child = spawn(join(projectDirectory, 'node_modules', '.bin', 'fluo'), ['dev', '--reporter', 'pretty'], {
+    cwd: projectDirectory,
+    env: { ...process.env, CI: '1', PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  child.stdout.on('data', (chunk) => process.stdout.write(chunk));
+  child.stderr.on('data', (chunk) => process.stderr.write(chunk));
+  let browser;
+
+  try {
+    await waitForDevReady(child, 'React dev app ready');
+    assert.equal(existsSync(join(projectDirectory, 'dist')), false, 'React dev must not generate the production application dist.');
+    const initial = await fetch(`${origin}/products/sku-42?preview=true`);
+    assert.equal(initial.status, 200);
+    const html = await initial.text();
+    assert.match(html, /Catalog item sku-42/u);
+    const assets = [...html.matchAll(/(?:src|href)="(\/(?:assets|src)\/[^"]+)"/gu)].map((match) => match[1]);
+    assert(assets.some((asset) => asset.includes('/src/entry-client.tsx')));
+    for (const asset of assets) {
+      assert.equal((await fetch(new URL(asset, origin))).status, 200, asset);
+    }
+
+    browser = await chromium.launch({ channel: 'chrome', headless: true });
+    const page = await browser.newPage();
+    const diagnostics = [];
+    page.on('console', (message) => {
+      if (message.type() === 'warning' || message.type() === 'error') diagnostics.push(message.text());
+    });
+    page.on('pageerror', (error) => diagnostics.push(error.message));
+    await page.goto(`${origin}/products/sku-42?preview=true`);
+    await page.getByRole('button', { name: 'Count: 0' }).click();
+    await page.getByRole('button', { name: 'Count: 1' }).waitFor();
+    assert.equal(existsSync(join(projectDirectory, 'dist')), false, 'React edits must stay on the Vite development path.');
+
+    const serverReady = waitForDevReady(child, 'React dev app ready');
+    writeFileSync(appPath, originalApp.replace("@Router('/products')", "@Router('/dev-products')"));
+    await serverReady;
+    assert.equal((await fetch(`${origin}/dev-products/sku-42?preview=true`)).status, 200);
+
+    const restoredReady = waitForDevReady(child, 'React dev app ready');
+    writeFileSync(appPath, originalApp);
+    await restoredReady;
+    const clientReady = waitForDevReady(child, 'React dev app ready');
+    writeFileSync(pagePath, originalPage.replace('Catalog item', 'Updated item'));
+    await clientReady;
+    await page.goto(`${origin}/products/sku-42?preview=true`);
+    await page.getByRole('heading', { name: 'Updated item sku-42' }).waitFor();
+    await page.getByRole('button', { name: 'Count: 0' }).click();
+    await page.getByRole('button', { name: 'Count: 1' }).waitFor();
+    assert.deepEqual(diagnostics, []);
+    log('Installed React fluo dev: cold HTTP, assets, hydration, server/client edits passed');
+  } finally {
+    try {
+      await browser?.close();
+      const closed = once(child, 'close', { signal: AbortSignal.timeout(10_000) });
+      child.kill('SIGINT');
+      const [code] = await closed;
+      assert.equal(code, 0, 'React dev must exit cleanly after watcher and child shutdown.');
+      log('Installed React fluo dev: watcher and child shutdown passed');
+    } finally {
+      writeFileSync(appPath, originalApp);
+      writeFileSync(pagePath, originalPage);
+    }
+  }
+}
+
+async function verifySandboxProject(projectName) {
   const projectDirectory = resolveProjectDirectory(projectName);
   verifySandboxExists(projectDirectory);
   const packageJson = JSON.parse(readFileSync(join(projectDirectory, 'package.json'), 'utf8'));
@@ -398,6 +572,8 @@ function verifySandboxProject(projectName) {
   }
 
   if (starterContract === 'react-vite-ssr') {
+    log('Checking cold installed React dev before any application build');
+    await verifyReactColdDev(projectDirectory);
     const previousServerCommand = process.env.FLUO_REACT_STARTER_SERVER_COMMAND;
     process.env.FLUO_REACT_STARTER_SERVER_COMMAND = 'dev';
 
@@ -411,6 +587,13 @@ function verifySandboxProject(projectName) {
         process.env.FLUO_REACT_STARTER_SERVER_COMMAND = previousServerCommand;
       }
     }
+  } else if (
+    !packageJson.dependencies?.['@fluojs/platform-bun']
+    && !packageJson.dependencies?.['@fluojs/platform-deno']
+    && !packageJson.dependencies?.['@fluojs/platform-cloudflare-workers']
+  ) {
+    log(`Checking cold installed ${starterContract} dev before any application build`);
+    await verifyStandardColdDev(projectDirectory, starterContract);
   }
 
   log('Running generated project checks');
@@ -486,12 +669,12 @@ async function main() {
       break;
     case 'verify':
       logSandboxRoot();
-      verifySandboxProject(projectName);
+      await verifySandboxProject(projectName);
       break;
     case 'test':
       logSandboxRoot();
       await createSandboxProject(projectName);
-      verifySandboxProject(projectName);
+      await verifySandboxProject(projectName);
       break;
     case 'matrix':
       logSandboxRoot();

@@ -18,6 +18,7 @@ type DevRunnerPreference = 'fluo' | 'native';
 type SpawnCommandOptions = {
   cwd: string;
   env: NodeJS.ProcessEnv;
+  forwardSignals?: boolean;
   stderr?: CliStream;
   stdio: 'inherit' | 'pipe';
   stdout?: CliStream;
@@ -158,12 +159,28 @@ function withPipedReporterColorEnv(env: NodeJS.ProcessEnv, mode: EffectiveLifecy
 function defaultSpawnCommand(command: string, args: string[], options: SpawnCommandOptions): Promise<number> {
   return new Promise((resolveExitCode, reject) => {
     const child = spawn(command, args, options);
+    const onInterrupt = () => child.kill('SIGINT');
+    const onTerminate = () => child.kill('SIGTERM');
+    const releaseSignals = () => {
+      process.off('SIGINT', onInterrupt);
+      process.off('SIGTERM', onTerminate);
+    };
+    if (options.forwardSignals) {
+      process.on('SIGINT', onInterrupt);
+      process.on('SIGTERM', onTerminate);
+    }
     if (options.stdio === 'pipe') {
       child.stdout?.on('data', (chunk) => options.stdout?.write(String(chunk)));
       child.stderr?.on('data', (chunk) => options.stderr?.write(String(chunk)));
     }
-    child.on('error', reject);
-    child.on('close', (code) => resolveExitCode(code ?? 1));
+    child.on('error', (error) => {
+      releaseSignals();
+      reject(error);
+    });
+    child.on('close', (code) => {
+      releaseSignals();
+      resolveExitCode(code ?? 1);
+    });
   });
 }
 
@@ -172,12 +189,25 @@ async function loadDefaultStudioSidecarFactory(): Promise<StartStudioSidecar> {
   return startStudioSidecarImplementation;
 }
 
-function buildNativeNodeWatchStep(passThrough: string[]): ProjectRunnerStep {
-  return { command: 'node', args: ['--env-file=.env', '--watch', '--watch-preserve-output', '--import', 'tsx', 'src/main.ts', ...passThrough], mode: 'native-watch' };
+function buildNativeNodeWatchStep(passThrough: string[], reactVite = false): ProjectRunnerStep {
+  if (reactVite && process.platform === 'linux') {
+    return buildFluoDevRunnerStep('node', passThrough, true);
+  }
+
+  return {
+    command: 'node',
+    args: ['--env-file=.env', '--watch', '--watch-preserve-output',
+      ...(reactVite
+        ? ['--watch-path=src', '--watch-path=.env', '--watch-path=vite.client.config.ts', '--watch-path=vite.server.config.ts']
+        : []),
+      '--import', 'tsx',
+      ...(reactVite ? [getCliEntryPoint(), '__react-vite-app'] : ['src/main.ts']), ...passThrough],
+    mode: 'native-watch',
+  };
 }
 
-function buildFluoDevRunnerStep(runtime: ProjectRuntime, passThrough: string[]): ProjectRunnerStep {
-  return { command: 'node', args: ['--import', 'tsx', getCliEntryPoint(), '__dev-runner', '--runtime', runtime, '--', ...passThrough], mode: 'fluo-restart' };
+function buildFluoDevRunnerStep(runtime: ProjectRuntime, passThrough: string[], reactVite = false): ProjectRunnerStep {
+  return { command: 'node', args: ['--import', 'tsx', getCliEntryPoint(), '__dev-runner', '--runtime', runtime, ...(reactVite ? ['--react-vite'] : []), '--', ...passThrough], mode: 'fluo-restart' };
 }
 
 function buildNativeRuntimeDevStep(runtime: ProjectRuntime, passThrough: string[]): ProjectRunnerStep | undefined {
@@ -187,7 +217,7 @@ function buildNativeRuntimeDevStep(runtime: ProjectRuntime, passThrough: string[
     case 'bun':
       return { command: 'bun', args: ['--watch', 'src/main.ts', ...passThrough], mode: 'runtime-native-watch' };
     case 'deno':
-      return { command: 'deno', args: ['run', '--watch', '--allow-env', '--allow-net', 'src/main.ts', ...passThrough], mode: 'runtime-native-watch' };
+      return { command: 'deno', args: ['run', '--watch', '--allow-env', '--allow-net', '--allow-read=.env', 'src/main.ts', ...passThrough], mode: 'runtime-native-watch' };
     case 'cloudflare-workers':
       return { command: 'wrangler', args: ['dev', '--show-interactive-dev-session=false', ...passThrough], mode: 'runtime-native-watch' };
     default:
@@ -195,13 +225,13 @@ function buildNativeRuntimeDevStep(runtime: ProjectRuntime, passThrough: string[
   }
 }
 
-function buildProjectRunner(command: ScriptCommand, runtime: ProjectRuntime, passThrough: string[], options: { devRunner: DevRunnerPreference; rawWatch: boolean }): ProjectRunnerStep[] {
+function buildProjectRunner(command: ScriptCommand, runtime: ProjectRuntime, passThrough: string[], options: { devRunner: DevRunnerPreference; rawWatch: boolean; reactVite: boolean }): ProjectRunnerStep[] {
   if (command === 'build') {
     switch (runtime) {
       case 'bun':
         return [{ command: 'bun', args: ['build', './src/main.ts', '--outdir', './dist', '--target', 'bun', ...passThrough] }];
       case 'deno':
-        return [{ command: 'deno', args: ['compile', '--allow-env', '--allow-net', '--output', join('dist', 'app'), 'src/main.ts', ...passThrough] }];
+        return [{ command: 'deno', args: ['compile', '--allow-env', '--allow-net', '--allow-read=.env', '--output', join('dist', 'app'), 'src/main.ts', ...passThrough] }];
       case 'cloudflare-workers':
         return [{ command: 'wrangler', args: ['deploy', '--dry-run', ...passThrough] }];
       default:
@@ -214,7 +244,9 @@ function buildProjectRunner(command: ScriptCommand, runtime: ProjectRuntime, pas
 
   if (command === 'dev') {
     if (options.devRunner === 'native') {
-      const nativeStep = buildNativeRuntimeDevStep(runtime, passThrough);
+      const nativeStep = runtime === 'node' && options.reactVite
+        ? buildNativeNodeWatchStep(passThrough, true)
+        : buildNativeRuntimeDevStep(runtime, passThrough);
       if (nativeStep) {
         return [nativeStep];
       }
@@ -229,9 +261,9 @@ function buildProjectRunner(command: ScriptCommand, runtime: ProjectRuntime, pas
         return [buildFluoDevRunnerStep(runtime, passThrough)];
       default:
         if (options.rawWatch) {
-          return [buildNativeNodeWatchStep(passThrough)];
+          return [buildNativeNodeWatchStep(passThrough, options.reactVite)];
         }
-        return [buildFluoDevRunnerStep(runtime, passThrough)];
+        return [buildFluoDevRunnerStep(runtime, passThrough, options.reactVite)];
     }
   }
 
@@ -596,6 +628,7 @@ async function executeRunnerStepsWithReporter(options: {
   const exitCode = await runProjectRunnerSteps(options.runnerSteps, { spawnCommand: options.runtime.spawnCommand ?? defaultSpawnCommand }, {
     cwd: options.projectDirectory,
     env: options.childEnv,
+    forwardSignals: options.command === 'dev',
     ...reporterStreams,
   });
 
@@ -713,10 +746,17 @@ export async function runScriptCommand(command: ScriptCommand, argv: string[], r
   }
   const devRunner = command === 'dev' ? resolveDevRunnerPreference(parsed, env, projectRuntime) : 'fluo';
   assertStudioSupport(command, parsed.studio, projectRuntime, devRunner, rawWatch);
-  const runnerSteps = buildProjectRunner(command, projectRuntime, parsed.passThrough, { devRunner, rawWatch });
+  const reactVite = projectRuntime === 'node'
+    && hasManifestDependency(project.manifest, '@fluojs/react')
+    && existsSync(join(project.directory, 'vite.client.config.ts'))
+    && existsSync(join(project.directory, 'vite.server.config.ts'));
+  const runnerSteps = buildProjectRunner(command, projectRuntime, parsed.passThrough, { devRunner, rawWatch, reactVite });
   const reporterMode = resolveReporterMode(parsed, { ...runtime, env, stdout });
   const verbose = parsed.verbose || isEnabledEnvironmentFlag(env.FLUO_VERBOSE);
   let childEnv = withPipedReporterColorEnv(withProjectLocalBin(withDefaultNodeEnv(env, defaultNodeEnv), project.directory), reporterMode, stdout, stderr);
+  if (command === 'dev' && reactVite) {
+    childEnv.FLUO_REACT_VITE_DEV = '1';
+  }
 
   if (parsed.studio && parsed.dryRun) {
     childEnv = withStudioDryRunEnv(childEnv, project, projectRuntime, parsed.studioPort);

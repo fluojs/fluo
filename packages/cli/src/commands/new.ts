@@ -448,9 +448,7 @@ export async function runNewCommand(argv: string[], runtime: NewCommandRuntimeOp
       : answers.packageManager === 'bun'
         ? 'bun run dev'
         : `${answers.packageManager} dev`;
-    const devDescription = answers.starter === 'react-vite-ssr'
-      ? 'builds and starts the React SSR app'
-      : 'runs fluo dev';
+    const devDescription = 'runs fluo dev';
     stdout.write('Done.\n');
     stdout.write(
       `Next steps:\n  cd ${answers.targetDirectory}\n  ${devCommand}  # ${devDescription}\n`,

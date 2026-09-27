@@ -10,7 +10,7 @@ type RestartRunnerStream = {
   write(message: string): unknown;
 };
 
-type RestartChildSpawner = (command: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; stdio: 'inherit' }) => ChildProcess;
+type RestartChildSpawner = (command: string, args: string[], options: { cwd: string; detached: boolean; env: NodeJS.ProcessEnv; stdio: 'inherit' }) => ChildProcess;
 /** Runtime target handled by the fluo-owned development restart runner. */
 export type DevRunnerRuntime = 'bun' | 'cloudflare-workers' | 'deno' | 'node';
 
@@ -18,7 +18,7 @@ type RestartSignal = 'SIGINT' | 'SIGTERM';
 
 type RestartSignalTarget = {
   off(signal: RestartSignal, listener: () => void): unknown;
-  once(signal: RestartSignal, listener: () => void): unknown;
+  on(signal: RestartSignal, listener: () => void): unknown;
 };
 
 type RestartWatcherFactory = (target: string, optionsOrListener: { recursive: boolean } | ((event: string, filename: string | Buffer | null) => void), listener?: (event: string, filename: string | Buffer | null) => void) => FSWatcher;
@@ -41,6 +41,7 @@ export type NodeRestartRunnerOptions = {
   debounceMs?: number;
   env: NodeJS.ProcessEnv;
   projectDirectory?: string;
+  reactVite?: boolean;
   runtime?: DevRunnerRuntime;
   signalTarget?: RestartSignalTarget;
   spawnChild?: RestartChildSpawner;
@@ -66,7 +67,7 @@ const DEFAULT_IGNORES = [
   '*~',
   '.#*',
 ];
-const WATCH_FILES = ['.env', 'package.json', 'tsconfig.json', 'tsconfig.build.json'];
+const WATCH_FILES = ['.env', 'package.json', 'tsconfig.json', 'tsconfig.build.json', 'vite.client.config.ts', 'vite.server.config.ts'];
 const SHOW_NODE_RESTART_NOTICE_ENV = 'FLUO_DEV_SHOW_RESTART_NOTICE';
 const CLEAR_SCREEN = '\u001B[2J\u001B[3J\u001B[H';
 const STUDIO_EPOCH_ENV = 'FLUO_STUDIO_EPOCH';
@@ -327,11 +328,13 @@ function getPreserveColorTtyImport(): string {
   return join(dirname(dirname(fileURLToPath(import.meta.url))), 'dev-runner', 'preserve-color-tty.js');
 }
 
-function buildNodeAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
+function buildNodeAppArgs(env: NodeJS.ProcessEnv, appArgs: string[], reactVite: boolean): string[] {
   const colorTtyImport = env[PRETTY_TTY_COLOR_ENV] === '1' ? ['--import', getPreserveColorTtyImport()] : [];
   const studioDevtoolsImport = createStudioDevtoolsNodeImport(env);
 
-  return ['--env-file=.env', ...colorTtyImport, ...studioDevtoolsImport, '--import', 'tsx', 'src/main.ts', ...appArgs];
+  return ['--env-file=.env', ...colorTtyImport, ...studioDevtoolsImport, '--import', 'tsx',
+    ...(reactVite ? [join(dirname(dirname(fileURLToPath(import.meta.url))), 'cli.js'), '__react-vite-app'] : ['src/main.ts']),
+    ...appArgs];
 }
 
 function buildBunAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
@@ -340,16 +343,16 @@ function buildBunAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
   return [...colorTtyPreload, 'src/main.ts', ...appArgs];
 }
 
-function buildAppCommand(runtime: DevRunnerRuntime, env: NodeJS.ProcessEnv, appArgs: string[]): { args: string[]; command: string } {
+function buildAppCommand(runtime: DevRunnerRuntime, env: NodeJS.ProcessEnv, appArgs: string[], reactVite: boolean): { args: string[]; command: string } {
   switch (runtime) {
     case 'bun':
       return { command: 'bun', args: buildBunAppArgs(env, appArgs) };
     case 'cloudflare-workers':
       return { command: 'wrangler', args: ['dev', '--show-interactive-dev-session=false', ...appArgs] };
     case 'deno':
-      return { command: 'deno', args: ['run', '--allow-env', '--allow-net', 'src/main.ts', ...appArgs] };
+      return { command: 'deno', args: ['run', '--allow-env', '--allow-net', '--allow-read=.env', 'src/main.ts', ...appArgs] };
     default:
-      return { command: process.execPath, args: buildNodeAppArgs(env, appArgs) };
+      return { command: process.execPath, args: buildNodeAppArgs(env, appArgs, reactVite) };
   }
 }
 
@@ -414,13 +417,14 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
 
   const startChild = (resolveExitCode: (code: number) => void, cleanup: () => void) => {
     ensureStudioEpoch(env);
-    const appCommand = buildAppCommand(runnerRuntime, env, appArgs);
+    const appCommand = buildAppCommand(runnerRuntime, env, appArgs, options.reactVite ?? false);
     publishStudioLifecycleEvent(env, runnerRuntime, 'restart', {
       phase: 'starting',
       reason: 'fluo dev runner starting app child',
     });
     child = spawnChild(appCommand.command, appCommand.args, {
       cwd: projectDirectory,
+      detached: process.platform !== 'win32',
       env,
       stdio: 'inherit',
     });
@@ -542,10 +546,15 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         return;
       }
       resolved = true;
+      signalTarget.off('SIGINT', stop);
+      signalTarget.off('SIGTERM', stop);
       resolveExitCode(code);
     };
 
     const stop = () => {
+      if (stopping) {
+        return;
+      }
       stopping = true;
       cleanup();
 
@@ -575,8 +584,6 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       for (const watcher of watchers.splice(0)) {
         watcher.close();
       }
-      signalTarget.off('SIGINT', stop);
-      signalTarget.off('SIGTERM', stop);
     };
 
     const failFromWatcher = (target: string, error: Error) => {
@@ -606,7 +613,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       watcher.on?.('error', (error) => failFromWatcher(target, error));
     };
 
-    startChild(resolveExitCode, cleanup);
+    startChild(resolveOnce, cleanup);
 
     const watchedFallbackDirectories = new Set<string>();
 
@@ -619,7 +626,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       const listener = (_event: string, filename: string | Buffer | null) => {
         const fileName = filename ? String(filename) : basename(directoryPath);
         const changedPath = filename ? join(directoryPath, fileName) : directoryPath;
-        scheduleRestart(changedPath, resolveExitCode, cleanup);
+        scheduleRestart(changedPath, resolveOnce, cleanup);
 
         for (const nextDirectoryPath of getFallbackWatchDirectories(changedPath, projectDirectory, ignorePatterns)) {
           if (watchedFallbackDirectories.has(nextDirectoryPath) || shouldIgnorePath(nextDirectoryPath, projectDirectory, ignorePatterns)) {
@@ -648,7 +655,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         const watchOptions = { recursive: stats.isDirectory() };
         const listener = (_event: string, filename: string | Buffer | null) => {
           const fileName = filename ? String(filename) : basename(target);
-          scheduleRestart(stats.isDirectory() ? join(target, fileName) : target, resolveExitCode, cleanup);
+          scheduleRestart(stats.isDirectory() ? join(target, fileName) : target, resolveOnce, cleanup);
         };
         try {
           registerWatcher(target, watchTarget(target, watchOptions, listener));
@@ -680,7 +687,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       }
     }
 
-    signalTarget.once('SIGINT', stop);
-    signalTarget.once('SIGTERM', stop);
+    signalTarget.on('SIGINT', stop);
+    signalTarget.on('SIGTERM', stop);
   });
 }

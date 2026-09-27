@@ -1,6 +1,6 @@
-import { ChildProcess } from 'node:child_process';
+import { ChildProcess, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -47,7 +47,7 @@ function createSignalTarget(): {
   readonly offCalls: string[];
   readonly target: {
     off(signal: 'SIGINT' | 'SIGTERM', listener: () => void): void;
-    once(signal: 'SIGINT' | 'SIGTERM', listener: () => void): void;
+    on(signal: 'SIGINT' | 'SIGTERM', listener: () => void): void;
   };
 } {
   const offCalls: string[] = [];
@@ -57,7 +57,7 @@ function createSignalTarget(): {
       off: (signal) => {
         offCalls.push(signal);
       },
-      once: () => undefined,
+      on: () => undefined,
     },
   };
 }
@@ -494,4 +494,144 @@ describe('Node restart runner watcher failures', () => {
       `[fluo] watcher failed for ${sourceDirectory}: recursive watch unavailable; required fallback watcher could not be acquired`,
     );
   });
+});
+
+describe('React Vite development restart', () => {
+  it('starts the transformed entry with .env and releases watchers after shutdown', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-react-restart-'));
+    createdDirectories.push(projectDirectory);
+    mkdirSync(join(projectDirectory, 'src'));
+    writeFileSync(join(projectDirectory, 'src', 'main.ts'), '');
+    const signalTarget = new EventEmitter();
+    const watchers: TestWatcher[] = [];
+    const signals: Array<NodeJS.Signals | undefined> = [];
+    const child = createMockChild(signals);
+    let childArgs: readonly string[] = [];
+    const running = runNodeRestartRunner({
+      env: {},
+      projectDirectory,
+      reactVite: true,
+      signalTarget,
+      spawnChild: (_command, args) => {
+        childArgs = args;
+        return child;
+      },
+      watchTarget: () => {
+        const watcher = new TestWatcher();
+        watchers.push(watcher);
+        return watcher;
+      },
+    });
+
+    expect(childArgs).toContain('--env-file=.env');
+    expect(childArgs).toContain('__react-vite-app');
+    signalTarget.emit('SIGINT');
+    closeMockChild(child, 0);
+
+    await expect(running).resolves.toBe(0);
+    expect(signals).toEqual(['SIGTERM']);
+    expect(watchers.length).toBeGreaterThan(0);
+    expect(watchers.every((watcher) => watcher.closed)).toBe(true);
+  });
+});
+
+describe('terminal process-group shutdown', () => {
+  it.skipIf(process.platform === 'win32')('stops the app and watcher with a clean exit after foreground Ctrl+C', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-terminal-signal-'));
+    createdDirectories.push(projectDirectory);
+    mkdirSync(join(projectDirectory, 'src'));
+    mkdirSync(join(projectDirectory, 'node_modules', 'vite'), { recursive: true });
+    symlinkSync(join(import.meta.dirname, '..', '..', 'node_modules', 'tsx'), join(projectDirectory, 'node_modules', 'tsx'), 'dir');
+    writeFileSync(join(projectDirectory, 'package.json'), JSON.stringify({
+      name: 'signal-fixture', dependencies: { '@fluojs/react': '0.1.0' }, scripts: { dev: 'fluo dev' },
+    }));
+    writeFileSync(join(projectDirectory, 'vite.client.config.ts'), '');
+    writeFileSync(join(projectDirectory, 'vite.server.config.ts'), '');
+    writeFileSync(join(projectDirectory, 'node_modules', 'vite', 'package.json'), JSON.stringify({
+      name: 'vite', type: 'module', exports: './index.mjs',
+    }));
+    writeFileSync(join(projectDirectory, 'node_modules', 'vite', 'index.mjs'), `
+      import { createServer as createHttpServer } from 'node:http';
+      export async function createServer() {
+        return {
+          async ssrLoadModule() {
+            return {
+              async startReactViteApp() {
+                const server = createHttpServer((_request, response) => response.end('ready'));
+                await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+                const address = server.address();
+                console.log('APP_READY:' + address.port + ':' + process.pid);
+                return {
+                  close() {
+                    return new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+                  },
+                };
+              },
+            };
+          },
+          async close() {},
+        };
+      }
+    `);
+    writeFileSync(join(projectDirectory, '.env'), '');
+    writeFileSync(join(projectDirectory, 'src', 'main.ts'), '');
+    const runner = spawn(process.execPath, [
+      join(import.meta.dirname, '..', '..', 'bin', 'fluo.mjs'), 'dev', '--reporter', 'pretty',
+    ], {
+      cwd: projectDirectory,
+      detached: true,
+      env: { ...process.env, CI: '1', FLUO_NO_UPDATE_CHECK: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    let errors = '';
+    let closed = false;
+    let readyTimeout: ReturnType<typeof setTimeout> | undefined;
+    let closeTimeout: ReturnType<typeof setTimeout> | undefined;
+    const ready = new Promise<{ appPid: number; port: number }>((resolve, reject) => {
+      readyTimeout = setTimeout(() => reject(new Error(`App did not start: ${output}\n${errors}`)), 15_000);
+      runner.stdout.on('data', (chunk) => {
+        output += String(chunk);
+        const match = /APP_READY:(\d+):(\d+)/u.exec(output);
+        if (match && output.includes('React dev app ready')) {
+          resolve({ port: Number(match[1]), appPid: Number(match[2]) });
+        }
+      });
+      runner.stderr.on('data', (chunk) => { errors += String(chunk); });
+      runner.once('error', reject);
+      runner.once('close', (code, signal) => reject(new Error(`Runner closed before ready: ${code ?? signal}\n${output}\n${errors}`)));
+    });
+    const exit = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+      runner.once('close', (code, signal) => {
+        closed = true;
+        resolve({ code, signal });
+      });
+    });
+
+    try {
+      const { appPid, port } = await ready;
+      const response = await fetch(`http://127.0.0.1:${port}/`);
+      expect(await response.text()).toBe('ready');
+      if (!runner.pid) {
+        throw new Error('Expected a process-group leader');
+      }
+      process.kill(-runner.pid, 'SIGINT');
+      const stopped = await Promise.race([
+        exit,
+        new Promise<never>((_resolve, reject) => {
+          closeTimeout = setTimeout(() => reject(new Error(`Runner did not stop: ${output}\n${errors}`)), 10_000);
+        }),
+      ]);
+
+      expect(stopped, `${output}\n${errors}`).toEqual({ code: 0, signal: null });
+      expect(errors).not.toContain('lifecycle failed');
+      expect(output).toContain('dev lifecycle completed');
+      expect(() => process.kill(appPid, 0)).toThrow();
+      await expect(fetch(`http://127.0.0.1:${port}/`)).rejects.toThrow();
+    } finally {
+      if (readyTimeout) clearTimeout(readyTimeout);
+      if (closeTimeout) clearTimeout(closeTimeout);
+      if (!closed && runner.pid) process.kill(-runner.pid, 'SIGKILL');
+    }
+  }, 30_000);
 });
