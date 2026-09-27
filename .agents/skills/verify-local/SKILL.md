@@ -12,7 +12,8 @@ The verification reviewer has already assessed focused tests and coverage.
 ## Input and authority
 
 Require lane/issue identity, the accepted preflight, absolute implementation
-worktree, base and current head, selected-axis PASS, and lead-observed changed paths.
+worktree, pinned `base_sha` and current head, selected-axis PASS, and
+lead-observed changed paths.
 Run lane `plan` and require `verify-local` for that exact head. Confirm
 the worktree is clean at that head and no implementation child still owns it.
 Run checks only; do not edit source, commit, push, mutate a PR, or merge.
@@ -23,11 +24,15 @@ Read the preflight verification criteria, then use the existing canonical
 runner from the assigned implementation worktree:
 
 ```text
-pnpm verify:local --plan --base-ref <base-ref>
-pnpm verify:local --base-ref <base-ref>
+pnpm verify:local --plan --base-ref <accepted-preflight-base-sha>
+pnpm verify:local --base-ref <accepted-preflight-base-sha>
 ```
 
-The plan is determined by `tooling/ci/local-verification.mjs` and
+Use the same approved commit SHA for the plan, actual run, and lane receipt
+registration. Do not use the moving `origin/main` ref: the receipt checks
+the exact base, head, tree, diff, plan, and logs and must survive an unrelated
+base-branch advance. The plan is determined by
+`tooling/ci/local-verification.mjs` and
 `tooling/ci/local-verification-manifest.json`, not a hand-picked substitute.
 It includes install, build, typecheck, tests, lint, platform governance, and
 applicable companion checks. `--plan` is inspection only, not passing evidence.

@@ -300,6 +300,16 @@ test('conflicting PR -> resolve-conflict', () => {
 	assert.equal(next.action, 'resolve-conflict');
 });
 
+test('unknown mergeability never authorizes merge even with green current-head CI', () => {
+	for (const mergeable of ['UNKNOWN', null]) {
+		const next = decideNext(
+			makeLane({ approvals: { merge: true } }),
+			makeObs({ pr: { number: 1, state: 'OPEN', headSha: 'a'.repeat(40), mergeable, ciStatus: 'passing' } }),
+		);
+		assert.equal(next.action, 'wait-mergeability');
+	}
+});
+
 test('PR head behind local head -> push', () => {
 	const next = decideNext(
 		makeLane(),
