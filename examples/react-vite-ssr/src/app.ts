@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 import { Inject, Module } from '@fluojs/core';
@@ -27,6 +28,7 @@ import {
 import {
   Path,
   ReactModule,
+  ReactNavigationPage,
   Router,
   createReactServerEntry,
   type ReactPageRenderer,
@@ -138,7 +140,19 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
   }
 
   const assets = result.manifest;
-  const renderPage: ReactPageRenderer = (page) => createReactServerEntry(page, assets.hydrationOptions);
+  if (assets.assetMap['src/navigation-product.ts'] === undefined) {
+    throw new ReactViteExampleManifestError('The client build has no navigation-product destination module.');
+  }
+  const renderPage: ReactPageRenderer = (page) => {
+    const nonce = randomBytes(16).toString('base64');
+    return createReactServerEntry(page, {
+      ...assets.hydrationOptions,
+      headers: {
+        'Content-Security-Policy': `default-src 'self'; script-src 'self' 'nonce-${nonce}'; img-src 'self' data:`,
+      },
+      nonce,
+    });
+  };
 
   @Inject(ProductCatalog)
   @Router('/products')
@@ -148,14 +162,19 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
     show(input: ProductPageRequest, context: RequestContext) {
-      return createElement(ProductDocument, {
-        preview: input.preview === 'true',
-        productName: this.catalog.findName(input.sku),
+      const productName = this.catalog.findName(input.sku);
+      const preview = input.preview === 'true';
+      return ReactNavigationPage.create(createElement(ProductDocument, {
+        preview,
+        productName,
         routeParams: context.request.params,
         routeUrl: context.request.url,
         saved: input.updated === 'true',
         sku: input.sku,
         stylesheets: assets.css,
+      }), {
+        module: './navigation-product.ts',
+        props: { preview, productName, sku: input.sku },
       });
     }
 

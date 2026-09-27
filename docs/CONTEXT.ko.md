@@ -59,6 +59,8 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 
 <!-- fluo:docs-navigation:end -->
 
+HTTP가 매칭한 React 클라이언트 이동은 [navigation payload 계약](./contracts/react-navigation-payload.ko.md)에서 시작한 다음 [React API 원본](../packages/react/README.ko.md)과 [Vite SSR 예제](../examples/react-vite-ssr/README.ko.md)를 확인하세요. 명시적으로 협상한 GET은 서버가 확정한 URL·params와 build mapping으로 지정된 목적지를 반환하며 일반 GET 및 JavaScript 비활성 GET은 streamed document를 유지합니다. 상태·cookie·오류의 소유자는 HTTP입니다. 실행 근거는 `packages/react/src/navigation-payload.test.ts`와 `packages/react/src/client-navigation-payload.test.ts`입니다.
+
 원자 캐시 갱신은 [cache-manager API 원본](../packages/cache-manager/README.ko.md#원자-갱신)에서 시작해 [캐시 아키텍처](./architecture/caching.ko.md#원자-갱신-조정), [update 타입](../packages/cache-manager/src/atomic-update.ts), [service admission/drain](../packages/cache-manager/src/service.ts)을 읽으세요. `update`는 고정 만료를 보존하는 순수 단일 key reducer이며 `remember` loader 합치기나 앱 도메인 정책이 아닙니다. Memory는 공유 store 인스턴스 하나를 조정하고 Redis는 cache 측 명시적 opt-in과 기존 [raw client seam](../packages/redis/README.ko.md#원시-클라이언트-접근-raw-client-access)을 통한 격리 WATCH 트랜잭션이 필요합니다. TTL/오류/metadata/취소 한계와 Docker native suite를 포함한 테스트 명령은 README가 소유하며 소스 링크는 실행 검증을 뜻하지 않습니다. 사람을 위한 적용은 [FluoBlog 캐싱](../book/01-fluoblog/ch20-caching.ko.md)과 [FluoShop 캐싱](../book/02-fluoshop/ch21-commerce-caching.ko.md)에서 설명합니다.
 
 [HTTP 의존성 보안 업데이트](./reference/dependency-security-update.ko.md)는 root 및 isolated benchmark resolution과 published Fastify/Express consumer graph를 구분하고, upstream advisory 9개와 application-owned 전이 lockfile 갱신 방법을 기록합니다.

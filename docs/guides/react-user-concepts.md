@@ -14,8 +14,9 @@ The stable request path is:
 1. `@fluojs/http` matches an explicit route and runs DTO binding, validation, middleware, guards,
    interceptors, versioning, and request-scope creation.
 2. An `@Path(...)` handler may return an ordinary HTTP value, which bypasses React rendering and
-   keeps the normal HTTP response path. For a React-rendered page, it returns one `ReactElement` or
-   returns `createReactServerEntry(...)` explicitly when that route needs entry-specific options.
+   keeps the normal HTTP response path. For a React-rendered page, it returns one `ReactElement`,
+   returns `createReactServerEntry(...)` explicitly for entry-specific options, or opts into
+   a negotiated destination with `ReactNavigationPage.create(page, { module, props })`.
 3. For a returned `ReactElement`, the application `ReactPageRenderer` composes the page into its
    document shell and returns a `ReactServerEntry`.
 4. The existing HTTP response writer writes the ordinary value or streams the React entry and keeps
@@ -42,7 +43,7 @@ fail through HTTP. Layout, fallback, and metadata factories still require explic
 | **Loading UI** | Ordinary React `Suspense` in the application tree, optionally selected for a page with `@SuspenseFallback(...)`. | **Shipped with a narrow boundary.** The fallback covers descendants that suspend during SSR; it does not observe handler `await`, forms, effects, or navigation. |
 | **Data read / loader** | Read data in the `@Path(...)` handler through explicit application providers after HTTP DTO binding and validation, then pass the result to the React element. | **Shipped, intentionally different.** There is no loader runtime, loader cache, or client revalidation contract. |
 | **Mutation / action** | Submit a native form to an ordinary `@Post(...)` handler, bind and validate it with `@RequestDto(...)`, apply normal guards/interceptors, mutate application state, and redirect with `303 See Other` when appropriate. | **Shipped, intentionally different.** The stable surface has no compiled action, fetcher, optimistic-state, or cache-invalidation runtime. |
-| **Navigation** | Use a real `<a>` or `Link` from `@fluojs/react/client`; use `router.push(...)`, `router.replace(...)`, `router.back()`, or `router.refresh()` for controls. | **Shipped, intentionally different.** Path/search changes use full-document navigation, so the destination returns through the HTTP lifecycle. Fragment-only changes remain same-document browser navigation. |
+| **Navigation** | Use a real `<a>` or `Link` from `@fluojs/react/client`; use `router.push(...)`, `router.replace(...)`, `router.back()`, or `router.refresh()` for controls. An opted-in page can also return HTTP-owned JSON for `loadReactNavigationDestination(...)` and a Vite-built browser module. | **Shipped, intentionally different.** `Link` and router path/search changes still use full-document navigation. The explicit payload can render a server-confirmed destination component; it does not update browser history, share a route tree, or enable automatic soft transitions. |
 | **Pending state** | `useNavigation()` reports the client navigation lifecycle. React `Suspense` reports rendering fallback through the component tree. Applications may add local form pending UI without removing the native form action. | **Shipped with separate phases.** There is no stable submit-state helper or shared loader/action pending model. |
 | **Error UI** | HTTP pipeline failures keep the existing HTTP error path. Stable React SSR diagnostics distinguish HTTP-pipeline, pre-commit shell, request-abort, and post-shell recoverable phases. Application React error boundaries remain ordinary React code. | **Shipped, intentionally different.** There is no segment `error` file or React-owned HTTP error router. |
 | **Not found** | A missing explicit route is the normal `@fluojs/http` not-found response; handlers may throw the shipped HTTP not-found exception when application lookup fails. | **Shipped, intentionally different.** There is no React `notFound()` helper or catch-all requirement. |
@@ -59,6 +60,10 @@ fail through HTTP. Layout, fallback, and metadata factories still require explic
 | `@fluojs/react/vite` | Parse an already-loaded Vite manifest into deterministic React CSS, JavaScript, asset-map, and hydration options. | Stable build-integration subpath. It does not read files or run Vite. |
 | `@fluojs/react/typegen` | Generate deterministic path-only declarations and absolute href builders from a compiled React page catalog. | Stable tooling subpath. It rejects versioned routes and does not generate query, fragment, relative-route, or route-tree contracts. |
 | `@fluojs/react/experimental/rsc` | Compatibility diagnostics, application-supplied RSC manifest seams, Flight responses, and signed Server Function transport mounted on explicit HTTP endpoints. | **Experimental.** It is isolated from every stable entrypoint and is not a stable RSC or action promise. |
+
+For explicit destination loading, see the [navigation payload contract](../contracts/react-navigation-payload.md)
+and the [built Vite example](../../examples/react-vite-ssr/README.md). It leaves direct HTML
+requests, JavaScript-disabled anchors, HTTP redirects/errors, and existing router methods unchanged.
 
 ## Minimal end-to-end path
 
