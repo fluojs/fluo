@@ -59,6 +59,11 @@ it('builds the runtime floor lane under a supported compiler Node and verifies o
   expect(build).toContain('node tooling/testing/node-runtime-floor.mjs --bundle --dist');
   expect(build).toContain('node tooling/testing/node-runtime-floor.mjs "$RUNNER_TEMP/runtime-floor/runtime-floor-exercise.mjs" --self-test');
   expect(runtimeVerify).toMatch(/node-version: \$\{\{ inputs\.node-version \}\}/u);
+  const runtimeNodeSetup = runtimeVerify.split(/\n {6}- /u).filter(
+    (step) => /^ {8}uses: actions\/setup-node@/mu.test(step),
+  );
+  expect(runtimeNodeSetup).toHaveLength(1);
+  expect(runtimeNodeSetup[0]).toMatch(/^ {10}package-manager-cache: false$/mu);
   expect(runtimeVerify).not.toContain('pnpm install');
   expect(runtimeVerify).toContain('node tooling/ci/acquire-build-artifact.mjs');
   expect(runtimeVerify).toContain('needs.build.outputs.artifact-id');
