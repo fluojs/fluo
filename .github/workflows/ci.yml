@@ -317,6 +317,41 @@ jobs:
       - name: Run Bun native routing and lifecycle conformance
         run: bun test tooling/native-runtime/platform-bun-native-conformance.test.mjs
 
+  bun-drizzle-conformance:
+    name: Bun Drizzle async-driver conformance
+    runs-on: ubuntu-latest
+    needs:
+      - deterministic-preflight
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24.x"
+          cache: pnpm
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Drizzle and Bun host dependency closures
+        run: |
+          node tooling/scripts/run-workspace-build-closure.mjs @fluojs/drizzle
+          node tooling/scripts/run-workspace-build-closure.mjs @fluojs/platform-bun
+
+      - name: Run Bun Drizzle conformance
+        run: bun test tooling/native-runtime/drizzle-bun-conformance.test.mjs
+
   node-support:
     name: Node support (${{ matrix.node-version }})
     needs:
@@ -371,6 +406,7 @@ jobs:
       - official-web-runtime-adapter-portability
       - native-response-cookie-conformance
       - bun-native-routing-and-lifecycle-conformance
+      - bun-drizzle-conformance
       - node-support
       - verify-platform-consistency-governance
       - duplicate-module-safety

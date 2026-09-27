@@ -2,7 +2,7 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Node.js-only Drizzle ORM integration for fluo with a transaction-aware database wrapper and an optional dispose hook.
+Drizzle ORM integration for fluo with a transaction-aware database wrapper and an optional dispose hook. Node.js has full support; Bun 1.4 is conditional on an asynchronous transaction driver.
 
 ## Table of Contents
 
@@ -34,15 +34,30 @@ npm install pg
 
 ## Runtime Support
 
-The root `@fluojs/drizzle` package requires Node.js `>=24.0.0 <27`. It imports Node's `node:async_hooks` module to maintain the ambient transaction context and its package manifest declares that package-owned support contract. Upgrade Node 20 and Node 22 hosts to Node.js `>=24.0.0 <27`; Node versions below 24 and Node 27+ are unsupported.
+The full Node.js support window for the root `@fluojs/drizzle` package is `>=24.0.0 <27`. Its `engines.node` declaration specifies supported Node versions, not a prohibition on Bun imports. It imports `node:async_hooks` for ambient transaction context. Upgrade Node 20 and Node 22 hosts to Node.js `>=24.0.0 <27`; Node versions below 24 and Node 27+ are unsupported.
 
-Drizzle ORM itself can target drivers such as Bun SQL or Cloudflare D1, but those driver runtimes are outside this fluo wrapper until a non-Node transaction-context adapter is documented.
+Bun 1.4 can import the root wrapper, bootstrap `DrizzleModule`, and select a transaction-scoped `current()` handle when the driver **awaits the asynchronous transaction callback through commit or rollback**. An example is `drizzle-orm/libsql` with `@libsql/client` and a local `file:` SQLite database. Install both packages and register the async handle as usual:
 
-Non-Node runtimes should not import the root package. For Bun, Deno, Cloudflare Workers, or other non-Node Drizzle drivers, register the raw Drizzle driver handle behind application-owned fluo providers such as `{ provide, useFactory }` or `{ provide, useValue }`, then inject that application token into repositories. The canonical package chooser/surface docs and the Bun/Cloudflare book chapters show those raw-provider patterns.
+```ts
+import { createClient } from '@libsql/client';
+import { DrizzleModule } from '@fluojs/drizzle';
+import { drizzle } from 'drizzle-orm/libsql';
+
+const client = createClient({ url: 'file:app.db' });
+const persistence = DrizzleModule.forRoot({
+  database: drizzle(client),
+  dispose: () => client.close(),
+});
+```
+
+The synchronous `drizzle-orm/bun-sqlite` transaction runner is **unsupported** for this wrapper. It can commit before an async callback finishes: `current()` still selects the transaction handle, but a write can persist after a later callback exception. `strictTransactions: true` checks only that `database.transaction(...)` exists; it cannot detect a runner that does not await the callback. No generic runtime guard is added: no side-effect-free check has been demonstrated that identifies every synchronous driver before user work begins. Choose an async driver and verify rollback against its actual database. The Bun evidence here covers exception-based commit/rollback and module lifecycle, **not** the Node-scoped Result rollback observer or after-commit guarantees.
+
+Deno, Cloudflare Workers, and other unverified non-Node hosts are outside this root-wrapper support. For those hosts, or when using a driver unsuitable for the wrapper, register the raw Drizzle handle behind application-owned fluo providers such as `{ provide, useFactory }` or `{ provide, useValue }`. The package chooser/surface docs and Bun/Cloudflare book chapters show the raw-provider pattern.
 
 ## When to Use
 
 - when an application running Node.js `>=24.0.0 <27` needs Drizzle to participate in the same module, DI, and lifecycle model as the rest of the app
+- when a Bun 1.4 application uses a verified async transaction driver such as `drizzle-orm/libsql` for exception-based transactions
 - when repositories need a single `current()` seam that switches between the root handle and the active transaction handle
 - when application shutdown should also run an explicit cleanup hook for the underlying driver resources
 
@@ -176,7 +191,9 @@ await this.db.transaction(async () => {
 
 Nested calls reuse the active transaction boundary. If a nested call passes native transaction options while a boundary is already active, the package rejects those nested options instead of silently changing the existing transaction. `requireAfterCommit` in the separate `boundary` is a capability requirement on the current boundary, not a native option.
 
-When `database.transaction(...)` is unavailable and `strictTransactions` is `false` (the default), `transaction()` and `requestTransaction()` intentionally fail open (fail-open fallback) by running the callback directly against the root handle. This is useful for local fakes, read-only adapters, or gradual migrations, but it is not atomic and should not be treated as a real database transaction. Set `strictTransactions: true` in production paths that require rollback guarantees; startup and readiness diagnostics then surface missing `database.transaction(...)` support and transaction helpers throw instead of silently running without a transaction. Fail-open callbacks still run in a root-handle ALS context, so nested helpers reuse the fallback boundary, nested request work inherits the ambient request `AbortSignal`, and shutdown drains nested direct execution before disposal. This context preservation does not add rollback atomicity.
+When `database.transaction(...)` is unavailable and `strictTransactions` is `false` (the default), `transaction()` and `requestTransaction()` intentionally fail open (fail-open fallback) by running the callback directly against the root handle. This is useful for local fakes, read-only adapters, or gradual migrations, but it is not atomic and should not be treated as a real database transaction. Set `strictTransactions: true` to reject a missing `database.transaction(...)` method; startup and readiness diagnostics then surface that absence and transaction helpers throw instead of running directly. This setting does not verify that an existing driver awaits its callback. Fail-open callbacks still run in a root-handle ALS context, so nested helpers reuse the fallback boundary, nested request work inherits the ambient request `AbortSignal`, and shutdown drains nested direct execution before disposal. This context preservation does not add rollback atomicity.
+
+`strictTransactions: true` rejects a missing transaction method, not an existing synchronous runner such as `drizzle-orm/bun-sqlite`. ALS selection and readiness cannot prove rollback for that driver.
 
 Async work created inside a transaction can inherit its ALS context even when it runs after the owning transaction has committed, rolled back, or otherwise settled. A later `transaction(...)` or `requestTransaction(...)` call from that inherited continuation is treated as a fresh lifecycle-tracked root instead of reusing the closed transaction handle. Shutdown drains that fresh root before `dispose(database)`, while calls that begin before the owner settles continue to share the active boundary.
 

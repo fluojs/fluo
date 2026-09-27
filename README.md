@@ -134,7 +134,7 @@ Connect the capabilities you need. These are representative packages; the [packa
 | **Operations** | [Health (Terminus)](./packages/terminus/README.md), [Metrics](./packages/metrics/README.md), [Throttler](./packages/throttler/README.md) |
 | **React and developer tools** | [React](./packages/react/README.md), [CLI](./packages/cli/README.md), [Testing](./packages/testing/README.md), [Vite](./packages/vite/README.md), [Studio](./packages/studio/README.md) |
 
-**Runtime support is package-specific.** Having an adapter does not make every package portable to that host. For example, the Drizzle integration is Node.js-only, while the Socket.IO adapter supports Node.js and Bun but not Deno or Workers. The Next.js integration targets Node.js hosts, not the Edge Runtime. Before changing hosts, check startup, shutdown, and dependency requirements in the [Canonical Runtime Package Matrix](./docs/reference/package-surface.md) and the owning package README.
+**Runtime support is package-specific.** Having an adapter does not make every package portable to that host. For example, the Drizzle integration fully supports Node.js `>=24.0.0 <27` and conditionally runs on Bun 1.4 with an async transaction driver such as `drizzle-orm/libsql`; synchronous `drizzle-orm/bun-sqlite` cannot preserve rollback after an awaited callback. The Socket.IO adapter supports Node.js and Bun but not Deno or Workers. The Next.js integration targets Node.js hosts, not the Edge Runtime. Before changing hosts, check startup, shutdown, and dependency requirements in the [Canonical Runtime Package Matrix](./docs/reference/package-surface.md) and the owning package README.
 
 ## Where to Go Next?
 
