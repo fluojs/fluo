@@ -10,6 +10,7 @@ import {
   createReactRouteSnapshot,
   Link,
   ReactClientRouterProvider,
+  type ReactNavigationLoadResult,
   useNavigation,
   useParams,
   usePathname,
@@ -55,6 +56,7 @@ function createEnvironment(href = 'https://example.test/products/sku-42?preview=
   return {
     assign,
     back,
+    changeFragment: updateHref,
     environment,
     navigateFromHistory(nextHref: string) {
       const previousHash = new URL(currentHref).hash;
@@ -205,6 +207,24 @@ describe('@fluojs/react/client', () => {
     });
   });
 
+  it('requests the document rather than installing a different URL during hydration', () => {
+    // Given: the server rendered one matched route but the browser starts at another URL.
+    const browser = createEnvironment('https://example.test/admin/songs');
+    const store = createClientNavigationStore(
+      createReactRouteSnapshot({ params: { sku: 'sku-42' }, url: '/products/sku-42' }),
+    );
+
+    // When: hydration binds the browser environment.
+    store.connect(browser.environment);
+
+    // Then: stale server content cannot acquire the new URL or the old path params.
+    expect(browser.assign).toHaveBeenCalledWith('https://example.test/admin/songs');
+    expect(store.getSnapshot()).toMatchObject({
+      params: { sku: 'sku-42' },
+      url: '/products/sku-42',
+    });
+  });
+
   it('completes router-owned fragment push with push lifecycle semantics', () => {
     // Given: a connected store whose browser fake emits hashchange for fragment navigation.
     const browser = createEnvironment();
@@ -278,6 +298,370 @@ describe('@fluojs/react/client', () => {
     });
   });
 
+  it('commits only an HTTP-approved destination and its server-owned params', async () => {
+    // Given: a browser with a successful negotiated destination and an observable store.
+    const browser = createEnvironment();
+    const approved = {
+      ok: true as const,
+      payload: {
+        version: 1 as const,
+        url: '/products/sku-84?preview=false',
+        params: { sku: 'sku-84' },
+        destination: { module: './navigation-product.ts', props: { sku: 'sku-84' } },
+      },
+      component: () => createElement('p', null, 'Approved product'),
+    };
+    const load = vi.fn(async () => approved);
+    const pushState = vi.fn();
+    const replaceState = vi.fn();
+    const store = createClientNavigationStore(
+      createReactRouteSnapshot({ params: { sku: 'sku-42' }, url: '/products/sku-42?preview=true' }),
+    );
+    store.connect({ ...browser.environment, load, pushState, replaceState });
+    const completed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().navigation.status === 'complete') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: the existing router pushes a destination.
+    store.router.push('/products/sku-84?preview=false');
+    await completed;
+
+    // Then: approval, not the requested URL or old params, determines the committed route.
+    expect(load).toHaveBeenCalledOnce();
+    expect(pushState).toHaveBeenCalledWith('https://example.test/products/sku-84?preview=false');
+    expect(browser.assign).not.toHaveBeenCalled();
+    expect(store.getSnapshot()).toMatchObject({
+      params: { sku: 'sku-84' },
+      pathname: '/products/sku-84',
+      url: '/products/sku-84?preview=false',
+      navigation: { status: 'complete', type: 'push' },
+    });
+  });
+
+  it('ignores a late response after a newer navigation and deduplicates pending clicks', async () => {
+    // Given: two request results whose completion order differs from activation order.
+    const browser = createEnvironment();
+    const requests: {
+      readonly href: string;
+      readonly signal: AbortSignal;
+      readonly resolve: (result: {
+        ok: true;
+        payload: {
+          version: 1;
+          url: string;
+          params: { sku: string };
+          destination: { module: string; props: { sku: string } };
+        };
+        component: () => null;
+      }) => void;
+    }[] = [];
+    const load = vi.fn((href: string, signal: AbortSignal) => new Promise<
+      Parameters<(typeof requests)[number]['resolve']>[0]
+    >((resolve) => {
+      requests.push({ href, signal, resolve });
+    }));
+    const pushState = vi.fn();
+    const store = createClientNavigationStore(createReactRouteSnapshot({
+      params: { sku: 'sku-42' },
+      url: '/products/sku-42?preview=true',
+    }));
+    store.connect({ ...browser.environment, load, pushState, replaceState: vi.fn() });
+    const completed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().navigation.status === 'complete') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+    const approve = (sku: string) => ({
+      ok: true as const,
+      payload: {
+        version: 1 as const,
+        url: `/products/${sku}`,
+        params: { sku },
+        destination: { module: './navigation-product.ts', props: { sku } },
+      },
+      component: () => null,
+    });
+
+    // When: the first activation repeats, then another URL supersedes it.
+    store.router.push('/products/sku-84');
+    store.router.push('/products/sku-84');
+    store.router.push('/products/sku-126');
+    requests[1]?.resolve(approve('sku-126'));
+    await completed;
+    requests[0]?.resolve(approve('sku-84'));
+    await Promise.resolve();
+
+    // Then: only the latest confirmed result updates the URL or matched params.
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.signal.aborted).toBe(true);
+    expect(pushState).toHaveBeenCalledOnce();
+    expect(store.getSnapshot()).toMatchObject({
+      params: { sku: 'sku-126' },
+      url: '/products/sku-126',
+    });
+    expect(browser.assign).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending page response on fragment activation without document fallback', async () => {
+    // Given: a pending page request that settles only after its abort signal.
+    const browser = createEnvironment();
+    const load = vi.fn((_href: string, signal: AbortSignal) =>
+      new Promise<{ ok: false; reason: 'cancelled' }>((resolve) => {
+        signal.addEventListener('abort', () => resolve({ ok: false, reason: 'cancelled' }), { once: true });
+      }));
+    const store = createClientNavigationStore(createReactRouteSnapshot({
+      params: { sku: 'sku-42' },
+      url: '/products/sku-42?preview=true',
+    }));
+    store.connect({ ...browser.environment, load, pushState: vi.fn(), replaceState: vi.fn() });
+
+    // When: a fragment activation supersedes the pending HTTP page.
+    store.router.push('/products/sku-84');
+    store.router.push('#details');
+    await Promise.resolve();
+
+    // Then: the browser handles only the fragment and cancellation causes no fallback.
+    expect(browser.assign).toHaveBeenCalledOnce();
+    expect(browser.assign).toHaveBeenCalledWith('https://example.test/products/sku-42?preview=true#details');
+    expect(store.getSnapshot()).toMatchObject({
+      params: { sku: 'sku-42' },
+      url: '/products/sku-42?preview=true#details',
+    });
+  });
+
+  it('reloads server-owned data on history traversal instead of reusing a prior response', async () => {
+    // Given: a browser returning a fresh HTTP approval for each history activation.
+    const browser = createEnvironment();
+    const load = vi.fn(async (href: string) => {
+      const sku = new URL(href).pathname.split('/').at(-1) ?? '';
+      return {
+        ok: true as const,
+        payload: {
+          version: 1 as const,
+          url: `/products/${sku}`,
+          params: { sku },
+          destination: { module: './navigation-product.ts', props: { sku } },
+        },
+        component: () => null,
+      };
+    });
+    const store = createClientNavigationStore(createReactRouteSnapshot({
+      params: { sku: 'sku-42' },
+      url: '/products/sku-42?preview=true',
+    }));
+    store.connect({ ...browser.environment, load, pushState: vi.fn(), replaceState: vi.fn() });
+    const completedAt = (url: string) => new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().url === url) {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: browser history activates a prior page and then a forward page.
+    const back = completedAt('/products/sku-84');
+    browser.navigateFromHistory('https://example.test/products/sku-84');
+    await back;
+    const forward = completedAt('/products/sku-126');
+    browser.navigateFromHistory('https://example.test/products/sku-126');
+    await forward;
+
+    // Then: every activation receives fresh params from its own negotiated response.
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(store.getSnapshot()).toMatchObject({
+      params: { sku: 'sku-126' },
+      url: '/products/sku-126',
+      navigation: { status: 'complete', type: 'back' },
+    });
+    expect(browser.assign).not.toHaveBeenCalled();
+  });
+
+  it('uses one approval when popstate also emits hashchange for a new search', async () => {
+    // Given: history will change both query and fragment on the same pathname.
+    const browser = createEnvironment('https://example.test/products/sku-42?preview=true#first');
+    const load = vi.fn(async () => ({
+      ok: true as const,
+      payload: {
+        version: 1 as const,
+        url: '/products/sku-42?preview=false',
+        params: { sku: 'sku-42' },
+        destination: { module: './navigation-product.ts', props: { sku: 'sku-42' } },
+      },
+      component: () => null,
+    }));
+    const store = createClientNavigationStore(createReactRouteSnapshot({
+      params: { sku: 'sku-42' },
+      url: '/products/sku-42?preview=true#first',
+    }));
+    store.connect({ ...browser.environment, load, pushState: vi.fn(), replaceState: vi.fn() });
+    const completed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().url === '/products/sku-42?preview=false#second') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: one history activation emits popstate followed by hashchange.
+    browser.navigateFromHistory('https://example.test/products/sku-42?preview=false#second');
+    await completed;
+
+    // Then: the fragment event cannot cancel or duplicate its pending HTTP approval.
+    expect(load).toHaveBeenCalledOnce();
+    expect(store.getSnapshot()).toMatchObject({
+      params: { sku: 'sku-42' },
+      url: '/products/sku-42?preview=false#second',
+    });
+  });
+
+  it('commits a cross-path popstate approval after its activated fragment changes', async () => {
+    // Given: history activates a different page while its HTTP approval is pending.
+    const browser = createEnvironment('https://example.test/admin/qr');
+    let approve: ((result: ReactNavigationLoadResult) => void) | undefined;
+    const load = vi.fn((_href: string) => new Promise<ReactNavigationLoadResult>((resolve) => {
+      approve = resolve;
+    }));
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/admin/qr' }));
+    store.connect({ ...browser.environment, load, pushState: vi.fn(), replaceState: vi.fn() });
+
+    // When: the activated page gains a fragment before its approval resolves.
+    browser.navigateFromHistory('https://example.test/admin/songs');
+    browser.changeFragment('https://example.test/admin/songs#details');
+    approve?.({
+      ok: true,
+      payload: {
+        version: 1,
+        url: '/admin/songs',
+        params: {},
+        destination: { module: './navigation-admin.ts', props: {} },
+      },
+      component: () => null,
+    });
+    await Promise.resolve();
+
+    // Then: one approval installs the new page and current fragment, not stale route state.
+    expect(load).toHaveBeenCalledOnce();
+    expect(store.getDestination()).not.toBeNull();
+    expect(store.getSnapshot()).toMatchObject({
+      pathname: '/admin/songs',
+      url: '/admin/songs#details',
+      hash: '#details',
+      navigation: { status: 'complete', type: 'back' },
+    });
+    expect(browser.assign).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the activated fragment when cross-path history approval is rejected', async () => {
+    // Given: a history activation is awaiting HTTP approval for another page.
+    const browser = createEnvironment('https://example.test/admin/qr');
+    let reject: ((result: ReactNavigationLoadResult) => void) | undefined;
+    const load = vi.fn(() => new Promise<ReactNavigationLoadResult>((resolve) => {
+      reject = resolve;
+    }));
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/admin/qr' }));
+    store.connect({ ...browser.environment, load, pushState: vi.fn(), replaceState: vi.fn() });
+
+    // When: its fragment changes before the HTTP response rejects the destination.
+    browser.navigateFromHistory('https://example.test/admin/songs');
+    browser.changeFragment('https://example.test/admin/songs#details');
+    reject?.({ ok: false, reason: 'unavailable' });
+    await Promise.resolve();
+
+    // Then: the document fallback loads the currently activated browser URL.
+    expect(load).toHaveBeenCalledOnce();
+    expect(browser.assign).toHaveBeenCalledWith('https://example.test/admin/songs#details');
+  });
+
+  it('honors activation of the prior URL while a popstate approval is pending', async () => {
+    // Given: history activated a second URL, but its HTTP result has not completed.
+    const browser = createEnvironment();
+    const requests: {
+      readonly href: string;
+      readonly resolve: (result: ReactNavigationLoadResult) => void;
+    }[] = [];
+    const load = vi.fn((href: string) => new Promise<ReactNavigationLoadResult>((resolve) => {
+      requests.push({ href, resolve });
+    }));
+    const store = createClientNavigationStore(createReactRouteSnapshot({
+      params: { sku: 'sku-42' },
+      url: '/products/sku-42?preview=true',
+    }));
+    const pushState = vi.fn();
+    store.connect({ ...browser.environment, load, pushState, replaceState: vi.fn() });
+    browser.navigateFromHistory('https://example.test/products/sku-84?preview=false');
+
+    // When: the user explicitly reactivates the previous URL before approval.
+    store.router.push('/products/sku-42?preview=true');
+
+    // Then: the activation supersedes history; a stale pending response cannot win.
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.href).toBe('https://example.test/products/sku-42?preview=true');
+    const completed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().navigation.status === 'complete') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+    requests[1]?.resolve({
+      ok: true,
+      payload: {
+        version: 1,
+        url: '/products/sku-42?preview=true',
+        params: { sku: 'sku-42' },
+        destination: { module: './navigation-product.ts', props: { sku: 'sku-42' } },
+      },
+      component: () => null,
+    });
+    await completed;
+    requests[0]?.resolve({ ok: false, reason: 'unavailable' });
+    await Promise.resolve();
+    expect(pushState).toHaveBeenCalledOnce();
+    expect(browser.assign).not.toHaveBeenCalled();
+    expect(store.getSnapshot()).toMatchObject({
+      params: { sku: 'sku-42' },
+      url: '/products/sku-42?preview=true',
+      navigation: { status: 'complete', type: 'push' },
+    });
+  });
+
+  it('falls back to the document without committing a rejected soft URL', async () => {
+    // Given: the HTTP destination response cannot be approved.
+    const browser = createEnvironment();
+    const assigned = new Promise<string>((resolve) => {
+      const store = createClientNavigationStore(createReactRouteSnapshot({
+        params: { sku: 'sku-42' },
+        url: '/products/sku-42?preview=true',
+      }));
+      store.connect({
+        ...browser.environment,
+        assign: resolve,
+        load: async () => ({ ok: false, reason: 'unavailable' }),
+        pushState: vi.fn(),
+        replaceState: vi.fn(),
+      });
+      store.router.push('/products/sku-84');
+      expect(store.getSnapshot().url).toBe('/products/sku-42?preview=true');
+    });
+
+    // When: the rejected HTTP result settles.
+    const href = await assigned;
+
+    // Then: the browser handles the actual document navigation.
+    expect(href).toBe('https://example.test/products/sku-84');
+  });
+
   it('delegates back and refresh to browser history and document reload semantics', () => {
     // Given: a connected client store.
     const browser = createEnvironment();
@@ -295,8 +679,8 @@ describe('@fluojs/react/client', () => {
     expect(store.getSnapshot().navigation).toEqual({ status: 'refreshing', type: 'refresh' });
   });
 
-  it('updates URL readers after browser history navigation', () => {
-    // Given: a connected store with one HTTP-owned path-param snapshot.
+  it('falls back to a document request when history has no approved destination loader', () => {
+    // Given: a connected store with no opted-in browser module importer map.
     const browser = createEnvironment();
     const store = createClientNavigationStore(
       createReactRouteSnapshot({ params: { sku: 'sku-42' }, url: '/products/sku-42?preview=true' }),
@@ -306,15 +690,9 @@ describe('@fluojs/react/client', () => {
     // When: browser history activates a different document URL.
     browser.navigateFromHistory('https://example.test/products/sku-84?preview=false#details');
 
-    // Then: URL hooks receive the current location and stale route params are not retained.
-    expect(store.getSnapshot()).toMatchObject({
-      hash: '#details',
-      navigation: { status: 'complete', type: 'back' },
-      params: {},
-      pathname: '/products/sku-84',
-      url: '/products/sku-84?preview=false#details',
-    });
-    expect(store.getSnapshot().searchParams.get('preview')).toBe('false');
+    // Then: the browser requests the HTTP document; no guessed route state is installed.
+    expect(browser.assign).toHaveBeenCalledWith('https://example.test/products/sku-84?preview=false#details');
+    expect(store.getSnapshot().params).toEqual({ sku: 'sku-42' });
   });
 
   it('records back semantics when history traversal follows a prior push', () => {

@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { loadReactNavigationDestination } from './client.js';
+import { loadReactNavigationDestination, type ReactNavigationLoadResult } from './client.js';
 
 const ORIGIN = 'https://example.test';
 const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
@@ -164,6 +164,37 @@ it('does not import a destination when cancellation settles a pending JSON body 
   // Then: no import starts after the cancelled read settles.
   expect(result).toEqual({ ok: false, reason: 'cancelled' });
   expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+});
+
+it('discards a module that completes after the navigation request is cancelled', async () => {
+  // Given: HTTP approved the destination while its build-produced module is still loading.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(payload), {
+    headers: { 'Content-Type': MEDIA_TYPE },
+  })));
+  const controller = new AbortController();
+  let completeImport = (_module: { default: () => null }) => {};
+  let importStarted = () => {};
+  const importing = new Promise<void>((resolve) => { importStarted = resolve; });
+  const modules = {
+    './navigation-product.ts': () => new Promise<{ default: () => null }>((settle) => {
+      completeImport = settle;
+      importStarted();
+    }),
+  };
+  const loading: Promise<ReactNavigationLoadResult> = loadReactNavigationDestination(
+    '/products/sku-84?preview=false',
+    modules,
+    { signal: controller.signal },
+  );
+
+  // When: cancellation occurs after HTTP acceptance but before the import resolves.
+  await importing;
+  controller.abort();
+  completeImport({ default: () => null });
+
+  // Then: the helper cannot report a destination from the cancelled request.
+  expect(await loading).toEqual({ ok: false, reason: 'cancelled' });
 });
 
 it('falls back when a mapped module has no usable default component', async () => {

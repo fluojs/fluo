@@ -1,9 +1,12 @@
-import { createElement } from 'react';
+import { createElement, useEffect } from 'react';
 
 export default function ProductDestination(props: Record<string, unknown>) {
   const sku = typeof props.sku === 'string' ? props.sku : '';
   const productName = typeof props.productName === 'string' ? props.productName : '';
   const preview = props.preview === true;
+  useEffect(() => {
+    document.title = `Catalog item ${sku}`;
+  }, [sku]);
 
   return createElement(
     'section',

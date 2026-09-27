@@ -129,7 +129,7 @@ resolve합니다.
 - **`@fluojs/react/vite`** — Vite build manifest parsing, React server/client entry selection,
   deterministic stylesheet 및 JavaScript ordering, manifest diagnostics, hydration option 생성을 위한
   경계입니다. Root package는 여전히 manifest discovery나 scanning 없이 명시적인 asset option만 받습니다.
-- **`@fluojs/react/client`** — progressive anchor, HTTP-first full-document navigation,
+- **`@fluojs/react/client`** — progressive anchor, HTTP 승인 기반 soft navigation과 document fallback,
   hydration-safe URL/path-param/navigation lifecycle hook을 위한 경계입니다. Browser API는
   runtime-neutral root에서 계속 분리됩니다.
 - **`@fluojs/react/experimental/rsc`** — exact-version compatibility diagnostics,
@@ -841,11 +841,11 @@ Navigation contract는 의도적으로 HTTP-first입니다.
   modified click, download, explicit target, cross-origin destination은 native browser behavior를
   유지합니다. Hydration 이후 same-origin HTTP(S) URL을 향한 unmodified primary click은
   `router.push(...)`로 위임됩니다.
-- `router.push(href)`는 `window.location.assign(...)`, `router.replace(href)`는
-  `window.location.replace(...)`를 사용합니다. 현재 URL의 pathname 또는 search(query string)를
-  변경하는 same-origin destination은 full-document navigation을 수행하므로 fluo HTTP route matching,
-  `@RequestDto` binding/validation, guard, interceptor, redirect, not-found response, non-HTML response,
-  server failure가 계속 authoritative합니다.
+- Provider에 `navigationModules`를 전달하면 `router.push/replace`는 HTTP가 승인한 destination만
+  load하고 provider/layout을 유지한 채 history, URL hook, function child의 page slot을 갱신합니다.
+  Application이 해당 slot에 목적지를 렌더링하며 destination-local state는 전환마다 새로 mount됩니다.
+  Importer map이 없거나 response가 거부되면 browser가 `location.assign/replace`로 전체 문서를
+  이동합니다. HTTP matching, DTO validation, guard, redirect, error는 계속 authoritative합니다.
 - 현재 pathname과 search를 유지하고 fragment만 바꾸는 fragment-only destination은 same-document
   예외입니다. Browser는 새 HTTP request를 보내지 않고 `hashchange`를 발생시키며, 요청한 destination과
   일치하는 event가 route snapshot URL/hash를 갱신하면서 `push` 또는 `replace` lifecycle을 완료합니다.
@@ -857,11 +857,12 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 - `router.back()`은 `window.history.back()`에 위임합니다. `router.refresh()`는 문서화된 revalidation
   mechanism으로 `window.location.reload()`를 사용하며 RSC, loader, client-data cache를 암시하지 않습니다.
 - `usePathname()`, `useSearchParams()`, `useParams()`, `useRouterState()`는 provider의 immutable route
-  snapshot을 읽습니다. `popstate`와 `hashchange`는 URL-derived field를 갱신합니다. 새 server document 없이
-  history event가 pathname을 바꾸면 client route grammar로 추측하지 않고 stale path param을 비웁니다.
+  snapshot을 읽습니다. `popstate`/forward는 이전에 방문한 URL도 HTTP에 새로 승인받으며 private
+  payload를 cache하지 않습니다. 승인된 URL과 matched params를 함께 갱신하고 fragment-only
+  `hashchange`는 기존 server-owned params를 유지합니다.
 - `useNavigation()`은 `idle`, `navigating`, `refreshing`, `complete`, `error`, `skipped`를 노출합니다.
-  Full-document path/search transition은 일반적으로 현재 document를 `navigating` 또는 `refreshing`
-  상태에서 떠나며, destination document는 server-owned `idle` snapshot으로 시작합니다. Fragment-only
+  Soft transition은 검증된 page가 load된 뒤에만 완료되고 실패 시 HTTP document로 fallback합니다.
+  `refreshing`은 document reload를 시작합니다. Fragment-only
   transition은 일치하는 `hashchange` 이후 현재 document에서 `complete`가 됩니다.
 - Router method는 cross-origin 또는 non-HTTP(S) destination을 `ReactClientNavigationError`로 거부합니다.
   이런 destination에는 일반 anchor를 사용하세요.
@@ -888,7 +889,7 @@ import 가능 여부를 결정합니다. Runtime-neutral root는 browser/Vite co
 
 ```tsx
 import { ReactNavigationPage } from '@fluojs/react';
-import { loadReactNavigationDestination } from '@fluojs/react/client';
+import { ReactClientRouterProvider, createReactRouteSnapshot } from '@fluojs/react/client';
 
 // HTTP-matched @Path handler에서:
 return ReactNavigationPage.create(<ProductPage sku={input.sku} />, {
@@ -898,12 +899,12 @@ return ReactNavigationPage.create(<ProductPage sku={input.sku} />, {
 
 // Build된 browser entry에서:
 const modules = import.meta.glob('./navigation-product.ts');
-const result = await loadReactNavigationDestination('/products/sku-84', modules);
-if (result.ok) {
-  // React tree에서 result.component를 result.payload.destination.props로 렌더링합니다.
-} else if (result.reason !== 'cancelled') {
-  window.location.assign('/products/sku-84');
-}
+<ReactClientRouterProvider
+  initialSnapshot={createReactRouteSnapshot({ url: requestUrl, params: matchedParams })}
+  navigationModules={modules}
+>
+  {(destination) => <Shell><DashboardNav />{destination ?? <ProductPage />}</Shell>}
+</ReactClientRouterProvider>
 ```
 
 Browser는 `credentials: 'same-origin'`, `cache: 'no-store'`, `redirect: 'manual'`을 사용하며
@@ -912,8 +913,8 @@ Browser는 `credentials: 'same-origin'`, `cache: 'no-store'`, `redirect: 'manual
 response, malformed/unsupported payload, 사용할 수 없는 module은 렌더링할 수 없으며 caller가
 document request로 fallback합니다. External/non-HTTP(S) URL에는 일반 anchor를 사용하고
 abort된 request는 렌더링하거나 fallback을 시작하지 않습니다. 일반 direct/JavaScript-disabled
-GET은 HTML과 hydration asset을 계속 stream합니다. `Link`와 `router.push/replace`는 여전히
-full-document navigation이며 client transition 연결은 #3845 범위입니다. 자세한 내용은
+GET은 HTML과 hydration asset을 계속 stream합니다. `Link`와 `router.push/replace`만 공식
+navigation control이며 helper는 그 아래의 HTTP 검증 경계입니다. 자세한 내용은
 [EN](../../docs/contracts/react-navigation-payload.md) /
 [KO](../../docs/contracts/react-navigation-payload.ko.md) contract와
 [`react-vite-ssr`](../../examples/react-vite-ssr/README.ko.md)를 참고하세요.

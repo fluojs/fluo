@@ -1684,9 +1684,11 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
       ...contractDiscoverabilityCompanions,
       'tooling/governance/react-navigation-payload-contract.mjs',
       'tooling/governance/react-navigation-payload-contract.test.ts',
-      'packages/react/src/navigation-payload.test.ts',
       'packages/react/src/client-navigation-payload.test.ts',
     ];
+    if (hasChanged(changedFiles, 'packages/react/src/page-result.ts')) {
+      required.push('packages/react/src/navigation-payload.test.ts');
+    }
     assert(
       required.every((path) => hasChanged(changedFiles, path)),
       `React navigation payload contract updates must include ${required.filter((path) => !hasChanged(changedFiles, path)).join(', ')}.`,
@@ -3334,26 +3336,15 @@ export function enforceReactClientSubpathContract() {
 
   for (const markdown of documentation) {
     assert(
-      markdown.includes('@fluojs/react/client') && markdown.includes('full-document'),
-      'React client contract docs must keep the isolated subpath and full-document navigation behavior discoverable.',
+      markdown.includes('@fluojs/react/client'),
+      'React client contract docs must keep the isolated client subpath discoverable.',
     );
   }
 
   assert(
-    englishReadme.includes('pathname or search') &&
-      englishReadme.includes('fragment-only') &&
-      englishReadme.includes('does not issue a new HTTP request') &&
-      englishReadme.includes('identical URL') &&
-      englishReadme.includes('skipped'),
-    'packages/react/README.md must document path/search full-document navigation, fragment-only same-document behavior, and identical-URL skips.',
-  );
-  assert(
-    koreanReadme.includes('pathname 또는 search') &&
-      koreanReadme.includes('fragment-only') &&
-      koreanReadme.includes('새 HTTP request를 보내지') &&
-      koreanReadme.includes('identical URL') &&
-      koreanReadme.includes('skipped'),
-    'packages/react/README.ko.md must document path/search full-document navigation, fragment-only same-document behavior, and identical-URL skips.',
+    englishReadme.includes('../../docs/contracts/react-navigation-payload.md') &&
+      koreanReadme.includes('../../docs/contracts/react-navigation-payload.ko.md'),
+    'React package READMEs must link their locale-specific HTTP navigation contract.',
   );
 }
 

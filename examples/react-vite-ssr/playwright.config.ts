@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-const BROWSER_TEST_PORT = 43_006;
+const BROWSER_TEST_PORT = Number(process.env.REACT_VITE_EXAMPLE_TEST_PORT ?? 43_006);
 
 export default defineConfig({
   expect: {

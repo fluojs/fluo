@@ -19,10 +19,10 @@ second routing model.
 - A Vite client build that writes `dist/client/.vite/manifest.json`, then
   `@fluojs/react/vite` turns that loaded manifest into ordered CSS and hydration module assets.
 - A server-rendered counter that becomes interactive through React DOM `hydrateRoot(...)`.
-- An explicitly negotiated GET with HTTP-confirmed URL and params, consumed through a
-  Vite-built `import.meta.glob(...)` module map without replacing the document or its counter.
-- `@fluojs/react/client` route snapshots, URL-state hooks, progressive `Link`, and full-document
-  `push` navigation that still reaches the server-owned DTO validation boundary.
+- `@Router('/admin')` pages at `/admin/qr` and `/admin/songs` with HTTP-approved soft navigation
+  that preserves the interactive shell, resets destination state, and focuses `<main>`.
+- `@fluojs/react/client` route snapshots, URL-state hooks, progressive `Link`, and
+  `push/replace/back` with document fallback and server-owned DTO validation.
 - A native `multipart/form-data` form that reaches an ordinary guarded/intercepted `@Post(...)`
   route, mutates application state, and returns `303 See Other` to an HTTP-matched destination.
 - Production browser coverage that submits that form with JavaScript disabled.
@@ -39,10 +39,11 @@ pnpm --filter @fluojs/example-react-vite-ssr start
 
 Open `http://127.0.0.1:3000/products/sku-42?preview=true`, then activate `Count: 0`. The label
 changes to `Count: 1` only after the Vite-generated client entry hydrates the server HTML. Use
-`Open sku-84` or `Push sku-126` to perform same-origin full-document navigation; each destination
-is matched, bound, and validated again by the fluo HTTP route.
-`Load sku-84 destination` makes one explicit navigation-payload request and renders the built
-destination component in the existing React tree; the browser URL does not change.
+`Open sku-84` or `Push sku-126` to navigate without replacing the document after HTTP approval.
+Open `/admin/qr`, increment both counters, follow `Open admin songs`, then use `Back` and browser
+forward: the URL and page follow HTTP's confirmed destination; the shell counter persists, the
+page counter resets, and the main landmark receives focus. Direct and no-JavaScript requests
+still render ordinary server documents.
 
 Run the repeatable SSR and hydration checks with:
 
@@ -66,9 +67,11 @@ An ordinary document GET still streams the HTML shell, hydration scripts, Suspen
 and request URL. An explicit `Accept: application/vnd.fluo.react-navigation+json;v=1` GET
 instead runs the same HTTP DTO and module pipeline and returns the server URL/params and
 browser destination. `src/entry-client.ts` passes a Vite-compiled `import.meta.glob(...)`
-map to the hydrated document; `src/page.ts` uses `loadReactNavigationDestination(...)` to
-validate the HTTP response before importing or rendering `navigation-product.ts`. The
-counter stays mounted. Browser `Link`, `push`, and `replace` retain full-document behavior.
+map to `ReactClientRouterProvider` as `navigationModules`. Existing `Link` and
+`router.push/replace` validate the HTTP result through the client loader before committing
+history and rendering a fresh destination in the page slot. `src/admin-page.ts` and its
+build-mapped `src/navigation-admin.ts` entry handle
+both admin pages; the shared counter stays mounted. `popstate` and forward fetch fresh results.
 
 The client sends same-origin cookies, follows `Set-Cookie` through normal browser handling,
 uses `cache: 'no-store'`, and does not prefetch or reuse the payload. A redirect, error,
@@ -135,10 +138,9 @@ the complete fallback and the stable client package owns neither mutation routes
 - `src/entry-client.ts` is the browser-only boundary. Server modules do not access `window` or
   `document`, and the server loads the Vite manifest explicitly from the application boundary.
 - `ReactClientRouterProvider` receives the same request URL and HTTP-matched params during SSR and
-  hydration. `Link`, `router.push(...)`, and `router.replace(...)` use full-document navigation, so
-  redirects, not-found pages, DTO validation failures, guards, interceptors, and server errors remain
-  ordinary HTTP responses.
-- This example does not promise SPA document swapping, event replay, client route matching,
+  hydration. Approved pages use soft navigation; redirects, not-found pages, DTO failures, and
+  errors fall back to ordinary HTTP documents. Guards and interceptors remain server-owned.
+- This example does not promise arbitrary HTML swapping, event replay, client route matching,
   navigation caches, RSC-aware data, or prefetch behavior.
 - This is not a Next.js App Router, file-based router, TanStack route tree, RSC example, catch-all
   route example, or production starter-template change.
@@ -153,8 +155,10 @@ examples/react-vite-ssr/
 ├── src/
 │   ├── app.ts              # @Router pages, native POST mutation, and Vite asset serving module
 │   ├── app.test.ts         # DTO, protected mutation, redirect, and streamed SSR assertions
+│   ├── admin-page.ts       # Shared admin page component with destination-local state
 │   ├── entry-client.ts     # Browser-only hydrateRoot(...) entry
 │   ├── navigation-product.ts # Vite-built browser destination component
+│   ├── navigation-admin.ts # Build-mapped admin destination entry
 │   ├── entry-server.ts     # Explicit Vite server-entry selector
 │   ├── hydration.ts        # Shared server/client identifierPrefix
 │   ├── hydration.test.ts   # Aligned interaction and recoverable mismatch reporting

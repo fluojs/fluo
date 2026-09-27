@@ -134,7 +134,7 @@ React server entry is rendered.
   deterministic stylesheet and JavaScript ordering, manifest diagnostics, and hydration option
   creation. The root package still accepts explicit asset options without discovering or scanning
   manifests.
-- **`@fluojs/react/client`** — progressive anchors, HTTP-first full-document navigation, and
+- **`@fluojs/react/client`** — progressive anchors, HTTP-approved soft navigation with document fallback, and
   hydration-safe URL, path-param, and navigation lifecycle hooks. Browser APIs remain isolated from
   the runtime-neutral root.
 - **`@fluojs/react/experimental/rsc`** — an explicitly unstable React Server Components prototype
@@ -851,11 +851,12 @@ The navigation contract is deliberately HTTP-first:
   clicks, downloads, explicit targets, and cross-origin destinations keep native browser behavior.
   After hydration, an unmodified primary click to a same-origin HTTP(S) URL delegates to
   `router.push(...)`.
-- `router.push(href)` uses `window.location.assign(...)`; `router.replace(href)` uses
-  `window.location.replace(...)`. A same-origin destination that changes the pathname or search
-  (query string) performs full-document navigation, so fluo HTTP route matching, `@RequestDto`
-  binding and validation, guards, interceptors, redirects, not-found responses, non-HTML responses,
-  and server failures remain authoritative.
+- With `navigationModules` supplied to the provider, `router.push/replace` load only HTTP-approved
+  destinations and update history, URL hooks, and the function child's destination page without
+  remounting the provider/layout. The application renders that destination in its page slot;
+  its local state remounts per transition. Without an importer map, or for a rejected response,
+  the browser uses `location.assign/replace` for a full document. HTTP matching, DTO validation,
+  guards, redirects, and errors remain authoritative.
 - A fragment-only destination that keeps the current pathname and search is a same-document
   exception. The browser does not issue a new HTTP request; it emits `hashchange`, and a matching
   event completes the requested `push` or `replace` lifecycle while updating the route snapshot URL
@@ -868,12 +869,12 @@ The navigation contract is deliberately HTTP-first:
   `window.location.reload()` as the documented revalidation mechanism. It does not imply an RSC,
   loader, or client-data cache.
 - `usePathname()`, `useSearchParams()`, `useParams()`, and `useRouterState()` read the provider's
-  immutable route snapshot. `popstate` and `hashchange` update URL-derived fields. If a history event
-  changes the pathname without a new server document, stale path params are cleared rather than
-  guessed from a client route grammar.
+  immutable route snapshot. `popstate`/forward request fresh HTTP approval, even for an earlier
+  destination; no private payload is cached. URL and matched params update together only on approval.
+  Fragment-only `hashchange` keeps the same server-owned params.
 - `useNavigation()` exposes `idle`, `navigating`, `refreshing`, `complete`, `error`, and `skipped`.
-  Full-document path/search transitions normally leave the current document while `navigating` or
-  `refreshing`, and the destination document starts from a new server-owned `idle` snapshot.
+  A soft transition completes only after the validated page loads; a failed load falls back to
+  the HTTP document. `refreshing` starts a document reload.
   Fragment-only transitions complete in the current document after the matching `hashchange`.
 - Router methods reject cross-origin or non-HTTP(S) destinations with
   `ReactClientNavigationError`. Use a normal anchor for those destinations.
@@ -901,7 +902,7 @@ The runtime-neutral root never imports browser or Vite code.
 
 ```tsx
 import { ReactNavigationPage } from '@fluojs/react';
-import { loadReactNavigationDestination } from '@fluojs/react/client';
+import { ReactClientRouterProvider, createReactRouteSnapshot } from '@fluojs/react/client';
 
 // Inside an HTTP-matched @Path handler:
 return ReactNavigationPage.create(<ProductPage sku={input.sku} />, {
@@ -911,12 +912,12 @@ return ReactNavigationPage.create(<ProductPage sku={input.sku} />, {
 
 // In the built browser entry:
 const modules = import.meta.glob('./navigation-product.ts');
-const result = await loadReactNavigationDestination('/products/sku-84', modules);
-if (result.ok) {
-  // Render result.component with result.payload.destination.props in your React tree.
-} else if (result.reason !== 'cancelled') {
-  window.location.assign('/products/sku-84');
-}
+<ReactClientRouterProvider
+  initialSnapshot={createReactRouteSnapshot({ url: requestUrl, params: matchedParams })}
+  navigationModules={modules}
+>
+  {(destination) => <Shell><DashboardNav />{destination ?? <ProductPage />}</Shell>}
+</ReactClientRouterProvider>
 ```
 
 The browser uses `credentials: 'same-origin'`, `cache: 'no-store'`, and `redirect: 'manual'`;
@@ -925,8 +926,8 @@ each call makes a new request. HTTP preserves existing `Vary` and `Set-Cookie` a
 responses, malformed/unsupported payloads, and unavailable modules are not renderable and
 callers fall back to a document request. External/non-HTTP(S) URLs remain ordinary anchors;
 aborted requests do not render or start fallback. Ordinary direct and JavaScript-disabled
-GETs continue to stream HTML and hydration assets. `Link` and `router.push/replace` still
-perform full-document navigation; wiring those APIs to client transitions belongs to #3845.
+GETs continue to stream HTML and hydration assets. `Link` and `router.push/replace` are the
+only official navigation controls; the helper is their lower-level HTTP validation boundary.
 See the [EN](../../docs/contracts/react-navigation-payload.md) and
 [KO](../../docs/contracts/react-navigation-payload.ko.md) contract and
 [`react-vite-ssr`](../../examples/react-vite-ssr/README.md) for the built example.

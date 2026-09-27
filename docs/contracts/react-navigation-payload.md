@@ -73,12 +73,24 @@ does not import or render, including when cancellation occurs during the respons
 initiate fallback navigation. An external or non-HTTP(S) URL is rejected before
 any fetch; use a normal anchor for it.
 
-The browser does not rewrite React-owned HTML, infer path params, call `pushState`, or install a
-route matcher. The application explicitly renders a successful imported component; it may use
-`window.location.assign(href)` when a supported same-origin load returns non-success.
-`Link` and `router.push/replace` still perform their existing full-document navigation.
-Connecting those APIs to soft transitions, shared shells, and route snapshot changes belongs to
-[#3845](https://github.com/fluojs/fluo/issues/3845). There is no prefetch or reusable cache.
+The browser does not rewrite React-owned HTML, infer path params, or install a route matcher.
+Pass the build-produced importers as `navigationModules` to `ReactClientRouterProvider` and
+render its function child with the approved destination in the application-owned page slot.
+The existing `Link` and `router.push/replace` request that result before changing the URL.
+On success the provider commits the server-confirmed URL and params with the History API, mounts
+the loaded component afresh, and updates all route hooks while retaining the common provider and
+layout. The application must choose a focus policy; the runnable example focuses `<main>` after
+a pathname transition while preserving its shell counter and resetting the page counter.
+
+`popstate` and forward traversal request fresh HTTP approval; they never reuse prior private
+payloads or attach old params to a new URL. A late result after another activation or unmount
+cannot commit. Repeated activation of an in-flight destination does not issue another request.
+Fragment-only changes keep the browser's native same-document history behavior. A failed or
+unsupported load uses a full-document `assign`/`replace` without committing a guessed soft URL;
+for history traversal the browser URL has already changed, so failure loads its document.
+Cancellation does not start fallback. Before hydration, `Link` remains a native anchor, and
+the initial request snapshot must match the browser path/search rather than silently installing
+another page. `refresh()` remains a document reload. There is no prefetch or reusable cache.
 
 ## Evidence and limits
 
@@ -86,6 +98,8 @@ Connecting those APIs to soft transitions, shared shells, and route snapshot cha
 DTO binding, guard, interceptor, middleware, scope, redirect, error, cancellation, and header boundaries.
 `packages/react/src/client-navigation-payload.test.ts` exercises browser parsing, cookie-bearing
 requests, rejection, non-reuse, and cancellation.
+`packages/react/src/client.test.ts` covers history, stale results, and fallback through the public
+router store.
 `examples/react-vite-ssr/src/app.test.ts` covers DTO validation, and it and
 `examples/react-vite-ssr/tests/production-hydration.spec.ts` exercise the manifest-bound
 destination, browser rendering, ordinary HTML, and no-JavaScript document behavior.

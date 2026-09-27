@@ -596,6 +596,9 @@ JSON 대체 표현을 만들지 않습니다. Request abort 및 response-commit 
 남고 추가 endpoint나 React URL matcher를 설치하지 않습니다. Browser module mapping,
 credential, fallback, stream cleanup rule은
 [navigation payload contract](../../docs/contracts/react-navigation-payload.ko.md)를 참조하세요.
+기존 React `Link`와 `useRouter().push/replace`는 승인된 목적지를 document reload 없이
+렌더링할 수 있습니다. History traversal도 새로 승인을 요청하며 거부된 결과는 일반
+document route로 되돌아갑니다. Page 자격은 계속 HTTP만 결정합니다.
 
 ## HTTP Error Representations
 

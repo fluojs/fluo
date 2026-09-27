@@ -6,6 +6,8 @@ import ts from 'typescript';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const clientPath = 'packages/react/src/client/navigation-payload.ts';
 const serverPath = 'packages/react/src/page-result.ts';
+const storePath = 'packages/react/src/client/store.ts';
+const historyPath = 'packages/react/src/client/history.ts';
 const mediaType = 'application/vnd.fluo.react-navigation+json;v=1';
 
 function property(object, name) {
@@ -25,6 +27,8 @@ export function enforceReactNavigationPayloadContract(
 ) {
   const client = ts.createSourceFile(clientPath, readText(clientPath), ts.ScriptTarget.Latest, true);
   const server = ts.createSourceFile(serverPath, readText(serverPath), ts.ScriptTarget.Latest, true);
+  const store = ts.createSourceFile(storePath, readText(storePath), ts.ScriptTarget.Latest, true);
+  const history = ts.createSourceFile(historyPath, readText(historyPath), ts.ScriptTarget.Latest, true);
   const clientMediaType = findNode(client, (node) =>
     ts.isVariableDeclaration(node) && node.name.getText(client) === 'MEDIA_TYPE');
   const serverMediaType = findNode(server, (node) =>
@@ -51,5 +55,26 @@ export function enforceReactNavigationPayloadContract(
       return value && ts.isStringLiteral(value) && value.text === expected;
     })) {
     throw new Error('React navigation must request the explicit media type with same-origin credentials, no cache, and manual redirects.');
+  }
+
+  const approvalGuard = findNode(store, (node) =>
+    ts.isIfStatement(node) && node.expression.getText(store) === '!result.ok');
+  const request = findNode(store, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'load'
+    && node.arguments[0]?.getText(store) === 'destination.href'
+    && node.arguments[1]?.getText(store) === 'controller.signal');
+  const historyWrite = findNode(store, (node) =>
+    ts.isCallExpression(node) && ['browser.pushState', 'browser.replaceState']
+      .includes(node.expression.getText(store)));
+  const historyRead = findNode(history, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(history) === 'handlers.loadAndCommit'
+    && node.arguments[2]?.getText(history) === "'back'");
+  if (!approvalGuard || !ts.isIfStatement(approvalGuard)
+    || !ts.isBlock(approvalGuard.thenStatement)
+    || !approvalGuard.thenStatement.statements.some(ts.isReturnStatement)
+    || !findNode(approvalGuard.thenStatement, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'browser.assign')
+    || !request || !historyWrite || approvalGuard.end >= historyWrite.pos || !historyRead) {
+    throw new Error('React navigation must request server approval and handle rejection before history writes, including traversal.');
   }
 }

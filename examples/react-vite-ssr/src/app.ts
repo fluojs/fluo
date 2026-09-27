@@ -143,6 +143,9 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
   if (assets.assetMap['src/navigation-product.ts'] === undefined) {
     throw new ReactViteExampleManifestError('The client build has no navigation-product destination module.');
   }
+  if (assets.assetMap['src/navigation-admin.ts'] === undefined) {
+    throw new ReactViteExampleManifestError('The client build has no navigation-admin destination module.');
+  }
   const renderPage: ReactPageRenderer = (page) => {
     const nonce = randomBytes(16).toString('base64');
     return createReactServerEntry(page, {
@@ -188,6 +191,35 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     }
   }
 
+  @Router('/admin')
+  class AdminPageRouter {
+    private page(page: 'qr' | 'songs', context: RequestContext) {
+      return ReactNavigationPage.create(createElement(ProductDocument, {
+        adminPage: page,
+        preview: false,
+        productName: '',
+        routeParams: context.request.params,
+        routeUrl: context.request.url,
+        saved: false,
+        sku: '',
+        stylesheets: assets.css,
+      }), {
+        module: './navigation-admin.ts',
+        props: { page },
+      });
+    }
+
+    @Path('/qr')
+    qr(_input: undefined, context: RequestContext) {
+      return this.page('qr', context);
+    }
+
+    @Path('/songs')
+    songs(_input: undefined, context: RequestContext) {
+      return this.page('songs', context);
+    }
+  }
+
   @Controller('/assets')
   class ViteAssetController {
     @Get('/:file')
@@ -217,7 +249,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     controllers: [ViteAssetController],
     imports: [
       ReactModule.forRoot({
-        controllers: [ProductPageRouter],
+        controllers: [ProductPageRouter, AdminPageRouter],
         middleware: [CatalogRequestMiddleware],
         providers: [
           CatalogMutationGuard,
