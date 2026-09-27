@@ -447,7 +447,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [HealthController] });
 
-    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -756,7 +756,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [BenchmarkController] });
 
-    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -802,7 +802,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [RequestIdController] });
 
-    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -838,7 +838,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [RequestIdController] });
 
-    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -899,7 +899,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [EchoController] });
 
-    const adapter = NodeHttpApplicationAdapter.create({ maxBodySize: 8, port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', maxBodySize: 8, port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -1035,7 +1035,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [DefaultBodyCapController] });
 
-    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -1136,7 +1136,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [EchoController] });
 
-    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -1185,7 +1185,7 @@ describe('@fluojs/platform-nodejs', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [UploadController] });
 
-    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });

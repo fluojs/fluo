@@ -699,6 +699,7 @@ describe('@fluojs/platform-express', () => {
     defineModule(AppModule, { controllers: [NativeMiddlewareController] });
 
     const adapter = createExpressAdapter({
+      host: '127.0.0.1',
       nativeMiddleware: [nativeMiddleware],
       port: 0,
     });
@@ -736,6 +737,7 @@ describe('@fluojs/platform-express', () => {
 
     const app = await FluoFactory.create(AppModule, {
       adapter: createExpressAdapter({
+        host: '127.0.0.1',
         nativeMiddleware: [nativeMiddleware],
         port: 0,
       }),
@@ -773,6 +775,7 @@ describe('@fluojs/platform-express', () => {
       next();
     };
     const adapter = createExpressAdapter({
+      host: '127.0.0.1',
       nativeMiddleware: [nativeMiddleware],
       port: 0,
     }) as ExpressHttpApplicationAdapter;
@@ -816,6 +819,7 @@ describe('@fluojs/platform-express', () => {
     const nativeDispatch = vi.spyOn(dispatcher, 'dispatchNativeRoute');
     const fullDispatch = vi.spyOn(dispatcher, 'dispatch');
     const adapter = createExpressAdapter({
+      host: '127.0.0.1',
       nativeMiddleware: [nativeMiddleware],
       port: 0,
     }) as ExpressHttpApplicationAdapter;
@@ -850,6 +854,7 @@ describe('@fluojs/platform-express', () => {
       });
     };
     const adapter = createExpressAdapter({
+      host: '127.0.0.1',
       nativeMiddleware: [nativeFailure, nativeErrorHandler],
       port: 0,
     }) as ExpressHttpApplicationAdapter;
@@ -936,7 +941,7 @@ describe('@fluojs/platform-express', () => {
     defineModule(AppModule, { controllers: [ResponsesController] });
 
     const app = await FluoFactory.create(AppModule, {
-      adapter: createExpressAdapter({ port: 0 }),
+      adapter: createExpressAdapter({ host: '127.0.0.1', port: 0 }),
     });
 
     try {
@@ -1011,7 +1016,7 @@ describe('@fluojs/platform-express', () => {
     defineModule(AppModule, { controllers: [BenchmarkController] });
 
     const app = await FluoFactory.create(AppModule, {
-      adapter: createExpressAdapter({ port: 0 }),
+      adapter: createExpressAdapter({ host: '127.0.0.1', port: 0 }),
     });
 
     try {
@@ -1065,7 +1070,7 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [QueryFallbackController] });
 
-    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 }) as ExpressHttpApplicationAdapter;
     const router = (adapter as unknown as {
       router: {
         use: (handler: (request: ExpressRequest, response: ExpressResponse, next: () => void) => void) => void;
@@ -1123,7 +1128,7 @@ describe('@fluojs/platform-express', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [SerializerController] });
 
-    const adapter = createExpressAdapter({ port: 0 });
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 });
     const expressApp = Reflect.get(adapter, 'app') as ExpressJsonSettingsHost;
     let replacerCalls = 0;
 
@@ -1305,6 +1310,7 @@ describe('@fluojs/platform-express', () => {
     });
 
     const adapter = createExpressAdapter({
+      host: '127.0.0.1',
       port: 0,
       rawBody: true,
     });
@@ -1363,6 +1369,7 @@ describe('@fluojs/platform-express', () => {
     });
 
     const adapter = createExpressAdapter({
+      host: '127.0.0.1',
       port: 0,
       rawBody: true,
     });
@@ -2088,7 +2095,7 @@ describe('@fluojs/platform-express', () => {
       controllers: [UsersController, VersionedController, ErrorsController, FallbackController, CustomFallbackController],
     });
 
-    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 }) as ExpressHttpApplicationAdapter;
     const app = await FluoFactory.create(AppModule, {
       adapter,
       middleware: [appMiddleware],
@@ -2353,7 +2360,7 @@ describe('@fluojs/platform-express', () => {
       rootContainer: root,
     });
     const nativeDispatch = vi.spyOn(dispatcher, 'dispatchNativeRoute');
-    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 }) as ExpressHttpApplicationAdapter;
 
     try {
       await adapter.listen(dispatcher);
@@ -2390,7 +2397,7 @@ describe('@fluojs/platform-express', () => {
         await response.send({ dispatcher: 'second' });
       },
     };
-    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 }) as ExpressHttpApplicationAdapter;
 
     try {
       await adapter.listen(firstDispatcher);
@@ -2439,7 +2446,7 @@ describe('@fluojs/platform-express', () => {
       handlerMapping: secondMapping,
       rootContainer: secondRoot,
     });
-    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 }) as ExpressHttpApplicationAdapter;
 
     await adapter.listen(firstDispatcher);
     const firstPort = getBoundPort(adapter.getServer());
@@ -2501,7 +2508,7 @@ describe('@fluojs/platform-express', () => {
       handlerMapping: createHandlerMapping([{ controllerToken: SecondController }]),
       rootContainer: secondRoot,
     });
-    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 }) as ExpressHttpApplicationAdapter;
 
     await adapter.listen(firstDispatcher);
     await adapter.close();
@@ -2545,7 +2552,7 @@ describe('@fluojs/platform-express', () => {
       rootContainer: root,
     });
     const nativeDispatch = vi.spyOn(dispatcher, 'dispatchNativeRoute');
-    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 }) as ExpressHttpApplicationAdapter;
 
     try {
       await adapter.listen(dispatcher);
@@ -2588,7 +2595,7 @@ describe('@fluojs/platform-express', () => {
     const nativeDispatch = vi.fn(async () => false);
     dispatcher.dispatchNativeRoute = nativeDispatch;
     const fullDispatch = vi.spyOn(dispatcher, 'dispatch');
-    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 }) as ExpressHttpApplicationAdapter;
 
     try {
       await adapter.listen(dispatcher);
@@ -2646,7 +2653,7 @@ describe('@fluojs/platform-express', () => {
     });
 
     const app = await FluoFactory.create(AppModule, {
-      adapter: createExpressAdapter({ port: 0 }),
+      adapter: createExpressAdapter({ host: '127.0.0.1', port: 0 }),
       middleware: [rewriteMiddleware],
     });
 
@@ -2719,7 +2726,7 @@ describe('@fluojs/platform-express', () => {
     });
 
     const app = await FluoFactory.create(AppModule, {
-      adapter: createExpressAdapter({ port: 0 }),
+      adapter: createExpressAdapter({ host: '127.0.0.1', port: 0 }),
       middleware: [rewriteMiddleware],
     });
 
@@ -2771,7 +2778,7 @@ describe('@fluojs/platform-express', () => {
     });
     dispatcher.dispatchNativeRoute = undefined;
     const fullDispatch = vi.spyOn(dispatcher, 'dispatch');
-    const adapter = createExpressAdapter({ port: 0 }) as ExpressHttpApplicationAdapter;
+    const adapter = createExpressAdapter({ host: '127.0.0.1', port: 0 }) as ExpressHttpApplicationAdapter;
 
     try {
       await adapter.listen(dispatcher);
