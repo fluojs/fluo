@@ -59,7 +59,7 @@ export default defineConfig({
 
 The plugin transforms `.ts`, `.tsx`, `.mts`, and `.cts` files with Babel using the `2023-11` decorators proposal and `@babel/preset-typescript`. It strips Vite query suffixes before deciding the file boundary, skips declarations, `node_modules`, and (in application mode) `*.test.*` and `*.spec.*`. Importing `@fluojs/vite` or creating `fluoDecoratorsPlugin()` does not load `@babel/core`; missing Babel peers are surfaced as transform-time diagnostics for the source file Vite is transforming. Every transformed module that contains decorator syntax preloads `@fluojs/core/metadata-preload` before its decorated declarations evaluate.
 
-The workspace and the published Babel peer baseline are on Babel 8 (`@babel/core` `>=8.0.0`, `@babel/plugin-proposal-decorators` `>=8.0.0`, `@babel/preset-typescript` `>=8.0.0`). The removed `allowDeclareFields` preset option is never passed: declaration-only and decorated TypeScript fields work without it. Babel 8 no longer enables JSX parsing implicitly for `.tsx` files, so the built-in transform restores that behavior for `.tsx` modules; custom `babelConfigFile` setups that transform `.tsx` files must enable `@babel/plugin-syntax-jsx` themselves.
+The workspace and the published Babel peer baseline are on Babel 8 (`@babel/core` `>=8.0.0`, `@babel/plugin-proposal-decorators` `>=8.0.0`, `@babel/preset-typescript` `>=8.0.0`). The removed `allowDeclareFields` preset option is never passed: declaration-only and decorated TypeScript fields work without it. Babel 8 no longer enables JSX parsing implicitly for `.tsx` files, so `fluoDecoratorsPlugin()` enables it for eligible `.tsx` modules, including when a custom `babelConfigFile` is supplied.
 
 ## Decorator Transform Boundary
 

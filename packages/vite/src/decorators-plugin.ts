@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PluginObject, PresetObject } from '@babel/core';
-import type { Plugin, ResolvedConfig, TransformResult } from 'vite';
+import type { Plugin, ResolvedConfig } from 'vite';
 
 type BabelCoreModule = Pick<typeof import('@babel/core'), 'transformAsync' | 'version'>;
 type BabelCoreImporter = () => Promise<BabelCoreModule>;
@@ -284,9 +284,7 @@ function createFluoDecoratorsPlugin(
         return null;
       }
 
-      const map = result.map;
-
-      return { code: result.code, map: (map ?? null) as unknown as TransformResult['map'] };
+      return { code: result.code, map: result.map ? JSON.stringify(result.map) : null };
     },
   };
 }

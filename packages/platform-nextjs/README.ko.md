@@ -25,7 +25,7 @@ Fluo backend를 Next.js App Router Route Handlers와 Pages Router API Routes에
 
 ## 설치
 
-지원 host는 Node.js `>=24.0.0 <27`에서 실행하는 Next.js **16.x**
+지원 host는 Node.js `>=24.11.0 <27`(Babel 8 compiler toolchain 하한)에서 실행하는 Next.js **16.x**
 (peer `>=16.0.0 <17`)이며 `@fluojs/runtime` `>=3.0.0 <4`가 필요합니다.
 Next.js Edge Runtime은 지원하지 않습니다.
 [Node.js 지원 계약](../../docs/reference/node-support.ko.md)을 참조하세요.
@@ -498,7 +498,7 @@ await app.listen();
 
 - App Router Route Handlers와 Pages Router API Routes
 - Next.js 16.x (peer `>=16.0.0 <17`)
-- Node.js `>=24.0.0 <27` hosting 전용; Edge Runtime 미지원
+- Node.js `>=24.11.0 <27` hosting 전용; Edge Runtime 미지원
 - `@fluojs/runtime` peer `>=3.0.0 <4`
 - Turbopack 전용 `next.config.ts`의 `withFluoNextBackend()`
 - request-lazy dynamic backend module import

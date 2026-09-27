@@ -59,7 +59,7 @@ export default defineConfig({
 
 이 플러그인은 `.ts`, `.tsx`, `.mts`, `.cts` 파일을 Babel로 변환하며 `2023-11` decorators proposal과 `@babel/preset-typescript`를 사용합니다. 파일 경계를 판단하기 전에 Vite query suffix를 제거하고 declaration 파일, `node_modules`, application mode의 `*.test.*`와 `*.spec.*` 파일을 건너뜁니다. `@fluojs/vite`를 import하거나 `fluoDecoratorsPlugin()`을 생성하는 시점에는 `@babel/core`를 로드하지 않으며, 누락된 Babel peer는 Vite가 변환 중인 소스 파일에 대한 transform-time 진단으로 표시됩니다. Decorator 구문을 포함한 변환 모듈은 decorated 선언이 평가되기 전에 `@fluojs/core/metadata-preload`를 preload합니다.
 
-Workspace와 배포되는 Babel peer 기준선은 Babel 8입니다(`@babel/core` `>=8.0.0`, `@babel/plugin-proposal-decorators` `>=8.0.0`, `@babel/preset-typescript` `>=8.0.0`). 제거된 `allowDeclareFields` 옵션은 전달하지 않으며, declaration-only field와 decorated TypeScript field는 이 옵션 없이 동작합니다. Babel 8은 `.tsx` 파일에 JSX 파싱을 더 이상 암시적으로 활성화하지 않으므로 내장 transform은 `.tsx` 모듈에 대해 이 동작을 복원합니다. `.tsx`를 변환하는 custom `babelConfigFile` 구성은 직접 `@babel/plugin-syntax-jsx`를 활성화해야 합니다.
+Workspace와 배포되는 Babel peer 기준선은 Babel 8입니다(`@babel/core` `>=8.0.0`, `@babel/plugin-proposal-decorators` `>=8.0.0`, `@babel/preset-typescript` `>=8.0.0`). 제거된 `allowDeclareFields` 옵션은 전달하지 않으며, declaration-only field와 decorated TypeScript field는 이 옵션 없이 동작합니다. Babel 8은 `.tsx` 파일에 JSX 파싱을 더 이상 암시적으로 활성화하지 않으므로 `fluoDecoratorsPlugin()`이 eligible `.tsx` 모듈에 이를 활성화하며, custom `babelConfigFile`을 전달한 경우에도 적용됩니다.
 
 ## 데코레이터 변환 경계
 

@@ -164,9 +164,14 @@ export class Example {
     );
 
     // Then
+    if (typeof result !== 'object' || result === null || !('map' in result)) {
+      throw new Error('Expected the transform hook to return a result carrying a source map.');
+    }
+    const rawMap: unknown = result.map;
+    const decodedMap: unknown = typeof rawMap === 'string' ? JSON.parse(rawMap) : rawMap;
+    expect(decodedMap).toEqual(expect.objectContaining({ version: 3 }));
     expect(result).toEqual(expect.objectContaining({
       code: expect.stringContaining('@fluojs/core/metadata-preload'),
-      map: expect.any(Object),
     }));
     expect(transformAsyncMock.mock.calls[0]?.[1]?.configFile).toBe(fileURLToPath(new URL('../../../tooling/babel/babel.config.cjs', import.meta.url)));
   });

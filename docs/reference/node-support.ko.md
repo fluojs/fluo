@@ -31,7 +31,7 @@ Authentication, 일반 authorization, malformed metadata, expired artifact, dige
 `[since, until)` window를 적용하며 pagination/completeness limit을 성공으로 숨기지
 않고 기록합니다.
 
-빌드 artifact는 같은 workflow run, commit, Node 버전 안에서만 전달합니다. 패키지의 `dist`와 CLI의 생성 dependency metadata를 tar로 보존하여 실행 권한과 symbolic link를 유지하며, 공개 선언 검증 fixture나 package global setup을 우회하지 않습니다. 생성 starter 검증은 테스트 종료를 기다리지 않고 빌드 뒤에 실행합니다. 최신 `24.x`가 기존의 중복 PR 검증을 통합하고 `pnpm verify:docs`를 한 번 실행합니다. Aggregate gate는 필수 job의 failure, cancellation, skip을 성공으로 처리하지 않습니다.
+전체 검증의 package build는 같은 workflow run, commit, Node 버전 안에서만 전달합니다. Runtime-floor bundle은 compiler Node에서 exact Node `24.0.0`으로 의도적으로 전달하되 같은 run, commit, artifact identity, digest 검증을 유지합니다. 패키지의 `dist`와 CLI의 생성 dependency metadata를 tar로 보존하여 실행 권한과 symbolic link를 유지하며, 공개 선언 검증 fixture나 package global setup을 우회하지 않습니다. 생성 starter 검증은 테스트 종료를 기다리지 않고 빌드 뒤에 실행합니다. 최신 `24.x`가 기존의 중복 PR 검증을 통합하고 `pnpm verify:docs`를 한 번 실행합니다. Aggregate gate는 필수 job의 failure, cancellation, skip을 성공으로 처리하지 않습니다.
 
 Node 검증과 별도로 실행하는 web runtime adapter portability suite는 하나의 job에서 Bun, Deno, Cloudflare Workers 사례를 모두 검증하여 프로젝트 초기화의 반복을 피합니다. Native response cookie 검증도 하나의 job에서 HTTP helper를 한 번 빌드한 뒤 세 runtime의 명령을 차례로 실행합니다. 각 명령의 실패는 계속 필수 `Verify` gate를 차단하며, Bun native routing/lifecycle과 Deno platform 검증은 별도 job으로 유지합니다.
 
