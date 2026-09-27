@@ -205,6 +205,84 @@ function resolveAssignedPort(adapter: { getServer?: () => unknown }): number {
 }
 
 describe('OpenApiModule', () => {
+  it.each(['forRoot', 'forRootAsync'] as const)(
+    '%s documents body aliases and accepts only documented keys through strict dispatch',
+    async (registration) => {
+      class ArticleDto {
+        @FromBody('post_title')
+        @IsString()
+        title = '';
+      }
+
+      @Controller('/articles')
+      class ArticlesController {
+        @ApiBody({ description: 'Article input', required: false })
+        @RequestDto(ArticleDto)
+        @Post('/')
+        create(input: ArticleDto) {
+          return { title: input.title };
+        }
+      }
+
+      const options = {
+        sources: [{ controllerToken: ArticlesController }],
+        title: 'Articles API',
+        version: '1.0.0',
+      };
+      const openApiModule = registration === 'forRoot'
+        ? OpenApiModule.forRoot(options)
+        : OpenApiModule.forRootAsync({ useFactory: async () => options });
+
+      class AppModule {}
+
+      defineModule(AppModule, {
+        controllers: [ArticlesController],
+        imports: [openApiModule],
+      });
+
+      const app = registerAppForCleanup(await FluoFactory.create(AppModule));
+      const documentResponse = createResponse();
+
+      await app.dispatch(createRequest('GET', '/openapi.json'), documentResponse);
+
+      expect(documentResponse.statusCode).toBe(200);
+      const document = documentResponse.body as OpenApiDocument;
+      const requestBody = document.paths['/articles']?.post?.requestBody;
+      expect(requestBody).toEqual({
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/ArticleDtoRequestBody' } } },
+        description: 'Article input',
+        required: false,
+      });
+      expect(document.components?.schemas?.ArticleDtoRequestBody).toEqual({
+        additionalProperties: false,
+        properties: { post_title: { type: 'string' } },
+        required: ['post_title'],
+        type: 'object',
+      });
+
+      const accepted = createResponse();
+      await app.dispatch({
+        ...createRequest('POST', '/articles'),
+        body: { post_title: 'Accepted' },
+      }, accepted);
+      expect(accepted.statusCode).toBe(201);
+      expect(accepted.body).toEqual({ title: 'Accepted' });
+
+      const rejected = createResponse();
+      await app.dispatch({
+        ...createRequest('POST', '/articles'),
+        body: { title: 'Rejected' },
+      }, rejected);
+      expect(rejected.statusCode).toBe(400);
+      expect(rejected.body).toMatchObject({
+        error: {
+          code: 'BAD_REQUEST',
+          details: [expect.objectContaining({ code: 'UNKNOWN_FIELD', field: 'title', source: 'body' })],
+        },
+      });
+    },
+  );
+
   it('runs every cleanup callback before aggregating teardown failures', async () => {
     // Given
     const firstError = new Error('first close failed');

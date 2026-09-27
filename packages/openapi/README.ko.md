@@ -117,6 +117,19 @@ Builder는 handler 반환값이나 TypeScript 반환 타입을 검사해 respons
 ### 통합 DTO 스키마
 `@fluojs/validation`과 함께 DTO binding 및 validation metadata에서 request schema를 파생합니다. Response DTO는 `@ApiResponse({ status, type: ResponseDto })` 또는 `extraModels`처럼 명시적으로 참조할 때만 OpenAPI component가 됩니다.
 
+DTO에서 추론한 request body는 `@FromBody('post_title')` 필드를 body source key
+`post_title`로 문서화합니다. 명시적 key가 있는 symbol 기반 DTO 필드에도
+동일하게 적용되며, override가 없는 필드는 일반 property name을 사용합니다.
+기본 strict HTTP binder는 해당 source key를 받고 알 수 없는 body key를 거부하므로
+JSON 요청에는 문서화된 key를 사용하세요. 같은 클래스를 request에도 사용하더라도
+response 및 `extraModels` schema는 DTO property name을 유지합니다.
+
+`@ApiBody({ description: 'Article input' })`는 추론된 JSON content를 대체하지 않고
+description을 추가합니다. `@ApiBody({ required: false })`는 추론된 required 여부를
+덮어씁니다. 명시적 `content`를 전달하면 추론된 content를 대체합니다.
+추론된 content가 없으면 metadata만으로 `requestBody`를 만들지 않으며,
+빈 `@ApiBody()`는 앞서 설명한 동작을 유지합니다.
+
 생성된 request schema에서 반복된 `Min` 규칙은 `Math.max`로 가장 강한 하한
 경계로, 반복된 `Max` 규칙은 `Math.min`으로 가장 강한 상한 경계로 결합됩니다.
 `Length`, `MinLength`, `MaxLength`는 가장 강한 `minLength`/`maxLength` bound로
@@ -194,7 +207,7 @@ fluo는 controller tag, handler name, HTTP method, normalized path에서 각 `op
 
 - `OpenApiModule`: OpenAPI 통합을 위한 메인 엔트리 포인트.
 - `ApiTag`, `ApiOperation`, `ApiResponse`: 문서화 데코레이터.
-- `ApiBody`, `ApiParam`, `ApiQuery`, `ApiHeader`, `ApiCookie`: 이름이 겹칠 때 추론된 요청 문서를 대체하는 명시적 요청 본문 및 파라미터 문서화 데코레이터.
+- `ApiBody`, `ApiParam`, `ApiQuery`, `ApiHeader`, `ApiCookie`: 요청 본문 및 파라미터 문서화 데코레이터입니다. `ApiBody` metadata는 추론된 content에 추가되고 명시적 body `content`는 이를 대체합니다.
 - `ApiBearerAuth`, `ApiSecurity`: 보안 요구사항 데코레이터.
 - `ApiExcludeEndpoint`: 특정 핸들러를 문서화에서 제외.
 - `ApiOperationOptions`, `ApiResponseOptions`, `ApiParameterOptions`, `ApiBodyOptions`: `@ApiOperation(...)`, `@ApiResponse(...)`, `@ApiParam(...)`, `@ApiQuery(...)`, `@ApiHeader(...)`, `@ApiCookie(...)`, `@ApiBody(...)`가 받는 데코레이터 옵션 타입.
