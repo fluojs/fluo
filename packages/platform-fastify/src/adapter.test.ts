@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { IncomingMessage, request as httpRequest } from 'node:http';
 import type { IncomingHttpHeaders, InformationEvent } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { type AddressInfo, createServer } from 'node:net';
+import { type AddressInfo, createServer, Server } from 'node:net';
 import { Container } from '@fluojs/di';
 import {
   All,
@@ -839,13 +839,17 @@ describe('@fluojs/platform-fastify', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [BenchmarkController] });
 
-    const app = await FluoFactory.create(AppModule, {
-      adapter: createFastifyAdapter({ port: 0 }),
-    });
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 });
+    const app = await FluoFactory.create(AppModule, { adapter });
 
     const port = await listenOnEphemeralPort(app);
 
     try {
+      const server = adapter.getServer();
+      if (!(server instanceof Server)) {
+        throw new TypeError('Expected a native Fastify test server.');
+      }
+      expect(server.address()).toMatchObject({ family: 'IPv4' });
       const queryResponse = await requestHttp({
         method: 'GET',
         path: '/query-one?tag=one&tag=two&encoded=hello+world',
