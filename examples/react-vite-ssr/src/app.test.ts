@@ -140,6 +140,77 @@ describe('react-vite-ssr example', () => {
     });
   });
 
+  it('grants anonymous public prefetch but retains private navigation for restricted fixtures', async () => {
+    // Given: a real HTTP dispatcher and a build-mapped destination.
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      manifest: VITE_MANIFEST,
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      // When: the browser negotiates an explicitly public page and restricted pages.
+      const publicResponse = await app.request('GET', '/prefetch/public-84')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1').send();
+      const cookieResponse = await app.request('GET', '/prefetch/public-84')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1')
+        .header('cookie', 'session=alice').send();
+      const privateResponse = await app.request('GET', '/prefetch/private')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1').send();
+
+      // Then: only an anonymous, server-declared identity-independent page is reusable.
+      expect(publicResponse.status).toBe(200);
+      expect(publicResponse.headers['X-Fluo-Navigation-Prefetch']).toBe('public');
+      expect(publicResponse.headers['Cache-Control']).toBe('public, max-age=15');
+      expect(publicResponse.body).toMatchObject({
+        version: 1,
+        url: '/prefetch/public-84',
+        params: { scenario: 'public-84' },
+        destination: { module: './navigation-product.ts' },
+      });
+      expect(cookieResponse.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+      expect(cookieResponse.headers['Cache-Control']).toContain('no-store');
+      expect(privateResponse.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+      expect(privateResponse.headers['Cache-Control']).toContain('no-store');
+    });
+  });
+
+  it('retains application response restrictions and rejects auth, redirects, and missing pages', async () => {
+    // Given: HTTP-owned prefetch fixtures with pre-existing response policy or credentials.
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      manifest: VITE_MANIFEST,
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      const navigation = (scenario: string) => app.request('GET', `/prefetch/${scenario}`)
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1');
+
+      // When: the same negotiated route runs under each policy.
+      const noStore = await navigation('no-store').send();
+      const setCookie = await navigation('set-cookie').send();
+      const varyCookie = await navigation('vary-cookie').send();
+      const authDenied = await navigation('auth').send();
+      const authAllowed = await navigation('auth').header('cookie', 'session=alice').send();
+      const redirect = await navigation('redirect').send();
+      const missing = await navigation('missing').send();
+
+      // Then: none of the denied cases gains the public grant.
+      for (const response of [noStore, setCookie, varyCookie, authDenied, authAllowed, redirect, missing]) {
+        expect(response.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+      }
+      expect(noStore.headers['Cache-Control']).toContain('no-store');
+      expect(setCookie.headers['Set-Cookie']).toContain('prefetch-example=1');
+      expect(varyCookie.headers.Vary).toContain('Cookie');
+      expect(authDenied.status).toBe(403);
+      expect(authAllowed.status).toBe(200);
+      expect(redirect.status).toBe(302);
+      expect(missing.status).toBe(404);
+    });
+  });
+
   it('dispatches admin QR and songs as ordinary documents and approved destinations', async () => {
     // Given: two explicit HTTP routes sharing one client destination module.
     const AppModule = createReactViteExampleModule({

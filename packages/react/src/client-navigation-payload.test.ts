@@ -12,7 +12,180 @@ const payload = {
 };
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+function grantedResponse(headers: Record<string, string> = {}, body: unknown = payload): Response {
+  return new Response(JSON.stringify(body), {
+    headers: {
+      'Content-Type': MEDIA_TYPE,
+      'X-Fluo-Navigation-Prefetch': 'public',
+      'Cache-Control': 'public, max-age=15',
+      Vary: 'Accept',
+      ...headers,
+    },
+  });
+}
+
+it.each([
+  [0, 15_000],
+  [4, 11_000],
+] as const)('prefetches anonymously with Age %i and reports remaining freshness', async (age, remainingMs) => {
+  // Given: the public representation has spent a known number of seconds in an HTTP cache.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  const fetchResult = vi.fn(async () => grantedResponse({ Age: String(age) }));
+  vi.stubGlobal('fetch', fetchResult);
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  // When: the browser starts an anonymous prefetch.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', modules, {
+    prefetch: true,
+  });
+
+  // Then: it uses an anonymous uncached request and subtracts server Age from reuse.
+  expect(fetchResult).toHaveBeenCalledWith(`${ORIGIN}/products/sku-84?preview=false`, {
+    cache: 'no-store',
+    credentials: 'omit',
+    headers: { Accept: MEDIA_TYPE },
+    redirect: 'manual',
+  });
+  expect(result).toMatchObject({
+    ok: true,
+    payload,
+    prefetchExpiresAt: Date.now() + remainingMs,
+  });
+  expect(modules['./navigation-product.ts']).toHaveBeenCalledOnce();
+});
+
+it.each([
+  ['missing grant', { 'X-Fluo-Navigation-Prefetch': '' }],
+  ['private cache policy', { 'Cache-Control': 'private, no-store' }],
+  ['pre-existing public cache policy without grant', {
+    'X-Fluo-Navigation-Prefetch': '',
+    'Cache-Control': 'public, max-age=15',
+  }],
+  ['unsupported Vary', { Vary: 'Accept, Cookie' }],
+  ['wildcard Vary', { Vary: '*' }],
+  ['expired Age', { Age: '15' }],
+  ['malformed Age', { Age: 'not-seconds' }],
+  ['negative Age', { Age: '-1' }],
+  ['missing cache freshness', { 'Cache-Control': 'public' }],
+] as const)('does not import or reuse a prefetch with %s', async (_kind, headers) => {
+  // Given: one unapproved response that would otherwise contain a valid destination.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => grantedResponse(headers)));
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  // When: anonymous prefetch examines the response.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', modules, {
+    prefetch: true,
+  });
+
+  // Then: no unapproved representation is imported or offered for reuse.
+  expect(result.ok).toBe(false);
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['redirect', new Response(null, { status: 302, headers: { Location: '/sign-in' } })],
+  ['authentication required', new Response('unauthorized', { status: 401 })],
+  ['denied', new Response('forbidden', { status: 403 })],
+  ['not found', new Response('not found', { status: 404 })],
+  ['incorrect confirmed URL', grantedResponse({}, { ...payload, url: '/products/another-sku' })],
+] as const)('never imports a prefetch from %s', async (_kind, response) => {
+  // Given: HTTP either rejects the request or confirms a different pathname.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => response));
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  // When: the browser tries to prefetch the requested destination.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', modules, {
+    prefetch: true,
+  });
+
+  // Then: no invalid HTTP representation is imported or approved.
+  expect(result.ok).toBe(false);
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+});
+
+it('rejects an oversized prefetch response before importing its module', async () => {
+  // Given: valid-shaped public navigation JSON larger than the 64 KiB entry limit.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => grantedResponse({}, {
+    ...payload,
+    destination: { ...payload.destination, props: { body: 'x'.repeat(65_536) } },
+  })));
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  // When: an anonymous prefetch reads the large JSON representation.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', modules, {
+    prefetch: true,
+  });
+
+  // Then: the oversized body never produces a reusable or imported destination.
+  expect(result.ok).toBe(false);
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+});
+
+it('does not extend server freshness while the browser module imports', async () => {
+  // Given: a validated public response whose module import takes the entire 15-second freshness.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => grantedResponse()));
+  let releaseImport = (_module: { default: () => null }) => {};
+  let importStarted = () => {};
+  const importing = new Promise<void>((resolve) => { importStarted = resolve; });
+  const modules = { './navigation-product.ts': () => new Promise<{ default: () => null }>((resolve) => {
+    releaseImport = resolve;
+    importStarted();
+  }) };
+
+  // When: import completes only after the original grant expires.
+  const loading = loadReactNavigationDestination('/products/sku-84?preview=false', modules, {
+    prefetch: true,
+  });
+  await importing;
+  vi.setSystemTime(Date.now() + 15_000);
+  releaseImport({ default: () => null });
+  const result = await loading;
+
+  // Then: import completion cannot restart the HTTP response's freshness budget.
+  expect(result.ok && (result.prefetchExpiresAt ?? 0) > Date.now()).toBe(false);
+});
+
+it('cancels an oversized pending prefetch body without importing a module', async () => {
+  // Given: a streaming public response exceeds the 64 KiB cap before the body ends.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  const cancelled = vi.fn();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('x'.repeat(65_537)));
+    },
+    cancel: cancelled,
+  });
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(body, {
+    headers: {
+      'Content-Type': MEDIA_TYPE,
+      'X-Fluo-Navigation-Prefetch': 'public',
+      'Cache-Control': 'public, max-age=15',
+      Vary: 'Accept',
+    },
+  })));
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  // When: the browser reads beyond the admitted prefetch body limit.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', modules, {
+    prefetch: true,
+  });
+
+  // Then: the stream is cancelled without waiting for its remaining bytes.
+  expect(result.ok).toBe(false);
+  expect(cancelled).toHaveBeenCalledOnce();
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
 });
 
 it('loads a built destination with credentials without reusing a private response', async () => {
@@ -21,7 +194,6 @@ it('loads a built destination with credentials without reusing a private respons
     headers: {
       'Content-Type': MEDIA_TYPE,
       'Cache-Control': 'private, no-store',
-      'Set-Cookie': 'session=updated',
       Vary: 'Accept, Cookie',
     },
   }));

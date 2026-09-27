@@ -15,12 +15,6 @@ import AdminDestination from './admin-page';
 
 const RECOMMENDATIONS_DELAY_MS = 25;
 
-const LazyRecommendations = lazy(async () => {
-  await new Promise<void>((resolve) => setTimeout(resolve, RECOMMENDATIONS_DELAY_MS));
-  const { Recommendations } = await import('./recommendations');
-  return { default: Recommendations };
-});
-
 export type ProductDocumentProps = {
   readonly adminPage?: 'qr' | 'songs';
   readonly preview: boolean;
@@ -39,13 +33,30 @@ export function HydratedCounter() {
   return createElement('button', { onClick: () => setCount((value) => value + 1), type: 'button' }, `Count: ${count}`);
 }
 
-function ProductNavigation() {
+function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void }) {
   const navigation = useNavigation();
   const params = useParams();
   const pathname = usePathname();
   const router = useRouter();
   const routerState = useRouterState();
   const searchParams = useSearchParams();
+  const [mutationStatus, setMutationStatus] = useState('');
+
+  const renameWithoutReload = async (): Promise<void> => {
+    const body = new FormData();
+    body.set('name', 'Updated without reload');
+    const response = await fetch('/products/sku-42', {
+      body,
+      headers: { 'x-example-user': 'catalog-editor' },
+      method: 'POST',
+    });
+    if (response.ok && new URL(response.url).searchParams.get('updated') === 'true') {
+      router.invalidate();
+      setMutationStatus('Mutation completed; prefetched pages invalidated');
+    } else {
+      setMutationStatus(`Mutation rejected: ${response.status}`);
+    }
+  };
 
   return createElement(
     'nav',
@@ -53,13 +64,49 @@ function ProductNavigation() {
     createElement('p', null, `Current path: ${pathname}`),
     createElement('p', null, `Current preview: ${searchParams.get('preview') ?? 'unset'}`),
     createElement('p', null, `Current route sku: ${params.sku ?? 'unset'}`),
+    createElement('p', null, `Current route scenario: ${params.scenario ?? 'unset'}`),
     createElement('p', null, `Current URL: ${routerState.url}`),
     createElement('p', null, `Current hash: ${routerState.hash || 'unset'}`),
     createElement('p', null, `Navigation: ${navigation.status}`),
+    searchParams.get('prefetchBounds') === 'true'
+      ? createElement(
+        'div',
+        { 'aria-label': 'Concurrent viewport prefetch fixtures' },
+        ...Array.from({ length: 5 }, (_, index) => createElement(Link, {
+          href: `/prefetch/public-bound-${index + 1}`,
+          key: index,
+          prefetch: 'viewport',
+        }, `Viewport bound ${index + 1}`)),
+      )
+      : null,
+    searchParams.get('prefetchBounds') === 'cache'
+      ? createElement(
+        'div',
+        { 'aria-label': 'LRU prefetch fixtures' },
+        ...Array.from({ length: 33 }, (_, index) => createElement(Link, {
+          href: `/prefetch/public-cache-${index + 1}`,
+          key: index,
+          prefetch: 'hover',
+        }, `Cache entry ${index + 1}`)),
+      )
+      : null,
     createElement(Link, { href: '/products/sku-84?preview=false' }, 'Open sku-84'),
     createElement(Link, { href: '/admin/qr' }, 'Open admin QR'),
     createElement(Link, { href: '/admin/songs' }, 'Open admin songs'),
     createElement(Link, { href: '/products/x?preview=maybe' }, 'Open invalid product'),
+    createElement(Link, { href: '/prefetch/public-84', prefetch: 'hover' }, 'Prefetch public sku-84'),
+    createElement(Link, { href: '/prefetch/public-84' }, 'Open public sku-84 without prefetch'),
+    createElement(Link, { href: '/prefetch/public-viewport', prefetch: 'hover' }, 'Prefetch public-viewport by hover'),
+    createElement(Link, { href: '/prefetch/public-race', prefetch: 'hover' }, 'Prefetch public race'),
+    createElement(Link, { href: '/prefetch/public-cancel', prefetch: 'hover' }, 'Prefetch public cancellation'),
+    createElement(Link, { href: '/prefetch/public-cancel' }, 'Open cancelled destination without prefetch'),
+    createElement(Link, { href: '/prefetch/private', prefetch: 'hover' }, 'Prefetch private'),
+    createElement(Link, { href: '/prefetch/no-store', prefetch: 'hover' }, 'Prefetch no-store'),
+    createElement(Link, { href: '/prefetch/set-cookie', prefetch: 'hover' }, 'Prefetch Set-Cookie'),
+    createElement(Link, { href: '/prefetch/vary-cookie', prefetch: 'hover' }, 'Prefetch Vary Cookie'),
+    createElement(Link, { href: '/prefetch/redirect', prefetch: 'hover' }, 'Prefetch redirect'),
+    createElement(Link, { href: '/prefetch/missing', prefetch: 'hover' }, 'Prefetch missing'),
+    createElement(Link, { href: '/prefetch/auth', prefetch: 'hover' }, 'Prefetch auth'),
     createElement(
       'button',
       { onClick: () => router.push('/products/sku-126?preview=true'), type: 'button' },
@@ -72,6 +119,21 @@ function ProductNavigation() {
     ),
     createElement('button', { onClick: () => router.back(), type: 'button' }, 'Back'),
     createElement('button', { onClick: () => router.refresh(), type: 'button' }, 'Refresh'),
+    createElement('button', {
+      onClick: () => {
+        router.invalidate();
+        onSwitchUser();
+      },
+      type: 'button',
+    }, 'Switch user and prefetch scope'),
+    createElement('button', { onClick: () => router.invalidate(), type: 'button' }, 'Invalidate prefetched pages'),
+    createElement('button', { onClick: () => { void renameWithoutReload(); }, type: 'button' }, 'Rename without reload'),
+    createElement('p', { role: 'status' }, mutationStatus),
+    createElement(
+      'div',
+      { className: 'viewport-prefetch' },
+      createElement(Link, { href: '/prefetch/public-viewport', prefetch: 'viewport' }, 'Prefetch public on viewport'),
+    ),
   );
 }
 
@@ -99,6 +161,12 @@ export function ProductDocument({
   stylesheets,
 }: ProductDocumentProps) {
   const identifier = useId();
+  const [LazyRecommendations] = useState(() => lazy(async () => {
+    await new Promise<void>((resolve) => setTimeout(resolve, RECOMMENDATIONS_DELAY_MS));
+    const { Recommendations } = await import('./recommendations');
+    return { default: Recommendations };
+  }));
+  const [prefetchScope, setPrefetchScope] = useState('catalog:anonymous');
   const initialSnapshot = createReactRouteSnapshot({ params: routeParams, url: routeUrl });
 
   const renderRouteDocument = (destination: ReactNode | null): ReactNode => createElement(
@@ -172,7 +240,13 @@ export function ProductDocument({
           )
           : createElement(AdminDestination, { page: adminPage })),
         createElement(HydratedCounter),
-        createElement(ProductNavigation),
+        createElement(ProductNavigation, {
+          onSwitchUser: () => {
+            const next = prefetchScope === 'catalog:anonymous' ? 'catalog:alice' : 'catalog:anonymous';
+            document.cookie = next === 'catalog:alice' ? 'session=alice; Path=/' : 'session=; Max-Age=0; Path=/';
+            setPrefetchScope(next);
+          },
+        }),
       ),
     ),
   );
@@ -180,6 +254,7 @@ export function ProductDocument({
   return createElement(ReactClientRouterProvider, {
     initialSnapshot,
     navigationModules,
+    prefetchScope,
     children: renderRouteDocument,
   });
 }

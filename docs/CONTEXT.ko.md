@@ -61,6 +61,16 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 
 HTTP가 매칭한 React 클라이언트 이동은 [navigation payload 계약](./contracts/react-navigation-payload.ko.md)에서 시작한 다음 [React API 원본](../packages/react/README.ko.md)과 [Vite SSR 예제](../examples/react-vite-ssr/README.ko.md)를 확인하세요. `Link`와 `useRouter()`는 HTTP가 승인한 build-mapped 목적지를 렌더링하고 확정된 URL·params를 history에 commit합니다. Back/forward도 새로 요청하며 거부된 결과는 전체 문서로 이동합니다. 일반 GET 및 JavaScript 비활성 GET은 streamed document를 유지합니다. 상태·cookie·오류는 HTTP가 소유합니다. 실행 근거는 `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`입니다.
 
+Optional `Link prefetch="hover" | "viewport"`에는 provider `navigationModules` 및 명시적
+auth/session epoch인 `prefetchScope`가 필요합니다. `ReactNavigationPage.create(page,
+destination, { prefetch: 'public' })`만 credential을 생략한 identity-independent status-`200`
+navigation JSON 결과에 grant를 허용합니다. HTTP는 request credential, 최종 `Set-Cookie`,
+기존 `Cache-Control`/`Vary`를 검사한 뒤 `X-Fluo-Navigation-Prefetch: public`을 발급합니다.
+한도가 있는 provider cache는 single-use입니다. Auth/data mutation 뒤 다음 in-document
+navigation 전에 scope를 변경하거나 `router.invalidate()`를 호출하세요. 일반 credential
+포함 navigation과 back/forward는 계속 HTTP 승인을 요청합니다. Eligibility, freshness,
+fallback의 원본은 위 계약입니다.
+
 원자 캐시 갱신은 [cache-manager API 원본](../packages/cache-manager/README.ko.md#원자-갱신)에서 시작해 [캐시 아키텍처](./architecture/caching.ko.md#원자-갱신-조정), [update 타입](../packages/cache-manager/src/atomic-update.ts), [service admission/drain](../packages/cache-manager/src/service.ts)을 읽으세요. `update`는 고정 만료를 보존하는 순수 단일 key reducer이며 `remember` loader 합치기나 앱 도메인 정책이 아닙니다. Memory는 공유 store 인스턴스 하나를 조정하고 Redis는 cache 측 명시적 opt-in과 기존 [raw client seam](../packages/redis/README.ko.md#원시-클라이언트-접근-raw-client-access)을 통한 격리 WATCH 트랜잭션이 필요합니다. TTL/오류/metadata/취소 한계와 Docker native suite를 포함한 테스트 명령은 README가 소유하며 소스 링크는 실행 검증을 뜻하지 않습니다. 사람을 위한 적용은 [FluoBlog 캐싱](../book/01-fluoblog/ch20-caching.ko.md)과 [FluoShop 캐싱](../book/02-fluoshop/ch21-commerce-caching.ko.md)에서 설명합니다.
 
 [HTTP 의존성 보안 업데이트](./reference/dependency-security-update.ko.md)는 root 및 isolated benchmark resolution과 published Fastify/Express consumer graph를 구분하고, upstream advisory 9개와 application-owned 전이 lockfile 갱신 방법을 기록합니다.

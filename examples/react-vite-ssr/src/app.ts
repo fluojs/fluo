@@ -39,6 +39,7 @@ import { createElement } from 'react';
 
 import { REACT_IDENTIFIER_PREFIX } from './hydration';
 import { ProductDocument } from './page';
+import { createPrefetchPageRouter } from './prefetch-page';
 
 const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js)$/u;
 
@@ -220,6 +221,8 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     }
   }
 
+  const PrefetchPageRouter = createPrefetchPageRouter(assets.css);
+
   @Controller('/assets')
   class ViteAssetController {
     @Get('/:file')
@@ -249,7 +252,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     controllers: [ViteAssetController],
     imports: [
       ReactModule.forRoot({
-        controllers: [ProductPageRouter, AdminPageRouter],
+        controllers: [ProductPageRouter, AdminPageRouter, PrefetchPageRouter],
         middleware: [CatalogRequestMiddleware],
         providers: [
           CatalogMutationGuard,

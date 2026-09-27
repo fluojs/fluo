@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   type ClientNavigationEnvironment,
@@ -75,6 +75,26 @@ function createEnvironment(href = 'https://example.test/products/sku-42?preview=
   };
 }
 
+function approvedPrefetch(href: string, expiresAt = Date.now() + 15_000): ReactNavigationLoadResult {
+  const url = new URL(href);
+  const sku = url.pathname.split('/').at(-1) ?? '';
+  return {
+    ok: true,
+    payload: {
+      version: 1,
+      url: `${url.pathname}${url.search}`,
+      params: { sku },
+      destination: { module: './navigation-product.ts', props: { sku } },
+    },
+    component: () => null,
+    prefetchExpiresAt: expiresAt,
+  };
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 function RouteStateProbe() {
   const navigation = useNavigation();
   const params = useParams();
@@ -96,6 +116,416 @@ function RouteStateProbe() {
 }
 
 describe('@fluojs/react/client', () => {
+  it('consumes an approved prefetch once before requiring another HTTP approval', async () => {
+    // Given: a completed public prefetch and a connected browser history.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const prefetch = vi.fn(async (href: string) => approvedPrefetch(href));
+    const load = vi.fn(async (href: string) => approvedPrefetch(href));
+    const pushState = vi.fn();
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch, load, pushState, replaceState: vi.fn() });
+    const owner = {};
+    await store.prefetch('/products/sku-84', owner);
+    const completed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().url === '/products/sku-84') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: the eligible Link uses the approved entry, leaves, and revisits its URL.
+    store.navigatePrefetchedLink('/products/sku-84');
+    await completed;
+    const elsewhere = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().url === '/products/sku-126') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+    store.router.push('/products/sku-126');
+    await elsewhere;
+    store.navigatePrefetchedLink('/products/sku-84');
+
+    // Then: the first activation needs no second GET, but consumed entries are not reusable.
+    expect(prefetch).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(pushState).toHaveBeenCalledWith('https://example.test/products/sku-84');
+    expect(store.getSnapshot().params).toEqual({ sku: 'sku-126' });
+    expect(browser.assign).not.toHaveBeenCalled();
+  });
+
+  it('partitions prefetched queries while sharing a pathname with fragment variants', async () => {
+    // Given: a public entry for one precise search query.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const prefetch = vi.fn(async (href: string) => approvedPrefetch(href));
+    const load = vi.fn(async (href: string) => approvedPrefetch(href));
+    const pushState = vi.fn();
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch, load, pushState, replaceState: vi.fn() });
+    await store.prefetch('/products/sku-84?preview=false#first', {});
+    const completed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().url === '/products/sku-84?preview=false#second') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: a Link clicks the same query with another fragment, then the other query.
+    store.navigatePrefetchedLink('/products/sku-84?preview=false#second');
+    await completed;
+    store.navigatePrefetchedLink('/products/sku-84?preview=true');
+
+    // Then: the approved page follows the click fragment; another query needs fresh HTTP.
+    expect(pushState).toHaveBeenCalledWith('https://example.test/products/sku-84?preview=false#second');
+    expect(load).toHaveBeenCalledOnce();
+    expect(prefetch).toHaveBeenCalledOnce();
+  });
+
+  it('skips fragment-only, cross-origin, and non-HTTP prefetch opportunities', async () => {
+    // Given: a hydrated provider with a working prefetch loader.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const prefetch = vi.fn(async (href: string) => approvedPrefetch(href));
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch });
+    const owner = {};
+
+    // When: unsupported anchors and a native fragment change offer prefetch.
+    await Promise.all([
+      store.prefetch('#details', owner),
+      store.prefetch('https://elsewhere.test/products/sku-84', owner),
+      store.prefetch('mailto:user@example.test', owner),
+    ]);
+
+    // Then: none makes an anonymous request or changes the route snapshot.
+    expect(prefetch).not.toHaveBeenCalled();
+    expect(store.getSnapshot().url).toBe('/products/sku-42?preview=true');
+    expect(browser.assign).not.toHaveBeenCalled();
+  });
+
+  it('does not prefetch before hydration or without both scope and importers', async () => {
+    // Given: a provider whose application has not supplied both opt-in prerequisites.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42' }));
+    const prefetch = vi.fn(async (href: string) => approvedPrefetch(href));
+    const owner = {};
+
+    // When: a Link offers the same destination at each incomplete lifecycle boundary.
+    await store.prefetch('/products/sku-84', owner);
+    const withoutScope = store.connect({ ...browser.environment, prefetch });
+    await store.prefetch('/products/sku-84', owner);
+    withoutScope();
+    const withoutImporters = store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1' });
+    await store.prefetch('/products/sku-84', owner);
+    withoutImporters();
+
+    // Then: there is no speculative GET or guessed route change.
+    expect(prefetch).not.toHaveBeenCalled();
+    expect(store.getSnapshot().url).toBe('/products/sku-42');
+  });
+
+  it('skips a fifth simultaneous prefetch instead of queuing it', async () => {
+    // Given: four public requests remain active until their own cancellation signals.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const requests: { href: string; resolve: (result: ReactNavigationLoadResult) => void }[] = [];
+    const prefetch = vi.fn((href: string) => new Promise<ReactNavigationLoadResult>((resolve) => {
+      requests.push({ href, resolve });
+    }));
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch });
+    const owners = Array.from({ length: 5 }, () => ({}));
+
+    // When: five independent Link opportunities occur without completing any response.
+    const pending = owners.map((owner, index) => store.prefetch(`/products/sku-${100 + index}`, owner));
+
+    // Then: only four network requests start; the fifth is not retained as a queue item.
+    expect(prefetch).toHaveBeenCalledTimes(4);
+    requests.forEach(({ href, resolve }) => {
+      resolve(approvedPrefetch(href));
+    });
+    await Promise.all(pending);
+    expect(prefetch).toHaveBeenCalledTimes(4);
+    expect(browser.assign).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates simultaneous opportunities for one destination', async () => {
+    // Given: a public response held pending while two owners request the same key.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    let resolvePrefetch = (_result: ReactNavigationLoadResult) => {};
+    const prefetch = vi.fn(() => new Promise<ReactNavigationLoadResult>((resolve) => {
+      resolvePrefetch = resolve;
+    }));
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch });
+    const first = {};
+    const second = {};
+
+    // When: hover and viewport both claim one destination.
+    const hovering = store.prefetch('/products/sku-84#details', first);
+    const visible = store.prefetch('/products/sku-84#reviews', second);
+    resolvePrefetch(approvedPrefetch('https://example.test/products/sku-84'));
+    await Promise.all([hovering, visible]);
+
+    // Then: one HTTP approval serves both claims, regardless of their fragments.
+    expect(prefetch).toHaveBeenCalledOnce();
+    expect(browser.assign).not.toHaveBeenCalled();
+  });
+
+  it('adopts an in-flight prefetch click without letting hover cancellation abort it', async () => {
+    // Given: an in-flight public request with an abort signal and a waiting Link owner.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    let approve = (_result: ReactNavigationLoadResult) => {};
+    let signal: AbortSignal | undefined;
+    const prefetch = vi.fn((_href: string, nextSignal: AbortSignal) => {
+      signal = nextSignal;
+      return new Promise<ReactNavigationLoadResult>((resolve) => { approve = resolve; });
+    });
+    const load = vi.fn(async (href: string) => approvedPrefetch(href));
+    const pushState = vi.fn();
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch, load, pushState, replaceState: vi.fn() });
+    const owner = {};
+    const loading = store.prefetch('/products/sku-84', owner);
+    const completed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().url === '/products/sku-84') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: an eligible click adopts the pending GET before pointer exit cancels its owner.
+    store.navigatePrefetchedLink('/products/sku-84');
+    store.cancelPrefetch('/products/sku-84', owner);
+    approve(approvedPrefetch('https://example.test/products/sku-84'));
+    await Promise.all([loading, completed]);
+
+    // Then: no second GET or abort loses the adopted page or its server-owned params.
+    expect(signal?.aborted).toBe(false);
+    expect(prefetch).toHaveBeenCalledOnce();
+    expect(load).not.toHaveBeenCalled();
+    expect(pushState).toHaveBeenCalledOnce();
+    expect(store.getSnapshot().params).toEqual({ sku: 'sku-84' });
+  });
+
+  it('evicts the least recently used entry when the cache reaches 32 pages', async () => {
+    // Given: one provider has completed 32 distinct public representations.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const prefetch = vi.fn(async (href: string) => approvedPrefetch(href));
+    const load = vi.fn(async (href: string) => approvedPrefetch(href));
+    const pushState = vi.fn();
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch, load, pushState, replaceState: vi.fn() });
+    const owner = {};
+    for (let index = 0; index < 32; index++) {
+      await store.prefetch(`/products/sku-${100 + index}`, owner);
+    }
+
+    // When: the oldest entry is touched before admitting a thirty-third page.
+    await store.prefetch('/products/sku-100', owner);
+    await store.prefetch('/products/sku-132', owner);
+    const completed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().url === '/products/sku-100') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+    store.navigatePrefetchedLink('/products/sku-100');
+    await completed;
+    store.navigatePrefetchedLink('/products/sku-101');
+
+    // Then: the touched entry is reused while the actual least-recent entry reloads.
+    expect(prefetch).toHaveBeenCalledTimes(33);
+    expect(load).toHaveBeenCalledOnce();
+    expect(pushState).toHaveBeenCalledWith('https://example.test/products/sku-100');
+  });
+
+  it('never consumes a completed prefetch at the exact freshness deadline', async () => {
+    // Given: one public result expires exactly 15 seconds after admission.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const prefetch = vi.fn(async (href: string) => approvedPrefetch(href));
+    const load = vi.fn(async (href: string) => approvedPrefetch(href));
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch, load, pushState: vi.fn(), replaceState: vi.fn() });
+    await store.prefetch('/products/sku-84', {});
+
+    // When: the eligible Link activates at the first expired millisecond.
+    vi.setSystemTime(Date.now() + 15_000);
+    store.navigatePrefetchedLink('/products/sku-84');
+
+    // Then: a fresh credentialed navigation replaces expired anonymous data.
+    expect(load).toHaveBeenCalledOnce();
+    expect(prefetch).toHaveBeenCalledOnce();
+  });
+
+  it('cancels an unclaimed prefetch and ignores a response delivered after abort', async () => {
+    // Given: the network can deliver a late approved result despite cancellation.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    let approve = (_result: ReactNavigationLoadResult) => {};
+    let signal: AbortSignal | undefined;
+    const prefetch = vi.fn((_href: string, nextSignal: AbortSignal) => {
+      signal = nextSignal;
+      return new Promise<ReactNavigationLoadResult>((resolve) => { approve = resolve; });
+    });
+    const load = vi.fn(async (href: string) => approvedPrefetch(href));
+    const pushState = vi.fn();
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch, load, pushState, replaceState: vi.fn() });
+    const owner = {};
+    const pending = store.prefetch('/products/sku-84', owner);
+
+    // When: the owner leaves before adoption but the network still reports success.
+    store.cancelPrefetch('/products/sku-84', owner);
+    approve(approvedPrefetch('https://example.test/products/sku-84'));
+    await pending;
+    store.navigatePrefetchedLink('/products/sku-84');
+
+    // Then: cancellation creates no cached entry, history commit, or document fallback.
+    expect(signal?.aborted).toBe(true);
+    expect(load).toHaveBeenCalledOnce();
+    expect(pushState).not.toHaveBeenCalled();
+    expect(browser.assign).not.toHaveBeenCalled();
+  });
+
+  it('cancels pending prefetch when browser history activates a fragment', async () => {
+    // Given: a public request remains pending while the browser owns fragment history.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({
+      url: '/products/sku-42?preview=true',
+    }));
+    let approve = (_result: ReactNavigationLoadResult) => {};
+    let signal: AbortSignal | undefined;
+    const prefetch = vi.fn((_href: string, pendingSignal: AbortSignal) => {
+      signal = pendingSignal;
+      return new Promise<ReactNavigationLoadResult>((resolve) => { approve = resolve; });
+    });
+    const load = vi.fn(async (href: string) => approvedPrefetch(href));
+    store.connect({
+      ...browser.environment, prefetchScope: 'anonymous-v1',
+      prefetch, load, pushState: vi.fn(), replaceState: vi.fn(),
+    });
+    const pending = store.prefetch('/products/sku-84', {});
+
+    // When: a same-document fragment activates before the prefetch finishes.
+    browser.changeFragment('https://example.test/products/sku-42?preview=true#details');
+    approve(approvedPrefetch('https://example.test/products/sku-84'));
+    await pending;
+    store.navigatePrefetchedLink('/products/sku-84');
+
+    // Then: the stale anonymous response cannot be consumed after history activation.
+    expect(signal?.aborted).toBe(true);
+    expect(load).toHaveBeenCalledOnce();
+    expect(store.getSnapshot().hash).toBe('#details');
+  });
+
+  it('discards pending and completed prefetches when the provider disconnects', async () => {
+    // Given: one completed entry and one pending entry belong to the same provider.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    let approve = (_result: ReactNavigationLoadResult) => {};
+    let pendingSignal: AbortSignal | undefined;
+    const prefetch = vi.fn((href: string, signal: AbortSignal) => href.endsWith('/sku-84')
+      ? Promise.resolve(approvedPrefetch(href))
+      : new Promise<ReactNavigationLoadResult>((resolve) => {
+        pendingSignal = signal;
+        approve = resolve;
+      }));
+    const load = vi.fn(async (href: string) => approvedPrefetch(href));
+    const pushState = vi.fn();
+    const disconnect = store.connect({
+      ...browser.environment, prefetchScope: 'anonymous-v1', prefetch, load, pushState, replaceState: vi.fn(),
+    });
+    await store.prefetch('/products/sku-84', {});
+    const pending = store.prefetch('/products/sku-126', {});
+
+    // When: the provider unmounts before the second network result is delivered.
+    disconnect();
+    approve(approvedPrefetch('https://example.test/products/sku-126'));
+    await pending;
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch, load, pushState, replaceState: vi.fn() });
+    store.navigatePrefetchedLink('/products/sku-84');
+
+    // Then: old work was aborted and neither old page survives a new connection.
+    expect(pendingSignal?.aborted).toBe(true);
+    expect(load).toHaveBeenCalledOnce();
+    expect(pushState).not.toHaveBeenCalled();
+  });
+
+  it('invalidates completed and pending entries at an explicit mutation boundary', async () => {
+    // Given: a completed public page and another pending anonymous response.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    let approve = (_result: ReactNavigationLoadResult) => {};
+    let pendingSignal: AbortSignal | undefined;
+    const prefetch = vi.fn((href: string, signal: AbortSignal) => href.endsWith('/sku-84')
+      ? Promise.resolve(approvedPrefetch(href))
+      : new Promise<ReactNavigationLoadResult>((resolve) => {
+        pendingSignal = signal;
+        approve = resolve;
+      }));
+    const load = vi.fn(async (href: string) => approvedPrefetch(href));
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch, load, pushState: vi.fn(), replaceState: vi.fn() });
+    await store.prefetch('/products/sku-84', {});
+    const pending = store.prefetch('/products/sku-126', {});
+
+    // When: the application explicitly invalidates after changing auth or page data.
+    store.router.invalidate();
+    approve(approvedPrefetch('https://example.test/products/sku-126'));
+    await pending;
+    store.navigatePrefetchedLink('/products/sku-84');
+
+    // Then: both generations were discarded, requiring credentialed approval.
+    expect(pendingSignal?.aborted).toBe(true);
+    expect(load).toHaveBeenCalledOnce();
+  });
+
+  it('discards public entries and pending responses when the provider scope changes', async () => {
+    // Given: a completed anonymous page and a second anonymous response still in flight.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    let approve = (_result: ReactNavigationLoadResult) => {};
+    let pendingSignal: AbortSignal | undefined;
+    const prefetch = vi.fn((href: string, signal: AbortSignal) => href.endsWith('/sku-84')
+      ? Promise.resolve(approvedPrefetch(href))
+      : new Promise<ReactNavigationLoadResult>((resolve) => {
+        pendingSignal = signal;
+        approve = resolve;
+      }));
+    const load = vi.fn(async (href: string) => approvedPrefetch(href));
+    const first = store.connect({
+      ...browser.environment, prefetchScope: 'anonymous-v1',
+      prefetch, load, pushState: vi.fn(), replaceState: vi.fn(),
+    });
+    await store.prefetch('/products/sku-84', {});
+    const pending = store.prefetch('/products/sku-126', {});
+
+    // When: the application changes its auth/session epoch before the old response settles.
+    const second = store.connect({
+      ...browser.environment, prefetchScope: 'authenticated-v2',
+      prefetch, load, pushState: vi.fn(), replaceState: vi.fn(),
+    });
+    approve(approvedPrefetch('https://example.test/products/sku-126'));
+    await pending;
+    store.navigatePrefetchedLink('/products/sku-84');
+
+    // Then: no anonymous result can survive or commit within the authenticated scope.
+    expect(pendingSignal?.aborted).toBe(true);
+    expect(load).toHaveBeenCalledOnce();
+    expect(browser.assign).not.toHaveBeenCalled();
+    first();
+    second();
+  });
+
   it('creates an immutable route snapshot from HTTP-owned route state', () => {
     // Given: the current request URL and path params produced by the HTTP route match.
     const params = { sku: 'sku-42' };
@@ -135,7 +565,7 @@ describe('@fluojs/react/client', () => {
     expect(html).toContain('data-pathname="/products/sku-42"');
     expect(html).toContain('data-navigation="idle"');
     expect(html).toContain('data-url="/products/sku-42?preview=true"');
-    expect(html).toContain('back,push,refresh,replace');
+    expect(html).toContain('back,invalidate,push,refresh,replace');
     expect(html).toContain('sku-42:true');
   });
 
@@ -186,6 +616,26 @@ describe('@fluojs/react/client', () => {
     // Then: JavaScript-free navigation remains a normal anchor contract.
     expect(html).toContain('href="/products/sku-84?preview=false"');
     expect(html).toContain('>Open product</a>');
+  });
+
+  it('notifies hydrated Links when the browser environment becomes available', () => {
+    // Given: viewport Links subscribe before the provider's browser effect connects.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({
+      url: '/products/sku-42?preview=true',
+    }));
+    const observed: boolean[] = [];
+    const initialSnapshot = store.getSnapshot();
+    const unsubscribe = store.subscribe(() => observed.push(store.isConnected()));
+
+    // When: the provider connects and later disconnects without navigating.
+    const disconnect = store.connect(browser.environment);
+    disconnect();
+    unsubscribe();
+
+    // Then: the observer can begin after hydration and stop on teardown without rewriting the route.
+    expect(observed).toEqual([true, false]);
+    expect(store.getSnapshot()).toBe(initialSnapshot);
   });
 
   it('reconciles a browser-only hash when the client store connects', () => {

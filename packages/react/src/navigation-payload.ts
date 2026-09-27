@@ -20,6 +20,7 @@ export type ReactNavigationPayload = {
 export type ReactNavigationPageResult = {
   readonly node: ReactElement;
   readonly destination: ReactNavigationDestination;
+  readonly prefetch?: 'public';
 };
 
 /** Explicit opt-in to client navigation without changing ordinary React page returns. */
@@ -29,12 +30,18 @@ export class ReactNavigationPage {
    *
    * @param node The ordinary page element passed to the application renderer for document GETs.
    * @param destination Browser module identity and JSON-serializable props produced by the handler.
+   * @param options Optional public prefetch assertion for identity-independent pages.
    * @returns A page result that HTTP can negotiate after normal matching and pipeline execution.
    */
-  static create(node: ReactElement, destination: ReactNavigationDestination): ReactNavigationPageResult {
+  static create(
+    node: ReactElement,
+    destination: ReactNavigationDestination,
+    options?: { readonly prefetch: 'public' },
+  ): ReactNavigationPageResult {
     const page: ReactNavigationPageResult = {
       node,
       destination: { module: destination.module, props: { ...destination.props } },
+      ...(options === undefined ? {} : { prefetch: options.prefetch }),
     };
     Object.defineProperty(page, navigationPageKey, { value: true });
     return page;

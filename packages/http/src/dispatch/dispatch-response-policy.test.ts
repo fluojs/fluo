@@ -69,6 +69,179 @@ function createRequest(
 }
 
 describe('dispatch response policy', () => {
+  const navigationMediaType = 'application/vnd.fluo.react-navigation+json;v=1';
+  const navigationBody = { version: 1, url: '/navigation-cache', params: {}, destination: { module: './page.ts', props: {} } };
+
+  async function dispatchNavigation(
+    options: {
+      readonly prefetch?: 'public';
+      readonly requestHeaders?: FrameworkRequest['headers'];
+      readonly responseHeaders?: Readonly<Record<string, string>>;
+      readonly status?: number;
+      readonly abort?: AbortController;
+    } = {},
+  ) {
+    const page = { html: '<main>Navigation page</main>' };
+    registerFrameworkResponseWriter(page, ({ applySuccessResponseMetadata, response }) => {
+      applySuccessResponseMetadata();
+      response.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return response.send(page.html);
+    });
+    Object.defineProperty(page, Symbol.for('fluo.http.responseRepresentation'), {
+      value: {
+        mediaType: navigationMediaType,
+        prefetch: options.prefetch,
+        body: ({ applySuccessResponseMetadata, response }: CustomResponseWriterContext) => {
+          applySuccessResponseMetadata();
+          for (const [name, value] of Object.entries(options.responseHeaders ?? {})) {
+            response.setHeader(name, value);
+          }
+          if (options.status !== undefined) {
+            response.setStatus(options.status);
+          }
+          options.abort?.abort();
+          return navigationBody;
+        },
+      },
+    });
+
+    @Controller('/navigation-cache')
+    class NavigationCacheController {
+      @Header('X-Route', 'preserved')
+      @Get('/')
+      getValue() {
+        return page;
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      conditionalRequest: {
+        resolve() {
+          return { exists: true, validators: { etag: { opaqueValue: 'navigation-v1', strength: 'strong' } } };
+        },
+      },
+      handlerMapping: createHandlerMapping([{ controllerToken: NavigationCacheController }]),
+      rootContainer: new Container().register(NavigationCacheController),
+    });
+    const response = createResponse();
+    const request = createRequest('/navigation-cache', {
+      accept: navigationMediaType,
+      ...options.requestHeaders,
+    });
+    if (options.abort) {
+      request.signal = options.abort.signal;
+    }
+
+    await dispatcher.dispatch(request, response);
+    return response;
+  }
+
+  it('grants only explicitly public navigation JSON after final metadata and validators', async () => {
+    // Given: a public page and an otherwise anonymous negotiated GET.
+    // When: HTTP finalizes the response after renderer metadata.
+    const response = await dispatchNavigation({ prefetch: 'public', responseHeaders: { Vary: 'accept' } });
+
+    // Then: the grant has compatible cache companions without losing response metadata.
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['X-Fluo-Navigation-Prefetch']).toBe('public');
+    expect(response.headers['Cache-Control']).toBe('public, max-age=15');
+    expect(response.headers.Vary).toBe('accept');
+    expect(response.headers['X-Route']).toBe('preserved');
+    expect(response.headers.ETag).toBe('"navigation-v1"');
+    expect(response.headers['Content-Type']).toBe(navigationMediaType);
+    expect(response.body).toEqual(navigationBody);
+  });
+
+  const deniedNavigationCases: ReadonlyArray<readonly [string, NonNullable<Parameters<typeof dispatchNavigation>[0]>]> = [
+    ['default page', {}],
+    ['Cookie', { prefetch: 'public', requestHeaders: { cOoKiE: 'session=abc' } }],
+    ['Authorization', { prefetch: 'public', requestHeaders: { AUTHORIZATION: 'Bearer abc' } }],
+    ['Set-Cookie', { prefetch: 'public', responseHeaders: { 'set-cookie': 'session=renewed' } }],
+    ['Vary Cookie', { prefetch: 'public', responseHeaders: { Vary: 'Accept, Cookie' } }],
+    ['Vary wildcard', { prefetch: 'public', responseHeaders: { Vary: '*' } }],
+    ['status 201', { prefetch: 'public', status: 201 }],
+    ['status 302', { prefetch: 'public', status: 302 }],
+    ['status 401', { prefetch: 'public', status: 401 }],
+    ['status 403', { prefetch: 'public', status: 403 }],
+    ['status 404', { prefetch: 'public', status: 404 }],
+  ];
+
+  it.each(deniedNavigationCases)('denies reuse for %s without changing the successful response', async (_reason, options) => {
+    // Given: one disqualifying request or final-response condition.
+    // When: HTTP finalizes the negotiated page.
+    const response = await dispatchNavigation(options);
+
+    // Then: it keeps the ordinary private policy and never grants reusable JSON.
+    expect(response.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+    expect(response.headers['Cache-Control']).toBe('private, no-store');
+    expect(response.headers.Vary).toBe(options.responseHeaders?.Vary === '*'
+      ? '*'
+      : options.responseHeaders?.Vary ?? 'Accept');
+    expect(response.statusCode).toBe(options.status ?? 200);
+    expect(response.body).toEqual(navigationBody);
+  });
+
+  it.each(['public, max-age=3600', 'private, max-age=0', 'no-store'])(
+    'retains existing Cache-Control %s while prohibiting denied reuse',
+    async (cacheControl) => {
+      // Given: application-owned cache restrictions, including apparently public policy.
+      // When: HTTP finalizes an explicitly marked page.
+      const response = await dispatchNavigation({
+        prefetch: 'public',
+        responseHeaders: { 'cache-control': cacheControl },
+      });
+
+      // Then: prior directives remain while the final response is explicitly non-reusable.
+      expect(response.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+      expect(response.headers['cache-control']).toBe(`${cacheControl}, private, no-store`);
+      expect(response.headers['Cache-Control']).toBeUndefined();
+      expect(response.headers.Vary).toBe('Accept');
+    },
+  );
+
+  it('keeps public opt-in HTML on its original streaming writer and private policy off the document', async () => {
+    // Given: the same public page requested as HTML instead of navigation JSON.
+    // When: the dispatcher chooses the integration-owned HTML writer.
+    const response = await dispatchNavigation({
+      prefetch: 'public',
+      requestHeaders: { accept: 'text/html' },
+    });
+
+    // Then: the document is never granted JSON prefetch reuse.
+    expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8');
+    expect(response.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+    expect(response.headers['Cache-Control']).toBeUndefined();
+    expect(response.headers.Vary).toBe('Accept');
+    expect(response.body).toBe('<main>Navigation page</main>');
+  });
+
+  it('does not expose an application-provided grant header for a denied navigation response', async () => {
+    // Given: middleware or a renderer sets the HTTP-owned grant despite a session cookie.
+    // When: HTTP finalizes the public page with an identity-bearing request.
+    const response = await dispatchNavigation({
+      prefetch: 'public',
+      requestHeaders: { Cookie: 'session=abc' },
+      responseHeaders: { 'x-fluo-navigation-prefetch': 'public' },
+    });
+
+    // Then: the final wire headers cannot falsely authorize reuse.
+    expect(Object.entries(response.headers).some(
+      ([name]) => name.toLowerCase() === 'x-fluo-navigation-prefetch',
+    )).toBe(false);
+    expect(response.headers['Cache-Control']).toBe('private, no-store');
+  });
+
+  it('does not grant or commit a page aborted during representation creation', async () => {
+    // Given: a public page whose renderer cancels the request.
+    // When: HTTP awaits its negotiated body.
+    const response = await dispatchNavigation({ prefetch: 'public', abort: new AbortController() });
+
+    // Then: no final response or grant is written.
+    expect(response.committed).toBe(false);
+    expect(response.body).toBeUndefined();
+    expect(response.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+  });
+
   it('lets custom response writers bypass formatter negotiation before HTML streaming', async () => {
     const htmlEntry = { html: '<main>React SSR</main>' };
 

@@ -1212,6 +1212,55 @@ describe('enforceContractCompanionUpdates', () => {
     ])).not.toThrow();
   });
 
+  it('requires final HTTP prefetch grant coverage and both package owners when the server seam changes', async () => {
+    // Given: a navigation contract change accompanied by the React and HTTP implementation seams.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const complete = [
+      'docs/contracts/react-navigation-payload.md',
+      'docs/contracts/react-navigation-payload.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'docs/guides/react-user-concepts.md',
+      'docs/guides/react-user-concepts.ko.md',
+      'packages/react/README.md',
+      'packages/react/README.ko.md',
+      'packages/http/README.md',
+      'packages/http/README.ko.md',
+      'packages/react/src/client/navigation-payload.ts',
+      'packages/react/src/client/store.ts',
+      'packages/react/src/client/link.ts',
+      'packages/react/src/client/provider.ts',
+      'packages/react/src/page-result.ts',
+      'packages/react/src/client-navigation-payload.test.ts',
+      'packages/react/src/navigation-payload.test.ts',
+      'packages/react/src/client.test.ts',
+      'packages/http/src/dispatch/dispatch-response-policy.ts',
+      'packages/http/src/dispatch/response-integration.ts',
+      'packages/http/src/dispatch/dispatch-response-policy.test.ts',
+      'packages/http/src/dispatch/dispatcher.test.ts',
+      'tooling/governance/react-navigation-payload-contract.mjs',
+      'tooling/governance/react-navigation-payload-contract.d.mts',
+      'tooling/governance/react-navigation-payload-contract.test.ts',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
+      '.changeset/react-safe-prefetch-navigation-cache.md',
+    ];
+
+    // When / Then: every independently consumed public contract and HTTP grant regression is required.
+    expect(() => enforceContractCompanionUpdates(complete)).not.toThrow();
+    for (const missing of [
+      'packages/http/README.md',
+      'packages/http/README.ko.md',
+      'packages/http/src/dispatch/dispatch-response-policy.test.ts',
+      'packages/http/src/dispatch/dispatcher.test.ts',
+      'packages/react/src/client.test.ts',
+      '.changeset/react-safe-prefetch-navigation-cache.md',
+    ]) {
+      expect(() => enforceContractCompanionUpdates(complete.filter((path) => path !== missing)))
+        .toThrow(/React navigation prefetch contract updates must include/u);
+    }
+  });
+
   it('requires bilingual context discoverability companions for release-contract changes', async () => {
     // Given: a release-governing contract update with its tooling and regression companion.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();

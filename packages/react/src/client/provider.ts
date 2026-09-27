@@ -69,6 +69,7 @@ const ClientRouterContext = getClientRouterContext();
 function createBrowserEnvironment(
   browser: Window,
   modules: ReactClientRouterProviderProps['navigationModules'],
+  prefetchScope: ReactClientRouterProviderProps['prefetchScope'],
 ): ClientNavigationEnvironment {
   return {
     assign: (href) => browser.location.assign(href),
@@ -76,6 +77,11 @@ function createBrowserEnvironment(
     currentHref: () => browser.location.href,
     ...(modules === undefined ? {} : {
       load: (href: string, signal: AbortSignal) => loadReactNavigationDestination(href, modules, { signal }),
+      ...(prefetchScope === undefined ? {} : {
+        prefetchScope,
+        prefetch: (href: string, signal: AbortSignal) =>
+          loadReactNavigationDestination(href, modules, { signal, prefetch: true }),
+      }),
     }),
     pushState: (href) => browser.history.pushState(null, '', href),
     reload: () => browser.location.reload(),
@@ -104,6 +110,7 @@ export function ReactClientRouterProvider({
   children,
   initialSnapshot,
   navigationModules,
+  prefetchScope,
 }: ReactClientRouterProviderProps) {
   const [store] = useState(() => createClientNavigationStore(initialSnapshot));
   const destination = useSyncExternalStore(store.subscribe, store.getDestination, store.getDestination);
@@ -112,8 +119,8 @@ export function ReactClientRouterProvider({
     if (typeof window === 'undefined') {
       return undefined;
     }
-    return store.connect(createBrowserEnvironment(window, navigationModules));
-  }, [store, navigationModules]);
+    return store.connect(createBrowserEnvironment(window, navigationModules, prefetchScope));
+  }, [store, navigationModules, prefetchScope]);
 
   return createElement(
     ClientRouterContext.Provider,

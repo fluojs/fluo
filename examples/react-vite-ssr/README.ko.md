@@ -21,6 +21,10 @@ SSR, Vite manifest asset, hydrated browser runtime, progressively enhanced nativ
   destination-local state 초기화, `<main>` focus를 보장하는 HTTP 승인 기반 soft navigation.
 - Server-owned DTO validation boundary에 계속 도달하는 `@fluojs/react/client` route snapshot,
   URL-state hook, progressive `Link`, `push/replace/back` 및 document fallback.
+- `Link prefetch="hover"|"viewport"`와 provider `prefetchScope` 명시적 opt-in:
+  server가 public으로 선언한 destination만 anonymous prefetch 후 한 번 소비합니다.
+  private, no-store, Set-Cookie, Vary Cookie, redirect, missing, auth fixture는 재사용
+  거절과 일반 credentialed navigation을 보여줍니다.
 - 일반 guarded/intercepted `@Post(...)` route에 도달해 application state를 mutate하고 HTTP-matched
   destination으로 `303 See Other`를 반환하는 native `multipart/form-data` form.
 - JavaScript disabled 상태에서 해당 form을 submit하는 production browser coverage.
@@ -43,6 +47,15 @@ Vite-generated client entry가 server HTML을 hydrate한 뒤에만 label이 `Cou
 counter는 초기화됩니다. Main landmark에 focus를 옮깁니다. 직접 요청과 JavaScript 비활성
 요청은 계속 일반 server document를 렌더링합니다.
 
+`/admin/qr`에서 `Prefetch public sku-84`에 hover하거나 아래로 내려가
+`Prefetch public on viewport`를 화면에 표시한 뒤 opt-in link를 활성화하세요.
+첫 GET으로 받은 public navigation representation을 추가 GET 없이 한 번 소비합니다.
+`Open public sku-84 without prefetch`는 계속 일반 요청을 합니다.
+`Switch user and prefetch scope`는 다음 navigation 전에 session cookie와
+application-managed `prefetchScope`를 변경합니다. `Rename without reload`는 guard가 있는
+POST 성공 뒤 `router.invalidate()`를 호출합니다. 다른 fixture link는 거절된
+anonymous prefetch가 private destination을 대신하지 못함을 보여줍니다.
+
 반복 가능한 SSR 및 hydration 검증은 다음 명령으로 실행합니다.
 
 ```sh
@@ -50,8 +63,9 @@ pnpm vitest run examples/react-vite-ssr
 pnpm --filter @fluojs/example-react-vite-ssr test:browser
 ```
 
-Browser 명령은 workspace package와 예제를 다시 build하고, build된 server를 시작한 뒤 production
-client entry 및 JavaScript-disabled context를 Chrome에서 실행합니다. Bootstrap/style asset 누락 또는
+Browser 명령은 workspace package와 예제를 다시 build하고, build된 server를 시작한 뒤 prefetch
+요청 횟수와 렌더링 결과, production client entry, JavaScript-disabled context를 Chrome에서
+검증합니다. Bootstrap/style asset 누락 또는
 non-200 response, hydration warning/error, identifier-prefix mismatch, hydrate되지 않는 counter,
 URL과 server-rendered route state가 일치하지 않는 client navigation, `POST` → `303` → `GET` flow를
 완료하지 못하는 native form이 있으면 실패합니다.
@@ -71,10 +85,24 @@ page slot에 새 destination을 렌더링합니다. `src/admin-page.ts` 및 buil
 `src/navigation-admin.ts` entry는 두 admin page를 처리하며 공통 counter는 유지됩니다.
 `popstate`와 forward는 새 결과를 요청합니다.
 
-Client는 same-origin cookie를 보내고 `Set-Cookie`는 일반 browser 처리에 맡기며
-`cache: 'no-store'`를 사용합니다. Prefetch나 payload 재사용은 없습니다. Redirect, error,
+일반 navigation은 same-origin cookie를 보내고 `Set-Cookie`는 browser 처리에 맡기며
+`cache: 'no-store'`를 사용합니다. Prefetch는 `Link`가 `hover` 또는 `viewport`를 명시하고
+provider에 `navigationModules`와 `prefetchScope`가 모두 있어야 활성화됩니다.
+`PrefetchPageRouter`는 identity-independent fixture에만
+`ReactNavigationPage.create(node, destination, { prefetch: 'public' })`를 사용합니다.
+HTTP가 호환 가능한 `Cache-Control`, `Vary`와 함께
+`X-Fluo-Navigation-Prefetch: public`을 승인한 경우에만 response를 재사용합니다.
+Prefetch는 credential을 보내지 않으며 authenticated representation을 추론해서는
+안 됩니다. 예제의 `public-*` content는 사용자와 무관합니다. Cookie, authorization,
+identity header, IP에 따라 출력이 바뀌는 page에는 public을 선언하지 마세요.
+Cache는 provider-local, single-use이고 유효 기간은 최대 15초이며 최대 32개 entry,
+entry당 64 KiB, 동시 요청 4개로 제한됩니다. Scope 변경, `router.invalidate()`, 문서 종료는
+이를 비웁니다. Redirect, error,
 invalid/unsupported payload, 사용할 수 없는 module은 일반 document fallback을 실행하고
-취소된 load는 실행하지 않습니다. 이 예제는 streamed React bootstrap/Suspense script에
+취소된 load는 실행하지 않습니다. Private/no-store, Set-Cookie, 지원되지 않는 Vary,
+credential-bearing 또는 grant 없는 response는 재사용하지 않습니다. Auth 및 mutation
+경계에서 invalidation은 application 책임이며 외부 HttpOnly cookie 변경을 자동으로
+감지하지 않습니다. 이 예제는 streamed React bootstrap/Suspense script에
 response별 CSP nonce를 부여해 production Fastify security policy 아래에서도 default
 script policy를 완화하지 않고 hydration합니다. 자세한 계약은
 [navigation payload contract](../../docs/contracts/react-navigation-payload.ko.md)를 참고하세요.
@@ -137,8 +165,8 @@ mutation route나 cache policy를 소유하지 않으므로 submit-state helper�
 - `ReactClientRouterProvider`는 SSR과 hydration에서 같은 request URL과 HTTP-matched param을 받습니다.
   승인된 page는 soft navigation하고 redirect, not-found, DTO failure, error는 일반 HTTP
   document로 fallback합니다. Guard와 interceptor는 계속 server-owned입니다.
-- 이 예제는 임의 HTML swapping, event replay, client route matching, navigation cache, RSC-aware
-  data, prefetch behavior를 약속하지 않습니다.
+- 이 예제는 임의 HTML swapping, event replay, client route matching, 전역 navigation cache,
+  RSC-aware data, opt-in하지 않은 link의 prefetch를 약속하지 않습니다.
 - 이 예제는 Next.js App Router, file-based router, TanStack route tree, RSC, catch-all route,
   production starter-template 변경이 아닙니다.
 - Asset controller는 의도적으로 최소 구현이며 이 예제의 Vite config가 emit하는 flat filename을
@@ -155,6 +183,7 @@ examples/react-vite-ssr/
 │   ├── admin-page.ts       # 공유 admin page component와 destination-local state
 │   ├── entry-client.ts     # Browser-only hydrateRoot(...) entry
 │   ├── navigation-admin.ts # Build-mapped admin destination entry
+│   ├── prefetch-page.ts    # public 및 제한된 HTTP prefetch fixture
 │   ├── entry-server.ts     # 명시적 Vite server-entry selector
 │   ├── hydration.ts        # server/client 공유 identifierPrefix
 │   ├── hydration.test.ts   # Aligned interaction 및 recoverable mismatch reporting
@@ -162,6 +191,10 @@ examples/react-vite-ssr/
 │   ├── page.ts             # 공유 document, native form, client router, interactive counter
 │   └── recommendations.ts  # Lazy Suspense content
 ├── tests/
+│   ├── prefetch.spec.ts    # 빌드된 browser의 public prefetch 및 history 결과
+│   ├── prefetch-boundaries.spec.ts # private, auth, mutation, fallback 결과
+│   ├── prefetch-limits.spec.ts # browser cache 및 동시 요청 제한
+│   ├── prefetch-helpers.ts # 공통 browser request observer
 │   └── production-hydration.spec.ts # Hydration 및 JavaScript-disabled form regression
 ├── playwright.config.ts
 ├── vite.client.config.ts

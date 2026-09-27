@@ -593,8 +593,23 @@ representation. The dispatcher selects it after matching, URI versioning, middle
 binding/validation, guards, interceptors, handler execution, and response-value finalization,
 when a GET sends exactly `Accept: application/vnd.fluo.react-navigation+json;v=1`.
 HTTP applies route metadata, matched URL/params, status, response validators, existing `Vary`
-and `Set-Cookie`, plus `Vary: Accept` and `Cache-Control: private, no-store` on the payload.
-An ordinary GET without that Accept value streams the original React HTML response.
+and `Set-Cookie`, plus `Vary: Accept` on the payload. By default, navigation JSON receives
+`Cache-Control: private, no-store`; if the application already set `Cache-Control`, HTTP
+preserves its directives and appends `private, no-store`. An ordinary GET without that Accept
+value streams the original React HTML response.
+
+The sole server-side reuse opt-in is
+`ReactNavigationPage.create(node, destination, { prefetch: 'public' })`. Declare it only when
+the page is identical across users, authentication state, cookies, IP addresses, and other
+request identity. HTTP grants reuse only for the final successful `200` navigation JSON
+response with no request `Cookie` or `Authorization`, no final `Set-Cookie`, no pre-existing
+`Cache-Control` of any kind, and no pre-existing `Vary` except `Accept`. Only then does it
+emit `X-Fluo-Navigation-Prefetch: public`, `Cache-Control: public, max-age=15`, and
+`Vary: Accept`. Otherwise there is no grant; HTTP appends `private, no-store` to existing
+application directives without replacing them, including pre-existing `public` directives.
+The grant never applies to HTML or to unmarked pages. Authentication and mutation boundaries
+require the application to invalidate or change its client prefetch scope before further
+same-document navigation; see the linked navigation payload contract for limits and fallback.
 
 Redirects and errors retain their existing HTTP response and error-representation policies:
 navigation JSON is never a successful alternative for 404, 401/403, validation failure,

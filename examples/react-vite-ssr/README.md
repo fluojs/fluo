@@ -23,6 +23,10 @@ second routing model.
   that preserves the interactive shell, resets destination state, and focuses `<main>`.
 - `@fluojs/react/client` route snapshots, URL-state hooks, progressive `Link`, and
   `push/replace/back` with document fallback and server-owned DTO validation.
+- Explicit `Link prefetch="hover"|"viewport"` and provider `prefetchScope` opt-in: a
+  server-declared public destination can be consumed once after anonymous prefetch.
+  Private, no-store, Set-Cookie, Vary Cookie, redirect, missing, and auth fixtures
+  demonstrate denied reuse and ordinary credentialed navigation.
 - A native `multipart/form-data` form that reaches an ordinary guarded/intercepted `@Post(...)`
   route, mutates application state, and returns `303 See Other` to an HTTP-matched destination.
 - Production browser coverage that submits that form with JavaScript disabled.
@@ -45,6 +49,14 @@ forward: the URL and page follow HTTP's confirmed destination; the shell counter
 page counter resets, and the main landmark receives focus. Direct and no-JavaScript requests
 still render ordinary server documents.
 
+From `/admin/qr`, hover `Prefetch public sku-84` or scroll to `Prefetch public on viewport`,
+then activate the opted-in link. The first GET fetches a public navigation representation;
+activation consumes it without another GET. `Open public sku-84 without prefetch` still makes
+a normal request. `Switch user and prefetch scope` changes the session cookie and the
+application-managed `prefetchScope` before further navigation. `Rename without reload` sends
+a guarded POST and calls `router.invalidate()` after success. The other fixture links show
+that prefetch rejection never substitutes an anonymous result for a private destination.
+
 Run the repeatable SSR and hydration checks with:
 
 ```sh
@@ -53,7 +65,8 @@ pnpm --filter @fluojs/example-react-vite-ssr test:browser
 ```
 
 The browser command rebuilds workspace packages plus the example, starts the built server, and runs
-Chrome coverage for both the production client entry and a JavaScript-disabled context. It fails on
+Chrome coverage for prefetch request counts and rendered destinations as well as the production
+client entry and a JavaScript-disabled context. It fails on
 missing or non-200 bootstrap/style assets, hydration warnings or errors, an identifier-prefix
 mismatch, a counter that does not hydrate, client navigation whose URL and server-rendered route
 state do not agree, or a native form that cannot complete its `POST` → `303` → `GET` flow.
@@ -73,10 +86,23 @@ history and rendering a fresh destination in the page slot. `src/admin-page.ts` 
 build-mapped `src/navigation-admin.ts` entry handle
 both admin pages; the shared counter stays mounted. `popstate` and forward fetch fresh results.
 
-The client sends same-origin cookies, follows `Set-Cookie` through normal browser handling,
-uses `cache: 'no-store'`, and does not prefetch or reuse the payload. A redirect, error,
+Ordinary navigation sends same-origin cookies, follows `Set-Cookie` through normal browser
+handling, and uses `cache: 'no-store'`. Prefetch is off unless a `Link` explicitly requests
+`hover` or `viewport` and the provider has both `navigationModules` and `prefetchScope`.
+`PrefetchPageRouter` calls `ReactNavigationPage.create(node, destination, { prefetch: 'public' })`
+only for identity-independent fixtures; the response is reusable only when HTTP grants
+`X-Fluo-Navigation-Prefetch: public` alongside compatible `Cache-Control` and `Vary` headers.
+That request omits credentials and cannot safely infer an authenticated representation.
+The example's `public-*` content is shared across users: never declare a page public if
+its output depends on cookies, authorization, identity headers, or IP. Cache entries are
+provider-local, single-use, and expire within 15 seconds; at most 32 entries, 64 KiB per entry,
+and four simultaneous requests are admitted. Scope changes, `router.invalidate()`, and
+document teardown clear them. A redirect, error,
 invalid/unsupported payload, or unavailable module triggers ordinary document fallback;
-cancelled loads do not. The example also gives streamed React bootstrap/Suspense scripts
+cancelled loads do not. Private/no-store, Set-Cookie, unsupported Vary, credential-bearing,
+or otherwise ungranted responses cannot become reusable entries. Auth and mutation boundaries
+are the application's responsibility; an external HttpOnly cookie update cannot automatically
+invalidate a provider cache. The example also gives streamed React bootstrap/Suspense scripts
 per-response CSP nonces so the production Fastify security policy allows hydration without
 loosening its default script policy. See the
 [navigation payload contract](../../docs/contracts/react-navigation-payload.md).
@@ -141,7 +167,7 @@ the complete fallback and the stable client package owns neither mutation routes
   hydration. Approved pages use soft navigation; redirects, not-found pages, DTO failures, and
   errors fall back to ordinary HTTP documents. Guards and interceptors remain server-owned.
 - This example does not promise arbitrary HTML swapping, event replay, client route matching,
-  navigation caches, RSC-aware data, or prefetch behavior.
+  a global navigation cache, RSC-aware data, or prefetch for non-opted-in links.
 - This is not a Next.js App Router, file-based router, TanStack route tree, RSC example, catch-all
   route example, or production starter-template change.
 - The asset controller is intentionally minimal and serves the flat filenames emitted by this
@@ -159,6 +185,7 @@ examples/react-vite-ssr/
 │   ├── entry-client.ts     # Browser-only hydrateRoot(...) entry
 │   ├── navigation-product.ts # Vite-built browser destination component
 │   ├── navigation-admin.ts # Build-mapped admin destination entry
+│   ├── prefetch-page.ts    # Public and restricted HTTP prefetch fixtures
 │   ├── entry-server.ts     # Explicit Vite server-entry selector
 │   ├── hydration.ts        # Shared server/client identifierPrefix
 │   ├── hydration.test.ts   # Aligned interaction and recoverable mismatch reporting
@@ -166,6 +193,10 @@ examples/react-vite-ssr/
 │   ├── page.ts             # Shared document, native form, client router, and interactive counter
 │   └── recommendations.ts  # Lazy Suspense content
 ├── tests/
+│   ├── prefetch.spec.ts    # Built-browser public prefetch and history outcomes
+│   ├── prefetch-boundaries.spec.ts # Private, auth, mutation, and fallback outcomes
+│   ├── prefetch-limits.spec.ts # Browser cache and concurrency bounds
+│   ├── prefetch-helpers.ts # Shared browser request observers
 │   └── production-hydration.spec.ts # Hydration and JavaScript-disabled form regressions
 ├── playwright.config.ts
 ├── vite.client.config.ts

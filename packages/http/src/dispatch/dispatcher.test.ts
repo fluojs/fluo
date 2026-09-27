@@ -179,6 +179,48 @@ class CountingContainer extends Container {
 }
 
 describe('dispatcher runtime', () => {
+  it('does not grant navigation-prefetch reuse for a rejected DTO request or a redirect', async () => {
+    // Given: a guarded route and a redirect whose responses never become page representations.
+    class NavigationRequest {
+      @FromQuery('required')
+      required = '';
+    }
+
+    @Controller('/navigation-prefetch-negative')
+    class NavigationPrefetchNegativeController {
+      @RequestDto(NavigationRequest)
+      @Get('/dto')
+      getPage(_input: NavigationRequest) {
+        return { version: 1 };
+      }
+
+      @Get('/redirect')
+      @Redirect('/sign-in', 302)
+      redirect() {
+        return { version: 1 };
+      }
+    }
+
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: NavigationPrefetchNegativeController }]),
+      rootContainer: new Container().register(NavigationPrefetchNegativeController),
+    });
+    const requestHeaders = { accept: 'application/vnd.fluo.react-navigation+json;v=1' };
+    const dtoResponse = createResponse();
+    const redirectResponse = createResponse();
+
+    // When: the actual dispatcher handles the failed DTO and redirect.
+    await dispatcher.dispatch(createRequest('/navigation-prefetch-negative/dto', 'GET', requestHeaders), dtoResponse);
+    await dispatcher.dispatch(createRequest('/navigation-prefetch-negative/redirect', 'GET', requestHeaders), redirectResponse);
+
+    // Then: both keep their HTTP-owned status and never emit the reuse grant.
+    expect(dtoResponse.statusCode).toBe(400);
+    expect(dtoResponse.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+    expect(redirectResponse.statusCode).toBe(302);
+    expect(redirectResponse.headers.Location).toBe('/sign-in');
+    expect(redirectResponse.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+  });
+
   it('suppresses a compatible RequestAbortedError from a duplicate package copy', async () => {
     const duplicateCopyAbort = new FluoError('duplicate request abort', { code: 'REQUEST_ABORTED' });
     setFluoErrorContract(duplicateCopyAbort, '@fluojs/http');

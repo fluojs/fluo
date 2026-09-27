@@ -18,14 +18,28 @@ final write를 소유합니다. Plain handler value, error, unmatched route, red
 React page에서는 navigation payload를 만들지 않습니다. Representation protocol version `1`은
 HTTP route URI version과 별개입니다.
 
+Identity에 영향을 받지 않는 page에 한해서 handler는
+`ReactNavigationPage.create(page, { module, props }, { prefetch: 'public' })`로 speculative
+reuse를 허용할 수 있습니다. Optional 세 번째 인자는 사용자, 인증, cookie 및 다른 모든 request
+identity에 대해 representation이 동일하다는 application의 명시적 선언입니다. 생략하면 기존
+private 기본값을 유지합니다.
+
 ## Negotiation and result
 
 Client는 정확히 `Accept: application/vnd.fluo.react-navigation+json;v=1`을 포함한 GET을
 보냅니다. 성공한 opt-in page에서 HTTP는 해당 media type의 JSON을 반환합니다. Host는 `v`
 parameter를 `"1"`로 직렬화하고 `charset=utf-8`을 추가할 수 있습니다. HTTP는 기존 `Vary`에
-`Accept`를 추가하고 `Set-Cookie`와 다른 header를 유지하며 기존 `Cache-Control`에
-`private, no-store`를 더합니다. 특히 cookie나 인증의 영향을 받는 navigation result는
-client 또는 중간 cache가 재사용하면 안 됩니다.
+`Accept`를 추가하고 `Set-Cookie`와 다른 header를 유지합니다. 일반 navigation은
+`prefetch: 'public'`을 선언한 page여도 기존 `Cache-Control`에 `private, no-store`를 더하며
+credential을 포함한 일반 결과를 재사용하지 않습니다. `Cookie`와 `Authorization` 없이
+요청한 명시적 public page만 최종 status-`200` negotiated response에서
+`X-Fluo-Navigation-Prefetch: public`, `Cache-Control: public, max-age=15`,
+`Vary: Accept`를 받을 수 있습니다. 최종 response에 **`Set-Cookie`가 없고** 기존
+**`Cache-Control` directive가 하나도 없으며** 기존 **`Vary`에는 `Accept` 이외의 값이
+없어야** HTTP가 grant합니다. 조건을 만족하지 않으면 application restriction을 덮어
+eligibility를 만들지 않고 기존 `private, no-store` policy를 유지합니다. 기존 `public`,
+`private`, `no-store`, `Vary: Cookie` 또는 `Vary: *`, request credential, redirect, error는
+재사용을 거부합니다. HTML, `HEAD`, 다른 method에는 navigation-prefetch grant가 없습니다.
 Configured page renderer의 entry status와 header는 일반 document와 협상된 결과에 모두
 적용됩니다. 협상된 결과를 위해 HTML stream을 열지 않습니다. Renderer status가 `404`처럼
 2xx가 아니면 browser helper는 이를 거부하고 full-document fallback을 선택합니다.
@@ -59,10 +73,12 @@ HTTP가 소유합니다. Error document를 page payload로 파싱하면 안 됩�
 ## Browser consumption and fallback
 
 `@fluojs/react/client`의 `loadReactNavigationDestination(href, modules, { signal? })`는
-same-origin HTTP(S)만 받습니다. `credentials: 'same-origin'`, `cache: 'no-store'`,
+same-origin HTTP(S)만 받습니다. 각 일반 load는 `credentials: 'same-origin'`, `cache: 'no-store'`,
 `redirect: 'manual'`, 명시적 Accept header로 매번 uncached request 하나를 보냅니다.
-`Set-Cookie`를 포함한 browser cookie 처리는 browser에 맡깁니다. Helper는 response를 저장하거나
-prefetch하지 않습니다. Import/render 전에 status, media type, protocol version, server-confirmed
+`Set-Cookie`를 포함한 browser cookie 처리는 browser에 맡기며 cache eligibility 판단에
+browser-visible `Set-Cookie`를 사용하지 않습니다(Fetch가 이 header를 숨깁니다).
+일반 navigation response는 저장하지 않습니다. Import/render 전에 status, media type,
+protocol version, server-confirmed
 same-origin URL, string path param, JSON object props, 제공된 build-produced importer map의 module
 key를 검증합니다. 로드한 module의 default export도 렌더링 가능한 component인지 확인한
 뒤에만 성공으로 보고합니다. Malformed JSON, 지원하지 않는 version/module/URL, non-HTML 또는
@@ -89,7 +105,46 @@ counter는 초기화합니다.
 `assign`/`replace`를 사용합니다. History traversal은 browser URL이 이미 바뀐 뒤이므로 실패
 시 해당 문서를 로드합니다. 취소는 fallback을 시작하지 않습니다. Hydration 전 `Link`는
 native anchor로 남고 initial request snapshot은 browser path/search와 일치해야 합니다.
-`refresh()`는 계속 document reload이며 prefetch나 재사용 가능한 cache는 없습니다.
+`refresh()`는 계속 document reload입니다. Opt-in하지 않은 `Link`, `router.push/replace`,
+거부된 prefetch에는 기존 credential 포함 일반 loader와 full-document fallback을 적용합니다.
+
+## Opt-in public prefetch와 provider-local cache
+
+`Link prefetch="hover"` 또는 `Link prefetch="viewport"`만 speculative load를 시작하며 생략하면
+off입니다. `ReactClientRouterProvider`에는 기존 `navigationModules`와 application이 auth/session
+epoch마다 변경하는 명시적 `prefetchScope` 문자열을 함께 전달해야 합니다. 별도 consumer prefetch
+API는 없습니다. Hydration 이전, JavaScript 비활성화, 두 provider 입력 중 하나가 없는 경우,
+외부/미지원 목적지, 부적합한 anchor(modified/new-tab/download), fragment-only 변경은
+prefetch하지 않습니다. 적합한 hydrated Link의 hover는 pointer 진입 시, viewport는 intersection
+진입 시 시작하고 exit 시 취소합니다. Click adoption 이전 hover leave는 해당 기회를 취소합니다.
+동일 key의 동시 작업은 합쳐지고, 적합한 click은 진행 중인 prefetch를 추가 GET 없이 이어받을
+수 있습니다. Adoption 이후 hover leave는 navigation을 취소할 수 없습니다. 취소되거나 실패한
+speculation 자체는 URL/params를 commit하거나 document fallback을 시작하지 않습니다.
+
+Speculation은 기존 navigation Accept를 사용하며 same-origin HTTP(S) GET에
+`credentials: 'omit'`, `cache: 'no-store'`, `redirect: 'manual'`을 설정합니다. Browser는
+명시적인 `X-Fluo-Navigation-Prefetch: public`과 호환되는
+`Cache-Control: public, max-age=15`, `Vary: Accept` 및 status `200`을 확인한 후 요청한
+pathname/query와 일치하는 version-`1` JSON, server params/props, build-produced importer
+map에서 로드 가능한 component를 모두 검증한 결과만 cache에 넣습니다. 이는 server가
+identity 독립성을 선언한 public representation이지 인증된 결과를 추측한 것이 아닙니다.
+Browser-visible `Set-Cookie`는 검사하지 않습니다. HTML, error, redirect, 지원하지 않는
+module, grant 없는 결과는 cache에 넣지 않습니다.
+
+Provider가 소유하는 완료 cache는 origin, 정규화된 pathname/query(fragment 제외),
+representation version, `prefetchScope`를 key로 하고 **한 번만 사용**합니다. 최대 32개
+LRU entry이며 각 JSON은 최대 64 KiB입니다. 초과 body는 취소합니다. Concurrent prefetch는
+최대 4개이고 초과 opportunity는 대기시키지 않고 건너뜁니다. Entry 만료는 전체 validation과
+import 완료 후 15초 **및** 남은 server freshness 중 빠른 시점입니다. Grant한 `max-age`에서
+유효한 음수 아닌 `Age`를 빼고 15초로 제한하며 malformed 또는 소진된 freshness는 거부합니다.
+Validation/import 시간으로 server freshness가 새로 시작되지는 않습니다. 성공한 opt-in
+click은 entry를 제거하고, 재방문과 back/forward는 새 HTTP 승인을 받아야 하며 refresh는
+document를 reload합니다. Unmount/disconnect, scope 변경, `router.invalidate()`, 이전 activation을
+대체하는 이동은 진행 중인 작업을 abort하고 무효 entry를 지웁니다. In-document mutation이나
+auth 변경 후에는 다음 same-document navigation **이전에** application이 `prefetchScope`를
+갱신하거나 `router.invalidate()`를 호출해야 합니다. 전체 문서 이동은 cache를 파기합니다.
+외부 `HttpOnly` cookie 변경은 자동으로 감지하지 않으므로 notification 누락 시에도 opt-in
+public page는 identity에 영향을 받지 않아야 합니다.
 
 ## Evidence and limits
 
@@ -98,9 +153,10 @@ guard, interceptor, middleware, scope, redirect, error, cancellation, header 경
 `packages/react/src/client-navigation-payload.test.ts`는 browser parsing, cookie-bearing request,
 rejection, non-reuse, cancellation을 실행합니다. `packages/react/src/client.test.ts`는
 public router store의 history, stale result, fallback을
-검증합니다. `examples/react-vite-ssr/src/app.test.ts`는
-DTO validation을 검증하고 이 테스트와
+검증합니다. `examples/react-vite-ssr/src/app.test.ts`는 DTO validation을 검증하고 이 테스트와
 `examples/react-vite-ssr/tests/production-hydration.spec.ts`는 manifest-bound destination,
-browser rendering, 일반 HTML 및 JavaScript-disabled document 동작을 실행합니다. 이 stable
-SSR/Vite representation은 JSON과 build된 client component이지 experimental Flight, 일반
+browser rendering, 일반 HTML 및 JavaScript-disabled document 동작을 실행합니다.
+`packages/http/src/dispatch/dispatch-response-policy.test.ts`와
+`packages/http/src/dispatch/dispatcher.test.ts`는 final response grant의 허용·거부를 검증합니다.
+이 stable SSR/Vite representation은 JSON과 build된 client component이지 experimental Flight, 일반
 React tree serializer 또는 file-routing contract가 아닙니다.

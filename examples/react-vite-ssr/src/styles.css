@@ -6,3 +6,7 @@ nav a,
 nav button {
   margin-inline-end: 0.75rem;
 }
+
+.viewport-prefetch {
+  margin-block-start: 120vh;
+}

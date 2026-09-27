@@ -879,8 +879,16 @@ The navigation contract is deliberately HTTP-first:
 - Router methods reject cross-origin or non-HTTP(S) destinations with
   `ReactClientNavigationError`. Use a normal anchor for those destinations.
 
-This phase intentionally omits `prefetch`: without an owned client data or render cache, prefetching
-would promise behavior the package cannot yet revalidate or consume consistently.
+`Link` has optional `prefetch="hover"` and `prefetch="viewport"` modes; omitted `prefetch` is off.
+Both require a hydrated provider with `navigationModules` and an explicit application-managed
+`prefetchScope` string for the current auth/session epoch. Hover begins on eligible pointer entry;
+viewport begins on intersection and cancels on exit. Neither runs for disabled JavaScript, an
+ineligible anchor, unsupported destination, or fragment-only navigation. `router.invalidate()`
+cancels pending prefetches and clears the provider-local cache: call it and/or update
+`prefetchScope` **before** further in-document navigation after mutations and auth changes.
+Scope changes and unmount also clear/cancel; full-document navigation discards the cache.
+There is no automatic detection of external `HttpOnly` cookie changes. Public pages must remain
+identity-independent even if an application misses that notification.
 
 Client navigation does not require a catch-all route. `Link` remains a real anchor, so hydration
 gaps and disabled JavaScript fall back to ordinary full-document browser navigation. The server then
@@ -902,30 +910,55 @@ The runtime-neutral root never imports browser or Vite code.
 
 ```tsx
 import { ReactNavigationPage } from '@fluojs/react';
-import { ReactClientRouterProvider, createReactRouteSnapshot } from '@fluojs/react/client';
+import { Link, ReactClientRouterProvider, createReactRouteSnapshot } from '@fluojs/react/client';
 
 // Inside an HTTP-matched @Path handler:
 return ReactNavigationPage.create(<ProductPage sku={input.sku} />, {
   module: './navigation-product.ts',
   props: { sku: input.sku },
-});
+}, { prefetch: 'public' }); // Only when this page is identical across all request identities.
 
 // In the built browser entry:
 const modules = import.meta.glob('./navigation-product.ts');
 <ReactClientRouterProvider
   initialSnapshot={createReactRouteSnapshot({ url: requestUrl, params: matchedParams })}
   navigationModules={modules}
+  prefetchScope={sessionEpoch}
 >
-  {(destination) => <Shell><DashboardNav />{destination ?? <ProductPage />}</Shell>}
+  {(destination) => (
+    <Shell>
+      <Link href="/products/sku-84" prefetch="hover">Product</Link>
+      {destination ?? <ProductPage />}
+    </Shell>
+  )}
 </ReactClientRouterProvider>
 ```
 
-The browser uses `credentials: 'same-origin'`, `cache: 'no-store'`, and `redirect: 'manual'`;
-each call makes a new request. HTTP preserves existing `Vary` and `Set-Cookie` and applies
-`private, no-store` to the payload. Redirects, 404, 401/403, validation failures, non-page
-responses, malformed/unsupported payloads, and unavailable modules are not renderable and
+The example's `sessionEpoch` is an application-managed string that changes with auth/session
+state. For an identity-independent page only, the server handler may use the optional third argument
+`ReactNavigationPage.create(page, { module, props }, { prefetch: 'public' })`. This asserts the
+result is identical across users, auth, cookies, and all request identity. The ordinary browser
+loader still uses `credentials: 'same-origin'`, `cache: 'no-store'`, and `redirect: 'manual'`;
+each non-opt-in call makes a new request. HTTP preserves existing `Vary` and `Set-Cookie` and
+applies `private, no-store` to ordinary navigation. Only a credential-free (`Cookie`- and
+`Authorization`-free) status-`200` negotiated public response with no final `Set-Cookie`, no
+pre-existing `Cache-Control` directive, and no pre-existing `Vary` other than `Accept` receives
+`X-Fluo-Navigation-Prefetch: public`, `Cache-Control: public, max-age=15`, and `Vary: Accept`.
+Existing restrictions are never overwritten to make a response eligible. The separate speculative
+GET uses `credentials: 'omit'`, `cache: 'no-store'`, `redirect: 'manual'`, and the same navigation
+Accept. The browser admits only an explicit grant with compatible public cache headers and a
+fully validated version-`1` payload and built module; Fetch does not expose `Set-Cookie` for this
+decision. The provider stores at most 32 single-use LRU entries of at most 64 KiB JSON, with at
+most four concurrent requests (excess opportunities skipped). Entries expire at the earlier of
+15 seconds after validation/import or remaining server freshness (`max-age` minus nonnegative
+`Age`); malformed or exhausted freshness is rejected, and import does not restart server age.
+An opted-in click consumes an entry or adopts pending work without a second GET; leave/exit
+before adoption, invalidation, scope change, unmount, and superseding activation abort pending
+work. Revisits, back/forward, and refresh never reuse entries. Redirects, 404, 401/403,
+validation failures, non-page responses, malformed/unsupported payloads, and unavailable modules are not renderable and
 callers fall back to a document request. External/non-HTTP(S) URLs remain ordinary anchors;
-aborted requests do not render or start fallback. Ordinary direct and JavaScript-disabled
+cancelled speculation never commits URL/params or starts fallback. Rejected/non-opt-in clicks use
+the ordinary credentialed loader and document fallback. Ordinary direct and JavaScript-disabled
 GETs continue to stream HTML and hydration assets. `Link` and `router.push/replace` are the
 only official navigation controls; the helper is their lower-level HTTP validation boundary.
 See the [EN](../../docs/contracts/react-navigation-payload.md) and
@@ -1231,7 +1264,7 @@ This package currently does **not** provide:
 - a stable RSC root or `@fluojs/react/rsc` subpath; RSC is available only from the explicitly unstable
   `@fluojs/react/experimental/rsc` prototype
 - automatic `"use server"` transforms/export discovery or a built-in Flight renderer/build plugin
-- SPA document swapping, a client data/loader cache, and navigation prefetching
+- SPA document swapping, a general client data/loader cache, and automatic navigation prefetching
 - a Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, or React-owned
   `routes: []` table
 - automatic client bundle generation

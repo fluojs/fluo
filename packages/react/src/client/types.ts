@@ -62,6 +62,8 @@ export type ReactRouteSnapshotInput = {
 export interface ReactRouter {
   /** Delegate traversal to browser history semantics. */
   back(): void;
+  /** Discard completed prefetch entries and abort unconsumed pending work after auth or mutation. */
+  invalidate(): void;
   /** Load an HTTP-approved page softly, or navigate the full document on fallback. */
   push(href: string | URL): void;
   /** Revalidate the current page with a full-document reload. */
@@ -76,4 +78,6 @@ export type ReactClientRouterProviderProps = {
   readonly initialSnapshot: ReactRouteSnapshot;
   /** Build-produced importers for HTTP-approved soft destinations. */
   readonly navigationModules?: ReactNavigationModules;
+  /** Application-managed auth/session epoch; omitted means prefetch is disabled. */
+  readonly prefetchScope?: string;
 };

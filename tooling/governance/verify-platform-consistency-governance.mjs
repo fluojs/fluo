@@ -1693,6 +1693,28 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
       required.every((path) => hasChanged(changedFiles, path)),
       `React navigation payload contract updates must include ${required.filter((path) => !hasChanged(changedFiles, path)).join(', ')}.`,
     );
+    if (hasChanged(changedFiles, 'packages/http/src/dispatch/dispatch-response-policy.ts')
+      || hasChanged(changedFiles, 'packages/http/src/dispatch/response-integration.ts')) {
+      const prefetchCompanions = [
+        'docs/guides/react-user-concepts.md',
+        'docs/guides/react-user-concepts.ko.md',
+        'packages/react/README.md',
+        'packages/react/README.ko.md',
+        'packages/http/README.md',
+        'packages/http/README.ko.md',
+        'packages/react/src/client.test.ts',
+        'packages/http/src/dispatch/dispatch-response-policy.test.ts',
+        'packages/http/src/dispatch/dispatcher.test.ts',
+        'tooling/governance/react-navigation-payload-contract.d.mts',
+        'tooling/governance/verify-platform-consistency-governance.mjs',
+        'tooling/governance/verify-platform-consistency-governance.test.ts',
+      ];
+      const missing = prefetchCompanions.filter((path) => !hasChanged(changedFiles, path));
+      if (!changedFiles.some((path) => /^\.changeset\/[^/]+\.md$/u.test(path))) {
+        missing.push('.changeset/*.md');
+      }
+      assert(missing.length === 0, `React navigation prefetch contract updates must include ${missing.join(', ')}.`);
+    }
   }
   const touchedEmailMigrationDocumentation =
     emailMigrationSectionChanged(changedFiles, migrationGuideSnapshots) ||
