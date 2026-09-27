@@ -144,7 +144,7 @@ The `@fluojs/platform-cloudflare-workers` lifecycle contract is documented in it
 
 ## GraphQL NestJS Migration Boundaries
 
-For NestJS GraphQL migrations, [GraphQL Migration Boundaries](./getting-started/migrate-from-nestjs.md#graphql-migration-boundaries) is the canonical contract for application-owned authorization, generated-SDL nullability checks, operation-scoped resolver disposal, the fixed `/graphql` endpoint, public-instance decorator targets, and application-owned `AsyncIterable` subscriptions.
+For NestJS GraphQL migrations, [GraphQL Migration Boundaries](./getting-started/migrate-from-nestjs.md#graphql-migration-boundaries) is the canonical migration contract for application-owned authorization, generated-SDL nullability checks, operation-scoped resolver disposal, the fixed `/graphql` endpoint, public-instance decorator targets, and application-owned `AsyncIterable` subscriptions. Root `@Query`, `@Mutation`, and `@Subscription` returns remain nullable by default (including the fallback `String`); use `nullable: false` on each required root return, without changing list-item or argument nullability. Read the [GraphQL API owner](../packages/graphql/README.md) for the decorator options and the migration contract for the cutover checks.
 
 ## Terminus NestJS Migration
 

@@ -385,6 +385,9 @@ function pickFieldsByType(
         outputRef,
         transformObjectFields,
       );
+      const rootOutputType = handler.nullable === false && !isNonNullOutputType(outputType)
+        ? new deps.GraphQLNonNull(outputType)
+        : outputType;
 
       if (Object.hasOwn(fields, handler.fieldName)) {
         throw new Error(
@@ -394,12 +397,12 @@ function pickFieldsByType(
       }
 
       if (handler.type === 'subscription') {
-        fields[handler.fieldName] = createSubscriptionField(descriptor, handler, args, outputType, invokeResolver);
+        fields[handler.fieldName] = createSubscriptionField(descriptor, handler, args, rootOutputType, invokeResolver);
 
         continue;
       }
 
-      fields[handler.fieldName] = createOperationField(descriptor, handler, args, outputType, invokeResolver);
+      fields[handler.fieldName] = createOperationField(descriptor, handler, args, rootOutputType, invokeResolver);
     }
   }
 

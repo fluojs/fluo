@@ -28,6 +28,11 @@ export interface ResolverMethodOptions {
   fieldName?: string;
   input?: Function;
   argTypes?: Record<string, GraphqlArgType>;
+  /**
+   * Set to `false` to require a non-null root return. Omitted or `true` keeps the
+   * root nullable; list item and argument nullability are unaffected.
+   */
+  nullable?: boolean;
   outputType?: GraphqlRootOutputType;
 }
 
@@ -80,6 +85,7 @@ function normalizeMethodMetadata(
     argTypes: options.argTypes,
     fieldName: options.fieldName?.trim() || undefined,
     inputClass: options.input,
+    nullable: options.nullable,
     outputType: options.outputType,
     type,
   };

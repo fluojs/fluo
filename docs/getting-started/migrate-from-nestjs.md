@@ -281,7 +281,7 @@ The prior migration limitation for field argument DTO binding is superseded for 
 Code-first `@FieldResolver({ input: InputDto })` with `@Args(index?)` is supported. The remaining limitation is schema-first field-resolver attachment only.
 
 ## GraphQL Migration Boundaries
-<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
+<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; root-default=nullable; root-required=nullable-false; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
 
 ### Authorization, Context, and Endpoint
 
@@ -307,8 +307,9 @@ class AccountResolver {
 
 Before cutover, compare the generated fluo SDL with the NestJS schema rather than relying on TypeScript types:
 
-- Root `outputType` is never inferred: omitting it produces GraphQL `String`; preserve object and list shapes with an explicit output type and `listOf(...)`.
-- Preserve required output fields explicitly. A newly added code-first object field becomes non-null only with `nullable: false`; an omitted option or `nullable: true` is nullable. Preserve existing non-null wrappers in the declared GraphQL output type.
+- Root `outputType` is never inferred: omitting it produces GraphQL `String`; preserve object and list shapes with an explicit output type and `listOf(...)`. Root `@Query`, `@Mutation`, and `@Subscription` return types default to nullable, including that default `String`.
+- Preserve required root returns with `nullable: false` on the root decorator, for example `@Query({ nullable: false, outputType: AccountType })` or `@Query({ nullable: false, outputType: listOf(AccountType) })`. A required list is `[Account]!`, not `[Account!]!`: item nullability is unchanged. Returning `null` from a required root raises a GraphQL error and nulls top-level data, so only require a field whose resolver returns a value or throws. An omitted option or `nullable: true` remains nullable.
+- Preserve object fields separately: a newly added code-first object field becomes non-null only with `nullable: false` on `@FieldResolver`, while an omitted option or `nullable: true` stays nullable. Preserve existing non-null wrappers in the declared GraphQL object output type.
 - `@Arg(...)` fields produce nullable scalar or list GraphQL arguments. Validation can reject an absent value at execution time, but it does not make the schema argument non-null. Treat a NestJS-required GraphQL argument as a compatibility gap until the emitted SDL matches the required contract; do not silently accept a widened nullable argument.
 
 Resolvers that inject request-scoped providers must themselves use `@Scope('request')`. fluo creates one operation DI container for every HTTP request and WebSocket operation, shares it among that operation's root and field resolvers, then disposes it on HTTP completion, operation completion, or disconnect. That DI disposal does not own external event subscriptions: the application must return a typed `AsyncIterable` and close application resources when GraphQL stops consuming it.
