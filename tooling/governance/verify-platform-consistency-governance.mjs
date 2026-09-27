@@ -2507,8 +2507,8 @@ export function enforceExpressRuntimeMigrationDocsSync(
 export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
   const packageSurface = readText('docs/reference/package-surface.md');
   const packageSurfaceKo = readText('docs/reference/package-surface.ko.md');
-  const packageChooser = readFileSync(join(repoRoot, 'docs/reference/package-chooser.md'), 'utf8');
-  const packageChooserKo = readFileSync(join(repoRoot, 'docs/reference/package-chooser.ko.md'), 'utf8');
+  const packageChooser = readText('docs/reference/package-chooser.md');
+  const packageChooserKo = readText('docs/reference/package-chooser.ko.md');
   const docsContext = readText('docs/CONTEXT.md');
   const docsContextKo = readText('docs/CONTEXT.ko.md');
   const rootReadme = readFileSync(join(repoRoot, 'README.md'), 'utf8');
@@ -2517,8 +2517,8 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
   const coreReadmeKo = readFileSync(join(repoRoot, 'packages/core/README.ko.md'), 'utf8');
   const i18nReadme = readFileSync(join(repoRoot, 'packages/i18n/README.md'), 'utf8');
   const i18nReadmeKo = readFileSync(join(repoRoot, 'packages/i18n/README.ko.md'), 'utf8');
-  const drizzleReadme = readFileSync(join(repoRoot, 'packages/drizzle/README.md'), 'utf8');
-  const drizzleReadmeKo = readFileSync(join(repoRoot, 'packages/drizzle/README.ko.md'), 'utf8');
+  const drizzleReadme = readText('packages/drizzle/README.md');
+  const drizzleReadmeKo = readText('packages/drizzle/README.ko.md');
   const fastifyAdapterSource = readFileSync(join(repoRoot, 'packages/platform-fastify/src/adapter.ts'), 'utf8');
   const fastifyReadme = readFileSync(join(repoRoot, 'packages/platform-fastify/README.md'), 'utf8');
   const fastifyReadmeKo = readFileSync(join(repoRoot, 'packages/platform-fastify/README.ko.md'), 'utf8');
@@ -2941,20 +2941,34 @@ export function enforceCanonicalRuntimeMatrixReferences(readText = read) {
   assert(
     packageSurface.includes('@fluojs/drizzle') &&
       packageSurface.includes('node:async_hooks') &&
-      packageChooser.includes('raw Drizzle driver handle') &&
+      packageSurface.includes('DrizzleDatabase.requestTransaction(...)') &&
+      packageChooser.includes('raw Drizzle handle') &&
       docsContext.includes('raw Drizzle provider guidance') &&
-      drizzleReadme.includes('raw Drizzle driver handle') &&
-      drizzleReadme.includes('{ provide, useFactory }'),
-    'Drizzle README, package-surface, package-chooser, and docs/CONTEXT.md must keep the Node-only runtime boundary and raw-provider fallback discoverable together.',
+      drizzleReadme.includes('raw Drizzle handle') &&
+      drizzleReadme.includes('{ provide, useFactory }') &&
+      [drizzleReadme, packageSurface, packageChooser, docsContext].every((source) =>
+        source.includes('>=24.0.0 <27') &&
+        source.includes('Bun 1.4') &&
+        source.includes('drizzle-orm/libsql') &&
+        source.includes('drizzle-orm/bun-sqlite') &&
+        source.includes('strictTransactions')),
+    'Drizzle README, package-surface, package-chooser, and docs/CONTEXT.md must preserve the conditional Bun async-driver boundary, unsupported sync driver, and raw-provider fallback together.',
   );
   assert(
     packageSurfaceKo.includes('@fluojs/drizzle') &&
       packageSurfaceKo.includes('node:async_hooks') &&
-      packageChooserKo.includes('raw Drizzle driver handle') &&
+      packageSurfaceKo.includes('DrizzleDatabase.requestTransaction(...)') &&
+      packageChooserKo.includes('raw Drizzle handle') &&
       docsContextKo.includes('raw Drizzle provider guidance') &&
-      drizzleReadmeKo.includes('raw Drizzle driver handle') &&
-      drizzleReadmeKo.includes('{ provide, useFactory }'),
-    'Drizzle README.ko, package-surface.ko, package-chooser.ko, and docs/CONTEXT.ko.md must keep the Node-only runtime boundary and raw-provider fallback discoverable together.',
+      drizzleReadmeKo.includes('raw Drizzle handle') &&
+      drizzleReadmeKo.includes('{ provide, useFactory }') &&
+      [drizzleReadmeKo, packageSurfaceKo, packageChooserKo, docsContextKo].every((source) =>
+        source.includes('>=24.0.0 <27') &&
+        source.includes('Bun 1.4') &&
+        source.includes('drizzle-orm/libsql') &&
+        source.includes('drizzle-orm/bun-sqlite') &&
+        source.includes('strictTransactions')),
+    'Drizzle README.ko, package-surface.ko, package-chooser.ko, and docs/CONTEXT.ko.md must preserve the conditional Bun async-driver boundary, unsupported sync driver, and raw-provider fallback together.',
   );
   assert(
     packageSurface.includes('CacheModule.forRoot(options)') && packageSurface.includes('CacheModule.forRootAsync') &&

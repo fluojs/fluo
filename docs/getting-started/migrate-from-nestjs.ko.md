@@ -267,7 +267,7 @@ Field argument DTO binding에 대한 이전 migration 제한은 code-first objec
 Code-first `@FieldResolver({ input: InputDto })`와 `@Args(index?)` DTO binding은 지원합니다. 남아 있는 제한은 schema-first field-resolver attachment뿐입니다.
 
 ## GraphQL 마이그레이션 경계
-<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
+<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; root-default=nullable; root-required=nullable-false; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
 
 ### 인가, Context, Endpoint
 
@@ -293,8 +293,9 @@ class AccountResolver {
 
 Cutover 전에 TypeScript type에 의존하지 말고 생성된 fluo SDL을 NestJS schema와 비교하세요.
 
-- Root `outputType`은 추론되지 않습니다. 생략하면 GraphQL `String`이 되므로 object와 list shape는 명시적 output type 및 `listOf(...)`로 보존하세요.
-- Required output field는 명시적으로 보존하세요. 새 code-first object field는 `nullable: false`일 때만 non-null이며, option을 생략하거나 `nullable: true`로 두면 nullable입니다. 선언한 GraphQL output type의 기존 non-null wrapper도 보존하세요.
+- Root `outputType`은 추론되지 않습니다. 생략하면 GraphQL `String`이 되므로 object와 list shape는 명시적 output type 및 `listOf(...)`로 보존하세요. Root `@Query`, `@Mutation`, `@Subscription` 반환 타입은 기본 `String`을 포함해 기본적으로 nullable입니다.
+- 필수 root 반환값은 root decorator의 `nullable: false`로 보존하세요. 예를 들어 `@Query({ nullable: false, outputType: AccountType })` 또는 `@Query({ nullable: false, outputType: listOf(AccountType) })`를 사용합니다. 필수 list는 `[Account]!`이며 `[Account!]!`가 아닙니다. Item nullability는 그대로입니다. 필수 root에서 `null`을 반환하면 GraphQL 오류가 발생하고 top-level data가 null이 되므로, 값을 반환하거나 오류를 던지는 resolver에만 지정하세요. 생략하거나 `nullable: true`로 두면 계속 nullable입니다.
+- Object field는 별도로 보존하세요. 새 code-first object field는 `@FieldResolver`에 `nullable: false`를 지정할 때만 non-null이며, 생략하거나 `nullable: true`로 두면 nullable입니다. 선언한 GraphQL object output type의 기존 non-null wrapper도 보존하세요.
 - `@Arg(...)` field는 nullable scalar 또는 list GraphQL argument를 만듭니다. Validation은 실행 시 누락 값을 거부할 수 있지만 schema argument를 non-null로 만들지는 않습니다. NestJS에서 required였던 GraphQL argument는 생성 SDL이 required contract와 일치할 때까지 compatibility gap으로 취급하고, 넓어진 nullable argument를 조용히 허용하지 마세요.
 
 Request-scoped provider를 주입하는 resolver에는 반드시 `@Scope('request')`를 붙여야 합니다. fluo는 HTTP request와 WebSocket operation마다 하나의 operation DI container를 만들고, 그 operation의 root 및 field resolver가 공유하게 한 다음 HTTP completion, operation completion, disconnect 때 dispose합니다. 이 DI disposal이 외부 event subscription까지 소유하지는 않습니다. Application은 typed `AsyncIterable`을 반환하고 GraphQL이 소비를 멈출 때 application resource를 닫아야 합니다.

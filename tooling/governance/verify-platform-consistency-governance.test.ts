@@ -4346,8 +4346,8 @@ describe('repository governance contracts', () => {
       expect(source).toContain('DrizzleModule.forRoot(...)');
     }
 
-    expect(packageChooser).toContain('Need Drizzle-based relational access on Node.js');
-    expect(packageChooserKo).toContain('Node.js에서 Drizzle 기반 관계형 접근이 필요함');
+    expect(packageChooser).toContain('drizzle-orm/bun-sqlite');
+    expect(packageChooserKo).toContain('drizzle-orm/bun-sqlite');
 
     for (const source of [docsContext, packageSurface, packageChooser, drizzleBook, drizzleReadme]) {
       expect(source).toMatch(/raw Drizzle (?:driver handle|provider guidance|handle)/u);
@@ -4389,6 +4389,32 @@ describe('repository governance contracts', () => {
       expect(source).toContain('DrizzleDatabase.requestTransaction(...)');
       expect(source).toMatch(/controller|컨트롤러/u);
     }
+  });
+
+  it.each([
+    ['docs/CONTEXT.md', 'drizzle-orm/libsql'],
+    ['docs/CONTEXT.ko.md', 'drizzle-orm/libsql'],
+    ['docs/reference/package-surface.md', 'drizzle-orm/libsql'],
+    ['docs/reference/package-surface.ko.md', 'drizzle-orm/libsql'],
+    ['docs/reference/package-chooser.md', 'drizzle-orm/libsql'],
+    ['docs/reference/package-chooser.ko.md', 'drizzle-orm/libsql'],
+    ['packages/drizzle/README.md', 'drizzle-orm/libsql'],
+    ['packages/drizzle/README.ko.md', 'drizzle-orm/libsql'],
+    ['docs/CONTEXT.md', 'drizzle-orm/bun-sqlite'],
+    ['docs/CONTEXT.ko.md', 'drizzle-orm/bun-sqlite'],
+    ['docs/reference/package-surface.md', 'drizzle-orm/bun-sqlite'],
+    ['docs/reference/package-surface.ko.md', 'drizzle-orm/bun-sqlite'],
+    ['docs/reference/package-surface.md', 'DrizzleDatabase.requestTransaction(...)'],
+    ['docs/reference/package-surface.ko.md', 'DrizzleDatabase.requestTransaction(...)'],
+  ])('rejects missing Drizzle contract identifier %s: %s', (path, identifier) => {
+    const readText = (relativePath: string): string => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === path ? content.replaceAll(identifier, '') : content;
+    };
+
+    expect(() => enforceCanonicalRuntimeMatrixReferences(readText)).toThrow(
+      /conditional Bun async-driver boundary/u,
+    );
   });
 
   it('keeps compatible-copy transaction capability provenance synchronized across transaction docs', () => {

@@ -134,7 +134,7 @@ pnpm build
 | **운영** | [Health (Terminus)](./packages/terminus/README.ko.md), [Metrics](./packages/metrics/README.ko.md), [Throttler](./packages/throttler/README.ko.md) |
 | **React·개발 도구** | [React](./packages/react/README.ko.md), [CLI](./packages/cli/README.ko.md), [Testing](./packages/testing/README.ko.md), [Vite](./packages/vite/README.ko.md), [Studio](./packages/studio/README.ko.md) |
 
-**런타임 지원은 패키지별입니다.** 어댑터가 있다고 모든 패키지가 해당 호스트에서 실행되는 것은 아닙니다. 예를 들어 Drizzle 통합은 Node.js 전용이고, Socket.IO 어댑터는 Node.js와 Bun을 지원하지만 Deno·Workers는 지원하지 않습니다. Next.js 통합은 Node.js 호스트용이며 Edge Runtime을 지원하지 않습니다. 호스트를 바꿀 때는 시작·종료 방식과 의존성을 [Canonical Runtime Package Matrix](./docs/reference/package-surface.ko.md) 및 해당 패키지 README에서 확인하세요.
+**런타임 지원은 패키지별입니다.** 어댑터가 있다고 모든 패키지가 해당 호스트에서 실행되는 것은 아닙니다. 예를 들어 Drizzle 통합은 Node.js `>=24.0.0 <27`을 전체 지원하고, Bun 1.4에서는 `drizzle-orm/libsql` 같은 비동기 트랜잭션 드라이버를 사용할 때만 조건부로 동작합니다. 동기 `drizzle-orm/bun-sqlite`는 await 이후 callback 예외를 롤백하지 못합니다. Socket.IO 어댑터는 Node.js와 Bun을 지원하지만 Deno·Workers는 지원하지 않습니다. Next.js 통합은 Node.js 호스트용이며 Edge Runtime을 지원하지 않습니다. 호스트를 바꿀 때는 시작·종료 방식과 의존성을 [Canonical Runtime Package Matrix](./docs/reference/package-surface.ko.md) 및 해당 패키지 README에서 확인하세요.
 
 ## 이어서 읽기
 

@@ -22,7 +22,10 @@ export function createFastifyTestApplication(
 ) {
   return FluoFactory.create(rootModule, {
     ...options,
-    adapter: FastifyHttpApplicationAdapter.create(options),
+    adapter: FastifyHttpApplicationAdapter.create({
+      ...options,
+      host: options.host ?? '127.0.0.1',
+    }),
     logger: options.logger ?? createConsoleApplicationLogger(),
   });
 }

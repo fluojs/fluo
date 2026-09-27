@@ -107,7 +107,7 @@ NestJS에서 이전하나요? Resolver authorization, schema nullability, scope,
 ### Code-first Resolvers
 fluo는 표준 데코레이터를 사용하여 GraphQL 스키마를 정의합니다. `@Resolver`, `@Query`, `@Mutation`, `@Subscription`을 사용하여 클래스 메서드를 GraphQL 작업에 매핑합니다. GraphQL 인자는 input DTO 필드에 `@Arg(...)`로 선언하고, resolver 메서드는 작업의 `input` 옵션을 통해 해당 DTO를 받습니다. Object field resolver는 `@Resolver('TypeName')`, `@FieldResolver(...)`, 명시적 `@Parent()` / `@Context()` method binding을 사용합니다.
 
-Resolver 반환 타입은 TypeScript metadata에서 추론되지 않습니다. `outputType`이 없는 operation은 GraphQL `String`을 사용합니다. Object 결과에는 GraphQL output type을 전달해야 하고, array 결과에는 item type을 `listOf(...)`로 감싸야 합니다.
+Resolver 반환 타입은 TypeScript metadata에서 추론되지 않습니다. `outputType`이 없는 operation은 GraphQL `String`을 사용합니다. Object 결과에는 GraphQL output type을 전달해야 하고, array 결과에는 item type을 `listOf(...)`로 감싸야 합니다. Root `@Query`, `@Mutation`, `@Subscription` 반환값(기본 `String` 포함)은 `nullable`을 생략하거나 `true`로 지정하면 nullable입니다. 전체 root 반환값을 필수로 만들려면 `nullable: false`를 지정하세요. 예를 들어 `listOf(UserType)`은 `[User]!`가 되지만 item은 계속 nullable(`User`, `User!` 아님)입니다. 필수 resolver는 값을 반환하거나 오류를 던져야 합니다. `null`을 반환하면 GraphQL 오류와 null top-level data가 발생합니다. Object field type과 `@FieldResolver`의 nullability는 별개이며, `@Arg(...)` argument는 계속 nullable입니다.
 
 ```typescript
 import { GraphQLObjectType, GraphQLString } from 'graphql';
@@ -128,7 +128,7 @@ class UserResolver {
     return userService.findCurrent();
   }
 
-  @Query({ outputType: listOf(UserType) })
+  @Query({ nullable: false, outputType: listOf(UserType) })
   async users() {
     return userService.findAll();
   }
@@ -225,7 +225,7 @@ class UserResolver {
 ```
 
 ## Resolver Lifecycle 계약
-<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
+<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; root-default=nullable; root-required=nullable-false; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
 
 - Singleton resolver가 기본값이며, 각 operation에서 애플리케이션 컨테이너를 통해 resolve됩니다.
 - Request-scoped provider를 주입하는 resolver는 resolver 자체에도 `@Scope('request')`를 지정해야 합니다. 이렇게 해야 DI lifetime 규칙이 명시적으로 유지되고 singleton-to-request dependency mismatch를 피할 수 있습니다.
@@ -234,7 +234,7 @@ class UserResolver {
 - WebSocket `connectionParams`는 client가 제공하는 신뢰할 수 없는 `Record<string, unknown>`입니다. Application-owned subscription setup에서 이를 parse 및 authorize한 뒤 application stream을 만드세요.
 - HTTP endpoint는 `/graphql`로 고정되며 NestJS `GraphQLModule.forRoot({ path })` 설정에 대응하는 fluo option은 없습니다.
 - Resolver decorator에는 public instance target이 필요합니다. Root 및 field decorator는 private/static method를 거부하고, `@Arg()`는 private/static input field를 거부합니다.
-- 새 output field는 `nullable: false`일 때만 non-null입니다. Option을 생략하거나 `nullable: true`면 nullable이며, `@Arg(...)`는 nullable scalar 또는 list argument를 만들고 DTO validation도 이를 SDL의 non-null로 바꾸지 않습니다.
+- Code-first root operation과 새 object field는 각각의 `nullable: false` option을 지정할 때만 non-null입니다. 생략하거나 `nullable: true`면 nullable이며, 필수 list root라도 item의 nullability는 변하지 않습니다. `@Arg(...)`는 nullable scalar 또는 list argument를 만들고 DTO validation도 이를 SDL의 non-null로 바꾸지 않습니다.
 - Resolver 메서드는 `GraphQLContext`를 받으며, 내장 필드에는 fluo `request`, 앞서 설정된 인증된 HTTP `principal`, WebSocket subscription의 `connectionParams`와 `socket`, 그리고 `GraphqlModule.forRoot({ context })`가 반환한 사용자 정의 필드가 포함됩니다.
 - Object field resolver는 root resolver와 같은 provider scope 및 operation container를 사용합니다. `@Parent()`와 `@Context()`는 positional method argument만 제어합니다.
 - `OperationScopedDataLoader.create(...)`는 `GraphQLContext` operation 경계를 사용하므로 loader cache는 하나의 GraphQL operation 안에서만 공유됩니다. `createDataLoaderMap`, `getRequestScopedDataLoader`, `createRequestScopedDataLoaderFactory`는 고급 integration helper로 유지됩니다.
