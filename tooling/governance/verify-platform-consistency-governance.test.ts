@@ -28,10 +28,10 @@ import {
   enforceGraphqlRuntimeBoundaryDiscoverability,
   enforceHttpAdapterPortabilityDocumentationContract,
   enforceHttpCustomMethodContract,
-  enforceOpenApiNullableNormalizationContract,
   enforceMandatoryFirstPartyDependencyEngineAlignment,
   enforceNoDirectProcessEnvInOrdinaryPackageSource,
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices,
+  enforceOpenApiNullableNormalizationContract,
   enforcePassportJsBridgeNestjsMigration,
   enforcePersistenceTransactionInterceptorCompatibility,
   enforcePlatformShellLifecycleContract,
@@ -1179,6 +1179,31 @@ describe('enforcePersistenceTransactionInterceptorCompatibility', () => {
 });
 
 describe('enforceContractCompanionUpdates', () => {
+  it('requires bilingual navigation contract, discoverability, and machine regression companions', async () => {
+    // Given: a change to the HTTP-owned React navigation contract in either locale.
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const complete = [
+      'docs/contracts/react-navigation-payload.md',
+      'docs/contracts/react-navigation-payload.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/react-navigation-payload-contract.mjs',
+      'tooling/governance/react-navigation-payload-contract.test.ts',
+      'packages/react/src/navigation-payload.test.ts',
+      'packages/react/src/client-navigation-payload.test.ts',
+    ];
+
+    // When / Then: each contract change needs the complete specific companion set.
+    expect(() => enforceContractCompanionUpdates(complete)).not.toThrow();
+    for (const missing of complete.slice(1)) {
+      expect(() => enforceContractCompanionUpdates(complete.filter((path) => path !== missing)))
+        .toThrow(/React navigation payload contract updates must include/u);
+    }
+    expect(() => enforceContractCompanionUpdates(complete.filter((path) =>
+      path !== 'docs/contracts/react-navigation-payload.md')))
+      .toThrow(/React navigation payload contract updates must include/u);
+  });
+
   it('requires bilingual context discoverability companions for release-contract changes', async () => {
     // Given: a release-governing contract update with its tooling and regression companion.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();

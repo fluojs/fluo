@@ -17,6 +17,7 @@ The HTTP execution layer that turns route metadata into a request pipeline with 
 - [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
 - [Byte Range Responses](#byte-range-responses)
+- [HTTP-Owned React Navigation](#http-owned-react-navigation)
 - [HTTP Error Representations](#http-error-representations)
 - [Request Cleanup and Portability](#request-cleanup-and-portability)
 - [Public API](#public-api)
@@ -570,6 +571,23 @@ Node.js, Express, and Fastify expose this capability. Fetch-style Web, Bun, Deno
 `HttpApplicationAdapter.getRealtimeCapability()` reports whether a platform is server-backed, fetch-style, or unsupported for realtime protocol integration. The fetch-style capability remains version 1. Hosts may additionally expose its optional, independently versioned `bindingInstallation` extension so first-party realtime packages can install their binding before adapter `listen()` starts without changing the stable capability discriminator.
 
 `createFetchStyleHttpAdapterRealtimeCapability(reason, options)` always returns the source-compatible version 1 capability. When an installer is supplied, the returned value also includes `bindingInstallation`; that installer accepts a protocol-owned binding or `undefined` for pre-listen cleanup. The platform adapter remains responsible for parsing that boundary into its host-specific binding type. Once a managed adapter is live, its `close()` boundary owns final binding cleanup. Application code should normally register `@fluojs/websockets` or `@fluojs/socket.io` modules rather than call this low-level adapter capability directly.
+
+## HTTP-Owned React Navigation
+
+Only a successful opted-in `@fluojs/react` page can offer the version 1 client navigation
+representation. The dispatcher selects it after matching, URI versioning, middleware, DTO
+binding/validation, guards, interceptors, handler execution, and response-value finalization,
+when a GET sends exactly `Accept: application/vnd.fluo.react-navigation+json;v=1`.
+HTTP applies route metadata, matched URL/params, status, response validators, existing `Vary`
+and `Set-Cookie`, plus `Vary: Accept` and `Cache-Control: private, no-store` on the payload.
+An ordinary GET without that Accept value streams the original React HTML response.
+
+Redirects and errors retain their existing HTTP response and error-representation policies:
+navigation JSON is never a successful alternative for 404, 401/403, validation failure,
+non-page values, or an error document. Request abort and response-commit checks remain in
+the dispatcher; no extra endpoint or React URL matcher is installed. See the
+[navigation payload contract](../../docs/contracts/react-navigation-payload.md) for the
+browser module mapping, credentials, fallback, and stream cleanup rules.
 
 ## HTTP Error Representations
 

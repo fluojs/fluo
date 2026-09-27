@@ -38,6 +38,7 @@ import { enforcePassportCookiePresetContract } from './passport-cookie-preset-co
 import { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 import { enforcePrismaNestjsMigrationDocs } from './prisma-nestjs-migration-docs.mjs';
 import { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
+import { enforceReactNavigationPayloadContract } from './react-navigation-payload-contract.mjs';
 import { enforceReactRscGraduationGovernance } from './react-rsc-graduation-policy.mjs';
 import { enforceRequestPipelineImportBoundary } from './request-pipeline-import-boundary.mjs';
 import { enforceRuntimeLifecycleNestjsMigrationDocs } from './runtime-lifecycle-nestjs-migration-docs.mjs';
@@ -135,6 +136,7 @@ export { enforcePassportJsBridgeNestjsMigration } from './passport-js-bridge-nes
 export { enforcePassportCookiePresetContract } from './passport-cookie-preset-contract.mjs';
 export { enforcePlatformShellLifecycleContract } from './platform-shell-lifecycle-contract.mjs';
 export { enforceReactPageCatalogContract } from './react-page-catalog-contract.mjs';
+export { enforceReactNavigationPayloadContract } from './react-navigation-payload-contract.mjs';
 export {
   enforceReactRscGraduationEvidenceUpdates,
   enforceReactRscGraduationGovernance,
@@ -743,6 +745,8 @@ const contractGateTriggers = new Set([
   'docs/contracts/public-export-tsdoc-baseline.ko.md',
   'docs/contracts/react-rsc-graduation.md',
   'docs/contracts/react-rsc-graduation.ko.md',
+  'docs/contracts/react-navigation-payload.md',
+  'docs/contracts/react-navigation-payload.ko.md',
   'docs/contracts/release-governance.md',
   'docs/contracts/release-governance.ko.md',
   'docs/contracts/platform-conformance-authoring-checklist.md',
@@ -1670,6 +1674,24 @@ function emailMigrationEnforcementChanged(changedFiles, migrationGuideSnapshots)
 }
 
 export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnapshots) {
+  const navigationContractPaths = [
+    'docs/contracts/react-navigation-payload.md',
+    'docs/contracts/react-navigation-payload.ko.md',
+  ];
+  if (navigationContractPaths.some((path) => hasChanged(changedFiles, path))) {
+    const required = [
+      ...navigationContractPaths,
+      ...contractDiscoverabilityCompanions,
+      'tooling/governance/react-navigation-payload-contract.mjs',
+      'tooling/governance/react-navigation-payload-contract.test.ts',
+      'packages/react/src/navigation-payload.test.ts',
+      'packages/react/src/client-navigation-payload.test.ts',
+    ];
+    assert(
+      required.every((path) => hasChanged(changedFiles, path)),
+      `React navigation payload contract updates must include ${required.filter((path) => !hasChanged(changedFiles, path)).join(', ')}.`,
+    );
+  }
   const touchedEmailMigrationDocumentation =
     emailMigrationSectionChanged(changedFiles, migrationGuideSnapshots) ||
     emailMigrationEnforcementChanged(changedFiles, migrationGuideSnapshots);
@@ -4603,6 +4625,7 @@ export async function main() {
   enforceNoNodeGlobalBufferInDenoAndCloudflareWorkerServices();
   enforceViteToolingDiscoverability();
   enforceReactPageCatalogContract();
+  enforceReactNavigationPayloadContract();
   enforceReactPageMetadataIdentityContract();
   enforceReactClientSubpathContract();
   enforceReactRscGraduationGovernance(changedFiles);

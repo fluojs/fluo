@@ -11,12 +11,14 @@ SSR, Vite manifest asset, hydrated browser runtime, progressively enhanced nativ
 
 - fluo HTTP module graph가 발견하는 `@Router('/products')` 및 `@Path('/:sku')` page route.
 - `@RequestDto(...)`, `@FromPath('sku')`, `@FromQuery('preview')`를 통한 typed path/search input.
-- Application `renderPage` callback이 manifest-derived hydration option과 compose하는 직접적인
-  `ReactElement` page return.
+- Application `renderPage` callback이 manifest-derived hydration option과 compose하는
+  opt-in `ReactNavigationPage`의 일반 document response.
 - Web Streams SSR이 fallback과 resolve된 recommendation content를 emit하는 `Suspense` boundary.
 - `dist/client/.vite/manifest.json`을 생성하는 Vite client build와, 이미 로드한 manifest를 ordered
   CSS 및 hydration module asset으로 바꾸는 `@fluojs/react/vite`.
 - React DOM `hydrateRoot(...)`를 통해 interactive 상태가 되는 server-rendered counter.
+- HTTP-confirmed URL/param을 Vite-built `import.meta.glob(...)` module map으로 소비하고
+  기존 document와 counter를 유지하는 명시적으로 협상된 GET.
 - Server-owned DTO validation boundary에 계속 도달하는 `@fluojs/react/client` route snapshot,
   URL-state hook, progressive `Link`, full-document `push` navigation.
 - 일반 guarded/intercepted `@Post(...)` route에 도달해 application state를 mutate하고 HTTP-matched
@@ -37,6 +39,8 @@ pnpm --filter @fluojs/example-react-vite-ssr start
 Vite-generated client entry가 server HTML을 hydrate한 뒤에만 label이 `Count: 1`로 바뀝니다.
 `Open sku-84` 또는 `Push sku-126`을 사용하면 same-origin full-document navigation을 수행하고,
 각 destination은 fluo HTTP route에서 다시 match, bind, validate됩니다.
+`Load sku-84 destination`은 명시적 navigation payload request를 한 번 보내고 기존 React
+tree에 build된 destination component를 렌더링합니다. Browser URL은 바뀌지 않습니다.
 
 반복 가능한 SSR 및 hydration 검증은 다음 명령으로 실행합니다.
 
@@ -51,6 +55,27 @@ non-200 response, hydration warning/error, identifier-prefix mismatch, hydrate�
 URL과 server-rendered route state가 일치하지 않는 client navigation, `POST` → `303` → `GET` flow를
 완료하지 못하는 native form이 있으면 실패합니다.
 
+## 협상된 destination workflow
+
+`src/app.ts`는 application이 로드한 Vite manifest에 `src/navigation-product.ts`가 있는지
+확인합니다. Matched product handler는
+`ReactNavigationPage.create(ProductDocument, { module: './navigation-product.ts', props })`를
+반환합니다. 일반 document GET은 HTML shell, hydration script, Suspense content와 request
+URL을 계속 stream합니다. `Accept: application/vnd.fluo.react-navigation+json;v=1` GET은
+같은 HTTP DTO/module pipeline을 실행한 뒤 server URL/param과 browser destination을
+반환합니다. `src/entry-client.ts`는 Vite가 compile한 `import.meta.glob(...)` map을 hydrated
+document에 전달합니다. `src/page.ts`는 `loadReactNavigationDestination(...)`로 HTTP
+response를 검증한 다음 `navigation-product.ts`를 import/render합니다. Counter는 유지됩니다.
+Browser `Link`, `push`, `replace`는 계속 full-document navigation입니다.
+
+Client는 same-origin cookie를 보내고 `Set-Cookie`는 일반 browser 처리에 맡기며
+`cache: 'no-store'`를 사용합니다. Prefetch나 payload 재사용은 없습니다. Redirect, error,
+invalid/unsupported payload, 사용할 수 없는 module은 일반 document fallback을 실행하고
+취소된 load는 실행하지 않습니다. 이 예제는 streamed React bootstrap/Suspense script에
+response별 CSP nonce를 부여해 production Fastify security policy 아래에서도 default
+script policy를 완화하지 않고 hydration합니다. 자세한 계약은
+[navigation payload contract](../../docs/contracts/react-navigation-payload.ko.md)를 참고하세요.
+
 ## canonical consumer test map
 
 이 예제는 canonical React consumer loop의 바깥쪽 절반을 담당하고 package 및 CLI fixture는 더 작은 unit과
@@ -59,7 +84,7 @@ generated type을 검증합니다.
 | layer | executable evidence |
 | --- | --- |
 | Render-policy unit | `packages/react/src/render-policy.test.ts`가 composition과 diagnostic을 직접 검증합니다. |
-| Real request dispatch | `src/app.test.ts`가 `Test.createApp(...)`로 direct page return, DTO failure, guard/interceptor behavior, native mutation response를 검증합니다. |
+| Real request dispatch | `src/app.test.ts`가 `Test.createApp(...)`로 opt-in page, DTO failure, guard/interceptor behavior, native mutation response를 검증합니다. |
 | Generated-route compile/check | `packages/cli/src/commands/typegen-navigation.test.ts`가 positive/negative route-id/params fixture를 compile하고 `typegen.test.ts`가 non-mutating stale check를 검증합니다. |
 | Hydration | `src/hydration.test.ts`가 warning-free interaction과 `onRecoverableError` 기반 mismatch reporting을 모두 검증합니다. |
 | Production 및 no JavaScript | `tests/production-hydration.spec.ts`가 build asset과 hydration을 검증한 뒤 `javaScriptEnabled: false`로 native form을 submit합니다. |
@@ -102,7 +127,7 @@ mutation route나 cache policy를 소유하지 않으므로 submit-state helper�
 
 - 안정 `0.1.0` root contract는 계속 HTTP-first React SSR을 소유합니다. 이 `0.2.0` 예제는 초기
   SSR 예제 이후 추가된 `@fluojs/react/vite` manifest parser와 그 contract를 조합합니다.
-- Direct page return은 두 번째 response path를 만들지 않습니다. Application renderer는 계속
+- Opt-in page return은 두 번째 response path를 만들지 않습니다. Application renderer는 계속
   `ReactServerEntry`를 반환하고 기존 HTTP writer가 status, header, error, streaming을 소유합니다.
 - `src/entry-client.ts`가 browser-only boundary입니다. Server module은 `window`나 `document`에
   접근하지 않으며, server는 application boundary에서 Vite manifest를 명시적으로 로드합니다.

@@ -1,4 +1,4 @@
-import { appendVaryHeader } from '../header-helpers.js';
+import { appendVaryHeader, getRequestHeader, getResponseHeader } from '../header-helpers.js';
 import type {
   FrameworkRequest,
   FrameworkResponse,
@@ -25,7 +25,9 @@ import {
 } from '../byte-range-response.js';
 import {
   FRAMEWORK_RESPONSE_VALUE_FINALIZER,
+  FRAMEWORK_RESPONSE_REPRESENTATION,
   FRAMEWORK_RESPONSE_WRITER,
+  type FrameworkResponseRepresentation,
   type FrameworkResponseValueFinalizer,
   type FrameworkResponseWriter,
 } from './response-integration.js';
@@ -118,6 +120,30 @@ function readFrameworkResponseWriter(value: unknown): FrameworkResponseWriter | 
   const writer = Reflect.get(value, FRAMEWORK_RESPONSE_WRITER);
 
   return typeof writer === 'function' ? writer : undefined;
+}
+
+function readFrameworkResponseRepresentation(value: unknown): FrameworkResponseRepresentation | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+  const representation: unknown = Reflect.get(value, FRAMEWORK_RESPONSE_REPRESENTATION);
+  if (typeof representation !== 'object' || representation === null) {
+    return undefined;
+  }
+  const mediaType: unknown = Reflect.get(representation, 'mediaType');
+  const body: unknown = Reflect.get(representation, 'body');
+  return typeof mediaType === 'string' && typeof body === 'function'
+    ? { mediaType, body: (context) => Reflect.apply(body, representation, [context]) }
+    : undefined;
+}
+
+function requestsRepresentation(request: FrameworkRequest, mediaType: string): boolean {
+  if (request.method.toUpperCase() !== 'GET') {
+    return false;
+  }
+  const accept = getRequestHeader(request, 'accept');
+  const values = Array.isArray(accept) ? accept : accept === undefined ? [] : [accept];
+  return values.some((value) => value.trim().toLowerCase() === mediaType.toLowerCase());
 }
 
 function readFrameworkResponseValueFinalizer(requestContext: RequestContext): FrameworkResponseValueFinalizer | undefined {
@@ -218,6 +244,7 @@ export async function writeSuccessResponse(
   const responseValue = responseValueFinalizer
     ? await responseValueFinalizer({ handler, request, requestContext, response, value })
     : value;
+  const representation = readFrameworkResponseRepresentation(responseValue);
   const writerValue = readFrameworkResponseWriter(responseValue)
     ? responseValue
     : isByteRangeByteSource(responseValue) && shouldApplyByteRange(request, validators)
@@ -239,6 +266,33 @@ export async function writeSuccessResponse(
       applySuccessResponseMetadata({ formatter: undefined, handler, response, value: responseValue });
       applyResponseValidators(response, validators);
     };
+
+    if (representation) {
+      if (requestsRepresentation(request, representation.mediaType)) {
+        const body = await representation.body({
+          applySuccessResponseMetadata: applyWriterSuccessResponseMetadata,
+          handler,
+          request,
+          requestContext,
+          response,
+          validators,
+          value: writerValue,
+        });
+        if (request.signal?.aborted === true || request.isAborted?.() === true || response.committed) {
+          return;
+        }
+        applyWriterSuccessResponseMetadata();
+        response.setHeader('Content-Type', representation.mediaType);
+        appendVaryHeader(response, 'Accept');
+        const cacheControl = getResponseHeader(response, 'Cache-Control');
+        response.setHeader('Cache-Control', [
+          ...(cacheControl === undefined ? [] : Array.isArray(cacheControl) ? cacheControl : [cacheControl]),
+          'private, no-store',
+        ].join(', '));
+        return response.send(body);
+      }
+      appendVaryHeader(response, 'Accept');
+    }
 
     return responseWriter({
       applySuccessResponseMetadata: applyWriterSuccessResponseMetadata,

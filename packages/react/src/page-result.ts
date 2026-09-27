@@ -1,6 +1,8 @@
 import {
   type FrameworkResponseValueFinalizerContext,
+  type FrameworkResponseWriterContext,
   registerFrameworkResponseValueFinalizer,
+  registerFrameworkResponseWriter,
 } from '@fluojs/http/internal';
 import {
   isRequestAbortedError,
@@ -23,6 +25,7 @@ import {
   readReactSsrDiagnosticMarker,
   reportReactSsrDiagnostic,
 } from './diagnostics.js';
+import { isReactNavigationPage, type ReactNavigationPayload } from './navigation-payload.js';
 import type { ReactPageRenderer } from './page-renderer.js';
 import { getReactRenderPolicies } from './render-policy.js';
 import { isReactServerEntry } from './server-entry.js';
@@ -104,6 +107,66 @@ function finalizeReactPageResult(
 ): unknown {
   if (getReactPathMetadata(context.handler.controllerToken, context.handler.methodName) === undefined) {
     return context.value;
+  }
+
+  if (isReactNavigationPage(context.value)) {
+    if (runtime.renderPage === undefined) {
+      throw new ReactSsrDiagnosticError(
+        'A @Path handler returned a React page, but ReactModule.forRoot(...) has no renderPage callback. '
+        + 'Configure renderPage or return createReactServerEntry(...) explicitly.',
+        {
+          code: REACT_SSR_DIAGNOSTIC_CODES.missingPageRenderer,
+          phase: REACT_SSR_DIAGNOSTIC_PHASES.httpPipeline,
+        },
+      );
+    }
+    const { node, destination } = context.value;
+    const renderPage = runtime.renderPage;
+    const page = registerFrameworkResponseWriter(
+      { node, destination },
+      async (writerContext) => {
+        const entry = renderPage(
+          node,
+          writerContext.requestContext,
+          getReactRenderPolicies(context.handler.controllerToken, context.handler.methodName),
+        );
+        const { renderReactResponse } = await import('./render.js');
+        await renderReactResponse(entry, writerContext.requestContext, {
+          applySuccessResponseMetadata: writerContext.applySuccessResponseMetadata,
+        });
+      },
+    );
+    Object.defineProperty(page, Symbol.for('fluo.http.responseRepresentation'), {
+      enumerable: false,
+      value: {
+        mediaType: 'application/vnd.fluo.react-navigation+json;v=1',
+        body: ({ request, requestContext, response, applySuccessResponseMetadata }: FrameworkResponseWriterContext): ReactNavigationPayload => {
+          const entry = renderPage(
+            node,
+            requestContext,
+            getReactRenderPolicies(context.handler.controllerToken, context.handler.methodName),
+          );
+          const payload: ReactNavigationPayload = {
+            version: 1,
+            url: request.url,
+            params: { ...request.params },
+            destination: {
+              module: destination.module,
+              props: JSON.parse(JSON.stringify(destination.props)),
+            },
+          };
+          applySuccessResponseMetadata();
+          if (entry.status !== undefined) {
+            response.setStatus(entry.status);
+          }
+          for (const [name, value] of Object.entries(entry.headers)) {
+            response.setHeader(name, typeof value === 'string' ? value : [...value]);
+          }
+          return payload;
+        },
+      },
+    });
+    return page;
   }
 
   if (isReactServerEntry(context.value)) {
