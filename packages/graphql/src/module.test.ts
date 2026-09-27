@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { Inject, Scope } from '@fluojs/core';
 import { Container } from '@fluojs/di';
 import type { MiddlewareContext, Next } from '@fluojs/http';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { bootstrapModule, type CompiledModule, defineModule } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { IsInt, MinLength } from '@fluojs/validation';
@@ -472,6 +473,14 @@ describe('@fluojs/graphql', () => {
     const app = await bootstrapNodeApplication(AppModule, { cors: false, port: portToken });
     await app.listen();
 
+    const adapter = await app.get(HTTP_APPLICATION_ADAPTER);
+    if (!(adapter instanceof NodeHttpApplicationAdapter)) {
+      throw new TypeError('Expected a Node HTTP application adapter.');
+    }
+    expect(adapter.getServer().address()).toMatchObject({
+      address: '127.0.0.1',
+      family: 'IPv4',
+    });
     expect(await resolvePort(portToken)).not.toBe(portToken);
   });
 

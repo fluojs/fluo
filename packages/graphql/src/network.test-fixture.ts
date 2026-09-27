@@ -31,7 +31,11 @@ export function createGraphqlNetworkFixture(): {
       const token = options?.port;
       const app = await createNodeTestApplication(
         rootModule,
-        token !== undefined && applications.has(token) ? { ...options, port: 0 } : options,
+        {
+          ...options,
+          host: options?.host ?? '127.0.0.1',
+          ...(token !== undefined && applications.has(token) ? { port: 0 } : {}),
+        },
       );
 
       if (token !== undefined && applications.has(token)) {
