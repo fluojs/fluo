@@ -64,6 +64,8 @@ function getBoundPort(server: unknown): number {
     throw new Error('Failed to resolve a bound test port.');
   }
 
+  // The clients below connect to the IPv4 loopback, not an IPv6 wildcard.
+  expect(address.family).toBe('IPv4');
   return address.port;
 }
 
@@ -643,7 +645,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ChatGateway],
     });
 
-    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -713,7 +715,7 @@ describe('@fluojs/websockets', () => {
       providers: [GatewayState, ReturnOnlyGateway],
     });
 
-    const adapter = NodeHttpApplicationAdapter.create({ port: 0 });
+    const adapter = NodeHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
     const app = await FluoFactory.create(AppModule, {
       adapter,
     });
@@ -2560,7 +2562,10 @@ function createExpressTestApplication(
 ) {
   return FixtureRuntime.FluoFactory.create(rootModule, {
     ...options,
-    adapter: FixtureExpressPlatform.ExpressHttpApplicationAdapter.create(options),
+    adapter: FixtureExpressPlatform.ExpressHttpApplicationAdapter.create({
+      ...options,
+      host: options.host ?? '127.0.0.1',
+    }),
     logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
   });
 }
@@ -2575,7 +2580,10 @@ function createFastifyTestApplication(
 ) {
   return FixtureRuntime.FluoFactory.create(rootModule, {
     ...options,
-    adapter: FixtureFastifyPlatform.FastifyHttpApplicationAdapter.create(options),
+    adapter: FixtureFastifyPlatform.FastifyHttpApplicationAdapter.create({
+      ...options,
+      host: options.host ?? '127.0.0.1',
+    }),
     logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
   });
 }
@@ -2590,7 +2598,10 @@ function createNodeTestApplication(
 ) {
   return FixtureRuntime.FluoFactory.create(rootModule, {
     ...options,
-    adapter: FixtureNodePlatform.NodeHttpApplicationAdapter.create(options),
+    adapter: FixtureNodePlatform.NodeHttpApplicationAdapter.create({
+      ...options,
+      host: options.host ?? '127.0.0.1',
+    }),
     logger: options.logger ?? FixtureNodePlatform.createConsoleApplicationLogger(),
   });
 }

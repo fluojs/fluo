@@ -114,7 +114,7 @@ Migrating from NestJS? Read the [NestJS → fluo Migration Map](../../docs/getti
 ### Code-first Resolvers
 fluo uses standard decorators to define your GraphQL schema. Use `@Resolver`, `@Query`, `@Mutation`, and `@Subscription` to map class methods to GraphQL operations. GraphQL arguments are declared on input DTO fields with `@Arg(...)`, then passed to the resolver method through the operation `input` option. Object field resolvers use `@Resolver('TypeName')` plus `@FieldResolver(...)` and explicit `@Parent()` / `@Context()` method bindings.
 
-Resolver return types are not inferred from TypeScript metadata. An operation without `outputType` uses GraphQL `String`; object results must provide a GraphQL output type, and array results must wrap their item type with `listOf(...)`.
+Resolver return types are not inferred from TypeScript metadata. An operation without `outputType` uses GraphQL `String`; object results must provide a GraphQL output type, and array results must wrap their item type with `listOf(...)`. Root `@Query`, `@Mutation`, and `@Subscription` returns (including the default `String`) are nullable when `nullable` is omitted or `true`. Set `nullable: false` to require the whole root return, for example `[User]!` for `listOf(UserType)`; its items remain nullable (`User`, not `User!`). Return a value or throw from a required resolver: returning `null` causes a GraphQL error and null top-level data. Object field types and `@FieldResolver` nullability are separate, and `@Arg(...)` arguments remain nullable.
 
 ```typescript
 import { GraphQLObjectType, GraphQLString } from 'graphql';
@@ -135,7 +135,7 @@ class UserResolver {
     return userService.findCurrent();
   }
 
-  @Query({ outputType: listOf(UserType) })
+  @Query({ nullable: false, outputType: listOf(UserType) })
   async users() {
     return userService.findAll();
   }
@@ -232,7 +232,7 @@ class UserResolver {
 ```
 
 ## Resolver Lifecycle Contracts
-<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
+<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; root-default=nullable; root-required=nullable-false; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->
 
 - Singleton resolvers are the default and are resolved from the application container for every operation.
 - Resolvers that inject request-scoped providers must also be marked with `@Scope('request')`; this keeps DI lifetime rules explicit and avoids singleton-to-request dependency mismatches.
@@ -241,7 +241,7 @@ class UserResolver {
 - WebSocket `connectionParams` is an untrusted client-provided `Record<string, unknown>`; parse and authorize it in application-owned subscription setup before creating an application stream.
 - The HTTP endpoint is fixed at `/graphql`; a NestJS `GraphQLModule.forRoot({ path })` setting has no fluo option.
 - Resolver decorators require public instance targets: root and field decorators reject private or static methods, and `@Arg()` rejects private or static input fields.
-- New output fields are non-null only with `nullable: false`; omitted or `nullable: true` fields remain nullable. `@Arg(...)` produces nullable scalar or list arguments, and DTO validation does not make them non-null in the SDL.
+- Code-first root operations and new object fields are non-null only with their own `nullable: false` option; omitted or `nullable: true` returns remain nullable. A required list root does not change item nullability. `@Arg(...)` produces nullable scalar or list arguments, and DTO validation does not make them non-null in the SDL.
 - Resolver methods receive a `GraphQLContext` whose built-in fields expose the underlying fluo `request`, that pre-established authenticated HTTP `principal`, websocket `connectionParams` and `socket` for websocket subscriptions, and any custom fields returned from `GraphqlModule.forRoot({ context })`.
 - Object field resolvers use the same provider scope and operation container as root resolvers; `@Parent()` and `@Context()` only control positional method arguments.
 - `OperationScopedDataLoader.create(...)` uses the `GraphQLContext` operation boundary, so loader caches are shared only within one GraphQL operation. `createDataLoaderMap`, `getRequestScopedDataLoader`, and `createRequestScopedDataLoaderFactory` remain advanced integration helpers.

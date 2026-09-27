@@ -19,6 +19,8 @@ const requiredMigrationFacts = {
   'principal': 'before-graphql',
   'private-static-targets': 'rejected',
   'resolver-scope': 'request',
+  'root-default': 'nullable',
+  'root-required': 'nullable-false',
   'root-signature': 'input-context',
   'schema-first-field-resolver': 'unsupported',
 };
