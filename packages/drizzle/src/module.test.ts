@@ -1885,6 +1885,100 @@ describe('DrizzleModule.forRootAsync', () => {
 });
 
 describe('DrizzleModule named registrations', () => {
+  it.each([
+    ['sync', 'sync'],
+    ['async', 'async'],
+    ['sync', 'async'],
+    ['async', 'sync'],
+  ] as const)('rejects duplicate unnamed %s/%s registrations before factories and disposal', async (firstKind, secondKind) => {
+    const firstDatabase = {};
+    const secondDatabase = {};
+    const firstDispose = vi.fn();
+    const secondDispose = vi.fn();
+    const firstFactory = vi.fn(async () => ({ database: firstDatabase, dispose: firstDispose }));
+    const secondFactory = vi.fn(async () => ({ database: secondDatabase, dispose: secondDispose }));
+
+    const firstModule = firstKind === 'sync'
+      ? DrizzleModule.forRoot({ database: firstDatabase, dispose: firstDispose })
+      : DrizzleModule.forRootAsync({ useFactory: firstFactory });
+    const secondModule = secondKind === 'sync'
+      ? DrizzleModule.forRoot({ database: secondDatabase, dispose: secondDispose })
+      : DrizzleModule.forRootAsync({ useFactory: secondFactory });
+
+    class AppModule {}
+    defineModule(AppModule, { imports: [firstModule, secondModule] });
+
+    await expect(FluoFactory.create(AppModule)).rejects.toThrow(
+      'Duplicate @fluojs/drizzle registration identity "default (unnamed)".',
+    );
+    expect(firstFactory).not.toHaveBeenCalled();
+    expect(secondFactory).not.toHaveBeenCalled();
+    expect(firstDispose).not.toHaveBeenCalled();
+    expect(secondDispose).not.toHaveBeenCalled();
+  });
+
+  it('keeps one unnamed client distinct from a named default client through shutdown', async () => {
+    const database = {};
+    const namedDatabase = {};
+    const dispose = vi.fn();
+    const namedDispose = vi.fn();
+
+    @Inject(
+      DrizzleDatabase,
+      DRIZZLE_DATABASE,
+      DRIZZLE_DISPOSE,
+      DRIZZLE_OPTIONS,
+      DRIZZLE_HANDLE_PROVIDER,
+      getDrizzleDatabaseToken('default'),
+      getDrizzleDisposeToken('default'),
+      getDrizzleHandleProviderToken('default'),
+    )
+    class ClientConsumer {
+      constructor(
+        readonly drizzle: DrizzleDatabase<typeof database>,
+        readonly raw: typeof database,
+        readonly disposeHook: typeof dispose,
+        readonly options: { strictTransactions: boolean },
+        readonly handle: DrizzleDatabase<typeof database>,
+        readonly namedRaw: typeof namedDatabase,
+        readonly namedDisposeHook: typeof namedDispose,
+        readonly namedHandle: DrizzleDatabase<typeof namedDatabase>,
+      ) {}
+    }
+
+    class FeatureModule {}
+    defineModule(FeatureModule, {
+      imports: [
+        DrizzleModule.forRoot({ database, dispose }),
+        DrizzleModule.forRoot({ database: namedDatabase, dispose: namedDispose, name: 'default' }),
+      ],
+      providers: [ClientConsumer],
+    });
+
+    class AppModule {}
+    defineModule(AppModule, { imports: [FeatureModule] });
+
+    const app = await FluoFactory.create(AppModule);
+    try {
+      const consumer = await app.container.resolve(ClientConsumer);
+
+      expect(consumer.raw).toBe(database);
+      expect(consumer.disposeHook).toBe(dispose);
+      expect(consumer.options).toEqual({ strictTransactions: false });
+      expect(consumer.handle).toBe(consumer.drizzle);
+      expect(consumer.drizzle.current()).toBe(database);
+      expect(consumer.namedRaw).toBe(namedDatabase);
+      expect(consumer.namedDisposeHook).toBe(namedDispose);
+      expect(consumer.namedHandle.current()).toBe(namedDatabase);
+      expect(consumer.namedHandle).not.toBe(consumer.drizzle);
+    } finally {
+      await app.close();
+    }
+
+    expect(dispose).toHaveBeenCalledExactlyOnceWith(database);
+    expect(namedDispose).toHaveBeenCalledExactlyOnceWith(namedDatabase);
+  });
+
   it('exports distinct static named raw database, dispose, options, and lifecycle handle tokens', async () => {
     const primaryDatabase = {};
     const analyticsDatabase = {};

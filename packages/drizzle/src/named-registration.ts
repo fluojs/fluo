@@ -70,16 +70,14 @@ function createDrizzleProvidersAsync<
   options: DrizzleAsyncModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>,
   name: string | undefined,
 ): Provider[] {
-  const registrationGuardToken = name === undefined ? undefined : getRegistrationGuardToken(name);
+  const registrationGuardToken = getRegistrationGuardToken(name);
   const normalizedOptionsProvider = {
-    inject: registrationGuardToken === undefined
-      ? options.inject
-      : [registrationGuardToken, ...(options.inject ?? [])],
+    inject: [registrationGuardToken, ...(options.inject ?? [])],
     provide: getNormalizedOptionsToken(name),
     scope: 'singleton' as const,
     useFactory: async (...dependencies: unknown[]) =>
       normalizeDrizzleModuleOptions<TDatabase, TTransactionDatabase, TTransactionOptions>({
-        ...(await options.useFactory(...(registrationGuardToken === undefined ? dependencies : dependencies.slice(1)))),
+        ...(await options.useFactory(...dependencies.slice(1))),
         global: options.global,
         name,
       }),

@@ -22,7 +22,10 @@ export function createExpressTestApplication(
 ) {
   return FluoFactory.create(rootModule, {
     ...options,
-    adapter: ExpressHttpApplicationAdapter.create(options),
+    adapter: ExpressHttpApplicationAdapter.create({
+      ...options,
+      host: options.host ?? '127.0.0.1',
+    }),
     logger: options.logger ?? createConsoleApplicationLogger(),
   });
 }

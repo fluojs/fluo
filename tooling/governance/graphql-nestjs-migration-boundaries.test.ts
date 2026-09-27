@@ -7,7 +7,7 @@ import { enforceGraphqlNestjsMigrationBoundaries } from './graphql-nestjs-migrat
 
 const repoRoot = join(import.meta.dirname, '..', '..');
 const migrationMarker =
-  '<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->';
+  '<!-- fluo:graphql-nestjs-migration: principal=before-graphql; connection-params=untrusted-record; endpoint=fixed-/graphql; nest-path-option=unsupported; root-signature=input-context; decorator-targets=public-instance; private-static-targets=rejected; output-nullability=explicit; root-default=nullable; root-required=nullable-false; arg-nullability=nullable; resolver-scope=request; operation-disposal=completion-or-disconnect; async-iterable-cleanup=application-owned; field-resolver=code-first; schema-first-field-resolver=unsupported; nest-dynamic-module=unsupported; parameter-decorators=unsupported -->';
 const resolverMigrationFacts = [
   ['field-argument-dto', 'code-first-input-args-arg-types'],
   ['schema-first-field-resolver', 'unsupported'],
@@ -88,6 +88,25 @@ describe('GraphQL NestJS migration boundaries', () => {
           : read(relativePath);
 
       expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithoutPrincipalFact)).toThrow(driftedPath);
+    },
+  );
+
+  it.each(governedDocumentationPaths)(
+    'rejects changed root return nullability facts in %s',
+    (driftedPath) => {
+      for (const [name, value] of [
+        ['root-default', 'nullable'],
+        ['root-required', 'nullable-false'],
+      ] as const) {
+        const readWithDriftedRootFact = (relativePath: string): string =>
+          relativePath === driftedPath
+            ? read(relativePath).replace(`${name}=${value}`, `${name}=regressed`)
+            : read(relativePath);
+
+        expect(() => enforceGraphqlNestjsMigrationBoundaries(readWithDriftedRootFact)).toThrow(
+          driftedPath,
+        );
+      }
     },
   );
 
