@@ -175,6 +175,7 @@ describe('@fluojs/react root package scaffold', () => {
       'REACT_SSR_DIAGNOSTIC_CODES',
       'REACT_SSR_DIAGNOSTIC_PHASES',
       'ReactModule',
+      'ReactNavigationPage',
       'ReactRenderPolicyConfigurationError',
       'ReactSsrDiagnosticError',
       'Router',
@@ -221,6 +222,7 @@ describe('@fluojs/react root package scaffold', () => {
       expect(react).toHaveProperty('PageLayout');
       expect(react).toHaveProperty('PageMetadata');
       expect(react).toHaveProperty('ReactModule');
+      expect(react).toHaveProperty('ReactNavigationPage');
       expect(react).toHaveProperty('REACT_PAGE_RENDERER');
       expect(react).toHaveProperty('Router');
       expect(react).toHaveProperty('SuspenseFallback');

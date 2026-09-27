@@ -12,6 +12,15 @@ export const FRAMEWORK_RESPONSE_WRITER = Symbol.for('fluo.http.responseWriter');
 /** Request-local metadata key for response-value finalization before response writing. */
 export const FRAMEWORK_RESPONSE_VALUE_FINALIZER = Symbol.for('fluo.http.responseValueFinalizer');
 
+/** Alternative representation owned by HTTP for a successful integration response. */
+export const FRAMEWORK_RESPONSE_REPRESENTATION = Symbol.for('fluo.http.responseRepresentation');
+
+/** Explicitly negotiated successful representation, without a second route dispatcher. */
+export type FrameworkResponseRepresentation = {
+  readonly mediaType: string;
+  readonly body: (context: FrameworkResponseWriterContext) => unknown | Promise<unknown>;
+};
+
 /** Context supplied when an integration writes a successful framework response. */
 export type FrameworkResponseWriterContext = {
   readonly applySuccessResponseMetadata: () => void;

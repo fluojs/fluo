@@ -28,6 +28,7 @@ Preparing for the coordinated Node 24 release? Follow the [consumer migration gu
 - [Hydration Asset Contract](#hydration-asset-contract)
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
 - [Client Navigation Runtime](#client-navigation-runtime)
+- [Negotiated Navigation Payload](#negotiated-navigation-payload)
 - [Native Form Mutations](#native-form-mutations)
 - [Experimental RSC Prototype](#experimental-rsc-prototype)
 - [Experimental Server Functions](#experimental-server-functions)
@@ -787,6 +788,11 @@ Expected manifest failures return diagnostics instead of throwing. Stable diagno
 TC39 decorator transform used by fluo applications. Use `@fluojs/react/vite` in React SSR code to
 parse React build assets and feed the existing hydration contract. Neither package owns file routes,
 React-only route grammar, Next.js route segment conventions, RSC bundler behavior, or URL matching.
+The manifest integration maps CSS/JS and icon asset URLs but does not serve their bytes. A Bun-hosted
+application serves its existing Vite client output directory with
+`createStaticAssetsMiddleware({ prefix: '/assets', source: createBunFileSystemAssetSource({ root: './dist/client' }) })`
+registered in Factory `middleware` (imports from `@fluojs/http` and `@fluojs/platform-bun` respectively).
+The URL prefix must match the manifest `base`; mount public icons under the corresponding output path.
 The runnable `examples/react-vite-ssr/` application shows this boundary with generated assets,
 streamed Suspense content, direct React DOM hydration, and the client navigation subpath.
 
@@ -880,6 +886,50 @@ gaps and disabled JavaScript fall back to ordinary full-document browser navigat
 matches an explicit `@Path(...)`/HTTP route or returns its normal not-found response. An intentional
 deployment-level document rewrite may be configured separately, but it does not create a React route
 grammar or change server DTO validation.
+
+## Negotiated Navigation Payload
+
+An HTTP-matched `@Path(...)` GET can additionally return `ReactNavigationPage.create(page,
+{ module, props })`. The ordinary GET still streams the page through `renderPage`; only a GET
+with `Accept: application/vnd.fluo.react-navigation+json;v=1` selects a versioned JSON result
+containing the server-confirmed `url`, matched `params`, and a browser module identity plus
+JSON-serializable props. HTTP runs middleware, DTO validation, guards, interceptors, URI version
+selection, and request-scoped providers before selecting and writing this representation.
+The application must confirm that the module is in its loaded client build manifest; browser
+code supplies an explicit Vite-built `import.meta.glob(...)` map before it can be imported.
+The runtime-neutral root never imports browser or Vite code.
+
+```tsx
+import { ReactNavigationPage } from '@fluojs/react';
+import { loadReactNavigationDestination } from '@fluojs/react/client';
+
+// Inside an HTTP-matched @Path handler:
+return ReactNavigationPage.create(<ProductPage sku={input.sku} />, {
+  module: './navigation-product.ts',
+  props: { sku: input.sku },
+});
+
+// In the built browser entry:
+const modules = import.meta.glob('./navigation-product.ts');
+const result = await loadReactNavigationDestination('/products/sku-84', modules);
+if (result.ok) {
+  // Render result.component with result.payload.destination.props in your React tree.
+} else if (result.reason !== 'cancelled') {
+  window.location.assign('/products/sku-84');
+}
+```
+
+The browser uses `credentials: 'same-origin'`, `cache: 'no-store'`, and `redirect: 'manual'`;
+each call makes a new request. HTTP preserves existing `Vary` and `Set-Cookie` and applies
+`private, no-store` to the payload. Redirects, 404, 401/403, validation failures, non-page
+responses, malformed/unsupported payloads, and unavailable modules are not renderable and
+callers fall back to a document request. External/non-HTTP(S) URLs remain ordinary anchors;
+aborted requests do not render or start fallback. Ordinary direct and JavaScript-disabled
+GETs continue to stream HTML and hydration assets. `Link` and `router.push/replace` still
+perform full-document navigation; wiring those APIs to client transitions belongs to #3845.
+See the [EN](../../docs/contracts/react-navigation-payload.md) and
+[KO](../../docs/contracts/react-navigation-payload.ko.md) contract and
+[`react-vite-ssr`](../../examples/react-vite-ssr/README.md) for the built example.
 
 ## Native Form Mutations
 
@@ -1213,6 +1263,9 @@ This package currently does **not** provide:
   widening the package root or adding a runtime route table.
 - `ReactModule` — runtime-neutral module facade whose `forRoot(...)` registers React routers through
   the existing fluo module/controller metadata path.
+- `ReactNavigationPage.create(...)` — opts a matched page into HTTP-negotiated JSON while keeping
+  the ordinary streamed HTML path; `ReactNavigationDestination`, `ReactNavigationPageResult`,
+  and `ReactNavigationPayload` are type-only contracts.
 - `REACT_PAGE_RENDERER` — dependency-injection token for the application page renderer registered by
   `ReactModule.forRoot({ renderPage })`.
 - `ReactPageRenderer` — type-only application callback that composes a `ReactElement` and active
@@ -1265,13 +1318,15 @@ This package currently does **not** provide:
   `ReactViteJavaScriptAssets`, `ReactViteBootstrapData`, and `ReactViteResolvedEntry` for parsing Vite
   manifests into the stable hydration asset contract without importing Vite from the root.
 - `@fluojs/react/client` subpath — `Link`, `ReactClientRouterProvider`,
+  `loadReactNavigationDestination(...)`, and
   `ReactClientNavigationError`, `ReactClientRouterContextError`, `createReactRouteSnapshot(...)`,
   `useRouter()`, `usePathname()`, `useParams()`, `useSearchParams()`, `useNavigation()`, and
   `useRouterState()` for progressive HTTP-first browser navigation without widening the root package
   or adding a client route grammar. Type exports are `LinkProps`, `ReactClientNavigationErrorCode`,
   `ReactClientRouterProviderProps`, `ReactNavigationSnapshot`, `ReactNavigationStatus`,
   `ReactNavigationType`, `ReactReadonlySearchParams`, `ReactRouteSnapshot`,
-  `ReactRouteSnapshotInput`, and `ReactRouter`.
+  `ReactRouteSnapshotInput`, `ReactRouter`, `ReactNavigationModules`, and
+  `ReactNavigationLoadResult`.
 - `@fluojs/react/experimental/rsc` subpath — runtime exports are `REACT_RSC_DIAGNOSTIC_CODES`,
   `REACT_RSC_FLIGHT_CONTENT_TYPE`, `REACT_RSC_SUPPORTED_VERSION`,
   `REACT_SERVER_FUNCTION_ERROR_CODES`, `REACT_SERVER_FUNCTION_REQUEST_HEADER`,

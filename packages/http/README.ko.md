@@ -17,6 +17,7 @@ Node.js 지원 범위는 `>=24.0.0 <27`입니다. 업그레이드 절차는 [Nod
 - [Early Hints](#early-hints)
 - [Realtime Adapter Capabilities](#realtime-adapter-capabilities)
 - [바이트 범위 응답](#바이트-범위-응답)
+- [HTTP-Owned React Navigation](#http-owned-react-navigation)
 - [HTTP Error Representations](#http-error-representations)
 - [요청 정리와 런타임 이식성](#요청-정리와-런타임-이식성)
 - [공개 API](#공개-api)
@@ -51,6 +52,20 @@ const assets = createStaticAssetsMiddleware({
 ```
 
 Runtime bootstrap의 `middleware`에 `assets`를 등록하세요. 선택된 representation은 MIME type, 정확한 byte와 length, `ETag`, `Last-Modified`, 선택적 `Content-Encoding`을 소유합니다. static write는 adapter의 dynamic compression을 우회하므로 full `GET`, `HEAD`, conditional field, `Range`, `If-Range`에서도 이 값이 일관됩니다. Source는 request가 허용한 `br`, `gzip`, identity byte만 선택하고, 허용되는 representation이 없으면 bodyless `406`을 명시적으로 반환하며, 선택이 달라질 수 있을 때 `Vary: Accept-Encoding`을 사용합니다. Byte range는 선택된 encoded representation을 대상으로 합니다.
+
+Bun에서는 Node 전용 source를 import하지 말고 같은 middleware를 Bun 지원 source와 함께 애플리케이션의 Factory `middleware`에 등록하세요.
+
+```ts
+import { createStaticAssetsMiddleware } from '@fluojs/http';
+import { createBunFileSystemAssetSource } from '@fluojs/platform-bun';
+
+const assets = createStaticAssetsMiddleware({
+  prefix: '/assets',
+  source: createBunFileSystemAssetSource({ root: './dist/client', precompressed: true }),
+});
+```
+
+`root` 디렉터리는 이미 존재해야 합니다. Source는 내부의 검증된 파일을 snapshot으로 만들고 symlink 이탈을 거부하며, 없는 파일은 다음 경로로 넘깁니다. Dotfile, index, conditional, range, cache, cancellation policy는 middleware가 유지합니다.
 
 ## 사용 시점
 
@@ -564,6 +579,23 @@ Node.js, Express, Fastify는 이 capability를 노출합니다. Fetch-style Web,
 `HttpApplicationAdapter.getRealtimeCapability()`는 platform이 realtime protocol integration에서 server-backed, fetch-style, unsupported 중 무엇인지 보고합니다. Fetch-style capability는 version 1을 유지합니다. Host는 stable capability discriminator를 바꾸지 않으면서 first-party realtime package가 adapter `listen()` 전에 binding을 설치할 수 있도록 별도로 versioned된 optional `bindingInstallation` extension을 노출할 수 있습니다.
 
 `createFetchStyleHttpAdapterRealtimeCapability(reason, options)`는 항상 source-compatible version 1 capability를 반환합니다. Installer를 제공하면 반환값에 `bindingInstallation`도 포함됩니다. Installer는 protocol-owned binding 또는 pre-listen cleanup을 위한 `undefined`를 받으며 platform adapter는 이 boundary를 host-specific binding type으로 parse할 책임이 있습니다. Managed adapter가 live 상태가 된 뒤에는 최종 binding cleanup을 adapter `close()` boundary가 소유합니다. Application code는 일반적으로 이 low-level adapter capability를 직접 호출하지 말고 `@fluojs/websockets` 또는 `@fluojs/socket.io` module을 등록해야 합니다.
+
+## HTTP-Owned React Navigation
+
+성공한 opt-in `@fluojs/react` page만 version 1 client navigation representation을 제공할 수
+있습니다. GET이 정확히 `Accept: application/vnd.fluo.react-navigation+json;v=1`을 보낼 때
+dispatcher가 matching, URI versioning, middleware, DTO binding/validation, guard, interceptor,
+handler 실행 및 response-value finalization 이후 이를 선택합니다. HTTP는 route metadata,
+matched URL/params, status, response validator와 기존 `Vary`, `Set-Cookie`를 유지하며
+payload에 `Vary: Accept` 및 `Cache-Control: private, no-store`를 적용합니다.
+이 Accept 값이 없는 일반 GET은 기존 React HTML response를 stream합니다.
+
+Redirect와 error에는 기존 HTTP response 및 error-representation policy가 그대로 적용됩니다.
+404, 401/403, validation failure, non-page value 또는 error document에는 성공한 navigation
+JSON 대체 표현을 만들지 않습니다. Request abort 및 response-commit check는 dispatcher에
+남고 추가 endpoint나 React URL matcher를 설치하지 않습니다. Browser module mapping,
+credential, fallback, stream cleanup rule은
+[navigation payload contract](../../docs/contracts/react-navigation-payload.ko.md)를 참조하세요.
 
 ## HTTP Error Representations
 

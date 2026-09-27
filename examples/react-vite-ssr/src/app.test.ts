@@ -20,6 +20,11 @@ const VITE_MANIFEST = {
     isEntry: true,
     src: 'src/entry-server.ts',
   },
+  'src/navigation-product.ts': {
+    file: 'navigation-product-hash.js',
+    isDynamicEntry: true,
+    src: 'src/navigation-product.ts',
+  },
 } as const;
 
 const TEXT_DECODER = new TextDecoder();
@@ -98,6 +103,38 @@ describe('react-vite-ssr example', () => {
     });
   });
 
+  it('negotiates the HTTP-matched page as a versioned browser destination', async () => {
+    // Given: a page routed by HTTP with a build-bound destination module.
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      manifest: VITE_MANIFEST,
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      // When: the client explicitly asks for the navigation representation.
+      const response = await app.request('GET', '/products/sku-42')
+        .query('preview', 'true')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1')
+        .send();
+
+      // Then: the selected route's URL and params, not a browser matcher, identify the destination.
+      expect(response.status).toBe(200);
+      expect(response.headers['Content-Type']).toBe('application/vnd.fluo.react-navigation+json;v=1');
+      expect(response.headers.Vary).toContain('Accept');
+      expect(response.body).toEqual({
+        version: 1,
+        url: '/products/sku-42?preview=true',
+        params: { sku: 'sku-42' },
+        destination: {
+          module: './navigation-product.ts',
+          props: { preview: true, productName: 'Catalog item sku-42', sku: 'sku-42' },
+        },
+      });
+    });
+  });
+
   it('keeps path and query validation on the server-owned DTO boundary', async () => {
     // Given: a fluo React route whose path and query fields have validation rules.
     const AppModule = createReactViteExampleModule({
@@ -109,10 +146,14 @@ describe('react-vite-ssr example', () => {
     await withCleanup(async (defer) => {
       defer(() => app.close());
       // When: navigation reaches the server with invalid path and query values.
-      const response = await app.request('GET', '/products/x').query('preview', 'maybe').send();
+      const response = await app.request('GET', '/products/x')
+        .query('preview', 'maybe')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1')
+        .send();
 
       // Then: HTTP DTO validation rejects the request before React rendering.
       expect(response.status).toBe(400);
+      expect(response.headers['Content-Type']).not.toBe('application/vnd.fluo.react-navigation+json;v=1');
     });
   });
 

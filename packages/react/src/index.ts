@@ -25,6 +25,12 @@ export type {
 export { createReactErrorRepresentationProvider } from './error-representation.js';
 export type { ReactModuleOptions } from './module.js';
 export { ReactModule } from './module.js';
+export type {
+  ReactNavigationDestination,
+  ReactNavigationPageResult,
+  ReactNavigationPayload,
+} from './navigation-payload.js';
+export { ReactNavigationPage } from './navigation-payload.js';
 export type { ReactPageCatalogEntry } from './page-catalog.js';
 export { createReactPageCatalog } from './page-catalog.js';
 export type {
