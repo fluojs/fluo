@@ -19,6 +19,7 @@ export default defineConfig({
   webServer: {
     command: serverCommand,
     env: { PORT: String(BROWSER_TEST_PORT) },
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
     reuseExistingServer: false,
     timeout: 30_000,
     url: `http://127.0.0.1:${BROWSER_TEST_PORT}${development ? '/src/entry-client.tsx' : '/assets/entry-client.js'}`,
