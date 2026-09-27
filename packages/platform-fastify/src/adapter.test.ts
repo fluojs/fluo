@@ -571,6 +571,7 @@ describe('@fluojs/platform-fastify', () => {
           done();
         });
       },
+      host: '127.0.0.1',
       port: 0,
     }) as FastifyHttpApplicationAdapter;
     const dispatcher: Dispatcher = {
@@ -736,7 +737,7 @@ describe('@fluojs/platform-fastify', () => {
     defineModule(AppModule, { controllers: [ResponsesController] });
 
     const app = await FluoFactory.create(AppModule, {
-      adapter: createFastifyAdapter({ port: 0 }),
+      adapter: createFastifyAdapter({ host: '127.0.0.1', port: 0 }),
     });
 
     const port = await listenOnEphemeralPort(app);
@@ -898,7 +899,7 @@ describe('@fluojs/platform-fastify', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [QueryFallbackController] });
 
-    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
     const fastifyApp = (adapter as unknown as {
       app: {
         addHook: (
@@ -961,7 +962,7 @@ describe('@fluojs/platform-fastify', () => {
     class AppModule {}
     defineModule(AppModule, { controllers: [SerializerController] });
 
-    const adapter = createFastifyAdapter({ port: 0 });
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 });
     const fastifyApp = Reflect.get(adapter, 'app') as FastifyReplySerializerHost;
     let serializerCalls = 0;
 
@@ -1012,6 +1013,7 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     const adapter = createFastifyAdapter({
+      host: '127.0.0.1',
       port: 0,
       rawBody: true,
     });
@@ -1087,7 +1089,7 @@ describe('@fluojs/platform-fastify', () => {
   });
 
   it('preserves raw body as exact bytes for byte-sensitive payloads when enabled', async () => {
-    const adapter = createFastifyAdapter({ port: 0, rawBody: true }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0, rawBody: true }) as FastifyHttpApplicationAdapter;
     const app = Reflect.get(adapter, 'app') as {
       addContentTypeParser: (
         contentType: string,
@@ -1566,7 +1568,7 @@ describe('@fluojs/platform-fastify', () => {
       controllers: [MatchesController],
     });
 
-    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
     const app = await FluoFactory.create(AppModule, { adapter });
 
     const port = await listenOnEphemeralPort(app);
@@ -1766,6 +1768,7 @@ describe('@fluojs/platform-fastify', () => {
 
     const app = await FluoFactory.create(AppModule, {
       adapter: createFastifyAdapter({
+        host: '127.0.0.1',
         multipart: {
           maxFileSize: 1024,
           maxTotalSize: 10,
@@ -2310,7 +2313,7 @@ describe('@fluojs/platform-fastify', () => {
       },
       rootContainer: root,
     });
-    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
 
     await adapter.listen(dispatcher);
     const port = getBoundPort(adapter.getServer());
@@ -2330,7 +2333,7 @@ describe('@fluojs/platform-fastify', () => {
   });
 
   it('shares one startup promise and preserves the first dispatcher across concurrent listen calls', async () => {
-    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
     const firstDispatcher: Dispatcher = {
       async dispatch(_request, response) {
         await response.send({ dispatcher: 'first' });
@@ -2348,6 +2351,10 @@ describe('@fluojs/platform-fastify', () => {
     try {
       expect(secondListen).toBe(firstListen);
       await firstListen;
+      expect((adapter.getServer() as Server).address()).toMatchObject({
+        address: '127.0.0.1',
+        family: 'IPv4',
+      });
       const port = getBoundPort(adapter.getServer());
 
       const response = await requestHttp({
@@ -2365,7 +2372,7 @@ describe('@fluojs/platform-fastify', () => {
   });
 
   it('keeps the live dispatcher and listener on repeated listen calls after startup', async () => {
-    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
     const firstDispatcher: Dispatcher = {
       async dispatch(_request, response) {
         await response.send({ dispatcher: 'first' });
@@ -2399,7 +2406,7 @@ describe('@fluojs/platform-fastify', () => {
   it('waits for an in-flight close before resolving listen with a ready listener', async () => {
     const closeStarted = createDeferred<void>();
     const releaseClose = createDeferred<void>();
-    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
     const app: FastifyInstance = Reflect.get(adapter, 'app');
     app.addHook('preClose', async () => {
       closeStarted.resolve();
@@ -2449,7 +2456,7 @@ describe('@fluojs/platform-fastify', () => {
   it('starts a fresh listen after close cancels a startup that has not finished binding', async () => {
     const firstBindStarted = createDeferred<void>();
     const releaseFirstBind = createDeferred<void>();
-    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
     const app: FastifyInstance = Reflect.get(adapter, 'app');
     const originalListen = app.listen.bind(app);
     const listenSpy = vi.spyOn(app, 'listen').mockImplementationOnce(async (options) => {
@@ -2530,7 +2537,7 @@ describe('@fluojs/platform-fastify', () => {
       handlerMapping: secondMapping,
       rootContainer: secondRoot,
     });
-    const adapter = createFastifyAdapter({ port: 0 }) as FastifyHttpApplicationAdapter;
+    const adapter = createFastifyAdapter({ host: '127.0.0.1', port: 0 }) as FastifyHttpApplicationAdapter;
 
     await adapter.listen(firstDispatcher);
     const firstPort = getBoundPort(adapter.getServer());
@@ -2603,7 +2610,7 @@ describe('@fluojs/platform-fastify', () => {
     });
 
     const app = await FluoFactory.create(AppModule, {
-      adapter: createFastifyAdapter({ port: 0 }),
+      adapter: createFastifyAdapter({ host: '127.0.0.1', port: 0 }),
       middleware: [rewriteMiddleware],
     });
 
@@ -2764,7 +2771,7 @@ describe('@fluojs/platform-fastify', () => {
     defineModule(AppModule, { controllers: [SnapshotController] });
 
     const app = await FluoFactory.create(AppModule, {
-      adapter: createFastifyAdapter({ port: 0 }),
+      adapter: createFastifyAdapter({ host: '127.0.0.1', port: 0 }),
       middleware: [mutatingMiddleware],
     });
 
