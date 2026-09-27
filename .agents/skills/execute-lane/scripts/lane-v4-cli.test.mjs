@@ -318,6 +318,39 @@ test('CLI: missing, unrelated or disconnected base anchors fail closed', (t) => 
   assert.equal(f.plan().decision.reason, 'stale-preflight-binding');
 });
 
+test('CLI: integrating main keeps upstream files outside issue scope and requires new-head evidence', (t) => {
+  const f = fixture(t);
+  const preflight = f.preflight();
+  f.set('preflight', preflight);
+  f.implement();
+  const review = f.review();
+  f.set('review', review, review.head_sha);
+  writeFileSync(join(f.root, 'unrelated.md'), 'upstream change\n');
+  f.git(f.root, 'add', 'unrelated.md');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture upstream change');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  f.git(f.worktree, '-c', 'commit.gpgsign=false', 'merge', '--no-edit', 'origin/main');
+
+  const result = f.plan();
+  assert.equal(result.decision.action, 'review');
+  assert.deepEqual(result.obs.changedFiles, ['docs/guide.md']);
+  assert.equal(result.obs.preflight.sha256, preflight.sha256);
+  assert.equal(result.obs.baseSha, preflight.base_sha);
+  assert.notEqual(result.obs.headSha, review.head_sha);
+  assert.equal(result.obs.review, null);
+  assert.equal(result.obs.localChecks, null);
+  const freshReview = f.review();
+  f.set('review', freshReview, freshReview.head_sha);
+  assert.equal(f.plan().decision.action, 'verify-local');
+  const lane = JSON.parse(readFileSync(f.lanePath, 'utf8'));
+  lane.issues['42'].facts.review.accepted_at = '2000-01-01T00:00:00.000Z';
+  writeFileSync(f.lanePath, JSON.stringify(lane));
+  f.set('local-checks', f.verify(), freshReview.head_sha);
+  assert.equal(f.plan().decision.action, 'create-pr');
+  f.commit('outside.md', 'actual out-of-scope issue change\n');
+  assert.equal(f.plan().decision.reason, 'scope-expansion');
+});
+
 test('CLI: canonical receipts bind to passing review, execution order and current policy', (t) => {
   const f = fixture(t);
   f.set('preflight', f.preflight());

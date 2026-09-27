@@ -68,8 +68,12 @@ implementation commit does not itself invalidate the contract. Changed intent,
 invalid or changed approved base, or out-of-scope changes require preflight
 again. The accepted `base_sha` is a pinned commit: validate that it remains
 an ancestor of both the issue head (when present) and the observed
-`origin/<base_branch>`. Advancing that branch alone does not change the
-approved base, diff, review, or local receipt. Re-registering the same
+`origin/<base_branch>`. An unrelated advance of that branch alone does not
+invalidate the approved base, review, or local receipt. Scope and review axes
+use the current merge-base-to-head issue diff, excluding upstream changes
+incorporated by a merge or rebase; local verification retains the pinned
+base. An integration head still requires new reviews and local CI.
+Re-registering the same
 preflight digest keeps existing head-bound facts and timestamps; changing
 the digest invalidates them.
 

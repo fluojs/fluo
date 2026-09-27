@@ -52,7 +52,10 @@ approved base, or out-of-scope paths require preflight again. Registering
 the identical digest preserves review and local-check facts and timestamps;
 a different digest invalidates them.
 
-Before review, the lead independently captures the actual base-to-head diff.
+Before review, the lead independently captures the actual issue diff from
+the current merge base with `origin/<base_branch>` to the issue head.
+This excludes upstream changes incorporated during conflict resolution;
+it does not replace the pinned base used for local verification.
 It reconciles every changed path against approved scope and the review policy.
 Newly implicated axes are added; a child cannot shrink the policy. Scope or
 contract changes return to preflight, not an implementer-authored exception.

@@ -226,9 +226,11 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 
 	// NUL separation and --no-renames preserve every path, including rename
 	// sources, so a move out of approved scope cannot hide behind rename detection.
-	const changed = baseSha && branchExists
-		? run(root, 'git', ['diff', '--name-only', '--no-renames', '-z', `${baseSha}...${headSha}`], false)
-		: baseSha ? '' : null;
+	// Scope belongs to the issue diff, not upstream work incorporated by a
+	// merge/rebase. Local verification keeps its independent pinned base.
+	const changed = baseSha && branchExists && mergeBase
+		? run(root, 'git', ['diff', '--name-only', '--no-renames', '-z', `${mergeBase}...${headSha}`], false)
+		: baseSha && !branchExists ? '' : null;
 	const changedFiles = changed === null ? null : changed.split('\0').filter(Boolean);
 	const publicPackagesTouched = (changedFiles ?? []).some(isConsumerVisibleFile);
 	const changesetPresent = (changedFiles ?? []).some(isChangesetFile);
