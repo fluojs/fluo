@@ -28,8 +28,8 @@ export async function runReactViteDevApp(
     stopping = true;
     interrupt();
   };
-  signals.once('SIGINT', onSignal);
-  signals.once('SIGTERM', onSignal);
+  signals.on('SIGINT', onSignal);
+  signals.on('SIGTERM', onSignal);
   let vite: import('vite').ViteDevServer | undefined;
   let closeApp: (() => Promise<void>) | undefined;
   let exitCode = 0;
@@ -73,8 +73,6 @@ export async function runReactViteDevApp(
     stderr.write(`[fluo] React dev startup failed: ${String(error)}\n`);
     exitCode = 1;
   } finally {
-    signals.off('SIGINT', onSignal);
-    signals.off('SIGTERM', onSignal);
     try {
       await closeApp?.();
     } catch (error) {
@@ -87,6 +85,8 @@ export async function runReactViteDevApp(
       stderr.write(`[fluo] React dev Vite shutdown failed: ${String(error)}\n`);
       exitCode = 1;
     }
+    signals.off('SIGINT', onSignal);
+    signals.off('SIGTERM', onSignal);
   }
 
   return exitCode;

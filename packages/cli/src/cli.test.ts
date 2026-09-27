@@ -152,21 +152,21 @@ function createTransitionSignal(transition: string, timeoutMs = 2_000): {
 
 function createSignalTarget(): {
   offCalls: string[];
-  onceCalls: string[];
-  target: { off(signal: 'SIGINT' | 'SIGTERM', listener: () => void): void; once(signal: 'SIGINT' | 'SIGTERM', listener: () => void): void };
+  onCalls: string[];
+  target: { off(signal: 'SIGINT' | 'SIGTERM', listener: () => void): void; on(signal: 'SIGINT' | 'SIGTERM', listener: () => void): void };
 } {
-  const onceCalls: string[] = [];
+  const onCalls: string[] = [];
   const offCalls: string[] = [];
 
   return {
     offCalls,
-    onceCalls,
+    onCalls,
     target: {
       off: (signal) => {
         offCalls.push(signal);
       },
-      once: (signal) => {
-        onceCalls.push(signal);
+      on: (signal) => {
+        onCalls.push(signal);
       },
     },
   };
@@ -3386,7 +3386,7 @@ void bootstrap();
       restartScheduler,
       signalTarget: {
         off: () => undefined,
-        once: (signal, listener) => {
+        on: (signal, listener) => {
           signalHandlers.set(signal, listener);
         },
       },
@@ -3456,7 +3456,7 @@ void bootstrap();
       }) as never,
     });
 
-    expect(signalTarget.onceCalls).toEqual(['SIGINT', 'SIGTERM']);
+    expect(signalTarget.onCalls).toEqual(['SIGINT', 'SIGTERM']);
 
     child?.emit('close', 7);
 

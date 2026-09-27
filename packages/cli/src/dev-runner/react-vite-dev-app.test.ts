@@ -16,6 +16,8 @@ type FixtureState = {
   appEntered: { promise: Promise<void>; resolve(): void };
   appGate: { promise: Promise<void>; resolve(): void };
   appStartCalls: number;
+  closeEntered: { promise: Promise<void>; resolve(): void };
+  closeGate: { promise: Promise<void>; resolve(): void };
   configLoader?: string;
   createEntered: { promise: Promise<void>; resolve(): void };
   createGate: { promise: Promise<void>; resolve(): void };
@@ -39,6 +41,8 @@ async function createFixture(): Promise<{ directory: string; state: FixtureState
       appEntered: Promise.withResolvers(),
       appGate: Promise.withResolvers(),
       appStartCalls: 0,
+      closeEntered: Promise.withResolvers(),
+      closeGate: { promise: Promise.resolve(), resolve() {} },
       configLoader: undefined,
       createEntered: Promise.withResolvers(),
       createGate: Promise.withResolvers(),
@@ -62,6 +66,8 @@ async function createFixture(): Promise<{ directory: string; state: FixtureState
               return {
                 async close() {
                   state.appCloseCalls += 1;
+                  state.closeEntered.resolve();
+                  await state.closeGate.promise;
                   if (state.failAppClose) throw new Error('application close failed');
                 },
               };
@@ -118,6 +124,40 @@ it('closes both resources when shutdown arrives during application startup', asy
   expect(state.appCloseCalls).toBe(1);
   expect(state.viteCloseCalls).toBe(1);
   expect(output.read()).toBeNull();
+}, 10_000);
+
+it('retains terminal signal protection until application and Vite teardown settles', async () => {
+  const { directory, state } = await createFixture();
+  const signals = new EventEmitter();
+  const stdout = new PassThrough();
+  const ready = new Promise<void>((resolve) => {
+    stdout.once('data', () => resolve());
+  });
+  let releaseClose: () => void = () => undefined;
+  const closePromise = new Promise<void>((resolve) => { releaseClose = resolve; });
+  state.closeGate = { promise: closePromise, resolve: () => releaseClose() };
+  const running = runReactViteDevApp(directory, { signalTarget: signals, stdout });
+
+  state.createGate.resolve();
+  state.appGate.resolve();
+  await ready;
+  signals.emit('SIGINT');
+  await state.closeEntered.promise;
+
+  try {
+    expect(signals.listenerCount('SIGINT')).toBeGreaterThan(0);
+    expect(signals.listenerCount('SIGTERM')).toBeGreaterThan(0);
+    signals.emit('SIGINT');
+    signals.emit('SIGTERM');
+  } finally {
+    state.closeGate.resolve();
+  }
+
+  await expect(running).resolves.toBe(0);
+  expect(state.appCloseCalls).toBe(1);
+  expect(state.viteCloseCalls).toBe(1);
+  expect(signals.listenerCount('SIGINT')).toBe(0);
+  expect(signals.listenerCount('SIGTERM')).toBe(0);
 }, 10_000);
 
 it('settles with failure after attempting both shutdown steps when each close rejects', async () => {
