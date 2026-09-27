@@ -101,82 +101,85 @@ export function ProductDocument({
   const identifier = useId();
   const initialSnapshot = createReactRouteSnapshot({ params: routeParams, url: routeUrl });
 
-  return createElement(
-    ReactClientRouterProvider,
-    { initialSnapshot, navigationModules, children: (destination: ReactNode | null) => createElement(
-      'html',
-      {
-        'data-admin-page': adminPage,
-        'data-preview': String(preview),
-        'data-product-name': productName,
-        'data-saved': String(saved),
-        'data-sku': sku,
-        lang: 'en',
-      },
-      createElement(
-        'head',
-        null,
-        createElement('meta', { charSet: 'utf-8' }),
-        createElement('meta', { content: 'width=device-width, initial-scale=1', name: 'viewport' }),
-        createElement('meta', { content: 'A minimal fluo React SSR and hydration example.', name: 'description' }),
-        createElement('link', { href: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>', rel: 'icon' }),
-        createElement('title', null, adminPage === undefined
-          ? `Catalog item ${sku}`
-          : adminPage === 'qr' ? 'Admin QR' : 'Admin songs'),
-        ...stylesheets.map((href) =>
-          createElement('link', { 'data-vite-style': true, href, key: href, rel: 'stylesheet' }),
-        ),
+  const renderRouteDocument = (destination: ReactNode | null): ReactNode => createElement(
+    'html',
+    {
+      'data-admin-page': adminPage,
+      'data-preview': String(preview),
+      'data-product-name': productName,
+      'data-saved': String(saved),
+      'data-sku': sku,
+      lang: 'en',
+    },
+    createElement(
+      'head',
+      null,
+      createElement('meta', { charSet: 'utf-8' }),
+      createElement('meta', { content: 'width=device-width, initial-scale=1', name: 'viewport' }),
+      createElement('meta', { content: 'A minimal fluo React SSR and hydration example.', name: 'description' }),
+      createElement('link', { href: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>', rel: 'icon' }),
+      createElement('title', null, adminPage === undefined
+        ? `Catalog item ${sku}`
+        : adminPage === 'qr' ? 'Admin QR' : 'Admin songs'),
+      ...stylesheets.map((href) =>
+        createElement('link', { 'data-vite-style': true, href, key: href, rel: 'stylesheet' }),
       ),
+    ),
+    createElement(
+      'body',
+      null,
       createElement(
-        'body',
-        null,
-        createElement(
-          'main',
-          { tabIndex: -1 },
-          createElement(NavigationFocus),
-          destination ?? (adminPage === undefined
-            ? createElement(
-              'section',
-              { 'aria-label': 'Product page' },
-              createElement('h1', null, `Catalog item ${sku}`),
-              createElement('p', null, preview ? 'Preview mode' : 'Published mode'),
-              createElement('p', null, `DTO-bound sku: ${sku}`),
-              saved ? createElement('p', { role: 'status' }, `Saved product: ${productName}`) : null,
+        'main',
+        { tabIndex: -1 },
+        createElement(NavigationFocus),
+        destination ?? (adminPage === undefined
+          ? createElement(
+            'section',
+            { 'aria-label': 'Product page' },
+            createElement('h1', null, `Catalog item ${sku}`),
+            createElement('p', null, preview ? 'Preview mode' : 'Published mode'),
+            createElement('p', null, `DTO-bound sku: ${sku}`),
+            saved ? createElement('p', { role: 'status' }, `Saved product: ${productName}`) : null,
+            createElement(
+              'form',
+              {
+                action: `/products/${encodeURIComponent(sku)}`,
+                encType: 'multipart/form-data',
+                method: 'post',
+              },
               createElement(
-                'form',
-                {
-                  action: `/products/${encodeURIComponent(sku)}`,
-                  encType: 'multipart/form-data',
-                  method: 'post',
-                },
-                createElement(
-                  'p',
-                  null,
-                  createElement('label', { htmlFor: 'product-name' }, 'Product name'),
-                  createElement('br'),
-                  createElement('input', {
-                    defaultValue: productName,
-                    id: 'product-name',
-                    minLength: 3,
-                    name: 'name',
-                    required: true,
-                    type: 'text',
-                  }),
-                ),
-                createElement('button', { type: 'submit' }, 'Save product'),
+                'p',
+                null,
+                createElement('label', { htmlFor: 'product-name' }, 'Product name'),
+                createElement('br'),
+                createElement('input', {
+                  defaultValue: productName,
+                  id: 'product-name',
+                  minLength: 3,
+                  name: 'name',
+                  required: true,
+                  type: 'text',
+                }),
               ),
-              createElement('p', { 'data-react-identifier': true, id: identifier }, 'Shared hydration identifier'),
-              createElement(
-                Suspense,
-                { fallback: createElement('p', null, 'Loading recommendations') },
-                createElement(LazyRecommendations, { sku }),
-              ),
+              createElement('button', { type: 'submit' }, 'Save product'),
             ),
-            : createElement(AdminDestination, { page: adminPage })),
-          createElement(HydratedCounter),
-          createElement(ProductNavigation),
-        ),
+            createElement('p', { 'data-react-identifier': true, id: identifier }, 'Shared hydration identifier'),
+            createElement(
+              Suspense,
+              { fallback: createElement('p', null, 'Loading recommendations') },
+              createElement(LazyRecommendations, { sku }),
+            ),
+          )
+          : createElement(AdminDestination, { page: adminPage })),
+        createElement(HydratedCounter),
+        createElement(ProductNavigation),
       ),
-    ) },
+    ),
   );
+
+  return createElement(ReactClientRouterProvider, {
+    initialSnapshot,
+    navigationModules,
+    children: renderRouteDocument,
+  });
 }
