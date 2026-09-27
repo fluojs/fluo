@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -225,6 +225,24 @@ export class Example {
       await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/example.ts')).rejects.toMatchObject({
         message: expect.stringContaining(`Failed to load babelConfigFile ${babelConfigFile} while transforming /app/src/example.ts`),
         cause: expect.objectContaining({ message: expect.stringContaining(causeMessage) }),
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('reports an existing relative config with invalid syntax as a config load failure', async () => {
+    // Given
+    const directory = mkdtempSync(join(process.cwd(), 'fluo-3835-relative-config-'));
+    const babelConfigFile = `./${basename(directory)}/babel.config.cjs`;
+    writeFileSync(join(directory, 'babel.config.cjs'), 'module.exports = {');
+    const plugin = fluoDecoratorsPlugin({ babelConfigFile });
+
+    try {
+      // When / Then
+      await expect(runTransform(plugin, 'export const value: number = 1;', '/app/src/example.ts')).rejects.toMatchObject({
+        message: expect.stringContaining(`Failed to load babelConfigFile ${babelConfigFile} while transforming /app/src/example.ts`),
+        cause: expect.objectContaining({ message: expect.stringContaining('Unexpected end of input') }),
       });
     } finally {
       rmSync(directory, { recursive: true, force: true });

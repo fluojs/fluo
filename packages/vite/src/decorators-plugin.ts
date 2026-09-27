@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PluginObj } from '@babel/core';
 import type { Plugin, ResolvedConfig } from 'vite';
@@ -87,7 +88,7 @@ function createBabelTransformDiagnostic(error: unknown, filePath: string, config
   }
 
   if (configFile && (
-    (error instanceof Error && error.stack?.includes(configFile)) ||
+    (error instanceof Error && error.stack?.includes(resolve(configFile))) ||
     firstLine.startsWith('Error while parsing config')
   )) {
     return new Error(
