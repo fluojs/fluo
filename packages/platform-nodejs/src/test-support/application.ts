@@ -20,7 +20,10 @@ export function createNodeTestApplication(
 ) {
   return FluoFactory.create(rootModule, {
     ...options,
-    adapter: NodeHttpApplicationAdapter.create(options),
+    adapter: NodeHttpApplicationAdapter.create({
+      ...options,
+      host: options.host ?? '127.0.0.1',
+    }),
     logger: options.logger ?? createConsoleApplicationLogger(),
   });
 }

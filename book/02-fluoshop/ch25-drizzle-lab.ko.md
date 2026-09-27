@@ -14,7 +14,7 @@ FluoBlog의 첫 굿즈 판매가 끝났다. 운영자는 다음 판매를 준비
 
 실제 판매 SKU는 3장에서 만든 `ProductVariant`다. `lab_price`는 조건부 가격 변경과 감사 기록의 원자성만 떼어 낸 실험 표이며 새로운 판매 원장이 아니다. 운영 어댑터로 확장할 때는 기존 `ProductVariant.priceMinor`, `active`, 부모 `Product`의 발행 상태를 그대로 읽고 기존 `PriceRow` 변환을 유지한다. 아래 실험의 `find()` 결과만으로 장바구니 가격을 확정하거나 판매 가능 여부를 판단하지 않는다. 별도의 SKU 원장을 다시 채우는 이행도 요구하지 않는다.
 
-실행 기준은 Node24와 pnpm10이다. Prisma 쪽은 앞선 장에서 생성한 클라이언트와 설정을 사용하며, 새 모델을 추가한 뒤 그 프로젝트의 Prisma 생성·마이그레이션 절차를 따른다. Drizzle 쪽에는 `@fluojs/drizzle`, `drizzle-orm` 0.45.2 이상, `pg`와 개발용 `@types/pg`가 필요하다. Drizzle 자체의 여러 런타임 지원과 Fluo의 Node 전용 트랜잭션 래퍼 지원을 같은 것으로 읽지 않는다.
+이 PostgreSQL 비교의 실행 기준은 계속 Node24와 pnpm10이다. Prisma 쪽은 앞선 장에서 생성한 클라이언트와 설정을 사용하며, 새 모델을 추가한 뒤 그 프로젝트의 Prisma 생성·마이그레이션 절차를 따른다. Drizzle 쪽에는 `@fluojs/drizzle`, `drizzle-orm` 0.45.2 이상, `pg`와 개발용 `@types/pg`가 필요하다. 루트 Drizzle wrapper는 Bun 1.4에서도 `@libsql/client`를 사용하는 `drizzle-orm/libsql`처럼 비동기 callback을 끝까지 await하는 드라이버로 조건부 동작하지만, 이 실습의 Node PostgreSQL·Prisma 예제를 Bun용으로 옮긴 것은 아니다. 동기 `drizzle-orm/bun-sqlite`는 ALS handle이 선택되어도 이후 callback 예외가 write를 되돌리지 못하므로 지원하지 않으며, `strictTransactions: true`는 transaction method 누락만 검사한다. 실습을 변형하기 전에 [Drizzle 런타임 지원 계약](../../packages/drizzle/README.ko.md#런타임-지원)을 확인한다.
 
 ## 범용 저장소 대신 변경 한 가지를 계약으로 만들기
 

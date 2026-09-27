@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { Inject, Scope } from '@fluojs/core';
 import { Container } from '@fluojs/di';
 import type { MiddlewareContext, Next } from '@fluojs/http';
+import { NodeHttpApplicationAdapter } from '@fluojs/platform-nodejs';
 import { bootstrapModule, type CompiledModule, defineModule } from '@fluojs/runtime';
 import { APPLICATION_LOGGER, COMPILED_MODULES, HTTP_APPLICATION_ADAPTER, RUNTIME_CONTAINER } from '@fluojs/runtime/internal';
 import { IsInt, MinLength } from '@fluojs/validation';
@@ -472,6 +473,14 @@ describe('@fluojs/graphql', () => {
     const app = await bootstrapNodeApplication(AppModule, { cors: false, port: portToken });
     await app.listen();
 
+    const adapter = await app.get(HTTP_APPLICATION_ADAPTER);
+    if (!(adapter instanceof NodeHttpApplicationAdapter)) {
+      throw new TypeError('Expected a Node HTTP application adapter.');
+    }
+    expect(adapter.getServer().address()).toMatchObject({
+      address: '127.0.0.1',
+      family: 'IPv4',
+    });
     expect(await resolvePort(portToken)).not.toBe(portToken);
   });
 
@@ -592,6 +601,66 @@ describe('@fluojs/graphql', () => {
     expect(missingArgResult.data.echo).toBeNull();
 
     await app.close();
+  });
+
+  it('propagates null from required query and mutation roots through /graphql', async () => {
+    @Inject()
+    @Resolver('RootNullabilityResolver')
+    class RootNullabilityResolver {
+      @Query({ nullable: false })
+      requiredQuery(): null {
+        return null;
+      }
+
+      @Query()
+      defaultQuery(): null {
+        return null;
+      }
+
+      @Query({ nullable: true })
+      nullableQuery(): null {
+        return null;
+      }
+
+      @Mutation({ nullable: false })
+      requiredMutation(): null {
+        return null;
+      }
+
+      @Mutation({ nullable: true })
+      nullableMutation(): null {
+        return null;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [GraphqlModule.forRoot({ resolvers: [RootNullabilityResolver] })],
+      providers: [RootNullabilityResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    await app.listen();
+
+    try {
+      expect(await postGraphql(port, '{ requiredQuery nullableQuery }')).toMatchObject({
+        data: null,
+        errors: [{ message: 'Unexpected error.', path: ['requiredQuery'] }],
+      });
+      expect(await postGraphql(port, 'mutation { requiredMutation }')).toMatchObject({
+        data: null,
+        errors: [{ message: 'Unexpected error.', path: ['requiredMutation'] }],
+      });
+      await expect(postGraphql(port, '{ defaultQuery nullableQuery }')).resolves.toEqual({
+        data: { defaultQuery: null, nullableQuery: null },
+      });
+      await expect(postGraphql(port, 'mutation { nullableMutation }')).resolves.toEqual({
+        data: { nullableMutation: null },
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('keeps request-scoped resolver providers isolated and disposed per GraphQL operation', async () => {
@@ -1229,6 +1298,87 @@ describe('@fluojs/graphql', () => {
       }
 
       expect(dataFrame).toContain('pingStream');
+    } finally {
+      try {
+        await reader?.cancel();
+      } finally {
+        controller.abort();
+        await app.close();
+      }
+    }
+  });
+
+  it('propagates null from a required subscription root over SSE', async () => {
+    @Inject()
+    @Resolver('RequiredStreamResolver')
+    class RequiredStreamResolver {
+      @Subscription({ nullable: false })
+      async *requiredStream(): AsyncGenerator<null, void, void> {
+        yield null;
+      }
+    }
+
+    class AppModule {}
+    defineModule(AppModule, {
+      imports: [GraphqlModule.forRoot({ resolvers: [RequiredStreamResolver] })],
+      providers: [RequiredStreamResolver],
+    });
+
+    const port = await findAvailablePort();
+    const app = await bootstrapNodeApplication(AppModule, { cors: false, port });
+    const controller = new AbortController();
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+
+    try {
+      await app.listen();
+      const response = await fetch(
+        `http://127.0.0.1:${String(await resolvePort(port))}/graphql?query=${encodeURIComponent('subscription { requiredStream }')}`,
+        { headers: { accept: 'text/event-stream' }, method: 'GET', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(3000)]) },
+      );
+      expect(response.status).toBe(200);
+      reader = response.body?.getReader();
+
+      if (!reader) {
+        throw new Error('Expected SSE response body reader.');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let result: { data?: unknown; errors?: Array<{ message: string; path?: string[] }> } | undefined;
+
+      while (!result) {
+        const chunk = await reader.read();
+
+        if (chunk.done) {
+          throw new Error(`Expected a GraphQL SSE result before the response stream closed: ${JSON.stringify(buffer)}`);
+        }
+
+        buffer += decoder.decode(chunk.value, { stream: true });
+
+        if (buffer.length > 64 * 1024) {
+          throw new Error('Expected buffered GraphQL SSE frames to fit within 64 KiB.');
+        }
+
+        let boundary = /\r?\n\r?\n/u.exec(buffer);
+
+        while (boundary) {
+          const frame = buffer.slice(0, boundary.index);
+          buffer = buffer.slice(boundary.index + boundary[0].length);
+          const data = frame.split(/\r?\n/u).find((line) => line.startsWith('data:'));
+
+          if (data) {
+            result = JSON.parse(data.slice(5).trim()) as typeof result;
+            break;
+          }
+
+          boundary = /\r?\n\r?\n/u.exec(buffer);
+        }
+      }
+
+      expect(result).toMatchObject({
+        data: null,
+        errors: [{ message: 'Unexpected error.', path: ['requiredStream'] }],
+      });
     } finally {
       try {
         await reader?.cancel();

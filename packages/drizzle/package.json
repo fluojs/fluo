@@ -57,6 +57,7 @@
   },
   "devDependencies": {
     "@fluojs/http": "workspace:^",
+    "@libsql/client": "0.18.0",
     "vitest": "^4.1.11"
   }
 }

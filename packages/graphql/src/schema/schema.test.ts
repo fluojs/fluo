@@ -42,6 +42,7 @@ function makeDescriptor(
   options?: {
     argTypes?: ResolverDescriptor['handlers'][number]['argTypes'];
     argFields?: ResolverDescriptor['handlers'][number]['argFields'];
+    nullable?: boolean;
     outputType?: ResolverDescriptor['handlers'][number]['outputType'];
     type?: ResolverDescriptor['handlers'][number]['type'];
   },
@@ -54,6 +55,7 @@ function makeDescriptor(
         fieldName,
         methodKey: 'resolve',
         methodName: 'resolve',
+        nullable: options?.nullable,
         outputType: options?.outputType,
         parameterBindings: [],
         type: options?.type ?? 'query',
@@ -224,5 +226,44 @@ describe('createCodeFirstSchema – root object output foundation', () => {
 
     expect(subscriptionOutput instanceof GraphQLList).toBe(true);
     expect(subscriptionOutput?.toString()).toBe('[RootOperationUnionPayload]');
+  });
+});
+
+describe('createCodeFirstSchema – root return nullability', () => {
+  const objectType = new GraphQLObjectType({
+    fields: { value: { type: GraphQLString } },
+    name: 'RequiredRootObject',
+  });
+  const unionType = new GraphQLUnionType({
+    name: 'RequiredRootUnion',
+    types: [objectType, new GraphQLObjectType({
+      fields: { value: { type: GraphQLString } },
+      name: 'OtherRootObject',
+    })],
+  });
+
+  it.each([
+    ['query', 'getQueryType'],
+    ['mutation', 'getMutationType'],
+    ['subscription', 'getSubscriptionType'],
+  ] as const)('preserves nullable defaults and wraps required %s roots without changing list items', (operation, getRoot) => {
+    const schema = createCodeFirstSchema(deps, fakeContainer, [
+      makeDescriptor('DefaultResolver', 'defaultString', { type: operation }),
+      makeDescriptor('NullableResolver', 'nullableString', { nullable: true, type: operation }),
+      makeDescriptor('RequiredResolver', 'requiredString', { nullable: false, type: operation }),
+      makeDescriptor('ObjectResolver', 'requiredObject', { nullable: false, outputType: objectType, type: operation }),
+      makeDescriptor('UnionResolver', 'requiredUnion', { nullable: false, outputType: unionType, type: operation }),
+      makeDescriptor('ListResolver', 'requiredList', { nullable: false, outputType: listOf(objectType), type: operation }),
+      makeDescriptor('NullableListResolver', 'nullableList', { nullable: true, outputType: listOf('string'), type: operation }),
+    ]);
+    const fields = schema[getRoot]()?.getFields();
+
+    expect(fields?.defaultString?.type.toString()).toBe('String');
+    expect(fields?.nullableString?.type.toString()).toBe('String');
+    expect(fields?.requiredString?.type.toString()).toBe('String!');
+    expect(fields?.requiredObject?.type.toString()).toBe('RequiredRootObject!');
+    expect(fields?.requiredUnion?.type.toString()).toBe('RequiredRootUnion!');
+    expect(fields?.requiredList?.type.toString()).toBe('[RequiredRootObject]!');
+    expect(fields?.nullableList?.type.toString()).toBe('[String]');
   });
 });
