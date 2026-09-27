@@ -164,7 +164,13 @@ it('settles with failure after attempting both shutdown steps when each close re
   const { directory, state } = await createFixture();
   const signals = new EventEmitter();
   const stdout = new PassThrough();
-  const stderr = new PassThrough();
+  const errors: string[] = [];
+  const stderr = {
+    write(chunk: string | Uint8Array) {
+      errors.push(String(chunk));
+      return true;
+    },
+  };
   state.failAppClose = true;
   state.failViteClose = true;
   const ready = new Promise<void>((resolve) => {
@@ -183,9 +189,8 @@ it('settles with failure after attempting both shutdown steps when each close re
   await expect(running).resolves.toBe(1);
   expect(state.appCloseCalls).toBe(1);
   expect(state.viteCloseCalls).toBe(1);
-  const errors = String(stderr.read());
-  expect(errors).toContain('application close failed');
-  expect(errors).toContain('Vite close failed');
+  expect(errors.join('')).toContain('application close failed');
+  expect(errors.join('')).toContain('Vite close failed');
   expect(signals.listenerCount('SIGINT')).toBe(0);
 }, 10_000);
 
