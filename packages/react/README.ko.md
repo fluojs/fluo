@@ -28,6 +28,7 @@ Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전�
 - [Hydration Asset Contract](#hydration-asset-contract)
 - [Vite Asset Manifest Integration](#vite-asset-manifest-integration)
 - [Client Navigation Runtime](#client-navigation-runtime)
+- [Negotiated Navigation Payload](#negotiated-navigation-payload)
 - [Native Form Mutations](#native-form-mutations)
 - [Experimental RSC Prototype](#experimental-rsc-prototype)
 - [Experimental Server Functions](#experimental-server-functions)
@@ -869,6 +870,49 @@ server는 명시적인 `@Path(...)`/HTTP route를 match하거나 정상적인 no
 의도적인 deployment-level document rewrite를 별도로 설정할 수 있지만, 이는 React route grammar를 만들거나
 server DTO validation을 변경하지 않습니다.
 
+## Negotiated Navigation Payload
+
+HTTP-matched `@Path(...)` GET handler는 `ReactNavigationPage.create(page, { module, props })`를
+반환할 수 있습니다. 일반 GET은 여전히 `renderPage`로 page를 stream하고, 정확한
+`Accept: application/vnd.fluo.react-navigation+json;v=1`을 보낸 GET만 server-confirmed `url`,
+matched `params`, browser module identity와 JSON-serializable props를 포함한 versioned JSON을
+받습니다. HTTP는 representation을 선택하기 전에 middleware, DTO validation, guard, interceptor,
+URI version selection, request-scoped provider를 실행합니다. Application은 로드한 client build
+manifest에 module이 있는지 확인하고 browser는 Vite-built `import.meta.glob(...)` map으로
+import 가능 여부를 결정합니다. Runtime-neutral root는 browser/Vite code를 import하지 않습니다.
+
+```tsx
+import { ReactNavigationPage } from '@fluojs/react';
+import { loadReactNavigationDestination } from '@fluojs/react/client';
+
+// HTTP-matched @Path handler에서:
+return ReactNavigationPage.create(<ProductPage sku={input.sku} />, {
+  module: './navigation-product.ts',
+  props: { sku: input.sku },
+});
+
+// Build된 browser entry에서:
+const modules = import.meta.glob('./navigation-product.ts');
+const result = await loadReactNavigationDestination('/products/sku-84', modules);
+if (result.ok) {
+  // React tree에서 result.component를 result.payload.destination.props로 렌더링합니다.
+} else if (result.reason !== 'cancelled') {
+  window.location.assign('/products/sku-84');
+}
+```
+
+Browser는 `credentials: 'same-origin'`, `cache: 'no-store'`, `redirect: 'manual'`을 사용하며
+호출할 때마다 새 request를 보냅니다. HTTP는 기존 `Vary`와 `Set-Cookie`를 유지하고 payload에
+`private, no-store`를 적용합니다. Redirect, 404, 401/403, validation failure, non-page
+response, malformed/unsupported payload, 사용할 수 없는 module은 렌더링할 수 없으며 caller가
+document request로 fallback합니다. External/non-HTTP(S) URL에는 일반 anchor를 사용하고
+abort된 request는 렌더링하거나 fallback을 시작하지 않습니다. 일반 direct/JavaScript-disabled
+GET은 HTML과 hydration asset을 계속 stream합니다. `Link`와 `router.push/replace`는 여전히
+full-document navigation이며 client transition 연결은 #3845 범위입니다. 자세한 내용은
+[EN](../../docs/contracts/react-navigation-payload.md) /
+[KO](../../docs/contracts/react-navigation-payload.ko.md) contract와
+[`react-vite-ssr`](../../examples/react-vite-ssr/README.ko.md)를 참고하세요.
+
 ## Native Form Mutations
 
 React page mutation이 hydration 전이나 client JavaScript disabled 환경에서도 동작해야 한다면 native HTML
@@ -1194,6 +1238,9 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
   `ReactPageTypegenErrorCode`를 제공합니다.
 - `ReactModule` — `forRoot(...)`가 기존 fluo module/controller metadata path를 통해 React router를
   등록하는 런타임 중립 module facade입니다.
+- `ReactNavigationPage.create(...)` — 일반 streamed HTML을 유지하면서 matched page를
+  HTTP-negotiated JSON에 opt-in합니다. `ReactNavigationDestination`, `ReactNavigationPageResult`,
+  `ReactNavigationPayload`는 type-only contract입니다.
 - `REACT_PAGE_RENDERER` — `ReactModule.forRoot({ renderPage })`가 등록하는 application page renderer의
   dependency-injection token입니다.
 - `ReactPageRenderer` — `ReactElement`와 활성 `ReactRenderContext`를 기존 `ReactServerEntry`로 compose하는
@@ -1246,12 +1293,14 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
   `ReactViteResolvedEntry`를 제공합니다.
 - `@fluojs/react/client` subpath — root package를 넓히거나 client route grammar를 추가하지 않고
   progressive HTTP-first browser navigation을 제공하는 `Link`, `ReactClientRouterProvider`,
+  `loadReactNavigationDestination(...)`,
   `ReactClientNavigationError`, `ReactClientRouterContextError`, `createReactRouteSnapshot(...)`,
   `useRouter()`, `usePathname()`, `useParams()`, `useSearchParams()`, `useNavigation()`,
   `useRouterState()`를 제공합니다. Type export는 `LinkProps`, `ReactClientNavigationErrorCode`,
   `ReactClientRouterProviderProps`, `ReactNavigationSnapshot`, `ReactNavigationStatus`,
   `ReactNavigationType`, `ReactReadonlySearchParams`, `ReactRouteSnapshot`,
-  `ReactRouteSnapshotInput`, `ReactRouter`입니다.
+  `ReactRouteSnapshotInput`, `ReactRouter`, `ReactNavigationModules`,
+  `ReactNavigationLoadResult`입니다.
 - `@fluojs/react/experimental/rsc` subpath — runtime export는 `REACT_RSC_DIAGNOSTIC_CODES`,
   `REACT_RSC_FLIGHT_CONTENT_TYPE`, `REACT_RSC_SUPPORTED_VERSION`,
   `REACT_SERVER_FUNCTION_ERROR_CODES`, `REACT_SERVER_FUNCTION_REQUEST_HEADER`,

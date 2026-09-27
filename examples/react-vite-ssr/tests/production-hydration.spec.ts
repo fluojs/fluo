@@ -47,7 +47,7 @@ test('hydrates streamed production HTML with generated Vite assets', async ({ pa
 
   expect([...assetResponses.keys()].some((pathname) => pathname.includes('/recommendations-'))).toBe(true);
   await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
-  await expect(page.getByText('Recommended for sku-42')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Recommendations' })).toHaveText('Recommended for sku-42');
   await expect(page.getByText('Current URL: /products/sku-42?preview=true#details')).toBeVisible();
   await expect(page.getByText('Current hash: #details')).toBeVisible();
   await expect(page.locator('[data-react-identifier]')).toHaveAttribute('id', /fluo-react-vite-/u);
@@ -67,6 +67,37 @@ test('hydrates streamed production HTML with generated Vite assets', async ({ pa
   expect(browserDiagnostics).toEqual([]);
 });
 
+test('renders an HTTP-confirmed destination from the built browser module without replacing the document', async ({ page }) => {
+  // Given: a hydrated server document with interactive state to preserve.
+  await page.goto('/products/sku-42?preview=true');
+  await page.getByRole('button', { name: 'Count: 0' }).click();
+  await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+  const navigationResponse = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/products/sku-84'
+    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1',
+  );
+
+  // When: the explicit example control loads the destination through HTTP.
+  await page.getByRole('button', { name: 'Load sku-84 destination' }).click();
+  const response = await navigationResponse;
+
+  // Then: the bundled importer renders server-confirmed data without a document swap.
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toMatch(/^application\/vnd\.fluo\.react-navigation\+json;\s*v="1"; charset=utf-8$/u);
+  expect(response.headers()['cache-control']).toContain('no-store');
+  expect(await response.json()).toMatchObject({
+    version: 1,
+    url: '/products/sku-84?preview=false',
+    params: { sku: 'sku-84' },
+    destination: { module: './navigation-product.ts' },
+  });
+  await expect(page.getByRole('heading', { name: 'Browser destination: Catalog item sku-84' })).toBeVisible();
+  await expect(page.getByText('Server-confirmed sku: sku-84')).toBeVisible();
+  await expect(page.getByText('Server-confirmed preview: false')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+  await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+});
+
 test('submits the native mutation form without client JavaScript', async ({ baseURL, browser }) => {
   // Given: an authorized browser context with JavaScript disabled.
   if (baseURL === undefined) {
@@ -81,7 +112,8 @@ test('submits the native mutation form without client JavaScript', async ({ base
   const page = await context.newPage();
 
   try {
-    await page.goto('/products/sku-42?preview=true');
+    const initial = await page.goto('/products/sku-42?preview=true');
+    expect(initial?.headers()['content-type']).toContain('text/html');
     await page.getByLabel('Product name').fill('No-script catalog item');
     const mutationResponsePromise = page.waitForResponse(
       (response) =>

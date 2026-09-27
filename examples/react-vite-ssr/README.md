@@ -12,13 +12,15 @@ second routing model.
 - `@Router('/products')` and `@Path('/:sku')` page routes discovered by the fluo HTTP module graph.
 - Typed path and search input through `@RequestDto(...)`, `@FromPath('sku')`, and
   `@FromQuery('preview')`.
-- A direct `ReactElement` page return composed by the application `renderPage` callback with
-  manifest-derived hydration options.
+- An opted-in `ReactNavigationPage` whose ordinary document response is composed by the
+  application `renderPage` callback with manifest-derived hydration options.
 - A `Suspense` boundary whose fallback and resolved recommendation content are emitted by Web
   Streams SSR.
 - A Vite client build that writes `dist/client/.vite/manifest.json`, then
   `@fluojs/react/vite` turns that loaded manifest into ordered CSS and hydration module assets.
 - A server-rendered counter that becomes interactive through React DOM `hydrateRoot(...)`.
+- An explicitly negotiated GET with HTTP-confirmed URL and params, consumed through a
+  Vite-built `import.meta.glob(...)` module map without replacing the document or its counter.
 - `@fluojs/react/client` route snapshots, URL-state hooks, progressive `Link`, and full-document
   `push` navigation that still reaches the server-owned DTO validation boundary.
 - A native `multipart/form-data` form that reaches an ordinary guarded/intercepted `@Post(...)`
@@ -39,6 +41,8 @@ Open `http://127.0.0.1:3000/products/sku-42?preview=true`, then activate `Count:
 changes to `Count: 1` only after the Vite-generated client entry hydrates the server HTML. Use
 `Open sku-84` or `Push sku-126` to perform same-origin full-document navigation; each destination
 is matched, bound, and validated again by the fluo HTTP route.
+`Load sku-84 destination` makes one explicit navigation-payload request and renders the built
+destination component in the existing React tree; the browser URL does not change.
 
 Run the repeatable SSR and hydration checks with:
 
@@ -53,6 +57,27 @@ missing or non-200 bootstrap/style assets, hydration warnings or errors, an iden
 mismatch, a counter that does not hydrate, client navigation whose URL and server-rendered route
 state do not agree, or a native form that cannot complete its `POST` → `303` → `GET` flow.
 
+## negotiated destination workflow
+
+`src/app.ts` verifies the application-loaded Vite manifest contains
+`src/navigation-product.ts`, then the matched product handler returns
+`ReactNavigationPage.create(ProductDocument, { module: './navigation-product.ts', props })`.
+An ordinary document GET still streams the HTML shell, hydration scripts, Suspense content,
+and request URL. An explicit `Accept: application/vnd.fluo.react-navigation+json;v=1` GET
+instead runs the same HTTP DTO and module pipeline and returns the server URL/params and
+browser destination. `src/entry-client.ts` passes a Vite-compiled `import.meta.glob(...)`
+map to the hydrated document; `src/page.ts` uses `loadReactNavigationDestination(...)` to
+validate the HTTP response before importing or rendering `navigation-product.ts`. The
+counter stays mounted. Browser `Link`, `push`, and `replace` retain full-document behavior.
+
+The client sends same-origin cookies, follows `Set-Cookie` through normal browser handling,
+uses `cache: 'no-store'`, and does not prefetch or reuse the payload. A redirect, error,
+invalid/unsupported payload, or unavailable module triggers ordinary document fallback;
+cancelled loads do not. The example also gives streamed React bootstrap/Suspense scripts
+per-response CSP nonces so the production Fastify security policy allows hydration without
+loosening its default script policy. See the
+[navigation payload contract](../../docs/contracts/react-navigation-payload.md).
+
 ## canonical consumer test map
 
 This example is the outer half of the canonical React consumer loop, while package and CLI fixtures
@@ -61,7 +86,7 @@ cover the smaller units and generated types:
 | layer | executable evidence |
 | --- | --- |
 | Render-policy unit | `packages/react/src/render-policy.test.ts` covers composition and diagnostics directly. |
-| Real request dispatch | `src/app.test.ts` uses `Test.createApp(...)` for a direct page return, DTO failures, guard/interceptor behavior, and native mutation responses. |
+| Real request dispatch | `src/app.test.ts` uses `Test.createApp(...)` for an opted-in page, DTO failures, guard/interceptor behavior, and native mutation responses. |
 | Generated-route compile/check | `packages/cli/src/commands/typegen-navigation.test.ts` compiles positive and negative route-id/params fixtures; `typegen.test.ts` covers non-mutating stale checks. |
 | Hydration | `src/hydration.test.ts` covers both warning-free interaction and mismatch reporting through `onRecoverableError`. |
 | Production and no JavaScript | `tests/production-hydration.spec.ts` verifies built assets and hydration, then submits the native form with `javaScriptEnabled: false`. |
@@ -105,7 +130,7 @@ the complete fallback and the stable client package owns neither mutation routes
 
 - The stable `0.1.0` root contract still owns HTTP-first React SSR. This `0.2.0` example composes
   that contract with the `@fluojs/react/vite` manifest parser added after the initial SSR example.
-- Direct page returns do not create a second response path: the application renderer still returns
+- Opted-in page returns do not create a second response path: the application renderer still returns
   `ReactServerEntry`, and the existing HTTP writer owns status, headers, errors, and streaming.
 - `src/entry-client.ts` is the browser-only boundary. Server modules do not access `window` or
   `document`, and the server loads the Vite manifest explicitly from the application boundary.
@@ -129,6 +154,7 @@ examples/react-vite-ssr/
 │   ├── app.ts              # @Router pages, native POST mutation, and Vite asset serving module
 │   ├── app.test.ts         # DTO, protected mutation, redirect, and streamed SSR assertions
 │   ├── entry-client.ts     # Browser-only hydrateRoot(...) entry
+│   ├── navigation-product.ts # Vite-built browser destination component
 │   ├── entry-server.ts     # Explicit Vite server-entry selector
 │   ├── hydration.ts        # Shared server/client identifierPrefix
 │   ├── hydration.test.ts   # Aligned interaction and recoverable mismatch reporting

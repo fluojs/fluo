@@ -2,6 +2,8 @@ import {
   Link,
   ReactClientRouterProvider,
   createReactRouteSnapshot,
+  loadReactNavigationDestination,
+  type ReactNavigationModules,
   useNavigation,
   useParams,
   usePathname,
@@ -9,7 +11,7 @@ import {
   useRouterState,
   useSearchParams,
 } from '@fluojs/react/client';
-import { Suspense, createElement, lazy, useId, useState } from 'react';
+import { Suspense, createElement, lazy, useId, useState, type ReactNode } from 'react';
 
 const RECOMMENDATIONS_DELAY_MS = 25;
 
@@ -22,6 +24,7 @@ const LazyRecommendations = lazy(async () => {
 export type ProductDocumentProps = {
   readonly preview: boolean;
   readonly productName: string;
+  readonly navigationModules?: ReactNavigationModules;
   readonly routeParams: Readonly<Record<string, string>>;
   readonly routeUrl: string;
   readonly saved: boolean;
@@ -35,13 +38,30 @@ export function HydratedCounter() {
   return createElement('button', { onClick: () => setCount((value) => value + 1), type: 'button' }, `Count: ${count}`);
 }
 
-function ProductNavigation() {
+function ProductNavigation({ modules }: { readonly modules?: ReactNavigationModules }) {
   const navigation = useNavigation();
   const params = useParams();
   const pathname = usePathname();
   const router = useRouter();
   const routerState = useRouterState();
   const searchParams = useSearchParams();
+  const [loadedDestination, setLoadedDestination] = useState<ReactNode>(null);
+
+  async function loadDestination() {
+    const href = '/products/sku-84?preview=false';
+    if (modules === undefined) {
+      window.location.assign(href);
+      return;
+    }
+    const result = await loadReactNavigationDestination(href, modules);
+    if (!result.ok) {
+      if (result.reason !== 'cancelled') {
+        window.location.assign(href);
+      }
+      return;
+    }
+    setLoadedDestination(createElement(result.component, result.payload.destination.props));
+  }
 
   return createElement(
     'nav',
@@ -53,6 +73,8 @@ function ProductNavigation() {
     createElement('p', null, `Current hash: ${routerState.hash || 'unset'}`),
     createElement('p', null, `Navigation: ${navigation.status}`),
     createElement(Link, { href: '/products/sku-84?preview=false' }, 'Open sku-84'),
+    createElement('button', { onClick: loadDestination, type: 'button' }, 'Load sku-84 destination'),
+    loadedDestination,
     createElement(
       'button',
       { onClick: () => router.push('/products/sku-126?preview=true'), type: 'button' },
@@ -71,6 +93,7 @@ function ProductNavigation() {
 export function ProductDocument({
   preview,
   productName,
+  navigationModules,
   routeParams,
   routeUrl,
   saved,
@@ -144,7 +167,7 @@ export function ProductDocument({
             createElement(LazyRecommendations, { sku }),
           ),
           createElement(HydratedCounter),
-          createElement(ProductNavigation),
+          createElement(ProductNavigation, { modules: navigationModules }),
         ),
       ),
     ),
