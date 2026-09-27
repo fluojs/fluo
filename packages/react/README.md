@@ -788,6 +788,11 @@ Expected manifest failures return diagnostics instead of throwing. Stable diagno
 TC39 decorator transform used by fluo applications. Use `@fluojs/react/vite` in React SSR code to
 parse React build assets and feed the existing hydration contract. Neither package owns file routes,
 React-only route grammar, Next.js route segment conventions, RSC bundler behavior, or URL matching.
+The manifest integration maps CSS/JS and icon asset URLs but does not serve their bytes. A Bun-hosted
+application serves its existing Vite client output directory with
+`createStaticAssetsMiddleware({ prefix: '/assets', source: createBunFileSystemAssetSource({ root: './dist/client' }) })`
+registered in Factory `middleware` (imports from `@fluojs/http` and `@fluojs/platform-bun` respectively).
+The URL prefix must match the manifest `base`; mount public icons under the corresponding output path.
 The runnable `examples/react-vite-ssr/` application shows this boundary with generated assets,
 streamed Suspense content, direct React DOM hydration, and the client navigation subpath.
 
