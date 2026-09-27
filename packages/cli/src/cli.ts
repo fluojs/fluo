@@ -139,21 +139,21 @@ function parseDevRunnerRuntime(value: string | undefined): DevRunnerRuntime {
   throw new Error(`Invalid dev runner runtime "${value ?? ''}".`);
 }
 
-function parseDevRunnerInvocation(argv: string[]): { appArgs: string[]; runtime: DevRunnerRuntime } {
+function parseDevRunnerInvocation(argv: string[]): { appArgs: string[]; reactVite: boolean; runtime: DevRunnerRuntime } {
   if (argv[0] === NODE_DEV_RUNNER_COMMAND) {
     const separatorIndex = argv.indexOf('--');
-    return { appArgs: separatorIndex >= 0 ? argv.slice(separatorIndex + 1) : argv.slice(1), runtime: 'node' };
+    return { appArgs: separatorIndex >= 0 ? argv.slice(separatorIndex + 1) : argv.slice(1), reactVite: false, runtime: 'node' };
   }
 
   const runtimeFlagIndex = argv.indexOf('--runtime');
   const runtime = parseDevRunnerRuntime(argv[runtimeFlagIndex + 1]);
   const separatorIndex = argv.indexOf('--');
   if (separatorIndex >= 0) {
-    return { appArgs: argv.slice(separatorIndex + 1), runtime };
+    return { appArgs: argv.slice(separatorIndex + 1), reactVite: argv.includes('--react-vite'), runtime };
   }
 
   const appArgs = argv.slice(1).filter((arg, index, args) => arg !== '--runtime' && args[index - 1] !== '--runtime');
-  return { appArgs, runtime };
+  return { appArgs, reactVite: argv.includes('--react-vite'), runtime };
 }
 
 async function normalizeGeneratorKind(value: string | undefined): Promise<GeneratorKind | undefined> {
@@ -494,7 +494,12 @@ export async function runCli(
     if (commandArgv[0] === NODE_DEV_RUNNER_COMMAND || commandArgv[0] === DEV_RUNNER_COMMAND) {
       const runnerInvocation = parseDevRunnerInvocation(commandArgv);
       const { runNodeRestartRunner } = await import('./dev-runner/node-restart-runner.js');
-      return runNodeRestartRunner({ appArgs: runnerInvocation.appArgs, env, runtime: runnerInvocation.runtime, stderr, stdout });
+      return runNodeRestartRunner({ appArgs: runnerInvocation.appArgs, env, reactVite: runnerInvocation.reactVite, runtime: runnerInvocation.runtime, stderr, stdout });
+    }
+
+    if (commandArgv[0] === '__react-vite-app') {
+      const { runReactViteDevApp } = await import('./dev-runner/react-vite-dev-app.js');
+      return runReactViteDevApp(cwd);
     }
 
     if (isVersionCommand(commandArgv[0])) {

@@ -2074,8 +2074,8 @@ function enforceDocsHubOfficialTransportLinks() {
 }
 
 const denoManagedStartupCommand = 'deno run --allow-net main.ts';
-const denoNativeDevCommand = 'deno run --watch --allow-env --allow-net src/main.ts';
-const denoCompileCommand = 'deno compile --allow-env --allow-net --output dist/app src/main.ts';
+const denoNativeDevCommand = 'deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts';
+const denoCompileCommand = 'deno compile --allow-env --allow-net --allow-read=.env --output dist/app src/main.ts';
 const invalidDenoPermissionPatterns = [
   /deno run --allow-net --allow-env main\.ts/u,
   /deno run(?: --watch)? --allow-env=PORT --allow-net src\/main\.ts/u,
@@ -2112,7 +2112,7 @@ const denoPermissionGuidanceRequirements = [
   ],
   [
     'packages/cli/src/new/scaffold.ts',
-    [denoNativeDevCommand, denoCompileCommand, 'Deno.env.toObject()'],
+    [denoNativeDevCommand, denoCompileCommand, 'deno test --allow-env --allow-net --allow-read=.env', 'Deno.env.toObject()'],
   ],
   ['packages/cli/README.md', [denoNativeDevCommand, denoCompileCommand]],
   ['packages/cli/README.ko.md', [denoNativeDevCommand, denoCompileCommand]],

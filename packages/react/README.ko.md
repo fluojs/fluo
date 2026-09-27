@@ -68,6 +68,12 @@ cd my-react-app
 pnpm dev
 ```
 
+생성된 `dev` script와 직접 실행한 `fluo dev`는 CLI가 소유하는 동일한 restart
+lifecycle을 사용합니다. 의존성 설치 후 Vite가 SSR entry를 변환하고 development
+server에서 client module/stylesheet를 제공하므로 production `dist`나 수동 build가
+필요하지 않습니다. server/client 소스 변경 시 앱을 재시작합니다. Production
+`build`/`start`는 계속 생성된 Vite manifest를 사용하며 HMR은 보장하지 않습니다.
+
 `/products/sku-42?preview=true`를 열고 `src/page.tsx`를 편집합니다. 명시적인
 `@Router(...)` / `@Path(...)` handler는 `src/app.ts`에 남아 `createElement(ProductPage)`를 하나의
 `ReactElement`로 반환하므로 matching, DTO binding/validation, middleware, guard, interceptor, request scope,

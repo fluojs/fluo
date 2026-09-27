@@ -495,3 +495,42 @@ describe('Node restart runner watcher failures', () => {
     );
   });
 });
+
+describe('React Vite development restart', () => {
+  it('starts the transformed entry with .env and releases watchers after shutdown', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-react-restart-'));
+    createdDirectories.push(projectDirectory);
+    mkdirSync(join(projectDirectory, 'src'));
+    writeFileSync(join(projectDirectory, 'src', 'main.ts'), '');
+    const signalTarget = new EventEmitter();
+    const watchers: TestWatcher[] = [];
+    const signals: Array<NodeJS.Signals | undefined> = [];
+    const child = createMockChild(signals);
+    let childArgs: readonly string[] = [];
+    const running = runNodeRestartRunner({
+      env: {},
+      projectDirectory,
+      reactVite: true,
+      signalTarget,
+      spawnChild: (_command, args) => {
+        childArgs = args;
+        return child;
+      },
+      watchTarget: () => {
+        const watcher = new TestWatcher();
+        watchers.push(watcher);
+        return watcher;
+      },
+    });
+
+    expect(childArgs).toContain('--env-file=.env');
+    expect(childArgs).toContain('__react-vite-app');
+    signalTarget.emit('SIGINT');
+    closeMockChild(child, 0);
+
+    await expect(running).resolves.toBe(0);
+    expect(signals).toEqual(['SIGTERM']);
+    expect(watchers.length).toBeGreaterThan(0);
+    expect(watchers.every((watcher) => watcher.closed)).toBe(true);
+  });
+});

@@ -16,7 +16,7 @@
 
 모든 non-Deno starter는 Vite `^8.2.2`, Vitest `^4.1.11`, `@vitest/coverage-v8` `^4.1.11`을 선언합니다. 생성된 ESM Vite config는 `build.rolldownOptions`를 사용합니다. Standard starter는 `vite.config.ts`의 `fluoDecoratorsPlugin()`을 유지하고, React SSR은 이를 `vite.server.config.ts`에 두며 데코레이터 선언은 `.ts`, JSX는 `.tsx` 파일에 유지합니다. `vitest.config.ts`는 별도 `@fluojs/testing/vitest` transform을 유지합니다. Direct Oxc/esbuild decorator processing은 지원하지 않습니다.
 
-대표 sandbox matrix는 React SSR, Node HTTP, TCP microservice, mixed 프로젝트를 설치하고 build, typecheck, test합니다. HTTP를 지원하는 scenario는 alias가 있는 decorated DTO field를 생성된 Vitest로 실행하고, 같은 fixture를 생성된 Vite config로 build한 뒤 bundle을 실행해 metadata와 request binding을 검증합니다. React는 development와 production browser hydration도 검증합니다. Node.js `>=24.0.0 <27`과 Bun/Deno/Workers runtime-native metadata는 바뀌지 않으며 Deno는 native build/test command를 유지합니다. Transform 소유권은 [toolchain contract matrix](./toolchain-contract-matrix.ko.md)를 참조하세요.
+대표 sandbox matrix는 React SSR, Node HTTP, TCP microservice, mixed 프로젝트를 설치하고 build, typecheck, test합니다. 애플리케이션 build 전에 설치된 `fluo dev`가 실제 HTTP 및/또는 TCP 요청에 응답하고 child/watcher를 종료하는지 검증합니다. React는 Vite로 SSR entry를 변환하고 development server에서 client module/stylesheet를 제공하며, production `dist`나 manifest 없이 browser hydration과 server/client 수정 반영도 검증합니다. 생성된 `dev` script도 동일한 진입점으로 위임합니다. HTTP를 지원하는 scenario는 alias가 있는 decorated DTO field를 생성된 Vitest로 실행하고, 같은 fixture를 생성된 Vite config로 build한 뒤 bundle을 실행해 metadata와 request binding을 검증합니다. React는 production browser hydration도 검증합니다. Node.js `>=24.0.0 <27`과 Bun/Deno/Workers runtime-native metadata는 바뀌지 않으며 Deno는 native build/test command를 유지합니다. Transform 소유권은 [toolchain contract matrix](./toolchain-contract-matrix.ko.md)를 참조하세요.
 
 ## 해석 규칙
 

@@ -1,7 +1,8 @@
 import { defineConfig } from '@playwright/test';
 
 const BROWSER_TEST_PORT = 43_006;
-const serverCommand = process.env.FLUO_REACT_STARTER_SERVER_COMMAND === 'dev'
+const development = process.env.FLUO_REACT_STARTER_SERVER_COMMAND === 'dev';
+const serverCommand = development
   ? <%= devCommandJson %>
   : <%= startCommandJson %>;
 
@@ -20,7 +21,7 @@ export default defineConfig({
     env: { PORT: String(BROWSER_TEST_PORT) },
     reuseExistingServer: false,
     timeout: 30_000,
-    url: `http://127.0.0.1:${BROWSER_TEST_PORT}/assets/entry-client.js`,
+    url: `http://127.0.0.1:${BROWSER_TEST_PORT}${development ? '/src/entry-client.tsx' : '/assets/entry-client.js'}`,
   },
   workers: 1,
 });

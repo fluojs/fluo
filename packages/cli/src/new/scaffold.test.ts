@@ -814,8 +814,9 @@ describe('scaffoldBootstrapApp', () => {
       '@fluojs/platform-deno': expect.any(String),
       '@fluojs/runtime': expect.any(String),
     });
-    expect(packageJson.scripts?.build).toBe('deno compile --allow-env --allow-net --output dist/app src/main.ts');
+    expect(packageJson.scripts?.build).toBe('deno compile --allow-env --allow-net --allow-read=.env --output dist/app src/main.ts');
     expect(packageJson.scripts?.dev).toBe('fluo dev');
+    expect(packageJson.scripts?.test).toBe('deno test --allow-env --allow-net --allow-read=.env');
     expect(packageJson.scripts?.start).toBe('./dist/app');
     expect(packageJson.devDependencies).not.toHaveProperty('vitest');
     expect(readme).toContain('Deno runtime + Deno native HTTP via `FluoFactory.create(..., { adapter, shutdownRegistration })` then `app.listen()`');

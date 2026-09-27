@@ -2475,11 +2475,26 @@ describe('enforceDenoPermissionGuidance', () => {
       const content = readFileSync(join(repoRoot, relativePath), 'utf8');
       return relativePath === targetPath
         ? content.replace(
-          'deno run --watch --allow-env --allow-net src/main.ts',
+          'deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts',
           'deno run --watch --allow-env=PORT --allow-net src/main.ts',
         )
         : content;
     })).toThrowError(/packages\/cli\/README\.md.*permission guidance synchronized/u);
+  });
+
+  it('rejects unrestricted filesystem permission for generated Deno dev', async () => {
+    const { enforceDenoPermissionGuidance } = await loadGovernanceInternals();
+    const targetPath = 'packages/cli/src/new/scaffold.ts';
+
+    expect(() => enforceDenoPermissionGuidance((relativePath) => {
+      const content = readFileSync(join(repoRoot, relativePath), 'utf8');
+      return relativePath === targetPath
+        ? content.replace(
+          'deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts',
+          'deno run --watch --allow-env --allow-net --allow-read src/main.ts',
+        )
+        : content;
+    })).toThrowError(/packages\/cli\/src\/new\/scaffold\.ts.*permission guidance synchronized/u);
   });
 
   it('accepts synchronized managed startup, application env, and host-owned signal guidance', async () => {

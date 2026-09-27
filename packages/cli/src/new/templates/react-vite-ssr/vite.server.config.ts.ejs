@@ -13,5 +13,22 @@ export default defineConfig({
     ssr: 'src/main.ts',
     target: 'node24',
   },
-  plugins: [fluoDecoratorsPlugin()],
+  plugins: [
+    fluoDecoratorsPlugin(),
+    {
+      name: 'fluo:react-development-stylesheet',
+      apply: 'serve',
+      enforce: 'pre',
+      resolveId(source, importer) {
+        if (source === './styles.css' && importer?.endsWith('/src/entry-client.tsx')) {
+          return '\0fluo-react-development-stylesheet';
+        }
+      },
+      load(id) {
+        if (id === '\0fluo-react-development-stylesheet') {
+          return '';
+        }
+      },
+    },
+  ],
 });

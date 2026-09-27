@@ -2224,6 +2224,59 @@ void bootstrap();
     expect(stdoutBuffer.join('')).toContain('Watch mode: fluo-restart');
   });
 
+  it('selects the React development transformer for an installed React starter', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-react-dev-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({
+      dependencies: { '@fluojs/react': '^0.1.0' },
+      scripts: { dev: 'fluo dev' },
+    }));
+    writeFileSync(join(workspaceDirectory, 'vite.client.config.ts'), '');
+    writeFileSync(join(workspaceDirectory, 'vite.server.config.ts'), '');
+    const output: string[] = [];
+
+    const exitCode = await runCli(['dev', '--dry-run'], {
+      cwd: workspaceDirectory,
+      env: {},
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => output.push(message) },
+      updateCheck: false,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output.join('')).toContain('__dev-runner --runtime node --react-vite --');
+    expect(output.join('')).toContain('Watch mode: fluo-restart');
+  });
+
+  it('keeps React native watch scoped away from generated dist output', async () => {
+    const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-react-native-'));
+    createdDirectories.push(workspaceDirectory);
+    writeFileSync(join(workspaceDirectory, 'package.json'), JSON.stringify({
+      dependencies: { '@fluojs/react': '^0.1.0' },
+      scripts: { dev: 'fluo dev' },
+    }));
+    writeFileSync(join(workspaceDirectory, 'vite.client.config.ts'), '');
+    writeFileSync(join(workspaceDirectory, 'vite.server.config.ts'), '');
+    const output: string[] = [];
+
+    const exitCode = await runCli(['dev', '--dry-run', '--runner', 'native'], {
+      cwd: workspaceDirectory,
+      env: {},
+      stderr: { write: () => undefined },
+      stdout: { write: (message) => output.push(message) },
+      updateCheck: false,
+    });
+
+    expect(exitCode).toBe(0);
+    if (process.platform === 'linux') {
+      expect(output.join('')).toContain('Watch mode: fluo-restart');
+    } else {
+      expect(output.join('')).toContain('--watch-path=src');
+      expect(output.join('')).toContain('--watch-path=vite.client.config.ts');
+      expect(output.join('')).toContain('Watch mode: native-watch');
+    }
+  });
+
   it('forwards removed global option tokens after the dev pass-through separator without side effects', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-'));
     createdDirectories.push(workspaceDirectory);
@@ -2485,7 +2538,7 @@ void bootstrap();
     });
 
     expect(exitCode).toBe(0);
-    expect(stdoutBuffer.join('')).toContain('Would run: deno run --watch --allow-env --allow-net src/main.ts');
+    expect(stdoutBuffer.join('')).toContain('Would run: deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts');
     expect(stdoutBuffer.join('')).toContain('Watch mode: runtime-native-watch');
   });
 
@@ -3571,7 +3624,7 @@ void bootstrap();
   it('uses the same restart runner boundary for Bun, Deno, and Workers app children', async () => {
     const cases: Array<{ args: string[]; command: string; runtime: 'bun' | 'cloudflare-workers' | 'deno' }> = [
       { args: ['src/main.ts', '--port', '4000'], command: 'bun', runtime: 'bun' },
-      { args: ['run', '--allow-env', '--allow-net', 'src/main.ts', '--port', '4000'], command: 'deno', runtime: 'deno' },
+      { args: ['run', '--allow-env', '--allow-net', '--allow-read=.env', 'src/main.ts', '--port', '4000'], command: 'deno', runtime: 'deno' },
       { args: ['dev', '--show-interactive-dev-session=false', '--port', '4000'], command: 'wrangler', runtime: 'cloudflare-workers' },
     ];
 
@@ -3862,7 +3915,7 @@ void bootstrap();
     });
 
     expect(exitCode).toBe(0);
-    expect(spawned).toEqual([{ args: ['run', '--watch', '--allow-env', '--allow-net', 'src/main.ts'], command: 'deno', forceColor: '1', prettyTtyColor: '1', stdio: 'pipe' }]);
+    expect(spawned).toEqual([{ args: ['run', '--watch', '--allow-env', '--allow-net', '--allow-read=.env', 'src/main.ts'], command: 'deno', forceColor: '1', prettyTtyColor: '1', stdio: 'pipe' }]);
   });
 
   it('passes forced color environment through runtime-native Workers dev runs', async () => {

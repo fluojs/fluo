@@ -50,3 +50,17 @@ export function createReactPageRenderer(manifest: unknown): ReactPageRenderer {
 
   return renderPage;
 }
+
+export function createReactDevelopmentPageRenderer(): ReactPageRenderer {
+  return (page, context) => createReactServerEntry(
+    <ReactAppDocument
+      page={page}
+      route={{ params: context.request.params, url: context.request.url }}
+      stylesheets={['/src/styles.css?direct']}
+    />,
+    {
+      bootstrapModules: ['/src/entry-client.tsx'],
+      identifierPrefix: REACT_IDENTIFIER_PREFIX,
+    },
+  );
+}

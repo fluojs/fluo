@@ -41,6 +41,7 @@ export type NodeRestartRunnerOptions = {
   debounceMs?: number;
   env: NodeJS.ProcessEnv;
   projectDirectory?: string;
+  reactVite?: boolean;
   runtime?: DevRunnerRuntime;
   signalTarget?: RestartSignalTarget;
   spawnChild?: RestartChildSpawner;
@@ -66,7 +67,7 @@ const DEFAULT_IGNORES = [
   '*~',
   '.#*',
 ];
-const WATCH_FILES = ['.env', 'package.json', 'tsconfig.json', 'tsconfig.build.json'];
+const WATCH_FILES = ['.env', 'package.json', 'tsconfig.json', 'tsconfig.build.json', 'vite.client.config.ts', 'vite.server.config.ts'];
 const SHOW_NODE_RESTART_NOTICE_ENV = 'FLUO_DEV_SHOW_RESTART_NOTICE';
 const CLEAR_SCREEN = '\u001B[2J\u001B[3J\u001B[H';
 const STUDIO_EPOCH_ENV = 'FLUO_STUDIO_EPOCH';
@@ -327,11 +328,13 @@ function getPreserveColorTtyImport(): string {
   return join(dirname(dirname(fileURLToPath(import.meta.url))), 'dev-runner', 'preserve-color-tty.js');
 }
 
-function buildNodeAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
+function buildNodeAppArgs(env: NodeJS.ProcessEnv, appArgs: string[], reactVite: boolean): string[] {
   const colorTtyImport = env[PRETTY_TTY_COLOR_ENV] === '1' ? ['--import', getPreserveColorTtyImport()] : [];
   const studioDevtoolsImport = createStudioDevtoolsNodeImport(env);
 
-  return ['--env-file=.env', ...colorTtyImport, ...studioDevtoolsImport, '--import', 'tsx', 'src/main.ts', ...appArgs];
+  return ['--env-file=.env', ...colorTtyImport, ...studioDevtoolsImport, '--import', 'tsx',
+    ...(reactVite ? [join(dirname(dirname(fileURLToPath(import.meta.url))), 'cli.js'), '__react-vite-app'] : ['src/main.ts']),
+    ...appArgs];
 }
 
 function buildBunAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
@@ -340,16 +343,16 @@ function buildBunAppArgs(env: NodeJS.ProcessEnv, appArgs: string[]): string[] {
   return [...colorTtyPreload, 'src/main.ts', ...appArgs];
 }
 
-function buildAppCommand(runtime: DevRunnerRuntime, env: NodeJS.ProcessEnv, appArgs: string[]): { args: string[]; command: string } {
+function buildAppCommand(runtime: DevRunnerRuntime, env: NodeJS.ProcessEnv, appArgs: string[], reactVite: boolean): { args: string[]; command: string } {
   switch (runtime) {
     case 'bun':
       return { command: 'bun', args: buildBunAppArgs(env, appArgs) };
     case 'cloudflare-workers':
       return { command: 'wrangler', args: ['dev', '--show-interactive-dev-session=false', ...appArgs] };
     case 'deno':
-      return { command: 'deno', args: ['run', '--allow-env', '--allow-net', 'src/main.ts', ...appArgs] };
+      return { command: 'deno', args: ['run', '--allow-env', '--allow-net', '--allow-read=.env', 'src/main.ts', ...appArgs] };
     default:
-      return { command: process.execPath, args: buildNodeAppArgs(env, appArgs) };
+      return { command: process.execPath, args: buildNodeAppArgs(env, appArgs, reactVite) };
   }
 }
 
@@ -414,7 +417,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
 
   const startChild = (resolveExitCode: (code: number) => void, cleanup: () => void) => {
     ensureStudioEpoch(env);
-    const appCommand = buildAppCommand(runnerRuntime, env, appArgs);
+    const appCommand = buildAppCommand(runnerRuntime, env, appArgs, options.reactVite ?? false);
     publishStudioLifecycleEvent(env, runnerRuntime, 'restart', {
       phase: 'starting',
       reason: 'fluo dev runner starting app child',
