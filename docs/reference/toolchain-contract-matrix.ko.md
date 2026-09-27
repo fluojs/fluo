@@ -9,7 +9,7 @@
 | 항목 | 계약 | 버전 / 비고 |
 | --- | --- | --- |
 | **TypeScript** | `v6.0+` | `strict: true`, `experimentalDecorators: false`, `module: esnext`, 생성 config는 deprecated `baseUrl` aliasing을 피함 |
-| **Babel** | `v7.26+` | 루트 워크스페이스는 `@babel/core` `^7.26.10`, `{ version: '2023-11' }` 구성을 쓰는 `@babel/plugin-proposal-decorators` `^7.28.0`, `@babel/preset-typescript` `^7.27.0`을 고정합니다. |
+| **Babel** | `v7.26+` | 루트 워크스페이스는 `@babel/core` `^7.26.10`, `{ version: '2023-11' }` 구성을 쓰는 `@babel/plugin-proposal-decorators` `^7.28.0`, `@babel/preset-typescript` `^7.27.0`을 고정합니다. Decorator transform은 선언 전용 필드를 위해 Babel 7에서만 `allowDeclareFields`를 유지하고 격리된 Babel 8 의존성에서는 전달하지 않으며, 두 버전의 decorated field를 보존합니다. Workspace와 배포되는 Next adapter의 dependency 기준선은 Babel 7을 유지합니다. |
 | **Vite** | `v8.2+` | 루트 워크스페이스는 Vite `^8.2.2`를 선언하고 정확히 8.2.2로 override합니다. 생성된 non-Deno 프로젝트도 `^8.2.2`를 선언하며 ESM config는 `build.rolldownOptions`를 사용합니다. `fluoDecoratorsPlugin()`이 Rolldown/Oxc보다 먼저 Babel로 애플리케이션 데코레이터를 변환하며 direct Oxc/esbuild decorator processing은 지원하지 않습니다. |
 | **@fluojs/vite** | `v1.0+`; Node.js `>=24.0.0 <27` | 생성된 non-Deno Vite config 파일은 `@fluojs/vite`에서 `fluoDecoratorsPlugin()`을 import하며 React SSR starter는 server-build boundary에 이를 적용합니다. 이 플러그인은 Vite 애플리케이션 파일 데코레이터 변환을 소유하고, 배포된 Vite `>=6.2.0` peer 범위를 유지하며, eligible transform이 실행될 때까지 Babel peer loading을 lazy하게 유지하고, 실행 가능한 workspace Vite 8.2.2 coverage로 field-decorator metadata를 검증합니다. |
 | **Vitest** | `v4.1+` | 루트, package-local workspace, 생성된 non-Deno toolchain은 `vitest` `^4.1.11`을 선언합니다. 생성 프로젝트는 `@vitest/coverage-v8` `^4.1.11`, `fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })`, `@fluojs/core/metadata-preload`를 함께 사용합니다. |

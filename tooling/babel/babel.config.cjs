@@ -7,6 +7,8 @@ module.exports = {
   // markers before the decorators transform initializes decorated class fields.
   presets: [
     decoratorsPreset,
-    ['@babel/preset-typescript', { allowDeclareFields: true }],
+    require('@babel/preset-typescript/package.json').version.startsWith('7.')
+      ? ['@babel/preset-typescript', { allowDeclareFields: true }]
+      : '@babel/preset-typescript',
   ],
 };

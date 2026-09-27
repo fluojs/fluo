@@ -66,7 +66,7 @@ describe('fluoDecoratorsPlugin', () => {
     createFluoDecoratorsPluginForTesting(async () => {
       testImporterCallCount += 1;
 
-      return { transformAsync: transformAsyncMock };
+      return { transformAsync: transformAsyncMock, version: '7.29.7' };
     });
 
     expect(testImporterCallCount).toBe(0);
@@ -78,7 +78,7 @@ describe('fluoDecoratorsPlugin', () => {
     const plugin = createFluoDecoratorsPluginForTesting(async () => {
       importerCallCount += 1;
 
-      return { transformAsync };
+      return { transformAsync, version: '7.29.7' };
     });
 
     await expect(runTransform(plugin, 'export const first: number = 1;', '/app/src/first.ts')).resolves.toEqual({
@@ -136,6 +136,26 @@ describe('fluoDecoratorsPlugin', () => {
     await expect(
       runTransform(plugin, 'export const value: number = 1;', '/app/src/features/order.spec.builder.ts'),
     ).resolves.toEqual(expect.objectContaining({ code: expect.any(String) }));
+  });
+
+  it('transforms decorated TypeScript fields through the Babel 7 default', async () => {
+    const plugin = fluoDecoratorsPlugin();
+    const result = await runTransform(
+      plugin,
+      `function Field(_value: undefined, _context: ClassFieldDecoratorContext) {}
+export class Example {
+  @Field
+  name = '';
+}`,
+      '/app/src/field.ts',
+    );
+
+    expect(result).toEqual(expect.objectContaining({
+      code: expect.stringContaining('@fluojs/core/metadata-preload'),
+    }));
+    expect(result).toEqual(expect.objectContaining({
+      code: expect.not.stringContaining("name = '';"),
+    }));
   });
 
   it('reports missing @babel/core peer from the lazy dynamic import branch', async () => {

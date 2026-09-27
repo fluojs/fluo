@@ -1,7 +1,7 @@
 import type { PluginObj } from '@babel/core';
 import type { Plugin, ResolvedConfig } from 'vite';
 
-type BabelCoreModule = Pick<typeof import('@babel/core'), 'transformAsync'>;
+type BabelCoreModule = Pick<typeof import('@babel/core'), 'transformAsync' | 'version'>;
 type BabelCoreImporter = () => Promise<BabelCoreModule>;
 
 /**
@@ -218,7 +218,9 @@ function createFluoDecoratorsPlugin(
             ? []
             : [
                 createFluoDecoratorsPreset,
-                ['@babel/preset-typescript', { allowDeclareFields: true }],
+                loadedBabelCore.version.startsWith('7.')
+                  ? ['@babel/preset-typescript', { allowDeclareFields: true }]
+                  : '@babel/preset-typescript',
               ],
           sourceMaps: options.sourceMaps ?? shouldGenerateSourceMaps,
         })

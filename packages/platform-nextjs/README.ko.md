@@ -285,6 +285,10 @@ application `*.ts` rule에 추가하며 browser와 dependency 파일은 제외�
 Loader는 `@fluojs/vite`와 동일한 Babel TC39
 decorators `2023-11` transform을 적용하고 JavaScript를 Turbopack에
 반환합니다.
+TypeScript preset은 선언 전용 필드를 처리하는 Babel 7에서만 `allowDeclareFields`를
+유지하고 격리된 Babel 8 의존성에서는 제거된 옵션을 전달하지 않습니다.
+두 버전에서 decorated field 처리를 유지합니다.
+배포되는 Next adapter의 dependency 선언은 계속 Babel 7을 가리킵니다.
 
 Packaged compiler integration은 Turbopack만 지원하며 webpack은 지원하지
 않습니다. Decorated backend 선언은 `.ts` 파일에 두세요. Helper는 `.tsx`
