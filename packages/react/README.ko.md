@@ -873,8 +873,18 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 - Router method는 cross-origin 또는 non-HTTP(S) destination을 `ReactClientNavigationError`로 거부합니다.
   이런 destination에는 일반 anchor를 사용하세요.
 
-이 phase는 `prefetch`를 의도적으로 제공하지 않습니다. 소유한 client data/render cache가 없으므로
-prefetch를 제공하면 일관되게 revalidate하거나 consume할 수 없는 behavior를 약속하게 됩니다.
+`Link`의 optional `prefetch="hover"` 및 `prefetch="viewport"` mode는 생략하면 off입니다.
+Hydration을 마친 provider에 `navigationModules`와 현재 auth/session epoch를 나타내는 명시적
+application-managed `prefetchScope` 문자열을 함께 제공해야 합니다. Hover는 적합한 pointer
+진입에, viewport는 intersection 진입에 시작하고 exit에 취소합니다. JavaScript 비활성,
+부적합한 anchor, 미지원 목적지, fragment-only 이동에서는 실행하지 않습니다.
+`router.invalidate()`는 pending prefetch를 취소하고 provider-local cache를 비웁니다.
+진행 중인 soft navigation을 취소하면 `useNavigation()`이 커밋된 route를 유지한 채 idle로
+정착하며 history 기록이나 document fallback은 발생하지 않습니다.
+Mutation 또는 auth 변경 뒤 다음 in-document navigation **이전에** 호출하거나
+`prefetchScope`를 변경하세요. Scope 변경과 unmount도 취소·삭제하며 전체 문서 이동은 cache를
+파기합니다. 외부 `HttpOnly` cookie 변경은 자동으로 감지하지 않으며 application이 변경
+notification을 놓쳐도 public page는 identity에 영향을 받으면 안 됩니다.
 
 Client navigation에는 catch-all route가 필요하지 않습니다. `Link`는 실제 anchor로 남으므로 hydration
 gap이나 JavaScript disabled 환경에서는 일반 full-document browser navigation으로 fallback합니다. 이후
@@ -895,31 +905,59 @@ import 가능 여부를 결정합니다. Runtime-neutral root는 browser/Vite co
 
 ```tsx
 import { ReactNavigationPage } from '@fluojs/react';
-import { ReactClientRouterProvider, createReactRouteSnapshot } from '@fluojs/react/client';
+import { Link, ReactClientRouterProvider, createReactRouteSnapshot } from '@fluojs/react/client';
 
 // HTTP-matched @Path handler에서:
 return ReactNavigationPage.create(<ProductPage sku={input.sku} />, {
   module: './navigation-product.ts',
   props: { sku: input.sku },
-});
+}, { prefetch: 'public' }); // 모든 request identity에서 page가 동일할 때만 사용합니다.
 
 // Build된 browser entry에서:
 const modules = import.meta.glob('./navigation-product.ts');
 <ReactClientRouterProvider
   initialSnapshot={createReactRouteSnapshot({ url: requestUrl, params: matchedParams })}
   navigationModules={modules}
+  prefetchScope={sessionEpoch}
 >
-  {(destination) => <Shell><DashboardNav />{destination ?? <ProductPage />}</Shell>}
+  {(destination) => (
+    <Shell>
+      <Link href="/products/sku-84" prefetch="hover">Product</Link>
+      {destination ?? <ProductPage />}
+    </Shell>
+  )}
 </ReactClientRouterProvider>
 ```
 
-Browser는 `credentials: 'same-origin'`, `cache: 'no-store'`, `redirect: 'manual'`을 사용하며
-호출할 때마다 새 request를 보냅니다. HTTP는 기존 `Vary`와 `Set-Cookie`를 유지하고 payload에
-`private, no-store`를 적용합니다. Redirect, 404, 401/403, validation failure, non-page
-response, malformed/unsupported payload, 사용할 수 없는 module은 렌더링할 수 없으며 caller가
+예시의 `sessionEpoch`는 auth/session 변경마다 달라지는 application-managed 문자열입니다.
+Identity-independent page에 한해서 server handler는
+optional 세 번째 인자 `ReactNavigationPage.create(page, { module, props }, { prefetch: 'public' })`를
+사용할 수 있습니다. 이는 사용자, auth, cookie 등 모든 request identity에 대해 결과가
+동일하다는 선언입니다. 일반 browser loader는 계속 `credentials: 'same-origin'`,
+`cache: 'no-store'`, `redirect: 'manual'`을 사용하며 non-opt-in 호출마다 새 request를 보냅니다.
+HTTP는 기존 `Vary`, `Set-Cookie`를 보존하고 일반 navigation에는 `private, no-store`를 적용합니다.
+`Cookie`, `Authorization`이 없는 status-`200` negotiated public response에 최종
+`Set-Cookie`가 없고 기존 `Cache-Control` directive가 없으며 기존 `Vary`에는 `Accept`
+이외의 값이 없을 때에만 `X-Fluo-Navigation-Prefetch: public`,
+`Cache-Control: public, max-age=15`, `Vary: Accept`가 발급됩니다. 기존 restriction을 덮어
+eligibility를 만들지 않습니다. 별도 speculative GET에는 `credentials: 'omit'`,
+`cache: 'no-store'`, `redirect: 'manual'` 및 같은 navigation Accept를 사용합니다. Browser는
+명시적 grant, 호환되는 public cache header, 완전히 검증된 version-`1` payload와 build된
+module만 허용합니다. Fetch는 `Set-Cookie`를 노출하지 않으므로 이를 판단에 사용하지 않습니다.
+Provider는 최대 32개의 single-use LRU entry(각 JSON 최대 64 KiB)와 최대 4개의 concurrent
+request를 소유하고 초과 opportunity를 queue하지 않습니다. Entry 만료는 validation/import
+완료 후 15초와 남은 server freshness(음수 아닌 `Age`를 `max-age`에서 차감) 중 빠른
+시점이며 malformed/exhausted freshness는 거부하고 import는 server age를 다시 시작하지
+않습니다. Opt-in click은 entry를 소비하거나 추가 GET 없이 진행 중인 request를 adopt합니다.
+Adoption 전 hover leave/viewport exit, invalidation, scope 변경, unmount, 이전 activation을
+대체하는 이동은 pending work를 abort합니다. 재방문·back/forward·refresh는 entry를
+재사용하지 않습니다. Redirect, 404, 401/403, validation failure, non-page response,
+malformed/unsupported payload, 사용할 수 없는 module은 렌더링할 수 없으며 caller가
 document request로 fallback합니다. External/non-HTTP(S) URL에는 일반 anchor를 사용하고
-abort된 request는 렌더링하거나 fallback을 시작하지 않습니다. 일반 direct/JavaScript-disabled
-GET은 HTML과 hydration asset을 계속 stream합니다. `Link`와 `router.push/replace`만 공식
+취소된 speculation은 URL/params를 commit하거나 fallback을 시작하지 않습니다. 거부된
+prefetch 및 non-opt-in click은 일반 credential 포함 loader와 document fallback을 사용합니다.
+일반 direct/JavaScript-disabled GET은 HTML과 hydration asset을 계속 stream합니다.
+`Link`와 `router.push/replace`만 공식
 navigation control이며 helper는 그 아래의 HTTP 검증 경계입니다. 자세한 내용은
 [EN](../../docs/contracts/react-navigation-payload.md) /
 [KO](../../docs/contracts/react-navigation-payload.ko.md) contract와
@@ -1218,7 +1256,7 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - stable RSC root 또는 `@fluojs/react/rsc` subpath. RSC는 명시적으로 불안정한
   `@fluojs/react/experimental/rsc` prototype에서만 제공합니다.
 - 자동 `"use server"` transform/export discovery 또는 built-in Flight renderer/build plugin
-- SPA document swapping, client data/loader cache, navigation prefetching
+- SPA document swapping, 일반 client data/loader cache, 자동 navigation prefetching
 - Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, React-owned
   `routes: []` table
 - 자동 client bundle 생성

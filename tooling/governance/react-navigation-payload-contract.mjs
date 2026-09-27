@@ -8,6 +8,8 @@ const clientPath = 'packages/react/src/client/navigation-payload.ts';
 const serverPath = 'packages/react/src/page-result.ts';
 const storePath = 'packages/react/src/client/store.ts';
 const historyPath = 'packages/react/src/client/history.ts';
+const providerPath = 'packages/react/src/client/provider.ts';
+const dispatchPath = 'packages/http/src/dispatch/dispatch-response-policy.ts';
 const mediaType = 'application/vnd.fluo.react-navigation+json;v=1';
 
 function property(object, name) {
@@ -22,6 +24,18 @@ function findNode(root, predicate) {
   return ts.forEachChild(root, (child) => findNode(child, predicate));
 }
 
+function findNodes(root, predicate) {
+  const matches = [];
+  const visit = (node) => {
+    if (predicate(node)) {
+      matches.push(node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return matches;
+}
+
 export function enforceReactNavigationPayloadContract(
   readText = (path) => readFileSync(resolve(repoRoot, path), 'utf8'),
 ) {
@@ -29,6 +43,8 @@ export function enforceReactNavigationPayloadContract(
   const server = ts.createSourceFile(serverPath, readText(serverPath), ts.ScriptTarget.Latest, true);
   const store = ts.createSourceFile(storePath, readText(storePath), ts.ScriptTarget.Latest, true);
   const history = ts.createSourceFile(historyPath, readText(historyPath), ts.ScriptTarget.Latest, true);
+  const provider = ts.createSourceFile(providerPath, readText(providerPath), ts.ScriptTarget.Latest, true);
+  const dispatch = ts.createSourceFile(dispatchPath, readText(dispatchPath), ts.ScriptTarget.Latest, true);
   const clientMediaType = findNode(client, (node) =>
     ts.isVariableDeclaration(node) && node.name.getText(client) === 'MEDIA_TYPE');
   const serverMediaType = findNode(server, (node) =>
@@ -42,28 +58,78 @@ export function enforceReactNavigationPayloadContract(
     throw new Error('React navigation HTTP and browser media types must agree on protocol version 1.');
   }
 
-  const fetchCall = findNode(client, (node) =>
+  const fetchCalls = findNodes(client, (node) =>
     ts.isCallExpression(node) && node.expression.getText(client) === 'fetch');
-  const options = fetchCall && ts.isCallExpression(fetchCall) ? fetchCall.arguments[1] : undefined;
-  const headers = options && ts.isObjectLiteralExpression(options) ? property(options, 'headers') : undefined;
-  const accept = headers && ts.isObjectLiteralExpression(headers) ? property(headers, 'Accept') : undefined;
-  if (!options || !ts.isObjectLiteralExpression(options)
-    || !accept || !ts.isIdentifier(accept) || accept.text !== 'MEDIA_TYPE'
-    || !['cache:no-store', 'credentials:same-origin', 'redirect:manual'].every((pair) => {
-      const [name, expected] = pair.split(':');
-      const value = property(options, name);
-      return value && ts.isStringLiteral(value) && value.text === expected;
-    })) {
-    throw new Error('React navigation must request the explicit media type with same-origin credentials, no cache, and manual redirects.');
+  const fetchOptions = fetchCalls.map((call) => call.arguments[1]);
+  if (fetchOptions.length === 0 || fetchOptions.some((options) => {
+    const headers = options && ts.isObjectLiteralExpression(options) ? property(options, 'headers') : undefined;
+    const accept = headers && ts.isObjectLiteralExpression(headers) ? property(headers, 'Accept') : undefined;
+    return !options || !ts.isObjectLiteralExpression(options)
+      || !accept || !ts.isIdentifier(accept) || accept.text !== 'MEDIA_TYPE'
+      || !['cache:no-store', 'redirect:manual'].every((pair) => {
+        const [name, expected] = pair.split(':');
+        const value = property(options, name);
+        return value && ts.isStringLiteral(value) && value.text === expected;
+      });
+  })) {
+    throw new Error('React navigation requests must retain the explicit media type, no cache, and manual redirects.');
+  }
+  const credentials = fetchOptions.map((options) => property(options, 'credentials'));
+  const firstCredentials = credentials[0];
+  if (!firstCredentials || !ts.isConditionalExpression(firstCredentials)
+    || firstCredentials.condition.getText(client) !== 'options.prefetch === true'
+    || !ts.isStringLiteral(firstCredentials.whenTrue) || firstCredentials.whenTrue.text !== 'omit'
+    || !ts.isStringLiteral(firstCredentials.whenFalse) || firstCredentials.whenFalse.text !== 'same-origin') {
+    throw new Error('React navigation must use same-origin credentials normally and omit them only for prefetch.');
+  }
+  if (credentials.slice(1).some((value) => !value || !ts.isStringLiteral(value) || value.text !== 'omit')) {
+    throw new Error('React navigation prefetch requests must omit credentials.');
+  }
+  const ordinaryLoad = findNode(provider, (node) =>
+    ts.isPropertyAssignment(node) && node.name.getText(provider) === 'load'
+    && node.initializer.getText(provider).includes('loadReactNavigationDestination'));
+  const speculativeLoad = findNode(provider, (node) =>
+    ts.isPropertyAssignment(node) && node.name.getText(provider) === 'prefetch'
+    && node.initializer.getText(provider).includes('loadReactNavigationDestination'));
+  const ordinaryOptions = ordinaryLoad && ts.isPropertyAssignment(ordinaryLoad)
+    ? findNode(ordinaryLoad.initializer, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(provider) === 'loadReactNavigationDestination')
+    : undefined;
+  const speculativeOptions = speculativeLoad && ts.isPropertyAssignment(speculativeLoad)
+    ? findNode(speculativeLoad.initializer, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(provider) === 'loadReactNavigationDestination')
+    : undefined;
+  if (!ordinaryOptions || !ts.isCallExpression(ordinaryOptions)
+    || !speculativeOptions || !ts.isCallExpression(speculativeOptions)
+    || !ts.isObjectLiteralExpression(ordinaryOptions.arguments[2])
+    || property(ordinaryOptions.arguments[2], 'prefetch') !== undefined
+    || !ts.isObjectLiteralExpression(speculativeOptions.arguments[2])
+    || property(speculativeOptions.arguments[2], 'prefetch')?.kind !== ts.SyntaxKind.TrueKeyword) {
+    throw new Error('React navigation prefetch must use a distinct anonymous request, not the credentialed ordinary loader.');
+  }
+  const freshness = findNode(client, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'prefetchFreshUntil');
+  if (!freshness || !findNodes(freshness, (node) =>
+    ts.isStringLiteral(node) && node.text === 'X-Fluo-Navigation-Prefetch').length
+    || !findNodes(freshness, (node) => ts.isStringLiteral(node) && node.text === 'Cache-Control').length
+    || !findNodes(freshness, (node) => ts.isStringLiteral(node) && node.text === 'Vary').length) {
+    throw new Error('React navigation prefetch must require an explicit HTTP freshness grant.');
+  }
+  const prefetchRejection = findNode(client, (node) =>
+    ts.isIfStatement(node) && node.expression.getText(client).includes('options.prefetch === true')
+    && node.expression.getText(client).includes('response.status !== 200')
+    && node.expression.getText(client).includes('freshUntil === undefined'));
+  const componentImport = findNode(client, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(client) === 'loader');
+  if (!prefetchRejection || !componentImport || prefetchRejection.end >= componentImport.pos) {
+    throw new Error('React navigation prefetch must reject missing HTTP approval before importing a component.');
   }
 
   const approvalGuard = findNode(store, (node) =>
     ts.isIfStatement(node) && node.expression.getText(store) === '!result.ok');
-  const request = findNode(store, (node) =>
-    ts.isCallExpression(node) && node.expression.getText(store) === 'load'
-    && node.arguments[0]?.getText(store) === 'destination.href'
-    && node.arguments[1]?.getText(store) === 'controller.signal');
-  const historyWrite = findNode(store, (node) =>
+  const requests = findNodes(store, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'load');
+  const historyWrites = findNodes(store, (node) =>
     ts.isCallExpression(node) && ['browser.pushState', 'browser.replaceState']
       .includes(node.expression.getText(store)));
   const historyRead = findNode(history, (node) =>
@@ -74,7 +140,52 @@ export function enforceReactNavigationPayloadContract(
     || !approvalGuard.thenStatement.statements.some(ts.isReturnStatement)
     || !findNode(approvalGuard.thenStatement, (node) =>
       ts.isCallExpression(node) && node.expression.getText(store) === 'browser.assign')
-    || !request || !historyWrite || approvalGuard.end >= historyWrite.pos || !historyRead) {
+    || requests.length === 0 || requests.some((request) =>
+      request.arguments[0]?.getText(store) !== 'destination.href'
+      || request.arguments[1]?.getText(store) !== 'controller.signal')
+    || historyWrites.length !== 2
+    || historyWrites.some((write) => approvalGuard.end >= write.pos) || !historyRead) {
     throw new Error('React navigation must request server approval and handle rejection before history writes, including traversal.');
+  }
+  const adoptedApproval = findNode(store, (node) =>
+    ts.isConditionalExpression(node) && node.condition.getText(store).includes('prefetchedResult.ok'));
+  if (!adoptedApproval || !ts.isConditionalExpression(adoptedApproval)
+    || !adoptedApproval.condition.getText(store).includes('prefetchedResult.prefetchExpiresAt')
+    || !adoptedApproval.condition.getText(store).includes('Date.now() < prefetchedResult.prefetchExpiresAt')
+    || adoptedApproval.end >= approvalGuard.pos
+    || !findNode(store, (node) =>
+      ts.isIfStatement(node) && node.expression.getText(store) === '!result.ok')) {
+    throw new Error('React navigation prefetch adoption must verify approval and freshness before history writes.');
+  }
+  const grant = findNode(dispatch, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(dispatch) === 'grantsPrefetch');
+  const grantChecks = [];
+  const pendingChecks = grant && ts.isVariableDeclaration(grant) && grant.initializer
+    ? [grant.initializer] : [];
+  while (pendingChecks.length > 0) {
+    const check = pendingChecks.pop();
+    if (ts.isBinaryExpression(check) && check.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+      pendingChecks.push(check.left, check.right);
+    } else {
+      grantChecks.push(check.getText(dispatch));
+    }
+  }
+  const grantBranch = findNode(dispatch, (node) =>
+    ts.isIfStatement(node) && node.expression.getText(dispatch) === 'grantsPrefetch');
+  if (![
+    'representation.mediaType === NAVIGATION_CONTENT_TYPE',
+    "representation.prefetch === 'public'",
+    'response.statusCode === 200',
+    '!hasIdentityHeader',
+    "!hasExistingHeader('set-cookie')",
+    "!hasExistingHeader('cache-control')",
+    'variesOnlyByAccept',
+  ].every((check) => grantChecks.includes(check))
+    || !grantBranch || !ts.isIfStatement(grantBranch)
+    || !findNode(grantBranch.thenStatement, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(dispatch) === 'response.setHeader'
+      && node.arguments[0]?.getText(dispatch) === "'X-Fluo-Navigation-Prefetch'"
+      && node.arguments[1]?.getText(dispatch) === "'public'")) {
+    throw new Error('React navigation prefetch grant requires final HTTP identity and header eligibility.');
   }
 }

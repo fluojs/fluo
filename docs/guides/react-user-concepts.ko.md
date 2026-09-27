@@ -42,8 +42,8 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 | **Layout** | 애플리케이션 `ReactPageRenderer`가 document shell과 shared provider를 소유합니다. `@PageLayout(...)`은 같은 renderer가 compose하는 optional class/method component-reference metadata를 추가합니다. | **Shipped.** File ancestry나 framework-owned layout router는 없습니다. |
 | **Loading UI** | Application tree의 일반 React `Suspense`를 사용하고, 필요하면 `@SuspenseFallback(...)`으로 page fallback을 선택합니다. | **Shipped with a narrow boundary.** Fallback은 SSR 중 suspend하는 descendant를 다루며 handler `await`, form, effect, navigation은 관찰하지 않습니다. |
 | **Data read / loader** | HTTP DTO binding과 validation 이후 `@Path(...)` handler에서 명시적인 application provider를 통해 data를 읽고 React element에 전달합니다. | **Shipped, intentionally different.** Loader runtime, loader cache, client revalidation contract는 없습니다. |
-| **Mutation / action** | Native form을 일반 `@Post(...)` handler로 제출하고, `@RequestDto(...)`로 bind/validate하며, 일반 guard/interceptor를 적용하고, application state를 변경한 뒤 필요하면 `303 See Other`로 redirect합니다. | **Shipped, intentionally different.** Stable surface에는 compiled action, fetcher, optimistic-state, cache-invalidation runtime이 없습니다. |
-| **Navigation** | 실제 `<a>` 또는 `@fluojs/react/client`의 `Link`와 `router.push(...)`, `router.replace(...)`, `router.back()`, `router.refresh()`를 사용합니다. Build-produced importer를 `ReactClientRouterProvider`에 전달하고 승인된 destination을 application-owned page slot에 렌더링합니다. | **Shipped, intentionally different.** 호환 page는 server-confirmed URL/params로 history를 갱신하면서 soft navigation하고 나머지는 document navigation을 사용합니다. Client route matcher, prefetch, response cache는 없습니다. |
+| **Mutation / action** | Native form을 일반 `@Post(...)` handler로 제출하고, `@RequestDto(...)`로 bind/validate하며, 일반 guard/interceptor를 적용하고, application state를 변경한 뒤 필요하면 `303 See Other`로 redirect합니다. Auth/data mutation 후 같은 문서에서 다시 이동하기 전에 `router.invalidate()`를 호출하거나 `prefetchScope`를 바꿉니다. | **Shipped, intentionally different.** Compiled action, fetcher, optimistic-state, 자동 cache revalidation은 없습니다. |
+| **Navigation** | 실제 `<a>` 또는 `@fluojs/react/client`의 `Link`와 `router.push(...)`, `router.replace(...)`, `router.back()`, `router.refresh()`를 사용합니다. Build-produced importer를 `ReactClientRouterProvider`에 전달하고 승인된 destination을 application-owned page slot에 렌더링합니다. Public speculation에는 `Link prefetch="hover"` 또는 `"viewport"`와 provider `prefetchScope`를 사용합니다. | **Shipped, intentionally different.** 호환 page는 server-confirmed URL/params로 history를 갱신하면서 soft navigation하고 나머지는 document navigation을 사용합니다. Client route matcher와 일반 document/data cache는 없습니다. Prefetch는 기본 off이고 명시적인 public grant가 있는 navigation JSON만 한 번 재사용합니다. |
 | **Pending state** | `useNavigation()`이 client navigation lifecycle을 보고합니다. React `Suspense`는 component tree를 통해 rendering fallback을 보고합니다. 애플리케이션은 native form action을 제거하지 않는 범위에서 local form pending UI를 추가할 수 있습니다. | **Shipped with separate phases.** Stable submit-state helper나 공유 loader/action pending model은 없습니다. |
 | **Error UI** | HTTP pipeline failure는 기존 HTTP error path를 유지합니다. Stable React SSR diagnostic은 HTTP-pipeline, pre-commit shell, request-abort, post-shell recoverable phase를 구분합니다. Application React error boundary는 일반 React code로 남습니다. | **Shipped, intentionally different.** Segment `error` file이나 React-owned HTTP error router는 없습니다. |
 | **Not found** | 명시적 route가 없으면 일반 `@fluojs/http` not-found response가 되고, application lookup이 실패하면 handler가 shipped HTTP not-found exception을 throw할 수 있습니다. | **Shipped, intentionally different.** React `notFound()` helper나 catch-all requirement는 없습니다. |
@@ -56,7 +56,7 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 | Import | 책임 | 상태 |
 | --- | --- | --- |
 | `@fluojs/react` | `ReactModule.forRoot(...)`, `@Router(...)`, `@Path(...)`, page rendering policy, Web Streams SSR, diagnostic, page catalog, 명시적 hydration option. | 안정적인 runtime-neutral root입니다. Browser, Vite, typegen, RSC code를 import하지 않습니다. |
-| `@fluojs/react/client` | SSR-safe request-scoped route snapshot과 provider composition, 실제 anchor, HTTP-approved soft navigation 및 document fallback, URL/navigation hook. | 안정적인 SSR-and-browser subpath입니다. `createReactRouteSnapshot(...)`과 `ReactClientRouterProvider`는 SSR 및 hydration을 지원하고 browser navigation effect는 hydration 이후에만 연결됩니다. Matcher, route table, document cache, prefetch layer는 없습니다. |
+| `@fluojs/react/client` | SSR-safe request-scoped route snapshot과 provider composition, 실제 anchor, HTTP-approved soft navigation 및 document fallback, 제한된 public navigation prefetch, URL/navigation hook. | 안정적인 SSR-and-browser subpath입니다. `createReactRouteSnapshot(...)`과 `ReactClientRouterProvider`는 SSR 및 hydration을 지원하고 browser navigation effect는 hydration 이후에만 연결됩니다. Matcher, route table, 일반 document cache는 없습니다. |
 | `@fluojs/react/vite` | 이미 로드한 Vite manifest를 deterministic React CSS, JavaScript, asset-map, hydration option으로 파싱합니다. | 안정적인 build-integration subpath입니다. File을 읽거나 Vite를 실행하지 않습니다. |
 | `@fluojs/react/typegen` | Compiled React page catalog에서 deterministic path-only declaration과 absolute href builder를 생성합니다. | 안정적인 tooling subpath입니다. Versioned route를 거부하고 query, fragment, relative-route, route-tree contract를 생성하지 않습니다. |
 | `@fluojs/react/experimental/rsc` | Compatibility diagnostic, application-supplied RSC manifest seam, Flight response, 명시적 HTTP endpoint에 mount하는 signed Server Function transport. | **Experimental.** 모든 stable entrypoint와 격리되며 stable RSC 또는 action promise가 아닙니다. |
@@ -65,6 +65,9 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 [build된 Vite 예제](../../examples/react-vite-ssr/README.ko.md)를 참고하세요. Direct HTML request,
 JavaScript-disabled anchor와 HTTP redirect/error는 server-owned로 유지됩니다. 기존 `Link`와 router
 method는 승인된 destination을 document 교체 없이 렌더링합니다.
+Opt-in Link는 server grant가 있는 identity-independent 결과를 한 번 재사용할 수 있지만
+일반 navigation, back/forward, non-public response는 HTTP에 새로 승인받습니다. Credential을
+생략한 speculative request, cache 한도, application auth/mutation 책임은 원본 계약을 참고하세요.
 
 ## 최소 end-to-end path
 
@@ -112,7 +115,8 @@ Component, server action, router, loader, cache contract로 해석하지 마세�
 
 - file routing, React-owned matcher, nested route tree, catch-all route grammar
 - route-module loader/action runtime, fetcher, automatic data revalidation
-- 임의 HTML document swapping, client document/data cache, navigation prefetch, optimistic mutation policy
+- 임의 HTML document swapping, 일반 client document/data cache, 자동 navigation prefetch,
+  optimistic mutation policy
 - automatic metadata merging 또는 segment-level `loading`, `error`, `not-found` convention
 - automatic Vite manifest discovery, bundle generation, static-file hosting, arbitrary inline data
   serialization

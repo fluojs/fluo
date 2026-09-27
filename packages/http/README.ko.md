@@ -587,8 +587,25 @@ Node.js, Express, Fastify는 이 capability를 노출합니다. Fetch-style Web,
 dispatcher가 matching, URI versioning, middleware, DTO binding/validation, guard, interceptor,
 handler 실행 및 response-value finalization 이후 이를 선택합니다. HTTP는 route metadata,
 matched URL/params, status, response validator와 기존 `Vary`, `Set-Cookie`를 유지하며
-payload에 `Vary: Accept` 및 `Cache-Control: private, no-store`를 적용합니다.
-이 Accept 값이 없는 일반 GET은 기존 React HTML response를 stream합니다.
+payload에 `Vary: Accept`를 적용합니다. 기본적으로 navigation JSON에는
+`Cache-Control: private, no-store`를 설정합니다. 애플리케이션이 이미
+`Cache-Control`을 설정했다면 기존 지시문을 유지하면서 `private, no-store`를
+추가합니다. 이 Accept 값이 없는 일반 GET은 기존 React HTML response를 stream합니다.
+
+서버에서 재사용을 허용하는 유일한 opt-in은
+`ReactNavigationPage.create(node, destination, { prefetch: 'public' })`입니다.
+사용자, 인증 상태, 쿠키, IP 주소 또는 다른 요청 식별 정보에 따라 결과가
+달라지지 않는 page에만 선언하세요. HTTP는 최종 navigation JSON 응답이 성공한
+`200`이고 요청에 `Cookie`와 `Authorization`이 없으며 최종 응답에 `Set-Cookie`,
+기존 `Cache-Control` 지시문 또는 `Accept` 이외의 기존 `Vary`가 없을 때만
+재사용을 허용합니다. 그때에만 `X-Fluo-Navigation-Prefetch: public`,
+`Cache-Control: public, max-age=15`, `Vary: Accept`를 보냅니다. 그 외에는 grant가
+없고 기존 애플리케이션 지시문을 대체하지 않으면서 기존 `public`을 포함한 모든
+거부 응답에 `private, no-store`를 추가합니다. HTML과 opt-in하지 않은 page에는
+grant를 적용하지 않습니다. 인증·데이터 변경 뒤 추가 same-document navigation을
+수행하기 전에 애플리케이션이 client prefetch scope를 변경하거나 cache를
+무효화해야 합니다. 자세한 제한과 fallback은 연결된 navigation payload contract를
+참조하세요.
 
 Redirect와 error에는 기존 HTTP response 및 error-representation policy가 그대로 적용됩니다.
 404, 401/403, validation failure, non-page value 또는 error document에는 성공한 navigation

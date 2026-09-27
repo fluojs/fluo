@@ -17,6 +17,8 @@ export type ReactNavigationLoadResult =
     readonly ok: true;
     readonly payload: ReactNavigationPayload;
     readonly component: (props: Record<string, unknown>) => ReactNode;
+    /** Only present after an explicitly granted, fully validated anonymous prefetch. */
+    readonly prefetchExpiresAt?: number;
   }
   | {
     readonly ok: false;
@@ -59,18 +61,65 @@ function parseNavigationPayload(
   };
 }
 
+function prefetchFreshUntil(headers: Headers, receivedAt: number): number | undefined {
+  if (headers.get('X-Fluo-Navigation-Prefetch') !== 'public'
+    || headers.get('Vary')?.trim().toLowerCase() !== 'accept') {
+    return undefined;
+  }
+  const cacheControl = /^public,\s*max-age=(\d+)$/iu.exec(headers.get('Cache-Control')?.trim() ?? '');
+  const age = headers.get('Age')?.trim() ?? '0';
+  if (cacheControl === null || !/^\d+$/u.test(age)) {
+    return undefined;
+  }
+  const seconds = Number(cacheControl[1]);
+  const elapsed = Number(age);
+  if (!Number.isSafeInteger(seconds) || !Number.isSafeInteger(elapsed)
+    || seconds <= elapsed || seconds <= 0) {
+    return undefined;
+  }
+  return receivedAt + Math.min(15, seconds - elapsed) * 1000;
+}
+
+async function readBoundedNavigationJson(response: Response): Promise<unknown> {
+  if (response.body === null) {
+    const text = await response.text();
+    return new TextEncoder().encode(text).byteLength > 64 * 1024 ? undefined : JSON.parse(text);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let json = '';
+  let bytes = 0;
+  try {
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) {
+        break;
+      }
+      bytes += next.value.byteLength;
+      if (bytes > 64 * 1024) {
+        await reader.cancel();
+        return undefined;
+      }
+      json += decoder.decode(next.value, { stream: true });
+    }
+    return JSON.parse(json + decoder.decode());
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 /**
  * Requests one HTTP-matched React page and resolves only a Vite-built destination module.
  *
  * @param href Same-origin HTTP(S) destination; no client route matching is performed.
  * @param modules Build-produced module importer map, for example Vite `import.meta.glob(...)`.
- * @param options Optional cancellation signal for this one request.
+ * @param options Optional cancellation signal and anonymous prefetch mode for this one request.
  * @returns The validated payload and component, or a reason to retain the native document path.
  */
 export async function loadReactNavigationDestination(
   href: string | URL,
   modules: ReactNavigationModules,
-  options: { readonly signal?: AbortSignal } = {},
+  options: { readonly signal?: AbortSignal; readonly prefetch?: true } = {},
 ): Promise<ReactNavigationLoadResult> {
   const current = new URL(window.location.href);
   let destination: URL;
@@ -89,9 +138,10 @@ export async function loadReactNavigationDestination(
     return { ok: false, reason: 'cancelled' };
   }
   try {
+    const receivedAt = Date.now();
     const response = await fetch(destination.href, {
       cache: 'no-store',
-      credentials: 'same-origin',
+      credentials: options.prefetch === true ? 'omit' : 'same-origin',
       headers: { Accept: MEDIA_TYPE },
       redirect: 'manual',
       ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -103,7 +153,16 @@ export async function loadReactNavigationDestination(
       || !RESPONSE_MEDIA_TYPE.test(response.headers.get('Content-Type') ?? '')) {
       return { ok: false, reason: 'unavailable' };
     }
-    const parsed: unknown = await response.json();
+    const freshUntil = options.prefetch === true
+      ? prefetchFreshUntil(response.headers, receivedAt)
+      : undefined;
+    if (options.prefetch === true && (response.status !== 200 || freshUntil === undefined)) {
+      await response.body?.cancel();
+      return { ok: false, reason: 'unavailable' };
+    }
+    const parsed: unknown = options.prefetch === true
+      ? await readBoundedNavigationJson(response)
+      : await response.json();
     if (options.signal?.aborted) {
       return { ok: false, reason: 'cancelled' };
     }
@@ -121,6 +180,11 @@ export async function loadReactNavigationDestination(
     }
     if (typeof module.default !== 'function') {
       return { ok: false, reason: 'invalid-payload' };
+    }
+    if (options.prefetch === true) {
+      return freshUntil !== undefined && Date.now() < freshUntil
+        ? { ok: true, payload, component: module.default, prefetchExpiresAt: Math.min(freshUntil, Date.now() + 15_000) }
+        : { ok: false, reason: 'unavailable' };
     }
     return { ok: true, payload, component: module.default };
   } catch (error) {

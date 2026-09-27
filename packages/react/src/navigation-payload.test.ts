@@ -62,6 +62,87 @@ function response(): FrameworkResponse & { body?: unknown } {
   };
 }
 
+it('grants reuse only for an explicitly public navigation page', async () => {
+  // Given: an identity-independent page explicitly declares public prefetch eligibility.
+  @Router('/destination')
+  class DestinationRouter {
+    @Path('/')
+    show() {
+      return ReactNavigationPage.create(createElement('main', null, 'Public'), {
+        module: './destination.ts',
+        props: {},
+      }, { prefetch: 'public' });
+    }
+  }
+  @Module({
+    imports: [ReactModule.forRoot({
+      controllers: [DestinationRouter],
+      renderPage: (page) => createReactServerEntry(page),
+    })],
+  })
+  class AppModule {}
+  const app = await FluoFactory.create(AppModule);
+  try {
+    // When: HTTP finalizes the anonymous negotiated navigation response.
+    const result = response();
+    await app.dispatch(request(), result);
+
+    // Then: the completed representation carries the explicit public grant and freshness.
+    expect(result.statusCode).toBe(200);
+    expect(result.headers['X-Fluo-Navigation-Prefetch']).toBe('public');
+    expect(result.headers['Cache-Control']).toBe('public, max-age=15');
+    expect(result.headers.Vary).toBe('Accept');
+  } finally {
+    await app.close();
+  }
+});
+
+it.each([
+  ['Cookie', { cookie: 'session=secret' }, {}],
+  ['Authorization', { authorization: 'Bearer secret' }, {}],
+  ['Set-Cookie', {}, { 'Set-Cookie': 'session=updated; HttpOnly' }],
+  ['pre-existing public Cache-Control', {}, { 'Cache-Control': 'public, max-age=15' }],
+  ['pre-existing private Cache-Control', {}, { 'Cache-Control': 'private, no-store' }],
+  ['pre-existing no-store Cache-Control', {}, { 'Cache-Control': 'no-store' }],
+  ['Vary Cookie', {}, { Vary: 'Cookie' }],
+  ['Vary wildcard', {}, { Vary: '*' }],
+] as const)('does not grant public prefetch for %s', async (_kind, requestHeaders, rendererHeaders) => {
+  // Given: a public page whose request or existing response policy prevents reuse.
+  @Router('/destination')
+  class DestinationRouter {
+    @Path('/')
+    show() {
+      return ReactNavigationPage.create(createElement('main', null, 'Public'), {
+        module: './destination.ts',
+        props: {},
+      }, { prefetch: 'public' });
+    }
+  }
+  @Module({
+    imports: [ReactModule.forRoot({
+      controllers: [DestinationRouter],
+      renderPage: (page) => createReactServerEntry(page, { headers: rendererHeaders }),
+    })],
+  })
+  class AppModule {}
+  const app = await FluoFactory.create(AppModule);
+  try {
+    // When: HTTP finalizes the negotiated response under the restrictive input.
+    const result = response();
+    await app.dispatch({ ...request(), headers: { ...request().headers, ...requestHeaders } }, result);
+
+    // Then: the existing policy survives and no public grant can be consumed by a browser.
+    expect(result.statusCode).toBe(200);
+    expect(result.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+    expect(result.headers['Cache-Control']).toContain('private, no-store');
+    for (const [key, value] of Object.entries(rendererHeaders)) {
+      expect(result.headers[key]).toContain(value);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 it('does not start an HTML stream for a negotiated destination', async () => {
   // Given: a matched page with a renderer that returns entry metadata without opening a stream.
   let renderCalls = 0;

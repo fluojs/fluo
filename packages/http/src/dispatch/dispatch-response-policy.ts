@@ -1,4 +1,4 @@
-import { appendVaryHeader, getRequestHeader, getResponseHeader } from '../header-helpers.js';
+import { appendVaryHeader, getRequestHeader } from '../header-helpers.js';
 import type {
   FrameworkRequest,
   FrameworkResponse,
@@ -36,6 +36,7 @@ type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
 const BINARY_CONTENT_TYPE = 'application/octet-stream';
 const JSON_CONTENT_TYPE = 'application/json; charset=utf-8';
 const TEXT_CONTENT_TYPE = 'text/plain; charset=utf-8';
+const NAVIGATION_CONTENT_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
 
 type SimpleJsonFrameworkResponse = FrameworkResponse & {
   sendSimpleJson(body: SimpleJsonResponseBody): ReturnType<FrameworkResponse['send']>;
@@ -132,8 +133,13 @@ function readFrameworkResponseRepresentation(value: unknown): FrameworkResponseR
   }
   const mediaType: unknown = Reflect.get(representation, 'mediaType');
   const body: unknown = Reflect.get(representation, 'body');
+  const prefetch: unknown = Reflect.get(representation, 'prefetch');
   return typeof mediaType === 'string' && typeof body === 'function'
-    ? { mediaType, body: (context) => Reflect.apply(body, representation, [context]) }
+    ? {
+      mediaType,
+      body: (context) => Reflect.apply(body, representation, [context]),
+      ...(prefetch === 'public' ? { prefetch } : {}),
+    }
     : undefined;
 }
 
@@ -283,12 +289,51 @@ export async function writeSuccessResponse(
         }
         applyWriterSuccessResponseMetadata();
         response.setHeader('Content-Type', representation.mediaType);
+        const existingHeaders = Object.entries(response.headers);
+        const variesOnlyByAccept = existingHeaders
+          .filter(([name]) => name.toLowerCase() === 'vary')
+          .every(([, value]) =>
+            (Array.isArray(value) ? value : [value])
+              .flatMap((entry) => entry.split(','))
+              .every((field) => field.trim().toLowerCase() === 'accept'));
+        const hasExistingHeader = (name: string): boolean => existingHeaders.some(
+          ([headerName, value]) => headerName.toLowerCase() === name && value !== undefined,
+        );
+        const hasIdentityHeader = Object.entries(request.headers).some(
+          ([name, value]) => (name.toLowerCase() === 'cookie' || name.toLowerCase() === 'authorization')
+            && value !== undefined,
+        );
+        const grantsPrefetch = representation.mediaType === NAVIGATION_CONTENT_TYPE
+          && representation.prefetch === 'public'
+          && response.statusCode === 200
+          && !hasIdentityHeader
+          && !hasExistingHeader('set-cookie')
+          && !hasExistingHeader('cache-control')
+          && variesOnlyByAccept;
         appendVaryHeader(response, 'Accept');
-        const cacheControl = getResponseHeader(response, 'Cache-Control');
-        response.setHeader('Cache-Control', [
-          ...(cacheControl === undefined ? [] : Array.isArray(cacheControl) ? cacheControl : [cacheControl]),
-          'private, no-store',
-        ].join(', '));
+        for (const [name] of existingHeaders) {
+          if (name.toLowerCase() === 'x-fluo-navigation-prefetch') {
+            delete response.headers[name];
+          }
+        }
+        if (grantsPrefetch) {
+          response.setHeader('X-Fluo-Navigation-Prefetch', 'public');
+          response.setHeader('Cache-Control', 'public, max-age=15');
+        } else {
+          const cacheControlHeaders = existingHeaders.filter(
+            ([name, value]) => name.toLowerCase() === 'cache-control' && value !== undefined,
+          );
+          for (const [name] of cacheControlHeaders) {
+            delete response.headers[name];
+          }
+          response.setHeader(
+            cacheControlHeaders[0]?.[0] ?? 'Cache-Control',
+            [
+              ...cacheControlHeaders.flatMap(([, value]) => Array.isArray(value) ? value : [value]),
+              'private, no-store',
+            ].join(', '),
+          );
+        }
         return response.send(body);
       }
       appendVaryHeader(response, 'Accept');

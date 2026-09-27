@@ -120,7 +120,7 @@ function finalizeReactPageResult(
         },
       );
     }
-    const { node, destination } = context.value;
+    const { node, destination, prefetch } = context.value;
     const renderPage = runtime.renderPage;
     const page = registerFrameworkResponseWriter(
       { node, destination },
@@ -140,6 +140,7 @@ function finalizeReactPageResult(
       enumerable: false,
       value: {
         mediaType: 'application/vnd.fluo.react-navigation+json;v=1',
+        ...(prefetch === undefined ? {} : { prefetch }),
         body: ({ request, requestContext, response, applySuccessResponseMetadata }: FrameworkResponseWriterContext): ReactNavigationPayload => {
           const entry = renderPage(
             node,

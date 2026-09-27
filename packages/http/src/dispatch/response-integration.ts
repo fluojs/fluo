@@ -19,6 +19,8 @@ export const FRAMEWORK_RESPONSE_REPRESENTATION = Symbol.for('fluo.http.responseR
 export type FrameworkResponseRepresentation = {
   readonly mediaType: string;
   readonly body: (context: FrameworkResponseWriterContext) => unknown | Promise<unknown>;
+  /** Explicit server assertion that this navigation representation is identity-independent. */
+  readonly prefetch?: 'public';
 };
 
 /** Context supplied when an integration writes a successful framework response. */

@@ -60,6 +60,15 @@ Follow Docs contract establishment → evidence verification → Korean Book app
 
 For HTTP-matched React client navigation, start at the [navigation payload contract](./contracts/react-navigation-payload.md), then the [React API owner](../packages/react/README.md) and the [Vite SSR example](../examples/react-vite-ssr/README.md). `Link` and `useRouter()` render HTTP-approved build-mapped destinations and commit the confirmed URL/params through history, including fresh back/forward requests; failed approvals return to full documents. Ordinary and JavaScript-disabled GETs keep streamed documents. HTTP retains status, cookies, and error ownership. Runtime evidence is in `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, and `examples/react-vite-ssr/tests/production-hydration.spec.ts`.
 
+Optional `Link prefetch="hover" | "viewport"` needs provider `navigationModules` and an explicit
+`prefetchScope` auth/session epoch. Only `ReactNavigationPage.create(page, destination,
+{ prefetch: 'public' })` may grant a credential-omitted, identity-independent status-`200`
+navigation JSON result; HTTP checks request credentials, final `Set-Cookie`, pre-existing
+`Cache-Control`/`Vary`, then emits `X-Fluo-Navigation-Prefetch: public`. The bounded provider
+cache is single-use; after auth/data mutations update the scope and/or call `router.invalidate()`
+before further in-document navigation. Ordinary credentialed navigation and back/forward
+still require HTTP approval. The linked contract owns eligibility, freshness, and fallback.
+
 For atomic cache mutation, start at the [cache-manager API owner](../packages/cache-manager/README.md#atomic-updates), then [caching architecture](./architecture/caching.md#atomic-update-coordination), [update types](../packages/cache-manager/src/atomic-update.ts), and [service admission/drain](../packages/cache-manager/src/service.ts). `update` is a pure single-key reducer with fixed-expiry preservation, not `remember` loader coalescing or application domain policy. Memory coordinates one shared store instance; Redis requires explicit cache-side opt-in and isolated WATCH transactions via the existing [raw client seam](../packages/redis/README.md#raw-client-access). The README owns TTL/error/metadata/cancellation limits and test commands, including the Docker native suite; source links do not imply executed verification. Human applications appear in [FluoBlog caching](../book/01-fluoblog/ch20-caching.md) and [FluoShop caching](../book/02-fluoshop/ch21-commerce-caching.md).
 
 The [HTTP dependency security update](./reference/dependency-security-update.md) distinguishes root and isolated benchmark resolution from the published Fastify/Express consumer graph, records the nine upstream advisories, and explains application-owned transitive lockfile updates.
