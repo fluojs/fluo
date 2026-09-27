@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useSyncExternalStore,
 } from 'react';
 
 import { ReactClientRouterContextError } from './errors.js';
@@ -14,6 +15,7 @@ import {
   createClientNavigationStore,
 } from './store.js';
 import type { ReactClientRouterProviderProps } from './types.js';
+import { loadReactNavigationDestination } from './navigation-payload.js';
 
 const clientRouterContextKey = Symbol.for('fluo.react.client-router-context.v1');
 
@@ -64,13 +66,21 @@ function getClientRouterContext(): Context<ClientNavigationStore | null> {
 
 const ClientRouterContext = getClientRouterContext();
 
-function createBrowserEnvironment(browser: Window): ClientNavigationEnvironment {
+function createBrowserEnvironment(
+  browser: Window,
+  modules: ReactClientRouterProviderProps['navigationModules'],
+): ClientNavigationEnvironment {
   return {
     assign: (href) => browser.location.assign(href),
     back: () => browser.history.back(),
     currentHref: () => browser.location.href,
+    ...(modules === undefined ? {} : {
+      load: (href: string, signal: AbortSignal) => loadReactNavigationDestination(href, modules, { signal }),
+    }),
+    pushState: (href) => browser.history.pushState(null, '', href),
     reload: () => browser.location.reload(),
     replace: (href) => browser.location.replace(href),
+    replaceState: (href) => browser.history.replaceState(null, '', href),
     subscribe(listener) {
       const handleHashChange = () => listener('hashchange');
       const handlePopState = () => listener('popstate');
@@ -90,20 +100,33 @@ function createBrowserEnvironment(browser: Window): ClientNavigationEnvironment 
  * @param props Initial route snapshot and descendants that consume client route state.
  * @returns A context provider that binds browser navigation only after hydration.
  */
-export function ReactClientRouterProvider({ children, initialSnapshot }: ReactClientRouterProviderProps) {
+export function ReactClientRouterProvider({
+  children,
+  initialSnapshot,
+  navigationModules,
+}: ReactClientRouterProviderProps) {
   const [store] = useState(() => createClientNavigationStore(initialSnapshot));
+  const destination = useSyncExternalStore(store.subscribe, store.getDestination, store.getDestination);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       return undefined;
     }
-    return store.connect(createBrowserEnvironment(window));
-  }, [store]);
+    return store.connect(createBrowserEnvironment(window, navigationModules));
+  }, [store, navigationModules]);
 
-  return createElement(ClientRouterContext.Provider, { value: store }, children);
+  return createElement(
+    ClientRouterContext.Provider,
+    { value: store },
+    typeof children === 'function' ? children(destination) : children,
+  );
 }
 
-/** Read the provider-owned navigation store for public hooks and `Link`. */
+/**
+ * Read the provider-owned navigation store for public hooks and `Link`.
+ *
+ * @returns The active provider's navigation store.
+ */
 export function useClientNavigationStore(): ClientNavigationStore {
   const store = useContext(ClientRouterContext);
   if (store === null) {

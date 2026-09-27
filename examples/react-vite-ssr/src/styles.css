@@ -1,3 +1,8 @@
 button {
   font: inherit;
 }
+
+nav a,
+nav button {
+  margin-inline-end: 0.75rem;
+}

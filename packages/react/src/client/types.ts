@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { ReactNavigationModules } from './navigation-payload.js';
 
 /** Navigation methods that can change or revalidate the active browser document. */
 export type ReactNavigationType = 'push' | 'replace' | 'back' | 'refresh';
@@ -61,16 +62,18 @@ export type ReactRouteSnapshotInput = {
 export interface ReactRouter {
   /** Delegate traversal to browser history semantics. */
   back(): void;
-  /** Start same-origin full-document navigation and add a history entry. */
+  /** Load an HTTP-approved page softly, or navigate the full document on fallback. */
   push(href: string | URL): void;
   /** Revalidate the current page with a full-document reload. */
   refresh(): void;
-  /** Start same-origin full-document navigation and replace the current history entry. */
+  /** Replace with an HTTP-approved page softly, or replace the full document on fallback. */
   replace(href: string | URL): void;
 }
 
 /** Props for the request-scoped client router state provider. */
 export type ReactClientRouterProviderProps = {
-  readonly children?: ReactNode;
+  readonly children?: ReactNode | ((destination: ReactNode | null) => ReactNode);
   readonly initialSnapshot: ReactRouteSnapshot;
+  /** Build-produced importers for HTTP-approved soft destinations. */
+  readonly navigationModules?: ReactNavigationModules;
 };

@@ -25,6 +25,11 @@ const VITE_MANIFEST = {
     isDynamicEntry: true,
     src: 'src/navigation-product.ts',
   },
+  'src/navigation-admin.ts': {
+    file: 'navigation-admin-hash.js',
+    isDynamicEntry: true,
+    src: 'src/navigation-admin.ts',
+  },
 } as const;
 
 const TEXT_DECODER = new TextDecoder();
@@ -132,6 +137,35 @@ describe('react-vite-ssr example', () => {
           props: { preview: true, productName: 'Catalog item sku-42', sku: 'sku-42' },
         },
       });
+    });
+  });
+
+  it('dispatches admin QR and songs as ordinary documents and approved destinations', async () => {
+    // Given: two explicit HTTP routes sharing one client destination module.
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      manifest: VITE_MANIFEST,
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+
+      // When: each route receives a direct GET and a negotiated browser request.
+      for (const [path, heading] of [['/admin/qr', 'Admin QR'], ['/admin/songs', 'Admin songs']]) {
+        const document = await app.request('GET', path).send();
+        const navigation = await app.request('GET', path)
+          .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1').send();
+
+        // Then: only HTTP chooses a page and produces the confirmed URL and module.
+        expect(document.status, JSON.stringify(document.body)).toBe(200);
+        expect(readHtml(document.body)).toContain(heading);
+        expect(navigation.body).toEqual({
+          version: 1,
+          url: path,
+          params: {},
+          destination: { module: './navigation-admin.ts', props: { page: path.split('/').at(-1) } },
+        });
+      }
     });
   });
 

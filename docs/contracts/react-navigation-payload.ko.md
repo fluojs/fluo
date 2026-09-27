@@ -72,20 +72,33 @@ application-owned full-document fallback을 위한 non-success result를 반환�
 fallback navigation을 시작하지 않습니다. 외부 또는
 non-HTTP(S) URL은 fetch 전에 거부하므로 일반 anchor를 사용하세요.
 
-Browser는 React-owned HTML을 교체하거나 path param을 추측하거나 `pushState`를 호출하거나
-route matcher를 설치하지 않습니다. Application은 성공 시 import한 component를 명시적으로
-렌더링하고 지원되는 same-origin load가 실패하면 `window.location.assign(href)`를 사용할 수
-있습니다. `Link`와 `router.push/replace`는 기존 full-document navigation을 계속 수행합니다.
-이 API를 soft transition, shared shell 및 route snapshot 갱신에 연결하는 작업은
-[#3845](https://github.com/fluojs/fluo/issues/3845)의 범위입니다. Prefetch 또는 재사용 가능한
-cache는 없습니다.
+Browser는 React-owned HTML을 교체하거나 path param을 추측하거나 route matcher를 설치하지
+않습니다. Build-produced importer를 `ReactClientRouterProvider`의 `navigationModules`로 전달하고
+function child의 승인된 destination을 application 소유 page slot에 렌더링하세요. 기존 `Link`와
+`router.push/replace`는 URL 변경 전에 HTTP 결과를 요청합니다. 성공하면 provider가 서버가
+확정한 URL과 params를 History API 및 모든 route hook에 반영하고 목적지 component를 새로
+mount하며 공통 provider/layout은 유지합니다. Focus policy는 application이 선택합니다.
+실행 가능한 예제는 pathname 전환 뒤 `<main>`에 focus하고 shell counter는 유지하며 page
+counter는 초기화합니다.
+
+`popstate`와 forward traversal은 매번 HTTP 승인을 다시 요청하고 이전의 private payload나
+오래된 params를 새 URL에 재사용하지 않습니다. 새로운 activation 또는 unmount 이후 늦게
+도착한 결과는 commit하지 않습니다. 진행 중인 같은 목적지를 다시 활성화해도 request는
+늘어나지 않습니다. Fragment-only 변경은 browser의 native same-document history를 사용합니다.
+실패하거나 지원하지 않는 load는 추측한 soft URL을 commit하지 않고 full-document
+`assign`/`replace`를 사용합니다. History traversal은 browser URL이 이미 바뀐 뒤이므로 실패
+시 해당 문서를 로드합니다. 취소는 fallback을 시작하지 않습니다. Hydration 전 `Link`는
+native anchor로 남고 initial request snapshot은 browser path/search와 일치해야 합니다.
+`refresh()`는 계속 document reload이며 prefetch나 재사용 가능한 cache는 없습니다.
 
 ## Evidence and limits
 
 `packages/react/src/navigation-payload.test.ts`는 실제 HTTP dispatcher, URI version, DTO binding,
 guard, interceptor, middleware, scope, redirect, error, cancellation, header 경계를 실행합니다.
 `packages/react/src/client-navigation-payload.test.ts`는 browser parsing, cookie-bearing request,
-rejection, non-reuse, cancellation을 실행합니다. `examples/react-vite-ssr/src/app.test.ts`는
+rejection, non-reuse, cancellation을 실행합니다. `packages/react/src/client.test.ts`는
+public router store의 history, stale result, fallback을
+검증합니다. `examples/react-vite-ssr/src/app.test.ts`는
 DTO validation을 검증하고 이 테스트와
 `examples/react-vite-ssr/tests/production-hydration.spec.ts`는 manifest-bound destination,
 browser rendering, 일반 HTML 및 JavaScript-disabled document 동작을 실행합니다. 이 stable

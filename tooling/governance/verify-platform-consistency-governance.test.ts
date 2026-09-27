@@ -1189,7 +1189,6 @@ describe('enforceContractCompanionUpdates', () => {
       'docs/CONTEXT.ko.md',
       'tooling/governance/react-navigation-payload-contract.mjs',
       'tooling/governance/react-navigation-payload-contract.test.ts',
-      'packages/react/src/navigation-payload.test.ts',
       'packages/react/src/client-navigation-payload.test.ts',
     ];
 
@@ -1202,6 +1201,15 @@ describe('enforceContractCompanionUpdates', () => {
     expect(() => enforceContractCompanionUpdates(complete.filter((path) =>
       path !== 'docs/contracts/react-navigation-payload.md')))
       .toThrow(/React navigation payload contract updates must include/u);
+    expect(() => enforceContractCompanionUpdates([
+      ...complete,
+      'packages/react/src/page-result.ts',
+    ])).toThrow(/packages\/react\/src\/navigation-payload\.test\.ts/u);
+    expect(() => enforceContractCompanionUpdates([
+      ...complete,
+      'packages/react/src/page-result.ts',
+      'packages/react/src/navigation-payload.test.ts',
+    ])).not.toThrow();
   });
 
   it('requires bilingual context discoverability companions for release-contract changes', async () => {

@@ -588,6 +588,9 @@ non-page values, or an error document. Request abort and response-commit checks 
 the dispatcher; no extra endpoint or React URL matcher is installed. See the
 [navigation payload contract](../../docs/contracts/react-navigation-payload.md) for the
 browser module mapping, credentials, fallback, and stream cleanup rules.
+The existing React `Link` and `useRouter().push/replace` may render an approved destination
+without reloading; history traversal requests fresh approval, while a rejected result returns
+to the ordinary document route. HTTP alone still decides whether a page qualifies.
 
 ## HTTP Error Representations
 

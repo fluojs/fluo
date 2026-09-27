@@ -17,10 +17,10 @@ SSR, Vite manifest asset, hydrated browser runtime, progressively enhanced nativ
 - `dist/client/.vite/manifest.json`을 생성하는 Vite client build와, 이미 로드한 manifest를 ordered
   CSS 및 hydration module asset으로 바꾸는 `@fluojs/react/vite`.
 - React DOM `hydrateRoot(...)`를 통해 interactive 상태가 되는 server-rendered counter.
-- HTTP-confirmed URL/param을 Vite-built `import.meta.glob(...)` module map으로 소비하고
-  기존 document와 counter를 유지하는 명시적으로 협상된 GET.
+- `/admin/qr`와 `/admin/songs`의 `@Router('/admin')` page와 공통 interactive shell 유지,
+  destination-local state 초기화, `<main>` focus를 보장하는 HTTP 승인 기반 soft navigation.
 - Server-owned DTO validation boundary에 계속 도달하는 `@fluojs/react/client` route snapshot,
-  URL-state hook, progressive `Link`, full-document `push` navigation.
+  URL-state hook, progressive `Link`, `push/replace/back` 및 document fallback.
 - 일반 guarded/intercepted `@Post(...)` route에 도달해 application state를 mutate하고 HTTP-matched
   destination으로 `303 See Other`를 반환하는 native `multipart/form-data` form.
 - JavaScript disabled 상태에서 해당 form을 submit하는 production browser coverage.
@@ -37,10 +37,11 @@ pnpm --filter @fluojs/example-react-vite-ssr start
 
 `http://127.0.0.1:3000/products/sku-42?preview=true`를 열고 `Count: 0`을 활성화하세요.
 Vite-generated client entry가 server HTML을 hydrate한 뒤에만 label이 `Count: 1`로 바뀝니다.
-`Open sku-84` 또는 `Push sku-126`을 사용하면 same-origin full-document navigation을 수행하고,
-각 destination은 fluo HTTP route에서 다시 match, bind, validate됩니다.
-`Load sku-84 destination`은 명시적 navigation payload request를 한 번 보내고 기존 React
-tree에 build된 destination component를 렌더링합니다. Browser URL은 바뀌지 않습니다.
+`Open sku-84` 또는 `Push sku-126`은 HTTP 승인 뒤 문서 교체 없이 이동합니다. `/admin/qr`를
+열어 두 counter를 증가시키고 `Open admin songs`, `Back`, browser forward를 순서대로
+사용하세요. URL과 page는 HTTP가 확정한 목적지를 따르며 shell counter는 유지되고 page
+counter는 초기화됩니다. Main landmark에 focus를 옮깁니다. 직접 요청과 JavaScript 비활성
+요청은 계속 일반 server document를 렌더링합니다.
 
 반복 가능한 SSR 및 hydration 검증은 다음 명령으로 실행합니다.
 
@@ -64,9 +65,11 @@ URL과 server-rendered route state가 일치하지 않는 client navigation, `PO
 URL을 계속 stream합니다. `Accept: application/vnd.fluo.react-navigation+json;v=1` GET은
 같은 HTTP DTO/module pipeline을 실행한 뒤 server URL/param과 browser destination을
 반환합니다. `src/entry-client.ts`는 Vite가 compile한 `import.meta.glob(...)` map을 hydrated
-document에 전달합니다. `src/page.ts`는 `loadReactNavigationDestination(...)`로 HTTP
-response를 검증한 다음 `navigation-product.ts`를 import/render합니다. Counter는 유지됩니다.
-Browser `Link`, `push`, `replace`는 계속 full-document navigation입니다.
+document의 `ReactClientRouterProvider`에 `navigationModules`로 전달합니다. 기존 `Link`와
+`router.push/replace`는 client loader가 HTTP 결과를 검증한 뒤에만 history를 commit하고
+page slot에 새 destination을 렌더링합니다. `src/admin-page.ts` 및 build-mapped
+`src/navigation-admin.ts` entry는 두 admin page를 처리하며 공통 counter는 유지됩니다.
+`popstate`와 forward는 새 결과를 요청합니다.
 
 Client는 same-origin cookie를 보내고 `Set-Cookie`는 일반 browser 처리에 맡기며
 `cache: 'no-store'`를 사용합니다. Prefetch나 payload 재사용은 없습니다. Redirect, error,
@@ -132,9 +135,9 @@ mutation route나 cache policy를 소유하지 않으므로 submit-state helper�
 - `src/entry-client.ts`가 browser-only boundary입니다. Server module은 `window`나 `document`에
   접근하지 않으며, server는 application boundary에서 Vite manifest를 명시적으로 로드합니다.
 - `ReactClientRouterProvider`는 SSR과 hydration에서 같은 request URL과 HTTP-matched param을 받습니다.
-  `Link`, `router.push(...)`, `router.replace(...)`는 full-document navigation을 사용하므로 redirect,
-  not-found page, DTO validation failure, guard, interceptor, server error는 일반 HTTP response로 남습니다.
-- 이 예제는 SPA document swapping, event replay, client route matching, navigation cache, RSC-aware
+  승인된 page는 soft navigation하고 redirect, not-found, DTO failure, error는 일반 HTTP
+  document로 fallback합니다. Guard와 interceptor는 계속 server-owned입니다.
+- 이 예제는 임의 HTML swapping, event replay, client route matching, navigation cache, RSC-aware
   data, prefetch behavior를 약속하지 않습니다.
 - 이 예제는 Next.js App Router, file-based router, TanStack route tree, RSC, catch-all route,
   production starter-template 변경이 아닙니다.
@@ -149,7 +152,9 @@ examples/react-vite-ssr/
 ├── src/
 │   ├── app.ts              # @Router page, native POST mutation, Vite asset serving module
 │   ├── app.test.ts         # DTO, protected mutation, redirect, streamed SSR assertion
+│   ├── admin-page.ts       # 공유 admin page component와 destination-local state
 │   ├── entry-client.ts     # Browser-only hydrateRoot(...) entry
+│   ├── navigation-admin.ts # Build-mapped admin destination entry
 │   ├── entry-server.ts     # 명시적 Vite server-entry selector
 │   ├── hydration.ts        # server/client 공유 identifierPrefix
 │   ├── hydration.test.ts   # Aligned interaction 및 recoverable mismatch reporting
