@@ -1,4 +1,5 @@
 import type { EventEmitter } from 'node:events';
+import { createServer as createHttpServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -31,19 +32,22 @@ export async function runReactViteDevApp(
   signals.on('SIGINT', onSignal);
   signals.on('SIGTERM', onSignal);
   let vite: import('vite').ViteDevServer | undefined;
+  // Vite registers its upgrade handler here before the generated Fastify host exists.
+  // The host transfers the handler to its own listener before app.listen().
+  const upgradeServer = createHttpServer();
   let closeApp: (() => Promise<void>) | undefined;
   let exitCode = 0;
 
   try {
     const projectRequire = createRequire(join(projectDirectory, 'package.json'));
-  const viteModule: typeof import('vite') = await import(pathToFileURL(projectRequire.resolve('vite')).href);
+    const viteModule: typeof import('vite') = await import(pathToFileURL(projectRequire.resolve('vite')).href);
     if (!stopping) {
       vite = await viteModule.createServer({
         appType: 'custom',
         configFile: join(projectDirectory, 'vite.server.config.ts'),
         configLoader: 'runner',
         root: projectDirectory,
-        server: { hmr: false, middlewareMode: true },
+        server: { middlewareMode: true, ws: { server: upgradeServer } },
       });
     }
 
@@ -53,7 +57,7 @@ export async function runReactViteDevApp(
         if (typeof entry !== 'object' || entry === null || !('startReactViteApp' in entry) || typeof entry.startReactViteApp !== 'function') {
           throw new Error('The generated React entry must export startReactViteApp for fluo dev.');
         }
-        const app: unknown = await entry.startReactViteApp(vite);
+        const app: unknown = await entry.startReactViteApp(vite, upgradeServer);
         if (typeof app !== 'object' || app === null || !('close' in app)) {
           throw new Error('The generated React application must expose its shutdown lifecycle.');
         }

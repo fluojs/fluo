@@ -26,6 +26,7 @@ const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
 
 export type ReactViteAppModuleOptions = {
   readonly clientDirectory: URL;
+  readonly loadPage?: () => Promise<ReactElement>;
   readonly renderPage: ReactPageRenderer;
 };
 
@@ -51,8 +52,8 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
   class ProductPageRouter {
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
-    show(_input: ProductPageRequest): ReactElement {
-      return createElement(ProductPage);
+    show(_input: ProductPageRequest): ReactElement | Promise<ReactElement> {
+      return options.loadPage ? options.loadPage() : createElement(ProductPage);
     }
   }
 

@@ -406,8 +406,10 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   const ignorePatterns = parseIgnorePatterns(env);
   const gate = createContentChangeGate(projectDirectory, ignorePatterns);
   const sourceDirectory = join(projectDirectory, 'src');
+  const sourcePrefix = `${sourceDirectory.split(sep).join('/')}/`;
   const watchTargets = getWatchTargets(projectDirectory);
   let child: ChildProcess | undefined;
+  let viteOwnedFiles = new Set<string>();
   const pendingRestartPaths = new Set<string>();
   const restartAfterClosePaths = new Set<string>();
   let restartTimer: RestartSchedulerHandle | undefined;
@@ -416,18 +418,42 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   let terminalExitCode: number | undefined;
 
   const startChild = (resolveExitCode: (code: number) => void, cleanup: () => void) => {
+    viteOwnedFiles = new Set();
     ensureStudioEpoch(env);
     const appCommand = buildAppCommand(runnerRuntime, env, appArgs, options.reactVite ?? false);
     publishStudioLifecycleEvent(env, runnerRuntime, 'restart', {
       phase: 'starting',
       reason: 'fluo dev runner starting app child',
     });
-    child = spawnChild(appCommand.command, appCommand.args, {
+    const spawnOptions = {
       cwd: projectDirectory,
       detached: process.platform !== 'win32',
       env,
-      stdio: 'inherit',
-    });
+      stdio: 'inherit' as const,
+    };
+    child = options.reactVite && runnerRuntime === 'node' && !options.spawnChild
+      ? spawn(appCommand.command, appCommand.args, {
+        ...spawnOptions,
+        stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+      })
+      : spawnChild(appCommand.command, appCommand.args, spawnOptions);
+    if (options.reactVite && runnerRuntime === 'node') {
+      child.on('message', (message: unknown) => {
+        if (typeof message !== 'object' || message === null || !('type' in message)) {
+          return;
+        }
+        if (message.type === 'fluo:react-vite-hmr-file' && 'file' in message
+          && typeof message.file === 'string' && message.file.startsWith(sourcePrefix)) {
+          viteOwnedFiles.add(message.file);
+        } else if (message.type === 'fluo:react-vite-hmr-files' && 'files' in message && Array.isArray(message.files)) {
+          for (const file of message.files) {
+            if (typeof file === 'string' && file.startsWith(sourcePrefix)) {
+              viteOwnedFiles.add(file);
+            }
+          }
+        }
+      });
+    }
     publishStudioLifecycleEvent(env, runnerRuntime, 'restart', {
       phase: 'started',
       reason: 'fluo dev runner spawned app child',
@@ -480,6 +506,11 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       restartTimer = undefined;
 
       if (!gate.hasMeaningfulChange(restartPaths)) {
+        return;
+      }
+
+      if (options.reactVite && runnerRuntime === 'node' && restartPaths.every((path) => viteOwnedFiles.has(path.split(sep).join('/')))) {
+        gate.commitBaseline(restartPaths);
         return;
       }
 

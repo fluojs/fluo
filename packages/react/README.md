@@ -72,11 +72,16 @@ cd my-react-app
 pnpm dev
 ```
 
-The generated `dev` script and direct `fluo dev` share one CLI-owned restart lifecycle:
-after installing dependencies, Vite transforms the SSR entry and serves client
-modules/styles through the development server without production `dist` or a
-user-run build. Server/client edits restart the app. Production `build`/`start`
-still consume the generated Vite manifest; this path does not promise HMR.
+The generated `dev` script and direct `fluo dev` share one CLI-owned Node
+development lifecycle: after installation Vite transforms the SSR entry and
+serves refreshable client modules, CSS and a same-origin WebSocket on Fastify
+without production `dist` or a user-run build. Compatible React component edits
+preserve eligible state and CSS edits update in place; a direct SSR request loads
+the current page after HTTP validation. Server-only and config changes still
+restart the child. Incompatible component boundaries can remount or reload;
+see the [React dev HMR migration](../../docs/getting-started/migrate-react-dev-hmr.md).
+Production `build`/`start` still consume the generated Vite manifest, without
+development injection.
 
 Open `/products/sku-42?preview=true` and edit `src/page.tsx`. The explicit `@Router(...)` / `@Path(...)`
 handler remains in `src/app.ts` and returns `createElement(ProductPage)`, one `ReactElement`, so `@fluojs/http` still

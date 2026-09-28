@@ -70,11 +70,15 @@ cd my-react-app
 pnpm dev
 ```
 
-생성된 `dev` script와 직접 실행한 `fluo dev`는 CLI가 소유하는 동일한 restart
-lifecycle을 사용합니다. 의존성 설치 후 Vite가 SSR entry를 변환하고 development
-server에서 client module/stylesheet를 제공하므로 production `dist`나 수동 build가
-필요하지 않습니다. server/client 소스 변경 시 앱을 재시작합니다. Production
-`build`/`start`는 계속 생성된 Vite manifest를 사용하며 HMR은 보장하지 않습니다.
+생성된 `dev` script와 직접 실행한 `fluo dev`는 CLI가 소유하는 동일한 Node 개발
+lifecycle을 사용합니다. 설치 후 Vite가 SSR entry를 변환하고 Fastify에서 refresh
+가능한 client module, CSS와 동일 origin WebSocket을 제공하므로 production `dist`나
+수동 build가 필요하지 않습니다. 호환 가능한 React component 수정은 보존 가능한
+state를 유지하며 CSS는 제자리에서 갱신됩니다. 직접 SSR 요청은 HTTP validation 후
+최신 page를 로드합니다. Server-only/config 수정은 계속 child를 재시작합니다.
+호환되지 않는 component boundary는 remount/reload할 수 있습니다.
+[React dev HMR 이전](../../docs/getting-started/migrate-react-dev-hmr.ko.md)을 참고하세요.
+Production `build`/`start`는 개발 코드 주입 없이 생성된 Vite manifest를 사용합니다.
 
 `/products/sku-42?preview=true`를 열고 `src/page.tsx`를 편집합니다. 명시적인
 `@Router(...)` / `@Path(...)` handler는 `src/app.ts`에 남아 `createElement(ProductPage)`를 하나의

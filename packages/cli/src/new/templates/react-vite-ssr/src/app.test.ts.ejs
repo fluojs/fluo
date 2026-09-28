@@ -1,4 +1,5 @@
 import { Test } from '@fluojs/testing';
+import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { createAppModule } from './app';
@@ -26,6 +27,28 @@ function readHtml(body: unknown): string {
 }
 
 describe('React Vite SSR starter', () => {
+  it('loads the latest development component after HTTP DTO validation', async () => {
+    let label = 'First component';
+    const AppModule = createAppModule({
+      clientDirectory: new URL('../public/', import.meta.url),
+      loadPage: async () => createElement('h1', null, label),
+      renderPage: createReactPageRenderer(VITE_MANIFEST),
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      const first = await app.request('GET', '/products/sku-42').send();
+      label = 'Updated component';
+      const second = await app.request('GET', '/products/sku-42').send();
+      const invalid = await app.request('GET', '/products/x').query('preview', 'maybe').send();
+
+      expect(readHtml(first.body)).toContain('First component');
+      expect(readHtml(second.body)).toContain('Updated component');
+      expect(invalid.status).toBe(400);
+    });
+  });
+
   it('streams an HTTP-owned page with manifest-derived hydration assets', async () => {
     const AppModule = createAppModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),

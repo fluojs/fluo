@@ -172,24 +172,27 @@ the document shell, or the server/client route snapshot wiring. The explicit `@R
 dispatcher remains authoritative.
 
 The React `dev` script now delegates to the same `fluo dev` path as a direct CLI invocation.
-After dependency installation, either starts without an application production build: the
-CLI loads the server entry through project-local Vite SSR transforms and serves client
-modules and styles through Vite middleware on the Fastify development server. Server
-and client edits restart the Node child and use changed source without creating
-production `dist` or loading its manifest; `build` and `start` retain the separate
-production manifest and static asset path. This is process restart, not HMR.
-In particular `packages/cli/src/dev-runner/react-vite-dev-app.ts` configures Vite middleware
-with `hmr: false`. React component and CSS edits currently restart the child, as do
-server/shared source and watched Vite config edits; none guarantees preserving browser
-state or a long-lived shell resource. `@fluojs/config`'s explicit watched env snapshot
-reload is separate from code restart. #3876 owns future scoped React Fast Refresh/CSS
-HMR; #3877 owns safe server/shared/config restart, failure recovery and teardown.
+After dependency installation, either starts without an application production build:
+Vite transforms the SSR entry and the Fastify listener serves its client modules, refresh
+preamble, CSS and WebSocket on the same origin. Vite-transformed React component edits
+use Fast Refresh and CSS edits use HMR without replacing the app child; direct HTTP
+requests load the latest SSR page through the existing DTO-bound route. React preserves
+state only for compatible component boundaries; incompatible exports or hook changes may
+remount or reload. Syntax errors show in the Vite overlay and terminal and recover after
+correction in the same session. Server-only, graph-external and watched config edits
+retain the child restart boundary (#3877 owns general safe restart policy).
+`build` and `start` retain the separate production manifest and static asset path;
+no dev preamble is included there. Existing generated apps must follow the
+[React dev HMR migration](../../docs/getting-started/migrate-react-dev-hmr.md).
+`@fluojs/config`'s watched env snapshot reload is separate from code restart.
 
 For React, Node's native watch escape hatch watches only source, `.env`, and Vite
 configs on macOS/Windows so emitted `dist` does not trigger another build. Linux
 uses the fluo restart runner for React even with `--runner native`/`--raw-watch`,
-because Node does not support `--watch-path` there. Other starter watch modes
-are unchanged.
+because Node does not support `--watch-path` there. On macOS/Windows raw watch
+still uses native process restarts, not Fast Refresh. Bun, Deno and Workers watch
+selection and other starter modes are unchanged; Node React/Vite is the supported
+Fast Refresh path.
 
 Generated application wiring stays visible instead of becoming a framework abstraction:
 `src/entry-server.tsx` owns the replaceable `ReactPageRenderer` and `ReactServerEntry` creation,

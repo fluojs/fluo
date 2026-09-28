@@ -7,6 +7,12 @@ Hydration 및 client-navigation phase를 위한 최소 Vite-backed `@fluojs/reac
 SSR, Vite manifest asset, hydrated browser runtime, progressively enhanced native mutation form을
 연결합니다.
 
+이 예제는 production manifest/hydration 경로를 설명하며 생성 starter의
+`fluo dev` HMR host가 아닙니다. 지원되는 Node React Fast Refresh와 CSS HMR은
+`fluo new --starter react-vite-ssr`로 생성하세요. 기존 생성 앱은 별도 Vite process를
+추가하지 않고 [이전 가이드](../../docs/getting-started/migrate-react-dev-hmr.ko.md)를
+따라 변경할 수 있습니다.
+
 이 예제는 현재의 SSR, hydration, native POST/303/GET, 승인된 navigation과 짧은 shell
 보존의 근거이지 완전한 운영 CRUD 또는 장기 주크박스 게이트가 아닙니다.
 [HTTP-first React 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 추가

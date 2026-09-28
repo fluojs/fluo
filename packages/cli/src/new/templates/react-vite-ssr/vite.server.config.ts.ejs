@@ -1,5 +1,7 @@
 import { fluoDecoratorsPlugin } from '@fluojs/vite';
-import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { resolve } from 'node:path';
+import { defineConfig, normalizePath } from 'vite';
 
 export default defineConfig({
   build: {
@@ -15,18 +17,17 @@ export default defineConfig({
   },
   plugins: [
     fluoDecoratorsPlugin(),
+    react(),
     {
-      name: 'fluo:react-development-stylesheet',
+      name: 'fluo:react-development-graph',
       apply: 'serve',
-      enforce: 'pre',
-      resolveId(source, importer) {
-        if (source === './styles.css' && importer?.endsWith('/src/entry-client.tsx')) {
-          return '\0fluo-react-development-stylesheet';
-        }
-      },
-      load(id) {
-        if (id === '\0fluo-react-development-stylesheet') {
-          return '';
+      enforce: 'post',
+      transform(_code, id) {
+        if (this.environment?.name === 'client' && /\.(?:tsx?|jsx?|css)(?:\?|$)/u.test(id) && id.startsWith(normalizePath(resolve('src')) + '/')) {
+          const file = id.split('?')[0];
+          if (file && process.send) {
+            process.send({ type: 'fluo:react-vite-hmr-file', file });
+          }
         }
       },
     },

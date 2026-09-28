@@ -95,7 +95,10 @@ The supported short path is now:
 
 1. Run `fluo new my-react-app --starter react-vite-ssr`, enter the project, and run `pnpm dev`.
 2. Open `/products/sku-42?preview=true` and edit `src/page.tsx`. The page component owns page UI and
-   hydrated interaction only.
+   hydrated interaction only. The official Node starter uses Fast Refresh for compatible components
+   and CSS HMR on the app origin; direct SSR requests load the current page after HTTP validation.
+   Incompatible exports or hook signatures may remount/reload. See the
+   [development migration](../getting-started/migrate-react-dev-hmr.md) for existing apps.
 3. Read `src/app.ts` when changing routes. Its explicit `@Router(...)` / `@Path(...)` handler returns
    `createElement(ProductPage)`, so HTTP matching, DTO validation, middleware, guards, interceptors, request
    scopes, and not-found behavior still run before React rendering.

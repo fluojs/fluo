@@ -95,7 +95,10 @@ client entry와 server document 정렬입니다. 이 명시적 seam은 advanced 
 1. `fluo new my-react-app --starter react-vite-ssr`를 실행하고 project로 이동한 뒤 `pnpm dev`를
    실행합니다.
 2. `/products/sku-42?preview=true`를 열고 `src/page.tsx`를 편집합니다. Page component는 page UI와
-   hydrated interaction만 소유합니다.
+   hydrated interaction만 소유합니다. 공식 Node starter는 호환 가능한 component에 Fast
+   Refresh, app origin의 CSS HMR을 사용합니다. 직접 SSR 요청은 HTTP validation 후 최신
+   page를 로드합니다. 호환되지 않는 export나 hook 구조는 remount/reload할 수 있습니다.
+   기존 앱은 [개발 이전](../getting-started/migrate-react-dev-hmr.ko.md)을 참고하세요.
 3. Route를 변경할 때 `src/app.ts`를 읽습니다. 명시적인 `@Router(...)` / `@Path(...)` handler가
    `createElement(ProductPage)`를 반환하므로 HTTP matching, DTO validation, middleware, guard, interceptor,
    request scope, not-found behavior가 React rendering보다 먼저 계속 실행됩니다.

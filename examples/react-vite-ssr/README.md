@@ -7,6 +7,12 @@ HTTP-owned page routes, DTO-bound parameters, streamed React SSR, Vite manifest 
 hydrated browser runtime with a progressively enhanced native mutation form, without introducing a
 second routing model.
 
+This example documents the production manifest/hydration path and is not the
+generated starter's `fluo dev` HMR host. For the supported Node React Fast
+Refresh and CSS HMR path, generate `fluo new --starter react-vite-ssr`; the
+[migration guide](../../docs/getting-started/migrate-react-dev-hmr.md) explains
+how to update an older generated app without adding another Vite process.
+
 This is evidence for shipped SSR, hydration, native POST/303/GET, approved navigation
 and short shell preservation, **not** the complete operations CRUD or long-lived
 jukebox gate. The [HTTP-first React product contract](../../docs/contracts/react-fullstack-product.md)

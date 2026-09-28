@@ -16,9 +16,12 @@ type FixtureState = {
   appEntered: { promise: Promise<void>; resolve(): void };
   appGate: { promise: Promise<void>; resolve(): void };
   appStartCalls: number;
+  appUpgradeServer?: FixtureState['websocketServer'];
   closeEntered: { promise: Promise<void>; resolve(): void };
   closeGate: { promise: Promise<void>; resolve(): void };
   configLoader?: string;
+  hmr?: boolean;
+  websocketServer?: { listenerCount(event: string): number };
   createEntered: { promise: Promise<void>; resolve(): void };
   createGate: { promise: Promise<void>; resolve(): void };
   failAppClose: boolean;
@@ -53,14 +56,18 @@ async function createFixture(): Promise<{ directory: string; state: FixtureState
     };
     export async function createServer(options) {
       state.configLoader = options.configLoader;
+      state.hmr = options.server.hmr;
+      state.websocketServer = options.server.ws?.server;
+      state.websocketServer?.on('upgrade', () => undefined);
       state.createEntered.resolve();
       await state.createGate.promise;
       return {
         async ssrLoadModule() {
           if (state.failLoad) throw new Error('SSR loading failed');
           return {
-            async startReactViteApp() {
+            async startReactViteApp(_vite, upgradeServer) {
               state.appStartCalls += 1;
+              state.appUpgradeServer = upgradeServer;
               state.appEntered.resolve();
               await state.appGate.promise;
               return {
@@ -90,6 +97,23 @@ afterEach(() => {
     rmSync(directory, { force: true, recursive: true });
   }
 });
+
+it('binds the Vite HMR channel to an application-owned upgrade source', async () => {
+  const { directory, state } = await createFixture();
+  const signals = new EventEmitter();
+  const stdout = new PassThrough();
+  const ready = new Promise<void>((resolve) => { stdout.once('data', () => resolve()); });
+  const running = runReactViteDevApp(directory, { signalTarget: signals, stdout });
+  state.createGate.resolve();
+  state.appGate.resolve();
+
+  await ready;
+  expect(state.hmr).not.toBe(false);
+  expect(state.websocketServer?.listenerCount('upgrade')).toBeGreaterThan(0);
+  expect(state.appUpgradeServer).toBe(state.websocketServer);
+  signals.emit('SIGTERM');
+  await expect(running).resolves.toBe(0);
+}, 10_000);
 
 it('closes Vite without starting the app when shutdown arrives during Vite creation', async () => {
   const { directory, state } = await createFixture();

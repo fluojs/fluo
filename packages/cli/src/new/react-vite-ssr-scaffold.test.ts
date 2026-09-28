@@ -89,6 +89,7 @@ describe('React SSR + Vite scaffold', () => {
       }),
       devDependencies: expect.objectContaining({
         '@playwright/test': '^1.51.1',
+        '@vitejs/plugin-react': '^6.1.1',
         '@types/react': '^19.2.14',
         '@types/react-dom': '^19.2.3',
         '@vitest/coverage-v8': '^4.1.11',
@@ -115,6 +116,7 @@ describe('React SSR + Vite scaffold', () => {
       'public/favicon.svg',
       'src/app.test.ts',
       'src/app.ts',
+      'src/entry-client-dev.ts',
       'src/entry-client.tsx',
       'src/entry-server.tsx',
       'src/load-manifest.test.ts',
@@ -133,7 +135,7 @@ describe('React SSR + Vite scaffold', () => {
     ]);
     expect(snapshot['src/app.ts']).toContain("@Router('/products')");
     expect(snapshot['src/app.ts']).toContain("@Path('/:sku')");
-    expect(snapshot['src/app.ts']).toContain('return createElement(ProductPage);');
+    expect(snapshot['src/app.ts']).toContain('options.loadPage ? options.loadPage() : createElement(ProductPage)');
     expect(snapshot['src/page.tsx']).toContain('return (');
     expect(snapshot['src/main.ts']).toContain("loadReactViteManifest(new URL('../client/.vite/manifest.json', import.meta.url))");
     expect(snapshot['src/main.ts']).toContain('createReactPageRenderer(manifest)');
@@ -146,8 +148,8 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['src/page.tsx']).toContain("<Link href='/products/sku-84?preview=false'>");
     expect(snapshot['src/page.tsx']).toContain("router.push('/products/sku-126?preview=true')");
     expect(snapshot['src/app.test.ts']).toContain("import { Test } from '@fluojs/testing';");
-    expect(snapshot['src/app.test.ts']?.match(/Test\.createApp\(\{ rootModule: AppModule \}\)/g)).toHaveLength(2);
-    expect(snapshot['src/app.test.ts']?.match(/defer\(\(\) => app\.close\(\)\);/g)).toHaveLength(2);
+    expect(snapshot['src/app.test.ts']?.match(/Test\.createApp\(\{ rootModule: AppModule \}\)/g)).toHaveLength(3);
+    expect(snapshot['src/app.test.ts']?.match(/defer\(\(\) => app\.close\(\)\);/g)).toHaveLength(3);
     expect(snapshot['src/app.test.ts']).toContain("expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8')");
     expect(snapshot['src/load-manifest.test.ts']).toContain("expect(error.code).toBe('react-starter-manifest-missing')");
     expect(snapshot['src/app.test.ts']).toContain("expect(error.message).toContain('vite.client.config.ts')");

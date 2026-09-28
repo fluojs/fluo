@@ -274,7 +274,13 @@ function createPublishedDevDependencies(bootstrapPlan: ResolvedBootstrapPlan): R
     };
   }
 
-  return { ...PUBLISHED_DEV_DEPENDENCIES, '@types/node': '^24.0.0' };
+  return {
+    ...PUBLISHED_DEV_DEPENDENCIES,
+    '@types/node': '^24.0.0',
+    ...(bootstrapPlan.profile.id === 'application-node-fastify-react-vite-ssr'
+      ? { '@vitejs/plugin-react': '^6.1.1' }
+      : {}),
+  };
 }
 
 function createProjectPackageJson(

@@ -59,7 +59,7 @@ export function createReactDevelopmentPageRenderer(): ReactPageRenderer {
       stylesheets={['/src/styles.css?direct']}
     />,
     {
-      bootstrapModules: ['/src/entry-client.tsx'],
+      bootstrapModules: ['/@vite/client', '/src/entry-client-dev.ts'],
       identifierPrefix: REACT_IDENTIFIER_PREFIX,
     },
   );
