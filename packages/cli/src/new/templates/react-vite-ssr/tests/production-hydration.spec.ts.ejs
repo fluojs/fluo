@@ -122,6 +122,10 @@ test('updates a React component and CSS over the app WebSocket without losing el
       predicate: ({ payload }) => String(payload).includes('"type":"update"'),
       timeout: 15_000,
     });
+    const observerInstalled = page.waitForEvent('console', {
+      predicate: (message) => message.text() === 'css-observer-installed',
+      timeout: 15_000,
+    });
     const styleChanged = page.evaluate(() => new Promise<string>((resolve) => {
       const observer = new MutationObserver(() => {
         const color = getComputedStyle(document.body).color;
@@ -131,7 +135,9 @@ test('updates a React component and CSS over the app WebSocket without losing el
         }
       });
       observer.observe(document.head, { attributes: true, characterData: true, childList: true, subtree: true });
+      console.info('css-observer-installed');
     }));
+    await observerInstalled;
     await writeFile(cssFile, originalCss.replace('#172033', '#0c2238'));
     await cssUpdate;
     expect(await styleChanged).toBe('rgb(12, 34, 56)');
