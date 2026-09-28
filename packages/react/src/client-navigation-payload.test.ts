@@ -237,6 +237,7 @@ it.each([
   ['authentication required', new Response('unauthorized', { status: 401 })],
   ['denied', new Response('unauthorized', { status: 403 })],
   ['not found', new Response('not found', { status: 404 })],
+  ['transient server error', new Response('unavailable', { status: 503 })],
   ['validation failure', new Response('invalid input', { status: 400 })],
   ['non-HTML result', new Response('{}', { headers: { 'Content-Type': 'application/json' } })],
   ['malformed payload', new Response('{', { headers: { 'Content-Type': MEDIA_TYPE } })],

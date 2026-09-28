@@ -2,7 +2,9 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Runtime-neutral React integration for fluo applications.
+Runtime-neutral React package for HTTP-first fluo applications. The
+[full-stack product contract](../../docs/contracts/react-fullstack-product.md) defines the
+additional CRUD and long-lived jukebox acceptance target; it does not mark that target shipped.
 
 Preparing for the coordinated Node 24 release? Follow the [consumer migration guide](../../docs/getting-started/migrate-node24.md) before upgrading packages. React remains a `0.x` minor release, not a `1.0` graduation.
 
@@ -872,8 +874,9 @@ The navigation contract is deliberately HTTP-first:
   not call `window.location.assign(...)` or `window.location.replace(...)`. It exposes `skipped`
   with the requested navigation type and destination instead.
 - `router.back()` delegates to `window.history.back()`. `router.refresh()` uses
-  `window.location.reload()` as the documented revalidation mechanism. It does not imply an RSC,
-  loader, or client-data cache.
+  `window.location.reload()` for a **full-document reload**, not soft revalidation. It does not
+  imply an RSC, loader, or client-data cache. #3873 owns future shell-preserving revalidation
+  and migration for consumers relying on reload.
 - `usePathname()`, `useSearchParams()`, `useParams()`, and `useRouterState()` read the provider's
   immutable route snapshot. `popstate`/forward request fresh HTTP approval, even for an earlier
   destination; no private payload is cached. URL and matched params update together only on approval.
@@ -884,6 +887,15 @@ The navigation contract is deliberately HTTP-first:
   Fragment-only transitions complete in the current document after the matching `hashchange`.
 - Router methods reject cross-origin or non-HTTP(S) destinations with
   `ReactClientNavigationError`. Use a normal anchor for those destinations.
+
+Today a non-cancelled failed load uses document fallback even if a successful soft
+transition would retain the shell. The official **product target**, not a new API in
+this release, preserves the last approved page and long-lived resource on transient
+network/5xx failure, shows an actionable error and retries with fresh HTTP approval.
+Low-level fallback compatibility, auth refusal, explicit reload and application-requested
+logout teardown remain separate outcomes. #3864/#3871 own this composition and #3879
+must test actual resource identity in a production browser; see the
+[product journey map](../../docs/contracts/react-fullstack-product.md#journey-acceptance-map).
 
 `Link` has optional `prefetch="hover"` and `prefetch="viewport"` modes; omitted `prefetch` is off.
 Both require a hydrated provider with `navigationModules` and an explicit application-managed
@@ -1269,6 +1281,8 @@ documentation change neither adds the stable subpath nor starts the deprecation 
 
 This package currently does **not** provide:
 
+- the official transient-failure shell-preserving retry or in-place `router.refresh()`
+  revalidation; the documented low-level fallback and document reload still apply
 - a stable RSC root or `@fluojs/react/rsc` subpath; RSC is available only from the explicitly unstable
   `@fluojs/react/experimental/rsc` prototype
 - automatic `"use server"` transforms/export discovery or a built-in Flight renderer/build plugin

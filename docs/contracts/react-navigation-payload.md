@@ -109,6 +109,14 @@ the initial request snapshot must match the browser path/search rather than sile
 another page. `refresh()` remains a document reload. Non-opt-in `Link`, `router.push/replace`,
 and rejected prefetches still use the credentialed ordinary loader and its full-document fallback.
 
+This paragraph describes **shipped low-level compatibility**, not the future official app
+failure default. The [HTTP-first React product contract](./react-fullstack-product.md) requires
+#3864 and #3871 to make transient network/5xx failures retain the approved shell/page and expose
+fresh HTTP-approved retry in the official composition. It distinguishes auth refusal, explicit
+reload, and logout; no such preservation is shipped here. #3873 owns shell-preserving soft
+revalidation and migration for applications relying on the current `refresh()` document reload.
+`invalidate()` does not re-fetch displayed page data.
+
 ## Opt-in public prefetch and provider-local cache
 
 Only `Link prefetch="hover"` or `Link prefetch="viewport"` enables speculative loading; absent

@@ -7,6 +7,11 @@
 React SSR입니다. `@fluojs/http`가 route와 request lifecycle을 소유하고, 애플리케이션이 page
 composition을 소유하며, `@fluojs/react`를 사용해 React document를 stream하고 hydrate합니다.
 
+추가 풀스택 제품 목표는 [HTTP-first React 제품 계약](../contracts/react-fullstack-product.ko.md)을
+참고하세요. 운영 CRUD와 장기 주크박스 사용자 여정의 현재 근거, 격차, 담당 이슈, 실제 browser
+수용 기준을 연결합니다. 아래의 shipped 기능은 미래 제품 게이트 통과를 뜻하지 않으며, 닫힌
+#2489 roadmap은 이전 API 마일스톤입니다.
+
 ## 소유권부터 이해하기
 
 안정 request path는 다음과 같습니다.
@@ -50,6 +55,14 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 | **Metadata / head** | Application document에 `<title>`, `<meta>`, `<link>`를 렌더링합니다. Status와 header에는 기존 HTTP decorator와 response API를 사용합니다. | **Shipped as application-owned composition.** Automatic metadata function이나 route-segment merge contract는 없습니다. |
 | **Hydration** | `createReactServerEntry(...)`를 통해 명시적 hydration asset을 전달하고, 같은 request URL과 HTTP-matched param을 `ReactClientRouterProvider` snapshot에 렌더링한 뒤 browser entry에서 React DOM `hydrateRoot(...)`를 호출합니다. | **Shipped.** Server/client data transfer와 safe serialization은 application 책임입니다. |
 | **Build assets** | 애플리케이션이 Vite manifest를 로드해 `@fluojs/react/vite`의 `createReactViteAssetManifest(...)`에 전달하고, application document가 반환된 CSS와 hydration option을 emit합니다. | **Shipped.** fluo는 manifest discovery, Vite 실행, bundle generation, static-file/CDN hosting 선택을 수행하지 않습니다. |
+
+현재 client의 `router.refresh()`는 data를 제자리에서 재검증하지 않고 **document**를 reload합니다.
+`router.invalidate()`는 pending navigation과 public prefetch 상태만 비웁니다. 성공한
+destination은 provider/layout을 유지하지만 일시적 soft load 실패는 현재 전체 document로
+fallback합니다. 제품 목표는 일시적 실패에 셸 보존 및 새 HTTP 승인 재시도(#3864/#3871),
+소비자 migration을 수반하는 셸 보존 refresh(#3873)이며 이미 배포된 loader cache가 아닙니다.
+인증 거절은 일시적 재시도 대상이 아니고 명시적 reload/logout은 셸을 끝낼 수 있습니다.
+여정별 성공, 실패, 취소, 검증 surface는 제품 계약을 참고하세요.
 
 ## 패키지 경계
 

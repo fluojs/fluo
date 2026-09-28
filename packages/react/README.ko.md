@@ -2,7 +2,9 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-fluo 애플리케이션을 위한 런타임 중립 React 통합입니다.
+HTTP-first fluo 애플리케이션을 위한 런타임 중립 React 패키지입니다.
+[풀스택 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 추가 운영 CRUD 및
+장기 주크박스 수용 목표를 정의하며, 이 목표가 이미 배포됐다는 뜻은 아닙니다.
 
 Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전에 [소비자 마이그레이션 가이드](../../docs/getting-started/migrate-node24.ko.md)를 따르세요. React는 `0.x`의 `minor` 릴리스를 유지하며 `1.0`으로 승격하지 않습니다.
 
@@ -860,8 +862,10 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 - 정규화된 destination이 현재 route snapshot과 같은 identical URL이면 router는
   `window.location.assign(...)`이나 `window.location.replace(...)`를 호출하지 않습니다. 대신 요청한
   navigation type과 destination을 포함한 `skipped` 상태를 노출합니다.
-- `router.back()`은 `window.history.back()`에 위임합니다. `router.refresh()`는 문서화된 revalidation
-  mechanism으로 `window.location.reload()`를 사용하며 RSC, loader, client-data cache를 암시하지 않습니다.
+- `router.back()`은 `window.history.back()`에 위임합니다. `router.refresh()`는 soft
+  revalidation이 아닌 **전체 문서 reload**를 위해 `window.location.reload()`를 사용하며 RSC,
+  loader, client-data cache를 암시하지 않습니다. #3873이 향후 셸 보존 revalidation과
+  reload 의존 소비자의 migration을 소유합니다.
 - `usePathname()`, `useSearchParams()`, `useParams()`, `useRouterState()`는 provider의 immutable route
   snapshot을 읽습니다. `popstate`/forward는 이전에 방문한 URL도 HTTP에 새로 승인받으며 private
   payload를 cache하지 않습니다. 승인된 URL과 matched params를 함께 갱신하고 fragment-only
@@ -872,6 +876,14 @@ Navigation contract는 의도적으로 HTTP-first입니다.
   transition은 일치하는 `hashchange` 이후 현재 document에서 `complete`가 됩니다.
 - Router method는 cross-origin 또는 non-HTTP(S) destination을 `ReactClientNavigationError`로 거부합니다.
   이런 destination에는 일반 anchor를 사용하세요.
+
+현재 취소되지 않은 실패 load는 정상 soft transition이 셸을 유지할 수 있더라도 document
+fallback을 사용합니다. 이번 릴리스의 새 API가 아닌 공식 **제품 목표**는 일시적 network/5xx
+실패에서 마지막 승인 page와 장기 resource를 유지하고 실행 가능한 오류·새 HTTP 승인 재시도를
+제공하는 것입니다. Low-level fallback 호환성, 인증 거절, 명시적 reload, 앱이 요청한 logout
+teardown은 별도 결과입니다. #3864/#3871이 이 조립을 소유하고 #3879가 실제 production browser의
+resource identity를 검증합니다. [제품 여정 표](../../docs/contracts/react-fullstack-product.ko.md#사용자-여정-수용-표)를
+참고하세요.
 
 `Link`의 optional `prefetch="hover"` 및 `prefetch="viewport"` mode는 생략하면 off입니다.
 Hydration을 마친 provider에 `navigationModules`와 현재 auth/session epoch를 나타내는 명시적
@@ -1253,6 +1265,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 
+- 공식 일시적 실패의 셸 보존 재시도나 `router.refresh()`의 제자리 revalidation.
+  문서화된 low-level fallback과 document reload는 계속 적용됩니다.
 - stable RSC root 또는 `@fluojs/react/rsc` subpath. RSC는 명시적으로 불안정한
   `@fluojs/react/experimental/rsc` prototype에서만 제공합니다.
 - 자동 `"use server"` transform/export discovery 또는 built-in Flight renderer/build plugin

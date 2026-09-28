@@ -47,6 +47,7 @@ it.each([
     'true'],
   [storePath, '      if (!result.ok) {',
     "      browser.pushState?.(destination.href);\n      if (!result.ok) {"],
+  [storePath, '      browser.reload();', "      browser.assign('https://example.test/');"],
   [clientPath, "headers.get('X-Fluo-Navigation-Prefetch')", "headers.get('X-Fluo-Navigation-Other')"],
   [dispatchPath, "!hasExistingHeader('set-cookie')", 'true'],
   [dispatchPath, "!hasExistingHeader('cache-control')", 'true'],

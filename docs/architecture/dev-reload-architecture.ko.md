@@ -15,6 +15,19 @@
 
 이 저장소가 노출하는 리로드 계열은 둘뿐입니다. 코드에 대해서는 호스트가 소유하는 재시작 흐름, 설정 입력에 대해서는 config 스냅샷 교체 흐름입니다.
 
+**현재 React starter**에서는 React component, CSS, server-only, server/client shared,
+Vite/source config 수정을 모두 CLI 감독 child restart로 분류합니다. 재시작으로 변경된
+code가 반영되지만 browser shell, state, 장기 resource의 보존은 보장하지 않습니다.
+`packages/cli/src/dev-runner/react-vite-dev-app.ts`는
+`server: { hmr: false, middlewareMode: true }`로 Vite middleware server를 만들므로
+이는 React Fast Refresh나 CSS HMR이 아닙니다. 별도로
+`ConfigModule.forRoot({ watch: true })`는 검증된 env-file snapshot을 in-process에서
+교체할 수 있고, 잘못된 업데이트에서는 마지막 정상 snapshot을 유지합니다. CLI watcher가
+감지한 config/build code 수정은 application module hot swap 대신 child를 재시작합니다.
+[React 제품 계약](../contracts/react-fullstack-product.ko.md)은 범위가 정해진 React/CSS
+갱신을 #3876에, 안전한 server/shared/config 재시작과 실패 노출, teardown, 수정 후
+복구를 #3877에 할당합니다. 모든 module hot swap이나 모든 state 보존은 약속하지 않습니다.
+
 ## 제약 사항
 
 | 제약 | 사실 문장 | 근거 소스 |
