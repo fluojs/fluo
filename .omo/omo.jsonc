@@ -39,7 +39,7 @@
       "models": [
         {
           "model": "chatgpt-subscription/gpt-6-sol",
-          "reasoning": "high"
+          "reasoning": "medium"
         }
       ],
       "execution_mode": "process",
