@@ -66,9 +66,43 @@ export function enforceReactNavigationPayloadContract(
     ts.isFunctionDeclaration(node) && node.name?.text === 'loadReactInitialNavigationDestination');
   const serverTransfer = findNode(server, (node) =>
     ts.isCallExpression(node) && node.expression.getText(server) === 'createReactInitialNavigationPage');
+  const json = initialTransfer && findNode(initialTransfer, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(transfer) === 'json');
+  const escape = json?.initializer;
+  const replacement = escape?.arguments?.[1];
+  const limit = initialTransfer && findNode(initialTransfer, (node) =>
+    ts.isIfStatement(node) && ts.isBinaryExpression(node.expression)
+    && node.expression.operatorToken.kind === ts.SyntaxKind.GreaterThanToken
+    && ts.isPropertyAccessExpression(node.expression.left)
+    && node.expression.left.name.text === 'byteLength');
+  const encoded = limit?.expression.left.expression;
   if (!initialTransfer || !initialLoad || !serverTransfer
-    || !initialTransfer.getText(transfer).includes('[<>&\\u2028\\u2029]')
-    || !initialTransfer.getText(transfer).includes('64 * 1024')
+    || !escape || !ts.isCallExpression(escape)
+    || !ts.isPropertyAccessExpression(escape.expression) || escape.expression.name.text !== 'replace'
+    || !ts.isCallExpression(escape.expression.expression)
+    || escape.expression.expression.expression.getText(transfer) !== 'JSON.stringify'
+    || escape.expression.expression.arguments[0]?.getText(transfer) !== 'payload'
+    || !ts.isRegularExpressionLiteral(escape.arguments[0])
+    || escape.arguments[0].text !== '/[<>&\\u2028\\u2029]/gu'
+    || !replacement || !ts.isArrowFunction(replacement)
+    || !ts.isTemplateExpression(replacement.body)
+    || replacement.body.head.text !== '\\u'
+    || replacement.body.templateSpans.length !== 1
+    || replacement.body.templateSpans[0].expression.getText(transfer)
+      !== "character.charCodeAt(0).toString(16).padStart(4, '0')"
+    || !limit || !ts.isIfStatement(limit)
+    || !ts.isBinaryExpression(limit.expression.right)
+    || limit.expression.right.operatorToken.kind !== ts.SyntaxKind.AsteriskToken
+    || limit.expression.right.left.getText(transfer) !== '64'
+    || limit.expression.right.right.getText(transfer) !== '1024'
+    || !encoded || !ts.isCallExpression(encoded)
+    || !ts.isPropertyAccessExpression(encoded.expression) || encoded.expression.name.text !== 'encode'
+    || encoded.arguments[0]?.getText(transfer) !== 'json'
+    || !ts.isNewExpression(encoded.expression.expression)
+    || encoded.expression.expression.expression.getText(transfer) !== 'TextEncoder'
+    || !findNode(limit.thenStatement, (node) =>
+      ts.isThrowStatement(node) && node.expression && ts.isNewExpression(node.expression)
+      && node.expression.expression.getText(transfer) === 'RangeError')
     || !findNode(initialLoad, (node) =>
       ts.isCallExpression(node) && node.expression.getText(client) === 'parseNavigationPayload')) {
     throw new Error('React navigation initial document transfer must retain escaping, size bounds and the shared client validator.');

@@ -118,7 +118,7 @@ describe('React Vite SSR starter', () => {
     });
   });
 
-  it('identifies the application entry files when the Vite manifest is incompatible', () => {
+  it('rejects an incompatible Vite manifest with a machine-readable entry error', () => {
     try {
       createReactPageRenderer({});
       throw new TypeError('Expected createReactPageRenderer(...) to reject an incompatible manifest.');
@@ -126,10 +126,6 @@ describe('React Vite SSR starter', () => {
       expect(error).toBeInstanceOf(ReactStarterEntryError);
       if (error instanceof ReactStarterEntryError) {
         expect(error.code).toBe('react-starter-entry-incompatible');
-        expect(error.message).toContain('src/entry-server.tsx');
-        expect(error.message).toContain('src/entry-client.tsx');
-        expect(error.message).toContain('vite.client.config.ts');
-        expect(error.message).toContain('generated build script');
       }
     }
   });

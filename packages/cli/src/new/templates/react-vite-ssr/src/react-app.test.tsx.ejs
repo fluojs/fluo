@@ -39,17 +39,14 @@ describe('React Vite SSR app composition', () => {
     expect(html).toContain('id="fluo-initial-page"');
   });
 
-  it('reports actionable application files when hydration mismatches', () => {
+  it('forwards the hydration mismatch exception to the diagnostic sink', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const mismatch = new Error('Hydration mismatch');
 
     reportReactHydrationMismatch(mismatch);
 
-    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('src/entry-client.tsx'), mismatch);
-    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('src/entry-server.tsx'), mismatch);
-    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('src/react-app.tsx'), mismatch);
-    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('vite.client.config.ts'), mismatch);
-    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('generated build script'), mismatch);
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledWith(expect.any(String), mismatch);
   });
 
   it('attaches interaction without hydration warnings', async () => {

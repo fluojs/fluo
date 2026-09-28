@@ -38,6 +38,7 @@ it.each([
   [serverPath, "mediaType: 'application/vnd.fluo.react-navigation+json;v=1'", "mediaType: 'application/json'"],
   [transferPath, '64 * 1024', 'Infinity'],
   [transferPath, '[<>&\\u2028\\u2029]', '[>]'],
+  [transferPath, '(character) =>', '(character) => character ||'],
   [serverPath, 'createReactInitialNavigationPage(createReactNavigationPayload(', 'createReactNavigationPayload('],
   [storePath, 'if (!result.ok)', 'if (false)'],
   [historyPath, "loadAndCommit(browser, activated, 'back')", "loadAndCommit(browser, activated, 'push')"],
@@ -67,6 +68,20 @@ it.each([
 
   // When / Then: governance rejects the divergent request or server representation.
   expect(() => enforceReactNavigationPayloadContract(readText)).toThrow(/React navigation/u);
+});
+
+it('rejects a disabled initial-transfer size condition with the transfer-specific error', () => {
+  const source = sources.get(transferPath);
+  expect(source).toBeDefined();
+  const variant = source?.replace(
+    'if (new TextEncoder().encode(json).byteLength > 64 * 1024)',
+    'if (false && new TextEncoder().encode(json).byteLength > 64 * 1024)',
+  ) ?? '';
+  expect(variant).not.toBe(source);
+
+  expect(() => enforceReactNavigationPayloadContract((path: string) =>
+    path === transferPath ? variant : sources.get(path) ?? '',
+  )).toThrow('React navigation initial document transfer must retain escaping, size bounds and the shared client validator.');
 });
 
 it('rejects a credentialed prefetch even when ordinary navigation remains credentialed', () => {
