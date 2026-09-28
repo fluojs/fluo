@@ -914,7 +914,9 @@ application-managed `prefetchScope` 문자열을 함께 제공해야 합니다. 
 부적합한 anchor, 미지원 목적지, fragment-only 이동에서는 실행하지 않습니다.
 `router.invalidate()`는 pending prefetch를 취소하고 provider-local cache를 비웁니다.
 진행 중인 soft navigation을 취소하면 `useNavigation()`이 커밋된 route를 유지한 채 idle로
-정착하며 history 기록이나 document fallback은 발생하지 않습니다.
+정착하며 history 기록이나 document fallback은 발생하지 않습니다. 단, index가 없는
+back/forward entry가 이미 browser URL을 바꾼 경우에는 URL과 page를 일치시키기 위해
+해당 entry의 일반 문서를 다시 불러옵니다.
 Mutation 또는 auth 변경 뒤 다음 in-document navigation **이전에** 호출하거나
 `prefetchScope`를 변경하세요. Scope 변경과 unmount도 취소·삭제하며 전체 문서 이동은 cache를
 파기합니다. 외부 `HttpOnly` cookie 변경은 자동으로 감지하지 않으며 application이 변경

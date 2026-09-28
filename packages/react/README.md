@@ -926,7 +926,9 @@ viewport begins on intersection and cancels on exit. Neither runs for disabled J
 ineligible anchor, unsupported destination, or fragment-only navigation. `router.invalidate()`
 cancels pending prefetches and clears the provider-local cache; canceling an in-flight soft
 navigation settles `useNavigation()` to idle over the retained committed route without a
-history entry or document fallback. Call it and/or update `prefetchScope` **before** further
+history entry or document fallback, except when an untagged back/forward entry has already
+changed the browser URL: that entry reloads its ordinary document to keep URL and page
+consistent. Call it and/or update `prefetchScope` **before** further
 in-document navigation after mutations and auth changes.
 Scope changes and unmount also clear/cancel; full-document navigation discards the cache.
 There is no automatic detection of external `HttpOnly` cookie changes. Public pages must remain

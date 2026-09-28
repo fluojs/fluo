@@ -1534,6 +1534,44 @@ describe('@fluojs/react/client', () => {
     },
   );
 
+  it('document-navigates an untagged traversal before settling invalidation without a policy', async () => {
+    // Given: default soft navigation has approved one page and a back request is pending.
+    const browser = createEnvironment('https://example.test/products/sku-84');
+    const store = createClientNavigationStore(createReactRouteSnapshot({
+      params: { sku: 'sku-84' }, url: '/products/sku-84',
+    }));
+    let requestStarted = () => {};
+    const started = new Promise<void>((resolve) => { requestStarted = resolve; });
+    let release: ((result: ReactNavigationLoadResult) => void) | undefined;
+    const load = vi.fn((_href: string, signal: AbortSignal) => {
+      requestStarted();
+      return new Promise<ReactNavigationLoadResult>((resolve) => {
+        release = resolve;
+        signal.addEventListener('abort', () => resolve({ ok: false, reason: 'cancelled' }), { once: true });
+      });
+    });
+    const pushState = vi.fn();
+    const replaceState = vi.fn();
+    store.connect({ ...browser.environment, load, pushState, replaceState, historyIndex: () => null });
+    browser.navigateFromHistory('https://example.test/products/sku-42');
+    await started;
+
+    // When: a mutation invalidates the pending cross-path traversal.
+    store.router.invalidate();
+    release?.(approvedPrefetch('https://example.test/products/sku-42'));
+    await Promise.resolve();
+
+    // Then: an ordinary document load owns the active URL; no stale shell publishes idle.
+    expect(browser.replace).toHaveBeenCalledExactlyOnceWith('https://example.test/products/sku-42');
+    expect(browser.assign).not.toHaveBeenCalled();
+    expect(pushState).not.toHaveBeenCalled();
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(store.getSnapshot()).toMatchObject({
+      url: '/products/sku-84', params: { sku: 'sku-84' },
+      navigation: { status: 'navigating', type: 'back' },
+    });
+  });
+
   it('does not document-navigate an unapproved URL when reconnecting during history restoration', async () => {
     // Given: a back traversal awaits HTTP approval with a distinct approved page.
     const browser = createEnvironment('https://example.test/products/sku-84');

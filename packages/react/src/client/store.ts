@@ -149,10 +149,10 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     const hadUnsettledNavigation = pending !== null || failed !== null;
     const browser = environment;
     const activatedIndex = browser?.historyIndex?.();
-    const mustRestore = (pending?.type === 'back' || failed?.type === 'back' || restoringIndex !== null)
-      && browser !== null && browser.go !== undefined
-      && activatedIndex !== null && activatedIndex !== undefined
-      && toSnapshotUrl(browser.currentHref()) !== snapshot.url;
+    const unapprovedTraversal = (pending?.type === 'back' || failed?.type === 'back' || restoringIndex !== null)
+      && browser !== null && toSnapshotUrl(browser.currentHref()) !== snapshot.url;
+    const mustRestore = unapprovedTraversal && browser.go !== undefined
+      && activatedIndex !== null && activatedIndex !== undefined;
     cancelPending();
     failed = null;
     deferredNavigation = null;
@@ -162,6 +162,13 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
         restoringIndex = approvedIndex;
         browser.go?.(approvedIndex - activatedIndex);
       }
+      return;
+    }
+    if (unapprovedTraversal) {
+      // An untagged history entry has no reliable delta back to the approved page.
+      // Let its ordinary document response own the activated URL instead of publishing idle
+      // with an old page and params under that unapproved URL.
+      browser.replace(browser.currentHref());
       return;
     }
     if (hadUnsettledNavigation) {

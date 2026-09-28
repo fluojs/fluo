@@ -199,6 +199,45 @@ test('invalidation during back approval restores the approved URL without remoun
   await expect(page).toHaveURL(/\/admin\/qr$/u);
 });
 
+test('default navigation invalidation loads the activated document for an untagged back entry', async ({ page }) => {
+  // Given: the no-policy provider has approved a push, and a back request is held.
+  await page.goto('/admin/qr?defaultNavigation=1');
+  await page.getByRole('link', { name: 'Open admin songs' }).click();
+  await expect(page).toHaveURL(/\/admin\/songs$/u);
+  const entries = await page.evaluate(() => history.length);
+  expect(await page.evaluate(() => history.state)).toBeNull();
+  await page.evaluate(() => { window.__softNavigationDocument = 'previous-shell'; });
+  let releaseRequest = () => {};
+  const heldRequest = new Promise<void>((resolve) => { releaseRequest = resolve; });
+  await page.route((url) => url.pathname === '/admin/qr', async (route) => {
+    if (route.request().headers().accept !== NAVIGATION_MEDIA_TYPE) {
+      await route.continue();
+      return;
+    }
+    await heldRequest;
+    await route.fulfill({ status: 503, body: 'late rejection' });
+  });
+  const pending = page.waitForRequest((request) => new URL(request.url()).pathname === '/admin/qr'
+    && request.headers().accept === NAVIGATION_MEDIA_TYPE);
+  await page.goBack({ waitUntil: 'commit' });
+  await pending;
+  const document = page.waitForRequest((request) => new URL(request.url()).pathname === '/admin/qr'
+    && request.headers().accept !== NAVIGATION_MEDIA_TYPE);
+
+  // When: invalidation cancels approval while the untagged back entry is active.
+  await page.getByRole('button', { name: 'Invalidate prefetched pages' }).click();
+  await document;
+  releaseRequest();
+
+  // Then: a real document owns the URL and page without an extra history entry.
+  await expect(page).toHaveURL(/\/admin\/qr\?defaultNavigation=1$/u);
+  await expect(page.getByRole('heading', { name: 'Admin QR' })).toBeVisible();
+  await expect(page.getByText('Current path: /admin/qr')).toBeVisible();
+  await expect(page.getByText('Current route sku: unset')).toBeVisible();
+  expect(await page.evaluate(() => window.__softNavigationDocument)).toBeUndefined();
+  expect(await page.evaluate(() => history.length)).toBe(entries);
+});
+
 test('a rejected replace does not commit URL or params before retry', async ({ page }) => {
   // Given: a product destination whose negotiated response fails before history replacement.
   await page.goto('/admin/qr');

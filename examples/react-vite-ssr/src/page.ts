@@ -307,7 +307,8 @@ export function ProductDocument({
     initialSnapshot,
     navigationModules,
     prefetchScope,
-    failurePolicy: preserveTransientNavigation,
+    failurePolicy: new URL(routeUrl, 'http://localhost').searchParams.has('defaultNavigation')
+      ? undefined : preserveTransientNavigation,
     children: renderRouteDocument,
   });
 }

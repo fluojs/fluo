@@ -173,7 +173,9 @@ freshness. A successful opted-in click removes its entry. Revisits and back/forw
 fresh HTTP approval, and refresh reloads the document. Unmount/disconnect, scope changes,
 `router.invalidate()`, and superseding activation abort pending work and clear invalid entries.
 Invalidation that cancels an in-flight soft navigation settles `useNavigation()` to idle over
-the retained committed route, with no history entry and no document fallback. After an
+the retained committed route, with no history entry and no document fallback unless an untagged
+back/forward activation already moved the browser URL. In that case its ordinary document loads
+without adding a history entry, rather than settling an old page under an unapproved URL. After an
 in-document mutation or auth change, the application must update `prefetchScope`
 and/or call `router.invalidate()` **before** further same-document navigation; full-document
 navigation destroys this cache. External `HttpOnly` cookie changes are not automatically

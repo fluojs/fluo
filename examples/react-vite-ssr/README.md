@@ -70,6 +70,8 @@ document` is an explicit exit. Other reasons, including authentication, redirect
 and invalid payload, keep document fallback. A production browser checks these outcomes
 without paid media credentials; it does not prove actual music playback, logout persistence
 or the official generated app's #3871 composition.
+For the no-policy browser fixture, open `/admin/qr?defaultNavigation=1`: navigation still
+uses HTTP approval, but invalidating an untagged back entry loads its ordinary document.
 
 From `/admin/qr`, hover `Prefetch public sku-84` or scroll to `Prefetch public on viewport`,
 then activate the opted-in link. The first GET fetches a public navigation representation;

@@ -66,6 +66,8 @@ counter는 초기화됩니다. Main landmark에 focus를 옮깁니다. 직접 �
 선택합니다. 인증·redirect·DTO·잘못된 payload를 포함한 다른 사유는 document fallback을
 유지합니다. Production browser는 유료 음악 계정 없이 이를 검증하지만 실제 음악 재생,
 logout 뒤 보존 또는 #3871 공식 생성 앱의 조립 완료까지 입증하지는 않습니다.
+정책 없는 browser fixture는 `/admin/qr?defaultNavigation=1`로 시작합니다. 이동에는
+여전히 HTTP 승인이 필요하지만 index 없는 back entry를 무효화하면 일반 문서를 불러옵니다.
 
 `/admin/qr`에서 `Prefetch public sku-84`에 hover하거나 아래로 내려가
 `Prefetch public on viewport`를 화면에 표시한 뒤 opt-in link를 활성화하세요.
