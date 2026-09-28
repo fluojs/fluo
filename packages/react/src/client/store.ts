@@ -76,6 +76,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
   let failed: { readonly href: string; readonly type: DocumentNavigationType | 'back'; readonly index: number | null } | null = null;
   let approvedIndex = 0;
   let restoringIndex: number | null = null;
+  let invalidatedTraversal = false;
   let deferredNavigation: {
     readonly destination: URL;
     readonly type: DocumentNavigationType;
@@ -146,12 +147,24 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     cached.clear();
     discardPrefetches();
     const hadUnsettledNavigation = pending !== null || failed !== null;
+    const browser = environment;
+    const activatedIndex = browser?.historyIndex?.();
+    const mustRestore = (pending?.type === 'back' || failed?.type === 'back' || restoringIndex !== null)
+      && browser !== null && browser.go !== undefined
+      && activatedIndex !== null && activatedIndex !== undefined
+      && toSnapshotUrl(browser.currentHref()) !== snapshot.url;
     cancelPending();
     failed = null;
     deferredNavigation = null;
+    if (mustRestore) {
+      invalidatedTraversal = true;
+      if (restoringIndex === null) {
+        restoringIndex = approvedIndex;
+        browser.go?.(approvedIndex - activatedIndex);
+      }
+      return;
+    }
     if (hadUnsettledNavigation) {
-      // Publish a terminal state when invalidation cancels in-flight navigation: settle to
-      // idle over the retained committed route without history writes or document fallback.
       publish(createSnapshotWithNavigation(snapshot, IDLE_NAVIGATION));
     }
   };
@@ -531,9 +544,11 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     connect(nextEnvironment: ClientNavigationEnvironment): () => void {
       invalidate();
       environment = nextEnvironment;
-      restoringIndex = null;
       if (nextEnvironment.failurePolicy !== undefined && nextEnvironment.historyIndex?.() === null) {
         nextEnvironment.replaceState?.(nextEnvironment.currentHref(), approvedIndex);
+      }
+      if (restoringIndex === null && toSnapshotUrl(nextEnvironment.currentHref()) === snapshot.url) {
+        approvedIndex = nextEnvironment.historyIndex?.() ?? approvedIndex;
       }
       const unsubscribe = connectClientNavigationHistory(nextEnvironment, {
         cancelPending: () => {
@@ -543,10 +558,15 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
         },
         createSnapshotForHref,
         getSnapshot: () => snapshot,
+        isRestoring: () => restoringIndex !== null,
         restore: () => {
           if (restoringIndex !== null && nextEnvironment.historyIndex?.() === restoringIndex
             && toSnapshotUrl(nextEnvironment.currentHref()) === snapshot.url) {
             restoringIndex = null;
+            if (invalidatedTraversal) {
+              invalidatedTraversal = false;
+              publish(createSnapshotWithNavigation(snapshot, IDLE_NAVIGATION));
+            }
             const deferred = deferredNavigation;
             deferredNavigation = null;
             if (deferred !== null) {
@@ -555,6 +575,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
             return true;
           }
           restoringIndex = null;
+          invalidatedTraversal = false;
           return false;
         },
         loadAndCommit,

@@ -1468,6 +1468,124 @@ describe('@fluojs/react/client', () => {
     expect(store.getSnapshot().url).toBe('/products/sku-42?preview=true');
   });
 
+  it.each([
+    { direction: 'back', approvedIndex: 1, activatedIndex: 0, approvedSku: 'sku-84', activatedSku: 'sku-42' },
+    { direction: 'forward', approvedIndex: 0, activatedIndex: 1, approvedSku: 'sku-42', activatedSku: 'sku-84' },
+  ] as const)(
+    'restores the approved URL before settling invalidated $direction approval',
+    async ({ approvedIndex, activatedIndex, approvedSku, activatedSku }) => {
+      // Given: a tagged traversal changes the browser URL before HTTP approval.
+      const approvedHref = `https://example.test/products/${approvedSku}`;
+      const browser = createEnvironment(approvedHref);
+      let index = approvedIndex;
+      let release: ((result: ReactNavigationLoadResult) => void) | undefined;
+      let requestStarted = () => {};
+      const started = new Promise<void>((resolve) => { requestStarted = resolve; });
+      const load = vi.fn((_href: string, signal: AbortSignal) => {
+        requestStarted();
+        return new Promise<ReactNavigationLoadResult>((resolve) => {
+          release = resolve;
+          signal.addEventListener('abort', () => resolve({ ok: false, reason: 'cancelled' }), { once: true });
+        });
+      });
+      const go = vi.fn((_delta: number) => {});
+      const policy = vi.fn(() => 'preserve' as const);
+      const store = createClientNavigationStore(createReactRouteSnapshot({
+        params: { sku: approvedSku }, url: `/products/${approvedSku}`,
+      }));
+      const environment = {
+        ...browser.environment, failurePolicy: policy, historyIndex: () => index, go, load,
+        pushState: vi.fn(), replaceState: vi.fn(),
+      };
+      store.connect(environment);
+      const settled = new Promise<void>((resolve) => {
+        const unsubscribe = store.subscribe(() => {
+          if (store.getSnapshot().navigation.status === 'idle') {
+            unsubscribe();
+            resolve();
+          }
+        });
+      });
+      index = activatedIndex;
+      browser.navigateFromHistory(`https://example.test/products/${activatedSku}`);
+      await started;
+
+      // When: invalidation cancels approval while history is at the unapproved entry.
+      store.router.invalidate();
+      expect(go).toHaveBeenCalledExactlyOnceWith(approvedIndex - activatedIndex);
+      expect(store.getSnapshot().navigation.status).not.toBe('idle');
+      index = approvedIndex;
+      browser.navigateFromHistory(approvedHref);
+      await settled;
+      release?.(approvedPrefetch(`https://example.test/products/${activatedSku}`));
+      await Promise.resolve();
+
+      // Then: one existing entry is restored without another load, fallback, or page change.
+      expect(browser.environment.currentHref()).toBe(approvedHref);
+      expect(store.getSnapshot()).toMatchObject({
+        url: `/products/${approvedSku}`, params: { sku: approvedSku },
+        navigation: { status: 'idle', type: null },
+      });
+      expect(load).toHaveBeenCalledOnce();
+      expect(policy).not.toHaveBeenCalled();
+      expect(browser.assign).not.toHaveBeenCalled();
+      expect(environment.pushState).not.toHaveBeenCalled();
+      expect(environment.replaceState).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not document-navigate an unapproved URL when reconnecting during history restoration', async () => {
+    // Given: a back traversal awaits HTTP approval with a distinct approved page.
+    const browser = createEnvironment('https://example.test/products/sku-84');
+    let index = 1;
+    let requestStarted = () => {};
+    const started = new Promise<void>((resolve) => { requestStarted = resolve; });
+    const load = vi.fn((_href: string, signal: AbortSignal) => {
+      requestStarted();
+      return new Promise<ReactNavigationLoadResult>((resolve) => {
+        signal.addEventListener('abort', () => resolve({ ok: false, reason: 'cancelled' }), { once: true });
+      });
+    });
+    const go = vi.fn();
+    const store = createClientNavigationStore(createReactRouteSnapshot({
+      params: { sku: 'sku-84' }, url: '/products/sku-84',
+    }));
+    const environment = {
+      ...browser.environment, failurePolicy: () => 'preserve' as const,
+      historyIndex: () => index, go, load, pushState: vi.fn(), replaceState: vi.fn(),
+    };
+    const disconnect = store.connect(environment);
+    const settled = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().navigation.status === 'idle') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+    index = 0;
+    browser.navigateFromHistory('https://example.test/products/sku-42');
+    await started;
+
+    // When: the provider reconnects before the browser delivers the restoring popstate.
+    disconnect();
+    store.connect({ ...environment, failurePolicy: () => 'document' });
+    expect(go).toHaveBeenCalledExactlyOnceWith(1);
+    expect(browser.assign).not.toHaveBeenCalled();
+    index = 1;
+    browser.navigateFromHistory('https://example.test/products/sku-84');
+    await settled;
+
+    // Then: the original page and params remain under their approved URL.
+    expect(browser.environment.currentHref()).toBe('https://example.test/products/sku-84');
+    expect(store.getSnapshot()).toMatchObject({
+      url: '/products/sku-84', params: { sku: 'sku-84' },
+      navigation: { status: 'idle', type: null },
+    });
+    expect(load).toHaveBeenCalledOnce();
+    expect(browser.assign).not.toHaveBeenCalled();
+  });
+
   it('restores a pending traversal before preserving a newer failed push', async () => {
     // Given: one approved push and a back request awaiting a late HTTP result.
     const browser = createEnvironment('https://example.test/products/sku-42');

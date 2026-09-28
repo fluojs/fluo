@@ -160,6 +160,45 @@ test('failed back and forward restore the approved history entry and remain trav
   expect(await page.evaluate(() => window.__reactResourceStats)).toEqual({ mounts: 1, cleanups: 0 });
 });
 
+test('invalidation during back approval restores the approved URL without remounting the shell', async ({ page }) => {
+  // Given: an approved second page and a back request held before HTTP approval.
+  await page.goto('/admin/qr');
+  await page.getByRole('link', { name: 'Open admin songs' }).click();
+  await expect(page).toHaveURL(/\/admin\/songs$/u);
+  await page.evaluate(() => { window.__originalResource = window.__reactResource; });
+  let releaseRequest = () => {};
+  const heldRequest = new Promise<void>((resolve) => { releaseRequest = resolve; });
+  await page.route((url) => url.pathname === '/admin/qr', async (route) => {
+    if (route.request().headers().accept !== NAVIGATION_MEDIA_TYPE) {
+      await route.continue();
+      return;
+    }
+    await heldRequest;
+    await route.fulfill({ status: 503, body: 'late rejected approval' });
+  });
+  const pending = page.waitForRequest((request) => new URL(request.url()).pathname === '/admin/qr'
+    && request.headers().accept === NAVIGATION_MEDIA_TYPE);
+
+  // When: back changes the browser URL, then the retained shell invalidates the pending approval.
+  await page.goBack({ waitUntil: 'commit' });
+  await pending;
+  await page.getByRole('button', { name: 'Invalidate prefetched pages' }).click();
+  await expect(page).toHaveURL(/\/admin\/songs$/u);
+  releaseRequest();
+
+  // Then: the old page and live resource remain; ordinary traversal is still usable.
+  await expect(page.getByRole('heading', { name: 'Admin songs' })).toBeVisible();
+  await expect(page.getByText('Navigation: idle')).toBeVisible();
+  expect(await page.evaluate(() => window.__originalResource === window.__reactResource)).toBe(true);
+  expect(await page.evaluate(() => window.__reactResourceStats)).toEqual({ mounts: 1, cleanups: 0 });
+  await page.unrouteAll();
+  const approved = page.waitForResponse((response) => new URL(response.url()).pathname === '/admin/qr'
+    && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+  await page.goBack({ waitUntil: 'commit' });
+  expect((await approved).status()).toBe(200);
+  await expect(page).toHaveURL(/\/admin\/qr$/u);
+});
+
 test('a rejected replace does not commit URL or params before retry', async ({ page }) => {
   // Given: a product destination whose negotiated response fails before history replacement.
   await page.goto('/admin/qr');
