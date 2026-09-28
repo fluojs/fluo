@@ -1302,6 +1302,61 @@ describe('@fluojs/react/client', () => {
     },
   );
 
+  it.each(['invalidate', 'reconnect'] as const)(
+    'settles preserved failure controls when %s clears their recovery target',
+    async (action) => {
+      // Given: the old approved page remains mounted after a failed soft navigation.
+      const browser = createEnvironment();
+      const store = createClientNavigationStore(createReactRouteSnapshot({
+        params: { sku: 'sku-42' }, url: '/products/sku-42?preview=true',
+      }));
+      const load = vi.fn(async (): Promise<ReactNavigationLoadResult> => ({
+        ok: false, reason: 'network',
+      }));
+      const environment = {
+        ...browser.environment, failurePolicy: () => 'preserve' as const,
+        load, pushState: vi.fn(), replaceState: vi.fn(),
+      };
+      store.connect(environment);
+      const failure = new Promise<void>((resolve) => {
+        const unsubscribe = store.subscribe(() => {
+          if (store.getSnapshot().navigation.failure !== undefined) {
+            unsubscribe();
+            resolve();
+          }
+        });
+      });
+      store.router.push('/products/sku-84');
+      await failure;
+      const settled = new Promise<void>((resolve) => {
+        const unsubscribe = store.subscribe(() => {
+          if (store.getSnapshot().navigation.status === 'idle') {
+            unsubscribe();
+            resolve();
+          }
+        });
+      });
+
+      // When: an explicit invalidation or provider policy reconnection discards that target.
+      if (action === 'invalidate') {
+        store.router.invalidate();
+      } else {
+        store.connect({ ...environment, failurePolicy: () => 'document' });
+      }
+
+      // Then: observers cannot show failed recovery controls that no longer work.
+      expect(store.getSnapshot().navigation).toEqual({ status: 'idle', type: null });
+      await settled;
+      expect(store.getSnapshot()).toMatchObject({
+        params: { sku: 'sku-42' }, url: '/products/sku-42?preview=true',
+      });
+      store.router.retry();
+      store.router.openDocument();
+      expect(load).toHaveBeenCalledOnce();
+      expect(browser.assign).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(['throws', 'rejects'] as const)(
     'keeps an actionable failure when the application policy %s',
     async (behavior) => {

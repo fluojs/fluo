@@ -182,9 +182,20 @@ export async function loadReactNavigationDestination(
       await response.body?.cancel();
       return { ok: false, reason: 'unavailable' };
     }
-    const parsed: unknown = options.prefetch === true
-      ? await readBoundedNavigationJson(response)
-      : await response.json();
+    let parsed: unknown;
+    try {
+      parsed = options.prefetch === true
+        ? await readBoundedNavigationJson(response)
+        : await response.json();
+    } catch (error) {
+      if (options.signal?.aborted || error instanceof DOMException && error.name === 'AbortError') {
+        return { ok: false, reason: 'cancelled' };
+      }
+      if (error instanceof TypeError) {
+        return { ok: false, reason: 'network' };
+      }
+      throw error;
+    }
     if (options.signal?.aborted) {
       return { ok: false, reason: 'cancelled' };
     }

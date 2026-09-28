@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { loadReactNavigationDestination, type ReactNavigationLoadResult } from './client.js';
+import { createClientNavigationStore } from './client/store.js';
+import { createReactRouteSnapshot, loadReactNavigationDestination, type ReactNavigationLoadResult } from './client.js';
 
 const ORIGIN = 'https://example.test';
 const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
@@ -295,6 +296,95 @@ it.each([
 
   // Then: only a safe public reason crosses the browser navigation boundary.
   expect(result).toEqual({ ok: false, reason });
+});
+
+it('preserves the approved shell on a post-header body stream failure', async () => {
+  // Given: HTTP has approved the media type, but the body stream fails while being read.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  const fetchResult = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(new TypeError('private network stream details'));
+    },
+  }), {
+    headers: {
+      'Content-Type': MEDIA_TYPE,
+      'X-Fluo-Navigation-Prefetch': 'public',
+      'Cache-Control': 'public, max-age=15',
+      Vary: 'Accept',
+    },
+  }));
+  vi.stubGlobal('fetch', fetchResult);
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+  const store = createClientNavigationStore(createReactRouteSnapshot({
+    url: '/products/sku-42', params: { sku: 'sku-42' },
+  }));
+  const assign = vi.fn();
+  let reportLoad = (_result: ReactNavigationLoadResult) => {};
+  const loaded = new Promise<ReactNavigationLoadResult>((resolve) => { reportLoad = resolve; });
+  store.connect({
+    assign,
+    back: vi.fn(),
+    currentHref: () => `${ORIGIN}/products/sku-42`,
+    failurePolicy: ({ reason }) => reason === 'network' ? 'preserve' : 'document',
+    load: async (href, signal) => {
+      const result = await loadReactNavigationDestination(href, modules, { signal });
+      reportLoad(result);
+      return result;
+    },
+    pushState: vi.fn(),
+    reload: vi.fn(),
+    replace: vi.fn(),
+    replaceState: vi.fn(),
+    subscribe: () => () => {},
+  });
+  const failure = new Promise<void>((resolve) => {
+    const unsubscribe = store.subscribe(() => {
+      if (store.getSnapshot().navigation.status === 'error') {
+        unsubscribe();
+        resolve();
+      }
+    });
+  });
+
+  // When: a soft navigation reads the failing response body.
+  store.router.push('/products/sku-84?preview=false');
+  const result = await loaded;
+
+  // Then: the real loader reports network failure and keeps the approved shell and URL.
+  expect(result).toEqual({ ok: false, reason: 'network' });
+  await failure;
+  expect(store.getSnapshot()).toMatchObject({
+    url: '/products/sku-42', params: { sku: 'sku-42' },
+    navigation: { status: 'error', failure: { reason: 'network' } },
+  });
+  expect(assign).not.toHaveBeenCalled();
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+  expect(fetchResult).toHaveBeenCalledOnce();
+});
+
+it('classifies a failed streamed prefetch body as network rather than invalid payload', async () => {
+  // Given: the prefetch grant headers arrive before the network body stream fails.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(new TypeError('private network stream details'));
+    },
+  }), {
+    headers: {
+      'Content-Type': MEDIA_TYPE,
+      'X-Fluo-Navigation-Prefetch': 'public',
+      'Cache-Control': 'public, max-age=15',
+      Vary: 'Accept',
+    },
+  })));
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  // When: the bounded prefetch reader consumes the failing stream.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', modules, { prefetch: true });
+
+  // Then: no destination is imported, and network remains distinct from malformed JSON.
+  expect(result).toEqual({ ok: false, reason: 'network' });
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
 });
 
 it('distinguishes a rejected build-mapped module import from an unsupported module', async () => {

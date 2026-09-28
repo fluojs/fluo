@@ -145,11 +145,11 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
   const invalidate = (): void => {
     cached.clear();
     discardPrefetches();
-    const hadPendingNavigation = pending !== null;
+    const hadUnsettledNavigation = pending !== null || failed !== null;
     cancelPending();
     failed = null;
     deferredNavigation = null;
-    if (hadPendingNavigation) {
+    if (hadUnsettledNavigation) {
       // Publish a terminal state when invalidation cancels in-flight navigation: settle to
       // idle over the retained committed route without history writes or document fallback.
       publish(createSnapshotWithNavigation(snapshot, IDLE_NAVIGATION));
