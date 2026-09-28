@@ -268,6 +268,49 @@ it.each([
   expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
 });
 
+it.each([
+  ['network', () => { throw new TypeError('fetch failed with private details'); }, 'network'],
+  ['server', () => new Response('private server trace', { status: 503 }), 'server-error'],
+  ['unauthorized', () => new Response('private session', { status: 401 }), 'unauthorized'],
+  ['forbidden', () => new Response('private denial', { status: 403 }), 'forbidden'],
+  ['redirect', () => new Response(null, { status: 302, headers: { Location: '/login' } }), 'redirect'],
+  ['not found', () => new Response('missing', { status: 404 }), 'not-found'],
+  ['DTO rejection', () => new Response('private DTO fields', { status: 400 }), 'dto-rejected'],
+  ['malformed', () => new Response('{', { headers: { 'Content-Type': MEDIA_TYPE } }), 'invalid-payload'],
+  ['unsupported module', () => grantedResponse({}, {
+    ...payload, destination: { module: './missing.ts', props: {} },
+  }), 'unsupported-module'],
+  ['inherited module key', () => grantedResponse({}, {
+    ...payload, destination: { module: '__proto__', props: {} },
+  }), 'unsupported-module'],
+] as const)('classifies %s without exposing response details', async (_scenario, response, reason) => {
+  // Given: one negotiated HTTP response with distinct failure semantics.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => response()));
+
+  // When: the existing loader requests the destination.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', {
+    './navigation-product.ts': vi.fn(async () => ({ default: () => null })),
+  });
+
+  // Then: only a safe public reason crosses the browser navigation boundary.
+  expect(result).toEqual({ ok: false, reason });
+});
+
+it('distinguishes a rejected build-mapped module import from an unsupported module', async () => {
+  // Given: HTTP approved a module present in the build map, but loading its chunk fails.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => grantedResponse()));
+
+  // When: the approved import rejects.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', {
+    './navigation-product.ts': async () => { throw new TypeError('private chunk path'); },
+  });
+
+  // Then: the consumer may explicitly distinguish recovery from an absent build module.
+  expect(result).toEqual({ ok: false, reason: 'import-failure' });
+});
+
 it('rejects an external URL before issuing a request', async () => {
   vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
   const request = vi.fn();

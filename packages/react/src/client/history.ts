@@ -12,6 +12,7 @@ type HistoryHandlers = {
   readonly getSnapshot: () => ReactRouteSnapshot;
   readonly loadAndCommit: (browser: ClientNavigationEnvironment, destination: URL, type: 'back') => void;
   readonly publish: (snapshot: ReactRouteSnapshot) => void;
+  readonly restore: () => boolean;
 };
 
 /**
@@ -26,6 +27,9 @@ export function connectClientNavigationHistory(
   handlers: HistoryHandlers,
 ): () => void {
   const unsubscribe = browser.subscribe((eventType) => {
+    if (handlers.restore()) {
+      return;
+    }
     const href = browser.currentHref();
     const currentUrl = toSnapshotUrl(href);
     const snapshot = handlers.getSnapshot();

@@ -640,7 +640,7 @@ describe('@fluojs/react/client', () => {
     expect(html).toContain('data-pathname="/products/sku-42"');
     expect(html).toContain('data-navigation="idle"');
     expect(html).toContain('data-url="/products/sku-42?preview=true"');
-    expect(html).toContain('back,invalidate,push,refresh,replace');
+    expect(html).toContain('back,invalidate,openDocument,push,refresh,replace,retry');
     expect(html).toContain('sku-42:true');
   });
 
@@ -1234,5 +1234,245 @@ describe('@fluojs/react/client', () => {
 
     // Then: the completed lifecycle reports back rather than reusing push.
     expect(store.getSnapshot().navigation).toEqual({ status: 'complete', type: 'back' });
+  });
+
+  it.each(['network', 'server-error'] as const)(
+    'retains the approved route on %s and retries through fresh HTTP approval',
+    async (reason) => {
+      // Given: a connected shell with one approved page and a failed credentialed load.
+      const browser = createEnvironment();
+      const store = createClientNavigationStore(createReactRouteSnapshot({
+        params: { sku: 'sku-42' }, url: '/products/sku-42?preview=true',
+      }));
+      const decisions: string[] = [];
+      const load = vi.fn()
+        .mockResolvedValueOnce({ ok: false, reason })
+        .mockResolvedValueOnce(approvedPrefetch('https://example.test/products/sku-84'));
+      let settled = (_value: 'preserved' | 'document') => {};
+      const outcome = new Promise<'preserved' | 'document'>((resolve) => { settled = resolve; });
+      store.connect({
+        ...browser.environment,
+        assign: (href) => {
+          browser.assign(href);
+          settled('document');
+        },
+        failurePolicy: (failure) => {
+          decisions.push(`${failure.reason}:${failure.destination}:${failure.type}`);
+          return 'preserve';
+        },
+        load,
+        pushState: vi.fn(),
+        replaceState: vi.fn(),
+      });
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().navigation.status === 'error') {
+          settled('preserved');
+        }
+      });
+
+      // When: a rejected push settles, then the user retries.
+      store.router.push('/products/sku-84');
+      expect(await outcome).toBe('preserved');
+      unsubscribe();
+      expect(store.getSnapshot()).toMatchObject({
+        params: { sku: 'sku-42' },
+        url: '/products/sku-42?preview=true',
+        navigation: {
+          status: 'error', type: 'push',
+          failure: { reason, destination: '/products/sku-84', type: 'push' },
+        },
+      });
+      expect(browser.assign).not.toHaveBeenCalled();
+      const completed = new Promise<void>((resolve) => {
+        const unsubscribe = store.subscribe(() => {
+          if (store.getSnapshot().url === '/products/sku-84') {
+            unsubscribe();
+            resolve();
+          }
+        });
+      });
+      store.router.retry();
+      await completed;
+
+      // Then: the same shell has a newly approved destination and one committed URL.
+      expect(decisions).toEqual([`${reason}:/products/sku-84:push`]);
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(store.getSnapshot().params).toEqual({ sku: 'sku-84' });
+      expect(browser.assign).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['throws', 'rejects'] as const)(
+    'keeps an actionable failure when the application policy %s',
+    async (behavior) => {
+      // Given: a failed request and an application policy callback that cannot decide safely.
+      const browser = createEnvironment();
+      const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+      store.connect({
+        ...browser.environment,
+        failurePolicy: behavior === 'throws'
+          ? () => { throw new Error('private policy context'); }
+          : async () => { throw new Error('private policy context'); },
+        load: async () => ({ ok: false, reason: 'network' }),
+        pushState: vi.fn(),
+        replaceState: vi.fn(),
+      });
+      const failure = new Promise<void>((resolve) => {
+        const unsubscribe = store.subscribe(() => {
+          if (store.getSnapshot().navigation.status === 'error') {
+            unsubscribe();
+            resolve();
+          }
+        });
+      });
+
+      // When: the policy throws or rejects during a failed push.
+      store.router.push('/products/sku-84');
+      await failure;
+
+      // Then: no document fallback or unhandled rejection escapes; only a safe reason is public.
+      expect(store.getSnapshot().navigation.failure).toEqual({
+        destination: '/products/sku-84', reason: 'application-error', type: 'push',
+      });
+      expect(browser.assign).not.toHaveBeenCalled();
+      expect(diagnostic).toHaveBeenCalledOnce();
+      diagnostic.mockRestore();
+    },
+  );
+
+  it('ignores a late failed policy decision after a newer approved navigation', async () => {
+    // Given: one failure policy decision held until a second HTTP navigation succeeds.
+    const browser = createEnvironment();
+    let decide = (_decision: 'preserve' | 'document') => {};
+    const deciding = new Promise<'preserve' | 'document'>((resolve) => { decide = resolve; });
+    let policyStarted = () => {};
+    const started = new Promise<void>((resolve) => { policyStarted = resolve; });
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    store.connect({
+      ...browser.environment,
+      failurePolicy: () => { policyStarted(); return deciding; },
+      load: vi.fn().mockResolvedValueOnce({ ok: false, reason: 'network' })
+        .mockResolvedValueOnce(approvedPrefetch('https://example.test/products/sku-126')),
+      pushState: vi.fn(),
+      replaceState: vi.fn(),
+    });
+    const approved = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().url === '/products/sku-126') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: a second push supersedes the pending failure callback.
+    store.router.push('/products/sku-84');
+    await started;
+    store.router.push('/products/sku-126');
+    await approved;
+    decide('document');
+    await deciding;
+
+    // Then: stale fallback cannot replace the newly approved page.
+    expect(browser.assign).not.toHaveBeenCalled();
+    expect(store.getSnapshot().url).toBe('/products/sku-126');
+  });
+
+  it('never calls the failure policy for cancelled or superseded HTTP results', async () => {
+    // Given: a request whose late failure only resolves after its abort event.
+    const browser = createEnvironment();
+    const policy = vi.fn(() => 'preserve' as const);
+    const store = createClientNavigationStore(createReactRouteSnapshot({
+      url: '/products/sku-42?preview=true',
+    }));
+    const load = vi.fn((_href: string, signal: AbortSignal) =>
+      new Promise<ReactNavigationLoadResult>((resolve) => {
+        signal.addEventListener('abort', () => resolve({ ok: false, reason: 'network' }), { once: true });
+      }));
+    store.connect({
+      ...browser.environment, failurePolicy: policy, load, pushState: vi.fn(), replaceState: vi.fn(),
+    });
+    const settled = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().navigation.status === 'idle') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: the application invalidates the pending request.
+    store.router.push('/products/sku-84');
+    store.router.invalidate();
+    await settled;
+
+    // Then: abort invalidates the late network failure without touching the approved route.
+    expect(policy).not.toHaveBeenCalled();
+    expect(browser.assign).not.toHaveBeenCalled();
+    expect(store.getSnapshot().url).toBe('/products/sku-42?preview=true');
+  });
+
+  it('restores a pending traversal before preserving a newer failed push', async () => {
+    // Given: one approved push and a back request awaiting a late HTTP result.
+    const browser = createEnvironment('https://example.test/products/sku-42');
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42' }));
+    let index: number | null = null;
+    let rejectBack = (_result: ReactNavigationLoadResult) => {};
+    const go = vi.fn((delta: number) => {
+      index = (index ?? 0) + delta;
+      browser.navigateFromHistory(`https://example.test/products/${index === 0 ? 'sku-42' : 'sku-84'}`);
+    });
+    const load = vi.fn((href: string) => href.endsWith('sku-84')
+      ? Promise.resolve(approvedPrefetch(href))
+      : href.endsWith('sku-42')
+        ? new Promise<ReactNavigationLoadResult>((resolve) => { rejectBack = resolve; })
+        : Promise.resolve({ ok: false, reason: 'server-error' } as const));
+    store.connect({
+      ...browser.environment,
+      failurePolicy: ({ reason }) => reason === 'server-error' ? 'preserve' : 'document',
+      historyIndex: () => index,
+      go,
+      load,
+      pushState: (href, position) => {
+        index = position ?? null;
+        browser.changeFragment(href);
+      },
+      replaceState: (_href, position) => { index = position ?? null; },
+    });
+    const committed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().url === '/products/sku-84') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+    store.router.push('/products/sku-84');
+    await committed;
+    index = 0;
+    browser.navigateFromHistory('https://example.test/products/sku-42');
+    const failed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().navigation.status === 'error') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: a newer push fails while back approval is still in flight.
+    store.router.push('/products/sku-126');
+    await failed;
+    rejectBack({ ok: false, reason: 'network' });
+
+    // Then: restoration happened before the policy preserved the latest approved route.
+    expect(go).toHaveBeenCalledWith(1);
+    expect(browser.environment.currentHref()).toBe('https://example.test/products/sku-84');
+    expect(store.getSnapshot().url).toBe('/products/sku-84');
+    expect(store.getSnapshot().navigation.failure).toMatchObject({
+      destination: '/products/sku-126', reason: 'server-error',
+    });
+    expect(browser.assign).not.toHaveBeenCalled();
   });
 });

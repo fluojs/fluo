@@ -877,12 +877,34 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 - Router method는 cross-origin 또는 non-HTTP(S) destination을 `ReactClientNavigationError`로 거부합니다.
   이런 destination에는 일반 anchor를 사용하세요.
 
-현재 취소되지 않은 실패 load는 정상 soft transition이 셸을 유지할 수 있더라도 document
-fallback을 사용합니다. 이번 릴리스의 새 API가 아닌 공식 **제품 목표**는 일시적 network/5xx
-실패에서 마지막 승인 page와 장기 resource를 유지하고 실행 가능한 오류·새 HTTP 승인 재시도를
-제공하는 것입니다. Low-level fallback 호환성, 인증 거절, 명시적 reload, 앱이 요청한 logout
-teardown은 별도 결과입니다. #3864/#3871이 이 조립을 소유하고 #3879가 실제 production browser의
-resource identity를 검증합니다. [제품 여정 표](../../docs/contracts/react-fullstack-product.ko.md#사용자-여정-수용-표)를
+일시적 실패는 기존 provider/router 경로에 명시적으로 opt-in합니다.
+
+```tsx
+<ReactClientRouterProvider
+  initialSnapshot={initialSnapshot}
+  navigationModules={navigationModules}
+  failurePolicy={({ reason }) =>
+    reason === 'network' || reason === 'server-error' ? 'preserve' : 'document'}
+>
+  {(destination) => <AppShell destination={destination} />}
+</ReactClientRouterProvider>
+```
+
+`failurePolicy`를 생략하면 취소되지 않은 실패는 계속 document fallback합니다. `'preserve'`를
+선택하면 마지막 승인 URL·params·page·shell을 유지하며 `useNavigation().failure`는 안전한
+`reason`, 목적지 pathname, navigation type을 제공합니다. 셸의 오류 UI에서 `router.retry()`로
+새 credential 포함 HTTP 승인을 요청하고 `router.openDocument()`로 일반 문서를 명시적으로
+이동합니다. 사유는 `network`, `server-error`, `unauthorized`, `forbidden`, `redirect`,
+`not-found`, `dto-rejected`, `invalid-payload`, `unsupported-module`, `import-failure`,
+`unavailable`, `unsupported-destination`으로 구분하며 앱 callback 실패는 `application-error`로
+정착합니다. 응답 본문으로 인증을 추측하거나 로그아웃 뒤 보호 콘텐츠를 보장하지 않습니다.
+실패한 back/forward는 확인 가능한 history 위치에서 마지막 승인 URL과 화면으로 복구하고
+retry는 새 HTTP 승인을 요청합니다. 기존 `refresh()`는 여전히 reload입니다. 이는 하위
+호환되는 **low-level opt-in**이며 공식 조립의 network/5xx 기본값은 #3871이 소유합니다.
+직접 조립한 앱은 `navigationModules`와 `failurePolicy`를 제공하고 셸에
+`navigation.failure` 조작 UI를 배치하며 다른 사유는 명시적인 정책 없이는 문서 경로에
+남겨 두세요. Production 예제는 network/5xx 실패·복구 중 자원 identity와 operation/ack를
+검증합니다. #3879는 여전히 전체 제품 여정을 검증해야 합니다. [제품 여정 표](../../docs/contracts/react-fullstack-product.ko.md#사용자-여정-수용-표)를
 참고하세요.
 
 `Link`의 optional `prefetch="hover"` 및 `prefetch="viewport"` mode는 생략하면 off입니다.

@@ -888,13 +888,35 @@ The navigation contract is deliberately HTTP-first:
 - Router methods reject cross-origin or non-HTTP(S) destinations with
   `ReactClientNavigationError`. Use a normal anchor for those destinations.
 
-Today a non-cancelled failed load uses document fallback even if a successful soft
-transition would retain the shell. The official **product target**, not a new API in
-this release, preserves the last approved page and long-lived resource on transient
-network/5xx failure, shows an actionable error and retries with fresh HTTP approval.
-Low-level fallback compatibility, auth refusal, explicit reload and application-requested
-logout teardown remain separate outcomes. #3864/#3871 own this composition and #3879
-must test actual resource identity in a production browser; see the
+For transient failures, opt into the existing provider and router path:
+
+```tsx
+<ReactClientRouterProvider
+  initialSnapshot={initialSnapshot}
+  navigationModules={navigationModules}
+  failurePolicy={({ reason }) =>
+    reason === 'network' || reason === 'server-error' ? 'preserve' : 'document'}
+>
+  {(destination) => <AppShell destination={destination} />}
+</ReactClientRouterProvider>
+```
+
+Without `failurePolicy`, every non-cancelled failed load still falls back to a document.
+With `'preserve'`, the approved URL, params, page and shell remain; `useNavigation().failure`
+provides a safe `reason`, destination pathname and navigation type. Show an error with
+`router.retry()` for a fresh credentialed HTTP approval and `router.openDocument()` for an
+explicit ordinary document. The distinct reasons are `network`, `server-error`, `unauthorized`,
+`forbidden`, `redirect`, `not-found`, `dto-rejected`, `invalid-payload`, `unsupported-module`,
+`import-failure`, `unavailable` and `unsupported-destination`; a failing application callback
+settles as `application-error`. Never infer authentication from body text, preserve protected
+content after logout, or expose a response body through the policy. Failed back/forward with a
+known history position restores the last approved URL and view; retry requests new HTTP approval.
+Existing `refresh()` still reloads. This is a backward-compatible **low-level opt-in**; #3871
+owns the official composition's network/5xx default. To migrate a hand-assembled app, supply
+`navigationModules`, pass `failurePolicy`, render `navigation.failure` controls in the persistent
+shell, and leave all other categories on the document path unless deliberately handled. The
+production example verifies resource identity and operation/ack through network and 5xx failure
+and recovery. #3879 must still test the complete product journey; see the
 [product journey map](../../docs/contracts/react-fullstack-product.md#journey-acceptance-map).
 
 `Link` has optional `prefetch="hover"` and `prefetch="viewport"` modes; omitted `prefetch` is off.

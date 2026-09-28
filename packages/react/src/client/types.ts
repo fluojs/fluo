@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { ReactNavigationModules } from './navigation-payload.js';
+import type { ReactNavigationFailureReason, ReactNavigationModules } from './navigation-payload.js';
 
 /** Navigation methods that can change or revalidate the active browser document. */
 export type ReactNavigationType = 'push' | 'replace' | 'back' | 'refresh';
@@ -16,9 +16,21 @@ export type ReactNavigationStatus =
 /** Immutable navigation lifecycle information exposed to hydrated components. */
 export type ReactNavigationSnapshot = {
   readonly destination?: string;
+  readonly failure?: ReactNavigationFailure;
   readonly status: ReactNavigationStatus;
   readonly type: ReactNavigationType | null;
 };
+
+/** Safe navigation context; destination is a pathname, never query, response, or credentials. */
+export type ReactNavigationFailure = {
+  readonly destination: string;
+  readonly reason: ReactNavigationFailureReason | 'application-error';
+  readonly type: 'push' | 'replace' | 'back';
+};
+
+/** An opt-in decision made before a rejected soft load starts document navigation. */
+export type ReactNavigationFailurePolicy = (failure: ReactNavigationFailure) =>
+  'preserve' | 'document' | Promise<'preserve' | 'document'>;
 
 /** Read-only URL search parameter surface returned by `useSearchParams()`. */
 export interface ReactReadonlySearchParams extends Iterable<[string, string]> {
@@ -71,6 +83,10 @@ export interface ReactRouter {
   invalidate(): void;
   /** Load an HTTP-approved page softly, or navigate the full document on fallback. */
   push(href: string | URL): void;
+  /** Retry the last retained failure with a new uncached, credentialed HTTP request. */
+  retry(): void;
+  /** Explicitly load the failed destination as an ordinary HTTP document. */
+  openDocument(): void;
   /** Revalidate the current page with a full-document reload. */
   refresh(): void;
   /** Replace with an HTTP-approved page softly, or replace the full document on fallback. */
@@ -83,6 +99,8 @@ export type ReactClientRouterProviderProps = {
   readonly initialSnapshot: ReactRouteSnapshot;
   /** Build-produced importers for HTTP-approved soft destinations. */
   readonly navigationModules?: ReactNavigationModules;
+  /** Opt in to preserving the last approved page on selected failed navigation requests. */
+  readonly failurePolicy?: ReactNavigationFailurePolicy;
   /** Application-managed auth/session epoch; omitted means prefetch is disabled. */
   readonly prefetchScope?: string;
 };

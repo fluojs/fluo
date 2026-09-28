@@ -58,9 +58,12 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 
 현재 client의 `router.refresh()`는 data를 제자리에서 재검증하지 않고 **document**를 reload합니다.
 `router.invalidate()`는 pending navigation과 public prefetch 상태만 비웁니다. 성공한
-destination은 provider/layout을 유지하지만 일시적 soft load 실패는 현재 전체 document로
-fallback합니다. 제품 목표는 일시적 실패에 셸 보존 및 새 HTTP 승인 재시도(#3864/#3871),
-소비자 migration을 수반하는 셸 보존 refresh(#3873)이며 이미 배포된 loader cache가 아닙니다.
+destination은 provider/layout을 유지하지만 soft load 실패의 기본값은 전체 document
+fallback입니다. 같은 provider의 `failurePolicy`로 network/5xx에서 승인된 shell/page
+보존을 opt-in하고 `useNavigation().failure`, 새 HTTP `router.retry()` 및 명시적인
+`router.openDocument()`를 사용할 수 있습니다. Production Vite 예제는 이 opt-in을
+검증하고 #3871이 공식 조립의 기본값 연결을 소유합니다. 소비자 migration을 수반하는
+셸 보존 refresh(#3873)는 별도 목표이며 이미 배포된 loader cache가 아닙니다.
 인증 거절은 일시적 재시도 대상이 아니고 명시적 reload/logout은 셸을 끝낼 수 있습니다.
 여정별 성공, 실패, 취소, 검증 surface는 제품 계약을 참고하세요.
 

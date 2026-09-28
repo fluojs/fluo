@@ -1,7 +1,7 @@
 import {
+  type Context,
   createContext,
   createElement,
-  type Context,
   useContext,
   useEffect,
   useState,
@@ -9,13 +9,13 @@ import {
 } from 'react';
 
 import { ReactClientRouterContextError } from './errors.js';
+import { loadReactNavigationDestination } from './navigation-payload.js';
 import {
   type ClientNavigationEnvironment,
   type ClientNavigationStore,
   createClientNavigationStore,
 } from './store.js';
 import type { ReactClientRouterProviderProps } from './types.js';
-import { loadReactNavigationDestination } from './navigation-payload.js';
 
 const clientRouterContextKey = Symbol.for('fluo.react.client-router-context.v1');
 
@@ -70,11 +70,22 @@ function createBrowserEnvironment(
   browser: Window,
   modules: ReactClientRouterProviderProps['navigationModules'],
   prefetchScope: ReactClientRouterProviderProps['prefetchScope'],
+  failurePolicy: ReactClientRouterProviderProps['failurePolicy'],
 ): ClientNavigationEnvironment {
   return {
     assign: (href) => browser.location.assign(href),
     back: () => browser.history.back(),
     currentHref: () => browser.location.href,
+    failurePolicy,
+    historyIndex: () => {
+      const state: unknown = browser.history.state;
+      if (typeof state !== 'object' || state === null) {
+        return null;
+      }
+      const index: unknown = Reflect.get(state, '__fluoReactNavigationIndex');
+      return typeof index === 'number' ? index : null;
+    },
+    go: (delta) => browser.history.go(delta),
     ...(modules === undefined ? {} : {
       load: (href: string, signal: AbortSignal) => loadReactNavigationDestination(href, modules, { signal }),
       ...(prefetchScope === undefined ? {} : {
@@ -83,10 +94,14 @@ function createBrowserEnvironment(
           loadReactNavigationDestination(href, modules, { signal, prefetch: true }),
       }),
     }),
-    pushState: (href) => browser.history.pushState(null, '', href),
+    pushState: (href, index) => browser.history.pushState(
+      index === undefined ? null : { __fluoReactNavigationIndex: index }, '', href,
+    ),
     reload: () => browser.location.reload(),
     replace: (href) => browser.location.replace(href),
-    replaceState: (href) => browser.history.replaceState(null, '', href),
+    replaceState: (href, index) => browser.history.replaceState(
+      index === undefined ? null : { __fluoReactNavigationIndex: index }, '', href,
+    ),
     subscribe(listener) {
       const handleHashChange = () => listener('hashchange');
       const handlePopState = () => listener('popstate');
@@ -111,6 +126,7 @@ export function ReactClientRouterProvider({
   initialSnapshot,
   navigationModules,
   prefetchScope,
+  failurePolicy,
 }: ReactClientRouterProviderProps) {
   const [store] = useState(() => createClientNavigationStore(initialSnapshot));
   const destination = useSyncExternalStore(store.subscribe, store.getDestination, store.getDestination);
@@ -119,8 +135,8 @@ export function ReactClientRouterProvider({
     if (typeof window === 'undefined') {
       return undefined;
     }
-    return store.connect(createBrowserEnvironment(window, navigationModules, prefetchScope));
-  }, [store, navigationModules, prefetchScope]);
+    return store.connect(createBrowserEnvironment(window, navigationModules, prefetchScope, failurePolicy));
+  }, [store, navigationModules, prefetchScope, failurePolicy]);
 
   return createElement(
     ClientRouterContext.Provider,
