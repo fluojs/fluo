@@ -59,7 +59,7 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 
 <!-- fluo:docs-navigation:end -->
 
-HTTP가 매칭한 React 클라이언트 이동은 [navigation payload 계약](./contracts/react-navigation-payload.ko.md)에서 시작한 다음 [React API 원본](../packages/react/README.ko.md)과 [Vite SSR 예제](../examples/react-vite-ssr/README.ko.md)를 확인하세요. `Link`와 `useRouter()`는 HTTP가 승인한 build-mapped 목적지를 렌더링하고 확정된 URL·params를 history에 commit합니다. Back/forward도 새로 요청하며 거부된 결과는 전체 문서로 이동합니다. 일반 GET 및 JavaScript 비활성 GET은 streamed document를 유지합니다. 상태·cookie·오류는 HTTP가 소유합니다. 실행 근거는 `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`입니다.
+HTTP가 매칭한 React 클라이언트 이동은 [navigation payload 계약](./contracts/react-navigation-payload.ko.md)에서 시작한 다음 [React API 원본](../packages/react/README.ko.md)과 [Vite SSR 예제](../examples/react-vite-ssr/README.ko.md)를 확인하세요. 공식 starter는 크기를 제한하고 escape한 HTTP 선택 초기 page를 전송한 뒤 동일한 build-produced importer map과 공통 provider/page slot을 hydration과 이후 `Link`/`useRouter()` 이동에 사용합니다. 이들은 확정된 URL·params를 history에 commit하고 back/forward도 새로 요청하며 거부된 결과는 전체 문서로 이동합니다. 일반 GET 및 JavaScript 비활성 GET은 streamed document를 유지합니다. 상태·cookie·오류는 HTTP가 소유합니다. 실행 근거는 `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, `packages/cli/src/new/templates/react-vite-ssr/tests/production-hydration.spec.ts.ejs`입니다.
 
 [React 풀스택 제품 계약](./contracts/react-fullstack-product.ko.md)은 향후 CRUD와 장기 주크박스 수용 게이트를 별도로 정의합니다. 현재 `router.refresh()`는 document reload이고 low-level 이동 실패는 document로 fallback합니다. 셸 보존 재시도와 soft revalidation은 후속 과제이며 아직 배포된 동작이 아닙니다.
 

@@ -21,4 +21,13 @@ export default defineConfig({
     },
     target: 'es2022',
   },
+  plugins: [{
+    name: 'fluo:client-manifest-server-entry',
+    enforce: 'pre',
+    transform(_code, id) {
+      if (id.split('?', 1)[0] === fileURLToPath(new URL('./src/entry-server.tsx', import.meta.url))) {
+        return 'export {}';
+      }
+    },
+  }],
 });

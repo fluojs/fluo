@@ -53,7 +53,7 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 | **Error UI** | HTTP pipeline failure는 기존 HTTP error path를 유지합니다. Stable React SSR diagnostic은 HTTP-pipeline, pre-commit shell, request-abort, post-shell recoverable phase를 구분합니다. Application React error boundary는 일반 React code로 남습니다. | **Shipped, intentionally different.** Segment `error` file이나 React-owned HTTP error router는 없습니다. |
 | **Not found** | 명시적 route가 없으면 일반 `@fluojs/http` not-found response가 되고, application lookup이 실패하면 handler가 shipped HTTP not-found exception을 throw할 수 있습니다. | **Shipped, intentionally different.** React `notFound()` helper나 catch-all requirement는 없습니다. |
 | **Metadata / head** | Application document에 `<title>`, `<meta>`, `<link>`를 렌더링합니다. Status와 header에는 기존 HTTP decorator와 response API를 사용합니다. | **Shipped as application-owned composition.** Automatic metadata function이나 route-segment merge contract는 없습니다. |
-| **Hydration** | `createReactServerEntry(...)`를 통해 명시적 hydration asset을 전달하고, 같은 request URL과 HTTP-matched param을 `ReactClientRouterProvider` snapshot에 렌더링한 뒤 browser entry에서 React DOM `hydrateRoot(...)`를 호출합니다. | **Shipped.** Server/client data transfer와 safe serialization은 application 책임입니다. |
+| **Hydration** | 공식 starter가 HTTP 선택 초기 destination을 escaped JSON(64 KiB 제한)으로 전송하고 build importer에서 찾아 동일한 request URL, params, props, 공통 provider를 hydrate합니다. Custom low-level renderer는 `createReactServerEntry(...)`에 명시적 asset을 계속 전달할 수 있습니다. | **Starter에 shipped.** Application은 JSON-only props를 선택하고 secret/DI를 제외하며 low-level custom document는 자체 composition을 소유합니다. |
 | **Build assets** | 애플리케이션이 Vite manifest를 로드해 `@fluojs/react/vite`의 `createReactViteAssetManifest(...)`에 전달하고, application document가 반환된 CSS와 hydration option을 emit합니다. | **Shipped.** fluo는 manifest discovery, Vite 실행, bundle generation, static-file/CDN hosting 선택을 수행하지 않습니다. |
 
 현재 client의 `router.refresh()`는 data를 제자리에서 재검증하지 않고 **document**를 reload합니다.
@@ -94,14 +94,18 @@ client entry와 server document 정렬입니다. 이 명시적 seam은 advanced 
 
 1. `fluo new my-react-app --starter react-vite-ssr`를 실행하고 project로 이동한 뒤 `pnpm dev`를
    실행합니다.
-2. `/products/sku-42?preview=true`를 열고 `src/page.tsx`를 편집합니다. Page component는 page UI와
-   hydrated interaction만 소유합니다.
-3. Route를 변경할 때 `src/app.ts`를 읽습니다. 명시적인 `@Router(...)` / `@Path(...)` handler가
-   `createElement(ProductPage)`를 반환하므로 HTTP matching, DTO validation, middleware, guard, interceptor,
-   request scope, not-found behavior가 React rendering보다 먼저 계속 실행됩니다.
+2. `/products/sku-42?preview=true`를 열고 `/search?q=catalog` 링크로 이동한 뒤
+   `src/page.tsx` 또는 `src/page-search.tsx`를 편집합니다. Page component는 UI와 hydrated
+   interaction만 소유하며 shell은 유지되고 destination-local state는 slot에서 reset됩니다.
+3. Route 추가 시 `src/app.ts`의 명시적인 `@Router(...)` / `@Path(...)` handler에서 DTO를
+   검증하고 `ReactNavigationPage.create(createElement(Page, props),
+   { module: './page-name.tsx', props })`를 선택합니다. 새 `src/page-name.tsx`는 build importer
+   glob가 찾으므로 entry file, manifest plumbing, router store 수정이 필요하지 않습니다.
+   HTTP matching, DTO validation, middleware, guard, interceptor, request scope,
+   not-found behavior는 React rendering 전에 계속 실행됩니다.
 4. Production path에는 `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm start`,
    `pnpm test:browser`를 실행합니다. Browser test는 console warning/error 없이 첫 response, emitted asset,
-   hydration, interaction, full-document navigation을 검증합니다.
+   hydration, interaction, HTTP 승인 두 page 이동 및 native document 동작을 검증합니다.
 
 Generated application이 이 짧은 path 뒤의 composition을 소유합니다. `src/entry-server.tsx`는 교체 가능한
 `ReactPageRenderer` 및 `ReactServerEntry` boundary입니다. `src/react-app.tsx`는 server/client에 하나의

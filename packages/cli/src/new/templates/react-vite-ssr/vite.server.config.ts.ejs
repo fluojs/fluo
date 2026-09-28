@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 import { fluoDecoratorsPlugin } from '@fluojs/vite';
 import { defineConfig } from 'vite';
 
@@ -14,7 +16,7 @@ export default defineConfig({
     target: 'node24',
   },
   plugins: [
-    fluoDecoratorsPlugin(),
+    fluoDecoratorsPlugin({ babelConfigFile: fileURLToPath(new URL('./babel.config.cjs', import.meta.url)) }),
     {
       name: 'fluo:react-development-stylesheet',
       apply: 'serve',

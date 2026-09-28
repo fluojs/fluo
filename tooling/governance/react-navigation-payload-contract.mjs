@@ -6,6 +6,7 @@ import ts from 'typescript';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const clientPath = 'packages/react/src/client/navigation-payload.ts';
 const serverPath = 'packages/react/src/page-result.ts';
+const transferPath = 'packages/react/src/navigation-payload.ts';
 const storePath = 'packages/react/src/client/store.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
@@ -41,6 +42,7 @@ export function enforceReactNavigationPayloadContract(
 ) {
   const client = ts.createSourceFile(clientPath, readText(clientPath), ts.ScriptTarget.Latest, true);
   const server = ts.createSourceFile(serverPath, readText(serverPath), ts.ScriptTarget.Latest, true);
+  const transfer = ts.createSourceFile(transferPath, readText(transferPath), ts.ScriptTarget.Latest, true);
   const store = ts.createSourceFile(storePath, readText(storePath), ts.ScriptTarget.Latest, true);
   const history = ts.createSourceFile(historyPath, readText(historyPath), ts.ScriptTarget.Latest, true);
   const provider = ts.createSourceFile(providerPath, readText(providerPath), ts.ScriptTarget.Latest, true);
@@ -56,6 +58,20 @@ export function enforceReactNavigationPayloadContract(
     || !ts.isStringLiteral(serverMediaType.initializer)
     || serverMediaType.initializer.text !== mediaType) {
     throw new Error('React navigation HTTP and browser media types must agree on protocol version 1.');
+  }
+
+  const initialTransfer = findNode(transfer, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'createReactInitialNavigationPage');
+  const initialLoad = findNode(client, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'loadReactInitialNavigationDestination');
+  const serverTransfer = findNode(server, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(server) === 'createReactInitialNavigationPage');
+  if (!initialTransfer || !initialLoad || !serverTransfer
+    || !initialTransfer.getText(transfer).includes('[<>&\\u2028\\u2029]')
+    || !initialTransfer.getText(transfer).includes('64 * 1024')
+    || !findNode(initialLoad, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(client) === 'parseNavigationPayload')) {
+    throw new Error('React navigation initial document transfer must retain escaping, size bounds and the shared client validator.');
   }
 
   const fetchCalls = findNodes(client, (node) =>
@@ -119,7 +135,9 @@ export function enforceReactNavigationPayloadContract(
     ts.isIfStatement(node) && node.expression.getText(client).includes('options.prefetch === true')
     && node.expression.getText(client).includes('response.status !== 200')
     && node.expression.getText(client).includes('freshUntil === undefined'));
-  const componentImport = findNode(client, (node) =>
+  const ordinaryNavigationLoad = findNode(client, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'loadReactNavigationDestination');
+  const componentImport = ordinaryNavigationLoad && findNode(ordinaryNavigationLoad, (node) =>
     ts.isCallExpression(node) && node.expression.getText(client) === 'loader');
   if (!prefetchRejection || !componentImport || prefetchRejection.end >= componentImport.pos) {
     throw new Error('React navigation prefetch must reject missing HTTP approval before importing a component.');

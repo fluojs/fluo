@@ -120,6 +120,7 @@ describe('React SSR + Vite scaffold', () => {
       'src/load-manifest.test.ts',
       'src/load-manifest.ts',
       'src/main.ts',
+      'src/page-search.tsx',
       'src/page.tsx',
       'src/react-app.test.tsx',
       'src/react-app.tsx',
@@ -133,7 +134,8 @@ describe('React SSR + Vite scaffold', () => {
     ]);
     expect(snapshot['src/app.ts']).toContain("@Router('/products')");
     expect(snapshot['src/app.ts']).toContain("@Path('/:sku')");
-    expect(snapshot['src/app.ts']).toContain('return createElement(ProductPage);');
+    expect(snapshot['src/app.ts']).toContain("module: './page.tsx'");
+    expect(snapshot['src/app.ts']).toContain("module: './page-search.tsx'");
     expect(snapshot['src/page.tsx']).toContain('return (');
     expect(snapshot['src/main.ts']).toContain("loadReactViteManifest(new URL('../client/.vite/manifest.json', import.meta.url))");
     expect(snapshot['src/main.ts']).toContain('createReactPageRenderer(manifest)');
@@ -143,11 +145,11 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['src/react-app.tsx']).toContain('ReactClientRouterProvider');
     expect(snapshot['src/react-app.tsx']).toContain("href='/assets/favicon.svg'");
     expect(snapshot['public/favicon.svg']).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
-    expect(snapshot['src/page.tsx']).toContain("<Link href='/products/sku-84?preview=false'>");
-    expect(snapshot['src/page.tsx']).toContain("router.push('/products/sku-126?preview=true')");
+    expect(snapshot['src/page.tsx']).toContain("<Link href='/search?q=catalog'>");
+    expect(snapshot['src/react-app.tsx']).toContain("router.push('/products/sku-126?preview=true')");
     expect(snapshot['src/app.test.ts']).toContain("import { Test } from '@fluojs/testing';");
-    expect(snapshot['src/app.test.ts']?.match(/Test\.createApp\(\{ rootModule: AppModule \}\)/g)).toHaveLength(2);
-    expect(snapshot['src/app.test.ts']?.match(/defer\(\(\) => app\.close\(\)\);/g)).toHaveLength(2);
+    expect(snapshot['src/app.test.ts']?.match(/Test\.createApp\(\{ rootModule: AppModule \}\)/g)).toHaveLength(4);
+    expect(snapshot['src/app.test.ts']?.match(/defer\(\(\) => app\.close\(\)\);/g)).toHaveLength(4);
     expect(snapshot['src/app.test.ts']).toContain("expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8')");
     expect(snapshot['src/load-manifest.test.ts']).toContain("expect(error.code).toBe('react-starter-manifest-missing')");
     expect(snapshot['src/app.test.ts']).toContain("expect(error.message).toContain('vite.client.config.ts')");
@@ -156,12 +158,17 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['src/react-app.test.tsx']).toContain("expect.stringContaining('vite.client.config.ts')");
     expect(snapshot['tests/production-hydration.spec.ts']).toContain('expect(browserDiagnostics).toEqual([])');
     expect(snapshot['vite.client.config.ts']).toContain("manifest: true");
+    expect(snapshot['vite.client.config.ts']).toContain("name: 'fluo:client-manifest-server-entry'");
+    expect(snapshot['babel.config.cjs']).toContain("parserOptions.plugins.push('jsx')");
     expect(snapshot['vite.server.config.ts']).toContain("ssr: 'src/main.ts'");
     expect(snapshot['vite.client.config.ts']).toContain('rolldownOptions:');
     expect(snapshot['vite.server.config.ts']).toContain('rolldownOptions:');
     expect(snapshot['vite.server.config.ts']).toContain('plugins: [');
-    expect(snapshot['vite.server.config.ts']).toContain('fluoDecoratorsPlugin()');
-    expect(snapshot['vitest.config.ts']).toContain("plugins: [fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })]");
+    expect(snapshot['vite.server.config.ts']).toContain(
+      "fluoDecoratorsPlugin({ babelConfigFile: fileURLToPath(new URL('./babel.config.cjs', import.meta.url)) })",
+    );
+    expect(snapshot['vitest.config.ts']).toContain("transformBoundary: 'test'");
+    expect(snapshot['vitest.config.ts']).toContain("babelConfigFile: fileURLToPath(new URL('./babel.config.cjs', import.meta.url))");
     expect(snapshot['vitest.config.ts']).toContain("setupFiles: ['@fluojs/core/metadata-preload']");
     expect(snapshot['src/main.ts']).toMatch(/^import '@fluojs\/core\/metadata-preload';/u);
     for (const config of ['vite.client.config.ts', 'vite.server.config.ts', 'vitest.config.ts']) {

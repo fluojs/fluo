@@ -1,9 +1,15 @@
 import {
+  Link,
   ReactClientRouterProvider,
   createReactRouteSnapshot,
   type ReactRouteSnapshotInput,
+  useParams,
+  useRouter,
+  useRouterState,
+  type ReactNavigationModules,
 } from '@fluojs/react/client';
-import type { ReactElement } from 'react';
+import type { ReactInitialNavigationPage } from '@fluojs/react';
+import { type ReactElement, useState } from 'react';
 
 export const REACT_IDENTIFIER_PREFIX = 'fluo-react-vite-' as const;
 
@@ -11,7 +17,31 @@ export type ReactAppDocumentProps = {
   readonly page: ReactElement;
   readonly route: ReactRouteSnapshotInput;
   readonly stylesheets: readonly string[];
+  readonly initialPage?: ReactInitialNavigationPage;
+  readonly navigationModules?: ReactNavigationModules;
 };
+
+function SharedNavigation(): ReactElement {
+  const [count, setCount] = useState(0);
+  const router = useRouter();
+  const route = useRouterState();
+  const params = useParams();
+  return (
+    <header>
+      <button onClick={() => setCount((value) => value + 1)} type='button'>Shell taps: {count}</button>
+      <p aria-label='Current route'>{route.url} ({JSON.stringify(params)})</p>
+      <nav aria-label='Page navigation'>
+        <Link href='/products/sku-84?preview=false'>Open sku-84</Link>
+        <Link href='/search?q=catalog'>Search catalog</Link>
+        <Link href='/search?q=catalog' target='_blank'>Open search in new tab</Link>
+        <Link href='/not-built'>Missing page</Link>
+        <button onClick={() => router.push('/products/sku-126?preview=true')} type='button'>
+          Push sku-126
+        </button>
+      </nav>
+    </header>
+  );
+}
 
 export function reportReactHydrationMismatch(error: unknown): void {
   console.error(
@@ -24,23 +54,33 @@ export function ReactAppDocument({
   page,
   route,
   stylesheets,
+  initialPage,
+  navigationModules,
 }: ReactAppDocumentProps): ReactElement {
   const initialSnapshot = createReactRouteSnapshot(route);
 
   return (
-    <ReactClientRouterProvider initialSnapshot={initialSnapshot}>
-      <html data-route-sku={initialSnapshot.params['sku'] ?? ''} lang='en'>
-        <head>
-          <meta charSet='utf-8' />
-          <meta content='width=device-width, initial-scale=1' name='viewport' />
-          <link href='/assets/favicon.svg' rel='icon' />
-          <title>Fluo React starter</title>
-          {stylesheets.map((href) => (
-            <link data-vite-style href={href} key={href} rel='stylesheet' />
-          ))}
-        </head>
-        <body>{page}</body>
-      </html>
+    <ReactClientRouterProvider initialSnapshot={initialSnapshot} navigationModules={navigationModules}>
+      {(destination) => (
+        <html lang='en'>
+          <head>
+            <meta charSet='utf-8' />
+            <meta content='width=device-width, initial-scale=1' name='viewport' />
+            <link href='/assets/favicon.svg' rel='icon' />
+            <title>Fluo React starter</title>
+            {stylesheets.map((href) => (
+              <link data-vite-style href={href} key={href} rel='stylesheet' />
+            ))}
+          </head>
+          <body>
+            <SharedNavigation />
+            <div id='page-slot'>{destination ?? page}</div>
+            {initialPage && (
+              <script id='fluo-initial-page' type='application/json'>{initialPage.json}</script>
+            )}
+          </body>
+        </html>
+      )}
     </ReactClientRouterProvider>
   );
 }
