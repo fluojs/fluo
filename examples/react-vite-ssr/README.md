@@ -7,6 +7,15 @@ HTTP-owned page routes, DTO-bound parameters, streamed React SSR, Vite manifest 
 hydrated browser runtime with a progressively enhanced native mutation form, without introducing a
 second routing model.
 
+This is evidence for shipped SSR, hydration, native POST/303/GET, approved navigation
+and short shell preservation, **not** the complete operations CRUD or long-lived
+jukebox gate. The [HTTP-first React product contract](../../docs/contracts/react-fullstack-product.md)
+maps each additional user journey and its owner. In particular, transient load failures
+currently use document fallback, and `router.refresh()` reloads the document rather than
+softly revalidating saved data. #3864/#3871 own the future official preserve-and-retry
+default, #3873 owns soft refresh and its migration, and #3879 must verify resource
+identity beyond this example's shell counter in a real production browser.
+
 ## what this example demonstrates
 
 - `@Router('/products')` and `@Path('/:sku')` page routes discovered by the fluo HTTP module graph.
@@ -168,6 +177,9 @@ the complete fallback and the stable client package owns neither mutation routes
   errors fall back to ordinary HTTP documents. Guards and interceptors remain server-owned.
 - This example does not promise arbitrary HTML swapping, event replay, client route matching,
   a global navigation cache, RSC-aware data, or prefetch for non-opted-in links.
+- A failed network/5xx soft load does not yet preserve the jukebox shell by default;
+  this example's fallback test deliberately observes the current full-document path.
+  Auth rejection, explicit reload and application logout are distinct from transient retry.
 - This is not a Next.js App Router, file-based router, TanStack route tree, RSC example, catch-all
   route example, or production starter-template change.
 - The asset controller is intentionally minimal and serves the flat filenames emitted by this

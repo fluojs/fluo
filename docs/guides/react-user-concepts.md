@@ -7,6 +7,11 @@ fluo model. It is a navigation aid, not a feature-parity claim. The stable model
 SSR: `@fluojs/http` owns routes and the request lifecycle, while the application owns page
 composition and uses `@fluojs/react` to stream and hydrate React documents.
 
+For the additional full-stack product target, use the [HTTP-first React product contract](../contracts/react-fullstack-product.md):
+it maps CRUD and long-lived jukebox user journeys to current evidence, gaps, issue owners, and
+real-browser acceptance. The shipped equivalents below are not a claim that the future product
+gate has passed; the closed #2489 roadmap records earlier API milestones.
+
 ## Start with ownership
 
 The stable request path is:
@@ -50,6 +55,15 @@ fail through HTTP. Layout, fallback, and metadata factories still require explic
 | **Metadata / head** | Render `<title>`, `<meta>`, and `<link>` in the application document. Use existing HTTP decorators and response APIs for status and headers. | **Shipped as application-owned composition.** There is no automatic metadata function or route-segment merge contract. |
 | **Hydration** | Pass explicit hydration assets through `createReactServerEntry(...)`, render the same request URL and HTTP-matched params into a `ReactClientRouterProvider` snapshot, then call React DOM `hydrateRoot(...)` in the browser entry. | **Shipped.** Server/client data transfer and safe serialization remain application responsibilities. |
 | **Build assets** | The application loads its Vite manifest and gives that value to `createReactViteAssetManifest(...)` from `@fluojs/react/vite`; the application document emits returned CSS and hydration options. | **Shipped.** fluo does not discover manifests, run Vite, generate bundles, or choose static-file/CDN hosting. |
+
+For the current client, `router.refresh()` reloads the **document** rather than revalidating
+data in place; `router.invalidate()` only clears pending navigation and public prefetch state.
+Transient failed soft loads currently fall back to a full document, even though a successful
+destination keeps the provider/layout. The product target is shell preservation plus a fresh
+HTTP-approved retry for transient failure (#3864/#3871) and shell-preserving refresh with
+consumer migration (#3873), not a shipped loader cache. Auth refusal is not a transient retry,
+and explicit reload/logout may intentionally end the shell. See the product contract for each
+journey's separate success, failure, cancellation and verification surface.
 
 ## Package boundaries
 

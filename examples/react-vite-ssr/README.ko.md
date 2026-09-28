@@ -7,6 +7,15 @@ Hydration 및 client-navigation phase를 위한 최소 Vite-backed `@fluojs/reac
 SSR, Vite manifest asset, hydrated browser runtime, progressively enhanced native mutation form을
 연결합니다.
 
+이 예제는 현재의 SSR, hydration, native POST/303/GET, 승인된 navigation과 짧은 shell
+보존의 근거이지 완전한 운영 CRUD 또는 장기 주크박스 게이트가 아닙니다.
+[HTTP-first React 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 추가
+사용자 여정과 담당자를 연결합니다. 현재 일시적 load 실패는 document fallback이고
+`router.refresh()`는 저장 데이터를 soft revalidation하지 않고 document를 reload합니다.
+#3864/#3871은 향후 공식 셸 보존·재시도 기본값, #3873은 soft refresh와 migration,
+#3879는 실제 production browser에서 예제의 shell counter를 넘는 resource identity
+검증을 소유합니다.
+
 ## 이 예제가 보여주는 것
 
 - fluo HTTP module graph가 발견하는 `@Router('/products')` 및 `@Path('/:sku')` page route.
@@ -167,6 +176,9 @@ mutation route나 cache policy를 소유하지 않으므로 submit-state helper�
   document로 fallback합니다. Guard와 interceptor는 계속 server-owned입니다.
 - 이 예제는 임의 HTML swapping, event replay, client route matching, 전역 navigation cache,
   RSC-aware data, opt-in하지 않은 link의 prefetch를 약속하지 않습니다.
+- Network/5xx soft load 실패 시 현재 기본값은 주크박스 shell을 보존하지 않습니다.
+  이 예제의 fallback test는 의도적으로 현재 full-document 경로를 관찰합니다.
+  인증 거절, 명시적 reload, 앱 logout은 일시적 재시도와 다른 결과입니다.
 - 이 예제는 Next.js App Router, file-based router, TanStack route tree, RSC, catch-all route,
   production starter-template 변경이 아닙니다.
 - Asset controller는 의도적으로 최소 구현이며 이 예제의 Vite config가 emit하는 flat filename을

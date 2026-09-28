@@ -178,6 +178,13 @@ development server의 Vite middleware로 client module과 stylesheet를 제공�
 server/client 수정 시 Node child를 다시 시작해 변경된 소스를 제공하며 production
 `dist`를 만들거나 manifest를 읽지 않습니다. `build`와 `start`의 production
 manifest/static asset 경로는 별도로 유지합니다. 이는 HMR이 아니라 process restart입니다.
+특히 `packages/cli/src/dev-runner/react-vite-dev-app.ts`는 Vite middleware에
+`hmr: false`를 설정합니다. 현재 React component/CSS 수정도 server/shared source와
+감시 대상 Vite config 수정처럼 child를 재시작하며, browser state나 장기 shell resource
+보존은 보장하지 않습니다. `@fluojs/config`의 명시적 watched env snapshot reload는
+code restart와 별개입니다. #3876은 향후 범위가 정해진 React Fast Refresh/CSS HMR,
+#3877은 안전한 server/shared/config restart 및 실패 복구·teardown을 소유합니다.
+
 React의 Node native watch 경로는 macOS/Windows에서 source, `.env`, Vite config만
 감시하므로 생성된 `dist`로 다시 빌드하지 않습니다. Linux에서는 Node의
 `--watch-path`를 사용할 수 없어 React에서 `--runner native`/`--raw-watch`를
@@ -193,6 +200,13 @@ application file과 다시 실행할 lifecycle command를 정확히 가리킵니
 남고 `router.push(...)`는 HTTP dispatcher를 통과하는 full-document navigation을 수행합니다. 이 starter는
 RSC, Server Functions, file routing, client route table, SPA document swapping, prefetch, data cache를
 의도적으로 제외합니다.
+
+첫 페이지 starter만으로 완전한 CRUD/주크박스 제품 경로가 되지는 않습니다. 기존
+[Vite 예제](../../examples/react-vite-ssr/README.ko.md)는 opt-in HTTP 승인 soft navigation을
+보여 주고, #3871이 이를 생성 앱의 canonical 조립으로 만드는 작업을 소유합니다.
+[제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 실패/재시도, form 최신화,
+auth, dev edit, 배포를 아직 구현되지 않은 별도의 수용 게이트로 추적합니다.
+Application 소유 production manifest load와 asset/CDN hosting도 명시적으로 유지됩니다.
 
 `fluo new`는 microservice starter path도 제공합니다. `--transport`를 생략하면 TCP가 기본 경로로 사용되며, starter 매트릭스에는 transport별 dependency, env 템플릿, entrypoint를 갖춘 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC 변형도 포함됩니다.
 

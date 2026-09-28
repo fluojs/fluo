@@ -178,6 +178,13 @@ modules and styles through Vite middleware on the Fastify development server. Se
 and client edits restart the Node child and use changed source without creating
 production `dist` or loading its manifest; `build` and `start` retain the separate
 production manifest and static asset path. This is process restart, not HMR.
+In particular `packages/cli/src/dev-runner/react-vite-dev-app.ts` configures Vite middleware
+with `hmr: false`. React component and CSS edits currently restart the child, as do
+server/shared source and watched Vite config edits; none guarantees preserving browser
+state or a long-lived shell resource. `@fluojs/config`'s explicit watched env snapshot
+reload is separate from code restart. #3876 owns future scoped React Fast Refresh/CSS
+HMR; #3877 owns safe server/shared/config restart, failure recovery and teardown.
+
 For React, Node's native watch escape hatch watches only source, `.env`, and Vite
 configs on macOS/Windows so emitted `dist` does not trigger another build. Linux
 uses the fluo restart runner for React even with `--runner native`/`--raw-watch`,
@@ -194,6 +201,13 @@ application files and the lifecycle command to rerun. Generated `Link` output re
 and `router.push(...)` performs full-document navigation through the HTTP dispatcher. The starter
 intentionally excludes RSC, Server Functions, file routing, a client route table, SPA document
 swapping, prefetch, and a data cache.
+
+This first-page starter is not yet the complete CRUD/jukebox product path: the existing
+[Vite example](../../examples/react-vite-ssr/README.md) demonstrates opt-in HTTP-approved
+soft navigation, while #3871 owns making that composition canonical in the generated app.
+The [product contract](../../docs/contracts/react-fullstack-product.md) tracks failure/retry,
+form freshness, auth, dev edits and deployment as separate unshipped acceptance gates.
+Application-owned production manifest loading and asset/CDN hosting remain explicit.
 
 `fluo new` also exposes microservice starter paths. TCP is the default when you omit `--transport`, and the starter matrix includes runnable Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC variants with transport-specific dependencies, env templates, and entrypoints:
 

@@ -108,6 +108,13 @@ native anchor로 남고 initial request snapshot은 browser path/search와 일�
 `refresh()`는 계속 document reload입니다. Opt-in하지 않은 `Link`, `router.push/replace`,
 거부된 prefetch에는 기존 credential 포함 일반 loader와 full-document fallback을 적용합니다.
 
+이는 **현재 low-level 호환성**을 설명하며 향후 공식 앱의 실패 기본값이 아닙니다.
+[HTTP-first React 제품 계약](./react-fullstack-product.ko.md)은 #3864/#3871에 공식 조립의
+일시적 network/5xx 실패에서 승인된 shell/page 보존과 새 HTTP 승인 재시도를 요구합니다.
+인증 거절, 명시적 reload, logout과 구분하며 여기서 아직 보존 기능이 배포됐다는 뜻이
+아닙니다. #3873은 셸 보존 soft revalidation과 현재 `refresh()` document reload에 의존하는
+소비자의 migration을 소유합니다. `invalidate()`는 표시 중인 page data를 다시 가져오지 않습니다.
+
 ## Opt-in public prefetch와 provider-local cache
 
 `Link prefetch="hover"` 또는 `Link prefetch="viewport"`만 speculative load를 시작하며 생략하면

@@ -61,6 +61,8 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 
 HTTP가 매칭한 React 클라이언트 이동은 [navigation payload 계약](./contracts/react-navigation-payload.ko.md)에서 시작한 다음 [React API 원본](../packages/react/README.ko.md)과 [Vite SSR 예제](../examples/react-vite-ssr/README.ko.md)를 확인하세요. `Link`와 `useRouter()`는 HTTP가 승인한 build-mapped 목적지를 렌더링하고 확정된 URL·params를 history에 commit합니다. Back/forward도 새로 요청하며 거부된 결과는 전체 문서로 이동합니다. 일반 GET 및 JavaScript 비활성 GET은 streamed document를 유지합니다. 상태·cookie·오류는 HTTP가 소유합니다. 실행 근거는 `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`입니다.
 
+[React 풀스택 제품 계약](./contracts/react-fullstack-product.ko.md)은 향후 CRUD와 장기 주크박스 수용 게이트를 별도로 정의합니다. 현재 `router.refresh()`는 document reload이고 low-level 이동 실패는 document로 fallback합니다. 셸 보존 재시도와 soft revalidation은 후속 과제이며 아직 배포된 동작이 아닙니다.
+
 Optional `Link prefetch="hover" | "viewport"`에는 provider `navigationModules` 및 명시적
 auth/session epoch인 `prefetchScope`가 필요합니다. `ReactNavigationPage.create(page,
 destination, { prefetch: 'public' })`만 credential을 생략한 identity-independent status-`200`

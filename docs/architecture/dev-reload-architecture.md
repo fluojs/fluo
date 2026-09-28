@@ -15,6 +15,19 @@
 
 The repository exposes two reload families only: host-owned restart flows for code, and config snapshot replacement for watched configuration inputs.
 
+For the **current React starter**, classify React component, CSS, server-only, shared
+server/client, and Vite/source config edits as CLI-supervised child restarts: a restart
+reflects changed code but does not guarantee browser shell, state, or long-lived resource
+preservation. `packages/cli/src/dev-runner/react-vite-dev-app.ts` creates the Vite middleware
+server with `server: { hmr: false, middlewareMode: true }`; this is neither React Fast Refresh
+nor CSS HMR. `ConfigModule.forRoot({ watch: true })` can separately replace a validated
+env-file snapshot in process; invalid updates keep the last valid snapshot. A config/build
+code edit that triggers the CLI watcher still restarts the child rather than hot-swapping
+application modules. [The React product contract](../contracts/react-fullstack-product.md)
+assigns scoped React/CSS updates to #3876 and safe server/shared/config restart,
+failure visibility, teardown and correction to #3877. Universal module hot swap or
+universal state preservation is not promised.
+
 ## Constraints
 
 | Constraint | Factual statement | Source anchor |

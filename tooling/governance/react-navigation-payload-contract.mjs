@@ -147,6 +147,13 @@ export function enforceReactNavigationPayloadContract(
     || historyWrites.some((write) => approvalGuard.end >= write.pos) || !historyRead) {
     throw new Error('React navigation must request server approval and handle rejection before history writes, including traversal.');
   }
+  const refresh = findNode(store, (node) =>
+    ts.isMethodDeclaration(node) && node.name.getText(store) === 'refresh');
+  if (!refresh || !ts.isMethodDeclaration(refresh)
+    || !findNode(refresh.body, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'browser.reload')) {
+    throw new Error('React navigation refresh must reload the document until soft revalidation is implemented.');
+  }
   const adoptedApproval = findNode(store, (node) =>
     ts.isConditionalExpression(node) && node.condition.getText(store).includes('prefetchedResult.ok'));
   if (!adoptedApproval || !ts.isConditionalExpression(adoptedApproval)
