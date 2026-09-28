@@ -23,6 +23,7 @@
     "tooling/**/*.d.mts"
   ],
   "exclude": [
-    "tooling/benchmarks/http-comparison/**/*.ts"
+    "tooling/benchmarks/http-comparison/**/*.ts",
+    "tooling/benchmarks/react-app-comparison/**"
   ]
 }
