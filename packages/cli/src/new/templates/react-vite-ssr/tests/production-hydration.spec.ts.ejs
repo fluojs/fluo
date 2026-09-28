@@ -107,6 +107,7 @@ test('updates a React component and CSS over the app WebSocket without losing el
 
   try {
     await page.getByRole('button', { name: 'Count: 0' }).click();
+    await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
     await page.evaluate(() => { document.documentElement.dataset.hmrIdentity = 'retained'; });
     const componentUpdate = socket.waitForEvent('framereceived', {
       predicate: ({ payload }) => String(payload).includes('"type":"update"'),
@@ -162,10 +163,11 @@ test('updates a React component and CSS over the app WebSocket without losing el
       predicate: ({ payload }) => String(payload).includes('"type":"update"'),
       timeout: 15_000,
     });
-    await writeFile(pageFile, originalPage);
+    await writeFile(pageFile, originalPage.replace('Catalog item ${sku}', 'Recovered catalog item ${sku}'));
     await recovered;
-    await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Recovered catalog item sku-42' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.dataset.hmrIdentity)).toBe('retained');
   } finally {
     await Promise.all([writeFile(pageFile, originalPage), writeFile(cssFile, originalCss)]);
   }
