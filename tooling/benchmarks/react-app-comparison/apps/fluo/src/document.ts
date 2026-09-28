@@ -223,9 +223,11 @@ export function BenchmarkDocument({
       ),
     ),
   );
-  return createElement(ReactClientRouterProvider, {
+  const providerProps = {
+    children: renderDocument,
     initialSnapshot: snapshot,
     navigationModules,
     prefetchScope: editor ? 'catalog:editor' : 'catalog:anonymous',
-  }, renderDocument);
+  };
+  return createElement(ReactClientRouterProvider, providerProps);
 }
