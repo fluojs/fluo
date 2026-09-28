@@ -38,8 +38,27 @@ test('hydrates production HTML and preserves HTTP-first navigation', async ({ pa
   expect(response.headers()['content-security-policy']).toContain(development
     ? "style-src 'self' 'unsafe-inline'"
     : "default-src 'self'");
+  if (development) {
+    expect(response.headers()['content-security-policy']).toContain("worker-src 'self' blob:");
+    const workerResult = await page.evaluate(() => new Promise<string>((resolve, reject) => {
+      const source = URL.createObjectURL(new Blob(['self.postMessage("ready")'], { type: 'text/javascript' }));
+      const worker = new Worker(source);
+      worker.onmessage = (event) => {
+        worker.terminate();
+        URL.revokeObjectURL(source);
+        resolve(String(event.data));
+      };
+      worker.onerror = (error) => {
+        worker.terminate();
+        URL.revokeObjectURL(source);
+        reject(new Error(error.message));
+      };
+    }));
+    expect(workerResult).toBe('ready');
+  }
   if (!development) {
     expect(response.headers()['content-security-policy']).not.toContain("'unsafe-inline'");
+    expect(response.headers()['content-security-policy']).not.toContain('worker-src');
   }
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/assets/favicon.svg');
   const favicon = await page.request.get('/assets/favicon.svg');
@@ -79,7 +98,7 @@ test('updates a React component and CSS over the app WebSocket without losing el
   const originalCss = await readFile(cssFile, 'utf8');
   const browserErrors: string[] = [];
   page.on('console', (message) => {
-    if (message.type() === 'error') browserErrors.push(message.text());
+    if (message.type() === 'warning' || message.type() === 'error') browserErrors.push(message.text());
   });
   const socketReady = page.waitForEvent('websocket', { predicate: (socket) => socket.url().startsWith('ws://127.0.0.1:') });
   await page.goto('/products/sku-42?preview=true');

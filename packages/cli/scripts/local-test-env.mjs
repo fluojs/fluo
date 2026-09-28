@@ -462,7 +462,7 @@ async function verifyReactColdDev(projectDirectory) {
     const html = await initial.text();
     assert.match(html, /Catalog item sku-42/u);
     const assets = [...html.matchAll(/(?:src|href)="(\/(?:assets|src)\/[^"]+)"/gu)].map((match) => match[1]);
-    assert(assets.some((asset) => asset.includes('/src/entry-client.tsx')));
+    assert(assets.includes('/src/entry-client-dev.ts'));
     for (const asset of assets) {
       assert.equal((await fetch(new URL(asset, origin))).status, 200, asset);
     }
@@ -475,6 +475,7 @@ async function verifyReactColdDev(projectDirectory) {
     });
     page.on('pageerror', (error) => diagnostics.push(error.message));
     await page.goto(`${origin}/products/sku-42?preview=true`);
+    await page.evaluate(() => import('/src/entry-client-dev.ts'));
     await page.getByRole('button', { name: 'Count: 0' }).click();
     await page.getByRole('button', { name: 'Count: 1' }).waitFor();
     assert.equal(existsSync(join(projectDirectory, 'dist')), false, 'React edits must stay on the Vite development path.');
@@ -491,6 +492,7 @@ async function verifyReactColdDev(projectDirectory) {
     writeFileSync(pagePath, originalPage.replace('Catalog item', 'Updated item'));
     await clientReady;
     await page.goto(`${origin}/products/sku-42?preview=true`);
+    await page.evaluate(() => import('/src/entry-client-dev.ts'));
     await page.getByRole('heading', { name: 'Updated item sku-42' }).waitFor();
     await page.getByRole('button', { name: 'Count: 0' }).click();
     await page.getByRole('button', { name: 'Count: 1' }).waitFor();

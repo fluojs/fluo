@@ -36,7 +36,7 @@ export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Se
   });
   const port = Number(process.env.PORT ?? '3000');
   const app = await FluoFactory.create(AppModule, {
-    securityHeaders: vite ? { contentSecurityPolicy: "default-src 'self'; style-src 'self' 'unsafe-inline'" } : undefined,
+    securityHeaders: vite ? { contentSecurityPolicy: "default-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:" } : undefined,
     adapter: FastifyHttpApplicationAdapter.create({
       host: '127.0.0.1',
       port,
