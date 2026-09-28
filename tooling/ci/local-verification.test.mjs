@@ -175,6 +175,25 @@ test('runs native Deno build, check, and test surfaces', () => {
   );
 });
 
+test('runs isolated React app deterministic smoke for a comparison-suite change', () => {
+  const plan = buildVerificationPlan({
+    changedFiles: ['tooling/benchmarks/react-app-comparison/src/evaluate.ts'],
+    identity,
+  });
+
+  assert.deepEqual(
+    plan.commands.filter(({ id }) => id === 'manifest:tooling/benchmarks/react-app-comparison/'),
+    [
+      {
+        id: 'manifest:tooling/benchmarks/react-app-comparison/',
+        executable: 'pnpm',
+        argv: ['--dir', 'tooling/benchmarks/react-app-comparison', '--ignore-workspace', 'test:smoke'],
+        cwd: '.',
+      },
+    ],
+  );
+});
+
 test('accepts only complete successful receipts for the exact current identity', () => {
   const receipt = {
     commands: [

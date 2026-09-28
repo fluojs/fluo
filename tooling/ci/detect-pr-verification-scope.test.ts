@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   shouldForceFullVerificationByPath,
   shouldVerifyIsolatedHttpBenchmark,
+  shouldVerifyReactAppBenchmark,
 } from './detect-pr-verification-scope.mjs';
 
 describe('shouldForceFullVerificationByPath', () => {
@@ -30,5 +31,15 @@ describe('shouldVerifyIsolatedHttpBenchmark', () => {
     const result = shouldVerifyIsolatedHttpBenchmark(changedFiles);
 
     expect(result).toBe(false);
+  });
+});
+
+describe('shouldVerifyReactAppBenchmark', () => {
+  it('selects an isolated React comparison change', () => {
+    expect(shouldVerifyReactAppBenchmark(['tooling/benchmarks/react-app-comparison/baseline.json'])).toBe(true);
+  });
+
+  it('does not enable React comparison for existing HTTP benchmark changes', () => {
+    expect(shouldVerifyReactAppBenchmark(['tooling/benchmarks/http-comparison/pnpm-lock.yaml'])).toBe(false);
   });
 });

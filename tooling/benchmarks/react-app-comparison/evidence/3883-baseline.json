@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "issue": 3883,
+  "run": "results/local-3883-auth-recheck",
+  "verdict": "fail",
+  "purpose": "discovery",
+  "provenance": {
+    "commit": "f71be378fc824d6b093a25881ea1f994826c6910",
+    "dirty": true,
+    "sourceSha256": "ba68a55a6c04d0d75b640c13373a39b33318d0a892be69437ea935ce1e3e8312",
+    "runtime": "v24.20.0",
+    "browser": "Playwright Chromium 1.61.1; exact browser.version() in each raw trace",
+    "lockfile": {
+      ".": "d4dfbac25c3ffcb92fff59c5917865dff133fd9c7b8bc433ea767dc60e32680a",
+      "apps/fluo": "e46ce11bd983696e69939f84f8b30685902f869ccafd20fe84dbda9180207dee",
+      "apps/next": "70295fda3c9d28db6930992460307fde49cdde4b6304acccd8a808d36c5a0938",
+      "apps/react-router": "c6e2eb8da60d619171f01d3f758590f3c0253cd063af8f072a7cde45d251fffb",
+      "apps/tanstack-start": "dd4bb434193e1556b6c9a7392dceaa03123fb2b76ff1d53927017ade96f7f8c6"
+    },
+    "environment": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "osRelease": "27.2.0",
+      "cpuModel": "Apple M4 Pro",
+      "cpuCores": 12,
+      "totalMemoryBytes": 25769803776
+    }
+  },
+  "checks": {
+    "pass/within-budget": 205,
+    "inconclusive/noise": 42,
+    "inconclusive/outlier": 64,
+    "inconclusive/missing-metric": 157,
+    "fail/relative-band": 22,
+    "fail/absolute-budget": 1
+  },
+  "artifacts": {
+    "traces": {
+      "count": 112,
+      "sha256OfSortedShasumLines": "b8bccab688f71db98aa693621890c87e78470be09e4b3aa98506b4317e3295a7"
+    },
+    "dev-traces": {
+      "count": 112,
+      "sha256OfSortedShasumLines": "3c2a4616b798d271370d0e722271824087a793bc1ab2b6ffbe536445f2f24f1d"
+    },
+    "combined-traces": {
+      "count": 80,
+      "sha256OfSortedShasumLines": "7e8c748440546bdedf273e66a41b87efaac6cbed1d884d31fe2101a0648eaf22"
+    }
+  },
+  "receipts": {
+    "tablet-native-dev-config.json": "060e2beca9fe27c484442044ea46656ada8406a31ca9677c28171cc07811e535",
+    "desktop-native-dev.json": "0ed5887a49cc5522657358fc70ace1886d2fd351af12df9156159846fea9ef6e",
+    "desktop-matched-cache.json": "130e7b150fb336019f1af6220fa2b7dfa81bd338885015d06e359eded4c42f27",
+    "tablet-matched-cache.json": "22cf2cd3313f5fe45ac825ed31e791ff6cecb40bc0777012471cb3e4be8e8415",
+    "tablet-native-dev.json": "23e078f83a1cc5c197355930e83452e649f45f58dd6b244f4e80bdb8ab37f0cd",
+    "tablet-native-config.json": "48917f16acddd8000073244f59d563dc21936999a15e6925d5f87868913c7d5d",
+    "tablet-matched-cache-dev.json": "62e34742c813eed42bcdd1091153706c3f972d0834ff9a21368d3c6a9216317b",
+    "desktop-matched-cache-config.json": "64658d91d14904ccf85a3b4ab696d00b56d51e1b9a5d244ccc2757ae5804b019",
+    "tablet-matched-cache-dev-config.json": "6dbf17c0b888b4cf4e03db8fe891f0ca2204229844625b1c45a241e8f182060c",
+    "desktop-matched-cache-dev-config.json": "72ebc0efec29e67315067c5a81fde4db8a3f8664decf01c02d1fdee18488f791",
+    "desktop-native-dev-config.json": "7a64ea85550636640f3a12597f7c99eb2861ddd78574919d985be86003a8bb3a",
+    "desktop-native.json": "7ed71dab254083fff28c0fa96d7e3274d8e6e1cf8ac8bae3ac21031d90f3abac",
+    "tablet-native.json": "861d3be45a00053c0c730053d2249367a6550cf869d2a7cc9c81e792471fc6b9",
+    "verdict.json": "8cf76fc78e19f3c1cf5a291316a7001c57963c409b700096655641862edd74c9",
+    "tablet-matched-cache-config.json": "9b6bed5a502a10272bbee188ecf44fb97331aa146f7f1588cf986551a79eca5c",
+    "desktop-matched-cache-dev.json": "c54984cc8a91da19172fe25f5d67fca7db4db00131a7872a5076579366f359a7",
+    "desktop-native-config.json": "de7a8aabb19c2fd8d86908eca4f0d4d711d0da9eff074340cbe02d72348d3e5e"
+  }
+}

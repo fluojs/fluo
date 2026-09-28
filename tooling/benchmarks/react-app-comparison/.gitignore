@@ -1,0 +1,14 @@
+results/
+tooling/benchmarks/react-app-comparison/results/
+apps/.test-results/
+apps/.browsers/
+apps/**/.next/
+apps/**/.output/
+apps/**/build/
+apps/**/dist/
+apps/**/.react-router/
+apps/**/node_modules/
+node_modules/
+apps/next/AGENTS.md
+apps/next/CLAUDE.md
+apps/next/next-env.d.ts

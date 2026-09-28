@@ -15,6 +15,9 @@ currently use document fallback, and `router.refresh()` reloads the document rat
 softly revalidating saved data. #3864/#3871 own the future official preserve-and-retry
 default, #3873 owns soft refresh and its migration, and #3879 must verify resource
 identity beyond this example's shell counter in a real production browser.
+The isolated [same-app performance comparison](../../docs/guides/react-performance-benchmarks.md)
+uses a larger seeded workload and separate correctness and timing gates; this example's
+production hydration check alone is not a four-framework performance measurement.
 
 ## what this example demonstrates
 

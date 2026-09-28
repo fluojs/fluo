@@ -1,0 +1,61 @@
+name: React app representative performance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  comparison:
+    name: Four-app repeated performance gate
+    runs-on: [self-hosted, macOS, ARM64, react-app-performance-m4-pro]
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Require the representative host
+        run: |
+          test "$(uname -m)" = arm64
+          sysctl -n machdep.cpu.brand_string | grep -F 'Apple M4 Pro'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          version: 10.4.1
+
+      - name: Setup pinned Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24.20.0"
+          package-manager-cache: false
+
+      - name: Install and build Fluo
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Install the isolated framework graphs
+        run: |
+          pnpm --dir tooling/benchmarks/react-app-comparison --ignore-workspace install --frozen-lockfile
+          for app in fluo next react-router tanstack-start; do
+            pnpm --dir "tooling/benchmarks/react-app-comparison/apps/$app" --ignore-workspace install --frozen-lockfile
+          done
+          pnpm --dir tooling/benchmarks/react-app-comparison --ignore-workspace exec playwright install chromium
+
+      - name: Verify four production apps then measure both profiles and cache policies
+        run: |
+          node tooling/benchmarks/react-app-comparison/src/run-gate.mjs \
+            --config tooling/benchmarks/react-app-comparison/config/representative.json \
+            --output-dir tooling/benchmarks/react-app-comparison/results/${{ github.sha }}
+
+      - name: Preserve every raw trace and decision, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: react-app-comparison-${{ github.sha }}
+          path: tooling/benchmarks/react-app-comparison/results/
+          if-no-files-found: warn

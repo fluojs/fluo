@@ -15,6 +15,9 @@ SSR, Vite manifest asset, hydrated browser runtime, progressively enhanced nativ
 #3864/#3871은 향후 공식 셸 보존·재시도 기본값, #3873은 soft refresh와 migration,
 #3879는 실제 production browser에서 예제의 shell counter를 넘는 resource identity
 검증을 소유합니다.
+격리된 [동등 앱 성능 비교](../../docs/guides/react-performance-benchmarks.ko.md)는
+더 큰 seeded workload와 별도의 정확성·timing gate를 사용합니다. 이 예제의
+production hydration 검증만으로 네 프레임워크 성능을 측정했다고 볼 수 없습니다.
 
 ## 이 예제가 보여주는 것
 

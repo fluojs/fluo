@@ -44,6 +44,7 @@ jobs:
       test_package_names: ${{ steps.resolve.outputs.test_package_names }}
       test_paths: ${{ steps.resolve.outputs.test_paths }}
       verify_isolated_http_benchmark: ${{ steps.resolve.outputs.verify_isolated_http_benchmark }}
+      verify_react_app_benchmark: ${{ steps.resolve.outputs.verify_react_app_benchmark }}
 
     steps:
       - name: Checkout
@@ -129,6 +130,56 @@ jobs:
 
       - name: Build selected package closure and verify packed consumers
         run: pnpm test:duplicate-module-safety
+
+  react-app-deterministic-smoke:
+    name: React app comparison deterministic smoke
+    runs-on: ubuntu-latest
+    needs:
+      - resolve-pr-verification-scope
+
+    steps:
+      - name: Checkout
+        if: needs.resolve-pr-verification-scope.outputs.verify_react_app_benchmark == 'true'
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        if: needs.resolve-pr-verification-scope.outputs.verify_react_app_benchmark == 'true'
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        if: needs.resolve-pr-verification-scope.outputs.verify_react_app_benchmark == 'true'
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24.x"
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        if: needs.resolve-pr-verification-scope.outputs.verify_react_app_benchmark == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Fluo packages
+        if: needs.resolve-pr-verification-scope.outputs.verify_react_app_benchmark == 'true'
+        run: pnpm build
+
+      - name: Install isolated benchmark dependencies
+        if: needs.resolve-pr-verification-scope.outputs.verify_react_app_benchmark == 'true'
+        run: |
+          pnpm --dir tooling/benchmarks/react-app-comparison --ignore-workspace install --frozen-lockfile
+          for app in fluo next react-router tanstack-start; do
+            pnpm --dir "tooling/benchmarks/react-app-comparison/apps/$app" --ignore-workspace install --frozen-lockfile
+          done
+
+      - name: Install comparison browser
+        if: needs.resolve-pr-verification-scope.outputs.verify_react_app_benchmark == 'true'
+        run: pnpm --dir tooling/benchmarks/react-app-comparison --ignore-workspace exec playwright install --with-deps chromium
+
+      - name: Run deterministic correctness and size smoke
+        if: needs.resolve-pr-verification-scope.outputs.verify_react_app_benchmark == 'true'
+        run: pnpm --dir tooling/benchmarks/react-app-comparison --ignore-workspace test:smoke
+
+      - name: React comparison is outside changed scope
+        if: needs.resolve-pr-verification-scope.outputs.verify_react_app_benchmark != 'true'
+        run: echo "React app comparison smoke is outside the changed scope."
 
 
   deno-platform:
@@ -421,6 +472,7 @@ jobs:
       - node-runtime-floor
       - verify-platform-consistency-governance
       - duplicate-module-safety
+      - react-app-deterministic-smoke
       - resolve-pr-verification-scope
       - deterministic-preflight
     runs-on: ubuntu-latest

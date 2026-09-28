@@ -29,6 +29,7 @@ const alwaysFullVerifyPaths = new Set([
 ]);
 
 const isolatedHttpBenchmarkPrefix = 'tooling/benchmarks/http-comparison/';
+const reactAppBenchmarkPrefix = 'tooling/benchmarks/react-app-comparison/';
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -209,6 +210,10 @@ export function shouldVerifyIsolatedHttpBenchmark(changedFiles) {
   return changedFiles.some((path) => path.startsWith(isolatedHttpBenchmarkPrefix));
 }
 
+export function shouldVerifyReactAppBenchmark(changedFiles) {
+  return changedFiles.some((path) => path.startsWith(reactAppBenchmarkPrefix));
+}
+
 export function resolveChangedPackageDirectories(changedFiles) {
   const directories = new Set();
   for (const path of changedFiles) {
@@ -341,12 +346,15 @@ export function collectResult() {
       packageNames: [],
       packageDirectories: [],
       verifyIsolatedHttpBenchmark: false,
+      verifyReactAppBenchmark: false,
     };
   }
 
   const changedFilesResult = changedFilesFromGit();
   const verifyIsolatedHttpBenchmark =
     changedFilesResult.ok && shouldVerifyIsolatedHttpBenchmark(changedFilesResult.files);
+  const verifyReactAppBenchmark =
+    changedFilesResult.ok && shouldVerifyReactAppBenchmark(changedFilesResult.files);
 
   if (process.env.CI_FORCE_FULL_VERIFY === '1') {
     return {
@@ -356,6 +364,7 @@ export function collectResult() {
       packageNames: [],
       packageDirectories: [],
       verifyIsolatedHttpBenchmark,
+      verifyReactAppBenchmark,
     };
   }
 
@@ -368,6 +377,7 @@ export function collectResult() {
       packageNames: [],
       packageDirectories: [],
       verifyIsolatedHttpBenchmark,
+      verifyReactAppBenchmark,
     };
   }
 
@@ -379,6 +389,7 @@ export function collectResult() {
       packageNames: [],
       packageDirectories: [],
       verifyIsolatedHttpBenchmark,
+      verifyReactAppBenchmark,
     };
   }
 
@@ -390,12 +401,14 @@ export function collectResult() {
       packageNames: [],
       packageDirectories: [],
       verifyIsolatedHttpBenchmark,
+      verifyReactAppBenchmark,
     };
   }
 
   return {
     ...resolveVerificationScope(changedFilesResult.files),
     verifyIsolatedHttpBenchmark,
+    verifyReactAppBenchmark,
   };
 }
 
@@ -415,6 +428,7 @@ export function writeGithubOutput(result) {
     `test_package_names=${(result.testScriptPackageNames ?? []).join(',')}`,
     `test_paths=${(result.testPathFallbackDirectories ?? result.packageDirectories).join(' ')}`,
     `verify_isolated_http_benchmark=${result.verifyIsolatedHttpBenchmark === true ? 'true' : 'false'}`,
+    `verify_react_app_benchmark=${result.verifyReactAppBenchmark === true ? 'true' : 'false'}`,
   ];
   lines.push(`is_scoped=${result.mode === 'scoped' ? 'true' : 'false'}`);
 

@@ -1,0 +1,26 @@
+:root { font-family: system-ui, sans-serif; color: #24302c; background: #f5f5f0; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: #175b4d; }
+button, input { font: inherit; }
+button { cursor: pointer; background: #164f43; color: white; border: 0; border-radius: .35rem; padding: .6rem 1rem; }
+button:hover { background: #267662; }
+input { border: 1px solid #a9b4aa; border-radius: .35rem; padding: .55rem; max-width: 100%; }
+label { display: grid; gap: .35rem; font-weight: 600; }
+.site { max-width: 70rem; margin: auto; padding: 0 1.5rem 4rem; }
+.masthead { display: flex; gap: 2rem; align-items: center; flex-wrap: wrap; padding: 1.5rem 0; border-bottom: 1px solid #d7ddd5; }
+.masthead nav { display: flex; gap: 1rem; }
+.masthead .account { margin-left: auto; }
+.masthead form { display: flex; gap: .75rem; align-items: center; }
+.brand { font-weight: 750; text-decoration: none; color: inherit; }
+main { padding-top: 2rem; }
+h1 { font-size: clamp(2rem, 5vw, 3.2rem); letter-spacing: -.04em; }
+.lede { color: #586860; max-width: 40rem; line-height: 1.6; }
+.card { background: white; border: 1px solid #d7ddd5; border-radius: .7rem; padding: 1.5rem; margin: 1rem 0; }
+.list { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
+.list li { margin: 0; }
+.form { display: grid; gap: 1rem; max-width: 26rem; }
+.inline { display: inline-flex; gap: 1rem; align-items: center; }
+.tabs { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1.5rem 0; }
+.tabs a[aria-current="page"] { font-weight: 700; color: #24302c; }
+.error { max-width: 70rem; margin: auto; padding: 3rem 1.5rem; }
