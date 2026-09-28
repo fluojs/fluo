@@ -38,10 +38,6 @@
       "prompt": "Only read, bash, and apply_patch are available. Do not call eval, todo, task, dag, or team tools.",
       "models": [
         {
-          "model": "opencodex/gemini-3.8-flash",
-          "reasoning": "high"
-        },
-        {
           "model": "chatgpt-subscription/gpt-6-sol",
           "reasoning": "high"
         }
@@ -148,37 +144,6 @@
         "eval": false,
         "bash_output": false,
         "monitor": false,
-        "task": false,
-        "dag": false,
-        "task_create": false,
-        "task_get": false,
-        "task_list": false,
-        "task_update": false,
-        "task_send": false,
-        "task_output": false,
-        "task_cancel": false,
-        "team_create": false,
-        "team_delete": false
-      }
-    },
-    "fluo-issue-operator": {
-      "description": "Performs one issue-bound Git or GitHub lifecycle operation.",
-      "models": [
-        {
-          "model": "opencodex/gemini-3.8-flash",
-          "reasoning": "high"
-        },
-        {
-          "model": "chatgpt-subscription/gpt-6-sol",
-          "reasoning": "high"
-        }
-      ],
-      "execution_mode": "process",
-      "tools": {
-        "read": true,
-        "bash": true,
-        "todo": false,
-        "eval": false,
         "task": false,
         "dag": false,
         "task_create": false,

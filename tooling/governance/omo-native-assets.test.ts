@@ -109,7 +109,6 @@ describe('OMO native asset manifest', () => {
       'fluo-contract-reviewer': 'in-process',
       'fluo-code-reviewer': 'in-process',
       'fluo-verification-reviewer': 'in-process',
-      'fluo-issue-operator': 'process',
     } as const;
 
     expect(config.task?.max_depth).toBe(1);
