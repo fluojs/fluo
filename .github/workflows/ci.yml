@@ -3,439 +3,220 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  workflow_call:
+    inputs:
+      profile:
+        type: string
+        required: true
+      source-sha:
+        type: string
+        required: true
+      base-sha:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.profile || 'pr' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verify-changeset-release-lane:
-    name: Verify changeset release lane
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24.x"
-          package-manager-cache: false
-
-      - name: Verify changeset release lane
-        run: node tooling/release/verify-changeset-release-lane.mjs --lane=stable --base-ref=origin/${{ github.base_ref }}
-
-  resolve-pr-verification-scope:
-    name: Resolve PR verification scope
-    runs-on: ubuntu-latest
+  plan:
+    name: Resolve verification plan
+    runs-on: ubuntu-24.04-arm
     outputs:
-      mode: ${{ steps.resolve.outputs.mode }}
-      reason: ${{ steps.resolve.outputs.reason }}
-      build_filter_args: ${{ steps.resolve.outputs.build_filter_args }}
-      filter_args: ${{ steps.resolve.outputs.filter_args }}
-      package_names: ${{ steps.resolve.outputs.package_names }}
-      test_filter_args: ${{ steps.resolve.outputs.test_filter_args }}
-      test_package_names: ${{ steps.resolve.outputs.test_package_names }}
-      test_paths: ${{ steps.resolve.outputs.test_paths }}
-      verify_isolated_http_benchmark: ${{ steps.resolve.outputs.verify_isolated_http_benchmark }}
-
+      source-sha: ${{ steps.plan.outputs.source_sha }}
+      tasks: ${{ steps.plan.outputs.tasks }}
+      image-cache-key: ${{ steps.environment.outputs.cache_key }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
+          ref: ${{ inputs.source-sha || github.event.pull_request.head.sha }}
           fetch-depth: 0
-
-      - name: Resolve PR verification scope
-        id: resolve
-        run: node tooling/ci/detect-pr-verification-scope.mjs
-
-  deterministic-preflight:
-    name: Deterministic preflight
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: Read locked bootstrap version
+        id: version
+        run: node -e "const fs=require('node:fs');const l=JSON.parse(fs.readFileSync('tooling/ci/environment.lock.json','utf8'));fs.appendFileSync(process.env.GITHUB_OUTPUT,'node='+l.node.primary.version+'\n')"
+      - uses: actions/setup-node@v5
         with:
-          fetch-depth: 0
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24.x"
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Verify Node regression suites
-        run: pnpm test:node
-
-      - name: Build packages
-        run: pnpm build
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Verify platform consistency governance
-        run: pnpm verify:platform-consistency-governance
-
-      - name: Setup Bun for native tooling fixtures
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.2.3"
-
-      - name: Setup Deno for native tooling fixtures
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.5.0
-
-      - name: Verify full tooling project
-        run: pnpm vitest run --project tooling --maxWorkers=1
-
-  duplicate-module-safety:
-    name: Packed duplicate module safety
-    runs-on: ubuntu-latest
-    needs:
-      - deterministic-preflight
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24.x"
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build selected package closure and verify packed consumers
-        run: pnpm test:duplicate-module-safety
-
-
-  deno-platform:
-    name: Deno platform
-    runs-on: ubuntu-latest
-    needs:
-      - resolve-pr-verification-scope
-      - deterministic-preflight
-
-    steps:
-      - name: Checkout
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/platform-deno')
-        uses: actions/checkout@v5
-
-      - name: Install pnpm
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/platform-deno')
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/platform-deno')
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24.x"
-          cache: pnpm
-
-      - name: Setup Deno
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/platform-deno')
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.5.0
-
-      - name: Install dependencies
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/platform-deno')
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Deno adapter closure
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/platform-deno')
-        run: node tooling/scripts/run-workspace-build-closure.mjs @fluojs/platform-deno
-
-      - name: Check published Deno adapter root import
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/platform-deno')
-        run: deno check --no-lock --node-modules-dir=auto --config packages/platform-deno/deno/deno.json npm:@fluojs/platform-deno
-
-      - name: Test published Deno adapter journey
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/platform-deno')
-        run: deno test --no-lock --config packages/platform-deno/deno/deno.json --allow-net --allow-read packages/platform-deno/deno/native-adapter.test.js
-
-      - name: Skip Deno platform verification outside scoped Deno changes
-        if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && !contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/platform-deno')
-        run: echo "Deno platform verification is outside the scoped package set."
-
-  studio-browser:
-    name: Studio browser
-    runs-on: ubuntu-latest
-    needs:
-      - resolve-pr-verification-scope
-      - deterministic-preflight
-
-    steps:
-      - name: Checkout
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
-        uses: actions/checkout@v5
-
-      - name: Install pnpm
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24.x"
-          cache: pnpm
-
-      - name: Install dependencies
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Studio dependency closure
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
-        run: node tooling/scripts/run-workspace-build-closure.mjs @fluojs/studio
-
-      - name: Run Studio browser verification
-        if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
-        run: pnpm --filter @fluojs/studio test:browser
-
-      - name: Skip Studio browser verification outside scoped Studio changes
-        if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && !contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')
-        run: echo "Studio browser verification is outside the scoped package closure."
-
-  official-web-runtime-adapter-portability:
-    name: Official web runtime adapter portability
-    runs-on: ubuntu-latest
-    needs:
-      - deterministic-preflight
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24.x"
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run official web runtime adapter portability suite
-        run: pnpm vitest run packages/testing/src/portability/web-runtime-adapter-portability.test.ts --maxWorkers=1
-
-  native-response-cookie-conformance:
-    name: Native response cookie conformance
-    runs-on: ubuntu-latest
-    needs:
-      - deterministic-preflight
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24.x"
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build portable cookie helper
-        run: pnpm --filter @fluojs/http... build
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Run Bun response cookie conformance
-        run: bun test tooling/native-runtime/response-cookie-conformance.test.mjs
-
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
-
-      - name: Run Deno response cookie conformance
-        run: deno test --allow-read tooling/native-runtime/response-cookie-conformance.test.mjs
-
-      - name: Run Cloudflare Workers response cookie conformance
-        run: node --test tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs
-
-  bun-native-routing-and-lifecycle-conformance:
-    name: Bun native routing and lifecycle conformance
-    runs-on: ubuntu-latest
-    needs:
-      - deterministic-preflight
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24.x"
-          cache: pnpm
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.2.3"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Bun adapter dependency closure
-        run: node tooling/scripts/run-workspace-build-closure.mjs @fluojs/platform-bun
-
-      - name: Run Bun native routing and lifecycle conformance
-        run: bun test tooling/native-runtime/platform-bun-native-conformance.test.mjs
-
-  bun-drizzle-conformance:
-    name: Bun Drizzle async-driver conformance
-    runs-on: ubuntu-latest
-    needs:
-      - deterministic-preflight
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24.x"
-          cache: pnpm
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.4.0"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Drizzle and Bun host dependency closures
+          node-version: ${{ steps.version.outputs.node }}
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v5
+      - name: Freeze source and task plan
+        id: plan
+        env:
+          BASE_SHA: ${{ inputs.base-sha || github.event.pull_request.base.sha }}
+          PROFILE: ${{ inputs.profile || 'pr' }}
         run: |
-          node tooling/scripts/run-workspace-build-closure.mjs @fluojs/drizzle
-          node tooling/scripts/run-workspace-build-closure.mjs @fluojs/platform-bun
+          mkdir -p .omo/ci-plan
+          node tooling/ci/verify-local.mjs --plan --base-ref "$BASE_SHA" --profile "$PROFILE" > .omo/ci-plan/plan.json
+          node --input-type=module <<'EOF'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const plan = JSON.parse(readFileSync('.omo/ci-plan/plan.json', 'utf8'));
+          const tasks = plan.tasks.map(({ id }) => id).filter(id => !['build', 'compatibility-floor', 'compatibility-next'].includes(id));
+          if (tasks.length !== 13 || plan.tasks.length + 2 !== 18) throw new Error('Unexpected expanded CI job count');
+          appendFileSync(process.env.GITHUB_OUTPUT, `source_sha=${plan.identity.headSha}\ntasks=${JSON.stringify(tasks)}\n`);
+          EOF
+      - name: Report available runtime updates without changing the lock
+        if: github.event_name == 'schedule'
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const lock = JSON.parse(readFileSync('tooling/ci/environment.lock.json', 'utf8'));
+          const response = await fetch('https://nodejs.org/dist/index.json', { signal: AbortSignal.timeout(10000) });
+          if (!response.ok) throw new Error(`Node release lookup failed: ${response.status}`);
+          const releases = await response.json();
+          if (!Array.isArray(releases)) throw new Error('Invalid Node release index');
+          const rows = [];
+          for (const [major, target] of [[24, 'primary'], [26, 'compat26']]) {
+            const versions = releases.map(item => item.version).filter(version =>
+              typeof version === 'string' && new RegExp(`^v${major}\\.\\d+\\.\\d+$`).test(version));
+            versions.sort((a, b) => {
+              const left = a.slice(1).split('.').map(Number);
+              const right = b.slice(1).split('.').map(Number);
+              return right[1] - left[1] || right[2] - left[2];
+            });
+            if (!versions.length) throw new Error(`Missing Node ${major} releases`);
+            rows.push(`| ${major} | ${lock.node[target].version} | ${versions[0].slice(1)} |`);
+          }
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            `## Runtime lock updates\n\nReview lock changes; this run does not update versions automatically.\n\n| Node | Locked | Available |\n| --- | --- | --- |\n${rows.join('\n')}\n`);
+          EOF
+      - name: Compute immutable image cache key
+        id: environment
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          import { loadEnvironmentLock, imageKeyFor } from './tooling/ci/verification-environment.mjs';
+          const key = imageKeyFor(loadEnvironmentLock(), readFileSync('tooling/ci/Dockerfile')).slice(7);
+          appendFileSync(process.env.GITHUB_OUTPUT, `cache_key=fluo-linux-arm64-${key}\n`);
+          EOF
+      - name: Restore immutable verification image
+        id: image-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/fluo-verification-image
+          key: ${{ steps.environment.outputs.cache_key }}
+      - name: Load cached image
+        if: steps.image-cache.outputs.cache-hit == 'true'
+        run: docker load --input "$RUNNER_TEMP/fluo-verification-image/image.tar"
+      - name: Prepare and archive verified image
+        if: steps.image-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/fluo-verification-image"
+          node --input-type=module <<'EOF'
+          import { execFileSync } from 'node:child_process';
+          import { prepareVerificationEnvironment } from './tooling/ci/verification-environment.mjs';
+          const { tag } = prepareVerificationEnvironment();
+          execFileSync('docker', ['save', '--output', `${process.env.RUNNER_TEMP}/fluo-verification-image/image.tar`, tag], { stdio: 'inherit' });
+          EOF
+      - name: Upload frozen plan
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-plan
+          path: .omo/ci-plan/plan.json
+          overwrite: true
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Verify the host runner against real Docker fixtures
+        run: node tooling/ci/verification-runner.mjs --plan .omo/ci-plan/plan.json --host-checks --output .omo/ci/host-results --artifacts .omo/ci/artifacts
+      - name: Preserve this attempt's host integration evidence
+        if: ${{ always() }}
+        id: host-history
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-history-host-checks-${{ github.run_attempt }}
+          path: .omo/ci/host-results/
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Upload host integration evidence
+        if: ${{ always() && steps.host-history.outcome == 'success' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-result-host-checks
+          path: .omo/ci/host-results/
+          overwrite: true
+          include-hidden-files: true
+          if-no-files-found: error
 
-      - name: Run Bun Drizzle conformance
-        run: bun test tooling/native-runtime/drizzle-bun-conformance.test.mjs
+  build:
+    name: Primary build
+    needs: plan
+    uses: ./.github/workflows/node-verification.yml
+    with:
+      task-id: build
+      source-sha: ${{ needs.plan.outputs.source-sha }}
+      image-cache-key: ${{ needs.plan.outputs.image-cache-key }}
 
-  node-support:
-    name: Node support (${{ matrix.node-version }})
-    needs:
-      - resolve-pr-verification-scope
-      - deterministic-preflight
+  verification:
+    name: Verify task (${{ matrix.task }})
+    needs: [plan, build]
     strategy:
       fail-fast: false
       matrix:
-        node-version:
-          - "24.11.0"
-          - "24.x"
-          - "26.x"
+        task: ${{ fromJSON(needs.plan.outputs.tasks) }}
     uses: ./.github/workflows/node-verification.yml
     with:
-      node-version: ${{ matrix.node-version }}
-      verify-isolated-http-benchmark: ${{ matrix.node-version == '24.x' && needs.resolve-pr-verification-scope.outputs.verify_isolated_http_benchmark == 'true' }}
+      task-id: ${{ matrix.task }}
+      source-sha: ${{ needs.plan.outputs.source-sha }}
+      image-cache-key: ${{ needs.plan.outputs.image-cache-key }}
+      build-artifact-id: ${{ needs.build.outputs.build-artifact-id }}
+      build-artifact-digest: ${{ needs.build.outputs.build-artifact-digest }}
 
-  node-runtime-floor:
-    name: Node runtime floor (24.0.0)
-    needs:
-      - resolve-pr-verification-scope
-      - deterministic-preflight
-    uses: ./.github/workflows/node-runtime-floor.yml
+  compatibility:
+    name: Node compatibility (${{ matrix.task }})
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [compatibility-floor, compatibility-next]
+    uses: ./.github/workflows/node-verification.yml
     with:
-      node-version: "24.0.0"
-      compiler-node-version: "24.x"
-
-  verify-platform-consistency-governance:
-    name: Verify platform consistency governance
-    runs-on: ubuntu-latest
-    needs:
-      - deterministic-preflight
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: "24.x"
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Verify platform consistency governance
-        run: pnpm verify:platform-consistency-governance
+      task-id: ${{ matrix.task }}
+      source-sha: ${{ needs.plan.outputs.source-sha }}
+      image-cache-key: ${{ needs.plan.outputs.image-cache-key }}
 
   verify:
     name: Verify
-    if: ${{ always() && github.event_name == 'pull_request' }}
-    needs:
-      - verify-changeset-release-lane
-      - deno-platform
-      - studio-browser
-      - official-web-runtime-adapter-portability
-      - native-response-cookie-conformance
-      - bun-native-routing-and-lifecycle-conformance
-      - bun-drizzle-conformance
-      - node-support
-      - node-runtime-floor
-      - verify-platform-consistency-governance
-      - duplicate-module-safety
-      - resolve-pr-verification-scope
-      - deterministic-preflight
-    runs-on: ubuntu-latest
-
+    if: ${{ always() }}
+    needs: [plan, build, verification, compatibility]
+    runs-on: ubuntu-24.04-arm
     steps:
-      - name: Require every verification job to pass
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source-sha || github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Read locked bootstrap version
+        id: version
+        run: node -e "const fs=require('node:fs');const l=JSON.parse(fs.readFileSync('tooling/ci/environment.lock.json','utf8'));fs.appendFileSync(process.env.GITHUB_OUTPUT,'node='+l.node.primary.version+'\n')"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.version.outputs.node }}
+          package-manager-cache: false
+      - uses: actions/download-artifact@v5
+        with:
+          name: ci-plan
+          path: .omo/ci-plan
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: ci-result-*
+          path: .omo/ci/results
+          merge-multiple: true
+      - name: Acquire build outputs for evidence validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.build.outputs.build-artifact-id }}
+          ARTIFACT_DIGEST: ${{ needs.build.outputs.build-artifact-digest }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source-sha }}
+        run: node tooling/ci/acquire-build-artifact.mjs --id "$ARTIFACT_ID" --digest "$ARTIFACT_DIGEST" --sha "$SOURCE_SHA" --name "ci-build-$SOURCE_SHA" --run-id "$GITHUB_RUN_ID" --output .omo/ci/artifacts/build.tar
+      - name: Restore documentation outputs for evidence validation
+        uses: actions/download-artifact@v5
+        with:
+          name: docs-site-${{ needs.plan.outputs.source-sha }}
+          path: .omo/ci/artifacts/docs-site
+      - name: Require every planned capability and job result
         env:
           VERIFICATION_RESULTS: ${{ toJSON(needs) }}
-        run: |
-          node --input-type=module <<'EOF'
-          const results = JSON.parse(process.env.VERIFICATION_RESULTS);
-          for (const [name, job] of Object.entries(results)) {
-            if (job.result !== 'success') {
-              throw new Error(name + ': ' + job.result);
-            }
-          }
-          console.log('PR verification jobs passed.');
-          EOF
+        run: node tooling/ci/verification-runner.mjs --plan .omo/ci-plan/plan.json --aggregate --output .omo/ci/results --artifacts .omo/ci/artifacts

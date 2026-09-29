@@ -11,9 +11,11 @@ import packagesGlobalSetup from './packages-global-setup.js';
 describe('packages project emitted artifact setup', () => {
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it('runs the locked Terminus and Prisma build closures with a termination signal', () => {
+    vi.stubEnv('FLUO_VERIFIED_BUILD', undefined);
     packagesGlobalSetup();
 
     expect(execFileSync).toHaveBeenCalledTimes(2);

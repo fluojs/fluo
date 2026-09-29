@@ -1,5 +1,29 @@
 import { expect, test } from '@playwright/test';
 
+test('opens modified links as native documents without replacing the current page', async ({ page }) => {
+  await page.goto('/products/sku-42?preview=true');
+  await page.getByRole('button', { name: 'Count: 0' }).click();
+  await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+
+  const link = page.getByRole('link', { name: 'Open sku-84' });
+  await expect(link).toHaveAttribute('href', '/products/sku-84?preview=false');
+  const approvedDocument = await page.request.get('/products/sku-84?preview=false', {
+    headers: { accept: 'text/html' },
+  });
+  expect(approvedDocument.status()).toBe(200);
+  expect(approvedDocument.headers()['content-type']).toContain('text/html');
+  // Native modifier tabs can finish their initial request before Playwright attaches.
+  const [opened] = await Promise.all([
+    page.context().waitForEvent('page', { timeout: 10_000 }),
+    link.click({ modifiers: ['ControlOrMeta'] }),
+  ]);
+  await expect(opened).toHaveURL(/\/products\/sku-84\?preview=false$/u);
+  await expect(opened.getByRole('heading', { name: 'Catalog item sku-84' })).toBeVisible();
+  await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+  await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+  await opened.close();
+});
+
 test('hydrates two DTO pages and preserves the shell during HTTP-approved navigation', async ({ page }) => {
   const development = process.env.FLUO_REACT_STARTER_SERVER_COMMAND === 'dev';
   const browserDiagnostics: string[] = [];
@@ -114,8 +138,12 @@ test('keeps modified links as native new-tab documents', async ({ page }) => {
   const approvedDocument = await documentResponse;
   await expect(popup.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
   expect(approvedDocument.status()).toBe(200);
-  await page.getByRole('link', { name: 'Search catalog' }).first().click({ modifiers: ['Meta'] });
+  const modifiedPopupPromise = page.context().waitForEvent('page');
+  await page.getByRole('link', { name: 'Search catalog' }).first().click({ modifiers: ['ControlOrMeta'] });
+  const modifiedPopup = await modifiedPopupPromise;
+  await expect(modifiedPopup.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
   await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+  await modifiedPopup.close();
 });
 
 test('keeps native anchors usable before hydration', async ({ page }) => {

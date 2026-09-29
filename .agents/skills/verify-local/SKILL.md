@@ -34,10 +34,15 @@ the exact base, head, tree, diff, plan, and logs and must survive an unrelated
 base-branch advance. The plan is determined by
 `tooling/ci/local-verification.mjs` and
 `tooling/ci/local-verification-manifest.json`, not a hand-picked substitute.
-It includes install, build, typecheck, tests, lint, platform governance, and
-applicable companion checks. `--plan` is inspection only, not passing evidence.
-Subscribe to the runner's completion rather than polling. Remote CI still
-checks runner/platform and aggregation behavior unavailable locally.
+It includes the shared PR task profile: primary build/static/tests/docs,
+secondary compatibility builds and all package tests, generated starter
+profiles, native checks, packed consumers, and the exact runtime floor.
+The runner requires the locked Linux/arm64 image and isolated Linux volumes;
+native host execution cannot produce a canonical passing receipt.
+`--plan` is inspection only, not passing evidence. `--profile extended` restores
+full secondary verification for scheduled and exact-release-source gates.
+Subscribe to completion rather than polling. GitHub permissions, artifact
+transport, queueing, and external outages still require remote evidence.
 
 - Do not omit manifest-required checks because a review axis was skipped.
 - Build before typechecks; emitted workspace declarations resolve from dist.
@@ -60,7 +65,8 @@ checks runner/platform and aggregation behavior unavailable locally.
 
 The runner writes `.omo/verification/<head>.json` and command logs. Use those
 files, not a hand-authored passing receipt. The CLI validates their hashes,
-command plan, and current checkout identity. Keep real-surface observations,
+task profile, environment identity, command plan, and current checkout identity.
+Old host-native receipts do not prove the Linux parity profile. Keep real-surface observations,
 baseline comparisons, and acceptance-specific evidence alongside them.
 Re-check the head, accepted policy, and worktree before recording success;
 changes invalidate the run.
