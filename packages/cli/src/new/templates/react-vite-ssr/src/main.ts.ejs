@@ -16,22 +16,22 @@ export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Se
   const developmentRenderers = new WeakMap<ReactElement, ReactPageRenderer>();
   const AppModule = createAppModule({
     clientDirectory: new URL(vite ? '../public/' : '../client/', import.meta.url),
-    loadPage: vite ? async () => {
-      const [{ ProductPage }, { createReactDevelopmentPageRenderer }] = await Promise.all([
-        vite.ssrLoadModule('/src/page.tsx'),
+    loadPage: vite ? async (module, props) => {
+      const [destination, { createReactDevelopmentPageRenderer }] = await Promise.all([
+        vite.ssrLoadModule(`/src/${module.slice(2)}`),
         vite.ssrLoadModule('/src/entry-server.tsx'),
       ]);
-      const page = createElement(ProductPage);
+      const page = createElement(destination['default'], props);
       developmentRenderers.set(page, createReactDevelopmentPageRenderer());
       return page;
     } : undefined,
-    renderPage: vite ? (page, context, policies) => {
+    renderPage: vite ? (page, context, policies, initialPage) => {
       const render = developmentRenderers.get(page);
       if (!render) {
         throw new Error('The React development renderer was not loaded before the page.');
       }
       developmentRenderers.delete(page);
-      return render(page, context, policies);
+      return render(page, context, policies, initialPage);
     } : createReactPageRenderer(manifest),
   });
   const port = Number(process.env.PORT ?? '3000');

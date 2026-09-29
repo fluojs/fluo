@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import type { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /**
@@ -37,6 +39,16 @@ export async function runReactViteDevApp(
   const upgradeServer = createHttpServer();
   let closeApp: (() => Promise<void>) | undefined;
   let exitCode = 0;
+  const sourcePrefix = `${join(projectDirectory, 'src').split(sep).join('/')}/`;
+  const onReconcile = (message: unknown) => {
+    if (vite && !stopping && typeof message === 'object' && message !== null
+      && 'type' in message && message.type === 'fluo:react-vite-hmr-reconcile'
+      && 'file' in message && typeof message.file === 'string'
+      && message.file.startsWith(sourcePrefix)) {
+      vite.watcher.emit('change', message.file.split('/').join(sep));
+    }
+  };
+  process.on('message', onReconcile);
 
   try {
     const projectRequire = createRequire(join(projectDirectory, 'package.json'));
@@ -48,6 +60,17 @@ export async function runReactViteDevApp(
         configLoader: 'runner',
         root: projectDirectory,
         server: { middlewareMode: true, ws: { server: upgradeServer } },
+      });
+      vite.watcher.on('change', (file) => {
+        try {
+          process.send?.({
+            type: 'fluo:react-vite-hmr-observed',
+            file: file.split(sep).join('/'),
+            digest: createHash('sha256').update(readFileSync(file)).digest('hex'),
+          });
+        } catch (error) {
+          if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+        }
       });
     }
 
@@ -91,6 +114,7 @@ export async function runReactViteDevApp(
     }
     signals.off('SIGINT', onSignal);
     signals.off('SIGTERM', onSignal);
+    process.off('message', onReconcile);
   }
 
   return exitCode;

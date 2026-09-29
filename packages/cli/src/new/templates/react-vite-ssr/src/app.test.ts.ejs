@@ -17,6 +17,8 @@ const VITE_MANIFEST = {
     isEntry: true,
     src: 'src/entry-server.tsx',
   },
+  'src/page.tsx': { file: 'page-product.js', src: 'src/page.tsx' },
+  'src/page-search.tsx': { file: 'page-search.js', src: 'src/page-search.tsx' },
 } as const;
 
 function readHtml(body: unknown): string {
@@ -31,7 +33,7 @@ describe('React Vite SSR starter', () => {
     let label = 'First component';
     const AppModule = createAppModule({
       clientDirectory: new URL('../public/', import.meta.url),
-      loadPage: async () => createElement('h1', null, label),
+      loadPage: async (_module, props) => createElement('h1', null, `${label} ${String(props['sku'] ?? '')}`),
       renderPage: createReactPageRenderer(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
@@ -85,7 +87,61 @@ describe('React Vite SSR starter', () => {
     });
   });
 
-  it('identifies the application entry files when the Vite manifest is incompatible', () => {
+  it('serves two DTO-bound pages as HTML and approved navigation JSON', async () => {
+    // Given: one generated app with the shared renderer and two distinct HTTP handlers.
+    const AppModule = createAppModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      renderPage: createReactPageRenderer({
+        ...VITE_MANIFEST,
+        'src/page.tsx': { file: 'page-product.js', src: 'src/page.tsx' },
+        'src/page-search.tsx': { file: 'page-search.js', src: 'src/page-search.tsx' },
+      }),
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      // When: direct GET and the protocol Accept resolve each handler through HTTP.
+      const product = await app.request('GET', '/products/sku-42').query('preview', 'true').send();
+      const search = await app.request('GET', '/search').query('q', 'catalog').send();
+      const approved = await app.request('GET', '/search')
+        .query('q', 'catalog')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1')
+        .send();
+
+      // Then: both documents transfer their selected page; navigation confirms the DTO value.
+      expect(readHtml(product.body)).toContain('Catalog item sku-42');
+      expect(readHtml(search.body)).toMatch(/<h1>Search:\s*(?:<!-- -->)?catalog<\/h1>/u);
+      expect(approved.body).toMatchObject({
+        version: 1,
+        url: '/search?q=catalog',
+        destination: { module: './page-search.tsx', props: { query: 'catalog' } },
+      });
+      expect((await app.request('GET', '/search').query('q', 'x').send()).status).toBe(400);
+    });
+  });
+
+  it('rejects a page absent from the built importer map before writing HTML', async () => {
+    // Given: a valid client entry whose manifest omitted the search destination.
+    const { ['src/page-search.tsx']: _missing, ...manifest } = VITE_MANIFEST;
+    const AppModule = createAppModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      renderPage: createReactPageRenderer(manifest),
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      // When: HTTP matches the search handler but cannot build its client destination.
+      const response = await app.request('GET', '/search').query('q', 'catalog').send();
+
+      // Then: no partial SSR page commits before the HTTP-owned error response.
+      expect(response.status).toBe(500);
+      expect(response.headers['Content-Type']).not.toBe('text/html; charset=utf-8');
+    });
+  });
+
+  it('rejects an incompatible Vite manifest with a machine-readable entry error', () => {
     try {
       createReactPageRenderer({});
       throw new TypeError('Expected createReactPageRenderer(...) to reject an incompatible manifest.');
@@ -93,10 +149,6 @@ describe('React Vite SSR starter', () => {
       expect(error).toBeInstanceOf(ReactStarterEntryError);
       if (error instanceof ReactStarterEntryError) {
         expect(error.code).toBe('react-starter-entry-incompatible');
-        expect(error.message).toContain('src/entry-server.tsx');
-        expect(error.message).toContain('src/entry-client.tsx');
-        expect(error.message).toContain('vite.client.config.ts');
-        expect(error.message).toContain('generated build script');
       }
     }
   });

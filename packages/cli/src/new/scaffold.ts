@@ -2546,7 +2546,6 @@ function emitSharedScaffoldFiles(
         packageManager: options.packageManager,
         projectName: options.projectName,
       }),
-      { content: createBabelConfig(), path: 'babel.config.cjs' },
       { content: createGitignore(), path: '.gitignore' },
       ...(envFile ? [{ content: envFile, path: '.env' }] : []),
     ];

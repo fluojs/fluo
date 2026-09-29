@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import {
   createReactServerEntry,
   type ReactPageRenderer,
@@ -5,6 +6,8 @@ import {
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
 
 import { ReactAppDocument, REACT_IDENTIFIER_PREFIX } from './react-app';
+
+const developmentPages = import.meta.glob('./page*.tsx');
 
 export class ReactStarterEntryError extends Error {
   readonly code = 'react-starter-entry-incompatible' as const;
@@ -39,28 +42,41 @@ export function createReactPageRenderer(manifest: unknown): ReactPageRenderer {
   }
 
   const assets = result.manifest;
-  const renderPage: ReactPageRenderer = (page, context) => createReactServerEntry(
-    <ReactAppDocument
-      page={page}
-      route={{ params: context.request.params, url: context.request.url }}
-      stylesheets={assets.css}
-    />,
-    assets.hydrationOptions,
-  );
+  const renderPage: ReactPageRenderer = (page, context, _policies, initialPage) => {
+    if (initialPage !== undefined && (!Object.hasOwn(developmentPages, initialPage.payload.destination.module)
+      || !Object.hasOwn(assets.assetMap, `src/${initialPage.payload.destination.module.slice(2)}`))) {
+      throw new ReactStarterEntryError([`No built client destination: ${initialPage.payload.destination.module}`]);
+    }
+    return createReactServerEntry(
+      <ReactAppDocument
+        initialPage={initialPage}
+        page={page}
+        route={{ params: context.request.params, url: context.request.url }}
+        stylesheets={assets.css}
+      />,
+      assets.hydrationOptions,
+    );
+  };
 
   return renderPage;
 }
 
 export function createReactDevelopmentPageRenderer(): ReactPageRenderer {
-  return (page, context) => createReactServerEntry(
-    <ReactAppDocument
-      page={page}
-      route={{ params: context.request.params, url: context.request.url }}
-      stylesheets={['/src/styles.css?direct']}
-    />,
-    {
-      bootstrapModules: ['/@vite/client', '/src/entry-client-dev.ts'],
-      identifierPrefix: REACT_IDENTIFIER_PREFIX,
-    },
-  );
+  return (page, context, _policies, initialPage) => {
+    if (initialPage !== undefined && !Object.hasOwn(developmentPages, initialPage.payload.destination.module)) {
+      throw new ReactStarterEntryError([`No development client destination: ${initialPage.payload.destination.module}`]);
+    }
+    return createReactServerEntry(
+      <ReactAppDocument
+        initialPage={initialPage}
+        page={page}
+        route={{ params: context.request.params, url: context.request.url }}
+        stylesheets={['/src/styles.css?direct']}
+      />,
+      {
+        bootstrapModules: ['/@vite/client', '/src/entry-client-dev.ts'],
+        identifierPrefix: REACT_IDENTIFIER_PREFIX,
+      },
+    );
+  };
 }

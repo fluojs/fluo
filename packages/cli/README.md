@@ -166,9 +166,11 @@ fluo new my-react-app --starter react-vite-ssr
 ```
 
 This starter fixes the schema to Node.js + Fastify HTTP. Run `pnpm dev`, open
-`/products/sku-42?preview=true`, and edit `src/page.tsx`; page UI no longer needs to carry Vite assets,
-the document shell, or the server/client route snapshot wiring. The explicit `@Router(...)` /
-`@Path(...)` handler in `src/app.ts` returns that page as one `ReactElement`, so the existing HTTP
+`/products/sku-42?preview=true`, follow the link to `/search?q=catalog`, and edit
+`src/page.tsx` or `src/page-search.tsx`; page UI no longer needs to carry Vite assets,
+the document shell, or the server/client route snapshot wiring. Both explicit `@Router(...)` /
+`@Path(...)` handlers in `src/app.ts` return `ReactNavigationPage.create(page, { module, props })`
+with their HTTP-validated DTO data, so the existing HTTP
 dispatcher remains authoritative.
 
 The React `dev` script now delegates to the same `fluo dev` path as a direct CLI invocation.
@@ -196,18 +198,27 @@ Fast Refresh path.
 
 Generated application wiring stays visible instead of becoming a framework abstraction:
 `src/entry-server.tsx` owns the replaceable `ReactPageRenderer` and `ReactServerEntry` creation,
-`src/react-app.tsx` shares one document and `ReactClientRouterProvider` composition between server and
-client, `src/entry-client.tsx` calls `hydrateRoot(...)`, and `src/main.ts` uses
+`src/react-app.tsx` shares one document, persistent shell, page slot and `ReactClientRouterProvider`
+between server and client, `src/entry-client.tsx` resolves the validated initial built
+destination and calls `hydrateRoot(...)`, and `src/main.ts` uses
 `src/load-manifest.ts` to load the generated Vite manifest before `@fluojs/react/vite` parses it.
 Missing build output, incompatible entry selectors, and hydration mismatches identify those exact
 application files and the lifecycle command to rerun. Generated `Link` output remains a real anchor
-and `router.push(...)` performs full-document navigation through the HTTP dispatcher. The starter
+and `router.push(...)` performs HTTP-approved soft navigation for build-mapped destinations;
+unsupported pages and disabled JavaScript keep native document navigation. Additional pages
+need a page module and HTTP handler/DTO, not edits to client entry, renderer, manifest, or router store.
+The [composition migration guide](../../docs/getting-started/migrate-react-starter-composition.md)
+explains how existing generated apps opt in. The starter
 intentionally excludes RSC, Server Functions, file routing, a client route table, SPA document
 swapping, prefetch, and a data cache.
 
-This first-page starter is not yet the complete CRUD/jukebox product path: the existing
-[Vite example](../../examples/react-vite-ssr/README.md) demonstrates opt-in HTTP-approved
-soft navigation, while #3871 owns making that composition canonical in the generated app.
+The client build keeps a manifest identity for `src/entry-server.tsx` but emits an empty
+marker, not server-only code. Its real implementation builds under `dist/server`; the
+browser bundle receives only page components in the `src/page*.tsx` importer map.
+
+This two-page starter is not yet the complete CRUD/jukebox product path: the existing
+[Vite example](../../examples/react-vite-ssr/README.md) demonstrates advanced native-form
+and prefetch policy while the starter provides the canonical page authoring composition.
 The [product contract](../../docs/contracts/react-fullstack-product.md) tracks failure/retry,
 form freshness, auth, dev edits and deployment as separate unshipped acceptance gates.
 Application-owned production manifest loading and asset/CDN hosting remain explicit.

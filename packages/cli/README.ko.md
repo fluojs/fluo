@@ -166,9 +166,11 @@ fluo new my-react-app --starter react-vite-ssr
 ```
 
 이 starter는 schema를 Node.js + Fastify HTTP로 고정합니다. `pnpm dev`를 실행하고
-`/products/sku-42?preview=true`를 연 뒤 `src/page.tsx`를 편집하세요. Page UI는 더 이상 Vite asset,
-document shell, server/client route snapshot wiring을 함께 다루지 않습니다. `src/app.ts`의 명시적인
-`@Router(...)` / `@Path(...)` handler가 page를 하나의 `ReactElement`로 반환하므로 기존 HTTP
+`/products/sku-42?preview=true`를 열고 `/search?q=catalog` 링크로 이동한 뒤
+`src/page.tsx`나 `src/page-search.tsx`를 편집하세요. Page UI는 더 이상 Vite asset,
+document shell, server/client route snapshot wiring을 함께 다루지 않습니다. `src/app.ts`의 두
+`@Router(...)` / `@Path(...)` handler가 HTTP 검증 DTO data로
+`ReactNavigationPage.create(page, { module, props })`를 반환하므로 기존 HTTP
 dispatcher가 계속 authoritative합니다.
 
 React `dev` script는 이제 직접 실행한 CLI와 동일한 `fluo dev` 경로로 위임합니다.
@@ -194,18 +196,28 @@ starter의 mode는 그대로이고 Fast Refresh 지원 대상은 Node React/Vite
 
 Generated application wiring은 framework abstraction에 숨지 않고 보이는 상태를 유지합니다.
 `src/entry-server.tsx`는 교체 가능한 `ReactPageRenderer`와 `ReactServerEntry` 생성을 소유하고,
-`src/react-app.tsx`는 server/client가 하나의 document 및 `ReactClientRouterProvider` composition을
-공유하게 하며, `src/entry-client.tsx`는 `hydrateRoot(...)`를 호출합니다. `src/main.ts`는
+`src/react-app.tsx`는 server/client가 하나의 document, 유지되는 shell, page slot 및
+`ReactClientRouterProvider`를 공유하게 합니다. `src/entry-client.tsx`는 검증된 초기 build
+destination을 로드한 다음 `hydrateRoot(...)`를 호출합니다. `src/main.ts`는
 `src/load-manifest.ts`를 사용해 generated Vite manifest를 로드한 뒤 `@fluojs/react/vite`가 이를
 parse하도록 전달합니다. Build output 누락, incompatible entry selector, hydration mismatch는 수정할
 application file과 다시 실행할 lifecycle command를 정확히 가리킵니다. 생성된 `Link`는 real anchor로
-남고 `router.push(...)`는 HTTP dispatcher를 통과하는 full-document navigation을 수행합니다. 이 starter는
+남고 `router.push(...)`는 build-mapped destination에 HTTP 승인 soft navigation을 수행합니다.
+미지원 page와 JavaScript 비활성 상태는 native document 이동을 유지합니다. 일반 page를 추가할 때는
+page module과 HTTP handler/DTO만 작성하며 client entry, renderer, manifest, router store를
+편집하지 않습니다. 기존 생성 앱의 opt-in 방법은
+[composition migration guide](../../docs/getting-started/migrate-react-starter-composition.ko.md)를
+참고하세요. 이 starter는
 RSC, Server Functions, file routing, client route table, SPA document swapping, prefetch, data cache를
 의도적으로 제외합니다.
 
-첫 페이지 starter만으로 완전한 CRUD/주크박스 제품 경로가 되지는 않습니다. 기존
-[Vite 예제](../../examples/react-vite-ssr/README.ko.md)는 opt-in HTTP 승인 soft navigation을
-보여 주고, #3871이 이를 생성 앱의 canonical 조립으로 만드는 작업을 소유합니다.
+Client build는 `src/entry-server.tsx`의 manifest identity를 유지하지만 server-only
+code 대신 빈 marker를 emit합니다. 실제 구현은 `dist/server`에만 build하고 browser bundle에는
+`src/page*.tsx` importer map의 page component만 포함합니다.
+
+두 page starter만으로 완전한 CRUD/주크박스 제품 경로가 되지는 않습니다. 기존
+[Vite 예제](../../examples/react-vite-ssr/README.ko.md)는 advanced native form 및
+prefetch 정책을 보여 주고 starter는 canonical page authoring 조립을 제공합니다.
 [제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 실패/재시도, form 최신화,
 auth, dev edit, 배포를 아직 구현되지 않은 별도의 수용 게이트로 추적합니다.
 Application 소유 production manifest load와 asset/CDN hosting도 명시적으로 유지됩니다.

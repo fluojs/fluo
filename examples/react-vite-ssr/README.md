@@ -13,13 +13,23 @@ Refresh and CSS HMR path, generate `fluo new --starter react-vite-ssr`; the
 [migration guide](../../docs/getting-started/migrate-react-dev-hmr.md) explains
 how to update an older generated app without adding another Vite process.
 
+For ordinary second and third pages, start from the official generated
+`react-vite-ssr` composition instead: its `src/page*.tsx` importer glob and
+HTTP handlers share a bounded, escaped initial transfer with subsequent soft
+navigation. This example intentionally retains the lower-level application-owned
+document and navigation modules to exercise native POST, public prefetch, CSP
+nonce and focus policy. It is not an alternative recommended bootstrap path;
+the [starter composition migration](../../docs/getting-started/migrate-react-starter-composition.md)
+connects custom documents to the same handler-selected transfer.
+
 This is evidence for shipped SSR, hydration, native POST/303/GET, approved navigation
 and short shell preservation, **not** the complete operations CRUD or long-lived
 jukebox gate. The [HTTP-first React product contract](../../docs/contracts/react-fullstack-product.md)
 maps each additional user journey and its owner. In particular, transient load failures
 currently use document fallback, and `router.refresh()` reloads the document rather than
-softly revalidating saved data. #3864/#3871 own the future official preserve-and-retry
-default, #3873 owns soft refresh and its migration, and #3879 must verify resource
+softly revalidating saved data. #3864 owns the opt-in failure/retry policy that
+integrates with #3871's shared provider/page slot; #3873 owns soft refresh and its migration,
+and #3879 must verify resource
 identity beyond this example's shell counter in a real production browser.
 
 ## what this example demonstrates

@@ -410,6 +410,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
   const watchTargets = getWatchTargets(projectDirectory);
   let child: ChildProcess | undefined;
   let viteOwnedFiles = new Set<string>();
+  let viteObservedHashes = new Map<string, string>();
   const pendingRestartPaths = new Set<string>();
   const restartAfterClosePaths = new Set<string>();
   let restartTimer: RestartSchedulerHandle | undefined;
@@ -419,6 +420,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
 
   const startChild = (resolveExitCode: (code: number) => void, cleanup: () => void) => {
     viteOwnedFiles = new Set();
+    viteObservedHashes = new Map();
     ensureStudioEpoch(env);
     const appCommand = buildAppCommand(runnerRuntime, env, appArgs, options.reactVite ?? false);
     publishStudioLifecycleEvent(env, runnerRuntime, 'restart', {
@@ -445,6 +447,10 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         if (message.type === 'fluo:react-vite-hmr-file' && 'file' in message
           && typeof message.file === 'string' && message.file.startsWith(sourcePrefix)) {
           viteOwnedFiles.add(message.file);
+        } else if (message.type === 'fluo:react-vite-hmr-observed'
+          && 'file' in message && typeof message.file === 'string' && message.file.startsWith(sourcePrefix)
+          && 'digest' in message && typeof message.digest === 'string') {
+          viteObservedHashes.set(message.file, message.digest);
         } else if (message.type === 'fluo:react-vite-hmr-files' && 'files' in message && Array.isArray(message.files)) {
           for (const file of message.files) {
             if (typeof file === 'string' && file.startsWith(sourcePrefix)) {
@@ -510,6 +516,13 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
       }
 
       if (options.reactVite && runnerRuntime === 'node' && restartPaths.every((path) => viteOwnedFiles.has(path.split(sep).join('/')))) {
+        for (const path of restartPaths) {
+          const file = path.split(sep).join('/');
+          const digest = hashFileContent(path);
+          if (digest !== undefined && viteObservedHashes.get(file) !== digest) {
+            child?.send?.({ type: 'fluo:react-vite-hmr-reconcile', file });
+          }
+        }
         gate.commitBaseline(restartPaths);
         return;
       }

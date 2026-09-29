@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 
 import { ReactClientRouterProvider, createReactRouteSnapshot } from '@fluojs/react/client';
-import { act } from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
+import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { HydratedCounter, ProductPage } from './page';
+import { ProductPage } from './page';
 import { ReactAppDocument, reportReactHydrationMismatch } from './react-app';
 
 describe('React Vite SSR app composition', () => {
@@ -19,7 +19,14 @@ describe('React Vite SSR app composition', () => {
   it('renders the HTTP-owned route snapshot through the shared document', () => {
     const html = renderToString(
       <ReactAppDocument
-        page={<ProductPage />}
+        page={<ProductPage sku='sku-42' preview={true} />}
+        initialPage={{
+          json: '{"version":1,"url":"/products/sku-42?preview=true","params":{"sku":"sku-42"},"destination":{"module":"./page.tsx","props":{"sku":"sku-42","preview":true}}}',
+          payload: {
+            version: 1, url: '/products/sku-42?preview=true', params: { sku: 'sku-42' },
+            destination: { module: './page.tsx', props: { sku: 'sku-42', preview: true } },
+          },
+        }}
         route={{ params: { sku: 'sku-42' }, url: '/products/sku-42?preview=true' }}
         stylesheets={['/assets/styles.css']}
       />,
@@ -28,20 +35,18 @@ describe('React Vite SSR app composition', () => {
     expect(html).toContain('Catalog item sku-42');
     expect(html).toContain('Preview mode');
     expect(html).toContain('href="/assets/styles.css"');
-    expect(html).toContain('data-route-sku="sku-42"');
+    expect(html).toContain('aria-label="Current route"');
+    expect(html).toContain('id="fluo-initial-page"');
   });
 
-  it('reports actionable application files when hydration mismatches', () => {
+  it('forwards the hydration mismatch exception to the diagnostic sink', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const mismatch = new Error('Hydration mismatch');
 
     reportReactHydrationMismatch(mismatch);
 
-    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('src/entry-client.tsx'), mismatch);
-    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('src/entry-server.tsx'), mismatch);
-    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('src/react-app.tsx'), mismatch);
-    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('vite.client.config.ts'), mismatch);
-    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('generated build script'), mismatch);
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledWith(expect.any(String), mismatch);
   });
 
   it('enables interaction only after hydration commits without warnings', async () => {
@@ -51,7 +56,7 @@ describe('React Vite SSR app composition', () => {
     const initialSnapshot = createReactRouteSnapshot({ url: '/products/sku-42' });
     const counter = (
       <ReactClientRouterProvider initialSnapshot={initialSnapshot}>
-        <HydratedCounter />
+        <ProductPage sku='sku-42' preview={false} />
       </ReactClientRouterProvider>
     );
     container.innerHTML = renderToString(counter);

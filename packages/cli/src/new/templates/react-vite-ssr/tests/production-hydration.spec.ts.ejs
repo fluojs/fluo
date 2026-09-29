@@ -28,7 +28,7 @@ test('opens modified links as native documents without replacing the current pag
   await opened.close();
 });
 
-test('hydrates production HTML and preserves HTTP-first navigation', async ({ page }) => {
+test('hydrates two DTO pages and preserves the shell during HTTP-approved navigation', async ({ page }) => {
   const development = ['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? '');
   const browserDiagnostics: string[] = [];
   const assetResponses = new Map<string, number>();
@@ -102,18 +102,42 @@ test('hydrates production HTML and preserves HTTP-first navigation', async ({ pa
   }
 
   await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
-  const counter = page.getByRole('button', { name: 'Count: 0' });
-  await expect(counter).toBeEnabled();
-  await counter.click();
-  await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+  await page.getByRole('button', { name: 'Shell taps: 0' }).click();
+  await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+  await page.getByRole('button', { name: 'Count: 0', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Count: 1', exact: true })).toBeVisible();
 
-  const link = page.getByRole('link', { name: 'Open sku-84' });
-  await expect(link).toHaveAttribute('href', '/products/sku-84?preview=false');
+  const link = page.getByRole('link', { name: 'Search catalog' }).first();
+  const searchApproval = page.waitForResponse((result) =>
+    result.url().includes('/search?q=catalog')
+    && result.request().headers()['accept'] === 'application/vnd.fluo.react-navigation+json;v=1');
   await link.click();
+  const approvedSearch = await searchApproval;
+  expect(approvedSearch.status()).toBe(200);
+  await expect(page).toHaveURL(/\/search\?q=catalog$/u);
+  await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+  await expect(page.getByLabel('Current route')).toContainText('/search?q=catalog ({})');
+  await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Page count: 0' })).toBeVisible();
+
+  const productApproval = page.waitForResponse((result) =>
+    result.url().includes('/products/sku-84?preview=false')
+    && result.request().headers()['accept'] === 'application/vnd.fluo.react-navigation+json;v=1');
+  const productLink = page.getByRole('link', { name: 'Open sku-84' }).first();
+  await expect(productLink).toHaveAttribute('href', '/products/sku-84?preview=false');
+  await productLink.click();
+  expect((await productApproval).status()).toBe(200);
   await expect(page).toHaveURL(/\/products\/sku-84\?preview=false$/u);
   await expect(page.getByRole('heading', { name: 'Catalog item sku-84' })).toBeVisible();
+  await expect(page.getByLabel('Current route')).toContainText('/products/sku-84?preview=false ({"sku":"sku-84"})');
+  await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeVisible();
 
+  const pushedApproval = page.waitForResponse((result) =>
+    result.url().includes('/products/sku-126?preview=true')
+    && result.request().headers()['accept'] === 'application/vnd.fluo.react-navigation+json;v=1');
   await page.getByRole('button', { name: 'Push sku-126' }).click();
+  expect((await pushedApproval).status()).toBe(200);
   await expect(page).toHaveURL(/\/products\/sku-126\?preview=true$/u);
   await expect(page.getByRole('heading', { name: 'Catalog item sku-126' })).toBeVisible();
   expect(browserDiagnostics).toEqual([]);
@@ -181,7 +205,7 @@ test('updates a React component and CSS over the app WebSocket without losing el
       predicate: ({ payload }) => String(payload).includes('"type":"error"'),
       timeout: 15_000,
     });
-    await writeFile(pageFile, originalPage.replace("const sku = params['sku'] ?? 'unknown';", 'const sku = ;'));
+    await writeFile(pageFile, originalPage.replace("const sku = typeof props['sku'] === 'string' ? props['sku'] : '';", 'const sku = ;'));
     await transformError;
     await expect(page.locator('vite-error-overlay')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.dataset.hmrIdentity)).toBe('retained');
@@ -201,4 +225,83 @@ test('updates a React component and CSS over the app WebSocket without losing el
   } finally {
     await Promise.all([writeFile(pageFile, originalPage), writeFile(cssFile, originalCss)]);
   }
+});
+test('keeps document navigation when JavaScript is disabled', async ({ browser }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  try {
+    const page = await context.newPage();
+    await page.goto('/products/sku-42?preview=true');
+    const documentRequest = page.waitForResponse((result) =>
+      result.url().includes('/search?q=catalog') && result.request().isNavigationRequest());
+    await page.getByRole('link', { name: 'Search catalog' }).first().click();
+    expect((await documentRequest).status()).toBe(200);
+    await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
+test('keeps modified links as native new-tab documents', async ({ page }) => {
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+
+  const popupPromise = page.waitForEvent('popup');
+  const documentResponse = page.context().waitForEvent('response', {
+    predicate: (response) =>
+      response.url().includes('/search?q=catalog') && response.request().isNavigationRequest(),
+  });
+  await page.getByRole('link', { name: 'Open search in new tab' }).click();
+  const popup = await popupPromise;
+  const approvedDocument = await documentResponse;
+  await expect(popup.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+  expect(approvedDocument.status()).toBe(200);
+  const modifiedPopupPromise = page.context().waitForEvent('page');
+  await page.getByRole('link', { name: 'Search catalog' }).first().click({ modifiers: ['ControlOrMeta'] });
+  const modifiedPopup = await modifiedPopupPromise;
+  await expect(modifiedPopup.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+  await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+  await modifiedPopup.close();
+});
+
+test('keeps native anchors usable before hydration', async ({ page }) => {
+  const development = ['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? '');
+  const entryPath = development ? '/src/entry-client-dev.ts' : '/assets/entry-client.js';
+  let releaseBootstrap = () => {};
+  const held = new Promise<void>((resolve) => { releaseBootstrap = resolve; });
+  let firstEntry = true;
+  await page.route(`**${entryPath}`, async (route) => {
+    if (firstEntry) {
+      firstEntry = false;
+      await held;
+    }
+    await route.continue();
+  });
+  try {
+    const entryRequest = page.waitForRequest((request) => new URL(request.url()).pathname === entryPath);
+    await page.goto('/products/sku-42?preview=true', { waitUntil: 'commit' });
+    await entryRequest;
+    await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+
+    const document = page.waitForResponse((result) =>
+      result.url().includes('/search?q=catalog') && result.request().isNavigationRequest());
+    await page.getByRole('link', { name: 'Search catalog' }).first().click({ noWaitAfter: true });
+    expect((await document).status()).toBe(200);
+  } finally {
+    releaseBootstrap();
+  }
+});
+
+test('falls back to a native document for an unsupported destination', async ({ page }) => {
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+  const rejected = page.waitForResponse((result) =>
+    result.url().endsWith('/not-built')
+    && result.request().headers()['accept'] === 'application/vnd.fluo.react-navigation+json;v=1');
+  const document = page.waitForResponse((result) =>
+    result.url().endsWith('/not-built') && result.request().isNavigationRequest());
+  await page.getByRole('link', { name: 'Missing page' }).click();
+  expect((await rejected).status()).toBe(404);
+  expect((await document).status()).toBe(404);
+  await expect(page).toHaveURL(/\/not-built$/u);
 });

@@ -1,4 +1,5 @@
 import { ChildProcess, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -149,6 +150,54 @@ describe('Node restart runner watcher failures', () => {
     expect(children).toHaveLength(1);
     expect(signals).toEqual([]);
     child.emit('close', 0);
+    await expect(running).resolves.toBe(0);
+  });
+
+  it('replays a Vite-owned change when its watcher missed the corrected contents', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-react-recovery-'));
+    createdDirectories.push(projectDirectory);
+    const sourceDirectory = join(projectDirectory, 'src');
+    mkdirSync(sourceDirectory);
+    const page = join(sourceDirectory, 'page.tsx');
+    writeFileSync(page, 'export const Page = () => "initial";\n');
+    const listeners = new Map<string, (event: string, filename: string | Buffer | null) => void>();
+    const signals: Array<NodeJS.Signals | undefined> = [];
+    const messages: unknown[] = [];
+    const scheduler = createManualRestartScheduler();
+    const child = createMockChild(signals);
+    child.send = (message) => { messages.push(message); return true; };
+    const running = runNodeRestartRunner({
+      env: {},
+      projectDirectory,
+      reactVite: true,
+      restartScheduler: scheduler,
+      signalTarget: new EventEmitter(),
+      spawnChild: () => child,
+      watchTarget: (target, optionsOrListener, listener) => {
+        listeners.set(target, typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+        return new TestWatcher();
+      },
+    });
+
+    child.emit('message', { type: 'fluo:react-vite-hmr-file', file: page });
+    const invalidSource = 'export const Page = () => "invalid";\n';
+    writeFileSync(page, invalidSource);
+    child.emit('message', {
+      type: 'fluo:react-vite-hmr-observed',
+      file: page,
+      digest: createHash('sha256').update(invalidSource).digest('hex'),
+    });
+    listeners.get(sourceDirectory)?.('change', 'page.tsx');
+    scheduler.flush();
+    expect(messages).toEqual([]);
+
+    writeFileSync(page, 'export const Page = () => "recovered";\n');
+    listeners.get(sourceDirectory)?.('change', 'page.tsx');
+    scheduler.flush();
+
+    expect(messages).toEqual([{ type: 'fluo:react-vite-hmr-reconcile', file: page }]);
+    expect(signals).toEqual([]);
+    closeMockChild(child, 0);
     await expect(running).resolves.toBe(0);
   });
 
@@ -650,9 +699,11 @@ describe('terminal process-group shutdown', () => {
       name: 'vite', type: 'module', exports: './index.mjs',
     }));
     writeFileSync(join(projectDirectory, 'node_modules', 'vite', 'index.mjs'), `
+      import { EventEmitter } from 'node:events';
       import { createServer as createHttpServer } from 'node:http';
       export async function createServer() {
         return {
+          watcher: new EventEmitter(),
           async ssrLoadModule() {
             return {
               async startReactViteApp() {
