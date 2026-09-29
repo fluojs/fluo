@@ -10,10 +10,6 @@
       "description": "Builds one source-read-only issue acceptance preflight.",
       "models": [
         {
-          "model": "opencodex/gpt-6-sol",
-          "reasoning": "high"
-        },
-        {
           "model": "chatgpt-subscription/gpt-6-sol",
           "reasoning": "high"
         }
@@ -41,10 +37,6 @@
       "description": "Implements one Fluo issue inside its assigned worktree.",
       "prompt": "Only read, bash, and apply_patch are available. Do not call eval, todo, task, dag, or team tools.",
       "models": [
-        {
-          "model": "opencodex/gpt-6-sol",
-          "reasoning": "medium"
-        },
         {
           "model": "chatgpt-subscription/gpt-6-sol",
           "reasoning": "medium"
@@ -106,10 +98,6 @@
     "fluo-code-reviewer": {
       "description": "Reviews one exact issue head for code correctness and quality.",
       "models": [
-        {
-          "model": "opencodex/gpt-6-sol",
-          "reasoning": "high"
-        },
         {
           "model": "chatgpt-subscription/gpt-6-sol",
           "reasoning": "high"
