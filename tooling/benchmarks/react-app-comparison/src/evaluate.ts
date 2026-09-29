@@ -33,7 +33,7 @@ export interface MeasurementRun {
   readonly runId: string;
   readonly trace: string | null;
   readonly warmupRuns: number;
-  readonly correctness: 'pass' | 'fail';
+  readonly correctness: 'pass' | 'fail' | 'inconclusive';
   readonly metrics: Readonly<Partial<Record<Metric, number>>>;
 }
 
@@ -45,7 +45,7 @@ export interface EvaluationCheck {
   readonly verdict: Verdict;
   readonly reason: 'absolute-budget' | 'relative-band' | 'within-budget' | 'missing-metric'
     | 'missing-trace' | 'correctness-failure' | 'insufficient-runs' | 'missing-framework'
-    | 'noise' | 'outlier' | 'invalid-value' | 'insufficient-warmup';
+     | 'noise' | 'outlier' | 'invalid-value' | 'insufficient-warmup' | 'measurement-quality';
   readonly observed?: number;
   readonly limit?: number;
 }
@@ -107,6 +107,7 @@ export function evaluatePerformance(baseline: Baseline, runs: readonly Measureme
       for (const sample of samples) {
         if (!sample.trace?.trim()) checks.push({ ...context, verdict: 'inconclusive', reason: 'missing-trace' });
         if (sample.correctness === 'fail') checks.push({ ...context, verdict: 'fail', reason: 'correctness-failure' });
+        if (sample.correctness === 'inconclusive') checks.push({ ...context, verdict: 'inconclusive', reason: 'measurement-quality' });
         if (!Number.isInteger(sample.warmupRuns) || sample.warmupRuns < warmupRuns) {
           checks.push({ ...context, verdict: 'inconclusive', reason: 'insufficient-warmup' });
         }

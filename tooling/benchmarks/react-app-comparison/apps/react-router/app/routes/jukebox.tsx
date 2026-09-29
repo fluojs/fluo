@@ -12,6 +12,7 @@ export default function Jukebox() {
   const audio = useRef<HTMLAudioElement | null>(null);
   const [identity] = useState(resourceId);
   const [ack, setAck] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
   const operations = useRef(0);
   const location = useLocation();
   const navigation = useNavigation();
@@ -21,6 +22,7 @@ export default function Jukebox() {
     const resource = new Audio(url);
     resource.loop = true;
     audio.current = resource;
+    setHydrated(true);
     return () => {
       resource.pause();
       resource.removeAttribute("src");
@@ -44,7 +46,7 @@ export default function Jukebox() {
   }
 
   return (
-    <section data-testid="jukebox-resource" data-instance={identity} data-resource-id={identity}>
+    <section data-testid="jukebox-resource" data-instance={identity} data-resource-id={identity} data-benchmark-hydrated={hydrated}>
       <p className="lede">A live audio resource stays mounted while the jukebox view changes.</p>
       <h1>Jukebox</h1>
       <nav className="tabs" aria-label="Jukebox views">

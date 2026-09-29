@@ -79,7 +79,7 @@ export default function JukeboxShell({ songs, children }) {
         ))}
       </nav>
       <div className="player">
-        <p>Player resource <span data-testid="jukebox-resource" data-instance={resource} data-resource-id={resource} className="sku">{resource}</span></p>
+        <p>Player resource <span data-testid="jukebox-resource" data-instance={resource} data-resource-id={resource} data-benchmark-hydrated={resource !== 'initializing'} className="sku">{resource}</span></p>
         <button data-testid="jukebox-operation" type="button" aria-label="Operate resource" onClick={operate}>{playing ? 'Pause audio' : 'Play audio'}</button>
         <output data-testid="jukebox-ack" data-operation-ack={ack} aria-label="Audio operation acknowledgements">{ack}</output>
         <p role="status">{status}</p>

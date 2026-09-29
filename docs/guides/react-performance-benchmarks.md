@@ -84,6 +84,11 @@ using one shared-runner timing result to reject a merge. The separate representa
 performance workflow fails on confirmed regression, retains the failure trace, and
 reports uncertainty instead of silently marking it green. Neither workflow replaces
 the local-only HTTP/DI benchmark policy or #3879's final product-journey acceptance.
+The smoke is conditional within the existing `static` verification task, with a
+distinct React selector; the HTTP comparison keeps its own conditional coverage.
+The measured approval marker is rendered by the destination view. A replaced
+document or failed response capture makes the run inconclusive, while genuine
+request failures remain counted together with throughput errors.
 
 ## Reproducing evidence
 
@@ -98,7 +103,8 @@ pnpm --dir tooling/benchmarks/react-app-comparison --ignore-workspace test:smoke
 
 For repeated measurements, run the README's `run-gate.mjs` command on the
 representative host. Its `results/<head-sha>/` directory contains separate
-production and development profile receipts, per-run `traces/`, `dev-traces/`,
+`discovery/` and `regression/` invocations, each with production and development
+profile receipts, per-run `traces/`, `dev-traces/`,
 `combined-traces/`, and `verdict.json`; retain that entire directory outside
 the committed source tree. The initial baseline pins Node.js 24.20.0,
 pnpm 10.4.1, Playwright 1.61.1, the seeded dataset, and the macOS arm64

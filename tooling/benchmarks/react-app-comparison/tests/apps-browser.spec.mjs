@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
-import { PRODUCTS, SONGS, SESSION_COOKIE } from '../fixture/domain.mjs';
+import { PRODUCTS, SESSION_COOKIE, SONGS } from '../fixture/domain.mjs';
 
 const baseline = JSON.parse(await readFile(new URL('../baseline.json', import.meta.url), 'utf8'));
 const profileIds = [
@@ -140,6 +140,7 @@ test('jukebox retains one usable browser resource through client navigation', as
   for (const song of SONGS) await expect(page.getByText(song.title).first()).toBeVisible();
   const resource = page.getByTestId('jukebox-resource');
   await expect(resource).toBeVisible();
+  await expect(resource).toHaveAttribute('data-benchmark-hydrated', 'true');
   await expect(page.locator('[data-approved-view="songs"]')).toBeVisible();
   await expect(resource).toHaveAttribute('data-instance', /.+/u);
   const identity = await resource.getAttribute('data-instance');

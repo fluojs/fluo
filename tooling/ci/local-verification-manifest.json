@@ -11,7 +11,7 @@
         { "executable": "node", "argv": ["tooling/testing/node-runtime-floor.mjs", "--bundle", "--dist", "--output", ".omo/verification/runtime-floor"], "cwd": "." },
         { "executable": "node", "argv": ["tooling/testing/node-runtime-floor.mjs", ".omo/verification/runtime-floor/runtime-floor-exercise.mjs", "--self-test"], "cwd": "." }
       ] },
-    { "id": "static", "runtime": "primary", "dependencies": ["build"], "capabilities": ["node-tests", "typecheck", "lint", "platform-governance", "changeset", "docs", "docs-package", "docs-release", "declaration-importers", "documentation-governance", "global-setup-contract", "manifest-lockfile", "package-dependency-closure", "source-copy-inventory", "isolated-benchmark"], "inputs": ["build.tar"], "outputs": ["docs-site"],
+    { "id": "static", "runtime": "primary", "dependencies": ["build"], "capabilities": ["node-tests", "typecheck", "lint", "platform-governance", "changeset", "docs", "docs-package", "docs-release", "declaration-importers", "documentation-governance", "global-setup-contract", "manifest-lockfile", "package-dependency-closure", "source-copy-inventory", "isolated-benchmark", "react-app-benchmark"], "inputs": ["build.tar"], "outputs": ["docs-site"],
       "commands": [
         { "executable": "pnpm", "argv": ["install", "--frozen-lockfile"], "cwd": "." },
         { "executable": "pnpm", "argv": ["test:node"], "cwd": "." },
@@ -24,7 +24,10 @@
         { "executable": "pnpm", "argv": ["docs:release-check", "--require-clean"], "cwd": "." },
         { "executable": "pnpm", "argv": ["--dir", "tooling/benchmarks/http-comparison", "--ignore-workspace", "install", "--frozen-lockfile"], "cwd": ".", "when": "isolated-benchmark" },
         { "executable": "pnpm", "argv": ["--dir", "tooling/benchmarks/http-comparison", "--ignore-workspace", "typecheck"], "cwd": ".", "when": "isolated-benchmark" },
-        { "executable": "pnpm", "argv": ["--dir", "tooling/benchmarks/http-comparison", "--ignore-workspace", "test"], "cwd": ".", "when": "isolated-benchmark" }
+        { "executable": "pnpm", "argv": ["--dir", "tooling/benchmarks/http-comparison", "--ignore-workspace", "test"], "cwd": ".", "when": "isolated-benchmark" },
+        { "executable": "pnpm", "argv": ["--dir", "tooling/benchmarks/react-app-comparison", "--ignore-workspace", "install", "--frozen-lockfile"], "cwd": ".", "when": "react-app-benchmark" },
+        { "executable": "pnpm", "argv": ["--dir", "tooling/benchmarks/react-app-comparison", "--ignore-workspace", "exec", "playwright", "install", "--with-deps", "chromium"], "cwd": ".", "when": "react-app-benchmark" },
+        { "executable": "pnpm", "argv": ["--dir", "tooling/benchmarks/react-app-comparison", "--ignore-workspace", "test:smoke"], "cwd": ".", "when": "react-app-benchmark" }
       ] },
     { "id": "packages-1", "runtime": "primary", "dependencies": ["build"], "capabilities": ["packages-1"], "inputs": ["build.tar"], "outputs": [], "commands": [{ "executable": "pnpm", "argv": ["install", "--frozen-lockfile"], "cwd": "." }, { "executable": "pnpm", "argv": ["vitest", "run", "--project", "packages", "--shard=1/4", "--maxWorkers=1"], "cwd": "." }] },
     { "id": "packages-2", "runtime": "primary", "dependencies": ["build"], "capabilities": ["packages-2"], "inputs": ["build.tar"], "outputs": [], "commands": [{ "executable": "pnpm", "argv": ["install", "--frozen-lockfile"], "cwd": "." }, { "executable": "pnpm", "argv": ["vitest", "run", "--project", "packages", "--shard=2/4", "--maxWorkers=1"], "cwd": "." }] },
@@ -88,7 +91,6 @@
     { "id": "package-dependency-closure", "when": "package-manifest", "commands": [{ "executable": "pnpm", "argv": ["test:verify"], "cwd": "." }] }
   ],
   "rules": [
-    { "prefix": "tooling/benchmarks/react-app-comparison/", "commands": [{ "executable": "pnpm", "argv": ["--dir", "tooling/benchmarks/react-app-comparison", "--ignore-workspace", "test:smoke"], "cwd": "." }] },
     { "prefix": "packages/platform-deno/", "commands": [{ "executable": "node", "argv": ["tooling/scripts/run-workspace-build-closure.mjs", "@fluojs/platform-deno"], "cwd": "." }, { "executable": "deno", "argv": ["check", "--no-lock", "--node-modules-dir=auto", "--config", "packages/platform-deno/deno/deno.json", "npm:@fluojs/platform-deno"], "cwd": "." }, { "executable": "deno", "argv": ["test", "--no-lock", "--config", "packages/platform-deno/deno/deno.json", "--allow-net", "--allow-read", "packages/platform-deno/deno/native-adapter.test.js"], "cwd": "." }] },
     { "prefix": "packages/studio/", "commands": [{ "executable": "pnpm", "argv": ["--filter", "@fluojs/studio", "test:browser"], "cwd": "." }] },
     { "prefix": "packages/cli/src/new/", "commands": [{ "executable": "pnpm", "argv": ["--dir", "packages/cli", "sandbox:matrix"], "cwd": "." }] },

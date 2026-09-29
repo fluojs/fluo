@@ -1,8 +1,6 @@
-import { spawn } from 'node:child_process';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { once } from 'node:events';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { arch, cpus, platform, release, totalmem } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +8,7 @@ import { promisify } from 'node:util';
 
 import { evaluateEvidence } from './gate.mjs';
 import { mergeEvidence } from './measure.mjs';
+import { stopOwnedProcess } from './process-group.mjs';
 
 const execFileAsync = promisify(execFile);
 const FRAMEWORKS = ['fluo', 'next', 'react-router', 'tanstack-start'];
@@ -39,7 +38,7 @@ export function requireDevDefinitions(config) {
   return config.dev;
 }
 
-export async function startServers(definitions) {
+export async function startServers(definitions, onStart = () => {}) {
   const servers = [];
   try {
     for (const definition of definitions) {
@@ -50,6 +49,7 @@ export async function startServers(definitions) {
         detached: true,
       });
       servers.push({ ...definition, child });
+      onStart(child);
       const url = await new Promise((resolveReady, rejectReady) => {
         let output = '';
         const finish = (result, value) => {
@@ -90,26 +90,17 @@ export async function startServers(definitions) {
 }
 
 export async function stopServers(servers) {
-  await Promise.all(servers.map(async ({ child }) => {
-    if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return;
-    const exit = once(child, 'exit');
-    try {
-      process.kill(-child.pid, 'SIGTERM');
-    } catch (error) {
-      if (error.code !== 'ESRCH') throw error;
-    }
-    let timer;
-    try {
-      await Promise.race([
-        exit,
-        new Promise((_, reject) => {
-          timer = setTimeout(() => reject(new Error(`server ${child.pid} shutdown timeout`)), 5_000);
-        }),
-      ]);
-    } finally {
-      clearTimeout(timer);
-    }
-  }));
+  await Promise.all(servers.map(({ child }) => stopOwnedProcess(child)));
+}
+
+export async function readMeasurementReceipt(run, path) {
+  try {
+    await run();
+  } catch (error) {
+    if (error.code !== 1) throw error;
+    console.error(`correctness exited ${error.code}; retaining raw receipt ${path}`);
+  }
+  return JSON.parse(await readFile(path, 'utf8'));
 }
 
 async function main() {
@@ -125,7 +116,47 @@ async function main() {
   const output = resolve(outputDirectory);
   if (!output.startsWith(`${suite}/`)) throw new TypeError('evidence output must remain inside the isolated suite');
   await mkdir(output, { recursive: true });
+  if ((await readdir(output)).length) throw new Error(`evidence output must start empty: ${output}`);
   const config = JSON.parse(await readFile(configPath, 'utf8'));
+  const owned = new Set();
+  let servers = [];
+  const interrupt = (code) => {
+    process.exitCode = code;
+    void Promise.all([...owned].map((child) => stopOwnedProcess(child)))
+      .catch((error) => console.error(error));
+  };
+  const onInterrupt = () => interrupt(130);
+  const onTerminate = () => interrupt(143);
+  process.once('SIGINT', onInterrupt);
+  process.once('SIGTERM', onTerminate);
+  async function runOwned(command, args, options) {
+    const child = spawn(command, args, { ...options, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    owned.add(child);
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    const closed = new Promise((resolveClose) => child.once('close', resolveClose));
+    try {
+      const code = await new Promise((resolveExit, rejectExit) => {
+        child.once('error', rejectExit);
+        child.once('exit', resolveExit);
+      });
+      if (code !== 0) {
+        const error = new Error(`${command} exited ${code}: ${stderr.slice(-2000)}`);
+        error.code = code;
+        error.stdout = stdout;
+        error.stderr = stderr;
+        throw error;
+      }
+      return { stdout, stderr };
+    } finally {
+      await stopOwnedProcess(child);
+      await closed;
+      owned.delete(child);
+    }
+  }
+  try {
   requireDevDefinitions(config);
   const baseline = JSON.parse(await readFile(join(suite, 'baseline.json'), 'utf8'));
   if (FRAMEWORKS.some((framework) => !config.servers?.[framework]?.url
@@ -135,9 +166,7 @@ async function main() {
   console.log('Running four-app frozen production correctness smoke before timing.');
   let smoke;
   try {
-    smoke = await execFileAsync('pnpm', ['--ignore-workspace', 'test:smoke'], {
-      cwd: suite, maxBuffer: 20 * 1024 * 1024,
-    });
+    smoke = await runOwned('pnpm', ['--ignore-workspace', 'test:smoke'], { cwd: suite });
   } catch (error) {
     if (error.stdout) process.stdout.write(error.stdout.slice(-12_000));
     if (error.stderr) process.stderr.write(error.stderr.slice(-2_000));
@@ -186,13 +215,13 @@ async function main() {
       cpuModel: cpus()[0]?.model, cpuCores: cpus().length, totalMemoryBytes: totalmem() },
     root,
   };
-  const servers = await startServers(FRAMEWORKS.map((framework) => ({
+  servers = await startServers(FRAMEWORKS.map((framework) => ({
     name: framework,
     ...config.servers[framework],
     readyPattern: new RegExp(config.servers[framework].readyPattern, 'u'),
     urlForMatch: () => config.servers[framework].url,
     cwd: resolve(suite, `apps/${framework}`),
-  })));
+  })), (child) => owned.add(child));
   try {
     const apps = Object.fromEntries(servers.map((server) => [server.name, server.url]));
     const serverPids = Object.fromEntries(servers.map((server) => [server.name, server.child.pid]));
@@ -211,10 +240,10 @@ async function main() {
       const configFile = join(output, `${profile}-config.json`);
       const resultFile = join(output, `${profile}.json`);
       await writeFile(configFile, `${JSON.stringify(measurement, null, 2)}\n`);
-      await execFileAsync(process.execPath,
-        [join(suite, 'src/measure.mjs'), '--config', configFile, '--output', resultFile],
-        { cwd: suite, maxBuffer: 10 * 1024 * 1024 });
-      receipts.push(JSON.parse(await readFile(resultFile, 'utf8')));
+      receipts.push(await readMeasurementReceipt(() =>
+        runOwned(process.execPath,
+          [join(suite, 'src/measure.mjs'), '--config', configFile, '--output', resultFile],
+          { cwd: suite }), resultFile));
     }
     await stopServers(servers);
     for (const [index, receipt] of receipts.entries()) {
@@ -224,10 +253,10 @@ async function main() {
           ...JSON.parse(await readFile(join(output, `${receipt.profile}-config.json`), 'utf8')),
           dev: config.dev,
         }, null, 2)}\n`);
-        await execFileAsync(process.execPath,
-          [join(suite, 'src/measure.mjs'), '--config', devConfig, '--output', devFile, '--dev'],
-          { cwd: suite, maxBuffer: 10 * 1024 * 1024 });
-        const development = JSON.parse(await readFile(devFile, 'utf8'));
+        const development = await readMeasurementReceipt(() =>
+          runOwned(process.execPath,
+            [join(suite, 'src/measure.mjs'), '--config', devConfig, '--output', devFile, '--dev'],
+            { cwd: suite }), devFile);
         receipts[index] = await mergeEvidence(receipt, development, join(output, 'combined-traces'));
     }
     const verdict = await evaluateEvidence(baseline, receipts, output);
@@ -237,6 +266,11 @@ async function main() {
       receipt.runs.every((run) => run.correctness === 'pass')))) process.exitCode = 1;
   } finally {
     await stopServers(servers);
+  }
+  } finally {
+    await Promise.all([...owned].map((child) => stopOwnedProcess(child)));
+    process.off('SIGINT', onInterrupt);
+    process.off('SIGTERM', onTerminate);
   }
 }
 

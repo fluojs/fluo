@@ -1,11 +1,11 @@
 import {
+  createReactRouteSnapshot,
   Link,
   ReactClientRouterProvider,
-  createReactRouteSnapshot,
-  useNavigation,
   type ReactNavigationModules,
+  useNavigation,
 } from '@fluojs/react/client';
-import { createElement, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createElement, type ReactNode, useEffect, useRef, useState } from 'react';
 
 import { createToneUrl } from '../../../fixture/audio.mjs';
 import type { Product, Song } from '../../../fixture/domain.mjs';
@@ -65,6 +65,7 @@ function JukeboxResource() {
     {
       'aria-label': 'Persistent jukebox resource',
       'data-instance': resourceId,
+      'data-benchmark-hydrated': Boolean(resourceId),
       'data-resource-id': resourceId,
       'data-testid': 'jukebox-resource',
     },

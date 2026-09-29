@@ -157,6 +157,71 @@ test('counts initial document requests independently from subsequent journey req
   assert.equal(requests.length, 79);
 });
 
+test('browser request failures remain in error rate after successful throughput requests', { timeout: 20_000 }, async () => {
+  const server = createServer((request, response) => {
+    if (request.url === '/drop') { request.socket.destroy(); return; }
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end('<!doctype html><h1>Listing</h1><img src="/drop">');
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const url = `http://127.0.0.1:${address.port}/`;
+  const journeys = Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+    .map((name) => [name, { path: '/' }]));
+  const driver = await createBrowserDriver({
+    journeys, throughput: { fluo: { requests: 2, concurrency: 1, path: '/' } },
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    const observation = await driver.measure({ framework: 'fluo', runId: 'request-failure',
+      device: 'desktop', mode: 'native', url });
+    assert.ok(observation.requests.some((request) => request.error && request.url.endsWith('/drop')));
+    assert.ok(observation.metrics.errorRate > 0);
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('full document navigation retains an inconclusive interaction instead of a false approval', { timeout: 20_000 }, async () => {
+  const server = createServer((request, response) => {
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(request.url === '/jukebox/qr'
+      ? '<!doctype html><div data-approved-view="qr">QR destination</div>'
+      : '<!doctype html><div data-benchmark-hydrated="true"><a href="/jukebox/qr">QR</a></div>');
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const journeys = Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+    .map((name) => [name, { path: '/' }]));
+  const driver = await createBrowserDriver({
+    journeys, interactions: [{
+      path: '/jukebox/songs', trigger: 'a[href="/jukebox/qr"]',
+      pending: '[data-navigation-pending]', approved: '[data-approved-view="qr"]',
+    }],
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    const observation = await driver.measure({ framework: 'fluo', runId: 'document-replacement',
+      device: 'desktop', mode: 'native', url: `http://127.0.0.1:${address.port}/` });
+    assert.equal(Object.hasOwn(observation.metrics, 'interactionApprovedP50Ms'), false);
+    assert.ok(observation.qualityFailures.some((failure) => failure.includes('document replaced')));
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
 test('marks a document-replacing interaction unavailable rather than throwing or pooling partial samples', () => {
   // Given: one framework replaced the document before the browser-side observer could resolve.
   const result = summarizeInteractions([

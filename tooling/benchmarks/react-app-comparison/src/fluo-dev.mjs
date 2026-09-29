@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { watch } from 'node:fs';
 import { resolve } from 'node:path';
+import { stopOwnedProcess } from './process-group.mjs';
 
 const app = resolve(import.meta.dirname, '../apps/fluo');
 let child;
@@ -10,12 +11,10 @@ let building = false;
 let changed = false;
 
 async function stop() {
-  if (!child || child.exitCode !== null) return;
-  const process = child;
+  if (!child) return;
+  const server = child;
   child = undefined;
-  const exit = once(process, 'exit');
-  process.kill('SIGTERM');
-  await exit;
+  await stopOwnedProcess(server, { group: false });
 }
 
 async function buildAndStart() {

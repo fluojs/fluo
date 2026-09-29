@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { METRICS as EVALUATOR_METRICS } from '../src/evaluate.ts';
+import { collectDevMeasurements, collectMeasurements, mergeEvidence, PROFILES, planMeasurements, verifyTraceFiles } from '../src/measure.mjs';
 import { createBrowserDriver } from '../src/measure-browser.mjs';
-import { collectDevMeasurements, collectMeasurements, mergeEvidence, planMeasurements, PROFILES, verifyTraceFiles } from '../src/measure.mjs';
 
 const frameworks = ['fluo', 'next', 'react-router', 'tanstack-start'];
 const config = {
@@ -99,6 +99,25 @@ test('missing observations stay unavailable and cannot become zero-valued metric
     const trace = JSON.parse(await readFile(result.runs[0].trace, 'utf8'));
     assert.equal(trace.unavailable.lcpMs, 'browser did not emit LCP');
     assert.equal(trace.unavailable.devColdReadyMs, 'not measured in production-browser mode');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('a replaced interaction document makes correctness inconclusive in the retained trace', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-measure-'));
+  try {
+    const result = await collectMeasurements({ ...config, warmupRuns: 0, measurementRuns: 1 }, {
+      async check() { return { pass: true, steps: ['jukebox'] }; },
+      async measure() {
+        return { metrics: { errorRate: 0 }, unavailable: {
+          interactionApprovedP50Ms: 'document replaced the browser timing observer',
+        }, requests: [], qualityFailures: ['document replaced the browser timing observer'] };
+      },
+    }, directory);
+    assert.ok(result.runs.every((run) => run.correctness === 'inconclusive'));
+    const trace = JSON.parse(await readFile(result.runs[0].trace, 'utf8'));
+    assert.deepEqual(trace.qualityFailures, ['document replaced the browser timing observer']);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

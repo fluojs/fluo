@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { evaluatePerformance, type Baseline, type Metric, type MeasurementRun } from '../src/evaluate.ts';
+import { type Baseline, evaluatePerformance, type MeasurementRun, type Metric } from '../src/evaluate.ts';
 
 const values = {
   coldTtfbMs: 80,
@@ -141,6 +141,16 @@ test('fails correctness even if all measured timings pass', () => {
   // Then
   assert.equal(result.verdict, 'fail');
   assert.ok(result.checks.some((check) => check.reason === 'correctness-failure'));
+});
+
+test('classifies a captured response failure as inconclusive even when other metrics pass', () => {
+  const samples = runs();
+  const first = samples[0];
+  assert.ok(first);
+  samples[0] = { ...first, correctness: 'inconclusive' };
+  const result = evaluatePerformance(baseline, samples);
+  assert.equal(result.verdict, 'inconclusive');
+  assert.ok(result.checks.some((check) => check.reason === 'measurement-quality'));
 });
 
 test('reports single-run and noisy timing breaches as inconclusive, not pass or fail', () => {

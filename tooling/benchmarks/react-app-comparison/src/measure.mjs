@@ -1,7 +1,7 @@
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { arch, cpus, platform, release, totalmem } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { arch, cpus, platform, release, totalmem } from 'node:os';
 
 export const FRAMEWORKS = ['fluo', 'next', 'react-router', 'tanstack-start'];
 export const PROFILES = Object.freeze({
@@ -59,12 +59,15 @@ export async function collectMeasurements(config, driver, directory) {
       environment: { platform: platform(), arch: arch(), release: release(), cpu: cpus()[0]?.model,
         cpuCores: cpus().length, memoryBytes: totalmem(), runtimeVersion: process.version,
         browserVersion: driver.browserVersion ?? null },
-      correctness, metrics, unavailable, requests: observation.requests ?? [], timings: observation.timings ?? {},
+      correctness, qualityFailures: observation.qualityFailures ?? [], metrics, unavailable,
+      requests: observation.requests ?? [], timings: observation.timings ?? {},
       artifacts: observation.artifacts ?? {},
     }, null, 2)}\n`);
     const run = {
       profile: item.profile, mode: item.mode, framework: item.framework, runId: item.runId,
-      trace, warmupRuns: config.warmupRuns, correctness: correctness.pass ? 'pass' : 'fail', metrics,
+      trace, warmupRuns: config.warmupRuns,
+      correctness: !correctness.pass ? 'fail' : observation.qualityFailures?.length ? 'inconclusive' : 'pass',
+      metrics,
     };
     (item.warmup ? warmups : runs).push(run);
   }
@@ -117,7 +120,8 @@ export async function mergeEvidence(production, development, directory) {
       schemaVersion: 1, sourceTraces: [run.trace, dev.trace],
       correctness: { production: run.correctness, development: dev.correctness },
     }, null, 2)}\n`);
-    runs.push({ ...run, trace, correctness: run.correctness === 'pass' && dev.correctness === 'pass' ? 'pass' : 'fail',
+    runs.push({ ...run, trace, correctness: run.correctness === 'fail' || dev.correctness === 'fail'
+      ? 'fail' : run.correctness === 'inconclusive' || dev.correctness === 'inconclusive' ? 'inconclusive' : 'pass',
       metrics: { ...run.metrics, ...dev.metrics } });
   }
   return { ...production, runs, developmentWarmups: development.warmups };
@@ -189,7 +193,7 @@ async function main() {
   }
   await mkdir(dirname(output), { recursive: true });
   await writeFile(output, `${JSON.stringify(result, null, 2)}\n`);
-  if (result.runs.some((run) => run.correctness === 'fail')) process.exitCode = 1;
+  if (result.runs.some((run) => run.correctness !== 'pass')) process.exitCode = 1;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

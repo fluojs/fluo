@@ -122,6 +122,7 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
     'runtime-floor', 'native-bun', 'native-web', 'packed'];
   if (required.some((id) => !taskIds.has(id))) throw new TypeError('missing required capability task');
   const applicableBenchmark = changedFiles.some((file) => file.startsWith('tooling/benchmarks/http-comparison/'));
+  const applicableReactBenchmark = changedFiles.some((file) => file.startsWith('tooling/benchmarks/react-app-comparison/'));
   const tasks = manifest.tasks.map((definition) => {
     if (!['primary', 'compat24', 'compat26', 'runtimeFloor'].includes(definition.runtime)
       || !Array.isArray(definition.dependencies) || !Array.isArray(definition.capabilities)
@@ -129,7 +130,9 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
       || !Array.isArray(definition.commands) || definition.commands.length === 0) {
       throw new TypeError(`malformed verification task: ${definition.id}`);
     }
-    const commands = definition.commands.filter((item) => !item.when || item.when === 'isolated-benchmark' && applicableBenchmark)
+    const commands = definition.commands.filter((item) => !item.when
+      || item.when === 'isolated-benchmark' && applicableBenchmark
+      || item.when === 'react-app-benchmark' && applicableReactBenchmark)
       .map((item) => {
         if (!['pnpm', 'node', 'bun', 'deno'].includes(item.executable)
           || !Array.isArray(item.argv) || item.argv.some((arg) => typeof arg !== 'string') || item.cwd !== '.') {
@@ -153,7 +156,9 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
         env: { FLUO_CLI_SANDBOX_PROFILE: 'full', FLUO_CLI_SANDBOX_DEPENDENCIES: 'fresh' } });
     }
     return { ...definition, commands,
-      capabilities: definition.capabilities.filter((capability) => capability !== 'isolated-benchmark' || applicableBenchmark) };
+      capabilities: definition.capabilities.filter((capability) =>
+        (capability !== 'isolated-benchmark' || applicableBenchmark)
+        && (capability !== 'react-app-benchmark' || applicableReactBenchmark)) };
   });
   const taskById = new Map(tasks.map((task) => [task.id, task]));
   for (const task of tasks) {
@@ -196,7 +201,10 @@ export function buildVerificationPlan({ changedFiles, identity, manifest = readV
     identity,
     manifestDigest: digest(JSON.stringify(manifest)),
     mode,
-    notApplicableCapabilities: applicableBenchmark ? {} : { 'isolated-benchmark': 'no isolated benchmark changes' },
+    notApplicableCapabilities: {
+      ...(applicableBenchmark ? {} : { 'isolated-benchmark': 'no isolated benchmark changes' }),
+      ...(applicableReactBenchmark ? {} : { 'react-app-benchmark': 'no React comparison changes' }),
+    },
     profile,
     source: { headSha: identity.headSha, treeSha: identity.treeSha, baseSha: identity.baseSha },
     tasks,

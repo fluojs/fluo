@@ -43,9 +43,13 @@ and raw traces were retained. Omit the flag for the representative regression
 gate: a `fail` or `inconclusive` verdict then exits nonzero. Never use discovery
 mode in the representative CI workflow or describe discovery's exit status as
 a performance PASS.
+Keep each invocation in a fresh `results/<head-sha>/discovery/` or
+`results/<head-sha>/regression/` directory. The gate rejects nonempty output
+directories so a failed retry cannot reuse an older receipt.
 
 The PR workflow runs `test:smoke` for suite changes after the isolated frozen install
-and a root build. It is a correctness and deterministic size/request-count gate, not
+and a root build within the existing 16-task catalog's conditional `static` task;
+HTTP comparison retains its separate `isolated-benchmark` selector. It is a correctness and deterministic size/request-count gate, not
 one noisy shared-runner performance sample. A separate representative-environment
 workflow runs repeated profile measurements. A genuine failed measurement must remain
 a failed gate; unknown or noisy data has an inconclusive verdict, never `pass`.
@@ -78,6 +82,13 @@ check. Per-check reasons remain in the ignored local
 **targets set before optimization**; the separate observations are measured.
 Missing data, absent traces, failed correctness, insufficient repetitions, and
 noisy runs cannot pass the evaluator.
+The approved interaction marker belongs to the rendered destination rather than
+the pending route location. Document replacement and response-body capture errors
+mark the run inconclusive; failed browser requests remain in `errorRate` alongside
+throughput failures. Failed correctness subprocesses retain their receipts and
+still produce a combined verdict when the raw traces are complete. Owned process
+groups emit `BENCH_PROCESS_REAPED` only after a liveness probe, escalating to
+SIGKILL if SIGTERM leaves descendants alive.
 Development cold start and React/CSS/server edit-to-visible are distinct timed
 experiments; they must not be synthesized from production timings. Record native
 cache controls separately and never set identity-dependent data to `public`.

@@ -1,11 +1,11 @@
-import { PROFILES } from './measure.mjs';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';
-import { execFile } from 'node:child_process';
+import { PROFILES } from './measure.mjs';
+import { stopOwnedProcess } from './process-group.mjs';
 
 const JOURNEYS = ['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox'];
 const execFileAsync = promisify(execFile);
@@ -149,10 +149,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
   const editsToRestore = new Map();
 
   async function stopDevServer(server) {
-    if (server.exitCode !== null || server.signalCode !== null) return;
-    const exit = once(server, 'exit');
-    process.kill(-server.pid, 'SIGTERM');
-    await exit;
+    await stopOwnedProcess(server);
   }
 
   async function createPage(item) {
@@ -275,7 +272,14 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
     async measure(item) {
       const { context, page, cdp } = await createPage(item);
       const requests = [];
+      const qualityFailures = [];
       const pendingResponses = new Set();
+      page.on('requestfailed', (request) => {
+        requests.push({
+          url: request.url(), resourceType: request.resourceType(),
+          error: request.failure()?.errorText ?? 'request failed before response',
+        });
+      });
       page.on('response', async (response) => {
         const captured = (async () => {
           try {
@@ -294,6 +298,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           });
           } catch (error) {
           requests.push({ url: response.url(), resourceType: response.request().resourceType(), error: String(error) });
+          qualityFailures.push(`response capture failed: ${response.url()}: ${String(error)}`);
           }
         })();
         pendingResponses.add(captured);
@@ -321,6 +326,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         const interactions = [];
         for (const action of config.interactions ?? []) {
           await page.goto(new URL(action.path, item.url).href, { waitUntil: 'load' });
+          await page.locator('[data-benchmark-hydrated="true"]').waitFor({ state: 'visible', timeout: 10_000 });
           await page.evaluate(({ trigger, pending, approved }) => {
             window.__benchmarkInteraction = new Promise((done) => {
               document.addEventListener('click', (event) => {
@@ -336,14 +342,28 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
               }, { capture: true, once: true });
             });
           }, action);
+          let replaced;
+          const replacement = new Promise((resolveReplacement) => { replaced = resolveReplacement; });
+          const onNavigation = (frame) => {
+            if (frame === page.mainFrame()) replaced({
+              pendingAt: null, approvedAt: null, unavailable: 'document replaced the browser timing observer',
+            });
+          };
+          page.on('framenavigated', onNavigation);
           await page.locator(action.trigger).click();
-          const observation = await page.evaluate(() => Promise.race([
-            window.__benchmarkInteraction,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('approved view timeout')), 10_000)),
-          ]));
-          interactions.push(observation ?? {
-            pendingAt: null, approvedAt: null, unavailable: 'document replaced the browser timing observer',
-          });
+          try {
+            const observation = await Promise.race([
+              page.evaluate(() => Promise.race([
+                window.__benchmarkInteraction,
+                new Promise((_, reject) => setTimeout(() => reject(new Error('approved view timeout')), 10_000)),
+              ])).catch((error) => ({ pendingAt: null, approvedAt: null, unavailable: String(error) })),
+              replacement,
+            ]);
+            interactions.push(observation);
+            if (observation.unavailable) qualityFailures.push(observation.unavailable);
+          } finally {
+            page.off('framenavigated', onNavigation);
+          }
         }
         await Promise.all([...pendingResponses]);
         const metrics = {};
@@ -362,7 +382,6 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         Object.assign(metrics, assetSummary.metrics);
         Object.assign(unavailable, assetSummary.unavailable);
         metrics.requestCount = initialRequestCount(initialRequests);
-        if (requests.length) metrics.errorRate = requests.filter((request) => request.error || request.status >= 500).length / requests.length;
         const throughput = config.throughput?.[item.framework];
         if (throughput) {
           if (!Number.isSafeInteger(throughput.requests) || throughput.requests < 1
@@ -383,9 +402,10 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           }
           const elapsedMs = performance.now() - started;
           metrics.throughputRequestsPerSecond = sent.length * 1000 / elapsedMs;
-          metrics.errorRate = sent.filter((response) => response.error || response.status >= 400).length / sent.length;
           requests.push(...sent.map((response) => ({ ...response, url: new URL(throughput.path, item.url).href, resourceType: 'throughput' })));
         }
+        if (requests.length) metrics.errorRate = requests.filter((request) =>
+          request.error || request.status >= 400).length / requests.length;
         const serverPid = config.serverPids?.[item.framework];
         let generator;
         {
@@ -402,7 +422,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           }
         }
         return {
-          metrics, unavailable, requests, timings: { cold, warm, interactions },
+          metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions },
           artifacts: {
             cachePolicy: item.mode,
             browserCacheDisabled: cacheSettings(item.mode).cacheDisabled,

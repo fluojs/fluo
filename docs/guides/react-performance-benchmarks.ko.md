@@ -86,6 +86,11 @@ Shared runner에서 단 한 번 측정한 timing으로 merge를 거절하지 않
 대표 환경 performance workflow는 확인된 회귀를 실패로 남기고 원시 trace를
 보존하며 불확실성을 통과로 숨기지 않습니다. 어느 workflow도 기존 HTTP/DI
 suite의 local-only 정책이나 #3879 최종 제품 여정 검증을 대체하지 않습니다.
+Smoke는 기존 `static` 검증 task에서 React 전용 selector로 조건부 실행하며
+HTTP comparison의 별도 조건부 coverage를 유지합니다. 측정 승인 marker는
+목적지 view가 렌더링할 때 표시합니다. 문서 교체나 응답 본문 수집 실패는
+실행을 inconclusive로 분류하고, 실제 request 실패는 throughput 오류와
+함께 errorRate에 포함합니다.
 
 ## 증거 재현
 
@@ -99,7 +104,8 @@ pnpm --dir tooling/benchmarks/react-app-comparison --ignore-workspace test:smoke
 ```
 
 반복 측정은 대표 host에서 README의 `run-gate.mjs` 명령으로 실행합니다.
-`results/<head-sha>/`에는 별도의 production/development profile 영수증,
+`results/<head-sha>/`에는 각각 독립적인 `discovery/`, `regression/` 실행과
+별도의 production/development profile 영수증,
 실행별 `traces/`, `dev-traces/`, `combined-traces/`, `verdict.json`이 남습니다.
 이 디렉터리 전체를 commit된 소스 트리 밖에 보존합니다. 최초 baseline은
 Node.js 24.20.0, pnpm 10.4.1, Playwright 1.61.1, seeded dataset,

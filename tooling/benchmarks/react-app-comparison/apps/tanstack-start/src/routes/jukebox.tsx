@@ -11,7 +11,6 @@ export const Route = createFileRoute('/jukebox')({
 function Jukebox() {
   const mountId = Route.useLoaderData()
   const navigationStatus = useRouterState({ select: (state) => state.status })
-  const pathname = useRouterState({ select: (state) => state.location.pathname })
   const audio = useRef<HTMLAudioElement>(null)
   const [resourceId] = useState(mountId)
   const [source, setSource] = useState<string>()
@@ -59,7 +58,7 @@ function Jukebox() {
         <button data-testid="jukebox-operation" aria-label="Operate resource" onClick={operate} disabled={!source} type="button">
           {playing ? 'Pause audio' : 'Play audio'}
         </button>
-        <span data-testid="jukebox-resource" data-instance={resourceId} data-resource-id={resourceId}>Audio resource</span>
+        <span data-testid="jukebox-resource" data-instance={resourceId} data-resource-id={resourceId} data-benchmark-hydrated={Boolean(source)}>Audio resource</span>
         <span data-testid="jukebox-ack" data-operation-ack={ack} role="status">{ack}</span>
       </section>
       <nav className="tabs" aria-label="Jukebox views">
@@ -68,7 +67,7 @@ function Jukebox() {
         <Link to="/jukebox/queue">Queue</Link>
       </nav>
       {navigationStatus === 'pending' && <output data-navigation-pending role="status">Opening view</output>}
-      <section className="panel" data-approved-view={pathname.slice('/jukebox/'.length)}>
+      <section className="panel">
         <Outlet />
       </section>
       <section aria-label="Song library">
