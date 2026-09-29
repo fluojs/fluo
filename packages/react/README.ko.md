@@ -70,15 +70,21 @@ cd my-react-app
 pnpm dev
 ```
 
-생성된 `dev` script와 직접 실행한 `fluo dev`는 CLI가 소유하는 동일한 restart
-lifecycle을 사용합니다. 의존성 설치 후 Vite가 SSR entry를 변환하고 development
-server에서 client module/stylesheet를 제공하므로 production `dist`나 수동 build가
-필요하지 않습니다. server/client 소스 변경 시 앱을 재시작합니다. Production
-`build`/`start`는 계속 생성된 Vite manifest를 사용하며 HMR은 보장하지 않습니다.
+생성된 `dev` script와 직접 실행한 `fluo dev`는 CLI가 소유하는 동일한 Node 개발
+lifecycle을 사용합니다. 설치 후 Vite가 SSR entry를 변환하고 Fastify에서 refresh
+가능한 client module, CSS와 동일 origin WebSocket을 제공하므로 production `dist`나
+수동 build가 필요하지 않습니다. 호환 가능한 React component 수정은 보존 가능한
+state를 유지하며 CSS는 제자리에서 갱신됩니다. 직접 SSR 요청은 HTTP validation 후
+최신 page를 로드합니다. Server-only/config 수정은 계속 child를 재시작합니다.
+호환되지 않는 component boundary는 remount/reload할 수 있습니다.
+[React dev HMR 이전](../../docs/getting-started/migrate-react-dev-hmr.ko.md)을 참고하세요.
+Production `build`/`start`는 개발 코드 주입 없이 생성된 Vite manifest를 사용합니다.
 
-`/products/sku-42?preview=true`를 열고 `src/page.tsx`를 편집합니다. 명시적인
-`@Router(...)` / `@Path(...)` handler는 `src/app.ts`에 남아 `createElement(ProductPage)`를 하나의
-`ReactElement`로 반환하므로 matching, DTO binding/validation, middleware, guard, interceptor, request scope,
+`/products/sku-42?preview=true`를 열고 `/search?q=catalog` 링크로 이동한 뒤
+`src/page.tsx` 또는 `src/page-search.tsx`를 편집합니다. 명시적인 `@Router(...)` /
+`@Path(...)` handler는 `src/app.ts`에 남아
+`ReactNavigationPage.create(page, { module, props })`를 반환하므로 matching,
+DTO binding/validation, middleware, guard, interceptor, request scope,
 not-found behavior는 계속 `@fluojs/http`가 소유합니다.
 
 Generated wiring은 첫 편집에 부수적인 작업을 다음 application file로 이동합니다.
@@ -86,8 +92,10 @@ Generated wiring은 첫 편집에 부수적인 작업을 다음 application file
 - `src/entry-server.tsx`는 교체 가능한 `ReactPageRenderer`를 소유하고, application이 로드한 manifest를
   `@fluojs/react/vite`로 parse하며, `createReactServerEntry(...)`로 `ReactServerEntry`를 반환합니다.
 - `src/react-app.tsx`는 server rendering과 hydration에 하나의 document,
-  `ReactClientRouterProvider`, route snapshot, stylesheet composition을 제공합니다.
-- `src/entry-client.tsx`는 같은 tree를 hydrate하고, `src/main.ts`와 `src/load-manifest.ts`는
+  `ReactClientRouterProvider`, route snapshot, 유지되는 shell 및 destination page slot을 제공합니다.
+- `src/entry-client.tsx`는 Vite build importer에서 검증된 초기 page를 로드하고 같은 tree를
+  hydrate합니다. 일반 page 추가에는 page component와 HTTP handler/DTO만 필요합니다.
+  `src/main.ts`와 `src/load-manifest.ts`는
   filesystem loading 및 actionable build-output failure를 Node.js application boundary에 유지합니다.
 
 Advanced application은 generated renderer를 교체하거나 `createReactServerEntry(...)`에 명시적인
@@ -871,7 +879,7 @@ Navigation contract는 의도적으로 HTTP-first입니다.
   payload를 cache하지 않습니다. 승인된 URL과 matched params를 함께 갱신하고 fragment-only
   `hashchange`는 기존 server-owned params를 유지합니다.
 - `useNavigation()`은 `idle`, `navigating`, `refreshing`, `complete`, `error`, `skipped`를 노출합니다.
-  Soft transition은 검증된 page가 load된 뒤에만 완료되고 실패 시 HTTP document로 fallback합니다.
+  Soft transition은 검증된 page가 load된 뒤에만 완료되고 정책이 없으면 실패 시 HTTP document로 fallback합니다.
   `refreshing`은 document reload를 시작합니다. Fragment-only
   transition은 일치하는 `hashchange` 이후 현재 document에서 `complete`가 됩니다.
 - Router method는 cross-origin 또는 non-HTTP(S) destination을 `ReactClientNavigationError`로 거부합니다.
@@ -900,7 +908,8 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 정착합니다. 응답 본문으로 인증을 추측하거나 로그아웃 뒤 보호 콘텐츠를 보장하지 않습니다.
 실패한 back/forward는 확인 가능한 history 위치에서 마지막 승인 URL과 화면으로 복구하고
 retry는 새 HTTP 승인을 요청합니다. 기존 `refresh()`는 여전히 reload입니다. 이는 하위
-호환되는 **low-level opt-in**이며 공식 조립의 network/5xx 기본값은 #3871이 소유합니다.
+호환되는 **low-level opt-in**이며 공식 생성 starter는 network/5xx 보존 정책과 셸 복구
+control을 명시적으로 제공합니다.
 직접 조립한 앱은 `navigationModules`와 `failurePolicy`를 제공하고 셸에
 `navigation.failure` 조작 UI를 배치하며 다른 사유는 명시적인 정책 없이는 문서 경로에
 남겨 두세요. Production 예제는 network/5xx 실패·복구 중 자원 identity와 operation/ack를
@@ -938,6 +947,18 @@ matched `params`, browser module identity와 JSON-serializable props를 포함�
 URI version selection, request-scoped provider를 실행합니다. Application은 로드한 client build
 manifest에 module이 있는지 확인하고 browser는 Vite-built `import.meta.glob(...)` map으로
 import 가능 여부를 결정합니다. Runtime-neutral root는 browser/Vite code를 import하지 않습니다.
+
+공식 starter에서는 document renderer가 request URL, matched params, 선택된 module, JSON props,
+HTML-safe `json`을 담은 선택적 네 번째 인자 `ReactInitialNavigationPage`도 받습니다. 직렬화와
+escaped UTF-8 64 KiB 상한은 HTML response commit 전에 검사합니다. `json`은 inert
+`application/json` script에만 포함하고, client의
+`loadReactInitialNavigationDestination(json, modules)`가 hydration 전에 현재 URL과 importer
+key를 검증합니다. 생성된 `./page*.tsx` importer와 production manifest 확인으로 build되지 않은
+destination을 차단합니다. 같은 handler props가 SSR component와 browser destination에 전달되며,
+DI instance나 secret 대신 JSON data만 허용합니다. `ReactClientRouterProvider`의 shell은 유지되고
+page slot은 새 destination으로 마운트됩니다. 기존 low-level renderer 및 explicit server entry는
+지원됩니다. 생성 starter와 달리 low-level provider에서 page를 보존하려면 실패 정책을
+명시적으로 전달해야 합니다.
 
 ```tsx
 import { ReactNavigationPage } from '@fluojs/react';
@@ -1289,8 +1310,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 
-- 공식 일시적 실패의 셸 보존 재시도나 `router.refresh()`의 제자리 revalidation.
-  문서화된 low-level fallback과 document reload는 계속 적용됩니다.
+- `router.refresh()`의 제자리 revalidation. 공식 starter는 이미 network/5xx 셸 보존
+  재시도를 제공하지만 low-level provider는 기본적으로 document fallback합니다.
 - stable RSC root 또는 `@fluojs/react/rsc` subpath. RSC는 명시적으로 불안정한
   `@fluojs/react/experimental/rsc` prototype에서만 제공합니다.
 - 자동 `"use server"` transform/export discovery 또는 built-in Flight renderer/build plugin

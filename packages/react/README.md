@@ -72,14 +72,21 @@ cd my-react-app
 pnpm dev
 ```
 
-The generated `dev` script and direct `fluo dev` share one CLI-owned restart lifecycle:
-after installing dependencies, Vite transforms the SSR entry and serves client
-modules/styles through the development server without production `dist` or a
-user-run build. Server/client edits restart the app. Production `build`/`start`
-still consume the generated Vite manifest; this path does not promise HMR.
+The generated `dev` script and direct `fluo dev` share one CLI-owned Node
+development lifecycle: after installation Vite transforms the SSR entry and
+serves refreshable client modules, CSS and a same-origin WebSocket on Fastify
+without production `dist` or a user-run build. Compatible React component edits
+preserve eligible state and CSS edits update in place; a direct SSR request loads
+the current page after HTTP validation. Server-only and config changes still
+restart the child. Incompatible component boundaries can remount or reload;
+see the [React dev HMR migration](../../docs/getting-started/migrate-react-dev-hmr.md).
+Production `build`/`start` still consume the generated Vite manifest, without
+development injection.
 
-Open `/products/sku-42?preview=true` and edit `src/page.tsx`. The explicit `@Router(...)` / `@Path(...)`
-handler remains in `src/app.ts` and returns `createElement(ProductPage)`, one `ReactElement`, so `@fluojs/http` still
+Open `/products/sku-42?preview=true`, follow the link to `/search?q=catalog`, and edit
+`src/page.tsx` or `src/page-search.tsx`. Each explicit `@Router(...)` / `@Path(...)`
+handler remains in `src/app.ts` and returns `ReactNavigationPage.create(page, { module, props })`,
+so `@fluojs/http` still
 owns matching, DTO binding and validation, middleware, guards, interceptors, request scopes, and
 not-found behavior.
 
@@ -89,8 +96,10 @@ The generated wiring moves the incidental first-edit work into discoverable appl
   manifest with `@fluojs/react/vite`, and returns `ReactServerEntry` with
   `createReactServerEntry(...)`.
 - `src/react-app.tsx` gives server rendering and hydration one document,
-  `ReactClientRouterProvider`, route snapshot, and stylesheet composition.
-- `src/entry-client.tsx` hydrates that same tree, while `src/main.ts` and `src/load-manifest.ts` keep
+  `ReactClientRouterProvider`, route snapshot, persistent shell, and destination page slot.
+- `src/entry-client.tsx` loads the validated initial page from Vite-built importers and hydrates
+  that same tree; ordinary page additions only require a page component and HTTP handler/DTO.
+  `src/main.ts` and `src/load-manifest.ts` keep
   filesystem loading and actionable build-output failures at the Node.js application boundary.
 
 Advanced applications can replace the generated renderer or pass explicit hydration options to
@@ -882,8 +891,8 @@ The navigation contract is deliberately HTTP-first:
   destination; no private payload is cached. URL and matched params update together only on approval.
   Fragment-only `hashchange` keeps the same server-owned params.
 - `useNavigation()` exposes `idle`, `navigating`, `refreshing`, `complete`, `error`, and `skipped`.
-  A soft transition completes only after the validated page loads; a failed load falls back to
-  the HTTP document. `refreshing` starts a document reload.
+  A soft transition completes only after the validated page loads; without a failure policy,
+  a failed load falls back to the HTTP document. `refreshing` starts a document reload.
   Fragment-only transitions complete in the current document after the matching `hashchange`.
 - Router methods reject cross-origin or non-HTTP(S) destinations with
   `ReactClientNavigationError`. Use a normal anchor for those destinations.
@@ -911,8 +920,9 @@ explicit ordinary document. The distinct reasons are `network`, `server-error`, 
 settles as `application-error`. Never infer authentication from body text, preserve protected
 content after logout, or expose a response body through the policy. Failed back/forward with a
 known history position restores the last approved URL and view; retry requests new HTTP approval.
-Existing `refresh()` still reloads. This is a backward-compatible **low-level opt-in**; #3871
-owns the official composition's network/5xx default. To migrate a hand-assembled app, supply
+Existing `refresh()` still reloads. This is a backward-compatible **low-level opt-in**; the
+official generated starter explicitly enables network/5xx preservation and shell recovery
+controls. To migrate a hand-assembled app, supply
 `navigationModules`, pass `failurePolicy`, render `navigation.failure` controls in the persistent
 shell, and leave all other categories on the document path unless deliberately handled. The
 production example verifies resource identity and operation/ack through network and 5xx failure
@@ -951,6 +961,18 @@ selection, and request-scoped providers before selecting and writing this repres
 The application must confirm that the module is in its loaded client build manifest; browser
 code supplies an explicit Vite-built `import.meta.glob(...)` map before it can be imported.
 The runtime-neutral root never imports browser or Vite code.
+
+For the official starter, the document renderer also receives an optional fourth
+`ReactInitialNavigationPage` argument with the request URL, matched params, selected module,
+JSON props, and HTML-escaped `json` transfer. Serialization and the 64 KiB escaped-UTF-8 limit
+run before HTML response commit. Embed `json` only in an inert `application/json` script;
+`loadReactInitialNavigationDestination(json, modules)` on the client validates the current URL
+and importer key before hydration. The generated `./page*.tsx` importers and production manifest
+check prevent unbuilt destinations from rendering. The same handler props feed both the SSR
+component and browser destination; they must contain JSON data, not DI instances or secrets.
+`ReactClientRouterProvider` keeps its shell while the page slot mounts a fresh destination.
+The existing low-level renderer and explicit server entry remain supported; their provider
+requires an explicit failure policy to preserve a page, unlike the generated starter.
 
 ```tsx
 import { ReactNavigationPage } from '@fluojs/react';
@@ -1305,8 +1327,8 @@ documentation change neither adds the stable subpath nor starts the deprecation 
 
 This package currently does **not** provide:
 
-- the official transient-failure shell-preserving retry or in-place `router.refresh()`
-  revalidation; the documented low-level fallback and document reload still apply
+- in-place `router.refresh()` revalidation; the official starter already offers network/5xx
+  shell-preserving retry, while the low-level provider still defaults to document fallback
 - a stable RSC root or `@fluojs/react/rsc` subpath; RSC is available only from the explicitly unstable
   `@fluojs/react/experimental/rsc` prototype
 - automatic `"use server"` transforms/export discovery or a built-in Flight renderer/build plugin

@@ -10,5 +10,7 @@ Migration: Apps that want a persistent shell on transient failures should pass
 `failurePolicy={({ reason }) => reason === 'network' || reason === 'server-error' ? 'preserve' : 'document'}`
 to `ReactClientRouterProvider`, render `useNavigation().failure` controls in their persistent
 shell, and call `router.retry()` or `router.openDocument()` for the user's chosen action.
+The generated `react-vite-ssr` starter selects this policy and supplies those controls by
+default; existing generated applications must make the same edits to opt in.
 Authorization, redirect, invalid payload and explicit reload continue through the normal
 HTTP document path unless the app deliberately chooses another policy.

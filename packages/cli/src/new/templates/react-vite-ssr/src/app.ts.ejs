@@ -14,6 +14,7 @@ import {
 import {
   Path,
   ReactModule,
+  ReactNavigationPage,
   Router,
   type ReactPageRenderer,
 } from '@fluojs/react';
@@ -21,11 +22,13 @@ import { IsIn, IsString, MinLength } from '@fluojs/validation';
 import { createElement, type ReactElement } from 'react';
 
 import { ProductPage } from './page';
+import SearchPage from './page-search';
 
 const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
 
 export type ReactViteAppModuleOptions = {
   readonly clientDirectory: URL;
+  readonly loadPage?: (module: `./page${string}.tsx`, props: Record<string, unknown>) => Promise<ReactElement>;
   readonly renderPage: ReactPageRenderer;
 };
 
@@ -41,6 +44,13 @@ class ProductPageRequest {
   preview?: string;
 }
 
+class SearchPageRequest {
+  @MinLength(2)
+  @IsString()
+  @FromQuery('q')
+  q = '';
+}
+
 class AssetRequest {
   @FromPath('file')
   file = '';
@@ -51,8 +61,31 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
   class ProductPageRouter {
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
-    show(_input: ProductPageRequest): ReactElement {
-      return createElement(ProductPage);
+    async show(input: ProductPageRequest) {
+      const props = { sku: input.sku, preview: input.preview === 'true' };
+      const page = options.loadPage
+        ? await options.loadPage('./page.tsx', props)
+        : createElement(ProductPage, props);
+      return ReactNavigationPage.create(page, {
+        module: './page.tsx',
+        props,
+      });
+    }
+  }
+
+  @Router('/search')
+  class SearchPageRouter {
+    @Path('/')
+    @RequestDto(SearchPageRequest)
+    async show(input: SearchPageRequest) {
+      const props = { query: input.q };
+      const page = options.loadPage
+        ? await options.loadPage('./page-search.tsx', props)
+        : createElement(SearchPage, props);
+      return ReactNavigationPage.create(page, {
+        module: './page-search.tsx',
+        props,
+      });
     }
   }
 
@@ -85,7 +118,7 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
 
   @Module({
     controllers: [ViteAssetController],
-    imports: [ReactModule.forRoot({ controllers: [ProductPageRouter], renderPage: options.renderPage })],
+    imports: [ReactModule.forRoot({ controllers: [ProductPageRouter, SearchPageRouter], renderPage: options.renderPage })],
   })
   class AppModule {}
 

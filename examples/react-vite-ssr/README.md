@@ -7,6 +7,21 @@ HTTP-owned page routes, DTO-bound parameters, streamed React SSR, Vite manifest 
 hydrated browser runtime with a progressively enhanced native mutation form, without introducing a
 second routing model.
 
+This example documents the production manifest/hydration path and is not the
+generated starter's `fluo dev` HMR host. For the supported Node React Fast
+Refresh and CSS HMR path, generate `fluo new --starter react-vite-ssr`; the
+[migration guide](../../docs/getting-started/migrate-react-dev-hmr.md) explains
+how to update an older generated app without adding another Vite process.
+
+For ordinary second and third pages, start from the official generated
+`react-vite-ssr` composition instead: its `src/page*.tsx` importer glob and
+HTTP handlers share a bounded, escaped initial transfer with subsequent soft
+navigation. This example intentionally retains the lower-level application-owned
+document and navigation modules to exercise native POST, public prefetch, CSP
+nonce and focus policy. It is not an alternative recommended bootstrap path;
+the [starter composition migration](../../docs/getting-started/migrate-react-starter-composition.md)
+connects custom documents to the same handler-selected transfer.
+
 This is evidence for shipped SSR, hydration, native POST/303/GET, approved navigation
 and opt-in transient navigation preservation, **not** the complete operations CRUD or
 long-lived jukebox gate. The [HTTP-first React product contract](../../docs/contracts/react-fullstack-product.md)
@@ -14,7 +29,8 @@ maps each additional user journey and its owner. This example opts into network/
 recoverable import-failure preservation through the same
 `failurePolicy` and offers `retry()` and `openDocument()` while preserving an actual
 long-lived resource with operation/ack and mount/cleanup observations. Low-level providers
-without opt-in still use document fallback; #3871 owns the official composition default.
+without opt-in still use document fallback; the official starter explicitly selects
+network/5xx preservation and recovery controls.
 `router.refresh()` still reloads the document; #3873 owns soft refresh and its migration.
 
 ## what this example demonstrates
@@ -68,8 +84,8 @@ approved page load fails, the shell keeps its page, URL, resource instance and f
 `Use shell resource` control; `Retry navigation` makes a new HTTP request and `Open full
 document` is an explicit exit. Other reasons, including authentication, redirect, DTO
 and invalid payload, keep document fallback. A production browser checks these outcomes
-without paid media credentials; it does not prove actual music playback, logout persistence
-or the official generated app's #3871 composition.
+without paid media credentials; the generated starter independently verifies its own default.
+Neither fixture proves actual music playback or logout persistence.
 For the no-policy browser fixture, open `/admin/qr?defaultNavigation=1`: navigation still
 uses HTTP approval, but invalidating an untagged back entry loads its ordinary document.
 

@@ -6,33 +6,36 @@
 
 | Change class | Active mechanism in this repository | Runtime effect | Source anchor |
 | --- | --- | --- | --- |
-| Source code changes in generated Node starters | The default generated `dev` script is `fluo dev`, which runs through the fluo-owned restart runner unless `--raw-watch` or `FLUO_DEV_RAW_WATCH=1` selects native Node watch mode. | The host process is restarted after debounced content changes. fluo receives a fresh bootstrap instead of an in-process code swap contract. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
+| Source code changes in generated Node starters | The default generated `dev` script is `fluo dev`, which runs through the fluo-owned restart runner unless `--raw-watch` or `FLUO_DEV_RAW_WATCH=1` selects native Node watch mode. The official Node React/Vite starter delegates transformed client-graph `.tsx`/CSS updates to Vite. | Other source/config changes still restart the child; eligible React edits use Fast Refresh and CSS uses HMR on the app origin. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
 | Source code changes in generated Bun starters | The default generated `dev` script is `fluo dev`, which defaults to Bun's native watch loop (`bun --watch src/main.ts`). `fluo dev --runner fluo` restores the fluo-owned restart runner. | The Bun runtime owns watch/reload by default, reducing Node-supervised dev processes while preserving an explicit fluo restart fallback. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
 | Source code changes in generated Deno starters | The default generated `dev` script is `fluo dev`, which defaults to Deno's native watch loop (`deno run --watch --allow-env --allow-net --allow-read=.env src/main.ts`). Broad env access preserves every application-owned key consumed through the generated `Deno.env.toObject()` snapshot; signal listeners require no separate Deno permission. `fluo dev --runner fluo` restores the fluo-owned restart runner with the same env, network, and narrow .env read permissions. | The Deno runtime owns watch/reload by default, reducing Node-supervised dev processes while preserving an explicit fluo restart fallback. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
 | Source code changes in generated Workers starters | The default generated `dev` script is `fluo dev`, which defaults to Wrangler's native dev loop (`wrangler dev --show-interactive-dev-session=false`). `fluo dev --runner fluo` restores the fluo-owned restart runner. | Wrangler owns watch/reload by default, reducing the fluo Node supervisor boundary while preserving an explicit fluo restart fallback. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
 | Configuration file changes with config reload enabled | `ConfigModule.forRoot({ watch: true, ... })` owns the one injectable `CONFIG_RELOADER` and activates its watcher during `onApplicationBootstrap()`. `ConfigReloadManager.create(...)` is the separate standalone manager. The watcher skips reload when final ordered env-file content matches the last committed watch baseline. | The existing `ConfigService` snapshot is replaced in process after content changes and validation succeeds. | `packages/config/src/load.ts`, `packages/config/src/module.ts` |
 | Manual config refresh | `ConfigReloader.reload()` triggers the same reload path without file-system watch mode. | Callers can request a new validated snapshot explicitly. | `packages/config/src/load.ts:770-785` |
 
-The repository exposes two reload families only: host-owned restart flows for code, and config snapshot replacement for watched configuration inputs.
+The repository distinguishes host-owned restarts for general code, scoped HMR in the official Node React/Vite starter, and validated config snapshot replacement.
 
-For the **current React starter**, classify React component, CSS, server-only, shared
-server/client, and Vite/source config edits as CLI-supervised child restarts: a restart
-reflects changed code but does not guarantee browser shell, state, or long-lived resource
-preservation. `packages/cli/src/dev-runner/react-vite-dev-app.ts` creates the Vite middleware
-server with `server: { hmr: false, middlewareMode: true }`; this is neither React Fast Refresh
-nor CSS HMR. `ConfigModule.forRoot({ watch: true })` can separately replace a validated
+For the **official Node React starter**, Vite transforms browser-owned `.tsx` and CSS,
+delivers Fast Refresh/CSS updates through the Fastify server's WebSocket, and supplies
+the refresh preamble before hydration. The supervisor skips the Vite-transformed
+client graph; HTTP page handlers load current SSR modules after DTO validation.
+Incompatible React exports or hook signatures can remount/reload and lose local state.
+Server-only, graph-external and watched Vite/source config edits still restart the child.
+Native Node raw watch is a process-restart escape hatch on macOS/Windows; Linux continues
+using the fluo runner. Bun, Deno and Workers retain their existing native-watch choices,
+without a React Fast Refresh claim. `ConfigModule.forRoot({ watch: true })` can separately replace a validated
 env-file snapshot in process; invalid updates keep the last valid snapshot. A config/build
 code edit that triggers the CLI watcher still restarts the child rather than hot-swapping
 application modules. [The React product contract](../contracts/react-fullstack-product.md)
-assigns scoped React/CSS updates to #3876 and safe server/shared/config restart,
-failure visibility, teardown and correction to #3877. Universal module hot swap or
+assigns scoped React/CSS updates to #3876 and general server/shared/config restart,
+drain and recovery policy to #3877. Universal module hot swap or
 universal state preservation is not promised.
 
 ## Constraints
 
 | Constraint | Factual statement | Source anchor |
 | --- | --- | --- |
-| No documented HMR contract | The shipped lifecycle runner performs full-process restart-on-watch for generated application source changes and still exposes runtime-native Node watch as an escape hatch. No public runtime contract performs partial module replacement for TypeScript source files. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
+| Scoped HMR contract | Only the generated Node React/Vite client graph uses Fast Refresh/CSS HMR. Other Node sources and the native-watch escape hatch retain process restarts; no general runtime TypeScript hot swap is provided. | `packages/cli/src/commands/scripts.ts`, `packages/cli/src/dev-runner/node-restart-runner.ts` |
 | Watch scope for config reload | `startReloaderWatcher(...)` watches the env file's parent directory for both existing and missing env files; env-file existence does not select between a file and directory watch target. It returns no watcher when `watch` is disabled, no env-file path is resolved, or the parent directory does not exist. | `packages/config/src/load.ts:663-713` |
 | Config watch content dedupe | Watch-triggered reloads compare env file content to the last committed watch baseline before applying reload, so unchanged saves and change-then-revert bursts do not notify reload listeners. | `packages/config/src/load.ts:688-711`, `packages/config/src/load.test.ts:893-930` |
 | Registration-time option snapshot | `ConfigModule.forRoot(...)` captures the shared service, reloader, and ordered env-file options synchronously during registration, while `ConfigReloadManager.create(...)` captures standalone options when created. Config dictionaries, `processEnv`, and the Standard Schema descriptor are detached before bootstrap or later reloads can observe caller mutations; callable values retain the references captured at that boundary. | `packages/config/src/options.ts`, `packages/config/src/module.ts`, `packages/config/src/module.test.ts`, `packages/config/src/reload-module.test.ts` |
@@ -44,7 +47,7 @@ universal state preservation is not promised.
 | Terminal shutdown | Manager shutdown is terminal. After `close()` or `onModuleDestroy()`, `reload()`, `subscribe()`, and `subscribeError()` throw `InvariantError`, `onApplicationBootstrap()` is a no-op, and no replacement reloader or watcher is created. | `packages/config/src/module.ts`, `packages/config/src/reload-module.test.ts` |
 | Production boundary | The inspected repository sources document config reload as an available mechanism, but they do not declare automatic production enablement. Watch activation remains an explicit `watch: true` choice at the application boundary. | `packages/config/src/module.ts`, `packages/config/src/load.ts` |
 
-This architecture keeps application-code reload outside the runtime contract. Runtime-managed reload is limited to validated configuration snapshots that flow through `@fluojs/config`.
+This architecture keeps generic application-code reload outside the runtime contract. The generated Node React development host owns its scoped Vite integration; runtime-managed snapshot reload remains limited to validated `@fluojs/config` configuration.
 
 ## CLI Lifecycle Output Contract
 

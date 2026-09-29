@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { EventEmitter, once } from 'node:events';
+import { existsSync } from 'node:fs';
+import { isAbsolute, resolve, sep } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   probeMacOSProcessGroup,
@@ -648,6 +651,7 @@ test('uses separate dynamic loopback ports for concurrent Workers conformance ru
     assert.equal(args[args.indexOf('--port') + 1], '0');
     assert.equal(options.detached, true);
   }
+  await Promise.all(workers.map((worker) => runWithWorker(worker, async () => {}, async () => {})));
 });
 
 test('uses separate dynamic inspector ports for concurrent Workers conformance runs', async () => {
@@ -669,6 +673,52 @@ test('uses separate dynamic inspector ports for concurrent Workers conformance r
   for (const args of calls) {
     assert.equal(args[args.indexOf('--inspector-port') + 1], '0');
   }
+  await Promise.all(workers.map((worker) => runWithWorker(worker, async () => {}, async () => {})));
+});
+
+test('starts each Worker outside the source tree and removes its directory after stopping', async () => {
+  const calls = [];
+  const spawnWorker = (_command, args, options) => {
+    const child = createChild(1024 + calls.length);
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    calls.push({ args, options });
+    queueMicrotask(() => child.stdout.emit('data', Buffer.from(`Ready on http://127.0.0.1:${53100 + calls.length}`)));
+    return child;
+  };
+  const workers = [startWorker(spawnWorker), startWorker(spawnWorker)];
+  const sourceRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
+  const directories = calls.map(({ args, options }) => {
+    assert.equal(isAbsolute(args[3]), true);
+    assert.equal(options.cwd.startsWith(`${sourceRoot}${sep}`), false);
+    assert.equal(existsSync(options.cwd), true);
+    return options.cwd;
+  });
+  assert.notEqual(directories[0], directories[1]);
+
+  await runConcurrentWorkers(workers.map((worker) => () => runWithWorker(worker, async () => {
+    assert.equal(existsSync(worker.workingDirectory), true);
+  }, async () => {})));
+  for (const directory of directories) assert.equal(existsSync(directory), false);
+});
+
+test('removes a Worker directory after an operation fails and its process group stops', async () => {
+  const failure = new Error('cookie assertion failed');
+  let directory;
+  const worker = startWorker((_command, _args, options) => {
+    directory = options.cwd;
+    const child = createChild(1026);
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    queueMicrotask(() => child.stdout.emit('data', Buffer.from('Ready on http://127.0.0.1:53103')));
+    return child;
+  });
+  await assert.rejects(runWithWorker(worker, async () => {
+    throw failure;
+  }, async () => {
+    assert.equal(existsSync(directory), true);
+  }), (error) => error === failure);
+  assert.equal(existsSync(directory), false);
 });
 
 test('detects a readiness URL split across Worker output chunks', async () => {
@@ -688,4 +738,5 @@ test('detects a readiness URL split across Worker output chunks', async () => {
 
   await assert.doesNotReject(ready);
   assert.deepEqual(await ready, { url: 'http://127.0.0.1:53003' });
+  await runWithWorker(worker, async () => {}, async () => {});
 });

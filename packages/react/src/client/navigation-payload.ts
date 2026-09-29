@@ -65,6 +65,48 @@ function parseNavigationPayload(
   };
 }
 
+/**
+ * Resolve the HTTP-selected initial document page from the built importer map before hydration.
+ *
+ * @param json Escaped JSON text from the inert initial-page script in the server document.
+ * @param modules Build-produced destination importers shared with soft navigation.
+ * @returns The validated component and HTTP request snapshot, or an unavailable destination.
+ */
+export async function loadReactInitialNavigationDestination(
+  json: string,
+  modules: ReactNavigationModules,
+): Promise<ReactNavigationLoadResult> {
+  let value: unknown;
+  try {
+    value = JSON.parse(json);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return { ok: false, reason: 'invalid-payload' };
+    }
+    throw error;
+  }
+  const payload = parseNavigationPayload(value, new URL(window.location.href));
+  if (payload === undefined) {
+    return { ok: false, reason: 'invalid-payload' };
+  }
+  const loader = Object.hasOwn(modules, payload.destination.module)
+    ? modules[payload.destination.module] : undefined;
+  if (loader === undefined) {
+    return { ok: false, reason: 'invalid-payload' };
+  }
+  try {
+    const module = await loader();
+    return typeof module.default === 'function'
+      ? { ok: true, payload, component: module.default }
+      : { ok: false, reason: 'invalid-payload' };
+  } catch (error) {
+    if (error instanceof TypeError) {
+      return { ok: false, reason: 'unavailable' };
+    }
+    throw error;
+  }
+}
+
 function prefetchFreshUntil(headers: Headers, receivedAt: number): number | undefined {
   if (headers.get('X-Fluo-Navigation-Prefetch') !== 'public'
     || headers.get('Vary')?.trim().toLowerCase() !== 'accept') {

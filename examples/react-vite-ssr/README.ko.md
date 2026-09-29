@@ -7,15 +7,29 @@ Hydration 및 client-navigation phase를 위한 최소 Vite-backed `@fluojs/reac
 SSR, Vite manifest asset, hydrated browser runtime, progressively enhanced native mutation form을
 연결합니다.
 
-이 예제는 현재 SSR, hydration, native POST/303/GET, 승인된 navigation 및 opt-in 일시적
+이 예제는 production manifest/hydration 경로를 설명하며 생성 starter의
+`fluo dev` HMR host가 아닙니다. 지원되는 Node React Fast Refresh와 CSS HMR은
+`fluo new --starter react-vite-ssr`로 생성하세요. 기존 생성 앱은 별도 Vite process를
+추가하지 않고 [이전 가이드](../../docs/getting-started/migrate-react-dev-hmr.ko.md)를
+따라 변경할 수 있습니다.
+
+일반 둘째·셋째 page는 공식 generated `react-vite-ssr` composition에서 시작하세요.
+`src/page*.tsx` importer glob와 HTTP handler가 크기 제한 및 escape를 적용한 초기
+transfer를 이후 soft navigation과 공유합니다. 이 예제는 native POST, public prefetch,
+CSP nonce, focus 정책을 검증하기 위해 application 소유 document와 navigation module의
+lower-level 형태를 의도적으로 유지합니다. 별도의 권장 bootstrap 경로가 아니며
+[starter composition migration](../../docs/getting-started/migrate-react-starter-composition.ko.md)이
+custom document를 같은 handler 선택 transfer에 연결합니다.
+
+이 예제는 현재의 SSR, hydration, native POST/303/GET, 승인된 navigation과 opt-in 일시적
 실패 보존의 근거이지 완전한 운영 CRUD 또는 장기 주크박스 게이트가 아닙니다.
 [HTTP-first React 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 추가
 사용자 여정과 담당자를 연결합니다. 예제는 network/5xx 및 복구 가능한 import 실패
-`failurePolicy`를 선택하고 실제
-장기 자원의 operation/ack 및 mount/cleanup을 확인하면서 `retry()`와 `openDocument()`를
-제공합니다. Opt-in하지 않은 low-level provider는 여전히 document fallback하며 #3871이
-공식 조립의 기본값을 소유합니다. `router.refresh()`는 여전히 document reload이고
-#3873이 soft refresh와 migration을 소유합니다.
+`failurePolicy`를 선택하고 장기 자원의 operation/ack 및 mount/cleanup을 확인하면서
+`retry()`와 `openDocument()`를 제공합니다. Opt-in하지 않은 low-level provider는
+document fallback을 유지하며 공식 starter는 network/5xx 보존 및 복구 control을
+명시적으로 연결합니다. `router.refresh()`는 document reload이고 #3873이 soft
+refresh와 migration을 소유합니다.
 
 ## 이 예제가 보여주는 것
 
@@ -65,7 +79,7 @@ counter는 초기화됩니다. Main landmark에 focus를 옮깁니다. 직접 �
 `Retry navigation`은 새 HTTP 요청을 보내고 `Open full document`는 명시적인 문서 이동을
 선택합니다. 인증·redirect·DTO·잘못된 payload를 포함한 다른 사유는 document fallback을
 유지합니다. Production browser는 유료 음악 계정 없이 이를 검증하지만 실제 음악 재생,
-logout 뒤 보존 또는 #3871 공식 생성 앱의 조립 완료까지 입증하지는 않습니다.
+logout 뒤 보존은 입증하지 않습니다. 생성 starter는 자신의 기본값을 별도로 검증합니다.
 정책 없는 browser fixture는 `/admin/qr?defaultNavigation=1`로 시작합니다. 이동에는
 여전히 HTTP 승인이 필요하지만 index 없는 back entry를 무효화하면 일반 문서를 불러옵니다.
 

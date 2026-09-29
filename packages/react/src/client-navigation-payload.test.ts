@@ -1,7 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { createClientNavigationStore } from './client/store.js';
-import { createReactRouteSnapshot, loadReactNavigationDestination, type ReactNavigationLoadResult } from './client.js';
+import {
+  createReactRouteSnapshot,
+  loadReactInitialNavigationDestination,
+  loadReactNavigationDestination,
+  type ReactNavigationLoadResult,
+} from './client.js';
 
 const ORIGIN = 'https://example.test';
 const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
@@ -28,6 +33,39 @@ function grantedResponse(headers: Record<string, string> = {}, body: unknown = p
     },
   });
 }
+
+it('hydrates only the HTTP-approved initial module without an additional request', async () => {
+  // Given: an inert script whose URL matches the browser document and a built importer.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}${payload.url}` } });
+  const fetchResult = vi.fn();
+  vi.stubGlobal('fetch', fetchResult);
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  // When: hydration resolves the initial page using the same validator as soft navigation.
+  const result = await loadReactInitialNavigationDestination(JSON.stringify(payload), modules);
+
+  // Then: the selected component and server params are accepted without rematching or fetching.
+  expect(result).toMatchObject({ ok: true, payload });
+  expect(modules['./navigation-product.ts']).toHaveBeenCalledOnce();
+  expect(fetchResult).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['stale URL', { ...payload, url: '/products/sku-42' }],
+  ['unbuilt destination', { ...payload, destination: { module: './unbuilt.ts', props: {} } }],
+  ['non-JSON props', { ...payload, destination: { module: './navigation-product.ts', props: 'secret' } }],
+] as const)('does not import an invalid initial %s', async (_kind, candidate) => {
+  // Given: document data that has not been approved for the current built browser route.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}${payload.url}` } });
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  // When: the initial bootstrap validates the transferred document data.
+  const result = await loadReactInitialNavigationDestination(JSON.stringify(candidate), modules);
+
+  // Then: no unsupported page module can be imported or hydrated.
+  expect(result.ok).toBe(false);
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+});
 
 it.each([
   [0, 15_000],

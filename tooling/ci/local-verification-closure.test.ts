@@ -41,9 +41,12 @@ describe('local verification companion closure', () => {
       'package-dependency-closure',
       'source-copy-inventory',
     ]);
-    expect(plan.commands.map((command) => command.argv.join(' '))).toContain('verify:docs');
-    expect(plan.commands.map((command) => command.argv.join(' '))).toContain('tooling/scripts/run-workspace-build-closure.mjs @fluojs/platform-deno');
-    expect(plan.commands.map((command) => command.argv.join(' '))).toContain('verify:public-export-tsdoc');
+    const commands = plan.tasks.flatMap((task) => task.commands.map((command) => command.argv.join(' ')));
+    expect(commands).toContain('verify:docs');
+    expect(plan.tasks.find((task) => task.id === 'native-web')?.commands.some((command) =>
+      command.argv.includes('packages/platform-deno/deno/native-adapter.test.js'))).toBe(true);
+    expect(commands).toContain('lint');
+    expect(plan.capabilityTasks['declaration-importers']).toContain('static');
   });
 
   it('fails closed for unknown and manifest-controlled changes in the shared scope contract', () => {

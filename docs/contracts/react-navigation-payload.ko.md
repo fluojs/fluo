@@ -60,7 +60,21 @@ Configured page renderer의 entry status와 header는 일반 document와 협상�
 `props`는 application이 제공한 JSON-serializable data여야 합니다. Serialization 실패는
 navigation response commit 전에 발생하고 기존 canonical HTTP error path를 따릅니다.
 Request-scoped dependency는 response write가 끝날 때까지 살아 있고 일반 dispatcher가
-dispose합니다. 일반 document GET의 HTML Web Stream은 React가, sink는 HTTP가 소유합니다.
+dispose합니다. Opt-in된 일반 document GET에서는 page renderer가 선택적인 네 번째 인자
+`ReactInitialNavigationPage`도 받습니다. HTTP가 확정한 URL, matched params, module,
+JSON으로 정규화한 props와 inert `application/json` script용 `json`을 포함합니다.
+서버는 `<`, `>`, `&`, U+2028, U+2029를 escape한 뒤 UTF-8 64 KiB 상한을 검사합니다.
+직렬화 불가 또는 초과 data는 HTML commit 전에 기존 HTTP error response로 실패합니다.
+Application renderer는 로드한 Vite manifest(개발 중에는 build importer 집합)에서 선택된
+module을 확인한 뒤 escaped transfer를 포함합니다. Browser component graph/props에는
+DI instance, secret 또는 server-only import를 넣지 않습니다. Browser는 이어지는
+`Link`/`useRouter` navigation과 동일한 build-produced importer map을
+`loadReactInitialNavigationDestination(json, modules)`에 전달합니다. 두 번째 HTTP request나
+client URL matcher 없이 URL, params, module과 component를 hydration 전에 검증합니다.
+생성 starter의 단일 provider는 초기 page와 이후 destination을 공통 shell과 page slot에
+합성합니다. Shell은 유지되고 destination-local state는 slot에서 reset됩니다. 일반
+`ReactElement` 또는 explicit `ReactServerEntry`에는 자동 transfer가 붙지 않습니다.
+일반 document GET의 HTML Web Stream은 React가, sink는 HTTP가 소유합니다.
 실패하거나 abort된 rendering은 buffered HTML 일부를 commit하지 않으며 sink가 일찍 닫히거나
 write가 실패하면 unfinished reader를 cancel하고 lock을 해제합니다.
 
@@ -132,11 +146,11 @@ commit/fallback할 수 없습니다. 정책 callback의 throw/rejection은 진�
 번지지 않습니다. 인증/session 전환의 실패 UI와 자원 종료는 앱 정책이고 logout/reload/탭
 종료 뒤 재생은 보장하지 않습니다.
 
-이는 **배포된 low-level opt-in**이며 공식 조립의 기본값은 아닙니다. 병렬 작업인 #3871이
-공식 조립에 network/5xx 보존 정책과 UI를 연결하며, 이 이슈의 production 예제는 통합
-지점을 검증합니다. #3873이 현재 `refresh()` document reload에 의존하는 소비자의
-셸 보존 soft revalidation·migration을 소유합니다. `invalidate()`는 표시 중인 page data를
-다시 가져오지 않습니다.
+Low-level provider는 기본적으로 document fallback을 유지합니다. 공식 생성 starter는
+network/5xx 보존 정책을 명시적으로 선택하며 HTTP가 선택한 page slot 외부의 지속 셸에
+재시도·문서 이동 control을 렌더링합니다. #3873은 현재 `refresh()` document reload에
+의존하는 소비자의 셸 보존 soft revalidation·migration을 소유합니다.
+`invalidate()`는 표시 중인 page data를 다시 가져오지 않습니다.
 
 ## Opt-in public prefetch와 provider-local cache
 

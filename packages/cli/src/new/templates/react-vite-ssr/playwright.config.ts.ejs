@@ -1,10 +1,11 @@
 import { defineConfig } from '@playwright/test';
 
 const BROWSER_TEST_PORT = 43_006;
-const development = process.env.FLUO_REACT_STARTER_SERVER_COMMAND === 'dev';
-const serverCommand = development
-  ? <%= devCommandJson %>
-  : <%= startCommandJson %>;
+const serverMode = process.env.FLUO_REACT_STARTER_SERVER_COMMAND;
+const development = serverMode === 'dev' || serverMode === 'direct';
+const serverCommand = serverMode === 'direct'
+  ? 'fluo dev'
+  : development ? <%= devCommandJson %> : <%= startCommandJson %>;
 
 export default defineConfig({
   fullyParallel: false,

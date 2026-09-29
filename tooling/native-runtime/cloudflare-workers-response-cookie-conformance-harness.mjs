@@ -1,5 +1,9 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const workerHost = '127.0.0.1';
 const startupTimeoutMs = 30_000;
@@ -154,27 +158,34 @@ function createProcessGroupGraceDeadline() {
 }
 
 export function startWorker(spawnWorker = spawn) {
-  const child = spawnWorker(
-    'pnpm',
-    [
-      'dlx',
-      'wrangler@4.20.0',
-      'dev',
-      'tooling/native-runtime/cloudflare-workers-response-cookie-conformance-worker.mjs',
-      '--ip',
-      workerHost,
-      '--local',
-      '--port',
-      '0',
-      '--inspector-port',
-      '0',
-    ],
-    {
-      cwd: new URL('../..', import.meta.url),
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    },
-  );
+  const workingDirectory = mkdtempSync(join(tmpdir(), 'fluo-workers-'));
+  let child;
+  try {
+    child = spawnWorker(
+      'pnpm',
+      [
+        'dlx',
+        'wrangler@4.20.0',
+        'dev',
+        fileURLToPath(new URL('./cloudflare-workers-response-cookie-conformance-worker.mjs', import.meta.url)),
+        '--ip',
+        workerHost,
+        '--local',
+        '--port',
+        '0',
+        '--inspector-port',
+        '0',
+      ],
+      {
+        cwd: workingDirectory,
+        detached: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+  } catch (error) {
+    rmSync(workingDirectory, { recursive: true, force: true });
+    throw error;
+  }
 
   const ready = new Promise((resolve, reject) => {
     let startupOutput = '';
@@ -203,7 +214,7 @@ export function startWorker(spawnWorker = spawn) {
     });
   });
 
-  return { child, ready };
+  return { child, ready, workingDirectory };
 }
 
 export async function stopProcessGroup(
@@ -306,6 +317,9 @@ export async function runWithWorker(worker, operation, stop = stopProcessGroup) 
 
   try {
     await stop(worker.child);
+    if (worker.workingDirectory !== undefined) {
+      rmSync(worker.workingDirectory, { recursive: true, force: true });
+    }
   } catch (cleanupError) {
     if (operationFailed) {
       throw new AggregateError(

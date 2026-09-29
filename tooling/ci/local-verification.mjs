@@ -3,15 +3,21 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 
 import { schemaFailure } from '../../.agents/workflow-contracts/schema-validator.mjs';
+import { imageKeyFor, loadEnvironmentLock, validateVerificationEnvironment } from './verification-environment.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
-const REQUIRED = ['install', 'build', 'typecheck', 'test', 'lint', 'platform-governance'];
 const receiptSchema = JSON.parse(readFileSync(new URL('./local-verification-receipt.schema.json', import.meta.url), 'utf8'));
 
-const command = (id, argv) => ({ argv, cwd: '.', executable: 'pnpm', id });
-
 export const digest = (value) => createHash('sha256').update(value).digest('hex');
+
+export function semanticPlanDigest(plan) {
+  const { semanticDigest: _discard, identity, ...rest } = plan;
+  return digest(JSON.stringify({
+    ...rest,
+    identity: { ...identity, root: '<checkout>', baseRef: identity.baseSha },
+  }));
+}
 
 const nestedPath = (root, candidate) => candidate === root || candidate.startsWith(`${root}${sep}`);
 const isoTimestamp = (value) => typeof value === 'string'
@@ -20,9 +26,11 @@ const isoTimestamp = (value) => typeof value === 'string'
 
 export function readVerificationManifest(path = new URL('./local-verification-manifest.json', import.meta.url)) {
   const value = JSON.parse(readFileSync(path, 'utf8'));
-  if (!value || typeof value !== 'object' || value.version !== 1 || !Array.isArray(value.rules) || !Array.isArray(value.companions)
+  if (!value || typeof value !== 'object' || value.version !== 2 || !Array.isArray(value.tasks)
+    || !Array.isArray(value.hostChecks)
+    || !Array.isArray(value.rules) || !Array.isArray(value.companions)
     || !value.scope || !Array.isArray(value.scope.fullPrefixes) || !Array.isArray(value.scope.fullPaths)) {
-    throw new TypeError('local verification manifest must have version 1 and rules.');
+    throw new TypeError('local verification manifest must have version 2, tasks and rules.');
   }
   return value;
 }
@@ -91,65 +99,110 @@ function companionChecks(changedFiles, manifest) {
     .sort();
 }
 
-function executableCommands(id, definitions) {
-  const definition = definitions.get(id);
-  if (!definition || !Array.isArray(definition.commands) || definition.commands.length === 0) {
-    throw new TypeError(`local verification companion ${id} has no executable commands.`);
-  }
-  return definition.commands.map((item, index) => {
-    if (!item || typeof item !== 'object' || typeof item.executable !== 'string' || item.executable.length === 0
-      || !Array.isArray(item.argv) || item.argv.some((value) => typeof value !== 'string')
-      || typeof item.cwd !== 'string' || item.cwd.length === 0) {
-      throw new TypeError(`local verification companion ${id} command is malformed.`);
-    }
-    const suffix = definition.commands.length === 1 ? '' : `:${index}`;
-    return { argv: item.argv, cwd: item.cwd, executable: item.executable, id: `companion:${id}${suffix}` };
-  });
-}
-
-export function buildVerificationPlan({ changedFiles, identity, manifest = readVerificationManifest() }) {
+export function buildVerificationPlan({ changedFiles, identity, manifest = readVerificationManifest(), profile = 'pr',
+  lock = loadEnvironmentLock() }) {
   if (!Array.isArray(changedFiles) || changedFiles.some((file) => typeof file !== 'string')) {
     throw new TypeError('changedFiles must be an array of paths.');
   }
+  if (!['pr', 'extended'].includes(profile)) throw new TypeError(`unknown verification profile: ${profile}`);
+  if (!hasExactIdentity(identity) || !identity.clean) throw new TypeError('plan requires an exact clean source identity');
+  if (manifest.hostChecks?.length !== 1 || manifest.hostChecks[0].id !== 'runner-integration'
+    || manifest.hostChecks[0].executable !== 'node' || manifest.hostChecks[0].cwd !== '.'
+    || JSON.stringify(manifest.hostChecks[0].argv) !== JSON.stringify(['--test', 'tooling/ci/verification-runner.docker-test.mjs'])) {
+    throw new TypeError('missing required host Docker integration check');
+  }
+  const definitions = companionDefinitions(manifest);
+  const companionIds = companionChecks(changedFiles, manifest);
   const mode = verificationModeForChanges(changedFiles, manifest);
   const cleanDist = changedFiles.some(isCleanDistChange);
-  const commands = [
-    command('install', ['install', '--frozen-lockfile']),
-    ...(cleanDist ? [command('clean-dist', ['-r', '--filter', './packages/*', 'exec', 'node', '../../tooling/scripts/clean-dist.mjs'])] : []),
-    command('build', ['build']),
-    command('typecheck', ['typecheck']),
-    command('test', ['test:verify']),
-    command('lint', ['lint']),
-    command('platform-governance', ['verify:platform-consistency-governance']),
-  ];
-  if (changedFiles.some((file) => file.endsWith('.mjs') || file.includes('/import'))) {
-    commands.push(command('declaration-parity', ['verify:public-export-tsdoc']));
+  const taskIds = new Set(manifest.tasks.map((task) => task.id));
+  if (taskIds.size !== 16 || manifest.tasks.length !== 16) throw new TypeError('missing or duplicate required verification task');
+  const required = ['build', 'static', ...Array.from({ length: 4 }, (_, i) => `packages-${i + 1}`),
+    'tooling-1', 'tooling-2', 'starters', 'studio', 'compatibility-floor', 'compatibility-next',
+    'runtime-floor', 'native-bun', 'native-web', 'packed'];
+  if (required.some((id) => !taskIds.has(id))) throw new TypeError('missing required capability task');
+  const applicableBenchmark = changedFiles.some((file) => file.startsWith('tooling/benchmarks/http-comparison/'));
+  const tasks = manifest.tasks.map((definition) => {
+    if (!['primary', 'compat24', 'compat26', 'runtimeFloor'].includes(definition.runtime)
+      || !Array.isArray(definition.dependencies) || !Array.isArray(definition.capabilities)
+      || !Array.isArray(definition.inputs) || !Array.isArray(definition.outputs)
+      || !Array.isArray(definition.commands) || definition.commands.length === 0) {
+      throw new TypeError(`malformed verification task: ${definition.id}`);
+    }
+    const commands = definition.commands.filter((item) => !item.when || item.when === 'isolated-benchmark' && applicableBenchmark)
+      .map((item) => {
+        if (!['pnpm', 'node', 'bun', 'deno'].includes(item.executable)
+          || !Array.isArray(item.argv) || item.argv.some((arg) => typeof arg !== 'string') || item.cwd !== '.') {
+          throw new TypeError(`malformed command in ${definition.id}`);
+        }
+        return { ...item, argv: item.argv.map((arg) => arg.replaceAll('{baseSha}', identity.baseSha)) };
+      });
+    if (profile === 'extended' && definition.id.startsWith('compatibility-')) {
+      const packages = commands.findIndex(({ argv }) => argv.includes('--project') && argv.includes('packages'));
+      if (packages === -1) throw new TypeError(`compatibility task ${definition.id} omits package tests`);
+      commands.splice(packages, 1);
+      commands.push(...[
+        ['typecheck'], ['lint'], ['test:verify'],
+      ].map((argv) => ({ executable: 'pnpm', argv, cwd: '.' })));
+      const starter = commands.find((item) => item.env?.FLUO_CLI_SANDBOX_PROFILE);
+      if (!starter) throw new TypeError(`compatibility task ${definition.id} omits starter coverage`);
+      starter.env = { ...starter.env, FLUO_CLI_SANDBOX_PROFILE: 'full' };
+    }
+    if (profile === 'extended' && definition.id === 'starters') {
+      commands.push({ executable: 'pnpm', argv: ['--dir', 'packages/cli', 'sandbox:matrix'], cwd: '.',
+        env: { FLUO_CLI_SANDBOX_PROFILE: 'full', FLUO_CLI_SANDBOX_DEPENDENCIES: 'fresh' } });
+    }
+    return { ...definition, commands,
+      capabilities: definition.capabilities.filter((capability) => capability !== 'isolated-benchmark' || applicableBenchmark) };
+  });
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  for (const task of tasks) {
+    if (task.dependencies.some((dependency) => !taskById.has(dependency) || dependency === task.id)) {
+      throw new TypeError(`missing dependency or cycle for ${task.id}`);
+    }
   }
-  if (changedFiles.some(isDocsChange)) {
-    commands.push(command('docs', ['verify:docs']));
+  const seen = new Set();
+  const visiting = new Set();
+  const visit = (id) => {
+    if (visiting.has(id)) throw new TypeError(`verification task cycle: ${id}`);
+    if (seen.has(id)) return;
+    visiting.add(id);
+    for (const dependency of taskById.get(id).dependencies) visit(dependency);
+    visiting.delete(id);
+    seen.add(id);
+  };
+  for (const task of tasks) visit(task.id);
+  const capabilityTasks = {};
+  for (const task of tasks) {
+    for (const capability of task.capabilities) {
+      (capabilityTasks[capability] ??= []).push(task.id);
+    }
   }
-  const companionIds = companionChecks(changedFiles, manifest);
-  const companionDefinitionMap = companionDefinitions(manifest);
   for (const id of companionIds) {
-    commands.push(...executableCommands(id, companionDefinitionMap));
+    if (!definitions.has(id) || !capabilityTasks[id]?.length) throw new TypeError(`missing companion capability: ${id}`);
   }
   for (const rule of manifest.rules) {
-    if (!rule || typeof rule !== 'object' || typeof rule.prefix !== 'string' || !Array.isArray(rule.commands)) {
-      throw new TypeError('local verification manifest rule is malformed.');
-    }
-    if (changedFiles.some((file) => file.startsWith(rule.prefix))) {
-      commands.push(...executableCommands(rule.prefix, new Map([[rule.prefix, rule]]))
-        .map((item) => ({ ...item, id: item.id.replace(`companion:${rule.prefix}`, `manifest:${rule.prefix}`) })));
-    }
+    if (!rule || typeof rule.prefix !== 'string' || !Array.isArray(rule.commands)) throw new TypeError('malformed manifest rule');
   }
-  return {
+  const environmentLockDigest = digest(JSON.stringify(lock));
+  const imageKey = imageKeyFor(lock, readFileSync(new URL('./Dockerfile', import.meta.url)));
+  const plan = {
+    changedFiles: [...changedFiles],
     cleanDist,
+    capabilityTasks,
     companionChecks: companionIds,
-    commands,
+    environment: { lock, lockDigest: environmentLockDigest, imageKey },
+    hostChecks: manifest.hostChecks,
     identity,
     manifestDigest: digest(JSON.stringify(manifest)),
     mode,
+    notApplicableCapabilities: applicableBenchmark ? {} : { 'isolated-benchmark': 'no isolated benchmark changes' },
+    profile,
+    source: { headSha: identity.headSha, treeSha: identity.treeSha, baseSha: identity.baseSha },
+    tasks,
+    version: 2,
   };
+  return { ...plan, semanticDigest: semanticPlanDigest(plan) };
 }
 
 function hasExactIdentity(identity) {
@@ -165,44 +218,70 @@ function hasExactIdentity(identity) {
 export function validateReceipt(receipt) {
   const failure = schemaFailure(receiptSchema, receipt, 'receipt');
   if (failure !== null) return { valid: false, reason: failure };
-  if (!receipt || typeof receipt !== 'object' || receipt.version !== 1 || receipt.status !== 'passed') {
-    return { valid: false, reason: 'receipt is not a passed v1 receipt' };
+  if (receipt.version !== 2 || receipt.status !== 'passed') {
+    return { valid: false, reason: 'receipt is not a passed v2 receipt' };
   }
-  if (!hasExactIdentity(receipt.identity) || !DIGEST.test(receipt.manifestDigest) || !DIGEST.test(receipt.planDigest)) {
+  if (!hasExactIdentity(receipt.identity) || !receipt.identity.clean || !DIGEST.test(receipt.manifestDigest)
+    || !DIGEST.test(receipt.planDigest) || !DIGEST.test(receipt.environmentLockDigest)
+    || receipt.source.headSha !== receipt.identity.headSha || receipt.source.treeSha !== receipt.identity.treeSha
+    || receipt.source.baseSha !== receipt.identity.baseSha || receipt.imageIdentity.key !== receipt.environment.imageKey
+    || !/^sha256:[0-9a-f]{64}$/u.test(receipt.imageIdentity.id ?? '')) {
     return { valid: false, reason: 'receipt identity or digest is malformed' };
   }
   if (!isoTimestamp(receipt.startedAt) || !isoTimestamp(receipt.completedAt)
     || Date.parse(receipt.completedAt) < Date.parse(receipt.startedAt)) {
     return { valid: false, reason: 'receipt timestamps are malformed' };
   }
-  if (!Array.isArray(receipt.commands) || receipt.commands.length === 0 || !Array.isArray(receipt.logs) || receipt.logs.length === 0) {
-    return { valid: false, reason: 'receipt is missing command or log evidence' };
+  if (!receipt.environment.lock || !Array.isArray(receipt.taskResults) || receipt.taskResults.length === 0
+    || !Array.isArray(receipt.logs) || !Array.isArray(receipt.artifacts)
+    || digest(JSON.stringify(receipt.environment.lock)) !== receipt.environmentLockDigest) {
+    return { valid: false, reason: 'receipt is missing environment or task evidence' };
   }
-  const seen = new Set();
-  for (const result of receipt.commands) {
-    if (!result || typeof result.executable !== 'string' || !Array.isArray(result.argv) || typeof result.cwd !== 'string'
-      || result.exitCode !== 0 || result.signal !== null || result.spawnError !== null || seen.has(result.id)) {
-      return { valid: false, reason: 'receipt command evidence is incomplete or failed' };
-    }
-    if (!isoTimestamp(result.startedAt) || !isoTimestamp(result.finishedAt)
-      || Date.parse(result.finishedAt) < Date.parse(result.startedAt)) {
-      return { valid: false, reason: 'receipt command timestamps are malformed' };
-    }
-    if (!hasExactIdentity(result.identityBefore) || !hasExactIdentity(result.identityAfter)
-      || !result.identityBefore.clean || !result.identityAfter.clean
-      || !['baseRef', 'baseSha', 'changedFilesDigest', 'diffDigest', 'headSha', 'mergeBase', 'root', 'treeSha', 'worktreeStatusDigest']
-        .every((key) => result.identityBefore[key] === receipt.identity[key] && result.identityAfter[key] === receipt.identity[key])) {
-      return { valid: false, reason: 'receipt command boundary identity is stale or dirty' };
-    }
-    seen.add(result.id);
+  const host = receipt.hostChecks;
+  if (host?.status !== 'passed' || host.planDigest !== receipt.planDigest
+    || host.headSha !== receipt.source.headSha || host.treeSha !== receipt.source.treeSha
+    || !Array.isArray(host.commands) || host.commands.length === 0
+    || host.commands.some((item) => item.exitCode !== 0 || item.signal !== null || item.spawnError !== null)
+    || !Array.isArray(host.logs) || host.logs.length !== host.commands.length
+    || !receipt.logs.some((log) => log.path.endsWith('/results/host-checks.json'))
+    || host.logs.some((log) => !receipt.logs.some((file) =>
+      file.path.endsWith(`/results/${log.path}`) && file.digest === log.digest))) {
+    return { valid: false, reason: 'receipt is missing successful host integration evidence' };
   }
-  if (!REQUIRED.every((id) => seen.has(id))) return { valid: false, reason: 'receipt omits a required command' };
-  const logIds = new Set();
-  if (receipt.logs.length !== receipt.commands.length
-    || !receipt.logs.every((log) => log && typeof log.path === 'string' && DIGEST.test(log.digest)
-      && typeof log.commandId === 'string' && seen.has(log.commandId) && !logIds.has(log.commandId)
-      && (logIds.add(log.commandId) || true))) {
-    return { valid: false, reason: 'receipt log evidence is malformed' };
+  if (receipt.taskResults.some((result) => result?.status !== 'passed'
+    || result.headSha !== receipt.source.headSha || result.treeSha !== receipt.source.treeSha
+    || result.planDigest !== receipt.planDigest || result.imageKey !== receipt.imageIdentity.key
+    || result.imageId !== receipt.imageIdentity.id
+    || !Array.isArray(result.commands) || result.commands.length === 0
+    || result.commands.some((item) => item.exitCode !== 0 || item.signal !== null || item.spawnError !== null
+      || [item.identityBefore, item.identityAfter].some((boundary) =>
+        boundary?.headSha !== receipt.source.headSha || boundary?.treeSha !== receipt.source.treeSha
+        || boundary?.statusDigest !== digest(''))))) {
+    return { valid: false, reason: 'receipt task is failed, incomplete or stale' };
+  }
+  try {
+    for (const result of receipt.taskResults) {
+      validateVerificationEnvironment({ lock: receipt.environment.lock, actual: result.environment,
+        imageKey: receipt.imageIdentity.key });
+    }
+  } catch (error) {
+    return { valid: false, reason: `receipt environment mismatch: ${error.message}` };
+  }
+  if (new Set(receipt.taskResults.map((item) => item.taskId)).size !== receipt.taskResults.length
+    || !receipt.logs.every((item) => typeof item.path === 'string' && DIGEST.test(item.digest))
+    || !receipt.artifacts.every((item) => typeof item.path === 'string' && DIGEST.test(item.digest))) {
+    return { valid: false, reason: 'receipt task/log/artifact evidence is malformed' };
+  }
+  for (const result of receipt.taskResults) {
+    if (!Array.isArray(result.logs) || result.logs.length !== result.commands.length
+      || !receipt.logs.some((log) => log.path.endsWith(`/results/${result.taskId}.json`))
+      || result.logs.some((log) => !receipt.logs.some((evidence) =>
+        evidence.path.endsWith(`/results/${log.path}`) && evidence.digest === log.digest))
+      || !Array.isArray(result.artifacts)
+      || result.artifacts.some((file) => !receipt.artifacts.some((evidence) =>
+        evidence.path.endsWith(`/artifacts/${file.path}`) && evidence.digest === file.digest))) {
+      return { valid: false, reason: `receipt omits validated task logs or artifacts for ${result.taskId}` };
+    }
   }
   return { valid: true };
 }
@@ -216,18 +295,21 @@ export function receiptIsCurrent(receipt, identity) {
 export function receiptMatchesPlan(receipt, identity, plan) {
   if (!receiptIsCurrent(receipt, identity)
     || !plan || typeof plan !== 'object'
+    || plan.version !== 2 || receipt.profile !== plan.profile
+    || JSON.stringify(receipt.source) !== JSON.stringify(plan.source)
     || receipt.manifestDigest !== plan.manifestDigest
-    || receipt.planDigest !== digest(JSON.stringify(plan.commands))
-    || !Array.isArray(plan.commands)
-    || receipt.commands.length !== plan.commands.length) {
+    || receipt.planDigest !== semanticPlanDigest(plan)
+    || receipt.environmentLockDigest !== plan.environment.lockDigest
+    || receipt.imageIdentity.key !== plan.environment.imageKey
+    || JSON.stringify(receipt.capabilityTasks) !== JSON.stringify(plan.capabilityTasks)
+    || JSON.stringify(receipt.hostChecks.commands.map(({ command }) => command)) !== JSON.stringify(plan.hostChecks)
+    || !Array.isArray(plan.tasks) || receipt.taskResults.length !== plan.tasks.length) {
     return false;
   }
-  return receipt.commands.every((result, index) => {
-    const expected = plan.commands[index];
-    return result.id === expected.id
-      && result.executable === expected.executable
-      && result.cwd === expected.cwd
-      && JSON.stringify(result.argv) === JSON.stringify(expected.argv);
+  return plan.tasks.every((expected) => {
+    const result = receipt.taskResults.find((item) => item.taskId === expected.id);
+    return result && result.commands.length === expected.commands.length
+      && result.commands.every((item, index) => JSON.stringify(item.command) === JSON.stringify(expected.commands[index]));
   });
 }
 
@@ -258,19 +340,29 @@ export function validateReceiptEvidence(receipt, { worktree, receiptPath, receip
     || digest(readFileSync(realReceipt)) !== receiptSha256) {
     return { valid: false, reason: 'receipt evidence digest is stale' };
   }
-  for (const log of receipt.logs) {
-    const candidateLog = resolve(root, log.path);
-    if (!nestedPath(evidenceRoot, candidateLog) || !existsSync(candidateLog)) {
-      return { valid: false, reason: 'receipt log path escapes or is missing' };
+  for (const file of [...receipt.logs, ...receipt.artifacts]) {
+    const candidate = resolve(root, file.path);
+    if (!nestedPath(evidenceRoot, candidate) || !existsSync(candidate)) {
+      return { valid: false, reason: 'receipt log or artifact path escapes or is missing' };
     }
     try {
-      const realLog = realpathSync(candidateLog);
-      if (!nestedPath(realEvidenceRoot, realLog) || digest(readFileSync(realLog)) !== log.digest) {
-        return { valid: false, reason: 'receipt log digest is stale' };
+      const actual = realpathSync(candidate);
+      if (!nestedPath(realEvidenceRoot, actual) || digest(readFileSync(actual)) !== file.digest) {
+        return { valid: false, reason: 'receipt log or artifact digest is stale' };
       }
     } catch {
-      return { valid: false, reason: 'receipt log path is unresolved' };
+      return { valid: false, reason: 'receipt log or artifact path is unresolved' };
     }
+  }
+  for (const result of receipt.taskResults) {
+    const file = receipt.logs.find((log) => log.path.endsWith(`/results/${result.taskId}.json`));
+    if (!file || JSON.stringify(JSON.parse(readFileSync(resolve(root, file.path), 'utf8'))) !== JSON.stringify(result)) {
+      return { valid: false, reason: `receipt task result ${result.taskId} is stale` };
+    }
+  }
+  const hostEvidence = receipt.logs.find((log) => log.path.endsWith('/results/host-checks.json'));
+  if (!hostEvidence || JSON.stringify(JSON.parse(readFileSync(resolve(root, hostEvidence.path), 'utf8'))) !== JSON.stringify(receipt.hostChecks)) {
+    return { valid: false, reason: 'receipt host integration result is stale' };
   }
   return { valid: true };
 }

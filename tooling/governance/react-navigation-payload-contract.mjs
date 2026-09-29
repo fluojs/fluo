@@ -6,6 +6,7 @@ import ts from 'typescript';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const clientPath = 'packages/react/src/client/navigation-payload.ts';
 const serverPath = 'packages/react/src/page-result.ts';
+const transferPath = 'packages/react/src/navigation-payload.ts';
 const storePath = 'packages/react/src/client/store.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
@@ -41,6 +42,7 @@ export function enforceReactNavigationPayloadContract(
 ) {
   const client = ts.createSourceFile(clientPath, readText(clientPath), ts.ScriptTarget.Latest, true);
   const server = ts.createSourceFile(serverPath, readText(serverPath), ts.ScriptTarget.Latest, true);
+  const transfer = ts.createSourceFile(transferPath, readText(transferPath), ts.ScriptTarget.Latest, true);
   const store = ts.createSourceFile(storePath, readText(storePath), ts.ScriptTarget.Latest, true);
   const history = ts.createSourceFile(historyPath, readText(historyPath), ts.ScriptTarget.Latest, true);
   const provider = ts.createSourceFile(providerPath, readText(providerPath), ts.ScriptTarget.Latest, true);
@@ -56,6 +58,54 @@ export function enforceReactNavigationPayloadContract(
     || !ts.isStringLiteral(serverMediaType.initializer)
     || serverMediaType.initializer.text !== mediaType) {
     throw new Error('React navigation HTTP and browser media types must agree on protocol version 1.');
+  }
+
+  const initialTransfer = findNode(transfer, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'createReactInitialNavigationPage');
+  const initialLoad = findNode(client, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'loadReactInitialNavigationDestination');
+  const serverTransfer = findNode(server, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(server) === 'createReactInitialNavigationPage');
+  const json = initialTransfer && findNode(initialTransfer, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(transfer) === 'json');
+  const escape = json?.initializer;
+  const replacement = escape?.arguments?.[1];
+  const limit = initialTransfer && findNode(initialTransfer, (node) =>
+    ts.isIfStatement(node) && ts.isBinaryExpression(node.expression)
+    && node.expression.operatorToken.kind === ts.SyntaxKind.GreaterThanToken
+    && ts.isPropertyAccessExpression(node.expression.left)
+    && node.expression.left.name.text === 'byteLength');
+  const encoded = limit?.expression.left.expression;
+  if (!initialTransfer || !initialLoad || !serverTransfer
+    || !escape || !ts.isCallExpression(escape)
+    || !ts.isPropertyAccessExpression(escape.expression) || escape.expression.name.text !== 'replace'
+    || !ts.isCallExpression(escape.expression.expression)
+    || escape.expression.expression.expression.getText(transfer) !== 'JSON.stringify'
+    || escape.expression.expression.arguments[0]?.getText(transfer) !== 'payload'
+    || !ts.isRegularExpressionLiteral(escape.arguments[0])
+    || escape.arguments[0].text !== '/[<>&\\u2028\\u2029]/gu'
+    || !replacement || !ts.isArrowFunction(replacement)
+    || !ts.isTemplateExpression(replacement.body)
+    || replacement.body.head.text !== '\\u'
+    || replacement.body.templateSpans.length !== 1
+    || replacement.body.templateSpans[0].expression.getText(transfer)
+      !== "character.charCodeAt(0).toString(16).padStart(4, '0')"
+    || !limit || !ts.isIfStatement(limit)
+    || !ts.isBinaryExpression(limit.expression.right)
+    || limit.expression.right.operatorToken.kind !== ts.SyntaxKind.AsteriskToken
+    || limit.expression.right.left.getText(transfer) !== '64'
+    || limit.expression.right.right.getText(transfer) !== '1024'
+    || !encoded || !ts.isCallExpression(encoded)
+    || !ts.isPropertyAccessExpression(encoded.expression) || encoded.expression.name.text !== 'encode'
+    || encoded.arguments[0]?.getText(transfer) !== 'json'
+    || !ts.isNewExpression(encoded.expression.expression)
+    || encoded.expression.expression.expression.getText(transfer) !== 'TextEncoder'
+    || !findNode(limit.thenStatement, (node) =>
+      ts.isThrowStatement(node) && node.expression && ts.isNewExpression(node.expression)
+      && node.expression.expression.getText(transfer) === 'RangeError')
+    || !findNode(initialLoad, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(client) === 'parseNavigationPayload')) {
+    throw new Error('React navigation initial document transfer must retain escaping, size bounds and the shared client validator.');
   }
 
   const fetchCalls = findNodes(client, (node) =>
@@ -119,7 +169,9 @@ export function enforceReactNavigationPayloadContract(
     ts.isIfStatement(node) && node.expression.getText(client).includes('options.prefetch === true')
     && node.expression.getText(client).includes('response.status !== 200')
     && node.expression.getText(client).includes('freshUntil === undefined'));
-  const componentImport = findNode(client, (node) =>
+  const ordinaryNavigationLoad = findNode(client, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'loadReactNavigationDestination');
+  const componentImport = ordinaryNavigationLoad && findNode(ordinaryNavigationLoad, (node) =>
     ts.isCallExpression(node) && node.expression.getText(client) === 'loader');
   if (!prefetchRejection || !componentImport || prefetchRejection.end >= componentImport.pos) {
     throw new Error('React navigation prefetch must reject missing HTTP approval before importing a component.');
