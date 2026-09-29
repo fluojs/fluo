@@ -74,8 +74,11 @@ export function prepareVerificationEnvironment({
   const lock = loadEnvironmentLock(lockPath);
   const imageKey = imageKeyFor(lock, readFileSync(dockerfilePath));
   const tag = `fluo-verification:sha256-${imageKey.slice(7)}`;
-  command('docker', ['build', '--platform', 'linux/amd64', '--build-arg', `VERIFICATION_RECIPE_ID=${imageKey}`,
-    '--tag', tag, '--file', dockerfilePath, dirname(dockerfilePath)], { stdio: 'inherit' });
+  const existing = command('docker', ['image', 'ls', '--quiet', '--filter', `reference=${tag}`]);
+  if (!existing) {
+    command('docker', ['build', '--platform', 'linux/amd64', '--build-arg', `VERIFICATION_RECIPE_ID=${imageKey}`,
+      '--tag', tag, '--file', dockerfilePath, dirname(dockerfilePath)], { stdio: 'inherit' });
+  }
   const image = JSON.parse(command('docker', ['image', 'inspect', tag]))[0];
   if (image.Architecture !== 'amd64' || image.Os !== 'linux'
     || image.Config.Labels['org.fluo.verification.image-key'] !== imageKey) {
