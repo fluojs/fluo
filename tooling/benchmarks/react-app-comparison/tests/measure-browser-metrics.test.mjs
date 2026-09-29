@@ -5,8 +5,9 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { gzipSync } from 'node:zlib';
 
-import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, summarizeAssets, summarizeInteractions, summarizeRscBytes, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
+import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
 
 test('waits for a late development stylesheet before accepting its computed marker', { timeout: 10_000 }, async () => {
   const { chromium } = await import('@playwright/test');
@@ -155,6 +156,58 @@ test('counts initial document requests independently from subsequent journey req
   // Then: the initial asset budget still measures the same surface as PR smoke.
   assert.equal(initialCount, 2);
   assert.equal(requests.length, 79);
+});
+
+test('a pending prefetch is inconclusive, not a completed request or a failed request', () => {
+  assert.equal(summarizeErrorRate([
+    { status: 200 }, { kind: 'request-pending', status: null },
+    { kind: 'request-failed', error: 'net::ERR_ABORTED' },
+  ]), 0.5);
+  assert.equal(summarizeErrorRate([{ kind: 'request-pending', status: null }]), null);
+});
+
+test('records real decoded and compressed asset bytes from browser network events', { timeout: 20_000 }, async () => {
+  const javascript = Buffer.from('window.benchmarkAsset = "decoded browser response";');
+  const encoded = gzipSync(javascript);
+  const server = createServer((request, response) => {
+    if (request.url === '/asset.js') {
+      response.writeHead(200, {
+        'content-type': 'text/javascript', 'content-encoding': 'gzip', 'content-length': encoded.length,
+      });
+      response.end(encoded);
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end('<!doctype html><h1>Listing</h1><script src="/asset.js"></script>');
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const journeys = Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+    .map((name) => [name, { path: '/' }]));
+  const driver = await createBrowserDriver({
+    journeys, provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    const observation = await driver.measure({
+      framework: 'fluo', runId: 'encoded-asset', device: 'desktop', mode: 'native',
+      url: `http://127.0.0.1:${address.port}/`,
+    });
+    const script = observation.requests.find((request) => request.url.endsWith('/asset.js') && request.phase === 'cold');
+    assert.equal(script?.status, 200);
+    assert.equal(script.bodyBytes, javascript.length);
+    assert.equal(script.compressedBodyBytes, encoded.length);
+    assert.equal(observation.metrics.transferredJsBytes, javascript.length);
+    assert.equal(observation.metrics.compressedJsBytes, encoded.length);
+    assert.deepEqual(observation.qualityFailures, []);
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
 });
 
 test('browser request failures remain in error rate after successful throughput requests', { timeout: 20_000 }, async () => {

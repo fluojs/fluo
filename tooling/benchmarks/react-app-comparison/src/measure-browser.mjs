@@ -63,6 +63,12 @@ export function initialRequestCount(requests) {
   return requests.length;
 }
 
+export function summarizeErrorRate(requests) {
+  const settled = requests.filter((request) => request.kind !== 'request-pending');
+  return settled.length ? settled.filter((request) =>
+    request.error || request.status >= 400).length / settled.length : null;
+}
+
 export function summarizeRscBytes(requests) {
   const rsc = requests.filter((request) => /^text\/x-component(?:;|$)/iu.test(request.contentType ?? ''));
   return rsc.every((request) => Number.isFinite(request.compressedBodyBytes) && request.compressedBodyBytes >= 0)
@@ -273,36 +279,65 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       const { context, page, cdp } = await createPage(item);
       const requests = [];
       const qualityFailures = [];
-      const pendingResponses = new Set();
-      page.on('requestfailed', (request) => {
-        requests.push({
-          url: request.url(), resourceType: request.resourceType(),
-          error: request.failure()?.errorText ?? 'request failed before response',
+      const network = new Map();
+      let phase = 'cold';
+      let collecting = true;
+      cdp.on('Network.requestWillBeSent', ({ requestId, request, type, redirectResponse }) => {
+        if (!collecting) return;
+        if (redirectResponse) {
+          const previous = network.get(requestId);
+          requests.push({
+            ...previous, status: redirectResponse.status, kind: 'redirect',
+            transferBytes: redirectResponse.encodedDataLength,
+            unavailable: 'redirect response body not exposed by CDP',
+          });
+        }
+        network.set(requestId, {
+          url: request.url, resourceType: type?.toLowerCase() ?? 'other', phase,
+          documentUrl: page.url(), pageClosed: page.isClosed(), status: null,
+          compressedBodyBytes: 0,
         });
       });
-      page.on('response', async (response) => {
-        const captured = (async () => {
-          try {
-          const request = response.request();
-          const sizes = await request.sizes();
-          const body = await response.body();
-          const headers = await response.allHeaders();
+      cdp.on('Network.responseReceived', ({ requestId, response, type }) => {
+        const entry = network.get(requestId);
+        if (!collecting || !entry) return;
+        const headers = Object.fromEntries(Object.entries(response.headers)
+          .map(([name, value]) => [name.toLowerCase(), value]));
+        Object.assign(entry, {
+          status: response.status, resourceType: type.toLowerCase(),
+          contentEncoding: headers['content-encoding'] ?? null,
+          contentType: headers['content-type'] ?? null,
+          cacheControl: headers['cache-control'] ?? null,
+        });
+      });
+      cdp.on('Network.dataReceived', ({ requestId, dataLength, encodedDataLength }) => {
+        const entry = network.get(requestId);
+        if (collecting && entry) {
+          entry.compressedBodyBytes += encodedDataLength;
+          entry.bodyBytes = (entry.bodyBytes ?? 0) + dataLength;
+        }
+      });
+      cdp.on('Network.loadingFailed', ({ requestId, errorText }) => {
+        const entry = network.get(requestId);
+        if (!collecting || !entry) return;
+        requests.push({ ...entry, kind: 'request-failed', error: errorText });
+        network.delete(requestId);
+      });
+      cdp.on('Network.loadingFinished', ({ requestId, encodedDataLength }) => {
+        const entry = network.get(requestId);
+        if (!collecting || !entry) return;
+        if (entry.status === null || (entry.bodyBytes === undefined && ![204, 205, 304].includes(entry.status))) {
+          const reason = entry.status === null ? 'HTTP response status unavailable'
+            : 'decoded body bytes unavailable: no Network.dataReceived event';
           requests.push({
-            url: response.url(), status: response.status(), resourceType: request.resourceType(),
-            transferBytes: sizes.responseHeadersSize + sizes.responseBodySize,
-            compressedBodyBytes: sizes.responseBodySize,
-            bodyBytes: body.byteLength,
-            contentEncoding: headers['content-encoding'] ?? null,
-            contentType: headers['content-type'] ?? null,
-            cacheControl: headers['cache-control'] ?? null,
+            ...entry, transferBytes: encodedDataLength, kind: 'response-capture-failed',
+            error: reason,
           });
-          } catch (error) {
-          requests.push({ url: response.url(), resourceType: response.request().resourceType(), error: String(error) });
-          qualityFailures.push(`response capture failed: ${response.url()}: ${String(error)}`);
-          }
-        })();
-        pendingResponses.add(captured);
-        void captured.finally(() => pendingResponses.delete(captured));
+          qualityFailures.push(`response capture failed: ${entry.url}: ${reason}`);
+        } else {
+          requests.push({ ...entry, transferBytes: encodedDataLength, bodyBytes: entry.bodyBytes ?? 0 });
+        }
+        network.delete(requestId);
       });
       try {
         const listing = new URL(config.journeys.listing.path, item.url).href;
@@ -319,11 +354,11 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             name: entry.name, startTime: entry.startTime,
           }))),
         );
-        await Promise.all([...pendingResponses]);
-        const initialRequests = [...requests];
+        phase = 'warm';
         await page.goto(listing, { waitUntil: 'load' });
         const warm = await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.toJSON() ?? null);
         const interactions = [];
+        phase = 'interaction';
         for (const action of config.interactions ?? []) {
           await page.goto(new URL(action.path, item.url).href, { waitUntil: 'load' });
           await page.locator('[data-benchmark-hydrated="true"]').waitFor({ state: 'visible', timeout: 10_000 });
@@ -361,7 +396,14 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           interactions.push(observation);
           if (observation.unavailable) qualityFailures.push(observation.unavailable);
         }
-        await Promise.all([...pendingResponses]);
+        collecting = false;
+        for (const entry of network.values()) {
+          requests.push({ ...entry, kind: 'request-pending',
+            unavailable: 'request still in flight at capture boundary' });
+          qualityFailures.push(`request pending at capture boundary: ${entry.url}`);
+        }
+        network.clear();
+        const initialRequests = requests.filter((request) => request.phase === 'cold');
         const metrics = {};
         const unavailable = {};
         if (cold.navigation) {
@@ -400,8 +442,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           metrics.throughputRequestsPerSecond = sent.length * 1000 / elapsedMs;
           requests.push(...sent.map((response) => ({ ...response, url: new URL(throughput.path, item.url).href, resourceType: 'throughput' })));
         }
-        if (requests.length) metrics.errorRate = requests.filter((request) =>
-          request.error || request.status >= 400).length / requests.length;
+        const errorRate = summarizeErrorRate(requests);
+        if (errorRate !== null) metrics.errorRate = errorRate;
         const serverPid = config.serverPids?.[item.framework];
         let generator;
         {

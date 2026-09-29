@@ -88,7 +88,10 @@ The smoke is conditional within the existing `static` verification task, with a
 distinct React selector; the HTTP comparison keeps its own conditional coverage.
 The measured approval marker is rendered by the destination view. A replaced
 document or failed response capture makes the run inconclusive, while genuine
-request failures remain counted together with throughput errors.
+request failures remain counted together with throughput errors. Decoded and
+encoded asset bytes come from browser CDP network data events; a speculative
+prefetch still pending at the capture boundary is recorded as pending and
+makes the run inconclusive without fabricating byte counts or a request failure.
 
 ## Reproducing evidence
 

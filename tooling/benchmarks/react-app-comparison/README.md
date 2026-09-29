@@ -137,10 +137,15 @@ network settings appear in each raw trace, not only in a profile label.
 `shellArrivalMs` uses browser first-contentful-paint, and
 `hydrationMainThreadMs` is the initial-navigation CDP `Performance.TaskDuration`
 in milliseconds; it includes work outside hydration and is not an RSC byte count.
-The `transferred*Bytes` asset budgets use decoded `response.body()` byte lengths;
-`compressed*Bytes` uses Playwright `request.sizes().responseBodySize` (the
-encoded body, excluding headers). Raw trace entries also record encoded body
-plus response-header bytes, content encoding, and cache-dependent request counts.
+The `transferred*Bytes` asset budgets use decoded CDP `Network.dataReceived`
+byte counts; `compressed*Bytes` uses encoded bytes from the same network events
+(the body, excluding headers). The raw transfer total comes from
+`Network.loadingFinished`. A completed response without decoded-byte events is
+inconclusive, not a fabricated zero-byte body. Genuine `Network.loadingFailed`
+requests remain in `errorRate`; an uncompleted speculative prefetch at the
+capture boundary is recorded separately as pending and makes the run
+inconclusive without counting as a completed success or failure.
+Raw entries also record content encoding and cache-dependent request counts.
 These are loaded asset costs; a cache hit must not be reported as a fresh wire transfer.
 Separate `text/x-component` response bytes are recorded as
 `rscResponseWireBytes` in the raw artifact, apart from JavaScript assets and

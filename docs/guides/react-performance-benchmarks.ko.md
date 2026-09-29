@@ -90,7 +90,10 @@ Smoke는 기존 `static` 검증 task에서 React 전용 selector로 조건부 �
 HTTP comparison의 별도 조건부 coverage를 유지합니다. 측정 승인 marker는
 목적지 view가 렌더링할 때 표시합니다. 문서 교체나 응답 본문 수집 실패는
 실행을 inconclusive로 분류하고, 실제 request 실패는 throughput 오류와
-함께 errorRate에 포함합니다.
+함께 errorRate에 포함합니다. 디코딩 및 인코딩된 asset byte는 browser CDP
+network data event에서 수집합니다. 수집 경계에서 아직 완료되지 않은
+speculative prefetch는 pending으로 기록하고, byte 값이나 request 실패를
+만들어 내지 않은 채 실행을 inconclusive로 분류합니다.
 
 ## 증거 재현
 
