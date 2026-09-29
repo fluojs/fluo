@@ -47,7 +47,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   staticTask.commands = [
     { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
     { executable: 'node', argv: ['-e',
-      'if(process.ppid===1)throw Error("RUNNER_REQUIRES_INIT_REAPER");const fs=require("node:fs");if(!fs.existsSync("node_modules/fixture-lib")||!fs.existsSync("packages/cli/dist/cli.js")){console.error("INSTALL_OR_BUILD_MISSING");process.exit(6)}if(!require("./tooling/ci/prepared-build.mjs").verifyPreparedBuild(process.cwd(),process.env.FLUO_VERIFIED_BUILD))throw Error("PREPARED_BUILD_MISSING");if(!(fs.statSync("packages/cli/dist/cli.js").mode&0o111))throw Error("PNPM_BIN_NOT_EXECUTABLE");if(!fs.existsSync((process.env.XDG_DATA_HOME??"/tmp/pnpm-cache")+"/cross-task-proof"))throw Error("CACHE_NOT_SHARED");fs.mkdirSync(".artifacts/docs-site",{recursive:true});fs.writeFileSync(".artifacts/docs-site/index.html","linux artifact");console.log("LINUX_TASK_OK",process.platform,process.arch)'], cwd: '.' },
+      'if(process.ppid===1)throw Error("RUNNER_REQUIRES_INIT_REAPER");const fs=require("node:fs");if(!fs.existsSync("node_modules/fixture-lib")||!fs.existsSync("packages/cli/dist/cli.js")){console.error("INSTALL_OR_BUILD_MISSING");process.exit(6)}if(!require("./tooling/ci/prepared-build.mjs").verifyPreparedBuild(process.cwd(),process.env.FLUO_VERIFIED_BUILD))throw Error("PREPARED_BUILD_MISSING");if(!(fs.statSync("packages/cli/dist/cli.js").mode&0o111))throw Error("PNPM_BIN_NOT_EXECUTABLE");if(!fs.existsSync((process.env.XDG_DATA_HOME??"/tmp/pnpm-cache")+"/cross-task-proof"))throw Error("CACHE_NOT_SHARED");fs.mkdirSync(".artifacts/docs-site",{recursive:true});fs.writeFileSync(".artifacts/docs-site/index.html","linux artifact");console.log("TASK_OWNER",process.getuid(),process.getgid());console.log("LINUX_TASK_OK",process.platform,process.arch)'], cwd: '.' },
   ];
   const failingTask = manifest.tasks.find(({ id }) => id === 'packages-1');
   for (const id of ['compatibility-floor', 'compatibility-next']) {
@@ -108,6 +108,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   assert.equal(passed.environment.os, 'linux');
   assert.equal(passed.environment.arch, 'arm64');
   assert.equal(passed.headSha, headSha);
+  assert.ok(readFileSync(join(output, "static-1.log"), "utf8").includes(`TASK_OWNER ${process.getuid()} ${process.getgid()}`));
   assert.match(readFileSync(join(output, 'static-1.log'), 'utf8'), /LINUX_TASK_OK linux arm64/u);
   assert.equal(passed.commands[0].command.argv.join(' '), 'install --frozen-lockfile');
   assert.equal(passed.commands[0].exitCode, 0);

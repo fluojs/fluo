@@ -394,22 +394,27 @@ export function runTask(plan, taskId, output, artifacts, planPath, sourceRoot = 
   const staging = mkdtempSync(join(tmpdir(), 'fluo-verification-source-'));
   const volume = `fluo-verify-${process.pid}-${createHash('sha256').update(staging).digest('hex').slice(0, 12)}`;
   const watchVolume = `${volume}-watch`;
+  const owner = `${process.getuid()}:${process.getgid()}`;
   try {
     const bundle = join(staging, 'source.bundle');
     execute('git', ['bundle', 'create', bundle, 'HEAD', plan.source.baseSha], { cwd: sourceRoot });
     execute('docker', ['volume', 'create', volume]);
     execute('docker', ['volume', 'create', watchVolume]);
     execute('docker', ['run', '--rm', '--platform', 'linux/arm64', '--network', 'host',
-      '-v', `${volume}:/workspace`, '-v', `${bundle}:/tmp/source.bundle:ro`, prepared.tag, 'sh', '-c',
+      '-v', `${volume}:/workspace`, '-v', `${watchVolume}:/workspace-watch`,
+      '-v', `${bundle}:/tmp/source.bundle:ro`, prepared.tag, 'sh', '-c',
       `git init -q /workspace && git -C /workspace fetch -q /tmp/source.bundle HEAD ` +
       `&& git -C /workspace cat-file -e ${plan.source.baseSha}^{commit} ` +
       `&& git -C /workspace update-ref refs/remotes/origin/main ${plan.source.baseSha} ` +
       `&& git -C /workspace config user.name Verification ` +
       `&& git -C /workspace config user.email verification@localhost ` +
-      `&& git -C /workspace checkout -q --detach ${plan.source.headSha}`]);
+      `&& git -C /workspace checkout -q --detach ${plan.source.headSha} ` +
+      `&& chown -R ${owner} /workspace /workspace-watch`]);
     const dockerHost = execute('docker', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}']);
     if (!dockerHost.startsWith('unix://')) throw new TypeError('Docker Unix socket required');
     const args = ['run', '--rm', '--init', '--platform', 'linux/arm64', '--network', 'host',
+      '--user', owner, '--group-add', String(statSync(dockerHost.slice(7)).gid), '--group-add', '0',
+      '-e', 'HOME=/tmp',
       '-v', `${volume}:/workspace`, '-v', `${resolve(planPath)}:/tmp/plan.json:ro`,
       '-v', `${resolve(output)}:/evidence`, '-v', `${resolve(artifacts)}:/artifacts`,
       '-v', `${dependencyCache}:/pnpm-cache`,
