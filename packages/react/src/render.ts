@@ -133,10 +133,12 @@ function createReactReadableStreamRenderOptions(
 }
 
 function createReactDomRenderOptions(options: ReactReadableStreamRenderOptions): ReactDomReadableStreamRenderOptions {
+  const bootstrapModules = cloneBootstrapAssets(options.bootstrapModules);
+  const bootstrapScripts = cloneBootstrapAssets(options.bootstrapScripts);
   return {
-    ...(options.bootstrapModules !== undefined ? { bootstrapModules: cloneBootstrapAssets(options.bootstrapModules) } : {}),
+    ...(bootstrapModules === undefined ? {} : { bootstrapModules }),
     ...(options.bootstrapScriptContent !== undefined ? { bootstrapScriptContent: options.bootstrapScriptContent } : {}),
-    ...(options.bootstrapScripts !== undefined ? { bootstrapScripts: cloneBootstrapAssets(options.bootstrapScripts) } : {}),
+    ...(bootstrapScripts === undefined ? {} : { bootstrapScripts }),
     ...(options.identifierPrefix !== undefined ? { identifierPrefix: options.identifierPrefix } : {}),
     ...(options.nonce !== undefined ? { nonce: options.nonce } : {}),
     ...(options.onError !== undefined ? { onError: options.onError } : {}),

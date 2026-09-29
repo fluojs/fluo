@@ -107,13 +107,16 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     href: string,
     navigation: ReactNavigationSnapshot,
     params?: Readonly<Record<string, string>>,
+    metadata?: ReactRouteSnapshot['metadata'],
   ): ReactRouteSnapshot => {
     const pathname = new URL(href).pathname;
-    return createSnapshotFromHref(
+    const next = createSnapshotFromHref(
       href,
       params ?? (pathname === snapshot.pathname ? snapshot.params : {}),
       navigation,
     );
+    const approvedMetadata = params === undefined ? snapshot.metadata : metadata;
+    return approvedMetadata === undefined ? next : Object.freeze({ ...next, metadata: approvedMetadata });
   };
 
   const cancelPending = (): void => {
@@ -329,6 +332,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
         confirmedHref,
         createNavigationSnapshot('complete', type, toSnapshotUrl(confirmedHref)),
         result.payload.params,
+        result.payload.metadata,
       ));
     })();
   };

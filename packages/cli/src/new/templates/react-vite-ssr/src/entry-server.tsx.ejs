@@ -52,7 +52,7 @@ export function createReactPageRenderer(manifest: unknown): ReactPageRenderer {
       <ReactAppDocument
         initialPage={initialPage}
         page={page}
-        route={{ params: context.request.params, url: context.request.url }}
+        route={{ params: context.request.params, url: context.request.url, metadata: initialPage?.payload.metadata }}
         stylesheets={assets.css}
       />,
       assets.hydrationOptions,
@@ -71,7 +71,7 @@ export function createReactDevelopmentPageRenderer(): ReactPageRenderer {
       <ReactAppDocument
         initialPage={initialPage}
         page={page}
-        route={{ params: context.request.params, url: context.request.url }}
+        route={{ params: context.request.params, url: context.request.url, metadata: initialPage?.payload.metadata }}
         stylesheets={['/src/styles.css?direct']}
       />,
       {

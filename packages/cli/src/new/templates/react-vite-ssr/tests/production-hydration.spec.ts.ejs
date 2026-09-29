@@ -146,6 +146,79 @@ test('hydrates two DTO pages and preserves the shell during HTTP-approved naviga
   expect(browserDiagnostics).toEqual([]);
 });
 
+test('retains the approved page and metadata while an HTTP destination is pending', async ({ page }) => {
+  // Given: the negotiated search request is deferred before approval.
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Shell taps: 0' }).click();
+  let release = () => {};
+  const deferred = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/search?q=catalog', async (route) => {
+    if (route.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1') {
+      await deferred;
+    }
+    await route.continue();
+  });
+  const requestStarted = page.waitForRequest((request) =>
+    new URL(request.url()).pathname === '/search'
+    && request.headers().accept === 'application/vnd.fluo.react-navigation+json;v=1',
+  { timeout: 10_000 });
+  const click = page.getByRole('link', { name: 'Search catalog' }).first().click();
+  try {
+    await requestStarted;
+
+    // When: the new page is still unapproved.
+    // Then: the previous page and shell are usable and its page head is unchanged.
+    await expect(page.locator('[aria-live="polite"]')).toHaveText('Loading page');
+    await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+    await expect(page).toHaveTitle('Catalog item sku-42');
+    await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+    await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+  } finally {
+    release();
+  }
+  await click;
+  await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+  await expect(page).toHaveTitle('Search: catalog');
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', 'Search catalog');
+  await expect(page.locator('link[rel="canonical"]')).toHaveCount(0);
+  await expect(page.locator('link[data-vite-style]')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+});
+
+test('resets a throwing approved page locally without a second request', async ({ page }) => {
+  // Given: the HTTP-approved destination throws only after client rendering starts.
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Shell taps: 0' }).click();
+  await page.evaluate(() => { document.documentElement.dataset.starterIdentity = 'retained'; });
+  let approvals = 0;
+  page.on('response', (response) => {
+    if (new URL(response.url()).pathname === '/products/render-error'
+      && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1') {
+      approvals++;
+    }
+  });
+  const approved = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/products/render-error'
+    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1');
+
+  // When: the user locally resets the already-approved page after a React render error.
+  await page.getByRole('link', { name: 'Open throwing page' }).click();
+  expect((await approved).status()).toBe(200);
+  await expect(page.getByRole('alert', { name: 'Page rendering failed' })).toBeVisible();
+  await expect(page).toHaveURL(/\/products\/render-error$/u);
+  await expect(page).toHaveTitle('Catalog item render-error');
+  await page.evaluate(() => { Reflect.set(window, '__allowRenderRetry', true); });
+  await page.getByRole('button', { name: 'Try rendering this page again' }).click();
+
+  // Then: the destination, shell and document survive with no fresh HTTP approval.
+  await expect(page.getByRole('heading', { name: 'Catalog item render-error' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.dataset.starterIdentity)).toBe('retained');
+  expect(approvals).toBe(1);
+});
+
 const NAVIGATION_MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
 
 declare global {
@@ -602,6 +675,9 @@ test('keeps native anchors usable before hydration', async ({ page }) => {
     if (firstEntry) {
       firstEntry = false;
       await held;
+      // The original document must never bootstrap after native navigation.
+      await route.abort('aborted');
+      return;
     }
     await route.continue();
   });
@@ -613,8 +689,11 @@ test('keeps native anchors usable before hydration', async ({ page }) => {
 
     const document = page.waitForResponse((result) =>
       result.url().includes('/search?q=catalog') && result.request().isNavigationRequest());
+    const destinationReady = page.waitForURL('**/search?q=catalog', { waitUntil: 'domcontentloaded' });
     await page.getByRole('link', { name: 'Search catalog' }).first().click({ noWaitAfter: true });
     expect((await document).status()).toBe(200);
+    await destinationReady;
+    await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
   } finally {
     releaseBootstrap();
     await page.unrouteAll({ behavior: 'wait' });

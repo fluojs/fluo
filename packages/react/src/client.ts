@@ -13,6 +13,8 @@ export { Link } from './client/link.js';
 export type { ReactNavigationFailureReason, ReactNavigationLoadResult, ReactNavigationModules } from './client/navigation-payload.js';
 export { loadReactInitialNavigationDestination, loadReactNavigationDestination } from './client/navigation-payload.js';
 export { ReactClientRouterProvider } from './client/provider.js';
+export { ReactNavigationExperience } from './client/experience.js';
+export type { ReactNavigationEffect, ReactNavigationExperienceProps } from './client/experience.js';
 export { createReactRouteSnapshot } from './client/snapshot.js';
 export type {
   ReactClientRouterProviderProps,
