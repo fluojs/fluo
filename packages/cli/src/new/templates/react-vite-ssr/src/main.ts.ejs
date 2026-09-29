@@ -1,26 +1,58 @@
 import '@fluojs/core/metadata-preload';
+import type { IncomingMessage, Server } from 'node:http';
+import type { Duplex } from 'node:stream';
 import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
+import type { ReactPageRenderer } from '@fluojs/react';
 import { FluoFactory } from '@fluojs/runtime';
+import { createElement, type ReactElement } from 'react';
 import type { ViteDevServer } from 'vite';
 
 import { createAppModule } from './app';
-import { createReactDevelopmentPageRenderer, createReactPageRenderer } from './entry-server';
+import { createReactPageRenderer } from './entry-server';
 import { loadReactViteManifest } from './load-manifest';
 
-export async function startReactViteApp(vite?: ViteDevServer) {
+export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Server) {
   const manifest = vite ? undefined : await loadReactViteManifest(new URL('../client/.vite/manifest.json', import.meta.url));
+  const developmentRenderers = new WeakMap<ReactElement, ReactPageRenderer>();
   const AppModule = createAppModule({
     clientDirectory: new URL(vite ? '../public/' : '../client/', import.meta.url),
-    renderPage: vite ? createReactDevelopmentPageRenderer() : createReactPageRenderer(manifest),
+    loadPage: vite ? async (module, props) => {
+      const [destination, { createReactDevelopmentPageRenderer }] = await Promise.all([
+        vite.ssrLoadModule(`/src/${module.slice(2)}`),
+        vite.ssrLoadModule('/src/entry-server.tsx'),
+      ]);
+      const page = createElement(destination['default'], props);
+      developmentRenderers.set(page, createReactDevelopmentPageRenderer());
+      return page;
+    } : undefined,
+    renderPage: vite ? (page, context, policies, initialPage) => {
+      const render = developmentRenderers.get(page);
+      if (!render) {
+        throw new Error('The React development renderer was not loaded before the page.');
+      }
+      developmentRenderers.delete(page);
+      return render(page, context, policies, initialPage);
+    } : createReactPageRenderer(manifest),
   });
   const port = Number(process.env.PORT ?? '3000');
   const app = await FluoFactory.create(AppModule, {
+    securityHeaders: vite ? { contentSecurityPolicy: "default-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:" } : undefined,
     adapter: FastifyHttpApplicationAdapter.create({
       host: '127.0.0.1',
       port,
       configureFastify: vite ? (server) => {
+        if (!upgradeServer) {
+          throw new Error('The React dev app needs the Vite upgrade source.');
+        }
+        const forwardUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+          upgradeServer.emit('upgrade', request, socket, head);
+        };
+        server.server.on('upgrade', forwardUpgrade);
+        server.addHook('onClose', async () => {
+          server.server.off('upgrade', forwardUpgrade);
+        });
         server.addHook('onRequest', (request, reply, done) => {
-          if (request.raw.method !== 'GET' || !/^\/(?:src|node_modules|@id|@fs|@vite)\//u.test(request.raw.url ?? '')) {
+          if (request.raw.method !== 'GET' || !/^\/(?:src|node_modules|@id|@fs|@vite|@react-refresh)(?:\/|\?|$)/u.test(request.raw.url ?? '')) {
             done();
             return;
           }

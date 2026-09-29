@@ -19,7 +19,7 @@ import {
   type ReactPageRenderer,
 } from '@fluojs/react';
 import { IsIn, IsString, MinLength } from '@fluojs/validation';
-import { createElement } from 'react';
+import { createElement, type ReactElement } from 'react';
 
 import { ProductPage } from './page';
 import SearchPage from './page-search';
@@ -28,6 +28,7 @@ const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
 
 export type ReactViteAppModuleOptions = {
   readonly clientDirectory: URL;
+  readonly loadPage?: (module: `./page${string}.tsx`, props: Record<string, unknown>) => Promise<ReactElement>;
   readonly renderPage: ReactPageRenderer;
 };
 
@@ -60,9 +61,12 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
   class ProductPageRouter {
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
-    show(input: ProductPageRequest) {
+    async show(input: ProductPageRequest) {
       const props = { sku: input.sku, preview: input.preview === 'true' };
-      return ReactNavigationPage.create(createElement(ProductPage, props), {
+      const page = options.loadPage
+        ? await options.loadPage('./page.tsx', props)
+        : createElement(ProductPage, props);
+      return ReactNavigationPage.create(page, {
         module: './page.tsx',
         props,
       });
@@ -73,9 +77,12 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
   class SearchPageRouter {
     @Path('/')
     @RequestDto(SearchPageRequest)
-    show(input: SearchPageRequest) {
+    async show(input: SearchPageRequest) {
       const props = { query: input.q };
-      return ReactNavigationPage.create(createElement(SearchPage, props), {
+      const page = options.loadPage
+        ? await options.loadPage('./page-search.tsx', props)
+        : createElement(SearchPage, props);
+      return ReactNavigationPage.create(page, {
         module: './page-search.tsx',
         props,
       });

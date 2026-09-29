@@ -174,23 +174,25 @@ document shell, server/client route snapshot wiring을 함께 다루지 않습�
 dispatcher가 계속 authoritative합니다.
 
 React `dev` script는 이제 직접 실행한 CLI와 동일한 `fluo dev` 경로로 위임합니다.
-의존성 설치 후 어느 경로든 애플리케이션의 수동 production build 없이 시작합니다.
-CLI가 project-local Vite SSR transform으로 server entry를 로드하고 Fastify
-development server의 Vite middleware로 client module과 stylesheet를 제공합니다.
-server/client 수정 시 Node child를 다시 시작해 변경된 소스를 제공하며 production
-`dist`를 만들거나 manifest를 읽지 않습니다. `build`와 `start`의 production
-manifest/static asset 경로는 별도로 유지합니다. 이는 HMR이 아니라 process restart입니다.
-특히 `packages/cli/src/dev-runner/react-vite-dev-app.ts`는 Vite middleware에
-`hmr: false`를 설정합니다. 현재 React component/CSS 수정도 server/shared source와
-감시 대상 Vite config 수정처럼 child를 재시작하며, browser state나 장기 shell resource
-보존은 보장하지 않습니다. `@fluojs/config`의 명시적 watched env snapshot reload는
-code restart와 별개입니다. #3876은 향후 범위가 정해진 React Fast Refresh/CSS HMR,
-#3877은 안전한 server/shared/config restart 및 실패 복구·teardown을 소유합니다.
+의존성 설치 후 어느 경로든 수동 production build 없이 시작합니다. Vite가 SSR entry를
+변환하고 Fastify listener가 동일 origin에서 client module, refresh preamble, CSS,
+WebSocket을 제공합니다. Vite가 변환한 React component 수정은 Fast Refresh, CSS
+수정은 HMR을 사용해 app child를 교체하지 않습니다. 직접 HTTP 요청은 기존 DTO-bound
+route를 거친 뒤 최신 SSR page를 로드합니다. React가 호환 가능한 component boundary로
+판단할 때만 state를 보존하며, 호환되지 않는 export나 hook 변경은 remount/reload를
+일으킬 수 있습니다. Syntax 오류는 Vite overlay와 terminal에 나타나고 같은 session에서
+수정하면 회복합니다. Server-only, graph 밖, 감시 대상 config 수정은 child restart를
+유지합니다(#3877이 일반적인 안전한 restart 정책을 소유). `build`와 `start`는 별도
+production manifest/static asset 경로를 유지하며 dev preamble을 포함하지 않습니다.
+기존 생성 앱은 [React dev HMR 이전](../../docs/getting-started/migrate-react-dev-hmr.ko.md)을
+따라야 합니다. `@fluojs/config`의 watched env snapshot reload는 code restart와 별개입니다.
 
 React의 Node native watch 경로는 macOS/Windows에서 source, `.env`, Vite config만
 감시하므로 생성된 `dist`로 다시 빌드하지 않습니다. Linux에서는 Node의
 `--watch-path`를 사용할 수 없어 React에서 `--runner native`/`--raw-watch`를
-선택해도 fluo restart runner를 사용합니다. 다른 starter의 watch mode는 변경되지 않습니다.
+선택해도 fluo restart runner를 사용합니다. macOS/Windows의 raw watch는 계속 native
+process restart이며 Fast Refresh가 아닙니다. Bun, Deno, Workers의 watch 선택과 다른
+starter의 mode는 그대로이고 Fast Refresh 지원 대상은 Node React/Vite 경로입니다.
 
 Generated application wiring은 framework abstraction에 숨지 않고 보이는 상태를 유지합니다.
 `src/entry-server.tsx`는 교체 가능한 `ReactPageRenderer`와 `ReactServerEntry` 생성을 소유하고,

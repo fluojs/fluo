@@ -97,6 +97,10 @@ The supported short path is now:
 2. Open `/products/sku-42?preview=true`, follow the `/search?q=catalog` link, and edit
    `src/page.tsx` or `src/page-search.tsx`. Each page component owns page UI and hydrated
    interaction only; the shell remains mounted and destination-local state resets at the slot.
+   The official Node starter uses Fast Refresh for compatible components and CSS HMR on the app
+   origin; direct SSR requests load the current page after HTTP validation. Incompatible exports
+   or hook signatures may remount/reload. See the
+   [development migration](../getting-started/migrate-react-dev-hmr.md) for existing apps.
 3. Read `src/app.ts` when adding a route. Its explicit `@Router(...)` / `@Path(...)` handler
    validates a DTO and selects `ReactNavigationPage.create(createElement(Page, props),
    { module: './page-name.tsx', props })`. A new `src/page-name.tsx` is discovered by the

@@ -15,9 +15,19 @@ The generated `dev` script runs `fluo dev`, as does the installed `fluo` binary 
 directly. After installation, neither path requires a manual production build: the CLI
 loads the server entry through project-local Vite SSR transforms and serves client
 modules and CSS through Vite middleware on the Fastify development server. Source
-edits restart that server and are served from the changed source without creating
-production `dist` or requiring a client build manifest. This is full-process reload,
-not module-level HMR. `build` and `start` remain the separate production path.
+edits use the same-origin Vite WebSocket and React Fast Refresh for supported component
+boundaries, while CSS updates without replacing the document. Vite-owned browser modules
+do not restart the app child; each directly requested page loads its current SSR component
+through Vite after HTTP route and DTO validation. Server-only and config edits still restart
+the child. No production `dist` or client build manifest is needed for `dev`; `build` and
+`start` remain the separate production path.
+
+Keep component-only exports in refreshable modules. Changing hook order or incompatible
+exports can require a React remount or a full document reload; state is preserved only when
+React recognizes the component boundary. A syntax error appears in the Vite browser overlay
+and terminal; correct the file in the same dev session to resume updates. Existing apps
+generated without `@vitejs/plugin-react` or `src/entry-client-dev.ts` should follow the
+[React dev HMR migration](https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-react-dev-hmr.md) rather than adding another Vite process.
 
 Open `http://127.0.0.1:3000/products/sku-42?preview=true`, then follow
 the Search catalog link to `/search?q=catalog`. Edit `src/page.tsx` and
@@ -33,9 +43,12 @@ The decorated route remains explicit in `src/app.ts`:
 class ProductPageRouter {
   @Path('/:sku')
   @RequestDto(ProductPageRequest)
-  show(input: ProductPageRequest) {
+  async show(input: ProductPageRequest) {
     const props = { sku: input.sku, preview: input.preview === 'true' };
-    return ReactNavigationPage.create(createElement(ProductPage, props), {
+    const page = options.loadPage
+      ? await options.loadPage('./page.tsx', props)
+      : createElement(ProductPage, props);
+    return ReactNavigationPage.create(page, {
       module: './page.tsx',
       props,
     });
@@ -46,7 +59,8 @@ class ProductPageRouter {
 This handler still runs through `@fluojs/http` matching, DTO binding, validation, middleware,
 guards, interceptors, request scopes, and not-found behavior before the application renderer sees
 the returned page. The search handler likewise validates its `q` query DTO and selects
-`./page-search.tsx` with one `query` prop. To add an ordinary third page, create
+`./page-search.tsx` with one `query` prop. In development, `options.loadPage` loads
+either component through Vite for fresh SSR after HTTP validation. To add an ordinary third page, create
 `src/page-about.tsx` with a default component accepting `Record<string, unknown>`,
 then add its explicit `@Router`/`@Path` handler and DTO in `src/app.ts`; select
 `ReactNavigationPage.create(createElement(AboutPage, props), {

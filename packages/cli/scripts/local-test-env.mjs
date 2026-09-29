@@ -465,6 +465,8 @@ export async function verifyReactColdDev(projectDirectory, profile = resolveSand
   child.stderr.on('data', (chunk) => process.stderr.write(chunk));
   let browser;
   let page;
+  let socket;
+  let smokeSocket;
   const diagnostics = [];
 
   try {
@@ -475,7 +477,7 @@ export async function verifyReactColdDev(projectDirectory, profile = resolveSand
     const html = await initial.text();
     assert.match(html, /Catalog item sku-42/u);
     const assets = [...html.matchAll(/(?:src|href)="(\/(?:assets|src)\/[^"]+)"/gu)].map((match) => match[1]);
-    assert(assets.some((asset) => asset.includes('/src/entry-client.tsx')));
+    assert(assets.includes('/src/entry-client-dev.ts'));
     for (const asset of assets) {
       assert.equal((await fetch(new URL(asset, origin))).status, 200, asset);
     }
@@ -489,8 +491,11 @@ export async function verifyReactColdDev(projectDirectory, profile = resolveSand
         if (message.type() === 'warning' || message.type() === 'error') diagnostics.push(message.text());
       });
       page.on('pageerror', (error) => diagnostics.push(error.message));
+      const connected = page.waitForEvent('websocket', { timeout: 15_000 });
       await page.goto(`${origin}/products/sku-42?preview=true`);
-      await page.getByRole('button', { name: 'Count: 0' }).click();
+      socket = await connected;
+      const counter = page.getByRole('button', { name: 'Count: 0' });
+      await counter.click();
       await page.getByRole('button', { name: 'Count: 1' }).waitFor();
     }
     assert.equal(existsSync(join(projectDirectory, 'dist')), false, 'React edits must stay on the Vite development path.');
@@ -503,22 +508,57 @@ export async function verifyReactColdDev(projectDirectory, profile = resolveSand
     const restoredReady = waitForDevReady(child, 'React dev app ready');
     writeFileSync(appPath, originalApp);
     await restoredReady;
-    const clientReady = waitForDevReady(child, 'React dev app ready');
+    if (page) {
+      const connected = page.waitForEvent('websocket', { timeout: 15_000 });
+      await page.goto(`${origin}/products/sku-42?preview=true`);
+      socket = await connected;
+      const counter = page.getByRole('button', { name: 'Count: 0' });
+      await counter.click();
+      await page.getByRole('button', { name: 'Count: 1' }).waitFor();
+    } else {
+      const moduleResponse = await fetch(`${origin}/src/page.tsx`, { headers: { accept: 'text/javascript' } });
+      assert.equal(moduleResponse.status, 200);
+      smokeSocket = new WebSocket(origin.replace('http:', 'ws:'), 'vite-hmr');
+      await once(smokeSocket, 'open', { signal: AbortSignal.timeout(15_000) });
+    }
+    const clientUpdate = socket
+      ? socket.waitForEvent('framereceived', {
+        predicate: ({ payload }) => String(payload).includes('"type":"update"'),
+        timeout: 15_000,
+      })
+      : new Promise((resolve, reject) => {
+        const signal = AbortSignal.timeout(15_000);
+        const finish = (error) => {
+          signal.removeEventListener('abort', onTimeout);
+          smokeSocket.removeEventListener('message', onMessage);
+          if (error) reject(error);
+          else resolve();
+        };
+        const onTimeout = () => finish(new Error('React client update did not arrive over the app WebSocket.'));
+        const onMessage = (event) => {
+          const message = JSON.parse(String(event.data));
+          if (message.type === 'update' && message.updates?.some((update) => update.path === '/src/page.tsx')) finish();
+        };
+        signal.addEventListener('abort', onTimeout, { once: true });
+        smokeSocket.addEventListener('message', onMessage);
+      });
     writeFileSync(pagePath, originalPage.replace('Catalog item', 'Updated item'));
-    await clientReady;
+    await clientUpdate;
+    const transformed = await fetch(`${origin}/src/page.tsx`, { headers: { accept: 'text/javascript' } });
+    assert.equal(transformed.status, 200);
+    assert.match(await transformed.text(), /Updated item/u);
     const edited = await fetch(`${origin}/products/sku-42?preview=true`);
     assert.equal(edited.status, 200);
     assert.match(await edited.text(), /Updated item sku-42/u);
     if (page) {
-      await page.goto(`${origin}/products/sku-42?preview=true`);
       await page.getByRole('heading', { name: 'Updated item sku-42' }).waitFor();
-      await page.getByRole('button', { name: 'Count: 0' }).click();
       await page.getByRole('button', { name: 'Count: 1' }).waitFor();
     }
     assert.deepEqual(diagnostics, []);
     log(`Installed React fluo dev: cold HTTP, assets, server/client edits passed (${profile})`);
   } finally {
     try {
+      smokeSocket?.close();
       await browser?.close();
       const closed = once(child, 'close', { signal: AbortSignal.timeout(10_000) });
       child.kill('SIGINT');

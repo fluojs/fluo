@@ -49,7 +49,7 @@ describe('React Vite SSR app composition', () => {
     expect(consoleError).toHaveBeenCalledWith(expect.any(String), mismatch);
   });
 
-  it('attaches interaction without hydration warnings', async () => {
+  it('enables interaction only after hydration commits without warnings', async () => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const container = document.createElement('div');
@@ -61,14 +61,22 @@ describe('React Vite SSR app composition', () => {
     );
     container.innerHTML = renderToString(counter);
     document.body.append(container);
+    const button = container.querySelector('button');
+    expect(button?.disabled).toBe(true);
 
     let root: ReturnType<typeof hydrateRoot> | undefined;
-    await act(async () => { root = hydrateRoot(container, counter); });
-    const button = document.querySelector('button');
-    await act(async () => { button?.click(); });
+    await act(async () => {
+      root = hydrateRoot(container, counter);
+    });
+    expect(button?.disabled).toBe(false);
+    await act(async () => {
+      button?.click();
+    });
 
     expect(button?.textContent).toBe('Count: 1');
     expect(consoleError).not.toHaveBeenCalled();
-    await act(async () => { root?.unmount(); });
+    await act(async () => {
+      root?.unmount();
+    });
   });
 });

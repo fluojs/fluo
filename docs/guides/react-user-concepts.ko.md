@@ -97,6 +97,10 @@ client entry와 server document 정렬입니다. 이 명시적 seam은 advanced 
 2. `/products/sku-42?preview=true`를 열고 `/search?q=catalog` 링크로 이동한 뒤
    `src/page.tsx` 또는 `src/page-search.tsx`를 편집합니다. Page component는 UI와 hydrated
    interaction만 소유하며 shell은 유지되고 destination-local state는 slot에서 reset됩니다.
+   공식 Node starter는 호환 가능한 component에 Fast Refresh, app origin의 CSS HMR을
+   사용합니다. 직접 SSR 요청은 HTTP validation 후 최신 page를 로드합니다. 호환되지 않는
+   export나 hook 구조는 remount/reload할 수 있습니다. 기존 앱은
+   [개발 이전](../getting-started/migrate-react-dev-hmr.ko.md)을 참고하세요.
 3. Route 추가 시 `src/app.ts`의 명시적인 `@Router(...)` / `@Path(...)` handler에서 DTO를
    검증하고 `ReactNavigationPage.create(createElement(Page, props),
    { module: './page-name.tsx', props })`를 선택합니다. 새 `src/page-name.tsx`는 build importer

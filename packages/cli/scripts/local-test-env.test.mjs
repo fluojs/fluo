@@ -24,23 +24,35 @@ function coldDevFixture(t) {
   const executable = join(root, 'node_modules/.bin/fluo');
   writeFileSync(executable, `#!${process.execPath}
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 import { readFileSync, watch } from 'node:fs';
+const sockets = new Set();
 const watcher = watch('src', (_event, path) => {
-  if (path === 'app.ts' || path === 'page.tsx') console.log('React dev app ready');
+  if (path === 'app.ts') console.log('React dev app ready');
+  if (path === 'page.tsx') {
+    const message = Buffer.from(JSON.stringify({ type: 'update', updates: [{ path: '/src/page.tsx' }] }));
+    for (const socket of sockets) socket.write(Buffer.concat([Buffer.from([0x81, message.length]), message]));
+  }
 });
 const server = createServer((request, response) => {
   if (request.url.startsWith('/src/')) {
     response.setHeader('content-type', 'text/javascript');
-    response.end('export {};');
+    response.end(request.url.startsWith('/src/page.tsx') ? readFileSync('src/page.tsx', 'utf8') : 'export {};');
     return;
   }
   const prefix = readFileSync('src/app.ts', 'utf8').includes('/dev-products') ? '/dev-products' : '/products';
   if (!request.url.startsWith(prefix + '/')) { response.writeHead(404); response.end(); return; }
   response.setHeader('content-type', 'text/html');
-  response.end('<h1>' + readFileSync('src/page.tsx', 'utf8') + ' sku-42</h1><script src="/src/entry-client.tsx"></script>');
+  response.end('<h1>' + readFileSync('src/page.tsx', 'utf8') + ' sku-42</h1><script type="module" src="/src/entry-client-dev.ts"></script>');
+});
+server.on('upgrade', (request, socket) => {
+  const accept = createHash('sha1').update(request.headers['sec-websocket-key'] + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
+  socket.write('HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Protocol: vite-hmr\\r\\nSec-WebSocket-Accept: ' + accept + '\\r\\n\\r\\n');
+  sockets.add(socket);
+  socket.on('close', () => sockets.delete(socket));
 });
 server.listen(Number(process.env.PORT), '127.0.0.1', () => console.log('React dev app ready'));
-process.once('SIGINT', () => { watcher.close(); server.close(() => process.exit(0)); });
+process.once('SIGINT', () => { watcher.close(); for (const socket of sockets) socket.destroy(); server.close(() => process.exit(0)); });
 `);
   chmodSync(executable, 0o755);
   return root;
