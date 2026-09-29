@@ -895,19 +895,43 @@ The navigation contract is deliberately HTTP-first:
   destination; no private payload is cached. URL and matched params update together only on approval.
   Fragment-only `hashchange` keeps the same server-owned params.
 - `useNavigation()` exposes `idle`, `navigating`, `refreshing`, `complete`, `error`, and `skipped`.
-  A soft transition completes only after the validated page loads; a failed load falls back to
-  the HTTP document. `refreshing` starts a document reload.
+  A soft transition completes only after the validated page loads; without a failure policy,
+  a failed load falls back to the HTTP document. `refreshing` starts a document reload.
   Fragment-only transitions complete in the current document after the matching `hashchange`.
 - Router methods reject cross-origin or non-HTTP(S) destinations with
   `ReactClientNavigationError`. Use a normal anchor for those destinations.
 
-Today a non-cancelled failed load uses document fallback even if a successful soft
-transition would retain the shell. The official **product target**, not a new API in
-this release, preserves the last approved page and long-lived resource on transient
-network/5xx failure, shows an actionable error and retries with fresh HTTP approval.
-Low-level fallback compatibility, auth refusal, explicit reload and application-requested
-logout teardown remain separate outcomes. #3864/#3871 own this composition and #3879
-must test actual resource identity in a production browser; see the
+For transient failures, opt into the existing provider and router path:
+
+```tsx
+<ReactClientRouterProvider
+  initialSnapshot={initialSnapshot}
+  navigationModules={navigationModules}
+  failurePolicy={({ reason }) =>
+    reason === 'network' || reason === 'server-error' || reason === 'import-failure'
+      ? 'preserve' : 'document'}
+>
+  {(destination) => <AppShell destination={destination} />}
+</ReactClientRouterProvider>
+```
+
+Without `failurePolicy`, every non-cancelled failed load still falls back to a document.
+With `'preserve'`, the approved URL, params, page and shell remain; `useNavigation().failure`
+provides a safe `reason`, destination pathname and navigation type. Show an error with
+`router.retry()` for a fresh credentialed HTTP approval and `router.openDocument()` for an
+explicit ordinary document. The distinct reasons are `network`, `server-error`, `unauthorized`,
+`forbidden`, `redirect`, `not-found`, `dto-rejected`, `invalid-payload`, `unsupported-module`,
+`import-failure`, `unavailable` and `unsupported-destination`; a failing application callback
+settles as `application-error`. Never infer authentication from body text, preserve protected
+content after logout, or expose a response body through the policy. Failed back/forward with a
+known history position restores the last approved URL and view; retry requests new HTTP approval.
+Existing `refresh()` still reloads. This is a backward-compatible **low-level opt-in**; the
+official generated starter explicitly enables network/5xx and recoverable mapped import-failure preservation and shell recovery
+controls. To migrate a hand-assembled app, supply
+`navigationModules`, pass `failurePolicy`, render `navigation.failure` controls in the persistent
+shell, and leave all other categories (including absent importer keys) on the document path unless deliberately handled. The
+production example verifies resource identity and operation/ack through network and 5xx failure
+and recovery. #3879 must still test the complete product journey; see the
 [product journey map](../../docs/contracts/react-fullstack-product.md#journey-acceptance-map).
 
 `Link` has optional `prefetch="hover"` and `prefetch="viewport"` modes; omitted `prefetch` is off.
@@ -917,7 +941,9 @@ viewport begins on intersection and cancels on exit. Neither runs for disabled J
 ineligible anchor, unsupported destination, or fragment-only navigation. `router.invalidate()`
 cancels pending prefetches and clears the provider-local cache; canceling an in-flight soft
 navigation settles `useNavigation()` to idle over the retained committed route without a
-history entry or document fallback. Call it and/or update `prefetchScope` **before** further
+history entry or document fallback, except when an untagged back/forward entry has already
+changed the browser URL: that entry reloads its ordinary document to keep URL and page
+consistent. Call it and/or update `prefetchScope` **before** further
 in-document navigation after mutations and auth changes.
 Scope changes and unmount also clear/cancel; full-document navigation discards the cache.
 There is no automatic detection of external `HttpOnly` cookie changes. Public pages must remain
@@ -954,8 +980,8 @@ The official opt-in `ReactNavigationExperience` composes pending and polite live
 outside that slot, a keyed destination render boundary inside it, and a separate safe view if an
 application error view throws. Rendering reset retries only the already-approved component:
 it does not fetch, change URL/params/head, or add history. Transport failures and fresh-HTTP
-`router.retry()` / explicit `router.openDocument()` belong to #3864's provider failure policy;
-its shell recovery controls appear outside the slot when that failure state is available.
+`router.retry()` / explicit `router.openDocument()` belong to the provider failure policy;
+the official shell renders its recovery controls outside the slot.
 The shell/root itself is not recoverable by a page boundary.
 `@PageMetadata(...)` for the matched page supplies an optional bounded `metadata` field to
 both the initial transfer and negotiated result. The official composition reconciles only
@@ -968,8 +994,8 @@ fragment-only moves use native fragment scrolling and focus an eligible target, 
 focuses `<main>` without overriding restored scroll. Override the effect in this same composition
 with `onApprovedNavigation={(route, previous) => ...}`. Installing the package alone does
 not change the low-level provider's focus/scroll policy.
-The existing low-level renderer and explicit server entry remain supported; #3864 owns the
-separate opt-in failure/retry policy for this provider boundary.
+The existing low-level renderer and explicit server entry remain supported; their provider
+requires an explicit failure policy to preserve a page, unlike the generated starter.
 
 ```tsx
 import { ReactNavigationPage } from '@fluojs/react';
@@ -1330,8 +1356,8 @@ documentation change neither adds the stable subpath nor starts the deprecation 
 
 This package currently does **not** provide:
 
-- the official transient-failure shell-preserving retry or in-place `router.refresh()`
-  revalidation; the documented low-level fallback and document reload still apply
+- in-place `router.refresh()` revalidation; the official starter already offers network/5xx and recoverable mapped import-failure
+  shell-preserving retry, while the low-level provider still defaults to document fallback
 - a stable RSC root or `@fluojs/react/rsc` subpath; RSC is available only from the explicitly unstable
   `@fluojs/react/experimental/rsc` prototype
 - automatic `"use server"` transforms/export discovery or a built-in Flight renderer/build plugin

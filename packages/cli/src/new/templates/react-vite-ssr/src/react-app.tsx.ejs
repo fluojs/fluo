@@ -8,9 +8,10 @@ import {
   useRouter,
   useRouterState,
   type ReactNavigationModules,
+  useNavigation,
 } from '@fluojs/react/client';
 import type { ReactInitialNavigationPage } from '@fluojs/react';
-import { type ReactElement, useState } from 'react';
+import { type ReactElement, useEffect, useRef, useState } from 'react';
 
 export const REACT_IDENTIFIER_PREFIX = 'fluo-react-vite-' as const;
 
@@ -22,15 +23,61 @@ export type ReactAppDocumentProps = {
   readonly navigationModules?: ReactNavigationModules;
 };
 
+declare global {
+  interface Window {
+    __reactResource?: { readonly id: string; operate: () => string };
+    __reactResourceStats?: { mounts: number; cleanups: number };
+  }
+}
+
+function LongLivedResource(): ReactElement {
+  const resource = useRef<Window['__reactResource']>(undefined);
+  const [ack, setAck] = useState('');
+  useEffect(() => {
+    let operations = 0;
+    const instance = {
+      id: crypto.randomUUID(),
+      operate: () => `${instance.id}:${++operations}`,
+    };
+    resource.current = instance;
+    window.__reactResource = instance;
+    const stats = window.__reactResourceStats ?? { mounts: 0, cleanups: 0 };
+    stats.mounts++;
+    window.__reactResourceStats = stats;
+    return () => {
+      stats.cleanups++;
+      resource.current = undefined;
+      window.__reactResource = undefined;
+    };
+  }, []);
+  return (
+    <div aria-label='Long-lived shell resource'>
+      <button onClick={() => setAck(resource.current?.operate() ?? 'resource unavailable')} type='button'>
+        Use shell resource
+      </button>
+      <span data-testid='resource-ack'>{ack}</span>
+    </div>
+  );
+}
+
 function SharedNavigation(): ReactElement {
   const [count, setCount] = useState(0);
   const router = useRouter();
   const route = useRouterState();
   const params = useParams();
+  const navigation = useNavigation();
   return (
     <header>
       <button onClick={() => setCount((value) => value + 1)} type='button'>Shell taps: {count}</button>
       <p aria-label='Current route'>{route.url} ({JSON.stringify(params)})</p>
+      <LongLivedResource />
+      {navigation.failure && (
+        <div role='alert'>
+          <p>Navigation failed: {navigation.failure.reason} ({navigation.failure.destination})</p>
+          <button onClick={() => router.retry()} type='button'>Retry navigation</button>
+          <button onClick={() => router.openDocument()} type='button'>Open full document</button>
+        </div>
+      )}
       <nav aria-label='Page navigation'>
         <Link href='/products/sku-84?preview=false'>Open sku-84</Link>
         <Link href='/search?q=catalog'>Search catalog</Link>
@@ -40,6 +87,10 @@ function SharedNavigation(): ReactElement {
         <button onClick={() => router.push('/products/sku-126?preview=true')} type='button'>
           Push sku-126
         </button>
+        <button onClick={() => router.replace('/products/sku-126?preview=true')} type='button'>
+          Replace with sku-126
+        </button>
+        <button onClick={() => router.invalidate()} type='button'>Invalidate navigation</button>
       </nav>
     </header>
   );
@@ -62,7 +113,13 @@ export function ReactAppDocument({
   const initialSnapshot = createReactRouteSnapshot(route);
 
   return (
-    <ReactClientRouterProvider initialSnapshot={initialSnapshot} navigationModules={navigationModules}>
+    <ReactClientRouterProvider
+      initialSnapshot={initialSnapshot}
+      navigationModules={navigationModules}
+      failurePolicy={({ reason }) =>
+        reason === 'network' || reason === 'server-error' || reason === 'import-failure'
+          ? 'preserve' : 'document'}
+    >
       {(destination) => (
         <html lang='en'>
           <head>

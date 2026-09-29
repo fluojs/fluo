@@ -117,7 +117,7 @@ describe('fluo typegen navigation authoring', () => {
     await writeFile(consumerPath, [
       "import { reactPageRoutes, type ReactPageLinkProps } from './generated/react-pages.js';",
       `import { Link, type ReactRouter } from ${JSON.stringify(reactClientModulePath)};`,
-      'const navigator: ReactRouter = { back: () => undefined, invalidate: () => undefined, push: () => undefined, refresh: () => undefined, replace: () => undefined };',
+      'const navigator: ReactRouter = { back: () => undefined, invalidate: () => undefined, openDocument: () => undefined, push: () => undefined, refresh: () => undefined, replace: () => undefined, retry: () => undefined };',
       "type ValidUnionParams = { readonly productId: 'sku-42' } | { readonly productId: 'sku-84' };",
       'declare const unionParams: ValidUnionParams;',
       "const params = { productId: 'sku-42' };",
@@ -141,7 +141,10 @@ describe('fluo typegen navigation authoring', () => {
     const diagnostics = compile(consumerPath);
 
     // Then: static routes need no params and parameterized routes accept their complete param object.
-    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual([]);
+    expect(
+      diagnostics.map((diagnostic) => diagnostic.code),
+      diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')).join('\n'),
+    ).toEqual([]);
   });
 
   it('rejects unknown route ids in typed navigation authoring', async () => {

@@ -27,14 +27,20 @@ For an existing app adopting the new composition:
    `loadReactInitialNavigationDestination(json, modules)` and hydrates the returned
    component with the payload URL, params and props.
 4. Keep shared shell/providers outside the provider's destination page slot; render
-   `destination ?? initialPage` inside it. Existing `Link` and `useRouter()` make
+   `destination ?? initialPage` inside it. On the existing provider, pass
+   `failurePolicy={({ reason }) => reason === 'network' || reason === 'server-error' || reason === 'import-failure' ? 'preserve' : 'document'}`;
+   place `useNavigation().failure` controls calling `router.retry()` and
+   `router.openDocument()` in the persistent shell, outside the destination slot.
+   Existing `Link` and `useRouter()` make
    approved soft moves, while direct GET, early clicks, disabled JavaScript, and
-   unsupported destinations retain the native document path.
+   unsupported destinations (including absent importer keys) retain the native document path.
 
 The generated `src/app.ts`, `src/entry-server.tsx`, `src/react-app.tsx` and
 `src/entry-client.tsx` are runnable examples of these connections. Adding a page
 does not require changing the latter three files or creating another route matcher.
-This migration does not opt into #3864's forthcoming failure/retry policy, #3873's
+The generated starter selects transient-failure preservation by default; existing applications
+must add the policy and controls in step 4 explicitly. A low-level provider without that
+policy still loads a document on failed navigation. This migration does not opt into #3873's
 soft revalidation, #3874's form enhancements, or stable RSC.
 
 Verify `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm start`, and

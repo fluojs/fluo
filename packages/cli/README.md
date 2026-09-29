@@ -227,8 +227,10 @@ browser bundle receives only page components in the `src/page*.tsx` importer map
 This two-page starter is not yet the complete CRUD/jukebox product path: the existing
 [Vite example](../../examples/react-vite-ssr/README.md) demonstrates advanced native-form
 and prefetch policy while the starter provides the canonical page authoring composition.
-The [product contract](../../docs/contracts/react-fullstack-product.md) tracks failure/retry,
-form freshness, auth, dev edits and deployment as separate unshipped acceptance gates.
+The starter selects network/5xx and recoverable mapped import-failure shell preservation and shows retry or ordinary-document
+navigation in its persistent shell; the low-level provider remains document-first unless
+an app passes `failurePolicy`. The [product contract](../../docs/contracts/react-fullstack-product.md)
+tracks the remaining form freshness, auth, deployment and full-journey acceptance gates.
 Application-owned production manifest loading and asset/CDN hosting remain explicit.
 
 `fluo new` also exposes microservice starter paths. TCP is the default when you omit `--transport`, and the starter matrix includes runnable Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC variants with transport-specific dependencies, env templates, and entrypoints:

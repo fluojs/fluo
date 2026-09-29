@@ -882,18 +882,42 @@ Navigation contract는 의도적으로 HTTP-first입니다.
   payload를 cache하지 않습니다. 승인된 URL과 matched params를 함께 갱신하고 fragment-only
   `hashchange`는 기존 server-owned params를 유지합니다.
 - `useNavigation()`은 `idle`, `navigating`, `refreshing`, `complete`, `error`, `skipped`를 노출합니다.
-  Soft transition은 검증된 page가 load된 뒤에만 완료되고 실패 시 HTTP document로 fallback합니다.
+  Soft transition은 검증된 page가 load된 뒤에만 완료되고 정책이 없으면 실패 시 HTTP document로 fallback합니다.
   `refreshing`은 document reload를 시작합니다. Fragment-only
   transition은 일치하는 `hashchange` 이후 현재 document에서 `complete`가 됩니다.
 - Router method는 cross-origin 또는 non-HTTP(S) destination을 `ReactClientNavigationError`로 거부합니다.
   이런 destination에는 일반 anchor를 사용하세요.
 
-현재 취소되지 않은 실패 load는 정상 soft transition이 셸을 유지할 수 있더라도 document
-fallback을 사용합니다. 이번 릴리스의 새 API가 아닌 공식 **제품 목표**는 일시적 network/5xx
-실패에서 마지막 승인 page와 장기 resource를 유지하고 실행 가능한 오류·새 HTTP 승인 재시도를
-제공하는 것입니다. Low-level fallback 호환성, 인증 거절, 명시적 reload, 앱이 요청한 logout
-teardown은 별도 결과입니다. #3864/#3871이 이 조립을 소유하고 #3879가 실제 production browser의
-resource identity를 검증합니다. [제품 여정 표](../../docs/contracts/react-fullstack-product.ko.md#사용자-여정-수용-표)를
+일시적 실패는 기존 provider/router 경로에 명시적으로 opt-in합니다.
+
+```tsx
+<ReactClientRouterProvider
+  initialSnapshot={initialSnapshot}
+  navigationModules={navigationModules}
+  failurePolicy={({ reason }) =>
+    reason === 'network' || reason === 'server-error' || reason === 'import-failure'
+      ? 'preserve' : 'document'}
+>
+  {(destination) => <AppShell destination={destination} />}
+</ReactClientRouterProvider>
+```
+
+`failurePolicy`를 생략하면 취소되지 않은 실패는 계속 document fallback합니다. `'preserve'`를
+선택하면 마지막 승인 URL·params·page·shell을 유지하며 `useNavigation().failure`는 안전한
+`reason`, 목적지 pathname, navigation type을 제공합니다. 셸의 오류 UI에서 `router.retry()`로
+새 credential 포함 HTTP 승인을 요청하고 `router.openDocument()`로 일반 문서를 명시적으로
+이동합니다. 사유는 `network`, `server-error`, `unauthorized`, `forbidden`, `redirect`,
+`not-found`, `dto-rejected`, `invalid-payload`, `unsupported-module`, `import-failure`,
+`unavailable`, `unsupported-destination`으로 구분하며 앱 callback 실패는 `application-error`로
+정착합니다. 응답 본문으로 인증을 추측하거나 로그아웃 뒤 보호 콘텐츠를 보장하지 않습니다.
+실패한 back/forward는 확인 가능한 history 위치에서 마지막 승인 URL과 화면으로 복구하고
+retry는 새 HTTP 승인을 요청합니다. 기존 `refresh()`는 여전히 reload입니다. 이는 하위
+호환되는 **low-level opt-in**이며 공식 생성 starter는 network/5xx 및 복구 가능한 매핑된 import 실패의 보존 정책과 셸 복구
+control을 명시적으로 제공합니다.
+직접 조립한 앱은 `navigationModules`와 `failurePolicy`를 제공하고 셸에
+`navigation.failure` 조작 UI를 배치하며 다른 사유(없는 importer key 포함)는 명시적인 정책 없이는 문서 경로에
+남겨 두세요. Production 예제는 network/5xx 실패·복구 중 자원 identity와 operation/ack를
+검증합니다. #3879는 여전히 전체 제품 여정을 검증해야 합니다. [제품 여정 표](../../docs/contracts/react-fullstack-product.ko.md#사용자-여정-수용-표)를
 참고하세요.
 
 `Link`의 optional `prefetch="hover"` 및 `prefetch="viewport"` mode는 생략하면 off입니다.
@@ -903,7 +927,9 @@ application-managed `prefetchScope` 문자열을 함께 제공해야 합니다. 
 부적합한 anchor, 미지원 목적지, fragment-only 이동에서는 실행하지 않습니다.
 `router.invalidate()`는 pending prefetch를 취소하고 provider-local cache를 비웁니다.
 진행 중인 soft navigation을 취소하면 `useNavigation()`이 커밋된 route를 유지한 채 idle로
-정착하며 history 기록이나 document fallback은 발생하지 않습니다.
+정착하며 history 기록이나 document fallback은 발생하지 않습니다. 단, index가 없는
+back/forward entry가 이미 browser URL을 바꾼 경우에는 URL과 page를 일치시키기 위해
+해당 entry의 일반 문서를 다시 불러옵니다.
 Mutation 또는 auth 변경 뒤 다음 in-document navigation **이전에** 호출하거나
 `prefetchScope`를 변경하세요. Scope 변경과 unmount도 취소·삭제하며 전체 문서 이동은 cache를
 파기합니다. 외부 `HttpOnly` cookie 변경은 자동으로 감지하지 않으며 application이 변경
@@ -939,8 +965,8 @@ slot 바깥에 pending 및 polite live-region 상태를 두고 slot 안에 key�
 render boundary를 둡니다. Application 오류 view도 throw하면 별도의 안전한 view가
 표시됩니다. Render reset은 이미 승인된 component만 다시 시도하며 fetch, URL/params/head
 변경 또는 history entry를 만들지 않습니다. Transport 실패의 새 HTTP 승인
-`router.retry()`와 명시적 `router.openDocument()`는 #3864 provider failure policy가
-소유하고, failure state가 있으면 복구 control은 slot 밖 shell에 나타납니다.
+`router.retry()`와 명시적 `router.openDocument()`는 provider failure policy가
+소유하고, 공식 복구 control은 slot 밖 shell에 나타납니다.
 Page boundary는 shell/root 자체를 복구하지 못합니다.
 Matched page의 `@PageMetadata(...)`는 초기 transfer와 협상된 결과에 제한된 선택적
 `metadata` field를 제공합니다. 공식 조립은 page-owned title, name/property meta,
@@ -951,8 +977,9 @@ JSON은 여전히 64 KiB 이하입니다. 기본 동작은 pathname push/replace
 fragment scroll 및 적합한 target focus, back/forward에서 browser 복원 scroll 유지와
 `<main>` focus입니다. 같은 조립의 `onApprovedNavigation={(route, previous) => ...}`로
 application effect를 교체할 수 있습니다. Package 설치만으로 low-level provider의
-focus/scroll policy가 달라지지 않습니다. 기존 low-level renderer 및 explicit server entry는
-지원되며, 이 provider 경계의 별도 opt-in failure/retry 정책은 #3864가 소유합니다.
+focus/scroll policy가 달라지지 않습니다. 기존 low-level renderer 및 explicit server entry도
+지원됩니다. 생성 starter와 달리 low-level provider에서 page를 보존하려면 실패 정책을
+명시적으로 전달해야 합니다.
 
 ```tsx
 import { ReactNavigationPage } from '@fluojs/react';
@@ -1310,8 +1337,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 
-- 공식 일시적 실패의 셸 보존 재시도나 `router.refresh()`의 제자리 revalidation.
-  문서화된 low-level fallback과 document reload는 계속 적용됩니다.
+- `router.refresh()`의 제자리 revalidation. 공식 starter는 이미 network/5xx 및 복구 가능한 매핑된 import 실패의 셸 보존
+  재시도를 제공하지만 low-level provider는 기본적으로 document fallback합니다.
 - stable RSC root 또는 `@fluojs/react/rsc` subpath. RSC는 명시적으로 불안정한
   `@fluojs/react/experimental/rsc` prototype에서만 제공합니다.
 - 자동 `"use server"` transform/export discovery 또는 built-in Flight renderer/build plugin

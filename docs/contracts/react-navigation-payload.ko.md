@@ -107,9 +107,9 @@ browser-visible `Set-Cookie`를 사용하지 않습니다(Fetch가 이 header를
 protocol version, server-confirmed
 same-origin URL, string path param, JSON object props, 제공된 build-produced importer map의 module
 key를 검증합니다. 로드한 module의 default export도 렌더링 가능한 component인지 확인한
-뒤에만 성공으로 보고합니다. Malformed JSON, 지원하지 않는 version/module/URL, non-HTML 또는
-다른 예상 밖 media type, network error, redirect, 404, 401/403, DTO failure, server failure에는
-application-owned full-document fallback을 위한 non-success result를 반환합니다. 취소는
+뒤에만 성공으로 보고합니다. Malformed JSON, 지원하지 않는 version/module/URL, 예상 밖
+media type, network error, redirect, 404, 401/403, DTO failure, server failure에는 구분
+가능한 application-owned full-document fallback 사유를 반환합니다. 취소는
 `cancelled`를 반환하며 response body를 읽는 동안 발생한 경우에도 import, rendering 또는
 fallback navigation을 시작하지 않습니다. 외부 또는
 non-HTTP(S) URL은 fetch 전에 거부하므로 일반 anchor를 사용하세요.
@@ -148,23 +148,45 @@ destination-local state를 초기화합니다.
 오래된 params를 새 URL에 재사용하지 않습니다. 새로운 activation 또는 unmount 이후 늦게
 도착한 결과는 commit하지 않습니다. 진행 중인 같은 목적지를 다시 활성화해도 request는
 늘어나지 않습니다. Fragment-only 변경은 browser의 native same-document history를 사용합니다.
-실패하거나 지원하지 않는 load는 추측한 soft URL을 commit하지 않고 full-document
+정책에 opt-in하지 않은 실패 또는 미지원 load는 추측한 soft URL을 commit하지 않고 full-document
 `assign`/`replace`를 사용합니다. History traversal은 browser URL이 이미 바뀐 뒤이므로 실패
 시 해당 문서를 로드합니다. 취소는 fallback을 시작하지 않습니다. Hydration 전 `Link`는
 native anchor로 남고 initial request snapshot은 browser path/search와 일치해야 합니다.
 `refresh()`는 계속 document reload입니다. Opt-in하지 않은 `Link`, `router.push/replace`,
 거부된 prefetch에는 기존 credential 포함 일반 loader와 full-document fallback을 적용합니다.
 
-이는 **현재 low-level 호환성**을 설명하며 향후 공식 앱의 실패 기본값이 아닙니다.
-[HTTP-first React 제품 계약](./react-fullstack-product.ko.md)은 #3864의 opt-in 일시적
-network/5xx 정책이 #3871의 공통 provider/page slot에 연결되어 승인된 shell/page를
-보존하고 새 HTTP 승인 재시도를 제공하도록 요구합니다.
-인증 거절, 명시적 reload, logout과 구분하며 여기서 아직 보존 기능이 배포됐다는 뜻이
-아닙니다. #3873은 셸 보존 soft revalidation과 현재 `refresh()` document reload에 의존하는
-소비자의 migration을 소유합니다. `invalidate()`는 표시 중인 page data를 다시 가져오지 않습니다.
-위의 #3872 승인 page render reset은 transport를 재시도하지 않습니다. #3864의 failure
-state가 연결되면 `router.retry()`는 새 HTTP 승인을 얻고 `router.openDocument()`는 명시적으로
-document로 이동합니다. 이 control은 page slot 밖의 공통 shell에 표시합니다.
+`ReactClientRouterProvider`는 선택적인 `failurePolicy(failure)`를 받으며 동기 또는 비동기로
+`'preserve'`나 `'document'`를 반환합니다. 지정하지 않으면 low-level 기본값은 기존 document
+fallback입니다. `useNavigation().failure`와 정책에는 `reason`, query·응답 본문·credential·예외
+내부를 제거한 목적지 **pathname**, `type: 'push' | 'replace' | 'back'`만 전달합니다.
+사유는 `network`, `server-error`(HTTP 5xx), `unauthorized`(401), `forbidden`(403),
+`redirect`, `not-found`(404), `dto-rejected`(400/422), `invalid-payload`,
+`unsupported-module`, `import-failure`, `unavailable`(그 밖의 미지원 응답),
+`unsupported-destination`으로 구분합니다. 취소는 정책을 호출하지 않습니다. Network/5xx는
+앱이 보존할 수 있지만 인증 거절·redirect·404·DTO·invalid payload는 앱이 명시적으로 달리
+결정하지 않으면 document 이동입니다. 복구 가능한 import 실패도 앱의 명시적 보존 결정이
+필요합니다. Status와 인증 판정은 응답 본문이 아닌 HTTP가 소유합니다.
+
+보존하면 마지막 승인 page, shell, params를 유지하고 push/replace는 history entry를 만들지
+않으며 `useNavigation()`은 조치 가능한 `error`로 정착합니다. 실패한 back/forward는 기록된
+history 위치로 되돌아가 중복 entry 없이 승인 URL과 화면을 다시 일치시킵니다. 위치를 알
+수 없는 traversal은 URL/화면 불일치를 방치하지 않고 document fallback을 사용합니다.
+`router.retry()`는 실패한 목적지를 새 credential 포함 uncached HTTP 요청으로 승인받고,
+`router.openDocument()`는 명시적으로 일반 문서로 이동합니다. 최신의 완전한 승인만 URL,
+params, 목적지 local state를 변경할 수 있습니다. 무효화되거나 뒤처진 응답·정책 결정은
+commit/fallback할 수 없습니다. 정책 callback의 throw/rejection은 진단을 남기고 안전한
+`application-error` 상태로 정착하며 전역 unhandled rejection이나 두 번째 자동 fallback으로
+번지지 않습니다. 인증/session 전환의 실패 UI와 자원 종료는 앱 정책이고 logout/reload/탭
+종료 뒤 재생은 보장하지 않습니다.
+
+Low-level provider는 기본적으로 document fallback을 유지합니다. 공식 생성 starter는
+network/5xx 및 복구 가능한 매핑된 import 실패의 보존 정책을 명시적으로 선택하며
+HTTP가 선택한 page slot 외부의 지속 셸에 재시도·문서 이동 control을 렌더링합니다.
+#3873은 현재 `refresh()` document reload에
+의존하는 소비자의 셸 보존 soft revalidation·migration을 소유합니다.
+`invalidate()`는 표시 중인 page data를 다시 가져오지 않습니다.
+위의 #3872 승인 page render reset은 transport를 재시도하지 않습니다. 공식
+`router.retry()`와 `router.openDocument()` control은 page slot 밖의 공통 shell에 표시합니다.
 
 ## Opt-in public prefetch와 provider-local cache
 
@@ -200,7 +222,9 @@ click은 entry를 제거하고, 재방문과 back/forward는 새 HTTP 승인을 
 document를 reload합니다. Unmount/disconnect, scope 변경, `router.invalidate()`, 이전 activation을
 대체하는 이동은 진행 중인 작업을 abort하고 무효 entry를 지웁니다. 진행 중인 soft navigation을
 취소하는 invalidation은 커밋된 route를 유지한 채 idle lifecycle을 발행하며 history 기록이나
-document fallback을 시작하지 않습니다. In-document mutation이나 auth 변경 후에는 다음
+document fallback을 시작하지 않습니다. 다만 index 없는 back/forward activation이 이미 browser
+URL을 이동시켰다면 기존 entry에 일반 문서를 불러오며 새 history entry를 추가하거나
+승인되지 않은 URL에 이전 page를 idle로 정착시키지 않습니다. In-document mutation이나 auth 변경 후에는 다음
 same-document navigation **이전에** application이 `prefetchScope`를 갱신하거나
 `router.invalidate()`를 호출해야 합니다. 전체 문서 이동은 cache를 파기합니다.
 외부 `HttpOnly` cookie 변경은 자동으로 감지하지 않으므로 notification 누락 시에도 opt-in

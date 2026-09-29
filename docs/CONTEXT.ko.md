@@ -59,18 +59,13 @@ Docs 기준 확정 → 근거 검증 → Book 한국어 적용 → 영어 대응
 
 <!-- fluo:docs-navigation:end -->
 
-HTTP가 매칭한 React 클라이언트 이동은 [navigation payload 계약](./contracts/react-navigation-payload.ko.md)에서 시작한 다음 [React API 원본](../packages/react/README.ko.md)과 [Vite SSR 예제](../examples/react-vite-ssr/README.ko.md)를 확인하세요. 공식 starter는 크기를 제한하고 escape한 HTTP 선택 초기 page를 전송한 뒤 동일한 build-produced importer map과 공통 provider/page slot을 hydration과 이후 `Link`/`useRouter()` 이동에 사용합니다. 이들은 확정된 URL·params를 history에 commit하고 back/forward도 새로 요청하며 거부된 결과는 전체 문서로 이동합니다. 일반 GET 및 JavaScript 비활성 GET은 streamed document를 유지합니다. 상태·cookie·오류는 HTTP가 소유합니다. 실행 근거는 `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, `packages/cli/src/new/templates/react-vite-ssr/tests/production-hydration.spec.ts.ejs`입니다.
+HTTP가 매칭한 React 클라이언트 이동은 [navigation payload 계약](./contracts/react-navigation-payload.ko.md)에서 시작한 다음 [React API 원본](../packages/react/README.ko.md)과 [Vite SSR 예제](../examples/react-vite-ssr/README.ko.md)를 확인하세요. 공식 starter는 크기를 제한하고 escape한 HTTP 선택 초기 page를 전송한 뒤 동일한 build-produced importer map과 공통 provider/page slot을 hydration과 이후 `Link`/`useRouter()` 이동에 사용합니다. 이들은 확정된 URL·params를 history에 commit하고 back/forward도 새로 요청합니다. 생성 starter는 network/5xx 및 복구 가능한 매핑된 import 실패에서 재시도·문서 이동 control과 함께 셸을 유지하며 다른 실패(없는 importer key 포함)는 전체 문서로 이동합니다. 일반 GET 및 JavaScript 비활성 GET은 streamed document를 유지합니다. 상태·cookie·오류는 HTTP가 소유합니다. 실행 근거는 `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, `packages/cli/src/new/templates/react-vite-ssr/tests/production-hydration.spec.ts.ejs`입니다.
 
-[React 풀스택 제품 계약](./contracts/react-fullstack-product.ko.md)은 향후 CRUD와 장기 주크박스 수용 게이트를 별도로 정의합니다. 현재 `router.refresh()`는 document reload이고 low-level 이동 실패는 document로 fallback합니다. 셸 보존 재시도와 soft revalidation은 후속 과제이며 아직 배포된 동작이 아닙니다.
+[React 풀스택 제품 계약](./contracts/react-fullstack-product.ko.md)은 향후 CRUD와 장기 주크박스 수용 게이트를 별도로 정의합니다. 현재 `router.refresh()`는 document reload입니다. Low-level 이동 실패는 기본적으로 document fallback하지만 `ReactClientRouterProvider.failurePolicy`는 일시적 network/5xx에서 셸 보존을 opt-in하고 `useNavigation().failure`, 새 HTTP `router.retry()`, 명시적 `router.openDocument()`를 제공합니다. 진행 중인 index 없는 back/forward activation을 무효화하면 browser URL과 page를 일치시키기 위해 해당 일반 문서를 불러옵니다. Vite 예제와 생성 starter는 실패·재시도 동안 실제 자원 생존을 검증합니다. Starter가 공식 기본 정책을 명시적으로 연결하며 #3873은 soft revalidation을 소유합니다.
 Opt-in `ReactNavigationExperience`는 공통 shell 안에서 승인 page의 pending 알림, local render
 reset, matched `@PageMetadata(...)` head 갱신 및 교체 가능한 focus/scroll 기본값을
-소유합니다. #3864가 별도 일시적 transport 실패와 새 HTTP 승인 retry를 소유하므로
-page-boundary reset으로 `router.retry()`를 대신하지 마세요. 직접 HTTP 404/DTO/guard
-거부는 성공한 React page가 아닌 HTTP response로 유지됩니다.
-Opt-in `ReactNavigationExperience`는 공통 shell 안에서 승인 page의 pending 알림, local render
-reset, matched `@PageMetadata(...)` head 갱신 및 교체 가능한 focus/scroll 기본값을
-소유합니다. #3864가 별도 일시적 transport 실패와 새 HTTP 승인 retry를 소유하므로
-page-boundary reset으로 `router.retry()`를 대신하지 마세요. 직접 HTTP 404/DTO/guard
+소유합니다. Page-boundary reset은 새 HTTP 승인 `router.retry()`를 대신하지 않으며
+공식 복구 control은 page slot 밖의 지속 shell에 둡니다. 직접 HTTP 404/DTO/guard
 거부는 성공한 React page가 아닌 HTTP response로 유지됩니다.
 
 Optional `Link prefetch="hover" | "viewport"`에는 provider `navigationModules` 및 명시적

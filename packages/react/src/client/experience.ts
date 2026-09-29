@@ -8,7 +8,7 @@ import {
 } from 'react';
 
 import { createReactPageMetadataElements } from '../page-metadata.js';
-import { useNavigation, useRouter, useRouterState } from './hooks.js';
+import { useNavigation, useRouterState } from './hooks.js';
 import { useClientNavigationStore } from './provider.js';
 import type { ReactRouteSnapshot } from './types.js';
 
@@ -135,11 +135,7 @@ export function ReactNavigationExperience({
 }: ReactNavigationExperienceProps): ReactNode {
   const route = useRouterState();
   const navigation = useNavigation();
-  const router = useRouter();
   const store = useClientNavigationStore();
-  const retry = 'retry' in router && typeof router.retry === 'function' ? router.retry : undefined;
-  const openDocument = 'openDocument' in router && typeof router.openDocument === 'function'
-    ? router.openDocument : undefined;
   const previous = useRef(route);
   const previousScrollY = useRef(0);
   const fragmentIntent = useRef<string | undefined>(undefined);
@@ -179,15 +175,6 @@ export function ReactNavigationExperience({
   return createElement('div', null,
     ...(route.metadata === undefined ? [] : createReactPageMetadataElements(route.metadata)),
     createElement('p', { 'aria-live': 'polite', role: 'status' }, message || '\u00a0'),
-    navigation.status === 'error' && 'failure' in navigation && navigation.failure !== undefined
-      ? createElement('div', { 'aria-label': 'Navigation recovery' },
-        retry === undefined
-          ? null
-          : createElement('button', { onClick: retry, type: 'button' }, 'Retry navigation'),
-        openDocument === undefined
-          ? null
-          : createElement('button', { onClick: openDocument, type: 'button' }, 'Open document'),
-      ) : null,
     createElement('div', { id: 'page-slot' },
       createElement(SafePageBoundary, { key: pageKey },
         createElement(PageRenderBoundary, { renderError }, destination ?? page),

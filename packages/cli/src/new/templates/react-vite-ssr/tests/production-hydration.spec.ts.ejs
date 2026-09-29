@@ -214,6 +214,253 @@ test('resets a throwing approved page locally without a second request', async (
   expect(approvals).toBe(1);
 });
 
+const NAVIGATION_MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
+
+declare global {
+  interface Window {
+    __originalResource?: Window['__reactResource'];
+    __reactResource?: { readonly id: string; operate: () => string };
+    __reactResourceStats?: { mounts: number; cleanups: number };
+  }
+}
+
+for (const reason of ['network', 'server-error'] as const) {
+  test(`preserves the generated shell resource across ${reason} and fresh retry`, async ({ page }) => {
+    // Given: the HTTP-selected page has hydrated and the shell resource has acknowledged work.
+    const diagnostics: string[] = [];
+    page.on('pageerror', (error) => diagnostics.push(error.message));
+    await page.goto('/products/sku-42?preview=true');
+    await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Use shell resource' })).toBeVisible();
+    await page.getByRole('button', { name: 'Use shell resource' }).click();
+    const firstAck = await page.getByTestId('resource-ack').textContent();
+    await page.evaluate(() => {
+      window.__originalResource = window.__reactResource;
+      document.documentElement.dataset.shellIdentity = 'approved';
+    });
+    const destination = '/search?q=catalog';
+    await page.route((url) => `${url.pathname}${url.search}` === destination, (route) => {
+      if (route.request().headers().accept !== NAVIGATION_MEDIA_TYPE) return route.continue();
+      return reason === 'network' ? route.abort('failed') : route.fulfill({ status: 503, body: 'private server trace' });
+    });
+    const rejected = reason === 'network'
+      ? page.waitForEvent('requestfailed', (request) => new URL(request.url()).pathname === '/search'
+        && request.headers().accept === NAVIGATION_MEDIA_TYPE)
+      : page.waitForResponse((response) => response.status() === 503
+        && new URL(response.url()).pathname === '/search'
+        && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+
+    // When: a negotiated request fails, then the user retries after removing the failure.
+    await page.getByRole('link', { name: 'Search catalog' }).first().click();
+    await rejected;
+    await expect(page.getByRole('alert')).toContainText(`Navigation failed: ${reason}`);
+    await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+    await expect(page.getByLabel('Current route')).toContainText('/products/sku-42?preview=true ({"sku":"sku-42"})');
+    await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+    await page.getByRole('button', { name: 'Use shell resource' }).click();
+    const secondAck = await page.getByTestId('resource-ack').textContent();
+    expect(secondAck).not.toBe(firstAck);
+    expect(await page.evaluate(() => window.__originalResource === window.__reactResource)).toBe(true);
+    await page.unrouteAll();
+    const approved = page.waitForResponse((response) => new URL(response.url()).pathname === '/search'
+      && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+    await page.getByRole('button', { name: 'Retry navigation' }).click();
+    expect((await approved).status()).toBe(200);
+
+    // Then: the approved destination alone changes and the same resource still acknowledges work.
+    await expect(page).toHaveURL(/\/search\?q=catalog$/u);
+    await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.dataset.shellIdentity)).toBe('approved');
+    expect(await page.evaluate(() => window.__originalResource === window.__reactResource)).toBe(true);
+    await page.getByRole('button', { name: 'Use shell resource' }).click();
+    expect(await page.getByTestId('resource-ack').textContent()).not.toBe(secondAck);
+    expect(await page.evaluate(() => window.__reactResourceStats)).toEqual({ mounts: 1, cleanups: 0 });
+    expect(diagnostics).toEqual([]);
+  });
+}
+
+test('retains the approved shell after a mapped page import fails until explicit document exit', async ({ page }) => {
+  test.skip(['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? ''),
+    'Build-mapped chunks are only served by the production browser.');
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Use shell resource' })).toBeVisible();
+  await page.getByRole('button', { name: 'Use shell resource' }).click();
+  const firstAck = await page.getByTestId('resource-ack').textContent();
+  expect(firstAck).toMatch(/:[1-9]\d*$/u);
+  await page.evaluate(() => {
+    window.__originalResource = window.__reactResource;
+    document.documentElement.dataset.shellIdentity = 'approved';
+  });
+  await page.route((url) => /\/assets\/page-search-[^/]+\.js$/u.test(url.pathname),
+    (route) => route.abort('failed'));
+  const failedChunk = page.waitForEvent('requestfailed', (request) =>
+    /\/assets\/page-search-[^/]+\.js$/u.test(new URL(request.url()).pathname));
+  const approved = page.waitForResponse((response) => new URL(response.url()).pathname === '/search'
+    && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+
+  await page.getByRole('link', { name: 'Search catalog' }).first().click();
+  expect((await approved).status()).toBe(200);
+  await failedChunk;
+  await expect(page.getByRole('alert')).toContainText('import-failure');
+  await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+  await expect(page.getByLabel('Current route')).toContainText('/products/sku-42?preview=true ({"sku":"sku-42"})');
+  await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.dataset.shellIdentity)).toBe('approved');
+  expect(await page.evaluate(() => window.__originalResource === window.__reactResource)).toBe(true);
+  await page.getByRole('button', { name: 'Use shell resource' }).click();
+  expect(await page.getByTestId('resource-ack').textContent()).not.toBe(firstAck);
+  expect(await page.evaluate(() => window.__reactResourceStats)).toEqual({ mounts: 1, cleanups: 0 });
+  expect(errors).toEqual([]);
+
+  await page.unrouteAll();
+  const ordinaryDocument = page.waitForRequest((request) => new URL(request.url()).pathname === '/search'
+    && request.headers().accept !== NAVIGATION_MEDIA_TYPE);
+  await page.getByRole('button', { name: 'Open full document' }).click();
+  await ordinaryDocument;
+  await expect(page).toHaveURL(/\/search\?q=catalog$/u);
+  await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.dataset.shellIdentity)).toBeUndefined();
+});
+
+test('a failed replace commits no unapproved URL or params and explicit document exit remains available', async ({ page }) => {
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Replace with sku-126' })).toBeVisible();
+  await page.route((url) => url.pathname === '/products/sku-126', (route) =>
+    route.request().headers().accept === NAVIGATION_MEDIA_TYPE
+      ? route.fulfill({ status: 503, body: 'unavailable' }) : route.continue());
+  const rejected = page.waitForResponse((response) => response.status() === 503
+    && new URL(response.url()).pathname === '/products/sku-126'
+    && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+  await page.getByRole('button', { name: 'Replace with sku-126' }).click();
+  await rejected;
+  await expect(page.getByRole('alert')).toContainText('server-error');
+  await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+  await expect(page.getByLabel('Current route')).toContainText('{"sku":"sku-42"}');
+  const ordinaryDocument = page.waitForRequest((request) => new URL(request.url()).pathname === '/products/sku-126'
+    && request.headers().accept !== NAVIGATION_MEDIA_TYPE);
+  await page.getByRole('button', { name: 'Open full document' }).click();
+  await ordinaryDocument;
+  await expect(page).toHaveURL(/\/products\/sku-126\?preview=true$/u);
+  await expect(page.getByRole('heading', { name: 'Catalog item sku-126' })).toBeVisible();
+});
+
+test('failed back and forward recover the approved entry and remain traversable', async ({ page }) => {
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+  await page.getByRole('link', { name: 'Search catalog' }).first().click();
+  await expect(page).toHaveURL(/\/search\?q=catalog$/u);
+  await page.evaluate(() => { window.__originalResource = window.__reactResource; });
+  await page.route((url) => url.pathname === '/products/sku-42', (route) =>
+    route.request().headers().accept === NAVIGATION_MEDIA_TYPE
+      ? route.fulfill({ status: 503, body: 'unavailable' }) : route.continue());
+  const deniedBack = page.waitForResponse((response) => response.status() === 503
+    && new URL(response.url()).pathname === '/products/sku-42'
+    && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+  await page.goBack({ waitUntil: 'commit' });
+  await deniedBack;
+  await expect(page).toHaveURL(/\/search\?q=catalog$/u);
+  await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('server-error');
+  await page.unrouteAll();
+  const backApproval = page.waitForResponse((response) => new URL(response.url()).pathname === '/products/sku-42'
+    && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+  await page.getByRole('button', { name: 'Retry navigation' }).click();
+  expect((await backApproval).status()).toBe(200);
+  await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+
+  await page.route((url) => url.pathname === '/search', (route) =>
+    route.request().headers().accept === NAVIGATION_MEDIA_TYPE
+      ? route.fulfill({ status: 503, body: 'unavailable' }) : route.continue());
+  const deniedForward = page.waitForResponse((response) => response.status() === 503
+    && new URL(response.url()).pathname === '/search'
+    && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+  await page.goForward({ waitUntil: 'commit' });
+  await deniedForward;
+  await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+  await expect(page.getByRole('alert')).toContainText('server-error');
+  await page.unrouteAll();
+  const forwardApproval = page.waitForResponse((response) => new URL(response.url()).pathname === '/search'
+    && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+  await page.getByRole('button', { name: 'Retry navigation' }).click();
+  expect((await forwardApproval).status()).toBe(200);
+  await expect(page).toHaveURL(/\/search\?q=catalog$/u);
+  expect(await page.evaluate(() => window.__originalResource === window.__reactResource)).toBe(true);
+  expect(await page.evaluate(() => window.__reactResourceStats)).toEqual({ mounts: 1, cleanups: 0 });
+  const nextBack = page.waitForResponse((response) => new URL(response.url()).pathname === '/products/sku-42'
+    && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+  await page.goBack({ waitUntil: 'commit' });
+  expect((await nextBack).status()).toBe(200);
+  await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+});
+
+test('repeated transient failures keep one resource and a usable next retry', async ({ page }) => {
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+  await page.evaluate(() => { window.__originalResource = window.__reactResource; });
+  let rejectedRequests = 0;
+  await page.route((url) => url.pathname === '/search', (route) => {
+    if (route.request().headers().accept !== NAVIGATION_MEDIA_TYPE) return route.continue();
+    rejectedRequests++;
+    return route.fulfill({ status: 503, body: 'unavailable' });
+  });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const denied = page.waitForResponse((response) => response.status() === 503
+      && new URL(response.url()).pathname === '/search'
+      && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+    if (attempt === 0) {
+      await page.getByRole('link', { name: 'Search catalog' }).first().click();
+    } else {
+      await page.getByRole('button', { name: 'Retry navigation' }).click();
+    }
+    await denied;
+    await expect(page.getByRole('alert')).toContainText('server-error');
+    await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+  }
+  expect(rejectedRequests).toBe(3);
+  expect(await page.evaluate(() => window.__reactResourceStats)).toEqual({ mounts: 1, cleanups: 0 });
+  await page.unrouteAll();
+  const approval = page.waitForResponse((response) => new URL(response.url()).pathname === '/search'
+    && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+  await page.getByRole('button', { name: 'Retry navigation' }).click();
+  expect((await approval).status()).toBe(200);
+  await expect(page).toHaveURL(/\/search\?q=catalog$/u);
+  await page.getByRole('button', { name: 'Use shell resource' }).click();
+  await expect(page.getByTestId('resource-ack')).not.toBeEmpty();
+  expect(await page.evaluate(() => window.__originalResource === window.__reactResource)).toBe(true);
+});
+
+for (const status of [401, 403, 302, 400] as const) {
+  test(`does not preserve an HTTP ${status} refusal in the generated starter`, async ({ page }) => {
+    await page.goto('/products/sku-42?preview=true');
+    await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+    await page.evaluate(() => { document.documentElement.dataset.shellIdentity = 'before-refusal'; });
+    await page.route((url) => url.pathname === '/search', (route) => {
+      if (route.request().headers().accept !== NAVIGATION_MEDIA_TYPE) return route.continue();
+      return route.fulfill({
+        status,
+        body: 'private details',
+        ...(status === 302 ? { headers: { Location: '/products/sku-126?preview=true' } } : {}),
+      });
+    });
+    const refused = status === 302 ? undefined : page.waitForResponse((response) => response.status() === status
+      && new URL(response.url()).pathname === '/search'
+      && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+    const documentRequest = page.waitForRequest((request) => new URL(request.url()).pathname === '/search'
+      && request.headers().accept !== NAVIGATION_MEDIA_TYPE);
+    await page.getByRole('link', { name: 'Search catalog' }).first().click();
+    if (refused) await refused;
+    await documentRequest;
+    await expect(page).toHaveURL(/\/search\?q=catalog$/u);
+    await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.dataset.shellIdentity)).toBeUndefined();
+  });
+}
+
 test('updates a React component and CSS over the app WebSocket without losing eligible state', async ({ page }) => {
   test.skip(!['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? ''), 'Fast Refresh is development only.');
   const pageFile = new URL('../src/page.tsx', import.meta.url);

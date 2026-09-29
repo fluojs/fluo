@@ -1,6 +1,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { createClientNavigationStore } from './client/store.js';
 import {
+  createReactRouteSnapshot,
   loadReactInitialNavigationDestination,
   loadReactNavigationDestination,
   type ReactNavigationLoadResult,
@@ -327,6 +329,138 @@ it.each([
   // Then: no code from an untrusted or failed response is imported.
   expect(result.ok).toBe(false);
   expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['network', () => { throw new TypeError('fetch failed with private details'); }, 'network'],
+  ['server', () => new Response('private server trace', { status: 503 }), 'server-error'],
+  ['unauthorized', () => new Response('private session', { status: 401 }), 'unauthorized'],
+  ['forbidden', () => new Response('private denial', { status: 403 }), 'forbidden'],
+  ['redirect', () => new Response(null, { status: 302, headers: { Location: '/login' } }), 'redirect'],
+  ['not found', () => new Response('missing', { status: 404 }), 'not-found'],
+  ['DTO rejection', () => new Response('private DTO fields', { status: 400 }), 'dto-rejected'],
+  ['malformed', () => new Response('{', { headers: { 'Content-Type': MEDIA_TYPE } }), 'invalid-payload'],
+  ['unsupported module', () => grantedResponse({}, {
+    ...payload, destination: { module: './missing.ts', props: {} },
+  }), 'unsupported-module'],
+  ['inherited module key', () => grantedResponse({}, {
+    ...payload, destination: { module: '__proto__', props: {} },
+  }), 'unsupported-module'],
+] as const)('classifies %s without exposing response details', async (_scenario, response, reason) => {
+  // Given: one negotiated HTTP response with distinct failure semantics.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => response()));
+
+  // When: the existing loader requests the destination.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', {
+    './navigation-product.ts': vi.fn(async () => ({ default: () => null })),
+  });
+
+  // Then: only a safe public reason crosses the browser navigation boundary.
+  expect(result).toEqual({ ok: false, reason });
+});
+
+it('preserves the approved shell on a post-header body stream failure', async () => {
+  // Given: HTTP has approved the media type, but the body stream fails while being read.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  const fetchResult = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(new TypeError('private network stream details'));
+    },
+  }), {
+    headers: {
+      'Content-Type': MEDIA_TYPE,
+      'X-Fluo-Navigation-Prefetch': 'public',
+      'Cache-Control': 'public, max-age=15',
+      Vary: 'Accept',
+    },
+  }));
+  vi.stubGlobal('fetch', fetchResult);
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+  const store = createClientNavigationStore(createReactRouteSnapshot({
+    url: '/products/sku-42', params: { sku: 'sku-42' },
+  }));
+  const assign = vi.fn();
+  let reportLoad = (_result: ReactNavigationLoadResult) => {};
+  const loaded = new Promise<ReactNavigationLoadResult>((resolve) => { reportLoad = resolve; });
+  store.connect({
+    assign,
+    back: vi.fn(),
+    currentHref: () => `${ORIGIN}/products/sku-42`,
+    failurePolicy: ({ reason }) => reason === 'network' ? 'preserve' : 'document',
+    load: async (href, signal) => {
+      const result = await loadReactNavigationDestination(href, modules, { signal });
+      reportLoad(result);
+      return result;
+    },
+    pushState: vi.fn(),
+    reload: vi.fn(),
+    replace: vi.fn(),
+    replaceState: vi.fn(),
+    subscribe: () => () => {},
+  });
+  const failure = new Promise<void>((resolve) => {
+    const unsubscribe = store.subscribe(() => {
+      if (store.getSnapshot().navigation.status === 'error') {
+        unsubscribe();
+        resolve();
+      }
+    });
+  });
+
+  // When: a soft navigation reads the failing response body.
+  store.router.push('/products/sku-84?preview=false');
+  const result = await loaded;
+
+  // Then: the real loader reports network failure and keeps the approved shell and URL.
+  expect(result).toEqual({ ok: false, reason: 'network' });
+  await failure;
+  expect(store.getSnapshot()).toMatchObject({
+    url: '/products/sku-42', params: { sku: 'sku-42' },
+    navigation: { status: 'error', failure: { reason: 'network' } },
+  });
+  expect(assign).not.toHaveBeenCalled();
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+  expect(fetchResult).toHaveBeenCalledOnce();
+});
+
+it('classifies a failed streamed prefetch body as network rather than invalid payload', async () => {
+  // Given: the prefetch grant headers arrive before the network body stream fails.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.error(new TypeError('private network stream details'));
+    },
+  }), {
+    headers: {
+      'Content-Type': MEDIA_TYPE,
+      'X-Fluo-Navigation-Prefetch': 'public',
+      'Cache-Control': 'public, max-age=15',
+      Vary: 'Accept',
+    },
+  })));
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  // When: the bounded prefetch reader consumes the failing stream.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', modules, { prefetch: true });
+
+  // Then: no destination is imported, and network remains distinct from malformed JSON.
+  expect(result).toEqual({ ok: false, reason: 'network' });
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+});
+
+it('distinguishes a rejected build-mapped module import from an unsupported module', async () => {
+  // Given: HTTP approved a module present in the build map, but loading its chunk fails.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => grantedResponse()));
+
+  // When: the approved import rejects.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', {
+    './navigation-product.ts': async () => { throw new TypeError('private chunk path'); },
+  });
+
+  // Then: the consumer may explicitly distinguish recovery from an absent build module.
+  expect(result).toEqual({ ok: false, reason: 'import-failure' });
 });
 
 it('rejects an external URL before issuing a request', async () => {

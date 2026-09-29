@@ -287,9 +287,18 @@ export function enforceReactNavigationPayloadContract(
     || requests.length === 0 || requests.some((request) =>
       request.arguments[0]?.getText(store) !== 'destination.href'
       || request.arguments[1]?.getText(store) !== 'controller.signal')
-    || historyWrites.length !== 2
+    || historyWrites.length < 2
+    || new Set(historyWrites.map((write) => write.expression.getText(store))).size !== 2
     || historyWrites.some((write) => approvalGuard.end >= write.pos) || !historyRead) {
     throw new Error('React navigation must request server approval and handle rejection before history writes, including traversal.');
+  }
+  if (!findNode(approvalGuard.thenStatement, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'browser.failurePolicy')
+    || !findNode(approvalGuard.thenStatement, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'browser.go')
+    || !findNode(approvalGuard.thenStatement, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'browser.replace')) {
+    throw new Error('React navigation policy must decide before document fallback and preserve history recovery.');
   }
   const refresh = findNode(store, (node) =>
     ts.isMethodDeclaration(node) && node.name.getText(store) === 'refresh');
