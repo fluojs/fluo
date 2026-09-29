@@ -61,6 +61,11 @@ Follow Docs contract establishment → evidence verification → Korean Book app
 For HTTP-matched React client navigation, start at the [navigation payload contract](./contracts/react-navigation-payload.md), then the [React API owner](../packages/react/README.md) and the [Vite SSR example](../examples/react-vite-ssr/README.md). The official starter transfers a bounded, escaped HTTP-selected initial page, then uses the same build-produced importer map and shared provider/page slot for hydration and later `Link`/`useRouter()` moves. Those controls commit confirmed URL/params through history, including fresh back/forward requests; failed approvals return to full documents. Ordinary and JavaScript-disabled GETs keep streamed documents. HTTP retains status, cookies, and error ownership. Runtime evidence is in `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, and `packages/cli/src/new/templates/react-vite-ssr/tests/production-hydration.spec.ts.ejs`.
 
 The [React full-stack product contract](./contracts/react-fullstack-product.md) separately defines the future CRUD and long-lived jukebox acceptance gate. Today `router.refresh()` reloads the document, and failed low-level navigation falls back to a document; shell-preserving retry and soft revalidation are downstream work, not shipped behavior.
+The opt-in `ReactNavigationExperience` owns approved-page pending announcements, local render
+reset, matched `@PageMetadata(...)` head updates and overridable focus/scroll defaults inside
+that shared shell. #3864 separately owns transient transport failure and fresh HTTP retry;
+do not use a page-boundary reset in place of `router.retry()`. Direct HTTP 404/DTO/guard
+rejections remain HTTP responses, not successful React pages.
 
 Optional `Link prefetch="hover" | "viewport"` needs provider `navigationModules` and an explicit
 `prefetchScope` auth/session epoch. Only `ReactNavigationPage.create(page, destination,

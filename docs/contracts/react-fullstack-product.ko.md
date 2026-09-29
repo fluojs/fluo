@@ -35,6 +35,16 @@ Framework는 명시한 navigation/history/failure 및 취소 경계, commit 전 
 
 ## 실패와 최신화 기본값
 
+**#3872의 opt-in 공식 조립:** `ReactNavigationExperience`는 pending을 page slot 밖에
+두고 승인된 destination의 render throw를 page-local boundary 실패로 처리합니다.
+Reset은 HTTP request 또는 history 변경 없이 수행됩니다. Application 오류 view도 throw하면
+공통 shell을 유지하면서 외부 diagnostic surface에 표시합니다. Matched
+`@PageMetadata(...)`는 제한된 page-owned head의 추가·교체·제거를 SSR과 soft navigation의
+HTTP 승인 payload에 함께 전달합니다. Live-region, focus, scroll 기본값은
+`onApprovedNavigation`으로 교체할 수 있지만 복구 불가능한 root/browser 오류는 page
+boundary가 복구하지 못합니다. 일시적 transport policy, 새 HTTP 승인 `router.retry()`,
+명시적 `router.openDocument()`와 실패한 history 복구는 계속 #3864가 소유합니다.
+
 **현재** low-level `ReactClientRouterProvider`는 취소되지 않은 모든 실패 load에 document fallback을 유지합니다. 성공 시에는 공통 provider/layout을 보존합니다. 아직 공개되지 않은 option을 가정하지 마세요. **목표** 공식 조립(#3871과 #3864)은 일시적 network/5xx 실패에서 마지막 승인 URL/params/page/shell을 유지하고, 실패와 명시적 retry/document-exit 선택지를 보여 주며, 재시도는 새 HTTP 승인을 받습니다. `popstate`는 browser URL이 먼저 변경된 뒤에도 일관되게 복구해야 합니다. 늦은 결과와 취소는 commit하지 않습니다. HTTP 인증 거절(401/403), redirect, 404, 잘못된 DTO/payload, 미지원 module/import, 배포 버전 차이마다 별도 정책과 테스트가 필요합니다. 모두 일시적 실패로 재시도하지 않습니다. 앱은 로그아웃할 때 보호 UI를 명시적으로 종료할 수 있습니다. Native anchor, 수정키 클릭, 새 탭, JS 비활성화 요청, 강제 reload는 계속 문서 경로를 사용합니다. 실제 탭 종료/OS discard는 보존 보장이 아닙니다. 복구 가능한 주크박스 이동 실패가 셸을 자동으로 파괴하거나 blank 화면·unhandled error를 남기면 제품 게이트 실패입니다.
 
 **현재** `router.refresh()`는 `browser.reload()`를 호출하는 document reload이지 soft data revalidation이 아닙니다. `router.invalidate()`는 provider가 관리하는 제한된 single-use *public* prefetch와 pending work를 비우지만 현재 페이지 데이터를 다시 가져오지 않습니다. Application은 관련 mutation/auth 전환 후 다음 in-document navigation 전에 `prefetchScope`를 바꾸거나 invalidate해야 합니다. [#3873](https://github.com/fluojs/fluo/issues/3873)이 향후 shell 보존 HTTP 승인 refresh와 기존 reload 의존 소비자의 명시적 migration을 소유하고, #3874/#3875가 저장/session 통합을 맡습니다. 일반/private loader cache와 자동 cache policy는 배포되지 않았습니다.

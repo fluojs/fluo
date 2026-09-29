@@ -205,7 +205,15 @@ application file과 다시 실행할 lifecycle command를 정확히 가리킵니
 남고 `router.push(...)`는 build-mapped destination에 HTTP 승인 soft navigation을 수행합니다.
 미지원 page와 JavaScript 비활성 상태는 native document 이동을 유지합니다. 일반 page를 추가할 때는
 page module과 HTTP handler/DTO만 작성하며 client entry, renderer, manifest, router store를
-편집하지 않습니다. 기존 생성 앱의 opt-in 방법은
+편집하지 않습니다.
+Generated shell은 `ReactNavigationExperience`를 opt-in으로 사용합니다. Pending 및 polite
+상태 알림은 key가 지정된 page slot 밖에 유지되고 destination render 오류는 local reset을
+제공합니다. `@PageMetadata(...)`는 request에서 선택한 title/meta/link descriptor를 SSR과
+soft navigation에 전달합니다. 기본 focus/scroll policy는 `onApprovedNavigation`으로
+교체할 수 있습니다. Local render reset은 HTTP request를 추가하지 않으며 #3864가 별도로
+보존된 transport failure의 retry와 document exit를 소유합니다. 기존 생성 앱은 앱 소유
+composition을 갱신해야 opt-in되고 package 설치만으로 low-level provider의 focus/scroll
+policy가 바뀌지 않습니다. 기존 생성 앱의 opt-in 방법은
 [composition migration guide](../../docs/getting-started/migrate-react-starter-composition.ko.md)를
 참고하세요. 이 starter는
 RSC, Server Functions, file routing, client route table, SPA document swapping, prefetch, data cache를

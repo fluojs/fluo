@@ -35,6 +35,16 @@ Classification describes the **current checkout**, not the target: **shipped** i
 
 ## Failure and freshness defaults
 
+**#3872's opt-in official composition:** `ReactNavigationExperience` keeps pending status
+outside the page slot, treats an approved destination render throw as a local page-boundary
+failure, and offers a reset that neither issues HTTP nor changes history. A throwing
+application error view reaches an outer diagnostic surface while the shared shell stays
+usable. Matched `@PageMetadata(...)` accompanies the HTTP-approved payload through SSR and
+soft navigation, with bounded page-owned head updates and removal. Live-region, focus and
+scroll defaults can be replaced through `onApprovedNavigation`; an unrecoverable root/browser
+failure cannot be recovered by a page boundary. #3864 still owns transient transport policy,
+fresh `router.retry()`, explicit `router.openDocument()`, and failed-history recovery.
+
 **Current** low-level `ReactClientRouterProvider` retains its document fallback for any non-cancelled failed load; success retains the common provider and layout. No unpublished option is implied. **Target** official composition (#3871 with #3864) makes a transient network/5xx failure retain the last approved URL, params, page and shell, show failure and explicit retry/document-exit controls, and obtain fresh HTTP approval on retry. `popstate` needs coherent recovery after the browser has already changed its URL. Stale responses and cancellation never commit. HTTP authorization rejection (401/403), redirects, 404, invalid DTO/payload, unsupported module/import and deployment skew each need their own policy and tests, not a blanket transient retry. The app may explicitly tear down protected UI on sign-out; native anchors, modified clicks, new tabs, JavaScript-disabled requests and forced reload continue through documents. Actual tab close/OS discard is not a preservation promise. A recoverable jukebox navigation failure that automatically destroys its shell, leaves a blank view or raises an unhandled error fails the product gate.
 
 **Current** `router.refresh()` calls `browser.reload()`: it is a document reload, not soft data revalidation. `router.invalidate()` clears the provider's bounded single-use *public* prefetch and pending work; it does not fetch fresh page data. The application must change `prefetchScope` and/or invalidate after relevant mutations/auth transitions before the next in-document navigation. [#3873](https://github.com/fluojs/fluo/issues/3873) owns a future shell-preserving HTTP-approved refresh and explicit consumer migration for callers who relied on reload; #3874/#3875 integrate saves and sessions. No general/private loader cache or automatic cache policy is shipped.

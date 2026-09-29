@@ -70,6 +70,13 @@ Vite-generated client entry가 server HTML을 hydrate한 뒤에만 label이 `Cou
 사용하세요. URL과 page는 HTTP가 확정한 목적지를 따르며 shell counter는 유지되고 page
 counter는 초기화됩니다. Main landmark에 focus를 옮깁니다. 직접 요청과 JavaScript 비활성
 요청은 계속 일반 server document를 렌더링합니다.
+`Probe shell resource` button은 실제 `MessageChannel` operation을 보내 instance ID와
+acknowledgement 순서를 표시합니다. 승인된 page render 오류와 local reset 뒤에도 같은
+resource가 다음 operation에 응답합니다. `Open throwing destination`은 추가 HTTP request가
+없는 page-local reset을, `Open throwing error view`는 안전한 외부 diagnostic/document exit를
+검사합니다. 보류한 승인은 이전 page를 조작 가능한 상태로 유지하면서 pending을 알리고,
+승인된 `@PageMetadata(...)`는 global icon/Vite stylesheet를 지우지 않고 title,
+description, canonical link를 바꿉니다.
 
 `/admin/qr`에서 `Prefetch public sku-84`에 hover하거나 아래로 내려가
 `Prefetch public on viewport`를 화면에 표시한 뒤 opt-in link를 활성화하세요.
@@ -103,7 +110,10 @@ URL과 server-rendered route state가 일치하지 않는 client navigation, `PO
 URL을 계속 stream합니다. `Accept: application/vnd.fluo.react-navigation+json;v=1` GET은
 같은 HTTP DTO/module pipeline을 실행한 뒤 server URL/param과 browser destination을
 반환합니다. `src/entry-client.ts`는 Vite가 compile한 `import.meta.glob(...)` map을 hydrated
-document의 `ReactClientRouterProvider`에 `navigationModules`로 전달합니다. 기존 `Link`와
+document의 `ReactClientRouterProvider`에 `navigationModules`로 전달하며 hydration 전에
+escape된 inert initial transfer를 검증합니다. Shell의 `ReactNavigationExperience`는
+opt-in render boundary, polite status, focus/scroll 기본값과 page-owned head를 제공합니다.
+기존 `Link`와
 `router.push/replace`는 client loader가 HTTP 결과를 검증한 뒤에만 history를 commit하고
 page slot에 새 destination을 렌더링합니다. `src/admin-page.ts` 및 build-mapped
 `src/navigation-admin.ts` entry는 두 admin page를 처리하며 공통 counter는 유지됩니다.

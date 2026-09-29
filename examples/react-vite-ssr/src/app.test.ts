@@ -136,6 +136,14 @@ describe('react-vite-ssr example', () => {
           module: './navigation-product.ts',
           props: { preview: true, productName: 'Catalog item sku-42', sku: 'sku-42' },
         },
+        metadata: {
+          title: 'Catalog item sku-42',
+          meta: [
+            { name: 'description', content: 'Product sku-42' },
+            { property: 'og:title', content: 'Product sku-42' },
+          ],
+          links: [{ rel: 'canonical', href: '/products/sku-42?preview=true' }],
+        },
       });
     });
   });
@@ -235,6 +243,16 @@ describe('react-vite-ssr example', () => {
           url: path,
           params: {},
           destination: { module: './navigation-admin.ts', props: { page: path.split('/').at(-1) } },
+          metadata: path === '/admin/qr'
+            ? {
+              title: 'Admin QR',
+              meta: [{ name: 'description', content: 'QR access' }],
+              links: [{ rel: 'canonical', href: '/admin/qr' }],
+            }
+            : {
+              title: 'Admin songs',
+              meta: [{ name: 'description', content: 'Songs catalog' }],
+            },
         });
       }
     });

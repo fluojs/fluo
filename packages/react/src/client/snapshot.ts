@@ -1,4 +1,5 @@
 import { ReadonlySearchParams } from './search-params.js';
+import { parseReactPageMetadata } from '../page-metadata.js';
 import type {
   ReactNavigationSnapshot,
   ReactNavigationType,
@@ -37,9 +38,14 @@ function toRouteUrl(url: URL): string {
  */
 export function createReactRouteSnapshot(input: ReactRouteSnapshotInput): ReactRouteSnapshot {
   const url = new URL(input.url, ROUTE_SNAPSHOT_BASE_URL);
+  const metadata = input.metadata === undefined ? undefined : parseReactPageMetadata(input.metadata);
+  if (input.metadata !== undefined && metadata === undefined) {
+    throw new RangeError('The React route snapshot has invalid page metadata.');
+  }
 
   return Object.freeze({
     hash: url.hash,
+    ...(metadata === undefined ? {} : { metadata }),
     navigation: IDLE_NAVIGATION,
     params: Object.freeze({ ...input.params }),
     pathname: url.pathname,

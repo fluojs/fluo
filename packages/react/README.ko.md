@@ -931,12 +931,29 @@ escaped UTF-8 64 KiB 상한은 HTML response commit 전에 검사합니다. `jso
 key를 검증합니다. 생성된 `./page*.tsx` importer와 production manifest 확인으로 build되지 않은
 destination을 차단합니다. 같은 handler props가 SSR component와 browser destination에 전달되며,
 DI instance나 secret 대신 JSON data만 허용합니다. `ReactClientRouterProvider`의 shell은 유지되고
-page slot은 새 destination으로 마운트됩니다. 기존 low-level renderer 및 explicit server entry는
+page slot은 새 destination으로 마운트됩니다. 공식 opt-in `ReactNavigationExperience`는
+slot 바깥에 pending 및 polite live-region 상태를 두고 slot 안에 key가 지정된 destination
+render boundary를 둡니다. Application 오류 view도 throw하면 별도의 안전한 view가
+표시됩니다. Render reset은 이미 승인된 component만 다시 시도하며 fetch, URL/params/head
+변경 또는 history entry를 만들지 않습니다. Transport 실패의 새 HTTP 승인
+`router.retry()`와 명시적 `router.openDocument()`는 #3864 provider failure policy가
+소유하고, failure state가 있으면 복구 control은 slot 밖 shell에 나타납니다.
+Page boundary는 shell/root 자체를 복구하지 못합니다.
+Matched page의 `@PageMetadata(...)`는 초기 transfer와 협상된 결과에 제한된 선택적
+`metadata` field를 제공합니다. 공식 조립은 page-owned title, name/property meta,
+rel/href link만 추가·교체·제거하며 global CSS, icon, bootstrap entry는 유지합니다.
+Title은 최대 512자, 각 descriptor 종류는 최대 32개, 값은 최대 2048자이고 초기 escaped
+JSON은 여전히 64 KiB 이하입니다. 기본 동작은 pathname push/replace에서 scroll을 유발하지
+않는 `<main>` focus 후 top 이동, query-only에서 scroll 유지, fragment-only에서 native
+fragment scroll 및 적합한 target focus, back/forward에서 browser 복원 scroll 유지와
+`<main>` focus입니다. 같은 조립의 `onApprovedNavigation={(route, previous) => ...}`로
+application effect를 교체할 수 있습니다. Package 설치만으로 low-level provider의
+focus/scroll policy가 달라지지 않습니다. 기존 low-level renderer 및 explicit server entry는
 지원되며, 이 provider 경계의 별도 opt-in failure/retry 정책은 #3864가 소유합니다.
 
 ```tsx
 import { ReactNavigationPage } from '@fluojs/react';
-import { Link, ReactClientRouterProvider, createReactRouteSnapshot } from '@fluojs/react/client';
+import { Link, ReactClientRouterProvider, ReactNavigationExperience, createReactRouteSnapshot } from '@fluojs/react/client';
 
 // HTTP-matched @Path handler에서:
 return ReactNavigationPage.create(<ProductPage sku={input.sku} />, {
@@ -954,7 +971,9 @@ const modules = import.meta.glob('./navigation-product.ts');
   {(destination) => (
     <Shell>
       <Link href="/products/sku-84" prefetch="hover">Product</Link>
-      {destination ?? <ProductPage />}
+      <main tabIndex={-1}>
+        <ReactNavigationExperience page={<ProductPage />} destination={destination} />
+      </main>
     </Shell>
   )}
 </ReactClientRouterProvider>
@@ -989,7 +1008,11 @@ document request로 fallback합니다. External/non-HTTP(S) URL에는 일반 anc
 prefetch 및 non-opt-in click은 일반 credential 포함 loader와 document fallback을 사용합니다.
 일반 direct/JavaScript-disabled GET은 HTML과 hydration asset을 계속 stream합니다.
 `Link`와 `router.push/replace`만 공식
-navigation control이며 helper는 그 아래의 HTTP 검증 경계입니다. 자세한 내용은
+navigation control이며 helper는 그 아래의 HTTP 검증 경계입니다. #3864의 opt-in failure
+policy는 이와 달리 **매핑된** importer 로드 실패를 일시적 transport 오류와 함께
+`import-failure`로 보존하여 명시적 fresh HTTP retry/document exit를 제공합니다.
+알 수 없는 importer key(`unsupported-module`)는 계속 document 경로를 따릅니다.
+둘 다 승인된 component의 local render reset을 사용하지 않습니다. 자세한 내용은
 [EN](../../docs/contracts/react-navigation-payload.md) /
 [KO](../../docs/contracts/react-navigation-payload.ko.md) contract와
 [`react-vite-ssr`](../../examples/react-vite-ssr/README.ko.md)를 참고하세요.
@@ -1376,11 +1399,13 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
   `ReactViteResolvedEntry`를 제공합니다.
 - `@fluojs/react/client` subpath — root package를 넓히거나 client route grammar를 추가하지 않고
   progressive HTTP-first browser navigation을 제공하는 `Link`, `ReactClientRouterProvider`,
+  `ReactNavigationExperience`,
   `loadReactNavigationDestination(...)`,
   `ReactClientNavigationError`, `ReactClientRouterContextError`, `createReactRouteSnapshot(...)`,
   `useRouter()`, `usePathname()`, `useParams()`, `useSearchParams()`, `useNavigation()`,
   `useRouterState()`를 제공합니다. Type export는 `LinkProps`, `ReactClientNavigationErrorCode`,
-  `ReactClientRouterProviderProps`, `ReactNavigationSnapshot`, `ReactNavigationStatus`,
+  `ReactClientRouterProviderProps`, `ReactNavigationEffect`, `ReactNavigationExperienceProps`,
+  `ReactNavigationSnapshot`, `ReactNavigationStatus`,
   `ReactNavigationType`, `ReactReadonlySearchParams`, `ReactRouteSnapshot`,
   `ReactRouteSnapshotInput`, `ReactRouter`, `ReactNavigationModules`,
   `ReactNavigationLoadResult`입니다.

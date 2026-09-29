@@ -52,11 +52,23 @@ example `404`) is still rejected by the browser helper and takes the full-docume
   "destination": {
     "module": "./navigation-product.ts",
     "props": { "sku": "sku-84", "preview": false }
+  },
+  "metadata": {
+    "title": "Product sku-84",
+    "meta": [{ "name": "description", "content": "Product sku-84" }],
+    "links": [{ "rel": "canonical", "href": "/products/sku-84?preview=false" }]
   }
 }
 ```
 
 `url` and `params` come from the active HTTP request after matching, not from client parsing.
+Optional `metadata` comes from the same matched page's broad-to-specific `@PageMetadata(...)`
+factories, resolved within its request scope for both document transfer and negotiated JSON.
+The page-owned subset is title (at most 512 characters), at most 32 `name`/`property` meta
+descriptors and 32 `rel`/`href` link descriptors (each value at most 2048 characters).
+Link hrefs are root-relative or HTTP(S); duplicate descriptor identities and malformed values
+fail before an HTTP commit or browser import. The escaped initial transfer retains its 64 KiB
+UTF-8 ceiling. Unmarked pages do not acquire metadata implicitly.
 `props` must be JSON-serializable application data. Serialization failures occur before a
 navigation response commits and follow the existing canonical HTTP error path. Request-scoped
 dependencies remain active through response writing and are disposed by the normal dispatcher.
@@ -103,10 +115,29 @@ result for an application-owned full-document fallback. Cancellation returns `ca
 does not import or render, including when cancellation occurs during the response body read, or
 initiate fallback navigation. An external or non-HTTP(S) URL is rejected before
 any fetch; use a normal anchor for it.
+#3864's separate opt-in failure policy can preserve a failure of a **mapped** importer as
+`import-failure` alongside transient network/server errors, with fresh retry and explicit
+document exit outside this page slot. An unknown importer key remains `unsupported-module`
+and takes the document path; neither case is an approved React render throw.
 
 The browser does not rewrite React-owned HTML, infer path params, or install a route matcher.
 Pass the build-produced importers as `navigationModules` to `ReactClientRouterProvider` and
-render its function child with the approved destination in the application-owned page slot.
+render its function child with the approved destination through `ReactNavigationExperience`
+in the application-owned page slot. This is an opt-in official composition; installing the
+package does not change low-level provider navigation effects. Its pending status remains outside
+the destination boundary while the last approved page, URL, params and head stay in place.
+An approved destination render throw keeps that committed URL/params and the shell, presents a
+keyboard-operable local render reset without a second HTTP request or history entry, and
+distinguishes a throwing application error view via a separate outer diagnostic/document exit.
+An unrecoverable shell/root or closed browser cannot retain that shell.
+The same composition renders only page-owned title/meta/link entries for the approved snapshot;
+React reconciles additions and removal without taking ownership of bootstrap, icon or global
+stylesheet entries. It announces pending, completion and failure through a polite live region.
+For pathname push/replace it focuses `<main>` without focus scrolling then scrolls to top;
+query-only changes focus `<main>` while preserving scroll; fragment-only moves keep native
+fragment scrolling and focus an eligible target; back/forward focus `<main>` without replacing
+browser-restored scroll. `onApprovedNavigation` replaces those effects for an application-specific
+policy. Pending or failed approval does not change focus or scroll.
 The existing `Link` and `router.push/replace` request that result before changing the URL.
 On success the provider commits the server-confirmed URL and params with the History API, mounts
 the loaded component afresh, and updates all route hooks while retaining the common provider and
@@ -131,6 +162,9 @@ retain the approved shell/page and expose fresh HTTP-approved retry. It distingu
 explicit reload, and logout; no such preservation is shipped here. #3873 owns shell-preserving soft
 revalidation and migration for applications relying on the current `refresh()` document reload.
 `invalidate()` does not re-fetch displayed page data.
+The #3872 approved-render reset above does not retry transport. Once #3864's failure state is
+present, its `router.retry()` obtains a fresh HTTP approval and its `router.openDocument()` exits
+explicitly; those controls render in the shared shell outside the page slot.
 
 ## Opt-in public prefetch and provider-local cache
 

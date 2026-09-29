@@ -100,7 +100,9 @@ test('invalidates completed prefetch after an in-document mutation', async ({ pa
   // When: the native HTTP mutation succeeds and the app calls router.invalidate().
   await page.getByRole('button', { name: 'Rename without reload' }).click();
   expect((await mutation).status()).toBe(303);
-  await expect(page.getByRole('status')).toHaveText('Mutation completed; prefetched pages invalidated');
+  await expect(page.getByRole('status').filter({
+    hasText: 'Mutation completed; prefetched pages invalidated',
+  })).toHaveText('Mutation completed; prefetched pages invalidated');
   const navigation = nextNavigation(page, '/prefetch/public-84');
   await page.getByRole('link', { name: 'Prefetch public sku-84' }).evaluate((anchor) => {
     if (anchor instanceof HTMLAnchorElement) anchor.click();

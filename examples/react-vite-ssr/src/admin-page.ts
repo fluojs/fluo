@@ -1,10 +1,7 @@
-import { createElement, useEffect, useState } from 'react';
+import { createElement, useState } from 'react';
 
 export default function AdminDestination({ page }: { readonly page: 'qr' | 'songs' }) {
   const [count, setCount] = useState(0);
-  useEffect(() => {
-    document.title = page === 'qr' ? 'Admin QR' : 'Admin songs';
-  }, [page]);
   return createElement(
     'section',
     { 'aria-label': `Admin ${page} page` },
