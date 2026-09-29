@@ -409,7 +409,7 @@ export function runTask(plan, taskId, output, artifacts, planPath, sourceRoot = 
       `&& git -C /workspace checkout -q --detach ${plan.source.headSha}`]);
     const dockerHost = execute('docker', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}']);
     if (!dockerHost.startsWith('unix://')) throw new TypeError('Docker Unix socket required');
-    const args = ['run', '--rm', '--platform', 'linux/arm64', '--network', 'host',
+    const args = ['run', '--rm', '--init', '--platform', 'linux/arm64', '--network', 'host',
       '-v', `${volume}:/workspace`, '-v', `${resolve(planPath)}:/tmp/plan.json:ro`,
       '-v', `${resolve(output)}:/evidence`, '-v', `${resolve(artifacts)}:/artifacts`,
       '-v', `${dependencyCache}:/pnpm-cache`,
