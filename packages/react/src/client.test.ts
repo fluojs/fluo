@@ -1521,6 +1521,109 @@ describe('@fluojs/react/client', () => {
     expect(go).toHaveBeenCalledOnce();
   });
 
+  it('prefers a subscriber push over an older deferred back during restoration', async () => {
+    // Given: refresh is restoring a traversed URL, and a listener reacts to back navigation.
+    const approved = 'https://example.test/products/sku-42';
+    const browser = createEnvironment(approved);
+    let index = 1;
+    const go = vi.fn();
+    const load = vi.fn(async (href: string) => approvedPrefetch(href));
+    const store = createClientNavigationStore(createReactRouteSnapshot({
+      url: '/products/sku-42', params: { sku: 'sku-42' },
+    }));
+    store.connect({
+      ...browser.environment, go, historyIndex: () => index,
+      failurePolicy: () => 'preserve', load,
+      pushState: (href, nextIndex) => {
+        index = nextIndex ?? index + 1;
+        browser.changeFragment(href);
+      },
+      replaceState: vi.fn(),
+    });
+    index = 0;
+    browser.navigateFromHistory('https://example.test/products/sku-84');
+    const refreshing = store.router.refresh();
+    const completed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().url === '/products/sku-126') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+    let redirected = false;
+    store.subscribe(() => {
+      if (!redirected && store.getSnapshot().navigation.type === 'back') {
+        redirected = true;
+        store.router.push('/products/sku-126');
+      }
+    });
+
+    // When: back publishes while restoration is pending, then the approved entry returns.
+    store.router.back();
+    expect(await refreshing).toEqual({ status: 'cancelled' });
+    index = 1;
+    browser.navigateFromHistory(approved);
+    await completed;
+
+    // Then: the newer subscriber intent commits, never the superseded back.
+    expect(go).toHaveBeenCalledExactlyOnceWith(1);
+    expect(browser.back).not.toHaveBeenCalled();
+    expect(store.getSnapshot()).toMatchObject({
+      url: '/products/sku-126', params: { sku: 'sku-126' },
+    });
+    expect(browser.environment.currentHref()).toBe('https://example.test/products/sku-126');
+  });
+
+  it('discards deferred back when another popstate interrupts restoration', async () => {
+    // Given: a back is deferred while refresh restores the approved history entry.
+    const approved = 'https://example.test/products/sku-42';
+    const browser = createEnvironment(approved);
+    let index = 1;
+    const go = vi.fn();
+    const approvals: ((result: ReactNavigationLoadResult) => void)[] = [];
+    const load = vi.fn(() => new Promise<ReactNavigationLoadResult>((resolve) => {
+      approvals.push(resolve);
+    }));
+    const store = createClientNavigationStore(createReactRouteSnapshot({
+      url: '/products/sku-42', params: { sku: 'sku-42' },
+    }));
+    store.connect({
+      ...browser.environment, go, historyIndex: () => index,
+      failurePolicy: () => 'preserve', load,
+      pushState: vi.fn(), replaceState: vi.fn(),
+    });
+    index = 0;
+    browser.navigateFromHistory('https://example.test/products/sku-84');
+    const refreshing = store.router.refresh();
+    store.router.back();
+    expect(await refreshing).toEqual({ status: 'cancelled' });
+    const failed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().navigation.status === 'error') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: an unexpected new history activation fails and restores the approved entry.
+    index = 2;
+    browser.navigateFromHistory('https://example.test/products/sku-126');
+    approvals[1]?.({ ok: false, reason: 'server-error' });
+    await failed;
+    index = 1;
+    browser.navigateFromHistory(approved);
+
+    // Then: the obsolete back does not traverse after the intervening activation.
+    expect(go).toHaveBeenCalledTimes(2);
+    expect(browser.back).not.toHaveBeenCalled();
+    expect(browser.environment.currentHref()).toBe(approved);
+    expect(store.getSnapshot()).toMatchObject({
+      url: '/products/sku-42', params: { sku: 'sku-42' },
+    });
+  });
+
   it.each(['invalidate', 'disconnect', 'navigate'] as const)(
     'cancels a held refresh promptly when %s supersedes its generation',
     async (event) => {

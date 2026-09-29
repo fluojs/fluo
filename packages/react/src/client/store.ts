@@ -453,9 +453,10 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       deferredRefresh = false;
       deferredNavigation = null;
       discardPrefetches();
+      const deferBack = restoringIndex !== null;
+      deferredBack = deferBack;
       publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('navigating', 'back')));
-      if (restoringIndex !== null) {
-        deferredBack = true;
+      if (deferBack) {
         return;
       }
       browser.back();
@@ -666,6 +667,8 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
           }
           restoringIndex = null;
           invalidatedTraversal = false;
+          deferredBack = false;
+          deferredNavigation = null;
           if (deferredRefresh) {
             deferredRefresh = false;
             settleRefresh?.({ status: 'document' });
