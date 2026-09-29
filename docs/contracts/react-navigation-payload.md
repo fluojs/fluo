@@ -97,9 +97,9 @@ Ordinary navigation never stores its response. The browser validates status, med
 server-confirmed same-origin URL, string path params, JSON-object props, and a module key present
 in the supplied build-produced importer map **before** importing or rendering anything.
 It also requires the loaded module to export a usable default component before reporting success.
-Malformed JSON, unsupported versions/modules/URLs, non-HTML or other unexpected media types,
-network errors, redirects, 404, 401/403, DTO failures, and server failures return a non-success
-result for an application-owned full-document fallback. Cancellation returns `cancelled` and
+Malformed JSON, unsupported versions/modules/URLs, unexpected media types,
+network errors, redirects, 404, 401/403, DTO failures, and server failures return a distinct
+non-success reason for an application-owned full-document fallback. Cancellation returns `cancelled` and
 does not import or render, including when cancellation occurs during the response body read, or
 initiate fallback navigation. An external or non-HTTP(S) URL is rejected before
 any fetch; use a normal anchor for it.
@@ -116,20 +116,43 @@ a pathname transition while preserving its shell counter and resetting the page 
 `popstate` and forward traversal request fresh HTTP approval; they never reuse prior private
 payloads or attach old params to a new URL. A late result after another activation or unmount
 cannot commit. Repeated activation of an in-flight destination does not issue another request.
-Fragment-only changes keep the browser's native same-document history behavior. A failed or
-unsupported load uses a full-document `assign`/`replace` without committing a guessed soft URL;
+Fragment-only changes keep the browser's native same-document history behavior. Without an
+opted-in policy, a failed or unsupported load uses full-document `assign`/`replace` without committing a guessed soft URL;
 for history traversal the browser URL has already changed, so failure loads its document.
 Cancellation does not start fallback. Before hydration, `Link` remains a native anchor, and
 the initial request snapshot must match the browser path/search rather than silently installing
 another page. `refresh()` remains a document reload. Non-opt-in `Link`, `router.push/replace`,
 and rejected prefetches still use the credentialed ordinary loader and its full-document fallback.
 
-This paragraph describes **shipped low-level compatibility**, not the future official app
-failure default. The [HTTP-first React product contract](./react-fullstack-product.md) requires
-#3864's opt-in transient network/5xx policy to integrate with #3871's shared provider/page slot,
-retain the approved shell/page and expose fresh HTTP-approved retry. It distinguishes auth refusal,
-explicit reload, and logout; no such preservation is shipped here. #3873 owns shell-preserving soft
-revalidation and migration for applications relying on the current `refresh()` document reload.
+`ReactClientRouterProvider` accepts optional `failurePolicy(failure)`, returning `'preserve'`
+or `'document'` synchronously or asynchronously. Without it the low-level default stays document
+fallback. The policy and `useNavigation().failure` expose only a public `reason`, destination
+**pathname** (not query, body, credentials or exception internals), and navigation `type`.
+Reasons distinguish `network`, `server-error` (HTTP 5xx), `unauthorized` (401), `forbidden`
+(403), `redirect`, `not-found` (404), `dto-rejected` (400/422), `invalid-payload`,
+`unsupported-module`, `import-failure`, `unavailable` (other response), and
+`unsupported-destination`; cancellation never invokes the policy. Network and 5xx can be
+preserved; auth, redirect, 404, DTO and malformed results retain document handling unless the
+application explicitly chooses otherwise. Recoverable import failure needs an explicit decision.
+HTTP still owns status, validation and authentication.
+
+On preserve, the last approved page, shell and params stay mounted; push/replace commit no
+unapproved entry, and `useNavigation()` settles to `error` with a safe failure. A failed
+back/forward traverses back to its tagged approved history position without a duplicate entry;
+an untagged traversal instead falls back to the document rather than leaving URL and view
+inconsistent. `router.retry()` obtains **fresh** credentialed, uncached HTTP approval for the
+failed destination; `router.openDocument()` explicitly loads its ordinary document. Only the
+latest validated approval commits. Superseded results and policy decisions cannot commit or
+start fallback. A throwing/rejecting application policy is diagnosed and settles to
+`application-error` without browser-global unhandled rejection or a second automatic fallback.
+The application owns failure UI and auth/session resource teardown; logout, reload and tab close
+do not preserve playback.
+
+The low-level provider keeps document fallback by default. The official generated starter
+explicitly selects network/5xx and recoverable mapped import-failure preservation and renders
+retry/document controls in its persistent shell outside the HTTP-selected page slot.
+#3873 owns shell-preserving soft revalidation and
+migration for consumers relying on the current `refresh()` document reload.
 `invalidate()` does not re-fetch displayed page data.
 
 ## Opt-in public prefetch and provider-local cache
@@ -166,7 +189,9 @@ freshness. A successful opted-in click removes its entry. Revisits and back/forw
 fresh HTTP approval, and refresh reloads the document. Unmount/disconnect, scope changes,
 `router.invalidate()`, and superseding activation abort pending work and clear invalid entries.
 Invalidation that cancels an in-flight soft navigation settles `useNavigation()` to idle over
-the retained committed route, with no history entry and no document fallback. After an
+the retained committed route, with no history entry and no document fallback unless an untagged
+back/forward activation already moved the browser URL. In that case its ordinary document loads
+without adding a history entry, rather than settling an old page under an unapproved URL. After an
 in-document mutation or auth change, the application must update `prefetchScope`
 and/or call `router.invalidate()` **before** further same-document navigation; full-document
 navigation destroys this cache. External `HttpOnly` cookie changes are not automatically

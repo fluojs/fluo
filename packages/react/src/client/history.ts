@@ -10,8 +10,10 @@ type HistoryHandlers = {
   readonly cancelPending: () => void;
   readonly createSnapshotForHref: (href: string, navigation: ReactNavigationSnapshot) => ReactRouteSnapshot;
   readonly getSnapshot: () => ReactRouteSnapshot;
+  readonly isRestoring: () => boolean;
   readonly loadAndCommit: (browser: ClientNavigationEnvironment, destination: URL, type: 'back') => void;
   readonly publish: (snapshot: ReactRouteSnapshot) => void;
+  readonly restore: () => boolean;
 };
 
 /**
@@ -26,6 +28,9 @@ export function connectClientNavigationHistory(
   handlers: HistoryHandlers,
 ): () => void {
   const unsubscribe = browser.subscribe((eventType) => {
+    if (handlers.restore()) {
+      return;
+    }
     const href = browser.currentHref();
     const currentUrl = toSnapshotUrl(href);
     const snapshot = handlers.getSnapshot();
@@ -64,7 +69,7 @@ export function connectClientNavigationHistory(
 
   const currentHref = browser.currentHref();
   const snapshot = handlers.getSnapshot();
-  if (toSnapshotUrl(currentHref) !== snapshot.url) {
+  if (toSnapshotUrl(currentHref) !== snapshot.url && !handlers.isRestoring()) {
     if (new URL(currentHref).pathname === snapshot.pathname
       && new URL(currentHref).search === new URL(snapshot.url, currentHref).search) {
       handlers.publish(handlers.createSnapshotForHref(currentHref, snapshot.navigation));

@@ -9,6 +9,8 @@ import {
   toSnapshotUrl,
 } from './snapshot.js';
 import type {
+  ReactNavigationFailure,
+  ReactNavigationFailurePolicy,
   ReactNavigationSnapshot,
   ReactNavigationType,
   ReactRouter,
@@ -20,13 +22,16 @@ export type ClientNavigationEnvironment = {
   readonly assign: (href: string) => void;
   readonly back: () => void;
   readonly currentHref: () => string;
+  readonly failurePolicy?: ReactNavigationFailurePolicy;
+  readonly go?: (delta: number) => void;
+  readonly historyIndex?: () => number | null;
   readonly load?: (href: string, signal: AbortSignal) => Promise<ReactNavigationLoadResult>;
   readonly prefetch?: (href: string, signal: AbortSignal) => Promise<ReactNavigationLoadResult>;
   readonly prefetchScope?: string;
-  readonly pushState?: (href: string) => void;
+  readonly pushState?: (href: string, index?: number) => void;
   readonly reload: () => void;
   readonly replace: (href: string) => void;
-  readonly replaceState?: (href: string) => void;
+  readonly replaceState?: (href: string, index?: number) => void;
   readonly subscribe: (listener: (eventType: 'hashchange' | 'popstate') => void) => () => void;
 };
 
@@ -63,7 +68,20 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
   let environment: ClientNavigationEnvironment | null = null;
   let snapshot = initialSnapshot;
   let destinationElement: ReactElement | null = null;
-  let pending: { readonly controller: AbortController; readonly href: string } | null = null;
+  let pending: {
+    readonly controller: AbortController;
+    readonly href: string;
+    readonly type: DocumentNavigationType | 'back';
+  } | null = null;
+  let failed: { readonly href: string; readonly type: DocumentNavigationType | 'back'; readonly index: number | null } | null = null;
+  let approvedIndex = 0;
+  let restoringIndex: number | null = null;
+  let invalidatedTraversal = false;
+  let deferredNavigation: {
+    readonly destination: URL;
+    readonly type: DocumentNavigationType;
+    readonly fromPrefetch: boolean;
+  } | null = null;
   const cached = new Map<string, { readonly result: Extract<ReactNavigationLoadResult, { ok: true }>; readonly expiresAt: number }>();
   const prefetched = new Map<string, {
     readonly controller: AbortController;
@@ -128,11 +146,32 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
   const invalidate = (): void => {
     cached.clear();
     discardPrefetches();
-    const hadPendingNavigation = pending !== null;
+    const hadUnsettledNavigation = pending !== null || failed !== null;
+    const browser = environment;
+    const activatedIndex = browser?.historyIndex?.();
+    const unapprovedTraversal = (pending?.type === 'back' || failed?.type === 'back' || restoringIndex !== null)
+      && browser !== null && toSnapshotUrl(browser.currentHref()) !== snapshot.url;
+    const mustRestore = unapprovedTraversal && browser.go !== undefined
+      && activatedIndex !== null && activatedIndex !== undefined;
     cancelPending();
-    if (hadPendingNavigation) {
-      // Publish a terminal state when invalidation cancels in-flight navigation: settle to
-      // idle over the retained committed route without history writes or document fallback.
+    failed = null;
+    deferredNavigation = null;
+    if (mustRestore) {
+      invalidatedTraversal = true;
+      if (restoringIndex === null) {
+        restoringIndex = approvedIndex;
+        browser.go?.(approvedIndex - activatedIndex);
+      }
+      return;
+    }
+    if (unapprovedTraversal) {
+      // An untagged history entry has no reliable delta back to the approved page.
+      // Let its ordinary document response own the activated URL instead of publishing idle
+      // with an old page and params under that unapproved URL.
+      browser.replace(browser.currentHref());
+      return;
+    }
+    if (hadUnsettledNavigation) {
       publish(createSnapshotWithNavigation(snapshot, IDLE_NAVIGATION));
     }
   };
@@ -178,7 +217,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     }
     const controller = adopted && 'controller' in adopted ? adopted.controller : new AbortController();
     const expectedHref = browser.currentHref();
-    pending = { controller, href: destination.href };
+    pending = { controller, href: destination.href, type };
     const requestGeneration = generation;
     void (async () => {
       let result: ReactNavigationLoadResult;
@@ -211,23 +250,76 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
           : currentHref !== expectedHref)) {
         return;
       }
-      pending = null;
       if (!result.ok) {
-        if (result.reason !== 'cancelled') {
-          if (type === 'replace') {
-            browser.replace(destination.href);
-          } else {
-            browser.assign(type === 'back' ? currentHref : destination.href);
+        if (result.reason === 'cancelled') {
+          pending = null;
+          publish(createSnapshotWithNavigation(snapshot, IDLE_NAVIGATION));
+          return;
+        }
+        let failure: ReactNavigationFailure = Object.freeze({
+          destination: destination.pathname,
+          reason: result.reason,
+          type,
+        });
+        let decision: 'preserve' | 'document' = 'document';
+        try {
+          if (browser.failurePolicy !== undefined) {
+            decision = await browser.failurePolicy(failure);
           }
+        } catch {
+          if (controller.signal.aborted || requestGeneration !== generation) {
+            return;
+          }
+          console.error('React navigation failure policy rejected.');
+          decision = 'preserve';
+          failure = Object.freeze({ ...failure, reason: 'application-error' });
+        }
+        if (controller.signal.aborted || requestGeneration !== generation
+          || (type === 'back'
+            ? browser.currentHref().split('#', 1)[0] !== expectedHref.split('#', 1)[0]
+            : browser.currentHref() !== expectedHref)) {
+          return;
+        }
+        pending = null;
+        if (decision === 'preserve' && (type !== 'back'
+          || (browser.historyIndex?.() !== null && browser.historyIndex?.() !== undefined && browser.go !== undefined))) {
+          failed = { href: type === 'back' ? currentHref : destination.href, type, index: browser.historyIndex?.() ?? null };
+          if (type === 'back' && failed.index !== null) {
+            restoringIndex = approvedIndex;
+            browser.go?.(approvedIndex - failed.index);
+          }
+          publish(createSnapshotWithNavigation(snapshot, {
+            ...createNavigationSnapshot('error', type, toSnapshotUrl(destination.href)),
+            failure,
+          }));
+          return;
+        }
+        if (type === 'replace') {
+          browser.replace(destination.href);
+        } else {
+          browser.assign(type === 'back' ? currentHref : destination.href);
         }
         return;
       }
+      pending = null;
+      failed = null;
       const confirmed = new URL(result.payload.url, destination.origin);
       const confirmedHref = `${confirmed.href}${type === 'back' ? new URL(currentHref).hash : destination.hash}`;
       if (type === 'push') {
-        browser.pushState?.(confirmedHref);
+        approvedIndex += 1;
+        if (browser.failurePolicy !== undefined && browser.historyIndex !== undefined) {
+          browser.pushState?.(confirmedHref, approvedIndex);
+        } else {
+          browser.pushState?.(confirmedHref);
+        }
       } else if (type === 'replace') {
-        browser.replaceState?.(confirmedHref);
+        if (browser.failurePolicy !== undefined && browser.historyIndex !== undefined) {
+          browser.replaceState?.(confirmedHref, approvedIndex);
+        } else {
+          browser.replaceState?.(confirmedHref);
+        }
+      } else {
+        approvedIndex = browser.historyIndex?.() ?? approvedIndex;
       }
       destinationElement = createElement(result.component, {
         ...result.payload.destination.props,
@@ -256,6 +348,24 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     }
 
     const destinationUrl = toSnapshotUrl(destination.href);
+    const browser = requireEnvironment();
+    if (restoringIndex !== null) {
+      deferredNavigation = { destination, type, fromPrefetch };
+      return;
+    }
+    if (browser.failurePolicy !== undefined && pending?.type === 'back'
+      && toSnapshotUrl(browser.currentHref()) !== snapshot.url) {
+      const activated = browser.historyIndex?.();
+      if (activated !== null && activated !== undefined && browser.go !== undefined) {
+        cancelPending();
+        deferredNavigation = { destination, type, fromPrefetch };
+        restoringIndex = approvedIndex;
+        browser.go(approvedIndex - activated);
+        return;
+      }
+      browser.assign(destination.href);
+      return;
+    }
     if ((destinationUrl === snapshot.url && pending === null) || pending?.href === destination.href) {
       publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('skipped', type, destinationUrl)));
       return;
@@ -277,9 +387,9 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       }
     }
     cancelPending();
+    failed = null;
     discardPrefetches(key);
     publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('navigating', type, destinationUrl)));
-    const browser = requireEnvironment();
     const active = new URL(browser.currentHref());
     if (destination.pathname === active.pathname && destination.search === active.search) {
       if (type === 'push') {
@@ -316,6 +426,32 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     invalidate,
     push(href: string | URL): void {
       navigateDocument(href, 'push');
+    },
+    retry(): void {
+      const last = failed;
+      if (last === null) {
+        return;
+      }
+      failed = null;
+      if (last.type === 'back' && last.index !== null) {
+        cancelPending();
+        requireEnvironment().go?.(last.index - approvedIndex);
+      } else {
+        navigateDocument(last.href, last.type === 'back' ? 'push' : last.type);
+      }
+    },
+    openDocument(): void {
+      const last = failed;
+      if (last === null) {
+        return;
+      }
+      failed = null;
+      cancelPending();
+      if (last.type === 'replace') {
+        requireEnvironment().replace(last.href);
+      } else {
+        requireEnvironment().assign(last.href);
+      }
     },
     refresh(): void {
       const browser = requireEnvironment();
@@ -415,13 +551,40 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     connect(nextEnvironment: ClientNavigationEnvironment): () => void {
       invalidate();
       environment = nextEnvironment;
+      if (nextEnvironment.failurePolicy !== undefined && nextEnvironment.historyIndex?.() === null) {
+        nextEnvironment.replaceState?.(nextEnvironment.currentHref(), approvedIndex);
+      }
+      if (restoringIndex === null && toSnapshotUrl(nextEnvironment.currentHref()) === snapshot.url) {
+        approvedIndex = nextEnvironment.historyIndex?.() ?? approvedIndex;
+      }
       const unsubscribe = connectClientNavigationHistory(nextEnvironment, {
         cancelPending: () => {
           cancelPending();
+          failed = null;
           discardPrefetches();
         },
         createSnapshotForHref,
         getSnapshot: () => snapshot,
+        isRestoring: () => restoringIndex !== null,
+        restore: () => {
+          if (restoringIndex !== null && nextEnvironment.historyIndex?.() === restoringIndex
+            && toSnapshotUrl(nextEnvironment.currentHref()) === snapshot.url) {
+            restoringIndex = null;
+            if (invalidatedTraversal) {
+              invalidatedTraversal = false;
+              publish(createSnapshotWithNavigation(snapshot, IDLE_NAVIGATION));
+            }
+            const deferred = deferredNavigation;
+            deferredNavigation = null;
+            if (deferred !== null) {
+              navigateDocument(deferred.destination, deferred.type, deferred.fromPrefetch);
+            }
+            return true;
+          }
+          restoringIndex = null;
+          invalidatedTraversal = false;
+          return false;
+        },
         loadAndCommit,
         publish,
       });

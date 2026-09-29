@@ -22,8 +22,14 @@ export type ReactNavigationLoadResult =
   }
   | {
     readonly ok: false;
-    readonly reason: 'cancelled' | 'invalid-payload' | 'unavailable' | 'unsupported-destination';
+    readonly reason: ReactNavigationFailureReason;
   };
+
+/** Safe, machine-distinguishable reason; HTTP response bodies and thrown errors are never exposed. */
+export type ReactNavigationFailureReason =
+  | 'cancelled' | 'network' | 'server-error' | 'unauthorized' | 'forbidden'
+  | 'redirect' | 'not-found' | 'dto-rejected' | 'invalid-payload'
+  | 'unsupported-module' | 'import-failure' | 'unavailable' | 'unsupported-destination';
 
 function isStringRecord(value: unknown): value is Record<string, string> {
   return typeof value === 'object'
@@ -39,13 +45,11 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function parseNavigationPayload(
   value: unknown,
   requested: URL,
-  modules: ReactNavigationModules,
 ): ReactNavigationPayload | undefined {
   if (!isObject(value) || value.version !== 1 || typeof value.url !== 'string'
     || !value.url.startsWith('/') || value.url.startsWith('//')
     || !isStringRecord(value.params) || !isObject(value.destination)
-    || typeof value.destination.module !== 'string' || !isObject(value.destination.props)
-    || !Object.hasOwn(modules, value.destination.module)) {
+    || typeof value.destination.module !== 'string' || !isObject(value.destination.props)) {
     return undefined;
   }
   const confirmed = new URL(value.url, requested.origin);
@@ -81,11 +85,12 @@ export async function loadReactInitialNavigationDestination(
     }
     throw error;
   }
-  const payload = parseNavigationPayload(value, new URL(window.location.href), modules);
+  const payload = parseNavigationPayload(value, new URL(window.location.href));
   if (payload === undefined) {
     return { ok: false, reason: 'invalid-payload' };
   }
-  const loader = modules[payload.destination.module];
+  const loader = Object.hasOwn(modules, payload.destination.module)
+    ? modules[payload.destination.module] : undefined;
   if (loader === undefined) {
     return { ok: false, reason: 'invalid-payload' };
   }
@@ -178,22 +183,40 @@ export async function loadReactNavigationDestination(
   if (options.signal?.aborted) {
     return { ok: false, reason: 'cancelled' };
   }
+  const receivedAt = Date.now();
+  let response: Response;
   try {
-    const receivedAt = Date.now();
-    const response = await fetch(destination.href, {
+    response = await fetch(destination.href, {
       cache: 'no-store',
       credentials: options.prefetch === true ? 'omit' : 'same-origin',
       headers: { Accept: MEDIA_TYPE },
       redirect: 'manual',
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
-    if (options.signal?.aborted) {
+  } catch (error) {
+    if (options.signal?.aborted || error instanceof DOMException && error.name === 'AbortError') {
       return { ok: false, reason: 'cancelled' };
     }
-    if (!response.ok || response.redirected
-      || !RESPONSE_MEDIA_TYPE.test(response.headers.get('Content-Type') ?? '')) {
-      return { ok: false, reason: 'unavailable' };
-    }
+    return { ok: false, reason: 'network' };
+  }
+  if (options.signal?.aborted) {
+    return { ok: false, reason: 'cancelled' };
+  }
+  if (response.redirected || response.type === 'opaqueredirect' || response.status >= 300 && response.status < 400) {
+    return { ok: false, reason: 'redirect' };
+  }
+  if (!response.ok) {
+    const reason = response.status >= 500 ? 'server-error'
+      : response.status === 401 ? 'unauthorized'
+        : response.status === 403 ? 'forbidden'
+          : response.status === 404 ? 'not-found'
+            : response.status === 400 || response.status === 422 ? 'dto-rejected' : 'unavailable';
+    return { ok: false, reason };
+  }
+  if (!RESPONSE_MEDIA_TYPE.test(response.headers.get('Content-Type') ?? '')) {
+    return { ok: false, reason: 'invalid-payload' };
+  }
+  try {
     const freshUntil = options.prefetch === true
       ? prefetchFreshUntil(response.headers, receivedAt)
       : undefined;
@@ -201,21 +224,42 @@ export async function loadReactNavigationDestination(
       await response.body?.cancel();
       return { ok: false, reason: 'unavailable' };
     }
-    const parsed: unknown = options.prefetch === true
-      ? await readBoundedNavigationJson(response)
-      : await response.json();
+    let parsed: unknown;
+    try {
+      parsed = options.prefetch === true
+        ? await readBoundedNavigationJson(response)
+        : await response.json();
+    } catch (error) {
+      if (options.signal?.aborted || error instanceof DOMException && error.name === 'AbortError') {
+        return { ok: false, reason: 'cancelled' };
+      }
+      if (error instanceof TypeError) {
+        return { ok: false, reason: 'network' };
+      }
+      throw error;
+    }
     if (options.signal?.aborted) {
       return { ok: false, reason: 'cancelled' };
     }
-    const payload = parseNavigationPayload(parsed, destination, modules);
+    const payload = parseNavigationPayload(parsed, destination);
     if (payload === undefined) {
       return { ok: false, reason: 'invalid-payload' };
     }
+    if (!Object.hasOwn(modules, payload.destination.module)) {
+      return { ok: false, reason: 'unsupported-module' };
+    }
     const loader = modules[payload.destination.module];
     if (loader === undefined) {
-      return { ok: false, reason: 'invalid-payload' };
+      return { ok: false, reason: 'unsupported-module' };
     }
-    const module = await loader();
+    let module: Awaited<ReturnType<typeof loader>>;
+    try {
+      module = await loader();
+    } catch {
+      return options.signal?.aborted
+        ? { ok: false, reason: 'cancelled' }
+        : { ok: false, reason: 'import-failure' };
+    }
     if (options.signal?.aborted) {
       return { ok: false, reason: 'cancelled' };
     }
@@ -233,7 +277,7 @@ export async function loadReactNavigationDestination(
       return { ok: false, reason: 'cancelled' };
     }
     if (error instanceof TypeError || error instanceof SyntaxError) {
-      return { ok: false, reason: 'unavailable' };
+      return { ok: false, reason: 'invalid-payload' };
     }
     throw error;
   }

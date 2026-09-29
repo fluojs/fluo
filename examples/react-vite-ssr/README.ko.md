@@ -21,15 +21,15 @@ lower-level 형태를 의도적으로 유지합니다. 별도의 권장 bootstra
 [starter composition migration](../../docs/getting-started/migrate-react-starter-composition.ko.md)이
 custom document를 같은 handler 선택 transfer에 연결합니다.
 
-이 예제는 현재의 SSR, hydration, native POST/303/GET, 승인된 navigation과 짧은 shell
-보존의 근거이지 완전한 운영 CRUD 또는 장기 주크박스 게이트가 아닙니다.
+이 예제는 현재의 SSR, hydration, native POST/303/GET, 승인된 navigation과 opt-in 일시적
+실패 보존의 근거이지 완전한 운영 CRUD 또는 장기 주크박스 게이트가 아닙니다.
 [HTTP-first React 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 추가
-사용자 여정과 담당자를 연결합니다. 현재 일시적 load 실패는 document fallback이고
-`router.refresh()`는 저장 데이터를 soft revalidation하지 않고 document를 reload합니다.
-#3864는 #3871의 공통 provider/page slot에 연결할 opt-in 실패·재시도 정책을 소유하고
-#3873은 soft refresh와 migration,
-#3879는 실제 production browser에서 예제의 shell counter를 넘는 resource identity
-검증을 소유합니다.
+사용자 여정과 담당자를 연결합니다. 예제는 network/5xx 및 복구 가능한 import 실패
+`failurePolicy`를 선택하고 장기 자원의 operation/ack 및 mount/cleanup을 확인하면서
+`retry()`와 `openDocument()`를 제공합니다. Opt-in하지 않은 low-level provider는
+document fallback을 유지하며 공식 starter는 network/5xx 및 복구 가능한 매핑된 import 실패의 보존·복구 control을
+명시적으로 연결합니다. `router.refresh()`는 document reload이고 #3873이 soft
+refresh와 migration을 소유합니다.
 
 ## 이 예제가 보여주는 것
 
@@ -53,6 +53,9 @@ custom document를 같은 handler 선택 transfer에 연결합니다.
   destination으로 `303 See Other`를 반환하는 native `multipart/form-data` form.
 - JavaScript disabled 상태에서 해당 form을 submit하는 production browser coverage.
 - 생성된 Vite client asset까지 Fastify adapter로 제공하는 production build.
+- Network/5xx 실패 주입, 새 HTTP 재시도, back/forward 복구, 자원 identity와 동작 확인을
+  수행하는 production Chrome 테스트. 장기 실행 경계(#3886)의 fixture로
+  `window.__reactResource`와 `window.__reactResourceStats`를 관찰할 수 있습니다.
 
 ## 레포 루트에서 실행하기
 
@@ -70,6 +73,15 @@ Vite-generated client entry가 server HTML을 hydrate한 뒤에만 label이 `Cou
 사용하세요. URL과 page는 HTTP가 확정한 목적지를 따르며 shell counter는 유지되고 page
 counter는 초기화됩니다. Main landmark에 focus를 옮깁니다. 직접 요청과 JavaScript 비활성
 요청은 계속 일반 server document를 렌더링합니다.
+
+이 예제의 provider는 `network`, `server-error`, `import-failure`에 보존을 선택합니다. 승인 대상 load가
+실패해도 마지막 page·URL·자원 instance와 `Use shell resource` 작업은 살아 있습니다.
+`Retry navigation`은 새 HTTP 요청을 보내고 `Open full document`는 명시적인 문서 이동을
+선택합니다. 인증·redirect·DTO·잘못된 payload를 포함한 다른 사유는 document fallback을
+유지합니다. Production browser는 유료 음악 계정 없이 이를 검증하지만 실제 음악 재생,
+logout 뒤 보존은 입증하지 않습니다. 생성 starter는 자신의 기본값을 별도로 검증합니다.
+정책 없는 browser fixture는 `/admin/qr?defaultNavigation=1`로 시작합니다. 이동에는
+여전히 HTTP 승인이 필요하지만 index 없는 back entry를 무효화하면 일반 문서를 불러옵니다.
 
 `/admin/qr`에서 `Prefetch public sku-84`에 hover하거나 아래로 내려가
 `Prefetch public on viewport`를 화면에 표시한 뒤 opt-in link를 활성화하세요.

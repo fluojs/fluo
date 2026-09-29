@@ -2,6 +2,7 @@ import {
   Link,
   ReactClientRouterProvider,
   createReactRouteSnapshot,
+  type ReactNavigationFailurePolicy,
   type ReactNavigationModules,
   useNavigation,
   useParams,
@@ -14,6 +15,18 @@ import { Suspense, createElement, lazy, useEffect, useId, useRef, useState, type
 import AdminDestination from './admin-page';
 
 const RECOMMENDATIONS_DELAY_MS = 25;
+
+declare global {
+  interface Window {
+    __reactResource?: { readonly id: string; operate: () => string };
+    __reactResourceStats?: { mounts: number; cleanups: number };
+  }
+}
+
+const preserveTransientNavigation: ReactNavigationFailurePolicy = (failure) =>
+  failure.reason === 'network' || failure.reason === 'server-error'
+    || failure.reason === 'import-failure'
+    ? 'preserve' : 'document';
 
 export type ProductDocumentProps = {
   readonly adminPage?: 'qr' | 'songs';
@@ -31,6 +44,37 @@ export function HydratedCounter() {
   const [count, setCount] = useState(0);
 
   return createElement('button', { onClick: () => setCount((value) => value + 1), type: 'button' }, `Count: ${count}`);
+}
+
+function LongLivedResource() {
+  const resource = useRef<Window['__reactResource']>(undefined);
+  const [ack, setAck] = useState('');
+  useEffect(() => {
+    const instance = {
+      id: crypto.randomUUID(),
+      operate: () => `${instance.id}:${++operations}`,
+    };
+    let operations = 0;
+    resource.current = instance;
+    window.__reactResource = instance;
+    const stats = window.__reactResourceStats ?? { mounts: 0, cleanups: 0 };
+    stats.mounts++;
+    window.__reactResourceStats = stats;
+    return () => {
+      stats.cleanups++;
+      resource.current = undefined;
+      window.__reactResource = undefined;
+    };
+  }, []);
+  return createElement(
+    'div',
+    { 'aria-label': 'Long-lived shell resource' },
+    createElement('button', {
+      onClick: () => setAck(resource.current?.operate() ?? 'resource unavailable'),
+      type: 'button',
+    }, 'Use shell resource'),
+    createElement('span', { 'data-testid': 'resource-ack' }, ack),
+  );
 }
 
 function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void }) {
@@ -68,6 +112,13 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void
     createElement('p', null, `Current URL: ${routerState.url}`),
     createElement('p', null, `Current hash: ${routerState.hash || 'unset'}`),
     createElement('p', null, `Navigation: ${navigation.status}`),
+    navigation.failure === undefined ? null : createElement(
+      'div',
+      { role: 'alert' },
+      createElement('p', null, `Navigation failed: ${navigation.failure.reason} (${navigation.failure.destination})`),
+      createElement('button', { onClick: () => router.retry(), type: 'button' }, 'Retry navigation'),
+      createElement('button', { onClick: () => router.openDocument(), type: 'button' }, 'Open full document'),
+    ),
     searchParams.get('prefetchBounds') === 'true'
       ? createElement(
         'div',
@@ -240,6 +291,7 @@ export function ProductDocument({
           )
           : createElement(AdminDestination, { page: adminPage })),
         createElement(HydratedCounter),
+        createElement(LongLivedResource),
         createElement(ProductNavigation, {
           onSwitchUser: () => {
             const next = prefetchScope === 'catalog:anonymous' ? 'catalog:alice' : 'catalog:anonymous';
@@ -255,6 +307,8 @@ export function ProductDocument({
     initialSnapshot,
     navigationModules,
     prefetchScope,
+    failurePolicy: new URL(routeUrl, 'http://localhost').searchParams.has('defaultNavigation')
+      ? undefined : preserveTransientNavigation,
     children: renderRouteDocument,
   });
 }

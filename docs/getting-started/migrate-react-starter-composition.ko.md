@@ -27,15 +27,19 @@
    entry는 `loadReactInitialNavigationDestination(json, modules)`로 script를 검증해
    반환된 component를 payload URL, params, props와 함께 hydrate합니다.
 4. 공유 shell/provider를 provider의 destination page slot 밖에 두고 slot 안에는
-   `destination ?? initialPage`를 렌더링합니다. 기존 `Link`와 `useRouter()`는 승인된
+   `destination ?? initialPage`를 렌더링합니다. 기존 provider에
+   `failurePolicy={({ reason }) => reason === 'network' || reason === 'server-error' || reason === 'import-failure' ? 'preserve' : 'document'}`
+   를 전달하고 `useNavigation().failure` 및 `router.retry()`·`router.openDocument()`
+   control은 destination slot 밖의 지속 셸에 둡니다. 기존 `Link`와 `useRouter()`는 승인된
    soft 이동을 수행하지만 direct GET, 이른 클릭, JavaScript 비활성화, 미지원 목적지는
-   native document 경로를 유지합니다.
+   native document 경로를 유지합니다(없는 importer key 포함).
 
 생성 앱의 `src/app.ts`, `src/entry-server.tsx`, `src/react-app.tsx`,
 `src/entry-client.tsx`에 이 연결의 실행 가능한 예제가 있습니다. 일반 page를 추가할 때
-뒤의 세 파일을 고치거나 다른 route matcher를 만들 필요는 없습니다. 이 이전은 #3864의
-후속 failure/retry 정책, #3873의 soft revalidation, #3874의 form 확장이나 stable RSC를
-암묵적으로 opt-in하지 않습니다.
+뒤의 세 파일을 고치거나 다른 route matcher를 만들 필요는 없습니다. 생성 starter는 일시적
+실패 보존을 기본으로 선택하지만 기존 앱은 4단계의 정책과 control을 명시적으로 추가해야
+합니다. 정책 없는 low-level provider는 실패 시 document를 로드합니다. 이 이전은 #3873의
+soft revalidation, #3874의 form 확장이나 stable RSC를 암묵적으로 opt-in하지 않습니다.
 
 생성 앱에서 `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm start`,
 `pnpm test:browser`를 확인하세요. Browser test는 direct HTML hydration과 각 soft

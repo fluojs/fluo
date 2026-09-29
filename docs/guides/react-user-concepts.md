@@ -58,10 +58,13 @@ fail through HTTP. Layout, fallback, and metadata factories still require explic
 
 For the current client, `router.refresh()` reloads the **document** rather than revalidating
 data in place; `router.invalidate()` only clears pending navigation and public prefetch state.
-Transient failed soft loads currently fall back to a full document, even though a successful
-destination keeps the provider/layout. The product target is shell preservation plus a fresh
-HTTP-approved retry for transient failure (#3864/#3871) and shell-preserving refresh with
-consumer migration (#3873), not a shipped loader cache. Auth refusal is not a transient retry,
+Transient failed soft loads default to a full document; `failurePolicy` on the same provider
+can opt into preserving the approved shell/page for network/5xx, exposing
+`useNavigation().failure` and fresh `router.retry()` / explicit `router.openDocument()`.
+The production Vite example exercises this opt-in; the official generated starter explicitly
+selects the network/5xx and recoverable mapped import-failure preservation policy and shell recovery controls. Shell-preserving
+refresh with consumer migration (#3873) remains a
+separate target, not a shipped loader cache. Auth refusal is not a transient retry,
 and explicit reload/logout may intentionally end the shell. See the product contract for each
 journey's separate success, failure, cancellation and verification surface.
 

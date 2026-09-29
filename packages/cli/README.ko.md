@@ -218,8 +218,10 @@ code 대신 빈 marker를 emit합니다. 실제 구현은 `dist/server`에만 bu
 두 page starter만으로 완전한 CRUD/주크박스 제품 경로가 되지는 않습니다. 기존
 [Vite 예제](../../examples/react-vite-ssr/README.ko.md)는 advanced native form 및
 prefetch 정책을 보여 주고 starter는 canonical page authoring 조립을 제공합니다.
-[제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 실패/재시도, form 최신화,
-auth, dev edit, 배포를 아직 구현되지 않은 별도의 수용 게이트로 추적합니다.
+Starter는 network/5xx 및 복구 가능한 매핑된 import 실패에서 셸을 보존하고 지속 셸에서 재시도·일반 문서 이동을 제공합니다.
+Low-level provider는 앱이 `failurePolicy`를 제공하지 않으면 document fallback합니다.
+[제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 남은 form 최신화,
+auth, 배포 및 전체 여정 수용 게이트를 추적합니다.
 Application 소유 production manifest load와 asset/CDN hosting도 명시적으로 유지됩니다.
 
 `fluo new`는 microservice starter path도 제공합니다. `--transport`를 생략하면 TCP가 기본 경로로 사용되며, starter 매트릭스에는 transport별 dependency, env 템플릿, entrypoint를 갖춘 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC 변형도 포함됩니다.

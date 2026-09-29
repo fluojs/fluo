@@ -23,14 +23,15 @@ the [starter composition migration](../../docs/getting-started/migrate-react-sta
 connects custom documents to the same handler-selected transfer.
 
 This is evidence for shipped SSR, hydration, native POST/303/GET, approved navigation
-and short shell preservation, **not** the complete operations CRUD or long-lived
-jukebox gate. The [HTTP-first React product contract](../../docs/contracts/react-fullstack-product.md)
-maps each additional user journey and its owner. In particular, transient load failures
-currently use document fallback, and `router.refresh()` reloads the document rather than
-softly revalidating saved data. #3864 owns the opt-in failure/retry policy that
-integrates with #3871's shared provider/page slot; #3873 owns soft refresh and its migration,
-and #3879 must verify resource
-identity beyond this example's shell counter in a real production browser.
+and opt-in transient navigation preservation, **not** the complete operations CRUD or
+long-lived jukebox gate. The [HTTP-first React product contract](../../docs/contracts/react-fullstack-product.md)
+maps each additional user journey and its owner. This example opts into network/5xx and
+recoverable import-failure preservation through the same
+`failurePolicy` and offers `retry()` and `openDocument()` while preserving an actual
+long-lived resource with operation/ack and mount/cleanup observations. Low-level providers
+without opt-in still use document fallback; the official starter explicitly selects
+network/5xx and recoverable mapped import-failure preservation and recovery controls.
+`router.refresh()` still reloads the document; #3873 owns soft refresh and its migration.
 
 ## what this example demonstrates
 
@@ -56,6 +57,10 @@ identity beyond this example's shell counter in a real production browser.
   route, mutates application state, and returns `303 See Other` to an HTTP-matched destination.
 - Production browser coverage that submits that form with JavaScript disabled.
 - A production build served by the Fastify adapter, including the generated Vite client assets.
+- Failure-injected production Chrome tests of network and 5xx rejection, fresh retry,
+  back/forward recovery and resource identity/operation acknowledgment; the shell
+  resource probe exposes `window.__reactResource` and `window.__reactResourceStats`
+  for bounded long-session fixture checks (#3886).
 
 ## run from the repo root
 
@@ -73,6 +78,16 @@ Open `/admin/qr`, increment both counters, follow `Open admin songs`, then use `
 forward: the URL and page follow HTTP's confirmed destination; the shell counter persists, the
 page counter resets, and the main landmark receives focus. Direct and no-JavaScript requests
 still render ordinary server documents.
+
+The example's provider opts into preserving `network`, `server-error`, and `import-failure`. When an
+approved page load fails, the shell keeps its page, URL, resource instance and functional
+`Use shell resource` control; `Retry navigation` makes a new HTTP request and `Open full
+document` is an explicit exit. Other reasons, including authentication, redirect, DTO
+and invalid payload, keep document fallback. A production browser checks these outcomes
+without paid media credentials; the generated starter independently verifies its own default.
+Neither fixture proves actual music playback or logout persistence.
+For the no-policy browser fixture, open `/admin/qr?defaultNavigation=1`: navigation still
+uses HTTP approval, but invalidating an untagged back entry loads its ordinary document.
 
 From `/admin/qr`, hover `Prefetch public sku-84` or scroll to `Prefetch public on viewport`,
 then activate the opted-in link. The first GET fetches a public navigation representation;
