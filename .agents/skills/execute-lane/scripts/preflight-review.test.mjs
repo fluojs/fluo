@@ -115,6 +115,22 @@ test('outside scope, excluded paths and sibling prefixes return preflight', () =
   }
 });
 
+test('literal Next route brackets remain valid scoped paths', () => {
+  const route = 'src/products/[sku]/page.tsx';
+  const preflight = createPreflight(input({
+    scope: [route],
+    predicted_files: [route],
+  }));
+  const obs = observation({ preflight, changedFiles: [route] });
+  assert.equal(evaluatePreflight(preflight, obs).valid, true);
+  assert.equal(decideNext(lane, obs).action, 'review');
+  assert.deepEqual(
+    evaluatePreflight(preflight, { ...obs, changedFiles: ['src/products/[other]/page.tsx'] }),
+    { valid: false, reason: 'scope-expansion', files: ['src/products/[other]/page.tsx'] },
+  );
+  assert.throws(() => createPreflight(input({ scope: ['src/products/*/page.tsx'] })));
+});
+
 test('contract revision invalidates review at unchanged head', () => {
   const obs = observation();
   obs.review = reviewed(obs);

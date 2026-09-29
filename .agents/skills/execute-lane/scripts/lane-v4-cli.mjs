@@ -225,7 +225,7 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 		&& (!branchExists || run(root, 'git', ['merge-base', '--is-ancestor', anchor, headSha]) !== null)
 		? anchor : null;
 	const mergeBase = branchExists ? run(root, 'git', ['merge-base', branch, `origin/${lane.base_branch}`]) : null;
-	const hasNewCommits = branchExists && headSha !== null && headSha !== (preflight ? baseSha : mergeBase);
+	const hasNewCommits = branchExists && headSha !== null && mergeBase !== null && headSha !== mergeBase;
 
 	// NUL separation and --no-renames preserve every path, including rename
 	// sources, so a move out of approved scope cannot hide behind rename detection.

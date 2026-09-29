@@ -12,7 +12,7 @@ const fail = (reason) => { throw new TypeError(`issue-preflight: ${reason}`); };
 const strings = (v, nonempty = true) => Array.isArray(v) && (!nonempty || v.length > 0)
   && v.every((s) => typeof s === 'string' && s.trim().length > 0) && new Set(v).size === v.length;
 const safePath = (p) => typeof p === 'string' && p.length > 0 && !p.startsWith('/')
-  && !p.includes('\\') && !/[\x00-\x1f*?\[\]]/u.test(p)
+  && !p.includes('\\') && !/[\x00-\x1f*?]/u.test(p)
   && p.replace(/\/$/u, '').split('/').every((part) => part && part !== '.' && part !== '..');
 const covers = (pattern, file) => pattern.endsWith('/') ? file.startsWith(pattern) : pattern === file;
 const inScope = (value, file) => value.scope.some((p) => covers(p, file))
