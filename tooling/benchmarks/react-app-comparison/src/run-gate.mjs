@@ -94,13 +94,24 @@ export async function stopServers(servers) {
 }
 
 export async function readMeasurementReceipt(run, path) {
+  let failed;
   try {
     await run();
   } catch (error) {
     if (error.code !== 1) throw error;
-    console.error(`correctness exited ${error.code}; retaining raw receipt ${path}`);
+    failed = error;
   }
-  return JSON.parse(await readFile(path, 'utf8'));
+  let receipt;
+  try {
+    receipt = await readFile(path, 'utf8');
+  } catch (error) {
+    if (failed && error.code === 'ENOENT') {
+      throw new Error(`subprocess exited ${failed.code} without receipt ${path}: ${failed.message}`, { cause: error });
+    }
+    throw error;
+  }
+  if (failed) console.error(`correctness exited ${failed.code}; retaining raw receipt ${path}`);
+  return JSON.parse(receipt);
 }
 
 async function main() {

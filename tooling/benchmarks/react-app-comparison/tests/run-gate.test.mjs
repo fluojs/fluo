@@ -40,7 +40,12 @@ test('a failed correctness subprocess retains its actual receipt without passing
     const failed = Object.assign(new Error('correctness failed'), { code: 1 });
     assert.equal((await readMeasurementReceipt(() => Promise.reject(failed), receiptPath)).runs[0].correctness, 'fail');
     await rm(receiptPath);
-    await assert.rejects(readMeasurementReceipt(() => Promise.reject(failed), receiptPath), /ENOENT/u);
+    const missing = Object.assign(new Error('tablet dev subprocess failed: restart crashed'), { code: 1 });
+    await assert.rejects(readMeasurementReceipt(() => Promise.reject(missing), receiptPath), (error) => {
+      assert.match(error.message, /tablet dev subprocess failed: restart crashed/u);
+      assert.equal(error.cause?.code, 'ENOENT');
+      return true;
+    });
     const crash = Object.assign(new Error('subprocess crash'), { code: 3 });
     await writeFile(receiptPath, '{}');
     await assert.rejects(readMeasurementReceipt(() => Promise.reject(crash), receiptPath), /subprocess crash/u);

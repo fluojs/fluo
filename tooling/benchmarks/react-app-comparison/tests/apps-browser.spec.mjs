@@ -21,6 +21,14 @@ test('the missing-product response displays an error in the production browser',
   expect(text.length).toBeGreaterThan(0);
 });
 
+test('Next products expose client hydration before development edits', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'next');
+  const response = await page.goto('/products', { waitUntil: 'domcontentloaded' });
+  expect(response?.status()).toBe(200);
+  await expect(page.locator('.eyebrow')).toHaveText('Product catalog');
+  await expect(page.locator('[data-benchmark-hydrated="true"]')).toBeAttached();
+});
+
 test('public listing, detail, and production asset budgets', async ({ page }, testInfo) => {
   // Given: a fresh production browser observing its actual network responses.
   const assets = [];

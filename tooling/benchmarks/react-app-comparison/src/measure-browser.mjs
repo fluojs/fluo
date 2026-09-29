@@ -453,6 +453,9 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       }
       const { page } = owned;
       if (edit.path) await page.goto(new URL(edit.path, commands.url ?? item.url).href, { waitUntil: 'load' });
+      if (item.framework === 'next' && kind === 'react-edit') {
+        await page.locator('[data-benchmark-hydrated="true"]').waitFor({ state: 'attached', timeout: 60_000 });
+      }
       const reload = edit.reload === true;
       const before = reload || edit.relaunch ? null : await page.locator(edit.selector).first().evaluate((element, expectedStyle) =>
         expectedStyle ? getComputedStyle(element).getPropertyValue(expectedStyle.property) : element.textContent,

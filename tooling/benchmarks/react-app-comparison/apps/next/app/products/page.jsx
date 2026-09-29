@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { catalog, devCatalogTitle } from '../../lib/catalog';
+import HydrationSignal from './hydration';
 
 export const dynamic = 'force-dynamic';
 
 export default function Products() {
   return (
     <>
+      <HydrationSignal />
       <p className="eyebrow">Product catalog</p>
       <h1>{devCatalogTitle}</h1>
       <p className="lede">A shared catalog of seeded products, with changes available to signed-in editors.</p>
