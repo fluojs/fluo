@@ -494,7 +494,8 @@ export async function verifyReactColdDev(projectDirectory, profile = resolveSand
       const connected = page.waitForEvent('websocket', { timeout: 15_000 });
       await page.goto(`${origin}/products/sku-42?preview=true`);
       socket = await connected;
-      await page.getByRole('button', { name: 'Count: 0' }).click();
+      const counter = page.getByRole('button', { name: 'Count: 0' });
+      await counter.click();
       await page.getByRole('button', { name: 'Count: 1' }).waitFor();
     }
     assert.equal(existsSync(join(projectDirectory, 'dist')), false, 'React edits must stay on the Vite development path.');
@@ -511,7 +512,8 @@ export async function verifyReactColdDev(projectDirectory, profile = resolveSand
       const connected = page.waitForEvent('websocket', { timeout: 15_000 });
       await page.goto(`${origin}/products/sku-42?preview=true`);
       socket = await connected;
-      await page.getByRole('button', { name: 'Count: 0' }).click();
+      const counter = page.getByRole('button', { name: 'Count: 0' });
+      await counter.click();
       await page.getByRole('button', { name: 'Count: 1' }).waitFor();
     } else {
       const moduleResponse = await fetch(`${origin}/src/page.tsx`, { headers: { accept: 'text/javascript' } });

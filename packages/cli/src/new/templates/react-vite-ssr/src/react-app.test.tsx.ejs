@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { ReactClientRouterProvider, createReactRouteSnapshot } from '@fluojs/react/client';
+import { act } from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +13,7 @@ describe('React Vite SSR app composition', () => {
   afterEach(() => {
     document.body.replaceChildren();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('renders the HTTP-owned route snapshot through the shared document', () => {
@@ -42,7 +44,8 @@ describe('React Vite SSR app composition', () => {
     expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('generated build script'), mismatch);
   });
 
-  it('attaches interaction without hydration warnings', async () => {
+  it('enables interaction only after hydration commits without warnings', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const container = document.createElement('div');
     const initialSnapshot = createReactRouteSnapshot({ url: '/products/sku-42' });
@@ -53,15 +56,22 @@ describe('React Vite SSR app composition', () => {
     );
     container.innerHTML = renderToString(counter);
     document.body.append(container);
+    const button = container.querySelector('button');
+    expect(button?.disabled).toBe(true);
 
-    const root = hydrateRoot(container, counter);
-    await new Promise<void>((resolve) => queueMicrotask(resolve));
-    const button = document.querySelector('button');
-    button?.click();
-    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    await act(async () => {
+      root = hydrateRoot(container, counter);
+    });
+    expect(button?.disabled).toBe(false);
+    await act(async () => {
+      button?.click();
+    });
 
     expect(button?.textContent).toBe('Count: 1');
     expect(consoleError).not.toHaveBeenCalled();
-    root.unmount();
+    await act(async () => {
+      root?.unmount();
+    });
   });
 });
