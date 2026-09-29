@@ -119,13 +119,13 @@ counter는 초기화합니다.
 `assign`/`replace`를 사용합니다. History traversal은 browser URL이 이미 바뀐 뒤이므로 실패
 시 해당 문서를 로드합니다. 취소는 fallback을 시작하지 않습니다. Hydration 전 `Link`는
 native anchor로 남고 initial request snapshot은 browser path/search와 일치해야 합니다.
-`refresh()`는 계속 document reload입니다. Opt-in하지 않은 `Link`, `router.push/replace`,
+Soft destination이 있으면 `refresh()`도 같은 일반 loader를 사용합니다. Opt-in하지 않은 `Link`, `router.push/replace`,
 거부된 prefetch에는 기존 credential 포함 일반 loader와 full-document fallback을 적용합니다.
 
 `ReactClientRouterProvider`는 선택적인 `failurePolicy(failure)`를 받으며 동기 또는 비동기로
 `'preserve'`나 `'document'`를 반환합니다. 지정하지 않으면 low-level 기본값은 기존 document
 fallback입니다. `useNavigation().failure`와 정책에는 `reason`, query·응답 본문·credential·예외
-내부를 제거한 목적지 **pathname**, `type: 'push' | 'replace' | 'back'`만 전달합니다.
+내부를 제거한 목적지 **pathname**, `type: 'push' | 'replace' | 'back' | 'refresh'`만 전달합니다.
 사유는 `network`, `server-error`(HTTP 5xx), `unauthorized`(401), `forbidden`(403),
 `redirect`, `not-found`(404), `dto-rejected`(400/422), `invalid-payload`,
 `unsupported-module`, `import-failure`, `unavailable`(그 밖의 미지원 응답),
@@ -149,9 +149,28 @@ commit/fallback할 수 없습니다. 정책 callback의 throw/rejection은 진�
 Low-level provider는 기본적으로 document fallback을 유지합니다. 공식 생성 starter는
 network/5xx 및 복구 가능한 매핑된 import 실패의 보존 정책을 명시적으로 선택하며
 HTTP가 선택한 page slot 외부의 지속 셸에 재시도·문서 이동 control을 렌더링합니다.
-#3873은 현재 `refresh()` document reload에
-의존하는 소비자의 셸 보존 soft revalidation·migration을 소유합니다.
-`invalidate()`는 표시 중인 page data를 다시 가져오지 않습니다.
+`router.refresh(): Promise<ReactRevalidationResult>`는 현재 pathname/query를
+same-origin credential, `no-store`, manual redirect로 다시 요청합니다. Public prefetch와
+이전 private payload는 사용하지 않습니다. `useNavigation()`이 `refreshing`, type
+`refresh`인 동안 마지막 승인 page·params·fragment·shell·page-local state를 유지합니다.
+HTTP 승인이 성공하면 새 props/params를 반영해 `complete`를 게시하고 새 activation key로
+page-local state를 remount합니다. History에는 push/replace하지 않고 provider와 shell
+resource는 유지합니다. `complete`는 navigation store commit 시점이며 browser paint나
+application component 렌더 성공 보장은 아닙니다. 반환 결과는
+`{ status: 'complete' }`, `{ status: 'error', failure }`, `{ status: 'cancelled' }`,
+`{ status: 'document' }`이며 마지막 값은 문서 fallback 시작이지 로드 완료가 아닙니다.
+안전한 failure의 type은 `refresh`입니다. 보존 실패는 이전 page를 유지하고 `error`를
+게시하며 같은 page에 새 HTTP 승인을 요청하는 `retry()`와 `openDocument()`를 제공합니다.
+기본 fallback은 현재 URL의 문서를 reload합니다. 새 navigation, 연속 refresh, mutation
+invalidation, unmount, provider session-epoch 변경은 이전 작업을 abort하고 loader나
+비동기 정책이 응답하지 않아도 Promise를 `cancelled`로 정착시킵니다. 후속 작업 없는
+취소는 `idle`입니다. Mutation 후 이전 작업을 무효화하려면 refresh 전에
+`invalidate()`를 호출하세요. Invalidation 자체는 표시 중인 데이터를 다시 요청하지
+않습니다. Soft destination이 없는 page는 일반 문서를 reload합니다. 이전의 확정적
+document reload가 필요한 소비자는 `window.location.reload()`를 사용합니다.
+[EN migration](../getting-started/migrate-react-refresh.md)과
+[KO migration](../getting-started/migrate-react-refresh.ko.md)을 참고하세요. 이는
+component state를 보존할 수 있는 개발 중 React Fast Refresh와 다릅니다.
 
 ## Opt-in public prefetch와 provider-local cache
 
@@ -183,8 +202,8 @@ LRU entry이며 각 JSON은 최대 64 KiB입니다. 초과 body는 취소합니�
 import 완료 후 15초 **및** 남은 server freshness 중 빠른 시점입니다. Grant한 `max-age`에서
 유효한 음수 아닌 `Age`를 빼고 15초로 제한하며 malformed 또는 소진된 freshness는 거부합니다.
 Validation/import 시간으로 server freshness가 새로 시작되지는 않습니다. 성공한 opt-in
-click은 entry를 제거하고, 재방문과 back/forward는 새 HTTP 승인을 받아야 하며 refresh는
-document를 reload합니다. Unmount/disconnect, scope 변경, `router.invalidate()`, 이전 activation을
+click은 entry를 제거하고, 재방문·back/forward·refresh는 새 HTTP 승인을 받아야 합니다.
+Unmount/disconnect, scope 변경, `router.invalidate()`, 이전 activation을
 대체하는 이동은 진행 중인 작업을 abort하고 무효 entry를 지웁니다. 진행 중인 soft navigation을
 취소하는 invalidation은 커밋된 route를 유지한 채 idle lifecycle을 발행하며 history 기록이나
 document fallback을 시작하지 않습니다. 다만 index 없는 back/forward activation이 이미 browser

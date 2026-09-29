@@ -22,6 +22,7 @@ export type {
   ReactNavigationStatus,
   ReactNavigationType,
   ReactReadonlySearchParams,
+  ReactRevalidationResult,
   ReactRouter,
   ReactRouteSnapshot,
   ReactRouteSnapshotInput,

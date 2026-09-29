@@ -173,6 +173,19 @@ document shell, server/client route snapshot wiring을 함께 다루지 않습�
 `ReactNavigationPage.create(page, { module, props })`를 반환하므로 기존 HTTP
 dispatcher가 계속 authoritative합니다.
 
+생성된 공통 셸은 `useRouter().refresh()`로 같은 page에 credential 포함 HTTP 재검증을
+명시적으로 실행합니다. 승인 전에는 셸 자원과 history, 이전 page를 유지하고 승인된
+page-local state만 reset하며 pending/error/retry control을 표시합니다. 반환되는 typed
+결과는 browser paint의 보증이 아닙니다. 이전 생성 앱에서 확정적인 document reload가
+필요하면 `window.location.reload()`를 사용하세요.
+[refresh migration](../../docs/getting-started/migrate-react-refresh.ko.md)을 참고하세요.
+이는 개발 중 Fast Refresh와 다르며 mutation 뒤 자동 재검증은 추가하지 않습니다.
+Starter의 product page slot은 HTTP가 승인한 상품 이름을 표시합니다. 일반
+`@Post('/:sku')` handler는 DTO-bound 이름을 받고 `303`으로 새 문서 `GET`에
+redirect하며 JavaScript 없이도 form이 동작합니다. 셸을 교체하지 않고 외부 변경을
+확인하려면 해당 HTTP endpoint에서 상품을 변경한 뒤 `Refresh current page`를
+클릭하세요. 요청 중에는 이전 값이 남고 승인된 새 이름만 history entry 없이 표시됩니다.
+
 React `dev` script는 이제 직접 실행한 CLI와 동일한 `fluo dev` 경로로 위임합니다.
 의존성 설치 후 어느 경로든 수동 production build 없이 시작합니다. Vite가 SSR entry를
 변환하고 Fastify listener가 동일 origin에서 client module, refresh preamble, CSS,

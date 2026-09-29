@@ -3,11 +3,13 @@ import { readFile } from 'node:fs/promises';
 import { Module } from '@fluojs/core';
 import {
   Controller,
+  FromBody,
   FromPath,
   FromQuery,
   Get,
   NotFoundException,
   Optional,
+  Post,
   RequestDto,
   type RequestContext,
 } from '@fluojs/http';
@@ -44,6 +46,18 @@ class ProductPageRequest {
   preview?: string;
 }
 
+class ProductUpdateRequest {
+  @MinLength(3)
+  @IsString()
+  @FromBody('name')
+  name = '';
+
+  @MinLength(3)
+  @IsString()
+  @FromPath('sku')
+  sku = '';
+}
+
 class SearchPageRequest {
   @MinLength(2)
   @IsString()
@@ -57,12 +71,18 @@ class AssetRequest {
 }
 
 export function createAppModule(options: ReactViteAppModuleOptions) {
+  const productNames = new Map<string, string>();
+
   @Router('/products')
   class ProductPageRouter {
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
     async show(input: ProductPageRequest) {
-      const props = { sku: input.sku, preview: input.preview === 'true' };
+      const props = {
+        sku: input.sku,
+        preview: input.preview === 'true',
+        productName: productNames.get(input.sku) ?? `Catalog item ${input.sku}`,
+      };
       const page = options.loadPage
         ? await options.loadPage('./page.tsx', props)
         : createElement(ProductPage, props);
@@ -70,6 +90,13 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
         module: './page.tsx',
         props,
       });
+    }
+
+    @Post('/:sku')
+    @RequestDto(ProductUpdateRequest)
+    update(input: ProductUpdateRequest, context: RequestContext): void {
+      productNames.set(input.sku, input.name);
+      context.response.redirect(303, `/products/${encodeURIComponent(input.sku)}`);
     }
   }
 

@@ -31,7 +31,9 @@ recoverable import-failure preservation through the same
 long-lived resource with operation/ack and mount/cleanup observations. Low-level providers
 without opt-in still use document fallback; the official starter explicitly selects
 network/5xx and recoverable mapped import-failure preservation and recovery controls.
-`router.refresh()` still reloads the document; #3873 owns soft refresh and its migration.
+`router.refresh()` now revalidates the current HTTP page without discarding the shell. It returns
+a typed completion result; explicit document reload uses `window.location.reload()`.
+See the [consumer migration](../../docs/getting-started/migrate-react-refresh.md).
 
 ## what this example demonstrates
 
@@ -94,7 +96,9 @@ then activate the opted-in link. The first GET fetches a public navigation repre
 activation consumes it without another GET. `Open public sku-84 without prefetch` still makes
 a normal request. `Switch user and prefetch scope` changes the session cookie and the
 application-managed `prefetchScope` before further navigation. `Rename without reload` sends
-a guarded POST and calls `router.invalidate()` after success. The other fixture links show
+ a guarded POST and calls `router.invalidate()` after success. Click `Refresh` to fetch and
+ display the changed server value in the same page without a history entry; pending and
+ preserved failure retain the last approved value. The other fixture links show
 that prefetch rejection never substitutes an anonymous result for a private destination.
 
 Run the repeatable SSR and hydration checks with:

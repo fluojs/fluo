@@ -882,17 +882,25 @@ The navigation contract is deliberately HTTP-first:
 - If the normalized destination is an identical URL to the current route snapshot, the router does
   not call `window.location.assign(...)` or `window.location.replace(...)`. It exposes `skipped`
   with the requested navigation type and destination instead.
-- `router.back()` delegates to `window.history.back()`. `router.refresh()` uses
-  `window.location.reload()` for a **full-document reload**, not soft revalidation. It does not
-  imply an RSC, loader, or client-data cache. #3873 owns future shell-preserving revalidation
-  and migration for consumers relying on reload.
+- `router.back()` delegates to `window.history.back()`. `router.refresh()` returns
+  `Promise<ReactRevalidationResult>` and revalidates the current pathname/query through a
+  fresh credentialed, no-store HTTP navigation load. Success commits validated page props
+  and params without history writes or fragment loss; the shared shell and resources remain
+  mounted while page-local state resets on each approved activation. Without a soft destination,
+  it initiates a document reload. It does not imply RSC or a client-data cache. Use
+  `window.location.reload()` when an unconditional document reload is needed;
+  see the [refresh migration](../../docs/getting-started/migrate-react-refresh.md).
 - `usePathname()`, `useSearchParams()`, `useParams()`, and `useRouterState()` read the provider's
   immutable route snapshot. `popstate`/forward request fresh HTTP approval, even for an earlier
   destination; no private payload is cached. URL and matched params update together only on approval.
   Fragment-only `hashchange` keeps the same server-owned params.
 - `useNavigation()` exposes `idle`, `navigating`, `refreshing`, `complete`, `error`, and `skipped`.
   A soft transition completes only after the validated page loads; without a failure policy,
-  a failed load falls back to the HTTP document. `refreshing` starts a document reload.
+  a failed load falls back to the HTTP document. `refreshing` with type `refresh` retains the
+  approved page; success publishes `complete`, preservation publishes `error` with a safe
+  type-`refresh` failure, and standalone cancellation publishes `idle`. The refresh Promise
+  settles as `complete` on navigation-store commit (not browser paint), `error` with safe
+  failure, `cancelled`, or `document` when fallback is initiated.
   Fragment-only transitions complete in the current document after the matching `hashchange`.
 - Router methods reject cross-origin or non-HTTP(S) destinations with
   `ReactClientNavigationError`. Use a normal anchor for those destinations.
@@ -921,7 +929,7 @@ explicit ordinary document. The distinct reasons are `network`, `server-error`, 
 settles as `application-error`. Never infer authentication from body text, preserve protected
 content after logout, or expose a response body through the policy. Failed back/forward with a
 known history position restores the last approved URL and view; retry requests new HTTP approval.
-Existing `refresh()` still reloads. This is a backward-compatible **low-level opt-in**; the
+Refresh participates in this **low-level opt-in**; the
 official generated starter explicitly enables network/5xx and recoverable mapped import-failure preservation and shell recovery
 controls. To migrate a hand-assembled app, supply
 `navigationModules`, pass `failurePolicy`, render `navigation.failure` controls in the persistent
@@ -1328,8 +1336,9 @@ documentation change neither adds the stable subpath nor starts the deprecation 
 
 This package currently does **not** provide:
 
-- in-place `router.refresh()` revalidation; the official starter already offers network/5xx and recoverable mapped import-failure
-  shell-preserving retry, while the low-level provider still defaults to document fallback
+- automatic post-mutation revalidation; call `router.invalidate()` and then await `router.refresh()`
+  when the application chooses to refresh. The official starter preserves network/5xx and
+  recoverable mapped import failures, while the low-level provider defaults to document fallback
 - a stable RSC root or `@fluojs/react/rsc` subpath; RSC is available only from the explicitly unstable
   `@fluojs/react/experimental/rsc` prototype
 - automatic `"use server"` transforms/export discovery or a built-in Flight renderer/build plugin

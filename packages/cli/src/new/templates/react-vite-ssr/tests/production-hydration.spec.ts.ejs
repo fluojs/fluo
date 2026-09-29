@@ -145,6 +145,117 @@ test('hydrates two DTO pages and preserves the shell during HTTP-approved naviga
 
 const NAVIGATION_MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
 
+test('refreshes the same page without remounting the generated shell or adding history', async ({ page }) => {
+  // Given: an interactive page with page-local state and a persistent shell resource.
+  const diagnostics: string[] = [];
+  page.on('pageerror', (error) => diagnostics.push(error.message));
+  await page.goto('/products/sku-42?preview=true');
+  const counter = page.getByRole('button', { name: 'Count: 0', exact: true });
+  await expect(counter).toBeEnabled();
+  await counter.click();
+  await page.getByRole('button', { name: 'Use shell resource' }).click();
+  const ack = await page.getByTestId('resource-ack').textContent();
+  const before = await page.evaluate(() => ({
+    href: location.href, historyLength: history.length, resourceId: window.__reactResource?.id,
+  }));
+  const changed = await page.request.post('/products/sku-42', {
+    data: { name: 'Updated outside the page' },
+    maxRedirects: 0,
+  });
+  expect(changed.status()).toBe(303);
+  await expect(page.getByTestId('product-name')).toHaveText('Current product: Catalog item sku-42');
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let started = () => {};
+  const requested = new Promise<void>((resolve) => { started = resolve; });
+  await page.route('**/products/sku-42?preview=true', async (route) => {
+    if (route.request().headers().accept !== NAVIGATION_MEDIA_TYPE) return route.continue();
+    started();
+    await held;
+    return route.continue();
+  });
+  const approved = page.waitForResponse((response) => response.request().headers().accept === NAVIGATION_MEDIA_TYPE
+    && new URL(response.url()).pathname === '/products/sku-42');
+
+  // When: current-page approval is held, then released.
+  await page.getByRole('button', { name: 'Refresh current page' }).click();
+  await requested;
+  await expect(page.getByLabel('Navigation status')).toHaveText('refreshing (refresh)');
+  await expect(page.getByRole('button', { name: 'Count: 1', exact: true })).toBeVisible();
+  await expect(page.getByTestId('product-name')).toHaveText('Current product: Catalog item sku-42');
+  release();
+  expect((await approved).status()).toBe(200);
+
+  // Then: the page resets only after approval, while URL/history and shell survive.
+  await expect(page.getByLabel('Navigation status')).toHaveText('complete (refresh)');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeVisible();
+  await expect(page.getByTestId('product-name')).toHaveText('Current product: Updated outside the page');
+  expect(await page.evaluate(() => ({
+    href: location.href, historyLength: history.length, resourceId: window.__reactResource?.id,
+  }))).toEqual(before);
+  await page.getByRole('button', { name: 'Use shell resource' }).click();
+  expect(await page.getByTestId('resource-ack').textContent()).not.toBe(ack);
+  expect(await page.evaluate(() => window.__reactResourceStats)).toEqual({ mounts: 1, cleanups: 0 });
+  expect(diagnostics).toEqual([]);
+});
+
+test('keeps native POST, 303 and GET usable without client JavaScript', async ({ baseURL, browser }) => {
+  // Given: a generated product page served to a JavaScript-disabled browser.
+  if (baseURL === undefined) throw new TypeError('The browser fixture requires a base URL.');
+  const pathname = '/products/sku-native-3873';
+  const context = await browser.newContext({ baseURL, javaScriptEnabled: false });
+  const page = await context.newPage();
+  try {
+    const initial = await page.goto(`${pathname}?preview=true`);
+    expect(initial?.status()).toBe(200);
+    await expect(page.getByTestId('product-name')).toHaveText('Current product: Catalog item sku-native-3873');
+    await page.getByRole('textbox', { name: 'Product name' }).fill('Updated without scripts');
+    const redirected = page.waitForResponse((response) =>
+      response.request().method() === 'POST'
+      && new URL(response.url()).pathname === pathname);
+
+    // When: the actual HTML form submits without hydration or client JavaScript.
+    await page.getByRole('button', { name: 'Save product' }).click();
+    const response = await redirected;
+
+    // Then: the HTTP-owned redirect obtains a new document with the changed server value.
+    expect(response.status()).toBe(303);
+    expect(response.headers().location).toBe(pathname);
+    await expect(page).toHaveURL(/\/products\/sku-native-3873$/u);
+    await expect(page.getByTestId('product-name')).toHaveText('Current product: Updated without scripts');
+  } finally {
+    await context.close();
+  }
+});
+
+test('preserves a generated page on refresh error and retries a fresh approval', async ({ page }) => {
+  // Given: a transient failure on the current page's negotiated GET.
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+  await page.route('**/products/sku-42?preview=true', (route) =>
+    route.request().headers().accept === NAVIGATION_MEDIA_TYPE
+      ? route.fulfill({ status: 503, body: 'private failure' }) : route.continue());
+  const denied = page.waitForResponse((response) => response.status() === 503
+    && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
+
+  // When: refresh fails and the persistent shell retries after the failure is removed.
+  await page.getByRole('button', { name: 'Refresh current page' }).click();
+  await denied;
+  await expect(page.getByRole('alert')).toContainText('server-error');
+  await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+  await page.unrouteAll();
+  const approved = page.waitForResponse((response) => response.status() === 200
+    && response.request().headers().accept === NAVIGATION_MEDIA_TYPE
+    && new URL(response.url()).pathname === '/products/sku-42');
+  await page.getByRole('button', { name: 'Retry navigation' }).click();
+  await approved;
+
+  // Then: the new approval ends error state without replacing the shell resource.
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByLabel('Navigation status')).toHaveText('complete (refresh)');
+  expect(await page.evaluate(() => window.__reactResourceStats)).toEqual({ mounts: 1, cleanups: 0 });
+});
+
 declare global {
   interface Window {
     __originalResource?: Window['__reactResource'];

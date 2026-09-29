@@ -25,8 +25,15 @@ export type ReactNavigationSnapshot = {
 export type ReactNavigationFailure = {
   readonly destination: string;
   readonly reason: ReactNavigationFailureReason | 'application-error';
-  readonly type: 'push' | 'replace' | 'back';
+  readonly type: ReactNavigationType;
 };
+
+/** Outcome of a current-page refresh; complete means store commit, not browser paint. */
+export type ReactRevalidationResult =
+  | { readonly status: 'complete' }
+  | { readonly status: 'error'; readonly failure: ReactNavigationFailure }
+  | { readonly status: 'cancelled' }
+  | { readonly status: 'document' };
 
 /** An opt-in decision made before a rejected soft load starts document navigation. */
 export type ReactNavigationFailurePolicy = (failure: ReactNavigationFailure) =>
@@ -87,8 +94,8 @@ export interface ReactRouter {
   retry(): void;
   /** Explicitly load the failed destination as an ordinary HTTP document. */
   openDocument(): void;
-  /** Revalidate the current page with a full-document reload. */
-  refresh(): void;
+  /** Revalidate the current page through fresh HTTP approval, or initiate a document reload. */
+  refresh(): Promise<ReactRevalidationResult>;
   /** Replace with an HTTP-approved page softly, or replace the full document on fallback. */
   replace(href: string | URL): void;
 }

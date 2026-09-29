@@ -116,8 +116,9 @@ describe('fluo typegen navigation authoring', () => {
     const consumerPath = join(fixture.cwd, 'valid-navigation-consumer.ts');
     await writeFile(consumerPath, [
       "import { reactPageRoutes, type ReactPageLinkProps } from './generated/react-pages.js';",
-      `import { Link, type ReactRouter } from ${JSON.stringify(reactClientModulePath)};`,
-      'const navigator: ReactRouter = { back: () => undefined, invalidate: () => undefined, openDocument: () => undefined, push: () => undefined, refresh: () => undefined, replace: () => undefined, retry: () => undefined };',
+      `import { Link, type ReactRevalidationResult, type ReactRouter } from ${JSON.stringify(reactClientModulePath)};`,
+      "const refreshResult: ReactRevalidationResult = { status: 'complete' };",
+      'const navigator: ReactRouter = { back: () => undefined, invalidate: () => undefined, openDocument: () => undefined, push: () => undefined, refresh: () => Promise.resolve(refreshResult), replace: () => undefined, retry: () => undefined };',
       "type ValidUnionParams = { readonly productId: 'sku-42' } | { readonly productId: 'sku-84' };",
       'declare const unionParams: ValidUnionParams;',
       "const params = { productId: 'sku-42' };",
@@ -142,6 +143,23 @@ describe('fluo typegen navigation authoring', () => {
 
     // Then: static routes need no params and parameterized routes accept their complete param object.
     expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual([]);
+  });
+
+  it('rejects a void refresh implementation in the typed consumer interface', async () => {
+    // Given: the consumer implements the obsolete document-reload return type.
+    const fixture = await createGeneratedArtifact();
+    const consumerPath = join(fixture.cwd, 'legacy-refresh-consumer.ts');
+    await writeFile(consumerPath, [
+      `import type { ReactRouter } from ${JSON.stringify(reactClientModulePath)};`,
+      'const legacyRefresh: ReactRouter["refresh"] = () => undefined;',
+      'void legacyRefresh;',
+    ].join('\n'), 'utf8');
+
+    // When: TypeScript checks that consumer against the public router interface.
+    const diagnostics = compile(consumerPath);
+
+    // Then: the obsolete void signature is not assignable to the typed completion seam.
+    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual([2322]);
   });
 
   it('rejects unknown route ids in typed navigation authoring', async () => {

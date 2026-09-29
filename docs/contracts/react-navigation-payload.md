@@ -121,7 +121,7 @@ opted-in policy, a failed or unsupported load uses full-document `assign`/`repla
 for history traversal the browser URL has already changed, so failure loads its document.
 Cancellation does not start fallback. Before hydration, `Link` remains a native anchor, and
 the initial request snapshot must match the browser path/search rather than silently installing
-another page. `refresh()` remains a document reload. Non-opt-in `Link`, `router.push/replace`,
+ another page. `refresh()` uses the same ordinary loader when a soft destination is available. Non-opt-in `Link`, `router.push/replace`,
 and rejected prefetches still use the credentialed ordinary loader and its full-document fallback.
 
 `ReactClientRouterProvider` accepts optional `failurePolicy(failure)`, returning `'preserve'`
@@ -151,9 +151,28 @@ do not preserve playback.
 The low-level provider keeps document fallback by default. The official generated starter
 explicitly selects network/5xx and recoverable mapped import-failure preservation and renders
 retry/document controls in its persistent shell outside the HTTP-selected page slot.
-#3873 owns shell-preserving soft revalidation and
-migration for consumers relying on the current `refresh()` document reload.
-`invalidate()` does not re-fetch displayed page data.
+`router.refresh(): Promise<ReactRevalidationResult>` requests the current pathname/query again
+with same-origin credentials, `no-store`, and manual redirects. It never adopts public prefetch
+or an earlier private payload. While `useNavigation()` is `refreshing` with type `refresh`,
+the last approved page, params, fragment, shell, and page-local state remain visible. A successful
+HTTP-approved destination replaces the page props and params, publishes `complete`, and remounts
+page-local state with a new activation key; it never pushes or replaces history. The shared
+provider and shell resources remain mounted. `complete` means committed to the navigation
+store, not painted by the browser or successfully rendered by application components.
+The returned result is `{ status: 'complete' }`, `{ status: 'error', failure }`,
+`{ status: 'cancelled' }`, or `{ status: 'document' }` (document fallback initiated, not loaded).
+The safe failure includes type `refresh`. Preserved failure publishes `error`, retains the old
+page, and supports fresh same-page `retry()` or explicit `openDocument()`; default document
+fallback reloads the current URL. New navigation, repeated refresh, mutation invalidation,
+unmount, and provider session-epoch change abort obsolete work and settle its refresh promise
+as cancelled without waiting for an uncooperative loader or asynchronous policy callback.
+Cancellation without a replacement publishes `idle`. Call `invalidate()` after mutation before
+refresh if older work must be discarded; invalidation alone does not request current data.
+Pages without a soft destination initiate an ordinary document reload. Consumers that
+previously used `refresh()` for a guaranteed document reload must use `window.location.reload()`;
+see the [EN migration](../getting-started/migrate-react-refresh.md) and
+[KO migration](../getting-started/migrate-react-refresh.ko.md). This is distinct from
+development-time React Fast Refresh, which may retain component state.
 
 ## Opt-in public prefetch and provider-local cache
 
@@ -186,7 +205,7 @@ than 15 seconds after full validation and import **and** the remaining server fr
 Subtract a valid nonnegative `Age` from the granted `max-age`, cap the result at 15 seconds,
 and reject malformed or exhausted freshness; validation/import time does not restart server
 freshness. A successful opted-in click removes its entry. Revisits and back/forward require
-fresh HTTP approval, and refresh reloads the document. Unmount/disconnect, scope changes,
+fresh HTTP approval, and refresh always requests fresh credentialed approval. Unmount/disconnect, scope changes,
 `router.invalidate()`, and superseding activation abort pending work and clear invalid entries.
 Invalidation that cancels an in-flight soft navigation settles `useNavigation()` to idle over
 the retained committed route, with no history entry and no document fallback unless an untagged

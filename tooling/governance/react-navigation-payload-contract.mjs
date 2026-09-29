@@ -210,10 +210,30 @@ export function enforceReactNavigationPayloadContract(
   }
   const refresh = findNode(store, (node) =>
     ts.isMethodDeclaration(node) && node.name.getText(store) === 'refresh');
+  const refreshBody = refresh && ts.isMethodDeclaration(refresh) ? refresh.body : undefined;
+  const refreshLoad = refreshBody && findNode(refreshBody, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'loadAndCommit');
+  const successCommit = findNode(store, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'createElement'
+    && node.arguments[0]?.getText(store) === 'result.component');
   if (!refresh || !ts.isMethodDeclaration(refresh)
-    || !findNode(refresh.body, (node) =>
-      ts.isCallExpression(node) && node.expression.getText(store) === 'browser.reload')) {
-    throw new Error('React navigation refresh must reload the document until soft revalidation is implemented.');
+    || !refreshBody || !refreshLoad || !ts.isCallExpression(refreshLoad)
+    || refreshLoad.arguments[0]?.getText(store) !== 'browser'
+    || refreshLoad.arguments[1]?.getText(store) !== 'destination'
+    || refreshLoad.arguments[2]?.getText(store) !== "'refresh'"
+    || !findNode(refreshBody, (node) =>
+      ts.isNewExpression(node) && node.expression.getText(store) === 'URL'
+      && node.arguments?.[0]?.getText(store) === 'browser.currentHref()')
+    || !findNode(refreshBody, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'discardPrefetches')
+    || !findNode(refreshBody, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'cancelPending')
+    || !successCommit || successCommit.pos <= approvalGuard.end
+    || !findNode(store, (node) =>
+      ts.isBinaryExpression(node) && node.getText(store) === 'requestGeneration !== generation')
+    || !findNode(store, (node) =>
+      ts.isBinaryExpression(node) && node.getText(store) === "type === 'refresh'")) {
+    throw new Error('React navigation refresh must request the current URL through fresh generation-guarded HTTP approval.');
   }
   const adoptedApproval = findNode(store, (node) =>
     ts.isConditionalExpression(node) && node.condition.getText(store).includes('prefetchedResult.ok'));
