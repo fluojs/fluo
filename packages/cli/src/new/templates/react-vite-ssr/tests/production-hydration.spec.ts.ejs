@@ -146,6 +146,7 @@ test('hydrates two DTO pages and preserves the shell during HTTP-approved naviga
 test('retains the approved page and metadata while an HTTP destination is pending', async ({ page }) => {
   // Given: the negotiated search request is deferred before approval.
   await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Shell taps: 0' }).click();
   let release = () => {};
   const deferred = new Promise<void>((resolve) => { release = resolve; });
@@ -185,6 +186,7 @@ test('retains the approved page and metadata while an HTTP destination is pendin
 test('resets a throwing approved page locally without a second request', async ({ page }) => {
   // Given: the HTTP-approved destination throws only after client rendering starts.
   await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Shell taps: 0' }).click();
   await page.evaluate(() => { document.documentElement.dataset.starterIdentity = 'retained'; });
   let approvals = 0;
@@ -591,6 +593,9 @@ test('keeps native anchors usable before hydration', async ({ page }) => {
     if (firstEntry) {
       firstEntry = false;
       await held;
+      // The original document must never bootstrap after native navigation.
+      await route.abort('aborted');
+      return;
     }
     await route.continue();
   });
@@ -602,8 +607,11 @@ test('keeps native anchors usable before hydration', async ({ page }) => {
 
     const document = page.waitForResponse((result) =>
       result.url().includes('/search?q=catalog') && result.request().isNavigationRequest());
+    const destinationReady = page.waitForURL('**/search?q=catalog', { waitUntil: 'domcontentloaded' });
     await page.getByRole('link', { name: 'Search catalog' }).first().click({ noWaitAfter: true });
     expect((await document).status()).toBe(200);
+    await destinationReady;
+    await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
   } finally {
     releaseBootstrap();
     await page.unrouteAll({ behavior: 'wait' });
