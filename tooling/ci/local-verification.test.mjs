@@ -87,6 +87,16 @@ test('React comparison uses a distinct conditional capability in the existing ca
   assert.deepEqual(react.capabilityTasks['react-app-benchmark'], ['static']);
   assert.ok(react.tasks.find((task) => task.id === 'static')?.commands.some((command) =>
     command.argv.includes('test:smoke')));
+  const browserInstall = react.tasks.find((task) => task.id === 'static')?.commands.find((command) =>
+    command.argv.includes('playwright'));
+  assert.deepEqual(browserInstall?.argv, [
+    '--dir', 'tooling/benchmarks/react-app-comparison', '--ignore-workspace',
+    'exec', 'playwright', 'install', 'chromium',
+  ]);
+  assert.deepEqual(browserInstall.env, { PLAYWRIGHT_BROWSERS_PATH: '/tmp/fluo-react-app-browsers' });
+  const browserSmoke = react.tasks.find((task) => task.id === 'static')?.commands.find((command) =>
+    command.argv.includes('test:smoke'));
+  assert.deepEqual(browserSmoke.env, browserInstall.env);
   assert.equal(react.capabilityTasks['isolated-benchmark'], undefined);
   const http = buildVerificationPlan({
     changedFiles: ['tooling/benchmarks/http-comparison/src/run.mjs'], identity,
