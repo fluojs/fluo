@@ -69,6 +69,8 @@ and [v1 migration](./getting-started/migrate-react-production-assets.md).
 
 The [React full-stack product contract](./contracts/react-fullstack-product.md) separately defines the future CRUD and long-lived jukebox acceptance gate. Today `router.refresh()` reloads the document. Failed low-level navigation defaults to a document; `ReactClientRouterProvider.failurePolicy` can preserve transient network/5xx failure with an actionable `useNavigation().failure` and fresh `router.retry()` or explicit `router.openDocument()`. Invalidating a pending untagged back/forward activation loads its ordinary document to keep the browser URL and page consistent. The Vite example and generated starter verify a live resource across failure/retry; the starter explicitly wires the official default, and #3873 still owns soft revalidation.
 
+For the generated React starter's development edits, use the [dev reload architecture](./architecture/dev-reload-architecture.md) and the [CLI owner](../packages/cli/README.md). Client-only React/CSS uses HMR; server-only edits drain and replace the app behind a persistent gateway without replacing the browser document; shared graph changes may reload after readiness. CLI-watched `.env`/Vite config replaces the process, unlike `ConfigModule.forRoot({ watch: true })` snapshot rollback. The [migration guide](./getting-started/migrate-react-dev-hmr.md) covers existing generated apps.
+
 Optional `Link prefetch="hover" | "viewport"` needs provider `navigationModules`, a matching
 `navigationBuildId` and an explicit
 `prefetchScope` auth/session epoch. Only `ReactNavigationPage.create(page, destination,

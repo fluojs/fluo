@@ -1,4 +1,22 @@
 import '@vitejs/plugin-react/preamble';
 
+import.meta.hot?.on('fluo:server-status', (message: { status: 'failed' | 'ready' | 'restarting'; generation: number; reason?: string }) => {
+  let notice = document.querySelector<HTMLElement>('[data-fluo-dev-status]');
+  if (message.status === 'ready') {
+    notice?.remove();
+  } else {
+    if (!notice) {
+      notice = document.createElement('aside');
+      notice.dataset.fluoDevStatus = '';
+      notice.setAttribute('role', 'status');
+      document.body.append(notice);
+    }
+    notice.textContent = message.status === 'failed'
+      ? 'Server unavailable: fix the source, save again, then retry your request.'
+      : `Server restarting: ${message.reason ?? 'retry your request after readiness.'}`;
+  }
+  window.dispatchEvent(new CustomEvent('fluo:server-status', { detail: message }));
+});
+
 // The preamble must execute before any transformed component module.
 await import('./entry-client');

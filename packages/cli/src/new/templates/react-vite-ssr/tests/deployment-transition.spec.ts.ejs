@@ -7,6 +7,9 @@ import { pathToFileURL } from 'node:url';
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { expect, test } from '@playwright/test';
 
+test.skip(['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? ''),
+  'The independent A/B deployment fixture needs a production server build.');
+
 const project = resolve(import.meta.dirname, '..');
 const mediaType = 'application/vnd.fluo.react-navigation+json;v=2';
 let directory: string;

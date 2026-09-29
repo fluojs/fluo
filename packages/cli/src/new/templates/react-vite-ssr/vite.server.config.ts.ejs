@@ -6,6 +6,9 @@ import { resolve } from 'node:path';
 import { defineConfig, normalizePath } from 'vite';
 
 export default defineConfig({
+  define: {
+    __FLUO_BUILD_VARIANT__: JSON.stringify(process.env.FLUO_REACT_BUILD_VARIANT ?? 'A'),
+  },
   build: {
     emptyOutDir: false,
     outDir: 'dist/server',
@@ -18,6 +21,17 @@ export default defineConfig({
     target: 'node24',
   },
   plugins: [
+    {
+      name: 'fluo:shared-reload-after-readiness',
+      apply: 'serve',
+      enforce: 'pre',
+      hotUpdate({ file }) {
+        const serverFiles: unknown = Reflect.get(process, Symbol.for('fluo:react-server-files'));
+        if (this.environment.name === 'client' && serverFiles instanceof Set && serverFiles.has(file)) {
+          return [];
+        }
+      },
+    },
     fluoDecoratorsPlugin({ babelConfigFile: fileURLToPath(new URL('./babel.config.cjs', import.meta.url)) }),
     react(),
     {

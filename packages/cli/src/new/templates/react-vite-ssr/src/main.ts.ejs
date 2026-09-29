@@ -1,6 +1,5 @@
 import '@fluojs/core/metadata-preload';
-import type { IncomingMessage, Server } from 'node:http';
-import type { Duplex } from 'node:stream';
+import type { Server } from 'node:http';
 import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import type { ReactPageRenderer } from '@fluojs/react';
 import { FluoFactory } from '@fluojs/runtime';
@@ -9,9 +8,15 @@ import type { ViteDevServer } from 'vite';
 
 import { createAppModule } from './app';
 import { createReactDevelopmentPageRenderer, createReactPageRenderer } from './entry-server';
+import { developmentPageModules } from './entry-server';
 import { loadReactViteManifest } from './load-manifest';
 
+export { developmentPageModules };
+
 export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Server) {
+  if (vite && !upgradeServer) {
+    throw new Error('The React dev app needs the Vite upgrade source.');
+  }
   const manifest = vite ? undefined : await loadReactViteManifest(new URL(
     process.env.FLUO_REACT_MANIFEST_URL ?? '../client/.vite/manifest.json', import.meta.url,
   ));
@@ -40,21 +45,11 @@ export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Se
       return render(page, context, policies, initialPage);
     } : selectedRenderer,
   });
-  const port = Number(process.env.PORT ?? '3000');
+  const port = vite ? 0 : Number(process.env.PORT ?? '3000');
   const adapter = FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port,
     configureFastify: vite ? (server) => {
-      if (!upgradeServer) {
-        throw new Error('The React dev app needs the Vite upgrade source.');
-      }
-      const forwardUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
-        upgradeServer.emit('upgrade', request, socket, head);
-      };
-      server.server.on('upgrade', forwardUpgrade);
-      server.addHook('onClose', async () => {
-        server.server.off('upgrade', forwardUpgrade);
-      });
       server.addHook('onRequest', (request, reply, done) => {
         if (request.raw.method !== 'GET' || !/^\/(?:src|node_modules|@id|@fs|@vite|@react-refresh)(?:\/|\?|$)/u.test(request.raw.url ?? '')) {
           done();
@@ -78,7 +73,7 @@ export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Se
   if (process.env.FLUO_REACT_TEST_READY === '1') {
     console.log(`FLUO_REACT_READY ${adapter.getListenTarget().url}`);
   }
-  return app;
+  return vite ? { close: () => app.close(), url: adapter.getListenTarget().url } : app;
 }
 
 if (process.env.FLUO_REACT_VITE_DEV !== '1') {

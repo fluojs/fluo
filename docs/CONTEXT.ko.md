@@ -70,6 +70,8 @@ A를 유지하세요. [프로덕션 recipe](./guides/react-production-deployment
 
 [React 풀스택 제품 계약](./contracts/react-fullstack-product.ko.md)은 향후 CRUD와 장기 주크박스 수용 게이트를 별도로 정의합니다. 현재 `router.refresh()`는 document reload입니다. Low-level 이동 실패는 기본적으로 document fallback하지만 `ReactClientRouterProvider.failurePolicy`는 일시적 network/5xx에서 셸 보존을 opt-in하고 `useNavigation().failure`, 새 HTTP `router.retry()`, 명시적 `router.openDocument()`를 제공합니다. 진행 중인 index 없는 back/forward activation을 무효화하면 browser URL과 page를 일치시키기 위해 해당 일반 문서를 불러옵니다. Vite 예제와 생성 starter는 실패·재시도 동안 실제 자원 생존을 검증합니다. Starter가 공식 기본 정책을 명시적으로 연결하며 #3873은 soft revalidation을 소유합니다.
 
+생성된 React starter의 개발 변경은 [개발 리로드 아키텍처](./architecture/dev-reload-architecture.ko.md)와 [CLI 소유 문서](../packages/cli/README.ko.md)를 따릅니다. Client-only React/CSS는 HMR을 사용하며 server-only 수정은 browser document를 교체하지 않고 유지되는 gateway 뒤의 app을 drain·교체합니다. 공유 graph 수정은 readiness 뒤 reload할 수 있습니다. CLI가 감시하는 `.env`/Vite config는 process를 교체하며, 이는 `ConfigModule.forRoot({ watch: true })`의 snapshot rollback과 다릅니다. 기존 생성 앱은 [이전 안내](./getting-started/migrate-react-dev-hmr.ko.md)를 따릅니다.
+
 Optional `Link prefetch="hover" | "viewport"`에는 provider `navigationModules`,
 일치하는 `navigationBuildId` 및 명시적
 auth/session epoch인 `prefetchScope`가 필요합니다. `ReactNavigationPage.create(page,
