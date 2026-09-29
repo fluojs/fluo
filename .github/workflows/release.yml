@@ -8,8 +8,20 @@ on:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
+  extended-verification:
+    name: Verify exact release source
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      profile: extended
+      source-sha: ${{ github.sha }}
+      base-sha: ${{ github.event.before }}
+
   release:
     name: Release
+    needs: extended-verification
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -1,354 +1,204 @@
 import { spawnSync } from 'node:child_process';
-import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-
 import { expect, it } from 'vitest';
 
+import { buildVerificationPlan } from './local-verification.mjs';
+
 const workflow = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
-const nodeWorkflow = readFileSync(new URL('../../.github/workflows/node-verification.yml', import.meta.url), 'utf8');
+const taskWorkflow = readFileSync(new URL('../../.github/workflows/node-verification.yml', import.meta.url), 'utf8');
+const releaseWorkflow = readFileSync(new URL('../../.github/workflows/release.yml', import.meta.url), 'utf8');
+const extendedWorkflow = readFileSync(new URL('../../.github/workflows/extended-verification.yml', import.meta.url), 'utf8');
+const identity = {
+  baseRef: 'origin/main', baseSha: 'b'.repeat(40), changedFilesDigest: 'c'.repeat(64),
+  clean: true, diffDigest: 'd'.repeat(64), headSha: 'a'.repeat(40), mergeBase: 'e'.repeat(40),
+  root: '/repo', treeSha: 'f'.repeat(40), worktreeStatusDigest: '0'.repeat(64),
+};
+
+it('archives the immutable image only when the exact cache key is missing', () => {
+  // Given: The plan job restores a content-addressed image archive.
+  const planJob = job(workflow, 'plan');
+  // When: Locate the executable step that creates the archive.
+  const archiveStep = planJob.split('\n      - ').find((step) => step.includes("['save', '--output'"));
+  // Then: A cache hit must reuse its bytes rather than serialize the image again.
+  expect(archiveStep).toBeDefined();
+  expect(archiveStep).toContain("if: steps.image-cache.outputs.cache-hit != 'true'");
+});
 
 function job(source: string, id: string): string {
   const start = source.indexOf(`  ${id}:\n`);
-  expect(start, `Missing job: ${id}`).toBeGreaterThanOrEqual(0);
+  if (start === -1) throw new Error(`Missing job: ${id}`);
   return source.slice(start).split(/\n(?= {2}[a-z][a-z-]*:\n)/u)[0] ?? '';
 }
 
-it('runs full compiler-capable Node targets through one sharded verification workflow', () => {
+it('expands the real workflow plan into eighteen required jobs', () => {
   // Given
-  const nodeSupport = job(workflow, 'node-support');
-
-  // When
-  const versions = [...nodeSupport.matchAll(/^\s+- "(24\.11\.0|24\.x|26\.x)"$/gm)].map((match) => match[1]);
-
-  // Then: the full verification matrix never runs the Babel 8 compiler toolchain
-  // on a version below its 24.11 upstream engine floor.
-  expect(versions).toEqual(['24.11.0', '24.x', '26.x']);
-  expect(nodeSupport).toContain('uses: ./.github/workflows/node-verification.yml');
-  expect(nodeSupport).toMatch(/node-version: \$\{\{ matrix.node-version \}\}/u);
-  expect(nodeSupport).not.toContain('run: pnpm verify');
-  expect(workflow).not.toMatch(/^ {2}(build-and-typecheck|lint|test):$/m);
-});
-
-it('runs the exact 24.0.0 runtime floor as a separately required runtime-only lane', () => {
-  // Given
-  const runtimeFloor = job(workflow, 'node-runtime-floor');
-
-  // When: the caller binds the runtime floor and a supported compiler Node.
-  // Then: the lane is required by the aggregate gate and excluded from full lanes.
-  expect(runtimeFloor).toContain('uses: ./.github/workflows/node-runtime-floor.yml');
-  expect(runtimeFloor).toContain('node-version: "24.0.0"');
-  expect(runtimeFloor).toContain('compiler-node-version: "24.x"');
-  expect(runtimeFloor).toContain('      - deterministic-preflight\n');
-  expect(job(workflow, 'verify')).toContain('      - node-runtime-floor\n');
-  expect(job(workflow, 'node-support')).not.toContain('24.0.0');
-});
-
-it('builds the runtime floor lane under a supported compiler Node and verifies on exact 24.0.0 without a root install', () => {
-  // Given
-  const runtimeWorkflow = readFileSync(new URL('../../.github/workflows/node-runtime-floor.yml', import.meta.url), 'utf8');
-  const build = job(runtimeWorkflow, 'build');
-  const runtimeVerify = job(runtimeWorkflow, 'runtime-verify');
-
-  // When: the lane compiles under the supported compiler Node input.
-  // Then: the runtime job consumes provenance-bound artifacts on exact 24.0.0
-  // and never installs workspace dependencies or loads Babel there.
-  expect(build).toMatch(/node-version: \$\{\{ inputs\.compiler-node-version \}\}/u);
-  expect(build).toContain('pnpm install --frozen-lockfile');
-  expect(build).toContain('pnpm build');
-  expect(build).toContain('node tooling/testing/node-runtime-floor.mjs --bundle --dist');
-  expect(build).toContain('node tooling/testing/node-runtime-floor.mjs "$RUNNER_TEMP/runtime-floor/runtime-floor-exercise.mjs" --self-test');
-  expect(runtimeVerify).toMatch(/node-version: \$\{\{ inputs\.node-version \}\}/u);
-  const runtimeNodeSetup = runtimeVerify.split(/\n {6}- /u).filter(
-    (step) => /^ {8}uses: actions\/setup-node@/mu.test(step),
-  );
-  expect(runtimeNodeSetup).toHaveLength(1);
-  expect(runtimeNodeSetup[0]).toMatch(/^ {10}package-manager-cache: false$/mu);
-  expect(runtimeVerify).not.toContain('pnpm install');
-  expect(runtimeVerify).toContain('node tooling/ci/acquire-build-artifact.mjs');
-  expect(runtimeVerify).toContain('needs.build.outputs.artifact-id');
-  expect(runtimeVerify).toContain('needs.build.outputs.artifact-digest');
-  expect(runtimeVerify).toContain("node tooling/testing/node-runtime-floor.mjs \"$RUNNER_TEMP/runtime-floor/runtime-floor-exercise.mjs\"");
-  expect(runtimeVerify).not.toMatch(/run: pnpm\b/u);
-});
-
-it('gates every runtime fan-out behind deterministic latest-24 preflight', () => {
-  // Given
-  const preflight = job(workflow, 'deterministic-preflight');
-  const fanout = [
-    'deno-platform',
-    'studio-browser',
-    'official-web-runtime-adapter-portability',
-    'native-response-cookie-conformance',
-    'bun-native-routing-and-lifecycle-conformance',
-    'node-support',
-    'node-runtime-floor',
-  ];
-
-  // When
-  const commands = [...preflight.matchAll(/run: (.+)/gu)].map((match) => match[1]);
-
-  // Then
-  expect(commands).toEqual([
-    'pnpm install --frozen-lockfile',
-    'pnpm test:node',
-    'pnpm build',
-    'pnpm typecheck',
-    'pnpm lint',
-    'pnpm verify:platform-consistency-governance',
-    'pnpm vitest run --project tooling --maxWorkers=1',
-  ]);
-  for (const id of fanout) {
-    expect(job(workflow, id)).toContain('      - deterministic-preflight\n');
-  }
-  expect(job(workflow, 'verify')).toContain('      - deterministic-preflight\n');
-});
-
-it('executes the canonical Node regression script before the Vitest verifier', { timeout: 60_000 }, () => {
-  const root = new URL('../..', import.meta.url);
-  const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
-  expect(packageJson.scripts['test:verify']).toContain('pnpm test:node');
-  expect(packageJson.scripts['test:node']).toContain('tooling/ci/local-verification.test.mjs');
-  expect(packageJson.scripts['test:node']).toContain('tooling/testing/redis-native-fixture.test.mjs');
-  expect(packageJson.scripts['test:node']).toContain('.agents/skills/execute-lane/scripts/*.test.mjs');
-
-  const result = spawnSync('pnpm', ['test:node'], {
-    cwd: root,
-    encoding: 'utf8',
-    timeout: 60_000,
-  });
-
-  expect(result.status, result.stderr).toBe(0);
-});
-
-it('binds every build consumer to immutable producer artifact provenance', () => {
-  const build = job(nodeWorkflow, 'build');
-  expect(build).toContain('id: upload-package-builds');
-  expect(build).toContain('artifact-id: ${{ steps.upload-package-builds.outputs.artifact-id }}');
-  expect(build).toContain('artifact-digest: ${{ steps.upload-package-builds.outputs.artifact-digest }}');
-  expect(build).toContain("artifact-sha: ${{ github.event.pull_request.head.sha || github.sha }}");
-  for (const id of ['checks', 'test', 'starters']) {
-    const consumer = job(nodeWorkflow, id);
-    expect(consumer).toContain('needs.build.outputs.artifact-id');
-    expect(consumer).toContain('needs.build.outputs.artifact-digest');
-    expect(consumer).toContain('needs.build.outputs.artifact-sha');
-    expect(consumer).toContain('GH_TOKEN: $' + '{{ github.token }}');
-  }
-});
-
-it('builds the Studio dependency closure before browser verification', () => {
-  // Given
-  const studioBrowser = job(workflow, 'studio-browser');
-  const closureBuild = 'node tooling/scripts/run-workspace-build-closure.mjs @fluojs/studio';
-  const browserVerification = 'pnpm --filter @fluojs/studio test:browser';
-
-  // When
-  const commands = [...studioBrowser.matchAll(/run: (.+)/gu)].map((match) => match[1]);
-
-  // Then
-  expect(commands).toContain(closureBuild);
-  expect(commands).toContain(browserVerification);
-  expect(commands.indexOf(closureBuild)).toBeLessThan(commands.indexOf(browserVerification));
-  expect(studioBrowser).not.toMatch(/run: pnpm --filter @fluojs\/studio(?:\.\.\.)? build/u);
-});
-
-it('keeps all four Vitest projects with complete package and tooling shards', () => {
-  // Given
-  const tests = job(nodeWorkflow, 'test');
-
-  // When
-  const shards = [...tests.matchAll(/project: (\w+)\n\s+shard: (\d+)\/(\d+)/gu)].map((match) => match.slice(1));
-  const projects = [...tests.matchAll(/run: pnpm vitest run --project (\w+)/g)].map((match) => match[1]);
-
-  // Then
-  expect(shards).toEqual([
-    ['packages', '1', '4'], ['packages', '2', '4'], ['packages', '3', '4'], ['packages', '4', '4'],
-    ['tooling', '1', '2'], ['tooling', '2', '2'],
-  ]);
-  expect(projects.sort()).toEqual(['apps', 'examples', 'packages', 'tooling']);
-  expect(tests).toMatch(/--shard=\$\{\{ matrix.shard \}\}/u);
-  expect(tests).toContain("if: matrix.project == 'packages'");
-  expect(tests.match(/if: matrix.lane == 'tooling-1'/g)).toHaveLength(2);
-  expect(tests).toContain("if: matrix.project == 'tooling'");
-  expect(tests).toMatch(/run: pnpm vitest run --project tooling --shard=\$\{\{ matrix\.shard \}\} --maxWorkers=1/u);
-  expect(tests).not.toMatch(/mode|scoped|test:node-floor/u);
-  expect(tests).toContain('fail-fast: false');
-});
-
-it('runs all portable adapter cases once without repeating project setup per adapter', () => {
-  // Given
-  const portability = job(workflow, 'official-web-runtime-adapter-portability');
-
-  // When
-  const commands = [...portability.matchAll(/run: (pnpm vitest run .+)/gu)].map((match) => match[1]);
-
-  // Then
-  expect(commands).toEqual([
-    'pnpm vitest run packages/testing/src/portability/web-runtime-adapter-portability.test.ts --maxWorkers=1',
-  ]);
-  expect(portability).not.toContain('matrix:');
-  expect(job(workflow, 'verify')).toContain('      - official-web-runtime-adapter-portability\n');
-});
-
-it('shares one cookie helper build while exercising every native runtime', () => {
-  // Given
-  const cookies = job(workflow, 'native-response-cookie-conformance');
-
-  // When
-  const builds = [...cookies.matchAll(/run: pnpm --filter @fluojs\/http\.\.\. build/gu)];
-  const commands = [...cookies.matchAll(/run: (.+)/gu)].map((match) => match[1]);
-
-  // Then
-  expect(builds).toHaveLength(1);
-  expect(cookies).not.toContain('matrix:');
-  expect(cookies).not.toContain('if:');
-  expect(commands).toContain('bun test tooling/native-runtime/response-cookie-conformance.test.mjs');
-  expect(commands).toContain('deno test --allow-read tooling/native-runtime/response-cookie-conformance.test.mjs');
-  expect(commands).toContain('node --test tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs');
-  expect(job(workflow, 'verify')).toContain('      - native-response-cookie-conformance\n');
-});
-
-it.each(['checks', 'test', 'starters'])('starts %s after its versioned build, without waiting for sibling checks', (id) => {
-  // Given
-  const consumer = job(nodeWorkflow, id);
-  const build = job(nodeWorkflow, 'build');
-
-  // When
-  const dependencies = consumer.match(/needs:\n((?: {6}- [\w-]+\n)+)/u)?.[1];
-  const artifactName = /node-build-\$\{\{ inputs.node-version \}\}-\$\{\{ github.sha \}\}/u;
-
-  // Then
-  expect(dependencies?.trim()).toBe('- build');
-  expect(consumer).toMatch(/node-version: \$\{\{ inputs.node-version \}\}/u);
-  expect(consumer).toContain('pnpm install --frozen-lockfile');
-  expect(consumer).toMatch(artifactName);
-  expect(build).toMatch(artifactName);
-  expect(consumer.indexOf('run: tar -xf')).toBeLessThan(consumer.lastIndexOf('run: pnpm'));
-  expect(consumer).not.toContain('continue-on-error');
-});
-
-it('preserves full typecheck, lint, one latest-24 docs run and isolated benchmark checks', () => {
-  // Given
-  const checks = job(nodeWorkflow, 'checks');
-  const caller = job(workflow, 'node-support');
-
-  // When
-  const docsRuns = [...workflow.matchAll(/run: pnpm verify:docs/g), ...nodeWorkflow.matchAll(/run: pnpm verify:docs/g)];
-
-  // Then
-  expect(job(nodeWorkflow, 'build')).toContain('run: pnpm build');
-  expect(checks).toContain('run: pnpm typecheck');
-  expect(checks).toContain('run: pnpm lint');
-  expect(docsRuns).toHaveLength(1);
-  expect(checks).toMatch(/if: inputs.node-version == '24.x'\n\s+run: pnpm verify:docs/u);
-  expect(caller).toMatch(/verify-isolated-http-benchmark:.*matrix.node-version == '24.x'.*outputs.verify_isolated_http_benchmark == 'true'/u);
-  expect(checks.match(/if: inputs.verify-isolated-http-benchmark/g)).toHaveLength(3);
-  expect(checks).toContain('pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace install --frozen-lockfile');
-  expect(checks).toContain('pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace typecheck');
-  expect(checks).toMatch(/if: inputs.verify-isolated-http-benchmark\n\s+run: pnpm --dir tooling\/benchmarks\/http-comparison --ignore-workspace test/u);
-});
-
-it('installs verified native runtimes before running documentation fixtures in tooling shards', () => {
-  const tests = job(nodeWorkflow, 'test');
-  const toolingCommand = tests.indexOf('run: pnpm vitest run --project tooling');
-  expect(tests).toMatch(/if: matrix.project == 'tooling'\n\s+uses: oven-sh\/setup-bun@v2\n\s+with:\n\s+bun-version: '1.4.0'/u);
-  expect(tests).toMatch(/if: matrix.project == 'tooling'\n\s+uses: denoland\/setup-deno@v2\n\s+with:\n\s+deno-version: 'v2.9.7'/u);
-  expect(tests.indexOf('uses: oven-sh/setup-bun@v2')).toBeLessThan(toolingCommand);
-  expect(tests.indexOf('uses: denoland/setup-deno@v2')).toBeLessThan(toolingCommand);
-});
-
-it('uploads a source-bound documentation artifact only after the standalone smoke gate', () => {
-  const checks = job(nodeWorkflow, 'checks');
-  const pack = checks.indexOf('run: pnpm docs:package');
-  const verify = checks.indexOf('run: pnpm docs:release-check --require-clean');
-  const upload = checks.search(/name: docs-site-\$\{\{ github\.sha \}\}/u);
-  expect(pack).toBeGreaterThan(0);
-  expect(verify).toBeGreaterThan(pack);
-  expect(upload).toBeGreaterThan(verify);
-  expect(checks).toContain('path: .artifacts/docs-site');
-});
-
-it('keeps generated browser starters and per-version shutdown evidence', () => {
-  // Given
-  const starters = job(nodeWorkflow, 'starters');
-  const tests = job(nodeWorkflow, 'test');
-
-  // When
-  const browserInstall = starters.indexOf('playwright install --with-deps chrome');
-  const sandbox = starters.indexOf('pnpm --dir packages/cli sandbox:matrix < /dev/null');
-
-  // Then
-  expect(browserInstall).toBeGreaterThan(0);
-  expect(sandbox).toBeGreaterThan(browserInstall);
-  expect(starters).toMatch(/FLUO_CLI_SANDBOX_ROOT:.*inputs.node-version.*github.run_id.*github.run_attempt/u);
-  expect(tests).toContain("FLUO_VITEST_SHUTDOWN_DEBUG: '1'");
-  expect(tests).toMatch(/name: vitest-shutdown-debug-.*inputs.node-version.*matrix.lane.*github.run_id.*github.run_attempt/u);
-  expect(tests).toContain('if-no-files-found: error');
-  expect(tests.match(/^ {4}env:$/gmu)).toHaveLength(1);
-  expect(tests).toContain('FLUO_BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}');
-});
-
-it('transfers generated package artifacts without losing executable modes or symbolic links', () => {
-  // Given
-  const directory = mkdtempSync(join(tmpdir(), 'fluo-ci-artifact-'));
-  const source = join(directory, 'source');
-  const restored = join(directory, 'restored');
-  const archiveCommand = job(nodeWorkflow, 'build').match(/run: (tar -cf .+)/u)?.[1];
-  const restoreCommand = job(nodeWorkflow, 'test').match(/run: (tar -xf .+)/u)?.[1];
-  expect(archiveCommand).toBeDefined();
-  expect(restoreCommand).toBeDefined();
-  if (!archiveCommand || !restoreCommand) {
-    throw new Error('Missing CI artifact commands');
-  }
+  const plan = buildVerificationPlan({ changedFiles: ['package.json'], identity });
+  const script = job(workflow, 'plan').match(/node --input-type=module <<'EOF'\n([\s\S]+?)\n {10}EOF/u)?.[1];
+  if (!script) throw new Error('Missing executable workflow matrix resolver');
+  const root = mkdtempSync(join(tmpdir(), 'fluo-ci-plan-'));
+  const output = join(root, 'output');
+  mkdirSync(join(root, '.omo/ci-plan'), { recursive: true });
+  writeFileSync(join(root, '.omo/ci-plan/plan.json'), JSON.stringify(plan));
 
   try {
-    mkdirSync(join(source, 'packages/cli/dist'), { recursive: true });
-    mkdirSync(join(source, 'packages/cli/src/new'), { recursive: true });
-    mkdirSync(restored);
-    writeFileSync(join(source, 'packages/cli/dist/cli.mjs'), 'export const version = 1;\n');
-    chmodSync(join(source, 'packages/cli/dist/cli.mjs'), 0o755);
-    symlinkSync('cli.mjs', join(source, 'packages/cli/dist/entry.mjs'));
-    writeFileSync(join(source, 'packages/cli/src/new/published-internal-dependencies.ts'), 'export const versions = {};\n');
-    const env = { ...process.env, RUNNER_TEMP: directory };
-
     // When
-    const archive = spawnSync('bash', ['-e', '-c', archiveCommand], { cwd: source, env, encoding: 'utf8' });
-    const restore = spawnSync('bash', ['-e', '-c', restoreCommand], { cwd: restored, env, encoding: 'utf8' });
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: root, env: { ...process.env, GITHUB_OUTPUT: output }, encoding: 'utf8',
+    });
 
     // Then
-    expect(archive.status, archive.stderr).toBe(0);
-    expect(restore.status, restore.stderr).toBe(0);
-    expect(readFileSync(join(restored, 'packages/cli/dist/cli.mjs'), 'utf8')).toBe('export const version = 1;\n');
-    expect(lstatSync(join(restored, 'packages/cli/dist/cli.mjs')).mode & 0o777).toBe(0o755);
-    expect(readlinkSync(join(restored, 'packages/cli/dist/entry.mjs'))).toBe('cli.mjs');
-    expect(readFileSync(join(restored, 'packages/cli/src/new/published-internal-dependencies.ts'), 'utf8'))
-      .toBe('export const versions = {};\n');
+    expect(result.status, result.stderr).toBe(0);
+    const fields = Object.fromEntries(readFileSync(output, 'utf8').trim().split('\n').map((line) => {
+      const separator = line.indexOf('=');
+      return [line.slice(0, separator), line.slice(separator + 1)];
+    }));
+    expect(fields.source_sha).toBe(identity.headSha);
+    const tasks: unknown = JSON.parse(fields.tasks ?? 'null');
+    expect(tasks).toEqual(plan.tasks.map(({ id }) => id).filter((id) =>
+      !['build', 'compatibility-floor', 'compatibility-next'].includes(id)));
+    expect(tasks).toHaveLength(13);
+    const jobs = workflow.slice(workflow.indexOf('\njobs:\n'));
+    expect([...jobs.matchAll(/^ {2}([a-zA-Z_][\w-]*):\n/gm)].map((match) => match[1]))
+      .toEqual(['plan', 'build', 'verification', 'compatibility', 'verify']);
+    expect(job(workflow, 'verification')).toContain(`task: \${{ fromJSON(needs.plan.outputs.tasks) }}`);
+    expect(job(workflow, 'compatibility')).toContain('task: [compatibility-floor, compatibility-next]');
+    const reusableJobs = taskWorkflow.slice(taskWorkflow.indexOf('\njobs:\n'));
+    expect([...reusableJobs.matchAll(/^ {2}([a-zA-Z_][\w-]*):\n/gm)].map((match) => match[1])).toEqual(['task']);
+    expect(plan.tasks.length + 2).toBe(18);
   } finally {
-    rmSync(directory, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
-it.each(['success', 'failure', 'cancelled', 'skipped'])('handles a dependency with %s conclusion in the real aggregate gate', (result) => {
+it('uses the same task runner and frozen plan on every remote execution', () => {
   // Given
-  const verify = job(workflow, 'verify');
-  const script = verify.match(/node --input-type=module <<'EOF'\n([\s\S]+?)\n {10}EOF/u)?.[1];
-  expect(script).toBeDefined();
-  if (!script) {
-    throw new Error('Missing aggregate gate script');
-  }
-  const results = { 'node-support': { result }, 'deno-platform': { result: 'success' } };
+  const task = job(taskWorkflow, 'task');
+
+  // When / Then
+  expect(task).toContain(`ref: \${{ inputs.source-sha }}`);
+  expect(task).toContain('name: ci-plan');
+  expect(task).toContain('node tooling/ci/verification-runner.mjs --plan .omo/ci-plan/plan.json --task "$TASK_ID"');
+  expect(task).not.toContain('run: pnpm verify');
+  expect(task).not.toContain('continue-on-error');
+  expect(job(workflow, 'plan')).toContain('--base-ref "$BASE_SHA" --profile "$PROFILE"');
+});
+
+it('retains all primary shards and apps/examples while removing duplicate full suites', () => {
+  // Given
+  const plan = buildVerificationPlan({ changedFiles: ['package.json'], identity });
 
   // When
-  const gate = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-    env: { ...process.env, VERIFICATION_RESULTS: JSON.stringify(results) },
-    encoding: 'utf8',
-  });
+  const commands = plan.tasks.flatMap(({ commands }) => commands);
 
   // Then
-  expect(verify).toMatch(/if: \$\{\{ always\(\) && github.event_name == 'pull_request' \}\}/u);
-  expect(verify).toContain('      - node-support\n');
-  expect(gate.status).toBe(result === 'success' ? 0 : 1);
-  if (result !== 'success') {
-    expect(gate.stderr).toContain(`node-support: ${result}`);
+  for (let shard = 1; shard <= 4; shard += 1) {
+    expect(commands.some(({ argv }) => argv.includes('packages') && argv.includes(`--shard=${shard}/4`))).toBe(true);
   }
+  for (let shard = 1; shard <= 2; shard += 1) {
+    expect(commands.some(({ argv }) => argv.includes('tooling') && argv.includes(`--shard=${shard}/2`))).toBe(true);
+  }
+  for (const project of ['apps', 'examples']) {
+    expect(commands.filter(({ argv }) => argv.includes('--project') && argv.includes(project))).toHaveLength(1);
+  }
+  expect(commands.filter(({ argv }) => argv.join(' ') === 'verify:docs')).toHaveLength(1);
+  expect(workflow).not.toContain('deterministic-preflight:');
+  expect(workflow).not.toContain('verify-platform-consistency-governance:');
+});
+
+it('preserves all native runtime and packed-consumer verification capabilities', () => {
+  // Given
+  const plan = buildVerificationPlan({ changedFiles: ['package.json'], identity });
+
+  // When
+  const commands = plan.tasks.flatMap(({ commands }) => commands);
+  const args = commands.map(({ argv }) => argv.join(' '));
+
+  // Then
+  for (const path of [
+    'tooling/native-runtime/platform-bun-native-conformance.test.mjs',
+    'tooling/native-runtime/drizzle-bun-conformance.test.mjs',
+    'tooling/native-runtime/cloudflare-workers-response-cookie-conformance.test.mjs',
+    'packages/platform-deno/deno/native-adapter.test.js',
+    'packages/testing/src/portability/web-runtime-adapter-portability.test.ts',
+  ]) {
+    expect(args.some((value) => value.includes(path)), path).toBe(true);
+  }
+  expect(args.filter((value) => value.includes('tooling/native-runtime/response-cookie-conformance.test.mjs'))).toHaveLength(2);
+  expect(args.some((value) => value.includes('duplicate-module-safety'))).toBe(true);
+  expect(args.some((value) => value.includes('@fluojs/studio') && value.includes('test:browser'))).toBe(true);
+});
+
+it('requires producer provenance before any shared build consumer runs', () => {
+  // Given
+  const task = job(taskWorkflow, 'task');
+
+  // When / Then
+  expect(job(workflow, 'verification')).toContain('needs: [plan, build]');
+  expect(job(workflow, 'compatibility')).toContain('needs: plan');
+  expect(task).toContain('node tooling/ci/acquire-build-artifact.mjs --id "$ARTIFACT_ID" --digest "$ARTIFACT_DIGEST"');
+  expect(task).toContain('--sha "$SOURCE_SHA" --name "ci-build-$SOURCE_SHA" --run-id "$GITHUB_RUN_ID"');
+  expect(task.indexOf('acquire-build-artifact.mjs')).toBeLessThan(task.indexOf('verification-runner.mjs'));
+  expect(task).toContain('include-hidden-files: true');
+  expect(task).toContain('if-no-files-found: error');
+});
+
+it('keeps documentation artifacts and failed task evidence visible', () => {
+  // Given
+  const task = job(taskWorkflow, 'task');
+
+  // When / Then
+  expect(task).toContain(`name: docs-site-\${{ inputs.source-sha }}`);
+  expect(task).toContain('path: .omo/ci/artifacts/docs-site');
+  expect(task).toMatch(/name: Upload task evidence including failures\n\s+if: \$\{\{ always\(\) && steps\.task-history\.outcome == 'success' \}\}/u);
+  expect(task).toContain(`name: ci-result-\${{ inputs.task-id }}`);
+  expect(job(workflow, 'verify')).toContain('needs: [plan, build, verification, compatibility]');
+  expect(job(workflow, 'verify')).toContain(`VERIFICATION_RESULTS: \${{ toJSON(needs) }}`);
+  expect(job(workflow, 'verify')).toContain('--aggregate');
+});
+
+it('keeps retry-safe canonical artifacts without discarding historical task evidence', () => {
+  // Given
+  const taskSteps = job(taskWorkflow, 'task').split(/\n {6}- /u);
+  const planSteps = job(workflow, 'plan').split(/\n {6}- /u);
+
+  // When / Then
+  for (const [steps, name] of [
+    [taskSteps, 'ci-build-'], [taskSteps, 'docs-site-'], [taskSteps, 'ci-result-'],
+    [planSteps, 'ci-plan'], [planSteps, 'ci-result-host-checks'],
+  ] as const) {
+    const uploads = steps.filter((step) => step.includes('uses: actions/upload-artifact@v6')
+      && step.includes(`name: ${name}`));
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0]).toContain('overwrite: true');
+  }
+  expect(taskWorkflow).toContain('name: ci-history-');
+  expect(taskWorkflow).toContain('github.run_attempt');
+  expect(job(workflow, 'verify')).toContain('pattern: ci-result-*');
+});
+
+it('gates publishing on the extended profile of the exact release source', () => {
+  // Given
+  const release = job(releaseWorkflow, 'release');
+  const extended = job(releaseWorkflow, 'extended-verification');
+
+  // When / Then
+  expect(release).toContain('needs: extended-verification');
+  expect(extended).toContain('uses: ./.github/workflows/ci.yml');
+  expect(extended).toContain('profile: extended');
+  expect(extended).toContain(`source-sha: \${{ github.sha }}`);
+  expect(extendedWorkflow).toContain('profile: extended');
+  expect(extendedWorkflow).not.toContain('pull_request:');
+});
+
+it('registers the new Node regression suites without recursively executing them from tooling tests', () => {
+  // Given
+  const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+
+  // When / Then
+  expect(packageJson.scripts['test:node']).toContain('tooling/ci/*.test.mjs');
+  expect(packageJson.scripts['test:node']).toContain('tooling/testing/redis-native-fixture.test.mjs');
+  expect(packageJson.scripts['test:node']).toContain('.agents/skills/execute-lane/scripts/*.test.mjs');
+  expect(packageJson.scripts['test:verify']).toContain('pnpm test:node');
 });

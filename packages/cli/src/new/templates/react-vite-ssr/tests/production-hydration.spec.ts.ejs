@@ -2,6 +2,30 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 import { expect, test } from '@playwright/test';
 
+test('opens modified links as native documents without replacing the current page', async ({ page }) => {
+  await page.goto('/products/sku-42?preview=true');
+  await page.getByRole('button', { name: 'Count: 0' }).click();
+  await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+
+  const link = page.getByRole('link', { name: 'Open sku-84' });
+  await expect(link).toHaveAttribute('href', '/products/sku-84?preview=false');
+  const approvedDocument = await page.request.get('/products/sku-84?preview=false', {
+    headers: { accept: 'text/html' },
+  });
+  expect(approvedDocument.status()).toBe(200);
+  expect(approvedDocument.headers()['content-type']).toContain('text/html');
+  // Native modifier tabs can finish their initial request before Playwright attaches.
+  const [opened] = await Promise.all([
+    page.context().waitForEvent('page', { timeout: 10_000 }),
+    link.click({ modifiers: ['ControlOrMeta'] }),
+  ]);
+  await expect(opened).toHaveURL(/\/products\/sku-84\?preview=false$/u);
+  await expect(opened.getByRole('heading', { name: 'Catalog item sku-84' })).toBeVisible();
+  await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+  await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+  await opened.close();
+});
+
 test('hydrates production HTML and preserves HTTP-first navigation', async ({ page }) => {
   const development = ['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? '');
   const browserDiagnostics: string[] = [];
@@ -146,11 +170,6 @@ test('updates a React component and CSS over the app WebSocket without losing el
     expect(await page.evaluate(() => document.documentElement.dataset.hmrIdentity)).toBe('retained');
     expect(browserErrors).toEqual([]);
 
-    const latestPage = await page.request.get('/products/sku-42?preview=true');
-    expect(await latestPage.text()).toContain('Updated catalog item sku-42');
-    const invalid = await page.request.get('/products/x?preview=maybe');
-    expect(invalid.status()).toBe(400);
-
     const transformError = socket.waitForEvent('framereceived', {
       predicate: ({ payload }) => String(payload).includes('"type":"error"'),
       timeout: 15_000,
@@ -168,6 +187,10 @@ test('updates a React component and CSS over the app WebSocket without losing el
     await expect(page.getByRole('heading', { name: 'Recovered catalog item sku-42' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.dataset.hmrIdentity)).toBe('retained');
+    const latestPage = await page.request.get('/products/sku-42?preview=true');
+    expect(await latestPage.text()).toContain('Recovered catalog item sku-42');
+    const invalid = await page.request.get('/products/x?preview=maybe');
+    expect(invalid.status()).toBe(400);
   } finally {
     await Promise.all([writeFile(pageFile, originalPage), writeFile(cssFile, originalCss)]);
   }

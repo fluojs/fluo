@@ -28,18 +28,19 @@ fluo uses a monorepo structure managed by `pnpm`.
 
 ## verifying before you push
 
-Run the baseline workspace verification before opening or updating a PR:
+Run canonical verification from a clean worktree before opening or updating a PR:
 
 ```sh
-pnpm verify
+pnpm verify:local --base-ref <approved-base-sha>
 ```
 
-This runs `build`, `typecheck`, `lint`, and `test` in sequence. It does not
-claim the CI-only Node matrix, artifact transfer provenance, native runtime
-lanes, generated-starter browser checks, or aggregate GitHub Actions semantics.
-Use `pnpm verify:local` for the exact-head receipt-backed local command plan;
-CI remains the authority for those isolated runner dimensions. You can also run
-each baseline step individually:
+This runs the shared PR task profile in locked Linux/arm64 containers and records
+an exact-head receipt. Docker must support arm64 execution, Linux volumes and
+host-network Docker fixtures. Apple Silicon and GitHub `ubuntu-24.04-arm` run natively. Use
+`--plan` to inspect the plan and `--profile extended` for full secondary coverage.
+An unavailable environment fails instead of falling back to native execution.
+`pnpm verify` remains a host-native baseline, not a canonical parity receipt.
+You can also run individual development checks:
 
 ```sh
 pnpm build
@@ -48,14 +49,14 @@ pnpm lint          # Biome — see biome.json
 pnpm test
 ```
 
-The local receipt is valid only while the worktree remains clean: its identity
-includes the Git status digest at startup, every command boundary, and
-finalization. Changes that affect package ownership, manifests, source copies,
-or build tooling perform a cold workspace `dist` cleanup before the build and
-run manifest-selected companion commands. The plan is intentionally
-preflight-first; CI still supplies the Node `24.11.0`/`24.x`/`26.x` full-verification matrices plus a separately required exact `24.0.0` runtime-only floor lane,
-four package shards, two tooling shards, native runtimes, Studio browser, and
-aggregate fail-closed semantics.
+The receipt binds clean source identity, profile, environment lock, measured
+runtime/browser versions, task results and evidence hashes. Old host-native
+receipts are not accepted for this profile. The primary Node 24 profile retains
+four package shards, two tooling shards, browser/native/docs/packed checks;
+24.11.0 and Node 26 retain independent builds, every package test and starter
+smoke. Exact 24.0.0 remains runtime-only. Full secondary coverage also gates the
+exact release source before publishing. GitHub permissions, artifact transport,
+queueing and external outages still require remote evidence.
 
 ## documenting public exports
 

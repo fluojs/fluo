@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
+import { readVerificationManifest } from '../ci/local-verification.mjs';
+import { loadEnvironmentLock } from '../ci/verification-environment.mjs';
 
 import {
   commandRecord,
@@ -80,15 +82,24 @@ test('non-packed hosts cite their own executable checks without claiming Node ex
 });
 
 test('full tooling CI prepares native runtimes before host fixtures run', () => {
-  const workflow = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
-  const preflight = workflow.split('  deterministic-preflight:\n')[1]?.split('\n  duplicate-module-safety:')[0];
-  assert.ok(preflight);
-  const tooling = preflight.indexOf('run: pnpm vitest run --project tooling --maxWorkers=1');
-  assert.ok(tooling > 0);
-  for (const action of ['uses: oven-sh/setup-bun@v2', 'uses: denoland/setup-deno@v2']) {
-    const setup = preflight.indexOf(action);
-    assert.ok(setup > 0 && setup < tooling, `${action} must prepare the full tooling project`);
+  // Given
+  const manifest = readVerificationManifest();
+  const environment = loadEnvironmentLock();
+  const workflow = readFileSync(new URL('../../.github/workflows/node-verification.yml', import.meta.url), 'utf8');
+
+  // When
+  const toolingTasks = manifest.tasks.filter(({ id }) => id.startsWith('tooling-'));
+
+  // Then
+  assert.equal(environment.bun['1.4.0'].version, '1.4.0');
+  assert.equal(environment.deno['2.9.7'].version, '2.9.7');
+  assert.equal(toolingTasks.length, 2);
+  for (const task of toolingTasks) {
+    assert.ok(task.dependencies.includes('build'));
+    assert.ok(task.commands.some(({ argv }) => argv.includes('tooling') && argv.includes('--maxWorkers=1')));
   }
+  assert.ok(workflow.indexOf('Load verification image') < workflow.indexOf('Execute the shared Linux task'));
+  assert.match(workflow, /verification-runner\.mjs --plan/u);
 });
 
 test('command records preserve bounded timeout process output and signal evidence', async () => {
