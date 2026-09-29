@@ -139,6 +139,10 @@ built-ins, Vite, `react-dom/server`, React Server Components packages, or Server
 `react` and `react-dom` are declared as peer dependencies so applications own the React runtime
 version. The package root exposes SSR helpers but resolves `react-dom/server` lazily only when a
 React server entry is rendered.
+The opt-in `ReactNavigationExperience` composition requires **React 19 and React DOM 19** for
+page-owned title, meta, and link hoisting into `<head>` during SSR and soft navigation.
+The broader React 18 peer range remains available for other package APIs; it does not provide
+this composition's head-reconciliation guarantee.
 
 ## Phase Boundaries
 

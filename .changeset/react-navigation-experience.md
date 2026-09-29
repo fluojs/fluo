@@ -14,3 +14,7 @@ pass the initial page and approved destination, and supply the matched initial
 `metadata` to `createReactRouteSnapshot`. Remove application-owned title/focus
 effects that would compete with page-owned head updates. Render reset does not
 retry transport: use the separate #3864 `router.retry()` for fresh HTTP approval.
+Applications adopting this composition must use React 19 and React DOM 19 for
+SSR and soft-navigation title/meta/link hoisting into `<head>`. React 18 remains
+within the package peer range for unrelated APIs, but does not provide this
+composition's head-reconciliation guarantee.

@@ -410,6 +410,47 @@ test('applies pathname, query, fragment and traversal focus and scroll defaults'
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
 
+test('preserves page-local state when a fragment focuses a target inside the approved slot', async ({ page }) => {
+  // Given: the approved page owns both its counter and the fragment target.
+  await page.goto('/admin/qr');
+  await page.getByRole('button', { name: 'Page count: 0' }).click();
+  await expect(page.getByRole('button', { name: 'Page count: 1' })).toBeVisible();
+  await page.evaluate(() => { window.__softNavigationDocument = 'fragment-document'; });
+
+  // When: same-document fragment navigation focuses the page-local target.
+  await page.getByRole('link', { name: 'Jump to admin details' }).click();
+
+  // Then: the approved slot is not remounted and the shell/document remain in place.
+  await expect(page).toHaveURL(/\/admin\/qr#admin-details$/u);
+  await expect(page.locator('#page-slot #admin-details')).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Page count: 1' })).toBeVisible();
+  expect(await page.evaluate(() => window.__softNavigationDocument)).toBe('fragment-document');
+});
+
+test('keeps the shell resource operational after a malformed fragment', async ({ page }) => {
+  // Given: an interactive approved page and a live shell MessageChannel.
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/admin/qr');
+  const probe = page.getByRole('button', { name: 'Probe shell resource' });
+  const identity = await page.locator('[data-resource-id]').getAttribute('data-resource-id');
+  await page.getByRole('button', { name: 'Page count: 0' }).click();
+  await page.evaluate(() => { window.__softNavigationDocument = 'malformed-document'; });
+
+  // When: the hydrated same-document Link activates an invalid percent escape.
+  await page.getByRole('link', { name: 'Open malformed fragment' }).click();
+
+  // Then: page, shell, and a new resource operation survive without an effect error.
+  await expect(page).toHaveURL(/\/admin\/qr#%$/u);
+  await expect(page.getByRole('button', { name: 'Page count: 1' })).toBeVisible();
+  await subscribeToResourceAck(page, 1);
+  await probe.click();
+  expect(await page.evaluate(() => Reflect.get(window, '__resourceAck'))).toBe(`${identity}:1:ack`);
+  expect(await page.locator('[data-resource-id]').getAttribute('data-resource-id')).toBe(identity);
+  expect(await page.evaluate(() => window.__softNavigationDocument)).toBe('malformed-document');
+  expect(errors).toEqual([]);
+});
+
 test('keeps the official page slot and navigation controls reachable at mobile width', async ({ page }) => {
   // Given: a narrow real Chrome viewport rendering a production document.
   await page.setViewportSize({ width: 375, height: 812 });

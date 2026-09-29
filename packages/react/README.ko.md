@@ -134,6 +134,9 @@ client navigation, native form mutation으로 이어지는 실행 가능한 path
 `react`와 `react-dom`은 애플리케이션이 React 런타임 버전을 소유하도록 peer dependencies로 선언합니다.
 패키지 루트는 SSR helper를 노출하지만 React server entry를 렌더링할 때만 `react-dom/server`를 lazy
 resolve합니다.
+Opt-in `ReactNavigationExperience` 조립의 page-owned title, meta, link를 SSR과 soft navigation
+중 `<head>`로 옮기려면 **React 19와 React DOM 19**가 필요합니다. 더 넓은 React 18 peer 범위는
+다른 패키지 API를 위해 유지되며, 이 조립의 head reconciliation을 보장하지 않습니다.
 
 ## Phase Boundaries
 

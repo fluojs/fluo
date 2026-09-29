@@ -133,6 +133,9 @@ An unrecoverable shell/root or closed browser cannot retain that shell.
 The same composition renders only page-owned title/meta/link entries for the approved snapshot;
 React reconciles additions and removal without taking ownership of bootstrap, icon or global
 stylesheet entries. It announces pending, completion and failure through a polite live region.
+This composition requires React 19 and React DOM 19 for SSR and soft-navigation hoisting of
+page-owned metadata into `<head>`; the wider React 18 peer range applies to other package APIs,
+not this head-reconciliation guarantee.
 For pathname push/replace it focuses `<main>` without focus scrolling then scrolls to top;
 query-only changes focus `<main>` while preserving scroll; fragment-only moves keep native
 fragment scrolling and focus an eligible target; back/forward focus `<main>` without replacing

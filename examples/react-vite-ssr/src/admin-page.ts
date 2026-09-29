@@ -8,7 +8,7 @@ export default function AdminDestination({ page }: { readonly page: 'qr' | 'song
     createElement('h1', null, page === 'qr' ? 'Admin QR' : 'Admin songs'),
     createElement(
       'button',
-      { onClick: () => setCount((value) => value + 1), type: 'button' },
+      { id: 'admin-details', onClick: () => setCount((value) => value + 1), type: 'button' },
       `Page count: ${count}`,
     ),
   );

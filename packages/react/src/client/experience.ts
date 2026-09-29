@@ -94,7 +94,14 @@ function defaultApprovedNavigation(
   if (activatedFragment && route.hash !== '' && route.hash !== previous.hash
     && route.pathname === previous.pathname
     && route.searchParams.toString() === previous.searchParams.toString()) {
-    const target = document.getElementById(decodeURIComponent(route.hash.slice(1)));
+    let fragment: string;
+    try {
+      fragment = decodeURIComponent(route.hash.slice(1));
+    } catch (error) {
+      if (error instanceof URIError) return;
+      throw error;
+    }
+    const target = document.getElementById(fragment);
     if (target instanceof HTMLElement
       && target.matches('a[href],button,input,select,textarea,[tabindex]')) {
       target.focus({ preventScroll: true });
@@ -167,6 +174,7 @@ export function ReactNavigationExperience({
     : navigation.status === 'error'
       ? 'Navigation failed'
       : navigation.status === 'complete' ? 'Page ready' : '';
+  const pageKey = route.url.slice(0, route.url.length - route.hash.length);
 
   return createElement('div', null,
     ...(route.metadata === undefined ? [] : createReactPageMetadataElements(route.metadata)),
@@ -181,7 +189,7 @@ export function ReactNavigationExperience({
           : createElement('button', { onClick: openDocument, type: 'button' }, 'Open document'),
       ) : null,
     createElement('div', { id: 'page-slot' },
-      createElement(SafePageBoundary, { key: route.url },
+      createElement(SafePageBoundary, { key: pageKey },
         createElement(PageRenderBoundary, { renderError }, destination ?? page),
       ),
     ),

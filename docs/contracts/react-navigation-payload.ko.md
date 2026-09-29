@@ -131,6 +131,9 @@ destination의 React render throw는 이미 commit한 URL/params와 shell을 유
 복구 불가능한 shell/root 오류나 browser 종료 뒤의 shell 보존은 보장하지 않습니다.
 같은 조립은 승인 snapshot의 page-owned title/meta/link만 갱신·제거하고 bootstrap, icon,
 global stylesheet는 소유하지 않습니다. Polite live region은 pending, 완료, 실패를 알립니다.
+Page-owned metadata를 SSR과 soft navigation에서 `<head>`로 옮기는 이 조립에는 React 19와
+React DOM 19가 필요합니다. 더 넓은 React 18 peer 범위는 다른 패키지 API에 적용되며 이
+head reconciliation을 보장하지 않습니다.
 Pathname push/replace는 scroll 없는 `<main>` focus 뒤 상단으로 이동하고, query-only는
 focus하면서 scroll을 유지하며, fragment-only는 native fragment scrolling을 유지하고 적합한
 target에 focus합니다. Back/forward는 browser 복원 scroll을 보존하면서 `<main>`을 focus합니다.

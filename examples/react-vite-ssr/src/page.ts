@@ -98,6 +98,8 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void
     createElement(Link, { href: '/products/sku-84?preview=false' }, 'Open sku-84'),
     createElement(Link, { href: '/products/sku-42?preview=false' }, 'Change product query'),
     createElement(Link, { href: '#details' }, 'Jump to details'),
+    createElement(Link, { href: '#admin-details' }, 'Jump to admin details'),
+    createElement(Link, { href: '#%' }, 'Open malformed fragment'),
     createElement(Link, { href: '/products/render-error' }, 'Open throwing destination'),
     createElement(Link, { href: '/products/render-error?throwFallback=true' }, 'Open throwing error view'),
     createElement(Link, { href: '/admin/qr' }, 'Open admin QR'),
