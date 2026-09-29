@@ -31,6 +31,7 @@ export type ReactInitialNavigationPage = {
  * @param url URL confirmed by HTTP matching.
  * @param params Path params confirmed by HTTP binding.
  * @param destination Browser module and JSON-only handler props.
+ * @param buildId Application-owned build identity shared by the document and navigation response.
  * @param metadata Optional bounded head descriptors resolved for the matched page.
  * @returns The representation shared by document hydration and soft navigation.
  */

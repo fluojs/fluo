@@ -79,6 +79,7 @@ function parseNavigationPayload(
  *
  * @param json Escaped JSON text from the inert initial-page script in the server document.
  * @param modules Build-produced destination importers shared with soft navigation.
+ * @param buildId Expected document build identity; missing or unequal identities cannot hydrate a destination.
  * @returns The validated component and HTTP request snapshot, or an unavailable destination.
  */
 export async function loadReactInitialNavigationDestination(
