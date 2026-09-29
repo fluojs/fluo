@@ -1,0 +1,167 @@
+{
+  "servers": {
+    "fluo": {
+      "command": ["node", "dist/server/main.js"],
+      "env": { "PORT": "32141" },
+      "url": "http://127.0.0.1:32141/",
+      "readyPattern": "BENCH_READY"
+    },
+    "next": {
+      "command": ["node", "node_modules/next/dist/bin/next", "start", "-H", "127.0.0.1", "-p", "32142"],
+      "env": { "PORT": "32142" },
+      "url": "http://127.0.0.1:32142/",
+      "readyPattern": "Ready in|ready"
+    },
+    "react-router": {
+      "command": ["node", "node_modules/@react-router/serve/bin.cjs", "./build/server/index.js"],
+      "env": { "HOST": "127.0.0.1", "PORT": "32143" },
+      "url": "http://127.0.0.1:32143/",
+      "readyPattern": "http://|ready|Ready"
+    },
+    "tanstack-start": {
+      "command": ["node", ".output/server/index.mjs"],
+      "env": { "HOST": "127.0.0.1", "PORT": "32144" },
+      "url": "http://127.0.0.1:32144/",
+      "readyPattern": "http://|Listening|listening"
+    }
+  },
+  "dev": {
+    "fluo": {
+      "start": ["node", "../../src/fluo-dev.mjs"],
+      "url": "http://127.0.0.1:32151/",
+      "readyPattern": "DEV_READY",
+      "edits": {
+        "react-edit": { "file": "src/document.ts", "from": "Editor login", "to": "Editor login changed", "path": "/login", "selector": "h1", "expectedText": "Editor login changed", "reload": true, "restartPattern": "DEV_RELOADED" },
+        "css-edit": { "file": "src/styles.css", "from": "body { margin: 0; }", "to": "body { margin: 0; --benchmark-edit: changed; }", "selector": "body", "expectedStyle": { "property": "--benchmark-edit", "value": "changed" }, "reload": true, "restartPattern": "DEV_RELOADED" },
+        "server-edit": { "file": "src/app.ts", "from": "title: 'Product catalog'", "to": "title: 'Product catalog changed'", "path": "/", "selector": "h1", "expectedText": "Product catalog changed", "reload": true, "restartPattern": "DEV_RELOADED" }
+      }
+    },
+    "next": {
+      "start": ["pnpm", "dev", "--webpack", "-H", "127.0.0.1", "-p", "32152"],
+      "url": "http://127.0.0.1:32152/",
+      "readyPattern": "Ready in",
+      "edits": {
+        "react-edit": { "file": "app/products/page.jsx", "from": "className=\"eyebrow\">Product catalog", "to": "className=\"eyebrow\">Catalog changed", "path": "/products", "selector": ".eyebrow", "expectedText": "Catalog changed" },
+        "css-edit": { "file": "app/benchmark.css", "from": "html { background: var(--canvas); color: var(--ink); }", "to": "html { --benchmark-edit: changed; background: var(--canvas); color: var(--ink); }", "selector": "html", "expectedStyle": { "property": "--benchmark-edit", "value": "changed" }, "relaunch": true },
+        "server-edit": { "file": "lib/catalog.js", "from": "devCatalogTitle = 'Products'", "to": "devCatalogTitle = 'Products changed'", "selector": "h1", "expectedText": "Products changed", "relaunch": true }
+      }
+    },
+    "react-router": {
+      "start": ["pnpm", "dev", "--host", "127.0.0.1", "--port", "32153"],
+      "url": "http://127.0.0.1:32153/",
+      "readyPattern": "Local:",
+      "edits": {
+        "react-edit": { "file": "app/routes/home.tsx", "from": "One shared catalog, three songs, and real server-rendered routes.", "to": "One shared catalog, three songs, and edited server-rendered routes.", "selector": ".lede", "expectedText": "edited server-rendered routes", "reload": true, "restartPattern": "[vite] program reload" },
+        "css-edit": { "file": "app/styles.css", "from": "body { margin: 0; }", "to": "body { margin: 0; --benchmark-edit: changed; }", "selector": "body", "expectedStyle": { "property": "--benchmark-edit", "value": "changed" }, "reload": true, "restartPattern": "[vite] program reload" },
+        "server-edit": { "file": "app/catalog.server.ts", "from": "devCatalogTitle = \"Product catalog\"", "to": "devCatalogTitle = \"Product catalog changed\"", "selector": "h1", "expectedText": "Product catalog changed", "reload": true, "restartPattern": "[vite] program reload" }
+      }
+    },
+    "tanstack-start": {
+      "start": ["pnpm", "dev", "--host", "127.0.0.1", "--port", "32154"],
+      "url": "http://127.0.0.1:32154/",
+      "readyPattern": "Local:",
+      "edits": {
+        "react-edit": { "file": "src/views.tsx", "from": "{product.sku}</span>", "to": "{product.sku} edited</span>", "selector": ".row .muted", "expectedText": "edited" },
+        "css-edit": { "file": "src/styles.css", "from": "body{margin:0}", "to": "body{margin:0;--benchmark-edit:changed}", "selector": "body", "expectedStyle": { "property": "--benchmark-edit", "value": "changed" }, "relaunch": true },
+        "server-edit": { "file": "src/routes/index.tsx", "from": "loader: () => listProducts(),", "to": "loader: async () => ({ ...(await listProducts()), title: 'Products changed' }),", "selector": "h1", "expectedText": "Products changed", "relaunch": true }
+      }
+    }
+  },
+  "measurement": {
+    "journeys": {
+      "listing": {
+        "path": "/",
+        "status": 200,
+        "expect": "a[href=\"/products/sku-42\"]"
+      },
+      "detail": {
+        "path": "/products/sku-42",
+        "status": 200,
+        "expect": "h1"
+      },
+      "auth": {
+        "path": "/login",
+        "status": 200,
+        "actions": [
+          { "fill": "form[action=\"/login\"] input[name=\"username\"]", "value": "editor" },
+          { "fill": "form[action=\"/login\"] input[name=\"password\"]", "value": "benchmark-pass" },
+          { "click": "form[action=\"/login\"] button[type=\"submit\"]" }
+        ],
+        "expect": "form[action=\"/products\"]"
+      },
+      "create": {
+        "path": "/admin/products",
+        "status": 200,
+        "actions": [
+          { "fill": "form[action=\"/products\"] input[name=\"name\"]", "value": "Benchmark-created product" },
+          { "click": "form[action=\"/products\"] button[type=\"submit\"]" }
+        ],
+        "expect": "text=Benchmark-created product"
+      },
+      "update": {
+        "path": "$created",
+        "status": 200,
+        "actions": [
+          { "fill": "form[action=\"$created\"] input[name=\"name\"]", "value": "Benchmark-updated product" },
+          { "click": "form[action=\"$created\"] button[type=\"submit\"]" }
+        ],
+        "expect": "text=Benchmark-updated product"
+      },
+      "delete": {
+        "path": "$created",
+        "status": 200,
+        "actions": [
+          { "click": "form[action=\"$created/delete\"] button[type=\"submit\"]" }
+        ],
+        "expect": "a[href=\"/products/sku-42\"]"
+      },
+      "failure": {
+        "path": "/products/not-found",
+        "status": 404
+      },
+      "jukebox": {
+        "path": "/jukebox/songs",
+        "status": 200,
+        "expect": "[data-testid=\"jukebox-resource\"]"
+      }
+    },
+    "interactions": [
+      {
+        "path": "/jukebox/songs",
+        "trigger": "a[href=\"/jukebox/qr\"]",
+        "pending": "[data-navigation-pending]",
+        "approved": "[data-approved-view=\"qr\"]"
+      },
+      {
+        "path": "/jukebox/songs",
+        "trigger": "a[href=\"/jukebox/qr\"]",
+        "pending": "[data-navigation-pending]",
+        "approved": "[data-approved-view=\"qr\"]"
+      },
+      {
+        "path": "/jukebox/songs",
+        "trigger": "a[href=\"/jukebox/qr\"]",
+        "pending": "[data-navigation-pending]",
+        "approved": "[data-approved-view=\"qr\"]"
+      },
+      {
+        "path": "/jukebox/songs",
+        "trigger": "a[href=\"/jukebox/qr\"]",
+        "pending": "[data-navigation-pending]",
+        "approved": "[data-approved-view=\"qr\"]"
+      },
+      {
+        "path": "/jukebox/songs",
+        "trigger": "a[href=\"/jukebox/qr\"]",
+        "pending": "[data-navigation-pending]",
+        "approved": "[data-approved-view=\"qr\"]"
+      }
+    ],
+    "throughput": {
+      "fluo": { "path": "/products/sku-42", "requests": 200, "concurrency": 8 },
+      "next": { "path": "/products/sku-42", "requests": 200, "concurrency": 8 },
+      "react-router": { "path": "/products/sku-42", "requests": 200, "concurrency": 8 },
+      "tanstack-start": { "path": "/products/sku-42", "requests": 200, "concurrency": 8 }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+node_modules/
+.output/
+.nitro/
+.test-results/
+src/routeTree.gen.ts

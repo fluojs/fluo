@@ -1,0 +1,1 @@
+export { BenchmarkDocument } from './document';
