@@ -175,14 +175,21 @@ dispatcher remains authoritative.
 
 The React `dev` script now delegates to the same `fluo dev` path as a direct CLI invocation.
 After dependency installation, either starts without an application production build:
-Vite transforms the SSR entry and the Fastify listener serves its client modules, refresh
-preamble, CSS and WebSocket on the same origin. Vite-transformed React component edits
+Vite transforms the SSR entry; a stable development gateway serves the public HTTP port
+and WebSocket while each Fastify app generation listens on a private ephemeral port.
+Client modules, refresh preamble and CSS remain on the same origin. Client-only React edits
 use Fast Refresh and CSS edits use HMR without replacing the app child; direct HTTP
 requests load the latest SSR page through the existing DTO-bound route. React preserves
 state only for compatible component boundaries; incompatible exports or hook changes may
 remount or reload. Syntax errors show in the Vite overlay and terminal and recover after
-correction in the same session. Server-only, graph-external and watched config edits
-retain the child restart boundary (#3877 owns general safe restart policy).
+correction in the same session. Server-only edits close and drain the old app before
+bootstrapping new handlers behind the gateway; the browser document and client resources
+remain alive. Requests in the gap receive 503 and `Retry-After: 1`, and a failed
+bootstrap stays unavailable until a corrective save. Shared server/client changes may
+reload once after readiness to avoid mixed versions. Watched `.env` and Vite config
+edits retain the child restart boundary; raw watch and other runtimes keep their own modes.
+After a config-triggered process replacement, retry a fresh document request if an
+in-flight client module load was interrupted; document retention applies to server-only edits.
 `build` and `start` retain the separate production manifest and static asset path;
 no dev preamble is included there. Existing generated apps must follow the
 [React dev HMR migration](../../docs/getting-started/migrate-react-dev-hmr.md).
