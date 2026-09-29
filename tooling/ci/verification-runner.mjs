@@ -298,8 +298,7 @@ function insideTask(plan, task, output, artifacts) {
   const environment = inspectEnvironment();
   validateVerificationEnvironment({ lock: plan.environment.lock, actual: environment, imageKey: plan.environment.imageKey });
   restoreBuildInputs(plan, task, artifacts, root);
-  let preparedBuild = task.inputs.includes('build.tar')
-    ? recordPreparedBuild(root, plan.environment.imageKey) : undefined;
+  let preparedBuild;
   const commands = [];
   const logs = [];
   let failure = null;
@@ -335,7 +334,9 @@ function insideTask(plan, task, output, artifacts) {
     logs.push({ commandIndex: index, path: basename(path), digest: hashFile(path) });
     if (result.status !== 0 || result.signal || result.error) failure ??= `command ${index} failed`;
     if (failure) break;
-    if (command.executable === 'pnpm' && command.cwd === '.' && command.argv.join(' ') === 'build') {
+    if (command.executable === 'pnpm' && command.cwd === '.'
+      && (command.argv.join(' ') === 'build'
+        || (task.inputs.includes('build.tar') && command.argv.join(' ') === 'install --frozen-lockfile'))) {
       preparedBuild = recordPreparedBuild(root, plan.environment.imageKey);
     }
   }

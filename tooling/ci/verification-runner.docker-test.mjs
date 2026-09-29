@@ -47,7 +47,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   staticTask.commands = [
     { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
     { executable: 'node', argv: ['-e',
-      'const fs=require("node:fs");if(!fs.existsSync("node_modules/fixture-lib")||!fs.existsSync("packages/cli/dist/cli.js")){console.error("INSTALL_OR_BUILD_MISSING");process.exit(6)}if(!fs.existsSync((process.env.XDG_DATA_HOME??"/tmp/pnpm-cache")+"/cross-task-proof"))throw Error("CACHE_NOT_SHARED");fs.mkdirSync(".artifacts/docs-site",{recursive:true});fs.writeFileSync(".artifacts/docs-site/index.html","linux artifact");console.log("LINUX_TASK_OK",process.platform,process.arch)'], cwd: '.' },
+      'const fs=require("node:fs");if(!fs.existsSync("node_modules/fixture-lib")||!fs.existsSync("packages/cli/dist/cli.js")){console.error("INSTALL_OR_BUILD_MISSING");process.exit(6)}if(!require("./tooling/ci/prepared-build.mjs").verifyPreparedBuild(process.cwd(),process.env.FLUO_VERIFIED_BUILD))throw Error("PREPARED_BUILD_MISSING");if(!(fs.statSync("packages/cli/dist/cli.js").mode&0o111))throw Error("PNPM_BIN_NOT_EXECUTABLE");if(!fs.existsSync((process.env.XDG_DATA_HOME??"/tmp/pnpm-cache")+"/cross-task-proof"))throw Error("CACHE_NOT_SHARED");fs.mkdirSync(".artifacts/docs-site",{recursive:true});fs.writeFileSync(".artifacts/docs-site/index.html","linux artifact");console.log("LINUX_TASK_OK",process.platform,process.arch)'], cwd: '.' },
   ];
   const failingTask = manifest.tasks.find(({ id }) => id === 'packages-1');
   for (const id of ['compatibility-floor', 'compatibility-next']) {
@@ -63,7 +63,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   copyFileSync(new URL('../../.gitignore', import.meta.url), join(root, '.gitignore'));
   mkdirSync(join(root, 'packages/cli/src/new'), { recursive: true });
   writeFileSync(join(root, 'packages/cli/package.json'),
-    '{"name":"fixture-cli","version":"1.0.0","scripts":{"build":"fixture-build"}}\n');
+    '{"name":"fixture-cli","version":"1.0.0","scripts":{"build":"fixture-build"},"bin":{"fixture-cli":"dist/cli.js"}}\n');
   writeFileSync(join(root, 'packages/cli/src/new/published-internal-dependencies.ts'), 'export const generated = true;\n');
   mkdirSync(join(root, 'packages/fixture-lib'), { recursive: true });
   writeFileSync(join(root, 'packages/fixture-lib/package.json'),
@@ -71,7 +71,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   writeFileSync(join(root, 'packages/fixture-lib/index.js'), 'module.exports = true;\n');
   writeFileSync(join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
   writeFileSync(join(root, 'package.json'),
-    '{"name":"fluo-runner-fixture","version":"1.0.0","private":true,"packageManager":"pnpm@10.4.1","dependencies":{"fixture-lib":"workspace:*"},"scripts":{"probe-runtime":"pnpm exec node -p process.versions.node"}}\n');
+    '{"name":"fluo-runner-fixture","version":"1.0.0","private":true,"packageManager":"pnpm@10.4.1","dependencies":{"fixture-lib":"workspace:*","fixture-cli":"workspace:*"},"scripts":{"probe-runtime":"pnpm exec node -p process.versions.node"}}\n');
   run('pnpm', ['install', '--lockfile-only', '--ignore-scripts'], root);
   run('git', ['init', '-q'], root);
   run('git', ['add', '.'], root);

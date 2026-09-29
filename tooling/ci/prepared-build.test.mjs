@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -46,6 +46,16 @@ test('missing output and changed source fail closed', (t) => {
   const path = recordPreparedBuild(root, 'sha256:fixture-image');
   // When / Then: Source changes invalidate reuse even if dist remains.
   writeFileSync(join(root, 'packages/sample/source.ts'), 'export const value = 2;\n');
+  assert.throws(() => verifyPreparedBuild(root, path), /prepared build/u);
+});
+
+test('permission changes after the preparation snapshot still fail closed', (t) => {
+  // Given: The final prepared output has a recorded executable mode.
+  const root = fixture(t);
+  chmodSync(join(root, 'packages/sample/dist/index.js'), 0o755);
+  const path = recordPreparedBuild(root, 'sha256:fixture-image');
+  // When / Then: Later mode changes cannot silently alter the verified executable.
+  chmodSync(join(root, 'packages/sample/dist/index.js'), 0o644);
   assert.throws(() => verifyPreparedBuild(root, path), /prepared build/u);
 });
 
