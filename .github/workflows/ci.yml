@@ -103,6 +103,7 @@ jobs:
         if: steps.image-cache.outputs.cache-hit == 'true'
         run: docker load --input "$RUNNER_TEMP/fluo-verification-image/image.tar"
       - name: Prepare and archive verified image
+        if: steps.image-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$RUNNER_TEMP/fluo-verification-image"
           node --input-type=module <<'EOF'

@@ -16,6 +16,16 @@ const identity = {
   root: '/repo', treeSha: 'f'.repeat(40), worktreeStatusDigest: '0'.repeat(64),
 };
 
+it('archives the immutable image only when the exact cache key is missing', () => {
+  // Given: The plan job restores a content-addressed image archive.
+  const planJob = job(workflow, 'plan');
+  // When: Locate the executable step that creates the archive.
+  const archiveStep = planJob.split('\n      - ').find((step) => step.includes("['save', '--output'"));
+  // Then: A cache hit must reuse its bytes rather than serialize the image again.
+  expect(archiveStep).toBeDefined();
+  expect(archiveStep).toContain("if: steps.image-cache.outputs.cache-hit != 'true'");
+});
+
 function job(source: string, id: string): string {
   const start = source.indexOf(`  ${id}:\n`);
   if (start === -1) throw new Error(`Missing job: ${id}`);
