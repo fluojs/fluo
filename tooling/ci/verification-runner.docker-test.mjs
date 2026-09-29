@@ -49,6 +49,10 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
       'const fs=require("node:fs");if(!fs.existsSync("node_modules/fixture-lib")||!fs.existsSync("packages/cli/dist/cli.js")){console.error("INSTALL_OR_BUILD_MISSING");process.exit(6)}if(!fs.existsSync((process.env.XDG_DATA_HOME??"/tmp/pnpm-cache")+"/cross-task-proof"))throw Error("CACHE_NOT_SHARED");fs.mkdirSync(".artifacts/docs-site",{recursive:true});fs.writeFileSync(".artifacts/docs-site/index.html","linux artifact");console.log("LINUX_TASK_OK",process.platform,process.arch)'], cwd: '.' },
   ];
   const failingTask = manifest.tasks.find(({ id }) => id === 'packages-1');
+  for (const id of ['compatibility-floor', 'compatibility-next']) {
+    const task = manifest.tasks.find((candidate) => candidate.id === id);
+    task.commands = [{ executable: 'pnpm', argv: ['run', 'probe-runtime'], cwd: '.' }];
+  }
   failingTask.commands = [
     { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
     { executable: 'node', argv: ['-e',
@@ -64,7 +68,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   writeFileSync(join(root, 'packages/fixture-lib/index.js'), 'module.exports = true;\n');
   writeFileSync(join(root, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
   writeFileSync(join(root, 'package.json'),
-    '{"name":"fluo-runner-fixture","version":"1.0.0","private":true,"packageManager":"pnpm@10.4.1","dependencies":{"fixture-lib":"workspace:*"}}\n');
+    '{"name":"fluo-runner-fixture","version":"1.0.0","private":true,"packageManager":"pnpm@10.4.1","dependencies":{"fixture-lib":"workspace:*"},"scripts":{"probe-runtime":"pnpm exec node -p process.versions.node"}}\n');
   run('pnpm', ['install', '--lockfile-only', '--ignore-scripts'], root);
   run('git', ['init', '-q'], root);
   run('git', ['add', '.'], root);
@@ -79,6 +83,14 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   writeFileSync(path, JSON.stringify(plan));
   const output = join(root, '.git', 'results');
   const artifacts = join(root, '.git', 'artifacts');
+
+  // When: Package scripts recursively invoke pnpm under each secondary Node.
+  for (const [id, runtime] of [['compatibility-floor', 'compat24'], ['compatibility-next', 'compat26']]) {
+    const result = runTask(plan, id, output, artifacts, path, root);
+    assert.equal(result.status, 'passed');
+    assert.equal(readFileSync(join(output, `${id}-0.log`), 'utf8').trim().split('\n').at(-1),
+      plan.environment.lock.node[runtime].version);
+  }
 
   // When: A real producer builds and exports the source-bound archive.
   const built = runTask(plan, 'build', output, artifacts, path, root);

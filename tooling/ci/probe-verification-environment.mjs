@@ -25,7 +25,7 @@ function observedVersions(lock) {
   for (const [key, item] of Object.entries(lock.node)) {
     versions.node[key] = exec(`/opt/node/${item.version}/bin/node`, ['--version']).replace(/^v/, '');
   }
-  versions.pnpm = exec('/opt/node/24.21.0/bin/pnpm', ['--version']);
+  versions.pnpm = exec('/usr/local/bin/pnpm', ['--version']);
   for (const [key, item] of Object.entries(lock.bun)) {
     versions.bun[key] = exec(`/opt/bun/${item.version}/bun`, ['--version']);
   }

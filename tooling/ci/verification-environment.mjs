@@ -140,7 +140,7 @@ function install() {
   download(lock.pnpm.url, pnpm, 'sha512', lock.pnpm.sha512);
   mkdirSync('/opt/pnpm', { recursive: true });
   command('tar', ['-xzf', pnpm, '--strip-components=1', '-C', '/opt/pnpm']);
-  symlinkSync('/opt/pnpm/bin/pnpm.cjs', '/opt/node/24.21.0/bin/pnpm');
+  symlinkSync('/opt/pnpm/bin/pnpm.cjs', '/usr/local/bin/pnpm');
   rmSync(pnpm);
   for (const { version, sha256 } of Object.values(lock.bun)) {
     const archive = `/tmp/bun-${version}.zip`;
