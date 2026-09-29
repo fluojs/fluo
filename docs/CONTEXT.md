@@ -62,6 +62,8 @@ For HTTP-matched React client navigation, start at the [navigation payload contr
 
 The [React full-stack product contract](./contracts/react-fullstack-product.md) separately defines the future CRUD and long-lived jukebox acceptance gate. Today `router.refresh()` reloads the document, and failed low-level navigation falls back to a document; shell-preserving retry and soft revalidation are downstream work, not shipped behavior.
 
+For the generated React starter's development edits, use the [dev reload architecture](./architecture/dev-reload-architecture.md) and the [CLI owner](../packages/cli/README.md). Client-only React/CSS uses HMR; server-only edits drain and replace the app behind a persistent gateway without replacing the browser document; shared graph changes may reload after readiness. CLI-watched `.env`/Vite config replaces the process, unlike `ConfigModule.forRoot({ watch: true })` snapshot rollback. The [migration guide](./getting-started/migrate-react-dev-hmr.md) covers existing generated apps.
+
 Optional `Link prefetch="hover" | "viewport"` needs provider `navigationModules` and an explicit
 `prefetchScope` auth/session epoch. Only `ReactNavigationPage.create(page, destination,
 { prefetch: 'public' })` may grant a credential-omitted, identity-independent status-`200`

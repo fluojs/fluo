@@ -1,13 +1,13 @@
 import { ChildProcess, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { runNodeRestartRunner } from './node-restart-runner.js';
+import { createContentChangeGate, runNodeRestartRunner } from './node-restart-runner.js';
 
 const createdDirectories: string[] = [];
 
@@ -117,12 +117,13 @@ describe('Node restart runner watcher failures', () => {
     const signals: Array<NodeJS.Signals | undefined> = [];
     const scheduler = createManualRestartScheduler();
     const children: ChildProcess[] = [];
+    const signalTarget = new EventEmitter();
     const running = runNodeRestartRunner({
       env: {},
       projectDirectory: workspaceDirectory,
       reactVite: true,
       restartScheduler: scheduler,
-      signalTarget: new EventEmitter(),
+      signalTarget,
       spawnChild: () => {
         const child = createMockChild(signals);
         children.push(child);
@@ -149,7 +150,8 @@ describe('Node restart runner watcher failures', () => {
 
     expect(children).toHaveLength(1);
     expect(signals).toEqual([]);
-    child.emit('close', 0);
+    signalTarget.emit('SIGTERM');
+    closeMockChild(child, 0);
     await expect(running).resolves.toBe(0);
   });
 
@@ -164,6 +166,7 @@ describe('Node restart runner watcher failures', () => {
     const signals: Array<NodeJS.Signals | undefined> = [];
     const messages: unknown[] = [];
     const scheduler = createManualRestartScheduler();
+    const signalTarget = new EventEmitter();
     const child = createMockChild(signals);
     child.send = (message) => { messages.push(message); return true; };
     const running = runNodeRestartRunner({
@@ -171,7 +174,7 @@ describe('Node restart runner watcher failures', () => {
       projectDirectory,
       reactVite: true,
       restartScheduler: scheduler,
-      signalTarget: new EventEmitter(),
+      signalTarget,
       spawnChild: () => child,
       watchTarget: (target, optionsOrListener, listener) => {
         listeners.set(target, typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
@@ -197,11 +200,12 @@ describe('Node restart runner watcher failures', () => {
 
     expect(messages).toEqual([{ type: 'fluo:react-vite-hmr-reconcile', file: page }]);
     expect(signals).toEqual([]);
+    signalTarget.emit('SIGTERM');
     closeMockChild(child, 0);
     await expect(running).resolves.toBe(0);
   });
 
-  it('restarts a React child when a server-only source changes', async () => {
+  it('restarts the server generation inside a React child when server-only source changes', async () => {
     const workspaceDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-react-server-restart-'));
     createdDirectories.push(workspaceDirectory);
     const sourceDirectory = join(workspaceDirectory, 'src');
@@ -215,6 +219,7 @@ describe('Node restart runner watcher failures', () => {
     const listeners = new Map<string, (event: string, filename: string | Buffer | null) => void>();
     const scheduler = createManualRestartScheduler();
     const children: ChildProcess[] = [];
+    const messages: unknown[] = [];
     const running = runNodeRestartRunner({
       env: {},
       projectDirectory: workspaceDirectory,
@@ -223,6 +228,7 @@ describe('Node restart runner watcher failures', () => {
       signalTarget,
       spawnChild: () => {
         const child = createMockChild(signals);
+        child.send = (message) => { messages.push(message); return true; };
         children.push(child);
         return child;
       },
@@ -233,19 +239,18 @@ describe('Node restart runner watcher failures', () => {
     });
     const original = children[0];
     if (!original) throw new Error('Expected original child.');
+    original.emit('message', { type: 'fluo:react-vite-host-ready' });
     original.emit('message', { type: 'fluo:react-vite-hmr-file', file: page });
 
     writeFileSync(server, 'export const main = 2;\n');
     listeners.get(sourceDirectory)?.('change', 'main.ts');
     scheduler.flush();
-    expect(signals).toEqual(['SIGTERM']);
-    closeMockChild(original, 0);
-    expect(children).toHaveLength(2);
+    expect(signals).toEqual([]);
+    expect(messages).toEqual([{ type: 'fluo:react-vite-server-restart', files: [server], reload: false }]);
+    expect(children).toHaveLength(1);
 
     signalTarget.emit('SIGTERM');
-    const replacement = children[1];
-    if (!replacement) throw new Error('Expected replacement child.');
-    closeMockChild(replacement, 0);
+    closeMockChild(original, 0);
     await expect(running).resolves.toBe(0);
   });
 
@@ -645,6 +650,298 @@ describe('Node restart runner watcher failures', () => {
 });
 
 describe('React Vite development restart', () => {
+  it('retains watcher coverage after a failed child bootstrap for the next edit', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-failed-bootstrap-'));
+    createdDirectories.push(projectDirectory);
+    const source = join(projectDirectory, 'src');
+    mkdirSync(source);
+    const file = join(source, 'main.ts');
+    writeFileSync(file, 'export const value = ;\n');
+    const scheduler = createManualRestartScheduler();
+    const signalTarget = new EventEmitter();
+    const children: ChildProcess[] = [];
+    const watchers: TestWatcher[] = [];
+    let onChange: ((event: string, filename: string | Buffer | null) => void) | undefined;
+    const running = runNodeRestartRunner({
+      env: {},
+      projectDirectory,
+      reactVite: true,
+      restartScheduler: scheduler,
+      signalTarget,
+      spawnChild: () => {
+        const child = createMockChild([]);
+        children.push(child);
+        return child;
+      },
+      watchTarget: (target, optionsOrListener, listener) => {
+        if (target === source) onChange = typeof optionsOrListener === 'function' ? optionsOrListener : listener;
+        const watcher = new TestWatcher();
+        watchers.push(watcher);
+        return watcher;
+      },
+    });
+    const failed = children[0];
+    if (!failed) throw new Error('Expected the first child.');
+    closeMockChild(failed, 1);
+    expect(watchers.every((watcher) => !watcher.closed)).toBe(true);
+
+    writeFileSync(file, 'export const value = 1;\n');
+    onChange?.('change', 'main.ts');
+    scheduler.flush();
+    expect(children).toHaveLength(2);
+    signalTarget.emit('SIGTERM');
+    const corrected = children[1];
+    if (!corrected) throw new Error('Expected the corrected child.');
+    closeMockChild(corrected, 0);
+    await expect(running).resolves.toBe(0);
+    expect(watchers.every((watcher) => watcher.closed)).toBe(true);
+  });
+
+  it('advances the Studio epoch with each in-process server generation', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-studio-epoch-'));
+    createdDirectories.push(projectDirectory);
+    const source = join(projectDirectory, 'src');
+    mkdirSync(source);
+    const server = join(source, 'main.ts');
+    writeFileSync(server, 'export const value = 1;\n');
+    const env: NodeJS.ProcessEnv = { FLUO_STUDIO: '1', FLUO_STUDIO_TOKEN: 'test-token' };
+    const scheduler = createManualRestartScheduler();
+    const messages: unknown[] = [];
+    const child = createMockChild([]);
+    child.send = (message) => { messages.push(message); return true; };
+    const signalTarget = new EventEmitter();
+    const listeners = new Map<string, (event: string, filename: string | Buffer | null) => void>();
+    const running = runNodeRestartRunner({
+      env,
+      projectDirectory,
+      reactVite: true,
+      restartScheduler: scheduler,
+      signalTarget,
+      spawnChild: () => child,
+      watchTarget: (target, optionsOrListener, listener) => {
+        listeners.set(target, typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+        return new TestWatcher();
+      },
+    });
+    const initialEpoch = env.FLUO_STUDIO_EPOCH;
+    child.emit('message', { type: 'fluo:react-vite-host-ready' });
+    writeFileSync(server, 'export const value = 2;\n');
+    listeners.get(source)?.('change', 'main.ts');
+    scheduler.flush();
+    expect(messages).toEqual([{
+      type: 'fluo:react-vite-server-restart',
+      files: [server],
+      reload: false,
+      epoch: env.FLUO_STUDIO_EPOCH,
+    }]);
+    expect(env.FLUO_STUDIO_EPOCH).not.toBe(initialEpoch);
+    signalTarget.emit('SIGTERM');
+    closeMockChild(child, 0);
+    await expect(running).resolves.toBe(0);
+  });
+
+  it('replaces an unready child instead of losing a startup edit through IPC', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-unready-host-'));
+    createdDirectories.push(projectDirectory);
+    const source = join(projectDirectory, 'src');
+    mkdirSync(source);
+    const file = join(source, 'main.ts');
+    writeFileSync(file, 'export const value = 1;\n');
+    const scheduler = createManualRestartScheduler();
+    const signals: Array<NodeJS.Signals | undefined> = [];
+    const messages: unknown[] = [];
+    const children: ChildProcess[] = [];
+    const signalTarget = new EventEmitter();
+    let onChange: ((event: string, filename: string | Buffer | null) => void) | undefined;
+    const running = runNodeRestartRunner({
+      env: {},
+      projectDirectory,
+      reactVite: true,
+      restartScheduler: scheduler,
+      signalTarget,
+      spawnChild: () => {
+        const child = createMockChild(signals);
+        child.send = (message) => { messages.push(message); return true; };
+        children.push(child);
+        return child;
+      },
+      watchTarget: (target, optionsOrListener, listener) => {
+        if (target === source) onChange = typeof optionsOrListener === 'function' ? optionsOrListener : listener;
+        return new TestWatcher();
+      },
+    });
+    writeFileSync(file, 'export const value = 2;\n');
+    onChange?.('change', 'main.ts');
+    scheduler.flush();
+    expect(messages).toEqual([]);
+    expect(signals).toEqual(['SIGTERM']);
+    const first = children[0];
+    if (!first) throw new Error('Expected the starting child.');
+    closeMockChild(first, 0);
+    expect(children).toHaveLength(2);
+    signalTarget.emit('SIGTERM');
+    const second = children[1];
+    if (!second) throw new Error('Expected the replacement child.');
+    closeMockChild(second, 0);
+    await expect(running).resolves.toBe(0);
+  });
+
+  it('reconciles atomic replacements and deleted source by content', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'fluo-cli-atomic-restart-'));
+    createdDirectories.push(directory);
+    const source = join(directory, 'src');
+    mkdirSync(source);
+    const file = join(source, 'service.ts');
+    writeFileSync(file, 'export const value = 1;\n');
+    const gate = createContentChangeGate(directory);
+    gate.commitBaseline([source]);
+    expect(gate.hasMeaningfulChange([source])).toBe(false);
+
+    const replacement = join(source, 'replacement.ts');
+    writeFileSync(replacement, 'export const value = 2;\n');
+    renameSync(replacement, file);
+    expect(gate.hasMeaningfulChange([source])).toBe(true);
+    gate.commitBaseline([source]);
+    expect(gate.hasMeaningfulChange([source])).toBe(false);
+
+    rmSync(file);
+    expect(gate.hasMeaningfulChange([source])).toBe(true);
+    gate.commitBaseline([source]);
+    expect(gate.hasMeaningfulChange([source])).toBe(false);
+  });
+
+  it('reloads after readiness when both Vite client and bootstrap graph own a file', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-shared-graph-'));
+    createdDirectories.push(projectDirectory);
+    const source = join(projectDirectory, 'src');
+    mkdirSync(source);
+    const shared = join(source, 'react-app.tsx');
+    writeFileSync(shared, 'export const value = 1;\n');
+    const scheduler = createManualRestartScheduler();
+    const signals: Array<NodeJS.Signals | undefined> = [];
+    const messages: unknown[] = [];
+    const child = createMockChild(signals);
+    child.send = (message) => { messages.push(message); return true; };
+    const signalTarget = new EventEmitter();
+    const listeners = new Map<string, (event: string, filename: string | Buffer | null) => void>();
+    const running = runNodeRestartRunner({
+      env: {},
+      projectDirectory,
+      reactVite: true,
+      restartScheduler: scheduler,
+      signalTarget,
+      spawnChild: () => child,
+      watchTarget: (target, optionsOrListener, listener) => {
+        listeners.set(target, typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+        return new TestWatcher();
+      },
+    });
+    child.emit('message', { type: 'fluo:react-vite-hmr-file', file: shared });
+    child.emit('message', { type: 'fluo:react-vite-host-ready' });
+    child.emit('message', { type: 'fluo:react-vite-server-files', files: [shared] });
+
+    writeFileSync(shared, 'export const value = 2;\n');
+    listeners.get(source)?.('change', 'react-app.tsx');
+    scheduler.flush();
+    expect(messages).toEqual([{ type: 'fluo:react-vite-server-restart', files: [shared], reload: true }]);
+    expect(signals).toEqual([]);
+    signalTarget.emit('SIGTERM');
+    closeMockChild(child, 0);
+    await expect(running).resolves.toBe(0);
+  });
+
+  it('selects a full restart for a mixed client-only and server edit', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-mixed-edit-'));
+    createdDirectories.push(projectDirectory);
+    const source = join(projectDirectory, 'src');
+    mkdirSync(source);
+    const page = join(source, 'page.tsx');
+    const server = join(source, 'main.ts');
+    writeFileSync(page, 'export const Page = () => null;\n');
+    writeFileSync(server, 'export const value = 1;\n');
+    const scheduler = createManualRestartScheduler();
+    const signals: Array<NodeJS.Signals | undefined> = [];
+    const messages: unknown[] = [];
+    const children: ChildProcess[] = [];
+    const signalTarget = new EventEmitter();
+    let onChange: ((event: string, filename: string | Buffer | null) => void) | undefined;
+    const running = runNodeRestartRunner({
+      env: {},
+      projectDirectory,
+      reactVite: true,
+      restartScheduler: scheduler,
+      signalTarget,
+      spawnChild: () => {
+        const child = createMockChild(signals);
+        child.send = (message) => { messages.push(message); return true; };
+        children.push(child);
+        return child;
+      },
+      watchTarget: (target, optionsOrListener, listener) => {
+        if (target === source) onChange = typeof optionsOrListener === 'function' ? optionsOrListener : listener;
+        return new TestWatcher();
+      },
+    });
+    const first = children[0];
+    if (!first) throw new Error('Expected the first child.');
+    first.emit('message', { type: 'fluo:react-vite-host-ready' });
+    first.emit('message', { type: 'fluo:react-vite-hmr-file', file: page });
+    first.emit('message', { type: 'fluo:react-vite-server-files', files: [server] });
+    writeFileSync(page, 'export const Page = () => <main />;\n');
+    writeFileSync(server, 'export const value = 2;\n');
+    onChange?.('change', 'page.tsx');
+    onChange?.('change', 'main.ts');
+    scheduler.flush();
+    expect(messages).toEqual([]);
+    expect(signals).toEqual(['SIGTERM']);
+    closeMockChild(first, 0);
+    expect(children).toHaveLength(2);
+    signalTarget.emit('SIGTERM');
+    const second = children[1];
+    if (!second) throw new Error('Expected the replacement child.');
+    closeMockChild(second, 0);
+    await expect(running).resolves.toBe(0);
+  });
+
+  it('keeps the browser-owned child alive for a server-only edit', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-react-server-only-'));
+    createdDirectories.push(projectDirectory);
+    const sourceDirectory = join(projectDirectory, 'src');
+    mkdirSync(sourceDirectory);
+    const server = join(sourceDirectory, 'main.ts');
+    writeFileSync(server, 'export const version = 1;\n');
+    const scheduler = createManualRestartScheduler();
+    const signals: Array<NodeJS.Signals | undefined> = [];
+    const messages: unknown[] = [];
+    const child = createMockChild(signals);
+    child.send = (message) => { messages.push(message); return true; };
+    const signalTarget = new EventEmitter();
+    const listeners = new Map<string, (event: string, filename: string | Buffer | null) => void>();
+    const running = runNodeRestartRunner({
+      env: {},
+      projectDirectory,
+      reactVite: true,
+      restartScheduler: scheduler,
+      signalTarget,
+      spawnChild: () => child,
+      watchTarget: (target, optionsOrListener, listener) => {
+        listeners.set(target, typeof optionsOrListener === 'function' ? optionsOrListener : listener ?? (() => undefined));
+        return new TestWatcher();
+      },
+    });
+
+    child.emit('message', { type: 'fluo:react-vite-host-ready' });
+    writeFileSync(server, 'export const version = 2;\n');
+    listeners.get(sourceDirectory)?.('change', 'main.ts');
+    scheduler.flush();
+    expect(signals).toEqual([]);
+    expect(messages).toEqual([{ type: 'fluo:react-vite-server-restart', files: [server], reload: false }]);
+
+    signalTarget.emit('SIGTERM');
+    closeMockChild(child, 0);
+    await expect(running).resolves.toBe(0);
+  });
+
   it('starts the transformed entry with .env and releases watchers after shutdown', async () => {
     const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-react-restart-'));
     createdDirectories.push(projectDirectory);
@@ -703,6 +1000,10 @@ describe('terminal process-group shutdown', () => {
       import { createServer as createHttpServer } from 'node:http';
       export async function createServer() {
         return {
+          async transformRequest() { return null; },
+          async waitForRequestsIdle() {},
+          moduleGraph: { async getModuleByUrl() { return null; } },
+          ws: { send() {} },
           watcher: new EventEmitter(),
           async ssrLoadModule() {
             return {
@@ -712,6 +1013,7 @@ describe('terminal process-group shutdown', () => {
                 const address = server.address();
                 console.log('APP_READY:' + address.port + ':' + process.pid);
                 return {
+                  url: 'http://127.0.0.1:' + address.port,
                   close() {
                     return new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
                   },

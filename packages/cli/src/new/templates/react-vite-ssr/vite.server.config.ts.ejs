@@ -18,6 +18,17 @@ export default defineConfig({
     target: 'node24',
   },
   plugins: [
+    {
+      name: 'fluo:shared-reload-after-readiness',
+      apply: 'serve',
+      enforce: 'pre',
+      hotUpdate({ file }) {
+        const serverFiles: unknown = Reflect.get(process, Symbol.for('fluo:react-server-files'));
+        if (this.environment.name === 'client' && serverFiles instanceof Set && serverFiles.has(file)) {
+          return [];
+        }
+      },
+    },
     fluoDecoratorsPlugin({ babelConfigFile: fileURLToPath(new URL('./babel.config.cjs', import.meta.url)) }),
     react(),
     {

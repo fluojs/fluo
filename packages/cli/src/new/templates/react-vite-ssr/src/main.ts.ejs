@@ -1,6 +1,5 @@
 import '@fluojs/core/metadata-preload';
-import type { IncomingMessage, Server } from 'node:http';
-import type { Duplex } from 'node:stream';
+import type { Server } from 'node:http';
 import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import type { ReactPageRenderer } from '@fluojs/react';
 import { FluoFactory } from '@fluojs/runtime';
@@ -8,10 +7,15 @@ import { createElement, type ReactElement } from 'react';
 import type { ViteDevServer } from 'vite';
 
 import { createAppModule } from './app';
-import { createReactPageRenderer } from './entry-server';
+import { createReactPageRenderer, developmentPageModules } from './entry-server';
 import { loadReactViteManifest } from './load-manifest';
 
+export { developmentPageModules };
+
 export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Server) {
+  if (vite && !upgradeServer) {
+    throw new Error('The React dev app needs the Vite upgrade source.');
+  }
   const manifest = vite ? undefined : await loadReactViteManifest(new URL('../client/.vite/manifest.json', import.meta.url));
   const developmentRenderers = new WeakMap<ReactElement, ReactPageRenderer>();
   const AppModule = createAppModule({
@@ -34,41 +38,32 @@ export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Se
       return render(page, context, policies, initialPage);
     } : createReactPageRenderer(manifest),
   });
-  const port = Number(process.env.PORT ?? '3000');
+  const port = vite ? 0 : Number(process.env.PORT ?? '3000');
+  const adapter = FastifyHttpApplicationAdapter.create({
+    host: '127.0.0.1',
+    port,
+    configureFastify: vite ? (server) => {
+      server.addHook('onRequest', (request, reply, done) => {
+        if (request.raw.method !== 'GET' || !/^\/(?:src|node_modules|@id|@fs|@vite|@react-refresh)(?:\/|\?|$)/u.test(request.raw.url ?? '')) {
+          done();
+          return;
+        }
+
+        reply.hijack();
+        vite.middlewares(request.raw, reply.raw, (error: unknown) => {
+          reply.raw.statusCode = error ? 500 : 404;
+          reply.raw.end(error instanceof Error ? error.message : 'Asset not found.');
+        });
+      });
+    } : undefined,
+  });
   const app = await FluoFactory.create(AppModule, {
     securityHeaders: vite ? { contentSecurityPolicy: "default-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:" } : undefined,
-    adapter: FastifyHttpApplicationAdapter.create({
-      host: '127.0.0.1',
-      port,
-      configureFastify: vite ? (server) => {
-        if (!upgradeServer) {
-          throw new Error('The React dev app needs the Vite upgrade source.');
-        }
-        const forwardUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
-          upgradeServer.emit('upgrade', request, socket, head);
-        };
-        server.server.on('upgrade', forwardUpgrade);
-        server.addHook('onClose', async () => {
-          server.server.off('upgrade', forwardUpgrade);
-        });
-        server.addHook('onRequest', (request, reply, done) => {
-          if (request.raw.method !== 'GET' || !/^\/(?:src|node_modules|@id|@fs|@vite|@react-refresh)(?:\/|\?|$)/u.test(request.raw.url ?? '')) {
-            done();
-            return;
-          }
-
-          reply.hijack();
-          vite.middlewares(request.raw, reply.raw, (error: unknown) => {
-            reply.raw.statusCode = error ? 500 : 404;
-            reply.raw.end(error instanceof Error ? error.message : 'Asset not found.');
-          });
-        });
-      } : undefined,
-    }),
+    adapter,
   });
 
   await app.listen();
-  return app;
+  return vite ? { close: () => app.close(), url: adapter.getListenTarget().url } : app;
 }
 
 if (process.env.FLUO_REACT_VITE_DEV !== '1') {
