@@ -34,8 +34,12 @@ type FixtureState = {
   graphGate: { promise: Promise<void>; resolve(): void };
   providerCloseCalls: number;
   realHttp: boolean;
+  requestAborted: { promise: Promise<void>; resolve(): void };
   requestEntered: { promise: Promise<void>; resolve(): void };
   requestGate: { promise: Promise<void>; resolve(): void };
+  requestSignal?: AbortSignal;
+  scopeClosed: { promise: Promise<void>; resolve(): void };
+  scopeCloseCalls: number;
   sent: Array<{ type: string; event?: string; data?: { status: string; generation: number } }>;
   viteCloseCalls: number;
 };
@@ -68,8 +72,11 @@ async function createFixture(): Promise<{ directory: string; state: FixtureState
       graphGate: { promise: Promise.resolve(), resolve() {} },
       providerCloseCalls: 0,
       realHttp: false,
+      requestAborted: Promise.withResolvers(),
       requestEntered: Promise.withResolvers(),
       requestGate: Promise.withResolvers(),
+      scopeClosed: Promise.withResolvers(),
+      scopeCloseCalls: 0,
       sent: [],
       viteCloseCalls: 0,
       watcher: new EventEmitter(),
@@ -106,10 +113,24 @@ async function createFixture(): Promise<{ directory: string; state: FixtureState
               await state.appGate.promise;
               const server = state.realHttp ? createHttpServer(async (_request, response) => {
                 if (state.appStartCalls === 1) {
+                  const requestSignal = new AbortController();
+                  state.requestSignal = requestSignal.signal;
+                  response.once('close', () => {
+                    if (!response.writableEnded) requestSignal.abort();
+                  });
+                  requestSignal.signal.addEventListener('abort', () => {
+                    state.requestAborted.resolve();
+                    state.requestGate.resolve();
+                  }, { once: true });
                   state.requestEntered.resolve();
-                  await state.requestGate.promise;
+                  try {
+                    await state.requestGate.promise;
+                  } finally {
+                    state.scopeCloseCalls += 1;
+                    state.scopeClosed.resolve();
+                  }
                 }
-                response.end('generation:' + state.appStartCalls);
+                if (!response.destroyed) response.end('generation:' + state.appStartCalls);
               }) : undefined;
               if (server) await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
               return {
@@ -402,6 +423,57 @@ it('drains an admitted HTTP request and closes its provider before exposing new 
   state.closeGate.resolve();
   await expect(running).resolves.toBe(0);
   expect(state.providerCloseCalls).toBe(2);
+}, 10_000);
+
+it('aborts an admitted upstream request and releases its scope when the downstream disconnects', async () => {
+  const { directory, state } = await createFixture();
+  state.realHttp = true;
+  const signals = new EventEmitter();
+  const stdout = new PassThrough();
+  const initialReady = new Promise<void>((resolve) => { stdout.once('data', () => resolve()); });
+  const messageListeners = process.listenerCount('message');
+  const running = runReactViteDevApp(directory, { port: 0, signalTarget: signals, stdout });
+  state.createGate.resolve();
+  state.appGate.resolve();
+  await initialReady;
+  const address = state.websocketServer?.address();
+  if (!address || typeof address === 'string') throw new Error('Expected the public development listener.');
+  const url = `http://127.0.0.1:${address.port}/`;
+  const controller = new AbortController();
+  const admitted = fetch(url, { signal: controller.signal });
+  try {
+    await state.requestEntered.promise;
+    const restart = process.listeners('message')[messageListeners];
+    if (!restart) throw new Error('Expected the development restart listener.');
+    const nextReady = new Promise<void>((resolve) => { stdout.once('data', () => resolve()); });
+    restart({ type: 'fluo:react-vite-server-restart', files: [join(directory, 'src', 'main.ts')], reload: false }, undefined);
+    await state.closeEntered.promise;
+    expect((await fetch(url)).status).toBe(503);
+    expect(state.providerCloseCalls).toBe(0);
+    controller.abort();
+    await expect(admitted).rejects.toThrow();
+    await expect(Promise.race([
+      state.requestAborted.promise.then(() => true),
+      new Promise<boolean>((_, reject) => {
+        AbortSignal.timeout(1_000).addEventListener('abort', () => reject(new Error('Upstream request was not aborted.')), { once: true });
+      }),
+    ])).resolves.toBe(true);
+    expect(state.requestSignal?.aborted).toBe(true);
+    await expect(Promise.race([
+      state.scopeClosed.promise.then(() => true),
+      new Promise<boolean>((_, reject) => {
+        AbortSignal.timeout(1_000).addEventListener('abort', () => reject(new Error('Request scope was not closed.')), { once: true });
+      }),
+    ])).resolves.toBe(true);
+    expect(state.scopeCloseCalls).toBe(1);
+    await nextReady;
+    expect(state.providerCloseCalls).toBe(1);
+    expect(await (await fetch(url)).text()).toBe('generation:2');
+  } finally {
+    state.requestGate.resolve();
+    signals.emit('SIGTERM');
+    await running;
+  }
 }, 10_000);
 
 it('does not publish readiness from a superseded bootstrap generation', async () => {

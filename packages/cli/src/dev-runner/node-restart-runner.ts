@@ -550,7 +550,7 @@ export async function runNodeRestartRunner(options: NodeRestartRunnerOptions): P
         return;
       }
 
-      const viteOnly = options.reactVite && runnerRuntime === 'node'
+      const viteOnly = options.reactVite && runnerRuntime === 'node' && child !== undefined
         && restartPaths.every((path) => viteOwnedFiles.has(path.split(sep).join('/'))
           && !serverOwnedFiles.has(path.split(sep).join('/')));
       if (viteOnly) {

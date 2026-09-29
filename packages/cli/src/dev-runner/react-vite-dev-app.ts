@@ -63,7 +63,11 @@ export async function runReactViteDevApp(
       outgoing.writeHead(response.statusCode ?? 502, response.headers);
       response.pipe(outgoing);
     });
+    outgoing.once('close', () => {
+      if (!outgoing.writableEnded) upstream.destroy();
+    });
     upstream.on('error', (error) => {
+      if (outgoing.destroyed) return;
       if (outgoing.headersSent) outgoing.destroy(error);
       else {
         outgoing.writeHead(503, { 'retry-after': '1' });

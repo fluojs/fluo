@@ -650,6 +650,67 @@ describe('Node restart runner watcher failures', () => {
 });
 
 describe('React Vite development restart', () => {
+  it('starts a replacement when a Vite-owned edit follows an unexpected ready child exit', async () => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-exited-hmr-'));
+    createdDirectories.push(projectDirectory);
+    const source = join(projectDirectory, 'src');
+    mkdirSync(source);
+    const page = join(source, 'page.tsx');
+    writeFileSync(page, 'export const label = "first";\n');
+    const scheduler = createManualRestartScheduler();
+    const signalTarget = new EventEmitter();
+    const children: ChildProcess[] = [];
+    const messages: unknown[] = [];
+    const watchers: TestWatcher[] = [];
+    let onChange: ((event: string, filename: string | Buffer | null) => void) | undefined;
+    const running = runNodeRestartRunner({
+      env: {},
+      projectDirectory,
+      reactVite: true,
+      restartScheduler: scheduler,
+      signalTarget,
+      spawnChild: () => {
+        const child = createMockChild([]);
+        children.push(child);
+        return child;
+      },
+      watchTarget: (target, optionsOrListener, listener) => {
+        if (target === source) onChange = typeof optionsOrListener === 'function' ? optionsOrListener : listener;
+        const watcher = new TestWatcher();
+        watchers.push(watcher);
+        return watcher;
+      },
+    });
+    const first = children[0];
+    if (!first) throw new Error('Expected the first child.');
+    first.emit('message', { type: 'fluo:react-vite-host-ready' });
+    first.emit('message', { type: 'fluo:react-vite-hmr-file', file: page });
+    closeMockChild(first, 1);
+    try {
+      expect(watchers.every((watcher) => !watcher.closed)).toBe(true);
+      writeFileSync(page, 'export const label = "corrected";\n');
+      onChange?.('change', 'page.tsx');
+      scheduler.flush();
+      expect(children).toHaveLength(2);
+      const replacement = children[1];
+      if (!replacement) throw new Error('Expected a replacement child.');
+      replacement.send = (message) => { messages.push(message); return true; };
+      replacement.emit('message', { type: 'fluo:react-vite-host-ready' });
+      replacement.emit('message', { type: 'fluo:react-vite-hmr-file', file: page });
+      writeFileSync(page, 'export const label = "updated";\n');
+      onChange?.('change', 'page.tsx');
+      scheduler.flush();
+      expect(children).toHaveLength(2);
+      expect(messages).toEqual([{ type: 'fluo:react-vite-hmr-reconcile', file: page }]);
+    } finally {
+      signalTarget.emit('SIGTERM');
+      const replacement = children[1];
+      if (replacement && replacement.exitCode === null) closeMockChild(replacement, 0);
+      await running;
+    }
+    expect(watchers.every((watcher) => watcher.closed)).toBe(true);
+  });
+
   it('retains watcher coverage after a failed child bootstrap for the next edit', async () => {
     const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-failed-bootstrap-'));
     createdDirectories.push(projectDirectory);
