@@ -31,9 +31,6 @@ softly revalidating saved data. #3864 owns the opt-in failure/retry policy that
 integrates with #3871's shared provider/page slot; #3873 owns soft refresh and its migration,
 and #3879 must verify resource
 identity beyond this example's shell counter in a real production browser.
-The isolated [same-app performance comparison](../../docs/guides/react-performance-benchmarks.md)
-uses a larger seeded workload and separate correctness and timing gates; this example's
-production hydration check alone is not a four-framework performance measurement.
 
 ## what this example demonstrates
 
@@ -151,6 +148,10 @@ cover the smaller units and generated types:
 No React-specific testing helper is added. Ordinary fixtures remove repeated setup while
 `Test.createApp(...)`, React DOM, TypeScript, and Playwright continue to exercise the real ownership
 boundaries.
+
+The isolated [same-app performance comparison](../../docs/guides/react-performance-benchmarks.md)
+uses a larger seeded workload and separate correctness and timing gates; this example's
+production hydration check alone is not a four-framework performance measurement.
 
 ## native form mutation workflow
 
