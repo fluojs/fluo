@@ -154,5 +154,6 @@ fluo는 엄격한 동작 계약을 유지합니다. PR을 열기 전에 다음 �
 - `.github/PULL_REQUEST_TEMPLATE.md`의 구조를 따르세요.
 - 관련 이슈나 discussion이 있으면 연결하세요. 이슈가 없다면 PR 설명에 문제와 의도한 결과를 요약하세요.
 - 공개 `@fluojs/*` 패키지에 소비자에게 보이는 release impact가 있을 때만 `.changeset/*.md` 파일을 포함하세요.
-- 푸시하기 전에 `pnpm verify:local`을 실행하고 local verification이 필요한 경우
-  exact-head receipt를 첨부하세요. CI 전용 차원은 계속 CI가 검증합니다.
+- 푸시 전에 변경에 필요한 집중 검사와 선택된 리뷰를 완료하세요.
+  전체 로컬 검증이 필요한 경우에는 `pnpm verify:local`도 실행하고
+  exact-head receipt를 첨부하세요. 병합 전 전체 GitHub CI는 계속 필수입니다.

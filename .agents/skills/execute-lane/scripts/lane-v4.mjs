@@ -54,8 +54,8 @@ export const requiresFullLocalCI = (changedFiles) => {
 		return true;
 	}
 	return changedFiles.some((file) =>
-		/^(?:\.github\/(?:workflows|actions)\/|tooling\/(?:ci|tsconfig|vitest|testing|scripts|babel|native-runtime|cli)\/|\.agents\/workflow-contracts\/)/u.test(file)
-		|| /^packages\/cli\/scripts\/(?:local-test-env|starter-lockfile)(?:\.test)?\.mjs$/u.test(file)
+		/^(?:\.github\/(?:workflows|actions)\/|tooling\/(?:ci|tsconfig|vitest|testing|scripts|babel|native-runtime|cli|release)\/|\.agents\/workflow-contracts\/)/u.test(file)
+		|| /^packages\/[^/]+\/scripts\//u.test(file)
 		|| /^\.agents\/skills\/(?:execute-lane|issue-preflight|issue-implement|review-head|create-lane|sync-pr|verify-local)\/scripts\//u.test(file)
 		|| /(?:^|\/)(?:package\.json|tsconfig[^/]*\.json|(?:vite|vitest|playwright|babel|biome|jest)\.config\.[^/]+)$/u.test(file)
 		|| /^(?:pnpm-lock\.yaml|pnpm-workspace\.yaml|biome\.json|\.npmrc|bunfig\.toml)$/u.test(file)

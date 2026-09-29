@@ -132,6 +132,8 @@ test('focused-first: actual CI and harness changes require a full local receipt'
 		'tooling/native-runtime/cloudflare-workers-response-cookie-conformance-harness.mjs',
 		'tooling/cli/verification-locks/starter-react-vite-ssr.json',
 		'packages/cli/scripts/local-test-env.mjs',
+		'tooling/release/verify-changeset-release-lane.mjs',
+		'packages/cli/scripts/generate-published-internal-dependencies.mjs',
 		'package.json', 'packages/http/package.json', 'pnpm-lock.yaml',
 		'pnpm-workspace.yaml', 'vite.config.ts', 'vitest.config.ts',
 		'tsconfig.base.json', 'biome.json', 'tooling/tsconfig/base.json',
