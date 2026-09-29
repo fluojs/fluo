@@ -14,6 +14,7 @@ import {
   ScriptTarget,
 } from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readVerificationManifest } from '../ci/local-verification.mjs';
 
 import { enforceEmailNestjsMigrationDocs } from './email-nestjs-migration-docs.mjs';
 import {
@@ -4610,114 +4611,47 @@ describe('repository governance contracts', () => {
     // Given
     const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
     const nodeWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/node-verification.yml'), 'utf8');
-    const vitestConfig = readFileSync(resolve(repoRoot, 'vitest.config.ts'), 'utf8');
-    // When
-    const workflowLines = ciWorkflow.split('\n');
-    const verifyJobStart = workflowLines.indexOf('  verify:');
-    const verifyJobEnd = workflowLines.findIndex(
-      (line, index) => index > verifyJobStart && /^ {2}\S.*:$/u.test(line),
-    );
-    const verifyJobLines = workflowLines.slice(
-      verifyJobStart,
-      verifyJobEnd === -1 ? undefined : verifyJobEnd,
-    );
-    const verifyNeedsStart = verifyJobLines.indexOf('    needs:');
-    const directNeeds = (jobLines: readonly string[]): string[] => {
-      const needsStart = jobLines.indexOf('    needs:');
-      const needsEnd = jobLines.findIndex(
-        (line, index) => index > needsStart && !line.startsWith('      - '),
-      );
+    const catalog = readVerificationManifest();
 
-      return jobLines
-        .slice(needsStart + 1, needsEnd === -1 ? undefined : needsEnd)
-        .map((line) => line.slice('      - '.length));
-    };
-    const verifyNeeds = directNeeds(verifyJobLines);
+    // When
+    const commands = catalog.tasks.flatMap(({ commands }) => commands);
+    const args = commands.map(({ argv }) => argv.join(' '));
+    const capabilities = catalog.tasks.flatMap(({ capabilities }) => capabilities);
 
     // Then
-    expect(ciWorkflow).toContain('resolve-pr-verification-scope:');
-    expect(ciWorkflow).toContain('run: node tooling/ci/detect-pr-verification-scope.mjs');
-    expect(ciWorkflow).toContain("if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped'");
-    expect(ciWorkflow).toContain('uses: ./.github/workflows/node-verification.yml');
-    expect(ciWorkflow).toContain("if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped'");
-    expect(nodeWorkflow).toContain('- lane: packages-1');
-    expect(nodeWorkflow).toContain('- lane: packages-4');
-    expect(nodeWorkflow).toContain(
-      'run: pnpm vitest run --project packages --shard=$' + '{{ matrix.shard }} --maxWorkers=1',
-    );
-    expect(nodeWorkflow).toContain('run: pnpm vitest run --project apps --maxWorkers=1');
-    expect(nodeWorkflow).toContain('run: pnpm vitest run --project examples --maxWorkers=1');
-    expect(nodeWorkflow).toContain('- lane: tooling-1');
-    expect(nodeWorkflow).toContain('- lane: tooling-2');
-    expect(nodeWorkflow).toContain(
-      'run: pnpm vitest run --project tooling --shard=$' + '{{ matrix.shard }} --maxWorkers=1',
-    );
-    expect(nodeWorkflow).toContain(
-      'FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/$' + '{{ matrix.lane }}',
-    );
-    expect(nodeWorkflow).toContain('FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/tooling');
-    expect(nodeWorkflow).toContain("hashFiles('.artifacts/vitest-shutdown-debug/**/*.json') != ''");
-    expect(vitestConfig).toContain('passWithNoTests: true');
-    expect(nodeWorkflow).toContain('run: pnpm build');
-    expect(nodeWorkflow).toContain('run: pnpm typecheck');
-    expect(nodeWorkflow).toContain('run: pnpm lint');
-    expect(ciWorkflow).toMatch(/if: \$\{\{ always\(\) && github.event_name == 'pull_request' \}\}/u);
-    expect(ciWorkflow).toContain('verify-platform-consistency-governance');
-    expect(verifyJobStart).toBeGreaterThanOrEqual(0);
-    expect(verifyNeedsStart).toBeGreaterThanOrEqual(0);
-    expect(verifyNeeds).toContain('deno-platform');
-    expect(verifyNeeds).toContain('node-support');
-    expect(verifyNeeds).toContain('verify-platform-consistency-governance');
-    expect(() => {
-      expect(
-        directNeeds(verifyJobLines.filter((line) => line !== '      - deno-platform')),
-      ).toContain('deno-platform');
-    }).toThrow();
-    expect(ciWorkflow).toMatch(
-      /studio-browser:\n\s+name: Studio browser\n\s+runs-on: ubuntu-latest\n\s+needs:\n\s+- resolve-pr-verification-scope\n\s+- deterministic-preflight\n\n\s+steps:/u,
-    );
-    const studioVerificationCondition = "if: github.event_name != 'pull_request' || needs.resolve-pr-verification-scope.outputs.mode != 'scoped' || contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')";
-    const studioNoopCondition = "if: github.event_name == 'pull_request' && needs.resolve-pr-verification-scope.outputs.mode == 'scoped' && !contains(needs.resolve-pr-verification-scope.outputs.package_names, '@fluojs/studio')";
-    const studioBrowserStart = ciWorkflow.indexOf('  studio-browser:');
-    const nextJobStart = ciWorkflow.indexOf('\n  official-web-runtime-adapter-portability:', studioBrowserStart);
-    const studioBrowserJob = ciWorkflow.slice(studioBrowserStart, nextJobStart);
-
-    const studioVerificationDirectives = [
-      'uses: actions/checkout@v5',
-      'uses: pnpm/action-setup@v5',
-      'uses: actions/setup-node@v5',
-      'run: pnpm install --frozen-lockfile',
-      'run: node tooling/scripts/run-workspace-build-closure.mjs @fluojs/studio',
-      'run: pnpm --filter @fluojs/studio test:browser',
-    ];
-    for (const directive of studioVerificationDirectives) {
-      expect(studioBrowserJob).toContain(`${studioVerificationCondition}\n        ${directive}`);
+    expect(ciWorkflow).toContain('needs: [plan, build, verification, compatibility]');
+    expect(ciWorkflow).toContain('if: $' + '{{ always() }}');
+    expect(ciWorkflow).toContain('--aggregate');
+    expect(nodeWorkflow).toContain('verification-runner.mjs --plan');
+    expect(nodeWorkflow).toContain('fetch-depth: 0');
+    expect(capabilities).toEqual(expect.arrayContaining([
+      'platform-governance', 'deno-native', 'studio-browser',
+      'packages-1', 'packages-2', 'packages-3', 'packages-4',
+      'tooling-1', 'tooling-2', 'apps', 'examples', 'runtime-floor',
+    ]));
+    expect(args).toContain('verify:platform-consistency-governance');
+    expect(args).toContain('typecheck');
+    expect(args).toContain('lint');
+    expect(args).toContain('--filter @fluojs/studio test:browser');
+    for (const project of ['apps', 'examples']) {
+      expect(args).toContain(`vitest run --project ${project} --maxWorkers=1`);
     }
-    expect(studioBrowserJob.match(new RegExp(studioVerificationCondition.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'gu'))).toHaveLength(studioVerificationDirectives.length);
-    expect(studioBrowserJob).toContain(`${studioNoopCondition}\n        run: echo`);
-
-    const requiresStudioBrowser = (mode: string, packageNames: readonly string[]): boolean =>
-      mode !== 'scoped' || packageNames.includes('@fluojs/studio');
-    expect(requiresStudioBrowser('scoped', ['@fluojs/studio'])).toBe(true);
-    expect(requiresStudioBrowser('scoped', ['@fluojs/cache-manager'])).toBe(false);
-    expect(ciWorkflow).toContain('- studio-browser');
-    expect(ciWorkflow).toMatch(/resolve-pr-verification-scope:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
-    expect(ciWorkflow).toMatch(/verify-platform-consistency-governance:[\s\S]*?- name: Checkout[\s\S]*?fetch-depth: 0/u);
+    expect(catalog.tasks.find(({ id }) => id === 'studio')?.dependencies).toContain('build');
+    expect(catalog.tasks.find(({ id }) => id === 'static')?.dependencies).toContain('build');
   });
 
-  it('runs canonical docs verification once on latest Node 24 for every PR scope', () => {
+  it('runs canonical docs verification once in the required primary task', () => {
     // Given
-    const ciWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/ci.yml'), 'utf8');
-    const nodeWorkflow = readFileSync(resolve(repoRoot, '.github/workflows/node-verification.yml'), 'utf8');
+    const catalog = readVerificationManifest();
 
     // When
-    const docsRuns = [...ciWorkflow.matchAll(/run: pnpm verify:docs/gu), ...nodeWorkflow.matchAll(/run: pnpm verify:docs/gu)];
+    const docsTasks = catalog.tasks.filter(({ commands }) =>
+      commands.some(({ executable, argv }) => executable === 'pnpm' && argv.join(' ') === 'verify:docs'));
 
     // Then
-    expect(docsRuns).toHaveLength(1);
-    expect(nodeWorkflow).toMatch(
-      /checks:[\s\S]*?if: inputs\.node-version == '24.x'\n\s+run: pnpm verify:docs/u,
-    );
+    expect(docsTasks.map(({ id }) => id)).toEqual(['static']);
+    expect(docsTasks[0]?.runtime).toBe('primary');
+    expect(docsTasks[0]?.capabilities).toContain('docs');
   });
 
   it('keeps Changesets release automation bound to main pushes and token-backed npm publish', () => {

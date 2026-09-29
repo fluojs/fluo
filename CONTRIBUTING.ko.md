@@ -12,7 +12,7 @@ fluo는 표준 TypeScript 데코레이터와 명시적인 계약 규율을 기�
 
 fluo는 `pnpm`으로 관리되는 모노레포 구조를 사용합니다.
 
-1. **사전 요구 사항**: private development workspace용 Node.js `>=24.0.0 <27` 및 `pnpm`.
+1. **사전 요구 사항**: private development workspace용 Node.js `>=24.11.0 <27` 및 `pnpm`(Babel 8 compiler toolchain floor).
 2. **의존성 설치**:
    ```sh
    pnpm install
@@ -28,18 +28,19 @@ fluo는 `pnpm`으로 관리되는 모노레포 구조를 사용합니다.
 
 ## 푸시 전 검증
 
-PR을 생성하거나 업데이트하기 전에 baseline workspace 검증 명령어를 실행하세요.
+PR을 생성하거나 업데이트하기 전에 clean worktree에서 canonical 검증을 실행하세요.
 
 ```sh
-pnpm verify
+pnpm verify:local --base-ref <approved-base-sha>
 ```
 
-이 명령어는 `build`, `typecheck`, `lint`, `test`를 순차적으로 실행합니다.
-CI 전용 Node matrix, artifact transfer provenance, native runtime lane,
-생성 starter browser check, aggregate GitHub Actions semantics까지 로컬에서
-검증한다고 주장하지 않습니다. exact-head receipt-backed local command plan에는
-`pnpm verify:local`을 사용하고, isolated runner 차원은 계속 CI가 권한을 가집니다.
-각 baseline 단계는 개별적으로도 실행할 수 있습니다.
+이 명령은 고정된 Linux/amd64 container에서 공통 PR task profile을 실행하고
+exact-head receipt를 기록합니다. Docker는 amd64 실행, Linux volume, host-network
+Docker fixture를 지원해야 하며 Apple Silicon emulation은 느릴 수 있습니다.
+`--plan`으로 계획을 확인하고 `--profile extended`로 보조 버전의 전체 검증을 실행합니다.
+환경을 사용할 수 없으면 native 실행으로 대체하지 않고 실패합니다.
+`pnpm verify`는 host-native baseline이며 canonical parity receipt가 아닙니다.
+개별 개발 검증도 실행할 수 있습니다.
 
 ```sh
 pnpm build
@@ -48,12 +49,13 @@ pnpm lint          # Biome — biome.json 참고
 pnpm test
 ```
 
-local receipt는 worktree가 clean 상태인 동안에만 유효합니다. 시작 시점, 각 command
-boundary, finalization의 Git status digest를 identity에 포함합니다. Package ownership,
-manifest, source copy, build tooling 변경은 build 전에 cold workspace `dist` cleanup을
-수행하고 manifest가 선택한 companion command를 실행합니다. Plan은 의도적으로
-preflight-first이며 Node `24.0.0`/`24.x`/`26.x` matrix, package 4 shard, tooling 2 shard,
-native runtime, Studio browser, aggregate fail-closed semantics는 계속 CI가 증명합니다.
+Receipt는 clean source identity, profile, environment lock, 실측 runtime/browser
+버전, task 결과와 evidence hash를 묶습니다. 이전 host-native receipt는 이 profile에
+사용할 수 없습니다. Primary Node 24는 package 4 shard, tooling 2 shard,
+browser/native/docs/packed 검증을 유지하고, 24.11.0과 Node 26은 독립 build,
+모든 package test와 starter smoke를 유지합니다. Exact 24.0.0은 runtime-only입니다.
+보조 버전 전체 검증은 publish 전 정확한 release source에도 필수입니다.
+GitHub 권한, artifact 전달, queueing, 외부 장애는 여전히 원격 증거가 필요합니다.
 
 ## 공개 API 문서화
 

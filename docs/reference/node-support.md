@@ -9,21 +9,37 @@ Node floors are classified by role. The 32 Node-bound public packages that are p
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
 | Exact Node `24.0.0` | Runtime-only floor lane: artifacts built under a supported compiler Node, then real public runtime entry imports with HTTP listener, dispatch, config, and shutdown behavior; no Babel 8 load and no install on 24.0.0 | Minimum supported runtime floor, not the release runtime |
-| Exact Node `24.11.0` | Frozen install, sharded full verification, generated starter sandbox matrix | Minimum compiler toolchain floor for Babel 8 |
-| Latest Node `24.x` | Frozen install, sharded full verification, `pnpm verify:docs`, generated starter sandbox matrix | Canonical development and Changesets release runtime |
-| Latest Node `26.x` | Frozen install, sharded full verification, generated starter sandbox matrix | Forward verification only; never publish |
+| Exact Node `24.11.0` | PR: frozen install, fresh build, all package tests and four-starter smoke; extended: full verification and browser journeys | Minimum compiler toolchain floor for Babel 8 |
+| Locked Node `24.x` | Full primary PR verification, `pnpm verify:docs`, generated starter dev/production browser matrix | Canonical development verification and Changesets release runtime |
+| Locked Node `26.x` | PR: frozen install, fresh build, all package tests and four-starter smoke; extended: full verification and browser journeys | Forward verification only; never publish |
 | Bun, Deno, Cloudflare Workers | Their existing independent adapter/native-runtime lanes | Runtime-native deployment contracts |
 
-The `node-support` matrix in `.github/workflows/ci.yml` calls `.github/workflows/node-verification.yml` and is required by the aggregate `verify` gate. A deterministic latest-24 preflight runs frozen install, build, typecheck, lint, platform governance, and the full tooling project before the runtime fan-out. Every Node version of the full matrix then verifies the same full build, typecheck, lint, and test coverage as local `pnpm verify`. The separate `node-runtime-floor` job calls `.github/workflows/node-runtime-floor.yml`: it builds the workspace and bundles a self-contained runtime exercise under compiler Node `24.x`, transfers it with the same artifact provenance contract, and executes it on exact Node `24.0.0` without a root install and without loading Babel. In CI, `pnpm build` is followed by independent jobs for `pnpm typecheck` and `pnpm lint`, sharded tests, and generated starter verification. Package tests use four shards and tooling tests use two shards. The apps and examples projects each run in full once in the first tooling shard job; each test process retains `--maxWorkers=1`. A small change scope does not skip this full Node verification.
+`.github/workflows/ci.yml` expands to 18 jobs including plan resolution and the required `Verify` aggregate. Sixteen execution tasks use the shared catalog in `tooling/ci/local-verification-manifest.json` and the runner in `tooling/ci/verification-runner.mjs`; `.github/workflows/node-verification.yml` hosts one task per invocation. Primary package tests retain four shards, tooling retains two, and apps/examples run once in the first tooling shard. The primary build supplies package artifacts and the runtime-floor bundle. Exact Node `24.0.0` executes that bundle without installing workspace dependencies or loading Babel.
 
-`pnpm verify:local` records an exact-head local receipt: worktree root, head and
-tree identities, merge-base and diff identity, command plan, logs, environment,
-and limits. A receipt is invalid when its head, tree, or diff changes, and
-`--plan` never emits a passing receipt. The local command intentionally cannot
-prove CI-only runners, GitHub artifact transfer, or aggregate job semantics.
-Those dimensions remain CI evidence; failure census reports preserve attempts and
-completed failed jobs instead of treating a later rerun as proof that no failure
-occurred.
+This replaces the previous full three-version PR matrix with a full primary profile and two compatibility profiles. Supported package engine ranges do not change, but per-PR assurance on secondary versions is narrower: full secondary typecheck, lint, tooling, apps/examples and browser verification moves to `.github/workflows/extended-verification.yml` and the exact-source prerequisite of `.github/workflows/release.yml`. A previous scheduled success never substitutes for the publishing commit's extended verification.
+
+`tooling/ci/environment.lock.json` pins exact versions and download checksums instead of resolving floating Node tags independently on each runner. Refresh the lock through a reviewed change when adopting newer releases. Both local and remote tasks use the same Debian Linux/amd64 image recipe, browser and native-runtime versions.
+
+Scheduled runs report available Node 24/26 releases without changing the lock automatically. Generated starter PR checks use the four reviewed snapshots in `tooling/cli/verification-locks/`: external resolutions stay frozen, while current-source internal tarball integrity is rebound only after its dependency graph matches the snapshot. A changed graph fails with regeneration guidance. Capture replacement snapshots from real fresh installations with `captureStarterSnapshot` in `tooling/cli/starter-lockfile.mjs` and the pinned Bun YAML parser, review their dependency changes, then run the locked matrix. Standalone sandbox commands retain fresh resolution by default; the extended profile also runs a separate fresh-resolution starter matrix.
+
+The plan job and canonical local command both execute the real Docker runner fixture on the host before task fan-out. This verifies source isolation, artifact restoration and failure evidence without recursively starting Docker fixtures inside test containers. An unavailable daemon fails this gate rather than skipping it.
+
+Tasks reuse pnpm's integrity-checked package store, but retain separate checkouts and `node_modules` layouts. Workspace build outputs cross task boundaries only through the verified build archive. Retried jobs update canonical artifact aliases only after saving attempt-specific task evidence, so earlier failure logs and browser traces remain available.
+
+`pnpm verify:local --base-ref <sha>` runs the same PR tasks in isolated Linux/amd64
+containers and records an exact-head receipt. `--plan` prints the frozen plan
+without passing evidence; `--profile extended` also runs full secondary coverage.
+Docker must support amd64 execution, Linux-owned writable volumes, Unix-socket
+access and host-network fixture connections. Apple Silicon uses emulation and
+can be slower than native hosted x64. Source and file-watch tests run inside
+Linux volumes rather than macOS bind mounts. An unavailable environment fails;
+native macOS or arm64 execution never silently replaces canonical verification.
+
+Receipts bind the source tree, base/diff, profile, catalog, environment lock,
+actual runtime/browser versions, required task results and log/artifact digests.
+Old host-native receipts do not prove this Linux profile. GitHub permissions,
+artifact transport, queueing and external outages still require remote evidence.
+Failure census reports retain failed attempts even when a later run succeeds.
 
 Receipt identity also binds a clean Git status digest at startup, each command
 boundary, and finalization. Artifact consumers use exact run/name/SHA/digest
@@ -36,7 +52,7 @@ silently treating unavailable data as success.
 
 Full-verification package builds are transferred only within the same workflow run, commit, and Node version. The runtime-floor bundle intentionally crosses from compiler Node to exact Node `24.0.0`, while retaining the same run, commit, artifact identity, and digest checks. A tar archive preserves package `dist` directories and the CLI's generated dependency metadata, including executable permissions and symbolic links; it does not bypass public declaration fixtures or package global setup. Generated starter verification runs after the build without waiting for tests to finish. Latest `24.x` consolidates the former duplicate PR verification and runs `pnpm verify:docs` once. The aggregate gate does not treat a required job's failure, cancellation, or skip as success.
 
-Outside Node verification, the web runtime adapter portability suite exercises all Bun, Deno, and Cloudflare Workers cases in one job to avoid repeated project setup. Native response cookie verification also builds the HTTP helper once in one job, then runs the three runtime commands sequentially. A failure in any command still blocks the required `Verify` gate; Bun native routing/lifecycle and Deno platform verification remain separate jobs.
+Two native tasks preserve all runtime-specific checks. `native-bun` runs Bun routing/lifecycle and Drizzle using their respective locked versions. `native-web` runs the Deno adapter, every Bun/Deno/Workers portability case, and all three native cookie commands. Grouping does not replace a floor runtime with a newer one. Any required command failure, missing evidence, cancellation or unexpected skip blocks `Verify`.
 
 The focused `test:node-floor` command remains available for local checks, not as a substitute for full CI verification. It covers manifest classification, all scaffold profiles, config env-file/watch behavior, the published portable runtime import, Node HTTP listeners, adapter portability, and the existing Vite compatibility seam. The required runtime-only lane executes on exact Node `24.0.0`, so CI does not substitute a later 24.x patch for the runtime floor claim.
 
