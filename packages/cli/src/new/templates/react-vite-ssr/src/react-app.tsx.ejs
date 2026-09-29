@@ -1,6 +1,7 @@
 import {
   Link,
   ReactClientRouterProvider,
+  ReactNavigationExperience,
   createReactRouteSnapshot,
   type ReactRouteSnapshotInput,
   useParams,
@@ -10,7 +11,7 @@ import {
   useNavigation,
 } from '@fluojs/react/client';
 import type { ReactInitialNavigationPage } from '@fluojs/react';
-import { type ReactElement, isValidElement, useEffect, useRef, useState } from 'react';
+import { type ReactElement, createElement, isValidElement, useEffect, useRef, useState } from 'react';
 
 export const REACT_IDENTIFIER_PREFIX = 'fluo-react-vite-' as const;
 
@@ -27,6 +28,29 @@ declare global {
     __reactResource?: { readonly id: string; operate: () => string };
     __reactResourceStats?: { mounts: number; cleanups: number };
   }
+}
+
+function productPage(activePage: ReactElement): ReactElement {
+  const props: unknown = activePage.props;
+  const productName = typeof props === 'object' && props !== null
+    && 'productName' in props && typeof props.productName === 'string'
+    ? props.productName : null;
+  const sku = typeof props === 'object' && props !== null
+    && 'sku' in props && typeof props.sku === 'string'
+    ? props.sku : null;
+  return createElement('div', { key: activePage.key },
+    productName !== null && sku !== null && (
+      <section aria-label='Product data'>
+        <p data-testid='product-name'>Current product: {productName}</p>
+        <form action={`/products/${encodeURIComponent(sku)}`} encType='multipart/form-data' method='post'>
+          <label htmlFor='product-name-input'>Product name</label>
+          <input defaultValue={productName} id='product-name-input' minLength={3} name='name' required />
+          <button type='submit'>Save product</button>
+        </form>
+      </section>
+    ),
+    activePage,
+  );
 }
 
 function LongLivedResource(): ReactElement {
@@ -81,6 +105,7 @@ function SharedNavigation(): ReactElement {
       <nav aria-label='Page navigation'>
         <Link href='/products/sku-84?preview=false'>Open sku-84</Link>
         <Link href='/search?q=catalog'>Search catalog</Link>
+        <Link href='/products/render-error'>Open throwing page</Link>
         <Link href='/search?q=catalog' target='_blank'>Open search in new tab</Link>
         <Link href='/not-built'>Missing page</Link>
         <button onClick={() => router.push('/products/sku-126?preview=true')} type='button'>
@@ -120,49 +145,30 @@ export function ReactAppDocument({
         reason === 'network' || reason === 'server-error' || reason === 'import-failure'
           ? 'preserve' : 'document'}
     >
-      {(destination) => {
-        const activePage = destination ?? page;
-        const activeElement = isValidElement(activePage) ? activePage : null;
-        const props: unknown = activeElement?.props;
-        const productName = typeof props === 'object' && props !== null
-          && 'productName' in props && typeof props.productName === 'string'
-          ? props.productName : null;
-        const sku = typeof props === 'object' && props !== null
-          && 'sku' in props && typeof props.sku === 'string'
-          ? props.sku : null;
-        return (
+      {(destination) => (
           <html lang='en'>
             <head>
               <meta charSet='utf-8' />
               <meta content='width=device-width, initial-scale=1' name='viewport' />
               <link href='/assets/favicon.svg' rel='icon' />
-              <title>Fluo React starter</title>
               {stylesheets.map((href) => (
                 <link data-vite-style href={href} key={href} rel='stylesheet' />
               ))}
             </head>
             <body>
               <SharedNavigation />
-              <div id='page-slot'>
-                {productName !== null && sku !== null && (
-                  <section aria-label='Product data' key={activeElement?.key ?? 'initial'}>
-                    <p data-testid='product-name'>Current product: {productName}</p>
-                    <form action={`/products/${encodeURIComponent(sku)}`} encType='multipart/form-data' method='post'>
-                      <label htmlFor='product-name-input'>Product name</label>
-                      <input defaultValue={productName} id='product-name-input' minLength={3} name='name' required />
-                      <button type='submit'>Save product</button>
-                    </form>
-                  </section>
-                )}
-                {activePage}
-              </div>
+              <main tabIndex={-1}>
+                <ReactNavigationExperience
+                  destination={destination !== null && isValidElement(destination) ? productPage(destination) : null}
+                  page={productPage(page)}
+                />
+              </main>
               {initialPage && (
                 <script id='fluo-initial-page' type='application/json'>{initialPage.json}</script>
               )}
             </body>
           </html>
-        );
-      }}
+      )}
     </ReactClientRouterProvider>
   );
 }

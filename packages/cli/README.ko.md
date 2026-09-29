@@ -188,14 +188,22 @@ redirect하며 JavaScript 없이도 form이 동작합니다. 셸을 교체하지
 
 React `dev` script는 이제 직접 실행한 CLI와 동일한 `fluo dev` 경로로 위임합니다.
 의존성 설치 후 어느 경로든 수동 production build 없이 시작합니다. Vite가 SSR entry를
-변환하고 Fastify listener가 동일 origin에서 client module, refresh preamble, CSS,
-WebSocket을 제공합니다. Vite가 변환한 React component 수정은 Fast Refresh, CSS
+변환하며 안정된 개발 gateway가 공개 HTTP port와 WebSocket을 유지합니다. 각 Fastify
+app generation은 임시 private port에서 client module, refresh preamble, CSS를
+동일 origin으로 제공합니다. Client-only React component 수정은 Fast Refresh, CSS
 수정은 HMR을 사용해 app child를 교체하지 않습니다. 직접 HTTP 요청은 기존 DTO-bound
 route를 거친 뒤 최신 SSR page를 로드합니다. React가 호환 가능한 component boundary로
 판단할 때만 state를 보존하며, 호환되지 않는 export나 hook 변경은 remount/reload를
 일으킬 수 있습니다. Syntax 오류는 Vite overlay와 terminal에 나타나고 같은 session에서
-수정하면 회복합니다. Server-only, graph 밖, 감시 대상 config 수정은 child restart를
-유지합니다(#3877이 일반적인 안전한 restart 정책을 소유). `build`와 `start`는 별도
+수정하면 회복합니다. Server-only 수정은 이전 app을 닫고 drain한 뒤 gateway 뒤에서
+새 handler를 bootstrap하며 browser document와 client resource를 유지합니다.
+전환 중 요청에는 503과 `Retry-After: 1`을 응답하고 bootstrap 실패 후에는 수정
+저장까지 사용 불가 상태를 유지합니다. Server/client 공유 수정은 혼합 버전을
+피하기 위해 readiness 뒤 한 번 reload할 수 있습니다. 감시 대상 `.env`와 Vite
+config는 child restart 경계를 유지하며 raw watch 및 다른 runtime mode는 그대로입니다.
+Config로 process가 교체되면서 client module 적재가 중단되었다면 새 document 요청으로
+다시 시도하세요. 동일 document 유지는 server-only 수정에 적용됩니다.
+`build`와 `start`는 별도
 production manifest/static asset 경로를 유지하며 dev preamble을 포함하지 않습니다.
 기존 생성 앱은 [React dev HMR 이전](../../docs/getting-started/migrate-react-dev-hmr.ko.md)을
 따라야 합니다. `@fluojs/config`의 watched env snapshot reload는 code restart와 별개입니다.
@@ -218,7 +226,15 @@ application file과 다시 실행할 lifecycle command를 정확히 가리킵니
 남고 `router.push(...)`는 build-mapped destination에 HTTP 승인 soft navigation을 수행합니다.
 미지원 page와 JavaScript 비활성 상태는 native document 이동을 유지합니다. 일반 page를 추가할 때는
 page module과 HTTP handler/DTO만 작성하며 client entry, renderer, manifest, router store를
-편집하지 않습니다. 기존 생성 앱의 opt-in 방법은
+편집하지 않습니다.
+Generated shell은 `ReactNavigationExperience`를 opt-in으로 사용합니다. Pending 및 polite
+상태 알림은 key가 지정된 page slot 밖에 유지되고 destination render 오류는 local reset을
+제공합니다. `@PageMetadata(...)`는 request에서 선택한 title/meta/link descriptor를 SSR과
+soft navigation에 전달합니다. 기본 focus/scroll policy는 `onApprovedNavigation`으로
+교체할 수 있습니다. Local render reset은 HTTP request를 추가하지 않으며 #3864가 별도로
+보존된 transport failure의 retry와 document exit를 소유합니다. 기존 생성 앱은 앱 소유
+composition을 갱신해야 opt-in되고 package 설치만으로 low-level provider의 focus/scroll
+policy가 바뀌지 않습니다. 기존 생성 앱의 opt-in 방법은
 [composition migration guide](../../docs/getting-started/migrate-react-starter-composition.ko.md)를
 참고하세요. 이 starter는
 RSC, Server Functions, file routing, client route table, SPA document swapping, prefetch, data cache를

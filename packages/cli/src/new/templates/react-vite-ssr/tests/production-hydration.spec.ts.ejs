@@ -1,4 +1,7 @@
+import { spawn } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
+import { createServer as createNetServer } from 'node:net';
+import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
@@ -141,6 +144,79 @@ test('hydrates two DTO pages and preserves the shell during HTTP-approved naviga
   await expect(page).toHaveURL(/\/products\/sku-126\?preview=true$/u);
   await expect(page.getByRole('heading', { name: 'Catalog item sku-126' })).toBeVisible();
   expect(browserDiagnostics).toEqual([]);
+});
+
+test('retains the approved page and metadata while an HTTP destination is pending', async ({ page }) => {
+  // Given: the negotiated search request is deferred before approval.
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Shell taps: 0' }).click();
+  let release = () => {};
+  const deferred = new Promise<void>((resolve) => { release = resolve; });
+  await page.route('**/search?q=catalog', async (route) => {
+    if (route.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1') {
+      await deferred;
+    }
+    await route.continue();
+  });
+  const requestStarted = page.waitForRequest((request) =>
+    new URL(request.url()).pathname === '/search'
+    && request.headers().accept === 'application/vnd.fluo.react-navigation+json;v=1',
+  { timeout: 10_000 });
+  const click = page.getByRole('link', { name: 'Search catalog' }).first().click();
+  try {
+    await requestStarted;
+
+    // When: the new page is still unapproved.
+    // Then: the previous page and shell are usable and its page head is unchanged.
+    await expect(page.locator('[aria-live="polite"]')).toHaveText('Loading page');
+    await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+    await expect(page).toHaveTitle('Catalog item sku-42');
+    await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+    await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+  } finally {
+    release();
+  }
+  await click;
+  await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+  await expect(page).toHaveTitle('Search: catalog');
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', 'Search catalog');
+  await expect(page.locator('link[rel="canonical"]')).toHaveCount(0);
+  await expect(page.locator('link[data-vite-style]')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+});
+
+test('resets a throwing approved page locally without a second request', async ({ page }) => {
+  // Given: the HTTP-approved destination throws only after client rendering starts.
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Shell taps: 0' }).click();
+  await page.evaluate(() => { document.documentElement.dataset.starterIdentity = 'retained'; });
+  let approvals = 0;
+  page.on('response', (response) => {
+    if (new URL(response.url()).pathname === '/products/render-error'
+      && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1') {
+      approvals++;
+    }
+  });
+  const approved = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/products/render-error'
+    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1');
+
+  // When: the user locally resets the already-approved page after a React render error.
+  await page.getByRole('link', { name: 'Open throwing page' }).click();
+  expect((await approved).status()).toBe(200);
+  await expect(page.getByRole('alert', { name: 'Page rendering failed' })).toBeVisible();
+  await expect(page).toHaveURL(/\/products\/render-error$/u);
+  await expect(page).toHaveTitle('Catalog item render-error');
+  await page.evaluate(() => { Reflect.set(window, '__allowRenderRetry', true); });
+  await page.getByRole('button', { name: 'Try rendering this page again' }).click();
+
+  // Then: the destination, shell and document survive with no fresh HTTP approval.
+  await expect(page.getByRole('heading', { name: 'Catalog item render-error' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.dataset.starterIdentity)).toBe('retained');
+  expect(approvals).toBe(1);
 });
 
 const NAVIGATION_MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
@@ -584,6 +660,85 @@ test('updates a React component and CSS over the app WebSocket without losing el
     await Promise.all([writeFile(pageFile, originalPage), writeFile(cssFile, originalCss)]);
   }
 });
+
+test('retains the document and worker through server restart and failed-bootstrap correction', async ({ page }) => {
+  test.setTimeout(60_000);
+  test.skip(!['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? ''), 'Server recovery is development only.');
+  const file = new URL('../src/app.ts', import.meta.url);
+  const original = await readFile(file, 'utf8');
+  const changed = original.replace("preview: input.preview === 'true'", "preview: input.preview !== 'false'");
+  expect(changed).not.toBe(original);
+  const invalid = changed.replace("const props = { sku: input.sku, preview: input.preview !== 'false' };", 'const props = ;');
+  expect(invalid).not.toBe(changed);
+
+  await page.goto('/products/sku-42');
+  await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+  const documentHandle = await page.evaluateHandle(() => document);
+  const worker = await page.evaluateHandle(() => {
+    const url = URL.createObjectURL(new Blob([
+      'let count = 0; self.onmessage = () => self.postMessage(++count);',
+    ], { type: 'text/javascript' }));
+    const instance = new Worker(url);
+    URL.revokeObjectURL(url);
+    return instance;
+  });
+  const acknowledge = () => worker.evaluate((instance) => new Promise<number>((resolve) => {
+    instance.onmessage = (event: MessageEvent<number>) => resolve(event.data);
+    instance.postMessage('ack');
+  }));
+  const status = (expected: string) => {
+    const registered = page.waitForEvent('console', {
+      predicate: (message) => message.text() === `listening:${expected}`,
+      timeout: 15_000,
+    });
+    const observed = page.evaluate((wanted) => new Promise<{ status: string; generation: number }>((resolve) => {
+      window.addEventListener('fluo:server-status', (event) => {
+        const message = (event as CustomEvent<{ status: string; generation: number }>).detail;
+        if (message.status === wanted) resolve(message);
+      });
+      console.info(`listening:${wanted}`);
+    }), expected);
+    return { registered, observed };
+  };
+
+  try {
+    expect(await acknowledge()).toBe(1);
+    const restart = status('restarting');
+    const ready = status('ready');
+    await Promise.all([restart.registered, ready.registered]);
+    await writeFile(file, changed);
+    const first = await restart.observed;
+    const second = await ready.observed;
+    expect(second.generation).toBe(first.generation);
+    expect(await documentHandle.evaluate((doc) => doc === document)).toBe(true);
+    expect(await acknowledge()).toBe(2);
+    expect(await (await page.request.get('/products/sku-42')).text()).toContain('Preview mode');
+
+    const failing = status('failed');
+    await failing.registered;
+    await writeFile(file, invalid);
+    await failing.observed;
+    await expect(page.getByRole('status')).toContainText('fix the source');
+    const unavailable = await page.request.get('/products/sku-42');
+    expect(unavailable.status()).toBe(503);
+    expect(unavailable.headers()['retry-after']).toBe('1');
+
+    const recovered = status('ready');
+    await recovered.registered;
+    await writeFile(file, original);
+    await recovered.observed;
+    await expect(page.getByRole('status')).toHaveCount(0);
+    expect(await documentHandle.evaluate((doc) => doc === document)).toBe(true);
+    expect(await acknowledge()).toBe(3);
+    expect(await (await page.request.get('/products/sku-42')).text()).toContain('Published mode');
+  } finally {
+    await writeFile(file, original);
+    await worker.evaluate((instance) => instance.terminate()).catch(() => undefined);
+    await worker.dispose();
+    await documentHandle.dispose();
+  }
+});
+
 test('keeps document navigation when JavaScript is disabled', async ({ browser }) => {
   const context = await browser.newContext({ javaScriptEnabled: false });
   try {
@@ -631,6 +786,9 @@ test('keeps native anchors usable before hydration', async ({ page }) => {
     if (firstEntry) {
       firstEntry = false;
       await held;
+      // The original document must never bootstrap after native navigation.
+      await route.abort('aborted');
+      return;
     }
     await route.continue();
   });
@@ -642,8 +800,11 @@ test('keeps native anchors usable before hydration', async ({ page }) => {
 
     const document = page.waitForResponse((result) =>
       result.url().includes('/search?q=catalog') && result.request().isNavigationRequest());
+    const destinationReady = page.waitForURL('**/search?q=catalog', { waitUntil: 'domcontentloaded' });
     await page.getByRole('link', { name: 'Search catalog' }).first().click({ noWaitAfter: true });
     expect((await document).status()).toBe(200);
+    await destinationReady;
+    await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
   } finally {
     releaseBootstrap();
     await page.unrouteAll({ behavior: 'wait' });
@@ -663,4 +824,117 @@ test('falls back to a native document for an unsupported destination', async ({ 
   expect((await rejected).status()).toBe(404);
   expect((await document).status()).toBe(404);
   await expect(page).toHaveURL(/\/not-built$/u);
+});
+
+test('reloads a shared graph only after readiness and aligns SSR with the client', async ({ page }) => {
+  test.skip(!['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? ''), 'Shared development reload is development only.');
+  const file = new URL('../src/react-app.tsx', import.meta.url);
+  const original = await readFile(file, 'utf8');
+  const changed = original.replace('fluo-react-vite-', 'fluo-react-updated-');
+  expect(changed).not.toBe(original);
+  await page.goto('/products/sku-42');
+  await page.evaluate(() => { document.documentElement.dataset.sharedIdentity = 'before'; });
+  const listening = page.waitForEvent('console', { predicate: (message) => message.text() === 'shared-listener-ready' });
+  const reason = page.evaluate(() => new Promise<string>((resolve) => {
+    window.addEventListener('fluo:server-status', (event) => {
+      const payload = (event as CustomEvent<{ status: string; reason?: string }>).detail;
+      if (payload.status === 'restarting') resolve(payload.reason ?? '');
+    });
+    console.info('shared-listener-ready');
+  }));
+  const navigation = page.waitForEvent('framenavigated', { predicate: (frame) => frame === page.mainFrame(), timeout: 15_000 });
+  try {
+    await listening;
+    await writeFile(file, changed);
+    expect(await reason).toContain('Shared server/client graph changed');
+    await navigation;
+    await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.dataset.sharedIdentity)).toBeUndefined();
+    const latest = await page.request.get('/products/sku-42');
+    expect(await latest.text()).toContain('fluo-react-updated-');
+    expect(await page.locator('[data-react-identifier]').getAttribute('id')).toContain('fluo-react-updated-');
+  } finally {
+    const registered = page.waitForEvent('console', {
+      predicate: (message) => message.text() === 'shared-restore-listener-ready',
+      timeout: 15_000,
+    });
+    const reloaded = page.waitForEvent('framenavigated', {
+      predicate: (frame) => frame === page.mainFrame(),
+      timeout: 30_000,
+    });
+    const connected = page.waitForEvent('websocket', { timeout: 30_000 });
+    const restored = page.evaluate(() => new Promise<void>((resolve) => {
+      window.addEventListener('fluo:server-status', (event) => {
+        if ((event as CustomEvent<{ status: string }>).detail.status === 'ready') resolve();
+      });
+      console.info('shared-restore-listener-ready');
+    }));
+    await registered;
+    await writeFile(file, original);
+    await restored;
+    await reloaded;
+    await connected;
+    await expect(page.getByRole('button', { name: 'Count: 0' })).toBeEnabled();
+  }
+});
+
+test('rebuilds the installed dev process on watched env and Vite configuration saves', async () => {
+  test.setTimeout(90_000);
+  test.skip(!['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? ''), 'Process configuration reload is development only.');
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const files = [new URL('../.env', import.meta.url), new URL('../vite.server.config.ts', import.meta.url)];
+  const originals = await Promise.all(files.map((file) => readFile(file, 'utf8')));
+  const reservation = createNetServer();
+  await new Promise<void>((resolve) => reservation.listen(0, '127.0.0.1', resolve));
+  const address = reservation.address();
+  if (!address || typeof address === 'string') throw new Error('Expected a free local port.');
+  await new Promise<void>((resolve, reject) => reservation.close((error) => error ? reject(error) : resolve()));
+
+  const child = spawn(process.execPath, ['node_modules/@fluojs/cli/bin/fluo.mjs', 'dev'], {
+    cwd: root,
+    detached: true,
+    env: { ...process.env, PORT: String(address.port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const ready: Array<{ resolve(): void; reject(error: Error): void }> = [];
+  let stdout = '';
+  let stderr = '';
+  let lines = '';
+  const exited = new Promise<number | null>((resolve) => child.once('close', (code) => {
+    for (const waiter of ready.splice(0)) waiter.reject(new Error(`fluo dev exited before readiness: ${String(code)}\n${stdout}\n${stderr}`));
+    resolve(code);
+  }));
+  child.stdout.on('data', (chunk: Buffer) => {
+    stdout += String(chunk);
+    lines += String(chunk);
+    let end = lines.indexOf('\n');
+    while (end >= 0) {
+      const line = lines.slice(0, end);
+      lines = lines.slice(end + 1);
+      if (line.includes('React dev app ready')) ready.shift()?.resolve();
+      end = lines.indexOf('\n');
+    }
+  });
+  child.stderr.on('data', (chunk: Buffer) => { stderr += String(chunk); });
+  const nextReady = () => new Promise<void>((resolve, reject) => { ready.push({ resolve, reject }); });
+  try {
+    const started = nextReady();
+    await started;
+    const url = `http://127.0.0.1:${address.port}/products/sku-42`;
+    expect((await fetch(url)).status).toBe(200);
+    for (const [index, file] of files.entries()) {
+      const original = originals[index];
+      if (original === undefined) throw new Error('Expected the generated configuration file.');
+      const restarted = nextReady();
+      await writeFile(file, `${original}\n${index === 0 ? '#' : '//'} issue3877-reload-${index}\n`);
+      await restarted;
+      expect((await fetch(url)).status).toBe(200);
+    }
+  } finally {
+    await Promise.all(files.map((file, index) => writeFile(file, originals[index] ?? '')));
+    if (child.pid && child.exitCode === null) process.kill(-child.pid, 'SIGTERM');
+    const code = await exited;
+    expect(code, `${stdout}\n${stderr}`).toBe(0);
+    await expect(fetch(`http://127.0.0.1:${address.port}/products/sku-42`)).rejects.toThrow();
+  }
 });

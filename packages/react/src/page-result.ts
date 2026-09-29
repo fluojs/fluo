@@ -31,6 +31,7 @@ import {
   isReactNavigationPage,
 } from './navigation-payload.js';
 import type { ReactPageRenderer } from './page-renderer.js';
+import { parseReactPageMetadata, resolveReactPageMetadata } from './page-metadata.js';
 import { getReactRenderPolicies } from './render-policy.js';
 import { isReactServerEntry } from './server-entry.js';
 
@@ -127,6 +128,17 @@ function finalizeReactPageResult(
     const { node, destination, prefetch } = context.value;
     const renderPage = runtime.renderPage;
     const policies = getReactRenderPolicies(context.handler.controllerToken, context.handler.methodName);
+    const pageMetadata = (requestContext: RequestContext) => {
+      if (policies.pageMetadata === undefined) {
+        return undefined;
+      }
+      const resolved = resolveReactPageMetadata(policies, requestContext);
+      const bounded = parseReactPageMetadata(resolved);
+      if (bounded === undefined) {
+        throw new RangeError('The React page metadata exceeds the navigation representation limits.');
+      }
+      return bounded;
+    };
     const page = registerFrameworkResponseWriter(
       { node, destination },
       async (writerContext) => {
@@ -134,6 +146,7 @@ function finalizeReactPageResult(
           writerContext.requestContext.request.url,
           writerContext.requestContext.request.params,
           destination,
+          pageMetadata(writerContext.requestContext),
         ));
         const entry = renderPage(
           node,
@@ -158,7 +171,7 @@ function finalizeReactPageResult(
             requestContext,
             policies,
           );
-          const payload = createReactNavigationPayload(request.url, request.params, destination);
+          const payload = createReactNavigationPayload(request.url, request.params, destination, pageMetadata(requestContext));
           applySuccessResponseMetadata();
           if (entry.status !== undefined) {
             response.setStatus(entry.status);

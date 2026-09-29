@@ -15,6 +15,7 @@ import {
 } from '@fluojs/http';
 import {
   Path,
+  PageMetadata,
   ReactModule,
   ReactNavigationPage,
   Router,
@@ -75,6 +76,11 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
 
   @Router('/products')
   class ProductPageRouter {
+    @PageMetadata(({ request }) => ({
+      title: `Catalog item ${request.params.sku}`,
+      meta: [{ name: 'description', content: `Product ${request.params.sku}` }],
+      links: [{ rel: 'canonical', href: request.url }],
+    }))
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
     async show(input: ProductPageRequest) {
@@ -102,6 +108,10 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
 
   @Router('/search')
   class SearchPageRouter {
+    @PageMetadata(({ request }) => ({
+      title: `Search: ${String(request.query.q ?? '')}`,
+      meta: [{ name: 'description', content: 'Search catalog' }],
+    }))
     @Path('/')
     @RequestDto(SearchPageRequest)
     async show(input: SearchPageRequest) {

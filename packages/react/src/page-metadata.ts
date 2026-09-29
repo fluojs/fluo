@@ -47,6 +47,79 @@ export type ReactPageMetadataFactory = (
   context: ReactPageMetadataContext,
 ) => ReactPageMetadata;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isPageLinkHref(href: string): boolean {
+  if (/^https?:\/\//iu.test(href)) {
+    return true;
+  }
+  return href.startsWith('/') && new URL(href, 'https://fluo.invalid').origin === 'https://fluo.invalid';
+}
+
+/**
+ * Validate the bounded page-owned head subset crossing the HTTP/browser representation.
+ *
+ * @param value Untrusted head descriptors from a navigation payload or resolved render policy.
+ * @returns A bounded head snapshot, or undefined for malformed or oversized descriptors.
+ */
+export function parseReactPageMetadata(value: unknown): ReactPageMetadata | undefined {
+  if (!isRecord(value) || Object.keys(value).some((key) => !['title', 'meta', 'links'].includes(key))
+    || value.title !== undefined && (typeof value.title !== 'string' || value.title.length > 512)
+    || value.meta !== undefined && (!Array.isArray(value.meta) || value.meta.length > 32)
+    || value.links !== undefined && (!Array.isArray(value.links) || value.links.length > 32)) {
+    return undefined;
+  }
+  const meta: ReactPageMeta[] = [];
+  const links: ReactPageLink[] = [];
+  const metaKeys = new Set<string>();
+  const linkKeys = new Set<string>();
+  for (const entry of value.meta ?? []) {
+    if (!isRecord(entry) || typeof entry.content !== 'string' || entry.content.length > 2048
+      || (typeof entry.name === 'string') === (typeof entry.property === 'string')
+      || Object.keys(entry).some((key) => !['name', 'property', 'content'].includes(key))) {
+      return undefined;
+    }
+    const descriptor: ReactPageMeta = typeof entry.name === 'string'
+      ? { name: entry.name, content: entry.content }
+      : { property: String(entry.property), content: entry.content };
+    const identity = metaIdentity(descriptor);
+    if (metaKeys.has(identity) || (descriptor.name ?? descriptor.property).length > 128) {
+      return undefined;
+    }
+    metaKeys.add(identity);
+    meta.push(descriptor);
+  }
+  for (const entry of value.links ?? []) {
+    if (!isRecord(entry) || typeof entry.rel !== 'string' || entry.rel.length > 128
+      || typeof entry.href !== 'string' || entry.href.length > 2048
+      || !isPageLinkHref(entry.href)
+      || entry.media !== undefined && (typeof entry.media !== 'string' || entry.media.length > 128)
+      || entry.type !== undefined && (typeof entry.type !== 'string' || entry.type.length > 128)
+      || Object.keys(entry).some((key) => !['rel', 'href', 'media', 'type'].includes(key))) {
+      return undefined;
+    }
+    const descriptor: ReactPageLink = {
+      href: entry.href,
+      rel: entry.rel,
+      ...(typeof entry.media === 'string' ? { media: entry.media } : {}),
+      ...(typeof entry.type === 'string' ? { type: entry.type } : {}),
+    };
+    const identity = linkIdentity(descriptor);
+    if (linkKeys.has(identity)) {
+      return undefined;
+    }
+    linkKeys.add(identity);
+    links.push(descriptor);
+  }
+  return Object.freeze({
+    ...(typeof value.title === 'string' ? { title: value.title } : {}),
+    ...(value.meta === undefined ? {} : { meta: Object.freeze(meta.map((entry) => Object.freeze(entry))) }),
+    ...(value.links === undefined ? {} : { links: Object.freeze(links.map((entry) => Object.freeze(entry))) }),
+  });
+}
+
 function replaceEntry<Value>(entries: Map<string, Value>, key: string, value: Value): void {
   entries.delete(key);
   entries.set(key, value);

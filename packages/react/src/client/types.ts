@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { ReactPageMetadata } from '../page-metadata.js';
 import type { ReactNavigationFailureReason, ReactNavigationModules } from './navigation-payload.js';
 
 /** Navigation methods that can change or revalidate the active browser document. */
@@ -64,6 +65,7 @@ export interface ReactReadonlySearchParams extends Iterable<[string, string]> {
 /** HTTP-owned route state shared between server rendering and client hydration. */
 export type ReactRouteSnapshot = {
   readonly hash: string;
+  readonly metadata?: ReactPageMetadata;
   readonly navigation: ReactNavigationSnapshot;
   readonly params: Readonly<Record<string, string>>;
   readonly pathname: string;
@@ -73,6 +75,7 @@ export type ReactRouteSnapshot = {
 
 /** Input used to create an immutable route snapshot at the HTTP application boundary. */
 export type ReactRouteSnapshotInput = {
+  readonly metadata?: ReactPageMetadata;
   readonly params?: Readonly<Record<string, string>>;
   readonly url: string | URL;
 };

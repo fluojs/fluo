@@ -165,3 +165,73 @@ test('a second refresh supersedes a held older HTTP approval without losing the 
   expect(await page.evaluate(() => window.__reactResource?.id)).toBe(resourceId);
   expect(await page.evaluate(() => window.__reactResourceStats)).toEqual({ mounts: 1, cleanups: 0 });
 });
+
+test('refresh during an unapproved back restores the approved page before failure and retry', async ({ page }) => {
+  // Given: two approved entries and an exact back request held before approval.
+  const previous = '/products/sku-42?preview=true';
+  const current = '/products/sku-126?preview=true';
+  await page.goto(previous);
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+  const resource = await page.evaluate(() => window.__reactResource?.id);
+  await page.getByRole('button', { name: 'Push sku-126' }).click();
+  await expect(page).toHaveURL(new RegExp(`${current.replace('?', '\\?')}$`, 'u'));
+  let releaseBack = () => {};
+  const backHeld = new Promise<void>((resolve) => { releaseBack = resolve; });
+  let backStarted = () => {};
+  const started = new Promise<void>((resolve) => { backStarted = resolve; });
+  await page.route((url) => `${url.pathname}${url.search}` === previous, async (route) => {
+    if (route.request().headers().accept !== MEDIA_TYPE) return route.continue();
+    backStarted();
+    await backHeld;
+    if (!route.request().failure()) {
+      await route.continue().catch((error: unknown) => {
+        if (!route.request().failure()) throw error;
+      });
+    }
+  });
+  const backRequest = page.waitForRequest((request) =>
+    `${new URL(request.url()).pathname}${new URL(request.url()).search}` === previous
+    && request.headers().accept === MEDIA_TYPE);
+  await page.evaluate(() => history.back());
+  await backRequest;
+  await started;
+  await expect(page.getByText('Navigation: navigating')).toBeVisible();
+  await page.route((url) => `${url.pathname}${url.search}` === current, (route) =>
+    route.request().headers().accept === MEDIA_TYPE
+      ? route.fulfill({ status: 503, body: 'private server details' })
+      : route.continue());
+  const denied = page.waitForResponse((response) => response.status() === 503
+    && response.request().headers().accept === MEDIA_TYPE
+    && `${new URL(response.url()).pathname}${new URL(response.url()).search}` === current);
+
+  // When: refresh cancels back, restores the approved entry, then receives a preserved failure.
+  await page.getByRole('button', { name: 'Refresh' }).click();
+  await denied;
+  await expect(page.getByRole('alert')).toContainText('server-error');
+  expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(current);
+  await expect(page.getByRole('heading', { name: 'Browser destination: Catalog item sku-126' })).toBeVisible();
+  releaseBack();
+  await page.unrouteAll();
+  const retried = page.waitForResponse((response) => response.status() === 200
+    && response.request().headers().accept === MEDIA_TYPE
+    && `${new URL(response.url()).pathname}${new URL(response.url()).search}` === current);
+  await page.getByRole('button', { name: 'Retry navigation' }).click();
+  await retried;
+
+  // Then: retry and subsequent back/forward keep entry order and the shell resource.
+  await expect(page.getByRole('heading', { name: 'Browser destination: Catalog item sku-126' })).toBeVisible();
+  const backApproved = page.waitForResponse((response) => response.status() === 200
+    && response.request().headers().accept === MEDIA_TYPE
+    && `${new URL(response.url()).pathname}${new URL(response.url()).search}` === previous);
+  await page.goBack();
+  await backApproved;
+  await expect(page).toHaveURL(new RegExp(`${previous.replace('?', '\\?')}$`, 'u'));
+  const forwardApproved = page.waitForResponse((response) => response.status() === 200
+    && response.request().headers().accept === MEDIA_TYPE
+    && `${new URL(response.url()).pathname}${new URL(response.url()).search}` === current);
+  await page.goForward();
+  await forwardApproved;
+  await expect(page).toHaveURL(new RegExp(`${current.replace('?', '\\?')}$`, 'u'));
+  expect(await page.evaluate(() => window.__reactResource?.id)).toBe(resource);
+  expect(await page.evaluate(() => window.__reactResourceStats)).toEqual({ mounts: 1, cleanups: 0 });
+});

@@ -190,14 +190,21 @@ approved name replaces it without a history entry.
 
 The React `dev` script now delegates to the same `fluo dev` path as a direct CLI invocation.
 After dependency installation, either starts without an application production build:
-Vite transforms the SSR entry and the Fastify listener serves its client modules, refresh
-preamble, CSS and WebSocket on the same origin. Vite-transformed React component edits
+Vite transforms the SSR entry; a stable development gateway serves the public HTTP port
+and WebSocket while each Fastify app generation listens on a private ephemeral port.
+Client modules, refresh preamble and CSS remain on the same origin. Client-only React edits
 use Fast Refresh and CSS edits use HMR without replacing the app child; direct HTTP
 requests load the latest SSR page through the existing DTO-bound route. React preserves
 state only for compatible component boundaries; incompatible exports or hook changes may
 remount or reload. Syntax errors show in the Vite overlay and terminal and recover after
-correction in the same session. Server-only, graph-external and watched config edits
-retain the child restart boundary (#3877 owns general safe restart policy).
+correction in the same session. Server-only edits close and drain the old app before
+bootstrapping new handlers behind the gateway; the browser document and client resources
+remain alive. Requests in the gap receive 503 and `Retry-After: 1`, and a failed
+bootstrap stays unavailable until a corrective save. Shared server/client changes may
+reload once after readiness to avoid mixed versions. Watched `.env` and Vite config
+edits retain the child restart boundary; raw watch and other runtimes keep their own modes.
+After a config-triggered process replacement, retry a fresh document request if an
+in-flight client module load was interrupted; document retention applies to server-only edits.
 `build` and `start` retain the separate production manifest and static asset path;
 no dev preamble is included there. Existing generated apps must follow the
 [React dev HMR migration](../../docs/getting-started/migrate-react-dev-hmr.md).
@@ -222,6 +229,14 @@ application files and the lifecycle command to rerun. Generated `Link` output re
 and `router.push(...)` performs HTTP-approved soft navigation for build-mapped destinations;
 unsupported pages and disabled JavaScript keep native document navigation. Additional pages
 need a page module and HTTP handler/DTO, not edits to client entry, renderer, manifest, or router store.
+The generated shell opts into `ReactNavigationExperience`: pending and polite announcements
+remain outside the keyed page slot, a destination render error offers a local reset, and
+`@PageMetadata(...)` supplies request-selected title/meta/link descriptors to SSR and soft
+navigation. The default focus/scroll policy can be replaced through `onApprovedNavigation`.
+The local render reset does not issue another HTTP request; #3864 owns transport retry and
+explicit document exit on its separate preserved-failure path. Existing generated consumers
+must update their app-owned composition to opt in; installing a new package version does not
+change the low-level provider's focus/scroll policy.
 The [composition migration guide](../../docs/getting-started/migrate-react-starter-composition.md)
 explains how existing generated apps opt in. The starter
 intentionally excludes RSC, Server Functions, file routing, a client route table, SPA document

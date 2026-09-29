@@ -52,11 +52,23 @@ Configured page renderer의 entry status와 header는 일반 document와 협상�
   "destination": {
     "module": "./navigation-product.ts",
     "props": { "sku": "sku-84", "preview": false }
+  },
+  "metadata": {
+    "title": "Product sku-84",
+    "meta": [{ "name": "description", "content": "Product sku-84" }],
+    "links": [{ "rel": "canonical", "href": "/products/sku-84?preview=false" }]
   }
 }
 ```
 
 `url`과 `params`는 client parsing이 아니라 matching 이후 활성 HTTP request에서 나옵니다.
+선택적 `metadata`는 동일한 matched page의 `@PageMetadata(...)` factory를 broad-to-specific
+순서로 request scope에서 해석하여 일반 document transfer와 협상된 JSON에 함께 전달합니다.
+Page-owned subset은 최대 512자 title, 최대 32개 `name`/`property` meta 및 최대 32개
+`rel`/`href` link descriptor이며 각 값은 최대 2048자입니다. Link href는 root-relative
+또는 HTTP(S)이고 중복 identity와 잘못된 값은 HTTP commit 또는 browser import 전에 거부합니다.
+초기 escaped transfer는 계속 UTF-8 64 KiB 상한을 따르며 opt-in하지 않은 page에는
+metadata가 자동으로 생기지 않습니다.
 `props`는 application이 제공한 JSON-serializable data여야 합니다. Serialization 실패는
 navigation response commit 전에 발생하고 기존 canonical HTTP error path를 따릅니다.
 Request-scoped dependency는 response write가 끝날 때까지 살아 있고 일반 dispatcher가
@@ -101,15 +113,36 @@ media type, network error, redirect, 404, 401/403, DTO failure, server failure�
 `cancelled`를 반환하며 response body를 읽는 동안 발생한 경우에도 import, rendering 또는
 fallback navigation을 시작하지 않습니다. 외부 또는
 non-HTTP(S) URL은 fetch 전에 거부하므로 일반 anchor를 사용하세요.
+#3864의 별도 opt-in failure policy는 **매핑된** importer의 로드 실패를 일시적
+network/server 오류와 함께 `import-failure`로 보존하고 이 page slot 밖에 fresh retry와
+명시적 document exit를 표시할 수 있습니다. 알 수 없는 importer key는 계속
+`unsupported-module`로 document 경로를 따릅니다. 두 경우 모두 승인된 React render
+throw가 아닙니다.
 
 Browser는 React-owned HTML을 교체하거나 path param을 추측하거나 route matcher를 설치하지
 않습니다. Build-produced importer를 `ReactClientRouterProvider`의 `navigationModules`로 전달하고
-function child의 승인된 destination을 application 소유 page slot에 렌더링하세요. 기존 `Link`와
+function child의 승인된 destination을 application 소유 page slot의
+`ReactNavigationExperience`로 렌더링하세요. 공식 조립은 opt-in이며 package 설치만으로
+low-level provider의 navigation effect는 달라지지 않습니다. Pending status는 destination
+boundary 밖에 표시되며 마지막 승인 page, URL, params, head는 그대로 둡니다. 승인된
+destination의 React render throw는 이미 commit한 URL/params와 shell을 유지하고 keyboard로
+조작 가능한 page-local reset을 제공합니다. Reset은 HTTP request/history entry를 추가하지
+않습니다. Application 오류 view도 throw하면 별도 외부 diagnostic/document exit가 표시됩니다.
+복구 불가능한 shell/root 오류나 browser 종료 뒤의 shell 보존은 보장하지 않습니다.
+같은 조립은 승인 snapshot의 page-owned title/meta/link만 갱신·제거하고 bootstrap, icon,
+global stylesheet는 소유하지 않습니다. Polite live region은 pending, 완료, 실패를 알립니다.
+Page-owned metadata를 SSR과 soft navigation에서 `<head>`로 옮기는 이 조립에는 React 19와
+React DOM 19가 필요합니다. 더 넓은 React 18 peer 범위는 다른 패키지 API에 적용되며 이
+head reconciliation을 보장하지 않습니다.
+Pathname push/replace는 scroll 없는 `<main>` focus 뒤 상단으로 이동하고, query-only는
+focus하면서 scroll을 유지하며, fragment-only는 native fragment scrolling을 유지하고 적합한
+target에 focus합니다. Back/forward는 browser 복원 scroll을 보존하면서 `<main>`을 focus합니다.
+`onApprovedNavigation`으로 이 동작을 application policy로 교체할 수 있습니다. Pending 및
+승인 실패는 focus/scroll을 움직이지 않습니다. 기존 `Link`와
 `router.push/replace`는 URL 변경 전에 HTTP 결과를 요청합니다. 성공하면 provider가 서버가
 확정한 URL과 params를 History API 및 모든 route hook에 반영하고 목적지 component를 새로
-mount하며 공통 provider/layout은 유지합니다. Focus policy는 application이 선택합니다.
-실행 가능한 예제는 pathname 전환 뒤 `<main>`에 focus하고 shell counter는 유지하며 page
-counter는 초기화합니다.
+mount하며 공통 provider/layout은 유지합니다. 실행 가능한 예제는 shell state를 유지하고
+destination-local state를 초기화합니다.
 
 `popstate`와 forward traversal은 매번 HTTP 승인을 다시 요청하고 이전의 private payload나
 오래된 params를 새 URL에 재사용하지 않습니다. 새로운 activation 또는 unmount 이후 늦게
@@ -156,7 +189,10 @@ same-origin credential, `no-store`, manual redirect로 다시 요청합니다. P
 HTTP 승인이 성공하면 새 props/params를 반영해 `complete`를 게시하고 새 activation key로
 page-local state를 remount합니다. History에는 push/replace하지 않고 provider와 shell
 resource는 유지합니다. `complete`는 navigation store commit 시점이며 browser paint나
-application component 렌더 성공 보장은 아닙니다. 반환 결과는
+application component 렌더 성공 보장은 아닙니다.
+refresh가 승인 전 back/forward activation을 대체하면 먼저 승인된 history entry로
+복원한 뒤 해당 page를 다시 요청합니다. 보존 실패는 이동된 URL 아래에 승인 page
+data를 표시하거나 forward/back entry 순서를 바꾸지 않습니다. 반환 결과는
 `{ status: 'complete' }`, `{ status: 'error', failure }`, `{ status: 'cancelled' }`,
 `{ status: 'document' }`이며 마지막 값은 문서 fallback 시작이지 로드 완료가 아닙니다.
 안전한 failure의 type은 `refresh`입니다. 보존 실패는 이전 page를 유지하고 `error`를
@@ -171,6 +207,8 @@ document reload가 필요한 소비자는 `window.location.reload()`를 사용�
 [EN migration](../getting-started/migrate-react-refresh.md)과
 [KO migration](../getting-started/migrate-react-refresh.ko.md)을 참고하세요. 이는
 component state를 보존할 수 있는 개발 중 React Fast Refresh와 다릅니다.
+위의 #3872 승인 page render reset은 transport를 재시도하지 않습니다. 공식
+`router.retry()`와 `router.openDocument()` control은 page slot 밖의 공통 shell에 표시합니다.
 
 ## Opt-in public prefetch와 provider-local cache
 

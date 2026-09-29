@@ -139,6 +139,10 @@ built-ins, Vite, `react-dom/server`, React Server Components packages, or Server
 `react` and `react-dom` are declared as peer dependencies so applications own the React runtime
 version. The package root exposes SSR helpers but resolves `react-dom/server` lazily only when a
 React server entry is rendered.
+The opt-in `ReactNavigationExperience` composition requires **React 19 and React DOM 19** for
+page-owned title, meta, and link hoisting into `<head>` during SSR and soft navigation.
+The broader React 18 peer range remains available for other package APIs; it does not provide
+this composition's head-reconciliation guarantee.
 
 ## Phase Boundaries
 
@@ -980,12 +984,30 @@ and importer key before hydration. The generated `./page*.tsx` importers and pro
 check prevent unbuilt destinations from rendering. The same handler props feed both the SSR
 component and browser destination; they must contain JSON data, not DI instances or secrets.
 `ReactClientRouterProvider` keeps its shell while the page slot mounts a fresh destination.
+The official opt-in `ReactNavigationExperience` composes pending and polite live-region status
+outside that slot, a keyed destination render boundary inside it, and a separate safe view if an
+application error view throws. Rendering reset retries only the already-approved component:
+it does not fetch, change URL/params/head, or add history. Transport failures and fresh-HTTP
+`router.retry()` / explicit `router.openDocument()` belong to the provider failure policy;
+the official shell renders its recovery controls outside the slot.
+The shell/root itself is not recoverable by a page boundary.
+`@PageMetadata(...)` for the matched page supplies an optional bounded `metadata` field to
+both the initial transfer and negotiated result. The official composition reconciles only
+its page-owned title, name/property meta, and rel/href link entries, including removal.
+Each title is at most 512 characters, with at most 32 descriptors of each kind and values
+at most 2048 characters; initial escaped JSON remains within 64 KiB. The app retains its
+global CSS, icon, and bootstrap entries. By default, pathname push/replace focuses `<main>`
+without focus-induced scrolling then scrolls to top; query-only moves retain scroll,
+fragment-only moves use native fragment scrolling and focus an eligible target, and back/forward
+focuses `<main>` without overriding restored scroll. Override the effect in this same composition
+with `onApprovedNavigation={(route, previous) => ...}`. Installing the package alone does
+not change the low-level provider's focus/scroll policy.
 The existing low-level renderer and explicit server entry remain supported; their provider
 requires an explicit failure policy to preserve a page, unlike the generated starter.
 
 ```tsx
 import { ReactNavigationPage } from '@fluojs/react';
-import { Link, ReactClientRouterProvider, createReactRouteSnapshot } from '@fluojs/react/client';
+import { Link, ReactClientRouterProvider, ReactNavigationExperience, createReactRouteSnapshot } from '@fluojs/react/client';
 
 // Inside an HTTP-matched @Path handler:
 return ReactNavigationPage.create(<ProductPage sku={input.sku} />, {
@@ -1003,7 +1025,9 @@ const modules = import.meta.glob('./navigation-product.ts');
   {(destination) => (
     <Shell>
       <Link href="/products/sku-84" prefetch="hover">Product</Link>
-      {destination ?? <ProductPage />}
+      <main tabIndex={-1}>
+        <ReactNavigationExperience page={<ProductPage />} destination={destination} />
+      </main>
     </Shell>
   )}
 </ReactClientRouterProvider>
@@ -1036,6 +1060,10 @@ cancelled speculation never commits URL/params or starts fallback. Rejected/non-
 the ordinary credentialed loader and document fallback. Ordinary direct and JavaScript-disabled
 GETs continue to stream HTML and hydration assets. `Link` and `router.push/replace` are the
 only official navigation controls; the helper is their lower-level HTTP validation boundary.
+#3864's opt-in failure policy instead preserves a failed **mapped** import as `import-failure`
+alongside transient transport errors for explicit fresh HTTP retry/document exit; an unknown
+importer key (`unsupported-module`) still takes the document path. Neither case uses the
+approved-component local render reset.
 See the [EN](../../docs/contracts/react-navigation-payload.md) and
 [KO](../../docs/contracts/react-navigation-payload.ko.md) contract and
 [`react-vite-ssr`](../../examples/react-vite-ssr/README.md) for the built example.
@@ -1429,13 +1457,14 @@ This package currently does **not** provide:
   `ReactViteAssetManifest`, `ReactViteAssetManifestResult`, `ReactViteHydrationOptions`,
   `ReactViteJavaScriptAssets`, `ReactViteBootstrapData`, and `ReactViteResolvedEntry` for parsing Vite
   manifests into the stable hydration asset contract without importing Vite from the root.
-- `@fluojs/react/client` subpath — `Link`, `ReactClientRouterProvider`,
+- `@fluojs/react/client` subpath — `Link`, `ReactClientRouterProvider`, `ReactNavigationExperience`,
   `loadReactNavigationDestination(...)`, and
   `ReactClientNavigationError`, `ReactClientRouterContextError`, `createReactRouteSnapshot(...)`,
   `useRouter()`, `usePathname()`, `useParams()`, `useSearchParams()`, `useNavigation()`, and
   `useRouterState()` for progressive HTTP-first browser navigation without widening the root package
   or adding a client route grammar. Type exports are `LinkProps`, `ReactClientNavigationErrorCode`,
-  `ReactClientRouterProviderProps`, `ReactNavigationSnapshot`, `ReactNavigationStatus`,
+  `ReactClientRouterProviderProps`, `ReactNavigationEffect`, `ReactNavigationExperienceProps`,
+  `ReactNavigationSnapshot`, `ReactNavigationStatus`,
   `ReactNavigationType`, `ReactReadonlySearchParams`, `ReactRouteSnapshot`,
   `ReactRouteSnapshotInput`, `ReactRouter`, `ReactNavigationModules`, and
   `ReactNavigationLoadResult`.

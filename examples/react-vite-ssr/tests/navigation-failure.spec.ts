@@ -316,10 +316,10 @@ test('repeated failures remain actionable without remounting the shell resource'
 });
 
 test('a recoverable chunk import failure keeps the page and offers document recovery', async ({ page }) => {
-  // Given: HTTP approves the page, but its build-mapped browser module cannot load.
+  // Given: start on a product so the admin destination importer has not already loaded.
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/admin/qr');
+  await page.goto('/products/sku-42?preview=true');
   await page.evaluate(() => { window.__originalResource = window.__reactResource; });
   await page.route((url) => /\/assets\/navigation-admin-[^/]+\.js$/u.test(url.pathname),
     (route) => route.abort('failed'));
@@ -332,8 +332,8 @@ test('a recoverable chunk import failure keeps the page and offers document reco
 
   // Then: a safe typed failure UI and still-functional resource remain until explicit exit.
   await expect(page.getByRole('alert')).toContainText('import-failure');
-  await expect(page).toHaveURL(/\/admin\/qr$/u);
-  await expect(page.getByRole('heading', { name: 'Admin QR' })).toBeVisible();
+  await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+  await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
   await page.getByRole('button', { name: 'Use shell resource' }).click();
   await expect(page.getByTestId('resource-ack')).not.toBeEmpty();
   expect(await page.evaluate(() => window.__originalResource === window.__reactResource)).toBe(true);

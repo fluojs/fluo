@@ -22,6 +22,7 @@ import { expect, it } from 'vitest';
 import { Path, Router } from './decorators.js';
 import { ReactModule } from './module.js';
 import { ReactNavigationPage } from './navigation-payload.js';
+import { PageMetadata } from './page-metadata.js';
 import { createReactServerEntry } from './server-entry.js';
 
 function request(signal?: AbortSignal): FrameworkRequest {
@@ -482,6 +483,96 @@ it('passes one bounded escaped HTTP-approved destination to the document rendere
     expect(transferred).not.toBeNull();
     expect(html).not.toContain('<img src=x onerror=alert(1)>');
     expect(JSON.parse(transferred?.[1] ?? '')).toEqual(navigation.body);
+  } finally {
+    await app.close();
+  }
+});
+
+it('carries the matched page metadata in both HTTP-approved representations', async () => {
+  // Given: the matched page declares request-specific head descriptors.
+  @Router('/destination')
+  class DestinationRouter {
+    @PageMetadata(({ request }) => ({
+      links: [{ href: `/canonical${request.url}`, rel: 'canonical' }],
+      meta: [{ content: request.url, name: 'description' }],
+      title: `Destination ${request.url}`,
+    }))
+    @Path('/')
+    show() {
+      return ReactNavigationPage.create(createElement('main', null, 'Destination'), {
+        module: './page.tsx', props: {},
+      });
+    }
+  }
+  let initialMetadata: unknown;
+  @Module({
+    imports: [ReactModule.forRoot({
+      controllers: [DestinationRouter],
+      renderPage: (page, _context, _policies, initialPage) => {
+        if (initialPage !== undefined) {
+          initialMetadata = initialPage.payload.metadata;
+        }
+        return createReactServerEntry(page);
+      },
+    })],
+  })
+  class AppModule {}
+  const app = await FluoFactory.create(AppModule);
+  try {
+    // When: HTTP serves the ordinary document and its negotiated destination.
+    const document = response();
+    const navigation = response();
+    await app.dispatch({ ...request(), headers: { accept: 'text/html' } }, document);
+    await app.dispatch(request(), navigation);
+
+    // Then: the one matched page defines exactly the same bounded head on both paths.
+    const expected = {
+      title: 'Destination /destination',
+      meta: [{ name: 'description', content: '/destination' }],
+      links: [{ rel: 'canonical', href: '/canonical/destination' }],
+    };
+    expect(document.statusCode).toBe(200);
+    expect(navigation.statusCode).toBe(200);
+    expect(initialMetadata).toEqual(expected);
+    expect(navigation.body).toMatchObject({ metadata: expected });
+  } finally {
+    await app.close();
+  }
+});
+
+it('rejects unbounded matched page metadata before either HTTP representation commits', async () => {
+  // Given: the matched page's metadata exceeds the public navigation title bound.
+  @Router('/destination')
+  class DestinationRouter {
+    @PageMetadata(() => ({ title: 'x'.repeat(513) }))
+    @Path('/')
+    show() {
+      return ReactNavigationPage.create(createElement('main', null, 'Destination'), {
+        module: './page.tsx', props: {},
+      });
+    }
+  }
+  @Module({
+    imports: [ReactModule.forRoot({
+      controllers: [DestinationRouter],
+      renderPage: (page) => createReactServerEntry(page),
+    })],
+  })
+  class AppModule {}
+  const app = await FluoFactory.create(AppModule);
+  try {
+    // When: HTTP negotiates either a document or a page payload.
+    const document = response();
+    const navigation = response();
+    await app.dispatch({ ...request(), headers: { accept: 'text/html' } }, document);
+    await app.dispatch(request(), navigation);
+
+    // Then: both follow HTTP's error path instead of emitting a successful page.
+    for (const result of [document, navigation]) {
+      expect(result.statusCode).toBe(500);
+      expect(result.headers['Content-Type']).not.toBe('application/vnd.fluo.react-navigation+json;v=1');
+      expect(result.body).toMatchObject({ error: { code: 'INTERNAL_SERVER_ERROR' } });
+    }
   } finally {
     await app.close();
   }

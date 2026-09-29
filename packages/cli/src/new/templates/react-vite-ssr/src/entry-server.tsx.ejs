@@ -8,6 +8,7 @@ import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { ReactAppDocument, REACT_IDENTIFIER_PREFIX } from './react-app';
 
 const developmentPages = import.meta.glob('./page*.tsx');
+export const developmentPageModules = Object.keys(developmentPages);
 
 export class ReactStarterEntryError extends Error {
   readonly code = 'react-starter-entry-incompatible' as const;
@@ -51,7 +52,7 @@ export function createReactPageRenderer(manifest: unknown): ReactPageRenderer {
       <ReactAppDocument
         initialPage={initialPage}
         page={page}
-        route={{ params: context.request.params, url: context.request.url }}
+        route={{ params: context.request.params, url: context.request.url, metadata: initialPage?.payload.metadata }}
         stylesheets={assets.css}
       />,
       assets.hydrationOptions,
@@ -70,7 +71,7 @@ export function createReactDevelopmentPageRenderer(): ReactPageRenderer {
       <ReactAppDocument
         initialPage={initialPage}
         page={page}
-        route={{ params: context.request.params, url: context.request.url }}
+        route={{ params: context.request.params, url: context.request.url, metadata: initialPage?.payload.metadata }}
         stylesheets={['/src/styles.css?direct']}
       />,
       {

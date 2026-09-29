@@ -35,6 +35,17 @@ Framework는 명시한 navigation/history/failure 및 취소 경계, commit 전 
 
 ## 실패와 최신화 기본값
 
+**#3872의 opt-in 공식 조립:** `ReactNavigationExperience`는 pending을 page slot 밖에
+두고 승인된 destination의 render throw를 page-local boundary 실패로 처리합니다.
+Reset은 HTTP request 또는 history 변경 없이 수행됩니다. Application 오류 view도 throw하면
+공통 shell을 유지하면서 외부 diagnostic surface에 표시합니다. Matched
+`@PageMetadata(...)`는 제한된 page-owned head의 추가·교체·제거를 SSR과 soft navigation의
+HTTP 승인 payload에 함께 전달합니다. Live-region, focus, scroll 기본값은
+`onApprovedNavigation`으로 교체할 수 있지만 복구 불가능한 root/browser 오류는 page
+boundary가 복구하지 못합니다. 일시적 transport policy, 새 HTTP 승인 `router.retry()`,
+명시적 `router.openDocument()`와 실패한 history 복구는 계속 #3864가 소유합니다.
+공식 retry 및 문서 이동 control은 page slot 밖의 지속 shell에 둡니다.
+
 **현재** low-level `ReactClientRouterProvider`는 앱이 `failurePolicy`를 제공하지 않으면
 document fallback을 유지합니다. 이 opt-in은 network/5xx 실패에서 셸 보존을 선택하고
 `useNavigation()`에 안전한 실패를 노출하며 새 HTTP `router.retry()` 또는 명시적인

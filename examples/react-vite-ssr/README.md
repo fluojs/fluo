@@ -80,6 +80,13 @@ Open `/admin/qr`, increment both counters, follow `Open admin songs`, then use `
 forward: the URL and page follow HTTP's confirmed destination; the shell counter persists, the
 page counter resets, and the main landmark receives focus. Direct and no-JavaScript requests
 still render ordinary server documents.
+The `Probe shell resource` button sends a real `MessageChannel` operation and displays its
+instance ID and acknowledgement sequence; after an approved page render error and local reset,
+the same resource still acknowledges the next operation. `Open throwing destination` exercises
+the page-local reset without another HTTP request, while `Open throwing error view` exercises
+the safe outer diagnostic/document exit. A deferred approval keeps the previous page interactive
+and announces pending; approved `@PageMetadata(...)` changes title, description and canonical
+link without removing the global icon or Vite stylesheet.
 
 The example's provider opts into preserving `network`, `server-error`, and `import-failure`. When an
 approved page load fails, the shell keeps its page, URL, resource instance and functional
@@ -124,7 +131,9 @@ An ordinary document GET still streams the HTML shell, hydration scripts, Suspen
 and request URL. An explicit `Accept: application/vnd.fluo.react-navigation+json;v=1` GET
 instead runs the same HTTP DTO and module pipeline and returns the server URL/params and
 browser destination. `src/entry-client.ts` passes a Vite-compiled `import.meta.glob(...)`
-map to `ReactClientRouterProvider` as `navigationModules`. Existing `Link` and
+map to `ReactClientRouterProvider` as `navigationModules` and validates the escaped inert
+initial transfer before hydration. The shell's `ReactNavigationExperience` provides the
+opt-in render boundary, polite status, focus/scroll defaults and page-owned head. Existing `Link` and
 `router.push/replace` validate the HTTP result through the client loader before committing
 history and rendering a fresh destination in the page slot. `src/admin-page.ts` and its
 build-mapped `src/navigation-admin.ts` entry handle

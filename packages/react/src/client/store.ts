@@ -79,6 +79,8 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
   let approvedIndex = 0;
   let restoringIndex: number | null = null;
   let invalidatedTraversal = false;
+  let deferredRefresh = false;
+  let deferredBack = false;
   let deferredNavigation: {
     readonly destination: URL;
     readonly type: DocumentNavigationType;
@@ -109,13 +111,16 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     href: string,
     navigation: ReactNavigationSnapshot,
     params?: Readonly<Record<string, string>>,
+    metadata?: ReactRouteSnapshot['metadata'],
   ): ReactRouteSnapshot => {
     const pathname = new URL(href).pathname;
-    return createSnapshotFromHref(
+    const next = createSnapshotFromHref(
       href,
       params ?? (pathname === snapshot.pathname ? snapshot.params : {}),
       navigation,
     );
+    const approvedMetadata = params === undefined ? snapshot.metadata : metadata;
+    return approvedMetadata === undefined ? next : Object.freeze({ ...next, metadata: approvedMetadata });
   };
 
   const cancelPending = (): void => {
@@ -158,6 +163,8 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     const mustRestore = unapprovedTraversal && browser.go !== undefined
       && activatedIndex !== null && activatedIndex !== undefined;
     cancelPending();
+    deferredRefresh = false;
+    deferredBack = false;
     failed = null;
     deferredNavigation = null;
     if (mustRestore) {
@@ -347,6 +354,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
         confirmedHref,
         createNavigationSnapshot('complete', type, toSnapshotUrl(confirmedHref)),
         result.payload.params,
+        result.payload.metadata,
       ));
     })();
   };
@@ -368,6 +376,11 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     const destinationUrl = toSnapshotUrl(destination.href);
     const browser = requireEnvironment();
     if (restoringIndex !== null) {
+      if (deferredRefresh) {
+        cancelPending();
+        deferredRefresh = false;
+      }
+      deferredBack = false;
       deferredNavigation = { destination, type, fromPrefetch };
       return;
     }
@@ -437,8 +450,14 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     back(): void {
       const browser = requireEnvironment();
       cancelPending();
+      deferredRefresh = false;
+      deferredNavigation = null;
       discardPrefetches();
       publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('navigating', 'back')));
+      if (restoringIndex !== null) {
+        deferredBack = true;
+        return;
+      }
       browser.back();
     },
     invalidate,
@@ -477,18 +496,40 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     },
     refresh(): Promise<ReactRevalidationResult> {
       const browser = requireEnvironment();
+      const unapprovedTraversal = (pending?.type === 'back' || failed?.type === 'back'
+        || restoringIndex !== null) && toSnapshotUrl(browser.currentHref()) !== snapshot.url;
+      const activatedIndex = browser.historyIndex?.();
       cancelPending();
+      failed = null;
+      deferredBack = false;
+      deferredNavigation = null;
       discardPrefetches();
+      if (unapprovedTraversal && restoringIndex === null
+        && (activatedIndex === null || activatedIndex === undefined || browser.go === undefined)) {
+        browser.replace(browser.currentHref());
+        return Promise.resolve({ status: 'document' });
+      }
       if (browser.load === undefined || browser.pushState === undefined || browser.replaceState === undefined) {
         publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('refreshing', 'refresh')));
         browser.reload();
         return Promise.resolve({ status: 'document' });
       }
-      const destination = new URL(browser.currentHref());
       const refreshing = new Promise<ReactRevalidationResult>((resolve) => {
         settleRefresh = resolve;
-        loadAndCommit(browser, destination, 'refresh');
       });
+      if (unapprovedTraversal || restoringIndex !== null) {
+        const restoreFrom = restoringIndex === null ? activatedIndex : null;
+        if (restoreFrom !== null && restoreFrom !== undefined) {
+          restoringIndex = approvedIndex;
+        }
+        deferredRefresh = true;
+        publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('refreshing', 'refresh')));
+        if (restoreFrom !== null && restoreFrom !== undefined) {
+          browser.go?.(approvedIndex - restoreFrom);
+        }
+        return refreshing;
+      }
+      loadAndCommit(browser, new URL(browser.currentHref()), 'refresh');
       publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('refreshing', 'refresh')));
       return refreshing;
     },
@@ -608,6 +649,16 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
             }
             const deferred = deferredNavigation;
             deferredNavigation = null;
+            if (deferredRefresh) {
+              deferredRefresh = false;
+              loadAndCommit(nextEnvironment, new URL(nextEnvironment.currentHref()), 'refresh');
+              return true;
+            }
+            if (deferredBack) {
+              deferredBack = false;
+              nextEnvironment.back();
+              return true;
+            }
             if (deferred !== null) {
               navigateDocument(deferred.destination, deferred.type, deferred.fromPrefetch);
             }
@@ -615,6 +666,13 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
           }
           restoringIndex = null;
           invalidatedTraversal = false;
+          if (deferredRefresh) {
+            deferredRefresh = false;
+            settleRefresh?.({ status: 'document' });
+            settleRefresh = null;
+            nextEnvironment.replace(nextEnvironment.currentHref());
+            return true;
+          }
           return false;
         },
         loadAndCommit,

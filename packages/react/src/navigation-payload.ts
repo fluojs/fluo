@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import type { ReactPageMetadata } from './page-metadata.js';
 
 const navigationPageKey = Symbol.for('fluo.react.navigationPage');
 
@@ -14,6 +15,7 @@ export type ReactNavigationPayload = {
   readonly url: string;
   readonly params: Readonly<Record<string, string>>;
   readonly destination: ReactNavigationDestination;
+  readonly metadata?: ReactPageMetadata;
 };
 
 /** Validated initial document transfer for a handler-selected browser destination. */
@@ -28,12 +30,14 @@ export type ReactInitialNavigationPage = {
  * @param url URL confirmed by HTTP matching.
  * @param params Path params confirmed by HTTP binding.
  * @param destination Browser module and JSON-only handler props.
+ * @param metadata Optional bounded head descriptors resolved for the matched page.
  * @returns The representation shared by document hydration and soft navigation.
  */
 export function createReactNavigationPayload(
   url: string,
   params: Readonly<Record<string, string>>,
   destination: ReactNavigationDestination,
+  metadata?: ReactPageMetadata,
 ): ReactNavigationPayload {
   return {
     version: 1,
@@ -43,6 +47,7 @@ export function createReactNavigationPayload(
       module: destination.module,
       props: JSON.parse(JSON.stringify(destination.props)),
     },
+    ...(metadata === undefined ? {} : { metadata }),
   };
 }
 

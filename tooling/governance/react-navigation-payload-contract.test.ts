@@ -9,6 +9,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const clientPath = 'packages/react/src/client/navigation-payload.ts';
 const serverPath = 'packages/react/src/page-result.ts';
 const transferPath = 'packages/react/src/navigation-payload.ts';
+const metadataPath = 'packages/react/src/page-metadata.ts';
 const storePath = 'packages/react/src/client/store.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
@@ -17,6 +18,7 @@ const sources = new Map([
   [clientPath, readFileSync(resolve(repoRoot, clientPath), 'utf8')],
   [serverPath, readFileSync(resolve(repoRoot, serverPath), 'utf8')],
   [transferPath, readFileSync(resolve(repoRoot, transferPath), 'utf8')],
+  [metadataPath, readFileSync(resolve(repoRoot, metadataPath), 'utf8')],
   [storePath, readFileSync(resolve(repoRoot, storePath), 'utf8')],
   [historyPath, readFileSync(resolve(repoRoot, historyPath), 'utf8')],
   [providerPath, readFileSync(resolve(repoRoot, providerPath), 'utf8')],
@@ -25,6 +27,35 @@ const sources = new Map([
 
 it('accepts the current matching HTTP and browser navigation machine contract', () => {
   expect(() => enforceReactNavigationPayloadContract((path: string) => sources.get(path) ?? '')).not.toThrow();
+});
+
+it.each([
+  [metadataPath, 'value.title.length > 512', 'value.title.length > 9999'],
+  [metadataPath, 'value.meta.length > 32', 'value.meta.length > 9999'],
+  [metadataPath, 'value.links.length > 32', 'value.links.length > 9999'],
+  [metadataPath, 'entry.content.length > 2048', 'entry.content.length > 9999'],
+  [metadataPath, 'isPageLinkHref(entry.href)', 'true'],
+  [metadataPath, "return href.startsWith('/') && new URL(href, 'https://fluo.invalid').origin === 'https://fluo.invalid';",
+    'return true;'],
+  [metadataPath, 'metaKeys.has(identity)', 'false'],
+  [metadataPath, 'linkKeys.has(identity)', 'false'],
+  [clientPath, 'parseReactPageMetadata(value.metadata)', 'value.metadata'],
+  [clientPath, 'value.metadata !== undefined && metadata === undefined', 'false'],
+  [serverPath, 'pageMetadata(writerContext.requestContext)', 'undefined'],
+  [serverPath, 'pageMetadata(requestContext)', 'undefined'],
+  [storePath, 'result.payload.metadata,', 'undefined,'],
+  [transferPath, 'readonly metadata?: ReactPageMetadata;', 'readonly ignoredMetadata?: ReactPageMetadata;'],
+  [transferPath, '...(metadata === undefined ? {} : { metadata }),', '...{},'],
+] as const)('rejects a dropped or unbounded page-owned metadata contract in %s', (path, original, changed) => {
+  // Given: one machine-consumed metadata boundary is changed while the others stay intact.
+  const source = sources.get(path);
+  expect(source).toBeDefined();
+  const variant = source?.replace(original, changed) ?? '';
+  expect(variant).not.toBe(source);
+  const readText = (candidate: string) => candidate === path ? variant : sources.get(candidate) ?? '';
+
+  // When / Then: the governance gate detects the severed source-to-head contract.
+  expect(() => enforceReactNavigationPayloadContract(readText)).toThrow(/React navigation.*metadata/u);
 });
 
 it.each([
@@ -57,16 +88,23 @@ it.each([
     "decision = 'document';"],
   [storePath, 'browser.go?.(approvedIndex - failed.index);',
     'browser.assign(destination.href);'],
-  [storePath, "loadAndCommit(browser, destination, 'refresh')", "loadAndCommit(browser, destination, 'push')"],
-  [storePath, 'const destination = new URL(browser.currentHref());',
-    "const destination = new URL('https://example.test/stale');"],
-  [storePath, "    refresh(): Promise<ReactRevalidationResult> {\n      const browser = requireEnvironment();\n      cancelPending();",
-    "    refresh(): Promise<ReactRevalidationResult> {\n      const browser = requireEnvironment();"],
+  [storePath, "loadAndCommit(browser, new URL(browser.currentHref()), 'refresh')",
+    "loadAndCommit(browser, new URL(browser.currentHref()), 'push')"],
+  [storePath, 'loadAndCommit(nextEnvironment, new URL(nextEnvironment.currentHref()), \'refresh\')',
+    'loadAndCommit(nextEnvironment, new URL(nextEnvironment.currentHref()), \'push\')'],
+  [storePath, 'browser.go?.(approvedIndex - restoreFrom);',
+    'browser.replace(browser.currentHref());'],
+  [storePath, "|| restoringIndex !== null) && toSnapshotUrl(browser.currentHref()) !== snapshot.url;",
+    "|| restoringIndex !== null) && toSnapshotUrl(browser.currentHref()) === snapshot.url;"],
+  [storePath, 'new URL(browser.currentHref()), \'refresh\'',
+    "new URL('https://example.test/stale'), 'refresh'"],
+  [storePath, "      cancelPending();\n      failed = null;\n      deferredBack = false;",
+    "      failed = null;\n      deferredBack = false;"],
   [clientPath, "headers.get('X-Fluo-Navigation-Prefetch')", "headers.get('X-Fluo-Navigation-Other')"],
   [dispatchPath, "!hasExistingHeader('set-cookie')", 'true'],
   [dispatchPath, "!hasExistingHeader('cache-control')", 'true'],
   [dispatchPath, 'response.statusCode === 200', 'true'],
-] as const)('rejects changed navigation request or response machinery in %s', (path, original, changed) => {
+] as const)('rejects changed navigation request or response machinery in %s (%s)', (path, original, changed) => {
   // Given: a source variant whose machine-consumed HTTP contract changes.
   const source = sources.get(path);
   expect(source).toBeDefined();
