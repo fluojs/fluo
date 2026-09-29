@@ -1,0 +1,8 @@
+.browsers/
+.test-results/
+**/node_modules/
+**/.next/
+**/.react-router/
+**/.output/
+**/dist/
+**/build/

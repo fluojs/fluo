@@ -173,6 +173,10 @@ No React-specific testing helper is added. Ordinary fixtures remove repeated set
 `Test.createApp(...)`, React DOM, TypeScript, and Playwright continue to exercise the real ownership
 boundaries.
 
+The isolated [same-app performance comparison](../../docs/guides/react-performance-benchmarks.md)
+uses a larger seeded workload and separate correctness and timing gates; this example's
+production hydration check alone is not a four-framework performance measurement.
+
 ## native form mutation workflow
 
 `ProductDocument` renders a real form with a label, required input, submit button, ordinary route

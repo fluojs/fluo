@@ -1,0 +1,29 @@
+{
+  "name": "@fluojs-internal/react-app-comparison",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "pnpm@10.4.1",
+  "engines": {
+    "node": ">=24.11.0 <27"
+  },
+  "scripts": {
+    "test": "node fixture/run-tests.mjs tests/*.test.mjs tests/evaluate.test.ts",
+    "test:apps": "node --test tests/apps-contract.test.mjs",
+    "test:http": "node --test tests/apps-http.test.mjs",
+    "test:browser:contract": "node --test tests/apps-browser.test.mjs",
+    "test:browser": "playwright test --config fixture/playwright.config.mjs",
+    "test:smoke": "pnpm --ignore-workspace --dir apps/fluo install --frozen-lockfile && pnpm --ignore-workspace --dir apps/next install --frozen-lockfile && pnpm --ignore-workspace --dir apps/react-router install --frozen-lockfile && pnpm --ignore-workspace --dir apps/tanstack-start install --frozen-lockfile && pnpm --ignore-workspace build && pnpm --ignore-workspace typecheck && pnpm --ignore-workspace test && pnpm --ignore-workspace test:browser",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:fluo": "pnpm --ignore-workspace --dir apps/fluo build",
+    "build:next": "pnpm --ignore-workspace --dir apps/next build",
+    "build:react-router": "pnpm --ignore-workspace --dir apps/react-router build",
+    "build:tanstack-start": "pnpm --ignore-workspace --dir apps/tanstack-start build",
+    "build": "pnpm --ignore-workspace build:fluo && pnpm --ignore-workspace build:next && pnpm --ignore-workspace build:react-router && pnpm --ignore-workspace build:tanstack-start"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/node": "22.19.15",
+    "typescript": "6.0.2"
+  }
+}

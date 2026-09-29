@@ -1,0 +1,26 @@
+{
+  "name": "react-app-comparison-tanstack-start",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "start": "HOST=127.0.0.1 node .output/server/index.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-router": "1.170.40",
+    "@tanstack/react-start": "1.168.59",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.15",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.1.1",
+    "nitro": "3.0.260903-beta",
+    "typescript": "6.0.2",
+    "vite": "8.3.1"
+  }
+}

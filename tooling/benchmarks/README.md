@@ -1,6 +1,13 @@
 # Benchmark tooling
 
-The benchmark tooling is intentionally local-only and not wired into default CI because the suites are performance evidence tools, not release gates.
+The internal DI, module graph, and HTTP comparison suites below are intentionally local-only.
+Their throughput observations are not release gates or evidence about React applications.
+
+The isolated [React application comparison](./react-app-comparison/README.md) has a
+different policy: pull requests run deterministic correctness, asset-size, and request-count
+checks; repeated performance measurements run separately on a pinned representative
+environment against a numeric baseline. A one-run smoke never establishes a performance
+winner or passes a noisy timing gate.
 
 ## Focused internal benchmarks
 

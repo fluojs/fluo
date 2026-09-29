@@ -1,0 +1,30 @@
+:root {
+  color: #252b2a;
+  background: #faf9f5;
+  font: 16px/1.5 system-ui, sans-serif;
+}
+body { margin: 0; }
+.shell { max-width: 880px; margin: auto; padding: 24px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+header nav { display: flex; flex-wrap: wrap; gap: 16px; }
+.brand { font-weight: 700; color: #252b2a; }
+a { color: #12664e; }
+a:hover, a:focus-visible { text-decoration: underline; }
+main { min-height: 240px; }
+h1 { font-size: 32px; line-height: 1.2; }
+.product-list { list-style: none; padding: 0; }
+.product-list li, [aria-label="Persistent jukebox resource"] {
+  background: #ffffff;
+  border: 1px solid #d9e1dc;
+  border-radius: 8px;
+  padding: 16px;
+  margin-block: 8px;
+}
+.product-list small { color: #525f5b; margin-inline-start: 16px; }
+form { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-block: 16px; }
+input, button { font: inherit; padding: 8px 12px; }
+input { border: 1px solid #d9e1dc; border-radius: 4px; }
+button { border: 0; border-radius: 4px; background: #12664e; color: #ffffff; cursor: pointer; }
+button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid #155eef; outline-offset: 2px; }
+output { display: block; margin-block-start: 8px; color: #525f5b; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .shell { padding: 16px; } }

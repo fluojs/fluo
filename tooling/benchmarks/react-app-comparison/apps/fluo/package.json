@@ -1,0 +1,31 @@
+{
+  "name": "@fluojs-internal/react-comparison-fluo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.11.0 <27"
+  },
+  "scripts": {
+    "build": "vite build --config vite.client.config.ts && vite build --config vite.server.config.ts",
+    "start": "node dist/server/main.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@fluojs/core": "link:../../../../../packages/core",
+    "@fluojs/http": "link:../../../../../packages/http",
+    "@fluojs/platform-fastify": "link:../../../../../packages/platform-fastify",
+    "@fluojs/react": "link:../../../../../packages/react",
+    "@fluojs/runtime": "link:../../../../../packages/runtime",
+    "@fluojs/validation": "link:../../../../../packages/validation",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@fluojs/vite": "link:../../../../../packages/vite",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "typescript": "6.0.2",
+    "vite": "8.2.2"
+  }
+}
