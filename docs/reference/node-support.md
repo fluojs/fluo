@@ -18,7 +18,7 @@ Node floors are classified by role. The 32 Node-bound public packages that are p
 
 This replaces the previous full three-version PR matrix with a full primary profile and two compatibility profiles. Supported package engine ranges do not change, but per-PR assurance on secondary versions is narrower: full secondary typecheck, lint, tooling, apps/examples and browser verification moves to `.github/workflows/extended-verification.yml` and the exact-source prerequisite of `.github/workflows/release.yml`. A previous scheduled success never substitutes for the publishing commit's extended verification.
 
-`tooling/ci/environment.lock.json` pins exact versions and download checksums instead of resolving floating Node tags independently on each runner. Refresh the lock through a reviewed change when adopting newer releases. Both local and remote tasks use the same Debian Linux/amd64 image recipe, browser and native-runtime versions.
+`tooling/ci/environment.lock.json` pins exact versions and download checksums instead of resolving floating Node tags independently on each runner. Refresh the lock through a reviewed change when adopting newer releases. Both local and remote tasks use the same Debian Linux/arm64 image recipe, browser and native-runtime versions.
 
 Scheduled runs report available Node 24/26 releases without changing the lock automatically. Generated starter PR checks use the four reviewed snapshots in `tooling/cli/verification-locks/`: external resolutions stay frozen, while current-source internal tarball integrity is rebound only after its dependency graph matches the snapshot. A changed graph fails with regeneration guidance. Capture replacement snapshots from real fresh installations with `captureStarterSnapshot` in `tooling/cli/starter-lockfile.mjs` and the pinned Bun YAML parser, review their dependency changes, then run the locked matrix. Standalone sandbox commands retain fresh resolution by default; the extended profile also runs a separate fresh-resolution starter matrix.
 
@@ -26,14 +26,22 @@ The plan job and canonical local command both execute the real Docker runner fix
 
 Tasks reuse pnpm's integrity-checked package store, but retain separate checkouts and `node_modules` layouts. Workspace build outputs cross task boundaries only through the verified build archive. Retried jobs update canonical artifact aliases only after saving attempt-specific task evidence, so earlier failure logs and browser traces remain available.
 
-`pnpm verify:local --base-ref <sha>` runs the same PR tasks in isolated Linux/amd64
+`pnpm verify:local --base-ref <sha>` runs the same PR tasks in isolated Linux/arm64
 containers and records an exact-head receipt. `--plan` prints the frozen plan
 without passing evidence; `--profile extended` also runs full secondary coverage.
-Docker must support amd64 execution, Linux-owned writable volumes, Unix-socket
-access and host-network fixture connections. Apple Silicon uses emulation and
-can be slower than native hosted x64. Source and file-watch tests run inside
+Docker must support arm64 execution, Linux-owned writable volumes, Unix-socket
+access and host-network fixture connections. Apple Silicon and GitHub
+`ubuntu-24.04-arm` use native execution. Source and file-watch tests run inside
 Linux volumes rather than macOS bind mounts. An unavailable environment fails;
-native macOS or arm64 execution never silently replaces canonical verification.
+native macOS or Linux/amd64 execution never silently replaces canonical verification.
+
+The repeated-development PR verification budget is 15 minutes locally and a
+further 15 minutes on GitHub, including source installation, builds, tests and
+final aggregation. Initial provisioning of the locked environment is measured
+separately; GitHub queue time is reported separately from execution. A lower job
+count alone is not evidence of meeting these budgets. Prepared outputs may be
+reused only after source and output-inventory validation; standalone preparation
+and tests whose subject is a fresh build still execute their builds.
 
 Receipts bind the source tree, base/diff, profile, catalog, environment lock,
 actual runtime/browser versions, required task results and log/artifact digests.

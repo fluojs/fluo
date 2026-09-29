@@ -8,6 +8,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildVerificationPlan, digest, readVerificationManifest, semanticPlanDigest } from './local-verification.mjs';
+import { recordPreparedBuild } from './prepared-build.mjs';
 import { imageKeyFor, loadEnvironmentLock, prepareVerificationEnvironment, validateVerificationEnvironment } from './verification-environment.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -297,6 +298,8 @@ function insideTask(plan, task, output, artifacts) {
   const environment = inspectEnvironment();
   validateVerificationEnvironment({ lock: plan.environment.lock, actual: environment, imageKey: plan.environment.imageKey });
   restoreBuildInputs(plan, task, artifacts, root);
+  let preparedBuild = task.inputs.includes('build.tar')
+    ? recordPreparedBuild(root, plan.environment.imageKey) : undefined;
   const commands = [];
   const logs = [];
   let failure = null;
@@ -320,6 +323,7 @@ function insideTask(plan, task, output, artifacts) {
         PLAYWRIGHT_BROWSERS_PATH: '/opt/google/chrome', FLUO_CLI_SANDBOX_ROOT: `/tmp/fluo-${task.id}`,
         FLUO_VITEST_SHUTDOWN_DEBUG: '1',
         FLUO_VITEST_SHUTDOWN_DEBUG_DIR: `.omo/verification/vitest-shutdown-debug/${task.id}`,
+        ...(preparedBuild ? { FLUO_VERIFIED_BUILD: preparedBuild } : {}),
         ...command.env } });
     writeFileSync(path, `${result.stdout ?? ''}${result.stderr ?? ''}${result.error?.message ?? ''}`);
     let identityAfter = null;
@@ -331,6 +335,9 @@ function insideTask(plan, task, output, artifacts) {
     logs.push({ commandIndex: index, path: basename(path), digest: hashFile(path) });
     if (result.status !== 0 || result.signal || result.error) failure ??= `command ${index} failed`;
     if (failure) break;
+    if (command.executable === 'pnpm' && command.cwd === '.' && command.argv.join(' ') === 'build') {
+      preparedBuild = recordPreparedBuild(root, plan.environment.imageKey);
+    }
   }
   const artifactsWritten = [];
   if (!failure && task.id === 'build') {
@@ -391,7 +398,7 @@ export function runTask(plan, taskId, output, artifacts, planPath, sourceRoot = 
     execute('git', ['bundle', 'create', bundle, 'HEAD', plan.source.baseSha], { cwd: sourceRoot });
     execute('docker', ['volume', 'create', volume]);
     execute('docker', ['volume', 'create', watchVolume]);
-    execute('docker', ['run', '--rm', '--platform', 'linux/amd64', '--network', 'host',
+    execute('docker', ['run', '--rm', '--platform', 'linux/arm64', '--network', 'host',
       '-v', `${volume}:/workspace`, '-v', `${bundle}:/tmp/source.bundle:ro`, prepared.tag, 'sh', '-c',
       `git init -q /workspace && git -C /workspace fetch -q /tmp/source.bundle HEAD ` +
       `&& git -C /workspace cat-file -e ${plan.source.baseSha}^{commit} ` +
@@ -401,7 +408,7 @@ export function runTask(plan, taskId, output, artifacts, planPath, sourceRoot = 
       `&& git -C /workspace checkout -q --detach ${plan.source.headSha}`]);
     const dockerHost = execute('docker', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}']);
     if (!dockerHost.startsWith('unix://')) throw new TypeError('Docker Unix socket required');
-    const args = ['run', '--rm', '--platform', 'linux/amd64', '--network', 'host',
+    const args = ['run', '--rm', '--platform', 'linux/arm64', '--network', 'host',
       '-v', `${volume}:/workspace`, '-v', `${resolve(planPath)}:/tmp/plan.json:ro`,
       '-v', `${resolve(output)}:/evidence`, '-v', `${resolve(artifacts)}:/artifacts`,
       '-v', `${dependencyCache}:/pnpm-cache`,

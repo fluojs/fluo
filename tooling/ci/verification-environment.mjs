@@ -18,11 +18,11 @@ const command = (name, args, options = {}) => {
 
 export function loadEnvironmentLock(path = defaultLockPath) {
   const lock = JSON.parse(readFileSync(path, 'utf8'));
-  if (lock.schemaVersion !== 1 || lock.platform?.os !== 'linux' || lock.platform?.arch !== 'amd64'
+  if (lock.schemaVersion !== 1 || lock.platform?.os !== 'linux' || lock.platform?.arch !== 'arm64'
     || lock.platform.distribution !== 'debian-bookworm'
     || !/^\d{8}T\d{6}Z$/.test(lock.platform.aptSnapshot ?? '')
     || !/^node:24-bookworm@sha256:[a-f0-9]{64}$/.test(lock.image?.base ?? '')) {
-    throw new TypeError('environment lock requires the immutable Debian linux/amd64 base');
+    throw new TypeError('environment lock requires the immutable Debian linux/arm64 base');
   }
   for (const [name, major] of [['primary', '24'], ['compat24', '24'], ['compat26', '26'], ['floor', '24']]) {
     const item = lock.node?.[name];
@@ -55,7 +55,7 @@ export function imageKeyFor(lock, dockerfileBytes, installerBytes = readFileSync
   for (const item of [...Object.values(lock.node ?? {}), ...Object.values(lock.bun ?? {}), ...Object.values(lock.deno ?? {})]) {
     if (!hex(64, item?.sha256)) throw new TypeError('invalid download sha256');
   }
-  if (lock.platform?.os !== 'linux' || lock.platform?.arch !== 'amd64') throw new TypeError('image requires linux/amd64');
+  if (lock.platform?.os !== 'linux' || lock.platform?.arch !== 'arm64') throw new TypeError('image requires linux/arm64');
   const recipe = String(dockerfileBytes);
   if (!recipe.includes(`FROM ${lock.image.base}`)
     || !recipe.includes(`/archive/debian/${lock.platform.aptSnapshot}`)
@@ -76,11 +76,11 @@ export function prepareVerificationEnvironment({
   const tag = `fluo-verification:sha256-${imageKey.slice(7)}`;
   const existing = command('docker', ['image', 'ls', '--quiet', '--filter', `reference=${tag}`]);
   if (!existing) {
-    command('docker', ['build', '--platform', 'linux/amd64', '--build-arg', `VERIFICATION_RECIPE_ID=${imageKey}`,
+    command('docker', ['build', '--platform', 'linux/arm64', '--build-arg', `VERIFICATION_RECIPE_ID=${imageKey}`,
       '--tag', tag, '--file', dockerfilePath, dirname(dockerfilePath)], { stdio: 'inherit' });
   }
   const image = JSON.parse(command('docker', ['image', 'inspect', tag]))[0];
-  if (image.Architecture !== 'amd64' || image.Os !== 'linux'
+  if (image.Architecture !== 'arm64' || image.Os !== 'linux'
     || image.Config.Labels['org.fluo.verification.image-key'] !== imageKey) {
     throw new Error('built image platform or image key mismatch');
   }
@@ -90,7 +90,7 @@ export function prepareVerificationEnvironment({
 export function validateVerificationEnvironment({ lock, actual, imageKey }) {
   if (imageKey !== imageKeyFor(lock, readFileSync(defaultDockerfilePath))) throw new Error('image key mismatch');
   if (actual?.os !== 'linux') throw new Error('linux required');
-  if (actual.arch !== 'x64') throw new Error('x64 linux/amd64 required');
+  if (actual.arch !== 'arm64') throw new Error('arm64 linux/arm64 required');
   for (const [name, item] of Object.entries(lock.node)) {
     if (actual.node?.[name] !== item.version) throw new Error(`Node ${name} version mismatch`);
   }
@@ -131,7 +131,7 @@ function install() {
   const lock = loadEnvironmentLock();
   for (const { version, sha256 } of Object.values(lock.node)) {
     const archive = `/tmp/node-${version}.tar.xz`;
-    download(`https://nodejs.org/dist/v${version}/node-v${version}-linux-x64.tar.xz`, archive, 'sha256', sha256);
+    download(`https://nodejs.org/dist/v${version}/node-v${version}-linux-arm64.tar.xz`, archive, 'sha256', sha256);
     mkdirSync(`/opt/node/${version}`, { recursive: true });
     command('tar', ['-xJf', archive, '--strip-components=1', '-C', `/opt/node/${version}`]);
     rmSync(archive);
@@ -144,16 +144,16 @@ function install() {
   rmSync(pnpm);
   for (const { version, sha256 } of Object.values(lock.bun)) {
     const archive = `/tmp/bun-${version}.zip`;
-    download(`https://github.com/oven-sh/bun/releases/download/bun-v${version}/bun-linux-x64.zip`, archive, 'sha256', sha256);
+    download(`https://github.com/oven-sh/bun/releases/download/bun-v${version}/bun-linux-aarch64.zip`, archive, 'sha256', sha256);
     mkdirSync(`/opt/bun/${version}`, { recursive: true });
     command('unzip', ['-q', archive, '-d', `/opt/bun/${version}`]);
-    renameSync(`/opt/bun/${version}/bun-linux-x64/bun`, `/opt/bun/${version}/bun`);
-    rmSync(`/opt/bun/${version}/bun-linux-x64`, { recursive: true });
+    renameSync(`/opt/bun/${version}/bun-linux-aarch64/bun`, `/opt/bun/${version}/bun`);
+    rmSync(`/opt/bun/${version}/bun-linux-aarch64`, { recursive: true });
     rmSync(archive);
   }
   for (const { version, sha256 } of Object.values(lock.deno)) {
     const archive = `/tmp/deno-${version}.zip`;
-    download(`https://github.com/denoland/deno/releases/download/v${version}/deno-x86_64-unknown-linux-gnu.zip`,
+    download(`https://github.com/denoland/deno/releases/download/v${version}/deno-aarch64-unknown-linux-gnu.zip`,
       archive, 'sha256', sha256);
     mkdirSync(`/opt/deno/${version}`, { recursive: true });
     command('unzip', ['-q', archive, '-d', `/opt/deno/${version}`]);
@@ -162,7 +162,7 @@ function install() {
   download(lock.browser.url, '/tmp/chrome.zip', 'sha256', lock.browser.sha256);
   mkdirSync('/opt/google/chrome', { recursive: true });
   command('unzip', ['-q', '/tmp/chrome.zip', '-d', '/opt/google/chrome']);
-  symlinkSync('/opt/google/chrome/chrome-linux64/chrome', '/opt/google/chrome/chrome');
+  symlinkSync('/opt/google/chrome/chrome-linux-arm64/chrome', '/opt/google/chrome/chrome');
   symlinkSync('/opt/google/chrome/chrome', '/usr/local/bin/google-chrome');
   rmSync('/tmp/chrome.zip');
   download(lock.docker.url, '/tmp/docker.tgz', 'sha256', lock.docker.sha256);

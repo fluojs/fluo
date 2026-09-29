@@ -98,7 +98,7 @@ if (args[0] === 'pr' && args[1] === 'view') {
       manifest: readVerificationManifest(join(worktree, 'tooling/ci/local-verification-manifest.json')) });
     const lock = plan.environment.lock;
     const actual = {
-      os: 'linux', arch: 'x64',
+      os: 'linux', arch: 'arm64',
       node: Object.fromEntries(Object.entries(lock.node).map(([key, item]) => [key, item.version])),
       bun: Object.fromEntries(Object.entries(lock.bun).map(([key, item]) => [key, item.version])),
       deno: Object.fromEntries(Object.entries(lock.deno).map(([key, item]) => [key, item.version])),

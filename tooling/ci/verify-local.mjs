@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +11,9 @@ import {
   readVerificationManifest,
   receiptMatchesPlan,
 } from './local-verification.mjs';
-import { aggregateResults, runHostChecks, runTask } from './verification-runner.mjs';
+import { aggregateResults, runHostChecks, validateTaskResult } from './verification-runner.mjs';
+import { prepareVerificationEnvironment } from './verification-environment.mjs';
+import { executeVerificationTasks, verificationConcurrency } from './verification-scheduler.mjs';
 
 const scriptPath = fileURLToPath(import.meta.url);
 const run = (root, executable, argv) => spawnSync(executable, argv, { cwd: root, encoding: 'utf8' });
@@ -38,6 +40,10 @@ export function parseArgs(argv) {
       options.baseRef = baseRef;
       index += 1;
     } else if (value === '--help') options.help = true;
+    else if (value === '--concurrency') {
+      options.concurrency = argv[++index];
+      verificationConcurrency(options.concurrency, 1);
+    }
     else if (value === '--profile') {
       if (!['pr', 'extended'].includes(argv[index + 1])) throw new TypeError('--profile requires pr or extended');
       options.profile = argv[++index];
@@ -83,14 +89,32 @@ function sameIdentity(left, right) {
 
 function usage() {
   return [
-    'Usage: pnpm verify:local [--plan] [--base-ref <sha>] [--profile pr|extended]',
+    'Usage: pnpm verify:local [--plan] [--base-ref <sha>] [--profile pr|extended] [--concurrency <positive integer>]',
     '',
     'Runs the exact-head local verification plan and writes a receipt under .omo/verification.',
     '--plan prints the command plan only and never writes a passing receipt.',
   ].join('\n');
 }
 
-export function main(argv = process.argv.slice(2)) {
+function runTaskProcess(task, planPath, output, artifactsRoot, root) {
+  return new Promise((resolveTask, reject) => {
+    const child = spawn(process.execPath, [
+      resolve(root, 'tooling/ci/verification-runner.mjs'),
+      '--plan', planPath, '--task', task.id, '--output', output, '--artifacts', artifactsRoot,
+    ], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    let diagnostics = '';
+    for (const stream of [child.stdout, child.stderr]) {
+      stream.on('data', (chunk) => { diagnostics = (diagnostics + chunk.toString()).slice(-4_000); });
+    }
+    child.on('error', reject);
+    child.on('close', (code, signal) => {
+      if (code === 0 && signal === null) resolveTask();
+      else reject(new Error(`runner exited ${code ?? 'without exit code'}${signal ? ` (${signal})` : ''}: ${diagnostics}`));
+    });
+  });
+}
+
+export async function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   if (options.help) {
     process.stdout.write(`${usage()}\n`);
@@ -122,13 +146,22 @@ export function main(argv = process.argv.slice(2)) {
   let hostChecks = null;
   try { hostChecks = runHostChecks(plan, output, root); }
   catch (error) { reason = `host integration: ${error instanceof Error ? error.message : String(error)}`; }
-  for (const task of plan.tasks) {
-    if (reason) break;
+  if (!reason) {
     try {
-      if (!sameIdentity(identity, collectIdentity(root, options.baseRef))) throw new TypeError('host identity changed before task');
-      runTask(plan, task.id, output, artifactsRoot, planPath, root);
+      const prepared = prepareVerificationEnvironment();
+      if (prepared.imageKey !== plan.environment.imageKey) throw new TypeError('built image differs from frozen plan');
+      const resources = options.concurrency === undefined
+        ? JSON.parse(text(root, 'docker', ['info', '--format', '{"cpus":{{.NCPU}},"memoryBytes":{{.MemTotal}}}']))
+        : undefined;
+      await executeVerificationTasks(plan.tasks, verificationConcurrency(options.concurrency, plan.tasks.length, resources), async (task) => {
+        if (!sameIdentity(identity, collectIdentity(root, options.baseRef))) throw new TypeError('host identity changed before task');
+        await runTaskProcess(task, planPath, output, artifactsRoot, root);
+        validateTaskResult(plan, task, JSON.parse(readFileSync(resolve(output, `${task.id}.json`), 'utf8')),
+          output, artifactsRoot);
+        if (!sameIdentity(identity, collectIdentity(root, options.baseRef))) throw new TypeError('host identity changed after task');
+      });
     } catch (error) {
-      reason = `${task.id}: ${error instanceof Error ? error.message : String(error)}`;
+      reason = error instanceof Error ? error.message : String(error);
     }
   }
   let taskResults = [];
@@ -175,10 +208,8 @@ export function main(argv = process.argv.slice(2)) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === scriptPath) {
-  try {
-    main();
-  } catch (error) {
+  main().catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
-  }
+  });
 }

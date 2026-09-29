@@ -17,7 +17,7 @@ test('rejects wrong platform and architecture instead of accepting native execut
   const imageKey = imageKeyFor(lock, readFileSync(dockerfilePath));
   const actual = {
     os: 'linux',
-    arch: 'x64',
+    arch: 'arm64',
     node: Object.fromEntries(Object.entries(lock.node).map(([key, item]) => [key, item.version])),
     pnpm: lock.pnpm.version,
     bun: Object.fromEntries(Object.entries(lock.bun).map(([key, item]) => [key, item.version])),
@@ -29,7 +29,8 @@ test('rejects wrong platform and architecture instead of accepting native execut
   };
 
   assert.throws(() => validateVerificationEnvironment({ lock, actual: { ...actual, os: 'darwin' }, imageKey }), /linux/);
-  assert.throws(() => validateVerificationEnvironment({ lock, actual: { ...actual, arch: 'arm64' }, imageKey }), /x64/);
+  assert.equal(lock.platform.arch, 'arm64');
+  assert.throws(() => validateVerificationEnvironment({ lock, actual: { ...actual, arch: 'x64' }, imageKey }), /arm64/);
   assert.deepEqual(validateVerificationEnvironment({ lock, actual, imageKey }).node, actual.node);
 });
 
@@ -38,7 +39,7 @@ test('rejects runtime drift, missing browser, fixture and watch signals', () => 
   const imageKey = imageKeyFor(lock, readFileSync(dockerfilePath));
   const actual = {
     os: 'linux',
-    arch: 'x64',
+    arch: 'arm64',
     node: Object.fromEntries(Object.entries(lock.node).map(([key, item]) => [key, item.version])),
     pnpm: lock.pnpm.version,
     bun: Object.fromEntries(Object.entries(lock.bun).map(([key, item]) => [key, item.version])),
@@ -81,7 +82,16 @@ test('rejects runtime drift, missing browser, fixture and watch signals', () => 
 
 test('rejects a lock with tampered download hashes', () => {
   const lock = loadEnvironmentLock(lockPath);
+  const recipe = readFileSync(dockerfilePath);
   assert.throws(() => imageKeyFor({
     ...lock, node: { ...lock.node, primary: { ...lock.node.primary, sha256: '' } },
-  }, readFileSync(dockerfilePath)), /sha256/);
+  }, recipe), /sha256/);
+  assert.throws(() => imageKeyFor({
+    ...lock, platform: { ...lock.platform, arch: 'amd64' },
+  }, recipe), /arm64/);
+  assert.notEqual(imageKeyFor(lock, recipe), imageKeyFor({
+    ...lock, bun: { ...lock.bun, '1.4.0': { ...lock.bun['1.4.0'], sha256: '0'.repeat(64) } },
+  }, recipe));
+  assert.match(lock.browser.url, /\/linux-arm64\/chrome-linux-arm64\.zip$/);
+  assert.match(lock.docker.url, /\/aarch64\/docker-28\.3\.3\.tgz$/);
 });

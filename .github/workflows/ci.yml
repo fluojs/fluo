@@ -26,7 +26,7 @@ concurrency:
 jobs:
   plan:
     name: Resolve verification plan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     outputs:
       source-sha: ${{ steps.plan.outputs.source_sha }}
       tasks: ${{ steps.plan.outputs.tasks }}
@@ -91,7 +91,7 @@ jobs:
           import { readFileSync, appendFileSync } from 'node:fs';
           import { loadEnvironmentLock, imageKeyFor } from './tooling/ci/verification-environment.mjs';
           const key = imageKeyFor(loadEnvironmentLock(), readFileSync('tooling/ci/Dockerfile')).slice(7);
-          appendFileSync(process.env.GITHUB_OUTPUT, `cache_key=fluo-linux-amd64-${key}\n`);
+          appendFileSync(process.env.GITHUB_OUTPUT, `cache_key=fluo-linux-arm64-${key}\n`);
           EOF
       - name: Restore immutable verification image
         id: image-cache
@@ -181,7 +181,7 @@ jobs:
     name: Verify
     if: ${{ always() }}
     needs: [plan, build, verification, compatibility]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v5
         with:

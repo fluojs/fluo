@@ -34,9 +34,9 @@ Run canonical verification from a clean worktree before opening or updating a PR
 pnpm verify:local --base-ref <approved-base-sha>
 ```
 
-This runs the shared PR task profile in locked Linux/amd64 containers and records
-an exact-head receipt. Docker must support amd64 execution, Linux volumes and
-host-network Docker fixtures; Apple Silicon emulation can be slower. Use
+This runs the shared PR task profile in locked Linux/arm64 containers and records
+an exact-head receipt. Docker must support arm64 execution, Linux volumes and
+host-network Docker fixtures. Apple Silicon and GitHub `ubuntu-24.04-arm` run natively. Use
 `--plan` to inspect the plan and `--profile extended` for full secondary coverage.
 An unavailable environment fails instead of falling back to native execution.
 `pnpm verify` remains a host-native baseline, not a canonical parity receipt.

@@ -13,7 +13,8 @@ function fixture(t) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-verification-plan-cli-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   for (const file of [
-    'tooling/ci/verify-local.mjs', 'tooling/ci/local-verification.mjs',
+    'tooling/ci/verify-local.mjs', 'tooling/ci/verification-scheduler.mjs',
+    'tooling/ci/prepared-build.mjs', 'tooling/ci/local-verification.mjs',
     'tooling/ci/verification-runner.mjs', 'tooling/ci/verification-environment.mjs',
     'tooling/ci/local-verification-manifest.json', 'tooling/ci/local-verification-receipt.schema.json',
     'tooling/ci/environment.lock.json', 'tooling/ci/Dockerfile',
@@ -56,14 +57,24 @@ test('the real local CLI produces a complete admissible receipt through the exec
   // receipt production and receipt authentication remain the production code.
   const { root, commit } = fixture(t);
   const actualRunner = new URL('./verification-runner.mjs', import.meta.url).href;
+  const actualEnvironment = new URL('./verification-environment.mjs', import.meta.url).href;
+  writeFileSync(join(root, 'tooling/ci/verification-environment.mjs'), `
+export * from ${JSON.stringify(actualEnvironment)};
+export function prepareVerificationEnvironment() {
+  const lock = JSON.parse(readFileSync(new URL('./environment.lock.json', import.meta.url), 'utf8'));
+  return { imageKey: imageKeyFor(lock, readFileSync(new URL('./Dockerfile', import.meta.url))), imageId: 'sha256:'+'1'.repeat(64) };
+}
+import { imageKeyFor } from ${JSON.stringify(actualEnvironment)};
+import { readFileSync } from 'node:fs';
+`);
   writeFileSync(join(root, 'tooling/ci/verification-runner.mjs'), `
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { digest } from './local-verification.mjs';
-export { aggregateResults } from ${JSON.stringify(actualRunner)};
+export { aggregateResults, validateTaskResult } from ${JSON.stringify(actualRunner)};
 const put = (path, bytes) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, bytes); };
 const environment = lock => ({
-  os:'linux', arch:'x64',
+  os:'linux', arch:lock.platform.arch==='arm64'?'arm64':'x64',
   node:Object.fromEntries(Object.entries(lock.node).map(([key,item])=>[key,item.version])),
   bun:Object.fromEntries(Object.entries(lock.bun).map(([key,item])=>[key,item.version])),
   deno:Object.fromEntries(Object.entries(lock.deno).map(([key,item])=>[key,item.version])),
@@ -107,11 +118,20 @@ export function runTask(plan, id, output, artifacts) {
   put(join(output,id+'.json'),JSON.stringify(result));
   return result;
 }
+if (process.argv[1] && import.meta.url === new URL('file://'+process.argv[1]).href) {
+  const get = flag => process.argv[process.argv.indexOf(flag)+1];
+  try {
+    const plan=JSON.parse(readFileSync(get('--plan'),'utf8'));
+    if (process.env.FLUO_FIXTURE_FAIL_TASK===get('--task')) throw new Error('fixture task failure');
+    const result=runTask(plan,get('--task'),get('--output'),get('--artifacts'));
+    process.stdout.write(JSON.stringify({status:result.status,taskId:result.taskId})+'\\n');
+  } catch(error) { process.stderr.write(String(error)+'\\n'); process.exitCode=1; }
+}
 `);
   const base = commit();
 
   // When: execute the actual CLI, not a hand-authored passing receipt.
-  const execution = spawnSync(process.execPath, [join(root, 'tooling/ci/verify-local.mjs'), '--base-ref', base], {
+  const execution = spawnSync(process.execPath, [join(root, 'tooling/ci/verify-local.mjs'), '--base-ref', base, '--concurrency', '2'], {
     cwd: root, encoding: 'utf8', timeout: 30_000,
   });
 
@@ -128,6 +148,25 @@ export function runTask(plan, id, output, artifacts) {
   assert.equal(validateReceiptEvidence(receipt, {
     worktree: root, receiptPath: result.path.slice(root.length + 1), receiptSha256: digest(bytes),
   }).valid, true);
+
+  const failed = spawnSync(process.execPath, [join(root, 'tooling/ci/verify-local.mjs'), '--base-ref', base, '--concurrency', '2'], {
+    cwd: root, encoding: 'utf8', timeout: 30_000,
+    env: { ...process.env, FLUO_FIXTURE_FAIL_TASK: 'build' },
+  });
+  assert.equal(failed.status, 1, failed.stdout + failed.stderr);
+  const failure = JSON.parse(readFileSync(JSON.parse(failed.stdout).path, 'utf8'));
+  assert.equal(failure.status, 'failed');
+  assert.equal(failure.taskResults.length, 0);
+  assert.match(failure.reason, /build: runner exited 1: Error: fixture task failure/u);
+});
+
+test('the local CLI rejects invalid concurrency before writing any receipt', (t) => {
+  const { root, commit } = fixture(t);
+  const base = commit();
+  const execution = spawnSync(process.execPath, [join(root, 'tooling/ci/verify-local.mjs'),
+    '--base-ref', base, '--concurrency', '0'], { cwd: root, encoding: 'utf8' });
+  assert.notEqual(execution.status, 0);
+  assert.match(execution.stderr, /verification concurrency must be a positive integer/u);
 });
 
 test('rejects unknown verifier options', () => {

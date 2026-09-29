@@ -17,7 +17,7 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
-const evidencePath = resolve(root, '.omo/verification/ci-parity/environment/probe.json');
+const evidencePath = resolve(root, '.omo/verification/ci-parity/arm64/probe.json');
 const exec = (binary, args) => execFileSync(binary, args, { encoding: 'utf8' }).trim();
 
 function observedVersions(lock) {
@@ -133,13 +133,13 @@ function outside() {
   exec('docker', ['volume', 'create', volume]);
   let outcome;
   try {
-    const result = spawnSync('docker', ['run', '--rm', '--platform', 'linux/amd64', '--network', 'host',
+    const result = spawnSync('docker', ['run', '--rm', '--platform', 'linux/arm64', '--network', 'host',
       '--mount', `type=bind,source=${host.slice(7)},target=/var/run/docker.sock`,
       '--mount', `type=volume,source=${volume},target=/workspace-watch`,
       '--mount', `type=bind,source=${fileURLToPath(import.meta.url)},target=/opt/verification/probe-verification-environment.mjs,readonly`,
       tag, 'node', '/opt/verification/probe-verification-environment.mjs', '--inside',
     ], { encoding: 'utf8', timeout: 180_000, maxBuffer: 10 * 1024 * 1024 });
-    if (result.status !== 0) throw new Error(`linux/amd64 probe failed (${result.status}): ${result.stderr}`);
+    if (result.status !== 0) throw new Error(`linux/arm64 probe failed (${result.status}): ${result.stderr}`);
     const { actual, elapsedMs } = JSON.parse(result.stdout.trim());
     validateVerificationEnvironment({ lock, actual, imageKey });
     outcome = { status: 'passed', imageKey, imageId, actual, elapsedMs };

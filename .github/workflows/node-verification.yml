@@ -31,7 +31,7 @@ permissions:
 jobs:
   task:
     name: ${{ inputs.task-id }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     outputs:
       build-artifact-id: ${{ steps.build-artifact.outputs.artifact-id }}
       build-artifact-digest: ${{ steps.build-artifact.outputs.artifact-digest }}
@@ -60,8 +60,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .omo/verification/cache/pnpm
-          key: fluo-pnpm-linux-amd64-v10-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: fluo-pnpm-linux-amd64-v10-
+          key: fluo-pnpm-linux-arm64-v10-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: fluo-pnpm-linux-arm64-v10-
       - uses: actions/download-artifact@v5
         with:
           name: ci-plan

@@ -18,7 +18,7 @@ Node floor는 역할별로 분류됩니다. 순수 runtime인 32개 Node-bound p
 
 이 정책은 기존의 세 버전 전체 PR matrix를 전체 primary profile과 두 compatibility profile로 대체합니다. Package engine 지원 범위는 바꾸지 않지만 보조 버전의 PR 검증 범위는 좁아집니다. 보조 버전의 전체 typecheck, lint, tooling, apps/examples, browser 검증은 `.github/workflows/extended-verification.yml`과 `.github/workflows/release.yml`의 exact-source 선행 검증으로 이동합니다. 이전 정기 실행의 성공은 publishing commit의 extended 검증을 대신하지 않습니다.
 
-`tooling/ci/environment.lock.json`은 runner마다 floating Node tag를 독립적으로 해석하는 대신 정확한 버전과 다운로드 checksum을 고정합니다. 새 버전을 채택할 때는 리뷰된 변경으로 lock을 갱신합니다. 로컬과 원격 task는 같은 Debian Linux/amd64 image recipe, browser, native runtime 버전을 사용합니다.
+`tooling/ci/environment.lock.json`은 runner마다 floating Node tag를 독립적으로 해석하는 대신 정확한 버전과 다운로드 checksum을 고정합니다. 새 버전을 채택할 때는 리뷰된 변경으로 lock을 갱신합니다. 로컬과 원격 task는 같은 Debian Linux/arm64 image recipe, browser, native runtime 버전을 사용합니다.
 
 정기 실행은 lock을 자동 변경하지 않고 사용 가능한 Node 24/26 버전을 보고합니다. 생성 starter의 PR 검증은 `tooling/cli/verification-locks/`의 리뷰된 snapshot 4개를 사용합니다. 외부 resolution은 고정하고, 현재 소스의 internal tarball integrity는 dependency graph가 snapshot과 일치할 때만 다시 연결합니다. Graph가 바뀌면 재생성 안내와 함께 실패합니다. 실제 fresh 설치 결과를 `tooling/cli/starter-lockfile.mjs`의 `captureStarterSnapshot`과 고정된 Bun YAML parser로 수집하고 dependency 변경을 리뷰한 뒤 locked matrix를 실행하세요. 독립 sandbox 명령은 기본 fresh resolution을 유지하며 extended profile도 별도의 fresh-resolution starter matrix를 실행합니다.
 
@@ -26,14 +26,21 @@ Plan job과 canonical local 명령은 task fan-out 전에 host에서 실제 Dock
 
 Task는 pnpm의 integrity 검증을 거친 package store를 재사용하지만 checkout과 `node_modules` 배치는 분리합니다. Workspace build output은 검증된 build archive로만 task 경계를 넘습니다. 재실행 job은 attempt별 task 증거를 저장한 뒤 canonical artifact alias를 갱신하므로 이전 실패 log와 browser trace도 보존합니다.
 
-`pnpm verify:local --base-ref <sha>`는 격리된 Linux/amd64 container에서 같은 PR task를
+`pnpm verify:local --base-ref <sha>`는 격리된 Linux/arm64 container에서 같은 PR task를
 실행하고 exact-head receipt를 기록합니다. `--plan`은 성공 증거 없이 고정 계획만
 출력하며 `--profile extended`는 보조 버전의 전체 검증도 실행합니다.
-Docker는 amd64 실행, Linux 소유 writable volume, Unix socket 접근, host-network
-fixture 연결을 지원해야 합니다. Apple Silicon은 emulation을 사용하므로 hosted x64보다
-느릴 수 있습니다. Source와 file-watch 검증은 macOS bind mount가 아닌 Linux volume에서
-실행합니다. 환경을 사용할 수 없으면 실패하며 native macOS나 arm64 실행으로 조용히
+Docker는 arm64 실행, Linux 소유 writable volume, Unix socket 접근, host-network
+fixture 연결을 지원해야 합니다. Apple Silicon과 GitHub `ubuntu-24.04-arm`은
+native로 실행합니다. Source와 file-watch 검증은 macOS bind mount가 아닌 Linux volume에서
+실행합니다. 환경을 사용할 수 없으면 실패하며 native macOS나 Linux/amd64 실행으로 조용히
 대체하지 않습니다.
+
+반복 개발 시 PR 검증 예산은 로컬 15분과 이후 GitHub 15분이며, 소스 설치,
+build, test, 최종 집계를 포함합니다. 고정 환경의 최초 준비 시간은 별도로
+측정하고 GitHub 큐 대기 시간도 실행 시간과 구분하여 보고합니다. Job 수 감소만으로
+이 예산을 충족했다고 판단하지 않습니다. 준비 산출물은 source와 output inventory를
+검증한 경우에만 재사용하며, standalone 준비와 fresh build 자체를 시험하는 테스트는
+기존 build를 그대로 실행합니다.
 
 Receipt는 source tree, base/diff, profile, catalog, environment lock, 실제 runtime/browser
 버전, 필수 task 결과와 log/artifact digest를 묶습니다. 이전 host-native receipt는 이

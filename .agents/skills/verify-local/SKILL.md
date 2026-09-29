@@ -37,7 +37,7 @@ base-branch advance. The plan is determined by
 It includes the shared PR task profile: primary build/static/tests/docs,
 secondary compatibility builds and all package tests, generated starter
 profiles, native checks, packed consumers, and the exact runtime floor.
-The runner requires the locked Linux/amd64 image and isolated Linux volumes;
+The runner requires the locked Linux/arm64 image and isolated Linux volumes;
 native host execution cannot produce a canonical passing receipt.
 `--plan` is inspection only, not passing evidence. `--profile extended` restores
 full secondary verification for scheduled and exact-release-source gates.

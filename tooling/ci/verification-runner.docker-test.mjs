@@ -29,6 +29,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
     'tooling/ci/local-verification-manifest.json', 'tooling/ci/local-verification-receipt.schema.json',
     'tooling/ci/verification-environment.mjs', 'tooling/ci/probe-verification-environment.mjs',
     'tooling/ci/environment.lock.json', 'tooling/ci/Dockerfile',
+    'tooling/ci/prepared-build.mjs',
     '.agents/workflow-contracts/schema-validator.mjs',
   ]) {
     mkdirSync(dirname(join(root, file)), { recursive: true });
@@ -61,6 +62,8 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   writeFileSync(manifestPath, JSON.stringify(manifest));
   copyFileSync(new URL('../../.gitignore', import.meta.url), join(root, '.gitignore'));
   mkdirSync(join(root, 'packages/cli/src/new'), { recursive: true });
+  writeFileSync(join(root, 'packages/cli/package.json'),
+    '{"name":"fixture-cli","version":"1.0.0","scripts":{"build":"fixture-build"}}\n');
   writeFileSync(join(root, 'packages/cli/src/new/published-internal-dependencies.ts'), 'export const generated = true;\n');
   mkdirSync(join(root, 'packages/fixture-lib'), { recursive: true });
   writeFileSync(join(root, 'packages/fixture-lib/package.json'),
@@ -101,11 +104,11 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
     '--output', output, '--artifacts', artifacts], root));
   assert.equal(execution.status, 'passed');
   const passed = JSON.parse(readFileSync(join(output, 'static.json'), 'utf8'));
-  // Then: Exported bytes attest Linux/amd64 and exact source, not a fake docker call.
+  // Then: Exported bytes attest Linux/arm64 and exact source, not a fake docker call.
   assert.equal(passed.environment.os, 'linux');
-  assert.equal(passed.environment.arch, 'x64');
+  assert.equal(passed.environment.arch, 'arm64');
   assert.equal(passed.headSha, headSha);
-  assert.match(readFileSync(join(output, 'static-1.log'), 'utf8'), /LINUX_TASK_OK linux x64/u);
+  assert.match(readFileSync(join(output, 'static-1.log'), 'utf8'), /LINUX_TASK_OK linux arm64/u);
   assert.equal(passed.commands[0].command.argv.join(' '), 'install --frozen-lockfile');
   assert.equal(passed.commands[0].exitCode, 0);
   assert.equal(passed.commands[1].identityBefore.statusDigest, digest(''));

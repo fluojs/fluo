@@ -34,9 +34,9 @@ PR을 생성하거나 업데이트하기 전에 clean worktree에서 canonical �
 pnpm verify:local --base-ref <approved-base-sha>
 ```
 
-이 명령은 고정된 Linux/amd64 container에서 공통 PR task profile을 실행하고
-exact-head receipt를 기록합니다. Docker는 amd64 실행, Linux volume, host-network
-Docker fixture를 지원해야 하며 Apple Silicon emulation은 느릴 수 있습니다.
+이 명령은 고정된 Linux/arm64 container에서 공통 PR task profile을 실행하고
+exact-head receipt를 기록합니다. Docker는 arm64 실행, Linux volume, host-network
+Docker fixture를 지원해야 합니다. Apple Silicon과 GitHub `ubuntu-24.04-arm`은 native로 실행합니다.
 `--plan`으로 계획을 확인하고 `--profile extended`로 보조 버전의 전체 검증을 실행합니다.
 환경을 사용할 수 없으면 native 실행으로 대체하지 않고 실패합니다.
 `pnpm verify`는 host-native baseline이며 canonical parity receipt가 아닙니다.

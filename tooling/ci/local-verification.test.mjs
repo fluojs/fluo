@@ -16,7 +16,7 @@ const identity = {
 
 function testEnvironment(lock) {
   return {
-    os: 'linux', arch: 'x64',
+    os: 'linux', arch: 'arm64',
     node: Object.fromEntries(Object.entries(lock.node).map(([name, value]) => [name, value.version])),
     bun: Object.fromEntries(Object.entries(lock.bun).map(([name, value]) => [name, value.version])),
     deno: Object.fromEntries(Object.entries(lock.deno).map(([name, value]) => [name, value.version])),
@@ -105,7 +105,7 @@ test('v1 native receipt and wrong platform, profile, image or source fail admiss
   assert.equal(validateReceipt({ ...receipt, imageIdentity: { ...receipt.imageIdentity, key: `sha256:${'9'.repeat(64)}` } }).valid, false);
   assert.equal(validateReceipt({ ...receipt, identity: { ...identity, clean: false } }).valid, false);
   const wrongPlatform = structuredClone(receipt);
-  wrongPlatform.taskResults[0].environment.arch = 'arm64';
+  wrongPlatform.taskResults[0].environment.arch = 'x64';
   assert.equal(validateReceipt(wrongPlatform).valid, false);
   const wrongRuntime = structuredClone(receipt);
   wrongRuntime.taskResults[0].environment.node.floor = '24.21.0';
