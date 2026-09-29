@@ -468,6 +468,12 @@ export async function verifyReactColdDev(projectDirectory, profile = resolveSand
   let socket;
   let smokeSocket;
   const diagnostics = [];
+  const watchPageDiagnostics = (activePage) => {
+    activePage.on('console', (message) => {
+      if (message.type() === 'warning' || message.type() === 'error') diagnostics.push(message.text());
+    });
+    activePage.on('pageerror', (error) => diagnostics.push(error.message));
+  };
 
   try {
     await waitForDevReady(child, 'React dev app ready');
@@ -487,10 +493,7 @@ export async function verifyReactColdDev(projectDirectory, profile = resolveSand
       const { chromium } = requireFromProject('@playwright/test');
       browser = await chromium.launch({ channel: 'chrome', headless: true });
       page = await browser.newPage();
-      page.on('console', (message) => {
-        if (message.type() === 'warning' || message.type() === 'error') diagnostics.push(message.text());
-      });
-      page.on('pageerror', (error) => diagnostics.push(error.message));
+      watchPageDiagnostics(page);
       const connected = page.waitForEvent('websocket', { timeout: 15_000 });
       await page.goto(`${origin}/products/sku-42?preview=true`);
       socket = await connected;
@@ -500,6 +503,11 @@ export async function verifyReactColdDev(projectDirectory, profile = resolveSand
     }
     assert.equal(existsSync(join(projectDirectory, 'dist')), false, 'React edits must stay on the Vite development path.');
 
+    if (page) {
+      await page.close();
+      page = undefined;
+      socket = undefined;
+    }
     const serverReady = waitForDevReady(child, 'React dev app ready');
     writeFileSync(appPath, originalApp.replace("@Router('/products')", "@Router('/dev-products')"));
     await serverReady;
@@ -508,7 +516,9 @@ export async function verifyReactColdDev(projectDirectory, profile = resolveSand
     const restoredReady = waitForDevReady(child, 'React dev app ready');
     writeFileSync(appPath, originalApp);
     await restoredReady;
-    if (page) {
+    if (browser) {
+      page = await browser.newPage();
+      watchPageDiagnostics(page);
       const connected = page.waitForEvent('websocket', { timeout: 15_000 });
       await page.goto(`${origin}/products/sku-42?preview=true`);
       socket = await connected;

@@ -288,6 +288,7 @@ test('keeps native anchors usable before hydration', async ({ page }) => {
     expect((await document).status()).toBe(200);
   } finally {
     releaseBootstrap();
+    await page.unrouteAll({ behavior: 'wait' });
   }
 });
 
