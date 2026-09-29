@@ -53,7 +53,7 @@ export function createReactPageRenderer(manifest: unknown): ReactPageRenderer & 
         navigationBuildId={assets.buildId}
         initialPage={initialPage}
         page={page}
-        route={{ params: context.request.params, url: context.request.url }}
+        route={{ params: context.request.params, url: context.request.url, metadata: initialPage?.payload.metadata }}
         stylesheets={assets.css}
       />,
       {
@@ -76,7 +76,7 @@ export function createReactDevelopmentPageRenderer(): ReactPageRenderer & { read
         navigationBuildId='vite-development'
         initialPage={initialPage}
         page={page}
-        route={{ params: context.request.params, url: context.request.url }}
+        route={{ params: context.request.params, url: context.request.url, metadata: initialPage?.payload.metadata }}
         stylesheets={['/src/styles.css?direct']}
       />,
       {

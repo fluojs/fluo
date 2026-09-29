@@ -35,6 +35,17 @@ Classification describes the **current checkout**, not the target: **shipped** i
 
 ## Failure and freshness defaults
 
+**#3872's opt-in official composition:** `ReactNavigationExperience` keeps pending status
+outside the page slot, treats an approved destination render throw as a local page-boundary
+failure, and offers a reset that neither issues HTTP nor changes history. A throwing
+application error view reaches an outer diagnostic surface while the shared shell stays
+usable. Matched `@PageMetadata(...)` accompanies the HTTP-approved payload through SSR and
+soft navigation, with bounded page-owned head updates and removal. Live-region, focus and
+scroll defaults can be replaced through `onApprovedNavigation`; an unrecoverable root/browser
+failure cannot be recovered by a page boundary. #3864 still owns transient transport policy,
+fresh `router.retry()`, explicit `router.openDocument()`, and failed-history recovery.
+The official retry and document controls live in the persistent shell outside the page slot.
+
 **Current** low-level `ReactClientRouterProvider` retains document fallback unless the application
 supplies `failurePolicy`. That opt-in can preserve network/5xx failures, expose a safe failure
 through `useNavigation()`, and offer fresh `router.retry()` or explicit `router.openDocument()`.

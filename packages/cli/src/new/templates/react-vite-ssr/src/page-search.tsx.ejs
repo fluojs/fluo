@@ -10,12 +10,12 @@ export default function SearchPage(props: Record<string, unknown>): ReactElement
   useEffect(() => setVariant(__FLUO_BUILD_VARIANT__), []);
 
   return (
-    <main>
+    <section aria-label='Search page'>
       <h1>Search: {query}</h1>
       <p>DTO-bound query: {query}</p>
       <p data-testid='build-variant'>Built variant: {variant}</p>
       <button onClick={() => setCount((value) => value + 1)} type='button'>Page count: {count}</button>
       <Link href='/products/sku-84?preview=false'>Open sku-84</Link>
-    </main>
+    </section>
   );
 }

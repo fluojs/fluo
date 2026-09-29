@@ -144,7 +144,7 @@ test('keeps an A shell on B navigation and updates only after explicit document 
   await expect(page).toHaveURL(`${origin}/products/sku-42`);
   expect(await page.evaluate(() => window.__reactResource?.id)).toBe(id);
   const loaded = page.waitForEvent('load');
-  await page.getByRole('button', { name: 'Open full document' }).click();
+  await page.getByRole('button', { name: 'Update application (open full document)' }).click();
   await loaded;
   await expect(page.locator('html')).toHaveAttribute('data-build-id', b.buildId);
   await expect(page.getByTestId('build-variant')).toContainText('B');

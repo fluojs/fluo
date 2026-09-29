@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import type { ReactNavigationPayload } from '../navigation-payload.js';
+import { parseReactPageMetadata } from '../page-metadata.js';
 
 const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=2';
 const RESPONSE_MEDIA_TYPE = /^application\/vnd\.fluo\.react-navigation\+json;\s*v=(?:"2"|2)(?:;\s*charset=utf-8)?$/iu;
@@ -54,6 +55,10 @@ function parseNavigationPayload(
     || typeof value.destination.module !== 'string' || !isObject(value.destination.props)) {
     return undefined;
   }
+  const metadata = value.metadata === undefined ? undefined : parseReactPageMetadata(value.metadata);
+  if (value.metadata !== undefined && metadata === undefined) {
+    return undefined;
+  }
   const confirmed = new URL(value.url, requested.origin);
   if (confirmed.origin !== requested.origin || confirmed.hash !== ''
     || `${confirmed.pathname}${confirmed.search}` !== `${requested.pathname}${requested.search}`) {
@@ -65,6 +70,7 @@ function parseNavigationPayload(
     url: value.url,
     params: value.params,
     destination: { module: value.destination.module, props: value.destination.props },
+    ...(metadata === undefined ? {} : { metadata }),
   };
 }
 

@@ -1,6 +1,7 @@
 import {
   Link,
   ReactClientRouterProvider,
+  ReactNavigationExperience,
   createReactRouteSnapshot,
   type ReactRouteSnapshotInput,
   useParams,
@@ -75,12 +76,16 @@ function SharedNavigation(): ReactElement {
         <div role='alert'>
           <p>Navigation failed: {navigation.failure.reason} ({navigation.failure.destination})</p>
           <button onClick={() => router.retry()} type='button'>Retry navigation</button>
-          <button onClick={() => router.openDocument()} type='button'>Open full document</button>
+          <button onClick={() => router.openDocument()} type='button'>
+            {navigation.failure.reason === 'incompatible-build'
+              ? 'Update application (open full document)' : 'Open full document'}
+          </button>
         </div>
       )}
       <nav aria-label='Page navigation'>
         <Link href='/products/sku-84?preview=false'>Open sku-84</Link>
         <Link href='/search?q=catalog'>Search catalog</Link>
+        <Link href='/products/render-error'>Open throwing page</Link>
         <Link href='/search?q=catalog' target='_blank'>Open search in new tab</Link>
         <Link href='/not-built'>Missing page</Link>
         <button onClick={() => router.push('/products/sku-126?preview=true')} type='button'>
@@ -128,14 +133,15 @@ export function ReactAppDocument({
             <meta charSet='utf-8' />
             <meta content='width=device-width, initial-scale=1' name='viewport' />
             <link href='/assets/favicon.svg' rel='icon' />
-            <title>Fluo React starter</title>
             {stylesheets.map((href) => (
               <link data-vite-style href={href} key={href} rel='stylesheet' />
             ))}
           </head>
           <body>
             <SharedNavigation />
-            <div id='page-slot'>{destination ?? page}</div>
+            <main tabIndex={-1}>
+              <ReactNavigationExperience destination={destination} page={page} />
+            </main>
             {initialPage && (
               <script id='fluo-initial-page' type='application/json'>{initialPage.json}</script>
             )}

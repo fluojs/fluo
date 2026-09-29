@@ -109,11 +109,35 @@ it('rejects an initial document with a different build before importing', async 
   expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
 });
 
+it('accepts a bounded page-owned stylesheet link in the approved navigation representation', async () => {
+  // Given: HTTP approves a mapped destination and one same-origin stylesheet descriptor.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/admin/qr` } });
+  const metadata = { links: [{ rel: 'stylesheet', href: '/assets/route-only.css' }] };
+  vi.stubGlobal('fetch', vi.fn(async () => grantedResponse({}, { ...payload, metadata })));
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  // When: the browser validates the actual versioned media type before importing.
+  const result = await loadReactNavigationDestination(payload.url, modules);
+
+  // Then: the mapped destination and page-owned stylesheet are approved together.
+  expect(result).toMatchObject({ ok: true, payload: { ...payload, metadata } });
+  expect(modules['./navigation-product.ts']).toHaveBeenCalledOnce();
+});
+
 it.each([
   ['stale URL', { ...payload, url: '/products/sku-42' }],
   ['legacy v1', { ...payload, version: 1 }],
   ['unbuilt destination', { ...payload, destination: { module: './unbuilt.ts', props: {} } }],
   ['non-JSON props', { ...payload, destination: { module: './navigation-product.ts', props: 'secret' } }],
+  ['oversized title', { ...payload, metadata: { title: 'x'.repeat(513) } }],
+  ['unsafe link URL', { ...payload, metadata: { links: [{ rel: 'canonical', href: 'javascript:alert(1)' }] } }],
+  ['backslash-host link URL', { ...payload, metadata: { links: [{ rel: 'canonical', href: '/\\elsewhere.test/path' }] } }],
+  ['duplicate meta identity', { ...payload, metadata: {
+    meta: [{ name: 'description', content: 'first' }, { name: 'description', content: 'second' }],
+  } }],
+  ['duplicate link identity', { ...payload, metadata: {
+    links: [{ rel: 'canonical', href: '/products/sku-84' }, { rel: 'canonical', href: '/products/sku-84' }],
+  } }],
 ] as const)('does not import an invalid initial %s', async (_kind, candidate) => {
   // Given: document data that has not been approved for the current built browser route.
   vi.stubGlobal('window', { location: { href: `${ORIGIN}${payload.url}` } });

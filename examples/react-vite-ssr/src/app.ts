@@ -27,6 +27,7 @@ import {
 } from '@fluojs/http';
 import {
   Path,
+  PageMetadata,
   ReactModule,
   ReactNavigationPage,
   Router,
@@ -35,10 +36,10 @@ import {
 } from '@fluojs/react';
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { IsIn, IsString, MinLength } from '@fluojs/validation';
-import { createElement } from 'react';
+import { cloneElement, createElement, isValidElement } from 'react';
 
 import { REACT_IDENTIFIER_PREFIX } from './hydration';
-import { InitialPageContext, ProductDocument } from './page';
+import { ProductDocument, type ProductDocumentProps } from './page';
 import { createPrefetchPageRouter } from './prefetch-page';
 
 const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
@@ -148,8 +149,14 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     throw new ReactViteExampleManifestError('The client build has no navigation-admin destination module.');
   }
   const renderPage: ReactPageRenderer = (page, _context, _policies, initialPage) => {
+    if (page.type !== ProductDocument || !isValidElement<ProductDocumentProps>(page)) {
+      throw new ReactViteExampleManifestError('The example page must render with ProductDocument.');
+    }
     const nonce = randomBytes(16).toString('base64');
-    return createReactServerEntry(createElement(InitialPageContext.Provider, { value: initialPage }, page), {
+    return createReactServerEntry(cloneElement(page, {
+      initialPage,
+      routeMetadata: initialPage?.payload.metadata,
+    }), {
       ...assets.hydrationOptions,
       headers: {
         ...(initialPage === undefined ? {} : { 'Cache-Control': 'private, no-store' }),
@@ -164,6 +171,14 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
   class ProductPageRouter {
     constructor(private readonly catalog: ProductCatalog) {}
 
+    @PageMetadata(({ request }) => ({
+      title: `Catalog item ${request.params.sku}`,
+      meta: [
+        { name: 'description', content: `Product ${request.params.sku}` },
+        { property: 'og:title', content: `Product ${request.params.sku}` },
+      ],
+      links: [{ rel: 'canonical', href: request.url }],
+    }))
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
     show(input: ProductPageRequest, context: RequestContext) {
@@ -213,11 +228,20 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
       });
     }
 
+    @PageMetadata(() => ({
+      title: 'Admin QR',
+      meta: [{ name: 'description', content: 'QR access' }],
+      links: [{ rel: 'canonical', href: '/admin/qr' }],
+    }))
     @Path('/qr')
     qr(_input: undefined, context: RequestContext) {
       return this.page('qr', context);
     }
 
+    @PageMetadata(() => ({
+      title: 'Admin songs',
+      meta: [{ name: 'description', content: 'Songs catalog' }],
+    }))
     @Path('/songs')
     songs(_input: undefined, context: RequestContext) {
       return this.page('songs', context);

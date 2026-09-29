@@ -214,6 +214,14 @@ application files and the lifecycle command to rerun. Generated `Link` output re
 and `router.push(...)` performs HTTP-approved soft navigation for build-mapped destinations;
 unsupported pages and disabled JavaScript keep native document navigation. Additional pages
 need a page module and HTTP handler/DTO, not edits to client entry, renderer, manifest, or router store.
+The generated shell opts into `ReactNavigationExperience`: pending and polite announcements
+remain outside the keyed page slot, a destination render error offers a local reset, and
+`@PageMetadata(...)` supplies request-selected title/meta/link descriptors to SSR and soft
+navigation. The default focus/scroll policy can be replaced through `onApprovedNavigation`.
+The local render reset does not issue another HTTP request; #3864 owns transport retry and
+explicit document exit on its separate preserved-failure path. Existing generated consumers
+must update their app-owned composition to opt in; installing a new package version does not
+change the low-level provider's focus/scroll policy.
 The [composition migration guide](../../docs/getting-started/migrate-react-starter-composition.md)
 explains how existing generated apps opt in. The starter
 intentionally excludes RSC, Server Functions, file routing, a client route table, SPA document

@@ -7,6 +7,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const clientPath = 'packages/react/src/client/navigation-payload.ts';
 const serverPath = 'packages/react/src/page-result.ts';
 const transferPath = 'packages/react/src/navigation-payload.ts';
+const metadataPath = 'packages/react/src/page-metadata.ts';
 const storePath = 'packages/react/src/client/store.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
@@ -43,6 +44,7 @@ export function enforceReactNavigationPayloadContract(
   const client = ts.createSourceFile(clientPath, readText(clientPath), ts.ScriptTarget.Latest, true);
   const server = ts.createSourceFile(serverPath, readText(serverPath), ts.ScriptTarget.Latest, true);
   const transfer = ts.createSourceFile(transferPath, readText(transferPath), ts.ScriptTarget.Latest, true);
+  const metadataSource = ts.createSourceFile(metadataPath, readText(metadataPath), ts.ScriptTarget.Latest, true);
   const store = ts.createSourceFile(storePath, readText(storePath), ts.ScriptTarget.Latest, true);
   const history = ts.createSourceFile(historyPath, readText(historyPath), ts.ScriptTarget.Latest, true);
   const provider = ts.createSourceFile(providerPath, readText(providerPath), ts.ScriptTarget.Latest, true);
@@ -119,6 +121,96 @@ export function enforceReactNavigationPayloadContract(
     || !findNode(initialLoad, (node) =>
       ts.isCallExpression(node) && node.expression.getText(client) === 'parseNavigationPayload')) {
     throw new Error('React navigation initial document transfer must retain escaping, size bounds and the shared client validator.');
+  }
+
+  const payloadType = findNode(transfer, (node) =>
+    ts.isTypeAliasDeclaration(node) && node.name.text === 'ReactNavigationPayload');
+  const metadataProperty = payloadType && findNode(payloadType, (node) =>
+    ts.isPropertySignature(node) && node.name.getText(transfer) === 'metadata');
+  const payloadFactory = findNode(transfer, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'createReactNavigationPayload');
+  const factoryMetadata = payloadFactory && findNode(payloadFactory, (node) =>
+    ts.isConditionalExpression(node) && node.condition.getText(transfer) === 'metadata === undefined'
+    && ts.isObjectLiteralExpression(node.whenFalse)
+    && node.whenFalse.properties.some((entry) =>
+      ts.isShorthandPropertyAssignment(entry) && entry.name.text === 'metadata'));
+  const parseMetadata = findNode(metadataSource, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'parseReactPageMetadata');
+  const metadataBounds = [
+    ['value.title.length', '512'],
+    ['value.meta.length', '32'],
+    ['value.links.length', '32'],
+    ['entry.content.length', '2048'],
+    ['entry.href.length', '2048'],
+  ];
+  const bounded = parseMetadata && metadataBounds.every(([subject, limit]) =>
+    findNode(parseMetadata, (node) =>
+      ts.isBinaryExpression(node)
+      && node.operatorToken.kind === ts.SyntaxKind.GreaterThanToken
+      && node.left.getText(metadataSource) === subject
+      && node.right.getText(metadataSource) === limit));
+  const safeLink = parseMetadata && findNode(parseMetadata, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(metadataSource) === 'isPageLinkHref'
+    && node.arguments[0]?.getText(metadataSource) === 'entry.href');
+  const hrefPolicy = findNode(metadataSource, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'isPageLinkHref');
+  const sameOriginLink = hrefPolicy && findNode(hrefPolicy, (node) =>
+    ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+    && node.left.getText(metadataSource) === "new URL(href, 'https://fluo.invalid').origin"
+    && node.right.getText(metadataSource) === "'https://fluo.invalid'");
+  const duplicateGuard = parseMetadata && ['metaKeys', 'linkKeys'].every((name) =>
+    findNode(parseMetadata, (node) =>
+      ts.isIfStatement(node)
+      && findNode(node.expression, (part) => ts.isCallExpression(part)
+        && part.expression.getText(metadataSource) === `${name}.has`
+        && part.arguments[0]?.getText(metadataSource) === 'identity')
+      && findNode(node.thenStatement, (part) =>
+        ts.isReturnStatement(part) && part.expression?.getText(metadataSource) === 'undefined')));
+  const parsePayload = findNode(client, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'parseNavigationPayload');
+  const browserMetadata = parsePayload && findNode(parsePayload, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(client) === 'parseReactPageMetadata'
+    && node.arguments[0]?.getText(client) === 'value.metadata');
+  const rejectInvalidMetadata = parsePayload && findNode(parsePayload, (node) =>
+    ts.isIfStatement(node)
+    && node.expression.getText(client) === 'value.metadata !== undefined && metadata === undefined'
+    && findNode(node.thenStatement, (child) =>
+      ts.isReturnStatement(child) && child.expression?.getText(client) === 'undefined'));
+  const approvedMetadata = parsePayload && findNode(parsePayload, (node) =>
+    ts.isSpreadAssignment(node)
+    && ts.isParenthesizedExpression(node.expression)
+    && ts.isConditionalExpression(node.expression.expression)
+    && node.expression.expression.condition.getText(client) === 'metadata === undefined'
+    && ts.isObjectLiteralExpression(node.expression.expression.whenFalse)
+    && node.expression.expression.whenFalse.properties.some((entry) =>
+      ts.isShorthandPropertyAssignment(entry) && entry.name.text === 'metadata'));
+  const serverMetadata = findNode(server, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(server) === 'pageMetadata');
+  const resolveMetadata = serverMetadata && findNode(serverMetadata, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(server) === 'resolveReactPageMetadata');
+  const boundServerMetadata = serverMetadata && findNode(serverMetadata, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(server) === 'parseReactPageMetadata'
+    && node.arguments[0]?.getText(server) === 'resolved');
+  const serverPayloads = findNodes(server, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(server) === 'createReactNavigationPayload');
+  const initialPayload = serverTransfer && ts.isCallExpression(serverTransfer)
+    ? serverTransfer.arguments[0] : undefined;
+  const committedMetadata = findNode(store, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'publish'
+    && node.arguments[0] && ts.isCallExpression(node.arguments[0])
+    && node.arguments[0].expression.getText(store) === 'createSnapshotForHref'
+    && node.arguments[0].arguments[2]?.getText(store) === 'result.payload.params'
+    && node.arguments[0].arguments[3]?.getText(store) === 'result.payload.metadata');
+  if (!metadataProperty || !ts.isPropertySignature(metadataProperty)
+    || !metadataProperty.questionToken || metadataProperty.type?.getText(transfer) !== 'ReactPageMetadata'
+    || !factoryMetadata || !bounded || !safeLink || !sameOriginLink || !duplicateGuard || !browserMetadata
+    || !rejectInvalidMetadata || !approvedMetadata || !resolveMetadata || !boundServerMetadata
+    || serverPayloads.length !== 2 || !initialPayload || !ts.isCallExpression(initialPayload)
+    || initialPayload !== serverPayloads[0]
+    || serverPayloads[0].arguments[4]?.getText(server) !== 'pageMetadata(writerContext.requestContext)'
+    || serverPayloads[1].arguments[4]?.getText(server) !== 'pageMetadata(requestContext)'
+    || !committedMetadata) {
+    throw new Error('React navigation metadata must stay bounded and matched across HTTP, browser validation, and route commit.');
   }
 
   const fetchCalls = findNodes(client, (node) =>

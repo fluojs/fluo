@@ -131,6 +131,14 @@ The client manifest retains the server entry identity for `@fluojs/react/vite`, 
 output is an empty marker; the actual `src/entry-server.tsx` builds only into `dist/server`.
 Only page components from `src/page*.tsx` enter browser chunks. Do not import server services
 from those shared page modules.
+The shell opts into `ReactNavigationExperience` from `@fluojs/react/client`. It retains the
+last approved page during pending navigation, announces status, resets approved render errors
+inside the page slot, and applies focus/scroll defaults. `@PageMetadata(...)` on each HTTP
+handler supplies bounded page-owned title, description, and canonical-link entries to the
+initial document and later destinations. To replace the effect, set `onApprovedNavigation`
+on that composition. A page render reset is local; #3864's transport retry instead obtains
+fresh HTTP approval. React 19 and React DOM 19 are required for page-owned head hoisting.
+Direct/JavaScript-disabled errors still use HTTP status and representation.
 
 `Link` remains a real anchor; `router.push(...)` and compatible links request HTTP-approved JSON
 before updating the URL and page slot. This starter explicitly selects `failurePolicy` for

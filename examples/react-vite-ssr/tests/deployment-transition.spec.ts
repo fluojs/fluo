@@ -115,13 +115,16 @@ test.beforeAll(async () => {
       }) : undefined;
       const upstream = await fetch(`${target}${path}`, {
         method: request.method,
-        ...(body === undefined ? {} : { body }),
+        ...(body === undefined ? {} : { body: new Uint8Array(body) }),
         redirect: 'manual',
         headers: {
           accept: request.headers.accept ?? '*/*',
           ...(request.headers['content-type'] === undefined ? {} : { 'content-type': request.headers['content-type'] }),
           ...(request.headers.cookie === undefined ? {} : { cookie: request.headers.cookie }),
-          ...(request.headers['x-example-user'] === undefined ? {} : { 'x-example-user': request.headers['x-example-user'] }),
+          ...(request.headers['x-example-user'] === undefined ? {} : {
+            'x-example-user': Array.isArray(request.headers['x-example-user'])
+              ? request.headers['x-example-user'].join(', ') : request.headers['x-example-user'],
+          }),
         },
       });
       const headers = Object.fromEntries([...upstream.headers].filter(([name]) =>

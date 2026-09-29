@@ -12,11 +12,13 @@ import {
   useSearchParams,
 } from '@fluojs/react/client';
 import type { ReactInitialNavigationPage } from '@fluojs/react';
-import { Suspense, createContext, createElement, lazy, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import type { ReactPageMetadata } from '@fluojs/react';
+import { Suspense, createElement, lazy, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import AdminDestination from './admin-page';
+import { ExamplePageSlot } from './example-page-slot';
+import { ResourceProbe } from './resource-probe';
 
 const RECOMMENDATIONS_DELAY_MS = 25;
-export const InitialPageContext = createContext<ReactInitialNavigationPage | undefined>(undefined);
 
 declare global {
   interface Window {
@@ -37,6 +39,8 @@ export type ProductDocumentProps = {
   readonly productName: string;
   readonly navigationModules?: ReactNavigationModules;
   readonly navigationBuildId?: string;
+  readonly initialPage?: ReactInitialNavigationPage;
+  readonly routeMetadata?: ReactPageMetadata;
   readonly routeParams: Readonly<Record<string, string>>;
   readonly routeUrl: string;
   readonly saved: boolean;
@@ -146,6 +150,12 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void
       )
       : null,
     createElement(Link, { href: '/products/sku-84?preview=false' }, 'Open sku-84'),
+    createElement(Link, { href: '/products/sku-42?preview=false' }, 'Change product query'),
+    createElement(Link, { href: '#details' }, 'Jump to details'),
+    createElement(Link, { href: '#admin-details' }, 'Jump to admin details'),
+    createElement(Link, { href: '#%' }, 'Open malformed fragment'),
+    createElement(Link, { href: '/products/render-error' }, 'Open throwing destination'),
+    createElement(Link, { href: '/products/render-error?throwFallback=true' }, 'Open throwing error view'),
     createElement(Link, { href: '/admin/qr' }, 'Open admin QR'),
     createElement(Link, { href: '/admin/songs' }, 'Open admin songs'),
     createElement(Link, { href: '/deployment/b-only' }, 'Open B-only page'),
@@ -193,31 +203,20 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void
   );
 }
 
-function NavigationFocus() {
-  const pathname = usePathname();
-  const previousPathname = useRef(pathname);
-  useEffect(() => {
-    if (pathname !== previousPathname.current) {
-      document.querySelector('main')?.focus();
-      previousPathname.current = pathname;
-    }
-  }, [pathname]);
-  return null;
-}
-
 export function ProductDocument({
   adminPage,
   preview,
   productName,
   navigationModules,
   navigationBuildId,
+  initialPage,
+  routeMetadata,
   routeParams,
   routeUrl,
   saved,
   sku,
   stylesheets,
 }: ProductDocumentProps) {
-  const initialPage = useContext(InitialPageContext);
   const identifier = useId();
   const [LazyRecommendations] = useState(() => lazy(async () => {
     await new Promise<void>((resolve) => setTimeout(resolve, RECOMMENDATIONS_DELAY_MS));
@@ -225,7 +224,7 @@ export function ProductDocument({
     return { default: Recommendations };
   }));
   const [prefetchScope, setPrefetchScope] = useState('catalog:anonymous');
-  const initialSnapshot = createReactRouteSnapshot({ params: routeParams, url: routeUrl });
+  const initialSnapshot = createReactRouteSnapshot({ params: routeParams, url: routeUrl, metadata: routeMetadata });
 
   const renderRouteDocument = (destination: ReactNode | null): ReactNode => createElement(
     'html',
@@ -243,11 +242,7 @@ export function ProductDocument({
       null,
       createElement('meta', { charSet: 'utf-8' }),
       createElement('meta', { content: 'width=device-width, initial-scale=1', name: 'viewport' }),
-      createElement('meta', { content: 'A minimal fluo React SSR and hydration example.', name: 'description' }),
       createElement('link', { href: '/assets/favicon.svg', rel: 'icon' }),
-      createElement('title', null, adminPage === undefined
-        ? `Catalog item ${sku}`
-        : adminPage === 'qr' ? 'Admin QR' : 'Admin songs'),
       ...stylesheets.map((href) =>
         createElement('link', { 'data-vite-style': true, href, key: href, rel: 'stylesheet' }),
       ),
@@ -255,15 +250,12 @@ export function ProductDocument({
     createElement(
       'body',
       null,
-      initialPage === undefined ? null : createElement('script', {
-        id: 'fluo-initial-page',
-        type: 'application/json',
-      }, initialPage.json),
       createElement(
         'main',
         { tabIndex: -1 },
-        createElement(NavigationFocus),
-        destination ?? (adminPage === undefined
+        createElement(ExamplePageSlot, {
+          destination,
+          page: adminPage === undefined
           ? createElement(
             'section',
             { 'aria-label': 'Product page' },
@@ -301,8 +293,11 @@ export function ProductDocument({
               createElement(LazyRecommendations, { sku }),
             ),
           )
-          : createElement(AdminDestination, { page: adminPage })),
+          : createElement(AdminDestination, { page: adminPage }),
+        }),
         createElement(HydratedCounter),
+        createElement(ResourceProbe),
+        createElement('a', { href: '#details', id: 'details', tabIndex: -1 }, 'Page details'),
         createElement(LongLivedResource),
         createElement(ProductNavigation, {
           onSwitchUser: () => {
@@ -312,6 +307,10 @@ export function ProductDocument({
           },
         }),
       ),
+      initialPage === undefined ? null : createElement('script', {
+        id: 'fluo-initial-page',
+        type: 'application/json',
+      }, initialPage.json),
     ),
   );
 

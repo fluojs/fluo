@@ -565,6 +565,46 @@ describe('@fluojs/react/client', () => {
     expect(browser.replace).not.toHaveBeenCalled();
   });
 
+  it('keeps the approved page head through pending work and rejects stale head updates', async () => {
+    // Given: a committed page and two deferred destinations with different head data.
+    const browser = createEnvironment();
+    const initial = createReactRouteSnapshot({ url: '/products/sku-42', metadata: { title: 'Product 42' } });
+    const store = createClientNavigationStore(initial);
+    const requests: { href: string; resolve: (result: ReactNavigationLoadResult) => void }[] = [];
+    const load = vi.fn((href: string) => new Promise<ReactNavigationLoadResult>((resolve) => {
+      requests.push({ href, resolve });
+    }));
+    const pushState = vi.fn();
+    store.connect({ ...browser.environment, load, pushState, replaceState: vi.fn() });
+    const settled = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().url === '/products/sku-126') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: a newer request supersedes an older pending page, which responds late.
+    store.router.push('/products/sku-84');
+    expect(store.getSnapshot()).toMatchObject({ url: '/products/sku-42', metadata: { title: 'Product 42' } });
+    store.router.push('/products/sku-126');
+    const newer = approvedPrefetch('https://example.test/products/sku-126');
+    requests[1]?.resolve(newer.ok ? { ...newer, payload: { ...newer.payload, metadata: { title: 'Product 126' } } } : newer);
+    await settled;
+    const older = approvedPrefetch('https://example.test/products/sku-84');
+    requests[0]?.resolve(older.ok ? { ...older, payload: { ...older.payload, metadata: { title: 'Product 84' } } } : older);
+    await Promise.resolve();
+
+    // Then: the route, params, and page head identify only the newest approved destination.
+    expect(store.getSnapshot()).toMatchObject({
+      url: '/products/sku-126',
+      params: { sku: 'sku-126' },
+      metadata: { title: 'Product 126' },
+    });
+    expect(pushState).toHaveBeenCalledOnce();
+  });
+
   it('discards public entries and pending responses when the provider scope changes', async () => {
     // Given: a completed anonymous page and a second anonymous response still in flight.
     const browser = createEnvironment();
@@ -605,19 +645,24 @@ describe('@fluojs/react/client', () => {
   it('creates an immutable route snapshot from HTTP-owned route state', () => {
     // Given: the current request URL and path params produced by the HTTP route match.
     const params = { sku: 'sku-42' };
+    const originalMeta = { name: 'description', content: 'First version' };
+    const metadata = { title: 'Product 42', meta: [originalMeta] };
 
     // When: the app creates the hydration-safe client route snapshot.
     const snapshot = createReactRouteSnapshot({
       params,
       url: '/products/sku-42?preview=true#details',
+      metadata,
     });
     params.sku = 'changed';
+    originalMeta.content = 'Later version';
 
     // Then: URL readers and params expose a defensive snapshot without mutation methods.
     expect(snapshot).toMatchObject({
       hash: '#details',
       navigation: { status: 'idle', type: null },
       params: { sku: 'sku-42' },
+      metadata: { title: 'Product 42', meta: [{ name: 'description', content: 'First version' }] },
       pathname: '/products/sku-42',
       url: '/products/sku-42?preview=true#details',
     });

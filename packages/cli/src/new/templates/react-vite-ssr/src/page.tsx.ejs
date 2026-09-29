@@ -14,15 +14,19 @@ export function ProductPage(props: Record<string, unknown>): ReactElement {
   const identifier = useId();
   const sku = typeof props['sku'] === 'string' ? props['sku'] : '';
   const preview = props['preview'] === true;
+  if (sku === 'render-error' && typeof window !== 'undefined'
+    && Reflect.get(window, '__allowRenderRetry') !== true) {
+    throw new Error('Starter destination render failed');
+  }
 
   return (
-    <main>
+    <section aria-label='Product page'>
       <h1>{`Catalog item ${sku}`}</h1>
       <p>{preview ? 'Preview mode' : 'Published mode'}</p>
       <p data-react-identifier id={identifier}>Shared hydration identifier</p>
       <PageCounter />
       <Link href='/search?q=catalog'>Search catalog</Link>
-    </main>
+    </section>
   );
 }
 

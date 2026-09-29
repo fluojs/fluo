@@ -4,7 +4,7 @@ import { hydrateRoot } from 'react-dom/client';
 import { loadReactInitialNavigationDestination, type ReactNavigationModules } from '@fluojs/react/client';
 
 import { REACT_IDENTIFIER_PREFIX } from './hydration';
-import { InitialPageContext, ProductDocument } from './page';
+import { ProductDocument } from './page';
 import './styles.css';
 
 const stylesheets = [...document.querySelectorAll<HTMLLinkElement>('link[data-vite-style]')]
@@ -27,17 +27,19 @@ if (!initial.ok) {
 
 hydrateRoot(
   document,
-  createElement(InitialPageContext.Provider, { value: { payload: initial.payload, json: initialJson } }, createElement(ProductDocument, {
+  createElement(ProductDocument, {
     adminPage: isAdminPage ? adminPage : undefined,
     preview: document.documentElement.dataset.preview === 'true',
     productName: document.documentElement.dataset.productName ?? '',
     navigationModules,
     navigationBuildId: buildId,
+    initialPage: { json: initialJson, payload: initial.payload },
+    routeMetadata: initial.payload.metadata,
     routeParams: isAdminPage ? {} : { sku: document.documentElement.dataset.sku ?? '' },
     routeUrl: `${window.location.pathname}${window.location.search}`,
     saved: document.documentElement.dataset.saved === 'true',
     sku: document.documentElement.dataset.sku ?? '',
     stylesheets,
-  })),
+  }),
   { identifierPrefix: REACT_IDENTIFIER_PREFIX },
 );
