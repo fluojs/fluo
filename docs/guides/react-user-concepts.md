@@ -53,7 +53,7 @@ fail through HTTP. Layout, fallback, and metadata factories still require explic
 | **Error UI** | HTTP pipeline failures keep the existing HTTP error path. Stable React SSR diagnostics distinguish HTTP-pipeline, pre-commit shell, request-abort, and post-shell recoverable phases. Application React error boundaries remain ordinary React code. | **Shipped, intentionally different.** There is no segment `error` file or React-owned HTTP error router. |
 | **Not found** | A missing explicit route is the normal `@fluojs/http` not-found response; handlers may throw the shipped HTTP not-found exception when application lookup fails. | **Shipped, intentionally different.** There is no React `notFound()` helper or catch-all requirement. |
 | **Metadata / head** | Render `<title>`, `<meta>`, and `<link>` in the application document. Use existing HTTP decorators and response APIs for status and headers. | **Shipped as application-owned composition.** There is no automatic metadata function or route-segment merge contract. |
-| **Hydration** | Pass explicit hydration assets through `createReactServerEntry(...)`, render the same request URL and HTTP-matched params into a `ReactClientRouterProvider` snapshot, then call React DOM `hydrateRoot(...)` in the browser entry. | **Shipped.** Server/client data transfer and safe serialization remain application responsibilities. |
+| **Hydration** | The official starter transfers the HTTP-selected initial destination in escaped JSON (64 KiB limit), resolves its built importer, and hydrates the same request URL, params, props, and shared provider. Custom low-level renderers may still supply explicit assets through `createReactServerEntry(...)`. | **Shipped in the starter.** The application chooses JSON-only props and excludes secrets/DI; low-level custom documents own their composition. |
 | **Build assets** | The application loads its Vite manifest and gives that value to `createReactViteAssetManifest(...)` from `@fluojs/react/vite`; the application document emits returned CSS and hydration options. | **Shipped.** fluo does not discover manifests, run Vite, generate bundles, or choose static-file/CDN hosting. |
 
 For the current client, `router.refresh()` reloads the **document** rather than revalidating
@@ -94,14 +94,19 @@ document. Those explicit seams remain the advanced contract, but they are incide
 The supported short path is now:
 
 1. Run `fluo new my-react-app --starter react-vite-ssr`, enter the project, and run `pnpm dev`.
-2. Open `/products/sku-42?preview=true` and edit `src/page.tsx`. The page component owns page UI and
-   hydrated interaction only.
-3. Read `src/app.ts` when changing routes. Its explicit `@Router(...)` / `@Path(...)` handler returns
-   `createElement(ProductPage)`, so HTTP matching, DTO validation, middleware, guards, interceptors, request
-   scopes, and not-found behavior still run before React rendering.
+2. Open `/products/sku-42?preview=true`, follow the `/search?q=catalog` link, and edit
+   `src/page.tsx` or `src/page-search.tsx`. Each page component owns page UI and hydrated
+   interaction only; the shell remains mounted and destination-local state resets at the slot.
+3. Read `src/app.ts` when adding a route. Its explicit `@Router(...)` / `@Path(...)` handler
+   validates a DTO and selects `ReactNavigationPage.create(createElement(Page, props),
+   { module: './page-name.tsx', props })`. A new `src/page-name.tsx` is discovered by the
+   built importer glob without changing entry files, manifest plumbing, or the router store.
+   HTTP matching, DTO validation, middleware, guards, interceptors, request scopes, and
+   not-found behavior still run before React rendering.
 4. Run `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm start`, and `pnpm test:browser` for the
    production path. The browser test verifies the first response, emitted assets, hydration,
-   interaction, and full-document navigation without console warnings or errors.
+   interaction, HTTP-approved two-page navigation, and native document behavior without
+   console warnings or errors.
 
 The generated application owns the composition behind that short path. `src/entry-server.tsx` is the
 replaceable `ReactPageRenderer` and `ReactServerEntry` boundary. `src/react-app.tsx` gives server and
