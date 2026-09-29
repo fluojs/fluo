@@ -141,10 +141,7 @@ describe('fluo typegen navigation authoring', () => {
     const diagnostics = compile(consumerPath);
 
     // Then: static routes need no params and parameterized routes accept their complete param object.
-    expect(
-      diagnostics.map((diagnostic) => diagnostic.code),
-      diagnostics.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')).join('\n'),
-    ).toEqual([]);
+    expect(diagnostics.map((diagnostic) => diagnostic.code)).toEqual([]);
   });
 
   it('rejects unknown route ids in typed navigation authoring', async () => {
