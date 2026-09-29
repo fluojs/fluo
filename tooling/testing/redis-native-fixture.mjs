@@ -1,9 +1,10 @@
 import { createConnection } from 'node:net';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { loadEnvironmentLock } from '../ci/verification-environment.mjs';
 
 export const REDIS_NATIVE_FIXTURE_BUDGET_MS = 60_000;
-export const REDIS_NATIVE_FIXTURE_IMAGE = 'redis:7.4-alpine';
+export const REDIS_NATIVE_FIXTURE_IMAGE = loadEnvironmentLock().redis.image;
 
 export function redisReady(chunks) {
   return chunks.join('').includes('Ready to accept connections');

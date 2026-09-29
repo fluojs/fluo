@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "platform": {
+    "os": "linux",
+    "arch": "arm64",
+    "distribution": "debian-bookworm",
+    "aptSnapshot": "20260928T000000Z"
+  },
+  "image": {
+    "base": "node:24-bookworm@sha256:64af3819f9275802414d7cdc38c27e9d82bd564dec4d4da87d008255d36c63b4",
+    "keyAlgorithm": "sha256(lock-bytes + Dockerfile-bytes + installer-bytes)"
+  },
+  "node": {
+    "primary": { "version": "24.21.0", "sha256": "6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2" },
+    "compat24": { "version": "24.11.0", "sha256": "33a6673b2c7bffeae9deec7f9f8b31aad9119b08f13d49b2ca3ee3bebfe8260f" },
+    "compat26": { "version": "26.10.0", "sha256": "7a6353f63eb3d04765004b4adf172616243e4522434635cb1d26288658b04ab5" },
+    "floor": { "version": "24.0.0", "sha256": "d40ec7ffe0b82b02dce94208c84351424099bd70fa3a42b65c46d95322305040" }
+  },
+  "pnpm": {
+    "version": "10.4.1",
+    "url": "https://registry.npmjs.org/pnpm/-/pnpm-10.4.1.tgz",
+    "sha512": "c753b6c3ad7afa13af388fa6d808035a008e30ea9993f58c6663e2bc5ff21679aa834db094987129aa4d488b86df57f7b634981b2f827cdcacc698cc0cfb88af"
+  },
+  "bun": {
+    "1.2.3": { "version": "1.2.3", "sha256": "ac8d2f49b93e586ee6e1eac9286897d1ae812dbfb2fb5c09a031856323a1f7f9" },
+    "1.4.0": { "version": "1.4.0", "sha256": "4b1a332ee861983eb93bcfe6f770fff94e3e31b2c388bdaea3c8ed35e58eed0e" }
+  },
+  "deno": {
+    "2.5.0": { "version": "2.5.0", "sha256": "81d2ef446954429f0dcbcb24cdce115e5bb2c3a3548b79c01b49ec959682ac9b" },
+    "2.9.7": { "version": "2.9.7", "sha256": "c832298b1ad4422481334855f6003e0f54145762c5a134f20a489511d2f65bbf" }
+  },
+  "browser": {
+    "channel": "chrome",
+    "version": "154.0.8037.57",
+    "url": "https://storage.googleapis.com/chrome-for-testing-public/154.0.8037.57/linux-arm64/chrome-linux-arm64.zip",
+    "sha256": "da83171e552650df34272a9c51f62182bae88d467d1ac19c92dd97917dfa0bca"
+  },
+  "docker": {
+    "version": "28.3.3",
+    "url": "https://download.docker.com/linux/static/stable/aarch64/docker-28.3.3.tgz",
+    "sha256": "db69fed523677c5a24bbc6ef2e85db07205a6af2fe8838c4db652bfff8227cfa"
+  },
+  "redis": {
+    "image": "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499"
+  }
+}

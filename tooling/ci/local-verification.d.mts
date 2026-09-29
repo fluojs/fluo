@@ -11,19 +11,54 @@ export type VerificationIdentity = {
   readonly worktreeStatusDigest: string;
 };
 
-export type VerificationPlan = {
-  readonly cleanDist: boolean;
-  readonly companionChecks: readonly string[];
-  readonly commands: readonly { readonly id: string; readonly executable: string; readonly argv: readonly string[]; readonly cwd: string }[];
-  readonly identity: VerificationIdentity;
-  readonly manifestDigest: string;
-  readonly mode: 'full' | 'scoped';
-};
-
 export type VerificationCommand = {
+  readonly executable: 'pnpm' | 'node' | 'bun' | 'deno';
   readonly argv: readonly string[];
   readonly cwd: string;
-  readonly executable: string;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly runtimeVersion?: string;
+  readonly when?: string;
+};
+
+export type VerificationTask = {
+  readonly id: string;
+  readonly runtime: 'primary' | 'compat24' | 'compat26' | 'runtimeFloor';
+  readonly dependencies: readonly string[];
+  readonly capabilities: readonly string[];
+  readonly inputs: readonly string[];
+  readonly outputs: readonly string[];
+  readonly commands: readonly VerificationCommand[];
+};
+
+export type VerificationManifest = {
+  readonly version: 2;
+  readonly hostChecks: readonly (VerificationCommand & { readonly id: string })[];
+  readonly tasks: readonly VerificationTask[];
+  readonly companions: readonly { readonly commands: readonly VerificationCommand[]; readonly id: string; readonly when: string }[];
+  readonly rules: readonly { readonly commands: readonly VerificationCommand[]; readonly prefix: string }[];
+  readonly scope: { readonly fullPrefixes: readonly string[]; readonly fullPaths: readonly string[] };
+};
+
+export type VerificationPlan = {
+  readonly version: 2;
+  readonly hostChecks: readonly (VerificationCommand & { readonly id: string })[];
+  readonly profile: 'pr' | 'extended';
+  readonly changedFiles: readonly string[];
+  readonly cleanDist: boolean;
+  readonly companionChecks: readonly string[];
+  readonly capabilityTasks: Readonly<Record<string, readonly string[]>>;
+  readonly environment: {
+    readonly lock: Readonly<Record<string, unknown>>;
+    readonly lockDigest: string;
+    readonly imageKey: string;
+  };
+  readonly identity: VerificationIdentity;
+  readonly source: { readonly headSha: string; readonly treeSha: string; readonly baseSha: string };
+  readonly manifestDigest: string;
+  readonly semanticDigest: string;
+  readonly mode: 'full' | 'scoped';
+  readonly notApplicableCapabilities: Readonly<Record<string, string>>;
+  readonly tasks: readonly VerificationTask[];
 };
 
 export type VerificationReceiptEvidence = {
@@ -32,18 +67,16 @@ export type VerificationReceiptEvidence = {
   readonly worktree: string;
 };
 
-export type VerificationManifest = {
-  readonly version: 1;
-  readonly companions: readonly { readonly commands: readonly VerificationCommand[]; readonly id: string; readonly when: string }[];
-  readonly rules: readonly { readonly commands: readonly VerificationCommand[]; readonly prefix: string }[];
-  readonly scope: { readonly fullPrefixes: readonly string[]; readonly fullPaths: readonly string[] };
-};
-
+export function digest(value: string | Buffer): string;
+export function semanticPlanDigest(plan: VerificationPlan): string;
+export function manifestPath(root: string): string;
 export function readVerificationManifest(path?: URL | string): VerificationManifest;
 export function buildVerificationPlan(input: {
   readonly changedFiles: readonly string[];
   readonly identity: VerificationIdentity;
   readonly manifest?: VerificationManifest;
+  readonly profile?: 'pr' | 'extended';
+  readonly lock?: Readonly<Record<string, unknown>>;
 }): VerificationPlan;
 export function verificationModeForChanges(changedFiles: readonly string[], manifest?: VerificationManifest): 'full' | 'scoped';
 export function receiptIsCurrent(receipt: unknown, identity: VerificationIdentity): boolean;

@@ -1,331 +1,119 @@
-name: Node verification
+name: Verification task
 
 on:
   workflow_call:
     inputs:
-      node-version:
-        required: true
+      task-id:
         type: string
-      verify-isolated-http-benchmark:
         required: true
-        type: boolean
+      source-sha:
+        type: string
+        required: true
+      image-cache-key:
+        type: string
+        required: true
+      build-artifact-id:
+        type: string
+        default: ''
+      build-artifact-digest:
+        type: string
+        default: ''
+    outputs:
+      build-artifact-id:
+        value: ${{ jobs.task.outputs.build-artifact-id }}
+      build-artifact-digest:
+        value: ${{ jobs.task.outputs.build-artifact-digest }}
 
-env:
-  CI: '1'
+permissions:
+  contents: read
+  actions: read
 
 jobs:
-  build:
-    name: Build
-    runs-on: ubuntu-latest
+  task:
+    name: ${{ inputs.task-id }}
+    runs-on: ubuntu-24.04-arm
     outputs:
-      artifact-id: ${{ steps.upload-package-builds.outputs.artifact-id }}
-      artifact-digest: ${{ steps.upload-package-builds.outputs.artifact-digest }}
-      artifact-sha: ${{ github.event.pull_request.head.sha || github.sha }}
-      artifact-run-id: ${{ github.run_id }}
+      build-artifact-id: ${{ steps.build-artifact.outputs.artifact-id }}
+      build-artifact-digest: ${{ steps.build-artifact.outputs.artifact-digest }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - uses: actions/checkout@v5
         with:
-          node-version: ${{ inputs.node-version }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build packages
-        run: pnpm build
-
-      - name: Archive package builds
-        run: tar -cf "$RUNNER_TEMP/node-build.tar" packages/*/dist packages/cli/src/new/published-internal-dependencies.ts
-
-      - name: Upload package builds
-        id: upload-package-builds
+          ref: ${{ inputs.source-sha }}
+          fetch-depth: 0
+      - name: Read locked bootstrap version
+        id: version
+        run: node -e "const fs=require('node:fs');const l=JSON.parse(fs.readFileSync('tooling/ci/environment.lock.json','utf8'));fs.appendFileSync(process.env.GITHUB_OUTPUT,'node='+l.node.primary.version+'\n')"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.version.outputs.node }}
+          package-manager-cache: false
+      - name: Restore verification image
+        id: image-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/fluo-verification-image
+          key: ${{ inputs.image-cache-key }}
+      - name: Load verification image
+        if: steps.image-cache.outputs.cache-hit == 'true'
+        run: docker load --input "$RUNNER_TEMP/fluo-verification-image/image.tar"
+      - name: Cache integrity-checked pnpm package contents
+        uses: actions/cache@v4
+        with:
+          path: .omo/verification/cache/pnpm
+          key: fluo-pnpm-linux-arm64-v10-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: fluo-pnpm-linux-arm64-v10-
+      - uses: actions/download-artifact@v5
+        with:
+          name: ci-plan
+          path: .omo/ci-plan
+      - name: Acquire provenance-bound primary build
+        if: inputs.build-artifact-id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ inputs.build-artifact-id }}
+          ARTIFACT_DIGEST: ${{ inputs.build-artifact-digest }}
+          SOURCE_SHA: ${{ inputs.source-sha }}
+        run: node tooling/ci/acquire-build-artifact.mjs --id "$ARTIFACT_ID" --digest "$ARTIFACT_DIGEST" --sha "$SOURCE_SHA" --name "ci-build-$SOURCE_SHA" --run-id "$GITHUB_RUN_ID" --output .omo/ci/artifacts/build.tar
+      - name: Execute the shared Linux task
+        env:
+          TASK_ID: ${{ inputs.task-id }}
+        run: node tooling/ci/verification-runner.mjs --plan .omo/ci-plan/plan.json --task "$TASK_ID" --output .omo/ci/results --artifacts .omo/ci/artifacts
+      - name: Upload primary build
+        if: inputs.task-id == 'build'
+        id: build-artifact
         uses: actions/upload-artifact@v6
         with:
-          name: node-build-${{ inputs.node-version }}-${{ github.sha }}
-          path: ${{ runner.temp }}/node-build.tar
+          name: ci-build-${{ inputs.source-sha }}
+          path: .omo/ci/artifacts/
+          overwrite: true
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
-
-  checks:
-    name: Typecheck, lint and docs
-    runs-on: ubuntu-latest
-    needs:
-      - build
-    env:
-      FLUO_BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}
-      FLUO_BUILD_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact-digest }}
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: ${{ inputs.node-version }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Acquire package builds
-        run: node tooling/ci/acquire-build-artifact.mjs --id "$FLUO_BUILD_ARTIFACT_ID" --digest "$FLUO_BUILD_ARTIFACT_DIGEST" --sha "${{ needs.build.outputs.artifact-sha }}" --name "node-build-${{ inputs.node-version }}-${{ github.sha }}" --run-id "${{ needs.build.outputs.artifact-run-id }}" --output "$RUNNER_TEMP/node-build.tar"
-
-      - name: Restore package builds
-        run: tar -xf "$RUNNER_TEMP/node-build.tar"
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Verify docs
-        if: inputs.node-version == '24.x'
-        run: pnpm verify:docs
-
-      - name: Report package documentation impact
-        if: inputs.node-version == '24.x' && github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          mapfile -t changed_files < <(git diff --name-only "$BASE_SHA" HEAD -- packages apps/docs/content/docs)
-          node tooling/docs/verify-package-guides.mjs "${changed_files[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
-
-      - name: Package documentation preview
-        if: inputs.node-version == '24.x'
-        run: pnpm docs:package
-
-      - name: Verify standalone documentation artifact
-        if: inputs.node-version == '24.x'
-        run: pnpm docs:release-check --require-clean
-
-      - name: Upload documentation preview
-        if: inputs.node-version == '24.x'
-        uses: actions/upload-artifact@v4
-        with:
-          name: docs-site-${{ github.sha }}
-          path: .artifacts/docs-site
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Install isolated HTTP benchmark dependencies
-        if: inputs.verify-isolated-http-benchmark
-        run: pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace install --frozen-lockfile
-
-      - name: Typecheck isolated HTTP benchmark
-        if: inputs.verify-isolated-http-benchmark
-        run: pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace typecheck
-
-      - name: Test isolated HTTP benchmark
-        if: inputs.verify-isolated-http-benchmark
-        run: pnpm --dir tooling/benchmarks/http-comparison --ignore-workspace test
-
-  test:
-    name: Test (${{ matrix.lane }})
-    runs-on: ubuntu-latest
-    needs:
-      - build
-    env:
-      FLUO_BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}
-      FLUO_BUILD_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact-digest }}
-      FLUO_VITEST_SHUTDOWN_DEBUG: '1'
-      FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug
-      GH_TOKEN: ${{ github.token }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - lane: packages-1
-            project: packages
-            shard: 1/4
-          - lane: packages-2
-            project: packages
-            shard: 2/4
-          - lane: packages-3
-            project: packages
-            shard: 3/4
-          - lane: packages-4
-            project: packages
-            shard: 4/4
-          - lane: tooling-1
-            project: tooling
-            shard: 1/2
-          - lane: tooling-2
-            project: tooling
-            shard: 2/2
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: ${{ inputs.node-version }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Acquire package builds
-        run: node tooling/ci/acquire-build-artifact.mjs --id "$FLUO_BUILD_ARTIFACT_ID" --digest "$FLUO_BUILD_ARTIFACT_DIGEST" --sha "${{ needs.build.outputs.artifact-sha }}" --name "node-build-${{ inputs.node-version }}-${{ github.sha }}" --run-id "${{ needs.build.outputs.artifact-run-id }}" --output "$RUNNER_TEMP/node-build.tar"
-
-      - name: Restore package builds
-        run: tar -xf "$RUNNER_TEMP/node-build.tar"
-
-      - name: Install Bun for documentation fixtures
-        if: matrix.project == 'tooling'
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: '1.4.0'
-
-      - name: Install Deno for documentation fixtures
-        if: matrix.project == 'tooling'
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: 'v2.9.7'
-
-      - name: Test packages shard
-        if: matrix.project == 'packages'
-        env:
-          FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/${{ matrix.lane }}
-        run: pnpm vitest run --project packages --shard=${{ matrix.shard }} --maxWorkers=1
-
-      - name: Test apps project
-        if: matrix.lane == 'tooling-1'
-        env:
-          FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/apps
-        run: pnpm vitest run --project apps --maxWorkers=1
-
-      - name: Test examples project
-        if: matrix.lane == 'tooling-1'
-        env:
-          FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/examples
-        run: pnpm vitest run --project examples --maxWorkers=1
-
-      - name: Test tooling shard
-        if: matrix.project == 'tooling'
-        env:
-          FLUO_VITEST_SHUTDOWN_DEBUG_DIR: .artifacts/vitest-shutdown-debug/tooling
-        run: pnpm vitest run --project tooling --shard=${{ matrix.shard }} --maxWorkers=1
-
-      - name: Print Vitest shutdown debug summary
-        if: ${{ always() }}
-        run: |
-          if [ ! -d "$FLUO_VITEST_SHUTDOWN_DEBUG_DIR" ]; then
-            echo "No Vitest shutdown debug artifacts were produced."
-            exit 0
-          fi
-
-          node --input-type=module <<'EOF'
-          import { existsSync, readdirSync, readFileSync } from 'node:fs';
-          import { join } from 'node:path';
-
-          const directory = process.env.FLUO_VITEST_SHUTDOWN_DEBUG_DIR;
-          if (!directory || !existsSync(directory)) {
-            console.log('No Vitest shutdown debug artifacts were produced.');
-            process.exit(0);
-          }
-
-          const collectJsonFiles = (currentDirectory) => {
-            const entries = readdirSync(currentDirectory, { withFileTypes: true });
-
-            return entries
-              .flatMap((entry) => {
-                const entryPath = join(currentDirectory, entry.name);
-                if (entry.isDirectory()) {
-                  return collectJsonFiles(entryPath);
-                }
-
-                return entry.name.endsWith('.json') ? [entryPath] : [];
-              })
-              .sort();
-          };
-
-          const files = collectJsonFiles(directory);
-          if (files.length === 0) {
-            console.log('No Vitest shutdown debug artifacts were produced.');
-            process.exit(0);
-          }
-
-          for (const file of files) {
-            const artifact = JSON.parse(readFileSync(file, 'utf8'));
-            const activeHandleSummary = Array.isArray(artifact.process?.activeHandles?.types)
-              ? artifact.process.activeHandles.types.map((entry) => `${entry.constructorName}x${String(entry.count)}`).join(', ')
-              : '';
-
-            console.log(`artifact: ${file.slice(directory.length + 1)}`);
-            console.log(`  kind: ${String(artifact.kind ?? 'unknown')}`);
-            if (artifact.lastTestReady?.fullName) {
-              console.log(`  last ready test: ${artifact.lastTestReady.fullName}`);
-            }
-            if (artifact.lastActivity?.file) {
-              console.log(`  worker last activity: ${artifact.lastActivity.file} (${artifact.lastActivity.phase})`);
-            }
-            if (activeHandleSummary.length > 0) {
-              console.log(`  active handles: ${activeHandleSummary}`);
-            }
-          }
-          EOF
-
-      - name: Upload Vitest shutdown debug artifacts
-        if: ${{ always() && hashFiles('.artifacts/vitest-shutdown-debug/**/*.json') != '' }}
+      - name: Upload standalone documentation preview
+        if: inputs.task-id == 'static'
         uses: actions/upload-artifact@v6
         with:
-          name: vitest-shutdown-debug-${{ inputs.node-version }}-${{ matrix.lane }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .artifacts/vitest-shutdown-debug/**/*.json
+          name: docs-site-${{ inputs.source-sha }}
+          path: .omo/ci/artifacts/docs-site
+          overwrite: true
+          include-hidden-files: true
           if-no-files-found: error
-
-  starters:
-    name: Generated starters
-    runs-on: ubuntu-latest
-    needs:
-      - build
-    env:
-      FLUO_BUILD_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}
-      FLUO_BUILD_ARTIFACT_DIGEST: ${{ needs.build.outputs.artifact-digest }}
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+          retention-days: 7
+      - name: Preserve this attempt's task evidence
+        if: ${{ always() }}
+        id: task-history
+        uses: actions/upload-artifact@v6
         with:
-          node-version: ${{ inputs.node-version }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Acquire package builds
-        run: node tooling/ci/acquire-build-artifact.mjs --id "$FLUO_BUILD_ARTIFACT_ID" --digest "$FLUO_BUILD_ARTIFACT_DIGEST" --sha "${{ needs.build.outputs.artifact-sha }}" --name "node-build-${{ inputs.node-version }}-${{ github.sha }}" --run-id "${{ needs.build.outputs.artifact-run-id }}" --output "$RUNNER_TEMP/node-build.tar"
-
-      - name: Restore package builds
-        run: tar -xf "$RUNNER_TEMP/node-build.tar"
-
-      - name: Install generated starter browser
-        run: pnpm --dir examples/react-vite-ssr exec playwright install --with-deps chrome
-
-      - name: Verify generated starters
-        env:
-          FLUO_CLI_SANDBOX_ROOT: ${{ runner.temp }}/fluo-node-${{ inputs.node-version }}-${{ github.run_id }}-${{ github.run_attempt }}
-        run: pnpm --dir packages/cli sandbox:matrix < /dev/null
+          name: ci-history-${{ inputs.task-id }}-${{ github.run_attempt }}
+          path: .omo/ci/results/
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Upload task evidence including failures
+        if: ${{ always() && steps.task-history.outcome == 'success' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-result-${{ inputs.task-id }}
+          path: .omo/ci/results/
+          overwrite: true
+          include-hidden-files: true
+          if-no-files-found: error
