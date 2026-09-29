@@ -314,6 +314,7 @@ function insideTask(plan, task, output, artifacts) {
       maxBuffer: 128 * 1024 * 1024,
       env: { PATH: runtimePath(plan.environment.lock, task, command), CI: '1', TZ: 'UTC', LANG: 'C.UTF-8',
         HOME: '/tmp', XDG_DATA_HOME: '/pnpm-cache', DOCKER_HOST: 'unix:///var/run/docker.sock', CHROME_BIN: '/opt/google/chrome/chrome',
+        npm_config_store_dir: '/pnpm-cache/pnpm/store',
         PLAYWRIGHT_BROWSERS_PATH: '/opt/google/chrome', FLUO_CLI_SANDBOX_ROOT: `/tmp/fluo-${task.id}`,
         FLUO_VITEST_SHUTDOWN_DEBUG: '1',
         FLUO_VITEST_SHUTDOWN_DEBUG_DIR: `.artifacts/vitest-shutdown-debug/${task.id}`,

@@ -40,7 +40,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   buildTask.commands = [
     { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
     { executable: 'node', argv: ['-e',
-      'const fs=require("node:fs");const cache=process.env.XDG_DATA_HOME??"/tmp/pnpm-cache";fs.mkdirSync(cache,{recursive:true});fs.writeFileSync(cache+"/cross-task-proof","cached input");fs.mkdirSync("packages/cli/dist",{recursive:true});fs.writeFileSync("packages/cli/dist/cli.js","export const built = true;\\n");fs.mkdirSync(".artifacts/runtime-floor",{recursive:true});fs.writeFileSync(".artifacts/runtime-floor/runtime-floor-exercise.mjs","export const runtime = true;\\n")'], cwd: '.' },
+      'const fs=require("node:fs");const store=require("node:child_process").execFileSync("pnpm",["store","path"],{encoding:"utf8"}).trim();if(!store.startsWith("/pnpm-cache/"))throw Error("PNPM_STORE_OUTSIDE_CACHE:"+store);const cache=process.env.XDG_DATA_HOME??"/tmp/pnpm-cache";fs.mkdirSync(cache,{recursive:true});fs.writeFileSync(cache+"/cross-task-proof","cached input");fs.mkdirSync("packages/cli/dist",{recursive:true});fs.writeFileSync("packages/cli/dist/cli.js","export const built = true;\\n");fs.mkdirSync(".artifacts/runtime-floor",{recursive:true});fs.writeFileSync(".artifacts/runtime-floor/runtime-floor-exercise.mjs","export const runtime = true;\\n")'], cwd: '.' },
   ];
   const staticTask = manifest.tasks.find(({ id }) => id === 'static');
   staticTask.commands = [
