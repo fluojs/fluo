@@ -8,9 +8,10 @@ export type ReactNavigationDestination = {
   readonly props: Readonly<Record<string, unknown>>;
 };
 
-/** Version 1 response for a successfully matched React page. */
+/** Version 2 response for a successfully matched React page. */
 export type ReactNavigationPayload = {
-  readonly version: 1;
+  readonly version: 2;
+  readonly buildId: string;
   readonly url: string;
   readonly params: Readonly<Record<string, string>>;
   readonly destination: ReactNavigationDestination;
@@ -34,9 +35,11 @@ export function createReactNavigationPayload(
   url: string,
   params: Readonly<Record<string, string>>,
   destination: ReactNavigationDestination,
+  buildId: string,
 ): ReactNavigationPayload {
   return {
-    version: 1,
+    version: 2,
+    buildId,
     url,
     params: { ...params },
     destination: {

@@ -9,7 +9,7 @@ declare global {
   }
 }
 
-const NAVIGATION_MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
+const NAVIGATION_MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=2';
 
 for (const reason of ['network', 'server-error'] as const) {
   test(`preserves a functional resource and approved page across ${reason} failure and fresh retry`, async ({ page }) => {
@@ -87,7 +87,7 @@ test('explicit document exit remains available after a preserved failure', async
     && request.headers().accept !== NAVIGATION_MEDIA_TYPE);
 
   // When: the user explicitly chooses the HTTP document instead.
-  await page.getByRole('button', { name: 'Open full document' }).click();
+  await page.getByRole('button', { name: 'Update application (open full document)' }).click();
   await document;
 
   // Then: the browser follows the ordinary server-rendered route.
@@ -319,7 +319,9 @@ test('a recoverable chunk import failure keeps the page and offers document reco
   // Given: HTTP approves the page, but its build-mapped browser module cannot load.
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/admin/qr');
+  await page.goto('/products/sku-42');
+  await page.getByRole('button', { name: 'Use shell resource' }).click();
+  await expect(page.getByTestId('resource-ack')).not.toBeEmpty();
   await page.evaluate(() => { window.__originalResource = window.__reactResource; });
   await page.route((url) => /\/assets\/navigation-admin-[^/]+\.js$/u.test(url.pathname),
     (route) => route.abort('failed'));
@@ -332,8 +334,8 @@ test('a recoverable chunk import failure keeps the page and offers document reco
 
   // Then: a safe typed failure UI and still-functional resource remain until explicit exit.
   await expect(page.getByRole('alert')).toContainText('import-failure');
-  await expect(page).toHaveURL(/\/admin\/qr$/u);
-  await expect(page.getByRole('heading', { name: 'Admin QR' })).toBeVisible();
+  await expect(page).toHaveURL(/\/products\/sku-42$/u);
+  await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
   await page.getByRole('button', { name: 'Use shell resource' }).click();
   await expect(page.getByTestId('resource-ack')).not.toBeEmpty();
   expect(await page.evaluate(() => window.__originalResource === window.__reactResource)).toBe(true);

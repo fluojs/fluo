@@ -66,6 +66,7 @@ const REACT_VITE_SSR_TEMPLATES: readonly ReactViteSsrTemplate[] = [
   { outputPath: 'src/react-app.tsx', templatePath: 'src/react-app.tsx.ejs' },
   { outputPath: 'src/styles.css', templatePath: 'src/styles.css.ejs' },
   { outputPath: 'src/styles.d.ts', templatePath: 'src/styles.d.ts.ejs' },
+  { outputPath: 'tests/deployment-transition.spec.ts', templatePath: 'tests/deployment-transition.spec.ts.ejs' },
   { outputPath: 'tests/production-hydration.spec.ts', templatePath: 'tests/production-hydration.spec.ts.ejs' },
 ];
 

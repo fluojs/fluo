@@ -30,7 +30,7 @@ Framework는 명시한 navigation/history/failure 및 취소 경계, commit 전 
 | 저장 후 최신화 | S: enhanced 저장은 shell을 파괴하지 않고 승인된 최신 데이터 표시; F: 오래된 결과가 새 저장을 덮지 않고 실패를 표시; C: 취소한 재검증은 마지막 승인 화면을 유지. | Soft revalidation은 **unsupported**. `packages/react/src/client/store.ts`의 `invalidate()`는 prefetch/pending만 비우고 `refresh()`는 document reload; native 303/GET은 **shipped**. | [#3873](https://github.com/fluojs/fluo/issues/3873), #3874, #3881; 저장 후 dispatcher와 production browser. |
 | 인증 전환 | S: 다음 soft navigation 전에 session epoch 갱신, 보호 데이터/자원은 앱 정책 적용; F: 401/403은 일시적 재시도나 public cache 성공으로 처리하지 않음; C: 이전 session의 pending 결과가 sign-out 후 commit하지 않음. | Public-prefetch 안전성은 **shipped**, mutation/session 조정은 **assembly burden**. `packages/react/src/client/store.ts`, `docs/contracts/react-navigation-payload.md`, `examples/react-vite-ssr/src/app.test.ts`. | [#3875](https://github.com/fluojs/fluo/issues/3875), #3881; guarded dispatcher 및 login/logout race browser. |
 | 개발 중 수정 | S: React/CSS는 예측 가능하게 갱신하고 server/shared는 안전하게 재시작, config는 별도 계약 적용; F: 문법/bootstrap 실패 노출과 수정 후 회복; C: 재시작 중단 시 child/middleware 종료. | 범위가 정해진 Node React Fast Refresh/CSS HMR 및 restart baseline은 **shipped**; #3877의 일반 server/shared/config drain·복구는 **verification gap**. `packages/cli/src/dev-runner/react-vite-dev-app.ts`, `docs/architecture/dev-reload-architecture.ko.md`. | [#3876](https://github.com/fluojs/fluo/issues/3876), [#3877](https://github.com/fluojs/fluo/issues/3877); 생성 앱의 실제 dev browser 편집/복구. |
-| 배포 전환 | S: B 배포 후 build A 탭에서 호환되는 승인 목적지로 이동; F: chunk 누락/버전 불일치는 복구 UI 또는 명시적 document upgrade, 무한 재시도/blank 없음; C: 이전 import가 최신 의도 후 commit하지 않음. | 버전 차이 복구는 **verification gap**. `packages/react/src/client/navigation-payload.ts`는 build module/import를 검사하고 `examples/react-vite-ssr/tests/production-hydration.spec.ts`는 단일 build만 다룹니다. | [#3878](https://github.com/fluojs/fluo/issues/3878), #3884; 고정된 탭/host asset을 사용하는 두 build production browser. |
+| 배포 전환 | S: B 배포 후 build A 탭에서 호환되는 승인 목적지로 이동; F: chunk 누락/버전 불일치는 복구 UI 또는 명시적 document upgrade, 무한 재시도/blank 없음; C: 이전 import가 최신 의도 후 commit하지 않음. | **범위가 정해진 v2 build 식별자와 배포 recipe**: 전체 Vite manifest 및 `/assets/` base로 build를 구분하고 불일치는 import 전에 거부하며 명시적 update를 제공합니다. 독립 A→B browser 검증이 필요하고 이 행은 최종 제품 게이트 통과를 주장하지 않습니다. | [#3878](https://github.com/fluojs/fluo/issues/3878), #3884; 고정된 탭/host asset을 사용하는 두 build production browser. |
 | 장시간 세션 | S: 주크박스 반복 작업에서 하나의 사용 가능한 shell resource와 제한된 listener/request 수 유지; F: 주입된 복구 가능 오류에 blank/unhandled UI 없음; C: 명시적 logout/reload/탭 종료는 거짓 보존 없이 수행. | **Verification gap**이며 재현된 누수/MusicKit 장애라는 주장이 아닙니다. `packages/react/src/client/store.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`는 짧은 경로만 검증. | #3886; 결정적 1,000-action browser loop와 별도 extended soak, 이후 #3879 gate. |
 
 ## 실패와 최신화 기본값
@@ -47,6 +47,9 @@ history entry로 되돌아갑니다. 늦은 결과와 취소는 commit하지 않
 anchor, 수정키 클릭, 새 탭, JS 비활성화 요청, 강제 reload는 문서 경로로 남습니다. 실제
 탭 종료/OS discard는 보존 보장이 아닙니다. 복구 가능한 주크박스 이동 실패가 셸을
 파괴하거나 blank 화면·unhandled error를 남기면 제품 게이트 실패입니다.
+Production starter는 `incompatible-build`에서도 마지막 셸을 유지하고 명시적
+document update를 표시합니다. `/assets/` 게시 순서와 asset 보존은
+[프로덕션 배포 recipe](../guides/react-production-deployment.ko.md)의 앱/host 책임입니다.
 
 **현재** `router.refresh()`는 `browser.reload()`를 호출하는 document reload이지 soft data revalidation이 아닙니다. `router.invalidate()`는 provider가 관리하는 제한된 single-use *public* prefetch와 pending work를 비우지만 현재 페이지 데이터를 다시 가져오지 않습니다. Application은 관련 mutation/auth 전환 후 다음 in-document navigation 전에 `prefetchScope`를 바꾸거나 invalidate해야 합니다. [#3873](https://github.com/fluojs/fluo/issues/3873)이 향후 shell 보존 HTTP 승인 refresh와 기존 reload 의존 소비자의 명시적 migration을 소유하고, #3874/#3875가 저장/session 통합을 맡습니다. 일반/private loader cache와 자동 cache policy는 배포되지 않았습니다.
 

@@ -19,11 +19,12 @@ describe('React Vite SSR app composition', () => {
   it('renders the HTTP-owned route snapshot through the shared document', () => {
     const html = renderToString(
       <ReactAppDocument
+        navigationBuildId='test-build'
         page={<ProductPage sku='sku-42' preview={true} />}
         initialPage={{
-          json: '{"version":1,"url":"/products/sku-42?preview=true","params":{"sku":"sku-42"},"destination":{"module":"./page.tsx","props":{"sku":"sku-42","preview":true}}}',
+          json: '{"version":2,"buildId":"test-build","url":"/products/sku-42?preview=true","params":{"sku":"sku-42"},"destination":{"module":"./page.tsx","props":{"sku":"sku-42","preview":true}}}',
           payload: {
-            version: 1, url: '/products/sku-42?preview=true', params: { sku: 'sku-42' },
+            version: 2, buildId: 'test-build', url: '/products/sku-42?preview=true', params: { sku: 'sku-42' },
             destination: { module: './page.tsx', props: { sku: 'sku-42', preview: true } },
           },
         }}

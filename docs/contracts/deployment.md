@@ -13,6 +13,7 @@
 | Adapter bootstrap | Deploy applications through an explicit adapter. Repository examples bootstrap with `FluoFactory.create(AppModule, { adapter: FastifyHttpApplicationAdapter.create({ port: 3000 }) })`, then await `app.listen()`. |
 | Health registration | If production probes must report dependency state, register `TerminusModule.forRoot(...)` so `/health` and `/ready` expose runtime and indicator status. |
 | Config boundary | Pass process-backed settings through `@fluojs/config` as an explicit `processEnv` snapshot at bootstrap. Package code must not rely on ambient `process.env` reads. |
+| React production assets | For the official React starter, build one complete Vite manifest and same-origin `/assets/` output, publish B hashed assets before switching to its server/manifest, retain A for a stated old-tab window, and check missing-asset 404 diagnostics. Follow the [React production recipe](../guides/react-production-deployment.md). |
 
 ## Environment Variables
 

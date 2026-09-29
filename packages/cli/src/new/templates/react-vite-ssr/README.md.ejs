@@ -34,7 +34,7 @@ the Search catalog link to `/search?q=catalog`. Edit `src/page.tsx` and
 `src/page-search.tsx`; their UI and hydrated interaction share the same server/client
 document, provider, and page slot. The shell stays mounted during approved soft navigation;
 page-local state resets when a new destination mounts. Network, HTTP 5xx, and recoverable mapped
-page import failures preserve the approved page and shell with `Retry navigation` and
+page import failures or incompatible build identities preserve the approved page and shell with `Retry navigation` and
 `Open full document` controls outside the page slot. Before hydration, with JavaScript disabled,
 on modified clicks, and on unavailable destinations, links remain native anchors.
 
@@ -87,7 +87,9 @@ Vite transform handles them; JSX rendering stays in `.tsx` modules such as `src/
 `<%= testBrowserCommand %>` starts the built Fastify server and verifies the first HTTP response, emitted
 assets, hydration, two-page soft navigation, network/5xx failure and fresh retry plus mapped
 page import failure with a live shell resource, and native fallback without console warnings
-or errors.
+or errors. `tests/deployment-transition.spec.ts` independently builds A and B outputs,
+switches a same-origin HTTP surface, verifies retained/missing hashed assets and requires
+an explicit document choice before replacing an incompatible A shell.
 Install the Playwright Chrome browser first when your environment does not already provide it.
 
 ## Application-owned wiring
@@ -115,6 +117,13 @@ Read these files only when you need to change the default composition:
 files, run Vite, serve assets, or move route ownership out of `@fluojs/http`. The Fastify asset
 controller is a minimal local starter boundary; production deployments should serve `dist/client`
 through their normal static-file or CDN infrastructure.
+Its `/assets/` bootstrap and lazy chunks are content-hashed, with immutable asset cache
+headers and private non-reusable HTML/navigation. Publish all B assets before switching B
+server/manifest, retain A for your specified old-tab window and monitor
+`X-Fluo-Asset-Status: missing` on 404. For v1-to-v2 protocol migration and the
+application/host responsibility boundary, see
+https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-react-production-assets.md
+and https://github.com/fluojs/fluo/blob/main/docs/guides/react-production-deployment.md.
 The client manifest retains the server entry identity for `@fluojs/react/vite`, but its client
 output is an empty marker; the actual `src/entry-server.tsx` builds only into `dist/server`.
 Only page components from `src/page*.tsx` enter browser chunks. Do not import server services

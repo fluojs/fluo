@@ -81,7 +81,8 @@ function approvedPrefetch(href: string, expiresAt = Date.now() + 15_000): ReactN
   return {
     ok: true,
     payload: {
-      version: 1,
+      version: 2,
+      buildId: 'test-build',
       url: `${url.pathname}${url.search}`,
       params: { sku },
       destination: { module: './navigation-product.ts', props: { sku } },
@@ -829,7 +830,8 @@ describe('@fluojs/react/client', () => {
     const approved = {
       ok: true as const,
       payload: {
-        version: 1 as const,
+        version: 2 as const,
+        buildId: 'test-build',
         url: '/products/sku-84?preview=false',
         params: { sku: 'sku-84' },
         destination: { module: './navigation-product.ts', props: { sku: 'sku-84' } },
@@ -877,7 +879,8 @@ describe('@fluojs/react/client', () => {
       readonly resolve: (result: {
         ok: true;
         payload: {
-          version: 1;
+          version: 2;
+          buildId: string;
           url: string;
           params: { sku: string };
           destination: { module: string; props: { sku: string } };
@@ -907,7 +910,8 @@ describe('@fluojs/react/client', () => {
     const approve = (sku: string) => ({
       ok: true as const,
       payload: {
-        version: 1 as const,
+        version: 2 as const,
+        buildId: 'test-build',
         url: `/products/${sku}`,
         params: { sku },
         destination: { module: './navigation-product.ts', props: { sku } },
@@ -970,7 +974,8 @@ describe('@fluojs/react/client', () => {
       return {
         ok: true as const,
         payload: {
-          version: 1 as const,
+          version: 2 as const,
+          buildId: 'test-build',
           url: `/products/${sku}`,
           params: { sku },
           destination: { module: './navigation-product.ts', props: { sku } },
@@ -1016,7 +1021,8 @@ describe('@fluojs/react/client', () => {
     const load = vi.fn(async () => ({
       ok: true as const,
       payload: {
-        version: 1 as const,
+        version: 2 as const,
+        buildId: 'test-build',
         url: '/products/sku-42?preview=false',
         params: { sku: 'sku-42' },
         destination: { module: './navigation-product.ts', props: { sku: 'sku-42' } },
@@ -1065,7 +1071,8 @@ describe('@fluojs/react/client', () => {
     approve?.({
       ok: true,
       payload: {
-        version: 1,
+        version: 2,
+        buildId: 'test-build',
         url: '/admin/songs',
         params: {},
         destination: { module: './navigation-admin.ts', props: {} },
@@ -1142,7 +1149,8 @@ describe('@fluojs/react/client', () => {
     requests[1]?.resolve({
       ok: true,
       payload: {
-        version: 1,
+        version: 2,
+        buildId: 'test-build',
         url: '/products/sku-42?preview=true',
         params: { sku: 'sku-42' },
         destination: { module: './navigation-product.ts', props: { sku: 'sku-42' } },

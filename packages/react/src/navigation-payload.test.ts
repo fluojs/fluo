@@ -28,7 +28,7 @@ function request(signal?: AbortSignal): FrameworkRequest {
   return {
     body: undefined,
     cookies: {},
-    headers: { accept: 'application/vnd.fluo.react-navigation+json;v=1' },
+    headers: { accept: 'application/vnd.fluo.react-navigation+json;v=2' },
     method: 'GET',
     params: {},
     path: '/destination',
@@ -62,6 +62,83 @@ function response(): FrameworkResponse & { body?: unknown } {
   };
 }
 
+it('keeps a legacy v1 request on the document path without approving a v2 payload', async () => {
+  // Given: an opted-in page with an explicit v2 build identity.
+  @Router('/destination')
+  class DestinationRouter {
+    @Path('/')
+    show() {
+      return ReactNavigationPage.create(createElement('main', null, 'Document'), {
+        module: './destination.ts',
+        props: {},
+      });
+    }
+  }
+  @Module({ imports: [ReactModule.forRoot({
+    controllers: [DestinationRouter],
+    navigationBuildId: 'build-a',
+    renderPage: (page) => createReactServerEntry(page),
+  })] })
+  class AppModule {}
+  const app = await FluoFactory.create(AppModule);
+  try {
+    // When: an old tab requests v1 and a direct browser requests HTML.
+    const legacy = response();
+    const direct = response();
+    await app.dispatch({ ...request(), headers: {
+      accept: 'application/vnd.fluo.react-navigation+json;v=1',
+    } }, legacy);
+    await app.dispatch({ ...request(), headers: { accept: 'text/html' } }, direct);
+
+    // Then: neither response is v2 JSON and HTTP keeps ordinary document status/content.
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.headers['Content-Type']).toBe('text/html; charset=utf-8');
+    expect(direct.statusCode).toBe(200);
+    expect(direct.headers['Content-Type']).toBe('text/html; charset=utf-8');
+  } finally {
+    await app.close();
+  }
+});
+
+it('does not silently negotiate a page without a configured build identity', async () => {
+  @Router('/destination')
+  class DestinationRouter {
+    @Path('/')
+    show() {
+      return ReactNavigationPage.create(createElement('main', null, 'Document'), {
+        module: './destination.ts',
+        props: {},
+      });
+    }
+  }
+  @Module({ imports: [ReactModule.forRoot({
+    controllers: [DestinationRouter],
+    renderPage: (page) => createReactServerEntry(page),
+  })] })
+  class AppModule {}
+  const app = await FluoFactory.create(AppModule);
+  try {
+    const negotiated = response();
+    const document = response();
+    await app.dispatch(request(), negotiated);
+    await app.dispatch({ ...request(), headers: { accept: 'text/html' } }, document);
+    expect(negotiated.statusCode).toBe(500);
+    expect(negotiated.headers['Content-Type']).not.toBe('application/vnd.fluo.react-navigation+json;v=2');
+    expect(document.statusCode).toBe(200);
+    expect(document.headers['Content-Type']).toBe('text/html; charset=utf-8');
+  } finally {
+    await app.close();
+  }
+});
+
+it('rejects an empty navigation build identity at configuration time', () => {
+  expect(() => ReactModule.forRoot({
+    controllers: [],
+    navigationBuildId: ' ',
+    renderPage: (page) => createReactServerEntry(page),
+  })).toThrow('React navigation build identity cannot be empty.');
+});
+
 it('grants reuse only for an explicitly public navigation page', async () => {
   // Given: an identity-independent page explicitly declares public prefetch eligibility.
   @Router('/destination')
@@ -76,6 +153,7 @@ it('grants reuse only for an explicitly public navigation page', async () => {
   }
   @Module({
     imports: [ReactModule.forRoot({
+      navigationBuildId: 'test-build',
       controllers: [DestinationRouter],
       renderPage: (page) => createReactServerEntry(page),
     })],
@@ -120,6 +198,7 @@ it.each([
   }
   @Module({
     imports: [ReactModule.forRoot({
+      navigationBuildId: 'test-build',
       controllers: [DestinationRouter],
       renderPage: (page) => createReactServerEntry(page, { headers: rendererHeaders }),
     })],
@@ -158,6 +237,7 @@ it('does not start an HTML stream for a negotiated destination', async () => {
   }
   @Module({
     imports: [ReactModule.forRoot({
+      navigationBuildId: 'test-build',
       controllers: [DestinationRouter],
       renderPage(page) {
         renderCalls++;
@@ -174,7 +254,7 @@ it('does not start an HTML stream for a negotiated destination', async () => {
 
     // Then: JSON is committed without opening a React stream or rendering HTML.
     expect(result.statusCode).toBe(200);
-    expect(result.body).toMatchObject({ version: 1, destination: { module: './destination.ts' } });
+    expect(result.body).toMatchObject({ version: 2, buildId: 'test-build', destination: { module: './destination.ts' } });
     expect(renderCalls).toBe(1);
   } finally {
     await app.close();
@@ -195,6 +275,7 @@ it('preserves renderer-owned status and headers for document and negotiated page
   }
   @Module({
     imports: [ReactModule.forRoot({
+      navigationBuildId: 'test-build',
       controllers: [DestinationRouter],
       renderPage: (page) => createReactServerEntry(page, {
         status: 404,
@@ -219,8 +300,8 @@ it('preserves renderer-owned status and headers for document and negotiated page
       expect(result.headers['X-Page']).toBe('unavailable');
     }
     expect(document.headers['Content-Type']).toBe('text/html; charset=utf-8');
-    expect(navigation.headers['Content-Type']).toBe('application/vnd.fluo.react-navigation+json;v=1');
-    expect(navigation.body).toMatchObject({ version: 1, destination: { module: './destination.ts' } });
+    expect(navigation.headers['Content-Type']).toBe('application/vnd.fluo.react-navigation+json;v=2');
+    expect(navigation.body).toMatchObject({ version: 2, buildId: 'test-build', destination: { module: './destination.ts' } });
   } finally {
     await app.close();
   }
@@ -242,6 +323,7 @@ it('does not commit a navigation result after request cancellation', async () =>
   }
   @Module({
     imports: [ReactModule.forRoot({
+      navigationBuildId: 'test-build',
       controllers: [DestinationRouter],
       renderPage: (page) => createReactServerEntry(page),
     })],
@@ -318,6 +400,7 @@ it('uses URI version matching and the complete HTTP pipeline for navigation resp
   }
   @Module({
     imports: [ReactModule.forRoot({
+      navigationBuildId: 'test-build',
       controllers: [ProductRouter],
       middleware: [PageMiddleware],
       providers: [RequestMarker, PageGuard, PageInterceptor],
@@ -345,7 +428,8 @@ it('uses URI version matching and the complete HTTP pipeline for navigation resp
 
     // Then: matched params, URL, per-request state, and HTTP-owned errors cannot be forged by React.
     expect(first.body).toEqual({
-      version: 1,
+      version: 2,
+      buildId: 'test-build',
       url: '/v2/products/sku-42?preview=true',
       params: { sku: 'sku-42' },
       destination: { module: './destination.ts', props: { requestId: 1, sku: 'sku-42' } },
@@ -358,7 +442,7 @@ it('uses URI version matching and the complete HTTP pipeline for navigation resp
     expect(denied.statusCode).toBe(403);
     expect(missing.statusCode).toBe(404);
     expect([denied, missing].every((result) => result.headers['Content-Type'] !==
-      'application/vnd.fluo.react-navigation+json;v=1')).toBe(true);
+      'application/vnd.fluo.react-navigation+json;v=2')).toBe(true);
   } finally {
     await app.close();
   }
@@ -380,6 +464,7 @@ it('preserves HTTP redirects and non-page values under navigation negotiation', 
   }
   @Module({
     imports: [ReactModule.forRoot({
+      navigationBuildId: 'test-build',
       controllers: [DestinationRouter],
       renderPage: (page) => createReactServerEntry(page),
     })],
@@ -397,7 +482,7 @@ it('preserves HTTP redirects and non-page values under navigation negotiation', 
     expect(redirected.statusCode).toBe(302);
     expect(redirected.headers.Location).toBe('/sign-in');
     expect(nonPage.body).toEqual({ kind: 'plain-data' });
-    expect(nonPage.headers['Content-Type']).not.toBe('application/vnd.fluo.react-navigation+json;v=1');
+    expect(nonPage.headers['Content-Type']).not.toBe('application/vnd.fluo.react-navigation+json;v=2');
   } finally {
     await app.close();
   }
@@ -419,6 +504,7 @@ it('keeps an unserializable destination on the HTTP pre-commit error path', asyn
   }
   @Module({
     imports: [ReactModule.forRoot({
+      navigationBuildId: 'test-build',
       controllers: [BrokenRouter],
       renderPage: (page) => createReactServerEntry(page),
     })],
@@ -432,7 +518,7 @@ it('keeps an unserializable destination on the HTTP pre-commit error path', asyn
 
     // Then: the standard HTTP error response commits once instead of partial navigation JSON.
     expect(result.statusCode).toBe(500);
-    expect(result.headers['Content-Type']).not.toBe('application/vnd.fluo.react-navigation+json;v=1');
+    expect(result.headers['Content-Type']).not.toBe('application/vnd.fluo.react-navigation+json;v=2');
     expect(result.body).toMatchObject({ error: { code: 'INTERNAL_SERVER_ERROR' } });
   } finally {
     await app.close();
@@ -454,6 +540,7 @@ it('passes one bounded escaped HTTP-approved destination to the document rendere
   }
   @Module({
     imports: [ReactModule.forRoot({
+      navigationBuildId: 'test-build',
       controllers: [DestinationRouter],
       renderPage: (_page, _context, _policies, initialPage) =>
         createReactServerEntry(createElement('html', null,
@@ -501,6 +588,7 @@ it('rejects oversized initial page props before committing HTML', async () => {
   }
   @Module({
     imports: [ReactModule.forRoot({
+      navigationBuildId: 'test-build',
       controllers: [DestinationRouter],
       renderPage: (page) => createReactServerEntry(page),
     })],

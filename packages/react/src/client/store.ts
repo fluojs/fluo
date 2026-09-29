@@ -131,7 +131,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       || destination.pathname === current.pathname && destination.search === current.search) {
       return undefined;
     }
-    return `${environment.prefetchScope}\0${destination.origin}${destination.pathname}${destination.search}\0v1`;
+    return `${environment.prefetchScope}\0${destination.origin}${destination.pathname}${destination.search}\0v2`;
   };
 
   const discardPrefetches = (except?: string): void => {

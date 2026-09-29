@@ -44,7 +44,7 @@ test('hydrates streamed production HTML with generated Vite assets', async ({ pa
   expect(html).toContain('Recommended for sku-42');
   expect(html).toContain('Current URL: /products/sku-42?preview=true');
   expect(html).not.toContain('Current URL: /products/sku-42?preview=true#details');
-  expect(bootstrapPaths).toContain('/assets/entry-client.js');
+  expect(bootstrapPaths).toEqual(expect.arrayContaining([expect.stringMatching(/^\/assets\/entry-client-[a-zA-Z0-9_-]+\.js$/u)]));
   expect(stylesheetPaths).toHaveLength(1);
 
   for (const pathname of [...bootstrapPaths, ...stylesheetPaths]) {
@@ -95,7 +95,7 @@ test('traverses admin QR and songs with a preserved shell, reset page state and 
   await page.evaluate(() => { window.__softNavigationDocument = 'admin-shell'; });
   const navigationResponse = page.waitForResponse((response) =>
     new URL(response.url()).pathname === '/admin/songs'
-    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1',
+    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2',
   );
 
   // When: the ordinary Link moves to songs, then browser history visits QR and forward again.
@@ -104,10 +104,11 @@ test('traverses admin QR and songs with a preserved shell, reset page state and 
 
   // Then: every view is HTTP-confirmed while shell identity and focus policy remain observable.
   expect(response.status()).toBe(200);
-  expect(response.headers()['content-type']).toMatch(/^application\/vnd\.fluo\.react-navigation\+json;\s*v="1"; charset=utf-8$/u);
+  expect(response.headers()['content-type']).toMatch(/^application\/vnd\.fluo\.react-navigation\+json;\s*v="2"; charset=utf-8$/u);
   expect(response.headers()['cache-control']).toContain('no-store');
   expect(await response.json()).toMatchObject({
-    version: 1,
+    version: 2,
+    buildId: expect.any(String),
     url: '/admin/songs',
     params: {},
     destination: { module: './navigation-admin.ts' },
@@ -148,7 +149,7 @@ test('keeps native new tabs and full-document fallback on server rejection', asy
   await page.evaluate(() => { window.__softNavigationDocument = 'before-fallback'; });
   const rejected = page.waitForResponse((response) =>
     new URL(response.url()).pathname === '/products/x'
-    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1');
+    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2');
 
   // When: the regular Link requests a DTO-invalid destination.
   await page.getByRole('link', { name: 'Open invalid product' }).click();

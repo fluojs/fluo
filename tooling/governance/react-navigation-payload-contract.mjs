@@ -11,7 +11,7 @@ const storePath = 'packages/react/src/client/store.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
 const dispatchPath = 'packages/http/src/dispatch/dispatch-response-policy.ts';
-const mediaType = 'application/vnd.fluo.react-navigation+json;v=1';
+const mediaType = 'application/vnd.fluo.react-navigation+json;v=2';
 
 function property(object, name) {
   return object?.properties.find((node) =>
@@ -57,7 +57,20 @@ export function enforceReactNavigationPayloadContract(
     || !serverMediaType || !ts.isPropertyAssignment(serverMediaType)
     || !ts.isStringLiteral(serverMediaType.initializer)
     || serverMediaType.initializer.text !== mediaType) {
-    throw new Error('React navigation HTTP and browser media types must agree on protocol version 1.');
+    throw new Error('React navigation HTTP and browser media types must agree on protocol version 2.');
+  }
+  const clientText = client.getFullText();
+  const providerText = provider.getFullText();
+  const transferText = transfer.getFullText();
+  if (!transferText.includes('readonly buildId: string')
+    || !clientText.includes("value.version !== 2")
+    || !clientText.includes("value.buildId.length === 0")
+    || !clientText.includes("payload.buildId !== buildId")
+    || !clientText.includes("payload.buildId !== options.buildId")
+    || clientText.indexOf("payload.buildId !== options.buildId") > clientText.lastIndexOf('module = await loader()')
+    || !providerText.includes('loadReactNavigationDestination(href, modules, { signal, buildId })')
+    || !providerText.includes('loadReactNavigationDestination(href, modules, { signal, prefetch: true, buildId })')) {
+    throw new Error('React navigation v2 requires a build identity checked before any destination import.');
   }
 
   const initialTransfer = findNode(transfer, (node) =>

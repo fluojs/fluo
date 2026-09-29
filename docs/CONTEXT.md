@@ -58,11 +58,19 @@ Follow Docs contract establishment → evidence verification → Korean Book app
 
 <!-- fluo:docs-navigation:end -->
 
-For HTTP-matched React client navigation, start at the [navigation payload contract](./contracts/react-navigation-payload.md), then the [React API owner](../packages/react/README.md) and the [Vite SSR example](../examples/react-vite-ssr/README.md). The official starter transfers a bounded, escaped HTTP-selected initial page, then uses the same build-produced importer map and shared provider/page slot for hydration and later `Link`/`useRouter()` moves. Those controls commit confirmed URL/params through history, including fresh back/forward requests; the starter preserves network/5xx and recoverable mapped import failures with retry/document controls while other failures, including absent importer keys, return to full documents. Ordinary and JavaScript-disabled GETs keep streamed documents. HTTP retains status, cookies, and error ownership. Runtime evidence is in `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, and `packages/cli/src/new/templates/react-vite-ssr/tests/production-hydration.spec.ts.ejs`.
+For HTTP-matched React client navigation, start at the [navigation payload contract](./contracts/react-navigation-payload.md), then the [React API owner](../packages/react/README.md) and the [Vite SSR example](../examples/react-vite-ssr/README.md). The official starter transfers a bounded, escaped HTTP-selected initial page, then uses the same build-produced importer map and shared provider/page slot for hydration and later `Link`/`useRouter()` moves. Those controls commit confirmed URL/params through history, including fresh back/forward requests; the starter preserves network/5xx, incompatible builds and recoverable mapped import failures with retry/document controls while other failures, including absent importer keys, return to full documents. Ordinary and JavaScript-disabled GETs keep streamed documents. HTTP retains status, cookies, and error ownership. Runtime evidence is in `packages/react/src/navigation-payload.test.ts`, `packages/react/src/client-navigation-payload.test.ts`, `packages/react/src/client.test.ts`, and `packages/cli/src/new/templates/react-vite-ssr/tests/production-hydration.spec.ts.ejs`.
+
+For v2 production navigation, the complete selected Vite manifest and same-origin `/assets/`
+base supply `buildId` to `ReactModule.forRoot(...)`, the initial transfer, and the client
+provider. The old A tab rejects B's identity before import and retains its shell with an
+explicit update option; publish B hashed assets before switching B and retain A for a
+specified window. See the [production recipe](./guides/react-production-deployment.md)
+and [v1 migration](./getting-started/migrate-react-production-assets.md).
 
 The [React full-stack product contract](./contracts/react-fullstack-product.md) separately defines the future CRUD and long-lived jukebox acceptance gate. Today `router.refresh()` reloads the document. Failed low-level navigation defaults to a document; `ReactClientRouterProvider.failurePolicy` can preserve transient network/5xx failure with an actionable `useNavigation().failure` and fresh `router.retry()` or explicit `router.openDocument()`. Invalidating a pending untagged back/forward activation loads its ordinary document to keep the browser URL and page consistent. The Vite example and generated starter verify a live resource across failure/retry; the starter explicitly wires the official default, and #3873 still owns soft revalidation.
 
-Optional `Link prefetch="hover" | "viewport"` needs provider `navigationModules` and an explicit
+Optional `Link prefetch="hover" | "viewport"` needs provider `navigationModules`, a matching
+`navigationBuildId` and an explicit
 `prefetchScope` auth/session epoch. Only `ReactNavigationPage.create(page, destination,
 { prefetch: 'public' })` may grant a credential-omitted, identity-independent status-`200`
 navigation JSON result; HTTP checks request credentials, final `Set-Cookie`, pre-existing

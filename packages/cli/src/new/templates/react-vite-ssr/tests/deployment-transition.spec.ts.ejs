@@ -1,0 +1,167 @@
+import { spawn, type ChildProcess } from 'node:child_process';
+import { once } from 'node:events';
+import { createServer, type Server } from 'node:http';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { createReactViteAssetManifest } from '@fluojs/react/vite';
+import { expect, test } from '@playwright/test';
+
+const project = resolve(import.meta.dirname, '..');
+const mediaType = 'application/vnd.fluo.react-navigation+json;v=2';
+let directory: string;
+let proxy: Server;
+let children: ChildProcess[] = [];
+let origin: string;
+let selected: 'A' | 'B';
+let missingAsset: string | undefined;
+let a: { readonly url: string; readonly buildId: string; readonly asset: string };
+let b: { readonly url: string; readonly buildId: string; readonly asset: string };
+
+async function builtOutput(variant: 'A' | 'B') {
+  const output = join(directory, variant);
+  const build = spawn('pnpm', ['exec', 'vite', 'build', '--config', 'vite.client.config.ts'], {
+    cwd: project,
+    env: { ...process.env, FLUO_REACT_BUILD_VARIANT: variant, FLUO_REACT_CLIENT_OUTDIR: output },
+    stdio: 'inherit',
+  });
+  const [exit] = await once(build, 'exit');
+  if (exit !== 0) throw new Error(`Independent ${variant} build exited ${String(exit)}.`);
+  const source: unknown = JSON.parse(await readFile(join(output, '.vite/manifest.json'), 'utf8'));
+  const result = createReactViteAssetManifest({
+    base: '/assets/',
+    entries: { client: 'src/entry-client.tsx', server: 'src/entry-server.tsx' },
+    manifest: source,
+  });
+  if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+  const asset = result.manifest.assetMap['src/page-search.tsx'];
+  if (asset === undefined) throw new Error(`${variant} has no built search module.`);
+  return { output, buildId: result.manifest.buildId, asset };
+}
+
+function server(output: string): Promise<string> {
+  const child = spawn('node', ['dist/server/main.js'], {
+    cwd: project,
+    env: {
+      ...process.env,
+      FLUO_REACT_CLIENT_URL: pathToFileURL(`${output}/`).href,
+      FLUO_REACT_MANIFEST_URL: pathToFileURL(join(output, '.vite/manifest.json')).href,
+      FLUO_REACT_TEST_READY: '1',
+      PORT: '0',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  children.push(child);
+  return new Promise((resolveUrl, rejectUrl) => {
+    let text = '';
+    AbortSignal.timeout(15_000).addEventListener(
+      'abort', () => rejectUrl(new Error('Built server did not report readiness.')), { once: true },
+    );
+    child.stdout?.on('data', (chunk: Buffer) => {
+      process.stdout.write(chunk);
+      text += chunk.toString();
+      const match = /^FLUO_REACT_READY (http:\/\/[^\s]+)$/mu.exec(text);
+      if (match !== null) resolveUrl(match[1]);
+    });
+    child.stderr?.on('data', (chunk: Buffer) => process.stderr.write(chunk));
+    child.once('exit', (code) => rejectUrl(new Error(`Built server exited ${String(code)}.`)));
+  });
+}
+
+test.beforeAll(async () => {
+  test.setTimeout(180_000);
+  await mkdir(resolve(project, 'node_modules/.cache'), { recursive: true });
+  directory = await mkdtemp(resolve(project, 'node_modules/.cache/deployment-ab-'));
+  const [outputA, outputB] = await Promise.all([builtOutput('A'), builtOutput('B')]);
+  const [urlA, urlB] = await Promise.all([server(outputA.output), server(outputB.output)]);
+  a = { url: urlA, buildId: outputA.buildId, asset: outputA.asset };
+  b = { url: urlB, buildId: outputB.buildId, asset: outputB.asset };
+  expect(a.buildId).not.toBe(b.buildId);
+  expect(a.asset).not.toBe(b.asset);
+  proxy = createServer(async (request, response) => {
+    try {
+      const path = request.url ?? '/';
+      const target = path === missingAsset ? b.url
+        : selected === 'A' || path === a.asset && missingAsset === undefined ? a.url : b.url;
+      const upstream = await fetch(`${target}${path}`, {
+        headers: { accept: request.headers.accept ?? '*/*' },
+      });
+      response.writeHead(upstream.status, Object.fromEntries([...upstream.headers].filter(([key]) =>
+        key !== 'content-length' && key !== 'transfer-encoding' && key !== 'content-encoding')));
+      response.end(Buffer.from(await upstream.arrayBuffer()));
+    } catch (error) {
+      response.writeHead(502);
+      response.end(error instanceof Error ? error.message : 'Proxy error.');
+    }
+  });
+  const listening = once(proxy, 'listening');
+  proxy.listen(0, '127.0.0.1');
+  await listening;
+  const address = proxy.address();
+  if (address === null || typeof address === 'string') throw new Error('Proxy did not bind.');
+  origin = `http://127.0.0.1:${address.port}`;
+});
+
+test.afterAll(async () => {
+  if (proxy !== undefined) {
+    const closed = once(proxy, 'close');
+    proxy.close();
+    await closed;
+  }
+  for (const child of children) {
+    if (child.exitCode === null) {
+      const exited = once(child, 'exit');
+      child.kill('SIGTERM');
+      await exited;
+    }
+  }
+  if (directory !== undefined) await rm(directory, { recursive: true, force: true });
+});
+
+test.beforeEach(() => {
+  selected = 'A';
+  missingAsset = undefined;
+});
+
+test('keeps an A shell on B navigation and updates only after explicit document choice', async ({ page }) => {
+  await page.goto(`${origin}/products/sku-42`);
+  await page.getByRole('button', { name: 'Use shell resource' }).click();
+  await expect(page.getByTestId('resource-ack')).not.toBeEmpty();
+  const id = await page.evaluate(() => window.__reactResource?.id);
+  expect(id).toBeDefined();
+  const oldAsset = await page.request.get(`${origin}${a.asset}`);
+  expect(oldAsset.status()).toBe(200);
+  expect(oldAsset.headers()['cache-control']).toContain('immutable');
+  selected = 'B';
+  const navigation = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/search' && response.request().headers().accept === mediaType);
+  await page.getByRole('navigation', { name: 'Page navigation' }).getByRole('link', { name: 'Search catalog' }).click();
+  expect((await navigation).status()).toBe(200);
+  await expect(page.getByRole('alert')).toContainText('incompatible-build');
+  await expect(page).toHaveURL(`${origin}/products/sku-42`);
+  expect(await page.evaluate(() => window.__reactResource?.id)).toBe(id);
+  const loaded = page.waitForEvent('load');
+  await page.getByRole('button', { name: 'Open full document' }).click();
+  await loaded;
+  await expect(page.locator('html')).toHaveAttribute('data-build-id', b.buildId);
+  await expect(page.getByTestId('build-variant')).toContainText('B');
+});
+
+test('reports a real missing mapped asset and preserves the last approved page', async ({ page }) => {
+  await page.goto(`${origin}/products/sku-42`);
+  await page.getByRole('button', { name: 'Use shell resource' }).click();
+  await expect(page.getByTestId('resource-ack')).not.toBeEmpty();
+  const id = await page.evaluate(() => window.__reactResource?.id);
+  missingAsset = a.asset;
+  const asset = page.waitForResponse((response) => new URL(response.url()).pathname === a.asset);
+  const approval = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === '/search' && response.request().headers().accept === mediaType);
+  await page.getByRole('navigation', { name: 'Page navigation' }).getByRole('link', { name: 'Search catalog' }).click();
+  expect((await approval).status()).toBe(200);
+  const missing = await asset;
+  expect(missing.status()).toBe(404);
+  expect(missing.headers()['x-fluo-asset-status']).toBe('missing');
+  await expect(page.getByRole('alert')).toContainText('import-failure');
+  await expect(page).toHaveURL(`${origin}/products/sku-42`);
+  expect(await page.evaluate(() => window.__reactResource?.id)).toBe(id);
+});

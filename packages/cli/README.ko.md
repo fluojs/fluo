@@ -218,10 +218,19 @@ code 대신 빈 marker를 emit합니다. 실제 구현은 `dist/server`에만 bu
 두 page starter만으로 완전한 CRUD/주크박스 제품 경로가 되지는 않습니다. 기존
 [Vite 예제](../../examples/react-vite-ssr/README.ko.md)는 advanced native form 및
 prefetch 정책을 보여 주고 starter는 canonical page authoring 조립을 제공합니다.
-Starter는 network/5xx 및 복구 가능한 매핑된 import 실패에서 셸을 보존하고 지속 셸에서 재시도·일반 문서 이동을 제공합니다.
+Starter는 network/5xx, incompatible-build 및 복구 가능한 매핑된 import 실패에서 셸을 보존하고 지속 셸에서 재시도·일반 문서 이동을 제공합니다.
 Low-level provider는 앱이 `failurePolicy`를 제공하지 않으면 document fallback합니다.
 [제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 남은 form 최신화,
 auth, 배포 및 전체 여정 수용 게이트를 추적합니다.
+Production starter는 로드한 Vite 전체 manifest와 동일 origin `/assets/` base에서
+v2 `buildId`를 도출해 `ReactModule.forRoot(...)` 및
+`ReactClientRouterProvider`에 전달하고 해시 bootstrap, CSS, lazy module,
+favicon을 제공합니다. `incompatible-build` 또는 매핑된 `import-failure`에서
+승인된 shell을 유지하고 명시적 document update를 제공하며, 없는 module key는
+import 실패로 취급하지 않습니다. B server/manifest보다 B asset을 먼저 게시하고
+정한 기존 탭 기간 동안 A asset을 유지하세요.
+[배포 recipe](../../docs/guides/react-production-deployment.ko.md)와
+[v1 이주](../../docs/getting-started/migrate-react-production-assets.ko.md)를 확인하세요.
 Application 소유 production manifest load와 asset/CDN hosting도 명시적으로 유지됩니다.
 
 `fluo new`는 microservice starter path도 제공합니다. `--transport`를 생략하면 TCP가 기본 경로로 사용되며, starter 매트릭스에는 transport별 dependency, env 템플릿, entrypoint를 갖춘 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC 변형도 포함됩니다.

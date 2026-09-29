@@ -916,13 +916,14 @@ With `'preserve'`, the approved URL, params, page and shell remain; `useNavigati
 provides a safe `reason`, destination pathname and navigation type. Show an error with
 `router.retry()` for a fresh credentialed HTTP approval and `router.openDocument()` for an
 explicit ordinary document. The distinct reasons are `network`, `server-error`, `unauthorized`,
-`forbidden`, `redirect`, `not-found`, `dto-rejected`, `invalid-payload`, `unsupported-module`,
+`forbidden`, `redirect`, `not-found`, `dto-rejected`, `invalid-payload`, `incompatible-build`, `unsupported-module`,
 `import-failure`, `unavailable` and `unsupported-destination`; a failing application callback
 settles as `application-error`. Never infer authentication from body text, preserve protected
 content after logout, or expose a response body through the policy. Failed back/forward with a
 known history position restores the last approved URL and view; retry requests new HTTP approval.
-Existing `refresh()` still reloads. This is a backward-compatible **low-level opt-in**; the
-official generated starter explicitly enables network/5xx and recoverable mapped import-failure preservation and shell recovery
+Existing `refresh()` still reloads. Failure preservation remains a **low-level opt-in**; the
+v1-to-v2 payload migration is a breaking 0.x change. The official generated starter explicitly
+enables network/5xx, incompatible-build and recoverable mapped import-failure preservation and shell recovery
 controls. To migrate a hand-assembled app, supply
 `navigationModules`, pass `failurePolicy`, render `navigation.failure` controls in the persistent
 shell, and leave all other categories (including absent importer keys) on the document path unless deliberately handled. The
@@ -931,7 +932,7 @@ and recovery. #3879 must still test the complete product journey; see the
 [product journey map](../../docs/contracts/react-fullstack-product.md#journey-acceptance-map).
 
 `Link` has optional `prefetch="hover"` and `prefetch="viewport"` modes; omitted `prefetch` is off.
-Both require a hydrated provider with `navigationModules` and an explicit application-managed
+Both require a hydrated provider with `navigationModules`, matching `navigationBuildId` and an explicit application-managed
 `prefetchScope` string for the current auth/session epoch. Hover begins on eligible pointer entry;
 viewport begins on intersection and cancels on exit. Neither runs for disabled JavaScript, an
 ineligible anchor, unsupported destination, or fragment-only navigation. `router.invalidate()`
@@ -955,7 +956,7 @@ grammar or change server DTO validation.
 
 An HTTP-matched `@Path(...)` GET can additionally return `ReactNavigationPage.create(page,
 { module, props })`. The ordinary GET still streams the page through `renderPage`; only a GET
-with `Accept: application/vnd.fluo.react-navigation+json;v=1` selects a versioned JSON result
+with `Accept: application/vnd.fluo.react-navigation+json;v=2` selects a versioned JSON result
 containing the server-confirmed `url`, matched `params`, and a browser module identity plus
 JSON-serializable props. HTTP runs middleware, DTO validation, guards, interceptors, URI version
 selection, and request-scoped providers before selecting and writing this representation.
@@ -967,7 +968,7 @@ For the official starter, the document renderer also receives an optional fourth
 `ReactInitialNavigationPage` argument with the request URL, matched params, selected module,
 JSON props, and HTML-escaped `json` transfer. Serialization and the 64 KiB escaped-UTF-8 limit
 run before HTML response commit. Embed `json` only in an inert `application/json` script;
-`loadReactInitialNavigationDestination(json, modules)` on the client validates the current URL
+`loadReactInitialNavigationDestination(json, modules, buildId)` on the client validates the current URL
 and importer key before hydration. The generated `./page*.tsx` importers and production manifest
 check prevent unbuilt destinations from rendering. The same handler props feed both the SSR
 component and browser destination; they must contain JSON data, not DI instances or secrets.
@@ -990,6 +991,7 @@ const modules = import.meta.glob('./navigation-product.ts');
 <ReactClientRouterProvider
   initialSnapshot={createReactRouteSnapshot({ url: requestUrl, params: matchedParams })}
   navigationModules={modules}
+  navigationBuildId={buildId}
   prefetchScope={sessionEpoch}
 >
   {(destination) => (
@@ -1014,7 +1016,7 @@ pre-existing `Cache-Control` directive, and no pre-existing `Vary` other than `A
 Existing restrictions are never overwritten to make a response eligible. The separate speculative
 GET uses `credentials: 'omit'`, `cache: 'no-store'`, `redirect: 'manual'`, and the same navigation
 Accept. The browser admits only an explicit grant with compatible public cache headers and a
-fully validated version-`1` payload and built module; Fetch does not expose `Set-Cookie` for this
+fully validated version-`2` payload and built module; Fetch does not expose `Set-Cookie` for this
 decision. The provider stores at most 32 single-use LRU entries of at most 64 KiB JSON, with at
 most four concurrent requests (excess opportunities skipped). Entries expire at the earlier of
 15 seconds after validation/import or remaining server freshness (`max-age` minus nonnegative
@@ -1031,6 +1033,17 @@ only official navigation controls; the helper is their lower-level HTTP validati
 See the [EN](../../docs/contracts/react-navigation-payload.md) and
 [KO](../../docs/contracts/react-navigation-payload.ko.md) contract and
 [`react-vite-ssr`](../../examples/react-vite-ssr/README.md) for the built example.
+
+The same `buildId` is produced by `createReactViteAssetManifest({ manifest, base: '/assets/',
+entries })` from the **complete** selected manifest, including lazy chunks. Supply it through
+`ReactModule.forRoot({ navigationBuildId: buildId, controllers, renderPage })` on the server
+and the provider on the client; the initial transfer and every soft request must agree before
+import and history commit. A missing identity is not approved. `incompatible-build` leaves
+the last approved page and shell mounted when the application chooses `preserve`; a mapped
+import rejection remains `import-failure`, while an absent key remains `unsupported-module`.
+The official shell offers an explicit update/document action, not automatic reload. v1
+consumers should follow the [migration](../../docs/getting-started/migrate-react-production-assets.md)
+and [deployment recipe](../../docs/guides/react-production-deployment.md).
 
 ## Native Form Mutations
 

@@ -112,7 +112,7 @@ URL과 server-rendered route state가 일치하지 않는 client navigation, `PO
 확인합니다. Matched product handler는
 `ReactNavigationPage.create(ProductDocument, { module: './navigation-product.ts', props })`를
 반환합니다. 일반 document GET은 HTML shell, hydration script, Suspense content와 request
-URL을 계속 stream합니다. `Accept: application/vnd.fluo.react-navigation+json;v=1` GET은
+URL을 계속 stream합니다. `Accept: application/vnd.fluo.react-navigation+json;v=2` GET은
 같은 HTTP DTO/module pipeline을 실행한 뒤 server URL/param과 browser destination을
 반환합니다. `src/entry-client.ts`는 Vite가 compile한 `import.meta.glob(...)` map을 hydrated
 document의 `ReactClientRouterProvider`에 `navigationModules`로 전달합니다. 기존 `Link`와
@@ -120,6 +120,12 @@ document의 `ReactClientRouterProvider`에 `navigationModules`로 전달합니�
 page slot에 새 destination을 렌더링합니다. `src/admin-page.ts` 및 build-mapped
 `src/navigation-admin.ts` entry는 두 admin page를 처리하며 공통 counter는 유지됩니다.
 `popstate`와 forward는 새 결과를 요청합니다.
+전체 Vite manifest와 동일 origin `/assets/` base의 `buildId`를
+`ReactModule.forRoot({ navigationBuildId })`, inert 초기 transfer와 client provider에
+전달합니다. A 탭이 B를 만나면 `incompatible-build`에서 마지막 승인 page/resource와
+명시적 update/document action을 유지합니다. 매핑된 chunk 누락은 `import-failure`,
+없는 key는 `unsupported-module`입니다.
+[배포 recipe](../../docs/guides/react-production-deployment.ko.md)를 확인하세요.
 
 일반 navigation은 same-origin cookie를 보내고 `Set-Cookie`는 browser 처리에 맡기며
 `cache: 'no-store'`를 사용합니다. Prefetch는 `Link`가 `hover` 또는 `viewport`를 명시하고

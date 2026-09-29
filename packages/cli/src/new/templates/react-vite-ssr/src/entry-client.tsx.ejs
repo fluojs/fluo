@@ -13,10 +13,11 @@ const navigationModules: ReactNavigationModules = import.meta.glob<{
   readonly default: (props: Record<string, unknown>) => ReactNode;
 }>('./page*.tsx');
 const initialJson = document.getElementById('fluo-initial-page')?.textContent;
-if (initialJson === undefined || initialJson === null) {
+const buildId = document.documentElement.dataset.buildId;
+if (initialJson === undefined || initialJson === null || buildId === undefined) {
   throw new Error('The HTTP page has no initial navigation payload.');
 }
-const initial = await loadReactInitialNavigationDestination(initialJson, navigationModules);
+const initial = await loadReactInitialNavigationDestination(initialJson, navigationModules, buildId);
 if (!initial.ok) {
   throw new Error(`The HTTP page destination is unavailable: ${initial.reason}`);
 }
@@ -27,6 +28,7 @@ const stylesheets = [...document.querySelectorAll<HTMLLinkElement>('link[data-vi
 hydrateRoot(
   document,
   <ReactAppDocument
+    navigationBuildId={buildId}
     page={createElement(initial.component, initial.payload.destination.props)}
     route={{
       params: initial.payload.params,

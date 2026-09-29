@@ -11,10 +11,12 @@ import {
   useRouterState,
   useSearchParams,
 } from '@fluojs/react/client';
-import { Suspense, createElement, lazy, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import type { ReactInitialNavigationPage } from '@fluojs/react';
+import { Suspense, createContext, createElement, lazy, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import AdminDestination from './admin-page';
 
 const RECOMMENDATIONS_DELAY_MS = 25;
+export const InitialPageContext = createContext<ReactInitialNavigationPage | undefined>(undefined);
 
 declare global {
   interface Window {
@@ -25,6 +27,7 @@ declare global {
 
 const preserveTransientNavigation: ReactNavigationFailurePolicy = (failure) =>
   failure.reason === 'network' || failure.reason === 'server-error'
+    || failure.reason === 'incompatible-build'
     || failure.reason === 'import-failure'
     ? 'preserve' : 'document';
 
@@ -33,6 +36,7 @@ export type ProductDocumentProps = {
   readonly preview: boolean;
   readonly productName: string;
   readonly navigationModules?: ReactNavigationModules;
+  readonly navigationBuildId?: string;
   readonly routeParams: Readonly<Record<string, string>>;
   readonly routeUrl: string;
   readonly saved: boolean;
@@ -117,7 +121,7 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void
       { role: 'alert' },
       createElement('p', null, `Navigation failed: ${navigation.failure.reason} (${navigation.failure.destination})`),
       createElement('button', { onClick: () => router.retry(), type: 'button' }, 'Retry navigation'),
-      createElement('button', { onClick: () => router.openDocument(), type: 'button' }, 'Open full document'),
+      createElement('button', { onClick: () => router.openDocument(), type: 'button' }, 'Update application (open full document)'),
     ),
     searchParams.get('prefetchBounds') === 'true'
       ? createElement(
@@ -144,6 +148,7 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void
     createElement(Link, { href: '/products/sku-84?preview=false' }, 'Open sku-84'),
     createElement(Link, { href: '/admin/qr' }, 'Open admin QR'),
     createElement(Link, { href: '/admin/songs' }, 'Open admin songs'),
+    createElement(Link, { href: '/deployment/b-only' }, 'Open B-only page'),
     createElement(Link, { href: '/products/x?preview=maybe' }, 'Open invalid product'),
     createElement(Link, { href: '/prefetch/public-84', prefetch: 'hover' }, 'Prefetch public sku-84'),
     createElement(Link, { href: '/prefetch/public-84' }, 'Open public sku-84 without prefetch'),
@@ -205,12 +210,14 @@ export function ProductDocument({
   preview,
   productName,
   navigationModules,
+  navigationBuildId,
   routeParams,
   routeUrl,
   saved,
   sku,
   stylesheets,
 }: ProductDocumentProps) {
+  const initialPage = useContext(InitialPageContext);
   const identifier = useId();
   const [LazyRecommendations] = useState(() => lazy(async () => {
     await new Promise<void>((resolve) => setTimeout(resolve, RECOMMENDATIONS_DELAY_MS));
@@ -224,6 +231,7 @@ export function ProductDocument({
     'html',
     {
       'data-admin-page': adminPage,
+      'data-build-id': navigationBuildId,
       'data-preview': String(preview),
       'data-product-name': productName,
       'data-saved': String(saved),
@@ -236,7 +244,7 @@ export function ProductDocument({
       createElement('meta', { charSet: 'utf-8' }),
       createElement('meta', { content: 'width=device-width, initial-scale=1', name: 'viewport' }),
       createElement('meta', { content: 'A minimal fluo React SSR and hydration example.', name: 'description' }),
-      createElement('link', { href: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>', rel: 'icon' }),
+      createElement('link', { href: '/assets/favicon.svg', rel: 'icon' }),
       createElement('title', null, adminPage === undefined
         ? `Catalog item ${sku}`
         : adminPage === 'qr' ? 'Admin QR' : 'Admin songs'),
@@ -247,6 +255,10 @@ export function ProductDocument({
     createElement(
       'body',
       null,
+      initialPage === undefined ? null : createElement('script', {
+        id: 'fluo-initial-page',
+        type: 'application/json',
+      }, initialPage.json),
       createElement(
         'main',
         { tabIndex: -1 },
@@ -306,6 +318,7 @@ export function ProductDocument({
   return createElement(ReactClientRouterProvider, {
     initialSnapshot,
     navigationModules,
+    navigationBuildId,
     prefetchScope,
     failurePolicy: new URL(routeUrl, 'http://localhost').searchParams.has('defaultNavigation')
       ? undefined : preserveTransientNavigation,

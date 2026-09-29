@@ -15,7 +15,7 @@ The root entrypoint neither imports Vite nor loads browser code.
 HTTP owns route matching, URI/version selection, middleware, DTO materialization and validation,
 guards, interceptors, request-scoped providers, response headers, status, error negotiation, abort,
 and final writing. No navigation payload is produced for plain handler values, errors, unmatched
-routes, redirects, or unmarked React pages. The representation protocol version `1` is independent
+routes, redirects, or unmarked React pages. The representation protocol version `2` is independent
 of an HTTP route's URI version.
 
 For an identity-independent page only, the handler may opt into speculative reuse with
@@ -26,8 +26,8 @@ authentication, cookies, and every other request identity. Omitting it retains t
 ## Negotiation and result
 
 A client sends a GET with exactly
-`Accept: application/vnd.fluo.react-navigation+json;v=1`. On a successful opted-in page, HTTP
-returns JSON with that media type (a host may serialize its `v` parameter as `"1"` and add
+`Accept: application/vnd.fluo.react-navigation+json;v=2`. On a successful opted-in page, HTTP
+returns JSON with that media type (a host may serialize its `v` parameter as `"2"` and add
 `charset=utf-8`). It adds `Accept` to existing `Vary` and retains `Set-Cookie` and other headers.
 Ordinary navigation appends `private, no-store` to an existing `Cache-Control` value, including
 when the page explicitly asserts `prefetch: 'public'`; a credentialed ordinary result is never
@@ -46,7 +46,8 @@ example `404`) is still rejected by the browser helper and takes the full-docume
 
 ```json
 {
-  "version": 1,
+  "version": 2,
+  "buildId": "<sha256-of-complete-manifest-and-base>",
   "url": "/products/sku-84?preview=false",
   "params": { "sku": "sku-84" },
   "destination": {
@@ -56,7 +57,12 @@ example `404`) is still rejected by the browser helper and takes the full-docume
 }
 ```
 
-`url` and `params` come from the active HTTP request after matching, not from client parsing.
+`buildId` is required and derived by `createReactViteAssetManifest(...)` from the complete
+manifest (including lazy chunks) and public base. Pass the resulting identity to
+`ReactModule.forRoot({ navigationBuildId })` and
+`ReactClientRouterProvider.navigationBuildId`. No missing or conflicting identity can
+approve a soft destination. `url` and `params` come from the active HTTP request after
+matching, not from client parsing.
 `props` must be JSON-serializable application data. Serialization failures occur before a
 navigation response commits and follow the existing canonical HTTP error path. Request-scoped
 dependencies remain active through response writing and are disposed by the normal dispatcher.
@@ -69,8 +75,8 @@ HTML commit through the existing HTTP error response. The application renderer c
 selected module against its loaded Vite manifest (or development build importer set), then
 embeds the escaped transfer; it must not include DI instances, secrets or server-only imports in
 the browser component graph. The browser calls
-`loadReactInitialNavigationDestination(json, modules)` with the same build-produced importer
-map used for subsequent `Link`/`useRouter` navigation; this validates URL, params, module and
+`loadReactInitialNavigationDestination(json, modules, buildId)` with the same build-produced importer
+map used for subsequent `Link`/`useRouter` navigation; this validates build identity, URL, params, module and
 component before hydration, without a second HTTP request or client URL matcher. The generated
 starter composes both the initial page and subsequent destinations in one shared provider,
 retaining the shell and resetting destination-local state at the page slot. A normal
@@ -87,13 +93,14 @@ error document must never be parsed as a page payload.
 
 ## Browser consumption and fallback
 
-`loadReactNavigationDestination(href, modules, { signal? })` from
+`loadReactNavigationDestination(href, modules, { buildId, signal? })` from
 `@fluojs/react/client` accepts same-origin HTTP(S) only. Each ordinary load makes one uncached
 request with
 `credentials: 'same-origin'`, `cache: 'no-store'`, `redirect: 'manual'`, and the explicit Accept
 header. Browser cookie handling, including `Set-Cookie`, stays with the browser; the helper never
 uses browser-visible `Set-Cookie` to decide cache eligibility (Fetch filters that header).
 Ordinary navigation never stores its response. The browser validates status, media type, protocol version,
+required build identity against its hydrated document, and
 server-confirmed same-origin URL, string path params, JSON-object props, and a module key present
 in the supplied build-produced importer map **before** importing or rendering anything.
 It also requires the loaded module to export a usable default component before reporting success.
@@ -105,7 +112,8 @@ initiate fallback navigation. An external or non-HTTP(S) URL is rejected before
 any fetch; use a normal anchor for it.
 
 The browser does not rewrite React-owned HTML, infer path params, or install a route matcher.
-Pass the build-produced importers as `navigationModules` to `ReactClientRouterProvider` and
+Pass the build-produced importers as `navigationModules` and their matching
+`navigationBuildId` to `ReactClientRouterProvider` and
 render its function child with the approved destination in the application-owned page slot.
 The existing `Link` and `router.push/replace` request that result before changing the URL.
 On success the provider commits the server-confirmed URL and params with the History API, mounts
@@ -131,7 +139,8 @@ fallback. The policy and `useNavigation().failure` expose only a public `reason`
 Reasons distinguish `network`, `server-error` (HTTP 5xx), `unauthorized` (401), `forbidden`
 (403), `redirect`, `not-found` (404), `dto-rejected` (400/422), `invalid-payload`,
 `unsupported-module`, `import-failure`, `unavailable` (other response), and
-`unsupported-destination`; cancellation never invokes the policy. Network and 5xx can be
+`unsupported-destination`, and `incompatible-build` (v2 identity mismatch before import);
+cancellation never invokes the policy. Network and 5xx can be
 preserved; auth, redirect, 404, DTO and malformed results retain document handling unless the
 application explicitly chooses otherwise. Recoverable import failure needs an explicit decision.
 HTTP still owns status, validation and authentication.
@@ -149,8 +158,13 @@ The application owns failure UI and auth/session resource teardown; logout, relo
 do not preserve playback.
 
 The low-level provider keeps document fallback by default. The official generated starter
-explicitly selects network/5xx and recoverable mapped import-failure preservation and renders
-retry/document controls in its persistent shell outside the HTTP-selected page slot.
+explicitly selects network/5xx, incompatible-build and recoverable mapped import-failure
+preservation and renders retry/document controls in its persistent shell outside the
+HTTP-selected page slot. A v1 tab encountering v2 does not parse it as a v1 page and
+must use ordinary document fallback; a v2 tab rejects v1 and missing build identity.
+Explicit document update can reset application resources. There is no automatic reload loop.
+See the [v1 migration](../getting-started/migrate-react-production-assets.md) and
+[production deployment recipe](../guides/react-production-deployment.md).
 #3873 owns shell-preserving soft revalidation and
 migration for consumers relying on the current `refresh()` document reload.
 `invalidate()` does not re-fetch displayed page data.
@@ -158,8 +172,8 @@ migration for consumers relying on the current `refresh()` document reload.
 ## Opt-in public prefetch and provider-local cache
 
 Only `Link prefetch="hover"` or `Link prefetch="viewport"` enables speculative loading; absent
-`prefetch` is off. `ReactClientRouterProvider` must receive both its existing `navigationModules`
-and an explicit `prefetchScope` string that the application changes for an auth/session epoch.
+`prefetch` is off. `ReactClientRouterProvider` must receive `navigationModules`, the matching
+`navigationBuildId`, and an explicit `prefetchScope` string that the application changes for an auth/session epoch.
 There is no standalone consumer prefetch API. Nothing prefetches before hydration or with
 JavaScript disabled, without either provider input, or for external/unsupported destinations,
 ineligible anchors (modified/new-tab/download), or fragment-only changes. An eligible hydrated
@@ -171,7 +185,7 @@ Cancelled or failed speculation alone never commits URL/params or triggers a doc
 Speculation sends the existing navigation Accept on a same-origin HTTP(S) GET with
 `credentials: 'omit'`, `cache: 'no-store'`, and `redirect: 'manual'`. The browser admits only an
 explicit `X-Fluo-Navigation-Prefetch: public` response with compatible
-`Cache-Control: public, max-age=15` and `Vary: Accept`, status `200`, validated version-`1`
+`Cache-Control: public, max-age=15` and `Vary: Accept`, status `200`, validated version-`2`
 JSON with the exact requested pathname/query and server params/props, and a usable component
 loaded from the build-produced importer map. This is a public identity-independent
 representation by server assertion, never an inferred authenticated one; browser-visible
@@ -179,7 +193,8 @@ representation by server assertion, never an inferred authenticated one; browser
 results never enter the cache.
 
 The provider owns a completed, **single-use** cache keyed by origin, normalized pathname/query
-(not fragment), representation version, and `prefetchScope`. It keeps at most 32 LRU entries
+(not fragment), representation version, and `prefetchScope`; a changed build tears down the
+provider and its cache. It keeps at most 32 LRU entries
 of at most 64 KiB of JSON each; oversized bodies are cancelled. At most four prefetch requests
 run concurrently; excess opportunities are skipped, not queued. Each entry expires no later
 than 15 seconds after full validation and import **and** the remaining server freshness.

@@ -36,7 +36,7 @@ type SimpleJsonResponseBody = Record<string, unknown> | unknown[];
 const BINARY_CONTENT_TYPE = 'application/octet-stream';
 const JSON_CONTENT_TYPE = 'application/json; charset=utf-8';
 const TEXT_CONTENT_TYPE = 'text/plain; charset=utf-8';
-const NAVIGATION_CONTENT_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
+const NAVIGATION_CONTENT_TYPE = 'application/vnd.fluo.react-navigation+json;v=2';
 
 type SimpleJsonFrameworkResponse = FrameworkResponse & {
   sendSimpleJson(body: SimpleJsonResponseBody): ReturnType<FrameworkResponse['send']>;

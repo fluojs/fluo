@@ -13,6 +13,7 @@
 | Adapter bootstrap | 애플리케이션은 명시적 adapter를 통해 배포해야 합니다. 저장소 예제는 `FluoFactory.create(AppModule, { adapter: FastifyHttpApplicationAdapter.create({ port: 3000 }) })` 후 `await app.listen()`을 실행합니다. |
 | Health registration | 프로덕션 probe가 dependency state를 보고해야 한다면 `TerminusModule.forRoot(...)`를 등록하여 `/health`와 `/ready`가 runtime 및 indicator 상태를 노출하도록 해야 합니다. |
 | Config boundary | process 기반 설정은 bootstrap 시점에 명시적 `processEnv` snapshot으로 `@fluojs/config`에 전달해야 합니다. package 코드가 ambient `process.env` 읽기에 의존하면 안 됩니다. |
+| React production assets | 공식 React starter에서는 전체 Vite manifest와 동일 origin `/assets/` 출력을 한 빌드에서 만들고 B server/manifest로 전환하기 전에 B 해시 asset을 게시합니다. 정한 기존 탭 기간 동안 A를 보존하고 누락 asset 404 진단을 관측합니다. [React 프로덕션 recipe](../guides/react-production-deployment.ko.md)를 확인하세요. |
 
 ## 환경 변수 (Environment Variables)
 

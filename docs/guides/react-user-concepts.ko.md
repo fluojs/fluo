@@ -122,6 +122,14 @@ Generated application이 이 짧은 path 뒤의 composition을 소유합니다. 
 manifest I/O 및 actionable missing/malformed build diagnostic을 Node.js boundary에 유지합니다. Advanced
 application은 이 file을 편집하거나 교체하면서 아래의 모든 명시적 API를 계속 사용할 수 있습니다.
 
+Production 경로의 v2 `buildId`는 전체 Vite manifest 및 동일 origin `/assets/` base에서
+도출됩니다. HTTP가 선택한 초기 transfer와 이후 navigation은 빌드된 browser importer와
+일치해야 합니다. 공식 셸은 B와 호환되지 않는 A page를 보존하고 명시적 document
+update를 제공합니다. [프로덕션 배포 recipe](./react-production-deployment.ko.md) 및
+[v1 이주](../getting-started/migrate-react-production-assets.ko.md)를 확인하세요.
+기존 해시 asset을 정한 기간 동안 보존하는 책임은 host에 있으며 framework는 CDN을
+프로비저닝하지 않습니다.
+
 실행 가능한 [`examples/react-vite-ssr`](../../examples/react-vite-ssr/README.ko.md)는 complete native-form
 및 policy example로 남습니다. Generated client asset이나 hydration이 필요 없는 SSR에는
 [`examples/react-stable-ssr`](../../examples/react-stable-ssr/README.ko.md)를 사용하세요.

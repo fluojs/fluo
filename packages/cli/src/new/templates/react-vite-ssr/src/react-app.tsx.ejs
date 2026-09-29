@@ -15,6 +15,7 @@ import { type ReactElement, useEffect, useRef, useState } from 'react';
 export const REACT_IDENTIFIER_PREFIX = 'fluo-react-vite-' as const;
 
 export type ReactAppDocumentProps = {
+  readonly navigationBuildId: string;
   readonly page: ReactElement;
   readonly route: ReactRouteSnapshotInput;
   readonly stylesheets: readonly string[];
@@ -107,6 +108,7 @@ export function ReactAppDocument({
   stylesheets,
   initialPage,
   navigationModules,
+  navigationBuildId,
 }: ReactAppDocumentProps): ReactElement {
   const initialSnapshot = createReactRouteSnapshot(route);
 
@@ -114,12 +116,14 @@ export function ReactAppDocument({
     <ReactClientRouterProvider
       initialSnapshot={initialSnapshot}
       navigationModules={navigationModules}
+      navigationBuildId={navigationBuildId}
       failurePolicy={({ reason }) =>
         reason === 'network' || reason === 'server-error' || reason === 'import-failure'
+          || reason === 'incompatible-build'
           ? 'preserve' : 'document'}
     >
       {(destination) => (
-        <html lang='en'>
+        <html data-build-id={navigationBuildId} lang='en'>
           <head>
             <meta charSet='utf-8' />
             <meta content='width=device-width, initial-scale=1' name='viewport' />

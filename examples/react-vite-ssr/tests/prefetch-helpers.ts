@@ -1,6 +1,6 @@
 import { expect, type Page, type Response } from '@playwright/test';
 
-const NAVIGATION_ACCEPT = 'application/vnd.fluo.react-navigation+json;v=1';
+const NAVIGATION_ACCEPT = 'application/vnd.fluo.react-navigation+json;v=2';
 
 export function createDeferredSignal(): { readonly promise: Promise<void>; readonly resolve: () => void } {
   let resolve = () => {};
