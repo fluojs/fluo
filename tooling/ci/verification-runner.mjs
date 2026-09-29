@@ -217,6 +217,8 @@ const runtimePath = (lock, task, command) => {
 
 function collectFailureDiagnostics(task, root, output) {
   const locations = [
+    join(root, '.omo/verification/vitest-shutdown-debug'),
+    join(root, '.omo/verification/browser-traces'),
     join(root, '.artifacts/vitest-shutdown-debug'),
     join(root, 'test-results'),
     join(root, 'playwright-report'),
@@ -268,8 +270,8 @@ export function restoreBuildInputs(plan, task, artifacts, root) {
   }
   if (task.inputs.includes('build.tar')) execute('tar', ['-xf', join(artifacts, 'build.tar'), '-C', root]);
   if (task.inputs.includes('runtime-floor.tar')) {
-    mkdirSync(join(root, '.artifacts/runtime-floor'), { recursive: true });
-    execute('tar', ['-xf', join(artifacts, 'runtime-floor.tar'), '-C', join(root, '.artifacts/runtime-floor')]);
+    mkdirSync(join(root, '.omo/verification/runtime-floor'), { recursive: true });
+    execute('tar', ['-xf', join(artifacts, 'runtime-floor.tar'), '-C', join(root, '.omo/verification/runtime-floor')]);
   }
 }
 
@@ -317,7 +319,7 @@ function insideTask(plan, task, output, artifacts) {
         npm_config_store_dir: '/pnpm-cache/pnpm/store',
         PLAYWRIGHT_BROWSERS_PATH: '/opt/google/chrome', FLUO_CLI_SANDBOX_ROOT: `/tmp/fluo-${task.id}`,
         FLUO_VITEST_SHUTDOWN_DEBUG: '1',
-        FLUO_VITEST_SHUTDOWN_DEBUG_DIR: `.artifacts/vitest-shutdown-debug/${task.id}`,
+        FLUO_VITEST_SHUTDOWN_DEBUG_DIR: `.omo/verification/vitest-shutdown-debug/${task.id}`,
         ...command.env } });
     writeFileSync(path, `${result.stdout ?? ''}${result.stderr ?? ''}${result.error?.message ?? ''}`);
     let identityAfter = null;
@@ -337,7 +339,7 @@ function insideTask(plan, task, output, artifacts) {
       .map((entry) => `packages/${entry.name}/dist`);
     execute('tar', ['-cf', join(artifacts, 'build.tar'), ...dist,
       'packages/cli/src/new/published-internal-dependencies.ts'], { cwd: root });
-    execute('tar', ['-cf', join(artifacts, 'runtime-floor.tar'), '-C', join(root, '.artifacts/runtime-floor'), '.']);
+    execute('tar', ['-cf', join(artifacts, 'runtime-floor.tar'), '-C', join(root, '.omo/verification/runtime-floor'), '.']);
     const metadata = { headSha: plan.source.headSha, treeSha: plan.source.treeSha, imageKey: plan.environment.imageKey,
       files: Object.fromEntries(['build.tar', 'runtime-floor.tar'].map((name) => [name, hashFile(join(artifacts, name))])) };
     writeFileSync(join(artifacts, 'build.json'), `${JSON.stringify(metadata)}\n`);

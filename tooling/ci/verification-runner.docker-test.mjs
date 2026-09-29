@@ -40,7 +40,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   buildTask.commands = [
     { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
     { executable: 'node', argv: ['-e',
-      'const fs=require("node:fs");const store=require("node:child_process").execFileSync("pnpm",["store","path"],{encoding:"utf8"}).trim();if(!store.startsWith("/pnpm-cache/"))throw Error("PNPM_STORE_OUTSIDE_CACHE:"+store);const cache=process.env.XDG_DATA_HOME??"/tmp/pnpm-cache";fs.mkdirSync(cache,{recursive:true});fs.writeFileSync(cache+"/cross-task-proof","cached input");fs.mkdirSync("packages/cli/dist",{recursive:true});fs.writeFileSync("packages/cli/dist/cli.js","export const built = true;\\n");fs.mkdirSync(".artifacts/runtime-floor",{recursive:true});fs.writeFileSync(".artifacts/runtime-floor/runtime-floor-exercise.mjs","export const runtime = true;\\n")'], cwd: '.' },
+      'const fs=require("node:fs");const store=require("node:child_process").execFileSync("pnpm",["store","path"],{encoding:"utf8"}).trim();if(!store.startsWith("/pnpm-cache/"))throw Error("PNPM_STORE_OUTSIDE_CACHE:"+store);const cache=process.env.XDG_DATA_HOME??"/tmp/pnpm-cache";fs.mkdirSync(cache,{recursive:true});fs.writeFileSync(cache+"/cross-task-proof","cached input");fs.mkdirSync("packages/cli/dist",{recursive:true});fs.writeFileSync("packages/cli/dist/cli.js","export const built = true;\\n");fs.mkdirSync(".omo/verification/runtime-floor",{recursive:true});fs.writeFileSync(".omo/verification/runtime-floor/runtime-floor-exercise.mjs","export const runtime = true;\\n")'], cwd: '.' },
   ];
   const staticTask = manifest.tasks.find(({ id }) => id === 'static');
   staticTask.commands = [
@@ -52,10 +52,10 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   failingTask.commands = [
     { executable: 'pnpm', argv: ['install', '--frozen-lockfile'], cwd: '.' },
     { executable: 'node', argv: ['-e',
-      'const fs=require("node:fs");fs.mkdirSync(".artifacts/vitest-shutdown-debug",{recursive:true});fs.writeFileSync(".artifacts/vitest-shutdown-debug/failure.json","{}");fs.mkdirSync(".artifacts/browser-traces",{recursive:true});fs.writeFileSync(".artifacts/browser-traces/trace.zip","trace");const report=process.env.FLUO_CLI_SANDBOX_ROOT+"/node_modules/.cache/playwright-results/case";fs.mkdirSync(report,{recursive:true});fs.writeFileSync(report+"/error-context.md","browser failure");process.exit(7)'], cwd: '.' },
+      'const fs=require("node:fs");const debug=process.env.FLUO_VITEST_SHUTDOWN_DEBUG_DIR;fs.mkdirSync(debug,{recursive:true});fs.writeFileSync(debug+"/failure.json","{}");fs.mkdirSync(".omo/verification/browser-traces",{recursive:true});fs.writeFileSync(".omo/verification/browser-traces/trace.zip","trace");const report=process.env.FLUO_CLI_SANDBOX_ROOT+"/node_modules/.cache/playwright-results/case";fs.mkdirSync(report,{recursive:true});fs.writeFileSync(report+"/error-context.md","browser failure");process.exit(7)'], cwd: '.' },
   ];
   writeFileSync(manifestPath, JSON.stringify(manifest));
-  writeFileSync(join(root, '.gitignore'), '.artifacts/\n.omo/\nnode_modules/\n**/dist/\n');
+  copyFileSync(new URL('../../.gitignore', import.meta.url), join(root, '.gitignore'));
   mkdirSync(join(root, 'packages/cli/src/new'), { recursive: true });
   writeFileSync(join(root, 'packages/cli/src/new/published-internal-dependencies.ts'), 'export const generated = true;\n');
   mkdirSync(join(root, 'packages/fixture-lib'), { recursive: true });
@@ -116,6 +116,7 @@ test('real Docker Linux checkout runs a command and exports failure evidence wit
   assert.equal(failed.status, 'failed');
   assert.equal(failed.commands[0].exitCode, 0);
   assert.equal(failed.commands[1].exitCode, 7);
+  assert.equal(failed.commands[1].identityAfter.statusDigest, digest(''));
   assert.ok(failed.diagnostics.some(({ path }) => path.endsWith('failure.json')));
   assert.ok(failed.diagnostics.some(({ path }) => path.endsWith('trace.zip')));
   assert.ok(failed.diagnostics.some(({ path }) => path.endsWith('error-context.md')));
