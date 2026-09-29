@@ -215,9 +215,11 @@ test('retains the approved shell after a mapped page import fails until explicit
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Use shell resource' })).toBeVisible();
   await page.getByRole('button', { name: 'Use shell resource' }).click();
   const firstAck = await page.getByTestId('resource-ack').textContent();
+  expect(firstAck).toMatch(/:[1-9]\d*$/u);
   await page.evaluate(() => {
     window.__originalResource = window.__reactResource;
     document.documentElement.dataset.shellIdentity = 'approved';
