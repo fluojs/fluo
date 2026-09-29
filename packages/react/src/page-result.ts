@@ -25,7 +25,11 @@ import {
   readReactSsrDiagnosticMarker,
   reportReactSsrDiagnostic,
 } from './diagnostics.js';
-import { isReactNavigationPage, type ReactNavigationPayload } from './navigation-payload.js';
+import {
+  createReactInitialNavigationPage,
+  createReactNavigationPayload,
+  isReactNavigationPage,
+} from './navigation-payload.js';
 import type { ReactPageRenderer } from './page-renderer.js';
 import { getReactRenderPolicies } from './render-policy.js';
 import { isReactServerEntry } from './server-entry.js';
@@ -122,13 +126,20 @@ function finalizeReactPageResult(
     }
     const { node, destination, prefetch } = context.value;
     const renderPage = runtime.renderPage;
+    const policies = getReactRenderPolicies(context.handler.controllerToken, context.handler.methodName);
     const page = registerFrameworkResponseWriter(
       { node, destination },
       async (writerContext) => {
+        const initialPage = createReactInitialNavigationPage(createReactNavigationPayload(
+          writerContext.requestContext.request.url,
+          writerContext.requestContext.request.params,
+          destination,
+        ));
         const entry = renderPage(
           node,
           writerContext.requestContext,
-          getReactRenderPolicies(context.handler.controllerToken, context.handler.methodName),
+          policies,
+          initialPage,
         );
         const { renderReactResponse } = await import('./render.js');
         await renderReactResponse(entry, writerContext.requestContext, {
@@ -141,21 +152,13 @@ function finalizeReactPageResult(
       value: {
         mediaType: 'application/vnd.fluo.react-navigation+json;v=1',
         ...(prefetch === undefined ? {} : { prefetch }),
-        body: ({ request, requestContext, response, applySuccessResponseMetadata }: FrameworkResponseWriterContext): ReactNavigationPayload => {
+        body: ({ request, requestContext, response, applySuccessResponseMetadata }: FrameworkResponseWriterContext) => {
           const entry = renderPage(
             node,
             requestContext,
-            getReactRenderPolicies(context.handler.controllerToken, context.handler.methodName),
+            policies,
           );
-          const payload: ReactNavigationPayload = {
-            version: 1,
-            url: request.url,
-            params: { ...request.params },
-            destination: {
-              module: destination.module,
-              props: JSON.parse(JSON.stringify(destination.props)),
-            },
-          };
+          const payload = createReactNavigationPayload(request.url, request.params, destination);
           applySuccessResponseMetadata();
           if (entry.status !== undefined) {
             response.setStatus(entry.status);

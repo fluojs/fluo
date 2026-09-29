@@ -7,6 +7,7 @@ import { createConnection, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { prepareStarterDependencies } from '../../../tooling/cli/starter-lockfile.mjs';
 
 const defaultSandboxRoot = resolve(join(tmpdir(), 'fluo-cli-sandbox'));
 const sandboxMetadataFileName = '.fluo-cli-sandbox.json';
@@ -49,6 +50,12 @@ const representativeStarterSmokeScenarios = [
 ];
 
 let runCliPromise;
+
+export function resolveSandboxProfile(env = process.env) {
+  const profile = env.FLUO_CLI_SANDBOX_PROFILE ?? 'full';
+  if (!['full', 'smoke'].includes(profile)) throw new TypeError(`Unknown sandbox verification profile: ${profile}`);
+  return profile;
+}
 
 function isPathInsideDirectory(parentDirectory, candidatePath) {
   const resolvedParentDirectory = resolve(parentDirectory);
@@ -306,7 +313,7 @@ async function createSandboxProject(projectName) {
       projectName,
       '--package-manager',
       'pnpm',
-      '--install',
+      '--no-install',
       '--no-git',
       '--target-directory',
       projectDirectory,
@@ -323,6 +330,12 @@ async function createSandboxProject(projectName) {
     throw new Error(`runCli returned a non-zero exit code: ${exitCode}.`);
   }
 
+  const dependencyMode = process.env.FLUO_CLI_SANDBOX_DEPENDENCIES ?? 'fresh';
+  if (!['fresh', 'locked'].includes(dependencyMode)) throw new TypeError(`Unknown starter dependency mode: ${dependencyMode}`);
+  const dependencyEvidence = prepareStarterDependencies(projectDirectory, dependencyMode === 'locked'
+    ? join(repoRoot, 'tooling/cli/verification-locks', `${projectName}.json`) : undefined);
+  run('pnpm', ['install', ...(dependencyMode === 'locked' ? ['--frozen-lockfile'] : [])], projectDirectory);
+  process.stdout.write(`${JSON.stringify({ starter: projectName, dependencyEvidence })}\n`);
   writeSandboxMetadata(projectDirectory, projectName);
   log(`Sandbox project is ready at ${projectDirectory}`);
   return projectDirectory;
@@ -435,7 +448,7 @@ async function verifyStandardColdDev(projectDirectory, starterContract) {
   }
 }
 
-async function verifyReactColdDev(projectDirectory) {
+export async function verifyReactColdDev(projectDirectory, profile = resolveSandboxProfile()) {
   assert.equal(existsSync(join(projectDirectory, 'dist')), false, 'React dev must start without application dist.');
   const port = await availablePort();
   const origin = `http://127.0.0.1:${port}`;
@@ -443,8 +456,6 @@ async function verifyReactColdDev(projectDirectory) {
   const pagePath = join(projectDirectory, 'src', 'page.tsx');
   const originalApp = readFileSync(appPath, 'utf8');
   const originalPage = readFileSync(pagePath, 'utf8');
-  const requireFromProject = createRequire(join(projectDirectory, 'package.json'));
-  const { chromium } = requireFromProject('@playwright/test');
   const child = spawn(join(projectDirectory, 'node_modules', '.bin', 'fluo'), ['dev', '--reporter', 'pretty'], {
     cwd: projectDirectory,
     env: { ...process.env, CI: '1', PORT: String(port) },
@@ -453,6 +464,16 @@ async function verifyReactColdDev(projectDirectory) {
   child.stdout.on('data', (chunk) => process.stdout.write(chunk));
   child.stderr.on('data', (chunk) => process.stderr.write(chunk));
   let browser;
+  let page;
+  let socket;
+  let smokeSocket;
+  const diagnostics = [];
+  const watchPageDiagnostics = (activePage) => {
+    activePage.on('console', (message) => {
+      if (message.type() === 'warning' || message.type() === 'error') diagnostics.push(message.text());
+    });
+    activePage.on('pageerror', (error) => diagnostics.push(error.message));
+  };
 
   try {
     await waitForDevReady(child, 'React dev app ready');
@@ -462,23 +483,31 @@ async function verifyReactColdDev(projectDirectory) {
     const html = await initial.text();
     assert.match(html, /Catalog item sku-42/u);
     const assets = [...html.matchAll(/(?:src|href)="(\/(?:assets|src)\/[^"]+)"/gu)].map((match) => match[1]);
-    assert(assets.some((asset) => asset.includes('/src/entry-client.tsx')));
+    assert(assets.includes('/src/entry-client-dev.ts'));
     for (const asset of assets) {
       assert.equal((await fetch(new URL(asset, origin))).status, 200, asset);
     }
 
-    browser = await chromium.launch({ channel: 'chrome', headless: true });
-    const page = await browser.newPage();
-    const diagnostics = [];
-    page.on('console', (message) => {
-      if (message.type() === 'warning' || message.type() === 'error') diagnostics.push(message.text());
-    });
-    page.on('pageerror', (error) => diagnostics.push(error.message));
-    await page.goto(`${origin}/products/sku-42?preview=true`);
-    await page.getByRole('button', { name: 'Count: 0' }).click();
-    await page.getByRole('button', { name: 'Count: 1' }).waitFor();
+    if (profile === 'full') {
+      const requireFromProject = createRequire(join(projectDirectory, 'package.json'));
+      const { chromium } = requireFromProject('@playwright/test');
+      browser = await chromium.launch({ channel: 'chrome', headless: true });
+      page = await browser.newPage();
+      watchPageDiagnostics(page);
+      const connected = page.waitForEvent('websocket', { timeout: 15_000 });
+      await page.goto(`${origin}/products/sku-42?preview=true`);
+      socket = await connected;
+      const counter = page.getByRole('button', { name: 'Count: 0' });
+      await counter.click();
+      await page.getByRole('button', { name: 'Count: 1' }).waitFor();
+    }
     assert.equal(existsSync(join(projectDirectory, 'dist')), false, 'React edits must stay on the Vite development path.');
 
+    if (page) {
+      await page.close();
+      page = undefined;
+      socket = undefined;
+    }
     const serverReady = waitForDevReady(child, 'React dev app ready');
     writeFileSync(appPath, originalApp.replace("@Router('/products')", "@Router('/dev-products')"));
     await serverReady;
@@ -487,17 +516,59 @@ async function verifyReactColdDev(projectDirectory) {
     const restoredReady = waitForDevReady(child, 'React dev app ready');
     writeFileSync(appPath, originalApp);
     await restoredReady;
-    const clientReady = waitForDevReady(child, 'React dev app ready');
+    if (browser) {
+      page = await browser.newPage();
+      watchPageDiagnostics(page);
+      const connected = page.waitForEvent('websocket', { timeout: 15_000 });
+      await page.goto(`${origin}/products/sku-42?preview=true`);
+      socket = await connected;
+      const counter = page.getByRole('button', { name: 'Count: 0' });
+      await counter.click();
+      await page.getByRole('button', { name: 'Count: 1' }).waitFor();
+    } else {
+      const moduleResponse = await fetch(`${origin}/src/page.tsx`, { headers: { accept: 'text/javascript' } });
+      assert.equal(moduleResponse.status, 200);
+      smokeSocket = new WebSocket(origin.replace('http:', 'ws:'), 'vite-hmr');
+      await once(smokeSocket, 'open', { signal: AbortSignal.timeout(15_000) });
+    }
+    const clientUpdate = socket
+      ? socket.waitForEvent('framereceived', {
+        predicate: ({ payload }) => String(payload).includes('"type":"update"'),
+        timeout: 15_000,
+      })
+      : new Promise((resolve, reject) => {
+        const signal = AbortSignal.timeout(15_000);
+        const finish = (error) => {
+          signal.removeEventListener('abort', onTimeout);
+          smokeSocket.removeEventListener('message', onMessage);
+          if (error) reject(error);
+          else resolve();
+        };
+        const onTimeout = () => finish(new Error('React client update did not arrive over the app WebSocket.'));
+        const onMessage = (event) => {
+          const message = JSON.parse(String(event.data));
+          if (message.type === 'update' && message.updates?.some((update) => update.path === '/src/page.tsx')) finish();
+        };
+        signal.addEventListener('abort', onTimeout, { once: true });
+        smokeSocket.addEventListener('message', onMessage);
+      });
     writeFileSync(pagePath, originalPage.replace('Catalog item', 'Updated item'));
-    await clientReady;
-    await page.goto(`${origin}/products/sku-42?preview=true`);
-    await page.getByRole('heading', { name: 'Updated item sku-42' }).waitFor();
-    await page.getByRole('button', { name: 'Count: 0' }).click();
-    await page.getByRole('button', { name: 'Count: 1' }).waitFor();
+    await clientUpdate;
+    const transformed = await fetch(`${origin}/src/page.tsx`, { headers: { accept: 'text/javascript' } });
+    assert.equal(transformed.status, 200);
+    assert.match(await transformed.text(), /Updated item/u);
+    const edited = await fetch(`${origin}/products/sku-42?preview=true`);
+    assert.equal(edited.status, 200);
+    assert.match(await edited.text(), /Updated item sku-42/u);
+    if (page) {
+      await page.getByRole('heading', { name: 'Updated item sku-42' }).waitFor();
+      await page.getByRole('button', { name: 'Count: 1' }).waitFor();
+    }
     assert.deepEqual(diagnostics, []);
-    log('Installed React fluo dev: cold HTTP, assets, hydration, server/client edits passed');
+    log(`Installed React fluo dev: cold HTTP, assets, server/client edits passed (${profile})`);
   } finally {
     try {
+      smokeSocket?.close();
       await browser?.close();
       const closed = once(child, 'close', { signal: AbortSignal.timeout(10_000) });
       child.kill('SIGINT');
@@ -578,8 +649,10 @@ async function verifySandboxProject(projectName) {
     process.env.FLUO_REACT_STARTER_SERVER_COMMAND = 'dev';
 
     try {
-      log('Running the generated React development command through the first-page browser scenario');
-      run('pnpm', ['test:browser'], projectDirectory);
+      if (resolveSandboxProfile() === 'full') {
+        log('Running the generated React development command through the first-page browser scenario');
+        run('pnpm', ['test:browser'], projectDirectory);
+      }
     } finally {
       if (previousServerCommand === undefined) {
         delete process.env.FLUO_REACT_STARTER_SERVER_COMMAND;
@@ -619,7 +692,7 @@ async function verifySandboxProject(projectName) {
       "const { verifyGeneratedDtoBinding } = await import('./.fluo/toolchain/main.js'); await verifyGeneratedDtoBinding(); console.log('Generated Vite DTO field binding passed');",
     ], projectDirectory);
   }
-  if (starterContract === 'react-vite-ssr') {
+  if (starterContract === 'react-vite-ssr' && resolveSandboxProfile() === 'full') {
     run('pnpm', ['test:browser'], projectDirectory);
   }
 
@@ -658,6 +731,7 @@ function printUsage() {
 }
 
 async function main() {
+  resolveSandboxProfile();
   const [command, ...rest] = process.argv.slice(2);
   const projectName = resolveProjectName(rest);
   const projectDirectory = resolveProjectDirectory(projectName);
@@ -691,4 +765,4 @@ async function main() {
   }
 }
 
-await main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

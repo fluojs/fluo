@@ -18,7 +18,7 @@ evidence for the behavior and scope it changes.
 
 1. Are the implementation's required focused checks present, complete, and passing for the supplied head?
 2. Do the executed jobs actually cover the changed package and behavior?
-3. Do focused checks and planned local CI cover the accepted verification criteria?
+3. Do focused checks, full GitHub CI, and any required full local CI cover the accepted verification criteria?
 4. Does every behavioral change or bug fix have regression evidence that could
    fail for the defect?
 5. Are async and integration tests deterministic and faithful rather than
@@ -42,9 +42,11 @@ evidence for the behavior and scope it changes.
   shows it was introduced.
 - Green unrelated jobs do not compensate for missing affected-scope checks.
 - Never infer that an unrun command would pass.
-- Canonical local CI intentionally runs after review. Its absent receipt is
-  not a blocker or human-check condition here. Inspect test adequacy and
-  focused execution evidence now; the lane enforces the later CI gate.
+- Full canonical local CI, when required for CI execution/configuration
+  changes, intentionally runs after review. Its absent receipt is not a
+  blocker or human-check condition here. Ordinary changes proceed from focused
+  checks and review to full GitHub CI. Inspect test adequacy and focused
+  execution evidence now; do not defer a missing focused check to remote CI.
 
 ## Receipt and evidence authentication (earned by eight caught inaccuracies)
 

@@ -8,6 +8,8 @@ import { EventEmitter } from 'node:events';
 
 import { parseRedisPort, redisReady, startRedisFixture } from './redis-native-fixture.mjs';
 
+const lockedRedisImage = JSON.parse(readFileSync(new URL('../ci/environment.lock.json', import.meta.url), 'utf8')).redis.image;
+
 test('recognizes split Redis readiness output from either stream', () => {
   assert.equal(redisReady(['Ready to accept ', 'connections']), true);
   assert.equal(redisReady(['stderr: Ready to accept connections']), true);
@@ -74,7 +76,7 @@ test('writes structured image-pull diagnostics before container startup', async 
 
     const diagnostic = JSON.parse(readFileSync(diagnosticPath, 'utf8'));
     assert.partialDeepStrictEqual(diagnostic.phases[0], {
-      argv: ['pull', 'redis:7.4-alpine'],
+      argv: ['pull', lockedRedisImage],
       command: 'docker',
       exitCode: 1,
       name: 'image-pull',

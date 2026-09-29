@@ -21,6 +21,9 @@ const observation = (overrides = {}) => ({
   reviewAcceptedAt: '2026-01-01T00:00:00.000Z',
   ...overrides,
 });
+const ciObservation = (overrides = {}) => observation({
+  changedFiles: ['.agents/skills/execute-lane/scripts/lane-v4.mjs'], ...overrides,
+});
 const reviewed = (obs, signal = 'PASS') => {
   const { policy } = evaluatePreflight(obs.preflight, obs);
   return buildReviewFact({
@@ -31,9 +34,9 @@ const reviewed = (obs, signal = 'PASS') => {
     })),
   }, obs.headSha, policy);
 };
-const passedCheck = (sha = head) => ({
-  ...localCheckBinding(reviewed(observation({ headSha: sha })), observation().reviewAcceptedAt),
-  receiptStartedAt: '2026-01-01T00:00:01.000Z', head: sha, status: 'passed', valid: true,
+const passedCheck = (obs = observation()) => ({
+  ...localCheckBinding(reviewed(obs), obs.reviewAcceptedAt),
+  receiptStartedAt: '2026-01-01T00:00:01.000Z', head: obs.headSha, status: 'passed', valid: true,
   receiptPath: '.omo/verification/pass.json', receiptSha256: 'd'.repeat(64),
 });
 
@@ -131,7 +134,7 @@ test('literal Next route brackets remain valid scoped paths', () => {
 test('contract revision invalidates review at unchanged head', () => {
   const obs = observation();
   obs.review = reviewed(obs);
-  assert.equal(decideNext(lane, obs).action, 'verify-local');
+  assert.equal(decideNext(lane, obs).action, 'create-pr');
   obs.preflight = createPreflight(input({ acceptance: ['Add a second acceptance condition'] }));
   assert.equal(decideNext(lane, obs).action, 'review');
 });
@@ -146,19 +149,19 @@ test('expanded actual axes invalidate earlier policy even on unchanged head', ()
 });
 
 test('review precedes canonical local CI, including local-failure fix-back cycle', () => {
-  const obs = observation({ hasNewCommits: false });
+  const obs = ciObservation({ hasNewCommits: false });
   assert.equal(decideNext(lane, obs).action, 'implement');
   obs.hasNewCommits = true;
   assert.equal(decideNext(lane, obs).action, 'review');
   obs.review = reviewed(obs);
   assert.equal(decideNext(lane, obs).action, 'verify-local');
-  obs.localChecks = { ...passedCheck(), status: 'failed' };
+  obs.localChecks = { ...passedCheck(obs), status: 'failed' };
   assert.equal(decideNext(lane, obs).reason, 'local-checks-failed');
   obs.headSha = 'e'.repeat(40);
   assert.equal(decideNext(lane, obs).action, 'review');
   obs.review = reviewed(obs);
   assert.equal(decideNext(lane, obs).action, 'verify-local');
-  obs.localChecks = passedCheck(obs.headSha);
+  obs.localChecks = passedCheck(obs);
   assert.equal(decideNext(lane, obs).action, 'create-pr');
   obs.pr = { number: 42, state: 'OPEN', headSha: head, ciStatus: 'passing', mergeable: 'MERGEABLE' };
   assert.equal(decideNext(lane, obs).action, 'push');
@@ -172,20 +175,20 @@ test('review precedes canonical local CI, including local-failure fix-back cycle
 });
 
 test('same-head local receipts without review/policy binding cannot advance', () => {
-  const obs = observation();
+  const obs = ciObservation();
   obs.review = reviewed(obs);
-  obs.localChecks = passedCheck();
+  obs.localChecks = passedCheck(obs);
   delete obs.localChecks.reviewSha256;
   assert.equal(decideNext(lane, obs).action, 'verify-local');
 });
 
 test('earlier receipt and changed review acceptance cannot advance on the same head', () => {
-  const obs = observation();
+  const obs = ciObservation();
   obs.review = reviewed(obs);
-  obs.localChecks = passedCheck();
+  obs.localChecks = passedCheck(obs);
   obs.localChecks.receiptStartedAt = '2025-12-31T23:59:59.000Z';
   assert.equal(decideNext(lane, obs).action, 'verify-local');
-  obs.localChecks = passedCheck();
+  obs.localChecks = passedCheck(obs);
   obs.reviewAcceptedAt = '2026-01-01T00:00:00.500Z';
   assert.equal(decideNext(lane, obs).action, 'verify-local');
   obs.preflight = null;

@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 import { schemaFailure } from '../../.agents/workflow-contracts/schema-validator.mjs';
 import { publicWorkspacePackageNames, workspacePackageManifests } from '../release/release-intents.mjs';
+import { verifyPreparedBuild } from '../ci/prepared-build.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const defaultRoot = resolve(here, '..', '..');
@@ -472,17 +473,18 @@ export async function runDuplicateModuleSafety({
   if (coverageFailures.length > 0) throw new Error(`Coverage manifest invalid: ${coverageFailures.join(' ')}`);
   const fixtureRoot = join(root, 'tooling/testing/fixtures/duplicate-module-safety');
   const packageClosure = workspaceDependencyClosure(root, packageNames);
-  const preparation = [
-    await commandRecord(['pnpm', 'install', '--offline', '--frozen-lockfile'], root, timeoutMs, {
+  const preparation = [];
+  if (!verifyPreparedBuild(root, process.env.FLUO_VERIFIED_BUILD)) {
+    preparation.push(await commandRecord(['pnpm', 'install', '--offline', '--frozen-lockfile'], root, timeoutMs, {
       npm_config_offline: 'true',
-    }),
-  ];
-  for (const packageName of packageClosure) {
-    preparation.push(await commandRecord(
-      ['node', 'tooling/scripts/run-workspace-build-closure.mjs', packageName],
-      root,
-      timeoutMs,
-    ));
+    }));
+    for (const packageName of packageClosure) {
+      preparation.push(await commandRecord(
+        ['node', 'tooling/scripts/run-workspace-build-closure.mjs', packageName],
+        root,
+        timeoutMs,
+      ));
+    }
   }
   const runs = [];
   for (const runNumber of [1, 2]) {

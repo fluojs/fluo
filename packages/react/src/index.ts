@@ -26,6 +26,7 @@ export { createReactErrorRepresentationProvider } from './error-representation.j
 export type { ReactModuleOptions } from './module.js';
 export { ReactModule } from './module.js';
 export type {
+  ReactInitialNavigationPage,
   ReactNavigationDestination,
   ReactNavigationPageResult,
   ReactNavigationPayload,

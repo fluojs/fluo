@@ -1,6 +1,7 @@
 import type { Token } from '@fluojs/core';
 import type { ReactElement } from 'react';
 
+import type { ReactInitialNavigationPage } from './navigation-payload.js';
 import type { ReactRenderContext } from './render.js';
 import type { ReactRenderPolicies } from './render-policy.js';
 import type { ReactServerEntry } from './server-entry.js';
@@ -18,12 +19,14 @@ import type { ReactServerEntry } from './server-entry.js';
  * @param page React page element produced by an application handler.
  * @param context Active render context containing the matched request URL, params, and response.
  * @param policies Resolved class and method render policy component references for this page.
+ * @param initialPage Validated and HTML-escaped initial transfer for an opted-in navigation page.
  * @returns An existing React server entry finalized by the fluo HTTP dispatcher.
  */
 export type ReactPageRenderer = (
   page: ReactElement,
   context: ReactRenderContext,
   policies: ReactRenderPolicies,
+  initialPage?: ReactInitialNavigationPage,
 ) => ReactServerEntry;
 
 /** Dependency-injection token for the application `ReactPageRenderer`. */

@@ -45,6 +45,7 @@ const RUN_PREFIX_BY_PACKAGE_MANAGER = {
 
 const REACT_VITE_SSR_TEMPLATES: readonly ReactViteSsrTemplate[] = [
   { outputPath: 'README.md', templatePath: 'README.md.ejs' },
+  { outputPath: 'babel.config.cjs', templatePath: 'babel.config.cjs.ejs' },
   { outputPath: 'playwright.config.ts', templatePath: 'playwright.config.ts.ejs' },
   { outputPath: 'public/favicon.svg', templatePath: 'public/favicon.svg.ejs' },
   { outputPath: 'tsconfig.json', templatePath: 'tsconfig.json.ejs' },
@@ -54,11 +55,13 @@ const REACT_VITE_SSR_TEMPLATES: readonly ReactViteSsrTemplate[] = [
   { outputPath: 'src/app.test.ts', templatePath: 'src/app.test.ts.ejs' },
   { outputPath: 'src/app.ts', templatePath: 'src/app.ts.ejs' },
   { outputPath: 'src/entry-client.tsx', templatePath: 'src/entry-client.tsx.ejs' },
+  { outputPath: 'src/entry-client-dev.ts', templatePath: 'src/entry-client-dev.ts.ejs' },
   { outputPath: 'src/entry-server.tsx', templatePath: 'src/entry-server.tsx.ejs' },
   { outputPath: 'src/load-manifest.test.ts', templatePath: 'src/load-manifest.test.ts.ejs' },
   { outputPath: 'src/load-manifest.ts', templatePath: 'src/load-manifest.ts.ejs' },
   { outputPath: 'src/main.ts', templatePath: 'src/main.ts.ejs' },
   { outputPath: 'src/page.tsx', templatePath: 'src/page.tsx.ejs' },
+  { outputPath: 'src/page-search.tsx', templatePath: 'src/page-search.tsx.ejs' },
   { outputPath: 'src/react-app.test.tsx', templatePath: 'src/react-app.test.tsx.ejs' },
   { outputPath: 'src/react-app.tsx', templatePath: 'src/react-app.tsx.ejs' },
   { outputPath: 'src/styles.css', templatePath: 'src/styles.css.ejs' },
