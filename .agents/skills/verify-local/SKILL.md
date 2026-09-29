@@ -1,6 +1,6 @@
 ---
 name: verify-local
-description: Run pre-PR local CI only after selected reviews pass at the current head and preflight contract; return captured evidence without reviewing, pushing, or orchestrating.
+description: Run full local CI for CI execution/configuration changes or explicit reproduction after selected reviews pass; return evidence without reviewing, pushing, or orchestrating.
 ---
 
 # Verify local
@@ -8,13 +8,17 @@ description: Run pre-PR local CI only after selected reviews pass at the current
 This stage belongs to `execute-lane`. The lead owns verification and its
 receipt. This stage follows selected review PASS, not the other way around.
 The verification reviewer has already assessed focused tests and coverage.
+Ordinary changes proceed from focused checks and selected reviews directly to
+publication and full GitHub CI. This stage retains the full canonical runner;
+it does not replace focused checks with a shortened canonical receipt.
 
 ## Input and authority
 
 Require lane/issue identity, the accepted preflight, absolute implementation
 worktree, pinned `base_sha` and current head, selected-axis PASS, and
 lead-observed changed paths.
-Run lane `plan` and require `verify-local` for that exact head. Confirm
+Run lane `plan` and require `verify-local` for that exact head, or an explicit
+request to reproduce with full local CI. Confirm
 the worktree is clean at that head and no implementation child still owns it.
 Run checks only; do not edit source, commit, push, mutate a PR, or merge.
 
@@ -90,4 +94,6 @@ node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs record --root <repo-roo
 The lead retains the failed output and translates concrete failures into
 canonical fix-back blockers. The CLI binds failure to the current head and
 review so `plan` selects fix-back; an old-head report is rejected. A new review
-clears the failure and requires local CI again.
+clears the review-bound failure; the engine re-evaluates whether full local CI
+is required for the actual issue diff. Unresolved failures must remain review
+blockers rather than being erased by a new PASS.

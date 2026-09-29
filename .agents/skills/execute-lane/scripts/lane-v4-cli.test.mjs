@@ -173,7 +173,7 @@ if (args[0] === 'pr' && args[1] === 'view') {
   return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog };
 };
 
-test('CLI: durable preflight, selected review, then canonical local CI across fresh processes', (t) => {
+test('CLI: durable preflight and selected review publish ordinary docs without full local CI', (t) => {
   const f = fixture(t);
   assert.equal(f.plan().decision.action, 'preflight');
   const preflight = f.preflight();
@@ -188,15 +188,38 @@ test('CLI: durable preflight, selected review, then canonical local CI across fr
   const review = f.review();
   f.set('review', review, review.head_sha);
   result = f.plan();
-  assert.equal(result.decision.action, 'verify-local');
+  assert.equal(result.decision.action, 'create-pr');
   assert.equal(result.obs.review.verdict, 'pass');
   const stored = JSON.parse(readFileSync(f.lanePath, 'utf8'));
   assert.equal(Object.hasOwn(stored.issues['42'].facts.preflight, 'head'), false);
   assert.equal(stored.issues['42'].facts.review.value.preflight_sha256, review.preflight_sha256);
   f.cli('record', [...f.common, '--phase', 'preflight', '--result-json', '{"ok":false}']);
   assert.equal(JSON.parse(readFileSync(f.lanePath)).issues['42'].attempts.preflight, 1);
-  assert.equal(JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout)[0].decision.action, 'verify-local');
-  assert.match(f.cli('watch', ['--lane', f.lanePath, '--once']).stdout, /-> verify-local/u);
+  assert.equal(JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout)[0].decision.action, 'create-pr');
+  assert.match(f.cli('watch', ['--lane', f.lanePath, '--once']).stdout, /-> create-pr/u);
+  f.state.pr = {
+    number: 42, state: 'OPEN', headRefOid: 'f'.repeat(40),
+    mergeable: 'MERGEABLE', statusCheckRollup: [{ conclusion: 'SUCCESS' }],
+  };
+  f.update();
+  assert.equal(f.plan().decision.action, 'push');
+  f.state.pr.headRefOid = review.head_sha;
+  f.state.pr.statusCheckRollup = [{ state: 'PENDING' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'wait-ci');
+  f.state.pr.statusCheckRollup = [{ conclusion: 'FAILURE' }];
+  f.update();
+  assert.equal(f.plan().decision.reason, 'ci-failing');
+  f.state.pr.mergeable = 'CONFLICTING';
+  f.update();
+  assert.equal(f.plan().decision.action, 'resolve-conflict');
+  f.state.pr.mergeable = 'UNKNOWN';
+  f.state.pr.statusCheckRollup = [{ conclusion: 'SUCCESS' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'wait-mergeability');
+  f.state.pr.mergeable = 'MERGEABLE';
+  f.update();
+  assert.equal(f.plan().decision.action, 'request-merge-approval');
   const calls = readFileSync(f.ghLog, 'utf8').trim().split('\n').map(JSON.parse);
   assert.ok(calls.every((args) => ['issue', 'pr'].includes(args[0]) && args[1] === 'view'));
 });
@@ -223,10 +246,10 @@ test('CLI: recording an actual local CI failure enters fix-back without forging 
   assert.equal(readFileSync(f.lanePath, 'utf8'), snapshot);
   const fresh = f.review();
   f.set('review', fresh, fresh.head_sha);
-  assert.equal(f.plan().decision.action, 'verify-local');
+  assert.equal(f.plan().decision.action, 'create-pr');
 });
 
-test('CLI: failed local receipt fixes back, new head requires review before local CI again', (t) => {
+test('CLI: failed local receipt fixes back and new ordinary head requires review', (t) => {
   const f = fixture(t);
   f.set('preflight', f.preflight());
   f.implement();
@@ -245,7 +268,7 @@ test('CLI: failed local receipt fixes back, new head requires review before loca
   assert.equal(f.plan().decision.action, 'review');
   const fresh = f.review();
   f.set('review', fresh, fresh.head_sha);
-  assert.equal(f.plan().decision.action, 'verify-local');
+  assert.equal(f.plan().decision.action, 'create-pr');
 });
 
 test('CLI: malformed, missing, duplicate, narrowed and stale reviews never persist', (t) => {
@@ -288,7 +311,7 @@ test('CLI: actual diff expands axes and rejects implementer narrowing', (t) => {
   f.set('preflight', f.preflight({ active_axes: ['contract', 'code', 'verification'], omitted_axes: {} }));
   const current = f.review();
   f.set('review', current, current.head_sha);
-  assert.equal(f.plan().decision.action, 'verify-local');
+  assert.equal(f.plan().decision.action, 'create-pr');
 });
 
 test('CLI: accepted expanded axes cannot shrink when implementation later removes runtime files', (t) => {
@@ -400,8 +423,9 @@ test('CLI: integrating main keeps upstream files outside issue scope and require
   f.implement();
   const review = f.review();
   f.set('review', review, review.head_sha);
-  writeFileSync(join(f.root, 'unrelated.md'), 'upstream change\n');
-  f.git(f.root, 'add', 'unrelated.md');
+  mkdirSync(join(f.root, '.github/workflows'), { recursive: true });
+  writeFileSync(join(f.root, '.github/workflows/ci.yml'), 'name: upstream\n');
+  f.git(f.root, 'add', '.github/workflows/ci.yml');
   f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture upstream change');
   f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
   f.git(f.worktree, '-c', 'commit.gpgsign=false', 'merge', '--no-edit', 'origin/main');
@@ -416,7 +440,7 @@ test('CLI: integrating main keeps upstream files outside issue scope and require
   assert.equal(result.obs.localChecks, null);
   const freshReview = f.review();
   f.set('review', freshReview, freshReview.head_sha);
-  assert.equal(f.plan().decision.action, 'verify-local');
+  assert.equal(f.plan().decision.action, 'create-pr');
   const lane = JSON.parse(readFileSync(f.lanePath, 'utf8'));
   lane.issues['42'].facts.review.accepted_at = '2000-01-01T00:00:00.000Z';
   writeFileSync(f.lanePath, JSON.stringify(lane));
@@ -428,8 +452,14 @@ test('CLI: integrating main keeps upstream files outside issue scope and require
 
 test('CLI: canonical receipts bind to passing review, execution order and current policy', (t) => {
   const f = fixture(t);
-  f.set('preflight', f.preflight());
+  const ciScope = {
+    scope: ['docs/', '.github/workflows/'],
+    predicted_files: ['docs/guide.md', '.github/workflows/ci.yml'],
+  };
+  f.set('preflight', f.preflight(ciScope));
   f.implement();
+  f.commit('.github/workflows/ci.yml', 'name: issue CI\n');
+  assert.equal(f.plan().decision.action, 'review');
   const oldReceipt = f.verify();
   const review = f.review();
   // A real passed receipt before review cannot register, even on the same head.
@@ -468,7 +498,7 @@ test('CLI: canonical receipts bind to passing review, execution order and curren
   assert.match(f.set('local-checks', currentReceipt, review.head_sha, false).stderr, /must start after/u);
   // Replacing the accepted contract clears both review and local CI at the
   // same head. Even a manually restored old local fact cannot advance it.
-  f.set('preflight', f.preflight({ acceptance: ['Revised acceptance'] }));
+  f.set('preflight', f.preflight({ ...ciScope, acceptance: ['Revised acceptance'] }));
   let lane = JSON.parse(readFileSync(f.lanePath));
   assert.equal(lane.issues['42'].facts.review, undefined);
   assert.equal(lane.issues['42'].facts['local-checks'], undefined);

@@ -28,7 +28,14 @@ fluo uses a monorepo structure managed by `pnpm`.
 
 ## verifying before you push
 
-Run canonical verification from a clean worktree before opening or updating a PR:
+For ordinary changes, run focused checks for the changed behavior (including
+affected typechecks and real-surface tests where applicable), retain the results,
+and complete the selected exact-head reviews before opening or updating a PR.
+Full GitHub CI is required on the final PR head before merge.
+
+CI execution/configuration changes additionally require full canonical local
+verification from a clean worktree after review and before publication. Use the
+same command when full local reproduction is explicitly needed:
 
 ```sh
 pnpm verify:local --base-ref <approved-base-sha>

@@ -28,7 +28,12 @@ fluo는 `pnpm`으로 관리되는 모노레포 구조를 사용합니다.
 
 ## 푸시 전 검증
 
-PR을 생성하거나 업데이트하기 전에 clean worktree에서 canonical 검증을 실행하세요.
+일반 변경은 변경 동작에 맞는 집중 검사(필요한 typecheck와 실제 사용 경로 검사 포함)를
+실행하고 결과를 보존한 뒤, 선택된 exact-head 리뷰를 마치고 PR을 생성하거나 업데이트합니다.
+병합 전에는 최종 PR head의 전체 GitHub CI가 통과해야 합니다.
+
+CI 실행 코드·설정 변경은 리뷰 후 push 전에 clean worktree에서 전체 canonical 로컬
+검증도 실행해야 합니다. 전체 로컬 재현이 명시적으로 필요한 경우에도 같은 명령을 사용합니다.
 
 ```sh
 pnpm verify:local --base-ref <approved-base-sha>
