@@ -323,7 +323,13 @@ it('serializes edits during drain without publishing stale readiness', async () 
   const stdout = new PassThrough();
   const initialReady = new Promise<void>((resolve) => { stdout.once('data', () => resolve()); });
   const messageListeners = process.listenerCount('message');
-  const running = runReactViteDevApp(directory, { port: 0, signalTarget: signals, stdout });
+  const epochs: string[] = [];
+  const running = runReactViteDevApp(directory, {
+    onEpochChange: (epoch: string) => { epochs.push(epoch); },
+    port: 0,
+    signalTarget: signals,
+    stdout,
+  });
   state.createGate.resolve();
   state.appGate.resolve();
   await initialReady;
@@ -335,10 +341,10 @@ it('serializes edits during drain without publishing stale readiness', async () 
   const restart = process.listeners('message')[messageListeners];
   if (!restart) throw new Error('Expected the development restart listener.');
   const ready = new Promise<void>((resolve) => { stdout.once('data', () => resolve()); });
-  restart({ type: 'fluo:react-vite-server-restart', files: [join(directory, 'src', 'main.ts')], reload: false }, undefined);
+  restart({ type: 'fluo:react-vite-server-restart', files: [join(directory, 'src', 'main.ts')], reload: false, epoch: 'first' }, undefined);
   expect(state.sent.at(-1)?.data?.status).toBe('restarting');
   await state.closeEntered.promise;
-  restart({ type: 'fluo:react-vite-server-restart', files: [join(directory, 'src', 'app.ts')], reload: false }, undefined);
+  restart({ type: 'fluo:react-vite-server-restart', files: [join(directory, 'src', 'app.ts')], reload: false, epoch: 'second' }, undefined);
   state.closeGate.resolve();
   await ready;
 
@@ -351,6 +357,7 @@ it('serializes edits during drain without publishing stale readiness', async () 
   expect(state.appCloseCalls).toBe(2);
   expect(state.viteCloseCalls).toBe(1);
   expect(process.listenerCount('message')).toBe(messageListeners);
+  expect(epochs).toEqual(['first', 'second']);
 }, 10_000);
 
 it('retries a failed server bootstrap after the next corrective edit', async () => {

@@ -17,6 +17,7 @@ import { STUDIO_DEVTOOLS_GLOBAL_CONFIG_KEY } from '../studio/runtime-config.js';
 export async function runReactViteDevApp(
   projectDirectory: string,
   options: {
+    onEpochChange?: (epoch: string) => void;
     port?: number;
     signalTarget?: EventEmitter;
     stderr?: Pick<NodeJS.WriteStream, 'write'>;
@@ -80,7 +81,7 @@ export async function runReactViteDevApp(
     if (gateway.listening) return;
     await new Promise<void>((resolve, reject) => {
       gateway.once('error', reject);
-      gateway.listen(options.port ?? Number(process.env.PORT ?? '3000'), '127.0.0.1', () => {
+      gateway.listen(options.port ?? 3000, '127.0.0.1', () => {
         gateway.off('error', reject);
         resolve();
       });
@@ -179,7 +180,7 @@ export async function runReactViteDevApp(
         if (modules) for (const module of modules) vite.moduleGraph.invalidateModule(module);
       }
       if ('epoch' in message && typeof message.epoch === 'string') {
-        process.env.FLUO_STUDIO_EPOCH = message.epoch;
+        options.onEpochChange?.(message.epoch);
         const config: unknown = Reflect.get(globalThis, STUDIO_DEVTOOLS_GLOBAL_CONFIG_KEY);
         if (typeof config === 'object' && config !== null) {
           Object.assign(config, { FLUO_STUDIO_EPOCH: message.epoch });

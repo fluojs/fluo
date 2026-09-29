@@ -499,7 +499,10 @@ export async function runCli(
 
     if (commandArgv[0] === '__react-vite-app') {
       const { runReactViteDevApp } = await import('./dev-runner/react-vite-dev-app.js');
-      return runReactViteDevApp(cwd);
+      return runReactViteDevApp(cwd, {
+        onEpochChange: (epoch) => { process.env.FLUO_STUDIO_EPOCH = epoch; },
+        port: Number(env.PORT ?? '3000'),
+      });
     }
 
     if (isVersionCommand(commandArgv[0])) {
