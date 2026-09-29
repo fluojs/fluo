@@ -147,8 +147,9 @@ commit/fallback할 수 없습니다. 정책 callback의 throw/rejection은 진�
 종료 뒤 재생은 보장하지 않습니다.
 
 Low-level provider는 기본적으로 document fallback을 유지합니다. 공식 생성 starter는
-network/5xx 보존 정책을 명시적으로 선택하며 HTTP가 선택한 page slot 외부의 지속 셸에
-재시도·문서 이동 control을 렌더링합니다. #3873은 현재 `refresh()` document reload에
+network/5xx 및 복구 가능한 매핑된 import 실패의 보존 정책을 명시적으로 선택하며
+HTTP가 선택한 page slot 외부의 지속 셸에 재시도·문서 이동 control을 렌더링합니다.
+#3873은 현재 `refresh()` document reload에
 의존하는 소비자의 셸 보존 soft revalidation·migration을 소유합니다.
 `invalidate()`는 표시 중인 page data를 다시 가져오지 않습니다.
 

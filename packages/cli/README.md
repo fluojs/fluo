@@ -219,7 +219,7 @@ browser bundle receives only page components in the `src/page*.tsx` importer map
 This two-page starter is not yet the complete CRUD/jukebox product path: the existing
 [Vite example](../../examples/react-vite-ssr/README.md) demonstrates advanced native-form
 and prefetch policy while the starter provides the canonical page authoring composition.
-The starter selects network/5xx shell preservation and shows retry or ordinary-document
+The starter selects network/5xx and recoverable mapped import-failure shell preservation and shows retry or ordinary-document
 navigation in its persistent shell; the low-level provider remains document-first unless
 an app passes `failurePolicy`. The [product contract](../../docs/contracts/react-fullstack-product.md)
 tracks the remaining form freshness, auth, deployment and full-journey acceptance gates.

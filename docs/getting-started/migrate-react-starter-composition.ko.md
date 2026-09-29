@@ -28,11 +28,11 @@
    반환된 component를 payload URL, params, props와 함께 hydrate합니다.
 4. 공유 shell/provider를 provider의 destination page slot 밖에 두고 slot 안에는
    `destination ?? initialPage`를 렌더링합니다. 기존 provider에
-   `failurePolicy={({ reason }) => reason === 'network' || reason === 'server-error' ? 'preserve' : 'document'}`
+   `failurePolicy={({ reason }) => reason === 'network' || reason === 'server-error' || reason === 'import-failure' ? 'preserve' : 'document'}`
    를 전달하고 `useNavigation().failure` 및 `router.retry()`·`router.openDocument()`
    control은 destination slot 밖의 지속 셸에 둡니다. 기존 `Link`와 `useRouter()`는 승인된
    soft 이동을 수행하지만 direct GET, 이른 클릭, JavaScript 비활성화, 미지원 목적지는
-   native document 경로를 유지합니다.
+   native document 경로를 유지합니다(없는 importer key 포함).
 
 생성 앱의 `src/app.ts`, `src/entry-server.tsx`, `src/react-app.tsx`,
 `src/entry-client.tsx`에 이 연결의 실행 가능한 예제가 있습니다. 일반 page를 추가할 때

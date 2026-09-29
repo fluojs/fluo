@@ -62,7 +62,7 @@ destination은 provider/layout을 유지하지만 soft load 실패의 기본값�
 fallback입니다. 같은 provider의 `failurePolicy`로 network/5xx에서 승인된 shell/page
 보존을 opt-in하고 `useNavigation().failure`, 새 HTTP `router.retry()` 및 명시적인
 `router.openDocument()`를 사용할 수 있습니다. Production Vite 예제는 이 opt-in을
-검증합니다. 공식 생성 starter는 network/5xx 보존 정책과 셸 복구 control을
+검증합니다. 공식 생성 starter는 network/5xx 및 복구 가능한 매핑된 import 실패의 보존 정책과 셸 복구 control을
 명시적으로 연결합니다. 소비자 migration을 수반하는
 셸 보존 refresh(#3873)는 별도 목표이며 이미 배포된 loader cache가 아닙니다.
 인증 거절은 일시적 재시도 대상이 아니고 명시적 reload/logout은 셸을 끝낼 수 있습니다.

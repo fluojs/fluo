@@ -892,7 +892,8 @@ Navigation contract는 의도적으로 HTTP-first입니다.
   initialSnapshot={initialSnapshot}
   navigationModules={navigationModules}
   failurePolicy={({ reason }) =>
-    reason === 'network' || reason === 'server-error' ? 'preserve' : 'document'}
+    reason === 'network' || reason === 'server-error' || reason === 'import-failure'
+      ? 'preserve' : 'document'}
 >
   {(destination) => <AppShell destination={destination} />}
 </ReactClientRouterProvider>
@@ -908,10 +909,10 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 정착합니다. 응답 본문으로 인증을 추측하거나 로그아웃 뒤 보호 콘텐츠를 보장하지 않습니다.
 실패한 back/forward는 확인 가능한 history 위치에서 마지막 승인 URL과 화면으로 복구하고
 retry는 새 HTTP 승인을 요청합니다. 기존 `refresh()`는 여전히 reload입니다. 이는 하위
-호환되는 **low-level opt-in**이며 공식 생성 starter는 network/5xx 보존 정책과 셸 복구
+호환되는 **low-level opt-in**이며 공식 생성 starter는 network/5xx 및 복구 가능한 매핑된 import 실패의 보존 정책과 셸 복구
 control을 명시적으로 제공합니다.
 직접 조립한 앱은 `navigationModules`와 `failurePolicy`를 제공하고 셸에
-`navigation.failure` 조작 UI를 배치하며 다른 사유는 명시적인 정책 없이는 문서 경로에
+`navigation.failure` 조작 UI를 배치하며 다른 사유(없는 importer key 포함)는 명시적인 정책 없이는 문서 경로에
 남겨 두세요. Production 예제는 network/5xx 실패·복구 중 자원 identity와 operation/ack를
 검증합니다. #3879는 여전히 전체 제품 여정을 검증해야 합니다. [제품 여정 표](../../docs/contracts/react-fullstack-product.ko.md#사용자-여정-수용-표)를
 참고하세요.
@@ -1310,7 +1311,7 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 
-- `router.refresh()`의 제자리 revalidation. 공식 starter는 이미 network/5xx 셸 보존
+- `router.refresh()`의 제자리 revalidation. 공식 starter는 이미 network/5xx 및 복구 가능한 매핑된 import 실패의 셸 보존
   재시도를 제공하지만 low-level provider는 기본적으로 document fallback합니다.
 - stable RSC root 또는 `@fluojs/react/rsc` subpath. RSC는 명시적으로 불안정한
   `@fluojs/react/experimental/rsc` prototype에서만 제공합니다.

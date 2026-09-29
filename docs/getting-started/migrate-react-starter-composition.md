@@ -28,12 +28,12 @@ For an existing app adopting the new composition:
    component with the payload URL, params and props.
 4. Keep shared shell/providers outside the provider's destination page slot; render
    `destination ?? initialPage` inside it. On the existing provider, pass
-   `failurePolicy={({ reason }) => reason === 'network' || reason === 'server-error' ? 'preserve' : 'document'}`;
+   `failurePolicy={({ reason }) => reason === 'network' || reason === 'server-error' || reason === 'import-failure' ? 'preserve' : 'document'}`;
    place `useNavigation().failure` controls calling `router.retry()` and
    `router.openDocument()` in the persistent shell, outside the destination slot.
    Existing `Link` and `useRouter()` make
    approved soft moves, while direct GET, early clicks, disabled JavaScript, and
-   unsupported destinations retain the native document path.
+   unsupported destinations (including absent importer keys) retain the native document path.
 
 The generated `src/app.ts`, `src/entry-server.tsx`, `src/react-app.tsx` and
 `src/entry-client.tsx` are runnable examples of these connections. Adding a page

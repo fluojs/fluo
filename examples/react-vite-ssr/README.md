@@ -30,7 +30,7 @@ recoverable import-failure preservation through the same
 `failurePolicy` and offers `retry()` and `openDocument()` while preserving an actual
 long-lived resource with operation/ack and mount/cleanup observations. Low-level providers
 without opt-in still use document fallback; the official starter explicitly selects
-network/5xx preservation and recovery controls.
+network/5xx and recoverable mapped import-failure preservation and recovery controls.
 `router.refresh()` still reloads the document; #3873 owns soft refresh and its migration.
 
 ## what this example demonstrates

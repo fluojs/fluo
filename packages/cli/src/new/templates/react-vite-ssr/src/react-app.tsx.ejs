@@ -115,7 +115,8 @@ export function ReactAppDocument({
       initialSnapshot={initialSnapshot}
       navigationModules={navigationModules}
       failurePolicy={({ reason }) =>
-        reason === 'network' || reason === 'server-error' ? 'preserve' : 'document'}
+        reason === 'network' || reason === 'server-error' || reason === 'import-failure'
+          ? 'preserve' : 'document'}
     >
       {(destination) => (
         <html lang='en'>

@@ -904,7 +904,8 @@ For transient failures, opt into the existing provider and router path:
   initialSnapshot={initialSnapshot}
   navigationModules={navigationModules}
   failurePolicy={({ reason }) =>
-    reason === 'network' || reason === 'server-error' ? 'preserve' : 'document'}
+    reason === 'network' || reason === 'server-error' || reason === 'import-failure'
+      ? 'preserve' : 'document'}
 >
   {(destination) => <AppShell destination={destination} />}
 </ReactClientRouterProvider>
@@ -921,10 +922,10 @@ settles as `application-error`. Never infer authentication from body text, prese
 content after logout, or expose a response body through the policy. Failed back/forward with a
 known history position restores the last approved URL and view; retry requests new HTTP approval.
 Existing `refresh()` still reloads. This is a backward-compatible **low-level opt-in**; the
-official generated starter explicitly enables network/5xx preservation and shell recovery
+official generated starter explicitly enables network/5xx and recoverable mapped import-failure preservation and shell recovery
 controls. To migrate a hand-assembled app, supply
 `navigationModules`, pass `failurePolicy`, render `navigation.failure` controls in the persistent
-shell, and leave all other categories on the document path unless deliberately handled. The
+shell, and leave all other categories (including absent importer keys) on the document path unless deliberately handled. The
 production example verifies resource identity and operation/ack through network and 5xx failure
 and recovery. #3879 must still test the complete product journey; see the
 [product journey map](../../docs/contracts/react-fullstack-product.md#journey-acceptance-map).
@@ -1327,7 +1328,7 @@ documentation change neither adds the stable subpath nor starts the deprecation 
 
 This package currently does **not** provide:
 
-- in-place `router.refresh()` revalidation; the official starter already offers network/5xx
+- in-place `router.refresh()` revalidation; the official starter already offers network/5xx and recoverable mapped import-failure
   shell-preserving retry, while the low-level provider still defaults to document fallback
 - a stable RSC root or `@fluojs/react/rsc` subpath; RSC is available only from the explicitly unstable
   `@fluojs/react/experimental/rsc` prototype

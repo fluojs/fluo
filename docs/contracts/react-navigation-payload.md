@@ -149,8 +149,9 @@ The application owns failure UI and auth/session resource teardown; logout, relo
 do not preserve playback.
 
 The low-level provider keeps document fallback by default. The official generated starter
-explicitly selects network/5xx preservation and renders retry/document controls in its persistent
-shell outside the HTTP-selected page slot. #3873 owns shell-preserving soft revalidation and
+explicitly selects network/5xx and recoverable mapped import-failure preservation and renders
+retry/document controls in its persistent shell outside the HTTP-selected page slot.
+#3873 owns shell-preserving soft revalidation and
 migration for consumers relying on the current `refresh()` document reload.
 `invalidate()` does not re-fetch displayed page data.
 

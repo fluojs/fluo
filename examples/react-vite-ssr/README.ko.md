@@ -27,7 +27,7 @@ custom document를 같은 handler 선택 transfer에 연결합니다.
 사용자 여정과 담당자를 연결합니다. 예제는 network/5xx 및 복구 가능한 import 실패
 `failurePolicy`를 선택하고 장기 자원의 operation/ack 및 mount/cleanup을 확인하면서
 `retry()`와 `openDocument()`를 제공합니다. Opt-in하지 않은 low-level provider는
-document fallback을 유지하며 공식 starter는 network/5xx 보존 및 복구 control을
+document fallback을 유지하며 공식 starter는 network/5xx 및 복구 가능한 매핑된 import 실패의 보존·복구 control을
 명시적으로 연결합니다. `router.refresh()`는 document reload이고 #3873이 soft
 refresh와 migration을 소유합니다.
 
