@@ -28,7 +28,14 @@ fluo uses a monorepo structure managed by `pnpm`.
 
 ## verifying before you push
 
-Run canonical verification from a clean worktree before opening or updating a PR:
+For ordinary changes, run focused checks for the changed behavior (including
+affected typechecks and real-surface tests where applicable), retain the results,
+and complete the selected exact-head reviews before opening or updating a PR.
+Full GitHub CI is required on the final PR head before merge.
+
+CI execution/configuration changes additionally require full canonical local
+verification from a clean worktree after review and before publication. Use the
+same command when full local reproduction is explicitly needed:
 
 ```sh
 pnpm verify:local --base-ref <approved-base-sha>
@@ -149,5 +156,6 @@ fluo maintains strict behavioral contracts. Before opening a PR, ensure you have
 - Follow the structure in `.github/PULL_REQUEST_TEMPLATE.md`.
 - Link related issues or discussions when they exist. If there is no issue, summarize the problem and intended outcome in the PR description.
 - Include a `.changeset/*.md` file only when the PR has consumer-visible release impact for public `@fluojs/*` packages.
-- Run `pnpm verify:local` before pushing and attach its exact-head receipt when
-  local verification is required; CI remains required for CI-only dimensions.
+- Before pushing, run the focused checks and selected reviews required for the
+  change. When full local verification is required, also run `pnpm verify:local`
+  and attach its exact-head receipt. Full GitHub CI remains required before merge.

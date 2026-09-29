@@ -16,9 +16,13 @@ current head, and optional existing PR identity. Run the canonical lane `plan`
 immediately before mutation. Continue only for `create-pr` or `push`, with the
 decision bound to the same current head. Other actions return to the lane.
 
-The gate requires accepted preflight, fresh local verification, actual-diff
+The gate requires accepted preflight, focused local evidence, actual-diff
 review scope reconciliation, and every selected axis passing at that exact
 head and preflight contract. A review `pass` is not merge permission.
+Full canonical local verification is additionally required for CI
+execution/configuration changes, not ordinary changes. Follow the engine's
+actual-diff decision; never invent a local CI receipt to obtain publication.
+Full exact-head GitHub CI remains required before merge.
 Confirm the worktree is clean, branch/head match, and no writer remains active.
 
 ## Action

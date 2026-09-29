@@ -13,7 +13,7 @@ test('accepts only the full and smoke verification profiles', () => {
   assert.throws(() => resolveSandboxProfile({ FLUO_CLI_SANDBOX_PROFILE: 'skip' }), /profile/u);
 });
 
-function coldDevFixture(t) {
+function coldDevFixture(t, withBrowser = false) {
   const root = mkdtempSync(join(tmpdir(), 'fluo-starter-profile-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, 'node_modules/.bin'), { recursive: true });
@@ -22,13 +22,70 @@ function coldDevFixture(t) {
   writeFileSync(join(root, 'src/app.ts'), "@Router('/products')");
   writeFileSync(join(root, 'src/page.tsx'), 'Catalog item');
   const executable = join(root, 'node_modules/.bin/fluo');
+  if (withBrowser) {
+    mkdirSync(join(root, 'node_modules/@playwright/test'), { recursive: true });
+    writeFileSync(join(root, 'node_modules/@playwright/test/package.json'), '{"type":"module","main":"index.mjs"}');
+    writeFileSync(join(root, 'node_modules/@playwright/test/index.mjs'), `
+import assert from 'node:assert/strict';
+import { appendFileSync, watch } from 'node:fs';
+import { resolve } from 'node:path';
+const events = resolve(import.meta.dirname, '../../..', 'browser-events');
+const resolvePath = resolve(import.meta.dirname, '../../..', 'src');
+export const chromium = {
+  async launch() {
+    return {
+      async newPage() {
+        appendFileSync(events, 'new-page\\n');
+        let websocket;
+        const socket = {
+          waitForEvent(_event, { timeout }) {
+            return new Promise((resolve, reject) => {
+              const deadline = setTimeout(() => {
+                watcher.close();
+                reject(new Error('Fixture client update did not arrive.'));
+              }, timeout);
+              const watcher = watch(resolvePath, (_event, path) => {
+                if (path === 'page.tsx') {
+                  clearTimeout(deadline);
+                  watcher.close();
+                  resolve({ payload: '{"type":"update","updates":[{"path":"/src/page.tsx"}]}' });
+                }
+              });
+            });
+          },
+        };
+        return {
+          on() {},
+          waitForEvent() { return new Promise((resolve) => { websocket = resolve; }); },
+          async goto(url) {
+            assert.equal((await fetch(url)).status, 200);
+            websocket(socket);
+          },
+          getByRole() { return { async click() {}, async waitFor() {} }; },
+          async close() { appendFileSync(events, 'close-page\\n'); },
+        };
+      },
+      async close() { appendFileSync(events, 'close-browser\\n'); },
+    };
+  },
+};
+`);
+  }
   writeFileSync(executable, `#!${process.execPath}
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
-import { readFileSync, watch } from 'node:fs';
+import { appendFileSync, readFileSync, watch } from 'node:fs';
 const sockets = new Set();
+let lastApp = readFileSync('src/app.ts', 'utf8');
 const watcher = watch('src', (_event, path) => {
-  if (path === 'app.ts') console.log('React dev app ready');
+  if (path === 'app.ts') {
+    const app = readFileSync('src/app.ts', 'utf8');
+    if (app !== "@Router('/products')" && app !== "@Router('/dev-products')") return;
+    if (app === lastApp) return;
+    lastApp = app;
+    ${withBrowser ? `appendFileSync('browser-events', app.includes('/dev-products') ? 'route-removed\\n' : 'route-restored\\n');` : ''}
+    console.log('React dev app ready');
+  }
   if (path === 'page.tsx') {
     const message = Buffer.from(JSON.stringify({ type: 'update', updates: [{ path: '/src/page.tsx' }] }));
     for (const socket of sockets) socket.write(Buffer.concat([Buffer.from([0x81, message.length]), message]));
@@ -76,4 +133,15 @@ test('full verification requires the browser instead of silently degrading to sm
 
   // When / Then
   await assert.rejects(verifyReactColdDev(root, 'full'), /@playwright\/test/u);
+});
+
+test('full verification retires the live page before removing its route and probes a new page after restoration', { timeout: 30_000 }, async (t) => {
+  const root = coldDevFixture(t, true);
+
+  await verifyReactColdDev(root, 'full');
+
+  const events = readFileSync(join(root, 'browser-events'), 'utf8').trim().split('\n');
+  assert.deepEqual(events.slice(0, 5), ['new-page', 'close-page', 'route-removed', 'route-restored', 'new-page']);
+  assert.equal(readFileSync(join(root, 'src/app.ts'), 'utf8'), "@Router('/products')");
+  assert.equal(readFileSync(join(root, 'src/page.tsx'), 'utf8'), 'Catalog item');
 });

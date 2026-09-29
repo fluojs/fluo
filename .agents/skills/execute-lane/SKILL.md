@@ -1,6 +1,6 @@
 ---
 name: execute-lane
-description: Canonical Fluo lane execution with mandatory preflight, selective exact-head reviews, post-review local CI, and fresh git/GitHub observations. No DAG or session-bound execution identity.
+description: Canonical Fluo lane execution with focused local checks, selective exact-head reviews, conditional full local CI, and full GitHub CI. No DAG or session-bound execution identity.
 ---
 
 # Execute lane
@@ -35,14 +35,19 @@ not authorize expanding its issue set.
 ```text
 preflight -> implement + focused tests -> selected exact-head reviews
                                       <- fix-back if review blocks
-          -> verify-local (local CI) -> create-pr / push -> remote CI
+          -> verify-local only when full local CI is required
+          -> create-pr / push -> full remote CI
                                     <- fix-back if CI fails
           -> merge authority + mergeability gate -> merge -> cleanup -> done
 ```
 
 Every new implementation or conflict-resolution head repeats the selected
-reviews before local CI. Reviewers inspect focused test evidence and test
-adequacy; they do not wait for or run the later local CI stage. A review PASS
+reviews after focused checks. Ordinary changes proceed to publication without
+duplicating the full CI suite locally. CI execution/configuration changes retain
+the post-review `verify-local` gate; the engine classifies the actual issue diff,
+not unrelated upstream changes. Unknown scope is conservative.
+Reviewers inspect focused test evidence and test adequacy; they do not wait for
+or run a later full local CI stage. A review PASS
 alone neither publishes a PR nor authorizes merge.
 
 ## Stage ownership
@@ -52,7 +57,7 @@ alone neither publishes a PR nor authorizes merge.
 | preflight | ../issue-preflight/SKILL.md | Fixed implementation contract and review policy |
 | implement, fix-back | ../issue-implement/SKILL.md | New local commit and focused test evidence |
 | review | ../review-head/SKILL.md | Exact-head, contract-bound selected-axis verdict |
-| verify-local | ../verify-local/SKILL.md | Post-review local CI receipt |
+| verify-local | ../verify-local/SKILL.md | Post-review full local CI receipt when required |
 | create-pr, push | ../sync-pr/SKILL.md | Observed canonical PR and remote head |
 
 Resolve sibling paths relative to this skill. Read the stage before executing
@@ -72,7 +77,8 @@ an ancestor of both the issue head (when present) and the observed
 invalidate the approved base, review, or local receipt. Scope and review axes
 use the current merge-base-to-head issue diff, excluding upstream changes
 incorporated by a merge or rebase; local verification retains the pinned
-base. An integration head still requires new reviews and local CI.
+base. An integration head still requires focused checks and new reviews; full
+local CI is required when its actual issue diff changes CI execution/configuration.
 Re-registering the same
 preflight digest keeps existing head-bound facts and timestamps; changing
 the digest invalidates them.
@@ -108,6 +114,8 @@ child for remediation, carrying canonical blockers and accepted preflight.
 Dependencies release from fresh GitHub issue-closed observations, not task
 completion. Use the CLI `watch` through a monitor to receive transitions and
 stall notices. For `wait-ci` subscribe once to `gh pr checks --watch`.
+Disable the GitHub pager in monitor commands (`GH_PAGER=cat`) so an earlier
+identity query cannot block the watch inside the terminal pager.
 Do not poll from the coordinator or create a child merely to wait.
 
 ## Local and remote gates
@@ -116,20 +124,27 @@ Public consumer-visible package changes require a Changeset before review.
 Package-root README/LICENSE files ship too; unrelated root docs do not imply
 package release impact. Use the release governance contract.
 
-Local CI runs only after selected review PASS at the current head. Its checks,
+Focused checks must exercise the changed behavior and meet preflight criteria;
+retain their commands, results and real-surface evidence for exact-head review.
+Full local CI is mandatory for CI execution/configuration changes and remains
+available for requested reproduction or diagnosis. It is not an unconditional
+publication prerequisite for ordinary changes. A current recorded local failure
+still blocks progress; never manufacture a passing receipt to bypass it.
+
+Full local CI runs only after selected review PASS at the current head. Its checks,
 build ordering, scope, and receipt rules live in `verify-local`. Verification
 must never run concurrently with a child writing the same worktree. A new head
 or accepted contract invalidates earlier evidence.
 
-Before merge, require current-head review and local CI, green current-head
+Before merge, require current-head review and any required full local CI, green current-head
 remote CI, an explicit `MERGEABLE` state, and a merge grant. `UNKNOWN`
-mergeability waits; a real conflict resolves on a new head and repeats reviews
-and local CI. Advancing main alone does not mandate merging it into the issue
+mergeability waits; a real conflict resolves on a new head and repeats focused
+checks, reviews and the applicable CI gates. Advancing main alone does not mandate merging it into the issue
 branch. Publishing stays GitHub Actions and Changesets only. The lead owns
 merge and cleanup, never a stage reviewer.
 
 For conflicts, preserve both intended behaviors and return the resolved new
-head through review and local CI. Do not reuse old approvals by claiming the
+head through focused checks, review and the applicable CI gates. Do not reuse old approvals by claiming the
 patch is equivalent. Keep conflict resolution inside the existing identity.
 
 After observed merge, clean the issue and review worktrees and branches under

@@ -5,6 +5,7 @@ import {
 	ATTEMPT_CEILING,
 	applyChildResult,
 	decideNext,
+	requiresFullLocalCI,
 	localCheckBinding,
 	summarizeTransitions,
 	trackStalls,
@@ -93,9 +94,9 @@ test('C1: resumes mid-flight issue from observation alone -> review', () => {
 	assert.equal(next.action, 'review');
 });
 
-test('C1: arbitrary local-check facts cannot advance beyond passed review', () => {
+test('C1: an arbitrary local-check fact does not block a reviewed ordinary change', () => {
 	const next = decideNext(makeLane(), makeObs({ localChecks: { status: 'passed' } }));
-	assert.equal(next.action, 'verify-local');
+	assert.equal(next.action, 'create-pr');
 });
 
 test('C1: a revalidated local receipt that becomes invalid routes to fix-back', () => {
@@ -115,9 +116,70 @@ test('C1: receipt references fail closed before filesystem access', () => {
 	);
 });
 
-test('C1: a reviewed issue without a current local-check fact requests verification', () => {
+test('C1: a reviewed ordinary issue without a full receipt proceeds to publication', () => {
 	const next = decideNext(makeLane(), makeObs({ localChecks: null }));
-	assert.equal(next.action, 'verify-local');
+	assert.equal(next.action, 'create-pr');
+});
+
+test('focused-first: actual CI and harness changes require a full local receipt', () => {
+	for (const path of [
+		'.github/workflows/ci.yml', '.github/actions/setup/action.yml',
+		'tooling/ci/verify-local.mjs', 'tooling/ci/verify-local.test.mjs',
+		'tooling/vitest/src/packages-global-setup.ts',
+		'tooling/testing/duplicate-module-safety.mjs',
+		'tooling/scripts/run-workspace-build-closure.mjs',
+		'tooling/babel/babel8-fixture.mjs',
+		'tooling/native-runtime/cloudflare-workers-response-cookie-conformance-harness.mjs',
+		'tooling/cli/verification-locks/starter-react-vite-ssr.json',
+		'packages/cli/scripts/local-test-env.mjs',
+		'tooling/release/verify-changeset-release-lane.mjs',
+		'packages/cli/scripts/generate-published-internal-dependencies.mjs',
+		'package.json', 'packages/http/package.json', 'pnpm-lock.yaml',
+		'pnpm-workspace.yaml', 'vite.config.ts', 'vitest.config.ts',
+		'tsconfig.base.json', 'biome.json', 'tooling/tsconfig/base.json',
+		'packages/http/vitest.config.ts',
+		'.agents/skills/execute-lane/scripts/lane-v4.mjs',
+		'.agents/skills/issue-preflight/scripts/contracts.mjs',
+		'.agents/workflow-contracts/receipt.schema.json',
+	]) {
+		assert.equal(requiresFullLocalCI([path]), true, path);
+	}
+	for (const path of [
+		'packages/http/src/router.ts', 'packages/http/src/router.test.ts',
+		'docs/contracts/testing-guide.md', '.agents/skills/execute-lane/SKILL.md',
+		'.github/copilot-instructions.md', 'tooling/docs/verify-docs-locale-parity.test.mjs',
+	]) {
+		assert.equal(requiresFullLocalCI([path]), false, path);
+	}
+	assert.equal(requiresFullLocalCI(['docs/guide.md', 'tooling/ci/verify-local.mjs']), true);
+	for (const files of [null, undefined, [], [''], ['../unknown'], ['docs/guide.md', null]]) {
+		assert.equal(requiresFullLocalCI(files), true);
+	}
+});
+
+test('focused-first: reviewed source heads publish without a full receipt, but CI changes do not', () => {
+	assert.equal(decideNext(makeLane(), makeObs({ localChecks: null })).action, 'create-pr');
+	const ciObs = makeObs({
+		changedFiles: ['tooling/ci/verify-local.mjs'], localChecks: null,
+		preflight: createPreflight({
+			issue: 3096, issue_sha256: 'c'.repeat(64), base_sha: 'd'.repeat(40),
+			scope: ['tooling/'], non_scope: [], acceptance: ['Keep CI gate'],
+			validation: ['node --test'], predicted_files: ['tooling/ci/verify-local.mjs'],
+		}),
+		review: null,
+	});
+	assert.equal(decideNext(makeLane(), ciObs).action, 'review');
+	const ciPolicy = evaluatePreflight(ciObs.preflight, ciObs).policy;
+	ciObs.review = buildReviewFact({
+		head_sha: ciObs.headSha, preflight_sha256: ciPolicy.sha256, active_axes: ciPolicy.active_axes,
+		reviews: ciPolicy.active_axes.map((reviewer) => ({
+			reviewer, reviewed_head_sha: ciObs.headSha, preflight_sha256: ciPolicy.sha256,
+			verdict_signal: 'PASS', blockers: [],
+		})),
+	}, ciObs.headSha, ciPolicy);
+	assert.equal(decideNext(makeLane(), ciObs).action, 'verify-local');
+	ciObs.localChecks = { ...localCheckBinding(ciObs.review, acceptedAt), status: 'failed', head: ciObs.headSha };
+	assert.equal(decideNext(makeLane(), ciObs).reason, 'local-checks-failed');
 });
 
 test('C1: resumes with open PR and pending CI -> wait-ci', () => {
