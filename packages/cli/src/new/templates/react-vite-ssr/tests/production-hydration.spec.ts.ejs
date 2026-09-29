@@ -668,7 +668,7 @@ test('retains the document and worker through server restart and failed-bootstra
   const original = await readFile(file, 'utf8');
   const changed = original.replace("preview: input.preview === 'true'", "preview: input.preview !== 'false'");
   expect(changed).not.toBe(original);
-  const invalid = changed.replace("const props = { sku: input.sku, preview: input.preview !== 'false' };", 'const props = ;');
+  const invalid = changed.replace('const props = {', 'const props = ;');
   expect(invalid).not.toBe(changed);
 
   await page.goto('/products/sku-42');
@@ -718,7 +718,7 @@ test('retains the document and worker through server restart and failed-bootstra
     await failing.registered;
     await writeFile(file, invalid);
     await failing.observed;
-    await expect(page.getByRole('status')).toContainText('fix the source');
+    await expect(page.locator('[data-fluo-dev-status][role="status"]')).toContainText('fix the source');
     const unavailable = await page.request.get('/products/sku-42');
     expect(unavailable.status()).toBe(503);
     expect(unavailable.headers()['retry-after']).toBe('1');
@@ -727,7 +727,7 @@ test('retains the document and worker through server restart and failed-bootstra
     await recovered.registered;
     await writeFile(file, original);
     await recovered.observed;
-    await expect(page.getByRole('status')).toHaveCount(0);
+    await expect(page.locator('[data-fluo-dev-status][role="status"]')).toHaveCount(0);
     expect(await documentHandle.evaluate((doc) => doc === document)).toBe(true);
     expect(await acknowledge()).toBe(3);
     expect(await (await page.request.get('/products/sku-42')).text()).toContain('Published mode');
@@ -842,7 +842,7 @@ test('reloads a shared graph only after readiness and aligns SSR with the client
     });
     console.info('shared-listener-ready');
   }));
-  const navigation = page.waitForEvent('framenavigated', { predicate: (frame) => frame === page.mainFrame(), timeout: 15_000 });
+  const navigation = page.waitForEvent('domcontentloaded', { timeout: 15_000 });
   try {
     await listening;
     await writeFile(file, changed);
@@ -858,8 +858,7 @@ test('reloads a shared graph only after readiness and aligns SSR with the client
       predicate: (message) => message.text() === 'shared-restore-listener-ready',
       timeout: 15_000,
     });
-    const reloaded = page.waitForEvent('framenavigated', {
-      predicate: (frame) => frame === page.mainFrame(),
+    const reloaded = page.waitForEvent('domcontentloaded', {
       timeout: 30_000,
     });
     const connected = page.waitForEvent('websocket', { timeout: 30_000 });
