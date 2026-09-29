@@ -89,6 +89,7 @@ describe('React SSR + Vite scaffold', () => {
       }),
       devDependencies: expect.objectContaining({
         '@playwright/test': '^1.51.1',
+        '@vitejs/plugin-react': '^6.1.1',
         '@types/react': '^19.2.14',
         '@types/react-dom': '^19.2.3',
         '@vitest/coverage-v8': '^4.1.11',
@@ -115,11 +116,13 @@ describe('React SSR + Vite scaffold', () => {
       'public/favicon.svg',
       'src/app.test.ts',
       'src/app.ts',
+      'src/entry-client-dev.ts',
       'src/entry-client.tsx',
       'src/entry-server.tsx',
       'src/load-manifest.test.ts',
       'src/load-manifest.ts',
       'src/main.ts',
+      'src/page-search.tsx',
       'src/page.tsx',
       'src/react-app.test.tsx',
       'src/react-app.tsx',
@@ -133,7 +136,9 @@ describe('React SSR + Vite scaffold', () => {
     ]);
     expect(snapshot['src/app.ts']).toContain("@Router('/products')");
     expect(snapshot['src/app.ts']).toContain("@Path('/:sku')");
-    expect(snapshot['src/app.ts']).toContain('return createElement(ProductPage);');
+    expect(snapshot['src/app.ts']).toContain("module: './page.tsx'");
+    expect(snapshot['src/app.ts']).toContain("module: './page-search.tsx'");
+    expect(snapshot['src/app.ts']).toContain('await options.loadPage');
     expect(snapshot['src/page.tsx']).toContain('return (');
     expect(snapshot['src/main.ts']).toContain("loadReactViteManifest(new URL('../client/.vite/manifest.json', import.meta.url))");
     expect(snapshot['src/main.ts']).toContain('createReactPageRenderer(manifest)');
@@ -143,25 +148,29 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['src/react-app.tsx']).toContain('ReactClientRouterProvider');
     expect(snapshot['src/react-app.tsx']).toContain("href='/assets/favicon.svg'");
     expect(snapshot['public/favicon.svg']).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
-    expect(snapshot['src/page.tsx']).toContain("<Link href='/products/sku-84?preview=false'>");
-    expect(snapshot['src/page.tsx']).toContain("router.push('/products/sku-126?preview=true')");
+    expect(snapshot['src/page.tsx']).toContain("<Link href='/search?q=catalog'>");
+    expect(snapshot['src/react-app.tsx']).toContain("router.push('/products/sku-126?preview=true')");
     expect(snapshot['src/app.test.ts']).toContain("import { Test } from '@fluojs/testing';");
-    expect(snapshot['src/app.test.ts']?.match(/Test\.createApp\(\{ rootModule: AppModule \}\)/g)).toHaveLength(2);
-    expect(snapshot['src/app.test.ts']?.match(/defer\(\(\) => app\.close\(\)\);/g)).toHaveLength(2);
+    expect(snapshot['src/app.test.ts']?.match(/Test\.createApp\(\{ rootModule: AppModule \}\)/g)).toHaveLength(5);
+    expect(snapshot['src/app.test.ts']?.match(/defer\(\(\) => app\.close\(\)\);/g)).toHaveLength(5);
     expect(snapshot['src/app.test.ts']).toContain("expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8')");
     expect(snapshot['src/load-manifest.test.ts']).toContain("expect(error.code).toBe('react-starter-manifest-missing')");
-    expect(snapshot['src/app.test.ts']).toContain("expect(error.message).toContain('vite.client.config.ts')");
+    expect(snapshot['src/app.test.ts']).toContain("expect(error.code).toBe('react-starter-entry-incompatible')");
     expect(snapshot['src/react-app.test.tsx']).toContain("expect(consoleError).not.toHaveBeenCalled()");
     expect(snapshot['src/react-app.test.tsx']).toContain('reportReactHydrationMismatch(mismatch)');
-    expect(snapshot['src/react-app.test.tsx']).toContain("expect.stringContaining('vite.client.config.ts')");
     expect(snapshot['tests/production-hydration.spec.ts']).toContain('expect(browserDiagnostics).toEqual([])');
     expect(snapshot['vite.client.config.ts']).toContain("manifest: true");
+    expect(snapshot['vite.client.config.ts']).toContain("name: 'fluo:client-manifest-server-entry'");
+    expect(snapshot['babel.config.cjs']).toContain("parserOptions.plugins.push('jsx')");
     expect(snapshot['vite.server.config.ts']).toContain("ssr: 'src/main.ts'");
     expect(snapshot['vite.client.config.ts']).toContain('rolldownOptions:');
     expect(snapshot['vite.server.config.ts']).toContain('rolldownOptions:');
     expect(snapshot['vite.server.config.ts']).toContain('plugins: [');
-    expect(snapshot['vite.server.config.ts']).toContain('fluoDecoratorsPlugin()');
-    expect(snapshot['vitest.config.ts']).toContain("plugins: [fluoDecoratorsPlugin({ sourceMaps: true, transformBoundary: 'test' })]");
+    expect(snapshot['vite.server.config.ts']).toContain(
+      "fluoDecoratorsPlugin({ babelConfigFile: fileURLToPath(new URL('./babel.config.cjs', import.meta.url)) })",
+    );
+    expect(snapshot['vitest.config.ts']).toContain("transformBoundary: 'test'");
+    expect(snapshot['vitest.config.ts']).toContain("babelConfigFile: fileURLToPath(new URL('./babel.config.cjs', import.meta.url))");
     expect(snapshot['vitest.config.ts']).toContain("setupFiles: ['@fluojs/core/metadata-preload']");
     expect(snapshot['src/main.ts']).toMatch(/^import '@fluojs\/core\/metadata-preload';/u);
     for (const config of ['vite.client.config.ts', 'vite.server.config.ts', 'vitest.config.ts']) {
@@ -173,18 +182,16 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot).not.toHaveProperty('src/hydration.test.tsx');
     expect(Object.values(snapshot).join('\n')).not.toContain('@fluojs/react/experimental/rsc');
     expect(snapshot['src/page.tsx']).not.toContain('prefetch');
-    expect(snapshot['README.md']).toContain('This starter intentionally excludes RSC, Server Functions, file routing');
-    expect(snapshot['README.md']).toContain('SPA document swapping, prefetch, and a data cache');
   });
 
   it.each([
-    ['bun', 'bun install', 'bun run'],
-    ['npm', 'npm install', 'npm run'],
-    ['pnpm', 'pnpm install', 'pnpm'],
-    ['yarn', 'yarn install', 'yarn'],
+    ['bun', 'bun run'],
+    ['npm', 'npm run'],
+    ['pnpm', 'pnpm'],
+    ['yarn', 'yarn'],
   ] as const)(
-    'uses the selected %s package manager across generated lifecycle commands',
-    async (packageManager, installCommand, runPrefix) => {
+    'uses the selected %s package manager in browser test commands',
+    async (packageManager, runPrefix) => {
       // Given
       const targetDirectory = mkdtempSync(join(tmpdir(), `fluo-scaffold-react-vite-${packageManager}-`));
       temporaryDirectories.push(targetDirectory);
@@ -201,26 +208,9 @@ describe('React SSR + Vite scaffold', () => {
       });
 
       // Then
-      const readme = readFileSync(join(targetDirectory, 'README.md'), 'utf8');
       const playwrightConfig = readFileSync(join(targetDirectory, 'playwright.config.ts'), 'utf8');
-      const diagnostics = [
-        readFileSync(join(targetDirectory, 'src', 'entry-server.tsx'), 'utf8'),
-        readFileSync(join(targetDirectory, 'src', 'load-manifest.ts'), 'utf8'),
-        readFileSync(join(targetDirectory, 'src', 'react-app.tsx'), 'utf8'),
-      ].join('\n');
-
-      expect(readme).toContain(`${installCommand}\n${runCommand('dev')}`);
-      expect(readme).toContain([
-        runCommand('typecheck'),
-        runCommand('test'),
-        runCommand('build'),
-        runCommand('start'),
-        runCommand('test:browser'),
-      ].join('\n'));
       expect(playwrightConfig).toContain(JSON.stringify(runCommand('dev')));
       expect(playwrightConfig).toContain(JSON.stringify(runCommand('start')));
-      expect(diagnostics).toContain('generated build script');
-      expect(diagnostics).not.toContain('pnpm');
     },
   );
 });

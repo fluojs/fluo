@@ -60,7 +60,21 @@ Configured page renderer의 entry status와 header는 일반 document와 협상�
 `props`는 application이 제공한 JSON-serializable data여야 합니다. Serialization 실패는
 navigation response commit 전에 발생하고 기존 canonical HTTP error path를 따릅니다.
 Request-scoped dependency는 response write가 끝날 때까지 살아 있고 일반 dispatcher가
-dispose합니다. 일반 document GET의 HTML Web Stream은 React가, sink는 HTTP가 소유합니다.
+dispose합니다. Opt-in된 일반 document GET에서는 page renderer가 선택적인 네 번째 인자
+`ReactInitialNavigationPage`도 받습니다. HTTP가 확정한 URL, matched params, module,
+JSON으로 정규화한 props와 inert `application/json` script용 `json`을 포함합니다.
+서버는 `<`, `>`, `&`, U+2028, U+2029를 escape한 뒤 UTF-8 64 KiB 상한을 검사합니다.
+직렬화 불가 또는 초과 data는 HTML commit 전에 기존 HTTP error response로 실패합니다.
+Application renderer는 로드한 Vite manifest(개발 중에는 build importer 집합)에서 선택된
+module을 확인한 뒤 escaped transfer를 포함합니다. Browser component graph/props에는
+DI instance, secret 또는 server-only import를 넣지 않습니다. Browser는 이어지는
+`Link`/`useRouter` navigation과 동일한 build-produced importer map을
+`loadReactInitialNavigationDestination(json, modules)`에 전달합니다. 두 번째 HTTP request나
+client URL matcher 없이 URL, params, module과 component를 hydration 전에 검증합니다.
+생성 starter의 단일 provider는 초기 page와 이후 destination을 공통 shell과 page slot에
+합성합니다. Shell은 유지되고 destination-local state는 slot에서 reset됩니다. 일반
+`ReactElement` 또는 explicit `ReactServerEntry`에는 자동 transfer가 붙지 않습니다.
+일반 document GET의 HTML Web Stream은 React가, sink는 HTTP가 소유합니다.
 실패하거나 abort된 rendering은 buffered HTML 일부를 commit하지 않으며 sink가 일찍 닫히거나
 write가 실패하면 unfinished reader를 cancel하고 lock을 해제합니다.
 
@@ -109,8 +123,9 @@ native anchor로 남고 initial request snapshot은 browser path/search와 일�
 거부된 prefetch에는 기존 credential 포함 일반 loader와 full-document fallback을 적용합니다.
 
 이는 **현재 low-level 호환성**을 설명하며 향후 공식 앱의 실패 기본값이 아닙니다.
-[HTTP-first React 제품 계약](./react-fullstack-product.ko.md)은 #3864/#3871에 공식 조립의
-일시적 network/5xx 실패에서 승인된 shell/page 보존과 새 HTTP 승인 재시도를 요구합니다.
+[HTTP-first React 제품 계약](./react-fullstack-product.ko.md)은 #3864의 opt-in 일시적
+network/5xx 정책이 #3871의 공통 provider/page slot에 연결되어 승인된 shell/page를
+보존하고 새 HTTP 승인 재시도를 제공하도록 요구합니다.
 인증 거절, 명시적 reload, logout과 구분하며 여기서 아직 보존 기능이 배포됐다는 뜻이
 아닙니다. #3873은 셸 보존 soft revalidation과 현재 `refresh()` document reload에 의존하는
 소비자의 migration을 소유합니다. `invalidate()`는 표시 중인 page data를 다시 가져오지 않습니다.

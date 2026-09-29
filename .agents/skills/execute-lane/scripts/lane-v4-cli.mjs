@@ -109,7 +109,10 @@ export const validateLocalCheckFact = (worktree, headSha, baseRef, value, bindin
 		identity,
 		manifest: readVerificationManifest(manifestPath(root)),
 	});
-	if (!validateReceipt(receipt).valid || receipt.identity.headSha !== headSha
+	// Native v1 evidence is historical; only the exact Linux PR profile can
+	// satisfy the lane's post-review local gate.
+	if (receipt.version !== 2 || receipt.profile !== 'pr' || plan.profile !== 'pr'
+		|| !validateReceipt(receipt).valid || receipt.identity.headSha !== headSha
 		|| !receiptMatchesPlan(receipt, identity, plan)) {
 		throw new TypeError('local-checks receipt is not a valid passed receipt for --head');
 	}
@@ -222,7 +225,7 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 		&& (!branchExists || run(root, 'git', ['merge-base', '--is-ancestor', anchor, headSha]) !== null)
 		? anchor : null;
 	const mergeBase = branchExists ? run(root, 'git', ['merge-base', branch, `origin/${lane.base_branch}`]) : null;
-	const hasNewCommits = branchExists && headSha !== null && headSha !== (preflight ? baseSha : mergeBase);
+	const hasNewCommits = branchExists && headSha !== null && mergeBase !== null && headSha !== mergeBase;
 
 	// NUL separation and --no-renames preserve every path, including rename
 	// sources, so a move out of approved scope cannot hide behind rename detection.

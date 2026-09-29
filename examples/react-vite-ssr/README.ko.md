@@ -7,12 +7,27 @@ Hydration 및 client-navigation phase를 위한 최소 Vite-backed `@fluojs/reac
 SSR, Vite manifest asset, hydrated browser runtime, progressively enhanced native mutation form을
 연결합니다.
 
+이 예제는 production manifest/hydration 경로를 설명하며 생성 starter의
+`fluo dev` HMR host가 아닙니다. 지원되는 Node React Fast Refresh와 CSS HMR은
+`fluo new --starter react-vite-ssr`로 생성하세요. 기존 생성 앱은 별도 Vite process를
+추가하지 않고 [이전 가이드](../../docs/getting-started/migrate-react-dev-hmr.ko.md)를
+따라 변경할 수 있습니다.
+
+일반 둘째·셋째 page는 공식 generated `react-vite-ssr` composition에서 시작하세요.
+`src/page*.tsx` importer glob와 HTTP handler가 크기 제한 및 escape를 적용한 초기
+transfer를 이후 soft navigation과 공유합니다. 이 예제는 native POST, public prefetch,
+CSP nonce, focus 정책을 검증하기 위해 application 소유 document와 navigation module의
+lower-level 형태를 의도적으로 유지합니다. 별도의 권장 bootstrap 경로가 아니며
+[starter composition migration](../../docs/getting-started/migrate-react-starter-composition.ko.md)이
+custom document를 같은 handler 선택 transfer에 연결합니다.
+
 이 예제는 현재의 SSR, hydration, native POST/303/GET, 승인된 navigation과 짧은 shell
 보존의 근거이지 완전한 운영 CRUD 또는 장기 주크박스 게이트가 아닙니다.
 [HTTP-first React 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 추가
 사용자 여정과 담당자를 연결합니다. 현재 일시적 load 실패는 document fallback이고
 `router.refresh()`는 저장 데이터를 soft revalidation하지 않고 document를 reload합니다.
-#3864/#3871은 향후 공식 셸 보존·재시도 기본값, #3873은 soft refresh와 migration,
+#3864는 #3871의 공통 provider/page slot에 연결할 opt-in 실패·재시도 정책을 소유하고
+#3873은 soft refresh와 migration,
 #3879는 실제 production browser에서 예제의 shell counter를 넘는 resource identity
 검증을 소유합니다.
 격리된 [동등 앱 성능 비교](../../docs/guides/react-performance-benchmarks.ko.md)는

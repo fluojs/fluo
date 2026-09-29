@@ -42,6 +42,26 @@ export const isValidLocalCheck = (value, headSha, binding = null) =>
 	&& typeof value.receiptSha256 === 'string'
 	&& /^[0-9a-f]{64}$/u.test(value.receiptSha256);
 
+// Only changes to CI execution, its build/test configuration, or the machine
+// workflow contracts need the canonical local receipt before publication.
+// Input is the observed merge-base-to-head issue diff, not the pinned-base
+// verification diff (which may include unrelated upstream changes).
+export const requiresFullLocalCI = (changedFiles) => {
+	if (!Array.isArray(changedFiles) || changedFiles.length === 0
+		|| changedFiles.some((file) => typeof file !== 'string' || !file
+			|| file.startsWith('/') || file.includes('\\')
+			|| file.split('/').some((segment) => !segment || segment === '.' || segment === '..'))) {
+		return true;
+	}
+	return changedFiles.some((file) =>
+		/^(?:\.github\/(?:workflows|actions)\/|tooling\/(?:ci|tsconfig|vitest|testing|scripts|babel|native-runtime|cli|release)\/|\.agents\/workflow-contracts\/)/u.test(file)
+		|| /^packages\/[^/]+\/scripts\//u.test(file)
+		|| /^\.agents\/skills\/(?:execute-lane|issue-preflight|issue-implement|review-head|create-lane|sync-pr|verify-local)\/scripts\//u.test(file)
+		|| /(?:^|\/)(?:package\.json|tsconfig[^/]*\.json|(?:vite|vitest|playwright|babel|biome|jest)\.config\.[^/]+)$/u.test(file)
+		|| /^(?:pnpm-lock\.yaml|pnpm-workspace\.yaml|biome\.json|\.npmrc|bunfig\.toml)$/u.test(file)
+	);
+};
+
 const PHASES = new Set([
 	'preflight',
 	'implement',
@@ -207,7 +227,9 @@ export const decideNext = (lane, obs) => {
 		return { action: 'blocked', reason: 'needs-human-check' };
 	}
 
-	// 6. Canonical local CI follows this accepted review, not merely this head.
+	// 6. Failed applicable local evidence always fixes back. CI/tooling changes
+	//    additionally require a canonical receipt after the accepted review;
+	//    ordinary reviewed heads proceed to GitHub CI without one.
 	let binding;
 	try {
 		binding = localCheckBinding(review, obs.reviewAcceptedAt);
@@ -217,7 +239,7 @@ export const decideNext = (lane, obs) => {
 	if (obs.localChecks?.status === 'failed' && isCurrentLocalCheck(obs.localChecks, obs.headSha, binding)) {
 		return { action: 'fix-back', reason: 'local-checks-failed', head: obs.headSha };
 	}
-	if (!isValidLocalCheck(obs.localChecks, obs.headSha, binding)) {
+	if (requiresFullLocalCI(obs.changedFiles) && !isValidLocalCheck(obs.localChecks, obs.headSha, binding)) {
 		return { action: 'verify-local', head: obs.headSha };
 	}
 

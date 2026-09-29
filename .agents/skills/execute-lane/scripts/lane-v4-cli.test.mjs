@@ -7,6 +7,8 @@ import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
 import { createPreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { localCheckBinding } from './lane-v4.mjs';
+import { buildVerificationPlan, digest, readVerificationManifest } from '../../../../tooling/ci/local-verification.mjs';
+import { collectIdentity } from '../../../../tooling/ci/verify-local.mjs';
 
 const script = new URL('./lane-v4-cli.mjs', import.meta.url).pathname;
 const fixture = (t) => {
@@ -32,10 +34,6 @@ if (args[0] === 'pr' && args[1] === 'view') {
 } else { process.stderr.write('unexpected gh invocation'); process.exit(2); }
 `);
   chmodSync(join(bin, 'gh'), 0o755);
-  // Only package commands are stubbed; the real verifier executes them and
-  // emits its own identity-bound receipts/logs. git and lane CLI remain real.
-  writeFileSync(join(bin, 'pnpm'), `#!${process.execPath}\nimport { readFileSync } from 'node:fs';\nprocess.stdout.write(JSON.stringify(process.argv.slice(2)));\nif (JSON.parse(readFileSync(process.env.GH_STATE)).localFailure) process.exit(1);\n`);
-  chmodSync(join(bin, 'pnpm'), 0o755);
   const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, GH_STATE: ghState, GH_LOG: ghLog,
     GIT_AUTHOR_NAME: 'fixture', GIT_AUTHOR_EMAIL: 'fixture@example.test', GIT_COMMITTER_NAME: 'fixture', GIT_COMMITTER_EMAIL: 'fixture@example.test',
     GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z' };
@@ -44,11 +42,15 @@ if (args[0] === 'pr' && args[1] === 'view') {
   writeFileSync(join(root, '.gitignore'), 'bin/\ngh.json\ngh.log\n.omo/\n.worktrees/\n');
   mkdirSync(join(root, 'docs'));
   writeFileSync(join(root, 'docs/guide.md'), 'base\n');
-  for (const file of ['tooling/ci/verify-local.mjs', 'tooling/ci/local-verification.mjs', 'tooling/ci/local-verification-receipt.schema.json', '.agents/workflow-contracts/schema-validator.mjs']) {
+  for (const file of ['tooling/ci/verify-local.mjs', 'tooling/ci/local-verification.mjs',
+    'tooling/ci/verification-runner.mjs', 'tooling/ci/verification-environment.mjs',
+    'tooling/ci/environment.lock.json', 'tooling/ci/Dockerfile',
+    'tooling/ci/local-verification-receipt.schema.json', '.agents/workflow-contracts/schema-validator.mjs']) {
     mkdirSync(dirname(join(root, file)), { recursive: true });
     cpSync(new URL(`../../../../${file}`, import.meta.url), join(root, file));
   }
-  writeFileSync(join(root, 'tooling/ci/local-verification-manifest.json'), JSON.stringify({ version: 1, rules: [], companions: [], scope: { fullPaths: [], fullPrefixes: [] } }));
+  cpSync(new URL('../../../../tooling/ci/local-verification-manifest.json', import.meta.url),
+    join(root, 'tooling/ci/local-verification-manifest.json'));
   git(root, 'add', '.');
   git(root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture base');
   git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
@@ -87,18 +89,91 @@ if (args[0] === 'pr' && args[1] === 'view') {
         preflight_sha256: obs.preflightPolicy.sha256, verdict_signal: 'PASS', blockers: [] })) };
   };
   const verify = (ok = true) => {
-    const base = JSON.parse(readFileSync(lanePath, 'utf8')).issues['42'].facts.preflight.value.base_sha;
-    const result = spawnSync(process.execPath, [join(worktree, 'tooling/ci/verify-local.mjs'), '--base-ref', base], { cwd: worktree, env, encoding: 'utf8', timeout: 20_000 });
-    assert.equal(result.status, ok ? 0 : 1, result.stderr + result.stdout);
-    const output = JSON.parse(result.stdout);
-    assert.equal(output.status, ok ? 'passed' : 'failed');
-    const bytes = readFileSync(output.path);
-    return { status: output.status, valid: ok, receiptPath: relative(worktree, output.path), receiptSha256: createHash('sha256').update(bytes).digest('hex') };
+    const entry = JSON.parse(readFileSync(lanePath, 'utf8')).issues['42'];
+    const base = entry.facts.preflight.value.base_sha;
+    // This fixture exercises lane receipt admission, not real execution.
+    // Docker-backed command execution is covered by verification-runner.docker-test.mjs.
+    const identity = collectIdentity(worktree, base);
+    const plan = buildVerificationPlan({ changedFiles: identity.changedFiles, identity,
+      manifest: readVerificationManifest(join(worktree, 'tooling/ci/local-verification-manifest.json')) });
+    const lock = plan.environment.lock;
+    const actual = {
+      os: 'linux', arch: 'arm64',
+      node: Object.fromEntries(Object.entries(lock.node).map(([key, item]) => [key, item.version])),
+      bun: Object.fromEntries(Object.entries(lock.bun).map(([key, item]) => [key, item.version])),
+      deno: Object.fromEntries(Object.entries(lock.deno).map(([key, item]) => [key, item.version])),
+      pnpm: lock.pnpm.version, browser: { channel: lock.browser.channel, version: lock.browser.version, launched: true },
+      docker: { reachable: true, version: lock.docker.version, cliVersion: lock.docker.version },
+      redis: { ping: 'PONG', image: lock.redis.image }, watch: { linuxVolume: true, event: 'rename' },
+    };
+    const planDigest = plan.semanticDigest;
+    const evidenceRoot = join(worktree, '.omo/verification/lane-test');
+    const resultRoot = join(evidenceRoot, 'results');
+    mkdirSync(resultRoot, { recursive: true });
+    const taskResults = plan.tasks.map((task) => ({
+      version: 2, taskId: task.id, status: ok ? 'passed' : 'failed',
+      headSha: identity.headSha, treeSha: identity.treeSha, planDigest,
+      imageKey: plan.environment.imageKey, imageId: `sha256:${'1'.repeat(64)}`,
+      environment: actual, artifacts: [],
+      logs: task.commands.map((_, index) => ({ commandIndex: index,
+        path: `${task.id}-${index}.log`, digest: digest(`${task.id}-${index}`) })),
+      commands: task.commands.map((command) => ({ command,
+        exitCode: ok ? 0 : 1, signal: null, spawnError: null,
+        identityBefore: { headSha: identity.headSha, treeSha: identity.treeSha, statusDigest: digest('') },
+        identityAfter: { headSha: identity.headSha, treeSha: identity.treeSha, statusDigest: digest('') } })),
+    }));
+    const logs = [];
+    for (const result of taskResults) {
+      for (const log of result.logs) {
+        const path = join(resultRoot, log.path);
+        writeFileSync(path, `${result.taskId}-${log.commandIndex}`);
+        logs.push({ path: relative(worktree, path), digest: log.digest });
+      }
+      const path = join(resultRoot, `${result.taskId}.json`);
+      writeFileSync(path, `${JSON.stringify(result)}\n`);
+      logs.push({ path: relative(worktree, path), digest: digest(readFileSync(path)) });
+    }
+    const hostChecks = {
+      status: ok ? 'passed' : 'failed', planDigest, headSha: identity.headSha, treeSha: identity.treeSha,
+      commands: plan.hostChecks.map((command) => ({ command, exitCode: ok ? 0 : 1, signal: null, spawnError: null })),
+      logs: plan.hostChecks.map((_, index) => ({ path: `host-check-${index}.log`, digest: digest('host integration') })),
+    };
+    for (const log of hostChecks.logs) {
+      const path = join(resultRoot, log.path);
+      writeFileSync(path, 'host integration');
+      logs.push({ path: relative(worktree, path), digest: log.digest });
+    }
+    const hostResultPath = join(resultRoot, 'host-checks.json');
+    writeFileSync(hostResultPath, `${JSON.stringify(hostChecks)}\n`);
+    logs.push({ path: relative(worktree, hostResultPath), digest: digest(readFileSync(hostResultPath)) });
+    const archivePath = join(evidenceRoot, 'artifacts/archive.tar');
+    mkdirSync(dirname(archivePath), { recursive: true });
+    writeFileSync(archivePath, 'artifact');
+    const receipt = {
+      version: 2, status: ok ? 'passed' : 'failed', profile: 'pr', identity,
+      source: plan.source, environment: { lock, imageKey: plan.environment.imageKey },
+      imageIdentity: { key: plan.environment.imageKey, id: `sha256:${'1'.repeat(64)}` },
+      environmentLockDigest: plan.environment.lockDigest,
+      manifestDigest: plan.manifestDigest, planDigest, hostChecks, taskResults,
+      capabilityTasks: plan.capabilityTasks, logs,
+      artifacts: [{ path: relative(worktree, archivePath), digest: digest('artifact') }],
+      startedAt: entry.facts.review?.accepted_at
+        ? new Date(Date.parse(entry.facts.review.accepted_at) + 1000).toISOString()
+        : new Date().toISOString(),
+      completedAt: entry.facts.review?.accepted_at
+        ? new Date(Date.parse(entry.facts.review.accepted_at) + 2000).toISOString()
+        : new Date().toISOString(),
+    };
+    const path = join(worktree, '.omo/verification/receipt.json');
+    writeFileSync(path, `${JSON.stringify(receipt)}\n`);
+    const bytes = readFileSync(path);
+    return { status: receipt.status, valid: ok, receiptPath: relative(worktree, path),
+      receiptSha256: createHash('sha256').update(bytes).digest('hex') };
   };
   return { root, worktree, state, update, git, cli, plan, set, preflight, implement, commit, review, verify, lanePath, common, ghLog };
 };
 
-test('CLI: durable preflight, selected review, then canonical local CI across fresh processes', (t) => {
+test('CLI: durable preflight and selected review publish ordinary docs without full local CI', (t) => {
   const f = fixture(t);
   assert.equal(f.plan().decision.action, 'preflight');
   const preflight = f.preflight();
@@ -113,15 +188,38 @@ test('CLI: durable preflight, selected review, then canonical local CI across fr
   const review = f.review();
   f.set('review', review, review.head_sha);
   result = f.plan();
-  assert.equal(result.decision.action, 'verify-local');
+  assert.equal(result.decision.action, 'create-pr');
   assert.equal(result.obs.review.verdict, 'pass');
   const stored = JSON.parse(readFileSync(f.lanePath, 'utf8'));
   assert.equal(Object.hasOwn(stored.issues['42'].facts.preflight, 'head'), false);
   assert.equal(stored.issues['42'].facts.review.value.preflight_sha256, review.preflight_sha256);
   f.cli('record', [...f.common, '--phase', 'preflight', '--result-json', '{"ok":false}']);
   assert.equal(JSON.parse(readFileSync(f.lanePath)).issues['42'].attempts.preflight, 1);
-  assert.equal(JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout)[0].decision.action, 'verify-local');
-  assert.match(f.cli('watch', ['--lane', f.lanePath, '--once']).stdout, /-> verify-local/u);
+  assert.equal(JSON.parse(f.cli('plan-all', ['--lane', f.lanePath]).stdout)[0].decision.action, 'create-pr');
+  assert.match(f.cli('watch', ['--lane', f.lanePath, '--once']).stdout, /-> create-pr/u);
+  f.state.pr = {
+    number: 42, state: 'OPEN', headRefOid: 'f'.repeat(40),
+    mergeable: 'MERGEABLE', statusCheckRollup: [{ conclusion: 'SUCCESS' }],
+  };
+  f.update();
+  assert.equal(f.plan().decision.action, 'push');
+  f.state.pr.headRefOid = review.head_sha;
+  f.state.pr.statusCheckRollup = [{ state: 'PENDING' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'wait-ci');
+  f.state.pr.statusCheckRollup = [{ conclusion: 'FAILURE' }];
+  f.update();
+  assert.equal(f.plan().decision.reason, 'ci-failing');
+  f.state.pr.mergeable = 'CONFLICTING';
+  f.update();
+  assert.equal(f.plan().decision.action, 'resolve-conflict');
+  f.state.pr.mergeable = 'UNKNOWN';
+  f.state.pr.statusCheckRollup = [{ conclusion: 'SUCCESS' }];
+  f.update();
+  assert.equal(f.plan().decision.action, 'wait-mergeability');
+  f.state.pr.mergeable = 'MERGEABLE';
+  f.update();
+  assert.equal(f.plan().decision.action, 'request-merge-approval');
   const calls = readFileSync(f.ghLog, 'utf8').trim().split('\n').map(JSON.parse);
   assert.ok(calls.every((args) => ['issue', 'pr'].includes(args[0]) && args[1] === 'view'));
 });
@@ -148,10 +246,10 @@ test('CLI: recording an actual local CI failure enters fix-back without forging 
   assert.equal(readFileSync(f.lanePath, 'utf8'), snapshot);
   const fresh = f.review();
   f.set('review', fresh, fresh.head_sha);
-  assert.equal(f.plan().decision.action, 'verify-local');
+  assert.equal(f.plan().decision.action, 'create-pr');
 });
 
-test('CLI: failed local receipt fixes back, new head requires review before local CI again', (t) => {
+test('CLI: failed local receipt fixes back and new ordinary head requires review', (t) => {
   const f = fixture(t);
   f.set('preflight', f.preflight());
   f.implement();
@@ -170,7 +268,7 @@ test('CLI: failed local receipt fixes back, new head requires review before loca
   assert.equal(f.plan().decision.action, 'review');
   const fresh = f.review();
   f.set('review', fresh, fresh.head_sha);
-  assert.equal(f.plan().decision.action, 'verify-local');
+  assert.equal(f.plan().decision.action, 'create-pr');
 });
 
 test('CLI: malformed, missing, duplicate, narrowed and stale reviews never persist', (t) => {
@@ -213,7 +311,7 @@ test('CLI: actual diff expands axes and rejects implementer narrowing', (t) => {
   f.set('preflight', f.preflight({ active_axes: ['contract', 'code', 'verification'], omitted_axes: {} }));
   const current = f.review();
   f.set('review', current, current.head_sha);
-  assert.equal(f.plan().decision.action, 'verify-local');
+  assert.equal(f.plan().decision.action, 'create-pr');
 });
 
 test('CLI: accepted expanded axes cannot shrink when implementation later removes runtime files', (t) => {
@@ -256,7 +354,10 @@ test('CLI: title/body, base and accepted contract edits invalidate old evidence'
   f.set('preflight', f.preflight());
   assert.equal(f.plan().decision.action, 'review');
   f.git(f.root, 'update-ref', 'refs/remotes/origin/main', review.head_sha);
-  assert.equal(f.plan().decision.action, 'review');
+  // The changed contract still cannot use old approval. Once main contains
+  // the whole branch, there is no issue-local implementation delta to review.
+  assert.deepEqual(f.plan().obs.changedFiles, []);
+  assert.equal(f.plan().decision.action, 'implement');
   f.state.unavailable = true;
   f.update();
   assert.equal(f.plan().decision.action, 'preflight');
@@ -318,6 +419,23 @@ test('CLI: missing, unrelated or disconnected base anchors fail closed', (t) => 
   assert.equal(f.plan().decision.reason, 'stale-preflight-binding');
 });
 
+test('CLI: a new branch at advanced main still needs implementation with a pinned base', (t) => {
+  const f = fixture(t);
+  const preflight = f.preflight();
+  f.set('preflight', preflight);
+  writeFileSync(join(f.root, 'docs/guide.md'), 'upstream change\n');
+  f.git(f.root, 'add', 'docs/guide.md');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture advanced main');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  f.git(f.root, 'worktree', 'add', '-b', 'issue-42', f.worktree, 'main');
+
+  const { obs, decision } = f.plan();
+  assert.equal(obs.baseSha, preflight.base_sha);
+  assert.deepEqual(obs.changedFiles, []);
+  assert.equal(obs.hasNewCommits, false);
+  assert.equal(decision.action, 'implement');
+});
+
 test('CLI: integrating main keeps upstream files outside issue scope and requires new-head evidence', (t) => {
   const f = fixture(t);
   const preflight = f.preflight();
@@ -325,8 +443,9 @@ test('CLI: integrating main keeps upstream files outside issue scope and require
   f.implement();
   const review = f.review();
   f.set('review', review, review.head_sha);
-  writeFileSync(join(f.root, 'unrelated.md'), 'upstream change\n');
-  f.git(f.root, 'add', 'unrelated.md');
+  mkdirSync(join(f.root, '.github/workflows'), { recursive: true });
+  writeFileSync(join(f.root, '.github/workflows/ci.yml'), 'name: upstream\n');
+  f.git(f.root, 'add', '.github/workflows/ci.yml');
   f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture upstream change');
   f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
   f.git(f.worktree, '-c', 'commit.gpgsign=false', 'merge', '--no-edit', 'origin/main');
@@ -341,7 +460,7 @@ test('CLI: integrating main keeps upstream files outside issue scope and require
   assert.equal(result.obs.localChecks, null);
   const freshReview = f.review();
   f.set('review', freshReview, freshReview.head_sha);
-  assert.equal(f.plan().decision.action, 'verify-local');
+  assert.equal(f.plan().decision.action, 'create-pr');
   const lane = JSON.parse(readFileSync(f.lanePath, 'utf8'));
   lane.issues['42'].facts.review.accepted_at = '2000-01-01T00:00:00.000Z';
   writeFileSync(f.lanePath, JSON.stringify(lane));
@@ -353,8 +472,14 @@ test('CLI: integrating main keeps upstream files outside issue scope and require
 
 test('CLI: canonical receipts bind to passing review, execution order and current policy', (t) => {
   const f = fixture(t);
-  f.set('preflight', f.preflight());
+  const ciScope = {
+    scope: ['docs/', '.github/workflows/'],
+    predicted_files: ['docs/guide.md', '.github/workflows/ci.yml'],
+  };
+  f.set('preflight', f.preflight(ciScope));
   f.implement();
+  f.commit('.github/workflows/ci.yml', 'name: issue CI\n');
+  assert.equal(f.plan().decision.action, 'review');
   const oldReceipt = f.verify();
   const review = f.review();
   // A real passed receipt before review cannot register, even on the same head.
@@ -371,6 +496,14 @@ test('CLI: canonical receipts bind to passing review, execution order and curren
   assert.match(f.set('local-checks', oldReceipt, review.head_sha, false).stderr, /must start after/u);
   setAcceptedAt('2000-01-01T00:00:00.000Z');
   const currentReceipt = f.verify();
+  const currentPath = join(f.worktree, currentReceipt.receiptPath);
+  const currentBytes = readFileSync(currentPath);
+  const historical = { ...JSON.parse(currentBytes), version: 1 };
+  writeFileSync(currentPath, `${JSON.stringify(historical)}\n`);
+  const v1Ref = { ...currentReceipt,
+    receiptSha256: createHash('sha256').update(readFileSync(currentPath)).digest('hex') };
+  assert.match(f.set('local-checks', v1Ref, review.head_sha, false).stderr, /receipt/u);
+  writeFileSync(currentPath, currentBytes);
   f.set('local-checks', currentReceipt, review.head_sha);
   let result = f.plan();
   assert.equal(result.decision.action, 'create-pr');
@@ -385,7 +518,7 @@ test('CLI: canonical receipts bind to passing review, execution order and curren
   assert.match(f.set('local-checks', currentReceipt, review.head_sha, false).stderr, /must start after/u);
   // Replacing the accepted contract clears both review and local CI at the
   // same head. Even a manually restored old local fact cannot advance it.
-  f.set('preflight', f.preflight({ acceptance: ['Revised acceptance'] }));
+  f.set('preflight', f.preflight({ ...ciScope, acceptance: ['Revised acceptance'] }));
   let lane = JSON.parse(readFileSync(f.lanePath));
   assert.equal(lane.issues['42'].facts.review, undefined);
   assert.equal(lane.issues['42'].facts['local-checks'], undefined);

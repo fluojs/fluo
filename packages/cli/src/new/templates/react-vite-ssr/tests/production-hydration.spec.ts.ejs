@@ -1,7 +1,35 @@
+import { readFile, writeFile } from 'node:fs/promises';
+
 import { expect, test } from '@playwright/test';
 
-test('hydrates production HTML and preserves HTTP-first navigation', async ({ page }) => {
-  const development = process.env.FLUO_REACT_STARTER_SERVER_COMMAND === 'dev';
+test('opens modified links as native documents without replacing the current page', async ({ page }) => {
+  await page.goto('/products/sku-42?preview=true');
+  const counter = page.getByRole('button', { name: 'Count: 0' });
+  await expect(counter).toBeEnabled();
+  await counter.click();
+  await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+
+  const link = page.getByRole('link', { name: 'Open sku-84' });
+  await expect(link).toHaveAttribute('href', '/products/sku-84?preview=false');
+  const approvedDocument = await page.request.get('/products/sku-84?preview=false', {
+    headers: { accept: 'text/html' },
+  });
+  expect(approvedDocument.status()).toBe(200);
+  expect(approvedDocument.headers()['content-type']).toContain('text/html');
+  // Native modifier tabs can finish their initial request before Playwright attaches.
+  const [opened] = await Promise.all([
+    page.context().waitForEvent('page', { timeout: 10_000 }),
+    link.click({ modifiers: ['ControlOrMeta'] }),
+  ]);
+  await expect(opened).toHaveURL(/\/products\/sku-84\?preview=false$/u);
+  await expect(opened.getByRole('heading', { name: 'Catalog item sku-84' })).toBeVisible();
+  await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+  await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+  await opened.close();
+});
+
+test('hydrates two DTO pages and preserves the shell during HTTP-approved navigation', async ({ page }) => {
+  const development = ['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? '');
   const browserDiagnostics: string[] = [];
   const assetResponses = new Map<string, number>();
 
@@ -13,7 +41,7 @@ test('hydrates production HTML and preserves HTTP-first navigation', async ({ pa
   page.on('pageerror', (error) => browserDiagnostics.push(`pageerror: ${error.message}`));
   page.on('response', (response) => {
     const pathname = new URL(response.url()).pathname;
-    if (pathname.startsWith('/assets/') || pathname.startsWith('/src/')) {
+    if (pathname.startsWith('/assets/') || pathname.startsWith('/src/') || pathname.startsWith('/@vite/')) {
       assetResponses.set(pathname, response.status());
     }
   });
@@ -31,30 +59,250 @@ test('hydrates production HTML and preserves HTTP-first navigation', async ({ pa
   );
 
   expect(response.status()).toBe(200);
+  expect(await response.text()).toMatch(/<button[^>]*disabled=""/u);
   expect(response.headers()['content-type']).toContain('text/html');
   expect(response.headers()['content-security-policy']).toContain("default-src 'self'");
+  expect(response.headers()['content-security-policy']).toContain(development
+    ? "style-src 'self' 'unsafe-inline'"
+    : "default-src 'self'");
+  if (development) {
+    expect(response.headers()['content-security-policy']).toContain("worker-src 'self' blob:");
+    const workerResult = await page.evaluate(() => new Promise<string>((resolve, reject) => {
+      const source = URL.createObjectURL(new Blob(['self.postMessage("ready")'], { type: 'text/javascript' }));
+      const worker = new Worker(source);
+      worker.onmessage = (event) => {
+        worker.terminate();
+        URL.revokeObjectURL(source);
+        resolve(String(event.data));
+      };
+      worker.onerror = (error) => {
+        worker.terminate();
+        URL.revokeObjectURL(source);
+        reject(new Error(error.message));
+      };
+    }));
+    expect(workerResult).toBe('ready');
+  }
+  if (!development) {
+    expect(response.headers()['content-security-policy']).not.toContain("'unsafe-inline'");
+    expect(response.headers()['content-security-policy']).not.toContain('worker-src');
+  }
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', '/assets/favicon.svg');
   const favicon = await page.request.get('/assets/favicon.svg');
   expect(favicon.status()).toBe(200);
   expect(favicon.headers()['content-type']).toContain('image/svg+xml');
-  expect(bootstrapPaths).toContain(development ? '/src/entry-client.tsx' : '/assets/entry-client.js');
+  expect(bootstrapPaths).toContain(development ? '/src/entry-client-dev.ts' : '/assets/entry-client.js');
+  if (!development) {
+    expect(bootstrapPaths).not.toContain('/@vite/client');
+    expect(bootstrapPaths).not.toContain('/src/entry-client-dev.ts');
+  }
   expect(stylesheetPaths).toHaveLength(1);
   for (const pathname of [...bootstrapPaths, ...stylesheetPaths]) {
     expect(assetResponses.get(pathname)).toBe(200);
   }
 
   await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
-  await page.getByRole('button', { name: 'Count: 0' }).click();
-  await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+  await page.getByRole('button', { name: 'Shell taps: 0' }).click();
+  await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+  await page.getByRole('button', { name: 'Count: 0', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Count: 1', exact: true })).toBeVisible();
 
-  const link = page.getByRole('link', { name: 'Open sku-84' });
-  await expect(link).toHaveAttribute('href', '/products/sku-84?preview=false');
+  const link = page.getByRole('link', { name: 'Search catalog' }).first();
+  const searchApproval = page.waitForResponse((result) =>
+    result.url().includes('/search?q=catalog')
+    && result.request().headers()['accept'] === 'application/vnd.fluo.react-navigation+json;v=1');
   await link.click();
+  const approvedSearch = await searchApproval;
+  expect(approvedSearch.status()).toBe(200);
+  await expect(page).toHaveURL(/\/search\?q=catalog$/u);
+  await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+  await expect(page.getByLabel('Current route')).toContainText('/search?q=catalog ({})');
+  await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Page count: 0' })).toBeVisible();
+
+  const productApproval = page.waitForResponse((result) =>
+    result.url().includes('/products/sku-84?preview=false')
+    && result.request().headers()['accept'] === 'application/vnd.fluo.react-navigation+json;v=1');
+  const productLink = page.getByRole('link', { name: 'Open sku-84' }).first();
+  await expect(productLink).toHaveAttribute('href', '/products/sku-84?preview=false');
+  await productLink.click();
+  expect((await productApproval).status()).toBe(200);
   await expect(page).toHaveURL(/\/products\/sku-84\?preview=false$/u);
   await expect(page.getByRole('heading', { name: 'Catalog item sku-84' })).toBeVisible();
+  await expect(page.getByLabel('Current route')).toContainText('/products/sku-84?preview=false ({"sku":"sku-84"})');
+  await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeVisible();
 
+  const pushedApproval = page.waitForResponse((result) =>
+    result.url().includes('/products/sku-126?preview=true')
+    && result.request().headers()['accept'] === 'application/vnd.fluo.react-navigation+json;v=1');
   await page.getByRole('button', { name: 'Push sku-126' }).click();
+  expect((await pushedApproval).status()).toBe(200);
   await expect(page).toHaveURL(/\/products\/sku-126\?preview=true$/u);
   await expect(page.getByRole('heading', { name: 'Catalog item sku-126' })).toBeVisible();
   expect(browserDiagnostics).toEqual([]);
+});
+
+test('updates a React component and CSS over the app WebSocket without losing eligible state', async ({ page }) => {
+  test.skip(!['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? ''), 'Fast Refresh is development only.');
+  const pageFile = new URL('../src/page.tsx', import.meta.url);
+  const cssFile = new URL('../src/styles.css', import.meta.url);
+  const originalPage = await readFile(pageFile, 'utf8');
+  const originalCss = await readFile(cssFile, 'utf8');
+  const browserErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'warning' || message.type() === 'error') browserErrors.push(message.text());
+  });
+  const socketReady = page.waitForEvent('websocket', { predicate: (socket) => socket.url().startsWith('ws://127.0.0.1:') });
+  await page.goto('/products/sku-42?preview=true');
+  const socket = await socketReady;
+  expect(new URL(socket.url()).host).toBe(new URL(page.url()).host);
+
+  try {
+    const counter = page.getByRole('button', { name: 'Count: 0' });
+    await expect(counter).toBeEnabled();
+    await counter.click();
+    await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+    await page.evaluate(() => { document.documentElement.dataset.hmrIdentity = 'retained'; });
+    const componentUpdate = socket.waitForEvent('framereceived', {
+      predicate: ({ payload }) => String(payload).includes('"type":"update"'),
+      timeout: 15_000,
+    });
+    await writeFile(pageFile, originalPage.replace('Catalog item ${sku}', 'Updated catalog item ${sku}'));
+    await componentUpdate;
+    await expect(page.getByRole('heading', { name: 'Updated catalog item sku-42' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.dataset.hmrIdentity)).toBe('retained');
+
+    const cssUpdate = socket.waitForEvent('framereceived', {
+      predicate: ({ payload }) => String(payload).includes('"type":"update"'),
+      timeout: 15_000,
+    });
+    const observerInstalled = page.waitForEvent('console', {
+      predicate: (message) => message.text() === 'css-observer-installed',
+      timeout: 15_000,
+    });
+    const styleChanged = page.evaluate(() => new Promise<string>((resolve) => {
+      const observer = new MutationObserver(() => {
+        const color = getComputedStyle(document.body).color;
+        if (color === 'rgb(12, 34, 56)') {
+          observer.disconnect();
+          resolve(color);
+        }
+      });
+      observer.observe(document.head, { attributes: true, characterData: true, childList: true, subtree: true });
+      console.info('css-observer-installed');
+    }));
+    await observerInstalled;
+    await writeFile(cssFile, originalCss.replace('#172033', '#0c2238'));
+    await cssUpdate;
+    expect(await styleChanged).toBe('rgb(12, 34, 56)');
+    await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.dataset.hmrIdentity)).toBe('retained');
+    expect(browserErrors).toEqual([]);
+
+    const transformError = socket.waitForEvent('framereceived', {
+      predicate: ({ payload }) => String(payload).includes('"type":"error"'),
+      timeout: 15_000,
+    });
+    await writeFile(pageFile, originalPage.replace("const sku = typeof props['sku'] === 'string' ? props['sku'] : '';", 'const sku = ;'));
+    await transformError;
+    await expect(page.locator('vite-error-overlay')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.dataset.hmrIdentity)).toBe('retained');
+    const recovered = socket.waitForEvent('framereceived', {
+      predicate: ({ payload }) => String(payload).includes('"type":"update"'),
+      timeout: 15_000,
+    });
+    await writeFile(pageFile, originalPage.replace('Catalog item ${sku}', 'Recovered catalog item ${sku}'));
+    await recovered;
+    await expect(page.getByRole('heading', { name: 'Recovered catalog item sku-42' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Count: 1' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.dataset.hmrIdentity)).toBe('retained');
+    const latestPage = await page.request.get('/products/sku-42?preview=true');
+    expect(await latestPage.text()).toContain('Recovered catalog item sku-42');
+    const invalid = await page.request.get('/products/x?preview=maybe');
+    expect(invalid.status()).toBe(400);
+  } finally {
+    await Promise.all([writeFile(pageFile, originalPage), writeFile(cssFile, originalCss)]);
+  }
+});
+test('keeps document navigation when JavaScript is disabled', async ({ browser }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  try {
+    const page = await context.newPage();
+    await page.goto('/products/sku-42?preview=true');
+    const documentRequest = page.waitForResponse((result) =>
+      result.url().includes('/search?q=catalog') && result.request().isNavigationRequest());
+    await page.getByRole('link', { name: 'Search catalog' }).first().click();
+    expect((await documentRequest).status()).toBe(200);
+    await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
+test('keeps modified links as native new-tab documents', async ({ page }) => {
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+
+  const popupPromise = page.waitForEvent('popup');
+  const documentResponse = page.context().waitForEvent('response', {
+    predicate: (response) =>
+      response.url().includes('/search?q=catalog') && response.request().isNavigationRequest(),
+  });
+  await page.getByRole('link', { name: 'Open search in new tab' }).click();
+  const popup = await popupPromise;
+  const approvedDocument = await documentResponse;
+  await expect(popup.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+  expect(approvedDocument.status()).toBe(200);
+  const modifiedPopupPromise = page.context().waitForEvent('page');
+  await page.getByRole('link', { name: 'Search catalog' }).first().click({ modifiers: ['ControlOrMeta'] });
+  const modifiedPopup = await modifiedPopupPromise;
+  await expect(modifiedPopup.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+  await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+  await modifiedPopup.close();
+});
+
+test('keeps native anchors usable before hydration', async ({ page }) => {
+  const development = ['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? '');
+  const entryPath = development ? '/src/entry-client-dev.ts' : '/assets/entry-client.js';
+  let releaseBootstrap = () => {};
+  const held = new Promise<void>((resolve) => { releaseBootstrap = resolve; });
+  let firstEntry = true;
+  await page.route(`**${entryPath}`, async (route) => {
+    if (firstEntry) {
+      firstEntry = false;
+      await held;
+    }
+    await route.continue();
+  });
+  try {
+    const entryRequest = page.waitForRequest((request) => new URL(request.url()).pathname === entryPath);
+    await page.goto('/products/sku-42?preview=true', { waitUntil: 'commit' });
+    await entryRequest;
+    await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+
+    const document = page.waitForResponse((result) =>
+      result.url().includes('/search?q=catalog') && result.request().isNavigationRequest());
+    await page.getByRole('link', { name: 'Search catalog' }).first().click({ noWaitAfter: true });
+    expect((await document).status()).toBe(200);
+  } finally {
+    releaseBootstrap();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
+});
+
+test('falls back to a native document for an unsupported destination', async ({ page }) => {
+  await page.goto('/products/sku-42?preview=true');
+  await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
+  const rejected = page.waitForResponse((result) =>
+    result.url().endsWith('/not-built')
+    && result.request().headers()['accept'] === 'application/vnd.fluo.react-navigation+json;v=1');
+  const document = page.waitForResponse((result) =>
+    result.url().endsWith('/not-built') && result.request().isNavigationRequest());
+  await page.getByRole('link', { name: 'Missing page' }).click();
+  expect((await rejected).status()).toBe(404);
+  expect((await document).status()).toBe(404);
+  await expect(page).toHaveURL(/\/not-built$/u);
 });

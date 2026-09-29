@@ -72,14 +72,21 @@ cd my-react-app
 pnpm dev
 ```
 
-The generated `dev` script and direct `fluo dev` share one CLI-owned restart lifecycle:
-after installing dependencies, Vite transforms the SSR entry and serves client
-modules/styles through the development server without production `dist` or a
-user-run build. Server/client edits restart the app. Production `build`/`start`
-still consume the generated Vite manifest; this path does not promise HMR.
+The generated `dev` script and direct `fluo dev` share one CLI-owned Node
+development lifecycle: after installation Vite transforms the SSR entry and
+serves refreshable client modules, CSS and a same-origin WebSocket on Fastify
+without production `dist` or a user-run build. Compatible React component edits
+preserve eligible state and CSS edits update in place; a direct SSR request loads
+the current page after HTTP validation. Server-only and config changes still
+restart the child. Incompatible component boundaries can remount or reload;
+see the [React dev HMR migration](../../docs/getting-started/migrate-react-dev-hmr.md).
+Production `build`/`start` still consume the generated Vite manifest, without
+development injection.
 
-Open `/products/sku-42?preview=true` and edit `src/page.tsx`. The explicit `@Router(...)` / `@Path(...)`
-handler remains in `src/app.ts` and returns `createElement(ProductPage)`, one `ReactElement`, so `@fluojs/http` still
+Open `/products/sku-42?preview=true`, follow the link to `/search?q=catalog`, and edit
+`src/page.tsx` or `src/page-search.tsx`. Each explicit `@Router(...)` / `@Path(...)`
+handler remains in `src/app.ts` and returns `ReactNavigationPage.create(page, { module, props })`,
+so `@fluojs/http` still
 owns matching, DTO binding and validation, middleware, guards, interceptors, request scopes, and
 not-found behavior.
 
@@ -89,8 +96,10 @@ The generated wiring moves the incidental first-edit work into discoverable appl
   manifest with `@fluojs/react/vite`, and returns `ReactServerEntry` with
   `createReactServerEntry(...)`.
 - `src/react-app.tsx` gives server rendering and hydration one document,
-  `ReactClientRouterProvider`, route snapshot, and stylesheet composition.
-- `src/entry-client.tsx` hydrates that same tree, while `src/main.ts` and `src/load-manifest.ts` keep
+  `ReactClientRouterProvider`, route snapshot, persistent shell, and destination page slot.
+- `src/entry-client.tsx` loads the validated initial page from Vite-built importers and hydrates
+  that same tree; ordinary page additions only require a page component and HTTP handler/DTO.
+  `src/main.ts` and `src/load-manifest.ts` keep
   filesystem loading and actionable build-output failures at the Node.js application boundary.
 
 Advanced applications can replace the generated renderer or pass explicit hydration options to
@@ -927,6 +936,18 @@ selection, and request-scoped providers before selecting and writing this repres
 The application must confirm that the module is in its loaded client build manifest; browser
 code supplies an explicit Vite-built `import.meta.glob(...)` map before it can be imported.
 The runtime-neutral root never imports browser or Vite code.
+
+For the official starter, the document renderer also receives an optional fourth
+`ReactInitialNavigationPage` argument with the request URL, matched params, selected module,
+JSON props, and HTML-escaped `json` transfer. Serialization and the 64 KiB escaped-UTF-8 limit
+run before HTML response commit. Embed `json` only in an inert `application/json` script;
+`loadReactInitialNavigationDestination(json, modules)` on the client validates the current URL
+and importer key before hydration. The generated `./page*.tsx` importers and production manifest
+check prevent unbuilt destinations from rendering. The same handler props feed both the SSR
+component and browser destination; they must contain JSON data, not DI instances or secrets.
+`ReactClientRouterProvider` keeps its shell while the page slot mounts a fresh destination.
+The existing low-level renderer and explicit server entry remain supported; #3864 owns the
+separate opt-in failure/retry policy for this provider boundary.
 
 ```tsx
 import { ReactNavigationPage } from '@fluojs/react';

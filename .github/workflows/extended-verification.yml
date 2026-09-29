@@ -1,0 +1,18 @@
+name: Extended Node verification
+
+on:
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  extended:
+    uses: ./.github/workflows/ci.yml
+    with:
+      profile: extended
+      source-sha: ${{ github.sha }}
+      base-sha: ${{ github.sha }}

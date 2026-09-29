@@ -438,3 +438,85 @@ it('keeps an unserializable destination on the HTTP pre-commit error path', asyn
     await app.close();
   }
 });
+
+it('passes one bounded escaped HTTP-approved destination to the document renderer', async () => {
+  // Given: a matched page with HTML-breaking data and a document renderer that embeds its transfer.
+  const hostile = '</script><img src=x onerror=alert(1)>&\u2028\u2029';
+  @Router('/destination')
+  class DestinationRouter {
+    @Path('/')
+    show() {
+      return ReactNavigationPage.create(createElement('main', null, hostile), {
+        module: './page.tsx',
+        props: { label: hostile },
+      });
+    }
+  }
+  @Module({
+    imports: [ReactModule.forRoot({
+      controllers: [DestinationRouter],
+      renderPage: (_page, _context, _policies, initialPage) =>
+        createReactServerEntry(createElement('html', null,
+          createElement('body', null,
+            createElement('script', {
+              id: 'fluo-initial-page',
+              type: 'application/json',
+            }, initialPage?.json ?? ''),
+          ),
+        )),
+    })],
+  })
+  class AppModule {}
+  const app = await FluoFactory.create(AppModule);
+  try {
+    // When: the same HTTP handler serves an ordinary document and a negotiated navigation request.
+    const document = response();
+    const navigation = response();
+    await app.dispatch({ ...request(), headers: { accept: 'text/html' } }, document);
+    await app.dispatch(request(), navigation);
+
+    // Then: the inert script cannot break out and describes exactly the negotiated page.
+    const html = new TextDecoder().decode(document.body as Uint8Array);
+    const transferred = /<script id="fluo-initial-page" type="application\/json">([^<]*)<\/script>/u.exec(html);
+    expect(document.statusCode).toBe(200);
+    expect(transferred).not.toBeNull();
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
+    expect(JSON.parse(transferred?.[1] ?? '')).toEqual(navigation.body);
+  } finally {
+    await app.close();
+  }
+});
+
+it('rejects oversized initial page props before committing HTML', async () => {
+  // Given: the selected destination exceeds the initial-document transfer ceiling.
+  @Router('/destination')
+  class DestinationRouter {
+    @Path('/')
+    show() {
+      return ReactNavigationPage.create(createElement('main', null, 'Large'), {
+        module: './page.tsx',
+        props: { value: 'x'.repeat(65_536) },
+      });
+    }
+  }
+  @Module({
+    imports: [ReactModule.forRoot({
+      controllers: [DestinationRouter],
+      renderPage: (page) => createReactServerEntry(page),
+    })],
+  })
+  class AppModule {}
+  const app = await FluoFactory.create(AppModule);
+  try {
+    // When: an ordinary document GET reaches the real dispatcher.
+    const result = response();
+    await app.dispatch({ ...request(), headers: { accept: 'text/html' } }, result);
+
+    // Then: no partial page shell is committed and HTTP owns the canonical error.
+    expect(result.statusCode).toBe(500);
+    expect(result.headers['Content-Type']).not.toBe('text/html; charset=utf-8');
+    expect(result.body).toMatchObject({ error: { code: 'INTERNAL_SERVER_ERROR' } });
+  } finally {
+    await app.close();
+  }
+});

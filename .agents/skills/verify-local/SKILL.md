@@ -1,6 +1,6 @@
 ---
 name: verify-local
-description: Run pre-PR local CI only after selected reviews pass at the current head and preflight contract; return captured evidence without reviewing, pushing, or orchestrating.
+description: Run full local CI for CI execution/configuration changes or explicit reproduction after selected reviews pass; return evidence without reviewing, pushing, or orchestrating.
 ---
 
 # Verify local
@@ -8,13 +8,17 @@ description: Run pre-PR local CI only after selected reviews pass at the current
 This stage belongs to `execute-lane`. The lead owns verification and its
 receipt. This stage follows selected review PASS, not the other way around.
 The verification reviewer has already assessed focused tests and coverage.
+Ordinary changes proceed from focused checks and selected reviews directly to
+publication and full GitHub CI. This stage retains the full canonical runner;
+it does not replace focused checks with a shortened canonical receipt.
 
 ## Input and authority
 
 Require lane/issue identity, the accepted preflight, absolute implementation
 worktree, pinned `base_sha` and current head, selected-axis PASS, and
 lead-observed changed paths.
-Run lane `plan` and require `verify-local` for that exact head. Confirm
+Run lane `plan` and require `verify-local` for that exact head, or an explicit
+request to reproduce with full local CI. Confirm
 the worktree is clean at that head and no implementation child still owns it.
 Run checks only; do not edit source, commit, push, mutate a PR, or merge.
 
@@ -34,10 +38,15 @@ the exact base, head, tree, diff, plan, and logs and must survive an unrelated
 base-branch advance. The plan is determined by
 `tooling/ci/local-verification.mjs` and
 `tooling/ci/local-verification-manifest.json`, not a hand-picked substitute.
-It includes install, build, typecheck, tests, lint, platform governance, and
-applicable companion checks. `--plan` is inspection only, not passing evidence.
-Subscribe to the runner's completion rather than polling. Remote CI still
-checks runner/platform and aggregation behavior unavailable locally.
+It includes the shared PR task profile: primary build/static/tests/docs,
+secondary compatibility builds and all package tests, generated starter
+profiles, native checks, packed consumers, and the exact runtime floor.
+The runner requires the locked Linux/arm64 image and isolated Linux volumes;
+native host execution cannot produce a canonical passing receipt.
+`--plan` is inspection only, not passing evidence. `--profile extended` restores
+full secondary verification for scheduled and exact-release-source gates.
+Subscribe to completion rather than polling. GitHub permissions, artifact
+transport, queueing, and external outages still require remote evidence.
 
 - Do not omit manifest-required checks because a review axis was skipped.
 - Build before typechecks; emitted workspace declarations resolve from dist.
@@ -60,7 +69,8 @@ checks runner/platform and aggregation behavior unavailable locally.
 
 The runner writes `.omo/verification/<head>.json` and command logs. Use those
 files, not a hand-authored passing receipt. The CLI validates their hashes,
-command plan, and current checkout identity. Keep real-surface observations,
+task profile, environment identity, command plan, and current checkout identity.
+Old host-native receipts do not prove the Linux parity profile. Keep real-surface observations,
 baseline comparisons, and acceptance-specific evidence alongside them.
 Re-check the head, accepted policy, and worktree before recording success;
 changes invalidate the run.
@@ -84,4 +94,6 @@ node .agents/skills/execute-lane/scripts/lane-v4-cli.mjs record --root <repo-roo
 The lead retains the failed output and translates concrete failures into
 canonical fix-back blockers. The CLI binds failure to the current head and
 review so `plan` selects fix-back; an old-head report is rejected. A new review
-clears the failure and requires local CI again.
+clears the review-bound failure; the engine re-evaluates whether full local CI
+is required for the actual issue diff. Unresolved failures must remain review
+blockers rather than being erased by a new PASS.

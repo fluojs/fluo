@@ -11,11 +11,13 @@ worktree. One scoped implementer edits, runs focused tests, and commits locally.
 
 The lane order is:
 
-`preflight -> issue-implement -> selected review -> verify-local -> sync-pr`
+`preflight -> issue-implement + focused checks -> selected review -> sync-pr`
 
-`verify-local` owns canonical local CI. `sync-pr` owns push and PR creation or
+For CI execution/configuration changes, `verify-local` runs full canonical local
+CI between review and `sync-pr`. `sync-pr` owns push and PR creation or
 updates. A fix-back creates a new head and goes through selected re-review
-before canonical local CI, regardless of whether review or CI found the blocker.
+before publication and any required full local CI, regardless of whether review
+or CI found the blocker. Full GitHub CI remains the final verification gate.
 This stage has no DAG, session identity, or model-enforcement prerequisite.
 
 ## Input and binding

@@ -1,0 +1,16 @@
+import { Link } from '@fluojs/react/client';
+import { type ReactElement, useState } from 'react';
+
+export default function SearchPage(props: Record<string, unknown>): ReactElement {
+  const query = typeof props['query'] === 'string' ? props['query'] : '';
+  const [count, setCount] = useState(0);
+
+  return (
+    <main>
+      <h1>Search: {query}</h1>
+      <p>DTO-bound query: {query}</p>
+      <button onClick={() => setCount((value) => value + 1)} type='button'>Page count: {count}</button>
+      <Link href='/products/sku-84?preview=false'>Open sku-84</Link>
+    </main>
+  );
+}

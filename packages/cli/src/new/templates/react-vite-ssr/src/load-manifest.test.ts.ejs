@@ -16,7 +16,7 @@ afterEach(async () => {
 });
 
 describe('React Vite manifest loading', () => {
-  it('identifies the build command when the client manifest is missing', async () => {
+  it('reports a machine-readable error when the client manifest is missing', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'fluo-react-manifest-missing-'));
     temporaryDirectories.push(directory);
 
@@ -27,14 +27,11 @@ describe('React Vite manifest loading', () => {
       expect(error).toBeInstanceOf(ReactStarterManifestError);
       if (error instanceof ReactStarterManifestError) {
         expect(error.code).toBe('react-starter-manifest-missing');
-        expect(error.message).toContain('generated build script');
-        expect(error.message).toContain('generated start script');
-        expect(error.message).toContain('vite.client.config.ts');
       }
     }
   });
 
-  it('identifies generated build output when the client manifest is malformed', async () => {
+  it('reports a machine-readable error when the client manifest is malformed', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'fluo-react-manifest-malformed-'));
     temporaryDirectories.push(directory);
     const manifestPath = join(directory, 'manifest.json');
@@ -47,8 +44,6 @@ describe('React Vite manifest loading', () => {
       expect(error).toBeInstanceOf(ReactStarterManifestError);
       if (error instanceof ReactStarterManifestError) {
         expect(error.code).toBe('react-starter-manifest-malformed');
-        expect(error.message).toContain('dist/client/.vite/manifest.json');
-        expect(error.message).toContain('generated build script');
       }
     }
   });

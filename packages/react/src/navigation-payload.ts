@@ -16,6 +16,52 @@ export type ReactNavigationPayload = {
   readonly destination: ReactNavigationDestination;
 };
 
+/** Validated initial document transfer for a handler-selected browser destination. */
+export type ReactInitialNavigationPage = {
+  readonly payload: ReactNavigationPayload;
+  readonly json: string;
+};
+
+/**
+ * Normalize a handler-selected destination through the existing JSON representation.
+ *
+ * @param url URL confirmed by HTTP matching.
+ * @param params Path params confirmed by HTTP binding.
+ * @param destination Browser module and JSON-only handler props.
+ * @returns The representation shared by document hydration and soft navigation.
+ */
+export function createReactNavigationPayload(
+  url: string,
+  params: Readonly<Record<string, string>>,
+  destination: ReactNavigationDestination,
+): ReactNavigationPayload {
+  return {
+    version: 1,
+    url,
+    params: { ...params },
+    destination: {
+      module: destination.module,
+      props: JSON.parse(JSON.stringify(destination.props)),
+    },
+  };
+}
+
+/**
+ * Escape and bound an inert initial document transfer before HTML rendering starts.
+ *
+ * @param payload The HTTP-approved page representation to embed in the document.
+ * @returns Validated payload with HTML-safe JSON text for an inert script.
+ * @throws RangeError when escaped UTF-8 data exceeds 64 KiB.
+ */
+export function createReactInitialNavigationPage(payload: ReactNavigationPayload): ReactInitialNavigationPage {
+  const json = JSON.stringify(payload).replace(/[<>&\u2028\u2029]/gu, (character) =>
+    `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  if (new TextEncoder().encode(json).byteLength > 64 * 1024) {
+    throw new RangeError('The initial React navigation page exceeds 64 KiB.');
+  }
+  return { payload, json };
+}
+
 /** A React page that can also describe a build-mapped browser destination. */
 export type ReactNavigationPageResult = {
   readonly node: ReactElement;

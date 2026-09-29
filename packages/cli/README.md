@@ -166,45 +166,59 @@ fluo new my-react-app --starter react-vite-ssr
 ```
 
 This starter fixes the schema to Node.js + Fastify HTTP. Run `pnpm dev`, open
-`/products/sku-42?preview=true`, and edit `src/page.tsx`; page UI no longer needs to carry Vite assets,
-the document shell, or the server/client route snapshot wiring. The explicit `@Router(...)` /
-`@Path(...)` handler in `src/app.ts` returns that page as one `ReactElement`, so the existing HTTP
+`/products/sku-42?preview=true`, follow the link to `/search?q=catalog`, and edit
+`src/page.tsx` or `src/page-search.tsx`; page UI no longer needs to carry Vite assets,
+the document shell, or the server/client route snapshot wiring. Both explicit `@Router(...)` /
+`@Path(...)` handlers in `src/app.ts` return `ReactNavigationPage.create(page, { module, props })`
+with their HTTP-validated DTO data, so the existing HTTP
 dispatcher remains authoritative.
 
 The React `dev` script now delegates to the same `fluo dev` path as a direct CLI invocation.
-After dependency installation, either starts without an application production build: the
-CLI loads the server entry through project-local Vite SSR transforms and serves client
-modules and styles through Vite middleware on the Fastify development server. Server
-and client edits restart the Node child and use changed source without creating
-production `dist` or loading its manifest; `build` and `start` retain the separate
-production manifest and static asset path. This is process restart, not HMR.
-In particular `packages/cli/src/dev-runner/react-vite-dev-app.ts` configures Vite middleware
-with `hmr: false`. React component and CSS edits currently restart the child, as do
-server/shared source and watched Vite config edits; none guarantees preserving browser
-state or a long-lived shell resource. `@fluojs/config`'s explicit watched env snapshot
-reload is separate from code restart. #3876 owns future scoped React Fast Refresh/CSS
-HMR; #3877 owns safe server/shared/config restart, failure recovery and teardown.
+After dependency installation, either starts without an application production build:
+Vite transforms the SSR entry and the Fastify listener serves its client modules, refresh
+preamble, CSS and WebSocket on the same origin. Vite-transformed React component edits
+use Fast Refresh and CSS edits use HMR without replacing the app child; direct HTTP
+requests load the latest SSR page through the existing DTO-bound route. React preserves
+state only for compatible component boundaries; incompatible exports or hook changes may
+remount or reload. Syntax errors show in the Vite overlay and terminal and recover after
+correction in the same session. Server-only, graph-external and watched config edits
+retain the child restart boundary (#3877 owns general safe restart policy).
+`build` and `start` retain the separate production manifest and static asset path;
+no dev preamble is included there. Existing generated apps must follow the
+[React dev HMR migration](../../docs/getting-started/migrate-react-dev-hmr.md).
+`@fluojs/config`'s watched env snapshot reload is separate from code restart.
 
 For React, Node's native watch escape hatch watches only source, `.env`, and Vite
 configs on macOS/Windows so emitted `dist` does not trigger another build. Linux
 uses the fluo restart runner for React even with `--runner native`/`--raw-watch`,
-because Node does not support `--watch-path` there. Other starter watch modes
-are unchanged.
+because Node does not support `--watch-path` there. On macOS/Windows raw watch
+still uses native process restarts, not Fast Refresh. Bun, Deno and Workers watch
+selection and other starter modes are unchanged; Node React/Vite is the supported
+Fast Refresh path.
 
 Generated application wiring stays visible instead of becoming a framework abstraction:
 `src/entry-server.tsx` owns the replaceable `ReactPageRenderer` and `ReactServerEntry` creation,
-`src/react-app.tsx` shares one document and `ReactClientRouterProvider` composition between server and
-client, `src/entry-client.tsx` calls `hydrateRoot(...)`, and `src/main.ts` uses
+`src/react-app.tsx` shares one document, persistent shell, page slot and `ReactClientRouterProvider`
+between server and client, `src/entry-client.tsx` resolves the validated initial built
+destination and calls `hydrateRoot(...)`, and `src/main.ts` uses
 `src/load-manifest.ts` to load the generated Vite manifest before `@fluojs/react/vite` parses it.
 Missing build output, incompatible entry selectors, and hydration mismatches identify those exact
 application files and the lifecycle command to rerun. Generated `Link` output remains a real anchor
-and `router.push(...)` performs full-document navigation through the HTTP dispatcher. The starter
+and `router.push(...)` performs HTTP-approved soft navigation for build-mapped destinations;
+unsupported pages and disabled JavaScript keep native document navigation. Additional pages
+need a page module and HTTP handler/DTO, not edits to client entry, renderer, manifest, or router store.
+The [composition migration guide](../../docs/getting-started/migrate-react-starter-composition.md)
+explains how existing generated apps opt in. The starter
 intentionally excludes RSC, Server Functions, file routing, a client route table, SPA document
 swapping, prefetch, and a data cache.
 
-This first-page starter is not yet the complete CRUD/jukebox product path: the existing
-[Vite example](../../examples/react-vite-ssr/README.md) demonstrates opt-in HTTP-approved
-soft navigation, while #3871 owns making that composition canonical in the generated app.
+The client build keeps a manifest identity for `src/entry-server.tsx` but emits an empty
+marker, not server-only code. Its real implementation builds under `dist/server`; the
+browser bundle receives only page components in the `src/page*.tsx` importer map.
+
+This two-page starter is not yet the complete CRUD/jukebox product path: the existing
+[Vite example](../../examples/react-vite-ssr/README.md) demonstrates advanced native-form
+and prefetch policy while the starter provides the canonical page authoring composition.
 The [product contract](../../docs/contracts/react-fullstack-product.md) tracks failure/retry,
 form freshness, auth, dev edits and deployment as separate unshipped acceptance gates.
 Application-owned production manifest loading and asset/CDN hosting remain explicit.

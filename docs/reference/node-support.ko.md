@@ -9,19 +9,43 @@ Node floor는 역할별로 분류됩니다. 순수 runtime인 32개 Node-bound p
 | Runtime | CI verification | Release role |
 | --- | --- | --- |
 | Exact Node `24.0.0` | Runtime-only floor lane: 지원되는 compiler Node에서 빌드한 artifact로 실제 public runtime entry import와 HTTP listener, dispatch, config, shutdown 동작을 수행; Babel 8 로딩과 24.0.0 설치 없음 | 최소 지원 runtime floor이며 release runtime은 아님 |
-| Exact Node `24.11.0` | Frozen install, 분할 전체 검증, 생성 starter sandbox matrix | Babel 8의 최소 compiler toolchain floor |
-| Latest Node `24.x` | Frozen install, 분할 전체 검증, `pnpm verify:docs`, 생성 starter sandbox matrix | Canonical 개발 및 Changesets release runtime |
-| Latest Node `26.x` | Frozen install, 분할 전체 검증, 생성 starter sandbox matrix | Forward verification 전용이며 publish에 사용하지 않음 |
+| Exact Node `24.11.0` | PR: frozen install, fresh build, 모든 package test와 4종 starter smoke; extended: 전체 검증과 browser journey | Babel 8의 최소 compiler toolchain floor |
+| Locked Node `24.x` | 전체 primary PR 검증, `pnpm verify:docs`, 생성 starter dev/production browser matrix | Canonical 개발 검증 및 Changesets release runtime |
+| Locked Node `26.x` | PR: frozen install, fresh build, 모든 package test와 4종 starter smoke; extended: 전체 검증과 browser journey | Forward verification 전용이며 publish에 사용하지 않음 |
 | Bun, Deno, Cloudflare Workers | 기존의 독립 adapter/native-runtime lane | Runtime-native 배포 계약 |
 
-`.github/workflows/ci.yml`의 `node-support` matrix는 `.github/workflows/node-verification.yml`을 호출하며 aggregate `verify` gate의 필수 조건입니다. deterministic latest-24 preflight는 runtime fan-out 전에 frozen install, build, typecheck, lint, platform governance, full tooling project를 실행합니다. full matrix의 모든 Node 버전은 로컬 `pnpm verify`와 같은 전체 build, typecheck, lint, test 범위를 검증합니다. 별도의 `node-runtime-floor` job은 `.github/workflows/node-runtime-floor.yml`을 호출합니다. compiler Node `24.x`에서 워크스페이스를 빌드하고 자기완결형 runtime exercise를 bundle하고 같은 artifact provenance 계약으로 전달한 뒤 exact Node `24.0.0`에서 root install과 Babel 로딩 없이 실행합니다. CI에서는 `pnpm build`가 끝나면 `pnpm typecheck`와 `pnpm lint`, 분할 테스트, 생성 starter 검증을 독립 job에서 실행합니다. 패키지 테스트는 4개 shard, tooling 테스트는 2개 shard로 나눕니다. Apps와 examples project는 첫 번째 tooling shard job에서 각각 한 번씩 전체 실행하며, 각 테스트 프로세스는 `--maxWorkers=1`을 유지합니다. 변경 범위가 작아도 이 전체 Node 검증은 생략하지 않습니다.
+`.github/workflows/ci.yml`은 plan 확정과 필수 `Verify` 집계를 포함해 18개 job으로 확장됩니다. 16개 실행 task는 `tooling/ci/local-verification-manifest.json`의 공통 catalog와 `tooling/ci/verification-runner.mjs`를 사용하며, `.github/workflows/node-verification.yml`은 호출마다 task 하나를 실행합니다. Primary package test는 4개 shard, tooling은 2개 shard를 유지하고 apps/examples는 첫 tooling shard에서 한 번 실행합니다. Primary build는 package artifact와 runtime-floor bundle을 제공합니다. Exact Node `24.0.0`은 workspace dependency 설치와 Babel 로딩 없이 bundle을 실행합니다.
 
-`pnpm verify:local`은 worktree root, head/tree identity, merge-base/diff identity,
-command plan, log, environment, limitation을 exact-head local receipt에 기록합니다.
-head, tree, diff가 바뀌면 receipt는 무효이며 `--plan`은 passing receipt를 만들지
-않습니다. local command는 CI 전용 runner, GitHub artifact transfer, aggregate job
-semantics를 증명하지 않으며 그 차원은 계속 CI evidence가 담당합니다. Failure census는
-나중 rerun이 성공해도 attempt와 완료된 failed job을 보존합니다.
+이 정책은 기존의 세 버전 전체 PR matrix를 전체 primary profile과 두 compatibility profile로 대체합니다. Package engine 지원 범위는 바꾸지 않지만 보조 버전의 PR 검증 범위는 좁아집니다. 보조 버전의 전체 typecheck, lint, tooling, apps/examples, browser 검증은 `.github/workflows/extended-verification.yml`과 `.github/workflows/release.yml`의 exact-source 선행 검증으로 이동합니다. 이전 정기 실행의 성공은 publishing commit의 extended 검증을 대신하지 않습니다.
+
+`tooling/ci/environment.lock.json`은 runner마다 floating Node tag를 독립적으로 해석하는 대신 정확한 버전과 다운로드 checksum을 고정합니다. 새 버전을 채택할 때는 리뷰된 변경으로 lock을 갱신합니다. 로컬과 원격 task는 같은 Debian Linux/arm64 image recipe, browser, native runtime 버전을 사용합니다.
+
+정기 실행은 lock을 자동 변경하지 않고 사용 가능한 Node 24/26 버전을 보고합니다. 생성 starter의 PR 검증은 `tooling/cli/verification-locks/`의 리뷰된 snapshot 4개를 사용합니다. 외부 resolution은 고정하고, 현재 소스의 internal tarball integrity는 dependency graph가 snapshot과 일치할 때만 다시 연결합니다. Graph가 바뀌면 재생성 안내와 함께 실패합니다. 실제 fresh 설치 결과를 `tooling/cli/starter-lockfile.mjs`의 `captureStarterSnapshot`과 고정된 Bun YAML parser로 수집하고 dependency 변경을 리뷰한 뒤 locked matrix를 실행하세요. 독립 sandbox 명령은 기본 fresh resolution을 유지하며 extended profile도 별도의 fresh-resolution starter matrix를 실행합니다.
+
+Plan job과 canonical local 명령은 task fan-out 전에 host에서 실제 Docker runner fixture를 실행합니다. 테스트 container 안에서 Docker fixture를 재귀 실행하지 않고 source 격리, artifact 복원, 실패 증거를 검증합니다. Daemon을 사용할 수 없으면 이 gate를 skip하지 않고 실패합니다.
+
+Task는 pnpm의 integrity 검증을 거친 package store를 재사용하지만 checkout과 `node_modules` 배치는 분리합니다. Workspace build output은 검증된 build archive로만 task 경계를 넘습니다. 재실행 job은 attempt별 task 증거를 저장한 뒤 canonical artifact alias를 갱신하므로 이전 실패 log와 browser trace도 보존합니다.
+
+`pnpm verify:local --base-ref <sha>`는 격리된 Linux/arm64 container에서 같은 PR task를
+실행하고 exact-head receipt를 기록합니다. `--plan`은 성공 증거 없이 고정 계획만
+출력하며 `--profile extended`는 보조 버전의 전체 검증도 실행합니다.
+Docker는 arm64 실행, Linux 소유 writable volume, Unix socket 접근, host-network
+fixture 연결을 지원해야 합니다. Apple Silicon과 GitHub `ubuntu-24.04-arm`은
+native로 실행합니다. Source와 file-watch 검증은 macOS bind mount가 아닌 Linux volume에서
+실행합니다. 환경을 사용할 수 없으면 실패하며 native macOS나 Linux/amd64 실행으로 조용히
+대체하지 않습니다.
+
+반복 개발 시 PR 검증 예산은 로컬 15분과 이후 GitHub 15분이며, 소스 설치,
+build, test, 최종 집계를 포함합니다. 고정 환경의 최초 준비 시간은 별도로
+측정하고 GitHub 큐 대기 시간도 실행 시간과 구분하여 보고합니다. Job 수 감소만으로
+이 예산을 충족했다고 판단하지 않습니다. 준비 산출물은 source와 output inventory를
+검증한 경우에만 재사용하며, standalone 준비와 fresh build 자체를 시험하는 테스트는
+기존 build를 그대로 실행합니다.
+
+Receipt는 source tree, base/diff, profile, catalog, environment lock, 실제 runtime/browser
+버전, 필수 task 결과와 log/artifact digest를 묶습니다. 이전 host-native receipt는 이
+Linux profile의 증거가 아닙니다. GitHub 권한, artifact 전달, queueing, 외부 장애는 여전히
+원격 증거가 필요합니다. Failure census는 나중 실행이 성공해도 실패한 attempt를 보존합니다.
 
 Receipt identity는 시작, 각 command boundary, finalization의 clean Git status digest도
 묶습니다. Artifact consumer는 exact run/name/SHA/digest provenance를 사용하며,
@@ -33,7 +57,7 @@ Authentication, 일반 authorization, malformed metadata, expired artifact, dige
 
 전체 검증의 package build는 같은 workflow run, commit, Node 버전 안에서만 전달합니다. Runtime-floor bundle은 compiler Node에서 exact Node `24.0.0`으로 의도적으로 전달하되 같은 run, commit, artifact identity, digest 검증을 유지합니다. 패키지의 `dist`와 CLI의 생성 dependency metadata를 tar로 보존하여 실행 권한과 symbolic link를 유지하며, 공개 선언 검증 fixture나 package global setup을 우회하지 않습니다. 생성 starter 검증은 테스트 종료를 기다리지 않고 빌드 뒤에 실행합니다. 최신 `24.x`가 기존의 중복 PR 검증을 통합하고 `pnpm verify:docs`를 한 번 실행합니다. Aggregate gate는 필수 job의 failure, cancellation, skip을 성공으로 처리하지 않습니다.
 
-Node 검증과 별도로 실행하는 web runtime adapter portability suite는 하나의 job에서 Bun, Deno, Cloudflare Workers 사례를 모두 검증하여 프로젝트 초기화의 반복을 피합니다. Native response cookie 검증도 하나의 job에서 HTTP helper를 한 번 빌드한 뒤 세 runtime의 명령을 차례로 실행합니다. 각 명령의 실패는 계속 필수 `Verify` gate를 차단하며, Bun native routing/lifecycle과 Deno platform 검증은 별도 job으로 유지합니다.
+두 native task가 모든 runtime별 검증을 보존합니다. `native-bun`은 각자 고정된 버전으로 Bun routing/lifecycle과 Drizzle을 실행합니다. `native-web`은 Deno adapter, 모든 Bun/Deno/Workers portability 사례와 세 native cookie 명령을 실행합니다. Job을 묶어도 floor runtime을 최신 버전으로 대체하지 않습니다. 필수 명령 실패, 증거 누락, 취소, 예상치 못한 skip은 `Verify`를 차단합니다.
 
 집중 검증 명령인 `test:node-floor`는 로컬 확인용으로 유지하며 전체 CI 검증을 대체하지 않습니다. 이 명령은 manifest 분류, 모든 scaffold profile, config env-file/watch 동작, 배포 portable runtime import, Node HTTP listener, adapter portability, 기존 Vite compatibility seam을 검증합니다. 필수 runtime-only lane은 exact Node `24.0.0`에서 실행되므로 CI는 runtime floor 검증을 더 최신인 24.x patch로 대체하지 않습니다.
 

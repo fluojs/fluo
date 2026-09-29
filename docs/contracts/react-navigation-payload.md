@@ -60,6 +60,21 @@ example `404`) is still rejected by the browser helper and takes the full-docume
 `props` must be JSON-serializable application data. Serialization failures occur before a
 navigation response commits and follow the existing canonical HTTP error path. Request-scoped
 dependencies remain active through response writing and are disposed by the normal dispatcher.
+For opted-in ordinary document GETs, the page renderer additionally receives an optional
+fourth `ReactInitialNavigationPage` argument. It contains the same HTTP-approved URL, matched
+params, module and JSON-normalized props, plus `json` for an inert `application/json` script.
+The server escapes `<`, `>`, `&`, U+2028 and U+2029 before embedding, then enforces a 64 KiB
+UTF-8 limit on the escaped transfer. Unserializable or oversized initial data fails before any
+HTML commit through the existing HTTP error response. The application renderer checks the
+selected module against its loaded Vite manifest (or development build importer set), then
+embeds the escaped transfer; it must not include DI instances, secrets or server-only imports in
+the browser component graph. The browser calls
+`loadReactInitialNavigationDestination(json, modules)` with the same build-produced importer
+map used for subsequent `Link`/`useRouter` navigation; this validates URL, params, module and
+component before hydration, without a second HTTP request or client URL matcher. The generated
+starter composes both the initial page and subsequent destinations in one shared provider,
+retaining the shell and resetting destination-local state at the page slot. A normal
+`ReactElement` and an explicit `ReactServerEntry` do not acquire an implicit transfer.
 For ordinary document GETs, React owns the HTML Web Stream while HTTP owns the sink: failed or
 aborted rendering never commits partial buffered HTML, and early sink close or write failure
 cancels the unfinished reader and releases its lock.
@@ -111,9 +126,9 @@ and rejected prefetches still use the credentialed ordinary loader and its full-
 
 This paragraph describes **shipped low-level compatibility**, not the future official app
 failure default. The [HTTP-first React product contract](./react-fullstack-product.md) requires
-#3864 and #3871 to make transient network/5xx failures retain the approved shell/page and expose
-fresh HTTP-approved retry in the official composition. It distinguishes auth refusal, explicit
-reload, and logout; no such preservation is shipped here. #3873 owns shell-preserving soft
+#3864's opt-in transient network/5xx policy to integrate with #3871's shared provider/page slot,
+retain the approved shell/page and expose fresh HTTP-approved retry. It distinguishes auth refusal,
+explicit reload, and logout; no such preservation is shipped here. #3873 owns shell-preserving soft
 revalidation and migration for applications relying on the current `refresh()` document reload.
 `invalidate()` does not re-fetch displayed page data.
 

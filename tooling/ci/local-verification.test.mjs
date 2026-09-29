@@ -4,409 +4,181 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import test from 'node:test';
 
-import {
-  buildVerificationPlan,
-  digest,
-  readVerificationManifest,
-  receiptMatchesPlan,
-  receiptIsCurrent,
-  validateReceiptEvidence,
-  validateReceipt,
-} from './local-verification.mjs';
+import { buildVerificationPlan, digest, readVerificationManifest, receiptMatchesPlan,
+  receiptIsCurrent, validateReceiptEvidence, validateReceipt } from './local-verification.mjs';
 
 const identity = {
-  baseRef: 'origin/main',
-  baseSha: 'b'.repeat(40),
-  changedFilesDigest: 'c'.repeat(64),
-  clean: true,
-  diffDigest: 'd'.repeat(64),
-  headSha: 'a'.repeat(40),
-  mergeBase: 'e'.repeat(40),
-  root: '/repo',
-  treeSha: 'f'.repeat(40),
+  baseRef: 'b'.repeat(40), baseSha: 'b'.repeat(40), changedFilesDigest: 'c'.repeat(64),
+  clean: true, diffDigest: 'd'.repeat(64), headSha: 'a'.repeat(40),
+  mergeBase: 'b'.repeat(40), root: '/repo', treeSha: 'f'.repeat(40),
   worktreeStatusDigest: '0'.repeat(64),
 };
 
-const passingReceipt = (plan, receiptIdentity = plan.identity) => ({
-  commands: plan.commands.map((command) => ({
-    ...command,
-    exitCode: 0,
-    finishedAt: '2026-09-14T00:00:01.000Z',
-    identityAfter: receiptIdentity,
-    identityBefore: receiptIdentity,
-    signal: null,
-    spawnError: null,
-    startedAt: '2026-09-14T00:00:00.000Z',
-  })),
-  completedAt: '2026-09-14T00:00:01.000Z',
-  environment: {},
-  identity: receiptIdentity,
-  limitations: [],
-  logs: plan.commands.map((command, index) => ({
-    commandId: command.id,
-    digest: `${index}`.padStart(64, '0'),
-    path: `.omo/verification/logs/${receiptIdentity.headSha}/${index}.log`,
-  })),
-  manifestDigest: plan.manifestDigest,
-  planDigest: digest(JSON.stringify(plan.commands)),
-  startedAt: '2026-09-14T00:00:00.000Z',
-  status: 'passed',
-  version: 1,
-});
+function testEnvironment(lock) {
+  return {
+    os: 'linux', arch: 'arm64',
+    node: Object.fromEntries(Object.entries(lock.node).map(([name, value]) => [name, value.version])),
+    bun: Object.fromEntries(Object.entries(lock.bun).map(([name, value]) => [name, value.version])),
+    deno: Object.fromEntries(Object.entries(lock.deno).map(([name, value]) => [name, value.version])),
+    pnpm: lock.pnpm.version,
+    browser: { channel: lock.browser.channel, version: lock.browser.version, launched: true },
+    docker: { reachable: true, version: '28.3.3', cliVersion: lock.docker.version },
+    redis: { ping: 'PONG', image: lock.redis.image },
+    watch: { linuxVolume: true, event: 'rename' },
+  };
+}
 
-test('plans frozen install before build, typecheck, tests, lint, and governance', () => {
-  const plan = buildVerificationPlan({ changedFiles: ['packages/core/src/index.ts'], identity });
-
-  assert.deepEqual(
-    plan.commands.map((command) => command.argv.slice(0, 2).join(' ')),
-    ['install --frozen-lockfile', '-r --filter', 'build', 'typecheck', 'test:verify', 'lint', 'verify:platform-consistency-governance', 'test:verify'],
-  );
-  assert.equal(plan.mode, 'scoped');
-});
-
-test('fails closed to full coverage for an unknown or manifest change', () => {
-  assert.equal(buildVerificationPlan({ changedFiles: ['unknown.txt'], identity }).mode, 'full');
-  const plan = buildVerificationPlan({ changedFiles: ['packages/core/package.json'], identity });
-  assert.equal(plan.cleanDist, true);
-  assert.ok(plan.commands.findIndex(({ id }) => id === 'clean-dist') < plan.commands.findIndex(({ id }) => id === 'build'));
-  assert.deepEqual(
-    plan.commands.find(({ id }) => id === 'clean-dist')?.argv,
-    ['-r', '--filter', './packages/*', 'exec', 'node', '../../tooling/scripts/clean-dist.mjs'],
-  );
-});
-
-test('adds importer declaration parity and docs consumers to the plan', () => {
-  const plan = buildVerificationPlan({
-    changedFiles: ['tooling/ci/new-importer.mjs', 'docs/reference/node-support.md'],
-    identity,
-  });
-
-  const commands = plan.commands.map((command) => command.argv.join(' '));
-  assert.equal(commands.includes('typecheck'), true);
-  assert.equal(commands.includes('verify:public-export-tsdoc'), true);
-  assert.equal(commands.includes('verify:docs'), true);
-});
-
-test('maps every triggered companion to executable commands', () => {
-  const plan = buildVerificationPlan({
-    changedFiles: [
-      'packages/core/package.json',
-      'packages/core/src/index.mjs',
-      'docs/reference/node-support.md',
-      'packages/core/test/global-setup.ts',
-    ],
-    identity,
-  });
-
-  const companionCommands = plan.commands.filter(({ id }) => id.startsWith('companion:'));
-  assert.deepEqual(
-    new Set(companionCommands.map(({ id }) => id)),
-    new Set([
-      'companion:declaration-importers',
-      'companion:documentation-governance',
-      'companion:global-setup-contract',
-      'companion:manifest-lockfile',
-      'companion:package-dependency-closure',
-      'companion:source-copy-inventory',
+function receiptFor(plan, receiptIdentity = plan.identity) {
+  const planDigest = plan.semanticDigest;
+  const hostChecks = {
+    status: 'passed', planDigest, headSha: plan.source.headSha, treeSha: plan.source.treeSha,
+    commands: plan.hostChecks.map((command) => ({ command, exitCode: 0, signal: null, spawnError: null })),
+    logs: plan.hostChecks.map((_, index) => ({ path: `host-check-${index}.log`, digest: digest('log') })),
+  };
+  const taskResults = plan.tasks.map((task) => ({
+    version: 2, status: 'passed', taskId: task.id, imageKey: plan.environment.imageKey,
+    imageId: `sha256:${'1'.repeat(64)}`, headSha: plan.source.headSha, treeSha: plan.source.treeSha,
+    planDigest, environment: testEnvironment(plan.environment.lock),
+    logs: task.commands.map((_, index) => ({ commandIndex: index, path: `${task.id}-${index}.log`, digest: digest('log') })),
+    artifacts: [],
+    commands: task.commands.map((command) => ({ command, exitCode: 0, signal: null, spawnError: null,
+      identityBefore: { headSha: plan.source.headSha, treeSha: plan.source.treeSha, statusDigest: digest('') },
+      identityAfter: { headSha: plan.source.headSha, treeSha: plan.source.treeSha, statusDigest: digest('') } })),
+  }));
+  return {
+    version: 2, status: 'passed', profile: plan.profile, identity: receiptIdentity,
+    source: plan.source, environment: { imageKey: plan.environment.imageKey, lock: plan.environment.lock },
+    imageIdentity: { key: plan.environment.imageKey, id: `sha256:${'1'.repeat(64)}` },
+    environmentLockDigest: plan.environment.lockDigest, manifestDigest: plan.manifestDigest,
+    planDigest, hostChecks, taskResults, capabilityTasks: plan.capabilityTasks,
+    logs: taskResults.flatMap((result) => [
+      ...result.logs.map((log) => ({ path: `.omo/verification/ci-parity/runner/results/${log.path}`, digest: log.digest })),
+      { path: `.omo/verification/ci-parity/runner/results/${result.taskId}.json`,
+        digest: digest(`${JSON.stringify(result)}\n`) },
+    ]).concat([
+      ...hostChecks.logs.map((log) => ({ path: `.omo/verification/ci-parity/runner/results/${log.path}`, digest: log.digest })),
+      { path: '.omo/verification/ci-parity/runner/results/host-checks.json', digest: digest(`${JSON.stringify(hostChecks)}\n`) },
     ]),
-  );
-  assert.ok(companionCommands.every(({ argv, executable }) => executable.length > 0 && argv.length > 0));
+    artifacts: [{ path: '.omo/verification/ci-parity/runner/archive.tar', digest: digest('archive') }],
+    startedAt: '2026-09-14T00:00:00.000Z', completedAt: '2026-09-14T00:00:01.000Z',
+  };
+}
+
+test('the full primary profile maps every triggered companion onto existing tasks', () => {
+  const plan = buildVerificationPlan({ changedFiles: [
+    'packages/core/package.json', 'packages/core/src/index.mjs',
+    'packages/core/test/global-setup.ts', 'docs/reference/node-support.md',
+    'packages/platform-deno/src/index.ts',
+  ], identity });
+  assert.deepEqual(plan.companionChecks, [
+    'declaration-importers', 'documentation-governance', 'global-setup-contract',
+    'manifest-lockfile', 'package-dependency-closure', 'source-copy-inventory',
+  ]);
+  for (const id of plan.companionChecks) assert.ok(plan.capabilityTasks[id]?.length, id);
+  assert.equal(plan.tasks.some((task) => task.commands.some((command) => command.argv.join(' ') === 'test:verify')), false);
+  assert.ok(plan.tasks.find((task) => task.id === 'native-web')?.commands.some((command) => command.executable === 'deno'));
 });
 
-test('selects companion commands from the manifest when predicate', () => {
-  const manifest = structuredClone(readVerificationManifest());
-  const closure = manifest.companions.find(({ id }) => id === 'package-dependency-closure');
-  closure.when = 'documentation';
-
-  const packagePlan = buildVerificationPlan({
-    changedFiles: ['packages/core/package.json'],
-    identity,
-    manifest,
+test('React comparison uses a distinct conditional capability in the existing catalog', () => {
+  const react = buildVerificationPlan({
+    changedFiles: ['tooling/benchmarks/react-app-comparison/src/evaluate.ts'], identity,
   });
-  assert.equal(
-    packagePlan.commands.some(({ id }) => id === 'companion:package-dependency-closure'),
-    false,
-  );
-
-  const docsPlan = buildVerificationPlan({
-    changedFiles: ['docs/reference/node-support.md'],
-    identity,
-    manifest,
+  assert.equal(react.tasks.length, 16);
+  assert.deepEqual(react.capabilityTasks['react-app-benchmark'], ['static']);
+  assert.ok(react.tasks.find((task) => task.id === 'static')?.commands.some((command) =>
+    command.argv.includes('test:smoke')));
+  assert.equal(react.capabilityTasks['isolated-benchmark'], undefined);
+  const http = buildVerificationPlan({
+    changedFiles: ['tooling/benchmarks/http-comparison/src/run.mjs'], identity,
   });
-  assert.equal(
-    docsPlan.commands.some(({ id }) => id === 'companion:package-dependency-closure'),
-    true,
-  );
+  assert.deepEqual(http.capabilityTasks['isolated-benchmark'], ['static']);
+  assert.equal(http.capabilityTasks['react-app-benchmark'], undefined);
 });
 
-test('fails closed for malformed, duplicate, and unknown companion triggers', () => {
+test('unknown changes remain full and companion trigger changes cannot silently remove coverage', () => {
+  assert.equal(buildVerificationPlan({ changedFiles: ['unknown.txt'], identity }).mode, 'full');
   const malformed = structuredClone(readVerificationManifest());
-  malformed.companions[0].when = '';
-  assert.throws(
-    () => buildVerificationPlan({ changedFiles: ['package.json'], identity, manifest: malformed }),
-    /trigger/u,
-  );
-
+  malformed.companions[0].when = 'unknown';
+  assert.throws(() => buildVerificationPlan({ changedFiles: ['package.json'], identity, manifest: malformed }), /unknown/u);
   const duplicate = structuredClone(readVerificationManifest());
   duplicate.companions[1].id = duplicate.companions[0].id;
-  assert.throws(
-    () => buildVerificationPlan({ changedFiles: ['package.json'], identity, manifest: duplicate }),
-    /duplicate/u,
-  );
-
-  const unknown = structuredClone(readVerificationManifest());
-  unknown.companions[0].when = 'not-a-supported-trigger';
-  assert.throws(
-    () => buildVerificationPlan({ changedFiles: ['package.json'], identity, manifest: unknown }),
-    /unknown/u,
-  );
+  assert.throws(() => buildVerificationPlan({ changedFiles: ['package.json'], identity, manifest: duplicate }), /duplicate/u);
 });
 
-test('runs native Deno build, check, and test surfaces', () => {
-  const plan = buildVerificationPlan({ changedFiles: ['packages/platform-deno/src/adapter.ts'], identity });
-
-  assert.deepEqual(
-    plan.commands.filter(({ id }) => id.startsWith('manifest:packages/platform-deno/')).map(({ argv, executable }) => ({ argv, executable })),
-    [
-      { executable: 'node', argv: ['tooling/scripts/run-workspace-build-closure.mjs', '@fluojs/platform-deno'] },
-      { executable: 'deno', argv: ['check', '--no-lock', '--node-modules-dir=auto', '--config', 'packages/platform-deno/deno/deno.json', 'npm:@fluojs/platform-deno'] },
-      { executable: 'deno', argv: ['test', '--no-lock', '--config', 'packages/platform-deno/deno/deno.json', '--allow-net', '--allow-read', 'packages/platform-deno/deno/native-adapter.test.js'] },
-    ],
-  );
-});
-
-test('runs isolated React app deterministic smoke for a comparison-suite change', () => {
-  const plan = buildVerificationPlan({
-    changedFiles: ['tooling/benchmarks/react-app-comparison/src/evaluate.ts'],
-    identity,
-  });
-
-  assert.deepEqual(
-    plan.commands.filter(({ id }) => id === 'manifest:tooling/benchmarks/react-app-comparison/'),
-    [
-      {
-        id: 'manifest:tooling/benchmarks/react-app-comparison/',
-        executable: 'pnpm',
-        argv: ['--dir', 'tooling/benchmarks/react-app-comparison', '--ignore-workspace', 'test:smoke'],
-        cwd: '.',
-      },
-    ],
-  );
-});
-
-test('accepts only complete successful receipts for the exact current identity', () => {
-  const receipt = {
-    commands: [
-      'install', 'build', 'typecheck', 'test', 'lint', 'platform-governance',
-    ].map((id) => ({
-      argv: [id],
-      cwd: '/repo',
-      executable: 'pnpm',
-      exitCode: 0,
-      finishedAt: '2026-09-14T00:00:01.000Z',
-      id,
-      identityAfter: identity,
-      identityBefore: identity,
-      signal: null,
-      spawnError: null,
-      startedAt: '2026-09-14T00:00:00.000Z',
-    })),
-    completedAt: '2026-09-14T00:00:01.000Z',
-    environment: {},
-    identity,
-    limitations: [],
-    logs: [
-      'install', 'build', 'typecheck', 'test', 'lint', 'platform-governance',
-    ].map((commandId, index) => ({
-      commandId,
-      digest: `${index}`.padStart(64, '0'),
-      path: `.omo/verification/logs/head/${index}.log`,
-    })),
-    manifestDigest: '2'.repeat(64),
-    planDigest: '3'.repeat(64),
-    startedAt: '2026-09-14T00:00:00.000Z',
-    status: 'passed',
-    version: 1,
-  };
-
+test('v1 native receipt and wrong platform, profile, image or source fail admission', () => {
+  const plan = buildVerificationPlan({ changedFiles: [], identity });
+  const receipt = receiptFor(plan);
   assert.deepEqual(validateReceipt(receipt), { valid: true });
-  assert.equal(receiptIsCurrent(receipt, identity), true);
-  assert.equal(receiptIsCurrent(receipt, { ...identity, treeSha: '0'.repeat(40) }), false);
-  assert.equal(receiptIsCurrent(receipt, { ...identity, clean: false }), false);
-  assert.equal(
-    validateReceipt({
-      ...receipt,
-      commands: [...receipt.commands, {
-        ...receipt.commands[0],
-        exitCode: 1,
-        id: 'companion:source-copy-inventory',
-      }],
-    }).valid,
-    false,
-  );
-});
-
-test('requires a receipt to attest the canonical base and exact verification plan', () => {
-  const plan = buildVerificationPlan({ changedFiles: [], identity });
-  const receipt = passingReceipt(plan);
-
   assert.equal(receiptMatchesPlan(receipt, identity, plan), true);
-  assert.equal(
-    receiptMatchesPlan({ ...receipt, identity: { ...identity, baseRef: 'HEAD' } }, identity, plan),
-    false,
-  );
-
-  const omitted = receipt.commands.slice(1);
-  assert.equal(
-    receiptMatchesPlan({
-      ...receipt,
-      commands: omitted,
-      planDigest: digest(JSON.stringify(omitted.map(({ argv, cwd, executable, id }) => ({ argv, cwd, executable, id })))),
-    }, identity, plan),
-    false,
-  );
+  assert.equal(receiptIsCurrent(receipt, { ...identity, treeSha: '9'.repeat(40) }), false);
+  assert.equal(validateReceipt({ ...receipt, version: 1 }).valid, false);
+  assert.equal(validateReceipt({ ...receipt, hostChecks: null }).valid, false);
+  assert.equal(validateReceipt({ ...receipt, imageIdentity: { ...receipt.imageIdentity, id: null } }).valid, false);
+  const missingHostCommand = structuredClone(receipt);
+  missingHostCommand.hostChecks.commands = [];
+  assert.equal(receiptMatchesPlan(missingHostCommand, identity, plan), false);
+  assert.equal(receiptMatchesPlan({ ...receipt, profile: 'extended' }, identity, plan), false);
+  assert.equal(validateReceipt({ ...receipt, imageIdentity: { ...receipt.imageIdentity, key: `sha256:${'9'.repeat(64)}` } }).valid, false);
+  assert.equal(validateReceipt({ ...receipt, identity: { ...identity, clean: false } }).valid, false);
+  const wrongPlatform = structuredClone(receipt);
+  wrongPlatform.taskResults[0].environment.arch = 'x64';
+  assert.equal(validateReceipt(wrongPlatform).valid, false);
+  const wrongRuntime = structuredClone(receipt);
+  wrongRuntime.taskResults[0].environment.node.floor = '24.21.0';
+  assert.equal(validateReceipt(wrongRuntime).valid, false);
+  const incomplete = structuredClone(receipt);
+  incomplete.taskResults.pop();
+  assert.equal(receiptMatchesPlan(incomplete, identity, plan), false);
+  const failed = structuredClone(receipt);
+  failed.taskResults[0].commands[0].exitCode = 1;
+  assert.equal(validateReceipt(failed).valid, false);
 });
 
-test('authenticates exact receipt and command log bytes within evidence root', () => {
-  const root = mkdtempSync(join(tmpdir(), 'fluo-local-verification-'));
+test('v2 receipt authenticates log, archive and receipt bytes inside the real evidence root', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'fluo-receipt-v2-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
   const receiptIdentity = { ...identity, root };
-  const plan = buildVerificationPlan({ changedFiles: [], identity: receiptIdentity });
-  const receipt = passingReceipt(plan, receiptIdentity);
-
-  try {
-    for (const [index, log] of receipt.logs.entries()) {
-      const path = join(root, log.path);
-      mkdirSync(join(path, '..'), { recursive: true });
-      const content = `command ${index}`;
-      writeFileSync(path, content);
-      receipt.logs[index] = { ...log, digest: digest(content) };
-    }
-    const receiptPath = join(root, '.omo/verification/receipt.json');
-    const bytes = `${JSON.stringify(receipt)}\n`;
-    writeFileSync(receiptPath, bytes);
-
-    assert.equal(validateReceiptEvidence(receipt, {
-      receiptPath: relative(root, receiptPath),
-      receiptSha256: digest(bytes),
-      worktree: root,
-    }).valid, true);
-
-    writeFileSync(join(root, receipt.logs[0].path), 'tampered');
-    assert.equal(validateReceiptEvidence(receipt, {
-      receiptPath: relative(root, receiptPath),
-      receiptSha256: digest(bytes),
-      worktree: root,
-    }).valid, false);
-  } finally {
-    rmSync(root, { force: true, recursive: true });
+  const receipt = receiptFor(buildVerificationPlan({ changedFiles: [], identity: receiptIdentity }));
+  for (const file of receipt.logs) {
+    const result = receipt.taskResults.find((item) => file.path.endsWith(`/results/${item.taskId}.json`))
+      ?? (file.path.endsWith('/results/host-checks.json') ? receipt.hostChecks : undefined);
+    mkdirSync(join(root, file.path, '..'), { recursive: true });
+    writeFileSync(join(root, file.path), result ? `${JSON.stringify(result)}\n` : 'log');
   }
+  for (const [file, content] of [[receipt.artifacts[0], 'archive']]) {
+    mkdirSync(join(root, file.path, '..'), { recursive: true });
+    writeFileSync(join(root, file.path), content);
+  }
+  const receiptPath = join(root, '.omo/verification/receipt.json');
+  writeFileSync(receiptPath, JSON.stringify(receipt));
+  const reference = { worktree: root, receiptPath: relative(root, receiptPath), receiptSha256: digest(readFileSync(receiptPath)) };
+  assert.equal(validateReceiptEvidence(receipt, reference).valid, true);
+  writeFileSync(join(root, receipt.artifacts[0].path), 'changed');
+  assert.equal(validateReceiptEvidence(receipt, reference).valid, false);
+  writeFileSync(join(root, receipt.artifacts[0].path), 'archive');
+  writeFileSync(receiptPath, 'tampered');
+  assert.equal(validateReceiptEvidence(receipt, reference).valid, false);
 });
 
-test('rejects an evidence root symlink that escapes the real worktree', () => {
-  const root = mkdtempSync(join(tmpdir(), 'fluo-local-verification-worktree-'));
-  const externalEvidenceRoot = mkdtempSync(join(tmpdir(), 'fluo-local-verification-external-'));
-  const receiptIdentity = { ...identity, root };
-  const plan = buildVerificationPlan({ changedFiles: [], identity: receiptIdentity });
-  const receipt = passingReceipt(plan, receiptIdentity);
-
-  try {
-    mkdirSync(join(root, '.omo'), { recursive: true });
-    symlinkSync(externalEvidenceRoot, join(root, '.omo/verification'));
-    for (const [index, log] of receipt.logs.entries()) {
-      const path = join(root, log.path);
-      mkdirSync(join(path, '..'), { recursive: true });
-      const content = `command ${index}`;
-      writeFileSync(path, content);
-      receipt.logs[index] = { ...log, digest: digest(content) };
-    }
-    const receiptPath = join(root, '.omo/verification/receipt.json');
-    const bytes = `${JSON.stringify(receipt)}\n`;
-    writeFileSync(receiptPath, bytes);
-
-    assert.equal(validateReceiptEvidence(receipt, {
-      receiptPath: relative(root, receiptPath),
-      receiptSha256: digest(bytes),
-      worktree: root,
-    }).valid, false);
-  } finally {
-    rmSync(root, { force: true, recursive: true });
-    rmSync(externalEvidenceRoot, { force: true, recursive: true });
-  }
-});
-
-test('rejects malformed receipt timestamps before filesystem validation', () => {
-  const plan = buildVerificationPlan({ changedFiles: [], identity });
-  const receipt = passingReceipt(plan);
-
-  assert.equal(validateReceipt({
-    ...receipt,
-    commands: [{ ...receipt.commands[0], startedAt: 'not-a-timestamp' }, ...receipt.commands.slice(1)],
+test('symlink escape cannot redirect receipt evidence outside the worktree', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'fluo-v2-symlink-'));
+  const outside = mkdtempSync(join(tmpdir(), 'fluo-v2-outside-'));
+  t.after(() => { rmSync(root, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); });
+  const receipt = receiptFor(buildVerificationPlan({ changedFiles: [], identity: { ...identity, root } }));
+  mkdirSync(join(root, '.omo'));
+  symlinkSync(outside, join(root, '.omo/verification'));
+  const receiptPath = join(root, '.omo/verification/receipt.json');
+  writeFileSync(receiptPath, JSON.stringify(receipt));
+  assert.equal(validateReceiptEvidence(receipt, {
+    worktree: root, receiptPath: relative(root, receiptPath), receiptSha256: digest(readFileSync(receiptPath)),
   }).valid, false);
 });
 
-test('enforces every canonical receipt schema top-level requirement at runtime', () => {
-  const plan = buildVerificationPlan({ changedFiles: [], identity });
-  const receipt = passingReceipt(plan);
-  const requiredTopLevel = [
-    'version', 'status', 'identity', 'environment', 'commands', 'logs',
-    'manifestDigest', 'planDigest', 'startedAt', 'completedAt', 'limitations',
-  ];
-
-  for (const key of requiredTopLevel) {
-    const malformed = { ...receipt };
-    delete malformed[key];
-    assert.equal(validateReceipt(malformed).valid, false, `missing ${key} must be rejected`);
+test('v2 schema keeps typed clean source and task artifact evidence', () => {
+  const schema = JSON.parse(readFileSync(new URL('./local-verification-receipt.schema.json', import.meta.url), 'utf8'));
+  assert.equal(schema.properties.version.const, 2);
+  assert.equal(schema.$defs.identity.properties.clean.const, true);
+  for (const field of ['taskResults', 'capabilityTasks', 'environmentLockDigest', 'imageIdentity', 'artifacts', 'logs']) {
+    assert.ok(schema.required.includes(field), field);
   }
-  assert.equal(validateReceipt({ ...receipt, environment: [] }).valid, false);
-  assert.equal(validateReceipt({ ...receipt, limitations: [1] }).valid, false);
-  assert.equal(validateReceipt({
-    ...receipt,
-    commands: [{ ...receipt.commands[0], argv: [1] }, ...receipt.commands.slice(1)],
-  }).valid, false);
-  assert.equal(validateReceipt({
-    ...receipt,
-    logs: [{ ...receipt.logs[0], path: '' }, ...receipt.logs.slice(1)],
-  }).valid, false);
-});
-
-test('rejects incomplete, failed, and plan-only receipts', () => {
-  const base = {
-    commands: [{
-      argv: ['build'],
-      cwd: '/repo',
-      executable: 'pnpm',
-      exitCode: 0,
-      identityAfter: identity,
-      identityBefore: identity,
-      signal: null,
-      spawnError: null,
-    }],
-    completedAt: '2026-09-14T00:00:01.000Z',
-    identity,
-    limitations: [],
-    logs: [{ digest: '1'.repeat(64), path: '.artifacts/local-verification/build.log' }],
-    manifestDigest: '2'.repeat(64),
-    planDigest: '3'.repeat(64),
-    startedAt: '2026-09-14T00:00:00.000Z',
-    status: 'passed',
-    version: 1,
-  };
-
-  assert.equal(validateReceipt({ ...base, commands: [] }).valid, false);
-  assert.equal(validateReceipt({ ...base, status: 'planned' }).valid, false);
-  assert.equal(validateReceipt({ ...base, commands: [{ ...base.commands[0], signal: 'SIGTERM' }] }).valid, false);
-});
-
-test('typed receipt schema requires clean worktree and command-boundary identities', () => {
-  const schema = JSON.parse(
-    readFileSync(new URL('./local-verification-receipt.schema.json', import.meta.url), 'utf8'),
-  );
-  const identityRequired = schema.$defs.identity.required;
-  const commandItems = schema.properties.commands.items;
-
-  assert.equal(identityRequired.includes('clean'), true);
-  assert.equal(identityRequired.includes('worktreeStatusDigest'), true);
-  assert.equal(commandItems.required.includes('identityBefore'), true);
-  assert.equal(commandItems.required.includes('identityAfter'), true);
-  assert.equal(schema.properties.logs.items.required.includes('commandId'), true);
 });
