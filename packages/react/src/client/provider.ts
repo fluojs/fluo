@@ -76,7 +76,7 @@ function createBrowserEnvironment(
     assign: (href) => browser.location.assign(href),
     back: () => browser.history.back(),
     currentHref: () => browser.location.href,
-    failurePolicy,
+    ...(failurePolicy === undefined ? {} : { failurePolicy }),
     historyIndex: () => {
       const state: unknown = browser.history.state;
       if (typeof state !== 'object' || state === null) {
