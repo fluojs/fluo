@@ -354,7 +354,10 @@ test('CLI: title/body, base and accepted contract edits invalidate old evidence'
   f.set('preflight', f.preflight());
   assert.equal(f.plan().decision.action, 'review');
   f.git(f.root, 'update-ref', 'refs/remotes/origin/main', review.head_sha);
-  assert.equal(f.plan().decision.action, 'review');
+  // The changed contract still cannot use old approval. Once main contains
+  // the whole branch, there is no issue-local implementation delta to review.
+  assert.deepEqual(f.plan().obs.changedFiles, []);
+  assert.equal(f.plan().decision.action, 'implement');
   f.state.unavailable = true;
   f.update();
   assert.equal(f.plan().decision.action, 'preflight');
@@ -414,6 +417,23 @@ test('CLI: missing, unrelated or disconnected base anchors fail closed', (t) => 
   assert.equal(f.plan().decision.reason, 'stale-preflight-binding');
   f.git(f.root, 'update-ref', '-d', 'refs/remotes/origin/main');
   assert.equal(f.plan().decision.reason, 'stale-preflight-binding');
+});
+
+test('CLI: a new branch at advanced main still needs implementation with a pinned base', (t) => {
+  const f = fixture(t);
+  const preflight = f.preflight();
+  f.set('preflight', preflight);
+  writeFileSync(join(f.root, 'docs/guide.md'), 'upstream change\n');
+  f.git(f.root, 'add', 'docs/guide.md');
+  f.git(f.root, '-c', 'commit.gpgsign=false', 'commit', '-m', 'fixture advanced main');
+  f.git(f.root, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+  f.git(f.root, 'worktree', 'add', '-b', 'issue-42', f.worktree, 'main');
+
+  const { obs, decision } = f.plan();
+  assert.equal(obs.baseSha, preflight.base_sha);
+  assert.deepEqual(obs.changedFiles, []);
+  assert.equal(obs.hasNewCommits, false);
+  assert.equal(decision.action, 'implement');
 });
 
 test('CLI: integrating main keeps upstream files outside issue scope and requires new-head evidence', (t) => {
