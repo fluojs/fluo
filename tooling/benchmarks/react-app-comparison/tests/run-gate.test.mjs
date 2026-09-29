@@ -57,6 +57,22 @@ test('overlapping interrupt and finalization share one owned cleanup', async () 
   await interrupt;
 });
 
+test('a transient EPERM probe remains live until the owned group actually disappears', { timeout: 2_000 }, async (t) => {
+  const signals = [];
+  let probes = 0;
+  t.mock.method(process, 'kill', (target, signal) => {
+    assert.equal(target, -123);
+    if (signal === 0) {
+      probes += 1;
+      throw Object.assign(new Error('probe'), { code: probes < 4 ? 'EPERM' : 'ESRCH' });
+    }
+    signals.push(signal);
+  });
+  await stopOwnedProcess({ pid: 123 }, { termMs: 300, killMs: 300 });
+  assert.deepEqual(signals, ['SIGTERM']);
+  assert.ok(probes >= 4);
+});
+
 test('waits for a real HTTP ready event and stops the owned process group', async () => {
   // Given: an app reports readiness only after binding a socket.
   const command = [
