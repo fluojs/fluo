@@ -10,7 +10,7 @@
       "description": "Builds one source-read-only issue acceptance preflight.",
       "models": [
         {
-          "model": "chatgpt-subscription/gpt-6-sol",
+          "model": "chatgpt-subscription/gpt-6.1-sol",
           "reasoning": "high"
         }
       ],
@@ -38,7 +38,7 @@
       "prompt": "Only read, bash, and apply_patch are available. Do not call eval, todo, task, dag, or team tools.",
       "models": [
         {
-          "model": "chatgpt-subscription/gpt-6-sol",
+          "model": "chatgpt-subscription/gpt-6.1-sol",
           "reasoning": "medium"
         }
       ],
@@ -99,7 +99,7 @@
       "description": "Reviews one exact issue head for code correctness and quality.",
       "models": [
         {
-          "model": "chatgpt-subscription/gpt-6-sol",
+          "model": "chatgpt-subscription/gpt-6.1-sol",
           "reasoning": "high"
         }
       ],
