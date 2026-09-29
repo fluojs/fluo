@@ -49,6 +49,14 @@ test('a failed correctness subprocess retains its actual receipt without passing
   }
 });
 
+test('overlapping interrupt and finalization share one owned cleanup', async () => {
+  const child = { pid: undefined };
+  const interrupt = stopOwnedProcess(child);
+  const finalization = stopOwnedProcess(child);
+  assert.strictEqual(interrupt, finalization);
+  await interrupt;
+});
+
 test('waits for a real HTTP ready event and stops the owned process group', async () => {
   // Given: an app reports readiness only after binding a socket.
   const command = [

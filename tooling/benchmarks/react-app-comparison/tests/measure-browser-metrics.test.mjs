@@ -222,6 +222,49 @@ test('full document navigation retains an inconclusive interaction instead of a 
   }
 });
 
+test('same-document pushState, replaceState, and hash navigation keep rendered approval', { timeout: 20_000 }, async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(`<!doctype html><div data-benchmark-hydrated="true">
+      <a href="/jukebox/qr" data-mode="pushState">Push</a>
+      <a href="/jukebox/qr" data-mode="replaceState">Replace</a>
+      <a href="#qr" data-mode="hash">Hash</a></div>
+      <script>for (const link of document.querySelectorAll('a')) link.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (link.dataset.mode === 'hash') location.hash = 'qr';
+        else history[link.dataset.mode]({}, '', '/jukebox/qr');
+        document.body.insertAdjacentHTML('beforeend', '<div data-approved-view="qr">Rendered QR</div>');
+      });</script>`);
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const journeys = Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+    .map((name) => [name, { path: '/' }]));
+  const driver = await createBrowserDriver({
+    journeys,
+    interactions: ['pushState', 'replaceState', 'hash'].map((mode) => ({
+      path: '/jukebox/songs', trigger: `a[data-mode="${mode}"]`,
+      pending: '[data-navigation-pending]', approved: '[data-approved-view="qr"]',
+    })),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    const observation = await driver.measure({ framework: 'fluo', runId: 'same-document',
+      device: 'desktop', mode: 'native', url: `http://127.0.0.1:${address.port}/` });
+    assert.ok(Number.isFinite(observation.metrics.interactionApprovedP50Ms));
+    assert.ok(observation.timings.interactions.every((interaction) => Number.isFinite(interaction.approvedAt)));
+    assert.ok(!observation.qualityFailures.some((failure) => failure.includes('document replaced')));
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
 test('marks a document-replacing interaction unavailable rather than throwing or pooling partial samples', () => {
   // Given: one framework replaced the document before the browser-side observer could resolve.
   const result = summarizeInteractions([

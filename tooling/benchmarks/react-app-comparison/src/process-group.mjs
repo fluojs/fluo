@@ -1,4 +1,15 @@
-export async function stopOwnedProcess(child, { group = true, termMs = 2_000, killMs = 2_000 } = {}) {
+const shutdowns = new WeakMap();
+
+export function stopOwnedProcess(child, options = {}) {
+  const existing = shutdowns.get(child);
+  if (existing) return existing;
+  const stopping = terminateOwnedProcess(child, options);
+  shutdowns.set(child, stopping);
+  void stopping.catch(() => shutdowns.delete(child));
+  return stopping;
+}
+
+async function terminateOwnedProcess(child, { group = true, termMs = 2_000, killMs = 2_000 } = {}) {
   if (!child.pid) return;
   const target = group ? -child.pid : child.pid;
   const alive = () => {

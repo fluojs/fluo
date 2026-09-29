@@ -327,7 +327,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         for (const action of config.interactions ?? []) {
           await page.goto(new URL(action.path, item.url).href, { waitUntil: 'load' });
           await page.locator('[data-benchmark-hydrated="true"]').waitFor({ state: 'visible', timeout: 10_000 });
-          await page.evaluate(({ trigger, pending, approved }) => {
+          const documentToken = await page.evaluate(({ trigger, pending, approved }) => {
+            window.__benchmarkDocumentToken = crypto.randomUUID();
             window.__benchmarkInteraction = new Promise((done) => {
               document.addEventListener('click', (event) => {
                 if (!event.target.closest(trigger)) return;
@@ -341,29 +342,24 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
                 observer.observe(document, { subtree: true, childList: true, attributes: true });
               }, { capture: true, once: true });
             });
+            return window.__benchmarkDocumentToken;
           }, action);
-          let replaced;
-          const replacement = new Promise((resolveReplacement) => { replaced = resolveReplacement; });
-          const onNavigation = (frame) => {
-            if (frame === page.mainFrame()) replaced({
-              pendingAt: null, approvedAt: null, unavailable: 'document replaced the browser timing observer',
-            });
-          };
-          page.on('framenavigated', onNavigation);
           await page.locator(action.trigger).click();
-          try {
-            const observation = await Promise.race([
-              page.evaluate(() => Promise.race([
-                window.__benchmarkInteraction,
-                new Promise((_, reject) => setTimeout(() => reject(new Error('approved view timeout')), 10_000)),
-              ])).catch((error) => ({ pendingAt: null, approvedAt: null, unavailable: String(error) })),
-              replacement,
+          const observation = await page.evaluate((token) => {
+            if (window.__benchmarkDocumentToken !== token) {
+              return { pendingAt: null, approvedAt: null, unavailable: 'document replaced the browser timing observer' };
+            }
+            return Promise.race([
+              window.__benchmarkInteraction,
+              new Promise((_, reject) => setTimeout(() => reject(new Error('approved view timeout')), 10_000)),
             ]);
-            interactions.push(observation);
-            if (observation.unavailable) qualityFailures.push(observation.unavailable);
-          } finally {
-            page.off('framenavigated', onNavigation);
-          }
+          }, documentToken).catch((error) => ({
+            pendingAt: null, approvedAt: null,
+            unavailable: /execution context was destroyed/iu.test(String(error))
+              ? 'document replaced the browser timing observer' : String(error),
+          }));
+          interactions.push(observation);
+          if (observation.unavailable) qualityFailures.push(observation.unavailable);
         }
         await Promise.all([...pendingResponses]);
         const metrics = {};
