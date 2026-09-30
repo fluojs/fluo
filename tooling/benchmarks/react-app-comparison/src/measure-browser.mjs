@@ -353,27 +353,30 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         const initialReadiness = await waitForInitialReadiness(page);
         // Subscribe before checking the identity inventory: no lost settlement event,
         // no network-idle heuristic and no waiting for unrelated speculative RSC.
-        await new Promise((accept, reject) => {
-          const check = () => {
-            if ([...network.values()].some((entry) => entry.phase === 'cold'
-              && ['document', 'script', 'stylesheet'].includes(entry.resourceType))) return;
-            cleanup();
-            accept();
-          };
-          const timeout = setTimeout(() => {
-            cleanup();
-            reject(new Error('initial React completion resource timeout'));
-          }, 10_000);
-          const cleanup = () => {
-            clearTimeout(timeout);
-            networkChanges.off('settled', check);
-          };
-          networkChanges.on('settled', check);
-          check();
-        });
-        const failedInitialResources = requests.filter((entry) => entry.phase === 'cold'
-          && ['document', 'script', 'stylesheet'].includes(entry.resourceType) && entry.error);
-        if (failedInitialResources.length) throw new Error('initial React completion resource failure');
+        const waitForInitialResources = async (ownerPhase) => {
+          await new Promise((accept, reject) => {
+            const check = () => {
+              if ([...network.values()].some((entry) => entry.phase === ownerPhase
+                && ['document', 'script', 'stylesheet'].includes(entry.resourceType))) return;
+              cleanup();
+              accept();
+            };
+            const timeout = setTimeout(() => {
+              cleanup();
+              reject(new Error('initial React completion resource timeout'));
+            }, 10_000);
+            const cleanup = () => {
+              clearTimeout(timeout);
+              networkChanges.off('settled', check);
+            };
+            networkChanges.on('settled', check);
+            check();
+          });
+          const failedInitialResources = requests.filter((entry) => entry.phase === ownerPhase
+            && ['document', 'script', 'stylesheet'].includes(entry.resourceType) && entry.error);
+          if (failedInitialResources.length) throw new Error('initial React completion resource failure');
+        };
+        await waitForInitialResources('cold');
         const cold = await page.evaluate(() => ({
           navigation: performance.getEntriesByType('navigation')[0]?.toJSON() ?? null,
           lcp: window.__benchmarkLcp,
@@ -402,6 +405,13 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         initialBoundary.warmTriggeredAt = await page.evaluate(() => performance.now());
         phase = 'warm';
         await page.goto(listing, { waitUntil: 'load' });
+        const warmReadiness = await waitForInitialReadiness(page);
+        await waitForInitialResources('warm');
+        const warmBoundary = {
+          readiness: warmReadiness,
+          completedAt: await page.evaluate(() => performance.now()),
+          pendingAtInteraction: [...network.values()].map((entry) => ({ ...entry })),
+        };
         const warm = await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.toJSON() ?? null);
         const interactions = [];
         phase = 'interaction';
@@ -505,7 +515,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           }
         }
         return {
-          metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions, initialBoundary },
+          metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions, initialBoundary, warmBoundary },
           artifacts: {
             cachePolicy: item.mode,
             browserCacheDisabled: cacheSettings(item.mode).cacheDisabled,
