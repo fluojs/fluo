@@ -5,6 +5,17 @@ import { expect, it } from 'vitest';
 import * as ReactRoot from './index.js';
 import type { FrameworkRequest, FrameworkResponse } from '@fluojs/http';
 
+it.each([
+  ...Array.from({ length: 33 }, (_, code) => `/products/${String.fromCharCode(code)}one`),
+  '/products\\one',
+  '//external.example/path',
+  'https://external.example/path',
+])('rejects a non-document or control-containing form destination %j', (destination) => {
+  // Given/When: the application proposes an unsafe native redirect destination.
+  // Then: form negotiation cannot change the native URL rejection contract.
+  expect(() => ReactRoot.ReactModule.formResult({ destination, followUp: 'navigate' })).toThrow(TypeError);
+});
+
 it('approves an enhanced save while preserving the native 303 destination', async () => {
   // Given: one ordinary HTTP POST returning a runtime-neutral form result.
   const factory: unknown = Reflect.get(ReactRoot, 'ReactModule');

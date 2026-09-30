@@ -53,7 +53,8 @@ export class ReactModule {
    */
   static formResult(options: ReactFormResultOptions): ReactFormResult {
     if (!options.destination.startsWith('/') || options.destination.startsWith('//')
-      || /[\\\u0000-\u0020]/u.test(options.destination)) {
+      || Array.from(options.destination).some((character) =>
+        character === '\\' || character.charCodeAt(0) <= 0x20)) {
       throw new TypeError('A form destination must be a root-relative HTTP document URL.');
     }
     const destination = options.destination;
