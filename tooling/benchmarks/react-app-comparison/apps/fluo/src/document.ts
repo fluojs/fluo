@@ -24,7 +24,6 @@ export type PageData =
     };
 
 type DocumentProps = {
-  readonly data: PageData;
   readonly initialElement: ReactNode;
   readonly editor: boolean;
   readonly initialPage?: ReactInitialNavigationPage;
@@ -102,7 +101,6 @@ function JukeboxResourceBoundary() {
 }
 
 export function BenchmarkDocument({
-  data,
   editor,
   initialElement,
   initialPage,
@@ -115,7 +113,7 @@ export function BenchmarkDocument({
   const snapshot = createReactRouteSnapshot({ params: routeParams, url: routeUrl });
   const renderDocument = (destination: ReactNode | null): ReactNode => createElement(
     'html',
-    { 'data-benchmark-page': JSON.stringify({ data, editor }), 'data-build-id': navigationBuildId, lang: 'en' },
+    { 'data-build-id': navigationBuildId, lang: 'en' },
     createElement('head', null,
       createElement('meta', { charSet: 'utf-8' }),
       createElement('meta', { content: 'width=device-width, initial-scale=1', name: 'viewport' }),

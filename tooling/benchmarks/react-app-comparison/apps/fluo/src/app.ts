@@ -143,7 +143,6 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL) {
         : createElement(CatalogDestination, { data, editor: editor(context) });
     return ReactNavigationPage.create(
       createElement(BenchmarkDocument, {
-        data,
         initialElement,
         editor: editor(context),
         routeParams: context.request.params,

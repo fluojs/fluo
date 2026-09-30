@@ -42,6 +42,19 @@ test('Fluo listing does not load unrelated destination controls', async ({ page 
   expect(code.includes('data-approved-view')).toBe(false);
 });
 
+test('Fluo hydrates from one HTTP-selected initial data transfer', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'fluo');
+  await page.goto('/');
+  const transfer = await page.locator('#fluo-initial-page').textContent();
+  const initial = JSON.parse(transfer);
+  expect(initial.version).toBe(2);
+  expect(initial.destination.props.data.products).toHaveLength(PRODUCTS.length);
+  expect(await page.locator('html').getAttribute('data-benchmark-page')).toBeNull();
+  await page.locator(`a[href="/products/${PRODUCTS[0].sku}"]`).first().click();
+  await expect(page).toHaveURL(new RegExp(`/products/${PRODUCTS[0].sku}$`, 'u'));
+  await expect(page.getByText(PRODUCTS[0].name).first()).toBeVisible();
+});
+
 test('Fluo catalog defers the audio resource until approved jukebox navigation', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'fluo');
   await page.goto('/');
