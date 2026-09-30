@@ -140,6 +140,46 @@ it.each(['settlement', 'document'] as const)('cancels the coupled saved-login po
   expect(browser.load).not.toHaveBeenCalled();
 }, 5_000);
 
+it('revokes saved-origin policy authority before another form abort listener reenters cancellation', async () => {
+  const policy = vi.fn(() => ({ document: '/exit' }));
+  const browser = fixture({ epoch: 'a', policy });
+  const login = createClientFormStore();
+  const other = createClientFormStore();
+  browser.store.forms.set('/protected\0other', other);
+  browser.store.forms.set('/protected\0login', login);
+  const entered = gate<void>();
+  const release = gate<boolean>();
+  vi.stubGlobal('fetch', vi.fn(async (action: string) => new Response(JSON.stringify({
+    version: 1, outcome: 'saved', destination: '/protected', followUp: 'refresh',
+    ...(action.endsWith('/login') ? { session: { epoch: 'b', reason: 'login' } } : {}),
+  }), { headers: { 'Content-Type': 'application/vnd.fluo.form+json;v=1' } })));
+  const old = other.submit({ action: 'https://example.test/other', body: new URLSearchParams() }, {
+    invalidate: () => {}, rememberForms: () => {},
+    allowDestination: (_destination, signal) => {
+      signal.addEventListener('abort', () => login.cancel(), { once: true });
+      entered.resolve();
+      return release.promise;
+    },
+    approve: (href, followUp, signal) => browser.store.approveForm(href, followUp, signal, other),
+  });
+  try {
+    await entered.promise;
+    await login.submit({ action: 'https://example.test/login', body: new URLSearchParams() }, {
+      invalidate: () => {}, allowDestination: () => true, rememberForms: () => {},
+      sessionChanged: (change) => browser.store.applyFormSession(change, login),
+      releaseSession: () => browser.store.releaseFormSession(login),
+      approve: (href, followUp, signal) => browser.store.approveForm(href, followUp, signal, login),
+    });
+    await old;
+    expect(browser.assign).not.toHaveBeenCalled();
+    expect(policy).not.toHaveBeenCalled();
+    expect(login.getSnapshot().mutation?.status).toBe('saved');
+  } finally {
+    release.resolve(false);
+    vi.unstubAllGlobals();
+  }
+}, 5_000);
+
 it.each([401, 403])('consumes POST %s auth refresh policy with GET only', async (status) => {
   const browser = fixture({ epoch: 'a', policy: () => 'refresh' });
   const readStarted = gate<void>();

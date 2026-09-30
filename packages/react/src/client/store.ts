@@ -301,7 +301,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     destinationElement = null;
     const controller = new AbortController();
     sessionPolicyController = controller;
-    sessionPolicyOrigin = undefined;
+    sessionPolicyOrigin = savedOrigin;
     const cancelled = new Promise<undefined>((resolve) => {
       controller.signal.addEventListener('abort', () => resolve(undefined), { once: true });
     });
@@ -317,7 +317,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     for (const entry of oldPrefetch) entry.controller.abort();
     for (const lease of oldLeases) lease.abort();
     for (const form of oldForms) form.revoke(form === savedOrigin);
-    sessionPolicyOrigin = origin;
+    if (savedOrigin === undefined) sessionPolicyOrigin = origin;
     barrierActive = false;
     notify();
     if (expected !== sessionGeneration || controller.signal.aborted) return undefined;
