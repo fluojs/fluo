@@ -92,12 +92,23 @@ it.each([
     "decision = 'document';"],
   [storePath, 'browser.go?.(approvedIndex - failed.index);',
     'browser.assign(destination.href);'],
-  [storePath, '      browser.reload();', "      browser.assign('https://example.test/');"],
+  [storePath, "loadAndCommit(browser, new URL(browser.currentHref()), 'refresh')",
+    "loadAndCommit(browser, new URL(browser.currentHref()), 'push')"],
+  [storePath, 'loadAndCommit(nextEnvironment, new URL(nextEnvironment.currentHref()), \'refresh\')',
+    'loadAndCommit(nextEnvironment, new URL(nextEnvironment.currentHref()), \'push\')'],
+  [storePath, 'browser.go?.(approvedIndex - restoreFrom);',
+    'browser.replace(browser.currentHref());'],
+  [storePath, "|| restoringIndex !== null) && toSnapshotUrl(browser.currentHref()) !== snapshot.url;",
+    "|| restoringIndex !== null) && toSnapshotUrl(browser.currentHref()) === snapshot.url;"],
+  [storePath, 'new URL(browser.currentHref()), \'refresh\'',
+    "new URL('https://example.test/stale'), 'refresh'"],
+  [storePath, "      cancelPending();\n      failed = null;\n      deferredBack = false;",
+    "      failed = null;\n      deferredBack = false;"],
   [clientPath, "headers.get('X-Fluo-Navigation-Prefetch')", "headers.get('X-Fluo-Navigation-Other')"],
   [dispatchPath, "!hasExistingHeader('set-cookie')", 'true'],
   [dispatchPath, "!hasExistingHeader('cache-control')", 'true'],
   [dispatchPath, 'response.statusCode === 200', 'true'],
-] as const)('rejects changed navigation request or response machinery in %s', (path, original, changed) => {
+] as const)('rejects changed navigation request or response machinery in %s (%s)', (path, original, changed) => {
   // Given: a source variant whose machine-consumed HTTP contract changes.
   const source = sources.get(path);
   expect(source).toBeDefined();

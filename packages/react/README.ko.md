@@ -873,17 +873,24 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 - 정규화된 destination이 현재 route snapshot과 같은 identical URL이면 router는
   `window.location.assign(...)`이나 `window.location.replace(...)`를 호출하지 않습니다. 대신 요청한
   navigation type과 destination을 포함한 `skipped` 상태를 노출합니다.
-- `router.back()`은 `window.history.back()`에 위임합니다. `router.refresh()`는 soft
-  revalidation이 아닌 **전체 문서 reload**를 위해 `window.location.reload()`를 사용하며 RSC,
-  loader, client-data cache를 암시하지 않습니다. #3873이 향후 셸 보존 revalidation과
-  reload 의존 소비자의 migration을 소유합니다.
+- `router.back()`은 `window.history.back()`에 위임합니다. `router.refresh()`는
+  `Promise<ReactRevalidationResult>`를 반환하며 현재 pathname/query를 credential 포함,
+  no-store HTTP navigation loader로 다시 승인받습니다. 성공하면 history 기록이나 fragment
+  손실 없이 최신 props/params를 commit하고 공통 shell/resource는 유지하지만 승인된 page
+  activation마다 page-local state는 reset됩니다. Soft destination이 없으면 document
+  reload를 시작합니다. RSC나 client-data cache를 뜻하지 않습니다. 확정적인 문서
+  새로고침에는 `window.location.reload()`를 사용하세요.
+  [refresh migration](../../docs/getting-started/migrate-react-refresh.ko.md)을 참고하세요.
 - `usePathname()`, `useSearchParams()`, `useParams()`, `useRouterState()`는 provider의 immutable route
   snapshot을 읽습니다. `popstate`/forward는 이전에 방문한 URL도 HTTP에 새로 승인받으며 private
   payload를 cache하지 않습니다. 승인된 URL과 matched params를 함께 갱신하고 fragment-only
   `hashchange`는 기존 server-owned params를 유지합니다.
 - `useNavigation()`은 `idle`, `navigating`, `refreshing`, `complete`, `error`, `skipped`를 노출합니다.
   Soft transition은 검증된 page가 load된 뒤에만 완료되고 정책이 없으면 실패 시 HTTP document로 fallback합니다.
-  `refreshing`은 document reload를 시작합니다. Fragment-only
+  `refreshing`과 type `refresh`는 승인된 page를 유지합니다. 성공은 `complete`, 보존 실패는
+  안전한 type-`refresh` failure와 `error`, 후속 작업 없는 취소는 `idle`을 게시합니다.
+  반환 Promise는 navigation store commit 시 `complete`(browser paint 아님),
+  안전한 `error`, `cancelled`, 또는 document fallback 시작 시 `document`로 정착합니다. Fragment-only
   transition은 일치하는 `hashchange` 이후 현재 document에서 `complete`가 됩니다.
 - Router method는 cross-origin 또는 non-HTTP(S) destination을 `ReactClientNavigationError`로 거부합니다.
   이런 destination에는 일반 anchor를 사용하세요.
@@ -911,8 +918,8 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 `unavailable`, `unsupported-destination`으로 구분하며 앱 callback 실패는 `application-error`로
 정착합니다. 응답 본문으로 인증을 추측하거나 로그아웃 뒤 보호 콘텐츠를 보장하지 않습니다.
 실패한 back/forward는 확인 가능한 history 위치에서 마지막 승인 URL과 화면으로 복구하고
-retry는 새 HTTP 승인을 요청합니다. 기존 `refresh()`는 여전히 reload입니다. 실패 보존
-정책은 **low-level opt-in**으로 유지되지만 v1-to-v2 payload 이주는 breaking 0.x 변경입니다.
+retry는 새 HTTP 승인을 요청합니다. Refresh도 이 **low-level opt-in**을 따르며
+v1-to-v2 payload 이주는 breaking 0.x 변경입니다.
 공식 생성 starter는 network/5xx, incompatible-build 및 복구 가능한 매핑된 import 실패의 보존 정책과 셸 복구
 control을 명시적으로 제공합니다.
 직접 조립한 앱은 `navigationModules`와 `failurePolicy`를 제공하고 셸에
@@ -1351,8 +1358,9 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 
-- `router.refresh()`의 제자리 revalidation. 공식 starter는 이미 network/5xx 및 복구 가능한 매핑된 import 실패의 셸 보존
-  재시도를 제공하지만 low-level provider는 기본적으로 document fallback합니다.
+- mutation 뒤 자동 재검증. Application이 결정한 시점에 `router.invalidate()` 후
+  `router.refresh()`를 await하세요. 공식 starter는 network/5xx 및 복구 가능한 매핑된
+  import 실패를 보존하지만 low-level provider의 기본값은 document fallback입니다.
 - stable RSC root 또는 `@fluojs/react/rsc` subpath. RSC는 명시적으로 불안정한
   `@fluojs/react/experimental/rsc` prototype에서만 제공합니다.
 - 자동 `"use server"` transform/export discovery 또는 built-in Flight renderer/build plugin

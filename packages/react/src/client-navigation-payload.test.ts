@@ -342,6 +342,37 @@ it('loads a built destination with credentials without reusing a private respons
   expect(modules['./navigation-product.ts']).toHaveBeenCalledTimes(2);
 });
 
+it('refreshes an approved current page through a new credentialed HTTP load', async () => {
+  // Given: HTTP can deliver a changed private representation of the current URL.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}${payload.url}#details` } });
+  const fetchResult = vi.fn(async () => new Response(JSON.stringify({
+    ...payload, destination: { ...payload.destination, props: { sku: 'changed' } },
+  }), { headers: { 'Content-Type': MEDIA_TYPE } }));
+  vi.stubGlobal('fetch', fetchResult);
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+  const store = createClientNavigationStore(createReactRouteSnapshot({ url: `${payload.url}#details` }));
+  const reload = vi.fn();
+  const pushState = vi.fn();
+  store.connect({
+    assign: vi.fn(), back: vi.fn(), currentHref: () => `${ORIGIN}${payload.url}#details`,
+    load: (href, signal) => loadReactNavigationDestination(href, modules, { signal }),
+    pushState, reload, replace: vi.fn(), replaceState: vi.fn(), subscribe: () => () => {},
+  });
+
+  // When: the page itself requests fresh HTTP approval.
+  const result = await store.router.refresh();
+
+  // Then: the approved new props commit without consuming a prefetch or changing history.
+  expect(result).toEqual({ status: 'complete' });
+  expect(store.getDestination()?.props).toEqual({ sku: 'changed' });
+  expect(fetchResult).toHaveBeenCalledWith(`${ORIGIN}${payload.url}#details`, {
+    cache: 'no-store', credentials: 'same-origin',
+    headers: { Accept: MEDIA_TYPE }, redirect: 'manual', signal: expect.any(AbortSignal),
+  });
+  expect(pushState).not.toHaveBeenCalled();
+  expect(reload).not.toHaveBeenCalled();
+});
+
 it('accepts the HTTP adapter-normalized version parameter and charset', async () => {
   vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(payload), {

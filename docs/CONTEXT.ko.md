@@ -68,7 +68,7 @@ base의 `buildId`를 `ReactModule.forRoot(...)`, 초기 transfer 및 client prov
 A를 유지하세요. [프로덕션 recipe](./guides/react-production-deployment.ko.md) 및
 [v1 이주](./getting-started/migrate-react-production-assets.ko.md)를 참고하세요.
 
-[React 풀스택 제품 계약](./contracts/react-fullstack-product.ko.md)은 향후 CRUD와 장기 주크박스 수용 게이트를 별도로 정의합니다. 현재 `router.refresh()`는 document reload입니다. Low-level 이동 실패는 기본적으로 document fallback하지만 `ReactClientRouterProvider.failurePolicy`는 일시적 network/5xx에서 셸 보존을 opt-in하고 `useNavigation().failure`, 새 HTTP `router.retry()`, 명시적 `router.openDocument()`를 제공합니다. 진행 중인 index 없는 back/forward activation을 무효화하면 browser URL과 page를 일치시키기 위해 해당 일반 문서를 불러옵니다. Vite 예제와 생성 starter는 실패·재시도 동안 실제 자원 생존을 검증합니다. Starter가 공식 기본 정책을 명시적으로 연결하며 #3873은 soft revalidation을 소유합니다.
+[React 풀스택 제품 계약](./contracts/react-fullstack-product.ko.md)은 향후 CRUD와 장기 주크박스 수용 게이트를 별도로 정의합니다. `router.refresh()`는 새 HTTP 승인으로 현재 page를 재검증하고 typed 결과를 반환하며 셸을 유지합니다. 확정적 문서 새로고침에는 `window.location.reload()`를 사용하세요. [소비자 migration](./getting-started/migrate-react-refresh.ko.md)을 참고하세요. Low-level 이동 실패는 기본적으로 document fallback하지만 `ReactClientRouterProvider.failurePolicy`는 일시적 network/5xx에서 셸 보존을 opt-in하고 `useNavigation().failure`, 새 HTTP `router.retry()`, 명시적 `router.openDocument()`를 제공합니다. 진행 중인 index 없는 back/forward activation을 무효화하면 browser URL과 page를 일치시키기 위해 해당 일반 문서를 불러옵니다. Vite 예제와 생성 starter는 실패·재시도 동안 실제 자원 생존을 검증합니다. Starter가 공식 기본 정책을 명시적으로 연결하며 자동 mutation/fetcher 통합은 별도입니다.
 Opt-in `ReactNavigationExperience`는 공통 shell 안에서 승인 page의 pending 알림, local render
 reset, matched `@PageMetadata(...)` head 갱신 및 교체 가능한 focus/scroll 기본값을
 소유합니다. Page-boundary reset은 새 HTTP 승인 `router.retry()`를 대신하지 않으며

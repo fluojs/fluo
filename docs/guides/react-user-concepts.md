@@ -46,7 +46,7 @@ fail through HTTP. Layout, fallback, and metadata factories still require explic
 | **Route** | The effective route compiled from ordinary fluo module/controller metadata. `@Path(...)` writes the same `GET` metadata as `@fluojs/http`; `@fluojs/react/typegen` can project the compiled page catalog into path-only href builders. | **Shipped, intentionally different.** HTTP owns matching, grammar, conflicts, params, versioning, and dispatch. Typegen does not create a route tree or represent versioned routes. |
 | **Layout** | The application `ReactPageRenderer` owns the document shell and shared providers. `@PageLayout(...)` adds optional class/method component-reference metadata that the same renderer composes. | **Shipped.** There is no file ancestry or framework-owned layout router. |
 | **Loading UI** | Ordinary React `Suspense` in the application tree, optionally selected for a page with `@SuspenseFallback(...)`. | **Shipped with a narrow boundary.** The fallback covers descendants that suspend during SSR; it does not observe handler `await`, forms, effects, or navigation. |
-| **Data read / loader** | Read data in the `@Path(...)` handler through explicit application providers after HTTP DTO binding and validation, then pass the result to the React element. | **Shipped, intentionally different.** There is no loader runtime, loader cache, or client revalidation contract. |
+| **Data read / loader** | Read data in the `@Path(...)` handler through explicit application providers after HTTP DTO binding and validation, then pass the result to the React element. `router.refresh()` repeats current-page HTTP approval. | **Shipped, intentionally different.** There is no separate loader runtime or loader cache; refresh is explicit, not automatic after mutation. |
 | **Mutation / action** | Submit a native form to an ordinary `@Post(...)` handler, bind and validate it with `@RequestDto(...)`, apply normal guards/interceptors, mutate application state, and redirect with `303 See Other` when appropriate. Call `router.invalidate()` and/or change `prefetchScope` before further in-document navigation after an auth/data mutation. | **Shipped, intentionally different.** There is no compiled action, fetcher, optimistic-state, or automatic cache revalidation. |
 | **Navigation** | Use a real `<a>` or `Link` from `@fluojs/react/client`; use `router.push(...)`, `router.replace(...)`, `router.back()`, or `router.refresh()` for controls. Pass build-produced importers to `ReactClientRouterProvider` to render an HTTP-approved destination in an application-owned page slot; opt into public speculation with `Link prefetch="hover"` or `"viewport"` and provider `prefetchScope`. | **Shipped, intentionally different.** Compatible pages navigate softly with server-confirmed URL/params and browser history; other destinations use document navigation. There is no client route matcher or general document/data cache. Prefetch is off by default and can reuse only explicitly granted public navigation JSON once. |
 | **Pending state** | `ReactNavigationExperience` shows an opt-in polite navigation status outside the retained page slot; `useNavigation()` remains the lower-level lifecycle and React `Suspense` covers descendants. | **Shipped for navigation only.** There is no shared form submit-state helper or loader/action pending model. |
@@ -56,15 +56,17 @@ fail through HTTP. Layout, fallback, and metadata factories still require explic
 | **Hydration** | The official starter transfers the HTTP-selected initial destination in escaped JSON (64 KiB limit), resolves its built importer, and hydrates the same request URL, params, props, and shared provider. Custom low-level renderers may still supply explicit assets through `createReactServerEntry(...)`. | **Shipped in the starter.** The application chooses JSON-only props and excludes secrets/DI; low-level custom documents own their composition. |
 | **Build assets** | The application loads its Vite manifest and gives that value to `createReactViteAssetManifest(...)` from `@fluojs/react/vite`; the application document emits returned CSS and hydration options. | **Shipped.** fluo does not discover manifests, run Vite, generate bundles, or choose static-file/CDN hosting. |
 
-For the current client, `router.refresh()` reloads the **document** rather than revalidating
-data in place; `router.invalidate()` only clears pending navigation and public prefetch state.
+For the current client, `router.refresh()` revalidates the current page through fresh
+credentialed HTTP approval while keeping the shared shell. Its typed Promise settles on
+navigation-store commit, preserved error, cancellation or initiated document fallback;
+approved page-local state resets. `router.invalidate()` only clears pending navigation and public prefetch state.
 Transient failed soft loads default to a full document; `failurePolicy` on the same provider
 can opt into preserving the approved shell/page for network/5xx, exposing
 `useNavigation().failure` and fresh `router.retry()` / explicit `router.openDocument()`.
 The production Vite example exercises this opt-in; the official generated starter explicitly
 selects the network/5xx and recoverable mapped import-failure preservation policy and shell recovery controls. Shell-preserving
-refresh with consumer migration (#3873) remains a
-separate target, not a shipped loader cache. Auth refusal is not a transient retry,
+refresh is explicit, not a loader cache or an automatic post-mutation action.
+See the [refresh migration](../getting-started/migrate-react-refresh.md). Auth refusal is not a transient retry,
 and explicit reload/logout may intentionally end the shell. See the product contract for each
 journey's separate success, failure, cancellation and verification surface.
 

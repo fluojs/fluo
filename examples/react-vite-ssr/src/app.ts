@@ -100,9 +100,19 @@ class CatalogMutationGuard implements Guard {
   }
 }
 
+class CatalogReadGuard implements Guard {
+  canActivate(context: GuardContext): boolean {
+    context.requestContext.response.setHeader('x-example-read-guard', 'approved');
+    return true;
+  }
+}
+
 class CatalogMutationInterceptor implements Interceptor {
+  readonly #requestId = randomBytes(8).toString('hex');
+
   async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
     context.requestContext.response.setHeader('x-example-interceptor', 'request-scoped');
+    context.requestContext.response.setHeader('x-example-request-scope', this.#requestId);
     return next.handle();
   }
 }
@@ -181,6 +191,8 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     }))
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
+    @UseGuards(CatalogReadGuard)
+    @UseInterceptors(CatalogMutationInterceptor)
     show(input: ProductPageRequest, context: RequestContext) {
       const productName = this.catalog.findName(input.sku);
       const preview = input.preview === 'true';
@@ -312,6 +324,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
         middleware: [CatalogRequestMiddleware],
         providers: [
           CatalogMutationGuard,
+          CatalogReadGuard,
           ProductCatalog,
           {
             provide: CatalogMutationInterceptor,
