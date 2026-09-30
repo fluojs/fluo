@@ -1,7 +1,7 @@
 ---
 '@fluojs/react': minor
 '@fluojs/http': patch
-'@fluojs/cli': patch
+'@fluojs/cli': minor
 ---
 
 Require v2 React navigation payloads and build identity for production navigation; derive the identity from the complete Vite manifest and asset base. The generated React starter serves hashed same-origin assets and offers explicit recovery across deployments.
