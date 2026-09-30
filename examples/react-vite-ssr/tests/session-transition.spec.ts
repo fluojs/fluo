@@ -189,3 +189,44 @@ test('403 stays forbidden and a confirmed permissions save is separate from its 
   expect(posts).toHaveLength(1);
   console.log(JSON.stringify({ observation: 'session-permission-denial', posts: posts.length, identityRetained: true }));
 });
+
+test('anonymous 401 keeps approval and external HttpOnly logout is applied only on a fresh credentialed 401', async ({ page }) => {
+  // Given: approved session A and a credential-omitted speculative request.
+  await page.goto('/catalog/session');
+  await connected(page);
+  await login(page, 'a');
+  const speculative = page.waitForResponse((response) =>
+    new URL(response.url()).searchParams.get('speculative') === '1');
+  await page.getByRole('link', { name: 'Speculate protected', exact: true }).hover();
+  const anonymous = await speculative;
+  expect(anonymous.status()).toBe(401);
+  expect(anonymous.headers()['x-fluo-navigation-prefetch']).toBeUndefined();
+  expect(await page.locator('[data-session-state]').textContent()).toContain('demo:a');
+  expect(await page.locator('[data-product="private-a"]').count()).toBe(1);
+  await page.getByRole('textbox', { name: 'Protected draft' }).fill('Private A external change');
+  // When: HTTP changes the shared HttpOnly cookie without a browser app notification.
+  const logout = await page.request.post('/catalog/session/logout', {
+    form: { csrf: 'catalog-demo-token' },
+    headers: { Origin: new URL(page.url()).origin },
+    maxRedirects: 0,
+  });
+  expect(logout.status()).toBe(303);
+  expect(await page.locator('[data-product="private-a"]').count()).toBe(1);
+  await watch(page, '[data-session-state]', 'signed-out');
+  const fresh = page.waitForResponse((response) => response.request().method() === 'GET'
+    && response.request().headers().accept?.includes('react-navigation') === true
+    && new URL(response.url()).search === '');
+  await page.getByRole('button', { name: 'Session refresh', exact: true }).click();
+  expect((await fresh).status()).toBe(401);
+  await settled(page);
+  // Then: fresh HTTP revokes protected content/head/input and a distinct login recovers.
+  expect(await page.locator('[data-product="private-a"]').count()).toBe(0);
+  expect(await page.getByRole('textbox', { name: 'Protected draft' }).count()).toBe(0);
+  expect(await page.locator('head title').allTextContents()).not.toContain('Protected a');
+  await login(page, 'b');
+  expect(await page.locator('[data-product="private-a"]').count()).toBe(0);
+  console.log(JSON.stringify({
+    observation: 'session-external-cookie-and-speculation',
+    anonymous: 401, beforeFreshRead: 'approved-a', fresh: 401, recovered: 'b',
+  }));
+});
