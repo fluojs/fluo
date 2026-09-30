@@ -47,6 +47,49 @@ Keep each invocation in a fresh `results/<head-sha>/discovery/` or
 `results/<head-sha>/regression/` directory. The gate rejects nonempty output
 directories so a failed retry cannot reuse an older receipt.
 
+For #3885's **server-only before/after assessment**, coordinate an exclusive
+representative-host window first, then use the same frozen builds and four
+production apps with `node src/run-server-only.mjs --output-dir
+results/$(git rev-parse HEAD)/before` (or `after` on the verified new head).
+This runs the existing seeded production journeys with the frozen four profiles,
+two warmups, five independent runs per app and alternating order, but **does
+not run development edits or use client metrics in its decision**. `server-verdict.json`
+filters the unchanged evaluator to cold/warm TTFB, throughput, error rate,
+CPU, and RSS; all raw production observations, quality failures, exact browser
+version and environment remain in per-run `traces/`. Its verdict applies only
+to this server subset, not the 22-metric product gate. Browser
+`shellArrivalMs` is first-contentful-paint, so a separately gated direct
+HTTP socket proves shell delivery rather than silently renaming that metric.
+Each profile also records two warmups and five direct Node loopback socket
+samples of the same built Fluo public listing in `<profile>-socket.json`:
+first body byte and identifiable shell marker are measured independently.
+These socket samples do **not** inherit the browser's tablet CPU/network
+emulation and have no invented numeric SLA.
+The runner fingerprints tracked and untracked source inputs, the isolated and
+root lockfiles, the four app build trees and directly linked Fluo build trees.
+It emits per-slot correctness/measurement and completed-trace events so an
+interrupted profile can be located without treating partial traces as a receipt.
+SIGINT/SIGTERM cancels the pending measurement and reaps all owned server
+groups before writing a nonpassing verdict. A 15-minute per-profile execution
+deadline aborts a stalled measurement; it is an operational runner deadline,
+not a new performance or slow-client SLA. A forced coordinator/runner SIGKILL
+cannot execute JavaScript cleanup: inspect and reap any proven owned detached
+groups before another run. A dirty-source fingerprint never proves an untouched
+historical baseline or a later committed head.
+For short coordinated windows, append `--profile desktop-native` (or another
+frozen profile name) and use a fresh profile-specific output root. This preserves
+the full two-warmup/five-run alternating workload for that profile. The verdict
+still evaluates the unchanged four-profile baseline: a single-profile receipt
+cannot pass the server subset. Aggregate only complete profile receipts whose
+source, build and lockfile fingerprints match, retaining each original root
+and checking all raw trace paths under the common exact-head result root.
+`src/buffered-memory.mjs` separately probes buffered body sizes/concurrency
+under the same exclusive window: pass `--body-bytes`, `--concurrency` and
+`--output results/<head-sha>/<window>/<case>.json`. The reported RSS and
+array-buffer peaks are process observations, not an adapter output limit;
+the chunk-plus-result value describes the temporary two-copy collection
+mechanism, not a measured whole-process ceiling.
+
 The PR workflow runs `test:smoke` for suite changes after the isolated frozen install
 and a root build within the existing 16-task catalog's conditional `static` task;
 HTTP comparison retains its separate `isolated-benchmark` selector. It is a correctness and deterministic size/request-count gate, not

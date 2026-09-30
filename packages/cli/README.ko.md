@@ -172,6 +172,8 @@ document shell, server/client route snapshot wiring을 함께 다루지 않습�
 `@Router(...)` / `@Path(...)` handler가 HTTP 검증 DTO data로
 `ReactNavigationPage.create(page, { module, props })`를 반환하므로 기존 HTTP
 dispatcher가 계속 authoritative합니다.
+Production shell 전달은 host/proxy가 전체 body를 모으지 않고 chunk를 전달해야 합니다.
+[Fastify streaming 레시피](../platform-fastify/README.ko.md#스트리밍-응답)를 참고하세요.
 
 React `dev` script는 이제 직접 실행한 CLI와 동일한 `fluo dev` 경로로 위임합니다.
 의존성 설치 후 어느 경로든 수동 production build 없이 시작합니다. Vite가 SSR entry를

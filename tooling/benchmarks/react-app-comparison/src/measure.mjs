@@ -43,7 +43,9 @@ export async function collectMeasurements(config, driver, directory) {
   const runs = [];
   const warmups = [];
   for (const item of plan) {
+    console.log(`MEASUREMENT_STAGE=${item.runId}/${item.framework}/check`);
     const correctness = await driver.check(item, config);
+    console.log(`MEASUREMENT_STAGE=${item.runId}/${item.framework}/${correctness.pass ? 'measure' : 'correctness-failed'}`);
     const observation = correctness.pass ? await driver.measure(item, config) : { metrics: {}, unavailable: {} };
     const metrics = observation.metrics ?? {};
     for (const [name, value] of Object.entries(metrics)) {
@@ -70,6 +72,7 @@ export async function collectMeasurements(config, driver, directory) {
       metrics,
     };
     (item.warmup ? warmups : runs).push(run);
+    console.log(`MEASUREMENT_TRACE_COMPLETE=${trace}`);
   }
   return { schemaVersion: 1, provenance: config.provenance, profile: config.profile, mode: config.mode, warmups, runs };
 }

@@ -112,6 +112,19 @@ Browser 명령은 workspace package와 예제를 다시 build하고, build된 se
 non-200 response, hydration warning/error, identifier-prefix mismatch, hydrate되지 않는 counter,
 URL과 server-rendered route state가 일치하지 않는 client navigation, `POST` → `303` → `GET` flow를
 완료하지 못하는 native form이 있으면 실패합니다.
+`src/app.test.ts`는 별도 gate가 있는 Suspense descendant의 실제 Fastify HTTP socket 전달,
+pending read 및 일시 정지된 client의 disconnect 정리, 점진적으로 flush하는 gzip proxy와
+body 전체를 버퍼링하는 proxy도 검증합니다. `tests/ssr-delivery.spec.ts` production test는
+`REACT_SSR_DELIVERY_PROBE=1`로 **빌드된** 예제를 시작합니다. 일반 DTO-bound product
+route의 application middleware, CSP와 빌드 asset route를 유지하면서 HTTP test-only
+release endpoint로 recommendations descendant를 제어합니다. 빌드된 route에서
+실제 Node HTTP socket을 통해 flush된 gzip과 body 전체를 버퍼링한 gzip proxy
+결과도 검증합니다. 일반 `build`/`start`
+경로에서는 이 flag를 설정하지 않으면 endpoint를 등록하지 않습니다. Browser 첫 paint는 socket의 첫 shell byte가
+아닙니다. Page handler가 필수 데이터를 `await`한다면 해당 `await`이 끝나기 전에는
+stream을 시작할 수 없습니다. 테스트한 압축 경계는
+[Fastify streaming 레시피](../../packages/platform-fastify/README.ko.md#스트리밍-응답)에 있으며
+테스트하지 않은 cloud proxy에 대한 보장은 아닙니다.
 
 ## 협상된 destination workflow
 

@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { METRICS as EVALUATOR_METRICS } from '../src/evaluate.ts';
 import { collectDevMeasurements, collectMeasurements, mergeEvidence, PROFILES, planMeasurements, verifyTraceFiles } from '../src/measure.mjs';
 import { createBrowserDriver } from '../src/measure-browser.mjs';
+import { readSocketShell } from '../src/socket-shell.mjs';
 
 const frameworks = ['fluo', 'next', 'react-router', 'tanstack-start'];
 const config = {
@@ -16,6 +18,47 @@ const config = {
   apps: Object.fromEntries(frameworks.map((framework) => [framework, `http://127.0.0.1/${framework}`])),
   provenance: { browser: 'Chromium pinned', runtime: 'Node pinned', builds: { fluo: 'build command' }, lockfile: 'sha256:abc', dataset: 'fixture-v1' },
 };
+
+test('direct socket sample identifies body bytes rather than response headers or browser paint', { timeout: 5_000 }, async () => {
+  // Given: an HTTP body whose identifiable shell is emitted before its gated end.
+  let release = () => {};
+  let produced = () => {};
+  const gate = new Promise((resolve) => { release = resolve; });
+  const firstChunk = new Promise((resolve) => { produced = resolve; });
+  const server = createServer((request, response) => {
+    if (request.url === '/missing') {
+      response.end('no catalog shell');
+      return;
+    }
+    response.write('<h1>Product catalog</h1>');
+    produced();
+    void gate.then(() => response.end('<p>descendant</p>'));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const url = new URL(`http://127.0.0.1:${address.port}/`);
+
+    // When: a real Node HTTP reader receives the gated response.
+    const samplePromise = readSocketShell(url);
+    await firstChunk;
+    release();
+    const sample = await samplePromise;
+
+    // Then: both byte and shell-marker arrival are separate observed body events.
+    assert.equal(sample.statusCode, 200);
+    assert.equal(sample.contentEncoding, 'identity');
+    assert.ok(sample.bytes >= Buffer.byteLength('<h1>Product catalog</h1><p>descendant</p>'));
+    assert.ok(sample.firstByteMs >= sample.headersAtMs);
+    assert.ok(sample.shellMarkerMs >= sample.firstByteMs);
+    await assert.rejects(readSocketShell(new URL('/missing', url)), /Missing complete socket shell/);
+  } finally {
+    release();
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
 
 test('alternates all four frameworks across warmup and independent samples', () => {
   // Given: one warmup and three measured cycles.

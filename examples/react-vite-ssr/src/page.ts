@@ -33,6 +33,7 @@ const preserveTransientNavigation: ReactNavigationFailurePolicy = (failure) =>
 
 export type ProductDocumentProps = {
   readonly adminPage?: 'qr' | 'songs';
+  readonly recommendationsGate?: Promise<void>;
   readonly preview: boolean;
   readonly productName: string;
   readonly navigationModules?: ReactNavigationModules;
@@ -201,6 +202,7 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void
 
 export function ProductDocument({
   adminPage,
+  recommendationsGate,
   preview,
   productName,
   navigationModules,
@@ -214,7 +216,7 @@ export function ProductDocument({
 }: ProductDocumentProps) {
   const identifier = useId();
   const [LazyRecommendations] = useState(() => lazy(async () => {
-    await new Promise<void>((resolve) => setTimeout(resolve, RECOMMENDATIONS_DELAY_MS));
+    await (recommendationsGate ?? new Promise<void>((resolve) => setTimeout(resolve, RECOMMENDATIONS_DELAY_MS)));
     const { Recommendations } = await import('./recommendations');
     return { default: Recommendations };
   }));

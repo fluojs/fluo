@@ -79,6 +79,19 @@ byte bands describe each host's observed wire cost, not equal-codec ratios.
 An inconclusive sample is not a pass. Do not generalize an emulated profile to devices
 that were never tested.
 
+For #3885, [the suite's server-only runner](../../tooling/benchmarks/react-app-comparison/README.md)
+retains the four profiles and their frozen repetition/noise rules but assesses
+only production server TTFB, throughput/error rate, CPU and RSS. It does not
+run development edits or claim a complete 22-metric verdict. Its browser
+first-contentful-paint remains `shellArrivalMs`, **not** the socket's
+first received shell byte. A separately gated actual Fastify socket tests
+shell delivery and request-abort cleanup; a paused client tests
+`write(false)`/drain-or-close and request-scope disposal. A gzip proxy that
+flushes incrementally can deliver a decoded shell before the descendant
+resolves, while a proxy that collects the full body before gzip buffers it.
+Buffered hosts are measured independently at declared body sizes and
+concurrency. Node's writable high-water mark cannot cap total RSS.
+
 The pull-request smoke gates correctness and deterministic size/request counts without
 using one shared-runner timing result to reject a merge. The separate representative
 performance workflow fails on confirmed regression, retains the failure trace, and

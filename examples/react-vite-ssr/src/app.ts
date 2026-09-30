@@ -46,6 +46,10 @@ const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js)$/u;
 
 export type ReactViteExampleModuleOptions = {
   readonly clientDirectory: URL;
+  readonly deliveryProbe?: {
+    readonly pending: Promise<void>;
+    readonly release: () => void;
+  };
   readonly manifest: unknown;
 };
 
@@ -155,6 +159,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     const nonce = randomBytes(16).toString('base64');
     return createReactServerEntry(cloneElement(page, {
       initialPage,
+      ...(options.deliveryProbe ? { recommendationsGate: options.deliveryProbe.pending } : {}),
       routeMetadata: initialPage?.payload.metadata,
     }), {
       ...assets.hydrationOptions,
@@ -247,6 +252,15 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
 
   const PrefetchPageRouter = createPrefetchPageRouter(assets.css);
 
+  @Controller('/__delivery-probe')
+  class DeliveryProbeController {
+    @Post('/release')
+    release() {
+      options.deliveryProbe?.release();
+      return { released: true };
+    }
+  }
+
   @Controller('/assets')
   class ViteAssetController {
     @Get('/:file')
@@ -273,7 +287,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
   }
 
   @Module({
-    controllers: [ViteAssetController],
+    controllers: [ViteAssetController, ...(options.deliveryProbe ? [DeliveryProbeController] : [])],
     imports: [
       ReactModule.forRoot({
         controllers: [ProductPageRouter, AdminPageRouter, PrefetchPageRouter],

@@ -72,6 +72,18 @@ profile로 측정하지 않은 기기까지 결과를 일반화하지 않습니�
 Desktop viewport는 1440 × 900, 태블릿급 viewport는 820 × 1180이며
 태블릿급 CPU는 4배 감속, downlink는 1.6 Mbps로 에뮬레이션합니다.
 물리적 태블릿 측정 결과는 아닙니다.
+
+#3885의 [suite server-only runner](../../tooling/benchmarks/react-app-comparison/README.md)는
+동결된 네 profile의 반복 및 noise 규칙을 유지하되 production server의 TTFB,
+throughput/error rate, CPU, RSS만 평가합니다. 개발 편집을 실행하거나 22개
+metric 전체의 verdict를 주장하지 않습니다. Browser의 first-contentful-paint인
+`shellArrivalMs`는 실제 socket에서 처음 받은 shell byte가 **아닙니다**.
+별도 gate가 있는 Fastify 실제 socket에서 shell 전달과 request-abort 정리를
+검증하고, 읽기를 멈춘 client에서 `write(false)`/drain 또는 close 및 request-scope
+폐기를 검증합니다. 점진적으로 flush하는 gzip proxy는 descendant 해제 전
+압축 해제된 shell을 전달할 수 있지만 전체 body를 모은 뒤 gzip하는 proxy는
+이를 버퍼링합니다. Buffered host는 선언한 body 크기와 concurrency에서
+따로 측정합니다. Node writable high-water mark는 전체 RSS 상한이 아닙니다.
 Native profile은 각 host의 기본 cache 동작을 유지하고, matched-cache
 profile은 네 앱 모두에서 browser cache 재사용을 비활성화합니다. Fluo가
 압축 없이 보낸 asset을 경쟁 앱의 gzip 응답과 동등한 압축 전송량으로

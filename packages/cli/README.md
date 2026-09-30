@@ -172,6 +172,9 @@ the document shell, or the server/client route snapshot wiring. Both explicit `@
 `@Path(...)` handlers in `src/app.ts` return `ReactNavigationPage.create(page, { module, props })`
 with their HTTP-validated DTO data, so the existing HTTP
 dispatcher remains authoritative.
+Production shell delivery depends on the host/proxy forwarding chunks instead of
+collecting the whole body; see the
+[Fastify streaming recipe](../platform-fastify/README.md#streaming-responses).
 
 The React `dev` script now delegates to the same `fluo dev` path as a direct CLI invocation.
 After dependency installation, either starts without an application production build:
