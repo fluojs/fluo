@@ -1,11 +1,12 @@
 import { execFile, spawn } from 'node:child_process';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';
 import { PROFILES } from './measure.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
+import { installInitialReadiness, waitForInitialReadiness } from './initial-readiness.mjs';
 
 const JOURNEYS = ['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox'];
 const execFileAsync = promisify(execFile);
@@ -277,12 +278,14 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
     },
     async measure(item) {
       const { context, page, cdp } = await createPage(item);
+      await installInitialReadiness(page);
       const requests = [];
       const qualityFailures = [];
       const network = new Map();
+      const networkChanges = new EventEmitter();
       let phase = 'cold';
       let collecting = true;
-      cdp.on('Network.requestWillBeSent', ({ requestId, request, type, redirectResponse }) => {
+      cdp.on('Network.requestWillBeSent', ({ requestId, loaderId, initiator, timestamp, request, type, redirectResponse }) => {
         if (!collecting) return;
         if (redirectResponse) {
           const previous = network.get(requestId);
@@ -293,6 +296,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           });
         }
         network.set(requestId, {
+          requestId, loaderId, initiator, startedTimestamp: timestamp,
           url: request.url, resourceType: type?.toLowerCase() ?? 'other', phase,
           documentUrl: page.url(), pageClosed: page.isClosed(), status: null,
           compressedBodyBytes: 0,
@@ -317,15 +321,18 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           entry.bodyBytes = (entry.bodyBytes ?? 0) + dataLength;
         }
       });
-      cdp.on('Network.loadingFailed', ({ requestId, errorText }) => {
+      cdp.on('Network.loadingFailed', ({ requestId, errorText, canceled, timestamp }) => {
         const entry = network.get(requestId);
         if (!collecting || !entry) return;
-        requests.push({ ...entry, kind: 'request-failed', error: errorText });
+        requests.push({ ...entry, kind: 'request-failed', error: errorText, canceled,
+          settledPhase: phase, settledTimestamp: timestamp });
         network.delete(requestId);
+        networkChanges.emit('settled');
       });
-      cdp.on('Network.loadingFinished', ({ requestId, encodedDataLength }) => {
+      cdp.on('Network.loadingFinished', ({ requestId, encodedDataLength, timestamp }) => {
         const entry = network.get(requestId);
         if (!collecting || !entry) return;
+        Object.assign(entry, { settledPhase: phase, settledTimestamp: timestamp });
         if (entry.status === null || (entry.bodyBytes === undefined && ![204, 205, 304].includes(entry.status))) {
           const reason = entry.status === null ? 'HTTP response status unavailable'
             : 'decoded body bytes unavailable: no Network.dataReceived event';
@@ -338,22 +345,61 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           requests.push({ ...entry, transferBytes: encodedDataLength, bodyBytes: entry.bodyBytes ?? 0 });
         }
         network.delete(requestId);
+        networkChanges.emit('settled');
       });
       try {
         const listing = new URL(config.journeys.listing.path, item.url).href;
         await page.goto(listing, { waitUntil: 'load' });
+        const initialReadiness = await waitForInitialReadiness(page);
+        // Subscribe before checking the identity inventory: no lost settlement event,
+        // no network-idle heuristic and no waiting for unrelated speculative RSC.
+        await new Promise((accept, reject) => {
+          const check = () => {
+            if ([...network.values()].some((entry) => entry.phase === 'cold'
+              && ['document', 'script', 'stylesheet'].includes(entry.resourceType))) return;
+            cleanup();
+            accept();
+          };
+          const timeout = setTimeout(() => {
+            cleanup();
+            reject(new Error('initial React completion resource timeout'));
+          }, 10_000);
+          const cleanup = () => {
+            clearTimeout(timeout);
+            networkChanges.off('settled', check);
+          };
+          networkChanges.on('settled', check);
+          check();
+        });
+        const failedInitialResources = requests.filter((entry) => entry.phase === 'cold'
+          && ['document', 'script', 'stylesheet'].includes(entry.resourceType) && entry.error);
+        if (failedInitialResources.length) throw new Error('initial React completion resource failure');
         const cold = await page.evaluate(() => ({
           navigation: performance.getEntriesByType('navigation')[0]?.toJSON() ?? null,
           lcp: window.__benchmarkLcp,
           hydration: performance.getEntriesByName('hydration')[0]?.duration ?? null,
           shell: performance.getEntriesByName('shell-arrival')[0]?.startTime ?? null,
         }));
-        const clientWork = initialClientWork(
-          (await cdp.send('Performance.getMetrics')).metrics,
-          await page.evaluate(() => performance.getEntriesByType('paint').map((entry) => ({
-            name: entry.name, startTime: entry.startTime,
-          }))),
-        );
+        const initialCdpMetrics = (await cdp.send('Performance.getMetrics')).metrics;
+        const initialPaintEntries = await page.evaluate(() => performance.getEntriesByType('paint').map((entry) => ({
+          name: entry.name, startTime: entry.startTime,
+        })));
+        const clientWork = initialClientWork(initialCdpMetrics, initialPaintEntries);
+        const initialRequests = [
+          ...requests.filter((request) => request.phase === 'cold'),
+          ...[...network.values()].filter((request) => request.phase === 'cold')
+            .map((request) => ({ ...request, kind: 'request-pending',
+              unavailable: 'request still in flight at initial completion boundary' })),
+        ];
+        const initialBoundary = {
+          readiness: initialReadiness,
+          sampledAt: await page.evaluate(() => performance.now()),
+          cdpMetrics: initialCdpMetrics,
+          paintEntries: initialPaintEntries,
+          requests: initialRequests,
+          pendingAtWarmTrigger: [...network.values()].map((entry) => ({ ...entry })),
+        };
+        initialBoundary.warmTriggeredAt = await page.evaluate(() => performance.now());
         phase = 'warm';
         await page.goto(listing, { waitUntil: 'load' });
         const warm = await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.toJSON() ?? null);
@@ -403,7 +449,6 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           qualityFailures.push(`request pending at capture boundary: ${entry.url}`);
         }
         network.clear();
-        const initialRequests = requests.filter((request) => request.phase === 'cold');
         const metrics = {};
         const unavailable = {};
         if (cold.navigation) {
@@ -460,7 +505,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           }
         }
         return {
-          metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions },
+          metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions, initialBoundary },
           artifacts: {
             cachePolicy: item.mode,
             browserCacheDisabled: cacheSettings(item.mode).cacheDisabled,
@@ -472,7 +517,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             rscMethod: 'separate text/x-component responses only; inline RSC data stays in document bytes',
             fullJourneyRequestCount: requests.length,
             shellArrivalMethod: 'first-contentful-paint',
-            clientWorkMethod: 'CDP Performance.TaskDuration for initial navigation, not hydration alone',
+            clientWorkMethod: 'CDP Performance.TaskDuration through react-initial-completion-v1, not hydration alone',
           },
         };
       } finally {

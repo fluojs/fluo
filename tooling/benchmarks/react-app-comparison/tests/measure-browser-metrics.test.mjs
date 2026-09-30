@@ -4,10 +4,122 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
 
 import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
+import { installInitialReadiness, waitForInitialReadiness } from '../src/initial-readiness.mjs';
+
+const appRequire = createRequire(new URL('../apps/fluo/package.json', import.meta.url));
+const { build } = await import(appRequire.resolve('vite'));
+const fixtureBuild = await build({
+  configFile: false, logLevel: 'silent',
+  plugins: [{
+    name: 'real-react-readiness-fixture',
+    resolveId(id) {
+      if (id.endsWith('virtual:readiness-test')) return '\0readiness-test';
+      if (id === 'react' || id === 'react-dom/client') return appRequire.resolve(id);
+    },
+    load(id) {
+      if (id !== '\0readiness-test') return;
+      return `
+        import { createElement, Suspense, lazy, useEffect, useState } from 'react';
+        import { createRoot } from 'react-dom/client';
+        const Never = lazy(() => new Promise(() => {}));
+        const Gated = lazy(() => new Promise((accept) => {
+          window.__releaseInitial = () => accept({ default: Ready });
+        }));
+        function Ready() {
+          const [ready, setReady] = useState(false);
+          useEffect(() => { setReady(true); window.__fixturePassive?.(); }, []);
+          return createElement('span', { 'data-initial-effect': String(ready) }, 'Ready');
+        }
+        const node = document.createElement('div');
+        document.body.append(node);
+        createRoot(node).render(['/suspended', '/gated'].includes(location.pathname)
+          ? createElement(Suspense, { fallback: createElement(Ready) },
+            createElement(location.pathname === '/gated' ? Gated : Never))
+          : createElement(Ready));
+      `;
+    },
+  }],
+  define: { 'process.env.NODE_ENV': '"production"' },
+  build: { write: false, lib: { entry: 'virtual:readiness-test', name: 'ReadinessFixture', formats: ['iife'] } },
+});
+const fixtureScript = (Array.isArray(fixtureBuild) ? fixtureBuild[0] : fixtureBuild)
+  .output.find((entry) => entry.type === 'chunk').code;
+const fixtureHtml = (body) => `${body}<script src="/real-react.js"></script>`;
+function fixtureResponse(request, response) {
+  if (request.url !== '/real-react.js') return false;
+  response.writeHead(200, { 'content-type': 'text/javascript' });
+  response.end(fixtureScript);
+  return true;
+}
+
+test('collector cannot sample cold metrics or start warm with unresolved real React Suspense', { timeout: 25_000 }, async () => {
+  let documents = 0;
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
+    documents++;
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(fixtureHtml('<!doctype html><h1>SSR shell, not complete React</h1>'));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const journeys = Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+    .map((name) => [name, { path: '/suspended' }]));
+  const driver = await createBrowserDriver({
+    journeys, provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    await assert.rejects(driver.measure({
+      framework: 'fluo', runId: 'unresolved-suspense', device: 'desktop', mode: 'native',
+      url: `http://127.0.0.1:${server.address().port}/`,
+    }), /initial React completion/u);
+    assert.equal(documents, 1, 'a visible SSR shell must not trigger warm navigation');
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('first real root commit and fallback passive effect cannot complete pending Suspense', { timeout: 15_000 }, async () => {
+  const { chromium } = await import('@playwright/test');
+  const browser = await chromium.launch({ headless: true });
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(fixtureHtml('<!doctype html><h1>SSR shell</h1>'));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  try {
+    const page = await browser.newPage();
+    let acceptPassive;
+    const passive = new Promise((accept) => { acceptPassive = accept; });
+    await page.exposeBinding('__fixturePassive', () => acceptPassive());
+    await installInitialReadiness(page);
+    await page.goto(`http://127.0.0.1:${server.address().port}/gated`);
+    await passive;
+    assert.equal(await page.evaluate(() => window.__benchmarkInitialReadiness.completedAt), null);
+    await page.evaluate(() => window.__releaseInitial());
+    const readiness = await waitForInitialReadiness(page);
+    assert.equal(readiness.events.at(-1).suspensePending, 0);
+    assert.equal(readiness.events.at(-1).passivePending, false);
+    assert.equal(await page.locator('[data-initial-effect]').getAttribute('data-initial-effect'), 'true');
+    assert.ok(readiness.events.some((entry) => entry.suspensePending > 0));
+  } finally {
+    await browser.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
 
 test('waits for a late development stylesheet before accepting its computed marker', { timeout: 10_000 }, async () => {
   const { chromium } = await import('@playwright/test');
@@ -170,6 +282,7 @@ test('records real decoded and compressed asset bytes from browser network event
   const javascript = Buffer.from('window.benchmarkAsset = "decoded browser response";');
   const encoded = gzipSync(javascript);
   const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
     if (request.url === '/asset.js') {
       response.writeHead(200, {
         'content-type': 'text/javascript', 'content-encoding': 'gzip', 'content-length': encoded.length,
@@ -178,7 +291,7 @@ test('records real decoded and compressed asset bytes from browser network event
       return;
     }
     response.writeHead(200, { 'content-type': 'text/html' });
-    response.end('<!doctype html><h1>Listing</h1><script src="/asset.js"></script>');
+    response.end(fixtureHtml('<!doctype html><h1>Listing</h1><script src="/asset.js"></script>'));
   });
   const listening = once(server, 'listening');
   server.listen(0, '127.0.0.1');
@@ -199,8 +312,12 @@ test('records real decoded and compressed asset bytes from browser network event
     assert.equal(script?.status, 200);
     assert.equal(script.bodyBytes, javascript.length);
     assert.equal(script.compressedBodyBytes, encoded.length);
-    assert.equal(observation.metrics.transferredJsBytes, javascript.length);
-    assert.equal(observation.metrics.compressedJsBytes, encoded.length);
+    const initialScripts = observation.timings.initialBoundary.requests.filter((entry) => entry.resourceType === 'script');
+    assert.equal(observation.metrics.transferredJsBytes, initialScripts.reduce((sum, entry) => sum + entry.bodyBytes, 0));
+    assert.equal(observation.metrics.compressedJsBytes, initialScripts.reduce((sum, entry) => sum + entry.compressedBodyBytes, 0));
+    assert.equal(observation.timings.initialBoundary.readiness.method, 'react-initial-completion-v1');
+    assert.ok(observation.timings.initialBoundary.readiness.completedAt <= observation.timings.initialBoundary.sampledAt);
+    assert.ok(observation.timings.initialBoundary.readiness.events.some((entry) => entry.event === 'post-passive'));
     assert.deepEqual(observation.qualityFailures, []);
   } finally {
     await driver.close();
@@ -212,9 +329,10 @@ test('records real decoded and compressed asset bytes from browser network event
 
 test('browser request failures remain in error rate after successful throughput requests', { timeout: 20_000 }, async () => {
   const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
     if (request.url === '/drop') { request.socket.destroy(); return; }
     response.writeHead(200, { 'content-type': 'text/html' });
-    response.end('<!doctype html><h1>Listing</h1><img src="/drop">');
+    response.end(fixtureHtml('<!doctype html><h1>Listing</h1><img src="/drop">'));
   });
   const listening = once(server, 'listening');
   server.listen(0, '127.0.0.1');
@@ -243,10 +361,11 @@ test('browser request failures remain in error rate after successful throughput 
 
 test('full document navigation retains an inconclusive interaction instead of a false approval', { timeout: 20_000 }, async () => {
   const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
     response.writeHead(200, { 'content-type': 'text/html' });
-    response.end(request.url === '/jukebox/qr'
+    response.end(fixtureHtml(request.url === '/jukebox/qr'
       ? '<!doctype html><div data-approved-view="qr">QR destination</div>'
-      : '<!doctype html><div data-benchmark-hydrated="true"><a href="/jukebox/qr">QR</a></div>');
+      : '<!doctype html><div data-benchmark-hydrated="true"><a href="/jukebox/qr">QR</a></div>'));
   });
   const listening = once(server, 'listening');
   server.listen(0, '127.0.0.1');
@@ -276,9 +395,10 @@ test('full document navigation retains an inconclusive interaction instead of a 
 });
 
 test('same-document pushState, replaceState, and hash navigation keep rendered approval', { timeout: 20_000 }, async () => {
-  const server = createServer((_request, response) => {
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
     response.writeHead(200, { 'content-type': 'text/html' });
-    response.end(`<!doctype html><div data-benchmark-hydrated="true">
+    response.end(fixtureHtml(`<!doctype html><div data-benchmark-hydrated="true">
       <a href="/jukebox/qr" data-mode="pushState">Push</a>
       <a href="/jukebox/qr" data-mode="replaceState">Replace</a>
       <a href="#qr" data-mode="hash">Hash</a></div>
@@ -287,7 +407,7 @@ test('same-document pushState, replaceState, and hash navigation keep rendered a
         if (link.dataset.mode === 'hash') location.hash = 'qr';
         else history[link.dataset.mode]({}, '', '/jukebox/qr');
         document.body.insertAdjacentHTML('beforeend', '<div data-approved-view="qr">Rendered QR</div>');
-      });</script>`);
+      });</script>`));
   });
   const listening = once(server, 'listening');
   server.listen(0, '127.0.0.1');

@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 import { PRODUCTS, SESSION_COOKIE, SONGS } from '../fixture/domain.mjs';
+import { installInitialReadiness, waitForInitialReadiness } from '../src/initial-readiness.mjs';
 
 const baseline = JSON.parse(await readFile(new URL('../baseline.json', import.meta.url), 'utf8'));
 const profileIds = [
@@ -10,6 +11,24 @@ const profileIds = [
   'tablet-native',
   'tablet-matched-cache',
 ];
+
+test('initial completion observes actual production React, passive effects and Suspense', async ({ page }, testInfo) => {
+  await installInitialReadiness(page);
+  const response = await page.goto('/', { waitUntil: 'load' });
+  const readiness = await waitForInitialReadiness(page);
+  expect(response?.status()).toBe(200);
+  expect(readiness.method).toBe('react-initial-completion-v1');
+  expect(readiness.completedAt).toBeGreaterThanOrEqual(readiness.loadAt);
+  expect(readiness.events.some((entry) => entry.event === 'post-passive')).toBe(true);
+  const latest = readiness.events.at(-1);
+  expect(latest.isDehydrated).toBe(false);
+  expect(latest.pendingLanes).toBe(0);
+  expect(latest.suspensePending).toBe(0);
+  expect(latest.passivePending).toBe(false);
+  await testInfo.attach('initial-readiness', {
+    body: JSON.stringify(readiness, null, 2), contentType: 'application/json',
+  });
+});
 
 test('the missing-product response displays an error in the production browser', async ({ page }) => {
   // Given: the seeded catalog has no product at this URL.
@@ -37,9 +56,11 @@ test('public listing, detail, and production asset budgets', async ({ page }, te
     responses.push(response);
     if (/\.(?:js|css)(?:\?|$)/u.test(new URL(response.url()).pathname)) assets.push(response);
   });
+  await installInitialReadiness(page);
 
   // When: the anonymous visitor opens the real SSR listing.
   const navigation = await page.goto('/');
+  await waitForInitialReadiness(page);
   expect(navigation?.status()).toBe(200);
 
   // Then: the seeded catalog and route-specific detail are visible.

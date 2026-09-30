@@ -57,6 +57,37 @@ Shell arrival는 first-contentful-paint를, 초기 main-thread work는 hydration
 작업도 포함하는 CDP `Performance.TaskDuration`을 사용합니다. 원시 trace에는
 이 측정 방식과 unavailable 값을 기록하며 RSC 전송 byte를 hydrated client
 work와 동일시하지 않습니다.
+공통 `react-initial-completion-v1` 경계는 load-only cold 수집을 대체합니다.
+entry navigation 전에 기존 hook을 전달 호출하는 React DevTools observer와
+CDP request observer를 설치합니다. Document load 외에도 실제 root의
+`isDehydrated=false`, element 존재, pending root lane 없음, committed Fiber
+tree의 fallback/dehydrated Suspense 없음이 필요합니다. 동결된 passive mask
+`10256`가 있는 commit은 `onPostCommitFiberRoot`까지 기다리며, passive 작업이
+없는 후속 commit은 직접 완료될 수 있습니다. 최초 root commit만이 아니라
+동기 passive effect와 그 effect가 예약한 React update를 관찰합니다. 기존
+`data-benchmark-hydrated` leaf-effect 표식도 true여야 합니다. Cold 소유
+document/script/stylesheet request가 실제 identity로 성공 종료된 뒤 cold CPU,
+asset/request inventory를 수집하고 warm navigation을 시작합니다.
+DOM 존재, 임의 sleep, network-idle을 완료 신호로 쓰지 않습니다.
+
+지원 범위는 hook/Fiber 필드를 확인한 동결 production renderer `19.2.8`과
+Next 내장 `19.3.0-canary-cbb046ab-20260731`입니다. Timeout, observer 부재,
+미지원 renderer, 초기 resource 실패는 load로 대체하지 않고 nonzero/inconclusive로
+처리합니다. 임의의 비동기 effect 작업, 이후 생성되는 root, background prefetch의
+완료 보장은 아닙니다. Next의 native RSC prefetch는 변경하지 않으며 pending/abort를
+별도로 남겨 inconclusive나 error budget 실패를 유지합니다. 원시
+`timings.initialBoundary`에는 renderer, commit/post-passive 상태, load/완료/수집/warm
+시점, CDP metric/paint 원시값, 초기 request와 warm 직전 pending identity를 보존합니다.
+Request에는 loader/request ID, initiator, 종료 phase/시점, cancellation을 남기며
+기존 raw-trace authentication을 그대로 요구합니다.
+
+과거 load-only 데이터는 다른 초기 작업 구간을 수집했고 cold module이 끝나기 전에
+warm을 시작할 수 있었습니다. 보존된 Linux 증거에는 cold script 취소가 있습니다.
+과거 fail/inconclusive는 모두 유지하며, 변경하지 않은 runtime의 before와 최종
+runtime의 after에 **동일하게 교정된 collector**를 적용해 다시 수집해야 비교할 수
+있습니다. 22개 metric 이름/범위, budget, 5회 반복, 2회 warmup, 순서 교대,
+불확실성 규칙과 peer 기본값은 그대로입니다. 네 앱 readiness smoke는 정확성
+증거이며 성능 PASS가 아닙니다.
 별도 `text/x-component` 응답의 인코딩된 wire byte를 따로 기록하고,
 처음 HTML에 inline된 RSC 데이터는 HTML 응답에 남깁니다. 이 값들은
 hydrated JavaScript byte나 초기 main-thread work와 동등하지 않습니다.
