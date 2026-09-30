@@ -1,6 +1,7 @@
 import {
   Component,
   createElement,
+  isValidElement,
   type ErrorInfo,
   type ReactNode,
   useEffect,
@@ -165,18 +166,22 @@ export function ReactNavigationExperience({
     }
   }, [navigation.status, onApprovedNavigation, route]);
 
-  const message = navigation.status === 'navigating'
+  const message = navigation.status === 'refreshing'
+    ? 'Refreshing page'
+    : navigation.status === 'navigating'
     ? 'Loading page'
     : navigation.status === 'error'
       ? 'Navigation failed'
       : navigation.status === 'complete' ? 'Page ready' : '';
   const pageKey = route.url.slice(0, route.url.length - route.hash.length);
+  const activationKey = isValidElement(destination) && destination.key !== null
+    ? `${pageKey}:${destination.key}` : pageKey;
 
   return createElement('div', null,
     ...(route.metadata === undefined ? [] : createReactPageMetadataElements(route.metadata)),
     createElement('p', { 'aria-live': 'polite', role: 'status' }, message || '\u00a0'),
     createElement('div', { id: 'page-slot' },
-      createElement(SafePageBoundary, { key: pageKey },
+      createElement(SafePageBoundary, { key: activationKey },
         createElement(PageRenderBoundary, { renderError }, destination ?? page),
       ),
     ),

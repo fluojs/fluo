@@ -173,6 +173,21 @@ the document shell, or the server/client route snapshot wiring. Both explicit `@
 with their HTTP-validated DTO data, so the existing HTTP
 dispatcher remains authoritative.
 
+The generated shared shell includes `useRouter().refresh()` for an explicit same-page
+credentialed HTTP revalidation: it retains shell resources and history, resets page-local
+state only after approval, and exposes pending/error/retry controls. It returns a typed
+completion result rather than confirming browser paint. Existing generated applications
+that relied on a document reload should use `window.location.reload()` explicitly;
+see the [refresh migration](../../docs/getting-started/migrate-react-refresh.md).
+This is separate from development-time Fast Refresh and does not add automatic
+post-mutation revalidation.
+The starter's product page slot displays the HTTP-approved product name. Its ordinary
+`@Post('/:sku')` handler accepts a DTO-bound name and redirects with `303` to a fresh
+document `GET`; this form also works without JavaScript. To inspect an external update
+without replacing the shell, update the product through that HTTP endpoint and click
+`Refresh current page`: the old value stays visible during the request and a new
+approved name replaces it without a history entry.
+
 The React `dev` script now delegates to the same `fluo dev` path as a direct CLI invocation.
 After dependency installation, either starts without an application production build:
 Vite transforms the SSR entry; a stable development gateway serves the public HTTP port

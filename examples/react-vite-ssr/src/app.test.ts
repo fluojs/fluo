@@ -361,4 +361,45 @@ describe('react-vite-ssr example', () => {
       expect(response.headers['x-example-interceptor']).toBe('request-scoped');
     });
   });
+
+  it('reapproves changed current-page data through the real HTTP dispatcher', async () => {
+    // Given: a DTO-bound page and an authorized external mutation on the same app.
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      manifest: VITE_MANIFEST,
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      const accept = 'application/vnd.fluo.react-navigation+json;v=1';
+      const before = await app.request('GET', '/products/sku-42').query('preview', 'true')
+        .header('Accept', accept).send();
+
+      // When: a native POST updates the backing name, then the same negotiated GET runs again.
+      const mutation = await app.request('POST', '/products/sku-42')
+        .header('x-example-user', 'catalog-editor').body({ name: 'Fresh catalog name' }).send();
+      const after = await app.request('GET', '/products/sku-42').query('preview', 'true')
+        .header('Accept', accept).send();
+      const invalid = await app.request('GET', '/products/x').query('preview', 'true')
+        .header('Accept', accept).send();
+      const document = await app.request('GET', '/products/sku-42').query('preview', 'true').send();
+
+      // Then: each request passes HTTP DTO, guard, interceptor and a new request scope.
+      expect(before.body).toMatchObject({
+        destination: { props: { productName: 'Catalog item sku-42' } },
+      });
+      expect(mutation.status).toBe(303);
+      expect(after.body).toMatchObject({
+        params: { sku: 'sku-42' },
+        destination: { props: { productName: 'Fresh catalog name' } },
+      });
+      expect(after.headers['x-example-read-guard']).toBe('approved');
+      expect(after.headers['x-example-interceptor']).toBe('request-scoped');
+      expect(after.headers['x-example-request-scope']).not.toBe(before.headers['x-example-request-scope']);
+      expect(invalid.status).toBe(400);
+      expect(document.status).toBe(200);
+      expect(document.headers['Content-Type']).toContain('text/html');
+      expect(readHtml(document.body)).toContain('Fresh catalog name');
+    });
+  });
 });

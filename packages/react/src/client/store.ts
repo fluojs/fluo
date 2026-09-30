@@ -13,6 +13,7 @@ import type {
   ReactNavigationFailurePolicy,
   ReactNavigationSnapshot,
   ReactNavigationType,
+  ReactRevalidationResult,
   ReactRouter,
   ReactRouteSnapshot,
 } from './types.js';
@@ -71,12 +72,15 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
   let pending: {
     readonly controller: AbortController;
     readonly href: string;
-    readonly type: DocumentNavigationType | 'back';
+    readonly type: DocumentNavigationType | 'back' | 'refresh';
   } | null = null;
-  let failed: { readonly href: string; readonly type: DocumentNavigationType | 'back'; readonly index: number | null } | null = null;
+  let failed: { readonly href: string; readonly type: DocumentNavigationType | 'back' | 'refresh'; readonly index: number | null } | null = null;
+  let settleRefresh: ((result: ReactRevalidationResult) => void) | null = null;
   let approvedIndex = 0;
   let restoringIndex: number | null = null;
   let invalidatedTraversal = false;
+  let deferredRefresh = false;
+  let deferredBack = false;
   let deferredNavigation: {
     readonly destination: URL;
     readonly type: DocumentNavigationType;
@@ -123,6 +127,8 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     generation += 1;
     pending?.controller.abort();
     pending = null;
+    settleRefresh?.({ status: 'cancelled' });
+    settleRefresh = null;
   };
 
   const prefetchKey = (destination: URL): string | undefined => {
@@ -157,6 +163,8 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     const mustRestore = unapprovedTraversal && browser.go !== undefined
       && activatedIndex !== null && activatedIndex !== undefined;
     cancelPending();
+    deferredRefresh = false;
+    deferredBack = false;
     failed = null;
     deferredNavigation = null;
     if (mustRestore) {
@@ -205,7 +213,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
   const loadAndCommit = (
     browser: ClientNavigationEnvironment,
     destination: URL,
-    type: DocumentNavigationType | 'back',
+    type: DocumentNavigationType | 'back' | 'refresh',
     adopted?: {
       readonly controller: AbortController;
       readonly promise: Promise<ReactNavigationLoadResult>;
@@ -222,6 +230,13 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     const expectedHref = browser.currentHref();
     pending = { controller, href: destination.href, type };
     const requestGeneration = generation;
+    const refreshResolver = type === 'refresh' ? settleRefresh : null;
+    const completeRefresh = (result: ReactRevalidationResult): void => {
+      if (refreshResolver !== null && settleRefresh === refreshResolver) {
+        settleRefresh = null;
+        refreshResolver(result);
+      }
+    };
     void (async () => {
       let result: ReactNavigationLoadResult;
       try {
@@ -248,7 +263,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       }
       const currentHref = browser.currentHref();
       if (controller.signal.aborted || requestGeneration !== generation
-        || (type === 'back'
+        || (type === 'back' || type === 'refresh'
           ? currentHref.split('#', 1)[0] !== expectedHref.split('#', 1)[0]
           : currentHref !== expectedHref)) {
         return;
@@ -256,6 +271,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       if (!result.ok) {
         if (result.reason === 'cancelled') {
           pending = null;
+          completeRefresh({ status: 'cancelled' });
           publish(createSnapshotWithNavigation(snapshot, IDLE_NAVIGATION));
           return;
         }
@@ -278,7 +294,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
           failure = Object.freeze({ ...failure, reason: 'application-error' });
         }
         if (controller.signal.aborted || requestGeneration !== generation
-          || (type === 'back'
+          || (type === 'back' || type === 'refresh'
             ? browser.currentHref().split('#', 1)[0] !== expectedHref.split('#', 1)[0]
             : browser.currentHref() !== expectedHref)) {
           return;
@@ -291,13 +307,17 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
             restoringIndex = approvedIndex;
             browser.go?.(approvedIndex - failed.index);
           }
+          completeRefresh({ status: 'error', failure });
           publish(createSnapshotWithNavigation(snapshot, {
             ...createNavigationSnapshot('error', type, toSnapshotUrl(destination.href)),
             failure,
           }));
           return;
         }
-        if (type === 'replace') {
+        if (type === 'refresh') {
+          completeRefresh({ status: 'document' });
+          browser.reload();
+        } else if (type === 'replace') {
           browser.replace(destination.href);
         } else {
           browser.assign(type === 'back' ? currentHref : destination.href);
@@ -307,7 +327,8 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       pending = null;
       failed = null;
       const confirmed = new URL(result.payload.url, destination.origin);
-      const confirmedHref = `${confirmed.href}${type === 'back' ? new URL(currentHref).hash : destination.hash}`;
+      const confirmedHref = `${confirmed.href}${type === 'back' || type === 'refresh'
+        ? new URL(browser.currentHref()).hash : destination.hash}`;
       if (type === 'push') {
         approvedIndex += 1;
         if (browser.failurePolicy !== undefined && browser.historyIndex !== undefined) {
@@ -328,6 +349,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
         ...result.payload.destination.props,
         key: `${requestGeneration}:${result.payload.url}`,
       });
+      completeRefresh({ status: 'complete' });
       publish(createSnapshotForHref(
         confirmedHref,
         createNavigationSnapshot('complete', type, toSnapshotUrl(confirmedHref)),
@@ -354,6 +376,11 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     const destinationUrl = toSnapshotUrl(destination.href);
     const browser = requireEnvironment();
     if (restoringIndex !== null) {
+      if (deferredRefresh) {
+        cancelPending();
+        deferredRefresh = false;
+      }
+      deferredBack = false;
       deferredNavigation = { destination, type, fromPrefetch };
       return;
     }
@@ -423,8 +450,15 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     back(): void {
       const browser = requireEnvironment();
       cancelPending();
+      deferredRefresh = false;
+      deferredNavigation = null;
       discardPrefetches();
+      const deferBack = restoringIndex !== null;
+      deferredBack = deferBack;
       publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('navigating', 'back')));
+      if (deferBack) {
+        return;
+      }
       browser.back();
     },
     invalidate,
@@ -440,6 +474,8 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       if (last.type === 'back' && last.index !== null) {
         cancelPending();
         requireEnvironment().go?.(last.index - approvedIndex);
+      } else if (last.type === 'refresh') {
+        void router.refresh();
       } else {
         navigateDocument(last.href, last.type === 'back' ? 'push' : last.type);
       }
@@ -451,18 +487,52 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       }
       failed = null;
       cancelPending();
-      if (last.type === 'replace') {
+      if (last.type === 'refresh') {
+        requireEnvironment().reload();
+      } else if (last.type === 'replace') {
         requireEnvironment().replace(last.href);
       } else {
         requireEnvironment().assign(last.href);
       }
     },
-    refresh(): void {
+    refresh(): Promise<ReactRevalidationResult> {
       const browser = requireEnvironment();
+      const unapprovedTraversal = (pending?.type === 'back' || failed?.type === 'back'
+        || restoringIndex !== null) && toSnapshotUrl(browser.currentHref()) !== snapshot.url;
+      const activatedIndex = browser.historyIndex?.();
       cancelPending();
+      failed = null;
+      deferredBack = false;
+      deferredNavigation = null;
       discardPrefetches();
+      if (unapprovedTraversal && restoringIndex === null
+        && (activatedIndex === null || activatedIndex === undefined || browser.go === undefined)) {
+        browser.replace(browser.currentHref());
+        return Promise.resolve({ status: 'document' });
+      }
+      if (browser.load === undefined || browser.pushState === undefined || browser.replaceState === undefined) {
+        publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('refreshing', 'refresh')));
+        browser.reload();
+        return Promise.resolve({ status: 'document' });
+      }
+      const refreshing = new Promise<ReactRevalidationResult>((resolve) => {
+        settleRefresh = resolve;
+      });
+      if (unapprovedTraversal || restoringIndex !== null) {
+        const restoreFrom = restoringIndex === null ? activatedIndex : null;
+        if (restoreFrom !== null && restoreFrom !== undefined) {
+          restoringIndex = approvedIndex;
+        }
+        deferredRefresh = true;
+        publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('refreshing', 'refresh')));
+        if (restoreFrom !== null && restoreFrom !== undefined) {
+          browser.go?.(approvedIndex - restoreFrom);
+        }
+        return refreshing;
+      }
+      loadAndCommit(browser, new URL(browser.currentHref()), 'refresh');
       publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('refreshing', 'refresh')));
-      browser.reload();
+      return refreshing;
     },
     replace(href: string | URL): void {
       navigateDocument(href, 'replace');
@@ -580,6 +650,16 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
             }
             const deferred = deferredNavigation;
             deferredNavigation = null;
+            if (deferredRefresh) {
+              deferredRefresh = false;
+              loadAndCommit(nextEnvironment, new URL(nextEnvironment.currentHref()), 'refresh');
+              return true;
+            }
+            if (deferredBack) {
+              deferredBack = false;
+              nextEnvironment.back();
+              return true;
+            }
             if (deferred !== null) {
               navigateDocument(deferred.destination, deferred.type, deferred.fromPrefetch);
             }
@@ -587,6 +667,15 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
           }
           restoringIndex = null;
           invalidatedTraversal = false;
+          deferredBack = false;
+          deferredNavigation = null;
+          if (deferredRefresh) {
+            deferredRefresh = false;
+            settleRefresh?.({ status: 'document' });
+            settleRefresh = null;
+            nextEnvironment.replace(nextEnvironment.currentHref());
+            return true;
+          }
           return false;
         },
         loadAndCommit,
