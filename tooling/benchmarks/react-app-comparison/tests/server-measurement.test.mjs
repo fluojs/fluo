@@ -9,7 +9,51 @@ import { test } from 'node:test';
 import { promisify } from 'node:util';
 
 import { verifyTraceFiles } from '../src/measure.mjs';
-import { runServerMeasurement } from '../src/server-measurement.mjs';
+import { evaluateServerEvidence, runServerMeasurement } from '../src/server-measurement.mjs';
+import { METRICS } from '../src/evaluate.ts';
+
+for (const mutation of ['metrics', 'provenance']) {
+  test(`server-only evaluation rejects mismatched raw ${mutation} before filtering`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'fluo-server-evaluation-'));
+    try {
+      const metrics = Object.fromEntries(METRICS.map((metric) => [metric, 70]));
+      const runs = [];
+      for (let index = 0; index < 3; index++) {
+        const runId = `server-${index}`;
+        const trace = join(directory, `${runId}.json`);
+        const run = {
+          profile: 'desktop-native', mode: 'native', framework: 'fluo', runId, trace,
+          warmupRuns: 1, correctness: 'pass', metrics,
+        };
+        await writeFile(trace, JSON.stringify({
+          ...run,
+          schemaVersion: 1,
+          provenance: { commit: mutation === 'provenance' && index === 1 ? 'b'.repeat(40) : 'a'.repeat(40) },
+          environment: { runtime: 'Node 24' },
+          correctness: { pass: true },
+          metrics: mutation === 'metrics' && index === 1 ? { ...metrics, coldTtfbMs: 130 } : metrics,
+          unavailable: {}, profileSettings: {}, requests: [],
+        }));
+        runs.push(run);
+      }
+      const baseline = {
+        policy: { minimumRuns: 3, warmupRuns: 1, maximumRelativeSpread: 0.1, outlierMadMultiplier: 3 },
+        profiles: {
+          'desktop-native': {
+            mode: 'native',
+            absoluteBudgets: Object.fromEntries(METRICS.map((metric) => [metric, 100])),
+            relativeBands: Object.fromEntries(METRICS.map((metric) => [metric, 1.5])),
+          },
+        },
+      };
+      await assert.rejects(evaluateServerEvidence(baseline, [
+        { profile: 'desktop-native', mode: 'native', runs },
+      ], directory), new RegExp(`raw trace ${mutation}`, 'u'));
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
 
 test('an unknown single-window profile fails before starting measurement servers', async () => {
   const suite = new URL('../', import.meta.url);

@@ -3,6 +3,20 @@ import { fileURLToPath } from 'node:url';
 
 import { readMeasurementReceipt } from './run-gate.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
+import { evaluateEvidence } from './gate.mjs';
+
+export async function evaluateServerEvidence(baseline, receipts, outputRoot) {
+  const serverMetrics = [
+    'coldTtfbMs', 'warmTtfbMs', 'throughputRequestsPerSecond',
+    'errorRate', 'cpuPercent', 'rssBytes',
+  ];
+  const evaluation = await evaluateEvidence(baseline, receipts, outputRoot);
+  const checks = evaluation.checks.filter((check) =>
+    check.metric === undefined || serverMetrics.includes(check.metric));
+  const verdict = checks.some((check) => check.verdict === 'fail') ? 'fail'
+    : checks.some((check) => check.verdict === 'inconclusive') ? 'inconclusive' : 'pass';
+  return { checks, verdict, serverMetrics };
+}
 
 export async function runServerMeasurement(configPath, receiptPath,
   measurementScript = fileURLToPath(new URL('./measure.mjs', import.meta.url)),

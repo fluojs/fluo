@@ -6,10 +6,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
-import { evaluatePerformance } from './evaluate.ts';
 import { verifyTraceFiles } from './measure.mjs';
 import { startServers, stopServers } from './run-gate.mjs';
-import { runServerMeasurement } from './server-measurement.mjs';
+import { evaluateServerEvidence, runServerMeasurement } from './server-measurement.mjs';
 import { readSocketShell } from './socket-shell.mjs';
 
 const exec = promisify(execFile);
@@ -175,18 +174,13 @@ try {
   process.off('SIGINT', interrupt);
   process.off('SIGTERM', interrupt);
 }
-const serverMetrics = new Set([
-  'coldTtfbMs', 'warmTtfbMs', 'throughputRequestsPerSecond',
-  'errorRate', 'cpuPercent', 'rssBytes',
-]);
-const evaluation = evaluatePerformance(baseline, receipts.flatMap((receipt) => receipt.runs));
-const checks = evaluation.checks.filter((check) =>
-  check.metric === undefined || serverMetrics.has(check.metric));
-const verdict = checks.some((check) => check.verdict === 'fail') ? 'fail'
-  : checks.some((check) => check.verdict === 'inconclusive') || subprocessFailed ? 'inconclusive' : 'pass';
+const { checks, verdict: evaluatedVerdict, serverMetrics } =
+  await evaluateServerEvidence(baseline, receipts, output);
+const verdict = evaluatedVerdict === 'fail' ? 'fail'
+  : subprocessFailed ? 'inconclusive' : evaluatedVerdict;
 const result = {
   purpose: 'server-owned subset only; browser FCP shellArrivalMs and unchanged development/client metrics are not a socket or whole-product gate',
-  serverMetrics: [...serverMetrics],
+  serverMetrics,
   requestedProfile: requestedProfile ?? null,
   verdict,
   subprocessFailed,
