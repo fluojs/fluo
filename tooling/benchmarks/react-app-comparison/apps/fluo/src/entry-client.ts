@@ -26,6 +26,7 @@ if (!initial.ok) {
 
 hydrateRoot(document, createElement(BenchmarkDocument, {
   ...state,
+  initialElement: createElement(initial.component, initial.payload.destination.props),
   initialPage: { json: initialJson, payload: initial.payload },
   navigationModules,
   navigationBuildId,

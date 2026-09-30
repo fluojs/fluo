@@ -24,6 +24,7 @@ export type PageData =
 
 type DocumentProps = {
   readonly data: PageData;
+  readonly initialElement: ReactNode;
   readonly editor: boolean;
   readonly initialPage?: ReactInitialNavigationPage;
   readonly navigationModules?: ReactNavigationModules;
@@ -94,100 +95,10 @@ function JukeboxResource() {
   );
 }
 
-export function PageView({ data, editor }: { readonly data: PageData; readonly editor: boolean }) {
-  if (data.kind === 'login') {
-    return createElement('section', null,
-      createElement('h1', null, 'Editor login'),
-      createElement('form', { action: '/login', method: 'post' },
-        createElement('label', { htmlFor: 'username' }, 'Username'),
-        createElement('input', { id: 'username', name: 'username', required: true }),
-        createElement('label', { htmlFor: 'password' }, 'Password'),
-        createElement('input', { id: 'password', name: 'password', required: true, type: 'password' }),
-        createElement('button', { type: 'submit' }, 'Log in')));
-  }
-
-  if (data.kind === 'admin') {
-    return createElement('section', null,
-      createElement('h1', null, 'Manage products'),
-      createElement('ul', { className: 'product-list' },
-        ...data.products.map((product) => createElement('li', { key: product.sku },
-          createElement(Link, { href: `/products/${encodeURIComponent(product.sku)}` }, product.name))),
-      ),
-      createElement('form', { action: '/products', method: 'post' },
-        createElement('label', { htmlFor: 'new-name' }, 'New product name'),
-        createElement('input', { id: 'new-name', minLength: 3, name: 'name', required: true }),
-        createElement('button', { type: 'submit' }, 'Create product')));
-  }
-
-  if (data.kind === 'catalog') {
-    return createElement(
-      'section',
-      null,
-      createElement('h1', null, data.title),
-      createElement('ul', { className: 'product-list' },
-        ...data.products.map((product) => createElement('li', { key: product.sku },
-          createElement(Link, { href: `/products/${encodeURIComponent(product.sku)}` }, product.name),
-          createElement('small', null, product.sku),
-        )),
-      ),
-      editor
-        ? createElement('form', { action: '/products', method: 'post' },
-          createElement('label', { htmlFor: 'new-name' }, 'New product name'),
-          createElement('input', { id: 'new-name', minLength: 3, name: 'name', required: true }),
-          createElement('button', { type: 'submit' }, 'Create product'),
-        )
-        : createElement('form', { action: '/login', method: 'post' },
-          createElement('label', { htmlFor: 'username' }, 'Username'),
-          createElement('input', { id: 'username', name: 'username', required: true }),
-          createElement('label', { htmlFor: 'password' }, 'Password'),
-          createElement('input', { id: 'password', name: 'password', required: true, type: 'password' }),
-          createElement('button', { type: 'submit' }, 'Log in'),
-        ),
-    );
-  }
-
-  if (data.kind === 'product') {
-    const { product } = data;
-    return createElement(
-      'section',
-      null,
-      createElement('p', null, createElement(Link, { href: '/' }, 'All products')),
-      createElement('h1', null, product.name),
-      createElement('p', null, `SKU ${product.sku}`),
-      editor ? createElement('div', null,
-        createElement('form', { action: `/products/${encodeURIComponent(product.sku)}`, method: 'post' },
-          createElement('label', { htmlFor: 'edit-name' }, 'Product name'),
-          createElement('input', {
-            defaultValue: product.name,
-            id: 'edit-name',
-            minLength: 3,
-            name: 'name',
-            required: true,
-          }),
-          createElement('button', { type: 'submit' }, 'Save product'),
-        ),
-        createElement('form', { action: `/products/${encodeURIComponent(product.sku)}/delete`, method: 'post' },
-          createElement('button', { type: 'submit' }, 'Delete product'),
-        ),
-      ) : null,
-    );
-  }
-
-  return createElement(
-    'section',
-    { 'data-approved-view': data.view },
-    createElement('h1', null, `Jukebox / ${data.view}`),
-    createElement('p', null, data.view === 'qr' ? 'QR listening station' :
-      data.view === 'queue' ? 'Upcoming queue' : 'Song library'),
-    createElement('ul', { className: 'product-list' },
-      ...data.songs.map((song) => createElement('li', { key: song.id }, song.title)),
-    ),
-  );
-}
-
 export function BenchmarkDocument({
   data,
   editor,
+  initialElement,
   initialPage,
   navigationModules,
   navigationBuildId,
@@ -224,7 +135,7 @@ export function BenchmarkDocument({
             createElement('button', { type: 'submit' }, 'Log out'),
           ) : null,
         ),
-        createElement('main', null, destination ?? createElement(PageView, { data, editor })),
+        createElement('main', null, destination ?? initialElement),
         createElement(JukeboxResource),
       ),
       initialPage === undefined ? null : createElement('script', {

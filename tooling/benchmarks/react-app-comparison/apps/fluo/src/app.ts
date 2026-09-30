@@ -39,6 +39,9 @@ import {
   validateProduct,
 } from '../../../fixture/domain.mjs';
 import { BenchmarkDocument, type PageData } from './document';
+import CatalogDestination from './navigation-catalog';
+import ProductDestination from './navigation-product';
+import JukeboxDestination from './navigation-jukebox';
 
 class ProductInput {
   @FromBody('name')
@@ -133,9 +136,15 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL) {
       ? './navigation-catalog.ts'
       : data.kind === 'product' ? './navigation-product.ts'
       : data.kind === 'jukebox' ? './navigation-jukebox.ts' : './navigation-catalog.ts';
+    const initialElement = data.kind === 'product'
+      ? createElement(ProductDestination, { data, editor: editor(context) })
+      : data.kind === 'jukebox'
+        ? createElement(JukeboxDestination, { data, editor: editor(context) })
+        : createElement(CatalogDestination, { data, editor: editor(context) });
     return ReactNavigationPage.create(
       createElement(BenchmarkDocument, {
         data,
+        initialElement,
         editor: editor(context),
         routeParams: context.request.params,
         routeUrl: context.request.url,

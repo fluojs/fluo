@@ -29,6 +29,19 @@ test('Next products expose client hydration before development edits', async ({ 
   await expect(page.locator('[data-benchmark-hydrated="true"]')).toBeAttached();
 });
 
+test('Fluo listing does not load unrelated destination controls', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'fluo');
+  const scripts = [];
+  page.on('response', (response) => {
+    if (response.request().resourceType() === 'script') scripts.push(response);
+  });
+  await page.goto('/');
+  await expect(page.locator('[data-benchmark-hydrated="true"]')).toBeAttached();
+  const code = (await Promise.all(scripts.map((response) => response.text()))).join('\n');
+  expect(code.includes('edit-name')).toBe(false);
+  expect(code.includes('data-approved-view')).toBe(false);
+});
+
 test('public listing, detail, and production asset budgets', async ({ page }, testInfo) => {
   // Given: a fresh production browser observing its actual network responses.
   const assets = [];
