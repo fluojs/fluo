@@ -522,3 +522,18 @@ curl -i http://127.0.0.1:3000/products/missing-product
 - [상품·금액 구현](./ch03-catalog-and-money.ko.md), [공통 집필 계약](../EDITORIAL.ko.md): 서버 가격의 권위와 현재 구현 단계.
 
 [이전: 티셔츠 한 장을 상품으로 표현하기](./ch03-catalog-and-money.ko.md) · [2권 목차](./toc.ko.md) · [다음: 장바구니 가격을 믿으면 안 되는 이유](./ch05-cart-and-pricing.ko.md)
+
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.
+
+이 chapter의 storefront는 read-only exercise로 유지합니다. 쓰기 interaction은
+[FluoBlog companion](../01-fluoblog/ch17-react-reading-and-writing.ko.md)에서 다룹니다.
+여기에 mutation, optimistic cache 또는 dirty navigation guard를 추가하지 않습니다.

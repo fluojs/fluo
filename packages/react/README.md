@@ -1155,10 +1155,14 @@ guard, and middleware policies as non-React routes.
 This recipe is intentionally different from React Router actions/fetchers, Astro Actions, and
 Next.js Server Actions: fluo does not compile a function reference, own route matching, revalidate a
 loader/client cache, or replace the document response. It is also separate from the experimental
-fluo Server Functions transport. No stable submit-state helper is added in this phase because the
-native form already supplies the complete fallback and `@fluojs/react/client` does not own mutation
-routes or cache invalidation. Applications may add local pending UI after hydration only when the
-real form action and native submission remain intact.
+fluo Server Functions transport. For progressive local state, use `useForm` from
+`@fluojs/react/client` through the existing provider and return
+`ReactModule.formResult({ destination, followUp })` only after confirmed persistence.
+Keep native action/method/encoding and HTTP DTO/auth/CSRF ownership. The
+[progressive form contract](../../docs/contracts/react-progressive-forms.md) and
+[migration guide](../../docs/getting-started/migrate-react-progressive-forms.md)
+define safe field errors, skipped duplicates, uncertain completion and GET-only
+recovery. A failed follow-up read does not turn a confirmed save into a failed save.
 
 ## Experimental RSC Prototype
 

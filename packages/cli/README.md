@@ -623,3 +623,15 @@ Programmatic entry points preserve caller process ownership. `runCli(...)`, `run
 - [dev-runner/](./src/dev-runner/) - Node restart-on-watch process boundary.
 - [generators/](./src/generators/) - Template-based file generation logic.
 - [transforms/](./src/transforms/) - Code transformation implementations.
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../../docs/contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.

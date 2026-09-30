@@ -14,6 +14,10 @@ export type { ReactNavigationFailureReason, ReactNavigationLoadResult, ReactNavi
 export { loadReactInitialNavigationDestination, loadReactNavigationDestination } from './client/navigation-payload.js';
 export { ReactClientRouterProvider } from './client/provider.js';
 export { ReactNavigationExperience } from './client/experience.js';
+export { useForm } from './client/form.js';
+export type { ReactFormBinding, ReactFormOptions } from './client/form.js';
+export type { ReactFormSnapshot, ReactFormFollowUp } from './client/form-store.js';
+export type { ReactFormMutation } from './client/form-transport.js';
 export type { ReactNavigationEffect, ReactNavigationExperienceProps } from './client/experience.js';
 export { createReactRouteSnapshot } from './client/snapshot.js';
 export type {

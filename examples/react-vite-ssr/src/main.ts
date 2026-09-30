@@ -13,9 +13,22 @@ const AppModule = createReactViteExampleModule({
   manifest,
 });
 const port = Number(process.env.REACT_VITE_EXAMPLE_PORT ?? '3000');
-const adapter = FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port });
+const adapter = FastifyHttpApplicationAdapter.create({
+  host: '127.0.0.1', port,
+  configureFastify(server) {
+    server.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => {
+      const fields: Record<string, string | string[]> = Object.create(null);
+      for (const [name, value] of new URLSearchParams(String(body))) {
+        const prior = fields[name];
+        fields[name] = prior === undefined ? value : Array.isArray(prior) ? [...prior, value] : [prior, value];
+      }
+      done(null, fields);
+    });
+  },
+});
 const app = await FluoFactory.create(AppModule, {
   adapter,
+  errorRepresentation: AppModule.errorRepresentation,
 });
 
 await app.listen();

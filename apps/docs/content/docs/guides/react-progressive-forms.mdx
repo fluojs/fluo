@@ -1,0 +1,34 @@
+---
+title: Progressive HTTP forms
+description: Native POST/303/GET with typed local outcomes and GET-only recovery.
+---
+
+The canonical path is an ordinary native form, a matched HTTP `@Post`/`@RequestDto`
+handler, `useForm` from `@fluojs/react/client`, and the existing React provider.
+After confirmed persistence, return `ReactModule.formResult({ destination, followUp })`
+from `@fluojs/react`. HTTP still owns matching, DTO validation, auth/CSRF,
+request scope, status and errors.
+
+Keep real action/method/encoding attributes and hidden CSRF fields. Unsupported
+submissions stay native before any enhanced POST. The official example and
+starter's `/catalog` journey supports JavaScript-disabled and bootstrap-blocked
+POST/303/GET, and enhanced correction, independent forms and pending state.
+
+Use safe HTTP-owned DTO projections and `HttpFormRejection.create(...)` for
+explicit domain errors. Typed field names refer to authored controls; browser
+values are strings, not already-validated DTO numbers. Never reflect entire
+request or exception bodies.
+
+A confirmed save and a failed follow-up read are different outcomes. `retryRead()`
+repeats only GET approval. Network loss or cancellation after dispatch is
+uncertain persistence, not rollback. Busy activation is skipped, and no POST is
+automatically retried or replayed as native submission.
+
+Automatic form refresh retains the persistent shell and unrelated form
+input/errors/focus. Explicit `useRouter().refresh()` still resets page state
+after approval. Session coordination, optimistic writes, comprehensive uploads
+and the later typed/non-navigation/dirty-guard extensions remain separate work.
+
+See the repository's `docs/contracts/react-progressive-forms.md`,
+`docs/getting-started/migrate-react-progressive-forms.md` and
+`examples/react-vite-ssr/README.md` for the owning contract and executable journey.

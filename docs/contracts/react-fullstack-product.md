@@ -120,3 +120,15 @@ Feature availability, authoring cost and type-safety entries are source-backed o
 ## Evidence and verification limits
 
 Source seams: `packages/react/src/client/store.ts`, `packages/react/src/client/navigation-payload.ts`, `packages/react/src/module.ts`, `packages/cli/src/dev-runner/react-vite-dev-app.ts`, `examples/react-vite-ssr/src/app.ts`. Existing tests: `packages/react/src/client.test.ts`, `examples/react-vite-ssr/src/app.test.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`; the [navigation payload contract](./react-navigation-payload.md) contains additional HTTP/prefetch coverage. These are **existing** behavior records, not newly executed browser or performance results. The example models a native form and a short-lived shell counter, not an actual licensed player or the future product gate. Documentation validation checks links/structure and EN/KO pairing, not future runtime success. Book chapters describe current framework behavior or app-owned teaching policy; this prospective contract changes neither, so no Book chapter is rewritten in this scoped increment.
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](./react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.

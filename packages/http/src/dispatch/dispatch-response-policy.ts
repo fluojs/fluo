@@ -134,22 +134,24 @@ function readFrameworkResponseRepresentation(value: unknown): FrameworkResponseR
   const mediaType: unknown = Reflect.get(representation, 'mediaType');
   const body: unknown = Reflect.get(representation, 'body');
   const prefetch: unknown = Reflect.get(representation, 'prefetch');
+  const method: unknown = Reflect.get(representation, 'method');
   return typeof mediaType === 'string' && typeof body === 'function'
     ? {
       mediaType,
+      ...(method === 'POST' ? { method } : {}),
       body: (context) => Reflect.apply(body, representation, [context]),
       ...(prefetch === 'public' ? { prefetch } : {}),
     }
     : undefined;
 }
 
-function requestsRepresentation(request: FrameworkRequest, mediaType: string): boolean {
-  if (request.method.toUpperCase() !== 'GET') {
+function requestsRepresentation(request: FrameworkRequest, representation: FrameworkResponseRepresentation): boolean {
+  if (request.method.toUpperCase() !== (representation.method ?? 'GET')) {
     return false;
   }
   const accept = getRequestHeader(request, 'accept');
   const values = Array.isArray(accept) ? accept : accept === undefined ? [] : [accept];
-  return values.some((value) => value.trim().toLowerCase() === mediaType.toLowerCase());
+  return values.some((value) => value.trim().toLowerCase() === representation.mediaType.toLowerCase());
 }
 
 function readFrameworkResponseValueFinalizer(requestContext: RequestContext): FrameworkResponseValueFinalizer | undefined {
@@ -274,7 +276,7 @@ export async function writeSuccessResponse(
     };
 
     if (representation) {
-      if (requestsRepresentation(request, representation.mediaType)) {
+      if (requestsRepresentation(request, representation)) {
         const body = await representation.body({
           applySuccessResponseMetadata: applyWriterSuccessResponseMetadata,
           handler,

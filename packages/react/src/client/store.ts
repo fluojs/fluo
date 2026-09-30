@@ -1,5 +1,6 @@
 import { createElement, type ReactElement } from 'react';
 import { ReactClientNavigationError } from './errors.js';
+import type { ClientFormStore } from './form-store.js';
 import { connectClientNavigationHistory } from './history.js';
 import type { ReactNavigationLoadResult } from './navigation-payload.js';
 import {
@@ -38,6 +39,8 @@ export type ClientNavigationEnvironment = {
 
 /** Internal observable store shared by the provider, hooks, and progressive `Link`. */
 export type ClientNavigationStore = {
+  readonly forms: Map<string, ClientFormStore>;
+  readonly approveForm: (destination: string, followUp: 'refresh' | 'navigate', signal: AbortSignal) => Promise<ReactRevalidationResult>;
   readonly canHandleLink: (href: string | URL) => boolean;
   readonly prefetch: (href: string | URL, owner: object) => Promise<void>;
   readonly cancelPrefetch: (href: string | URL, owner: object) => void;
@@ -95,6 +98,11 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
   }>();
   let generation = 0;
   const listeners = new Set<() => void>();
+  const forms = new Map<string, ClientFormStore>();
+  const cancelForms = (clear = false): void => {
+    for (const form of forms.values()) form.cancel();
+    if (clear) forms.clear();
+  };
 
   const notify = (): void => {
     for (const listener of listeners) {
@@ -221,6 +229,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       readonly result: Extract<ReactNavigationLoadResult, { ok: true }>;
       readonly expiresAt: number;
     },
+    formApproval = false,
   ): void => {
     const load = browser.load;
     if (load === undefined) {
@@ -230,7 +239,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     const expectedHref = browser.currentHref();
     pending = { controller, href: destination.href, type };
     const requestGeneration = generation;
-    const refreshResolver = type === 'refresh' ? settleRefresh : null;
+    const refreshResolver = settleRefresh;
     const completeRefresh = (result: ReactRevalidationResult): void => {
       if (refreshResolver !== null && settleRefresh === refreshResolver) {
         settleRefresh = null;
@@ -280,9 +289,9 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
           reason: result.reason,
           type,
         });
-        let decision: 'preserve' | 'document' = 'document';
+        let decision: 'preserve' | 'document' = formApproval ? 'preserve' : 'document';
         try {
-          if (browser.failurePolicy !== undefined) {
+          if (!formApproval && browser.failurePolicy !== undefined) {
             decision = await browser.failurePolicy(failure);
           }
         } catch {
@@ -318,8 +327,10 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
           completeRefresh({ status: 'document' });
           browser.reload();
         } else if (type === 'replace') {
+          completeRefresh({ status: 'document' });
           browser.replace(destination.href);
         } else {
+          completeRefresh({ status: 'document' });
           browser.assign(type === 'back' ? currentHref : destination.href);
         }
         return;
@@ -345,9 +356,11 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       } else {
         approvedIndex = browser.historyIndex?.() ?? approvedIndex;
       }
+      if (type === 'refresh' && !formApproval) cancelForms(true);
       destinationElement = createElement(result.component, {
         ...result.payload.destination.props,
-        key: `${requestGeneration}:${result.payload.url}`,
+        key: formApproval && type === 'refresh'
+          ? destinationElement?.key ?? null : `${requestGeneration}:${result.payload.url}`,
       });
       completeRefresh({ status: 'complete' });
       publish(createSnapshotForHref(
@@ -418,6 +431,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       }
     }
     cancelPending();
+    cancelForms();
     failed = null;
     discardPrefetches(key);
     publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot('navigating', type, destinationUrl)));
@@ -449,6 +463,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
   const router: ReactRouter = Object.freeze({
     back(): void {
       const browser = requireEnvironment();
+      cancelForms();
       cancelPending();
       deferredRefresh = false;
       deferredNavigation = null;
@@ -497,6 +512,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
     },
     refresh(): Promise<ReactRevalidationResult> {
       const browser = requireEnvironment();
+      cancelForms();
       const unapprovedTraversal = (pending?.type === 'back' || failed?.type === 'back'
         || restoringIndex !== null) && toSnapshotUrl(browser.currentHref()) !== snapshot.url;
       const activatedIndex = browser.historyIndex?.();
@@ -540,6 +556,40 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
   });
 
   return {
+    forms,
+    approveForm(href, followUp, signal) {
+      if (signal.aborted) return Promise.resolve({ status: 'cancelled' });
+      const browser = requireEnvironment();
+      const destination = resolveDestination(href);
+      const current = new URL(browser.currentHref());
+      if (followUp === 'refresh' && (destination.pathname !== current.pathname || destination.search !== current.search)) {
+        return Promise.resolve({ status: 'error', failure: {
+          destination: destination.pathname, reason: 'unsupported-destination', type: 'refresh',
+        } });
+      }
+      cancelPending();
+      cached.clear();
+      discardPrefetches();
+      if (browser.load === undefined || browser.pushState === undefined || browser.replaceState === undefined) {
+        return Promise.resolve({ status: 'error', failure: {
+          destination: destination.pathname, reason: 'unavailable', type: followUp === 'refresh' ? 'refresh' : 'push',
+        } });
+      }
+      const completed = new Promise<ReactRevalidationResult>((resolve) => { settleRefresh = resolve; });
+      const type = followUp === 'refresh' ? 'refresh' : 'push';
+      loadAndCommit(browser, destination, type, undefined, true);
+      const approvalGeneration = generation;
+      const abort = (): void => {
+        if (generation !== approvalGeneration) return;
+        cancelPending();
+        publish(createSnapshotWithNavigation(snapshot, IDLE_NAVIGATION));
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot(
+        type === 'refresh' ? 'refreshing' : 'navigating', type, toSnapshotUrl(destination.href),
+      )));
+      return completed.finally(() => signal.removeEventListener('abort', abort));
+    },
     canHandleLink(href: string | URL): boolean {
       if (environment === null) {
         return false;
@@ -623,6 +673,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       navigateDocument(href, 'push', true);
     },
     connect(nextEnvironment: ClientNavigationEnvironment): () => void {
+      if (environment !== null) cancelForms(true);
       invalidate();
       environment = nextEnvironment;
       if (nextEnvironment.failurePolicy !== undefined && nextEnvironment.historyIndex?.() === null) {
@@ -633,6 +684,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       }
       const unsubscribe = connectClientNavigationHistory(nextEnvironment, {
         cancelPending: () => {
+          cancelForms();
           cancelPending();
           failed = null;
           discardPrefetches();
@@ -686,6 +738,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
       return () => {
         unsubscribe();
         if (environment === nextEnvironment) {
+          cancelForms(true);
           invalidate();
           environment = null;
           notify();

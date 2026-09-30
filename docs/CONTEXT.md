@@ -700,3 +700,15 @@ Raw Node adapter creation follows `NodeHttpApplicationAdapter.create(options)` i
 ## JWT Refresh Ownership
 
 The [Auth & JWT contract](./architecture/auth-and-jwt.md) assigns refresh crypto, configuration, store, and rotation state to `JwtModule`. The [JWT README](../packages/jwt/README.md) and [Passport README](../packages/passport/README.md) define the one HTTP path: `JwtModule.forRoot({ global: true, refreshToken: ... })`, `RefreshTokenModule.forRoot()`, then `@UseAuth('refresh-token')`. `tooling/governance/jwt-passport-refresh-ownership.test.ts` verifies real DI identity, refresh exchange behavior, and the missing-JWT-refresh configuration mutation.
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](./contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.

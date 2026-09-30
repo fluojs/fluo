@@ -826,7 +826,8 @@ test('falls back to a native document for an unsupported destination', async ({ 
   const document = page.waitForResponse((result) =>
     result.url().endsWith('/not-built') && result.request().isNavigationRequest());
   await page.getByRole('link', { name: 'Missing page' }).click();
-  expect((await rejected).status()).toBe(404);
+  // The configured HTML owner does not offer navigation JSON for an unmatched route.
+  expect((await rejected).status()).toBe(406);
   expect((await document).status()).toBe(404);
   await expect(page).toHaveURL(/\/not-built$/u);
 });

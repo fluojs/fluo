@@ -139,3 +139,15 @@ or file-routing dependency is added.
   ownership, route-policy isolation, provider failure fallback, and shell-phase separation.
 - Shared network and Web portability harnesses cover Node.js, Express, Fastify, Bun, Deno, and
   Cloudflare Workers behavior for JSON, HTML, `HEAD`, 406, and already-committed responses.
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.

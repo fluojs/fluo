@@ -1004,3 +1004,15 @@ tests build a cold isolated dependency closure and resolve package export maps.
 See the [Next usage and migration](../platform-nextjs/README.md#bounded-body-parsing).
 
 Create HTTP applications through `FluoFactory.create(AppModule, { adapter })` from `@fluojs/runtime`, then use instance `listen()`/`close()`. Optional `HttpApplicationAdapter.getListenTarget?()` supplies `{ bindTarget, url }` after listen for startup logging; socketless hosts may omit it. Factory owns common middleware and failure cleanup while HTTP retains its request/input/response policies. See the [migration guide](../../docs/getting-started/migrate-http-factory.md).
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../../docs/contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.

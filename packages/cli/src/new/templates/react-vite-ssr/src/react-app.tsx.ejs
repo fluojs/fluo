@@ -57,6 +57,8 @@ function productPage(activePage: ReactElement): ReactElement {
 function LongLivedResource(): ReactElement {
   const resource = useRef<Window['__reactResource']>(undefined);
   const [ack, setAck] = useState('');
+  const [probeAck, setProbeAck] = useState('');
+  const channel = useRef<MessageChannel | null>(null);
   useEffect(() => {
     let operations = 0;
     const instance = {
@@ -65,6 +67,11 @@ function LongLivedResource(): ReactElement {
     };
     resource.current = instance;
     window.__reactResource = instance;
+    const session = new MessageChannel();
+    let checks = 0;
+    channel.current = session;
+    session.port2.onmessage = (event: MessageEvent<string>) => session.port2.postMessage(`${instance.id}:${++checks}:${event.data}`);
+    session.port1.onmessage = (event: MessageEvent<string>) => setProbeAck(event.data);
     const stats = window.__reactResourceStats ?? { mounts: 0, cleanups: 0 };
     stats.mounts++;
     window.__reactResourceStats = stats;
@@ -72,6 +79,9 @@ function LongLivedResource(): ReactElement {
       stats.cleanups++;
       resource.current = undefined;
       window.__reactResource = undefined;
+      channel.current = null;
+      session.port1.close();
+      session.port2.close();
     };
   }, []);
   return (
@@ -80,6 +90,8 @@ function LongLivedResource(): ReactElement {
         Use shell resource
       </button>
       <span data-testid='resource-ack'>{ack}</span>
+      <button onClick={() => channel.current?.port1.postMessage('ack')} type='button'>Probe shell resource</button>
+      <output aria-label='Resource acknowledgement'>{probeAck}</output>
     </div>
   );
 }
@@ -141,12 +153,14 @@ export function ReactAppDocument({
   navigationBuildId,
 }: ReactAppDocumentProps): ReactElement {
   const initialSnapshot = createReactRouteSnapshot(route);
+  const [prefetchScope, setPrefetchScope] = useState('starter:anonymous');
 
   return (
     <ReactClientRouterProvider
       initialSnapshot={initialSnapshot}
       navigationModules={navigationModules}
       navigationBuildId={navigationBuildId}
+      prefetchScope={prefetchScope}
       failurePolicy={({ reason }) =>
         reason === 'network' || reason === 'server-error' || reason === 'import-failure'
           || reason === 'incompatible-build'
@@ -164,6 +178,7 @@ export function ReactAppDocument({
           </head>
           <body>
             <SharedNavigation />
+            <button onClick={() => setPrefetchScope('starter:next-session')} type='button'>Switch user and prefetch scope</button>
             <main tabIndex={-1}>
               <ReactNavigationExperience
                 destination={destination !== null && isValidElement(destination) ? productPage(destination) : null}

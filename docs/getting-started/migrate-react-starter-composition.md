@@ -77,3 +77,15 @@ This is an authoring-cost experiment,
 not a promise of a built-in auth or enhanced form policy: applications still
 implement identity, persistence, and validation messages; #3874/#3875 own the
 official form/auth integration.
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.

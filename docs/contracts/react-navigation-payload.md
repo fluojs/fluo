@@ -287,3 +287,15 @@ router store.
 destination, browser rendering, ordinary HTML, and no-JavaScript document behavior.
 This stable SSR/Vite representation is JSON plus a built client component, not experimental
 Flight, a generic React tree serializer, or a file-routing contract.
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](./react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.

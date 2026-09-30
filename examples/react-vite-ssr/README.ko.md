@@ -272,3 +272,21 @@ examples/react-vite-ssr/
 - `../../packages/react/README.ko.md` — React package 및 Vite manifest contract
 - `../../packages/vite/README.ko.md` — Vite build의 TC39 decorator transform boundary
 - `../../docs/contracts/behavioral-contract-policy.ko.md` — behavior/docs/test alignment rule
+
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.
+
+`/catalog/login` 뒤 `/catalog` 또는 `/catalog/sku-42`에서 create/read/update/delete를
+실행합니다. process-local map과 demo cookie는 실서비스 persistence/auth 구현이 아닙니다.
+`tests/progressive-forms.spec.ts`가 JS-disabled/bootstrap-blocked와 실제 listener의
+barrier, Cookie/CSRF, 단절, manual redirect 및 GET-only recovery를 검증합니다.
+일반 production entry는 `src/main.ts`이고 `REACT_VITE_FORM_TEST_SERVER=1` 빌드는
+명시적인 fault-injection 전용 `tests/form-server.ts`를 선택합니다.

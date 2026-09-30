@@ -699,3 +699,14 @@ Raw Node adapter 생성은 [package README](../packages/platform-nodejs/README.k
 ## JWT Refresh Ownership
 
 [Auth & JWT 계약](./architecture/auth-and-jwt.ko.md)은 refresh crypto, configuration, store, rotation state를 `JwtModule`에 할당합니다. [JWT README](../packages/jwt/README.ko.md)와 [Passport README](../packages/passport/README.ko.md)는 하나의 HTTP 경로를 정의합니다. `JwtModule.forRoot({ global: true, refreshToken: ... })`, `RefreshTokenModule.forRoot()`, 그리고 `@UseAuth('refresh-token')` 순서입니다. `tooling/governance/jwt-passport-refresh-ownership.test.ts`는 실제 DI identity, refresh exchange 동작, JWT refresh 설정이 누락된 mutation을 검증합니다.
+
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](./contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.

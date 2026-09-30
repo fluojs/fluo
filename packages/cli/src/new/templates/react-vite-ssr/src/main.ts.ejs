@@ -49,7 +49,16 @@ export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Se
   const adapter = FastifyHttpApplicationAdapter.create({
     host: '127.0.0.1',
     port,
-    configureFastify: vite ? (server) => {
+    configureFastify: (server) => {
+      server.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => {
+        const fields: Record<string, string | string[]> = Object.create(null);
+        for (const [name, value] of new URLSearchParams(String(body))) {
+          const prior = fields[name];
+          fields[name] = prior === undefined ? value : Array.isArray(prior) ? [...prior, value] : [prior, value];
+        }
+        done(null, fields);
+      });
+      if (!vite) return;
       server.addHook('onRequest', (request, reply, done) => {
         if (request.raw.method !== 'GET' || !/^\/(?:src|node_modules|@id|@fs|@vite|@react-refresh)(?:\/|\?|$)/u.test(request.raw.url ?? '')) {
           done();
@@ -62,9 +71,10 @@ export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Se
           reply.raw.end(error instanceof Error ? error.message : 'Asset not found.');
         });
       });
-    } : undefined,
+    },
   });
   const app = await FluoFactory.create(AppModule, {
+    errorRepresentation: AppModule.errorRepresentation,
     securityHeaders: vite ? { contentSecurityPolicy: "default-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:" } : undefined,
     adapter,
   });
