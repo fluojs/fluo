@@ -306,6 +306,7 @@ export async function writeSuccessResponse(
             && value !== undefined,
         );
         const grantsPrefetch = representation.mediaType === NAVIGATION_CONTENT_TYPE
+          && request.method.toUpperCase() === 'GET'
           && representation.prefetch === 'public'
           && response.statusCode === 200
           && !hasIdentityHeader

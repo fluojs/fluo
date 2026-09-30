@@ -6,6 +6,7 @@ import {
   type ClientNavigationEnvironment,
   createClientNavigationStore,
 } from './client/store.js';
+import { createClientFormStore } from './client/form-store.js';
 import {
   createReactRouteSnapshot,
   Link,
@@ -117,6 +118,44 @@ function RouteStateProbe() {
 }
 
 describe('@fluojs/react/client', () => {
+  it.each(['refresh', 'navigate'] as const)('requires fresh approval after a form %s instead of reusing anonymous prefetch', async (followUp) => {
+    // Given: anonymous pre-save destination pages are already approved and cached.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const target = followUp === 'refresh' ? '/products/sku-42?preview=true' : '/products/sku-84';
+    const prefetch = vi.fn(async (href: string) => approvedPrefetch(href));
+    let approve = (_result: ReactNavigationLoadResult): void => {};
+    const load = vi.fn(() => new Promise<ReactNavigationLoadResult>((resolve) => { approve = resolve; }));
+    const pushState = vi.fn();
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch, load, pushState, replaceState: vi.fn() });
+    await store.prefetch('/products/sku-84', {});
+    await store.prefetch('/products/sku-126', {});
+    const committed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().params.revision === 'saved') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: a confirmed save asks the existing router for its post-save GET.
+    const approval = store.approveForm(target, followUp, new AbortController().signal, createClientFormStore());
+    expect(load).toHaveBeenCalledOnce();
+    expect(pushState).not.toHaveBeenCalled();
+    const fresh = approvedPrefetch(new URL(target, browser.environment.currentHref()).href);
+    if (!fresh.ok) throw new Error('Expected a successful navigation fixture');
+    approve({ ...fresh, payload: { ...fresh.payload, params: { revision: 'saved' } } });
+    await Promise.all([approval, committed]);
+
+    // Then: only fresh HTTP data commits, and the old anonymous entry is gone.
+    expect(await approval).toEqual({ status: 'complete' });
+    expect(store.getSnapshot().params).toEqual({ revision: 'saved' });
+    store.navigatePrefetchedLink('/products/sku-126');
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(prefetch).toHaveBeenCalledTimes(2);
+  }, 5_000);
+
   it('consumes an approved prefetch once before requiring another HTTP approval', async () => {
     // Given: a completed public prefetch and a connected browser history.
     const browser = createEnvironment();

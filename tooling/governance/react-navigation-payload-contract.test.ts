@@ -30,6 +30,22 @@ it('accepts the current matching HTTP and browser navigation machine contract', 
 });
 
 it.each([
+  ['loadAndCommit(browser, destination, type, undefined, true);',
+    'loadAndCommit(browser, destination, type);'],
+  ['      cached.clear();\n      discardPrefetches();',
+    '      discardPrefetches();'],
+  ["const type = followUp === 'refresh' ? 'refresh' : 'push';",
+    "const type = 'replace';"],
+] as const)('rejects a form follow-up bypass of existing fresh HTTP approval (%s)', (original, changed) => {
+  const source = sources.get(storePath);
+  const variant = source?.replace(original, changed) ?? '';
+  expect(variant).not.toBe(source);
+  expect(() => enforceReactNavigationPayloadContract((path: string) =>
+    path === storePath ? variant : sources.get(path) ?? '',
+  )).toThrow(/React navigation form follow-up/u);
+});
+
+it.each([
   [metadataPath, 'value.title.length > 512', 'value.title.length > 9999'],
   [metadataPath, 'value.meta.length > 32', 'value.meta.length > 9999'],
   [metadataPath, 'value.links.length > 32', 'value.links.length > 9999'],
@@ -108,6 +124,7 @@ it.each([
   [dispatchPath, "!hasExistingHeader('set-cookie')", 'true'],
   [dispatchPath, "!hasExistingHeader('cache-control')", 'true'],
   [dispatchPath, 'response.statusCode === 200', 'true'],
+  [dispatchPath, "request.method.toUpperCase() === 'GET'", 'true'],
 ] as const)('rejects changed navigation request or response machinery in %s (%s)', (path, original, changed) => {
   // Given: a source variant whose machine-consumed HTTP contract changes.
   const source = sources.get(path);
