@@ -106,6 +106,12 @@ Advanced applications can replace the generated renderer or pass explicit hydrat
 `createReactServerEntry(...)`; the stable APIs below remain available. No runtime-neutral root export
 imports Node.js, Vite, or browser code, and the starter does not add another route matcher.
 
+For delivery evidence, distinguish emitted shell/shared modules from destination-only modules,
+and observe hydration plus the rendered destination rather than only store completion.
+The [client delivery diagnostic](../../docs/guides/react-performance-benchmarks.md#client-delivery-diagnostics)
+records build membership, request bytes/cache behavior and cold/warm public/private traces.
+Its correctness observations do not replace the frozen representative performance gate.
+
 ## Stable SSR Mental Model
 
 The stable `0.1.0` model is HTTP-first React SSR. `@Router(...)` and `@Path(...)` are lexical

@@ -227,6 +227,12 @@ application file과 다시 실행할 lifecycle command를 정확히 가리킵니
 미지원 page와 JavaScript 비활성 상태는 native document 이동을 유지합니다. 일반 page를 추가할 때는
 page module과 HTTP handler/DTO만 작성하며 client entry, renderer, manifest, router store를
 편집하지 않습니다.
+생성된 production hydration test는 page를 열기 전에 negotiated GET을 관찰합니다.
+Hydration과 실제 control acknowledgment는 initial-data GET을 추가하지 않아야 하고,
+search는 HTTP approval 한 번을 요구합니다. 실제 build manifest와 browser asset inventory를
+검사하여 첫 상품 page가 search destination을 eager-load하지 않는지도 확인합니다.
+이는 correctness coverage이며 hydration 시간이나 navigation percentile 성능 영수증이 아닙니다.
+[Client delivery diagnostics](../../docs/guides/react-performance-benchmarks.ko.md#client-delivery-diagnostics)를 참고하세요.
 Generated shell은 `ReactNavigationExperience`를 opt-in으로 사용합니다. Pending 및 polite
 상태 알림은 key가 지정된 page slot 밖에 유지되고 destination render 오류는 local reset을
 제공합니다. `@PageMetadata(...)`는 request에서 선택한 title/meta/link descriptor를 SSR과

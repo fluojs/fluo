@@ -1,14 +1,14 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer, type Server } from 'node:http';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { expect, test } from '@playwright/test';
 
 const example = resolve(import.meta.dirname, '..');
-const evidence = resolve(example, '../../.omo/verification/issue-3878');
+const evidence = resolve(example, '../../tooling/benchmarks/react-app-comparison/results/issue-3884');
 const mediaType = 'application/vnd.fluo.react-navigation+json;v=2';
 
 type Build = {
@@ -86,6 +86,7 @@ function startServer(directory: string): Promise<{ readonly child: ChildProcess;
 
 test.beforeAll(async () => {
   test.setTimeout(180_000);
+  await mkdir(evidence, { recursive: true });
   outputRoot = await mkdtemp(join(evidence, 'deployment-ab-'));
   const aDirectory = join(outputRoot, 'A');
   const bDirectory = join(outputRoot, 'B');

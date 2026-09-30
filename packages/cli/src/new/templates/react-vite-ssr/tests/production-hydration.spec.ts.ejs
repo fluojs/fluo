@@ -3,7 +3,27 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { createServer as createNetServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function subscribeDeliveryText(page: Page, name: string, selector: string, text: string): Promise<void> {
+  await page.evaluate(({ name, selector, text }) => {
+    Reflect.set(window, name, new Promise<void>((resolveSignal, rejectSignal) => {
+      const check = () => {
+        if (!document.querySelector(selector)?.textContent?.includes(text)) return;
+        observer.disconnect();
+        clearTimeout(deadline);
+        resolveSignal();
+      };
+      const observer = new MutationObserver(check);
+      const deadline = setTimeout(() => {
+        observer.disconnect();
+        rejectSignal(new Error(`Missing delivery acknowledgment: ${name}`));
+      }, 10_000);
+      observer.observe(document, { subtree: true, childList: true, characterData: true });
+      check();
+    }));
+  }, { name, selector, text });
+}
 
 test('opens modified links as native documents without replacing the current page', async ({ page }) => {
   await page.goto('/products/sku-42?preview=true');
@@ -35,6 +55,13 @@ test('hydrates two DTO pages and preserves the shell during HTTP-approved naviga
   const development = ['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? '');
   const browserDiagnostics: string[] = [];
   const assetResponses = new Map<string, number>();
+  const navigationRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'GET'
+      && request.headers().accept === 'application/vnd.fluo.react-navigation+json;v=2') {
+      navigationRequests.push(new URL(request.url()).pathname);
+    }
+  });
 
   page.on('console', (message) => {
     if (message.type() === 'error' || message.type() === 'warning') {
@@ -112,6 +139,38 @@ test('hydrates two DTO pages and preserves the shell during HTTP-approved naviga
   await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
   await page.getByRole('button', { name: 'Count: 0', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Count: 1', exact: true })).toBeVisible();
+  expect(navigationRequests).toEqual([]);
+  if (!development) {
+    const raw: unknown = JSON.parse(await readFile(
+      new URL('../dist/client/.vite/manifest.json', import.meta.url), 'utf8',
+    ));
+    if (typeof raw !== 'object' || raw === null) throw new Error('Invalid built manifest.');
+    const entry: unknown = Reflect.get(raw, 'src/entry-client.tsx');
+    const search: unknown = Reflect.get(raw, 'src/page-search.tsx');
+    if (typeof entry !== 'object' || entry === null || typeof search !== 'object' || search === null) {
+      throw new Error('The production build must map the bootstrap and search destination.');
+    }
+    const searchFile: unknown = Reflect.get(search, 'file');
+    if (typeof searchFile !== 'string') throw new Error('The search destination has no built chunk.');
+    expect(assetResponses.has(`/assets/${searchFile}`)).toBe(false);
+    const seen = new Set<string>();
+    const pending = ['src/entry-client.tsx'];
+    while (pending.length) {
+      const key = pending.pop();
+      if (key === undefined || seen.has(key)) continue;
+      seen.add(key);
+      const chunk: unknown = Reflect.get(raw, key);
+      if (typeof chunk !== 'object' || chunk === null) throw new Error(`Missing built chunk: ${key}`);
+      const imports: unknown = Reflect.get(chunk, 'imports');
+      if (imports !== undefined) {
+        if (!Array.isArray(imports) || !imports.every((value): value is string => typeof value === 'string')) {
+          throw new Error(`Invalid static imports: ${key}`);
+        }
+        pending.push(...imports);
+      }
+    }
+    expect(seen.has('src/page-search.tsx')).toBe(false);
+  }
 
   const link = page.getByRole('link', { name: 'Search catalog' }).first();
   const searchApproval = page.waitForResponse((result) =>
@@ -120,6 +179,7 @@ test('hydrates two DTO pages and preserves the shell during HTTP-approved naviga
   await link.click();
   const approvedSearch = await searchApproval;
   expect(approvedSearch.status()).toBe(200);
+  expect(navigationRequests).toEqual(['/search']);
   await expect(page).toHaveURL(/\/search\?q=catalog$/u);
   await expect(page.getByRole('heading', { name: 'Search: catalog' }), browserDiagnostics.join('\n')).toBeVisible();
   await expect(page.getByLabel('Current route')).toContainText('/search?q=catalog ({})');
@@ -154,6 +214,10 @@ test('retains the approved page and metadata while an HTTP destination is pendin
   await page.goto('/products/sku-42?preview=true');
   await expect(page.getByRole('button', { name: 'Count: 0', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Shell taps: 0' }).click();
+  await subscribeDeliveryText(page, '__deliveryWarmAck', '[data-testid="resource-ack"]', ':1');
+  await page.getByRole('button', { name: 'Use shell resource' }).click();
+  await page.evaluate(() => Reflect.get(window, '__deliveryWarmAck'));
+  const resourceId = await page.evaluate(() => window.__reactResource?.id);
   let release = () => {};
   const deferred = new Promise<void>((resolve) => { release = resolve; });
   await page.route('**/search?q=catalog', async (route) => {
@@ -166,9 +230,31 @@ test('retains the approved page and metadata while an HTTP destination is pendin
     new URL(request.url()).pathname === '/search'
     && request.headers().accept === 'application/vnd.fluo.react-navigation+json;v=2',
   { timeout: 10_000 });
+  await subscribeDeliveryText(page, '__deliveryPending', '[aria-label="Navigation status"]', 'navigating');
   const click = page.getByRole('link', { name: 'Search catalog' }).first().click();
   try {
     await requestStarted;
+    await page.evaluate(() => Reflect.get(window, '__deliveryPending'));
+    await subscribeDeliveryText(page, '__deliveryPendingAck', '[data-testid="resource-ack"]', ':2');
+    await page.getByRole('button', { name: 'Use shell resource' }).click();
+    await page.evaluate(() => Reflect.get(window, '__deliveryPendingAck'));
+    await page.evaluate(() => {
+      const input = document.querySelector('input[name="name"]');
+      if (!(input instanceof HTMLInputElement)) throw new Error('The supported product form is missing.');
+      Reflect.set(window, '__deliveryInputAck', new Promise<string>((resolveInput, rejectInput) => {
+        const changed = () => {
+          clearTimeout(deadline);
+          resolveInput(input.value);
+        };
+        const deadline = setTimeout(() => {
+          input.removeEventListener('input', changed);
+          rejectInput(new Error('The product input did not acknowledge editing.'));
+        }, 10_000);
+        input.addEventListener('input', changed, { once: true });
+      }));
+    });
+    await page.getByRole('textbox', { name: 'Product name' }).fill('Editable while approval waits');
+    expect(await page.evaluate(() => Reflect.get(window, '__deliveryInputAck'))).toBe('Editable while approval waits');
 
     // When: the new page is still unapproved.
     // Then: the previous page and shell are usable and its page head is unchanged.
@@ -177,6 +263,7 @@ test('retains the approved page and metadata while an HTTP destination is pendin
     await expect(page).toHaveTitle('Catalog item sku-42');
     await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
     await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+    expect(await page.evaluate(() => window.__reactResource?.id)).toBe(resourceId);
   } finally {
     release();
   }
@@ -187,6 +274,7 @@ test('retains the approved page and metadata while an HTTP destination is pendin
   await expect(page.locator('link[rel="canonical"]')).toHaveCount(0);
   await expect(page.locator('link[data-vite-style]')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Shell taps: 1' })).toBeVisible();
+  expect(await page.evaluate(() => window.__reactResource?.id)).toBe(resourceId);
 });
 
 test('resets a throwing approved page locally without a second request', async ({ page }) => {

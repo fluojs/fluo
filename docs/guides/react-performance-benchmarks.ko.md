@@ -95,6 +95,60 @@ network data event에서 수집합니다. 수집 경계에서 아직 완료되�
 speculative prefetch는 pending으로 기록하고, byte 값이나 request 실패를
 만들어 내지 않은 채 실행을 inconclusive로 분류합니다.
 
+## Client delivery diagnostics
+
+Issue #3884는 `tooling/benchmarks/react-app-comparison/src/client-delivery.mjs`에
+별도의 production 관측 경로를 추가합니다. Repository root에서 실행합니다.
+
+```sh
+node tooling/benchmarks/react-app-comparison/src/client-delivery.mjs \
+  --build-root tooling/benchmarks/react-app-comparison/apps/fluo \
+  --output-dir tooling/benchmarks/react-app-comparison/results/issue-3884/<fresh-invocation>/fluo
+node tooling/benchmarks/react-app-comparison/src/client-delivery.mjs \
+  --build-root examples/react-vite-ssr --lockfile pnpm-lock.yaml \
+  --output-dir tooling/benchmarks/react-app-comparison/results/issue-3884/<fresh-invocation>/example
+```
+
+설치된 generated starter는 절대 경로를 `--build-root`로, source repository를
+`--source-root`로 전달합니다. Starter의 frozen lockfile이 설치된 package graph를
+식별합니다. Observer는 앱의 production config를 사용하며 chunk 추가나 manifest 변경
+없이 emitted module membership, static/dynamic import edge, rendered code byte,
+content hash 및 중복 module owner를 기록합니다. `graph.json`, `manifest.json`,
+`source.patch`, `untracked-inputs.json`은 source/build/package/lock/runtime/host identity를
+보존합니다. 매번 새 output directory를 사용합니다.
+
+먼저 이 observer로 설치 starter를 build한 뒤, 그 정확한 build를 일반 `pnpm start`로
+시작합니다. 실행 중인 server 아래에서 다시 build하지 않고 cold/warm private-ordinary
+여정을 수집합니다.
+
+```sh
+node tooling/benchmarks/react-app-comparison/src/client-delivery.mjs \
+  --observe-output tooling/benchmarks/react-app-comparison/results/issue-3884/<fresh-invocation>/starter \
+  --capture-url 'http://127.0.0.1:<port>/products/sku-42?preview=true'
+```
+
+보존한 manifest와 serving 중인 manifest가 같아야 합니다. 생성 correctness test는
+shell resource를 먼저 warm하고 실제 search approval을 defer한 동안 resource operation과
+native form input acknowledgment를 확인합니다. Background form/search API를 추가하지 않습니다.
+
+Example의 `tests/client-delivery.spec.ts`는 각 action 전에 CDP와 정확한 DOM observer를
+등록합니다. Cold/warm과 public-prefetch/private-ordinary trace를 나누어 HTML,
+bootstrap, HTTP-selected initial module, 실제 hydration control acknowledgment,
+negotiated payload, built destination module, destination DOM/frame 관측을 보존합니다.
+CDP monotonic seconds와 document performance milliseconds는 별도 clock domain입니다.
+`decodedBytes`는 수집한 decoded body이고 `encodedTransportBytes`는 protocol overhead를
+포함하므로 canonical compressed-body budget metric이 **아닙니다**. Cache hit, content
+encoding, 반복 network transfer를 명시합니다. Body 수집 실패, 누락 stage나 provenance를
+완전한 trace로 바꾸지 않습니다.
+
+이 unthrottled correctness trace는 관측 overhead를 포함하며 5회 profile 영수증이 아닙니다.
+전체 directory를 `results/issue-3884/`에 보관하고 `verifyDeliveryTraceFiles(...)`로
+artifact를 검증한 뒤, 변경하지 않은 representative regression gate를 별도로 실행합니다.
+Canonical metric, 경쟁 앱 실측, profile setting이나 threshold를 diagnostic으로 대체하지
+않습니다. Client subset 통과로 실패한 server/dev/full verdict를 통과로 바꾸지 않습니다.
+Public prefetch는 HTTP-approved single-use를 유지하며 ordinary private activation,
+refresh, retry, history는 여전히 fresh approval을 얻습니다.
+
 ## 증거 재현
 
 정확한 frozen-lockfile 설치, build, browser, 측정 및 판정 명령은

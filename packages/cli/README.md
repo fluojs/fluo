@@ -229,6 +229,12 @@ application files and the lifecycle command to rerun. Generated `Link` output re
 and `router.push(...)` performs HTTP-approved soft navigation for build-mapped destinations;
 unsupported pages and disabled JavaScript keep native document navigation. Additional pages
 need a page module and HTTP handler/DTO, not edits to client entry, renderer, manifest, or router store.
+The generated production hydration test observes negotiated GETs before opening the page:
+hydration and acknowledged controls must not trigger an initial-data GET, and search requires
+one HTTP approval. It also checks the actual built manifest and browser asset inventory so
+the search destination is not eagerly loaded by the first product page. This is correctness
+coverage, not a hydration-time or navigation-percentile performance receipt; see
+[client delivery diagnostics](../../docs/guides/react-performance-benchmarks.md#client-delivery-diagnostics).
 The generated shell opts into `ReactNavigationExperience`: pending and polite announcements
 remain outside the keyed page slot, a destination render error offers a local reset, and
 `@PageMetadata(...)` supplies request-selected title/meta/link descriptors to SSR and soft

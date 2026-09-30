@@ -93,6 +93,60 @@ encoded asset bytes come from browser CDP network data events; a speculative
 prefetch still pending at the capture boundary is recorded as pending and
 makes the run inconclusive without fabricating byte counts or a request failure.
 
+## Client delivery diagnostics
+
+Issue #3884 adds a supplemental production observation path in
+`tooling/benchmarks/react-app-comparison/src/client-delivery.mjs`. From the repository root:
+
+```sh
+node tooling/benchmarks/react-app-comparison/src/client-delivery.mjs \
+  --build-root tooling/benchmarks/react-app-comparison/apps/fluo \
+  --output-dir tooling/benchmarks/react-app-comparison/results/issue-3884/<fresh-invocation>/fluo
+node tooling/benchmarks/react-app-comparison/src/client-delivery.mjs \
+  --build-root examples/react-vite-ssr --lockfile pnpm-lock.yaml \
+  --output-dir tooling/benchmarks/react-app-comparison/results/issue-3884/<fresh-invocation>/example
+```
+
+For an installed generated starter, pass its absolute path as `--build-root` and
+the source repository as `--source-root`; its own frozen lockfile identifies the
+installed package graph. The observer uses the app's production configuration and
+records emitted module membership, static/dynamic import edges, rendered code bytes,
+content hashes and duplicate module owners without adding chunks or changing the manifest.
+`graph.json`, `manifest.json`, `source.patch` and `untracked-inputs.json` retain
+source/build/package/lock/runtime/host identity. Use a fresh output directory.
+
+Build the installed starter with this observer first, then start that exact build with
+its ordinary `pnpm start`. To collect its cold/warm private-ordinary journeys without
+rebuilding under an already-running server:
+
+```sh
+node tooling/benchmarks/react-app-comparison/src/client-delivery.mjs \
+  --observe-output tooling/benchmarks/react-app-comparison/results/issue-3884/<fresh-invocation>/starter \
+  --capture-url 'http://127.0.0.1:<port>/products/sku-42?preview=true'
+```
+
+The retained and served manifest must agree. The generated correctness test also warms
+the shell resource, then acknowledges resource operations and native form input while a
+real search approval is deferred; it does not introduce a background form/search API.
+
+The example's `tests/client-delivery.spec.ts` attaches CDP and exact DOM observers
+before each stimulus. Separate cold/warm and public-prefetch/private-ordinary traces
+retain HTML, bootstrap, HTTP-selected initial module, real hydration control acknowledgment,
+negotiated payload, built destination module and destination DOM/frame observations.
+CDP monotonic seconds and document performance milliseconds are separate clock domains.
+`decodedBytes` is the captured decoded body; `encodedTransportBytes` includes protocol
+overhead and is **not** the canonical compressed-body budget metric. Cache hits, content
+encoding and repeated network transfers remain explicit. A body capture failure, absent
+stage or missing provenance cannot be turned into a complete trace.
+
+These unthrottled correctness traces include observation overhead and are not five-run
+profile receipts. Keep their complete directories under `results/issue-3884/`, verify
+their artifacts with `verifyDeliveryTraceFiles(...)`, and run the unchanged representative
+regression gate separately. Do not replace canonical metrics, peer measurements, profile
+settings or thresholds with this diagnostic. A client subset pass does not make a failing
+server/dev/full verdict pass. Public prefetch remains HTTP-approved and single-use;
+ordinary private activation, refresh, retry and history still obtain fresh approval.
+
 ## Reproducing evidence
 
 Use the exact frozen-lockfile install, build, browser, measurement, and evaluation
