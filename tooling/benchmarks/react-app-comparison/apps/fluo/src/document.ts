@@ -4,6 +4,7 @@ import {
   ReactClientRouterProvider,
   type ReactNavigationModules,
   useNavigation,
+  usePathname,
 } from '@fluojs/react/client';
 import type { ReactInitialNavigationPage } from '@fluojs/react';
 import { createElement, type ReactNode, useEffect, useRef, useState } from 'react';
@@ -95,6 +96,11 @@ function JukeboxResource() {
   );
 }
 
+function JukeboxResourceBoundary() {
+  const pathname = usePathname();
+  return pathname.startsWith('/jukebox/') ? createElement(JukeboxResource) : null;
+}
+
 export function BenchmarkDocument({
   data,
   editor,
@@ -136,7 +142,7 @@ export function BenchmarkDocument({
           ) : null,
         ),
         createElement('main', null, destination ?? initialElement),
-        createElement(JukeboxResource),
+        createElement(JukeboxResourceBoundary),
       ),
       initialPage === undefined ? null : createElement('script', {
         id: 'fluo-initial-page',

@@ -36,10 +36,26 @@ test('Fluo listing does not load unrelated destination controls', async ({ page 
     if (response.request().resourceType() === 'script') scripts.push(response);
   });
   await page.goto('/');
-  await expect(page.locator('[data-benchmark-hydrated="true"]')).toBeAttached();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Product catalog');
   const code = (await Promise.all(scripts.map((response) => response.text()))).join('\n');
   expect(code.includes('edit-name')).toBe(false);
   expect(code.includes('data-approved-view')).toBe(false);
+});
+
+test('Fluo catalog defers the audio resource until approved jukebox navigation', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'fluo');
+  await page.goto('/');
+  await expect(page.getByTestId('jukebox-resource')).toHaveCount(0);
+  await page.evaluate(() => { window.__benchmarkDocument = 'catalog-shell'; });
+  await page.locator('nav[aria-label="Main navigation"] a[href="/jukebox/songs"]').click();
+  await expect(page.locator('[data-approved-view="songs"]')).toBeVisible();
+  expect(await page.evaluate(() => window.__benchmarkDocument)).toBe('catalog-shell');
+  const resource = page.getByTestId('jukebox-resource');
+  await expect(resource).toHaveAttribute('data-instance', /.+/u);
+  const identity = await resource.getAttribute('data-instance');
+  await page.locator('nav[aria-label="Main navigation"] a[href="/jukebox/qr"]').click();
+  await expect(page.locator('[data-approved-view="qr"]')).toBeVisible();
+  await expect(resource).toHaveAttribute('data-instance', identity);
 });
 
 test('public listing, detail, and production asset budgets', async ({ page }, testInfo) => {
