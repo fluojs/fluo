@@ -37,7 +37,7 @@ const fixtureBuild = await build({
         }
         const node = document.createElement('div');
         document.body.append(node);
-        createRoot(node).render(['/suspended', '/gated'].includes(location.pathname)
+        createRoot(node).render(window.__holdWarm || ['/suspended', '/gated'].includes(location.pathname)
           ? createElement(Suspense, { fallback: createElement(Ready) },
             createElement(location.pathname === '/gated' ? Gated : Never))
           : createElement(Ready));
@@ -81,6 +81,37 @@ test('collector cannot sample cold metrics or start warm with unresolved real Re
     assert.equal(documents, 1, 'a visible SSR shell must not trigger warm navigation');
   } finally {
     await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('collector cannot leave an unresolved warm React document for the next workload', { timeout: 25_000 }, async () => {
+  let documents = 0;
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
+    documents++;
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(fixtureHtml(`<!doctype html><h1>Warm fixture</h1><script>window.__holdWarm=${documents === 2}</script>`));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  let driver;
+  try {
+    driver = await createBrowserDriver({
+      journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+        .map((name) => [name, { path: '/ready' }])),
+      provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+    });
+    await assert.rejects(driver.measure({
+      framework: 'fluo', runId: 'unresolved-warm', device: 'desktop', mode: 'native',
+      url: `http://127.0.0.1:${server.address().port}/`,
+    }), /initial React completion/u);
+    assert.equal(documents, 2);
+  } finally {
+    await driver?.close();
     const closed = once(server, 'close');
     server.close();
     await closed;
