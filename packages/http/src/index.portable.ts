@@ -69,6 +69,8 @@ export {
 export type { FastPathEligibility, FastPathStats } from './dispatch/fast-path/index.js';
 export * from './errors.js';
 export * from './exceptions.js';
+export { HttpFormRejection } from './form-representation.js';
+export type { HttpFormErrors, HttpFormRepresentationProvider } from './form-representation.js';
 export {
   appendVaryHeader,
   buildContentDisposition,

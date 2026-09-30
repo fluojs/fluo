@@ -351,6 +351,24 @@ export function enforceReactNavigationPayloadContract(
       ts.isBinaryExpression(node) && node.getText(store) === "type === 'refresh'")) {
     throw new Error('React navigation refresh must request the current URL through fresh generation-guarded HTTP approval.');
   }
+  const formApproval = findNode(store, (node) =>
+    ts.isMethodDeclaration(node) && node.name.getText(store) === 'approveForm');
+  const formRead = formApproval && findNode(formApproval, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'loadAndCommit');
+  const formReadType = formApproval && findNode(formApproval, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(store) === 'type');
+  if (!formRead || formRead.arguments[0]?.getText(store) !== 'browser'
+    || formRead.arguments[1]?.getText(store) !== 'destination'
+    || formRead.arguments[2]?.getText(store) !== 'type'
+    || formRead.arguments[3]?.getText(store) !== 'undefined'
+    || formRead.arguments[4]?.kind !== ts.SyntaxKind.TrueKeyword
+    || formReadType?.initializer?.getText(store) !== "followUp === 'refresh' ? 'refresh' : 'push'"
+    || !findNode(formApproval, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'cached.clear')
+    || !findNode(formApproval, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'discardPrefetches')) {
+    throw new Error('React navigation form follow-up must reuse fresh HTTP approval, not a cached or alternate destination path.');
+  }
   const adoptedApproval = findNode(store, (node) =>
     ts.isConditionalExpression(node) && node.condition.getText(store).includes('prefetchedResult.ok'));
   if (!adoptedApproval || !ts.isConditionalExpression(adoptedApproval)
@@ -378,6 +396,7 @@ export function enforceReactNavigationPayloadContract(
     ts.isIfStatement(node) && node.expression.getText(dispatch) === 'grantsPrefetch');
   if (![
     'representation.mediaType === NAVIGATION_CONTENT_TYPE',
+    "request.method.toUpperCase() === 'GET'",
     "representation.prefetch === 'public'",
     'response.statusCode === 200',
     '!hasIdentityHeader',

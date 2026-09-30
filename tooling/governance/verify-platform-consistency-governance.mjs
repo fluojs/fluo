@@ -1685,6 +1685,7 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
       ...navigationContractPaths,
       ...contractDiscoverabilityCompanions,
       'tooling/governance/react-navigation-payload-contract.mjs',
+      'tooling/governance/react-navigation-payload-contract.d.mts',
       'tooling/governance/react-navigation-payload-contract.test.ts',
       'packages/react/src/client-navigation-payload.test.ts',
     ];

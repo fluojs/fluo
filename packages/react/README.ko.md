@@ -1140,9 +1140,14 @@ Non-React route와 같은 session/cookie, guard, middleware policy를 사용하�
 이 recipe는 React Router action/fetcher, Astro Actions, Next.js Server Actions와 의도적으로 다릅니다. fluo는
 function reference를 compile하거나, route matching을 소유하거나, loader/client cache를 revalidate하거나,
 document response를 교체하지 않습니다. Experimental fluo Server Functions transport와도 별개입니다. Native
-form이 이미 완전한 fallback을 제공하고 `@fluojs/react/client`가 mutation route나 cache invalidation을 소유하지
-않으므로 이 phase에서는 stable submit-state helper를 추가하지 않습니다. Application은 실제 form action과
-native submission을 유지하는 경우에만 hydration 이후 local pending UI를 추가할 수 있습니다.
+form의 fallback을 그대로 유지하면서 기존 provider의 `@fluojs/react/client` `useForm`으로
+progressive local state를 제공합니다. 저장 확인 뒤에만
+`ReactModule.formResult({ destination, followUp })`를 반환합니다. 실제 action/method/encoding과
+HTTP DTO/auth/CSRF ownership을 유지합니다.
+[Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)과
+[migration guide](../../docs/getting-started/migrate-react-progressive-forms.ko.md)가 safe field error,
+duplicate skip, uncertain completion, GET-only recovery를 정의합니다.
+follow-up read 실패가 확인된 저장을 저장 실패로 바꾸지 않습니다.
 
 ## Experimental RSC Prototype
 

@@ -995,3 +995,14 @@ default/raw-body/multipart 동작을 유지합니다. 공개 declaration 테스�
 [Next 사용법과 migration](../platform-nextjs/README.ko.md#bounded-body-parsing)을 참고하세요.
 
 HTTP 앱은 `@fluojs/runtime`의 `FluoFactory.create(AppModule, { adapter })`로 생성하고 instance `listen()`/`close()`로 실행·종료합니다. `HttpApplicationAdapter.getListenTarget?()`는 listen 뒤 `{ bindTarget, url }`을 반환하는 선택적 logging capability이며 socket 없는 host는 생략할 수 있습니다. Factory는 공통 middleware와 실패 정리를 소유하고 HTTP는 기존 request/input/response policy를 유지합니다. [Migration](../../docs/getting-started/migrate-http-factory.ko.md)을 참고하세요.
+
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.

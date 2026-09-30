@@ -709,3 +709,20 @@ This approach is not the final form of a sophisticated editor. It carries the co
 - [HTTP Request, Response, and Principal Types](../../packages/http/src/types.ts), [Fastify Multipart Support](../../packages/platform-fastify/README.md)
 - [Passport Strategies and Local Registration](../../packages/passport/README.md), [Setting the Principal and Checking Scopes](../../packages/passport/src/guard.ts)
 - [Writing and Clearing Cookies](../../packages/passport/src/cookie/cookie-manager.ts), [Prisma current and transaction](../../packages/prisma/README.md)
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../../docs/contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.
+
+This is the writer-screen progressive-interaction companion. Follow the
+[official catalog example](../../examples/react-vite-ssr/README.md) for the complete
+production CRUD execution path. Keep this chapter's native writes intact;
+manuscript checks are not evidence of browser execution.

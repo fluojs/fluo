@@ -10,7 +10,7 @@ export default defineConfig({
         entryFileNames: 'main.js',
       },
     },
-    ssr: 'src/main.ts',
+    ssr: process.env.REACT_VITE_FORM_TEST_SERVER === '1' ? 'tests/form-server.ts' : 'src/main.ts',
     target: 'node24',
   },
   plugins: [fluoDecoratorsPlugin()],

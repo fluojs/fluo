@@ -41,10 +41,12 @@ import { cloneElement, createElement, isValidElement } from 'react';
 import { REACT_IDENTIFIER_PREFIX } from './hydration';
 import { ProductDocument, type ProductDocumentProps } from './page';
 import { createPrefetchPageRouter } from './prefetch-page';
+import { createCatalogRouter, type CatalogControl } from './catalog';
 
 const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
 
 export type ReactViteExampleModuleOptions = {
+  readonly catalogControl?: CatalogControl;
   readonly clientDirectory: URL;
   readonly manifest: unknown;
 };
@@ -152,6 +154,12 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
   }
 
   const assets = result.manifest;
+  const catalog = createCatalogRouter((props, context) => ReactNavigationPage.create(
+    createElement(ProductDocument, {
+      catalog: props, navigationBuildId: assets.buildId, preview: false, productName: '',
+      routeParams: context.request.params, routeUrl: context.request.url, saved: false, sku: '', stylesheets: assets.css,
+    }), { module: './navigation-catalog.ts', props: { ...props } }, { prefetch: 'public' },
+  ), options.catalogControl);
   if (assets.assetMap['src/navigation-product.ts'] === undefined) {
     throw new ReactViteExampleManifestError('The client build has no navigation-product destination module.');
   }
@@ -320,9 +328,10 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     imports: [
       ReactModule.forRoot({
         navigationBuildId: assets.buildId,
-        controllers: [ProductPageRouter, AdminPageRouter, PrefetchPageRouter, DeploymentRouter],
-        middleware: [CatalogRequestMiddleware],
+        controllers: [ProductPageRouter, AdminPageRouter, PrefetchPageRouter, DeploymentRouter, catalog.router],
+        middleware: [CatalogRequestMiddleware, ...catalog.middleware],
         providers: [
+          ...catalog.providers,
           CatalogMutationGuard,
           CatalogReadGuard,
           ProductCatalog,
@@ -336,7 +345,9 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
       }),
     ],
   })
-  class ReactViteExampleModule {}
+  class ReactViteExampleModule {
+    static readonly errorRepresentation = catalog.errorRepresentation;
+  }
 
   return ReactViteExampleModule;
 }

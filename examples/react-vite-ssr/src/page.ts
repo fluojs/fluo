@@ -17,6 +17,7 @@ import { Suspense, createElement, lazy, useEffect, useId, useRef, useState, type
 import AdminDestination from './admin-page';
 import { ExamplePageSlot } from './example-page-slot';
 import { ResourceProbe } from './resource-probe';
+import CatalogPage, { type CatalogPageProps } from './catalog-page';
 
 const RECOMMENDATIONS_DELAY_MS = 25;
 
@@ -34,6 +35,7 @@ const preserveTransientNavigation: ReactNavigationFailurePolicy = (failure) =>
     ? 'preserve' : 'document';
 
 export type ProductDocumentProps = {
+  readonly catalog?: CatalogPageProps;
   readonly adminPage?: 'qr' | 'songs';
   readonly preview: boolean;
   readonly productName: string;
@@ -204,6 +206,7 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void
 }
 
 export function ProductDocument({
+  catalog,
   adminPage,
   preview,
   productName,
@@ -255,7 +258,7 @@ export function ProductDocument({
         { tabIndex: -1 },
         createElement(ExamplePageSlot, {
           destination,
-          page: adminPage === undefined
+          page: catalog !== undefined ? createElement(CatalogPage, { ...catalog }) : adminPage === undefined
           ? createElement(
             'section',
             { 'aria-label': 'Product page' },

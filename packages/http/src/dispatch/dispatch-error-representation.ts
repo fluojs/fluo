@@ -8,6 +8,12 @@ import {
   NotFoundException,
 } from '../exceptions.js';
 import { appendVaryHeader } from '../header-helpers.js';
+import {
+  HTTP_FORM_MEDIA_TYPE,
+  HTTP_FORM_VALIDATION,
+  parseHttpFormErrors,
+  readHttpFormRejection,
+} from '../form-representation.js';
 import type {
   DispatcherLogger,
   FrameworkResponse,
@@ -61,6 +67,8 @@ function createRepresentationContext(
   return {
     container: requestContext.container,
     error,
+    ...(readHttpFormRejection(error) !== undefined ? { validationOrigin: 'form' as const }
+      : requestContext.metadata[HTTP_FORM_VALIDATION] === error ? { validationOrigin: 'dto' as const } : {}),
     ...(handler === undefined ? {} : { handler }),
     json: createErrorResponse(error, requestContext.requestId),
     request: requestContext.request,
@@ -127,6 +135,31 @@ export async function writeErrorResponse(
 
   const httpError = toHttpException(error);
   const provider = options.representation?.html;
+  const acceptHeader = readAcceptHeader(requestContext);
+  const representationContext = createRepresentationContext(httpError, requestContext, options.handler);
+  if (requestContext.request.method.toUpperCase() === 'POST'
+    && acceptHeader?.trim().toLowerCase() === HTTP_FORM_MEDIA_TYPE) {
+    let errors = readHttpFormRejection(httpError);
+    if (errors === undefined && representationContext.validationOrigin === 'dto' && options.representation?.form) {
+      try {
+        errors = parseHttpFormErrors(await options.representation.form.project(representationContext));
+      } catch (providerError) {
+        if (isRequestAborted(requestContext.request)) return;
+        options.logger?.error('Form error projection failed; retaining canonical JSON.', providerError, 'HttpDispatcher');
+      }
+    }
+    if (errors !== undefined) {
+      requestContext.response.setHeader('Cache-Control', [
+        requestContext.response.headers['Cache-Control'], 'private, no-store',
+      ].filter(Boolean).join(', '));
+      await writeBody(requestContext, httpError.status, HTTP_FORM_MEDIA_TYPE, {
+        version: 1, outcome: 'validation', ...errors,
+      });
+      return;
+    }
+    await writeCanonicalJson(httpError, requestContext);
+    return;
+  }
 
   if (provider === undefined || !isHttpRepresentationEligible(error)) {
     requestContext.response.setStatus(httpError.status);
@@ -139,8 +172,6 @@ export async function writeErrorResponse(
     return;
   }
 
-  const acceptHeader = readAcceptHeader(requestContext);
-  const representationContext = createRepresentationContext(httpError, requestContext, options.handler);
   let htmlAvailable = false;
 
   try {

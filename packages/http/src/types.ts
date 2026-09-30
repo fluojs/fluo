@@ -291,6 +291,8 @@ export interface ConditionalRequestOptions {
  * response commit remain owned by the HTTP dispatcher.
  */
 export interface HttpErrorRepresentationContext {
+  /** Present only for an actual DTO validation phase or explicit form rejection. */
+  readonly validationOrigin?: 'dto' | 'form';
   /** Request-scoped dependency container active for the failed dispatch. */
   readonly container: RequestScopeContainer;
   /** HTTP exception selected by dispatcher error classification. */
@@ -327,6 +329,8 @@ export interface HtmlErrorRepresentationProvider {
 export interface HttpErrorRepresentationOptions {
   /** Application-owned HTML provider; canonical JSON remains framework-owned and always available. */
   readonly html: HtmlErrorRepresentationProvider;
+  /** Explicit safe projection for actual HTTP-owned DTO validation failures. */
+  readonly form?: import('./form-representation.js').HttpFormRepresentationProvider;
 }
 
 /** Authenticated caller identity attached to the active request context. */

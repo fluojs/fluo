@@ -26,10 +26,13 @@ import { createElement, type ReactElement } from 'react';
 
 import { ProductPage } from './page';
 import SearchPage from './page-search';
+import CatalogPage from './page-products';
+import { createCatalogRouter, type CatalogControl } from './catalog';
 
 const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
 
 export type ReactViteAppModuleOptions = {
+  readonly catalogControl?: CatalogControl;
   readonly clientDirectory: URL;
   readonly navigationBuildId?: string;
   readonly loadPage?: (module: `./page${string}.tsx`, props: Record<string, unknown>) => Promise<ReactElement>;
@@ -74,6 +77,12 @@ class AssetRequest {
 
 export function createAppModule(options: ReactViteAppModuleOptions) {
   const productNames = new Map<string, string>();
+  const catalog = createCatalogRouter(async (props, context) => {
+    const page = options.loadPage
+      ? await options.loadPage('./page-products.tsx', { ...props })
+      : createElement(CatalogPage, { ...props });
+    return ReactNavigationPage.create(page, { module: './page-products.tsx', props: { ...props } }, { prefetch: 'public' });
+  }, options.catalogControl);
 
   @Router('/products')
   class ProductPageRouter {
@@ -161,12 +170,16 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
   @Module({
     controllers: [ViteAssetController],
     imports: [ReactModule.forRoot({
-      controllers: [ProductPageRouter, SearchPageRouter],
+      controllers: [ProductPageRouter, SearchPageRouter, catalog.router],
+      providers: catalog.providers,
+      middleware: catalog.middleware,
       ...(options.navigationBuildId === undefined ? {} : { navigationBuildId: options.navigationBuildId }),
       renderPage: options.renderPage,
     })],
   })
-  class AppModule {}
+  class AppModule {
+    static readonly errorRepresentation = catalog.errorRepresentation;
+  }
 
   return AppModule;
 }

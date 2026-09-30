@@ -54,6 +54,8 @@ const REACT_VITE_SSR_TEMPLATES: readonly ReactViteSsrTemplate[] = [
   { outputPath: 'vitest.config.ts', templatePath: 'vitest.config.ts.ejs' },
   { outputPath: 'src/app.test.ts', templatePath: 'src/app.test.ts.ejs' },
   { outputPath: 'src/app.ts', templatePath: 'src/app.ts.ejs' },
+  { outputPath: 'src/catalog.ts', templatePath: 'src/catalog.ts.ejs' },
+  { outputPath: 'src/page-products.tsx', templatePath: 'src/page-products.tsx.ejs' },
   { outputPath: 'src/entry-client.tsx', templatePath: 'src/entry-client.tsx.ejs' },
   { outputPath: 'src/entry-client-dev.ts', templatePath: 'src/entry-client-dev.ts.ejs' },
   { outputPath: 'src/entry-server.tsx', templatePath: 'src/entry-server.tsx.ejs' },

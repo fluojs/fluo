@@ -709,3 +709,19 @@ export default defineConfig({
 - [HTTP 요청·응답·principal 타입](../../packages/http/src/types.ts), [Fastify의 multipart 지원](../../packages/platform-fastify/README.ko.md)
 - [Passport 전략·지역 등록](../../packages/passport/README.ko.md), [principal 설정과 scope 검사](../../packages/passport/src/guard.ts)
 - [쿠키 쓰기와 삭제](../../packages/passport/src/cookie/cookie-manager.ts), [Prisma의 current·transaction](../../packages/prisma/README.ko.md)
+
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.
+
+이 절은 작성 화면의 progressive-interaction companion입니다. 완전한 실행 경로는
+[공식 catalog example](../../examples/react-vite-ssr/README.ko.md)의 production CRUD를
+따라갑니다. 이 chapter의 기존 native write 경로를 대체하거나 manuscript 검사를
+browser 실행 증거로 간주하지 않습니다.

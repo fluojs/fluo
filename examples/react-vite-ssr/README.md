@@ -277,3 +277,22 @@ examples/react-vite-ssr/
 - `../../packages/react/README.md` — React package and Vite manifest contracts
 - `../../packages/vite/README.md` — TC39 decorator transform boundary for Vite builds
 - `../../docs/contracts/behavioral-contract-policy.md` — behavior/docs/test alignment rules
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../../docs/contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.
+
+Open `/catalog/login`, then `/catalog` or `/catalog/sku-42` for create/read/update/delete.
+Its process-local map and demo cookie are not durable persistence or production auth.
+`tests/progressive-forms.spec.ts` exercises JS-disabled/bootstrap-blocked journeys
+and real-listener barriers, cookies/CSRF, disconnects, manual redirects and GET-only
+recovery. Normal production uses `src/main.ts`; `REACT_VITE_FORM_TEST_SERVER=1`
+selects `tests/form-server.ts` only for explicit fault injection.

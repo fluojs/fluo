@@ -522,3 +522,19 @@ Readers can now discover merchandise in their familiar blog, choose their size a
 - [Product and money implementation](./ch03-catalog-and-money.md), [shared editorial contracts](../EDITORIAL.md): Server authority over pricing and the current implementation stage.
 
 [Previous: Modeling a T-shirt as a Product](./ch03-catalog-and-money.md) - [Volume 2 Contents](./toc.md) - [Next: Why You Cannot Trust Cart Prices](./ch05-cart-and-pricing.md)
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../../docs/contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.
+
+Keep this chapter's storefront as the existing read-only exercise. Writes belong
+to the [FluoBlog companion](../01-fluoblog/ch17-react-reading-and-writing.md).
+Do not add mutations, optimistic cache writes or dirty navigation guards here.

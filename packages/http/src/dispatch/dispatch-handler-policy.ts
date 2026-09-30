@@ -4,6 +4,7 @@ import type { RequestScopeContainer } from '@fluojs/di';
 import { DefaultBinder } from '../adapters/binding.js';
 import { getCompiledDtoBindingPlan } from '../adapters/dto-binding-plan.js';
 import { HttpDtoValidationAdapter } from '../adapters/dto-validation-adapter.js';
+import { HTTP_FORM_VALIDATION } from '../form-representation.js';
 import type { ArgumentResolverContext, Binder, HandlerDescriptor, RequestContext } from '../types.js';
 
 const defaultBinder = new DefaultBinder();
@@ -43,7 +44,12 @@ export async function invokeControllerHandler(
     : undefined;
 
   if (requestDto && getCompiledDtoBindingPlan(requestDto).needsValidation) {
-    await defaultValidator.validate(input, requestDto);
+    try {
+      await defaultValidator.validate(input, requestDto);
+    } catch (error) {
+      requestContext.metadata[HTTP_FORM_VALIDATION] = error;
+      throw error;
+    }
   }
 
   return method.call(controller, input, requestContext);

@@ -28,6 +28,14 @@ if (!initial.ok) {
 hydrateRoot(
   document,
   createElement(ProductDocument, {
+    ...(initial.payload.destination.module !== './navigation-catalog.ts' ? {} : {
+      catalog: {
+        products: Array.isArray(initial.payload.destination.props.products)
+          ? initial.payload.destination.props.products : [],
+        ...(typeof initial.payload.destination.props.selected === 'string'
+          ? { selected: initial.payload.destination.props.selected } : {}),
+      },
+    }),
     adminPage: isAdminPage ? adminPage : undefined,
     preview: document.documentElement.dataset.preview === 'true',
     productName: document.documentElement.dataset.productName ?? '',
@@ -35,7 +43,7 @@ hydrateRoot(
     navigationBuildId: buildId,
     initialPage: { json: initialJson, payload: initial.payload },
     routeMetadata: initial.payload.metadata,
-    routeParams: isAdminPage ? {} : { sku: document.documentElement.dataset.sku ?? '' },
+    routeParams: initial.payload.params,
     routeUrl: `${window.location.pathname}${window.location.search}`,
     saved: document.documentElement.dataset.saved === 'true',
     sku: document.documentElement.dataset.sku ?? '',

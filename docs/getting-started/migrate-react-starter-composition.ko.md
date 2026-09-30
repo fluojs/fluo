@@ -69,3 +69,14 @@ destination이 shell commit 전에 HTML이 아닌 `500`을 반환함을 확인�
 이는 작성 부담 실험이며 내장 auth 또는 enhanced form 정책을 약속하지 않습니다.
 Identity, persistence, validation message는 여전히 application이 구현하며 공식
 form/auth 조립은 #3874/#3875가 소유합니다.
+
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](../contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.

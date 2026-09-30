@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { createClientNavigationStore } from './client/store.js';
+import { createClientFormStore } from './client/form-store.js';
 import {
   createReactRouteSnapshot,
   loadReactInitialNavigationDestination as loadInitial,
@@ -79,6 +80,74 @@ function grantedResponse(headers: Record<string, string> = {}, body: unknown = p
     },
   });
 }
+
+it('uses fresh credentialed v2 approval after a form save instead of speculation admitted during the POST', async () => {
+  // Given: a provider with a held POST and a valid public prefetch opportunity.
+  let href = `${ORIGIN}/products/sku-42`;
+  vi.stubGlobal('window', { location: { href } });
+  let started = () => {};
+  let acknowledge = (_response: Response) => {};
+  const posted = new Promise<void>((resolve) => { started = resolve; });
+  const acknowledgement = new Promise<Response>((resolve) => { acknowledge = resolve; });
+  const metadata = { title: 'Fresh after save' };
+  const fetchResult = vi.fn()
+    .mockImplementationOnce(() => { started(); return acknowledgement; })
+    .mockResolvedValueOnce(grantedResponse({}, {
+      ...payload, destination: { ...payload.destination, props: { revision: 'speculative-old' } },
+    }))
+    .mockResolvedValueOnce(grantedResponse({}, {
+      ...payload, metadata, destination: { ...payload.destination, props: { revision: 'confirmed-new' } },
+    }));
+  vi.stubGlobal('fetch', fetchResult);
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+  const navigation = createClientNavigationStore(createReactRouteSnapshot({
+    url: '/products/sku-42', params: { sku: 'sku-42' },
+  }));
+  const disconnect = navigation.connect({
+    currentHref: () => href,
+    assign: vi.fn(), back: vi.fn(), reload: vi.fn(), replace: vi.fn(),
+    pushState: (next) => { href = next; }, replaceState: vi.fn(), subscribe: () => () => {},
+    prefetchScope: 'form-test',
+    load: (url, signal) => loadReactNavigationDestination(url, modules, { signal }),
+    prefetch: (url, signal) => loadReactNavigationDestination(url, modules, { signal, prefetch: true }),
+  });
+  const form = createClientFormStore();
+  navigation.forms.set('save', form);
+  const operation = form.submit({
+    action: `${ORIGIN}/save`,
+    body: new URLSearchParams({ name: 'Changed' }),
+  }, {
+    invalidate: navigation.router.invalidate,
+    allowDestination: () => true,
+    rememberForms: () => {},
+    approve: (url, followUp, signal) => navigation.approveForm(url, followUp, signal, form),
+  });
+  try {
+    await posted;
+    await navigation.prefetch(payload.url, {});
+
+    // When: persistence is acknowledged after the speculative entry was admitted.
+    acknowledge(new Response(JSON.stringify({
+      version: 1, outcome: 'saved', destination: payload.url, followUp: 'navigate',
+    }), { headers: { 'Content-Type': 'application/vnd.fluo.form+json;v=1' } }));
+    await operation;
+
+    // Then: only a fresh ordinary HTTP response supplies data and metadata.
+    expect(fetchResult).toHaveBeenCalledTimes(3);
+    expect(fetchResult.mock.calls[1]?.[1]).toMatchObject({ credentials: 'omit' });
+    expect(fetchResult.mock.calls[2]?.[1]).toMatchObject({
+      credentials: 'same-origin', cache: 'no-store', redirect: 'manual',
+    });
+    expect(navigation.getDestination()).toMatchObject({ props: { revision: 'confirmed-new' } });
+    expect(navigation.getSnapshot().metadata).toEqual(metadata);
+    expect(form.getSnapshot().mutation?.status).toBe('saved');
+    expect(form.getSnapshot().followUp).toEqual({ status: 'complete' });
+  } finally {
+    disconnect();
+    acknowledge(new Response('', { status: 500 }));
+    await operation;
+  }
+});
 
 it('hydrates only the HTTP-approved initial module without an additional request', async () => {
   // Given: an inert script whose URL matches the browser document and a built importer.
