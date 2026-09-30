@@ -137,6 +137,39 @@ network settings appear in each raw trace, not only in a profile label.
 `shellArrivalMs` uses browser first-contentful-paint, and
 `hydrationMainThreadMs` is the initial-navigation CDP `Performance.TaskDuration`
 in milliseconds; it includes work outside hydration and is not an RSC byte count.
+The shared `react-initial-completion-v1` boundary replaces load-only cold sampling.
+Before entry navigation, the collector installs a React DevTools observer (forwarding
+an existing hook) and CDP request observers. It requires document load and an actual
+root with `isDehydrated=false` and an element, no pending root lanes, and no fallback
+or dehydrated Suspense in the committed Fiber tree. A commit with the frozen passive
+mask `10256` must pass `onPostCommitFiberRoot`; a subsequent commit with no passive
+work can complete directly. This observes synchronous passive effects and their
+scheduled React updates, not just the first root commit. Existing
+`data-benchmark-hydrated` leaf-effect markers must also be true. Cold-owned document,
+script and stylesheet request identities must settle successfully before cold CPU,
+asset/request inventory sampling and the warm trigger. This is not a DOM-presence,
+sleep or network-idle heuristic.
+
+Support is limited to the frozen production renderers `19.2.8` and Next's bundled
+`19.3.0-canary-cbb046ab-20260731`, whose commit/passive hooks and Fiber fields were
+checked. Timeout, absent observer, unsupported renderer or failed initial resource
+throws, producing a nonzero/inconclusive run rather than load-only fallback.
+This does not guarantee completion of arbitrary asynchronous effect work,
+future roots, or background prefetch. Next's native RSC prefetch is unchanged;
+pending/aborted RSC remains separately recorded and can still make the run
+inconclusive or fail its error budget. `timings.initialBoundary` retains renderer
+versions, commit/post-passive states, load/completion/sample/warm timestamps, raw CDP
+metrics/paint entries, initial requests and pending-at-warm identities; request
+records retain loader/request IDs, initiators, settlement phase, timestamps and
+cancellation. Existing raw-trace authentication remains mandatory.
+
+Historical load-only data sampled a different initial-work window and could start
+warm navigation while cold-owned modules were unfinished; retained Linux evidence
+includes canceled cold scripts. Preserve all prior fail/inconclusive results.
+Recollect unchanged-runtime before and final-runtime after with the **same corrected
+collector** before comparing them. All 22 metric names/scopes, budgets, five runs,
+two warmups, alternating order, uncertainty rules and peer defaults remain unchanged.
+Four-app readiness smoke establishes correctness, not a performance PASS.
 The `transferred*Bytes` asset budgets use decoded CDP `Network.dataReceived`
 byte counts; `compressed*Bytes` uses encoded bytes from the same network events
 (the body, excluding headers). The raw transfer total comes from
