@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { createDeferredSignal, nextNavigation, observeNavigation, openHydratedAdmin } from './prefetch-helpers';
 
-const NAVIGATION_ACCEPT = 'application/vnd.fluo.react-navigation+json;v=1';
+const NAVIGATION_ACCEPT = 'application/vnd.fluo.react-navigation+json;v=2';
 
 test('consumes an anonymous hover-prefetched public destination once', async ({ page }) => {
   // Given: the built document is hydrated and listeners are installed before pointer entry.

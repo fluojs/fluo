@@ -30,6 +30,53 @@ const viteManifest = {
 } satisfies Record<string, unknown>;
 
 describe('@fluojs/react/vite asset manifest integration', () => {
+  it('derives one identity from the entire manifest and same-origin base', () => {
+    // Given: two independent outputs differ only in a lazy chunk.
+    const build = (manifest: unknown, base = '/assets/') => createReactViteAssetManifest({
+      base,
+      entries: { client: 'src/entry-client.tsx', server: 'src/entry-server.tsx' },
+      manifest,
+    });
+    const first = build(viteManifest);
+    const changed = build({
+      ...viteManifest,
+      'src/navigation-product.ts': { file: 'assets/product.b.js', isDynamicEntry: true },
+    });
+    const originalWithLazy = build({
+      ...viteManifest,
+      'src/navigation-product.ts': { file: 'assets/product.a.js', isDynamicEntry: true },
+    });
+    const otherBase = build(viteManifest, '/different/');
+
+    // When/Then: lazy outputs and the public base contribute to the server/browser identity.
+    expect(first.ok && originalWithLazy.ok && changed.ok && otherBase.ok).toBe(true);
+    if (!first.ok || !originalWithLazy.ok || !changed.ok || !otherBase.ok) return;
+    expect(first.manifest.buildId).toMatch(/^[a-f0-9]{64}$/u);
+    expect(originalWithLazy.manifest.buildId).not.toBe(changed.manifest.buildId);
+    expect(first.manifest.buildId).not.toBe(otherBase.manifest.buildId);
+  });
+
+  it('includes the complete Vite manifest without depending on key order', () => {
+    const build = (manifest: unknown) => createReactViteAssetManifest({
+      base: '/assets/',
+      entries: { client: 'src/entry-client.tsx', server: 'src/entry-server.tsx' },
+      manifest,
+    });
+    const original = build(viteManifest);
+    const reordered = build(Object.fromEntries(Object.entries(viteManifest).reverse()));
+    const changedDynamicImports = build({
+      ...viteManifest,
+      'src/entry-client.tsx': {
+        ...viteManifest['src/entry-client.tsx'],
+        dynamicImports: ['src/navigation-extra.tsx'],
+      },
+    });
+    expect(original.ok && reordered.ok && changedDynamicImports.ok).toBe(true);
+    if (!original.ok || !reordered.ok || !changedDynamicImports.ok) return;
+    expect(reordered.manifest.buildId).toBe(original.manifest.buildId);
+    expect(changedDynamicImports.manifest.buildId).not.toBe(original.manifest.buildId);
+  });
+
   it('parses Vite client/server entries into deterministic hydration assets', () => {
     // Given: a Vite client manifest with nested JS imports, CSS, assets, and bootstrap metadata.
     const result = createReactViteAssetManifest({

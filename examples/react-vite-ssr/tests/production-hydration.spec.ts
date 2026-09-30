@@ -66,7 +66,7 @@ test('hydrates streamed production HTML with generated Vite assets', async ({ pa
   expect(html).toContain('Current URL: /products/sku-42?preview=true');
   expect(html).toContain('property="og:title"');
   expect(html).not.toContain('Current URL: /products/sku-42?preview=true#details');
-  expect(bootstrapPaths).toContain('/assets/entry-client.js');
+  expect(bootstrapPaths).toEqual(expect.arrayContaining([expect.stringMatching(/^\/assets\/entry-client-[a-zA-Z0-9_-]+\.js$/u)]));
   expect(stylesheetPaths).toHaveLength(1);
 
   for (const pathname of [...bootstrapPaths, ...stylesheetPaths]) {
@@ -121,7 +121,7 @@ test('traverses admin QR and songs with a preserved shell, reset page state and 
   await page.evaluate(() => { window.__softNavigationDocument = 'admin-shell'; });
   const navigationResponse = page.waitForResponse((response) =>
     new URL(response.url()).pathname === '/admin/songs'
-    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1',
+    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2',
   );
 
   // When: the ordinary Link moves to songs, then browser history visits QR and forward again.
@@ -130,10 +130,11 @@ test('traverses admin QR and songs with a preserved shell, reset page state and 
 
   // Then: every view is HTTP-confirmed while shell identity and focus policy remain observable.
   expect(response.status()).toBe(200);
-  expect(response.headers()['content-type']).toMatch(/^application\/vnd\.fluo\.react-navigation\+json;\s*v="1"; charset=utf-8$/u);
+  expect(response.headers()['content-type']).toMatch(/^application\/vnd\.fluo\.react-navigation\+json;\s*v="2"; charset=utf-8$/u);
   expect(response.headers()['cache-control']).toContain('no-store');
   expect(await response.json()).toMatchObject({
-    version: 1,
+    version: 2,
+    buildId: expect.any(String),
     url: '/admin/songs',
     params: {},
     destination: { module: './navigation-admin.ts' },
@@ -177,14 +178,14 @@ test('keeps the approved page and head while a later HTTP destination is pending
   let release = () => {};
   const deferred = new Promise<void>((resolve) => { release = resolve; });
   await page.route('**/products/sku-84?preview=false', async (route) => {
-    if (route.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1') {
+    if (route.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2') {
       await deferred;
     }
     await route.continue();
   });
   const requestStarted = page.waitForRequest((request) =>
     new URL(request.url()).pathname === '/products/sku-84'
-    && request.headers().accept === 'application/vnd.fluo.react-navigation+json;v=1',
+    && request.headers().accept === 'application/vnd.fluo.react-navigation+json;v=2',
   { timeout: 10_000 });
   const click = page.getByRole('link', { name: 'Open sku-84' }).click();
   try {
@@ -215,7 +216,7 @@ test('removes an approved page stylesheet without removing the global stylesheet
   await page.route('**/assets/route-only.css', (route) =>
     route.fulfill({ body: 'body { color: #123456; }', contentType: 'text/css' }));
   await page.route('**/admin/songs', async (route) => {
-    if (route.request().headers().accept !== 'application/vnd.fluo.react-navigation+json;v=1') {
+    if (route.request().headers().accept !== 'application/vnd.fluo.react-navigation+json;v=2') {
       await route.continue();
       return;
     }
@@ -225,7 +226,7 @@ test('removes an approved page stylesheet without removing the global stylesheet
       || typeof payload.metadata !== 'object' || payload.metadata === null) {
       throw new Error('The HTTP-approved page has no metadata.');
     }
-    await route.fulfill({ response, contentType: 'application/vnd.fluo.react-navigation+json;v=1', body: JSON.stringify({
+    await route.fulfill({ response, contentType: 'application/vnd.fluo.react-navigation+json;v=2', body: JSON.stringify({
       ...payload,
       metadata: { ...payload.metadata, links: [{ rel: 'stylesheet', href: '/assets/route-only.css' }] },
     }) });
@@ -252,7 +253,7 @@ test('ignores a superseded approval without replacing the newer route or head', 
   let release = () => {};
   const deferred = new Promise<void>((resolve) => { release = resolve; });
   await page.route('**/products/sku-84?preview=false', async (route) => {
-    if (route.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1') {
+    if (route.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2') {
       await deferred;
     }
     try {
@@ -263,14 +264,14 @@ test('ignores a superseded approval without replacing the newer route or head', 
   });
   const oldRequest = page.waitForRequest((request) =>
     new URL(request.url()).pathname === '/products/sku-84'
-    && request.headers().accept === 'application/vnd.fluo.react-navigation+json;v=1',
+    && request.headers().accept === 'application/vnd.fluo.react-navigation+json;v=2',
   { timeout: 10_000 });
   const firstClick = page.getByRole('link', { name: 'Open sku-84' }).click();
   try {
     await oldRequest;
     const newerApproval = page.waitForResponse((response) =>
       new URL(response.url()).pathname === '/admin/songs'
-      && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1');
+      && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2');
 
     // When: another destination is approved before the earlier network result is released.
     await page.getByRole('link', { name: 'Open admin songs' }).click();
@@ -309,13 +310,13 @@ test('resets an approved render failure without reloading the document or the sh
   let approvalCount = 0;
   page.on('response', (response) => {
     if (new URL(response.url()).pathname === '/products/render-error'
-      && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1') {
+      && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2') {
       approvalCount++;
     }
   });
   const approved = page.waitForResponse((response) =>
     new URL(response.url()).pathname === '/products/render-error'
-    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1');
+    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2');
 
   // When: the HTTP-approved component fails to render, then the user resets that page boundary.
   await page.getByRole('link', { name: 'Open throwing destination' }).click();
@@ -349,7 +350,7 @@ test('shows a separate usable view if the application error view throws', async 
   await page.goto('/admin/qr');
   const approved = page.waitForResponse((response) =>
     new URL(response.url()).pathname === '/products/render-error'
-    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1');
+    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2');
 
   // When: the destination is approved with the throwing error-view fixture.
   await page.getByRole('link', { name: 'Open throwing error view' }).click();
@@ -376,7 +377,7 @@ test('applies pathname, query, fragment and traversal focus and scroll defaults'
   const queryApproval = page.waitForResponse((response) =>
     new URL(response.url()).pathname === '/products/sku-42'
     && new URL(response.url()).search === '?preview=false'
-    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1');
+    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2');
 
   // When: query-only approval completes without an automatic click-induced scroll.
   await page.evaluate(() => document.querySelector<HTMLAnchorElement>('a[href="/products/sku-42?preview=false"]')?.click());
@@ -402,7 +403,7 @@ test('applies pathname, query, fragment and traversal focus and scroll defaults'
   expect(await page.evaluate(() => window.scrollY)).toBe(400);
   const pathnameApproval = page.waitForResponse((response) =>
     new URL(response.url()).pathname === '/admin/songs'
-    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1');
+    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2');
   await page.evaluate(() => document.querySelector<HTMLAnchorElement>('a[href="/admin/songs"]')?.click());
   expect((await pathnameApproval).status()).toBe(200);
   await expect(page).toHaveURL(/\/admin\/songs$/u);
@@ -480,7 +481,7 @@ test('keeps native new tabs and full-document fallback on server rejection', asy
   await page.evaluate(() => { window.__softNavigationDocument = 'before-fallback'; });
   const rejected = page.waitForResponse((response) =>
     new URL(response.url()).pathname === '/products/x'
-    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=1');
+    && response.request().headers().accept === 'application/vnd.fluo.react-navigation+json;v=2');
 
   // When: the regular Link requests a DTO-invalid destination.
   await page.getByRole('link', { name: 'Open invalid product' }).click();

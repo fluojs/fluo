@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
+const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=2';
 const CURRENT = '/products/sku-42?preview=true';
 
 test('revalidates external changes without replacing page history or the live shell', async ({ page }) => {

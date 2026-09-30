@@ -69,8 +69,8 @@ function createRequest(
 }
 
 describe('dispatch response policy', () => {
-  const navigationMediaType = 'application/vnd.fluo.react-navigation+json;v=1';
-  const navigationBody = { version: 1, url: '/navigation-cache', params: {}, destination: { module: './page.ts', props: {} } };
+  const navigationMediaType = 'application/vnd.fluo.react-navigation+json;v=2';
+  const navigationBody = { version: 2, buildId: 'test-build', url: '/navigation-cache', params: {}, destination: { module: './page.ts', props: {} } };
 
   async function dispatchNavigation(
     options: {

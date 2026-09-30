@@ -124,6 +124,13 @@ client one `ReactClientRouterProvider`, route snapshot, document, and stylesheet
 manifest I/O and actionable missing/malformed build diagnostics at the Node.js boundary. Advanced
 applications can edit or replace those files and continue using every explicit API described below.
 
+The production path derives a v2 `buildId` from the complete Vite manifest and same-origin
+`/assets/` base. Both the HTTP-selected initial transfer and later navigation must match
+the built browser importers; the official shell preserves an A page on incompatible B and
+offers explicit document update. See the [production deployment recipe](./react-production-deployment.md)
+and [v1 migration](../getting-started/migrate-react-production-assets.md). Hosting retains
+old hashed assets for its chosen window; the framework does not provision a CDN.
+
 The runnable [`examples/react-vite-ssr`](../../examples/react-vite-ssr/README.md) remains the complete
 native-form and policy example. For SSR without generated client assets or hydration, use
 [`examples/react-stable-ssr`](../../examples/react-stable-ssr/README.md).

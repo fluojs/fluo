@@ -25,7 +25,7 @@ export class ReactStarterEntryError extends Error {
   }
 }
 
-export function createReactPageRenderer(manifest: unknown): ReactPageRenderer {
+export function createReactPageRenderer(manifest: unknown): ReactPageRenderer & { readonly buildId: string } {
   const result = createReactViteAssetManifest({
     base: '/assets/',
     entries: {
@@ -50,25 +50,30 @@ export function createReactPageRenderer(manifest: unknown): ReactPageRenderer {
     }
     return createReactServerEntry(
       <ReactAppDocument
+        navigationBuildId={assets.buildId}
         initialPage={initialPage}
         page={page}
         route={{ params: context.request.params, url: context.request.url, metadata: initialPage?.payload.metadata }}
         stylesheets={assets.css}
       />,
-      assets.hydrationOptions,
+      {
+        ...assets.hydrationOptions,
+        headers: initialPage === undefined ? {} : { 'Cache-Control': 'private, no-store' },
+      },
     );
   };
 
-  return renderPage;
+  return Object.assign(renderPage, { buildId: assets.buildId });
 }
 
-export function createReactDevelopmentPageRenderer(): ReactPageRenderer {
-  return (page, context, _policies, initialPage) => {
+export function createReactDevelopmentPageRenderer(): ReactPageRenderer & { readonly buildId: string } {
+  const renderPage: ReactPageRenderer = (page, context, _policies, initialPage) => {
     if (initialPage !== undefined && !Object.hasOwn(developmentPages, initialPage.payload.destination.module)) {
       throw new ReactStarterEntryError([`No development client destination: ${initialPage.payload.destination.module}`]);
     }
     return createReactServerEntry(
       <ReactAppDocument
+        navigationBuildId='vite-development'
         initialPage={initialPage}
         page={page}
         route={{ params: context.request.params, url: context.request.url, metadata: initialPage?.payload.metadata }}
@@ -80,4 +85,5 @@ export function createReactDevelopmentPageRenderer(): ReactPageRenderer {
       },
     );
   };
+  return Object.assign(renderPage, { buildId: 'vite-development' });
 }

@@ -24,11 +24,11 @@ For an existing app adopting the new composition:
    again, or place data in executable inline JavaScript. The runtime has already
    normalized props as JSON and escaped the transfer with a 64 KiB UTF-8 cap before
    HTML response commit. The first browser entry resolves that script through
-   `loadReactInitialNavigationDestination(json, modules)` and hydrates the returned
+   `loadReactInitialNavigationDestination(json, modules, buildId)` and hydrates the returned
    component with the payload URL, params and props.
 4. Keep shared shell/providers outside the provider's destination page slot; render
    `destination ?? initialPage` inside it. On the existing provider, pass
-   `failurePolicy={({ reason }) => reason === 'network' || reason === 'server-error' || reason === 'import-failure' ? 'preserve' : 'document'}`;
+   `failurePolicy={({ reason }) => reason === 'network' || reason === 'server-error' || reason === 'import-failure' || reason === 'incompatible-build' ? 'preserve' : 'document'}`;
    place `useNavigation().failure` controls calling `router.retry()` and
    `router.openDocument()` in the persistent shell, outside the destination slot.
    Existing `Link` and `useRouter()` make
@@ -45,8 +45,11 @@ soft revalidation, #3874's form enhancements, or stable RSC.
 
 Verify `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm start`, and
 `pnpm test:browser` in the generated app. Browser tests should check both direct
-HTML hydration and the `Accept: application/vnd.fluo.react-navigation+json;v=1`
+HTML hydration and the `Accept: application/vnd.fluo.react-navigation+json;v=2`
 request made by each soft transition.
+For an existing v1 installation, the build manifest identity and asset retention
+are additional requirements; follow the
+[production asset migration](./migrate-react-production-assets.md).
 
 ## Observed authoring cost
 

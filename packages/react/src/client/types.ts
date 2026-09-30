@@ -109,6 +109,8 @@ export type ReactClientRouterProviderProps = {
   readonly initialSnapshot: ReactRouteSnapshot;
   /** Build-produced importers for HTTP-approved soft destinations. */
   readonly navigationModules?: ReactNavigationModules;
+  /** Identity of the manifest that produced these importers and the initial document. */
+  readonly navigationBuildId?: string;
   /** Opt in to preserving the last approved page on selected failed navigation requests. */
   readonly failurePolicy?: ReactNavigationFailurePolicy;
   /** Application-managed auth/session epoch; omitted means prefetch is disabled. */

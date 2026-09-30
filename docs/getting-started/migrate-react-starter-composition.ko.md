@@ -24,11 +24,11 @@
    `<script type="application/json" id="fluo-initial-page">` 안에 그대로 렌더링하고
    재직렬화하거나 executable inline JavaScript에 넣지 않습니다. Runtime이 HTML commit 전에
    props를 JSON으로 정규화하고 escape한 전송의 UTF-8 64 KiB 상한을 검사합니다. Browser
-   entry는 `loadReactInitialNavigationDestination(json, modules)`로 script를 검증해
+   entry는 `loadReactInitialNavigationDestination(json, modules, buildId)`로 script를 검증해
    반환된 component를 payload URL, params, props와 함께 hydrate합니다.
 4. 공유 shell/provider를 provider의 destination page slot 밖에 두고 slot 안에는
    `destination ?? initialPage`를 렌더링합니다. 기존 provider에
-   `failurePolicy={({ reason }) => reason === 'network' || reason === 'server-error' || reason === 'import-failure' ? 'preserve' : 'document'}`
+   `failurePolicy={({ reason }) => reason === 'network' || reason === 'server-error' || reason === 'import-failure' || reason === 'incompatible-build' ? 'preserve' : 'document'}`
    를 전달하고 `useNavigation().failure` 및 `router.retry()`·`router.openDocument()`
    control은 destination slot 밖의 지속 셸에 둡니다. 기존 `Link`와 `useRouter()`는 승인된
    soft 이동을 수행하지만 direct GET, 이른 클릭, JavaScript 비활성화, 미지원 목적지는
@@ -43,7 +43,9 @@ soft revalidation, #3874의 form 확장이나 stable RSC를 암묵적으로 opt-
 
 생성 앱에서 `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm start`,
 `pnpm test:browser`를 확인하세요. Browser test는 direct HTML hydration과 각 soft
-이동의 `Accept: application/vnd.fluo.react-navigation+json;v=1` request를 확인합니다.
+이동의 `Accept: application/vnd.fluo.react-navigation+json;v=2` request를 확인합니다.
+기존 v1 설치에는 manifest build 식별자와 asset 보존 조건이 추가되므로
+[프로덕션 asset 이주](./migrate-react-production-assets.ko.md)를 확인하세요.
 
 ## 관찰한 작성 부담
 

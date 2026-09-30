@@ -13,6 +13,8 @@ import { validateReactRenderPolicyControllers } from './render-policy.js';
 export type ReactModuleOptions = {
   /** React router or HTTP controller classes added to the existing HTTP handler source path. */
   readonly controllers: readonly Constructor[];
+  /** Identity of the complete selected production client manifest and same-origin asset base. */
+  readonly navigationBuildId?: string;
   /** Provider tokens exported from this dynamic React module. */
   readonly exports?: readonly Token[];
   /** Modules whose exported providers are visible to the registered React routers. */
@@ -47,6 +49,9 @@ export class ReactModule {
    * @returns A runtime module type suitable for `@Module({ imports: [...] })`.
    */
   static forRoot(options: ReactModuleOptions): ModuleType {
+    if (options.navigationBuildId !== undefined && options.navigationBuildId.trim().length === 0) {
+      throw new TypeError('React navigation build identity cannot be empty.');
+    }
     class ReactRootModule extends ReactModule {}
 
     const pageRendererProvider: Provider<ReactPageRenderer> | undefined = options.renderPage === undefined
@@ -74,6 +79,7 @@ export class ReactModule {
     ];
     const middleware = [
       createReactPageResultMiddleware({
+        ...(options.navigationBuildId === undefined ? {} : { navigationBuildId: options.navigationBuildId }),
         ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
         ...(options.renderPage === undefined ? {} : { renderPage: options.renderPage }),
       }),

@@ -16,6 +16,7 @@ import { type ReactElement, createElement, isValidElement, useEffect, useRef, us
 export const REACT_IDENTIFIER_PREFIX = 'fluo-react-vite-' as const;
 
 export type ReactAppDocumentProps = {
+  readonly navigationBuildId: string;
   readonly page: ReactElement;
   readonly route: ReactRouteSnapshotInput;
   readonly stylesheets: readonly string[];
@@ -99,7 +100,10 @@ function SharedNavigation(): ReactElement {
         <div role='alert'>
           <p>Navigation failed: {navigation.failure.reason} ({navigation.failure.destination})</p>
           <button onClick={() => router.retry()} type='button'>Retry navigation</button>
-          <button onClick={() => router.openDocument()} type='button'>Open full document</button>
+          <button onClick={() => router.openDocument()} type='button'>
+            {navigation.failure.reason === 'incompatible-build'
+              ? 'Update application (open full document)' : 'Open full document'}
+          </button>
         </div>
       )}
       <nav aria-label='Page navigation'>
@@ -134,6 +138,7 @@ export function ReactAppDocument({
   stylesheets,
   initialPage,
   navigationModules,
+  navigationBuildId,
 }: ReactAppDocumentProps): ReactElement {
   const initialSnapshot = createReactRouteSnapshot(route);
 
@@ -141,33 +146,35 @@ export function ReactAppDocument({
     <ReactClientRouterProvider
       initialSnapshot={initialSnapshot}
       navigationModules={navigationModules}
+      navigationBuildId={navigationBuildId}
       failurePolicy={({ reason }) =>
         reason === 'network' || reason === 'server-error' || reason === 'import-failure'
+          || reason === 'incompatible-build'
           ? 'preserve' : 'document'}
     >
       {(destination) => (
-          <html lang='en'>
-            <head>
-              <meta charSet='utf-8' />
-              <meta content='width=device-width, initial-scale=1' name='viewport' />
-              <link href='/assets/favicon.svg' rel='icon' />
-              {stylesheets.map((href) => (
-                <link data-vite-style href={href} key={href} rel='stylesheet' />
-              ))}
-            </head>
-            <body>
-              <SharedNavigation />
-              <main tabIndex={-1}>
-                <ReactNavigationExperience
-                  destination={destination !== null && isValidElement(destination) ? productPage(destination) : null}
-                  page={productPage(page)}
-                />
-              </main>
-              {initialPage && (
-                <script id='fluo-initial-page' type='application/json'>{initialPage.json}</script>
-              )}
-            </body>
-          </html>
+        <html data-build-id={navigationBuildId} lang='en'>
+          <head>
+            <meta charSet='utf-8' />
+            <meta content='width=device-width, initial-scale=1' name='viewport' />
+            <link href='/assets/favicon.svg' rel='icon' />
+            {stylesheets.map((href) => (
+              <link data-vite-style href={href} key={href} rel='stylesheet' />
+            ))}
+          </head>
+          <body>
+            <SharedNavigation />
+            <main tabIndex={-1}>
+              <ReactNavigationExperience
+                destination={destination !== null && isValidElement(destination) ? productPage(destination) : null}
+                page={productPage(page)}
+              />
+            </main>
+            {initialPage && (
+              <script id='fluo-initial-page' type='application/json'>{initialPage.json}</script>
+            )}
+          </body>
+        </html>
       )}
     </ReactClientRouterProvider>
   );

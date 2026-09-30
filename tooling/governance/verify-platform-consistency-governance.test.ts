@@ -1262,6 +1262,33 @@ describe('enforceContractCompanionUpdates', () => {
     }
   });
 
+  it('does not confuse a v2-only media type update with a changed HTTP prefetch grant', async () => {
+    const { enforceContractCompanionUpdates } = await loadGovernanceInternals();
+    const protocol = "const NAVIGATION_CONTENT_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';";
+    const changedFiles = [
+      'docs/contracts/react-navigation-payload.md',
+      'docs/contracts/react-navigation-payload.ko.md',
+      'docs/CONTEXT.md',
+      'docs/CONTEXT.ko.md',
+      'tooling/governance/react-navigation-payload-contract.mjs',
+      'tooling/governance/react-navigation-payload-contract.test.ts',
+      'packages/react/src/client-navigation-payload.test.ts',
+      'packages/react/src/page-result.ts',
+      'packages/react/src/navigation-payload.test.ts',
+      'packages/http/src/dispatch/dispatch-response-policy.ts',
+    ];
+    const httpPath = 'packages/http/src/dispatch/dispatch-response-policy.ts';
+    const snapshots = { [httpPath]: {
+      base: protocol,
+      head: protocol.replace('v=1', 'v=2'),
+    } };
+
+    expect(() => enforceContractCompanionUpdates(changedFiles, snapshots)).not.toThrow();
+    expect(() => enforceContractCompanionUpdates(changedFiles, {
+      [httpPath]: { ...snapshots[httpPath], head: `${snapshots[httpPath].head}\n// prefetch policy changed` },
+    })).toThrow(/React navigation prefetch contract updates must include/u);
+  });
+
   it('requires bilingual context discoverability companions for release-contract changes', async () => {
     // Given: a release-governing contract update with its tooling and regression companion.
     const { enforceContractCompanionUpdates } = await loadGovernanceInternals();

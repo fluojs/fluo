@@ -5,6 +5,7 @@ import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
+import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { createReactViteExampleModule } from './app';
 
 const VITE_MANIFEST = {
@@ -33,6 +34,12 @@ const VITE_MANIFEST = {
 } as const;
 
 const TEXT_DECODER = new TextDecoder();
+const assets = createReactViteAssetManifest({
+  base: '/assets/',
+  entries: { client: 'src/entry-client.ts', server: 'src/entry-server.ts' },
+  manifest: VITE_MANIFEST,
+});
+if (!assets.ok) throw new Error('The test manifest must be valid.');
 
 function readHtml(body: unknown): string {
   if (body instanceof Uint8Array) {
@@ -121,15 +128,16 @@ describe('react-vite-ssr example', () => {
       // When: the client explicitly asks for the navigation representation.
       const response = await app.request('GET', '/products/sku-42')
         .query('preview', 'true')
-        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2')
         .send();
 
       // Then: the selected route's URL and params, not a browser matcher, identify the destination.
       expect(response.status).toBe(200);
-      expect(response.headers['Content-Type']).toBe('application/vnd.fluo.react-navigation+json;v=1');
+      expect(response.headers['Content-Type']).toBe('application/vnd.fluo.react-navigation+json;v=2');
       expect(response.headers.Vary).toContain('Accept');
       expect(response.body).toEqual({
-        version: 1,
+        version: 2,
+        buildId: assets.manifest.buildId,
         url: '/products/sku-42?preview=true',
         params: { sku: 'sku-42' },
         destination: {
@@ -160,19 +168,20 @@ describe('react-vite-ssr example', () => {
       defer(() => app.close());
       // When: the browser negotiates an explicitly public page and restricted pages.
       const publicResponse = await app.request('GET', '/prefetch/public-84')
-        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1').send();
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
       const cookieResponse = await app.request('GET', '/prefetch/public-84')
-        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2')
         .header('cookie', 'session=alice').send();
       const privateResponse = await app.request('GET', '/prefetch/private')
-        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1').send();
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
 
       // Then: only an anonymous, server-declared identity-independent page is reusable.
       expect(publicResponse.status).toBe(200);
       expect(publicResponse.headers['X-Fluo-Navigation-Prefetch']).toBe('public');
       expect(publicResponse.headers['Cache-Control']).toBe('public, max-age=15');
       expect(publicResponse.body).toMatchObject({
-        version: 1,
+        version: 2,
+        buildId: assets.manifest.buildId,
         url: '/prefetch/public-84',
         params: { scenario: 'public-84' },
         destination: { module: './navigation-product.ts' },
@@ -194,7 +203,7 @@ describe('react-vite-ssr example', () => {
     await withCleanup(async (defer) => {
       defer(() => app.close());
       const navigation = (scenario: string) => app.request('GET', `/prefetch/${scenario}`)
-        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1');
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2');
 
       // When: the same negotiated route runs under each policy.
       const noStore = await navigation('no-store').send();
@@ -233,13 +242,14 @@ describe('react-vite-ssr example', () => {
       for (const [path, heading] of [['/admin/qr', 'Admin QR'], ['/admin/songs', 'Admin songs']]) {
         const document = await app.request('GET', path).send();
         const navigation = await app.request('GET', path)
-          .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1').send();
+          .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
 
         // Then: only HTTP chooses a page and produces the confirmed URL and module.
         expect(document.status, JSON.stringify(document.body)).toBe(200);
         expect(readHtml(document.body)).toContain(heading);
         expect(navigation.body).toEqual({
-          version: 1,
+          version: 2,
+          buildId: assets.manifest.buildId,
           url: path,
           params: {},
           destination: { module: './navigation-admin.ts', props: { page: path.split('/').at(-1) } },
@@ -271,12 +281,12 @@ describe('react-vite-ssr example', () => {
       // When: navigation reaches the server with invalid path and query values.
       const response = await app.request('GET', '/products/x')
         .query('preview', 'maybe')
-        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2')
         .send();
 
       // Then: HTTP DTO validation rejects the request before React rendering.
       expect(response.status).toBe(400);
-      expect(response.headers['Content-Type']).not.toBe('application/vnd.fluo.react-navigation+json;v=1');
+      expect(response.headers['Content-Type']).not.toBe('application/vnd.fluo.react-navigation+json;v=2');
     });
   });
 
@@ -371,7 +381,7 @@ describe('react-vite-ssr example', () => {
     const app = await Test.createApp({ rootModule: AppModule });
     await withCleanup(async (defer) => {
       defer(() => app.close());
-      const accept = 'application/vnd.fluo.react-navigation+json;v=1';
+      const accept = 'application/vnd.fluo.react-navigation+json;v=2';
       const before = await app.request('GET', '/products/sku-42').query('preview', 'true')
         .header('Accept', accept).send();
 

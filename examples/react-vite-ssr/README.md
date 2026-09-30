@@ -128,7 +128,7 @@ state do not agree, or a native form that cannot complete its `POST` â†’ `303` â
 `src/navigation-product.ts`, then the matched product handler returns
 `ReactNavigationPage.create(ProductDocument, { module: './navigation-product.ts', props })`.
 An ordinary document GET still streams the HTML shell, hydration scripts, Suspense content,
-and request URL. An explicit `Accept: application/vnd.fluo.react-navigation+json;v=1` GET
+and request URL. An explicit `Accept: application/vnd.fluo.react-navigation+json;v=2` GET
 instead runs the same HTTP DTO and module pipeline and returns the server URL/params and
 browser destination. `src/entry-client.ts` passes a Vite-compiled `import.meta.glob(...)`
 map to `ReactClientRouterProvider` as `navigationModules` and validates the escaped inert
@@ -138,6 +138,12 @@ opt-in render boundary, polite status, focus/scroll defaults and page-owned head
 history and rendering a fresh destination in the page slot. `src/admin-page.ts` and its
 build-mapped `src/navigation-admin.ts` entry handle
 both admin pages; the shared counter stays mounted. `popstate` and forward fetch fresh results.
+The complete Vite manifest and same-origin `/assets/` base produce one `buildId` for
+`ReactModule.forRoot({ navigationBuildId })`, the inert initial transfer and the client
+provider. An A tab encountering B retains its approved page/resource on
+`incompatible-build`, with an explicit update/document action; missing mapped chunks
+remain `import-failure` and unknown keys remain `unsupported-module`. See the
+[deployment recipe](../../docs/guides/react-production-deployment.md).
 
 Ordinary navigation sends same-origin cookies, follows `Set-Cookie` through normal browser
 handling, and uses `cache: 'no-store'`. Prefetch is off unless a `Link` explicitly requests

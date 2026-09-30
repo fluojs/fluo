@@ -196,6 +196,8 @@ export type ReactViteResolvedEntry = {
 export type ReactViteAssetManifest = {
   /** Defensive asset map snapshot shared by server markup and client hydration. */
   readonly assetMap: ReactAssetMap;
+  /** SHA-256 identity of the complete Vite manifest and public asset base. */
+  readonly buildId: string;
   /** Trusted bootstrap data forwarded to React DOM through the root package. */
   readonly bootstrap: ReactViteBootstrapData;
   /** Resolved browser hydration entry. */

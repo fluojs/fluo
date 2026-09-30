@@ -7,7 +7,8 @@ import { createElement, type ReactElement } from 'react';
 import type { ViteDevServer } from 'vite';
 
 import { createAppModule } from './app';
-import { createReactPageRenderer, developmentPageModules } from './entry-server';
+import { createReactDevelopmentPageRenderer, createReactPageRenderer } from './entry-server';
+import { developmentPageModules } from './entry-server';
 import { loadReactViteManifest } from './load-manifest';
 
 export { developmentPageModules };
@@ -16,10 +17,16 @@ export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Se
   if (vite && !upgradeServer) {
     throw new Error('The React dev app needs the Vite upgrade source.');
   }
-  const manifest = vite ? undefined : await loadReactViteManifest(new URL('../client/.vite/manifest.json', import.meta.url));
+  const manifest = vite ? undefined : await loadReactViteManifest(new URL(
+    process.env.FLUO_REACT_MANIFEST_URL ?? '../client/.vite/manifest.json', import.meta.url,
+  ));
+  const selectedRenderer = vite ? createReactDevelopmentPageRenderer() : createReactPageRenderer(manifest);
   const developmentRenderers = new WeakMap<ReactElement, ReactPageRenderer>();
   const AppModule = createAppModule({
-    clientDirectory: new URL(vite ? '../public/' : '../client/', import.meta.url),
+    navigationBuildId: selectedRenderer.buildId,
+    clientDirectory: new URL(
+      vite ? '../public/' : process.env.FLUO_REACT_CLIENT_URL ?? '../client/', import.meta.url,
+    ),
     loadPage: vite ? async (module, props) => {
       const [destination, { createReactDevelopmentPageRenderer }] = await Promise.all([
         vite.ssrLoadModule(`/src/${module.slice(2)}`),
@@ -36,7 +43,7 @@ export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Se
       }
       developmentRenderers.delete(page);
       return render(page, context, policies, initialPage);
-    } : createReactPageRenderer(manifest),
+    } : selectedRenderer,
   });
   const port = vite ? 0 : Number(process.env.PORT ?? '3000');
   const adapter = FastifyHttpApplicationAdapter.create({
@@ -63,6 +70,9 @@ export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Se
   });
 
   await app.listen();
+  if (process.env.FLUO_REACT_TEST_READY === '1') {
+    console.log(`FLUO_REACT_READY ${adapter.getListenTarget().url}`);
+  }
   return vite ? { close: () => app.close(), url: adapter.getListenTarget().url } : app;
 }
 

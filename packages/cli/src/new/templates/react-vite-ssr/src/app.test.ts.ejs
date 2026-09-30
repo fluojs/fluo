@@ -33,6 +33,7 @@ describe('React Vite SSR starter', () => {
     let label = 'First component';
     const AppModule = createAppModule({
       clientDirectory: new URL('../public/', import.meta.url),
+      navigationBuildId: createReactPageRenderer(VITE_MANIFEST).buildId,
       loadPage: async (_module, props) => createElement('h1', null, `${label} ${String(props['sku'] ?? '')}`),
       renderPage: createReactPageRenderer(VITE_MANIFEST),
     });
@@ -54,6 +55,7 @@ describe('React Vite SSR starter', () => {
   it('streams an HTTP-owned page with manifest-derived hydration assets', async () => {
     const AppModule = createAppModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
+      navigationBuildId: createReactPageRenderer(VITE_MANIFEST).buildId,
       renderPage: createReactPageRenderer(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
@@ -76,6 +78,7 @@ describe('React Vite SSR starter', () => {
   it('keeps route validation on the server DTO boundary', async () => {
     const AppModule = createAppModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
+      navigationBuildId: createReactPageRenderer(VITE_MANIFEST).buildId,
       renderPage: createReactPageRenderer(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
@@ -91,6 +94,7 @@ describe('React Vite SSR starter', () => {
     // Given: one generated app with the shared renderer and two distinct HTTP handlers.
     const AppModule = createAppModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
+      navigationBuildId: createReactPageRenderer(VITE_MANIFEST).buildId,
       renderPage: createReactPageRenderer({
         ...VITE_MANIFEST,
         'src/page.tsx': { file: 'page-product.js', src: 'src/page.tsx' },
@@ -106,14 +110,15 @@ describe('React Vite SSR starter', () => {
       const search = await app.request('GET', '/search').query('q', 'catalog').send();
       const approved = await app.request('GET', '/search')
         .query('q', 'catalog')
-        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=1')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2')
         .send();
 
       // Then: both documents transfer their selected page; navigation confirms the DTO value.
       expect(readHtml(product.body)).toContain('Catalog item sku-42');
       expect(readHtml(search.body)).toMatch(/<h1>Search:\s*(?:<!-- -->)?catalog<\/h1>/u);
       expect(approved.body).toMatchObject({
-        version: 1,
+        version: 2,
+        buildId: createReactPageRenderer(VITE_MANIFEST).buildId,
         url: '/search?q=catalog',
         destination: { module: './page-search.tsx', props: { query: 'catalog' } },
       });
@@ -126,6 +131,7 @@ describe('React Vite SSR starter', () => {
     const { ['src/page-search.tsx']: _missing, ...manifest } = VITE_MANIFEST;
     const AppModule = createAppModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
+      navigationBuildId: createReactPageRenderer(manifest).buildId,
       renderPage: createReactPageRenderer(manifest),
     });
     const app = await Test.createApp({ rootModule: AppModule });

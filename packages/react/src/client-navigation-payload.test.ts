@@ -3,19 +3,65 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { createClientNavigationStore } from './client/store.js';
 import {
   createReactRouteSnapshot,
-  loadReactInitialNavigationDestination,
-  loadReactNavigationDestination,
+  loadReactInitialNavigationDestination as loadInitial,
+  loadReactNavigationDestination as loadNavigation,
+  type ReactNavigationModules,
   type ReactNavigationLoadResult,
 } from './client.js';
 
 const ORIGIN = 'https://example.test';
-const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
+const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=2';
+const BUILD_ID = 'build-a';
 const payload = {
-  version: 1,
+  version: 2,
+  buildId: BUILD_ID,
   url: '/products/sku-84?preview=false',
   params: { sku: 'sku-84' },
   destination: { module: './navigation-product.ts', props: { sku: 'sku-84' } },
 };
+
+const loadReactInitialNavigationDestination = (json: string, modules: ReactNavigationModules) =>
+  loadInitial(json, modules, BUILD_ID);
+const loadReactNavigationDestination = (
+  href: string | URL,
+  modules: ReactNavigationModules,
+  options: Parameters<typeof loadNavigation>[2] = {},
+) => loadNavigation(href, modules, { buildId: BUILD_ID, ...options });
+
+it('rejects a B navigation before importing when its build differs from the hydrated A tab', async () => {
+  // Given: A tab receives a valid HTTP-approved B payload for a mapped module.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+    ...payload, version: 2, buildId: 'build-b',
+  }), { headers: { 'Content-Type': 'application/vnd.fluo.react-navigation+json;v=2' } })));
+
+  // When: the A tab attempts soft navigation.
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', modules, {
+    buildId: 'build-a',
+  });
+
+  // Then: incompatible-build precedes module import.
+  expect(result).toEqual({ ok: false, reason: 'incompatible-build' });
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+});
+
+it('does not accept a v2 response with absent build identity', async () => {
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+    version: 2, url: payload.url, params: payload.params, destination: payload.destination,
+  }), {
+    headers: { 'Content-Type': 'application/vnd.fluo.react-navigation+json;v=2' },
+  })));
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  const result = await loadReactNavigationDestination('/products/sku-84?preview=false', modules, {
+    buildId: 'build-a',
+  });
+
+  expect(result).toEqual({ ok: false, reason: 'invalid-payload' });
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+});
 
 afterEach(() => {
   vi.useRealTimers();
@@ -50,6 +96,19 @@ it('hydrates only the HTTP-approved initial module without an additional request
   expect(fetchResult).not.toHaveBeenCalled();
 });
 
+it('rejects an initial document with a different build before importing', async () => {
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}${payload.url}` } });
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+
+  const result = await loadReactInitialNavigationDestination(
+    JSON.stringify({ ...payload, buildId: 'build-b' }),
+    modules,
+  );
+
+  expect(result).toEqual({ ok: false, reason: 'incompatible-build' });
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+});
+
 it('accepts a bounded page-owned stylesheet link in the approved navigation representation', async () => {
   // Given: HTTP approves a mapped destination and one same-origin stylesheet descriptor.
   vi.stubGlobal('window', { location: { href: `${ORIGIN}/admin/qr` } });
@@ -67,6 +126,7 @@ it('accepts a bounded page-owned stylesheet link in the approved navigation repr
 
 it.each([
   ['stale URL', { ...payload, url: '/products/sku-42' }],
+  ['legacy v1', { ...payload, version: 1 }],
   ['unbuilt destination', { ...payload, destination: { module: './unbuilt.ts', props: {} } }],
   ['non-JSON props', { ...payload, destination: { module: './navigation-product.ts', props: 'secret' } }],
   ['oversized title', { ...payload, metadata: { title: 'x'.repeat(513) } }],
@@ -316,7 +376,7 @@ it('refreshes an approved current page through a new credentialed HTTP load', as
 it('accepts the HTTP adapter-normalized version parameter and charset', async () => {
   vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(payload), {
-    headers: { 'Content-Type': 'application/vnd.fluo.react-navigation+json; v="1"; charset=utf-8' },
+    headers: { 'Content-Type': 'application/vnd.fluo.react-navigation+json; v="2"; charset=utf-8' },
   })));
   const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
 
@@ -335,7 +395,7 @@ it.each([
   ['validation failure', new Response('invalid input', { status: 400 })],
   ['non-HTML result', new Response('{}', { headers: { 'Content-Type': 'application/json' } })],
   ['malformed payload', new Response('{', { headers: { 'Content-Type': MEDIA_TYPE } })],
-  ['unsupported version', new Response(JSON.stringify({ ...payload, version: 2 }), { headers: { 'Content-Type': MEDIA_TYPE } })],
+  ['unsupported version', new Response(JSON.stringify({ ...payload, version: 1 }), { headers: { 'Content-Type': MEDIA_TYPE } })],
   ['incorrect confirmed URL', new Response(JSON.stringify({
     ...payload,
     url: '/products/another-sku',

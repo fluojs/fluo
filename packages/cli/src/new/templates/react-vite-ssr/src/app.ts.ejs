@@ -31,6 +31,7 @@ const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
 
 export type ReactViteAppModuleOptions = {
   readonly clientDirectory: URL;
+  readonly navigationBuildId?: string;
   readonly loadPage?: (module: `./page${string}.tsx`, props: Record<string, unknown>) => Promise<ReactElement>;
   readonly renderPage: ReactPageRenderer;
 };
@@ -137,6 +138,9 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
 
       try {
         const body = await readFile(new URL(input.file, options.clientDirectory));
+        context.response.setHeader('Cache-Control', /-[a-zA-Z0-9_-]{6,}\.(?:js|css|svg)$/u.test(input.file)
+          ? 'public, max-age=31536000, immutable'
+          : 'public, max-age=300');
         context.response.setHeader(
           'Content-Type',
           input.file.endsWith('.svg')
@@ -146,6 +150,7 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
         return body;
       } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+          context.response.setHeader('X-Fluo-Asset-Status', 'missing');
           throw new NotFoundException('Vite asset not found.', { cause: error });
         }
         throw error;
@@ -155,7 +160,11 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
 
   @Module({
     controllers: [ViteAssetController],
-    imports: [ReactModule.forRoot({ controllers: [ProductPageRouter, SearchPageRouter], renderPage: options.renderPage })],
+    imports: [ReactModule.forRoot({
+      controllers: [ProductPageRouter, SearchPageRouter],
+      ...(options.navigationBuildId === undefined ? {} : { navigationBuildId: options.navigationBuildId }),
+      renderPage: options.renderPage,
+    })],
   })
   class AppModule {}
 

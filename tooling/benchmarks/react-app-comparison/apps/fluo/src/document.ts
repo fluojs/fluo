@@ -5,6 +5,7 @@ import {
   type ReactNavigationModules,
   useNavigation,
 } from '@fluojs/react/client';
+import type { ReactInitialNavigationPage } from '@fluojs/react';
 import { createElement, type ReactNode, useEffect, useRef, useState } from 'react';
 
 import { createToneUrl } from '../../../fixture/audio.mjs';
@@ -24,7 +25,9 @@ export type PageData =
 type DocumentProps = {
   readonly data: PageData;
   readonly editor: boolean;
+  readonly initialPage?: ReactInitialNavigationPage;
   readonly navigationModules?: ReactNavigationModules;
+  readonly navigationBuildId: string;
   readonly routeParams: Readonly<Record<string, string>>;
   readonly routeUrl: string;
   readonly stylesheets: readonly string[];
@@ -185,7 +188,9 @@ export function PageView({ data, editor }: { readonly data: PageData; readonly e
 export function BenchmarkDocument({
   data,
   editor,
+  initialPage,
   navigationModules,
+  navigationBuildId,
   routeParams,
   routeUrl,
   stylesheets,
@@ -193,7 +198,7 @@ export function BenchmarkDocument({
   const snapshot = createReactRouteSnapshot({ params: routeParams, url: routeUrl });
   const renderDocument = (destination: ReactNode | null): ReactNode => createElement(
     'html',
-    { 'data-benchmark-page': JSON.stringify({ data, editor }), lang: 'en' },
+    { 'data-benchmark-page': JSON.stringify({ data, editor }), 'data-build-id': navigationBuildId, lang: 'en' },
     createElement('head', null,
       createElement('meta', { charSet: 'utf-8' }),
       createElement('meta', { content: 'width=device-width, initial-scale=1', name: 'viewport' }),
@@ -222,11 +227,16 @@ export function BenchmarkDocument({
         createElement('main', null, destination ?? createElement(PageView, { data, editor })),
         createElement(JukeboxResource),
       ),
+      initialPage === undefined ? null : createElement('script', {
+        id: 'fluo-initial-page',
+        type: 'application/json',
+      }, initialPage.json),
     ),
   );
   const providerProps = {
     children: renderDocument,
     initialSnapshot: snapshot,
+    navigationBuildId,
     navigationModules,
     prefetchScope: editor ? 'catalog:editor' : 'catalog:anonymous',
   };

@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import type { ReactNavigationPayload } from '../navigation-payload.js';
 import { parseReactPageMetadata } from '../page-metadata.js';
 
-const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
-const RESPONSE_MEDIA_TYPE = /^application\/vnd\.fluo\.react-navigation\+json;\s*v=(?:"1"|1)(?:;\s*charset=utf-8)?$/iu;
+const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=2';
+const RESPONSE_MEDIA_TYPE = /^application\/vnd\.fluo\.react-navigation\+json;\s*v=(?:"2"|2)(?:;\s*charset=utf-8)?$/iu;
 
 /** Build-produced, explicitly allowed client destination modules. */
 export type ReactNavigationModules = Readonly<Record<
@@ -30,7 +30,7 @@ export type ReactNavigationLoadResult =
 export type ReactNavigationFailureReason =
   | 'cancelled' | 'network' | 'server-error' | 'unauthorized' | 'forbidden'
   | 'redirect' | 'not-found' | 'dto-rejected' | 'invalid-payload'
-  | 'unsupported-module' | 'import-failure' | 'unavailable' | 'unsupported-destination';
+  | 'incompatible-build' | 'unsupported-module' | 'import-failure' | 'unavailable' | 'unsupported-destination';
 
 function isStringRecord(value: unknown): value is Record<string, string> {
   return typeof value === 'object'
@@ -47,7 +47,9 @@ function parseNavigationPayload(
   value: unknown,
   requested: URL,
 ): ReactNavigationPayload | undefined {
-  if (!isObject(value) || value.version !== 1 || typeof value.url !== 'string'
+  if (!isObject(value) || value.version !== 2
+    || typeof value.buildId !== 'string' || value.buildId.length === 0
+    || typeof value.url !== 'string'
     || !value.url.startsWith('/') || value.url.startsWith('//')
     || !isStringRecord(value.params) || !isObject(value.destination)
     || typeof value.destination.module !== 'string' || !isObject(value.destination.props)) {
@@ -63,7 +65,8 @@ function parseNavigationPayload(
     return undefined;
   }
   return {
-    version: 1,
+    version: 2,
+    buildId: value.buildId,
     url: value.url,
     params: value.params,
     destination: { module: value.destination.module, props: value.destination.props },
@@ -76,11 +79,13 @@ function parseNavigationPayload(
  *
  * @param json Escaped JSON text from the inert initial-page script in the server document.
  * @param modules Build-produced destination importers shared with soft navigation.
+ * @param buildId Expected document build identity; missing or unequal identities cannot hydrate a destination.
  * @returns The validated component and HTTP request snapshot, or an unavailable destination.
  */
 export async function loadReactInitialNavigationDestination(
   json: string,
   modules: ReactNavigationModules,
+  buildId?: string,
 ): Promise<ReactNavigationLoadResult> {
   let value: unknown;
   try {
@@ -94,6 +99,12 @@ export async function loadReactInitialNavigationDestination(
   const payload = parseNavigationPayload(value, new URL(window.location.href));
   if (payload === undefined) {
     return { ok: false, reason: 'invalid-payload' };
+  }
+  if (buildId === undefined || buildId.length === 0) {
+    return { ok: false, reason: 'invalid-payload' };
+  }
+  if (payload.buildId !== buildId) {
+    return { ok: false, reason: 'incompatible-build' };
   }
   const loader = Object.hasOwn(modules, payload.destination.module)
     ? modules[payload.destination.module] : undefined;
@@ -171,7 +182,7 @@ async function readBoundedNavigationJson(response: Response): Promise<unknown> {
 export async function loadReactNavigationDestination(
   href: string | URL,
   modules: ReactNavigationModules,
-  options: { readonly signal?: AbortSignal; readonly prefetch?: true } = {},
+  options: { readonly signal?: AbortSignal; readonly prefetch?: true; readonly buildId?: string } = {},
 ): Promise<ReactNavigationLoadResult> {
   const current = new URL(window.location.href);
   let destination: URL;
@@ -250,6 +261,12 @@ export async function loadReactNavigationDestination(
     const payload = parseNavigationPayload(parsed, destination);
     if (payload === undefined) {
       return { ok: false, reason: 'invalid-payload' };
+    }
+    if (options.buildId === undefined || options.buildId.length === 0) {
+      return { ok: false, reason: 'invalid-payload' };
+    }
+    if (payload.buildId !== options.buildId) {
+      return { ok: false, reason: 'incompatible-build' };
     }
     if (!Object.hasOwn(modules, payload.destination.module)) {
       return { ok: false, reason: 'unsupported-module' };

@@ -9,7 +9,7 @@ declare global {
   }
 }
 
-const NAVIGATION_MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';
+const NAVIGATION_MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=2';
 
 for (const reason of ['network', 'server-error'] as const) {
   test(`preserves a functional resource and approved page across ${reason} failure and fresh retry`, async ({ page }) => {
@@ -87,7 +87,7 @@ test('explicit document exit remains available after a preserved failure', async
     && request.headers().accept !== NAVIGATION_MEDIA_TYPE);
 
   // When: the user explicitly chooses the HTTP document instead.
-  await page.getByRole('button', { name: 'Open full document' }).click();
+  await page.getByRole('button', { name: 'Update application (open full document)' }).click();
   await document;
 
   // Then: the browser follows the ordinary server-rendered route.
@@ -320,6 +320,8 @@ test('a recoverable chunk import failure keeps the page and offers document reco
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/products/sku-42?preview=true');
+  await page.getByRole('button', { name: 'Use shell resource' }).click();
+  await expect(page.getByTestId('resource-ack')).not.toBeEmpty();
   await page.evaluate(() => { window.__originalResource = window.__reactResource; });
   await page.route((url) => /\/assets\/navigation-admin-[^/]+\.js$/u.test(url.pathname),
     (route) => route.abort('failed'));

@@ -69,6 +69,7 @@ const ClientRouterContext = getClientRouterContext();
 function createBrowserEnvironment(
   browser: Window,
   modules: ReactClientRouterProviderProps['navigationModules'],
+  buildId: ReactClientRouterProviderProps['navigationBuildId'],
   prefetchScope: ReactClientRouterProviderProps['prefetchScope'],
   failurePolicy: ReactClientRouterProviderProps['failurePolicy'],
 ): ClientNavigationEnvironment {
@@ -86,12 +87,12 @@ function createBrowserEnvironment(
       return typeof index === 'number' ? index : null;
     },
     go: (delta) => browser.history.go(delta),
-    ...(modules === undefined ? {} : {
-      load: (href: string, signal: AbortSignal) => loadReactNavigationDestination(href, modules, { signal }),
+    ...(modules === undefined || buildId === undefined ? {} : {
+      load: (href: string, signal: AbortSignal) => loadReactNavigationDestination(href, modules, { signal, buildId }),
       ...(prefetchScope === undefined ? {} : {
         prefetchScope,
         prefetch: (href: string, signal: AbortSignal) =>
-          loadReactNavigationDestination(href, modules, { signal, prefetch: true }),
+          loadReactNavigationDestination(href, modules, { signal, prefetch: true, buildId }),
       }),
     }),
     pushState: (href, index) => browser.history.pushState(
@@ -125,6 +126,7 @@ export function ReactClientRouterProvider({
   children,
   initialSnapshot,
   navigationModules,
+  navigationBuildId,
   prefetchScope,
   failurePolicy,
 }: ReactClientRouterProviderProps) {
@@ -135,8 +137,8 @@ export function ReactClientRouterProvider({
     if (typeof window === 'undefined') {
       return undefined;
     }
-    return store.connect(createBrowserEnvironment(window, navigationModules, prefetchScope, failurePolicy));
-  }, [store, navigationModules, prefetchScope, failurePolicy]);
+    return store.connect(createBrowserEnvironment(window, navigationModules, navigationBuildId, prefetchScope, failurePolicy));
+  }, [store, navigationModules, navigationBuildId, prefetchScope, failurePolicy]);
 
   return createElement(
     ClientRouterContext.Provider,
