@@ -6,21 +6,25 @@ import { FluoFactory } from '@fluojs/runtime';
 import { createReactViteExampleModule } from './app';
 
 const manifest: unknown = JSON.parse(
-  await readFile(new URL('../client/.vite/manifest.json', import.meta.url), 'utf8'),
+  await readFile(new URL(process.env.REACT_VITE_EXAMPLE_MANIFEST_URL ?? '../client/.vite/manifest.json', import.meta.url), 'utf8'),
 );
 let releaseDelivery = (): void => {};
 const deliveryPending = new Promise<void>((resolve) => {
   releaseDelivery = resolve;
 });
 const AppModule = createReactViteExampleModule({
-  clientDirectory: new URL('../client/', import.meta.url),
+  clientDirectory: new URL(process.env.REACT_VITE_EXAMPLE_CLIENT_URL ?? '../client/', import.meta.url),
   ...(process.env.REACT_SSR_DELIVERY_PROBE === '1'
     ? { deliveryProbe: { pending: deliveryPending, release: releaseDelivery } } : {}),
   manifest,
 });
 const port = Number(process.env.REACT_VITE_EXAMPLE_PORT ?? '3000');
+const adapter = FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port });
 const app = await FluoFactory.create(AppModule, {
-  adapter: FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port }),
+  adapter,
 });
 
 await app.listen();
+if (process.env.REACT_VITE_EXAMPLE_TEST_READY === '1') {
+  console.log(`REACT_VITE_EXAMPLE_READY ${adapter.getListenTarget().url}`);
+}

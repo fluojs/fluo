@@ -46,7 +46,7 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 | **Route** | 일반 fluo module/controller metadata에서 compile된 effective route입니다. `@Path(...)`는 `@fluojs/http`와 같은 `GET` metadata를 기록하고, `@fluojs/react/typegen`은 compiled page catalog를 path-only href builder로 project할 수 있습니다. | **Shipped, intentionally different.** HTTP가 matching, grammar, conflict, param, versioning, dispatch를 소유합니다. Typegen은 route tree를 만들지 않고 versioned route를 표현하지 않습니다. |
 | **Layout** | 애플리케이션 `ReactPageRenderer`가 document shell과 shared provider를 소유합니다. `@PageLayout(...)`은 같은 renderer가 compose하는 optional class/method component-reference metadata를 추가합니다. | **Shipped.** File ancestry나 framework-owned layout router는 없습니다. |
 | **Loading UI** | Application tree의 일반 React `Suspense`를 사용하고, 필요하면 `@SuspenseFallback(...)`으로 page fallback을 선택합니다. | **Shipped with a narrow boundary.** Fallback은 SSR 중 suspend하는 descendant를 다루며 handler `await`, form, effect, navigation은 관찰하지 않습니다. |
-| **Data read / loader** | HTTP DTO binding과 validation 이후 `@Path(...)` handler에서 명시적인 application provider를 통해 data를 읽고 React element에 전달합니다. | **Shipped, intentionally different.** Loader runtime, loader cache, client revalidation contract는 없습니다. |
+| **Data read / loader** | HTTP DTO binding과 validation 이후 `@Path(...)` handler에서 명시적인 application provider를 통해 data를 읽고 React element에 전달합니다. `router.refresh()`는 현재 page의 HTTP 승인을 다시 받습니다. | **Shipped, intentionally different.** 별도 loader runtime이나 loader cache는 없으며 mutation 뒤 refresh는 명시적으로 호출해야 합니다. |
 | **Mutation / action** | Native form을 일반 `@Post(...)` handler로 제출하고, `@RequestDto(...)`로 bind/validate하며, 일반 guard/interceptor를 적용하고, application state를 변경한 뒤 필요하면 `303 See Other`로 redirect합니다. Auth/data mutation 후 같은 문서에서 다시 이동하기 전에 `router.invalidate()`를 호출하거나 `prefetchScope`를 바꿉니다. | **Shipped, intentionally different.** Compiled action, fetcher, optimistic-state, 자동 cache revalidation은 없습니다. |
 | **Navigation** | 실제 `<a>` 또는 `@fluojs/react/client`의 `Link`와 `router.push(...)`, `router.replace(...)`, `router.back()`, `router.refresh()`를 사용합니다. Build-produced importer를 `ReactClientRouterProvider`에 전달하고 승인된 destination을 application-owned page slot에 렌더링합니다. Public speculation에는 `Link prefetch="hover"` 또는 `"viewport"`와 provider `prefetchScope`를 사용합니다. | **Shipped, intentionally different.** 호환 page는 server-confirmed URL/params로 history를 갱신하면서 soft navigation하고 나머지는 document navigation을 사용합니다. Client route matcher와 일반 document/data cache는 없습니다. Prefetch는 기본 off이고 명시적인 public grant가 있는 navigation JSON만 한 번 재사용합니다. |
 | **Pending state** | `ReactNavigationExperience`가 이전 승인 page slot을 유지하면서 opt-in polite navigation 상태를 slot 밖에 표시합니다. `useNavigation()`은 low-level lifecycle이고 React `Suspense`는 descendant를 다룹니다. | **Navigation에 shipped.** Form submit-state helper나 공유 loader/action pending model은 없습니다. |
@@ -56,15 +56,18 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 | **Hydration** | 공식 starter가 HTTP 선택 초기 destination을 escaped JSON(64 KiB 제한)으로 전송하고 build importer에서 찾아 동일한 request URL, params, props, 공통 provider를 hydrate합니다. Custom low-level renderer는 `createReactServerEntry(...)`에 명시적 asset을 계속 전달할 수 있습니다. | **Starter에 shipped.** Application은 JSON-only props를 선택하고 secret/DI를 제외하며 low-level custom document는 자체 composition을 소유합니다. |
 | **Build assets** | 애플리케이션이 Vite manifest를 로드해 `@fluojs/react/vite`의 `createReactViteAssetManifest(...)`에 전달하고, application document가 반환된 CSS와 hydration option을 emit합니다. | **Shipped.** fluo는 manifest discovery, Vite 실행, bundle generation, static-file/CDN hosting 선택을 수행하지 않습니다. |
 
-현재 client의 `router.refresh()`는 data를 제자리에서 재검증하지 않고 **document**를 reload합니다.
+현재 client의 `router.refresh()`는 credential 포함 새 HTTP 승인으로 현재 page를 재검증하며
+공통 셸은 유지합니다. Typed Promise는 navigation-store commit, 보존 오류, 취소 또는
+document fallback 시작 시 정착하고 승인된 page-local state는 초기화됩니다.
 `router.invalidate()`는 pending navigation과 public prefetch 상태만 비웁니다. 성공한
 destination은 provider/layout을 유지하지만 soft load 실패의 기본값은 전체 document
 fallback입니다. 같은 provider의 `failurePolicy`로 network/5xx에서 승인된 shell/page
 보존을 opt-in하고 `useNavigation().failure`, 새 HTTP `router.retry()` 및 명시적인
 `router.openDocument()`를 사용할 수 있습니다. Production Vite 예제는 이 opt-in을
 검증합니다. 공식 생성 starter는 network/5xx 및 복구 가능한 매핑된 import 실패의 보존 정책과 셸 복구 control을
-명시적으로 연결합니다. 소비자 migration을 수반하는
-셸 보존 refresh(#3873)는 별도 목표이며 이미 배포된 loader cache가 아닙니다.
+명시적으로 연결합니다. 셸 보존 refresh는 명시적인 동작이며 loader cache나 자동
+post-mutation action이 아닙니다.
+[refresh migration](../getting-started/migrate-react-refresh.ko.md)을 참고하세요.
 인증 거절은 일시적 재시도 대상이 아니고 명시적 reload/logout은 셸을 끝낼 수 있습니다.
 여정별 성공, 실패, 취소, 검증 surface는 제품 계약을 참고하세요.
 
@@ -121,6 +124,14 @@ Generated application이 이 짧은 path 뒤의 composition을 소유합니다. 
 `src/entry-client.tsx`는 같은 tree를 hydrate합니다. `src/main.ts`와 `src/load-manifest.ts`는 Vite
 manifest I/O 및 actionable missing/malformed build diagnostic을 Node.js boundary에 유지합니다. Advanced
 application은 이 file을 편집하거나 교체하면서 아래의 모든 명시적 API를 계속 사용할 수 있습니다.
+
+Production 경로의 v2 `buildId`는 전체 Vite manifest 및 동일 origin `/assets/` base에서
+도출됩니다. HTTP가 선택한 초기 transfer와 이후 navigation은 빌드된 browser importer와
+일치해야 합니다. 공식 셸은 B와 호환되지 않는 A page를 보존하고 명시적 document
+update를 제공합니다. [프로덕션 배포 recipe](./react-production-deployment.ko.md) 및
+[v1 이주](../getting-started/migrate-react-production-assets.ko.md)를 확인하세요.
+기존 해시 asset을 정한 기간 동안 보존하는 책임은 host에 있으며 framework는 CDN을
+프로비저닝하지 않습니다.
 
 실행 가능한 [`examples/react-vite-ssr`](../../examples/react-vite-ssr/README.ko.md)는 complete native-form
 및 policy example로 남습니다. Generated client asset이나 hydration이 필요 없는 SSR에는

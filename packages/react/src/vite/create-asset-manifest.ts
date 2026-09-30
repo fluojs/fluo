@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   cloneUniqueBootstrapAssets,
   collectCssUrls,
@@ -65,6 +67,16 @@ function createHydrationOptions(input: HydrationOptionsInput): ReactViteHydratio
 
 function createSuccessManifest(input: SuccessManifestInput): ReactViteAssetManifestResult {
   const { clientGraph, manifest, options, serverEntry } = input;
+  const buildId = createHash('sha256').update(JSON.stringify({
+    base: options.base ?? '/',
+    manifest: options.manifest,
+  }, (_key, value: unknown) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return value;
+    }
+    return Object.fromEntries(Object.entries(value).sort(([left], [right]) =>
+      left < right ? -1 : left > right ? 1 : 0));
+  })).digest('hex');
   const assetMap = createAssetMap(manifest, options.base);
   const css = collectCssUrls(clientGraph.entries, options.base);
   const manifestModuleUrls = collectModuleUrls(clientGraph.entries, options.base);
@@ -87,6 +99,7 @@ function createSuccessManifest(input: SuccessManifestInput): ReactViteAssetManif
   return {
     manifest: {
       assetMap,
+      buildId,
       bootstrap,
       clientEntry: createResolvedEntry(clientEntry, options.base),
       css,

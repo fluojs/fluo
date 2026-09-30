@@ -36,6 +36,7 @@ import { getReactRenderPolicies } from './render-policy.js';
 import { isReactServerEntry } from './server-entry.js';
 
 type ReactPageResultRuntime = {
+  readonly navigationBuildId?: string;
   readonly onDiagnostic?: ReactSsrDiagnosticHandler;
   readonly renderPage?: ReactPageRenderer;
 };
@@ -126,6 +127,7 @@ function finalizeReactPageResult(
       );
     }
     const { node, destination, prefetch } = context.value;
+    const buildId = runtime.navigationBuildId;
     const renderPage = runtime.renderPage;
     const policies = getReactRenderPolicies(context.handler.controllerToken, context.handler.methodName);
     const pageMetadata = (requestContext: RequestContext) => {
@@ -142,10 +144,11 @@ function finalizeReactPageResult(
     const page = registerFrameworkResponseWriter(
       { node, destination },
       async (writerContext) => {
-        const initialPage = createReactInitialNavigationPage(createReactNavigationPayload(
+        const initialPage = buildId === undefined ? undefined : createReactInitialNavigationPage(createReactNavigationPayload(
           writerContext.requestContext.request.url,
           writerContext.requestContext.request.params,
           destination,
+          buildId,
           pageMetadata(writerContext.requestContext),
         ));
         const entry = renderPage(
@@ -163,15 +166,18 @@ function finalizeReactPageResult(
     Object.defineProperty(page, Symbol.for('fluo.http.responseRepresentation'), {
       enumerable: false,
       value: {
-        mediaType: 'application/vnd.fluo.react-navigation+json;v=1',
+        mediaType: 'application/vnd.fluo.react-navigation+json;v=2',
         ...(prefetch === undefined ? {} : { prefetch }),
         body: ({ request, requestContext, response, applySuccessResponseMetadata }: FrameworkResponseWriterContext) => {
+          if (buildId === undefined || buildId.length === 0) {
+            throw new Error('React navigation requires ReactModule.forRoot({ navigationBuildId }).');
+          }
           const entry = renderPage(
             node,
             requestContext,
             policies,
           );
-          const payload = createReactNavigationPayload(request.url, request.params, destination, pageMetadata(requestContext));
+          const payload = createReactNavigationPayload(request.url, request.params, destination, buildId, pageMetadata(requestContext));
           applySuccessResponseMetadata();
           if (entry.status !== undefined) {
             response.setStatus(entry.status);

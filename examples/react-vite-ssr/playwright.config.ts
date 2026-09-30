@@ -22,7 +22,7 @@ export default defineConfig({
     },
     reuseExistingServer: false,
     timeout: 30_000,
-    url: `http://127.0.0.1:${BROWSER_TEST_PORT}/assets/entry-client.js`,
+    url: `http://127.0.0.1:${BROWSER_TEST_PORT}/products/sku-42`,
   },
   workers: 1,
 });

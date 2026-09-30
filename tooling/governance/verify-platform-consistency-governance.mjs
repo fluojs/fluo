@@ -1585,7 +1585,8 @@ function documentSnapshotsFromGit(paths, runCommand = run, env = process.env) {
 
 export function migrationGuideSnapshotsFromGit(runCommand = run, env = process.env) {
   return documentSnapshotsFromGit(
-    [...nestMigrationGuidePaths, ...emailMigrationDocumentPaths, emailMigrationEnforcementTool, ...fastifyReadmePaths],
+    [...nestMigrationGuidePaths, ...emailMigrationDocumentPaths, emailMigrationEnforcementTool,
+      ...fastifyReadmePaths, 'packages/http/src/dispatch/dispatch-response-policy.ts'],
     runCommand,
     env,
   );
@@ -1694,7 +1695,15 @@ export function enforceContractCompanionUpdates(changedFiles, migrationGuideSnap
       required.every((path) => hasChanged(changedFiles, path)),
       `React navigation payload contract updates must include ${required.filter((path) => !hasChanged(changedFiles, path)).join(', ')}.`,
     );
-    if (hasChanged(changedFiles, 'packages/http/src/dispatch/dispatch-response-policy.ts')
+    const httpPolicy = migrationGuideSnapshots?.['packages/http/src/dispatch/dispatch-response-policy.ts'];
+    const versionOnlyHttpChange = typeof httpPolicy?.base === 'string'
+      && typeof httpPolicy.head === 'string'
+      && httpPolicy.base.replace(
+        "const NAVIGATION_CONTENT_TYPE = 'application/vnd.fluo.react-navigation+json;v=1';",
+        "const NAVIGATION_CONTENT_TYPE = 'application/vnd.fluo.react-navigation+json;v=2';",
+      ) === httpPolicy.head;
+    if ((hasChanged(changedFiles, 'packages/http/src/dispatch/dispatch-response-policy.ts')
+      && !versionOnlyHttpChange)
       || hasChanged(changedFiles, 'packages/http/src/dispatch/response-integration.ts')) {
       const prefetchCompanions = [
         'docs/guides/react-user-concepts.md',

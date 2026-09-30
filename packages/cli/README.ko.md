@@ -175,6 +175,19 @@ dispatcher가 계속 authoritative합니다.
 Production shell 전달은 host/proxy가 전체 body를 모으지 않고 chunk를 전달해야 합니다.
 [Fastify streaming 레시피](../platform-fastify/README.ko.md#스트리밍-응답)를 참고하세요.
 
+생성된 공통 셸은 `useRouter().refresh()`로 같은 page에 credential 포함 HTTP 재검증을
+명시적으로 실행합니다. 승인 전에는 셸 자원과 history, 이전 page를 유지하고 승인된
+page-local state만 reset하며 pending/error/retry control을 표시합니다. 반환되는 typed
+결과는 browser paint의 보증이 아닙니다. 이전 생성 앱에서 확정적인 document reload가
+필요하면 `window.location.reload()`를 사용하세요.
+[refresh migration](../../docs/getting-started/migrate-react-refresh.ko.md)을 참고하세요.
+이는 개발 중 Fast Refresh와 다르며 mutation 뒤 자동 재검증은 추가하지 않습니다.
+Starter의 product page slot은 HTTP가 승인한 상품 이름을 표시합니다. 일반
+`@Post('/:sku')` handler는 DTO-bound 이름을 받고 `303`으로 새 문서 `GET`에
+redirect하며 JavaScript 없이도 form이 동작합니다. 셸을 교체하지 않고 외부 변경을
+확인하려면 해당 HTTP endpoint에서 상품을 변경한 뒤 `Refresh current page`를
+클릭하세요. 요청 중에는 이전 값이 남고 승인된 새 이름만 history entry 없이 표시됩니다.
+
 React `dev` script는 이제 직접 실행한 CLI와 동일한 `fluo dev` 경로로 위임합니다.
 의존성 설치 후 어느 경로든 수동 production build 없이 시작합니다. Vite가 SSR entry를
 변환하며 안정된 개발 gateway가 공개 HTTP port와 WebSocket을 유지합니다. 각 Fastify
@@ -236,10 +249,19 @@ code 대신 빈 marker를 emit합니다. 실제 구현은 `dist/server`에만 bu
 두 page starter만으로 완전한 CRUD/주크박스 제품 경로가 되지는 않습니다. 기존
 [Vite 예제](../../examples/react-vite-ssr/README.ko.md)는 advanced native form 및
 prefetch 정책을 보여 주고 starter는 canonical page authoring 조립을 제공합니다.
-Starter는 network/5xx 및 복구 가능한 매핑된 import 실패에서 셸을 보존하고 지속 셸에서 재시도·일반 문서 이동을 제공합니다.
+Starter는 network/5xx, incompatible-build 및 복구 가능한 매핑된 import 실패에서 셸을 보존하고 지속 셸에서 재시도·일반 문서 이동을 제공합니다.
 Low-level provider는 앱이 `failurePolicy`를 제공하지 않으면 document fallback합니다.
 [제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 남은 form 최신화,
 auth, 배포 및 전체 여정 수용 게이트를 추적합니다.
+Production starter는 로드한 Vite 전체 manifest와 동일 origin `/assets/` base에서
+v2 `buildId`를 도출해 `ReactModule.forRoot(...)` 및
+`ReactClientRouterProvider`에 전달하고 해시 bootstrap, CSS, lazy module,
+favicon을 제공합니다. `incompatible-build` 또는 매핑된 `import-failure`에서
+승인된 shell을 유지하고 명시적 document update를 제공하며, 없는 module key는
+import 실패로 취급하지 않습니다. B server/manifest보다 B asset을 먼저 게시하고
+정한 기존 탭 기간 동안 A asset을 유지하세요.
+[배포 recipe](../../docs/guides/react-production-deployment.ko.md)와
+[v1 이주](../../docs/getting-started/migrate-react-production-assets.ko.md)를 확인하세요.
 Application 소유 production manifest load와 asset/CDN hosting도 명시적으로 유지됩니다.
 
 `fluo new`는 microservice starter path도 제공합니다. `--transport`를 생략하면 TCP가 기본 경로로 사용되며, starter 매트릭스에는 transport별 dependency, env 템플릿, entrypoint를 갖춘 Redis Streams, NATS, Kafka, RabbitMQ, MQTT, gRPC 변형도 포함됩니다.

@@ -31,7 +31,9 @@ recoverable import-failure preservation through the same
 long-lived resource with operation/ack and mount/cleanup observations. Low-level providers
 without opt-in still use document fallback; the official starter explicitly selects
 network/5xx and recoverable mapped import-failure preservation and recovery controls.
-`router.refresh()` still reloads the document; #3873 owns soft refresh and its migration.
+`router.refresh()` now revalidates the current HTTP page without discarding the shell. It returns
+a typed completion result; explicit document reload uses `window.location.reload()`.
+See the [consumer migration](../../docs/getting-started/migrate-react-refresh.md).
 
 ## what this example demonstrates
 
@@ -101,7 +103,9 @@ then activate the opted-in link. The first GET fetches a public navigation repre
 activation consumes it without another GET. `Open public sku-84 without prefetch` still makes
 a normal request. `Switch user and prefetch scope` changes the session cookie and the
 application-managed `prefetchScope` before further navigation. `Rename without reload` sends
-a guarded POST and calls `router.invalidate()` after success. The other fixture links show
+ a guarded POST and calls `router.invalidate()` after success. Click `Refresh` to fetch and
+ display the changed server value in the same page without a history entry; pending and
+ preserved failure retain the last approved value. The other fixture links show
 that prefetch rejection never substitutes an anonymous result for a private destination.
 
 Run the repeatable SSR and hydration checks with:
@@ -138,7 +142,7 @@ defines the tested compression boundary; untested cloud proxies are not implied.
 `src/navigation-product.ts`, then the matched product handler returns
 `ReactNavigationPage.create(ProductDocument, { module: './navigation-product.ts', props })`.
 An ordinary document GET still streams the HTML shell, hydration scripts, Suspense content,
-and request URL. An explicit `Accept: application/vnd.fluo.react-navigation+json;v=1` GET
+and request URL. An explicit `Accept: application/vnd.fluo.react-navigation+json;v=2` GET
 instead runs the same HTTP DTO and module pipeline and returns the server URL/params and
 browser destination. `src/entry-client.ts` passes a Vite-compiled `import.meta.glob(...)`
 map to `ReactClientRouterProvider` as `navigationModules` and validates the escaped inert
@@ -148,6 +152,12 @@ opt-in render boundary, polite status, focus/scroll defaults and page-owned head
 history and rendering a fresh destination in the page slot. `src/admin-page.ts` and its
 build-mapped `src/navigation-admin.ts` entry handle
 both admin pages; the shared counter stays mounted. `popstate` and forward fetch fresh results.
+The complete Vite manifest and same-origin `/assets/` base produce one `buildId` for
+`ReactModule.forRoot({ navigationBuildId })`, the inert initial transfer and the client
+provider. An A tab encountering B retains its approved page/resource on
+`incompatible-build`, with an explicit update/document action; missing mapped chunks
+remain `import-failure` and unknown keys remain `unsupported-module`. See the
+[deployment recipe](../../docs/guides/react-production-deployment.md).
 
 Ordinary navigation sends same-origin cookies, follows `Set-Cookie` through normal browser
 handling, and uses `cache: 'no-store'`. Prefetch is off unless a `Link` explicitly requests

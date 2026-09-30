@@ -12,7 +12,7 @@ const storePath = 'packages/react/src/client/store.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
 const dispatchPath = 'packages/http/src/dispatch/dispatch-response-policy.ts';
-const mediaType = 'application/vnd.fluo.react-navigation+json;v=1';
+const mediaType = 'application/vnd.fluo.react-navigation+json;v=2';
 
 function property(object, name) {
   return object?.properties.find((node) =>
@@ -59,7 +59,20 @@ export function enforceReactNavigationPayloadContract(
     || !serverMediaType || !ts.isPropertyAssignment(serverMediaType)
     || !ts.isStringLiteral(serverMediaType.initializer)
     || serverMediaType.initializer.text !== mediaType) {
-    throw new Error('React navigation HTTP and browser media types must agree on protocol version 1.');
+    throw new Error('React navigation HTTP and browser media types must agree on protocol version 2.');
+  }
+  const clientText = client.getFullText();
+  const providerText = provider.getFullText();
+  const transferText = transfer.getFullText();
+  if (!transferText.includes('readonly buildId: string')
+    || !clientText.includes("value.version !== 2")
+    || !clientText.includes("value.buildId.length === 0")
+    || !clientText.includes("payload.buildId !== buildId")
+    || !clientText.includes("payload.buildId !== options.buildId")
+    || clientText.indexOf("payload.buildId !== options.buildId") > clientText.lastIndexOf('module = await loader()')
+    || !providerText.includes('loadReactNavigationDestination(href, modules, { signal, buildId })')
+    || !providerText.includes('loadReactNavigationDestination(href, modules, { signal, prefetch: true, buildId })')) {
+    throw new Error('React navigation v2 requires a build identity checked before any destination import.');
   }
 
   const initialTransfer = findNode(transfer, (node) =>
@@ -194,8 +207,8 @@ export function enforceReactNavigationPayloadContract(
     || !rejectInvalidMetadata || !approvedMetadata || !resolveMetadata || !boundServerMetadata
     || serverPayloads.length !== 2 || !initialPayload || !ts.isCallExpression(initialPayload)
     || initialPayload !== serverPayloads[0]
-    || serverPayloads[0].arguments[3]?.getText(server) !== 'pageMetadata(writerContext.requestContext)'
-    || serverPayloads[1].arguments[3]?.getText(server) !== 'pageMetadata(requestContext)'
+    || serverPayloads[0].arguments[4]?.getText(server) !== 'pageMetadata(writerContext.requestContext)'
+    || serverPayloads[1].arguments[4]?.getText(server) !== 'pageMetadata(requestContext)'
     || !committedMetadata) {
     throw new Error('React navigation metadata must stay bounded and matched across HTTP, browser validation, and route commit.');
   }
@@ -302,10 +315,41 @@ export function enforceReactNavigationPayloadContract(
   }
   const refresh = findNode(store, (node) =>
     ts.isMethodDeclaration(node) && node.name.getText(store) === 'refresh');
+  const refreshBody = refresh && ts.isMethodDeclaration(refresh) ? refresh.body : undefined;
+  const refreshLoad = refreshBody && findNode(refreshBody, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'loadAndCommit');
+  const restoreLoad = findNode(store, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'loadAndCommit'
+    && node.arguments[0]?.getText(store) === 'nextEnvironment'
+    && node.arguments[1]?.getText(store) === 'new URL(nextEnvironment.currentHref())'
+    && node.arguments[2]?.getText(store) === "'refresh'");
+  const restoreTraversal = refreshBody && findNode(refreshBody, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'browser.go'
+    && node.arguments[0]?.getText(store) === 'approvedIndex - restoreFrom');
+  const successCommit = findNode(store, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'createElement'
+    && node.arguments[0]?.getText(store) === 'result.component');
   if (!refresh || !ts.isMethodDeclaration(refresh)
-    || !findNode(refresh.body, (node) =>
-      ts.isCallExpression(node) && node.expression.getText(store) === 'browser.reload')) {
-    throw new Error('React navigation refresh must reload the document until soft revalidation is implemented.');
+    || !refreshBody || !refreshLoad || !ts.isCallExpression(refreshLoad)
+    || refreshLoad.arguments[0]?.getText(store) !== 'browser'
+    || refreshLoad.arguments[1]?.getText(store) !== 'new URL(browser.currentHref())'
+    || refreshLoad.arguments[2]?.getText(store) !== "'refresh'"
+    || !restoreLoad || !restoreTraversal
+    || !findNode(refreshBody, (node) =>
+      ts.isBinaryExpression(node) && node.getText(store) === 'toSnapshotUrl(browser.currentHref()) !== snapshot.url')
+    || !findNode(refreshBody, (node) =>
+      ts.isNewExpression(node) && node.expression.getText(store) === 'URL'
+      && node.arguments?.[0]?.getText(store) === 'browser.currentHref()')
+    || !findNode(refreshBody, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'discardPrefetches')
+    || !findNode(refreshBody, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'cancelPending')
+    || !successCommit || successCommit.pos <= approvalGuard.end
+    || !findNode(store, (node) =>
+      ts.isBinaryExpression(node) && node.getText(store) === 'requestGeneration !== generation')
+    || !findNode(store, (node) =>
+      ts.isBinaryExpression(node) && node.getText(store) === "type === 'refresh'")) {
+    throw new Error('React navigation refresh must request the current URL through fresh generation-guarded HTTP approval.');
   }
   const adoptedApproval = findNode(store, (node) =>
     ts.isConditionalExpression(node) && node.condition.getText(store).includes('prefetchedResult.ok'));

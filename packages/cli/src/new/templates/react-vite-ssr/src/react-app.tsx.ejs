@@ -11,11 +11,12 @@ import {
   useNavigation,
 } from '@fluojs/react/client';
 import type { ReactInitialNavigationPage } from '@fluojs/react';
-import { type ReactElement, useEffect, useRef, useState } from 'react';
+import { type ReactElement, createElement, isValidElement, useEffect, useRef, useState } from 'react';
 
 export const REACT_IDENTIFIER_PREFIX = 'fluo-react-vite-' as const;
 
 export type ReactAppDocumentProps = {
+  readonly navigationBuildId: string;
   readonly page: ReactElement;
   readonly route: ReactRouteSnapshotInput;
   readonly stylesheets: readonly string[];
@@ -28,6 +29,29 @@ declare global {
     __reactResource?: { readonly id: string; operate: () => string };
     __reactResourceStats?: { mounts: number; cleanups: number };
   }
+}
+
+function productPage(activePage: ReactElement): ReactElement {
+  const props: unknown = activePage.props;
+  const productName = typeof props === 'object' && props !== null
+    && 'productName' in props && typeof props.productName === 'string'
+    ? props.productName : null;
+  const sku = typeof props === 'object' && props !== null
+    && 'sku' in props && typeof props.sku === 'string'
+    ? props.sku : null;
+  return createElement('div', { key: activePage.key },
+    productName !== null && sku !== null && (
+      <section aria-label='Product data'>
+        <p data-testid='product-name'>Current product: {productName}</p>
+        <form action={`/products/${encodeURIComponent(sku)}`} encType='multipart/form-data' method='post'>
+          <label htmlFor='product-name-input'>Product name</label>
+          <input defaultValue={productName} id='product-name-input' minLength={3} name='name' required />
+          <button type='submit'>Save product</button>
+        </form>
+      </section>
+    ),
+    activePage,
+  );
 }
 
 function LongLivedResource(): ReactElement {
@@ -71,11 +95,15 @@ function SharedNavigation(): ReactElement {
       <button onClick={() => setCount((value) => value + 1)} type='button'>Shell taps: {count}</button>
       <p aria-label='Current route'>{route.url} ({JSON.stringify(params)})</p>
       <LongLivedResource />
+      <p aria-label='Navigation status'>{navigation.status} ({navigation.type ?? 'none'})</p>
       {navigation.failure && (
         <div role='alert'>
           <p>Navigation failed: {navigation.failure.reason} ({navigation.failure.destination})</p>
           <button onClick={() => router.retry()} type='button'>Retry navigation</button>
-          <button onClick={() => router.openDocument()} type='button'>Open full document</button>
+          <button onClick={() => router.openDocument()} type='button'>
+            {navigation.failure.reason === 'incompatible-build'
+              ? 'Update application (open full document)' : 'Open full document'}
+          </button>
         </div>
       )}
       <nav aria-label='Page navigation'>
@@ -91,6 +119,7 @@ function SharedNavigation(): ReactElement {
           Replace with sku-126
         </button>
         <button onClick={() => router.invalidate()} type='button'>Invalidate navigation</button>
+        <button onClick={() => { void router.refresh(); }} type='button'>Refresh current page</button>
       </nav>
     </header>
   );
@@ -109,6 +138,7 @@ export function ReactAppDocument({
   stylesheets,
   initialPage,
   navigationModules,
+  navigationBuildId,
 }: ReactAppDocumentProps): ReactElement {
   const initialSnapshot = createReactRouteSnapshot(route);
 
@@ -116,12 +146,14 @@ export function ReactAppDocument({
     <ReactClientRouterProvider
       initialSnapshot={initialSnapshot}
       navigationModules={navigationModules}
+      navigationBuildId={navigationBuildId}
       failurePolicy={({ reason }) =>
         reason === 'network' || reason === 'server-error' || reason === 'import-failure'
+          || reason === 'incompatible-build'
           ? 'preserve' : 'document'}
     >
       {(destination) => (
-        <html lang='en'>
+        <html data-build-id={navigationBuildId} lang='en'>
           <head>
             <meta charSet='utf-8' />
             <meta content='width=device-width, initial-scale=1' name='viewport' />
@@ -133,7 +165,10 @@ export function ReactAppDocument({
           <body>
             <SharedNavigation />
             <main tabIndex={-1}>
-              <ReactNavigationExperience destination={destination} page={page} />
+              <ReactNavigationExperience
+                destination={destination !== null && isValidElement(destination) ? productPage(destination) : null}
+                page={productPage(page)}
+              />
             </main>
             {initialPage && (
               <script id='fluo-initial-page' type='application/json'>{initialPage.json}</script>

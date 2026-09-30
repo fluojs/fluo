@@ -9,9 +9,10 @@ export type ReactNavigationDestination = {
   readonly props: Readonly<Record<string, unknown>>;
 };
 
-/** Version 1 response for a successfully matched React page. */
+/** Version 2 response for a successfully matched React page. */
 export type ReactNavigationPayload = {
-  readonly version: 1;
+  readonly version: 2;
+  readonly buildId: string;
   readonly url: string;
   readonly params: Readonly<Record<string, string>>;
   readonly destination: ReactNavigationDestination;
@@ -30,6 +31,7 @@ export type ReactInitialNavigationPage = {
  * @param url URL confirmed by HTTP matching.
  * @param params Path params confirmed by HTTP binding.
  * @param destination Browser module and JSON-only handler props.
+ * @param buildId Application-owned build identity shared by the document and navigation response.
  * @param metadata Optional bounded head descriptors resolved for the matched page.
  * @returns The representation shared by document hydration and soft navigation.
  */
@@ -37,10 +39,12 @@ export function createReactNavigationPayload(
   url: string,
   params: Readonly<Record<string, string>>,
   destination: ReactNavigationDestination,
+  buildId: string,
   metadata?: ReactPageMetadata,
 ): ReactNavigationPayload {
   return {
-    version: 1,
+    version: 2,
+    buildId,
     url,
     params: { ...params },
     destination: {

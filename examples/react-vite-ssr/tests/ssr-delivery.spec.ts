@@ -1,10 +1,12 @@
 import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { createServer, request as requestHttp, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { constants as zlibConstants, createGunzip, createGzip, gzipSync } from 'node:zlib';
 
 import { expect, test } from '@playwright/test';
+import { createReactViteAssetManifest } from '@fluojs/react/vite';
 
 test('built Fastify product route sends a socket shell before the gated descendant', async () => {
   // Given: the production example build with the optional local delivery probe enabled.
@@ -79,7 +81,18 @@ test('built Fastify product route sends a socket shell before the gated descenda
     expect(early.html).toContain('Catalog item sku-42');
     expect(early.html).toContain('Loading recommendations');
     expect(early.html).not.toContain('Recommended for sku-42');
-    const asset = await fetch(`http://127.0.0.1:${port}/assets/entry-client.js`);
+    const manifest: unknown = JSON.parse(await readFile(
+      new URL('../dist/client/.vite/manifest.json', import.meta.url), 'utf8',
+    ));
+    const assets = createReactViteAssetManifest({
+      base: '/assets/',
+      entries: { client: 'src/entry-client.ts', server: 'src/entry-server.ts' },
+      manifest,
+    });
+    if (!assets.ok) throw new TypeError('The production build manifest is invalid.');
+    const bootstrap = assets.manifest.assetMap['src/entry-client.ts'];
+    if (bootstrap === undefined) throw new TypeError('The production manifest has no bootstrap module.');
+    const asset = await fetch(new URL(bootstrap, `http://127.0.0.1:${port}`));
     expect(asset.status).toBe(200);
     expect(asset.headers.get('content-type')).toContain('javascript');
 
@@ -182,6 +195,7 @@ test('built Fastify product route sends a socket shell before the gated descenda
       }),
     ]);
     expect(finalHtml).toContain('Recommended for sku-42');
+    expect(finalHtml).toContain(bootstrap);
     const [streamedHtml, bufferedHtml] = await Promise.race([
       Promise.all([streamedDone, bufferedDone]),
       new Promise<never>((_, reject) => {

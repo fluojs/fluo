@@ -24,9 +24,10 @@ import {
   ReactNavigationPage,
   Router,
   createReactServerEntry,
+  type ReactInitialNavigationPage,
 } from '@fluojs/react';
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
-import { createElement } from 'react';
+import { cloneElement, createElement, isValidElement } from 'react';
 
 import {
   SESSION_COOKIE,
@@ -138,6 +139,7 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL) {
         editor: editor(context),
         routeParams: context.request.params,
         routeUrl: context.request.url,
+        navigationBuildId: assets.buildId,
         stylesheets: assets.css,
       }),
       { module, props: { data, editor: editor(context) } },
@@ -296,9 +298,16 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL) {
     controllers: [Assets],
     imports: [
       ReactModule.forRoot({
+        navigationBuildId: assets.buildId,
         controllers: [CatalogPages, AdminPages, CatalogActions],
         providers: [CatalogStore, EditorGuard],
-        renderPage: (element) => createReactServerEntry(element, assets.hydrationOptions),
+        renderPage: (element, _context, _policies, initialPage) => {
+          if (!isValidElement<{ readonly initialPage?: ReactInitialNavigationPage }>(element)
+            || element.type !== BenchmarkDocument) {
+            throw new TypeError('The benchmark page must render with BenchmarkDocument.');
+          }
+          return createReactServerEntry(cloneElement(element, { initialPage }), assets.hydrationOptions);
+        },
       }),
     ],
   })

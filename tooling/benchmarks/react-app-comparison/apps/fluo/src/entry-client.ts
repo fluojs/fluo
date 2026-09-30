@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import type { ReactNavigationModules } from '@fluojs/react/client';
+import { loadReactInitialNavigationDestination, type ReactNavigationModules } from '@fluojs/react/client';
 import { createElement, type ReactNode } from 'react';
 import { hydrateRoot } from 'react-dom/client';
 
@@ -14,13 +14,22 @@ const stylesheets = [...document.querySelectorAll<HTMLLinkElement>('link[data-vi
 const navigationModules: ReactNavigationModules = import.meta.glob<{
   readonly default: (props: Record<string, unknown>) => ReactNode;
 }>('./navigation-*.ts');
+const initialJson = document.getElementById('fluo-initial-page')?.textContent;
+const navigationBuildId = document.documentElement.dataset.buildId;
+if (initialJson === undefined || initialJson === null || navigationBuildId === undefined) {
+  throw new Error('The HTTP document has no compatible initial navigation transfer.');
+}
+const initial = await loadReactInitialNavigationDestination(initialJson, navigationModules, navigationBuildId);
+if (!initial.ok) {
+  throw new Error(`The HTTP document destination is unavailable: ${initial.reason}`);
+}
 
 hydrateRoot(document, createElement(BenchmarkDocument, {
   ...state,
+  initialPage: { json: initialJson, payload: initial.payload },
   navigationModules,
-  routeParams: window.location.pathname.startsWith('/products/')
-    ? { sku: decodeURIComponent(window.location.pathname.slice('/products/'.length)) }
-    : {},
-  routeUrl: `${window.location.pathname}${window.location.search}`,
+  navigationBuildId,
+  routeParams: initial.payload.params,
+  routeUrl: initial.payload.url,
   stylesheets,
 }), { identifierPrefix: 'benchmark-fluo-' });

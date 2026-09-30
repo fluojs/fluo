@@ -42,7 +42,7 @@ import { REACT_IDENTIFIER_PREFIX } from './hydration';
 import { ProductDocument, type ProductDocumentProps } from './page';
 import { createPrefetchPageRouter } from './prefetch-page';
 
-const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js)$/u;
+const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
 
 export type ReactViteExampleModuleOptions = {
   readonly clientDirectory: URL;
@@ -104,9 +104,19 @@ class CatalogMutationGuard implements Guard {
   }
 }
 
+class CatalogReadGuard implements Guard {
+  canActivate(context: GuardContext): boolean {
+    context.requestContext.response.setHeader('x-example-read-guard', 'approved');
+    return true;
+  }
+}
+
 class CatalogMutationInterceptor implements Interceptor {
+  readonly #requestId = randomBytes(8).toString('hex');
+
   async intercept(context: InterceptorContext, next: CallHandler): Promise<unknown> {
     context.requestContext.response.setHeader('x-example-interceptor', 'request-scoped');
+    context.requestContext.response.setHeader('x-example-request-scope', this.#requestId);
     return next.handle();
   }
 }
@@ -164,6 +174,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     }), {
       ...assets.hydrationOptions,
       headers: {
+        ...(initialPage === undefined ? {} : { 'Cache-Control': 'private, no-store' }),
         'Content-Security-Policy': `default-src 'self'; script-src 'self' 'nonce-${nonce}'; img-src 'self' data:`,
       },
       nonce,
@@ -185,12 +196,15 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     }))
     @Path('/:sku')
     @RequestDto(ProductPageRequest)
+    @UseGuards(CatalogReadGuard)
+    @UseInterceptors(CatalogMutationInterceptor)
     show(input: ProductPageRequest, context: RequestContext) {
       const productName = this.catalog.findName(input.sku);
       const preview = input.preview === 'true';
       return ReactNavigationPage.create(createElement(ProductDocument, {
         preview,
         productName,
+        navigationBuildId: assets.buildId,
         routeParams: context.request.params,
         routeUrl: context.request.url,
         saved: input.updated === 'true',
@@ -219,6 +233,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
         adminPage: page,
         preview: false,
         productName: '',
+        navigationBuildId: assets.buildId,
         routeParams: context.request.params,
         routeUrl: context.request.url,
         saved: false,
@@ -261,6 +276,29 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     }
   }
 
+  @Router('/deployment')
+  class DeploymentRouter {
+    @Path('/b-only')
+    show(_input: undefined, context: RequestContext) {
+      if (assets.assetMap['src/navigation-b-only.ts'] === undefined) {
+        throw new NotFoundException('This destination is absent from the selected build.');
+      }
+      return ReactNavigationPage.create(createElement(ProductDocument, {
+        navigationBuildId: assets.buildId,
+        preview: false,
+        productName: 'B-only destination',
+        routeParams: context.request.params,
+        routeUrl: context.request.url,
+        saved: false,
+        sku: '',
+        stylesheets: assets.css,
+      }), {
+        module: './navigation-b-only.ts',
+        props: {},
+      });
+    }
+  }
+
   @Controller('/assets')
   class ViteAssetController {
     @Get('/:file')
@@ -272,13 +310,18 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
 
       try {
         const body = await readFile(new URL(input.file, options.clientDirectory));
+        context.response.setHeader('Cache-Control', /-[a-zA-Z0-9_-]{6,}\.(?:js|css|svg)$/u.test(input.file)
+          ? 'public, max-age=31536000, immutable'
+          : 'public, max-age=300');
         context.response.setHeader(
           'Content-Type',
-          input.file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8',
+          input.file.endsWith('.svg') ? 'image/svg+xml'
+            : input.file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8',
         );
         return body;
       } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+          context.response.setHeader('X-Fluo-Asset-Status', 'missing');
           throw new NotFoundException('Vite asset not found.', { cause: error });
         }
         throw error;
@@ -290,10 +333,12 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     controllers: [ViteAssetController, ...(options.deliveryProbe ? [DeliveryProbeController] : [])],
     imports: [
       ReactModule.forRoot({
-        controllers: [ProductPageRouter, AdminPageRouter, PrefetchPageRouter],
+        navigationBuildId: assets.buildId,
+        controllers: [ProductPageRouter, AdminPageRouter, PrefetchPageRouter, DeploymentRouter],
         middleware: [CatalogRequestMiddleware],
         providers: [
           CatalogMutationGuard,
+          CatalogReadGuard,
           ProductCatalog,
           {
             provide: CatalogMutationInterceptor,

@@ -42,6 +42,10 @@ export function connectClientNavigationHistory(
     }
     if (activated.pathname === snapshot.pathname
       && activated.search === new URL(snapshot.url, href).search) {
+      if (eventType === 'hashchange' && snapshot.navigation.status === 'refreshing') {
+        handlers.publish(handlers.createSnapshotForHref(href, snapshot.navigation));
+        return;
+      }
       handlers.cancelPending();
       const navigating = snapshot.navigation;
       const type = eventType === 'hashchange' && navigating.destination === currentUrl

@@ -882,17 +882,24 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 - 정규화된 destination이 현재 route snapshot과 같은 identical URL이면 router는
   `window.location.assign(...)`이나 `window.location.replace(...)`를 호출하지 않습니다. 대신 요청한
   navigation type과 destination을 포함한 `skipped` 상태를 노출합니다.
-- `router.back()`은 `window.history.back()`에 위임합니다. `router.refresh()`는 soft
-  revalidation이 아닌 **전체 문서 reload**를 위해 `window.location.reload()`를 사용하며 RSC,
-  loader, client-data cache를 암시하지 않습니다. #3873이 향후 셸 보존 revalidation과
-  reload 의존 소비자의 migration을 소유합니다.
+- `router.back()`은 `window.history.back()`에 위임합니다. `router.refresh()`는
+  `Promise<ReactRevalidationResult>`를 반환하며 현재 pathname/query를 credential 포함,
+  no-store HTTP navigation loader로 다시 승인받습니다. 성공하면 history 기록이나 fragment
+  손실 없이 최신 props/params를 commit하고 공통 shell/resource는 유지하지만 승인된 page
+  activation마다 page-local state는 reset됩니다. Soft destination이 없으면 document
+  reload를 시작합니다. RSC나 client-data cache를 뜻하지 않습니다. 확정적인 문서
+  새로고침에는 `window.location.reload()`를 사용하세요.
+  [refresh migration](../../docs/getting-started/migrate-react-refresh.ko.md)을 참고하세요.
 - `usePathname()`, `useSearchParams()`, `useParams()`, `useRouterState()`는 provider의 immutable route
   snapshot을 읽습니다. `popstate`/forward는 이전에 방문한 URL도 HTTP에 새로 승인받으며 private
   payload를 cache하지 않습니다. 승인된 URL과 matched params를 함께 갱신하고 fragment-only
   `hashchange`는 기존 server-owned params를 유지합니다.
 - `useNavigation()`은 `idle`, `navigating`, `refreshing`, `complete`, `error`, `skipped`를 노출합니다.
   Soft transition은 검증된 page가 load된 뒤에만 완료되고 정책이 없으면 실패 시 HTTP document로 fallback합니다.
-  `refreshing`은 document reload를 시작합니다. Fragment-only
+  `refreshing`과 type `refresh`는 승인된 page를 유지합니다. 성공은 `complete`, 보존 실패는
+  안전한 type-`refresh` failure와 `error`, 후속 작업 없는 취소는 `idle`을 게시합니다.
+  반환 Promise는 navigation store commit 시 `complete`(browser paint 아님),
+  안전한 `error`, `cancelled`, 또는 document fallback 시작 시 `document`로 정착합니다. Fragment-only
   transition은 일치하는 `hashchange` 이후 현재 document에서 `complete`가 됩니다.
 - Router method는 cross-origin 또는 non-HTTP(S) destination을 `ReactClientNavigationError`로 거부합니다.
   이런 destination에는 일반 anchor를 사용하세요.
@@ -916,12 +923,13 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 `reason`, 목적지 pathname, navigation type을 제공합니다. 셸의 오류 UI에서 `router.retry()`로
 새 credential 포함 HTTP 승인을 요청하고 `router.openDocument()`로 일반 문서를 명시적으로
 이동합니다. 사유는 `network`, `server-error`, `unauthorized`, `forbidden`, `redirect`,
-`not-found`, `dto-rejected`, `invalid-payload`, `unsupported-module`, `import-failure`,
+`not-found`, `dto-rejected`, `invalid-payload`, `incompatible-build`, `unsupported-module`, `import-failure`,
 `unavailable`, `unsupported-destination`으로 구분하며 앱 callback 실패는 `application-error`로
 정착합니다. 응답 본문으로 인증을 추측하거나 로그아웃 뒤 보호 콘텐츠를 보장하지 않습니다.
 실패한 back/forward는 확인 가능한 history 위치에서 마지막 승인 URL과 화면으로 복구하고
-retry는 새 HTTP 승인을 요청합니다. 기존 `refresh()`는 여전히 reload입니다. 이는 하위
-호환되는 **low-level opt-in**이며 공식 생성 starter는 network/5xx 및 복구 가능한 매핑된 import 실패의 보존 정책과 셸 복구
+retry는 새 HTTP 승인을 요청합니다. Refresh도 이 **low-level opt-in**을 따르며
+v1-to-v2 payload 이주는 breaking 0.x 변경입니다.
+공식 생성 starter는 network/5xx, incompatible-build 및 복구 가능한 매핑된 import 실패의 보존 정책과 셸 복구
 control을 명시적으로 제공합니다.
 직접 조립한 앱은 `navigationModules`와 `failurePolicy`를 제공하고 셸에
 `navigation.failure` 조작 UI를 배치하며 다른 사유(없는 importer key 포함)는 명시적인 정책 없이는 문서 경로에
@@ -930,7 +938,8 @@ control을 명시적으로 제공합니다.
 참고하세요.
 
 `Link`의 optional `prefetch="hover"` 및 `prefetch="viewport"` mode는 생략하면 off입니다.
-Hydration을 마친 provider에 `navigationModules`와 현재 auth/session epoch를 나타내는 명시적
+Hydration을 마친 provider에 `navigationModules`, 일치하는 `navigationBuildId`와
+현재 auth/session epoch를 나타내는 명시적
 application-managed `prefetchScope` 문자열을 함께 제공해야 합니다. Hover는 적합한 pointer
 진입에, viewport는 intersection 진입에 시작하고 exit에 취소합니다. JavaScript 비활성,
 부적합한 anchor, 미지원 목적지, fragment-only 이동에서는 실행하지 않습니다.
@@ -954,7 +963,7 @@ server DTO validation을 변경하지 않습니다.
 
 HTTP-matched `@Path(...)` GET handler는 `ReactNavigationPage.create(page, { module, props })`를
 반환할 수 있습니다. 일반 GET은 여전히 `renderPage`로 page를 stream하고, 정확한
-`Accept: application/vnd.fluo.react-navigation+json;v=1`을 보낸 GET만 server-confirmed `url`,
+`Accept: application/vnd.fluo.react-navigation+json;v=2`를 보낸 GET만 server-confirmed `url`,
 matched `params`, browser module identity와 JSON-serializable props를 포함한 versioned JSON을
 받습니다. HTTP는 representation을 선택하기 전에 middleware, DTO validation, guard, interceptor,
 URI version selection, request-scoped provider를 실행합니다. Application은 로드한 client build
@@ -965,7 +974,7 @@ import 가능 여부를 결정합니다. Runtime-neutral root는 browser/Vite co
 HTML-safe `json`을 담은 선택적 네 번째 인자 `ReactInitialNavigationPage`도 받습니다. 직렬화와
 escaped UTF-8 64 KiB 상한은 HTML response commit 전에 검사합니다. `json`은 inert
 `application/json` script에만 포함하고, client의
-`loadReactInitialNavigationDestination(json, modules)`가 hydration 전에 현재 URL과 importer
+`loadReactInitialNavigationDestination(json, modules, buildId)`가 hydration 전에 현재 URL과 importer
 key를 검증합니다. 생성된 `./page*.tsx` importer와 production manifest 확인으로 build되지 않은
 destination을 차단합니다. 같은 handler props가 SSR component와 browser destination에 전달되며,
 DI instance나 secret 대신 JSON data만 허용합니다. `ReactClientRouterProvider`의 shell은 유지되고
@@ -1005,6 +1014,7 @@ const modules = import.meta.glob('./navigation-product.ts');
 <ReactClientRouterProvider
   initialSnapshot={createReactRouteSnapshot({ url: requestUrl, params: matchedParams })}
   navigationModules={modules}
+  navigationBuildId={buildId}
   prefetchScope={sessionEpoch}
 >
   {(destination) => (
@@ -1031,7 +1041,7 @@ HTTP는 기존 `Vary`, `Set-Cookie`를 보존하고 일반 navigation에는 `pri
 `Cache-Control: public, max-age=15`, `Vary: Accept`가 발급됩니다. 기존 restriction을 덮어
 eligibility를 만들지 않습니다. 별도 speculative GET에는 `credentials: 'omit'`,
 `cache: 'no-store'`, `redirect: 'manual'` 및 같은 navigation Accept를 사용합니다. Browser는
-명시적 grant, 호환되는 public cache header, 완전히 검증된 version-`1` payload와 build된
+명시적 grant, 호환되는 public cache header, 완전히 검증된 version-`2` payload와 build된
 module만 허용합니다. Fetch는 `Set-Cookie`를 노출하지 않으므로 이를 판단에 사용하지 않습니다.
 Provider는 최대 32개의 single-use LRU entry(각 JSON 최대 64 KiB)와 최대 4개의 concurrent
 request를 소유하고 초과 opportunity를 queue하지 않습니다. Entry 만료는 validation/import
@@ -1055,6 +1065,17 @@ policy는 이와 달리 **매핑된** importer 로드 실패를 일시적 transp
 [EN](../../docs/contracts/react-navigation-payload.md) /
 [KO](../../docs/contracts/react-navigation-payload.ko.md) contract와
 [`react-vite-ssr`](../../examples/react-vite-ssr/README.ko.md)를 참고하세요.
+
+같은 `buildId`는 `createReactViteAssetManifest({ manifest, base: '/assets/', entries })`가
+lazy chunk를 포함한 **전체** 선택 manifest에서 도출합니다. Server의
+`ReactModule.forRoot({ navigationBuildId: buildId, controllers, renderPage })`와 client
+provider에 전달합니다. 초기 transfer와 모든 soft 요청의 값이 import 및 history
+commit 전에 일치해야 하며 누락된 식별자는 승인되지 않습니다.
+`incompatible-build`를 앱이 `preserve`하면 마지막 승인 page와 shell이 유지됩니다.
+매핑된 import 거부는 `import-failure`, 없는 key는 `unsupported-module`로 남습니다.
+공식 셸은 자동 reload가 아니라 명시적인 update/document 선택지를 제공합니다.
+v1 소비자는 [이주 가이드](../../docs/getting-started/migrate-react-production-assets.ko.md)와
+[배포 recipe](../../docs/guides/react-production-deployment.ko.md)를 따르세요.
 
 ## Native Form Mutations
 
@@ -1346,8 +1367,9 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 
-- `router.refresh()`의 제자리 revalidation. 공식 starter는 이미 network/5xx 및 복구 가능한 매핑된 import 실패의 셸 보존
-  재시도를 제공하지만 low-level provider는 기본적으로 document fallback합니다.
+- mutation 뒤 자동 재검증. Application이 결정한 시점에 `router.invalidate()` 후
+  `router.refresh()`를 await하세요. 공식 starter는 network/5xx 및 복구 가능한 매핑된
+  import 실패를 보존하지만 low-level provider의 기본값은 document fallback입니다.
 - stable RSC root 또는 `@fluojs/react/rsc` subpath. RSC는 명시적으로 불안정한
   `@fluojs/react/experimental/rsc` prototype에서만 제공합니다.
 - 자동 `"use server"` transform/export discovery 또는 built-in Flight renderer/build plugin

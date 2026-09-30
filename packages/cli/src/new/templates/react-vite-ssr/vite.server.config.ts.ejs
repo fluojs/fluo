@@ -6,6 +6,9 @@ import { resolve } from 'node:path';
 import { defineConfig, normalizePath } from 'vite';
 
 export default defineConfig({
+  define: {
+    __FLUO_BUILD_VARIANT__: JSON.stringify(process.env.FLUO_REACT_BUILD_VARIANT ?? 'A'),
+  },
   build: {
     emptyOutDir: false,
     outDir: 'dist/server',

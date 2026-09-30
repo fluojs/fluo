@@ -59,14 +59,18 @@ it.each([
 });
 
 it.each([
-  [clientPath, "const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=1'", "const MEDIA_TYPE = 'application/json'"],
+  [clientPath, "const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=2'", "const MEDIA_TYPE = 'application/json'"],
+  [clientPath, 'payload.buildId !== options.buildId', 'false'],
+  [clientPath, 'payload.buildId !== buildId', 'false'],
+  [clientPath, 'value.buildId.length === 0', 'false'],
+  [transferPath, 'readonly buildId: string', 'readonly buildId?: string'],
   [clientPath, "credentials: options.prefetch === true ? 'omit' : 'same-origin'",
     "credentials: options.prefetch === true ? 'omit' : 'omit'"],
   [clientPath, "credentials: options.prefetch === true ? 'omit' : 'same-origin'",
     "credentials: options.prefetch === true ? 'same-origin' : 'same-origin'"],
   [clientPath, "cache: 'no-store'", "cache: 'force-cache'"],
   [clientPath, "redirect: 'manual'", "redirect: 'follow'"],
-  [serverPath, "mediaType: 'application/vnd.fluo.react-navigation+json;v=1'", "mediaType: 'application/json'"],
+  [serverPath, "mediaType: 'application/vnd.fluo.react-navigation+json;v=2'", "mediaType: 'application/json'"],
   [transferPath, '64 * 1024', 'Infinity'],
   [transferPath, '[<>&\\u2028\\u2029]', '[>]'],
   [transferPath, '(character) =>', '(character) => character ||'],
@@ -74,9 +78,9 @@ it.each([
   [storePath, 'if (!result.ok)', 'if (false)'],
   [historyPath, "loadAndCommit(browser, activated, 'back')", "loadAndCommit(browser, activated, 'push')"],
   [storePath, 'load(destination.href, controller.signal)', 'load(destination.href)'],
-  [providerPath, 'loadReactNavigationDestination(href, modules, { signal, prefetch: true })',
+  [providerPath, 'loadReactNavigationDestination(href, modules, { signal, prefetch: true, buildId })',
     'loadReactNavigationDestination(href, modules, { signal })'],
-  [providerPath, 'loadReactNavigationDestination(href, modules, { signal })',
+  [providerPath, 'loadReactNavigationDestination(href, modules, { signal, buildId })',
     'loadReactNavigationDestination(href, modules, { signal, prefetch: true })'],
   [storePath, 'prefetchedResult.ok && prefetchedResult.prefetchExpiresAt !== undefined',
     'true && prefetchedResult.prefetchExpiresAt !== undefined'],
@@ -88,12 +92,23 @@ it.each([
     "decision = 'document';"],
   [storePath, 'browser.go?.(approvedIndex - failed.index);',
     'browser.assign(destination.href);'],
-  [storePath, '      browser.reload();', "      browser.assign('https://example.test/');"],
+  [storePath, "loadAndCommit(browser, new URL(browser.currentHref()), 'refresh')",
+    "loadAndCommit(browser, new URL(browser.currentHref()), 'push')"],
+  [storePath, 'loadAndCommit(nextEnvironment, new URL(nextEnvironment.currentHref()), \'refresh\')',
+    'loadAndCommit(nextEnvironment, new URL(nextEnvironment.currentHref()), \'push\')'],
+  [storePath, 'browser.go?.(approvedIndex - restoreFrom);',
+    'browser.replace(browser.currentHref());'],
+  [storePath, "|| restoringIndex !== null) && toSnapshotUrl(browser.currentHref()) !== snapshot.url;",
+    "|| restoringIndex !== null) && toSnapshotUrl(browser.currentHref()) === snapshot.url;"],
+  [storePath, 'new URL(browser.currentHref()), \'refresh\'',
+    "new URL('https://example.test/stale'), 'refresh'"],
+  [storePath, "      cancelPending();\n      failed = null;\n      deferredBack = false;",
+    "      failed = null;\n      deferredBack = false;"],
   [clientPath, "headers.get('X-Fluo-Navigation-Prefetch')", "headers.get('X-Fluo-Navigation-Other')"],
   [dispatchPath, "!hasExistingHeader('set-cookie')", 'true'],
   [dispatchPath, "!hasExistingHeader('cache-control')", 'true'],
   [dispatchPath, 'response.statusCode === 200', 'true'],
-] as const)('rejects changed navigation request or response machinery in %s', (path, original, changed) => {
+] as const)('rejects changed navigation request or response machinery in %s (%s)', (path, original, changed) => {
   // Given: a source variant whose machine-consumed HTTP contract changes.
   const source = sources.get(path);
   expect(source).toBeDefined();

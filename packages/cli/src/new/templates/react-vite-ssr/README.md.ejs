@@ -14,12 +14,14 @@ Requires Node.js `>=24.0.0 <27`. Use Node 24 LTS for local development, CI, and 
 The generated `dev` script runs `fluo dev`, as does the installed `fluo` binary invoked
 directly. After installation, neither path requires a manual production build: the CLI
 loads the server entry through project-local Vite SSR transforms and serves client
-modules and CSS through Vite middleware on the Fastify development server. Source
+modules and CSS through Vite middleware on the Fastify development server behind a
+persistent same-origin gateway. Source
 edits use the same-origin Vite WebSocket and React Fast Refresh for supported component
 boundaries, while CSS updates without replacing the document. Vite-owned browser modules
 do not restart the app child; each directly requested page loads its current SSR component
-through Vite after HTTP route and DTO validation. Server-only and config edits still restart
-the child. No production `dist` or client build manifest is needed for `dev`; `build` and
+through Vite after HTTP route and DTO validation. Server-only edits drain and
+replace the app behind the gateway; watched `.env` and Vite config edits replace
+the dev process. No production `dist` or client build manifest is needed for `dev`; `build` and
 `start` remain the separate production path.
 
 Keep component-only exports in refreshable modules. Changing hook order or incompatible
@@ -34,7 +36,7 @@ the Search catalog link to `/search?q=catalog`. Edit `src/page.tsx` and
 `src/page-search.tsx`; their UI and hydrated interaction share the same server/client
 document, provider, and page slot. The shell stays mounted during approved soft navigation;
 page-local state resets when a new destination mounts. Network, HTTP 5xx, and recoverable mapped
-page import failures preserve the approved page and shell with `Retry navigation` and
+page import failures or incompatible build identities preserve the approved page and shell with `Retry navigation` and
 `Open full document` controls outside the page slot. Before hydration, with JavaScript disabled,
 on modified clicks, and on unavailable destinations, links remain native anchors.
 
@@ -87,7 +89,9 @@ Vite transform handles them; JSX rendering stays in `.tsx` modules such as `src/
 `<%= testBrowserCommand %>` starts the built Fastify server and verifies the first HTTP response, emitted
 assets, hydration, two-page soft navigation, network/5xx failure and fresh retry plus mapped
 page import failure with a live shell resource, and native fallback without console warnings
-or errors.
+or errors. `tests/deployment-transition.spec.ts` independently builds A and B outputs,
+switches a same-origin HTTP surface, verifies retained/missing hashed assets and requires
+an explicit document choice before replacing an incompatible A shell.
 Install the Playwright Chrome browser first when your environment does not already provide it.
 
 ## Application-owned wiring
@@ -107,7 +111,8 @@ Read these files only when you need to change the default composition:
   JSON limit and is validated before HTML response commit.
 - `src/main.ts` loads `dist/client/.vite/manifest.json` through `src/load-manifest.ts` for
   production `start`. In `fluo dev`, the CLI loads the same app module through Vite SSR
-  and mounts Vite's development asset middleware on Fastify; no build manifest is read.
+  and proxies its ephemeral Fastify backend through the persistent gateway; Vite's
+  development asset middleware runs on that backend. No build manifest is read.
   Missing or malformed production build output points back to `<%= buildCommand %>` and
   `vite.client.config.ts`.
 
@@ -115,6 +120,13 @@ Read these files only when you need to change the default composition:
 files, run Vite, serve assets, or move route ownership out of `@fluojs/http`. The Fastify asset
 controller is a minimal local starter boundary; production deployments should serve `dist/client`
 through their normal static-file or CDN infrastructure.
+Its `/assets/` bootstrap and lazy chunks are content-hashed, with immutable asset cache
+headers and private non-reusable HTML/navigation. Publish all B assets before switching B
+server/manifest, retain A for your specified old-tab window and monitor
+`X-Fluo-Asset-Status: missing` on 404. For v1-to-v2 protocol migration and the
+application/host responsibility boundary, see
+https://github.com/fluojs/fluo/blob/main/docs/getting-started/migrate-react-production-assets.md
+and https://github.com/fluojs/fluo/blob/main/docs/guides/react-production-deployment.md.
 The client manifest retains the server entry identity for `@fluojs/react/vite`, but its client
 output is an empty marker; the actual `src/entry-server.tsx` builds only into `dist/server`.
 Only page components from `src/page*.tsx` enter browser chunks. Do not import server services
@@ -125,14 +137,8 @@ inside the page slot, and applies focus/scroll defaults. `@PageMetadata(...)` on
 handler supplies bounded page-owned title, description, and canonical-link entries to the
 initial document and later destinations. To replace the effect, set `onApprovedNavigation`
 on that composition. A page render reset is local; #3864's transport retry instead obtains
-fresh HTTP approval. Direct/JavaScript-disabled errors still use HTTP status and representation.
-The shell opts into `ReactNavigationExperience` from `@fluojs/react/client`. It retains the
-last approved page during pending navigation, announces status, resets approved render errors
-inside the page slot, and applies focus/scroll defaults. `@PageMetadata(...)` on each HTTP
-handler supplies bounded page-owned title, description, and canonical-link entries to the
-initial document and later destinations. To replace the effect, set `onApprovedNavigation`
-on that composition. A page render reset is local; #3864's transport retry instead obtains
-fresh HTTP approval. Direct/JavaScript-disabled errors still use HTTP status and representation.
+fresh HTTP approval. React 19 and React DOM 19 are required for page-owned head hoisting.
+Direct/JavaScript-disabled errors still use HTTP status and representation.
 
 `Link` remains a real anchor; `router.push(...)` and compatible links request HTTP-approved JSON
 before updating the URL and page slot. This starter explicitly selects `failurePolicy` for

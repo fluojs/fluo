@@ -176,6 +176,21 @@ Production shell delivery depends on the host/proxy forwarding chunks instead of
 collecting the whole body; see the
 [Fastify streaming recipe](../platform-fastify/README.md#streaming-responses).
 
+The generated shared shell includes `useRouter().refresh()` for an explicit same-page
+credentialed HTTP revalidation: it retains shell resources and history, resets page-local
+state only after approval, and exposes pending/error/retry controls. It returns a typed
+completion result rather than confirming browser paint. Existing generated applications
+that relied on a document reload should use `window.location.reload()` explicitly;
+see the [refresh migration](../../docs/getting-started/migrate-react-refresh.md).
+This is separate from development-time Fast Refresh and does not add automatic
+post-mutation revalidation.
+The starter's product page slot displays the HTTP-approved product name. Its ordinary
+`@Post('/:sku')` handler accepts a DTO-bound name and redirects with `303` to a fresh
+document `GET`; this form also works without JavaScript. To inspect an external update
+without replacing the shell, update the product through that HTTP endpoint and click
+`Refresh current page`: the old value stays visible during the request and a new
+approved name replaces it without a history entry.
+
 The React `dev` script now delegates to the same `fluo dev` path as a direct CLI invocation.
 After dependency installation, either starts without an application production build:
 Vite transforms the SSR entry; a stable development gateway serves the public HTTP port
@@ -237,10 +252,18 @@ browser bundle receives only page components in the `src/page*.tsx` importer map
 This two-page starter is not yet the complete CRUD/jukebox product path: the existing
 [Vite example](../../examples/react-vite-ssr/README.md) demonstrates advanced native-form
 and prefetch policy while the starter provides the canonical page authoring composition.
-The starter selects network/5xx and recoverable mapped import-failure shell preservation and shows retry or ordinary-document
+The starter selects network/5xx, incompatible-build and recoverable mapped import-failure shell preservation and shows retry or ordinary-document
 navigation in its persistent shell; the low-level provider remains document-first unless
 an app passes `failurePolicy`. The [product contract](../../docs/contracts/react-fullstack-product.md)
 tracks the remaining form freshness, auth, deployment and full-journey acceptance gates.
+The production starter derives a v2 `buildId` from its complete loaded Vite manifest
+and same-origin `/assets/` base, supplies it to `ReactModule.forRoot(...)` and
+`ReactClientRouterProvider`, and serves hashed bootstrap, CSS, lazy modules and favicon.
+It retains the approved shell on `incompatible-build` or mapped `import-failure`
+and offers an explicit document update. A missing module key is not an import failure.
+Deploy B assets before B server/manifest, retain A assets for a chosen old-tab window,
+and see the [deployment recipe](../../docs/guides/react-production-deployment.md) and
+[v1 migration](../../docs/getting-started/migrate-react-production-assets.md).
 Application-owned production manifest loading and asset/CDN hosting remain explicit.
 
 `fluo new` also exposes microservice starter paths. TCP is the default when you omit `--transport`, and the starter matrix includes runnable Redis Streams, NATS, Kafka, RabbitMQ, MQTT, and gRPC variants with transport-specific dependencies, env templates, and entrypoints:
