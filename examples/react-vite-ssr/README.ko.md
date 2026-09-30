@@ -2,6 +2,11 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+Session acceptance는 session 설정 없는 plain provider children의
+`?legacySession=1`과 앱이 한 번의 fresh auth read를 선택하는 `?authRefresh=1`도
+검증합니다. 안전한 document exit과 configured GET/POST auth policy 소비를 증명하는
+예제 fixture 변형이며 별도 framework API가 아닙니다.
+
 Hydration 및 client-navigation phase를 위한 최소 Vite-backed `@fluojs/react` 애플리케이션입니다.
 두 번째 routing model을 만들지 않고 HTTP-owned page route, DTO-bound parameter, streamed React
 SSR, Vite manifest asset, hydrated browser runtime, progressively enhanced native mutation form을

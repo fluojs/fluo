@@ -155,23 +155,24 @@ export function createClientFormStore(): ClientFormStore {
           mutation = { status: 'uncertain', reason: 'protocol' };
         }
       }
-      active = null;
       snapshot = { ...snapshot, pending: false, mutation,
+        followUp: mutation.status === 'saved' && mutation.session !== undefined ? { status: 'pending' } : null,
         dirty: mutation.status === 'saved' && inputRevision === submittedRevision ? false : snapshot.dirty,
       };
       if (mutation.status === 'saved' && mutation.session !== undefined && environment.sessionChanged !== undefined) {
         const continuation = environment.sessionChanged(mutation.session);
         publish(snapshot);
-        if (!await continuation || expected !== generation) {
+        if (!await Promise.race([continuation, cancellation.then(() => false)]) || expected !== generation) {
           if (expected === generation) publish({ ...snapshot, followUp: { status: 'cancelled' } });
           transferred = false;
           environment.releaseSession?.();
           return;
         }
       } else if (mutation.status === 'auth' && environment.authRejected !== undefined) {
-        await environment.authRejected(mutation.reason);
+        await Promise.race([environment.authRejected(mutation.reason), cancellation.then(() => {})]);
       }
       if (expected !== generation) return;
+      active = null;
       publish(snapshot);
       if (mutation.status === 'saved') {
         // Also discard speculation admitted while the mutation was outstanding.

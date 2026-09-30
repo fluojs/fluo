@@ -30,7 +30,13 @@ including initial SSR fallback. Fresh credentialed 401 defaults to signed-out,
 403 to forbidden without erasing identity. Optional session policy runs after
 that barrier; same-origin document exits are validated. Transient network/5xx
 continue using existing failure policy. External cookie changes alone are not a
-cross-tab signal.
+cross-tab signal. These in-document defaults require configured or explicitly activated
+session-aware composition. Legacy providers without it exit to the ordinary HTTP document
+after fresh 401/403 revocation, so plain protected children cannot remain visible.
+Do not use `failurePolicy: () => 'preserve'` to retain auth-rejected content.
+Session policy `'refresh'` performs fresh GET approval for GET and POST auth rejection
+without replaying POST. Cancelling a saved form while its session policy is held settles
+the binding immediately and prevents a late document exit.
 
 ## HTTP forms and saved data
 

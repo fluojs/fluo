@@ -2,6 +2,11 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
+Session acceptance also exercises `?legacySession=1` with plain provider children
+and no session configuration, and `?authRefresh=1` with one app-selected fresh
+auth read. These example fixture variants verify safe document exit and configured
+GET/POST auth policy consumption; they are not alternate framework APIs.
+
 Minimal Vite-backed `@fluojs/react` application for the hydration and client-navigation phases. It connects
 HTTP-owned page routes, DTO-bound parameters, streamed React SSR, Vite manifest assets, and one
 hydrated browser runtime with a progressively enhanced native mutation form, without introducing a

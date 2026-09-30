@@ -909,7 +909,13 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 </ReactClientRouterProvider>
 ```
 
-`failurePolicy`를 생략하면 취소되지 않은 실패는 계속 document fallback합니다. `'preserve'`를
+Auth가 아닌 실패는 `failurePolicy`를 생략하면 document fallback합니다.
+Fresh credential 포함 401/403은 policy 전에 이전 승인을 항상 철회합니다. `session`을
+설정하거나 명시적 session 결과/통지로 활성화한 provider는 `failurePolicy` 대신
+`session.policy`를 적용하며 기본값은 401 signed-out, 403 forbidden입니다. 미설정 legacy
+provider는 barrier 뒤 일반 HTTP document로 이동하여 보호된 plain children을 남기지
+않습니다. `failurePolicy`는 철회된 auth 콘텐츠를 보존할 수 없으며 in-document 인증 UI는
+session-aware 조립을 사용합니다. Auth가 아닌 실패에서 `'preserve'`를
 선택하면 마지막 승인 URL·params·page·shell을 유지하며 `useNavigation().failure`는 안전한
 `reason`, 목적지 pathname, navigation type을 제공합니다. 셸의 오류 UI에서 `router.retry()`로
 새 credential 포함 HTTP 승인을 요청하고 `router.openDocument()`로 일반 문서를 명시적으로
@@ -923,8 +929,9 @@ v1-to-v2 payload 이주는 breaking 0.x 변경입니다.
 공식 생성 starter는 network/5xx, incompatible-build 및 복구 가능한 매핑된 import 실패의 보존 정책과 셸 복구
 control을 명시적으로 제공합니다.
 직접 조립한 앱은 `navigationModules`와 `failurePolicy`를 제공하고 셸에
-`navigation.failure` 조작 UI를 배치하며 다른 사유(없는 importer key 포함)는 명시적인 정책 없이는 문서 경로에
-남겨 두세요. Production 예제는 network/5xx 실패·복구 중 자원 identity와 operation/ack를
+`navigation.failure` 조작 UI를 배치하며 auth가 아닌 다른 사유(없는 importer key 포함)는
+명시적인 정책 없이는 문서 경로에 남겨 두세요. Fresh 401/403은 앞의 필수 session-aware
+또는 legacy document 규칙을 따릅니다. Production 예제는 network/5xx 실패·복구 중 자원 identity와 operation/ack를
 검증합니다. #3879는 여전히 전체 제품 여정을 검증해야 합니다. [제품 여정 표](../../docs/contracts/react-fullstack-product.ko.md#사용자-여정-수용-표)를
 참고하세요.
 
@@ -1075,9 +1082,13 @@ v1 소비자는 [이주 가이드](../../docs/getting-started/migrate-react-prod
 `router.sessionChanged({ epoch: 'next-label', reason: 'login' })`를 사용합니다.
 별도 provider 없이 `useRouterState().session`으로 승인과 generation을 읽습니다.
 각 통지는 async policy 전에 초기 SSR fallback을 포함한 이전 page/head/form/cache
-ownership을 철회합니다. Fresh credential 포함 401은 signed-out, 403은 identity를
+ownership을 철회합니다. Configured session 조립의 fresh credential 포함 401은 signed-out, 403은 identity를
 지우지 않는 forbidden입니다. Anonymous speculation은 credentialed 사용자를 logout할
 수 없으며 cookie 변경 자체가 cross-tab signal인 것은 아닙니다.
+Policy의 `'refresh'`는 navigation GET, form POST 인증 거절, saved follow-up GET 모두에서
+새 uncached credential 포함 GET을 실행하며 POST를 재실행하지 않습니다. Initiating saved
+form의 취소는 그 session policy의 권한을 취소하고 보류된 policy release 전에 대기를
+정착시키므로 늦은 document 결정이 이동할 수 없습니다.
 
 앱 소유 player/channel/listener는 기존 React subtree/effect cleanup으로 정리합니다.
 Teardown registry는 없고 store settlement는 SDK-disposal receipt가 아닙니다.

@@ -87,7 +87,10 @@ in-document navigation. Ordinary data mutations use `router.invalidate()` and pr
 unrelated forms. The optional provider `session` config and `useRouterState().session`
 share the existing router barrier: revoke old page/head/retained data before policy,
 select signed-out for fresh 401 and forbidden for 403, and suppress initial SSR
-fallback until new approval. Saved form session outcomes use that same barrier.
+fallback until new approval. Unconfigured legacy auth rejection instead uses the
+same barrier then an ordinary document exit. Configured auth policy refresh always
+dispatches fresh GET, never POST replay. Saved form session outcomes use that same
+barrier, and binding cancellation revokes their policy and follow-up authority.
 App resources use their existing React subtree/effect cleanup; see
 [session migration](./getting-started/migrate-react-session-composition.md).
 Ordinary credentialed navigation and back/forward

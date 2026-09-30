@@ -29,7 +29,13 @@ prefetch-scope만 바꾸는 경로, cookie 추측은 사용하지 않습니다.
 제거합니다. Fresh credential 포함 401은 기본 signed-out, 403은 identity를 지우지 않는
 forbidden입니다. 선택적 session policy는 barrier 뒤에 실행하며 same-origin 문서 이동을
 검증합니다. Transient network/5xx는 기존 failure policy를 유지합니다. 외부 cookie 변경
-자체는 cross-tab signal이 아닙니다.
+자체는 cross-tab signal이 아닙니다. 이 in-document 기본값은 configured 또는 명시적으로
+활성화된 session-aware 조립에 적용합니다. 미설정 legacy provider는 fresh 401/403 철회
+뒤 일반 HTTP document로 이동하여 보호된 plain children을 남기지 않습니다.
+`failurePolicy: () => 'preserve'`로 인증 거절 콘텐츠를 보존하지 마세요.
+Session policy의 `'refresh'`는 GET/POST 인증 거절 모두 fresh GET 승인으로 소비하며
+POST를 재실행하지 않습니다. Saved form의 session policy가 보류된 동안 binding을
+취소하면 즉시 대기를 정착시키고 늦은 document exit을 막습니다.
 
 ## HTTP forms and saved data
 

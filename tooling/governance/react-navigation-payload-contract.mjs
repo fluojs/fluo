@@ -400,6 +400,25 @@ export function enforceReactNavigationPayloadContract(
       && node.condition.getText(experience) === 'revoked')) {
     throw new Error('React navigation session must revoke approval and detach old ownership before abort, policy or form follow-up.');
   }
+  const releaseOrigin = findNode(store, (node) =>
+    ts.isPropertyAssignment(node) && node.name.getText(store) === 'releaseFormSession');
+  const cancelOriginPolicy = releaseOrigin && findNode(releaseOrigin, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'controller?.abort');
+  const clearOriginPolicy = releaseOrigin && findNode(releaseOrigin, (node) =>
+    ts.isBinaryExpression(node) && node.getText(store) === 'sessionPolicyController = null');
+  const postAuth = findNode(store, (node) =>
+    ts.isMethodDeclaration(node) && node.name.getText(store) === 'rejectFormAuth');
+  if (!cancelOriginPolicy || !clearOriginPolicy || clearOriginPolicy.end >= cancelOriginPolicy.pos
+    || !findNode(releaseOrigin, (node) =>
+      ts.isBinaryExpression(node) && node.getText(store) === 'sessionPolicyOrigin !== origin')
+    || !findNode(postAuth, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'router.refresh')
+    || !findNode(formStore, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(formStore) === 'Promise.race'
+      && node.getText(formStore).includes('continuation')
+      && node.getText(formStore).includes('cancellation'))) {
+    throw new Error('React navigation session policy cancellation and auth refresh must preserve owned authority and bounded settlement.');
+  }
   const adoptedApproval = findNode(store, (node) =>
     ts.isConditionalExpression(node) && node.condition.getText(store).includes('prefetchedResult.ok'));
   if (!adoptedApproval || !ts.isConditionalExpression(adoptedApproval)

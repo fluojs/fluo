@@ -12,7 +12,8 @@ export type ReactNavigationPayloadContractSource =
 
 /**
  * Enforces the shared navigation protocol, HTTP prefetch eligibility and fresh
- * post-save GET approval and pre-policy session revocation. POST form acknowledgement is not a reusable page.
+ * post-save GET approval, pre-policy revocation, owned policy cancellation and
+ * fresh auth refresh. POST form acknowledgement is not a reusable page.
  *
  * @param readText Source reader for every governed implementation seam.
  * @throws When a navigation, prefetch or form-follow-up invariant is violated.

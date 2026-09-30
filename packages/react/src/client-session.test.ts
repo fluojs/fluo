@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ReactClientRouterProvider, useRouterState } from './client.js';
 import { createReactRouteSnapshot } from './client/snapshot.js';
 import { createClientNavigationStore } from './client/store.js';
+import { createClientFormStore } from './client/form-store.js';
 import type { ReactNavigationLoadResult } from './client/navigation-payload.js';
 import type { ReactSessionOptions } from './client/types.js';
 
@@ -43,6 +44,55 @@ it('provides one explicit session notification on the existing router', () => {
   expect(typeof Reflect.get(store.router, 'sessionChanged')).toBe('function');
 });
 
+it('preserves the safe document exit for a legacy provider without session configuration', async () => {
+  const browser = fixture();
+  const operation = browser.store.router.refresh();
+  await browser.started.promise;
+  browser.response.resolve({ ok: false, reason: 'unauthorized' });
+  expect(await operation).toEqual({ status: 'document' });
+  expect(browser.assign).toHaveBeenCalledWith('https://example.test/protected');
+});
+
+it('consumes a fresh auth policy refresh decision with GET approval', async () => {
+  const browser = fixture({ epoch: 'a', policy: () => 'refresh' });
+  const retryStarted = gate<void>();
+  browser.load.mockImplementationOnce(async () => ({ ok: false, reason: 'unauthorized' }));
+  browser.load.mockImplementationOnce(async () => {
+    retryStarted.resolve();
+    return {
+      ok: true, component: () => null,
+      payload: { version: 2, buildId: 'test', url: '/protected',
+        params: { identity: 'b' }, destination: { module: './protected', props: { identity: 'b' } },
+      },
+    };
+  });
+  const committed = gate<void>();
+  const unsubscribe = browser.store.subscribe(() => {
+    if (browser.store.getSnapshot().params.identity === 'b') committed.resolve();
+  });
+  try {
+    const operation = browser.store.router.refresh();
+    await retryStarted.promise;
+    await committed.promise;
+    await operation;
+    expect(browser.load).toHaveBeenCalledTimes(2);
+    expect(browser.assign).not.toHaveBeenCalled();
+    expect(browser.store.getSnapshot().session?.status).toBe('approved');
+  } finally {
+    unsubscribe();
+  }
+}, 5_000);
+
+it('keeps legacy document exits until an explicit session activation', async () => {
+  const browser = fixture();
+  browser.load.mockImplementation(async () => ({ ok: false, reason: 'unauthorized' }));
+  expect(await browser.store.router.refresh()).toEqual({ status: 'document' });
+  expect(await browser.store.router.refresh()).toEqual({ status: 'document' });
+  await browser.store.router.sessionChanged({ epoch: 'activated', reason: 'logout' });
+  expect((await browser.store.router.refresh()).status).toBe('error');
+  expect(browser.assign).toHaveBeenCalledTimes(2);
+});
+
 it('includes the configured initial approval epoch in the actual provider SSR output', () => {
   // Given: the actual existing provider with an application-issued initial epoch.
   const Probe = () => createElement('script', { type: 'application/json' }, JSON.stringify(useRouterState().session));
@@ -55,6 +105,111 @@ it('includes the configured initial approval epoch in the actual provider SSR ou
   expect(JSON.parse(html.slice(html.indexOf('>') + 1, html.lastIndexOf('</script>'))))
     .toEqual({ epoch: 'initial-a', generation: 0, status: 'approved' });
 });
+
+it.each(['settlement', 'document'] as const)('cancels the coupled saved-login policy without retaining %s authority', async (check) => {
+  const entered = gate<void>();
+  const release = gate<{ readonly document: string }>();
+  const browser = fixture({ epoch: 'a', policy: () => { entered.resolve(); return release.promise; } });
+  const form = createClientFormStore();
+  browser.store.forms.set('/protected\0login', form);
+  const post = vi.fn(async () => new Response(JSON.stringify({
+    version: 1, outcome: 'saved', destination: '/protected', followUp: 'refresh',
+    session: { epoch: 'b', reason: 'login' },
+  }), { headers: { 'Content-Type': 'application/vnd.fluo.form+json;v=1' } }));
+  vi.stubGlobal('fetch', post);
+  const work = form.submit({ action: 'https://example.test/login', body: new URLSearchParams() }, {
+    invalidate: browser.store.router.invalidate, allowDestination: () => true, rememberForms: () => {},
+    sessionChanged: (change) => browser.store.applyFormSession(change, form),
+    releaseSession: () => browser.store.releaseFormSession(form),
+    approve: (href, followUp, signal) => browser.store.approveForm(href, followUp, signal, form),
+  });
+  try {
+    await entered.promise;
+    form.cancel();
+    if (check === 'document') release.resolve({ document: '/exit' });
+    // Cancellation must settle before the abort-ignoring application policy is released.
+    await work;
+    expect(form.getSnapshot().mutation?.status).toBe('saved');
+    expect(post).toHaveBeenCalledOnce();
+  } finally {
+    release.resolve({ document: '/exit' });
+    await work;
+    vi.unstubAllGlobals();
+  }
+  expect(browser.assign).not.toHaveBeenCalled();
+  expect(browser.load).not.toHaveBeenCalled();
+}, 5_000);
+
+it.each([401, 403])('consumes POST %s auth refresh policy with GET only', async (status) => {
+  const browser = fixture({ epoch: 'a', policy: () => 'refresh' });
+  const readStarted = gate<void>();
+  browser.load.mockImplementationOnce(async () => {
+    readStarted.resolve();
+    return { ok: true, component: () => null, payload: {
+      version: 2, buildId: 'test', url: '/protected',
+      params: { identity: 'b' }, destination: { module: './protected', props: { identity: 'b' } },
+    } };
+  });
+  const post = vi.fn(async () => new Response(null, { status }));
+  vi.stubGlobal('fetch', post);
+  const form = createClientFormStore();
+  browser.store.forms.set('/protected\0login', form);
+  const work = form.submit({ action: 'https://example.test/login', body: new URLSearchParams() }, {
+    invalidate: browser.store.router.invalidate, allowDestination: () => true, rememberForms: () => {},
+    authRejected: (reason) => browser.store.rejectFormAuth(reason, form),
+    releaseSession: () => browser.store.releaseFormSession(form),
+    approve: (href, followUp, signal) => browser.store.approveForm(href, followUp, signal, form),
+  });
+  try {
+    await readStarted.promise;
+    await work;
+    expect(post).toHaveBeenCalledOnce();
+    expect(browser.load).toHaveBeenCalledOnce();
+    expect(browser.store.getSnapshot().session?.status).toBe('approved');
+    expect(browser.store.getSnapshot().params.identity).toBe('b');
+  } finally {
+    vi.unstubAllGlobals();
+  }
+}, 5_000);
+
+it('cancels saved-origin fresh approval after its follow-up auth policy selected refresh', async () => {
+  const entered = gate<void>();
+  const release = gate<'refresh'>();
+  const browser = fixture({ epoch: 'a', policy: (context) => {
+    if (context.reason === 'login') return 'refresh';
+    entered.resolve();
+    return release.promise;
+  } });
+  browser.load.mockImplementationOnce(async () => ({ ok: false, reason: 'unauthorized' }));
+  const post = vi.fn(async () => new Response(JSON.stringify({
+    version: 1, outcome: 'saved', destination: '/protected', followUp: 'refresh',
+    session: { epoch: 'b', reason: 'login' },
+  }), { headers: { 'Content-Type': 'application/vnd.fluo.form+json;v=1' } }));
+  vi.stubGlobal('fetch', post);
+  const form = createClientFormStore();
+  browser.store.forms.set('/protected\0login', form);
+  const work = form.submit({ action: 'https://example.test/login', body: new URLSearchParams() }, {
+    invalidate: browser.store.router.invalidate, allowDestination: () => true, rememberForms: () => {},
+    sessionChanged: (change) => browser.store.applyFormSession(change, form),
+    releaseSession: () => browser.store.releaseFormSession(form),
+    approve: (href, followUp, signal) => browser.store.approveForm(href, followUp, signal, form),
+  });
+  try {
+    await entered.promise;
+    release.resolve('refresh');
+    await browser.started.promise;
+    form.cancel();
+    await work;
+    expect(browser.signal()?.aborted).toBe(true);
+    expect(form.getSnapshot().mutation?.status).toBe('saved');
+    expect(post).toHaveBeenCalledOnce();
+    expect(browser.assign).not.toHaveBeenCalled();
+    expect(browser.store.getSnapshot().params).toEqual({});
+  } finally {
+    browser.response.resolve({ ok: false, reason: 'cancelled' });
+    vi.unstubAllGlobals();
+  }
+}, 5_000);
 
 it('advances repeated epoch labels and cancels only the notifying provider leases', async () => {
   // Given: independent provider-local session ownership.
@@ -182,8 +337,8 @@ it('settles a revoked refresh before releasing an abort-ignoring old session loa
 });
 
 it.each(['unauthorized', 'forbidden'] as const)('revokes old approval on fresh %s independently of failure preservation', async (reason) => {
-  // Given: a fresh credentialed current-page read is held.
-  const { store, started, response, assign } = fixture();
+  // Given: the configured session UI, not the legacy document-exit composition.
+  const { store, started, response, assign } = fixture({ epoch: 'a' });
   const operation = store.router.refresh();
   await started.promise;
   // When: HTTP rejects approval, not anonymous speculation.

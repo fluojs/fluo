@@ -29,6 +29,31 @@ const loadReactNavigationDestination = (
   options: Parameters<typeof loadNavigation>[2] = {},
 ) => loadNavigation(href, modules, { buildId: BUILD_ID, ...options });
 
+it('consumes auth refresh through two uncached credentialed GETs before fresh approval', async () => {
+  const href = `${ORIGIN}${payload.url}`;
+  vi.stubGlobal('window', { location: { href } });
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(new Response(null, { status: 401 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify(payload), { headers: { 'Content-Type': MEDIA_TYPE } }));
+  vi.stubGlobal('fetch', fetch);
+  const modules = { './navigation-product.ts': async () => ({ default: () => null }) };
+  const store = createClientNavigationStore(createReactRouteSnapshot({ url: href }), {
+    epoch: 'a', policy: () => 'refresh',
+  });
+  store.connect({
+    currentHref: () => href, assign: vi.fn(), replace: vi.fn(), reload: vi.fn(), back: vi.fn(),
+    pushState: vi.fn(), replaceState: vi.fn(), subscribe: () => () => {},
+    load: (destination, signal) => loadReactNavigationDestination(destination, modules, { signal }),
+  });
+  expect(await store.router.refresh()).toEqual({ status: 'complete' });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  for (const [, init] of fetch.mock.calls) {
+    expect(init).toMatchObject({ credentials: 'same-origin', cache: 'no-store' });
+    expect(init.method ?? 'GET').toBe('GET');
+  }
+  expect(store.getSnapshot().session?.status).toBe('approved');
+});
+
 it('rejects a B navigation before importing when its build differs from the hydrated A tab', async () => {
   // Given: A tab receives a valid HTTP-approved B payload for a mapped module.
   vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });

@@ -34,6 +34,19 @@ it('accepts the current matching HTTP and browser navigation machine contract', 
 });
 
 it.each([
+  [storePath, 'controller?.abort();', 'controller?.signal;'],
+  [storePath, "decision === 'refresh') await router.refresh();", "decision === 'refresh') await Promise.resolve();"],
+  [formStorePath, 'Promise.race([continuation, cancellation.then(() => false)])', 'continuation'],
+])('rejects detached session policy cancellation or discarded auth refresh in %s', (path, original, changed) => {
+  const source = sources.get(path);
+  const variant = source?.replace(original, changed) ?? '';
+  expect(variant).not.toBe(source);
+  expect(() => enforceReactNavigationPayloadContract((candidate: string) =>
+    candidate === path ? variant : sources.get(candidate) ?? '',
+  )).toThrow(/React navigation session policy cancellation/u);
+});
+
+it.each([
   [storePath, '++sessionGeneration', 'sessionGeneration'],
   [storePath, 'oldPending?.controller.abort();', 'oldPending?.controller.signal;'],
   [formStorePath, 'environment.sessionChanged(mutation.session)', 'Promise.resolve(true)'],

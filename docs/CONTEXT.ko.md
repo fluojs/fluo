@@ -88,8 +88,10 @@ navigation JSON 결과에 grant를 허용합니다. HTTP는 request credential, 
 사용하고 다른 form을 보존합니다. 선택적 provider `session` config와
 `useRouterState().session`은 기존 router barrier를 공유하며 policy 전에 이전 page/head/
 retained data를 철회하고 fresh 401은 signed-out, 403은 forbidden으로 처리합니다.
-새 승인 전까지 초기 SSR fallback도 억제하며 saved form session 결과도 같은 barrier를
-사용합니다. 앱 resource는 기존 React subtree/effect cleanup으로 정리합니다.
+새 승인 전까지 초기 SSR fallback도 억제합니다. 미설정 legacy 인증 거절은 같은 barrier
+뒤 일반 document exit을 사용합니다. Configured auth policy refresh는 POST 재실행 없이
+fresh GET을 실행합니다. Saved form session 결과도 같은 barrier를 사용하며 binding 취소는
+그 policy와 follow-up 권한을 철회합니다. 앱 resource는 기존 React subtree/effect cleanup으로 정리합니다.
 [Session migration](./getting-started/migrate-react-session-composition.ko.md)을 참고하세요. 일반 credential
 포함 navigation과 back/forward는 계속 HTTP 승인을 요청합니다. Eligibility, freshness,
 fallback의 원본은 위 계약입니다.

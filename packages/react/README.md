@@ -923,7 +923,13 @@ For transient failures, opt into the existing provider and router path:
 </ReactClientRouterProvider>
 ```
 
-Without `failurePolicy`, every non-cancelled failed load still falls back to a document.
+For non-auth failures, omitting `failurePolicy` keeps document fallback.
+Fresh credentialed 401/403 always revoke old approval before policy. A provider configured
+with `session`, or already activated by an explicit session outcome/notification, uses
+`session.policy` instead of `failurePolicy`: defaults are signed-out for 401 and forbidden
+for 403. An unconfigured legacy provider exits to the ordinary HTTP document after the
+barrier, rather than retaining protected plain children. `failurePolicy` cannot preserve
+revoked auth content; use session-aware composition for in-document auth UI.
 With `'preserve'`, the approved URL, params, page and shell remain; `useNavigation().failure`
 provides a safe `reason`, destination pathname and navigation type. Show an error with
 `router.retry()` for a fresh credentialed HTTP approval and `router.openDocument()` for an
@@ -938,7 +944,9 @@ v1-to-v2 payload migration is a breaking 0.x change. The official generated star
 enables network/5xx, incompatible-build and recoverable mapped import-failure preservation and shell recovery
 controls. To migrate a hand-assembled app, supply
 `navigationModules`, pass `failurePolicy`, render `navigation.failure` controls in the persistent
-shell, and leave all other categories (including absent importer keys) on the document path unless deliberately handled. The
+shell, and leave other non-auth categories (including absent importer keys) on the
+document path unless deliberately handled. Fresh 401/403 follow the mandatory
+session-aware or legacy document rules above. The
 production example verifies resource identity and operation/ack through network and 5xx failure
 and recovery. #3879 must still test the complete product journey; see the
 [product journey map](../../docs/contracts/react-fullstack-product.md#journey-acceptance-map).
@@ -1088,9 +1096,13 @@ Use the existing `ReactClientRouterProvider` with
 `router.sessionChanged({ epoch: 'next-label', reason: 'login' })`.
 `useRouterState().session` exposes approval and generation without another provider.
 Every notification revokes old page/head/form/cache ownership before asynchronous
-policy, including the initial SSR fallback. Fresh credentialed 401 selects
+policy, including the initial SSR fallback. In configured session composition, fresh credentialed 401 selects
 signed-out; 403 selects forbidden without erasing identity. Anonymous speculation
 cannot log out a credentialed user. Cookie changes alone are not a cross-tab signal.
+Policy `'refresh'` starts a new uncached credentialed GET on navigation GET, form POST
+auth rejection, and saved follow-up GET; it never replays POST. Cancelling the initiating
+saved form cancels its session-policy authority and settles waiting before a held policy
+is released, so a late document decision cannot navigate.
 
 App-owned players/channels/listeners use the existing React subtree/effect cleanup;
 there is no teardown registry and store settlement is not an SDK-disposal receipt.

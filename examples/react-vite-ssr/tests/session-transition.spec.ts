@@ -1,6 +1,79 @@
 import { expect, test, type Page } from '@playwright/test';
 
 const screenshotId = Date.now();
+
+test('legacy plain children leave through a real unauthorized document after revocation', async ({ page }) => {
+  await page.goto('/catalog/session');
+  const origin = new URL(page.url()).origin;
+  expect((await page.request.post('/catalog/session/login', {
+    form: { identity: 'a', csrf: 'catalog-demo-token' }, headers: { Origin: origin }, maxRedirects: 0,
+  })).status()).toBe(303);
+  await page.goto('/catalog/session/protected?legacySession=1');
+  await connected(page);
+  expect(await page.locator('[data-legacy-protected]').textContent()).toBe('Legacy protected a');
+  expect((await page.request.post('/catalog/session/logout', {
+    form: { csrf: 'catalog-demo-token' }, headers: { Origin: origin }, maxRedirects: 0,
+  })).status()).toBe(303);
+  const read = page.waitForResponse((response) => response.status() === 401
+    && response.request().headers().accept?.includes('react-navigation') === true);
+  const document = page.waitForResponse((response) => response.status() === 401
+    && response.request().resourceType() === 'document');
+  const rendered = page.waitForEvent('domcontentloaded');
+  await page.getByRole('button', { name: 'Session refresh', exact: true }).click();
+  await read;
+  await document;
+  await rendered;
+  expect(await page.locator('[data-legacy-protected]').count()).toBe(0);
+  console.log(JSON.stringify({ observation: 'legacy-auth-document-exit', read: 401, document: 401, protectedChildren: 0 }));
+});
+
+test('configured POST auth policy refresh performs one fresh GET and never replays POST', async ({ page }) => {
+  await page.goto('/catalog/session');
+  const origin = new URL(page.url()).origin;
+  expect((await page.request.post('/catalog/session/login', {
+    form: { identity: 'a', csrf: 'catalog-demo-token' }, headers: { Origin: origin }, maxRedirects: 0,
+  })).status()).toBe(303);
+  await page.goto('/catalog/session/protected?authRefresh=1');
+  await connected(page);
+  const posts: string[] = [];
+  page.on('request', (request) => { if (request.method() === 'POST') posts.push(request.url()); });
+  await page.locator('form[aria-label="Session login"] input[name="csrf"]').evaluate((input) => {
+    if (!(input instanceof HTMLInputElement)) throw new Error('Missing csrf control');
+    input.value = 'invalid-token';
+  });
+  await watch(page, '[data-session-state]', 'approved');
+  const post = page.waitForResponse((response) => response.request().method() === 'POST');
+  const read = page.waitForResponse((response) => response.request().method() === 'GET'
+    && response.request().headers().accept?.includes('react-navigation') === true);
+  await page.getByRole('button', { name: 'Login B', exact: true }).click();
+  expect((await post).status()).toBe(403);
+  expect((await read).status()).toBe(200);
+  await settled(page);
+  // The read commit, not a timer, proves current approval has returned.
+  await expect(page.locator('[data-product="private-a"]')).toHaveText('Protected content a');
+  expect(await page.locator('[data-session-state]').textContent()).toContain('approved');
+  expect(posts).toHaveLength(1);
+  console.log(JSON.stringify({ observation: 'configured-post-auth-refresh', post: 403, get: 200, posts: 1 }));
+});
+
+test('configured GET auth refresh dispatches a fresh read then settles signed out', async ({ page }) => {
+  await page.goto('/catalog/session?authRefresh=1');
+  await connected(page);
+  await watch(page, '[data-session-state]', ':2:signed-out');
+  const denied: number[] = [];
+  const settledRead = page.waitForResponse((response) => {
+    if (response.status() !== 401 || response.request().headers().accept?.includes('react-navigation') !== true) return false;
+    denied.push(response.status());
+    return denied.length === 2;
+  });
+  await page.getByRole('link', { name: 'Session soft page', exact: true }).click();
+  await settledRead;
+  await settled(page);
+  await expect(page.locator('[data-session-url]')).toContainText('{}');
+  expect(denied).toEqual([401, 401]);
+  expect(await page.locator('[data-product="private-a"]').count()).toBe(0);
+  console.log(JSON.stringify({ observation: 'configured-get-auth-refresh', reads: denied, protectedContent: 0 }));
+});
 async function watch(page: Page, selector: string, text: string, key = '__sessionSignal') {
   await page.evaluate(({ selector, text, key }) => {
     const element = document.querySelector(selector);

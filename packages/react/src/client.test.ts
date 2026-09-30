@@ -1839,9 +1839,9 @@ describe('@fluojs/react/client', () => {
     ['invalid-payload', 'document'],
     ['unsupported-module', 'document'],
   ] as const)('applies the existing %s failure policy to current-page refresh', async (reason, status) => {
-    // Given: the regular navigation loader reports a classified HTTP/import failure.
+    // Given: a configured session uses auth UI; other failures retain the existing policy.
     const browser = createEnvironment();
-    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }), { epoch: 'a' });
     const policy = vi.fn(({ reason: cause }: { readonly reason: string }) =>
       cause === 'network' || cause === 'server-error' || cause === 'import-failure'
         ? 'preserve' as const : 'document' as const);

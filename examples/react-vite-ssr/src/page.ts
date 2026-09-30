@@ -4,6 +4,7 @@ import {
   createReactRouteSnapshot,
   type ReactNavigationFailurePolicy,
   type ReactNavigationModules,
+  type ReactSessionContext,
   useNavigation,
   useParams,
   usePathname,
@@ -231,6 +232,9 @@ export function ProductDocument({
   }));
   const prefetchScope = 'catalog:public';
   const initialSnapshot = createReactRouteSnapshot({ params: routeParams, url: routeUrl, metadata: routeMetadata });
+  const testOptions = new URL(routeUrl, 'http://localhost').searchParams;
+  const legacySession = sessionDemo && testOptions.has('legacySession');
+  let authRefreshed = false;
 
   const renderRouteDocument = (destination: ReactNode | null): ReactNode => createElement(
     'html',
@@ -259,7 +263,8 @@ export function ProductDocument({
       createElement(
         'main',
         { tabIndex: -1 },
-        createElement(ExamplePageSlot, {
+        legacySession ? createElement('p', { 'data-legacy-protected': true }, `Legacy protected ${sessionIdentity}`)
+        : createElement(ExamplePageSlot, {
           destination,
           page: catalog !== undefined ? createElement(CatalogPage, { ...catalog,
             ...(sessionDemo ? { sessionDemo: true, sessionIdentity } : {}),
@@ -324,13 +329,25 @@ export function ProductDocument({
   );
 
   return createElement(ReactClientRouterProvider, {
-    session: { epoch: sessionIdentity === undefined ? 'demo:initial' : `demo:${sessionIdentity}` },
+    ...(legacySession ? {} : { session: {
+      epoch: sessionIdentity === undefined ? 'demo:initial' : `demo:${sessionIdentity}`,
+      ...(sessionDemo && testOptions.has('authRefresh') ? {
+        policy: (context: ReactSessionContext) => {
+          if ((context.reason === 'unauthorized' || context.reason === 'forbidden') && !authRefreshed) {
+            authRefreshed = true;
+            return 'refresh';
+          }
+          return context.reason === 'logout' || context.reason === 'unauthorized' ? 'signed-out'
+            : context.reason === 'forbidden' ? 'forbidden' : 'refresh';
+        },
+      } : {}),
+    } }),
     initialSnapshot,
     navigationModules,
     navigationBuildId,
     prefetchScope,
     failurePolicy: new URL(routeUrl, 'http://localhost').searchParams.has('defaultNavigation')
       ? undefined : preserveTransientNavigation,
-    children: renderRouteDocument,
+    children: legacySession ? renderRouteDocument(null) : renderRouteDocument,
   });
 }
