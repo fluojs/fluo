@@ -40,7 +40,7 @@ export type ClientNavigationEnvironment = {
 /** Internal observable store shared by the provider, hooks, and progressive `Link`. */
 export type ClientNavigationStore = {
   readonly forms: Map<string, ClientFormStore>;
-  readonly approveForm: (destination: string, followUp: 'refresh' | 'navigate', signal: AbortSignal) => Promise<ReactRevalidationResult>;
+  readonly approveForm: (destination: string, followUp: 'refresh' | 'navigate', signal: AbortSignal, origin: ClientFormStore) => Promise<ReactRevalidationResult>;
   readonly canHandleLink: (href: string | URL) => boolean;
   readonly prefetch: (href: string | URL, owner: object) => Promise<void>;
   readonly cancelPrefetch: (href: string | URL, owner: object) => void;
@@ -557,7 +557,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
 
   return {
     forms,
-    approveForm(href, followUp, signal) {
+    approveForm(href, followUp, signal, origin) {
       if (signal.aborted) return Promise.resolve({ status: 'cancelled' });
       const browser = requireEnvironment();
       const destination = resolveDestination(href);
@@ -566,6 +566,11 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot)
         return Promise.resolve({ status: 'error', failure: {
           destination: destination.pathname, reason: 'unsupported-destination', type: 'refresh',
         } });
+      }
+      if (followUp === 'navigate') {
+        for (const other of forms.values()) {
+          if (other !== origin) other.cancel();
+        }
       }
       cancelPending();
       cached.clear();

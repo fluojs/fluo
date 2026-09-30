@@ -114,7 +114,8 @@ export function useForm<Input extends object>(
         event.preventDefault();
         void form.submit(submission, {
           invalidate: navigation.router.invalidate,
-          approve: navigation.approveForm,
+          approve: (destination, followUp, signal) =>
+            navigation.approveForm(destination, followUp, signal, form),
           allowDestination: options.allowDestination,
           rememberForms: () => { for (const other of navigation.forms.values()) other.remember(); },
         });

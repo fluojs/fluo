@@ -1,4 +1,4 @@
 {
   "extends": "../tsconfig.json",
-  "include": ["src/**/*.ts", "tests/progressive-forms.spec.ts"]
+  "include": ["src/**/*.ts", "tests/progressive-forms.spec.ts", "tests/form-retention.spec.ts"]
 }

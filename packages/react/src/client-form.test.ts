@@ -6,6 +6,8 @@ import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as Client from './client.js';
 import { createReactRouteSnapshot } from './client/snapshot.js';
+import { createClientNavigationStore } from './client/store.js';
+import type { ReactNavigationLoadResult } from './client/navigation-payload.js';
 
 const media = 'application/vnd.fluo.form+json;v=1';
 function deferred<T>() {
@@ -258,6 +260,121 @@ it('preserves a transferred form lease and cancels only the actual final owner',
   expect(replacement.querySelector('input')?.value).toBe('x');
   expect(store.unchanged('display_name')).toBe(true);
   expect(store.release(newOwner)).toBe(true);
+});
+
+it.each([
+  { selected: [] },
+  { selected: [''] },
+  { selected: ['a', 'b'] },
+  { selected: ['a', 'a', 'b'] },
+])('retains every selected value when an unrelated form is replaced: $selected', ({ selected }) => {
+  // Given: a supported multiple select has two successful values.
+  const store = createClientFormStore();
+  const original = document.createElement('form');
+  const options = '<option value="">Empty</option><option value="a">A</option><option value="a">Another A</option><option value="b">B</option><option value="c" selected>C</option>';
+  original.innerHTML = `<select name="tag" multiple>${options}</select>`;
+  const remaining = [...selected];
+  for (const option of original.querySelectorAll('option')) {
+    const index = remaining.indexOf(option.value);
+    option.selected = index !== -1;
+    if (index !== -1) remaining.splice(index, 1);
+  }
+  document.body.append(original);
+  store.attach(original);
+  store.remember();
+  const replacement = document.createElement('form');
+  replacement.innerHTML = `<select name="tag" multiple>${options}</select>`;
+  document.body.append(replacement);
+
+  // When: the provider transfers retained input to the replacement form.
+  store.attach(replacement);
+
+  // Then: both selections and their submitted values survive.
+  expect(Array.from(replacement.querySelectorAll('option'))
+    .filter((option) => option.selected).map((option) => option.value)).toEqual(selected);
+  // Native successful-control serialization is asserted unchanged in form-retention.spec.ts;
+  // happy-dom's FormData SELECT branch only appends control.value.
+});
+
+it('keeps a newer form navigation authoritative over an older outstanding POST', async () => {
+  // Given: two actual form stores share the real navigation store.
+  const oldResponse = deferred<Response>();
+  const oldAcknowledgement = new Response(JSON.stringify({
+    version: 1, outcome: 'saved', destination: '/forms', followUp: 'refresh',
+  }), { headers: { 'Content-Type': media } });
+  const oldStarted = deferred<void>();
+  const newRead = deferred<ReactNavigationLoadResult>();
+  const newReadStarted = deferred<void>();
+  const navigation = createClientNavigationStore(createReactRouteSnapshot({ url: '/forms' }));
+  const first = createClientFormStore();
+  const second = createClientFormStore();
+  navigation.forms.set('first', first);
+  navigation.forms.set('second', second);
+  let href = 'http://localhost:3000/forms';
+  let newSignal: AbortSignal | undefined;
+  const approved = (url: string): ReactNavigationLoadResult => ({
+    ok: true,
+    component: () => createElement('h1', null, 'Approved'),
+    payload: {
+      version: 2, buildId: 'form-test', url, params: {},
+      destination: { module: './page.ts', props: {} },
+    },
+  });
+  const load = vi.fn(async (destination: string, signal: AbortSignal) => {
+    if (new URL(destination).pathname === '/new-target') {
+      newSignal = signal;
+      newReadStarted.resolve();
+      return newRead.promise;
+    }
+    return approved('/forms');
+  });
+  const disconnect = navigation.connect({
+    currentHref: () => href, load,
+    assign: vi.fn(), back: vi.fn(), reload: vi.fn(), replace: vi.fn(),
+    pushState: (url) => { href = url; },
+    replaceState: (url) => { href = url; },
+    subscribe: () => () => {},
+  });
+  const forForm = (origin: ReturnType<typeof createClientFormStore>): FormEnvironment => ({
+    approve: (destination, followUp, signal) =>
+      navigation.approveForm(destination, followUp, signal, origin),
+    invalidate: navigation.router.invalidate,
+    allowDestination: () => true,
+    rememberForms: () => {},
+  });
+  const send = vi.fn()
+    .mockImplementationOnce(() => { oldStarted.resolve(); return oldResponse.promise; })
+    .mockResolvedValueOnce(new Response(JSON.stringify({
+      version: 1, outcome: 'saved', destination: '/new-target', followUp: 'navigate',
+    }), { headers: { 'Content-Type': media } }));
+  vi.stubGlobal('fetch', send);
+  const oldWork = first.submit(submission, forForm(first));
+  let newWork: Promise<void> | undefined;
+  try {
+    await oldStarted.promise;
+    newWork = second.submit(submission, forForm(second));
+    await newReadStarted.promise;
+
+    // When: the older POST returns after the newer destination GET has begun.
+    oldResponse.resolve(oldAcknowledgement);
+    await oldWork;
+
+    // Then: stale acknowledgement cannot cancel or replace the new GET.
+    expect(first.getSnapshot().mutation).toEqual({ status: 'uncertain', reason: 'cancelled' });
+    expect(newSignal?.aborted).toBe(false);
+    newRead.resolve(approved('/new-target'));
+    await newWork;
+    expect(second.getSnapshot().mutation?.status).toBe('saved');
+    expect(second.getSnapshot().followUp).toEqual({ status: 'complete' });
+    expect(navigation.getSnapshot().url).toBe('/new-target');
+    expect(load).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledTimes(2);
+  } finally {
+    oldResponse.resolve(oldAcknowledgement);
+    newRead.resolve(approved('/new-target'));
+    disconnect();
+    await Promise.all([oldWork, newWork]);
+  }
 });
 
 it('keeps later edits dirty and does not refocus errors for an earlier input revision', async () => {

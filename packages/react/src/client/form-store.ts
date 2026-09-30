@@ -54,7 +54,12 @@ export function createClientFormStore(): ClientFormStore {
   let readEnvironment: FormEnvironment | null = null;
   let form: HTMLFormElement | null = null;
   let owner: object | undefined;
-  let retained: readonly { readonly name: string; readonly value: string; readonly checked?: boolean }[] = [];
+  let retained: readonly {
+    readonly name: string;
+    readonly value: string;
+    readonly checked?: boolean;
+    readonly selectedValues?: readonly string[];
+  }[] = [];
   let focus: string | null = null;
   const listeners = new Set<() => void>();
   const publish = (next: ReactFormSnapshot): void => {
@@ -175,6 +180,9 @@ export function createClientFormStore(): ClientFormStore {
       retained = Array.from(form.elements).flatMap((control) =>
         control instanceof HTMLInputElement && control.type !== 'file'
           ? [{ name: control.name, value: control.value, checked: control.checked }]
+          : control instanceof HTMLSelectElement && control.multiple
+            ? [{ name: control.name, value: control.value,
+              selectedValues: Array.from(control.selectedOptions, (option) => option.value) }]
           : control instanceof HTMLTextAreaElement || control instanceof HTMLSelectElement
             ? [{ name: control.name, value: control.value }] : []);
       const activeElement = form.ownerDocument.activeElement;
@@ -200,7 +208,16 @@ export function createClientFormStore(): ClientFormStore {
         const item = remaining[index];
         if (item === undefined) continue;
         remaining.splice(index, 1);
-        control.value = item.value;
+        if (control instanceof HTMLSelectElement && control.multiple && item.selectedValues !== undefined) {
+          const selected = [...item.selectedValues];
+          for (const option of control.options) {
+            const selectedIndex = selected.indexOf(option.value);
+            option.selected = selectedIndex !== -1;
+            if (selectedIndex !== -1) selected.splice(selectedIndex, 1);
+          }
+        } else {
+          control.value = item.value;
+        }
         if (control instanceof HTMLInputElement && item.checked !== undefined) control.checked = item.checked;
         if (control.name === focus && next.ownerDocument.activeElement === next.ownerDocument.body) {
           control.focus({ preventScroll: true });
