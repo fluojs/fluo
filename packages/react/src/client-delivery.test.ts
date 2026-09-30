@@ -7,6 +7,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { useClientNavigationStore } from './client/provider.js';
 import {
   createReactRouteSnapshot,
+  Link,
   ReactClientRouterProvider,
   type ReactClientRouterProviderProps,
   type ReactRouter,
@@ -25,6 +26,30 @@ afterEach(async () => {
   document.body.replaceChildren();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+it('connects an ordinary Link without rendering its unchanged anchor again', async () => {
+  // Given: a native anchor whose content does not depend on connection state.
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  window.history.replaceState(null, '', '/products');
+  const container = document.createElement('div');
+  document.body.append(container);
+  const renderer = createRoot(container);
+  roots.push(renderer);
+  const phases: string[] = [];
+  const view = createElement(ReactClientRouterProvider, {
+    initialSnapshot: createReactRouteSnapshot({ url: '/products' }),
+  }, createElement(Profiler, {
+    id: 'ordinary-link',
+    onRender: (_id, phase) => { phases.push(phase); },
+  }, createElement(Link, { href: '/products/sku-42' }, 'Product')));
+
+  // When: mounting also connects the provider to the browser.
+  await act(async () => { renderer.render(view); });
+
+  // Then: connection changes no anchor output and requires no second render.
+  expect(container.querySelector('a')?.getAttribute('href')).toBe('/products/sku-42');
+  expect(phases).toEqual(['mount']);
 });
 
 function deferred<T>() {

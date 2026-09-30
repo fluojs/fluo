@@ -5,7 +5,6 @@ import {
   type ReactElement,
   useEffect,
   useRef,
-  useSyncExternalStore,
 } from 'react';
 
 import { useClientNavigationStore } from './provider.js';
@@ -38,7 +37,6 @@ export function Link({
   ...anchorProps
 }: LinkProps): ReactElement {
   const store = useClientNavigationStore();
-  const connected = useSyncExternalStore(store.subscribe, store.isConnected, () => false);
   const hrefValue = String(href);
   const anchor = useRef<HTMLAnchorElement>(null);
   const hoverOwner = useRef<object>({});
@@ -48,29 +46,42 @@ export function Link({
     && store.canHandleLink(href);
 
   useEffect(() => {
-    if (!connected || prefetch !== 'viewport'
+    if (prefetch !== 'viewport'
       || anchorProps.download !== undefined
       || target !== undefined && target !== '_self'
-      || !store.canHandleLink(href)
       || anchor.current === null
       || typeof IntersectionObserver === 'undefined') {
       return undefined;
     }
-    const observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          store.prefetch(href, viewportOwner.current);
-        } else {
-          store.cancelPrefetch(href, viewportOwner.current);
-        }
+    const element = anchor.current;
+    let observer: IntersectionObserver | undefined;
+    const updateConnection = () => {
+      if (!store.isConnected() || !store.canHandleLink(href)) {
+        observer?.disconnect();
+        observer = undefined;
+        store.cancelPrefetch(href, viewportOwner.current);
+        return;
       }
-    });
-    observer.observe(anchor.current);
+      if (observer !== undefined) return;
+      observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            store.prefetch(href, viewportOwner.current);
+          } else {
+            store.cancelPrefetch(href, viewportOwner.current);
+          }
+        }
+      });
+      observer.observe(element);
+    };
+    const unsubscribe = store.subscribe(updateConnection);
+    updateConnection();
     return () => {
-      observer.disconnect();
+      unsubscribe();
+      observer?.disconnect();
       store.cancelPrefetch(href, viewportOwner.current);
     };
-  }, [connected, href, prefetch, store, target, anchorProps.download]);
+  }, [href, prefetch, store, target, anchorProps.download]);
 
   useEffect(() => () => store.cancelPrefetch(href, hoverOwner.current), [href, store]);
 
