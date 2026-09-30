@@ -8,11 +8,11 @@ export type ReactFormFollowUp =
   | { readonly status: 'rejected'; readonly reason: 'unsupported-destination' };
 
 /** Observable state of one native progressive form. */
-export type ReactFormSnapshot = {
+export type ReactFormSnapshot<Data = unknown> = {
   readonly pending: boolean;
   readonly dirty: boolean;
   readonly skipped: number;
-  readonly mutation: ReactFormMutation | null;
+  readonly mutation: ReactFormMutation<Data> | null;
   readonly followUp: ReactFormFollowUp | null;
 };
 
@@ -33,6 +33,7 @@ export type ClientFormStore = {
 
 /** Existing provider approval operations plus an application destination constraint. */
 export type FormEnvironment = {
+  readonly decodeSaved?: (value: unknown) => unknown;
   readonly approve: (destination: string, followUp: 'refresh' | 'navigate', signal: AbortSignal) => Promise<ReactRevalidationResult>;
   readonly invalidate: () => void;
   readonly allowDestination: (destination: string, signal: AbortSignal) => boolean | Promise<boolean>;
@@ -136,8 +137,15 @@ export function createClientFormStore(): ClientFormStore {
       const cancellation = new Promise<ReactFormMutation>((resolve) => {
         controller.signal.addEventListener('abort', () => resolve({ status: 'uncertain', reason: 'cancelled' }), { once: true });
       });
-      const mutation = await Promise.race([submitHttpForm(submission, controller.signal), cancellation]);
+      let mutation = await Promise.race([submitHttpForm(submission, controller.signal), cancellation]);
       if (expected !== generation) return;
+      if (mutation.status === 'saved' && environment.decodeSaved !== undefined) {
+        try {
+          mutation = { ...mutation, data: environment.decodeSaved(mutation.data) };
+        } catch {
+          mutation = { status: 'uncertain', reason: 'protocol' };
+        }
+      }
       active = null;
       publish({ ...snapshot, pending: false, mutation,
         dirty: mutation.status === 'saved' && inputRevision === submittedRevision ? false : snapshot.dirty,
