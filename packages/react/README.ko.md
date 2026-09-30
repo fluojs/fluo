@@ -1070,6 +1070,16 @@ v1 소비자는 [이주 가이드](../../docs/getting-started/migrate-react-prod
 
 ## Native Form Mutations
 
+Canonical `ReactModule.formResult`는 선택적 JSON `data`와 명시적인 비밀이 아닌
+`session: { epoch, reason: 'login' | 'logout' | 'permissions' }`도 받으며 option literal
+추론을 유지합니다. 협상한 saved acknowledgement는 v1, native 성공은 303으로 유지합니다.
+Generated `ReactFormContract<Input, Data>`는 `fields`와
+`decodeSaved(value: unknown): Data`를 제공합니다. Alias를 직접 복사하거나 saved data를
+cast하지 말고 기존 `useForm`의 `contract`에 전달하세요. `fields`와 함께 전달하지 않습니다.
+Decoder는 잘못된 data에 throw해야 하며 async destination policy 전에
+`uncertain/protocol`로 처리됩니다. 이 shared runtime seam 자체가 contract를 생성하거나
+erased DTO를 복원하는 것은 아닙니다.
+
 React page mutation이 hydration 전이나 client JavaScript disabled 환경에서도 동작해야 한다면 native HTML
 form을 사용하세요. React-owned action transport를 만들지 말고 일반 `@Post(...)` route로 제출합니다. 실행 가능한
 `examples/react-vite-ssr/` slice는 `multipart/form-data`를 사용합니다. Browser가 multipart boundary를

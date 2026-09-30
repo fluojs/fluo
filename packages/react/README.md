@@ -1083,6 +1083,16 @@ and [deployment recipe](../../docs/guides/react-production-deployment.md).
 
 ## Native Form Mutations
 
+The canonical `ReactModule.formResult` also accepts optional JSON `data` and an
+explicit nonsecret `session: { epoch, reason: 'login' | 'logout' | 'permissions' }`.
+Its literal options remain inferred. The negotiated saved acknowledgement stays
+v1 and native success stays 303. A generated `ReactFormContract<Input, Data>`
+supplies `fields` and `decodeSaved(value: unknown): Data`; pass it as `contract`
+to the existing `useForm` instead of handwritten aliases and saved-data casts.
+Do not pass `fields` alongside `contract`. A decoder must throw on malformed data,
+which becomes `uncertain/protocol` before any asynchronous destination policy.
+This shared runtime seam does not itself generate contracts or recover erased DTOs.
+
 Use a native HTML form when a React page needs a mutation that remains functional before hydration or
 with client JavaScript disabled. Submit to an ordinary `@Post(...)` route rather than creating a
 React-owned action transport. The runnable `examples/react-vite-ssr/` slice uses

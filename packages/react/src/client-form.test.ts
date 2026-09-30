@@ -34,6 +34,36 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+it('retains explicit saved JSON data and session identity from the negotiated acknowledgement', async () => {
+  // Given: HTTP explicitly confirms both persistence and a new application session.
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+    version: 1, outcome: 'saved', destination: '/products/one', followUp: 'refresh',
+    data: { revision: 2 }, session: { epoch: 'session-b', reason: 'login' },
+  }), { headers: { 'Content-Type': media } })));
+  // When: the existing transport consumes that acknowledgement.
+  const result = await submitHttpForm(submission, new AbortController().signal);
+  // Then: data and the explicit notification survive without deriving identity from cookies.
+  expect(result).toEqual({
+    status: 'saved', destination: 'http://localhost:3000/products/one', followUp: 'refresh',
+    data: { revision: 2 }, session: { epoch: 'session-b', reason: 'login' },
+  });
+});
+
+it.each([
+  { epoch: '', reason: 'login' },
+  { epoch: 'session-b', reason: 'forbidden' },
+  { epoch: 2, reason: 'logout' },
+])('treats malformed explicit session %j as protocol uncertainty', async (session) => {
+  // Given: a purported success has an invalid explicit session outcome.
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+    version: 1, outcome: 'saved', destination: '/products/one', followUp: 'refresh', session,
+  }), { headers: { 'Content-Type': media } })));
+  // When/Then: it cannot authorize a session transition or a post-save destination.
+  expect(await submitHttpForm(submission, new AbortController().signal)).toEqual({
+    status: 'uncertain', reason: 'protocol',
+  });
+});
+
 it('uses a compatible copy through the same provider and isolates separate provider forms', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   window.history.replaceState(null, '', '/forms');
@@ -130,6 +160,20 @@ it('keeps a confirmed save when its read fails and retries only GET approval', a
   expect(read).toHaveBeenCalledTimes(2);
   expect(send).toHaveBeenCalledOnce();
   expect(store.getSnapshot().followUp).toEqual({ status: 'complete' });
+});
+
+it('rejects malformed generated saved data before destination policy or approval', async () => {
+  // Given: HTTP claims success but does not satisfy the generated saved-data contract.
+  vi.stubGlobal('fetch', vi.fn(async () => saved()));
+  const store = createClientFormStore();
+  const env = { ...environment(), decodeSaved: () => { throw new TypeError('Missing revision'); },
+    allowDestination: vi.fn(() => true) };
+  // When: the existing form consumes this acknowledgement.
+  await store.submit(submission, env);
+  // Then: protocol uncertainty never becomes a typed cast or starts a destination read.
+  expect(store.getSnapshot().mutation).toEqual({ status: 'uncertain', reason: 'protocol' });
+  expect(env.allowDestination).not.toHaveBeenCalled();
+  expect(env.approve).not.toHaveBeenCalled();
 });
 
 it('keeps confirmed persistence when the application rejects a destination and rechecks policy without another POST', async () => {

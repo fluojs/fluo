@@ -1,6 +1,8 @@
+import { parseReactSessionChange, type ReactSessionChange } from '../form-result.js';
+
 /** Safe, negotiated HTTP mutation acknowledgement; failures never imply rollback. */
-export type ReactFormMutation =
-  | { readonly status: 'saved'; readonly destination: string; readonly followUp: 'refresh' | 'navigate' }
+export type ReactFormMutation<Data = unknown> =
+  | { readonly status: 'saved'; readonly destination: string; readonly followUp: 'refresh' | 'navigate'; readonly data?: Data; readonly session?: ReactSessionChange }
   | { readonly status: 'validation'; readonly fieldErrors: Readonly<Record<string, readonly string[]>>; readonly formErrors: readonly string[] }
   | { readonly status: 'auth'; readonly reason: 'unauthorized' | 'forbidden' }
   | { readonly status: 'rejected'; readonly reason: 'input' }
@@ -128,7 +130,13 @@ export async function submitHttpForm(submission: FormSubmission, signal: AbortSi
     const url = new URL(destination, submission.action);
     if (url.origin !== new URL(submission.action).origin || !['http:', 'https:'].includes(url.protocol)
       || url.username !== '' || url.password !== '') return { status: 'uncertain', reason: 'protocol' };
-    return { status: 'saved', destination: url.href, followUp };
+    const explicitSession: unknown = Reflect.get(payload, 'session');
+    const session = parseReactSessionChange(explicitSession);
+    if (Object.hasOwn(payload, 'session') && session === undefined) return { status: 'uncertain', reason: 'protocol' };
+    return { status: 'saved', destination: url.href, followUp,
+      ...(Object.hasOwn(payload, 'data') ? { data: Reflect.get(payload, 'data') } : {}),
+      ...(session === undefined ? {} : { session }),
+    };
   } catch {
     return { status: 'uncertain', reason: signal.aborted ? 'cancelled' : 'transport' };
   }

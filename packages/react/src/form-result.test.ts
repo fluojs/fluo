@@ -29,7 +29,11 @@ it('approves an enhanced save while preserving the native 303 destination', asyn
     @Post('/')
     @Header('Vary', 'Cookie')
     save() {
-      return ReactRoot.ReactModule.formResult({ destination: '/products/one', followUp: 'navigate' });
+      return ReactRoot.ReactModule.formResult({
+        destination: '/products/one', followUp: 'navigate',
+        data: { revision: 2 },
+        session: { epoch: 'session-b', reason: 'login' },
+      });
     }
     @Post('/refused')
     @HttpCode(403)
@@ -65,6 +69,8 @@ it('approves an enhanced save while preserving the native 303 destination', asyn
     expect(enhanced.statusCode).toBe(200);
     expect(enhanced.body).toEqual({
       version: 1, outcome: 'saved', destination: '/products/one', followUp: 'navigate',
+      data: { revision: 2 },
+      session: { epoch: 'session-b', reason: 'login' },
     });
     expect(enhanced.headers['Cache-Control']).toContain('no-store');
     expect(String(enhanced.headers.Vary).split(',').map((part) => part.trim())).toEqual(expect.arrayContaining(['Cookie', 'Accept']));
