@@ -289,6 +289,45 @@ This stable SSR/Vite representation is JSON plus a built client component, not e
 Flight, a generic React tree serializer, or a file-routing contract.
 
 
+## Session approval and revocation
+
+Use the existing provider's `session={{ epoch, policy? }}` configuration and
+`router.sessionChanged({ epoch, reason: 'login' | 'logout' | 'permissions' })`.
+`useRouterState().session` exposes the provider-local epoch, generation and
+`approved`, `pending`, `signed-out` or `forbidden` state. Epochs are nonsecret app
+labels; every valid notification advances ownership, even with an identical label.
+No cookie value or Fetch-invisible `Set-Cookie` is used to infer authentication.
+
+The barrier first removes old page approval, metadata and form retention, detaches
+old operations and cache entries, then aborts and notifies subscribers. Old loads,
+bodies, imports, policy decisions, forms and public speculation cannot commit or
+start a document fallback. Public cancellation does not wait for abort-ignoring
+work. `ReactNavigationExperience` suppresses both its destination and initial SSR
+fallback while revoked. A later fresh credentialed approval is required to reopen it.
+
+Login and permission notifications default to a fresh credentialed current-page
+GET; explicit logout defaults to signed-out UI without a request. Fresh credentialed
+401 selects signed-out UI; 403 selects forbidden UI without changing the epoch to
+an anonymous identity. Anonymous speculation alone cannot revoke a credentialed
+session. Network/5xx remain governed by the existing transient policy. An optional
+`session.policy(context, signal)` runs after revocation and may select safe auth UI,
+fresh approval, or `{ document: '/same-origin-exit' }`; external/credential-bearing
+document exits are rejected. It cannot preserve revoked protected content.
+
+App-owned players, channels and listeners should live under the application's
+existing React subtree/effect boundary driven by session approval. There is no
+public teardown registry. Notification settlement is store settlement, not a
+browser-paint or SDK-disposal receipt. Auth revocation takes priority over future
+dirty-confirm composition; it is not a dirty-navigation guard implementation.
+
+External HttpOnly cookie changes may leave an already-approved page visible until
+app notification or a fresh credentialed HTTP rejection. There is no cross-tab
+cookie detection guarantee. The internal provider session lease is available to
+later independent interactions; it is not another public notification path.
+See [migration](../getting-started/migrate-react-session-composition.md) and
+`examples/react-vite-ssr/tests/session-transition.spec.ts` for the real-surface
+acceptance fixture. Full product/soak acceptance remains owned by #3879/#3886.
+
 ## Progressive native HTTP forms
 
 The [progressive form contract](./react-progressive-forms.md) connects `useForm` in the existing

@@ -19,6 +19,18 @@ async function observeState(page: Page, id: string, expected: string) {
 async function outcome(page: Page) {
   await page.evaluate(() => Reflect.get(window, '__formOutcome'));
 }
+async function observeAuthRevocation(page: Page, status: 'signed-out' | 'forbidden') {
+  await page.evaluate((status) => {
+    Reflect.set(window, '__formOutcome', new Promise<void>((resolve, reject) => {
+      const observer = new MutationObserver(() => {
+        if (document.querySelector(`[data-session="${status}"]`) === null) return;
+        observer.disconnect(); clearTimeout(timeout); resolve();
+      });
+      const timeout = setTimeout(() => { observer.disconnect(); reject(new Error('Auth revocation did not arrive')); }, 10_000);
+      observer.observe(document.body, { subtree: true, childList: true, attributes: true });
+    }));
+  }, status);
+}
 async function hydrated(page: Page) {
   await page.locator('form[data-enhanced]').first().evaluate((form) => {
     if (form.getAttribute('data-enhanced') === 'true') return;
@@ -168,11 +180,12 @@ test('cookie authorization and CSRF reject enhanced mutations without save ackno
   const save = page.getByRole('form', { name: 'Save product', exact: true });
   await save.getByRole('textbox').fill('Must not persist');
   await page.getByRole('button', { name: 'Count: 0', exact: true }).click();
-  await observeState(page, 'edit-sku-42', 'auth:unauthorized');
+  await observeAuthRevocation(page, 'signed-out');
   const auth = page.waitForResponse((response) => response.request().method() === 'POST');
   await save.getByRole('button', { name: 'Save product', exact: true }).click();
   expect((await auth).status()).toBe(401);
   await outcome(page);
+  expect(await save.count()).toBe(0);
   await page.goto('/catalog/login');
   await page.goto('/catalog/sku-42');
   await hydrated(page);
@@ -181,11 +194,12 @@ test('cookie authorization and CSRF reject enhanced mutations without save ackno
   await guarded.locator('[name="csrf"]').evaluate((input) => {
     if (input instanceof HTMLInputElement) input.value = 'tampered';
   });
-  await observeState(page, 'edit-sku-42', 'auth:forbidden');
+  await observeAuthRevocation(page, 'forbidden');
   const csrf = page.waitForResponse((response) => response.request().method() === 'POST');
   await guarded.getByRole('button', { name: 'Save product', exact: true }).click();
   expect((await csrf).status()).toBe(403);
   await outcome(page);
+  expect(await guarded.count()).toBe(0);
   console.log(JSON.stringify({ observation: 'auth-csrf', unauthorized: 401, tamperedToken: 403 }));
 });
 
@@ -412,9 +426,12 @@ test('native and enhanced listeners enforce missing expired and tampered credent
   await page.context().clearCookies();
   const form = page.getByRole('form', { name: 'Save product', exact: true });
   const before = await state(page);
-  await observeState(page, 'edit-sku-42', 'auth:unauthorized');
+  await observeAuthRevocation(page, 'signed-out');
+  const expired = page.waitForResponse((response) => response.request().method() === 'POST');
   await form.getByRole('button', { name: 'Save product', exact: true }).click();
+  expect((await expired).status()).toBe(401);
   await outcome(page);
+  expect(await form.count()).toBe(0);
   expect((await state(page)).commits).toBe(before.commits);
   console.log(JSON.stringify({ observation: 'native-enhanced-security', comparisons: 12, expiredBrowserSession: 401 }));
 });

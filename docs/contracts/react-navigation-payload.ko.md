@@ -285,6 +285,42 @@ browser rendering, 일반 HTML 및 JavaScript-disabled document 동작을 실행
 React tree serializer 또는 file-routing contract가 아닙니다.
 
 
+## Session approval and revocation
+
+기존 provider의 `session={{ epoch, policy? }}`와
+`router.sessionChanged({ epoch, reason: 'login' | 'logout' | 'permissions' })`를
+사용합니다. `useRouterState().session`은 provider-local epoch, generation과
+`approved`, `pending`, `signed-out`, `forbidden` 상태를 제공합니다. Epoch는 비밀이 아닌
+앱 label이며 같은 label을 다시 통지해도 매번 ownership을 진행합니다. Cookie 값이나
+Fetch에서 보이지 않는 `Set-Cookie`로 인증을 추측하지 않습니다.
+
+Barrier는 먼저 이전 page 승인·metadata·form retention을 제거하고 operation과 cache
+entry를 분리한 뒤 abort와 subscriber 통지를 수행합니다. 이전 load/body/import/policy,
+form과 public speculation은 commit하거나 document fallback을 시작할 수 없습니다.
+Public cancellation은 abort를 무시하는 작업을 기다리지 않습니다.
+`ReactNavigationExperience`는 승인 철회 중 destination과 초기 SSR fallback을 모두
+억제합니다. 다시 표시하려면 새 credential 포함 HTTP 승인이 필요합니다.
+
+Login·permission 통지의 기본값은 credential 포함 current-page GET이고 explicit logout은
+요청 없는 signed-out UI입니다. Fresh credential 포함 401은 signed-out, 403은 epoch를
+anonymous identity로 바꾸지 않는 forbidden UI입니다. Anonymous speculation만으로
+credentialed session을 철회하지 않습니다. Network/5xx는 기존 transient policy를
+유지합니다. 선택적 `session.policy(context, signal)`은 철회 뒤 safe auth UI, 새 승인
+또는 `{ document: '/same-origin-exit' }`를 선택할 수 있으며 external/credential-bearing
+문서 이동은 거절됩니다. 이전 보호 콘텐츠를 보존하는 선택지는 없습니다.
+
+Player/channel/listener는 session 승인에 따라 앱의 기존 React subtree/effect 경계에서
+정리합니다. Public teardown registry를 추가하지 않습니다. 통지 settlement는 store
+settlement이지 paint나 SDK disposal receipt가 아닙니다. Auth 철회는 향후 dirty-confirm
+조립보다 우선하며 여기서 dirty-navigation guard를 구현하지 않습니다.
+
+외부 HttpOnly cookie 변경은 앱 통지 또는 fresh credential 포함 HTTP 거절 전까지
+이미 승인된 화면을 남길 수 있습니다. Cross-tab cookie 감지를 보장하지 않습니다.
+내부 provider session lease는 후속 independent interaction을 위한 경계이며 별도
+public notification 경로가 아닙니다. [Migration](../getting-started/migrate-react-session-composition.ko.md)과
+`examples/react-vite-ssr/tests/session-transition.spec.ts`의 real-surface acceptance fixture를
+참고하세요. 전체 제품·soak acceptance는 #3879/#3886이 계속 소유합니다.
+
 ## Progressive native HTTP forms
 
 [Progressive form 계약](./react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의

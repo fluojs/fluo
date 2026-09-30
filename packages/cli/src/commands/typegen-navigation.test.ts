@@ -118,7 +118,7 @@ describe('fluo typegen navigation authoring', () => {
       "import { reactPageRoutes, type ReactPageLinkProps } from './generated/react-pages.js';",
       `import { Link, type ReactRevalidationResult, type ReactRouter } from ${JSON.stringify(reactClientModulePath)};`,
       "const refreshResult: ReactRevalidationResult = { status: 'complete' };",
-      'const navigator: ReactRouter = { back: () => undefined, invalidate: () => undefined, openDocument: () => undefined, push: () => undefined, refresh: () => Promise.resolve(refreshResult), replace: () => undefined, retry: () => undefined };',
+      'const navigator: ReactRouter = { sessionChanged: () => Promise.resolve(refreshResult), back: () => undefined, invalidate: () => undefined, openDocument: () => undefined, push: () => undefined, refresh: () => Promise.resolve(refreshResult), replace: () => undefined, retry: () => undefined };',
       "type ValidUnionParams = { readonly productId: 'sku-42' } | { readonly productId: 'sku-84' };",
       'declare const unionParams: ValidUnionParams;',
       "const params = { productId: 'sku-42' };",

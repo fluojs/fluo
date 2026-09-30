@@ -625,6 +625,20 @@ Programmatic entry points preserve caller process ownership. `runCli(...)`, `run
 - [transforms/](./src/transforms/) - Code transformation implementations.
 
 
+## React starter session composition
+
+The generated React Vite starter's `/catalog/session` fixture uses ordinary
+HTTP-origin/CSRF-protected login/logout/permissions handlers and the existing
+provider/router session barrier. It remains a demo, not an authentication SDK.
+Explicit `ReactModule.formResult({ ..., session })` does not depend on browser
+`Set-Cookie` access. `router.sessionChanged` is the one notification path;
+prefetch-scope-only switching is not a session boundary.
+The app owns real MessageChannel operation and effect cleanup under its existing
+session-aware resource subtree. Native POST/303/GET remains available without
+JavaScript. `tests/session-transition.spec.ts` exercises shipped runtime behavior
+in dev and production; [migration](../../docs/getting-started/migrate-react-session-composition.md)
+describes existing consumer changes and the limited saved JSON boundary.
+
 ## Progressive native HTTP forms
 
 The [progressive form contract](../../docs/contracts/react-progressive-forms.md) connects `useForm` in the existing

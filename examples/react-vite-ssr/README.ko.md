@@ -96,8 +96,9 @@ logout 뒤 보존은 입증하지 않습니다. 생성 starter는 자신의 기�
 `Prefetch public on viewport`를 화면에 표시한 뒤 opt-in link를 활성화하세요.
 첫 GET으로 받은 public navigation representation을 추가 GET 없이 한 번 소비합니다.
 `Open public sku-84 without prefetch`는 계속 일반 요청을 합니다.
-`Switch user and prefetch scope`는 다음 navigation 전에 session cookie와
-application-managed `prefetchScope`를 변경합니다. `Rename without reload`는 guard가 있는
+`Switch user and prefetch scope`는 demo cookie를 변경하고 `router.sessionChanged`로
+이전 provider 승인을 철회한 뒤 fresh HTTP를 실행합니다. Public prefetch label은
+경쟁하는 session notifier가 아닙니다. `Rename without reload`는 guard가 있는
 POST 성공 뒤 `router.invalidate()`를 호출합니다. `Refresh`로 새 서버 값을 같은 page에
 history entry 없이 표시합니다. Pending과 보존된 실패에서는 마지막 승인 값을 유지합니다.
 다른 fixture link는 거절된

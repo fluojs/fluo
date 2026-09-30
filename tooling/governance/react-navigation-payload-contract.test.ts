@@ -11,6 +11,8 @@ const serverPath = 'packages/react/src/page-result.ts';
 const transferPath = 'packages/react/src/navigation-payload.ts';
 const metadataPath = 'packages/react/src/page-metadata.ts';
 const storePath = 'packages/react/src/client/store.ts';
+const formStorePath = 'packages/react/src/client/form-store.ts';
+const experiencePath = 'packages/react/src/client/experience.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
 const dispatchPath = 'packages/http/src/dispatch/dispatch-response-policy.ts';
@@ -20,6 +22,8 @@ const sources = new Map([
   [transferPath, readFileSync(resolve(repoRoot, transferPath), 'utf8')],
   [metadataPath, readFileSync(resolve(repoRoot, metadataPath), 'utf8')],
   [storePath, readFileSync(resolve(repoRoot, storePath), 'utf8')],
+  [formStorePath, readFileSync(resolve(repoRoot, formStorePath), 'utf8')],
+  [experiencePath, readFileSync(resolve(repoRoot, experiencePath), 'utf8')],
   [historyPath, readFileSync(resolve(repoRoot, historyPath), 'utf8')],
   [providerPath, readFileSync(resolve(repoRoot, providerPath), 'utf8')],
   [dispatchPath, readFileSync(resolve(repoRoot, dispatchPath), 'utf8')],
@@ -30,7 +34,23 @@ it('accepts the current matching HTTP and browser navigation machine contract', 
 });
 
 it.each([
-  ['loadAndCommit(browser, destination, type, undefined, true);',
+  [storePath, '++sessionGeneration', 'sessionGeneration'],
+  [storePath, 'oldPending?.controller.abort();', 'oldPending?.controller.signal;'],
+  [formStorePath, 'environment.sessionChanged(mutation.session)', 'Promise.resolve(true)'],
+  [experiencePath, "revoked ? createElement('section'", "false ? createElement('section'"],
+])('rejects a bypass of session ownership and revoked initial-page fallback in %s', (path, original, changed) => {
+  // Given: an isolated negative mutation of a machine-consumed session invariant.
+  const source = sources.get(path);
+  const variant = source?.replace(original, changed) ?? '';
+  expect(variant).not.toBe(source);
+  // When/Then: governance detects the broken barrier rather than accepting runtime drift.
+  expect(() => enforceReactNavigationPayloadContract((candidate: string) =>
+    candidate === path ? variant : sources.get(candidate) ?? '',
+  )).toThrow(/React navigation session/u);
+});
+
+it.each([
+  ['loadAndCommit(browser, destination, type, undefined, true, origin);',
     'loadAndCommit(browser, destination, type);'],
   ['      cached.clear();\n      discardPrefetches();',
     '      discardPrefetches();'],

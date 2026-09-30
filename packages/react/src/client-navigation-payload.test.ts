@@ -520,6 +520,26 @@ it.each([
   expect(result).toEqual({ ok: false, reason });
 });
 
+it.each([
+  [401, 'unauthorized'],
+  [403, 'forbidden'],
+] as const)('classifies fresh credentialed %i before reading private response bodies or importing a page', async (status, reason) => {
+  // Given: a protected HTTP rejection contains data that must not become page approval.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  const response = new Response('private session data', { status });
+  const body = vi.spyOn(response, 'text');
+  const importer = vi.fn(async () => ({ default: () => null }));
+  vi.stubGlobal('fetch', vi.fn(async () => response));
+  // When: the actual navigation loader receives that credentialed status.
+  const result = await loadReactNavigationDestination('/products/sku-84', {
+    './navigation-product.ts': importer,
+  });
+  // Then: safe auth discrimination precedes all body/module work.
+  expect(result).toEqual({ ok: false, reason });
+  expect(body).not.toHaveBeenCalled();
+  expect(importer).not.toHaveBeenCalled();
+});
+
 it('preserves the approved shell on a post-header body stream failure', async () => {
   // Given: HTTP has approved the media type, but the body stream fails while being read.
   vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });

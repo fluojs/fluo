@@ -1068,6 +1068,24 @@ commit 전에 일치해야 하며 누락된 식별자는 승인되지 않습니�
 v1 소비자는 [이주 가이드](../../docs/getting-started/migrate-react-production-assets.ko.md)와
 [배포 recipe](../../docs/guides/react-production-deployment.ko.md)를 따르세요.
 
+## Session composition
+
+기존 `ReactClientRouterProvider`의
+`session={{ epoch: 'initial-nonsecret-label', policy }}`와
+`router.sessionChanged({ epoch: 'next-label', reason: 'login' })`를 사용합니다.
+별도 provider 없이 `useRouterState().session`으로 승인과 generation을 읽습니다.
+각 통지는 async policy 전에 초기 SSR fallback을 포함한 이전 page/head/form/cache
+ownership을 철회합니다. Fresh credential 포함 401은 signed-out, 403은 identity를
+지우지 않는 forbidden입니다. Anonymous speculation은 credentialed 사용자를 logout할
+수 없으며 cookie 변경 자체가 cross-tab signal인 것은 아닙니다.
+
+앱 소유 player/channel/listener는 기존 React subtree/effect cleanup으로 정리합니다.
+Teardown registry는 없고 store settlement는 SDK-disposal receipt가 아닙니다.
+Session을 포함한 form result도 destination policy 전에 동일한 barrier를 통과한 뒤
+confirmed saved continuation만 fresh GET 승인으로 이관합니다. 일반 mutation은 다른
+input/error/focus를 보존하고 retry는 POST를 재실행하지 않습니다.
+[Migration](../../docs/getting-started/migrate-react-session-composition.ko.md)을 참고하세요.
+
 ## Native Form Mutations
 
 Canonical `ReactModule.formResult`는 선택적 JSON `data`와 명시적인 비밀이 아닌

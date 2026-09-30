@@ -1,0 +1,130 @@
+import { expect, test, type Page } from '@playwright/test';
+
+async function connected(page: Page) {
+  await page.locator('form[data-enhanced]').first().evaluate((form) => {
+    if (form.getAttribute('data-enhanced') === 'true') return;
+    return new Promise<void>((resolve, reject) => {
+      const observer = new MutationObserver(() => {
+        if (form.getAttribute('data-enhanced') !== 'true') return;
+        observer.disconnect(); clearTimeout(timeout); resolve();
+      });
+      const timeout = setTimeout(() => { observer.disconnect(); reject(new Error('Provider not connected')); }, 10_000);
+      observer.observe(form, { attributes: true, attributeFilter: ['data-enhanced'] });
+    });
+  });
+}
+async function watch(page: Page, text: string) {
+  await page.evaluate((text) => {
+    const output = document.querySelector('[data-session-state]');
+    if (output === null) throw new Error('Missing session snapshot');
+    Reflect.set(window, '__sessionSignal', new Promise<void>((resolve, reject) => {
+      const observer = new MutationObserver(() => {
+        if (!output.textContent?.includes(text)) return;
+        observer.disconnect(); clearTimeout(timeout); resolve();
+      });
+      const timeout = setTimeout(() => { observer.disconnect(); reject(new Error('Missing session transition')); }, 10_000);
+      observer.observe(output, { subtree: true, childList: true, characterData: true });
+    }));
+  }, text);
+}
+async function login(page: Page, identity: 'a' | 'b') {
+  const approved = page.waitForResponse((response) => response.request().method() === 'GET'
+    && response.request().headers().accept?.includes('react-navigation') === true);
+  await page.getByRole('button', { name: `Login ${identity.toUpperCase()}`, exact: true }).click();
+  expect((await approved).status()).toBe(200);
+  await expect(page.locator(`[data-product="private-${identity}"]`)).toHaveText(`Protected content ${identity}`);
+}
+
+test('packaged session forms revoke initial protected content and recover a distinct session', async ({ page }) => {
+  // Given: actual generated HTTP routes, built importers and an operational MessageChannel.
+  const diagnostics: string[] = [];
+  page.on('pageerror', (error) => diagnostics.push(error.message));
+  await page.addInitScript(() => {
+    const closed = new WeakSet<MessagePort>();
+    const nativeClose = MessagePort.prototype.close;
+    MessagePort.prototype.close = function () {
+      Reflect.apply(nativeClose, this, []);
+      closed.add(this);
+    };
+    Reflect.set(window, '__sessionResources', []);
+    document.addEventListener('fluo-resource', (event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const events: unknown = Reflect.get(window, '__sessionResources');
+      const owned = event.detail.ports.filter((port: unknown): port is MessagePort => port instanceof MessagePort);
+      if (event.detail.phase === 'cleanup' && owned.some((port: MessagePort) => !closed.has(port))) {
+        throw new Error('Cleanup reported before closing an actual owned MessagePort');
+      }
+      if (Array.isArray(events)) events.push({ phase: event.detail.phase, id: event.detail.id, ports: owned.length });
+    });
+  });
+  await page.goto('/catalog/session');
+  await connected(page);
+  await login(page, 'a');
+  await page.goto('/catalog/session/protected');
+  await connected(page);
+  const acknowledgement = page.locator('[aria-label="Resource acknowledgement"]');
+  await acknowledgement.evaluate((element) => {
+    Reflect.set(window, '__resourceAck', new Promise<string>((resolve, reject) => {
+      const observer = new MutationObserver(() => {
+        const text = element.textContent ?? '';
+        if (!text.endsWith(':ack')) return;
+        observer.disconnect(); clearTimeout(timeout); resolve(text);
+      });
+      const timeout = setTimeout(() => { observer.disconnect(); reject(new Error('Missing port acknowledgement')); }, 10_000);
+      observer.observe(element, { subtree: true, childList: true, characterData: true });
+    }));
+  });
+  await page.getByRole('button', { name: 'Probe shell resource', exact: true }).click();
+  const ack: string = await page.evaluate(() => Reflect.get(window, '__resourceAck'));
+  const id = ack.split(':')[0];
+  // When: the canonical notification revokes this SSR page.
+  await page.evaluate(() => {
+    Reflect.set(window, '__resourceCleanup', new Promise<void>((resolve, reject) => {
+      const handler = (event: Event) => {
+        if (!(event instanceof CustomEvent) || event.detail?.phase !== 'cleanup') return;
+        document.removeEventListener('fluo-resource', handler); clearTimeout(timeout); resolve();
+      };
+      const timeout = setTimeout(() => {
+        document.removeEventListener('fluo-resource', handler); reject(new Error('Owned resource did not close'));
+      }, 10_000);
+      document.addEventListener('fluo-resource', handler);
+    }));
+  });
+  await watch(page, 'signed-out');
+  await page.getByRole('button', { name: 'Notify logout', exact: true }).click();
+  await page.evaluate(() => Reflect.get(window, '__sessionSignal'));
+  await page.evaluate(() => Reflect.get(window, '__resourceCleanup'));
+  // Then: protected fallback/head/input and exact owned ports are removed.
+  expect(await page.locator('[data-product="private-a"]').count()).toBe(0);
+  expect(await page.getByRole('textbox', { name: 'Protected draft' }).count()).toBe(0);
+  expect(await page.locator('head title').allTextContents()).not.toContain('Protected a');
+  expect(await page.evaluate(() => Reflect.get(window, '__sessionResources')))
+    .toEqual(expect.arrayContaining([{ phase: 'cleanup', id, ports: 2 }]));
+  await login(page, 'b');
+  expect(await page.locator('head title').allTextContents()).toContain('Protected b');
+  expect(diagnostics).toEqual([]);
+  console.log(JSON.stringify({ observation: 'packaged-session-transition', id, protectedContentRevoked: true, freshSession: 'b' }));
+});
+
+test('native session login and logout retain POST 303 GET without JavaScript', async ({ browser, baseURL }) => {
+  // Given: the actual generated consumer with JavaScript disabled.
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  const page = await context.newPage();
+  try {
+    await page.goto(`${baseURL}/catalog/session`);
+    const post = page.waitForResponse((response) => response.request().method() === 'POST');
+    const read = page.waitForResponse((response) => response.request().method() === 'GET'
+      && new URL(response.url()).pathname === '/catalog/session/protected');
+    // When: the ordinary form submits.
+    await page.getByRole('button', { name: 'Login A', exact: true }).click();
+    // Then: HTTP selects native redirect and the protected document.
+    expect((await post).status()).toBe(303);
+    expect((await read).status()).toBe(200);
+    const logout = page.waitForResponse((response) => response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Logout HTTP', exact: true }).click();
+    expect((await logout).status()).toBe(303);
+    await expect(page.getByRole('heading', { name: 'Session sign in' })).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});

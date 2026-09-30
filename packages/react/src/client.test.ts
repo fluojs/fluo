@@ -1831,8 +1831,8 @@ describe('@fluojs/react/client', () => {
     ['network', 'error'],
     ['server-error', 'error'],
     ['import-failure', 'error'],
-    ['unauthorized', 'document'],
-    ['forbidden', 'document'],
+    ['unauthorized', 'error'],
+    ['forbidden', 'error'],
     ['redirect', 'document'],
     ['not-found', 'document'],
     ['dto-rejected', 'document'],
@@ -1855,9 +1855,15 @@ describe('@fluojs/react/client', () => {
 
     // Then: no rejected representation commits, and policy chooses one safe outcome.
     expect(result.status).toBe(status);
-    expect(policy).toHaveBeenCalledWith({
-      destination: '/products/sku-42', reason, type: 'refresh',
-    });
+    if (reason === 'unauthorized' || reason === 'forbidden') {
+      expect(policy).not.toHaveBeenCalled();
+      expect(store.getSnapshot().params).toEqual({});
+      expect(store.getSnapshot().session?.status).toBe(reason === 'unauthorized' ? 'signed-out' : 'forbidden');
+    } else {
+      expect(policy).toHaveBeenCalledWith({
+        destination: '/products/sku-42', reason, type: 'refresh',
+      });
+    }
     expect(store.getDestination()).toBeNull();
     expect(store.getSnapshot().url).toBe('/products/sku-42?preview=true');
     expect(browser.reload).toHaveBeenCalledTimes(status === 'document' ? 1 : 0);

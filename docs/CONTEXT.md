@@ -78,12 +78,19 @@ For the generated React starter's development edits, use the [dev reload archite
 
 Optional `Link prefetch="hover" | "viewport"` needs provider `navigationModules`, a matching
 `navigationBuildId` and an explicit
-`prefetchScope` auth/session epoch. Only `ReactNavigationPage.create(page, destination,
+`prefetchScope` app cache label combined with the provider-local session generation. Only `ReactNavigationPage.create(page, destination,
 { prefetch: 'public' })` may grant a credential-omitted, identity-independent status-`200`
 navigation JSON result; HTTP checks request credentials, final `Set-Cookie`, pre-existing
 `Cache-Control`/`Vary`, then emits `X-Fluo-Navigation-Prefetch: public`. The bounded provider
-cache is single-use; after auth/data mutations update the scope and/or call `router.invalidate()`
-before further in-document navigation. Ordinary credentialed navigation and back/forward
+cache is single-use; notify auth changes with `router.sessionChanged` before further
+in-document navigation. Ordinary data mutations use `router.invalidate()` and preserve
+unrelated forms. The optional provider `session` config and `useRouterState().session`
+share the existing router barrier: revoke old page/head/retained data before policy,
+select signed-out for fresh 401 and forbidden for 403, and suppress initial SSR
+fallback until new approval. Saved form session outcomes use that same barrier.
+App resources use their existing React subtree/effect cleanup; see
+[session migration](./getting-started/migrate-react-session-composition.md).
+Ordinary credentialed navigation and back/forward
 still require HTTP approval. The linked contract owns eligibility, freshness, and fallback.
 
 For atomic cache mutation, start at the [cache-manager API owner](../packages/cache-manager/README.md#atomic-updates), then [caching architecture](./architecture/caching.md#atomic-update-coordination), [update types](../packages/cache-manager/src/atomic-update.ts), and [service admission/drain](../packages/cache-manager/src/service.ts). `update` is a pure single-key reducer with fixed-expiry preservation, not `remember` loader coalescing or application domain policy. Memory coordinates one shared store instance; Redis requires explicit cache-side opt-in and isolated WATCH transactions via the existing [raw client seam](../packages/redis/README.md#raw-client-access). The README owns TTL/error/metadata/cancellation limits and test commands, including the Docker native suite; source links do not imply executed verification. Human applications appear in [FluoBlog caching](../book/01-fluoblog/ch20-caching.md) and [FluoShop caching](../book/02-fluoshop/ch21-commerce-caching.md).

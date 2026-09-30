@@ -1081,6 +1081,24 @@ The official shell offers an explicit update/document action, not automatic relo
 consumers should follow the [migration](../../docs/getting-started/migrate-react-production-assets.md)
 and [deployment recipe](../../docs/guides/react-production-deployment.md).
 
+## Session composition
+
+Use the existing `ReactClientRouterProvider` with
+`session={{ epoch: 'initial-nonsecret-label', policy }}` and
+`router.sessionChanged({ epoch: 'next-label', reason: 'login' })`.
+`useRouterState().session` exposes approval and generation without another provider.
+Every notification revokes old page/head/form/cache ownership before asynchronous
+policy, including the initial SSR fallback. Fresh credentialed 401 selects
+signed-out; 403 selects forbidden without erasing identity. Anonymous speculation
+cannot log out a credentialed user. Cookie changes alone are not a cross-tab signal.
+
+App-owned players/channels/listeners use the existing React subtree/effect cleanup;
+there is no teardown registry and store settlement is not an SDK-disposal receipt.
+A session-bearing form result enters this same barrier before destination policy,
+then transfers only its confirmed saved continuation to fresh GET approval.
+Ordinary mutations preserve unrelated inputs/errors/focus; retries never replay POST.
+See [migration](../../docs/getting-started/migrate-react-session-composition.md).
+
 ## Native Form Mutations
 
 The canonical `ReactModule.formResult` also accepts optional JSON `data` and an

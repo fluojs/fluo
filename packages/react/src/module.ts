@@ -4,7 +4,7 @@ import type { MiddlewareLike } from '@fluojs/http/portable';
 import { registerFrameworkResponseWriter, type FrameworkResponseWriterContext } from '@fluojs/http/internal';
 import { defineModule, type ModuleDefinition, type ModuleType } from '@fluojs/runtime/internal';
 import type { ReactSsrDiagnosticHandler } from './diagnostics.js';
-import { parseReactSessionChange, type ReactFormResultOptions } from './form-result.js';
+import { copyReactFormData, parseReactSessionChange, type ReactFormResultOptions } from './form-result.js';
 import { REACT_PAGE_RENDERER, type ReactPageRenderer } from './page-renderer.js';
 import { createReactPageResultMiddleware } from './page-result.js';
 import { validateReactRenderPolicyControllers } from './render-policy.js';
@@ -63,7 +63,7 @@ export class ReactModule {
     if (options.session !== undefined && session === undefined) {
       throw new TypeError('A form session must carry a nonempty epoch and explicit transition reason.');
     }
-    const data: unknown = Object.hasOwn(options, 'data') ? JSON.parse(JSON.stringify(options.data)) : undefined;
+    const data = Object.hasOwn(options, 'data') ? copyReactFormData(options.data) : undefined;
     const entry = registerFrameworkResponseWriter(options, (context) => {
       context.applySuccessResponseMetadata();
       if ((context.response.statusCode ?? 201) < 200 || (context.response.statusCode ?? 201) >= 300) {

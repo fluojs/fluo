@@ -9,6 +9,8 @@ const serverPath = 'packages/react/src/page-result.ts';
 const transferPath = 'packages/react/src/navigation-payload.ts';
 const metadataPath = 'packages/react/src/page-metadata.ts';
 const storePath = 'packages/react/src/client/store.ts';
+const formStorePath = 'packages/react/src/client/form-store.ts';
+const experiencePath = 'packages/react/src/client/experience.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
 const dispatchPath = 'packages/http/src/dispatch/dispatch-response-policy.ts';
@@ -46,6 +48,8 @@ export function enforceReactNavigationPayloadContract(
   const transfer = ts.createSourceFile(transferPath, readText(transferPath), ts.ScriptTarget.Latest, true);
   const metadataSource = ts.createSourceFile(metadataPath, readText(metadataPath), ts.ScriptTarget.Latest, true);
   const store = ts.createSourceFile(storePath, readText(storePath), ts.ScriptTarget.Latest, true);
+  const formStore = ts.createSourceFile(formStorePath, readText(formStorePath), ts.ScriptTarget.Latest, true);
+  const experience = ts.createSourceFile(experiencePath, readText(experiencePath), ts.ScriptTarget.Latest, true);
   const history = ts.createSourceFile(historyPath, readText(historyPath), ts.ScriptTarget.Latest, true);
   const provider = ts.createSourceFile(providerPath, readText(providerPath), ts.ScriptTarget.Latest, true);
   const dispatch = ts.createSourceFile(dispatchPath, readText(dispatchPath), ts.ScriptTarget.Latest, true);
@@ -368,6 +372,33 @@ export function enforceReactNavigationPayloadContract(
     || !findNode(formApproval, (node) =>
       ts.isCallExpression(node) && node.expression.getText(store) === 'discardPrefetches')) {
     throw new Error('React navigation form follow-up must reuse fresh HTTP approval, not a cached or alternate destination path.');
+  }
+  const sessionBarrier = findNode(store, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(store) === 'applySession');
+  const advanceSession = sessionBarrier && findNode(sessionBarrier, (node) =>
+    ts.isPrefixUnaryExpression(node) && node.getText(store) === '++sessionGeneration');
+  const revokeSnapshot = sessionBarrier && findNode(sessionBarrier, (node) =>
+    ts.isBinaryExpression(node) && node.left.getText(store) === 'snapshot'
+    && node.right.getText(store).includes('createSnapshotFromHref')
+    && node.right.getText(store).includes('session: Object.freeze'));
+  const detachPending = sessionBarrier && findNode(sessionBarrier, (node) =>
+    ts.isBinaryExpression(node) && node.getText(store) === 'pending = null');
+  const abortOld = sessionBarrier && findNode(sessionBarrier, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'oldPending?.controller.abort');
+  const formSession = findNode(formStore, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(formStore) === 'environment.sessionChanged');
+  const formReadAfterSave = findNode(formStore, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(formStore) === 'read'
+    && node.arguments[0]?.getText(formStore) === 'mutation');
+  if (!advanceSession || !revokeSnapshot || !detachPending || !abortOld
+    || detachPending.end >= abortOld.pos || revokeSnapshot.end >= abortOld.pos
+    || !findNode(sessionBarrier, (node) =>
+      ts.isBinaryExpression(node) && node.getText(store) === 'expected !== sessionGeneration')
+    || !formSession || !formReadAfterSave || formSession.end >= formReadAfterSave.pos
+    || !findNode(store, (node) => ts.isMethodDeclaration(node) && node.name.getText(store) === 'sessionChanged')
+    || !findNode(experience, (node) => ts.isConditionalExpression(node)
+      && node.condition.getText(experience) === 'revoked')) {
+    throw new Error('React navigation session must revoke approval and detach old ownership before abort, policy or form follow-up.');
   }
   const adoptedApproval = findNode(store, (node) =>
     ts.isConditionalExpression(node) && node.condition.getText(store).includes('prefetchedResult.ok'));

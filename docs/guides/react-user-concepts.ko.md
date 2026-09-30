@@ -137,6 +137,22 @@ update를 제공합니다. [프로덕션 배포 recipe](./react-production-deplo
 및 policy example로 남습니다. Generated client asset이나 hydration이 필요 없는 SSR에는
 [`examples/react-stable-ssr`](../../examples/react-stable-ssr/README.ko.md)를 사용하세요.
 
+## Session approval belongs to the existing router
+
+기존 provider에 `session={{ epoch, policy? }}`를 조립하고 앱이 확인한 변경은
+`router.sessionChanged({ epoch, reason })`로 통지합니다. `useRouterState().session`에 따라
+앱의 기존 resource subtree/effect cleanup을 수행합니다. 별도 notifier, controlled epoch,
+teardown registry는 없습니다. 철회는 policy 전에 protected destination, 초기 fallback,
+head를 제거합니다. 401은 signed-out, 403은 anonymous identity 전환이 아닌 forbidden입니다.
+Cookie 변경 자체가 cross-tab signal인 것은 아닙니다.
+
+Handler의 선택적 `ReactModule.formResult({ ..., session })`은 destination policy 전에
+동일한 barrier를 통과하고 confirmed saved continuation만 fresh GET 승인으로 이관합니다.
+Saved 실패/retry와 일반 unrelated form retention은 유지합니다.
+`ReactFormContract<Input, Data>`의 `fields`와 `decodeSaved(unknown): Data`를 기존
+`useForm({ contract, ... })`에 전달하며 cast나 별도 form API를 사용하지 않습니다.
+[Session migration](../getting-started/migrate-react-session-composition.ko.md)을 참고하세요.
+
 ## Experimental surface
 
 `@fluojs/react/experimental/rsc`가 현재 유일한 RSC 및 Server Function surface입니다. 문서화된 exact

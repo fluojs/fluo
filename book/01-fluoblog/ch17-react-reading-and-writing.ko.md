@@ -711,6 +711,29 @@ export default defineConfig({
 - [쿠키 쓰기와 삭제](../../packages/passport/src/cookie/cookie-manager.ts), [Prisma의 current·transaction](../../packages/prisma/README.ko.md)
 
 
+## Hydrated session approval and app-owned cleanup
+
+앞에서 만든 native document/form은 그대로 유효합니다. Opt-in hydrated reader/editor는
+기존 provider의 비밀이 아닌 session epoch를 조립하고 앱이 login/logout/permissions를
+확인한 뒤 `router.sessionChanged`를 호출합니다. 승인 snapshot은
+`useRouterState().session`이 소유합니다. Cookie 값에서 추측하거나 별도 notifier를
+추가하지 않습니다. Session을 포함한 `ReactModule.formResult`는 async policy 전에
+동일한 barrier를 통과하고 confirmed save를 보존한 뒤 fresh GET으로 destination을
+승인합니다. POST는 자동으로 재시도하지 않습니다.
+
+철회하면 초기 protected SSR fallback과 이후 page/head/input 상태를 모두 제거합니다.
+401은 signed-out, 403은 identity를 지우지 않는 forbidden입니다. 앱의 protected
+MessageChannel/player/listener는 기존 session-aware React subtree 안에 배치하고
+unmount 때 실제 소유 resource를 정리해야 합니다. 통지 settlement만으로 SDK disposal을
+증명하지 않습니다. Runnable fixture는 실제 channel을 사용하고 두 port close를
+확인하며 이전 HTTP body를 보류한 채 release 전에 public cancellation을 검증하고
+다른 사용자의 새 화면으로 복구합니다.
+
+아래 native exercise와 함께
+[session migration](../../docs/getting-started/migrate-react-session-composition.ko.md)과
+`examples/react-vite-ssr/tests/session-transition.spec.ts`를 참고하세요. Cross-tab cookie 감지와
+향후 dirty-navigation 확인은 제공하지 않으며 auth 철회는 해당 후속 조립보다 우선합니다.
+
 ## Progressive native HTTP forms
 
 [Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의

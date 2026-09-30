@@ -18,6 +18,7 @@ import AdminDestination from './admin-page';
 import { ExamplePageSlot } from './example-page-slot';
 import { ResourceProbe } from './resource-probe';
 import CatalogPage, { type CatalogPageProps } from './catalog-page';
+import { SessionControls, SessionResources } from './session-controls';
 
 const RECOMMENDATIONS_DELAY_MS = 25;
 
@@ -87,7 +88,7 @@ function LongLivedResource() {
   );
 }
 
-function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void }) {
+function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => string }) {
   const navigation = useNavigation();
   const params = useParams();
   const pathname = usePathname();
@@ -189,8 +190,7 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void
     createElement('button', { onClick: () => router.refresh(), type: 'button' }, 'Refresh'),
     createElement('button', {
       onClick: () => {
-        router.invalidate();
-        onSwitchUser();
+        void router.sessionChanged({ epoch: onSwitchUser(), reason: 'login' });
       },
       type: 'button',
     }, 'Switch user and prefetch scope'),
@@ -220,13 +220,16 @@ export function ProductDocument({
   sku,
   stylesheets,
 }: ProductDocumentProps) {
+  const sessionDemo = catalog?.sessionDemo === true || initialPage?.payload.destination.props.sessionDemo === true;
+  const initialIdentity: unknown = initialPage?.payload.destination.props.sessionIdentity;
+  const sessionIdentity = catalog?.sessionIdentity ?? (typeof initialIdentity === 'string' ? initialIdentity : undefined);
   const identifier = useId();
   const [LazyRecommendations] = useState(() => lazy(async () => {
     await new Promise<void>((resolve) => setTimeout(resolve, RECOMMENDATIONS_DELAY_MS));
     const { Recommendations } = await import('./recommendations');
     return { default: Recommendations };
   }));
-  const [prefetchScope, setPrefetchScope] = useState('catalog:anonymous');
+  const prefetchScope = 'catalog:public';
   const initialSnapshot = createReactRouteSnapshot({ params: routeParams, url: routeUrl, metadata: routeMetadata });
 
   const renderRouteDocument = (destination: ReactNode | null): ReactNode => createElement(
@@ -258,7 +261,9 @@ export function ProductDocument({
         { tabIndex: -1 },
         createElement(ExamplePageSlot, {
           destination,
-          page: catalog !== undefined ? createElement(CatalogPage, { ...catalog }) : adminPage === undefined
+          page: catalog !== undefined ? createElement(CatalogPage, { ...catalog,
+            ...(sessionDemo ? { sessionDemo: true, sessionIdentity } : {}),
+          }) : adminPage === undefined
           ? createElement(
             'section',
             { 'aria-label': 'Product page' },
@@ -299,14 +304,15 @@ export function ProductDocument({
           : createElement(AdminDestination, { page: adminPage }),
         }),
         createElement(HydratedCounter),
-        createElement(ResourceProbe),
+        createElement(SessionResources, { children: createElement(ResourceProbe) }),
         createElement('a', { href: '#details', id: 'details', tabIndex: -1 }, 'Page details'),
-        createElement(LongLivedResource),
+        createElement(SessionResources, { children: createElement(LongLivedResource) }),
+        sessionDemo ? createElement(SessionControls) : null,
         createElement(ProductNavigation, {
           onSwitchUser: () => {
-            const next = prefetchScope === 'catalog:anonymous' ? 'catalog:alice' : 'catalog:anonymous';
+            const next = document.cookie.includes('session=alice') ? 'catalog:anonymous' : 'catalog:alice';
             document.cookie = next === 'catalog:alice' ? 'session=alice; Path=/' : 'session=; Max-Age=0; Path=/';
-            setPrefetchScope(next);
+            return next;
           },
         }),
       ),
@@ -318,6 +324,7 @@ export function ProductDocument({
   );
 
   return createElement(ReactClientRouterProvider, {
+    session: { epoch: sessionIdentity === undefined ? 'demo:initial' : `demo:${sessionIdentity}` },
     initialSnapshot,
     navigationModules,
     navigationBuildId,

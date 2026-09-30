@@ -619,6 +619,20 @@ Catalog만으로는 URI versioning과 header, media-type, custom version strateg
 - [transforms/](./src/transforms/) - 코드 변환 구현.
 
 
+## React starter session composition
+
+Generated React Vite starter의 `/catalog/session` fixture는 일반 HTTP origin/CSRF
+보호 login/logout/permissions handler와 기존 provider/router session barrier를
+사용합니다. Authentication SDK가 아닌 demo입니다.
+명시적 `ReactModule.formResult({ ..., session })`는 브라우저의 `Set-Cookie` 접근에
+의존하지 않습니다. 통지 경로는 `router.sessionChanged` 하나이며 prefetch-scope만
+바꾸는 동작은 session boundary가 아닙니다.
+앱은 기존 session-aware resource subtree에서 실제 MessageChannel operation과 effect
+cleanup을 소유합니다. JavaScript 없이도 native POST/303/GET을 유지합니다.
+`tests/session-transition.spec.ts`는 dev/production의 shipped runtime을 검증합니다.
+[Migration](../../docs/getting-started/migrate-react-session-composition.ko.md)은 기존 consumer의
+변경과 제한된 saved JSON 경계를 설명합니다.
+
 ## Progressive native HTTP forms
 
 [Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의

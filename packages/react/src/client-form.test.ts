@@ -5,6 +5,7 @@ import { captureFormSubmission, submitHttpForm } from './client/form-transport.j
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as Client from './client.js';
+import { useClientNavigationStore } from './client/provider.js';
 import { createReactRouteSnapshot } from './client/snapshot.js';
 import { createClientNavigationStore } from './client/store.js';
 import type { ReactNavigationLoadResult } from './client/navigation-payload.js';
@@ -62,6 +63,57 @@ it.each([
   expect(await submitHttpForm(submission, new AbortController().signal)).toEqual({
     status: 'uncertain', reason: 'protocol',
   });
+});
+
+it('does not start an obsolete POST when an abort listener reenters its old form binding', async () => {
+  // Given: an actual provider/form and a held POST whose abort listener invokes the old DOM binding.
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  window.history.replaceState(null, '', '/page');
+  const target = document.createElement('div');
+  document.body.append(target);
+  let store: ReturnType<typeof createClientNavigationStore> | undefined;
+  let complete: (response: Response) => void = () => { throw new Error('Missing held POST'); };
+  const started = deferred<void>();
+  const fetch = vi.fn((_url: string, init: RequestInit) => {
+    init.signal?.addEventListener('abort', () => {
+      const form = target.querySelector('form');
+      form?.requestSubmit(form.querySelector('button'));
+    }, { once: true });
+    started.resolve();
+    return new Promise<Response>((resolve) => { complete = resolve; });
+  });
+  vi.stubGlobal('fetch', fetch);
+  function Probe() {
+    store = useClientNavigationStore();
+    const binding = Client.useForm<{ name: string }>({
+      id: 'old-binding', action: '/save', fields: { name: 'name' }, allowDestination: () => false,
+    });
+    return createElement('form', binding.formProps,
+      createElement('input', { name: 'name', defaultValue: 'old identity' }),
+      createElement('button', { type: 'submit' }, 'Submit'));
+  }
+  const root = createRoot(target);
+  try {
+    await act(async () => root.render(createElement(Client.ReactClientRouterProvider, {
+      initialSnapshot: createReactRouteSnapshot({ params: {}, url: '/page' }),
+    }, createElement(Probe))));
+    expect(store?.isConnected()).toBe(true);
+    await act(async () => {
+      const form = target.querySelector('form');
+      form?.requestSubmit(form.querySelector('button'));
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+    await started.promise;
+    // When: explicit logout revokes ownership before firing the POST's abort listener.
+    if (store === undefined) throw new Error('Missing actual provider store');
+    await act(async () => { await store?.router.sessionChanged({ epoch: 'b', reason: 'logout' }); });
+    // Then: the old handler cannot send a second POST from obsolete controls.
+    expect(fetch).toHaveBeenCalledOnce();
+    complete(saved());
+  } finally {
+    await act(async () => root.unmount());
+    target.remove();
+  }
 });
 
 it('uses a compatible copy through the same provider and isolates separate provider forms', async () => {

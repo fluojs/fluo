@@ -101,8 +101,9 @@ uses HTTP approval, but invalidating an untagged back entry loads its ordinary d
 From `/admin/qr`, hover `Prefetch public sku-84` or scroll to `Prefetch public on viewport`,
 then activate the opted-in link. The first GET fetches a public navigation representation;
 activation consumes it without another GET. `Open public sku-84 without prefetch` still makes
-a normal request. `Switch user and prefetch scope` changes the session cookie and the
-application-managed `prefetchScope` before further navigation. `Rename without reload` sends
+a normal request. `Switch user and prefetch scope` changes the demo cookie and uses
+`router.sessionChanged` to revoke the previous provider approval before fresh HTTP;
+the public prefetch label is not a competing session notifier. `Rename without reload` sends
  a guarded POST and calls `router.invalidate()` after success. Click `Refresh` to fetch and
  display the changed server value in the same page without a history entry; pending and
  preserved failure retain the last approved value. The other fixture links show
