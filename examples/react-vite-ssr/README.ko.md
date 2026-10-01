@@ -2,6 +2,11 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
+Session acceptance는 session 설정 없는 plain provider children의
+`?legacySession=1`과 앱이 한 번의 fresh auth read를 선택하는 `?authRefresh=1`도
+검증합니다. 안전한 document exit과 configured GET/POST auth policy 소비를 증명하는
+예제 fixture 변형이며 별도 framework API가 아닙니다.
+
 Hydration 및 client-navigation phase를 위한 최소 Vite-backed `@fluojs/react` 애플리케이션입니다.
 두 번째 routing model을 만들지 않고 HTTP-owned page route, DTO-bound parameter, streamed React
 SSR, Vite manifest asset, hydrated browser runtime, progressively enhanced native mutation form을
@@ -96,8 +101,9 @@ logout 뒤 보존은 입증하지 않습니다. 생성 starter는 자신의 기�
 `Prefetch public on viewport`를 화면에 표시한 뒤 opt-in link를 활성화하세요.
 첫 GET으로 받은 public navigation representation을 추가 GET 없이 한 번 소비합니다.
 `Open public sku-84 without prefetch`는 계속 일반 요청을 합니다.
-`Switch user and prefetch scope`는 다음 navigation 전에 session cookie와
-application-managed `prefetchScope`를 변경합니다. `Rename without reload`는 guard가 있는
+`Switch user and prefetch scope`는 demo cookie를 변경하고 `router.sessionChanged`로
+이전 provider 승인을 철회한 뒤 fresh HTTP를 실행합니다. Public prefetch label은
+경쟁하는 session notifier가 아닙니다. `Rename without reload`는 guard가 있는
 POST 성공 뒤 `router.invalidate()`를 호출합니다. `Refresh`로 새 서버 값을 같은 page에
 history entry 없이 표시합니다. Pending과 보존된 실패에서는 마지막 승인 값을 유지합니다.
 다른 fixture link는 거절된

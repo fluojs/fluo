@@ -79,12 +79,20 @@ reset, matched `@PageMetadata(...)` head 갱신 및 교체 가능한 focus/scrol
 
 Optional `Link prefetch="hover" | "viewport"`에는 provider `navigationModules`,
 일치하는 `navigationBuildId` 및 명시적
-auth/session epoch인 `prefetchScope`가 필요합니다. `ReactNavigationPage.create(page,
+provider-local session generation과 결합되는 app cache label인 `prefetchScope`가 필요합니다. `ReactNavigationPage.create(page,
 destination, { prefetch: 'public' })`만 credential을 생략한 identity-independent status-`200`
 navigation JSON 결과에 grant를 허용합니다. HTTP는 request credential, 최종 `Set-Cookie`,
 기존 `Cache-Control`/`Vary`를 검사한 뒤 `X-Fluo-Navigation-Prefetch: public`을 발급합니다.
-한도가 있는 provider cache는 single-use입니다. Auth/data mutation 뒤 다음 in-document
-navigation 전에 scope를 변경하거나 `router.invalidate()`를 호출하세요. 일반 credential
+한도가 있는 provider cache는 single-use입니다. Auth 변경은 다음 in-document navigation
+전에 `router.sessionChanged`로 통지합니다. 일반 data mutation은 `router.invalidate()`를
+사용하고 다른 form을 보존합니다. 선택적 provider `session` config와
+`useRouterState().session`은 기존 router barrier를 공유하며 policy 전에 이전 page/head/
+retained data를 철회하고 fresh 401은 signed-out, 403은 forbidden으로 처리합니다.
+새 승인 전까지 초기 SSR fallback도 억제합니다. 미설정 legacy 인증 거절은 같은 barrier
+뒤 일반 document exit을 사용합니다. Configured auth policy refresh는 POST 재실행 없이
+fresh GET을 실행합니다. Saved form session 결과도 같은 barrier를 사용하며 binding 취소는
+그 policy와 follow-up 권한을 철회합니다. 앱 resource는 기존 React subtree/effect cleanup으로 정리합니다.
+[Session migration](./getting-started/migrate-react-session-composition.ko.md)을 참고하세요. 일반 credential
 포함 navigation과 back/forward는 계속 HTTP 승인을 요청합니다. Eligibility, freshness,
 fallback의 원본은 위 계약입니다.
 

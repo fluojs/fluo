@@ -66,6 +66,25 @@ document update를 표시합니다. `/assets/` 게시 순서와 asset 보존은
 
 ## 개발과 배포 경계
 
+### Session composition boundary
+
+앱이 확인한 login, logout, permission 변경은 기존 provider의 `session` option과
+`router.sessionChanged({ epoch, reason })`으로 알립니다. 같은 epoch label도 내부
+ownership을 전진시킵니다. Barrier는 async policy나 이전 abort listener 실행 전에
+초기 SSR fallback을 포함한 approved page/head/retained form data를 철회합니다.
+Fresh credential 포함 401은 signed-out, 403은 identity를 지우지 않는 forbidden을
+선택하며 anonymous speculation은 credential 포함 session을 종료하지 못합니다.
+
+명시적 saved `ReactModule.formResult({ ..., session, data })`는 동일 경계를
+통과합니다. 이를 시작한 confirmed continuation만 fresh GET approval로 이관되며
+GET retry는 POST를 재전송하지 않습니다. 앱 보호 자원은 framework teardown registry
+대신 기존 React subtree/effect cleanup을 사용합니다. 외부 HttpOnly cookie 변경은
+즉시 notification channel이 아닙니다.
+[Session migration](../getting-started/migrate-react-session-composition.ko.md)과 owning
+navigation/forms 계약이 정확한 기본값과 override를 정합니다. Production example과
+packaged starter session 여정은 범위가 한정된 근거이며 #3879의 전체 제품 게이트나
+#3886의 extended soak 완료를 뜻하지 않습니다.
+
 | 수정 종류 | 현재 메커니즘과 결과 | 목표 owner 및 실패/복구 경계 |
 | --- | --- | --- |
 | React component (`.tsx`) | 공식 Node React/Vite client graph에서 `fluo dev`가 app child 교체 없이 Fast Refresh를 적용합니다. 직접 HTTP 요청은 DTO validation 후 최신 SSR page module을 로드합니다. 호환 가능한 component boundary에서만 state가 보존됩니다. | #3876은 이 범위와 syntax 오류 수정을 소유하고 #3877은 일반 shared/server restart·drain 정책을 소유합니다. |

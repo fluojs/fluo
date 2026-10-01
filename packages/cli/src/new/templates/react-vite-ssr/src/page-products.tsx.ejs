@@ -4,6 +4,8 @@ import { Link, useForm } from '@fluojs/react/client';
 export type CatalogPageProps = {
   readonly products: readonly { readonly sku: string; readonly name: string }[];
   readonly selected?: string;
+  readonly sessionDemo?: boolean;
+  readonly sessionIdentity?: string;
 };
 
 export function CatalogForm({ id, action, name = '', label, deleting = false }: {
@@ -48,6 +50,14 @@ export default function CatalogPage(props: Record<string, unknown>) {
       && typeof value.sku === 'string' && typeof value.name === 'string',
   ) : [];
   const selected = typeof props.selected === 'string' ? props.selected : undefined;
+  if (props.sessionDemo === true) {
+    return createElement('section', { 'aria-label': 'Session page' },
+      createElement('h1', null, typeof props.sessionIdentity === 'string' ? `Session ${props.sessionIdentity}` : 'Session sign in'),
+      ...products.map((product) => createElement('p', { key: product.sku, 'data-product': product.sku }, product.name)),
+      typeof props.sessionIdentity === 'string'
+        ? createElement('input', { 'aria-label': 'Protected draft', defaultValue: `Private draft ${props.sessionIdentity}` }) : null,
+    );
+  }
   return createElement('section', { 'aria-label': 'Catalog CRUD' },
     createElement('h1', null, selected === undefined ? 'Catalog' : `Product ${selected}`),
     createElement('a', { href: '/catalog/login' }, 'Sign in as demo editor'),

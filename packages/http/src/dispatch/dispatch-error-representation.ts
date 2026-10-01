@@ -137,6 +137,11 @@ export async function writeErrorResponse(
   const provider = options.representation?.html;
   const acceptHeader = readAcceptHeader(requestContext);
   const representationContext = createRepresentationContext(httpError, requestContext, options.handler);
+  if (requestContext.request.method.toUpperCase() === 'GET'
+    && acceptHeader?.trim().toLowerCase() === 'application/vnd.fluo.react-navigation+json;v=2') {
+    await writeCanonicalJson(httpError, requestContext);
+    return;
+  }
   if (requestContext.request.method.toUpperCase() === 'POST'
     && acceptHeader?.trim().toLowerCase() === HTTP_FORM_MEDIA_TYPE) {
     let errors = readHttpFormRejection(httpError);

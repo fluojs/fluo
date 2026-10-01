@@ -711,6 +711,29 @@ This approach is not the final form of a sophisticated editor. It carries the co
 - [Writing and Clearing Cookies](../../packages/passport/src/cookie/cookie-manager.ts), [Prisma current and transaction](../../packages/prisma/README.md)
 
 
+## Hydrated session approval and app-owned cleanup
+
+The native document/forms earlier in this chapter stay valid. For an opt-in hydrated
+reader/editor, configure the existing provider's nonsecret session epoch and use
+`router.sessionChanged` after application-confirmed login/logout/permissions.
+`useRouterState().session` owns the approval snapshot; do not infer it from cookie
+values or add a competing notifier. A session-bearing `ReactModule.formResult`
+enters the same barrier before asynchronous policy, preserves the confirmed save,
+and approves its destination with fresh GET. It never retries POST automatically.
+
+On revocation, both protected initial SSR fallback and later page/head/input state
+disappear. 401 is signed-out; 403 is forbidden without identity erasure. The app
+must place its protected MessageChannel/player/listener under the existing
+session-aware React subtree and cleanup its actual owned resource on unmount.
+Notification settlement does not prove SDK disposal. The runnable fixture operates
+a real channel, observes both port closes, holds an old HTTP body, proves public
+cancellation before release, and recovers another user's fresh page.
+
+Use [session migration](../../docs/getting-started/migrate-react-session-composition.md)
+and `examples/react-vite-ssr/tests/session-transition.spec.ts` alongside the native
+exercises below. Cross-tab cookie detection and future dirty-navigation confirmation
+are not provided here; auth revocation takes priority over that later composition.
+
 ## Progressive native HTTP forms
 
 The [progressive form contract](../../docs/contracts/react-progressive-forms.md) connects `useForm` in the existing

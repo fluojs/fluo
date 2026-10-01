@@ -55,6 +55,7 @@ const REACT_VITE_SSR_TEMPLATES: readonly ReactViteSsrTemplate[] = [
   { outputPath: 'src/app.test.ts', templatePath: 'src/app.test.ts.ejs' },
   { outputPath: 'src/app.ts', templatePath: 'src/app.ts.ejs' },
   { outputPath: 'src/catalog.ts', templatePath: 'src/catalog.ts.ejs' },
+  { outputPath: 'src/session-controls.tsx', templatePath: 'src/session-controls.tsx.ejs' },
   { outputPath: 'src/page-products.tsx', templatePath: 'src/page-products.tsx.ejs' },
   { outputPath: 'src/entry-client.tsx', templatePath: 'src/entry-client.tsx.ejs' },
   { outputPath: 'src/entry-client-dev.ts', templatePath: 'src/entry-client-dev.ts.ejs' },
@@ -70,6 +71,7 @@ const REACT_VITE_SSR_TEMPLATES: readonly ReactViteSsrTemplate[] = [
   { outputPath: 'src/styles.d.ts', templatePath: 'src/styles.d.ts.ejs' },
   { outputPath: 'tests/deployment-transition.spec.ts', templatePath: 'tests/deployment-transition.spec.ts.ejs' },
   { outputPath: 'tests/production-hydration.spec.ts', templatePath: 'tests/production-hydration.spec.ts.ejs' },
+  { outputPath: 'tests/session-transition.spec.ts', templatePath: 'tests/session-transition.spec.ts.ejs' },
 ];
 
 function resolveTemplateDirectory(importMetaUrl: string): string {

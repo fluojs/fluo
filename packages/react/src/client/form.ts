@@ -132,6 +132,12 @@ export function useForm<Input extends object>(
       onSubmit(event) {
         options.onSubmit?.(event);
         if (event.defaultPrevented || !connected) return;
+        // Old DOM handlers may reenter synchronously while session revocation aborts work.
+        if (navigation.forms.get(key) !== form
+          || route.session?.generation !== navigation.getSnapshot().session?.generation) {
+          event.preventDefault();
+          return;
+        }
         if (navigation.getSnapshot().url.split('#', 1)[0]
           !== `${window.location.pathname}${window.location.search}`) return;
         const nativeEvent = event.nativeEvent;
@@ -141,6 +147,9 @@ export function useForm<Input extends object>(
         if (submission === undefined) return;
         event.preventDefault();
         void form.submit(submission, {
+          sessionChanged: (change) => navigation.applyFormSession(change, form),
+          authRejected: (reason) => navigation.rejectFormAuth(reason, form),
+          releaseSession: () => navigation.releaseFormSession(form),
           invalidate: navigation.router.invalidate,
           approve: (destination, followUp, signal) =>
             navigation.approveForm(destination, followUp, signal, form),

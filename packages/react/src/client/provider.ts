@@ -129,8 +129,9 @@ export function ReactClientRouterProvider({
   navigationBuildId,
   prefetchScope,
   failurePolicy,
+  session,
 }: ReactClientRouterProviderProps) {
-  const [store] = useState(() => createClientNavigationStore(initialSnapshot));
+  const [store] = useState(() => createClientNavigationStore(initialSnapshot, session));
   const destination = useSyncExternalStore(store.subscribe, store.getDestination, store.getDestination);
 
   useEffect(() => {

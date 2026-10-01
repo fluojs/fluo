@@ -116,6 +116,26 @@ GET approval만 반복합니다. input을 유지하고 이 차이를 명시적 r
 보여주세요. 기존 `useRouter().refresh()`는 승인 성공 뒤 page state를 의도적으로 reset합니다.
 automatic form refresh가 그 API를 몰래 재정의하지 않습니다.
 
+## Explicit saved session and data
+
+`ReactModule.formResult`는 option literal을 유지하며 선택적 `data`와 명시적인
+`session: { epoch, reason }`를 포함할 수 있습니다. Native 성공은 303, 협상한 saved는
+v1입니다. Saved data는 finite JSON primitive, dense array, plain object만 허용합니다.
+Date/class/function/undefined member/hook/accessor/cycle은 `toJSON`을 실행하지 않고
+거절합니다. Generated
+`ReactFormContract<Input, Data> { fields; decodeSaved(value: unknown): Data }`를 기존
+`useForm({ contract, ... })`에 전달합니다. 잘못된 decoded data는 protocol uncertainty이며
+typed cast나 persistence rollback이 아닙니다. 수동 fields로 saved type을 주장하지 않습니다.
+
+명시적 saved session은 async session/destination policy 전에 router의 동일한 철회
+barrier를 통과합니다. Initiating form의 확인된 safe saved continuation만 이관하며 다른
+이전 write/result/retained value는 무효입니다. Logout은 GET 없이 정착할 수 있습니다.
+Login/permission acknowledgement는 별도 page refresh 대신 handler의 fresh follow-up GET을
+사용합니다. GET retry는 POST나 explicit session notification을 반복하지 않습니다.
+Fresh POST/follow-up 401·403은 이전 화면을 무조건 보존하지 않고 auth policy에 전달됩니다.
+거절된 follow-up은 confirmed `saved`와 별개입니다. 일반 mutation은 다른 input/error/focus의
+보존을 계속 유지합니다.
+
 ## Companion ownership
 
 [제품 acceptance](./react-fullstack-product.ko.md),

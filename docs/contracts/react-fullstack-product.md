@@ -67,6 +67,26 @@ product gate.
 
 ## Development and deployment boundary
 
+### Session composition boundary
+
+Use the existing provider's `session` option and
+`router.sessionChanged({ epoch, reason })` for application-confirmed login,
+logout and permission changes. Repeated epoch labels advance internal ownership.
+The barrier revokes approved page/head/retained form data, including the initial
+SSR fallback, before asynchronous policy or old abort listeners run. Fresh
+credentialed 401 selects signed-out and 403 selects forbidden without discarding
+identity; anonymous speculation cannot terminate a credentialed session.
+
+An explicit saved `ReactModule.formResult({ ..., session, data })` enters that
+same boundary. Only its initiating confirmed continuation survives for fresh
+GET approval; GET retry never resends POST. App-owned protected resources use
+existing React subtree/effect cleanup, not a framework teardown registry.
+External HttpOnly cookie changes are not an immediate notification channel.
+The [session migration](../getting-started/migrate-react-session-composition.md)
+and owning navigation/forms contracts define the exact defaults and overrides.
+Production example and packaged starter session journeys provide scoped evidence,
+not #3879's complete product gate or #3886's extended soak.
+
 | Edit class | Current mechanism and outcome | Target owner and failure/recovery boundary |
 | --- | --- | --- |
 | React component (`.tsx`) | On the official Node React/Vite client graph, `fluo dev` applies Fast Refresh without replacing the app child; SSR page modules reload for direct HTTP requests after DTO validation. State is retained only for compatible component boundaries. | #3876 owns this scoped behavior and syntax-error correction; #3877 owns general shared/server restart and drain policy. |

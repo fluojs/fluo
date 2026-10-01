@@ -32,5 +32,10 @@ export type {
   ReactRouter,
   ReactRouteSnapshot,
   ReactRouteSnapshotInput,
+  ReactSessionSnapshot,
+  ReactSessionContext,
+  ReactSessionDecision,
+  ReactSessionPolicy,
+  ReactSessionOptions,
 } from './client/types.js';
 export type { ReactSessionChange } from './form-result.js';

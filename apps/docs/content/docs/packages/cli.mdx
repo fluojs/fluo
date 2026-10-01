@@ -200,6 +200,21 @@ Programmatic generation is synchronous file planning and template rendering (EJS
 - **`@fluojs/vite`** - generated non-Deno starter configs import `fluoDecoratorsPlugin()` rather than copying Babel configuration inline.
 - **`@fluojs/runtime`** - `fluo inspect` bootstraps your module graph adapterlessly through the runtime; lifecycle commands own only the process boundary around your app.
 
+## React session composition in the generated starter
+
+The React Vite starter includes `/catalog/session` as an ordinary HTTP login,
+logout and permissions demo with origin/CSRF checks. It uses the existing provider
+and `router.sessionChanged`, not a competing notifier or prefetch-scope-only reset.
+Explicit form session outcomes are processed before asynchronous destination
+policy, while native POST/303/GET stays available without JavaScript.
+
+The existing application subtree owns its real MessageChannel operation and effect
+cleanup when approval is revoked. `tests/session-transition.spec.ts` exercises
+initial protected content removal and distinct-session recovery in dev/production.
+This fixture is not an auth SDK or a cross-tab cookie detector. Confirmed saved
+state is separate from failed fresh page approval, and no POST is automatically
+replayed.
+
 ## Failures, limits, and common mistakes
 
 - **CI hangs on prompts** - update checks and installs are TTY-gated; still, set `FLUO_NO_UPDATE_CHECK=1` and pass explicit flags (`--package-manager`, `--no-install`) when automating `fluo new`.

@@ -29,6 +29,31 @@ const loadReactNavigationDestination = (
   options: Parameters<typeof loadNavigation>[2] = {},
 ) => loadNavigation(href, modules, { buildId: BUILD_ID, ...options });
 
+it('consumes auth refresh through two uncached credentialed GETs before fresh approval', async () => {
+  const href = `${ORIGIN}${payload.url}`;
+  vi.stubGlobal('window', { location: { href } });
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(new Response(null, { status: 401 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify(payload), { headers: { 'Content-Type': MEDIA_TYPE } }));
+  vi.stubGlobal('fetch', fetch);
+  const modules = { './navigation-product.ts': async () => ({ default: () => null }) };
+  const store = createClientNavigationStore(createReactRouteSnapshot({ url: href }), {
+    epoch: 'a', policy: () => 'refresh',
+  });
+  store.connect({
+    currentHref: () => href, assign: vi.fn(), replace: vi.fn(), reload: vi.fn(), back: vi.fn(),
+    pushState: vi.fn(), replaceState: vi.fn(), subscribe: () => () => {},
+    load: (destination, signal) => loadReactNavigationDestination(destination, modules, { signal }),
+  });
+  expect(await store.router.refresh()).toEqual({ status: 'complete' });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  for (const [, init] of fetch.mock.calls) {
+    expect(init).toMatchObject({ credentials: 'same-origin', cache: 'no-store' });
+    expect(init.method ?? 'GET').toBe('GET');
+  }
+  expect(store.getSnapshot().session?.status).toBe('approved');
+});
+
 it('rejects a B navigation before importing when its build differs from the hydrated A tab', async () => {
   // Given: A tab receives a valid HTTP-approved B payload for a mapped module.
   vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
@@ -518,6 +543,26 @@ it.each([
 
   // Then: only a safe public reason crosses the browser navigation boundary.
   expect(result).toEqual({ ok: false, reason });
+});
+
+it.each([
+  [401, 'unauthorized'],
+  [403, 'forbidden'],
+] as const)('classifies fresh credentialed %i before reading private response bodies or importing a page', async (status, reason) => {
+  // Given: a protected HTTP rejection contains data that must not become page approval.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  const response = new Response('private session data', { status });
+  const body = vi.spyOn(response, 'text');
+  const importer = vi.fn(async () => ({ default: () => null }));
+  vi.stubGlobal('fetch', vi.fn(async () => response));
+  // When: the actual navigation loader receives that credentialed status.
+  const result = await loadReactNavigationDestination('/products/sku-84', {
+    './navigation-product.ts': importer,
+  });
+  // Then: safe auth discrimination precedes all body/module work.
+  expect(result).toEqual({ ok: false, reason });
+  expect(body).not.toHaveBeenCalled();
+  expect(importer).not.toHaveBeenCalled();
 });
 
 it('preserves the approved shell on a post-header body stream failure', async () => {
