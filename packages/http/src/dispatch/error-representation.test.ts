@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Container } from '@fluojs/di';
 
-import { BadRequestException, type HttpErrorRepresentationContext } from '../index.js';
+import {
+  BadRequestException, Controller, createHandlerMapping, ForbiddenException, Get,
+  type HttpErrorRepresentationContext, UnauthorizedException,
+} from '../index.js';
 import {
   createRequest,
   createResponse,
@@ -8,6 +12,66 @@ import {
 } from './error-representation.test-fixture.js';
 
 describe('HTTP-owned error representations', () => {
+  @Controller('/navigation-failures')
+  class NavigationFailureController {
+    @Get('/unauthorized')
+    unauthorized(): never {
+      throw new UnauthorizedException('Session expired.');
+    }
+
+    @Get('/forbidden')
+    forbidden(): never {
+      throw new ForbiddenException('Permission denied.');
+    }
+  }
+
+  it.each([
+    ['/navigation-failures/unauthorized', 401, 'UNAUTHORIZED'],
+    ['/navigation-failures/forbidden', 403, 'FORBIDDEN'],
+    ['/missing', 404, 'NOT_FOUND'],
+  ] as const)('preserves navigation GET HTTP status for %s (%i) with an HTML provider', async (path, status, code) => {
+    // Given: a real dispatcher with matched auth failures and an application HTML provider.
+    const canRender = vi.fn(() => true);
+    const render = vi.fn(() => '<main>must not render</main>');
+    const { dispatcher } = createTestDispatcher({ canRender, render }, {
+      handlerMapping: createHandlerMapping([{ controllerToken: NavigationFailureController }]),
+    }, new Container().register(NavigationFailureController));
+    const response = createResponse();
+    // When: the exact GET v2 protocol requests an error, not a successful destination.
+    await dispatcher.dispatch(createRequest(path, 'application/vnd.fluo.react-navigation+json;v=2'), response);
+    // Then: canonical HTTP errors retain status without HTML, page approval or public grant.
+    expect(response.statusCode).toBe(status);
+    expect(response.body).toMatchObject({ error: { code, status } });
+    expect(response.headers['Content-Type']).toBe('application/json; charset=utf-8');
+    expect(response.headers.Vary).toBe('Accept');
+    expect(response.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+    expect(response.body).not.toHaveProperty('destination');
+    expect(canRender).not.toHaveBeenCalled();
+    expect(render).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['GET', 'application/vnd.fluo.react-navigation+json;v=1'],
+    ['GET', 'application/vnd.fluo.react-navigation+json;v=3'],
+    ['GET', 'application/vnd.fluo.react-navigation+json;v=2;q=0'],
+    ['HEAD', 'application/vnd.fluo.react-navigation+json;v=2'],
+    ['POST', 'application/vnd.fluo.react-navigation+json;v=2'],
+    ['PUT', 'application/vnd.fluo.react-navigation+json;v=2'],
+  ] as const)('keeps unsupported navigation error negotiation at 406 for %s %s', async (method, accept) => {
+    // Given: an unsupported method/version/quality with the same application HTML provider.
+    const render = vi.fn(() => '<main>unused</main>');
+    const { dispatcher } = createTestDispatcher({ render });
+    const response = createResponse();
+    // When: the request is outside the exact GET v2 error protocol.
+    await dispatcher.dispatch(createRequest('/missing', accept, method), response);
+    // Then: existing 406 and HEAD body suppression remain intact.
+    expect(response.statusCode).toBe(406);
+    expect(response.headers['Content-Type']).toBe('application/json; charset=utf-8');
+    if (method === 'HEAD') expect(response.body).toBeUndefined();
+    else expect(response.body).toMatchObject({ error: { code: 'NOT_ACCEPTABLE', status: 406 } });
+    expect(render).not.toHaveBeenCalled();
+  });
+
   it.each(['application/json', 'text/html'])('preserves a compatible duplicate-copy HTTP exception for %s', async (accept) => {
     const duplicateError = new BadRequestException('Invalid request.', {
       details: [{ code: 'INVALID_NAME', field: 'name', message: 'Name is invalid.' }],

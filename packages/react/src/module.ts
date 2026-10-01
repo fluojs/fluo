@@ -4,7 +4,7 @@ import type { MiddlewareLike } from '@fluojs/http/portable';
 import { registerFrameworkResponseWriter, type FrameworkResponseWriterContext } from '@fluojs/http/internal';
 import { defineModule, type ModuleDefinition, type ModuleType } from '@fluojs/runtime/internal';
 import type { ReactSsrDiagnosticHandler } from './diagnostics.js';
-import type { ReactFormResult, ReactFormResultOptions } from './form-result.js';
+import { copyReactFormData, parseReactSessionChange, type ReactFormResultOptions } from './form-result.js';
 import { REACT_PAGE_RENDERER, type ReactPageRenderer } from './page-renderer.js';
 import { createReactPageResultMiddleware } from './page-result.js';
 import { validateReactRenderPolicyControllers } from './render-policy.js';
@@ -51,7 +51,7 @@ export class ReactModule {
    * @returns A native 303 result or explicitly negotiated saved acknowledgement.
    * @throws TypeError For a malformed destination.
    */
-  static formResult(options: ReactFormResultOptions): ReactFormResult {
+  static formResult<const Options extends ReactFormResultOptions>(options: Options): Options {
     if (!options.destination.startsWith('/') || options.destination.startsWith('//')
       || Array.from(options.destination).some((character) =>
         character === '\\' || character.charCodeAt(0) <= 0x20)) {
@@ -59,7 +59,12 @@ export class ReactModule {
     }
     const destination = options.destination;
     const followUp = options.followUp;
-    const entry = registerFrameworkResponseWriter({ destination, followUp }, (context) => {
+    const session = options.session === undefined ? undefined : parseReactSessionChange(options.session);
+    if (options.session !== undefined && session === undefined) {
+      throw new TypeError('A form session must carry a nonempty epoch and explicit transition reason.');
+    }
+    const data = Object.hasOwn(options, 'data') ? copyReactFormData(options.data) : undefined;
+    const entry = registerFrameworkResponseWriter(options, (context) => {
       context.applySuccessResponseMetadata();
       if ((context.response.statusCode ?? 201) < 200 || (context.response.statusCode ?? 201) >= 300) {
         return context.response.send(undefined);
@@ -76,7 +81,10 @@ export class ReactModule {
             return { version: 1, outcome: 'rejected' };
           }
           context.response.setStatus(200);
-          return { version: 1, outcome: 'saved', destination, followUp };
+          return { version: 1, outcome: 'saved', destination, followUp,
+            ...(data === undefined ? {} : { data }),
+            ...(session === undefined ? {} : { session }),
+          };
         },
       },
     });

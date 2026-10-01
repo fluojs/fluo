@@ -524,6 +524,23 @@ Readers can now discover merchandise in their familiar blog, choose their size a
 [Previous: Modeling a T-shirt as a Product](./ch03-catalog-and-money.md) - [Volume 2 Contents](./toc.md) - [Next: Why You Cannot Trust Cart Prices](./ch05-cart-and-pricing.md)
 
 
+## Customer sessions do not reuse another customer's approval
+
+Keep this chapter's read-only HTTP/native fallback. Add hydrated session composition
+to the existing provider/router, not a separate login navigator. Nonsecret epochs
+label app notifications; each `router.sessionChanged` invalidates old protected page,
+head, form retention and public prefetch ownership before policy. A saved session
+outcome transfers only its confirmed continuation to a fresh credentialed GET.
+Ordinary product mutations still preserve unrelated form state.
+
+A fresh 403 is permission denial, not logout; 401 selects signed-out UI. Anonymous
+speculation cannot revoke a credentialed customer or supply protected content.
+Initial SSR fallback is also suppressed after explicit revocation. App-owned
+channel/player cleanup follows the existing session-aware React subtree, with real
+connection acknowledgement and close evidence rather than counters alone.
+Follow [session migration](../../docs/getting-started/migrate-react-session-composition.md).
+These scoped journeys do not claim the later product/soak acceptance of #3879/#3886.
+
 ## Progressive native HTTP forms
 
 The [progressive form contract](../../docs/contracts/react-progressive-forms.md) connects `useForm` in the existing

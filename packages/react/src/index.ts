@@ -23,7 +23,7 @@ export type {
   ReactErrorRepresentationProviderOptions,
 } from './error-representation.js';
 export { createReactErrorRepresentationProvider } from './error-representation.js';
-export type { ReactFormResult, ReactFormResultOptions } from './form-result.js';
+export type { ReactFormResult, ReactFormResultOptions, ReactSessionChange } from './form-result.js';
 export type { ReactModuleOptions } from './module.js';
 export { ReactModule } from './module.js';
 export type {

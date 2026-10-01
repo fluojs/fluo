@@ -1831,17 +1831,17 @@ describe('@fluojs/react/client', () => {
     ['network', 'error'],
     ['server-error', 'error'],
     ['import-failure', 'error'],
-    ['unauthorized', 'document'],
-    ['forbidden', 'document'],
+    ['unauthorized', 'error'],
+    ['forbidden', 'error'],
     ['redirect', 'document'],
     ['not-found', 'document'],
     ['dto-rejected', 'document'],
     ['invalid-payload', 'document'],
     ['unsupported-module', 'document'],
   ] as const)('applies the existing %s failure policy to current-page refresh', async (reason, status) => {
-    // Given: the regular navigation loader reports a classified HTTP/import failure.
+    // Given: a configured session uses auth UI; other failures retain the existing policy.
     const browser = createEnvironment();
-    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }), { epoch: 'a' });
     const policy = vi.fn(({ reason: cause }: { readonly reason: string }) =>
       cause === 'network' || cause === 'server-error' || cause === 'import-failure'
         ? 'preserve' as const : 'document' as const);
@@ -1855,9 +1855,15 @@ describe('@fluojs/react/client', () => {
 
     // Then: no rejected representation commits, and policy chooses one safe outcome.
     expect(result.status).toBe(status);
-    expect(policy).toHaveBeenCalledWith({
-      destination: '/products/sku-42', reason, type: 'refresh',
-    });
+    if (reason === 'unauthorized' || reason === 'forbidden') {
+      expect(policy).not.toHaveBeenCalled();
+      expect(store.getSnapshot().params).toEqual({});
+      expect(store.getSnapshot().session?.status).toBe(reason === 'unauthorized' ? 'signed-out' : 'forbidden');
+    } else {
+      expect(policy).toHaveBeenCalledWith({
+        destination: '/products/sku-42', reason, type: 'refresh',
+      });
+    }
     expect(store.getDestination()).toBeNull();
     expect(store.getSnapshot().url).toBe('/products/sku-42?preview=true');
     expect(browser.reload).toHaveBeenCalledTimes(status === 'document' ? 1 : 0);

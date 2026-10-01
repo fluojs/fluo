@@ -1,6 +1,34 @@
 import type { ReactNode } from 'react';
 import type { ReactPageMetadata } from '../page-metadata.js';
 import type { ReactNavigationFailureReason, ReactNavigationModules } from './navigation-payload.js';
+import type { ReactSessionChange } from '../form-result.js';
+
+/** Provider-local approval state; epoch labels are not credentials or identities. */
+export type ReactSessionSnapshot = {
+  readonly epoch: string;
+  readonly generation: number;
+  readonly status: 'approved' | 'pending' | 'signed-out' | 'forbidden';
+};
+
+/** Explicit session and fresh HTTP auth rejection context, without response bodies. */
+export type ReactSessionContext = {
+  readonly epoch: string;
+  readonly reason: ReactSessionChange['reason'] | 'unauthorized' | 'forbidden';
+  readonly destination: string;
+};
+
+/** App policy cannot preserve revoked content; a document exit is validated same-origin. */
+export type ReactSessionDecision = 'refresh' | 'signed-out' | 'forbidden' | { readonly document: string };
+
+/** Session policy runs only after old approval and operation ownership are revoked. */
+export type ReactSessionPolicy = (context: ReactSessionContext, signal: AbortSignal) =>
+  ReactSessionDecision | Promise<ReactSessionDecision>;
+
+/** Initial nonsecret application epoch and optional authentication UI policy. */
+export type ReactSessionOptions = {
+  readonly epoch: string;
+  readonly policy?: ReactSessionPolicy;
+};
 
 /** Navigation methods that can change or revalidate the active browser document. */
 export type ReactNavigationType = 'push' | 'replace' | 'back' | 'refresh';
@@ -64,6 +92,7 @@ export interface ReactReadonlySearchParams extends Iterable<[string, string]> {
 
 /** HTTP-owned route state shared between server rendering and client hydration. */
 export type ReactRouteSnapshot = {
+  readonly session?: ReactSessionSnapshot;
   readonly hash: string;
   readonly metadata?: ReactPageMetadata;
   readonly navigation: ReactNavigationSnapshot;
@@ -82,6 +111,13 @@ export type ReactRouteSnapshotInput = {
 
 /** Browser navigation operations exposed by `useRouter()`. */
 export interface ReactRouter {
+  /**
+   * Revoke old page approval and work before applying explicit application session policy.
+   *
+   * @param change Application-issued epoch and login/logout/permissions reason.
+   * @returns Fresh approval, safe auth UI settlement, cancellation or initiated document exit.
+   */
+  sessionChanged(change: ReactSessionChange): Promise<ReactRevalidationResult>;
   /** Delegate traversal to browser history semantics. */
   back(): void;
   /**
@@ -105,6 +141,7 @@ export interface ReactRouter {
 
 /** Props for the request-scoped client router state provider. */
 export type ReactClientRouterProviderProps = {
+  readonly session?: ReactSessionOptions;
   readonly children?: ReactNode | ((destination: ReactNode | null) => ReactNode);
   readonly initialSnapshot: ReactRouteSnapshot;
   /** Build-produced importers for HTTP-approved soft destinations. */

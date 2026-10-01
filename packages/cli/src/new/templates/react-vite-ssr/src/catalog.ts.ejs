@@ -3,7 +3,7 @@ import { FromBody, FromPath, Post, RequestDto, UseGuards, UseInterceptors, Forbi
   type HttpErrorRepresentationOptions, type RequestContext } from '@fluojs/http';
 import type { MiddlewareContext, Next } from '@fluojs/http';
 import { PageMetadata, Path, Router, ReactModule } from '@fluojs/react';
-import { IsString, MinLength } from '@fluojs/validation';
+import { IsIn, IsString, MinLength } from '@fluojs/validation';
 import type { CatalogPageProps } from './page-products';
 
 export type CatalogObservation = {
@@ -58,6 +58,14 @@ class CatalogDelete {
   intent?: string;
   @FromPath('sku')
   sku = '';
+}
+
+class SessionLogin {
+  @FromBody('csrf')
+  csrf = '';
+  @FromBody('identity')
+  @IsIn(['a', 'b'])
+  identity = '';
 }
 
 export function createCatalogRouter(
@@ -118,10 +126,76 @@ export function createCatalogRouter(
       return next.handle();
     }
   }
+  class SessionWriteGuard {
+    async canActivate({ requestContext, handler }: GuardContext): Promise<boolean> {
+      requestContext.metadata[matchedKey] = handler.methodName;
+      await observe(requestContext, 'guard');
+      const { request } = requestContext;
+      const body: unknown = request.body;
+      if (request.headers.origin !== `http://${request.headers.host}`
+        || request.cookies.csrf !== 'catalog-demo-token'
+        || typeof body !== 'object' || body === null
+        || Reflect.get(body, 'csrf') !== request.cookies.csrf) throw new ForbiddenException('Session origin/CSRF rejected.');
+      return true;
+    }
+  }
   const escape = (value: string): string => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
   @Router('/catalog')
   class CatalogRouter {
+    @Path('/session')
+    sessionEntry(_input: undefined, context: RequestContext) {
+      context.response.setHeader('Set-Cookie', 'csrf=catalog-demo-token; Path=/; SameSite=Lax');
+      return render({ products: [], sessionDemo: true }, context);
+    }
+    @PageMetadata(({ request }) => ({
+      title: `Protected ${request.cookies.catalogSession ?? ''}`,
+      links: [{ rel: 'canonical', href: request.url }],
+    }))
+    @Path('/session/protected')
+    async sessionPage(_input: undefined, context: RequestContext) {
+      const identity = context.request.cookies.catalogSession;
+      await observe(context, 'handler');
+      if (identity !== 'a' && identity !== 'b') throw new UnauthorizedException('Session expired.');
+      if (context.request.cookies.catalogAccess === 'forbidden') throw new ForbiddenException('Permission denied.');
+      return render({ products: [{ sku: `private-${identity}`, name: `Protected content ${identity}` }],
+        sessionDemo: true, sessionIdentity: identity }, context);
+    }
+    @Post('/session/login')
+    @RequestDto(SessionLogin)
+    @UseGuards(SessionWriteGuard)
+    @UseInterceptors(CatalogInterceptor)
+    async sessionLogin(input: SessionLogin, context: RequestContext) {
+      const scope = await observe(context, 'handler');
+      context.response.setHeader('Set-Cookie', [
+        `catalogSession=${input.identity}; Path=/; HttpOnly; SameSite=Lax`,
+        'catalogAccess=allowed; Path=/; HttpOnly; SameSite=Lax',
+      ]);
+      await control?.(event(context, 'commit', scope), context);
+      return ReactModule.formResult({ destination: '/catalog/session/protected', followUp: 'navigate',
+        session: { epoch: `demo:${input.identity}`, reason: 'login' } });
+    }
+    @Post('/session/logout')
+    @UseGuards(SessionWriteGuard)
+    @UseInterceptors(CatalogInterceptor)
+    async sessionLogout(_input: undefined, context: RequestContext) {
+      const scope = await observe(context, 'handler');
+      context.response.setHeader('Set-Cookie', 'catalogSession=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax');
+      await control?.(event(context, 'commit', scope), context);
+      return ReactModule.formResult({ destination: '/catalog/session', followUp: 'navigate',
+        session: { epoch: 'demo:signed-out', reason: 'logout' } });
+    }
+    @Post('/session/permissions')
+    @UseGuards(SessionWriteGuard)
+    @UseInterceptors(CatalogInterceptor)
+    async sessionPermissions(_input: undefined, context: RequestContext) {
+      const scope = await observe(context, 'handler');
+      if (context.request.cookies.catalogSession === undefined) throw new UnauthorizedException('Session expired.');
+      context.response.setHeader('Set-Cookie', 'catalogAccess=forbidden; Path=/; HttpOnly; SameSite=Lax');
+      await control?.(event(context, 'commit', scope), context);
+      return ReactModule.formResult({ destination: '/catalog/session/protected', followUp: 'refresh',
+        session: { epoch: `demo:${context.request.cookies.catalogSession}`, reason: 'permissions' } });
+    }
     @Path('/login')
     login(_input: undefined, context: RequestContext): void {
       context.response.setHeader('Set-Cookie', [
@@ -203,7 +277,7 @@ export function createCatalogRouter(
     },
   };
   return { router: CatalogRouter, middleware: [CatalogMiddleware], providers: [
-    CatalogGuard, CatalogMiddleware,
+    CatalogGuard, CatalogMiddleware, SessionWriteGuard,
     { provide: CatalogProbe, useClass: CatalogProbe, scope: 'request' as const },
     { provide: CatalogInterceptor, useClass: CatalogInterceptor, scope: 'request' as const },
   ], errorRepresentation };

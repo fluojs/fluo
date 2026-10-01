@@ -122,6 +122,27 @@ with an explicit read-only recovery control. Existing explicit
 `useRouter().refresh()` still intentionally resets page state after successful
 approval; automatic form refresh is not a silent redefinition of that API.
 
+## Explicit saved session and data
+
+`ReactModule.formResult` preserves literal options and may include optional `data`
+and explicit `session: { epoch, reason }`. Native success remains 303 and negotiated
+saved remains v1. Saved data accepts only finite JSON primitives, dense arrays and
+plain objects: Date, classes, functions, undefined members, hooks/accessors and
+cycles are rejected without invoking `toJSON`. A generated
+`ReactFormContract<Input, Data> { fields; decodeSaved(value: unknown): Data }` enters
+the same `useForm({ contract, ... })`; malformed decoded data is protocol uncertainty,
+not a typed cast or persistence rollback. Handwritten fields do not assert saved types.
+
+An explicit saved session enters the router's common revocation barrier before
+asynchronous session/destination policy. Only the initiating form's confirmed safe
+saved continuation transfers; unrelated old writes/results and retained values are
+obsolete. Logout may settle without a GET; login/permission acknowledgement uses
+the handler's fresh follow-up GET rather than issuing an extra page refresh.
+GET retry never resends POST or repeats the explicit session notification.
+Fresh POST/follow-up 401 and 403 enter auth policy instead of unconditional old-page
+preservation. A rejected follow-up remains separate from confirmed `saved`.
+Ordinary mutations continue preserving unrelated inputs/errors/focus.
+
 ## Companion ownership
 
 [Product acceptance](./react-fullstack-product.md),
@@ -134,6 +155,6 @@ remain governing companions. See the [usage guide](../guides/react-user-concepts
 The typed names/outcomes support later #3880 projections; #3881 extends this
 same interaction for non-navigation work and #3882 consumes dirty/pending state
 for opt-in navigation guards. None introduces a competing form API here.
-#3875 owns application session coordination. Optimistic cache mutation,
+#3875 supplies the documented application session composition. Optimistic cache mutation,
 comprehensive uploads, distributed duplicate protection and those follow-up
 issues are not provided by this contract.

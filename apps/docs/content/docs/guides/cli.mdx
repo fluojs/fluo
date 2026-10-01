@@ -94,6 +94,14 @@ The React starter uses focused streamed SSR, manifest-failure, and hydration tes
 `pnpm test:browser`, which starts the production build and rejects missing assets or hydration
 warnings.
 
+The generated `/catalog/session` journey uses ordinary HTTP login/logout/permission
+POSTs and `ReactModule.formResult({ session })` with the existing React provider and
+`router.sessionChanged`. Explicit revocation removes protected SSR/soft content and
+head; app-owned React effect cleanup closes actual MessageChannel ports. Session
+labels are nonsecret app notifications, not cookie detection. Native POST/303/GET
+still works without JavaScript. `tests/session-transition.spec.ts` verifies this
+scoped journey in development and production; it is not the full CRUD/jukebox gate.
+
 ## Microservice and mixed starters
 
 Microservice starters use `--shape microservice`. TCP is the default when `--transport` is omitted.

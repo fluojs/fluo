@@ -5,6 +5,7 @@ import { captureFormSubmission, submitHttpForm } from './client/form-transport.j
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as Client from './client.js';
+import { useClientNavigationStore } from './client/provider.js';
 import { createReactRouteSnapshot } from './client/snapshot.js';
 import { createClientNavigationStore } from './client/store.js';
 import type { ReactNavigationLoadResult } from './client/navigation-payload.js';
@@ -32,6 +33,87 @@ const submission = { action: 'http://localhost:3000/products/one', body: new URL
 afterEach(() => {
   vi.unstubAllGlobals();
   document.body.replaceChildren();
+});
+
+it('retains explicit saved JSON data and session identity from the negotiated acknowledgement', async () => {
+  // Given: HTTP explicitly confirms both persistence and a new application session.
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+    version: 1, outcome: 'saved', destination: '/products/one', followUp: 'refresh',
+    data: { revision: 2 }, session: { epoch: 'session-b', reason: 'login' },
+  }), { headers: { 'Content-Type': media } })));
+  // When: the existing transport consumes that acknowledgement.
+  const result = await submitHttpForm(submission, new AbortController().signal);
+  // Then: data and the explicit notification survive without deriving identity from cookies.
+  expect(result).toEqual({
+    status: 'saved', destination: 'http://localhost:3000/products/one', followUp: 'refresh',
+    data: { revision: 2 }, session: { epoch: 'session-b', reason: 'login' },
+  });
+});
+
+it.each([
+  { epoch: '', reason: 'login' },
+  { epoch: 'session-b', reason: 'forbidden' },
+  { epoch: 2, reason: 'logout' },
+])('treats malformed explicit session %j as protocol uncertainty', async (session) => {
+  // Given: a purported success has an invalid explicit session outcome.
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+    version: 1, outcome: 'saved', destination: '/products/one', followUp: 'refresh', session,
+  }), { headers: { 'Content-Type': media } })));
+  // When/Then: it cannot authorize a session transition or a post-save destination.
+  expect(await submitHttpForm(submission, new AbortController().signal)).toEqual({
+    status: 'uncertain', reason: 'protocol',
+  });
+});
+
+it('does not start an obsolete POST when an abort listener reenters its old form binding', async () => {
+  // Given: an actual provider/form and a held POST whose abort listener invokes the old DOM binding.
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  window.history.replaceState(null, '', '/page');
+  const target = document.createElement('div');
+  document.body.append(target);
+  let store: ReturnType<typeof createClientNavigationStore> | undefined;
+  let complete: (response: Response) => void = () => { throw new Error('Missing held POST'); };
+  const started = deferred<void>();
+  const fetch = vi.fn((_url: string, init: RequestInit) => {
+    init.signal?.addEventListener('abort', () => {
+      const form = target.querySelector('form');
+      form?.requestSubmit(form.querySelector('button'));
+    }, { once: true });
+    started.resolve();
+    return new Promise<Response>((resolve) => { complete = resolve; });
+  });
+  vi.stubGlobal('fetch', fetch);
+  function Probe() {
+    store = useClientNavigationStore();
+    const binding = Client.useForm<{ name: string }>({
+      id: 'old-binding', action: '/save', fields: { name: 'name' }, allowDestination: () => false,
+    });
+    return createElement('form', binding.formProps,
+      createElement('input', { name: 'name', defaultValue: 'old identity' }),
+      createElement('button', { type: 'submit' }, 'Submit'));
+  }
+  const root = createRoot(target);
+  try {
+    await act(async () => root.render(createElement(Client.ReactClientRouterProvider, {
+      initialSnapshot: createReactRouteSnapshot({ params: {}, url: '/page' }),
+    }, createElement(Probe))));
+    expect(store?.isConnected()).toBe(true);
+    await act(async () => {
+      const form = target.querySelector('form');
+      form?.requestSubmit(form.querySelector('button'));
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+    await started.promise;
+    // When: explicit logout revokes ownership before firing the POST's abort listener.
+    if (store === undefined) throw new Error('Missing actual provider store');
+    await act(async () => { await store?.router.sessionChanged({ epoch: 'b', reason: 'logout' }); });
+    // Then: the old handler cannot send a second POST from obsolete controls.
+    expect(fetch).toHaveBeenCalledOnce();
+    complete(saved());
+  } finally {
+    await act(async () => root.unmount());
+    target.remove();
+  }
 });
 
 it('uses a compatible copy through the same provider and isolates separate provider forms', async () => {
@@ -130,6 +212,20 @@ it('keeps a confirmed save when its read fails and retries only GET approval', a
   expect(read).toHaveBeenCalledTimes(2);
   expect(send).toHaveBeenCalledOnce();
   expect(store.getSnapshot().followUp).toEqual({ status: 'complete' });
+});
+
+it('rejects malformed generated saved data before destination policy or approval', async () => {
+  // Given: HTTP claims success but does not satisfy the generated saved-data contract.
+  vi.stubGlobal('fetch', vi.fn(async () => saved()));
+  const store = createClientFormStore();
+  const env = { ...environment(), decodeSaved: () => { throw new TypeError('Missing revision'); },
+    allowDestination: vi.fn(() => true) };
+  // When: the existing form consumes this acknowledgement.
+  await store.submit(submission, env);
+  // Then: protocol uncertainty never becomes a typed cast or starts a destination read.
+  expect(store.getSnapshot().mutation).toEqual({ status: 'uncertain', reason: 'protocol' });
+  expect(env.allowDestination).not.toHaveBeenCalled();
+  expect(env.approve).not.toHaveBeenCalled();
 });
 
 it('keeps confirmed persistence when the application rejects a destination and rechecks policy without another POST', async () => {

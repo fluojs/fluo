@@ -923,7 +923,13 @@ For transient failures, opt into the existing provider and router path:
 </ReactClientRouterProvider>
 ```
 
-Without `failurePolicy`, every non-cancelled failed load still falls back to a document.
+For non-auth failures, omitting `failurePolicy` keeps document fallback.
+Fresh credentialed 401/403 always revoke old approval before policy. A provider configured
+with `session`, or already activated by an explicit session outcome/notification, uses
+`session.policy` instead of `failurePolicy`: defaults are signed-out for 401 and forbidden
+for 403. An unconfigured legacy provider exits to the ordinary HTTP document after the
+barrier, rather than retaining protected plain children. `failurePolicy` cannot preserve
+revoked auth content; use session-aware composition for in-document auth UI.
 With `'preserve'`, the approved URL, params, page and shell remain; `useNavigation().failure`
 provides a safe `reason`, destination pathname and navigation type. Show an error with
 `router.retry()` for a fresh credentialed HTTP approval and `router.openDocument()` for an
@@ -938,7 +944,9 @@ v1-to-v2 payload migration is a breaking 0.x change. The official generated star
 enables network/5xx, incompatible-build and recoverable mapped import-failure preservation and shell recovery
 controls. To migrate a hand-assembled app, supply
 `navigationModules`, pass `failurePolicy`, render `navigation.failure` controls in the persistent
-shell, and leave all other categories (including absent importer keys) on the document path unless deliberately handled. The
+shell, and leave other non-auth categories (including absent importer keys) on the
+document path unless deliberately handled. Fresh 401/403 follow the mandatory
+session-aware or legacy document rules above. The
 production example verifies resource identity and operation/ack through network and 5xx failure
 and recovery. #3879 must still test the complete product journey; see the
 [product journey map](../../docs/contracts/react-fullstack-product.md#journey-acceptance-map).
@@ -1081,7 +1089,39 @@ The official shell offers an explicit update/document action, not automatic relo
 consumers should follow the [migration](../../docs/getting-started/migrate-react-production-assets.md)
 and [deployment recipe](../../docs/guides/react-production-deployment.md).
 
+## Session composition
+
+Use the existing `ReactClientRouterProvider` with
+`session={{ epoch: 'initial-nonsecret-label', policy }}` and
+`router.sessionChanged({ epoch: 'next-label', reason: 'login' })`.
+`useRouterState().session` exposes approval and generation without another provider.
+Every notification revokes old page/head/form/cache ownership before asynchronous
+policy, including the initial SSR fallback. In configured session composition, fresh credentialed 401 selects
+signed-out; 403 selects forbidden without erasing identity. Anonymous speculation
+cannot log out a credentialed user. Cookie changes alone are not a cross-tab signal.
+Policy `'refresh'` starts a new uncached credentialed GET on navigation GET, form POST
+auth rejection, and saved follow-up GET; it never replays POST. Cancelling the initiating
+saved form cancels its session-policy authority and settles waiting before a held policy
+is released, so a late document decision cannot navigate.
+
+App-owned players/channels/listeners use the existing React subtree/effect cleanup;
+there is no teardown registry and store settlement is not an SDK-disposal receipt.
+A session-bearing form result enters this same barrier before destination policy,
+then transfers only its confirmed saved continuation to fresh GET approval.
+Ordinary mutations preserve unrelated inputs/errors/focus; retries never replay POST.
+See [migration](../../docs/getting-started/migrate-react-session-composition.md).
+
 ## Native Form Mutations
+
+The canonical `ReactModule.formResult` also accepts optional JSON `data` and an
+explicit nonsecret `session: { epoch, reason: 'login' | 'logout' | 'permissions' }`.
+Its literal options remain inferred. The negotiated saved acknowledgement stays
+v1 and native success stays 303. A generated `ReactFormContract<Input, Data>`
+supplies `fields` and `decodeSaved(value: unknown): Data`; pass it as `contract`
+to the existing `useForm` instead of handwritten aliases and saved-data casts.
+Do not pass `fields` alongside `contract`. A decoder must throw on malformed data,
+which becomes `uncertain/protocol` before any asynchronous destination policy.
+This shared runtime seam does not itself generate contracts or recover erased DTOs.
 
 Use a native HTML form when a React page needs a mutation that remains functional before hydration or
 with client JavaScript disabled. Submit to an ordinary `@Post(...)` route rather than creating a

@@ -26,8 +26,18 @@ automatically retried or replayed as native submission.
 
 Automatic form refresh retains the persistent shell and unrelated form
 input/errors/focus. Explicit `useRouter().refresh()` still resets page state
-after approval. Session coordination, optimistic writes, comprehensive uploads
-and the later typed/non-navigation/dirty-guard extensions remain separate work.
+after approval. For application-confirmed auth changes, the same
+`ReactModule.formResult` may carry optional `session: { epoch, reason }` and JSON
+`data`. Its acknowledgement enters the existing router's session barrier before
+destination policy; only the initiating confirmed continuation transfers to a
+fresh credentialed GET. Call `router.sessionChanged` for explicit app notifications.
+Fresh 401 selects signed-out and 403 forbidden without inferring logout.
+Revocation removes initial and soft protected pages, page-owned head and retained
+controls. App-owned React effects close protected resources; there is no second
+session provider or teardown registry. External HttpOnly changes alone do not
+notify the browser. See `docs/getting-started/migrate-react-session-composition.md`.
+Optimistic writes, comprehensive uploads and later non-navigation/dirty-guard
+extensions remain separate work.
 
 See the repository's `docs/contracts/react-progressive-forms.md`,
 `docs/getting-started/migrate-react-progressive-forms.md` and

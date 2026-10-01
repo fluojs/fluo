@@ -164,16 +164,21 @@ Soft destination이 있으면 `refresh()`도 같은 일반 loader를 사용합�
 거부된 prefetch에는 기존 credential 포함 일반 loader와 full-document fallback을 적용합니다.
 
 `ReactClientRouterProvider`는 선택적인 `failurePolicy(failure)`를 받으며 동기 또는 비동기로
-`'preserve'`나 `'document'`를 반환합니다. 지정하지 않으면 low-level 기본값은 기존 document
-fallback입니다. `useNavigation().failure`와 정책에는 `reason`, query·응답 본문·credential·예외
+`'preserve'`나 `'document'`를 반환합니다. 생략한 경우 auth가 아닌 실패는 document
+fallback이며 인증 거절은 아래의 필수 session 또는 legacy document 규칙을 따릅니다.
+`useNavigation().failure`와 정책에는 `reason`, query·응답 본문·credential·예외
 내부를 제거한 목적지 **pathname**, `type: 'push' | 'replace' | 'back' | 'refresh'`만 전달합니다.
 사유는 `network`, `server-error`(HTTP 5xx), `unauthorized`(401), `forbidden`(403),
 `redirect`, `not-found`(404), `dto-rejected`(400/422), `invalid-payload`,
 `unsupported-module`, `import-failure`, `incompatible-build`(import 이전 v2 식별자 불일치),
 `unavailable`(그 밖의 미지원 응답),
 `unsupported-destination`으로 구분합니다. 취소는 정책을 호출하지 않습니다. Network/5xx는
-앱이 보존할 수 있지만 인증 거절·redirect·404·DTO·invalid payload는 앱이 명시적으로 달리
-결정하지 않으면 document 이동입니다. 복구 가능한 import 실패도 앱의 명시적 보존 결정이
+앱이 보존할 수 있지만 redirect·404·DTO·invalid payload는 앱이 명시적으로 달리
+결정하지 않으면 document 이동입니다. Fresh credential 포함 401/403은 이전 승인을 먼저
+항상 철회합니다. Configured 또는 명시적으로 활성화된 session 조립은 필수 session
+policy를 적용하고 미설정 legacy provider는 같은 barrier 뒤 일반 HTTP document로
+이동합니다. Transient failure policy는 철회된 auth 콘텐츠를 보존할 수 없습니다.
+복구 가능한 import 실패도 앱의 명시적 보존 결정이
 필요합니다. Status와 인증 판정은 응답 본문이 아닌 HTTP가 소유합니다.
 
 보존하면 마지막 승인 page, shell, params를 유지하고 push/replace는 history entry를 만들지
@@ -284,6 +289,50 @@ browser rendering, 일반 HTML 및 JavaScript-disabled document 동작을 실행
 이 stable SSR/Vite representation은 JSON과 build된 client component이지 experimental Flight, 일반
 React tree serializer 또는 file-routing contract가 아닙니다.
 
+
+## Session approval and revocation
+
+기존 provider의 `session={{ epoch, policy? }}`와
+`router.sessionChanged({ epoch, reason: 'login' | 'logout' | 'permissions' })`를
+사용합니다. `useRouterState().session`은 provider-local epoch, generation과
+`approved`, `pending`, `signed-out`, `forbidden` 상태를 제공합니다. Epoch는 비밀이 아닌
+앱 label이며 같은 label을 다시 통지해도 매번 ownership을 진행합니다. Cookie 값이나
+Fetch에서 보이지 않는 `Set-Cookie`로 인증을 추측하지 않습니다.
+
+Barrier는 먼저 이전 page 승인·metadata·form retention을 제거하고 operation과 cache
+entry를 분리한 뒤 abort와 subscriber 통지를 수행합니다. 이전 load/body/import/policy,
+form과 public speculation은 commit하거나 document fallback을 시작할 수 없습니다.
+Public cancellation은 abort를 무시하는 작업을 기다리지 않습니다.
+`ReactNavigationExperience`는 승인 철회 중 destination과 초기 SSR fallback을 모두
+억제합니다. 다시 표시하려면 새 credential 포함 HTTP 승인이 필요합니다.
+
+Login·permission 통지의 기본값은 credential 포함 current-page GET이고 explicit logout은
+요청 없는 signed-out UI입니다. Configured session 조립의 fresh credential 포함 401은 signed-out, 403은 epoch를
+anonymous identity로 바꾸지 않는 forbidden UI입니다. Anonymous speculation만으로
+credentialed session을 철회하지 않습니다. Network/5xx는 기존 transient policy를
+유지합니다. 선택적 `session.policy(context, signal)`은 철회 뒤 safe auth UI, 새 승인
+또는 `{ document: '/same-origin-exit' }`를 선택할 수 있으며 external/credential-bearing
+문서 이동은 거절됩니다. 이전 보호 콘텐츠를 보존하는 선택지는 없습니다.
+Session 설정이나 명시적 session 활성화가 없는 legacy provider의 fresh 401/403은
+plain children을 포함하여 안전한 일반 HTTP document exit을 선택합니다. 보호 콘텐츠를
+조용히 남기지 않으면서 기존 low-level 출구를 유지합니다.
+Policy의 `'refresh'`는 navigation GET, POST 인증 거절, saved follow-up GET에서 새
+credential 포함 uncached read로 소비되며 POST를 재실행하지 않습니다. 결정은 현재
+generation이 계속 소유해야 합니다. Initiating saved binding의 취소는 소유 session
+policy를 취소하고 abort를 무시하는 policy 완료 전에 대기를 정착시키며 늦은 document
+assign을 막습니다.
+
+Player/channel/listener는 session 승인에 따라 앱의 기존 React subtree/effect 경계에서
+정리합니다. Public teardown registry를 추가하지 않습니다. 통지 settlement는 store
+settlement이지 paint나 SDK disposal receipt가 아닙니다. Auth 철회는 향후 dirty-confirm
+조립보다 우선하며 여기서 dirty-navigation guard를 구현하지 않습니다.
+
+외부 HttpOnly cookie 변경은 앱 통지 또는 fresh credential 포함 HTTP 거절 전까지
+이미 승인된 화면을 남길 수 있습니다. Cross-tab cookie 감지를 보장하지 않습니다.
+내부 provider session lease는 후속 independent interaction을 위한 경계이며 별도
+public notification 경로가 아닙니다. [Migration](../getting-started/migrate-react-session-composition.ko.md)과
+`examples/react-vite-ssr/tests/session-transition.spec.ts`의 real-surface acceptance fixture를
+참고하세요. 전체 제품·soak acceptance는 #3879/#3886이 계속 소유합니다.
 
 ## Progressive native HTTP forms
 

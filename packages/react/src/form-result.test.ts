@@ -16,6 +16,39 @@ it.each([
   expect(() => ReactRoot.ReactModule.formResult({ destination, followUp: 'navigate' })).toThrow(TypeError);
 });
 
+it.each([
+  ['Date', new Date(0)],
+  ['nonfinite', { revision: Number.POSITIVE_INFINITY }],
+  ['NaN', { revision: Number.NaN }],
+  ['function', { revision: () => 2 }],
+  ['toJSON', { toJSON: () => ({ revision: 2 }) }],
+  ['class', new class Saved { revision = 2; }()],
+  ['array class', new class SavedArray extends Array<string> {}()],
+  ['undefined member', { revision: undefined }],
+  ['sparse array', Array(1)],
+])('rejects unsupported saved JSON data %s without silently normalizing it', (_name, data) => {
+  // Given: a claimed saved value outside the shared limited JSON grammar.
+  // When/Then: root creation rejects it rather than shipping a different value.
+  expect(() => ReactRoot.ReactModule.formResult({
+    destination: '/products/one', followUp: 'refresh', data,
+  })).toThrow(TypeError);
+});
+
+it('rejects cycles without invoking application serialization code', () => {
+  // Given: cyclic data and a user-authored JSON hook.
+  const cycle: { self?: object } = {};
+  cycle.self = cycle;
+  let invoked = false;
+  const hooked = { toJSON() { invoked = true; return {}; } };
+  // When/Then: both values are rejected at the root form boundary.
+  for (const data of [cycle, hooked]) {
+    expect(() => ReactRoot.ReactModule.formResult({
+      destination: '/products/one', followUp: 'refresh', data,
+    })).toThrow(TypeError);
+  }
+  expect(invoked).toBe(false);
+});
+
 it('approves an enhanced save while preserving the native 303 destination', async () => {
   // Given: one ordinary HTTP POST returning a runtime-neutral form result.
   const factory: unknown = Reflect.get(ReactRoot, 'ReactModule');
@@ -29,7 +62,11 @@ it('approves an enhanced save while preserving the native 303 destination', asyn
     @Post('/')
     @Header('Vary', 'Cookie')
     save() {
-      return ReactRoot.ReactModule.formResult({ destination: '/products/one', followUp: 'navigate' });
+      return ReactRoot.ReactModule.formResult({
+        destination: '/products/one', followUp: 'navigate',
+        data: { revision: 2 },
+        session: { epoch: 'session-b', reason: 'login' },
+      });
     }
     @Post('/refused')
     @HttpCode(403)
@@ -65,6 +102,8 @@ it('approves an enhanced save while preserving the native 303 destination', asyn
     expect(enhanced.statusCode).toBe(200);
     expect(enhanced.body).toEqual({
       version: 1, outcome: 'saved', destination: '/products/one', followUp: 'navigate',
+      data: { revision: 2 },
+      session: { epoch: 'session-b', reason: 'login' },
     });
     expect(enhanced.headers['Cache-Control']).toContain('no-store');
     expect(String(enhanced.headers.Vary).split(',').map((part) => part.trim())).toEqual(expect.arrayContaining(['Cookie', 'Accept']));

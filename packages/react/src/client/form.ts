@@ -4,21 +4,30 @@ import { captureFormSubmission } from './form-transport.js';
 import { useClientNavigationStore } from './provider.js';
 
 /** Typed DTO fields mapped to authored successful-control names, without a client DTO validator. */
-export type ReactFormOptions<Input extends object> = {
+export type ReactFormContract<Input extends object, Data = unknown> = {
+  readonly fields: Readonly<Record<keyof Input, string>>;
+  /** Reject malformed generated saved data before asynchronous destination policy. */
+  readonly decodeSaved: (value: unknown) => Data;
+};
+
+/** Existing progressive form options, with an optional generated contract. */
+export type ReactFormOptions<Input extends object, Data = unknown> = {
   readonly id: string;
   readonly action: string;
   readonly actions?: readonly string[];
-  readonly fields: Readonly<Record<keyof Input, string>>;
   /** Application policy after HTTP success; an obsolete asynchronous decision cannot navigate. */
   readonly allowDestination: (destination: string, signal: AbortSignal) => boolean | Promise<boolean>;
   readonly onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
-};
+} & (
+  | { readonly fields: Readonly<Record<keyof Input, string>>; readonly contract?: never }
+  | { readonly contract: ReactFormContract<Input, Data>; readonly fields?: never }
+);
 
 /** One canonical progressive native form binding, with typed authored input/error access. */
-export type ReactFormBinding<Input extends object> = {
+export type ReactFormBinding<Input extends object, Data = unknown> = {
   /** True only after the existing provider has connected to the browser. */
   readonly connected: boolean;
-  readonly state: ReactFormSnapshot;
+  readonly state: ReactFormSnapshot<Data>;
   readonly formProps: {
     readonly id: string;
     readonly action: string;
@@ -51,9 +60,28 @@ export type ReactFormBinding<Input extends object> = {
  * @param options Stable form identity, DTO-to-control names, supported actions and destination policy.
  * @returns Native form attributes, independent state, safe field associations and read-only recovery.
  */
+export function useForm<Input extends object, Data = unknown>(
+  options: ReactFormOptions<Input, Data> & { readonly contract: ReactFormContract<Input, Data> },
+): ReactFormBinding<Input, Data>;
+/**
+ * Bind authored field names without asserting a generated saved-data type.
+ *
+ * @param options Existing authored fields and progressive submission policy.
+ * @returns A form binding with unprojected saved data.
+ */
+export function useForm<Input extends object>(
+  options: ReactFormOptions<Input> & { readonly fields: Readonly<Record<keyof Input, string>> },
+): ReactFormBinding<Input>;
+/**
+ * Assemble the canonical progressive form against the provider-local store.
+ *
+ * @param options Authored names or a generated saved-data contract.
+ * @returns The independent native form binding.
+ */
 export function useForm<Input extends object>(
   options: ReactFormOptions<Input>,
 ): ReactFormBinding<Input> {
+  const fields = options.contract === undefined ? options.fields : options.contract.fields;
   const navigation = useClientNavigationStore();
   const route = navigation.getSnapshot();
   const key = `${route.url.split('#', 1)[0]}\0${options.id}`;
@@ -65,8 +93,8 @@ export function useForm<Input extends object>(
   const form = interaction;
   const element = useRef<HTMLFormElement | null>(null);
   const owner = useRef({});
-  const currentFields = useRef(options.fields);
-  currentFields.current = options.fields;
+  const currentFields = useRef(fields);
+  currentFields.current = fields;
   const state = useSyncExternalStore(form.subscribe, form.getSnapshot, form.getSnapshot);
   const connected = useSyncExternalStore(navigation.subscribe, navigation.isConnected, () => false);
   const ref = useCallback((node: HTMLFormElement | null): void => {
@@ -77,7 +105,7 @@ export function useForm<Input extends object>(
     if (form.release(owner.current) && navigation.forms.get(key) === form) navigation.forms.delete(key);
   }, [form, key, navigation]);
   const fieldErrors = (field: keyof Input & string): readonly string[] =>
-    state.mutation?.status === 'validation' && form.unchanged(options.fields[field])
+    state.mutation?.status === 'validation' && form.unchanged(fields[field])
       ? state.mutation.fieldErrors[field] ?? [] : [];
   useEffect(() => {
     if (state.mutation?.status !== 'validation' || element.current === null || !form.canFocus()) return;
@@ -104,6 +132,12 @@ export function useForm<Input extends object>(
       onSubmit(event) {
         options.onSubmit?.(event);
         if (event.defaultPrevented || !connected) return;
+        // Old DOM handlers may reenter synchronously while session revocation aborts work.
+        if (navigation.forms.get(key) !== form
+          || route.session?.generation !== navigation.getSnapshot().session?.generation) {
+          event.preventDefault();
+          return;
+        }
         if (navigation.getSnapshot().url.split('#', 1)[0]
           !== `${window.location.pathname}${window.location.search}`) return;
         const nativeEvent = event.nativeEvent;
@@ -113,10 +147,14 @@ export function useForm<Input extends object>(
         if (submission === undefined) return;
         event.preventDefault();
         void form.submit(submission, {
+          sessionChanged: (change) => navigation.applyFormSession(change, form),
+          authRejected: (reason) => navigation.rejectFormAuth(reason, form),
+          releaseSession: () => navigation.releaseFormSession(form),
           invalidate: navigation.router.invalidate,
           approve: (destination, followUp, signal) =>
             navigation.approveForm(destination, followUp, signal, form),
           allowDestination: options.allowDestination,
+          ...(options.contract === undefined ? {} : { decodeSaved: options.contract.decodeSaved }),
           rememberForms: () => { for (const other of navigation.forms.values()) other.remember(); },
         });
       },
@@ -124,12 +162,12 @@ export function useForm<Input extends object>(
     fieldErrors,
     values(field) {
       return element.current === null ? [] : new FormData(element.current)
-        .getAll(options.fields[field]).filter((value): value is string => typeof value === 'string');
+        .getAll(fields[field]).filter((value): value is string => typeof value === 'string');
     },
     fieldProps(field) {
       const id = `${options.id}-${field}`;
       const invalid = fieldErrors(field).length > 0;
-      return { id, name: options.fields[field], 'aria-invalid': invalid,
+      return { id, name: fields[field], 'aria-invalid': invalid,
         'aria-describedby': invalid ? `${id}-errors` : undefined };
     },
     cancel: form.cancel,

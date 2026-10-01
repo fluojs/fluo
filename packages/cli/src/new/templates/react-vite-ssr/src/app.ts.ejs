@@ -81,7 +81,8 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
     const page = options.loadPage
       ? await options.loadPage('./page-products.tsx', { ...props })
       : createElement(CatalogPage, { ...props });
-    return ReactNavigationPage.create(page, { module: './page-products.tsx', props: { ...props } }, { prefetch: 'public' });
+    return ReactNavigationPage.create(page, { module: './page-products.tsx', props: { ...props } },
+      props.sessionDemo ? undefined : { prefetch: 'public' });
   }, options.catalogControl);
 
   @Router('/products')

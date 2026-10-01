@@ -524,6 +524,24 @@ curl -i http://127.0.0.1:3000/products/missing-product
 [이전: 티셔츠 한 장을 상품으로 표현하기](./ch03-catalog-and-money.ko.md) · [2권 목차](./toc.ko.md) · [다음: 장바구니 가격을 믿으면 안 되는 이유](./ch05-cart-and-pricing.ko.md)
 
 
+## Customer sessions do not reuse another customer's approval
+
+이 장의 read-only HTTP/native fallback은 유지합니다. 별도 login navigator 대신 기존
+provider/router에 hydrated session을 조립합니다. 비밀이 아닌 epoch는 앱 통지의
+label입니다. 각 `router.sessionChanged`는 policy 전에 이전 protected page/head/form
+retention/public prefetch ownership을 무효화합니다. Saved session 결과는 confirmed
+continuation만 fresh credential 포함 GET으로 이관합니다. 일반 product mutation은 다른
+form 상태를 계속 보존합니다.
+
+Fresh 403은 logout이 아닌 permission denial이고 401은 signed-out UI입니다.
+Anonymous speculation은 credentialed 고객을 철회하거나 보호 콘텐츠를 제공할 수
+없습니다. 명시적 철회 뒤에는 초기 SSR fallback도 억제합니다. 앱 소유 channel/player는
+기존 session-aware React subtree에서 정리하며 counter만이 아닌 실제 연결
+acknowledgement와 close 증거를 확인합니다.
+[Session migration](../../docs/getting-started/migrate-react-session-composition.ko.md)을
+참고하세요. 이 scoped journey로 후속 #3879/#3886의 전체 제품·soak acceptance를
+주장하지 않습니다.
+
 ## Progressive native HTTP forms
 
 [Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의

@@ -16,10 +16,12 @@ export function ResourceProbe() {
     };
     session.port1.onmessage = (event: MessageEvent<string>) => setAcknowledgement(event.data);
     setIdentity(id);
+    document.dispatchEvent(new CustomEvent('fluo-resource', { detail: { phase: 'mount', id, ports: [session.port1, session.port2] } }));
     return () => {
       channel.current = null;
       session.port1.close();
       session.port2.close();
+      document.dispatchEvent(new CustomEvent('fluo-resource', { detail: { phase: 'cleanup', id, ports: [session.port1, session.port2] } }));
     };
   }, []);
   return createElement('div', { 'data-resource-id': identity },

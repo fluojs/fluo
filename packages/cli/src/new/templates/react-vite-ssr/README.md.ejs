@@ -78,6 +78,17 @@ Vite transform handles them; JSX rendering stays in `.tsx` modules such as `src/
 
 ## Production verification
 
+Open `/catalog/session` for the ordinary HTTP login/logout/permission forms.
+`ReactModule.formResult({ session: { epoch, reason } })` enters the existing
+provider's session barrier before fresh GET approval. Explicit app notifications
+use `router.sessionChanged`; there is no second notifier or cookie detector.
+Revocation removes initial and soft protected content/head/retained controls.
+`src/session-controls.tsx` uses app-owned React subtree cleanup, and the session
+browser verifies live MessageChannel acknowledgement and actual owned port closes.
+Fresh 401 selects signed-out and 403 forbidden without erasing identity.
+GET-only recovery never replays POST; external HttpOnly changes are not detected
+until an app notification or fresh HTTP rejection.
+
 ```sh
 <%= typecheckCommand %>
 <%= testCommand %>

@@ -167,16 +167,21 @@ the initial request snapshot must match the browser path/search rather than sile
 and rejected prefetches still use the credentialed ordinary loader and its full-document fallback.
 
 `ReactClientRouterProvider` accepts optional `failurePolicy(failure)`, returning `'preserve'`
-or `'document'` synchronously or asynchronously. Without it the low-level default stays document
-fallback. The policy and `useNavigation().failure` expose only a public `reason`, destination
+or `'document'` synchronously or asynchronously. Without it, non-auth failures keep
+document fallback; auth rejection follows the mandatory session or legacy document
+rules below. The policy and `useNavigation().failure` expose only a public `reason`, destination
 **pathname** (not query, body, credentials or exception internals), and navigation `type`.
 Reasons distinguish `network`, `server-error` (HTTP 5xx), `unauthorized` (401), `forbidden`
 (403), `redirect`, `not-found` (404), `dto-rejected` (400/422), `invalid-payload`,
 `unsupported-module`, `import-failure`, `unavailable` (other response), and
 `unsupported-destination`, and `incompatible-build` (v2 identity mismatch before import);
 cancellation never invokes the policy. Network and 5xx can be
-preserved; auth, redirect, 404, DTO and malformed results retain document handling unless the
-application explicitly chooses otherwise. Recoverable import failure needs an explicit decision.
+preserved; redirect, 404, DTO and malformed results retain document handling unless the
+application explicitly chooses otherwise. Fresh credentialed 401/403 instead always revoke
+old approval first. Configured or explicitly activated session composition uses mandatory
+session policy; an unconfigured legacy provider exits to the ordinary HTTP document after
+the same barrier. A transient failure policy cannot preserve revoked auth content.
+Recoverable import failure needs an explicit decision.
 HTTP still owns status, validation and authentication.
 
 On preserve, the last approved page, shell and params stay mounted; push/replace commit no
@@ -288,6 +293,53 @@ destination, browser rendering, ordinary HTML, and no-JavaScript document behavi
 This stable SSR/Vite representation is JSON plus a built client component, not experimental
 Flight, a generic React tree serializer, or a file-routing contract.
 
+
+## Session approval and revocation
+
+Use the existing provider's `session={{ epoch, policy? }}` configuration and
+`router.sessionChanged({ epoch, reason: 'login' | 'logout' | 'permissions' })`.
+`useRouterState().session` exposes the provider-local epoch, generation and
+`approved`, `pending`, `signed-out` or `forbidden` state. Epochs are nonsecret app
+labels; every valid notification advances ownership, even with an identical label.
+No cookie value or Fetch-invisible `Set-Cookie` is used to infer authentication.
+
+The barrier first removes old page approval, metadata and form retention, detaches
+old operations and cache entries, then aborts and notifies subscribers. Old loads,
+bodies, imports, policy decisions, forms and public speculation cannot commit or
+start a document fallback. Public cancellation does not wait for abort-ignoring
+work. `ReactNavigationExperience` suppresses both its destination and initial SSR
+fallback while revoked. A later fresh credentialed approval is required to reopen it.
+
+Login and permission notifications default to a fresh credentialed current-page
+GET; explicit logout defaults to signed-out UI without a request. Fresh credentialed
+401 in configured session composition selects signed-out UI; 403 selects forbidden UI without changing the epoch to
+an anonymous identity. Anonymous speculation alone cannot revoke a credentialed
+session. Network/5xx remain governed by the existing transient policy. An optional
+`session.policy(context, signal)` runs after revocation and may select safe auth UI,
+fresh approval, or `{ document: '/same-origin-exit' }`; external/credential-bearing
+document exits are rejected. It cannot preserve revoked protected content.
+Without session configuration or explicit session activation, fresh 401/403 instead
+select a safe ordinary HTTP document exit, including for plain children. This preserves
+the low-level legacy exit without silently retaining protected content.
+Policy `'refresh'` is consumed at navigation GET, POST auth rejection and saved follow-up
+GET through a new credentialed uncached read, never a POST replay. The current generation
+must still own that decision. Cancelling the initiating saved binding cancels its owned
+session policy, settles waiting before an abort-ignoring policy resolves, and prevents
+late document assignment.
+
+App-owned players, channels and listeners should live under the application's
+existing React subtree/effect boundary driven by session approval. There is no
+public teardown registry. Notification settlement is store settlement, not a
+browser-paint or SDK-disposal receipt. Auth revocation takes priority over future
+dirty-confirm composition; it is not a dirty-navigation guard implementation.
+
+External HttpOnly cookie changes may leave an already-approved page visible until
+app notification or a fresh credentialed HTTP rejection. There is no cross-tab
+cookie detection guarantee. The internal provider session lease is available to
+later independent interactions; it is not another public notification path.
+See [migration](../getting-started/migrate-react-session-composition.md) and
+`examples/react-vite-ssr/tests/session-transition.spec.ts` for the real-surface
+acceptance fixture. Full product/soak acceptance remains owned by #3879/#3886.
 
 ## Progressive native HTTP forms
 

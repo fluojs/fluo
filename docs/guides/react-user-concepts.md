@@ -135,6 +135,23 @@ The runnable [`examples/react-vite-ssr`](../../examples/react-vite-ssr/README.md
 native-form and policy example. For SSR without generated client assets or hydration, use
 [`examples/react-stable-ssr`](../../examples/react-stable-ssr/README.md).
 
+## Session approval belongs to the existing router
+
+Configure the existing provider with `session={{ epoch, policy? }}` and notify
+application-confirmed changes through `router.sessionChanged({ epoch, reason })`.
+Use `useRouterState().session` to drive the app's existing resource subtree/effect
+cleanup. There is no second notifier, controlled epoch or teardown registry.
+Revocation removes protected destination, initial fallback and head before policy.
+401 means signed-out; 403 means forbidden, not an anonymous identity switch.
+Cookie changes alone are not a cross-tab signal.
+
+A handler's optional `ReactModule.formResult({ ..., session })` enters the same
+barrier before destination policy; only its confirmed saved continuation transfers
+to fresh GET approval. Saved failure/retry semantics and ordinary unrelated form
+retention remain. `ReactFormContract<Input, Data>` supplies `fields` and
+`decodeSaved(unknown): Data` to the same `useForm({ contract, ... })`, not a cast or
+parallel form API. See [session migration](../getting-started/migrate-react-session-composition.md).
+
 ## Experimental surfaces
 
 `@fluojs/react/experimental/rsc` is the only current RSC and Server Function surface. It requires

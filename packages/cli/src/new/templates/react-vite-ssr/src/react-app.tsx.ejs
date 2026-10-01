@@ -12,6 +12,7 @@ import {
 } from '@fluojs/react/client';
 import type { ReactInitialNavigationPage } from '@fluojs/react';
 import { type ReactElement, createElement, isValidElement, useEffect, useRef, useState } from 'react';
+import { SessionControls, SessionResources } from './session-controls';
 
 export const REACT_IDENTIFIER_PREFIX = 'fluo-react-vite-' as const;
 
@@ -75,6 +76,7 @@ function LongLivedResource(): ReactElement {
     const stats = window.__reactResourceStats ?? { mounts: 0, cleanups: 0 };
     stats.mounts++;
     window.__reactResourceStats = stats;
+    document.dispatchEvent(new CustomEvent('fluo-resource', { detail: { phase: 'mount', id: instance.id, ports: [session.port1, session.port2] } }));
     return () => {
       stats.cleanups++;
       resource.current = undefined;
@@ -82,6 +84,7 @@ function LongLivedResource(): ReactElement {
       channel.current = null;
       session.port1.close();
       session.port2.close();
+      document.dispatchEvent(new CustomEvent('fluo-resource', { detail: { phase: 'cleanup', id: instance.id, ports: [session.port1, session.port2] } }));
     };
   }, []);
   return (
@@ -106,7 +109,8 @@ function SharedNavigation(): ReactElement {
     <header>
       <button onClick={() => setCount((value) => value + 1)} type='button'>Shell taps: {count}</button>
       <p aria-label='Current route'>{route.url} ({JSON.stringify(params)})</p>
-      <LongLivedResource />
+      <SessionResources><LongLivedResource /></SessionResources>
+      {route.pathname.startsWith('/catalog/session') && <SessionControls />}
       <p aria-label='Navigation status'>{navigation.status} ({navigation.type ?? 'none'})</p>
       {navigation.failure && (
         <div role='alert'>
@@ -132,6 +136,9 @@ function SharedNavigation(): ReactElement {
         </button>
         <button onClick={() => router.invalidate()} type='button'>Invalidate navigation</button>
         <button onClick={() => { void router.refresh(); }} type='button'>Refresh current page</button>
+        <button onClick={() => { void router.sessionChanged({ epoch: 'starter:next-session', reason: 'login' }); }} type='button'>
+          Switch user and prefetch scope
+        </button>
       </nav>
     </header>
   );
@@ -153,11 +160,13 @@ export function ReactAppDocument({
   navigationBuildId,
 }: ReactAppDocumentProps): ReactElement {
   const initialSnapshot = createReactRouteSnapshot(route);
-  const [prefetchScope, setPrefetchScope] = useState('starter:anonymous');
+  const prefetchScope = 'starter:public';
+  const identity: unknown = initialPage?.payload.destination.props.sessionIdentity;
 
   return (
     <ReactClientRouterProvider
       initialSnapshot={initialSnapshot}
+      session={{ epoch: typeof identity === 'string' ? `demo:${identity}` : 'demo:initial' }}
       navigationModules={navigationModules}
       navigationBuildId={navigationBuildId}
       prefetchScope={prefetchScope}
@@ -178,7 +187,6 @@ export function ReactAppDocument({
           </head>
           <body>
             <SharedNavigation />
-            <button onClick={() => setPrefetchScope('starter:next-session')} type='button'>Switch user and prefetch scope</button>
             <main tabIndex={-1}>
               <ReactNavigationExperience
                 destination={destination !== null && isValidElement(destination) ? productPage(destination) : null}

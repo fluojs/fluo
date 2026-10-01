@@ -253,6 +253,28 @@ Typegen is deliberately path-only: it rejects versioned catalog entries (the cat
 
 `@fluojs/react/experimental/rsc` is explicitly unstable and pinned to exact versions (`react@19.2.6`, `react-dom@19.2.6`, matching Flight renderer). It provides `inspectReactRscEnvironment(...)` for compatibility diagnostics, `createReactRscManifest(...)` for a bundler-neutral client-reference seam, `createReactFlightResponse(...)` for Flight payloads through ordinary HTTP handlers, and an HMAC-SHA-256 Server Function transport (`createReactServerFunctionRegistry(...)` / `createReactServerFunctionClient(...)`) mounted on your own `@Post(...)` route. The transport rejects non-JSON media types, unapproved origins, tampered references, and oversized or unsafe payloads with stable `REACT_SERVER_FUNCTION_*` error codes; a valid reference is not authorization. Nothing from this subpath is re-exported from the root, and graduation to a stable `@fluojs/react/rsc` is blocked until the documented policy gates pass.
 
+## Session approval and explicit saved outcomes
+
+Use the existing provider's `session={{ epoch, policy? }}` configuration and
+`router.sessionChanged({ epoch, reason: 'login' | 'logout' | 'permissions' })`.
+`useRouterState().session` exposes provider-local approval and generation. Repeated
+labels still revoke old ownership before asynchronous policy, including protected
+initial SSR fallback and page head. Credentialed 401 selects signed-out; 403 means
+forbidden, not identity erasure. Anonymous speculation cannot revoke a credentialed
+user, and cookie changes alone are not a cross-tab notification.
+
+An explicit optional session in `ReactModule.formResult` enters the same barrier
+and transfers only its confirmed saved continuation to fresh credentialed GET.
+Ordinary mutations preserve unrelated form state; GET retry never replays POST.
+Use `ReactFormContract<Input, Data> { fields; decodeSaved(unknown): Data }` with
+the existing `useForm({ contract, ... })` for generated projections. Malformed
+decoded data is protocol uncertainty. Saved data rejects Date, classes, nonfinite
+values, functions/hooks/accessors, undefined members, sparse arrays and cycles.
+
+App-owned channels/players/listeners remain under the existing React subtree/effect
+cleanup driven by session approval. There is no public teardown registry, and store
+settlement is not a paint or SDK-disposal receipt. Native POST/303/GET stays valid.
+
 ## Defaults, ownership, and limits
 
 - **Defaults**: `@Path()` serves the router base path; the stream renderer is `renderToReadableStream(...)`; `Content-Type` is `text/html; charset=utf-8`; metadata factories and policy components are plain application code, never DI-instantiated.

@@ -670,6 +670,10 @@ every request-derived or error-derived value before interpolation, as the exampl
 `Accept` negotiation is deterministic: absent `Accept` and wildcard/tie cases select JSON; quality
 and specificity select between `application/json` and available `text/html`; unsupported ranges
 produce canonical JSON 406. `canRender(...)` may constrain HTML per application or matched handler.
+An exact GET `Accept: application/vnd.fluo.react-navigation+json;v=2` error instead retains
+the original HTTP status (including 401/403/404) in canonical JSON without consulting HTML.
+It is not a successful navigation payload or public prefetch grant. Other methods, versions
+and rejected quality ranges retain normal negotiation and its 406 behavior.
 A provider failure falls back once to the original canonical JSON outcome, and committed or aborted
 requests are never rewritten. Response writer `send(...)` or stream/write failures propagate
 unchanged and do not trigger a second canonical JSON write. Existing native `Vary` values are
