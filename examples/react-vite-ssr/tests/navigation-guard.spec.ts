@@ -131,6 +131,7 @@ test('real backward and forward cancellation restore managed entry order without
   await page.getByRole('button', { name: 'Proceed with navigation' }).click();
   expect((await back).status()).toBe(200);
   await expect(page.getByRole('heading', { name: 'Catalog', exact: true })).toBeVisible();
+  await page.mouse.move(0, 0);
   const speculation = page.waitForResponse((response) => new URL(response.url()).pathname === '/catalog/sku-42'
     && response.request().headers().accept === media);
   await page.getByRole('link', { name: 'Read sku-42', exact: true }).hover();
