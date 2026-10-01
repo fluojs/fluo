@@ -329,6 +329,7 @@ describe('@fluojs/http public API surface', () => {
       'consumeFrameworkRequestNativeRouteHandoff',
       'consumeRawRequestNativeRouteHandoff',
       'createFetchStyleHttpAdapterRealtimeCapability',
+      'createHttpTypeProjection',
       'getCompiledRouteIdentity',
       'getHandlerFastPathEligibility',
       'isRoutePathNormalizationSensitive',

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -8,12 +8,77 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { runTypegenCommand } from './typegen.js';
 import { TypegenCompiler } from './typegen-compiler.js';
+import { TypegenCommandError } from './typegen-options.js';
 import { projectJsonType } from './typegen-projection.js';
+import { consumeTypegenSource } from './typegen-source-loader.js';
 
 const modulePath = fileURLToPath(new URL('../fixtures/typegen-identity.ts', import.meta.url));
 const tsconfigPath = fileURLToPath(new URL('../fixtures/tsconfig.json', import.meta.url));
 
 describe('frozen compiler object association', () => {
+  it('retains the caller CommonJS package identity across scoped generation', async () => {
+    // Given: the caller already owns the installed React CommonJS namespace.
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), 'fluo-cjs-identity-')));
+    const modulePath = join(cwd, 'app.ts');
+    const config = join(cwd, 'tsconfig.json');
+    const parentURL = new URL('../../../../examples/react-vite-ssr/package.json', import.meta.url).href;
+    try {
+      await symlink(fileURLToPath(new URL('../../../../examples/react-vite-ssr/node_modules', import.meta.url)),
+        join(cwd, 'node_modules'), 'dir');
+      await writeFile(modulePath, 'import React from "react"; export { React }; export class AppModule {}\n');
+      await writeFile(config, JSON.stringify({
+        compilerOptions: {
+          target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', allowSyntheticDefaultImports: true,
+        },
+        include: ['*.ts'],
+      }));
+      const caller = await tsImport('react', { parentURL, tsconfig: false });
+      const expected: unknown = Reflect.get(caller, 'default');
+      const snapshot = TypegenCompiler.create({ cwd, modulePath, tsconfigPath: config });
+      // When: the native loader consumes the instrumented application with its CJS dependency.
+      await consumeTypegenSource({ modulePath, snapshot }, async (application) => {
+        // Then: source normalization cannot create a competing package object.
+        expect(Reflect.get(application, 'React')).toBe(expected);
+      });
+      expect(Reflect.get(await tsImport('react', { parentURL, tsconfig: false }), 'default')).toBe(expected);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a deferred import owned by its generation while another hook is active', async () => {
+    // Given: two frozen generations share lexical files, but own distinct runtime objects.
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), 'fluo-owned-hook-')));
+    const modulePath = join(cwd, 'app.ts');
+    const config = join(cwd, 'tsconfig.json');
+    try {
+      await writeFile(modulePath, 'export async function loadInput() { return import("./input.js"); }\n');
+      await writeFile(join(cwd, 'input.ts'), 'export class Input { readonly value = "owned"; }\n');
+      await writeFile(config, JSON.stringify({
+        compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler' },
+        include: ['*.ts'],
+      }));
+      const first = TypegenCompiler.create({ cwd, modulePath, tsconfigPath: config });
+      const second = TypegenCompiler.create({ cwd, modulePath, tsconfigPath: config });
+      await consumeTypegenSource({ modulePath, snapshot: first }, async (application) => {
+        const load = Reflect.get(application, 'loadInput');
+        if (typeof load !== 'function') throw new TypeError('Fixture deferred import is unavailable.');
+        // When: the first root imports only after the second generation installs its hook.
+        await consumeTypegenSource({ modulePath, snapshot: second }, async () => {
+          const imported: unknown = await Reflect.apply(load, application, []);
+          if (typeof imported !== 'object' || imported === null) throw new TypeError('Fixture import failed.');
+          const Input: unknown = Reflect.get(imported, 'Input');
+          if (typeof Input !== 'function') throw new TypeError('Fixture input constructor is unavailable.');
+          // Then: the imported object belongs solely to the invoking generation's snapshot.
+          expect(first.declaration(Input).source.fileName).toBe(join(cwd, 'input.ts'));
+          expect(() => second.declaration(Input)).toThrow(TypegenCommandError);
+        });
+      });
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('generates optional converted query and body wire inputs and preserves real omission', async () => {
     // Given: HTTP supports optional HttpWire fields for both query and body.
     const cwd = await mkdtemp(join(tmpdir(), 'fluo-optional-wire-'));

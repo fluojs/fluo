@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { registerHooks } from 'node:module';
+import { register, registerHooks } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { compileFunction, constants } from 'node:vm';
@@ -7,6 +7,23 @@ import ts from 'typescript';
 
 import type { TypegenCompiler } from './typegen-compiler.js';
 import { TypegenCommandError } from './typegen-options.js';
+
+let floorLoaderActivity: Int32Array | undefined;
+
+// Node 24.11.0 validates synchronous delegated results before they reach our
+// hook. Normalize the async CommonJS boundary first, without guessing format.
+const floorLoaderSource = `
+import { readFile } from 'node:fs/promises';
+let activity;
+export function initialize(buffer) { activity = new Int32Array(buffer); }
+export async function load(url, context, nextLoad) {
+  const result = await nextLoad(url, context);
+  if (Atomics.load(activity, 0) === 0 || result.format !== 'commonjs' || result.source != null) return result;
+  const sourceURL = new URL(result.responseURL ?? url);
+  if (sourceURL.protocol !== 'file:') return result;
+  return { ...result, source: await readFile(sourceURL) };
+}
+`;
 
 /**
  * Evaluate and consume the frozen compiler graph with generation-owned instrumentation.
@@ -20,6 +37,14 @@ export async function consumeTypegenSource<Result>(
   consume: (application: object) => Promise<Result>,
 ): Promise<Result> {
   const { snapshot } = options;
+  if (process.versions.node === '24.11.0' && floorLoaderActivity === undefined) {
+    floorLoaderActivity = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+    register(`data:text/javascript,${encodeURIComponent(floorLoaderSource)}`, {
+      data: floorLoaderActivity.buffer,
+    });
+  }
+  const activity = process.versions.node === '24.11.0' ? floorLoaderActivity : undefined;
+  if (activity !== undefined) Atomics.add(activity, 0, 1);
   const key = `fluo.typegen.${randomUUID()}`;
   const marker = `fluo-typegen=${key}`;
   Object.defineProperty(globalThis, key, {
@@ -28,7 +53,8 @@ export async function consumeTypegenSource<Result>(
   });
   const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
-      if (context.parentURL?.startsWith('file:')) {
+      if (context.parentURL?.startsWith('file:')
+        && new URL(context.parentURL).searchParams.get('fluo-typegen') === key) {
         const parent = fileURLToPath(context.parentURL);
         const resolved = ts.resolveModuleName(specifier, parent, snapshot.options, ts.sys).resolvedModule?.resolvedFileName;
         if (resolved !== undefined && snapshot.sources.has(resolve(resolved))
@@ -62,6 +88,7 @@ export async function consumeTypegenSource<Result>(
     return await consume(application);
   } finally {
     hooks.deregister();
+    if (activity !== undefined) Atomics.sub(activity, 0, 1);
     Reflect.deleteProperty(globalThis, key);
   }
 }
