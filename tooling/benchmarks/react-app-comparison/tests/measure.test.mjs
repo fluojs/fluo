@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -271,4 +272,38 @@ test('gate rejects missing, escaped, and incomplete raw traces', async () => {
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('native trace authentication rejects missing, altered, incomplete and escaped evidence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-trace-auth-'));
+  const outside = await mkdtemp(join(tmpdir(), 'native-trace-outside-'));
+  const rawTrace = join(directory, 'native.json');
+  const cdpTrace = join(directory, 'cdp.json');
+  const nativeBytes = JSON.stringify({ constants: { logEventTypes: { CANCELLED: 0 } }, events: [{ type: 0 }] });
+  const cdpBytes = JSON.stringify({ ledger: [] });
+  const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+  const observer = { rawTrace, cdpTrace, sha256: hash(nativeBytes), cdpSha256: hash(cdpBytes) };
+  await writeFile(rawTrace, nativeBytes);
+  await writeFile(cdpTrace, cdpBytes);
+  const result = await collectMeasurements({ ...config, warmupRuns: 0, measurementRuns: 1 }, {
+    async check() { return { pass: true, steps: [] }; },
+    async measure(item) {
+      assert.equal(item.nativeTraceDirectory, directory);
+      return { metrics: {}, requests: [], artifacts: { nativeTerminalObserver: observer } };
+    },
+  }, directory);
+  await verifyTraceFiles(result.runs, directory);
+  await writeFile(rawTrace, '{}');
+  await assert.rejects(verifyTraceFiles(result.runs, directory), /digest mismatch/u);
+  const trace = JSON.parse(await readFile(result.runs[0].trace, 'utf8'));
+  trace.artifacts.nativeTerminalObserver.sha256 = hash('{}');
+  await writeFile(result.runs[0].trace, JSON.stringify(trace));
+  await assert.rejects(verifyTraceFiles([result.runs[0]], directory), /incomplete native trace/u);
+  trace.artifacts.nativeTerminalObserver.rawTrace = join(outside, 'native.json');
+  await writeFile(trace.artifacts.nativeTerminalObserver.rawTrace, nativeBytes);
+  await writeFile(result.runs[0].trace, JSON.stringify(trace));
+  await assert.rejects(verifyTraceFiles([result.runs[0]], directory), /outside output root/u);
+  trace.artifacts.nativeTerminalObserver.rawTrace = join(directory, 'missing.json');
+  await writeFile(result.runs[0].trace, JSON.stringify(trace));
+  await assert.rejects(verifyTraceFiles([result.runs[0]], directory), { code: 'ENOENT' });
 });

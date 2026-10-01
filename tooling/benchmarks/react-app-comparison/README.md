@@ -213,6 +213,43 @@ Recollect unchanged-runtime before and final-runtime after with the **same corre
 collector** before comparing them. All 22 metric names/scopes, budgets, five runs,
 two warmups, alternating order, uncertainty rules and peer defaults remain unchanged.
 Four-app readiness smoke establishes correctness, not a performance PASS.
+The framework-neutral `chromium-netlog-cancellation-v1` observer starts a
+separately owned Chromium capture for each production measurement, before any
+page action. The context/cache/emulation settings and workload remain unchanged.
+It records complete native NetLog `Everything` and the original CDP network/frame
+ledger in a unique `native-terminal-*` directory inside the raw trace directory.
+The final capture uses CDP `Performance.Timestamp` on Chromium's monotonic clock;
+browser teardown flushes the NetLog once. Teardown terminals at or after that
+cutoff cannot become measured outcomes.
+
+A pending CDP identity gains a native cancellation outcome only with exact
+URL/method and the same truncated millisecond network request tick, a unique mapping in
+both directions, one `URL_REQUEST` source identity including `start_time`,
+`REQUEST_ALIVE BEGIN`, reciprocal native HTTP stream controller (or allocated
+job) bindings, `CANCELLED`,
+and `REQUEST_ALIVE END` in source/time order before capture. A unique retained
+`requestWillBeSentExtraInfo.connectTiming.requestTime` supplies the native clock;
+renderer dispatch may precede it across a millisecond boundary. Duplicate,
+invalid or contradictory ExtraInfo remains inconclusive. Without ExtraInfo,
+the exact renderer tick is used; no nearest-time window is introduced. Other clock
+precision, ambiguous/redirected sources, missing bindings or terminals remain
+inconclusive. Original CDP pending snapshots stay in `cdpObservation` and the
+append-only ledger; native event indices, source identities, times, contained
+raw paths and SHA-256 hashes accompany the separate `nativeTerminal`.
+This is not a synthesized `Network.loadingFailed` or a success/error-code guess.
+Actual native cancellation counts as failure under the existing `errorRate`.
+The capture's original CDP pending IDs remain separately available.
+
+Passive logging adds disk, CPU and memory overhead, and per-measurement browser
+launch/close adds untimed setup/cleanup work. Record the exact browser version
+and this method in every cohort. Recollect both baseline and final with this
+same method; do not retrofit historical evidence or infer producer closure.
+NetLogs can contain headers and payload bytes; retain the complete scoped raw
+files as local evidence. Raw-trace authentication checks containment, complete
+JSON and both native/CDP digests before accepting a receipt. Browser teardown
+and native parsing occur after the unchanged throughput and post-workload
+CPU/RSS sampling; the earlier browser-request cutoff still excludes all
+later native terminals.
 The `transferred*Bytes` asset budgets use decoded CDP `Network.dataReceived`
 byte counts; `compressed*Bytes` uses encoded bytes from the same network events
 (the body, excluding headers). The raw transfer total comes from

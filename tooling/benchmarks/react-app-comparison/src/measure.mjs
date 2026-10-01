@@ -1,4 +1,5 @@
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { arch, cpus, platform, release, totalmem } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -46,7 +47,9 @@ export async function collectMeasurements(config, driver, directory) {
     console.log(`MEASUREMENT_STAGE=${item.runId}/${item.framework}/check`);
     const correctness = await driver.check(item, config);
     console.log(`MEASUREMENT_STAGE=${item.runId}/${item.framework}/${correctness.pass ? 'measure' : 'correctness-failed'}`);
-    const observation = correctness.pass ? await driver.measure(item, config) : { metrics: {}, unavailable: {} };
+    const observation = correctness.pass
+      ? await driver.measure({ ...item, nativeTraceDirectory: resolve(directory) }, config)
+      : { metrics: {}, unavailable: {} };
     const metrics = observation.metrics ?? {};
     for (const [name, value] of Object.entries(metrics)) {
       if (!METRICS.includes(name) || typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
@@ -149,6 +152,20 @@ export async function verifyTraceFiles(runs, outputRoot) {
       if (!record.provenance || !record.environment || !record.correctness || !record.metrics || !record.unavailable
         || !record.profileSettings || !Array.isArray(record.requests)) {
         throw new Error(`incomplete raw trace ${path}`);
+      }
+      const native = record.artifacts?.nativeTerminalObserver;
+      if (native) {
+        for (const [file, sha256] of [[native.rawTrace, native.sha256], [native.cdpTrace, native.cdpSha256]]) {
+          const contained = await realpath(file);
+          const location = relative(root, contained);
+          if (location.startsWith('..') || isAbsolute(location)) throw new Error(`native trace outside output root: ${file}`);
+          const raw = await readFile(contained);
+          if (createHash('sha256').update(raw).digest('hex') !== sha256) throw new Error(`native trace digest mismatch: ${file}`);
+          const parsed = JSON.parse(raw);
+          if (file === native.rawTrace ? !parsed.constants || !parsed.events?.length : !Array.isArray(parsed.ledger)) {
+            throw new Error(`incomplete native trace: ${file}`);
+          }
+        }
       }
     } else if (Array.isArray(record.sourceTraces)) {
       if (record.sourceTraces.length !== 2 || !record.correctness) throw new Error(`incomplete combined trace ${path}`);

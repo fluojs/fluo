@@ -273,6 +273,53 @@ test('a streamed 404 waits for browser-visible failure after the navigation shel
   }
 });
 
+test('native capture stays alive through unchanged throughput sampling', { timeout: 20_000 }, async (t) => {
+  const { chromium } = await import('@playwright/test');
+  const launch = chromium.launchServer;
+  let captureClosed = false;
+  t.mock.method(chromium, 'launchServer', async (options) => {
+    const server = await Reflect.apply(launch, chromium, [options]);
+    const close = server.close;
+    t.mock.method(server, 'close', async () => {
+      captureClosed = true;
+      await Reflect.apply(close, server, []);
+    });
+    return server;
+  });
+  const observedAtThroughput = [];
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
+    if (request.url === '/throughput') {
+      observedAtThroughput.push(captureClosed);
+      response.end('sample');
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(fixtureHtml('<!doctype html><h1>Listing</h1>'));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  let driver;
+  try {
+    driver = await createBrowserDriver({
+      journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+        .map((name) => [name, { path: '/' }])),
+      throughput: { fluo: { path: '/throughput', requests: 2, concurrency: 1 } },
+      provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+    });
+    await driver.measure({ framework: 'fluo', runId: 'native-lifetime', device: 'desktop',
+      mode: 'native', url: `http://127.0.0.1:${server.address().port}/` });
+    assert.deepEqual(observedAtThroughput, [false, false]);
+    assert.equal(captureClosed, true);
+  } finally {
+    await driver?.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
 test('matched-cache disables browser reuse without changing native policy', () => {
   assert.deepEqual(cacheSettings('matched-cache'), { cacheDisabled: true });
   assert.deepEqual(cacheSettings('native'), { cacheDisabled: false });
