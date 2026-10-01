@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { ReactPageMetadata } from '../page-metadata.js';
-import type { ReactNavigationFailureReason, ReactNavigationModules } from './navigation-payload.js';
+import type { ReactNavigationContracts, ReactNavigationFailureReason, ReactNavigationModules } from './navigation-payload.js';
 import type { ReactSessionChange } from '../form-result.js';
 
 /** Provider-local approval state; epoch labels are not credentials or identities. */
@@ -146,6 +146,8 @@ export type ReactClientRouterProviderProps = {
   readonly initialSnapshot: ReactRouteSnapshot;
   /** Build-produced importers for HTTP-approved soft destinations. */
   readonly navigationModules?: ReactNavigationModules;
+  /** Generated props decoders shared by initial transfer and negotiated destinations. */
+  readonly navigationContracts?: ReactNavigationContracts;
   /** Identity of the manifest that produced these importers and the initial document. */
   readonly navigationBuildId?: string;
   /** Opt in to preserving the last approved page on selected failed navigation requests. */

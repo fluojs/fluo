@@ -61,7 +61,7 @@ describe('tooling package guide composition', () => {
     );
 
     const artifact = generateReactPageTypes(pages);
-    expect(inspectReactPageTypeArtifact(artifact)).toEqual({ status: 'valid', version: 1 });
+    expect(inspectReactPageTypeArtifact(artifact)).toEqual({ status: 'valid', version: 2 });
   });
 
   it('normalizes the composed routes for Studio and renders deterministic Mermaid', () => {

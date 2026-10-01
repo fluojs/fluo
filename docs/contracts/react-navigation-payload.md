@@ -115,6 +115,19 @@ error document must never be parsed as a page payload.
 
 ## Browser consumption and fallback
 
+The [end-to-end types contract](./react-end-to-end-types.md) extends the existing
+`fluo typegen` graph, not this v2 representation. Its generated
+`ReactPagePropsRegistry` ties the module literal to authored JSON props; include
+that artifact in strict consumers. Initial and soft loaders accept the same
+`reactPageModules` decoders (initial fourth argument; soft `contracts` option).
+The official provider composition must forward them for ordinary loads and public
+prefetch. After build approval, missing/invalid props contracts fail as
+`invalid-payload` before import. JSON normalization omits optional undefined
+members; it does not serialize a React tree or allow DI/Date/custom `toJSON` values
+into the generated limited-JSON contract. Typed query hrefs still request real HTTP
+validation; a raw search snapshot is not a validated DTO. Route URI provenance,
+artifact version 2 and this navigation protocol version are separate contracts.
+
 `loadReactNavigationDestination(href, modules, { buildId, signal? })` from
 `@fluojs/react/client` accepts same-origin HTTP(S) only. Each ordinary load makes one uncached
 request with

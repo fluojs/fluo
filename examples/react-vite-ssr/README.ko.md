@@ -84,9 +84,22 @@ document fallback을 유지하며 공식 starter는 network/5xx 및 복구 가�
 ```sh
 pnpm install
 pnpm build
+pnpm --filter @fluojs/example-react-vite-ssr typegen
 pnpm --filter @fluojs/example-react-vite-ssr build
 pnpm --filter @fluojs/example-react-vite-ssr start
 ```
+
+명시적인 최초 생성은 실제 startup과 같은 HTTP factory에서 내보낸 inspection
+`AppModule`과 `applicationOptions`를 사용합니다. Production manifest나 listen은
+필요하지 않습니다. 실제 startup은 `src/presentation.ts`의 실제 asset과 document
+renderer를 제공합니다. Presentation이 없는 inspection root는 page나 asset을 제공할 수 없습니다.
+
+생성된 `reactPageRoutes`, `reactPageModules`, `reactFormRoutes`는 작성한 component
+props, HTTP query/control alias와 기존 `useForm` binding을 연결합니다. 초기 hydration과
+일반/prefetch load는 `navigationContracts`로 같은 generated props decoder를 사용합니다.
+Typecheck/build는 변경하지 않는 `--check`부터 실행합니다. Source/type/config 변경 뒤에는
+`typegen`을 명시적으로 다시 실행하거나 `typegen:watch`를 사용하세요.
+Stale artifact를 자동으로 재생성해 실패를 숨기지 않습니다.
 
 `http://127.0.0.1:3000/products/sku-42?preview=true`를 열고 `Count: 0`을 활성화하세요.
 Vite-generated client entry가 server HTML을 hydrate한 뒤에만 label이 `Count: 1`로 바뀝니다.
@@ -140,7 +153,7 @@ URL과 server-rendered route state가 일치하지 않는 client navigation, `PO
 
 ## 협상된 destination workflow
 
-`src/app.ts`는 application이 로드한 Vite manifest에 `src/navigation-product.ts`가 있는지
+`src/presentation.ts`는 application이 로드한 Vite manifest에 `src/navigation-product.ts`가 있는지
 확인합니다. Matched product handler는
 `ReactNavigationPage.create(ProductDocument, { module: './navigation-product.ts', props })`를
 반환합니다. 일반 document GET은 HTML shell, hydration script, Suspense content와 request

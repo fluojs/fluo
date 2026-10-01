@@ -31,7 +31,7 @@
 | **React starter verification** | 생성된 `react-vite-ssr` project | 설치된 CLI의 직접 `fluo dev`와 생성된 `dev` script는 동일한 restart lifecycle을 사용합니다. Vite가 SSR entry를 변환하고 development server에서 browser module/stylesheet를 제공하므로 production `dist`나 manifest가 필요하지 않습니다. Sandbox는 production build 전에 cold request, asset, browser hydration과 interaction, server/client 수정 반영, 종료를 검증합니다. `typecheck`, `test`, `build`, `start`는 별도 production lifecycle을 검증하며 `test:browser`는 build된 server에서 streamed HTML, manifest asset, warning-free hydration, real-anchor navigation, full-document `router.push(...)` navigation을 검증합니다. |
 | **React page type generation** | `fluo typegen <module-path> --output <path>` | Runtime log를 suppress한 short-lived generation child에서 selected module을 bootstrap하고 child exit를 기다린 뒤 authoritative compiled `HandlerDescriptor`를 `createReactPageCatalog(...)`로 project하고 versioned artifact를 atomically publish합니다. `CREATE`, `UPDATE`, `UNCHANGED`를 보고하며 identical output은 다시 쓰지 않습니다. |
 | **React page type check** | `fluo typegen <module-path> --output <path> --check` | Target write 없이 같은 bootstrap과 generation을 수행합니다. Exact current byte는 `UNCHANGED`/`0`, missing, stale, malformed, unsupported-version target은 각각 전용 diagnostic과 exit code를 사용합니다. |
-| **React page type watch** | `fluo typegen <module-path> --output <path> --watch` | Ready 전에 generate하고 module directory만 recursively watch하며 100 ms change burst를 coalesce하고 regeneration을 serialize합니다. 자체 output/temp file을 무시하고 generation failure 뒤 마지막 valid artifact를 보존하며 shutdown 또는 setup failure에서 watcher/signal을 해제합니다. |
+| **React page type watch** | `fluo typegen <module-path> --output <path> --watch` | Bootstrap 전에 module directory 밖의 compiler-graph source/type-only/config input까지 watch합니다. Dependency를 갱신하고 100 ms burst를 coalesce하며 generation을 serialize합니다. Output/temp를 무시하고 invalidated publication을 거부하며 실패 시 last-valid output을 유지하고 shutdown에서 owned work/watcher/signal을 정리합니다. |
 | **React consumer testing loop** | Vitest + `Test.createApp(...)` + TypeScript compile fixture + Playwright | Render-policy unit, direct page/missing-renderer request dispatch, typed route id/param 및 stale generation, aligned/mismatched hydration, production asset, JavaScript-disabled native form fallback을 검증합니다. 기존 fixture가 real package seam을 compose하므로 React-specific testing helper는 제공하지 않습니다. |
 | **비-Node production lifecycle** | 생성된 Bun, Deno, Cloudflare Workers package script | Bun 생성 프로젝트는 `dev: fluo dev`를 유지한 뒤 `bun build ./src/main.ts --outdir ./dist --target bun`으로 빌드하고 `bun dist/main.js`로 시작합니다. Deno 생성 프로젝트는 `dev: fluo dev`를 유지한 뒤 `deno compile --allow-env --allow-net --allow-read=.env --output dist/app src/main.ts`로 빌드하고 `./dist/app`을 실행합니다. Generated `AppModule`이 complete application-owned environment snapshot을 읽으므로 broad env access를 binary에 포함합니다. Signal listener에는 별도의 Deno permission이 필요하지 않습니다. Cloudflare Workers 생성 프로젝트는 `dev: fluo dev`를 유지하고, `wrangler deploy --dry-run`으로 빌드 검증하며, `preview: wrangler dev --remote --show-interactive-dev-session=false`, `deploy: wrangler deploy`를 노출하고, Wrangler native publish flow를 사용하도록 의도적으로 `start`를 생략합니다. |
 | **리소스 생성** | `fluo g <type>` | 일관된 명명 접미사 (`.service.ts`, `.controller.ts`) 산출. Request DTO는 `fluo g req users CreateUser`처럼 명시적 feature 디렉터리를 대상으로 지정할 수 있습니다. `fluo g module User --with-slice-test`는 `src/users/user.slice.test.ts`를 생성하고, `fluo g resource User --with-slice-test`는 resource-level provider override coverage를 `src/users/user.slice.test.ts`에 생성하며, `fluo g e2e users`는 `Test.createApp({ rootModule })` 기반 `test/users.e2e.test.ts`를 생성합니다. |
@@ -41,6 +41,16 @@
 | **진단 (Mermaid)** | `fluo inspect <module-path> --mermaid` | snapshot-to-Mermaid 렌더링을 선택적 `@fluojs/studio` 계약에 위임합니다. CLI는 Studio renderer를 로드하고 Mermaid text를 stdout 또는 `--output <path>`에 쓰며, 그래프 렌더링 의미론을 소유하지 않습니다. |
 
 ## React typegen artifact 및 process contract
+
+Artifact version 2는 같은 lifecycle을 query wire alias, module props, form saved-data
+contract로 확장합니다. `--tsconfig <path>`는 실제 compiler input을, `--options <export>`는
+module namespace의 실제 공유 bootstrap options를 선택합니다. Generation은 application을
+생성·종료하지만 listen하지 않습니다. Type-only source, extended configuration,
+compiler option/version이 freshness에 포함되며 generated output은 자기 fingerprint에서
+제외합니다. 일반 typecheck/build는 기존 `--check`를 먼저 실행해 missing/stale/malformed/
+unsupported output을 조용한 재생성 없이 거부해야 합니다. Wire/JSON/version 지원 범위와
+consumer 검증은 [end-to-end 타입 계약](../contracts/react-end-to-end-types.ko.md)이 소유하며
+이 matrix의 존재나 focused test 통과만으로 입증되지 않습니다.
 
 Generated source는 현재 `@fluojs/react/typegen` artifact version으로 시작하고 completion marker로 끝납니다.
 Check mode는 missing target을 parsing 전에 분류하고 exact byte를 unchanged, incomplete current artifact를

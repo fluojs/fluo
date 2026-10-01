@@ -643,6 +643,8 @@ async function verifySandboxProject(projectName) {
   }
 
   if (starterContract === 'react-vite-ssr') {
+    log('Generating installed React contracts before cold dev, without production assets');
+    run('pnpm', ['typegen'], projectDirectory);
     log('Checking cold installed React dev before any application build');
     await verifyReactColdDev(projectDirectory);
     const previousServerCommand = process.env.FLUO_REACT_STARTER_SERVER_COMMAND;
@@ -674,6 +676,10 @@ async function verifySandboxProject(projectName) {
     const fixtureDirectory = join(repoRoot, 'tooling', 'cli', 'fixtures');
     cpSync(join(fixtureDirectory, 'generated-request-dto.ts.fixture'), join(projectDirectory, 'src', 'toolchain.dto.ts'));
     cpSync(join(fixtureDirectory, 'generated-request-dto.test.ts.fixture'), join(projectDirectory, 'src', 'toolchain.dto.test.ts'));
+  }
+  if (starterContract === 'react-vite-ssr') {
+    // The harness deliberately added source files; regenerate explicitly, not inside --check.
+    run('pnpm', ['typegen'], projectDirectory);
   }
   run('pnpm', ['typecheck'], projectDirectory);
   run('pnpm', ['build'], projectDirectory);
@@ -713,6 +719,9 @@ async function verifySandboxProject(projectName) {
   }
 
   log('Re-running typecheck and test after generator output');
+  if (starterContract === 'react-vite-ssr') {
+    run('pnpm', ['typegen'], projectDirectory);
+  }
   run('pnpm', ['typecheck'], projectDirectory);
   run('pnpm', ['test'], projectDirectory);
 

@@ -72,6 +72,7 @@ function createBrowserEnvironment(
   buildId: ReactClientRouterProviderProps['navigationBuildId'],
   prefetchScope: ReactClientRouterProviderProps['prefetchScope'],
   failurePolicy: ReactClientRouterProviderProps['failurePolicy'],
+  contracts: ReactClientRouterProviderProps['navigationContracts'],
 ): ClientNavigationEnvironment {
   return {
     assign: (href) => browser.location.assign(href),
@@ -88,11 +89,15 @@ function createBrowserEnvironment(
     },
     go: (delta) => browser.history.go(delta),
     ...(modules === undefined || buildId === undefined ? {} : {
-      load: (href: string, signal: AbortSignal) => loadReactNavigationDestination(href, modules, { signal, buildId }),
+      load: (href: string, signal: AbortSignal) => loadReactNavigationDestination(href, modules, {
+        signal, buildId, ...(contracts === undefined ? {} : { contracts }),
+      }),
       ...(prefetchScope === undefined ? {} : {
         prefetchScope,
         prefetch: (href: string, signal: AbortSignal) =>
-          loadReactNavigationDestination(href, modules, { signal, prefetch: true, buildId }),
+          loadReactNavigationDestination(href, modules, {
+            signal, prefetch: true, buildId, ...(contracts === undefined ? {} : { contracts }),
+          }),
       }),
     }),
     pushState: (href, index) => browser.history.pushState(
@@ -126,6 +131,7 @@ export function ReactClientRouterProvider({
   children,
   initialSnapshot,
   navigationModules,
+  navigationContracts,
   navigationBuildId,
   prefetchScope,
   failurePolicy,
@@ -138,8 +144,8 @@ export function ReactClientRouterProvider({
     if (typeof window === 'undefined') {
       return undefined;
     }
-    return store.connect(createBrowserEnvironment(window, navigationModules, navigationBuildId, prefetchScope, failurePolicy));
-  }, [store, navigationModules, navigationBuildId, prefetchScope, failurePolicy]);
+    return store.connect(createBrowserEnvironment(window, navigationModules, navigationBuildId, prefetchScope, failurePolicy, navigationContracts));
+  }, [store, navigationModules, navigationContracts, navigationBuildId, prefetchScope, failurePolicy]);
 
   return createElement(
     ClientRouterContext.Provider,

@@ -79,7 +79,7 @@ export async function startReactViteApp(vite?: ViteDevServer, upgradeServer?: Se
     },
   });
   const app = await FluoFactory.create(AppModule, {
-    errorRepresentation: AppModule.errorRepresentation,
+    ...AppModule.applicationOptions,
     securityHeaders: vite ? { contentSecurityPolicy: "default-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:" } : undefined,
     adapter,
   });

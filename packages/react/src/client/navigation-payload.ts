@@ -1,16 +1,24 @@
 import type { ReactNode } from 'react';
 
-import type { ReactNavigationPayload } from '../navigation-payload.js';
+import type { ReactNavigationPayload, ReactPagePropsRegistry } from '../navigation-payload.js';
 import { parseReactPageMetadata } from '../page-metadata.js';
 
 const MEDIA_TYPE = 'application/vnd.fluo.react-navigation+json;v=2';
 const RESPONSE_MEDIA_TYPE = /^application\/vnd\.fluo\.react-navigation\+json;\s*v=(?:"2"|2)(?:;\s*charset=utf-8)?$/iu;
 
 /** Build-produced, explicitly allowed client destination modules. */
-export type ReactNavigationModules = Readonly<Record<
-  string,
-  () => Promise<{ readonly default: (props: Record<string, unknown>) => ReactNode }>
->>;
+export type ReactNavigationModules = [keyof ReactPagePropsRegistry] extends [never]
+  ? Readonly<Record<string, () => Promise<ReactNavigationModule>>>
+  : Readonly<{ [Module in keyof ReactPagePropsRegistry & string]?: () => Promise<{
+    readonly default: (props: ReactPagePropsRegistry[Module]) => ReactNode;
+  }> }>;
+
+type ReactNavigationModule = { readonly default: (props: Record<string, unknown>) => ReactNode };
+
+/** Generated limited-JSON props decoders, keyed by the existing build-mapped module identity. */
+export type ReactNavigationContracts = Readonly<Record<string, {
+  readonly decodeProps: (value: unknown) => Readonly<Record<string, unknown>>;
+}>>;
 
 /** One uncached browser request's validated server result and loaded destination. */
 export type ReactNavigationLoadResult =
@@ -41,6 +49,10 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNavigationModule(value: unknown): value is ReactNavigationModule {
+  return isObject(value) && typeof value.default === 'function';
 }
 
 function parseNavigationPayload(
@@ -74,18 +86,39 @@ function parseNavigationPayload(
   };
 }
 
+function decodeDestination(
+  payload: ReactNavigationPayload,
+  contracts: ReactNavigationContracts | undefined,
+): ReactNavigationPayload | undefined {
+  if (contracts === undefined) return payload;
+  const contract = Object.hasOwn(contracts, payload.destination.module)
+    ? contracts[payload.destination.module] : undefined;
+  if (contract === undefined) return undefined;
+  try {
+    return { ...payload, destination: {
+      module: payload.destination.module,
+      props: contract.decodeProps(payload.destination.props),
+    } };
+  } catch (error) {
+    if (error instanceof TypeError) return undefined;
+    throw error;
+  }
+}
+
 /**
  * Resolve the HTTP-selected initial document page from the built importer map before hydration.
  *
  * @param json Escaped JSON text from the inert initial-page script in the server document.
  * @param modules Build-produced destination importers shared with soft navigation.
  * @param buildId Expected document build identity; missing or unequal identities cannot hydrate a destination.
+ * @param contracts Optional generated props decoders, shared with soft navigation.
  * @returns The validated component and HTTP request snapshot, or an unavailable destination.
  */
 export async function loadReactInitialNavigationDestination(
   json: string,
   modules: ReactNavigationModules,
   buildId?: string,
+  contracts?: ReactNavigationContracts,
 ): Promise<ReactNavigationLoadResult> {
   let value: unknown;
   try {
@@ -106,15 +139,17 @@ export async function loadReactInitialNavigationDestination(
   if (payload.buildId !== buildId) {
     return { ok: false, reason: 'incompatible-build' };
   }
-  const loader = Object.hasOwn(modules, payload.destination.module)
-    ? modules[payload.destination.module] : undefined;
-  if (loader === undefined) {
+  const decoded = decodeDestination(payload, contracts);
+  if (decoded === undefined) return { ok: false, reason: 'invalid-payload' };
+  const loader: unknown = Object.hasOwn(modules, payload.destination.module)
+    ? Reflect.get(modules, payload.destination.module) : undefined;
+  if (typeof loader !== 'function') {
     return { ok: false, reason: 'invalid-payload' };
   }
   try {
-    const module = await loader();
-    return typeof module.default === 'function'
-      ? { ok: true, payload, component: module.default }
+    const module: unknown = await Reflect.apply(loader, undefined, []);
+    return isNavigationModule(module)
+      ? { ok: true, payload: decoded, component: module.default }
       : { ok: false, reason: 'invalid-payload' };
   } catch (error) {
     if (error instanceof TypeError) {
@@ -182,7 +217,12 @@ async function readBoundedNavigationJson(response: Response): Promise<unknown> {
 export async function loadReactNavigationDestination(
   href: string | URL,
   modules: ReactNavigationModules,
-  options: { readonly signal?: AbortSignal; readonly prefetch?: true; readonly buildId?: string } = {},
+  options: {
+    readonly signal?: AbortSignal;
+    readonly prefetch?: true;
+    readonly buildId?: string;
+    readonly contracts?: ReactNavigationContracts;
+  } = {},
 ): Promise<ReactNavigationLoadResult> {
   const current = new URL(window.location.href);
   let destination: URL;
@@ -268,16 +308,18 @@ export async function loadReactNavigationDestination(
     if (payload.buildId !== options.buildId) {
       return { ok: false, reason: 'incompatible-build' };
     }
+    const decoded = decodeDestination(payload, options.contracts);
+    if (decoded === undefined) return { ok: false, reason: 'invalid-payload' };
     if (!Object.hasOwn(modules, payload.destination.module)) {
       return { ok: false, reason: 'unsupported-module' };
     }
-    const loader = modules[payload.destination.module];
-    if (loader === undefined) {
+    const loader: unknown = Reflect.get(modules, payload.destination.module);
+    if (typeof loader !== 'function') {
       return { ok: false, reason: 'unsupported-module' };
     }
-    let module: Awaited<ReturnType<typeof loader>>;
+    let module: unknown;
     try {
-      module = await loader();
+      module = await Reflect.apply(loader, undefined, []);
     } catch {
       return options.signal?.aborted
         ? { ok: false, reason: 'cancelled' }
@@ -286,15 +328,15 @@ export async function loadReactNavigationDestination(
     if (options.signal?.aborted) {
       return { ok: false, reason: 'cancelled' };
     }
-    if (typeof module.default !== 'function') {
+    if (!isNavigationModule(module)) {
       return { ok: false, reason: 'invalid-payload' };
     }
     if (options.prefetch === true) {
       return freshUntil !== undefined && Date.now() < freshUntil
-        ? { ok: true, payload, component: module.default, prefetchExpiresAt: Math.min(freshUntil, Date.now() + 15_000) }
+        ? { ok: true, payload: decoded, component: module.default, prefetchExpiresAt: Math.min(freshUntil, Date.now() + 15_000) }
         : { ok: false, reason: 'unavailable' };
     }
-    return { ok: true, payload, component: module.default };
+    return { ok: true, payload: decoded, component: module.default };
   } catch (error) {
     if (options.signal?.aborted || error instanceof DOMException && error.name === 'AbortError') {
       return { ok: false, reason: 'cancelled' };

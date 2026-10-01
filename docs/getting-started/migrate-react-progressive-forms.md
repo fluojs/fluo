@@ -41,10 +41,21 @@ For independent search or row work, add `mode: 'background'` to the same hook;
 choose `method: 'get'` for a real search form and POST for writes. Keep stable
 domain row ids. A new explicit request supersedes that id's previous local
 authority; omitted options retain busy-skipped navigation POST. Render `read` or
-`error` separately from `saved`/`uncertain`, and use optional generated `decodeRead`
+`error` separately from `saved`/`uncertain`, and use the contract's optional `decodeRead`
 without asserting a type for handwritten fields. Background acknowledgements
 ignore handler navigation; confirmed writes share fresh current-page HTTP approval.
 Do not replace native actions or add a fetcher, cache, matcher or POST retry.
+
+For end-to-end inference, generate with the same application tsconfig/bootstrap
+options and replace copied Input types and `fields` maps with the generated
+`reactFormRoutes[id].contract`. Use that route's `href` as `action` in the same
+`useForm`; do not pass both `fields` and `contract`. Return optional JSON `data`
+through the existing `ReactModule.formResult` after persistence and narrow
+`state.mutation.status === 'saved'` before reading inferred data. Its decoder
+rejects malformed saved data as protocol uncertainty before destination policy.
+This does not generate GET `decodeRead` support. See the
+[typegen migration](./migrate-react-typegen.md) for v2 freshness and mandatory
+`--check` before ordinary typecheck/build.
 
 Read `state.pending`, `state.dirty`, `state.mutation` and `state.followUp`.
 Render only safe messages and associate each field error element with the
@@ -77,6 +88,6 @@ production entry.
 
 The [owning form contract](../contracts/react-progressive-forms.md) defines
 the protocol and ownership. [Navigation payload](../contracts/react-navigation-payload.md)
-continues to own v2 build identity/params/metadata. #3880/#3882 consume
-this same interaction for typed projections and opt-in dirty/pending guards.
+continues to own v2 build identity/params/metadata. #3880 supplies this interaction's
+typed projection and #3882 consumes it for opt-in dirty/pending guards.
 Background work is the additive runtime option described above, not their prerequisite.

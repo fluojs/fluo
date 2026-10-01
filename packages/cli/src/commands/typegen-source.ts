@@ -1,11 +1,12 @@
-import { existsSync } from 'node:fs';
-import { dirname, extname, resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-
+import type { ReactFormTypeProjection, ReactJsonShape } from '@fluojs/react/typegen';
 import { tsImport } from 'tsx/esm/api';
-
+import { TypegenCompiler } from './typegen-compiler.js';
 import type { ParsedTypegenArgs } from './typegen-options.js';
 import { TypegenCommandError } from './typegen-options.js';
+import { projectHandlerResult, projectHttpQuery } from './typegen-projection.js';
+import { consumeTypegenSource, findTypegenTsconfig } from './typegen-source-loader.js';
 
 /** Dynamically loaded package surfaces required by typegen. */
 export type ReactTypegenModules = {
@@ -30,6 +31,7 @@ type GenerateTypegenSourceOptions = {
   readonly application: object;
   readonly modules: ReactTypegenModules;
   readonly parsed: ParsedTypegenArgs;
+  readonly snapshot?: TypegenCompiler;
 };
 
 const TYPESCRIPT_MODULE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
@@ -68,14 +70,6 @@ async function importProjectModule(moduleId: string, cwd: string, tsconfig: stri
     }
   }
   throw new TypegenCommandError(`Unable to resolve ${moduleId} from the inspected project.`);
-}
-
-async function importTypeScriptApplicationModule(modulePath: string): Promise<object> {
-  const moduleUrl = pathToFileURL(modulePath).href;
-  const tsconfigPath = resolve(dirname(modulePath), 'tsconfig.json');
-  return existsSync(tsconfigPath)
-    ? tsImport(moduleUrl, { parentURL: import.meta.url, tsconfig: tsconfigPath })
-    : tsImport(moduleUrl, { parentURL: import.meta.url, tsconfig: false });
 }
 
 function requireNamespace(owner: object, name: string): object {
@@ -124,8 +118,24 @@ export async function loadReactTypegenModules(cwd: string, tsconfig: string | fa
  */
 export async function createTypegenSource(options: CreateTypegenSourceOptions): Promise<string> {
   const modulePath = resolve(options.cwd, options.parsed.modulePath);
-  const importedApplication = TYPESCRIPT_MODULE_EXTENSIONS.has(extname(modulePath))
-    ? await importTypeScriptApplicationModule(modulePath)
+  const typeScript = TYPESCRIPT_MODULE_EXTENSIONS.has(extname(modulePath));
+  if (typeScript && typeof Reflect.get(options.modules.typegen, 'createHttpTypeProjection') === 'function') {
+    const tsconfigPath = options.parsed.tsconfigPath === undefined ? findTypegenTsconfig(modulePath)
+      : resolve(options.cwd, options.parsed.tsconfigPath);
+    if (tsconfigPath === undefined) throw new TypegenCommandError(`${modulePath}: type projection requires the application's tsconfig.json.`);
+    const snapshot = TypegenCompiler.create({ cwd: options.cwd, modulePath, tsconfigPath,
+      artifactPath: resolve(options.cwd, options.parsed.outputPath) });
+    return consumeTypegenSource({ modulePath, snapshot }, (application) => generateTypegenSource({
+      application, modules: options.modules, parsed: options.parsed, snapshot,
+    }));
+  }
+  const importedApplication = typeScript
+    ? await tsImport(pathToFileURL(modulePath).href, {
+      parentURL: import.meta.url,
+      ...(options.parsed.tsconfigPath === undefined ? {} : {
+        tsconfig: resolve(options.cwd, options.parsed.tsconfigPath),
+      }),
+    })
     : await importNativeApplicationModule(modulePath);
   return generateTypegenSource({
     application: importedApplication,
@@ -150,9 +160,14 @@ export async function generateTypegenSource(options: GenerateTypegenSourceOption
   if (typeof factory !== 'function') {
     throw new TypegenCommandError('Required runtime FluoFactory is unavailable.');
   }
+  const bootstrap: unknown = options.parsed.optionsExport === undefined
+    ? {} : Reflect.get(options.application, options.parsed.optionsExport);
+  if (typeof bootstrap !== 'object' || bootstrap === null || Array.isArray(bootstrap)) {
+    throw new TypegenCommandError('Selected bootstrap options export must be the actual application options object.');
+  }
   const application = await Reflect.apply(requireFunction(factory, 'create'), factory, [
     rootModule,
-    { logger: SILENT_APPLICATION_LOGGER },
+    { ...bootstrap, logger: SILENT_APPLICATION_LOGGER },
   ]);
   if (typeof application !== 'object' || application === null) {
     throw new TypegenCommandError('Runtime application bootstrap returned an invalid value.');
@@ -168,8 +183,53 @@ export async function generateTypegenSource(options: GenerateTypegenSourceOption
     if (!Array.isArray(descriptors)) {
       throw new TypegenCommandError('Runtime route descriptors are unavailable.');
     }
-    const catalog = Reflect.apply(requireFunction(options.modules.react, 'createReactPageCatalog'), undefined, [descriptors]);
-    const source = Reflect.apply(requireFunction(options.modules.typegen, 'generateReactPageTypes'), undefined, [catalog]);
+    const createCatalog = requireFunction(options.modules.react, 'createReactPageCatalog');
+    const baseCatalog: unknown = Reflect.apply(createCatalog, undefined, [descriptors]);
+    const snapshot = options.snapshot;
+    const contracts: { modules: Record<string, ReactJsonShape>; forms: ReactFormTypeProjection[]; sourceFingerprint?: string } = {
+      modules: {}, forms: [], ...(snapshot === undefined ? {} : { sourceFingerprint: snapshot.fingerprint }),
+    };
+    const catalog = snapshot === undefined
+      ? baseCatalog
+      : descriptors.flatMap((descriptor) => {
+        const entries: unknown = Reflect.apply(createCatalog, undefined, [[descriptor]]);
+        if (!Array.isArray(entries)) throw new TypegenCommandError('React catalog projection returned an invalid value.');
+        const projection: unknown = Reflect.apply(requireFunction(options.modules.typegen, 'createHttpTypeProjection'), undefined, [descriptor]);
+        const result = projectHandlerResult(snapshot, descriptor, entries.length > 0);
+        for (const [module, shape] of Object.entries(result.modules)) {
+          if (contracts.modules[module] !== undefined && JSON.stringify(contracts.modules[module]) !== JSON.stringify(shape)) {
+            throw new TypegenCommandError(`Ambiguous compiler props contract for ${module}.`);
+          }
+          contracts.modules[module] = shape;
+        }
+        if (result.form !== undefined) {
+          const routes: unknown = Reflect.apply(requireFunction(options.modules.runtime, 'createRuntimeRouteCatalog'), undefined, [[descriptor]]);
+          const route: unknown = Array.isArray(routes) ? routes[0] : undefined;
+          if (typeof route !== 'object' || route === null || !('id' in route) || typeof route.id !== 'string'
+            || !('path' in route) || typeof route.path !== 'string' || !('params' in route) || !Array.isArray(route.params)) {
+            throw new TypegenCommandError('Runtime HTTP form route projection is malformed.');
+          }
+          const metadata: unknown = typeof descriptor === 'object' && descriptor !== null
+            ? Reflect.get(descriptor, 'metadata') : undefined;
+          const versionSelection: unknown = typeof metadata === 'object' && metadata !== null
+            ? Reflect.get(metadata, 'versionSelection') : undefined;
+          if ('version' in route && route.version !== undefined && versionSelection !== 'URI') {
+            throw new TypegenCommandError(`Versioned HTTP form route "${route.id}" requires authoritative URI selection for an action href.`);
+          }
+          contracts.forms.push({ id: route.id, path: route.path, params: route.params,
+            input: projectHttpQuery(snapshot, projection, 'body'), ...result.form });
+        }
+        if (entries.length === 0) return [];
+        const query = projectHttpQuery(snapshot, projection);
+        return entries.map((entry: unknown) => {
+          if (typeof entry !== 'object' || entry === null) throw new TypegenCommandError('React catalog entry is malformed.');
+          return { ...entry, query, sourceFingerprint: snapshot.fingerprint };
+        });
+      });
+    const source = Reflect.apply(requireFunction(options.modules.typegen, 'generateReactPageTypes'), undefined, [
+      catalog,
+      ...(Object.keys(contracts.modules).length === 0 && contracts.forms.length === 0 ? [] : [contracts]),
+    ]);
     if (typeof source !== 'string') {
       throw new TypegenCommandError('React page typegen returned an invalid artifact.');
     }

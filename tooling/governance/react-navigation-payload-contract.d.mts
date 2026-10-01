@@ -18,9 +18,11 @@ export type ReactNavigationPayloadContractSource =
  * fresh auth refresh, session-owned background JSON reads and revision-coalesced
  * current-page approval and confirmed auth-policy owner cancellation.
  * POST acknowledgement and private reads are not reusable pages.
+ * Generated props are decoded before import on initial, ordinary and
+ * anonymous-prefetch loads.
  *
  * @param readText Source reader for every governed implementation seam.
- * @throws When a navigation, prefetch or form-follow-up invariant is violated.
+ * @throws When a navigation, generated-props, prefetch or form-follow-up invariant is violated.
  */
 export function enforceReactNavigationPayloadContract(
   readText?: (relativePath: ReactNavigationPayloadContractSource) => string,

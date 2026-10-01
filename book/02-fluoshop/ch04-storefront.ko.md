@@ -577,3 +577,57 @@ request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET�
 이 chapter의 storefront는 read-only exercise로 유지합니다. 쓰기 interaction은
 [FluoBlog companion](../01-fluoblog/ch17-react-reading-and-writing.ko.md)에서 다룹니다.
 여기에 mutation, optimistic cache 또는 dirty navigation guard를 추가하지 않습니다.
+
+### 같은 상품 선택 URL을 타입으로 만들기
+
+독자가 선택 URL을 공유하는 버튼을 추가한다고 하자. 문자열 연결을 늘리는 대신 같은
+HTTP route에서 query 계약을 생성할 수 있다. 아래는 **typed 탐색을 선택할 때 추가하는
+DTO 조각**이다. 기존 `StorefrontRouter.show`에 `@RequestDto(SelectionQuery)`를 붙이고
+첫 인자를 `input: SelectionQuery`로 바꾼다. Import는 기존 `.ts` router 파일에 둔다.
+추가된 DTO는 wire shape만 표현하며 기존 `selectProduct(product, url.searchParams)`의
+중복 key·SKU·수량 검사를 없애지 않는다. 이 raw 값은 검증된 주문이나 가격이 아니다.
+
+```ts
+import { FromPath, FromQuery, Optional, RequestDto } from '@fluojs/http';
+
+class SelectionQuery {
+  @FromPath('slug')
+  slug = '';
+
+  @FromQuery('sku') @Optional()
+  sku?: string | readonly string[];
+
+  @FromQuery('quantity') @Optional()
+  units?: string | readonly string[];
+}
+```
+
+실제 application tsconfig/options로 기존 `fluo typegen`을 실행한 뒤 화면은 DTO를
+import하거나 별도 Input interface를 만들지 않는다. 아래는 generated artifact를 소비하는
+**링크 조각**이며 `Link`는 기존 provider 안에서 사용한다. Hydration 전이나 JavaScript가
+없을 때도 실제 anchor다. Query의 `units`는 DTO property이고 URL에는 `quantity`가 나온다.
+
+```tsx
+import { Link } from '@fluojs/react/client';
+import { reactPageRoutes } from './generated/react-pages.js';
+
+const product = reactPageRoutes['GET /products/:slug StorefrontRouter show'];
+<Link {...product.link(
+  { slug: 'fluo-logo-tee' },
+  { sku: 'FLUO-TEE-BLK-M', units: '2' },
+)}>Check two shirts</Link>;
+// /products/fluo-logo-tee?sku=FLUO-TEE-BLK-M&quantity=2
+```
+
+수량은 아직 wire text `'2'`이며 HTTP 조회 뒤 기존 선택 검사가 숫자로 변환한다.
+Array는 같은 key를 순서대로 반복하므로 `units: ['1', '2']`도 URL로 표현되지만 이 상점의
+중복 거부 정책은 계속 400을 반환한다. 빈 문자열은 보존되고 optional key 생략은 초기
+방문 의미를 유지한다. Space는 `+`, literal plus/slash/percent는 percent encoding을 거친다.
+`useSearchParams()`를 validated DTO로 cast하지 않는다. 서버 가격은 계속 문자열로
+전달하고 계산 중 `bigint`를 props로 보내지 않는다.
+
+추후 soft page로 옮길 때도 default-export component의 JSON props와 generated registry,
+initial/soft decoder를 연결하고 build importer allowlist를 유지한다. 일반 typecheck/build는
+기존 `--check`를 먼저 실행해야 하며 stale output을 자동 재생성해 숨기지 않는다.
+[타입 계약](../../docs/contracts/react-end-to-end-types.ko.md)이 지원 범위를 소유한다.
+이 조각은 native GET 실습에 덧붙인 선택지이지 실행 완료나 장바구니 저장의 근거가 아니다.

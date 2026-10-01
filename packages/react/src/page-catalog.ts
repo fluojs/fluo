@@ -1,7 +1,8 @@
-import type { HandlerDescriptor, HttpMethod } from '@fluojs/http/portable';
+import type { HandlerDescriptor, HttpMethod, VersioningType } from '@fluojs/http/portable';
 import { createRuntimeRouteInspection } from '@fluojs/runtime/internal';
 
 import { getReactPathMetadata, getReactRouterMetadata } from './decorators.js';
+import type { ReactQueryField } from './typegen-projection.js';
 
 /**
  * Immutable bootstrap-resolved description of one React page handler.
@@ -22,6 +23,12 @@ export interface ReactPageCatalogEntry {
   readonly path: string;
   readonly router: string;
   readonly version?: string;
+  /** HTTP compiler provenance; absence cannot establish URI-based version selection. */
+  readonly versionSelection?: VersioningType;
+  /** Compiler-projected query input derived from the actual HTTP request DTO. */
+  readonly query?: readonly ReactQueryField[];
+  /** Frozen source/configuration digest, including type-only dependencies. */
+  readonly sourceFingerprint?: string;
 }
 
 /**
@@ -54,6 +61,8 @@ export function createReactPageCatalog(
       path: route.path,
       router: route.controller,
       ...(route.version ? { version: route.version } : {}),
+      ...(descriptor.metadata.versionSelection === undefined
+        ? {} : { versionSelection: descriptor.metadata.versionSelection }),
     }));
   }
 

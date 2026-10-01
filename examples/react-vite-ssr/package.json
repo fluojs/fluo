@@ -8,11 +8,14 @@
     "node": ">=24.11.0 <27"
   },
   "scripts": {
-    "build": "vite build --config vite.client.config.ts && vite build --config vite.server.config.ts",
+    "typegen": "node ../../packages/cli/bin/fluo.mjs typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts",
+    "typegen:check": "node ../../packages/cli/bin/fluo.mjs typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --check",
+    "typegen:watch": "node ../../packages/cli/bin/fluo.mjs typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --watch",
+    "build": "pnpm typegen:check && vite build --config vite.client.config.ts && vite build --config vite.server.config.ts",
     "start": "node dist/server/main.js",
     "test": "vitest run src",
     "test:browser": "pnpm --workspace-root build && pnpm build && playwright test --config playwright.config.ts",
-    "typecheck": "tsc -p ../tsconfig.json --noEmit"
+    "typecheck": "pnpm typegen:check && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@fluojs/core": "workspace:*",

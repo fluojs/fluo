@@ -180,13 +180,16 @@ function createProjectScripts(bootstrapPlan: ResolvedBootstrapPlan): Record<stri
   switch (bootstrapPlan.profile.id) {
     case 'application-node-fastify-react-vite-ssr':
       return {
-        build: 'vite build --config vite.client.config.ts && vite build --config vite.server.config.ts',
+        typegen: 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts',
+        'typegen:check': 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --check',
+        'typegen:watch': 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --watch',
+        build: 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --check && vite build --config vite.client.config.ts && vite build --config vite.server.config.ts',
         dev: 'fluo dev',
         start: 'node dist/server/main.js',
         test: 'vitest run',
         'test:browser': 'playwright test --config playwright.config.ts',
         'test:watch': 'vitest',
-        typecheck: 'tsc -p tsconfig.json --noEmit',
+        typecheck: 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --check && tsc -p tsconfig.json --noEmit',
       };
     case 'application-bun-bun-http':
       return {
@@ -2744,6 +2747,17 @@ export async function scaffoldBootstrapApp(
 
   if (options.installDependencies ?? !options.skipInstall) {
     await installDependencies(targetDirectory, options.packageManager);
+    if (bootstrapPlan.profile.id === 'application-node-fastify-react-vite-ssr') {
+      const { runTypegenCommand } = await import('../commands/typegen.js');
+      const exit = await runTypegenCommand([
+        'src/app.ts', '--export', 'AppModule', '--options', 'applicationOptions',
+        '--tsconfig', 'tsconfig.json', '--output', 'src/generated/react-pages.ts',
+      ], { cwd: targetDirectory });
+      if (exit !== 0) {
+        const { TypegenCommandError } = await import('../commands/typegen-options.js');
+        throw new TypegenCommandError('Initial React contracts could not be generated. Correct the reported source diagnostic and run the generated typegen script.');
+      }
+    }
   }
 }
 

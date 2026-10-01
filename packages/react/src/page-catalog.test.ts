@@ -1,4 +1,4 @@
-import { Controller, createHandlerMapping, Get, Version } from '@fluojs/http';
+import { Controller, createHandlerMapping, Get, Version, VersioningType } from '@fluojs/http';
 import { createRuntimeRouteCatalog } from '@fluojs/runtime';
 import { describe, expect, it } from 'vitest';
 
@@ -63,6 +63,7 @@ describe('React page catalog', () => {
         path: '/v2/products/:productId',
         router: 'ProductRouter',
         version: '2',
+        versionSelection: VersioningType.URI,
       },
     ]);
     expect(Object.isFrozen(catalog)).toBe(true);

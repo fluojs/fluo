@@ -63,6 +63,7 @@ const lockedGraph = {
 const receipt = { attempt, target, directory, lockedGraph, tarballs, installedFiles, installedTemplates, commands };
 writeFileSync(join(output, `pack-release-${attempt}.json`), `${JSON.stringify(receipt, null, 2)}\n`);
 try {
+  await run('starter-typegen', ['typegen'], directory);
   await run('starter-types', ['typecheck'], directory);
   await run('starter-tests', ['test'], directory);
   await run('starter-build', ['build'], directory, { FLUO_REACT_FORM_TEST_SERVER: '1' });

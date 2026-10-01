@@ -576,7 +576,7 @@ const productHref = reactPageRoutes['GET /products/:productId ProductRouter show
 // /products/desk%2Fchair
 ```
 
-생성 route id는 stable catalog `id`를 사용합니다. Static builder는 parameter를 받지 않고 dynamic
+생성 route id는 stable catalog `id`를 사용합니다. Query binding 없는 static builder는 parameter를 받지 않고 dynamic
 builder는 모든 catalog path parameter를 요구하며 각 값을 `encodeURIComponent(...)`로 encode합니다.
 Artifact는 `ReactPagePathById`, `ReactPageParamsById`, `ReactPagePath<RouteId>`,
 `ReactPageParams<RouteId>`, `ReactPageRoute`, `ReactPageLinkProps`, `ReactPageNavigator`도 export합니다.
@@ -608,18 +608,49 @@ function ProductNavigation({ productId }: { readonly productId: string }) {
 }
 ```
 
-Static `link`, `push`, `replace` method는 param을 받지 않고 parameterized method는 모든 path param을
+Static `link`, `push`, `replace` method는 path param을 받지 않고 parameterized method는 모든 path param을
 요구하며 누락되거나 추가된 key를 거부합니다. 기존 generated `href(...)` builder,
 `<Link href={stringOrUrl}>`, `router.push(...)` / `router.replace(...)`의 string 또는 `URL` 호출은 계속
 지원됩니다. Generated method는 absolute href string을 생성하거나 기존 API에 전달할 뿐이므로 real-anchor
 fallback, full-document HTTP navigation, matching, DTO binding, guard, interceptor, not-found behavior는 현재
 owner를 그대로 유지합니다.
 
-이 contract는 의도적으로 path-only입니다. Query string, fragment, relative route, optional parameter,
-client route tree를 생성하지 않습니다. Typegen은 `version`이 있는 모든 catalog entry를 거부합니다.
-Compiled catalog만으로는 version selection이 URI, header, media type, custom strategy 중 어디에서
-왔는지 구분할 수 없으므로 하나의 absolute href를 생성하면 실제와 다른 URL contract를 약속할 수
-있기 때문입니다.
+기존 generator는 frozen application compiler snapshot에서 HTTP query alias와 wire omission 규칙도
+project합니다. Application 설정은 `--tsconfig`, 실제 bootstrap options export는 `--options`로
+선택합니다. Converted field는 `@fluojs/http`의 type-only `HttpWire<Server, Wire>`로 raw input을
+선언합니다. Conversion과 validation의 권한은 HTTP에 남습니다. Query builder는 repeated value
+순서, empty string, optional field 생략을 보존하며 implicit number/boolean stringification 대신
+`URLSearchParams` encoding을 사용합니다.
+
+`@FromQuery('q') term: string`을 가진 generated `SearchRouter.show` route에서는 wire alias가
+아닌 DTO property name을 사용합니다. Path param이 있으면 query가 그 뒤에 오며 모든 query
+binding이 optional일 때만 query를 생략할 수 있습니다.
+
+```tsx
+const search = reactPageRoutes['GET /search SearchRouter show'];
+<Link {...search.link({ term: 'tea + coffee' })}>Search</Link>;
+// /search?q=tea+%2B+coffee
+```
+
+Artifact version 2는 `reactPageModules` JSON props contract와 기존
+`useForm({ action, contract })` 경로의 `reactFormRoutes` contract를 생성합니다.
+`ReactPagePropsRegistry`가 module literal과 exact props를 연결하므로 소비자가 DTO interface를
+복제하거나 saved data를 cast하지 않습니다. Type-only dependency와 compiler 설정도 freshness에
+포함됩니다.
+
+Generated file을 consumer TypeScript program에 포함합니다. `reactPageModules`는 initial
+loader의 네 번째 인자와 soft loader의 `contracts` option에 전달하며 기존 provider 조립도
+public prefetch를 포함해 같은 contract를 전달해야 합니다. Registry 포함만으로 runtime
+validation이 되지는 않습니다. Generated form은 `fields`와 `decodeSaved`를 제공하며 GET
+`decodeRead`를 생성하지 않습니다. 제출한 successful control은 HTTP가 계속 검증합니다.
+일반 typecheck/build 전에 기존 `--check`를 실행하고 실패하면 조용한 재생성 대신 명시적으로
+generate합니다. [이주](../../docs/getting-started/migrate-react-typegen.ko.md)를 참고하세요.
+
+Unversioned route와 provenance-backed URI route는 compiled effective path를 사용합니다.
+Versioned header/media/custom route나 selection provenance 누락은 명시적으로 실패합니다.
+Literal `/v2` path는 URI strategy의 근거가 아닙니다. Fragment, relative route, client matcher
+generation은 이 계약 밖입니다. 지원 JSON shape, strict consumer 요건과 migration guidance는
+[end-to-end 타입 계약](../../docs/contracts/react-end-to-end-types.ko.md)을 참고하세요.
 
 ## Consumer Testing Loop
 
@@ -1437,8 +1468,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, React-owned
   `routes: []` table
 - 자동 client bundle 생성
-- versioned React page의 href 생성. Catalog가 URI versioning과 non-path version strategy를 구분할 수
-  있을 때까지 path-only typegen은 versioned catalog entry를 거부합니다.
+- versioned header/media/custom route 또는 selection provenance 없는 route의 href 생성.
+  Unversioned 및 provenance-backed URI route는 지원합니다.
 - filesystem scanning 또는 자동 manifest file discovery. 이미 로드한 manifest 값을 `@fluojs/react/vite`에 넘기세요.
 - `bootstrapScriptContent`로 임의 data를 자동 serialize하는 기능
 - `renderToPipeableStream(...)` 같은 Node 전용 `react-dom/server` pipeable stream root API
@@ -1458,11 +1489,12 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `ReactPageCatalogEntry` — effective HTTP method/path/version/params와 originating router/handler를
   담는 type-only bootstrap-resolved page descriptor입니다.
 - `@fluojs/react/typegen` subpath — package root를 넓히거나 runtime route table을 추가하지 않고
-  deterministic path-only declaration, versioned artifact check, absolute href builder, route-bound `Link` prop,
+  deterministic path/query declaration, versioned artifact check, absolute href builder, route-bound `Link` prop,
   typed `push`/`replace` method를 제공하는 `generateReactPageTypes(...)`,
   `inspectReactPageTypeArtifact(...)`, `REACT_PAGE_TYPEGEN_ARTIFACT_VERSION`,
   `ReactPageTypeArtifactInspection`, `ReactPageTypegenError`, `REACT_PAGE_TYPEGEN_ERROR_CODES`,
-  `ReactPageTypegenErrorCode`를 제공합니다.
+  `ReactPageTypegenErrorCode`를 제공합니다. Compiler projection은 같은 lifecycle에서
+  limited JSON module props와 saved-data contract도 생성합니다.
 - `ReactModule` — `forRoot(...)`가 기존 fluo module/controller metadata path를 통해 React router를
   등록하는 런타임 중립 module facade입니다.
 - `ReactNavigationPage.create(...)` — 일반 streamed HTML을 유지하면서 matched page를

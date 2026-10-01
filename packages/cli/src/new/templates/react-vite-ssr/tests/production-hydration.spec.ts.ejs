@@ -650,11 +650,13 @@ test('updates a React component and CSS over the app WebSocket without losing el
     expect(await page.evaluate(() => document.documentElement.dataset.hmrIdentity)).toBe('retained');
     expect(browserErrors).toEqual([]);
 
+    const invalidPage = originalPage.replace('const identifier = useId();', 'const identifier = ;');
+    expect(invalidPage).not.toBe(originalPage);
     const transformError = socket.waitForEvent('framereceived', {
       predicate: ({ payload }) => String(payload).includes('"type":"error"'),
       timeout: 15_000,
     });
-    await writeFile(pageFile, originalPage.replace("const sku = typeof props['sku'] === 'string' ? props['sku'] : '';", 'const sku = ;'));
+    await writeFile(pageFile, invalidPage);
     await transformError;
     await expect(page.locator('vite-error-overlay')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.dataset.hmrIdentity)).toBe('retained');

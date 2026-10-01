@@ -578,3 +578,63 @@ existing explicit `useRouter().refresh()` still resets page state after approval
 Keep this chapter's storefront as the existing read-only exercise. Writes belong
 to the [FluoBlog companion](../01-fluoblog/ch17-react-reading-and-writing.md).
 Do not add mutations, optimistic cache writes or dirty navigation guards here.
+
+### Build the same product-selection URL with types
+
+Suppose a reader needs a button sharing the selection URL. Instead of adding
+string concatenation, generate a query contract from the same HTTP route. This
+is a **DTO fragment for opting into typed navigation**. Add
+`@RequestDto(SelectionQuery)` to `StorefrontRouter.show` and change its first
+argument to `input: SelectionQuery`. Keep imports in the existing `.ts` router.
+The DTO describes wire shape only: retain the duplicate-key, SKU and quantity
+checks in `selectProduct(product, url.searchParams)`. Raw input is not a validated
+order or price.
+
+```ts
+import { FromPath, FromQuery, Optional, RequestDto } from '@fluojs/http';
+
+class SelectionQuery {
+  @FromPath('slug')
+  slug = '';
+
+  @FromQuery('sku') @Optional()
+  sku?: string | readonly string[];
+
+  @FromQuery('quantity') @Optional()
+  units?: string | readonly string[];
+}
+```
+
+Run the existing `fluo typegen` with the actual application tsconfig/options. The
+view imports no DTO and copies no Input interface. This **link fragment** consumes
+the generated artifact, with `Link` inside the existing provider. It remains a real
+anchor before hydration or without JavaScript. `units` is the DTO property; the
+URL uses its `quantity` alias.
+
+```tsx
+import { Link } from '@fluojs/react/client';
+import { reactPageRoutes } from './generated/react-pages.js';
+
+const product = reactPageRoutes['GET /products/:slug StorefrontRouter show'];
+<Link {...product.link(
+  { slug: 'fluo-logo-tee' },
+  { sku: 'FLUO-TEE-BLK-M', units: '2' },
+)}>Check two shirts</Link>;
+// /products/fluo-logo-tee?sku=FLUO-TEE-BLK-M&quantity=2
+```
+
+Quantity remains wire text `'2'`; the existing selection check converts it after
+the HTTP read. Arrays repeat the same key in order, so `units: ['1', '2']` is a
+representable URL, but this shop's duplicate-rejection policy still returns 400.
+Empty strings remain present; omitted optional keys retain initial-visit semantics.
+Space becomes `+`; literal plus/slash/percent are percent-encoded. Do not cast
+`useSearchParams()` to a validated DTO. Keep server prices as strings and do not
+send calculation-time `bigint` as props.
+
+When later adopting soft pages, connect the default component's JSON props to the
+generated registry and initial/soft decoders while retaining the build importer
+allowlist. Ordinary typecheck/build must run the existing `--check` first rather
+than hide stale output with automatic regeneration. The
+[type contract](../../docs/contracts/react-end-to-end-types.md) owns supported
+limits. This is an option alongside the native GET exercise, not evidence of an
+executed journey or a saved cart.

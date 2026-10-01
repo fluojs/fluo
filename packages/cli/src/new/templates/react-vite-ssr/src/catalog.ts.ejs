@@ -14,8 +14,8 @@ export type CatalogObservation = {
   readonly path: string;
   readonly matched: string;
   readonly name?: string;
-  readonly intent?: string;
-  readonly tag?: readonly string[];
+  readonly intent?: string | undefined;
+  readonly tag?: readonly string[] | undefined;
   readonly dto?: boolean;
 };
 export type CatalogControl = (event: CatalogObservation, context: RequestContext) => void | Promise<void>;
@@ -83,8 +83,8 @@ class QueueWrite {
   sku = '';
 }
 
-export function createCatalogRouter(
-  render: (props: CatalogPageProps, context: RequestContext) => unknown,
+export function createCatalogRouter<Result>(
+  render: (props: CatalogPageProps, context: RequestContext) => Result,
   control?: CatalogControl,
 ) {
   const products = new Map([['sku-42', 'Seeded product']]);

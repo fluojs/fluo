@@ -5,6 +5,7 @@ import { loadReactInitialNavigationDestination, type ReactNavigationModules } fr
 
 import { REACT_IDENTIFIER_PREFIX } from './hydration';
 import { ProductDocument } from './page';
+import { reactPageModules } from './generated/react-pages';
 import './styles.css';
 
 const stylesheets = [...document.querySelectorAll<HTMLLinkElement>('link[data-vite-style]')]
@@ -20,7 +21,7 @@ const buildId = document.documentElement.dataset.buildId;
 if (initialJson === undefined || initialJson === null || buildId === undefined) {
   throw new Error('The HTTP document has no compatible initial navigation transfer.');
 }
-const initial = await loadReactInitialNavigationDestination(initialJson, navigationModules, buildId);
+const initial = await loadReactInitialNavigationDestination(initialJson, navigationModules, buildId, reactPageModules);
 if (!initial.ok) {
   throw new Error(`The HTTP document destination is unavailable: ${initial.reason}`);
 }
@@ -29,21 +30,7 @@ hydrateRoot(
   document,
   createElement(ProductDocument, {
     ...(initial.payload.destination.module !== './navigation-catalog.ts' ? {} : {
-      catalog: {
-        products: Array.isArray(initial.payload.destination.props.products)
-          ? initial.payload.destination.props.products : [],
-        ...(typeof initial.payload.destination.props.selected === 'string'
-          ? { selected: initial.payload.destination.props.selected } : {}),
-        ...(initial.payload.destination.props.backgroundDemo === true ? {
-          backgroundDemo: true,
-          queued: Array.isArray(initial.payload.destination.props.queued)
-            ? initial.payload.destination.props.queued.filter((value: unknown): value is string => typeof value === 'string') : [],
-          searchQuery: typeof initial.payload.destination.props.searchQuery === 'string'
-            ? initial.payload.destination.props.searchQuery : '',
-          revision: typeof initial.payload.destination.props.revision === 'number'
-            ? initial.payload.destination.props.revision : 0,
-        } : {}),
-      },
+      catalog: reactPageModules['./navigation-catalog.ts'].decodeProps(initial.payload.destination.props),
     }),
     adminPage: isAdminPage ? adminPage : undefined,
     preview: document.documentElement.dataset.preview === 'true',

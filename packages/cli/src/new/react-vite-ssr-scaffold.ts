@@ -27,6 +27,7 @@ type ReactViteSsrLifecycleCommands = {
   readonly test: string;
   readonly testBrowser: string;
   readonly typecheck: string;
+  readonly typegen: string;
 };
 
 const INSTALL_COMMAND_BY_PACKAGE_MANAGER = {
@@ -92,6 +93,7 @@ function createLifecycleCommands(packageManager: PackageManager): ReactViteSsrLi
     test: run('test'),
     testBrowser: run('test:browser'),
     typecheck: run('typecheck'),
+    typegen: run('typegen'),
   };
 }
 
@@ -119,6 +121,7 @@ export function createReactViteSsrScaffoldFiles(
       .replaceAll('<%= testCommand %>', commands.test)
       .replaceAll('<%= testBrowserCommand %>', commands.testBrowser)
       .replaceAll('<%= typecheckCommand %>', commands.typecheck)
+      .replaceAll('<%= typegenCommand %>', commands.typegen)
       .replaceAll('<%= devCommandJson %>', JSON.stringify(commands.dev))
       .replaceAll('<%= startCommandJson %>', JSON.stringify(commands.start)),
     path: outputPath,

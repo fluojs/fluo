@@ -775,6 +775,37 @@ All header defaults, overrides and ordering remain unchanged. Other middleware,
 including copied or modified instances, retains the normal chain. Request-scoped
 dependencies, guards, interceptors and observers still require their usual path.
 
+### Type-only converter wire input
+
+`HttpWire<Server, Wire>` distinguishes raw HTTP input from a converted DTO property
+for compiler tooling. It is type-only and does not install conversion or validation:
+
+```ts
+import { Convert, FromQuery, type HttpWire } from '@fluojs/http';
+
+class SearchInput {
+  @Convert({ convert(value: unknown) { return Number(value); } })
+  @FromQuery('page')
+  page: HttpWire<number, string> = 1;
+}
+```
+
+Use the same declaration for fields affected by global converter chains.
+`@Convert` retains its existing converter instance/DI-token contract; an arrow function
+is not a converter constructor. The compiled binder supplies source aliases and
+`@Optional()` omission policy. Required missing input is still rejected, while only
+an optional binding preserves an initializer when its input is absent.
+
+Tooling projections retain actual controller/DTO identity and never instantiate DTOs
+or execute converters. HTTP mapping also records authoritative `versionSelection`;
+React typegen supports provenance-backed URI hrefs and rejects unsupported
+header/media/custom requirements rather than guessing from a `/v2` path.
+Path placeholders remain compiled route names; query/body contracts distinguish DTO
+properties from `@FromQuery`/`@FromBody` aliases. Browser wire values are text or
+repeated text, not already-converted DTO values. Neither a generated href nor
+`HttpWire` bypasses runtime required-input checks, validators, guards or CSRF policy.
+See the [React end-to-end types contract](../../docs/contracts/react-end-to-end-types.md).
+
 ### Bun decorator bundling compatibility
 
 Fluo's HTTP decorators are standard TC39 decorators and continue to record metadata through `context.metadata` when the runtime or compiler provides the standard decorator context. When Bun bundles an application through its legacy TypeScript decorator transform, the same controller, route, DTO binding, guard/interceptor, header, redirect, versioning, status, request DTO, and `@Produces(...)` metadata is recorded through Fluo's internal metadata stores so generated Bun bundles preserve route mapping behavior.

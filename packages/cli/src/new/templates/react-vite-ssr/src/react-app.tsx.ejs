@@ -14,6 +14,7 @@ import type { ReactInitialNavigationPage } from '@fluojs/react';
 import { type ReactElement, createElement, isValidElement, useEffect, useRef, useState } from 'react';
 import { SessionControls, SessionResources } from './session-controls';
 import { BackgroundSearch } from './page-products';
+import { reactPageModules, reactPageRoutes } from './generated/react-pages';
 
 export const REACT_IDENTIFIER_PREFIX = 'fluo-react-vite-' as const;
 
@@ -125,15 +126,15 @@ function SharedNavigation(): ReactElement {
         </div>
       )}
       <nav aria-label='Page navigation'>
-        <Link href='/products/sku-84?preview=false'>Open sku-84</Link>
-        <Link href='/search?q=catalog'>Search catalog</Link>
-        <Link href='/products/render-error'>Open throwing page</Link>
-        <Link href='/search?q=catalog' target='_blank'>Open search in new tab</Link>
+        <Link {...reactPageRoutes['GET /products/:sku ProductPageRouter show'].link({ sku: 'sku-84' }, { preview: 'false' })}>Open sku-84</Link>
+        <Link {...reactPageRoutes['GET /search SearchPageRouter show'].link({ q: 'catalog' })}>Search catalog</Link>
+        <Link {...reactPageRoutes['GET /products/:sku ProductPageRouter show'].link({ sku: 'render-error' })}>Open throwing page</Link>
+        <Link {...reactPageRoutes['GET /search SearchPageRouter show'].link({ q: 'catalog' })} target='_blank'>Open search in new tab</Link>
         <Link href='/not-built'>Missing page</Link>
-        <button onClick={() => router.push('/products/sku-126?preview=true')} type='button'>
+        <button onClick={() => reactPageRoutes['GET /products/:sku ProductPageRouter show'].push(router, { sku: 'sku-126' }, { preview: 'true' })} type='button'>
           Push sku-126
         </button>
-        <button onClick={() => router.replace('/products/sku-126?preview=true')} type='button'>
+        <button onClick={() => reactPageRoutes['GET /products/:sku ProductPageRouter show'].replace(router, { sku: 'sku-126' }, { preview: 'true' })} type='button'>
           Replace with sku-126
         </button>
         <button onClick={() => router.invalidate()} type='button'>Invalidate navigation</button>
@@ -170,6 +171,7 @@ export function ReactAppDocument({
       initialSnapshot={initialSnapshot}
       session={{ epoch: typeof identity === 'string' ? `demo:${identity}` : 'demo:initial' }}
       navigationModules={navigationModules}
+      navigationContracts={reactPageModules}
       navigationBuildId={navigationBuildId}
       prefetchScope={prefetchScope}
       failurePolicy={({ reason }) =>

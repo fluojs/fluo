@@ -507,14 +507,15 @@ Studio가 없으면 CI와 non-interactive 실행은 prompt나 package manager �
 
 ### React Page Type Generation
 
-Bootstrap-resolved route catalog에서 application-owned path-only React page type과 absolute href
-builder를 생성합니다.
+Bootstrap-resolved HTTP catalog와 같은 frozen application compiler graph에서
+application-owned React path/query helper, module props, form contract를 생성합니다.
 
 ```bash
 fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts
 fluo typegen ./src/admin.ts --export AdminModule --output ./src/generated/admin-pages.ts
 fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts --check
 fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts --watch
+fluo typegen ./src/app.ts --tsconfig ./tsconfig.json --options applicationOptions --output ./src/generated/react-pages.ts
 ```
 
 `--export` 기본값은 `AppModule`입니다. 명령은 CLI loader로 TypeScript source를 로드하고 application을
@@ -523,6 +524,13 @@ bootstrap한 다음 `app.dispatcher.describeRoutes()`를 읽어 `createReactPage
 directory를 기준으로 resolve됩니다. 파일이 없으면 `CREATE`, content가 stale하면 `UPDATE`, byte 단위로
 같으면 `UNCHANGED`를 보고합니다. Write는 complete temporary file 하나를 atomic rename으로 publish하며
 `UNCHANGED`는 target을 다시 쓰지 않습니다.
+
+TypeScript projection에는 실제 application tsconfig가 필요하며 `--tsconfig`를 생략하면
+module에서 찾습니다. `--options`는 공유 options export를 선택하고 생략하면 bootstrap
+기본값입니다. Runtime은 계속 `FluoFactory.create(AppModule, applicationOptions)` 다음
+`app.listen()`을 호출합니다. Typegen은 graph를 생성·종료하지만 listen하지 않으므로 import
+side effect로 listen하는 entry를 선택하지 마세요. Runtime metadata만으로 erased type을
+복원하지 않습니다.
 
 Default generation은 application과 일치하는 tooling namespace를 하나의 short-lived child process에서
 평가하고, 해당 process가 종료된 뒤에만 결과를 check하거나 publish합니다. 따라서 반복되는 watch
@@ -552,13 +560,13 @@ process 또는 caller-process bootstrap)을 cancel하고 owned artifact commit�
 publish하지 못하게 합니다. Caller-process cancellation은 asynchronous bootstrap과 application close가
 settle될 때까지 기다린 뒤 code `0`으로 watch를 종료하며, `SIGTERM` 뒤에도 종료하지 않는 child는 제한된
 grace period 뒤 force-kill됩니다.
-Module directory 밖의 파일은 의도적으로 watch boundary 밖에
-있습니다. Source scanner나 두 번째 route discovery system을 기대하지 말고 command를 다시 실행하거나
-의도한 source root의 module path를 선택하세요.
+Compiler graph의 source/type-only dependency와 configuration input도 module directory 밖의
+입력을 포함해 watch/freshness에 참여합니다. 무관한 파일을 두 번째 route discovery로
+탐색하지 않습니다. Artifact version 2는 compiler option/version도 fingerprint합니다.
 
 생성된 `reactPageRoutes` object는 stable catalog `id`를 key로 사용합니다. Dynamic `href(...)`,
 `link(...)`, `push(...)`, `replace(...)` method는 모든 path param을 요구하고 각 값을 URI-encode하며
-static method는 param을 받지 않습니다. `route.link(params)`를 기존 real-anchor `Link`에 spread하거나,
+static method는 path param을 받지 않습니다. Query binding은 typed query 인자를 추가합니다. `route.link(params)`를 기존 real-anchor `Link`에 spread하거나,
 기존 `ReactRouter`를 `route.push(router, params)` / `route.replace(router, params)`에 전달하세요.
 
 ```tsx
@@ -571,9 +579,16 @@ productRoute.replace(router, { productId });
 
 이 generated method는 기존 HTTP-first client API가 실행되기 전에 일반 absolute href string으로 resolve됩니다.
 Runtime route table, matcher, relative-route model, SPA navigation을 추가하지 않습니다. 기존 `href(...)`,
-`Link href`, router string/`URL` 호출은 계속 지원됩니다. Versioned route는 명시적으로 실패합니다.
-Catalog만으로는 URI versioning과 header, media-type, custom version strategy를 구분할 수 없기 때문입니다. 자세한 내용은
-[@fluojs/react path-only typegen contract](../react/README.ko.md#path-only-page-type-generation)를 참고하세요.
+`Link href`, router string/`URL` 호출은 계속 지원됩니다. Unversioned route와 provenance-backed URI
+route는 compiled effective path를 사용합니다. Versioned header/media/custom route와 provenance
+누락은 명시적으로 실패합니다. `--tsconfig <path>`는 실제 application compiler 설정,
+`--options <name>`은 module namespace의 실제 bootstrap options export를 선택합니다.
+Query wire alias, module props, native form contract는 같은 generation/check/watch lifecycle을
+사용하며 artifact version 2에는 type-only/configuration freshness가 포함됩니다. 이전 artifact는
+명시적으로 재생성하세요. [React end-to-end 타입 계약](../../docs/contracts/react-end-to-end-types.ko.md)을
+참고하세요. 일반 typecheck/build는 기존 `--check`를 먼저 실행해 잘못된 output에서 실패해야
+하며 조용히 재생성하지 않습니다. [이주](../../docs/getting-started/migrate-react-typegen.ko.md)를
+함께 확인하세요.
 
 ## 공개 API
 
@@ -617,7 +632,7 @@ Catalog만으로는 URI versioning과 header, media-type, custom version strateg
 - [cli.ts](./src/cli.ts) - 명령 디스패처 및 인자 파싱.
 - [commands/new.ts](./src/commands/new.ts) - 프로젝트 스캐폴딩 구현.
 - [commands/inspect.ts](./src/commands/inspect.ts) - 런타임 검사 export mode와 Studio 위임.
-- [commands/typegen.ts](./src/commands/typegen.ts) - React page catalog bootstrap과 deterministic path-only artifact write.
+- [commands/typegen.ts](./src/commands/typegen.ts) - HTTP catalog/compiler projection과 deterministic artifact write/check/watch.
 - [commands/migrate.ts](./src/commands/migrate.ts) - decorator codemod, JSON report, transform filter.
 - [commands/package-workflow.ts](./src/commands/package-workflow.ts) - `fluo add`와 `fluo upgrade` workflow.
 - [commands/scripts.ts](./src/commands/scripts.ts) - `dev`, `build`, `start` lifecycle command boundary.

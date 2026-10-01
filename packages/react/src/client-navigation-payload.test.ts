@@ -1,13 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest';
-
-import { createClientNavigationStore } from './client/store.js';
 import { createClientFormStore } from './client/form-store.js';
+import { createClientNavigationStore } from './client/store.js';
 import {
   createReactRouteSnapshot,
   loadReactInitialNavigationDestination as loadInitial,
   loadReactNavigationDestination as loadNavigation,
-  type ReactNavigationModules,
   type ReactNavigationLoadResult,
+  type ReactNavigationModules,
 } from './client.js';
 
 const ORIGIN = 'https://example.test';
@@ -79,6 +78,31 @@ it('consumes auth refresh through two uncached credentialed GETs before fresh ap
     expect(init.method ?? 'GET').toBe('GET');
   }
   expect(store.getSnapshot().session?.status).toBe('approved');
+});
+
+it('rejects generated module props before initial or soft destination import', async () => {
+  // Given: both representations carry a mapped module but wrong concrete props.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}${payload.url}` } });
+  const malformed = { ...payload, destination: { module: './navigation-product.ts', props: { sku: 42 } } };
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+  const contracts = { './navigation-product.ts': {
+    decodeProps(value: unknown) {
+      if (typeof value !== 'object' || value === null || !('sku' in value) || typeof value.sku !== 'string') {
+        throw new TypeError('Invalid generated props.');
+      }
+      return { sku: value.sku };
+    },
+  } };
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(malformed), {
+    headers: { 'Content-Type': MEDIA_TYPE },
+  })));
+  // When: initial hydration and a negotiated move use the same generated-contract seam.
+  const initial = await loadInitial(JSON.stringify(malformed), modules, BUILD_ID, contracts);
+  const soft = await loadNavigation(payload.url, modules, { buildId: BUILD_ID, contracts });
+  // Then: no wrong-props component can import or render through either entry point.
+  expect(initial).toEqual({ ok: false, reason: 'invalid-payload' });
+  expect(soft).toEqual({ ok: false, reason: 'invalid-payload' });
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
 });
 
 it('rejects a B navigation before importing when its build differs from the hydrated A tab', async () => {

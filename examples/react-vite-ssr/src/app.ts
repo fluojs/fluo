@@ -31,15 +31,12 @@ import {
   ReactModule,
   ReactNavigationPage,
   Router,
-  createReactServerEntry,
   type ReactPageRenderer,
 } from '@fluojs/react';
-import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { IsIn, IsString, MinLength } from '@fluojs/validation';
-import { cloneElement, createElement, isValidElement } from 'react';
+import { createElement } from 'react';
 
-import { REACT_IDENTIFIER_PREFIX } from './hydration';
-import { ProductDocument, type ProductDocumentProps } from './page';
+import type { ReactViteExamplePresentation } from './presentation';
 import { createPrefetchPageRouter } from './prefetch-page';
 import { createCatalogRouter, type CatalogControl } from './catalog';
 
@@ -47,12 +44,12 @@ const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
 
 export type ReactViteExampleModuleOptions = {
   readonly catalogControl?: CatalogControl;
-  readonly clientDirectory: URL;
-  readonly manifest: unknown;
+  readonly clientDirectory?: URL;
+  readonly presentation?: ReactViteExamplePresentation;
 };
 
-class ReactViteExampleManifestError extends Error {
-  readonly name = 'ReactViteExampleManifestError';
+class ReactViteExamplePresentationError extends Error {
+  readonly name = 'ReactViteExamplePresentationError';
 }
 
 class ProductPageRequest {
@@ -138,51 +135,21 @@ class ProductCatalog {
   }
 }
 
-export function createReactViteExampleModule(options: ReactViteExampleModuleOptions) {
-  const result = createReactViteAssetManifest({
-    base: '/assets/',
-    entries: {
-      client: 'src/entry-client.ts',
-      server: 'src/entry-server.ts',
-    },
-    identifierPrefix: REACT_IDENTIFIER_PREFIX,
-    manifest: options.manifest,
-  });
-
-  if (!result.ok) {
-    throw new ReactViteExampleManifestError(result.diagnostics.map((diagnostic) => diagnostic.message).join('\n'));
-  }
-
-  const assets = result.manifest;
-  const catalog = createCatalogRouter((props, context) => ReactNavigationPage.create(
-    createElement(ProductDocument, {
+export function createReactViteExampleModule(options: ReactViteExampleModuleOptions = {}) {
+  const presentation = () => {
+    if (options.presentation === undefined) {
+      throw new ReactViteExamplePresentationError('The inspection module has no configured page presentation.');
+    }
+    return options.presentation;
+  };
+  const catalog = createCatalogRouter((props, context) => {
+    const { assets, document: ProductDocument } = presentation();
+    return ReactNavigationPage.create(createElement(ProductDocument, {
       catalog: props, navigationBuildId: assets.buildId, preview: false, productName: '',
       routeParams: context.request.params, routeUrl: context.request.url, saved: false, sku: '', stylesheets: assets.css,
-    }), { module: './navigation-catalog.ts', props: { ...props } }, props.sessionDemo ? undefined : { prefetch: 'public' },
-  ), options.catalogControl);
-  if (assets.assetMap['src/navigation-product.ts'] === undefined) {
-    throw new ReactViteExampleManifestError('The client build has no navigation-product destination module.');
-  }
-  if (assets.assetMap['src/navigation-admin.ts'] === undefined) {
-    throw new ReactViteExampleManifestError('The client build has no navigation-admin destination module.');
-  }
-  const renderPage: ReactPageRenderer = (page, _context, _policies, initialPage) => {
-    if (page.type !== ProductDocument || !isValidElement<ProductDocumentProps>(page)) {
-      throw new ReactViteExampleManifestError('The example page must render with ProductDocument.');
-    }
-    const nonce = randomBytes(16).toString('base64');
-    return createReactServerEntry(cloneElement(page, {
-      initialPage,
-      routeMetadata: initialPage?.payload.metadata,
-    }), {
-      ...assets.hydrationOptions,
-      headers: {
-        ...(initialPage === undefined ? {} : { 'Cache-Control': 'private, no-store' }),
-        'Content-Security-Policy': `default-src 'self'; script-src 'self' 'nonce-${nonce}'; img-src 'self' data:`,
-      },
-      nonce,
-    });
-  };
+    }), { module: './navigation-catalog.ts', props: { ...props } }, props.sessionDemo ? undefined : { prefetch: 'public' });
+  }, options.catalogControl);
+  const renderPage: ReactPageRenderer = (...args) => presentation().renderPage(...args);
 
   @Inject(ProductCatalog)
   @Router('/products')
@@ -202,6 +169,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     @UseGuards(CatalogReadGuard)
     @UseInterceptors(CatalogMutationInterceptor)
     show(input: ProductPageRequest, context: RequestContext) {
+      const { assets, document: ProductDocument } = presentation();
       const productName = this.catalog.findName(input.sku);
       const preview = input.preview === 'true';
       return ReactNavigationPage.create(createElement(ProductDocument, {
@@ -232,6 +200,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
   @Router('/admin')
   class AdminPageRouter {
     private page(page: 'qr' | 'songs', context: RequestContext) {
+      const { assets, document: ProductDocument } = presentation();
       return ReactNavigationPage.create(createElement(ProductDocument, {
         adminPage: page,
         preview: false,
@@ -268,12 +237,13 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     }
   }
 
-  const PrefetchPageRouter = createPrefetchPageRouter(assets.css);
+  const PrefetchPageRouter = createPrefetchPageRouter(presentation);
 
   @Router('/deployment')
   class DeploymentRouter {
     @Path('/b-only')
     show(_input: undefined, context: RequestContext) {
+      const { assets, document: ProductDocument } = presentation();
       if (assets.assetMap['src/navigation-b-only.ts'] === undefined) {
         throw new NotFoundException('This destination is absent from the selected build.');
       }
@@ -303,7 +273,10 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
       }
 
       try {
-        const body = await readFile(new URL(input.file, options.clientDirectory));
+      if (options.clientDirectory === undefined) {
+        throw new ReactViteExamplePresentationError('The inspection module has no configured asset directory.');
+      }
+      const body = await readFile(new URL(input.file, options.clientDirectory));
         context.response.setHeader('Cache-Control', /-[a-zA-Z0-9_-]{6,}\.(?:js|css|svg)$/u.test(input.file)
           ? 'public, max-age=31536000, immutable'
           : 'public, max-age=300');
@@ -327,7 +300,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     controllers: [ViteAssetController],
     imports: [
       ReactModule.forRoot({
-        navigationBuildId: assets.buildId,
+        ...(options.presentation === undefined ? {} : { navigationBuildId: options.presentation.assets.buildId }),
         controllers: [ProductPageRouter, AdminPageRouter, PrefetchPageRouter, DeploymentRouter, catalog.router],
         middleware: [CatalogRequestMiddleware, ...catalog.middleware],
         providers: [
@@ -347,7 +320,11 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
   })
   class ReactViteExampleModule {
     static readonly errorRepresentation = catalog.errorRepresentation;
+    static readonly applicationOptions = { errorRepresentation: catalog.errorRepresentation };
   }
 
   return ReactViteExampleModule;
 }
+
+export const AppModule = createReactViteExampleModule();
+export const applicationOptions = AppModule.applicationOptions;

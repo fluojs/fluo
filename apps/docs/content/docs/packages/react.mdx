@@ -251,11 +251,51 @@ const show = reactPageRoutes['GET /catalog/:sku CatalogRouter show'];
 <Link {...show.link({ sku: 'sku-42' })}>Item</Link>;
 ```
 
-Typegen is deliberately path-only: it rejects versioned catalog entries (the catalog cannot tell URI versioning from header or media-type strategies), and it does not generate query strings, fragments, or a client route table.
+The existing typegen also projects query wire aliases, module props and saved form
+data from one frozen compiler graph. Use the actual `--tsconfig` and exported
+shared bootstrap `--options`; generation never listens. Unversioned and
+provenance-backed URI hrefs are supported; header/media/custom versions or missing
+selection provenance fail rather than being guessed from the path.
+
+For a generated query DTO declaring `@FromQuery('q') term: string`, use its
+property name, not the wire alias:
+
+```tsx
+const search = reactPageRoutes['GET /search SearchRouter show'];
+<Link {...search.link({ term: 'tea + coffee' })}>Search</Link>;
+// /search?q=tea+%2B+coffee
+```
+
+Query follows path params when present. HTTP still owns required/optional
+materialization, conversion and validation; `HttpWire<Server, Wire>` is a type-only
+converter-input declaration, not runtime validation. A raw search snapshot is not
+a validated DTO. No fragment, relative route or client matcher is generated.
+
+The generated registry connects module literals to authored function-component
+JSON props. Include it in strict consumers and pass `reactPageModules` to the
+initial loader's fourth argument and soft loader's `contracts` option through the
+existing provider composition, including public prefetch. Registry import alone
+does not install runtime decoders. Limited JSON supports finite plain objects,
+arrays, unions and optional omission, not arbitrary class/DI/Date/custom `toJSON`
+values. `reactFormRoutes` supplies `fields`/`decodeSaved` to the same `useForm`;
+it does not generate GET decoders. See [progressive forms](/docs/guides/react-progressive-forms).
+
+Artifact version 2 freshness includes type-only/config/compiler inputs. The
+existing `--check` must gate ordinary typecheck/build, with no silent regeneration.
+The repository owners are `docs/contracts/react-end-to-end-types.md` and
+`docs/getting-started/migrate-react-typegen.md`.
 
 ### Client navigation stays HTTP-first
 
-`@fluojs/react/client` renders `Link` as a real anchor, so pre-hydration clicks, disabled JavaScript, and modified clicks keep native browser behavior. After hydration, same-origin primary clicks delegate to `router.push(...)`, which performs full-document navigation through `window.location.assign(...)` - the destination is matched and validated by the HTTP dispatcher again. `usePathname`, `useSearchParams`, `useParams`, and `useNavigation` read an immutable snapshot created from the active request via `createReactRouteSnapshot({ url, params })`; cross-origin destinations and non-HTTP(S) URLs reject with `ReactClientNavigationError`. There is no prefetch, no client data cache, and no SPA document swapping - the server stays authoritative.
+`@fluojs/react/client` renders `Link` as a real anchor, preserving pre-hydration,
+JavaScript-disabled and modified clicks. With the existing provider's build-bound
+importers, eligible navigation obtains fresh HTTP approval before committing the
+server-confirmed URL, params and props; unsupported destinations retain the
+document path. `usePathname`, `useSearchParams`, `useParams` and `useNavigation`
+read the request/approved snapshot, not a client match. Public prefetch is off by
+default and requires explicit identity-independent server approval for bounded,
+single-use anonymous results; ordinary private reads are never reusable. Generated
+types do not weaken auth/session invalidation, build identity or importer allowlists.
 
 ## Experimental RSC and Server Functions
 
@@ -288,7 +328,7 @@ settlement is not a paint or SDK-disposal receipt. Native POST/303/GET stays val
 - **Defaults**: `@Path()` serves the router base path; the stream renderer is `renderToReadableStream(...)`; `Content-Type` is `text/html; charset=utf-8`; metadata factories and policy components are plain application code, never DI-instantiated.
 - **Ownership**: `@fluojs/http` owns matching and dispatch; the application owns the document (`renderPage`) and hydration asset ordering; the package owns the element-to-entry rendering step and diagnostics. The package never scans the filesystem, discovers manifests, or generates bundles.
 - **Startup/shutdown**: React routers participate in the ordinary module lifecycle; there is no React-specific bootstrap phase and nothing to close.
-- **Limits to predict**: no `renderToPipeableStream` (Web Streams only), no page-local error or not-found presentation (HTTP error representation is application-global), `@SuspenseFallback` covers SSR descendants only (not handler `await`, effects, or navigation pending state), no href generation for versioned pages, and no serialization of untrusted data into `bootstrapScriptContent`.
+- **Limits to predict**: no `renderToPipeableStream` (Web Streams only), no React-owned HTTP error/not-found router, `@SuspenseFallback` covers SSR descendants only (not handler `await`, effects, or navigation pending state), no href generation for header/media/custom version selection or missing provenance, and no serialization of untrusted data into `bootstrapScriptContent`. The official page boundary handles approved render failures, not HTTP ownership.
 
 Common failures and their owners: a missing `renderPage` is a pre-commit `react-ssr-missing-page-renderer` diagnostic; an invalid policy site fails bootstrap with `ReactRenderPolicyConfigurationError`; a path outside the HTTP grammar is a route-definition error from `@fluojs/http`; a hydration mismatch surfaces through `onRecoverableError` in the browser, not as a server failure.
 

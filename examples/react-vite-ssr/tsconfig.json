@@ -1,0 +1,19 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@fluojs/core/internal": ["../../packages/core/src/internal.ts"],
+      "@fluojs/core/request-pipeline": ["../../packages/core/src/request-pipeline.ts"],
+      "@fluojs/http/internal": ["../../packages/http/src/internal.ts"],
+      "@fluojs/react/client": ["../../packages/react/src/client.ts"],
+      "@fluojs/react/typegen": ["../../packages/react/src/typegen.ts"],
+      "@fluojs/react/vite": ["../../packages/react/src/vite.ts"],
+      "@fluojs/runtime/internal": ["../../packages/runtime/src/internal.ts"],
+      "@fluojs/runtime/internal/http-adapter": ["../../packages/runtime/src/internal-http-adapter.ts"],
+      "@fluojs/runtime/internal/request-response-factory": ["../../packages/runtime/src/internal-request-response-factory.ts"],
+      "@fluojs/*": ["../../packages/*/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "vite.*.config.ts", "playwright.config.ts"],
+  "exclude": ["node_modules", "dist", "tests/typegen-fixture"]
+}

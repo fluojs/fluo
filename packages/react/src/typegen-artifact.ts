@@ -1,4 +1,5 @@
 import type { ReactPageCatalogEntry } from './page-catalog.js';
+import { parseReactJsonShape, type ReactQueryField } from './typegen-projection.js';
 
 const JSON_STRING_SOURCE = '"(?:\\\\.|[^"\\\\])*"';
 const PATH_LINE_PATTERN = new RegExp(`^  readonly (${JSON_STRING_SOURCE}): (${JSON_STRING_SOURCE});$`, 'u');
@@ -105,12 +106,54 @@ export function parseGeneratedReactPageCatalog(source: string): readonly ReactPa
   }
 
   const catalog: ReactPageCatalogEntry[] = [];
+  const projection = parseProjection(lines);
+  if (projection === undefined) return undefined;
   for (const [id, path] of paths) {
     const params = paramsById.get(id);
     if (params === undefined) {
       return undefined;
     }
-    catalog.push({ handler: '', id, kind: 'react-page', method: 'GET', params, path, router: '' });
+    catalog.push({ handler: '', id, kind: 'react-page', method: 'GET', params, path, router: '', ...projection.get(id) });
   }
   return catalog;
+}
+
+function parseProjection(lines: readonly string[]): ReadonlyMap<string, {
+  readonly query?: readonly ReactQueryField[];
+  readonly sourceFingerprint?: string;
+}> | undefined {
+  const prefix = '// fluo-type-projection ';
+  const line = lines.find((entry) => entry.startsWith(prefix));
+  const map = new Map<string, { readonly query?: readonly ReactQueryField[]; readonly sourceFingerprint?: string }>();
+  if (line === undefined) return map;
+  let entries: unknown;
+  try {
+    entries = JSON.parse(line.slice(prefix.length));
+  } catch (error) {
+    if (error instanceof SyntaxError) return undefined;
+    throw error;
+  }
+  if (!Array.isArray(entries)) return undefined;
+  for (const entry of entries) {
+    if (typeof entry !== 'object' || entry === null || !('id' in entry) || typeof entry.id !== 'string' || map.has(entry.id)) return undefined;
+    const sourceFingerprint = 'sourceFingerprint' in entry ? entry.sourceFingerprint : undefined;
+    if (sourceFingerprint !== undefined && (typeof sourceFingerprint !== 'string' || !/^[a-f0-9]{64}$/u.test(sourceFingerprint))) return undefined;
+    const query: ReactQueryField[] = [];
+    if ('query' in entry) {
+      if (!Array.isArray(entry.query)) return undefined;
+      for (const field of entry.query) {
+        if (typeof field !== 'object' || field === null || !('property' in field) || typeof field.property !== 'string'
+          || !('wire' in field) || typeof field.wire !== 'string' || !('optional' in field) || typeof field.optional !== 'boolean'
+          || !('shape' in field)) return undefined;
+        const shape = parseReactJsonShape(field.shape);
+        if (shape === undefined) return undefined;
+        query.push({ property: field.property, wire: field.wire, optional: field.optional, shape });
+      }
+    }
+    map.set(entry.id, {
+      ...('query' in entry ? { query } : {}),
+      ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
+    });
+  }
+  return map;
 }

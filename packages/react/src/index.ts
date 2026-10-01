@@ -27,6 +27,7 @@ export type { ReactFormResult, ReactFormResultOptions, ReactSessionChange } from
 export type { ReactModuleOptions } from './module.js';
 export { ReactModule } from './module.js';
 export type {
+  ReactPagePropsRegistry,
   ReactInitialNavigationPage,
   ReactNavigationDestination,
   ReactNavigationPageResult,

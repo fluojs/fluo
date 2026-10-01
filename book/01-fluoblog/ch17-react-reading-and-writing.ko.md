@@ -770,3 +770,68 @@ request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET�
 [공식 catalog example](../../examples/react-vite-ssr/README.ko.md)의 production CRUD를
 따라갑니다. 이 chapter의 기존 native write 경로를 대체하거나 manuscript 검사를
 browser 실행 증거로 간주하지 않습니다.
+
+### 작성 화면을 타입으로 연결하는 작은 확장
+
+Hydration을 도입한 별도 확장에서 저장 결과의 필드명을 잘못 읽는 실수를 줄여 보자.
+앞의 multipart 실습을 그대로 enhanced form으로 바꾸지는 않는다. 기존 provider와
+URL-encoded parser를 구성한 뒤, 같은 `EditInput`의 body field에 raw text 계약을 선언한다.
+Body field는 `string | readonly string[]`으로 선언해 text와 duplicate value를 표현하되
+기존 runtime 검증은 유지한다. DTO를 client용 interface로 복제하지 않고 `positiveInt`, 길이 검사,
+작성자·Origin 검사와 조건부 쓰기도 그대로 둔다. 전체 application graph의 다른 query도
+지원 wire shape여야 하며 지원하지 않는 선언은 generator diagnostic을 해결한다.
+
+다음은 기존 `save`의 **저장이 확인된 성공 분기만** 바꾸는 조각이다. 실패 HTML과 409
+충돌 처리는 남겨 두며 임의 400/409를 typed validation으로 가장하지 않는다. Enhanced
+field error가 필요하면 안전한 DTO projection 또는 `HttpFormRejection`을 명시적으로 작성한다.
+
+```ts
+return ReactModule.formResult({
+  destination: `/posts/${id}/edit`,
+  followUp: 'refresh',
+  data: { kind: 'draft-saved', id },
+});
+```
+
+같은 application tsconfig/options로 `fluo typegen`을 실행하면 아래 **hydrated 편집
+component 안의 조각**은 generated route 하나로 action, field alias, saved data를 추론한다.
+`reactFormRoutes`는 `./generated/react-pages.js`, `useForm`은 `@fluojs/react/client`에서
+import한다. `post`는 앞의 편집 조회 값이며 나머지 content/slug/version control도 유지한다.
+
+```tsx
+const save = reactFormRoutes['POST /posts/:id/edit PostsPages save'];
+const action = save.href({ id: String(post.id) });
+const form = useForm({
+  id: 'draft-edit',
+  action,
+  contract: save.contract,
+  allowDestination: (destination) => destination === action,
+});
+const mutation = form.state.mutation;
+
+return (
+  <form {...form.formProps}>
+    <label htmlFor="draft-edit-title">Title</label>
+    <input {...form.fieldProps('title')} defaultValue={post.title} maxLength={120} />
+    <span id="draft-edit-title-errors">{form.fieldErrors('title').join(' ')}</span>
+    <textarea {...form.fieldProps('content')} defaultValue={post.content} maxLength={50000} />
+    <input {...form.fieldProps('slug')} defaultValue={post.slug} maxLength={80} />
+    <input {...form.fieldProps('version')} type="hidden" value={post.version} />
+    <button type="submit" disabled={form.state.pending}>Save draft</button>
+    {mutation?.status === 'saved' && mutation.data !== undefined
+      ? <output>Saved draft {mutation.data.id}</output> : null}
+  </form>
+);
+```
+
+Input generic, field map, saved-data cast가 없다. 필드 오타는 typecheck에서 드러나지만
+HTTP validation이나 CSRF 정책을 대체하지는 않는다. Generated form은 `fields`와
+`decodeSaved`를 소비하며 GET `decodeRead`를 생성하지 않는다. Saved 뒤 조회 실패는
+저장 실패가 아니므로 `retryRead()`만 제공하고, uncertain 상태에서는 입력을 보존해
+authoritative read로 확인한다. POST를 자동 반복하지 않는다. Native 성공은 계속
+POST/303/GET이며 session 전환과 public-prefetch 제한도 그대로다.
+
+[타입 계약](../../docs/contracts/react-end-to-end-types.ko.md)과
+[이주](../../docs/getting-started/migrate-react-typegen.ko.md)에 따라 일반 typecheck/build
+앞에 `--check`를 둔다. 이 확장도 DB·browser에서 검증할 실습이지 원고 검사만으로
+완료된 실행 예제가 아니다.

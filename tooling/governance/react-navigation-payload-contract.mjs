@@ -70,16 +70,21 @@ export function enforceReactNavigationPayloadContract(
     throw new Error('React navigation HTTP and browser media types must agree on protocol version 2.');
   }
   const clientText = client.getFullText();
-  const providerText = provider.getFullText();
   const transferText = transfer.getFullText();
+  const providerLoads = findNodes(provider, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(provider) === 'loadReactNavigationDestination');
+  const providerOptions = providerLoads.map((node) => node.arguments[2]);
   if (!transferText.includes('readonly buildId: string')
     || !clientText.includes("value.version !== 2")
     || !clientText.includes("value.buildId.length === 0")
     || !clientText.includes("payload.buildId !== buildId")
     || !clientText.includes("payload.buildId !== options.buildId")
-    || clientText.indexOf("payload.buildId !== options.buildId") > clientText.lastIndexOf('module = await loader()')
-    || !providerText.includes('loadReactNavigationDestination(href, modules, { signal, buildId })')
-    || !providerText.includes('loadReactNavigationDestination(href, modules, { signal, prefetch: true, buildId })')) {
+    || clientText.indexOf("payload.buildId !== options.buildId") > clientText.lastIndexOf('Reflect.apply(loader, undefined, [])')
+    || providerLoads.length !== 2
+    || providerOptions.some((options) => !options || !ts.isObjectLiteralExpression(options)
+      || ['signal', 'buildId'].some((name) => !options.properties.some((node) =>
+        ts.isShorthandPropertyAssignment(node) && node.name.text === name)))
+    || !providerOptions.some((options) => property(options, 'prefetch')?.kind === ts.SyntaxKind.TrueKeyword)) {
     throw new Error('React navigation v2 requires a build identity checked before any destination import.');
   }
 
@@ -285,9 +290,43 @@ export function enforceReactNavigationPayloadContract(
   const ordinaryNavigationLoad = findNode(client, (node) =>
     ts.isFunctionDeclaration(node) && node.name?.text === 'loadReactNavigationDestination');
   const componentImport = ordinaryNavigationLoad && findNode(ordinaryNavigationLoad, (node) =>
-    ts.isCallExpression(node) && node.expression.getText(client) === 'loader');
+    ts.isCallExpression(node) && node.expression.getText(client) === 'Reflect.apply'
+    && node.arguments[0]?.getText(client) === 'loader');
   if (!prefetchRejection || !componentImport || prefetchRejection.end >= componentImport.pos) {
     throw new Error('React navigation prefetch must reject missing HTTP approval before importing a component.');
+  }
+
+  const decodeDestination = findNode(client, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'decodeDestination');
+  if (!decodeDestination || !findNode(decodeDestination, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(client) === 'contract.decodeProps'
+    && node.arguments[0]?.getText(client) === 'payload.destination.props')
+    || providerOptions.some((options) => !findNode(options, (node) =>
+      ts.isSpreadAssignment(node)
+      && node.expression.getText(provider) === '(contracts === undefined ? {} : { contracts })'))) {
+    throw new Error('React generated props require the shared decoder on ordinary and prefetch provider loads.');
+  }
+  for (const [load, contracts] of [[initialLoad, 'contracts'], [ordinaryNavigationLoad, 'options.contracts']]) {
+    const decode = load && findNode(load, (node) => ts.isVariableDeclaration(node)
+      && node.name.getText(client) === 'decoded' && node.initializer
+      && ts.isCallExpression(node.initializer)
+      && node.initializer.expression.getText(client) === 'decodeDestination'
+      && node.initializer.arguments[0]?.getText(client) === 'payload'
+      && node.initializer.arguments[1]?.getText(client) === contracts);
+    const importCall = load && findNode(load, (node) => ts.isCallExpression(node)
+      && node.expression.getText(client) === 'Reflect.apply'
+      && node.arguments[0]?.getText(client) === 'loader');
+    const rejection = load && findNode(load, (node) => ts.isIfStatement(node)
+      && node.expression.getText(client) === 'decoded === undefined'
+      && findNode(node.thenStatement, (child) => ts.isObjectLiteralExpression(child)
+        && property(child, 'reason')?.getText(client) === "'invalid-payload'"));
+    const successes = load ? findNodes(load, (node) => ts.isObjectLiteralExpression(node)
+      && property(node, 'ok')?.kind === ts.SyntaxKind.TrueKeyword) : [];
+    if (!decode || !importCall || !rejection || rejection.end >= importCall.pos
+      || decode.end >= importCall.pos || successes.length === 0
+      || successes.some((node) => property(node, 'payload')?.getText(client) !== 'decoded')) {
+      throw new Error('React generated props must decode initial and soft destinations before import and commit.');
+    }
   }
 
   const approvalGuard = findNode(store, (node) =>

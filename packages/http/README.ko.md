@@ -767,6 +767,37 @@ instance라면 dispatcher는 헤더를 직접 적용하고, 다른 조건이 허
 chain을 유지합니다. Request-scoped dependency, guard, interceptor, observer는
 계속 각 기능에 필요한 경로를 사용합니다.
 
+### Type-only converter wire input
+
+`HttpWire<Server, Wire>`는 compiler tooling에서 raw HTTP input과 converted DTO
+property를 구분합니다. Type-only 선언이며 conversion이나 validation을 설치하지 않습니다.
+
+```ts
+import { Convert, FromQuery, type HttpWire } from '@fluojs/http';
+
+class SearchInput {
+  @Convert({ convert(value: unknown) { return Number(value); } })
+  @FromQuery('page')
+  page: HttpWire<number, string> = 1;
+}
+```
+
+Global converter chain이 적용되는 field도 같은 선언을 사용합니다.
+`@Convert`는 기존 converter instance/DI-token 계약을 유지하며 arrow function은 converter
+constructor가 아닙니다. Compiled binder가 source alias와 `@Optional()` omission policy를
+제공합니다. Required input 누락은 계속 거부하고 optional binding만 input이 없을 때 initializer를
+보존합니다.
+
+Tooling projection은 실제 controller/DTO identity를 유지하며 DTO를 instantiate하거나 converter를
+실행하지 않습니다. HTTP mapping은 authoritative `versionSelection`도 기록합니다.
+React typegen은 provenance-backed URI href를 지원하고 `/v2` path에서 추정하는 대신 지원하지
+않는 header/media/custom 요구를 거부합니다.
+Path placeholder는 compiled route name을 유지하고 query/body contract는 DTO property와
+`@FromQuery`/`@FromBody` alias를 구분합니다. Browser wire value는 text/repeated text이며
+이미 변환한 DTO 값이 아닙니다. Generated href나 `HttpWire`는 runtime required-input 검사,
+validator, guard, CSRF 정책을 우회하지 않습니다.
+[React end-to-end 타입 계약](../../docs/contracts/react-end-to-end-types.ko.md)을 참고하세요.
+
 ### Bun decorator bundling compatibility
 
 Fluo의 HTTP 데코레이터는 TC39 표준 데코레이터이며, runtime 또는 compiler가 표준 decorator context를 제공하면 계속 `context.metadata`를 통해 metadata를 기록합니다. Bun이 legacy TypeScript decorator transform으로 애플리케이션을 번들링하는 경우에도 controller, route, DTO binding, guard/interceptor, header, redirect, versioning, status, request DTO, `@Produces(...)` metadata를 Fluo 내부 metadata store에 기록하여 생성된 Bun bundle의 route mapping 동작을 보존합니다.

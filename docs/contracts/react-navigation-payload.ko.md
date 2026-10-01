@@ -115,6 +115,17 @@ HTTP가 소유합니다. Error document를 page payload로 파싱하면 안 됩�
 
 ## Browser consumption and fallback
 
+[End-to-end 타입 계약](./react-end-to-end-types.ko.md)은 이 v2 representation이 아닌
+기존 `fluo typegen` graph를 확장합니다. Generated `ReactPagePropsRegistry`는 module
+literal과 authored JSON props를 연결하므로 strict consumer에 artifact를 포함합니다.
+Initial/soft loader는 같은 `reactPageModules` decoder를 받습니다(initial 네 번째 인자,
+soft `contracts` option). 공식 provider 조립은 일반 load와 public prefetch에도 이를
+전달해야 합니다. Build 승인 후 props contract 누락/실패는 import 전 `invalid-payload`입니다.
+JSON normalization은 optional undefined member를 생략하며 React tree를 serialize하거나
+DI/Date/custom `toJSON` 값을 generated limited-JSON contract에 허용하지 않습니다.
+Typed query href도 실제 HTTP validation을 거치며 raw search snapshot은 검증된 DTO가
+아닙니다. Route URI provenance, artifact version 2, navigation protocol version은 별개입니다.
+
 `@fluojs/react/client`의 `loadReactNavigationDestination(href, modules, { buildId, signal? })`는
 same-origin HTTP(S)만 받습니다. 각 일반 load는 `credentials: 'same-origin'`, `cache: 'no-store'`,
 `redirect: 'manual'`, 명시적 Accept header로 매번 uncached request 하나를 보냅니다.

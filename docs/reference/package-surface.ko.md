@@ -90,12 +90,14 @@ source를 cancel하고, `MultipartBodyConsumedError`는 buffered/streaming doubl
   Runtime/CLI inspection은 request value를 보관하거나 React route table을 만들지 않고 같은 route-kind
   marker를 `react-page`로 serialize합니다.
 
-  Stable `@fluojs/react/typegen` tooling subpath는 runtime-neutral package root를 확장하지 않고 이
-  catalog에서 deterministic path-only TypeScript declaration, absolute href builder, route-bound
-  real-anchor props, typed `push`/`replace` method를 생성합니다. Generated navigation은 runtime route
-  table이나 matcher를 추가하지 않고 기존 HTTP-first client API에 일반 absolute href string을 resolve합니다.
-  Catalog가 URI versioning과 header, media-type, custom version strategy를 구분할 수 없으므로 versioned
-  route는 거부합니다.
+  Stable `@fluojs/react/typegen` tooling subpath와 기존 CLI는 이 catalog와 frozen compiler graph로
+  path/query wire helper, module props registry, native form의 `fields`/`decodeSaved` contract를
+  생성합니다. `HttpWire<Server, Wire>`는 별도 validator가 아닌 type-only HTTP converter-input
+  seam입니다. Generated href/Link/push/replace는 일반 absolute href를 사용하며 matcher,
+  server implementation, compiler/DI import는 browser runtime에 들어가지 않습니다.
+  Unversioned 및 provenance-backed URI route를 지원하고 versioned header/media/custom 또는
+  provenance 누락은 실패합니다. Limited JSON, strict consumer, version-2 artifact freshness는
+  [end-to-end 타입 owner](../contracts/react-end-to-end-types.ko.md)를 따릅니다.
 
   Stable root render policy는 `@Router(...)` class 및 `@Path(...)` method의
   `@PageLayout(...)`, `@SuspenseFallback(...)` component reference로 제한됩니다. Application

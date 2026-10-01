@@ -62,6 +62,22 @@ it.each([
 });
 
 it.each([
+  [clientPath, 'decodeDestination(payload, contracts)', 'payload'],
+  [clientPath, 'decodeDestination(payload, options.contracts)', 'payload'],
+  [clientPath, 'props: contract.decodeProps(payload.destination.props)', 'props: payload.destination.props'],
+  [providerPath, 'signal, buildId, ...(contracts === undefined ? {} : { contracts })', 'signal, buildId'],
+  [providerPath, 'signal, prefetch: true, buildId, ...(contracts === undefined ? {} : { contracts })',
+    'signal, prefetch: true, buildId'],
+])('rejects a generated props decoder bypass in %s', (path, original, changed) => {
+  const source = sources.get(path);
+  const variant = source?.replace(original, changed) ?? '';
+  expect(variant).not.toBe(source);
+  expect(() => enforceReactNavigationPayloadContract((candidate: string) =>
+    candidate === path ? variant : sources.get(candidate) ?? '',
+  )).toThrow(/React generated props/u);
+});
+
+it.each([
   [storePath, 'controller?.abort();', 'controller?.signal;'],
   [storePath, "decision === 'refresh') await router.refresh();", "decision === 'refresh') await Promise.resolve();"],
   [formStorePath, 'Promise.race([continuation, cancellation.then(() => false)])', 'continuation'],
@@ -155,9 +171,9 @@ it.each([
   [storePath, 'if (!result.ok)', 'if (false)'],
   [historyPath, "loadAndCommit(browser, activated, 'back')", "loadAndCommit(browser, activated, 'push')"],
   [storePath, 'load(destination.href, controller.signal)', 'load(destination.href)'],
-  [providerPath, 'loadReactNavigationDestination(href, modules, { signal, prefetch: true, buildId })',
+  [providerPath, 'loadReactNavigationDestination(href, modules, {\n            signal, prefetch: true, buildId, ...(contracts === undefined ? {} : { contracts }),\n          })',
     'loadReactNavigationDestination(href, modules, { signal })'],
-  [providerPath, 'loadReactNavigationDestination(href, modules, { signal, buildId })',
+  [providerPath, 'loadReactNavigationDestination(href, modules, {\n        signal, buildId, ...(contracts === undefined ? {} : { contracts }),\n      })',
     'loadReactNavigationDestination(href, modules, { signal, prefetch: true })'],
   [storePath, 'prefetchedResult.ok && prefetchedResult.prefetchExpiresAt !== undefined',
     'true && prefetchedResult.prefetchExpiresAt !== undefined'],
