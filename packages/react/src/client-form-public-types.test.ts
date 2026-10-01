@@ -73,8 +73,9 @@ it('compiles typed successful input names and exhaustive mutation and follow-up 
     function mutation(value: ReactFormMutation): string {
       switch (value.status) {
         case 'saved': return value.destination;
+        case 'read': return String(value.data);
         case 'validation': return value.formErrors.join(',');
-        case 'auth': case 'rejected': case 'uncertain': return value.reason;
+        case 'error': case 'auth': case 'rejected': case 'uncertain': return value.reason;
         default: const impossible: never = value; return impossible;
       }
     }
@@ -96,6 +97,7 @@ it.each([
   `const result: 'saved' = value.status;`,
   `if (value.status === 'uncertain') { value.destination; }`,
   `if (value.status === 'saved') { value.fieldErrors; }`,
+  `if (value.status === 'read') { const unvalidated: string = value.data; }`,
 ])('rejects an invalid consumer projection: %s', (invalid) => {
   const diagnostics = compile(`
     import { useForm, type ReactFormMutation } from '@fluojs/react/client';
