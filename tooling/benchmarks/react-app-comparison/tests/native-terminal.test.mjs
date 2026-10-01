@@ -113,6 +113,21 @@ test('source creation authenticates cancellation when START_JOB crosses the next
   assert.equal(outcome.nativeTerminal.requestClock.source, 'Network.requestWillBeSent');
 });
 
+test('unique ExtraInfo clock authenticates source creation before delayed START_JOB', () => {
+  const request = { ...pending(), startedTimestamp: 1018445.000887 };
+  const extra = { name: 'Network.requestWillBeSentExtraInfo', data: {
+    requestId: request.requestId, connectTiming: { requestTime: 1018445.000997 },
+  } };
+  const nativeLog = log();
+  for (const entry of nativeLog.events.slice(1)) entry.time = '1018445001';
+  const [outcome] = collector.reconcileNativeTerminals([request], nativeLog, provenance, [extra]);
+  assert.equal(outcome.kind, 'request-failed');
+  assert.deepEqual(outcome.cdpObservation, request);
+  assert.equal(outcome.nativeTerminal.requestClock.timestamp, extra.data.connectTiming.requestTime);
+  assert.equal(outcome.nativeTerminal.source.start_time, '1018445000');
+  assert.equal(outcome.nativeTerminal.start.time, '1018445001');
+});
+
 test('repeated native URL and method in the same clock tick remain ambiguous', () => {
   const nativeLog = log();
   nativeLog.events.push(...log().events.map((entry) => ({
@@ -122,6 +137,23 @@ test('repeated native URL and method in the same clock tick remain ambiguous', (
     } } : {}),
   })));
   assert.deepEqual(reconcile([pending()], nativeLog), [pending()]);
+});
+
+test('distinct exact source-birth and START_JOB phase matches remain ambiguous', () => {
+  const request = { ...pending(), startedTimestamp: 1018445.000887 };
+  const extra = { name: 'Network.requestWillBeSentExtraInfo', data: {
+    requestId: request.requestId, connectTiming: { requestTime: 1018445.000997 },
+  } };
+  const nativeLog = log();
+  for (const entry of nativeLog.events.slice(1)) entry.time = '1018445001';
+  nativeLog.events.push(...log().events.map((entry, index) => ({
+    ...entry, time: index === 0 ? '1018444999' : entry.time,
+    source: { ...entry.source, id: entry.source.id + 100, start_time: '1018444999' },
+    ...(entry.params?.source_dependency ? { params: {
+      source_dependency: { ...entry.params.source_dependency, id: entry.params.source_dependency.id + 100 },
+    } } : {}),
+  })));
+  assert.deepEqual(collector.reconcileNativeTerminals([request], nativeLog, provenance, [extra]), [request]);
 });
 
 test('two CDP identities cannot consume the same native source', () => {

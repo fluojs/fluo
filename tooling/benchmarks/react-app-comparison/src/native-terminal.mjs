@@ -44,8 +44,9 @@ export function reconcileNativeTerminals(requests, log, provenance, cdpLedger = 
   const candidates = requests.map((request, index) => chains.filter(({ starts }) =>
     Number.isFinite(clocks[index]?.timestamp) && starts.some((start) =>
       start.params?.url === request.url && start.params?.method === request.method
-      && Number(clocks[index].source === 'Network.requestWillBeSent'
-        ? start.source.start_time : start.time) === Math.floor(clocks[index].timestamp * 1000))));
+      && (Number(start.source.start_time) === Math.floor(clocks[index].timestamp * 1000)
+        || clocks[index].source !== 'Network.requestWillBeSent'
+          && Number(start.time) === Math.floor(clocks[index].timestamp * 1000)))));
   return requests.map((request, index) => {
     if (request.kind !== 'request-pending' || candidates[index].length !== 1) return request;
     const chain = candidates[index][0];
