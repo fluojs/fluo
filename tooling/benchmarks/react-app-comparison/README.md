@@ -20,6 +20,16 @@ every run. An uncommitted worktree is a different build input; retain its patch.
 use data from a failed correctness journey or a failed production build as timing
 evidence.
 
+Production server children run with `NODE_ENV=production` identically for all
+four frozen apps; provenance records `environment.serverNodeEnv`. A production
+bundle alone does not select the production external React server renderer.
+Earlier runs that inherited an unset/development environment remain archived
+and do not establish a matched production comparison. Recollect both sides
+with the same production environment. The seeded workload, peer versions,
+prefetch defaults, repetitions, budgets and all metric definitions remain
+unchanged, including post-workload `ps` CPU/RSS snapshots. Development runners
+remain separate from this production startup helper.
+
 ```sh
 pnpm install --frozen-lockfile
 pnpm build

@@ -82,18 +82,22 @@ test('waits for a real HTTP ready event and stops the owned process group', asyn
   // Given: an app reports readiness only after binding a socket.
   const command = [
     process.execPath, '-e',
-    'require("node:http").createServer((_, response) => response.end("ready")).listen(0, "127.0.0.1", function () { console.log("READY " + this.address().port) })',
+    'require("node:http").createServer((_, response) => { response.setHeader("x-benchmark-mode", process.env.NODE_ENV ?? "unset"); response.end("ready") }).listen(0, "127.0.0.1", function () { console.log("READY " + this.address().port) })',
   ];
   // When: a pre-registered stdout event reports the bound port.
   const servers = await startServers([
-    { name: 'fixture', command, readyPattern: /READY (\d+)/u,
+    { name: 'fixture', command, env: { NODE_ENV: 'development' }, readyPattern: /READY (\d+)/u,
       urlForMatch: (match) => `http://127.0.0.1:${match[1]}/` },
   ]);
   const server = servers[0];
   assert.ok(server);
   // Then: the real HTTP endpoint responds before the runner proceeds.
-  assert.equal(await (await fetch(server.url)).text(), 'ready');
-  await stopServers(servers);
+  try {
+    assert.equal(await (await fetch(server.url)).text(), 'ready');
+    assert.equal((await fetch(server.url)).headers.get('x-benchmark-mode'), 'production');
+  } finally {
+    await stopServers(servers);
+  }
   await assert.rejects(fetch(server.url, { signal: AbortSignal.timeout(1000) }));
 });
 

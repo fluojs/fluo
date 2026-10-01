@@ -97,6 +97,7 @@ const provenance = {
   environment: {
     platform: platform(), arch: arch(), osRelease: release(),
     cpuModel: cpus()[0]?.model, cpuCores: cpus().length,
+    serverNodeEnv: 'production',
   },
 };
 await writeFile(join(output, 'provenance.json'), `${JSON.stringify(provenance, null, 2)}\n`);
