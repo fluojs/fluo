@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -53,4 +54,18 @@ export function enforceReactPageCatalogContract(
 ) {
   assertRequiredMarkers(readText, sourceRequirements);
   assertRequiredMarkers(readText, documentationRequirements);
+  const path = 'packages/react/src/page-catalog.ts';
+  const source = ts.createSourceFile(path, readText(path), ts.ScriptTarget.Latest, true);
+  let authoritativeVersion = false;
+  const visit = (node) => {
+    if (ts.isPropertyAssignment(node) && node.name.getText(source) === 'versionSelection'
+      && node.initializer.getText(source) === 'descriptor.metadata.versionSelection') {
+      authoritativeVersion = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  if (!authoritativeVersion) {
+    throw new Error('React page catalog must preserve authoritative HTTP version selection, not infer it from the path.');
+  }
 }

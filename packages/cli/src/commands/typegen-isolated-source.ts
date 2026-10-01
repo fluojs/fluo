@@ -1,5 +1,4 @@
-import { existsSync } from 'node:fs';
-import { dirname, extname, resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import type { ParsedTypegenArgs } from './typegen-options.js';
@@ -10,6 +9,7 @@ import {
   loadReactTypegenModules,
   type ReactTypegenModules,
 } from './typegen-source.js';
+import { findTypegenTsconfig } from './typegen-source-loader.js';
 
 const TYPESCRIPT_MODULE_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
 const TYPEGEN_MODULE_IDS = ['@fluojs/react', '@fluojs/react/typegen', '@fluojs/runtime'] as const;
@@ -81,8 +81,8 @@ export async function createProcessIsolatedTypegenSource(
 ): Promise<string> {
   const modulePath = resolve(cwd, parsed.modulePath);
   if (TYPESCRIPT_MODULE_EXTENSIONS.has(extname(modulePath))) {
-    const tsconfigPath = resolve(dirname(modulePath), 'tsconfig.json');
-    const modules = await loadReactTypegenModules(cwd, existsSync(tsconfigPath) ? tsconfigPath : false);
+    const tsconfigPath = parsed.tsconfigPath === undefined ? findTypegenTsconfig(modulePath) : resolve(cwd, parsed.tsconfigPath);
+    const modules = await loadReactTypegenModules(cwd, tsconfigPath ?? false);
     return createTypegenSource({ cwd, modules, parsed });
   }
 

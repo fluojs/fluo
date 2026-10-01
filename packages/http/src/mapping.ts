@@ -51,6 +51,7 @@ interface MutableHandlerMetadata {
   controllerPath: string;
   effectivePath: string;
   effectiveVersion?: string;
+  versionSelection: VersioningType;
   moduleMiddleware: MiddlewareSnapshotLike[];
   moduleType?: Constructor;
   pathParams: string[];
@@ -399,6 +400,7 @@ function createHandlerDescriptors(
           controllerPath: controllerMetadata.basePath,
           effectivePath,
           effectiveVersion,
+          versionSelection: versioning.type,
           moduleMiddleware: [...(source.moduleMiddleware ?? [])],
           moduleType: source.moduleType,
           pathParams: extractRoutePathParams(effectivePath),

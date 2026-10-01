@@ -20,6 +20,7 @@ import { ExamplePageSlot } from './example-page-slot';
 import { ResourceProbe } from './resource-probe';
 import CatalogPage, { type CatalogPageProps } from './catalog-page';
 import { SessionControls, SessionResources } from './session-controls';
+import { reactPageModules } from './generated/react-pages';
 
 const RECOMMENDATIONS_DELAY_MS = 25;
 
@@ -344,6 +345,7 @@ export function ProductDocument({
     } }),
     initialSnapshot,
     navigationModules,
+    navigationContracts: reactPageModules,
     navigationBuildId,
     prefetchScope,
     failurePolicy: new URL(routeUrl, 'http://localhost').searchParams.has('defaultNavigation')

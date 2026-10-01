@@ -10,7 +10,7 @@ export {
 } from './client/hooks.js';
 export type { LinkProps } from './client/link.js';
 export { Link } from './client/link.js';
-export type { ReactNavigationFailureReason, ReactNavigationLoadResult, ReactNavigationModules } from './client/navigation-payload.js';
+export type { ReactNavigationContracts, ReactNavigationFailureReason, ReactNavigationLoadResult, ReactNavigationModules } from './client/navigation-payload.js';
 export { loadReactInitialNavigationDestination, loadReactNavigationDestination } from './client/navigation-payload.js';
 export { ReactClientRouterProvider } from './client/provider.js';
 export { ReactNavigationExperience } from './client/experience.js';

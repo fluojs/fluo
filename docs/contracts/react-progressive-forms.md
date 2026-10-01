@@ -38,6 +38,19 @@ form through the existing provider. `id` is stable and unique in that provider;
 `actions` is an exact application-authored allowlist, defaulting to `[action]`.
 It does not perform route matching.
 
+For compiler-projected handlers, use `useForm({ id, action, contract,
+allowDestination })` with `reactFormRoutes[id].contract` and its generated `href`.
+The contract supplies HTTP-owned field/control aliases and `decodeSaved`; do not
+also pass `fields`, copy an Input interface or cast saved data. Existing manually
+authored `fields` remains supported without generated result inference. Optional
+`data` on `ReactModule.formResult` retains literal/union inference and is checked
+as limited JSON on acknowledgement, before asynchronous destination policy.
+Malformed data is protocol uncertainty, not confirmed typed persistence.
+Optional explicit `session` still uses the existing session barrier. Neither
+generated GET decoding nor `decodeRead` is promised here (#3881). Supported shapes,
+converter wire declarations and freshness belong to the
+[end-to-end types contract](./react-end-to-end-types.md).
+
 Resolve the actual submitter and its `formaction`, `formmethod`, `formenctype`
 and `formtarget` before interception. Supported same-origin URL-encoded POSTs
 retain duplicate names, enabled successful controls, the selected submitter,
@@ -152,7 +165,7 @@ remain governing companions. See the [usage guide](../guides/react-user-concepts
 [consumer migration](../getting-started/migrate-react-progressive-forms.md), and
 [runnable example](../../examples/react-vite-ssr/README.md).
 
-The typed names/outcomes support later #3880 projections; #3881 extends this
+The typed names/outcomes consume the same #3880 projection; #3881 extends this
 same interaction for non-navigation work and #3882 consumes dirty/pending state
 for opt-in navigation guards. None introduces a competing form API here.
 #3875 supplies the documented application session composition. Optimistic cache mutation,

@@ -267,6 +267,25 @@ The runtime produces the snapshot. The CLI serializes it, selects a named module
 
 ## Public API summary
 
+The existing `fluo typegen` is also the React end-to-end contract command:
+
+```bash
+fluo typegen src/app.ts --tsconfig tsconfig.json --options applicationOptions --output src/generated/react-pages.ts
+fluo typegen src/app.ts --tsconfig tsconfig.json --options applicationOptions --output src/generated/react-pages.ts --check
+fluo typegen src/app.ts --tsconfig tsconfig.json --options applicationOptions --output src/generated/react-pages.ts --watch
+```
+
+Use the actual application compiler configuration and shared bootstrap options
+export, not copied version/converter settings. Runtime startup remains
+`FluoFactory.create(...)` then `listen()`; generation creates/closes without
+listening. Artifact version 2 contains typed query aliases, module JSON props and
+native-form saved contracts. Type-only/config/compiler inputs participate in
+freshness and watch, including compiler dependencies outside the module directory.
+Ordinary typecheck/build must run `--check` first: missing/stale/malformed/
+unsupported artifacts fail with `2`/`3`/`4`/`5`, never silent regeneration. Explicitly
+generate after correcting source/configuration. See [React](/docs/packages/react)
+and the owning `docs/getting-started/migrate-react-typegen.md` migration.
+
 | Export | Description |
 | --- | --- |
 | `runCli(argv?, options?)` | Programmatic entrypoint for CLI commands. |

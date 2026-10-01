@@ -13,10 +13,11 @@ export type ReactNavigationPayloadContractSource =
 /**
  * Enforces the shared navigation protocol, HTTP prefetch eligibility and fresh
  * post-save GET approval, pre-policy revocation, owned policy cancellation and
- * fresh auth refresh. POST form acknowledgement is not a reusable page.
+ * fresh auth refresh. Generated props are decoded before import on initial,
+ * ordinary and anonymous-prefetch loads. POST acknowledgement is not a reusable page.
  *
  * @param readText Source reader for every governed implementation seam.
- * @throws When a navigation, prefetch or form-follow-up invariant is violated.
+ * @throws When a navigation, generated-props, prefetch or form-follow-up invariant is violated.
  */
 export function enforceReactNavigationPayloadContract(
   readText?: (relativePath: ReactNavigationPayloadContractSource) => string,

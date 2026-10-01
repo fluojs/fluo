@@ -98,12 +98,15 @@ describe('React SSR + Vite scaffold', () => {
         vitest: '^4.1.11',
       }),
       scripts: expect.objectContaining({
-        build: 'vite build --config vite.client.config.ts && vite build --config vite.server.config.ts',
+        typegen: 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts',
+        'typegen:check': 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --check',
+        'typegen:watch': 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --watch',
+        build: 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --check && vite build --config vite.client.config.ts && vite build --config vite.server.config.ts',
         dev: 'fluo dev',
         start: 'node dist/server/main.js',
         test: 'vitest run',
         'test:browser': 'playwright test --config playwright.config.ts',
-        typecheck: 'tsc -p tsconfig.json --noEmit',
+        typecheck: 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --check && tsc -p tsconfig.json --noEmit',
       }),
     }));
     expect(Object.keys(snapshot).sort()).toEqual([
@@ -154,8 +157,8 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['src/react-app.tsx']).toContain('ReactClientRouterProvider');
     expect(snapshot['src/react-app.tsx']).toContain("href='/assets/favicon.svg'");
     expect(snapshot['public/favicon.svg']).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
-    expect(snapshot['src/page.tsx']).toContain("<Link href='/search?q=catalog'>");
-    expect(snapshot['src/react-app.tsx']).toContain("router.push('/products/sku-126?preview=true')");
+    expect(snapshot['src/page.tsx']).toContain("reactPageRoutes['GET /search SearchPageRouter show'].link({ q: 'catalog' })");
+    expect(snapshot['src/react-app.tsx']).toContain("reactPageRoutes['GET /products/:sku ProductPageRouter show'].push(router, { sku: 'sku-126' }, { preview: 'true' })");
     expect(snapshot['src/app.test.ts']).toContain("import { Test } from '@fluojs/testing';");
     expect(snapshot['src/app.test.ts']?.match(/Test\.createApp\(\{ rootModule: AppModule \}\)/g)).toHaveLength(5);
     expect(snapshot['src/app.test.ts']?.match(/defer\(\(\) => app\.close\(\)\);/g)).toHaveLength(5);

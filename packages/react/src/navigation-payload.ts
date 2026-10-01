@@ -3,10 +3,13 @@ import type { ReactPageMetadata } from './page-metadata.js';
 
 const navigationPageKey = Symbol.for('fluo.react.navigationPage');
 
+/** Application typegen augments this registry with browser module identities and JSON props. */
+export interface ReactPagePropsRegistry {}
+
 /** Build-mapped browser module and JSON props chosen by a matched page handler. */
-export type ReactNavigationDestination = {
+export type ReactNavigationDestination<Props extends object = Readonly<Record<string, unknown>>> = {
   readonly module: string;
-  readonly props: Readonly<Record<string, unknown>>;
+  readonly props: Props;
 };
 
 /** Version 2 response for a successfully matched React page. */
@@ -72,11 +75,20 @@ export function createReactInitialNavigationPage(payload: ReactNavigationPayload
 }
 
 /** A React page that can also describe a build-mapped browser destination. */
-export type ReactNavigationPageResult = {
+export type ReactNavigationPageResult<Destination extends ReactNavigationDestination<object> = ReactNavigationDestination> = {
   readonly node: ReactElement;
-  readonly destination: ReactNavigationDestination;
+  readonly destination: Destination;
   readonly prefetch?: 'public';
 };
+
+type ExactProps<Actual, Expected> = Expected extends object
+  ? Actual extends Expected ? Actual & Record<Exclude<keyof Actual, keyof Expected>, never> : never : never;
+
+type RegisteredDestination<Destination extends ReactNavigationDestination<object>> =
+  [keyof ReactPagePropsRegistry] extends [never] ? Destination
+    : Destination['module'] extends keyof ReactPagePropsRegistry
+      ? { readonly module: Destination['module']; readonly props: ExactProps<Destination['props'], ReactPagePropsRegistry[Destination['module']]> }
+      : never;
 
 /** Explicit opt-in to client navigation without changing ordinary React page returns. */
 export class ReactNavigationPage {
@@ -88,14 +100,14 @@ export class ReactNavigationPage {
    * @param options Optional public prefetch assertion for identity-independent pages.
    * @returns A page result that HTTP can negotiate after normal matching and pipeline execution.
    */
-  static create(
+  static create<const Destination extends ReactNavigationDestination<object>>(
     node: ReactElement,
-    destination: ReactNavigationDestination,
+    destination: Destination & RegisteredDestination<Destination>,
     options?: { readonly prefetch: 'public' },
-  ): ReactNavigationPageResult {
-    const page: ReactNavigationPageResult = {
+  ): ReactNavigationPageResult<Destination> {
+    const page: ReactNavigationPageResult<Destination> = {
       node,
-      destination: { module: destination.module, props: { ...destination.props } },
+      destination: { ...destination, props: { ...destination.props } },
       ...(options === undefined ? {} : { prefetch: options.prefetch }),
     };
     Object.defineProperty(page, navigationPageKey, { value: true });

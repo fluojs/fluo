@@ -43,7 +43,7 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 | 익숙한 개념 | 현재 fluo 동등 개념 | 경계 |
 | --- | --- | --- |
 | **Page** | `@Router(...)`와 `@Path(...)`로 표시한 `GET` handler입니다. React rendering을 우회하는 일반 HTTP 값, configured application renderer가 처리할 `ReactElement` 하나, 또는 명시적인 `createReactServerEntry(...)`를 반환할 수 있습니다. | **Shipped.** Page는 file 또는 route-module convention이 아니라 여전히 HTTP handler입니다. |
-| **Route** | 일반 fluo module/controller metadata에서 compile된 effective route입니다. `@Path(...)`는 `@fluojs/http`와 같은 `GET` metadata를 기록하고, `@fluojs/react/typegen`은 compiled page catalog를 path-only href builder로 project할 수 있습니다. | **Shipped, intentionally different.** HTTP가 matching, grammar, conflict, param, versioning, dispatch를 소유합니다. Typegen은 route tree를 만들지 않고 versioned route를 표현하지 않습니다. |
+| **Route** | 일반 module/controller metadata에서 compile한 effective route입니다. 기존 typegen이 path/query wire alias를 href/Link/push/replace helper로 project합니다. | Matching, binding, validation, dispatch는 HTTP 소유입니다. Unversioned 및 provenance-backed URI route를 지원하고 header/media/custom 또는 version provenance 누락은 실패하며 client matcher는 없습니다. |
 | **Layout** | 애플리케이션 `ReactPageRenderer`가 document shell과 shared provider를 소유합니다. `@PageLayout(...)`은 같은 renderer가 compose하는 optional class/method component-reference metadata를 추가합니다. | **Shipped.** File ancestry나 framework-owned layout router는 없습니다. |
 | **Loading UI** | Application tree의 일반 React `Suspense`를 사용하고, 필요하면 `@SuspenseFallback(...)`으로 page fallback을 선택합니다. | **Shipped with a narrow boundary.** Fallback은 SSR 중 suspend하는 descendant를 다루며 handler `await`, form, effect, navigation은 관찰하지 않습니다. |
 | **Data read / loader** | HTTP DTO binding과 validation 이후 `@Path(...)` handler에서 명시적인 application provider를 통해 data를 읽고 React element에 전달합니다. `router.refresh()`는 현재 page의 HTTP 승인을 다시 받습니다. | **Shipped, intentionally different.** 별도 loader runtime이나 loader cache는 없으며 mutation 뒤 refresh는 명시적으로 호출해야 합니다. |
@@ -78,7 +78,7 @@ post-mutation action이 아닙니다.
 | `@fluojs/react` | `ReactModule.forRoot(...)`, `@Router(...)`, `@Path(...)`, page rendering policy, Web Streams SSR, diagnostic, page catalog, 명시적 hydration option. | 안정적인 runtime-neutral root입니다. Browser, Vite, typegen, RSC code를 import하지 않습니다. |
 | `@fluojs/react/client` | SSR-safe request-scoped route snapshot과 provider composition, 실제 anchor, HTTP-approved soft navigation 및 document fallback, 제한된 public navigation prefetch, URL/navigation hook. | 안정적인 SSR-and-browser subpath입니다. `createReactRouteSnapshot(...)`과 `ReactClientRouterProvider`는 SSR 및 hydration을 지원하고 browser navigation effect는 hydration 이후에만 연결됩니다. Matcher, route table, 일반 document cache는 없습니다. |
 | `@fluojs/react/vite` | 이미 로드한 Vite manifest를 deterministic React CSS, JavaScript, asset-map, hydration option으로 파싱합니다. | 안정적인 build-integration subpath입니다. File을 읽거나 Vite를 실행하지 않습니다. |
-| `@fluojs/react/typegen` | Compiled React page catalog에서 deterministic path-only declaration과 absolute href builder를 생성합니다. | 안정적인 tooling subpath입니다. Versioned route를 거부하고 query, fragment, relative-route, route-tree contract를 생성하지 않습니다. |
+| `@fluojs/react/typegen` | Compiled HTTP catalog와 frozen compiler graph를 path/query helper, module props registry, native form contract로 project합니다. | 안정적인 tooling subpath이며 erased-type reflection, 두 번째 generator, fragment/relative-route contract, client route tree는 없습니다. |
 | `@fluojs/react/experimental/rsc` | Compatibility diagnostic, application-supplied RSC manifest seam, Flight response, 명시적 HTTP endpoint에 mount하는 signed Server Function transport. | **Experimental.** 모든 stable entrypoint와 격리되며 stable RSC 또는 action promise가 아닙니다. |
 
 명시적 destination load의 자세한 동작은 [navigation payload contract](../contracts/react-navigation-payload.ko.md)와
@@ -90,6 +90,15 @@ Opt-in Link는 server grant가 있는 identity-independent 결과를 한 번 재
 생략한 speculative request, cache 한도, application auth/mutation 책임은 원본 계약을 참고하세요.
 
 ## 최소 end-to-end path
+
+Typed 경로는 [end-to-end 타입 계약](../contracts/react-end-to-end-types.ko.md)과
+[typegen 이주](../getting-started/migrate-react-typegen.ko.md)를 따릅니다. Authored browser
+props와 server JSON은 generated registry 및 공통 initial/soft decoder로 연결합니다.
+Generated form의 `fields`/`decodeSaved`는 같은 `useForm`으로 전달하며 별도 interaction API나
+generated GET decoder가 아닙니다. Raw search snapshot은 검증 전 wire data입니다.
+Typegen은 실제 application tsconfig/options를 공유하며 `--check`가 조용한 artifact 복구 없이
+일반 typecheck/build를 gate해야 합니다. 이 타입은 auth/session, native POST/303/GET,
+saved와 follow-up 실패 구분, uncertainty/no POST replay, public-only prefetch를 바꾸지 않습니다.
 
 Canonical starter composition 이전에는 application author가 첫 hydrated page를 자신 있게 편집하기 전에
 일곱 개 concept를 연결해야 했습니다. Vite manifest load, compatible server/client entry 선택, hydration

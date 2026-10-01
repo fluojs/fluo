@@ -37,6 +37,17 @@ escaped, allowlisted nonsecret input. Do not reflect passwords or token values.
 
 ## Update outcome and recovery UI
 
+For end-to-end inference, generate with the same application tsconfig/bootstrap
+options and replace copied Input types and `fields` maps with the generated
+`reactFormRoutes[id].contract`. Use that route's `href` as `action` in the same
+`useForm`; do not pass both `fields` and `contract`. Return optional JSON `data`
+through the existing `ReactModule.formResult` after persistence and narrow
+`state.mutation.status === 'saved'` before reading inferred data. Its decoder
+rejects malformed saved data as protocol uncertainty before destination policy.
+This does not generate GET `decodeRead` support. See the
+[typegen migration](./migrate-react-typegen.md) for v2 freshness and mandatory
+`--check` before ordinary typecheck/build.
+
 Read `state.pending`, `state.dirty`, `state.mutation` and `state.followUp`.
 Render only safe messages and associate each field error element with the
 `${id}-${field}-errors` id. Keep unrelated form input and focus intact.
@@ -67,6 +78,6 @@ production entry.
 
 The [owning form contract](../contracts/react-progressive-forms.md) defines
 the protocol and ownership. [Navigation payload](../contracts/react-navigation-payload.md)
-continues to own v2 build identity/params/metadata. #3880/#3881/#3882 consume
-this same interaction for typed projections, non-navigation work and opt-in
-dirty/pending guards; those extensions are not implemented by this migration.
+continues to own v2 build identity/params/metadata. #3880 supplies this interaction's
+typed projection; #3881's non-navigation work and #3882's opt-in dirty/pending
+guards remain separate extensions, not additional APIs supplied by this migration.

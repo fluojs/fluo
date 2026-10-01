@@ -74,9 +74,23 @@ See the [consumer migration](../../docs/getting-started/migrate-react-refresh.md
 ```sh
 pnpm install
 pnpm build
+pnpm --filter @fluojs/example-react-vite-ssr typegen
 pnpm --filter @fluojs/example-react-vite-ssr build
 pnpm --filter @fluojs/example-react-vite-ssr start
 ```
+
+The explicit first generation uses the exported inspection `AppModule` and
+`applicationOptions` from the same HTTP factory as runtime startup. It needs no
+production manifest and never listens. Actual startup supplies the real assets
+and document renderer from `src/presentation.ts`; an unconfigured inspection
+root cannot render pages or serve assets.
+
+The generated `reactPageRoutes`, `reactPageModules` and `reactFormRoutes` connect
+authored component props, HTTP query/control aliases and existing `useForm`
+bindings. Initial hydration and ordinary/prefetch loads share the same generated
+props decoders through `navigationContracts`. Typecheck/build begin with
+non-mutating `--check`; after source/type/config edits, explicitly rerun
+`typegen` or use `typegen:watch`. A stale artifact is not silently regenerated.
 
 Open `http://127.0.0.1:3000/products/sku-42?preview=true`, then activate `Count: 0`. The label
 changes to `Count: 1` only after the Vite-generated client entry hydrates the server HTML. Use
@@ -130,7 +144,7 @@ state do not agree, or a native form that cannot complete its `POST` â†’ `303` â
 
 ## negotiated destination workflow
 
-`src/app.ts` verifies the application-loaded Vite manifest contains
+`src/presentation.ts` verifies the application-loaded Vite manifest contains
 `src/navigation-product.ts`, then the matched product handler returns
 `ReactNavigationPage.create(ProductDocument, { module: './navigation-product.ts', props })`.
 An ordinary document GET still streams the HTML shell, hydration scripts, Suspense content,
