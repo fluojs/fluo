@@ -18,7 +18,7 @@ import { Suspense, createElement, lazy, useEffect, useId, useRef, useState, type
 import AdminDestination from './admin-page';
 import { ExamplePageSlot } from './example-page-slot';
 import { ResourceProbe } from './resource-probe';
-import CatalogPage, { type CatalogPageProps } from './catalog-page';
+import CatalogPage, { BackgroundSearch, type CatalogPageProps } from './catalog-page';
 import { SessionControls, SessionResources } from './session-controls';
 
 const RECOMMENDATIONS_DELAY_MS = 25;
@@ -309,10 +309,12 @@ export function ProductDocument({
           : createElement(AdminDestination, { page: adminPage }),
         }),
         createElement(HydratedCounter),
+        createElement(SessionResources, { children: createElement(BackgroundSearch, { id: 'song-widget' }) }),
         createElement(SessionResources, { children: createElement(ResourceProbe) }),
         createElement('a', { href: '#details', id: 'details', tabIndex: -1 }, 'Page details'),
         createElement(SessionResources, { children: createElement(LongLivedResource) }),
-        sessionDemo ? createElement(SessionControls) : null,
+        sessionDemo || catalog?.backgroundDemo === true || routeUrl.startsWith('/catalog/background')
+          ? createElement(SessionControls) : null,
         createElement(ProductNavigation, {
           onSwitchUser: () => {
             const next = document.cookie.includes('session=alice') ? 'catalog:anonymous' : 'catalog:alice';

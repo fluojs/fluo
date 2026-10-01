@@ -131,7 +131,9 @@ describe('React SSR + Vite scaffold', () => {
       'src/session-controls.tsx',
       'src/styles.css',
       'src/styles.d.ts',
+      'tests/background-interactions.spec.ts',
       'tests/deployment-transition.spec.ts',
+      'tests/form-control.ts',
       'tests/production-hydration.spec.ts',
       'tests/session-transition.spec.ts',
       'tsconfig.json',
@@ -157,8 +159,8 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['src/page.tsx']).toContain("<Link href='/search?q=catalog'>");
     expect(snapshot['src/react-app.tsx']).toContain("router.push('/products/sku-126?preview=true')");
     expect(snapshot['src/app.test.ts']).toContain("import { Test } from '@fluojs/testing';");
-    expect(snapshot['src/app.test.ts']?.match(/Test\.createApp\(\{ rootModule: AppModule \}\)/g)).toHaveLength(5);
-    expect(snapshot['src/app.test.ts']?.match(/defer\(\(\) => app\.close\(\)\);/g)).toHaveLength(5);
+    expect(snapshot['src/app.test.ts']?.match(/Test\.createApp\(\{ rootModule: AppModule \}\)/g)).toHaveLength(6);
+    expect(snapshot['src/app.test.ts']?.match(/defer\(\(\) => app\.close\(\)\);/g)).toHaveLength(6);
     expect(snapshot['src/app.test.ts']).toContain("expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8')");
     expect(snapshot['src/load-manifest.test.ts']).toContain("expect(error.code).toBe('react-starter-manifest-missing')");
     expect(snapshot['src/app.test.ts']).toContain("expect(error.code).toBe('react-starter-entry-incompatible')");

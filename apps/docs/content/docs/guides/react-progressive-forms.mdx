@@ -21,7 +21,7 @@ request or exception bodies.
 
 A confirmed save and a failed follow-up read are different outcomes. `retryRead()`
 repeats only GET approval. Network loss or cancellation after dispatch is
-uncertain persistence, not rollback. Busy activation is skipped, and no POST is
+uncertain persistence, not rollback. Default navigation-mode busy activation is skipped, and no POST is
 automatically retried or replayed as native submission.
 
 Automatic form refresh retains the persistent shell and unrelated form
@@ -36,8 +36,24 @@ Revocation removes initial and soft protected pages, page-owned head and retaine
 controls. App-owned React effects close protected resources; there is no second
 session provider or teardown registry. External HttpOnly changes alone do not
 notify the browser. See `docs/getting-started/migrate-react-session-composition.md`.
-Optimistic writes, comprehensive uploads and later non-navigation/dirty-guard
+Optimistic writes, comprehensive uploads and later dirty-guard
 extensions remain separate work.
+
+## Background search and row operations
+
+Use the same `useForm` with `mode: 'background'`, `method: 'get'` for ordinary
+HTTP JSON search or POST for writes. Stable ids have independent latest-wins
+pending/results; live shell operations survive navigation and actual unmount,
+session change or provider rebind revokes old ownership. Handwritten data stays
+`unknown`; generated contracts validate read data with optional `decodeRead`.
+Background acknowledgements never change URL/history/head or execute a handler
+`navigate` follow-up. Confirmed writes coalesce fresh current-page HTTP approval,
+not a query cache. Manual redirects fail locally; validated session-policy and
+legacy auth document exits remain explicit exceptions.
+
+Try `/catalog/background` in the official example or generated React starter.
+Its actual listener/browser fixture covers reversed search results, held row POSTs,
+isolated failure, owner cleanup and JavaScript-disabled GET/POST303GET.
 
 See the repository's `docs/contracts/react-progressive-forms.md`,
 `docs/getting-started/migrate-react-progressive-forms.md` and

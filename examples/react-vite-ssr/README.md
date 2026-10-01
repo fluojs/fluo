@@ -1,5 +1,22 @@
 # react-vite-ssr example
 
+## Background interaction companion
+
+Open `/catalog/login`, then `/catalog/background`. The real song datasource
+supports native GET search and independent enhanced search/widget results; each
+stable song row sends its own guarded queue POST. Acknowledgements leave
+URL/history/head unchanged and confirmed writes share fresh current-page approval.
+Cancellation is not server rollback. App queue rules, persistence and idempotency
+stay application-owned. See the [form contract](../../docs/contracts/react-progressive-forms.md).
+
+For deterministic production verification, build with
+`REACT_VITE_FORM_TEST_SERVER=1 pnpm build`, then run
+`pnpm exec playwright test tests/background-interactions.spec.ts`.
+The explicit test entry extends `FormControl` started/release/cleaned barriers;
+normal production startup installs no fault routes. The packaged starter exercises
+the same fixture through actual `dev` and `build`/`start`. This is not a soak or
+performance measurement.
+
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 Session acceptance also exercises `?legacySession=1` with plain provider children

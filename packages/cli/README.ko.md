@@ -7,6 +7,15 @@ fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 Reac
 
 ## Canonical command vocabulary
 
+`fluo new my-react-app --starter react-vite-ssr`는 `/catalog/background`에 동일한 native
+`useForm` background 작업도 제공합니다. 실제 GET search/widget read, stable-id queue
+POST, fresh current-page approval을 사용합니다. `pnpm dev`와 production `build`/`start`는
+기존 provider 하나와 HTTP DTO/auth/CSRF, native fallback을 공유합니다. queue/persistence/
+idempotency는 앱 코드 책임입니다. 생성 `tests/background-interactions.spec.ts`는 명시적
+`FLUO_REACT_FORM_TEST_SERVER=1` test entry에서만 listener started/release/cleaned barrier를
+사용하며 정상 startup에는 fault route를 설치하지 않습니다. 기존 앱은
+[form migration](../../docs/getting-started/migrate-react-progressive-forms.ko.md)을 따르세요.
+
 - 새 앱은 `fluo new`로 스캐폴딩합니다. `create`는 compatibility alias로 유지됩니다.
 - 쓰기를 지원하는 명령의 preview에는 `--dry-run`을 사용합니다. 각 명령의 plan payload를 유지하면서 쓰기, dependency install, git initialization, CLI update 확인을 수행하지 않습니다.
 - 읽기 전용 진단에는 `fluo doctor`를 사용합니다. `info`는 compatibility alias이고 `analyze`는 별도 project summary이며, 세 명령 모두 dependency install 또는 CLI self-update를 수행하지 않습니다. `fluo upgrade`는 latest CLI state와 migration guidance를 보고하지만 read-only가 아닙니다. Interactive TTY에서 새 버전을 찾으면 CLI update를 제안할 수 있고, 명시적 승인 뒤 package-manager global install을 실행할 수 있습니다. 다른 interactive non-preview 명령도 같은 승인형 self-update를 제안할 수 있습니다. `--dry-run` preview와 help/version 경로는 update check를 건너뜁니다.

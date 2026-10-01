@@ -10,6 +10,14 @@ This design is deliberate. The package is **not** a Next.js App Router, a React 
 
 ## Installation
 
+For independent search/widget reads and row mutations, the existing
+`@fluojs/react/client` `useForm` accepts additive background GET/POST. Each stable
+id has its own pending/result and latest-request authority; acknowledgements
+do not navigate and confirmed writes share fresh current-page HTTP approval.
+Native forms remain usable before hydration and without JavaScript. Keep HTTP
+DTO/auth/CSRF and app idempotency; use `decodeRead` for generated typed JSON reads,
+not an unchecked cast. See [progressive forms](/docs/guides/react-progressive-forms).
+
 ```bash
 npm install @fluojs/react react react-dom
 ```

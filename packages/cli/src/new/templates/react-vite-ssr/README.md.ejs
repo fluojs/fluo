@@ -6,6 +6,22 @@ Requires Node.js `>=24.0.0 <27`. Use Node 24 LTS for local development, CI, and 
 
 ## First two pages
 
+The background companion lives at `/catalog/background` after `/catalog/login`.
+It uses the same `useForm` with background GET search/widget reads and independent
+stable-id queue POSTs. Acknowledgements do not navigate; confirmed saves share
+fresh current-page HTTP approval. Native GET and POST/303/GET still work without
+JavaScript. Queue rules, auth/CSRF, persistence and idempotency remain app-owned;
+uncertain POSTs are never automatically retried.
+
+`tests/background-interactions.spec.ts` runs against the actual listener.
+Select the explicit `FLUO_REACT_FORM_TEST_SERVER=1` test entry to install its
+started/release/cleaned barriers, then run it in development with
+`FLUO_REACT_STARTER_SERVER_COMMAND=dev` or after the production build. Set
+`FLUO_REACT_STARTER_TEST_PORT` per run when checking independent dev/prod servers
+in parallel; the default remains 43006. Normal
+startup installs no fault routes. Existing consumers must add the updated
+catalog/page companion and keep their native actions and existing provider.
+
 ```sh
 <%= installCommand %>
 <%= devCommand %>

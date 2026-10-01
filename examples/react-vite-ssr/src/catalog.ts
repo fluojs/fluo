@@ -1,4 +1,4 @@
-import { FromBody, FromPath, Post, RequestDto, UseGuards, UseInterceptors, ForbiddenException, Optional,
+import { FromBody, FromPath, FromQuery, Post, RequestDto, UseGuards, UseInterceptors, ForbiddenException, Optional,
   UnauthorizedException, NotFoundException, type GuardContext, type InterceptorContext, type CallHandler,
   type HttpErrorRepresentationOptions, type RequestContext } from '@fluojs/http';
 import type { MiddlewareContext, Next } from '@fluojs/http';
@@ -67,12 +67,30 @@ class SessionLogin {
   @IsIn(['a', 'b'])
   identity = '';
 }
+class CatalogSearch {
+  @Optional()
+  @FromQuery('q')
+  @IsString()
+  q?: string;
+}
+class QueueWrite {
+  @FromBody('csrf')
+  csrf = '';
+  @FromBody('intent')
+  @IsIn(['add', 'remove'])
+  intent = '';
+  @FromPath('sku')
+  sku = '';
+}
 
 export function createCatalogRouter(
   render: (props: CatalogPageProps, context: RequestContext) => unknown,
   control?: CatalogControl,
 ) {
   const products = new Map([['sku-42', 'Seeded product']]);
+  const songs = new Map([['blue', 'Blue song'], ['green', 'Green song'], ['gold', 'Gold song']]);
+  const queue = new Set<string>();
+  let queueRevision = 0;
   let sequence = 0;
   const matchedKey = Symbol('catalog.matched-handler');
   const event = (context: RequestContext, phase: CatalogObservation['phase'], scope: string,
@@ -143,6 +161,42 @@ export function createCatalogRouter(
     .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
   @Router('/catalog')
   class CatalogRouter {
+    @PageMetadata(() => ({ title: 'Background catalog and jukebox' }))
+    @Path('/background')
+    @RequestDto(CatalogSearch)
+    async background(input: CatalogSearch, context: RequestContext) {
+      await observe(context, 'handler', { name: input.q ?? '' });
+      return render({ products: Array.from(songs, ([sku, name]) => ({ sku, name })),
+        backgroundDemo: true, queued: [...queue], searchQuery: input.q ?? '', revision: queueRevision }, context);
+    }
+    @Path('/background/search')
+    @RequestDto(CatalogSearch)
+    @UseInterceptors(CatalogInterceptor)
+    async backgroundSearch(input: CatalogSearch, context: RequestContext) {
+      await observe(context, 'dto', { name: input.q ?? '', dto: input instanceof CatalogSearch });
+      await observe(context, 'handler', { name: input.q ?? '' });
+      const rows = Array.from(songs, ([sku, name]) => ({ sku, name }))
+        .filter((song) => song.name.toLowerCase().includes((input.q ?? '').toLowerCase()));
+      if (context.request.headers.accept === 'application/json') return { rows, query: input.q ?? '' };
+      return render({ products: rows, backgroundDemo: true, queued: [...queue],
+        searchQuery: input.q ?? '', revision: queueRevision }, context);
+    }
+    @Post('/background/queue/:sku')
+    @RequestDto(QueueWrite)
+    @UseGuards(CatalogGuard)
+    @UseInterceptors(CatalogInterceptor)
+    async queueWrite(input: QueueWrite, context: RequestContext) {
+      const extra = { name: input.sku, intent: input.intent, dto: input instanceof QueueWrite };
+      const scope = await observe(context, 'dto', extra);
+      await observe(context, 'handler', extra);
+      if (!songs.has(input.sku)) throw new NotFoundException('Song not found.');
+      if (input.intent === 'add') queue.add(input.sku);
+      else queue.delete(input.sku);
+      const revision = ++queueRevision;
+      await control?.(event(context, 'commit', scope, extra), context);
+      return ReactModule.formResult({ destination: '/catalog/background', followUp: 'refresh',
+        data: { sku: input.sku, queued: input.intent === 'add', revision } });
+    }
     @Path('/session')
     sessionEntry(_input: undefined, context: RequestContext) {
       context.response.setHeader('Set-Cookie', 'csrf=catalog-demo-token; Path=/; SameSite=Lax');

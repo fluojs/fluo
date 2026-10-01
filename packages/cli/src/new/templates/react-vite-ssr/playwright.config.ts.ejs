@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-const BROWSER_TEST_PORT = 43_006;
+const BROWSER_TEST_PORT = Number(process.env.FLUO_REACT_STARTER_TEST_PORT ?? '43006');
 const serverMode = process.env.FLUO_REACT_STARTER_SERVER_COMMAND;
 const development = serverMode === 'dev' || serverMode === 'direct';
 const serverCommand = serverMode === 'direct'

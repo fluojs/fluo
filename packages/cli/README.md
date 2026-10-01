@@ -7,6 +7,17 @@ The canonical CLI for fluo — bootstrap new applications, generate components a
 
 ## Canonical command vocabulary
 
+`fluo new my-react-app --starter react-vite-ssr` also ships the same native
+`useForm` background interaction at `/catalog/background`: real GET search and
+widget reads, stable-id queue POSTs and fresh current-page approval. `pnpm dev`
+and production `build`/`start` use one existing provider, HTTP DTO/auth/CSRF and
+native fallback. App-owned queue/persistence/idempotency remain application code.
+The generated `tests/background-interactions.spec.ts` uses listener
+started/release/cleaned barriers when the explicit
+`FLUO_REACT_FORM_TEST_SERVER=1` test entry is selected; normal startup installs
+no fault routes. Existing projects should follow the
+[form migration](../../docs/getting-started/migrate-react-progressive-forms.md).
+
 - Scaffold with `fluo new`; `create` remains a compatibility alias.
 - Preview any supported write command with `--dry-run`. It preserves that command's own plan payload and performs no writes, dependency installation, git initialization, or CLI update check.
 - Use `fluo doctor` for read-only diagnostics. `info` is a compatibility alias; `analyze` is a separate project summary; none installs or self-updates. `fluo upgrade` reports latest CLI state and migration guidance, but is not read-only: in an interactive TTY with a newer version it may offer, then after explicit approval run, the package-manager global CLI install. Other interactive non-preview commands may offer the same approved self-update. `--dry-run` previews and help/version paths skip update checking.

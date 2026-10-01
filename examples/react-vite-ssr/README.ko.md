@@ -1,5 +1,20 @@
 # react-vite-ssr example
 
+## Background interaction companion
+
+`/catalog/login` 다음 `/catalog/background`를 엽니다. 실제 song datasource에서 native
+GET 검색과 독립 enhanced search/widget 결과를 사용하고 stable song row마다 guarded
+queue POST를 보냅니다. acknowledgement는 URL/history/head를 바꾸지 않으며 confirmed
+write는 fresh current-page approval을 공유합니다. 취소는 server rollback이 아닙니다.
+queue rule, persistence, idempotency는 앱 소유입니다.
+[Form 계약](../../docs/contracts/react-progressive-forms.ko.md)을 보세요.
+
+결정적인 production 검증에는 `REACT_VITE_FORM_TEST_SERVER=1 pnpm build` 후
+`pnpm exec playwright test tests/background-interactions.spec.ts`를 실행합니다.
+명시적 test entry가 `FormControl` started/release/cleaned barrier를 확장하며 정상
+production startup에는 fault route가 없습니다. Packaged starter도 실제 `dev`와
+`build`/`start`에서 같은 fixture를 실행합니다. soak나 performance 측정은 아닙니다.
+
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
 Session acceptance는 session 설정 없는 plain provider children의

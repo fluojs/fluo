@@ -34,6 +34,15 @@ hydrateRoot(
           ? initial.payload.destination.props.products : [],
         ...(typeof initial.payload.destination.props.selected === 'string'
           ? { selected: initial.payload.destination.props.selected } : {}),
+        ...(initial.payload.destination.props.backgroundDemo === true ? {
+          backgroundDemo: true,
+          queued: Array.isArray(initial.payload.destination.props.queued)
+            ? initial.payload.destination.props.queued.filter((value: unknown): value is string => typeof value === 'string') : [],
+          searchQuery: typeof initial.payload.destination.props.searchQuery === 'string'
+            ? initial.payload.destination.props.searchQuery : '',
+          revision: typeof initial.payload.destination.props.revision === 'number'
+            ? initial.payload.destination.props.revision : 0,
+        } : {}),
       },
     }),
     adminPage: isAdminPage ? adminPage : undefined,
