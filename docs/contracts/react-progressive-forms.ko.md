@@ -37,6 +37,18 @@ typed DTO field name을 작성한 successful-control name에 연결합니다. `a
 application이 작성한 정확한 allowlist이며 기본값은 `[action]`입니다. route를 match하지
 않습니다.
 
+Compiler-projected handler에는 `reactFormRoutes[id].contract`와 generated `href`를
+기존 `useForm({ id, action, contract, allowDestination })`에 전달합니다. Contract가
+HTTP-owned field/control alias와 `decodeSaved`를 제공하므로 `fields`를 함께 전달하거나
+Input interface를 복제하거나 saved data를 cast하지 않습니다. 수동 `fields` 경로는
+generated result inference 없이 계속 지원합니다. `ReactModule.formResult`의 optional
+`data`는 literal/union inference를 유지하며 acknowledgement에서 비동기 destination
+policy 전에 limited JSON으로 검증합니다. Malformed data는 protocol uncertainty이며
+typed persistence 확인이 아닙니다. Optional explicit `session`은 기존 session barrier를
+사용합니다. Generated GET decoding이나 `decodeRead`는 여기서 약속하지 않습니다(#3881).
+지원 shape, converter wire 선언, freshness는
+[end-to-end 타입 계약](./react-end-to-end-types.ko.md)을 따릅니다.
+
 interception 전에 실제 submitter와 `formaction`, `formmethod`, `formenctype`,
 `formtarget`을 해석합니다. 지원하는 same-origin URL-encoded POST는 duplicate name,
 활성 successful control, 선택한 submitter, hidden CSRF control, 브라우저
@@ -145,7 +157,7 @@ Fresh POST/follow-up 401·403은 이전 화면을 무조건 보존하지 않고 
 [consumer migration](../getting-started/migrate-react-progressive-forms.ko.md),
 [실행 가능한 example](../../examples/react-vite-ssr/README.ko.md)을 함께 보세요.
 
-typed name/outcome은 이후 #3880 projection을 지원하며 #3881은 같은 interaction의
+typed name/outcome은 같은 #3880 projection을 소비하며 #3881은 같은 interaction의
 non-navigation 작업을 확장하고 #3882는 dirty/pending state로 opt-in navigation guard를
 구현합니다. 여기서 경쟁하는 form API를 만들지 않습니다. application session coordination은
 #3875가 소유합니다. optimistic cache mutation, 포괄적인 upload 지원, distributed

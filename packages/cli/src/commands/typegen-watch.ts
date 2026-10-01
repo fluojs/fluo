@@ -43,6 +43,9 @@ export type TypegenWatchOptions = {
   readonly signalTarget?: TypegenWatchSignalTarget;
   readonly startGeneration: () => TypegenWatchGeneration;
   readonly watchTarget?: TypegenWatchTarget;
+  readonly watchInputs?: readonly string[];
+  readonly refreshWatchInputs?: () => readonly string[];
+  readonly watchRoot?: string;
 };
 
 const DEFAULT_DEBOUNCE_MS = 100;
@@ -95,7 +98,7 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
   const scheduler = options.scheduler ?? createDefaultScheduler();
   const signalTarget = options.signalTarget ?? process;
   const watchTarget = options.watchTarget ?? defaultWatchTarget;
-  const watchRoot = dirname(options.modulePath);
+  const watchRoot = options.watchRoot ?? dirname(options.modulePath);
   let activeCommit: AbortController | undefined;
   let activeGeneration: TypegenWatchGeneration | undefined;
   let cleanedUp = false;
@@ -105,6 +108,7 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
   let stopping = false;
   let stopCode = 0;
   let watcher: TypegenWatcher | undefined;
+  const inputWatchers = new Map<string, { inputs: Set<string>; readonly watcher: TypegenWatcher }>();
   let startupComplete = false;
   let resolveResult: (code: number) => void = () => undefined;
 
@@ -122,6 +126,7 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
       restartTimer = undefined;
     }
     watcher?.close();
+    for (const input of inputWatchers.values()) input.watcher.close();
     signalTarget.off('SIGINT', stopForSignal);
     signalTarget.off('SIGTERM', stopForSignal);
   };
@@ -152,6 +157,7 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
   const runGeneration = async (reportError: boolean): Promise<void> => {
     let generation: TypegenWatchGeneration | undefined;
     try {
+      refreshInputs();
       generation = options.startGeneration();
       activeGeneration = generation;
       const source = await generation.result;
@@ -222,6 +228,31 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
     }, debounceMs);
   };
 
+  const refreshInputs = () => {
+    const directories = new Map<string, Set<string>>();
+    for (const path of new Set(options.refreshWatchInputs?.() ?? options.watchInputs ?? [])) {
+      if (path.startsWith(`${watchRoot}/`)) continue;
+      const parent = dirname(path);
+      const inputs = directories.get(parent) ?? new Set<string>();
+      inputs.add(path);
+      directories.set(parent, inputs);
+    }
+    for (const [parent, input] of inputWatchers) {
+      const paths = directories.get(parent);
+      if (paths === undefined) { input.watcher.close(); inputWatchers.delete(parent); }
+      else input.inputs = paths;
+    }
+    for (const [parent, inputs] of directories) {
+      if (inputWatchers.has(parent)) continue;
+      const input = watchTarget(parent, { persistent: true, recursive: false }, (_event, filename) => {
+        const path = filename === null ? undefined : resolve(parent, String(filename));
+        if (path === undefined || inputWatchers.get(parent)?.inputs.has(path)) scheduleRegeneration(path ?? parent);
+      });
+      inputWatchers.set(parent, { inputs, watcher: input });
+      input.on('error', (error) => { onError(error); stop(1); });
+    }
+  };
+
   try {
     watcher = watchTarget(
       watchRoot,
@@ -236,7 +267,7 @@ export async function runTypegenWatch(options: TypegenWatchOptions): Promise<num
       stop(1);
     });
   } catch (error: unknown) {
-    watcher?.close();
+    cleanup();
     throw error;
   }
 

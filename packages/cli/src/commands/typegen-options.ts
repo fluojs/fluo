@@ -5,6 +5,8 @@ export type ParsedTypegenArgs = {
   readonly modulePath: string;
   readonly outputPath: string;
   readonly watch: boolean;
+  readonly tsconfigPath?: string;
+  readonly optionsExport?: string;
 };
 
 /** Invalid typegen command arguments or unavailable runtime tooling. */
@@ -24,9 +26,19 @@ export function parseTypegenArgs(argv: readonly string[]): ParsedTypegenArgs {
   let modulePath: string | undefined;
   let outputPath: string | undefined;
   let watch = false;
+  let tsconfigPath: string | undefined;
+  let optionsExport: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const option = argv[index];
+    if (option === '--tsconfig' || option === '--options') {
+      const next = argv[index + 1];
+      if (next === undefined || next.startsWith('-')) throw new TypegenCommandError(`Expected ${option} to have a value.`);
+      if (option === '--tsconfig') tsconfigPath = next;
+      else optionsExport = next;
+      index += 1;
+      continue;
+    }
     if (option === '--check') {
       check = true;
       continue;
@@ -71,5 +83,8 @@ export function parseTypegenArgs(argv: readonly string[]): ParsedTypegenArgs {
     throw new TypegenCommandError('fluo typegen accepts only one of --check or --watch.');
   }
 
-  return { check, exportName, modulePath, outputPath, watch };
+  return { check, exportName, modulePath, outputPath, watch,
+    ...(tsconfigPath === undefined ? {} : { tsconfigPath }),
+    ...(optionsExport === undefined ? {} : { optionsExport }),
+  };
 }

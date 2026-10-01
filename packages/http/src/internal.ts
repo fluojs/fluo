@@ -6,6 +6,8 @@ export {
 export { DefaultBinder } from './adapters/binding.js';
 export { resolveClientIdentity } from './client-identity.js';
 export { getCompiledRouteIdentity } from './compiled-route-identity.js';
+export { createHttpTypeProjection } from './type-projection.js';
+export type { HttpTypeProjection, HttpTypeProjectionField } from './type-projection.js';
 export {
   FRAMEWORK_RESPONSE_VALUE_FINALIZER,
   FRAMEWORK_RESPONSE_WRITER,

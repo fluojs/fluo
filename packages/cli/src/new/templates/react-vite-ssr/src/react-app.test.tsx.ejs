@@ -20,12 +20,12 @@ describe('React Vite SSR app composition', () => {
     const html = renderToString(
       <ReactAppDocument
         navigationBuildId='test-build'
-        page={<ProductPage sku='sku-42' preview={true} />}
+        page={<ProductPage sku='sku-42' preview={true} productName='Catalog item sku-42' />}
         initialPage={{
-          json: '{"version":2,"buildId":"test-build","url":"/products/sku-42?preview=true","params":{"sku":"sku-42"},"destination":{"module":"./page.tsx","props":{"sku":"sku-42","preview":true}}}',
+          json: '{"version":2,"buildId":"test-build","url":"/products/sku-42?preview=true","params":{"sku":"sku-42"},"destination":{"module":"./page.tsx","props":{"sku":"sku-42","preview":true,"productName":"Catalog item sku-42"}}}',
           payload: {
             version: 2, buildId: 'test-build', url: '/products/sku-42?preview=true', params: { sku: 'sku-42' },
-            destination: { module: './page.tsx', props: { sku: 'sku-42', preview: true } },
+            destination: { module: './page.tsx', props: { sku: 'sku-42', preview: true, productName: 'Catalog item sku-42' } },
           },
         }}
         route={{ params: { sku: 'sku-42' }, url: '/products/sku-42?preview=true' }}
@@ -57,7 +57,7 @@ describe('React Vite SSR app composition', () => {
     const initialSnapshot = createReactRouteSnapshot({ url: '/products/sku-42' });
     const counter = (
       <ReactClientRouterProvider initialSnapshot={initialSnapshot}>
-        <ProductPage sku='sku-42' preview={false} />
+        <ProductPage sku='sku-42' preview={false} productName='Catalog item sku-42' />
       </ReactClientRouterProvider>
     );
     container.innerHTML = renderToString(counter);

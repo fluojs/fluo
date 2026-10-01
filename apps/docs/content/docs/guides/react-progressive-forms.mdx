@@ -39,6 +39,35 @@ notify the browser. See `docs/getting-started/migrate-react-session-composition.
 Optimistic writes, comprehensive uploads and later non-navigation/dirty-guard
 extensions remain separate work.
 
+For generated inference, use the existing `fluo typegen` with the application's
+actual tsconfig and shared bootstrap options. The same artifact supplies action
+hrefs, field aliases and saved-data validation:
+
+```tsx
+import { useForm } from '@fluojs/react/client';
+import { reactFormRoutes } from './generated/react-pages.js';
+
+const save = reactFormRoutes['POST /catalog/:sku CatalogRouter edit'];
+const form = useForm({
+  id: 'catalog-edit',
+  action: save.href({ sku }),
+  contract: save.contract,
+  allowDestination: (destination) => destination.startsWith('/catalog/'),
+});
+```
+
+This component fragment assumes that generated handler identity and an existing
+provider. No copied Input interface, field map or saved-data cast is needed.
+Return optional plain JSON `data` from `ReactModule.formResult` after persistence;
+read inferred data only after narrowing the saved outcome. Malformed data is
+protocol uncertainty, not a typed success. Contracts provide `fields`/`decodeSaved`,
+not generated GET `decodeRead` support. Optional explicit session outcomes still
+use the existing barrier; types never bypass auth/CSRF. Run `--check` before
+ordinary typecheck/build without silently regenerating stale artifacts.
+
 See the repository's `docs/contracts/react-progressive-forms.md`,
 `docs/getting-started/migrate-react-progressive-forms.md` and
 `examples/react-vite-ssr/README.md` for the owning contract and executable journey.
+Supported wire/JSON shapes and v2 freshness are owned by
+`docs/contracts/react-end-to-end-types.md` and
+`docs/getting-started/migrate-react-typegen.md`.

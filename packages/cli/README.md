@@ -501,14 +501,15 @@ If Studio is missing, CI and other non-interactive runs fail fast with install g
 
 ### React Page Type Generation
 
-Generate application-owned, path-only React page types and absolute href builders from the
-bootstrap-resolved route catalog:
+Generate application-owned React path/query helpers, module props and form contracts from
+the bootstrap-resolved HTTP catalog and the same frozen application compiler graph:
 
 ```bash
 fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts
 fluo typegen ./src/admin.ts --export AdminModule --output ./src/generated/admin-pages.ts
 fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts --check
 fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts --watch
+fluo typegen ./src/app.ts --tsconfig ./tsconfig.json --options applicationOptions --output ./src/generated/react-pages.ts
 ```
 
 `--export` defaults to `AppModule`. The command loads TypeScript source through the CLI loader,
@@ -517,6 +518,12 @@ bootstraps the application, reads `app.dispatcher.describeRoutes()`, calls
 paths are resolved from the current working directory. A missing file is reported as `CREATE`, stale
 content as `UPDATE`, and byte-identical content as `UNCHANGED`. Writes publish one complete temporary
 file with an atomic rename, and `UNCHANGED` never rewrites the target.
+
+TypeScript projection requires the actual application tsconfig (discovered from the module
+when `--tsconfig` is omitted). `--options` selects a shared options export; omission uses
+bootstrap defaults. The runtime still calls `FluoFactory.create(AppModule, applicationOptions)`
+then `app.listen()`. Typegen creates and closes the graph without listening; never select
+an entry that listens as an import side effect. Runtime metadata alone cannot recover erased types.
 
 Default generation evaluates the application and matching tooling namespaces in one short-lived
 child process, waits for that process to exit, and only then checks or publishes the result. Repeated
@@ -548,13 +555,13 @@ bootstrap), and abort its owned artifact commit before either can publish. Calle
 cancellation waits for asynchronous bootstrap and application close to settle before watch exits
 with code `0`; a child that does not exit after `SIGTERM` is force-killed after the bounded grace
 period.
-Files outside the module directory are intentionally outside this watch boundary; run the command
-again or choose a module path at the intended source root instead of expecting source scanning or a
-second route discovery system.
+The compiler graph's source/type-only dependencies and configuration inputs also participate in
+watch and freshness, including inputs outside the module directory. Unrelated files are not a
+second route-discovery system. Artifact version 2 also fingerprints compiler options/version.
 
 The generated `reactPageRoutes` object keys routes by stable catalog `id`. Its dynamic `href(...)`,
 `link(...)`, `push(...)`, and `replace(...)` methods require all path params and URI-encode each value;
-static methods accept no params. Spread `route.link(params)` into the existing real-anchor `Link`, or
+static methods accept no path params. Query bindings add a typed query argument. Spread `route.link(params)` into the existing real-anchor `Link`, or
 pass the existing `ReactRouter` to `route.push(router, params)` / `route.replace(router, params)`:
 
 ```tsx
@@ -568,9 +575,15 @@ productRoute.replace(router, { productId });
 These generated methods resolve to ordinary absolute href strings before the existing HTTP-first
 client APIs run. They do not add a runtime route table, matcher, relative-route model, or SPA
 navigation. Existing `href(...)`, `Link href`, and router string/`URL` calls remain supported.
-Versioned routes fail explicitly because the catalog cannot distinguish URI versioning from header,
-media-type, or custom version strategies. See the
-[@fluojs/react path-only typegen contract](../react/README.md#path-only-page-type-generation).
+Unversioned and provenance-backed URI routes use the compiled effective path. Versioned
+header/media/custom routes and missing provenance fail explicitly.
+`--tsconfig <path>` selects the actual application compiler configuration; `--options <name>`
+selects the actual exported bootstrap options from the module namespace. Query wire aliases,
+module props and native form contracts share this generation/check/watch lifecycle, including
+type-only/configuration freshness in artifact version 2. Regenerate older artifacts explicitly.
+Ordinary typecheck/build must run the existing `--check` first and fail on invalid output,
+never silently regenerate it. See the [React end-to-end types contract](../../docs/contracts/react-end-to-end-types.md)
+and [migration](../../docs/getting-started/migrate-react-typegen.md).
 
 ## Public API
 
@@ -614,7 +627,7 @@ Programmatic entry points preserve caller process ownership. `runCli(...)`, `run
 - [cli.ts](./src/cli.ts) - Command dispatcher and argument parsing.
 - [commands/new.ts](./src/commands/new.ts) - Project scaffolding implementation.
 - [commands/inspect.ts](./src/commands/inspect.ts) - Runtime inspection export modes and Studio delegation.
-- [commands/typegen.ts](./src/commands/typegen.ts) - React page catalog bootstrap and deterministic path-only artifact writes.
+- [commands/typegen.ts](./src/commands/typegen.ts) - HTTP catalog/compiler projection and deterministic artifact write/check/watch.
 - [commands/migrate.ts](./src/commands/migrate.ts) - Decorator codemods, JSON reporting, and transform filters.
 - [commands/package-workflow.ts](./src/commands/package-workflow.ts) - `fluo add` and `fluo upgrade` workflows.
 - [commands/scripts.ts](./src/commands/scripts.ts) - `dev`, `build`, and `start` lifecycle command boundaries.

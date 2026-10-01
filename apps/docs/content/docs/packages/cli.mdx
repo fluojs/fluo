@@ -164,6 +164,23 @@ Each `routes[]` entry carries `id`, `kind` (`http`, or `react-page` for React pa
 
 ## Related commands
 
+For React projection, use the same command and real application configuration:
+
+```bash
+fluo typegen src/app.ts --tsconfig tsconfig.json --options applicationOptions --output src/generated/react-pages.ts
+fluo typegen src/app.ts --tsconfig tsconfig.json --options applicationOptions --output src/generated/react-pages.ts --check
+```
+
+`--options` selects the actual shared options export; omission uses bootstrap
+defaults. `--tsconfig` selects the real compiler graph; omission searches from the
+module. Runtime uses `FluoFactory.create(...)` then `listen()`, while generation
+never listens. Artifact version 2 adds query wire aliases, a module props registry
+and existing-form `fields`/`decodeSaved`, with type-only/config/compiler freshness.
+Run `--check` before ordinary typecheck/build and explicitly regenerate after a
+failure; do not silently repair missing, stale, malformed or unsupported output.
+This is not a second generator or generated GET decoder. Supported JSON and URI
+provenance follow `docs/contracts/react-end-to-end-types.md`.
+
 - `fluo typegen` - React page type generation; the mechanics and artifact contract live in the [`@fluojs/react` guide](/docs/packages/react). `--check` exits `0`/`2`/`3`/`4`/`5` for `UNCHANGED`/`MISSING`/`STALE`/`MALFORMED`/`UNSUPPORTED_VERSION`.
 - `fluo doctor` (alias `info`) - read-only diagnostics for the installed CLI, update-check cache, runtime, and project scripts. `fluo analyze` is a separate read-only project summary pointing at deeper `inspect --report`/`migrate --json` workflows.
 - `fluo add <package>` - first-party package installation shortcuts (`--dev` canonical, `-D` shortcut; preview with `--dry-run`).
@@ -222,7 +239,7 @@ replayed.
 - **Resource modules that never activate** - `fluo generate resource` is files-only; forgetting to import the generated module means the routes never exist.
 - **Bootstrap codemod silently skipped** - without `--platform express` and a literal `app.listen(port)`, `fluo migrate` intentionally leaves bootstrap untouched with a warning; migrate those call sites by hand.
 - **`inspect --mermaid` fails in CI** - Studio is an optional peer; install `@fluojs/studio` in the project that runs the command, or export JSON/report artifacts instead.
-- **`fluo typegen --watch` misses files** - the watch boundary covers the module directory only; files outside it are intentionally outside the watch and require rerunning with a different module path.
+- **`fluo typegen --watch` misses files** - use the actual application tsconfig. The module directory and compiler-graph source/type-only/config dependencies are watched; unrelated files are not route discovery inputs. Failed generations preserve the last valid artifact and do not publish invalidated work.
 
 ## Related reading
 

@@ -586,8 +586,8 @@ const productHref = reactPageRoutes['GET /products/:productId ProductRouter show
 // /products/desk%2Fchair
 ```
 
-Generated route ids use the stable catalog `id`. Static builders accept no parameters; dynamic
-builders require every catalog path parameter and encode each value with `encodeURIComponent(...)`.
+Generated route ids use the stable catalog `id`. Static builders without query bindings accept no
+parameters; dynamic builders require every catalog path parameter and encode each value with `encodeURIComponent(...)`.
 The artifact also exports `ReactPagePathById`, `ReactPageParamsById`, `ReactPagePath<RouteId>`,
 `ReactPageParams<RouteId>`, `ReactPageRoute`, `ReactPageLinkProps`, and `ReactPageNavigator`.
 
@@ -618,18 +618,47 @@ function ProductNavigation({ productId }: { readonly productId: string }) {
 }
 ```
 
-Static `link`, `push`, and `replace` methods accept no params; parameterized methods require every
+Static `link`, `push`, and `replace` methods accept no path params; parameterized methods require every
 path param and reject missing or extra keys. The existing generated `href(...)` builders,
 `<Link href={stringOrUrl}>`, and `router.push(...)` / `router.replace(...)` string or `URL` calls remain
 supported. Generated methods only produce or pass absolute href strings into those existing APIs, so
 real-anchor fallback, full-document HTTP navigation, matching, DTO binding, guards, interceptors, and
 not-found behavior keep their current owners.
 
-This contract is deliberately path-only. It does not generate query strings, fragments, relative
-routes, optional parameters, or a client route tree. Typegen rejects every catalog entry with a
-`version` because the compiled catalog does not identify whether version selection came from the
-URI, a header, media type, or a custom strategy; emitting one absolute href would otherwise claim a
-URL contract that may be false.
+The existing generator also projects HTTP query aliases and wire omission rules from a frozen
+application compiler snapshot. Use `--tsconfig` for the application configuration and `--options`
+for the actual bootstrap options export. Converted fields declare their raw input with the type-only
+`HttpWire<Server, Wire>` from `@fluojs/http`; HTTP still owns conversion and validation.
+Query builders preserve repeated value order, empty strings and omitted optional fields, using
+`URLSearchParams` encoding rather than implicit number/boolean stringification.
+
+For a generated `SearchRouter.show` route with `@FromQuery('q') term: string`, use
+the DTO property name, not its wire alias. Query follows path params when present;
+it is optional only when all query bindings are optional:
+
+```tsx
+const search = reactPageRoutes['GET /search SearchRouter show'];
+<Link {...search.link({ term: 'tea + coffee' })}>Search</Link>;
+// /search?q=tea+%2B+coffee
+```
+
+Artifact version 2 generates `reactPageModules` JSON props contracts and `reactFormRoutes`
+contracts for the existing `useForm({ action, contract })` path. Module literals and exact props
+are checked through `ReactPagePropsRegistry`; consumers do not copy DTO interfaces or cast saved
+data. Type-only dependencies and compiler configuration participate in freshness.
+Include the generated file in the consumer TypeScript program. Pass `reactPageModules`
+to the initial loader's fourth argument and soft loader's `contracts` option; the existing
+provider composition must forward the same contracts, including public prefetch. Registry
+inclusion alone is not runtime validation. Generated forms supply `fields` and `decodeSaved`,
+not a generated GET `decodeRead`; HTTP still validates submitted successful controls.
+Run the existing `--check` before ordinary typecheck/build; repair failures by explicit
+generation, not silent regeneration. See the [migration](../../docs/getting-started/migrate-react-typegen.md).
+
+Unversioned and provenance-backed URI routes use their compiled effective paths. Versioned
+header/media/custom routes or absent selection provenance fail explicitly; a literal `/v2`
+path is not URI-strategy evidence. Fragment, relative-route and client-matcher generation remain
+outside this contract. See the [end-to-end types contract](../../docs/contracts/react-end-to-end-types.md)
+for supported JSON shapes, strict consumer requirements and migration guidance.
 
 ## Consumer Testing Loop
 
@@ -1431,8 +1460,8 @@ This package currently does **not** provide:
 - a Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, or React-owned
   `routes: []` table
 - automatic client bundle generation
-- href generation for versioned React pages; path-only typegen rejects versioned catalog entries
-  until the catalog can distinguish URI versioning from non-path version strategies
+- href generation for versioned header/media/custom routes or routes without selection provenance;
+  unversioned and provenance-backed URI routes are supported
 - filesystem scanning or automatic manifest file discovery; pass an already-loaded manifest value to
   `@fluojs/react/vite`
 - automatic serialization of arbitrary data into `bootstrapScriptContent`
@@ -1455,9 +1484,10 @@ This package currently does **not** provide:
 - `@fluojs/react/typegen` subpath — `generateReactPageTypes(...)`,
   `inspectReactPageTypeArtifact(...)`, `REACT_PAGE_TYPEGEN_ARTIFACT_VERSION`,
   `ReactPageTypeArtifactInspection`, `ReactPageTypegenError`, `REACT_PAGE_TYPEGEN_ERROR_CODES`, and
-  `ReactPageTypegenErrorCode` for deterministic path-only declarations, versioned artifact checks,
+  `ReactPageTypegenErrorCode` for deterministic path/query declarations, versioned artifact checks,
   absolute href builders, route-bound `Link` props, and typed `push`/`replace` methods without
-  widening the package root or adding a runtime route table.
+  widening the package root or adding a runtime route table. Compiler projection also emits
+  limited JSON module props and saved-data contracts through this same lifecycle.
 - `ReactModule` — runtime-neutral module facade whose `forRoot(...)` registers React routers through
   the existing fluo module/controller metadata path.
 - `ReactNavigationPage.create(...)` — opts a matched page into HTTP-negotiated JSON while keeping

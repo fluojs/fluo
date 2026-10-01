@@ -390,6 +390,8 @@ export interface HandlerMetadata {
   readonly controllerPath: string;
   readonly effectivePath: string;
   readonly effectiveVersion?: string;
+  /** Authoritative selection strategy captured by HTTP compilation, never inferred from the path. */
+  readonly versionSelection?: VersioningType;
   readonly moduleMiddleware: readonly MiddlewareSnapshotLike[];
   readonly moduleType?: Constructor;
   readonly pathParams: readonly string[];

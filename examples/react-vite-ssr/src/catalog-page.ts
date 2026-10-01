@@ -1,5 +1,6 @@
-import { createElement } from 'react';
-import { Link, useForm } from '@fluojs/react/client';
+import { createElement, Fragment } from 'react';
+import { Link, useForm, type ReactFormBinding } from '@fluojs/react/client';
+import { reactFormRoutes, reactPageRoutes } from './generated/react-pages';
 
 export type CatalogPageProps = {
   readonly products: readonly { readonly sku: string; readonly name: string }[];
@@ -8,25 +9,21 @@ export type CatalogPageProps = {
   readonly sessionIdentity?: string;
 };
 
-export function CatalogForm({ id, action, name = '', label, deleting = false }: {
-  readonly id: string; readonly action: string; readonly name?: string; readonly label: string; readonly deleting?: boolean;
+const createRoute = reactFormRoutes['POST /catalog/create CatalogRouter create'];
+const updateRoute = reactFormRoutes['POST /catalog/:sku/update CatalogRouter update'];
+const deleteRoute = reactFormRoutes['POST /catalog/:sku/delete CatalogRouter delete'];
+
+function allowCatalogDestination(destination: string): boolean {
+  const url = new URL(destination);
+  return url.origin === window.location.origin && (url.pathname === '/catalog' || /^\/catalog\/[a-zA-Z0-9-]+$/u.test(url.pathname));
+}
+
+function FormStatus({ id, form }: {
+  readonly id: string;
+  readonly form: Pick<ReactFormBinding<object>, 'state' | 'cancel' | 'retryRead'>;
 }) {
-  const form = useForm<{ name: string }>({
-    id, action, fields: { name: 'display_name' },
-    allowDestination: (destination) => {
-      const url = new URL(destination);
-      return url.origin === window.location.origin && (url.pathname === '/catalog' || /^\/catalog\/[a-zA-Z0-9-]+$/u.test(url.pathname));
-    },
-  });
   const mutation = form.state.mutation;
-  return createElement('form', { ...form.formProps, 'aria-label': label, 'data-enhanced': String(form.connected) },
-    createElement('input', { type: 'hidden', name: 'csrf', value: 'catalog-demo-token' }),
-    deleting ? null : createElement('div', null,
-      createElement('label', { htmlFor: `${id}-name` }, label),
-      createElement('input', { ...form.fieldProps('name'), defaultValue: name, required: true, minLength: 3 }),
-      createElement('p', { id: `${id}-name-errors` }, form.fieldErrors('name').join(' ')),
-    ),
-    createElement('button', { type: 'submit', name: 'intent', value: deleting ? 'delete' : 'save' }, label),
+  return createElement(Fragment, null,
     createElement('output', { 'data-form-state': id, 'aria-live': 'polite' },
       form.state.pending ? 'pending'
         : mutation === null ? 'idle'
@@ -44,35 +41,64 @@ export function CatalogForm({ id, action, name = '', label, deleting = false }: 
   );
 }
 
-export default function CatalogPage(props: Record<string, unknown>) {
-  const products = Array.isArray(props.products) ? props.products.filter(
-    (value): value is { sku: string; name: string } => typeof value === 'object' && value !== null
-      && typeof value.sku === 'string' && typeof value.name === 'string',
-  ) : [];
-  const selected = typeof props.selected === 'string' ? props.selected : undefined;
-  if (props.sessionDemo === true) {
+export function CatalogForm({ id, sku, name = '', label }: {
+  readonly id: string; readonly sku?: string; readonly name?: string; readonly label: string;
+}) {
+  const form = useForm({
+    id, action: sku === undefined ? createRoute.href() : updateRoute.href({ sku }),
+    contract: sku === undefined ? createRoute.contract : updateRoute.contract,
+    allowDestination: allowCatalogDestination,
+  });
+  return createElement('form', { ...form.formProps, 'aria-label': label, 'data-enhanced': String(form.connected) },
+    createElement('input', { ...form.fieldProps('csrf'), type: 'hidden', value: 'catalog-demo-token' }),
+    createElement('label', { htmlFor: `${id}-name` }, label),
+    createElement('input', { ...form.fieldProps('name'), defaultValue: name, required: true, minLength: 3 }),
+    createElement('p', { id: `${id}-name-errors` }, form.fieldErrors('name').join(' ')),
+    createElement('button', { ...form.fieldProps('intent'), type: 'submit', value: 'save' }, label),
+    createElement(FormStatus, { id, form }),
+  );
+}
+
+function DeleteCatalogForm({ id, sku, label }: {
+  readonly id: string; readonly sku: string; readonly label: string;
+}) {
+  const form = useForm({
+    id, action: deleteRoute.href({ sku }), contract: deleteRoute.contract,
+    allowDestination: allowCatalogDestination,
+  });
+  return createElement('form', { ...form.formProps, 'aria-label': label, 'data-enhanced': String(form.connected) },
+    createElement('input', { ...form.fieldProps('csrf'), type: 'hidden', value: 'catalog-demo-token' }),
+    createElement('button', { ...form.fieldProps('intent'), type: 'submit', value: 'delete' }, label),
+    createElement(FormStatus, { id, form }),
+  );
+}
+
+export default function CatalogPage({ products, selected, sessionDemo, sessionIdentity }: CatalogPageProps) {
+  if (sessionDemo === true) {
     return createElement('section', { 'aria-label': 'Session page' },
-      createElement('h1', null, typeof props.sessionIdentity === 'string' ? `Session ${props.sessionIdentity}` : 'Session sign in'),
+      createElement('h1', null, typeof sessionIdentity === 'string' ? `Session ${sessionIdentity}` : 'Session sign in'),
       ...products.map((product) => createElement('p', { key: product.sku, 'data-product': product.sku }, product.name)),
-      typeof props.sessionIdentity === 'string'
-        ? createElement('input', { 'aria-label': 'Protected draft', defaultValue: `Private draft ${props.sessionIdentity}` }) : null,
+      typeof sessionIdentity === 'string'
+        ? createElement('input', { 'aria-label': 'Protected draft', defaultValue: `Private draft ${sessionIdentity}` }) : null,
     );
   }
   return createElement('section', { 'aria-label': 'Catalog CRUD' },
     createElement('h1', null, selected === undefined ? 'Catalog' : `Product ${selected}`),
     createElement('a', { href: '/catalog/login' }, 'Sign in as demo editor'),
-    createElement(Link, { href: '/catalog' }, 'Product list'),
+    createElement(Link, reactPageRoutes['GET /catalog CatalogRouter list'].link(), 'Product list'),
     ...products.map((product) => createElement('article', { key: product.sku },
       createElement('p', { 'data-product': product.sku }, product.name),
-      createElement(Link, { href: `/catalog/${product.sku}`, prefetch: 'hover' }, `Read ${product.sku}`),
+      createElement(Link, {
+        ...reactPageRoutes['GET /catalog/:sku CatalogRouter detail'].link({ sku: product.sku }), prefetch: 'hover',
+      }, `Read ${product.sku}`),
       selected === undefined ? null : createElement(CatalogForm, {
-        id: `edit-${product.sku}`, action: `/catalog/${product.sku}/update`, name: product.name, label: 'Save product',
+        id: `edit-${product.sku}`, sku: product.sku, name: product.name, label: 'Save product',
       }),
-      selected === undefined ? null : createElement(CatalogForm, {
-        id: `delete-${product.sku}`, action: `/catalog/${product.sku}/delete`, deleting: true, label: 'Delete product',
+      selected === undefined ? null : createElement(DeleteCatalogForm, {
+        id: `delete-${product.sku}`, sku: product.sku, label: 'Delete product',
       }),
     )),
-    createElement(CatalogForm, { id: 'create-product', action: '/catalog/create', label: 'Create product' }),
-    createElement(CatalogForm, { id: 'independent-product', action: '/catalog/create', label: 'Independent product' }),
+    createElement(CatalogForm, { id: 'create-product', label: 'Create product' }),
+    createElement(CatalogForm, { id: 'independent-product', label: 'Independent product' }),
   );
 }

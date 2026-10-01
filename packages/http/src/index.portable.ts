@@ -90,3 +90,4 @@ export {
 export * from './middleware/rate-limit.js';
 export * from './middleware/security-headers.js';
 export * from './types.js';
+export type { HttpWire } from './type-projection.js';

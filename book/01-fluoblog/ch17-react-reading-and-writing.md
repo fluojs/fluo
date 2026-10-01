@@ -749,3 +749,72 @@ This is the writer-screen progressive-interaction companion. Follow the
 [official catalog example](../../examples/react-vite-ssr/README.md) for the complete
 production CRUD execution path. Keep this chapter's native writes intact;
 manuscript checks are not evidence of browser execution.
+
+### A small typed extension for the editing screen
+
+In a separate hydrated extension, reduce mistakes when reading saved-result fields.
+Do not silently turn the multipart exercise above into an enhanced form. Configure
+the existing provider and a URL-encoded parser, then declare raw text contracts on
+the same `EditInput` body fields. Declare them as `string | readonly string[]` to
+represent text and duplicate values while retaining runtime checks. Do not copy a
+client Input interface; keep `positiveInt`, length checks, author/Origin checks and
+conditional writes. Other queries in the application graph must also have supported
+wire shapes; resolve generator diagnostics for unsupported declarations.
+
+This fragment replaces **only the confirmed-success branch** of the existing
+`save`. Keep failure HTML and 409 conflict handling; arbitrary 400/409 responses
+are not typed validation. For enhanced field errors, explicitly author a safe DTO
+projection or `HttpFormRejection`.
+
+```ts
+return ReactModule.formResult({
+  destination: `/posts/${id}/edit`,
+  followUp: 'refresh',
+  data: { kind: 'draft-saved', id },
+});
+```
+
+After running `fluo typegen` with the same application tsconfig/options, this
+**fragment inside the hydrated editor component** infers action, field aliases and
+saved data from one generated route. Import `reactFormRoutes` from
+`./generated/react-pages.js` and `useForm` from `@fluojs/react/client`. `post` is the
+editing query value above; retain the content/slug/version controls too.
+
+```tsx
+const save = reactFormRoutes['POST /posts/:id/edit PostsPages save'];
+const action = save.href({ id: String(post.id) });
+const form = useForm({
+  id: 'draft-edit',
+  action,
+  contract: save.contract,
+  allowDestination: (destination) => destination === action,
+});
+const mutation = form.state.mutation;
+
+return (
+  <form {...form.formProps}>
+    <label htmlFor="draft-edit-title">Title</label>
+    <input {...form.fieldProps('title')} defaultValue={post.title} maxLength={120} />
+    <span id="draft-edit-title-errors">{form.fieldErrors('title').join(' ')}</span>
+    <textarea {...form.fieldProps('content')} defaultValue={post.content} maxLength={50000} />
+    <input {...form.fieldProps('slug')} defaultValue={post.slug} maxLength={80} />
+    <input {...form.fieldProps('version')} type="hidden" value={post.version} />
+    <button type="submit" disabled={form.state.pending}>Save draft</button>
+    {mutation?.status === 'saved' && mutation.data !== undefined
+      ? <output>Saved draft {mutation.data.id}</output> : null}
+  </form>
+);
+```
+
+There is no Input generic, field map or saved-data cast. Field typos fail typecheck,
+but types do not replace HTTP validation or CSRF policy. Generated forms consume
+`fields` and `decodeSaved`, not a generated GET `decodeRead`. A failed read after
+save is not a failed write: offer only `retryRead()` for recovery. For uncertainty,
+retain input and confirm through an authoritative read rather than automatically
+repeating POST. Native success remains POST/303/GET, with the same session and
+public-prefetch restrictions.
+
+Follow the [type contract](../../docs/contracts/react-end-to-end-types.md) and
+[migration](../../docs/getting-started/migrate-react-typegen.md) to put `--check`
+before ordinary typecheck/build. This extension also requires DB/browser exercise;
+manuscript checks alone do not make it an executed example.

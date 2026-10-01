@@ -57,8 +57,13 @@ note page를 추가했습니다. 두 page starter와 비교해 손댄 source fil
 개였습니다: `src/app.ts`(새 path/body DTO, HTTP GET/POST, guard, 등록),
 `src/page-note.tsx`(새 page와 native form), `src/page.tsx`(note로 이동하는 선택적 link).
 renderer, client entry, manifest, router store, generated type file 수정은 **0개**였습니다.
-Page는 JSON props를 `Record<string, unknown>`으로 받아 사용 지점에서 필드를 좁힙니다.
-#3880의 후속 typed projection을 위해 다른 authoring 경로나 unsafe cast가 필요하지 않습니다.
+당시 실험은 JSON props를 `Record<string, unknown>`으로 받아 사용 지점에서 좁혔습니다.
+Typed 경로에서는 concrete JSON props를 받는 default-export browser function component와
+`ReactNavigationPage.create`의 literal module/result를 유지합니다. 같은 `fluo typegen`이
+이제 module registry, query, saved-data contract를 project하므로 DTO interface를 복제하거나
+props를 cast하지 않습니다. [Typegen 이주](./migrate-react-typegen.ko.md)에 따라 registry를
+포함하고 기존 조립에 동일한 initial/soft decoder를 연결하며 `--check`로 typecheck/build를
+gate합니다. Build importer allowlist와 application renderer는 계속 필수입니다.
 
 독립 생성 소비자 앱에서 `pnpm typecheck && pnpm build`가 exit code `0`으로 끝났고,
 Chrome case 다섯 개가 기존 두 page, HTTP 승인 셋째 page, guard 거절/validation 실패

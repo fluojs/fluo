@@ -35,6 +35,15 @@ details를 field error로 바꾸지 않습니다. native fallback에는 기존 H
 
 ## Update outcome and recovery UI
 
+End-to-end inference에는 같은 application tsconfig/bootstrap options로 생성하고 복제한
+Input type과 `fields` map 대신 generated `reactFormRoutes[id].contract`를 사용합니다.
+그 route의 `href`를 같은 `useForm`의 `action`에 전달하며 `fields`와 `contract`를 함께
+전달하지 않습니다. 저장 후 기존 `ReactModule.formResult`로 optional JSON `data`를
+반환하고 `state.mutation.status === 'saved'`로 좁힌 뒤 추론된 data를 읽습니다. Decoder는
+destination policy 전에 malformed saved data를 protocol uncertainty로 거부합니다.
+GET `decodeRead` 지원을 생성하지 않습니다. V2 freshness와 일반 typecheck/build 전 필수
+`--check`는 [typegen 이주](./migrate-react-typegen.ko.md)를 참고하세요.
+
 `state.pending`, `state.dirty`, `state.mutation`, `state.followUp`을 읽습니다.
 안전한 message만 렌더링하고 field error element id를 `${id}-${field}-errors`로 연결합니다.
 다른 form의 input과 focus를 유지합니다.
@@ -64,5 +73,5 @@ startup은 정상 production entry를 사용합니다.
 protocol과 ownership은 [owning form contract](../contracts/react-progressive-forms.ko.md)가
 정의합니다. v2 build identity/params/metadata는
 [navigation payload](../contracts/react-navigation-payload.ko.md)가 계속 소유합니다.
-#3880/#3881/#3882는 같은 interaction으로 typed projection, non-navigation 작업,
-opt-in dirty/pending guard를 확장하며 이 migration에서는 구현하지 않습니다.
+#3880은 같은 interaction의 typed projection을 제공합니다. #3881의 non-navigation 작업과
+#3882의 opt-in dirty/pending guard는 별도 확장이며 이 migration의 추가 API가 아닙니다.

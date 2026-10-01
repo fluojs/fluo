@@ -4,13 +4,14 @@ import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
 
 import { createReactViteExampleModule } from './app';
+import { createReactViteExamplePresentation } from './presentation';
 
 const manifest: unknown = JSON.parse(
   await readFile(new URL(process.env.REACT_VITE_EXAMPLE_MANIFEST_URL ?? '../client/.vite/manifest.json', import.meta.url), 'utf8'),
 );
 const AppModule = createReactViteExampleModule({
   clientDirectory: new URL(process.env.REACT_VITE_EXAMPLE_CLIENT_URL ?? '../client/', import.meta.url),
-  manifest,
+  presentation: createReactViteExamplePresentation(manifest),
 });
 const port = Number(process.env.REACT_VITE_EXAMPLE_PORT ?? '3000');
 const adapter = FastifyHttpApplicationAdapter.create({
@@ -27,8 +28,8 @@ const adapter = FastifyHttpApplicationAdapter.create({
   },
 });
 const app = await FluoFactory.create(AppModule, {
+  ...AppModule.applicationOptions,
   adapter,
-  errorRepresentation: AppModule.errorRepresentation,
 });
 
 await app.listen();
