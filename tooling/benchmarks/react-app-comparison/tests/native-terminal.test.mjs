@@ -98,6 +98,21 @@ test('duplicate or contradictory native requestTime observations stay inconclusi
   assert.deepEqual(collector.reconcileNativeTerminals([request], log(), provenance, [earlier]), [request]);
 });
 
+test('source creation authenticates cancellation when START_JOB crosses the next clock tick without ExtraInfo', () => {
+  // Given: request 52980.54/source 178 was created at 1029309006 and started at 1029309007.
+  const request = { ...pending(), startedTimestamp: 1018445.000804 };
+  const nativeLog = log();
+  for (const entry of nativeLog.events.slice(1)) entry.time = '1018445001';
+  // When: cancellation happened before capture without a requestWillBeSentExtraInfo.
+  const [outcome] = reconcile([request], nativeLog);
+  // Then: the exact source-creation tick, not a nearest-URL/time tolerance, owns the terminal.
+  assert.equal(outcome.kind, 'request-failed');
+  assert.deepEqual(outcome.cdpObservation, request);
+  assert.equal(outcome.nativeTerminal.source.start_time, '1018445000');
+  assert.equal(outcome.nativeTerminal.start.time, '1018445001');
+  assert.equal(outcome.nativeTerminal.requestClock.source, 'Network.requestWillBeSent');
+});
+
 test('repeated native URL and method in the same clock tick remain ambiguous', () => {
   const nativeLog = log();
   nativeLog.events.push(...log().events.map((entry) => ({
