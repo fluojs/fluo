@@ -21,7 +21,7 @@ import { ResourceProbe } from './resource-probe';
 import CatalogPage, { BackgroundSearch, type CatalogPageProps } from './catalog-page';
 import { SessionControls, SessionResources } from './session-controls';
 import { reactPageModules } from './generated/react-pages';
-import { controlledPolicy } from '../tests/import-control';
+import { controlledPolicy } from './import-control';
 
 const RECOMMENDATIONS_DELAY_MS = 25;
 

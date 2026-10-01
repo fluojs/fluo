@@ -15,7 +15,7 @@ const navigationModules: ReactNavigationModules = import.meta.glob<{
   readonly default: (props: Record<string, unknown>) => ReactNode;
 }>('./navigation-*.ts');
 const activeModules = import.meta.env.MODE === 'reliability'
-  ? (await import('../tests/import-control')).controlledImports(navigationModules)
+  ? (await import('./import-control')).controlledImports(navigationModules)
   : navigationModules;
 const adminPage = document.documentElement.dataset.adminPage;
 const isAdminPage = adminPage === 'qr' || adminPage === 'songs';

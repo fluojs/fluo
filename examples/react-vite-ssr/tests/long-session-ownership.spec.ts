@@ -5,7 +5,7 @@ import { resources } from './long-session-metrics';
 
 async function open(page: Page) {
   await installObserver(page);
-  await page.goto('/catalog/login', { waitUntil: 'domcontentloaded' });
+  expect((await page.request.get('/catalog/login')).ok()).toBe(true);
   await page.goto('/catalog/background', { waitUntil: 'domcontentloaded' });
   await acknowledge(page, 1);
 }

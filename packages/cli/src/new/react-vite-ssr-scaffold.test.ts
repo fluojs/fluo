@@ -123,6 +123,7 @@ describe('React SSR + Vite scaffold', () => {
       'src/entry-client-dev.ts',
       'src/entry-client.tsx',
       'src/entry-server.tsx',
+      'src/import-control.ts',
       'src/load-manifest.test.ts',
       'src/load-manifest.ts',
       'src/main.ts',
@@ -138,7 +139,6 @@ describe('React SSR + Vite scaffold', () => {
       'tests/background-interactions.spec.ts',
       'tests/deployment-transition.spec.ts',
       'tests/form-control.ts',
-      'tests/import-control.ts',
       'tests/long-session-helpers.ts',
       'tests/long-session-metrics.ts',
       'tests/long-session-observer.ts',
@@ -163,7 +163,7 @@ describe('React SSR + Vite scaffold', () => {
       new URL('./templates/react-vite-ssr/tests/navigation-guard.spec.ts.ejs', import.meta.url), 'utf8',
     ));
     for (const file of [
-      'import-control.ts', 'reliability-control.ts', 'long-session.spec.ts',
+      'reliability-control.ts', 'long-session.spec.ts',
       'long-session-run.ts', 'long-session-observer.ts', 'long-session-helpers.ts',
       'long-session-metrics.ts',
     ]) {
@@ -171,6 +171,9 @@ describe('React SSR + Vite scaffold', () => {
         new URL(`./templates/react-vite-ssr/tests/${file}.ejs`, import.meta.url), 'utf8',
       ));
     }
+    expect(snapshot['src/import-control.ts']).toBe(readFileSync(
+      new URL('./templates/react-vite-ssr/src/import-control.ts.ejs', import.meta.url), 'utf8',
+    ));
     expect(snapshot['src/main.ts']).toContain("process.env.FLUO_REACT_MANIFEST_URL ?? '../client/.vite/manifest.json'");
     expect(snapshot['src/main.ts']).toContain('navigationBuildId: selectedRenderer.buildId');
     expect(snapshot['src/main.ts']).toContain('createReactPageRenderer(manifest)');

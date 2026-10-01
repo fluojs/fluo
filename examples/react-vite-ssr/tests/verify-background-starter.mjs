@@ -57,7 +57,7 @@ const installedFiles = ['client.js', 'client.d.ts', 'client/form.js', 'client/fo
   return { file, installed, sha256: sha(installed) };
 });
 const installedTemplates = ['src/catalog.ts', 'src/page-products.tsx', 'tests/background-interactions.spec.ts',
-  'tests/form-control.ts', ...(reliability ? ['src/page-admin.tsx', 'tests/import-control.ts',
+  'tests/form-control.ts', ...(reliability ? ['src/page-admin.tsx', 'src/import-control.ts',
     'tests/reliability-control.ts', 'tests/long-session.spec.ts', 'tests/long-session-run.ts',
     'tests/long-session-observer.ts', 'tests/long-session-helpers.ts', 'tests/long-session-metrics.ts'] : [])].map((file) => {
   const generated = join(directory, file);

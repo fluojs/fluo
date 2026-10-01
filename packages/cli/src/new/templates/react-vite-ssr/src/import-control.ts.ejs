@@ -1,6 +1,6 @@
 import type { ReactNavigationFailurePolicy, ReactNavigationModules } from '@fluojs/react/client';
 
-/** Compiled only in Vite's explicit reliability mode, never normal application assets. */
+/** Enabled only by the explicit reliability flag, within the client source boundary. */
 export function controlledImports(modules: ReactNavigationModules): ReactNavigationModules {
   return Object.fromEntries(Object.entries(modules).map(([key, load]) => [key, async () => {
     const control = Reflect.get(window, '__reliabilityImport');

@@ -15,7 +15,7 @@ const navigationModules: ReactNavigationModules = import.meta.glob<{
 }>('./page*.tsx');
 declare const __FLUO_RELIABILITY_TEST__: boolean;
 const activeModules = __FLUO_RELIABILITY_TEST__
-  ? (await import('../tests/import-control')).controlledImports(navigationModules)
+  ? (await import('./import-control')).controlledImports(navigationModules)
   : navigationModules;
 const initialJson = document.getElementById('fluo-initial-page')?.textContent;
 const buildId = document.documentElement.dataset.buildId;

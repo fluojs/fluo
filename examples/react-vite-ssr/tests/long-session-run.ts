@@ -98,7 +98,7 @@ export async function runLongSession(page: Page, info: TestInfo, durationMs = 0)
   event('start', { head, engine: info.project.name, browserVersion: page.context().browser()?.version(),
     minimum, durationMs, schedule: faults, physicalDevice: 'external-unverified' });
   try {
-    await page.goto('/catalog/login', { waitUntil: 'domcontentloaded' });
+    expect((await page.request.get('/catalog/login')).ok()).toBe(true);
     await page.goto('/catalog/background', { waitUntil: 'domcontentloaded' });
     await operation();
     const workloadStarted = performance.now();
