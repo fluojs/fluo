@@ -29,6 +29,33 @@ const loadReactNavigationDestination = (
   options: Parameters<typeof loadNavigation>[2] = {},
 ) => loadNavigation(href, modules, { buildId: BUILD_ID, ...options });
 
+it('revalidates background saves through fresh credentialed current-page HTTP without using a handler destination', async () => {
+  // Given: the real navigation loader and a provider-approved current page.
+  const href = `${ORIGIN}${payload.url}#queue`;
+  vi.stubGlobal('window', { location: { href } });
+  const fetch = vi.fn(async () => new Response(JSON.stringify(payload), { headers: { 'Content-Type': MEDIA_TYPE } }));
+  vi.stubGlobal('fetch', fetch);
+  const modules = { './navigation-product.ts': async () => ({ default: () => null }) };
+  const store = createClientNavigationStore(createReactRouteSnapshot({ url: href, params: payload.params }));
+  const push = vi.fn();
+  const disconnect = store.connect({
+    currentHref: () => href, assign: vi.fn(), replace: vi.fn(), reload: vi.fn(), back: vi.fn(),
+    pushState: push, replaceState: vi.fn(), subscribe: () => () => {},
+    load: (destination, signal) => loadReactNavigationDestination(destination, modules, { signal }),
+  });
+  // When: the provider coalescer approves a background mutation.
+  expect(await store.approveBackground(new AbortController().signal, createClientFormStore('background'))).toEqual({ status: 'complete' });
+  // Then: only fresh current-page GET approval updates props; history and route params agree.
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(fetch).toHaveBeenCalledWith(href, expect.objectContaining({
+    credentials: 'same-origin', cache: 'no-store', redirect: 'manual',
+  }));
+  expect(push).not.toHaveBeenCalled();
+  expect(store.getSnapshot().url).toBe(`${payload.url}#queue`);
+  expect(store.getSnapshot().params).toEqual(payload.params);
+  disconnect();
+});
+
 it('consumes auth refresh through two uncached credentialed GETs before fresh approval', async () => {
   const href = `${ORIGIN}${payload.url}`;
   vi.stubGlobal('window', { location: { href } });

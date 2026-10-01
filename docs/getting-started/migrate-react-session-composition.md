@@ -65,6 +65,13 @@ sparse arrays and cycles rather than silently normalizing them.
 
 ## App-owned resources
 
+Background GET/POST uses the same internal provider session lease. Navigation alone
+retains live owners; logout/rebind removes old results and inputs before policy.
+Generated contracts may validate ordinary reads through optional `decodeRead`.
+Manual/opaque background redirects fail locally; configured validated document
+decisions and the legacy 401/403 document exit are explicit auth-policy exceptions.
+Never infer a new epoch from cookies or retry an uncertain POST.
+
 Place protected players/channels/listeners under the application's existing
 session-aware React subtree and effect cleanup. The runtime has no public teardown
 registry. Store settlement is not a paint or SDK disposal receipt: verify the

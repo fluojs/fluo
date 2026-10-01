@@ -14,6 +14,29 @@ The code in this chapter is application code to place in the `fluo-blog` you cre
 
 ## A Server-Rendered Document Is Enough for the First Screen
 
+### Background companion after the native exercise
+
+Keep this chapter's native editor and server-side version check first. For search
+or row saves without document navigation, opt into background on the existing
+provider's `useForm`, without another fetcher or client matcher. The executable
+companion is `/catalog/background` in the [Vite example](../../examples/react-vite-ssr/README.md).
+Observe real search results, two concurrent row writes and saved/read-failed outcomes.
+
+```tsx
+const search = useForm<{ q: string }>({
+  id: 'song-search', action: '/catalog/background/search',
+  mode: 'background', method: 'get', fields: { q: 'q' },
+  allowDestination: () => false,
+});
+```
+
+Call inside a component and spread `search.formProps` on its native form. The same
+HTTP handler serves JSON reads and native HTML search. Handwritten fields keep read
+data `unknown`. Cancellation is not rollback or a replacement for this chapter's
+version/idempotency checks. `tests/background-interactions.spec.ts` exercises
+reversed responses and cleanup; the [form contract](../../docs/contracts/react-progressive-forms.md)
+owns defaults, failures and lifecycle.
+
 The stable path in `@fluojs/react` is React SSR over HTTP. `@Router` and `@Path` sit on top of existing HTTP route metadata. They do not discover routes automatically from React filenames, and components do not create a new authentication pipeline. The same middleware, guards, DTO binding, and request scope apply as for the API.
 
 First, install the React integration and its peer dependencies in your `fluo-blog`. Keep the existing Fluo, Prisma, and authentication dependencies.

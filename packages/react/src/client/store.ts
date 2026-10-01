@@ -49,6 +49,8 @@ export type ClientNavigationStore = {
   readonly rejectFormAuth: (reason: 'unauthorized' | 'forbidden', origin: ClientFormStore) => Promise<void>;
   readonly releaseFormSession: (origin: ClientFormStore) => void;
   readonly forms: Map<string, ClientFormStore>;
+  readonly invalidateBackground: () => void;
+  readonly approveBackground: (signal: AbortSignal, origin: ClientFormStore) => Promise<ReactRevalidationResult>;
   readonly approveForm: (destination: string, followUp: 'refresh' | 'navigate', signal: AbortSignal, origin: ClientFormStore) => Promise<ReactRevalidationResult>;
   readonly canHandleLink: (href: string | URL) => boolean;
   readonly prefetch: (href: string | URL, owner: object) => Promise<void>;
@@ -121,11 +123,20 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
   const listeners = new Set<() => void>();
   const forms = new Map<string, ClientFormStore>();
   const continuations = new Set<ClientFormStore>();
-  const cancelForms = (clear = false): void => {
-    const old = [...forms.values()];
-    if (clear) forms.clear();
+  const cancelForms = (clear = false, all = false): void => {
+    const old = [...forms.values()].filter((form) => all || form.mode !== 'background');
+    if (clear) for (const [key, form] of forms) {
+      if (all || form.mode !== 'background') forms.delete(key);
+    }
     for (const form of old) form.cancel();
   };
+  let backgroundRevision = 0;
+  let backgroundApproval: {
+    readonly revision: number;
+    readonly controller: AbortController;
+    readonly promise: Promise<ReactRevalidationResult>;
+    readonly waiters: Set<object>;
+  } | null = null;
   const releaseSessionLeases = (): void => {
     const old = [...sessionLeases];
     sessionLeases.clear();
@@ -369,7 +380,8 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     },
     formApproval = false,
     formOrigin?: ClientFormStore,
-  ): void => {
+    expectedBackgroundRevision?: number,
+  ): AbortController | undefined => {
     const load = browser.load;
     if (load === undefined) {
       return;
@@ -412,6 +424,11 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
         result = { ok: false, reason: 'unavailable' };
       }
       const currentHref = browser.currentHref();
+      if (expectedBackgroundRevision !== undefined && expectedBackgroundRevision !== backgroundRevision) {
+        if (pending?.controller === controller) pending = null;
+        completeRefresh({ status: 'cancelled' });
+        return;
+      }
       if (controller.signal.aborted || requestGeneration !== generation
         || (type === 'back' || type === 'refresh'
           ? currentHref.split('#', 1)[0] !== expectedHref.split('#', 1)[0]
@@ -549,6 +566,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
         result.payload.metadata,
       ));
     })();
+    return controller;
   };
 
   const navigateDocument = (href: string | URL, type: DocumentNavigationType, fromPrefetch = false): void => {
@@ -795,7 +813,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
       }
       if (followUp === 'navigate') {
         for (const other of forms.values()) {
-          if (other !== origin) other.cancel();
+          if (other !== origin && other.mode !== 'background') other.cancel();
         }
       }
       cancelPending();
@@ -820,6 +838,81 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
         type === 'refresh' ? 'refreshing' : 'navigating', type, toSnapshotUrl(destination.href),
       )));
       return completed.finally(() => signal.removeEventListener('abort', abort));
+    },
+    invalidateBackground() {
+      backgroundRevision++;
+      cached.clear();
+      discardPrefetches();
+      // A write never cancels a newer user navigation, only our own stale approval.
+      const old = backgroundApproval;
+      backgroundApproval = null;
+      old?.controller.abort();
+    },
+    async approveBackground(signal, _origin) {
+      if (signal.aborted || barrierActive || environment === null) return { status: 'cancelled' };
+      const expectedSession = sessionGeneration;
+      const expectedUrl = snapshot.url.split('#', 1)[0];
+      // Already-dispatched sibling writes share one latest read after their local settlement.
+      // Subscribe before checking; cancellation never waits for an uncooperative writer.
+      const writers = [...forms.values()].filter((form) => form.isWriting());
+      if (writers.length > 0) await new Promise<void>((resolve) => {
+        const subscriptions: (() => void)[] = [];
+        const finish = (): void => {
+          if (!signal.aborted && writers.some((form) => form.isWriting())) return;
+          for (const unsubscribe of subscriptions) unsubscribe();
+          signal.removeEventListener('abort', finish);
+          resolve();
+        };
+        for (const writer of writers) subscriptions.push(writer.subscribe(finish));
+        signal.addEventListener('abort', finish, { once: true });
+        finish();
+      });
+      // Combine acknowledgements delivered in the same completion turn.
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      if (signal.aborted || expectedSession !== sessionGeneration || environment === null
+        || snapshot.url.split('#', 1)[0] !== expectedUrl) return { status: 'cancelled' };
+      let approval = backgroundApproval;
+      if (approval === null) {
+        const browser = environment;
+        if (pending !== null || toSnapshotUrl(browser.currentHref()).split('#', 1)[0] !== expectedUrl) {
+          return { status: 'cancelled' };
+        }
+        if (browser.load === undefined) return { status: 'error', failure: {
+          destination: snapshot.pathname, reason: 'unavailable', type: 'refresh',
+        } };
+        const controller = new AbortController();
+        const revision = backgroundRevision;
+        const promise = new Promise<ReactRevalidationResult>((resolve) => { settleRefresh = resolve; });
+        approval = { revision, controller, promise, waiters: new Set() };
+        backgroundApproval = approval;
+        const currentApproval = approval;
+        let readController: AbortController | undefined;
+        const abort = (): void => {
+          if (readController !== undefined && pending?.controller === readController) cancelPending();
+        };
+        controller.signal.addEventListener('abort', abort, { once: true });
+        readController = loadAndCommit(browser, new URL(browser.currentHref()), 'refresh', undefined, true, undefined, revision);
+        void promise.finally(() => {
+          controller.signal.removeEventListener('abort', abort);
+          if (backgroundApproval === currentApproval) backgroundApproval = null;
+        });
+      }
+      // A waiter may cancel without cancelling another form's shared read.
+      const shared = approval;
+      const waiter = {};
+      shared.waiters.add(waiter);
+      let detach = () => {};
+      const cancelled = new Promise<ReactRevalidationResult>((resolve) => {
+        const abort = (): void => resolve({ status: 'cancelled' });
+        signal.addEventListener('abort', abort, { once: true });
+        detach = () => signal.removeEventListener('abort', abort);
+      });
+      try { return await Promise.race([shared.promise, cancelled]); }
+      finally {
+        detach();
+        shared.waiters.delete(waiter);
+        if (shared.waiters.size === 0 && backgroundApproval === shared) shared.controller.abort();
+      }
     },
     canHandleLink(href: string | URL): boolean {
       if (environment === null) {
@@ -909,7 +1002,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     connect(nextEnvironment: ClientNavigationEnvironment): () => void {
       if (environment !== null) {
         releaseSessionLeases();
-        cancelForms(true);
+        cancelForms(true, true);
       }
       invalidate();
       environment = nextEnvironment;
@@ -976,7 +1069,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
         unsubscribe();
         if (environment === nextEnvironment) {
           releaseSessionLeases();
-          cancelForms(true);
+          cancelForms(true, true);
           invalidate();
           environment = null;
           notify();

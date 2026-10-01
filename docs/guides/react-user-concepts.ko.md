@@ -163,10 +163,18 @@ Component, server action, router, loader, cache contract로 해석하지 마세�
 
 ## 지원하지 않는 개념
 
+독립 검색과 행 mutation은 별도 fetcher/provider가 아닌 기존 `useForm`의
+`mode: 'background'`로 제공합니다. GET은 일반 HTTP JSON을 읽고 POST는 기존 saved
+protocol과 합쳐진 fresh same-page HTTP approval을 사용합니다. Stable id마다
+pending/result와 latest-wins 취소를 소유합니다. navigation만으로 살아 있는 shell owner를
+취소하지 않으며 unmount/session/provider 변경은 철회합니다. 아래의 범용 loader/cache
+개념까지 제공하는 것은 아닙니다.
+[Form 계약](../contracts/react-progressive-forms.ko.md#background-http-interactions)을 보세요.
+
 현재 패키지는 다음을 제공하지 않습니다.
 
 - file routing, React-owned matcher, nested route tree, catch-all route grammar
-- route-module loader/action runtime, fetcher, automatic data revalidation
+- route-module loader/action runtime, 별도 fetcher API, 범용 query-cache revalidation
 - 임의 HTML document swapping, 일반 client document/data cache, 자동 navigation prefetch,
   optimistic mutation policy
 - automatic metadata merging 또는 segment-level `loading`, `error`, `not-found` convention

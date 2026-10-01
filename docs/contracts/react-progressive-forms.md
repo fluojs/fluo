@@ -80,7 +80,7 @@ The binding exposes typed field names through `values`, `fieldErrors` and
 discriminated `followUp`. `fieldProps` associates the authored control with its
 error element; that element uses `${id}-${field}-errors`.
 
-One form admits one enhanced POST at a time. Repeated busy activation increments
+With omitted `mode`/`method`, one form admits one enhanced POST at a time. Repeated busy activation increments
 `skipped`; it is not queued. Separate forms remain independently usable.
 After settlement an explicit submit captures current successful controls and
 replaces only that form's applicable result. Unchanged input becomes clean on a
@@ -93,7 +93,7 @@ There is no automatic POST retry and no enhanced-to-native POST replay.
 An explicit resubmission is a new operation and may duplicate a previous save.
 The application owns idempotency, transactions and reconciliation.
 
-New route/history intent, provider/session rebinding, explicit cancellation and
+For the default navigation mode, new route/history intent, provider/session rebinding, explicit cancellation and
 unmount cancel obsolete interaction ownership. Late body reads, policy
 decisions, acknowledgements and follow-up loads cannot commit through an old
 generation. `allowDestination(destination, signal)` may be asynchronous; its
@@ -121,6 +121,49 @@ A failed, cancelled, unsupported or incompatible-build follow-up leaves
 with an explicit read-only recovery control. Existing explicit
 `useRouter().refresh()` still intentionally resets page state after successful
 approval; automatic form refresh is not a silent redefinition of that API.
+
+## Background HTTP interactions
+
+Use the same `useForm` with `mode: 'background'` and native `method: 'get' | 'post'`
+(POST by default). Each stable provider-local id has its own pending/result/error,
+generation and cancellation. New explicit submissions supersede only that operation.
+Dynamic rows use domain ids; two simultaneously mounted owners cannot share an id.
+Navigation alone retains live shell-owned operations; actual page/row unmount cancels
+only its departing owner. Session change or provider disconnect/rebind revokes all
+previous ownership, private results and retained input before policy can use them.
+
+GET sends successful controls as query parameters and requests ordinary
+`application/json` from an application-owned HTTP handler. That same handler can
+return an HTML search document for native requests. A read success is
+`mutation.status === 'read'`; read failures use `error`, not persistence uncertainty.
+Non-2xx, malformed/oversized data and unexpected media are never read success.
+Handwritten fields keep data `unknown`; a generated contract's optional
+`decodeRead(value: unknown): Data` validates at the same seam as `decodeSaved`.
+Do not interpret navigation v2 payloads as widget data or cache private reads.
+
+Neither GET nor saved acknowledgement changes URL/history, route params or head.
+Background mode ignores the handler's `navigate` follow-up and destination policy.
+Confirmed saves instead coalesce provider-local dirty revisions into a separate
+fresh HTTP-approved current-page read, keeping the fragment, shell and other forms.
+Already-dispatched sibling writes settle before that shared latest read; cancelling
+one waiter does not cancel another waiter. A later write revokes stale read authority;
+a newer user navigation wins without an old-page resurrection. Saved and failed,
+cancelled or rejected follow-up remain separate; `retryRead()` repeats GET only.
+
+Manual/opaque redirects end as operation-local `redirect` failure, without reading
+Location, replaying POST or automatic document fallback. Fresh credentialed 401/403
+and explicit saved session outcomes still enter the existing session barrier.
+An app-selected validated document exit and the unconfigured legacy auth exit are
+auth-policy exceptions, not general background redirect handling. Cancellation and
+supersession cannot undo a dispatched POST; idempotency and reconciliation stay with
+the application. Native action/method/encoding and submitter overrides remain intact
+before hydration or with JS disabled; unsupported submissions remain native.
+
+Evidence: `client-background-form.test.ts`, strict consumer fixtures,
+`client-navigation-payload.test.ts`, the owning governance guard, and the actual
+example/starter `tests/background-interactions.spec.ts` at `/catalog/background`.
+This scoped correctness surface does not pass #3879's full product gate or #3886's
+soak, and makes no MusicKit, memory-leak or performance claim.
 
 ## Explicit saved session and data
 
@@ -152,8 +195,8 @@ remain governing companions. See the [usage guide](../guides/react-user-concepts
 [consumer migration](../getting-started/migrate-react-progressive-forms.md), and
 [runnable example](../../examples/react-vite-ssr/README.md).
 
-The typed names/outcomes support later #3880 projections; #3881 extends this
-same interaction for non-navigation work and #3882 consumes dirty/pending state
+The typed names/outcomes support later #3880 projections; background work uses this
+same interaction and #3882 consumes dirty/pending state
 for opt-in navigation guards. None introduces a competing form API here.
 #3875 supplies the documented application session composition. Optimistic cache mutation,
 comprehensive uploads, distributed duplicate protection and those follow-up

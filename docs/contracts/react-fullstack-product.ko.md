@@ -14,7 +14,18 @@ Framework는 명시한 navigation/history/failure 및 취소 경계, commit 전 
 
 ## 사용자 여정 수용 표
 
-분류는 목표가 아니라 **현재 checkout**의 상태입니다. **shipped**는 범위를 한정한 근거가 있고, **verification gap**은 실제 surface 검증이 필요하며, **assembly burden**은 framework의 공식 조립이 필요하고, **unsupported**는 새 동작이 필요하며, **intentional non-goal**은 계약 밖입니다. 같은 행에 shipped 기반과 다른 목표 분류가 함께 있을 수 있습니다. 모든 행은 #3879에서 다시 실행합니다. Owner는 부족한 결과를 구현하거나 입증할 자식 이슈입니다. 각 행의 S/F/C는 제품 게이트에서 관찰할 성공/실패/취소 결과입니다. 해당될 때 취소는 사용자 또는 request abort이며 이미 제출한 POST의 rollback이 아닙니다.
+표는 roadmap의 이전 근거 baseline을 기록하며 완료된 #3873/#3874/#3875를 소급 취소하지 않습니다. **Shipped**는 해당 seam의 검증된 동작이고 **verification gap**, **assembly burden**, **unsupported**는 그 기반을 넘어서는 목표를 뜻합니다. 아래 background section은 #3881의 추가 범위를 기록합니다. 모든 행은 여전히 #3879의 전체 제품 검증이 필요합니다. S/F/C는 성공/실패/취소이며 dispatch한 POST의 rollback이 아닙니다.
+
+### Background interaction scope
+
+기존 `useForm`은 additive background GET/POST, 독립 stable-id 상태, latest-wins
+ownership, session 철회, 합쳐진 fresh same-page HTTP approval을 제공합니다.
+공식 example과 packaged starter의 `/catalog/background`는 실제 song datasource,
+독립 search/widget read, queue row write를 사용합니다. source/types/dispatcher와
+결정적인 listener/browser fixture는 역순 response, 두 held write, 개별 실패,
+unmount, native GET/POST303GET을 검증합니다. 이 fixture는 scoped correctness
+surface이며 #3879 전체 CRUD/jukebox gate, #3886 soak, 측정된 framework parity나
+MusicKit 근거가 아닙니다. 정확한 제공 의미는 [form owner](./react-progressive-forms.ko.md)가 소유합니다.
 
 | 사용자 여정 | 관찰 가능한 S / F / C 목표 | 현재 근거와 분류 | Owner 및 실제 검증 surface |
 | --- | --- | --- | --- |

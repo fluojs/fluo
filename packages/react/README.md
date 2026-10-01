@@ -1113,6 +1113,32 @@ See [migration](../../docs/getting-started/migrate-react-session-composition.md)
 
 ## Native Form Mutations
 
+The same `useForm` also owns non-navigation work. Inside a component under the
+existing provider, bind a real GET form:
+
+```tsx
+const search = useForm<{ q: string }>({
+  id: 'song-search', action: '/catalog/background/search',
+  mode: 'background', method: 'get', fields: { q: 'q' },
+  allowDestination: () => false,
+});
+// Spread search.formProps on <form>; keep named input q and a submit button.
+```
+
+The application-owned HTTP handler returns ordinary `application/json` for the
+explicit read request and HTML for native GET. Background POST uses the same
+`ReactModule.formResult`, without automatically following `navigate`. Stable row
+ids have independent latest-wins pending/results; live shell owners survive
+navigation, while actual unmount, session change and provider rebind cancel old
+ownership. `read` data stays `unknown` for authored fields; generated contracts
+may add `decodeRead(unknown): Data`. Acknowledgements do not alter URL/history/head.
+Confirmed writes share a fresh current-page HTTP approval, not a private query
+cache. `saved` remains distinct from read failure and `retryRead()` never replays
+POST. Redirects fail locally except explicit existing auth-policy exits.
+Omitting mode/method keeps the navigation-oriented POST and busy-skipped default.
+Run the official example or generated starter at `/catalog/background`; see the
+owning [background contract](../../docs/contracts/react-progressive-forms.md#background-http-interactions).
+
 The canonical `ReactModule.formResult` also accepts optional JSON `data` and an
 explicit nonsecret `session: { epoch, reason: 'login' | 'logout' | 'permissions' }`.
 Its literal options remain inferred. The negotiated saved acknowledgement stays

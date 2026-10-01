@@ -2,6 +2,8 @@ import { parseReactSessionChange, type ReactSessionChange } from '../form-result
 
 /** Safe, negotiated HTTP mutation acknowledgement; failures never imply rollback. */
 export type ReactFormMutation<Data = unknown> =
+  | { readonly status: 'read'; readonly data: Data }
+  | { readonly status: 'error'; readonly reason: 'transport' | 'server' | 'protocol' | 'redirect' | 'cancelled' | 'input' }
   | { readonly status: 'saved'; readonly destination: string; readonly followUp: 'refresh' | 'navigate'; readonly data?: Data; readonly session?: ReactSessionChange }
   | { readonly status: 'validation'; readonly fieldErrors: Readonly<Record<string, readonly string[]>>; readonly formErrors: readonly string[] }
   | { readonly status: 'auth'; readonly reason: 'unauthorized' | 'forbidden' }
@@ -14,6 +16,7 @@ const MEDIA_TYPE = 'application/vnd.fluo.form+json;v=1';
 export type FormSubmission = {
   readonly action: string;
   readonly body: URLSearchParams;
+  readonly method?: 'get' | 'post';
 };
 
 /**
@@ -22,12 +25,14 @@ export type FormSubmission = {
  * @param form Native form.
  * @param submitter Browser-selected successful submit button.
  * @param actions Explicit application-authored same-origin action allowlist.
- * @returns One supported POST including duplicate names and the submitter, or native fallback.
+ * @param mode Navigation POST by default, or background GET/POST enhancement.
+ * @returns A supported submission including duplicate names and submitter, or native fallback.
  */
 export function captureFormSubmission(
   form: HTMLFormElement,
   submitter: HTMLElement | null,
   actions: readonly string[],
+  mode: 'navigation' | 'background' = 'navigation',
 ): FormSubmission | undefined {
   if (!form.isConnected || form.ownerDocument.defaultView !== window
     || !form.noValidate && !submitter?.hasAttribute('formnovalidate') && !form.reportValidity()) return undefined;
@@ -38,7 +43,9 @@ export function captureFormSubmission(
   const encoding = submitter?.getAttribute('formenctype') ?? form.getAttribute('enctype') ?? 'application/x-www-form-urlencoded';
   const target = submitter?.getAttribute('formtarget') ?? form.getAttribute('target')
     ?? form.ownerDocument.querySelector('base[target]')?.getAttribute('target') ?? '';
-  if (method.toLowerCase() !== 'post' || encoding.toLowerCase() !== 'application/x-www-form-urlencoded'
+  const selectedMethod = method.toLowerCase();
+  if (selectedMethod !== 'post' && !(mode === 'background' && selectedMethod === 'get')
+    || encoding.toLowerCase() !== 'application/x-www-form-urlencoded'
     || target !== '' && target.toLowerCase() !== '_self') return undefined;
   let url: URL;
   try {
@@ -58,7 +65,7 @@ export function captureFormSubmission(
     if (typeof value !== 'string') return undefined;
     body.append(name.replace(/\r?\n|\r/gu, '\r\n'), value.replace(/\r?\n|\r/gu, '\r\n'));
   }
-  return { action: url.href, body };
+  return { action: url.href, body, ...(selectedMethod === 'get' ? { method: 'get' as const } : {}) };
 }
 
 function parseErrors(value: unknown): { fieldErrors: Readonly<Record<string, readonly string[]>>; formErrors: readonly string[] } | undefined {
@@ -86,22 +93,36 @@ function parseErrors(value: unknown): { fieldErrors: Readonly<Record<string, rea
  * @returns An explicit HTTP acknowledgement or conservative mutation outcome.
  */
 export async function submitHttpForm(submission: FormSubmission, signal: AbortSignal): Promise<ReactFormMutation> {
+  const reading = submission.method === 'get';
+  const failure = (reason: 'transport' | 'server' | 'protocol' | 'redirect' | 'cancelled'): ReactFormMutation =>
+    reading ? { status: 'error', reason } : { status: 'uncertain', reason };
   try {
-    const response = await fetch(submission.action, {
-      method: 'POST', body: submission.body, signal,
+    const requestUrl = new URL(submission.action);
+    if (reading) requestUrl.search = submission.body.toString();
+    const response = await fetch(requestUrl.href, {
+      method: reading ? 'GET' : 'POST', ...(reading ? {} : { body: submission.body }), signal,
       credentials: 'same-origin', cache: 'no-store', redirect: 'manual',
-      headers: { Accept: MEDIA_TYPE },
+      headers: { Accept: reading ? 'application/json' : MEDIA_TYPE },
     });
-    if (signal.aborted) return { status: 'uncertain', reason: 'cancelled' };
+    if (signal.aborted) return failure('cancelled');
     if (response.status === 401 || response.status === 403) {
       return { status: 'auth', reason: response.status === 401 ? 'unauthorized' : 'forbidden' };
     }
     if (response.type === 'opaqueredirect' || response.status >= 300 && response.status < 400 || response.redirected) {
-      return { status: 'uncertain', reason: 'redirect' };
+      return failure('redirect');
     }
-    if (response.status >= 500) return { status: 'uncertain', reason: 'server' };
+    if (response.status >= 500) return failure('server');
     const media = response.headers.get('Content-Type')?.toLowerCase().replaceAll('"', '').split(';')
       .map((part) => part.trim());
+    if (reading) {
+      if (!response.ok) return { status: 'error', reason: response.status === 400 || response.status === 422 ? 'input' : 'protocol' };
+      if (media?.[0] !== 'application/json') return failure('protocol');
+      const text = await response.text();
+      if (signal.aborted) return failure('cancelled');
+      if (new TextEncoder().encode(text).byteLength > 524_288) return failure('protocol');
+      try { return { status: 'read', data: JSON.parse(text) }; }
+      catch { return failure('protocol'); }
+    }
     if (media?.[0] !== 'application/vnd.fluo.form+json' || !media.includes('v=1')) {
       return response.status === 400 || response.status === 422
         ? { status: 'rejected', reason: 'input' } : { status: 'uncertain', reason: 'protocol' };
@@ -138,6 +159,6 @@ export async function submitHttpForm(submission: FormSubmission, signal: AbortSi
       ...(session === undefined ? {} : { session }),
     };
   } catch {
-    return { status: 'uncertain', reason: signal.aborted ? 'cancelled' : 'transport' };
+    return failure(signal.aborted ? 'cancelled' : 'transport');
   }
 }

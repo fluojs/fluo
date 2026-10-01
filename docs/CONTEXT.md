@@ -1,4 +1,13 @@
 # fluo — AI Context Document
+
+Background HTTP interactions use the existing `useForm` with additive
+`mode: 'background'` and `method: 'get' | 'post'`; omitted options retain legacy
+navigation POST/busy skipping. The [form owner](./contracts/react-progressive-forms.md)
+defines independent latest-wins state, actual-owner cleanup, session leases,
+plain JSON read decoding and coalesced fresh current-page HTTP approval without
+acknowledgement-driven URL/history changes. The navigation companion guard and
+`client-navigation-payload.test.ts` enforce that boundary; private results do not
+enter public prefetch. Example and packaged starter use `/catalog/background`.
 <!-- fluo:prisma-api-unification: module-owned-registration -->
 
 <!-- fluo:transaction-contract: explicit-target -->

@@ -163,10 +163,18 @@ required before any stable subpath can exist.
 
 ## Unsupported concepts
 
+Independent search and row mutations are provided by the existing `useForm` with
+`mode: 'background'`, not another fetcher/provider. GET reads ordinary HTTP JSON;
+POST uses the existing saved protocol and coalesces fresh same-page HTTP approval.
+Each stable id owns pending/results and latest-wins cancellation. Navigation alone
+does not cancel a live shell owner, but unmount/session/provider changes revoke it.
+These scoped semantics do not provide the generalized loader/cache concepts below.
+See the [form contract](../contracts/react-progressive-forms.md#background-http-interactions).
+
 The current package does not provide:
 
 - file routing, a React-owned matcher, a nested route tree, or a catch-all route grammar
-- a route-module loader/action runtime, fetchers, or automatic data revalidation
+- a route-module loader/action runtime, a separate fetcher API or general query-cache revalidation
 - arbitrary HTML document swapping, a general client document/data cache, automatic navigation
   prefetch or optimistic mutation policy
 - automatic metadata merging or segment-level `loading`, `error`, and `not-found` conventions

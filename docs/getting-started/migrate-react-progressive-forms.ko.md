@@ -35,6 +35,15 @@ details를 field error로 바꾸지 않습니다. native fallback에는 기존 H
 
 ## Update outcome and recovery UI
 
+독립 검색이나 행 작업에는 같은 hook에 `mode: 'background'`를 추가합니다. 실제 검색
+form에는 `method: 'get'`, write에는 POST를 선택하고 stable domain row id를 유지합니다.
+새 명시적 요청은 그 id의 이전 local 권한만 supersede하며 생략한 옵션은 busy-skipped
+navigation POST를 유지합니다. `read`/`error`와 `saved`/`uncertain`을 구별하고 handwritten
+fields를 typed cast하지 말고 필요하면 generated `decodeRead`를 사용합니다.
+Background acknowledgement는 handler navigation을 실행하지 않으며 confirmed write는
+fresh current-page HTTP approval을 공유합니다. Native action을 교체하거나 fetcher,
+cache, matcher, POST retry를 추가하지 마세요.
+
 `state.pending`, `state.dirty`, `state.mutation`, `state.followUp`을 읽습니다.
 안전한 message만 렌더링하고 field error element id를 `${id}-${field}-errors`로 연결합니다.
 다른 form의 input과 focus를 유지합니다.
@@ -44,7 +53,7 @@ details를 field error로 바꾸지 않습니다. native fallback에는 기존 H
 저장됐을 수 있음을 뜻합니다. input을 유지하고 authoritative read를 제공하며 새 POST는
 중복 위험을 설명한 명시적 사용자 결정으로 만듭니다. 자동 POST retry/native replay는 없습니다.
 
-busy activation은 queue 대신 skip합니다. `cancel()`은 waiting을 취소하며 server transaction을
+기본 navigation-mode의 busy activation은 queue 대신 skip합니다. `cancel()`은 waiting을 취소하며 server transaction을
 취소하지 않습니다. route/unmount/provider 변경은 이전 interaction을 obsolete 처리합니다.
 기존 application session/prefetch scope boundary를 제공하세요. identity coordination은
 여전히 #3875가 소유하며 form helper가 암묵적으로 구현하지 않습니다.
@@ -64,5 +73,5 @@ startup은 정상 production entry를 사용합니다.
 protocol과 ownership은 [owning form contract](../contracts/react-progressive-forms.ko.md)가
 정의합니다. v2 build identity/params/metadata는
 [navigation payload](../contracts/react-navigation-payload.ko.md)가 계속 소유합니다.
-#3880/#3881/#3882는 같은 interaction으로 typed projection, non-navigation 작업,
-opt-in dirty/pending guard를 확장하며 이 migration에서는 구현하지 않습니다.
+#3880/#3882는 같은 interaction으로 typed projection과 opt-in dirty/pending guard를
+확장합니다. Background 작업은 위의 additive runtime option이며 그 작업의 선행 조건이 아닙니다.

@@ -14,6 +14,28 @@ FluoBlog 운영자는 이제 다른 작성자에게도 계정을 발급한다. �
 
 ## 첫 화면은 서버가 만든 문서로 충분하다
 
+### Native 실습 뒤의 background companion
+
+이 장의 native 편집기와 서버 version 확인을 먼저 유지한다. 문서를 이동하지 않는
+검색이나 행 저장이 필요하면 기존 provider 안의 `useForm`에만 background를 opt-in한다.
+새 fetcher나 client matcher를 만들지 않는다. 실행 가능한 별도 companion은
+[Vite 예제](../../examples/react-vite-ssr/README.ko.md)의 `/catalog/background`다.
+실제 검색 결과와 두 행의 동시 저장을 확인하고, 저장 확인 뒤 read가 실패한 경우를 구별한다.
+
+```tsx
+const search = useForm<{ q: string }>({
+  id: 'song-search', action: '/catalog/background/search',
+  mode: 'background', method: 'get', fields: { q: 'q' },
+  allowDestination: () => false,
+});
+```
+
+Component 안에서 호출하고 native form에 `search.formProps`를 spread한다. HTTP handler는
+JSON 요청과 native HTML 검색을 같은 경로에서 처리한다. `read` data는 수동 fields라면
+`unknown`이다. 취소는 저장 rollback이 아니며 이 장의 version/idempotency 확인을 대신하지
+않는다. 역순 응답과 정리는 예제의 `tests/background-interactions.spec.ts`,
+정확한 기본값·실패·소유권은 [form 계약](../../docs/contracts/react-progressive-forms.ko.md)이 소유한다.
+
 `@fluojs/react`의 안정 경로는 HTTP를 통한 React SSR이다. `@Router`와 `@Path`는 기존 HTTP 라우트 메타데이터 위에 놓인다. React 파일 이름을 보고 라우트를 자동 발견하지 않으며, 컴포넌트가 새로운 인증 파이프라인을 만들지도 않는다. API와 같은 미들웨어, 가드, DTO 바인딩, 요청 범위가 적용된다.
 
 먼저 독자의 `fluo-blog`에서 React 통합과 peer dependency를 설치한다. 기존 Fluo·Prisma·인증 의존성은 그대로 둔다.

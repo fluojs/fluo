@@ -1,4 +1,13 @@
 # fluo — AI Context Document
+
+Background HTTP 작업은 기존 `useForm`의 additive `mode: 'background'`와
+`method: 'get' | 'post'`를 사용하며 생략하면 legacy navigation POST/busy skip을
+유지합니다. [Form owner](./contracts/react-progressive-forms.ko.md)는 독립 latest-wins
+상태, 실제 owner cleanup, session lease, 일반 JSON read decoder, acknowledgement가
+URL/history를 바꾸지 않는 합쳐진 fresh current-page HTTP approval을 정의합니다.
+navigation companion guard와 `client-navigation-payload.test.ts`가 이 경계를 검증하고
+private result는 public prefetch에 들어가지 않습니다. Example과 packaged starter는
+`/catalog/background`를 사용합니다.
 <!-- fluo:prisma-api-unification: module-owned-registration -->
 
 <!-- fluo:transaction-contract: explicit-target -->

@@ -1099,6 +1099,31 @@ input/error/focus를 보존하고 retry는 POST를 재실행하지 않습니다.
 
 ## Native Form Mutations
 
+같은 `useForm`이 non-navigation 작업도 소유합니다. 기존 provider 아래 component에서
+실제 GET form을 연결합니다.
+
+```tsx
+const search = useForm<{ q: string }>({
+  id: 'song-search', action: '/catalog/background/search',
+  mode: 'background', method: 'get', fields: { q: 'q' },
+  allowDestination: () => false,
+});
+// Spread search.formProps on <form>; keep named input q and a submit button.
+```
+
+앱 소유 HTTP handler는 명시적 read 요청에 일반 `application/json`, native GET에
+HTML을 반환합니다. Background POST는 같은 `ReactModule.formResult`를 사용하되
+`navigate`를 자동 실행하지 않습니다. Stable row id마다 독립 latest-wins pending/result를
+소유하고 살아 있는 shell owner는 navigation을 견디며 실제 unmount, session 변경,
+provider rebind가 이전 ownership을 취소합니다. Authored fields의 `read` data는 `unknown`,
+generated contract는 `decodeRead(unknown): Data`를 추가할 수 있습니다. acknowledgement는
+URL/history/head를 변경하지 않습니다. confirmed write는 private query cache 대신 fresh
+current-page HTTP approval을 공유합니다. `saved`와 read 실패는 별개이며 `retryRead()`는
+POST를 재전송하지 않습니다. 기존 명시적 auth-policy exit 외 redirect는 작업별로 실패합니다.
+mode/method를 생략하면 navigation-oriented POST와 busy-skipped 기본값을 유지합니다.
+공식 example 또는 생성 starter의 `/catalog/background`에서 실행하고
+[background 소유 계약](../../docs/contracts/react-progressive-forms.ko.md#background-http-interactions)을 보세요.
+
 Canonical `ReactModule.formResult`는 선택적 JSON `data`와 명시적인 비밀이 아닌
 `session: { epoch, reason: 'login' | 'logout' | 'permissions' }`도 받으며 option literal
 추론을 유지합니다. 협상한 saved acknowledgement는 v1, native 성공은 303으로 유지합니다.
