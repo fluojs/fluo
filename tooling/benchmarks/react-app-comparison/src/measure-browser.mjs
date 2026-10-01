@@ -64,6 +64,22 @@ export function initialRequestCount(requests) {
   return requests.length;
 }
 
+export async function waitForCapturedRequests(network, networkChanges, signal) {
+  const requestIds = [...network.keys()];
+  return new Promise((accept) => {
+    const check = () => {
+      const pendingRequestIds = requestIds.filter((id) => network.has(id));
+      if (pendingRequestIds.length && !signal.aborted) return;
+      networkChanges.off('settled', check);
+      signal.removeEventListener('abort', check);
+      accept({ requestIds, pendingRequestIds });
+    };
+    networkChanges.on('settled', check);
+    signal.addEventListener('abort', check, { once: true });
+    check();
+  });
+}
+
 export function summarizeErrorRate(requests) {
   const settled = requests.filter((request) => request.kind !== 'request-pending');
   return settled.length ? settled.filter((request) =>
@@ -452,6 +468,9 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           interactions.push(observation);
           if (observation.unavailable) qualityFailures.push(observation.unavailable);
         }
+        // Keep approved DOM latency unchanged. Capture actual HTTP terminals before
+        // closing the context; this finite ID inventory is not producer closure.
+        const finalRequestCapture = await waitForCapturedRequests(network, networkChanges, AbortSignal.timeout(10_000));
         collecting = false;
         for (const entry of network.values()) {
           requests.push({ ...entry, kind: 'request-pending',
@@ -515,7 +534,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           }
         }
         return {
-          metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions, initialBoundary, warmBoundary },
+          metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions, initialBoundary, warmBoundary, finalRequestCapture },
           artifacts: {
             cachePolicy: item.mode,
             browserCacheDisabled: cacheSettings(item.mode).cacheDisabled,
