@@ -1,5 +1,22 @@
 # react-vite-ssr example
 
+## Long-session source and verification
+
+The persistent shell now connects `/admin/qr`, `/admin/songs` and
+`/catalog/background` through the same HTTP-approved navigation and existing
+`useForm` search/widget/queue path. `tests/long-session.spec.ts` prepares at least
+1,000 measured seeded actions with operational MessageChannel acknowledgements,
+fault/recovery traces and quiescent checkpoints. The explicit test build uses
+`REACT_VITE_FORM_TEST_SERVER=1 pnpm build:reliability`; run `pnpm test:reliability`
+for Chromium/Firefox/WebKit. Default browser coverage excludes the long-session
+files, especially the separate two-hour soak.
+
+These are source fixtures, not completed execution evidence. Follow the
+[long-session guide](../../docs/guides/react-long-session-reliability.md) for exact
+commands, raw heap/RSS limitations, packaged dev/production, the separate soak
+workflow and #3879's exact-head receipt consumer. Physical mobile/tablet checks
+remain external requirements; desktop viewport coverage cannot pass them.
+
 ## Background interaction companion
 
 Open `/catalog/login`, then `/catalog/background`. The real song datasource
@@ -250,10 +267,10 @@ matched, bound, and rendered again by the ordinary dispatcher. The browser regre
 Chrome context with `javaScriptEnabled: false`, submits the rendered form, observes the `303`, and
 asserts the destination document contains the mutated value.
 
-This flow is not a React Router action/fetcher, Astro Action, Next.js Server Action, or experimental
-fluo Server Function. It does not compile action ids, own route matching, revalidate a client cache,
-or promise optimistic state. No submit-state helper is added because the native form already provides
-the complete fallback and the stable client package owns neither mutation routes nor cache policy.
+This native product exercise does not compile action IDs or own route matching.
+The separate catalog companion uses the shipped `useForm` pending/result path
+over the same native HTTP actions. Its saved follow-up is a fresh approved GET,
+not POST replay or an optimistic private cache.
 
 ## phase boundaries and limitations
 
@@ -268,9 +285,10 @@ the complete fallback and the stable client package owns neither mutation routes
   errors fall back to ordinary HTTP documents. Guards and interceptors remain server-owned.
 - This example does not promise arbitrary HTML swapping, event replay, client route matching,
   a global navigation cache, RSC-aware data, or prefetch for non-opted-in links.
-- A failed network/5xx soft load does not yet preserve the jukebox shell by default;
-  this example's fallback test deliberately observes the current full-document path.
-  Auth rejection, explicit reload and application logout are distinct from transient retry.
+- The official composition preserves transient network/5xx and mapped import failures,
+  and build mismatch offers an explicit document update. The low-level no-policy fixture
+  retains document fallback. Auth revocation, invalid current payload, explicit reload
+  and application logout keep their separate boundaries.
 - This is not a Next.js App Router, file-based router, TanStack route tree, RSC example, catch-all
   route example, or production starter-template change.
 - The asset controller is intentionally minimal and serves the flat filenames emitted by this

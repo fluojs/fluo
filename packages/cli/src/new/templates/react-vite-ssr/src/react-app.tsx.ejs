@@ -8,6 +8,7 @@ import {
   useRouter,
   useRouterState,
   type ReactNavigationModules,
+  type ReactNavigationFailurePolicy,
   useNavigation,
 } from '@fluojs/react/client';
 import type { ReactInitialNavigationPage } from '@fluojs/react';
@@ -15,6 +16,9 @@ import { type ReactElement, createElement, isValidElement, useEffect, useRef, us
 import { SessionControls, SessionResources } from './session-controls';
 import { BackgroundSearch } from './page-products';
 import { reactPageModules, reactPageRoutes } from './generated/react-pages';
+import { controlledPolicy } from '../tests/import-control';
+
+declare const __FLUO_RELIABILITY_TEST__: boolean;
 
 export const REACT_IDENTIFIER_PREFIX = 'fluo-react-vite-' as const;
 
@@ -126,6 +130,9 @@ function SharedNavigation(): ReactElement {
         </div>
       )}
       <nav aria-label='Page navigation'>
+        <Link href='/admin/qr'>Open admin QR</Link>
+        <Link href='/admin/songs'>Open admin songs</Link>
+        <Link href='/catalog/background'>Open jukebox</Link>
         <Link {...reactPageRoutes['GET /products/:sku ProductPageRouter show'].link({ sku: 'sku-84' }, { preview: 'false' })}>Open sku-84</Link>
         <Link {...reactPageRoutes['GET /search SearchPageRouter show'].link({ q: 'catalog' })}>Search catalog</Link>
         <Link {...reactPageRoutes['GET /products/:sku ProductPageRouter show'].link({ sku: 'render-error' })}>Open throwing page</Link>
@@ -174,10 +181,10 @@ export function ReactAppDocument({
       navigationContracts={reactPageModules}
       navigationBuildId={navigationBuildId}
       prefetchScope={prefetchScope}
-      failurePolicy={({ reason }) =>
+      failurePolicy={(__FLUO_RELIABILITY_TEST__ ? controlledPolicy : (policy: ReactNavigationFailurePolicy) => policy)(({ reason }) =>
         reason === 'network' || reason === 'server-error' || reason === 'import-failure'
           || reason === 'incompatible-build'
-          ? 'preserve' : 'document'}
+          ? 'preserve' : 'document')}
     >
       {(destination) => (
         <html data-build-id={navigationBuildId} lang='en'>

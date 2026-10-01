@@ -271,6 +271,37 @@ it('advances repeated epoch labels and cancels only the notifying provider lease
   isolated.release();
 });
 
+it('keeps released subscribers and session leases detached after 1000 owner cycles', async () => {
+  const browser = fixture({ epoch: 'a' });
+  const releasedNotifications = vi.fn();
+  const releasedAborts = vi.fn();
+  for (let index = 0; index < 1000; index++) {
+    const unsubscribe = browser.store.subscribe(() => releasedNotifications());
+    const lease = browser.store.sessionLease();
+    lease.signal.addEventListener('abort', releasedAborts, { once: true });
+    unsubscribe();
+    unsubscribe();
+    lease.release();
+    lease.release();
+  }
+  const activeNotifications = vi.fn();
+  const unsubscribe = browser.store.subscribe(activeNotifications);
+  const active = browser.store.sessionLease();
+  const activeAbort = vi.fn();
+  active.signal.addEventListener('abort', activeAbort, { once: true });
+  try {
+    await browser.store.router.sessionChanged({ epoch: 'a', reason: 'logout' });
+    expect(releasedNotifications).not.toHaveBeenCalled();
+    expect(releasedAborts).not.toHaveBeenCalled();
+    expect(activeNotifications).toHaveBeenCalled();
+    expect(activeAbort).toHaveBeenCalledOnce();
+    expect(active.current()).toBe(false);
+  } finally {
+    unsubscribe();
+    active.release();
+  }
+});
+
 it('closes page approval before abort-listener reentrancy can start a read or fallback', async () => {
   // Given: an old load whose abort listener reenters the router.
   const browser = fixture();

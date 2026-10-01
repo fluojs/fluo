@@ -21,6 +21,7 @@ import { ResourceProbe } from './resource-probe';
 import CatalogPage, { BackgroundSearch, type CatalogPageProps } from './catalog-page';
 import { SessionControls, SessionResources } from './session-controls';
 import { reactPageModules } from './generated/react-pages';
+import { controlledPolicy } from '../tests/import-control';
 
 const RECOMMENDATIONS_DELAY_MS = 25;
 
@@ -163,6 +164,7 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => stri
     createElement(Link, { href: '/products/render-error?throwFallback=true' }, 'Open throwing error view'),
     createElement(Link, { href: '/admin/qr' }, 'Open admin QR'),
     createElement(Link, { href: '/admin/songs' }, 'Open admin songs'),
+    createElement(Link, { href: '/catalog/background' }, 'Open jukebox'),
     createElement(Link, { href: '/deployment/b-only' }, 'Open B-only page'),
     createElement(Link, { href: '/products/x?preview=maybe' }, 'Open invalid product'),
     createElement(Link, { href: '/prefetch/public-84', prefetch: 'hover' }, 'Prefetch public sku-84'),
@@ -351,7 +353,8 @@ export function ProductDocument({
     navigationBuildId,
     prefetchScope,
     failurePolicy: new URL(routeUrl, 'http://localhost').searchParams.has('defaultNavigation')
-      ? undefined : preserveTransientNavigation,
+      ? undefined : import.meta.env.MODE === 'reliability'
+        ? controlledPolicy(preserveTransientNavigation) : preserveTransientNavigation,
     children: legacySession ? renderRouteDocument(null) : renderRouteDocument,
   });
 }

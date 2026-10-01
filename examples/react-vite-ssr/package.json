@@ -12,9 +12,11 @@
     "typegen:check": "node ../../packages/cli/bin/fluo.mjs typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --check",
     "typegen:watch": "node ../../packages/cli/bin/fluo.mjs typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --watch",
     "build": "pnpm typegen:check && vite build --config vite.client.config.ts && vite build --config vite.server.config.ts",
+    "build:reliability": "pnpm typegen:check && vite build --mode reliability --config vite.client.config.ts && vite build --mode reliability --config vite.server.config.ts",
     "start": "node dist/server/main.js",
     "test": "vitest run src",
     "test:browser": "pnpm --workspace-root build && pnpm build && playwright test --config playwright.config.ts",
+    "test:reliability": "playwright test --config playwright.reliability.config.ts",
     "typecheck": "pnpm typegen:check && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

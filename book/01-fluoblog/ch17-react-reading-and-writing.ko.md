@@ -853,3 +853,19 @@ untagged/cross-document 이탈은 별도 경계입니다. beforeunload로 async 
 후 복구를 보장하지 않습니다. [Owning 계약](../../docs/contracts/react-navigation-payload.ko.md#navigation-permission)과
 [migration](../../docs/getting-started/migrate-react-navigation-guards.ko.md)을 따라
 [runnable example](../../examples/react-vite-ssr/README.ko.md#navigation-permission)을 실행하세요.
+
+## 장시간 편집과 주크박스 검증
+
+한 번의 저장 성공과 장시간 수명 검증은 다른 과업입니다. 공식 조립의 기존
+navigation, `useForm` background search/row write와 session-aware resource를
+사용해 QR/songs/history를 반복합니다. 실제 MessageChannel의 다음 operation/ack,
+같은 document, warmed quiescence baseline을 함께 확인해야 합니다. Counter label이나
+heap 한 번의 감소로 리소스 보존을 증명하지 않습니다.
+
+[장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)는
+seed/index/fault trace, 최소 1,000 measured action, 별도 실제 2시간 soak와 exact-head
+handoff를 설명합니다. Source harness나 Book 검사는 실행 근거가 아닙니다.
+Logout/401/403은 보호 화면과 실제 port를 정리해야 하며 명시적 reload는 새 document입니다.
+Saved와 failed follow-up을 분리해 GET만 retry하고 uncertain POST를 자동 replay하지 않습니다.
+Physical mobile/tablet은 실제 담당자의 별도 기록이 필요하며 viewport emulation으로
+통과시키지 않습니다. 이 실습은 MusicKit 수용이나 탭 종료 뒤 재생 보장이 아닙니다.

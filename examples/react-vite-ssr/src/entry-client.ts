@@ -14,6 +14,9 @@ const stylesheets = [...document.querySelectorAll<HTMLLinkElement>('link[data-vi
 const navigationModules: ReactNavigationModules = import.meta.glob<{
   readonly default: (props: Record<string, unknown>) => ReactNode;
 }>('./navigation-*.ts');
+const activeModules = import.meta.env.MODE === 'reliability'
+  ? (await import('../tests/import-control')).controlledImports(navigationModules)
+  : navigationModules;
 const adminPage = document.documentElement.dataset.adminPage;
 const isAdminPage = adminPage === 'qr' || adminPage === 'songs';
 const initialJson = document.getElementById('fluo-initial-page')?.textContent;
@@ -21,7 +24,7 @@ const buildId = document.documentElement.dataset.buildId;
 if (initialJson === undefined || initialJson === null || buildId === undefined) {
   throw new Error('The HTTP document has no compatible initial navigation transfer.');
 }
-const initial = await loadReactInitialNavigationDestination(initialJson, navigationModules, buildId, reactPageModules);
+const initial = await loadReactInitialNavigationDestination(initialJson, activeModules, buildId, reactPageModules);
 if (!initial.ok) {
   throw new Error(`The HTTP document destination is unavailable: ${initial.reason}`);
 }
@@ -35,7 +38,7 @@ hydrateRoot(
     adminPage: isAdminPage ? adminPage : undefined,
     preview: document.documentElement.dataset.preview === 'true',
     productName: document.documentElement.dataset.productName ?? '',
-    navigationModules,
+    navigationModules: activeModules,
     navigationBuildId: buildId,
     initialPage: { json: initialJson, payload: initial.payload },
     routeMetadata: initial.payload.metadata,
