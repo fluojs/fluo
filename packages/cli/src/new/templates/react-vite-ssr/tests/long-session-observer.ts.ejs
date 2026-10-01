@@ -6,15 +6,17 @@ export async function installObserver(page: Page): Promise<void> {
     const closed = new WeakSet<MessagePort>();
     const close = MessagePort.prototype.close;
     MessagePort.prototype.close = function () { close.call(this); closed.add(this); };
+    let mounted: () => void = () => { throw new Error('Missing resource mount subscription'); };
+    const ready = new Promise<void>((resolve) => { mounted = resolve; });
     const state: {
       document: string; mounts: number; cleanups: number; ports: number; id: string;
       instance: WeakRef<MessagePort> | null; original: WeakRef<MessagePort> | null;
       closedBeforeCleanup: boolean; globalListeners: number; observers: number;
-      sockets: number; unhandled: number;
+      sockets: number; unhandled: number; ready: Promise<void>;
     } = {
       document: crypto.randomUUID(), mounts: 0, cleanups: 0, ports: 0,
       id: '', instance: null, original: null, closedBeforeCleanup: true,
-      globalListeners: 0, observers: 0, sockets: 0, unhandled: 0,
+      globalListeners: 0, observers: 0, sockets: 0, unhandled: 0, ready,
     };
     Reflect.set(window, '__longSession', state);
     document.addEventListener('fluo-resource', (event) => {
@@ -24,6 +26,7 @@ export async function installObserver(page: Page): Promise<void> {
         state.mounts++; state.ports += ports.length; state.id = id;
         state.instance = new WeakRef(ports[0]);
         state.original ??= state.instance;
+        mounted();
       } else if (phase === 'cleanup') {
         state.cleanups++; state.ports -= ports.length;
         state.closedBeforeCleanup &&= ports.every((port: MessagePort) => closed.has(port));
@@ -116,7 +119,16 @@ export async function settled(page: Page, key: string): Promise<void> {
 
 /** An exact instance/sequence acknowledgement, not a label-only identity assertion. */
 export async function acknowledge(page: Page, sequence: number): Promise<string> {
-  const id: string = await page.evaluate(() => Reflect.get(window, '__longSession').id);
+  const id: string = await page.evaluate(async () => {
+    const state = Reflect.get(window, '__longSession');
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([state.ready, new Promise<never>((_resolve, reject) => {
+        deadline = setTimeout(() => reject(new Error('Resource did not mount')), 10_000);
+      })]);
+      return state.id;
+    } finally { clearTimeout(deadline); }
+  });
   const signal = await watchText(page, '[aria-label="Resource acknowledgement"]', `${id}:${sequence}:ack`);
   await page.getByRole('button', { name: 'Probe shell resource', exact: true }).click();
   await settled(page, signal);

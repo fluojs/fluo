@@ -48,6 +48,10 @@ export class ReliabilityControl {
       return { released: true };
     });
     server.addHook('onSend', async (request, reply, body) => {
+      if (request.url.startsWith('/prefetch/public-bound-')) {
+        reply.header('X-Reliability-Session-Cookie',
+          request.headers.cookie?.includes('session=cache-test') ? 'present' : 'absent');
+      }
       const entry = this.payload;
       if (entry === undefined || entry.used || request.url !== '/admin/qr'
         || request.headers.accept !== 'application/vnd.fluo.react-navigation+json;v=2') return body;

@@ -58,6 +58,7 @@ const REACT_VITE_SSR_TEMPLATES: readonly ReactViteSsrTemplate[] = [
   { outputPath: 'src/catalog.ts', templatePath: 'src/catalog.ts.ejs' },
   { outputPath: 'src/session-controls.tsx', templatePath: 'src/session-controls.tsx.ejs' },
   { outputPath: 'src/page-products.tsx', templatePath: 'src/page-products.tsx.ejs' },
+  { outputPath: 'src/page-admin.tsx', templatePath: 'src/page-admin.tsx.ejs' },
   { outputPath: 'src/entry-client.tsx', templatePath: 'src/entry-client.tsx.ejs' },
   { outputPath: 'src/entry-client-dev.ts', templatePath: 'src/entry-client-dev.ts.ejs' },
   { outputPath: 'src/entry-server.tsx', templatePath: 'src/entry-server.tsx.ejs' },
@@ -76,6 +77,13 @@ const REACT_VITE_SSR_TEMPLATES: readonly ReactViteSsrTemplate[] = [
   { outputPath: 'tests/background-interactions.spec.ts', templatePath: 'tests/background-interactions.spec.ts.ejs' },
   { outputPath: 'tests/navigation-guard.spec.ts', templatePath: 'tests/navigation-guard.spec.ts.ejs' },
   { outputPath: 'tests/form-control.ts', templatePath: 'tests/form-control.ts.ejs' },
+  { outputPath: 'tests/import-control.ts', templatePath: 'tests/import-control.ts.ejs' },
+  { outputPath: 'tests/reliability-control.ts', templatePath: 'tests/reliability-control.ts.ejs' },
+  { outputPath: 'tests/long-session.spec.ts', templatePath: 'tests/long-session.spec.ts.ejs' },
+  { outputPath: 'tests/long-session-run.ts', templatePath: 'tests/long-session-run.ts.ejs' },
+  { outputPath: 'tests/long-session-observer.ts', templatePath: 'tests/long-session-observer.ts.ejs' },
+  { outputPath: 'tests/long-session-helpers.ts', templatePath: 'tests/long-session-helpers.ts.ejs' },
+  { outputPath: 'tests/long-session-metrics.ts', templatePath: 'tests/long-session-metrics.ts.ejs' },
 ];
 
 function resolveTemplateDirectory(importMetaUrl: string): string {

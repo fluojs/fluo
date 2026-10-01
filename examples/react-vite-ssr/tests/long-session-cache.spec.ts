@@ -33,10 +33,13 @@ test('repeated public cache cycles preserve 32 entries single use and the 64 KiB
       if (entry === 33) latestName = payload.destination.props.productName;
       await grant.finished();
     }
+    await page.mouse.move(0, 0);
     const lastBefore = counts.get('/prefetch/public-cache-33');
     const selected = await watchText(page, '#page-slot', latestName);
-    await page.getByRole('link', { name: 'Cache entry 33', exact: true }).focus();
-    await page.keyboard.press('Enter');
+    await page.getByRole('link', { name: 'Cache entry 33', exact: true }).evaluate((anchor) => {
+      if (!(anchor instanceof HTMLAnchorElement)) throw new Error('Missing cache entry Link');
+      anchor.click();
+    });
     await settled(page, selected);
     // Then: newest cache entry is consumed once without a second GET.
     expect(counts.get('/prefetch/public-cache-33')).toBe(lastBefore);
@@ -47,8 +50,11 @@ test('repeated public cache cycles preserve 32 entries single use and the 64 KiB
     const revisit = page.waitForResponse((reply) => new URL(reply.url()).pathname === '/prefetch/public-cache-33'
       && reply.request().headers().accept === navigationMedia, { timeout: 10_000 });
     const usedAgain = await watchText(page, '#page-slot', 'Prefetch public-cache-33');
-    await page.getByRole('link', { name: 'Cache entry 33', exact: true }).focus();
-    await page.keyboard.press('Enter'); await revisit; await settled(page, usedAgain);
+    await page.getByRole('link', { name: 'Cache entry 33', exact: true }).evaluate((anchor) => {
+      if (!(anchor instanceof HTMLAnchorElement)) throw new Error('Missing cache entry Link');
+      anchor.click();
+    });
+    await revisit; await settled(page, usedAgain);
     expect(counts.get('/prefetch/public-cache-33')).toBe((lastBefore ?? 0) + 1);
     const returnAfterUse = await watchText(page, 'nav p', 'Current path: /admin/qr');
     await page.goBack({ waitUntil: 'commit' }); await settled(page, returnAfterUse);
@@ -56,8 +62,11 @@ test('repeated public cache cycles preserve 32 entries single use and the 64 KiB
     const fresh = page.waitForResponse((reply) => new URL(reply.url()).pathname === '/prefetch/public-cache-1'
       && reply.request().headers().accept === navigationMedia, { timeout: 10_000 });
     const oldest = await watchText(page, '#page-slot', 'Prefetch public-cache-1');
-    await page.getByRole('link', { name: 'Cache entry 1', exact: true }).focus();
-    await page.keyboard.press('Enter'); await fresh; await settled(page, oldest);
+    await page.getByRole('link', { name: 'Cache entry 1', exact: true }).evaluate((anchor) => {
+      if (!(anchor instanceof HTMLAnchorElement)) throw new Error('Missing cache entry Link');
+      anchor.click();
+    });
+    await fresh; await settled(page, oldest);
     expect(counts.get('/prefetch/public-cache-1')).toBe(oldestBefore + 1);
     const returnPage = await watchText(page, 'nav p', 'Current path: /admin/qr');
     await page.goBack({ waitUntil: 'commit' }); await settled(page, returnPage);
@@ -81,8 +90,11 @@ test('repeated public cache cycles preserve 32 entries single use and the 64 KiB
   const fresh = page.waitForResponse((reply) => new URL(reply.url()).pathname === '/prefetch/public-cache-1',
     { timeout: 10_000 });
   const approved = await watchText(page, '#page-slot', 'Prefetch public-cache-1');
-  await page.getByRole('link', { name: 'Cache entry 1', exact: true }).focus();
-  await page.keyboard.press('Enter');
+  await page.mouse.move(0, 0);
+  await page.getByRole('link', { name: 'Cache entry 1', exact: true }).evaluate((anchor) => {
+    if (!(anchor instanceof HTMLAnchorElement)) throw new Error('Missing cache entry Link');
+    anchor.click();
+  });
   await fresh; await settled(page, approved); await acknowledge(page, ++sequence);
 });
 
@@ -111,7 +123,9 @@ test('four live prefetches admit no fifth queue and excess activation uses fresh
     if (skipped === undefined) throw new Error('Excess opportunity was not skipped');
     // When: those four settle, then the previously skipped Link is activated explicitly.
     release.resolve(); await completed.promise;
-    await page.evaluate(() => { document.cookie = 'session=cache-test; Path=/'; });
+    await page.context().addCookies([{
+      name: 'session', value: 'cache-test', url: new URL('/', page.url()).href,
+    }]);
     const path = `/prefetch/public-bound-${skipped}`;
     const approval = page.waitForResponse((reply) => new URL(reply.url()).pathname === path
       && reply.request().headers().accept === navigationMedia, { timeout: 10_000 });
@@ -122,7 +136,7 @@ test('four live prefetches admit no fifth queue and excess activation uses fresh
     });
     const fresh = await approval;
     expect(fresh.status()).toBe(200);
-    expect((await fresh.request().allHeaders()).cookie).toContain('session=cache-test');
+    expect(fresh.headers()['x-reliability-session-cookie']).toBe('present');
     expect(fresh.headers()['x-fluo-navigation-prefetch']).toBeUndefined();
     await settled(page, selected);
     // Then: the fifth was not a queued anonymous request; this is its first real GET.
