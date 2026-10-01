@@ -104,14 +104,26 @@ test('stay and proceed preserve the actual editing DOM, head and operational she
 
 test('real backward and forward cancellation restore managed entry order without destination reads', async ({ page }) => {
   await editor(page);
+  await page.evaluate((type) => {
+    const navigation: string[] = [];
+    const speculation: string[] = [];
+    Reflect.set(window, '__guardNavigationReads', () => [...navigation]);
+    Reflect.set(window, '__guardSpeculationReads', () => [...speculation]);
+    const actualFetch = window.fetch;
+    window.fetch = (input, init) => {
+      if (new Headers(init?.headers).get('Accept') === type) {
+        (init?.credentials === 'omit' ? speculation : navigation).push(String(input));
+      }
+      return actualFetch.call(window, input, init);
+    };
+  }, media);
   const length = await page.evaluate(() => history.length);
-  const reads: string[] = [];
-  page.on('request', (request) => { if (request.headers().accept === media) reads.push(request.url()); });
+  const reads = () => page.evaluate(() => Reflect.get(window, '__guardNavigationReads')());
   await page.evaluate(() => history.back());
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page).toHaveURL(/\/catalog\/sku-42$/u);
   await page.getByRole('button', { name: 'Stay here' }).click();
-  expect(reads).toEqual([]);
+  expect(await reads()).toEqual([]);
   expect(await page.evaluate(() => history.length)).toBe(length);
   await page.evaluate(() => history.back());
   const back = page.waitForResponse((response) => response.request().headers().accept === media
@@ -119,13 +131,18 @@ test('real backward and forward cancellation restore managed entry order without
   await page.getByRole('button', { name: 'Proceed with navigation' }).click();
   expect((await back).status()).toBe(200);
   await expect(page.getByRole('heading', { name: 'Catalog', exact: true })).toBeVisible();
+  const speculation = page.waitForResponse((response) => new URL(response.url()).pathname === '/catalog/sku-42'
+    && response.request().headers().accept === media);
+  await page.getByRole('link', { name: 'Read sku-42', exact: true }).hover();
+  await speculation;
+  expect(await page.evaluate(() => Reflect.get(window, '__guardSpeculationReads')())).not.toHaveLength(0);
   await page.getByRole('checkbox', { name: 'Protect edits' }).check();
   await protectedEdit(page, 'Independent product', 'Forward draft');
   await page.evaluate(() => history.forward());
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page).toHaveURL(/\/catalog$/u);
   await page.getByRole('button', { name: 'Stay here' }).click();
-  expect(reads).toHaveLength(1);
+  expect(await reads()).toHaveLength(1);
   await page.evaluate(() => history.forward());
   const forward = page.waitForResponse((response) => response.request().headers().accept === media
     && new URL(response.url()).pathname === '/catalog/sku-42');
@@ -133,7 +150,9 @@ test('real backward and forward cancellation restore managed entry order without
   expect((await forward).status()).toBe(200);
   await expect(page.getByRole('heading', { name: 'Product sku-42' })).toBeVisible();
   expect(await page.evaluate(() => history.length)).toBe(length);
-  expect(reads).toHaveLength(2);
+  expect(await reads()).toHaveLength(2);
+  console.log(JSON.stringify({ observation: 'guard-traversal-with-independent-speculation',
+    navigation: await reads(), speculation: await page.evaluate(() => Reflect.get(window, '__guardSpeculationReads')()) }));
 });
 
 test('two actual POST acknowledgements settle out of order without overriding dirty navigation intent', async ({ page }) => {
