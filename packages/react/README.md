@@ -1476,8 +1476,10 @@ documentation change neither adds the stable subpath nor starts the deprecation 
 
 This package currently does **not** provide:
 
-- automatic post-mutation revalidation; call `router.invalidate()` and then await `router.refresh()`
-  when the application chooses to refresh. The official starter preserves network/5xx and
+- automatic revalidation for arbitrary mutations outside `useForm`; for those mutations, call
+  `router.invalidate()` and then await `router.refresh()` when the application chooses to refresh.
+  Confirmed `useForm` saves run their HTTP-approved follow-up automatically; background saves
+  share a coalesced fresh current-page read. The official starter preserves network/5xx and
   recoverable mapped import failures, while the low-level provider defaults to document fallback
 - a stable RSC root or `@fluojs/react/rsc` subpath; RSC is available only from the explicitly unstable
   `@fluojs/react/experimental/rsc` prototype

@@ -1458,8 +1458,10 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 
-- mutation 뒤 자동 재검증. Application이 결정한 시점에 `router.invalidate()` 후
-  `router.refresh()`를 await하세요. 공식 starter는 network/5xx 및 복구 가능한 매핑된
+- `useForm` 밖의 임의 mutation 뒤 자동 재검증. 이 mutation은 application이 결정한
+  시점에 `router.invalidate()` 후 `router.refresh()`를 await하세요. 확인된 `useForm`
+  save는 HTTP-approved follow-up을 자동 실행하며 background save는 coalesced fresh
+  current-page read를 공유합니다. 공식 starter는 network/5xx 및 복구 가능한 매핑된
   import 실패를 보존하지만 low-level provider의 기본값은 document fallback입니다.
 - stable RSC root 또는 `@fluojs/react/rsc` subpath. RSC는 명시적으로 불안정한
   `@fluojs/react/experimental/rsc` prototype에서만 제공합니다.

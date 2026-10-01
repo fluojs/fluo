@@ -45,8 +45,10 @@ generated result inference 없이 계속 지원합니다. `ReactModule.formResul
 `data`는 literal/union inference를 유지하며 acknowledgement에서 비동기 destination
 policy 전에 limited JSON으로 검증합니다. Malformed data는 protocol uncertainty이며
 typed persistence 확인이 아닙니다. Optional explicit `session`은 기존 session barrier를
-사용합니다. Generated GET decoding이나 `decodeRead`는 여기서 약속하지 않습니다(#3881).
-지원 shape, converter wire 선언, freshness는
+사용합니다. Compiler는 GET result decoder를 생성하지 않습니다. Runtime contract는
+background JSON read에 optional `decodeRead`를 제공할 수 있으며, 이것이 없으면
+generated saved contract가 GET result에 해당 타입을 부여할 수 없습니다. 수동 fields의
+read data는 unknown을 유지합니다. 지원 shape, converter wire 선언, freshness는
 [end-to-end 타입 계약](./react-end-to-end-types.ko.md)을 따릅니다.
 
 interception 전에 실제 submitter와 `formaction`, `formmethod`, `formenctype`,

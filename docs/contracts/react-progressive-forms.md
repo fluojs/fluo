@@ -46,9 +46,11 @@ authored `fields` remains supported without generated result inference. Optional
 `data` on `ReactModule.formResult` retains literal/union inference and is checked
 as limited JSON on acknowledgement, before asynchronous destination policy.
 Malformed data is protocol uncertainty, not confirmed typed persistence.
-Optional explicit `session` still uses the existing session barrier. Neither
-generated GET decoding nor `decodeRead` is promised here (#3881). Supported shapes,
-converter wire declarations and freshness belong to the
+Optional explicit `session` still uses the existing session barrier. The compiler
+does not generate GET result decoders. A runtime contract may provide optional
+`decodeRead` for background JSON reads; without it, a generated saved contract
+cannot confer its type on a GET result. Manually authored fields retain unknown
+read data. Supported shapes, converter wire declarations and freshness belong to the
 [end-to-end types contract](./react-end-to-end-types.md).
 
 Resolve the actual submitter and its `formaction`, `formmethod`, `formenctype`
