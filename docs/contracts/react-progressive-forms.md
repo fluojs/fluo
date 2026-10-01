@@ -139,6 +139,7 @@ return an HTML search document for native requests. A read success is
 Non-2xx, malformed/oversized data and unexpected media are never read success.
 Handwritten fields keep data `unknown`; a generated contract's optional
 `decodeRead(value: unknown): Data` validates at the same seam as `decodeSaved`.
+Generated GET without a read decoder is protocol failure, never typed success.
 Do not interpret navigation v2 payloads as widget data or cache private reads.
 
 Neither GET nor saved acknowledgement changes URL/history, route params or head.
@@ -147,8 +148,11 @@ Confirmed saves instead coalesce provider-local dirty revisions into a separate
 fresh HTTP-approved current-page read, keeping the fragment, shell and other forms.
 Already-dispatched sibling writes settle before that shared latest read; cancelling
 one waiter does not cancel another waiter. A later write revokes stale read authority;
-a newer user navigation wins without an old-page resurrection. Saved and failed,
-cancelled or rejected follow-up remain separate; `retryRead()` repeats GET only.
+a newer user navigation wins without an old-page resurrection.
+Shared auth approval retains only its confirmed owners; one owner cancellation
+does not consume another owner's policy, and the last cancellation detaches
+policy authority before abort so a late document decision cannot execute.
+Saved and failed, cancelled or rejected follow-up remain separate; `retryRead()` repeats GET only.
 
 Manual/opaque redirects end as operation-local `redirect` failure, without reading
 Location, replaying POST or automatic document fallback. Fresh credentialed 401/403

@@ -54,7 +54,8 @@ cache, matcher, POST retry를 추가하지 마세요.
 중복 위험을 설명한 명시적 사용자 결정으로 만듭니다. 자동 POST retry/native replay는 없습니다.
 
 기본 navigation-mode의 busy activation은 queue 대신 skip합니다. `cancel()`은 waiting을 취소하며 server transaction을
-취소하지 않습니다. route/unmount/provider 변경은 이전 interaction을 obsolete 처리합니다.
+취소하지 않습니다. 기본 navigation form은 route 변경으로 obsolete 처리하며 background는
+살아 있는 owner를 유지하고 실제 unmount 또는 session/provider 변경으로 취소합니다.
 기존 application session/prefetch scope boundary를 제공하세요. identity coordination은
 여전히 #3875가 소유하며 form helper가 암묵적으로 구현하지 않습니다.
 

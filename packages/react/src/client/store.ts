@@ -92,6 +92,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
   let barrierActive = false;
   let sessionPolicyController: AbortController | null = null;
   let sessionPolicyOrigin: ClientFormStore | undefined;
+  let sessionPolicyOrigins = new Set<ClientFormStore>();
   const sessionLeases = new Set<AbortController>();
   let destinationElement: ReactElement | null = null;
   let pending: {
@@ -99,6 +100,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     readonly href: string;
     readonly type: DocumentNavigationType | 'back' | 'refresh';
     readonly origin?: ClientFormStore;
+    readonly backgroundOrigins?: ReadonlySet<ClientFormStore>;
   } | null = null;
   let failed: { readonly href: string; readonly type: DocumentNavigationType | 'back' | 'refresh'; readonly index: number | null } | null = null;
   let settleRefresh: ((result: ReactRevalidationResult) => void) | null = null;
@@ -136,6 +138,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     readonly controller: AbortController;
     readonly promise: Promise<ReactRevalidationResult>;
     readonly waiters: Set<object>;
+    readonly origins: Set<ClientFormStore>;
   } | null = null;
   const releaseSessionLeases = (): void => {
     const old = [...sessionLeases];
@@ -186,6 +189,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     const policy = sessionPolicyController;
     sessionPolicyController = null;
     sessionPolicyOrigin = undefined;
+    sessionPolicyOrigins.clear();
     pending = null;
     settleRefresh = null;
     settle?.({ status: 'cancelled' });
@@ -276,6 +280,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     context: ReactSessionContext,
     origin?: ClientFormStore,
     documentHref?: string,
+    origins?: ReadonlySet<ClientFormStore>,
   ): Promise<ReactSessionDecision | undefined> => {
     const authRejection = context.reason === 'unauthorized' || context.reason === 'forbidden';
     const legacyAuthExit = !sessionActivated && authRejection;
@@ -291,7 +296,9 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     const oldLeases = [...sessionLeases];
     const oldForms = new Set([...forms.values(), ...continuations]);
     const savedOrigin = origin?.getSnapshot().mutation?.status === 'saved' ? origin : undefined;
-    const originEntries = savedOrigin === undefined ? [] : [...forms.entries()].filter(([, form]) => form === savedOrigin);
+    const savedOrigins = new Set([...origins ?? [], ...savedOrigin === undefined ? [] : [savedOrigin]]
+      .filter((form) => form.getSnapshot().mutation?.status === 'saved'));
+    const originEntries = [...forms.entries()].filter(([, form]) => savedOrigins.has(form));
     pending = null;
     settleRefresh = null;
     failed = null;
@@ -305,14 +312,13 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     sessionLeases.clear();
     forms.clear();
     continuations.clear();
-    if (savedOrigin !== undefined) {
-      continuations.add(savedOrigin);
-      for (const [key, form] of originEntries) forms.set(key, form);
-    }
+    for (const form of savedOrigins) continuations.add(form);
+    for (const [key, form] of originEntries) forms.set(key, form);
     destinationElement = null;
     const controller = new AbortController();
     sessionPolicyController = controller;
     sessionPolicyOrigin = savedOrigin;
+    sessionPolicyOrigins = new Set(savedOrigins);
     const cancelled = new Promise<undefined>((resolve) => {
       controller.signal.addEventListener('abort', () => resolve(undefined), { once: true });
     });
@@ -327,7 +333,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     oldPending?.controller.abort();
     for (const entry of oldPrefetch) entry.controller.abort();
     for (const lease of oldLeases) lease.abort();
-    for (const form of oldForms) form.revoke(form === savedOrigin);
+    for (const form of oldForms) form.revoke(savedOrigins.has(form));
     if (savedOrigin === undefined) sessionPolicyOrigin = origin;
     barrierActive = false;
     notify();
@@ -350,6 +356,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     if (expected !== sessionGeneration || controller.signal.aborted || decision === undefined) return undefined;
     sessionPolicyController = null;
     sessionPolicyOrigin = undefined;
+    sessionPolicyOrigins.clear();
     const completedGeneration = generation;
     if (typeof decision === 'object') {
       const browser = requireEnvironment();
@@ -381,7 +388,8 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     formApproval = false,
     formOrigin?: ClientFormStore,
     expectedBackgroundRevision?: number,
-  ): AbortController | undefined => {
+    backgroundOrigins?: ReadonlySet<ClientFormStore>,
+  ): void => {
     const load = browser.load;
     if (load === undefined) {
       return;
@@ -390,6 +398,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     const expectedHref = browser.currentHref();
     pending = { controller, href: destination.href, type,
       ...(formOrigin === undefined ? {} : { origin: formOrigin }),
+      ...(backgroundOrigins === undefined ? {} : { backgroundOrigins }),
     };
     const requestGeneration = generation;
     const refreshResolver = settleRefresh;
@@ -453,7 +462,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
           const decision = await applySession({
             epoch: snapshot.session?.epoch ?? sessionOptions?.epoch ?? browser.prefetchScope ?? 'initial',
             reason: result.reason, destination: destination.pathname,
-          }, formOrigin, destination.href);
+          }, formOrigin, destination.href, backgroundOrigins);
           if (decision === undefined || expectedSession !== sessionGeneration) {
             refreshResolver?.({ status: 'cancelled' });
             return;
@@ -464,7 +473,8 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
           }
           if (decision === 'refresh') {
             settleRefresh = refreshResolver;
-            loadAndCommit(browser, destination, type, undefined, formApproval, formOrigin);
+            loadAndCommit(browser, destination, type, undefined, formApproval, formOrigin,
+              expectedBackgroundRevision, backgroundOrigins);
             publish(createSnapshotWithNavigation(snapshot, createNavigationSnapshot(
               type === 'refresh' ? 'refreshing' : 'navigating', type, toSnapshotUrl(destination.href),
             )));
@@ -566,7 +576,6 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
         result.payload.metadata,
       ));
     })();
-    return controller;
   };
 
   const navigateDocument = (href: string | URL, type: DocumentNavigationType, fromPrefetch = false): void => {
@@ -790,14 +799,23 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     },
     releaseFormSession: (origin) => {
       continuations.delete(origin);
+      const unownedPolicy = sessionPolicyOrigin !== origin && !sessionPolicyOrigins.has(origin);
+      sessionPolicyOrigins.delete(origin);
+      const lastPolicyOwner = !unownedPolicy && (sessionPolicyOrigin === origin || sessionPolicyOrigins.size === 0);
+      const controller = lastPolicyOwner ? sessionPolicyController : null;
+      if (lastPolicyOwner) {
+        sessionPolicyController = null;
+        sessionPolicyOrigin = undefined;
+        sessionPolicyOrigins.clear();
+      }
+      const background = backgroundApproval;
+      const lastBackgroundOwner = background?.origins.delete(origin) === true && background.origins.size === 0;
+      if (lastBackgroundOwner && backgroundApproval === background) backgroundApproval = null;
       if (pending?.origin === origin) {
         cancelPending();
         publish(createSnapshotWithNavigation(snapshot, IDLE_NAVIGATION));
       }
-      if (sessionPolicyOrigin !== origin) return;
-      const controller = sessionPolicyController;
-      sessionPolicyController = null;
-      sessionPolicyOrigin = undefined;
+      if (lastBackgroundOwner) background.controller.abort();
       controller?.abort();
     },
     forms,
@@ -848,7 +866,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
       backgroundApproval = null;
       old?.controller.abort();
     },
-    async approveBackground(signal, _origin) {
+    async approveBackground(signal, origin) {
       if (signal.aborted || barrierActive || environment === null) return { status: 'cancelled' };
       const expectedSession = sessionGeneration;
       const expectedUrl = snapshot.url.split('#', 1)[0];
@@ -883,27 +901,35 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
         const controller = new AbortController();
         const revision = backgroundRevision;
         const promise = new Promise<ReactRevalidationResult>((resolve) => { settleRefresh = resolve; });
-        approval = { revision, controller, promise, waiters: new Set() };
+        const origins = new Set([origin]);
+        approval = { revision, controller, promise, waiters: new Set(), origins };
         backgroundApproval = approval;
         const currentApproval = approval;
-        let readController: AbortController | undefined;
         const abort = (): void => {
-          if (readController !== undefined && pending?.controller === readController) cancelPending();
+          if (pending?.backgroundOrigins === origins) cancelPending();
         };
         controller.signal.addEventListener('abort', abort, { once: true });
-        readController = loadAndCommit(browser, new URL(browser.currentHref()), 'refresh', undefined, true, undefined, revision);
+        loadAndCommit(browser, new URL(browser.currentHref()), 'refresh', undefined, true, undefined, revision, origins);
         void promise.finally(() => {
           controller.signal.removeEventListener('abort', abort);
           if (backgroundApproval === currentApproval) backgroundApproval = null;
         });
       }
       // A waiter may cancel without cancelling another form's shared read.
+      if (signal.aborted) {
+        this.releaseFormSession(origin);
+        return { status: 'cancelled' };
+      }
       const shared = approval;
+      shared.origins.add(origin);
       const waiter = {};
       shared.waiters.add(waiter);
       let detach = () => {};
       const cancelled = new Promise<ReactRevalidationResult>((resolve) => {
-        const abort = (): void => resolve({ status: 'cancelled' });
+        const abort = (): void => {
+          this.releaseFormSession(origin);
+          resolve({ status: 'cancelled' });
+        };
         signal.addEventListener('abort', abort, { once: true });
         detach = () => signal.removeEventListener('abort', abort);
       });

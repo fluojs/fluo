@@ -479,11 +479,19 @@ export function enforceReactNavigationPayloadContract(
   const transportOptions = transportFetch?.arguments[1];
   const currentFormAuthority = findNode(formStore, (node) =>
     ts.isVariableDeclaration(node) && node.name.getText(formStore) === 'current');
+  const sharedAuth = findNode(store, (node) => ts.isCallExpression(node)
+    && node.expression.getText(store) === 'applySession' && node.arguments[3]?.getText(store) === 'backgroundOrigins');
+  const sharedPolicyOwners = findNode(store, (node) => ts.isBinaryExpression(node)
+    && node.left.getText(store) === 'sessionPolicyOrigins' && node.right.getText(store) === 'new Set(savedOrigins)');
   if (!backgroundRead || !backgroundLoad
     || backgroundLoad.arguments[1]?.getText(store) !== 'new URL(browser.currentHref())'
     || backgroundLoad.arguments[2]?.getText(store) !== "'refresh'"
     || backgroundLoad.arguments[4]?.kind !== ts.SyntaxKind.TrueKeyword
     || backgroundLoad.arguments[6]?.getText(store) !== 'revision'
+    || backgroundLoad.arguments[7]?.getText(store) !== 'origins'
+    || !sharedAuth || !sharedPolicyOwners
+    || !findNode(store, (node) => ts.isBinaryExpression(node)
+      && node.getText(store) === 'pending?.backgroundOrigins === origins')
     || !findNode(store, (node) => ts.isBinaryExpression(node)
       && node.getText(store) === 'expectedBackgroundRevision !== backgroundRevision')
     || !findNode(backgroundRead, (node) => ts.isBinaryExpression(node)

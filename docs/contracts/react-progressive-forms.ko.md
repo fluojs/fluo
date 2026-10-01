@@ -133,6 +133,7 @@ uncertainty가 아닌 `error`입니다. non-2xx, malformed/oversized data, 예�
 media는 성공으로 승격하지 않습니다. handwritten fields의 data는 `unknown`이며 generated
 contract의 선택적 `decodeRead(value: unknown): Data`는 `decodeSaved`와 같은 seam에서
 검증합니다. navigation v2 payload를 widget data로 해석하거나 private read를 cache하지 않습니다.
+Read decoder가 없는 generated GET은 protocol 실패이며 typed 성공으로 승격하지 않습니다.
 
 GET과 saved acknowledgement 자체는 URL/history, route params, head를 변경하지 않습니다.
 background는 handler의 `navigate` follow-up과 destination policy를 실행하지 않습니다.
@@ -141,6 +142,9 @@ read로 합쳐 fragment, shell, 다른 form을 유지합니다. 이미 dispatch�
 정착한 뒤 최신 read를 공유하며 waiter 하나의 취소가 다른 waiter를 취소하지 않습니다.
 뒤의 write는 stale read 권한을 철회하고 더 최신 user navigation이 우선하므로 이전 page를
 되살리지 않습니다. saved와 follow-up 실패·취소·거절은 별개이며 `retryRead()`는 GET만 반복합니다.
+공유 auth approval은 확인된 owner만 유지합니다. owner 하나의 취소는 다른 owner의
+policy를 취소하지 않으며 마지막 취소는 abort 전에 policy 권한을 분리하므로 늦은
+document 결정이 실행되지 않습니다.
 
 manual/opaque redirect는 작업별 `redirect` 실패로 끝나며 Location을 읽거나 POST를
 재전송하거나 document fallback을 자동 실행하지 않습니다. fresh credentialed 401/403과

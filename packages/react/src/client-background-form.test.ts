@@ -88,15 +88,19 @@ it('does not execute a handler navigate follow-up from a background acknowledgem
   expect(env.allowDestination).not.toHaveBeenCalled();
 });
 
-function navigation(load: (href: string, signal: AbortSignal) => Promise<ReactNavigationLoadResult>) {
+function navigation(
+  load: (href: string, signal: AbortSignal) => Promise<ReactNavigationLoadResult>,
+  session?: Parameters<typeof createClientNavigationStore>[1],
+) {
   let href = 'http://localhost:3000/catalog#queue';
-  const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/catalog#queue', params: {} }));
+  const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/catalog#queue', params: {} }), session);
+  const assign = vi.fn();
   const push = vi.fn((next: string) => { href = next; });
   const disconnect = store.connect({
-    currentHref: () => href, load, assign: vi.fn(), replace: vi.fn(), reload: vi.fn(), back: vi.fn(),
+    currentHref: () => href, load, assign, replace: vi.fn(), reload: vi.fn(), back: vi.fn(),
     pushState: push, replaceState: vi.fn(), subscribe: () => () => {},
   });
-  return { store, push, disconnect };
+  return { store, push, assign, disconnect };
 }
 const approved = (revision: number): ReactNavigationLoadResult => ({
   ok: true, component: () => null, payload: {
@@ -259,4 +263,64 @@ it('rejects duplicate live row ids and settles only the actual departing owner b
   // Then: cleanup settles immediately, without waiting for server completion.
   expect(store.getSnapshot().mutation).toEqual({ status: 'error', reason: 'cancelled' });
   response.resolve(Response.json({ rows: ['late'] }));
+});
+
+it('coalesced auth approval preserves confirmed owners and detaches its last owner before late document policy', async () => {
+  // Given: two confirmed writes share a fresh read that receives credentialed 401.
+  const policy = deferred<{ document: string }>();
+  const policyStarted = deferred<AbortSignal>();
+  vi.stubGlobal('fetch', vi.fn(async () => saved(1)));
+  const browser = navigation(async () => ({ ok: false, reason: 'unauthorized' }), {
+    epoch: 'A', policy: (_context, signal) => { policyStarted.resolve(signal); return policy.promise; },
+  });
+  const first = createClientFormStore('background');
+  const second = createClientFormStore('background');
+  browser.store.forms.set('background\0first', first);
+  browser.store.forms.set('background\0second', second);
+  const env = (origin: typeof first): FormEnvironment => ({
+    ...environment(), lease: browser.store.sessionLease,
+    invalidate: browser.store.invalidateBackground,
+    approve: (_href, _followUp, signal) => browser.store.approveBackground(signal, origin),
+    releaseSession: () => browser.store.releaseFormSession(origin),
+  });
+  const one = first.submit(submission, env(first));
+  const two = second.submit(submission, env(second));
+  const signal = await policyStarted.promise;
+  try {
+    // When: one confirmed owner cancels, then the last owner cancels.
+    expect(first.getSnapshot().mutation?.status).toBe('saved');
+    expect(second.getSnapshot().mutation?.status).toBe('saved');
+    first.cancel();
+    expect(signal.aborted).toBe(false);
+    second.cancel();
+    // Then: policy authority settles without waiting for its abort-ignoring decision.
+    expect(signal.aborted).toBe(true);
+    await Promise.all([one, two]);
+    policy.resolve({ document: '/late-auth-exit' });
+    await policy.promise;
+    expect(browser.assign).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+  } finally {
+    policy.resolve({ document: '/late-auth-exit' });
+    first.cancel(); second.cancel();
+    await Promise.all([one, two]);
+    browser.disconnect();
+  }
+});
+
+it('settles a synchronous load-time owner cancellation before its abort-ignoring body is released', async () => {
+  // Given: the real coalescer registers read authority before entering the injected loader.
+  const body = deferred<ReactNavigationLoadResult>();
+  const owner = new AbortController();
+  const browser = navigation(async () => { owner.abort(); return body.promise; });
+  // When: the loader reenters cancellation synchronously, before waiter subscription.
+  const result = await browser.store.approveBackground(owner.signal, createClientFormStore('background'));
+  // Then: cancellation is bounded and the late body cannot acquire page or document authority.
+  expect(result).toEqual({ status: 'cancelled' });
+  body.resolve(approved(99));
+  await body.promise;
+  expect(browser.store.getDestination()).toBeNull();
+  expect(browser.assign).not.toHaveBeenCalled();
+  expect(browser.store.getSnapshot().url).toBe('/catalog#queue');
+  browser.disconnect();
 });

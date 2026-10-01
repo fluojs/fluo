@@ -57,8 +57,9 @@ authoritative read, and make any new POST an explicit user decision with
 duplicate risk. There is no automatic POST retry or native replay.
 
 Default navigation-mode busy activation is skipped rather than queued. `cancel()` cancels waiting,
-not the server transaction. Route/unmount/provider changes obsolete the old
-interaction. Supply the existing application session/prefetch scope boundary;
+not the server transaction. Default navigation forms obsolete on route change;
+background forms retain live owners and cancel on actual unmount or session/provider
+change. Supply the existing application session/prefetch scope boundary;
 identity coordination remains #3875, not an implicit form-helper feature.
 
 Automatic same-page form refresh preserves unrelated form state and the shell.
@@ -76,6 +77,6 @@ production entry.
 
 The [owning form contract](../contracts/react-progressive-forms.md) defines
 the protocol and ownership. [Navigation payload](../contracts/react-navigation-payload.md)
-continues to own v2 build identity/params/metadata. #3880/#3881/#3882 consume
+continues to own v2 build identity/params/metadata. #3880/#3882 consume
 this same interaction for typed projections and opt-in dirty/pending guards.
 Background work is the additive runtime option described above, not their prerequisite.
