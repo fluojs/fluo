@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
 
-import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
+import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForCapturedRequests, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
 import { installInitialReadiness, waitForInitialReadiness } from '../src/initial-readiness.mjs';
 
 const appRequire = createRequire(new URL('../apps/fluo/package.json', import.meta.url));
@@ -307,6 +307,39 @@ test('a pending prefetch is inconclusive, not a completed request or a failed re
     { kind: 'request-failed', error: 'net::ERR_ABORTED' },
   ]), 0.5);
   assert.equal(summarizeErrorRate([{ kind: 'request-pending', status: null }]), null);
+});
+
+test('capture retains the actual terminal outcome of each already-started finite response', async () => {
+  const network = new Map([['success', {}], ['failure', {}]]);
+  const changes = new EventEmitter();
+  const controller = new AbortController();
+  const capture = waitForCapturedRequests(network, changes, controller.signal);
+  const requests = [];
+  requests.push({ status: 200 });
+  network.delete('success');
+  changes.emit('settled');
+  network.set('later-producer', {});
+  requests.push({ kind: 'request-failed', error: 'net::ERR_ABORTED' });
+  network.delete('failure');
+  changes.emit('settled');
+  const result = await capture;
+  assert.deepEqual(result.requestIds, ['success', 'failure']);
+  assert.deepEqual(result.pendingRequestIds, []);
+  assert.equal(summarizeErrorRate(requests), 0.5);
+  // A captured-ID drain is not native producer closure or permission to drop new work.
+  assert.equal(network.has('later-producer'), true);
+  assert.equal(changes.listenerCount('settled'), 0);
+});
+
+test('capture deadline preserves an unresolved request rather than inventing its terminal state', async () => {
+  const network = new Map([['unresolved', {}]]);
+  const changes = new EventEmitter();
+  const controller = new AbortController();
+  const capture = waitForCapturedRequests(network, changes, controller.signal);
+  controller.abort();
+  assert.deepEqual((await capture).pendingRequestIds, ['unresolved']);
+  assert.equal(network.has('unresolved'), true);
+  assert.equal(changes.listenerCount('settled'), 0);
 });
 
 test('records real decoded and compressed asset bytes from browser network events', { timeout: 20_000 }, async () => {
