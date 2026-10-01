@@ -118,7 +118,8 @@ export async function loadReactTypegenModules(cwd: string, tsconfig: string | fa
  */
 export async function createTypegenSource(options: CreateTypegenSourceOptions): Promise<string> {
   const modulePath = resolve(options.cwd, options.parsed.modulePath);
-  if (TYPESCRIPT_MODULE_EXTENSIONS.has(extname(modulePath))) {
+  const typeScript = TYPESCRIPT_MODULE_EXTENSIONS.has(extname(modulePath));
+  if (typeScript && typeof Reflect.get(options.modules.typegen, 'createHttpTypeProjection') === 'function') {
     const tsconfigPath = options.parsed.tsconfigPath === undefined ? findTypegenTsconfig(modulePath)
       : resolve(options.cwd, options.parsed.tsconfigPath);
     if (tsconfigPath === undefined) throw new TypegenCommandError(`${modulePath}: type projection requires the application's tsconfig.json.`);
@@ -128,7 +129,14 @@ export async function createTypegenSource(options: CreateTypegenSourceOptions): 
       application, modules: options.modules, parsed: options.parsed, snapshot,
     }));
   }
-  const importedApplication = await importNativeApplicationModule(modulePath);
+  const importedApplication = typeScript
+    ? await tsImport(pathToFileURL(modulePath).href, {
+      parentURL: import.meta.url,
+      ...(options.parsed.tsconfigPath === undefined ? {} : {
+        tsconfig: resolve(options.cwd, options.parsed.tsconfigPath),
+      }),
+    })
+    : await importNativeApplicationModule(modulePath);
   return generateTypegenSource({
     application: importedApplication,
     modules: options.modules,

@@ -104,7 +104,11 @@ export async function runTypegenCommand(
       : createTypegenSource({ cwd, modules: await customModules, parsed });
     if (parsed.watch) {
       const modulePath = resolve(cwd, parsed.modulePath);
-      const tsconfigPath = parsed.tsconfigPath === undefined ? findTypegenTsconfig(modulePath) : resolve(cwd, parsed.tsconfigPath);
+      const projectTypes = customModules === undefined
+        || typeof Reflect.get((await customModules).typegen, 'createHttpTypeProjection') === 'function';
+      const tsconfigPath = !projectTypes || !/\.(?:ts|tsx|mts|cts)$/u.test(modulePath)
+        ? undefined
+        : parsed.tsconfigPath === undefined ? findTypegenTsconfig(modulePath) : resolve(cwd, parsed.tsconfigPath);
       return await runTypegenWatch({
         async commit(source, signal) {
           const action = await writeTypegenArtifact(outputPath, source, undefined, signal);

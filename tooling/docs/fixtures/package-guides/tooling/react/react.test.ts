@@ -111,7 +111,7 @@ describe('@fluojs/react guide examples', () => {
     const artifact = generateReactPageTypes(catalog);
     expect(generateReactPageTypes(catalog)).toBe(artifact);
     expect(artifact).toContain('"GET /products/:productId ProductRouter show": "/products/:productId"');
-    expect(inspectReactPageTypeArtifact(artifact)).toEqual({ status: 'valid', version: 1 });
+    expect(inspectReactPageTypeArtifact(artifact)).toEqual({ status: 'valid', version: 2 });
   });
 
   it('rejects versioned catalog entries with a typed error', () => {

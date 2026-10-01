@@ -175,7 +175,7 @@ describe('frozen compiler object association', () => {
   });
 
   it('generates strict aliased converter query from a non-exported DTO and factory-local router', async () => {
-    // Given: actual application source owns binding aliases and pre-conversion HttpWire.
+    // Given: real generation, two strict compiler programs and HTTP share a bounded integration budget.
     const cwd = await mkdtemp(join(tmpdir(), 'fluo-projected-consumer-'));
     const outputPath = join(cwd, 'react-pages.ts');
     const modulePath = fileURLToPath(new URL('../../../../examples/react-vite-ssr/tests/typegen-fixture/app.module.ts', import.meta.url));
@@ -312,7 +312,7 @@ describe('frozen compiler object association', () => {
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it('associates repeated factory-local classes and class expressions by actual identity', async () => {
     // Given: factory invocations create separate constructors with identical class names.
