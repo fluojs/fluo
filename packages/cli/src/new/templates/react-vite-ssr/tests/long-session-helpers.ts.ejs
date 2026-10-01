@@ -92,6 +92,7 @@ export async function faultedQR(page: Page, fault: Fault, operation: () => Promi
   const release = gate();
   const complete = gate();
   let used = false;
+  if (fault === 'deploy') expect((await page.request.post('/__reliability/deploy/arm')).ok()).toBe(true);
   if (fault === 'import') await page.evaluate(() => {
     Reflect.set(window, '__reliabilityImport', {
       module: Reflect.get(window, '__longStarter') === true ? './page-admin.tsx' : './navigation-admin.ts', fault: 'reject',
@@ -106,14 +107,7 @@ export async function faultedQR(page: Page, fault: Fault, operation: () => Promi
         case 'server-error': await route.fulfill({ status: 503, body: 'Injected unavailable' }); break;
         case 'slow': await release.promise; await route.continue(); break;
         case 'import': await route.continue(); break;
-        case 'deploy': {
-          const response = await route.fetch();
-          const value: unknown = await response.json();
-          if (typeof value !== 'object' || value === null) throw new Error('Missing HTTP payload');
-          Reflect.set(value, 'buildId', 'obsolete-deployment');
-          await route.fulfill({ response, body: JSON.stringify(value) });
-          break;
-        }
+        case 'deploy': await route.continue(); break;
         default: throw new Error(`Unexpected fault: ${fault satisfies never}`);
       }
     } finally { complete.resolve(); }

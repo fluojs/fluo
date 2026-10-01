@@ -15,6 +15,8 @@ export class ReliabilityControl {
   private readonly idle = new Set<() => void>();
   private commits = 0;
   private cleanups = 0;
+  private deployment = false;
+  private oversized = false;
   private payload: { scope?: string; used: boolean; started: ReturnType<typeof signal>;
     release: ReturnType<typeof signal>; cleaned: ReturnType<typeof signal> } | undefined;
 
@@ -30,6 +32,14 @@ export class ReliabilityControl {
   }
 
   install(server: Server, drainHarness: () => number): void {
+    server.post('/__reliability/deploy/arm', async () => {
+      this.deployment = true;
+      return { armed: true };
+    });
+    server.post('/__reliability/oversized/arm', async () => {
+      this.oversized = true;
+      return { armed: true };
+    });
     server.post('/__reliability/payload/arm', async () => {
       this.payload = { used: false, started: signal(), release: signal(), cleaned: signal() };
       return { armed: true };
@@ -51,6 +61,27 @@ export class ReliabilityControl {
       if (request.url.startsWith('/prefetch/public-bound-')) {
         reply.header('X-Reliability-Session-Cookie',
           request.headers.cookie?.includes('session=cache-test') ? 'present' : 'absent');
+      }
+      const deployment = this.deployment && request.url === '/admin/qr';
+      const oversized = this.oversized && request.url === '/prefetch/public-cache-1';
+      if ((deployment || oversized)
+        && request.headers.accept === 'application/vnd.fluo.react-navigation+json;v=2') {
+        if (typeof body !== 'string') throw new TypeError('Expected serialized navigation payload');
+        const value: unknown = JSON.parse(body);
+        if (typeof value !== 'object' || value === null) throw new TypeError('Expected navigation payload');
+        if (deployment) {
+          this.deployment = false;
+          Reflect.set(value, 'buildId', 'obsolete-deployment');
+        } else {
+          this.oversized = false;
+          const destination: unknown = Reflect.get(value, 'destination');
+          const props: unknown = typeof destination === 'object' && destination !== null
+            ? Reflect.get(destination, 'props') : undefined;
+          if (typeof props !== 'object' || props === null) throw new TypeError('Expected destination props');
+          Reflect.set(props, 'productName', 'x'.repeat(64 * 1024 + 1));
+        }
+        reply.removeHeader('Content-Length');
+        return JSON.stringify(value);
       }
       const entry = this.payload;
       if (entry === undefined || entry.used || request.url !== '/admin/qr'

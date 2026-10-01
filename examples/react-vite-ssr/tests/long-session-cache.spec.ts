@@ -74,15 +74,7 @@ test('repeated public cache cycles preserve 32 entries single use and the 64 KiB
   }
   // Oversized wire bytes remain an anonymous speculation rejection, not a cache entry.
   await page.getByRole('button', { name: 'Invalidate prefetched pages', exact: true }).click();
-  let oversized = true;
-  await page.route('**/prefetch/public-cache-1', async (route) => {
-    if (!oversized) return route.continue();
-    oversized = false;
-    const response = await route.fetch();
-    const payload = await response.json();
-    payload.destination.props.productName = 'x'.repeat(64 * 1024 + 1);
-    await route.fulfill({ response, body: JSON.stringify(payload) });
-  });
+  expect((await page.request.post('/__reliability/oversized/arm')).ok()).toBe(true);
   const oversizedResponse = page.waitForResponse((reply) => new URL(reply.url()).pathname === '/prefetch/public-cache-1',
     { timeout: 10_000 });
   await page.getByRole('link', { name: 'Cache entry 1', exact: true }).hover();

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { acknowledge, go, navigationMedia, saveRow } from './long-session-helpers';
+import { acknowledge, faultedQR, go, navigationMedia, saveRow } from './long-session-helpers';
 import { installObserver, settled, watchText } from './long-session-observer';
 import { resources } from './long-session-metrics';
 
@@ -9,6 +9,17 @@ async function open(page: Page) {
   await page.goto('/catalog/background', { waitUntil: 'domcontentloaded' });
   await acknowledge(page, 1);
 }
+
+test('a correctly framed incompatible build preserves the operational document and recovers by fresh approval', async ({ page }) => {
+  await open(page);
+  const before = await resources(page);
+  await faultedQR(page, 'deploy', () => acknowledge(page, 2).then(() => {}));
+  expect(await resources(page)).toMatchObject({
+    document: before.document, id: before.id, actualInstanceRetained: true,
+    cleanups: 0, mounts: 1, url: '/admin/qr',
+  });
+  await acknowledge(page, 3);
+});
 
 async function installImportGate(page: Page, key: '__reliabilityImport' | '__reliabilityPolicy') {
   await page.evaluate((key) => {
