@@ -4,6 +4,16 @@
 
 ## Scope and ownership
 
+Background `useForm({ mode: 'background', method: 'get' | 'post', ... })` uses
+ordinary credentialed, no-store HTTP JSON reads or negotiated form saves, not a
+navigation representation. Acknowledgements do not write history or route state.
+Confirmed writes share revision-coalesced fresh current-page approval through the
+existing loader; stale revisions and older sessions cannot commit, and newer user
+navigation wins. See the [form owner](./react-progressive-forms.md) for native
+fallback, owner cancellation, read decoding and auth-policy document exceptions.
+The companion guard and `client-navigation-payload.test.ts` enforce these boundaries
+alongside existing build/metadata/HTTP/public-prefetch/session invariants.
+
 `@fluojs/react` supports an opt-in representation for an HTTP-matched `@Path(...)` GET whose
 handler returns `ReactNavigationPage.create(page, { module, props })`. The normal result is still a
 streamed React document through the configured `ReactModule.forRoot({ renderPage })`. The `module`

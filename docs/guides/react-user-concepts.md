@@ -47,9 +47,9 @@ fail through HTTP. Layout, fallback, and metadata factories still require explic
 | **Layout** | The application `ReactPageRenderer` owns the document shell and shared providers. `@PageLayout(...)` adds optional class/method component-reference metadata that the same renderer composes. | **Shipped.** There is no file ancestry or framework-owned layout router. |
 | **Loading UI** | Ordinary React `Suspense` in the application tree, optionally selected for a page with `@SuspenseFallback(...)`. | **Shipped with a narrow boundary.** The fallback covers descendants that suspend during SSR; it does not observe handler `await`, forms, effects, or navigation. |
 | **Data read / loader** | Read data in the `@Path(...)` handler through explicit application providers after HTTP DTO binding and validation, then pass the result to the React element. `router.refresh()` repeats current-page HTTP approval. | **Shipped, intentionally different.** There is no separate loader runtime or loader cache; refresh is explicit, not automatic after mutation. |
-| **Mutation / action** | Submit a native form to an ordinary `@Post(...)` handler, bind and validate it with `@RequestDto(...)`, apply normal guards/interceptors, mutate application state, and redirect with `303 See Other` when appropriate. Call `router.invalidate()` and/or change `prefetchScope` before further in-document navigation after an auth/data mutation. | **Shipped, intentionally different.** There is no compiled action, fetcher, optimistic-state, or automatic cache revalidation. |
+| **Mutation / action** | Keep native HTTP forms and ordinary DTO/guard/interceptor handlers. Omitted `useForm` options retain navigation POST/303/GET; `mode: 'background'` adds GET JSON search and independent POST without acknowledgement navigation. Confirmed background writes share fresh same-page HTTP approval. For mutations outside that interaction, invalidate public speculation or change `prefetchScope` before further navigation. | **Shipped, intentionally different.** One canonical `useForm`, not another fetcher, compiled action, optimistic engine or query cache. |
 | **Navigation** | Use a real `<a>` or `Link` from `@fluojs/react/client`; use `router.push(...)`, `router.replace(...)`, `router.back()`, or `router.refresh()` for controls. Pass build-produced importers to `ReactClientRouterProvider` to render an HTTP-approved destination in an application-owned page slot; opt into public speculation with `Link prefetch="hover"` or `"viewport"` and provider `prefetchScope`. | **Shipped, intentionally different.** Compatible pages navigate softly with server-confirmed URL/params and browser history; other destinations use document navigation. There is no client route matcher or general document/data cache. Prefetch is off by default and can reuse only explicitly granted public navigation JSON once. |
-| **Pending state** | `ReactNavigationExperience` and `useNavigation()` expose navigation lifecycle; `useForm` exposes independent typed local pending/dirty, validation/auth/uncertain mutation and separate post-save read outcomes through the same provider. | **Shipped for navigation and progressive native HTTP forms.** There is no compiled action router or universal loader/action pending model. |
+| **Pending state** | `ReactNavigationExperience` and `useNavigation()` expose navigation lifecycle. The same provider's `useForm` has per-id pending/dirty/read/error/mutation/follow-up state; background mode has independent latest-wins authority. Actual owner unmount or session/provider change revokes it, not unrelated navigation. | **Shipped for navigation, native forms and background work.** No compiled action router or universal loader/action pending model. |
 | **Error UI** | The official composition resets an approved destination render error locally; its outer boundary diagnoses a throwing error view. HTTP pipeline failures keep HTTP status/errors, and #3864 owns fresh-HTTP transport retry. | **Shipped for page rendering.** There is no segment `error` file, shell/root recovery, or React-owned HTTP error router. |
 | **Not found** | A missing explicit route is the normal `@fluojs/http` not-found response; handlers may throw the shipped HTTP not-found exception when application lookup fails. | **Shipped, intentionally different.** There is no React `notFound()` helper or catch-all requirement. |
 | **Metadata / head** | `@PageMetadata(...)` resolves matched-page title/meta/link for the official SSR and soft page-owned head; HTTP retains status/headers. | **Shipped opt-in page composition.** No file-segment merge, and global CSS/icon/bootstrap remain application-owned. |
@@ -173,10 +173,18 @@ required before any stable subpath can exist.
 
 ## Unsupported concepts
 
+Independent search and row mutations are provided by the existing `useForm` with
+`mode: 'background'`, not another fetcher/provider. GET reads ordinary HTTP JSON;
+POST uses the existing saved protocol and coalesces fresh same-page HTTP approval.
+Each stable id owns pending/results and latest-wins cancellation. Navigation alone
+does not cancel a live shell owner, but unmount/session/provider changes revoke it.
+These scoped semantics do not provide the generalized loader/cache concepts below.
+See the [form contract](../contracts/react-progressive-forms.md#background-http-interactions).
+
 The current package does not provide:
 
 - file routing, a React-owned matcher, a nested route tree, or a catch-all route grammar
-- a route-module loader/action runtime, fetchers, or automatic data revalidation
+- a route-module loader/action runtime, a separate fetcher API or general query-cache revalidation
 - arbitrary HTML document swapping, a general client document/data cache, automatic navigation
   prefetch or optimistic mutation policy
 - automatic metadata merging or segment-level `loading`, `error`, and `not-found` conventions

@@ -45,8 +45,10 @@ generated result inference 없이 계속 지원합니다. `ReactModule.formResul
 `data`는 literal/union inference를 유지하며 acknowledgement에서 비동기 destination
 policy 전에 limited JSON으로 검증합니다. Malformed data는 protocol uncertainty이며
 typed persistence 확인이 아닙니다. Optional explicit `session`은 기존 session barrier를
-사용합니다. Generated GET decoding이나 `decodeRead`는 여기서 약속하지 않습니다(#3881).
-지원 shape, converter wire 선언, freshness는
+사용합니다. Compiler는 GET result decoder를 생성하지 않습니다. Runtime contract는
+background JSON read에 optional `decodeRead`를 제공할 수 있으며, 이것이 없으면
+generated saved contract가 GET result에 해당 타입을 부여할 수 없습니다. 수동 fields의
+read data는 unknown을 유지합니다. 지원 shape, converter wire 선언, freshness는
 [end-to-end 타입 계약](./react-end-to-end-types.ko.md)을 따릅니다.
 
 interception 전에 실제 submitter와 `formaction`, `formmethod`, `formenctype`,
@@ -90,7 +92,7 @@ binding은 `values`, `fieldErrors`, `fieldProps`의 typed field name, local
 `fieldProps`는 작성한 control을 error element에 연결하며 element id는
 `${id}-${field}-errors`입니다.
 
-한 form은 enhanced POST 하나만 진행합니다. busy 상태의 반복 activation은 `skipped`를
+`mode`/`method`를 생략한 기본 form은 enhanced POST 하나만 진행합니다. busy 상태의 반복 activation은 `skipped`를
 증가시키고 queue에 넣지 않습니다. 별도 form은 독립적으로 사용할 수 있습니다.
 settlement 뒤의 명시적 submit은 현재 successful control을 capture하고 그 form의
 적용 가능한 결과만 대체합니다. 저장 확인 시 제출 이후 변하지 않은 input은 clean이
@@ -103,7 +105,7 @@ dispatch한 write는 cancellation, network loss, 5xx, 예상하지 못한 respon
 새 operation이며 이전 save를 중복할 수 있습니다. idempotency, transaction,
 reconciliation은 application 책임입니다.
 
-새 route/history intent, provider/session rebinding, 명시적 cancellation, unmount는 이전
+기본 navigation mode에서는 새 route/history intent, provider/session rebinding, 명시적 cancellation, unmount가 이전
 interaction ownership을 취소합니다. 늦은 body read, policy decision, acknowledgement,
 follow-up load는 이전 generation으로 commit할 수 없습니다.
 `allowDestination(destination, signal)`은 async일 수 있으며 오래된 결정이 navigation이나
@@ -127,6 +129,49 @@ HTTP navigation loader로 handler destination을 승인하고 승인한 payload�
 GET approval만 반복합니다. input을 유지하고 이 차이를 명시적 read-only recovery control로
 보여주세요. 기존 `useRouter().refresh()`는 승인 성공 뒤 page state를 의도적으로 reset합니다.
 automatic form refresh가 그 API를 몰래 재정의하지 않습니다.
+
+## Background HTTP interactions
+
+같은 `useForm`에 `mode: 'background'`와 native `method: 'get' | 'post'`를 지정합니다.
+method 기본값은 POST입니다. provider-local stable id마다 pending/result/error,
+generation, cancellation을 독립 소유하고 새 명시적 제출은 해당 작업만 supersede합니다.
+동적 행에는 domain id를 사용하며 동시에 mount한 두 owner는 같은 id를 공유할 수 없습니다.
+navigation만으로 살아 있는 shell-owned 작업을 취소하지 않고 실제 page/row unmount가
+떠난 owner만 정리합니다. session 변경과 provider disconnect/rebind는 policy 전에
+이전 ownership, private result, retained input을 모두 철회합니다.
+
+GET은 successful control을 query로 보내고 앱 소유 HTTP handler에 일반
+`application/json`을 요청합니다. 같은 handler는 native 요청에 HTML 검색 문서를
+반환할 수 있습니다. read 성공은 `mutation.status === 'read'`, 실패는 persistence
+uncertainty가 아닌 `error`입니다. non-2xx, malformed/oversized data, 예상하지 못한
+media는 성공으로 승격하지 않습니다. handwritten fields의 data는 `unknown`이며 generated
+contract의 선택적 `decodeRead(value: unknown): Data`는 `decodeSaved`와 같은 seam에서
+검증합니다. navigation v2 payload를 widget data로 해석하거나 private read를 cache하지 않습니다.
+Read decoder가 없는 generated GET은 protocol 실패이며 typed 성공으로 승격하지 않습니다.
+
+GET과 saved acknowledgement 자체는 URL/history, route params, head를 변경하지 않습니다.
+background는 handler의 `navigate` follow-up과 destination policy를 실행하지 않습니다.
+confirmed save는 provider-local dirty revision을 별도의 fresh HTTP-approved current-page
+read로 합쳐 fragment, shell, 다른 form을 유지합니다. 이미 dispatch된 sibling write가
+정착한 뒤 최신 read를 공유하며 waiter 하나의 취소가 다른 waiter를 취소하지 않습니다.
+뒤의 write는 stale read 권한을 철회하고 더 최신 user navigation이 우선하므로 이전 page를
+되살리지 않습니다. saved와 follow-up 실패·취소·거절은 별개이며 `retryRead()`는 GET만 반복합니다.
+공유 auth approval은 확인된 owner만 유지합니다. owner 하나의 취소는 다른 owner의
+policy를 취소하지 않으며 마지막 취소는 abort 전에 policy 권한을 분리하므로 늦은
+document 결정이 실행되지 않습니다.
+
+manual/opaque redirect는 작업별 `redirect` 실패로 끝나며 Location을 읽거나 POST를
+재전송하거나 document fallback을 자동 실행하지 않습니다. fresh credentialed 401/403과
+explicit saved session은 기존 session barrier를 사용합니다. 앱이 선택한 검증된 document
+exit와 미설정 legacy auth exit는 auth-policy 예외이지 일반 background redirect 처리가
+아닙니다. cancellation/supersession은 dispatch된 POST를 rollback하지 않으며 idempotency와
+reconciliation은 앱 책임입니다. hydration 전과 JS disabled에서도 native action/method/
+encoding과 submitter override를 유지하고 지원하지 않는 제출은 native로 남습니다.
+
+근거는 `client-background-form.test.ts`, strict consumer fixture,
+`client-navigation-payload.test.ts`, owning governance guard, `/catalog/background`의 실제
+example/starter `tests/background-interactions.spec.ts`입니다. 이 scoped correctness는
+#3879 전체 제품 gate나 #3886 soak 완료가 아니며 MusicKit, memory leak, performance를 주장하지 않습니다.
 
 ## Explicit saved session and data
 
@@ -157,8 +202,8 @@ Fresh POST/follow-up 401·403은 이전 화면을 무조건 보존하지 않고 
 [consumer migration](../getting-started/migrate-react-progressive-forms.ko.md),
 [실행 가능한 example](../../examples/react-vite-ssr/README.ko.md)을 함께 보세요.
 
-typed name/outcome은 같은 #3880 projection을 소비하며 #3881은 같은 interaction의
-non-navigation 작업을 확장하고 #3882는 dirty/pending state로 opt-in navigation guard를
+typed name/outcome은 같은 #3880 projection을 소비하며 background 작업도 같은 interaction을
+사용하고 #3882는 dirty/pending state로 opt-in navigation guard를
 구현합니다. 여기서 경쟁하는 form API를 만들지 않습니다. application session coordination은
 #3875가 소유합니다. optimistic cache mutation, 포괄적인 upload 지원, distributed
 duplicate protection과 해당 후속 이슈 구현은 이 계약에서 제공하지 않습니다.

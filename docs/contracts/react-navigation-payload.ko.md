@@ -4,6 +4,16 @@
 
 ## Scope and ownership
 
+Background `useForm({ mode: 'background', method: 'get' | 'post', ... })`은 navigation
+representation 대신 credential 포함 no-store 일반 HTTP JSON read 또는 negotiated form
+save를 사용합니다. acknowledgement 자체는 history나 route state를 쓰지 않습니다.
+confirmed write는 기존 loader의 revision-coalesced fresh current-page approval을 공유하며
+stale revision과 이전 session은 commit하지 못하고 더 최신 user navigation이 우선합니다.
+native fallback, owner cancellation, read decoder, auth-policy document 예외는
+[form owner](./react-progressive-forms.ko.md)를 보세요. companion guard와
+`client-navigation-payload.test.ts`는 기존 build/metadata/HTTP/public-prefetch/session
+invariant와 함께 이 경계를 검증합니다.
+
 `@fluojs/react`는 handler가 `ReactNavigationPage.create(page, { module, props })`를 반환하는
 HTTP-matched `@Path(...)` GET에 opt-in representation을 제공합니다. 일반 결과는 계속
 `ReactModule.forRoot({ renderPage })`를 거친 streamed React document입니다. `module`은

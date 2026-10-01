@@ -16,6 +16,29 @@ The first implementation uses server rendering, ordinary links, and a GET form. 
 
 ## React Does Not Invent a New Routing System
 
+### Background companion after native selection checking
+
+Run the native GET selection exercise below unchanged. Later independent row
+work and search use background on the same `useForm`, not another route matcher
+or query cache. Try two searches and queue rows at `/catalog/background` in the
+executable [Vite example](../../examples/react-vite-ssr/README.md). This does not
+add cart persistence or payment to this chapter; queue/persistence rules remain app-owned.
+
+```tsx
+const search = useForm<{ q: string }>({
+  id: 'song-search', action: '/catalog/background/search',
+  mode: 'background', method: 'get', fields: { q: 'q' },
+  allowDestination: () => false,
+});
+```
+
+Call inside a component under the existing provider and spread `formProps` on a
+native form. GET/POST acknowledgements do not change URL/history; confirmed writes
+obtain a separate fresh HTTP approval of the current page. Never automatically
+replay a cancelled POST or infer failed persistence. The actual listener's
+started/release/cleaned barriers drive `tests/background-interactions.spec.ts`;
+the [form contract](../../docs/contracts/react-progressive-forms.md) owns lifecycle and native fallback.
+
 `@Router` and `@Path` from `@fluojs/react` express page intent on top of existing Fluo HTTP metadata. They do not generate routes automatically from filenames. You must explicitly register the class that owns `/products` and the module containing it. Existing middleware, guards, request scope, and conflict checks follow the HTTP runtime path as well.
 
 In this chapter, `/products` is an HTML listing and `/products/:slug` is an HTML detail page. Do not register a separate JSON controller for the same method and path at the same time. The public listing in Chapters 1 through 3 was a service contract, not yet an HTTP JSON route, so this choice does not conflict with it. If you have already registered another representation, first settle which component owns that path. Do not assume two duplicate GET declarations are automatically separated because their `Accept` headers differ.

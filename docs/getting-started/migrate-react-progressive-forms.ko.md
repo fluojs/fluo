@@ -35,6 +35,15 @@ details를 field error로 바꾸지 않습니다. native fallback에는 기존 H
 
 ## Update outcome and recovery UI
 
+독립 검색이나 행 작업에는 같은 hook에 `mode: 'background'`를 추가합니다. 실제 검색
+form에는 `method: 'get'`, write에는 POST를 선택하고 stable domain row id를 유지합니다.
+새 명시적 요청은 그 id의 이전 local 권한만 supersede하며 생략한 옵션은 busy-skipped
+navigation POST를 유지합니다. `read`/`error`와 `saved`/`uncertain`을 구별하고 handwritten
+fields를 typed cast하지 말고 필요하면 contract의 optional `decodeRead`로 검증합니다.
+Background acknowledgement는 handler navigation을 실행하지 않으며 confirmed write는
+fresh current-page HTTP approval을 공유합니다. Native action을 교체하거나 fetcher,
+cache, matcher, POST retry를 추가하지 마세요.
+
 End-to-end inference에는 같은 application tsconfig/bootstrap options로 생성하고 복제한
 Input type과 `fields` map 대신 generated `reactFormRoutes[id].contract`를 사용합니다.
 그 route의 `href`를 같은 `useForm`의 `action`에 전달하며 `fields`와 `contract`를 함께
@@ -53,8 +62,9 @@ GET `decodeRead` 지원을 생성하지 않습니다. V2 freshness와 일반 typ
 저장됐을 수 있음을 뜻합니다. input을 유지하고 authoritative read를 제공하며 새 POST는
 중복 위험을 설명한 명시적 사용자 결정으로 만듭니다. 자동 POST retry/native replay는 없습니다.
 
-busy activation은 queue 대신 skip합니다. `cancel()`은 waiting을 취소하며 server transaction을
-취소하지 않습니다. route/unmount/provider 변경은 이전 interaction을 obsolete 처리합니다.
+기본 navigation-mode의 busy activation은 queue 대신 skip합니다. `cancel()`은 waiting을 취소하며 server transaction을
+취소하지 않습니다. 기본 navigation form은 route 변경으로 obsolete 처리하며 background는
+살아 있는 owner를 유지하고 실제 unmount 또는 session/provider 변경으로 취소합니다.
 기존 application session/prefetch scope boundary를 제공하세요. identity coordination은
 여전히 #3875가 소유하며 form helper가 암묵적으로 구현하지 않습니다.
 
@@ -73,5 +83,6 @@ startup은 정상 production entry를 사용합니다.
 protocol과 ownership은 [owning form contract](../contracts/react-progressive-forms.ko.md)가
 정의합니다. v2 build identity/params/metadata는
 [navigation payload](../contracts/react-navigation-payload.ko.md)가 계속 소유합니다.
-#3880은 같은 interaction의 typed projection을 제공합니다. #3881의 non-navigation 작업과
-#3882의 opt-in dirty/pending guard는 별도 확장이며 이 migration의 추가 API가 아닙니다.
+#3880은 같은 interaction의 typed projection을 제공하고 #3882는 opt-in dirty/pending
+guard를 확장합니다. Background 작업은 위의 additive runtime option이며 그 작업의
+선행 조건이 아닙니다.

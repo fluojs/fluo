@@ -8,6 +8,8 @@ export type ReactFormContract<Input extends object, Data = unknown> = {
   readonly fields: Readonly<Record<keyof Input, string>>;
   /** Reject malformed generated saved data before asynchronous destination policy. */
   readonly decodeSaved: (value: unknown) => Data;
+  /** Validate an untrusted ordinary JSON GET result before assigning a generated type. */
+  readonly decodeRead?: (value: unknown) => Data;
 };
 
 /** Existing progressive form options, with an optional generated contract. */
@@ -19,6 +21,9 @@ export type ReactFormOptions<Input extends object, Data = unknown> = {
   readonly allowDestination: (destination: string, signal: AbortSignal) => boolean | Promise<boolean>;
   readonly onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
 } & (
+  | { /** Independent latest-request-wins work. */ readonly mode: 'background'; readonly method?: 'get' | 'post' }
+  | { /** Omission preserves navigation-oriented POST and busy skipping. */ readonly mode?: 'navigation'; readonly method?: 'post' }
+) & (
   | { readonly fields: Readonly<Record<keyof Input, string>>; readonly contract?: never }
   | { readonly contract: ReactFormContract<Input, Data>; readonly fields?: never }
 );
@@ -31,7 +36,7 @@ export type ReactFormBinding<Input extends object, Data = unknown> = {
   readonly formProps: {
     readonly id: string;
     readonly action: string;
-    readonly method: 'post';
+    readonly method: 'get' | 'post';
     readonly encType: 'application/x-www-form-urlencoded';
     readonly ref: (element: HTMLFormElement | null) => void;
     readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -84,10 +89,11 @@ export function useForm<Input extends object>(
   const fields = options.contract === undefined ? options.fields : options.contract.fields;
   const navigation = useClientNavigationStore();
   const route = navigation.getSnapshot();
-  const key = `${route.url.split('#', 1)[0]}\0${options.id}`;
+  const mode = options.mode ?? 'navigation';
+  const key = mode === 'background' ? `background\0${options.id}` : `${route.url.split('#', 1)[0]}\0${options.id}`;
   let interaction = navigation.forms.get(key);
   if (interaction === undefined) {
-    interaction = createClientFormStore();
+    interaction = createClientFormStore(mode);
     navigation.forms.set(key, interaction);
   }
   const form = interaction;
@@ -127,7 +133,7 @@ export function useForm<Input extends object>(
     connected,
     state,
     formProps: {
-      id: options.id, action: options.action, method: 'post', encType: 'application/x-www-form-urlencoded', ref,
+      id: options.id, action: options.action, method: options.method ?? 'post', encType: 'application/x-www-form-urlencoded', ref,
       onInput: form.changed,
       onSubmit(event) {
         options.onSubmit?.(event);
@@ -143,18 +149,21 @@ export function useForm<Input extends object>(
         const nativeEvent = event.nativeEvent;
         const selected: unknown = Reflect.get(nativeEvent, 'submitter');
         const submitter = selected instanceof HTMLElement ? selected : null;
-        const submission = captureFormSubmission(event.currentTarget, submitter, options.actions ?? [options.action]);
+        const submission = captureFormSubmission(event.currentTarget, submitter, options.actions ?? [options.action], mode);
         if (submission === undefined) return;
         event.preventDefault();
         void form.submit(submission, {
+          lease: navigation.sessionLease,
           sessionChanged: (change) => navigation.applyFormSession(change, form),
           authRejected: (reason) => navigation.rejectFormAuth(reason, form),
           releaseSession: () => navigation.releaseFormSession(form),
-          invalidate: navigation.router.invalidate,
+          invalidate: mode === 'background' ? navigation.invalidateBackground : navigation.router.invalidate,
           approve: (destination, followUp, signal) =>
-            navigation.approveForm(destination, followUp, signal, form),
+            mode === 'background' ? navigation.approveBackground(signal, form)
+              : navigation.approveForm(destination, followUp, signal, form),
           allowDestination: options.allowDestination,
           ...(options.contract === undefined ? {} : { decodeSaved: options.contract.decodeSaved }),
+          ...(options.contract?.decodeRead === undefined ? {} : { decodeRead: options.contract.decodeRead }),
           rememberForms: () => { for (const other of navigation.forms.values()) other.remember(); },
         });
       },

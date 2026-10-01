@@ -19,6 +19,8 @@ export type ReactFormSnapshot<Data = unknown> = {
 
 /** Provider-owned interaction with no queued or automatically repeated POST. */
 export type ClientFormStore = {
+  readonly mode: 'navigation' | 'background';
+  readonly isWriting: () => boolean;
   readonly getSnapshot: () => ReactFormSnapshot;
   readonly subscribe: (listener: () => void) => () => void;
   readonly submit: (submission: FormSubmission, environment: FormEnvironment) => Promise<void>;
@@ -35,6 +37,8 @@ export type ClientFormStore = {
 
 /** Existing provider approval operations plus an application destination constraint. */
 export type FormEnvironment = {
+  readonly lease?: () => { readonly signal: AbortSignal; readonly current: () => boolean; readonly release: () => void };
+  readonly decodeRead?: (value: unknown) => unknown;
   readonly sessionChanged?: (change: ReactSessionChange) => Promise<boolean>;
   readonly authRejected?: (reason: 'unauthorized' | 'forbidden') => Promise<void>;
   readonly releaseSession?: () => void;
@@ -48,9 +52,10 @@ export type FormEnvironment = {
 /**
  * Create one independent form state machine at the existing provider boundary.
  *
+ * @param mode Native navigation POST by default, or independent background work.
  * @returns A subscribable interaction with explicit cancellation and GET-only recovery.
  */
-export function createClientFormStore(): ClientFormStore {
+export function createClientFormStore(mode: 'navigation' | 'background' = 'navigation'): ClientFormStore {
   let snapshot: ReactFormSnapshot = { pending: false, dirty: false, skipped: 0, mutation: null, followUp: null };
   let active: AbortController | null = null;
   let generation = 0;
@@ -58,6 +63,9 @@ export function createClientFormStore(): ClientFormStore {
   let submittedRevision = 0;
   let submittedValues: URLSearchParams | null = null;
   let readEnvironment: FormEnvironment | null = null;
+  let releaseLease: (() => void) | undefined;
+  let readingRequest = false;
+  let revoking = false;
   let form: HTMLFormElement | null = null;
   let owner: object | undefined;
   let transferred = false;
@@ -82,9 +90,9 @@ export function createClientFormStore(): ClientFormStore {
     });
     publish({ ...snapshot, followUp: { status: 'pending' } });
     if (expected !== generation || controller.signal.aborted) return;
-    let allowed: boolean;
+    let allowed = mode === 'background';
     try {
-      allowed = await Promise.race([
+      if (mode !== 'background') allowed = await Promise.race([
         Promise.resolve(environment.allowDestination(saved.destination, controller.signal)), abandoned,
       ]);
     } catch {
@@ -106,7 +114,7 @@ export function createClientFormStore(): ClientFormStore {
     let result: ReactRevalidationResult;
     try {
       result = await Promise.race([
-        environment.approve(saved.destination, saved.followUp, controller.signal),
+        environment.approve(saved.destination, mode === 'background' ? 'refresh' : saved.followUp, controller.signal),
         abandoned.then(() => ({ status: 'cancelled' as const })),
       ]);
     } catch {
@@ -120,34 +128,54 @@ export function createClientFormStore(): ClientFormStore {
     publish({ ...snapshot, followUp: result });
   };
   const store: ClientFormStore = {
+    mode,
+    isWriting: () => mode === 'background' && snapshot.pending && !readingRequest,
     getSnapshot: () => snapshot,
     subscribe(listener) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
     async submit(submission, environment) {
+      if (revoking) return;
       if (snapshot.pending || snapshot.followUp?.status === 'pending') {
-        publish({ ...snapshot, skipped: snapshot.skipped + 1 });
-        return;
+        if (mode === 'navigation') {
+          publish({ ...snapshot, skipped: snapshot.skipped + 1 });
+          return;
+        }
+        const cancelling = generation;
+        store.cancel();
+        if (generation !== cancelling + 1) return;
       }
       const expected = ++generation;
+      const lease = environment.lease?.();
+      if (lease !== undefined && !lease.current()) { lease.release(); return; }
       submittedRevision = inputRevision;
+      readingRequest = submission.method === 'get';
       submittedValues = new URLSearchParams(submission.body);
       const controller = new AbortController();
       active = controller;
       readEnvironment = environment;
+      const revokeLease = (): void => { store.revoke(); };
+      lease?.signal.addEventListener('abort', revokeLease, { once: true });
+      releaseLease = () => {
+        lease?.signal.removeEventListener('abort', revokeLease);
+        lease?.release();
+      };
+      const current = (): boolean => expected === generation && !controller.signal.aborted
+        && (lease === undefined || lease.current());
       const cancellation = new Promise<ReactFormMutation>((resolve) => {
-        controller.signal.addEventListener('abort', () => resolve({ status: 'uncertain', reason: 'cancelled' }), { once: true });
+        controller.signal.addEventListener('abort', () => resolve(submission.method === 'get'
+          ? { status: 'error', reason: 'cancelled' } : { status: 'uncertain', reason: 'cancelled' }), { once: true });
       });
       publish({ ...snapshot, pending: true, mutation: null, followUp: null });
       if (expected !== generation || controller.signal.aborted) return;
       store.remember();
       // A dispatched POST may persist before acknowledgement; discard older reads immediately.
-      environment.invalidate();
-      if (expected !== generation || controller.signal.aborted) return;
+      if (submission.method !== 'get') environment.invalidate();
+      if (!current()) return;
       // Cancellation settles local waiting even if a fetch/body reader ignores AbortSignal.
       let mutation = await Promise.race([submitHttpForm(submission, controller.signal), cancellation]);
-      if (expected !== generation) return;
+      if (!current()) return;
       if (mutation.status === 'saved' && environment.decodeSaved !== undefined) {
         try {
           mutation = { ...mutation, data: environment.decodeSaved(mutation.data) };
@@ -155,11 +183,23 @@ export function createClientFormStore(): ClientFormStore {
           mutation = { status: 'uncertain', reason: 'protocol' };
         }
       }
+      if (mutation.status === 'read' && environment.decodeRead !== undefined) {
+        try { mutation = { ...mutation, data: environment.decodeRead(mutation.data) }; }
+        catch { mutation = { status: 'error', reason: 'protocol' }; }
+      }
+      if (mutation.status === 'read' && environment.decodeSaved !== undefined && environment.decodeRead === undefined) {
+        // A generated saved decoder cannot confer its type on an unvalidated GET.
+        mutation = { status: 'error', reason: 'protocol' };
+      }
+      if (!current()) return;
       snapshot = { ...snapshot, pending: false, mutation,
         followUp: mutation.status === 'saved' && mutation.session !== undefined ? { status: 'pending' } : null,
         dirty: mutation.status === 'saved' && inputRevision === submittedRevision ? false : snapshot.dirty,
       };
       if (mutation.status === 'saved' && mutation.session !== undefined && environment.sessionChanged !== undefined) {
+        // The explicit saved continuation alone transfers across the session barrier.
+        releaseLease?.();
+        releaseLease = undefined;
         const continuation = environment.sessionChanged(mutation.session);
         publish(snapshot);
         if (!await Promise.race([continuation, cancellation.then(() => false)]) || expected !== generation) {
@@ -172,6 +212,8 @@ export function createClientFormStore(): ClientFormStore {
         await Promise.race([environment.authRejected(mutation.reason), cancellation.then(() => {})]);
       }
       if (expected !== generation) return;
+      releaseLease?.();
+      releaseLease = undefined;
       active = null;
       publish(snapshot);
       if (mutation.status === 'saved') {
@@ -192,15 +234,24 @@ export function createClientFormStore(): ClientFormStore {
     },
     cancel() {
       generation++;
-      readEnvironment?.releaseSession?.();
+      const lease = releaseLease;
+      releaseLease = undefined;
+      lease?.();
+      const environment = readEnvironment;
       const controller = active;
       active = null;
       snapshot = {
         ...snapshot, pending: false,
-        mutation: snapshot.pending ? { status: 'uncertain', reason: 'cancelled' } : snapshot.mutation,
+        mutation: snapshot.pending ? readingRequest
+          ? { status: 'error', reason: 'cancelled' } : { status: 'uncertain', reason: 'cancelled' } : snapshot.mutation,
         followUp: snapshot.followUp?.status === 'pending' ? { status: 'cancelled' } : snapshot.followUp,
       };
-      controller?.abort();
+      revoking = true;
+      try {
+        environment?.releaseSession?.();
+        controller?.abort();
+      }
+      finally { revoking = false; }
       publish(snapshot);
     },
     revoke(keepSaved = false) {
@@ -209,9 +260,8 @@ export function createClientFormStore(): ClientFormStore {
       submittedValues = null;
       transferred = keepSaved;
       if (keepSaved) return;
-      readEnvironment?.releaseSession?.();
-      readEnvironment = null;
       store.cancel();
+      readEnvironment = null;
       publish({ ...snapshot, dirty: false,
         mutation: snapshot.mutation?.status === 'uncertain' || snapshot.mutation?.status === 'auth' ? snapshot.mutation : null,
       });
@@ -252,6 +302,10 @@ export function createClientFormStore(): ClientFormStore {
     },
     attach(next, nextOwner) {
       if (next === null && owner !== nextOwner) return;
+      if (mode === 'background' && next !== null && form !== null && form !== next
+        && form.isConnected && owner !== nextOwner) {
+        throw new TypeError('Background form ids must be unique within a provider.');
+      }
       if (next !== null) owner = nextOwner;
       form = next;
       if (next === null) return;

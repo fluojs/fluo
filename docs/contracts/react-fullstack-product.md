@@ -14,7 +14,19 @@ The framework is responsible for preserving the stated navigation/history/failur
 
 ## Journey acceptance map
 
-Classification describes the **current checkout**, not the target: **shipped** is evidenced behavior at its stated seam; **verification gap** needs the named real-surface proof; **assembly burden** needs framework-provided canonical wiring; **unsupported** needs new behavior; **intentional non-goal** is outside the contract. A row can have a shipped baseline and a different target classification. All rows must be exercised again by #3879; the owner column names the child that delivers or proves the missing outcome. In each row S/F/C are the success, failure and cancellation outcomes that the product gate must observe; cancellation means a user or request abort where applicable, not a rollback of a submitted POST.
+The table records the roadmap's earlier evidence baseline, not a retroactive cancellation of completed #3873/#3874/#3875 work. **Shipped** means evidenced behavior at its stated seam; **verification gap**, **assembly burden** and **unsupported** identify the target beyond that baseline. The background interaction section below records #3881's added scope. All rows still need #3879's complete product verification. S/F/C means success/failure/cancellation, never rollback of a dispatched POST.
+
+### Background interaction scope
+
+The existing `useForm` now has additive background GET/POST, independent stable-id
+state, latest-wins ownership, session revocation and coalesced fresh same-page HTTP
+approval. `/catalog/background` in the official example and packaged starter uses
+an actual song datasource, independent search/widget reads and queue row writes.
+Its source/types/dispatcher and deterministic listener/browser fixtures exercise
+reversed responses, two held writes, isolated failure, unmount and native GET/
+POST303GET. These fixtures are a scoped correctness surface, not #3879's complete
+CRUD/jukebox gate, #3886 soak, measured framework parity or a MusicKit claim.
+The [form owner](./react-progressive-forms.md) defines the exact shipped semantics.
 
 | User journey | Observable S / F / C target | Current evidence and classification | Owner and real verification surface |
 | --- | --- | --- | --- |

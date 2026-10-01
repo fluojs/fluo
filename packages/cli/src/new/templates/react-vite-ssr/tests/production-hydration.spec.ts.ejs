@@ -174,7 +174,8 @@ test('retains the approved page and metadata while an HTTP destination is pendin
 
     // When: the new page is still unapproved.
     // Then: the previous page and shell are usable and its page head is unchanged.
-    await expect(page.locator('[aria-live="polite"]')).toHaveText('Loading page');
+    // The navigation announcer is separate from independent form status outputs.
+    await expect(page.locator('[aria-live="polite"]:not([data-form-state])')).toHaveText('Loading page');
     await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
     await expect(page).toHaveTitle('Catalog item sku-42');
     await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);

@@ -1,7 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const screenshotId = Date.now();
-
 test('legacy plain children leave through a real unauthorized document after revocation', async ({ page }) => {
   await page.goto('/catalog/session');
   const origin = new URL(page.url()).origin;
@@ -224,7 +222,7 @@ test('revokes initial and soft protected pages, closes owned ports, and cancels 
   expect(failures).toEqual([]);
   console.log(JSON.stringify({ observation: 'session-held-http-revocation', resources, requests, staleProtectedContent: false }));
   expect(await page.locator('[aria-label="Session controls"]').count()).toBe(1);
-  await page.screenshot({ path: `../../.omo/verification/issue-3875/session-desktop-${screenshotId}.png` });
+  await page.screenshot({ path: test.info().outputPath('session-desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
   console.log(JSON.stringify({ observation: 'session-mobile-layout', metrics: await page.evaluate(() => ({
     width: window.innerWidth, scroll: document.documentElement.scrollWidth,
@@ -238,7 +236,7 @@ test('revokes initial and soft protected pages, closes owned ports, and cancels 
       })),
   })) }));
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: `../../.omo/verification/issue-3875/session-mobile-${screenshotId}.png` });
+  await page.screenshot({ path: test.info().outputPath('session-mobile.png') });
 });
 
 test('403 stays forbidden and a confirmed permissions save is separate from its rejected GET', async ({ page }) => {

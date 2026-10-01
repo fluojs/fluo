@@ -16,6 +16,28 @@
 
 ## 라우트는 React가 새로 발명하지 않는다
 
+### Native 선택 확인 뒤의 background companion
+
+아래 native GET 선택 확인은 그대로 실행한다. 나중에 여러 상품의 행 작업이나 검색이
+필요해져도 별도 route matcher/query cache를 만들지 말고 기존 `useForm`에 background를
+선택한다. 실제 실행 companion인 [Vite 예제](../../examples/react-vite-ssr/README.ko.md)의
+`/catalog/background`에서 검색 두 개와 queue 행을 동시에 조작해 본다. 이것은 이 장에
+장바구니 저장이나 결제를 추가하는 실습이 아니며 queue/persistence 규칙은 앱 소유다.
+
+```tsx
+const search = useForm<{ q: string }>({
+  id: 'song-search', action: '/catalog/background/search',
+  mode: 'background', method: 'get', fields: { q: 'q' },
+  allowDestination: () => false,
+});
+```
+
+기존 provider의 component에서 호출하고 `formProps`를 native form에 spread한다.
+GET/POST acknowledgement는 URL/history를 바꾸지 않고 확인된 write의 current-page
+read만 HTTP로 새로 승인한다. 취소된 POST를 자동 재전송하거나 저장 실패로 추측하지
+않는다. `tests/background-interactions.spec.ts`는 실제 listener의 started/release/cleaned
+barrier로 검증하며 [form 계약](../../docs/contracts/react-progressive-forms.ko.md)이 소유권과 native fallback을 정의한다.
+
 `@fluojs/react`의 `@Router`와 `@Path`는 기존 Fluo HTTP 메타데이터 위에 페이지 의도를 표현한다. 파일 이름을 보고 라우트를 자동 생성하는 방식이 아니다. `/products`를 소유할 클래스와 그 클래스가 있는 모듈을 명시적으로 등록해야 한다. 기존 middleware·guard·요청 범위와 충돌 검사도 HTTP 런타임 경로를 따른다.
 
 이번 장에서 `/products`는 HTML 목록이고 `/products/:slug`는 HTML 상세다. 같은 method와 path에 별도 JSON 컨트롤러를 동시에 등록하지 않는다. 1~3장의 공개 목록은 서비스 계약이었고 아직 HTTP JSON 라우트가 아니므로 이 선택과 충돌하지 않는다. 독자가 이미 다른 표현을 등록했다면 그 경로의 소유자를 먼저 정리해야 한다. `Accept` 헤더가 다르다는 이유만으로 중복된 GET 선언 두 개가 자동 분리된다고 가정하지 않는다.

@@ -29,6 +29,13 @@ Interactive runs may check the public npm `latest` dist-tag and offer to update 
 
 ## Create a project
 
+The `react-vite-ssr` starter includes `/catalog/background` with the same `useForm`
+background GET search/widget and queue-row POST path in `dev` and production
+`build`/`start`. Keep app-owned datasource, queue rules, native forms and
+auth/CSRF policy. Its deterministic `tests/background-interactions.spec.ts`
+uses real listener barriers only in the explicit `FLUO_REACT_FORM_TEST_SERVER=1`
+test entry; normal startup adds no fault routes.
+
 The shortest path is:
 
 ```bash

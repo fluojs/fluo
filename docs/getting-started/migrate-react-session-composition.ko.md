@@ -63,6 +63,13 @@ function/hook/accessor/undefined member/sparse array/cycle을 조용히 정규�
 
 ## App-owned resources
 
+Background GET/POST도 동일한 internal provider session lease를 사용합니다. Navigation만으로
+live owner를 취소하지 않고 logout/rebind는 policy 전에 이전 result/input을 제거합니다.
+Generated contract는 선택적 `decodeRead`로 일반 read를 검증할 수 있습니다.
+Manual/opaque background redirect는 작업별로 실패하며 configured validated document
+결정과 legacy 401/403 document exit만 명시적 auth-policy 예외입니다. Cookie에서 새 epoch를
+추측하거나 uncertain POST를 재전송하지 마세요.
+
 보호 player/channel/listener는 앱의 기존 session-aware React subtree와 effect cleanup
 안에 배치합니다. Runtime에는 public teardown registry가 없습니다. Store settlement는
 paint나 SDK disposal receipt가 아니므로 실제 연결 operation과 cleanup을 검증하세요.

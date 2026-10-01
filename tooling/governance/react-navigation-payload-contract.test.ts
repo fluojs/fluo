@@ -12,6 +12,8 @@ const transferPath = 'packages/react/src/navigation-payload.ts';
 const metadataPath = 'packages/react/src/page-metadata.ts';
 const storePath = 'packages/react/src/client/store.ts';
 const formStorePath = 'packages/react/src/client/form-store.ts';
+const formPath = 'packages/react/src/client/form.ts';
+const formTransportPath = 'packages/react/src/client/form-transport.ts';
 const experiencePath = 'packages/react/src/client/experience.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
@@ -23,6 +25,8 @@ const sources = new Map([
   [metadataPath, readFileSync(resolve(repoRoot, metadataPath), 'utf8')],
   [storePath, readFileSync(resolve(repoRoot, storePath), 'utf8')],
   [formStorePath, readFileSync(resolve(repoRoot, formStorePath), 'utf8')],
+  [formPath, readFileSync(resolve(repoRoot, formPath), 'utf8')],
+  [formTransportPath, readFileSync(resolve(repoRoot, formTransportPath), 'utf8')],
   [experiencePath, readFileSync(resolve(repoRoot, experiencePath), 'utf8')],
   [historyPath, readFileSync(resolve(repoRoot, historyPath), 'utf8')],
   [providerPath, readFileSync(resolve(repoRoot, providerPath), 'utf8')],
@@ -31,6 +35,30 @@ const sources = new Map([
 
 it('accepts the current matching HTTP and browser navigation machine contract', () => {
   expect(() => enforceReactNavigationPayloadContract((path: string) => sources.get(path) ?? '')).not.toThrow();
+});
+
+it.each([
+  [storePath, 'expectedBackgroundRevision !== backgroundRevision', 'false'],
+  [storePath, 'expectedSession !== sessionGeneration', 'false'],
+  [storePath, "true, undefined, revision, origins);", "true, undefined, undefined, origins);"],
+  [storePath, "true, undefined, revision, origins);", "true, undefined, revision);"],
+  [storePath, 'sessionPolicyOrigins = new Set(savedOrigins);', 'sessionPolicyOrigins = new Set();'],
+  [storePath, '}, formOrigin, destination.href, backgroundOrigins);', '}, formOrigin, destination.href);'],
+  [storePath, 'pending?.backgroundOrigins === origins', 'false'],
+  [formPath, 'lease: navigation.sessionLease,', 'lease: undefined,'],
+  [formStorePath, 'lease === undefined || lease.current()', 'true'],
+  [formStorePath, "mode === 'background' ? 'refresh' : saved.followUp", 'saved.followUp'],
+  [formTransportPath, "reading ? 'application/json' : MEDIA_TYPE", 'MEDIA_TYPE'],
+  [formTransportPath, "cache: 'no-store'", "cache: 'force-cache'"],
+])('rejects a background session transport or freshness bypass in %s', (path, original, changed) => {
+  // Given: one isolated mutation breaks a machine-owned background invariant.
+  const source = sources.get(path);
+  const variant = source?.replaceAll(original, changed) ?? '';
+  expect(variant).not.toBe(source);
+  // When/Then: the companion rejects the bypass without weakening legacy guards.
+  expect(() => enforceReactNavigationPayloadContract((candidate: string) =>
+    candidate === path ? variant : sources.get(candidate) ?? '',
+  )).toThrow(/React background forms/u);
 });
 
 it.each([

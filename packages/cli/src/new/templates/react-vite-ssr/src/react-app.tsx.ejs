@@ -13,6 +13,7 @@ import {
 import type { ReactInitialNavigationPage } from '@fluojs/react';
 import { type ReactElement, createElement, isValidElement, useEffect, useRef, useState } from 'react';
 import { SessionControls, SessionResources } from './session-controls';
+import { BackgroundSearch } from './page-products';
 import { reactPageModules, reactPageRoutes } from './generated/react-pages';
 
 export const REACT_IDENTIFIER_PREFIX = 'fluo-react-vite-' as const;
@@ -111,7 +112,8 @@ function SharedNavigation(): ReactElement {
       <button onClick={() => setCount((value) => value + 1)} type='button'>Shell taps: {count}</button>
       <p aria-label='Current route'>{route.url} ({JSON.stringify(params)})</p>
       <SessionResources><LongLivedResource /></SessionResources>
-      {route.pathname.startsWith('/catalog/session') && <SessionControls />}
+      <SessionResources><BackgroundSearch id='song-widget' /></SessionResources>
+      {(route.pathname.startsWith('/catalog/session') || route.pathname.startsWith('/catalog/background')) && <SessionControls />}
       <p aria-label='Navigation status'>{navigation.status} ({navigation.type ?? 'none'})</p>
       {navigation.failure && (
         <div role='alert'>

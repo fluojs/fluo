@@ -47,9 +47,9 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 | **Layout** | 애플리케이션 `ReactPageRenderer`가 document shell과 shared provider를 소유합니다. `@PageLayout(...)`은 같은 renderer가 compose하는 optional class/method component-reference metadata를 추가합니다. | **Shipped.** File ancestry나 framework-owned layout router는 없습니다. |
 | **Loading UI** | Application tree의 일반 React `Suspense`를 사용하고, 필요하면 `@SuspenseFallback(...)`으로 page fallback을 선택합니다. | **Shipped with a narrow boundary.** Fallback은 SSR 중 suspend하는 descendant를 다루며 handler `await`, form, effect, navigation은 관찰하지 않습니다. |
 | **Data read / loader** | HTTP DTO binding과 validation 이후 `@Path(...)` handler에서 명시적인 application provider를 통해 data를 읽고 React element에 전달합니다. `router.refresh()`는 현재 page의 HTTP 승인을 다시 받습니다. | **Shipped, intentionally different.** 별도 loader runtime이나 loader cache는 없으며 mutation 뒤 refresh는 명시적으로 호출해야 합니다. |
-| **Mutation / action** | Native form을 일반 `@Post(...)` handler로 제출하고, `@RequestDto(...)`로 bind/validate하며, 일반 guard/interceptor를 적용하고, application state를 변경한 뒤 필요하면 `303 See Other`로 redirect합니다. Auth/data mutation 후 같은 문서에서 다시 이동하기 전에 `router.invalidate()`를 호출하거나 `prefetchScope`를 바꿉니다. | **Shipped, intentionally different.** Compiled action, fetcher, optimistic-state, 자동 cache revalidation은 없습니다. |
+| **Mutation / action** | Native HTTP form과 일반 DTO/guard/interceptor handler를 유지합니다. `useForm` 옵션 생략은 navigation POST/303/GET, `mode: 'background'`는 GET JSON 검색과 acknowledgement 이동 없는 독립 POST입니다. 확인된 background write는 fresh same-page HTTP approval을 공유합니다. 이 interaction 밖의 mutation 뒤에는 navigation 전에 public speculation을 invalidate하거나 `prefetchScope`를 바꿉니다. | **Shipped, intentionally different.** Canonical `useForm` 하나이며 별도 fetcher, compiled action, optimistic engine, query cache가 아닙니다. |
 | **Navigation** | 실제 `<a>` 또는 `@fluojs/react/client`의 `Link`와 `router.push(...)`, `router.replace(...)`, `router.back()`, `router.refresh()`를 사용합니다. Build-produced importer를 `ReactClientRouterProvider`에 전달하고 승인된 destination을 application-owned page slot에 렌더링합니다. Public speculation에는 `Link prefetch="hover"` 또는 `"viewport"`와 provider `prefetchScope`를 사용합니다. | **Shipped, intentionally different.** 호환 page는 server-confirmed URL/params로 history를 갱신하면서 soft navigation하고 나머지는 document navigation을 사용합니다. Client route matcher와 일반 document/data cache는 없습니다. Prefetch는 기본 off이고 명시적인 public grant가 있는 navigation JSON만 한 번 재사용합니다. |
-| **Pending state** | `ReactNavigationExperience`와 `useNavigation()`은 navigation lifecycle을, 같은 provider의 `useForm`은 독립적인 typed local pending/dirty, validation/auth/uncertain mutation, 별도 post-save read outcome을 제공합니다. | **Navigation과 progressive native HTTP form에 shipped.** compiled action router나 범용 loader/action pending model은 없습니다. |
+| **Pending state** | `ReactNavigationExperience`와 `useNavigation()`은 navigation lifecycle입니다. 같은 provider의 `useForm`은 id별 pending/dirty/read/error/mutation/follow-up을 소유하고 background는 독립 latest-wins 권한을 사용합니다. 실제 owner unmount와 session/provider 변경이 철회하며 unrelated navigation은 철회하지 않습니다. | **Navigation, native form, background 작업에 shipped.** Compiled action router나 범용 loader/action pending model은 없습니다. |
 | **Error UI** | 공식 조립은 승인된 destination render 오류를 page-local로 reset하고 외부 boundary가 throwing error view를 진단합니다. HTTP pipeline status/error는 HTTP에 남고 새 HTTP transport retry는 #3864가 소유합니다. | **Page rendering에 shipped.** Segment `error` file, shell/root 복구, React-owned HTTP error router는 없습니다. |
 | **Not found** | 명시적 route가 없으면 일반 `@fluojs/http` not-found response가 되고, application lookup이 실패하면 handler가 shipped HTTP not-found exception을 throw할 수 있습니다. | **Shipped, intentionally different.** React `notFound()` helper나 catch-all requirement는 없습니다. |
 | **Metadata / head** | `@PageMetadata(...)`는 matched-page title/meta/link를 공식 SSR과 soft page-owned head로 해석합니다. Status/header는 HTTP가 계속 소유합니다. | **Opt-in page 조립에 shipped.** File-segment merge는 없고 global CSS/icon/bootstrap은 application 소유입니다. |
@@ -172,10 +172,18 @@ Component, server action, router, loader, cache contract로 해석하지 마세�
 
 ## 지원하지 않는 개념
 
+독립 검색과 행 mutation은 별도 fetcher/provider가 아닌 기존 `useForm`의
+`mode: 'background'`로 제공합니다. GET은 일반 HTTP JSON을 읽고 POST는 기존 saved
+protocol과 합쳐진 fresh same-page HTTP approval을 사용합니다. Stable id마다
+pending/result와 latest-wins 취소를 소유합니다. navigation만으로 살아 있는 shell owner를
+취소하지 않으며 unmount/session/provider 변경은 철회합니다. 아래의 범용 loader/cache
+개념까지 제공하는 것은 아닙니다.
+[Form 계약](../contracts/react-progressive-forms.ko.md#background-http-interactions)을 보세요.
+
 현재 패키지는 다음을 제공하지 않습니다.
 
 - file routing, React-owned matcher, nested route tree, catch-all route grammar
-- route-module loader/action runtime, fetcher, automatic data revalidation
+- route-module loader/action runtime, 별도 fetcher API, 범용 query-cache revalidation
 - 임의 HTML document swapping, 일반 client document/data cache, 자동 navigation prefetch,
   optimistic mutation policy
 - automatic metadata merging 또는 segment-level `loading`, `error`, `not-found` convention

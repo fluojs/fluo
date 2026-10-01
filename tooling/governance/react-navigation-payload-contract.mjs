@@ -10,6 +10,8 @@ const transferPath = 'packages/react/src/navigation-payload.ts';
 const metadataPath = 'packages/react/src/page-metadata.ts';
 const storePath = 'packages/react/src/client/store.ts';
 const formStorePath = 'packages/react/src/client/form-store.ts';
+const formPath = 'packages/react/src/client/form.ts';
+const formTransportPath = 'packages/react/src/client/form-transport.ts';
 const experiencePath = 'packages/react/src/client/experience.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
@@ -49,6 +51,8 @@ export function enforceReactNavigationPayloadContract(
   const metadataSource = ts.createSourceFile(metadataPath, readText(metadataPath), ts.ScriptTarget.Latest, true);
   const store = ts.createSourceFile(storePath, readText(storePath), ts.ScriptTarget.Latest, true);
   const formStore = ts.createSourceFile(formStorePath, readText(formStorePath), ts.ScriptTarget.Latest, true);
+  const form = ts.createSourceFile(formPath, readText(formPath), ts.ScriptTarget.Latest, true);
+  const formTransport = ts.createSourceFile(formTransportPath, readText(formTransportPath), ts.ScriptTarget.Latest, true);
   const experience = ts.createSourceFile(experiencePath, readText(experiencePath), ts.ScriptTarget.Latest, true);
   const history = ts.createSourceFile(historyPath, readText(historyPath), ts.ScriptTarget.Latest, true);
   const provider = ts.createSourceFile(providerPath, readText(providerPath), ts.ScriptTarget.Latest, true);
@@ -499,5 +503,52 @@ export function enforceReactNavigationPayloadContract(
       && node.arguments[0]?.getText(dispatch) === "'X-Fluo-Navigation-Prefetch'"
       && node.arguments[1]?.getText(dispatch) === "'public'")) {
     throw new Error('React navigation prefetch grant requires final HTTP identity and header eligibility.');
+  }
+  const backgroundRead = findNode(store, (node) =>
+    ts.isMethodDeclaration(node) && node.name.getText(store) === 'approveBackground');
+  const backgroundLoad = backgroundRead && findNode(backgroundRead, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'loadAndCommit');
+  const backgroundInvalidation = findNode(store, (node) =>
+    ts.isMethodDeclaration(node) && node.name.getText(store) === 'invalidateBackground');
+  const formSubmit = findNode(form, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(form) === 'form.submit');
+  const leaseOption = formSubmit && property(formSubmit.arguments[1], 'lease');
+  const transportFetch = findNode(formTransport, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(formTransport) === 'fetch');
+  const transportOptions = transportFetch?.arguments[1];
+  const currentFormAuthority = findNode(formStore, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(formStore) === 'current');
+  const sharedAuth = findNode(store, (node) => ts.isCallExpression(node)
+    && node.expression.getText(store) === 'applySession' && node.arguments[3]?.getText(store) === 'backgroundOrigins');
+  const sharedPolicyOwners = findNode(store, (node) => ts.isBinaryExpression(node)
+    && node.left.getText(store) === 'sessionPolicyOrigins' && node.right.getText(store) === 'new Set(savedOrigins)');
+  if (!backgroundRead || !backgroundLoad
+    || backgroundLoad.arguments[1]?.getText(store) !== 'new URL(browser.currentHref())'
+    || backgroundLoad.arguments[2]?.getText(store) !== "'refresh'"
+    || backgroundLoad.arguments[4]?.kind !== ts.SyntaxKind.TrueKeyword
+    || backgroundLoad.arguments[6]?.getText(store) !== 'revision'
+    || backgroundLoad.arguments[7]?.getText(store) !== 'origins'
+    || !sharedAuth || !sharedPolicyOwners
+    || !findNode(store, (node) => ts.isBinaryExpression(node)
+      && node.getText(store) === 'pending?.backgroundOrigins === origins')
+    || !findNode(store, (node) => ts.isBinaryExpression(node)
+      && node.getText(store) === 'expectedBackgroundRevision !== backgroundRevision')
+    || !findNode(backgroundRead, (node) => ts.isBinaryExpression(node)
+      && node.getText(store) === 'expectedSession !== sessionGeneration')
+    || !findNode(backgroundRead, (node) => ts.isBinaryExpression(node)
+      && node.getText(store) === 'pending !== null')
+    || !backgroundInvalidation || findNode(backgroundInvalidation, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'router.invalidate')
+    || leaseOption?.getText(form) !== 'navigation.sessionLease'
+    || !currentFormAuthority || !findNode(currentFormAuthority, (node) => ts.isCallExpression(node)
+      && node.expression.getText(formStore) === 'lease.current')
+    || !findNode(formStore, (node) => ts.isConditionalExpression(node)
+      && node.getText(formStore) === "mode === 'background' ? 'refresh' : saved.followUp")
+    || !transportOptions || property(transportOptions, 'credentials')?.getText(formTransport) !== "'same-origin'"
+    || property(transportOptions, 'cache')?.getText(formTransport) !== "'no-store'"
+    || property(transportOptions, 'redirect')?.getText(formTransport) !== "'manual'"
+    || !findNode(formTransport, (node) => ts.isConditionalExpression(node)
+      && node.getText(formTransport) === "reading ? 'application/json' : MEDIA_TYPE")) {
+    throw new Error('React background forms must retain session-owned JSON reads and coalesced fresh current-page approval without navigation.');
   }
 }

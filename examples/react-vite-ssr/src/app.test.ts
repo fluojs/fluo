@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
+import type { CatalogObservation } from './catalog';
 import { AppModule as InspectionModule, createReactViteExampleModule } from './app';
 import { createReactViteExamplePresentation } from './presentation';
 
@@ -52,6 +53,43 @@ function readHtml(body: unknown): string {
 }
 
 describe('react-vite-ssr example', () => {
+  it('dispatches ordinary JSON search and guarded queue writes through actual DTO and request-scope cleanup', async () => {
+    // Given: the real app router and request-owned observation, without mocking HTTP policy.
+    const events: CatalogObservation[] = [];
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
+      catalogControl: (event) => { events.push(event); },
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      // When: an ordinary JSON GET and negotiated POST use the same actual datasource.
+      const read = await app.request('GET', '/catalog/background/search').query('q', 'Blue')
+        .header('accept', 'application/json').send();
+      const saved = await app.request('POST', '/catalog/background/queue/blue', {
+        cookies: { editor: 'yes', csrf: 'catalog-demo-token' },
+      })
+        .header('host', 'localhost:3000').header('origin', 'http://localhost:3000')
+        .header('Accept', 'application/vnd.fluo.form+json;v=1')
+        .body({ intent: 'add', csrf: 'catalog-demo-token' }).send();
+      const unauthorized = await app.request('POST', '/catalog/background/queue/green')
+        .header('Accept', 'application/vnd.fluo.form+json;v=1')
+        .body({ intent: 'add', csrf: 'catalog-demo-token' }).send();
+      // Then: only HTTP-confirmed success exposes acknowledgement; cleanup covers the matching scopes.
+      expect(read.status).toBe(200);
+      expect(read.body).toEqual({ rows: [{ sku: 'blue', name: 'Blue song' }], query: 'Blue' });
+      expect(saved.status).toBe(200);
+      expect(saved.body).toMatchObject({ version: 1, outcome: 'saved',
+        destination: '/catalog/background', data: { sku: 'blue', queued: true, revision: 1 } });
+      expect(unauthorized.status).toBe(401);
+      const dto = events.filter((event) => event.phase === 'dto');
+      expect(dto.map((event) => event.dto)).toEqual([true, true]);
+      for (const event of dto) {
+        expect(events.some((cleanup) => cleanup.phase === 'cleanup' && cleanup.scope === event.scope)).toBe(true);
+      }
+    });
+  });
   it('inspects the same HTTP composition without inventing production presentation', async () => {
     // Given: the runtime root has actual assets while the typegen root has none.
     const runtimeModule = createReactViteExampleModule({

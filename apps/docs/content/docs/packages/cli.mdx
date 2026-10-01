@@ -38,6 +38,14 @@ Do not use it to:
 
 ## Scaffolding with `fluo new`
 
+The React Vite SSR starter ships independent background search/widget reads and
+queue-row writes at `/catalog/background`, built on the existing `useForm` and
+HTTP handlers. Native GET and POST/303/GET remain usable without JavaScript;
+confirmed writes coalesce fresh current-page approval without acknowledgement
+navigation. The generated real-listener fixture runs in `dev` or production with
+the explicit `FLUO_REACT_FORM_TEST_SERVER=1` test entry. Existing apps should adopt
+the updated catalog/page files while retaining their provider and domain rules.
+
 ```bash
 fluo new my-app --package-manager pnpm
 cd my-app

@@ -21,9 +21,28 @@ export class FormControl {
   private release = gate<void>();
   private cleaned = gate<void>();
   private consumed = false;
+  private readonly background = new Map<string, {
+    readonly started: ReturnType<typeof gate<unknown>>;
+    readonly release: ReturnType<typeof gate<void>>;
+    readonly cleaned: ReturnType<typeof gate<void>>;
+    readonly phase: 'handler' | 'commit';
+    readonly fail: boolean;
+    scope?: string;
+  }>();
 
   readonly observe: CatalogControl = async (event, context) => {
     this.events.push(event);
+    for (const entry of this.background.values()) {
+      if (event.phase === 'cleanup' && entry.scope === event.scope) entry.cleaned.resolve();
+    }
+    const key = `${event.method}:${event.path}:${event.name ?? ''}`;
+    const held = this.background.get(key);
+    if (held !== undefined && held.scope === undefined && event.phase === held.phase) {
+      held.scope = event.scope;
+      held.started.resolve(event);
+      await held.release.promise;
+      if (held.fail) throw new InternalServerErrorException('Injected independent background failure.');
+    }
     if (event.phase === 'guard') {
       const body = context.request.body;
       this.bodies.push({
@@ -57,6 +76,33 @@ export class FormControl {
   };
 
   install(server: Server): void {
+    server.post('/__background/arm', async (request) => {
+      const body: unknown = request.body;
+      if (typeof body !== 'object' || body === null) throw new TypeError('Missing barrier');
+      const key: unknown = Reflect.get(body, 'key');
+      const phase: unknown = Reflect.get(body, 'phase');
+      if (typeof key !== 'string' || phase !== 'handler' && phase !== 'commit') throw new TypeError('Invalid barrier');
+      this.background.set(key, { started: gate<unknown>(), release: gate<void>(), cleaned: gate<void>(),
+        phase, fail: Reflect.get(body, 'fail') === true });
+      return { key };
+    });
+    server.get<{ Querystring: { key: string } }>('/__background/started', async (request) => {
+      const entry = this.background.get(request.query.key);
+      if (entry === undefined) throw new TypeError('Missing barrier');
+      return entry.started.promise;
+    });
+    server.get<{ Querystring: { key: string } }>('/__background/cleaned', async (request) => {
+      const entry = this.background.get(request.query.key);
+      if (entry === undefined) throw new TypeError('Missing barrier');
+      return entry.cleaned.promise;
+    });
+    server.post('/__background/release', async (request) => {
+      const body: unknown = request.body;
+      const keys: unknown = typeof body === 'object' && body !== null ? Reflect.get(body, 'keys') : undefined;
+      if (!Array.isArray(keys) || !keys.every((key: unknown) => typeof key === 'string')) throw new TypeError('Invalid release keys');
+      for (const key of keys) this.background.get(key)?.release.resolve();
+      return { released: keys };
+    });
     server.post('/__forms/arm', async (request) => {
       const body: unknown = request.body;
       const mode: unknown = typeof body === 'object' && body !== null ? Reflect.get(body, 'mode') : undefined;
