@@ -20,6 +20,37 @@ const payload = {
   destination: { module: './navigation-product.ts', props: { sku: 'sku-84' } },
 };
 
+it('does not dispatch credentialed destination GET before the current dirty decision proceeds', async () => {
+  const href = `${ORIGIN}/edit`;
+  vi.stubGlobal('window', { location: { href } });
+  const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    new Response(JSON.stringify(payload), { headers: { 'Content-Type': MEDIA_TYPE } }));
+  vi.stubGlobal('fetch', fetch);
+  const modules = { './navigation-product.ts': async () => ({ default: () => null }) };
+  const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/edit' }));
+  store.connect({
+    currentHref: () => href, assign: vi.fn(), replace: vi.fn(), reload: vi.fn(), back: vi.fn(),
+    pushState: vi.fn(), replaceState: vi.fn(), subscribe: () => () => {},
+    load: (destination, signal) => loadReactNavigationDestination(destination, modules, { signal }),
+  });
+  store.registerNavigationGuard(() => ({ when: true }));
+  store.router.push(payload.url);
+  store.getNavigationDecision()?.stay();
+  expect(fetch).not.toHaveBeenCalled();
+  const approved = new Promise<void>((resolve) => {
+    const unsubscribe = store.subscribe(() => {
+      if (store.getSnapshot().url !== payload.url) return;
+      unsubscribe(); resolve();
+    });
+  });
+  store.router.push(payload.url);
+  store.getNavigationDecision()?.proceed();
+  await approved;
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(fetch.mock.calls[0]?.[1]).toMatchObject({ credentials: 'same-origin', cache: 'no-store', redirect: 'manual' });
+  expect(store.getSnapshot().params).toEqual(payload.params);
+});
+
 const loadReactInitialNavigationDestination = (json: string, modules: ReactNavigationModules) =>
   loadInitial(json, modules, BUILD_ID);
 const loadReactNavigationDestination = (

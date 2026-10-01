@@ -1657,3 +1657,27 @@ This package currently does **not** provide:
 - `examples/react-vite-ssr/src/app.test.ts`
 - `examples/react-vite-ssr/src/hydration.test.ts`
 - `examples/react-vite-ssr/tests/production-hydration.spec.ts`
+
+## Navigation permission
+
+Combine dirty/pending and app work in one `useNavigationGuard({ when })` inside the existing provider. Protection is opt-in; only the current intent's `stay`/`proceed` controls have authority. Destination GET, prefetch adoption and form cancellation follow permission. Managed tagged history is recoverable; untagged/cross-document history is native. Session revocation takes priority.
+```tsx
+import { useForm, useNavigationGuard } from "@fluojs/react/client";
+
+function Editor() {
+  const form = useForm<{ name: string }>({
+    id: "editor", action: "/save", fields: { name: "name" },
+    allowDestination: (href) => new URL(href).pathname === "/edit",
+  });
+  const decision = useNavigationGuard({ when: form.state.dirty || form.state.pending });
+  return <>
+    <form {...form.formProps}><input name="name" /><button>Save</button></form>
+    {decision && <section role="dialog" aria-label="Unsaved navigation">
+      <button onClick={decision.stay}>Stay</button>
+      <button onClick={decision.proceed}>Proceed</button>
+    </section>}
+  </>;
+}
+```
+
+See the [permission/native/save ordering contract](../../docs/contracts/react-navigation-payload.md#navigation-permission) and [migration](../../docs/getting-started/migrate-react-navigation-guards.md).

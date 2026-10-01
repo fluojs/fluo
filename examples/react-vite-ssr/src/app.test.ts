@@ -53,6 +53,33 @@ function readHtml(body: unknown): string {
 }
 
 describe('react-vite-ssr example', () => {
+  it('approves the guard destination query through the real HTTP DTO and generated-props page', async () => {
+    // Given: the actual catalog router and a build manifest containing its destination.
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation({
+        ...VITE_MANIFEST,
+        'src/navigation-catalog.ts': {
+          file: 'navigation-catalog-hash.js', isDynamicEntry: true, src: 'src/navigation-catalog.ts',
+        },
+      }),
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      // When: permission's destination reaches the ordinary negotiated HTTP read.
+      const response = await app.request('GET', '/catalog/search').query('q', 'Seeded product')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
+      // Then: query materialization and page props belong to HTTP, not the guard.
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        version: 2, params: {},
+        destination: { module: './navigation-catalog.ts', props: {
+          products: [{ sku: 'sku-42', name: 'Seeded product' }], searchQuery: 'Seeded product',
+        } },
+      });
+    });
+  });
   it('dispatches ordinary JSON search and guarded queue writes through actual DTO and request-scope cleanup', async () => {
     // Given: the real app router and request-owned observation, without mocking HTTP policy.
     const events: CatalogObservation[] = [];

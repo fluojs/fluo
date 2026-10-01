@@ -37,7 +37,7 @@ export type ClientFormStore = {
 
 /** Existing provider approval operations plus an application destination constraint. */
 export type FormEnvironment = {
-  readonly lease?: () => { readonly signal: AbortSignal; readonly current: () => boolean; readonly release: () => void };
+  readonly lease?: () => { readonly signal: AbortSignal; readonly current: () => boolean; readonly navigationCurrent?: () => boolean; readonly release: () => void };
   readonly decodeRead?: (value: unknown) => unknown;
   readonly sessionChanged?: (change: ReactSessionChange) => Promise<boolean>;
   readonly authRejected?: (reason: 'unauthorized' | 'forbidden') => Promise<void>;
@@ -64,6 +64,7 @@ export function createClientFormStore(mode: 'navigation' | 'background' = 'navig
   let submittedValues: URLSearchParams | null = null;
   let readEnvironment: FormEnvironment | null = null;
   let releaseLease: (() => void) | undefined;
+  let navigationCurrent: (() => boolean) | undefined;
   let readingRequest = false;
   let revoking = false;
   let form: HTMLFormElement | null = null;
@@ -90,6 +91,11 @@ export function createClientFormStore(mode: 'navigation' | 'background' = 'navig
     });
     publish({ ...snapshot, followUp: { status: 'pending' } });
     if (expected !== generation || controller.signal.aborted) return;
+    if (mode === 'navigation' && saved.followUp === 'navigate' && navigationCurrent?.() === false) {
+      active = null;
+      publish({ ...snapshot, followUp: { status: 'cancelled' } });
+      return;
+    }
     let allowed = mode === 'background';
     try {
       if (mode !== 'background') allowed = await Promise.race([
@@ -105,6 +111,11 @@ export function createClientFormStore(mode: 'navigation' | 'background' = 'navig
       return;
     }
     if (expected !== generation) return;
+    if (mode === 'navigation' && saved.followUp === 'navigate' && navigationCurrent?.() === false) {
+      active = null;
+      publish({ ...snapshot, followUp: { status: 'cancelled' } });
+      return;
+    }
     if (!allowed) {
       active = null;
       publish({ ...snapshot, followUp: { status: 'rejected', reason: 'unsupported-destination' } });
@@ -149,6 +160,7 @@ export function createClientFormStore(mode: 'navigation' | 'background' = 'navig
       const expected = ++generation;
       const lease = environment.lease?.();
       if (lease !== undefined && !lease.current()) { lease.release(); return; }
+      navigationCurrent = lease?.navigationCurrent;
       submittedRevision = inputRevision;
       readingRequest = submission.method === 'get';
       submittedValues = new URLSearchParams(submission.body);
@@ -208,6 +220,10 @@ export function createClientFormStore(mode: 'navigation' | 'background' = 'navig
           environment.releaseSession?.();
           return;
         }
+        // Only an explicitly transferred saved session acquires fresh leave ownership.
+        const nextLease = environment.lease?.();
+        navigationCurrent = nextLease?.navigationCurrent;
+        nextLease?.release();
       } else if (mutation.status === 'auth' && environment.authRejected !== undefined) {
         await Promise.race([environment.authRejected(mutation.reason), cancellation.then(() => {})]);
       }
@@ -230,6 +246,10 @@ export function createClientFormStore(mode: 'navigation' | 'background' = 'navig
     },
     async retryRead() {
       if (snapshot.mutation?.status !== 'saved' || snapshot.followUp?.status === 'pending' || readEnvironment === null) return;
+      const lease = readEnvironment.lease?.();
+      if (lease !== undefined && !lease.current()) { lease.release(); return; }
+      navigationCurrent = lease?.navigationCurrent;
+      lease?.release();
       await read(snapshot.mutation, readEnvironment);
     },
     cancel() {

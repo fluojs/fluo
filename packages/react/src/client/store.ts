@@ -2,6 +2,7 @@ import { createElement, type ReactElement } from 'react';
 import { parseReactSessionChange, type ReactSessionChange } from '../form-result.js';
 import { ReactClientNavigationError } from './errors.js';
 import type { ClientFormStore } from './form-store.js';
+import type { ReactNavigationDecision, ReactNavigationGuardOptions, ReactNavigationIntent } from './navigation-guard.js';
 import { connectClientNavigationHistory } from './history.js';
 import type { ReactNavigationLoadResult } from './navigation-payload.js';
 import {
@@ -43,15 +44,17 @@ export type ClientNavigationEnvironment = {
 
 /** Internal observable store shared by the provider, hooks, and progressive `Link`. */
 export type ClientNavigationStore = {
+  readonly registerNavigationGuard: (options: () => ReactNavigationGuardOptions) => () => void;
+  readonly getNavigationDecision: () => ReactNavigationDecision | null;
   /** Internal shared session ownership seam for later independent interactions. */
-  readonly sessionLease: () => { readonly generation: number; readonly signal: AbortSignal; readonly current: () => boolean; readonly release: () => void };
+  readonly sessionLease: () => { readonly generation: number; readonly signal: AbortSignal; readonly current: () => boolean; readonly navigationCurrent: () => boolean; readonly release: () => void };
   readonly applyFormSession: (change: ReactSessionChange, origin: ClientFormStore) => Promise<boolean>;
   readonly rejectFormAuth: (reason: 'unauthorized' | 'forbidden', origin: ClientFormStore) => Promise<void>;
   readonly releaseFormSession: (origin: ClientFormStore) => void;
   readonly forms: Map<string, ClientFormStore>;
   readonly invalidateBackground: () => void;
   readonly approveBackground: (signal: AbortSignal, origin: ClientFormStore) => Promise<ReactRevalidationResult>;
-  readonly approveForm: (destination: string, followUp: 'refresh' | 'navigate', signal: AbortSignal, origin: ClientFormStore) => Promise<ReactRevalidationResult>;
+  readonly approveForm: (destination: string, followUp: 'refresh' | 'navigate', signal: AbortSignal, origin: ClientFormStore, permitted?: boolean) => Promise<ReactRevalidationResult>;
   readonly canHandleLink: (href: string | URL) => boolean;
   readonly prefetch: (href: string | URL, owner: object) => Promise<void>;
   readonly cancelPrefetch: (href: string | URL, owner: object) => void;
@@ -122,6 +125,13 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     adopted: boolean;
   }>();
   let generation = 0;
+  let guardOptions: (() => ReactNavigationGuardOptions) | null = null;
+  let navigationDecision: ReactNavigationDecision | null = null;
+  let decisionController: AbortController | null = null;
+  let decisionCancelled: (() => void) | undefined;
+  let permissionGeneration = 0;
+  let approvedTraversal: { readonly href: string; readonly index: number } | null = null;
+  let resumeAfterRestore: (() => void) | null = null;
   const listeners = new Set<() => void>();
   const forms = new Map<string, ClientFormStore>();
   const continuations = new Set<ClientFormStore>();
@@ -156,6 +166,84 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     for (const listener of listeners) {
       listener();
     }
+  };
+
+  const cancelDecision = (abort = true): AbortController | null => {
+    const old = decisionController;
+    const cancelled = decisionCancelled;
+    permissionGeneration++;
+    navigationDecision = null;
+    decisionController = null;
+    decisionCancelled = undefined;
+    resumeAfterRestore = null;
+    approvedTraversal = null;
+    cancelled?.();
+    if (abort) old?.abort();
+    return old;
+  };
+
+  const requestPermission = (intent: ReactNavigationIntent, resume: () => void, cancelled?: () => void): boolean => {
+    const options = guardOptions?.();
+    if (options === undefined || !options.when) {
+      cancelDecision();
+      return false;
+    }
+    if (navigationDecision?.intent.destination === intent.destination && navigationDecision.intent.type === intent.type) return true;
+    const oldDecision = cancelDecision(false);
+    const controller = new AbortController();
+    const expectedSession = sessionGeneration;
+    decisionController = controller;
+    decisionCancelled = cancelled;
+    const expectedPermission = permissionGeneration;
+    const current = (): boolean => decisionController === controller
+      && expectedSession === sessionGeneration && environment !== null && !barrierActive;
+    const settle = (approved: boolean): void => {
+      if (!current()) return;
+      navigationDecision = null;
+      decisionController = null;
+      decisionCancelled = undefined;
+      // Revoke the captured decision before synchronous abort callbacks can reenter.
+      controller.abort();
+      notify();
+      if (expectedSession !== sessionGeneration || expectedPermission !== permissionGeneration
+        || environment === null || barrierActive || decisionController !== null) {
+        cancelled?.();
+        return;
+      }
+      if (!approved) { cancelled?.(); return; }
+      if (restoringIndex !== null) resumeAfterRestore = resume;
+      else resume();
+    };
+    navigationDecision = Object.freeze({
+      intent: Object.freeze(intent), signal: controller.signal,
+      proceed: () => settle(true), stay: () => settle(false),
+    });
+    // Superseded reads lose authority, but pending POSTs keep their owners until leave.
+    const supersededRead = pending !== null && (pending.type !== 'refresh'
+      || pending.origin === undefined && pending.backgroundOrigins === undefined);
+    if (supersededRead) {
+      const browser = environment;
+      const activated = browser?.historyIndex?.();
+      const restoreTraversal = pending?.type === 'back' && restoringIndex === null
+        && browser !== null && browser.go !== undefined && activated !== undefined && activated !== null
+        && toSnapshotUrl(browser.currentHref()) !== snapshot.url;
+      if (restoreTraversal) restoringIndex = approvedIndex;
+      snapshot = createSnapshotWithNavigation(snapshot, IDLE_NAVIGATION);
+      cancelPending();
+      if (restoreTraversal) browser.go?.(approvedIndex - activated);
+    }
+    oldDecision?.abort();
+    notify();
+    if (options.confirm !== undefined && current()) {
+      const cancelledSignal = new Promise<boolean>((resolve) => {
+        controller.signal.addEventListener('abort', () => resolve(false), { once: true });
+      });
+      void Promise.race([
+        Promise.resolve().then(() => current() ? options.confirm?.(intent, controller.signal) ?? false : false),
+        cancelledSignal,
+      ]).then((approved) => settle(approved), () => settle(false));
+    }
+    return true;
   };
 
   const publish = (nextSnapshot: ReactRouteSnapshot): void => {
@@ -288,6 +376,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     // Close approval and detach every old owner before invoking abort listeners or subscribers.
     barrierActive = true;
     const expected = ++sessionGeneration;
+    const oldDecision = cancelDecision(false);
     generation++;
     const oldPending = pending;
     const oldSettle = settleRefresh;
@@ -328,6 +417,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
         status: context.reason === 'logout' || context.reason === 'unauthorized' ? 'signed-out' as const
           : context.reason === 'forbidden' ? 'forbidden' as const : 'pending' as const }),
     });
+    oldDecision?.abort();
     oldSettle?.({ status: 'cancelled' });
     oldPolicy?.abort();
     oldPending?.controller.abort();
@@ -548,13 +638,13 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
         ? new URL(browser.currentHref()).hash : destination.hash}`;
       if (type === 'push') {
         approvedIndex += 1;
-        if (browser.failurePolicy !== undefined && browser.historyIndex !== undefined) {
+        if ((browser.failurePolicy !== undefined || guardOptions !== null) && browser.historyIndex !== undefined) {
           browser.pushState?.(confirmedHref, approvedIndex);
         } else {
           browser.pushState?.(confirmedHref);
         }
       } else if (type === 'replace') {
-        if (browser.failurePolicy !== undefined && browser.historyIndex !== undefined) {
+        if ((browser.failurePolicy !== undefined || guardOptions !== null) && browser.historyIndex !== undefined) {
           browser.replaceState?.(confirmedHref, approvedIndex);
         } else {
           browser.replaceState?.(confirmedHref);
@@ -578,7 +668,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     })();
   };
 
-  const navigateDocument = (href: string | URL, type: DocumentNavigationType, fromPrefetch = false): void => {
+  const navigateDocument = (href: string | URL, type: DocumentNavigationType, fromPrefetch = false, permitted = false): void => {
     if (barrierActive) return;
     let destination: URL;
     try {
@@ -595,6 +685,15 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
 
     const destinationUrl = toSnapshotUrl(destination.href);
     const browser = requireEnvironment();
+    const activeUrl = new URL(snapshot.url, browser.currentHref());
+    const fragmentOnly = destination.pathname === activeUrl.pathname && destination.search === activeUrl.search;
+    const expectedPermission = permissionGeneration + 1;
+    const expectedSession = sessionGeneration;
+    if (!permitted && !fragmentOnly && requestPermission(
+      { destination: destinationUrl, type }, () => navigateDocument(destination, type, fromPrefetch, true),
+    )) return;
+    if (!permitted && !fragmentOnly && (permissionGeneration !== expectedPermission
+      || expectedSession !== sessionGeneration || barrierActive)) return;
     if (restoringIndex !== null) {
       if (deferredRefresh) {
         cancelPending();
@@ -604,7 +703,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
       deferredNavigation = { destination, type, fromPrefetch };
       return;
     }
-    if (browser.failurePolicy !== undefined && pending?.type === 'back'
+    if ((browser.failurePolicy !== undefined || guardOptions !== null) && pending?.type === 'back'
       && toSnapshotUrl(browser.currentHref()) !== snapshot.url) {
       const activated = browser.historyIndex?.();
       if (activated !== null && activated !== undefined && browser.go !== undefined) {
@@ -681,6 +780,10 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     back(): void {
       if (barrierActive) return;
       const browser = requireEnvironment();
+      if (guardOptions?.().when) {
+        browser.back();
+        return;
+      }
       cancelForms();
       cancelPending();
       deferredRefresh = false;
@@ -731,6 +834,8 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
     refresh(): Promise<ReactRevalidationResult> {
       if (barrierActive) return Promise.resolve({ status: 'cancelled' });
       const browser = requireEnvironment();
+      // Explicit data revalidation owns its existing page reset, not an old leave decision.
+      cancelDecision();
       cancelForms();
       const unapprovedTraversal = (pending?.type === 'back' || failed?.type === 'back'
         || restoringIndex !== null) && toSnapshotUrl(browser.currentHref()) !== snapshot.url;
@@ -775,20 +880,39 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
   });
 
   return {
+    getNavigationDecision: () => navigationDecision,
+    registerNavigationGuard(options) {
+      if (guardOptions !== null) throw new TypeError('Combine protected conditions in one navigation guard owner.');
+      guardOptions = options;
+      const browser = environment;
+      if (browser?.historyIndex?.() === null && restoringIndex === null) browser.replaceState?.(browser.currentHref(), approvedIndex);
+      return () => {
+        if (guardOptions !== options) return;
+        guardOptions = null;
+        if (decisionController !== null || resumeAfterRestore !== null || approvedTraversal !== null) {
+          cancelDecision();
+        }
+        notify();
+      };
+    },
     sessionLease() {
       const expected = sessionGeneration;
+      const expectedPermission = permissionGeneration;
       const controller = new AbortController();
       if (barrierActive) controller.abort();
       else sessionLeases.add(controller);
       return { generation: expected, signal: controller.signal,
         current: () => !controller.signal.aborted && expected === sessionGeneration,
+        navigationCurrent: () => expectedPermission === permissionGeneration,
         release: () => { sessionLeases.delete(controller); },
       };
     },
     async applyFormSession(change, origin) {
       const expectedSession = sessionGeneration + 1;
+      const expectedPermission = permissionGeneration + 1;
       const decision = await applySession({ ...change, destination: snapshot.pathname }, origin);
-      return decision === 'refresh' && expectedSession === sessionGeneration;
+      return decision === 'refresh' && expectedSession === sessionGeneration
+        && expectedPermission === permissionGeneration;
     },
     async rejectFormAuth(reason, origin) {
       const expectedSession = sessionGeneration + 1;
@@ -819,7 +943,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
       controller?.abort();
     },
     forms,
-    approveForm(href, followUp, signal, origin) {
+    approveForm(href, followUp, signal, origin, permitted = false) {
       if (signal.aborted || barrierActive) return Promise.resolve({ status: 'cancelled' });
       const browser = requireEnvironment();
       const destination = resolveDestination(href);
@@ -830,6 +954,25 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
         } });
       }
       if (followUp === 'navigate') {
+        // A late save cannot take over an already-owned user decision.
+        if (!permitted && navigationDecision !== null) return Promise.resolve({ status: 'cancelled' });
+        if (!permitted && guardOptions?.().when) {
+          let captured: ReactNavigationDecision | null = null;
+          const abort = (): void => {
+            if (navigationDecision !== captured) return;
+            cancelDecision();
+            notify();
+          };
+          const permission = new Promise<ReactRevalidationResult>((resolve) => {
+            requestPermission({ destination: toSnapshotUrl(destination.href), type: 'push' },
+              () => resolve(signal.aborted ? { status: 'cancelled' } : this.approveForm(href, followUp, signal, origin, true)),
+              () => resolve({ status: 'cancelled' }));
+            captured = navigationDecision;
+          });
+          signal.addEventListener('abort', abort, { once: true });
+          if (signal.aborted) abort();
+          return permission.finally(() => signal.removeEventListener('abort', abort));
+        }
         for (const other of forms.values()) {
           if (other !== origin && other.mode !== 'background') other.cancel();
         }
@@ -1026,19 +1169,43 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
       navigateDocument(href, 'push', true);
     },
     connect(nextEnvironment: ClientNavigationEnvironment): () => void {
+      cancelDecision();
       if (environment !== null) {
         releaseSessionLeases();
         cancelForms(true, true);
       }
       invalidate();
       environment = nextEnvironment;
-      if (nextEnvironment.failurePolicy !== undefined && nextEnvironment.historyIndex?.() === null) {
+      if ((nextEnvironment.failurePolicy !== undefined || guardOptions !== null) && nextEnvironment.historyIndex?.() === null) {
         nextEnvironment.replaceState?.(nextEnvironment.currentHref(), approvedIndex);
       }
       if (restoringIndex === null && toSnapshotUrl(nextEnvironment.currentHref()) === snapshot.url) {
         approvedIndex = nextEnvironment.historyIndex?.() ?? approvedIndex;
       }
       const unsubscribe = connectClientNavigationHistory(nextEnvironment, {
+        permission: (destination) => {
+          const index = nextEnvironment.historyIndex?.();
+          if (approvedTraversal?.href === destination.href && approvedTraversal.index === index) {
+            approvedTraversal = null;
+            return false;
+          }
+          if (!guardOptions?.().when) return false;
+          // Native/untagged entries have no trustworthy recovery delta.
+          if (index === undefined || index === null || nextEnvironment.go === undefined) {
+            cancelDecision();
+            nextEnvironment.replace(destination.href);
+            return true;
+          }
+          const targetIndex = index;
+          const restoreNeeded = index !== approvedIndex;
+          if (restoreNeeded) restoringIndex = approvedIndex;
+          requestPermission({ destination: toSnapshotUrl(destination.href), type: 'back' }, () => {
+            approvedTraversal = { href: destination.href, index: targetIndex };
+            nextEnvironment.go?.(targetIndex - approvedIndex);
+          });
+          if (restoreNeeded) nextEnvironment.go(approvedIndex - index);
+          return true;
+        },
         cancelPending: () => {
           cancelForms();
           cancelPending();
@@ -1052,6 +1219,12 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
           if (restoringIndex !== null && nextEnvironment.historyIndex?.() === restoringIndex
             && toSnapshotUrl(nextEnvironment.currentHref()) === snapshot.url) {
             restoringIndex = null;
+            const resume = resumeAfterRestore;
+            resumeAfterRestore = null;
+            if (resume !== null) {
+              resume();
+              return true;
+            }
             if (invalidatedTraversal) {
               invalidatedTraversal = false;
               publish(createSnapshotWithNavigation(snapshot, IDLE_NAVIGATION));
@@ -1094,6 +1267,7 @@ export function createClientNavigationStore(initialSnapshot: ReactRouteSnapshot,
       return () => {
         unsubscribe();
         if (environment === nextEnvironment) {
+          cancelDecision();
           releaseSessionLeases();
           cancelForms(true, true);
           invalidate();

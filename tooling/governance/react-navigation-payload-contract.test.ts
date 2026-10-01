@@ -17,6 +17,7 @@ const formTransportPath = 'packages/react/src/client/form-transport.ts';
 const experiencePath = 'packages/react/src/client/experience.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
+const guardPath = 'packages/react/src/client/navigation-guard.ts';
 const dispatchPath = 'packages/http/src/dispatch/dispatch-response-policy.ts';
 const sources = new Map([
   [clientPath, readFileSync(resolve(repoRoot, clientPath), 'utf8')],
@@ -30,6 +31,7 @@ const sources = new Map([
   [experiencePath, readFileSync(resolve(repoRoot, experiencePath), 'utf8')],
   [historyPath, readFileSync(resolve(repoRoot, historyPath), 'utf8')],
   [providerPath, readFileSync(resolve(repoRoot, providerPath), 'utf8')],
+  [guardPath, readFileSync(resolve(repoRoot, guardPath), 'utf8')],
   [dispatchPath, readFileSync(resolve(repoRoot, dispatchPath), 'utf8')],
 ]);
 
@@ -75,6 +77,23 @@ it.each([
   expect(() => enforceReactNavigationPayloadContract((candidate: string) =>
     candidate === path ? variant : sources.get(candidate) ?? '',
   )).toThrow(/React generated props/u);
+});
+
+it.each([
+  [storePath, 'requestPermission(\n      { destination: destinationUrl, type }', 'Boolean(\n      { destination: destinationUrl, type }'],
+  [historyPath, 'handlers.permission(activated)', 'false'],
+  [storePath, 'expectedSession === sessionGeneration', 'true'],
+  [storePath, 'activePrefetch.adopted = true', 'activePrefetch.adopted = false'],
+  [guardPath, 'store.registerNavigationGuard(() => current.current)', 'store.subscribe(() => {})'],
+  [storePath, 'navigationCurrent: () => expectedPermission === permissionGeneration', 'navigationCurrent: () => true'],
+  [formStorePath, 'navigationCurrent?.() === false', 'false'],
+])('rejects a severed navigation permission invariant in %s', (path, original, replacement) => {
+  const source = sources.get(path);
+  const variant = source?.replace(original, replacement) ?? '';
+  expect(variant).not.toBe(source);
+  expect(() => enforceReactNavigationPayloadContract((candidate) =>
+    candidate === path ? variant : sources.get(candidate) ?? '',
+  )).toThrow(/React navigation permission/u);
 });
 
 it.each([

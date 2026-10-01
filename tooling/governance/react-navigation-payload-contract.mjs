@@ -15,6 +15,7 @@ const formTransportPath = 'packages/react/src/client/form-transport.ts';
 const experiencePath = 'packages/react/src/client/experience.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
+const guardPath = 'packages/react/src/client/navigation-guard.ts';
 const dispatchPath = 'packages/http/src/dispatch/dispatch-response-policy.ts';
 const mediaType = 'application/vnd.fluo.react-navigation+json;v=2';
 
@@ -56,6 +57,7 @@ export function enforceReactNavigationPayloadContract(
   const experience = ts.createSourceFile(experiencePath, readText(experiencePath), ts.ScriptTarget.Latest, true);
   const history = ts.createSourceFile(historyPath, readText(historyPath), ts.ScriptTarget.Latest, true);
   const provider = ts.createSourceFile(providerPath, readText(providerPath), ts.ScriptTarget.Latest, true);
+  const guard = ts.createSourceFile(guardPath, readText(guardPath), ts.ScriptTarget.Latest, true);
   const dispatch = ts.createSourceFile(dispatchPath, readText(dispatchPath), ts.ScriptTarget.Latest, true);
   const clientMediaType = findNode(client, (node) =>
     ts.isVariableDeclaration(node) && node.name.getText(client) === 'MEDIA_TYPE');
@@ -331,6 +333,47 @@ export function enforceReactNavigationPayloadContract(
 
   const approvalGuard = findNode(store, (node) =>
     ts.isIfStatement(node) && node.expression.getText(store) === '!result.ok');
+  const navigation = findNode(store, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(store) === 'navigateDocument');
+  const permission = navigation && findNode(navigation, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'requestPermission');
+  const adoption = navigation && findNode(navigation, (node) =>
+    ts.isBinaryExpression(node) && node.getText(store) === 'activePrefetch.adopted = true');
+  const cancelFormsForNavigation = navigation && findNode(navigation, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'cancelForms');
+  const historyPermission = findNode(history, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(history) === 'handlers.permission');
+  const historyLoad = findNode(history, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(history) === 'handlers.loadAndCommit');
+  const permissionBoundary = findNode(store, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(store) === 'requestPermission');
+  const settleDecision = permissionBoundary && findNode(permissionBoundary, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(store) === 'settle');
+  const detachDecision = settleDecision && findNode(settleDecision, (node) =>
+    ts.isBinaryExpression(node) && node.getText(store) === 'decisionController = null');
+  const abortDecision = settleDecision && findNode(settleDecision, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'controller.abort');
+  const guardHook = findNode(guard, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'useNavigationGuard');
+  const continuationPermission = findNodes(formStore, (node) =>
+    ts.isBinaryExpression(node) && node.getText(formStore) === 'navigationCurrent?.() === false');
+  const capturedPermission = findNode(store, (node) =>
+    ts.isPropertyAssignment(node) && node.name.getText(store) === 'navigationCurrent'
+    && node.initializer.getText(store) === '() => expectedPermission === permissionGeneration');
+  if (!permission || !adoption || !cancelFormsForNavigation
+    || permission.end >= adoption.pos || permission.end >= cancelFormsForNavigation.pos
+    || !historyPermission || !historyLoad || historyPermission.end >= historyLoad.pos
+    || !detachDecision || !abortDecision || detachDecision.end >= abortDecision.pos
+    || !findNode(permissionBoundary, (node) =>
+      ts.isBinaryExpression(node) && node.getText(store) === 'expectedSession === sessionGeneration')
+    || !findNode(permissionBoundary, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'Promise.race')
+    || !guardHook || !findNode(guardHook, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(guard) === 'store.registerNavigationGuard')
+    || continuationPermission.length !== 2 || !capturedPermission
+    || !store.getFullText().includes('browser.failurePolicy !== undefined || guardOptions !== null')) {
+    throw new Error('React navigation permission must precede HTTP, prefetch adoption and form cancellation with owned bounded tagged-history decisions.');
+  }
   const requests = findNodes(store, (node) =>
     ts.isCallExpression(node) && node.expression.getText(store) === 'load');
   const historyWrites = findNodes(store, (node) =>

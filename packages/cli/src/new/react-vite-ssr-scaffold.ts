@@ -74,6 +74,7 @@ const REACT_VITE_SSR_TEMPLATES: readonly ReactViteSsrTemplate[] = [
   { outputPath: 'tests/production-hydration.spec.ts', templatePath: 'tests/production-hydration.spec.ts.ejs' },
   { outputPath: 'tests/session-transition.spec.ts', templatePath: 'tests/session-transition.spec.ts.ejs' },
   { outputPath: 'tests/background-interactions.spec.ts', templatePath: 'tests/background-interactions.spec.ts.ejs' },
+  { outputPath: 'tests/navigation-guard.spec.ts', templatePath: 'tests/navigation-guard.spec.ts.ejs' },
   { outputPath: 'tests/form-control.ts', templatePath: 'tests/form-control.ts.ejs' },
 ];
 

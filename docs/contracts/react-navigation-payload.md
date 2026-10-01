@@ -374,3 +374,54 @@ and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
 Busy activation is skipped; no POST is automatically retried or replayed.
 Automatic form refresh retains unrelated form input/errors/focus and the shell;
 existing explicit `useRouter().refresh()` still resets page state after approval.
+
+## Navigation permission
+
+Import `useNavigationGuard` from `@fluojs/react/client` inside the existing provider.
+One app decision owner combines `useForm` dirty/pending and app-owned work in
+`useNavigationGuard({ when })`. Clean or unregistered owners retain the synchronous
+existing path. The returned decision is null or `{ intent, signal, stay, proceed }`;
+render nonblocking controls using the captured callbacks. A new intent replaces the
+old token; late callbacks or asynchronous `confirm(intent, signal)` cannot act on
+a newer intent, unmounted owner or revoked session. Rejection means stay.
+
+Permission precedes ordinary destination GET, public prefetch adoption and
+navigation-owned form cancellation. Already independent public speculation is not
+permission. Stay preserves inputs, approved params/head/page and shell without
+failurePolicy, POST replay or automatic document fallback. Guard-only providers
+tag their initial and soft entries and reuse the existing approvedIndex/restoringIndex
+recovery for managed same-document back/forward. Untagged entries have no reliable
+recovery delta and take their ordinary document boundary; protection of every
+previous history entry is not promised. Fragment-only anchors retain native behavior.
+
+A pending POST keeps its owner while deciding or staying. Only approved leave
+cancels obsolete navigation-owned work; cancellation does not undo server persistence.
+Confirmed saved clears dirty only for an unchanged inputRevision. Observe saved
+and current dirty, then explicitly proceed on the current decision; uncertain,
+validation and old save completions never automatically resume navigation.
+A saved navigate continuation captures leave ownership at submission and rechecks
+it after asynchronous destination policy. A newer user intent invalidates that
+authority even if the user stays; saved remains confirmed and explicit GET-only
+`retryRead()` may acquire a new decision.
+`allowDestination` remains a post-save destination constraint, not dirty permission.
+Form refresh preserves unrelated inputs/errors/focus; navigate follow-up uses the
+same permission boundary and fresh GET. Cancelled/failed reads retain saved;
+`retryRead()` repeats GET only. Explicit `router.refresh()` is current-data
+revalidation with its existing intentional page-local reset, not a substitute
+for approved leave; use form follow-up refresh when drafts must survive.
+This explicit data-revalidation exception does not invoke the leave guard: it
+revokes an older leave decision and retains the documented page-local reset.
+Applications must not wire it as a protected leave or draft-preservation action.
+
+Explicit session changes and fresh credentialed GET/POST/follow-up 401/403 revoke
+old page/head/SSR fallback, inputs and decision authority before abort and app policy.
+The guard cannot delay logout or permission revocation. Configured/activated auth
+uses signed-out/forbidden defaults; legacy unconfigured auth uses the ordinary
+document after the same barrier. Auth refresh is fresh GET, never POST replay.
+
+Modified/new-tab/download/external/non-HTTP links, pre-hydration and JS-disabled
+forms keep native behavior, including GET/POST submitter overrides. Optional
+`beforeUnload: true` adds the separate browser-constrained synchronous exit prompt:
+no custom message, async save, tab-termination recovery or persisted draft is promised.
+Draft storage remains app-owned. HTTP matching/DTO validation/security and
+runtime-neutral root/browser subpath ownership stay unchanged.

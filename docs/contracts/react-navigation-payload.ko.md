@@ -364,3 +364,50 @@ request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET�
 `retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
 자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
 `useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.
+
+## Navigation permission
+
+기존 provider 안에서 `@fluojs/react/client`의 `useNavigationGuard`를 사용합니다.
+앱 결정 소유자 하나가 `useForm` dirty/pending과 앱 소유 작업을
+`useNavigationGuard({ when })`에 결합합니다. clean 또는 미등록이면 기존 동기
+경로를 유지합니다. 반환값은 null 또는 `{ intent, signal, stay, proceed }`이며
+캡처한 callback으로 비차단 결정 UI를 작성합니다. 새 intent가 이전 token을 대체하므로
+늦은 callback과 async `confirm(intent, signal)`은 최신 intent, unmount한 소유자나
+철회된 session에 실행 권한이 없습니다. Rejection은 stay입니다.
+
+승인은 목적지 ordinary GET, public prefetch adoption과 navigation 소유 form 취소보다
+먼저입니다. 독립 public speculation은 이동 승인이 아닙니다. Stay는 입력, 승인된
+params/head/page와 shell을 유지하며 failurePolicy, POST replay, 자동 document fallback이
+없습니다. Guard만 등록한 provider도 초기·soft entry에 tag를 설치하고 기존
+approvedIndex/restoringIndex 복원으로 관리되는 same-document back/forward를 보호합니다.
+Untagged entry의 복원 delta는 알 수 없으므로 ordinary document 경계로 넘기며 모든
+과거 history 보호를 보장하지 않습니다. Fragment-only anchor는 native 동작을 유지합니다.
+
+결정 대기와 stay는 pending POST 소유권을 취소하지 않습니다. 승인한 leave 뒤에만
+이전 navigation 소유 작업을 취소하며 서버 persistence rollback은 아닙니다.
+Confirmed saved는 제출 이후 inputRevision이 같을 때만 dirty를 해제합니다. Saved와
+현재 dirty를 확인한 뒤 현재 결정의 proceed를 명시적으로 실행하세요. Uncertain,
+validation과 오래된 save 완료는 자동 이동하지 않습니다. Saved navigate continuation은
+제출 시 leave 소유권을 캡처하고 async destination policy 뒤 다시 확인합니다. 최신 사용자
+intent는 stay로 끝나더라도 이전 권한을 철회합니다. Saved는 확정 상태를 유지하며 명시적
+GET-only `retryRead()`에서 새 결정을 요청할 수 있습니다. `allowDestination`은 저장 후
+목적지 제약이며 dirty 승인이 아닙니다. Form refresh는 다른 입력/error/focus를 보존하고
+navigate follow-up은 같은 결정 경계와 fresh GET을 거칩니다. Read 취소·실패도 saved를
+유지하며 `retryRead()`는 GET만 반복합니다. 명시적 `router.refresh()`는 기존 page-local
+reset을 하는 현재 데이터 재검증이며 leave 승인 대체물이 아닙니다. 초안을 보존하려면
+form follow-up refresh를 사용하세요.
+이 명시적 데이터 재검증 예외는 leave guard를 호출하지 않습니다. 이전 leave 결정을
+철회하고 문서화된 page-local reset을 유지하므로 보호된 leave나 초안 보존 동작 대신
+연결하지 마세요.
+
+명시적 session 변경과 fresh credentialed GET/POST/follow-up 401/403은 abort·앱 policy 전에
+이전 page/head/SSR fallback, 입력과 결정 권한부터 철회합니다. Guard는 logout이나
+permission revocation을 지연하지 못합니다. Configured/activated auth 기본값은
+signed-out/forbidden이며 미설정 legacy auth는 같은 barrier 뒤 ordinary document입니다.
+Auth refresh는 fresh GET만 실행하며 POST를 replay하지 않습니다.
+
+Modified/new-tab/download/external/non-HTTP link, pre-hydration, JS-disabled form과
+GET/POST submitter override는 native로 유지됩니다. 선택적 `beforeUnload: true`는
+브라우저 제약이 있는 별도 동기 document exit prompt입니다. Custom message, async 저장,
+실제 tab 종료 후 복구와 draft 영속 저장을 보장하지 않습니다. Draft 저장은 앱 소유이며
+HTTP matching/DTO validation/security와 runtime-neutral root/browser subpath 소유권을 유지합니다.

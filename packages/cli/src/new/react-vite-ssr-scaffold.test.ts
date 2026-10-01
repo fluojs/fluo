@@ -137,6 +137,7 @@ describe('React SSR + Vite scaffold', () => {
       'tests/background-interactions.spec.ts',
       'tests/deployment-transition.spec.ts',
       'tests/form-control.ts',
+      'tests/navigation-guard.spec.ts',
       'tests/production-hydration.spec.ts',
       'tests/session-transition.spec.ts',
       'tsconfig.json',
@@ -150,6 +151,9 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['src/app.ts']).toContain("module: './page-search.tsx'");
     expect(snapshot['src/app.ts']).toContain('await options.loadPage');
     expect(snapshot['src/page.tsx']).toContain('return (');
+    expect(snapshot['tests/navigation-guard.spec.ts']).toBe(readFileSync(
+      new URL('./templates/react-vite-ssr/tests/navigation-guard.spec.ts.ejs', import.meta.url), 'utf8',
+    ));
     expect(snapshot['src/main.ts']).toContain("process.env.FLUO_REACT_MANIFEST_URL ?? '../client/.vite/manifest.json'");
     expect(snapshot['src/main.ts']).toContain('navigationBuildId: selectedRenderer.buildId');
     expect(snapshot['src/main.ts']).toContain('createReactPageRenderer(manifest)');

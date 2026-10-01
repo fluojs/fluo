@@ -727,3 +727,9 @@ request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET�
 `retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
 자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
 `useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.
+
+## Navigation permission
+
+Dirty/pending 보호의 canonical 진입은 기존 provider의 `useNavigationGuard({ when })`입니다. 승인 전 GET/prefetch adoption/form 취소가 없고 현재 token만 stay/proceed합니다. Guard-only provider도 tagged history를 복원하지만 untagged/cross-document는 native 경계입니다. Session 철회가 decision UI보다 우선하며 draft 영속 저장을 하지 않습니다. Explicit refresh의 page-local reset과 form refresh 보존을 구별하세요.
+
+[Owning navigation 계약](./contracts/react-navigation-payload.ko.md#navigation-permission) → [React API owner](../packages/react/README.ko.md#navigation-permission) → [migration](./getting-started/migrate-react-navigation-guards.ko.md) → example 및 packaged starter의 guard browser 경로를 확인하세요.

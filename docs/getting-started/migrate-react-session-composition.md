@@ -79,3 +79,9 @@ actual owned connection operation and cleanup. The example/starter session fixtu
 uses real MessageChannel acknowledgements, two port closes and new-session recovery.
 Auth revocation takes priority over future dirty-confirm composition; this is not
 the future dirty-navigation guard.
+
+## Navigation permission
+
+Use one `useNavigationGuard({ when })` inside the existing provider for dirty/pending protection. Permission precedes destination GET, prefetch adoption and navigation form cancellation. Use only the current token's stay/proceed controls; a saved acknowledgement or old confirm does not automatically resume. Distinguish saved, dirty and failed follow-up; refresh is data revalidation, not leave approval. Session revocation removes page/head/inputs/authority before dirty decisions. Separate managed tagged history from untagged/native documents.
+
+See [guard migration](../getting-started/migrate-react-navigation-guards.md) and the [owning contract](../contracts/react-navigation-payload.md#navigation-permission).

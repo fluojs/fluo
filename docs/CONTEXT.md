@@ -731,3 +731,9 @@ and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
 Busy activation is skipped; no POST is automatically retried or replayed.
 Automatic form refresh retains unrelated form input/errors/focus and the shell;
 existing explicit `useRouter().refresh()` still resets page state after approval.
+
+## Navigation permission
+
+The canonical dirty/pending entry is `useNavigationGuard({ when })` in the existing provider. GET/prefetch adoption/form cancellation follow permission; only the current token can stay/proceed. Guard-only providers recover tagged history, while untagged/cross-document remains native. Session revocation supersedes decision UI; drafts are not persisted. Distinguish explicit refresh page-local reset from form-refresh preservation.
+
+Follow the [owning navigation contract](./contracts/react-navigation-payload.md#navigation-permission) → [React API owner](../packages/react/README.md#navigation-permission) → [migration](./getting-started/migrate-react-navigation-guards.md) → example and packaged-starter guard browsers.
