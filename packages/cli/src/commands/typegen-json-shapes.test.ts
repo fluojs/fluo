@@ -30,13 +30,13 @@ function project(name: string) {
 
 describe('compiler limited JSON shape contract', () => {
   it('keeps an identical project fingerprint stable when its installation root moves', async () => {
-    // Given: two project roots contain byte-identical source and compiler configuration.
+    // Given: roots at different depths contain identical source and configuration.
     const parent = await mkdtemp(`${tmpdir()}/fluo-typegen-root-`);
     try {
       const fingerprints: string[] = [];
-      for (const name of ['first', 'second']) {
+      for (const name of ['first', 'second', 'nested/third']) {
         const cwd = `${parent}/${name}`;
-        await mkdir(cwd);
+        await mkdir(cwd, { recursive: true });
         await writeFile(`${cwd}/app.ts`, 'import type { Local } from "@local"; export class AppModule { readonly name: Local = "same"; }\n');
         await writeFile(`${cwd}/local.ts`, 'export type Local = string;\n');
         await writeFile(`${cwd}/tsconfig.json`, JSON.stringify({
@@ -52,7 +52,7 @@ describe('compiler limited JSON shape contract', () => {
         }).fingerprint);
       }
       // Then: local absolute paths cannot make unchanged source stale after relocation.
-      expect(fingerprints[0]).toBe(fingerprints[1]);
+      expect(new Set(fingerprints).size).toBe(1);
     } finally {
       await rm(parent, { recursive: true, force: true });
     }

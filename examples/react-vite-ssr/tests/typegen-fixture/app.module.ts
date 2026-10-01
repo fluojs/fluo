@@ -37,6 +37,45 @@ class SaveInput {
   csrf = '';
 }
 
+class OptionalConvertedInput {
+  @FromPath('sku')
+  product = '';
+
+  @Optional()
+  @Convert({ convert(value: unknown) { return Number(value); } })
+  @IsNumber()
+  @FromQuery('count')
+  count?: HttpWire<number, string>;
+
+  @Optional()
+  @Convert({ convert(value: unknown) { return Number(value); } })
+  @IsNumber()
+  @FromBody('quantity')
+  quantity?: HttpWire<number, string>;
+}
+
+@Router('/optional')
+class OptionalConvertedRouter {
+  @RequestDto(OptionalConvertedInput)
+  @Path('/:sku')
+  show(input: OptionalConvertedInput) {
+    const props = { page: input.count ?? 1, product: input.product, tags: ['optional'], term: 'optional' };
+    return ReactNavigationPage.create(createElement(ProjectedPage, props), {
+      module: './typegen-projected-page.ts', props,
+    });
+  }
+
+  @Post('/:sku')
+  @RequestDto(OptionalConvertedInput)
+  save(input: OptionalConvertedInput) {
+    return ReactModule.formResult({
+      destination: `/optional/${input.product}`,
+      followUp: 'refresh',
+      data: { quantity: input.quantity ?? 9 },
+    });
+  }
+}
+
 function createRouter() {
   @Router('/search')
   class SearchRouter {
@@ -73,7 +112,7 @@ function createRouter() {
 export class AppModule {}
 
 defineModule(AppModule, { imports: [ReactModule.forRoot({
-  controllers: [createRouter()],
+  controllers: [createRouter(), OptionalConvertedRouter],
   navigationBuildId: 'typegen-fixture',
   renderPage: (page) => createReactServerEntry(page),
 })] });

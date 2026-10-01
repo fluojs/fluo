@@ -131,16 +131,20 @@ export function projectHttpQuery(snapshot: TypegenCompiler, projection: unknown,
     const wire = snapshot.exportSymbol('@fluojs/http', 'HttpWire', node);
     const canonicalMarker = wire === undefined ? undefined : checker.getPropertiesOfType(checker.getDeclaredTypeOfSymbol(wire))
       .find((member) => member.declarations?.some((candidate) => ts.isPropertySignature(candidate) && ts.isComputedPropertyName(candidate.name)));
-    const wireMarker = canonicalMarker === undefined ? undefined : checker.getPropertiesOfType(type).find((member) =>
-      member.declarations?.some((candidate) => canonicalMarker.declarations?.includes(candidate)));
-    const markerType = wireMarker === undefined ? undefined : checker.getTypeOfSymbolAtLocation(wireMarker, node);
-    const concreteType = markerType ?? type;
-    const candidates = concreteType.isUnion()
-      ? concreteType.types.filter((member) => !(member.flags & ts.TypeFlags.Undefined))
-      : [concreteType];
-    if (binding.converted && wireMarker === undefined) {
-      return fail(node, `Converted query ${binding.property} requires HttpWire<Server, Wire>; declare pre-conversion text explicitly.`);
-    }
+    const concreteTypes = type.isUnion()
+      ? type.types.filter((member) => !(member.flags & ts.TypeFlags.Undefined))
+      : [type];
+    const candidates = concreteTypes.flatMap((concreteType) => {
+      const wireMarker = canonicalMarker === undefined ? undefined : checker.getPropertiesOfType(concreteType).find((member) =>
+        member.declarations?.some((candidate) => canonicalMarker.declarations?.includes(candidate)));
+      if (binding.converted && wireMarker === undefined) {
+        return fail(node, `Converted query ${binding.property} requires HttpWire<Server, Wire>; declare pre-conversion text explicitly.`);
+      }
+      const wireType = wireMarker === undefined ? concreteType : checker.getTypeOfSymbolAtLocation(wireMarker, node);
+      return wireType.isUnion()
+        ? wireType.types.filter((member) => !(member.flags & ts.TypeFlags.Undefined))
+        : [wireType];
+    });
     const shapes = candidates.map((member) => projectJsonType({ snapshot, type: member, node }));
     const shape: ReactJsonShape = shapes.length === 1 ? shapes[0] : { kind: 'union', members: shapes };
     if (!isWireText(shape)) return fail(node, `Query ${binding.property} is not HTTP wire text; use HttpWire<Server, string> for converters.`);

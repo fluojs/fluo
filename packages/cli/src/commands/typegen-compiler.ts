@@ -28,15 +28,22 @@ export class TypegenCompiler {
     this.options = program.getCompilerOptions();
     this.configurationFiles = configurationFiles;
     this.sources = new Map(program.getSourceFiles().map((source) => [resolve(source.fileName), source]));
+    const sourceKey = (path: string): string => {
+      const normalized = path.replaceAll('\\', '/');
+      const dependency = normalized.lastIndexOf('/node_modules/');
+      return dependency < 0
+        ? relative(cwd, path).replaceAll('\\', '/')
+        : normalized.slice(dependency + 1);
+    };
     const hash = createHash('sha256').update(ts.version).update('\0').update(JSON.stringify(
       this.options,
-      (_key, value: unknown) => typeof value === 'string' && isAbsolute(value) ? relative(cwd, value) : value,
+      (_key, value: unknown) => typeof value === 'string' && isAbsolute(value) ? sourceKey(value) : value,
     ));
-    for (const [path, text] of [...configurationFiles].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
-      hash.update(relative(cwd, path)).update('\0').update(text).update('\0');
+    for (const [path, text] of [...configurationFiles].sort(([left], [right]) => sourceKey(left) < sourceKey(right) ? -1 : sourceKey(left) > sourceKey(right) ? 1 : 0)) {
+      hash.update(sourceKey(path)).update('\0').update(text).update('\0');
     }
-    for (const [path, source] of [...this.sources].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
-      if (path !== artifactPath) hash.update(relative(cwd, path)).update('\0').update(source.text).update('\0');
+    for (const [path, source] of [...this.sources].sort(([left], [right]) => sourceKey(left) < sourceKey(right) ? -1 : sourceKey(left) > sourceKey(right) ? 1 : 0)) {
+      if (path !== artifactPath) hash.update(sourceKey(path)).update('\0').update(source.text).update('\0');
       let ordinal = 0;
       let callOrdinal = 0;
       const visit = (node: ts.Node): void => {

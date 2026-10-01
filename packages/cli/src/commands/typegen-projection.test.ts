@@ -14,6 +14,59 @@ const modulePath = fileURLToPath(new URL('../fixtures/typegen-identity.ts', impo
 const tsconfigPath = fileURLToPath(new URL('../fixtures/tsconfig.json', import.meta.url));
 
 describe('frozen compiler object association', () => {
+  it('generates optional converted query and body wire inputs and preserves real omission', async () => {
+    // Given: HTTP supports optional HttpWire fields for both query and body.
+    const cwd = await mkdtemp(join(tmpdir(), 'fluo-optional-wire-'));
+    const application = fileURLToPath(new URL('../../../../examples/react-vite-ssr/tests/typegen-fixture/app.module.ts', import.meta.url));
+    const output = join(cwd, 'react-pages.ts');
+    const errors: string[] = [];
+    const options = { parentURL: import.meta.url, tsconfig: tsconfigPath };
+    try {
+      const [react, runtime, typegen, platform] = await Promise.all([
+        tsImport('@fluojs/react', options), tsImport('@fluojs/runtime', options),
+        tsImport('@fluojs/react/typegen', options), tsImport('@fluojs/platform-fastify', options),
+      ]);
+      const exit = await runTypegenCommand([application, '--output', output], {
+        cwd, loadReactTypegenModules: async () => ({ react, runtime, typegen }),
+        stderr: { write: (message) => { errors.push(message); } }, stdout: { write() {} },
+      });
+      expect({ exit, errors }).toEqual({ exit: 0, errors: [] });
+      const generated = await tsImport(pathToFileURL(output).href, import.meta.url);
+      const source = await tsImport(pathToFileURL(application).href, options);
+      const adapter = platform.FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
+      const app = await runtime.FluoFactory.create(source.AppModule, { adapter });
+      try {
+        await app.listen();
+        const origin = adapter.getListenTarget().url;
+        const page = generated.reactPageRoutes['GET /optional/:sku OptionalConvertedRouter show'];
+        const form = generated.reactFormRoutes['POST /optional/:sku OptionalConvertedRouter save'];
+        // When: generated omission and explicit wire text reach real HTTP binding/conversion.
+        for (const [query, expected] of [[{}, 1], [{ count: '2' }, 2]]) {
+          const response = await fetch(new URL(page.href({ sku: 'one' }, query), origin), {
+            headers: { accept: 'application/vnd.fluo.react-navigation+json;v=2' },
+          });
+          // Then: omission remains optional and supplied text becomes the server number.
+          expect(response.status).toBe(200);
+          expect(await response.json()).toMatchObject({ destination: { props: { page: expected } } });
+        }
+        for (const [body, expected] of [[{}, 9], [{ quantity: '3' }, 3]]) {
+          const response = await fetch(new URL(form.href({ sku: 'one' }), origin), {
+            method: 'POST',
+            headers: { accept: 'application/vnd.fluo.form+json;v=1', 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          expect(response.status).toBe(200);
+          expect(await response.json()).toMatchObject({ outcome: 'saved', data: { quantity: expected } });
+        }
+        expect(form.contract.fields.quantity).toBe('quantity');
+      } finally {
+        await app.close();
+      }
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('round-trips the generated form action through authoritative URI version dispatch', async () => {
     // Given: the HTTP compiler selects URI versioning for the existing form handler.
     const cwd = await mkdtemp(join(tmpdir(), 'fluo-uri-form-'));
