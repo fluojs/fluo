@@ -34,6 +34,11 @@ class CatalogWrite {
   @MinLength(3)
   name = '';
 }
+class CatalogNavigationSearch {
+  @FromQuery('q')
+  @IsString()
+  query = '';
+}
 class CatalogUpdate {
   @Optional()
   @FromBody('tag')
@@ -261,6 +266,13 @@ export function createCatalogRouter<Result>(
     @Path('/')
     list(_input: undefined, context: RequestContext) {
       return render({ products: Array.from(products, ([sku, name]) => ({ sku, name })) }, context);
+    }
+    @Path('/search')
+    @RequestDto(CatalogNavigationSearch)
+    search(input: CatalogNavigationSearch, context: RequestContext) {
+      return render({ products: Array.from(products, ([sku, name]) => ({ sku, name }))
+        .filter((product) => product.name.toLowerCase().includes(input.query.toLowerCase())),
+        searchQuery: input.query }, context);
     }
     @PageMetadata(({ request }) => ({
       title: `Catalog: ${products.get(request.params.sku ?? '') ?? 'Product'}`,

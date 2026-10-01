@@ -673,3 +673,9 @@ and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
 Busy activation is skipped; no POST is automatically retried or replayed.
 Automatic form refresh retains unrelated form input/errors/focus and the shell;
 existing explicit `useRouter().refresh()` still resets page state after approval.
+
+## Navigation permission
+
+Enable **Protect edits** on the catalog editor, then edit or submit the existing `useForm`. One `useNavigationGuard` decision offers **Stay here** or **Proceed with navigation**. Stay retains drafts without destination HTTP or form cancellation; after permission fresh HTTP approves the page. Cancelling a pending POST is not server rollback. Logout/401/403 revoke an open decision. JS-disabled/native submission remains unchanged.
+
+See [guard migration](../../docs/getting-started/migrate-react-navigation-guards.md) and the [owning contract](../../docs/contracts/react-navigation-payload.md#navigation-permission).

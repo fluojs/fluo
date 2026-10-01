@@ -324,3 +324,9 @@ request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET�
 barrier, Cookie/CSRF, 단절, manual redirect 및 GET-only recovery를 검증합니다.
 일반 production entry는 `src/main.ts`이고 `REACT_VITE_FORM_TEST_SERVER=1` 빌드는
 명시적인 fault-injection 전용 `tests/form-server.ts`를 선택합니다.
+
+## Navigation permission
+
+Catalog 편집 화면에서 **Protect edits**를 켠 뒤 기존 `useForm` 입력을 수정하거나 제출합니다. 하나의 `useNavigationGuard` 결정 UI에서 **Stay here** 또는 **Proceed with navigation**을 선택합니다. Stay는 목적지 HTTP와 form 취소 없이 초안을 보존합니다. 승인 후 fresh HTTP가 목적지를 확정합니다. Pending POST 취소는 서버 rollback이 아니며 logout/401/403은 열린 결정부터 철회합니다. JS-disabled/native submit은 그대로입니다.
+
+[Guard migration](../../docs/getting-started/migrate-react-navigation-guards.ko.md)과 [owning 계약](../../docs/contracts/react-navigation-payload.ko.md#navigation-permission)을 참고하세요.

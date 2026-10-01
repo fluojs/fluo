@@ -91,3 +91,9 @@ the protocol and ownership. [Navigation payload](../contracts/react-navigation-p
 continues to own v2 build identity/params/metadata. #3880 supplies this interaction's
 typed projection and #3882 consumes it for opt-in dirty/pending guards.
 Background work is the additive runtime option described above, not their prerequisite.
+
+## Navigation permission
+
+Use one `useNavigationGuard({ when })` inside the existing provider for dirty/pending protection. Permission precedes destination GET, prefetch adoption and navigation form cancellation. Use only the current token's stay/proceed controls; a saved acknowledgement or old confirm does not automatically resume. Distinguish saved, dirty and failed follow-up; refresh is data revalidation, not leave approval. Session revocation removes page/head/inputs/authority before dirty decisions. Separate managed tagged history from untagged/native documents.
+
+See [guard migration](../getting-started/migrate-react-navigation-guards.md) and the [owning contract](../contracts/react-navigation-payload.md#navigation-permission).

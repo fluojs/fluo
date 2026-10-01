@@ -631,3 +631,14 @@ initial/soft decoder를 연결하고 build importer allowlist를 유지한다. �
 기존 `--check`를 먼저 실행해야 하며 stale output을 자동 재생성해 숨기지 않는다.
 [타입 계약](../../docs/contracts/react-end-to-end-types.ko.md)이 지원 범위를 소유한다.
 이 조각은 native GET 실습에 덧붙인 선택지이지 실행 완료나 장바구니 저장의 근거가 아니다.
+
+## 편집 보호를 추가하는 경계
+
+이 장의 read-only storefront에는 mutation이나 guard를 기본으로 추가하지 않습니다.
+상품 선택을 저장해야 하는 편집 화면을 별도로 만들 때만 기존 provider의
+`useNavigationGuard({ when })` 하나로 dirty/pending과 앱 작업을 결합합니다. 승인 전
+목적지 HTTP와 navigation form 취소가 없으며 현재 intent의 stay/proceed만 권한을
+갖습니다. Session 철회와 native document 이탈 경계는 보호 UI보다 우선합니다.
+[1권 편집기 적용](../01-fluoblog/ch17-react-reading-and-writing.ko.md#hydration-뒤-미저장-입력-보호)과
+[owning navigation 계약](../../docs/contracts/react-navigation-payload.ko.md#navigation-permission)을
+참고하세요. 단순 둘러보기를 저장·승인 앱으로 바꾸는 요구가 아닙니다.

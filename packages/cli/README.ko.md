@@ -666,3 +666,9 @@ request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET�
 `retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
 자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
 `useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.
+
+## Navigation permission
+
+Catalog 편집 화면에서 **Protect edits**를 켠 뒤 기존 `useForm` 입력을 수정하거나 제출합니다. 하나의 `useNavigationGuard` 결정 UI에서 **Stay here** 또는 **Proceed with navigation**을 선택합니다. Stay는 목적지 HTTP와 form 취소 없이 초안을 보존합니다. 승인 후 fresh HTTP가 목적지를 확정합니다. Pending POST 취소는 서버 rollback이 아니며 logout/401/403은 열린 결정부터 철회합니다. JS-disabled/native submit은 그대로입니다.
+
+[Guard migration](../../docs/getting-started/migrate-react-navigation-guards.ko.md)과 [owning 계약](../../docs/contracts/react-navigation-payload.ko.md#navigation-permission)을 참고하세요.

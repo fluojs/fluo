@@ -841,3 +841,23 @@ Follow the [type contract](../../docs/contracts/react-end-to-end-types.md) and
 [migration](../../docs/getting-started/migrate-react-typegen.md) to put `--check`
 before ordinary typecheck/build. This extension also requires DB/browser exercise;
 manuscript checks alone do not make it an executed example.
+
+## Protect unsaved input after hydration
+
+Keep the native writer form and server version-conflict checks above. Only when
+adding a hydrated editor, pass the existing `useForm` dirty/pending to one
+`useNavigationGuard({ when })` inside the existing provider and render the current
+decision's stay/proceed buttons. Waiting and staying issue no destination GET and
+do not cancel pending POST. Observe saved first, reevaluate current dirty, and
+explicitly proceed on the current intent. Edits during submission remain dirty;
+validation/uncertain are not saved. Cancellation after approved leave is not
+server rollback. Form refresh retains unrelated drafts; failed/cancelled navigate
+follow-up retains saved and retries GET only.
+
+Logout/401/403 revoke protected content/head/input and decision authority before
+an open dirty decision. Only managed tagged same-document history is recoverable;
+native new tabs, JS-disabled forms and untagged/cross-document exits are separate
+boundaries. beforeunload does not guarantee async save or tab-termination recovery.
+Follow the [owning contract](../../docs/contracts/react-navigation-payload.md#navigation-permission)
+and [migration](../../docs/getting-started/migrate-react-navigation-guards.md), then
+run the [example](../../examples/react-vite-ssr/README.md#navigation-permission).

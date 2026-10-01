@@ -1,15 +1,15 @@
-import { createElement, Fragment } from 'react';
-import { Link, useForm, type ReactFormBinding } from '@fluojs/react/client';
+import { createElement, Fragment, useCallback, useEffect, useState } from 'react';
+import { Link, useForm, useNavigationGuard, type ReactFormBinding } from '@fluojs/react/client';
 import { reactFormRoutes, reactPageRoutes } from './generated/react-pages';
 
 export type CatalogPageProps = {
   readonly products: readonly { readonly sku: string; readonly name: string }[];
   readonly selected?: string;
+  readonly searchQuery?: string;
   readonly sessionDemo?: boolean;
   readonly sessionIdentity?: string;
   readonly backgroundDemo?: boolean;
   readonly queued?: readonly string[];
-  readonly searchQuery?: string;
   readonly revision?: number;
 };
 
@@ -62,11 +62,16 @@ function allowCatalogDestination(destination: string): boolean {
   return url.origin === window.location.origin && (url.pathname === '/catalog' || /^\/catalog\/[a-zA-Z0-9-]+$/u.test(url.pathname));
 }
 
-function FormStatus({ id, form }: {
+function FormStatus({ id, form, onProtection }: {
   readonly id: string;
   readonly form: Pick<ReactFormBinding<object>, 'state' | 'cancel' | 'retryRead'>;
+  readonly onProtection?: (id: string, protectedWork: boolean) => void;
 }) {
   const mutation = form.state.mutation;
+  useEffect(() => {
+    onProtection?.(id, form.state.dirty || form.state.pending);
+  }, [id, onProtection, form.state.dirty, form.state.pending]);
+  useEffect(() => () => onProtection?.(id, false), [id, onProtection]);
   return createElement(Fragment, null,
     createElement('output', { 'data-form-state': id, 'aria-live': 'polite' },
       form.state.pending ? 'pending'
@@ -85,8 +90,9 @@ function FormStatus({ id, form }: {
   );
 }
 
-export function CatalogForm({ id, sku, name = '', label }: {
+export function CatalogForm({ id, sku, name = '', label, onProtection }: {
   readonly id: string; readonly sku?: string; readonly name?: string; readonly label: string;
+  readonly onProtection?: (id: string, protectedWork: boolean) => void;
 }) {
   const form = useForm({
     id, action: sku === undefined ? createRoute.href() : updateRoute.href({ sku }),
@@ -99,12 +105,13 @@ export function CatalogForm({ id, sku, name = '', label }: {
     createElement('input', { ...form.fieldProps('name'), defaultValue: name, required: true, minLength: 3 }),
     createElement('p', { id: `${id}-name-errors` }, form.fieldErrors('name').join(' ')),
     createElement('button', { ...form.fieldProps('intent'), type: 'submit', value: 'save' }, label),
-    createElement(FormStatus, { id, form }),
+    createElement(FormStatus, { id, form, ...(onProtection === undefined ? {} : { onProtection }) }),
   );
 }
 
-function DeleteCatalogForm({ id, sku, label }: {
+function DeleteCatalogForm({ id, sku, label, onProtection }: {
   readonly id: string; readonly sku: string; readonly label: string;
+  readonly onProtection?: (id: string, protectedWork: boolean) => void;
 }) {
   const form = useForm({
     id, action: deleteRoute.href({ sku }), contract: deleteRoute.contract,
@@ -113,19 +120,38 @@ function DeleteCatalogForm({ id, sku, label }: {
   return createElement('form', { ...form.formProps, 'aria-label': label, 'data-enhanced': String(form.connected) },
     createElement('input', { ...form.fieldProps('csrf'), type: 'hidden', value: 'catalog-demo-token' }),
     createElement('button', { ...form.fieldProps('intent'), type: 'submit', value: 'delete' }, label),
-    createElement(FormStatus, { id, form }),
+    createElement(FormStatus, { id, form, ...(onProtection === undefined ? {} : { onProtection }) }),
   );
 }
 
 export default function CatalogPage({
-  products, selected, sessionDemo, sessionIdentity, backgroundDemo, queued = [], searchQuery = '', revision,
+  products, selected, sessionDemo, sessionIdentity, backgroundDemo, queued = [], searchQuery, revision,
 }: CatalogPageProps) {
+  const [protect, setProtect] = useState(false);
+  const [draftDirty, setDraftDirty] = useState(false);
+  const [work, setWork] = useState<Readonly<Record<string, boolean>>>({});
+  const onProtection = useCallback((id: string, active: boolean) => {
+    setWork((current) => current[id] === active ? current : { ...current, [id]: active });
+  }, []);
+  const decision = useNavigationGuard({ when: protect && (draftDirty || Object.values(work).some(Boolean)), beforeUnload: true });
+  const controls = createElement('aside', {
+    'aria-label': 'Navigation protection',
+    'data-protected': String(protect && (draftDirty || Object.values(work).some(Boolean))),
+  },
+    createElement('label', null,
+      createElement('input', { type: 'checkbox', checked: protect, onChange: () => setProtect((current) => !current) }),
+      'Protect edits'),
+    decision === null ? null : createElement('section', { role: 'dialog', 'aria-label': 'Unsaved navigation' },
+      createElement('p', null, `Leave for ${decision.intent.destination}? Pending writes may still persist.`),
+      createElement('button', { type: 'button', onClick: decision.stay }, 'Stay here'),
+      createElement('button', { type: 'button', onClick: decision.proceed }, 'Proceed with navigation')),
+  );
   if (backgroundDemo === true) {
     return createElement('section', { 'aria-label': 'Background jukebox', 'data-revision': revision },
       createElement('h1', null, 'Background catalog and jukebox'),
       createElement('a', { href: '/catalog/login' }, 'Sign in as demo editor'),
       createElement(Link, reactPageRoutes['GET /catalog CatalogRouter list'].link(), 'Product list'),
-      createElement(BackgroundSearch, { id: 'song-search', query: searchQuery }),
+      createElement(BackgroundSearch, { id: 'song-search', ...(searchQuery === undefined ? {} : { query: searchQuery }) }),
       ...products.map((song) => createElement('article', { key: song.sku, 'data-song': song.sku },
         createElement('p', null, song.name),
         createElement('output', { 'data-queued': song.sku }, String(queued.includes(song.sku))),
@@ -135,29 +161,33 @@ export default function CatalogPage({
   }
   if (sessionDemo === true) {
     return createElement('section', { 'aria-label': 'Session page' },
+      controls,
       createElement('h1', null, typeof sessionIdentity === 'string' ? `Session ${sessionIdentity}` : 'Session sign in'),
       ...products.map((product) => createElement('p', { key: product.sku, 'data-product': product.sku }, product.name)),
       typeof sessionIdentity === 'string'
-        ? createElement('input', { 'aria-label': 'Protected draft', defaultValue: `Private draft ${sessionIdentity}` }) : null,
+        ? createElement('input', { 'aria-label': 'Protected draft', defaultValue: `Private draft ${sessionIdentity}`,
+          onInput: () => setDraftDirty(true) }) : null,
     );
   }
   return createElement('section', { 'aria-label': 'Catalog CRUD' },
-    createElement('h1', null, selected === undefined ? 'Catalog' : `Product ${selected}`),
+    controls,
+    createElement('h1', null, searchQuery !== undefined ? `Catalog search: ${searchQuery}` : selected === undefined ? 'Catalog' : `Product ${selected}`),
     createElement('a', { href: '/catalog/login' }, 'Sign in as demo editor'),
     createElement(Link, reactPageRoutes['GET /catalog CatalogRouter list'].link(), 'Product list'),
+    createElement(Link, { href: '/catalog/search?q=draft' }, 'Search catalog'),
     ...products.map((product) => createElement('article', { key: product.sku },
       createElement('p', { 'data-product': product.sku }, product.name),
       createElement(Link, {
         ...reactPageRoutes['GET /catalog/:sku CatalogRouter detail'].link({ sku: product.sku }), prefetch: 'hover',
       }, `Read ${product.sku}`),
       selected === undefined ? null : createElement(CatalogForm, {
-        id: `edit-${product.sku}`, sku: product.sku, name: product.name, label: 'Save product',
+        id: `edit-${product.sku}`, sku: product.sku, name: product.name, label: 'Save product', onProtection,
       }),
       selected === undefined ? null : createElement(DeleteCatalogForm, {
-        id: `delete-${product.sku}`, sku: product.sku, label: 'Delete product',
+        id: `delete-${product.sku}`, sku: product.sku, label: 'Delete product', onProtection,
       }),
     )),
-    createElement(CatalogForm, { id: 'create-product', label: 'Create product' }),
-    createElement(CatalogForm, { id: 'independent-product', label: 'Independent product' }),
+    createElement(CatalogForm, { id: 'create-product', label: 'Create product', onProtection }),
+    createElement(CatalogForm, { id: 'independent-product', label: 'Independent product', onProtection }),
   );
 }

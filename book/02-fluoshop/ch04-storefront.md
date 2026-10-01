@@ -638,3 +638,15 @@ than hide stale output with automatic regeneration. The
 [type contract](../../docs/contracts/react-end-to-end-types.md) owns supported
 limits. This is an option alongside the native GET exercise, not evidence of an
 executed journey or a saved cart.
+
+## Where editing protection belongs
+
+Keep this chapter's read-only storefront without default mutations or guards.
+Only a separate editor that saves product selection combines dirty/pending and
+app work in one `useNavigationGuard({ when })` inside the existing provider.
+Permission precedes destination HTTP and navigation form cancellation; only the
+current intent's stay/proceed controls have authority. Session revocation and
+native document-exit boundaries take priority over protection UI. See the
+[Volume 1 editor](../01-fluoblog/ch17-react-reading-and-writing.md#protect-unsaved-input-after-hydration)
+and [owning navigation contract](../../docs/contracts/react-navigation-payload.md#navigation-permission).
+Browsing is not being converted into a save-and-confirm application.

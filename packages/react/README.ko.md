@@ -1638,3 +1638,27 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `examples/react-vite-ssr/src/app.test.ts`
 - `examples/react-vite-ssr/src/hydration.test.ts`
 - `examples/react-vite-ssr/tests/production-hydration.spec.ts`
+
+## Navigation permission
+
+기존 provider의 `useNavigationGuard({ when })` 하나로 dirty/pending과 앱 작업을 결합합니다. 기본값은 비보호이며 반환한 현재 intent의 `stay`/`proceed`만 권한을 갖습니다. 목적지 GET·prefetch adoption·form 취소는 승인 뒤입니다. Managed tagged history만 복원하며 untagged/cross-document는 native 경계입니다. Session 철회가 결정보다 우선합니다.
+```tsx
+import { useForm, useNavigationGuard } from "@fluojs/react/client";
+
+function Editor() {
+  const form = useForm<{ name: string }>({
+    id: "editor", action: "/save", fields: { name: "name" },
+    allowDestination: (href) => new URL(href).pathname === "/edit",
+  });
+  const decision = useNavigationGuard({ when: form.state.dirty || form.state.pending });
+  return <>
+    <form {...form.formProps}><input name="name" /><button>Save</button></form>
+    {decision && <section role="dialog" aria-label="Unsaved navigation">
+      <button onClick={decision.stay}>Stay</button>
+      <button onClick={decision.proceed}>Proceed</button>
+    </section>}
+  </>;
+}
+```
+
+[승인·native·저장 순서 계약](../../docs/contracts/react-navigation-payload.ko.md#navigation-permission)과 [migration](../../docs/getting-started/migrate-react-navigation-guards.ko.md)을 참고하세요.

@@ -333,3 +333,9 @@ Its process-local map and demo cookie are not durable persistence or production 
 and real-listener barriers, cookies/CSRF, disconnects, manual redirects and GET-only
 recovery. Normal production uses `src/main.ts`; `REACT_VITE_FORM_TEST_SERVER=1`
 selects `tests/form-server.ts` only for explicit fault injection.
+
+## Navigation permission
+
+Enable **Protect edits** on the catalog editor, then edit or submit the existing `useForm`. One `useNavigationGuard` decision offers **Stay here** or **Proceed with navigation**. Stay retains drafts without destination HTTP or form cancellation; after permission fresh HTTP approves the page. Cancelling a pending POST is not server rollback. Logout/401/403 revoke an open decision. JS-disabled/native submission remains unchanged.
+
+See [guard migration](../../docs/getting-started/migrate-react-navigation-guards.md) and the [owning contract](../../docs/contracts/react-navigation-payload.md#navigation-permission).

@@ -205,3 +205,9 @@ Applications may build policies above the shipped seams, but those policies are 
 - [`@fluojs/http` package contract](../../packages/http/README.md)
 - [React render policy decision](../architecture/react-render-policy-decorators.md)
 - [React RSC graduation policy](../contracts/react-rsc-graduation.md)
+
+## Navigation permission
+
+Use one `useNavigationGuard({ when })` inside the existing provider for dirty/pending protection. Permission precedes destination GET, prefetch adoption and navigation form cancellation. Use only the current token's stay/proceed controls; a saved acknowledgement or old confirm does not automatically resume. Distinguish saved, dirty and failed follow-up; refresh is data revalidation, not leave approval. Session revocation removes page/head/inputs/authority before dirty decisions. Separate managed tagged history from untagged/native documents.
+
+See [guard migration](../getting-started/migrate-react-navigation-guards.md) and the [owning contract](../contracts/react-navigation-payload.md#navigation-permission).

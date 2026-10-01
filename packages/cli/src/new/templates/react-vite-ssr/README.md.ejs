@@ -22,6 +22,18 @@ in parallel; the default remains 43006. Normal
 startup installs no fault routes. Existing consumers must add the updated
 catalog/page companion and keep their native actions and existing provider.
 
+On `/catalog/sku-42`, enable **Protect edits** before editing or submitting.
+The existing `useForm` supplies dirty/pending to one `useNavigationGuard`.
+**Stay here** preserves current inputs without destination reads or aborting a POST;
+**Proceed with navigation** permits fresh HTTP approval and then obsolete work
+cancellation. This does not roll back server persistence. Saved clears dirty only
+when no newer edit exists; saved follow-up cancellation remains a GET-only recovery.
+Session revocation supersedes an open decision. Managed tagged history is protected;
+untagged/cross-document history and JS-disabled forms retain native boundaries.
+Run `tests/navigation-guard.spec.ts` through the generated `test:browser` command in
+development and production. Optional beforeunload has browser limitations and does
+not save drafts or guarantee recovery after actual tab termination.
+
 ```sh
 <%= installCommand %>
 <%= typegenCommand %>

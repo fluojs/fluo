@@ -220,3 +220,17 @@ for opt-in navigation guards. None introduces a competing form API here.
 #3875 supplies the documented application session composition. Optimistic cache mutation,
 comprehensive uploads, distributed duplicate protection and those follow-up
 issues are not provided by this contract.
+
+## Navigation permission
+
+Use one `useNavigationGuard({ when: form.state.dirty || form.state.pending })`
+owner inside the existing provider, combining other dirty forms and app work there.
+Render the current decision's `stay` and `proceed` controls without blocking session
+revocation. Pending POST continues until approved leave; cancellation is not server
+rollback. Saved with unchanged input becomes clean before post-save permission;
+new edits remain dirty. `allowDestination` checks post-save destinations, not leave
+permission. Form refresh retains unrelated drafts, navigate follow-up requests
+permission, and failed/cancelled follow-up preserves saved with GET-only retry.
+Explicit `router.refresh()` remains intentional page-local reset.
+See the [navigation contract](./react-navigation-payload.md#navigation-permission)
+and [guard migration](../getting-started/migrate-react-navigation-guards.md).

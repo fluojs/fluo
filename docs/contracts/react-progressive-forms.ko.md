@@ -207,3 +207,15 @@ typed name/outcome은 같은 #3880 projection을 소비하며 background 작업�
 구현합니다. 여기서 경쟁하는 form API를 만들지 않습니다. application session coordination은
 #3875가 소유합니다. optimistic cache mutation, 포괄적인 upload 지원, distributed
 duplicate protection과 해당 후속 이슈 구현은 이 계약에서 제공하지 않습니다.
+
+## Navigation permission
+
+기존 provider 안에서 `useNavigationGuard({ when: form.state.dirty || form.state.pending })`
+소유자 하나에 다른 dirty form과 앱 작업도 결합하세요. 현재 결정의 `stay`와 `proceed`
+control은 session 철회를 막지 않습니다. Pending POST는 승인한 leave까지 계속되며
+취소는 서버 rollback이 아닙니다. 새 편집 없는 saved는 저장 후 승인 전에 clean이 되고
+새 편집은 dirty로 남습니다. `allowDestination`은 저장 후 목적지 제약이지 leave 승인이
+아닙니다. Form refresh는 다른 초안을 보존하고 navigate follow-up은 승인을 요청합니다.
+Read 취소·실패도 saved를 유지하고 GET만 retry합니다. 명시적 `router.refresh()`는
+의도적인 page-local reset입니다. [Navigation 계약](./react-navigation-payload.ko.md#navigation-permission)과
+[guard migration](../getting-started/migrate-react-navigation-guards.ko.md)을 참고하세요.

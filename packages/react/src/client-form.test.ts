@@ -35,6 +35,43 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
+it('keeps a held POST owned during dirty stay and cancels it only after approved leave', async () => {
+  const post = deferred<Response>();
+  const started = deferred<AbortSignal>();
+  vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => {
+    if (!init.signal) throw new Error('POST requires an abort signal');
+    started.resolve(init.signal);
+    return post.promise;
+  }));
+  const navigation = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/one' }));
+  const form = createClientFormStore();
+  navigation.forms.set('pending-form', form);
+  form.changed();
+  navigation.connect({
+    assign: vi.fn(), back: vi.fn(), currentHref: () => 'http://localhost:3000/products/one',
+    reload: vi.fn(), replace: vi.fn(), pushState: vi.fn(), replaceState: vi.fn(),
+    load: async () => ({ ok: false, reason: 'cancelled' }), subscribe: () => () => {},
+  });
+  // Connection owns a clean lifecycle; register and dispatch after it is established.
+  navigation.forms.set('pending-form', form);
+  navigation.registerNavigationGuard(() => ({ when: form.getSnapshot().dirty || form.getSnapshot().pending }));
+  const waiting = form.submit(submission, { ...environment(), invalidate: navigation.router.invalidate });
+  const signal = await started.promise;
+  navigation.router.push('/next');
+  expect(form.getSnapshot().pending).toBe(true);
+  expect(signal.aborted).toBe(false);
+  navigation.getNavigationDecision()?.stay();
+  expect(form.getSnapshot().pending).toBe(true);
+  navigation.router.push('/next');
+  navigation.getNavigationDecision()?.proceed();
+  await waiting;
+  expect(signal.aborted).toBe(true);
+  expect(form.getSnapshot().mutation).toEqual({ status: 'uncertain', reason: 'cancelled' });
+  // A late server acknowledgement cannot turn browser cancellation into persistence rollback.
+  post.resolve(saved());
+  expect(form.getSnapshot().mutation?.status).toBe('uncertain');
+});
+
 it('retains explicit saved JSON data and session identity from the negotiated acknowledgement', async () => {
   // Given: HTTP explicitly confirms both persistence and a new application session.
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({

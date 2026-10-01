@@ -15,6 +15,8 @@ export { loadReactInitialNavigationDestination, loadReactNavigationDestination }
 export { ReactClientRouterProvider } from './client/provider.js';
 export { ReactNavigationExperience } from './client/experience.js';
 export { useForm } from './client/form.js';
+export { useNavigationGuard } from './client/navigation-guard.js';
+export type { ReactNavigationIntent, ReactNavigationDecision, ReactNavigationGuardOptions } from './client/navigation-guard.js';
 export type { ReactFormBinding, ReactFormContract, ReactFormOptions } from './client/form.js';
 export type { ReactFormSnapshot, ReactFormFollowUp } from './client/form-store.js';
 export type { ReactFormMutation } from './client/form-transport.js';

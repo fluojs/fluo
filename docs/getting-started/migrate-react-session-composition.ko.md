@@ -76,3 +76,9 @@ paint나 SDK disposal receipt가 아니므로 실제 연결 operation과 cleanup
 Example/starter session fixture는 실제 MessageChannel acknowledgement, 두 port close,
 새 session 복구를 검증합니다. Auth 철회는 향후 dirty-confirm 조립보다 우선하며
 여기서 future dirty-navigation guard를 제공하는 것은 아닙니다.
+
+## Navigation permission
+
+Dirty/pending 보호에는 기존 provider 안의 `useNavigationGuard({ when })` 하나를 사용합니다. 승인 전 목적지 GET·prefetch adoption·navigation form 취소가 없습니다. 현재 token의 stay/proceed만 실행하고 저장 완료나 오래된 confirm으로 자동 재개하지 마세요. Saved·dirty·follow-up 실패를 구별하며 refresh는 데이터 재검증이지 leave 승인 대체물이 아닙니다. Session 철회는 dirty 결정 전에 페이지·head·입력·권한을 제거합니다. Tagged same-document history와 untagged/native document 경계를 구별합니다.
+
+[Guard migration](../getting-started/migrate-react-navigation-guards.ko.md)과 [owning 계약](../contracts/react-navigation-payload.ko.md#navigation-permission)을 참고하세요.

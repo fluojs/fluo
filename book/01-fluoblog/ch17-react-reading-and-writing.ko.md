@@ -835,3 +835,21 @@ POST/303/GET이며 session 전환과 public-prefetch 제한도 그대로다.
 [이주](../../docs/getting-started/migrate-react-typegen.ko.md)에 따라 일반 typecheck/build
 앞에 `--check`를 둔다. 이 확장도 DB·browser에서 검증할 실습이지 원고 검사만으로
 완료된 실행 예제가 아니다.
+
+## Hydration 뒤 미저장 입력 보호
+
+앞의 native writer form과 서버 version 충돌 검사는 그대로 둡니다. Hydrated 편집기를
+추가할 때만 기존 `useForm`의 dirty/pending을 기존 provider 안의
+`useNavigationGuard({ when })` 하나에 전달하고 현재 결정의 stay/proceed 버튼을
+작성합니다. 머무르기와 대기는 목적지 GET이나 진행 중 POST 취소를 하지 않습니다.
+Saved를 먼저 확인한 뒤 현재 dirty를 다시 보고 현재 intent에서 명시적으로 이동합니다.
+제출 중 새 편집은 dirty로 남으며 validation/uncertain을 saved로 오인하지 않습니다.
+승인한 leave 뒤 취소도 서버 rollback이 아닙니다. Form refresh는 다른 초안을 보존하고
+navigate follow-up 취소·실패는 saved를 유지하며 GET만 retry합니다.
+
+Logout/401/403은 열린 dirty 결정 전에 보호 화면·head·입력과 결정 권한을 철회합니다.
+관리되는 tagged same-document history만 복원하며 native 새 탭·JS-disabled form과
+untagged/cross-document 이탈은 별도 경계입니다. beforeunload로 async 저장이나 탭 종료
+후 복구를 보장하지 않습니다. [Owning 계약](../../docs/contracts/react-navigation-payload.ko.md#navigation-permission)과
+[migration](../../docs/getting-started/migrate-react-navigation-guards.ko.md)을 따라
+[runnable example](../../examples/react-vite-ssr/README.ko.md#navigation-permission)을 실행하세요.
