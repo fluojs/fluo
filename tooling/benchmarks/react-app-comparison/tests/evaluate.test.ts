@@ -89,6 +89,29 @@ test('fails a stable relative regression even below its absolute budget', () => 
     check.metric === 'warmTtfbMs' && check.reason === 'relative-band' && check.verdict === 'fail'));
 });
 
+test('accepts the exact decimal relative boundary without multiplication rounding failure', () => {
+  // Given: the observed Linux CPU boundary is 0.9 against 0.6 with a 1.5 band.
+  const configured: Baseline = { ...baseline, profiles: { desktop: {
+    mode: 'matched-cache', absoluteBudgets, relativeBands: { ...relativeBands, cpuPercent: 1.5 },
+  } } };
+  const samples = runs().map((run) => ({
+    ...run, metrics: { ...run.metrics, cpuPercent: run.framework === 'fluo' ? 0.9 : 0.6 },
+  }));
+  // When / Then: equality passes; the configured band is not widened.
+  assert.equal(evaluatePerformance(configured, samples).verdict, 'pass');
+});
+
+test('rejects an actual decimal relative breach immediately above the boundary', () => {
+  const configured: Baseline = { ...baseline, profiles: { desktop: {
+    mode: 'matched-cache', absoluteBudgets, relativeBands: { ...relativeBands, cpuPercent: 1.5 },
+  } } };
+  const samples = runs().map((run) => ({
+    ...run, metrics: { ...run.metrics, cpuPercent: run.framework === 'fluo' ? 0.9000001 : 0.6 },
+  }));
+  assert.ok(evaluatePerformance(configured, samples).checks.some((check) =>
+    check.metric === 'cpuPercent' && check.reason === 'relative-band' && check.verdict === 'fail'));
+});
+
 test('fails a confirmed throughput shortfall with higher-is-better comparison', () => {
   // Given: three stable Fluo runs slower than the 100 req/s minimum.
   const samples = runs().map((run) => run.framework === 'fluo'
