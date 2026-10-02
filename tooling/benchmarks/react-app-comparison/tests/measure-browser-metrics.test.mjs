@@ -312,6 +312,7 @@ test(`a usable dev page recognizes ${JSON.stringify(readinessOutput)} without a 
       start: [process.execPath, '-e', `console.log(${JSON.stringify(readinessOutput)}); require("node:http").createServer().listen(0)`],
       url: `http://127.0.0.1:${address.port}/`,
       readyPattern: 'READY',
+      ...(readinessOutput === 'READY' ? { reactReadiness: false } : {}),
       hmr: true,
       edits: {},
     } },
@@ -322,7 +323,94 @@ test(`a usable dev page recognizes ${JSON.stringify(readinessOutput)} without a 
     const result = await driver.check({ framework: 'next', runId: 'http-ready', device: 'desktop', mode: 'native' });
     // Then: only the observable usable page gates cold-ready; edits still check visible changes.
     assert.equal(result.pass, true);
+    assert.equal(result.steps[0].reactReadiness, null);
   } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+}
+
+for (const framework of ['fluo', 'next', 'react-router', 'tanstack-start']) {
+test(`${framework} counts common React completion in cold and edit navigation readiness`, { timeout: 20_000 }, async () => {
+  const requests = new EventEmitter();
+  const held = new Map();
+  let marker;
+  const server = createServer((request, response) => {
+    if (request.url.startsWith('/react.js')) {
+      held.set(request.url, response);
+      requests.emit(request.url);
+      return;
+    }
+    if (request.url === '/marker') { marker = response; requests.emit('marker'); return; }
+    if (request.url === '/stimulus') {
+      assert.ok(marker, 'edit document subscribed before the source stimulus');
+      marker.end('Edited');
+      response.end('applied');
+      return;
+    }
+    const route = request.url === '/edit' ? 'edit' : 'cold';
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(`<!doctype html><h1>Ready</h1><script async src="/react.js?${route}"></script>
+      ${route === 'edit' ? '<script>fetch("/marker").then(r => r.text()).then(text => { document.querySelector("h1").textContent = text; });</script>' : ''}`);
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  const config = {
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+    dev: { [framework]: {
+      start: [process.execPath, '-e', 'console.log("READY"); require("node:http").createServer().listen(0)'],
+      url, readyPattern: 'READY', reactReadiness: { timeoutMs: 60_000 },
+      edits: { 'react-edit': {
+        path: '/edit', selector: 'h1', expectedText: 'Edited',
+        command: [process.execPath, '-e', `fetch(${JSON.stringify(url + 'stimulus')}).then(r => r.text())`],
+      } },
+    } },
+  };
+  const item = { framework, runId: 'common-react-ready', device: 'desktop', mode: 'native', url };
+  const driver = await createBrowserDriver(config, { devMode: true });
+  const release = (route) => {
+    const response = held.get(`/react.js?${route}`);
+    response.writeHead(200, { 'content-type': 'text/javascript' });
+    response.end(fixtureScript);
+  };
+  try {
+    const coldScript = once(requests, '/react.js?cold');
+    let checked = false;
+    const checking = driver.check(item).then((result) => { checked = true; return result; });
+    await coldScript;
+    assert.equal(checked, false, 'HTTP heading alone cannot satisfy configured React readiness');
+    release('cold');
+    const check = await checking;
+    assert.equal(check.pass, true);
+    const ready = check.steps[0];
+    assert.equal(ready.reactReadiness.error, null);
+    assert.ok(ready.elapsedMs >= ready.reactReadiness.completedAt);
+    const cold = await driver.measureDev(item, config, 'cold-ready');
+    assert.equal(cold.durationMs, ready.elapsedMs);
+    assert.deepEqual(cold.reactReadiness, ready.reactReadiness);
+    const before = ready.elapsedMs;
+    const editScript = once(requests, '/react.js?edit');
+    const editMarker = once(requests, 'marker');
+    const editing = driver.measureDev(item, config, 'react-edit');
+    await editScript;
+    await editMarker;
+    assert.equal(ready.elapsedMs, before, 'navigation is not accepted before renderer completion');
+    release('edit');
+    const edit = await editing;
+    assert.equal(edit.event, 'react-edit-visible');
+    const preparation = ready.editNavigation;
+    assert.equal(preparation.reactReadiness.error, null);
+    assert.ok(preparation.durationMs >= preparation.reactReadiness.completedAt);
+    assert.equal(ready.elapsedMs, before + preparation.durationMs);
+    assert.equal((await driver.measureDev(item, config, 'cold-ready')).durationMs, ready.elapsedMs);
+  } finally {
+    for (const response of held.values()) if (!response.writableEnded) response.end();
+    marker?.end();
     await driver.close();
     const closed = once(server, 'close');
     server.close();

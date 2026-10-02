@@ -137,7 +137,16 @@ is added to that experiment's ready step, before the unchanged edit interval.
 Relaunch edits include readiness in their edit interval and retain the restart
 observation. Raw timings retain the socket identity, exact message, CDP timestamp
 and elapsed observation time. HMR connection is not hydration or module
-registration completion; this change adds no initial hydration wait.
+registration completion. All four representative dev peers additionally opt into
+`dev.<framework>.reactReadiness: { "timeoutMs": 60000 }`, using the same
+`react-initial-completion-v1` observer before initial and edit-route navigation.
+The entire React completion wait is included in cold-ready or the edit-navigation
+ready step, never hidden before the React edit timer. Raw `reactReadiness` evidence
+records renderer versions/bundle types, load, commit/passive events and completion.
+The synthetic hook supplies the renderer registry required by Fast Refresh;
+installed hooks retain their identity and callbacks. Omitting `reactReadiness`
+or setting it to `false` preserves HTTP-only/no-React fixtures. Production keeps
+its existing 10-second observer deadline and completion contract.
 Recollect the baseline with this same readiness method before comparing edit
 latencies. Budgets, counts, peer commands and production capture remain frozen.
 

@@ -315,23 +315,26 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           await ready;
           created = await createPage(item);
           const { context, page, cdp } = created;
+          if (commands.reactReadiness) await installInitialReadiness(page, commands.reactReadiness);
           hmr = observeDevReadiness(cdp, commands.readiness, commands.url ?? item.url, started);
           const response = await page.goto(commands.url ?? item.url, { waitUntil: 'domcontentloaded' });
           if (!response?.ok()) throw new Error(`dev page HTTP ${response?.status()}`);
           await page.locator('h1').first().waitFor({ state: 'visible', timeout: 60_000 });
           const hmrReadiness = await hmr.promise;
+          const reactReadiness = commands.reactReadiness ? await waitForInitialReadiness(page) : null;
           const readyMs = performance.now() - started;
           const readyStep = { name: 'dev-ready', pass: true, elapsedMs: readyMs,
-            hmrReadiness, url: commands.url, log };
+            hmrReadiness, reactReadiness, url: commands.url, log };
           contexts.set(item.runId + item.framework, { context, page, cdp, readyMs,
-            hmrReadiness, readyStep, serverLog: () => log });
+            hmrReadiness, reactReadiness, readyStep, serverLog: () => log });
           devServers.set(item.runId + item.framework, server);
           return { pass: true, steps: [readyStep] };
         } catch (error) {
           hmr?.cancel();
           await stopDevServer(server);
           await created?.context.close();
-          return { pass: false, steps: [{ name: 'dev-ready', pass: false, error: String(error), log }] };
+          return { pass: false, steps: [{ name: 'dev-ready', pass: false, error: String(error),
+            reactReadiness: error.cause, log }] };
         }
       }
       const { context, page } = await createPage(item);
@@ -667,7 +670,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       if (!owned || !server) throw new Error(`dev server missing: ${key}`);
       const commands = config.dev[item.framework];
       if (kind === 'cold-ready') {
-        return { durationMs: owned.readyMs, event: 'dev-ready', hmrReadiness: owned.hmrReadiness };
+        return { durationMs: owned.readyMs, event: 'dev-ready', hmrReadiness: owned.hmrReadiness,
+          reactReadiness: owned.reactReadiness };
       }
       const edit = commands.edits[kind];
       if (!(edit?.file || (Array.isArray(edit?.command) && edit.command.length > 0)) || !edit.selector
@@ -682,16 +686,14 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         try {
           await page.goto(url, { waitUntil: 'load' });
           const hmrReadiness = await hmr.promise;
+          const reactReadiness = commands.reactReadiness ? await waitForInitialReadiness(page) : null;
           const durationMs = performance.now() - navigationStarted;
           owned.readyMs += durationMs;
           owned.readyStep.elapsedMs += durationMs;
-          owned.readyStep.editNavigation = { url, durationMs, hmrReadiness };
+          owned.readyStep.editNavigation = { url, durationMs, hmrReadiness, reactReadiness };
         } finally {
           hmr.cancel();
         }
-      }
-      if (item.framework === 'next' && kind === 'react-edit') {
-        await page.locator('[data-benchmark-hydrated="true"]').waitFor({ state: 'attached', timeout: 60_000 });
       }
       const reload = edit.reload === true;
       const before = reload || edit.relaunch ? null : await page.locator(edit.selector).first().evaluate((element, expectedStyle) =>

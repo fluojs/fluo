@@ -1,7 +1,7 @@
-// Diagnostic Fiber fields are supported only for these frozen production renderers.
+// Diagnostic Fiber fields are supported only for these frozen renderers.
 // This is not a public React readiness API.
-export async function installInitialReadiness(page) {
-  await page.addInitScript(() => {
+export async function installInitialReadiness(page, { timeoutMs = 10_000 } = {}) {
+  await page.addInitScript(({ timeoutMs }) => {
     const supported = ['19.2.8', '19.3.0-canary-cbb046ab-20260731'];
     const roots = new Map();
     const renderers = new Map();
@@ -13,7 +13,7 @@ export async function installInitialReadiness(page) {
     let finish;
     let completed = false;
     window.__benchmarkInitialCompletion = new Promise((resolve) => { finish = resolve; });
-    const timeout = setTimeout(() => settle('initial React completion timeout'), 10_000);
+    const timeout = setTimeout(() => settle('initial React completion timeout'), timeoutMs);
     function settle(error) {
       if (completed) return;
       completed = true;
@@ -64,9 +64,16 @@ export async function installInitialReadiness(page) {
       settle();
     }
     const existing = window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+    const registry = new Map();
     const hook = existing ?? {
       supportsFiber: true,
-      inject() { return renderers.size + 1; },
+      renderers: registry,
+      inject(renderer) {
+        const id = registry.size + 1;
+        registry.set(id, renderer);
+        return id;
+      },
+      onScheduleFiberRoot() {},
       onCommitFiberUnmount() {},
     };
     evidence.existingHook = Boolean(existing);
@@ -76,7 +83,7 @@ export async function installInitialReadiness(page) {
         const result = original?.apply(this, args);
         if (name === 'inject') {
           renderers.set(result, args[0].version);
-          evidence.renderers.push({ id: result, version: args[0].version });
+          evidence.renderers.push({ id: result, version: args[0].version, bundleType: args[0].bundleType });
         } else {
           snapshot(args[0], args[1], name === 'onCommitFiberRoot' ? 'commit' : 'post-passive', args[3]);
         }
@@ -88,7 +95,7 @@ export async function installInitialReadiness(page) {
       evidence.loadAt = performance.now();
       check();
     }, { once: true });
-  });
+  }, { timeoutMs });
 }
 
 export async function waitForInitialReadiness(page) {
