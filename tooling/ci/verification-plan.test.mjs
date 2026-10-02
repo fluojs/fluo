@@ -53,6 +53,18 @@ test('all companion requirements resolve to executable tasks rather than duplica
   }
 });
 
+test('the PR catalog executes reliability receipt regressions without adding a job', () => {
+  // Given: the affected receipt consumer belongs to the existing tooling task.
+  const changedFiles = ['examples/react-vite-ssr/tests/reliability-handoff.mjs'];
+  // When: the canonical runner resolves its executable PR tasks.
+  const plan = buildVerificationPlan({ changedFiles, identity });
+  // Then: the regression is executed within the existing eighteen-job plan.
+  const commands = plan.tasks.find(({ id }) => id === 'tooling-1').commands;
+  assert.ok(commands.some(({ executable, argv }) => executable === 'node'
+    && argv[0] === '--test' && argv.includes('examples/react-vite-ssr/tests/reliability-handoff.test.mjs')));
+  assert.equal(plan.tasks.length + 2, 18);
+});
+
 test('secondary compatibility retains package tests and target-local builds without full browser checks', () => {
   // Given
   const planInput = { changedFiles: ['package.json'], identity };
