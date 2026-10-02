@@ -160,6 +160,19 @@ test('rejects an unapproved physical deferral target', async (t) => {
   await assert.rejects(consumeHandoff(value, root), /Invalid physical deferral/u);
 });
 
+test('accepts one actual hour only for the approved lane profile', async (t) => {
+  const { root, value, events } = completeFixture(t);
+  value.soakProfile = 'lane-3886-one-hour';
+  changeRun({ root }, 'soak', { elapsedMs: 3_600_000 });
+  changeTrace({ root }, events.map((event) => event.phase === 'workload-complete'
+    ? { ...event, detail: { ...event.detail, elapsedMs: 3_600_000 } } : event), 'soak');
+  const result = await consumeHandoff(value, root);
+  assert.equal(result.soakProfile, 'lane-3886-one-hour');
+  assert.equal(result.soak.elapsedMs, 3_600_000);
+  delete value.soakProfile;
+  await assert.rejects(consumeHandoff(value, root), /Separate two hour soak/u);
+});
+
 test('rejects absent engine receipts before any device can be called complete', async (t) => {
   // Given: an isolated output root with no executed browser evidence.
   const root = mkdtempSync(join(tmpdir(), 'fluo-reliability-handoff-'));

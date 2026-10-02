@@ -22,6 +22,13 @@ binary 및 OS dependency가 필요합니다. 최초 provisioning은 준비된 �
 
 ## Deterministic workload
 
+Maintainer가 승인한 이번 #3886 lane 수용에는
+`FLUO_RELIABILITY_SOAK_PROFILE=lane-3886-one-hour`와
+`FLUO_RELIABILITY_SOAK_MS=3600000`을 설정합니다. Handoff는
+`soakProfile: "lane-3886-one-hour"`를 명시하고, 완료된 raw trace와
+일치하는 실제 최소 1시간 duration을 요구합니다. Scheduled/manual 기본값은
+2시간을 유지하며, 1시간 결과를 2시간 PASS라고 표기하지 않습니다.
+
 레포 root에서 lead가 실행합니다.
 
 ```sh

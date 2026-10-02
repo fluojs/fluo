@@ -79,8 +79,12 @@ export async function consumeHandoff(value, outputRoot) {
     && run.surface === 'official-example-production').length === 1),
     'Duplicate or missing correctness engines');
   const soak = await readRun(root, value.soakReceipt, value.head);
+  const soakProfile = value.soakProfile ?? 'scheduled';
+  requireValue(['scheduled', 'lane-3886-one-hour'].includes(soakProfile), 'Unknown soak profile');
+  const minimumSoakMs = soakProfile === 'lane-3886-one-hour' ? 3_600_000 : 7_200_000;
   requireValue(soak.kind === 'soak' && soak.surface === 'official-example-production'
-    && soak.elapsedMs >= 7_200_000, 'Separate two hour soak required');
+    && soak.elapsedMs >= minimumSoakMs, soakProfile === 'scheduled'
+    ? 'Separate two hour soak required' : 'Separate one hour lane soak required');
   requireValue(Array.isArray(value.companionEvidence), 'Missing companion evidence');
   for (const kind of requiredCompanions) {
     const companion = value.companionEvidence.find((item) => item.kind === kind);
@@ -97,7 +101,7 @@ export async function consumeHandoff(value, outputRoot) {
       && value.physicalDeferral.status === 'deferred' && value.physicalDevices.length === 0,
     'Invalid physical deferral');
     return { version: 1, issue: 3886, consumer: 3879, head: value.head,
-      status: 'automated-evidence-complete', correctness, soak, physicalDevices: [],
+      status: 'automated-evidence-complete', correctness, soak, soakProfile, physicalDevices: [],
       physicalDeferral: value.physicalDeferral, companionEvidence: value.companionEvidence };
   }
   for (const kind of ['mobile', 'tablet']) {
@@ -108,7 +112,7 @@ export async function consumeHandoff(value, outputRoot) {
     artifact(root, device.artifact);
   }
   return { version: 1, issue: 3886, consumer: 3879, head: value.head,
-    status: 'evidence-complete', correctness, soak, physicalDevices: value.physicalDevices,
+    status: 'evidence-complete', correctness, soak, soakProfile, physicalDevices: value.physicalDevices,
     companionEvidence: value.companionEvidence };
 }
 

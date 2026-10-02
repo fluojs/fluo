@@ -23,6 +23,13 @@ The source-only pass neither provisions nor runs these commands.
 
 ## Deterministic workload
 
+For the maintainer-approved #3886 lane acceptance, set
+`FLUO_RELIABILITY_SOAK_PROFILE=lane-3886-one-hour` and
+`FLUO_RELIABILITY_SOAK_MS=3600000`. Its handoff declares
+`soakProfile: "lane-3886-one-hour"` and still requires a completed raw trace
+and matching duration of at least one actual hour. Scheduled/manual defaults
+remain two hours. A one-hour result must not be described as a two-hour PASS.
+
 From the repository root, the lead runs:
 
 ```sh
