@@ -116,7 +116,12 @@ serving remain independent of development. CSS and React stimuli observe visible
 HMR without an explicit reload; the server stimulus waits for app-generation
 readiness, then requests a fresh document to observe its changed HTTP data.
 The edit-to-visible interval still starts before the source edit and ends at the
-same visible text/computed-style assertion. This dev-method correction requires
+same visible text/computed-style assertion.
+For document reloads, completion observes that marker in the newly committed
+main-frame document without waiting for unrelated resources to finish loading.
+Required generation readiness and relaunch readiness remain inside their
+recorded intervals. The same collector applies to every peer and the baseline.
+This observation correction also requires
 identical-method baseline remeasurement; it does not relax budgets or turn
 historical fail/inconclusive results into a performance PASS.
 

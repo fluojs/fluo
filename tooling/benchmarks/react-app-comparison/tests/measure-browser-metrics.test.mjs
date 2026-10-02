@@ -419,6 +419,59 @@ test(`${framework} counts common React completion in cold and edit navigation re
 });
 }
 
+test('server edit visibility does not wait for an unrelated async resource', { timeout: 20_000 }, async () => {
+  let changed = false;
+  const held = new Set();
+  const server = createServer((request, response) => {
+    if (request.url === '/apply') {
+      changed = true;
+      response.end('applied');
+    } else if (request.url?.startsWith('/held')) {
+      held.add(response);
+    } else {
+      response.setHeader('content-type', 'text/html');
+      response.end(`<h1>${changed ? 'Changed' : 'Original'}</h1><script async src="/held?changed=${changed}"></script>`);
+    }
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const address = server.address();
+  assert.ok(address && typeof address !== 'string');
+  const url = `http://127.0.0.1:${address.port}/`;
+  const config = {
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+    dev: { fluo: {
+      start: [process.execPath, '-e', 'console.log("READY"); require("node:http").createServer().listen(0)'],
+      url, readyPattern: 'READY',
+      edits: { 'server-edit': {
+        command: [process.execPath, '-e', `fetch(${JSON.stringify(`${url}apply`)}).then(r => r.text())`],
+        explicitReload: true, selector: 'h1', expectedText: 'Changed',
+      } },
+    } },
+  };
+  const driver = await createBrowserDriver(config, { devMode: true });
+  let timer;
+  try {
+    const item = { framework: 'fluo', runId: 'visible-before-load', device: 'desktop', mode: 'native' };
+    assert.equal((await driver.check(item)).pass, true);
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Visible edit is blocked on an unrelated resource')), 5_000);
+    });
+    const result = await Promise.race([driver.measureDev(item, config, 'server-edit'), deadline]);
+    assert.equal(result.event, 'server-edit-visible');
+    assert.equal(result.method, 'document-reload');
+    assert.ok([...held].some(response => !response.writableEnded && !response.destroyed));
+  } finally {
+    clearTimeout(timer);
+    for (const response of held) response.end('');
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
 test('a streamed 404 waits for browser-visible failure after the navigation shell', { timeout: 10_000 }, async () => {
   // Given: the initial response paints navigation before streaming an error.
   const { chromium } = await import('@playwright/test');

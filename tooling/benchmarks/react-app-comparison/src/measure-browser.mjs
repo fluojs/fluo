@@ -714,19 +714,17 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         server.stdout.on('data', observe);
       }) : null;
       const visible = edit.explicitReload || edit.relaunch ? null : reload
-        ? (restarted ? restarted.then(() => page.reload({ waitUntil: 'load' }))
-          : page.waitForEvent('load', { timeout: 60_000 })).then(async () => {
+        ? (restarted ? restarted.then(() => page.reload({ waitUntil: 'commit' }))
+          : page.waitForEvent('framenavigated', {
+            predicate: (frame) => frame === page.mainFrame(), timeout: 60_000,
+          })).then(async () => {
           const element = page.locator(edit.selector);
           await element.waitFor({ state: 'visible', timeout: 60_000 });
           if (edit.expectedText) {
             await element.filter({ hasText: edit.expectedText }).waitFor({ state: 'visible', timeout: 60_000 });
             return;
           }
-          const value = await element.evaluate((target, expectedStyle) => expectedStyle
-            ? getComputedStyle(target).getPropertyValue(expectedStyle.property) : target.textContent, edit.expectedStyle);
-          if (!value?.includes(edit.expectedStyle?.value ?? edit.expectedText)) {
-            throw new Error(`${kind} marker not visible after reload`);
-          }
+          await waitForEditMarker(page, edit);
         })
         : Promise.any([page.evaluate(({ selector, expectedText, expectedStyle, previous }) => new Promise((resolveVisible, rejectVisible) => {
           const observer = new MutationObserver(() => {
@@ -784,7 +782,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             await waitForEditMarker(restartedPage, edit);
           }
         } else if (edit.explicitReload) {
-          await page.reload({ waitUntil: 'load' });
+          await page.reload({ waitUntil: 'commit' });
           await page.locator(edit.selector).filter({ hasText: edit.expectedText }).waitFor({ state: 'visible', timeout: 60_000 });
         } else {
           await visible;
@@ -799,7 +797,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         durationMs: performance.now() - started,
         event: `${kind}-visible`,
         method: edit.relaunch ? 'dev-server-relaunch' : edit.restartPattern
-          ? 'restart-and-reload' : edit.explicitReload ? 'document-reload' : 'hot-update',
+          ? 'restart-and-reload' : edit.explicitReload || reload ? 'document-reload' : 'hot-update',
         ...(edit.relaunch ? { restartReadiness: contexts.get(key).readyStep } : {}),
       };
       return result;
