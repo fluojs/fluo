@@ -13,7 +13,9 @@ another router. See the [product owner](../contracts/react-fullstack-product.md)
 
 This change supplies source harnesses, not executed product acceptance. Build and
 run verification, exact-head reviews, final remote CI, a separate two-hour soak
-and actual physical mobile/tablet evidence remain required for #3879.
+remain required for #3879. By maintainer decision, actual physical mobile/tablet
+verification is deferred to [#3906](https://github.com/fluojs/fluo/issues/3906),
+not reported as passed and not a blocker for the current lane.
 Use a clean committed checkout, Node `>=24.11.0 <27`, pnpm `10.4.1`, built workspace
 packages and the installed Playwright Chromium/Firefox/WebKit binaries with their
 OS dependencies. Initial provisioning is separate from a prepared-run verdict.
@@ -114,7 +116,13 @@ No elapsed-time budget has been proven by this source pass.
 
 `tests/reliability-handoff.mjs` consumes a version-1 JSON handoff and an existing
 artifact root. It requires `head`, three `correctnessReceipts`, one `soakReceipt`,
-`companionEvidence` and `physicalDevices`. Run paths are relative to the supplied
+`companionEvidence` and `physicalDevices`. The approved #3906 deferral uses an empty
+`physicalDevices` array and `physicalDeferral: { issue:
+"https://github.com/fluojs/fluo/issues/3906", status: "deferred" }`. Only after all
+automated companion and soak checks pass does this return
+`status: "automated-evidence-complete"` with the deferral preserved; it does not
+return full `evidence-complete` or physical-device PASS.
+Run paths are relative to the supplied
 root; each receipt owns its adjacent `events.jsonl`. Missing/empty/escaped files,
 wrong heads, truncated traces, failures, incomplete fault/engine coverage and a
 short soak fail closed.

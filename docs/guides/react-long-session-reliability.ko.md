@@ -12,8 +12,10 @@ private query cache, RPC transport 또는 다른 router를 추가하지 않습�
 [form owner](../contracts/react-progressive-forms.ko.md)를 따릅니다.
 
 이 변경은 source harness이며 실행한 제품 수용 결과가 아닙니다. Build/run 검증,
-exact-head review, final remote CI, 별도의 2시간 soak 및 실제 physical mobile/tablet
-근거가 #3879에 계속 필요합니다. Clean committed checkout, Node `>=24.11.0 <27`,
+exact-head review, final remote CI, 별도의 2시간 soak는 #3879에 계속 필요합니다.
+Maintainer 결정으로 실제 physical mobile/tablet 검증은
+[#3906](https://github.com/fluojs/fluo/issues/3906)으로 분리하며, PASS로 기록하지
+않고 현재 lane의 차단 조건에서도 제외합니다. Clean committed checkout, Node `>=24.11.0 <27`,
 pnpm `10.4.1`, build된 workspace package와 Playwright Chromium/Firefox/WebKit
 binary 및 OS dependency가 필요합니다. 최초 provisioning은 준비된 환경의 run
 판정과 분리합니다. SOURCE-ONLY pass에서는 provisioning과 아래 명령을 실행하지 않습니다.
@@ -108,7 +110,12 @@ elapsed-time budget을 입증하지 않습니다.
 
 `tests/reliability-handoff.mjs`는 version-1 JSON handoff와 기존 artifact root를
 소비합니다. `head`, 세 `correctnessReceipts`, 하나의 `soakReceipt`,
-`companionEvidence`, `physicalDevices`가 필요합니다. Run path는 root 기준이며
+`companionEvidence`, `physicalDevices`가 필요합니다. 승인된 #3906 보류는 빈
+`physicalDevices` 배열과 `physicalDeferral: { issue:
+"https://github.com/fluojs/fluo/issues/3906", status: "deferred" }`로 기록합니다.
+자동 companion 및 soak 검증이 모두 통과한 뒤에만 보류 정보를 보존한
+`status: "automated-evidence-complete"`를 반환하며, 전체 `evidence-complete`나
+실기기 PASS를 반환하지 않습니다. Run path는 root 기준이며
 각 receipt 옆 `events.jsonl`을 사용합니다. 없거나 비어 있는/escape한 file,
 다른 head, 잘린 trace, 실패, 불완전한 fault/engine coverage, 짧은 soak는 거절합니다.
 

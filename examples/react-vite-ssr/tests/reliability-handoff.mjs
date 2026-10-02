@@ -92,6 +92,14 @@ export async function consumeHandoff(value, outputRoot) {
     artifact(root, raw.artifact);
   }
   requireValue(Array.isArray(value.physicalDevices), 'Physical device evidence remains unverified');
+  if (value.physicalDeferral !== undefined) {
+    requireValue(value.physicalDeferral?.issue === 'https://github.com/fluojs/fluo/issues/3906'
+      && value.physicalDeferral.status === 'deferred' && value.physicalDevices.length === 0,
+    'Invalid physical deferral');
+    return { version: 1, issue: 3886, consumer: 3879, head: value.head,
+      status: 'automated-evidence-complete', correctness, soak, physicalDevices: [],
+      physicalDeferral: value.physicalDeferral, companionEvidence: value.companionEvidence };
+  }
   for (const kind of ['mobile', 'tablet']) {
     const device = value.physicalDevices.find((item) => item.kind === kind && item.physical === true);
     requireValue(device?.head === value.head && device.result === 'passed'

@@ -143,6 +143,23 @@ for (const [name, invalidate, expected] of rejectedFixtures) {
   });
 }
 
+test('retains the approved physical deferral without claiming complete device evidence', async (t) => {
+  const { root, value } = completeFixture(t);
+  value.physicalDevices = [];
+  value.physicalDeferral = { issue: 'https://github.com/fluojs/fluo/issues/3906', status: 'deferred' };
+  const result = await consumeHandoff(value, root);
+  assert.equal(result.status, 'automated-evidence-complete');
+  assert.deepEqual(result.physicalDevices, []);
+  assert.deepEqual(result.physicalDeferral, value.physicalDeferral);
+});
+
+test('rejects an unapproved physical deferral target', async (t) => {
+  const { root, value } = completeFixture(t);
+  value.physicalDevices = [];
+  value.physicalDeferral = { issue: 'https://github.com/fluojs/fluo/issues/1', status: 'deferred' };
+  await assert.rejects(consumeHandoff(value, root), /Invalid physical deferral/u);
+});
+
 test('rejects absent engine receipts before any device can be called complete', async (t) => {
   // Given: an isolated output root with no executed browser evidence.
   const root = mkdtempSync(join(tmpdir(), 'fluo-reliability-handoff-'));
