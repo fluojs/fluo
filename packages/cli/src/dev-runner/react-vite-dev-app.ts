@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 import { createServer, request } from 'node:http';
 import { createRequire } from 'node:module';
 import { join, sep } from 'node:path';
+import { pipeline } from 'node:stream';
 import { pathToFileURL } from 'node:url';
+import { constants, createGzip } from 'node:zlib';
 import { STUDIO_DEVTOOLS_GLOBAL_CONFIG_KEY } from '../studio/runtime-config.js';
 
 /**
@@ -61,8 +63,48 @@ export async function runReactViteDevApp(
       path: incoming.url ?? '/',
       port: target.port,
     }, (response) => {
-      outgoing.writeHead(response.statusCode ?? 502, response.headers);
-      response.pipe(outgoing);
+      const status = response.statusCode ?? 502;
+      const headers = { ...response.headers };
+      const contentType = headers['content-type']?.split(';')[0]?.trim().toLowerCase();
+      const noTransform = [incoming.headers['cache-control'], headers['cache-control']]
+        .some((value) => value?.split(',').some((directive) => directive.trim().toLowerCase() === 'no-transform'));
+      const eligible = incoming.method !== 'HEAD' && status >= 200 && ![204, 205, 206, 304].includes(status)
+        && !incoming.headers.range && !headers['content-range'] && !headers['content-encoding'] && !noTransform
+        && (contentType === 'text/javascript' || contentType === 'application/javascript'
+          || contentType === 'text/css' || contentType === 'application/ecmascript' || contentType === 'text/ecmascript');
+      if (eligible) {
+        const vary = headers.vary?.split(',').map((field) => field.trim()) ?? [];
+        if (!vary.some((field) => field === '*' || field.toLowerCase() === 'accept-encoding')) {
+          headers.vary = [...vary, 'Accept-Encoding'].join(', ');
+        }
+        const qualities = new Map<string, number>();
+        for (const candidate of incoming.headers['accept-encoding']?.split(',') ?? []) {
+          const [name, ...parameters] = candidate.trim().toLowerCase().split(';');
+          const quality = parameters.find((parameter) => parameter.trim().startsWith('q='))?.trim().slice(2);
+          if (name && (quality === undefined || /^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/u.test(quality))) {
+            qualities.set(name, quality === undefined ? 1 : Number(quality));
+          }
+        }
+        const gzipQuality = qualities.get('gzip') ?? qualities.get('*') ?? 0;
+        const identityQuality = qualities.get('identity') ?? (qualities.get('*') === 0 ? 0 : 1);
+        if (gzipQuality > 0 && gzipQuality >= identityQuality) {
+          headers['content-encoding'] = 'gzip';
+          delete headers['content-length'];
+          if (headers.etag && !headers.etag.startsWith('W/')) headers.etag = `W/${headers.etag}`;
+          outgoing.writeHead(status, headers);
+          pipeline(response, createGzip({ flush: constants.Z_SYNC_FLUSH }), outgoing, () => undefined);
+          return;
+        }
+        if (identityQuality === 0) {
+          response.destroy();
+          upstream.destroy();
+          outgoing.writeHead(406, { vary: headers.vary });
+          outgoing.end();
+          return;
+        }
+      }
+      outgoing.writeHead(status, headers);
+      pipeline(response, outgoing, () => undefined);
     });
     outgoing.once('close', () => {
       if (!outgoing.writableEnded) upstream.destroy();

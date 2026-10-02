@@ -1,10 +1,11 @@
 import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import type { Server } from 'node:http';
+import { type IncomingMessage, type OutgoingHttpHeaders, request, type Server, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { pathToFileURL } from 'node:url';
+import { createGunzip, gzipSync, gunzipSync } from 'node:zlib';
 
 import { afterEach, expect, it } from 'vitest';
 
@@ -34,6 +35,7 @@ type FixtureState = {
   graphGate: { promise: Promise<void>; resolve(): void };
   providerCloseCalls: number;
   realHttp: boolean;
+  httpHandler?: (request: IncomingMessage, response: ServerResponse) => void;
   requestAborted: { promise: Promise<void>; resolve(): void };
   requestEntered: { promise: Promise<void>; resolve(): void };
   requestGate: { promise: Promise<void>; resolve(): void };
@@ -112,6 +114,10 @@ async function createFixture(): Promise<{ directory: string; state: FixtureState
               state.appEntered.resolve();
               await state.appGate.promise;
               const server = state.realHttp ? createHttpServer(async (_request, response) => {
+                if (state.httpHandler) {
+                  state.httpHandler(_request, response);
+                  return;
+                }
                 if (state.appStartCalls === 1) {
                   const requestSignal = new AbortController();
                   state.requestSignal = requestSignal.signal;
@@ -165,6 +171,203 @@ afterEach(() => {
     rmSync(directory, { force: true, recursive: true });
   }
 });
+
+async function startHttpGateway(handler: NonNullable<FixtureState['httpHandler']>) {
+  const { directory, state } = await createFixture();
+  state.realHttp = true;
+  state.httpHandler = handler;
+  const signals = new EventEmitter();
+  const stdout = new PassThrough();
+  const ready = new Promise<void>((resolve) => { stdout.once('data', () => resolve()); });
+  const running = runReactViteDevApp(directory, { port: 0, signalTarget: signals, stdout });
+  state.createGate.resolve();
+  state.appGate.resolve();
+  await ready;
+  const address = state.websocketServer?.address();
+  if (!address || typeof address === 'string') throw new Error('Expected the public development listener.');
+  return {
+    url: `http://127.0.0.1:${address.port}/`,
+    async close() {
+      signals.emit('SIGTERM');
+      await expect(running).resolves.toBe(0);
+    },
+  };
+}
+
+function requestGateway(url: string, headers: OutgoingHttpHeaders = {}, method = 'GET') {
+  return new Promise<{ body: Buffer; headers: IncomingMessage['headers']; status: number | undefined }>((resolve, reject) => {
+    const client = request(url, { headers, method, agent: false }, (response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.once('error', reject);
+      response.once('end', () => resolve({
+        body: Buffer.concat(chunks), headers: response.headers, status: response.statusCode,
+      }));
+    });
+    client.once('error', reject);
+    client.end();
+  });
+}
+
+function deferred<T>() {
+  let resolve: (value: T | PromiseLike<T>) => void = () => undefined;
+  let reject: (error: Error) => void = () => undefined;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+it.each(['text/javascript', 'application/javascript', 'text/css'])('compresses negotiated %s over real HTTP without changing decoded bytes', async (contentType) => {
+  const body = Buffer.from('export const greeting = "hello";\n'.repeat(8_192));
+  const gateway = await startHttpGateway((_incoming, response) => {
+    response.writeHead(200, { 'content-type': contentType, 'content-length': body.length, vary: 'Origin', etag: '"source-bytes"' });
+    response.end(body);
+  });
+  try {
+    const result = await requestGateway(gateway.url, { 'accept-encoding': 'gzip' });
+    expect(result.status).toBe(200);
+    expect(result.headers['content-encoding']).toBe('gzip');
+    expect(result.headers['content-length']).toBeUndefined();
+    expect(result.headers.vary).toBe('Origin, Accept-Encoding');
+    expect(result.headers.etag).toBe('W/"source-bytes"');
+    expect(gunzipSync(result.body)).toEqual(body);
+    expect(result.body.length).toBeLessThan(body.length / 10);
+  } finally {
+    await gateway.close();
+  }
+}, 10_000);
+
+it.each([
+  [undefined, undefined, 200],
+  ['br', undefined, 200],
+  ['gzip;q=0', undefined, 200],
+  ['gzip;q=0.5, identity;q=1', undefined, 200],
+  ['gzip;q=0.5, identity;q=0', 'gzip', 200],
+  ['*;q=1, gzip;q=0', undefined, 200],
+  ['*;q=1, identity;q=0', 'gzip', 200],
+  ['GZIP; Q=1', 'gzip', 200],
+  ['gzip;q=banana', undefined, 200],
+  ['gzip;q=0, identity;q=0', undefined, 406],
+])('negotiates encoding %s without sending an excluded identity representation', async (accepted, encoding, status) => {
+  const body = Buffer.from('body { color: blue; }\n'.repeat(128));
+  const gateway = await startHttpGateway((_incoming, response) => {
+    response.writeHead(200, { 'content-type': 'text/css', 'content-length': body.length, vary: 'accept-encoding, Origin' });
+    response.end(body);
+  });
+  try {
+    const result = await requestGateway(gateway.url, accepted === undefined ? {} : { 'accept-encoding': accepted });
+    expect(result.status).toBe(status);
+    expect(result.headers['content-encoding']).toBe(encoding);
+    expect(result.headers.vary).toBe('accept-encoding, Origin');
+    if (status === 406) expect(result.body.length).toBe(0);
+    else expect(encoding === 'gzip' ? gunzipSync(result.body) : result.body).toEqual(body);
+    if (encoding === undefined && status === 200) expect(result.headers['content-length']).toBe(String(body.length));
+  } finally {
+    await gateway.close();
+  }
+}, 10_000);
+
+it.each([
+  { headers: { 'cache-control': 'public, no-transform' } },
+  { requestHeaders: { 'cache-control': 'no-transform' } },
+  { headers: { 'content-encoding': 'gzip' }, encoded: true },
+  { requestHeaders: { range: 'bytes=0-99' } },
+  { status: 206, headers: { 'content-range': 'bytes 0-99/100' } },
+  { headers: { 'content-range': 'bytes 0-99/100' } },
+  { status: 204 },
+  { status: 205 },
+  { status: 304 },
+  { method: 'HEAD' },
+  { headers: { 'content-type': 'text/html' } },
+])('preserves responses excluded from gateway transformation: %j', async (scenario) => {
+  const original = Buffer.from('export const value = 42;\n'.repeat(128));
+  const body = scenario.encoded ? gzipSync(original) : original;
+  const status = scenario.status ?? 200;
+  const bodyless = [204, 205, 304].includes(status) || scenario.method === 'HEAD';
+  const gateway = await startHttpGateway((_incoming, response) => {
+    response.writeHead(status, {
+      'content-type': 'text/javascript',
+      ...(bodyless && scenario.method !== 'HEAD' ? {} : { 'content-length': body.length }),
+      ...scenario.headers,
+    });
+    response.end(bodyless ? undefined : body);
+  });
+  try {
+    const result = await requestGateway(gateway.url, { 'accept-encoding': 'gzip', ...scenario.requestHeaders }, scenario.method);
+    expect(result.status).toBe(status);
+    expect(result.headers['content-encoding']).toBe(scenario.encoded ? 'gzip' : undefined);
+    expect(result.body).toEqual(bodyless ? Buffer.alloc(0) : body);
+    if (scenario.method === 'HEAD') expect(result.headers['content-length']).toBe(String(body.length));
+  } finally {
+    await gateway.close();
+  }
+}, 10_000);
+
+it('streams compressed bytes before upstream completion and releases the upstream on client disconnect', async () => {
+  const upstreamClosed = deferred<void>();
+  const decoded = deferred<void>();
+  const body = Buffer.from('export const value = 42;\n'.repeat(128));
+  const gateway = await startHttpGateway((_incoming, response) => {
+    response.once('close', () => upstreamClosed.resolve());
+    response.writeHead(200, { 'content-type': 'text/javascript' });
+    response.write(body);
+    // Deliberately leave the upstream open until the downstream disconnects.
+  });
+  const gunzip = createGunzip();
+  const chunks: Buffer[] = [];
+  gunzip.on('data', (chunk: Buffer) => {
+    chunks.push(chunk);
+    if (Buffer.concat(chunks).length >= body.length) decoded.resolve();
+  });
+  gunzip.once('error', decoded.reject);
+  const admitted = deferred<IncomingMessage>();
+  const client = request(gateway.url, { headers: { 'accept-encoding': 'gzip' }, agent: false }, admitted.resolve);
+  client.once('error', admitted.reject);
+  try {
+    client.end();
+    const response = await admitted.promise;
+    expect(response.headers['content-encoding']).toBe('gzip');
+    response.pipe(gunzip);
+    await decoded.promise;
+    expect(Buffer.concat(chunks)).toEqual(body);
+    expect(response.complete).toBe(false);
+    response.destroy();
+    await upstreamClosed.promise;
+  } finally {
+    client.destroy();
+    gunzip.destroy();
+    await gateway.close();
+  }
+}, 10_000);
+
+it('terminates the compressed downstream when the upstream stream fails', async () => {
+  const release = deferred<void>();
+  const downstreamClosed = deferred<void>();
+  const gateway = await startHttpGateway((_incoming, response) => {
+    response.writeHead(200, { 'content-type': 'text/javascript' });
+    response.write('export const value = 42;\n'.repeat(128));
+    void release.promise.then(() => response.destroy(new Error('upstream interrupted')));
+  });
+  const admitted = deferred<IncomingMessage>();
+  const client = request(gateway.url, { headers: { 'accept-encoding': 'gzip' }, agent: false }, admitted.resolve);
+  client.once('error', admitted.reject);
+  try {
+    client.end();
+    const response = await admitted.promise;
+    response.once('error', () => downstreamClosed.resolve());
+    response.once('close', () => downstreamClosed.resolve());
+    response.resume();
+    release.resolve();
+    await downstreamClosed.promise;
+    expect(response.complete).toBe(false);
+  } finally {
+    release.resolve();
+    client.destroy();
+    await gateway.close();
+  }
+}, 10_000);
 
 it('binds the Vite HMR channel to an application-owned upgrade source', async () => {
   const { directory, state } = await createFixture();

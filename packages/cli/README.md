@@ -189,6 +189,10 @@ without replacing the shell, update the product through that HTTP endpoint and c
 approved name replaces it without a history entry.
 
 The React `dev` script now delegates to the same `fluo dev` path as a direct CLI invocation.
+The development gateway negotiates streaming gzip for eligible JavaScript and CSS
+responses, retaining decoded content and backpressure. Already encoded, range,
+HEAD and `no-transform` responses are not transformed. Compressed responses vary
+by `Accept-Encoding` and use weak ETags.
 After dependency installation, either starts without an application production build:
 Vite transforms the SSR entry; a stable development gateway serves the public HTTP port
 and WebSocket while each Fastify app generation listens on a private ephemeral port.

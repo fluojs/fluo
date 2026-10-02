@@ -187,6 +187,9 @@ redirect하며 JavaScript 없이도 form이 동작합니다. 셸을 교체하지
 클릭하세요. 요청 중에는 이전 값이 남고 승인된 새 이름만 history entry 없이 표시됩니다.
 
 React `dev` script는 이제 직접 실행한 CLI와 동일한 `fluo dev` 경로로 위임합니다.
+개발 gateway는 대상 JavaScript와 CSS 응답에 streaming gzip을 협상하며 원래 내용과
+backpressure를 유지합니다. 이미 인코딩된 응답, range, HEAD, `no-transform` 응답은
+변환하지 않습니다. 압축 응답은 `Accept-Encoding`에 따라 달라지며 weak ETag를 사용합니다.
 의존성 설치 후 어느 경로든 수동 production build 없이 시작합니다. Vite가 SSR entry를
 변환하며 안정된 개발 gateway가 공개 HTTP port와 WebSocket을 유지합니다. 각 Fastify
 app generation은 임시 private port에서 client module, refresh preamble, CSS를
