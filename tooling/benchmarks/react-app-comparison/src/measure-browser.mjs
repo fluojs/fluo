@@ -3,7 +3,7 @@ import { EventEmitter, once } from 'node:events';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { promisify } from 'node:util';
+import { promisify, stripVTControlCharacters } from 'node:util';
 import { PROFILES } from './measure.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
 import { installInitialReadiness, waitForInitialReadiness } from './initial-readiness.mjs';
@@ -239,7 +239,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           const timeout = setTimeout(() => reject(new Error('dev-ready timeout')), 60_000);
           const onData = (chunk) => {
             log += chunk.toString();
-            if (log.includes(commands.readyPattern)) { clearTimeout(timeout); accept(); }
+            if (stripVTControlCharacters(log).includes(commands.readyPattern)) { clearTimeout(timeout); accept(); }
           };
           server.stdout.on('data', onData);
           server.stderr.on('data', onData);

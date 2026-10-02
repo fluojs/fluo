@@ -221,7 +221,8 @@ test('a dev command exiting before readiness fails without waiting for a second 
   }
 });
 
-test('a usable dev page is ready without requiring an unrelated websocket event', { timeout: 25_000 }, async () => {
+for (const readinessOutput of ['READY', '\u001b[32mRE\u001b[1mAD\u001b[0mY']) {
+test(`a usable dev page recognizes ${JSON.stringify(readinessOutput)} without a websocket event`, { timeout: 70_000 }, async () => {
   // Given: an HTTP page with a visible heading and no WebSocket connection.
   const server = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'text/html' });
@@ -235,7 +236,7 @@ test('a usable dev page is ready without requiring an unrelated websocket event'
   const config = {
     provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
     dev: { next: {
-      start: [process.execPath, '-e', 'console.log("READY"); require("node:http").createServer().listen(0)'],
+      start: [process.execPath, '-e', `console.log(${JSON.stringify(readinessOutput)}); require("node:http").createServer().listen(0)`],
       url: `http://127.0.0.1:${address.port}/`,
       readyPattern: 'READY',
       hmr: true,
@@ -255,6 +256,7 @@ test('a usable dev page is ready without requiring an unrelated websocket event'
     await closed;
   }
 });
+}
 
 test('a streamed 404 waits for browser-visible failure after the navigation shell', { timeout: 10_000 }, async () => {
   // Given: the initial response paints navigation before streaming an error.
