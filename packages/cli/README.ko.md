@@ -187,6 +187,9 @@ redirect하며 JavaScript 없이도 form이 동작합니다. 셸을 교체하지
 클릭하세요. 요청 중에는 이전 값이 남고 승인된 새 이름만 history entry 없이 표시됩니다.
 
 React `dev` script는 이제 직접 실행한 CLI와 동일한 `fluo dev` 경로로 위임합니다.
+Node restart runner는 기본 50ms trailing-edge debounce로 source 이벤트를 합칩니다.
+`FLUO_DEV_RELOAD_DEBOUNCE_MS`의 명시적 override는 유지하며, 내용 hash가 같은
+저장은 여전히 application을 재시작하지 않습니다.
 개발 gateway는 대상 JavaScript와 CSS 응답에 streaming gzip을 협상하며 원래 내용과
 backpressure를 유지합니다. 이미 인코딩된 응답, range, HEAD, `no-transform` 응답은
 변환하지 않습니다. 압축 응답은 `Accept-Encoding`에 따라 달라지며 weak ETag를 사용합니다.
