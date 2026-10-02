@@ -14,6 +14,14 @@ import {
 const root = new URL('../', import.meta.url);
 const frameworks = ['fluo', 'next', 'react-router', 'tanstack-start'];
 
+test('Fluo development edit stimuli target one actual source occurrence', async () => {
+  const config = JSON.parse(await readFile(new URL('config/representative.json', root), 'utf8'));
+  for (const [kind, edit] of Object.entries(config.dev.fluo.edits)) {
+    const source = await readFile(new URL(`apps/fluo/${edit.file}`, root), 'utf8');
+    assert.equal(source.split(edit.from).length - 1, 1, `${kind}: ${edit.file}`);
+  }
+});
+
 test('each production app has an independent build and start command', async () => {
   for (const framework of frameworks) {
     const file = new URL(`apps/${framework}/package.json`, root);

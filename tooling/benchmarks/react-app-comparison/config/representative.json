@@ -31,7 +31,7 @@
       "url": "http://127.0.0.1:32151/",
       "readyPattern": "DEV_READY",
       "edits": {
-        "react-edit": { "file": "src/document.ts", "from": "Editor login", "to": "Editor login changed", "path": "/login", "selector": "h1", "expectedText": "Editor login changed", "reload": true, "restartPattern": "DEV_RELOADED" },
+        "react-edit": { "file": "src/navigation-catalog.ts", "from": "Editor login", "to": "Editor login changed", "path": "/login", "selector": "h1", "expectedText": "Editor login changed", "reload": true, "restartPattern": "DEV_RELOADED" },
         "css-edit": { "file": "src/styles.css", "from": "body { margin: 0; }", "to": "body { margin: 0; --benchmark-edit: changed; }", "selector": "body", "expectedStyle": { "property": "--benchmark-edit", "value": "changed" }, "reload": true, "restartPattern": "DEV_RELOADED" },
         "server-edit": { "file": "src/app.ts", "from": "title: 'Product catalog'", "to": "title: 'Product catalog changed'", "path": "/", "selector": "h1", "expectedText": "Product catalog changed", "reload": true, "restartPattern": "DEV_RELOADED" }
       }
