@@ -890,6 +890,7 @@ test('keeps native anchors usable before hydration', async ({ page }) => {
     await page.goto('/products/sku-42?preview=true', { waitUntil: 'commit' });
     await entryRequest;
     await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Shell taps: 0' })).toBeDisabled();
 
     const document = page.waitForResponse((result) =>
       result.url().includes('/search?q=catalog') && result.request().isNavigationRequest());

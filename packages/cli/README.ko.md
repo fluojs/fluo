@@ -187,6 +187,9 @@ redirect하며 JavaScript 없이도 form이 동작합니다. 셸을 교체하지
 클릭하세요. 요청 중에는 이전 값이 남고 승인된 새 이름만 history entry 없이 표시됩니다.
 
 React `dev` script는 이제 직접 실행한 CLI와 동일한 `fluo dev` 경로로 위임합니다.
+생성된 production asset controller는 application instance별로 immutable build 파일의
+bytes를 재사용하고 동시 읽기를 공유합니다. 실패한 읽기는 보관하지 않으며,
+개발 자산은 수정 내용이 반영되도록 다시 읽습니다.
 Node restart runner는 기본 50ms trailing-edge debounce로 source 이벤트를 합칩니다.
 `FLUO_DEV_RELOAD_DEBOUNCE_MS`의 명시적 override는 유지하며, 내용 hash가 같은
 저장은 여전히 application을 재시작하지 않습니다.

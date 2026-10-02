@@ -287,6 +287,8 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
 
   @Controller('/assets')
   class ViteAssetController {
+    readonly #assets = new Map<string, Promise<Buffer>>();
+
     @Get('/:file')
     @RequestDto(AssetRequest)
     async serve(input: AssetRequest, context: RequestContext) {
@@ -295,7 +297,15 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
       }
 
       try {
-        const body = await readFile(new URL(input.file, options.clientDirectory));
+        let asset = this.#assets.get(input.file);
+        if (!asset) {
+          asset = readFile(new URL(input.file, options.clientDirectory)).catch((error: unknown) => {
+            this.#assets.delete(input.file);
+            throw error;
+          });
+          this.#assets.set(input.file, asset);
+        }
+        const body = await asset;
         context.response.setHeader('Cache-Control', /-[a-zA-Z0-9_-]{6,}\.(?:js|css|svg)$/u.test(input.file)
           ? 'public, max-age=31536000, immutable'
           : 'public, max-age=300');

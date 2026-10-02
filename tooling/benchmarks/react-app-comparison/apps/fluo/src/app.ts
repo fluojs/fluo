@@ -288,6 +288,8 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL, v
 
   @Controller('/assets')
   class Assets {
+    readonly #assets = new Map<string, Promise<{ readonly body: Buffer; gzip?: Buffer }>>();
+
     @Get('/:file')
     @RequestDto(AssetPath)
     async serve(input: AssetPath, context: RequestContext) {
@@ -295,7 +297,15 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL, v
         throw new NotFoundException('Asset not found.');
       }
       try {
-        const body = await readFile(new URL(input.file, clientDirectory));
+        let asset = this.#assets.get(input.file);
+        if (!asset) {
+          asset = readFile(new URL(input.file, clientDirectory)).then((body) => ({ body })).catch((error: unknown) => {
+            this.#assets.delete(input.file);
+            throw error;
+          });
+          if (!vite) this.#assets.set(input.file, asset);
+        }
+        const bytes = await asset;
         context.response.setHeader(
           'Content-Type',
           input.file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8',
@@ -304,9 +314,9 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL, v
         const accepted = context.request.headers['accept-encoding'];
         if (typeof accepted === 'string' && /\bgzip\b/u.test(accepted)) {
           context.response.setHeader('Content-Encoding', 'gzip');
-          return gzipSync(body);
+          return bytes.gzip ??= gzipSync(bytes.body);
         }
-        return body;
+        return bytes.body;
       } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
           throw new NotFoundException('Asset not found.', { cause: error });

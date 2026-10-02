@@ -189,6 +189,9 @@ without replacing the shell, update the product through that HTTP endpoint and c
 approved name replaces it without a history entry.
 
 The React `dev` script now delegates to the same `fluo dev` path as a direct CLI invocation.
+The generated production asset controller reuses immutable build-file bytes within
+each application instance and shares concurrent reads. Failed reads are discarded;
+development assets are read again so edits remain visible.
 The Node restart runner coalesces source events with a 50 ms trailing-edge debounce
 by default. `FLUO_DEV_RELOAD_DEBOUNCE_MS` retains its explicit override; content
 hashing still prevents unchanged saves from restarting the application.
