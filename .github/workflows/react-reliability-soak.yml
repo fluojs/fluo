@@ -1,13 +1,6 @@
 name: React reliability soak
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/react-reliability-soak.yml'
-      - 'examples/react-vite-ssr/**'
-      - 'packages/react/**'
-      - 'packages/cli/src/new/templates/react-vite-ssr/**'
   workflow_dispatch:
     inputs:
       head:
@@ -25,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: react-reliability-soak-${{ inputs.head || github.event.pull_request.head.sha || github.sha }}
+  group: react-reliability-soak-${{ inputs.head || github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -35,10 +28,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ inputs.head || github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ inputs.head || github.sha }}
       - name: Require exact requested head
         env:
-          REQUESTED_HEAD: ${{ inputs.head || github.event.pull_request.head.sha || github.sha }}
+          REQUESTED_HEAD: ${{ inputs.head || github.sha }}
         run: |
           test "${#REQUESTED_HEAD}" -eq 40
           test "$(git rev-parse HEAD)" = "$REQUESTED_HEAD"
