@@ -163,7 +163,8 @@ export function evaluatePerformance(baseline: Baseline, runs: readonly Measureme
         }
         const band = config.relativeBands[metric];
         const limit = metric === 'throughputRequestsPerSecond' ? comparison / band : comparison * band;
-        const breach = metric === 'throughputRequestsPerSecond' ? measured < limit : measured > limit;
+        const breach = metric === 'throughputRequestsPerSecond'
+          ? comparison / measured > band : measured / comparison > band;
         checks.push({ profile, mode: config.mode, framework, metric, verdict: breach ? 'fail' : 'pass',
           reason: breach ? 'relative-band' : 'within-budget', observed: measured, limit });
       }
