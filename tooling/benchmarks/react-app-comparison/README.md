@@ -120,6 +120,27 @@ same visible text/computed-style assertion. This dev-method correction requires
 identical-method baseline remeasurement; it does not relax budgets or turn
 historical fail/inconclusive results into a performance PASS.
 
+Optional `dev.<framework>.readiness` authenticates HMR before source edits.
+The collector subscribes to CDP before navigation and requires the exact socket
+origin/path, successful upgrade and structured readiness message. Installed Vite
+8.0.3/8.2.2/8.3.1 uses the `vite-hmr` subprotocol and `{"type":"connected"}`;
+Next 16.3.6 App Router with `--webpack` uses `/_next/hmr?id=...` (no subprotocol)
+and a `type: "sync"` message with a compilation hash and no errors.
+Arbitrary sockets, console text and socket-open events cannot satisfy readiness.
+The event wait is bounded, cleans up listeners, and adds no sleep or polling.
+HTTP-only fixtures without this optional field still require no WebSocket.
+
+All initial HMR waiting is included in `devColdReadyMs` and each subsequent
+edit experiment's recorded restart readiness. An edit-specific document
+navigation authenticates its new connection too; its navigation/readiness time
+is added to that experiment's ready step, before the unchanged edit interval.
+Relaunch edits include readiness in their edit interval and retain the restart
+observation. Raw timings retain the socket identity, exact message, CDP timestamp
+and elapsed observation time. HMR connection is not hydration or module
+registration completion; this change adds no initial hydration wait.
+Recollect the baseline with this same readiness method before comparing edit
+latencies. Budgets, counts, peer commands and production capture remain frozen.
+
 The focused real-dev check requires installed linked packages and Chromium:
 
 ```sh

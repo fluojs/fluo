@@ -30,6 +30,7 @@
       "start": ["node", "../../src/fluo-dev.mjs"],
       "url": "http://127.0.0.1:32151/",
       "readyPattern": "[fluo] React dev app ready",
+      "readiness": { "protocol": "vite", "path": "/" },
       "edits": {
         "react-edit": { "file": "src/catalog-destination.tsx", "from": "Editor login", "to": "Editor login changed", "path": "/login", "selector": "h1", "expectedText": "Editor login changed", "reload": false },
         "css-edit": { "file": "src/styles.css", "from": "body { margin: 0; }", "to": "body { margin: 0; --benchmark-edit: changed; }", "selector": "body", "expectedStyle": { "property": "--benchmark-edit", "value": "changed" }, "reload": false },
@@ -40,6 +41,7 @@
       "start": ["pnpm", "dev", "--webpack", "-H", "127.0.0.1", "-p", "32152"],
       "url": "http://127.0.0.1:32152/",
       "readyPattern": "Ready in",
+      "readiness": { "protocol": "next-webpack", "path": "/_next/hmr" },
       "edits": {
         "react-edit": { "file": "app/products/page.jsx", "from": "className=\"eyebrow\">Product catalog", "to": "className=\"eyebrow\">Catalog changed", "path": "/products", "selector": ".eyebrow", "expectedText": "Catalog changed" },
         "css-edit": { "file": "app/benchmark.css", "from": "html { background: var(--canvas); color: var(--ink); }", "to": "html { --benchmark-edit: changed; background: var(--canvas); color: var(--ink); }", "selector": "html", "expectedStyle": { "property": "--benchmark-edit", "value": "changed" }, "relaunch": true },
@@ -50,6 +52,7 @@
       "start": ["pnpm", "dev", "--host", "127.0.0.1", "--port", "32153"],
       "url": "http://127.0.0.1:32153/",
       "readyPattern": "Local:",
+      "readiness": { "protocol": "vite", "path": "/" },
       "edits": {
         "react-edit": { "file": "app/routes/home.tsx", "from": "One shared catalog, three songs, and real server-rendered routes.", "to": "One shared catalog, three songs, and edited server-rendered routes.", "selector": ".lede", "expectedText": "edited server-rendered routes", "reload": true, "restartPattern": "[vite] program reload" },
         "css-edit": { "file": "app/styles.css", "from": "body { margin: 0; }", "to": "body { margin: 0; --benchmark-edit: changed; }", "selector": "body", "expectedStyle": { "property": "--benchmark-edit", "value": "changed" }, "reload": true, "restartPattern": "[vite] program reload" },
@@ -60,6 +63,7 @@
       "start": ["pnpm", "dev", "--host", "127.0.0.1", "--port", "32154"],
       "url": "http://127.0.0.1:32154/",
       "readyPattern": "Local:",
+      "readiness": { "protocol": "vite", "path": "/" },
       "edits": {
         "react-edit": { "file": "src/views.tsx", "from": "{product.sku}</span>", "to": "{product.sku} edited</span>", "selector": ".row .muted", "expectedText": "edited" },
         "css-edit": { "file": "src/styles.css", "from": "body{margin:0}", "to": "body{margin:0;--benchmark-edit:changed}", "selector": "body", "expectedStyle": { "property": "--benchmark-edit", "value": "changed" }, "relaunch": true },

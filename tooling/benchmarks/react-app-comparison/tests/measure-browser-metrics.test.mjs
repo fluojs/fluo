@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
 
-import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForCapturedRequests, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
+import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, observeDevReadiness, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForCapturedRequests, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
 import { installInitialReadiness, waitForInitialReadiness } from '../src/initial-readiness.mjs';
 
 const appRequire = createRequire(new URL('../apps/fluo/package.json', import.meta.url));
@@ -56,6 +56,79 @@ function fixtureResponse(request, response) {
   response.end(fixtureScript);
   return true;
 }
+
+for (const protocol of ['vite', 'next-webpack']) {
+test(`${protocol} readiness authenticates the upgrade and exact structured frame`, async () => {
+  const cdp = new EventEmitter();
+  const path = protocol === 'vite' ? '/' : '/_next/hmr';
+  const wait = observeDevReadiness(cdp, { protocol, path }, 'http://localhost:1234/');
+  const message = protocol === 'vite' ? { type: 'connected' }
+    : { type: 'sync', hash: 'compiled-hash', errors: [], warnings: [] };
+  const socket = (requestId, url, subprotocol) => {
+    cdp.emit('Network.webSocketCreated', { requestId, url });
+    cdp.emit('Network.webSocketHandshakeResponseReceived', {
+      requestId, response: { status: 101, headers: subprotocol ? { 'Sec-WebSocket-Protocol': subprotocol } : {} },
+    });
+  };
+  const frame = (requestId, payloadData) => cdp.emit('Network.webSocketFrameReceived', {
+    requestId, timestamp: 42, response: { opcode: 1, payloadData },
+  });
+  // Preserve the actual CDP lifecycle. Neither a different origin/path nor a
+  // wrong negotiated subprotocol may complete the wait, even with valid JSON.
+  socket('other-origin', `ws://localhost:5678${path}?id=page`, protocol === 'vite' ? 'vite-hmr' : null);
+  socket('other-path', 'ws://localhost:1234/chat?id=page', protocol === 'vite' ? 'vite-hmr' : null);
+  socket('wrong-protocol', `ws://localhost:1234${path}?id=page`, 'chat');
+  for (const id of ['other-origin', 'other-path', 'wrong-protocol']) frame(id, JSON.stringify(message));
+  socket('hmr', `ws://localhost:1234${path}?id=page`, protocol === 'vite' ? 'vite-hmr' : null);
+  frame('hmr', '[HMR] connected');
+  frame('hmr', JSON.stringify({ type: 'unrelated', text: 'connected' }));
+  assert.equal(cdp.listenerCount('Network.webSocketFrameReceived'), 1);
+  frame('hmr', JSON.stringify(message));
+  const observed = await wait.promise;
+  assert.equal(observed.requestId, 'hmr');
+  assert.deepEqual(observed.message, message);
+  assert.equal(observed.cdpTimestamp, 42);
+  assert.equal(cdp.eventNames().length, 0);
+});
+}
+
+test('HMR readiness cancellation removes every subscription', async () => {
+  const cdp = new EventEmitter();
+  const wait = observeDevReadiness(cdp, { protocol: 'vite', path: '/' }, 'http://localhost:1234/');
+  const rejected = assert.rejects(wait.promise, /cancelled/u);
+  wait.cancel();
+  await rejected;
+  assert.equal(cdp.eventNames().length, 0);
+});
+
+test('readiness observes the installed Vite client in a real browser', { timeout: 20_000 }, async () => {
+  const { createServer: createViteServer } = await import(appRequire.resolve('vite'));
+  const { chromium } = await import('@playwright/test');
+  const server = await createViteServer({ configFile: false, logLevel: 'silent',
+    server: { host: '127.0.0.1', port: 0 } });
+  let browser;
+  try {
+    await server.listen();
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Network.enable');
+    const url = server.resolvedUrls.local[0];
+    const wait = observeDevReadiness(cdp, { protocol: 'vite', path: '/' }, url);
+    try {
+      // The real installed /@vite/client initiates and processes the HMR socket.
+      await page.goto(new URL('/@vite/client', url).href);
+      await page.evaluate(() => import(location.href));
+      const observed = await wait.promise;
+      assert.equal(observed.message.type, 'connected');
+      assert.equal(observed.protocol, 'vite');
+      assert.ok(observed.elapsedMs >= 0);
+    } finally { wait.cancel(); }
+  } finally {
+    await browser?.close();
+    await server.close();
+  }
+});
 
 test('collector cannot sample cold metrics or start warm with unresolved real React Suspense', { timeout: 25_000 }, async () => {
   let documents = 0;

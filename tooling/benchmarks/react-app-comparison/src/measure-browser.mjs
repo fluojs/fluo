@@ -160,6 +160,69 @@ function percentile(values, quantile) {
   return sorted[Math.ceil(quantile * sorted.length) - 1];
 }
 
+// CDP subscriptions are installed before navigation, including the upgrade
+// handshake. A socket opening (or a console log) alone is not HMR readiness.
+export function observeDevReadiness(cdp, readiness, pageUrl, started = performance.now()) {
+  if (!readiness) return { promise: Promise.resolve(null), cancel() {} };
+  if (!['vite', 'next-webpack'].includes(readiness.protocol) || !readiness.path?.startsWith('/')) {
+    throw new TypeError('dev readiness requires an exact protocol and socket path');
+  }
+  const origin = new URL(pageUrl).origin;
+  const sockets = new Map();
+  const subscriptions = [];
+  let cancel;
+  const promise = new Promise((accept, reject) => {
+    const cleanup = () => {
+      clearTimeout(timeout);
+      for (const [name, listener] of subscriptions) cdp.off(name, listener);
+      sockets.clear();
+    };
+    const fail = (error) => { cleanup(); reject(error); };
+    const timeout = setTimeout(() => fail(new Error(`${readiness.protocol} HMR readiness timeout`)),
+      readiness.timeoutMs ?? 60_000);
+    cancel = () => fail(new Error('HMR readiness cancelled'));
+    const on = (name, listener) => { subscriptions.push([name, listener]); cdp.on(name, listener); };
+    const header = (headers, name) => Object.entries(headers ?? {})
+      .find(([key]) => key.toLowerCase() === name)?.[1];
+    on('Network.webSocketCreated', ({ requestId, url }) => {
+      const socket = new URL(url);
+      socket.protocol = socket.protocol === 'wss:' ? 'https:' : 'http:';
+      if (socket.origin !== origin || socket.pathname !== readiness.path) return;
+      if (readiness.protocol === 'next-webpack' && !socket.searchParams.get('id')) return;
+      sockets.set(requestId, { url, upgraded: false });
+    });
+    on('Network.webSocketHandshakeResponseReceived', ({ requestId, response }) => {
+      const socket = sockets.get(requestId);
+      if (!socket || response.status !== 101) return;
+      const protocol = header(response.headers, 'sec-websocket-protocol');
+      if (readiness.protocol === 'vite' ? protocol !== 'vite-hmr' : Boolean(protocol)) return;
+      socket.upgraded = true;
+    });
+    on('Network.webSocketFrameReceived', ({ requestId, timestamp, response }) => {
+      const socket = sockets.get(requestId);
+      if (!socket?.upgraded || response.opcode !== 1) return;
+      let message;
+      try { message = JSON.parse(response.payloadData); } catch { return; }
+      if (!message || typeof message !== 'object') return;
+      if (readiness.protocol === 'vite') {
+        if (message.type !== 'connected') return;
+      } else {
+        if (message.type !== 'sync' || typeof message.hash !== 'string'
+          || !message.hash || !Array.isArray(message.errors) || !Array.isArray(message.warnings)) return;
+        if (message.errors.length) { fail(new Error('Next webpack HMR sync has compilation errors')); return; }
+      }
+      const observation = { protocol: readiness.protocol, requestId, url: socket.url,
+        message, cdpTimestamp: timestamp, elapsedMs: performance.now() - started };
+      cleanup();
+      accept(observation);
+    });
+    on('Network.webSocketClosed', ({ requestId }) => sockets.delete(requestId));
+  });
+  // Navigation can fail before the bounded readiness wait is awaited.
+  promise.catch(() => {});
+  return { promise, cancel };
+}
+
 export async function createBrowserDriver(config, { devMode = false } = {}) {
   if (!devMode && (!config.journeys || JOURNEYS.some((name) => !config.journeys[name]))) {
     throw new Error(`browser correctness requires configured journeys: ${JOURNEYS.join(', ')}`);
@@ -247,18 +310,25 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           server.once('exit', (code) => { clearTimeout(timeout); reject(new Error(`dev server exited: ${code}`)); });
         });
         let created;
+        let hmr;
         try {
           await ready;
           created = await createPage(item);
-          const { context, page } = created;
+          const { context, page, cdp } = created;
+          hmr = observeDevReadiness(cdp, commands.readiness, commands.url ?? item.url, started);
           const response = await page.goto(commands.url ?? item.url, { waitUntil: 'domcontentloaded' });
           if (!response?.ok()) throw new Error(`dev page HTTP ${response?.status()}`);
           await page.locator('h1').first().waitFor({ state: 'visible', timeout: 60_000 });
+          const hmrReadiness = await hmr.promise;
           const readyMs = performance.now() - started;
-          contexts.set(item.runId + item.framework, { context, page, readyMs, serverLog: () => log });
+          const readyStep = { name: 'dev-ready', pass: true, elapsedMs: readyMs,
+            hmrReadiness, url: commands.url, log };
+          contexts.set(item.runId + item.framework, { context, page, cdp, readyMs,
+            hmrReadiness, readyStep, serverLog: () => log });
           devServers.set(item.runId + item.framework, server);
-          return { pass: true, steps: [{ name: 'dev-ready', pass: true, elapsedMs: readyMs, url: commands.url, log }] };
+          return { pass: true, steps: [readyStep] };
         } catch (error) {
+          hmr?.cancel();
           await stopDevServer(server);
           await created?.context.close();
           return { pass: false, steps: [{ name: 'dev-ready', pass: false, error: String(error), log }] };
@@ -597,7 +667,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       if (!owned || !server) throw new Error(`dev server missing: ${key}`);
       const commands = config.dev[item.framework];
       if (kind === 'cold-ready') {
-        return { durationMs: owned.readyMs, event: 'dev-ready' };
+        return { durationMs: owned.readyMs, event: 'dev-ready', hmrReadiness: owned.hmrReadiness };
       }
       const edit = commands.edits[kind];
       if (!(edit?.file || (Array.isArray(edit?.command) && edit.command.length > 0)) || !edit.selector
@@ -605,7 +675,21 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         throw new Error(`missing ${kind} edit stimulus and visibility marker`);
       }
       const { page } = owned;
-      if (edit.path) await page.goto(new URL(edit.path, commands.url ?? item.url).href, { waitUntil: 'load' });
+      if (edit.path) {
+        const navigationStarted = performance.now();
+        const url = new URL(edit.path, commands.url ?? item.url).href;
+        const hmr = observeDevReadiness(owned.cdp, commands.readiness, url, navigationStarted);
+        try {
+          await page.goto(url, { waitUntil: 'load' });
+          const hmrReadiness = await hmr.promise;
+          const durationMs = performance.now() - navigationStarted;
+          owned.readyMs += durationMs;
+          owned.readyStep.elapsedMs += durationMs;
+          owned.readyStep.editNavigation = { url, durationMs, hmrReadiness };
+        } finally {
+          hmr.cancel();
+        }
+      }
       if (item.framework === 'next' && kind === 'react-edit') {
         await page.locator('[data-benchmark-hydrated="true"]').waitFor({ state: 'attached', timeout: 60_000 });
       }
@@ -714,6 +798,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         event: `${kind}-visible`,
         method: edit.relaunch ? 'dev-server-relaunch' : edit.restartPattern
           ? 'restart-and-reload' : edit.explicitReload ? 'document-reload' : 'hot-update',
+        ...(edit.relaunch ? { restartReadiness: contexts.get(key).readyStep } : {}),
       };
       return result;
     },
