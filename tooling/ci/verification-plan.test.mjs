@@ -36,6 +36,16 @@ test('the canonical PR plan covers all required groups within eighteen expanded 
   ]));
 });
 
+test('nonroot reliability task downloads all browsers without requesting OS installation', () => {
+  // Given / When: resolve the task run under the caller's nonroot UID.
+  const plan = buildVerificationPlan({ changedFiles: ['examples/react-vite-ssr/tests/long-session.spec.ts'], identity });
+  const install = plan.tasks.find(({ id }) => id === 'tooling-1').commands
+    .find(({ argv }) => argv.includes('playwright') && argv.includes('install'));
+  // Then: OS dependencies belong to the locked image, not a task-side su prompt.
+  assert.ok(install);
+  assert.deepEqual(install.argv.slice(install.argv.indexOf('install') + 1), ['chromium', 'firefox', 'webkit']);
+});
+
 test('all companion requirements resolve to executable tasks rather than duplicate full suites', () => {
   // Given
   const changedFiles = ['packages/core/package.json', 'packages/core/src/index.mjs', 'docs/reference/node-support.md'];
