@@ -28,6 +28,7 @@ import {
 } from '@fluojs/react';
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { cloneElement, createElement, isValidElement } from 'react';
+import type { ViteDevServer } from 'vite';
 
 import {
   SESSION_COOKIE,
@@ -107,36 +108,49 @@ function productName(name: unknown): string {
   return result.name;
 }
 
-export function createBenchmarkModule(manifest: unknown, clientDirectory: URL) {
-  const result = createReactViteAssetManifest({
+export function createBenchmarkModule(manifest: unknown, clientDirectory: URL, vite?: ViteDevServer) {
+  const result = vite ? undefined : createReactViteAssetManifest({
     base: '/assets/',
     entries: { client: 'src/entry-client.ts', server: 'src/entry-server.ts' },
     identifierPrefix: 'benchmark-fluo-',
     manifest,
   });
-  if (!result.ok) {
+  if (result && !result.ok) {
     throw new TypeError(result.diagnostics.map((diagnostic) => diagnostic.message).join('\n'));
   }
-  const assets = result.manifest;
+  const developmentAssetMap: Readonly<Record<string, string>> = {};
+  const assets = result?.manifest ?? {
+    buildId: 'vite-development',
+    css: ['/src/styles.css?direct'],
+    assetMap: developmentAssetMap,
+    hydrationOptions: {
+      bootstrapModules: ['/@vite/client', '/src/entry-client-dev.ts'],
+      identifierPrefix: 'benchmark-fluo-',
+    },
+  };
   const destinationFiles = [
     'src/navigation-catalog.ts',
     'src/navigation-product.ts',
     'src/navigation-jukebox.ts',
   ];
   for (const file of destinationFiles) {
-    if (!assets.assetMap[file]) throw new TypeError(`Missing browser destination: ${file}`);
+    if (!vite && !assets.assetMap[file]) throw new TypeError(`Missing browser destination: ${file}`);
   }
 
-  function page(data: PageData, context: RequestContext) {
+  async function page(data: PageData, context: RequestContext) {
     privateResponse(context);
     if (data.kind === 'jukebox') {
-      context.response.setHeader('Content-Security-Policy', "default-src 'self'; media-src 'self' blob:");
+      context.response.setHeader('Content-Security-Policy', vite
+        ? "default-src 'self'; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:"
+        : "default-src 'self'; media-src 'self' blob:");
     }
     const module = data.kind === 'catalog'
       ? './navigation-catalog.ts'
       : data.kind === 'product' ? './navigation-product.ts'
       : data.kind === 'jukebox' ? './navigation-jukebox.ts' : './navigation-catalog.ts';
-    const initialElement = data.kind === 'product'
+    const initialElement = vite
+      ? createElement((await vite.ssrLoadModule(`/src/${module.slice(2)}`))['default'], { data, editor: editor(context) })
+      : data.kind === 'product'
       ? createElement(ProductDestination, { data, editor: editor(context) })
       : data.kind === 'jukebox'
         ? createElement(JukeboxDestination, { data, editor: editor(context) })

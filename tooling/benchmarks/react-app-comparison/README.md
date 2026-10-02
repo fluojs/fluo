@@ -107,6 +107,29 @@ Development cold start and React/CSS/server edit-to-visible are distinct timed
 experiments; they must not be synthesized from production timings. Record native
 cache controls separately and never set identity-dependent data to `public`.
 
+Fluo development runs the existing canonical `fluo dev --runner fluo` integration,
+not a production build/watch adapter. The fixture follows the shipped CLI template:
+Vite middleware and its gateway WebSocket, refresh preamble before hydration,
+current SSR destination loads, and the existing graph supervisor. The original
+production entry and manifest keys, hashed split destinations and `/assets/`
+serving remain independent of development. CSS and React stimuli observe visible
+HMR without an explicit reload; the server stimulus waits for app-generation
+readiness, then requests a fresh document to observe its changed HTTP data.
+The edit-to-visible interval still starts before the source edit and ends at the
+same visible text/computed-style assertion. This dev-method correction requires
+identical-method baseline remeasurement; it does not relax budgets or turn
+historical fail/inconclusive results into a performance PASS.
+
+The focused real-dev check requires installed linked packages and Chromium:
+
+```sh
+node --test tooling/benchmarks/react-app-comparison/tests/fluo-dev.test.mjs
+```
+
+It subscribes to browser mutations and app readiness before edits, restores the
+stimulus sources after shutdown, checks fresh SSR, and verifies child exit and
+public-port release. This is a correctness check, not a performance gate.
+
 The mandatory metrics are cold/warm TTFB, shell arrival, LCP, hydration/main-thread
 work, interaction-to-pending and approved-view p50/p95, transferred and compressed
 JS/CSS, request count, throughput, error rate, CPU, RSS, dev cold ready, and

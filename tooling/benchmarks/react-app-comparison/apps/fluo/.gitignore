@@ -1,0 +1,2 @@
+# This fixture has no secrets; retain the canonical dev env-file prerequisite.
+!.env

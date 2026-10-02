@@ -22,6 +22,17 @@ test('Fluo development edit stimuli target one actual source occurrence', async 
   }
 });
 
+test('Fluo dev stimuli distinguish live HMR from server readiness and explicit reload', async () => {
+  const config = JSON.parse(await readFile(new URL('config/representative.json', root), 'utf8'));
+  const fluo = config.dev.fluo;
+  assert.equal(fluo.edits['css-edit'].reload, false);
+  assert.equal(fluo.edits['react-edit'].reload, false);
+  assert.equal(fluo.edits['server-edit'].reload, true);
+  assert.equal(fluo.edits['server-edit'].restartPattern, '[fluo] React dev app ready');
+  assert.equal(fluo.edits['css-edit'].restartPattern, undefined);
+  assert.equal(fluo.edits['react-edit'].restartPattern, undefined);
+});
+
 test('each production app has an independent build and start command', async () => {
   for (const framework of frameworks) {
     const file = new URL(`apps/${framework}/package.json`, root);

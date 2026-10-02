@@ -29,11 +29,11 @@
     "fluo": {
       "start": ["node", "../../src/fluo-dev.mjs"],
       "url": "http://127.0.0.1:32151/",
-      "readyPattern": "DEV_READY",
+      "readyPattern": "[fluo] React dev app ready",
       "edits": {
-        "react-edit": { "file": "src/navigation-catalog.ts", "from": "Editor login", "to": "Editor login changed", "path": "/login", "selector": "h1", "expectedText": "Editor login changed", "reload": true, "restartPattern": "DEV_RELOADED" },
-        "css-edit": { "file": "src/styles.css", "from": "body { margin: 0; }", "to": "body { margin: 0; --benchmark-edit: changed; }", "selector": "body", "expectedStyle": { "property": "--benchmark-edit", "value": "changed" }, "reload": true, "restartPattern": "DEV_RELOADED" },
-        "server-edit": { "file": "src/app.ts", "from": "title: 'Product catalog'", "to": "title: 'Product catalog changed'", "path": "/", "selector": "h1", "expectedText": "Product catalog changed", "reload": true, "restartPattern": "DEV_RELOADED" }
+        "react-edit": { "file": "src/catalog-destination.tsx", "from": "Editor login", "to": "Editor login changed", "path": "/login", "selector": "h1", "expectedText": "Editor login changed", "reload": false },
+        "css-edit": { "file": "src/styles.css", "from": "body { margin: 0; }", "to": "body { margin: 0; --benchmark-edit: changed; }", "selector": "body", "expectedStyle": { "property": "--benchmark-edit", "value": "changed" }, "reload": false },
+        "server-edit": { "file": "src/app.ts", "from": "title: 'Product catalog'", "to": "title: 'Product catalog changed'", "path": "/", "selector": "h1", "expectedText": "Product catalog changed", "reload": true, "restartPattern": "[fluo] React dev app ready" }
       }
     },
     "next": {
