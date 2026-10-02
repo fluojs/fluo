@@ -44,6 +44,7 @@ type FixtureState = {
   scopeCloseCalls: number;
   sent: Array<{ type: string; event?: string; data?: { status: string; generation: number } }>;
   viteCloseCalls: number;
+  transformed: string[];
 };
 
 async function createFixture(): Promise<{ directory: string; state: FixtureState }> {
@@ -81,6 +82,7 @@ async function createFixture(): Promise<{ directory: string; state: FixtureState
       scopeCloseCalls: 0,
       sent: [],
       viteCloseCalls: 0,
+      transformed: [],
       watcher: new EventEmitter(),
     };
     export async function createServer(options) {
@@ -92,7 +94,7 @@ async function createFixture(): Promise<{ directory: string; state: FixtureState
       state.createEntered.resolve();
       await state.createGate.promise;
       return {
-        async transformRequest() { return null; },
+        async transformRequest(url) { state.transformed.push(url); return null; },
         async waitForRequestsIdle() {},
         moduleGraph: {
           async getModuleByUrl() {
@@ -108,6 +110,7 @@ async function createFixture(): Promise<{ directory: string; state: FixtureState
         async ssrLoadModule() {
           if (state.failLoad) throw new Error('SSR loading failed');
           return {
+            developmentPageModules: ['./page.tsx'],
             async startReactViteApp(_vite, upgradeServer) {
               state.appStartCalls += 1;
               state.appUpgradeServer = upgradeServer;
@@ -193,6 +196,23 @@ async function startHttpGateway(handler: NonNullable<FixtureState['httpHandler']
     },
   };
 }
+
+it('transforms declared development pages before publishing readiness', async () => {
+  const { directory, state } = await createFixture();
+  const signals = new EventEmitter();
+  const stdout = new PassThrough();
+  const ready = new Promise<void>((resolve) => { stdout.once('data', () => resolve()); });
+  const running = runReactViteDevApp(directory, { port: 0, signalTarget: signals, stdout });
+  state.createGate.resolve();
+  state.appGate.resolve();
+  try {
+    await ready;
+    expect(state.transformed).toContain('/src/page.tsx');
+  } finally {
+    signals.emit('SIGTERM');
+    await expect(running).resolves.toBe(0);
+  }
+});
 
 function requestGateway(url: string, headers: OutgoingHttpHeaders = {}, method = 'GET') {
   return new Promise<{ body: Buffer; headers: IncomingMessage['headers']; status: number | undefined }>((resolve, reject) => {

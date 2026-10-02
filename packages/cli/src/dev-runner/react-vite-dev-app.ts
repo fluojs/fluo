@@ -3,7 +3,7 @@ import type { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { createServer, request } from 'node:http';
 import { createRequire } from 'node:module';
-import { join, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { pipeline } from 'node:stream';
 import { pathToFileURL } from 'node:url';
 import { constants, createGzip } from 'node:zlib';
@@ -166,6 +166,10 @@ export async function runReactViteDevApp(
           .filter((module): module is string => typeof module === 'string' && /^\.\//u.test(module))
           .map((module) => join(projectDirectory, 'src', module.slice(2))))
         : new Set<string>();
+      for (const file of pageModules) {
+        await vite.transformRequest(`/${relative(projectDirectory, file).split(sep).join('/')}`);
+      }
+      await vite.waitForRequestsIdle();
       const serverFiles = await collectServerFiles(pageModules);
       if (stopping || generation !== desiredGeneration) return;
       appUrl = new URL(app.url);

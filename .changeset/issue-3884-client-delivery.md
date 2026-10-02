@@ -10,3 +10,5 @@ Document complete client-delivery traces, initial payload reuse, and the limits 
 Avoid redundant ordinary Link renders when the provider connects, while preserving viewport prefetch connection and cleanup.
 
 Negotiate streaming gzip for eligible React development gateway JavaScript and CSS responses, preserving HTTP exclusions, weak validators, backpressure and disconnect cleanup.
+
+Transform declared React development page modules before publishing readiness so early page edits can use the client HMR graph rather than restarting the server generation.
