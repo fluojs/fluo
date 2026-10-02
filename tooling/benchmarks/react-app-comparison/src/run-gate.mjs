@@ -44,7 +44,7 @@ export async function startServers(definitions, onStart = () => {}) {
     for (const definition of definitions) {
       const child = spawn(definition.command[0], definition.command.slice(1), {
         cwd: definition.cwd,
-        env: { ...process.env, ...definition.env },
+        env: { ...process.env, ...definition.env, NODE_ENV: 'production' },
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: true,
       });
@@ -223,7 +223,8 @@ async function main() {
     dirty: dirty.length > 0,
     sourceSha256: sourceHash.digest('hex'),
     environment: { platform: platform(), arch: arch(), osRelease: release(),
-      cpuModel: cpus()[0]?.model, cpuCores: cpus().length, totalMemoryBytes: totalmem() },
+      cpuModel: cpus()[0]?.model, cpuCores: cpus().length, totalMemoryBytes: totalmem(),
+      serverNodeEnv: 'production' },
     root,
   };
   servers = await startServers(FRAMEWORKS.map((framework) => ({

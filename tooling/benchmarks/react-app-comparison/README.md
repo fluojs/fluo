@@ -20,6 +20,20 @@ every run. An uncommitted worktree is a different build input; retain its patch.
 use data from a failed correctness journey or a failed production build as timing
 evidence.
 
+Production server children run with `NODE_ENV=production` identically for all
+four frozen apps; provenance records `environment.serverNodeEnv`. Development
+runners remain separate. Earlier development/unset-renderer measurements remain
+archived rather than serving as a matched production verdict.
+
+The shared passive Chromium NetLog observer authenticates missing CDP cancellation
+terminals only through a unique exact native source clock and reciprocal lifetime
+chain before capture. Original CDP observations remain intact; missing, contradictory
+or ambiguous chains remain inconclusive. Native/CDP trace hashes and containment
+are checked before evaluation. Logging overhead is included on both matched sides,
+not measured separately. The page stays live through throughput and the unchanged
+post-workload `ps` CPU/RSS snapshot; budgets, peer defaults and metric meanings do
+not change.
+
 ```sh
 pnpm install --frozen-lockfile
 pnpm build

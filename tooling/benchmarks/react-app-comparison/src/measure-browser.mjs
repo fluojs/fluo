@@ -7,6 +7,9 @@ import { promisify } from 'node:util';
 import { PROFILES } from './measure.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
 import { installInitialReadiness, waitForInitialReadiness } from './initial-readiness.mjs';
+import { createNativeCapture, reconcileNativeTerminals } from './native-terminal.mjs';
+
+export { reconcileNativeTerminals } from './native-terminal.mjs';
 
 const JOURNEYS = ['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox'];
 const execFileAsync = promisify(execFile);
@@ -175,8 +178,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
     await stopOwnedProcess(server);
   }
 
-  async function createPage(item) {
-    const context = await browser.newContext({ viewport: PROFILES[item.device].viewport });
+  async function createPage(item, owner = browser) {
+    const context = await owner.newContext({ viewport: PROFILES[item.device].viewport });
     const page = await context.newPage();
     const cdp = await context.newCDPSession(page);
     const profile = PROFILES[item.device];
@@ -293,7 +296,18 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       }
     },
     async measure(item) {
-      const { context, page, cdp } = await createPage(item);
+      const native = await createNativeCapture(chromium, item.nativeTraceDirectory);
+      try {
+      const { context, page, cdp } = await createPage(item, native.browser);
+      const nativeSubscriptions = [];
+      for (const name of ['Network.requestWillBeSent', 'Network.requestWillBeSentExtraInfo',
+        'Network.responseReceived', 'Network.responseReceivedExtraInfo', 'Network.dataReceived',
+        'Network.loadingFinished', 'Network.loadingFailed', 'Page.frameNavigated', 'Page.frameDetached']) {
+        const observe = (data) => native.ledger.push({ name, data });
+        cdp.on(name, observe);
+        nativeSubscriptions.push([name, observe]);
+      }
+      await cdp.send('Page.enable');
       await installInitialReadiness(page);
       const requests = [];
       const qualityFailures = [];
@@ -301,7 +315,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       const networkChanges = new EventEmitter();
       let phase = 'cold';
       let collecting = true;
-      cdp.on('Network.requestWillBeSent', ({ requestId, loaderId, initiator, timestamp, request, type, redirectResponse }) => {
+      cdp.on('Network.requestWillBeSent', ({ requestId, loaderId, frameId, initiator, timestamp, wallTime, request, type, redirectResponse }) => {
         if (!collecting) return;
         if (redirectResponse) {
           const previous = network.get(requestId);
@@ -312,7 +326,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           });
         }
         network.set(requestId, {
-          requestId, loaderId, initiator, startedTimestamp: timestamp,
+          requestId, loaderId, frameId, initiator, startedTimestamp: timestamp, wallTime, method: request.method,
           url: request.url, resourceType: type?.toLowerCase() ?? 'other', phase,
           documentUrl: page.url(), pageClosed: page.isClosed(), status: null,
           compressedBodyBytes: 0,
@@ -471,13 +485,17 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         // Keep approved DOM latency unchanged. Capture actual HTTP terminals before
         // closing the context; this finite ID inventory is not producer closure.
         const finalRequestCapture = await waitForCapturedRequests(network, networkChanges, AbortSignal.timeout(10_000));
+        const captureMetrics = (await cdp.send('Performance.getMetrics')).metrics;
+        const captureTimestamp = captureMetrics.find((metric) => metric.name === 'Timestamp')?.value;
+        if (!Number.isFinite(captureTimestamp)) throw new Error('native terminal capture monotonic clock unavailable');
         collecting = false;
         for (const entry of network.values()) {
           requests.push({ ...entry, kind: 'request-pending',
             unavailable: 'request still in flight at capture boundary' });
-          qualityFailures.push(`request pending at capture boundary: ${entry.url}`);
         }
         network.clear();
+        native.ledger.push({ name: 'capture-boundary', data: { captureTimestamp, finalRequestCapture } });
+        for (const [name, observe] of nativeSubscriptions) cdp.off(name, observe);
         const metrics = {};
         const unavailable = {};
         if (cold.navigation) {
@@ -516,8 +534,6 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           metrics.throughputRequestsPerSecond = sent.length * 1000 / elapsedMs;
           requests.push(...sent.map((response) => ({ ...response, url: new URL(throughput.path, item.url).href, resourceType: 'throughput' })));
         }
-        const errorRate = summarizeErrorRate(requests);
-        if (errorRate !== null) metrics.errorRate = errorRate;
         const serverPid = config.serverPids?.[item.framework];
         let generator;
         {
@@ -533,9 +549,26 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             metrics.rssBytes = rss * 1024;
           }
         }
+        // Keep the original page lifetime through throughput and post-workload
+        // CPU/RSS snapshots. Only the browser-request cutoff precedes them.
+        const nativeEvidence = await native.read(captureTimestamp);
+        const reconciled = reconcileNativeTerminals(requests, nativeEvidence.log, nativeEvidence.provenance, native.ledger);
+        requests.splice(0, requests.length, ...reconciled);
+        finalRequestCapture.cdpPendingRequestIds = finalRequestCapture.pendingRequestIds;
+        finalRequestCapture.pendingRequestIds = requests.filter((entry) => entry.kind === 'request-pending')
+          .map((entry) => entry.requestId);
+        finalRequestCapture.nativeResolvedRequestIds = requests.filter((entry) => entry.nativeTerminal)
+          .map((entry) => entry.requestId);
+        finalRequestCapture.captureTimestamp = captureTimestamp;
+        for (const entry of requests.filter((request) => request.kind === 'request-pending')) {
+          qualityFailures.push(`request pending at capture boundary: ${entry.url}`);
+        }
+        const errorRate = summarizeErrorRate(requests);
+        if (errorRate !== null) metrics.errorRate = errorRate;
         return {
           metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions, initialBoundary, warmBoundary, finalRequestCapture },
           artifacts: {
+            nativeTerminalObserver: nativeEvidence.provenance,
             cachePolicy: item.mode,
             browserCacheDisabled: cacheSettings(item.mode).cacheDisabled,
             framework: item.framework,
@@ -550,8 +583,12 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           },
         };
       } finally {
-        await context.close();
+        for (const [name, observe] of nativeSubscriptions) cdp.off(name, observe);
+        cdp.removeAllListeners();
+        networkChanges.removeAllListeners();
+        await native.close();
       }
+      } finally { await native.close(); }
     },
     async measureDev(item, _config, kind) {
       const key = item.runId + item.framework;
