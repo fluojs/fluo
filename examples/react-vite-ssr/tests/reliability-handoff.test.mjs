@@ -12,21 +12,28 @@ function completeFixture(t) {
   const seed = 3886;
   // Synthetic parser fixtures are not executed browser or physical-device evidence.
   const events = [
+    { seed, index: 0, phase: 'start', detail: { head, engine: 'chromium' } },
     ...['network', 'server-error', 'slow', 'payload', 'import', 'render', 'deploy']
       .map((fault) => ({ seed, index: 0, phase: 'fault-schedule', detail: { fault } })),
     ...Array.from({ length: 1070 }, (_, index) => ({ seed, index: index + 1, phase: 'action-settled' })),
     { seed, index: 1070, phase: 'measurement', detail: { warmup: false } },
-    { seed, index: 1070, phase: 'workload-complete', detail: { index: 1070 } },
+    { seed, index: 1070, phase: 'workload-complete', detail: { index: 1070, elapsedMs: 1000 } },
   ];
   const runs = ['chromium', 'firefox', 'webkit', 'soak'];
   for (const name of runs) {
     mkdirSync(join(root, name));
-    writeFileSync(join(root, name, 'events.jsonl'), `${events.map((event) => JSON.stringify(event)).join('\n')}\n`);
+    const engine = name === 'soak' ? 'chromium' : name;
+    const elapsedMs = name === 'soak' ? 7_200_000 : 1000;
+    const runEvents = events.map((event) => event.phase === 'start'
+      ? { ...event, detail: { ...event.detail, engine } }
+      : event.phase === 'workload-complete'
+        ? { ...event, detail: { ...event.detail, elapsedMs } } : event);
+    writeFileSync(join(root, name, 'events.jsonl'), `${runEvents.map((event) => JSON.stringify(event)).join('\n')}\n`);
     writeFileSync(join(root, name, 'receipt.json'), JSON.stringify({
       version: 1, issue: 3886, head, seed, engine: name === 'soak' ? 'chromium' : name,
       kind: name === 'soak' ? 'soak' : 'correctness',
       surface: 'official-example-production', actionCount: 1070, measuredActionCount: 1000,
-      elapsedMs: name === 'soak' ? 7_200_000 : 1000,
+      elapsedMs,
       status: 'passed', firstFailure: null, eventTrace: 'events.jsonl',
     }));
   }
@@ -73,7 +80,11 @@ const rejectedFixtures = [
   ['failed run', (fixture) => changeRun(fixture, 'chromium', { status: 'failed' }), /Run failed or incomplete/u],
   ['warmup-only workload', (fixture) => changeRun(fixture, 'chromium', { measuredActionCount: 999 }),
     /Warmup cannot substitute/u],
-  ['short soak', (fixture) => changeRun(fixture, 'soak', { elapsedMs: 7_199_999 }), /Separate two hour soak/u],
+  ['short soak', (fixture) => {
+    changeRun(fixture, 'soak', { elapsedMs: 7_199_999 });
+    changeTrace(fixture, fixture.events.map((event) => event.phase === 'workload-complete'
+      ? { ...event, detail: { ...event.detail, elapsedMs: 7_199_999 } } : event), 'soak');
+  }, /Separate two hour soak/u],
   ['packaged run replacing official correctness', (fixture) => changeRun(fixture, 'chromium', { surface: 'packaged-dev' }),
     /Duplicate or missing correctness engines/u],
   ['truncated trace', (fixture) => changeTrace(fixture, fixture.events.slice(0, -1)), /Truncated or inconsistent trace/u],
@@ -93,6 +104,24 @@ const rejectedFixtures = [
     /Unverified physical tablet/u],
   ['empty raw artifact', (fixture) => { writeFileSync(join(fixture.root, 'synthetic-artifact.log'), ''); },
     /Missing or empty artifact/u],
+  ['missing trace start', (fixture) => changeTrace(fixture, fixture.events.slice(1)),
+    /Missing or duplicate trace start/u],
+  ['duplicate trace start', (fixture) => changeTrace(fixture, [fixture.events[0], ...fixture.events]),
+    /Missing or duplicate trace start/u],
+  ['different trace head', (fixture) => changeTrace(fixture, [
+    { ...fixture.events[0], detail: { ...fixture.events[0].detail, head: 'b'.repeat(40) } }, ...fixture.events.slice(1),
+  ]), /Wrong trace head/u],
+  ['different trace engine', (fixture) => changeTrace(fixture, [
+    { ...fixture.events[0], detail: { ...fixture.events[0].detail, engine: 'firefox' } }, ...fixture.events.slice(1),
+  ]), /Wrong trace engine/u],
+  ['missing trace workload duration', (fixture) => changeTrace(fixture, fixture.events.map((event) =>
+    event.phase === 'workload-complete' ? { ...event, detail: { index: 1070 } } : event)),
+    /Missing trace workload duration/u],
+  ['short trace with long soak receipt', (fixture) => changeTrace(fixture, fixture.events, 'soak'),
+    /Trace\/receipt duration mismatch/u],
+  ['different trace elapsed duration', (fixture) => changeTrace(fixture, fixture.events.map((event) =>
+    event.phase === 'workload-complete' ? { ...event, detail: { ...event.detail, elapsedMs: 2000 } } : event)),
+    /Trace\/receipt duration mismatch/u],
 ];
 
 function changeRun(fixture, name, fields) {
@@ -100,8 +129,8 @@ function changeRun(fixture, name, fields) {
   writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, 'utf8')), ...fields }));
 }
 
-function changeTrace(fixture, events) {
-  writeFileSync(join(fixture.root, 'chromium/events.jsonl'), `${events.map((event) => JSON.stringify(event)).join('\n')}\n`);
+function changeTrace(fixture, events, name = 'chromium') {
+  writeFileSync(join(fixture.root, name, 'events.jsonl'), `${events.map((event) => JSON.stringify(event)).join('\n')}\n`);
 }
 
 for (const [name, invalidate, expected] of rejectedFixtures) {

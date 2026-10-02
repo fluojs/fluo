@@ -39,6 +39,8 @@ async function readRun(root, path, head) {
   const hash = createHash('sha256');
   let settled = 0;
   let measurements = 0;
+  let starts = 0;
+  let start = null;
   let last = null;
   const faults = new Set();
   try {
@@ -47,17 +49,23 @@ async function readRun(root, path, head) {
       const event = JSON.parse(line);
       requireValue(event.seed === receipt.seed && Number.isSafeInteger(event.index), 'Trace seed/index mismatch');
       requireValue(event.phase !== 'first-failure' && event.phase !== 'pageerror', 'Failure in supposedly passed trace');
+      if (event.phase === 'start') { starts++; start = event; }
       if (event.phase === 'action-settled') settled++;
       if (event.phase === 'measurement') measurements++;
       if (event.phase === 'fault-schedule') faults.add(event.detail.fault);
       last = event;
     }
   } finally { lines.close(); input.destroy(); }
+  requireValue(starts === 1, 'Missing or duplicate trace start');
+  requireValue(start.detail?.head === receipt.head, 'Wrong trace head');
+  requireValue(start.detail?.engine === receipt.engine, 'Wrong trace engine');
   requireValue(last?.phase === 'workload-complete' && last.detail.index === receipt.actionCount
     && settled === receipt.actionCount && measurements > 0, 'Truncated or inconsistent trace');
+  requireValue(Number.isFinite(last.detail.elapsedMs) && last.detail.elapsedMs > 0, 'Missing trace workload duration');
+  requireValue(last.detail.elapsedMs === receipt.elapsedMs, 'Trace/receipt duration mismatch');
   requireValue(['network', 'server-error', 'slow', 'payload', 'import', 'render', 'deploy']
     .every((fault) => faults.has(fault)), 'Incomplete fault coverage');
-  return { ...receipt, receiptPath: file, traceSha256: hash.digest('hex') };
+  return { ...receipt, elapsedMs: last.detail.elapsedMs, receiptPath: file, traceSha256: hash.digest('hex') };
 }
 
 /** Fail closed on missing physical evidence; desktop emulation never closes #3879. */
