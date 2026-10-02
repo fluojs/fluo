@@ -38,6 +38,10 @@
         { "executable": "pnpm", "argv": ["install", "--frozen-lockfile"], "cwd": "." },
         { "executable": "pnpm", "argv": ["vitest", "run", "--project", "apps", "--maxWorkers=1"], "cwd": "." },
         { "executable": "pnpm", "argv": ["vitest", "run", "--project", "examples", "--maxWorkers=1"], "cwd": "." },
+        { "executable": "node", "argv": ["--test", "examples/react-vite-ssr/tests/reliability-handoff.test.mjs"], "cwd": "." },
+        { "executable": "pnpm", "argv": ["--filter", "@fluojs/example-react-vite-ssr", "exec", "playwright", "install", "chromium", "firefox", "webkit"], "cwd": ".", "env": { "PLAYWRIGHT_BROWSERS_PATH": "/tmp/fluo-react-reliability-browsers" } },
+        { "executable": "pnpm", "argv": ["--filter", "@fluojs/example-react-vite-ssr", "build:reliability"], "cwd": ".", "env": { "REACT_VITE_FORM_TEST_SERVER": "1" } },
+        { "executable": "pnpm", "argv": ["--filter", "@fluojs/example-react-vite-ssr", "test:reliability"], "cwd": ".", "env": { "PLAYWRIGHT_BROWSERS_PATH": "/tmp/fluo-react-reliability-browsers", "FLUO_RELIABILITY_OUTPUT": "/evidence/react-reliability", "FLUO_RELIABILITY_REPORT": "/evidence/react-reliability-report.json" } },
         { "executable": "pnpm", "argv": ["vitest", "run", "--project", "tooling", "--shard=1/2", "--maxWorkers=1"], "cwd": "." }
       ] },
     { "id": "tooling-2", "runtime": "primary", "dependencies": ["build"], "capabilities": ["tooling-2"], "inputs": ["build.tar"], "outputs": [], "commands": [{ "executable": "pnpm", "argv": ["install", "--frozen-lockfile"], "cwd": "." }, { "executable": "pnpm", "argv": ["vitest", "run", "--project", "tooling", "--shard=2/2", "--maxWorkers=1"], "cwd": "." }] },

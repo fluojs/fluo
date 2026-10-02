@@ -22,6 +22,7 @@ export default defineConfig({
     target: 'es2022',
   },
   define: {
+    __FLUO_RELIABILITY_TEST__: JSON.stringify(process.env.FLUO_REACT_RELIABILITY === '1'),
     __FLUO_BUILD_VARIANT__: JSON.stringify(process.env.FLUO_REACT_BUILD_VARIANT ?? 'A'),
   },
   plugins: [{

@@ -1,5 +1,21 @@
 # react-vite-ssr example
 
+## Long-session source and verification
+
+Persistent shell은 `/admin/qr`, `/admin/songs`, `/catalog/background`를 동일 HTTP
+승인 navigation과 기존 `useForm` search/widget/queue 경로로 연결합니다.
+`tests/long-session.spec.ts`는 실제 MessageChannel ack, fault/recovery trace와
+quiescent checkpoint를 포함한 최소 1,000 measured seeded action을 준비합니다.
+명시적 test build는 `REACT_VITE_FORM_TEST_SERVER=1 pnpm build:reliability`이며
+`pnpm test:reliability`로 Chromium/Firefox/WebKit을 실행합니다. 기본 browser
+coverage는 long-session file, 특히 별도 2시간 soak를 제외합니다.
+
+Source fixture이며 완료된 실행 근거가 아닙니다.
+[장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)에 exact
+command, 원시 heap/RSS의 한계, packaged dev/production, 별도 soak workflow와
+#3879 exact-head receipt consumer를 기록합니다. Physical mobile/tablet 검증은
+외부 요구로 남으며 desktop viewport coverage로 통과할 수 없습니다.
+
 ## Background interaction companion
 
 `/catalog/login` 다음 `/catalog/background`를 엽니다. 실제 song datasource에서 native
@@ -243,10 +259,10 @@ dispatcher가 다시 match, bind, render합니다. Browser regression은 `javaSc
 context를 만들고 rendered form을 제출한 뒤 `303`을 관찰하며 destination document가 mutate된 값을
 포함하는지 확인합니다.
 
-이 flow는 React Router action/fetcher, Astro Action, Next.js Server Action, experimental fluo Server
-Function이 아닙니다. Action id를 compile하거나 route matching을 소유하거나 client cache를 revalidate하거나
-optimistic state를 약속하지 않습니다. Native form이 이미 완전한 fallback을 제공하고 stable client package가
-mutation route나 cache policy를 소유하지 않으므로 submit-state helper를 추가하지 않습니다.
+이 native product 실습은 action ID를 compile하거나 route matching을 소유하지 않습니다.
+별도 catalog companion은 같은 native HTTP action 위에서 제공되는 `useForm`
+pending/result 경로를 사용합니다. Saved follow-up은 fresh approved GET이며
+POST replay나 optimistic private cache가 아닙니다.
 
 ## phase 경계와 제한 사항
 
@@ -261,9 +277,9 @@ mutation route나 cache policy를 소유하지 않으므로 submit-state helper�
   document로 fallback합니다. Guard와 interceptor는 계속 server-owned입니다.
 - 이 예제는 임의 HTML swapping, event replay, client route matching, 전역 navigation cache,
   RSC-aware data, opt-in하지 않은 link의 prefetch를 약속하지 않습니다.
-- Network/5xx soft load 실패 시 현재 기본값은 주크박스 shell을 보존하지 않습니다.
-  이 예제의 fallback test는 의도적으로 현재 full-document 경로를 관찰합니다.
-  인증 거절, 명시적 reload, 앱 logout은 일시적 재시도와 다른 결과입니다.
+- 공식 조립은 transient network/5xx 및 mapped import 실패를 보존하고 build mismatch에
+  명시적 document update를 제공합니다. Low-level no-policy fixture는 document fallback을
+  유지합니다. Auth 철회, current invalid payload, 명시적 reload와 앱 logout은 별도 경계입니다.
 - 이 예제는 Next.js App Router, file-based router, TanStack route tree, RSC, catch-all route,
   production starter-template 변경이 아닙니다.
 - Asset controller는 의도적으로 최소 구현이며 이 예제의 Vite config가 emit하는 flat filename을

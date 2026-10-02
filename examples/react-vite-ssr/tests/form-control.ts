@@ -1,6 +1,7 @@
 import { HttpFormRejection, InternalServerErrorException } from '@fluojs/http';
 import type { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import type { CatalogControl, CatalogObservation } from '../src/catalog';
+import { ReliabilityControl } from './reliability-control';
 
 type Server = Parameters<NonNullable<NonNullable<Parameters<typeof FastifyHttpApplicationAdapter.create>[0]>['configureFastify']>>[0];
 function gate<T>() {
@@ -11,6 +12,7 @@ function gate<T>() {
 
 /** Fault injection is installed only in the explicit production test entry, never the normal app. */
 export class FormControl {
+  private readonly reliability = new ReliabilityControl();
   readonly events: CatalogObservation[] = [];
   readonly bodies: unknown[] = [];
   readonly uploads: { contentType: string; bytes: string }[] = [];
@@ -31,6 +33,7 @@ export class FormControl {
   }>();
 
   readonly observe: CatalogControl = async (event, context) => {
+    this.reliability.observe(event);
     this.events.push(event);
     for (const entry of this.background.values()) {
       if (event.phase === 'cleanup' && entry.scope === event.scope) entry.cleaned.resolve();
@@ -76,6 +79,14 @@ export class FormControl {
   };
 
   install(server: Server): void {
+    this.reliability.install(server, () => {
+      const retained = this.events.length + this.bodies.length + this.uploads.length + this.background.size;
+      this.events.length = 0;
+      this.bodies.length = 0;
+      this.uploads.length = 0;
+      this.background.clear();
+      return retained;
+    });
     server.post('/__background/arm', async (request) => {
       const body: unknown = request.body;
       if (typeof body !== 'object' || body === null) throw new TypeError('Missing barrier');

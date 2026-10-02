@@ -123,9 +123,11 @@ describe('React SSR + Vite scaffold', () => {
       'src/entry-client-dev.ts',
       'src/entry-client.tsx',
       'src/entry-server.tsx',
+      'src/import-control.ts',
       'src/load-manifest.test.ts',
       'src/load-manifest.ts',
       'src/main.ts',
+      'src/page-admin.tsx',
       'src/page-products.tsx',
       'src/page-search.tsx',
       'src/page.tsx',
@@ -137,8 +139,14 @@ describe('React SSR + Vite scaffold', () => {
       'tests/background-interactions.spec.ts',
       'tests/deployment-transition.spec.ts',
       'tests/form-control.ts',
+      'tests/long-session-helpers.ts',
+      'tests/long-session-metrics.ts',
+      'tests/long-session-observer.ts',
+      'tests/long-session-run.ts',
+      'tests/long-session.spec.ts',
       'tests/navigation-guard.spec.ts',
       'tests/production-hydration.spec.ts',
+      'tests/reliability-control.ts',
       'tests/session-transition.spec.ts',
       'tsconfig.json',
       'vite.client.config.ts',
@@ -153,6 +161,18 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['src/page.tsx']).toContain('return (');
     expect(snapshot['tests/navigation-guard.spec.ts']).toBe(readFileSync(
       new URL('./templates/react-vite-ssr/tests/navigation-guard.spec.ts.ejs', import.meta.url), 'utf8',
+    ));
+    for (const file of [
+      'reliability-control.ts', 'long-session.spec.ts',
+      'long-session-run.ts', 'long-session-observer.ts', 'long-session-helpers.ts',
+      'long-session-metrics.ts',
+    ]) {
+      expect(snapshot[`tests/${file}`]).toBe(readFileSync(
+        new URL(`./templates/react-vite-ssr/tests/${file}.ejs`, import.meta.url), 'utf8',
+      ));
+    }
+    expect(snapshot['src/import-control.ts']).toBe(readFileSync(
+      new URL('./templates/react-vite-ssr/src/import-control.ts.ejs', import.meta.url), 'utf8',
     ));
     expect(snapshot['src/main.ts']).toContain("process.env.FLUO_REACT_MANIFEST_URL ?? '../client/.vite/manifest.json'");
     expect(snapshot['src/main.ts']).toContain('navigationBuildId: selectedRenderer.buildId');

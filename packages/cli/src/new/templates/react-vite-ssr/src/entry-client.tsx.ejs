@@ -13,12 +13,16 @@ import { reactPageModules } from './generated/react-pages';
 const navigationModules: ReactNavigationModules = import.meta.glob<{
   readonly default: (props: Record<string, unknown>) => ReactNode;
 }>('./page*.tsx');
+declare const __FLUO_RELIABILITY_TEST__: boolean;
+const activeModules = __FLUO_RELIABILITY_TEST__
+  ? (await import('./import-control')).controlledImports(navigationModules)
+  : navigationModules;
 const initialJson = document.getElementById('fluo-initial-page')?.textContent;
 const buildId = document.documentElement.dataset.buildId;
 if (initialJson === undefined || initialJson === null || buildId === undefined) {
   throw new Error('The HTTP page has no initial navigation payload.');
 }
-const initial = await loadReactInitialNavigationDestination(initialJson, navigationModules, buildId, reactPageModules);
+const initial = await loadReactInitialNavigationDestination(initialJson, activeModules, buildId, reactPageModules);
 if (!initial.ok) {
   throw new Error(`The HTTP page destination is unavailable: ${initial.reason}`);
 }
@@ -38,7 +42,7 @@ hydrateRoot(
     }}
     stylesheets={stylesheets}
     initialPage={{ json: initialJson, payload: initial.payload }}
-    navigationModules={navigationModules}
+    navigationModules={activeModules}
   />,
   {
     identifierPrefix: REACT_IDENTIFIER_PREFIX,

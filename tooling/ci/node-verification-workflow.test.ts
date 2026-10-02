@@ -192,6 +192,18 @@ it('gates publishing on the extended profile of the exact release source', () =>
   expect(extendedWorkflow).not.toContain('pull_request:');
 });
 
+it('keeps the separate two-hour soak out of normal PR job expansion', () => {
+  // Given: extended reliability work has its own scheduled/manual workflow.
+  const soakWorkflow = readFileSync(new URL('../../.github/workflows/react-reliability-soak.yml', import.meta.url), 'utf8');
+  // When / Then: no PR event or extra matrix expands the normal eighteen-job run.
+  expect(soakWorkflow).not.toMatch(/^ {2}pull_request:/mu);
+  expect(soakWorkflow).toMatch(/^ {2}workflow_dispatch:/mu);
+  expect(soakWorkflow).toMatch(/^ {2}schedule:/mu);
+  expect(soakWorkflow).toContain("FLUO_RELIABILITY_SOAK_MS: '7200000'");
+  expect(buildVerificationPlan({ changedFiles: ['examples/react-vite-ssr/tests/long-session.spec.ts'], identity }).tasks)
+    .toHaveLength(16);
+});
+
 it('registers the new Node regression suites without recursively executing them from tooling tests', () => {
   // Given
   const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));

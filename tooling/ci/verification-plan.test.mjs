@@ -36,6 +36,16 @@ test('the canonical PR plan covers all required groups within eighteen expanded 
   ]));
 });
 
+test('nonroot reliability task downloads all browsers without requesting OS installation', () => {
+  // Given / When: resolve the task run under the caller's nonroot UID.
+  const plan = buildVerificationPlan({ changedFiles: ['examples/react-vite-ssr/tests/long-session.spec.ts'], identity });
+  const install = plan.tasks.find(({ id }) => id === 'tooling-1').commands
+    .find(({ argv }) => argv.includes('playwright') && argv.includes('install'));
+  // Then: OS dependencies belong to the locked image, not a task-side su prompt.
+  assert.ok(install);
+  assert.deepEqual(install.argv.slice(install.argv.indexOf('install') + 1), ['chromium', 'firefox', 'webkit']);
+});
+
 test('all companion requirements resolve to executable tasks rather than duplicate full suites', () => {
   // Given
   const changedFiles = ['packages/core/package.json', 'packages/core/src/index.mjs', 'docs/reference/node-support.md'];
@@ -51,6 +61,18 @@ test('all companion requirements resolve to executable tasks rather than duplica
     assert.ok(providers?.length > 0, companion);
     assert.ok(providers.every((id) => plan.tasks.some((task) => task.id === id)), companion);
   }
+});
+
+test('the PR catalog executes reliability receipt regressions without adding a job', () => {
+  // Given: the affected receipt consumer belongs to the existing tooling task.
+  const changedFiles = ['examples/react-vite-ssr/tests/reliability-handoff.mjs'];
+  // When: the canonical runner resolves its executable PR tasks.
+  const plan = buildVerificationPlan({ changedFiles, identity });
+  // Then: the regression is executed within the existing eighteen-job plan.
+  const commands = plan.tasks.find(({ id }) => id === 'tooling-1').commands;
+  assert.ok(commands.some(({ executable, argv }) => executable === 'node'
+    && argv[0] === '--test' && argv.includes('examples/react-vite-ssr/tests/reliability-handoff.test.mjs')));
+  assert.equal(plan.tasks.length + 2, 18);
 });
 
 test('secondary compatibility retains package tests and target-local builds without full browser checks', () => {

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -12,6 +12,13 @@ const attempt = randomUUID();
 const target = { projectName: 'starter-react-vite-ssr', starter: 'react-vite-ssr' };
 const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
 const commands = [];
+const reliability = process.env.FLUO_RELIABILITY_STARTER === '1';
+const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
+if (reliability && execFileSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8' }).trim() !== '') {
+  throw new Error('Packaged reliability requires a clean committed source head');
+}
+const reliabilityEnv = reliability ? { FLUO_REACT_RELIABILITY: '1', FLUO_RELIABILITY_STARTER: '1',
+  FLUO_RELIABILITY_REPO: repo } : {};
 async function run(label, args, cwd, env = {}, executable = 'pnpm') {
   console.log(`COMMAND ${label}: ${JSON.stringify({ command: [executable, ...args], cwd, env })}`);
   const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -50,7 +57,9 @@ const installedFiles = ['client.js', 'client.d.ts', 'client/form.js', 'client/fo
   return { file, installed, sha256: sha(installed) };
 });
 const installedTemplates = ['src/catalog.ts', 'src/page-products.tsx', 'tests/background-interactions.spec.ts',
-  'tests/form-control.ts'].map((file) => {
+  'tests/form-control.ts', ...(reliability ? ['src/page-admin.tsx', 'src/import-control.ts',
+    'tests/reliability-control.ts', 'tests/long-session.spec.ts', 'tests/long-session-run.ts',
+    'tests/long-session-observer.ts', 'tests/long-session-helpers.ts', 'tests/long-session-metrics.ts'] : [])].map((file) => {
   const generated = join(directory, file);
   const template = join(repo, 'packages/cli/src/new/templates/react-vite-ssr', `${file}.ejs`);
   if (sha(generated) !== sha(template)) throw new Error(`Generated source differs from the packed authored template: ${file}`);
@@ -60,25 +69,36 @@ const lockedGraph = {
   snapshotSha256: sha(join(repo, 'tooling/cli/verification-locks/starter-react-vite-ssr.json')),
   installedLockfileSha256: sha(join(directory, 'pnpm-lock.yaml')),
 };
-const receipt = { attempt, target, directory, lockedGraph, tarballs, installedFiles, installedTemplates, commands };
+const receipt = { head, status: 'incomplete', attempt, target, directory, lockedGraph, tarballs,
+  installedFiles, installedTemplates, commands };
 writeFileSync(join(output, `pack-release-${attempt}.json`), `${JSON.stringify(receipt, null, 2)}\n`);
 try {
   await run('starter-typegen', ['typegen'], directory);
   await run('starter-types', ['typecheck'], directory);
   await run('starter-tests', ['test'], directory);
-  await run('starter-build', ['build'], directory, { FLUO_REACT_FORM_TEST_SERVER: '1' });
-  const focusedBrowserFiles = ['tests/background-interactions.spec.ts', 'tests/session-transition.spec.ts',
+  await run('starter-build', ['build'], directory, { FLUO_REACT_FORM_TEST_SERVER: '1', ...reliabilityEnv });
+  if (reliability) await run('starter-browser-provision',
+    ['exec', 'playwright', 'install', '--with-deps', 'chromium', 'firefox', 'webkit'], directory);
+  const focusedBrowserFiles = reliability ? ['tests/long-session.spec.ts'] : ['tests/background-interactions.spec.ts', 'tests/session-transition.spec.ts',
     'tests/production-hydration.spec.ts', '--grep-invert',
     'updates a React component|retains the document and worker|reloads a shared graph|rebuilds the installed dev process'];
-  const browserResults = await Promise.allSettled([
-    run('starter-dev-browser', ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', '--workers=12',
+  const browserRuns = [
+    () => run('starter-dev-browser', ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', reliability ? '--workers=1' : '--workers=12',
       `--output=${join(output, `starter-dev-browser-${attempt}`)}`, ...focusedBrowserFiles],
-    directory, { FLUO_REACT_FORM_TEST_SERVER: '1', FLUO_REACT_STARTER_SERVER_COMMAND: 'dev', FLUO_REACT_STARTER_TEST_PORT: '44981' }),
-    run('starter-prod-browser', ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', '--workers=12',
+    directory, { FLUO_REACT_FORM_TEST_SERVER: '1', ...reliabilityEnv, FLUO_REACT_STARTER_SERVER_COMMAND: 'dev', FLUO_REACT_STARTER_TEST_PORT: '44981' }),
+    () => run('starter-prod-browser', ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', reliability ? '--workers=1' : '--workers=12',
       `--output=${join(output, `starter-prod-browser-${attempt}`)}`, ...focusedBrowserFiles],
-    directory, { FLUO_REACT_FORM_TEST_SERVER: '1', FLUO_REACT_STARTER_TEST_PORT: '44982' }),
-  ]);
-  for (const result of browserResults) if (result.status === 'rejected') throw result.reason;
+    directory, { FLUO_REACT_FORM_TEST_SERVER: '1', ...reliabilityEnv, FLUO_REACT_STARTER_TEST_PORT: '44982' }),
+  ];
+  if (reliability) for (const runBrowser of browserRuns) await runBrowser();
+  else {
+    const browserResults = await Promise.allSettled(browserRuns.map((runBrowser) => runBrowser()));
+    for (const result of browserResults) if (result.status === 'rejected') throw result.reason;
+  }
+  if (execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim() !== head) {
+    throw new Error('Source head changed during packaged verification');
+  }
+  receipt.status = 'passed';
 } finally {
   writeFileSync(join(output, `pack-release-${attempt}.json`), `${JSON.stringify(receipt, null, 2)}\n`);
 }

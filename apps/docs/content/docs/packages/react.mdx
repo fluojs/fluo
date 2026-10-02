@@ -1,6 +1,6 @@
 ---
 title: React pages
-description: HTTP-first React SSR for fluo - @Router/@Path page handlers, ReactModule.forRoot, the application page renderer, hydration assets, client navigation, and the experimental RSC prototype.
+description: HTTP-first full-stack React applications with SSR, hydration, approved navigation, progressive forms and session-aware background operations.
 package: "@fluojs/react"
 ---
 
@@ -9,6 +9,15 @@ package: "@fluojs/react"
 This design is deliberate. The package is **not** a Next.js App Router, a React Server Components framework, a TanStack route tree, or a file-route scanner. There is no React-owned `routes: []` table, no client route grammar, and no route matcher of its own. Treat React routers as page-shaped HTTP handlers: if you need a mutation, write an ordinary `@Post(...)` handler; if you need JSON, return an object from the same handler style you already use.
 
 ## Installation
+
+The official composition connects a persistent shell with HTTP-selected pages,
+independent search/row forms and session-aware app resources. Long-session source
+fixtures exercise at least 1,000 measured seeded actions in Chromium/Firefox/WebKit
+and provide a separate two-hour soak job. Source availability does not establish
+an executed soak, physical-device acceptance or the final product gate.
+The [repository reliability guide](https://github.com/fluojs/fluo/blob/main/docs/guides/react-long-session-reliability.md)
+records exact-head evidence, raw heap/RSS uncertainty and the actual mobile/tablet
+requirement; viewport emulation cannot satisfy physical verification.
 
 For independent search/widget reads and row mutations, the existing
 `@fluojs/react/client` `useForm` accepts additive background GET/POST. Each stable

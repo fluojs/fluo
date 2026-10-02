@@ -2,9 +2,12 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Runtime-neutral React package for HTTP-first fluo applications. The
-[full-stack product contract](../../docs/contracts/react-fullstack-product.md) defines the
-additional CRUD and long-lived jukebox acceptance target; it does not mark that target shipped.
+HTTP-first full-stack React application framework for fluo, with a runtime-neutral
+package root. The official composition provides streamed SSR/hydration, approved
+navigation, progressive forms, independent background operations and session
+revocation. The [full-stack product contract](../../docs/contracts/react-fullstack-product.md)
+and [long-session guide](../../docs/guides/react-long-session-reliability.md)
+separate those capabilities from the unexecuted whole-product/soak/manual gate.
 
 Preparing for the coordinated Node 24 release? Follow the [consumer migration guide](../../docs/getting-started/migrate-node24.md) before upgrading packages. React remains a `0.x` minor release, not a `1.0` graduation.
 

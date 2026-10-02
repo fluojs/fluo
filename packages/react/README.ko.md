@@ -2,9 +2,12 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-HTTP-first fluo 애플리케이션을 위한 런타임 중립 React 패키지입니다.
-[풀스택 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 추가 운영 CRUD 및
-장기 주크박스 수용 목표를 정의하며, 이 목표가 이미 배포됐다는 뜻은 아닙니다.
+fluo를 위한 HTTP-first 풀스택 React application framework이며 package root는
+런타임 중립입니다. 공식 조립은 streamed SSR/hydration, 승인 navigation, progressive
+form, 독립 background 작업 및 session 철회를 제공합니다.
+[풀스택 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)과
+[장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)는 해당
+capability와 미실행 whole-product/soak/manual gate를 구분합니다.
 
 Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전에 [소비자 마이그레이션 가이드](../../docs/getting-started/migrate-node24.ko.md)를 따르세요. React는 `0.x`의 `minor` 릴리스를 유지하며 `1.0`으로 승격하지 않습니다.
 

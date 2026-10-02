@@ -861,3 +861,20 @@ boundaries. beforeunload does not guarantee async save or tab-termination recove
 Follow the [owning contract](../../docs/contracts/react-navigation-payload.md#navigation-permission)
 and [migration](../../docs/getting-started/migrate-react-navigation-guards.md), then
 run the [example](../../examples/react-vite-ssr/README.md#navigation-permission).
+
+## Long editing and jukebox verification
+
+One successful save and long-lived ownership are different tasks. Use the official
+composition's existing navigation, `useForm` background search/row writes and
+session-aware resource to repeat QR/songs/history. Check the actual MessageChannel's
+next operation/ack, the same document and warmed quiescence baseline together.
+A counter label or one heap decrease does not prove resource preservation.
+
+The [long-session guide](../../docs/guides/react-long-session-reliability.md) explains
+seed/index/fault traces, at least 1,000 measured actions, a separate actual two-hour
+soak and exact-head handoff. Source harnesses and Book checks are not run evidence.
+Logout/401/403 must revoke protected content and close actual ports; explicit
+reload creates another document. Separate saved from failed follow-up, retry GET
+only and never automatically replay an uncertain POST. Actual mobile/tablet
+verification needs its responsible operator's separate record, not viewport
+emulation. This exercise is not MusicKit acceptance or playback after tab termination.

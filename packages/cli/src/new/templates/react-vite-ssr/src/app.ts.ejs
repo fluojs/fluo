@@ -72,6 +72,12 @@ class AssetRequest {
   file = '';
 }
 
+class AdminPageRequest {
+  @FromPath('page')
+  @IsIn(['qr', 'songs'])
+  page: 'qr' | 'songs' = 'qr';
+}
+
 export function createAppModule(options: ReactViteAppModuleOptions = {}) {
   const productNames = new Map<string, string>();
   const renderPage: ReactPageRenderer = (...args) => {
@@ -87,6 +93,20 @@ export function createAppModule(options: ReactViteAppModuleOptions = {}) {
     return ReactNavigationPage.create(page, { module: './page-products.tsx', props: { ...props } },
       props.sessionDemo ? undefined : { prefetch: 'public' });
   }, options.catalogControl);
+
+  @Router('/admin')
+  class AdminPageRouter {
+    @PageMetadata(({ request }) => ({ title: request.params.page === 'qr' ? 'Admin QR' : 'Admin songs' }))
+    @Path('/:page')
+    @RequestDto(AdminPageRequest)
+    async show(input: AdminPageRequest) {
+      const props = { page: input.page };
+      const page = options.loadPage
+        ? await options.loadPage('./page-admin.tsx', props)
+        : createElement((await import('./page-admin')).default, props);
+      return ReactNavigationPage.create(page, { module: './page-admin.tsx', props });
+    }
+  }
 
   @Router('/products')
   class ProductPageRouter {
@@ -177,7 +197,7 @@ export function createAppModule(options: ReactViteAppModuleOptions = {}) {
   @Module({
     controllers: [ViteAssetController],
     imports: [ReactModule.forRoot({
-      controllers: [ProductPageRouter, SearchPageRouter, catalog.router],
+      controllers: [ProductPageRouter, SearchPageRouter, AdminPageRouter, catalog.router],
       providers: catalog.providers,
       middleware: catalog.middleware,
       ...(options.navigationBuildId === undefined ? {} : { navigationBuildId: options.navigationBuildId }),
