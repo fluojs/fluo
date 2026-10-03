@@ -66,6 +66,16 @@ function compile(filePath: string): readonly ts.Diagnostic[] {
   return ts.getPreEmitDiagnostics(program);
 }
 
+function createDeferred() {
+  let resolveEvent: () => void = () => undefined;
+  let rejectEvent: (error: Error) => void = () => undefined;
+  const promise = new Promise<void>((resolve, reject) => {
+    resolveEvent = resolve;
+    rejectEvent = reject;
+  });
+  return { promise, resolve: resolveEvent, reject: rejectEvent };
+}
+
 afterEach(async () => {
   for (const directory of tempDirectories.splice(0)) {
     await rm(directory, { force: true, recursive: true });
@@ -346,35 +356,67 @@ describe('fluo typegen', () => {
   it('closes the bootstrapped application when React page catalog projection fails', async () => {
     // Given
     const fixture = await createFixture();
-    const close = vi.fn(async () => undefined);
+    const closeStarted = createDeferred();
+    const finishClose = createDeferred();
+    const events: string[] = [];
+    const close = vi.fn(async () => {
+      events.push('close-started');
+      closeStarted.resolve();
+      await finishClose.promise;
+      events.push('close-completed');
+    });
     const projectionError = new Error('React page catalog projection failed.');
+    const create = vi.fn(async () => {
+      events.push('created');
+      return { close, dispatcher: { describeRoutes: () => [] } };
+    });
+    const createReactPageCatalog = vi.fn(() => {
+      events.push('projected');
+      throw projectionError;
+    });
     const runtime: TypegenCommandRuntimeOptions = {
       ...fixture.runtime,
       loadReactTypegenModules: async () => ({
         react: {
-          createReactPageCatalog: () => {
-            throw projectionError;
-          },
+          createReactPageCatalog,
         },
         runtime: {
           FluoFactory: Object.assign(() => undefined, {
-            create: async () => ({
-              close,
-              dispatcher: { describeRoutes: () => [] },
-            }),
+            create,
           }),
         },
-        typegen: { generateReactPageTypes: () => '' },
+        typegen: { createHttpTypeProjection: () => undefined, generateReactPageTypes: () => '' },
       }),
     };
 
     // When
-    const exitCode = await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], runtime);
+    const timeout = setTimeout(() => closeStarted.reject(new Error('Timed out awaiting application close.')), 2500);
+    const command = runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], runtime);
+    try {
+      await Promise.race([
+        closeStarted.promise,
+        command.then(() => {
+          expect(create).toHaveBeenCalledOnce();
+          throw new Error('Command completed before application close.');
+        }),
+      ]);
+      expect(events).toEqual(['created', 'projected', 'close-started']);
+      expect(fixture.stderr).toEqual([]);
+    } finally {
+      clearTimeout(timeout);
+      finishClose.resolve();
+    }
+    const exitCode = await command;
 
     // Then
     expect(exitCode).toBe(1);
+    expect(create).toHaveBeenCalledOnce();
+    expect(createReactPageCatalog).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
+    expect(events).toEqual(['created', 'projected', 'close-started', 'close-completed']);
     expect(fixture.stderr).toEqual([`${projectionError.message}\n`]);
+    expect(fixture.stdout).toEqual([]);
+    await expect(readFile(fixture.outputPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
 });
