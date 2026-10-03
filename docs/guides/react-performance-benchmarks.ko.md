@@ -222,9 +222,10 @@ epoch를 닫지 않습니다. 알 수 없는 role/status, crash와 미지원 tra
 navigation으로 사용하지 않습니다. Journal, writer/callback과 lifecycle overhead는
 차감하지 않으며 이 correctness 검증은 performance PASS가 아닙니다.
 
-공통 production observer는 원래 cutoff에서 request hook을 drain/stop하고
-child gating을 해제한 뒤에도 Frida session/agent와 pidfd 종료 구독을 소유
-process의 자연 종료까지 유지합니다. BrowserServer 종료 전에 살아 있는 agent를
+공통 production observer는 원래 cutoff에서 request hook을 drain/stop하지만
+child gating, Frida session/agent와 pidfd 종료 구독은 소유 process의 자연
+종료까지 유지합니다. Release는 재개 중인 exec child의 gate를 변경하지 않으며
+최종 close가 남은 session을 정리합니다. BrowserServer 종료 전에 살아 있는 agent를
 detach/unload하지 않습니다. 실패·abort된 preparation에서 observer child를
 bounded 종료해도 eternalize된 inert script는 live-agent unload를 방지합니다.
 Resident memory/runtime 비용과 drain 이후 shutdown IPC 비용을 차감하지 않습니다.

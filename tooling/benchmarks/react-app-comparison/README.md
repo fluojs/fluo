@@ -214,8 +214,9 @@ Journal mappings, native writer/callback accounting and lifecycle observation
 costs remain included. Correctness evidence is not a paired performance verdict.
 
 The common production observer drains/stops request hooks at the original cutoff
-and disables child gating, but retains Frida sessions/agents and pidfd exit
-subscriptions through natural owned-process exit. Live-agent detach/unload does
+but retains child gating, Frida sessions/agents and pidfd exit subscriptions
+through natural owned-process exit. Release does not change a resuming exec
+child's gate; final close cleans up any remaining sessions. Live-agent detach/unload does
 not precede BrowserServer close. An eternalized inert script prevents live-agent
 unload if failed/aborted preparation forces bounded observer-child termination.
 Resident memory/runtime and post-drain shutdown IPC costs are not subtracted.

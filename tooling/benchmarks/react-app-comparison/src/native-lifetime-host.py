@@ -240,8 +240,8 @@ def main() -> None:
         sessions[pid] = session
         detach_events[attached_birth] = threading.Event()
         session.on("detached", lambda reason, crash=None: detached(pid, attached_birth, renderer, reason, crash))
-        # Retain the session through natural process exit. Release stops hooks
-        # and disables gating without unloading a live process's Frida agent.
+        # Retain the session and child gating through natural process exit.
+        # Release stops request hooks without changing a live Frida agent.
         # The inert keeper also prevents live-agent unload if failed/aborted
         # preparation forces bounded observer-child termination.
         keeper = session.create_script("void 0;")
@@ -552,12 +552,14 @@ def main() -> None:
                                         snapshot(process_birth)
                                 except Exception as exc:
                                     error(f"script cleanup {process_birth}: {exc}")
-                            for session in ([] if released else reversed(list(sessions.values()))):
+                            # Request hooks are stopped, but exec children can
+                            # still be resuming. Keep their gates resident until
+                            # browser shutdown instead of mutating live agents.
+                            for session in (reversed(list(sessions.values())) if request["command"] == "close" else []):
                                 try:
                                     if not session.is_detached:
                                         session.disable_child_gating()
-                                        if request["command"] == "close":
-                                            session.detach()
+                                        session.detach()
                                 except Exception as exc:
                                     error(f"session cleanup: {exc}")
                             response["detached"] = all(session.is_detached for session in sessions.values())
