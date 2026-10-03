@@ -469,6 +469,62 @@ test('host ingestion retains the supported 500000 event buffer and completes dra
   assert.equal(receipt.cleanup.closed, true);
 });
 
+test('failed close readiness preserves the first coverage error and still closes the observer', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-primary-error-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const host = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(),
+    exitCode: null, signalCode: null, pid: 323 });
+  const commands = [];
+  host.stdin = {
+    writable: true,
+    write(line) {
+      const command = JSON.parse(line);
+      commands.push(command.command);
+      const reply = { id: command.id };
+      if (command.command === 'prepare') reply.runtime = NATIVE_LIFETIME_RUNTIME;
+      if (command.command === 'drain') reply.error = 'renderer detached before drain';
+      if (command.command === 'release') reply.error = 'script has been destroyed';
+      if (command.command === 'begin-close') reply.error = 'shutdown observation not ready';
+      if (command.command === 'close') reply.detached = true;
+      host.stdout.write(`${JSON.stringify(reply)}\n`);
+    },
+    end() { host.exitCode = 0; host.emit('exit', 0, null); },
+  };
+  const observer = await createNativeLifetimeObserver({
+    enabled: true, directory, python: '/fake/python', spawn: () => host,
+  });
+  const descriptors = ['platform', 'arch'].map((key) => [key, Object.getOwnPropertyDescriptor(process, key)]);
+  try {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
+    await observer.prepare({ version: () => NATIVE_LIFETIME_IDENTITY.browserVersion,
+      async newBrowserCDPSession() { return { async send(name) {
+        return name === 'SystemInfo.getProcessInfo' ? { processInfo: [] } : { targetInfos: [] };
+      }, async detach() {} }; } }, 123,
+    { async send() { return { targetInfo: { targetId: 'page' } }; } });
+  } finally {
+    for (const [key, descriptor] of descriptors) Object.defineProperty(process, key, descriptor);
+  }
+  await observer.drain(11, []);
+  try {
+    await assert.rejects(observer.beginClose(), (error) =>
+      error.message === 'renderer detached before drain'
+      && error.cause?.message === 'shutdown observation not ready');
+  } finally { await observer.close(); }
+  const result = await observer.drain(11, []);
+  assert.equal(result.observation.coverage.complete, false);
+  assert.equal(result.observation.coverage.drained, false);
+  assert.equal(result.observation.cleanup.closed, true);
+  assert.equal(result.observation.cleanup.detached, true);
+  assert.equal(result.observation.cleanup.exitCode, 0);
+  assert.deepEqual(commands, ['prepare', 'drain', 'release', 'begin-close', 'close']);
+  const receipt = JSON.parse(await readFile(join(directory, 'lifetime-host.json'), 'utf8'));
+  assert.equal(receipt.errors[0], 'renderer detached before drain');
+  assert.ok(receipt.errors.includes('script has been destroyed'));
+  assert.ok(receipt.errors.includes('shutdown observation not ready'));
+  assert.equal(host.listenerCount('exit'), 0);
+});
+
 test('drain releases hooks but retains process exit observation until browser termination', async (t) => {
   // Given: an event-backed host whose owned browser has not terminated.
   const directory = await mkdtemp(join(tmpdir(), 'native-resident-lifetime-'));

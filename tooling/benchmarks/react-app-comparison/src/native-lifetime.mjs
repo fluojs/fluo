@@ -332,7 +332,15 @@ export async function createNativeLifetimeObserver(options) {
   const abort = () => { errors.push('native observation aborted'); void close(); };
   return {
     runId, close, isObservedShutdownExit,
-    async beginClose() { if (ready && released && !closePromise) await command('begin-close'); },
+    async beginClose() {
+      if (ready && released && !closePromise) {
+        const primary = errors[0];
+        try { await command('begin-close'); } catch (error) {
+          if (primary) throw new Error(primary, { cause: error });
+          throw error;
+        }
+      }
+    },
     get identity() { return { targetId, sessionId }; },
     async prepare(browser, browserPid, cdp) {
       try {
