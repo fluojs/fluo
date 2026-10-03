@@ -113,7 +113,24 @@ body byte, CDP error code 또는 settledTimestamp를 만들지 않습니다.
 Native event는 process 안에 buffer하여 event마다 IPC하지 않습니다. Hook 비용을
 측정에서 차감하지 않으며 setup/drain과 별도 observer process 비용은 provenance에
 남기지만 따로 측정하지 않습니다. 기존 throughput 및 `ps` snapshot 뒤,
-BrowserServer close 전에 drain하고 원래 request cutoff를 유지합니다. Native/CDP,
+BrowserServer close 전에 drain하고 원래 request cutoff를 유지합니다.
+각 소유 session은 자연스러운 process 종료까지 Frida agent를 resident로 유지합니다.
+원래 observer hook은 drain에서 stop하고 child gating을 해제하지만 session detach/unload는
+BrowserServer close 전이 아니라 process 종료 뒤입니다. Resident memory/runtime 비용도
+차감 없이 포함합니다.
+실패·abort된 preparation이 observer child의 bounded 종료를 강제할 때도
+eternalize된 inert script가 살아 있는 process의 agent unload를 방지합니다.
+Python host는 BrowserServer 종료까지 pidfd exit 구독을 유지한 다음 원래 cutoff의
+증거를 마무리합니다. Main exit/error/disconnect와 관측 가능한 descendant wait
+status를 보존하며 알려진 비정상 종료는 NetLog parse 전에 거부합니다. Python exit 0이나
+detach 성공은 browser 정상 종료의 증거가 아닙니다. 이미 reap된 descendant status는
+0이 아니라 missing으로 남기며 main exit 0만으로 모든 descendant의 정상 종료를
+입증하지 않습니다. Drain 이후 별도 shutdown 관측은 인증된 Chromium main의
+정상 종료 caller, 살아 있는 소유 target의 PID/start identity, 성공한 SIGTERM 전송,
+명시적 close 이후의 순서와 정상 main 종료가 모두 일치할 때만 raw status 15를
+의도적인 shutdown으로 구분합니다. 이 관측의 IPC/setup 비용도 보정하지 않습니다.
+Zombie target, 실패한 전송, 누락된 caller, 원인 불명 및 다른 비정상 종료는
+허용하지 않으며 status 15나 missing을 0으로 바꾸지 않습니다. Native/CDP,
 coverage/process, schema/source hash, host log와 cleanup raw artifact를 fresh output
 root에 보존하고 `verifyTraceFiles`에서 hash·realpath containment·run identity와
 reconciliation replay를 확인합니다. Warmup 및 combined trace에도 적용합니다.

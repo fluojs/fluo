@@ -719,7 +719,11 @@ export async function verifyMeasurementEnvironment(receipt, outputRoot) {
   const samples = [...receipt.runs, ...(receipt.warmups ?? []), ...(receipt.developmentWarmups ?? [])];
   if (!receipt.isolatedRepresentative && !receipt.environmentBinding
     && !samples.some((run) => run.isolatedRepresentative || run.environmentBinding)
-    && !receipt.developmentEnvironmentBinding) return;
+    && !receipt.developmentEnvironmentBinding) {
+    // Summary deletion cannot downgrade isolated raw traces to the default mode.
+    await verifyTraceFiles(samples, outputRoot);
+    return;
+  }
   if (!receipt.isolatedRepresentative) {
     throw new Error('environment binding aggregate mode missing');
   }
@@ -744,11 +748,12 @@ export async function verifyMeasurementEnvironment(receipt, outputRoot) {
       throw new Error('environment binding sample/aggregate mismatch');
     }
   }
+  await verifyTraceFiles(samples, outputRoot);
 }
 
 export async function verifyTraceFiles(runs, outputRoot) {
   const root = await realpath(outputRoot);
-  async function verify(path, sources = false) {
+  async function verify(path, sources = false, expected, mismatch = 'sample/trace') {
     if (!path || !isAbsolute(path)) throw new Error(`invalid trace path: ${path}`);
     let actual;
     let record;
@@ -762,6 +767,11 @@ export async function verifyTraceFiles(runs, outputRoot) {
     }
     if (record.schemaVersion !== 1) throw new Error(`incomplete trace ${path}: schemaVersion`);
     const isolated = record.isolatedRepresentative || record.environmentBinding || record.provenance?.isolatedRepresentative;
+    if (expected && (isolated || expected.isolatedRepresentative || expected.environmentBinding)
+      && (record.isolatedRepresentative !== true || expected.isolatedRepresentative !== true
+        || !isDeepStrictEqual(record.environmentBinding, expected.environmentBinding))) {
+      throw new Error(`environment binding ${mismatch} mismatch`);
+    }
     if (isolated) {
       if (!record.isolatedRepresentative) throw new Error('environment binding trace mode missing');
       const environment = await verifyEnvironmentBinding(record.environmentBinding, root);
@@ -825,27 +835,25 @@ export async function verifyTraceFiles(runs, outputRoot) {
     } else if (Array.isArray(record.sourceTraces)) {
       if (record.sourceTraces.length !== 2 || !record.correctness) throw new Error(`incomplete combined trace ${path}`);
       for (const [index, source] of record.sourceTraces.entries()) {
+        // Authenticate containment before reading even for mode discovery.
+        const raw = await verify(source, true, {
+          isolatedRepresentative: record.isolatedRepresentative,
+          environmentBinding: record.sourceEnvironmentBindings?.[index],
+        }, 'combined source');
         if (isolated) {
-          const raw = JSON.parse(await readFile(source, 'utf8'));
           if (!raw.isolatedRepresentative || !isDeepStrictEqual(raw.environmentBinding, record.sourceEnvironmentBindings?.[index])
             || raw.environmentBinding?.identitySha256 !== record.environmentBinding.identitySha256) {
             throw new Error('environment binding combined source mismatch');
           }
         }
-        await verify(source, true);
       }
     } else {
       await verify(path, true);
     }
+    return record;
   }
   for (const run of runs) {
-    if (run.isolatedRepresentative || run.environmentBinding) {
-      const record = JSON.parse(await readFile(run.trace, 'utf8'));
-      if (!record.isolatedRepresentative || !isDeepStrictEqual(record.environmentBinding, run.environmentBinding)) {
-        throw new Error('environment binding sample/trace mismatch');
-      }
-    }
-    await verify(run.trace);
+    await verify(run.trace, false, run);
   }
 }
 

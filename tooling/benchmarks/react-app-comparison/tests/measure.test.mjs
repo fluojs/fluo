@@ -345,6 +345,65 @@ test('isolated aggregate and combined replay preserve both invocations and all w
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
+test('isolated raw traces reject removal of all aggregate sample and warmup markers', async (t) => {
+  // Given: valid isolated production/development receipts, raw sources unchanged.
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-full-downgrade-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const receipts = [];
+  for (const name of ['production', 'development']) {
+    const { binding } = await environmentFixture(directory, name);
+    const receipt = await collectMeasurements(config, {
+      async check() { return { pass: false, steps: [] }; },
+    }, join(directory, name));
+    Object.assign(receipt, { isolatedRepresentative: true, environmentBinding: binding });
+    for (const run of [...receipt.runs, ...receipt.warmups]) {
+      Object.assign(run, { isolatedRepresentative: true, environmentBinding: binding });
+      const raw = JSON.parse(await readFile(run.trace, 'utf8'));
+      Object.assign(raw, { isolatedRepresentative: true, environmentBinding: binding });
+      raw.environment.browserVersion = NATIVE_LIFETIME_IDENTITY.browserVersion;
+      await writeFile(run.trace, JSON.stringify(raw));
+    }
+    receipts.push(receipt);
+  }
+  const combined = await mergeEvidence(...receipts, join(directory, 'combined'));
+  await verifyMeasurementEnvironment(combined, directory);
+  const samples = [...combined.runs, ...combined.warmups, ...combined.developmentWarmups];
+  await verifyTraceFiles(samples, directory);
+  const before = await Promise.all(samples.map((run) => readFile(run.trace)));
+  // When: every summary declaration is removed, not only the aggregate marker.
+  delete combined.isolatedRepresentative;
+  delete combined.environmentBinding;
+  delete combined.developmentEnvironmentBinding;
+  for (const run of samples) {
+    delete run.isolatedRepresentative;
+    delete run.environmentBinding;
+  }
+  // Then: both public replay boundaries independently reject the downgrade.
+  await t.test('aggregate verifier', async () => {
+    await assert.rejects(verifyMeasurementEnvironment(combined, directory), /environment binding/u);
+  });
+  await t.test('trace verifier', async () => {
+    await assert.rejects(verifyTraceFiles(samples, directory), /environment binding/u);
+  });
+  assert.deepEqual(await Promise.all(samples.map((run) => readFile(run.trace))), before);
+});
+
+test('default combined wrappers cannot conceal isolated raw sources', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-combined-downgrade-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const { binding } = await environmentFixture(directory);
+  const receipt = await collectMeasurements(config, { async check() { return { pass: false }; } }, directory);
+  const source = receipt.runs[0].trace;
+  const raw = JSON.parse(await readFile(source, 'utf8'));
+  Object.assign(raw, { isolatedRepresentative: true, environmentBinding: binding });
+  raw.environment.browserVersion = NATIVE_LIFETIME_IDENTITY.browserVersion;
+  await writeFile(source, JSON.stringify(raw));
+  const trace = join(directory, 'combined.json');
+  await writeFile(trace, JSON.stringify({ schemaVersion: 1, correctness: {},
+    sourceTraces: [source, receipt.runs[1].trace] }));
+  await assert.rejects(verifyTraceFiles([{ trace }], directory), /environment binding/u);
+});
+
 test('passive headroom retains CPU counters without replacing CPU or RSS metric definitions', () => {
   const before = { monotonicMs: 10, processCpu: { user: 100, system: 100 },
     cpus: [{ user: 10, nice: 0, sys: 10, idle: 80, irq: 0 }], memoryBytes: 1000 };

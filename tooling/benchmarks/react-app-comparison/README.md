@@ -94,6 +94,26 @@ hashes, host logs and cleanup receipts remain in each fresh output root and
 are authenticated and replayed by `verifyTraceFiles`, including warmups and
 combined production/development sources.
 
+Each owned Frida session remains attached so its agent stays resident until
+that process exits naturally. Original observer hooks stop and child gating
+is disabled at drain; session detach/unload follows process exit, never precedes
+BrowserServer close. Resident memory/runtime overhead stays
+included, without subtraction. An eternalized inert script per session prevents live-agent unload when
+failed/aborted preparation forces bounded observer-child termination.
+The Python host retains pidfd exit subscriptions through BrowserServer termination
+and then finalizes the original-cutoff
+evidence. Main exit/error/disconnect and owned descendant wait statuses are
+retained even on failure. Known abnormal exits are rejected before NetLog parsing;
+Python exit 0 or successful detach is not browser health. A reaped descendant's
+unavailable wait status remains missing, not zero, so main exit 0 does not prove
+every descendant exited normally.
+Separate post-drain shutdown observation classifies raw status 15 as intentional
+only when the authenticated Chromium main's normal-shutdown caller, live owned
+target PID/start identity, successful SIGTERM send, explicit-close ordering and
+normal main exit all agree. Its IPC/setup cost is not subtracted. Zombie targets,
+failed sends, missing callers, unknown causes and other abnormal exits are not
+admitted; status 15 and missing statuses are never rewritten to zero.
+
 Unsupported identity, late attach, partial hooks, drops, incomplete returns,
 transport/script errors, renderer termination before drain, ambiguous reuse,
 unverified child role or worker target coverage produce unavailable/inconclusive

@@ -27,6 +27,62 @@ function record(event, fields = {}) {
   events.push({ event, runId, pid: Process.id, processBirth, seq: ++sequence, ns: now(), ...fields });
 }
 rpc.exports = {
+  initializeShutdown(config) {
+    if (configured) throw new Error('agent already configured');
+    configured = true;
+    const module = Process.enumerateModules()[0];
+    if (module.path !== config.loadedPath || Process.arch !== 'arm64') throw new Error('shutdown module mismatch');
+    const stack = new Map();
+    const emit = (event, fields) => {
+      if (++sequence > 4096) throw new Error('shutdown event capacity exceeded');
+      send({ event, runId: config.runId, pid: Process.id, processBirth: config.processBirth,
+        seq: sequence, ns: now(), ...fields });
+    };
+    const enter = (context, event, fields) => {
+      const nested = stack.get(context.threadId) ?? [];
+      context.binding = { call: ++callSerial, parent: nested.at(-1) ?? null, thread: context.threadId, ...fields };
+      nested.push(context.binding.call);
+      stack.set(context.threadId, nested);
+      emit(`${event}-enter`, context.binding);
+    };
+    const leave = (context, event, fields) => {
+      const nested = stack.get(context.threadId);
+      if (nested?.pop() !== context.binding.call) throw new Error('shutdown call stack mismatch');
+      if (!nested.length) stack.delete(context.threadId);
+      emit(`${event}-return`, { ...context.binding, ...fields });
+    };
+    for (const hook of config.hooks) {
+      const address = module.base.add(hook.offset);
+      if (!Process.findRangeByAddress(address)?.protection.includes('x')) throw new Error('shutdown hook outside executable mapping');
+      hooks.push(Interceptor.attach(address, {
+        onEnter(args) {
+          enter(this, `shutdown-${hook.event}`, hook.event === 'terminate'
+            ? { exitCode: args[1].toInt32(), wait: args[2].toInt32() } : {});
+        },
+        onLeave(retval) {
+          leave(this, `shutdown-${hook.event}`, hook.event === 'terminate' ? { result: retval.toInt32() } : {});
+        },
+      }));
+    }
+    hooks.push(Interceptor.attach(Module.getGlobalExportByName('kill'), {
+      onEnter(args) {
+        const pid = args[0].toInt32();
+        let target = { pid, missing: true };
+        if (pid > 0) {
+          try {
+            const raw = File.readAllText(`/proc/${pid}/stat`);
+            const fields = raw.slice(raw.lastIndexOf(')') + 1).trim().split(/\s+/u);
+            target = { pid, processBirth: `${pid}:${fields[19]}`, state: fields[0] };
+          } catch (error) { target.error = String(error); }
+        }
+        enter(this, 'shutdown-signal', { signal: args[1].toInt32(), target });
+      },
+      onLeave(retval) { leave(this, 'shutdown-signal', { result: retval.toInt32() }); },
+    }));
+    Interceptor.flush();
+    emit('shutdown-ready', {});
+    return true;
+  },
   initialize(config) {
     if (configured) throw new Error('agent already configured');
     configured = true;

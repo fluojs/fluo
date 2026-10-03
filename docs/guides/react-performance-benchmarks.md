@@ -115,6 +115,24 @@ Native events buffer inside each process without per-event IPC. Hook costs are
 not subtracted; setup/drain and separate observer costs are retained in provenance,
 not separately measured. Drain follows unchanged throughput and `ps` snapshots,
 before BrowserServer close, while preserving the original request cutoff.
+Each owned session retains its Frida agent until natural process exit; observer
+hooks stop and child gating is disabled at drain, while session detach/unload
+follows process exit rather than preceding BrowserServer close.
+An eternalized inert script prevents live-agent unload if failed/aborted
+preparation forces bounded observer-child termination.
+Resident memory/runtime overhead remains included without subtraction. The
+Python host retains pidfd exit subscriptions through BrowserServer termination,
+then finalizes evidence at the original cutoff. Main exit/error/disconnect and
+available descendant wait statuses are retained; known abnormal exits are rejected
+before NetLog parsing. Python exit 0 or successful detach is not browser health.
+Reaped descendant statuses stay missing, not zero; main exit 0 does not prove
+all descendants exited normally.
+Separate post-drain shutdown observation classifies raw status 15 as intentional
+only when the authenticated Chromium main's normal-shutdown caller, live owned
+target PID/start identity, successful SIGTERM send, explicit-close ordering and
+normal main exit all agree. Its IPC/setup cost is not subtracted. Zombie targets,
+failed sends, missing callers, unknown causes and other abnormal exits are not
+admitted; status 15 and missing statuses are never rewritten to zero.
 Native/CDP, coverage/process, schema/source hashes, host logs and cleanup raw
 artifacts stay in the fresh output root; `verifyTraceFiles` checks hashes, realpath
 containment, run identity and reconciliation replay, including warmup and combined

@@ -1,7 +1,9 @@
 """Owned-process, authenticated Linux/AArch64 headless lifetime observer v1."""
 import hashlib
 import json
+import os
 import platform
+import select
 import struct
 import sys
 import threading
@@ -33,6 +35,7 @@ class BrowserIdentity(TypedDict):
 class HookSchema(TypedDict):
     identity: BrowserIdentity
     hooks: list[Hook]
+    shutdownHooks: list[Hook]
     runId: str
     agentSha256: str
     hostSha256: str
@@ -79,6 +82,7 @@ def authenticate(pid: int, schema: HookSchema) -> tuple[str, str]:
     size, count = struct.unpack_from("<HH", raw, 58)
     sections = [struct.unpack_from("<IIQQQQIIQQ", raw, offset + index * size) for index in range(count)]
     symbols = {}
+    authenticated_hooks = schema["hooks"] + schema["shutdownHooks"]
     build_id = None
     for section in sections:
         if section[1] == 7:
@@ -99,11 +103,11 @@ def authenticate(pid: int, schema: HookSchema) -> tuple[str, str]:
             name, info, _, _, address, _ = struct.unpack_from("<IBBHQQ", raw, cursor)
             start = strings[4] + name
             symbol = raw[start:raw.index(b"\0", start)].decode()
-            if symbol in [hook["symbol"] for hook in schema["hooks"]]:
+            if symbol in [hook["symbol"] for hook in authenticated_hooks]:
                 if info & 15 != 2:
                     raise RuntimeError("hook symbol is not a function")
                 symbols[symbol] = address
-    if build_id != identity["buildId"] or any(symbols.get(hook["symbol"]) != hook["offset"] for hook in schema["hooks"]):
+    if build_id != identity["buildId"] or any(symbols.get(hook["symbol"]) != hook["offset"] for hook in authenticated_hooks):
         raise RuntimeError("binary build/symbol schema mismatch")
     # Authenticate the actual executable mappings, not only the selected launch path.
     mappings = Path(f"/proc/{pid}/maps").read_text().splitlines()
@@ -121,6 +125,9 @@ def main() -> None:
     output_lock = threading.Lock()
     sessions = {}
     scripts = {}
+    exit_watchers = {}
+    detach_events = {}
+    stop_read, stop_write = os.pipe()
     process_births = {}
     process_records = {}
     process_epochs = {}
@@ -130,6 +137,8 @@ def main() -> None:
     closing = False
     prepared = False
     drained = False
+    released = False
+    shutdown_script = None
     device = frida.get_local_device()
 
     def emit(message):
@@ -148,6 +157,32 @@ def main() -> None:
                            "rendererHooks": renderer_hooks}})
         if not closing and renderer_hooks:
             error(f"process {pid}/{process_birth} detached before drain: {reason}")
+        if crash:
+            error(f"owned process crash {pid}/{process_birth}: {crash}")
+        detach_events[process_birth].set()
+
+    def watch_exit(pid: int, process_birth: str, fd: int, completed: threading.Event) -> None:
+        """Retain kernel exit readiness; reaped statuses remain explicitly missing."""
+        try:
+            readable, _, _ = select.select([fd, stop_read], [], [])
+            if fd not in readable:
+                return
+            status = None
+            try:
+                fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+                if process_birth.startswith(f"{pid}:{fields[19]}:") and fields[0] in {"Z", "X"}:
+                    status = int(fields[49])
+            except (FileNotFoundError, ProcessLookupError):
+                # pidfd proves exit, not an exit status already reaped by its parent.
+                status = None
+            emit({"lifecycle": {"event": "owned-exit", "pid": pid, "processBirth": process_birth,
+                               "ns": str(time.monotonic_ns()), "exitCodeRaw": status,
+                               "missing": status is None}})
+            # Preserve raw status. The authenticated replay distinguishes only
+            # an observed normal-shutdown SIGTERM from other nonzero exits.
+        finally:
+            os.close(fd)
+            completed.set()
 
     def attach(pid, renderer, role="renderer"):
         if pid in sessions:
@@ -163,9 +198,26 @@ def main() -> None:
         path, _ = authenticate(pid, schema)
         process_births[pid] = f"{birth(pid)}:{process_epochs.get(pid, 0)}"
         attached_birth = process_births[pid]
+        if pid not in exit_watchers:
+            completed = threading.Event()
+            watcher = threading.Thread(target=watch_exit,
+                                       args=(pid, attached_birth, os.pidfd_open(pid), completed))
+            exit_watchers[pid] = (watcher, completed)
+            watcher.start()
         session = device.attach(pid)
         sessions[pid] = session
+        detach_events[attached_birth] = threading.Event()
         session.on("detached", lambda reason, crash=None: detached(pid, attached_birth, renderer, reason, crash))
+        # Retain the session through natural process exit. Release stops hooks
+        # and disables gating without unloading a live process's Frida agent.
+        # The inert keeper also prevents live-agent unload if failed/aborted
+        # preparation forces bounded observer-child termination.
+        keeper = session.create_script("void 0;")
+        keeper.load()
+        keeper.eternalize()
+        emit({"lifecycle": {"event": "session-resident", "pid": pid, "processBirth": attached_birth,
+                           "ns": str(time.monotonic_ns()), "until": "owned-process-exit",
+                           "eternalized": True}})
         session.enable_child_gating()
         emit({"lifecycle": {"event": "owned-attach", "pid": pid, "processBirth": process_births[pid],
                            "ns": str(time.monotonic_ns()), "rendererHooks": renderer,
@@ -291,9 +343,9 @@ def main() -> None:
                                     raise RuntimeError(f"incomplete native buffer {pid}")
                             drained = True
                             response.update({"drained": not errors, "ns": str(time.monotonic_ns())})
-                        case "close":
+                        case "release" | "close":
                             closing = True
-                            for pid, script in scripts.items():
+                            for pid, script in ([] if released else scripts.items()):
                                 try:
                                     if not drained:
                                         result = script.exports_sync.drain()
@@ -305,16 +357,51 @@ def main() -> None:
                                     script.exports_sync.stop()
                                 except Exception as exc:
                                     error(f"script cleanup {pid}: {exc}")
-                            for session in reversed(list(sessions.values())):
+                            if request["command"] == "release" and not released and drained:
+                                shutdown_script = sessions[root_pid].create_script(source)
+                                def shutdown_message(message, data):
+                                    match message["type"]:
+                                        case "send":
+                                            emit({"lifecycle": message["payload"]})
+                                        case _:
+                                            error(f"shutdown agent: {message}")
+                                shutdown_script.on("message", shutdown_message)
+                                shutdown_script.load()
+                                shutdown_script.exports_sync.initialize_shutdown({
+                                    "runId": schema["runId"], "processBirth": process_births[root_pid],
+                                    "loadedPath": str(Path(f"/proc/{root_pid}/exe").resolve(strict=True)),
+                                    "hooks": schema["shutdownHooks"],
+                                })
+                            for session in ([] if released else reversed(list(sessions.values()))):
                                 try:
                                     if not session.is_detached:
                                         session.disable_child_gating()
-                                        session.detach()
+                                        if request["command"] == "close":
+                                            session.detach()
                                 except Exception as exc:
                                     error(f"session cleanup: {exc}")
                             response["detached"] = all(session.is_detached for session in sessions.values())
-                            emit(response)
-                            break
+                            released = True
+                            if request["command"] == "close":
+                                if request.get("browserResult") is not None:
+                                    emit({"lifecycle": {"event": "browser-result", **request["browserResult"]}})
+                                deadline = time.monotonic() + 5
+                                for pid, (_, completed) in exit_watchers.items():
+                                    if not completed.wait(max(0, deadline - time.monotonic())):
+                                        error(f"owned process exit deadline: {pid}")
+                                for process_birth, completed in detach_events.items():
+                                    if not completed.wait(max(0, deadline - time.monotonic())):
+                                        error(f"owned session detach deadline: {process_birth}")
+                                response["detached"] = all(session.is_detached for session in sessions.values())
+                                response["ownedExited"] = all(done.is_set() for _, done in exit_watchers.values())
+                                emit(response)
+                                break
+                        case "begin-close":
+                            if not released or shutdown_script is None:
+                                raise RuntimeError("shutdown observation not ready")
+                            emit({"lifecycle": {"event": "graceful-close", "pid": root_pid,
+                                               "processBirth": process_births[root_pid],
+                                               "ns": str(time.monotonic_ns())}})
                         case _:
                             raise RuntimeError("unknown observer command")
             except Exception as exc:
@@ -330,6 +417,11 @@ def main() -> None:
                     session.detach()
             except Exception as exc:
                 error(f"final session cleanup: {exc}")
+        os.write(stop_write, b"x")
+        for watcher, _ in exit_watchers.values():
+            watcher.join()
+        os.close(stop_read)
+        os.close(stop_write)
 
 
 if __name__ == "__main__":
