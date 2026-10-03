@@ -27,6 +27,7 @@ type ReactViteSsrLifecycleCommands = {
   readonly test: string;
   readonly testBrowser: string;
   readonly typecheck: string;
+  readonly typegen: string;
 };
 
 const INSTALL_COMMAND_BY_PACKAGE_MANAGER = {
@@ -54,9 +55,14 @@ const REACT_VITE_SSR_TEMPLATES: readonly ReactViteSsrTemplate[] = [
   { outputPath: 'vitest.config.ts', templatePath: 'vitest.config.ts.ejs' },
   { outputPath: 'src/app.test.ts', templatePath: 'src/app.test.ts.ejs' },
   { outputPath: 'src/app.ts', templatePath: 'src/app.ts.ejs' },
+  { outputPath: 'src/catalog.ts', templatePath: 'src/catalog.ts.ejs' },
+  { outputPath: 'src/session-controls.tsx', templatePath: 'src/session-controls.tsx.ejs' },
+  { outputPath: 'src/page-products.tsx', templatePath: 'src/page-products.tsx.ejs' },
+  { outputPath: 'src/page-admin.tsx', templatePath: 'src/page-admin.tsx.ejs' },
   { outputPath: 'src/entry-client.tsx', templatePath: 'src/entry-client.tsx.ejs' },
   { outputPath: 'src/entry-client-dev.ts', templatePath: 'src/entry-client-dev.ts.ejs' },
   { outputPath: 'src/entry-server.tsx', templatePath: 'src/entry-server.tsx.ejs' },
+  { outputPath: 'src/import-control.ts', templatePath: 'src/import-control.ts.ejs' },
   { outputPath: 'src/load-manifest.test.ts', templatePath: 'src/load-manifest.test.ts.ejs' },
   { outputPath: 'src/load-manifest.ts', templatePath: 'src/load-manifest.ts.ejs' },
   { outputPath: 'src/main.ts', templatePath: 'src/main.ts.ejs' },
@@ -68,6 +74,16 @@ const REACT_VITE_SSR_TEMPLATES: readonly ReactViteSsrTemplate[] = [
   { outputPath: 'src/styles.d.ts', templatePath: 'src/styles.d.ts.ejs' },
   { outputPath: 'tests/deployment-transition.spec.ts', templatePath: 'tests/deployment-transition.spec.ts.ejs' },
   { outputPath: 'tests/production-hydration.spec.ts', templatePath: 'tests/production-hydration.spec.ts.ejs' },
+  { outputPath: 'tests/session-transition.spec.ts', templatePath: 'tests/session-transition.spec.ts.ejs' },
+  { outputPath: 'tests/background-interactions.spec.ts', templatePath: 'tests/background-interactions.spec.ts.ejs' },
+  { outputPath: 'tests/navigation-guard.spec.ts', templatePath: 'tests/navigation-guard.spec.ts.ejs' },
+  { outputPath: 'tests/form-control.ts', templatePath: 'tests/form-control.ts.ejs' },
+  { outputPath: 'tests/reliability-control.ts', templatePath: 'tests/reliability-control.ts.ejs' },
+  { outputPath: 'tests/long-session.spec.ts', templatePath: 'tests/long-session.spec.ts.ejs' },
+  { outputPath: 'tests/long-session-run.ts', templatePath: 'tests/long-session-run.ts.ejs' },
+  { outputPath: 'tests/long-session-observer.ts', templatePath: 'tests/long-session-observer.ts.ejs' },
+  { outputPath: 'tests/long-session-helpers.ts', templatePath: 'tests/long-session-helpers.ts.ejs' },
+  { outputPath: 'tests/long-session-metrics.ts', templatePath: 'tests/long-session-metrics.ts.ejs' },
 ];
 
 function resolveTemplateDirectory(importMetaUrl: string): string {
@@ -86,6 +102,7 @@ function createLifecycleCommands(packageManager: PackageManager): ReactViteSsrLi
     test: run('test'),
     testBrowser: run('test:browser'),
     typecheck: run('typecheck'),
+    typegen: run('typegen'),
   };
 }
 
@@ -113,6 +130,7 @@ export function createReactViteSsrScaffoldFiles(
       .replaceAll('<%= testCommand %>', commands.test)
       .replaceAll('<%= testBrowserCommand %>', commands.testBrowser)
       .replaceAll('<%= typecheckCommand %>', commands.typecheck)
+      .replaceAll('<%= typegenCommand %>', commands.typegen)
       .replaceAll('<%= devCommandJson %>', JSON.stringify(commands.dev))
       .replaceAll('<%= startCommandJson %>', JSON.stringify(commands.start)),
     path: outputPath,

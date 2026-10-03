@@ -1,0 +1,68 @@
+name: React reliability soak
+
+on:
+  workflow_dispatch:
+    inputs:
+      head:
+        description: Exact reviewed commit SHA (no branch aliases)
+        required: true
+        type: string
+      seed:
+        description: Deterministic workload seed
+        default: '3886'
+        type: string
+  schedule:
+    - cron: '17 2 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: react-reliability-soak-${{ inputs.head || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  soak:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.head || github.sha }}
+      - name: Require exact requested head
+        env:
+          REQUESTED_HEAD: ${{ inputs.head || github.sha }}
+        run: |
+          test "${#REQUESTED_HEAD}" -eq 40
+          test "$(git rev-parse HEAD)" = "$REQUESTED_HEAD"
+      - name: Read locked bootstrap version
+        id: version
+        run: node -e "const fs=require('node:fs');const l=JSON.parse(fs.readFileSync('tooling/ci/environment.lock.json','utf8'));fs.appendFileSync(process.env.GITHUB_OUTPUT,'node='+l.node.primary.version+'\n')"
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ steps.version.outputs.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm --filter @fluojs/example-react-vite-ssr exec playwright install --with-deps chromium
+      - name: Build explicit test assets
+        run: pnpm --filter @fluojs/example-react-vite-ssr build:reliability
+        env:
+          REACT_VITE_FORM_TEST_SERVER: '1'
+      - name: Separate two hour event-driven soak
+        run: pnpm --filter @fluojs/example-react-vite-ssr test:reliability --project chromium
+        env:
+          FLUO_RELIABILITY_SOAK: '1'
+          FLUO_RELIABILITY_SOAK_MS: '7200000'
+          FLUO_RELIABILITY_SEED: ${{ inputs.seed || '3886' }}
+          FLUO_RELIABILITY_OUTPUT: ${{ github.workspace }}/.omo/verification/issue-3886/soak-${{ github.run_id }}-${{ github.run_attempt }}
+          FLUO_RELIABILITY_REPORT: ${{ github.workspace }}/.omo/verification/issue-3886/soak-${{ github.run_id }}-${{ github.run_attempt }}.json
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: react-reliability-soak-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .omo/verification/issue-3886/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14

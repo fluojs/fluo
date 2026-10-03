@@ -1,8 +1,12 @@
 import { readFileSync } from 'node:fs';
 
+import { createHandlerMapping, FromQuery, Optional, RequestDto, Version } from '@fluojs/http';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
+import { Path, Router } from './decorators.js';
 import type { ReactPageCatalogEntry } from './page-catalog.js';
+import { createReactPageCatalog } from './page-catalog.js';
 import {
   generateReactPageTypes,
   inspectReactPageTypeArtifact,
@@ -31,6 +35,84 @@ const catalog = [
 ] satisfies readonly ReactPageCatalogEntry[];
 
 describe('@fluojs/react/typegen', () => {
+  it('encodes aliased optional and repeated query without changing artifact inspection', () => {
+    // Given: a query projection preserves HTTP field aliases and materialization.
+    class SearchInput {
+      @FromQuery('q')
+      term = '';
+
+      @Optional()
+      @FromQuery('tag')
+      tags: string | readonly string[] = [];
+    }
+    @Router('/search')
+    class SearchRouter {
+      @Path()
+      @RequestDto(SearchInput)
+      show(_input: SearchInput): void {}
+    }
+    const mapping = createHandlerMapping([{ controllerToken: SearchRouter }]);
+    const pages = createReactPageCatalog(mapping.descriptors).map((entry) => ({
+      ...entry,
+      query: [
+        { property: 'term', wire: 'q', optional: false, shape: { kind: 'string' as const } },
+        { property: 'tags', wire: 'tag', optional: true, shape: { kind: 'array' as const, item: { kind: 'string' as const } } },
+      ],
+    }));
+
+    // When: a standalone generated builder receives actual wire text.
+    const source = generateReactPageTypes(pages);
+    const javascript = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS },
+    }).outputText;
+    const exports: { reactPageRoutes?: Record<string, { href: (query: { term: string; tags?: readonly string[] }) => string }> } = {};
+    new Function('exports', javascript)(exports);
+    const href = exports.reactPageRoutes?.['GET /search SearchRouter show']?.href({
+      term: '한 글+/%', tags: ['', 'a+b', 'a/b'],
+    });
+
+    // Then: native query decoding retains text, order, duplicates and empty values.
+    expect(href).toBe('/search?q=%ED%95%9C+%EA%B8%80%2B%2F%25&tag=&tag=a%2Bb&tag=a%2Fb');
+    const query = new URL(href ?? '', 'https://example.test').searchParams;
+    expect(query.get('q')).toBe('한 글+/%');
+    expect(query.getAll('tag')).toEqual(['', 'a+b', 'a/b']);
+    expect(query.has('term')).toBe(false);
+    expect(inspectReactPageTypeArtifact(source)).toEqual({
+      status: 'valid', version: REACT_PAGE_TYPEGEN_ARTIFACT_VERSION,
+    });
+  });
+
+  it('generates URI-versioned hrefs only from compiled selection provenance', () => {
+    // Given: HTTP compiles a versioned page using its default URI strategy.
+    @Router('/items')
+    class ItemsRouter {
+      @Version('2')
+      @Path('/:id')
+      show(): void {}
+    }
+    const mapping = createHandlerMapping([{ controllerToken: ItemsRouter }]);
+
+    // When: the existing generator evaluates the authoritative catalog.
+    const source = generateReactPageTypes(createReactPageCatalog(mapping.descriptors));
+    const javascript = ts.transpileModule(source, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS },
+    }).outputText;
+    const exports: { reactPageRoutes?: Record<string, { href: (params: { id: string }) => string }> } = {};
+    new Function('exports', javascript)(exports);
+    const href = exports.reactPageRoutes?.['GET /v2/items/:id ItemsRouter show']?.href({ id: 'a/b' });
+
+    // Then: the generated URL resolves to the same compiled handler.
+    expect(href).toBe('/v2/items/a%2Fb');
+    const match = mapping.match({
+      cookies: {}, headers: {}, method: 'GET', params: {},
+      path: '/v2/items/a%2Fb', query: {}, raw: {}, url: '/v2/items/a%2Fb',
+    });
+    expect(match?.descriptor).toBe(mapping.descriptors[0]);
+    expect(inspectReactPageTypeArtifact(source)).toEqual({
+      status: 'valid', version: REACT_PAGE_TYPEGEN_ARTIFACT_VERSION,
+    });
+  });
+
   it('emits and recognizes the current deterministic artifact version', () => {
     // Given: one authoritative React page catalog.
     const pages = catalog;

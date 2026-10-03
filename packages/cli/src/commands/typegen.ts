@@ -1,12 +1,14 @@
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 import { TYPEGEN_EXIT_CODES } from '../typegen-contract.js';
 import { typegenUsage } from '../usage.js';
+import { assertOutputDoesNotAliasModule } from './output-path-safety.js';
 import {
   checkTypegenArtifact,
   type TypegenArtifactCheck,
   writeTypegenArtifact,
 } from './typegen-artifact.js';
+import { TypegenCompiler } from './typegen-compiler.js';
 import {
   runTypegenGenerationProcess,
   startTypegenGenerationProcess,
@@ -18,8 +20,8 @@ import {
   loadReactTypegenModules,
   type ReactTypegenModules,
 } from './typegen-source.js';
+import { findTypegenTsconfig } from './typegen-source-loader.js';
 import { runTypegenWatch } from './typegen-watch.js';
-import { assertOutputDoesNotAliasModule } from './output-path-safety.js';
 
 type CliStream = {
   write(message: string): unknown;
@@ -97,9 +99,16 @@ export async function runTypegenCommand(
     await assertOutputDoesNotAliasModule(modulePath, outputPath);
     const customModules = runtime.loadReactTypegenModules?.(cwd);
     const generateSource = async () => customModules === undefined
-      ? runTypegenGenerationProcess({ cwd, exportName: parsed.exportName, modulePath: parsed.modulePath })
+      ? runTypegenGenerationProcess({ cwd, exportName: parsed.exportName, modulePath: parsed.modulePath,
+        outputPath: parsed.outputPath, optionsExport: parsed.optionsExport, tsconfigPath: parsed.tsconfigPath })
       : createTypegenSource({ cwd, modules: await customModules, parsed });
     if (parsed.watch) {
+      const modulePath = resolve(cwd, parsed.modulePath);
+      const projectTypes = customModules === undefined
+        || typeof Reflect.get((await customModules).typegen, 'createHttpTypeProjection') === 'function';
+      const tsconfigPath = !projectTypes || !/\.(?:ts|tsx|mts|cts)$/u.test(modulePath)
+        ? undefined
+        : parsed.tsconfigPath === undefined ? findTypegenTsconfig(modulePath) : resolve(cwd, parsed.tsconfigPath);
       return await runTypegenWatch({
         async commit(source, signal) {
           const action = await writeTypegenArtifact(outputPath, source, undefined, signal);
@@ -113,8 +122,14 @@ export async function runTypegenCommand(
           stdout.write(`WATCHING ${watchRoot}\n`);
         },
         outputPath,
+        watchRoot: tsconfigPath === undefined ? undefined : dirname(tsconfigPath),
+        refreshWatchInputs: tsconfigPath === undefined ? undefined : () => {
+          const snapshot = TypegenCompiler.create({ cwd, modulePath, tsconfigPath, artifactPath: outputPath });
+          return [...snapshot.configurationFiles.keys(), ...snapshot.sources.keys()];
+        },
         startGeneration: customModules === undefined
-          ? () => startTypegenGenerationProcess({ cwd, exportName: parsed.exportName, modulePath: parsed.modulePath })
+          ? () => startTypegenGenerationProcess({ cwd, exportName: parsed.exportName, modulePath: parsed.modulePath,
+            outputPath: parsed.outputPath, optionsExport: parsed.optionsExport, tsconfigPath: parsed.tsconfigPath })
           : () => {
             let cancelled = false;
             const result = generateSource().then((source) => {

@@ -76,6 +76,7 @@ When an HTML provider is registered for an eligible outcome, HTTP offers canonic
 | --- | --- |
 | No `Accept` | Canonical JSON. |
 | `application/json` | Canonical JSON. |
+| GET with exactly `application/vnd.fluo.react-navigation+json;v=2` | Canonical JSON preserves the HTTP error status, including 401/403/404, without consulting HTML or granting a successful page/public prefetch. |
 | `text/html` | HTML when `canRender` is absent or returns `true`; otherwise canonical JSON if JSON is also acceptable, or JSON `406` if it is not. |
 | Weighted ranges | Highest quality wins; the most specific matching range determines an offer's quality. |
 | Equal quality and specificity | Canonical JSON wins the deterministic server tie. |
@@ -86,6 +87,11 @@ When an HTML provider is registered for an eligible outcome, HTTP offers canonic
 Successful-route `@Produces(...)` metadata and `ContentNegotiationOptions` do not grant error
 representation ownership. Error availability is application-owned through the provider's
 `canRender(...)` constraint.
+
+The navigation error exception is restricted to that exact GET v2 protocol;
+unsupported versions, methods and rejected quality ranges keep ordinary negotiation,
+including 406 when neither JSON nor HTML is acceptable. It does not broaden the
+successful navigation Accept match or permit a client JSON fallback.
 
 ## Response Commit and Fallback Rules
 
@@ -139,3 +145,15 @@ or file-routing dependency is added.
   ownership, route-policy isolation, provider failure fallback, and shell-phase separation.
 - Shared network and Web portability harnesses cover Node.js, Express, Fastify, Bun, Deno, and
   Cloudflare Workers behavior for JSON, HTML, `HEAD`, 406, and already-committed responses.
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.

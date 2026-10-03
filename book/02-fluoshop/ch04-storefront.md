@@ -16,6 +16,29 @@ The first implementation uses server rendering, ordinary links, and a GET form. 
 
 ## React Does Not Invent a New Routing System
 
+### Background companion after native selection checking
+
+Run the native GET selection exercise below unchanged. Later independent row
+work and search use background on the same `useForm`, not another route matcher
+or query cache. Try two searches and queue rows at `/catalog/background` in the
+executable [Vite example](../../examples/react-vite-ssr/README.md). This does not
+add cart persistence or payment to this chapter; queue/persistence rules remain app-owned.
+
+```tsx
+const search = useForm<{ q: string }>({
+  id: 'song-search', action: '/catalog/background/search',
+  mode: 'background', method: 'get', fields: { q: 'q' },
+  allowDestination: () => false,
+});
+```
+
+Call inside a component under the existing provider and spread `formProps` on a
+native form. GET/POST acknowledgements do not change URL/history; confirmed writes
+obtain a separate fresh HTTP approval of the current page. Never automatically
+replay a cancelled POST or infer failed persistence. The actual listener's
+started/release/cleaned barriers drive `tests/background-interactions.spec.ts`;
+the [form contract](../../docs/contracts/react-progressive-forms.md) owns lifecycle and native fallback.
+
 `@Router` and `@Path` from `@fluojs/react` express page intent on top of existing Fluo HTTP metadata. They do not generate routes automatically from filenames. You must explicitly register the class that owns `/products` and the module containing it. Existing middleware, guards, request scope, and conflict checks follow the HTTP runtime path as well.
 
 In this chapter, `/products` is an HTML listing and `/products/:slug` is an HTML detail page. Do not register a separate JSON controller for the same method and path at the same time. The public listing in Chapters 1 through 3 was a service contract, not yet an HTTP JSON route, so this choice does not conflict with it. If you have already registered another representation, first settle which component owns that path. Do not assume two duplicate GET declarations are automatically separated because their `Accept` headers differ.
@@ -522,3 +545,108 @@ Readers can now discover merchandise in their familiar blog, choose their size a
 - [Product and money implementation](./ch03-catalog-and-money.md), [shared editorial contracts](../EDITORIAL.md): Server authority over pricing and the current implementation stage.
 
 [Previous: Modeling a T-shirt as a Product](./ch03-catalog-and-money.md) - [Volume 2 Contents](./toc.md) - [Next: Why You Cannot Trust Cart Prices](./ch05-cart-and-pricing.md)
+
+
+## Customer sessions do not reuse another customer's approval
+
+Keep this chapter's read-only HTTP/native fallback. Add hydrated session composition
+to the existing provider/router, not a separate login navigator. Nonsecret epochs
+label app notifications; each `router.sessionChanged` invalidates old protected page,
+head, form retention and public prefetch ownership before policy. A saved session
+outcome transfers only its confirmed continuation to a fresh credentialed GET.
+Ordinary product mutations still preserve unrelated form state.
+
+A fresh 403 is permission denial, not logout; 401 selects signed-out UI. Anonymous
+speculation cannot revoke a credentialed customer or supply protected content.
+Initial SSR fallback is also suppressed after explicit revocation. App-owned
+channel/player cleanup follows the existing session-aware React subtree, with real
+connection acknowledgement and close evidence rather than counters alone.
+Follow [session migration](../../docs/getting-started/migrate-react-session-composition.md).
+These scoped journeys do not claim the later product/soak acceptance of #3879/#3886.
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../../docs/contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.
+
+Keep this chapter's storefront as the existing read-only exercise. Writes belong
+to the [FluoBlog companion](../01-fluoblog/ch17-react-reading-and-writing.md).
+Do not add mutations, optimistic cache writes or dirty navigation guards here.
+
+### Build the same product-selection URL with types
+
+Suppose a reader needs a button sharing the selection URL. Instead of adding
+string concatenation, generate a query contract from the same HTTP route. This
+is a **DTO fragment for opting into typed navigation**. Add
+`@RequestDto(SelectionQuery)` to `StorefrontRouter.show` and change its first
+argument to `input: SelectionQuery`. Keep imports in the existing `.ts` router.
+The DTO describes wire shape only: retain the duplicate-key, SKU and quantity
+checks in `selectProduct(product, url.searchParams)`. Raw input is not a validated
+order or price.
+
+```ts
+import { FromPath, FromQuery, Optional, RequestDto } from '@fluojs/http';
+
+class SelectionQuery {
+  @FromPath('slug')
+  slug = '';
+
+  @FromQuery('sku') @Optional()
+  sku?: string | readonly string[];
+
+  @FromQuery('quantity') @Optional()
+  units?: string | readonly string[];
+}
+```
+
+Run the existing `fluo typegen` with the actual application tsconfig/options. The
+view imports no DTO and copies no Input interface. This **link fragment** consumes
+the generated artifact, with `Link` inside the existing provider. It remains a real
+anchor before hydration or without JavaScript. `units` is the DTO property; the
+URL uses its `quantity` alias.
+
+```tsx
+import { Link } from '@fluojs/react/client';
+import { reactPageRoutes } from './generated/react-pages.js';
+
+const product = reactPageRoutes['GET /products/:slug StorefrontRouter show'];
+<Link {...product.link(
+  { slug: 'fluo-logo-tee' },
+  { sku: 'FLUO-TEE-BLK-M', units: '2' },
+)}>Check two shirts</Link>;
+// /products/fluo-logo-tee?sku=FLUO-TEE-BLK-M&quantity=2
+```
+
+Quantity remains wire text `'2'`; the existing selection check converts it after
+the HTTP read. Arrays repeat the same key in order, so `units: ['1', '2']` is a
+representable URL, but this shop's duplicate-rejection policy still returns 400.
+Empty strings remain present; omitted optional keys retain initial-visit semantics.
+Space becomes `+`; literal plus/slash/percent are percent-encoded. Do not cast
+`useSearchParams()` to a validated DTO. Keep server prices as strings and do not
+send calculation-time `bigint` as props.
+
+When later adopting soft pages, connect the default component's JSON props to the
+generated registry and initial/soft decoders while retaining the build importer
+allowlist. Ordinary typecheck/build must run the existing `--check` first rather
+than hide stale output with automatic regeneration. The
+[type contract](../../docs/contracts/react-end-to-end-types.md) owns supported
+limits. This is an option alongside the native GET exercise, not evidence of an
+executed journey or a saved cart.
+
+## Where editing protection belongs
+
+Keep this chapter's read-only storefront without default mutations or guards.
+Only a separate editor that saves product selection combines dirty/pending and
+app work in one `useNavigationGuard({ when })` inside the existing provider.
+Permission precedes destination HTTP and navigation form cancellation; only the
+current intent's stay/proceed controls have authority. Session revocation and
+native document-exit boundaries take priority over protection UI. See the
+[Volume 1 editor](../01-fluoblog/ch17-react-reading-and-writing.md#protect-unsaved-input-after-hydration)
+and [owning navigation contract](../../docs/contracts/react-navigation-payload.md#navigation-permission).
+Browsing is not being converted into a save-and-confirm application.

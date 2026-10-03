@@ -664,6 +664,10 @@ text-node contract가 해당 escape를 수행하는 rendering framework를 사�
 `Accept` negotiation은 deterministic하다. `Accept`가 없거나 wildcard/tie이면 JSON을 선택하고 quality와
 specificity가 `application/json`과 available `text/html` 사이를 선택하며 unsupported range는 canonical JSON
 406을 만든다. `canRender(...)`로 application 또는 matched handler별 HTML availability를 제한할 수 있다.
+정확히 GET `Accept: application/vnd.fluo.react-navigation+json;v=2`의 error는 HTML을 조회하지 않고
+canonical JSON으로 원래 HTTP status(401/403/404 포함)를 유지한다. Successful navigation payload나
+public prefetch grant가 아니다. 다른 method/version과 거절된 quality range는 기존 negotiation 및
+406 동작을 유지한다.
 Provider failure는 원래 canonical JSON outcome으로 한 번만 fallback하며 committed 또는 aborted request는
 다시 쓰지 않는다. Response writer `send(...)` 또는 stream/write failure는 그대로 propagate하며 두 번째 canonical
 JSON write를 시작하지 않는다. HTTP가 `Accept`를 추가할 때 기존 native `Vary` 값도 보존한다. Successful-route
@@ -762,6 +766,37 @@ instance라면 dispatcher는 헤더를 직접 적용하고, 다른 조건이 허
 순서는 유지됩니다. 복사되거나 수정된 instance를 포함한 다른 middleware는 일반
 chain을 유지합니다. Request-scoped dependency, guard, interceptor, observer는
 계속 각 기능에 필요한 경로를 사용합니다.
+
+### Type-only converter wire input
+
+`HttpWire<Server, Wire>`는 compiler tooling에서 raw HTTP input과 converted DTO
+property를 구분합니다. Type-only 선언이며 conversion이나 validation을 설치하지 않습니다.
+
+```ts
+import { Convert, FromQuery, type HttpWire } from '@fluojs/http';
+
+class SearchInput {
+  @Convert({ convert(value: unknown) { return Number(value); } })
+  @FromQuery('page')
+  page: HttpWire<number, string> = 1;
+}
+```
+
+Global converter chain이 적용되는 field도 같은 선언을 사용합니다.
+`@Convert`는 기존 converter instance/DI-token 계약을 유지하며 arrow function은 converter
+constructor가 아닙니다. Compiled binder가 source alias와 `@Optional()` omission policy를
+제공합니다. Required input 누락은 계속 거부하고 optional binding만 input이 없을 때 initializer를
+보존합니다.
+
+Tooling projection은 실제 controller/DTO identity를 유지하며 DTO를 instantiate하거나 converter를
+실행하지 않습니다. HTTP mapping은 authoritative `versionSelection`도 기록합니다.
+React typegen은 provenance-backed URI href를 지원하고 `/v2` path에서 추정하는 대신 지원하지
+않는 header/media/custom 요구를 거부합니다.
+Path placeholder는 compiled route name을 유지하고 query/body contract는 DTO property와
+`@FromQuery`/`@FromBody` alias를 구분합니다. Browser wire value는 text/repeated text이며
+이미 변환한 DTO 값이 아닙니다. Generated href나 `HttpWire`는 runtime required-input 검사,
+validator, guard, CSRF 정책을 우회하지 않습니다.
+[React end-to-end 타입 계약](../../docs/contracts/react-end-to-end-types.ko.md)을 참고하세요.
 
 ### Bun decorator bundling compatibility
 
@@ -995,3 +1030,14 @@ default/raw-body/multipart 동작을 유지합니다. 공개 declaration 테스�
 [Next 사용법과 migration](../platform-nextjs/README.ko.md#bounded-body-parsing)을 참고하세요.
 
 HTTP 앱은 `@fluojs/runtime`의 `FluoFactory.create(AppModule, { adapter })`로 생성하고 instance `listen()`/`close()`로 실행·종료합니다. `HttpApplicationAdapter.getListenTarget?()`는 listen 뒤 `{ bindTarget, url }`을 반환하는 선택적 logging capability이며 socket 없는 host는 생략할 수 있습니다. Factory는 공통 middleware와 실패 정리를 소유하고 HTTP는 기존 request/input/response policy를 유지합니다. [Migration](../../docs/getting-started/migrate-http-factory.ko.md)을 참고하세요.
+
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.

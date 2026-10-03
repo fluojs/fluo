@@ -1,12 +1,12 @@
 import { afterEach, expect, it, vi } from 'vitest';
-
+import { createClientFormStore } from './client/form-store.js';
 import { createClientNavigationStore } from './client/store.js';
 import {
   createReactRouteSnapshot,
   loadReactInitialNavigationDestination as loadInitial,
   loadReactNavigationDestination as loadNavigation,
-  type ReactNavigationModules,
   type ReactNavigationLoadResult,
+  type ReactNavigationModules,
 } from './client.js';
 
 const ORIGIN = 'https://example.test';
@@ -20,6 +20,37 @@ const payload = {
   destination: { module: './navigation-product.ts', props: { sku: 'sku-84' } },
 };
 
+it('does not dispatch credentialed destination GET before the current dirty decision proceeds', async () => {
+  const href = `${ORIGIN}/edit`;
+  vi.stubGlobal('window', { location: { href } });
+  const fetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+    new Response(JSON.stringify(payload), { headers: { 'Content-Type': MEDIA_TYPE } }));
+  vi.stubGlobal('fetch', fetch);
+  const modules = { './navigation-product.ts': async () => ({ default: () => null }) };
+  const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/edit' }));
+  store.connect({
+    currentHref: () => href, assign: vi.fn(), replace: vi.fn(), reload: vi.fn(), back: vi.fn(),
+    pushState: vi.fn(), replaceState: vi.fn(), subscribe: () => () => {},
+    load: (destination, signal) => loadReactNavigationDestination(destination, modules, { signal }),
+  });
+  store.registerNavigationGuard(() => ({ when: true }));
+  store.router.push(payload.url);
+  store.getNavigationDecision()?.stay();
+  expect(fetch).not.toHaveBeenCalled();
+  const approved = new Promise<void>((resolve) => {
+    const unsubscribe = store.subscribe(() => {
+      if (store.getSnapshot().url !== payload.url) return;
+      unsubscribe(); resolve();
+    });
+  });
+  store.router.push(payload.url);
+  store.getNavigationDecision()?.proceed();
+  await approved;
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(fetch.mock.calls[0]?.[1]).toMatchObject({ credentials: 'same-origin', cache: 'no-store', redirect: 'manual' });
+  expect(store.getSnapshot().params).toEqual(payload.params);
+});
+
 const loadReactInitialNavigationDestination = (json: string, modules: ReactNavigationModules) =>
   loadInitial(json, modules, BUILD_ID);
 const loadReactNavigationDestination = (
@@ -27,6 +58,83 @@ const loadReactNavigationDestination = (
   modules: ReactNavigationModules,
   options: Parameters<typeof loadNavigation>[2] = {},
 ) => loadNavigation(href, modules, { buildId: BUILD_ID, ...options });
+
+it('revalidates background saves through fresh credentialed current-page HTTP without using a handler destination', async () => {
+  // Given: the real navigation loader and a provider-approved current page.
+  const href = `${ORIGIN}${payload.url}#queue`;
+  vi.stubGlobal('window', { location: { href } });
+  const fetch = vi.fn(async () => new Response(JSON.stringify(payload), { headers: { 'Content-Type': MEDIA_TYPE } }));
+  vi.stubGlobal('fetch', fetch);
+  const modules = { './navigation-product.ts': async () => ({ default: () => null }) };
+  const store = createClientNavigationStore(createReactRouteSnapshot({ url: href, params: payload.params }));
+  const push = vi.fn();
+  const disconnect = store.connect({
+    currentHref: () => href, assign: vi.fn(), replace: vi.fn(), reload: vi.fn(), back: vi.fn(),
+    pushState: push, replaceState: vi.fn(), subscribe: () => () => {},
+    load: (destination, signal) => loadReactNavigationDestination(destination, modules, { signal }),
+  });
+  // When: the provider coalescer approves a background mutation.
+  expect(await store.approveBackground(new AbortController().signal, createClientFormStore('background'))).toEqual({ status: 'complete' });
+  // Then: only fresh current-page GET approval updates props; history and route params agree.
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(fetch).toHaveBeenCalledWith(href, expect.objectContaining({
+    credentials: 'same-origin', cache: 'no-store', redirect: 'manual',
+  }));
+  expect(push).not.toHaveBeenCalled();
+  expect(store.getSnapshot().url).toBe(`${payload.url}#queue`);
+  expect(store.getSnapshot().params).toEqual(payload.params);
+  disconnect();
+});
+
+it('consumes auth refresh through two uncached credentialed GETs before fresh approval', async () => {
+  const href = `${ORIGIN}${payload.url}`;
+  vi.stubGlobal('window', { location: { href } });
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(new Response(null, { status: 401 }))
+    .mockResolvedValueOnce(new Response(JSON.stringify(payload), { headers: { 'Content-Type': MEDIA_TYPE } }));
+  vi.stubGlobal('fetch', fetch);
+  const modules = { './navigation-product.ts': async () => ({ default: () => null }) };
+  const store = createClientNavigationStore(createReactRouteSnapshot({ url: href }), {
+    epoch: 'a', policy: () => 'refresh',
+  });
+  store.connect({
+    currentHref: () => href, assign: vi.fn(), replace: vi.fn(), reload: vi.fn(), back: vi.fn(),
+    pushState: vi.fn(), replaceState: vi.fn(), subscribe: () => () => {},
+    load: (destination, signal) => loadReactNavigationDestination(destination, modules, { signal }),
+  });
+  expect(await store.router.refresh()).toEqual({ status: 'complete' });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  for (const [, init] of fetch.mock.calls) {
+    expect(init).toMatchObject({ credentials: 'same-origin', cache: 'no-store' });
+    expect(init.method ?? 'GET').toBe('GET');
+  }
+  expect(store.getSnapshot().session?.status).toBe('approved');
+});
+
+it('rejects generated module props before initial or soft destination import', async () => {
+  // Given: both representations carry a mapped module but wrong concrete props.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}${payload.url}` } });
+  const malformed = { ...payload, destination: { module: './navigation-product.ts', props: { sku: 42 } } };
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+  const contracts = { './navigation-product.ts': {
+    decodeProps(value: unknown) {
+      if (typeof value !== 'object' || value === null || !('sku' in value) || typeof value.sku !== 'string') {
+        throw new TypeError('Invalid generated props.');
+      }
+      return { sku: value.sku };
+    },
+  } };
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(malformed), {
+    headers: { 'Content-Type': MEDIA_TYPE },
+  })));
+  // When: initial hydration and a negotiated move use the same generated-contract seam.
+  const initial = await loadInitial(JSON.stringify(malformed), modules, BUILD_ID, contracts);
+  const soft = await loadNavigation(payload.url, modules, { buildId: BUILD_ID, contracts });
+  // Then: no wrong-props component can import or render through either entry point.
+  expect(initial).toEqual({ ok: false, reason: 'invalid-payload' });
+  expect(soft).toEqual({ ok: false, reason: 'invalid-payload' });
+  expect(modules['./navigation-product.ts']).not.toHaveBeenCalled();
+});
 
 it('rejects a B navigation before importing when its build differs from the hydrated A tab', async () => {
   // Given: A tab receives a valid HTTP-approved B payload for a mapped module.
@@ -79,6 +187,74 @@ function grantedResponse(headers: Record<string, string> = {}, body: unknown = p
     },
   });
 }
+
+it('uses fresh credentialed v2 approval after a form save instead of speculation admitted during the POST', async () => {
+  // Given: a provider with a held POST and a valid public prefetch opportunity.
+  let href = `${ORIGIN}/products/sku-42`;
+  vi.stubGlobal('window', { location: { href } });
+  let started = () => {};
+  let acknowledge = (_response: Response) => {};
+  const posted = new Promise<void>((resolve) => { started = resolve; });
+  const acknowledgement = new Promise<Response>((resolve) => { acknowledge = resolve; });
+  const metadata = { title: 'Fresh after save' };
+  const fetchResult = vi.fn()
+    .mockImplementationOnce(() => { started(); return acknowledgement; })
+    .mockResolvedValueOnce(grantedResponse({}, {
+      ...payload, destination: { ...payload.destination, props: { revision: 'speculative-old' } },
+    }))
+    .mockResolvedValueOnce(grantedResponse({}, {
+      ...payload, metadata, destination: { ...payload.destination, props: { revision: 'confirmed-new' } },
+    }));
+  vi.stubGlobal('fetch', fetchResult);
+  const modules = { './navigation-product.ts': vi.fn(async () => ({ default: () => null })) };
+  const navigation = createClientNavigationStore(createReactRouteSnapshot({
+    url: '/products/sku-42', params: { sku: 'sku-42' },
+  }));
+  const disconnect = navigation.connect({
+    currentHref: () => href,
+    assign: vi.fn(), back: vi.fn(), reload: vi.fn(), replace: vi.fn(),
+    pushState: (next) => { href = next; }, replaceState: vi.fn(), subscribe: () => () => {},
+    prefetchScope: 'form-test',
+    load: (url, signal) => loadReactNavigationDestination(url, modules, { signal }),
+    prefetch: (url, signal) => loadReactNavigationDestination(url, modules, { signal, prefetch: true }),
+  });
+  const form = createClientFormStore();
+  navigation.forms.set('save', form);
+  const operation = form.submit({
+    action: `${ORIGIN}/save`,
+    body: new URLSearchParams({ name: 'Changed' }),
+  }, {
+    invalidate: navigation.router.invalidate,
+    allowDestination: () => true,
+    rememberForms: () => {},
+    approve: (url, followUp, signal) => navigation.approveForm(url, followUp, signal, form),
+  });
+  try {
+    await posted;
+    await navigation.prefetch(payload.url, {});
+
+    // When: persistence is acknowledged after the speculative entry was admitted.
+    acknowledge(new Response(JSON.stringify({
+      version: 1, outcome: 'saved', destination: payload.url, followUp: 'navigate',
+    }), { headers: { 'Content-Type': 'application/vnd.fluo.form+json;v=1' } }));
+    await operation;
+
+    // Then: only a fresh ordinary HTTP response supplies data and metadata.
+    expect(fetchResult).toHaveBeenCalledTimes(3);
+    expect(fetchResult.mock.calls[1]?.[1]).toMatchObject({ credentials: 'omit' });
+    expect(fetchResult.mock.calls[2]?.[1]).toMatchObject({
+      credentials: 'same-origin', cache: 'no-store', redirect: 'manual',
+    });
+    expect(navigation.getDestination()).toMatchObject({ props: { revision: 'confirmed-new' } });
+    expect(navigation.getSnapshot().metadata).toEqual(metadata);
+    expect(form.getSnapshot().mutation?.status).toBe('saved');
+    expect(form.getSnapshot().followUp).toEqual({ status: 'complete' });
+  } finally {
+    disconnect();
+    acknowledge(new Response('', { status: 500 }));
+    await operation;
+  }
+});
 
 it('hydrates only the HTTP-approved initial module without an additional request', async () => {
   // Given: an inert script whose URL matches the browser document and a built importer.
@@ -449,6 +625,26 @@ it.each([
 
   // Then: only a safe public reason crosses the browser navigation boundary.
   expect(result).toEqual({ ok: false, reason });
+});
+
+it.each([
+  [401, 'unauthorized'],
+  [403, 'forbidden'],
+] as const)('classifies fresh credentialed %i before reading private response bodies or importing a page', async (status, reason) => {
+  // Given: a protected HTTP rejection contains data that must not become page approval.
+  vi.stubGlobal('window', { location: { href: `${ORIGIN}/products/sku-42` } });
+  const response = new Response('private session data', { status });
+  const body = vi.spyOn(response, 'text');
+  const importer = vi.fn(async () => ({ default: () => null }));
+  vi.stubGlobal('fetch', vi.fn(async () => response));
+  // When: the actual navigation loader receives that credentialed status.
+  const result = await loadReactNavigationDestination('/products/sku-84', {
+    './navigation-product.ts': importer,
+  });
+  // Then: safe auth discrimination precedes all body/module work.
+  expect(result).toEqual({ ok: false, reason });
+  expect(body).not.toHaveBeenCalled();
+  expect(importer).not.toHaveBeenCalled();
 });
 
 it('preserves the approved shell on a post-header body stream failure', async () => {

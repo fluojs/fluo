@@ -670,6 +670,10 @@ every request-derived or error-derived value before interpolation, as the exampl
 `Accept` negotiation is deterministic: absent `Accept` and wildcard/tie cases select JSON; quality
 and specificity select between `application/json` and available `text/html`; unsupported ranges
 produce canonical JSON 406. `canRender(...)` may constrain HTML per application or matched handler.
+An exact GET `Accept: application/vnd.fluo.react-navigation+json;v=2` error instead retains
+the original HTTP status (including 401/403/404) in canonical JSON without consulting HTML.
+It is not a successful navigation payload or public prefetch grant. Other methods, versions
+and rejected quality ranges retain normal negotiation and its 406 behavior.
 A provider failure falls back once to the original canonical JSON outcome, and committed or aborted
 requests are never rewritten. Response writer `send(...)` or stream/write failures propagate
 unchanged and do not trigger a second canonical JSON write. Existing native `Vary` values are
@@ -770,6 +774,37 @@ otherwise eligible fast route without creating a request scope for those headers
 All header defaults, overrides and ordering remain unchanged. Other middleware,
 including copied or modified instances, retains the normal chain. Request-scoped
 dependencies, guards, interceptors and observers still require their usual path.
+
+### Type-only converter wire input
+
+`HttpWire<Server, Wire>` distinguishes raw HTTP input from a converted DTO property
+for compiler tooling. It is type-only and does not install conversion or validation:
+
+```ts
+import { Convert, FromQuery, type HttpWire } from '@fluojs/http';
+
+class SearchInput {
+  @Convert({ convert(value: unknown) { return Number(value); } })
+  @FromQuery('page')
+  page: HttpWire<number, string> = 1;
+}
+```
+
+Use the same declaration for fields affected by global converter chains.
+`@Convert` retains its existing converter instance/DI-token contract; an arrow function
+is not a converter constructor. The compiled binder supplies source aliases and
+`@Optional()` omission policy. Required missing input is still rejected, while only
+an optional binding preserves an initializer when its input is absent.
+
+Tooling projections retain actual controller/DTO identity and never instantiate DTOs
+or execute converters. HTTP mapping also records authoritative `versionSelection`;
+React typegen supports provenance-backed URI hrefs and rejects unsupported
+header/media/custom requirements rather than guessing from a `/v2` path.
+Path placeholders remain compiled route names; query/body contracts distinguish DTO
+properties from `@FromQuery`/`@FromBody` aliases. Browser wire values are text or
+repeated text, not already-converted DTO values. Neither a generated href nor
+`HttpWire` bypasses runtime required-input checks, validators, guards or CSRF policy.
+See the [React end-to-end types contract](../../docs/contracts/react-end-to-end-types.md).
 
 ### Bun decorator bundling compatibility
 
@@ -1004,3 +1039,15 @@ tests build a cold isolated dependency closure and resolve package export maps.
 See the [Next usage and migration](../platform-nextjs/README.md#bounded-body-parsing).
 
 Create HTTP applications through `FluoFactory.create(AppModule, { adapter })` from `@fluojs/runtime`, then use instance `listen()`/`close()`. Optional `HttpApplicationAdapter.getListenTarget?()` supplies `{ bindTarget, url }` after listen for startup logging; socketless hosts may omit it. Factory owns common middleware and failure cleanup while HTTP retains its request/input/response policies. See the [migration guide](../../docs/getting-started/migrate-http-factory.md).
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../../docs/contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.

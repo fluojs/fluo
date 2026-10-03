@@ -69,6 +69,8 @@ export {
 export type { FastPathEligibility, FastPathStats } from './dispatch/fast-path/index.js';
 export * from './errors.js';
 export * from './exceptions.js';
+export { HttpFormRejection } from './form-representation.js';
+export type { HttpFormErrors, HttpFormRepresentationProvider } from './form-representation.js';
 export {
   appendVaryHeader,
   buildContentDisposition,
@@ -88,3 +90,4 @@ export {
 export * from './middleware/rate-limit.js';
 export * from './middleware/security-headers.js';
 export * from './types.js';
+export type { HttpWire } from './type-projection.js';

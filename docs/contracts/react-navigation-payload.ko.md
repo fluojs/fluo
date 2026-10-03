@@ -4,6 +4,16 @@
 
 ## Scope and ownership
 
+Background `useForm({ mode: 'background', method: 'get' | 'post', ... })`은 navigation
+representation 대신 credential 포함 no-store 일반 HTTP JSON read 또는 negotiated form
+save를 사용합니다. acknowledgement 자체는 history나 route state를 쓰지 않습니다.
+confirmed write는 기존 loader의 revision-coalesced fresh current-page approval을 공유하며
+stale revision과 이전 session은 commit하지 못하고 더 최신 user navigation이 우선합니다.
+native fallback, owner cancellation, read decoder, auth-policy document 예외는
+[form owner](./react-progressive-forms.ko.md)를 보세요. companion guard와
+`client-navigation-payload.test.ts`는 기존 build/metadata/HTTP/public-prefetch/session
+invariant와 함께 이 경계를 검증합니다.
+
 `@fluojs/react`는 handler가 `ReactNavigationPage.create(page, { module, props })`를 반환하는
 HTTP-matched `@Path(...)` GET에 opt-in representation을 제공합니다. 일반 결과는 계속
 `ReactModule.forRoot({ renderPage })`를 거친 streamed React document입니다. `module`은
@@ -105,6 +115,17 @@ HTTP가 소유합니다. Error document를 page payload로 파싱하면 안 됩�
 
 ## Browser consumption and fallback
 
+[End-to-end 타입 계약](./react-end-to-end-types.ko.md)은 이 v2 representation이 아닌
+기존 `fluo typegen` graph를 확장합니다. Generated `ReactPagePropsRegistry`는 module
+literal과 authored JSON props를 연결하므로 strict consumer에 artifact를 포함합니다.
+Initial/soft loader는 같은 `reactPageModules` decoder를 받습니다(initial 네 번째 인자,
+soft `contracts` option). 공식 provider 조립은 일반 load와 public prefetch에도 이를
+전달해야 합니다. Build 승인 후 props contract 누락/실패는 import 전 `invalid-payload`입니다.
+JSON normalization은 optional undefined member를 생략하며 React tree를 serialize하거나
+DI/Date/custom `toJSON` 값을 generated limited-JSON contract에 허용하지 않습니다.
+Typed query href도 실제 HTTP validation을 거치며 raw search snapshot은 검증된 DTO가
+아닙니다. Route URI provenance, artifact version 2, navigation protocol version은 별개입니다.
+
 `@fluojs/react/client`의 `loadReactNavigationDestination(href, modules, { buildId, signal? })`는
 same-origin HTTP(S)만 받습니다. 각 일반 load는 `credentials: 'same-origin'`, `cache: 'no-store'`,
 `redirect: 'manual'`, 명시적 Accept header로 매번 uncached request 하나를 보냅니다.
@@ -164,16 +185,21 @@ Soft destination이 있으면 `refresh()`도 같은 일반 loader를 사용합�
 거부된 prefetch에는 기존 credential 포함 일반 loader와 full-document fallback을 적용합니다.
 
 `ReactClientRouterProvider`는 선택적인 `failurePolicy(failure)`를 받으며 동기 또는 비동기로
-`'preserve'`나 `'document'`를 반환합니다. 지정하지 않으면 low-level 기본값은 기존 document
-fallback입니다. `useNavigation().failure`와 정책에는 `reason`, query·응답 본문·credential·예외
+`'preserve'`나 `'document'`를 반환합니다. 생략한 경우 auth가 아닌 실패는 document
+fallback이며 인증 거절은 아래의 필수 session 또는 legacy document 규칙을 따릅니다.
+`useNavigation().failure`와 정책에는 `reason`, query·응답 본문·credential·예외
 내부를 제거한 목적지 **pathname**, `type: 'push' | 'replace' | 'back' | 'refresh'`만 전달합니다.
 사유는 `network`, `server-error`(HTTP 5xx), `unauthorized`(401), `forbidden`(403),
 `redirect`, `not-found`(404), `dto-rejected`(400/422), `invalid-payload`,
 `unsupported-module`, `import-failure`, `incompatible-build`(import 이전 v2 식별자 불일치),
 `unavailable`(그 밖의 미지원 응답),
 `unsupported-destination`으로 구분합니다. 취소는 정책을 호출하지 않습니다. Network/5xx는
-앱이 보존할 수 있지만 인증 거절·redirect·404·DTO·invalid payload는 앱이 명시적으로 달리
-결정하지 않으면 document 이동입니다. 복구 가능한 import 실패도 앱의 명시적 보존 결정이
+앱이 보존할 수 있지만 redirect·404·DTO·invalid payload는 앱이 명시적으로 달리
+결정하지 않으면 document 이동입니다. Fresh credential 포함 401/403은 이전 승인을 먼저
+항상 철회합니다. Configured 또는 명시적으로 활성화된 session 조립은 필수 session
+policy를 적용하고 미설정 legacy provider는 같은 barrier 뒤 일반 HTTP document로
+이동합니다. Transient failure policy는 철회된 auth 콘텐츠를 보존할 수 없습니다.
+복구 가능한 import 실패도 앱의 명시적 보존 결정이
 필요합니다. Status와 인증 판정은 응답 본문이 아닌 HTTP가 소유합니다.
 
 보존하면 마지막 승인 page, shell, params를 유지하고 push/replace는 history entry를 만들지
@@ -283,3 +309,105 @@ browser rendering, 일반 HTML 및 JavaScript-disabled document 동작을 실행
 `packages/http/src/dispatch/dispatcher.test.ts`는 final response grant의 허용·거부를 검증합니다.
 이 stable SSR/Vite representation은 JSON과 build된 client component이지 experimental Flight, 일반
 React tree serializer 또는 file-routing contract가 아닙니다.
+
+
+## Session approval and revocation
+
+기존 provider의 `session={{ epoch, policy? }}`와
+`router.sessionChanged({ epoch, reason: 'login' | 'logout' | 'permissions' })`를
+사용합니다. `useRouterState().session`은 provider-local epoch, generation과
+`approved`, `pending`, `signed-out`, `forbidden` 상태를 제공합니다. Epoch는 비밀이 아닌
+앱 label이며 같은 label을 다시 통지해도 매번 ownership을 진행합니다. Cookie 값이나
+Fetch에서 보이지 않는 `Set-Cookie`로 인증을 추측하지 않습니다.
+
+Barrier는 먼저 이전 page 승인·metadata·form retention을 제거하고 operation과 cache
+entry를 분리한 뒤 abort와 subscriber 통지를 수행합니다. 이전 load/body/import/policy,
+form과 public speculation은 commit하거나 document fallback을 시작할 수 없습니다.
+Public cancellation은 abort를 무시하는 작업을 기다리지 않습니다.
+`ReactNavigationExperience`는 승인 철회 중 destination과 초기 SSR fallback을 모두
+억제합니다. 다시 표시하려면 새 credential 포함 HTTP 승인이 필요합니다.
+
+Login·permission 통지의 기본값은 credential 포함 current-page GET이고 explicit logout은
+요청 없는 signed-out UI입니다. Configured session 조립의 fresh credential 포함 401은 signed-out, 403은 epoch를
+anonymous identity로 바꾸지 않는 forbidden UI입니다. Anonymous speculation만으로
+credentialed session을 철회하지 않습니다. Network/5xx는 기존 transient policy를
+유지합니다. 선택적 `session.policy(context, signal)`은 철회 뒤 safe auth UI, 새 승인
+또는 `{ document: '/same-origin-exit' }`를 선택할 수 있으며 external/credential-bearing
+문서 이동은 거절됩니다. 이전 보호 콘텐츠를 보존하는 선택지는 없습니다.
+Session 설정이나 명시적 session 활성화가 없는 legacy provider의 fresh 401/403은
+plain children을 포함하여 안전한 일반 HTTP document exit을 선택합니다. 보호 콘텐츠를
+조용히 남기지 않으면서 기존 low-level 출구를 유지합니다.
+Policy의 `'refresh'`는 navigation GET, POST 인증 거절, saved follow-up GET에서 새
+credential 포함 uncached read로 소비되며 POST를 재실행하지 않습니다. 결정은 현재
+generation이 계속 소유해야 합니다. Initiating saved binding의 취소는 소유 session
+policy를 취소하고 abort를 무시하는 policy 완료 전에 대기를 정착시키며 늦은 document
+assign을 막습니다.
+
+Player/channel/listener는 session 승인에 따라 앱의 기존 React subtree/effect 경계에서
+정리합니다. Public teardown registry를 추가하지 않습니다. 통지 settlement는 store
+settlement이지 paint나 SDK disposal receipt가 아닙니다. Auth 철회는 향후 dirty-confirm
+조립보다 우선하며 여기서 dirty-navigation guard를 구현하지 않습니다.
+
+외부 HttpOnly cookie 변경은 앱 통지 또는 fresh credential 포함 HTTP 거절 전까지
+이미 승인된 화면을 남길 수 있습니다. Cross-tab cookie 감지를 보장하지 않습니다.
+내부 provider session lease는 후속 independent interaction을 위한 경계이며 별도
+public notification 경로가 아닙니다. [Migration](../getting-started/migrate-react-session-composition.ko.md)과
+`examples/react-vite-ssr/tests/session-transition.spec.ts`의 real-surface acceptance fixture를
+참고하세요. 전체 제품·soak acceptance는 #3879/#3886이 계속 소유합니다.
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](./react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.
+
+## Navigation permission
+
+기존 provider 안에서 `@fluojs/react/client`의 `useNavigationGuard`를 사용합니다.
+앱 결정 소유자 하나가 `useForm` dirty/pending과 앱 소유 작업을
+`useNavigationGuard({ when })`에 결합합니다. clean 또는 미등록이면 기존 동기
+경로를 유지합니다. 반환값은 null 또는 `{ intent, signal, stay, proceed }`이며
+캡처한 callback으로 비차단 결정 UI를 작성합니다. 새 intent가 이전 token을 대체하므로
+늦은 callback과 async `confirm(intent, signal)`은 최신 intent, unmount한 소유자나
+철회된 session에 실행 권한이 없습니다. Rejection은 stay입니다.
+
+승인은 목적지 ordinary GET, public prefetch adoption과 navigation 소유 form 취소보다
+먼저입니다. 독립 public speculation은 이동 승인이 아닙니다. Stay는 입력, 승인된
+params/head/page와 shell을 유지하며 failurePolicy, POST replay, 자동 document fallback이
+없습니다. Guard만 등록한 provider도 초기·soft entry에 tag를 설치하고 기존
+approvedIndex/restoringIndex 복원으로 관리되는 same-document back/forward를 보호합니다.
+Untagged entry의 복원 delta는 알 수 없으므로 ordinary document 경계로 넘기며 모든
+과거 history 보호를 보장하지 않습니다. Fragment-only anchor는 native 동작을 유지합니다.
+
+결정 대기와 stay는 pending POST 소유권을 취소하지 않습니다. 승인한 leave 뒤에만
+이전 navigation 소유 작업을 취소하며 서버 persistence rollback은 아닙니다.
+Confirmed saved는 제출 이후 inputRevision이 같을 때만 dirty를 해제합니다. Saved와
+현재 dirty를 확인한 뒤 현재 결정의 proceed를 명시적으로 실행하세요. Uncertain,
+validation과 오래된 save 완료는 자동 이동하지 않습니다. Saved navigate continuation은
+제출 시 leave 소유권을 캡처하고 async destination policy 뒤 다시 확인합니다. 최신 사용자
+intent는 stay로 끝나더라도 이전 권한을 철회합니다. Saved는 확정 상태를 유지하며 명시적
+GET-only `retryRead()`에서 새 결정을 요청할 수 있습니다. `allowDestination`은 저장 후
+목적지 제약이며 dirty 승인이 아닙니다. Form refresh는 다른 입력/error/focus를 보존하고
+navigate follow-up은 같은 결정 경계와 fresh GET을 거칩니다. Read 취소·실패도 saved를
+유지하며 `retryRead()`는 GET만 반복합니다. 명시적 `router.refresh()`는 기존 page-local
+reset을 하는 현재 데이터 재검증이며 leave 승인 대체물이 아닙니다. 초안을 보존하려면
+form follow-up refresh를 사용하세요.
+이 명시적 데이터 재검증 예외는 leave guard를 호출하지 않습니다. 이전 leave 결정을
+철회하고 문서화된 page-local reset을 유지하므로 보호된 leave나 초안 보존 동작 대신
+연결하지 마세요.
+
+명시적 session 변경과 fresh credentialed GET/POST/follow-up 401/403은 abort·앱 policy 전에
+이전 page/head/SSR fallback, 입력과 결정 권한부터 철회합니다. Guard는 logout이나
+permission revocation을 지연하지 못합니다. Configured/activated auth 기본값은
+signed-out/forbidden이며 미설정 legacy auth는 같은 barrier 뒤 ordinary document입니다.
+Auth refresh는 fresh GET만 실행하며 POST를 replay하지 않습니다.
+
+Modified/new-tab/download/external/non-HTTP link, pre-hydration, JS-disabled form과
+GET/POST submitter override는 native로 유지됩니다. 선택적 `beforeUnload: true`는
+브라우저 제약이 있는 별도 동기 document exit prompt입니다. Custom message, async 저장,
+실제 tab 종료 후 복구와 draft 영속 저장을 보장하지 않습니다. Draft 저장은 앱 소유이며
+HTTP matching/DTO validation/security와 runtime-neutral root/browser subpath 소유권을 유지합니다.

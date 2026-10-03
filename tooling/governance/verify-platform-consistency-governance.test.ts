@@ -1189,6 +1189,7 @@ describe('enforceContractCompanionUpdates', () => {
       'docs/CONTEXT.md',
       'docs/CONTEXT.ko.md',
       'tooling/governance/react-navigation-payload-contract.mjs',
+      'tooling/governance/react-navigation-payload-contract.d.mts',
       'tooling/governance/react-navigation-payload-contract.test.ts',
       'packages/react/src/client-navigation-payload.test.ts',
     ];
@@ -1250,16 +1251,25 @@ describe('enforceContractCompanionUpdates', () => {
     // When / Then: every independently consumed public contract and HTTP grant regression is required.
     expect(() => enforceContractCompanionUpdates(complete)).not.toThrow();
     for (const missing of [
+      'docs/guides/react-user-concepts.md',
+      'docs/guides/react-user-concepts.ko.md',
+      'packages/react/README.md',
+      'packages/react/README.ko.md',
       'packages/http/README.md',
       'packages/http/README.ko.md',
       'packages/http/src/dispatch/dispatch-response-policy.test.ts',
       'packages/http/src/dispatch/dispatcher.test.ts',
       'packages/react/src/client.test.ts',
+      'tooling/governance/verify-platform-consistency-governance.mjs',
+      'tooling/governance/verify-platform-consistency-governance.test.ts',
       '.changeset/react-safe-prefetch-navigation-cache.md',
     ]) {
       expect(() => enforceContractCompanionUpdates(complete.filter((path) => path !== missing)))
         .toThrow(/React navigation prefetch contract updates must include/u);
     }
+    expect(() => enforceContractCompanionUpdates(complete.filter((path) =>
+      path !== 'tooling/governance/react-navigation-payload-contract.d.mts')))
+      .toThrow(/React navigation payload contract updates must include/u);
   });
 
   it('does not confuse a v2-only media type update with a changed HTTP prefetch grant', async () => {
@@ -1271,6 +1281,7 @@ describe('enforceContractCompanionUpdates', () => {
       'docs/CONTEXT.md',
       'docs/CONTEXT.ko.md',
       'tooling/governance/react-navigation-payload-contract.mjs',
+      'tooling/governance/react-navigation-payload-contract.d.mts',
       'tooling/governance/react-navigation-payload-contract.test.ts',
       'packages/react/src/client-navigation-payload.test.ts',
       'packages/react/src/page-result.ts',

@@ -11,8 +11,13 @@ const serverPath = 'packages/react/src/page-result.ts';
 const transferPath = 'packages/react/src/navigation-payload.ts';
 const metadataPath = 'packages/react/src/page-metadata.ts';
 const storePath = 'packages/react/src/client/store.ts';
+const formStorePath = 'packages/react/src/client/form-store.ts';
+const formPath = 'packages/react/src/client/form.ts';
+const formTransportPath = 'packages/react/src/client/form-transport.ts';
+const experiencePath = 'packages/react/src/client/experience.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
+const guardPath = 'packages/react/src/client/navigation-guard.ts';
 const dispatchPath = 'packages/http/src/dispatch/dispatch-response-policy.ts';
 const sources = new Map([
   [clientPath, readFileSync(resolve(repoRoot, clientPath), 'utf8')],
@@ -20,13 +25,120 @@ const sources = new Map([
   [transferPath, readFileSync(resolve(repoRoot, transferPath), 'utf8')],
   [metadataPath, readFileSync(resolve(repoRoot, metadataPath), 'utf8')],
   [storePath, readFileSync(resolve(repoRoot, storePath), 'utf8')],
+  [formStorePath, readFileSync(resolve(repoRoot, formStorePath), 'utf8')],
+  [formPath, readFileSync(resolve(repoRoot, formPath), 'utf8')],
+  [formTransportPath, readFileSync(resolve(repoRoot, formTransportPath), 'utf8')],
+  [experiencePath, readFileSync(resolve(repoRoot, experiencePath), 'utf8')],
   [historyPath, readFileSync(resolve(repoRoot, historyPath), 'utf8')],
   [providerPath, readFileSync(resolve(repoRoot, providerPath), 'utf8')],
+  [guardPath, readFileSync(resolve(repoRoot, guardPath), 'utf8')],
   [dispatchPath, readFileSync(resolve(repoRoot, dispatchPath), 'utf8')],
 ]);
 
 it('accepts the current matching HTTP and browser navigation machine contract', () => {
   expect(() => enforceReactNavigationPayloadContract((path: string) => sources.get(path) ?? '')).not.toThrow();
+});
+
+it.each([
+  [storePath, 'expectedBackgroundRevision !== backgroundRevision', 'false'],
+  [storePath, 'expectedSession !== sessionGeneration', 'false'],
+  [storePath, "true, undefined, revision, origins);", "true, undefined, undefined, origins);"],
+  [storePath, "true, undefined, revision, origins);", "true, undefined, revision);"],
+  [storePath, 'sessionPolicyOrigins = new Set(savedOrigins);', 'sessionPolicyOrigins = new Set();'],
+  [storePath, '}, formOrigin, destination.href, backgroundOrigins);', '}, formOrigin, destination.href);'],
+  [storePath, 'pending?.backgroundOrigins === origins', 'false'],
+  [formPath, 'lease: navigation.sessionLease,', 'lease: undefined,'],
+  [formStorePath, 'lease === undefined || lease.current()', 'true'],
+  [formStorePath, "mode === 'background' ? 'refresh' : saved.followUp", 'saved.followUp'],
+  [formTransportPath, "reading ? 'application/json' : MEDIA_TYPE", 'MEDIA_TYPE'],
+  [formTransportPath, "cache: 'no-store'", "cache: 'force-cache'"],
+])('rejects a background session transport or freshness bypass in %s', (path, original, changed) => {
+  // Given: one isolated mutation breaks a machine-owned background invariant.
+  const source = sources.get(path);
+  const variant = source?.replaceAll(original, changed) ?? '';
+  expect(variant).not.toBe(source);
+  // When/Then: the companion rejects the bypass without weakening legacy guards.
+  expect(() => enforceReactNavigationPayloadContract((candidate: string) =>
+    candidate === path ? variant : sources.get(candidate) ?? '',
+  )).toThrow(/React background forms/u);
+});
+
+it.each([
+  [clientPath, 'decodeDestination(payload, contracts)', 'payload'],
+  [clientPath, 'decodeDestination(payload, options.contracts)', 'payload'],
+  [clientPath, 'props: contract.decodeProps(payload.destination.props)', 'props: payload.destination.props'],
+  [providerPath, 'signal, buildId, ...(contracts === undefined ? {} : { contracts })', 'signal, buildId'],
+  [providerPath, 'signal, prefetch: true, buildId, ...(contracts === undefined ? {} : { contracts })',
+    'signal, prefetch: true, buildId'],
+])('rejects a generated props decoder bypass in %s', (path, original, changed) => {
+  const source = sources.get(path);
+  const variant = source?.replace(original, changed) ?? '';
+  expect(variant).not.toBe(source);
+  expect(() => enforceReactNavigationPayloadContract((candidate: string) =>
+    candidate === path ? variant : sources.get(candidate) ?? '',
+  )).toThrow(/React generated props/u);
+});
+
+it.each([
+  [storePath, 'requestPermission(\n      { destination: destinationUrl, type }', 'Boolean(\n      { destination: destinationUrl, type }'],
+  [historyPath, 'handlers.permission(activated)', 'false'],
+  [storePath, 'expectedSession === sessionGeneration', 'true'],
+  [storePath, 'activePrefetch.adopted = true', 'activePrefetch.adopted = false'],
+  [guardPath, 'store.registerNavigationGuard(() => current.current)', 'store.subscribe(() => {})'],
+  [storePath, 'navigationCurrent: () => expectedPermission === permissionGeneration', 'navigationCurrent: () => true'],
+  [formStorePath, 'navigationCurrent?.() === false', 'false'],
+])('rejects a severed navigation permission invariant in %s', (path, original, replacement) => {
+  const source = sources.get(path);
+  const variant = source?.replace(original, replacement) ?? '';
+  expect(variant).not.toBe(source);
+  expect(() => enforceReactNavigationPayloadContract((candidate) =>
+    candidate === path ? variant : sources.get(candidate) ?? '',
+  )).toThrow(/React navigation permission/u);
+});
+
+it.each([
+  [storePath, 'controller?.abort();', 'controller?.signal;'],
+  [storePath, "decision === 'refresh') await router.refresh();", "decision === 'refresh') await Promise.resolve();"],
+  [formStorePath, 'Promise.race([continuation, cancellation.then(() => false)])', 'continuation'],
+])('rejects detached session policy cancellation or discarded auth refresh in %s', (path, original, changed) => {
+  const source = sources.get(path);
+  const variant = source?.replace(original, changed) ?? '';
+  expect(variant).not.toBe(source);
+  expect(() => enforceReactNavigationPayloadContract((candidate: string) =>
+    candidate === path ? variant : sources.get(candidate) ?? '',
+  )).toThrow(/React navigation session policy cancellation/u);
+});
+
+it.each([
+  [storePath, '++sessionGeneration', 'sessionGeneration'],
+  [storePath, 'oldPending?.controller.abort();', 'oldPending?.controller.signal;'],
+  [formStorePath, 'environment.sessionChanged(mutation.session)', 'Promise.resolve(true)'],
+  [experiencePath, "revoked ? createElement('section'", "false ? createElement('section'"],
+])('rejects a bypass of session ownership and revoked initial-page fallback in %s', (path, original, changed) => {
+  // Given: an isolated negative mutation of a machine-consumed session invariant.
+  const source = sources.get(path);
+  const variant = source?.replace(original, changed) ?? '';
+  expect(variant).not.toBe(source);
+  // When/Then: governance detects the broken barrier rather than accepting runtime drift.
+  expect(() => enforceReactNavigationPayloadContract((candidate: string) =>
+    candidate === path ? variant : sources.get(candidate) ?? '',
+  )).toThrow(/React navigation session/u);
+});
+
+it.each([
+  ['loadAndCommit(browser, destination, type, undefined, true, origin);',
+    'loadAndCommit(browser, destination, type);'],
+  ['      cached.clear();\n      discardPrefetches();',
+    '      discardPrefetches();'],
+  ["const type = followUp === 'refresh' ? 'refresh' : 'push';",
+    "const type = 'replace';"],
+] as const)('rejects a form follow-up bypass of existing fresh HTTP approval (%s)', (original, changed) => {
+  const source = sources.get(storePath);
+  const variant = source?.replace(original, changed) ?? '';
+  expect(variant).not.toBe(source);
+  expect(() => enforceReactNavigationPayloadContract((path: string) =>
+    path === storePath ? variant : sources.get(path) ?? '',
+  )).toThrow(/React navigation form follow-up/u);
 });
 
 it.each([
@@ -78,9 +190,9 @@ it.each([
   [storePath, 'if (!result.ok)', 'if (false)'],
   [historyPath, "loadAndCommit(browser, activated, 'back')", "loadAndCommit(browser, activated, 'push')"],
   [storePath, 'load(destination.href, controller.signal)', 'load(destination.href)'],
-  [providerPath, 'loadReactNavigationDestination(href, modules, { signal, prefetch: true, buildId })',
+  [providerPath, 'loadReactNavigationDestination(href, modules, {\n            signal, prefetch: true, buildId, ...(contracts === undefined ? {} : { contracts }),\n          })',
     'loadReactNavigationDestination(href, modules, { signal })'],
-  [providerPath, 'loadReactNavigationDestination(href, modules, { signal, buildId })',
+  [providerPath, 'loadReactNavigationDestination(href, modules, {\n        signal, buildId, ...(contracts === undefined ? {} : { contracts }),\n      })',
     'loadReactNavigationDestination(href, modules, { signal, prefetch: true })'],
   [storePath, 'prefetchedResult.ok && prefetchedResult.prefetchExpiresAt !== undefined',
     'true && prefetchedResult.prefetchExpiresAt !== undefined'],
@@ -108,6 +220,7 @@ it.each([
   [dispatchPath, "!hasExistingHeader('set-cookie')", 'true'],
   [dispatchPath, "!hasExistingHeader('cache-control')", 'true'],
   [dispatchPath, 'response.statusCode === 200', 'true'],
+  [dispatchPath, "request.method.toUpperCase() === 'GET'", 'true'],
 ] as const)('rejects changed navigation request or response machinery in %s (%s)', (path, original, changed) => {
   // Given: a source variant whose machine-consumed HTTP contract changes.
   const source = sources.get(path);

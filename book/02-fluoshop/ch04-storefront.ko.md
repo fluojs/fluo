@@ -16,6 +16,28 @@
 
 ## 라우트는 React가 새로 발명하지 않는다
 
+### Native 선택 확인 뒤의 background companion
+
+아래 native GET 선택 확인은 그대로 실행한다. 나중에 여러 상품의 행 작업이나 검색이
+필요해져도 별도 route matcher/query cache를 만들지 말고 기존 `useForm`에 background를
+선택한다. 실제 실행 companion인 [Vite 예제](../../examples/react-vite-ssr/README.ko.md)의
+`/catalog/background`에서 검색 두 개와 queue 행을 동시에 조작해 본다. 이것은 이 장에
+장바구니 저장이나 결제를 추가하는 실습이 아니며 queue/persistence 규칙은 앱 소유다.
+
+```tsx
+const search = useForm<{ q: string }>({
+  id: 'song-search', action: '/catalog/background/search',
+  mode: 'background', method: 'get', fields: { q: 'q' },
+  allowDestination: () => false,
+});
+```
+
+기존 provider의 component에서 호출하고 `formProps`를 native form에 spread한다.
+GET/POST acknowledgement는 URL/history를 바꾸지 않고 확인된 write의 current-page
+read만 HTTP로 새로 승인한다. 취소된 POST를 자동 재전송하거나 저장 실패로 추측하지
+않는다. `tests/background-interactions.spec.ts`는 실제 listener의 started/release/cleaned
+barrier로 검증하며 [form 계약](../../docs/contracts/react-progressive-forms.ko.md)이 소유권과 native fallback을 정의한다.
+
 `@fluojs/react`의 `@Router`와 `@Path`는 기존 Fluo HTTP 메타데이터 위에 페이지 의도를 표현한다. 파일 이름을 보고 라우트를 자동 생성하는 방식이 아니다. `/products`를 소유할 클래스와 그 클래스가 있는 모듈을 명시적으로 등록해야 한다. 기존 middleware·guard·요청 범위와 충돌 검사도 HTTP 런타임 경로를 따른다.
 
 이번 장에서 `/products`는 HTML 목록이고 `/products/:slug`는 HTML 상세다. 같은 method와 path에 별도 JSON 컨트롤러를 동시에 등록하지 않는다. 1~3장의 공개 목록은 서비스 계약이었고 아직 HTTP JSON 라우트가 아니므로 이 선택과 충돌하지 않는다. 독자가 이미 다른 표현을 등록했다면 그 경로의 소유자를 먼저 정리해야 한다. `Accept` 헤더가 다르다는 이유만으로 중복된 GET 선언 두 개가 자동 분리된다고 가정하지 않는다.
@@ -522,3 +544,101 @@ curl -i http://127.0.0.1:3000/products/missing-product
 - [상품·금액 구현](./ch03-catalog-and-money.ko.md), [공통 집필 계약](../EDITORIAL.ko.md): 서버 가격의 권위와 현재 구현 단계.
 
 [이전: 티셔츠 한 장을 상품으로 표현하기](./ch03-catalog-and-money.ko.md) · [2권 목차](./toc.ko.md) · [다음: 장바구니 가격을 믿으면 안 되는 이유](./ch05-cart-and-pricing.ko.md)
+
+
+## Customer sessions do not reuse another customer's approval
+
+이 장의 read-only HTTP/native fallback은 유지합니다. 별도 login navigator 대신 기존
+provider/router에 hydrated session을 조립합니다. 비밀이 아닌 epoch는 앱 통지의
+label입니다. 각 `router.sessionChanged`는 policy 전에 이전 protected page/head/form
+retention/public prefetch ownership을 무효화합니다. Saved session 결과는 confirmed
+continuation만 fresh credential 포함 GET으로 이관합니다. 일반 product mutation은 다른
+form 상태를 계속 보존합니다.
+
+Fresh 403은 logout이 아닌 permission denial이고 401은 signed-out UI입니다.
+Anonymous speculation은 credentialed 고객을 철회하거나 보호 콘텐츠를 제공할 수
+없습니다. 명시적 철회 뒤에는 초기 SSR fallback도 억제합니다. 앱 소유 channel/player는
+기존 session-aware React subtree에서 정리하며 counter만이 아닌 실제 연결
+acknowledgement와 close 증거를 확인합니다.
+[Session migration](../../docs/getting-started/migrate-react-session-composition.ko.md)을
+참고하세요. 이 scoped journey로 후속 #3879/#3886의 전체 제품·soak acceptance를
+주장하지 않습니다.
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.
+
+이 chapter의 storefront는 read-only exercise로 유지합니다. 쓰기 interaction은
+[FluoBlog companion](../01-fluoblog/ch17-react-reading-and-writing.ko.md)에서 다룹니다.
+여기에 mutation, optimistic cache 또는 dirty navigation guard를 추가하지 않습니다.
+
+### 같은 상품 선택 URL을 타입으로 만들기
+
+독자가 선택 URL을 공유하는 버튼을 추가한다고 하자. 문자열 연결을 늘리는 대신 같은
+HTTP route에서 query 계약을 생성할 수 있다. 아래는 **typed 탐색을 선택할 때 추가하는
+DTO 조각**이다. 기존 `StorefrontRouter.show`에 `@RequestDto(SelectionQuery)`를 붙이고
+첫 인자를 `input: SelectionQuery`로 바꾼다. Import는 기존 `.ts` router 파일에 둔다.
+추가된 DTO는 wire shape만 표현하며 기존 `selectProduct(product, url.searchParams)`의
+중복 key·SKU·수량 검사를 없애지 않는다. 이 raw 값은 검증된 주문이나 가격이 아니다.
+
+```ts
+import { FromPath, FromQuery, Optional, RequestDto } from '@fluojs/http';
+
+class SelectionQuery {
+  @FromPath('slug')
+  slug = '';
+
+  @FromQuery('sku') @Optional()
+  sku?: string | readonly string[];
+
+  @FromQuery('quantity') @Optional()
+  units?: string | readonly string[];
+}
+```
+
+실제 application tsconfig/options로 기존 `fluo typegen`을 실행한 뒤 화면은 DTO를
+import하거나 별도 Input interface를 만들지 않는다. 아래는 generated artifact를 소비하는
+**링크 조각**이며 `Link`는 기존 provider 안에서 사용한다. Hydration 전이나 JavaScript가
+없을 때도 실제 anchor다. Query의 `units`는 DTO property이고 URL에는 `quantity`가 나온다.
+
+```tsx
+import { Link } from '@fluojs/react/client';
+import { reactPageRoutes } from './generated/react-pages.js';
+
+const product = reactPageRoutes['GET /products/:slug StorefrontRouter show'];
+<Link {...product.link(
+  { slug: 'fluo-logo-tee' },
+  { sku: 'FLUO-TEE-BLK-M', units: '2' },
+)}>Check two shirts</Link>;
+// /products/fluo-logo-tee?sku=FLUO-TEE-BLK-M&quantity=2
+```
+
+수량은 아직 wire text `'2'`이며 HTTP 조회 뒤 기존 선택 검사가 숫자로 변환한다.
+Array는 같은 key를 순서대로 반복하므로 `units: ['1', '2']`도 URL로 표현되지만 이 상점의
+중복 거부 정책은 계속 400을 반환한다. 빈 문자열은 보존되고 optional key 생략은 초기
+방문 의미를 유지한다. Space는 `+`, literal plus/slash/percent는 percent encoding을 거친다.
+`useSearchParams()`를 validated DTO로 cast하지 않는다. 서버 가격은 계속 문자열로
+전달하고 계산 중 `bigint`를 props로 보내지 않는다.
+
+추후 soft page로 옮길 때도 default-export component의 JSON props와 generated registry,
+initial/soft decoder를 연결하고 build importer allowlist를 유지한다. 일반 typecheck/build는
+기존 `--check`를 먼저 실행해야 하며 stale output을 자동 재생성해 숨기지 않는다.
+[타입 계약](../../docs/contracts/react-end-to-end-types.ko.md)이 지원 범위를 소유한다.
+이 조각은 native GET 실습에 덧붙인 선택지이지 실행 완료나 장바구니 저장의 근거가 아니다.
+
+## 편집 보호를 추가하는 경계
+
+이 장의 read-only storefront에는 mutation이나 guard를 기본으로 추가하지 않습니다.
+상품 선택을 저장해야 하는 편집 화면을 별도로 만들 때만 기존 provider의
+`useNavigationGuard({ when })` 하나로 dirty/pending과 앱 작업을 결합합니다. 승인 전
+목적지 HTTP와 navigation form 취소가 없으며 현재 intent의 stay/proceed만 권한을
+갖습니다. Session 철회와 native document 이탈 경계는 보호 UI보다 우선합니다.
+[1권 편집기 적용](../01-fluoblog/ch17-react-reading-and-writing.ko.md#hydration-뒤-미저장-입력-보호)과
+[owning navigation 계약](../../docs/contracts/react-navigation-payload.ko.md#navigation-permission)을
+참고하세요. 단순 둘러보기를 저장·승인 앱으로 바꾸는 요구가 아닙니다.

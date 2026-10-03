@@ -131,6 +131,16 @@ const INSPECT_OPTION_HELP: CommandOptionHelpEntry[] = [
     option: '--export <name>',
   },
   {
+    aliases: [],
+    description: 'Select the application TypeScript configuration and its source/type-only dependency graph.',
+    option: '--tsconfig <path>',
+  },
+  {
+    aliases: [],
+    description: 'Select actual application bootstrap options exported from the module namespace.',
+    option: '--options <name>',
+  },
+  {
     aliases: ['-h'],
     description: 'Show help for the inspect command.',
     option: '--help',
@@ -155,7 +165,7 @@ const TYPEGEN_OPTION_HELP: CommandOptionHelpEntry[] = [
   },
   {
     aliases: [],
-    description: 'Regenerate after coalesced changes under the application module directory.',
+    description: 'Regenerate after coalesced application source, type-only dependency, or configuration changes.',
     option: '--watch',
   },
   {

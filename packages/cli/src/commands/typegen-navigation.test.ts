@@ -77,6 +77,30 @@ afterEach(async () => {
 });
 
 describe('fluo typegen navigation authoring', () => {
+  it('compiles the single guard hook with typed token controls and bounded confirm options', async () => {
+    const fixture = await createGeneratedArtifact();
+    const consumerPath = join(fixture.cwd, 'guard-consumer.ts');
+    await writeFile(consumerPath, [
+      `import { useNavigationGuard, type ReactNavigationDecision, type ReactNavigationGuardOptions } from ${JSON.stringify(reactClientModulePath)};`,
+      'const options: ReactNavigationGuardOptions = { when: true, beforeUnload: true, confirm: (intent, signal) => Promise.resolve(!signal.aborted && intent.type === "push") };',
+      'const decision: ReactNavigationDecision | null = useNavigationGuard(options);',
+      'decision?.proceed(); decision?.stay();',
+      'const signal: AbortSignal | undefined = decision?.signal;',
+      'void signal;',
+    ].join('\n'), 'utf8');
+    expect(compile(consumerPath).map((diagnostic) => diagnostic.code)).toEqual([]);
+  });
+
+  it('rejects wrong guard conditions and attempts to redirect captured controls', async () => {
+    const fixture = await createGeneratedArtifact();
+    const consumerPath = join(fixture.cwd, 'invalid-guard-consumer.ts');
+    await writeFile(consumerPath, [
+      `import { useNavigationGuard } from ${JSON.stringify(reactClientModulePath)};`,
+      'const decision = useNavigationGuard({ when: "dirty" });',
+      'decision?.proceed("/different-intent");',
+    ].join('\n'), 'utf8');
+    expect(compile(consumerPath).map((diagnostic) => diagnostic.code).sort()).toEqual([2322, 2554]);
+  });
   it('resolves generated Link props and push or replace calls to ordinary absolute hrefs', async () => {
     // Given: a generated artifact projected from static and parameterized HTTP page descriptors.
     const fixture = await createGeneratedArtifact();
@@ -118,7 +142,7 @@ describe('fluo typegen navigation authoring', () => {
       "import { reactPageRoutes, type ReactPageLinkProps } from './generated/react-pages.js';",
       `import { Link, type ReactRevalidationResult, type ReactRouter } from ${JSON.stringify(reactClientModulePath)};`,
       "const refreshResult: ReactRevalidationResult = { status: 'complete' };",
-      'const navigator: ReactRouter = { back: () => undefined, invalidate: () => undefined, openDocument: () => undefined, push: () => undefined, refresh: () => Promise.resolve(refreshResult), replace: () => undefined, retry: () => undefined };',
+      'const navigator: ReactRouter = { sessionChanged: () => Promise.resolve(refreshResult), back: () => undefined, invalidate: () => undefined, openDocument: () => undefined, push: () => undefined, refresh: () => Promise.resolve(refreshResult), replace: () => undefined, retry: () => undefined };',
       "type ValidUnionParams = { readonly productId: 'sku-42' } | { readonly productId: 'sku-84' };",
       'declare const unionParams: ValidUnionParams;',
       "const params = { productId: 'sku-42' };",

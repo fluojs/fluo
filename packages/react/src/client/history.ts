@@ -7,6 +7,7 @@ import type { ClientNavigationEnvironment } from './store.js';
 import type { ReactNavigationSnapshot, ReactRouteSnapshot } from './types.js';
 
 type HistoryHandlers = {
+  readonly permission: (destination: URL) => boolean;
   readonly cancelPending: () => void;
   readonly createSnapshotForHref: (href: string, navigation: ReactNavigationSnapshot) => ReactRouteSnapshot;
   readonly getSnapshot: () => ReactRouteSnapshot;
@@ -59,6 +60,7 @@ export function connectClientNavigationHistory(
       ));
       return;
     }
+    if (handlers.permission(activated)) return;
     handlers.cancelPending();
     if (!browser.load) {
       browser.assign(href);

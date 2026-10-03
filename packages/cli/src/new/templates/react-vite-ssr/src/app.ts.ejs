@@ -24,16 +24,16 @@ import {
 import { IsIn, IsString, MinLength } from '@fluojs/validation';
 import { createElement, type ReactElement } from 'react';
 
-import { ProductPage } from './page';
-import SearchPage from './page-search';
+import { createCatalogRouter, type CatalogControl } from './catalog';
 
 const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
 
 export type ReactViteAppModuleOptions = {
-  readonly clientDirectory: URL;
+  readonly catalogControl?: CatalogControl;
+  readonly clientDirectory?: URL;
   readonly navigationBuildId?: string;
   readonly loadPage?: (module: `./page${string}.tsx`, props: Record<string, unknown>) => Promise<ReactElement>;
-  readonly renderPage: ReactPageRenderer;
+  readonly renderPage?: ReactPageRenderer;
 };
 
 class ProductPageRequest {
@@ -72,8 +72,41 @@ class AssetRequest {
   file = '';
 }
 
-export function createAppModule(options: ReactViteAppModuleOptions) {
+class AdminPageRequest {
+  @FromPath('page')
+  @IsIn(['qr', 'songs'])
+  page: 'qr' | 'songs' = 'qr';
+}
+
+export function createAppModule(options: ReactViteAppModuleOptions = {}) {
   const productNames = new Map<string, string>();
+  const renderPage: ReactPageRenderer = (...args) => {
+    if (options.renderPage === undefined) {
+      throw new Error('The inspection module has no configured page presentation.');
+    }
+    return options.renderPage(...args);
+  };
+  const catalog = createCatalogRouter(async (props, context) => {
+    const page = options.loadPage
+      ? await options.loadPage('./page-products.tsx', { ...props })
+      : createElement((await import('./page-products')).default, { ...props });
+    return ReactNavigationPage.create(page, { module: './page-products.tsx', props: { ...props } },
+      props.sessionDemo ? undefined : { prefetch: 'public' });
+  }, options.catalogControl);
+
+  @Router('/admin')
+  class AdminPageRouter {
+    @PageMetadata(({ request }) => ({ title: request.params.page === 'qr' ? 'Admin QR' : 'Admin songs' }))
+    @Path('/:page')
+    @RequestDto(AdminPageRequest)
+    async show(input: AdminPageRequest) {
+      const props = { page: input.page };
+      const page = options.loadPage
+        ? await options.loadPage('./page-admin.tsx', props)
+        : createElement((await import('./page-admin')).default, props);
+      return ReactNavigationPage.create(page, { module: './page-admin.tsx', props });
+    }
+  }
 
   @Router('/products')
   class ProductPageRouter {
@@ -92,7 +125,7 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
       };
       const page = options.loadPage
         ? await options.loadPage('./page.tsx', props)
-        : createElement(ProductPage, props);
+        : createElement((await import('./page')).ProductPage, props);
       return ReactNavigationPage.create(page, {
         module: './page.tsx',
         props,
@@ -119,7 +152,7 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
       const props = { query: input.q };
       const page = options.loadPage
         ? await options.loadPage('./page-search.tsx', props)
-        : createElement(SearchPage, props);
+        : createElement((await import('./page-search')).default, props);
       return ReactNavigationPage.create(page, {
         module: './page-search.tsx',
         props,
@@ -139,6 +172,9 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
       }
 
       try {
+        if (options.clientDirectory === undefined) {
+          throw new Error('The inspection module has no configured asset directory.');
+        }
         let asset = this.#assets.get(input.file);
         if (!asset) {
           asset = readFile(new URL(input.file, options.clientDirectory)).catch((error: unknown) => {
@@ -171,12 +207,20 @@ export function createAppModule(options: ReactViteAppModuleOptions) {
   @Module({
     controllers: [ViteAssetController],
     imports: [ReactModule.forRoot({
-      controllers: [ProductPageRouter, SearchPageRouter],
+      controllers: [ProductPageRouter, SearchPageRouter, AdminPageRouter, catalog.router],
+      providers: catalog.providers,
+      middleware: catalog.middleware,
       ...(options.navigationBuildId === undefined ? {} : { navigationBuildId: options.navigationBuildId }),
-      renderPage: options.renderPage,
+      renderPage,
     })],
   })
-  class AppModule {}
+  class AppModule {
+    static readonly errorRepresentation = catalog.errorRepresentation;
+    static readonly applicationOptions = { errorRepresentation: catalog.errorRepresentation };
+  }
 
   return AppModule;
 }
+
+export const AppModule = createAppModule();
+export const applicationOptions = AppModule.applicationOptions;

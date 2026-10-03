@@ -29,6 +29,13 @@ Interactive runs may check the public npm `latest` dist-tag and offer to update 
 
 ## Create a project
 
+The `react-vite-ssr` starter includes `/catalog/background` with the same `useForm`
+background GET search/widget and queue-row POST path in `dev` and production
+`build`/`start`. Keep app-owned datasource, queue rules, native forms and
+auth/CSRF policy. Its deterministic `tests/background-interactions.spec.ts`
+uses real listener barriers only in the explicit `FLUO_REACT_FORM_TEST_SERVER=1`
+test entry; normal startup adds no fault routes.
+
 The shortest path is:
 
 ```bash
@@ -93,6 +100,14 @@ Generated non-Deno HTTP starters include a TDD-first Vitest layout:
 The React starter uses focused streamed SSR, manifest-failure, and hydration tests plus
 `pnpm test:browser`, which starts the production build and rejects missing assets or hydration
 warnings.
+
+The generated `/catalog/session` journey uses ordinary HTTP login/logout/permission
+POSTs and `ReactModule.formResult({ session })` with the existing React provider and
+`router.sessionChanged`. Explicit revocation removes protected SSR/soft content and
+head; app-owned React effect cleanup closes actual MessageChannel ports. Session
+labels are nonsecret app notifications, not cookie detection. Native POST/303/GET
+still works without JavaScript. `tests/session-transition.spec.ts` verifies this
+scoped journey in development and production; it is not the full CRUD/jukebox gate.
 
 ## Microservice and mixed starters
 
@@ -258,6 +273,25 @@ fluo inspect ./src/app.module.ts --mermaid
 The runtime produces the snapshot. The CLI serializes it, selects a named module export with `--export`, includes timing diagnostics with `--timing`, and writes explicit artifacts with `--output`.
 
 ## Public API summary
+
+The existing `fluo typegen` is also the React end-to-end contract command:
+
+```bash
+fluo typegen src/app.ts --tsconfig tsconfig.json --options applicationOptions --output src/generated/react-pages.ts
+fluo typegen src/app.ts --tsconfig tsconfig.json --options applicationOptions --output src/generated/react-pages.ts --check
+fluo typegen src/app.ts --tsconfig tsconfig.json --options applicationOptions --output src/generated/react-pages.ts --watch
+```
+
+Use the actual application compiler configuration and shared bootstrap options
+export, not copied version/converter settings. Runtime startup remains
+`FluoFactory.create(...)` then `listen()`; generation creates/closes without
+listening. Artifact version 2 contains typed query aliases, module JSON props and
+native-form saved contracts. Type-only/config/compiler inputs participate in
+freshness and watch, including compiler dependencies outside the module directory.
+Ordinary typecheck/build must run `--check` first: missing/stale/malformed/
+unsupported artifacts fail with `2`/`3`/`4`/`5`, never silent regeneration. Explicitly
+generate after correcting source/configuration. See [React](/docs/packages/react)
+and the owning `docs/getting-started/migrate-react-typegen.md` migration.
 
 | Export | Description |
 | --- | --- |

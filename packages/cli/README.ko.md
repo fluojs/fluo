@@ -7,6 +7,15 @@ fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 Reac
 
 ## Canonical command vocabulary
 
+`fluo new my-react-app --starter react-vite-ssr`는 `/catalog/background`에 동일한 native
+`useForm` background 작업도 제공합니다. 실제 GET search/widget read, stable-id queue
+POST, fresh current-page approval을 사용합니다. `pnpm dev`와 production `build`/`start`는
+기존 provider 하나와 HTTP DTO/auth/CSRF, native fallback을 공유합니다. queue/persistence/
+idempotency는 앱 코드 책임입니다. 생성 `tests/background-interactions.spec.ts`는 명시적
+`FLUO_REACT_FORM_TEST_SERVER=1` test entry에서만 listener started/release/cleaned barrier를
+사용하며 정상 startup에는 fault route를 설치하지 않습니다. 기존 앱은
+[form migration](../../docs/getting-started/migrate-react-progressive-forms.ko.md)을 따르세요.
+
 - 새 앱은 `fluo new`로 스캐폴딩합니다. `create`는 compatibility alias로 유지됩니다.
 - 쓰기를 지원하는 명령의 preview에는 `--dry-run`을 사용합니다. 각 명령의 plan payload를 유지하면서 쓰기, dependency install, git initialization, CLI update 확인을 수행하지 않습니다.
 - 읽기 전용 진단에는 `fluo doctor`를 사용합니다. `info`는 compatibility alias이고 `analyze`는 별도 project summary이며, 세 명령 모두 dependency install 또는 CLI self-update를 수행하지 않습니다. `fluo upgrade`는 latest CLI state와 migration guidance를 보고하지만 read-only가 아닙니다. Interactive TTY에서 새 버전을 찾으면 CLI update를 제안할 수 있고, 명시적 승인 뒤 package-manager global install을 실행할 수 있습니다. 다른 interactive non-preview 명령도 같은 승인형 self-update를 제안할 수 있습니다. `--dry-run` preview와 help/version 경로는 update check를 건너뜁니다.
@@ -513,14 +522,15 @@ Studio가 없으면 CI와 non-interactive 실행은 prompt나 package manager �
 
 ### React Page Type Generation
 
-Bootstrap-resolved route catalog에서 application-owned path-only React page type과 absolute href
-builder를 생성합니다.
+Bootstrap-resolved HTTP catalog와 같은 frozen application compiler graph에서
+application-owned React path/query helper, module props, form contract를 생성합니다.
 
 ```bash
 fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts
 fluo typegen ./src/admin.ts --export AdminModule --output ./src/generated/admin-pages.ts
 fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts --check
 fluo typegen ./src/app.ts --output ./src/generated/react-pages.ts --watch
+fluo typegen ./src/app.ts --tsconfig ./tsconfig.json --options applicationOptions --output ./src/generated/react-pages.ts
 ```
 
 `--export` 기본값은 `AppModule`입니다. 명령은 CLI loader로 TypeScript source를 로드하고 application을
@@ -529,6 +539,13 @@ bootstrap한 다음 `app.dispatcher.describeRoutes()`를 읽어 `createReactPage
 directory를 기준으로 resolve됩니다. 파일이 없으면 `CREATE`, content가 stale하면 `UPDATE`, byte 단위로
 같으면 `UNCHANGED`를 보고합니다. Write는 complete temporary file 하나를 atomic rename으로 publish하며
 `UNCHANGED`는 target을 다시 쓰지 않습니다.
+
+TypeScript projection에는 실제 application tsconfig가 필요하며 `--tsconfig`를 생략하면
+module에서 찾습니다. `--options`는 공유 options export를 선택하고 생략하면 bootstrap
+기본값입니다. Runtime은 계속 `FluoFactory.create(AppModule, applicationOptions)` 다음
+`app.listen()`을 호출합니다. Typegen은 graph를 생성·종료하지만 listen하지 않으므로 import
+side effect로 listen하는 entry를 선택하지 마세요. Runtime metadata만으로 erased type을
+복원하지 않습니다.
 
 Default generation은 application과 일치하는 tooling namespace를 하나의 short-lived child process에서
 평가하고, 해당 process가 종료된 뒤에만 결과를 check하거나 publish합니다. 따라서 반복되는 watch
@@ -558,13 +575,13 @@ process 또는 caller-process bootstrap)을 cancel하고 owned artifact commit�
 publish하지 못하게 합니다. Caller-process cancellation은 asynchronous bootstrap과 application close가
 settle될 때까지 기다린 뒤 code `0`으로 watch를 종료하며, `SIGTERM` 뒤에도 종료하지 않는 child는 제한된
 grace period 뒤 force-kill됩니다.
-Module directory 밖의 파일은 의도적으로 watch boundary 밖에
-있습니다. Source scanner나 두 번째 route discovery system을 기대하지 말고 command를 다시 실행하거나
-의도한 source root의 module path를 선택하세요.
+Compiler graph의 source/type-only dependency와 configuration input도 module directory 밖의
+입력을 포함해 watch/freshness에 참여합니다. 무관한 파일을 두 번째 route discovery로
+탐색하지 않습니다. Artifact version 2는 compiler option/version도 fingerprint합니다.
 
 생성된 `reactPageRoutes` object는 stable catalog `id`를 key로 사용합니다. Dynamic `href(...)`,
 `link(...)`, `push(...)`, `replace(...)` method는 모든 path param을 요구하고 각 값을 URI-encode하며
-static method는 param을 받지 않습니다. `route.link(params)`를 기존 real-anchor `Link`에 spread하거나,
+static method는 path param을 받지 않습니다. Query binding은 typed query 인자를 추가합니다. `route.link(params)`를 기존 real-anchor `Link`에 spread하거나,
 기존 `ReactRouter`를 `route.push(router, params)` / `route.replace(router, params)`에 전달하세요.
 
 ```tsx
@@ -577,9 +594,16 @@ productRoute.replace(router, { productId });
 
 이 generated method는 기존 HTTP-first client API가 실행되기 전에 일반 absolute href string으로 resolve됩니다.
 Runtime route table, matcher, relative-route model, SPA navigation을 추가하지 않습니다. 기존 `href(...)`,
-`Link href`, router string/`URL` 호출은 계속 지원됩니다. Versioned route는 명시적으로 실패합니다.
-Catalog만으로는 URI versioning과 header, media-type, custom version strategy를 구분할 수 없기 때문입니다. 자세한 내용은
-[@fluojs/react path-only typegen contract](../react/README.ko.md#path-only-page-type-generation)를 참고하세요.
+`Link href`, router string/`URL` 호출은 계속 지원됩니다. Unversioned route와 provenance-backed URI
+route는 compiled effective path를 사용합니다. Versioned header/media/custom route와 provenance
+누락은 명시적으로 실패합니다. `--tsconfig <path>`는 실제 application compiler 설정,
+`--options <name>`은 module namespace의 실제 bootstrap options export를 선택합니다.
+Query wire alias, module props, native form contract는 같은 generation/check/watch lifecycle을
+사용하며 artifact version 2에는 type-only/configuration freshness가 포함됩니다. 이전 artifact는
+명시적으로 재생성하세요. [React end-to-end 타입 계약](../../docs/contracts/react-end-to-end-types.ko.md)을
+참고하세요. 일반 typecheck/build는 기존 `--check`를 먼저 실행해 잘못된 output에서 실패해야
+하며 조용히 재생성하지 않습니다. [이주](../../docs/getting-started/migrate-react-typegen.ko.md)를
+함께 확인하세요.
 
 ## 공개 API
 
@@ -623,7 +647,7 @@ Catalog만으로는 URI versioning과 header, media-type, custom version strateg
 - [cli.ts](./src/cli.ts) - 명령 디스패처 및 인자 파싱.
 - [commands/new.ts](./src/commands/new.ts) - 프로젝트 스캐폴딩 구현.
 - [commands/inspect.ts](./src/commands/inspect.ts) - 런타임 검사 export mode와 Studio 위임.
-- [commands/typegen.ts](./src/commands/typegen.ts) - React page catalog bootstrap과 deterministic path-only artifact write.
+- [commands/typegen.ts](./src/commands/typegen.ts) - HTTP catalog/compiler projection과 deterministic artifact write/check/watch.
 - [commands/migrate.ts](./src/commands/migrate.ts) - decorator codemod, JSON report, transform filter.
 - [commands/package-workflow.ts](./src/commands/package-workflow.ts) - `fluo add`와 `fluo upgrade` workflow.
 - [commands/scripts.ts](./src/commands/scripts.ts) - `dev`, `build`, `start` lifecycle command boundary.
@@ -632,3 +656,34 @@ Catalog만으로는 URI versioning과 header, media-type, custom version strateg
 - [dev-runner/](./src/dev-runner/) - Node restart-on-watch process boundary.
 - [generators/](./src/generators/) - 템플릿 기반 파일 생성 로직.
 - [transforms/](./src/transforms/) - 코드 변환 구현.
+
+
+## React starter session composition
+
+Generated React Vite starter의 `/catalog/session` fixture는 일반 HTTP origin/CSRF
+보호 login/logout/permissions handler와 기존 provider/router session barrier를
+사용합니다. Authentication SDK가 아닌 demo입니다.
+명시적 `ReactModule.formResult({ ..., session })`는 브라우저의 `Set-Cookie` 접근에
+의존하지 않습니다. 통지 경로는 `router.sessionChanged` 하나이며 prefetch-scope만
+바꾸는 동작은 session boundary가 아닙니다.
+앱은 기존 session-aware resource subtree에서 실제 MessageChannel operation과 effect
+cleanup을 소유합니다. JavaScript 없이도 native POST/303/GET을 유지합니다.
+`tests/session-transition.spec.ts`는 dev/production의 shipped runtime을 검증합니다.
+[Migration](../../docs/getting-started/migrate-react-session-composition.ko.md)은 기존 consumer의
+변경과 제한된 saved JSON 경계를 설명합니다.
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.
+
+## Navigation permission
+
+Catalog 편집 화면에서 **Protect edits**를 켠 뒤 기존 `useForm` 입력을 수정하거나 제출합니다. 하나의 `useNavigationGuard` 결정 UI에서 **Stay here** 또는 **Proceed with navigation**을 선택합니다. Stay는 목적지 HTTP와 form 취소 없이 초안을 보존합니다. 승인 후 fresh HTTP가 목적지를 확정합니다. Pending POST 취소는 서버 rollback이 아니며 logout/401/403은 열린 결정부터 철회합니다. JS-disabled/native submit은 그대로입니다.
+
+[Guard migration](../../docs/getting-started/migrate-react-navigation-guards.ko.md)과 [owning 계약](../../docs/contracts/react-navigation-payload.ko.md#navigation-permission)을 참고하세요.

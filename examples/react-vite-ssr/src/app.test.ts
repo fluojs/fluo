@@ -1,12 +1,15 @@
 import { Module } from '@fluojs/core';
-import { Path, ReactModule, Router } from '@fluojs/react';
+import { createReactPageCatalog, Path, ReactModule, Router } from '@fluojs/react';
+import { FluoFactory } from '@fluojs/runtime';
 import { Test } from '@fluojs/testing';
 import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
-import { createReactViteExampleModule } from './app';
+import type { CatalogObservation } from './catalog';
+import { AppModule as InspectionModule, createReactViteExampleModule } from './app';
+import { createReactViteExamplePresentation } from './presentation';
 
 const VITE_MANIFEST = {
   'src/entry-client.ts': {
@@ -50,6 +53,94 @@ function readHtml(body: unknown): string {
 }
 
 describe('react-vite-ssr example', () => {
+  it('approves the guard destination query through the real HTTP DTO and generated-props page', async () => {
+    // Given: the actual catalog router and a build manifest containing its destination.
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation({
+        ...VITE_MANIFEST,
+        'src/navigation-catalog.ts': {
+          file: 'navigation-catalog-hash.js', isDynamicEntry: true, src: 'src/navigation-catalog.ts',
+        },
+      }),
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      // When: permission's destination reaches the ordinary negotiated HTTP read.
+      const response = await app.request('GET', '/catalog/search').query('q', 'Seeded product')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
+      // Then: query materialization and page props belong to HTTP, not the guard.
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        version: 2, params: {},
+        destination: { module: './navigation-catalog.ts', props: {
+          products: [{ sku: 'sku-42', name: 'Seeded product' }], searchQuery: 'Seeded product',
+        } },
+      });
+    });
+  });
+  it('dispatches ordinary JSON search and guarded queue writes through actual DTO and request-scope cleanup', async () => {
+    // Given: the real app router and request-owned observation, without mocking HTTP policy.
+    const events: CatalogObservation[] = [];
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
+      catalogControl: (event) => { events.push(event); },
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      // When: an ordinary JSON GET and negotiated POST use the same actual datasource.
+      const read = await app.request('GET', '/catalog/background/search').query('q', 'Blue')
+        .header('accept', 'application/json').send();
+      const saved = await app.request('POST', '/catalog/background/queue/blue', {
+        cookies: { editor: 'yes', csrf: 'catalog-demo-token' },
+      })
+        .header('host', 'localhost:3000').header('origin', 'http://localhost:3000')
+        .header('Accept', 'application/vnd.fluo.form+json;v=1')
+        .body({ intent: 'add', csrf: 'catalog-demo-token' }).send();
+      const unauthorized = await app.request('POST', '/catalog/background/queue/green')
+        .header('Accept', 'application/vnd.fluo.form+json;v=1')
+        .body({ intent: 'add', csrf: 'catalog-demo-token' }).send();
+      // Then: only HTTP-confirmed success exposes acknowledgement; cleanup covers the matching scopes.
+      expect(read.status).toBe(200);
+      expect(read.body).toEqual({ rows: [{ sku: 'blue', name: 'Blue song' }], query: 'Blue' });
+      expect(saved.status).toBe(200);
+      expect(saved.body).toMatchObject({ version: 1, outcome: 'saved',
+        destination: '/catalog/background', data: { sku: 'blue', queued: true, revision: 1 } });
+      expect(unauthorized.status).toBe(401);
+      const dto = events.filter((event) => event.phase === 'dto');
+      expect(dto.map((event) => event.dto)).toEqual([true, true]);
+      for (const event of dto) {
+        expect(events.some((cleanup) => cleanup.phase === 'cleanup' && cleanup.scope === event.scope)).toBe(true);
+      }
+    });
+  });
+  it('inspects the same HTTP composition without inventing production presentation', async () => {
+    // Given: the runtime root has actual assets while the typegen root has none.
+    const runtimeModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
+    });
+    const inspection = await FluoFactory.create(InspectionModule, InspectionModule.applicationOptions);
+    const runtime = await FluoFactory.create(runtimeModule, runtimeModule.applicationOptions);
+    try {
+      // When: both roots bootstrap through the same authoritative application factory.
+      if (inspection.dispatcher.describeRoutes === undefined || runtime.dispatcher.describeRoutes === undefined) {
+        throw new TypeError('The HTTP dispatcher must expose its compiled descriptors for typegen.');
+      }
+      const inspected = createReactPageCatalog(inspection.dispatcher.describeRoutes());
+      const configured = createReactPageCatalog(runtime.dispatcher.describeRoutes());
+      // Then: presentation does not change HTTP route identity or DTO descriptors.
+      expect(inspected).toEqual(configured);
+      expect(inspected.length).toBeGreaterThan(0);
+    } finally {
+      await runtime.close();
+      await inspection.close();
+    }
+  });
+
   it('reports a missing application page renderer through real request dispatch', async () => {
     // Given: an explicit React page returns one element without configuring renderPage.
     const diagnostics: string[] = [];
@@ -88,7 +179,7 @@ describe('react-vite-ssr example', () => {
     // Given: a fluo React module backed by a loaded Vite manifest.
     const AppModule = createReactViteExampleModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
-      manifest: VITE_MANIFEST,
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
 
@@ -119,7 +210,7 @@ describe('react-vite-ssr example', () => {
     // Given: a page routed by HTTP with a build-bound destination module.
     const AppModule = createReactViteExampleModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
-      manifest: VITE_MANIFEST,
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
 
@@ -160,7 +251,7 @@ describe('react-vite-ssr example', () => {
     // Given: a real HTTP dispatcher and a build-mapped destination.
     const AppModule = createReactViteExampleModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
-      manifest: VITE_MANIFEST,
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
 
@@ -197,7 +288,7 @@ describe('react-vite-ssr example', () => {
     // Given: HTTP-owned prefetch fixtures with pre-existing response policy or credentials.
     const AppModule = createReactViteExampleModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
-      manifest: VITE_MANIFEST,
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
     await withCleanup(async (defer) => {
@@ -232,7 +323,7 @@ describe('react-vite-ssr example', () => {
     // Given: two explicit HTTP routes sharing one client destination module.
     const AppModule = createReactViteExampleModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
-      manifest: VITE_MANIFEST,
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
     await withCleanup(async (defer) => {
@@ -272,7 +363,7 @@ describe('react-vite-ssr example', () => {
     // Given: a fluo React route whose path and query fields have validation rules.
     const AppModule = createReactViteExampleModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
-      manifest: VITE_MANIFEST,
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
 
@@ -294,7 +385,7 @@ describe('react-vite-ssr example', () => {
     // Given: a rendered React product whose mutation route requires application authorization.
     const AppModule = createReactViteExampleModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
-      manifest: VITE_MANIFEST,
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
 
@@ -312,7 +403,7 @@ describe('react-vite-ssr example', () => {
     // Given: an authorized request to the ordinary HTTP mutation route.
     const AppModule = createReactViteExampleModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
-      manifest: VITE_MANIFEST,
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
 
@@ -352,7 +443,7 @@ describe('react-vite-ssr example', () => {
     // Given: an authorized editor submitting a valid product mutation.
     const AppModule = createReactViteExampleModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
-      manifest: VITE_MANIFEST,
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
     await withCleanup(async (defer) => {
@@ -376,7 +467,7 @@ describe('react-vite-ssr example', () => {
     // Given: a DTO-bound page and an authorized external mutation on the same app.
     const AppModule = createReactViteExampleModule({
       clientDirectory: new URL('../dist/client/', import.meta.url),
-      manifest: VITE_MANIFEST,
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
     });
     const app = await Test.createApp({ rootModule: AppModule });
     await withCleanup(async (defer) => {

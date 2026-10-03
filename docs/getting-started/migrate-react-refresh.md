@@ -32,3 +32,15 @@ The [navigation payload contract](../contracts/react-navigation-payload.md) owns
 approval, failure ordering, resource lifetime and prefetch separation. The
 [@fluojs/react API owner](../../packages/react/README.md) owns the public import and
 signature. Native forms still follow HTTP POST/303/GET with JavaScript disabled.
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.

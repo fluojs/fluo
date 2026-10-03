@@ -38,6 +38,14 @@ Do not use it to:
 
 ## Scaffolding with `fluo new`
 
+The React Vite SSR starter ships independent background search/widget reads and
+queue-row writes at `/catalog/background`, built on the existing `useForm` and
+HTTP handlers. Native GET and POST/303/GET remain usable without JavaScript;
+confirmed writes coalesce fresh current-page approval without acknowledgement
+navigation. The generated real-listener fixture runs in `dev` or production with
+the explicit `FLUO_REACT_FORM_TEST_SERVER=1` test entry. Existing apps should adopt
+the updated catalog/page files while retaining their provider and domain rules.
+
 ```bash
 fluo new my-app --package-manager pnpm
 cd my-app
@@ -164,6 +172,23 @@ Each `routes[]` entry carries `id`, `kind` (`http`, or `react-page` for React pa
 
 ## Related commands
 
+For React projection, use the same command and real application configuration:
+
+```bash
+fluo typegen src/app.ts --tsconfig tsconfig.json --options applicationOptions --output src/generated/react-pages.ts
+fluo typegen src/app.ts --tsconfig tsconfig.json --options applicationOptions --output src/generated/react-pages.ts --check
+```
+
+`--options` selects the actual shared options export; omission uses bootstrap
+defaults. `--tsconfig` selects the real compiler graph; omission searches from the
+module. Runtime uses `FluoFactory.create(...)` then `listen()`, while generation
+never listens. Artifact version 2 adds query wire aliases, a module props registry
+and existing-form `fields`/`decodeSaved`, with type-only/config/compiler freshness.
+Run `--check` before ordinary typecheck/build and explicitly regenerate after a
+failure; do not silently repair missing, stale, malformed or unsupported output.
+This is not a second generator or generated GET decoder. Supported JSON and URI
+provenance follow `docs/contracts/react-end-to-end-types.md`.
+
 - `fluo typegen` - React page type generation; the mechanics and artifact contract live in the [`@fluojs/react` guide](/docs/packages/react). `--check` exits `0`/`2`/`3`/`4`/`5` for `UNCHANGED`/`MISSING`/`STALE`/`MALFORMED`/`UNSUPPORTED_VERSION`.
 - `fluo doctor` (alias `info`) - read-only diagnostics for the installed CLI, update-check cache, runtime, and project scripts. `fluo analyze` is a separate read-only project summary pointing at deeper `inspect --report`/`migrate --json` workflows.
 - `fluo add <package>` - first-party package installation shortcuts (`--dev` canonical, `-D` shortcut; preview with `--dry-run`).
@@ -200,6 +225,21 @@ Programmatic generation is synchronous file planning and template rendering (EJS
 - **`@fluojs/vite`** - generated non-Deno starter configs import `fluoDecoratorsPlugin()` rather than copying Babel configuration inline.
 - **`@fluojs/runtime`** - `fluo inspect` bootstraps your module graph adapterlessly through the runtime; lifecycle commands own only the process boundary around your app.
 
+## React session composition in the generated starter
+
+The React Vite starter includes `/catalog/session` as an ordinary HTTP login,
+logout and permissions demo with origin/CSRF checks. It uses the existing provider
+and `router.sessionChanged`, not a competing notifier or prefetch-scope-only reset.
+Explicit form session outcomes are processed before asynchronous destination
+policy, while native POST/303/GET stays available without JavaScript.
+
+The existing application subtree owns its real MessageChannel operation and effect
+cleanup when approval is revoked. `tests/session-transition.spec.ts` exercises
+initial protected content removal and distinct-session recovery in dev/production.
+This fixture is not an auth SDK or a cross-tab cookie detector. Confirmed saved
+state is separate from failed fresh page approval, and no POST is automatically
+replayed.
+
 ## Failures, limits, and common mistakes
 
 - **CI hangs on prompts** - update checks and installs are TTY-gated; still, set `FLUO_NO_UPDATE_CHECK=1` and pass explicit flags (`--package-manager`, `--no-install`) when automating `fluo new`.
@@ -207,7 +247,7 @@ Programmatic generation is synchronous file planning and template rendering (EJS
 - **Resource modules that never activate** - `fluo generate resource` is files-only; forgetting to import the generated module means the routes never exist.
 - **Bootstrap codemod silently skipped** - without `--platform express` and a literal `app.listen(port)`, `fluo migrate` intentionally leaves bootstrap untouched with a warning; migrate those call sites by hand.
 - **`inspect --mermaid` fails in CI** - Studio is an optional peer; install `@fluojs/studio` in the project that runs the command, or export JSON/report artifacts instead.
-- **`fluo typegen --watch` misses files** - the watch boundary covers the module directory only; files outside it are intentionally outside the watch and require rerunning with a different module path.
+- **`fluo typegen --watch` misses files** - use the actual application tsconfig. The module directory and compiler-graph source/type-only/config dependencies are watched; unrelated files are not route discovery inputs. Failed generations preserve the last valid artifact and do not publish invalidated work.
 
 ## Related reading
 

@@ -6,6 +6,7 @@ import { getCompiledDtoBindingPlan } from '../../adapters/dto-binding-plan.js';
 import { HttpDtoValidationAdapter } from '../../adapters/dto-validation-adapter.js';
 import { isCompatibleSseResponse, waitForSseResponseCompletion } from '../../context/sse.js';
 import { RequestAbortedError } from '../../errors.js';
+import { HTTP_FORM_VALIDATION } from '../../form-representation.js';
 import type {
   Binder,
   FrameworkRequest,
@@ -76,7 +77,12 @@ export async function executeFastPath(
       });
 
       if (bindingPlan.needsValidation) {
-        await defaultValidator.validate(input, requestDto);
+        try {
+          await defaultValidator.validate(input, requestDto);
+        } catch (error) {
+          requestContext.metadata[HTTP_FORM_VALIDATION] = error;
+          throw error;
+        }
       }
     }
 

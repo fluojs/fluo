@@ -75,6 +75,7 @@ Eligible outcome에 HTML provider가 등록되어 있으면 HTTP는 canonical `a
 | --- | --- |
 | `Accept` 없음 | Canonical JSON. |
 | `application/json` | Canonical JSON. |
+| 정확히 `application/vnd.fluo.react-navigation+json;v=2`를 보내는 GET | HTML을 조회하거나 successful page/public prefetch를 승인하지 않고 canonical JSON으로 401/403/404를 포함한 HTTP error status를 보존한다. |
 | `text/html` | `canRender`가 없거나 `true`면 HTML. 그렇지 않으면 JSON도 허용될 때 canonical JSON, 허용되지 않으면 JSON `406`. |
 | Weighted range | 가장 높은 quality가 우선한다. 가장 specific한 matching range가 각 offer의 quality를 결정한다. |
 | 같은 quality와 specificity | Deterministic server tie에서 canonical JSON이 우선한다. |
@@ -84,6 +85,11 @@ Eligible outcome에 HTML provider가 등록되어 있으면 HTTP는 canonical `a
 
 Successful-route `@Produces(...)` metadata와 `ContentNegotiationOptions`는 error representation ownership을
 부여하지 않는다. Error availability는 provider의 `canRender(...)` constraint를 통해 application이 소유한다.
+
+Navigation error 예외는 해당 exact GET v2 protocol에만 적용한다. 지원하지 않는
+version/method와 거절된 quality range는 기존 negotiation을 유지하며 JSON과 HTML 모두
+허용되지 않으면 406을 반환한다. Successful navigation의 Accept match를 넓히거나
+client JSON fallback을 허용하지 않는다.
 
 ## Response Commit and Fallback Rules
 
@@ -133,3 +139,14 @@ lazy하게 resolve되며 Node.js, Vite, browser, matcher, RSC, file-routing depe
   route-policy isolation, provider failure fallback, shell-phase separation을 검증한다.
 - Shared network/Web portability harness가 Node.js, Express, Fastify, Bun, Deno, Cloudflare Workers에서 JSON,
   HTML, `HEAD`, 406, already-committed response 동작을 검증한다.
+
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](../contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.

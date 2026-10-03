@@ -10,6 +10,9 @@ type TypegenGenerationRequest = {
   readonly cwd: string;
   readonly exportName: string;
   readonly modulePath: string;
+  readonly outputPath?: string;
+  readonly optionsExport?: string;
+  readonly tsconfigPath?: string;
 };
 
 /** Listener boundary for one short-lived typegen generation child. */
@@ -34,7 +37,9 @@ function createGenerationChild(request: TypegenGenerationRequest): TypegenGenera
   const execArgv = extension === '.ts'
     ? ['--experimental-import-meta-resolve', '--import', createRequire(import.meta.url).resolve('tsx')]
     : ['--experimental-import-meta-resolve'];
-  const child = fork(childPath, [request.cwd, request.modulePath, request.exportName], {
+  const child = fork(childPath, [request.cwd, request.modulePath, request.exportName, JSON.stringify({
+    outputPath: request.outputPath, optionsExport: request.optionsExport, tsconfigPath: request.tsconfigPath,
+  })], {
     cwd: request.cwd,
     execArgv,
     stdio: ['ignore', 'ignore', 'ignore', 'ipc'],

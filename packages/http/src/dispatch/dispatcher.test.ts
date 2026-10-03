@@ -47,6 +47,7 @@ import { RequestAbortedError } from '../errors.js';
 import { NotAcceptableException } from '../exceptions.js';
 import { forRoutes, runMiddlewareChain } from '../middleware/middleware.js';
 import { attachFrameworkRequestNativeRouteHandoff } from './native-route-handoff.js';
+import { registerFrameworkResponseWriter } from '../internal.js';
 
 function createResponse(): FrameworkResponse & { body?: unknown } {
   return {
@@ -179,6 +180,73 @@ class CountingContainer extends Container {
 }
 
 describe('dispatcher runtime', () => {
+  it('keeps a DTO-bound POST acknowledgement private while granting anonymous GET page prefetch', async () => {
+    // Given: one HTTP controller owns both the form mutation and its public page.
+    const navigationMediaType = 'application/vnd.fluo.react-navigation+json;v=2';
+    const formMediaType = 'application/vnd.fluo.form+json;v=1';
+    let saves = 0;
+    let savedName = '';
+    class SaveRequest {
+      @FromBody('name')
+      @IsString()
+      @MinLength(1)
+      name = '';
+    }
+    const representation = (mediaType: string, body: unknown, method?: 'POST') => {
+      const result = {};
+      registerFrameworkResponseWriter(result, ({ response }) => response.redirect(303, '/form-prefetch'));
+      Object.defineProperty(result, Symbol.for('fluo.http.responseRepresentation'), {
+        value: { mediaType, method, prefetch: 'public', body: () => body },
+      });
+      return result;
+    };
+    @Controller('/form-prefetch')
+    class FormPrefetchController {
+      @Post('/')
+      @HttpCode(200)
+      @RequestDto(SaveRequest)
+      save(input: SaveRequest) {
+        saves += 1;
+        savedName = input.name;
+        return representation(formMediaType, {
+          version: 1, outcome: 'saved', destination: '/form-prefetch', followUp: 'refresh',
+        }, 'POST');
+      }
+
+      @Get('/')
+      page() {
+        return representation(navigationMediaType, {
+          version: 2, buildId: 'test-build', url: '/form-prefetch', params: {},
+          destination: { module: './page.ts', props: { name: savedName } },
+        });
+      }
+    }
+    const dispatcher = createDispatcher({
+      handlerMapping: createHandlerMapping([{ controllerToken: FormPrefetchController }]),
+      rootContainer: new Container().register(FormPrefetchController),
+    });
+    const post = createRequest('/form-prefetch', 'POST', { accept: formMediaType });
+    post.body = { name: 'saved product' };
+    const acknowledgement = createResponse();
+    const page = createResponse();
+
+    // When: a real DTO-bound mutation is followed by an anonymous public GET.
+    await dispatcher.dispatch(post, acknowledgement);
+    await dispatcher.dispatch(createRequest('/form-prefetch', 'GET', { accept: navigationMediaType }), page);
+
+    // Then: only GET may grant reuse; the private acknowledgement is not replayed.
+    expect(saves).toBe(1);
+    expect(acknowledgement.statusCode).toBe(200);
+    expect(acknowledgement.body).toEqual({
+      version: 1, outcome: 'saved', destination: '/form-prefetch', followUp: 'refresh',
+    });
+    expect(acknowledgement.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+    expect(acknowledgement.headers['Cache-Control']).toBe('private, no-store');
+    expect(page.headers['X-Fluo-Navigation-Prefetch']).toBe('public');
+    expect(page.headers['Cache-Control']).toBe('public, max-age=15');
+    expect(page.body).toMatchObject({ destination: { props: { name: 'saved product' } } });
+  });
+
   it('does not grant navigation-prefetch reuse for a rejected DTO request or a redirect', async () => {
     // Given: a guarded route and a redirect whose responses never become page representations.
     class NavigationRequest {

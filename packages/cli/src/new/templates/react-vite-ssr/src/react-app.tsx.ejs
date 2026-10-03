@@ -8,10 +8,17 @@ import {
   useRouter,
   useRouterState,
   type ReactNavigationModules,
+  type ReactNavigationFailurePolicy,
   useNavigation,
 } from '@fluojs/react/client';
 import type { ReactInitialNavigationPage } from '@fluojs/react';
 import { type ReactElement, createElement, isValidElement, useEffect, useRef, useState } from 'react';
+import { SessionControls, SessionResources } from './session-controls';
+import { BackgroundSearch } from './page-products';
+import { reactPageModules, reactPageRoutes } from './generated/react-pages';
+import { controlledPolicy } from './import-control';
+
+declare const __FLUO_RELIABILITY_TEST__: boolean;
 
 export const REACT_IDENTIFIER_PREFIX = 'fluo-react-vite-' as const;
 
@@ -57,6 +64,8 @@ function productPage(activePage: ReactElement): ReactElement {
 function LongLivedResource(): ReactElement {
   const resource = useRef<Window['__reactResource']>(undefined);
   const [ack, setAck] = useState('');
+  const [probeAck, setProbeAck] = useState('');
+  const channel = useRef<MessageChannel | null>(null);
   useEffect(() => {
     let operations = 0;
     const instance = {
@@ -65,13 +74,23 @@ function LongLivedResource(): ReactElement {
     };
     resource.current = instance;
     window.__reactResource = instance;
+    const session = new MessageChannel();
+    let checks = 0;
+    channel.current = session;
+    session.port2.onmessage = (event: MessageEvent<string>) => session.port2.postMessage(`${instance.id}:${++checks}:${event.data}`);
+    session.port1.onmessage = (event: MessageEvent<string>) => setProbeAck(event.data);
     const stats = window.__reactResourceStats ?? { mounts: 0, cleanups: 0 };
     stats.mounts++;
     window.__reactResourceStats = stats;
+    document.dispatchEvent(new CustomEvent('fluo-resource', { detail: { phase: 'mount', id: instance.id, ports: [session.port1, session.port2] } }));
     return () => {
       stats.cleanups++;
       resource.current = undefined;
       window.__reactResource = undefined;
+      channel.current = null;
+      session.port1.close();
+      session.port2.close();
+      document.dispatchEvent(new CustomEvent('fluo-resource', { detail: { phase: 'cleanup', id: instance.id, ports: [session.port1, session.port2] } }));
     };
   }, []);
   return (
@@ -80,6 +99,8 @@ function LongLivedResource(): ReactElement {
         Use shell resource
       </button>
       <span data-testid='resource-ack'>{ack}</span>
+      <button onClick={() => channel.current?.port1.postMessage('ack')} type='button'>Probe shell resource</button>
+      <output aria-label='Resource acknowledgement'>{probeAck}</output>
     </div>
   );
 }
@@ -96,7 +117,9 @@ function SharedNavigation(): ReactElement {
     <header>
       <button disabled={!hydrated} onClick={() => setCount((value) => value + 1)} type='button'>Shell taps: {count}</button>
       <p aria-label='Current route'>{route.url} ({JSON.stringify(params)})</p>
-      <LongLivedResource />
+      <SessionResources><LongLivedResource /></SessionResources>
+      <SessionResources><BackgroundSearch id='song-widget' /></SessionResources>
+      {(route.pathname.startsWith('/catalog/session') || route.pathname.startsWith('/catalog/background')) && <SessionControls />}
       <p aria-label='Navigation status'>{navigation.status} ({navigation.type ?? 'none'})</p>
       {navigation.failure && (
         <div role='alert'>
@@ -109,19 +132,25 @@ function SharedNavigation(): ReactElement {
         </div>
       )}
       <nav aria-label='Page navigation'>
-        <Link href='/products/sku-84?preview=false'>Open sku-84</Link>
-        <Link href='/search?q=catalog'>Search catalog</Link>
-        <Link href='/products/render-error'>Open throwing page</Link>
-        <Link href='/search?q=catalog' target='_blank'>Open search in new tab</Link>
+        <Link href='/admin/qr'>Open admin QR</Link>
+        <Link href='/admin/songs'>Open admin songs</Link>
+        <Link href='/catalog/background'>Open jukebox</Link>
+        <Link {...reactPageRoutes['GET /products/:sku ProductPageRouter show'].link({ sku: 'sku-84' }, { preview: 'false' })}>Open sku-84</Link>
+        <Link {...reactPageRoutes['GET /search SearchPageRouter show'].link({ q: 'catalog' })}>Search catalog</Link>
+        <Link {...reactPageRoutes['GET /products/:sku ProductPageRouter show'].link({ sku: 'render-error' })}>Open throwing page</Link>
+        <Link {...reactPageRoutes['GET /search SearchPageRouter show'].link({ q: 'catalog' })} target='_blank'>Open search in new tab</Link>
         <Link href='/not-built'>Missing page</Link>
-        <button onClick={() => router.push('/products/sku-126?preview=true')} type='button'>
+        <button onClick={() => reactPageRoutes['GET /products/:sku ProductPageRouter show'].push(router, { sku: 'sku-126' }, { preview: 'true' })} type='button'>
           Push sku-126
         </button>
-        <button onClick={() => router.replace('/products/sku-126?preview=true')} type='button'>
+        <button onClick={() => reactPageRoutes['GET /products/:sku ProductPageRouter show'].replace(router, { sku: 'sku-126' }, { preview: 'true' })} type='button'>
           Replace with sku-126
         </button>
         <button onClick={() => router.invalidate()} type='button'>Invalidate navigation</button>
         <button onClick={() => { void router.refresh(); }} type='button'>Refresh current page</button>
+        <button onClick={() => { void router.sessionChanged({ epoch: 'starter:next-session', reason: 'login' }); }} type='button'>
+          Switch user and prefetch scope
+        </button>
       </nav>
     </header>
   );
@@ -143,16 +172,21 @@ export function ReactAppDocument({
   navigationBuildId,
 }: ReactAppDocumentProps): ReactElement {
   const initialSnapshot = createReactRouteSnapshot(route);
+  const prefetchScope = 'starter:public';
+  const identity: unknown = initialPage?.payload.destination.props.sessionIdentity;
 
   return (
     <ReactClientRouterProvider
       initialSnapshot={initialSnapshot}
+      session={{ epoch: typeof identity === 'string' ? `demo:${identity}` : 'demo:initial' }}
       navigationModules={navigationModules}
+      navigationContracts={reactPageModules}
       navigationBuildId={navigationBuildId}
-      failurePolicy={({ reason }) =>
+      prefetchScope={prefetchScope}
+      failurePolicy={(__FLUO_RELIABILITY_TEST__ ? controlledPolicy : (policy: ReactNavigationFailurePolicy) => policy)(({ reason }) =>
         reason === 'network' || reason === 'server-error' || reason === 'import-failure'
           || reason === 'incompatible-build'
-          ? 'preserve' : 'document'}
+          ? 'preserve' : 'document')}
     >
       {(destination) => (
         <html data-build-id={navigationBuildId} lang='en'>

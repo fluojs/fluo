@@ -4,6 +4,7 @@ import {
   createReactRouteSnapshot,
   type ReactNavigationFailurePolicy,
   type ReactNavigationModules,
+  type ReactSessionContext,
   useNavigation,
   useParams,
   usePathname,
@@ -17,6 +18,10 @@ import { Suspense, createElement, lazy, useEffect, useId, useRef, useState, type
 import AdminDestination from './admin-page';
 import { ExamplePageSlot } from './example-page-slot';
 import { ResourceProbe } from './resource-probe';
+import CatalogPage, { BackgroundSearch, type CatalogPageProps } from './catalog-page';
+import { SessionControls, SessionResources } from './session-controls';
+import { reactPageModules } from './generated/react-pages';
+import { controlledPolicy } from './import-control';
 
 const RECOMMENDATIONS_DELAY_MS = 25;
 
@@ -34,6 +39,7 @@ const preserveTransientNavigation: ReactNavigationFailurePolicy = (failure) =>
     ? 'preserve' : 'document';
 
 export type ProductDocumentProps = {
+  readonly catalog?: CatalogPageProps;
   readonly adminPage?: 'qr' | 'songs';
   readonly preview: boolean;
   readonly productName: string;
@@ -85,7 +91,7 @@ function LongLivedResource() {
   );
 }
 
-function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void }) {
+function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => string }) {
   const navigation = useNavigation();
   const params = useParams();
   const pathname = usePathname();
@@ -158,6 +164,7 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void
     createElement(Link, { href: '/products/render-error?throwFallback=true' }, 'Open throwing error view'),
     createElement(Link, { href: '/admin/qr' }, 'Open admin QR'),
     createElement(Link, { href: '/admin/songs' }, 'Open admin songs'),
+    createElement(Link, { href: '/catalog/background' }, 'Open jukebox'),
     createElement(Link, { href: '/deployment/b-only' }, 'Open B-only page'),
     createElement(Link, { href: '/products/x?preview=maybe' }, 'Open invalid product'),
     createElement(Link, { href: '/prefetch/public-84', prefetch: 'hover' }, 'Prefetch public sku-84'),
@@ -187,8 +194,7 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void
     createElement('button', { onClick: () => router.refresh(), type: 'button' }, 'Refresh'),
     createElement('button', {
       onClick: () => {
-        router.invalidate();
-        onSwitchUser();
+        void router.sessionChanged({ epoch: onSwitchUser(), reason: 'login' });
       },
       type: 'button',
     }, 'Switch user and prefetch scope'),
@@ -204,6 +210,7 @@ function ProductNavigation({ onSwitchUser }: { readonly onSwitchUser: () => void
 }
 
 export function ProductDocument({
+  catalog,
   adminPage,
   preview,
   productName,
@@ -217,14 +224,20 @@ export function ProductDocument({
   sku,
   stylesheets,
 }: ProductDocumentProps) {
+  const sessionDemo = catalog?.sessionDemo === true || initialPage?.payload.destination.props.sessionDemo === true;
+  const initialIdentity: unknown = initialPage?.payload.destination.props.sessionIdentity;
+  const sessionIdentity = catalog?.sessionIdentity ?? (typeof initialIdentity === 'string' ? initialIdentity : undefined);
   const identifier = useId();
   const [LazyRecommendations] = useState(() => lazy(async () => {
     await new Promise<void>((resolve) => setTimeout(resolve, RECOMMENDATIONS_DELAY_MS));
     const { Recommendations } = await import('./recommendations');
     return { default: Recommendations };
   }));
-  const [prefetchScope, setPrefetchScope] = useState('catalog:anonymous');
+  const prefetchScope = 'catalog:public';
   const initialSnapshot = createReactRouteSnapshot({ params: routeParams, url: routeUrl, metadata: routeMetadata });
+  const testOptions = new URL(routeUrl, 'http://localhost').searchParams;
+  const legacySession = sessionDemo && testOptions.has('legacySession');
+  let authRefreshed = false;
 
   const renderRouteDocument = (destination: ReactNode | null): ReactNode => createElement(
     'html',
@@ -253,9 +266,12 @@ export function ProductDocument({
       createElement(
         'main',
         { tabIndex: -1 },
-        createElement(ExamplePageSlot, {
+        legacySession ? createElement('p', { 'data-legacy-protected': true }, `Legacy protected ${sessionIdentity}`)
+        : createElement(ExamplePageSlot, {
           destination,
-          page: adminPage === undefined
+          page: catalog !== undefined ? createElement(CatalogPage, { ...catalog,
+            ...(sessionDemo ? { sessionDemo: true, sessionIdentity } : {}),
+          }) : adminPage === undefined
           ? createElement(
             'section',
             { 'aria-label': 'Product page' },
@@ -296,14 +312,17 @@ export function ProductDocument({
           : createElement(AdminDestination, { page: adminPage }),
         }),
         createElement(HydratedCounter),
-        createElement(ResourceProbe),
+        createElement(SessionResources, { children: createElement(BackgroundSearch, { id: 'song-widget' }) }),
+        createElement(SessionResources, { children: createElement(ResourceProbe) }),
         createElement('a', { href: '#details', id: 'details', tabIndex: -1 }, 'Page details'),
-        createElement(LongLivedResource),
+        createElement(SessionResources, { children: createElement(LongLivedResource) }),
+        sessionDemo || catalog?.backgroundDemo === true || routeUrl.startsWith('/catalog/background')
+          ? createElement(SessionControls) : null,
         createElement(ProductNavigation, {
           onSwitchUser: () => {
-            const next = prefetchScope === 'catalog:anonymous' ? 'catalog:alice' : 'catalog:anonymous';
+            const next = document.cookie.includes('session=alice') ? 'catalog:anonymous' : 'catalog:alice';
             document.cookie = next === 'catalog:alice' ? 'session=alice; Path=/' : 'session=; Max-Age=0; Path=/';
-            setPrefetchScope(next);
+            return next;
           },
         }),
       ),
@@ -315,12 +334,27 @@ export function ProductDocument({
   );
 
   return createElement(ReactClientRouterProvider, {
+    ...(legacySession ? {} : { session: {
+      epoch: sessionIdentity === undefined ? 'demo:initial' : `demo:${sessionIdentity}`,
+      ...(sessionDemo && testOptions.has('authRefresh') ? {
+        policy: (context: ReactSessionContext) => {
+          if ((context.reason === 'unauthorized' || context.reason === 'forbidden') && !authRefreshed) {
+            authRefreshed = true;
+            return 'refresh';
+          }
+          return context.reason === 'logout' || context.reason === 'unauthorized' ? 'signed-out'
+            : context.reason === 'forbidden' ? 'forbidden' : 'refresh';
+        },
+      } : {}),
+    } }),
     initialSnapshot,
     navigationModules,
+    navigationContracts: reactPageModules,
     navigationBuildId,
     prefetchScope,
     failurePolicy: new URL(routeUrl, 'http://localhost').searchParams.has('defaultNavigation')
-      ? undefined : preserveTransientNavigation,
-    children: renderRouteDocument,
+      ? undefined : import.meta.env.MODE === 'reliability'
+        ? controlledPolicy(preserveTransientNavigation) : preserveTransientNavigation,
+    children: legacySession ? renderRouteDocument(null) : renderRouteDocument,
   });
 }

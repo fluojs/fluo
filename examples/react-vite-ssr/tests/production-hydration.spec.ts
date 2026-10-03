@@ -193,7 +193,7 @@ test('keeps the approved page and head while a later HTTP destination is pending
 
     // When: the destination has not yet received HTTP approval.
     // Then: pending is announced outside the still interactive approved page slot.
-    await expect(page.locator('[aria-live="polite"]')).toHaveText('Loading page');
+    await expect(page.locator('[aria-live="polite"]:not([data-form-state])')).toHaveText('Loading page');
     await expect(page.getByRole('heading', { name: 'Admin QR' })).toBeVisible();
     await expect(page).toHaveURL(/\/admin\/qr$/u);
     expect(await page.title()).toBe(initialTitle);
@@ -204,7 +204,7 @@ test('keeps the approved page and head while a later HTTP destination is pending
   }
   await click;
   await expect(page.getByRole('heading', { name: 'Browser destination: Catalog item sku-84' })).toBeVisible();
-  await expect(page.locator('[aria-live="polite"]')).toHaveText('Page ready');
+  await expect(page.locator('[aria-live="polite"]:not([data-form-state])')).toHaveText('Page ready');
   await expect(page).toHaveTitle('Catalog item sku-84');
   await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', 'Product sku-84');
   await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', 'Product sku-84');
@@ -238,7 +238,7 @@ test('removes an approved page stylesheet without removing the global stylesheet
   await page.getByRole('link', { name: 'Open admin songs' }).click();
   await expect(page).toHaveURL(/\/admin\/songs$/u);
   expect(await page.evaluate(() => document.documentElement.dataset.stylingIdentity)).toBe('retained');
-  await expect(page.locator('[aria-live="polite"]')).toHaveText('Page ready');
+  await expect(page.locator('[aria-live="polite"]:not([data-form-state])')).toHaveText('Page ready');
   await expect(page.locator('link[rel="stylesheet"][href="/assets/route-only.css"]')).toHaveCount(1);
   await page.getByRole('link', { name: 'Open admin QR' }).click();
 
@@ -462,7 +462,7 @@ test('keeps the official page slot and navigation controls reachable at mobile w
 
   // Then: the approved page, polite status and shell controls remain reachable without horizontal clipping.
   await expect(page.getByRole('heading', { name: 'Admin songs' })).toBeVisible();
-  await expect(page.locator('[aria-live="polite"]')).toHaveText('Page ready');
+  await expect(page.locator('[aria-live="polite"]:not([data-form-state])')).toHaveText('Page ready');
   await expect(page.getByRole('button', { name: 'Probe shell resource' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
   if (process.env.FLUO_REACT_SCREENSHOT_DIR) {

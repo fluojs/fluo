@@ -18,6 +18,8 @@ export const FRAMEWORK_RESPONSE_REPRESENTATION = Symbol.for('fluo.http.responseR
 /** Explicitly negotiated successful representation, without a second route dispatcher. */
 export type FrameworkResponseRepresentation = {
   readonly mediaType: string;
+  /** Defaults to GET; POST is reserved for an explicitly opted-in form acknowledgement. */
+  readonly method?: 'GET' | 'POST';
   readonly body: (context: FrameworkResponseWriterContext) => unknown | Promise<unknown>;
   /** Explicit server assertion that this navigation representation is identity-independent. */
   readonly prefetch?: 'public';

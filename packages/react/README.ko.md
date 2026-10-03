@@ -2,9 +2,12 @@
 
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-HTTP-first fluo 애플리케이션을 위한 런타임 중립 React 패키지입니다.
-[풀스택 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)은 추가 운영 CRUD 및
-장기 주크박스 수용 목표를 정의하며, 이 목표가 이미 배포됐다는 뜻은 아닙니다.
+fluo를 위한 HTTP-first 풀스택 React application framework이며 package root는
+런타임 중립입니다. 공식 조립은 streamed SSR/hydration, 승인 navigation, progressive
+form, 독립 background 작업 및 session 철회를 제공합니다.
+[풀스택 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)과
+[장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)는 해당
+capability와 미실행 whole-product/soak/manual gate를 구분합니다.
 
 Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전에 [소비자 마이그레이션 가이드](../../docs/getting-started/migrate-node24.ko.md)를 따르세요. React는 `0.x`의 `minor` 릴리스를 유지하며 `1.0`으로 승격하지 않습니다.
 
@@ -582,7 +585,7 @@ const productHref = reactPageRoutes['GET /products/:productId ProductRouter show
 // /products/desk%2Fchair
 ```
 
-생성 route id는 stable catalog `id`를 사용합니다. Static builder는 parameter를 받지 않고 dynamic
+생성 route id는 stable catalog `id`를 사용합니다. Query binding 없는 static builder는 parameter를 받지 않고 dynamic
 builder는 모든 catalog path parameter를 요구하며 각 값을 `encodeURIComponent(...)`로 encode합니다.
 Artifact는 `ReactPagePathById`, `ReactPageParamsById`, `ReactPagePath<RouteId>`,
 `ReactPageParams<RouteId>`, `ReactPageRoute`, `ReactPageLinkProps`, `ReactPageNavigator`도 export합니다.
@@ -614,18 +617,49 @@ function ProductNavigation({ productId }: { readonly productId: string }) {
 }
 ```
 
-Static `link`, `push`, `replace` method는 param을 받지 않고 parameterized method는 모든 path param을
+Static `link`, `push`, `replace` method는 path param을 받지 않고 parameterized method는 모든 path param을
 요구하며 누락되거나 추가된 key를 거부합니다. 기존 generated `href(...)` builder,
 `<Link href={stringOrUrl}>`, `router.push(...)` / `router.replace(...)`의 string 또는 `URL` 호출은 계속
 지원됩니다. Generated method는 absolute href string을 생성하거나 기존 API에 전달할 뿐이므로 real-anchor
 fallback, full-document HTTP navigation, matching, DTO binding, guard, interceptor, not-found behavior는 현재
 owner를 그대로 유지합니다.
 
-이 contract는 의도적으로 path-only입니다. Query string, fragment, relative route, optional parameter,
-client route tree를 생성하지 않습니다. Typegen은 `version`이 있는 모든 catalog entry를 거부합니다.
-Compiled catalog만으로는 version selection이 URI, header, media type, custom strategy 중 어디에서
-왔는지 구분할 수 없으므로 하나의 absolute href를 생성하면 실제와 다른 URL contract를 약속할 수
-있기 때문입니다.
+기존 generator는 frozen application compiler snapshot에서 HTTP query alias와 wire omission 규칙도
+project합니다. Application 설정은 `--tsconfig`, 실제 bootstrap options export는 `--options`로
+선택합니다. Converted field는 `@fluojs/http`의 type-only `HttpWire<Server, Wire>`로 raw input을
+선언합니다. Conversion과 validation의 권한은 HTTP에 남습니다. Query builder는 repeated value
+순서, empty string, optional field 생략을 보존하며 implicit number/boolean stringification 대신
+`URLSearchParams` encoding을 사용합니다.
+
+`@FromQuery('q') term: string`을 가진 generated `SearchRouter.show` route에서는 wire alias가
+아닌 DTO property name을 사용합니다. Path param이 있으면 query가 그 뒤에 오며 모든 query
+binding이 optional일 때만 query를 생략할 수 있습니다.
+
+```tsx
+const search = reactPageRoutes['GET /search SearchRouter show'];
+<Link {...search.link({ term: 'tea + coffee' })}>Search</Link>;
+// /search?q=tea+%2B+coffee
+```
+
+Artifact version 2는 `reactPageModules` JSON props contract와 기존
+`useForm({ action, contract })` 경로의 `reactFormRoutes` contract를 생성합니다.
+`ReactPagePropsRegistry`가 module literal과 exact props를 연결하므로 소비자가 DTO interface를
+복제하거나 saved data를 cast하지 않습니다. Type-only dependency와 compiler 설정도 freshness에
+포함됩니다.
+
+Generated file을 consumer TypeScript program에 포함합니다. `reactPageModules`는 initial
+loader의 네 번째 인자와 soft loader의 `contracts` option에 전달하며 기존 provider 조립도
+public prefetch를 포함해 같은 contract를 전달해야 합니다. Registry 포함만으로 runtime
+validation이 되지는 않습니다. Generated form은 `fields`와 `decodeSaved`를 제공하며 GET
+`decodeRead`를 생성하지 않습니다. 제출한 successful control은 HTTP가 계속 검증합니다.
+일반 typecheck/build 전에 기존 `--check`를 실행하고 실패하면 조용한 재생성 대신 명시적으로
+generate합니다. [이주](../../docs/getting-started/migrate-react-typegen.ko.md)를 참고하세요.
+
+Unversioned route와 provenance-backed URI route는 compiled effective path를 사용합니다.
+Versioned header/media/custom route나 selection provenance 누락은 명시적으로 실패합니다.
+Literal `/v2` path는 URI strategy의 근거가 아닙니다. Fragment, relative route, client matcher
+generation은 이 계약 밖입니다. 지원 JSON shape, strict consumer 요건과 migration guidance는
+[end-to-end 타입 계약](../../docs/contracts/react-end-to-end-types.ko.md)을 참고하세요.
 
 ## Consumer Testing Loop
 
@@ -915,7 +949,13 @@ Navigation contract는 의도적으로 HTTP-first입니다.
 </ReactClientRouterProvider>
 ```
 
-`failurePolicy`를 생략하면 취소되지 않은 실패는 계속 document fallback합니다. `'preserve'`를
+Auth가 아닌 실패는 `failurePolicy`를 생략하면 document fallback합니다.
+Fresh credential 포함 401/403은 policy 전에 이전 승인을 항상 철회합니다. `session`을
+설정하거나 명시적 session 결과/통지로 활성화한 provider는 `failurePolicy` 대신
+`session.policy`를 적용하며 기본값은 401 signed-out, 403 forbidden입니다. 미설정 legacy
+provider는 barrier 뒤 일반 HTTP document로 이동하여 보호된 plain children을 남기지
+않습니다. `failurePolicy`는 철회된 auth 콘텐츠를 보존할 수 없으며 in-document 인증 UI는
+session-aware 조립을 사용합니다. Auth가 아닌 실패에서 `'preserve'`를
 선택하면 마지막 승인 URL·params·page·shell을 유지하며 `useNavigation().failure`는 안전한
 `reason`, 목적지 pathname, navigation type을 제공합니다. 셸의 오류 UI에서 `router.retry()`로
 새 credential 포함 HTTP 승인을 요청하고 `router.openDocument()`로 일반 문서를 명시적으로
@@ -929,8 +969,9 @@ v1-to-v2 payload 이주는 breaking 0.x 변경입니다.
 공식 생성 starter는 network/5xx, incompatible-build 및 복구 가능한 매핑된 import 실패의 보존 정책과 셸 복구
 control을 명시적으로 제공합니다.
 직접 조립한 앱은 `navigationModules`와 `failurePolicy`를 제공하고 셸에
-`navigation.failure` 조작 UI를 배치하며 다른 사유(없는 importer key 포함)는 명시적인 정책 없이는 문서 경로에
-남겨 두세요. Production 예제는 network/5xx 실패·복구 중 자원 identity와 operation/ack를
+`navigation.failure` 조작 UI를 배치하며 auth가 아닌 다른 사유(없는 importer key 포함)는
+명시적인 정책 없이는 문서 경로에 남겨 두세요. Fresh 401/403은 앞의 필수 session-aware
+또는 legacy document 규칙을 따릅니다. Production 예제는 network/5xx 실패·복구 중 자원 identity와 operation/ack를
 검증합니다. #3879는 여전히 전체 제품 여정을 검증해야 합니다. [제품 여정 표](../../docs/contracts/react-fullstack-product.ko.md#사용자-여정-수용-표)를
 참고하세요.
 
@@ -1074,7 +1115,64 @@ commit 전에 일치해야 하며 누락된 식별자는 승인되지 않습니�
 v1 소비자는 [이주 가이드](../../docs/getting-started/migrate-react-production-assets.ko.md)와
 [배포 recipe](../../docs/guides/react-production-deployment.ko.md)를 따르세요.
 
+## Session composition
+
+기존 `ReactClientRouterProvider`의
+`session={{ epoch: 'initial-nonsecret-label', policy }}`와
+`router.sessionChanged({ epoch: 'next-label', reason: 'login' })`를 사용합니다.
+별도 provider 없이 `useRouterState().session`으로 승인과 generation을 읽습니다.
+각 통지는 async policy 전에 초기 SSR fallback을 포함한 이전 page/head/form/cache
+ownership을 철회합니다. Configured session 조립의 fresh credential 포함 401은 signed-out, 403은 identity를
+지우지 않는 forbidden입니다. Anonymous speculation은 credentialed 사용자를 logout할
+수 없으며 cookie 변경 자체가 cross-tab signal인 것은 아닙니다.
+Policy의 `'refresh'`는 navigation GET, form POST 인증 거절, saved follow-up GET 모두에서
+새 uncached credential 포함 GET을 실행하며 POST를 재실행하지 않습니다. Initiating saved
+form의 취소는 그 session policy의 권한을 취소하고 보류된 policy release 전에 대기를
+정착시키므로 늦은 document 결정이 이동할 수 없습니다.
+
+앱 소유 player/channel/listener는 기존 React subtree/effect cleanup으로 정리합니다.
+Teardown registry는 없고 store settlement는 SDK-disposal receipt가 아닙니다.
+Session을 포함한 form result도 destination policy 전에 동일한 barrier를 통과한 뒤
+confirmed saved continuation만 fresh GET 승인으로 이관합니다. 일반 mutation은 다른
+input/error/focus를 보존하고 retry는 POST를 재실행하지 않습니다.
+[Migration](../../docs/getting-started/migrate-react-session-composition.ko.md)을 참고하세요.
+
 ## Native Form Mutations
+
+같은 `useForm`이 non-navigation 작업도 소유합니다. 기존 provider 아래 component에서
+실제 GET form을 연결합니다.
+
+```tsx
+const search = useForm<{ q: string }>({
+  id: 'song-search', action: '/catalog/background/search',
+  mode: 'background', method: 'get', fields: { q: 'q' },
+  allowDestination: () => false,
+});
+// Spread search.formProps on <form>; keep named input q and a submit button.
+```
+
+앱 소유 HTTP handler는 명시적 read 요청에 일반 `application/json`, native GET에
+HTML을 반환합니다. Background POST는 같은 `ReactModule.formResult`를 사용하되
+`navigate`를 자동 실행하지 않습니다. Stable row id마다 독립 latest-wins pending/result를
+소유하고 살아 있는 shell owner는 navigation을 견디며 실제 unmount, session 변경,
+provider rebind가 이전 ownership을 취소합니다. Authored fields의 `read` data는 `unknown`,
+generated contract는 `decodeRead(unknown): Data`를 추가할 수 있습니다. acknowledgement는
+URL/history/head를 변경하지 않습니다. confirmed write는 private query cache 대신 fresh
+current-page HTTP approval을 공유합니다. `saved`와 read 실패는 별개이며 `retryRead()`는
+POST를 재전송하지 않습니다. 기존 명시적 auth-policy exit 외 redirect는 작업별로 실패합니다.
+mode/method를 생략하면 navigation-oriented POST와 busy-skipped 기본값을 유지합니다.
+공식 example 또는 생성 starter의 `/catalog/background`에서 실행하고
+[background 소유 계약](../../docs/contracts/react-progressive-forms.ko.md#background-http-interactions)을 보세요.
+
+Canonical `ReactModule.formResult`는 선택적 JSON `data`와 명시적인 비밀이 아닌
+`session: { epoch, reason: 'login' | 'logout' | 'permissions' }`도 받으며 option literal
+추론을 유지합니다. 협상한 saved acknowledgement는 v1, native 성공은 303으로 유지합니다.
+Generated `ReactFormContract<Input, Data>`는 `fields`와
+`decodeSaved(value: unknown): Data`를 제공합니다. Alias를 직접 복사하거나 saved data를
+cast하지 말고 기존 `useForm`의 `contract`에 전달하세요. `fields`와 함께 전달하지 않습니다.
+Decoder는 잘못된 data에 throw해야 하며 async destination policy 전에
+`uncertain/protocol`로 처리됩니다. 이 shared runtime seam 자체가 contract를 생성하거나
+erased DTO를 복원하는 것은 아닙니다.
 
 React page mutation이 hydration 전이나 client JavaScript disabled 환경에서도 동작해야 한다면 native HTML
 form을 사용하세요. React-owned action transport를 만들지 말고 일반 `@Post(...)` route로 제출합니다. 실행 가능한
@@ -1146,9 +1244,14 @@ Non-React route와 같은 session/cookie, guard, middleware policy를 사용하�
 이 recipe는 React Router action/fetcher, Astro Actions, Next.js Server Actions와 의도적으로 다릅니다. fluo는
 function reference를 compile하거나, route matching을 소유하거나, loader/client cache를 revalidate하거나,
 document response를 교체하지 않습니다. Experimental fluo Server Functions transport와도 별개입니다. Native
-form이 이미 완전한 fallback을 제공하고 `@fluojs/react/client`가 mutation route나 cache invalidation을 소유하지
-않으므로 이 phase에서는 stable submit-state helper를 추가하지 않습니다. Application은 실제 form action과
-native submission을 유지하는 경우에만 hydration 이후 local pending UI를 추가할 수 있습니다.
+form의 fallback을 그대로 유지하면서 기존 provider의 `@fluojs/react/client` `useForm`으로
+progressive local state를 제공합니다. 저장 확인 뒤에만
+`ReactModule.formResult({ destination, followUp })`를 반환합니다. 실제 action/method/encoding과
+HTTP DTO/auth/CSRF ownership을 유지합니다.
+[Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)과
+[migration guide](../../docs/getting-started/migrate-react-progressive-forms.ko.md)가 safe field error,
+duplicate skip, uncertain completion, GET-only recovery를 정의합니다.
+follow-up read 실패가 확인된 저장을 저장 실패로 바꾸지 않습니다.
 
 ## Experimental RSC Prototype
 
@@ -1364,8 +1467,10 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 
 현재 이 패키지가 제공하지 않는 것은 다음입니다.
 
-- mutation 뒤 자동 재검증. Application이 결정한 시점에 `router.invalidate()` 후
-  `router.refresh()`를 await하세요. 공식 starter는 network/5xx 및 복구 가능한 매핑된
+- `useForm` 밖의 임의 mutation 뒤 자동 재검증. 이 mutation은 application이 결정한
+  시점에 `router.invalidate()` 후 `router.refresh()`를 await하세요. 확인된 `useForm`
+  save는 HTTP-approved follow-up을 자동 실행하며 background save는 coalesced fresh
+  current-page read를 공유합니다. 공식 starter는 network/5xx 및 복구 가능한 매핑된
   import 실패를 보존하지만 low-level provider의 기본값은 document fallback입니다.
 - stable RSC root 또는 `@fluojs/react/rsc` subpath. RSC는 명시적으로 불안정한
   `@fluojs/react/experimental/rsc` prototype에서만 제공합니다.
@@ -1374,8 +1479,8 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, React-owned
   `routes: []` table
 - 자동 client bundle 생성
-- versioned React page의 href 생성. Catalog가 URI versioning과 non-path version strategy를 구분할 수
-  있을 때까지 path-only typegen은 versioned catalog entry를 거부합니다.
+- versioned header/media/custom route 또는 selection provenance 없는 route의 href 생성.
+  Unversioned 및 provenance-backed URI route는 지원합니다.
 - filesystem scanning 또는 자동 manifest file discovery. 이미 로드한 manifest 값을 `@fluojs/react/vite`에 넘기세요.
 - `bootstrapScriptContent`로 임의 data를 자동 serialize하는 기능
 - `renderToPipeableStream(...)` 같은 Node 전용 `react-dom/server` pipeable stream root API
@@ -1395,11 +1500,12 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `ReactPageCatalogEntry` — effective HTTP method/path/version/params와 originating router/handler를
   담는 type-only bootstrap-resolved page descriptor입니다.
 - `@fluojs/react/typegen` subpath — package root를 넓히거나 runtime route table을 추가하지 않고
-  deterministic path-only declaration, versioned artifact check, absolute href builder, route-bound `Link` prop,
+  deterministic path/query declaration, versioned artifact check, absolute href builder, route-bound `Link` prop,
   typed `push`/`replace` method를 제공하는 `generateReactPageTypes(...)`,
   `inspectReactPageTypeArtifact(...)`, `REACT_PAGE_TYPEGEN_ARTIFACT_VERSION`,
   `ReactPageTypeArtifactInspection`, `ReactPageTypegenError`, `REACT_PAGE_TYPEGEN_ERROR_CODES`,
-  `ReactPageTypegenErrorCode`를 제공합니다.
+  `ReactPageTypegenErrorCode`를 제공합니다. Compiler projection은 같은 lifecycle에서
+  limited JSON module props와 saved-data contract도 생성합니다.
 - `ReactModule` — `forRoot(...)`가 기존 fluo module/controller metadata path를 통해 React router를
   등록하는 런타임 중립 module facade입니다.
 - `ReactNavigationPage.create(...)` — 일반 streamed HTML을 유지하면서 matched page를
@@ -1541,3 +1647,27 @@ stable subpath를 추가하지 않고 deprecation window도 시작하지 않습�
 - `examples/react-vite-ssr/src/app.test.ts`
 - `examples/react-vite-ssr/src/hydration.test.ts`
 - `examples/react-vite-ssr/tests/production-hydration.spec.ts`
+
+## Navigation permission
+
+기존 provider의 `useNavigationGuard({ when })` 하나로 dirty/pending과 앱 작업을 결합합니다. 기본값은 비보호이며 반환한 현재 intent의 `stay`/`proceed`만 권한을 갖습니다. 목적지 GET·prefetch adoption·form 취소는 승인 뒤입니다. Managed tagged history만 복원하며 untagged/cross-document는 native 경계입니다. Session 철회가 결정보다 우선합니다.
+```tsx
+import { useForm, useNavigationGuard } from "@fluojs/react/client";
+
+function Editor() {
+  const form = useForm<{ name: string }>({
+    id: "editor", action: "/save", fields: { name: "name" },
+    allowDestination: (href) => new URL(href).pathname === "/edit",
+  });
+  const decision = useNavigationGuard({ when: form.state.dirty || form.state.pending });
+  return <>
+    <form {...form.formProps}><input name="name" /><button>Save</button></form>
+    {decision && <section role="dialog" aria-label="Unsaved navigation">
+      <button onClick={decision.stay}>Stay</button>
+      <button onClick={decision.proceed}>Proceed</button>
+    </section>}
+  </>;
+}
+```
+
+[승인·native·저장 순서 계약](../../docs/contracts/react-navigation-payload.ko.md#navigation-permission)과 [migration](../../docs/getting-started/migrate-react-navigation-guards.ko.md)을 참고하세요.
