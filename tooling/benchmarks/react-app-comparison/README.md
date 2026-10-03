@@ -275,14 +275,13 @@ server sample; inspect competing processes and generator headroom before
 interpreting throughput or inferring capacity.
 
 `config/representative.json` drives separate development runs against each
-framework's dev command. The Fluo fixture uses `src/fluo-dev.mjs`: its existing
-production Vite build and server are restarted after each source edit, then
-the browser reloads. This measures today's build/restart baseline, **not**
-Fast Refresh or CSS HMR; #3876/#3877 own those capabilities. This benchmark-only Fluo
-build/restart harness is **not** the generated starter's `fluo dev` Vite
-middleware lifecycle; its edit times describe this fixture and do not establish
-canonical Fluo development latency or peer development parity. The three peer
-fixtures run their own development commands. TanStack's route loader edit
+framework's dev command. The Fluo fixture uses `src/fluo-dev.mjs` to launch the
+canonical `fluo dev --runner fluo` Vite middleware lifecycle. React and CSS
+edits use browser-visible updates; server edits wait for application-generation
+readiness and reload the document to observe the changed marker. These are
+measurements of the seeded fixture through canonical Fluo development, not a
+production-build restart proxy or proof of peer development parity. The three
+peer fixtures run their own development commands. TanStack's route loader edit
 in `src/routes/index.tsx` is measured by restarting its development server
 and opening the changed page: its Vite client update is not a reliable
 server-edit visibility signal. The recorded server-edit time includes that
