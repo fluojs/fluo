@@ -8,7 +8,7 @@ import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { createNativeLifetimeObserver, NATIVE_LIFETIME_HOOKS, NATIVE_LIFETIME_IDENTITY,
   NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA, NATIVE_SHUTDOWN_HOOKS, decodeNativeJournal,
-  reconcileNativeLifetime } from '../src/native-lifetime.mjs';
+  isObservedShutdownExit, reconcileNativeLifetime } from '../src/native-lifetime.mjs';
 import { verifyTraceFiles } from '../src/measure.mjs';
 
 const request = () => ({
@@ -115,6 +115,59 @@ const shutdownFixture = () => {
   ];
   return observation;
 };
+
+function withUnrelatedRootCall(observation, timestamp) {
+  const previous = observation.lifecycle.filter((entry) => entry.event.startsWith('shutdown-')).at(-1);
+  const root = { pid: previous.pid, processBirth: previous.processBirth, runId: 'run',
+    call: 99, parent: null, thread: 17, signal: 9, target: { pid: 999, missing: true } };
+  const entries = [
+    { ...root, event: 'shutdown-signal-enter', seq: previous.seq + 1, ns: timestamp },
+    { ...root, event: 'shutdown-signal-return', seq: previous.seq + 2,
+      ns: String(BigInt(timestamp) + 1n), result: -1 },
+  ];
+  const result = observation.lifecycle.findIndex((entry) => entry.event === 'browser-result');
+  observation.lifecycle.splice(result < 0 ? observation.lifecycle.length : result, 0, ...entries);
+  return observation;
+}
+
+test('unrelated failed root call preserves a complete post-close termination proof', () => {
+  const observation = withUnrelatedRootCall(shutdownFixture(), '12000000021');
+  const exit = observation.lifecycle.find((entry) => entry.event === 'owned-exit');
+  assert.equal(isObservedShutdownExit(exit, observation), true);
+  assert.deepEqual(reconcileNativeLifetime([request()], observation, ledger()).unavailable, []);
+});
+
+test('unrelated failed root call preserves a complete retirement proof', () => {
+  const observation = withUnrelatedRootCall(parentStatusFixture(15), '10470000000');
+  assert.deepEqual(reconcileNativeLifetime([request()], observation, ledger()).unavailable, []);
+});
+
+for (const mode of ['shutdown', 'retirement']) {
+  test(`root SIGTERM without its matching normal caller cannot authorize ${mode}`, () => {
+    const observation = mode === 'shutdown' ? shutdownFixture() : parentStatusFixture(15);
+    observation.lifecycle = observation.lifecycle.filter((entry) => !/^shutdown-(normal|terminate)-/u.test(entry.event));
+    observation.lifecycle.filter((entry) => entry.event.startsWith('shutdown-')).forEach((entry, index) => {
+      entry.seq = index + 1;
+      if (entry.event.startsWith('shutdown-signal-')) entry.parent = null;
+    });
+    assert.ok(reconcileNativeLifetime([request()], observation, ledger()).unavailable.length);
+  });
+}
+
+test('unrelated root call survives authenticated shutdown replay without dropping raw events', async (t) => {
+  const f = await authenticatedFixture(t);
+  f.records.native.lifecycle = shutdownFixture().lifecycle;
+  f.records.host.messages.push(...f.records.native.lifecycle.map((lifecycle) => ({ lifecycle })));
+  f.record.requests = reconcileNativeLifetime([request()], f.records.native, f.records.cdp.ledger).requests;
+  for (const role of ['native', 'host']) await f.save(role);
+  await f.verify();
+  withUnrelatedRootCall(f.records.native, '12000000021');
+  f.records.host.messages = f.records.host.messages.filter((message) => !message.lifecycle);
+  f.records.host.messages.push(...f.records.native.lifecycle.map((lifecycle) => ({ lifecycle })));
+  for (const role of ['native', 'host']) await f.save(role);
+  await f.verify();
+  assert.equal(f.records.native.lifecycle.filter((entry) => entry.call === 99).length, 2);
+});
 
 test('observed live-target normal shutdown preserves raw SIGTERM without invalidating captured requests', () => {
   const observation = shutdownFixture();

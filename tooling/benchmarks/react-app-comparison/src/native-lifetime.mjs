@@ -306,10 +306,11 @@ export function isObservedShutdownExit(exit, observation) {
   // The same source now observes retirement before the explicit close. Such
   // status witnesses remain raw but cannot authorize a shutdown SIGTERM.
   const calls = events.slice(1).filter((entry) => ns(entry.ns) > ns(close.ns));
+  // Explicit null is an observed root call, not a missing causal parent.
   if (calls.some((e) => !Number.isSafeInteger(e.call) || e.call < 1
     || !Number.isSafeInteger(e.thread) || e.thread < 1 || !Object.hasOwn(e, 'parent')
     || (e.event.startsWith('shutdown-normal-') ? e.parent !== null
-      : !Number.isSafeInteger(e.parent) || e.parent < 1 || e.parent === e.call))) return false;
+      : e.parent !== null && (!Number.isSafeInteger(e.parent) || e.parent < 1 || e.parent === e.call)))) return false;
   for (const id of new Set(calls.map((e) => e.call))) {
     const pair = calls.filter((e) => e.call === id);
     if (pair.length !== 2 || !/^shutdown-(normal|terminate|signal)-enter$/u.test(pair[0].event)
