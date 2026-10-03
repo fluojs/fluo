@@ -4,17 +4,17 @@ export const PUBLISHED_INTERNAL_DEPENDENCIES = {
   "@fluojs/config": "^2.0.2",
   "@fluojs/core": "^2.1.2",
   "@fluojs/di": "^3.1.2",
-  "@fluojs/http": "^3.1.3",
+  "@fluojs/http": "^3.2.0",
   "@fluojs/microservices": "^2.0.2",
-  "@fluojs/platform-bun": "^3.0.1",
+  "@fluojs/platform-bun": "^3.1.0",
   "@fluojs/platform-cloudflare-workers": "^2.1.1",
   "@fluojs/platform-deno": "^2.0.1",
   "@fluojs/platform-express": "^2.0.2",
   "@fluojs/platform-fastify": "^2.0.4",
   "@fluojs/platform-nodejs": "^2.0.2",
-  "@fluojs/react": "^0.2.2",
+  "@fluojs/react": "^0.3.0",
   "@fluojs/runtime": "^3.1.2",
   "@fluojs/testing": "^3.0.3",
   "@fluojs/validation": "^2.1.2",
-  "@fluojs/vite": "^2.0.1"
+  "@fluojs/vite": "^3.0.0"
 } as const;
