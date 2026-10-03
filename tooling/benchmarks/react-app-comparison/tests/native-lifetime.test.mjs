@@ -85,6 +85,43 @@ test('observed live-target normal shutdown preserves raw SIGTERM without invalid
 });
 
 for (const [name, mutate] of [
+  ['omitted identities', (events) => {
+    for (const event of events) {
+      delete event.call;
+      delete event.thread;
+      if (!event.event.startsWith('shutdown-normal')) delete event.parent;
+    }
+  }],
+  ['aliased identities', (events) => {
+    for (const event of events) {
+      event.call = 1;
+      if (!event.event.startsWith('shutdown-normal')) event.parent = 1;
+    }
+  }],
+]) {
+  test(`shutdown ${name} cannot authorize nonzero exit`, () => {
+    const observation = shutdownFixture();
+    mutate(observation.lifecycle.filter((e) => e.event.startsWith('shutdown-') && e.event !== 'shutdown-ready'));
+    const result = reconcileNativeLifetime([request()], observation, ledger());
+    assert.deepEqual(result.unavailable, ['native lifetime: owned process abnormal exit']);
+    assert.deepEqual(result.requests, [request()]);
+  });
+
+  test(`authenticated replay rejects shutdown ${name} even with matching host and raw digests`, async (t) => {
+    const f = await authenticatedFixture(t);
+    f.records.native.lifecycle = shutdownFixture().lifecycle;
+    f.records.host.messages.push(...f.records.native.lifecycle.map((lifecycle) => ({ lifecycle })));
+    await f.save('native');
+    await f.save('host');
+    await f.verify();
+    mutate(f.records.native.lifecycle.filter((e) => e.event.startsWith('shutdown-') && e.event !== 'shutdown-ready'));
+    await f.save('native');
+    await f.save('host');
+    await assert.rejects(f.verify(), /native lifetime reconciliation replay mismatch/u);
+  });
+}
+
+for (const [name, mutate] of [
   ['zombie target', (o) => { o.lifecycle.find((e) => e.event === 'shutdown-signal-enter').target.state = 'Z'; }],
   ['failed send', (o) => { o.lifecycle.find((e) => e.event === 'shutdown-signal-return').result = -1; }],
   ['different target birth', (o) => { o.lifecycle.find((e) => e.event === 'owned-exit').processBirth = '123:2:0'; }],
