@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as collector from '../src/measure-browser.mjs';
@@ -267,4 +267,35 @@ test('native close failure is preserved and owned kill completes before rejectio
   await assert.rejects(capture.close(), (error) => error === failure);
   assert.equal(killed, 1);
   assert.equal(child.signalCode, 'SIGKILL');
+});
+
+test('opt-in lifetime evidence drains before browser server closes at the original cutoff', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-lifetime-close-'));
+  const child = { pid: 125, exitCode: null, signalCode: null };
+  let rawTrace;
+  const capture = await createNativeCapture({
+    async launchServer(options) {
+      rawTrace = options.args[0].slice('--log-net-log='.length);
+      return { process: () => child, wsEndpoint: () => 'fixture',
+        async close() {
+          const lifetime = JSON.parse(await readFile(join(rawTrace, '..', 'lifetime.json'), 'utf8'));
+          assert.equal(lifetime.captureTimestamp, 123);
+          assert.equal(lifetime.cleanup.closed, true);
+          assert.equal(lifetime.coverage.complete, false);
+          await writeFile(rawTrace, JSON.stringify(log()));
+          child.exitCode = 0;
+        },
+        async kill() { assert.fail('unsupported opt-in must still close gracefully'); },
+      };
+    },
+    async connect() { return { version: () => 'unsupported', async close() {} }; },
+  }, directory, { enabled: true });
+  await capture.prepareLifetime({});
+  capture.ledger.push({ name: 'capture-boundary', data: { captureTimestamp: 123 } });
+  const evidence = await capture.read(123);
+  assert.equal(evidence.provenance.captureTimestamp, 123);
+  assert.equal(evidence.lifetime.observation.captureTimestamp, 123);
+  assert.deepEqual(evidence.lifetime.observation.events, []);
+  assert.equal(evidence.provenance.cleanup.closed, true);
+  await capture.close();
 });

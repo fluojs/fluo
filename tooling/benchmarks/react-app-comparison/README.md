@@ -34,6 +34,80 @@ not measured separately. The page stays live through throughput and the unchange
 post-workload `ps` CPU/RSS snapshot; budgets, peer defaults and metric meanings do
 not change.
 
+### Opt-in exact native lifetime observation
+
+Production measurement accepts `nativeLifetime: { "enabled": true,
+"python": "/opt/fluo-native-debug/bin/python" }` (under `measurement` in a
+`run-gate.mjs` config). Omit it for the unchanged passive NetLog path:
+the default never imports, starts, installs or requires Frida/Python.
+The mode is `chromium-native-lifetime-v1`, with a retained versioned
+symbol/argument/clock schema and agent/host source hashes.
+
+The initial adapter supports only Linux/AArch64 ELF64 little-endian canonical
+Playwright revision `1228` **headless_shell**, Chromium `149.0.7827.0`,
+SHA-256 `b6f53f7e40c3ad6727cb3a12536026dcd93281e5965923752c8130ed53e5e8c4`,
+GNU build ID `afcd146a627911fb30269f995d093903636ed886`.
+It checks the executed executable, executable renderer mappings, native ABI
+and exact retained symbols/offsets before installing hooks. A version string
+alone is insufficient. Full Chromium, other builds/architectures and macOS
+are unsupported; Linux evidence does not establish macOS representative support.
+The external runtime is Python `3.11.2` executable SHA-256
+`304aa87a76ebb13fd22d253ac157f14980ff2cdb23e6274f3b045571405e07dc`,
+Frida `17.21.0`, and the exact Python/Frida file identities enforced by the
+adapter. Provision that runtime separately in an isolated environment; the
+benchmark does not install it or change host signing/attach permissions.
+
+For the retained diagnostic container, verify and execute the opt-in config:
+
+```sh
+docker exec fluo-3884-native-debug-20261003 /opt/fluo-native-debug/bin/python --version
+docker exec fluo-3884-native-debug-20261003 /opt/fluo-native-debug/bin/python \
+  -c 'import frida; print(frida.__version__)'
+docker exec fluo-3884-native-debug-20261003 sha256sum \
+  /opt/fluo-native-debug/bin/python \
+  /benchmark/browsers/chromium_headless_shell-1228/chrome-linux/headless_shell
+# Run from an isolated copy of the collector with Linux-installed dependencies.
+# Supply a fresh output root and the unchanged frozen config plus measurement.nativeLifetime.
+PLAYWRIGHT_BROWSERS_PATH=/benchmark/browsers node src/run-gate.mjs \
+  --config /absolute/native-opt-in-config.json --output-dir /absolute/fresh-results
+```
+
+Hooks are ready before entry navigation. Only owned browser descendants are
+gated; new children get independent hooks before resume, and CDP must prove
+their renderer role. PID/process birth, Resource birth and independent native
+Loader birth, target/session and request occurrence must form a unique chain
+through actual `IdentifiersFactory::RequestId` calls. Native loader pointers
+are not CDP `loaderId`s. Only pending records can acquire cancellation from
+matching `Cancel` entry, nested `HandleError` entry and both normal returns
+strictly before the original CDP cutoff, with authenticated monotonic-clock
+units. Actual CDP terminals stay unchanged. Cancellation is
+`request-failed`, `canceled:true`, and counts in the existing error-rate
+numerator/denominator; no body bytes, CDP status/error code or settled time
+are synthesized.
+
+Native events are buffered in-process without per-event IPC. Hook overhead
+remains in measured work; setup/drain and separate observer costs are retained,
+not separately measured or subtracted. Drain happens before BrowserServer
+close but after unchanged throughput and `ps` samples, without moving the
+original request cutoff. Raw native events, CDP ledger, coverage, schema/source
+hashes, host logs and cleanup receipts remain in each fresh output root and
+are authenticated and replayed by `verifyTraceFiles`, including warmups and
+combined production/development sources.
+
+Unsupported identity, late attach, partial hooks, drops, incomplete returns,
+transport/script errors, renderer termination before drain, ambiguous reuse,
+unverified child role or worker target coverage produce unavailable/inconclusive
+evidence, never fallback coverage or invented cancellation. Observer sessions,
+listeners and children are closed with bounded event-based waits on success,
+failure, timeout and abort; cleanup failures remain recorded. Worker/service-worker
+paths are not supported by the frame adapter. The two earlier canonical headless
+diagnostics had no unresolved pending requests: their 36 already-canceled
+bindings demonstrate viability, not missing-terminal integration or performance
+acceptance. Focused runtime checks likewise do not replace identical-collector
+before/after recollection across four frameworks/profiles, five samples/two
+warmups, original budgets/statistics or the macOS representative gate.
+Historical fail/inconclusive receipts remain unchanged.
+
 ```sh
 pnpm install --frozen-lockfile
 pnpm build

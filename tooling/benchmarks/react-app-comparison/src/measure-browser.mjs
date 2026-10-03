@@ -369,14 +369,18 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       }
     },
     async measure(item) {
-      const native = await createNativeCapture(chromium, item.nativeTraceDirectory);
+      const native = await createNativeCapture(chromium, item.nativeTraceDirectory, config.nativeLifetime?.enabled
+        ? { ...config.nativeLifetime, measurement: { runId: item.runId, framework: item.framework,
+          profile: item.profile, mode: item.mode } } : undefined);
       try {
       const { context, page, cdp } = await createPage(item, native.browser);
+      await native.prepareLifetime(cdp);
+      const lifetimeIdentity = native.lifetimeIdentity;
       const nativeSubscriptions = [];
       for (const name of ['Network.requestWillBeSent', 'Network.requestWillBeSentExtraInfo',
         'Network.responseReceived', 'Network.responseReceivedExtraInfo', 'Network.dataReceived',
         'Network.loadingFinished', 'Network.loadingFailed', 'Page.frameNavigated', 'Page.frameDetached']) {
-        const observe = (data) => native.ledger.push({ name, data });
+        const observe = (data) => native.ledger.push({ name, data, ...lifetimeIdentity });
         cdp.on(name, observe);
         nativeSubscriptions.push([name, observe]);
       }
@@ -388,8 +392,10 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       const networkChanges = new EventEmitter();
       let phase = 'cold';
       let collecting = true;
+      const occurrences = new Map();
       cdp.on('Network.requestWillBeSent', ({ requestId, loaderId, frameId, initiator, timestamp, wallTime, request, type, redirectResponse }) => {
         if (!collecting) return;
+        occurrences.set(requestId, (occurrences.get(requestId) ?? 0) + 1);
         if (redirectResponse) {
           const previous = network.get(requestId);
           requests.push({
@@ -399,6 +405,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           });
         }
         network.set(requestId, {
+          ...(lifetimeIdentity ? { ...lifetimeIdentity, occurrence: occurrences.get(requestId) } : {}),
           requestId, loaderId, frameId, initiator, startedTimestamp: timestamp, wallTime, method: request.method,
           url: request.url, resourceType: type?.toLowerCase() ?? 'other', phase,
           documentUrl: page.url(), pageClosed: page.isClosed(), status: null,
@@ -558,7 +565,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         // Keep approved DOM latency unchanged. Capture actual HTTP terminals before
         // closing the context; this finite ID inventory is not producer closure.
         const finalRequestCapture = await waitForCapturedRequests(network, networkChanges, AbortSignal.timeout(10_000));
-        const captureMetrics = (await cdp.send('Performance.getMetrics')).metrics;
+        const captureMetrics = (await native.captureClock(() => cdp.send('Performance.getMetrics'))).metrics;
         const captureTimestamp = captureMetrics.find((metric) => metric.name === 'Timestamp')?.value;
         if (!Number.isFinite(captureTimestamp)) throw new Error('native terminal capture monotonic clock unavailable');
         collecting = false;
@@ -625,12 +632,18 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         // Keep the original page lifetime through throughput and post-workload
         // CPU/RSS snapshots. Only the browser-request cutoff precedes them.
         const nativeEvidence = await native.read(captureTimestamp);
-        const reconciled = reconcileNativeTerminals(requests, nativeEvidence.log, nativeEvidence.provenance, native.ledger);
+        let reconciled = reconcileNativeTerminals(requests, nativeEvidence.log, nativeEvidence.provenance, native.ledger);
+        if (nativeEvidence.lifetime) {
+          const { reconcileNativeLifetime } = await import('./native-lifetime.mjs');
+          const result = reconcileNativeLifetime(reconciled, nativeEvidence.lifetime.observation, native.ledger);
+          reconciled = result.requests;
+          qualityFailures.push(...result.unavailable);
+        }
         requests.splice(0, requests.length, ...reconciled);
         finalRequestCapture.cdpPendingRequestIds = finalRequestCapture.pendingRequestIds;
         finalRequestCapture.pendingRequestIds = requests.filter((entry) => entry.kind === 'request-pending')
           .map((entry) => entry.requestId);
-        finalRequestCapture.nativeResolvedRequestIds = requests.filter((entry) => entry.nativeTerminal)
+        finalRequestCapture.nativeResolvedRequestIds = requests.filter((entry) => entry.nativeTerminal || entry.nativeLifetime)
           .map((entry) => entry.requestId);
         finalRequestCapture.captureTimestamp = captureTimestamp;
         for (const entry of requests.filter((request) => request.kind === 'request-pending')) {
@@ -642,6 +655,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions, initialBoundary, warmBoundary, finalRequestCapture },
           artifacts: {
             nativeTerminalObserver: nativeEvidence.provenance,
+            ...(nativeEvidence.lifetime ? { nativeLifetimeObserver: nativeEvidence.lifetime.provenance } : {}),
             cachePolicy: item.mode,
             browserCacheDisabled: cacheSettings(item.mode).cacheDisabled,
             framework: item.framework,

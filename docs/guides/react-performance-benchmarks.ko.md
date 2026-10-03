@@ -81,6 +81,52 @@ Next 내장 `19.3.0-canary-cbb046ab-20260731`입니다. Timeout, observer 부재
 Request에는 loader/request ID, initiator, 종료 phase/시점, cancellation을 남기며
 기존 raw-trace authentication을 그대로 요구합니다.
 
+선택적인 production `nativeLifetime` 모드는 기본 비활성입니다.
+`run-gate.mjs` config의 `measurement`에
+`{ "nativeLifetime": { "enabled": true, "python": "/opt/fluo-native-debug/bin/python" } }`
+를 추가해야 하며, 기본 경로는 Frida/Python을 import·실행·설치하거나 요구하지
+않습니다. `chromium-native-lifetime-v1`의 최초 지원 경계는 Linux/AArch64,
+ELF64 little-endian, canonical Playwright revision `1228` headless_shell,
+Chromium `149.0.7827.0`입니다. 실제 실행 executable 및 renderer의 로드된
+mapping이 SHA-256
+`b6f53f7e40c3ad6727cb3a12536026dcd93281e5965923752c8130ed53e5e8c4`,
+GNU build ID `afcd146a627911fb30269f995d093903636ed886`, 보존된 versioned
+symbol/argument/clock schema와 agent/host source identity에 일치해야 합니다.
+Version 문자열이나 ELF offset만으로 macOS, 다른 binary 또는 full Chromium을
+지원한다고 선언하지 않습니다. 외부 runtime은 별도로 격리 provision한 Python
+`3.11.2`와 Frida `17.21.0`이며 executable 및 의존 파일 hash를 검증합니다.
+정확한 executable hash, runtime 확인 및 opt-in 재현 명령은
+[suite의 관측 재현 경계](../../tooling/benchmarks/react-app-comparison/README.md#opt-in-exact-native-lifetime-observation)에 있습니다.
+
+Entry navigation 전에 hook을 준비하고 소유한 browser process tree의 새 child는
+resume 전에 독립 hook을 설치한 뒤 CDP로 renderer role을 확인합니다.
+`IdentifiersFactory::RequestId`의 실제 호출, PID/process birth, Resource와 독립
+native Loader birth, CDP target/session/request occurrence가 유일하게 연결되어야
+합니다. Native loader pointer는 CDP `loaderId`가 아닙니다. 아직 pending인
+record에만 같은 loader의 `Cancel` 진입, 그 안의 `HandleError` 진입 및 두 정상
+반환이 원래 cutoff보다 엄격히 이전인 경우 취소를 부여합니다. 검증된 monotonic
+clock/단위가 필요하며 URL·가까운 시각·GC·teardown으로 추론하지 않습니다.
+실제 CDP terminal을 유지하고 원본 observation을 보존합니다. 취소는
+`request-failed`, `canceled:true`로 기존 errorRate의 실패에 포함하며 status,
+body byte, CDP error code 또는 settledTimestamp를 만들지 않습니다.
+
+Native event는 process 안에 buffer하여 event마다 IPC하지 않습니다. Hook 비용을
+측정에서 차감하지 않으며 setup/drain과 별도 observer process 비용은 provenance에
+남기지만 따로 측정하지 않습니다. 기존 throughput 및 `ps` snapshot 뒤,
+BrowserServer close 전에 drain하고 원래 request cutoff를 유지합니다. Native/CDP,
+coverage/process, schema/source hash, host log와 cleanup raw artifact를 fresh output
+root에 보존하고 `verifyTraceFiles`에서 hash·realpath containment·run identity와
+reconciliation replay를 확인합니다. Warmup 및 combined trace에도 적용합니다.
+미지원 환경, late attach, partial hook, event drop, 불완전 반환, script/transport
+오류, drain 이전 renderer 종료, identity ambiguity, 확인되지 않은 child role,
+worker/service-worker coverage는 unavailable/inconclusive입니다. 정상·실패·timeout·
+abort에서 observer session/child/listener를 bounded event wait로 정리하며 실패를
+숨기지 않습니다. 두 기존 headless 진단에는 pending이 없었으므로 36개의 이미
+취소된 native binding은 backend 가능성만 입증합니다. 새 focused runtime도
+missing-terminal 재현이나 최종 성능 PASS가 아니며 Linux 결과로 macOS 대표 환경을
+대체하지 않습니다. 동일 최종 collector의 네 framework/profile before/after 재수집,
+기존 반복·warmup·budget·통계와 historical fail/inconclusive 보존 요구는 유지됩니다.
+
 과거 load-only 데이터는 다른 초기 작업 구간을 수집했고 cold module이 끝나기 전에
 warm을 시작할 수 있었습니다. 보존된 Linux 증거에는 cold script 취소가 있습니다.
 과거 fail/inconclusive는 모두 유지하며, 변경하지 않은 runtime의 before와 최종

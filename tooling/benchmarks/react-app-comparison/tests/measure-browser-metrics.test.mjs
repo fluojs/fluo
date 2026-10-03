@@ -10,6 +10,44 @@ import { gzipSync } from 'node:zlib';
 
 import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, observeDevReadiness, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForCapturedRequests, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
 import { installInitialReadiness, waitForInitialReadiness } from '../src/initial-readiness.mjs';
+import { NATIVE_LIFETIME_IDENTITY, NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA,
+  reconcileNativeLifetime } from '../src/native-lifetime.mjs';
+
+test('native lifetime cancellation preserves the failure denominator and unavailable body bytes', () => {
+  const original = { requestId: '42.3', targetId: 'target', sessionId: 'session', occurrence: 1,
+    frameId: 'frame', loaderId: 'cdp-loader', startedTimestamp: 2, kind: 'request-pending',
+    resourceType: 'script', status: null, unavailable: 'pending' };
+  const binding = { pid: 42, processBirth: '42:100', resource: '0x100', resourceBirth: 1,
+    loader: '0x200', loaderBirth: 2, runId: 'run' };
+  const events = [
+    { event: 'hooks-ready', hooks: 7 }, { event: 'resource-birth' },
+    { event: 'identifier', identifier: '3', observerCall: 1 }, { event: 'loader-birth' },
+    { event: 'cancel-enter', call: 2, thread: 1, parent: null },
+    { event: 'error-enter', call: 3, thread: 1, parent: 2 },
+    { event: 'error-return', call: 3, thread: 1, parent: 2, normal: true },
+    { event: 'cancel-return', call: 2, thread: 1, parent: null, normal: true },
+  ].map((event, index) => ({ ...binding, ns: String(1_000_000_000 + index), seq: index + 1, ...event }));
+  const observation = { schemaVersion: 1, method: 'chromium-native-lifetime-v1',
+    schema: NATIVE_LIFETIME_SCHEMA, identity: NATIVE_LIFETIME_IDENTITY, runtime: NATIVE_LIFETIME_RUNTIME,
+    runId: 'run', captureTimestamp: 3, clock: { native: 'CLOCK_MONOTONIC', unit: 'nanoseconds',
+      cdp: 'Chromium TimeTicks seconds', beforeNs: '2999999999', afterNs: '3000000001' },
+    coverage: { ready: true, complete: true, drained: true, dropped: 0, errors: [],
+      targetId: 'target', sessionId: 'session', processes: [{ pid: 42, processBirth: '42:100',
+        role: 'renderer', authenticated: true, hooks: 7, readyNs: '1000000000', endNs: '4000000000',
+        binarySha256: NATIVE_LIFETIME_IDENTITY.binarySha256, buildId: NATIVE_LIFETIME_IDENTITY.buildId,
+        executedPath: '/browser/headless_shell', loadedPath: '/browser/headless_shell' }] },
+    events, cleanup: { closed: true, detached: true, exitCode: 0, signal: null } };
+  const cdp = [{ name: 'Network.requestWillBeSent', targetId: 'target', sessionId: 'session',
+    data: { requestId: '42.3', frameId: 'frame', loaderId: 'cdp-loader', timestamp: 2 } }];
+  const [canceled] = reconcileNativeLifetime([original], observation, cdp).requests;
+  assert.equal(canceled.kind, 'request-failed');
+  assert.equal(canceled.canceled, true);
+  assert.deepEqual(canceled.cdpObservation, original);
+  assert.equal(summarizeErrorRate([canceled, { status: 200 }, { kind: 'request-pending' }]), 0.5);
+  const sizes = summarizeAssets([canceled]);
+  assert.equal(Object.hasOwn(sizes.metrics, 'transferredJsBytes'), false);
+  assert.ok(sizes.unavailable.transferredJsBytes);
+});
 
 const appRequire = createRequire(new URL('../apps/fluo/package.json', import.meta.url));
 const { build } = await import(appRequire.resolve('vite'));

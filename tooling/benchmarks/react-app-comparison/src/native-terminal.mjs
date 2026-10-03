@@ -95,7 +95,7 @@ export function reconcileNativeTerminals(requests, log, provenance, cdpLedger = 
   });
 }
 
-export async function createNativeCapture(chromium, directory) {
+export async function createNativeCapture(chromium, directory, lifetimeOptions) {
   await mkdir(directory ?? tmpdir(), { recursive: true });
   const captureRoot = await mkdtemp(join(directory ?? tmpdir(), 'native-terminal-'));
   const rawTrace = join(captureRoot, 'network.json');
@@ -108,14 +108,20 @@ export async function createNativeCapture(chromium, directory) {
   const ledger = [];
   let browser;
   let closing;
+  let lifetime;
+  let lifetimeEvidence;
+  let captureTimestamp;
   const close = () => {
     closing ??= (async () => {
       let timer;
-      const deadline = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error('native capture graceful-close deadline')), 10_000);
-      });
       let closeError;
       try {
+        // Drain buffered hooks while the renderer is still alive, after the
+        // driver's throughput and ps samples, using only the original cutoff.
+        if (lifetime) lifetimeEvidence = await lifetime.drain(captureTimestamp, ledger);
+        const deadline = new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('native capture graceful-close deadline')), 10_000);
+        });
         await Promise.race([server.close(), deadline]);
       } catch (error) {
         closeError = error;
@@ -132,20 +138,30 @@ export async function createNativeCapture(chromium, directory) {
   };
   try {
     browser = await chromium.connect(server.wsEndpoint(), { timeout: 10_000 });
+    if (lifetimeOptions?.enabled) {
+      const { createNativeLifetimeObserver } = await import('./native-lifetime.mjs');
+      lifetime = await createNativeLifetimeObserver({ ...lifetimeOptions, directory: captureRoot });
+    }
   } catch (error) {
     await close();
     throw error;
   }
   return {
     browser, ledger, close,
-    async read(captureTimestamp) {
+    get lifetimeIdentity() { return lifetime?.identity; },
+    async prepareLifetime(cdp) { await lifetime?.prepare(browser, child.pid, cdp); },
+    async captureClock(readMetrics) {
+      return lifetime ? lifetime.captureClock(readMetrics) : readMetrics();
+    },
+    async read(timestamp) {
+      captureTimestamp = timestamp;
       await close();
       const raw = await readFile(rawTrace);
       const log = JSON.parse(raw);
       if (!Array.isArray(log.events) || !log.events.length || !log.constants) {
         throw new Error('incomplete native NetLog');
       }
-      return { log, provenance: {
+      return { log, lifetime: lifetimeEvidence, provenance: {
         method: NATIVE_TERMINAL_METHOD, rawTrace,
         sha256: createHash('sha256').update(raw).digest('hex'),
         cdpTrace, cdpSha256: createHash('sha256').update(await readFile(cdpTrace)).digest('hex'),

@@ -82,6 +82,54 @@ requests and pending-at-warm identities. Requests retain loader/request IDs,
 initiators, settlement phase/timestamps and cancellation. Existing raw-trace
 authentication remains required.
 
+Optional production `nativeLifetime` observation is disabled by default.
+In a `run-gate.mjs` config, add
+`{ "nativeLifetime": { "enabled": true, "python": "/opt/fluo-native-debug/bin/python" } }`
+under `measurement`; the default never imports, starts, installs or requires
+Frida/Python. The initial `chromium-native-lifetime-v1` adapter supports only
+Linux/AArch64 ELF64 little-endian canonical Playwright revision `1228`
+headless_shell, Chromium `149.0.7827.0`. The actual executed executable and
+loaded renderer mappings must match SHA-256
+`b6f53f7e40c3ad6727cb3a12536026dcd93281e5965923752c8130ed53e5e8c4`,
+GNU build ID `afcd146a627911fb30269f995d093903636ed886`, the retained versioned
+symbol/argument/clock schema, and agent/host source identities. A version string
+or ELF offsets do not establish macOS, another binary or full Chromium support.
+The external runtime is separately provisioned isolated Python `3.11.2` and
+Frida `17.21.0`, with executable and dependency-file hashes checked.
+The exact executable hash, runtime checks and opt-in reproduction commands are
+in the [suite's observation boundary](../../tooling/benchmarks/react-app-comparison/README.md#opt-in-exact-native-lifetime-observation).
+
+Hooks are ready before entry navigation. Owned browser-tree children receive
+independent hooks before resume; CDP must prove their renderer role. Actual
+`IdentifiersFactory::RequestId` calls, PID/process birth, Resource and independent
+native Loader birth, and CDP target/session/request occurrence must form a unique
+chain. Native loader pointers are not CDP `loaderId`s. Only pending records can
+acquire cancellation from matching `Cancel` entry, its nested `HandleError` entry
+and both normal returns strictly before the original cutoff. Monotonic clock
+units must be verified; URL, nearest-time, GC and teardown inference are excluded.
+Actual CDP terminals and original observations remain intact. Cancellation is
+`request-failed`, `canceled:true`, and a failure in the existing errorRate;
+status, body bytes, CDP error codes and settledTimestamp are not invented.
+
+Native events buffer inside each process without per-event IPC. Hook costs are
+not subtracted; setup/drain and separate observer costs are retained in provenance,
+not separately measured. Drain follows unchanged throughput and `ps` snapshots,
+before BrowserServer close, while preserving the original request cutoff.
+Native/CDP, coverage/process, schema/source hashes, host logs and cleanup raw
+artifacts stay in the fresh output root; `verifyTraceFiles` checks hashes, realpath
+containment, run identity and reconciliation replay, including warmup and combined
+traces. Unsupported environments, late attach, partial hooks, drops, incomplete
+returns, script/transport errors, renderer exit before drain, identity ambiguity,
+unverified child roles and worker/service-worker coverage are unavailable/inconclusive.
+Success, failure, timeout and abort close observer sessions/children/listeners with
+bounded event waits, retaining cleanup failures. The two earlier headless diagnostics
+had no pending requests; their 36 already-canceled native bindings establish backend
+viability only. New focused runtime checks likewise prove neither a missing-terminal
+reproduction nor final performance PASS, and Linux does not replace the macOS
+representative environment. Identical-final-collector before/after recollection
+across four frameworks/profiles, existing samples/warmups/budgets/statistics and
+historical fail/inconclusive preservation remain required.
+
 Historical load-only data sampled a different initial-work window and could trigger
 warm navigation before cold modules finished; retained Linux evidence includes cold
 script cancellations. Preserve all historical fail/inconclusive results. Recollect

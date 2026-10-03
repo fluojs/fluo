@@ -154,6 +154,7 @@ export async function verifyTraceFiles(runs, outputRoot) {
         throw new Error(`incomplete raw trace ${path}`);
       }
       const native = record.artifacts?.nativeTerminalObserver;
+      let passiveCdpLedger;
       if (native) {
         for (const [file, sha256] of [[native.rawTrace, native.sha256], [native.cdpTrace, native.cdpSha256]]) {
           const contained = await realpath(file);
@@ -165,7 +166,23 @@ export async function verifyTraceFiles(runs, outputRoot) {
           if (file === native.rawTrace ? !parsed.constants || !parsed.events?.length : !Array.isArray(parsed.ledger)) {
             throw new Error(`incomplete native trace: ${file}`);
           }
+          if (file === native.cdpTrace) passiveCdpLedger = parsed.ledger;
         }
+      }
+      const lifetime = record.artifacts?.nativeLifetimeObserver;
+      if (lifetime) {
+        if (native && native.captureTimestamp !== lifetime.captureTimestamp) {
+          throw new Error(`native lifetime capture boundary mismatch: ${path}`);
+        }
+        const { verifyNativeLifetimeEvidence } = await import('./native-lifetime.mjs');
+        const unavailable = await verifyNativeLifetimeEvidence(lifetime, record.requests, root, {
+          runId: record.runId, framework: record.framework, profile: record.profile, mode: record.mode,
+        }, passiveCdpLedger);
+        if (unavailable.some((reason) => !record.qualityFailures?.includes(reason))) {
+          throw new Error(`native lifetime inconclusive reasons missing: ${path}`);
+        }
+      } else if (record.requests.some((request) => request.nativeLifetime)) {
+        throw new Error(`native lifetime observer provenance missing: ${path}`);
       }
     } else if (Array.isArray(record.sourceTraces)) {
       if (record.sourceTraces.length !== 2 || !record.correctness) throw new Error(`incomplete combined trace ${path}`);
