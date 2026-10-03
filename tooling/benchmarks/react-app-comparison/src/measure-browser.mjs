@@ -4,7 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';
-import { PROFILES } from './measure.mjs';
+import { PROFILES, sampleEnvironmentHeadroom, summarizeEnvironmentHeadroom } from './measure.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
 import { installInitialReadiness, waitForInitialReadiness } from './initial-readiness.mjs';
 import { createNativeCapture, reconcileNativeTerminals } from './native-terminal.mjs';
@@ -385,6 +385,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         networkChanges.emit('settled');
       });
       try {
+        const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
         const listing = new URL(config.journeys.listing.path, item.url).href;
         await page.goto(listing, { waitUntil: 'load' });
         const initialReadiness = await waitForInitialReadiness(page);
@@ -556,6 +557,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             metrics.rssBytes = rss * 1024;
           }
         }
+        const environmentHeadroom = headroomBefore
+          ? summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) : undefined;
         // Keep the original page lifetime through throughput and post-workload
         // CPU/RSS snapshots. Only the browser-request cutoff precedes them.
         const nativeEvidence = await native.read(captureTimestamp);
@@ -589,6 +592,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             throughput,
             serverPid,
             generator,
+            ...(environmentHeadroom ? { environmentHeadroom } : {}),
             rscResponseWireBytes: summarizeRscBytes(requests),
             rscMethod: 'separate text/x-component responses only; inline RSC data stays in document bytes',
             fullJourneyRequestCount: requests.length,

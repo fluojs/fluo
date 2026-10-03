@@ -29,15 +29,67 @@ export const NATIVE_LIFETIME_HOOKS = Object.freeze([
   { event: 'cancel', offset: 0x400f87c, symbol: '_ZN5blink14ResourceLoader6CancelEv' },
   { event: 'error', offset: 0x400ff50, symbol: '_ZN5blink14ResourceLoader11HandleErrorERKNS_13ResourceErrorE' },
 ]);
+export const NATIVE_SHUTDOWN_HOOKS = Object.freeze([
+  { event: 'normal', offset: 0x3b4bbf0, symbol: '_ZN7content8internal26ChildProcessLauncherHelper33ForceNormalProcessTerminationSyncENS1_7ProcessE' },
+  { event: 'terminate', offset: 0x41704ec, symbol: '_ZNK4base7Process17TerminateInternalEib' },
+]);
 const digest = (raw) => createHash('sha256').update(raw).digest('hex');
 export const NATIVE_LIFETIME_SCHEMA = digest(JSON.stringify({
   version: 1, identity: NATIVE_LIFETIME_IDENTITY, hooks: NATIVE_LIFETIME_HOOKS,
+  shutdownHooks: NATIVE_SHUTDOWN_HOOKS,
   arguments: { resource: 0, loader: 0, loaderResource: 3, observerResource: 6, identifier: 1 },
   clock: 'CLOCK_MONOTONIC nanoseconds', returns: 'Frida onLeave normal',
 }));
 const ns = (value) => typeof value === 'string' && /^(?:0|[1-9][0-9]*)$/u.test(value) ? BigInt(value) : null;
 const cutoffNs = (timestamp) => Number.isFinite(timestamp) && timestamp > 0
   ? BigInt(Math.floor(timestamp * 1e9)) : null;
+
+export function isObservedShutdownExit(exit, observation) {
+  if (exit.exitCodeRaw !== 15 || exit.missing !== false) return false;
+  const lifecycle = observation.lifecycle ?? [];
+  const closes = lifecycle.filter((e) => e.event === 'graceful-close');
+  const results = lifecycle.filter((e) => e.event === 'browser-result');
+  if (closes.length !== 1 || results.length !== 1) return false;
+  const close = closes[0];
+  const result = results[0];
+  if (result.pid !== close.pid || result.exitCode !== 0 || result.signal !== null || result.forcedKill !== false
+    || ns(close.ns) === null || cutoffNs(observation.captureTimestamp) === null
+    || ns(close.ns) <= cutoffNs(observation.captureTimestamp) || ns(exit.ns) === null) return false;
+  const attached = (pid, processBirth) => lifecycle.filter((e) => e.event === 'owned-attach'
+    && e.pid === pid && e.processBirth === processBirth
+    && e.binarySha256 === NATIVE_LIFETIME_IDENTITY.binarySha256).length === 1;
+  if (!attached(close.pid, close.processBirth) || !attached(exit.pid, exit.processBirth)) return false;
+  const events = lifecycle.filter((e) => e.event.startsWith('shutdown-'));
+  if (!events.length || events[0].event !== 'shutdown-ready' || ns(events[0].ns) === null
+    || ns(events[0].ns) >= ns(close.ns)
+    || events.some((e, i) => e.pid !== close.pid || e.processBirth !== close.processBirth
+      || e.runId !== observation.runId || e.seq !== i + 1 || ns(e.ns) === null
+      || i > 0 && ns(e.ns) < ns(events[i - 1].ns))) return false;
+  return events.some((signal) => {
+    if (signal.event !== 'shutdown-signal-enter' || signal.signal !== 15
+      || signal.target?.pid !== exit.pid
+      || exit.processBirth.slice(0, exit.processBirth.lastIndexOf(':')) !== signal.target.processBirth
+      || !['R', 'S', 'D', 'T', 't', 'I'].includes(signal.target.state)) return false;
+    const unique = (event, call) => {
+      const matches = events.filter((e) => e.event === event && e.call === call && e.thread === signal.thread);
+      return matches.length === 1 ? matches[0] : undefined;
+    };
+    const returned = unique('shutdown-signal-return', signal.call);
+    const terminate = unique('shutdown-terminate-enter', signal.parent);
+    const terminated = unique('shutdown-terminate-return', signal.parent);
+    const normal = terminate && unique('shutdown-normal-enter', terminate.parent);
+    const normalized = terminate && unique('shutdown-normal-return', terminate.parent);
+    if (!returned || !terminate || !terminated || !normal || !normalized
+      || returned.result !== 0 || returned.signal !== 15 || returned.parent !== signal.parent
+      || !isDeepStrictEqual(returned.target, signal.target)
+      || terminate.exitCode !== 0 || terminate.wait !== 0 || terminated.result !== 1
+      || terminated.parent !== terminate.parent || terminated.exitCode !== 0 || terminated.wait !== 0
+      || normal.parent !== null || normalized.parent !== null) return false;
+    const ordered = [normal, terminate, signal, returned, terminated, normalized];
+    return ns(close.ns) < ns(normal.ns) && ns(returned.ns) < ns(exit.ns)
+      && ordered.every((e, i) => i === 0 || e.seq > ordered[i - 1].seq && ns(e.ns) >= ns(ordered[i - 1].ns));
+  });
+}
 
 // No nearest time, URL, teardown, pointer absence or GC inference is admissible.
 // Any ambiguity affects the run verdict even when another request can reconcile.
@@ -49,6 +101,9 @@ export function reconcileNativeLifetime(requests, observation, ledger = []) {
     || !isDeepStrictEqual(observation.identity, NATIVE_LIFETIME_IDENTITY)) return fail('unsupported identity/schema');
   if (!observation.runtime || Object.entries(NATIVE_LIFETIME_RUNTIME)
     .some(([key, value]) => !isDeepStrictEqual(observation.runtime[key], value))) return fail('external runtime identity mismatch');
+  if (observation.lifecycle?.some((entry) => entry.event === 'owned-exit'
+    && entry.exitCodeRaw !== null && entry.exitCodeRaw !== 0
+    && !isObservedShutdownExit(entry, observation))) return fail('owned process abnormal exit');
   const cutoff = cutoffNs(observation.captureTimestamp);
   const clock = observation.clock;
   const coverage = observation.coverage;
@@ -192,7 +247,7 @@ export async function createNativeLifetimeObserver(options) {
   const agentSha256 = digest(await readFile(agentPath));
   const hostSha256 = digest(await readFile(hostPath));
   const schema = { schemaVersion: 1, method: NATIVE_LIFETIME_METHOD, schema: NATIVE_LIFETIME_SCHEMA,
-    runId, identity: NATIVE_LIFETIME_IDENTITY, hooks: NATIVE_LIFETIME_HOOKS,
+    runId, identity: NATIVE_LIFETIME_IDENTITY, hooks: NATIVE_LIFETIME_HOOKS, shutdownHooks: NATIVE_SHUTDOWN_HOOKS,
     agentSha256, hostSha256, measurement: options.measurement ?? null };
   await writeFile(schemaTrace, `${JSON.stringify(schema, null, 2)}\n`);
   let host;
@@ -204,6 +259,7 @@ export async function createNativeLifetimeObserver(options) {
   let serial = 0;
   let closePromise;
   let drained = false;
+  let released = false;
   let ready = false;
   let targetId;
   let sessionId;
@@ -227,10 +283,10 @@ export async function createNativeLifetimeObserver(options) {
     pending.set(id, { accept, reject, timer });
     host.stdin.write(`${JSON.stringify({ id, command: name, ...fields })}\n`);
   });
-  const close = () => closePromise ??= (async () => {
+  const close = (browserResult) => closePromise ??= (async () => {
     if (host) {
       try {
-        const reply = await command('close');
+        const reply = await command('close', { browserResult });
         cleanup.detached = reply.detached === true;
       } catch (error) { errors.push(String(error)); }
       host.stdin.end();
@@ -255,6 +311,7 @@ export async function createNativeLifetimeObserver(options) {
       lines?.removeAllListeners('line');
       host.stderr.removeAllListeners('data');
       host.removeAllListeners('error');
+      host.removeAllListeners('exit');
     } else cleanup = { closed: true, detached: false, exitCode: null, signal: null };
     rejectPending(new Error('native observer closed'));
     await browserCdp?.detach().catch((error) => { errors.push(String(error)); });
@@ -263,7 +320,8 @@ export async function createNativeLifetimeObserver(options) {
   })();
   const abort = () => { errors.push('native observation aborted'); void close(); };
   return {
-    runId, close,
+    runId, close, isObservedShutdownExit,
+    async beginClose() { if (ready && released && !closePromise) await command('begin-close'); },
     get identity() { return { targetId, sessionId }; },
     async prepare(browser, browserPid, cdp) {
       try {
@@ -325,7 +383,7 @@ export async function createNativeLifetimeObserver(options) {
       } catch (error) { errors.push(String(error)); return readMetrics(); }
     },
     async drain(captureTimestamp, ledger) {
-      if (ready && !closePromise) {
+      if (ready && !closePromise && !released) {
         try {
           const { processInfo } = await browserCdp.send('SystemInfo.getProcessInfo');
           const { targetInfos } = await browserCdp.send('Target.getTargets');
@@ -338,8 +396,17 @@ export async function createNativeLifetimeObserver(options) {
           drained = reply.drained === true;
           coverageEnd = reply.ns;
         } catch (error) { errors.push(String(error)); }
+        try {
+          const reply = await command('release');
+          cleanup.detached = reply.detached === true;
+        } catch (error) { errors.push(String(error)); }
+        released = true;
+        await browserCdp?.detach().catch((error) => { errors.push(String(error)); });
+        browserCdp = undefined;
       }
-      await close();
+      // Exit subscriptions and the Python host stay owned until BrowserServer
+      // terminates. The caller then closes and replays this same cutoff/ledger.
+      await writeFile(logTrace, `${JSON.stringify({ schemaVersion: 1, runId, messages, stderr, errors, cleanup }, null, 2)}\n`);
       const cdpTrace = resolve(directory, 'lifetime-cdp.json');
       const coverageTrace = resolve(directory, 'lifetime-coverage.json');
       const coverage = { ready, complete: ready && !errors.length, drained,
@@ -363,7 +430,7 @@ export async function createNativeLifetimeObserver(options) {
       }
       return { observation, provenance: { method: NATIVE_LIFETIME_METHOD, schema: NATIVE_LIFETIME_SCHEMA,
         runId, measurement: schema.measurement, captureTimestamp, references,
-        overhead: 'buffered native hooks included; no per-event IPC or cost subtraction; setup/drain and separate observer costs retained, not separately measured' } };
+        overhead: 'buffered request hooks and per-owned-session agent residency until process exit included; no per-request IPC during measurement; post-drain shutdown events use IPC; no cost subtraction; setup/drain and separate observer costs retained, not separately measured' } };
     },
   };
 }
@@ -394,6 +461,7 @@ export async function verifyNativeLifetimeEvidence(provenance, requests, outputR
   if (schema.schema !== NATIVE_LIFETIME_SCHEMA || schema.method !== NATIVE_LIFETIME_METHOD
     || !isDeepStrictEqual(schema.identity, NATIVE_LIFETIME_IDENTITY)
     || !isDeepStrictEqual(schema.hooks, NATIVE_LIFETIME_HOOKS)
+    || !isDeepStrictEqual(schema.shutdownHooks, NATIVE_SHUTDOWN_HOOKS)
     || schema.agentSha256 !== digest(await readFile(new URL('./native-lifetime-agent.js', import.meta.url)))
     || schema.hostSha256 !== digest(await readFile(new URL('./native-lifetime-host.py', import.meta.url)))
     || !isDeepStrictEqual(records.coverage.coverage, records.native.coverage)

@@ -115,6 +115,146 @@ profile receipts through `src/gate.mjs`. A single profile is not a gate pass.
 
 ## Frozen decision policy
 
+### Explicit Linux server-only invocation
+
+The historical macOS ARM64 Apple M4 Pro baseline, including Node 24.20.0,
+remains unchanged. The existing representative GitHub workflow still requires
+`self-hosted, macOS, ARM64, react-app-performance-m4-pro`; it does not dispatch
+this Linux path. Ordinary CI/macOS invocations keep the default disabled native
+lifetime observer and do not require Docker, Python or Frida.
+
+#3885's new representative path explicitly selects a running Linux ARM64
+container on the same Apple M4 Pro host: OrbStack kernel
+`7.0.14-orbstack-00380-ga7e0a2dc9535`, image reference
+`fluo-verification:sha256-81a185cd17d652f2d9fe7dbbaad1647262d17094e49eac533e7de30d2b37293e`,
+actual image ID
+`sha256:f240abbe0c9fadb08df3b4f8b409111f5fd87733dfade0c69d6dfd839682d56b`,
+Node `v24.21.0`/V8 `13.6.233.17-node.53`, 12 logical CPUs and
+8,392,974,336 bytes of shared VM memory, without an additional per-container
+CPU quota, cpuset or memory limit. These are observed shared capacity, not a
+dedicated reservation. Coordinate an exclusive timing window before invoking it.
+The environment choice was lead best judgment after an unanswered question,
+not an affirmative user selection or a budget waiver.
+
+Prepare the dependencies and production builds separately in that environment.
+The selected container must see the checkout at the same absolute path, with
+the actual provisioned SDK and browser available to that checkout. Derive a
+local config from the unchanged tracked defaults, explicitly enabling the
+observer with the provisioned absolute Python path:
+
+```sh
+# From the suite directory; replace the Python locator with the actual provisioned path.
+node --input-type=module -e '
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+const config = JSON.parse(await readFile("config/representative.json", "utf8"));
+config.measurement.nativeLifetime = { enabled: true, python: process.argv[1] };
+await mkdir("../../../.omo/verification/issue-3885", { recursive: true });
+await writeFile("../../../.omo/verification/issue-3885/server-environment-config.json",
+  JSON.stringify(config, null, 2) + "\n");
+' /absolute/provisioned/python
+node src/run-server-only.mjs \
+  --config ../../../.omo/verification/issue-3885/server-environment-config.json \
+  --output-dir "$(pwd)/results/$(git rev-parse HEAD)/before" \
+  --isolated-container <running-container>
+```
+
+The host launcher observes actual Docker info/inspect, selects that running
+container and transports a fresh invocation to its Node executable. The guest
+authenticates OS/kernel, image/allocation, Node and pnpm executables,
+Playwright/TypeScript SDK implementations, the actually launched browser,
+Python/Frida executable/dependency hashes, collector/observer bytes and cgroup
+allocation. Provisioning after image creation is authenticated separately from
+the image ID. An environment JSON supplied as preparation metadata is not a
+live invocation. Missing, mismatched, unsupported or tampered bindings cannot
+pass collection or server evaluation.
+
+`chromium-native-lifetime-v1` is opt-in, supported only for Linux ARM64
+revision 1228 `headless_shell` `149.0.7827.0`, binary SHA-256
+`b6f53f7e40c3ad6727cb3a12536026dcd93281e5965923752c8130ed53e5e8c4`,
+build ID `afcd146a627911fb30269f995d093903636ed886`, ELF64-LE-AArch64,
+Python `3.11.2` and Frida `17.21.0` with the frozen runtime hashes and
+versioned hook/agent/host schema. An unsupported host, including macOS for this
+native observer, is unavailable/nonzero/inconclusive when requested; it is
+not a fallback native PASS.
+
+The common production observer drains/stops request hooks at the original cutoff
+and disables child gating, but retains Frida sessions/agents and pidfd exit
+subscriptions through natural owned-process exit. Live-agent detach/unload does
+not precede BrowserServer close. An eternalized inert script prevents live-agent
+unload if failed/aborted preparation forces bounded observer-child termination.
+Resident memory/runtime and post-drain shutdown IPC costs are not subtracted.
+Main exit/error/disconnect and available descendant wait statuses remain raw
+evidence; known abnormal exits are rejected before NetLog parsing. Reaped statuses
+stay missing, not zero; Python exit 0 or main exit 0 does not prove every
+descendant exited normally. Raw status 15 is classified as intentional only when
+the authenticated Chromium normal-shutdown caller, live owned target PID/start
+identity, successful SIGTERM send, explicit-close ordering and normal main exit
+all agree. Zombie targets, failed sends, missing callers and unknown causes are
+not admitted; status 15 and missing statuses are never rewritten to zero.
+
+Retain `provenance.json`, each `environment-<invocation>.json`, profile configs,
+receipts, production/warmup raw traces, native artifacts, socket observations
+and `server-verdict.json` together. Runner and profile receipts bind the same
+actual environment identity; socket samples retain the runner binding and
+passive headroom alongside their separate loopback semantics. Production raw
+traces retain passive generator/ambient CPU headroom without changing the
+original browser cutoff, throughput, post-throughput `ps` CPU/RSS sampling
+or lifecycle. Buffered body-size/concurrency evidence remains a separate
+experiment, not a seventh server metric.
+
+For the final-runtime `after`, pass **both** comparison IDs from the `before`
+runner's top-level `server-verdict.json.environmentBinding`:
+
+```sh
+node src/run-server-only.mjs \
+  --config ../../../.omo/verification/issue-3885/server-environment-config.json \
+  --output-dir "$(pwd)/results/$(git rev-parse HEAD)/after" \
+  --isolated-container <running-container> \
+  --environment-identity <before-identitySha256> \
+  --environment-config-identity <before-configSha256>
+```
+
+Comparison excludes invocation IDs, PIDs, absolute product/tool locators and
+product HEAD changes, while retaining them in provenance. Tool/collector
+content, resource allocation and frozen configuration remain comparable
+identities. Replay calls `evaluateServerEvidence(baseline, receipts, outputRoot)`,
+which authenticates aggregate environment bindings and complete raw/native
+traces before filtering the unchanged evaluator to the six server metrics.
+Do not pair a historical macOS observation with a Linux gain or relabel the
+historical Linux FAIL/inconclusive results. Fresh before/after recollection
+on the same integrated collector is still required; an environment probe
+is not performance acceptance.
+Product/source/build provenance stays stable and separate from authenticated
+top-level invocation bindings. Both runner and measurement child select
+`entrypoints: ["run-server-only.mjs"]` through the common capture API. The child
+receives that selection and the parent binding over its finite invocation
+transport, authenticates it and compares the actual 15-source environment
+identity before driver work. The shared capture/replay/live checks cover the
+12 common sources plus `run-server-only.mjs`, `server-measurement.mjs` and
+`socket-shell.mjs`; strict `gate.mjs` provenance comparison is unchanged.
+The isolated host launcher forwards SIGINT/SIGTERM through an invocation-owned
+Linux Python subreaper, requires complete descendant reaping and rechecks the
+host allocation in `finally`. This additional Python requirement belongs only
+to explicit isolated Linux mode, not the ordinary disabled path.
+
+The earlier common-environment four-warmup probe retained a truncated NetLog
+and incomplete coverage after browser closure. Its cause remains unresolved;
+a later DEBUG zero-warmup small-fixture pass does not establish warmup
+stability. Keep such failures nonzero/inconclusive, without JSON repair,
+sleep/poll flushing or reducing the frozen acceptance warmups.
+An independent source-pinned reproduction later observed main-browser SIGSEGV
+after Frida detach and before `server.close`; its actual network-service writer
+closed without a JSON footer. Delayed flushing does not explain that reproduction.
+Resident-agent diagnostic interventions completed their bounded rows, but are
+not a production fix or stability proof. A separate zygote crash also occurred
+with complete JSON and main exit 0, so neither proves safe descendant teardown.
+The original historical capture lacked browser exit evidence; do not assign
+the reproduced cause retroactively or reuse diagnostic results as acceptance.
+The subsequent common production correction adopts the resident teardown boundary
+and authenticated shutdown observation together. Bounded fixture/replay success
+on new source does not erase historical failures or substitute for full paired
+performance acceptance, long-lived stability or independent reviewer PASS.
+
 [`baseline.json`](./baseline.json) fixes prospective numeric absolute budgets and
 per-competitor relative bands for all 22 mandatory metrics on four named profiles:
 desktop and emulated tablet-class CPU/network, each with native/default caching and

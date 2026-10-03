@@ -141,6 +141,121 @@ makes the run inconclusive without fabricating byte counts or a request failure.
 
 ## Reproducing evidence
 
+### Explicit Linux server-only environment
+
+The historical macOS ARM64 Apple M4 Pro/Node 24.20.0 baseline is unchanged.
+The current representative GitHub workflow still requires
+`self-hosted, macOS, ARM64, react-app-performance-m4-pro` labels and does not
+dispatch the new Linux path. Ordinary CI/macOS uses the default disabled native
+lifetime observer without requiring Docker, Python or Frida.
+
+#3885 explicitly selects an actual running Linux ARM64 container on the same
+Apple M4 Pro host. The frozen environment is OrbStack kernel
+`7.0.14-orbstack-00380-ga7e0a2dc9535`, image reference
+`fluo-verification:sha256-81a185cd17d652f2d9fe7dbbaad1647262d17094e49eac533e7de30d2b37293e`,
+actual image ID
+`sha256:f240abbe0c9fadb08df3b4f8b409111f5fd87733dfade0c69d6dfd839682d56b`,
+Node `v24.21.0`/V8 `13.6.233.17-node.53`, 12 logical CPUs and
+8,392,974,336 bytes of shared VM memory. There is no additional per-container
+CPU quota, cpuset or memory limit. This is observed shared capacity, not a
+dedicated reservation. The lead selected it by best judgment after the user
+question expired unanswered, not affirmative user selection or a budget waiver.
+
+Coordinate an exclusive timing window and prepare dependencies and production
+builds in that environment first. The container must see the checkout at the
+same absolute path and use its actual provisioned SDK and browser.
+[The suite README's actual command](../../tooling/benchmarks/react-app-comparison/README.md#explicit-linux-server-only-invocation)
+derives a local config from the unchanged `config/representative.json`, explicitly
+sets `measurement.nativeLifetime = { enabled: true, python: "/absolute/provisioned/python" }`,
+then uses this runner:
+
+```sh
+node src/run-server-only.mjs \
+  --config ../../../.omo/verification/issue-3885/server-environment-config.json \
+  --output-dir "$(pwd)/results/$(git rev-parse HEAD)/before" \
+  --isolated-container <running-container>
+```
+
+Host Docker info/inspect selects the running container and transports a fresh
+invocation. The guest authenticates OS/kernel, image/allocation, actual Node/pnpm
+executables, Playwright/TypeScript SDK implementations, the launched browser,
+Python/Frida executable/dependency hashes, collector/observer/schema and cgroup
+allocation. SDK provisioning after image creation is verified separately from
+the image ID. Preparation JSON does not replace the live invocation.
+Missing/mismatched/tampered/unsupported bindings cannot pass collection or server
+evaluation.
+
+`chromium-native-lifetime-v1` is opt-in. Support is limited to Linux ARM64
+revision 1228 `headless_shell` `149.0.7827.0`, binary SHA-256
+`b6f53f7e40c3ad6727cb3a12536026dcd93281e5965923752c8130ed53e5e8c4`,
+build ID `afcd146a627911fb30269f995d093903636ed886`, ELF64-LE-AArch64,
+Python `3.11.2`/Frida `17.21.0` frozen hashes and versioned hook/agent/host schema.
+Requested observation on an unsupported host, including macOS, remains
+unavailable/nonzero/inconclusive rather than falling back to a native PASS.
+
+The common production observer drains/stops request hooks at the original cutoff
+and disables child gating, but retains Frida sessions/agents and pidfd exit
+subscriptions through natural owned-process exit. Live-agent detach/unload does
+not precede BrowserServer close. An eternalized inert script prevents live-agent
+unload if failed/aborted preparation forces bounded observer-child termination.
+Resident memory/runtime and post-drain shutdown IPC costs are not subtracted.
+Main exit/error/disconnect and available descendant wait statuses remain raw
+evidence; known abnormal exits are rejected before NetLog parsing. Reaped statuses
+stay missing, not zero; Python exit 0 or main exit 0 does not prove every
+descendant exited normally. Raw status 15 is classified as intentional only when
+the authenticated Chromium normal-shutdown caller, live owned target PID/start
+identity, successful SIGTERM send, explicit-close ordering and normal main exit
+all agree. Zombie targets, failed sends, missing callers and unknown causes are
+not admitted; status 15 and missing statuses are never rewritten to zero.
+
+Runner provenance, profile receipts, production/warmup raw traces and separate
+socket observations retain the same actual environment binding.
+`evaluateServerEvidence` invokes common environment and raw/native trace
+authentication before filtering the original evaluator to the six server
+metrics. Passive headroom adds generator/ambient CPU observations without
+changing original sampling, browser cutoff, throughput or subsequent `ps`
+CPU/RSS sampling and lifecycle. Sockets remain native loopback, without browser
+profile emulation; buffered size/concurrency evidence stays an independent
+experiment.
+
+For after, pass **both** `--environment-identity <identitySha256>` and
+`--environment-config-identity <configSha256>` from the before runner's
+top-level `server-verdict.json.environmentBinding`. Comparison excludes run IDs/PIDs, absolute
+product/tool locators and product HEAD changes while retaining their provenance;
+actual tool/collector content, allocation and frozen config are not excluded.
+Keep the entire environment record, profile config, receipt, raw/native traces,
+socket files and verdict together for replay. Do not pair historical macOS with
+new Linux gains or reclassify historical Linux FAIL/inconclusive results.
+Fresh before/after recollection with the same final collector is still required;
+an environment probe is not performance acceptance.
+Stable product/source/build provenance is separate from authenticated top-level
+invocation bindings. Runner and measurement child both select the same
+`entrypoints: ["run-server-only.mjs"]` common capture boundary: 12 common sources
+plus the runner, server measurement and socket-shell sources. The child receives
+the selection and parent binding over invocation transport and authenticates/
+compares the actual environment before driver work. Strict `gate.mjs` is unchanged.
+Explicit isolated mode forwards host SIGINT/SIGTERM through an invocation-owned
+Linux Python subreaper, requires descendant reaping and rechecks allocation in
+`finally`; ordinary disabled CI/macOS gains no Python requirement.
+
+The earlier common-environment four-warmup probe retained a truncated NetLog and
+incomplete coverage after browser closure; its cause is unresolved. A later
+DEBUG/zero-warmup small-fixture pass does not prove warmup stability. Preserve
+failures as nonzero/inconclusive without JSON repair, sleep/poll flushing or
+reducing frozen acceptance warmups.
+An independent source-pinned reproduction observed main-browser SIGSEGV after
+Frida detach and before `server.close`, with the actual network-service writer
+closed without a JSON footer. Delayed flushing does not explain that reproduction.
+Resident-agent diagnostic rows are not a production fix or stability proof.
+A separate zygote crash occurred despite complete JSON and main exit 0; neither
+proves safe descendant teardown. The original historical capture lacked browser
+exit evidence, so do not assign the reproduced cause retroactively or reuse
+diagnostic results as performance acceptance.
+The subsequent common production correction adopts the resident teardown boundary
+and authenticated shutdown observation together. Bounded fixture/replay success
+on new source does not erase historical failures or substitute for full paired
+performance acceptance, long-lived stability or independent reviewer PASS.
+
 Use the exact frozen-lockfile install, build, browser, measurement, and evaluation
 commands recorded in the [suite README](../../tooling/benchmarks/react-app-comparison/README.md).
 After those installs and builds, run the deterministic, untimed correctness

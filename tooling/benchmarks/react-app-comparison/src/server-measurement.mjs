@@ -1,11 +1,19 @@
 import { spawn } from 'node:child_process';
+import { readFile, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { readMeasurementReceipt } from './run-gate.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
 import { evaluateEvidence } from './gate.mjs';
+import { captureIsolatedEnvironment, collectMeasurements, readIsolatedInvocation,
+  verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from './measure.mjs';
 
 export async function evaluateServerEvidence(baseline, receipts, outputRoot) {
+  for (const receipt of receipts) await verifyMeasurementEnvironment(receipt, outputRoot);
+  await verifyTraceFiles(receipts.flatMap((receipt) => [
+    ...receipt.runs, ...(receipt.warmups ?? []),
+  ]), outputRoot);
   const serverMetrics = [
     'coldTtfbMs', 'warmTtfbMs', 'throughputRequestsPerSecond',
     'errorRate', 'cpuPercent', 'rssBytes',
@@ -19,8 +27,8 @@ export async function evaluateServerEvidence(baseline, receipts, outputRoot) {
 }
 
 export async function runServerMeasurement(configPath, receiptPath,
-  measurementScript = fileURLToPath(new URL('./measure.mjs', import.meta.url)),
-  { signal } = {}) {
+  measurementScript = fileURLToPath(import.meta.url),
+  { signal, invocation } = {}) {
   let exitCode;
   let child;
   let onAbort;
@@ -28,9 +36,9 @@ export async function runServerMeasurement(configPath, receiptPath,
   try {
     const receipt = await readMeasurementReceipt(() => new Promise((resolve, reject) => {
       child = spawn(process.execPath, [measurementScript,
-        '--config', configPath, '--output', receiptPath], {
+        '--config', configPath, '--output', receiptPath, ...(invocation ? ['--isolated-guest'] : [])], {
         cwd: fileURLToPath(new URL('../', import.meta.url)),
-        stdio: 'inherit',
+        stdio: invocation ? ['pipe', 'inherit', 'inherit'] : 'inherit',
         detached: true,
       });
       onAbort = () => {
@@ -42,8 +50,9 @@ export async function runServerMeasurement(configPath, receiptPath,
         exitCode = code;
         if (signal?.aborted) reject(signal.reason);
         else if (code === 0) resolve();
-        else reject(Object.assign(new Error(`measure.mjs exited ${code ?? exitSignal}`), { code }));
+        else reject(Object.assign(new Error(`server measurement exited ${code ?? exitSignal}`), { code }));
       });
+      if (invocation) child.stdin.end(JSON.stringify(invocation));
     }), receiptPath);
     signal?.throwIfAborted();
     return { receipt, exitCode };
@@ -51,4 +60,43 @@ export async function runServerMeasurement(configPath, receiptPath,
     if (onAbort) signal?.removeEventListener('abort', onAbort);
     if (child) await stopOwnedProcess(child);
   }
+}
+
+async function main() {
+  const flags = process.argv.slice(2);
+  const invocation = await readIsolatedInvocation(flags);
+  if (!flags.includes('--config') || !flags.includes('--output')) {
+    throw new TypeError('usage: node src/server-measurement.mjs --config <JSON> --output <JSON>');
+  }
+  const config = JSON.parse(await readFile(flags[flags.indexOf('--config') + 1], 'utf8'));
+  const output = resolve(flags[flags.indexOf('--output') + 1]);
+  if (invocation) {
+    config.environmentBinding = await captureIsolatedEnvironment(config, invocation, dirname(output), {
+      entrypoints: invocation.collectorEntrypoints,
+    });
+    await verifyEnvironmentBinding(invocation.parentEnvironmentBinding, dirname(output));
+    if (config.environmentBinding.identitySha256 !== invocation.parentEnvironmentBinding.identitySha256) {
+      throw new Error('environment binding server child/runner mismatch');
+    }
+    config.isolatedRepresentative = true;
+  } else if (config.isolatedRepresentative || config.environmentBinding) {
+    throw new Error('isolated representative requires live host launcher');
+  }
+  const { createBrowserDriver } = await import('./measure-browser.mjs');
+  const driver = await createBrowserDriver(config);
+  let receipt;
+  try {
+    receipt = await collectMeasurements(config, driver, join(dirname(output), 'traces'));
+  } finally { await driver.close(); }
+  await verifyMeasurementEnvironment(receipt, dirname(output));
+  await verifyTraceFiles([...receipt.runs, ...receipt.warmups], dirname(output));
+  await writeFile(output, `${JSON.stringify(receipt, null, 2)}\n`);
+  if (receipt.runs.some((run) => run.correctness !== 'pass')) process.exitCode = 1;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }

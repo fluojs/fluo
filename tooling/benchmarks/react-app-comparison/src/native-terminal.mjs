@@ -106,6 +106,23 @@ export async function createNativeCapture(chromium, directory, lifetimeOptions) 
   });
   const child = server.process();
   const ledger = [];
+  const lifecycle = [];
+  let processError;
+  let exitResolve;
+  const exited = new Promise((accept) => { exitResolve = accept; });
+  const onExit = (code, signal) => {
+    lifecycle.push({ event: 'exit', code, signal });
+    exitResolve();
+  };
+  const onError = (error) => {
+    processError = error;
+    lifecycle.push({ event: 'error', error: String(error) });
+    exitResolve();
+  };
+  const onDisconnected = () => { lifecycle.push({ event: 'disconnected' }); };
+  child.on('exit', onExit);
+  child.on('error', onError);
+  if (child.exitCode !== null || child.signalCode !== null) onExit(child.exitCode, child.signalCode);
   let browser;
   let closing;
   let lifetime;
@@ -115,21 +132,56 @@ export async function createNativeCapture(chromium, directory, lifetimeOptions) 
     closing ??= (async () => {
       let timer;
       let closeError;
+      let forcedKill = false;
       try {
         // Drain buffered hooks while the renderer is still alive, after the
         // driver's throughput and ps samples, using only the original cutoff.
         if (lifetime) lifetimeEvidence = await lifetime.drain(captureTimestamp, ledger);
+        if (lifetime) await lifetime.beginClose();
         const deadline = new Promise((_, reject) => {
           timer = setTimeout(() => reject(new Error('native capture graceful-close deadline')), 10_000);
         });
-        await Promise.race([server.close(), deadline]);
+        await Promise.race([(async () => { await server.close(); await exited; })(), deadline]);
       } catch (error) {
         closeError = error;
-        await server.kill();
+        if (child.exitCode === null && child.signalCode === null) {
+          forcedKill = true;
+          try {
+            await server.kill();
+            let killTimer;
+            try {
+              await Promise.race([exited, new Promise((_, reject) => {
+                killTimer = setTimeout(() => reject(new Error('native browser kill-exit deadline')), 5_000);
+              })]);
+            } finally { clearTimeout(killTimer); }
+          } catch (killError) { lifecycle.push({ event: 'kill-error', error: String(killError) }); }
+        }
       } finally {
         clearTimeout(timer);
-        await browser?.close();
-        await writeFile(cdpTrace, `${JSON.stringify({ method: NATIVE_TERMINAL_METHOD, ledger }, null, 2)}\n`);
+        try { await browser?.close(); } catch (error) { closeError ??= error; }
+        if (lifetime) {
+          try {
+            await lifetime.close({ pid: child.pid, exitCode: child.exitCode,
+              signal: child.signalCode, forcedKill });
+            lifetimeEvidence = await lifetime.drain(captureTimestamp, ledger);
+          } catch (error) { closeError ??= error; }
+        }
+        child.removeListener('exit', onExit);
+        child.removeListener('error', onError);
+        browser?.removeListener('disconnected', onDisconnected);
+        const cleanup = { pid: child.pid, exitCode: child.exitCode, signalCode: child.signalCode,
+          closed: child.exitCode !== null || child.signalCode !== null };
+        await writeFile(cdpTrace, `${JSON.stringify({ method: NATIVE_TERMINAL_METHOD, ledger,
+          cleanup, lifecycle, ownedLifecycle: lifetimeEvidence?.observation.lifecycle ?? [] }, null, 2)}\n`);
+      }
+      const abnormal = lifetimeEvidence?.observation.lifecycle.find((entry) =>
+        entry.event === 'owned-exit' && entry.exitCodeRaw !== null && entry.exitCodeRaw !== 0
+        && !lifetime.isObservedShutdownExit(entry, lifetimeEvidence.observation));
+      if (processError) closeError ??= processError;
+      if (!forcedKill && (child.signalCode !== null || child.exitCode !== null && child.exitCode !== 0)) {
+        closeError = new Error(`native browser abnormal exit: ${child.exitCode}/${child.signalCode}`);
+      } else if (abnormal) {
+        closeError ??= new Error(`native owned process abnormal exit: ${abnormal.pid}/${abnormal.exitCodeRaw}`);
       }
       if (closeError) throw closeError;
       if (child.exitCode === null && child.signalCode === null) throw new Error('native browser process still live');
@@ -138,12 +190,13 @@ export async function createNativeCapture(chromium, directory, lifetimeOptions) 
   };
   try {
     browser = await chromium.connect(server.wsEndpoint(), { timeout: 10_000 });
+    browser.on('disconnected', onDisconnected);
     if (lifetimeOptions?.enabled) {
       const { createNativeLifetimeObserver } = await import('./native-lifetime.mjs');
       lifetime = await createNativeLifetimeObserver({ ...lifetimeOptions, directory: captureRoot });
     }
   } catch (error) {
-    await close();
+    await close().catch((cleanupError) => { error.cause ??= cleanupError; });
     throw error;
   }
   return {

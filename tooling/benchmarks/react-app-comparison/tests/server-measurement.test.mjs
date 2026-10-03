@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,67 @@ import { promisify } from 'node:util';
 import { verifyTraceFiles } from '../src/measure.mjs';
 import { evaluateServerEvidence, runServerMeasurement } from '../src/server-measurement.mjs';
 import { METRICS } from '../src/evaluate.ts';
+
+test('server-only evaluation authenticates isolated aggregate before metric filtering', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-server-environment-'));
+  try {
+    await assert.rejects(evaluateServerEvidence({ profiles: {}, policy: {} }, [{
+      isolatedRepresentative: true, profile: 'desktop-native', mode: 'native',
+      provenance: {}, runs: [], warmups: [],
+    }], directory), /environment binding/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('server-only CLI reads derived config and refuses isolated metadata without live launcher', async () => {
+  const suite = new URL('../', import.meta.url);
+  const output = new URL(`results/environment-validation-${randomUUID()}`, suite);
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-server-environment-'));
+  try {
+    const config = JSON.parse(await readFile(new URL('config/representative.json', suite), 'utf8'));
+    config.measurement.isolatedRepresentative = true;
+    const path = join(directory, 'config.json');
+    await writeFile(path, JSON.stringify(config));
+    await assert.rejects(promisify(execFile)(process.execPath, [
+      'src/run-server-only.mjs', '--config', path, '--output-dir', output.pathname,
+    ], { cwd: suite }), (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stderr, /isolated representative requires live host launcher/u);
+      assert.equal(error.stdout, '');
+      return true;
+    });
+  } finally {
+    await rm(output, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('server measurement propagates fresh guest invocation without changing config bytes', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-server-environment-'));
+  try {
+    const configPath = join(directory, 'config.json');
+    const receiptPath = join(directory, 'receipt.json');
+    const script = join(directory, 'invocation.mjs');
+    const configBytes = '{"profile":"desktop-native","mode":"native","nativeLifetime":{"enabled":true}}';
+    const invocation = {
+      method: 'isolated-linux-representative-v1', invocationId: 'runner-profile-production',
+      parentInvocationId: 'runner', host: { raw: { inspection: 'live', information: 'live' } },
+      collectorEntrypoints: ['run-server-only.mjs'],
+      parentEnvironmentBinding: { identitySha256: 'runner-environment' },
+    };
+    await writeFile(configPath, configBytes);
+    await writeFile(script, `import { readFile, writeFile } from 'node:fs/promises';
+let raw = '';
+for await (const chunk of process.stdin) raw += chunk;
+await writeFile(process.argv[process.argv.indexOf('--output') + 1], JSON.stringify({
+  invocation: JSON.parse(raw), guest: process.argv.includes('--isolated-guest'),
+  config: await readFile(process.argv[process.argv.indexOf('--config') + 1], 'utf8'),
+}));`);
+    const result = await runServerMeasurement(configPath, receiptPath, script, { invocation });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(result.receipt, { invocation, guest: true, config: configBytes });
+    assert.equal(await readFile(configPath, 'utf8'), configBytes);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 for (const mutation of ['metrics', 'provenance']) {
   test(`server-only evaluation rejects mismatched raw ${mutation} before filtering`, async () => {
@@ -123,7 +184,7 @@ test('a failed server subprocess without a receipt preserves its exit rather tha
       await writeFile(script, 'process.exitCode = 1;');
       // When / Then: failure includes the subprocess exit and retains the missing-file cause.
       await assert.rejects(runServerMeasurement(join(directory, 'config.json'), receipt, script), (error) => {
-        assert.match(error.message, /measure\.mjs exited 1/u);
+        assert.match(error.message, /server measurement exited 1/u);
         assert.equal(error.cause?.code, 'ENOENT');
         assert.equal(error.cause?.path, receipt);
         return true;

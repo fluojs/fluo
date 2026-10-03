@@ -6,7 +6,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
-import { verifyTraceFiles } from './measure.mjs';
+import { captureIsolatedEnvironment, launchIsolatedInvocation, readIsolatedInvocation,
+  requireEnvironmentPairIdentity, sampleEnvironmentHeadroom, summarizeEnvironmentHeadroom,
+  verifyMeasurementEnvironment, verifyTraceFiles } from './measure.mjs';
 import { startServers, stopServers } from './run-gate.mjs';
 import { evaluateServerEvidence, runServerMeasurement } from './server-measurement.mjs';
 import { readSocketShell } from './socket-shell.mjs';
@@ -15,14 +17,28 @@ const exec = promisify(execFile);
 const suite = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const root = resolve(suite, '../../..');
 const args = process.argv.slice(2);
+for (const flag of ['--config', '--output-dir']) {
+  if (args.includes(flag)) {
+    const index = args.indexOf(flag) + 1;
+    if (!args[index]) throw new TypeError(`${flag} requires a path`);
+    args[index] = resolve(args[index]);
+  }
+}
+if (await launchIsolatedInvocation(fileURLToPath(import.meta.url), args)) process.exit();
+const invocation = await readIsolatedInvocation(args);
 const output = resolve(args[args.indexOf('--output-dir') + 1] ?? '');
-if (!args.includes('--output-dir') || !output.startsWith(`${suite}/results/`)) {
-  throw new TypeError('usage: node src/run-server-only.mjs --output-dir results/<exact-head>/<before-or-after>');
+if (!args.includes('--output-dir') || (!invocation && !output.startsWith(`${suite}/results/`))) {
+  throw new TypeError('usage: node src/run-server-only.mjs [--config <derived JSON>] --output-dir results/<exact-head>/<before-or-after> [--isolated-container <running-container>]');
 }
 await mkdir(output, { recursive: true });
 if ((await readdir(output)).length) throw new Error(`Evidence output must start empty: ${output}`);
 
-const config = JSON.parse(await readFile(join(suite, 'config/representative.json'), 'utf8'));
+const configPath = args.includes('--config') ? args[args.indexOf('--config') + 1]
+  : join(suite, 'config/representative.json');
+const config = JSON.parse(await readFile(configPath, 'utf8'));
+if (!invocation && (config.measurement?.isolatedRepresentative || config.measurement?.environmentBinding)) {
+  throw new Error('isolated representative requires live host launcher');
+}
 const baselineText = await readFile(join(suite, 'baseline.json'), 'utf8');
 const baseline = JSON.parse(baselineText);
 const requestedProfile = args.includes('--profile') ? args[args.indexOf('--profile') + 1] : undefined;
@@ -38,7 +54,7 @@ const [{ stdout: head }, { stdout: dirty }, { stdout: tracked }] = await Promise
     'tooling/benchmarks/react-app-comparison/fixture'],
   { cwd: root }),
 ]);
-if (!output.startsWith(`${suite}/results/${head.trim()}/`)) {
+if (!invocation && !output.startsWith(`${suite}/results/${head.trim()}/`)) {
   throw new Error(`Output root must name the checked-out head ${head.trim()}`);
 }
 const hash = createHash('sha256');
@@ -99,8 +115,14 @@ const provenance = {
     cpuModel: cpus()[0]?.model, cpuCores: cpus().length,
     serverNodeEnv: 'production',
   },
+  root,
 };
-await writeFile(join(output, 'provenance.json'), `${JSON.stringify(provenance, null, 2)}\n`);
+const environmentBinding = invocation ? await captureIsolatedEnvironment({
+  ...config, ...config.measurement, provenance,
+}, invocation, output, { entrypoints: ['run-server-only.mjs'] }) : undefined;
+requireEnvironmentPairIdentity(environmentBinding, args);
+await writeFile(join(output, 'provenance.json'), `${JSON.stringify(environmentBinding
+  ? { provenance, isolatedRepresentative: true, environmentBinding } : provenance, null, 2)}\n`);
 const definitions = frameworks.map((framework) => ({
   name: framework,
   ...config.servers[framework],
@@ -141,24 +163,36 @@ try {
     }, null, 2)}\n`);
     const measured = await runServerMeasurement(settingsFile, receiptFile, undefined, {
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15 * 60_000)]),
+      invocation: invocation ? { ...invocation, parentInvocationId: invocation.invocationId,
+        invocationId: `${invocation.invocationId}-${profile}-production`,
+        collectorEntrypoints: ['run-server-only.mjs'], parentEnvironmentBinding: environmentBinding } : undefined,
     });
     if (measured.exitCode !== 0) subprocessFailed = true;
     const receipt = measured.receipt;
+    await verifyMeasurementEnvironment(receipt, output);
+    if (environmentBinding && receipt.environmentBinding?.identitySha256 !== environmentBinding.identitySha256) {
+      throw new Error('environment binding server profile/runner mismatch');
+    }
     await verifyTraceFiles([...receipt.runs, ...receipt.warmups], output);
     receipts.push(receipt);
     console.log(`SERVER_PROFILE_COMPLETE=${profile}`);
     const socketSamples = [];
     for (let cycle = 0; cycle < baseline.policy.warmupRuns + baseline.policy.minimumRuns; cycle++) {
       controller.signal.throwIfAborted();
+      const headroomBefore = environmentBinding ? sampleEnvironmentHeadroom() : undefined;
       socketSamples.push({
         warmup: cycle < baseline.policy.warmupRuns,
+        ...(environmentBinding ? { isolatedRepresentative: true, environmentBinding } : {}),
         ...(await readSocketShell(new URL('/', apps.fluo))),
+        ...(headroomBefore ? { environmentHeadroom:
+          summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) } : {}),
       });
     }
     await writeFile(join(output, `${profile}-socket.json`), `${JSON.stringify({
       profile,
       source: 'direct Node HTTP socket on the same built Fluo seeded listing; native loopback transport, no browser CPU/network emulation',
       provenance,
+      ...(environmentBinding ? { isolatedRepresentative: true, environmentBinding } : {}),
       socketSamples,
     }, null, 2)}\n`);
     console.log(`SERVER_SOCKET_COMPLETE=${profile}`);
@@ -187,6 +221,7 @@ const result = {
   subprocessFailed,
   executionFailure: executionFailure ?? null,
   provenance,
+  ...(environmentBinding ? { isolatedRepresentative: true, environmentBinding } : {}),
   checks,
   receipts: receipts.map((receipt) => ({
     profile: receipt.profile,

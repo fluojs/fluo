@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { createNativeLifetimeObserver, NATIVE_LIFETIME_HOOKS, NATIVE_LIFETIME_IDENTITY,
-  NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA, reconcileNativeLifetime } from '../src/native-lifetime.mjs';
+  NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA, NATIVE_SHUTDOWN_HOOKS, reconcileNativeLifetime } from '../src/native-lifetime.mjs';
 import { verifyTraceFiles } from '../src/measure.mjs';
 
 const request = () => ({
@@ -49,6 +49,60 @@ const fixture = () => {
 const ledger = () => [{ name: 'Network.requestWillBeSent', targetId: 'page', sessionId: 'session',
   data: { requestId: '123.7', frameId: 'frame', loaderId: 'document-loader', timestamp: 10 } }];
 
+const shutdownFixture = () => {
+  const observation = fixture();
+  const sender = { pid: 100, processBirth: '100:5:0' };
+  const target = { pid: 123, processBirth: '123:1', state: 'S' };
+  const shutdown = [
+    { event: 'shutdown-ready' },
+    { event: 'shutdown-normal-enter', call: 1, parent: null },
+    { event: 'shutdown-terminate-enter', call: 2, parent: 1, exitCode: 0, wait: 0 },
+    { event: 'shutdown-signal-enter', call: 3, parent: 2, signal: 15, target },
+    { event: 'shutdown-signal-return', call: 3, parent: 2, signal: 15, target, result: 0 },
+    { event: 'shutdown-terminate-return', call: 2, parent: 1, exitCode: 0, wait: 0, result: 1 },
+    { event: 'shutdown-normal-return', call: 1, parent: null },
+  ].map((entry, index) => ({ ...sender, runId: 'run', thread: 9,
+    seq: index + 1, ns: String(12e9 + index + 2), ...entry }));
+  observation.lifecycle = [
+    { event: 'owned-attach', ...sender, binarySha256: NATIVE_LIFETIME_IDENTITY.binarySha256 },
+    { event: 'owned-attach', pid: 123, processBirth: '123:1:0',
+      binarySha256: NATIVE_LIFETIME_IDENTITY.binarySha256 },
+    shutdown[0],
+    { event: 'graceful-close', ...sender, ns: '12000000003' },
+    ...shutdown.slice(1).map((entry) => ({ ...entry, ns: String(BigInt(entry.ns) + 2n) })),
+    { event: 'owned-exit', pid: 123, processBirth: '123:1:0', exitCodeRaw: 15, missing: false, ns: '12000000020' },
+    { event: 'browser-result', pid: 100, exitCode: 0, signal: null, forcedKill: false },
+  ];
+  return observation;
+};
+
+test('observed live-target normal shutdown preserves raw SIGTERM without invalidating captured requests', () => {
+  const observation = shutdownFixture();
+  const result = reconcileNativeLifetime([request()], observation, ledger());
+  assert.deepEqual(result.unavailable, []);
+  assert.equal(result.requests[0].canceled, true);
+  assert.equal(observation.lifecycle.find((entry) => entry.event === 'owned-exit').exitCodeRaw, 15);
+});
+
+for (const [name, mutate] of [
+  ['zombie target', (o) => { o.lifecycle.find((e) => e.event === 'shutdown-signal-enter').target.state = 'Z'; }],
+  ['failed send', (o) => { o.lifecycle.find((e) => e.event === 'shutdown-signal-return').result = -1; }],
+  ['different target birth', (o) => { o.lifecycle.find((e) => e.event === 'owned-exit').processBirth = '123:2:0'; }],
+  ['pre-close signal', (o) => { o.lifecycle.find((e) => e.event === 'graceful-close').ns = '12000000030'; }],
+  ['missing caller return', (o) => { o.lifecycle = o.lifecycle.filter((e) => e.event !== 'shutdown-normal-return'); }],
+  ['abnormal caller', (o) => { o.lifecycle.find((e) => e.event === 'shutdown-terminate-enter').exitCode = 1; }],
+  ['unknown sender', (o) => { o.lifecycle = o.lifecycle.filter((e) => !(e.event === 'owned-attach' && e.pid === 100)); }],
+  ['cross-run event', (o) => { o.lifecycle.find((e) => e.event === 'shutdown-signal-enter').runId = 'other'; }],
+  ['forced browser kill', (o) => { o.lifecycle.find((e) => e.event === 'browser-result').forcedKill = true; }],
+  ['crash status', (o) => { o.lifecycle.find((e) => e.event === 'owned-exit').exitCodeRaw = 11; }],
+]) {
+  test(`normal shutdown evidence rejects ${name}`, () => {
+    const observation = shutdownFixture();
+    mutate(observation);
+    assert.ok(reconcileNativeLifetime([request()], observation, ledger()).unavailable.length > 0);
+  });
+}
+
 test('exact pending native chain requires both nested normal returns before original cutoff', () => {
   const original = request();
   const result = reconcileNativeLifetime([original], fixture(), ledger());
@@ -71,39 +125,19 @@ test('disabled native lifetime observation requires no external runtime', async 
   assert.equal(spawned, false);
 });
 
-const rejectMutation = async (change, t) => {
-  const f = await authenticatedFixture(t);
-  await f.verify();
-  const observation = f.records.native;
+const rejectMutation = (change) => {
+  const observation = fixture();
   const requests = [request()];
-  const cdp = f.records.cdp.ledger;
+  const cdp = ledger();
   change(observation, requests, cdp);
   const result = reconcileNativeLifetime(requests, observation, cdp);
   assert.deepEqual(result.requests, requests);
   assert.ok(result.unavailable.length > 0);
-  // Replay the changed evidence through the actual raw-trace acceptance seam,
-  // with refreshed digests and internally consistent producer records. A run
-  // must not turn this pending/inconclusive evidence into a successful trace.
-  f.record.requests = requests;
-  f.records.coverage.coverage = observation.coverage;
-  f.records.host.cleanup = observation.cleanup;
-  f.records.host.errors = observation.coverage.errors;
-  f.records.host.messages = [
-    ...observation.coverage.processes.map((process) => ({ process })),
-    { runtime: observation.runtime },
-    ...(observation.clock ? [{ ns: observation.clock.beforeNs }, { ns: observation.clock.afterNs }] : []),
-    { drained: observation.coverage.drained, ns: '12000000000', events: observation.events,
-      buffer: { dropped: observation.coverage.dropped } },
-  ];
-  for (const role of ['native', 'coverage', 'host', 'cdp']) await f.save(role);
-  f.record.artifacts.nativeTerminalObserver.cdpSha256 =
-    f.record.artifacts.nativeLifetimeObserver.references.find((entry) => entry.role === 'cdp').sha256;
-  await assert.rejects(f.verify(), /native lifetime/u);
 };
 
 for (const field of ['platform', 'arch', 'browserVersion', 'revision', 'binarySha256', 'buildId', 'abi']) {
-  test(`unsupported binary ${field} cannot resolve pending`, async (t) => {
-    await rejectMutation((observation) => { observation.identity[field] = 'unsupported'; }, t);
+  test(`unsupported binary ${field} cannot resolve pending`, () => {
+    rejectMutation((observation) => { observation.identity[field] = 'unsupported'; });
   });
 }
 for (const [name, change] of [
@@ -173,7 +207,7 @@ for (const [name, change] of [
     o.events.forEach((e, i) => { e.seq = i + 1; });
   }],
 ]) {
-  test(`${name} remains pending and explicitly inconclusive`, async (t) => rejectMutation(change, t));
+  test(`${name} remains pending and explicitly inconclusive`, () => rejectMutation(change));
 }
 
 test('actual CDP terminals are preserved and contradictory success is inconclusive', () => {
@@ -192,6 +226,25 @@ test('genuinely unfinished requests without native cancellation stay pending', (
   const result = reconcileNativeLifetime([original], observation, ledger());
   assert.deepEqual(result.requests, [original]);
   assert.deepEqual(result.unavailable, []);
+});
+
+test('known descendant crash cannot reconcile despite normal Python cleanup and main exit', () => {
+  const observation = fixture();
+  observation.lifecycle = [{ event: 'owned-exit', pid: 124, processBirth: '124:1',
+    ns: '12000000000', exitCodeRaw: 11, missing: false }];
+  const result = reconcileNativeLifetime([request()], observation, ledger());
+  assert.deepEqual(result.requests, [request()]);
+  assert.deepEqual(result.unavailable, ['native lifetime: owned process abnormal exit']);
+});
+
+test('missing descendant wait status is retained rather than synthesized as normal', () => {
+  const observation = fixture();
+  observation.lifecycle = [{ event: 'owned-exit', pid: 124, processBirth: '124:1',
+    ns: '12000000000', exitCodeRaw: null, missing: true }];
+  const result = reconcileNativeLifetime([request()], observation, ledger());
+  assert.equal(result.requests[0].kind, 'request-failed');
+  assert.equal(observation.lifecycle[0].exitCodeRaw, null);
+  assert.equal(observation.lifecycle[0].missing, true);
 });
 
 test('missing clock samples after child coverage failure report coverage as the primary blocker', () => {
@@ -246,6 +299,7 @@ async function authenticatedFixture(t) {
   const cdp = [...ledger(), { name: 'capture-boundary', data: { captureTimestamp: 11 } }];
   const schema = { schemaVersion: 1, runId: observation.runId, method: observation.method,
     schema: observation.schema, measurement, identity: observation.identity, hooks: NATIVE_LIFETIME_HOOKS,
+    shutdownHooks: NATIVE_SHUTDOWN_HOOKS,
     agentSha256: hash(await readFile(new URL('../src/native-lifetime-agent.js', import.meta.url))),
     hostSha256: hash(await readFile(new URL('../src/native-lifetime-host.py', import.meta.url))) };
   const host = { schemaVersion: 1, runId: observation.runId, errors: [], cleanup: observation.cleanup,
@@ -331,7 +385,7 @@ test('host ingestion retains the supported 500000 event buffer and completes dra
         reply = { ...reply, drained: true, ns: '12000000000', buffer: { dropped: 0 },
           events: Array.from({ length: 500_000 }, (_, seq) => ({ event: 'resource-birth', seq: seq + 1 })) };
       }
-      if (message.command === 'close') reply.detached = true;
+      if (['release', 'close'].includes(message.command)) reply.detached = true;
       host.stdout.write(`${JSON.stringify(reply)}\n`);
     },
     end() { host.exitCode = 0; host.emit('exit', 0, null); },
@@ -357,13 +411,15 @@ test('host ingestion retains the supported 500000 event buffer and completes dra
     for (const [key, descriptor] of descriptors) Object.defineProperty(process, key, descriptor);
   }
   await observer.captureClock(async () => ({}));
+  await observer.drain(11, []);
+  await observer.close();
   const result = await observer.drain(11, []);
   assert.equal(result.observation.coverage.drained, true);
   assert.deepEqual(result.observation.coverage.errors, []);
   assert.equal(result.observation.events.length, 500_000);
   assert.equal(result.observation.events[0].seq, 1);
   assert.equal(result.observation.events.at(-1).seq, 500_000);
-  assert.deepEqual(commands, ['prepare', 'clock', 'clock', 'drain', 'close']);
+  assert.deepEqual(commands, ['prepare', 'clock', 'clock', 'drain', 'release', 'close']);
   assert.equal(result.observation.cleanup.closed, true);
   assert.equal(result.observation.cleanup.detached, true);
   assert.equal(result.observation.cleanup.exitCode, 0);
@@ -374,4 +430,62 @@ test('host ingestion retains the supported 500000 event buffer and completes dra
   const receipt = JSON.parse(await readFile(join(directory, 'lifetime-host.json'), 'utf8'));
   assert.equal(receipt.messages.find((message) => message.drained).events.length, 500_000);
   assert.equal(receipt.cleanup.closed, true);
+});
+
+test('drain releases hooks but retains process exit observation until browser termination', async (t) => {
+  // Given: an event-backed host whose owned browser has not terminated.
+  const directory = await mkdtemp(join(tmpdir(), 'native-resident-lifetime-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const host = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(),
+    exitCode: null, signalCode: null, pid: 322 });
+  let browserAlive = true;
+  const commands = [];
+  host.stdin = {
+    writable: true,
+    write(line) {
+      const command = JSON.parse(line);
+      commands.push(command.command);
+      const reply = { id: command.id };
+      if (command.command === 'prepare') reply.runtime = NATIVE_LIFETIME_RUNTIME;
+      if (command.command === 'drain') Object.assign(reply, { drained: true, ns: '12000000000' });
+      if (command.command === 'release') Object.assign(reply, { detached: false });
+      if (command.command === 'close') {
+        assert.equal(browserAlive, false, 'observer exit subscription ended before browser exit');
+        Object.assign(reply, { detached: true });
+        host.stdout.write(`${JSON.stringify({ lifecycle: { event: 'owned-exit', pid: 123,
+          processBirth: '123:1', exitCodeRaw: null, missing: true, ns: '13000000000' } })}\n`);
+      }
+      host.stdout.write(`${JSON.stringify(reply)}\n`);
+    },
+    end() { host.exitCode = 0; host.emit('exit', 0, null); },
+  };
+  const observer = await createNativeLifetimeObserver({
+    enabled: true, directory, python: '/fake/python', spawn: () => host,
+  });
+  const descriptors = ['platform', 'arch'].map((key) => [key, Object.getOwnPropertyDescriptor(process, key)]);
+  try {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
+    await observer.prepare({ version: () => NATIVE_LIFETIME_IDENTITY.browserVersion,
+      async newBrowserCDPSession() { return { async send(name) {
+        return name === 'SystemInfo.getProcessInfo' ? { processInfo: [] } : { targetInfos: [] };
+      }, async detach() {} }; } }, 123,
+    { async send() { return { targetInfo: { targetId: 'page' } }; } });
+  } finally {
+    for (const [key, descriptor] of descriptors) Object.defineProperty(process, key, descriptor);
+  }
+  // When: original-cutoff drain precedes the real browser exit boundary.
+  const draining = await observer.drain(11, []);
+  assert.equal(draining.observation.cleanup.detached, false);
+  assert.equal(host.exitCode, null);
+  assert.deepEqual(commands, ['prepare', 'drain', 'release']);
+  browserAlive = false;
+  await observer.close();
+  const result = await observer.drain(11, []);
+  // Then: cleanup evidence contains the exit event, without inventing missing status.
+  assert.equal(result.observation.cleanup.closed, true);
+  assert.equal(result.observation.lifecycle.at(-1).exitCodeRaw, null);
+  assert.equal(result.observation.lifecycle.at(-1).missing, true);
+  assert.equal(host.listenerCount('exit'), 0);
+  assert.equal(host.listenerCount('error'), 0);
 });

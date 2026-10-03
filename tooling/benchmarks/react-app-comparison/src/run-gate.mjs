@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { evaluateEvidence } from './gate.mjs';
-import { mergeEvidence } from './measure.mjs';
+import { captureIsolatedEnvironment, launchIsolatedInvocation, mergeEvidence,
+  readIsolatedInvocation, requireEnvironmentPairIdentity, verifyMeasurementEnvironment } from './measure.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -116,6 +117,8 @@ export async function readMeasurementReceipt(run, path) {
 
 async function main() {
   const args = process.argv.slice(2);
+  if (await launchIsolatedInvocation(fileURLToPath(import.meta.url), args)) return;
+  const invocation = await readIsolatedInvocation(args);
   const configPath = args[args.indexOf('--config') + 1];
   const outputDirectory = args[args.indexOf('--output-dir') + 1];
   const mode = args.includes('--mode') ? args[args.indexOf('--mode') + 1] : 'regression';
@@ -129,6 +132,13 @@ async function main() {
   await mkdir(output, { recursive: true });
   if ((await readdir(output)).length) throw new Error(`evidence output must start empty: ${output}`);
   const config = JSON.parse(await readFile(configPath, 'utf8'));
+  const environmentBinding = invocation
+    ? await captureIsolatedEnvironment({ ...config, ...config.measurement,
+      provenance: { root: resolve(suite, '../../..') } }, invocation, output) : undefined;
+  if (!invocation && (config.measurement?.isolatedRepresentative || config.measurement?.environmentBinding)) {
+    throw new Error('isolated representative requires live host launcher');
+  }
+  requireEnvironmentPairIdentity(environmentBinding, args);
   const owned = new Set();
   let servers = [];
   const interrupt = (code) => {
@@ -141,7 +151,9 @@ async function main() {
   process.once('SIGINT', onInterrupt);
   process.once('SIGTERM', onTerminate);
   async function runOwned(command, args, options) {
-    const child = spawn(command, args, { ...options, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, { ...options, detached: true,
+      stdio: [options.input ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
+    if (options.input) child.stdin.end(options.input);
     owned.add(child);
     let stdout = '';
     let stderr = '';
@@ -252,10 +264,17 @@ async function main() {
       const configFile = join(output, `${profile}-config.json`);
       const resultFile = join(output, `${profile}.json`);
       await writeFile(configFile, `${JSON.stringify(measurement, null, 2)}\n`);
-      receipts.push(await readMeasurementReceipt(() =>
+      const receipt = await readMeasurementReceipt(() =>
         runOwned(process.execPath,
-          [join(suite, 'src/measure.mjs'), '--config', configFile, '--output', resultFile],
-          { cwd: suite }), resultFile));
+          [join(suite, 'src/measure.mjs'), '--config', configFile, '--output', resultFile,
+            ...(invocation ? ['--isolated-guest'] : [])],
+          { cwd: suite, ...(invocation ? { input: JSON.stringify({ ...invocation,
+            parentInvocationId: invocation.invocationId, invocationId: `${invocation.invocationId}-${profile}-production` }) } : {}) }), resultFile);
+      await verifyMeasurementEnvironment(receipt, output);
+      if (environmentBinding && receipt.environmentBinding?.identitySha256 !== environmentBinding.identitySha256) {
+        throw new Error('environment binding profile/aggregate mismatch');
+      }
+      receipts.push(receipt);
     }
     await stopServers(servers);
     for (const [index, receipt] of receipts.entries()) {
@@ -267,8 +286,14 @@ async function main() {
         }, null, 2)}\n`);
         const development = await readMeasurementReceipt(() =>
           runOwned(process.execPath,
-            [join(suite, 'src/measure.mjs'), '--config', devConfig, '--output', devFile, '--dev'],
-            { cwd: suite }), devFile);
+            [join(suite, 'src/measure.mjs'), '--config', devConfig, '--output', devFile, '--dev',
+              ...(invocation ? ['--isolated-guest'] : [])],
+            { cwd: suite, ...(invocation ? { input: JSON.stringify({ ...invocation,
+              parentInvocationId: invocation.invocationId, invocationId: `${invocation.invocationId}-${receipt.profile}-development` }) } : {}) }), devFile);
+        await verifyMeasurementEnvironment(development, output);
+        if (environmentBinding && development.environmentBinding?.identitySha256 !== environmentBinding.identitySha256) {
+          throw new Error('environment binding development/aggregate mismatch');
+        }
         receipts[index] = await mergeEvidence(receipt, development, join(output, 'combined-traces'));
     }
     const verdict = await evaluateEvidence(baseline, receipts, output);

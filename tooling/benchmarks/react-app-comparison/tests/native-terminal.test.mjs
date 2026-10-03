@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -223,18 +224,18 @@ test('native close is shared, flushes once and saves the original ledger after t
   const finished = new Promise((accept) => { release = accept; });
   let closes = 0;
   let transportCloses = 0;
-  const child = { pid: 123, exitCode: null, signalCode: null };
+  const child = Object.assign(new EventEmitter(), { pid: 123, exitCode: null, signalCode: null });
   let path;
   const capture = await createNativeCapture({
     async launchServer(options) {
       path = options.args[0].slice('--log-net-log='.length);
       return {
         process: () => child, wsEndpoint: () => 'fixture',
-        async close() { closes++; await finished; child.exitCode = 0; },
+        async close() { closes++; await finished; child.exitCode = 0; child.emit('exit', 0, null); },
         async kill() { assert.fail('successful flush must not kill'); },
       };
     },
-    async connect() { return { async close() { transportCloses++; } }; },
+    async connect() { return Object.assign(new EventEmitter(), { async close() { transportCloses++; } }); },
   }, directory);
   capture.ledger.push({ name: 'Network.requestWillBeSent', data: { requestId: 'original' } });
   const first = capture.close();
@@ -251,17 +252,17 @@ test('native close is shared, flushes once and saves the original ledger after t
 test('native close failure is preserved and owned kill completes before rejection', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'native-close-failure-'));
   const failure = new Error('original native flush failure');
-  const child = { pid: 124, exitCode: null, signalCode: null };
+  const child = Object.assign(new EventEmitter(), { pid: 124, exitCode: null, signalCode: null });
   let killed = 0;
   const capture = await createNativeCapture({
     async launchServer() {
       return {
         process: () => child, wsEndpoint: () => 'fixture',
         async close() { throw failure; },
-        async kill() { killed++; child.signalCode = 'SIGKILL'; },
+        async kill() { killed++; child.signalCode = 'SIGKILL'; child.emit('exit', null, 'SIGKILL'); },
       };
     },
-    async connect() { return { async close() {} }; },
+    async connect() { return Object.assign(new EventEmitter(), { async close() {} }); },
   }, directory);
   await assert.rejects(capture.close(), (error) => error === failure);
   await assert.rejects(capture.close(), (error) => error === failure);
@@ -269,34 +270,82 @@ test('native close failure is preserved and owned kill completes before rejectio
   assert.equal(child.signalCode, 'SIGKILL');
 });
 
-test('opt-in capture exposes lifetime preparation before workload without external runtime on unsupported hosts', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'native-adoption-'));
-  const child = { pid: 125, exitCode: null, signalCode: null };
-  let path;
-  let spawned = false;
-  const capture = await createNativeCapture({
-    async launchServer(options) {
-      path = options.args[0].slice('--log-net-log='.length);
-      return { process: () => child, wsEndpoint: () => 'fixture',
-        async close() { await writeFile(path, JSON.stringify(log())); child.exitCode = 0; },
-        async kill() { assert.fail('unsupported observation must not kill browser'); } };
-    },
-    async connect() { return { version: () => 'unsupported', async close() {} }; },
-  }, directory, { enabled: true, spawn() { spawned = true; throw new Error('must not spawn'); } });
-  try {
-    assert.equal(typeof capture.prepareLifetime, 'function');
-    await capture.prepareLifetime({});
+for (const signal of ['SIGSEGV', 'SIGKILL']) {
+  test(`native read rejects ${signal} even with syntactically complete NetLog`, async () => {
+    // Given: a real event boundary with complete writer bytes and an original ledger.
+    const directory = await mkdtemp(join(tmpdir(), 'native-abnormal-exit-'));
+    const child = Object.assign(new EventEmitter(), { pid: 126, exitCode: null, signalCode: null });
+    const browser = Object.assign(new EventEmitter(), { version: () => 'fixture', async close() {} });
+    let rawTrace;
+    const capture = await createNativeCapture({
+      async launchServer(options) {
+        rawTrace = options.args[0].slice('--log-net-log='.length);
+        return { process: () => child, wsEndpoint: () => 'fixture',
+          async close() {
+            await writeFile(rawTrace, JSON.stringify(log()));
+            child.signalCode = signal;
+            child.emit('exit', null, signal);
+            browser.emit('disconnected');
+          },
+          async kill() { assert.fail('already exited browser must not be killed'); },
+        };
+      },
+      async connect() { return browser; },
+    }, directory);
     capture.ledger.push({ name: 'capture-boundary', data: { captureTimestamp: 123 } });
-    const evidence = await capture.read(123);
-    assert.equal(evidence.lifetime.observation.captureTimestamp, 123);
-    assert.equal(evidence.lifetime.observation.coverage.complete, false);
-    assert.equal(spawned, false);
-  } finally { await capture.close(); }
+    // When: the actual native capture boundary tries to read this process outcome.
+    await assert.rejects(capture.read(123), new RegExp(signal, 'u'));
+    // Then: rejection retains structured process evidence and the unmodified ledger.
+    const retained = JSON.parse(await readFile(join(rawTrace, '..', 'cdp.json'), 'utf8'));
+    assert.deepEqual(retained.ledger, capture.ledger);
+    assert.equal(retained.cleanup.exitCode, null);
+    assert.equal(retained.cleanup.signalCode, signal);
+    assert.ok(retained.lifecycle.some((entry) => entry.event === 'exit' && entry.signal === signal));
+    assert.ok(retained.lifecycle.some((entry) => entry.event === 'disconnected'));
+    assert.equal(child.listenerCount('exit'), 0);
+    assert.equal(child.listenerCount('error'), 0);
+    assert.equal(browser.listenerCount('disconnected'), 0);
+  });
+}
+
+test('native close deadline retains its primary cause after owned SIGKILL exit', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const directory = await mkdtemp(join(tmpdir(), 'native-close-deadline-'));
+  const child = Object.assign(new EventEmitter(), { pid: 127, exitCode: null, signalCode: null });
+  const capture = await createNativeCapture({
+    async launchServer() {
+      return { process: () => child, wsEndpoint: () => 'fixture',
+        close() { return new Promise(() => {}); },
+        async kill() { child.signalCode = 'SIGKILL'; child.emit('exit', null, 'SIGKILL'); },
+      };
+    },
+    async connect() { return Object.assign(new EventEmitter(), { async close() {} }); },
+  }, directory);
+  const rejection = assert.rejects(capture.close(), /graceful-close deadline/u);
+  t.mock.timers.tick(10_000);
+  await rejection;
+  assert.equal(child.signalCode, 'SIGKILL');
+  assert.equal(child.listenerCount('exit'), 0);
+});
+
+test('native capture preserves startup failure while retaining cleanup error evidence', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-connect-failure-'));
+  const child = Object.assign(new EventEmitter(), { pid: 128, exitCode: null, signalCode: null });
+  const primary = new Error('fixture transport connect failed');
+  await assert.rejects(createNativeCapture({
+    async launchServer() {
+      return { process: () => child, wsEndpoint: () => 'fixture',
+        async close() { throw new Error('fixture cleanup failed'); },
+        async kill() { child.signalCode = 'SIGKILL'; child.emit('exit', null, 'SIGKILL'); },
+      };
+    },
+    async connect() { throw primary; },
+  }, directory), (error) => error === primary && error.cause.message === 'fixture cleanup failed');
 });
 
 test('opt-in lifetime evidence drains before browser server closes at the original cutoff', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'native-lifetime-close-'));
-  const child = { pid: 125, exitCode: null, signalCode: null };
+  const child = Object.assign(new EventEmitter(), { pid: 125, exitCode: null, signalCode: null });
   let rawTrace;
   const capture = await createNativeCapture({
     async launchServer(options) {
@@ -309,11 +358,12 @@ test('opt-in lifetime evidence drains before browser server closes at the origin
           assert.equal(lifetime.coverage.complete, false);
           await writeFile(rawTrace, JSON.stringify(log()));
           child.exitCode = 0;
+          child.emit('exit', 0, null);
         },
         async kill() { assert.fail('unsupported opt-in must still close gracefully'); },
       };
     },
-    async connect() { return { version: () => 'unsupported', async close() {} }; },
+    async connect() { return Object.assign(new EventEmitter(), { version: () => 'unsupported', async close() {} }); },
   }, directory, { enabled: true });
   await capture.prepareLifetime({});
   capture.ledger.push({ name: 'capture-boundary', data: { captureTimestamp: 123 } });
@@ -323,4 +373,29 @@ test('opt-in lifetime evidence drains before browser server closes at the origin
   assert.deepEqual(evidence.lifetime.observation.events, []);
   assert.equal(evidence.provenance.cleanup.closed, true);
   await capture.close();
+});
+
+test('opt-in capture exposes lifetime preparation before workload without external runtime on unsupported hosts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-adoption-'));
+  const child = Object.assign(new EventEmitter(), { pid: 125, exitCode: null, signalCode: null });
+  let path;
+  let spawned = false;
+  const capture = await createNativeCapture({
+    async launchServer(options) {
+      path = options.args[0].slice('--log-net-log='.length);
+      return { process: () => child, wsEndpoint: () => 'fixture',
+        async close() { await writeFile(path, JSON.stringify(log())); child.exitCode = 0; child.emit('exit', 0, null); },
+        async kill() { assert.fail('unsupported observation must not kill browser'); } };
+    },
+    async connect() { return Object.assign(new EventEmitter(), { version: () => 'unsupported', async close() {} }); },
+  }, directory, { enabled: true, spawn() { spawned = true; throw new Error('must not spawn'); } });
+  try {
+    assert.equal(typeof capture.prepareLifetime, 'function');
+    await capture.prepareLifetime({});
+    capture.ledger.push({ name: 'capture-boundary', data: { captureTimestamp: 123 } });
+    const evidence = await capture.read(123);
+    assert.equal(evidence.lifetime.observation.captureTimestamp, 123);
+    assert.equal(evidence.lifetime.observation.coverage.complete, false);
+    assert.equal(spawned, false);
+  } finally { await capture.close(); }
 });
