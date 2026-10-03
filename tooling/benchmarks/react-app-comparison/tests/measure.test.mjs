@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -54,7 +52,8 @@ test('source-bound React pair authenticates both records without equating full c
       /direction|source proof/u);
     const equal = await environmentFixture(directory, 'equal', beforeConfig);
     assert.equal(await methods.authenticateReactEditPair(before.binding, equal.binding, directory), null);
-    const execute = promisify(execFile);
+    // Preserve the authentic objects without requiring pre-squash Git history.
+    const sources = JSON.parse(await readFile(new URL('./fixtures/react-edit-sources.json', import.meta.url), 'utf8'));
     const anchors = [
       ['before', '8a09eb8d216e555b97760a86539dea31e79c86a8', 'd1cab92d356721fce862456de5b492f15a225f0c', before],
       ['after', 'f9f5ac6722957cbe2752b9959e657a46594c0a1b', 'c5b7573e8da64237eecff459365e348b626285d9', after],
@@ -65,8 +64,7 @@ test('source-bound React pair authenticates both records without equating full c
       binding.sha256 = createHash('sha256').update(raw).digest('hex');
     };
     for (const [role, head, blob, fixture] of anchors) {
-      const { stdout: original } = await execute('git', ['cat-file', 'blob', blob]);
-      const { stdout: commit } = await execute('git', ['cat-file', 'commit', head]);
+      const { original, commit } = sources[role];
       fixture.record.reactEditSource = { schemaVersion: 1, role, anchor: head, head,
         root: '/product', path: `/product/tooling/benchmarks/react-app-comparison/apps/fluo/${role === 'before' ? edit.file : afterConfig.dev.fluo.edits['react-edit'].file}`,
         file: role === 'before' ? edit.file : afterConfig.dev.fluo.edits['react-edit'].file,
