@@ -190,6 +190,38 @@ Python `3.11.2`/Frida `17.21.0`의 동결 hash와 versioned hook/agent/host sche
 macOS를 포함한 미지원 host에서 요청하면 native PASS로 대체하지 않고
 unavailable/nonzero/inconclusive로 남깁니다.
 
+Transport schema v2는 PID/starttime/exec epoch별 append-only memfd journal을
+보존하고 hook readiness 또는 gated resume 전에 host가 소유권을 획득·검증합니다.
+500000개 fixed-width record는 wrap하지 않습니다. Native writer는 AArch64
+release publication을, host는 acquire read를 사용합니다. 원본 binary
+header/record, ownership, attempted/committed count, sequence marker, drop,
+native callback/invocation 상태를 인증하고 replay합니다. 소유권 누락,
+publication/callback 중단, overflow와 불완전한 call은 hash를 다시 계산해도
+inconclusive입니다.
+
+Live interval은 원래 cutoff를 포함해야 합니다. 그보다 이른 retirement는
+인증된 detach와 birth-bound 정상 status로 입증하며 destroyed script RPC 또는
+인위적인 cutoff padding을 사용하지 않습니다. 조기 browser lifecycle observer의
+별도 zombie-status witness는 누락된 pidfd status를 대체하거나 zombie에 보낸
+signal을 종료 원인으로 지정하지 않습니다.
+이 status witness가 없으면 인증된 소유 browser/zygote parent의 실제
+`waitpid`/`wait4` 정상 반환에서 genuine raw reap status만 확보합니다. 호출 전
+kernel PID/starttime/parent, 원본 stat, 반환 PID와 observer sequence를 보존합니다.
+NULL wait status destination은 NULL로 유지합니다. 실제 reap 전에 확보한 별도의
+birth-bound zombie `stat` exit-code field로 status를 입증할 수 있지만 wait 반환과
+pidfd status를 다시 쓰지 않습니다.
+이른 retirement의 raw SIGTERM 15는 별도로 완전한 pre-cutoff Chromium 정상
+termination caller/return chain과 live target에 대한 성공한 send를 요구합니다.
+15를 0으로 바꾸거나 missing pidfd status를 채우지 않습니다. 이 retirement 증명은
+`graceful-close`를 빌리거나 소급하지 않으며 기존 post-close shutdown 인증과
+분리합니다. 성공한 gated exec는 독립된 이전·이후
+history를 보존하고 resume 전에 successor readiness를 검증합니다. 실패한 exec는
+epoch를 닫지 않습니다. 알 수 없는 role/status, crash와 미지원 transition은
+거부합니다. Production COOP navigation과 capture boundary는 유지합니다.
+별도의 두 문서 nonempty-retirement correctness fixture를 측정 cohort의 사전
+navigation으로 사용하지 않습니다. Journal, writer/callback과 lifecycle overhead는
+차감하지 않으며 이 correctness 검증은 performance PASS가 아닙니다.
+
 공통 production observer는 원래 cutoff에서 request hook을 drain/stop하고
 child gating을 해제한 뒤에도 Frida session/agent와 pidfd 종료 구독을 소유
 process의 자연 종료까지 유지합니다. BrowserServer 종료 전에 살아 있는 agent를
@@ -199,7 +231,7 @@ Resident memory/runtime 비용과 drain 이후 shutdown IPC 비용을 차감하�
 Main exit/error/disconnect와 관측 가능한 descendant wait status를 원시 증거에
 보존하고 알려진 비정상 종료는 NetLog parse 전에 거부합니다. 이미 reap된
 status는 0이 아니라 missing이며 Python exit 0이나 main exit 0만으로 모든
-descendant의 정상 종료를 입증하지 않습니다. Raw status 15는 인증된 Chromium
+descendant의 정상 종료를 입증하지 않습니다. 명시적 close 이후 shutdown의 raw status 15는 인증된 Chromium
 정상 종료 caller, 살아 있는 소유 target의 PID/start identity, 성공한 SIGTERM
 전송, 명시적 close 이후 순서와 정상 main 종료가 모두 일치할 때만 의도적인
 shutdown으로 구분합니다. Zombie target, 실패한 전송, 누락된 caller와 원인 불명

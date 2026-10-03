@@ -176,7 +176,8 @@ export async function createNativeCapture(chromium, directory, lifetimeOptions) 
       }
       const abnormal = lifetimeEvidence?.observation.lifecycle.find((entry) =>
         entry.event === 'owned-exit' && entry.exitCodeRaw !== null && entry.exitCodeRaw !== 0
-        && !lifetime.isObservedShutdownExit(entry, lifetimeEvidence.observation));
+        && !lifetime.isObservedShutdownExit(entry, lifetimeEvidence.observation)
+        && !lifetime.isObservedRetirementExit(entry, lifetimeEvidence.observation));
       if (processError) closeError ??= processError;
       if (!forcedKill && (child.signalCode !== null || child.exitCode !== null && child.exitCode !== 0)) {
         closeError = new Error(`native browser abnormal exit: ${child.exitCode}/${child.signalCode}`);

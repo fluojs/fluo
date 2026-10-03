@@ -193,6 +193,39 @@ Python `3.11.2`/Frida `17.21.0` frozen hashes and versioned hook/agent/host sche
 Requested observation on an unsupported host, including macOS, remains
 unavailable/nonzero/inconclusive rather than falling back to a native PASS.
 
+Transport schema v2 retains an append-only memfd journal per
+PID/starttime/exec epoch, owned and verified by the host before hooks readiness
+or gated resume. Its 500000 fixed-width records never wrap. The native writer
+uses AArch64 release publication and the host uses acquire reads; raw binary
+headers/records, ownership, attempted/committed counts, sequence markers, drops
+and native callback/invocation state are authenticated and replayed. Missing
+ownership, interrupted publication/callbacks, overflow and incomplete calls
+remain inconclusive even after hashes are recomputed.
+
+A live interval must cover the original cutoff. Earlier retirement instead
+requires authenticated detach and birth-bound normal status, without RPC to a
+destroyed script or artificial cutoff padding. A separate early browser
+lifecycle zombie-status witness does not replace missing pidfd status or assign
+causality to a signal sent to a zombie.
+If no such status witness exists, the authenticated owned browser/zygote
+parent's actual `waitpid`/`wait4` normal return supplies only its genuine raw
+reap status, with pre-call kernel PID/starttime/parent, original stat, return PID
+and observer sequence.
+NULL wait destinations remain NULL. A separate birth-bound zombie `stat`
+exit-code field captured before the actual reap may supply status; neither
+the wait result nor pidfd status is rewritten. Earlier raw SIGTERM 15 additionally
+requires its own complete pre-cutoff Chromium normal termination caller/return chain and
+successful live-target send. It is never rewritten to zero; missing pidfd
+status stays missing. This retirement proof does not borrow/backdate
+`graceful-close` and remains separate from post-close shutdown authentication.
+Successful gated exec keeps distinct
+histories and verifies successor readiness before resume; failed exec does not
+close an epoch. Unknown roles/status, crashes and unsupported transitions are
+rejected. Production COOP navigation and capture boundaries remain unchanged.
+The separate two-document nonempty-retirement correctness fixture is never
+pre-navigation in a measured cohort. Journal, writer/callback and lifecycle
+overhead remain included; these correctness checks are not performance PASS.
+
 The common production observer drains/stops request hooks at the original cutoff
 and disables child gating, but retains Frida sessions/agents and pidfd exit
 subscriptions through natural owned-process exit. Live-agent detach/unload does
@@ -202,7 +235,7 @@ Resident memory/runtime and post-drain shutdown IPC costs are not subtracted.
 Main exit/error/disconnect and available descendant wait statuses remain raw
 evidence; known abnormal exits are rejected before NetLog parsing. Reaped statuses
 stay missing, not zero; Python exit 0 or main exit 0 does not prove every
-descendant exited normally. Raw status 15 is classified as intentional only when
+descendant exited normally. For post-close shutdown, raw status 15 is classified as intentional only when
 the authenticated Chromium normal-shutdown caller, live owned target PID/start
 identity, successful SIGTERM send, explicit-close ordering and normal main exit
 all agree. Zombie targets, failed sends, missing callers and unknown causes are
