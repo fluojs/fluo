@@ -11,12 +11,12 @@ import {
   readVerificationManifest,
   receiptMatchesPlan,
 } from './local-verification.mjs';
-import { aggregateResults, runHostChecks, validateTaskResult } from './verification-runner.mjs';
 import { prepareVerificationEnvironment } from './verification-environment.mjs';
+import { aggregateResults, runHostChecks, validateTaskResult } from './verification-runner.mjs';
 import { executeVerificationTasks, verificationConcurrency } from './verification-scheduler.mjs';
 
 const scriptPath = fileURLToPath(import.meta.url);
-const run = (root, executable, argv) => spawnSync(executable, argv, { cwd: root, encoding: 'utf8' });
+const run = (root, executable, argv) => spawnSync(executable, argv, { cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
 const text = (root, executable, argv) => {
   const result = run(root, executable, argv);
   if (result.status !== 0) throw new Error(`${executable} ${argv.join(' ')} failed`);
