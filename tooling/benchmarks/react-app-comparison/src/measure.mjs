@@ -12,6 +12,34 @@ const sha256 = (raw) => createHash('sha256').update(raw).digest('hex');
 const objectSha256 = (value) => sha256(JSON.stringify(value));
 const ENVIRONMENT_METHOD = 'isolated-linux-representative-v1';
 
+// The shared collector executes these helpers even when the product build/root
+// differs. Server-only consumers opt into their additional entrypoint closure.
+function collectorSources(entrypoints = ['measure.mjs', 'run-gate.mjs']) {
+  if (!Array.isArray(entrypoints) || !entrypoints.length
+    || entrypoints.some((name) => !['measure.mjs', 'run-gate.mjs', 'run-server-only.mjs'].includes(name))) {
+    throw new Error('environment binding unsupported collector entrypoints');
+  }
+  return [...new Set(['measure.mjs', 'measure-browser.mjs', 'run-gate.mjs',
+    'initial-readiness.mjs', 'process-group.mjs', 'gate.mjs', 'evaluate.ts', 'fluo-dev.mjs',
+    'native-terminal.mjs', 'native-lifetime.mjs', 'native-lifetime-agent.js', 'native-lifetime-host.py',
+    ...(entrypoints.includes('run-server-only.mjs')
+      ? ['run-server-only.mjs', 'server-measurement.mjs', 'socket-shell.mjs'] : [])])];
+}
+
+export async function captureCollectorSources(directory = dirname(fileURLToPath(import.meta.url)),
+  entrypoints = ['measure.mjs', 'run-gate.mjs']) {
+  return Object.fromEntries(await Promise.all(collectorSources(entrypoints).map(async (name) => {
+    const path = await realpath(resolve(directory, name));
+    return [name, { path, sha256: sha256(await readFile(path)) }];
+  })));
+}
+
+function productProvenance(provenance) {
+  if (!provenance) return provenance;
+  const { isolatedRepresentative, environmentBinding, ...product } = provenance;
+  return product;
+}
+
 // Host-only facts come from the daemon, never guest-provided identity strings.
 export async function observeIsolatedHost(container, run = execute) {
   const [{ stdout: inspection }, { stdout: information }] = await Promise.all([
@@ -36,31 +64,220 @@ export async function observeIsolatedHost(container, run = execute) {
   };
 }
 
-// Both runners use this host entrypoint. stdin carries a fresh host observation
-// to the selected container's actual Node executable, not a prepared JSON file.
+// A Linux subreaper owns only this invocation's descendants, including servers
+// that start new sessions. pidfds target real processes, not reusable PID names.
+// SIGCHLD and control input drive teardown; deadlines only bound escalation.
+const isolatedSupervisor = String.raw`
+import ctypes,json,os,selectors,signal,subprocess,sys,time
+if ctypes.CDLL(None, use_errno=True).prctl(36,1,0,0,0) != 0:
+    raise OSError(ctypes.get_errno(), "PR_SET_CHILD_SUBREAPER")
+read_fd,write_fd=os.pipe2(os.O_NONBLOCK|os.O_CLOEXEC)
+signal.set_wakeup_fd(write_fd)
+for name in (signal.SIGCHLD,signal.SIGINT,signal.SIGTERM):
+    signal.signal(name,lambda *_: None)
+selector=selectors.DefaultSelector()
+selector.register(read_fd,selectors.EVENT_READ,"signal")
+selector.register(0,selectors.EVENT_READ,"control")
+frame=json.loads(sys.stdin.buffer.raw.readline())
+invocation=frame["invocation"]
+child=subprocess.Popen(sys.argv[1:],stdin=subprocess.PIPE,start_new_session=True)
+child.stdin.write(json.dumps(invocation).encode())
+child.stdin.close()
+start_ticks=open("/proc/%d/stat"%child.pid).read().rsplit(")",1)[1].split()[19]
+print("ISOLATED_GUEST_READY "+invocation["invocationId"]+" pid="+str(child.pid)+" startTicks="+start_ticks,file=sys.stderr,flush=True)
+os.set_blocking(0,False)
+buffer=b""
+status=None
+interrupted=None
+deadline=None
+escalated=False
+
+def signal_owned(sig):
+    def owned(pid):
+        while pid != os.getpid():
+            try:
+                pid=int(open("/proc/%d/stat"%pid).read().rsplit(")",1)[1].split()[1])
+            except FileNotFoundError:
+                return False
+            if pid <= 1:
+                return False
+        return True
+    def visit(parent):
+        try:
+            ids=open("/proc/%d/task/%d/children"%(parent,parent)).read().split()
+        except FileNotFoundError:
+            return
+        for text in ids:
+            pid=int(text)
+            try:
+                fd=os.pidfd_open(pid)
+            except ProcessLookupError:
+                continue
+            try:
+                # Opening a pidfd and checking the parent afterwards closes the
+                # PID-reuse race; adopted children remain below this subreaper.
+                stat=open("/proc/%d/stat"%pid).read().rsplit(")",1)[1].split()
+                if int(stat[1]) != parent or not owned(pid):
+                    continue
+                visit(pid)
+                signal.pidfd_send_signal(fd,sig)
+            except (FileNotFoundError,ProcessLookupError):
+                pass
+            finally:
+                os.close(fd)
+    visit(os.getpid())
+
+def reap():
+    global status
+    while True:
+        try:
+            pid,result=os.waitpid(-1,os.WNOHANG)
+        except ChildProcessError:
+            return True
+        if pid == 0:
+            return False
+        if pid == child.pid:
+            status=os.waitstatus_to_exitcode(result)
+
+def shutdown(sig):
+    global deadline
+    if deadline is None:
+        deadline=time.monotonic()+5
+    signal_owned(sig)
+
+try:
+    while True:
+        empty=reap()
+        if status is not None:
+            shutdown(signal.SIGTERM if not escalated else signal.SIGKILL)
+        if empty:
+            break
+        remaining=None if deadline is None else max(0,deadline-time.monotonic())
+        events=selector.select(remaining)
+        if not events and deadline is not None:
+            if escalated:
+                raise RuntimeError("owned guest descendants survived bounded SIGKILL/reap")
+            escalated=True
+            deadline=time.monotonic()+5
+            signal_owned(signal.SIGKILL)
+        for key,_ in events:
+            if key.data == "signal":
+                for number in os.read(read_fd,65536):
+                    if number in (signal.SIGINT,signal.SIGTERM):
+                        interrupted=number
+                        shutdown(number)
+            else:
+                chunk=os.read(0,65536)
+                if not chunk:
+                    selector.unregister(0)
+                    interrupted=signal.SIGTERM
+                    shutdown(signal.SIGTERM)
+                buffer+=chunk
+                while b"\n" in buffer:
+                    line,buffer=buffer.split(b"\n",1)
+                    control=json.loads(line)
+                    if control.get("signal") not in ("SIGINT","SIGTERM"):
+                        raise ValueError("invalid isolated control signal")
+                    interrupted=getattr(signal,control["signal"])
+                    shutdown(interrupted)
+finally:
+    try:
+        limit=time.monotonic()+5
+        while not reap():
+            signal_owned(signal.SIGKILL)
+            remaining=limit-time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("owned guest descendants survived final reap")
+            for key,_ in selector.select(remaining):
+                if key.data == "signal":
+                    os.read(read_fd,65536)
+                else:
+                    os.read(0,65536)
+                    selector.unregister(0)
+    finally:
+        signal.set_wakeup_fd(-1)
+        selector.close()
+        os.close(read_fd)
+        os.close(write_fd)
+print("ISOLATED_GUEST_REAPED "+invocation["invocationId"]+" escalated="+str(escalated),file=sys.stderr,flush=True)
+sys.exit(128+interrupted if interrupted else (status if status is not None and status >= 0 else 1))
+`;
+
+// stdin stays open as an invocation-specific control channel. The supervisor
+// gives the actual guest a finite JSON stdin and acknowledges complete reaping.
 export async function launchIsolatedInvocation(script, flags) {
   if (!flags.includes('--isolated-container')) return false;
   const index = flags.indexOf('--isolated-container');
   const container = flags[index + 1];
   if (!container || flags.includes('--isolated-guest')) throw new Error('invalid isolated container invocation');
-  const host = await observeIsolatedHost(container);
-  const { stdout: node } = await execute('docker', ['exec', host.container.id, 'sh', '-c', 'command -v node']);
-  const invocation = { method: ENVIRONMENT_METHOD, invocationId: randomUUID(),
-    observedAt: new Date().toISOString(), hostPid: process.pid, host };
-  const args = flags.filter((_, position) => position !== index && position !== index + 1);
-  const child = spawn('docker', ['exec', '-i', host.container.id, node.trim(), script, ...args, '--isolated-guest'],
-    { stdio: ['pipe', 'inherit', 'inherit'] });
-  const completed = new Promise((resolveExit, rejectExit) => {
-    child.once('error', rejectExit);
-    child.once('close', (code, signal) => resolveExit({ code, signal }));
-  });
-  child.stdin.end(JSON.stringify(invocation));
-  const result = await completed;
-  const after = await observeIsolatedHost(host.container.id);
-  if (!isDeepStrictEqual({ vm: host.vm, container: host.container }, { vm: after.vm, container: after.container })) {
-    throw new Error('isolated environment host allocation/container changed during invocation');
+  let host;
+  let child;
+  let interrupt;
+  let timeout;
+  let controlError;
+  const forward = (signal) => {
+    interrupt ??= signal;
+    if (child && !child.stdin.destroyed) child.stdin.write(`${JSON.stringify({ signal: interrupt })}\n`);
+    // The remote supervisor has two 5s reap deadlines. A disconnected client
+    // is failure evidence, never a successful remote cleanup receipt.
+    timeout ??= setTimeout(() => {
+      controlError = new Error('isolated guest did not acknowledge bounded teardown');
+      child?.kill('SIGKILL');
+    }, 15_000);
+  };
+  const onInterrupt = () => forward('SIGINT');
+  const onTerminate = () => forward('SIGTERM');
+  process.on('SIGINT', onInterrupt);
+  process.on('SIGTERM', onTerminate);
+  const boundedExecute = (command, args) => execute(command, args, { timeout: 10_000 });
+  try {
+    host = await observeIsolatedHost(container, boundedExecute);
+    if (interrupt) { process.exitCode = interrupt === 'SIGINT' ? 130 : 143; return true; }
+    const { stdout: node } = await boundedExecute('docker', ['exec', host.container.id, 'sh', '-c', 'command -v node']);
+    if (interrupt) { process.exitCode = interrupt === 'SIGINT' ? 130 : 143; return true; }
+    const invocation = { method: ENVIRONMENT_METHOD, invocationId: randomUUID(),
+      observedAt: new Date().toISOString(), hostPid: process.pid, host };
+    const args = flags.filter((_, position) => position !== index && position !== index + 1);
+    child = spawn('docker', ['exec', '-i', host.container.id, 'python3', '-u', '-c',
+      isolatedSupervisor, node.trim(), script, ...args, '--isolated-guest'],
+    { stdio: ['pipe', 'inherit', 'pipe'] });
+    let reaped = false;
+    let output = '';
+    child.stderr.on('data', (chunk) => {
+      process.stderr.write(chunk);
+      output += chunk;
+      if (output.includes(`ISOLATED_GUEST_REAPED ${invocation.invocationId} `)) reaped = true;
+      output = output.slice(-4096);
+    });
+    child.stdin.on('error', (error) => { controlError = error; });
+    const completed = new Promise((resolveExit, rejectExit) => {
+      child.once('error', rejectExit);
+      child.once('close', (code, signal) => resolveExit({ code, signal }));
+    });
+    child.stdin.write(`${JSON.stringify({ invocation })}\n`);
+    const result = await completed;
+    if (controlError) throw controlError;
+    if (!reaped) throw new Error('isolated guest exited without owned teardown/reap acknowledgement');
+    if (result.signal || (interrupt && result.code !== 0 && result.code !== (interrupt === 'SIGINT' ? 130 : 143))) {
+      throw new Error(`isolated guest teardown failed: code=${result.code} signal=${result.signal}`);
+    }
+    if (interrupt) process.exitCode = interrupt === 'SIGINT' ? 130 : 143;
+    else if (result.signal || result.code !== 0) process.exitCode = result.code || 1;
+  } finally {
+    clearTimeout(timeout);
+    child?.stdin.destroy();
+    try {
+      if (host) {
+        const after = await observeIsolatedHost(host.container.id, boundedExecute);
+        if (!isDeepStrictEqual({ vm: host.vm, container: host.container }, { vm: after.vm, container: after.container })) {
+          throw new Error('isolated environment host allocation/container changed during invocation');
+        }
+      }
+    } finally {
+      process.off('SIGINT', onInterrupt);
+      process.off('SIGTERM', onTerminate);
+    }
   }
-  if (result.signal || result.code !== 0) process.exitCode = result.code || 1;
   return true;
 }
 
@@ -130,7 +347,7 @@ export function isolatedEnvironmentIdentity(host, guest) {
     ...contents(observed), fileContents: Object.values(files).sort(),
   } };
 }
-async function observeGuestIdentity(config, host) {
+async function observeGuestIdentity(config, host, entrypoints) {
   if (platform() !== 'linux' || arch() !== 'arm64' || hostname() !== host.container.hostname
     || release() !== host.vm.kernel || cpus().length !== host.vm.logicalCpus
     || totalmem() !== host.vm.memoryBytes || host.vm.operatingSystem !== 'OrbStack') {
@@ -195,11 +412,8 @@ async function observeGuestIdentity(config, host) {
     throw new Error('isolated environment external Python/Frida identity mismatch');
   }
   Object.assign(files, externalFiles);
-  const collector = {};
-  for (const name of ['measure.mjs', 'measure-browser.mjs', 'run-gate.mjs', 'native-terminal.mjs',
-    'native-lifetime.mjs', 'native-lifetime-agent.js', 'native-lifetime-host.py']) {
-    collector[name] = await fileIdentity(new URL(name, import.meta.url));
-  }
+  const collector = await captureCollectorSources(undefined, entrypoints);
+  for (const file of Object.values(collector)) files[file.path] = file.sha256;
   const suite = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const locks = {};
   for (const app of ['.', ...FRAMEWORKS.map((name) => `apps/${name}`)]) {
@@ -212,17 +426,18 @@ async function observeGuestIdentity(config, host) {
   return { runtime: { version: process.version, v8: process.versions.v8, node },
     sdk, pnpm, browser: browserIdentity, python, external: externalIdentity,
     observer: { enabled: true, method: native.NATIVE_LIFETIME_METHOD, schema: native.NATIVE_LIFETIME_SCHEMA },
-    collector, locks, files, allocation, platform: platform(), arch: arch(), kernel: release(),
+    collector, collectorEntrypoints: entrypoints, locks, files, allocation, platform: platform(), arch: arch(), kernel: release(),
     logicalCpus: cpus().length, availableParallelism: availableParallelism(), memoryBytes: totalmem() };
 }
 
-export async function captureIsolatedEnvironment(config, invocation, outputRoot) {
-  const guest = await observeGuestIdentity(config, invocation.host);
+export async function captureIsolatedEnvironment(config, invocation, outputRoot,
+  { entrypoints = ['measure.mjs', 'run-gate.mjs'] } = {}) {
+  const guest = await observeGuestIdentity(config, invocation.host, entrypoints);
   // Container instance/PID/start time are evidence, not pair-comparison identity.
   const identity = isolatedEnvironmentIdentity(invocation.host, guest);
   const record = { schemaVersion: 1, method: ENVIRONMENT_METHOD, invocation, identity,
     configuration: comparableEnvironmentSettings(config), configurationEvidence: environmentSettings(config),
-    provenance: config.provenance,
+    provenance: productProvenance(config.provenance),
     configSha256: environmentConfigIdentity(config), identitySha256: objectSha256(identity),
     guestEvidence: { pid: process.pid, hostname: hostname(), observedAt: new Date().toISOString(), guest } };
   await mkdir(outputRoot, { recursive: true });
@@ -288,8 +503,7 @@ export async function verifyEnvironmentBinding(binding, outputRoot) {
   }
   const files = [guest.runtime.node, guest.browser, guest.python, guest.pnpm,
     ...['@playwright/test', 'playwright', 'playwright-core', 'typescript'].map((name) => guest.sdk?.[name]),
-    ...['measure.mjs', 'measure-browser.mjs', 'run-gate.mjs', 'native-terminal.mjs',
-      'native-lifetime.mjs', 'native-lifetime-agent.js', 'native-lifetime-host.py'].map((name) => guest.collector?.[name]),
+    ...collectorSources(guest.collectorEntrypoints).map((name) => guest.collector?.[name]),
     ...['.', ...FRAMEWORKS.map((name) => `apps/${name}`)].map((name) => guest.locks?.[name])];
   if (files.some((file) => !isAbsolute(file?.path ?? '') || !/^[a-f0-9]{64}$/u.test(file?.sha256 ?? '')
       || guest.files[file.path] !== file.sha256)
@@ -383,7 +597,7 @@ export async function collectMeasurements(config, driver, directory) {
   await mkdir(directory, { recursive: true });
   const isolated = config.isolatedRepresentative || config.environmentBinding;
   const binding = isolated ? { isolatedRepresentative: true, environmentBinding: config.environmentBinding } : {};
-  const provenance = isolated ? { ...config.provenance, ...binding } : config.provenance;
+  const provenance = productProvenance(config.provenance);
   await revalidateEnvironment(config, dirname(directory));
   const runs = [];
   const warmups = [];
@@ -502,12 +716,28 @@ export async function mergeEvidence(production, development, directory) {
 }
 
 export async function verifyMeasurementEnvironment(receipt, outputRoot) {
-  if (!receipt.isolatedRepresentative && !receipt.environmentBinding) return;
-  if (!receipt.isolatedRepresentative || !isDeepStrictEqual(receipt.provenance?.environmentBinding, receipt.environmentBinding)) {
+  const samples = [...receipt.runs, ...(receipt.warmups ?? []), ...(receipt.developmentWarmups ?? [])];
+  if (!receipt.isolatedRepresentative && !receipt.environmentBinding
+    && !samples.some((run) => run.isolatedRepresentative || run.environmentBinding)
+    && !receipt.developmentEnvironmentBinding) return;
+  if (!receipt.isolatedRepresentative) {
+    throw new Error('environment binding aggregate mode missing');
+  }
+  const environment = await verifyEnvironmentBinding(receipt.environmentBinding, outputRoot);
+  if (!isDeepStrictEqual(receipt.provenance, environment.provenance)) {
     throw new Error('environment binding aggregate provenance mismatch');
   }
-  await verifyEnvironmentBinding(receipt.environmentBinding, outputRoot);
-  for (const run of [...receipt.runs, ...(receipt.warmups ?? []), ...(receipt.developmentWarmups ?? [])]) {
+  if (receipt.profile !== environment.configuration.profile || receipt.mode !== environment.configuration.mode) {
+    throw new Error('environment binding aggregate configuration mismatch');
+  }
+  if (receipt.developmentEnvironmentBinding) {
+    const development = await verifyEnvironmentBinding(receipt.developmentEnvironmentBinding, outputRoot);
+    if (environment.identitySha256 !== development.identitySha256
+      || !isDeepStrictEqual(receipt.provenance, development.provenance)) {
+      throw new Error('environment binding development identity/provenance mismatch');
+    }
+  }
+  for (const run of samples) {
     const expected = (receipt.developmentWarmups ?? []).includes(run)
       ? receipt.developmentEnvironmentBinding : receipt.environmentBinding;
     if (!run.isolatedRepresentative || !isDeepStrictEqual(run.environmentBinding, expected)) {
@@ -535,7 +765,7 @@ export async function verifyTraceFiles(runs, outputRoot) {
     if (isolated) {
       if (!record.isolatedRepresentative) throw new Error('environment binding trace mode missing');
       const environment = await verifyEnvironmentBinding(record.environmentBinding, root);
-      if (sources && !isDeepStrictEqual(record.provenance?.environmentBinding, record.environmentBinding)) {
+      if (sources && !isDeepStrictEqual(record.provenance, environment.provenance)) {
         throw new Error('environment binding trace provenance mismatch');
       }
       if (sources && (record.profile !== environment.configuration.profile || record.mode !== environment.configuration.mode

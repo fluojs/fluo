@@ -238,7 +238,6 @@ async function main() {
       cpuModel: cpus()[0]?.model, cpuCores: cpus().length, totalMemoryBytes: totalmem(),
       serverNodeEnv: 'production' },
     root,
-    ...(environmentBinding ? { isolatedRepresentative: true, environmentBinding } : {}),
   };
   servers = await startServers(FRAMEWORKS.map((framework) => ({
     name: framework,

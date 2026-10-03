@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,6 +9,7 @@ import { collectDevMeasurements, collectMeasurements, environmentConfigIdentity,
   isolatedEnvironmentIdentity, planMeasurements, summarizeEnvironmentHeadroom,
   verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from '../src/measure.mjs';
 import { createBrowserDriver } from '../src/measure-browser.mjs';
+import { evaluateEvidence } from '../src/gate.mjs';
 import { createNativeLifetimeObserver, NATIVE_LIFETIME_IDENTITY, NATIVE_LIFETIME_METHOD,
   NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA, reconcileNativeLifetime } from '../src/native-lifetime.mjs';
 
@@ -62,7 +63,7 @@ test('isolated production and development aggregates cannot merge mismatched env
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-async function environmentFixture(directory, invocationId = 'invocation') {
+async function environmentFixture(directory, invocationId = 'invocation', measurementConfig = config) {
   const allocation = { nanoCpus: 0, cpuQuota: 0, cpuPeriod: 0, cpuset: '', memory: 0, memorySwap: 0 };
   const vm = { kernel: 'kernel', logicalCpus: 12, memoryBytes: 8392974336 };
   const container = { id: 'container', imageId: 'image', imageReference: 'fixture', hostname: 'guest',
@@ -72,7 +73,7 @@ async function environmentFixture(directory, invocationId = 'invocation') {
     State: { Running: true, Pid: container.pid, StartedAt: container.startedAt },
     HostConfig: { NanoCpus: 0, CpuQuota: 0, CpuPeriod: 0, CpusetCpus: '', Memory: 0, MemorySwap: 0 } }]),
     information: JSON.stringify({ KernelVersion: vm.kernel, NCPU: vm.logicalCpus, MemTotal: vm.memoryBytes }) };
-  const configuration = { ...config, nativeLifetime: { enabled: true, python: '/python' } };
+  const configuration = { ...measurementConfig, nativeLifetime: { enabled: true, python: '/python' } };
   delete configuration.provenance;
   const identity = { vm, container: { imageId: container.imageId, imageReference: container.imageReference, allocation },
     guest: { platform: 'linux', arch: 'arm64', kernel: vm.kernel, logicalCpus: vm.logicalCpus,
@@ -93,8 +94,10 @@ async function environmentFixture(directory, invocationId = 'invocation') {
   guest.sdk = Object.fromEntries(['@playwright/test', 'playwright', 'playwright-core', 'typescript']
     .map((name) => [name, { ...file(`/${name}/package.json`), version: name === 'typescript' ? '6.0.2' : '1.61.1' }]));
   guest.collector = Object.fromEntries(['measure.mjs', 'measure-browser.mjs', 'run-gate.mjs',
-    'native-terminal.mjs', 'native-lifetime.mjs', 'native-lifetime-agent.js', 'native-lifetime-host.py']
+    'native-terminal.mjs', 'native-lifetime.mjs', 'native-lifetime-agent.js', 'native-lifetime-host.py',
+    'initial-readiness.mjs', 'process-group.mjs', 'gate.mjs', 'evaluate.ts', 'fluo-dev.mjs']
     .map((name) => [name, file(`/collector/${name}`)]));
+  guest.collectorEntrypoints = ['measure.mjs', 'run-gate.mjs'];
   guest.locks = Object.fromEntries(['.', ...frameworks.map((name) => `apps/${name}`)]
     .map((name) => [name, file(`/locks/${name}/pnpm-lock.yaml`)]));
   guest.allocation = { 'cpu.max': 'max 100000', 'cpuset.cpus.effective': '0-11', 'memory.max': 'max' };
@@ -114,6 +117,106 @@ async function environmentFixture(directory, invocationId = 'invocation') {
     sha256: createHash('sha256').update(bytes).digest('hex'), invocationId,
     identitySha256: record.identitySha256, configSha256: record.configSha256 } };
 }
+
+test('actual helper-only source drift changes pair identity and missing helpers fail capture', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-collector-'));
+  try {
+    const { captureCollectorSources, requireEnvironmentPairIdentity } = await import('../src/measure.mjs');
+    assert.equal(typeof captureCollectorSources, 'function');
+    await cp(new URL('../src/', import.meta.url), directory, { recursive: true });
+    const before = await captureCollectorSources(directory);
+    const helper = join(directory, 'initial-readiness.mjs');
+    await writeFile(helper, `${await readFile(helper, 'utf8')}\n// helper-only drift\n`);
+    const after = await captureCollectorSources(directory);
+    const host = { container: {} };
+    const hash = (collector) => createHash('sha256').update(JSON.stringify(
+      isolatedEnvironmentIdentity(host, { collector, files: {} }))).digest('hex');
+    const binding = { identitySha256: hash(before), configSha256: 'unchanged-config' };
+    await assert.rejects(async () => requireEnvironmentPairIdentity(
+      { ...binding, identitySha256: hash(after) }, ['--environment-identity', binding.identitySha256,
+        '--environment-config-identity', binding.configSha256]), /environment\/config mismatch/u);
+    await rm(helper);
+    await assert.rejects(captureCollectorSources(directory), { code: 'ENOENT' });
+    await cp(new URL('../src/initial-readiness.mjs', import.meta.url), helper);
+    await assert.rejects(captureCollectorSources(directory, ['run-server-only.mjs']), { code: 'ENOENT' });
+    for (const name of ['run-server-only.mjs', 'server-measurement.mjs', 'socket-shell.mjs']) {
+      await writeFile(join(directory, name), 'export const value = 1;\n');
+    }
+    const serverBefore = await captureCollectorSources(directory, ['run-server-only.mjs']);
+    await writeFile(join(directory, 'socket-shell.mjs'), 'export const value = 2;\n');
+    const serverAfter = await captureCollectorSources(directory, ['run-server-only.mjs']);
+    assert.notEqual(hash(serverBefore), hash(serverAfter));
+    await rm(join(directory, 'server-measurement.mjs'));
+    await assert.rejects(captureCollectorSources(directory, ['run-server-only.mjs']), { code: 'ENOENT' });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('authenticated replay rejects each missing measurement-driving helper', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-environment-'));
+  try {
+    for (const name of ['initial-readiness.mjs', 'process-group.mjs', 'gate.mjs', 'evaluate.ts', 'fluo-dev.mjs']) {
+      const { record, binding } = await environmentFixture(directory);
+      const guest = record.guestEvidence.guest;
+      delete guest.files[guest.collector[name].path];
+      delete guest.collector[name];
+      record.identity = isolatedEnvironmentIdentity(record.invocation.host, guest);
+      record.identitySha256 = createHash('sha256').update(JSON.stringify(record.identity)).digest('hex');
+      const bytes = JSON.stringify(record);
+      await writeFile(binding.path, bytes);
+      await assert.rejects(verifyEnvironmentBinding({ ...binding, identitySha256: record.identitySha256,
+        sha256: createHash('sha256').update(bytes).digest('hex') }, directory),
+      /incomplete executable\/SDK\/collector\/allocation/u, name);
+    }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('producer keeps distinct authenticated invocation bindings out of strict product provenance', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-environment-'));
+  try {
+    const combinedReceipts = [];
+    for (const profile of [config.profile, 'tablet-matched-cache']) {
+      const receipts = [];
+      for (const mode of ['production', 'development']) {
+        const name = `${profile}-${mode}`;
+        const { binding } = await environmentFixture(directory, name, { ...config, profile });
+        const receipt = await collectMeasurements({ ...config, profile,
+          provenance: { ...config.provenance, isolatedRepresentative: true, environmentBinding: binding },
+        }, { async check() { return { pass: false, steps: [] }; } }, join(directory, name));
+        Object.assign(receipt, { isolatedRepresentative: true, environmentBinding: binding });
+        for (const run of [...receipt.runs, ...receipt.warmups]) {
+          Object.assign(run, { isolatedRepresentative: true, environmentBinding: binding });
+          const raw = JSON.parse(await readFile(run.trace, 'utf8'));
+          Object.assign(raw, { isolatedRepresentative: true, environmentBinding: binding });
+          raw.environment.browserVersion = NATIVE_LIFETIME_IDENTITY.browserVersion;
+          await writeFile(run.trace, JSON.stringify(raw));
+        }
+        receipts.push(receipt);
+      }
+      const combined = await mergeEvidence(...receipts, join(directory, 'combined'));
+      combinedReceipts.push(combined);
+      await verifyTraceFiles([...combined.runs, ...combined.warmups, ...combined.developmentWarmups], directory);
+      assert.deepEqual(receipts[0].provenance, config.provenance);
+      assert.deepEqual(receipts[1].provenance, config.provenance);
+      await assert.rejects(verifyMeasurementEnvironment({ ...combined, mode: 'native' }, directory),
+        /configuration mismatch/u);
+      await assert.rejects(verifyMeasurementEnvironment({ ...combined, isolatedRepresentative: false,
+        environmentBinding: undefined }, directory), /aggregate mode/u);
+      await assert.rejects(verifyMeasurementEnvironment({ ...combined,
+        environmentBinding: { ...combined.environmentBinding, method: 'forged' } }, directory), /environment binding/u);
+    }
+    const baseline = { profiles: Object.fromEntries([config.profile, 'tablet-matched-cache'].map((profile) => [profile, {
+      mode: config.mode, absoluteBudgets: Object.fromEntries(EVALUATOR_METRICS.map((metric) => [metric, 100])),
+      relativeBands: Object.fromEntries(EVALUATOR_METRICS.map((metric) => [metric, 1.5])),
+    }])), policy: { minimumRuns: 3, warmupRuns: 1, maximumRelativeSpread: 0.1, outlierMadMultiplier: 3 } };
+    await evaluateEvidence(baseline, combinedReceipts, directory);
+    const combinedTrace = JSON.parse(await readFile(combinedReceipts[0].runs[0].trace, 'utf8'));
+    const path = combinedTrace.sourceTraces[1];
+    const raw = JSON.parse(await readFile(path, 'utf8'));
+    raw.provenance.commit = 'different-product';
+    await writeFile(path, JSON.stringify(raw));
+    await assert.rejects(evaluateEvidence(baseline, combinedReceipts, directory), /provenance/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 test('environment replay rejects tampered bytes, escaped records, invocation reuse and raw host mismatch', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'fluo-environment-'));
@@ -215,7 +318,6 @@ test('isolated aggregate and combined replay preserve both invocations and all w
       }, join(directory, name));
       receipt.isolatedRepresentative = true;
       receipt.environmentBinding = environmentBinding;
-      receipt.provenance = { ...receipt.provenance, isolatedRepresentative: true, environmentBinding };
       for (const run of [...receipt.runs, ...receipt.warmups]) {
         Object.assign(run, { isolatedRepresentative: true, environmentBinding });
         const raw = JSON.parse(await readFile(run.trace, 'utf8'));
