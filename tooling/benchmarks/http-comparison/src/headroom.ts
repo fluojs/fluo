@@ -2,12 +2,12 @@ import { writeFile } from 'node:fs/promises';
 import { load } from './load';
 import { environmentSummary } from './provenance';
 import { monitorServer } from './resources';
-import { SCENARIOS } from './scenarios';
+import { selectSuite } from './suites';
 import { buildTarget, runCommand, startTargets, stopTargets, TARGETS, waitForTarget } from './targets';
 
 const target = TARGETS.find((item) => item.name === (process.env.BENCH_TARGETS ?? 'native-fastify'));
 if (!target) throw new Error('Headroom diagnostic requires one known BENCH_TARGETS target');
-const scenario = SCENARIOS.find((item) => item.name === (process.env.BENCH_SCENARIOS ?? 'read-search-local'));
+const scenario = selectSuite().find((item) => item.name === (process.env.BENCH_SCENARIOS ?? 'read-search-local'));
 if (!scenario) throw new Error('Headroom diagnostic requires one known BENCH_SCENARIOS scenario');
 const output = process.env.BENCH_OUTPUT_JSON;
 if (!output) throw new Error('BENCH_OUTPUT_JSON is required');

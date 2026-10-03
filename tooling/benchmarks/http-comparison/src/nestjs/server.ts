@@ -5,10 +5,11 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import { comparisonHeaders } from '../shared/comparison-headers';
+import { readAppShape, type AppShape } from '../shared/app-shape';
+import { isStageShape } from '../shared/stage-workloads';
+import { resolveNestStageModule } from '../shared/nest-stages';
 
 import { jsonCommandLocal, queryValue, readSearchLocal, restRouteMixLocal, toPreviewBody, toQuoteInput, type QuoteInput } from '../shared/workloads';
-
-type AppShape = 'read-search-local' | 'json-command-local' | 'rest-route-mix-local';
 
 class ReadSearchQuery {
   role = '';
@@ -140,6 +141,7 @@ class JsonCommandModule {}
 class RestRouteMixModule {}
 
 function resolveAppModule(shape: AppShape) {
+  if (isStageShape(shape)) return resolveNestStageModule(shape);
   switch (shape) {
     case 'read-search-local': return ReadSearchModule;
     case 'json-command-local': return JsonCommandModule;
@@ -147,19 +149,10 @@ function resolveAppModule(shape: AppShape) {
   }
 }
 
-function readAppShape(): AppShape {
-  const raw = process.env['BENCH_APP_SHAPE'] ?? 'read-search-local';
-  if (raw === 'read-search-local' || raw === 'json-command-local' || raw === 'rest-route-mix-local') {
-    return raw;
-  }
-
-  throw new Error(`Unsupported BENCH_APP_SHAPE: ${raw}`);
-}
-
 async function main(): Promise<void> {
   const port = Number(process.env['PORT'] ?? 3002);
   const app = await NestFactory.create(
-    resolveAppModule(readAppShape()),
+    resolveAppModule(readAppShape(process.env.BENCH_APP_SHAPE)),
     process.env['BENCH_TARGET'] === 'nestjs-express' ? new ExpressAdapter() : new FastifyAdapter(),
     { logger: false },
   );

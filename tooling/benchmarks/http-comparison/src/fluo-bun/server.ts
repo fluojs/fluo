@@ -2,12 +2,12 @@ import { ensureMetadataSymbol, Inject, Module } from '@fluojs/core';
 import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
 import { BunHttpApplicationAdapter } from '@fluojs/platform-bun';
 import { FluoFactory } from '@fluojs/runtime';
-
+import { type AppShape, readAppShape } from '../shared/app-shape';
+import { resolveStageModule } from '../shared/fluo-stages';
+import { isStageShape } from '../shared/stage-workloads';
 import { jsonCommandLocal, type QuoteInput, queryValue, readSearchLocal, restRouteMixLocal, toPreviewBody, toQuoteInput } from '../shared/workloads';
 
 ensureMetadataSymbol();
-
-type AppShape = 'read-search-local' | 'json-command-local' | 'rest-route-mix-local';
 
 class UsersReadService {
   search(context: RequestContext) {
@@ -102,6 +102,7 @@ class JsonCommandModule {}
 class RestRouteMixModule {}
 
 function resolveAppModule(shape: AppShape) {
+  if (isStageShape(shape)) return resolveStageModule(shape);
   switch (shape) {
     case 'read-search-local': return ReadSearchModule;
     case 'json-command-local': return JsonCommandModule;
@@ -109,15 +110,9 @@ function resolveAppModule(shape: AppShape) {
   }
 }
 
-function readAppShape(): AppShape {
-  const raw = process.env.BENCH_APP_SHAPE ?? 'read-search-local';
-  if (raw === 'read-search-local' || raw === 'json-command-local' || raw === 'rest-route-mix-local') return raw;
-  throw new Error(`Unsupported BENCH_APP_SHAPE: ${raw}`);
-}
-
 async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? 3003);
-  const app = await FluoFactory.create(resolveAppModule(readAppShape()), {
+  const app = await FluoFactory.create(resolveAppModule(readAppShape(process.env.BENCH_APP_SHAPE)), {
     adapter: BunHttpApplicationAdapter.create({ port }),
   });
 

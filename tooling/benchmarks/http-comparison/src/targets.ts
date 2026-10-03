@@ -95,18 +95,56 @@ export function runCommand(command: string, args: string[]): Promise<void> {
   });
 }
 
-export function startTargets(appShape: AppShape, targets: readonly TargetConfig[]): ChildProcess[] {
+export interface TargetLaunchOptions {
+  readonly inspectorPort?: number;
+  readonly gcTrace?: boolean;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly quiet?: boolean;
+  readonly onOutput?: (target: TargetConfig, stream: 'stdout' | 'stderr', data: Buffer) => void;
+}
+
+export function targetLaunch(target: TargetConfig, appShape: AppShape, options: TargetLaunchOptions = {}) {
+  const configuration = options.env?.BENCH_CONFIGURATION ?? process.env.BENCH_CONFIGURATION ?? 'default';
+  const args = target.platform === 'workers' ? [...target.args, '--var', `BENCH_APP_SHAPE:${appShape}`, '--var', `BENCH_CONFIGURATION:${configuration}`]
+    : target.platform === 'deno' ? [...target.args, appShape] : [...target.args];
+  if (options.inspectorPort !== undefined) {
+    const address = `127.0.0.1:${options.inspectorPort}`;
+    switch (target.platform) {
+      case 'workers':
+        args[args.indexOf('--inspector-port') + 1] = String(options.inspectorPort);
+        break;
+      case 'bun': args.unshift(`--inspect=${address}/3910`); break;
+      case 'deno': args.splice(1, 0, `--inspect=${address}`); break;
+      case 'fastify': case 'express': case 'nodejs': case 'nextjs':
+        args.unshift(`--inspect=${address}`);
+        break;
+    }
+  }
+  if (options.gcTrace) {
+    if (target.platform === 'deno') args.splice(1, 0, '--v8-flags=--trace-gc');
+    else if (target.command === 'node' && target.platform !== 'workers') args.unshift('--trace-gc');
+  }
+  return {
+    command: target.command, args, cwd: WDIR,
+    env: { ...process.env, ...options.env, BENCH_APP_SHAPE: appShape, BENCH_TARGET: target.name, PORT: String(target.port), WRANGLER_SEND_METRICS: 'false', NEXT_TELEMETRY_DISABLED: '1' },
+  };
+}
+
+export function startTargets(appShape: AppShape, targets: readonly TargetConfig[], options: TargetLaunchOptions = {}): ChildProcess[] {
   return targets.map((target) => {
-    const args = target.platform === 'workers' ? [...target.args, '--var', `BENCH_APP_SHAPE:${appShape}`, '--var', `BENCH_CONFIGURATION:${process.env.BENCH_CONFIGURATION ?? 'default'}`]
-      : target.platform === 'deno' ? [...target.args, appShape] : target.args;
-    const child = spawn(target.command, args, {
-      cwd: WDIR,
+    const launch = targetLaunch(target, appShape, options);
+    const child = spawn(launch.command, launch.args, {
+      cwd: launch.cwd,
       detached: true,
-      env: { ...process.env, BENCH_APP_SHAPE: appShape, BENCH_TARGET: target.name, PORT: String(target.port), WRANGLER_SEND_METRICS: 'false', NEXT_TELEMETRY_DISABLED: '1' },
+      env: launch.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[${target.name}] ${String(d)}`));
+    child.stdout?.on('data', (data: Buffer) => options.onOutput?.(target, 'stdout', data));
+    child.stderr?.on('data', (data: Buffer) => {
+      options.onOutput?.(target, 'stderr', data);
+      if (!options.quiet) process.stderr.write(`[${target.name}] ${String(data)}`);
+    });
     activeTargets.add(child);
     return child;
   });

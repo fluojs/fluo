@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { SCENARIOS } from './scenarios';
+import { selectSuite } from './suites';
 import { buildTarget, startTargets, stopTargets, TARGETS, WDIR, waitForTarget } from './targets';
 import { shoot } from './traffic';
 
@@ -15,7 +15,7 @@ try {
   // Nest Fastify and Express share one legacy-decorator build.
   for (const target of targets) await buildTarget(target);
   for (const target of targets) {
-    for (const scenario of SCENARIOS) {
+    for (const scenario of selectSuite()) {
       const startedAt = new Date().toISOString();
       const processes = startTargets(scenario.appShape, [target]);
       try {
