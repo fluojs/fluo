@@ -1,0 +1,253 @@
+{
+  "version": 1,
+  "kind": "collector-correctness-not-performance",
+  "reviewedHead": "ffea4838c07671b04e8334927ec42163e377a37a",
+  "normalProbe": {
+    "exitCode": 0,
+    "completedTargets": [
+      "native-fastify",
+      "fluo-fastify"
+    ],
+    "invalidAttempts": []
+  },
+  "failureProbe": {
+    "exitCode": 1,
+    "method": "A controlled HTTP 503 listener at the second target endpoint was used after a valid first target.",
+    "completedTargets": [
+      {
+        "label": "native-fastify",
+        "result": {
+          "url": "http://127.0.0.1:43909",
+          "connections": 1,
+          "sampleInt": 1000,
+          "pipelining": 1,
+          "duration": 1,
+          "samples": 1,
+          "start": "2026-10-03T10:04:38.287Z",
+          "finish": "2026-10-03T10:04:39.289Z",
+          "errors": 0,
+          "timeouts": 0,
+          "mismatches": 0,
+          "non2xx": 0,
+          "resets": 0,
+          "1xx": 0,
+          "2xx": 27466,
+          "3xx": 0,
+          "4xx": 0,
+          "5xx": 0,
+          "statusCodeStats": {
+            "200": {
+              "count": 21973
+            },
+            "201": {
+              "count": 5493
+            }
+          },
+          "latency": {
+            "average": 0.01,
+            "mean": 0.01,
+            "stddev": 0.02,
+            "min": 1,
+            "max": 1,
+            "p0_001": 0,
+            "p0_01": 0,
+            "p0_1": 0,
+            "p1": 0,
+            "p2_5": 0,
+            "p10": 0,
+            "p25": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p97_5": 0,
+            "p99": 0,
+            "p99_9": 0,
+            "p99_99": 1,
+            "p99_999": 1,
+            "totalCount": 27466
+          },
+          "requests": {
+            "average": 27464,
+            "mean": 27464,
+            "stddev": 0,
+            "min": 27466,
+            "max": 27466,
+            "total": 27466,
+            "p0_001": 27471,
+            "p0_01": 27471,
+            "p0_1": 27471,
+            "p1": 27471,
+            "p2_5": 27471,
+            "p10": 27471,
+            "p25": 27471,
+            "p50": 27471,
+            "p75": 27471,
+            "p90": 27471,
+            "p97_5": 27471,
+            "p99": 27471,
+            "p99_9": 27471,
+            "p99_99": 27471,
+            "p99_999": 27471,
+            "sent": 27467
+          },
+          "throughput": {
+            "average": 8022016,
+            "mean": 8022016,
+            "stddev": 0,
+            "min": 8020059,
+            "max": 8020059,
+            "total": 8020059,
+            "p0_001": 8024063,
+            "p0_01": 8024063,
+            "p0_1": 8024063,
+            "p1": 8024063,
+            "p2_5": 8024063,
+            "p10": 8024063,
+            "p25": 8024063,
+            "p50": 8024063,
+            "p75": 8024063,
+            "p90": 8024063,
+            "p97_5": 8024063,
+            "p99": 8024063,
+            "p99_9": 8024063,
+            "p99_99": 8024063,
+            "p99_999": 8024063
+          }
+        },
+        "statusMismatches": 0
+      }
+    ],
+    "invalidAttempts": [
+      {
+        "condition": {
+          "configuration": "default",
+          "scenario": "rest-route-mix-local",
+          "target": "fluo-fastify",
+          "connections": 1,
+          "repeat": 0,
+          "phase": "cold-request",
+          "processToReadyMs": 188.12704200000007
+        },
+        "errorName": "LoadProcessFailure",
+        "remoteFailure": {
+          "message": "remote-load-client returned invalid benchmark traffic: {\"non2xx\":1,\"mismatches\":1,\"statusMismatches\":1}; completed=1",
+          "diagnostics": {
+            "result": {
+              "url": "http://127.0.0.1:43910",
+              "connections": 1,
+              "sampleInt": 1000,
+              "pipelining": 1,
+              "duration": 1,
+              "samples": 1,
+              "start": "2026-10-03T10:04:39.588Z",
+              "finish": "2026-10-03T10:04:40.592Z",
+              "errors": 0,
+              "timeouts": 0,
+              "mismatches": 1,
+              "non2xx": 1,
+              "resets": 0,
+              "1xx": 0,
+              "2xx": 0,
+              "3xx": 0,
+              "4xx": 0,
+              "5xx": 1,
+              "statusCodeStats": {
+                "503": {
+                  "count": 1
+                }
+              },
+              "latency": {
+                "average": 1,
+                "mean": 1,
+                "stddev": 0,
+                "min": 1,
+                "max": 1,
+                "p0_001": 1,
+                "p0_01": 1,
+                "p0_1": 1,
+                "p1": 1,
+                "p2_5": 1,
+                "p10": 1,
+                "p25": 1,
+                "p50": 1,
+                "p75": 1,
+                "p90": 1,
+                "p97_5": 1,
+                "p99": 1,
+                "p99_9": 1,
+                "p99_99": 1,
+                "p99_999": 1,
+                "totalCount": 1
+              },
+              "requests": {
+                "average": 1,
+                "mean": 1,
+                "stddev": 0,
+                "min": 1,
+                "max": 1,
+                "total": 1,
+                "p0_001": 1,
+                "p0_01": 1,
+                "p0_1": 1,
+                "p1": 1,
+                "p2_5": 1,
+                "p10": 1,
+                "p25": 1,
+                "p50": 1,
+                "p75": 1,
+                "p90": 1,
+                "p97_5": 1,
+                "p99": 1,
+                "p99_9": 1,
+                "p99_99": 1,
+                "p99_999": 1,
+                "sent": 1
+              },
+              "throughput": {
+                "average": 161,
+                "mean": 161,
+                "stddev": 0,
+                "min": 161,
+                "max": 161,
+                "total": 161,
+                "p0_001": 161,
+                "p0_01": 161,
+                "p0_1": 161,
+                "p1": 161,
+                "p2_5": 161,
+                "p10": 161,
+                "p25": 161,
+                "p50": 161,
+                "p75": 161,
+                "p90": 161,
+                "p97_5": 161,
+                "p99": 161,
+                "p99_9": 161,
+                "p99_99": 161,
+                "p99_999": 161
+              }
+            },
+            "statusMismatches": 1,
+            "clientCpu": {
+              "userMicros": 11793,
+              "systemMicros": 808,
+              "wallMicros": 1006743.791,
+              "coreEquivalentPercent": 1.2516590728097177
+            },
+            "latencyHistogramMicros": [
+              [
+                1751,
+                1
+              ]
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "redEvidence": {
+    "mutation": "Removed completed-sample registration from EvidenceJournal.record",
+    "result": "2 tests failed with AssertionError; 0 passed; restored before GREEN"
+  },
+  "sourceBoundary": "Existing performance archives retain their original collector source snapshot; these diagnostics are not replacement performance measurements."
+}

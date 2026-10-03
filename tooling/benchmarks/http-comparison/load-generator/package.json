@@ -1,0 +1,8 @@
+{
+  "name": "fluo-http-load-generator",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "autocannon": "7.15.0"
+  }
+}

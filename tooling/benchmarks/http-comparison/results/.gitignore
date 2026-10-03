@@ -1,0 +1,5 @@
+*.json
+!baseline-manifest.json
+!nas-installed-dependencies.json
+!measured-source-equivalence.json
+!collector-fix-back.json

@@ -1,0 +1,110 @@
+import { ensureMetadataSymbol, Inject, Module } from '@fluojs/core';
+import { Controller, Get, Post, type RequestContext } from '@fluojs/http';
+
+import { jsonCommandLocal, type QuoteInput, queryValue, readSearchLocal, restRouteMixLocal, toPreviewBody, toQuoteInput } from './workloads.js';
+
+export { readAppShape } from './app-shape.js';
+
+ensureMetadataSymbol();
+
+type AppShape = 'read-search-local' | 'json-command-local' | 'rest-route-mix-local';
+
+class UsersReadService {
+  search(context: RequestContext) {
+    return readSearchLocal({
+      tenantId: param(context, 'tenantId'),
+      role: query(context, 'role'),
+      status: query(context, 'status'),
+      region: query(context, 'region'),
+      sort: query(context, 'sort'),
+      page: query(context, 'page'),
+      limit: query(context, 'limit'),
+    });
+  }
+}
+
+class QuoteService {
+  quote(input: QuoteInput) {
+    return jsonCommandLocal(input);
+  }
+}
+
+class ProjectService {
+  project(context: RequestContext) {
+    return restRouteMixLocal('project', { tenantId: param(context, 'tenantId'), projectId: param(context, 'projectId'), include: query(context, 'include') });
+  }
+  tasks(context: RequestContext) {
+    return restRouteMixLocal('task-list', { tenantId: param(context, 'tenantId'), projectId: param(context, 'projectId'), state: query(context, 'state'), priority: query(context, 'priority') });
+  }
+  task(context: RequestContext) {
+    return restRouteMixLocal('task-detail', { tenantId: param(context, 'tenantId'), projectId: param(context, 'projectId'), taskId: param(context, 'taskId') });
+  }
+  preview(context: RequestContext) {
+    return restRouteMixLocal('preview', { tenantId: param(context, 'tenantId'), projectId: param(context, 'projectId'), taskId: param(context, 'taskId'), body: toPreviewBody(context.request.body) });
+  }
+  comments(context: RequestContext) {
+    return restRouteMixLocal('comments', { tenantId: param(context, 'tenantId'), projectId: param(context, 'projectId'), taskId: param(context, 'taskId') });
+  }
+}
+
+@Inject(UsersReadService)
+@Controller('/tenants/:tenantId/users')
+class ReadSearchController {
+  constructor(private readonly service: UsersReadService) {}
+
+  @Get('')
+  search(_input: undefined, context: RequestContext) {
+    return this.service.search(context);
+  }
+}
+
+@Inject(QuoteService)
+@Controller('/orders/quote')
+class QuoteController {
+  constructor(private readonly service: QuoteService) {}
+
+  @Post('')
+  quote(_input: undefined, context: RequestContext) {
+    return this.service.quote(toQuoteInput(context.request.body));
+  }
+}
+
+@Inject(ProjectService)
+@Controller('/tenants/:tenantId/projects')
+class ProjectController {
+  constructor(private readonly service: ProjectService) {}
+
+  @Get('/:projectId')
+  project(_input: undefined, context: RequestContext) { return this.service.project(context); }
+  @Get('/:projectId/tasks')
+  tasks(_input: undefined, context: RequestContext) { return this.service.tasks(context); }
+  @Get('/:projectId/tasks/:taskId')
+  task(_input: undefined, context: RequestContext) { return this.service.task(context); }
+  @Post('/:projectId/tasks/:taskId/preview')
+  preview(_input: undefined, context: RequestContext) { return this.service.preview(context); }
+  @Get('/:projectId/tasks/:taskId/comments')
+  comments(_input: undefined, context: RequestContext) { return this.service.comments(context); }
+}
+
+function param(context: RequestContext, name: string): string {
+  return context.request.params[name] ?? '';
+}
+
+function query(context: RequestContext, name: string): string {
+  return queryValue(context.request.query[name]);
+}
+
+@Module({ controllers: [ReadSearchController], providers: [UsersReadService] })
+class ReadSearchModule {}
+@Module({ controllers: [QuoteController], providers: [QuoteService] })
+class JsonCommandModule {}
+@Module({ controllers: [ProjectController], providers: [ProjectService] })
+class RestRouteMixModule {}
+
+export function resolveAppModule(shape: AppShape) {
+  switch (shape) {
+    case 'read-search-local': return ReadSearchModule;
+    case 'json-command-local': return JsonCommandModule;
+    case 'rest-route-mix-local': return RestRouteMixModule;
+  }
+}

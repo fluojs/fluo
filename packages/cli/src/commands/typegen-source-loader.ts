@@ -25,6 +25,21 @@ export async function load(url, context, nextLoad) {
 }
 `;
 
+// Emitted decorator arrays retain these callbacks in the native module cache.
+// Keep their closure separate from the consuming scope and clear its sole graph reference.
+function createTypegenRecorder(snapshot: TypegenCompiler) {
+  let current: TypegenCompiler | undefined = snapshot;
+  return {
+    record: (id: string) => (value: unknown) => {
+      if (current === undefined) throw new TypegenCommandError('Typegen generation has completed.');
+      return current.record(id, value);
+    },
+    dispose() {
+      current = undefined;
+    },
+  };
+}
+
 /**
  * Evaluate and consume the frozen compiler graph with generation-owned instrumentation.
  *
@@ -47,9 +62,10 @@ export async function consumeTypegenSource<Result>(
   if (activity !== undefined) Atomics.add(activity, 0, 1);
   const key = `fluo.typegen.${randomUUID()}`;
   const marker = `fluo-typegen=${key}`;
+  const recorder = createTypegenRecorder(snapshot);
   Object.defineProperty(globalThis, key, {
     configurable: true,
-    value: (id: string) => (value: unknown) => snapshot.record(id, value),
+    value: recorder.record,
   });
   const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
@@ -87,6 +103,7 @@ export async function consumeTypegenSource<Result>(
     }
     return await consume(application);
   } finally {
+    recorder.dispose();
     hooks.deregister();
     if (activity !== undefined) Atomics.sub(activity, 0, 1);
     Reflect.deleteProperty(globalThis, key);
