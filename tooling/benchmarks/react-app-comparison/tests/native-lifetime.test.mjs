@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -6,10 +7,29 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { createNativeLifetimeObserver, NATIVE_LIFETIME_HOOKS, NATIVE_LIFETIME_IDENTITY,
   NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA, NATIVE_SHUTDOWN_HOOKS, decodeNativeJournal,
   isObservedShutdownExit, reconcileNativeLifetime } from '../src/native-lifetime.mjs';
 import { verifyTraceFiles } from '../src/measure.mjs';
+
+for (const [command, operations, released] of [
+  ['release', [], true],
+  ['close', ['disable', 'detach'], true],
+  ['error', [], false],
+]) {
+  test(`host ${command} preserves live gating until close and retains failures`, async () => {
+    const { stdout } = await promisify(execFile)('python3', [
+      fileURLToPath(new URL('./fixtures/native-host-release.py', import.meta.url)), command,
+    ]);
+    const result = JSON.parse(stdout);
+    assert.deepEqual(result.operations, operations);
+    assert.equal(result.response.released, released);
+    assert.equal(result.response.shutdownReady, released);
+    assert.deepEqual(result.errors, command === 'error' ? ['owned process abnormal exit: 124/7'] : []);
+  });
+}
 
 const request = () => ({
   requestId: '123.7', targetId: 'page', sessionId: 'session', occurrence: 1,

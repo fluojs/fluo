@@ -114,8 +114,9 @@ Native event는 host가 보유한 shared memory에 buffer하여 event마다 IPC�
 측정에서 차감하지 않으며 setup/drain과 별도 observer process 비용은 provenance에
 남기지만 따로 측정하지 않습니다. 기존 throughput 및 `ps` snapshot 뒤,
 BrowserServer close 전에 drain하고 원래 request cutoff를 유지합니다.
-각 소유 session은 자연스러운 process 종료까지 Frida agent를 resident로 유지합니다.
-원래 observer hook은 drain에서 stop하고 child gating을 해제하지만 session detach/unload는
+각 소유 session은 자연스러운 process 종료까지 Frida agent와 child gating을 유지합니다.
+원래 observer hook은 drain에서 stop하지만 재개 중인 exec child의 gate는 변경하지
+않습니다. 최종 close가 남은 session을 정리하며 session detach/unload는
 BrowserServer close 전이 아니라 process 종료 뒤입니다. Resident memory/runtime 비용도
 차감 없이 포함합니다.
 실패·abort된 preparation이 observer child의 bounded 종료를 강제할 때도

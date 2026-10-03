@@ -94,9 +94,10 @@ hashes, host logs and cleanup receipts remain in each fresh output root and
 are authenticated and replayed by `verifyTraceFiles`, including warmups and
 combined production/development sources.
 
-Each owned Frida session remains attached so its agent stays resident until
-that process exits naturally. Original observer hooks stop and child gating
-is disabled at drain; session detach/unload follows process exit, never precedes
+Each owned Frida session and child gate remain resident until
+that process exits naturally. Original observer hooks stop at drain without
+changing a resuming exec child's gate. Final close cleans remaining sessions;
+session detach/unload follows process exit, never precedes
 BrowserServer close. Resident memory/runtime overhead stays
 included, without subtraction. An eternalized inert script per session prevents live-agent unload when
 failed/aborted preparation forces bounded observer-child termination.

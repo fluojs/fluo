@@ -117,8 +117,9 @@ Native events buffer in host-retained shared memory without per-event IPC. Hook 
 not subtracted; setup/drain and separate observer costs are retained in provenance,
 not separately measured. Drain follows unchanged throughput and `ps` snapshots,
 before BrowserServer close, while preserving the original request cutoff.
-Each owned session retains its Frida agent until natural process exit; observer
-hooks stop and child gating is disabled at drain, while session detach/unload
+Each owned session retains its Frida agent and child gating until natural
+process exit. Observer hooks stop at drain without changing a resuming exec
+child's gate. Final close cleans remaining sessions, while session detach/unload
 follows process exit rather than preceding BrowserServer close.
 An eternalized inert script prevents live-agent unload if failed/aborted
 preparation forces bounded observer-child termination.
