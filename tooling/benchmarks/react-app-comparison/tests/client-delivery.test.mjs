@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 import {
   attributeDeliveryStages,
@@ -16,6 +18,8 @@ import {
   summarizeDeliveryRequests,
   verifyDeliveryTraceFiles,
 } from '../src/client-delivery.mjs';
+
+const execFileAsync = promisify(execFile);
 
 test('version provenance reads installed manifests and rejects absent or range-valued versions', async (t) => {
   const app = await mkdtemp(join(tmpdir(), 'fluo-delivery-versions-'));
@@ -50,6 +54,47 @@ test('source capture retains parseable untracked inputs and independently verifi
     assert.equal(input.sha256, createHash('sha256').update(input.content).digest('hex'));
     assert.equal(input.content, await readFile(join(source, input.path), 'utf8'));
   }
+});
+
+test('source capture retains the entire staged and unstaged patch beyond the exec buffer limit', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'fluo-delivery-large-source-'));
+  t.after(() => rm(root, { recursive: true }));
+  const source = join(root, 'source');
+  const output = join(root, 'output');
+  await mkdir(source);
+  await mkdir(output);
+  const git = (...args) => execFileAsync('git', args, { cwd: source });
+  await git('init');
+  await writeFile(join(source, 'tracked.txt'), 'original\n');
+  await writeFile(join(source, 'binary.bin'), Buffer.from([0, 1, 2]));
+  await git('add', '.');
+  await git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test',
+    '-c', 'commit.gpgsign=false', 'commit', '-m', 'Initial fixture');
+  const staged = 'staged change\n'.repeat(80_000);
+  await writeFile(join(source, 'tracked.txt'), staged);
+  await writeFile(join(source, 'binary.bin'), Buffer.from([0, 3, 4]));
+  await git('add', '.');
+  await writeFile(join(source, 'tracked.txt'), `${staged}unstaged ending\n`);
+  await writeFile(join(source, 'untracked.txt'), 'untracked input\n');
+  const expectedPath = join(root, 'expected.patch');
+  await git('diff', 'HEAD', '--binary', `--output=${expectedPath}`);
+  const expected = await readFile(expectedPath);
+  assert.ok(expected.byteLength > 1024 * 1024);
+
+  const provenance = await captureDeliverySource(source, output);
+  const patch = await readFile(join(output, 'source.patch'));
+  assert.deepEqual(patch, expected);
+  assert.equal(provenance.patchSha256, createHash('sha256').update(expected).digest('hex'));
+  assert.equal(provenance.dirty, (await git('status', '--porcelain=v1')).stdout.trim());
+  const untracked = await readFile(join(output, 'untracked-inputs.json'));
+  assert.equal(provenance.untrackedSha256, createHash('sha256').update(untracked).digest('hex'));
+  assert.deepEqual(JSON.parse(untracked), [{
+    path: 'untracked.txt',
+    content: 'untracked input\n',
+    sha256: createHash('sha256').update('untracked input\n').digest('hex'),
+  }]);
+  await assert.rejects(captureDeliverySource(source, output), { code: 'EEXIST' });
+  assert.deepEqual(await readFile(join(output, 'source.patch')), expected);
 });
 
 test('stage attribution requires approved built module requests and a rendered frame', () => {

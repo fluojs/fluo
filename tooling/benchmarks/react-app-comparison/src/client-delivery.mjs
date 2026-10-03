@@ -1,6 +1,8 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { once } from 'node:events';
+import { createReadStream } from 'node:fs';
+import { mkdir, open, readFile, realpath, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { cpus, platform, release } from 'node:os';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
@@ -27,9 +29,22 @@ export async function readDeliveryVersions(app) {
 
 /** Retain tracked patches and untracked source inputs instead of a dirty flag alone. */
 export async function captureDeliverySource(source, output) {
-  const [{ stdout: head }, { stdout: patch }, { stdout: dirty }, { stdout: paths }, { stdout: pnpm }] = await Promise.all([
+  const patchPath = resolve(output, 'source.patch');
+  const patchFile = await open(patchPath, 'wx');
+  try {
+    const diff = spawn('git', ['diff', 'HEAD', '--binary'], {
+      cwd: source,
+      stdio: ['ignore', patchFile.fd, 'inherit'],
+    });
+    const [code] = await once(diff, 'close');
+    if (code !== 0) throw new Error(`Delivery source diff exited ${String(code)}.`);
+  } finally {
+    await patchFile.close();
+  }
+  const patchHash = createHash('sha256');
+  for await (const chunk of createReadStream(patchPath)) patchHash.update(chunk);
+  const [{ stdout: head }, { stdout: dirty }, { stdout: paths }, { stdout: pnpm }] = await Promise.all([
     execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: source }),
-    execFileAsync('git', ['diff', 'HEAD', '--binary'], { cwd: source }),
     execFileAsync('git', ['status', '--porcelain=v1'], { cwd: source }),
     execFileAsync('git', ['ls-files', '--others', '--exclude-standard'], { cwd: source }),
     execFileAsync('pnpm', ['--version'], { cwd: source }),
@@ -40,10 +55,9 @@ export async function captureDeliverySource(source, output) {
     untracked.push({ path, sha256: sha256(content), content });
   }
   const snapshot = `${JSON.stringify(untracked, null, 2)}\n`;
-  await writeFile(resolve(output, 'source.patch'), patch, { flag: 'wx' });
   await writeFile(resolve(output, 'untracked-inputs.json'), snapshot, { flag: 'wx' });
   return {
-    head: head.trim(), dirty: dirty.trim(), patchSha256: sha256(patch),
+    head: head.trim(), dirty: dirty.trim(), patchSha256: patchHash.digest('hex'),
     untrackedSha256: sha256(snapshot),
     pnpm: pnpm.trim(),
   };
