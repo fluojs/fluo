@@ -429,6 +429,29 @@ for (const [name, mutate] of [
   });
 }
 
+for (const event of ['detached', 'owned-exit', 'exec-success']) {
+  test(`live interval cannot conceal retained ${event} evidence`, () => {
+    const observation = fixture();
+    observation.lifecycle = [{ event, pid: 123, processBirth: '123:1:0',
+      previousBirth: '123:1:0', osBirth: '123:1', ns: '10500000000',
+      exitCodeRaw: null, missing: true }];
+    const result = reconcileNativeLifetime([request()], observation, ledger());
+    assert.deepEqual(result.unavailable, ['native lifetime: process identity/coverage conflict']);
+    assert.deepEqual(result.requests, [request()]);
+  });
+}
+
+test('post-drain exit and detach do not invalidate a completed live interval', () => {
+  const observation = fixture();
+  observation.lifecycle = [
+    { event: 'owned-exit', pid: 123, processBirth: '123:1:0', osBirth: '123:1',
+      ns: '13000000000', exitCodeRaw: null, missing: true },
+    { event: 'detached', pid: 123, processBirth: '123:1:0', ns: '13000000001',
+      reason: 'process-terminated', rendererHooks: true, closing: true },
+  ];
+  assert.deepEqual(reconcileNativeLifetime([request()], observation, ledger()).unavailable, []);
+});
+
 test('birth-bound zombie witness retains missing pidfd status independently', () => {
   const observation = retiredFixture();
   Object.assign(observation.lifecycle.at(-1), { exitCodeRaw: null, missing: true });
@@ -726,30 +749,38 @@ test('authenticated cutoff cannot move consistently inside the clock bracket awa
   await assert.rejects(f.verify(), /raw CDP capture boundary/u);
 });
 
-test('rehashing an invented retired interval cannot waive semantic replay', async (t) => {
-  // Given: complete, independently replayable old-renderer retirement.
-  const f = await authenticatedFixture(t);
-  const retired = retiredFixture();
-  Object.assign(f.records.native, { lifecycle: retired.lifecycle, journals: retired.journals,
-    coverage: retired.coverage });
-  f.records.coverage.coverage = f.records.native.coverage;
-  f.records.host.messages = [
-    { process: retired.coverage.processes[0], runtime: f.records.native.runtime },
-    ...retired.lifecycle.map((lifecycle) => ({ lifecycle })),
-    ...retired.journals.flatMap((journal) => [{ journalOwnership: journal.ownership }, { journal }]),
-    { ns: f.records.native.clock.beforeNs }, { ns: f.records.native.clock.afterNs },
-    { drained: true, ns: '12000000000', events: retired.events, buffer: { dropped: 0 } },
-  ];
-  f.record.requests = reconcileNativeLifetime([request()], f.records.native, f.records.cdp.ledger).requests;
-  for (const role of ['native', 'coverage', 'host']) await f.save(role);
-  await f.verify();
-  // When: raw/host/coverage digests agree but end no longer matches the witness.
-  f.records.native.coverage.processes[0].endNs = '10500000001';
-  f.records.native.journals[0].snapshotNs = '10500000001';
-  for (const role of ['native', 'coverage', 'host']) await f.save(role);
-  // Then: digest consistency does not substitute for interval authenticity.
-  await assert.rejects(f.verify(), /reconciliation replay mismatch/u);
-});
+for (const mutation of ['retired end', 'live classification', 'live unknown status']) {
+  test(`rehashing an invented ${mutation} cannot waive semantic replay`, async (t) => {
+    // Given: complete, independently replayable old-renderer retirement.
+    const f = await authenticatedFixture(t);
+    const retired = retiredFixture();
+    Object.assign(f.records.native, { lifecycle: retired.lifecycle, journals: retired.journals,
+      coverage: retired.coverage });
+    f.records.coverage.coverage = f.records.native.coverage;
+    f.records.host.messages = [
+      { process: retired.coverage.processes[0], runtime: f.records.native.runtime },
+      ...retired.lifecycle.map((lifecycle) => ({ lifecycle })),
+      ...retired.journals.flatMap((journal) => [{ journalOwnership: journal.ownership }, { journal }]),
+      { ns: f.records.native.clock.beforeNs }, { ns: f.records.native.clock.afterNs },
+      { drained: true, ns: '12000000000', events: retired.events, buffer: { dropped: 0 } },
+    ];
+    f.record.requests = reconcileNativeLifetime([request()], f.records.native, f.records.cdp.ledger).requests;
+    for (const role of ['native', 'coverage', 'host']) await f.save(role);
+    await f.verify();
+    // When: raw/host/coverage digests agree but end no longer matches the witness.
+    const process = f.records.native.coverage.processes[0];
+    process.endNs = mutation === 'retired end' ? '10500000001' : '12000000000';
+    f.records.native.journals[0].snapshotNs = process.endNs;
+    if (mutation !== 'retired end') process.endKind = 'live';
+    if (mutation === 'live unknown status') {
+      const exit = f.records.native.lifecycle.find((entry) => entry.event === 'owned-exit');
+      Object.assign(exit, { exitCodeRaw: null, missing: true });
+    }
+    for (const role of ['native', 'coverage', 'host']) await f.save(role);
+    // Then: digest consistency does not substitute for interval authenticity.
+    await assert.rejects(f.verify(), /reconciliation replay mismatch/u);
+  });
+}
 
 test('rehashing a torn journal marker cannot waive original record replay', async (t) => {
   const f = await authenticatedFixture(t);

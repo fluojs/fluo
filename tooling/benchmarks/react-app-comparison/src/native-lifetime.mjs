@@ -114,8 +114,19 @@ export function decodeNativeJournal(journal, process, runId) {
 function validEpochEnd(process, observation, cutoff) {
   const end = ns(process.endNs);
   if (end === null || end < ns(process.readyNs)) return false;
-  if (process.endKind === 'live') return end >= cutoff;
   const lifecycle = observation.lifecycle ?? [];
+  const osBirth = process.processBirth.slice(0, process.processBirth.lastIndexOf(':'));
+  if (process.endKind === 'live') {
+    return end >= cutoff && !lifecycle.some((entry) => {
+      const sameEpoch = entry.pid === process.pid && entry.processBirth === process.processBirth;
+      const exited = entry.event === 'owned-exit' && entry.pid === process.pid
+        && (entry.osBirth ?? entry.processBirth?.slice(0, entry.processBirth.lastIndexOf(':'))) === osBirth;
+      const replaced = entry.event === 'exec-success' && entry.pid === process.pid
+        && entry.previousBirth === process.processBirth;
+      return (entry.event === 'detached' && sameEpoch || exited || replaced)
+        && (ns(entry.ns) === null || ns(entry.ns) <= end);
+    });
+  }
   const detaches = lifecycle.filter((entry) => entry.event === 'detached'
     && entry.pid === process.pid && entry.processBirth === process.processBirth);
   const attaches = lifecycle.filter((entry) => entry.event === 'owned-attach'
@@ -123,7 +134,6 @@ function validEpochEnd(process, observation, cutoff) {
     && entry.binarySha256 === process.binarySha256);
   if (detaches.length !== 1 || attaches.length !== 1 || ns(detaches[0].ns) !== end
     || detaches[0].rendererHooks !== true) return false;
-  const osBirth = process.processBirth.slice(0, process.processBirth.lastIndexOf(':'));
   if (process.endKind === 'retired') {
     const exits = lifecycle.filter((entry) => entry.event === 'owned-exit'
       && (entry.osBirth ?? entry.processBirth.slice(0, entry.processBirth.lastIndexOf(':'))) === osBirth
