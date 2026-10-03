@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -29,6 +31,165 @@ test('isolated representative mode rejects missing live environment binding befo
     await assert.rejects(collectMeasurements({ ...config, isolatedRepresentative: true }, {
       async check() { assert.fail('unauthenticated invocation reached correctness'); },
     }, directory), /environment binding/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('source-bound React pair authenticates both records without equating full config hashes', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-react-pair-'));
+  try {
+    const methods = await import('../src/measure.mjs');
+    assert.equal(typeof methods.authenticateReactEditPair, 'function');
+    const edit = { file: 'src/document.ts', reload: true, from: 'Editor login',
+      to: 'Editor login changed', path: '/login', selector: 'h1', expectedText: 'Editor login changed' };
+    const beforeConfig = { ...config, dev: { fluo: { edits: { 'react-edit': edit } } } };
+    const afterConfig = structuredClone(beforeConfig);
+    Object.assign(afterConfig.dev.fluo.edits['react-edit'], { file: 'src/catalog-destination.tsx', reload: false });
+    const before = await environmentFixture(directory, 'before', beforeConfig);
+    const after = await environmentFixture(directory, 'after', afterConfig);
+    // No descriptor or pair hash can replace product/source evidence.
+    await assert.rejects(methods.authenticateReactEditPair(before.binding, after.binding, directory),
+      /source proof/u);
+    assert.notEqual(before.binding.configSha256, after.binding.configSha256);
+    await assert.rejects(methods.authenticateReactEditPair(after.binding, before.binding, directory),
+      /direction|source proof/u);
+    const equal = await environmentFixture(directory, 'equal', beforeConfig);
+    assert.equal(await methods.authenticateReactEditPair(before.binding, equal.binding, directory), null);
+    const execute = promisify(execFile);
+    const anchors = [
+      ['before', '8a09eb8d216e555b97760a86539dea31e79c86a8', 'd1cab92d356721fce862456de5b492f15a225f0c', before],
+      ['after', 'f9f5ac6722957cbe2752b9959e657a46594c0a1b', 'c5b7573e8da64237eecff459365e348b626285d9', after],
+    ];
+    const persist = async ({ record, binding }) => {
+      const raw = JSON.stringify(record);
+      await writeFile(binding.path, raw);
+      binding.sha256 = createHash('sha256').update(raw).digest('hex');
+    };
+    for (const [role, head, blob, fixture] of anchors) {
+      const { stdout: original } = await execute('git', ['cat-file', 'blob', blob]);
+      const { stdout: commit } = await execute('git', ['cat-file', 'commit', head]);
+      fixture.record.reactEditSource = { schemaVersion: 1, role, anchor: head, head,
+        root: '/product', path: `/product/tooling/benchmarks/react-app-comparison/apps/fluo/${role === 'before' ? edit.file : afterConfig.dev.fluo.edits['react-edit'].file}`,
+        file: role === 'before' ? edit.file : afterConfig.dev.fluo.edits['react-edit'].file,
+        originalBase64: Buffer.from(original).toString('base64'),
+        originalSha256: createHash('sha256').update(original).digest('hex'), gitBlob: blob,
+        dirtyPatch: '', dirtyPatchSha256: createHash('sha256').update('').digest('hex'),
+        builds: { '/product/tooling/benchmarks/react-app-comparison/apps/fluo/dist/entry.js': {
+          sha256: createHash('sha256').update('compiled fixture').digest('hex'),
+          bytesBase64: Buffer.from('compiled fixture').toString('base64') } }, commits: { [head]: commit } };
+      fixture.record.provenance = { ...config.provenance, root: '/product', commit: head };
+      await persist(fixture);
+    }
+    const relation = await methods.authenticateReactEditPair(before.binding, after.binding, directory);
+    assert.equal(relation.beforeConfigSha256, before.binding.configSha256);
+    assert.equal(relation.afterConfigSha256, after.binding.configSha256);
+    assert.notEqual(relation.beforeConfigSha256, relation.afterConfigSha256);
+    await methods.verifyReactEditPairRelation(relation, after.binding, directory);
+    await assert.rejects(methods.verifyReactEditPairRelation({ ...relation, beforeConfigSha256: after.binding.configSha256 },
+      after.binding, directory), /replay mismatch/u);
+    const flags = ['--environment-identity', before.binding.identitySha256,
+      '--environment-config-identity', before.binding.configSha256,
+      '--environment-before-record', before.binding.path, '--environment-before-root', directory];
+    const imported = await methods.importEnvironmentPairBefore(flags, directory);
+    assert.equal(await readFile(imported.path, 'utf8'), await readFile(before.binding.path, 'utf8'));
+    after.record.pairBeforeBinding = imported;
+    await persist(after);
+    const originalAfterBytes = await readFile(after.binding.path, 'utf8');
+    const bound = await methods.bindEnvironmentPair(after.binding, flags, directory);
+    assert.equal(await readFile(after.binding.path, 'utf8'), originalAfterBytes);
+    await methods.verifyReactEditPairRelation(bound, after.binding, directory);
+    const receipt = { profile: config.profile, mode: config.mode, provenance: after.record.provenance,
+      isolatedRepresentative: true, environmentBinding: after.binding, runs: [], warmups: [] };
+    await assert.rejects(verifyMeasurementEnvironment(receipt, directory), /relation missing/u);
+    await verifyMeasurementEnvironment({ ...receipt, environmentPairRelation: bound }, directory);
+    delete after.record.pairBeforeBinding;
+    await persist(after);
+    const good = structuredClone(after.record);
+    for (const mutate of [
+      (record) => { record.configuration.dev.fluo.edits['react-edit'].reload = true; },
+      (record) => { record.configuration.dev.fluo.edits['react-edit'].file = 'src/unrelated.tsx'; },
+      ...['from', 'to', 'path', 'selector', 'expectedText'].map((key) => (record) => {
+        record.configuration.dev.fluo.edits['react-edit'][key] = 'other';
+      }),
+      ...['restartPattern', 'explicitReload', 'relaunch', 'command'].map((key) => (record) => {
+        record.configuration.dev.fluo.edits['react-edit'][key] = true;
+      }),
+      (record) => { delete record.configuration.dev.fluo.edits['react-edit'].selector; },
+      (record) => { record.configuration.dev.next = { edits: {} }; },
+      (record) => { record.configuration.measurementRuns += 1; },
+      (record) => { record.configuration.mode = 'native'; },
+      (record) => { record.configuration.profile = 'tablet-matched-cache'; },
+      (record) => { record.configuration.extra = 1; },
+      (record) => { record.configuration.throughput = { fluo: { requests: 9 } }; },
+      (record) => { record.configuration.dev.fluo.readiness = { protocol: 'next-webpack', path: '/' }; },
+      (record) => { record.configuration.dev.fluo.start = ['different-command']; },
+      (record) => { record.configuration.cpuSlowdown = 2; },
+      (record) => { record.configuration.network = { latencyMs: 1 }; },
+      (record) => { record.configuration.budget = 999; },
+      (record) => { record.configuration.cache = 'other'; },
+    ]) {
+      after.record = structuredClone(good);
+      mutate(after.record);
+      after.record.configurationEvidence = structuredClone(after.record.configuration);
+      after.record.configurationEvidence.nativeLifetime.python = '/python';
+      after.record.configSha256 = environmentConfigIdentity(after.record.configurationEvidence);
+      after.binding.configSha256 = after.record.configSha256;
+      await persist(after);
+      await assert.rejects(methods.authenticateReactEditPair(before.binding, after.binding, directory),
+        /direction|other configuration/u);
+    }
+    after.record = structuredClone(good);
+    after.binding.configSha256 = good.configSha256;
+    const guest = after.record.guestEvidence.guest;
+    guest.files[guest.collector['initial-readiness.mjs'].path] = 'b'.repeat(64);
+    guest.collector['initial-readiness.mjs'].sha256 = 'b'.repeat(64);
+    after.record.identity = isolatedEnvironmentIdentity(after.record.invocation.host, guest);
+    after.record.identitySha256 = createHash('sha256').update(JSON.stringify(after.record.identity)).digest('hex');
+    after.binding.identitySha256 = after.record.identitySha256;
+    await persist(after);
+    await assert.rejects(methods.authenticateReactEditPair(before.binding, after.binding, directory), /environment mismatch/u);
+    after.record = structuredClone(good);
+    after.binding.identitySha256 = good.identitySha256;
+    for (const mutate of [
+      (proof) => { proof.head = '1'.repeat(40); },
+      (proof) => { proof.root = '/unrelated-root'; },
+      (proof) => { proof.path = '/outside/source.tsx'; },
+      (proof) => { Object.values(proof.builds)[0].bytesBase64 = Buffer.from('tampered build').toString('base64'); },
+      (proof) => { Object.values(proof.builds)[0].sha256 = 'b'.repeat(64); },
+      (proof) => { proof.originalBase64 = Buffer.from('wrong product source').toString('base64'); },
+    ]) {
+      after.record = structuredClone(good);
+      mutate(after.record.reactEditSource);
+      await persist(after);
+      await assert.rejects(methods.authenticateReactEditPair(before.binding, after.binding, directory), /source proof/u);
+    }
+    after.record = structuredClone(good);
+    await persist(after);
+    const originalHash = after.binding.configSha256;
+    after.record.configurationEvidence.dev.fluo.edits['react-edit'].reload = true;
+    await persist(after);
+    await assert.rejects(methods.authenticateReactEditPair(before.binding, after.binding, directory), /identity\/invocation/u);
+    assert.equal(after.binding.configSha256, originalHash);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('a configured hot-update label without actual React edit proof is inconclusive, not a metric', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-react-edit-label-'));
+  try {
+    const result = await collectDevMeasurements({ ...config, measurementRuns: 1, warmupRuns: 0,
+      dev: { fluo: { edits: { 'react-edit': { file: 'src/catalog-destination.tsx', reload: false,
+        from: 'Editor login', to: 'Editor login changed', path: '/login', selector: 'h1',
+        expectedText: 'Editor login changed' } } } },
+    }, {
+      async check() { return { pass: true, steps: [] }; },
+      async measureDev(_item, _config, kind) { return { durationMs: 1, event: `${kind}-visible`, method: 'hot-update' }; },
+    }, directory);
+    const fluo = result.runs.find((run) => run.framework === 'fluo');
+    assert.equal(fluo.correctness, 'inconclusive');
+    assert.equal(Object.hasOwn(fluo.metrics, 'devReactEditVisibleMs'), false);
+    const raw = JSON.parse(await readFile(fluo.trace, 'utf8'));
+    assert.equal(raw.timings['react-edit'].method, 'hot-update');
+    assert.ok(raw.unavailable.devReactEditVisibleMs);
+    assert.equal(raw.qualityFailures.length, 1);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
@@ -264,6 +425,9 @@ test('environment identity excludes run-specific provenance and server PIDs but 
     isolatedRepresentative: true, environmentBinding: { invocationId: 'new' },
   }));
   assert.notEqual(environmentConfigIdentity(config), environmentConfigIdentity({ ...config, mode: 'native' }));
+  assert.notEqual(environmentConfigIdentity(config), environmentConfigIdentity({
+    ...config, environmentPairRelation: { alias: 'caller-supplied' },
+  }));
 });
 
 test('before and after environment/config identities remain comparable across relocated product roots', async () => {
@@ -342,6 +506,46 @@ test('isolated aggregate and combined replay preserve both invocations and all w
     await assert.rejects(verifyTraceFiles(combined.runs, directory), /combined source mismatch/u);
     combined.warmups[0].environmentBinding = devBinding;
     await assert.rejects(verifyMeasurementEnvironment(combined, directory), /sample\/aggregate mismatch/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('four profile production and dev children retain distinct exact hashes and authenticated parents', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-profile-pair-'));
+  const { beforeProfilePairFlags, verifyProfileEnvironment } = await import('../src/run-gate.mjs');
+  try {
+    const { binding: aggregateBinding } = await environmentFixture(directory, 'aggregate');
+    for (const profile of ['desktop-native', 'desktop-matched-cache', 'tablet-native', 'tablet-matched-cache']) {
+      const bindings = [];
+      for (const development of [false, true]) {
+        const mode = profile.endsWith('matched-cache') ? 'matched-cache' : 'native';
+        const measurement = { ...config, profile, mode, nativeLifetime: { enabled: true, python: '/python' },
+          ...(development ? { dev: { fluo: { edits: {} } } } : {}) };
+        const id = `aggregate-${profile}-${development ? 'development' : 'production'}`;
+        const fixture = await environmentFixture(directory, id, measurement);
+        fixture.record.invocation.parentInvocationId = aggregateBinding.invocationId;
+        const raw = JSON.stringify(fixture.record);
+        await writeFile(fixture.binding.path, raw);
+        fixture.binding.sha256 = createHash('sha256').update(raw).digest('hex');
+        const receipt = { schemaVersion: 1, profile, mode, provenance: config.provenance,
+          isolatedRepresentative: true, environmentBinding: fixture.binding, runs: [], warmups: [] };
+        await verifyProfileEnvironment(aggregateBinding, receipt, measurement, directory, development);
+        const flags = await beforeProfilePairFlags(aggregateBinding.path, directory, profile, development);
+        assert.equal(flags[flags.indexOf('--environment-config-identity') + 1], fixture.binding.configSha256);
+        assert.equal(flags[flags.indexOf('--environment-before-record') + 1], fixture.binding.path);
+        await assert.rejects(verifyProfileEnvironment(aggregateBinding, receipt,
+          { ...measurement, measurementRuns: measurement.measurementRuns + 1 }, directory, development),
+        /configuration\/invocation mismatch/u);
+        fixture.record.invocation.parentInvocationId = 'other-parent';
+        const changed = JSON.stringify(fixture.record);
+        await writeFile(fixture.binding.path, changed);
+        fixture.binding.sha256 = createHash('sha256').update(changed).digest('hex');
+        await assert.rejects(verifyProfileEnvironment(aggregateBinding, receipt, measurement, directory, development),
+          /configuration\/invocation mismatch/u);
+        bindings.push(fixture.binding);
+      }
+      assert.notEqual(bindings[0].configSha256, bindings[1].configSha256);
+      assert.notEqual(bindings[0].invocationId, bindings[1].invocationId);
+    }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 

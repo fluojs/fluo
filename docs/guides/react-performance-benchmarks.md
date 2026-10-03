@@ -43,15 +43,17 @@ runs, not production-navigation timings repurposed as dev measurements.
 The TanStack fixture pins `react` and `react-dom` to `19.2.8` in both its
 manifest and isolated lockfile; production and development results must use
 that same resolved graph.
-The current Fluo fixture rebuilds and restarts before a browser reload rather
-than claiming Fast Refresh; the TanStack route loader edit restarts its
-development server before reopening the changed page. Both timings include
-their actual restart paths. Next.js CSS edits likewise use a server restart
+Historical Fluo discovery used a build/restart harness, not the canonical
+generated starter's development path; those receipts do not establish current
+Fluo development latency. The current fixture runs canonical
+`fluo dev --runner fluo` through Vite middleware and the gateway. CSS uses
+visible HMR, server edits include generation readiness before a fresh document,
+and React uses the source-bound before reload/final HMR relation described below.
+The TanStack route loader edit restarts its development server before reopening
+the changed page and includes that actual restart path. Next.js CSS edits likewise use a server restart
 and reopened document after the tablet-class browser failed to observe CSS HMR;
 Next.js server edits also restart and reopen after a source update did not
-become browser-visible. Neither measurement is a native HMR time. The Fluo fixture's build/restart harness is not
-the generated starter's `fluo dev` Vite middleware path: its measurements
-cannot establish canonical Fluo development latency or peer development parity.
+become browser-visible. Neither measurement is a native HMR time.
 Shell arrival uses first-contentful-paint; initial main-thread work uses CDP
 `Performance.TaskDuration`, which includes work outside hydration. The raw trace
 records these method labels and unavailable measurements rather than silently
@@ -162,7 +164,8 @@ hashes and distinct invocation evidence bind every production/dev/warmup/combine
 trace, receipt and aggregate; missing/mismatched/tampered bindings fail closed.
 Use the before hashes with `--environment-identity` and
 `--environment-config-identity` together for after, preserve
-identical actual tools/resources/config and schedule exclusive timing windows.
+identical actual tools/resources and frozen settings except the authenticated
+two-field React-edit alternative below, and schedule exclusive timing windows.
 Passive generator CPU and ambient contention snapshots use existing timing
 windows without changing CPU/RSS, capture or throughput boundaries or budgets.
 Historical `baseline.json` stays untouched, including macOS Node `24.20.0`;
@@ -172,8 +175,38 @@ paths need no Docker/Python/Frida, and this local mode claims no cross-platform
 performance acceptance.
 Comparable identity excludes invocation locators and product commit/build
 differences: actual absolute paths/config stay in evidence and provenance, while
-tool/collector content hashes, allocation and normalized frozen settings must match
-even when before/after worktree/build roots differ.
+tool/collector content hashes and allocation must match even when worktree/build
+roots differ. Every invocation retains its full exact configuration and hash.
+
+The sole unequal-config dev alternative is before product
+`8a09eb8d216e555b97760a86539dea31e79c86a8` using Fluo `src/document.ts` /
+`reload:true`, and reviewed final `f9f5ac6722957cbe2752b9959e657a46594c0a1b`
+or its source-verified implementation descendant using
+`src/catalog-destination.tsx` / `reload:false`. Only those two fields may differ;
+all other settings, edits, peers and budgets remain identical. Both replace
+`Editor login` once with `Editor login changed` on `/login`, observe the same
+visible `h1`, and restore exact source bytes. Original representative full hashes
+remain distinct: before `b7e8cfc2c53a57006197357542b6831b9ccb58835297ee01e22a7a1afc5a5b5d`,
+final `a48953e1f5825e26afc5865a5177af988619bdceebec801cf8b4025b1a2fad73`.
+Use `--environment-before-record` and `--environment-before-root` with both original
+identity flags; original bytes/digests, containment, invocation, source/head/blob,
+build/dependency and collector evidence authenticate the relation in capture and
+replay. Production-only pairs still require exact config equality, and profile,
+dev and warmup hashes remain separate from the aggregate.
+
+Pre-stimulus observers distinguish new main-frame document `reload-to-visible`
+before from correlated same-document component `hmr-to-visible` final.
+Fallback/restart/relaunch is recorded as observed and cannot substitute for
+selected HMR evidence. Initial/final visible markers and original/edited/restored
+bytes/hashes remain in raw evidence. The lead selected product-native paths on
+best judgment after an unanswered question, not an affirmative user choice or waiver.
+Merge base `942f673d34d58a9093d7012253913aec9143ff45` and final upstream
+`f3e699047bfa51bbb69d9abeb2717eeb9e1871b0` include CLI/HTTP/React typegen,
+background-form, navigation, store and provider changes; product-level differences
+are not solely #3884's causal effect or a same-upstream single-optimization control.
+Narrow pair checks do not establish performance PASS. Full four-framework/
+four-profile fresh recollection, two warmups/five alternating samples, unchanged
+budgets/statistics, exact-head reviews and final GitHub CI remain required.
 
 Historical load-only data sampled a different initial-work window and could trigger
 warm navigation before cold modules finished; retained Linux evidence includes cold

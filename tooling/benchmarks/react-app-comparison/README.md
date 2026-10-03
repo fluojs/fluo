@@ -210,7 +210,12 @@ node tooling/benchmarks/react-app-comparison/src/run-gate.mjs \
 `measure.mjs --config <config> --output <receipt>` accepts the same
 `--isolated-container` and both pair identity flags for focused invocation.
 Pair comparison requires the environment and configuration hashes together;
-matching tools with different frozen settings is rejected.
+matching tools with different frozen settings is rejected except for the
+authenticated directional Fluo React-edit relation below. For that alternative,
+also pass `--environment-before-record <original-before-environment.json>` and
+`--environment-before-root <original-before-output-root>`. The collector authenticates
+the original record before importing its unchanged bytes into the after output.
+The flags alone do not authorize a config difference.
 The internal `--isolated-guest` stdin transport is owned by the host launcher;
 prepared environment JSON and caller-supplied image/version strings are not
 observation inputs. The host actually runs Docker inspect/info against the selected
@@ -238,6 +243,42 @@ observed product root or framework development cwd normalize to root labels, and
 the separately authenticated Python locator is excluded from comparable config.
 Relocating before/after worktree/build roots therefore preserves comparability;
 changing tool/collector content, allocation or frozen measurement settings does not.
+
+The only unequal-config development pair is before product
+`8a09eb8d216e555b97760a86539dea31e79c86a8` with Fluo
+`src/document.ts` / `reload:true`, versus reviewed final product
+`f9f5ac6722957cbe2752b9959e657a46594c0a1b` (or its source-verified implementation
+descendant) with `src/catalog-destination.tsx` / `reload:false`.
+Both replace `Editor login` once with `Editor login changed` on `/login`, observe
+the same visible `h1`, and restore the exact source bytes. Only
+`/dev/fluo/edits/react-edit/file` and `/dev/fluo/edits/react-edit/reload`
+may differ in that direction; all other fields and peers remain identical.
+The original representative config hashes are respectively
+`b7e8cfc2c53a57006197357542b6831b9ccb58835297ee01e22a7a1afc5a5b5d` and
+`a48953e1f5825e26afc5865a5177af988619bdceebec801cf8b4025b1a2fad73`;
+each invocation and derived profile retains its own full exact config/hash.
+The relation authenticates both contained original records, source blobs/head
+lineage, actual build/dependency identities and final collector closure.
+Production-only comparisons retain exact config equality. Aggregate, profile,
+development, warmup and combined replay must retain their distinct invocation
+bindings and relation evidence; an aggregate relation is not a shared derived hash.
+
+Before completion is a changed marker in a new main-frame document
+(`reload-to-visible`); final completion requires the correlated component update
+and changed marker in the same document (`hmr-to-visible`). Observers subscribe
+before the source edit. Fallback document replacement is recorded as fallback,
+not HMR, and cannot satisfy the selected HMR alternative. Raw edit evidence
+retains initial/final visible markers, document tokens, exact HMR socket/update
+identity and original/edited/restored bytes and hashes.
+This product-native comparison was selected by the lead on best judgment after
+the unanswered question expired, not by an affirmative user choice or waiver.
+Merge base `942f673d34d58a9093d7012253913aec9143ff45` and final upstream
+`f3e699047bfa51bbb69d9abeb2717eeb9e1871b0` include CLI/HTTP/React typegen,
+background-form, navigation, store and provider changes. Product-level gains
+cannot be attributed solely to #3884 or a same-upstream single optimization.
+Narrow relation/runtime checks are not performance acceptance: the full fresh
+four-framework/four-profile pair, two warmups/five alternating samples, original
+budgets/statistics, exact-head reviews and final GitHub CI remain required.
 
 Schedule exclusive timing windows for the pair, including all four frameworks,
 with the same actual toolchain/browser/observer/config/resources and final
@@ -291,8 +332,9 @@ not a production build/watch adapter. The fixture follows the shipped CLI templa
 Vite middleware and its gateway WebSocket, refresh preamble before hydration,
 current SSR destination loads, and the existing graph supervisor. The original
 production entry and manifest keys, hashed split destinations and `/assets/`
-serving remain independent of development. CSS and React stimuli observe visible
-HMR without an explicit reload; the server stimulus waits for app-generation
+serving remain independent of development. CSS observes visible HMR; the final
+React stimulus uses the source-bound HMR alternative above, while the unchanged
+before product uses its document reload path. The server stimulus waits for app-generation
 readiness, then requests a fresh document to observe its changed HTTP data.
 The edit-to-visible interval still starts before the source edit and ends at the
 same visible text/computed-style assertion.

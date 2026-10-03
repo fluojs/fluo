@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
 
-import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, observeDevReadiness, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForCapturedRequests, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
+import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, observeDevReadiness, observeReactEditUpdate, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForCapturedRequests, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
 import { installInitialReadiness, waitForInitialReadiness } from '../src/initial-readiness.mjs';
 import { NATIVE_LIFETIME_IDENTITY, NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA,
   reconcileNativeLifetime } from '../src/native-lifetime.mjs';
@@ -298,6 +298,8 @@ test('repeated measured edits each change source and restore the exact original 
     const restore = await editSourceFile({ file: 'component.tsx', from: 'Before', to: 'After' }, directory);
     assert.equal(await readFile(path, 'utf8'), '<h1>After</h1>\n');
     await restore();
+    assert.equal(restore.evidence.restoredSha256, restore.evidence.originalSha256);
+    assert.equal(restore.evidence.editedBase64, Buffer.from('<h1>After</h1>\n').toString('base64'));
     assert.equal(await readFile(path, 'utf8'), '<h1>Before</h1>\n');
     const second = await editSourceFile({ file: 'component.tsx', from: 'Before', to: 'Again' }, directory);
     assert.equal(await readFile(path, 'utf8'), '<h1>Again</h1>\n');
@@ -307,6 +309,74 @@ test('repeated measured edits each change source and restore the exact original 
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('React edit replay distinguishes actual document replacement from correlated component HMR', async () => {
+  const { verifyDevEditObservation } = await import('../src/measure-browser.mjs');
+  assert.equal(typeof verifyDevEditObservation, 'function');
+  const edit = { file: 'src/catalog-destination.tsx', reload: false, from: 'Editor login',
+    to: 'Editor login changed', path: '/login', selector: 'h1', expectedText: 'Editor login changed' };
+  assert.throws(() => verifyDevEditObservation({ method: 'hot-update', event: 'react-edit-visible',
+    durationMs: 1 }, edit), /evidence/u);
+  const directory = await mkdtemp(join(tmpdir(), 'react-edit-replay-'));
+  try {
+    await writeFile(join(directory, 'component.tsx'), '<h1>Editor login</h1>\n');
+    const restore = await editSourceFile({ ...edit, file: 'component.tsx' }, directory);
+    await restore();
+    const cdp = new EventEmitter();
+    const readiness = { protocol: 'vite', requestId: 'hmr', url: 'ws://localhost:1234/',
+      cdpTimestamp: 10, message: { type: 'connected' } };
+    const update = observeReactEditUpdate(cdp, readiness, edit);
+    const emit = (requestId, path, type = 'js-update') => cdp.emit('Network.webSocketFrameReceived', {
+      requestId, timestamp: 12, response: { opcode: 1,
+        payloadData: JSON.stringify({ type: 'update', updates: [{ type, path, acceptedPath: path }] }) },
+    });
+    emit('chat', '/src/catalog-destination.tsx');
+    emit('hmr', '/src/unrelated.tsx');
+    emit('hmr', '/src/catalog-destination.tsx', 'css-update');
+    assert.equal(cdp.listenerCount('Network.webSocketFrameReceived'), 1);
+    emit('hmr', '/src/catalog-destination.tsx');
+    const observedUpdate = await update.promise;
+    assert.equal(cdp.listenerCount('Network.webSocketFrameReceived'), 0);
+    const source = { ...restore.evidence, file: edit.file };
+    const initial = { documentToken: 'document-a', url: 'http://localhost:1234/login', text: edit.from, visible: true };
+    const final = { ...initial, text: edit.expectedText,
+      reactCommit: { documentToken: initial.documentToken, version: '19.2.8', matchedHostNode: true, text: edit.expectedText } };
+    const interval = { clock: 'node-performance-now-ms',
+      startedAtMs: source.writeStartedAtMs - 1, completedAtMs: source.writtenAtMs };
+    const observation = { durationMs: interval.completedAtMs - interval.startedAtMs, interval,
+      method: 'hot-update', event: 'react-edit-visible',
+      editEvidence: { schemaVersion: 1, subscribedBeforeStimulus: true,
+        subscribedAtMs: source.writeStartedAtMs - 0.5, source, initial, final,
+        completion: 'hmr-to-visible', readiness, update: observedUpdate } };
+    verifyDevEditObservation(observation, edit);
+    for (const mutate of [
+      (e) => { e.final.documentToken = 'document-b'; },
+      (e) => { e.final.visible = false; },
+      (e) => { e.final.text = edit.from; },
+      (e) => { e.final.reactCommit = null; },
+      (e) => { e.update.requestId = 'unrelated'; },
+      (e) => { e.update.message.updates[0].path = '/unrelated'; e.update.message.updates[0].acceptedPath = '/unrelated'; },
+      (e) => { e.source.restoredSha256 = 'forged'; },
+      (e) => { e.subscribedBeforeStimulus = false; },
+    ]) {
+      const bad = structuredClone(observation);
+      mutate(bad.editEvidence);
+      assert.throws(() => verifyDevEditObservation(bad, edit), /evidence/u);
+    }
+    const fallback = structuredClone(observation);
+    fallback.editEvidence.final.documentToken = 'document-b';
+    fallback.editEvidence.completion = 'fallback-reload-to-visible';
+    assert.throws(() => verifyDevEditObservation(fallback, edit), /HMR path unavailable/u);
+    const reload = { ...edit, file: 'src/document.ts', reload: true };
+    const before = structuredClone(fallback);
+    before.editEvidence.source.file = reload.file;
+    before.editEvidence.completion = 'reload-to-visible';
+    before.editEvidence.update = null;
+    verifyDevEditObservation(before, reload);
+    before.editEvidence.final.documentToken = 'document-a';
+    assert.throws(() => verifyDevEditObservation(before, reload), /replacement evidence/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
 test('a dev command exiting before readiness fails without waiting for a second exit', { timeout: 10_000 }, async () => {

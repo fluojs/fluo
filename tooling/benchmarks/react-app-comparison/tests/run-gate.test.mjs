@@ -9,6 +9,19 @@ import { test } from 'node:test';
 import { stopOwnedProcess } from '../src/process-group.mjs';
 import { performanceExitCode, readMeasurementReceipt, requireDevDefinitions, startServers, stopServers } from '../src/run-gate.mjs';
 
+test('profile pair verification cannot substitute a shared aggregate hash for original child records', async () => {
+  const { verifyProfileEnvironment, beforeProfilePairFlags } = await import('../src/run-gate.mjs');
+  assert.equal(typeof verifyProfileEnvironment, 'function');
+  assert.equal(typeof beforeProfilePairFlags, 'function');
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-profile-pair-'));
+  try {
+    await assert.rejects(verifyProfileEnvironment({ identitySha256: 'alias' }, { runs: [] },
+      {}, directory, true), /environment binding/u);
+    await assert.rejects(beforeProfilePairFlags(join(directory, 'missing.json'), directory,
+      'desktop-native', true), { code: 'ENOENT' });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 test('isolated host launcher observes the selected running container rather than accepting image strings', async () => {
   const { observeIsolatedHost } = await import('../src/measure.mjs');
   assert.equal(typeof observeIsolatedHost, 'function');

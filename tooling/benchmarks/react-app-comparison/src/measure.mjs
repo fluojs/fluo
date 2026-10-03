@@ -1,4 +1,4 @@
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { arch, availableParallelism, cpus, hostname, platform, release, totalmem } from 'node:os';
@@ -11,6 +11,13 @@ const execute = promisify(execFile);
 const sha256 = (raw) => createHash('sha256').update(raw).digest('hex');
 const objectSha256 = (value) => sha256(JSON.stringify(value));
 const ENVIRONMENT_METHOD = 'isolated-linux-representative-v1';
+const REACT_EDIT_SOURCES = {
+  before: { head: '8a09eb8d216e555b97760a86539dea31e79c86a8',
+    file: 'src/document.ts', reload: true, blob: 'd1cab92d356721fce862456de5b492f15a225f0c' },
+  after: { head: 'f9f5ac6722957cbe2752b9959e657a46594c0a1b',
+    file: 'src/catalog-destination.tsx', reload: false, blob: 'c5b7573e8da64237eecff459365e348b626285d9' },
+};
+const REACT_EDIT_PAIR_METHOD = 'source-bound-fluo-react-edit-pair-v1';
 
 // The shared collector executes these helpers even when the product build/root
 // differs. Server-only consumers opt into their additional entrypoint closure.
@@ -333,6 +340,168 @@ export function requireEnvironmentPairIdentity(binding, flags) {
   }
 }
 
+function requireReactEdit(configuration, role) {
+  const edit = configuration.dev?.fluo?.edits?.['react-edit'];
+  const source = REACT_EDIT_SOURCES[role];
+  if (!isDeepStrictEqual(edit, { file: source.file, reload: source.reload,
+    from: 'Editor login', to: 'Editor login changed', path: '/login', selector: 'h1',
+    expectedText: 'Editor login changed' })) {
+    throw new Error('React edit pair direction/stimulus mismatch');
+  }
+  return edit;
+}
+
+async function captureReactEditSource(config) {
+  const edit = config.dev?.fluo?.edits?.['react-edit'];
+  const role = Object.keys(REACT_EDIT_SOURCES).find((name) =>
+    edit?.file === REACT_EDIT_SOURCES[name].file && edit.reload === REACT_EDIT_SOURCES[name].reload);
+  if (!role) return undefined;
+  requireReactEdit(config, role);
+  const root = await realpath(config.provenance.root);
+  const cwd = await realpath(config.dev.fluo.cwd ?? resolve(root, 'tooling/benchmarks/react-app-comparison/apps/fluo'));
+  if (cwd !== resolve(root, 'tooling/benchmarks/react-app-comparison/apps/fluo')) throw new Error('React edit product cwd/root mismatch');
+  const path = await realpath(resolve(cwd, edit.file));
+  if (relative(cwd, path).startsWith('..')) throw new Error('React edit source outside product root');
+  const bytes = await readFile(path);
+  const { stdout: head } = await execute('git', ['rev-parse', 'HEAD'], { cwd: root });
+  await execute('git', ['merge-base', '--is-ancestor', REACT_EDIT_SOURCES[role].head, head.trim()], { cwd: root });
+  const { stdout: lineage } = await execute('git', ['rev-list', '--ancestry-path',
+    `${REACT_EDIT_SOURCES[role].head}..${head.trim()}`], { cwd: root });
+  const commits = {};
+  for (const sha of [...lineage.trim().split('\n').filter(Boolean), REACT_EDIT_SOURCES[role].head]) {
+    commits[sha] = (await execute('git', ['cat-file', 'commit', sha], { cwd: root })).stdout;
+  }
+  const { stdout: dirtyPatch } = await execute('git', ['diff', 'HEAD', '--binary'], { cwd: root });
+  const builds = {};
+  async function inventory(directory) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const file = resolve(directory, entry.name);
+      if (entry.isDirectory()) await inventory(file);
+      else if (entry.isFile()) {
+        const bytes = await readFile(file);
+        builds[file] = { sha256: sha256(bytes), bytesBase64: bytes.toString('base64') };
+      }
+      else throw new Error('React edit build contains non-regular artifact');
+    }
+  }
+  await inventory(resolve(cwd, 'dist'));
+  if (!Object.keys(builds).length) throw new Error('React edit actual build proof missing');
+  return { schemaVersion: 1, role, anchor: REACT_EDIT_SOURCES[role].head, head: head.trim(),
+    root, path, file: edit.file, originalBase64: bytes.toString('base64'), originalSha256: sha256(bytes),
+    gitBlob: createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex'),
+    dirtyPatch, dirtyPatchSha256: sha256(dirtyPatch), builds, commits };
+}
+
+function verifyReactEditSource(record, role) {
+  const proof = record.reactEditSource;
+  const source = REACT_EDIT_SOURCES[role];
+  const bytes = Buffer.from(proof?.originalBase64 ?? '', 'base64');
+  const commits = proof?.commits ?? {};
+  const validCommits = Object.entries(commits).every(([sha, raw]) =>
+    typeof raw === 'string' && createHash('sha1').update(`commit ${Buffer.byteLength(raw)}\0`).update(raw).digest('hex') === sha);
+  const reachesAnchor = (head, seen = new Set()) => {
+    if (seen.has(head) || !commits[head]) return false;
+    if (head === source.head) return true;
+    seen.add(head);
+    return [...commits[head].matchAll(/^parent ([a-f0-9]{40})$/gmu)]
+      .some(([, parent]) => reachesAnchor(parent, seen));
+  };
+  if (!proof || proof.schemaVersion !== 1 || proof.role !== role || proof.anchor !== source.head
+    || !validCommits || !reachesAnchor(proof.head)
+    || !/^[a-f0-9]{40}$/u.test(proof.head ?? '') || proof.file !== source.file
+    || proof.gitBlob !== source.blob || sha256(bytes) !== proof.originalSha256
+    || createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex') !== source.blob
+    || bytes.toString('utf8').split('Editor login').length !== 2
+    || typeof proof.dirtyPatch !== 'string' || sha256(proof.dirtyPatch) !== proof.dirtyPatchSha256
+    || !isAbsolute(proof.root ?? '') || proof.root !== record.provenance.root
+    || proof.path !== resolve(proof.root, 'tooling/benchmarks/react-app-comparison/apps/fluo', source.file)
+    || !Object.keys(proof.builds ?? {}).length
+    || Object.entries(proof.builds).some(([path, artifact]) =>
+      !path.startsWith(`${resolve(proof.root, 'tooling/benchmarks/react-app-comparison/apps/fluo/dist')}/`)
+      || !/^[a-f0-9]{64}$/u.test(artifact?.sha256 ?? '')
+      || typeof artifact.bytesBase64 !== 'string'
+      || sha256(Buffer.from(artifact.bytesBase64, 'base64')) !== artifact.sha256)
+    || (record.provenance.commit && record.provenance.commit !== proof.head)
+    || !record.provenance.builds || !record.provenance.lockfile) {
+    throw new Error('React edit pair source proof missing/mismatched');
+  }
+  return proof;
+}
+
+function compareReactEditPairRecords(before, after) {
+  if (before.identitySha256 !== after.identitySha256) throw new Error('React edit pair environment mismatch');
+  if (before.invocation.invocationId === after.invocation.invocationId) throw new Error('React edit pair invocation reuse');
+  if (before.configSha256 === after.configSha256) return false;
+  requireReactEdit(before.configuration, 'before');
+  requireReactEdit(after.configuration, 'after');
+  verifyReactEditSource(before, 'before');
+  verifyReactEditSource(after, 'after');
+  const expected = structuredClone(before.configuration);
+  Object.assign(expected.dev.fluo.edits['react-edit'], {
+    file: REACT_EDIT_SOURCES.after.file, reload: REACT_EDIT_SOURCES.after.reload,
+  });
+  if (!isDeepStrictEqual(expected, after.configuration)
+    || Boolean(before.invocation.parentInvocationId) !== Boolean(after.invocation.parentInvocationId)) {
+    throw new Error('React edit pair other configuration/invocation mismatch');
+  }
+  return true;
+}
+
+// Full config authentication happens first. This relation does not create a
+// shared config hash or broaden environmentConfigIdentity.
+export async function authenticateReactEditPair(beforeBinding, afterBinding, outputRoot) {
+  const before = await verifyEnvironmentBinding(beforeBinding, outputRoot);
+  const after = await verifyEnvironmentBinding(afterBinding, outputRoot);
+  if (!compareReactEditPairRecords(before, after)) return null;
+  return { schemaVersion: 1, method: REACT_EDIT_PAIR_METHOD, before: beforeBinding, after: afterBinding,
+    beforeConfigSha256: before.configSha256, afterConfigSha256: after.configSha256,
+    beforeSource: before.reactEditSource, afterSource: after.reactEditSource };
+}
+
+export async function verifyReactEditPairRelation(relation, binding, outputRoot) {
+  if (!relation || relation.method !== REACT_EDIT_PAIR_METHOD || !isDeepStrictEqual(relation.after, binding)) {
+    throw new Error('React edit pair relation/binding mismatch');
+  }
+  const expected = await authenticateReactEditPair(relation.before, relation.after, outputRoot);
+  const after = await verifyEnvironmentBinding(binding, outputRoot);
+  if (after.pairBeforeBinding && !isDeepStrictEqual(after.pairBeforeBinding, relation.before)) {
+    throw new Error('React edit pair original before binding mismatch');
+  }
+  if (!expected || !isDeepStrictEqual(expected, relation)) throw new Error('React edit pair relation replay mismatch');
+}
+
+export async function importEnvironmentPairBefore(flags, outputRoot) {
+  if (!flags.includes('--environment-before-record')) return undefined;
+  const path = flags[flags.indexOf('--environment-before-record') + 1];
+  const beforeRoot = flags[flags.indexOf('--environment-before-root') + 1];
+  if (!flags.includes('--environment-before-root') || !beforeRoot || !path) throw new Error('React edit pair before root/record missing');
+  const raw = await readFile(path);
+  const record = JSON.parse(raw);
+  const before = { method: record.method, path: resolve(path), sha256: sha256(raw),
+    invocationId: record.invocation?.invocationId, identitySha256: record.identitySha256, configSha256: record.configSha256 };
+  await verifyEnvironmentBinding(before, beforeRoot);
+  requireEnvironmentPairIdentity(before, flags);
+  if (!flags.includes('--environment-identity')) throw new Error('React edit pair requires original full identities');
+  const destination = resolve(outputRoot, `pair-before-${before.invocationId}.json`);
+  await mkdir(outputRoot, { recursive: true });
+  await writeFile(destination, raw, { flag: 'wx' });
+  return { ...before, path: destination };
+}
+
+export async function bindEnvironmentPair(binding, flags, outputRoot) {
+  if (!flags.includes('--environment-before-record')) {
+    requireEnvironmentPairIdentity(binding, flags);
+    return undefined;
+  }
+  const after = await verifyEnvironmentBinding(binding, outputRoot);
+  if (!after.pairBeforeBinding) throw new Error('React edit pair original before binding missing at capture');
+  const originalPath = flags[flags.indexOf('--environment-before-record') + 1];
+  const originalRoot = flags[flags.indexOf('--environment-before-root') + 1];
+  await verifyEnvironmentBinding({ ...after.pairBeforeBinding, path: resolve(originalPath) }, originalRoot);
+  requireEnvironmentPairIdentity(after.pairBeforeBinding, flags);
+  return await authenticateReactEditPair(after.pairBeforeBinding, binding, outputRoot) ?? undefined;
+}
+
 export function isolatedEnvironmentIdentity(host, guest) {
   // Paths describe an invocation's locators, not a tool's content identity.
   const contents = (value) => {
@@ -431,15 +600,19 @@ async function observeGuestIdentity(config, host, entrypoints) {
 }
 
 export async function captureIsolatedEnvironment(config, invocation, outputRoot,
-  { entrypoints = ['measure.mjs', 'run-gate.mjs'] } = {}) {
+  { entrypoints = ['measure.mjs', 'run-gate.mjs'], pairBeforeBinding } = {}) {
+  if (pairBeforeBinding) await verifyEnvironmentBinding(pairBeforeBinding, outputRoot);
   const guest = await observeGuestIdentity(config, invocation.host, entrypoints);
   // Container instance/PID/start time are evidence, not pair-comparison identity.
   const identity = isolatedEnvironmentIdentity(invocation.host, guest);
   const record = { schemaVersion: 1, method: ENVIRONMENT_METHOD, invocation, identity,
+    ...(pairBeforeBinding ? { pairBeforeBinding } : {}),
     configuration: comparableEnvironmentSettings(config), configurationEvidence: environmentSettings(config),
     provenance: productProvenance(config.provenance),
     configSha256: environmentConfigIdentity(config), identitySha256: objectSha256(identity),
     guestEvidence: { pid: process.pid, hostname: hostname(), observedAt: new Date().toISOString(), guest } };
+  const reactEditSource = await captureReactEditSource(config);
+  if (reactEditSource) record.reactEditSource = reactEditSource;
   await mkdir(outputRoot, { recursive: true });
   const path = resolve(outputRoot, `environment-${invocation.invocationId}.json`);
   const raw = `${JSON.stringify(record, null, 2)}\n`;
@@ -515,6 +688,10 @@ export async function verifyEnvironmentBinding(binding, outputRoot) {
       typeof guest.allocation?.[name] !== 'string' || !guest.allocation[name])) {
     throw new Error('environment binding incomplete executable/SDK/collector/allocation identity');
   }
+  if (record.pairBeforeBinding) {
+    const before = await verifyEnvironmentBinding(record.pairBeforeBinding, outputRoot);
+    compareReactEditPairRecords(before, record);
+  }
   return record;
 }
 
@@ -523,6 +700,16 @@ async function revalidateEnvironment(config, directory) {
   const record = await verifyEnvironmentBinding(config.environmentBinding, directory);
   if (!config.isolatedRepresentative || config.environmentBinding.configSha256 !== environmentConfigIdentity(config)) {
     throw new Error('environment binding configuration mismatch');
+  }
+  if (config.environmentPairRelation) await verifyReactEditPairRelation(config.environmentPairRelation, config.environmentBinding, directory);
+  if (record.reactEditSource) {
+    verifyReactEditSource(record, record.reactEditSource.role);
+    if (sha256(await readFile(record.reactEditSource.path)) !== record.reactEditSource.originalSha256) {
+      throw new Error('React edit source changed outside stimulus interval');
+    }
+    for (const [path, artifact] of Object.entries(record.reactEditSource.builds)) {
+      if (sha256(await readFile(path)) !== artifact.sha256) throw new Error('React edit actual build changed');
+    }
   }
   const guest = record.guestEvidence.guest;
   if (platform() !== guest.platform || arch() !== guest.arch || release() !== guest.kernel
@@ -596,7 +783,8 @@ export async function collectMeasurements(config, driver, directory) {
   const plan = planMeasurements(config);
   await mkdir(directory, { recursive: true });
   const isolated = config.isolatedRepresentative || config.environmentBinding;
-  const binding = isolated ? { isolatedRepresentative: true, environmentBinding: config.environmentBinding } : {};
+  const binding = isolated ? { isolatedRepresentative: true, environmentBinding: config.environmentBinding,
+    ...(config.environmentPairRelation ? { environmentPairRelation: config.environmentPairRelation } : {}) } : {};
   const provenance = productProvenance(config.provenance);
   await revalidateEnvironment(config, dirname(directory));
   const runs = [];
@@ -660,6 +848,8 @@ export async function collectDevMeasurements(config, driver, directory) {
       try {
         const metrics = {};
         const timings = {};
+        const qualityFailures = [];
+        const unavailable = {};
         for (const [kind, metric] of Object.entries(steps)) {
           if (kind !== 'cold-ready' && driver.restartDev) {
             const readiness = await driver.restartDev(item, config);
@@ -670,11 +860,25 @@ export async function collectDevMeasurements(config, driver, directory) {
           if (!observation?.event || !Number.isFinite(observation.durationMs) || observation.durationMs < 0) {
             throw new RangeError(`invalid ${kind} observation`);
           }
+          if (kind === 'react-edit' && item.framework === 'fluo'
+            && config.dev?.fluo?.edits?.[kind]?.from === 'Editor login') {
+            const { verifyDevEditObservation } = await import('./measure-browser.mjs');
+            const environment = config.environmentBinding
+              ? await verifyEnvironmentBinding(config.environmentBinding, dirname(directory)) : null;
+            try {
+              verifyDevEditObservation(observation, config.dev.fluo.edits[kind], environment?.reactEditSource);
+            } catch (error) {
+              timings[kind] = observation;
+              unavailable[metric] = error.message;
+              qualityFailures.push(error.message);
+              continue;
+            }
+          }
           metrics[metric] = observation.durationMs;
           timings[kind] = observation;
         }
-        return { metrics, timings, unavailable: Object.fromEntries(METRICS.filter((name) => !name.startsWith('dev'))
-          .map((name) => [name, 'not measured in development mode'])) };
+        return { metrics, timings, qualityFailures, unavailable: { ...Object.fromEntries(METRICS.filter((name) => !name.startsWith('dev'))
+          .map((name) => [name, 'not measured in development mode'])), ...unavailable } };
       } finally {
         await driver.closeDev?.(item);
       }
@@ -704,7 +908,9 @@ export async function mergeEvidence(production, development, directory) {
     await writeFile(trace, `${JSON.stringify({
       schemaVersion: 1, sourceTraces: [run.trace, dev.trace],
       ...(isolated ? { isolatedRepresentative: true, environmentBinding: production.environmentBinding,
-        sourceEnvironmentBindings: [run.environmentBinding, dev.environmentBinding] } : {}),
+        sourceEnvironmentBindings: [run.environmentBinding, dev.environmentBinding],
+        ...(production.environmentPairRelation ? { environmentPairRelation: production.environmentPairRelation } : {}),
+        sourceEnvironmentPairRelations: [run.environmentPairRelation ?? null, dev.environmentPairRelation ?? null] } : {}),
       correctness: { production: run.correctness, development: dev.correctness },
     }, null, 2)}\n`);
     runs.push({ ...run, trace, correctness: run.correctness === 'fail' || dev.correctness === 'fail'
@@ -712,7 +918,8 @@ export async function mergeEvidence(production, development, directory) {
       metrics: { ...run.metrics, ...dev.metrics } });
   }
   return { ...production, runs, developmentWarmups: development.warmups,
-    ...(isolated ? { developmentEnvironmentBinding: development.environmentBinding } : {}) };
+    ...(isolated ? { developmentEnvironmentBinding: development.environmentBinding,
+      ...(development.environmentPairRelation ? { developmentEnvironmentPairRelation: development.environmentPairRelation } : {}) } : {}) };
 }
 
 export async function verifyMeasurementEnvironment(receipt, outputRoot) {
@@ -728,6 +935,11 @@ export async function verifyMeasurementEnvironment(receipt, outputRoot) {
     throw new Error('environment binding aggregate mode missing');
   }
   const environment = await verifyEnvironmentBinding(receipt.environmentBinding, outputRoot);
+  if (environment.pairBeforeBinding && environment.pairBeforeBinding.configSha256 !== environment.configSha256
+    && !receipt.environmentPairRelation) throw new Error('React edit pair aggregate relation missing');
+  if (receipt.environmentPairRelation) {
+    await verifyReactEditPairRelation(receipt.environmentPairRelation, receipt.environmentBinding, outputRoot);
+  }
   if (!isDeepStrictEqual(receipt.provenance, environment.provenance)) {
     throw new Error('environment binding aggregate provenance mismatch');
   }
@@ -736,6 +948,10 @@ export async function verifyMeasurementEnvironment(receipt, outputRoot) {
   }
   if (receipt.developmentEnvironmentBinding) {
     const development = await verifyEnvironmentBinding(receipt.developmentEnvironmentBinding, outputRoot);
+    if (development.pairBeforeBinding && development.pairBeforeBinding.configSha256 !== development.configSha256
+      && !receipt.developmentEnvironmentPairRelation) throw new Error('React edit pair development relation missing');
+    if (receipt.developmentEnvironmentPairRelation) await verifyReactEditPairRelation(
+      receipt.developmentEnvironmentPairRelation, receipt.developmentEnvironmentBinding, outputRoot);
     if (environment.identitySha256 !== development.identitySha256
       || !isDeepStrictEqual(receipt.provenance, development.provenance)) {
       throw new Error('environment binding development identity/provenance mismatch');
@@ -746,6 +962,11 @@ export async function verifyMeasurementEnvironment(receipt, outputRoot) {
       ? receipt.developmentEnvironmentBinding : receipt.environmentBinding;
     if (!run.isolatedRepresentative || !isDeepStrictEqual(run.environmentBinding, expected)) {
       throw new Error('environment binding sample/aggregate mismatch');
+    }
+    const expectedRelation = (receipt.developmentWarmups ?? []).includes(run)
+      ? receipt.developmentEnvironmentPairRelation : receipt.environmentPairRelation;
+    if (!isDeepStrictEqual(run.environmentPairRelation, expectedRelation)) {
+      throw new Error('React edit pair sample/aggregate relation mismatch');
     }
   }
   await verifyTraceFiles(samples, outputRoot);
@@ -772,9 +993,15 @@ export async function verifyTraceFiles(runs, outputRoot) {
         || !isDeepStrictEqual(record.environmentBinding, expected.environmentBinding))) {
       throw new Error(`environment binding ${mismatch} mismatch`);
     }
+    if (expected && !isDeepStrictEqual(record.environmentPairRelation, expected.environmentPairRelation)) {
+      throw new Error('React edit pair sample/trace relation mismatch');
+    }
     if (isolated) {
       if (!record.isolatedRepresentative) throw new Error('environment binding trace mode missing');
       const environment = await verifyEnvironmentBinding(record.environmentBinding, root);
+      if (environment.pairBeforeBinding && environment.pairBeforeBinding.configSha256 !== environment.configSha256
+        && !record.environmentPairRelation) throw new Error('React edit pair trace relation missing');
+      if (record.environmentPairRelation) await verifyReactEditPairRelation(record.environmentPairRelation, record.environmentBinding, root);
       if (sources && !isDeepStrictEqual(record.provenance, environment.provenance)) {
         throw new Error('environment binding trace provenance mismatch');
       }
@@ -784,6 +1011,17 @@ export async function verifyTraceFiles(runs, outputRoot) {
         throw new Error('environment binding trace configuration/browser mismatch');
       }
       if (sources && record.correctness?.pass) {
+        const edit = environment.configuration.dev?.fluo?.edits?.['react-edit'];
+        if (record.framework === 'fluo' && record.timings?.['react-edit'] && edit?.from === 'Editor login') {
+          const { verifyDevEditObservation } = await import('./measure-browser.mjs');
+          try {
+            verifyDevEditObservation(record.timings['react-edit'], edit, environment.reactEditSource);
+          } catch (error) {
+            if (Object.hasOwn(record.metrics, 'devReactEditVisibleMs')
+              || !record.qualityFailures?.includes(error.message)
+              || record.unavailable.devReactEditVisibleMs !== error.message) throw error;
+          }
+        }
         const headrooms = record.timings?.['cold-ready']
           ? ['cold-ready', 'react-edit', 'css-edit', 'server-edit'].map((kind) => record.timings[kind]?.environmentHeadroom)
           : [record.artifacts?.environmentHeadroom];
@@ -839,6 +1077,7 @@ export async function verifyTraceFiles(runs, outputRoot) {
         const raw = await verify(source, true, {
           isolatedRepresentative: record.isolatedRepresentative,
           environmentBinding: record.sourceEnvironmentBindings?.[index],
+          environmentPairRelation: record.sourceEnvironmentPairRelations?.[index] ?? undefined,
         }, 'combined source');
         if (isolated) {
           if (!raw.isolatedRepresentative || !isDeepStrictEqual(raw.environmentBinding, record.sourceEnvironmentBindings?.[index])
@@ -867,14 +1106,18 @@ async function main() {
     throw new Error('usage: node src/measure.mjs --config <JSON> --output <JSON>');
   }
   const config = JSON.parse(await readFile(configPath, 'utf8'));
+  if (Object.hasOwn(config, 'environmentPairRelation')) throw new Error('caller-supplied React edit pair descriptor forbidden');
   const output = resolve(outputPath);
   if (invocation) {
-    config.environmentBinding = await captureIsolatedEnvironment(config, invocation, dirname(output));
+    const pairBeforeBinding = await importEnvironmentPairBefore(flags, dirname(output));
+    config.environmentBinding = await captureIsolatedEnvironment(config, invocation, dirname(output), { pairBeforeBinding });
     config.isolatedRepresentative = true;
   } else if (config.isolatedRepresentative || config.environmentBinding) {
     throw new Error('isolated representative requires live host launcher');
   }
-  requireEnvironmentPairIdentity(config.environmentBinding, flags);
+  Object.defineProperty(config, 'environmentPairRelation', {
+    value: await bindEnvironmentPair(config.environmentBinding, flags, dirname(output)),
+  });
   const { createBrowserDriver } = await import('./measure-browser.mjs');
   const devOnly = flags.includes('--dev');
   const driver = await createBrowserDriver(config, { devMode: devOnly });

@@ -42,17 +42,17 @@ CSS, server edit-to-visible은 production navigation과 구분해서 측정합�
 TanStack fixture는 격리된 manifest와 lockfile 모두에서 `react`와
 `react-dom`을 `19.2.8`로 고정하며 production 및 개발 결과는 동일한
 의존성 그래프를 사용해야 합니다.
-현재 Fluo fixture는 Fast Refresh가 아니라 다시 build/restart한 후
-browser를 reload합니다. TanStack의 route loader 편집은 개발 서버를
-다시 시작한 뒤 변경된 페이지를 엽니다. 두 편집 시간은 실제 restart
-경로를 포함합니다. Next.js CSS 편집도 태블릿급 browser에서 CSS HMR
+과거 Fluo discovery는 canonical generated starter 개발 경로가 아닌
+build/restart harness를 사용했으며 해당 receipt는 현재 Fluo 개발 지연의
+증거가 아닙니다. 현재 fixture는 Vite middleware와 gateway를 통한
+canonical `fluo dev --runner fluo`를 실행합니다. CSS는 visible HMR,
+server 편집은 generation readiness 이후 새 document를 관측하며 React는
+아래 source-bound before reload/final HMR 관계를 사용합니다.
+TanStack의 route loader 편집은 개발 서버를 다시 시작한 뒤 변경된 페이지를
+열고 실제 restart 시간을 포함합니다. Next.js CSS 편집도 태블릿급 browser에서 CSS HMR
 표시가 안정적으로 관찰되지 않아 개발 서버를 재시작하고 문서를 다시
 엽니다. Next.js server 편집도 소스 변경이 browser에 반영되지 않아
 재시작 후 문서를 다시 엽니다. 두 값 모두 native HMR 시간은 아닙니다.
-Fluo fixture의 build/restart harness는 generated
-starter의 `fluo dev` Vite middleware 경로가 아닙니다. 이 값으로
-canonical Fluo 개발 지연이나 경쟁 앱과의 개발 성능 동등성을 주장할 수
-없습니다.
 Shell arrival는 first-contentful-paint를, 초기 main-thread work는 hydration 외
 작업도 포함하는 CDP `Performance.TaskDuration`을 사용합니다. 원시 trace에는
 이 측정 방식과 unavailable 값을 기록하며 RSC 전송 byte를 hydrated client
@@ -156,7 +156,8 @@ live evidence를 대신하지 않습니다. 출력 root 안의 environment recor
 immutable identity/config hash와 별도 invocation evidence를 모든
 production/dev/warmup/combined trace, receipt 및 aggregate에 결합하며
 binding 누락·불일치·변조는 실패합니다. After에는 `--environment-identity`와
-`--environment-config-identity`로 before hash 두 개를 함께 요구하고 실제 도구/resource/config를 동일하게 유지하며
+`--environment-config-identity`로 before hash 두 개를 함께 요구하고 실제 도구/resource 및
+아래 인증된 React-edit 두 필드 대안 외의 모든 고정 설정을 동일하게 유지하며
 배타적 timing window를 예약합니다. Passive generator CPU 및 ambient contention
 snapshot은 기존 timing window를 사용하고 CPU/RSS, capture, throughput 경계나
 budget을 변경하지 않습니다. 과거 macOS Node `24.20.0`을 포함한 `baseline.json`은
@@ -165,8 +166,38 @@ Tracked 대표 기본값은 Frida를 활성화하지 않습니다. 일반 defaul
 Docker/Python/Frida가 필요 없고 이 로컬 모드는 cross-platform 성능 수용을 주장하지 않습니다.
 Comparable identity에서는 invocation locator와 product commit/build 차이를 제외합니다.
 실제 절대 경로/config는 evidence와 provenance에 보존하고, before/after worktree/build
-root가 달라도 도구/collector content hash, allocation 및 정규화된 고정 설정은
-같아야 합니다.
+root가 달라도 도구/collector content hash와 allocation은 같아야 합니다.
+매 invocation의 full exact configuration과 hash를 그대로 보존합니다.
+
+서로 다른 dev config의 유일한 대안은 before product
+`8a09eb8d216e555b97760a86539dea31e79c86a8`의 Fluo `src/document.ts` /
+`reload:true`와 reviewed final `f9f5ac6722957cbe2752b9959e657a46594c0a1b`
+또는 source가 검증된 후속 구현 head의 `src/catalog-destination.tsx` /
+`reload:false`입니다. 이 두 필드만 해당 방향으로 달라질 수 있고 다른 설정,
+편집, peer, budget은 모두 같아야 합니다. 양쪽 모두 `/login`에서 `Editor login`을
+단 한 번 `Editor login changed`로 바꾸고 동일한 visible `h1`을 관측한 뒤
+원본 source bytes를 정확히 복구합니다. 원래 representative full hash는 before
+`b7e8cfc2c53a57006197357542b6831b9ccb58835297ee01e22a7a1afc5a5b5d`,
+final `a48953e1f5825e26afc5865a5177af988619bdceebec801cf8b4025b1a2fad73`으로
+서로 다르게 유지합니다. 두 원래 identity flag와 함께 `--environment-before-record`,
+`--environment-before-root`를 사용합니다. 원본 bytes/digest, containment,
+invocation, source/head/blob, build/dependency와 collector 증거로 capture와 replay의
+관계를 인증합니다. Production-only pair는 여전히 exact config equality를 요구하고
+profile, dev와 warmup hash를 aggregate hash와 별도로 보존합니다.
+
+Stimulus 전에 구독한 observer는 before의 새 main-frame document
+`reload-to-visible`와 final의 관련 component update 및 동일 document
+`hmr-to-visible`를 구분합니다. Fallback/restart/relaunch는 관측된 경로로 남기며
+선택된 HMR 증거를 대신하지 못합니다. 초기/최종 visible marker와 원본/편집/복구
+bytes/hash를 raw evidence에 보존합니다. 질문이 답변 없이 만료된 뒤 lead가
+best judgment로 product-native 경로를 선택한 것이며 affirmative user choice나
+waiver가 아닙니다. Merge base `942f673d34d58a9093d7012253913aec9143ff45`와
+final upstream `f3e699047bfa51bbb69d9abeb2717eeb9e1871b0`에는 CLI/HTTP/React
+typegen, background form, navigation, store, provider 변경이 포함되어 제품 차이를
+#3884만의 인과 효과나 same-upstream 단일 최적화 control로 주장하지 않습니다.
+좁은 pair 검증은 성능 PASS가 아닙니다. 네 framework/profile의 fresh 전체 재수집,
+2 warmup/5 measured 순서 교대, 원래 budget/통계, exact-head review와
+final GitHub CI는 계속 필수입니다.
 
 과거 load-only 데이터는 다른 초기 작업 구간을 수집했고 cold module이 끝나기 전에
 warm을 시작할 수 있었습니다. 보존된 Linux 증거에는 cold script 취소가 있습니다.
