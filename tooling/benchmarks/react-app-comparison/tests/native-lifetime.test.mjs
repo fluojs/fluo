@@ -525,6 +525,39 @@ function parentStatusFixture(statusRaw = 0) {
   return observation;
 }
 
+function lateNotificationFixture(witness, early = false) {
+  const observation = parentStatusFixture();
+  const process = observation.coverage.processes[0];
+  process.endKind = 'live';
+  process.endNs = '12000000000';
+  observation.lifecycle.find((entry) => entry.event === 'detached').ns = '13100000000';
+  observation.lifecycle.find((entry) => entry.event === 'owned-exit').ns = '13200000000';
+  const timestamp = early ? '10500000002' : '13000000000';
+  const reap = observation.lifecycle.find((entry) => entry.event === 'parent-reap');
+  if (witness === 'parent-reap') {
+    reap.ns = timestamp;
+    reap.startedNs = early ? '10490000000' : '12900000000';
+  } else {
+    observation.lifecycle = observation.lifecycle.filter((entry) => entry !== reap);
+    observation.lifecycle.push({ event: witness === 'zombie-return' ? 'shutdown-signal-return' : 'shutdown-signal-enter', pid: 100,
+      processBirth: '100:5:0', runId: 'run', ns: timestamp,
+      target: { pid: 123, processBirth: '123:1', state: 'Z', exitCodeRaw: 0 } });
+  }
+  return withJournals(observation);
+}
+
+for (const witness of ['parent-reap', 'zombie', 'zombie-return']) {
+  test(`live interval respects independent ${witness} despite delayed exit notifications`, () => {
+    const observation = lateNotificationFixture(witness, true);
+    assert.deepEqual(reconcileNativeLifetime([request()], observation, ledger()).unavailable,
+      ['native lifetime: process identity/coverage conflict']);
+  });
+  test(`independent ${witness} after drain preserves completed live coverage`, () => {
+    const observation = lateNotificationFixture(witness);
+    assert.deepEqual(reconcileNativeLifetime([request()], observation, ledger()).unavailable, []);
+  });
+}
+
 test('owned parent normal reap authenticates retirement without rewriting missing pidfd status', () => {
   const observation = parentStatusFixture();
   const result = reconcileNativeLifetime([request()], observation, ledger());
@@ -778,6 +811,32 @@ for (const mutation of ['retired end', 'live classification', 'live unknown stat
     }
     for (const role of ['native', 'coverage', 'host']) await f.save(role);
     // Then: digest consistency does not substitute for interval authenticity.
+    await assert.rejects(f.verify(), /reconciliation replay mismatch/u);
+  });
+}
+
+for (const witness of ['parent-reap', 'zombie', 'zombie-return']) {
+  test(`rehashing delayed notifications cannot hide independent ${witness}`, async (t) => {
+    const f = await authenticatedFixture(t);
+    const live = lateNotificationFixture(witness);
+    Object.assign(f.records.native, { lifecycle: live.lifecycle, journals: live.journals, coverage: live.coverage });
+    f.records.coverage.coverage = f.records.native.coverage;
+    f.records.host.messages = [
+      { process: live.coverage.processes[0], runtime: f.records.native.runtime },
+      ...live.lifecycle.map((lifecycle) => ({ lifecycle })),
+      ...live.journals.flatMap((journal) => [{ journalOwnership: journal.ownership }, { journal }]),
+      { ns: f.records.native.clock.beforeNs }, { ns: f.records.native.clock.afterNs },
+      { drained: true, ns: '12000000000', events: live.events, buffer: { dropped: 0 } },
+    ];
+    f.record.requests = reconcileNativeLifetime([request()], f.records.native, f.records.cdp.ledger).requests;
+    for (const role of ['native', 'coverage', 'host']) await f.save(role);
+    await f.verify();
+    const event = f.records.native.lifecycle.find((entry) =>
+      entry.event === (witness === 'parent-reap' ? 'parent-reap'
+        : witness === 'zombie-return' ? 'shutdown-signal-return' : 'shutdown-signal-enter'));
+    event.ns = '10500000002';
+    if (witness === 'parent-reap') event.startedNs = '10490000000';
+    for (const role of ['native', 'coverage', 'host']) await f.save(role);
     await assert.rejects(f.verify(), /reconciliation replay mismatch/u);
   });
 }

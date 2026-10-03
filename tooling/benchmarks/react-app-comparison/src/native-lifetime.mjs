@@ -123,7 +123,11 @@ function validEpochEnd(process, observation, cutoff) {
         && (entry.osBirth ?? entry.processBirth?.slice(0, entry.processBirth.lastIndexOf(':'))) === osBirth;
       const replaced = entry.event === 'exec-success' && entry.pid === process.pid
         && entry.previousBirth === process.processBirth;
-      return (entry.event === 'detached' && sameEpoch || exited || replaced)
+      const target = entry.target?.pid === process.pid && entry.target.processBirth === osBirth;
+      const reaped = entry.event === 'parent-reap' && entry.result === process.pid && target;
+      const zombie = ['shutdown-signal-enter', 'shutdown-signal-return'].includes(entry.event)
+        && target && ['Z', 'X'].includes(entry.target.state);
+      return (entry.event === 'detached' && sameEpoch || exited || replaced || reaped || zombie)
         && (ns(entry.ns) === null || ns(entry.ns) <= end);
     });
   }
