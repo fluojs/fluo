@@ -7,6 +7,13 @@ export interface ProcessSample {
   readonly processes: readonly { readonly pid: number; readonly parent: number; readonly rssKiB: number; readonly cpuSeconds: number; readonly command: string }[];
 }
 
+export class ResourceMeasurementFailure extends Error {
+  constructor(cause: unknown, readonly samples: readonly ProcessSample[]) {
+    super('Server measurement failed', { cause });
+    this.name = 'ResourceMeasurementFailure';
+  }
+}
+
 export function cpuSeconds(value: string): number {
   const fields = value.split(':').map(Number);
   if (fields.some((field) => !Number.isFinite(field))) throw new Error(`Unsupported ps CPU time: ${value}`);
@@ -31,8 +38,8 @@ export async function processTreeSample(rootPid: number): Promise<ProcessSample>
   return { wallMs: performance.now(), processes };
 }
 
-export async function monitorServer<T>(rootPid: number, action: () => Promise<T>) {
-  const samples: ProcessSample[] = [await processTreeSample(rootPid)];
+export async function monitorServer<T>(rootPid: number, action: () => Promise<T>, samples: ProcessSample[] = []) {
+  samples.push(await processTreeSample(rootPid));
   let pending = Promise.resolve();
   let failure: unknown;
   // Time is the measured behavior: this interval samples RSS during the run.
@@ -64,6 +71,8 @@ export async function monitorServer<T>(rootPid: number, action: () => Promise<T>
         limitations: ['RSS is sampled, not an allocator high-water mark.', 'ps CPU time has platform-dependent precision; short smoke samples are not performance evidence.', 'Host descendants that exit between samples may be missed; workerd control processes are included.'],
       },
     };
+  } catch (error) {
+    throw new ResourceMeasurementFailure(error, samples);
   } finally {
     clearInterval(timer);
     await pending;

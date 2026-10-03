@@ -61,5 +61,21 @@
   "postMeasurementTestUpdates": [
     "tests/platform-baselines.test.mts",
     "tests/archive.test.mts"
-  ]
+  ],
+  "initialComparisonHead": "ffea4838c07671b04e8334927ec42163e377a37a",
+  "collectorFixBack": {
+    "changedPaths": [
+      "src/traffic.ts",
+      "src/load-client.ts",
+      "src/load.ts",
+      "src/resources.ts",
+      "src/evidence.ts",
+      "src/run.ts",
+      "src/targets.ts",
+      "src/archive.mjs"
+    ],
+    "purpose": "Preserve completed samples and available raw diagnostics on failures/signals; reject interrupted archives.",
+    "evidence": "collector-fix-back.json",
+    "baselineArtifacts": "Historical measurements retain their exact original collector source. They are not relabeled as measurements of the changed collector."
+  }
 }

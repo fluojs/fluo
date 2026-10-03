@@ -56,4 +56,15 @@ The maintainer approved retaining NAS low-load/transport evidence and using Mac 
 - Run `pnpm --ignore-workspace exec tsx src/archive.mjs` to validate the matrix and archive complete evidence.
 - Earlier diagnostics from before the frozen-install recovery are not these baselines. An interrupted collection and a stale detached-server collision were discarded.
 - A regression test checks actual detached-server teardown on parent termination. Another rejects an installed lockfile with changed overrides; disabling its comparison was observed to fail the test.
-- Post-measurement changes add archive/report/tests and sort existing imports. `measured-source-equivalence.json` records identical non-import AST statements and matching import bindings for every changed measured file. Exact-head correctness checks and independent reviews remain separate from baseline collection.
+- The initial implementation head adds archive/report/tests and sorts existing imports. `measured-source-equivalence.json` records that initial comparison and separately identifies the later collector fix-back. Existing archives retain their original collector source; they are not relabeled as measurements of the changed collector.
+
+## Collector review fix-back
+
+The review found that failed or interrupted collection could discard completed
+samples. The collector now registers each sample before teardown, preserves raw
+traffic and available resource diagnostics, flushes on handled SIGINT/SIGTERM,
+and rejects invalid attempts during archiving. `collector-fix-back.json` contains
+an actual runner probe: a valid native Fastify measurement survived a subsequent
+HTTP 503 failure at the next target endpoint, with a nonzero exit and retained
+subprocess diagnostics. This probe and its small successful control are
+correctness evidence, not new performance baselines.

@@ -100,6 +100,15 @@ interval includes the load invocation, including remote invocation overhead.
 Keep artifacts with published results; interrupted runs preserve completed
 conditions but do not become successful baselines.
 
+Completed samples are registered before target teardown. Ordinary failures and
+handled SIGINT/SIGTERM retain completed conditions plus `invalidAttempts`,
+including the target, repeat, phase, available traffic diagnostics and server
+samples. Load subprocess failures retain their raw stdout/stderr. A signal can
+arrive before a load subprocess returns its final counters; the artifact marks
+that interruption rather than inventing missing counters. SIGKILL and power loss
+cannot flush in-memory state. The archive command rejects recorded invalid
+attempts even if the remaining measurement matrix appears complete.
+
 ## Independent load generators
 
 `BENCH_LOAD_PROCESS=1` runs the local generator in a separate Node process.

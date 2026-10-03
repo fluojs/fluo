@@ -34,6 +34,7 @@ for (const configuration of manifest.conditions.configurations) {
   const raw = await readFile(`${directory}${name}`);
   const value = JSON.parse(raw);
   assert.equal(value.schemaVersion, 3);
+  assert.deepEqual(value.invalidAttempts ?? [], [], 'invalidAttempts');
   assert.equal(value.configuration, configuration);
   assert.equal(value.runs, 3);
   assert.equal(value.warmupSeconds, 5);

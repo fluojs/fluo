@@ -52,7 +52,7 @@ export function waitForTarget(child: ChildProcess): Promise<void> {
   return new Promise((resolve, reject) => {
     let output = '';
     const timer = setTimeout(() => finish(new Error(`Target readiness timed out: ${output}`)), 60_000);
-    const onExit = (code: number | null) => finish(new Error(`Target exited before readiness: ${code}`));
+    const onExit = (code: number | null) => finish(new Error(`Target exited before readiness: ${code}\n${output}`));
     const onData = (chunk: Buffer) => {
       output += String(chunk);
       if (/listening on :|Ready in|Ready on http/.test(output)) finish();
@@ -62,13 +62,13 @@ export function waitForTarget(child: ChildProcess): Promise<void> {
       child.stdout?.removeListener('data', onData);
       child.stderr?.removeListener('data', onData);
       child.removeListener('error', finish);
-      child.removeListener('exit', onExit);
+      child.removeListener('close', onExit);
       if (error) reject(error); else resolve();
     };
     child.stdout?.on('data', onData);
     child.stderr?.on('data', onData);
     child.once('error', finish);
-    child.once('exit', onExit);
+    child.once('close', onExit);
   });
 }
 

@@ -1,10 +1,10 @@
-import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { EvidenceJournal } from './evidence';
 import { load } from './load';
 import { environmentSummary, WORKSPACE_ROOT } from './provenance';
-import { printReport, type ScenarioResult, summarizeRuns } from './report';
-import { monitorServer } from './resources';
+import { printReport, type ScenarioResult, summarizeRuns, type TargetResult } from './report';
+import { monitorServer, type ProcessSample } from './resources';
 import { SCENARIOS, type ScenarioConfig } from './scenarios';
 import { buildCommands, buildTarget, runCommand, startTargets, stopTargets, TARGETS, type TargetConfig, WDIR, waitForTarget } from './targets';
 import { measureTargets } from './traffic';
@@ -94,11 +94,16 @@ function readPositiveIntegerEnv(name: string, fallback: number): number {
   return value;
 }
 
-async function runScenario(scenario: ScenarioConfig, index: number, targets: readonly TargetConfig[], connections: number): Promise<ScenarioResult> {
-  const samples: ScenarioResult['targets'][number][] = [];
+async function runScenario(scenario: ScenarioConfig, run: {
+  index: number; repeat: number; targets: readonly TargetConfig[]; connections: number;
+  samples: TargetResult[]; journal: EvidenceJournal;
+}): Promise<void> {
+  const { index, targets, connections, samples, journal } = run;
   const offset = index % targets.length;
   const rotated = [...targets.slice(offset), ...targets.slice(0, offset)];
   for (const target of rotated) {
+  const condition = { configuration: CONFIGURATION, scenario: scenario.name, target: target.name, connections, repeat: run.repeat };
+  await journal.record({ ...condition, phase: 'startup' }, samples, async (complete) => {
   const start = performance.now();
   const processes = startTargets(scenario.appShape, [target]);
   try {
@@ -108,18 +113,22 @@ async function runScenario(scenario: ScenarioConfig, index: number, targets: rea
       url: `http://${process.env.BENCH_SERVER_HOST ?? '127.0.0.1'}:${target.port}`,
       duration, connections, requests: scenario.requests,
     });
+    journal.current = { ...condition, phase: 'cold-request', processToReadyMs };
     const firstRequest = await load({ ...traffic(target, 1), connections: 1, amount: 1 }, `${target.name} cold request`);
     const measured = await measureTargets([target], {
       warmup: async (target) => {
+        journal.current = { ...condition, phase: 'warmup', processToReadyMs, firstRequest };
         process.stdout.write(`  warming ${target.label} (${WARMUP_SEC}s)...`);
         await load(traffic(target, WARMUP_SEC), `${scenario.name}/${target.label} warm-up`);
         process.stdout.write(' done\n');
       },
       measure: async (target) => {
+        const serverSamples: ProcessSample[] = [];
+        journal.current = { ...condition, phase: 'measurement', processToReadyMs, firstRequest, serverSamples };
         process.stdout.write(`  measuring ${target.label} (${MEASURE_SEC}s)...`);
         const pid = processes[0].pid;
         if (pid === undefined) throw new Error(`Missing server PID for ${target.name}`);
-        const measured = await monitorServer(pid, () => load(traffic(target, MEASURE_SEC), `${scenario.name}/${target.label}`));
+        const measured = await monitorServer(pid, () => load(traffic(target, MEASURE_SEC), `${scenario.name}/${target.label}`), serverSamples);
         process.stdout.write(' done\n');
         return {
           label: target.label, ...measured.value, server: measured.server,
@@ -127,12 +136,13 @@ async function runScenario(scenario: ScenarioConfig, index: number, targets: rea
         };
       },
     });
-    samples.push(...measured);
+    complete(measured[0]);
+    journal.current = { ...condition, phase: 'teardown', measurementCompleted: true };
   } finally {
     await stopTargets(processes);
   }
+  });
   }
-  return { name: scenario.name, description: scenario.description, targets: samples };
 }
 
 async function main(): Promise<void> {
@@ -147,6 +157,13 @@ async function main(): Promise<void> {
   for (const target of targets) await buildTarget(target);
   const environment = await environmentSummary();
   const sweeps: { connections: number; rawRuns: ScenarioResult[][] }[] = [];
+  const journal = new EvidenceJournal(OUTPUT_JSON, () => ({
+    schemaVersion: 3, benchmark: 'http-comparison', configuration: CONFIGURATION,
+    durationSeconds: MEASURE_SEC, warmupSeconds: WARMUP_SEC, runs: RUNS,
+    environment, build: { workspaceRoot: WORKSPACE_ROOT, commands: buildCommands, freshWorkspaceBuild: true },
+    traffic: scenarios, sweeps, baselineStatus: 'inconclusive',
+    limitations: ['Generator headroom and default/equivalent completeness require separate evidence; these samples alone do not establish a complete baseline.'],
+  }));
   try {
   for (const connections of CONCURRENCY_SWEEP) {
   const rawRuns: ScenarioResult[][] = [];
@@ -154,11 +171,13 @@ async function main(): Promise<void> {
   for (let run = 0; run < RUNS; run += 1) {
     console.log(`Run ${run + 1} of ${RUNS}`);
     const results: ScenarioResult[] = [];
+    rawRuns.push(results);
     for (const [index, scenario] of scenarios.entries()) {
       console.log(`Scenario: ${scenario.name}`);
-      results.push(await runScenario(scenario, index + run, targets, connections));
+      const samples: TargetResult[] = [];
+      results.push({ name: scenario.name, description: scenario.description, targets: samples });
+      await runScenario(scenario, { index: index + run, repeat: run, targets, connections, samples, journal });
     }
-    rawRuns.push(results);
   }
   const summary = summarizeRuns(rawRuns);
   printReport(summary, {
@@ -167,14 +186,7 @@ async function main(): Promise<void> {
   });
   }
   } finally {
-    await writeFile(OUTPUT_JSON, `${JSON.stringify({
-      schemaVersion: 3, benchmark: 'http-comparison',
-      configuration: CONFIGURATION,
-      durationSeconds: MEASURE_SEC, warmupSeconds: WARMUP_SEC, runs: RUNS,
-      environment, build: { workspaceRoot: WORKSPACE_ROOT, commands: buildCommands, freshWorkspaceBuild: true },
-      traffic: scenarios, sweeps, baselineStatus: 'inconclusive',
-      limitations: ['Generator headroom and default/equivalent completeness require separate evidence; these samples alone do not establish a complete baseline.'],
-    }, null, 2)}\n`);
+    journal.finish();
   }
 }
 

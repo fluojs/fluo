@@ -34,6 +34,20 @@ export interface TrafficOptions {
   readonly timeout?: number;
 }
 
+export interface TrafficDiagnostics {
+  readonly result: Result | null;
+  readonly statusMismatches: number;
+  readonly latencyHistogramMicros: readonly (readonly [number, number])[];
+  readonly clientCpu: ClientCpu;
+}
+
+export class TrafficFailure extends Error {
+  constructor(message: string, readonly diagnostics: TrafficDiagnostics) {
+    super(message);
+    this.name = 'TrafficFailure';
+  }
+}
+
 export function histogramPercentile(histogram: readonly (readonly [number, number])[], percentile: number): number {
   const total = histogram.reduce((sum, [, count]) => sum + count, 0);
   if (total === 0) throw new Error('Cannot compute a percentile of zero completed responses');
@@ -75,17 +89,27 @@ export function shoot(options: TrafficOptions, label: string): Promise<Measureme
         },
       })),
     }, (error, result) => {
-      if (error) { reject(error); return; }
-      if (!result) { reject(new Error(`${label}: autocannon returned no result`)); return; }
       const usage = process.cpuUsage(cpuStart);
       const wallMicros = Number(process.hrtime.bigint() - wallStart) / 1_000;
+      const clientCpu = {
+        userMicros: usage.user, systemMicros: usage.system, wallMicros,
+        coreEquivalentPercent: (usage.user + usage.system) / wallMicros * 100,
+      };
+      if (error || !result) {
+        reject(new TrafficFailure(`${label}: ${error?.message ?? 'autocannon returned no result'}`, {
+          result: result ?? null, statusMismatches, clientCpu, latencyHistogramMicros: [...latencyCounts],
+        }));
+        return;
+      }
       const checkedResult = { ...result, mismatches: result.mismatches + bodyMismatches };
       const failures = Object.entries({
         errors: result.errors, timeouts: result.timeouts, non2xx: result.non2xx,
         mismatches: checkedResult.mismatches, statusMismatches,
       }).filter(([, count]) => count !== 0);
       if (failures.length > 0 || result.requests.total === 0) {
-        reject(new Error(`${label} returned invalid benchmark traffic: ${JSON.stringify(Object.fromEntries(failures))}; completed=${result.requests.total}`));
+        reject(new TrafficFailure(`${label} returned invalid benchmark traffic: ${JSON.stringify(Object.fromEntries(failures))}; completed=${result.requests.total}`, {
+          result: checkedResult, statusMismatches, clientCpu, latencyHistogramMicros: [...latencyCounts],
+        }));
         return;
       }
       resolve({
@@ -97,10 +121,7 @@ export function shoot(options: TrafficOptions, label: string): Promise<Measureme
           p95: histogramPercentile([...latencyCounts], 95),
           p99: histogramPercentile([...latencyCounts], 99),
         },
-        clientCpu: {
-          userMicros: usage.user, systemMicros: usage.system, wallMicros,
-          coreEquivalentPercent: (usage.user + usage.system) / wallMicros * 100,
-        },
+        clientCpu,
       });
     });
     instance.on('response', (_client, _status, _bytes, responseTime) => {
