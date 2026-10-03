@@ -85,7 +85,7 @@ units. Actual CDP terminals stay unchanged. Cancellation is
 numerator/denominator; no body bytes, CDP status/error code or settled time
 are synthesized.
 
-Native events are buffered in-process without per-event IPC. Hook overhead
+Native events are buffered in host-retained shared memory without per-event IPC. Hook overhead
 remains in measured work; setup/drain and separate observer costs are retained,
 not separately measured or subtracted. Drain happens before BrowserServer
 close but after unchanged throughput and `ps` samples, without moving the
@@ -100,6 +100,42 @@ is disabled at drain; session detach/unload follows process exit, never precedes
 BrowserServer close. Resident memory/runtime overhead stays
 included, without subtraction. An eternalized inert script per session prevents live-agent unload when
 failed/aborted preparation forces bounded observer-child termination.
+Transport schema v2 retains an append-only memfd journal for each
+PID/starttime/exec epoch. The host acquires and verifies its descriptor before
+acknowledging hooks readiness or gated resume. The 500000 fixed-width records
+never wrap: the native writer publishes each payload with AArch64 release
+ordering, and the host reads markers with acquire ordering. Attempted/committed
+counts, sequence markers, drops, native callback and invocation counts, ownership
+and the original binary header/records remain in hashed raw evidence. Missing
+ownership, an interrupted publication/callback, overflow or an incomplete call
+cannot become complete by recomputing hashes.
+
+Retired images are read from the retained mapping, without RPC to a destroyed
+script. A live interval must cover the original cutoff; an earlier retired
+interval requires authenticated detach plus a birth-bound normal status.
+The early browser lifecycle observer may retain a separate zombie `/proc` status
+witness; it never replaces a missing pidfd status or treats a signal to a zombie
+as its cause.
+When that witness is unavailable, only the authenticated owned browser/zygote
+parent's actual `waitpid`/`wait4` normal return can supply an independent raw
+reap status. Its pre-call kernel PID/starttime/parent, original stat, return PID,
+status and observer sequence are retained. A NULL wait
+status destination remains NULL; a separate birth-bound zombie `stat` exit-code
+field captured before the actual reap may supply status, without rewriting
+either the wait result or pidfd status. Raw SIGTERM 15 is admitted for an
+earlier retirement only with its own complete pre-cutoff Chromium normal
+termination caller/return chain and successful live-target send. It stays 15;
+missing pidfd status stays missing. This proof does not borrow or backdate
+`graceful-close` and is separate from the existing post-close shutdown proof.
+Successful gated exec retains distinct old/new histories and
+requires successor readiness before resume; failed exec cannot close the old
+epoch. Unknown roles/status, crashes and unproved transitions stay inconclusive.
+Neither the production COOP first navigation nor the capture boundary changes.
+Nonempty retirement is also checked in a separately labeled two-document
+correctness fixture, never a preliminary navigation in a measured cohort.
+Journal mappings, native writer/callback accounting and lifecycle observation
+costs remain included. Correctness evidence is not a paired performance verdict.
+
 The Python host retains pidfd exit subscriptions through BrowserServer termination
 and then finalizes the original-cutoff
 evidence. Main exit/error/disconnect and owned descendant wait statuses are
@@ -115,7 +151,7 @@ failed sends, missing callers, unknown causes and other abnormal exits are not
 admitted; status 15 and missing statuses are never rewritten to zero.
 
 Unsupported identity, late attach, partial hooks, drops, incomplete returns,
-transport/script errors, renderer termination before drain, ambiguous reuse,
+transport/script errors, unproven renderer retirement, ambiguous reuse,
 unverified child role or worker target coverage produce unavailable/inconclusive
 evidence, never fallback coverage or invented cancellation. Observer sessions,
 listeners and children are closed with bounded event-based waits on success,

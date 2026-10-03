@@ -110,7 +110,7 @@ clock/단위가 필요하며 URL·가까운 시각·GC·teardown으로 추론하
 `request-failed`, `canceled:true`로 기존 errorRate의 실패에 포함하며 status,
 body byte, CDP error code 또는 settledTimestamp를 만들지 않습니다.
 
-Native event는 process 안에 buffer하여 event마다 IPC하지 않습니다. Hook 비용을
+Native event는 host가 보유한 shared memory에 buffer하여 event마다 IPC하지 않습니다. Hook 비용을
 측정에서 차감하지 않으며 setup/drain과 별도 observer process 비용은 provenance에
 남기지만 따로 측정하지 않습니다. 기존 throughput 및 `ps` snapshot 뒤,
 BrowserServer close 전에 drain하고 원래 request cutoff를 유지합니다.
@@ -120,6 +120,38 @@ BrowserServer close 전이 아니라 process 종료 뒤입니다. Resident memor
 차감 없이 포함합니다.
 실패·abort된 preparation이 observer child의 bounded 종료를 강제할 때도
 eternalize된 inert script가 살아 있는 process의 agent unload를 방지합니다.
+Transport schema v2는 PID/starttime/exec epoch별 append-only memfd journal을
+보존하고 hook readiness 또는 gated resume 전에 host가 소유권을 획득·검증합니다.
+500000개 fixed-width record는 wrap하지 않습니다. Native writer는 AArch64
+release publication을, host는 acquire read를 사용합니다. 원본 binary
+header/record, ownership, attempted/committed count, sequence marker, drop,
+native callback/invocation 상태를 인증하고 replay합니다. 소유권 누락,
+publication/callback 중단, overflow와 불완전한 call은 hash를 다시 계산해도
+inconclusive입니다.
+
+Live interval은 원래 cutoff를 포함해야 합니다. 그보다 이른 retirement는
+인증된 detach와 birth-bound 정상 status로 입증하며 destroyed script RPC 또는
+인위적인 cutoff padding을 사용하지 않습니다. 조기 browser lifecycle observer의
+별도 zombie-status witness는 누락된 pidfd status를 대체하거나 zombie에 보낸
+signal을 종료 원인으로 지정하지 않습니다.
+이 status witness가 없으면 인증된 소유 browser/zygote parent의 실제
+`waitpid`/`wait4` 정상 반환에서 genuine raw reap status만 확보합니다. 호출 전
+kernel PID/starttime/parent, 원본 stat, 반환 PID와 observer sequence를 보존합니다.
+NULL wait status destination은 NULL로 유지합니다. 실제 reap 전에 확보한 별도의
+birth-bound zombie `stat` exit-code field로 status를 입증할 수 있지만 wait 반환과
+pidfd status를 다시 쓰지 않습니다.
+이른 retirement의 raw SIGTERM 15는 별도로 완전한 pre-cutoff Chromium 정상
+termination caller/return chain과 live target에 대한 성공한 send를 요구합니다.
+15를 0으로 바꾸거나 missing pidfd status를 채우지 않습니다. 이 retirement 증명은
+`graceful-close`를 빌리거나 소급하지 않으며 기존 post-close shutdown 인증과
+분리합니다. 성공한 gated exec는 독립된 이전·이후
+history를 보존하고 resume 전에 successor readiness를 검증합니다. 실패한 exec는
+epoch를 닫지 않습니다. 알 수 없는 role/status, crash와 미지원 transition은
+거부합니다. Production COOP navigation과 capture boundary는 유지합니다.
+별도의 두 문서 nonempty-retirement correctness fixture를 측정 cohort의 사전
+navigation으로 사용하지 않습니다. Journal, writer/callback과 lifecycle overhead는
+차감하지 않으며 이 correctness 검증은 performance PASS가 아닙니다.
+
 Python host는 BrowserServer 종료까지 pidfd exit 구독을 유지한 다음 원래 cutoff의
 증거를 마무리합니다. Main exit/error/disconnect와 관측 가능한 descendant wait
 status를 보존하며 알려진 비정상 종료는 NetLog parse 전에 거부합니다. Python exit 0이나
@@ -135,7 +167,7 @@ coverage/process, schema/source hash, host log와 cleanup raw artifact를 fresh 
 root에 보존하고 `verifyTraceFiles`에서 hash·realpath containment·run identity와
 reconciliation replay를 확인합니다. Warmup 및 combined trace에도 적용합니다.
 미지원 환경, late attach, partial hook, event drop, 불완전 반환, script/transport
-오류, drain 이전 renderer 종료, identity ambiguity, 확인되지 않은 child role,
+오류, 증명되지 않은 renderer retirement, identity ambiguity, 확인되지 않은 child role,
 worker/service-worker coverage는 unavailable/inconclusive입니다. 정상·실패·timeout·
 abort에서 observer session/child/listener를 bounded event wait로 정리하며 실패를
 숨기지 않습니다. 두 기존 headless 진단에는 pending이 없었으므로 36개의 이미

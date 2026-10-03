@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { createNativeLifetimeObserver, NATIVE_LIFETIME_HOOKS, NATIVE_LIFETIME_IDENTITY,
-  NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA, NATIVE_SHUTDOWN_HOOKS, reconcileNativeLifetime } from '../src/native-lifetime.mjs';
+  NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA, NATIVE_SHUTDOWN_HOOKS, decodeNativeJournal,
+  reconcileNativeLifetime } from '../src/native-lifetime.mjs';
 import { verifyTraceFiles } from '../src/measure.mjs';
 
 const request = () => ({
@@ -17,7 +18,7 @@ const request = () => ({
   method: 'GET', unavailable: 'pending at capture',
 });
 const fixture = () => {
-  const common = { pid: 123, processBirth: '123:1', resource: '0x100',
+  const common = { pid: 123, processBirth: '123:1:0', resource: '0x100',
     resourceBirth: 1, loader: '0x200', loaderBirth: 1 };
   const events = [
     { event: 'hooks-ready', hooks: 7 },
@@ -31,7 +32,7 @@ const fixture = () => {
     { event: 'cancel-return', call: 2, thread: 1, parent: null, normal: true },
   ].map((entry, index) => ({ ...common, ns: String((9 + index / 10) * 1e9),
     seq: index + 1, runId: 'run', ...entry }));
-  return { schemaVersion: 1, method: 'chromium-native-lifetime-v1', runId: 'run',
+  return withJournals({ schemaVersion: 1, method: 'chromium-native-lifetime-v1', runId: 'run',
     schema: NATIVE_LIFETIME_SCHEMA, captureTimestamp: 11, clock: { native: 'CLOCK_MONOTONIC', unit: 'nanoseconds',
       cdp: 'Chromium TimeTicks seconds', beforeNs: '10999999999', afterNs: '11000000001' },
     identity: { platform: 'linux', arch: 'arm64', browserVersion: '149.0.7827.0',
@@ -40,12 +41,51 @@ const fixture = () => {
     runtime: structuredClone(NATIVE_LIFETIME_RUNTIME),
     coverage: { ready: true, complete: true, drained: true, dropped: 0, errors: [],
       targetId: 'page', sessionId: 'session',
-      processes: [{ pid: 123, processBirth: '123:1', role: 'renderer',
+      processes: [{ pid: 123, processBirth: '123:1:0', role: 'renderer', endKind: 'live',
         authenticated: true, hooks: 7, readyNs: '9000000000', endNs: '12000000000',
         binarySha256: NATIVE_LIFETIME_IDENTITY.binarySha256, buildId: NATIVE_LIFETIME_IDENTITY.buildId,
         executedPath: '/browser/headless_shell', loadedPath: '/browser/headless_shell' }] },
-    events, cleanup: { closed: true, exitCode: 0, signal: null, detached: true } };
+    events, cleanup: { closed: true, exitCode: 0, signal: null, detached: true } });
 };
+function withJournals(observation) {
+  const names = ['hooks-ready', 'resource-birth', 'loader-birth', 'identifier',
+    'cancel-enter', 'error-enter', 'error-return', 'cancel-return'];
+  const fields = ['resource', 'resourceBirth', 'loader', 'loaderBirth', 'identifier',
+    'observerCall', 'call', 'parent', 'thread', 'normal', 'hooks'];
+  observation.journals = observation.coverage.processes.map((process) => {
+    const entries = observation.events.filter((event) => event.processBirth === process.processBirth);
+    const raw = Buffer.alloc(512 + entries.length * 128);
+    const execEpoch = Number(process.processBirth.split(':').at(-1));
+    [0x4e4c4a32, 2, 500000, 128, 512, process.pid, execEpoch, entries.length, entries.length]
+      .forEach((value, index) => raw.writeUInt32LE(value, index * 4));
+    raw.writeUInt32LE(1, 52);
+    raw.write(observation.runId, 64);
+    raw.write(process.processBirth, 192);
+    entries.forEach((event, index) => {
+      const offset = 512 + index * 128;
+      raw.writeUInt32LE(event.seq, offset);
+      raw.writeUInt32LE(names.indexOf(event.event) + 1, offset + 4);
+      raw.writeBigUInt64LE(BigInt(event.ns), offset + 8);
+      let mask = 0;
+      fields.forEach((field, number) => {
+        if (!Object.hasOwn(event, field)) return;
+        mask |= 1 << number;
+        raw.writeBigUInt64LE(BigInt(event[field] === null ? 0
+          : typeof event[field] === 'boolean' ? Number(event[field]) : event[field]),
+        offset + 16 + number * 8);
+      });
+      raw.writeUInt32LE(mask, offset + 104);
+    });
+    const osBirth = process.processBirth.slice(0, process.processBirth.lastIndexOf(':'));
+    return { complete: true, raw: raw.toString('base64'), snapshotNs: process.endNs,
+      ownership: { version: 2, protocol: 'aarch64-release-acquire-v2', capacity: 500000,
+        stride: 128, headerSize: 512, size: 64000512, fd: 9, inode: process.pid * 100 + execEpoch, device: 1,
+        pid: process.pid, processBirth: process.processBirth, execEpoch, runId: observation.runId,
+        osBirthBefore: osBirth, osBirthAfter: osBirth,
+        acquiredNs: String(BigInt(process.readyNs) - 1n), acknowledgedNs: process.readyNs } };
+  });
+  return observation;
+}
 const ledger = () => [{ name: 'Network.requestWillBeSent', targetId: 'page', sessionId: 'session',
   data: { requestId: '123.7', frameId: 'frame', loaderId: 'document-loader', timestamp: 10 } }];
 
@@ -82,6 +122,26 @@ test('observed live-target normal shutdown preserves raw SIGTERM without invalid
   assert.deepEqual(result.unavailable, []);
   assert.equal(result.requests[0].canceled, true);
   assert.equal(observation.lifecycle.find((entry) => entry.event === 'owned-exit').exitCodeRaw, 15);
+});
+
+test('early status-only kill observation does not substitute for or break post-close identity proof', () => {
+  const observation = shutdownFixture();
+  const early = [
+    { event: 'shutdown-signal-enter', call: 40, parent: null, signal: 15,
+      target: { pid: 122, processBirth: '122:3', state: 'Z', exitCodeRaw: 0 } },
+    { event: 'shutdown-signal-return', call: 40, parent: null, signal: 15, result: 0,
+      target: { pid: 122, processBirth: '122:3', state: 'Z', exitCodeRaw: 0 } },
+  ].map((entry, index) => ({ ...entry, pid: 100, processBirth: '100:5:0', runId: 'run',
+    thread: 9, seq: index + 2, ns: String(12000000002n + BigInt(index)) }));
+  const ready = observation.lifecycle.find((entry) => entry.event === 'shutdown-ready');
+  ready.ns = '11999999999';
+  observation.lifecycle.splice(observation.lifecycle.indexOf(ready) + 1, 0, ...early);
+  for (const entry of observation.lifecycle) {
+    if (entry.event.startsWith('shutdown-') && !early.includes(entry) && entry !== ready) entry.seq += 2;
+  }
+  const result = reconcileNativeLifetime([request()], observation, ledger());
+  assert.deepEqual(result.unavailable, []);
+  assert.equal(observation.lifecycle.filter((entry) => entry.call === 40).length, 2);
 });
 
 for (const [name, mutate] of [
@@ -167,6 +227,16 @@ const rejectMutation = (change) => {
   const requests = [request()];
   const cdp = ledger();
   change(observation, requests, cdp);
+  // Keep valid binary fields synchronized so request/clock negatives reach
+  // their owning invariant instead of all failing on stale transport bytes.
+  const fields = ['resource', 'resourceBirth', 'loader', 'loaderBirth', 'identifier',
+    'observerCall', 'call', 'parent', 'thread', 'normal', 'hooks'];
+  if (observation.events.every((event) => fields.every((field) => !Object.hasOwn(event, field)
+    || (field === 'normal' ? typeof event[field] === 'boolean'
+      : event[field] === null || typeof event[field] === 'number' && Number.isSafeInteger(event[field])
+        || typeof event[field] === 'string' && /^(?:0x[0-9a-f]+|[0-9]+)$/u.test(event[field]))))) {
+    withJournals(observation);
+  }
   const result = reconcileNativeLifetime(requests, observation, cdp);
   assert.deepEqual(result.requests, requests);
   assert.ok(result.unavailable.length > 0);
@@ -259,11 +329,334 @@ test('actual CDP terminals are preserved and contradictory success is inconclusi
 test('genuinely unfinished requests without native cancellation stay pending', () => {
   const observation = fixture();
   observation.events.splice(5);
+  withJournals(observation);
   const original = request();
   const result = reconcileNativeLifetime([original], observation, ledger());
   assert.deepEqual(result.requests, [original]);
   assert.deepEqual(result.unavailable, []);
 });
+
+test('authenticated retired renderer keeps nonempty history beside its replacement', () => {
+  // Given: the original renderer completed its native chain, then exited normally.
+  const observation = fixture();
+  const old = observation.coverage.processes[0];
+  old.endNs = '10500000000';
+  old.endKind = 'retired';
+  observation.lifecycle = [
+    { event: 'owned-attach', pid: old.pid, processBirth: old.processBirth,
+      binarySha256: old.binarySha256 },
+    { event: 'owned-exit', pid: old.pid, processBirth: old.processBirth,
+      ns: old.endNs, exitCodeRaw: 0, missing: false },
+    { event: 'detached', pid: old.pid, processBirth: old.processBirth,
+      ns: old.endNs, reason: 'process-terminated', rendererHooks: true, closing: false },
+  ];
+  observation.coverage.processes.push({ ...old, pid: 124, processBirth: '124:2:0',
+    readyNs: '10400000000', endNs: '12000000000', endKind: 'live' });
+  observation.events.push({ event: 'hooks-ready', hooks: 7, pid: 124,
+    processBirth: '124:2:0', runId: 'run', seq: 1, ns: '10400000000' });
+  withJournals(observation);
+  // When: both live intervals are reconciled at the unchanged cutoff.
+  const result = reconcileNativeLifetime([request()], observation, ledger());
+  // Then: a legitimate old interval is not padded or discarded.
+  assert.deepEqual(result.unavailable, []);
+  assert.equal(result.requests[0].canceled, true);
+  assert.equal(observation.events.filter((event) => event.pid === 123).length, 9);
+  assert.equal(old.endNs, '10500000000');
+});
+
+for (const [name, mutate] of [
+  ['missing ownership', (journal) => { delete journal.ownership; }],
+  ['foreign PID', (journal) => { journal.ownership.pid++; }],
+  ['birth mismatch', (journal) => { journal.ownership.osBirthAfter = '123:2'; }],
+  ['late ownership', (journal) => { journal.ownership.acquiredNs = '9000000001'; }],
+  ['unacknowledged ownership', (_journal, raw) => { raw.writeUInt32LE(0, 52); }],
+  ['attempted tail', (_journal, raw) => { raw.writeUInt32LE(10, 28); }],
+  ['committed gap', (_journal, raw) => { raw.writeUInt32LE(8, 32); }],
+  ['torn marker', (_journal, raw) => { raw.writeUInt32LE(0, 512 + 8 * 128); }],
+  ['sequence gap', (_journal, raw) => { raw.writeUInt32LE(10, 512 + 8 * 128); }],
+  ['overflow', (_journal, raw) => { raw.writeUInt32LE(500001, 28); }],
+  ['drop', (_journal, raw) => { raw.writeUInt32LE(1, 36); }],
+  ['interrupted callback', (_journal, raw) => { raw.writeUInt32LE(1, 40); }],
+  ['pending constructor or observer call', (_journal, raw) => { raw.writeUInt32LE(1, 44); }],
+  ['callback failure', (_journal, raw) => { raw.writeUInt32LE(1, 48); }],
+  ['foreign raw header', (_journal, raw) => { raw.writeUInt32LE(124, 20); }],
+  ['unknown record fields', (_journal, raw) => { raw.writeUInt32LE(1 << 15, 512 + 104); }],
+]) {
+  test(`native journal rejects ${name} without losing original raw`, () => {
+    // Given: an original complete journal with one adversarial transport defect.
+    const observation = fixture();
+    const journal = observation.journals[0];
+    const raw = Buffer.from(journal.raw, 'base64');
+    mutate(journal, raw);
+    journal.raw = raw.toString('base64');
+    const retained = journal.raw;
+    // When: the authenticated binary protocol is independently decoded.
+    assert.throws(() => decodeNativeJournal(journal, observation.coverage.processes[0], 'run'),
+      /incomplete\/foreign native journal/u);
+    // Then: rejection never repairs or drops the attempted raw.
+    assert.equal(journal.raw, retained);
+  });
+}
+
+function retiredFixture() {
+  const observation = fixture();
+  const process = observation.coverage.processes[0];
+  process.endKind = 'retired';
+  process.endNs = '10500000000';
+  observation.lifecycle = [
+    { event: 'owned-attach', pid: process.pid, processBirth: process.processBirth,
+      binarySha256: process.binarySha256 },
+    { event: 'detached', pid: process.pid, processBirth: process.processBirth, ns: process.endNs,
+      rendererHooks: true, closing: false, reason: 'process-terminated' },
+    { event: 'owned-exit', pid: process.pid, processBirth: process.processBirth, osBirth: '123:1',
+      ns: '10500000001', exitCodeRaw: 0, missing: false },
+  ];
+  return withJournals(observation);
+}
+
+for (const [name, mutate] of [
+  ['unknown exit status', (o) => { Object.assign(o.lifecycle.at(-1), { exitCodeRaw: null, missing: true }); }],
+  ['crash', (o) => { o.lifecycle.at(-1).exitCodeRaw = 11; }],
+  ['foreign exit birth', (o) => { o.lifecycle.at(-1).osBirth = '123:2'; }],
+  ['unmatched detach', (o) => { o.lifecycle[1].processBirth = '123:2:0'; }],
+  ['missing journal', (o) => { o.journals = []; }],
+  ['invented retirement interval', (o) => { o.coverage.processes[0].endNs = '10600000000'; }],
+]) {
+  test(`retired interval rejects ${name} instead of padding coverage`, () => {
+    const observation = retiredFixture();
+    mutate(observation);
+    assert.ok(reconcileNativeLifetime([request()], observation, ledger()).unavailable.length);
+  });
+}
+
+for (const event of ['detached', 'owned-exit', 'exec-success']) {
+  test(`live interval cannot conceal retained ${event} evidence`, () => {
+    const observation = fixture();
+    observation.lifecycle = [{ event, pid: 123, processBirth: '123:1:0',
+      previousBirth: '123:1:0', osBirth: '123:1', ns: '10500000000',
+      exitCodeRaw: null, missing: true }];
+    const result = reconcileNativeLifetime([request()], observation, ledger());
+    assert.deepEqual(result.unavailable, ['native lifetime: process identity/coverage conflict']);
+    assert.deepEqual(result.requests, [request()]);
+  });
+}
+
+test('post-drain exit and detach do not invalidate a completed live interval', () => {
+  const observation = fixture();
+  observation.lifecycle = [
+    { event: 'owned-exit', pid: 123, processBirth: '123:1:0', osBirth: '123:1',
+      ns: '13000000000', exitCodeRaw: null, missing: true },
+    { event: 'detached', pid: 123, processBirth: '123:1:0', ns: '13000000001',
+      reason: 'process-terminated', rendererHooks: true, closing: true },
+  ];
+  assert.deepEqual(reconcileNativeLifetime([request()], observation, ledger()).unavailable, []);
+});
+
+test('birth-bound zombie witness retains missing pidfd status independently', () => {
+  const observation = retiredFixture();
+  Object.assign(observation.lifecycle.at(-1), { exitCodeRaw: null, missing: true });
+  observation.lifecycle.push(
+    { event: 'owned-attach', pid: 100, processBirth: '100:5:0',
+      binarySha256: NATIVE_LIFETIME_IDENTITY.binarySha256 },
+    { event: 'shutdown-signal-enter', pid: 100, processBirth: '100:5:0', runId: 'run',
+      ns: '10499999999', target: { pid: 123, processBirth: '123:1', state: 'Z', exitCodeRaw: 0 } });
+  const result = reconcileNativeLifetime([request()], observation, ledger());
+  assert.deepEqual(result.unavailable, []);
+  assert.equal(observation.lifecycle[2].missing, true);
+  assert.equal(observation.lifecycle[2].exitCodeRaw, null);
+});
+
+test('hooks-ready-only retirement retains its actual record beside a nonempty successor', () => {
+  const observation = retiredFixture();
+  const old = observation.coverage.processes[0];
+  old.endNs = '9500000000';
+  observation.lifecycle[1].ns = old.endNs;
+  observation.lifecycle[2].ns = '9500000001';
+  const history = observation.events.map((event, index) => ({ ...event, pid: 124,
+    processBirth: '124:2:0', ns: String(9400000000n + BigInt(index) * 100000000n) }));
+  observation.events.splice(1);
+  observation.events.push(...history);
+  observation.coverage.processes.push({ ...old, pid: 124, processBirth: '124:2:0',
+    readyNs: '9400000000', endNs: '12000000000', endKind: 'live' });
+  withJournals(observation);
+  const pending = { ...request(), requestId: '124.7' };
+  const cdp = ledger();
+  cdp[0].data.requestId = pending.requestId;
+  const result = reconcileNativeLifetime([pending], observation, cdp);
+  assert.deepEqual(result.unavailable, []);
+  assert.equal(observation.events.filter((event) => event.pid === 123).length, 1);
+  assert.equal(result.requests[0].canceled, true);
+});
+
+test('failed exec leaves the original live journal and sequence intact', () => {
+  const observation = fixture();
+  const original = structuredClone(observation.journals[0]);
+  observation.lifecycle = [{ event: 'exec-failed', pid: 123, processBirth: '123:1:0',
+    ns: '10000000000', result: -1 }];
+  const result = reconcileNativeLifetime([request()], observation, ledger());
+  assert.deepEqual(result.unavailable, []);
+  assert.deepEqual(observation.journals, [original]);
+  assert.equal(observation.coverage.processes[0].endKind, 'live');
+});
+
+function parentStatusFixture(statusRaw = 0) {
+  const observation = retiredFixture();
+  Object.assign(observation.lifecycle[2], { exitCodeRaw: null, missing: true });
+  const fields = Array(50).fill('0');
+  fields[0] = 'Z';
+  fields[1] = '100';
+  fields[19] = '1';
+  fields[49] = String(statusRaw);
+  observation.lifecycle.push(
+    { event: 'owned-attach', pid: 100, processBirth: '100:5:0',
+      executedPath: '/browser/headless_shell', binarySha256: NATIVE_LIFETIME_IDENTITY.binarySha256 },
+    { event: 'parent-wait-ready', pid: 100, processBirth: '100:5:0', runId: 'run',
+      seq: 1, ns: '9000000000', loadedPath: '/browser/headless_shell', hooks: ['waitpid', 'wait4'] },
+    { event: 'parent-reap', pid: 100, processBirth: '100:5:0', runId: 'run', seq: 2,
+      ns: '10500000002', startedNs: '10490000000', function: 'waitpid', normal: true,
+      requestedPid: -1, options: 1, result: 123, thread: 100, statusRaw,
+      target: { pid: 123, processBirth: '123:1', parentPid: 100, exitCodeRaw: statusRaw,
+        stat: `123 (renderer) ${fields.join(' ')}` } });
+  if (statusRaw === 15) {
+    const source = shutdownFixture().lifecycle.filter((entry) => entry.event.startsWith('shutdown-'));
+    source.forEach((entry, index) => { entry.ns = String(10400000000n + BigInt(index) * 10000000n); });
+    observation.lifecycle.push(...source);
+  }
+  return observation;
+}
+
+function lateNotificationFixture(witness, early = false) {
+  const observation = parentStatusFixture();
+  const process = observation.coverage.processes[0];
+  process.endKind = 'live';
+  process.endNs = '12000000000';
+  observation.lifecycle.find((entry) => entry.event === 'detached').ns = '13100000000';
+  observation.lifecycle.find((entry) => entry.event === 'owned-exit').ns = '13200000000';
+  const timestamp = early ? '10500000002' : '13000000000';
+  const reap = observation.lifecycle.find((entry) => entry.event === 'parent-reap');
+  if (witness === 'parent-reap') {
+    reap.ns = timestamp;
+    reap.startedNs = early ? '10490000000' : '12900000000';
+  } else {
+    observation.lifecycle = observation.lifecycle.filter((entry) => entry !== reap);
+    observation.lifecycle.push({ event: witness === 'zombie-return' ? 'shutdown-signal-return' : 'shutdown-signal-enter', pid: 100,
+      processBirth: '100:5:0', runId: 'run', ns: timestamp,
+      target: { pid: 123, processBirth: '123:1', state: 'Z', exitCodeRaw: 0 } });
+  }
+  return withJournals(observation);
+}
+
+for (const witness of ['parent-reap', 'zombie', 'zombie-return']) {
+  test(`live interval respects independent ${witness} despite delayed exit notifications`, () => {
+    const observation = lateNotificationFixture(witness, true);
+    assert.deepEqual(reconcileNativeLifetime([request()], observation, ledger()).unavailable,
+      ['native lifetime: process identity/coverage conflict']);
+  });
+  test(`independent ${witness} after drain preserves completed live coverage`, () => {
+    const observation = lateNotificationFixture(witness);
+    assert.deepEqual(reconcileNativeLifetime([request()], observation, ledger()).unavailable, []);
+  });
+}
+
+test('owned parent normal reap authenticates retirement without rewriting missing pidfd status', () => {
+  const observation = parentStatusFixture();
+  const result = reconcileNativeLifetime([request()], observation, ledger());
+  assert.deepEqual(result.unavailable, []);
+  assert.equal(observation.lifecycle[2].exitCodeRaw, null);
+  assert.equal(observation.lifecycle[2].missing, true);
+});
+
+test('pre-cutoff SIGTERM retirement keeps genuine status and requires its own complete caller chain', () => {
+  const observation = parentStatusFixture(15);
+  const result = reconcileNativeLifetime([request()], observation, ledger());
+  assert.deepEqual(result.unavailable, []);
+  assert.equal(observation.lifecycle.find((entry) => entry.event === 'parent-reap').statusRaw, 15);
+  assert.equal(observation.lifecycle.some((entry) => entry.event === 'graceful-close'), false);
+  assert.equal(observation.lifecycle[2].exitCodeRaw, null);
+});
+
+test('NULL wait destination stays missing while its pre-reap zombie stat supplies independent status', () => {
+  const observation = parentStatusFixture();
+  const reap = observation.lifecycle.find((entry) => entry.event === 'parent-reap');
+  reap.statusRaw = null;
+  const result = reconcileNativeLifetime([request()], observation, ledger());
+  assert.deepEqual(result.unavailable, []);
+  assert.equal(reap.statusRaw, null);
+  assert.equal(reap.target.exitCodeRaw, 0);
+  assert.equal(observation.lifecycle[2].exitCodeRaw, null);
+});
+
+for (const [name, mutate] of [
+  ['foreign parent', (o) => { o.lifecycle.find((entry) => entry.event === 'parent-reap').pid = 101; }],
+  ['foreign target birth', (o) => { o.lifecycle.find((entry) => entry.event === 'parent-reap').target.processBirth = '123:2'; }],
+  ['foreign raw stat', (o) => { const e = o.lifecycle.find((entry) => entry.event === 'parent-reap'); e.target.stat = e.target.stat.replace('renderer) Z 100', 'renderer) Z 101'); }],
+  ['unknown raw status', (o) => {
+    const reap = o.lifecycle.find((entry) => entry.event === 'parent-reap');
+    reap.statusRaw = null;
+    reap.target.exitCodeRaw = null;
+  }],
+  ['missing normal return', (o) => { o.lifecycle.find((entry) => entry.event === 'parent-reap').normal = false; }],
+  ['raw status conflict', (o) => { Object.assign(o.lifecycle[2], { exitCodeRaw: 0, missing: false }); }],
+  ['missing ready', (o) => { o.lifecycle = o.lifecycle.filter((entry) => entry.event !== 'parent-wait-ready'); }],
+  ['cross-run witness', (o) => { o.lifecycle.find((entry) => entry.event === 'parent-reap').runId = 'foreign'; }],
+  ['missing termination caller', (o) => { o.lifecycle = o.lifecycle.filter((entry) => entry.event !== 'shutdown-normal-enter'); }],
+  ['missing caller return', (o) => { o.lifecycle = o.lifecycle.filter((entry) => entry.event !== 'shutdown-normal-return'); }],
+  ['zombie signal cause', (o) => { o.lifecycle.find((entry) => entry.event === 'shutdown-signal-enter').target.state = 'Z'; }],
+  ['failed signal send', (o) => { o.lifecycle.find((entry) => entry.event === 'shutdown-signal-return').result = -1; }],
+  ['post-cutoff caller', (o) => { o.lifecycle.filter((entry) => entry.event.startsWith('shutdown-')).forEach((entry, i) => { entry.ns = String(12e9 + i); }); }],
+  ['borrowed graceful-close', (o) => {
+    o.lifecycle = o.lifecycle.filter((entry) => !entry.event.startsWith('shutdown-'));
+    o.lifecycle.push({ event: 'graceful-close', pid: 100, processBirth: '100:5:0', ns: '9000000000' });
+  }],
+]) {
+  test(`independent retirement status rejects ${name}`, () => {
+    const observation = parentStatusFixture(15);
+    mutate(observation);
+    const result = reconcileNativeLifetime([request()], observation, ledger());
+    assert.ok(result.unavailable.length);
+    assert.deepEqual(result.requests, [request()]);
+  });
+}
+
+function execFixture() {
+  const observation = retiredFixture();
+  const old = observation.coverage.processes[0];
+  old.endKind = 'exec';
+  observation.lifecycle[1].reason = 'process-replaced';
+  observation.lifecycle.pop();
+  observation.coverage.processes.push({ ...old, processBirth: '123:1:1', endKind: 'live',
+    readyNs: '10600000000', endNs: '12000000000' });
+  observation.events.push({ event: 'hooks-ready', hooks: 7, runId: 'run', pid: 123,
+    processBirth: '123:1:1', seq: 1, ns: '10600000000' });
+  observation.lifecycle.push(
+    { event: 'exec-success', pid: 123, previousBirth: old.processBirth,
+      processBirth: '123:1:1', gated: true, ns: '10600000001' },
+    { event: 'child-resume', pid: 123, processBirth: '123:1:1', ns: '10600000002' });
+  return withJournals(observation);
+}
+
+test('successful gated exec retains distinct same-birth journal histories', () => {
+  const observation = execFixture();
+  const result = reconcileNativeLifetime([request()], observation, ledger());
+  assert.deepEqual(result.unavailable, []);
+  assert.equal(observation.journals.length, 2);
+  assert.equal(observation.events.filter((event) => event.seq === 1).length, 2);
+});
+
+for (const [name, mutate] of [
+  ['failed exec treated as retirement', (o) => { o.lifecycle[2].event = 'exec-failed'; }],
+  ['missing gate', (o) => { o.lifecycle[2].gated = false; }],
+  ['late successor hooks', (o) => { o.lifecycle[3].ns = '10599999999'; }],
+  ['overlapping image intervals', (o) => { o.coverage.processes[1].readyNs = '10499999999'; }],
+  ['aliased journal inode', (o) => { o.journals[1].ownership.inode = o.journals[0].ownership.inode; }],
+  ['dropped predecessor', (o) => { o.coverage.processes.shift(); }],
+]) {
+  test(`exec evidence rejects ${name}`, () => {
+    const observation = execFixture();
+    mutate(observation);
+    assert.ok(reconcileNativeLifetime([request()], observation, ledger()).unavailable.length);
+  });
+}
 
 test('known descendant crash cannot reconcile despite normal Python cleanup and main exit', () => {
   const observation = fixture();
@@ -299,6 +692,7 @@ test('settled cached requests sharing one native Resource without cancellation s
   observation.events.splice(5);
   observation.events.push({ ...observation.events[2], seq: 6, ns: '10000000001',
     identifier: '8', observerCall: 4 });
+  withJournals(observation);
   const requests = [request(), { ...request(), requestId: '123.8' }]
     .map((entry) => ({ ...entry, kind: 'response', status: 200 }));
   const cdp = [...ledger(), { ...ledger()[0], data: { ...ledger()[0].data, requestId: '123.8' } }];
@@ -342,6 +736,7 @@ async function authenticatedFixture(t) {
   const host = { schemaVersion: 1, runId: observation.runId, errors: [], cleanup: observation.cleanup,
     messages: [
       { process: observation.coverage.processes[0], runtime: observation.runtime },
+      ...observation.journals.flatMap((journal) => [{ journalOwnership: journal.ownership }, { journal }]),
       { ns: observation.clock.beforeNs }, { ns: observation.clock.afterNs },
       { drained: true, ns: '12000000000', events: observation.events, buffer: { dropped: 0 } },
     ] };
@@ -387,6 +782,77 @@ test('authenticated cutoff cannot move consistently inside the clock bracket awa
   await assert.rejects(f.verify(), /raw CDP capture boundary/u);
 });
 
+for (const mutation of ['retired end', 'live classification', 'live unknown status']) {
+  test(`rehashing an invented ${mutation} cannot waive semantic replay`, async (t) => {
+    // Given: complete, independently replayable old-renderer retirement.
+    const f = await authenticatedFixture(t);
+    const retired = retiredFixture();
+    Object.assign(f.records.native, { lifecycle: retired.lifecycle, journals: retired.journals,
+      coverage: retired.coverage });
+    f.records.coverage.coverage = f.records.native.coverage;
+    f.records.host.messages = [
+      { process: retired.coverage.processes[0], runtime: f.records.native.runtime },
+      ...retired.lifecycle.map((lifecycle) => ({ lifecycle })),
+      ...retired.journals.flatMap((journal) => [{ journalOwnership: journal.ownership }, { journal }]),
+      { ns: f.records.native.clock.beforeNs }, { ns: f.records.native.clock.afterNs },
+      { drained: true, ns: '12000000000', events: retired.events, buffer: { dropped: 0 } },
+    ];
+    f.record.requests = reconcileNativeLifetime([request()], f.records.native, f.records.cdp.ledger).requests;
+    for (const role of ['native', 'coverage', 'host']) await f.save(role);
+    await f.verify();
+    // When: raw/host/coverage digests agree but end no longer matches the witness.
+    const process = f.records.native.coverage.processes[0];
+    process.endNs = mutation === 'retired end' ? '10500000001' : '12000000000';
+    f.records.native.journals[0].snapshotNs = process.endNs;
+    if (mutation !== 'retired end') process.endKind = 'live';
+    if (mutation === 'live unknown status') {
+      const exit = f.records.native.lifecycle.find((entry) => entry.event === 'owned-exit');
+      Object.assign(exit, { exitCodeRaw: null, missing: true });
+    }
+    for (const role of ['native', 'coverage', 'host']) await f.save(role);
+    // Then: digest consistency does not substitute for interval authenticity.
+    await assert.rejects(f.verify(), /reconciliation replay mismatch/u);
+  });
+}
+
+for (const witness of ['parent-reap', 'zombie', 'zombie-return']) {
+  test(`rehashing delayed notifications cannot hide independent ${witness}`, async (t) => {
+    const f = await authenticatedFixture(t);
+    const live = lateNotificationFixture(witness);
+    Object.assign(f.records.native, { lifecycle: live.lifecycle, journals: live.journals, coverage: live.coverage });
+    f.records.coverage.coverage = f.records.native.coverage;
+    f.records.host.messages = [
+      { process: live.coverage.processes[0], runtime: f.records.native.runtime },
+      ...live.lifecycle.map((lifecycle) => ({ lifecycle })),
+      ...live.journals.flatMap((journal) => [{ journalOwnership: journal.ownership }, { journal }]),
+      { ns: f.records.native.clock.beforeNs }, { ns: f.records.native.clock.afterNs },
+      { drained: true, ns: '12000000000', events: live.events, buffer: { dropped: 0 } },
+    ];
+    f.record.requests = reconcileNativeLifetime([request()], f.records.native, f.records.cdp.ledger).requests;
+    for (const role of ['native', 'coverage', 'host']) await f.save(role);
+    await f.verify();
+    const event = f.records.native.lifecycle.find((entry) =>
+      entry.event === (witness === 'parent-reap' ? 'parent-reap'
+        : witness === 'zombie-return' ? 'shutdown-signal-return' : 'shutdown-signal-enter'));
+    event.ns = '10500000002';
+    if (witness === 'parent-reap') event.startedNs = '10490000000';
+    for (const role of ['native', 'coverage', 'host']) await f.save(role);
+    await assert.rejects(f.verify(), /reconciliation replay mismatch/u);
+  });
+}
+
+test('rehashing a torn journal marker cannot waive original record replay', async (t) => {
+  const f = await authenticatedFixture(t);
+  await f.verify();
+  const journal = f.records.native.journals[0];
+  const raw = Buffer.from(journal.raw, 'base64');
+  raw.writeUInt32LE(0, raw.length - 128);
+  journal.raw = raw.toString('base64');
+  await f.save('native');
+  await f.save('host');
+  await assert.rejects(f.verify(), /reconciliation replay mismatch/u);
+});
+
 for (const [name, mutate] of [
   ['missing', (cdp) => { cdp.ledger.pop(); }],
   ['duplicate', (cdp) => { cdp.ledger.push(structuredClone(cdp.ledger.at(-1))); }],
@@ -422,7 +888,11 @@ test('host ingestion retains the supported 500000 event buffer and completes dra
         reply = { ...reply, drained: true, ns: '12000000000', buffer: { dropped: 0 },
           events: Array.from({ length: 500_000 }, (_, seq) => ({ event: 'resource-birth', seq: seq + 1 })) };
       }
-      if (['release', 'close'].includes(message.command)) reply.detached = true;
+      if (['release', 'close'].includes(message.command)) {
+        reply.detached = true;
+        reply.released = true;
+        reply.shutdownReady = true;
+      }
       host.stdout.write(`${JSON.stringify(reply)}\n`);
     },
     end() { host.exitCode = 0; host.emit('exit', 0, null); },
@@ -469,6 +939,62 @@ test('host ingestion retains the supported 500000 event buffer and completes dra
   assert.equal(receipt.cleanup.closed, true);
 });
 
+test('failed close readiness preserves the first coverage error and still closes the observer', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-primary-error-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const host = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(),
+    exitCode: null, signalCode: null, pid: 323 });
+  const commands = [];
+  host.stdin = {
+    writable: true,
+    write(line) {
+      const command = JSON.parse(line);
+      commands.push(command.command);
+      const reply = { id: command.id };
+      if (command.command === 'prepare') reply.runtime = NATIVE_LIFETIME_RUNTIME;
+      if (command.command === 'drain') reply.error = 'renderer detached before drain';
+      if (command.command === 'release') reply.error = 'script has been destroyed';
+      if (command.command === 'begin-close') reply.error = 'shutdown observation not ready';
+      if (command.command === 'close') reply.detached = true;
+      host.stdout.write(`${JSON.stringify(reply)}\n`);
+    },
+    end() { host.exitCode = 0; host.emit('exit', 0, null); },
+  };
+  const observer = await createNativeLifetimeObserver({
+    enabled: true, directory, python: '/fake/python', spawn: () => host,
+  });
+  const descriptors = ['platform', 'arch'].map((key) => [key, Object.getOwnPropertyDescriptor(process, key)]);
+  try {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
+    await observer.prepare({ version: () => NATIVE_LIFETIME_IDENTITY.browserVersion,
+      async newBrowserCDPSession() { return { async send(name) {
+        return name === 'SystemInfo.getProcessInfo' ? { processInfo: [] } : { targetInfos: [] };
+      }, async detach() {} }; } }, 123,
+    { async send() { return { targetInfo: { targetId: 'page' } }; } });
+  } finally {
+    for (const [key, descriptor] of descriptors) Object.defineProperty(process, key, descriptor);
+  }
+  await observer.drain(11, []);
+  try {
+    await assert.rejects(observer.beginClose(), (error) =>
+      error.message === 'renderer detached before drain'
+      && error.cause?.message === 'shutdown observation not ready');
+  } finally { await observer.close(); }
+  const result = await observer.drain(11, []);
+  assert.equal(result.observation.coverage.complete, false);
+  assert.equal(result.observation.coverage.drained, false);
+  assert.equal(result.observation.cleanup.closed, true);
+  assert.equal(result.observation.cleanup.detached, true);
+  assert.equal(result.observation.cleanup.exitCode, 0);
+  assert.deepEqual(commands, ['prepare', 'drain', 'release', 'begin-close', 'close']);
+  const receipt = JSON.parse(await readFile(join(directory, 'lifetime-host.json'), 'utf8'));
+  assert.equal(receipt.errors[0], 'renderer detached before drain');
+  assert.ok(receipt.errors.includes('script has been destroyed'));
+  assert.ok(receipt.errors.includes('shutdown observation not ready'));
+  assert.equal(host.listenerCount('exit'), 0);
+});
+
 test('drain releases hooks but retains process exit observation until browser termination', async (t) => {
   // Given: an event-backed host whose owned browser has not terminated.
   const directory = await mkdtemp(join(tmpdir(), 'native-resident-lifetime-'));
@@ -485,7 +1011,8 @@ test('drain releases hooks but retains process exit observation until browser te
       const reply = { id: command.id };
       if (command.command === 'prepare') reply.runtime = NATIVE_LIFETIME_RUNTIME;
       if (command.command === 'drain') Object.assign(reply, { drained: true, ns: '12000000000' });
-      if (command.command === 'release') Object.assign(reply, { detached: false });
+      if (command.command === 'release') Object.assign(reply, {
+        detached: false, released: true, shutdownReady: true });
       if (command.command === 'close') {
         assert.equal(browserAlive, false, 'observer exit subscription ended before browser exit');
         Object.assign(reply, { detached: true });

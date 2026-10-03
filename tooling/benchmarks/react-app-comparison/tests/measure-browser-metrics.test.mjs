@@ -17,7 +17,7 @@ test('native lifetime cancellation preserves the failure denominator and unavail
   const original = { requestId: '42.3', targetId: 'target', sessionId: 'session', occurrence: 1,
     frameId: 'frame', loaderId: 'cdp-loader', startedTimestamp: 2, kind: 'request-pending',
     resourceType: 'script', status: null, unavailable: 'pending' };
-  const binding = { pid: 42, processBirth: '42:100', resource: '0x100', resourceBirth: 1,
+  const binding = { pid: 42, processBirth: '42:100:0', resource: '0x100', resourceBirth: 1,
     loader: '0x200', loaderBirth: 2, runId: 'run' };
   const events = [
     { event: 'hooks-ready', hooks: 7 }, { event: 'resource-birth' },
@@ -32,11 +32,42 @@ test('native lifetime cancellation preserves the failure denominator and unavail
     runId: 'run', captureTimestamp: 3, clock: { native: 'CLOCK_MONOTONIC', unit: 'nanoseconds',
       cdp: 'Chromium TimeTicks seconds', beforeNs: '2999999999', afterNs: '3000000001' },
     coverage: { ready: true, complete: true, drained: true, dropped: 0, errors: [],
-      targetId: 'target', sessionId: 'session', processes: [{ pid: 42, processBirth: '42:100',
-        role: 'renderer', authenticated: true, hooks: 7, readyNs: '1000000000', endNs: '4000000000',
+      targetId: 'target', sessionId: 'session', processes: [{ pid: 42, processBirth: '42:100:0',
+        role: 'renderer', authenticated: true, hooks: 7, readyNs: '1000000000', endNs: '4000000000', endKind: 'live',
         binarySha256: NATIVE_LIFETIME_IDENTITY.binarySha256, buildId: NATIVE_LIFETIME_IDENTITY.buildId,
         executedPath: '/browser/headless_shell', loadedPath: '/browser/headless_shell' }] },
     events, cleanup: { closed: true, detached: true, exitCode: 0, signal: null } };
+  const raw = Buffer.alloc(512 + events.length * 128);
+  [0x4e4c4a32, 2, 500000, 128, 512, 42, 0, events.length, events.length]
+    .forEach((value, index) => raw.writeUInt32LE(value, index * 4));
+  raw.writeUInt32LE(1, 52);
+  raw.write('run', 64);
+  raw.write(binding.processBirth, 192);
+  const kinds = ['hooks-ready', 'resource-birth', 'loader-birth', 'identifier',
+    'cancel-enter', 'error-enter', 'error-return', 'cancel-return'];
+  const fields = ['resource', 'resourceBirth', 'loader', 'loaderBirth', 'identifier',
+    'observerCall', 'call', 'parent', 'thread', 'normal', 'hooks'];
+  events.forEach((event, index) => {
+    const offset = 512 + index * 128;
+    raw.writeUInt32LE(event.seq, offset);
+    raw.writeUInt32LE(kinds.indexOf(event.event) + 1, offset + 4);
+    raw.writeBigUInt64LE(BigInt(event.ns), offset + 8);
+    let mask = 0;
+    fields.forEach((field, number) => {
+      if (!Object.hasOwn(event, field)) return;
+      mask |= 1 << number;
+      raw.writeBigUInt64LE(BigInt(event[field] === null ? 0
+        : typeof event[field] === 'boolean' ? Number(event[field]) : event[field]),
+      offset + 16 + number * 8);
+    });
+    raw.writeUInt32LE(mask, offset + 104);
+  });
+  observation.journals = [{ complete: true, raw: raw.toString('base64'), snapshotNs: '4000000000',
+    ownership: { version: 2, protocol: 'aarch64-release-acquire-v2', capacity: 500000,
+      stride: 128, headerSize: 512, size: 64000512, fd: 9, inode: 4200, device: 1,
+      pid: 42, processBirth: binding.processBirth, execEpoch: 0, runId: 'run',
+      osBirthBefore: '42:100', osBirthAfter: '42:100',
+      acquiredNs: '999999999', acknowledgedNs: '1000000000' } }];
   const cdp = [{ name: 'Network.requestWillBeSent', targetId: 'target', sessionId: 'session',
     data: { requestId: '42.3', frameId: 'frame', loaderId: 'cdp-loader', timestamp: 2 } }];
   const [canceled] = reconcileNativeLifetime([original], observation, cdp).requests;

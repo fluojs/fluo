@@ -35,14 +35,252 @@ export const NATIVE_SHUTDOWN_HOOKS = Object.freeze([
 ]);
 const digest = (raw) => createHash('sha256').update(raw).digest('hex');
 export const NATIVE_LIFETIME_SCHEMA = digest(JSON.stringify({
-  version: 1, identity: NATIVE_LIFETIME_IDENTITY, hooks: NATIVE_LIFETIME_HOOKS,
+  version: 2, identity: NATIVE_LIFETIME_IDENTITY, hooks: NATIVE_LIFETIME_HOOKS,
   shutdownHooks: NATIVE_SHUTDOWN_HOOKS,
+  parentWaits: ['waitpid', 'wait4'],
+  journal: { protocol: 'aarch64-release-acquire-v2', header: 512, stride: 128, capacity: 500000 },
   arguments: { resource: 0, loader: 0, loaderResource: 3, observerResource: 6, identifier: 1 },
   clock: 'CLOCK_MONOTONIC nanoseconds', returns: 'Frida onLeave normal',
 }));
 const ns = (value) => typeof value === 'string' && /^(?:0|[1-9][0-9]*)$/u.test(value) ? BigInt(value) : null;
 const cutoffNs = (timestamp) => Number.isFinite(timestamp) && timestamp > 0
   ? BigInt(Math.floor(timestamp * 1e9)) : null;
+
+export function decodeNativeJournal(journal, process, runId) {
+  const invalid = () => { throw new Error('incomplete/foreign native journal'); };
+  const owner = journal?.ownership;
+  if (!owner || journal.complete !== true || owner.pid !== process.pid
+    || owner.processBirth !== process.processBirth || owner.runId !== runId
+    || owner.version !== 2 || owner.protocol !== 'aarch64-release-acquire-v2'
+    || owner.capacity !== 500000 || owner.stride !== 128 || owner.headerSize !== 512
+    || owner.size !== 64000512 || !Number.isSafeInteger(owner.fd) || owner.fd < 0
+    || !Number.isSafeInteger(owner.inode) || owner.inode < 1
+    || !Number.isSafeInteger(owner.device) || owner.device < 0
+    || owner.osBirthBefore !== owner.osBirthAfter
+    || process.processBirth !== `${owner.osBirthBefore}:${owner.execEpoch}`
+    || ns(owner.acquiredNs) === null || ns(owner.acknowledgedNs) === null
+    || ns(owner.acquiredNs) > ns(process.readyNs)
+    || ns(owner.acknowledgedNs) < ns(process.readyNs)
+    || ns(journal.snapshotNs) === null || ns(journal.snapshotNs) < ns(process.endNs)
+    || typeof journal.raw !== 'string') invalid();
+  const raw = Buffer.from(journal.raw, 'base64');
+  if (raw.toString('base64') !== journal.raw || raw.length < 512
+    || [0x4e4c4a32, 2, 500000, 128, 512, process.pid, owner.execEpoch]
+      .some((value, index) => raw.readUInt32LE(index * 4) !== value)) invalid();
+  const text = (offset) => {
+    const end = raw.indexOf(0, offset);
+    if (end < offset || end >= offset + 128) invalid();
+    return raw.toString('utf8', offset, end);
+  };
+  const attempted = raw.readUInt32LE(28);
+  if (text(64) !== runId || text(192) !== process.processBirth
+    || attempted < 1 || attempted > 500000 || attempted !== raw.readUInt32LE(32)
+    || [36, 40, 44, 48].some((offset) => raw.readUInt32LE(offset) !== 0)
+    || raw.readUInt32LE(52) !== 1 || raw.length !== 512 + attempted * 128) invalid();
+  const names = ['hooks-ready', 'resource-birth', 'loader-birth', 'identifier',
+    'cancel-enter', 'error-enter', 'error-return', 'cancel-return'];
+  const fields = ['resource', 'resourceBirth', 'loader', 'loaderBirth', 'identifier',
+    'observerCall', 'call', 'parent', 'thread', 'normal', 'hooks'];
+  const events = [];
+  for (let index = 0; index < attempted; index++) {
+    const offset = 512 + index * 128;
+    const kind = raw.readUInt32LE(offset + 4);
+    const mask = raw.readUInt32LE(offset + 104);
+    if (raw.readUInt32LE(offset) !== index + 1 || !names[kind - 1] || mask >> fields.length
+      || raw.subarray(offset + 108, offset + 128).some((byte) => byte !== 0)) invalid();
+    const event = { event: names[kind - 1], runId, pid: process.pid, processBirth: process.processBirth,
+      seq: index + 1, ns: raw.readBigUInt64LE(offset + 8).toString() };
+    fields.forEach((field, number) => {
+      if (!(mask & 1 << number)) return;
+      const value = raw.readBigUInt64LE(offset + 16 + number * 8);
+      switch (field) {
+        case 'resource': case 'loader': event[field] = `0x${value.toString(16)}`; break;
+        case 'identifier': event[field] = value.toString(); break;
+        case 'parent': event[field] = value === 0n ? null : Number(value); break;
+        case 'normal':
+          if (value > 1n) invalid();
+          event[field] = value === 1n;
+          break;
+        default:
+          if (value > BigInt(Number.MAX_SAFE_INTEGER)) invalid();
+          event[field] = Number(value);
+      }
+    });
+    events.push(event);
+  }
+  return events;
+}
+
+function validEpochEnd(process, observation, cutoff) {
+  const end = ns(process.endNs);
+  if (end === null || end < ns(process.readyNs)) return false;
+  const lifecycle = observation.lifecycle ?? [];
+  const osBirth = process.processBirth.slice(0, process.processBirth.lastIndexOf(':'));
+  if (process.endKind === 'live') {
+    return end >= cutoff && !lifecycle.some((entry) => {
+      const sameEpoch = entry.pid === process.pid && entry.processBirth === process.processBirth;
+      const exited = entry.event === 'owned-exit' && entry.pid === process.pid
+        && (entry.osBirth ?? entry.processBirth?.slice(0, entry.processBirth.lastIndexOf(':'))) === osBirth;
+      const replaced = entry.event === 'exec-success' && entry.pid === process.pid
+        && entry.previousBirth === process.processBirth;
+      const target = entry.target?.pid === process.pid && entry.target.processBirth === osBirth;
+      const reaped = entry.event === 'parent-reap' && entry.result === process.pid && target;
+      const zombie = ['shutdown-signal-enter', 'shutdown-signal-return'].includes(entry.event)
+        && target && ['Z', 'X'].includes(entry.target.state);
+      return (entry.event === 'detached' && sameEpoch || exited || replaced || reaped || zombie)
+        && (ns(entry.ns) === null || ns(entry.ns) <= end);
+    });
+  }
+  const detaches = lifecycle.filter((entry) => entry.event === 'detached'
+    && entry.pid === process.pid && entry.processBirth === process.processBirth);
+  const attaches = lifecycle.filter((entry) => entry.event === 'owned-attach'
+    && entry.pid === process.pid && entry.processBirth === process.processBirth
+    && entry.binarySha256 === process.binarySha256);
+  if (detaches.length !== 1 || attaches.length !== 1 || ns(detaches[0].ns) !== end
+    || detaches[0].rendererHooks !== true) return false;
+  if (process.endKind === 'retired') {
+    const exits = lifecycle.filter((entry) => entry.event === 'owned-exit'
+      && (entry.osBirth ?? entry.processBirth.slice(0, entry.processBirth.lastIndexOf(':'))) === osBirth
+      && entry.pid === process.pid);
+    if (detaches[0].reason !== 'process-terminated' || exits.length !== 1
+      || ns(exits[0].ns) === null) return false;
+    const reaped = observedParentStatus(process, observation);
+    if (reaped === false || reaped !== null && exits[0].exitCodeRaw !== null
+      && exits[0].exitCodeRaw !== reaped.statusValue) return false;
+    if (exits[0].exitCodeRaw === 0 && exits[0].missing === false) return true;
+    if (reaped && (exits[0].missing === true && exits[0].exitCodeRaw === null
+      || exits[0].missing === false && exits[0].exitCodeRaw === reaped.statusValue)) {
+      return reaped.statusValue === 0 || reaped.statusValue === 15
+        && observedRetirementSignal(process, reaped, observation);
+    }
+    // This independent status witness does not replace the missing pidfd status.
+    return exits[0].missing === true && exits[0].exitCodeRaw === null
+      && lifecycle.some((entry) => entry.event === 'shutdown-signal-enter'
+        && entry.runId === observation.runId && ns(entry.ns) !== null
+        && ns(entry.ns) >= ns(process.readyNs) && entry.target?.pid === process.pid
+        && entry.target.processBirth === osBirth && ['Z', 'X'].includes(entry.target.state)
+        && entry.target.exitCodeRaw === 0
+        && lifecycle.filter((sender) => sender.event === 'owned-attach'
+          && sender.pid === entry.pid && sender.processBirth === entry.processBirth
+          && sender.binarySha256 === process.binarySha256).length === 1);
+  }
+  if (process.endKind !== 'exec' || detaches[0].reason !== 'process-replaced') return false;
+  const successors = observation.coverage.processes.filter((entry) => entry.pid === process.pid
+    && entry.processBirth === `${osBirth}:${Number(process.processBirth.split(':').at(-1)) + 1}`);
+  const successes = lifecycle.filter((entry) => entry.event === 'exec-success'
+    && entry.previousBirth === process.processBirth && entry.gated === true);
+  const resumes = lifecycle.filter((entry) => entry.event === 'child-resume'
+    && entry.processBirth === successors[0]?.processBirth);
+  return successors.length === 1 && successes.length === 1 && resumes.length === 1
+    && successes[0].processBirth === successors[0].processBirth
+    && end <= ns(successors[0].readyNs) && ns(successors[0].readyNs) <= ns(successes[0].ns)
+    && ns(successes[0].ns) <= ns(resumes[0].ns);
+}
+
+function observedParentStatus(process, observation) {
+  const lifecycle = observation.lifecycle ?? [];
+  const candidates = lifecycle.filter((entry) => entry.event === 'parent-reap' && entry.result === process.pid);
+  if (!candidates.length) return null;
+  const osBirth = process.processBirth.slice(0, process.processBirth.lastIndexOf(':'));
+  const statuses = [];
+  for (const entry of candidates) {
+    const sender = lifecycle.filter((event) => event.event === 'owned-attach'
+      && event.pid === entry.pid && event.processBirth === entry.processBirth
+      && event.binarySha256 === process.binarySha256);
+    const stream = lifecycle.filter((event) => event.event.startsWith('parent-')
+      && event.pid === entry.pid && event.processBirth === entry.processBirth);
+    if (sender.length !== 1 || stream[0]?.event !== 'parent-wait-ready'
+      || stream[0].loadedPath !== sender[0].executedPath
+      || !isDeepStrictEqual(stream[0].hooks, ['waitpid', 'wait4'])
+      || stream.some((event, index) => !['parent-wait-ready', 'parent-reap'].includes(event.event)
+        || event.runId !== observation.runId || event.seq !== index + 1
+        || ns(event.ns) === null || index > 0 && ns(event.ns) < ns(stream[index - 1].ns))
+      || !['waitpid', 'wait4'].includes(entry.function) || entry.normal !== true
+      || !Number.isSafeInteger(entry.thread) || entry.thread < 1
+      || !Number.isSafeInteger(entry.requestedPid) || entry.requestedPid > 0 && entry.requestedPid !== process.pid
+      || !Number.isSafeInteger(entry.options) || entry.options < 0
+      || entry.statusRaw !== null && (!Number.isSafeInteger(entry.statusRaw)
+        || entry.statusRaw < 0 || entry.statusRaw > 65535)
+      || ns(entry.startedNs) === null || ns(entry.startedNs) > ns(entry.ns)
+      || ns(entry.ns) < ns(process.readyNs) || entry.target?.pid !== process.pid
+      || entry.target.processBirth !== osBirth || entry.target.parentPid !== entry.pid
+      || typeof entry.target.stat !== 'string') return false;
+    const raw = entry.target.stat;
+    const fields = raw.slice(raw.lastIndexOf(')') + 1).trim().split(/\s+/u);
+    if (!raw.startsWith(`${process.pid} (`) || fields.length !== 50
+      || `${process.pid}:${fields[19]}` !== osBirth || Number(fields[1]) !== entry.pid) return false;
+    const statStatus = ['Z', 'X'].includes(fields[0]) ? Number(fields[49]) : null;
+    if (!Object.hasOwn(entry.target, 'exitCodeRaw') || entry.target.exitCodeRaw !== statStatus
+      || statStatus !== null && (!Number.isSafeInteger(statStatus) || statStatus < 0 || statStatus > 65535)
+      || entry.statusRaw !== null && statStatus !== null && entry.statusRaw !== statStatus) return false;
+    const status = entry.statusRaw ?? statStatus;
+    if (status === null) return false;
+    statuses.push(status);
+  }
+  if (new Set(statuses).size !== 1) return false;
+  // Preserve both raw fields unchanged: NULL wait destinations stay NULL.
+  return { statusValue: statuses[0], ns: candidates[0].ns, entries: candidates };
+}
+
+function observedRetirementSignal(process, status, observation) {
+  // Independent pre-cutoff retirement proof. No graceful-close event or
+  // post-close ordering is borrowed; raw SIGTERM 15 remains SIGTERM 15.
+  const lifecycle = observation.lifecycle ?? [];
+  const events = lifecycle.filter((entry) => entry.event.startsWith('shutdown-'));
+  const ready = events[0];
+  const cutoff = cutoffNs(observation.captureTimestamp);
+  if (ready?.event !== 'shutdown-ready' || cutoff === null
+    || lifecycle.filter((entry) => entry.event === 'owned-attach' && entry.pid === ready.pid
+      && entry.processBirth === ready.processBirth
+      && entry.binarySha256 === process.binarySha256).length !== 1
+    || events.some((entry, index) => entry.pid !== ready.pid || entry.processBirth !== ready.processBirth
+      || entry.runId !== observation.runId || entry.seq !== index + 1 || ns(entry.ns) === null
+      || index > 0 && ns(entry.ns) < ns(events[index - 1].ns))) return false;
+  const unique = (event, call, thread) => {
+    const matches = events.filter((entry) => entry.event === event && entry.call === call && entry.thread === thread);
+    return matches.length === 1 ? matches[0] : undefined;
+  };
+  const osBirth = process.processBirth.slice(0, process.processBirth.lastIndexOf(':'));
+  return events.some((signal) => {
+    if (signal.event !== 'shutdown-signal-enter' || signal.signal !== 15
+      || signal.target?.pid !== process.pid || signal.target.processBirth !== osBirth
+      || !['R', 'S', 'D', 'T', 't', 'I'].includes(signal.target.state)
+      || !Number.isSafeInteger(signal.call) || signal.call < 1
+      || !Number.isSafeInteger(signal.parent) || signal.parent < 1 || signal.parent === signal.call
+      || !Number.isSafeInteger(signal.thread) || signal.thread < 1) return false;
+    const returned = unique('shutdown-signal-return', signal.call, signal.thread);
+    const terminate = unique('shutdown-terminate-enter', signal.parent, signal.thread);
+    const terminated = unique('shutdown-terminate-return', signal.parent, signal.thread);
+    const normal = terminate && unique('shutdown-normal-enter', terminate.parent, signal.thread);
+    const normalized = terminate && unique('shutdown-normal-return', terminate.parent, signal.thread);
+    if (!returned || !terminate || !terminated || !normal || !normalized
+      || !Number.isSafeInteger(terminate.parent) || terminate.parent < 1
+      || terminate.parent === signal.call || terminate.parent === signal.parent
+      || normal.call !== terminate.parent || normal.parent !== null || normalized.parent !== null
+      || returned.result !== 0 || returned.signal !== 15 || returned.parent !== signal.parent
+      || !isDeepStrictEqual(returned.target, signal.target)
+      || terminate.exitCode !== 0 || terminate.wait !== 0
+      || terminated.result !== 1 || terminated.parent !== terminate.parent
+      || terminated.exitCode !== 0 || terminated.wait !== 0) return false;
+    const chain = [normal, terminate, signal, returned, terminated, normalized];
+    return ns(signal.ns) < ns(process.endNs) && ns(returned.ns) < ns(status.ns)
+      && ns(normal.ns) >= ns(process.readyNs)
+      && chain.every((entry, index) => ns(entry.ns) < cutoff
+        && (index === 0 || entry.seq > chain[index - 1].seq && ns(entry.ns) >= ns(chain[index - 1].ns)))
+      && [normal.call, terminate.call, signal.call].every((call) =>
+        events.filter((entry) => entry.call === call && entry.thread === signal.thread).length === 2);
+  });
+}
+
+export function isObservedRetirementExit(exit, observation) {
+  const cutoff = cutoffNs(observation.captureTimestamp);
+  if (cutoff === null || exit.missing !== false || exit.exitCodeRaw !== 15) return false;
+  const osBirth = exit.osBirth ?? exit.processBirth?.slice(0, exit.processBirth.lastIndexOf(':'));
+  return observation.coverage?.processes?.some((process) => process.endKind === 'retired'
+    && process.pid === exit.pid && typeof process.processBirth === 'string'
+    && process.processBirth.slice(0, process.processBirth.lastIndexOf(':')) === osBirth
+    && validEpochEnd(process, observation, cutoff)) === true;
+}
 
 export function isObservedShutdownExit(exit, observation) {
   if (exit.exitCodeRaw !== 15 || exit.missing !== false) return false;
@@ -65,7 +303,9 @@ export function isObservedShutdownExit(exit, observation) {
     || events.some((e, i) => e.pid !== close.pid || e.processBirth !== close.processBirth
       || e.runId !== observation.runId || e.seq !== i + 1 || ns(e.ns) === null
       || i > 0 && ns(e.ns) < ns(events[i - 1].ns))) return false;
-  const calls = events.slice(1);
+  // The same source now observes retirement before the explicit close. Such
+  // status witnesses remain raw but cannot authorize a shutdown SIGTERM.
+  const calls = events.slice(1).filter((entry) => ns(entry.ns) > ns(close.ns));
   if (calls.some((e) => !Number.isSafeInteger(e.call) || e.call < 1
     || !Number.isSafeInteger(e.thread) || e.thread < 1 || !Object.hasOwn(e, 'parent')
     || (e.event.startsWith('shutdown-normal-') ? e.parent !== null
@@ -114,7 +354,10 @@ export function reconcileNativeLifetime(requests, observation, ledger = []) {
     .some(([key, value]) => !isDeepStrictEqual(observation.runtime[key], value))) return fail('external runtime identity mismatch');
   if (observation.lifecycle?.some((entry) => entry.event === 'owned-exit'
     && entry.exitCodeRaw !== null && entry.exitCodeRaw !== 0
-    && !isObservedShutdownExit(entry, observation))) return fail('owned process abnormal exit');
+    && !isObservedShutdownExit(entry, observation)
+    && !isObservedRetirementExit(entry, observation))) {
+    return fail('owned process abnormal exit');
+  }
   const cutoff = cutoffNs(observation.captureTimestamp);
   const clock = observation.clock;
   const coverage = observation.coverage;
@@ -128,17 +371,30 @@ export function reconcileNativeLifetime(requests, observation, ledger = []) {
     || clock.cdp !== 'Chromium TimeTicks seconds' || ns(clock.beforeNs) === null || ns(clock.afterNs) === null
     || ns(clock.beforeNs) > cutoff || ns(clock.afterNs) < cutoff) return fail('unverified capture clock');
   const processes = coverage.processes.filter((process) => process.role === 'renderer');
-  if (!processes.length || processes.some((process) => !Number.isSafeInteger(process.pid) || process.pid < 1
+  if (processes.length !== coverage.processes.length || !processes.length
+    || processes.some((process) => !Number.isSafeInteger(process.pid) || process.pid < 1
     || typeof process.processBirth !== 'string' || !process.processBirth.startsWith(`${process.pid}:`)
     || process.authenticated !== true || process.hooks !== NATIVE_LIFETIME_HOOKS.length
     || process.binarySha256 !== NATIVE_LIFETIME_IDENTITY.binarySha256
     || process.buildId !== NATIVE_LIFETIME_IDENTITY.buildId
     || !isAbsolute(process.executedPath ?? '') || process.executedPath !== process.loadedPath
     || ns(process.readyNs) === null || ns(process.endNs) === null
-    || ns(process.readyNs) >= cutoff || ns(process.endNs) < cutoff)
-    || new Set(processes.map((process) => process.pid)).size !== processes.length
+    || ns(process.readyNs) >= cutoff || !validEpochEnd(process, observation, cutoff))
+    || processes.some((process) => processes.some((other) => other.pid === process.pid && other !== process
+      && (process.endKind !== 'exec' && other.endKind !== 'exec'
+        || process.processBirth.split(':')[1] !== other.processBirth.split(':')[1])))
     || new Set(processes.map((process) => process.processBirth)).size !== processes.length) return fail('process identity/coverage conflict');
   const events = observation.events;
+  try {
+    if (!Array.isArray(observation.journals) || observation.journals.length !== processes.length
+      || new Set(observation.journals.map((entry) => `${entry.ownership?.device}:${entry.ownership?.inode}`)).size
+        !== processes.length) throw new Error();
+    for (const process of processes) {
+      const journals = observation.journals.filter((entry) => entry.ownership?.processBirth === process.processBirth);
+      if (journals.length !== 1 || !isDeepStrictEqual(decodeNativeJournal(journals[0], process, observation.runId),
+        events.filter((entry) => entry.processBirth === process.processBirth))) throw new Error();
+    }
+  } catch { return fail('incomplete/foreign native journal'); }
   const eventNames = ['hooks-ready', 'resource-birth', 'loader-birth', 'identifier',
     'cancel-enter', 'error-enter', 'error-return', 'cancel-return'];
   if (events.some((event) => !eventNames.includes(event.event))) return fail('unknown native event schema');
@@ -149,6 +405,7 @@ export function reconcileNativeLifetime(requests, observation, ledger = []) {
       || entries.some((event, index) => event.pid !== process.pid || ns(event.ns) === null
         || event.runId !== observation.runId || event.seq !== index + 1
         || ns(event.ns) < ns(process.readyNs)
+        || ns(event.ns) > ns(process.endNs)
         || (index > 0 && ns(event.ns) < ns(entries[index - 1].ns)))) return fail('event sequence/process/clock conflict');
   }
   if (events.some((event) => !processes.some((process) => process.processBirth === event.processBirth))) {
@@ -249,6 +506,7 @@ export async function createNativeLifetimeObserver(options) {
   const errors = [];
   const processes = [];
   const events = [];
+  const journals = [];
   const directory = options.directory;
   const rawTrace = resolve(directory, 'lifetime.json');
   const logTrace = resolve(directory, 'lifetime-host.json');
@@ -271,6 +529,7 @@ export async function createNativeLifetimeObserver(options) {
   let closePromise;
   let drained = false;
   let released = false;
+  let releaseAttempted = false;
   let ready = false;
   let targetId;
   let sessionId;
@@ -331,8 +590,16 @@ export async function createNativeLifetimeObserver(options) {
   })();
   const abort = () => { errors.push('native observation aborted'); void close(); };
   return {
-    runId, close, isObservedShutdownExit,
-    async beginClose() { if (ready && released && !closePromise) await command('begin-close'); },
+    runId, close, isObservedShutdownExit, isObservedRetirementExit,
+    async beginClose() {
+      if (ready && releaseAttempted && !closePromise) {
+        const primary = errors[0];
+        try { await command('begin-close'); } catch (error) {
+          if (primary) throw new Error(primary, { cause: error });
+          throw error;
+        }
+      }
+    },
     get identity() { return { targetId, sessionId }; },
     async prepare(browser, browserPid, cdp) {
       try {
@@ -353,10 +620,16 @@ export async function createNativeLifetimeObserver(options) {
           if (reply.error) errors.push(reply.error);
           if (reply.process) processes.push({ ...reply.process });
           if (reply.processRole) {
-            const process = processes.find((entry) => entry.pid === reply.processRole.pid);
+            const process = processes.find((entry) => entry.processBirth === reply.processRole.processBirth);
             if (process) process.role = reply.processRole.role;
             else errors.push('unbound process role update');
           }
+          if (reply.processEnd) {
+            const process = processes.find((entry) => entry.processBirth === reply.processEnd.processBirth);
+            if (process) Object.assign(process, reply.processEnd);
+            else errors.push('unbound process end update');
+          }
+          if (reply.journal) journals.push(reply.journal);
           if (reply.events) for (const event of reply.events) events.push(event);
           const waiter = pending.get(reply.id);
           if (waiter) {
@@ -394,7 +667,7 @@ export async function createNativeLifetimeObserver(options) {
       } catch (error) { errors.push(String(error)); return readMetrics(); }
     },
     async drain(captureTimestamp, ledger) {
-      if (ready && !closePromise && !released) {
+      if (ready && !closePromise && !releaseAttempted) {
         try {
           const { processInfo } = await browserCdp.send('SystemInfo.getProcessInfo');
           const { targetInfos } = await browserCdp.send('Target.getTargets');
@@ -408,10 +681,12 @@ export async function createNativeLifetimeObserver(options) {
           coverageEnd = reply.ns;
         } catch (error) { errors.push(String(error)); }
         try {
+          releaseAttempted = true;
           const reply = await command('release');
           cleanup.detached = reply.detached === true;
+          released = reply.released === true && reply.shutdownReady === true;
+          if (!released) errors.push('request release/shutdown readiness not acknowledged');
         } catch (error) { errors.push(String(error)); }
-        released = true;
         await browserCdp?.detach().catch((error) => { errors.push(String(error)); });
         browserCdp = undefined;
       }
@@ -426,7 +701,7 @@ export async function createNativeLifetimeObserver(options) {
           endNs: entry.endNs ?? coverageEnd ?? null })) };
       const observation = { schemaVersion: 1, method: NATIVE_LIFETIME_METHOD, schema: NATIVE_LIFETIME_SCHEMA,
         runId, measurement: schema.measurement, identity: NATIVE_LIFETIME_IDENTITY, runtime,
-        clock, captureTimestamp, coverage, events, cleanup,
+        clock, captureTimestamp, coverage, events, journals, cleanup,
         lifecycle: messages.flatMap((message) => message.lifecycle ? [message.lifecycle] : []) };
       const references = [];
       for (const [role, path, record] of [
@@ -441,7 +716,7 @@ export async function createNativeLifetimeObserver(options) {
       }
       return { observation, provenance: { method: NATIVE_LIFETIME_METHOD, schema: NATIVE_LIFETIME_SCHEMA,
         runId, measurement: schema.measurement, captureTimestamp, references,
-        overhead: 'buffered request hooks and per-owned-session agent residency until process exit included; no per-request IPC during measurement; post-drain shutdown events use IPC; no cost subtraction; setup/drain and separate observer costs retained, not separately measured' } };
+        overhead: 'host-retained 500000-record shared journal, native release/acquire writer, callback accounting, lifecycle IPC and per-owned-session agent residency included; no per-request IPC or cost subtraction; setup/drain and separate observer costs retained, not separately measured' } };
     },
   };
 }
@@ -496,12 +771,18 @@ export async function verifyNativeLifetimeEvidence(provenance, requests, outputR
   }));
   for (const message of host.messages ?? []) {
     if (message.processRole) {
-      const process = capturedProcesses.find((entry) => entry.pid === message.processRole.pid);
+      const process = capturedProcesses.find((entry) => entry.processBirth === message.processRole.processBirth);
       if (process) process.role = message.processRole.role;
+    }
+    if (message.processEnd) {
+      const process = capturedProcesses.find((entry) => entry.processBirth === message.processEnd.processBirth);
+      if (process) Object.assign(process, message.processEnd);
     }
   }
   if (!Array.isArray(host.messages) || !Array.isArray(host.errors)
     || !isDeepStrictEqual(host.messages.flatMap((message) => message.events ?? []), records.native.events)
+    || !isDeepStrictEqual(host.messages.flatMap((message) => message.journal ? [message.journal] : []),
+      records.native.journals)
     || !isDeepStrictEqual(host.messages.find((message) => message.runtime)?.runtime, records.native.runtime)
     || !isDeepStrictEqual(capturedProcesses, records.native.coverage.processes)
     || !isDeepStrictEqual(host.errors, records.native.coverage.errors)
@@ -510,6 +791,13 @@ export async function verifyNativeLifetimeEvidence(provenance, requests, outputR
     || records.native.coverage.dropped !== host.messages.reduce((sum, message) => sum + (message.buffer?.dropped ?? 0), 0)
     || records.native.coverage.drained !== (drain?.drained === true)) {
     throw new Error('native lifetime host/event/coverage replay mismatch');
+  }
+  for (const journal of records.native.journals ?? []) {
+    const receipts = host.messages.filter((message) => message.journalOwnership?.processBirth
+      === journal.ownership?.processBirth);
+    if (receipts.length !== 1 || !isDeepStrictEqual(receipts[0].journalOwnership, journal.ownership)) {
+      throw new Error('native lifetime journal ownership replay mismatch');
+    }
   }
   const clockSamples = host.messages.filter((message) => message.ns && message.drained === undefined);
   const recordedClock = clockSamples.length >= 2 ? {

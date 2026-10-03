@@ -113,7 +113,7 @@ Actual CDP terminals and original observations remain intact. Cancellation is
 `request-failed`, `canceled:true`, and a failure in the existing errorRate;
 status, body bytes, CDP error codes and settledTimestamp are not invented.
 
-Native events buffer inside each process without per-event IPC. Hook costs are
+Native events buffer in host-retained shared memory without per-event IPC. Hook costs are
 not subtracted; setup/drain and separate observer costs are retained in provenance,
 not separately measured. Drain follows unchanged throughput and `ps` snapshots,
 before BrowserServer close, while preserving the original request cutoff.
@@ -123,6 +123,39 @@ follows process exit rather than preceding BrowserServer close.
 An eternalized inert script prevents live-agent unload if failed/aborted
 preparation forces bounded observer-child termination.
 Resident memory/runtime overhead remains included without subtraction. The
+Transport schema v2 retains an append-only memfd journal per
+PID/starttime/exec epoch, owned and verified by the host before hooks readiness
+or gated resume. Its 500000 fixed-width records never wrap. The native writer
+uses AArch64 release publication and the host uses acquire reads; raw binary
+headers/records, ownership, attempted/committed counts, sequence markers, drops
+and native callback/invocation state are authenticated and replayed. Missing
+ownership, interrupted publication/callbacks, overflow and incomplete calls
+remain inconclusive even after hashes are recomputed.
+
+A live interval must cover the original cutoff. Earlier retirement instead
+requires authenticated detach and birth-bound normal status, without RPC to a
+destroyed script or artificial cutoff padding. A separate early browser
+lifecycle zombie-status witness does not replace missing pidfd status or assign
+causality to a signal sent to a zombie.
+If no such status witness exists, the authenticated owned browser/zygote
+parent's actual `waitpid`/`wait4` normal return supplies only its genuine raw
+reap status, with pre-call kernel PID/starttime/parent, original stat, return PID
+and observer sequence.
+NULL wait destinations remain NULL. A separate birth-bound zombie `stat`
+exit-code field captured before the actual reap may supply status; neither
+the wait result nor pidfd status is rewritten. Earlier raw SIGTERM 15 additionally
+requires its own complete pre-cutoff Chromium normal termination caller/return chain and
+successful live-target send. It is never rewritten to zero; missing pidfd
+status stays missing. This retirement proof does not borrow/backdate
+`graceful-close` and remains separate from post-close shutdown authentication.
+Successful gated exec keeps distinct
+histories and verifies successor readiness before resume; failed exec does not
+close an epoch. Unknown roles/status, crashes and unsupported transitions are
+rejected. Production COOP navigation and capture boundaries remain unchanged.
+The separate two-document nonempty-retirement correctness fixture is never
+pre-navigation in a measured cohort. Journal, writer/callback and lifecycle
+overhead remain included; these correctness checks are not performance PASS.
+
 Python host retains pidfd exit subscriptions through BrowserServer termination,
 then finalizes evidence at the original cutoff. Main exit/error/disconnect and
 available descendant wait statuses are retained; known abnormal exits are rejected
@@ -139,7 +172,7 @@ Native/CDP, coverage/process, schema/source hashes, host logs and cleanup raw
 artifacts stay in the fresh output root; `verifyTraceFiles` checks hashes, realpath
 containment, run identity and reconciliation replay, including warmup and combined
 traces. Unsupported environments, late attach, partial hooks, drops, incomplete
-returns, script/transport errors, renderer exit before drain, identity ambiguity,
+returns, script/transport errors, unproven renderer retirement, identity ambiguity,
 unverified child roles and worker/service-worker coverage are unavailable/inconclusive.
 Success, failure, timeout and abort close observer sessions/children/listeners with
 bounded event waits, retaining cleanup failures. The two earlier headless diagnostics
