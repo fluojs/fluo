@@ -221,9 +221,31 @@ test('trace verification rejects missing, partial and symlink-escaped evidence',
   const outside = await mkdtemp(join(tmpdir(), 'fluo-delivery-outside-'));
   t.after(() => Promise.all([rm(root, { recursive: true }), rm(outside, { recursive: true })]));
   const hash = createHash('sha256').update('{}').digest('hex');
-  for (const file of ['source.patch', 'untracked-inputs.json', 'manifest.json', 'package.json']) {
+  for (const file of ['source.patch', 'untracked-inputs.json', 'package.json']) {
     await writeFile(join(root, file), '{}');
   }
+  const manifest = {
+    entry: { isEntry: true, name: 'entry-client', file: 'entry.js' },
+    'src/initial.ts': { file: 'initial.js' },
+    'src/destination.ts': { file: 'destination.js' },
+  };
+  const manifestRaw = JSON.stringify(manifest);
+  await writeFile(join(root, 'manifest.json'), manifestRaw);
+  const requests = [
+    { id: 'html', type: 'Document', url: 'https://fixture.test/', complete: true, start: 1, end: 2 },
+    ...['entry', 'initial', 'destination'].map((name, index) => ({
+      id: name, type: 'Script', url: `https://fixture.test/assets/${name}.js`,
+      complete: true, start: index + 2, end: index + 3,
+    })),
+    { id: 'approval', type: 'Fetch', url: 'https://fixture.test/search', complete: true, start: 4, end: 5,
+      accept: 'application/vnd.fluo.react-navigation+json;v=2' },
+  ];
+  const stages = [
+    { name: 'hydration-control-ack', time: 12 },
+    { name: 'rendered-commit', time: 30 }, { name: 'rendered-frame', time: 34 },
+  ];
+  const initial = { destination: { module: './initial.ts' } };
+  const destination = { destination: { module: './destination.ts' } };
   const record = {
     version: 1, complete: true,
     provenance: {
@@ -232,14 +254,12 @@ test('trace verification rejects missing, partial and symlink-escaped evidence',
       dataset: 'fixture', profile: 'fixture', uncertainty: 'fixture', cache: 'cold',
       resolvedVersions: Object.fromEntries(['react', 'react-dom', 'vite', '@fluojs/react']
         .map((name) => [name, { version: '1.2.3' }])),
-      patchSha256: hash, untrackedSha256: hash, manifestSha256: hash, packageSha256: hash,
+      patchSha256: hash, untrackedSha256: hash,
+      manifestSha256: createHash('sha256').update(manifestRaw).digest('hex'), packageSha256: hash,
     },
-    requests: [{ id: 'fixture-request', complete: true }],
+    requests, stages, initial, destination,
     inventory: { status: 'complete' },
-    attributed: ['html', 'bootstrap', 'initial-module', 'hydration-control-ack',
-      'navigation-payload', 'destination-module', 'rendered-commit', 'rendered-frame'].map((name) => ({
-      name, clock: 'cdp-monotonic-seconds', start: 1, end: 2, requestId: 'fixture-request',
-    })),
+    attributed: attributeDeliveryStages(manifest, requests, stages, initial, destination),
   };
   const complete = JSON.stringify(record);
   await writeFile(join(root, 'complete.json'), complete);
@@ -247,6 +267,37 @@ test('trace verification rejects missing, partial and symlink-escaped evidence',
   await writeFile(join(outside, 'escape.json'), complete);
   await symlink(join(outside, 'escape.json'), join(root, 'escape.json'));
   await verifyDeliveryTraceFiles(root, ['complete.json']);
+  for (const [index, stage] of record.attributed.entries()) {
+    await t.test(`${stage.name} rejects the other stage clock`, async () => {
+      const changed = structuredClone(record);
+      changed.attributed[index] = stage.clock === 'cdp-monotonic-seconds'
+        ? { name: stage.name, clock: 'document-performance-milliseconds', time: 12 }
+        : { name: stage.name, clock: 'cdp-monotonic-seconds', requestId: 'html', start: 1, end: 2 };
+      await writeFile(join(root, 'wrong-clock.json'), JSON.stringify(changed));
+      await assert.rejects(verifyDeliveryTraceFiles(root, ['wrong-clock.json']), /attribution/u);
+    });
+    await t.test(`${stage.name} rejects mismatched raw observation`, async () => {
+      const changed = structuredClone(record);
+      if (stage.clock === 'cdp-monotonic-seconds') changed.attributed[index].end += 0.5;
+      else changed.attributed[index].time += 0.5;
+      await writeFile(join(root, 'wrong-observation.json'), JSON.stringify(changed));
+      await assert.rejects(verifyDeliveryTraceFiles(root, ['wrong-observation.json']), /attribution/u);
+    });
+  }
+  for (const [name, mutate] of [
+    ['unrelated request', (r) => { r.attributed[5] = { ...r.attributed[5], requestId: 'html', start: 1, end: 2 }; }],
+    ['wrong module', (r) => { r.attributed[5].module = './initial.ts'; }],
+    ['missing DOM observation', (r) => { r.stages.pop(); }],
+    ['duplicate DOM observation', (r) => { r.stages.push({ ...r.stages[0] }); }],
+    ['wrong request asset', (r) => { r.requests[1].url = 'https://fixture.test/assets/unrelated.js'; }],
+  ]) {
+    await t.test(`delivery attribution rejects ${name}`, async () => {
+      const changed = structuredClone(record);
+      mutate(changed);
+      await writeFile(join(root, 'wrong-binding.json'), JSON.stringify(changed));
+      await assert.rejects(verifyDeliveryTraceFiles(root, ['wrong-binding.json']), /attribution/u);
+    });
+  }
   await assert.rejects(verifyDeliveryTraceFiles(root, []), /required/u);
   await assert.rejects(verifyDeliveryTraceFiles(root, ['missing.json']), /ENOENT/u);
   await assert.rejects(verifyDeliveryTraceFiles(root, ['partial.json']), SyntaxError);

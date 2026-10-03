@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { EventEmitter } from 'node:events';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { NATIVE_LIFETIME_IDENTITY, NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA,
-  reconcileNativeLifetime } from '../src/native-lifetime.mjs';
+import { createNativeLifetimeObserver, NATIVE_LIFETIME_HOOKS, NATIVE_LIFETIME_IDENTITY,
+  NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA, reconcileNativeLifetime } from '../src/native-lifetime.mjs';
+import { verifyTraceFiles } from '../src/measure.mjs';
 
 const request = () => ({
   requestId: '123.7', targetId: 'page', sessionId: 'session', occurrence: 1,
@@ -204,4 +211,147 @@ test('unsupported opt-in records unavailable evidence without spawning runtime',
   assert.equal(spawned, false);
   assert.equal(result.observation.coverage.complete, false);
   assert.ok(result.observation.coverage.errors.length);
+});
+
+async function authenticatedFixture(t) {
+  const directory = await mkdtemp(join(tmpdir(), 'native-cutoff-auth-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const hash = (raw) => createHash('sha256').update(raw).digest('hex');
+  const observation = fixture();
+  observation.clock.beforeNs = '10900000000';
+  observation.clock.afterNs = '11100000000';
+  observation.lifecycle = [];
+  const measurement = { runId: 'measurement', framework: 'next', profile: 'desktop-native', mode: 'native' };
+  observation.measurement = measurement;
+  const cdp = [...ledger(), { name: 'capture-boundary', data: { captureTimestamp: 11 } }];
+  const schema = { schemaVersion: 1, runId: observation.runId, method: observation.method,
+    schema: observation.schema, measurement, identity: observation.identity, hooks: NATIVE_LIFETIME_HOOKS,
+    agentSha256: hash(await readFile(new URL('../src/native-lifetime-agent.js', import.meta.url))),
+    hostSha256: hash(await readFile(new URL('../src/native-lifetime-host.py', import.meta.url))) };
+  const host = { schemaVersion: 1, runId: observation.runId, errors: [], cleanup: observation.cleanup,
+    messages: [
+      { process: observation.coverage.processes[0], runtime: observation.runtime },
+      { ns: observation.clock.beforeNs }, { ns: observation.clock.afterNs },
+      { drained: true, ns: '12000000000', events: observation.events, buffer: { dropped: 0 } },
+    ] };
+  const provenance = { method: observation.method, schema: observation.schema,
+    runId: observation.runId, measurement, captureTimestamp: 11, references: [] };
+  const records = { native: observation, cdp: { schemaVersion: 1, runId: observation.runId, ledger: cdp },
+    coverage: { schemaVersion: 1, runId: observation.runId, coverage: observation.coverage }, schema, host };
+  const save = async (role) => {
+    const raw = JSON.stringify(records[role]);
+    const path = join(directory, `${role}.json`);
+    await writeFile(path, raw);
+    const reference = provenance.references.find((entry) => entry.role === role);
+    if (reference) reference.sha256 = hash(raw);
+    else provenance.references.push({ role, path, sha256: hash(raw) });
+  };
+  for (const role of Object.keys(records)) await save(role);
+  const netlog = JSON.stringify({ constants: {}, events: [{}] });
+  await writeFile(join(directory, 'netlog.json'), netlog);
+  const record = { schemaVersion: 1, ...measurement, provenance: {}, environment: {}, profileSettings: {},
+    correctness: { pass: true }, metrics: {}, unavailable: {}, qualityFailures: [],
+    requests: reconcileNativeLifetime([request()], observation, cdp).requests,
+    artifacts: { nativeLifetimeObserver: provenance, nativeTerminalObserver: {
+      rawTrace: join(directory, 'netlog.json'), sha256: hash(netlog),
+      cdpTrace: join(directory, 'cdp.json'), cdpSha256: provenance.references[1].sha256, captureTimestamp: 11,
+    } } };
+  const trace = join(directory, 'trace.json');
+  const verify = async () => {
+    await writeFile(trace, JSON.stringify(record));
+    return verifyTraceFiles([{ trace }], directory);
+  };
+  return { records, record, save, verify };
+}
+
+test('authenticated cutoff cannot move consistently inside the clock bracket away from raw CDP capture', async (t) => {
+  const f = await authenticatedFixture(t);
+  await f.verify();
+  const timestamp = 11.05;
+  f.records.native.captureTimestamp = timestamp;
+  f.record.artifacts.nativeLifetimeObserver.captureTimestamp = timestamp;
+  f.record.artifacts.nativeTerminalObserver.captureTimestamp = timestamp;
+  f.record.requests[0].nativeLifetime.captureTimestamp = timestamp;
+  await f.save('native');
+  await assert.rejects(f.verify(), /raw CDP capture boundary/u);
+});
+
+for (const [name, mutate] of [
+  ['missing', (cdp) => { cdp.ledger.pop(); }],
+  ['duplicate', (cdp) => { cdp.ledger.push(structuredClone(cdp.ledger.at(-1))); }],
+  ['nonfinite', (cdp) => { cdp.ledger.at(-1).data.captureTimestamp = null; }],
+]) {
+  test(`complete native evidence rejects ${name} raw capture boundary`, async (t) => {
+    const f = await authenticatedFixture(t);
+    await f.verify();
+    mutate(f.records.cdp);
+    await f.save('cdp');
+    f.record.artifacts.nativeTerminalObserver.cdpSha256 =
+      f.record.artifacts.nativeLifetimeObserver.references.find((entry) => entry.role === 'cdp').sha256;
+    await assert.rejects(f.verify(), /raw CDP capture boundary/u);
+  });
+}
+
+test('host ingestion retains the supported 500000 event buffer and completes drain and cleanup', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-max-ingestion-'));
+  t.after(() => rm(directory, { recursive: true }));
+  const host = new EventEmitter();
+  Object.assign(host, { stdout: new PassThrough(), stderr: new PassThrough(),
+    exitCode: null, signalCode: null, pid: 321 });
+  const commands = [];
+  host.stdin = {
+    writable: true,
+    write(line) {
+      const message = JSON.parse(line);
+      commands.push(message.command);
+      let reply = { id: message.id };
+      if (message.command === 'prepare') reply.runtime = NATIVE_LIFETIME_RUNTIME;
+      if (message.command === 'clock') reply.ns = '11000000000';
+      if (message.command === 'drain') {
+        reply = { ...reply, drained: true, ns: '12000000000', buffer: { dropped: 0 },
+          events: Array.from({ length: 500_000 }, (_, seq) => ({ event: 'resource-birth', seq: seq + 1 })) };
+      }
+      if (message.command === 'close') reply.detached = true;
+      host.stdout.write(`${JSON.stringify(reply)}\n`);
+    },
+    end() { host.exitCode = 0; host.emit('exit', 0, null); },
+  };
+  let detached = false;
+  const browserCdp = {
+    async send(name) { return name === 'SystemInfo.getProcessInfo'
+      ? { processInfo: [] } : { targetInfos: [] }; },
+    async detach() { detached = true; },
+  };
+  const observer = await createNativeLifetimeObserver({
+    enabled: true, directory, python: '/fake/python', spawn: () => host,
+  });
+  // Exercise the existing injected host seam on every host OS without Python/Frida.
+  const descriptors = ['platform', 'arch'].map((key) => [key, Object.getOwnPropertyDescriptor(process, key)]);
+  try {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    Object.defineProperty(process, 'arch', { value: 'arm64', configurable: true });
+    await observer.prepare({ version: () => NATIVE_LIFETIME_IDENTITY.browserVersion,
+      async newBrowserCDPSession() { return browserCdp; } }, 123,
+    { async send() { return { targetInfo: { targetId: 'page' } }; } });
+  } finally {
+    for (const [key, descriptor] of descriptors) Object.defineProperty(process, key, descriptor);
+  }
+  await observer.captureClock(async () => ({}));
+  const result = await observer.drain(11, []);
+  assert.equal(result.observation.coverage.drained, true);
+  assert.deepEqual(result.observation.coverage.errors, []);
+  assert.equal(result.observation.events.length, 500_000);
+  assert.equal(result.observation.events[0].seq, 1);
+  assert.equal(result.observation.events.at(-1).seq, 500_000);
+  assert.deepEqual(commands, ['prepare', 'clock', 'clock', 'drain', 'close']);
+  assert.equal(result.observation.cleanup.closed, true);
+  assert.equal(result.observation.cleanup.detached, true);
+  assert.equal(result.observation.cleanup.exitCode, 0);
+  assert.equal(detached, true);
+  assert.equal(host.stderr.listenerCount('data'), 0);
+  const retained = JSON.parse(await readFile(join(directory, 'lifetime.json'), 'utf8'));
+  assert.equal(retained.events.length, 500_000);
+  const receipt = JSON.parse(await readFile(join(directory, 'lifetime-host.json'), 'utf8'));
+  assert.equal(receipt.messages.find((message) => message.drained).events.length, 500_000);
+  assert.equal(receipt.cleanup.closed, true);
 });

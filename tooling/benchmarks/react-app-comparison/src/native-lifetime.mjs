@@ -288,7 +288,7 @@ export async function createNativeLifetimeObserver(options) {
             if (process) process.role = reply.processRole.role;
             else errors.push('unbound process role update');
           }
-          if (reply.events) events.push(...reply.events);
+          if (reply.events) for (const event of reply.events) events.push(event);
           const waiter = pending.get(reply.id);
           if (waiter) {
             clearTimeout(waiter.timer); pending.delete(reply.id);
@@ -402,6 +402,13 @@ export async function verifyNativeLifetimeEvidence(provenance, requests, outputR
     || !Array.isArray(records.cdp.ledger)) throw new Error('native lifetime schema/coverage/capture authentication mismatch');
   if (passiveCdpLedger && !isDeepStrictEqual(passiveCdpLedger, records.cdp.ledger)) {
     throw new Error('native lifetime CDP ledger mismatch');
+  }
+  const boundaries = records.cdp.ledger.filter((entry) => entry.name === 'capture-boundary');
+  if (boundaries.length > 0 || records.native.coverage.complete === true) {
+    if (boundaries.length !== 1 || cutoffNs(boundaries[0].data?.captureTimestamp) === null
+      || boundaries[0].data.captureTimestamp !== provenance.captureTimestamp) {
+      throw new Error('native lifetime raw CDP capture boundary mismatch');
+    }
   }
   const host = records.host;
   const drain = host.messages?.findLast((message) => message.drained !== undefined);

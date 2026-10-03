@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { cpus, platform, release } from 'node:os';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { promisify } from 'node:util';
+import { isDeepStrictEqual, promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const suite = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -278,14 +278,7 @@ export async function verifyDeliveryTraceFiles(root, paths) {
       || !['cold', 'warm'].includes(provenance.cache)) {
       throw new TypeError(`Incomplete delivery provenance: ${path}`);
     }
-    const names = ['html', 'bootstrap', 'initial-module', 'hydration-control-ack',
-      'navigation-payload', 'destination-module', 'rendered-commit', 'rendered-frame'];
-    if (trace.attributed.some((stage, index) => stage.name !== names[index]
-      || (stage.clock === 'document-performance-milliseconds' ? !Number.isFinite(stage.time)
-        : stage.clock !== 'cdp-monotonic-seconds' || !Number.isFinite(stage.start) || !Number.isFinite(stage.end)
-          || !trace.requests.some((request) => request.id === stage.requestId && request.complete)))) {
-      throw new TypeError(`Incomplete delivery attribution: ${path}`);
-    }
+    let manifest;
     for (const [file, field] of [
       ['source.patch', 'patchSha256'], ['untracked-inputs.json', 'untrackedSha256'],
       ['manifest.json', 'manifestSha256'], ['package.json', 'packageSha256'],
@@ -296,6 +289,22 @@ export async function verifyDeliveryTraceFiles(root, paths) {
         || sha256(await readFile(artifact)) !== provenance[field]) {
         throw new TypeError(`Mismatched delivery artifact: ${file}`);
       }
+      if (file === 'manifest.json') manifest = JSON.parse(await readFile(artifact, 'utf8'));
+    }
+    try {
+      const domNames = ['hydration-control-ack', 'rendered-commit', 'rendered-frame'];
+      if (!Array.isArray(trace.stages) || trace.stages.length !== domNames.length
+        || domNames.some((name) => trace.stages.filter((stage) => stage.name === name).length !== 1)) {
+        throw new TypeError('Missing or ambiguous DOM observation');
+      }
+      const replay = attributeDeliveryStages(manifest, trace.requests, trace.stages, trace.initial, trace.destination);
+      if (!isDeepStrictEqual(trace.attributed, replay)
+        || replay.some((stage) => stage.clock === 'cdp-monotonic-seconds'
+          && (!Number.isFinite(stage.start) || !Number.isFinite(stage.end)))) {
+        throw new TypeError('Stage observation mismatch');
+      }
+    } catch {
+      throw new TypeError(`Incomplete delivery attribution: ${path}`);
     }
   }
 }
