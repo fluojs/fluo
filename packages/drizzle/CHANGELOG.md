@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## 3.0.0
+
+### Major Changes
+
+- [#3851](https://github.com/fluojs/fluo/pull/3851) [`ae7ac12`](https://github.com/fluojs/fluo/commit/ae7ac128cf6555ae752031f57390a5f186fe8016) Thanks [@ayden94](https://github.com/ayden94)! - Reject duplicate unnamed `DrizzleModule.forRoot(...)` and `forRootAsync(...)` registrations at bootstrap, before async options factories or lifecycle wrappers can claim a database. Each application container now permits one unnamed default alongside independently owned named clients.
+
+  Migration: Applications composing multiple unnamed Drizzle modules must keep one default registration and give every additional module a distinct `name`. Inject additional clients through their matching `getDrizzle*Token(name)` tokens instead of relying on a later unnamed registration replacing the default and its disposal hook. An explicitly named `default` client remains distinct from the unnamed default.
+
+### Minor Changes
+
+- [#3850](https://github.com/fluojs/fluo/pull/3850) [`b09163b`](https://github.com/fluojs/fluo/commit/b09163b28b7a7c8b093d904f7eefe360729ac33f) Thanks [@ayden94](https://github.com/ayden94)! - Document and verify conditional Bun 1.4 support for the root Drizzle wrapper with async transaction drivers such as libsql, including real commit, rollback, routing, and shutdown coverage. Synchronous bun:sqlite transactions remain unsupported.
+
 ## 2.1.2
 
 ### Patch Changes

@@ -2,6 +2,150 @@
 
 ## [Unreleased]
 
+## 4.0.0
+
+### Major Changes
+
+- [#3868](https://github.com/fluojs/fluo/pull/3868) [`0b8c491`](https://github.com/fluojs/fluo/commit/0b8c4918f6aff322e3c27bd85d296cb6cb76a2f6) Thanks [@ayden94](https://github.com/ayden94)! - Upgrade the compiler toolchain to Babel 8 and raise its Node.js floor.
+
+  `@fluojs/vite` now requires Babel 8 peers (`@babel/core` `>=8.0.0`, `@babel/plugin-proposal-decorators` `>=8.0.0`, `@babel/preset-typescript` `>=8.0.0`), `@fluojs/platform-nextjs` ships Babel 8 dependencies (`@babel/core` `^8.0.6`, `@babel/plugin-proposal-decorators` `^8.0.2`, `@babel/preset-typescript` `^8.0.1`), and CLI-generated projects install the same Babel 8 baseline without passing the removed `allowDeclareFields` preset option. The TC39 `{ version: '2023-11' }` decorator transform and decorated field behavior are preserved, and the `@babel/core@<8` override keeps third-party Babel 7 resolutions pinned to the security-fixed 7.29.7 line.
+
+  These compiler toolchain packages and generated compiler-toolchain projects now require Node.js `>=24.11.0 <27` (Babel 8's own upstream floor; Node 22 stays excluded). Other Node runtime packages keep `>=24.0.0 <27`, and CI moves the exact `24.0.0` verification to a separately required runtime-only lane that executes real built-runtime imports and HTTP/listener/config behavior on artifacts built under a supported compiler Node without loading Babel 8. Migrate hosts and configs with the updated [Node.js support guide](../../docs/reference/node-support.md) and [Node 24 migration guide](../../docs/getting-started/migrate-node24.md) (Korean: `node-support.ko.md`, `migrate-node24.ko.md`) before upgrading.
+
+  Parenthesize conditional async transport factories in Discord, Email, and Slack for Babel 8 parser compatibility without changing their runtime APIs or supported runtime floors.
+
+  Migration: Node.js >=24.0.0 <24.11.0 support is removed for the compiler toolchain packages. Upgrade development, CI, and Next.js hosting environments to Node.js >=24.11.0 <27 before installing these versions. Update generated Node projects to the same engine range, install the Babel 8 dependencies listed above, and remove `allowDeclareFields` from custom Babel configs while retaining decorators `{ version: '2023-11' }`. Runtime-only packages retain their existing Node.js >=24.0.0 <27 support.
+
+### Minor Changes
+
+- [#3905](https://github.com/fluojs/fluo/pull/3905) [`6a5444b`](https://github.com/fluojs/fluo/commit/6a5444b02036d3fb9f9782c75ce0d50fb6cc841d) Thanks [@ayden94](https://github.com/ayden94)! - Demonstrate opt-in dirty/pending navigation protection in the packaged React starter
+  using the existing useForm and provider, with explicit stay/proceed controls.
+
+- [#3907](https://github.com/fluojs/fluo/pull/3907) [`f3e6990`](https://github.com/fluojs/fluo/commit/f3e699047bfa51bbb69d9abeb2717eeb9e1871b0) Thanks [@ayden94](https://github.com/ayden94)! - Align React's documented background/session/navigation capabilities and add
+  deterministic long-session verification companions. The generated React starter
+  adds HTTP-selected QR/songs pages alongside its existing jukebox search and queue
+  forms, with explicit test-only importer/resource barriers.
+
+  Correctness receipts, a separate two-hour soak and physical mobile/tablet evidence
+  remain distinct requirements. Source harness availability is not executed product
+  acceptance, a playback guarantee or a new public diagnostics API.
+
+- [#3899](https://github.com/fluojs/fluo/pull/3899) [`7e58131`](https://github.com/fluojs/fluo/commit/7e5813127b0cf2b9babf58708ec6efbb87ca5470) Thanks [@ayden94](https://github.com/ayden94)! - Change `useRouter().refresh()` from a document reload to fresh HTTP-approved current-page
+  revalidation with a typed completion, preserved shell, and page-local reset on approval.
+  Existing consumers requiring an unconditional document reload must use
+  `window.location.reload()`. Generated React starters expose current-page refresh and
+  retain failure/retry controls in the shared shell. See
+  `docs/getting-started/migrate-react-refresh.md` for the completion and fallback boundary.
+
+- [#3889](https://github.com/fluojs/fluo/pull/3889) [`716038f`](https://github.com/fluojs/fluo/commit/716038f9c70f31e4a5f9244f99f425b28cf41509) Thanks [@ayden94](https://github.com/ayden94)! - Enable same-origin React Fast Refresh and CSS HMR in the generated Node React/Vite starter's canonical `fluo dev` path, including fresh SSR components and WebSocket cleanup. Existing generated projects must adopt the React plugin, dev entry preamble, and application-hosted Vite wiring described in `docs/getting-started/migrate-react-dev-hmr.md`; upgrades do not rewrite application files.
+
+  Clarify the shipped `@fluojs/react` README's generated starter workflow: compatible React component edits preserve eligible state, CSS edits update in place, and server-only or config edits still restart the development child.
+
+- [#3896](https://github.com/fluojs/fluo/pull/3896) [`fad8e6b`](https://github.com/fluojs/fluo/commit/fad8e6b45606771ab25fa2dacff3620f72640410) Thanks [@ayden94](https://github.com/ayden94)! - Keep the generated React development document and Vite WebSocket alive while
+  server-only edits drain and replace the Fastify app behind a stable HTTP gateway.
+  Failed bootstrap stays unavailable until the next corrective save; shared
+  server/client graph changes may reload the document after readiness.
+
+  Existing generated projects are not rewritten by a CLI upgrade. Follow
+  `docs/getting-started/migrate-react-dev-hmr.md` to move WebSocket ownership to
+  the CLI development gateway, use an ephemeral app listener, and display the
+  temporary 503/retry status to clients.
+
+- [#3903](https://github.com/fluojs/fluo/pull/3903) [`63920ab`](https://github.com/fluojs/fluo/commit/63920ab592ec57e39c3155906b0068de26238b5a) Thanks [@ayden94](https://github.com/ayden94)! - Extend the existing React typegen workflow with compiler-derived HTTP query
+  bindings, build-mapped page props, and native form field/saved-data contracts.
+  Add the type-only `HttpWire<Server, Wire>` converter-input declaration and
+  authoritative HTTP version-selection provenance.
+
+  Generated artifact version 2 includes source/type-only/configuration freshness
+  and limited JSON decoders. Regenerate older artifacts before enabling typegen
+  checks in application typecheck and build scripts. Strict generated consumers
+  must use the registered browser module/props pairs and the existing
+  `useForm({ action, contract })` path rather than copied DTO interfaces or casts.
+
+- [#3901](https://github.com/fluojs/fluo/pull/3901) [`adedc3a`](https://github.com/fluojs/fluo/commit/adedc3a1f4dcdfde8c9325d063ce36cfbb5f5d7e) Thanks [@ayden94](https://github.com/ayden94)! - Add one progressive native HTTP form path through `useForm` and the existing
+  React provider, with `ReactModule.formResult` for confirmed persistence.
+  Preserve native POST/303/GET, HTTP-owned DTO/auth/CSRF/status/error behavior,
+  and v2 navigation build identity.
+
+  Expose typed independent pending/dirty state, bounded safe field/form rejection,
+  skipped busy activation, uncertain persistence, and separately typed post-save
+  read outcomes with GET-only recovery. There is no automatic POST retry or native
+  POST replay. Existing HTML error configuration and explicit refresh semantics
+  remain compatible.
+
+  Include production CRUD in the official Vite starter and runnable example.
+  Upgrade the affected React/HTTP/CLI releases together; follow
+  `docs/getting-started/migrate-react-progressive-forms.md` for native encoding,
+  safe error projection, destination policies and recovery UI.
+
+- [#3897](https://github.com/fluojs/fluo/pull/3897) [`73a5e03`](https://github.com/fluojs/fluo/commit/73a5e030d9dd12100dda419a34b21e78df9e1c8b) Thanks [@ayden94](https://github.com/ayden94)! - Add an opt-in React page-slot experience with pending announcements, approved-render
+  error reset, request-selected bounded metadata and overridable focus/scroll effects.
+  New React starters use this composition and transfer matched page metadata across SSR
+  and soft navigation.
+
+  Existing applications retain low-level provider behavior. To adopt the new defaults,
+  render `ReactNavigationExperience` inside the existing provider's function child,
+  pass the initial page and approved destination, and supply the matched initial
+  `metadata` to `createReactRouteSnapshot`. Remove application-owned title/focus
+  effects that would compete with page-owned head updates. Render reset does not
+  retry transport: use the separate [#3864](https://github.com/fluojs/fluo/issues/3864) `router.retry()` for fresh HTTP approval.
+  Applications adopting this composition must use React 19 and React DOM 19 for
+  SSR and soft-navigation title/meta/link hoisting into `<head>`. React 18 remains
+  within the package peer range for unrelated APIs, but does not provide this
+  composition's head-reconciliation guarantee.
+
+- [#3900](https://github.com/fluojs/fluo/pull/3900) [`942f673`](https://github.com/fluojs/fluo/commit/942f673d34d58a9093d7012253913aec9143ff45) Thanks [@ayden94](https://github.com/ayden94)! - Require v2 React navigation payloads and build identity for production navigation; derive the identity from the complete Vite manifest and asset base. The generated React starter serves hashed same-origin assets and offers explicit recovery across deployments.
+
+  Consumers of the previous v1 negotiation must pass the manifest-derived `navigationBuildId` to `ReactModule.forRoot(...)` and `ReactClientRouterProvider`, update their Accept handling to `v=2`, and deploy retained old-build assets before switching the manifest. Old v1 tabs use document fallback; no automatic reload or cross-origin CDN support is implied.
+
+- [#3904](https://github.com/fluojs/fluo/pull/3904) [`e75a302`](https://github.com/fluojs/fluo/commit/e75a302c7285e7d8e31f478b774402fe414a5509) Thanks [@ayden94](https://github.com/ayden94)! - Ship the canonical background search/widget and queue-row companion in the React Vite SSR
+  starter with native GET/POST fallbacks and deterministic real-listener browser fixtures.
+  Existing apps should adopt the updated catalog and page companion while retaining their
+  provider, HTTP DTO/auth/CSRF and app-owned persistence/idempotency. Test fault routes are
+  enabled only by the explicit FLUO_REACT_FORM_TEST_SERVER entry.
+
+- [#3890](https://github.com/fluojs/fluo/pull/3890) [`35483c3`](https://github.com/fluojs/fluo/commit/35483c3cc6b6c4c92db43346b092528eb8cd4d97) Thanks [@ayden94](https://github.com/ayden94)! - Provide bounded, escaped initial React navigation data to application renderers and
+  validate its build-mapped destination before hydration. Generate a two-page HTTP DTO
+  starter with one shared SSR, hydration, and soft-navigation composition. Existing
+  React apps remain supported; follow the React starter composition migration guide
+  to adopt the new page slot and initial transfer.
+
+- [#3902](https://github.com/fluojs/fluo/pull/3902) [`00525a8`](https://github.com/fluojs/fluo/commit/00525a81b37166889cbf9d742d5a7cc0ca2b92ef) Thanks [@ayden94](https://github.com/ayden94)! - Ship canonical session forms and an application-owned authentication resource
+  boundary in the React Vite starter. Login/logout/permissions use ordinary HTTP
+  handlers, explicit `ReactModule.formResult` session outcomes, and the existing
+  router notification. Add dev/production browser journeys and preserve native
+  POST/303/GET without JavaScript. Existing apps should adopt the session composition
+  instead of relying on prefetch-scope changes alone.
+
+- [#3895](https://github.com/fluojs/fluo/pull/3895) [`3866eb7`](https://github.com/fluojs/fluo/commit/3866eb7256b194aee2d31be88971dd455e7520fd) Thanks [@ayden94](https://github.com/ayden94)! - Generated `react-vite-ssr` applications now preserve their approved shell on network,
+  HTTP 5xx, and recoverable mapped page-import soft-navigation failures. The persistent shell
+  provides fresh HTTP retry and explicit ordinary-document navigation while retaining its live
+  resources. Authentication rejection, redirects, missing pages, DTO rejection, malformed
+  payloads, and unsupported module keys still use document fallback.
+
+  Migration: Existing generated applications are not rewritten. Pass an explicit
+  network/5xx/mapped-import-failure `failurePolicy` to the shared `ReactClientRouterProvider` and place
+  `useNavigation().failure` with `router.retry()` and `router.openDocument()` controls outside
+  the destination page slot, as shown in the updated starter composition guide.
+
+### Patch Changes
+
+- [#3857](https://github.com/fluojs/fluo/pull/3857) [`68b1dd0`](https://github.com/fluojs/fluo/commit/68b1dd0c58c14127c94ca0578a166318b3d2d3ad) Thanks [@ayden94](https://github.com/ayden94)! - Use the TypeScript preset's `allowDeclareFields` option only with Babel 7, preserving declaration-only fields while letting built-in decorator transforms and newly generated configs compile with Babel 8.
+
+- [#3866](https://github.com/fluojs/fluo/pull/3866) [`4664fed`](https://github.com/fluojs/fluo/commit/4664fedea2d912b85f99746f3ad2050930f55263) Thanks [@ayden94](https://github.com/ayden94)! - Start generated React SSR projects directly with `fluo dev` after dependency installation. The generated `dev` script now uses the same CLI-owned restart lifecycle, which transforms the server entry and serves client modules/styles through Vite's development server without a production build or manifest.
+
+  Grant generated Deno dev, test, and compiled applications read access to their `.env` file so the native watcher and production binary can start without unrestricted filesystem permissions.
+
+  Update the published `@fluojs/react` English and Korean README workflow to document the generated React starter's shared CLI-owned development lifecycle without a production build or manifest.
+
+- [#3892](https://github.com/fluojs/fluo/pull/3892) [`57ea8e2`](https://github.com/fluojs/fluo/commit/57ea8e26496012f0a71c44ac27a52013cb44729b) Thanks [@ayden94](https://github.com/ayden94)! - Verify platform-native modified link clicks in generated React starter browser tests, including HTTP document approval, the opened page, and preservation of the original tab.
+
+- [#3893](https://github.com/fluojs/fluo/pull/3893) [`4044ff1`](https://github.com/fluojs/fluo/commit/4044ff120586bc82581b6d8ae7e223e60111dbc0) Thanks [@ayden94](https://github.com/ayden94)! - Wait for held bootstrap route handlers to finish before tearing down the generated React starter's pre-hydration browser test.
+
+- [#3916](https://github.com/fluojs/fluo/pull/3916) [`6cf6663`](https://github.com/fluojs/fluo/commit/6cf666378da2f73c9a6800f40742e34e2b6f1989) Thanks [@ayden94](https://github.com/ayden94)! - Release completed typegen compiler snapshots from retained instrumentation callbacks so repeated caller-process generations do not accumulate compiler graphs. Preserve constructor associations and generation-owned loader cleanup.
+
+- [#3888](https://github.com/fluojs/fluo/pull/3888) [`f71be37`](https://github.com/fluojs/fluo/commit/f71be378fc824d6b093a25881ea1f994826c6910) Thanks [@ayden94](https://github.com/ayden94)! - Clarify the HTTP-first full-stack React product target, current navigation and development limits, and the owner and real-surface acceptance criteria for CRUD and long-lived jukebox journeys in the English and Korean package READMEs. This documents existing behavior and future work; it adds no runtime capability or new CLI command.
+
 ## 3.0.3
 
 ### Patch Changes
