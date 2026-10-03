@@ -351,11 +351,12 @@ function requireReactEdit(configuration, role) {
   return edit;
 }
 
-async function captureReactEditSource(config) {
+export async function captureReactEditSource(config, { pairSource = false } = {}) {
+  if (!pairSource) return undefined;
   const edit = config.dev?.fluo?.edits?.['react-edit'];
   const role = Object.keys(REACT_EDIT_SOURCES).find((name) =>
     edit?.file === REACT_EDIT_SOURCES[name].file && edit.reload === REACT_EDIT_SOURCES[name].reload);
-  if (!role) return undefined;
+  if (!role) throw new Error('React edit pair source role mismatch');
   requireReactEdit(config, role);
   const root = await realpath(config.provenance.root);
   const cwd = await realpath(config.dev.fluo.cwd ?? resolve(root, 'tooling/benchmarks/react-app-comparison/apps/fluo'));
@@ -600,8 +601,8 @@ async function observeGuestIdentity(config, host, entrypoints) {
 }
 
 export async function captureIsolatedEnvironment(config, invocation, outputRoot,
-  { entrypoints = ['measure.mjs', 'run-gate.mjs'], pairBeforeBinding } = {}) {
-  if (pairBeforeBinding) await verifyEnvironmentBinding(pairBeforeBinding, outputRoot);
+  { entrypoints = ['measure.mjs', 'run-gate.mjs'], pairBeforeBinding, reactEditPairSource = false } = {}) {
+  const before = pairBeforeBinding ? await verifyEnvironmentBinding(pairBeforeBinding, outputRoot) : null;
   const guest = await observeGuestIdentity(config, invocation.host, entrypoints);
   // Container instance/PID/start time are evidence, not pair-comparison identity.
   const identity = isolatedEnvironmentIdentity(invocation.host, guest);
@@ -611,7 +612,9 @@ export async function captureIsolatedEnvironment(config, invocation, outputRoot,
     provenance: productProvenance(config.provenance),
     configSha256: environmentConfigIdentity(config), identitySha256: objectSha256(identity),
     guestEvidence: { pid: process.pid, hostname: hostname(), observedAt: new Date().toISOString(), guest } };
-  const reactEditSource = await captureReactEditSource(config);
+  const reactEditSource = await captureReactEditSource(config, {
+    pairSource: reactEditPairSource || Boolean(before && before.configSha256 !== record.configSha256),
+  });
   if (reactEditSource) record.reactEditSource = reactEditSource;
   await mkdir(outputRoot, { recursive: true });
   const path = resolve(outputRoot, `environment-${invocation.invocationId}.json`);
@@ -1110,7 +1113,9 @@ async function main() {
   const output = resolve(outputPath);
   if (invocation) {
     const pairBeforeBinding = await importEnvironmentPairBefore(flags, dirname(output));
-    config.environmentBinding = await captureIsolatedEnvironment(config, invocation, dirname(output), { pairBeforeBinding });
+    config.environmentBinding = await captureIsolatedEnvironment(config, invocation, dirname(output), {
+      pairBeforeBinding, reactEditPairSource: flags.includes('--react-edit-pair-source'),
+    });
     config.isolatedRepresentative = true;
   } else if (config.isolatedRepresentative || config.environmentBinding) {
     throw new Error('isolated representative requires live host launcher');

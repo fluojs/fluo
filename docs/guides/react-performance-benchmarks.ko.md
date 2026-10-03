@@ -184,6 +184,11 @@ final `a48953e1f5825e26afc5865a5177af988619bdceebec801cf8b4025b1a2fad73`으로
 invocation, source/head/blob, build/dependency와 collector 증거로 capture와 replay의
 관계를 인증합니다. Production-only pair는 여전히 exact config equality를 요구하고
 profile, dev와 warmup hash를 aggregate hash와 별도로 보존합니다.
+Before record는 `--react-edit-pair-source`로 준비합니다. Aggregate와 development
+capture에 이 증거를 보존하지만 production-only child에는 flag를 전달하지 않습니다.
+인증된 before config가 다르면 after의 source proof는 필수입니다. 이 opt-in 없는
+일반 isolated capture와 same-config pair는 기존 경로를 유지하며 pinned
+ancestry/blob 또는 dev-only 실행의 production build를 요구하지 않습니다.
 
 Stimulus 전에 구독한 observer는 before의 새 main-frame document
 `reload-to-visible`와 final의 관련 component update 및 동일 document

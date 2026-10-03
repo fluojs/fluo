@@ -216,6 +216,12 @@ also pass `--environment-before-record <original-before-environment.json>` and
 `--environment-before-root <original-before-output-root>`. The collector authenticates
 the original record before importing its unchanged bytes into the after output.
 The flags alone do not authorize a config difference.
+Capture the before side with `--react-edit-pair-source` when preparing this
+unequal-config comparison. `run-gate.mjs` forwards that intent to development
+children, not production-only children. The after side requires source proof
+automatically when its authenticated before record has a different config.
+Ordinary isolated captures and exact-config pairs without this opt-in do not
+require the historical source anchors or a production build for a dev-only run.
 The internal `--isolated-guest` stdin transport is owned by the host launcher;
 prepared environment JSON and caller-supplied image/version strings are not
 observation inputs. The host actually runs Docker inspect/info against the selected

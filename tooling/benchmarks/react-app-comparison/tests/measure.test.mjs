@@ -32,6 +32,23 @@ test('isolated representative mode rejects missing live environment binding befo
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
+test('ordinary React edit capture does not require pinned history or production builds', async () => {
+  const { captureReactEditSource } = await import('../src/measure.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-non-pair-source-'));
+  const candidate = { provenance: { root: directory }, dev: { fluo: { edits: {
+    'react-edit': { file: 'src/catalog-destination.tsx', reload: false, from: 'Editor login',
+      to: 'Editor login changed', path: '/login', selector: 'h1', expectedText: 'Editor login changed' },
+  } } } };
+  try {
+    // No historical Git objects, pinned source or production dist exists here.
+    assert.equal(await captureReactEditSource(candidate), undefined);
+    await assert.rejects(captureReactEditSource(candidate, { pairSource: true }), { code: 'ENOENT' });
+    candidate.dev.fluo.edits['react-edit'].file = 'src/future-component.tsx';
+    assert.equal(await captureReactEditSource(candidate), undefined);
+    await assert.rejects(captureReactEditSource(candidate, { pairSource: true }), /source role mismatch/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 test('source-bound React pair authenticates both records without equating full config hashes', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'fluo-react-pair-'));
   try {

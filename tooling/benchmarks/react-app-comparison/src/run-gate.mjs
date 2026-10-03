@@ -292,7 +292,9 @@ async function main() {
   if (invocation) {
     const pairBeforeBinding = await importEnvironmentPairBefore(args, output);
     environmentBinding = await captureIsolatedEnvironment({ ...config, ...config.measurement,
-      provenance }, invocation, output, { pairBeforeBinding });
+      provenance }, invocation, output, {
+      pairBeforeBinding, reactEditPairSource: args.includes('--react-edit-pair-source'),
+    });
   }
   environmentPairRelation = await bindEnvironmentPair(environmentBinding, args, output);
   servers = await startServers(FRAMEWORKS.map((framework) => ({
@@ -344,7 +346,8 @@ async function main() {
         await writeFile(devConfig, `${JSON.stringify(devMeasurement, null, 2)}\n`);
         const pairFlags = args.includes('--environment-before-record')
           ? await beforeProfilePairFlags(args[args.indexOf('--environment-before-record') + 1],
-            args[args.indexOf('--environment-before-root') + 1], receipt.profile, true) : [];
+            args[args.indexOf('--environment-before-root') + 1], receipt.profile, true)
+          : args.includes('--react-edit-pair-source') ? ['--react-edit-pair-source'] : [];
         const development = await readMeasurementReceipt(() =>
           runOwned(process.execPath,
             [join(suite, 'src/measure.mjs'), '--config', devConfig, '--output', devFile, '--dev',

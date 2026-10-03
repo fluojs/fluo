@@ -193,6 +193,12 @@ identity flags; original bytes/digests, containment, invocation, source/head/blo
 build/dependency and collector evidence authenticate the relation in capture and
 replay. Production-only pairs still require exact config equality, and profile,
 dev and warmup hashes remain separate from the aggregate.
+Prepare the before record with `--react-edit-pair-source`; aggregate and
+development captures retain its proof, while production-only children do not
+inherit this flag. A different authenticated before config makes source proof
+mandatory for after. Ordinary isolated captures and same-config pairs without
+the opt-in retain their existing path without pinned ancestry/blob or dev-only
+production-build requirements.
 
 Pre-stimulus observers distinguish new main-frame document `reload-to-visible`
 before from correlated same-document component `hmr-to-visible` final.
