@@ -125,10 +125,37 @@ Success, failure, timeout and abort close observer sessions/children/listeners w
 bounded event waits, retaining cleanup failures. The two earlier headless diagnostics
 had no pending requests; their 36 already-canceled native bindings establish backend
 viability only. New focused runtime checks likewise prove neither a missing-terminal
-reproduction nor final performance PASS, and Linux does not replace the macOS
-representative environment. Identical-final-collector before/after recollection
+reproduction nor final performance PASS. The amended local representative pair
+uses explicit opt-in OrbStack Linux ARM64 on the existing Apple M4 Pro host;
+macOS native observation remains unsupported. Identical-final-collector before/after recollection
 across four frameworks/profiles, existing samples/warmups/budgets/statistics and
 historical fail/inconclusive preservation remain required.
+
+The [isolated Linux invocation boundary](../../tooling/benchmarks/react-app-comparison/README.md#explicit-isolated-linux-representative-pair)
+owns the command and frozen allocation: kernel
+`7.0.14-orbstack-00380-ga7e0a2dc9535`, 12 logical CPUs/8392974336 bytes,
+zero additional container quotas, actual Node `v24.21.0` and the recorded immutable
+image ID. This is shared VM capacity, not a dedicated reservation.
+`--isolated-container` performs real host Docker observation against the selected
+running container and guest executable/SDK/browser/Python/Frida/schema/source
+authentication per invocation. Preparation JSON or image identity alone is not
+live evidence. The contained environment record's digest, immutable identity/config
+hashes and distinct invocation evidence bind every production/dev/warmup/combined
+trace, receipt and aggregate; missing/mismatched/tampered bindings fail closed.
+Use the before hashes with `--environment-identity` and
+`--environment-config-identity` together for after, preserve
+identical actual tools/resources/config and schedule exclusive timing windows.
+Passive generator CPU and ambient contention snapshots use existing timing
+windows without changing CPU/RSS, capture or throughput boundaries or budgets.
+Historical `baseline.json` stays untouched, including macOS Node `24.20.0`;
+do not report a gain by comparing old macOS and new Linux observations.
+Tracked representative defaults do not enable Frida. Ordinary default/CI/macOS
+paths need no Docker/Python/Frida, and this local mode claims no cross-platform
+performance acceptance.
+Comparable identity excludes invocation locators and product commit/build
+differences: actual absolute paths/config stay in evidence and provenance, while
+tool/collector content hashes, allocation and normalized frozen settings must match
+even when before/after worktree/build roots differ.
 
 Historical load-only data sampled a different initial-work window and could trigger
 warm navigation before cold modules finished; retained Linux evidence includes cold

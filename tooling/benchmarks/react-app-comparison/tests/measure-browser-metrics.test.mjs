@@ -666,7 +666,8 @@ test('records real decoded and compressed asset bytes from browser network event
   const journeys = Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
     .map((name) => [name, { path: '/' }]));
   const driver = await createBrowserDriver({
-    journeys, provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+    journeys, isolatedRepresentative: true,
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
   });
   try {
     const observation = await driver.measure({
@@ -684,6 +685,12 @@ test('records real decoded and compressed asset bytes from browser network event
     assert.ok(observation.timings.initialBoundary.readiness.completedAt <= observation.timings.initialBoundary.sampledAt);
     assert.ok(observation.timings.initialBoundary.readiness.events.some((entry) => entry.event === 'post-passive'));
     assert.deepEqual(observation.qualityFailures, []);
+    const headroom = observation.artifacts.environmentHeadroom;
+    assert.ok(headroom.before.monotonicMs < headroom.after.monotonicMs);
+    assert.ok(headroom.generatorCpuPercent >= 0);
+    assert.ok(headroom.ambientBusyPercent >= 0 && headroom.ambientBusyPercent <= 100);
+    assert.ok(headroom.vmIdleCpuEquivalent >= 0);
+    assert.ok(observation.artifacts.generator.rssBytes > 0);
   } finally {
     await driver.close();
     const closed = once(server, 'close');
@@ -716,6 +723,7 @@ test('browser request failures remain in error rate after successful throughput 
       device: 'desktop', mode: 'native', url });
     assert.ok(observation.requests.some((request) => request.error && request.url.endsWith('/drop')));
     assert.ok(observation.metrics.errorRate > 0);
+    assert.equal(observation.artifacts.environmentHeadroom, undefined);
   } finally {
     await driver.close();
     const closed = once(server, 'close');

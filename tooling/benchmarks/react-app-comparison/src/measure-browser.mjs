@@ -4,7 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { promisify, stripVTControlCharacters } from 'node:util';
-import { PROFILES } from './measure.mjs';
+import { PROFILES, sampleEnvironmentHeadroom, summarizeEnvironmentHeadroom } from './measure.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
 import { installInitialReadiness, waitForInitialReadiness } from './initial-readiness.mjs';
 import { createNativeCapture, reconcileNativeTerminals } from './native-terminal.mjs';
@@ -292,6 +292,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           return { pass: false, steps: [{ name: 'dev-config', pass: false }] };
         }
         const cwd = commands.cwd ?? resolve(import.meta.dirname, `../apps/${item.framework}`);
+        const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
         const started = performance.now();
         const server = spawn(commands.start[0], commands.start.slice(1), {
           cwd, env: { ...process.env, ...commands.env }, stdio: ['ignore', 'pipe', 'pipe'],
@@ -323,8 +324,11 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           const hmrReadiness = await hmr.promise;
           const reactReadiness = commands.reactReadiness ? await waitForInitialReadiness(page) : null;
           const readyMs = performance.now() - started;
+          const environmentHeadroom = headroomBefore
+            ? summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) : undefined;
           const readyStep = { name: 'dev-ready', pass: true, elapsedMs: readyMs,
-            hmrReadiness, reactReadiness, url: commands.url, log };
+            hmrReadiness, reactReadiness, url: commands.url, log,
+            ...(environmentHeadroom ? { environmentHeadroom } : {}) };
           contexts.set(item.runId + item.framework, { context, page, cdp, readyMs,
             hmrReadiness, reactReadiness, readyStep, serverLog: () => log });
           devServers.set(item.runId + item.framework, server);
@@ -458,6 +462,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         networkChanges.emit('settled');
       });
       try {
+        const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
         const listing = new URL(config.journeys.listing.path, item.url).href;
         await page.goto(listing, { waitUntil: 'load' });
         const initialReadiness = await waitForInitialReadiness(page);
@@ -629,6 +634,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             metrics.rssBytes = rss * 1024;
           }
         }
+        const environmentHeadroom = headroomBefore
+          ? summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) : undefined;
         // Keep the original page lifetime through throughput and post-workload
         // CPU/RSS snapshots. Only the browser-request cutoff precedes them.
         const nativeEvidence = await native.read(captureTimestamp);
@@ -662,6 +669,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             throughput,
             serverPid,
             generator,
+            ...(environmentHeadroom ? { environmentHeadroom } : {}),
             rscResponseWireBytes: summarizeRscBytes(requests),
             rscMethod: 'separate text/x-component responses only; inline RSC data stays in document bytes',
             fullJourneyRequestCount: requests.length,
@@ -685,7 +693,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       const commands = config.dev[item.framework];
       if (kind === 'cold-ready') {
         return { durationMs: owned.readyMs, event: 'dev-ready', hmrReadiness: owned.hmrReadiness,
-          reactReadiness: owned.reactReadiness };
+          reactReadiness: owned.reactReadiness,
+          ...(owned.readyStep.environmentHeadroom ? { environmentHeadroom: owned.readyStep.environmentHeadroom } : {}) };
       }
       const edit = commands.edits[kind];
       if (!(edit?.file || (Array.isArray(edit?.command) && edit.command.length > 0)) || !edit.selector
@@ -713,6 +722,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       const before = reload || edit.relaunch ? null : await page.locator(edit.selector).first().evaluate((element, expectedStyle) =>
         expectedStyle ? getComputedStyle(element).getPropertyValue(expectedStyle.property) : element.textContent,
       edit.expectedStyle);
+      const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
       const started = performance.now();
       const restarted = edit.restartPattern ? new Promise((accept, reject) => {
         const timeout = setTimeout(() => {
@@ -813,6 +823,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         method: edit.relaunch ? 'dev-server-relaunch' : edit.restartPattern
           ? 'restart-and-reload' : edit.explicitReload || reload ? 'document-reload' : 'hot-update',
         ...(edit.relaunch ? { restartReadiness: contexts.get(key).readyStep } : {}),
+        ...(headroomBefore ? { environmentHeadroom:
+          summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) } : {}),
       };
       return result;
     },

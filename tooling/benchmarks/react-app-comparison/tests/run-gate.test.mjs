@@ -9,6 +9,30 @@ import { test } from 'node:test';
 import { stopOwnedProcess } from '../src/process-group.mjs';
 import { performanceExitCode, readMeasurementReceipt, requireDevDefinitions, startServers, stopServers } from '../src/run-gate.mjs';
 
+test('isolated host launcher observes the selected running container rather than accepting image strings', async () => {
+  const { observeIsolatedHost } = await import('../src/measure.mjs');
+  assert.equal(typeof observeIsolatedHost, 'function');
+  const commands = [];
+  const inspect = { Id: 'a'.repeat(64), Image: `sha256:${'b'.repeat(64)}`,
+    Config: { Image: 'fixture:image', Hostname: 'container-hostname' },
+    State: { Running: true, Pid: 71, StartedAt: '2026-10-03T00:00:00Z' },
+    HostConfig: { NanoCpus: 0, CpuQuota: 0, CpuPeriod: 0, CpusetCpus: '', Memory: 0, MemorySwap: 0 } };
+  const execute = async (command, args) => {
+    commands.push([command, ...args]);
+    return { stdout: JSON.stringify(args[0] === 'inspect' ? [inspect] : {
+      ID: 'daemon', OperatingSystem: 'OrbStack', KernelVersion: 'linux-test', Architecture: 'aarch64',
+      NCPU: 12, MemTotal: 8392974336, Name: 'orbstack',
+    }) };
+  };
+  const observed = await observeIsolatedHost('fixture-container', execute);
+  assert.equal(observed.container.id, inspect.Id);
+  assert.equal(observed.container.imageId, inspect.Image);
+  assert.equal(observed.vm.logicalCpus, 12);
+  assert.deepEqual(commands.map((command) => command.slice(0, 2)), [['docker', 'inspect'], ['docker', 'info']]);
+  inspect.State.Running = false;
+  await assert.rejects(observeIsolatedHost('fixture-container', execute), /running container/u);
+});
+
 test('representative gate requires observable cold and all three development edits', async () => {
   // Given: the checked-in four-app representative configuration.
   const { readFile } = await import('node:fs/promises');

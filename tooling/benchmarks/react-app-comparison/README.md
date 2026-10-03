@@ -105,7 +105,9 @@ diagnostics had no unresolved pending requests: their 36 already-canceled
 bindings demonstrate viability, not missing-terminal integration or performance
 acceptance. Focused runtime checks likewise do not replace identical-collector
 before/after recollection across four frameworks/profiles, five samples/two
-warmups, original budgets/statistics or the macOS representative gate.
+warmups or original budgets/statistics. The amended local representative pair
+uses the explicit isolated Linux boundary below; macOS native observation
+remains unsupported.
 Historical fail/inconclusive receipts remain unchanged.
 
 ```sh
@@ -141,12 +143,95 @@ HTTP comparison retains its separate `isolated-benchmark` selector. It is a corr
 one noisy shared-runner performance sample. A separate representative-environment
 workflow runs repeated profile measurements. A genuine failed measurement must remain
 a failed gate; unknown or noisy data has an inconclusive verdict, never `pass`.
-The representative workflow requires a provisioned `self-hosted, macOS, ARM64,
+The existing GitHub representative workflow requires a provisioned `self-hosted, macOS, ARM64,
 react-app-performance-m4-pro` runner. Without that runner, its GitHub dispatch
 cannot be claimed as executed; local results must identify the actual host.
 The runner starts built production servers with exact ready events, keeps raw
 trace files under the supplied `results/` directory, then combines all four
 profile receipts through `src/gate.mjs`. A single profile is not a gate pass.
+
+### Explicit isolated Linux representative pair
+
+The amended local #3884/#3885 pair uses one OrbStack Linux ARM64 environment
+on the Apple M4 Pro host: kernel `7.0.14-orbstack-00380-ga7e0a2dc9535`,
+12 logical CPUs and 8392974336 bytes of VM memory, image reference
+`fluo-verification:sha256-81a185cd17d652f2d9fe7dbbaad1647262d17094e49eac533e7de30d2b37293e`
+and actual immutable image ID
+`sha256:f240abbe0c9fadb08df3b4f8b409111f5fd87733dfade0c69d6dfd839682d56b`.
+Container CPU quota/period/nanoCPUs, memory/swap limits are zero and cpuset is
+empty. These mean shared VM capacity, **not** a dedicated 12-CPU reservation.
+Actual Node is `v24.21.0`; historical macOS observations used Node `24.20.0`.
+`baseline.json` retains those historical facts and is not rewritten or paired
+with Linux numbers.
+
+This mode is explicitly opt-in. Keep `config/representative.json` unchanged;
+make an isolated invocation config with
+`measurement.nativeLifetime: { enabled: true, python: "/opt/fluo-native-debug/bin/python" }`.
+For direct `measure.mjs`, put `nativeLifetime` at the config root instead.
+The already-provisioned running container must see the current collector source,
+config and fresh output paths, the existing Linux SDK and the canonical browser.
+No Docker socket mount, permission change, install or browser rebuild is needed
+by the launcher. Python/Frida were provisioned after image creation and are
+authenticated separately, not inferred from the image ID.
+
+Run the launcher **on the host**, substituting real paths visible inside the
+selected running container:
+
+```sh
+node tooling/benchmarks/react-app-comparison/src/run-gate.mjs \
+  --isolated-container fluo-3884-native-debug-20261003 \
+  --config <isolated-config.json> --output-dir <fresh-suite-output> \
+  --mode discovery
+# For the after invocation, also require the before receipt's immutable hash:
+# --environment-identity <before-environmentBinding.identitySha256>
+# --environment-config-identity <before-environmentBinding.configSha256>
+```
+
+`measure.mjs --config <config> --output <receipt>` accepts the same
+`--isolated-container` and both pair identity flags for focused invocation.
+Pair comparison requires the environment and configuration hashes together;
+matching tools with different frozen settings is rejected.
+The internal `--isolated-guest` stdin transport is owned by the host launcher;
+prepared environment JSON and caller-supplied image/version strings are not
+observation inputs. The host actually runs Docker inspect/info against the selected
+running container and rechecks container/VM/allocation after execution. The guest
+cross-checks its hostname, kernel, CPUs/memory and cgroup allocation and measures
+Node, pnpm, Playwright/TypeScript SDK, actual headless executable, external
+Python/Frida files and observer schema/source hashes. Executable/source/allocation
+bindings are revalidated around each sample.
+
+Each fresh invocation retains `environment-<invocationId>.json` inside its output
+root. Its byte digest, immutable `identitySha256`, separate `configSha256` and
+invocation identity propagate through production/development/warmup samples,
+combined source bindings, receipt provenance and aggregate provenance.
+`verifyEnvironmentBinding`, `verifyMeasurementEnvironment` and `verifyTraceFiles`
+reject missing/mismatched bindings, changed bytes, escaped realpaths, config/run
+reuse and inconsistent combined sources. Missing observation exits nonzero rather
+than synthesizing evidence. Run-specific PID/container instance/timestamps and
+CPU samples are separate from immutable before/after comparison identity;
+source provenance still identifies each runtime being compared. Comparable
+identity uses content hashes rather than executable/SDK/collector absolute paths;
+the actual paths and file bindings remain in `guestEvidence.guest` and the original
+config remains in `configurationEvidence`. Product commit/build differences stay
+in provenance, not in the comparable environment hash. Config locators under the
+observed product root or framework development cwd normalize to root labels, and
+the separately authenticated Python locator is excluded from comparable config.
+Relocating before/after worktree/build roots therefore preserves comparability;
+changing tool/collector content, allocation or frozen measurement settings does not.
+
+Schedule exclusive timing windows for the pair, including all four frameworks,
+with the same actual toolchain/browser/observer/config/resources and final
+collector. CPU-counter snapshots over entry-navigation through the unchanged
+post-throughput `ps` boundary record actual generator CPU, ambient VM busy
+percentage and idle CPU equivalents; development records its existing cold-ready
+and edit-to-visible windows. They do not replace server CPU/RSS metrics, subtract
+observer overhead or introduce an acceptance budget. VM idle capacity is a
+measured observation, not proof of exclusivity; coordinate other timing work
+before starting. Preserve five samples/two warmups, all profiles, alternating
+order, budgets, uncertainty/outlier rules and every historical fail/inconclusive.
+Small runtime/replay checks establish the boundary, not full performance acceptance,
+cross-platform parity, macOS support or physical-device verification. Ordinary
+CI/default/macOS invocations remain unchanged and require no Docker/Python/Frida.
 
 ## Frozen decision policy
 

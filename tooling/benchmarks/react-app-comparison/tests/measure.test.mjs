@@ -5,9 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { METRICS as EVALUATOR_METRICS } from '../src/evaluate.ts';
-import { collectDevMeasurements, collectMeasurements, mergeEvidence, PROFILES, planMeasurements, verifyTraceFiles } from '../src/measure.mjs';
+import { collectDevMeasurements, collectMeasurements, environmentConfigIdentity, mergeEvidence, PROFILES,
+  isolatedEnvironmentIdentity, planMeasurements, summarizeEnvironmentHeadroom,
+  verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from '../src/measure.mjs';
 import { createBrowserDriver } from '../src/measure-browser.mjs';
-import { createNativeLifetimeObserver, reconcileNativeLifetime } from '../src/native-lifetime.mjs';
+import { createNativeLifetimeObserver, NATIVE_LIFETIME_IDENTITY, NATIVE_LIFETIME_METHOD,
+  NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA, reconcileNativeLifetime } from '../src/native-lifetime.mjs';
 
 const frameworks = ['fluo', 'next', 'react-router', 'tanstack-start'];
 const config = {
@@ -18,6 +21,240 @@ const config = {
   apps: Object.fromEntries(frameworks.map((framework) => [framework, `http://127.0.0.1/${framework}`])),
   provenance: { browser: 'Chromium pinned', runtime: 'Node pinned', builds: { fluo: 'build command' }, lockfile: 'sha256:abc', dataset: 'fixture-v1' },
 };
+
+test('isolated representative mode rejects missing live environment binding before driver work', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-environment-'));
+  try {
+    await assert.rejects(collectMeasurements({ ...config, isolatedRepresentative: true }, {
+      async check() { assert.fail('unauthenticated invocation reached correctness'); },
+    }, directory), /environment binding/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('isolated replay rejects absent bindings on samples and combined sources', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-environment-'));
+  try {
+    const result = await collectMeasurements({ ...config, warmupRuns: 0, measurementRuns: 1 }, {
+      async check() { return { pass: true, steps: [] }; },
+      async measure() { return { metrics: { coldTtfbMs: 1 } }; },
+    }, directory);
+    const run = result.runs[0];
+    const trace = JSON.parse(await readFile(run.trace, 'utf8'));
+    trace.isolatedRepresentative = true;
+    await writeFile(run.trace, JSON.stringify(trace));
+    await assert.rejects(verifyTraceFiles([run], directory), /environment binding/u);
+    const combined = join(directory, 'combined.json');
+    await writeFile(combined, JSON.stringify({ schemaVersion: 1, isolatedRepresentative: true,
+      correctness: {}, sourceTraces: [run.trace, result.runs[1].trace] }));
+    await assert.rejects(verifyTraceFiles([{ trace: combined }], directory), /environment binding/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('isolated production and development aggregates cannot merge mismatched environments', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-environment-'));
+  const run = { framework: 'fluo', runId: 'r-1', trace: '/not-read', metrics: {}, correctness: 'pass' };
+  try {
+    await assert.rejects(mergeEvidence({
+      isolatedRepresentative: true, environmentBinding: { identitySha256: 'before' }, runs: [run],
+    }, {
+      isolatedRepresentative: true, environmentBinding: { identitySha256: 'other' }, runs: [run],
+    }, directory), /environment binding/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+async function environmentFixture(directory, invocationId = 'invocation') {
+  const allocation = { nanoCpus: 0, cpuQuota: 0, cpuPeriod: 0, cpuset: '', memory: 0, memorySwap: 0 };
+  const vm = { kernel: 'kernel', logicalCpus: 12, memoryBytes: 8392974336 };
+  const container = { id: 'container', imageId: 'image', imageReference: 'fixture', hostname: 'guest',
+    pid: 99, startedAt: 'start', allocation };
+  const raw = { inspection: JSON.stringify([{ Id: container.id, Image: container.imageId,
+    Config: { Image: container.imageReference, Hostname: container.hostname },
+    State: { Running: true, Pid: container.pid, StartedAt: container.startedAt },
+    HostConfig: { NanoCpus: 0, CpuQuota: 0, CpuPeriod: 0, CpusetCpus: '', Memory: 0, MemorySwap: 0 } }]),
+    information: JSON.stringify({ KernelVersion: vm.kernel, NCPU: vm.logicalCpus, MemTotal: vm.memoryBytes }) };
+  const configuration = { ...config, nativeLifetime: { enabled: true, python: '/python' } };
+  delete configuration.provenance;
+  const identity = { vm, container: { imageId: container.imageId, imageReference: container.imageReference, allocation },
+    guest: { platform: 'linux', arch: 'arm64', kernel: vm.kernel, logicalCpus: vm.logicalCpus,
+      memoryBytes: vm.memoryBytes, runtime: { version: 'v24.21.0' },
+      browser: { version: NATIVE_LIFETIME_IDENTITY.browserVersion, sha256: NATIVE_LIFETIME_IDENTITY.binarySha256 },
+      external: NATIVE_LIFETIME_RUNTIME, files: {},
+      observer: { enabled: true, method: NATIVE_LIFETIME_METHOD, schema: NATIVE_LIFETIME_SCHEMA } } };
+  const guest = identity.guest;
+  const file = (path, sha256 = 'a'.repeat(64)) => {
+    guest.files[path] = sha256;
+    return { path, sha256 };
+  };
+  guest.runtime.node = file('/node');
+  guest.browser.path = '/headless_shell';
+  guest.files[guest.browser.path] = guest.browser.sha256;
+  guest.python = file('/python', NATIVE_LIFETIME_RUNTIME.pythonSha256);
+  guest.pnpm = { ...file('/pnpm'), version: '10.4.1' };
+  guest.sdk = Object.fromEntries(['@playwright/test', 'playwright', 'playwright-core', 'typescript']
+    .map((name) => [name, { ...file(`/${name}/package.json`), version: name === 'typescript' ? '6.0.2' : '1.61.1' }]));
+  guest.collector = Object.fromEntries(['measure.mjs', 'measure-browser.mjs', 'run-gate.mjs',
+    'native-terminal.mjs', 'native-lifetime.mjs', 'native-lifetime-agent.js', 'native-lifetime-host.py']
+    .map((name) => [name, file(`/collector/${name}`)]));
+  guest.locks = Object.fromEntries(['.', ...frameworks.map((name) => `apps/${name}`)]
+    .map((name) => [name, file(`/locks/${name}/pnpm-lock.yaml`)]));
+  guest.allocation = { 'cpu.max': 'max 100000', 'cpuset.cpus.effective': '0-11', 'memory.max': 'max' };
+  const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const host = { host: { platform: 'darwin', arch: 'arm64', cpuModel: 'Apple M4 Pro' }, vm, container, raw };
+  const comparable = isolatedEnvironmentIdentity(host, guest);
+  const comparableConfig = { ...configuration, nativeLifetime: { enabled: true, python: '$authenticated-python' } };
+  const record = { schemaVersion: 1, method: 'isolated-linux-representative-v1',
+    invocation: { invocationId, host }, identity: comparable, configuration: comparableConfig,
+    configurationEvidence: configuration, provenance: config.provenance,
+    identitySha256: hash(comparable), configSha256: environmentConfigIdentity(configuration),
+    guestEvidence: { pid: 1, hostname: 'guest', guest } };
+  const path = join(directory, `environment-${invocationId}.json`);
+  const bytes = JSON.stringify(record);
+  await writeFile(path, bytes);
+  return { record, binding: { method: record.method, path,
+    sha256: createHash('sha256').update(bytes).digest('hex'), invocationId,
+    identitySha256: record.identitySha256, configSha256: record.configSha256 } };
+}
+
+test('environment replay rejects tampered bytes, escaped records, invocation reuse and raw host mismatch', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-environment-'));
+  try {
+    const { binding, record } = await environmentFixture(directory);
+    await verifyEnvironmentBinding(binding, directory);
+    await assert.rejects(verifyEnvironmentBinding({ ...binding, invocationId: 'another' }, directory), /invocation mismatch/u);
+    await assert.rejects(verifyEnvironmentBinding(binding, join(directory, 'absent')), /ENOENT/u);
+    await writeFile(binding.path, '{}');
+    await assert.rejects(verifyEnvironmentBinding(binding, directory), /digest mismatch/u);
+    record.invocation.host.container.pid = 100;
+    const bytes = JSON.stringify(record);
+    await writeFile(binding.path, bytes);
+    await assert.rejects(verifyEnvironmentBinding({
+      ...binding, sha256: createHash('sha256').update(bytes).digest('hex'),
+    }, directory), /raw host\/guest observation mismatch/u);
+    const sibling = await mkdtemp(join(tmpdir(), 'fluo-environment-outside-'));
+    try {
+      await assert.rejects(verifyEnvironmentBinding(binding, sibling), /outside output root/u);
+    } finally { await rm(sibling, { recursive: true, force: true }); }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('environment replay rejects missing executable SDK collector and allocation identities even with a fresh digest', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-environment-'));
+  try {
+    for (const key of ['sdk', 'collector', 'allocation', 'locks', 'python', 'pnpm']) {
+      const { record, binding } = await environmentFixture(directory);
+      delete record.guestEvidence.guest[key];
+      record.identity = isolatedEnvironmentIdentity(record.invocation.host, record.guestEvidence.guest);
+      record.identitySha256 = createHash('sha256').update(JSON.stringify(record.identity)).digest('hex');
+      const raw = JSON.stringify(record);
+      await writeFile(binding.path, raw);
+      await assert.rejects(verifyEnvironmentBinding({
+        ...binding, identitySha256: record.identitySha256,
+        sha256: createHash('sha256').update(raw).digest('hex'),
+      }, directory), /incomplete executable\/SDK\/collector\/allocation/u);
+    }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('environment identity excludes run-specific provenance and server PIDs but freezes profile/cache config', () => {
+  assert.equal(environmentConfigIdentity(config), environmentConfigIdentity({
+    ...config, provenance: { commit: 'after' }, serverPids: { fluo: 999 },
+    isolatedRepresentative: true, environmentBinding: { invocationId: 'new' },
+  }));
+  assert.notEqual(environmentConfigIdentity(config), environmentConfigIdentity({ ...config, mode: 'native' }));
+});
+
+test('before and after environment/config identities remain comparable across relocated product roots', async () => {
+  const beforeConfig = { ...config, nativeLifetime: { enabled: true, python: '/before/observer/bin/python' },
+    provenance: { ...config.provenance, root: '/before', commit: 'before-product', builds: { fluo: '/before/build' } },
+    dev: { fluo: { cwd: '/before/apps/fluo', start: ['node', '/before/apps/fluo/server.mjs'],
+      edits: { 'react-edit': { file: 'src/login.tsx', from: 'before', to: 'after' } } } } };
+  const afterConfig = { ...beforeConfig, nativeLifetime: { enabled: true, python: '/after/observer/bin/python' },
+    provenance: { ...beforeConfig.provenance, root: '/after', commit: 'after-product', builds: { fluo: '/after/build' } },
+    dev: { fluo: { ...beforeConfig.dev.fluo, cwd: '/after/apps/fluo', start: ['node', '/after/apps/fluo/server.mjs'] } } };
+  assert.equal(environmentConfigIdentity(beforeConfig), environmentConfigIdentity(afterConfig));
+  assert.notEqual(environmentConfigIdentity(beforeConfig), environmentConfigIdentity({ ...afterConfig, measurementRuns: 4 }));
+  const { isolatedEnvironmentIdentity } = await import('../src/measure.mjs');
+  const guest = { runtime: { version: 'v24.21.0', node: { path: '/before/node', sha256: 'node-content' } },
+    collector: { 'measure.mjs': { path: '/before/collector/measure.mjs', sha256: 'collector-content' } },
+    locks: { '.': { path: '/before/lock.yaml', sha256: 'lock-content' } },
+    files: { '/before/node': 'node-content' }, allocation: { 'cpu.max': 'max 100000' } };
+  const host = { host: { cpuModel: 'Apple M4 Pro' }, vm: { daemonId: 'same-vm' },
+    container: { id: 'before', pid: 1, hostname: 'before', startedAt: 'before',
+      imageId: 'same-image', allocation: { nanoCpus: 0 } } };
+  const relocatedGuest = JSON.parse(JSON.stringify(guest).replaceAll('/before/', '/after/'));
+  const relocatedHost = { ...host, container: { ...host.container, id: 'after', pid: 2, hostname: 'after', startedAt: 'after' } };
+  assert.deepEqual(isolatedEnvironmentIdentity(host, guest), isolatedEnvironmentIdentity(relocatedHost, relocatedGuest));
+  const executableMismatch = structuredClone(relocatedGuest);
+  executableMismatch.runtime.node.sha256 = 'different-executable';
+  assert.notDeepEqual(isolatedEnvironmentIdentity(host, guest), isolatedEnvironmentIdentity(relocatedHost, executableMismatch));
+  const allocationMismatch = structuredClone(relocatedHost);
+  allocationMismatch.container.allocation.nanoCpus = 2_000_000_000;
+  assert.notDeepEqual(isolatedEnvironmentIdentity(host, guest), isolatedEnvironmentIdentity(allocationMismatch, relocatedGuest));
+  const { requireEnvironmentPairIdentity } = await import('../src/measure.mjs');
+  const binding = { identitySha256: 'same-tools-allocation', configSha256: environmentConfigIdentity(beforeConfig) };
+  const pairFlags = ['--environment-identity', binding.identitySha256,
+    '--environment-config-identity', binding.configSha256];
+  requireEnvironmentPairIdentity({ ...binding, configSha256: environmentConfigIdentity(afterConfig) }, pairFlags);
+  assert.throws(() => requireEnvironmentPairIdentity({
+    ...binding, configSha256: environmentConfigIdentity({ ...afterConfig, mode: 'native' }),
+  }, pairFlags), /before\/after environment\/config mismatch/u);
+  assert.throws(() => requireEnvironmentPairIdentity({ ...binding, identitySha256: 'different-tools' }, pairFlags),
+    /before\/after environment\/config mismatch/u);
+  assert.throws(() => requireEnvironmentPairIdentity(binding, pairFlags.slice(0, 2)),
+    /requires both environment\/config identities/u);
+});
+
+test('isolated aggregate and combined replay preserve both invocations and all warmups', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-environment-'));
+  try {
+    const { binding } = await environmentFixture(directory);
+    const { binding: devBinding } = await environmentFixture(directory, 'development');
+    const collect = async (name, environmentBinding) => {
+      const receipt = await collectMeasurements(config, {
+        async check() { return { pass: false, steps: [] }; },
+      }, join(directory, name));
+      receipt.isolatedRepresentative = true;
+      receipt.environmentBinding = environmentBinding;
+      receipt.provenance = { ...receipt.provenance, isolatedRepresentative: true, environmentBinding };
+      for (const run of [...receipt.runs, ...receipt.warmups]) {
+        Object.assign(run, { isolatedRepresentative: true, environmentBinding });
+        const raw = JSON.parse(await readFile(run.trace, 'utf8'));
+        Object.assign(raw, { isolatedRepresentative: true, environmentBinding, provenance: receipt.provenance });
+        raw.environment.browserVersion = NATIVE_LIFETIME_IDENTITY.browserVersion;
+        await writeFile(run.trace, JSON.stringify(raw));
+      }
+      return receipt;
+    };
+    const production = await collect('production', binding);
+    const development = await collect('development', devBinding);
+    const combined = await mergeEvidence(production, development, join(directory, 'combined'));
+    assert.equal(combined.warmups.length, 4);
+    assert.equal(combined.developmentWarmups.length, 4);
+    assert.deepEqual(combined.developmentEnvironmentBinding, devBinding);
+    await verifyMeasurementEnvironment(combined, directory);
+    await verifyTraceFiles([...combined.runs, ...combined.warmups, ...combined.developmentWarmups], directory);
+    const raw = JSON.parse(await readFile(combined.runs[0].trace, 'utf8'));
+    assert.deepEqual(raw.sourceEnvironmentBindings, [binding, devBinding]);
+    raw.sourceEnvironmentBindings[1] = binding;
+    await writeFile(combined.runs[0].trace, JSON.stringify(raw));
+    await assert.rejects(verifyTraceFiles(combined.runs, directory), /combined source mismatch/u);
+    combined.warmups[0].environmentBinding = devBinding;
+    await assert.rejects(verifyMeasurementEnvironment(combined, directory), /sample\/aggregate mismatch/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('passive headroom retains CPU counters without replacing CPU or RSS metric definitions', () => {
+  const before = { monotonicMs: 10, processCpu: { user: 100, system: 100 },
+    cpus: [{ user: 10, nice: 0, sys: 10, idle: 80, irq: 0 }], memoryBytes: 1000 };
+  const after = { monotonicMs: 110, processCpu: { user: 20100, system: 10100 },
+    cpus: [{ user: 20, nice: 0, sys: 20, idle: 160, irq: 0 }], memoryBytes: 2000 };
+  const result = summarizeEnvironmentHeadroom(before, after);
+  assert.equal(result.generatorCpuPercent, 30);
+  assert.equal(result.ambientBusyPercent, 20);
+  assert.equal(result.vmIdleCpuEquivalent, 0.8);
+  assert.deepEqual(result.before, before);
+  assert.deepEqual(result.after, after);
+});
 
 test('alternates all four frameworks across warmup and independent samples', () => {
   // Given: one warmup and three measured cycles.

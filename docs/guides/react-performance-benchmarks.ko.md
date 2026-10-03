@@ -123,9 +123,33 @@ worker/service-worker coverage는 unavailable/inconclusive입니다. 정상·실
 abort에서 observer session/child/listener를 bounded event wait로 정리하며 실패를
 숨기지 않습니다. 두 기존 headless 진단에는 pending이 없었으므로 36개의 이미
 취소된 native binding은 backend 가능성만 입증합니다. 새 focused runtime도
-missing-terminal 재현이나 최종 성능 PASS가 아니며 Linux 결과로 macOS 대표 환경을
-대체하지 않습니다. 동일 최종 collector의 네 framework/profile before/after 재수집,
+missing-terminal 재현이나 최종 성능 PASS가 아닙니다. 개정된 로컬 대표 pair는 기존
+Apple M4 Pro host의 명시적 opt-in OrbStack Linux ARM64를 사용하며 macOS native
+관측은 여전히 미지원입니다. 동일 최종 collector의 네 framework/profile before/after 재수집,
 기존 반복·warmup·budget·통계와 historical fail/inconclusive 보존 요구는 유지됩니다.
+
+[격리 Linux 실행 경계](../../tooling/benchmarks/react-app-comparison/README.md#explicit-isolated-linux-representative-pair)가
+명령과 고정 allocation을 소유합니다: kernel
+`7.0.14-orbstack-00380-ga7e0a2dc9535`, 논리 CPU 12개/8392974336 bytes,
+추가 container quota 0, 실제 Node `v24.21.0` 및 기록된 immutable image ID입니다.
+이는 공유 VM 용량이지 전용 예약이 아닙니다. `--isolated-container`는 선택한 실행 중
+container를 host Docker에서 실제 관측하고 매 invocation의 guest executable,
+SDK/browser/Python/Frida/schema/source를 인증합니다. 준비 JSON이나 image identity만으로
+live evidence를 대신하지 않습니다. 출력 root 안의 environment record digest,
+immutable identity/config hash와 별도 invocation evidence를 모든
+production/dev/warmup/combined trace, receipt 및 aggregate에 결합하며
+binding 누락·불일치·변조는 실패합니다. After에는 `--environment-identity`와
+`--environment-config-identity`로 before hash 두 개를 함께 요구하고 실제 도구/resource/config를 동일하게 유지하며
+배타적 timing window를 예약합니다. Passive generator CPU 및 ambient contention
+snapshot은 기존 timing window를 사용하고 CPU/RSS, capture, throughput 경계나
+budget을 변경하지 않습니다. 과거 macOS Node `24.20.0`을 포함한 `baseline.json`은
+그대로 유지하며 옛 macOS와 새 Linux 관측을 비교해 성능 향상을 주장하지 않습니다.
+Tracked 대표 기본값은 Frida를 활성화하지 않습니다. 일반 default/CI/macOS 경로는
+Docker/Python/Frida가 필요 없고 이 로컬 모드는 cross-platform 성능 수용을 주장하지 않습니다.
+Comparable identity에서는 invocation locator와 product commit/build 차이를 제외합니다.
+실제 절대 경로/config는 evidence와 provenance에 보존하고, before/after worktree/build
+root가 달라도 도구/collector content hash, allocation 및 정규화된 고정 설정은
+같아야 합니다.
 
 과거 load-only 데이터는 다른 초기 작업 구간을 수집했고 cold module이 끝나기 전에
 warm을 시작할 수 있었습니다. 보존된 Linux 증거에는 cold script 취소가 있습니다.
