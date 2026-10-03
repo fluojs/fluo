@@ -10,6 +10,7 @@ import { gzipSync } from 'node:zlib';
 
 import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForCapturedRequests, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
 import { installInitialReadiness, waitForInitialReadiness } from '../src/initial-readiness.mjs';
+import { verifyTraceFiles } from '../src/measure.mjs';
 
 const appRequire = createRequire(new URL('../apps/fluo/package.json', import.meta.url));
 const { build } = await import(appRequire.resolve('vite'));
@@ -273,7 +274,10 @@ test('a streamed 404 waits for browser-visible failure after the navigation shel
   }
 });
 
-test('native capture stays alive through unchanged throughput sampling', { timeout: 20_000 }, async (t) => {
+for (const enabled of [false, true]) {
+test(`native capture stays alive through unchanged throughput sampling with lifetime enabled=${enabled}`, { timeout: 20_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-driver-adoption-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
   const { chromium } = await import('@playwright/test');
   const launch = chromium.launchServer;
   let captureClosed = false;
@@ -301,17 +305,38 @@ test('native capture stays alive through unchanged throughput sampling', { timeo
   server.listen(0, '127.0.0.1');
   await listening;
   let driver;
+  let spawned = false;
   try {
     driver = await createBrowserDriver({
       journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
         .map((name) => [name, { path: '/' }])),
       throughput: { fluo: { path: '/throughput', requests: 2, concurrency: 1 } },
+      nativeLifetime: { enabled, python: '/absent/native-python',
+        spawn() { spawned = true; throw new Error('fixture runtime unavailable'); } },
       provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
     });
-    await driver.measure({ framework: 'fluo', runId: 'native-lifetime', device: 'desktop',
-      mode: 'native', url: `http://127.0.0.1:${server.address().port}/` });
+    const item = { framework: 'fluo', runId: 'native-lifetime', device: 'desktop',
+      profile: 'desktop-native', mode: 'native', nativeTraceDirectory: directory,
+      url: `http://127.0.0.1:${server.address().port}/` };
+    const observation = await driver.measure(item);
     assert.deepEqual(observedAtThroughput, [false, false]);
     assert.equal(captureClosed, true);
+    assert.equal(observation.requests.filter((request) => request.resourceType === 'throughput').length, 2);
+    assert.equal(observation.metrics.errorRate, summarizeErrorRate(observation.requests));
+    assert.equal(observation.timings.finalRequestCapture.captureTimestamp,
+      observation.artifacts.nativeTerminalObserver.captureTimestamp);
+    if (enabled) {
+      assert.ok(observation.qualityFailures.includes('native lifetime: external runtime identity mismatch'));
+      assert.equal(observation.artifacts.nativeLifetimeObserver.captureTimestamp,
+        observation.artifacts.nativeTerminalObserver.captureTimestamp);
+      const trace = join(directory, 'trace.json');
+      await writeFile(trace, JSON.stringify({ schemaVersion: 1, ...item, ...observation,
+        provenance: {}, environment: {}, profileSettings: {}, correctness: { pass: true } }));
+      await verifyTraceFiles([{ trace }], directory);
+    } else {
+      assert.equal(spawned, false);
+      assert.equal(Object.hasOwn(observation.artifacts, 'nativeLifetimeObserver'), false);
+    }
   } finally {
     await driver?.close();
     const closed = once(server, 'close');
@@ -319,6 +344,7 @@ test('native capture stays alive through unchanged throughput sampling', { timeo
     await closed;
   }
 });
+}
 
 test('matched-cache disables browser reuse without changing native policy', () => {
   assert.deepEqual(cacheSettings('matched-cache'), { cacheDisabled: true });

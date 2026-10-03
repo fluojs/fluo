@@ -9,6 +9,7 @@ import { METRICS as EVALUATOR_METRICS } from '../src/evaluate.ts';
 import { collectDevMeasurements, collectMeasurements, mergeEvidence, PROFILES, planMeasurements, verifyTraceFiles } from '../src/measure.mjs';
 import { createBrowserDriver } from '../src/measure-browser.mjs';
 import { readSocketShell } from '../src/socket-shell.mjs';
+import { createNativeLifetimeObserver, reconcileNativeLifetime } from '../src/native-lifetime.mjs';
 
 const frameworks = ['fluo', 'next', 'react-router', 'tanstack-start'];
 const config = {
@@ -306,4 +307,123 @@ test('native trace authentication rejects missing, altered, incomplete and escap
   trace.artifacts.nativeTerminalObserver.rawTrace = join(directory, 'missing.json');
   await writeFile(result.runs[0].trace, JSON.stringify(trace));
   await assert.rejects(verifyTraceFiles([result.runs[0]], directory), { code: 'ENOENT' });
+});
+
+test('raw trace validation rejects native lifetime evidence without authenticated references', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-adoption-validation-'));
+  try {
+    const trace = join(directory, 'trace.json');
+    await writeFile(trace, JSON.stringify({ schemaVersion: 1, provenance: {}, environment: {},
+      correctness: { pass: true }, metrics: {}, unavailable: {}, profileSettings: {}, requests: [],
+      artifacts: { nativeLifetimeObserver: { method: 'chromium-native-lifetime-v1', references: [] } } }));
+    await assert.rejects(verifyTraceFiles([{ trace }], directory), /invalid native lifetime provenance/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+async function lifetimeTraceFixture() {
+  const directory = await mkdtemp(join(tmpdir(), 'native-lifetime-trace-'));
+  const measurement = { runId: 'fixture-run', framework: 'next', profile: 'desktop-native', mode: 'native' };
+  const observer = await createNativeLifetimeObserver({ enabled: true, directory, measurement });
+  // Unsupported browser is intentional: complete failure artifacts must still
+  // authenticate, and their missing coverage must remain inconclusive.
+  await observer.prepare({ version: () => 'unsupported' }, 123, {});
+  const evidence = await observer.drain(10, []);
+  const reasons = reconcileNativeLifetime([], evidence.observation, []).unavailable;
+  const trace = join(directory, 'trace.json');
+  const record = { schemaVersion: 1, ...measurement, provenance: {}, environment: {}, profileSettings: {},
+    correctness: { pass: true }, metrics: {}, unavailable: {}, qualityFailures: reasons,
+    requests: [], artifacts: { nativeLifetimeObserver: evidence.provenance } };
+  await writeFile(trace, JSON.stringify(record));
+  return { directory, trace, record, evidence };
+}
+
+test('native lifetime unavailable evidence authenticates in raw, combined and warmup paths', async () => {
+  const fixture = await lifetimeTraceFixture();
+  try {
+    await verifyTraceFiles([{ trace: fixture.trace, warmup: true }], fixture.directory);
+    const combined = join(fixture.directory, 'combined.json');
+    await writeFile(combined, JSON.stringify({ schemaVersion: 1, sourceTraces: [fixture.trace, fixture.trace],
+      correctness: { production: 'inconclusive', development: 'inconclusive' } }));
+    await verifyTraceFiles([{ trace: combined }], fixture.directory);
+    fixture.record.qualityFailures = [];
+    await writeFile(fixture.trace, JSON.stringify(fixture.record));
+    await assert.rejects(verifyTraceFiles([{ trace: combined }], fixture.directory), /inconclusive reasons missing/u);
+  } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+for (const [name, mutate, expected] of [
+  ['missing', async (f, ref) => { ref.path = join(f.directory, 'absent.json'); }, /ENOENT/u],
+  ['truncated', async (_f, ref) => { await writeFile(ref.path, '{'); }, /digest mismatch/u],
+  ['malformed schema', async (_f, ref) => {
+    await writeFile(ref.path, '{}'); ref.sha256 = createHash('sha256').update('{}').digest('hex');
+  }, /cross-run\/schema mismatch/u],
+  ['cross-run', async (_f, ref) => {
+    const raw = JSON.parse(await readFile(ref.path, 'utf8')); raw.runId = 'other';
+    const bytes = JSON.stringify(raw); await writeFile(ref.path, bytes);
+    ref.sha256 = createHash('sha256').update(bytes).digest('hex');
+  }, /cross-run\/schema mismatch/u],
+  ['coverage tamper', async (f) => {
+    const ref = f.record.artifacts.nativeLifetimeObserver.references.find((entry) => entry.role === 'coverage');
+    const raw = JSON.parse(await readFile(ref.path, 'utf8')); raw.coverage.ready = true;
+    const bytes = JSON.stringify(raw); await writeFile(ref.path, bytes);
+    ref.sha256 = createHash('sha256').update(bytes).digest('hex');
+  }, /authentication mismatch/u],
+  ['native event tamper', async (_f, ref) => {
+    const raw = JSON.parse(await readFile(ref.path, 'utf8')); raw.events = [{ event: 'cancel-return' }];
+    const bytes = JSON.stringify(raw); await writeFile(ref.path, bytes);
+    ref.sha256 = createHash('sha256').update(bytes).digest('hex');
+  }, /replay mismatch/u],
+  ['observer schema source tamper', async (f) => {
+    const ref = f.record.artifacts.nativeLifetimeObserver.references.find((entry) => entry.role === 'schema');
+    const raw = JSON.parse(await readFile(ref.path, 'utf8')); raw.agentSha256 = '0'.repeat(64);
+    const bytes = JSON.stringify(raw); await writeFile(ref.path, bytes);
+    ref.sha256 = createHash('sha256').update(bytes).digest('hex');
+  }, /authentication mismatch/u],
+  ['measurement identity reuse', async (f) => { f.record.runId = 'other-invocation'; }, /measurement identity mismatch/u],
+  ['reconciliation result tamper', async (f) => {
+    f.record.requests = [{ kind: 'request-failed', canceled: true, nativeLifetime: { runId: 'forged' },
+      cdpObservation: { kind: 'request-pending', requestId: '1.1' } }];
+  }, /reconciliation replay mismatch/u],
+  ['symlink escape', async (f, ref) => {
+    const { symlink } = await import('node:fs/promises');
+    const outside = await mkdtemp(join(tmpdir(), 'native-lifetime-outside-'));
+    f.outside = outside;
+    const path = join(outside, 'native.json'); await writeFile(path, await readFile(ref.path));
+    const link = join(f.directory, 'escape.json'); await symlink(path, link); ref.path = link;
+  }, /outside output root/u],
+]) {
+  test(`native lifetime trace authentication rejects ${name}`, async () => {
+    const fixture = await lifetimeTraceFixture();
+    try {
+      await verifyTraceFiles([{ trace: fixture.trace }], fixture.directory);
+      await mutate(fixture, fixture.record.artifacts.nativeLifetimeObserver.references[0]);
+      await writeFile(fixture.trace, JSON.stringify(fixture.record));
+      await assert.rejects(verifyTraceFiles([{ trace: fixture.trace }], fixture.directory), expected);
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true });
+      if (fixture.outside) await rm(fixture.outside, { recursive: true, force: true });
+    }
+  });
+}
+
+test('native lifetime and passive NetLog observers must retain the same original CDP ledger and cutoff', async () => {
+  const fixture = await lifetimeTraceFixture();
+  try {
+    const netlog = join(fixture.directory, 'netlog.json');
+    const cdp = join(fixture.directory, 'passive-cdp.json');
+    const logBytes = JSON.stringify({ constants: { logEventTypes: { CANCELLED: 0 } }, events: [{ type: 0 }] });
+    const cdpBytes = JSON.stringify({ ledger: [{ name: 'unrelated-invocation', data: {} }] });
+    await writeFile(netlog, logBytes); await writeFile(cdp, cdpBytes);
+    fixture.record.artifacts.nativeTerminalObserver = { rawTrace: netlog, cdpTrace: cdp,
+      sha256: createHash('sha256').update(logBytes).digest('hex'),
+      cdpSha256: createHash('sha256').update(cdpBytes).digest('hex'), captureTimestamp: 10 };
+    await writeFile(fixture.trace, JSON.stringify(fixture.record));
+    await assert.rejects(verifyTraceFiles([{ trace: fixture.trace }], fixture.directory), /CDP ledger mismatch/u);
+    await writeFile(cdp, JSON.stringify({ ledger: [] }));
+    fixture.record.artifacts.nativeTerminalObserver.cdpSha256 = createHash('sha256')
+      .update(JSON.stringify({ ledger: [] })).digest('hex');
+    fixture.record.artifacts.nativeTerminalObserver.captureTimestamp = 11;
+    await writeFile(fixture.trace, JSON.stringify(fixture.record));
+    await assert.rejects(verifyTraceFiles([{ trace: fixture.trace }], fixture.directory), /capture boundary mismatch/u);
+  } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });
