@@ -4,64 +4,69 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AppShape } from './scenarios';
 
-const FLUO_FASTIFY_PORT = 3001;
-const NESTJS_PORT = 3002;
-const FLUO_BUN_PORT = 3003;
 export const WDIR = fileURLToPath(new URL('../', import.meta.url));
 const FLUO_FASTIFY_BUILD_DIR = join(WDIR, 'dist/fluo-fastify');
 const FLUO_BUN_BUILD_DIR = join(WDIR, 'dist/fluo-bun');
 const NESTJS_BUILD_DIR = join(WDIR, 'dist/nestjs');
+const activeTargets = new Set<ChildProcess>();
 
-type TargetName = 'nestjs-fastify' | 'fluo-fastify' | 'fluo-bun';
+for (const [signal, exitCode] of [['SIGINT', 130], ['SIGTERM', 143]] as const) {
+  process.once(signal, () => {
+    void stopTargets([...activeTargets]).then(() => process.exit(exitCode));
+  });
+}
+process.once('exit', () => {
+  for (const child of activeTargets) signalTarget(child, 'SIGKILL');
+});
+
+export type Platform = 'fastify' | 'express' | 'nodejs' | 'bun' | 'deno' | 'workers' | 'nextjs';
+export type Product = 'native' | 'fluo' | 'nestjs';
+type TargetName = `${Product}-${Platform}`;
 export interface TargetConfig {
   name: TargetName;
+  platform: Platform;
+  product: Product;
   label: string;
   port: number;
   command: string;
   args: string[];
 }
 
-export const TARGETS: TargetConfig[] = [
-  {
-    name: 'nestjs-fastify',
-    label: 'Nest+Fastify',
-    port: NESTJS_PORT,
-    command: 'node',
-    args: ['dist/nestjs/nestjs/server.js'],
-  },
-  {
-    name: 'fluo-fastify',
-    label: 'fluo+Fastify',
-    port: FLUO_FASTIFY_PORT,
-    command: 'node',
-    args: ['dist/fluo-fastify/fluo/server.js'],
-  },
-  {
-    name: 'fluo-bun',
-    label: 'fluo+Bun',
-    port: FLUO_BUN_PORT,
-    command: 'bun',
-    args: ['run', 'dist/fluo-bun/fluo-bun/server.js'],
-  },
-];
+export const PLATFORMS: readonly Platform[] = ['fastify', 'express', 'nodejs', 'bun', 'deno', 'workers', 'nextjs'];
+export const TARGETS: TargetConfig[] = PLATFORMS.flatMap((platform) => {
+  const products: readonly Product[] = platform === 'fastify' || platform === 'express' ? ['native', 'fluo', 'nestjs'] : ['native', 'fluo'];
+  return products.map((product) => {
+    const name: TargetName = `${product}-${platform}`;
+    const port = Number(process.env.BENCH_PORT_BASE ?? 33909) + PLATFORMS.indexOf(platform) * 3 + products.indexOf(product);
+    const source = product === 'nestjs' ? 'nestjs' : name === 'fluo-fastify' ? 'fluo' : name;
+    const args = platform === 'bun' ? ['run', `dist/${name}/${source}/server.js`]
+      : platform === 'deno' ? ['run', `--allow-net=${process.env.BENCH_BIND_HOST ?? '127.0.0.1'}`, '--allow-read', '--allow-env', `dist/${name}/server.mjs`, String(port)]
+      : platform === 'workers' ? ['node_modules/wrangler/bin/wrangler.js', 'dev', `src/${source}/server.ts`, '--local', '--ip', process.env.BENCH_BIND_HOST ?? '127.0.0.1', '--port', String(port), '--inspector-port', '0', '--compatibility-date', '2025-06-01', '--compatibility-flags', 'nodejs_compat']
+      : platform === 'nextjs' ? ['node_modules/next/dist/bin/next', 'start', `nextjs/${product}`, '--hostname', process.env.BENCH_BIND_HOST ?? '127.0.0.1', '--port', String(port)]
+      : [`dist/${product === 'nestjs' ? 'nestjs' : name}/${source}/server.js`];
+    return { name, platform, product, label: name, port, command: platform === 'bun' ? 'bun' : platform === 'deno' ? 'deno' : 'node', args };
+  });
+});
 
 export function waitForTarget(child: ChildProcess): Promise<void> {
   return new Promise((resolve, reject) => {
     let output = '';
-    const timer = setTimeout(() => finish(new Error('Target readiness timed out')), 20_000);
+    const timer = setTimeout(() => finish(new Error(`Target readiness timed out: ${output}`)), 60_000);
     const onExit = (code: number | null) => finish(new Error(`Target exited before readiness: ${code}`));
     const onData = (chunk: Buffer) => {
       output += String(chunk);
-      if (output.includes('listening on :')) finish();
+      if (/listening on :|Ready in|Ready on http/.test(output)) finish();
     };
     const finish = (error?: Error) => {
       clearTimeout(timer);
       child.stdout?.removeListener('data', onData);
+      child.stderr?.removeListener('data', onData);
       child.removeListener('error', finish);
       child.removeListener('exit', onExit);
       if (error) reject(error); else resolve();
     };
     child.stdout?.on('data', onData);
+    child.stderr?.on('data', onData);
     child.once('error', finish);
     child.once('exit', onExit);
   });
@@ -92,14 +97,17 @@ export function runCommand(command: string, args: string[]): Promise<void> {
 
 export function startTargets(appShape: AppShape, targets: readonly TargetConfig[]): ChildProcess[] {
   return targets.map((target) => {
-    const child = spawn(target.command, target.args, {
+    const args = target.platform === 'workers' ? [...target.args, '--var', `BENCH_APP_SHAPE:${appShape}`, '--var', `BENCH_CONFIGURATION:${process.env.BENCH_CONFIGURATION ?? 'default'}`]
+      : target.platform === 'deno' ? [...target.args, appShape] : target.args;
+    const child = spawn(target.command, args, {
       cwd: WDIR,
       detached: true,
-      env: { ...process.env, BENCH_APP_SHAPE: appShape, PORT: String(target.port) },
+      env: { ...process.env, BENCH_APP_SHAPE: appShape, BENCH_TARGET: target.name, PORT: String(target.port), WRANGLER_SEND_METRICS: 'false', NEXT_TELEMETRY_DISABLED: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[${target.name}] ${String(d)}`));
+    activeTargets.add(child);
     return child;
   });
 }
@@ -149,6 +157,7 @@ export async function stopTargets(processes: readonly ChildProcess[]): Promise<v
   }
 
   await Promise.all(processes.map((child) => waitForChildExit(child, 1_000)));
+  for (const child of processes) activeTargets.delete(child);
 }
 
 async function buildBunTarget(): Promise<void> {
@@ -196,16 +205,23 @@ async function buildNestTarget(): Promise<void> {
 }
 
 export async function buildTarget(target: TargetConfig): Promise<void> {
-  switch (target.name) {
-    case 'nestjs-fastify':
-      await buildNestTarget();
-      return;
-    case 'fluo-fastify':
-      await buildFluoFastifyTarget();
-      return;
-    case 'fluo-bun':
-      await buildBunTarget();
-      return;
+  if (target.platform === 'nextjs') {
+    if (target.product === 'native') {
+      await runCommand('pnpm', ['exec', 'tsc', 'src/shared/native-app.ts', 'src/shared/app-shape.ts', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler', '--strict', '--skipLibCheck', '--declaration', '--outDir', 'dist/next-native']);
+    }
+    if (target.product === 'fluo') {
+      await runCommand('pnpm', ['exec', 'tsc', 'src/shared/fluo-app.ts', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler', '--strict', '--skipLibCheck', '--declaration', '--outDir', 'dist/next-backend']);
+    }
+    await runCommand('node', ['node_modules/next/dist/bin/next', 'build', `nextjs/${target.product}`, '--turbopack']);
+    return;
+  }
+  if (target.platform === 'workers') return; // Wrangler compiles the entrypoint for real workerd.
+  if (target.product === 'nestjs') { await buildNestTarget(); return; }
+  if (target.name === 'fluo-fastify') { await buildFluoFastifyTarget(); return; }
+  if (target.name === 'fluo-bun') { await buildBunTarget(); return; }
+  await runCommand('pnpm', ['exec', 'tsc', `src/${target.name}/server.ts`, '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler', '--strict', '--skipLibCheck', '--esModuleInterop', '--outDir', `dist/${target.name}`]);
+  if (target.platform === 'deno') {
+    await runCommand('pnpm', ['exec', 'esbuild', `dist/${target.name}/${target.name}/server.js`, '--bundle', '--platform=node', '--format=esm', `--outfile=dist/${target.name}/server.mjs`]);
   }
 }
 

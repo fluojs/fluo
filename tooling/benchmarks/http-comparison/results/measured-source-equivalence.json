@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "measuredSourceSha256": "fe82ef173d29d810d1883c4d17301671ab7318cec6f54dfb9f4cf504f9082e30",
+  "method": "TypeScript parser/printer comparison: non-import statements identical with comments removed; imported modules and bindings equal after sorting.",
+  "changedMeasuredFiles": [
+    {
+      "path": "src/fluo-deno/server.ts",
+      "onlyImportOrderOrFormatting": true
+    },
+    {
+      "path": "src/headroom.ts",
+      "onlyImportOrderOrFormatting": true
+    },
+    {
+      "path": "src/load.ts",
+      "onlyImportOrderOrFormatting": true
+    },
+    {
+      "path": "src/native-deno/server.ts",
+      "onlyImportOrderOrFormatting": true
+    },
+    {
+      "path": "src/native-express/server.ts",
+      "onlyImportOrderOrFormatting": true
+    },
+    {
+      "path": "src/native-fastify/server.ts",
+      "onlyImportOrderOrFormatting": true
+    },
+    {
+      "path": "src/native-nodejs/server.ts",
+      "onlyImportOrderOrFormatting": true
+    },
+    {
+      "path": "src/provenance.ts",
+      "onlyImportOrderOrFormatting": true
+    },
+    {
+      "path": "src/run.ts",
+      "onlyImportOrderOrFormatting": true
+    },
+    {
+      "path": "src/shared/fluo-app.ts",
+      "onlyImportOrderOrFormatting": true
+    },
+    {
+      "path": "src/smoke.ts",
+      "onlyImportOrderOrFormatting": true
+    }
+  ],
+  "postMeasurementAdditions": [
+    "src/archive.mjs",
+    "tests/archive.test.mts",
+    "results/BASELINE.md",
+    "results/.gitignore"
+  ],
+  "limitations": [
+    "Import evaluation ordering is not generally behavior-neutral; changes here reorder existing pure header helpers and node builtins, not framework setup statements. Full correctness smoke and focused tests run on the final source."
+  ],
+  "removedUnusedHelper": "src/baseline.ts was never called by run.ts; its predicate-only tests were replaced by real archive CLI rejection tests for missing targets, bad status and smoke duration.",
+  "postMeasurementTestUpdates": [
+    "tests/platform-baselines.test.mts",
+    "tests/archive.test.mts"
+  ]
+}

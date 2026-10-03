@@ -1,10 +1,10 @@
-import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
+import { ExpressHttpApplicationAdapter } from '@fluojs/platform-express';
 import { FluoFactory } from '@fluojs/runtime';
 import { readAppShape, resolveAppModule } from '../shared/fluo-app.js';
 
-const port = Number(process.env.PORT ?? 3001);
+const port = Number(process.env.PORT);
 const app = await FluoFactory.create(resolveAppModule(readAppShape(process.env.BENCH_APP_SHAPE)), {
-  adapter: FastifyHttpApplicationAdapter.create({ port }),
+  adapter: ExpressHttpApplicationAdapter.create({ port }),
 });
 await app.listen();
-process.stdout.write(`fluo listening on :${port}\n`);
+process.stdout.write(`fluo+Express listening on :${port}\n`);
