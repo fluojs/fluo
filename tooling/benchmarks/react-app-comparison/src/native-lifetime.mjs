@@ -65,6 +65,17 @@ export function isObservedShutdownExit(exit, observation) {
     || events.some((e, i) => e.pid !== close.pid || e.processBirth !== close.processBirth
       || e.runId !== observation.runId || e.seq !== i + 1 || ns(e.ns) === null
       || i > 0 && ns(e.ns) < ns(events[i - 1].ns))) return false;
+  const calls = events.slice(1);
+  if (calls.some((e) => !Number.isSafeInteger(e.call) || e.call < 1
+    || !Number.isSafeInteger(e.thread) || e.thread < 1 || !Object.hasOwn(e, 'parent')
+    || (e.event.startsWith('shutdown-normal-') ? e.parent !== null
+      : !Number.isSafeInteger(e.parent) || e.parent < 1 || e.parent === e.call))) return false;
+  for (const id of new Set(calls.map((e) => e.call))) {
+    const pair = calls.filter((e) => e.call === id);
+    if (pair.length !== 2 || !/^shutdown-(normal|terminate|signal)-enter$/u.test(pair[0].event)
+      || pair[1].event !== pair[0].event.replace(/-enter$/u, '-return')
+      || pair[0].thread !== pair[1].thread || pair[0].parent !== pair[1].parent) return false;
+  }
   return events.some((signal) => {
     if (signal.event !== 'shutdown-signal-enter' || signal.signal !== 15
       || signal.target?.pid !== exit.pid
