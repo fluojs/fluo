@@ -314,6 +314,7 @@ test('actual helper-only source drift changes pair identity and missing helpers 
     await rm(helper);
     await assert.rejects(captureCollectorSources(directory), { code: 'ENOENT' });
     await cp(new URL('../src/initial-readiness.mjs', import.meta.url), helper);
+    await rm(join(directory, 'server-measurement.mjs'), { force: true });
     await assert.rejects(captureCollectorSources(directory, ['run-server-only.mjs']), { code: 'ENOENT' });
     for (const name of ['run-server-only.mjs', 'server-measurement.mjs', 'socket-shell.mjs']) {
       await writeFile(join(directory, name), 'export const value = 1;\n');
