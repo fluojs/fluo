@@ -27,6 +27,8 @@ export interface Baseline {
 }
 
 export interface MeasurementRun {
+  readonly methodVersion?: string;
+  readonly measurementPurpose?: string;
   readonly profile: string;
   readonly mode: Mode;
   readonly framework: Framework;
@@ -48,6 +50,10 @@ export interface EvaluationCheck {
      | 'noise' | 'outlier' | 'invalid-value' | 'insufficient-warmup' | 'measurement-quality';
   readonly observed?: number;
   readonly limit?: number;
+  readonly range?: readonly [number, number];
+  readonly peerRange?: readonly [number, number];
+  readonly diagnostics?: { readonly median: number; readonly mad: number;
+    readonly relativeSpread: number; readonly outlier: boolean };
 }
 
 export interface Evaluation {
@@ -76,7 +82,9 @@ function median(values: readonly number[]): number {
   return (lower + upper) / 2;
 }
 
-export function evaluatePerformance(baseline: Baseline, runs: readonly MeasurementRun[]): Evaluation {
+export function evaluatePerformance(baseline: Baseline, runs: readonly MeasurementRun[],
+  methodVersion: 'historical-v1' | 'FA-V2' = 'historical-v1'): Evaluation {
+  if (methodVersion === 'FA-V2') return evaluateObservedRanges(baseline, runs);
   const { minimumRuns, warmupRuns, maximumRelativeSpread, outlierMadMultiplier } = baseline.policy;
   if (!Number.isInteger(minimumRuns) || minimumRuns < 3) throw new InvalidBaselineError('minimumRuns');
   if (!Number.isInteger(warmupRuns) || warmupRuns < 0) throw new InvalidBaselineError('warmupRuns');
@@ -175,4 +183,117 @@ export function evaluatePerformance(baseline: Baseline, runs: readonly Measureme
       : checks.some((check) => check.verdict === 'inconclusive') ? 'inconclusive' : 'pass',
     checks,
   };
+}
+
+// Compare the canonical decimal observations exactly, including zero and
+// decimal equality, without a floating multiplication or widened tolerance.
+function compareProducts(left: readonly number[], right: readonly number[]): number {
+  const product = (values: readonly number[]) => values.reduce((acc, value) => {
+    const [digits = '', exponent = '0'] = String(value).split('e');
+    const [whole = '', fraction = ''] = digits.split('.');
+    return { coefficient: acc.coefficient * BigInt(whole + fraction),
+      exponent: acc.exponent + Number(exponent) - fraction.length };
+  }, { coefficient: 1n, exponent: 0 });
+  const a = product(left);
+  const b = product(right);
+  const scale = Math.min(a.exponent, b.exponent);
+  const delta = a.coefficient * 10n ** BigInt(a.exponent - scale)
+    - b.coefficient * 10n ** BigInt(b.exponent - scale);
+  return delta < 0n ? -1 : delta > 0n ? 1 : 0;
+}
+
+/** FA-V2 decision stability over every observed sample; legacy replay is above. */
+export function evaluateObservedRanges(baseline: Baseline, runs: readonly MeasurementRun[]): Evaluation {
+  // Keep baseline validation identical to historical replay, without adopting
+  // any of its median/noise verdicts.
+  evaluatePerformance(baseline, []);
+  const checks: EvaluationCheck[] = [];
+  const { minimumRuns, warmupRuns, maximumRelativeSpread, outlierMadMultiplier } = baseline.policy;
+  if (minimumRuns !== 5 || warmupRuns !== 2) throw new InvalidBaselineError('FA-V2 repetitions');
+  for (const run of runs) {
+    if (!Object.hasOwn(baseline.profiles, run.profile) || !FRAMEWORKS.includes(run.framework)) {
+      checks.push({ profile: run.profile, mode: run.mode, framework: run.framework,
+        verdict: 'inconclusive', reason: 'measurement-quality' });
+    }
+  }
+  for (const [profile, config] of Object.entries(baseline.profiles)) {
+    const ranges = new Map<Framework, Map<Metric, readonly [number, number]>>();
+    for (const framework of FRAMEWORKS) {
+      const context = { profile, mode: config.mode, framework };
+      const samples = runs.filter((run) => run.profile === profile && run.framework === framework);
+      const unique = new Set(samples.map((run) => run.runId)).size;
+      let complete = samples.length === minimumRuns && unique === samples.length;
+      if (!complete) checks.push({ ...context, verdict: 'inconclusive', reason: 'insufficient-runs' });
+      for (const sample of samples) {
+        if (sample.mode !== config.mode || sample.methodVersion !== 'FA-V2'
+          || sample.measurementPurpose !== 'timing') {
+          complete = false;
+          checks.push({ ...context, verdict: 'inconclusive', reason: 'measurement-quality' });
+        }
+        if (!sample.trace?.trim()) {
+          complete = false;
+          checks.push({ ...context, verdict: 'inconclusive', reason: 'missing-trace' });
+        }
+        if (sample.correctness !== 'pass') {
+          complete = false;
+          checks.push({ ...context, verdict: sample.correctness === 'fail' ? 'fail' : 'inconclusive',
+            reason: sample.correctness === 'fail' ? 'correctness-failure' : 'measurement-quality' });
+        }
+        if (sample.warmupRuns !== warmupRuns) {
+          complete = false;
+          checks.push({ ...context, verdict: 'inconclusive', reason: 'insufficient-warmup' });
+        }
+      }
+      const summary = new Map<Metric, readonly [number, number]>();
+      ranges.set(framework, summary);
+      for (const metric of METRICS) {
+        const values = samples.map((sample) => sample.metrics[metric]);
+        if (values.some((value) => value === undefined || !Number.isFinite(value) || value < 0)) {
+          checks.push({ ...context, metric, verdict: 'inconclusive',
+            reason: values.includes(undefined) ? 'missing-metric' : 'invalid-value' });
+          continue;
+        }
+        const numbers = values.filter((value): value is number => value !== undefined);
+        if (!complete) continue;
+        const lower = Math.min(...numbers);
+        const upper = Math.max(...numbers);
+        summary.set(metric, [lower, upper]);
+        if (framework !== 'fluo') continue;
+        const center = median(numbers);
+        const mad = median(numbers.map((number) => Math.abs(number - center)));
+        const relativeSpread = (upper - lower) / Math.max(1, center);
+        const outlier = numbers.some((number) => Math.abs(number - center) > outlierMadMultiplier * mad
+          && Math.abs(number - center) / Math.max(1, center) > maximumRelativeSpread);
+        const limit = config.absoluteBudgets[metric];
+        const throughput = metric === 'throughputRequestsPerSecond';
+        const pass = throughput ? lower >= limit : upper <= limit;
+        const fail = throughput ? upper < limit : lower > limit;
+        checks.push({ ...context, metric, verdict: pass ? 'pass' : fail ? 'fail' : 'inconclusive',
+          reason: pass ? 'within-budget' : 'absolute-budget', range: [lower, upper], limit,
+          diagnostics: { median: center, mad, relativeSpread, outlier } });
+      }
+    }
+    for (const framework of FRAMEWORKS) {
+      if (framework === 'fluo') continue;
+      for (const metric of METRICS) {
+        const fluo = ranges.get('fluo')?.get(metric);
+        const peer = ranges.get(framework)?.get(metric);
+        const context = { profile, mode: config.mode, framework, metric };
+        if (!fluo || !peer) {
+          checks.push({ ...context, verdict: 'inconclusive', reason: 'missing-metric' });
+          continue;
+        }
+        const band = config.relativeBands[metric];
+        const throughput = metric === 'throughputRequestsPerSecond';
+        const pass = throughput ? compareProducts([band, fluo[0]], [peer[1]]) >= 0
+          : compareProducts([fluo[1]], [band, peer[0]]) <= 0;
+        const fail = throughput ? compareProducts([band, fluo[1]], [peer[0]]) < 0
+          : compareProducts([fluo[0]], [band, peer[1]]) > 0;
+        checks.push({ ...context, verdict: pass ? 'pass' : fail ? 'fail' : 'inconclusive',
+          reason: pass ? 'within-budget' : 'relative-band', range: fluo, peerRange: peer });
+      }
+    }
+  }
+  return { checks, verdict: checks.some((check) => check.verdict === 'fail') ? 'fail'
+    : checks.some((check) => check.verdict === 'inconclusive') ? 'inconclusive' : 'pass' };
 }

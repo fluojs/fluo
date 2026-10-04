@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual, promisify } from 'node:util';
+import { captureMethodBinding, verifyMethodReceipt, verifyMethodTrace } from './fa-v2.mjs';
 
 const execute = promisify(execFile);
 const sha256 = (raw) => createHash('sha256').update(raw).digest('hex');
@@ -29,6 +30,7 @@ function collectorSources(entrypoints = ['measure.mjs', 'run-gate.mjs']) {
   return [...new Set(['measure.mjs', 'measure-browser.mjs', 'run-gate.mjs',
     'initial-readiness.mjs', 'process-group.mjs', 'gate.mjs', 'evaluate.ts', 'fluo-dev.mjs',
     'native-terminal.mjs', 'native-lifetime.mjs', 'native-lifetime-agent.js', 'native-lifetime-host.py',
+    'fa-v2.mjs', 'server-cpu.mjs',
     ...(entrypoints.includes('run-server-only.mjs')
       ? ['run-server-only.mjs', 'server-measurement.mjs', 'socket-shell.mjs'] : [])])];
 }
@@ -432,12 +434,38 @@ function verifyReactEditSource(record, role) {
 function compareReactEditPairRecords(before, after) {
   if (before.identitySha256 !== after.identitySha256) throw new Error('React edit pair environment mismatch');
   if (before.invocation.invocationId === after.invocation.invocationId) throw new Error('React edit pair invocation reuse');
-  if (before.configSha256 === after.configSha256) return false;
+  if (Boolean(before.invocation.parentInvocationId) !== Boolean(after.invocation.parentInvocationId)) {
+    throw new Error('React edit pair other configuration/invocation mismatch');
+  }
+  const expected = structuredClone(before.configuration);
+  if (before.configuration.methodVersion !== undefined || after.configuration.methodVersion !== undefined) {
+    if (before.configuration.methodVersion !== 'FA-V2' || after.configuration.methodVersion !== 'FA-V2'
+      || !before.configuration.pairId || before.configuration.pairId !== after.configuration.pairId
+      || !['timing', 'native-conformance'].includes(before.configuration.measurementPurpose)
+      || before.configuration.measurementPurpose !== after.configuration.measurementPurpose
+      || before.configuration.pairPhase !== 'before' || after.configuration.pairPhase !== 'after'
+      || before.configuration.measurementKind !== after.configuration.measurementKind) {
+      throw new Error('React edit pair other configuration/phase mismatch');
+    }
+    expected.pairPhase = 'after';
+    if (expected.measurement) {
+      if (expected.measurement.methodVersion !== 'FA-V2'
+        || expected.measurement.pairId !== expected.pairId
+        || expected.measurement.measurementPurpose !== expected.measurementPurpose
+        || expected.measurement.pairPhase !== 'before') {
+        throw new Error('React edit pair other configuration/aggregate phase mismatch');
+      }
+      expected.measurement.pairPhase = 'after';
+    }
+    if (isDeepStrictEqual(expected, after.configuration)) return true;
+    if (before.configuration.measurementKind === 'production' || !before.configuration.dev) {
+      throw new Error('React edit pair other configuration/production mismatch');
+    }
+  } else if (before.configSha256 === after.configSha256) return false;
   requireReactEdit(before.configuration, 'before');
   requireReactEdit(after.configuration, 'after');
   verifyReactEditSource(before, 'before');
   verifyReactEditSource(after, 'after');
-  const expected = structuredClone(before.configuration);
   Object.assign(expected.dev.fluo.edits['react-edit'], {
     file: REACT_EDIT_SOURCES.after.file, reload: REACT_EDIT_SOURCES.after.reload,
   });
@@ -456,7 +484,8 @@ export async function authenticateReactEditPair(beforeBinding, afterBinding, out
   if (!compareReactEditPairRecords(before, after)) return null;
   return { schemaVersion: 1, method: REACT_EDIT_PAIR_METHOD, before: beforeBinding, after: afterBinding,
     beforeConfigSha256: before.configSha256, afterConfigSha256: after.configSha256,
-    beforeSource: before.reactEditSource, afterSource: after.reactEditSource };
+    ...(before.reactEditSource ? { beforeSource: before.reactEditSource } : {}),
+    ...(after.reactEditSource ? { afterSource: after.reactEditSource } : {}) };
 }
 
 export async function verifyReactEditPairRelation(relation, binding, outputRoot) {
@@ -531,7 +560,8 @@ async function observeGuestIdentity(config, host, entrypoints) {
       { nanoCpus: 0, cpuQuota: 0, cpuPeriod: 0, cpuset: '', memory: 0, memorySwap: 0 })) {
     throw new Error('isolated environment differs from frozen Linux preparation allocation/runtime');
   }
-  if (!config.nativeLifetime?.enabled || !isAbsolute(config.nativeLifetime.python ?? '')) {
+  const timing = config.methodVersion === 'FA-V2' && config.measurementPurpose === 'timing';
+  if (!timing && (!config.nativeLifetime?.enabled || !isAbsolute(config.nativeLifetime.python ?? ''))) {
     throw new Error('isolated representative requires explicit nativeLifetime enabled and absolute Python');
   }
   const require = createRequire(import.meta.url);
@@ -573,15 +603,20 @@ async function observeGuestIdentity(config, host, entrypoints) {
     || browserIdentity.version !== native.NATIVE_LIFETIME_IDENTITY.browserVersion) {
     throw new Error('isolated environment browser identity mismatch');
   }
-  const python = await fileIdentity(config.nativeLifetime.python);
+  let python;
+  let externalIdentity;
+  if (!timing) {
+  python = await fileIdentity(config.nativeLifetime.python);
   const { stdout: runtime } = await execute(config.nativeLifetime.python, ['-c',
     'import sys,platform,hashlib,json,pathlib,frida; p=pathlib.Path(frida.__file__).parent; print(json.dumps({"pythonVersion":platform.python_version(),"pythonSha256":hashlib.sha256(pathlib.Path(sys.executable).resolve().read_bytes()).hexdigest(),"fridaVersion":frida.__version__,"fridaFiles":{n:hashlib.sha256((p/n).read_bytes()).hexdigest() for n in ["__init__.py","aio.py","_frida.abi3.so"]},"files":{str(p/n):hashlib.sha256((p/n).read_bytes()).hexdigest() for n in ["__init__.py","aio.py","_frida.abi3.so"]}}))']);
   const external = JSON.parse(runtime);
-  const { files: externalFiles, ...externalIdentity } = external;
+  const { files: externalFiles, ...observedExternal } = external;
+  externalIdentity = observedExternal;
   if (!isDeepStrictEqual(externalIdentity, native.NATIVE_LIFETIME_RUNTIME)) {
     throw new Error('isolated environment external Python/Frida identity mismatch');
   }
   Object.assign(files, externalFiles);
+  }
   const collector = await captureCollectorSources(undefined, entrypoints);
   for (const file of Object.values(collector)) files[file.path] = file.sha256;
   const suite = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -594,8 +629,8 @@ async function observeGuestIdentity(config, host, entrypoints) {
     allocation[name] = (await readFile(`/sys/fs/cgroup/${name}`, 'utf8')).trim();
   }
   return { runtime: { version: process.version, v8: process.versions.v8, node },
-    sdk, pnpm, browser: browserIdentity, python, external: externalIdentity,
-    observer: { enabled: true, method: native.NATIVE_LIFETIME_METHOD, schema: native.NATIVE_LIFETIME_SCHEMA },
+    sdk, pnpm, browser: browserIdentity, ...(timing ? {} : { python, external: externalIdentity }),
+    observer: { enabled: !timing, method: native.NATIVE_LIFETIME_METHOD, schema: native.NATIVE_LIFETIME_SCHEMA },
     collector, collectorEntrypoints: entrypoints, locks, files, allocation, platform: platform(), arch: arch(), kernel: release(),
     logicalCpus: cpus().length, availableParallelism: availableParallelism(), memoryBytes: totalmem() };
 }
@@ -613,7 +648,9 @@ export async function captureIsolatedEnvironment(config, invocation, outputRoot,
     configSha256: environmentConfigIdentity(config), identitySha256: objectSha256(identity),
     guestEvidence: { pid: process.pid, hostname: hostname(), observedAt: new Date().toISOString(), guest } };
   const reactEditSource = await captureReactEditSource(config, {
-    pairSource: reactEditPairSource || Boolean(before && before.configSha256 !== record.configSha256),
+    pairSource: reactEditPairSource || Boolean(before && !isDeepStrictEqual(
+      before.configuration.dev?.fluo?.edits?.['react-edit'],
+      record.configuration.dev?.fluo?.edits?.['react-edit'])),
   });
   if (reactEditSource) record.reactEditSource = reactEditSource;
   await mkdir(outputRoot, { recursive: true });
@@ -669,21 +706,24 @@ export async function verifyEnvironmentBinding(binding, outputRoot) {
     throw new Error('environment binding comparable identity/evidence mismatch');
   }
   const native = await import('./native-lifetime.mjs');
+  const timing = record.configuration?.methodVersion === 'FA-V2'
+    && record.configuration?.measurementPurpose === 'timing';
   if (guest.platform !== 'linux' || guest.arch !== 'arm64' || guest.runtime?.version !== 'v24.21.0'
     || guest.browser?.sha256 !== native.NATIVE_LIFETIME_IDENTITY.binarySha256
     || guest.browser?.version !== native.NATIVE_LIFETIME_IDENTITY.browserVersion
-    || !isDeepStrictEqual(guest.external, native.NATIVE_LIFETIME_RUNTIME)
+    || (!timing && !isDeepStrictEqual(guest.external, native.NATIVE_LIFETIME_RUNTIME))
     || guest.observer?.method !== native.NATIVE_LIFETIME_METHOD || guest.observer?.schema !== native.NATIVE_LIFETIME_SCHEMA
-    || guest.observer.enabled !== true || !record.configuration?.nativeLifetime?.enabled) {
+    || guest.observer.enabled !== !timing || record.configuration?.nativeLifetime?.enabled !== !timing
+    || (timing && (guest.python || guest.external))) {
     throw new Error('environment binding unsupported runtime/browser/observer');
   }
-  const files = [guest.runtime.node, guest.browser, guest.python, guest.pnpm,
+  const files = [guest.runtime.node, guest.browser, ...(!timing ? [guest.python] : []), guest.pnpm,
     ...['@playwright/test', 'playwright', 'playwright-core', 'typescript'].map((name) => guest.sdk?.[name]),
     ...collectorSources(guest.collectorEntrypoints).map((name) => guest.collector?.[name]),
     ...['.', ...FRAMEWORKS.map((name) => `apps/${name}`)].map((name) => guest.locks?.[name])];
   if (files.some((file) => !isAbsolute(file?.path ?? '') || !/^[a-f0-9]{64}$/u.test(file?.sha256 ?? '')
       || guest.files[file.path] !== file.sha256)
-    || guest.python.sha256 !== native.NATIVE_LIFETIME_RUNTIME.pythonSha256
+    || (!timing && guest.python?.sha256 !== native.NATIVE_LIFETIME_RUNTIME.pythonSha256)
     || guest.pnpm.version !== '10.4.1'
     || ['@playwright/test', 'playwright', 'playwright-core'].some((name) => guest.sdk[name].version !== '1.61.1')
     || guest.sdk.typescript.version !== '6.0.2'
@@ -779,12 +819,16 @@ export function planMeasurements(config) {
       device,
       runId: `${config.profile}-${config.mode}-cycle-${cycle + 1}-slot-${slot + 1}`,
       warmup: cycle < config.warmupRuns, url: config.apps[FRAMEWORKS[(cycle + slot) % FRAMEWORKS.length]],
+      ...(config.methodVersion === 'FA-V2' ? { cycle: cycle + 1, slot: slot + 1 } : {}),
     }))).flat();
 }
 
 export async function collectMeasurements(config, driver, directory) {
   const plan = planMeasurements(config);
   await mkdir(directory, { recursive: true });
+  const methodBinding = config.methodVersion !== undefined ? await captureMethodBinding(config, directory) : undefined;
+  const method = methodBinding ? { methodVersion: methodBinding.methodVersion,
+    measurementPurpose: methodBinding.measurementPurpose, methodBinding } : {};
   const isolated = config.isolatedRepresentative || config.environmentBinding;
   const binding = isolated ? { isolatedRepresentative: true, environmentBinding: config.environmentBinding,
     ...(config.environmentPairRelation ? { environmentPairRelation: config.environmentPairRelation } : {}) } : {};
@@ -798,7 +842,7 @@ export async function collectMeasurements(config, driver, directory) {
     console.log(`MEASUREMENT_STAGE=${item.runId}/${item.framework}/${correctness.pass ? 'measure' : 'correctness-failed'}`);
     await revalidateEnvironment(config, dirname(directory));
     const observation = correctness.pass
-      ? await driver.measure({ ...item, nativeTraceDirectory: resolve(directory) }, config)
+      ? await driver.measure({ ...item, ...method, nativeTraceDirectory: resolve(directory) }, config)
       : { metrics: {}, unavailable: {} };
     if (isolated && correctness.pass) {
       const headroom = observation.artifacts?.environmentHeadroom
@@ -819,7 +863,7 @@ export async function collectMeasurements(config, driver, directory) {
       .map((name) => [name, observation.unavailable?.[name] ?? (name.startsWith('dev') ? 'not measured in production-browser mode' : 'not observed')]));
     const trace = resolve(directory, `${item.runId}-${item.framework}.json`);
     await writeFile(trace, `${JSON.stringify({
-      schemaVersion: 1, ...item, ...binding, provenance, profileSettings: PROFILES[item.device],
+      schemaVersion: 1, ...item, ...binding, ...method, provenance, profileSettings: PROFILES[item.device],
       environment: { platform: platform(), arch: arch(), release: release(), cpu: cpus()[0]?.model,
         cpuCores: cpus().length, memoryBytes: totalmem(), runtimeVersion: process.version,
         browserVersion: driver.browserVersion ?? null },
@@ -829,14 +873,17 @@ export async function collectMeasurements(config, driver, directory) {
     }, null, 2)}\n`);
     const run = {
       profile: item.profile, mode: item.mode, framework: item.framework, runId: item.runId,
-      trace, warmupRuns: config.warmupRuns, ...binding,
+      trace, warmupRuns: config.warmupRuns, ...binding, ...method,
+      ...(methodBinding ? { warmup: item.warmup, cycle: item.cycle, slot: item.slot } : {}),
+      ...(methodBinding && observation.artifacts?.serverCpuSha256
+        ? { serverCpuSha256: observation.artifacts.serverCpuSha256 } : {}),
       correctness: !correctness.pass ? 'fail' : observation.qualityFailures?.length ? 'inconclusive' : 'pass',
       metrics,
     };
     (item.warmup ? warmups : runs).push(run);
     console.log(`MEASUREMENT_TRACE_COMPLETE=${trace}`);
   }
-  return { schemaVersion: 1, provenance, ...binding, profile: config.profile, mode: config.mode, warmups, runs };
+  return { schemaVersion: 1, provenance, ...binding, ...method, profile: config.profile, mode: config.mode, warmups, runs };
 }
 
 export async function collectDevMeasurements(config, driver, directory) {
@@ -844,7 +891,11 @@ export async function collectDevMeasurements(config, driver, directory) {
     'cold-ready': 'devColdReadyMs', 'react-edit': 'devReactEditVisibleMs',
     'css-edit': 'devCssEditVisibleMs', 'server-edit': 'devServerEditVisibleMs',
   };
-  return collectMeasurements(config, {
+  const measurement = { ...config, ...(config.methodVersion ? { measurementKind: 'development' } : {}) };
+  if (config.environmentPairRelation) Object.defineProperty(measurement, 'environmentPairRelation', {
+    value: config.environmentPairRelation,
+  });
+  return collectMeasurements(measurement, {
     browserVersion: driver.browserVersion,
     check: (item) => driver.check(item, config),
     async measure(item) {
@@ -890,6 +941,14 @@ export async function collectDevMeasurements(config, driver, directory) {
 }
 
 export async function mergeEvidence(production, development, directory) {
+  if (production.methodVersion || development.methodVersion) {
+    if (production.methodVersion !== 'FA-V2' || development.methodVersion !== 'FA-V2'
+      || production.measurementPurpose !== development.measurementPurpose
+      || production.methodBinding?.pairId !== development.methodBinding?.pairId
+      || production.methodBinding?.productSha256 !== development.methodBinding?.productSha256) {
+      throw new Error('FA-V2 production/development purpose/product mismatch');
+    }
+  }
   const isolated = production.isolatedRepresentative || development.isolatedRepresentative
     || production.environmentBinding || development.environmentBinding;
   if (isolated && (!production.isolatedRepresentative || !development.isolatedRepresentative
@@ -910,6 +969,12 @@ export async function mergeEvidence(production, development, directory) {
     const trace = resolve(directory, `${run.runId}-${run.framework}.json`);
     await writeFile(trace, `${JSON.stringify({
       schemaVersion: 1, sourceTraces: [run.trace, dev.trace],
+      ...(production.methodBinding ? { methodVersion: run.methodVersion, measurementPurpose: run.measurementPurpose,
+        methodBinding: run.methodBinding, sourceMethodBindings: [run.methodBinding, dev.methodBinding],
+        serverCpuSha256: run.serverCpuSha256,
+        profile: run.profile, mode: run.mode, framework: run.framework, runId: run.runId,
+        warmup: run.warmup, cycle: run.cycle, slot: run.slot,
+        provenance: production.provenance } : {}),
       ...(isolated ? { isolatedRepresentative: true, environmentBinding: production.environmentBinding,
         sourceEnvironmentBindings: [run.environmentBinding, dev.environmentBinding],
         ...(production.environmentPairRelation ? { environmentPairRelation: production.environmentPairRelation } : {}),
@@ -921,11 +986,13 @@ export async function mergeEvidence(production, development, directory) {
       metrics: { ...run.metrics, ...dev.metrics } });
   }
   return { ...production, runs, developmentWarmups: development.warmups,
+    ...(production.methodBinding ? { developmentMethodBinding: development.methodBinding } : {}),
     ...(isolated ? { developmentEnvironmentBinding: development.environmentBinding,
       ...(development.environmentPairRelation ? { developmentEnvironmentPairRelation: development.environmentPairRelation } : {}) } : {}) };
 }
 
 export async function verifyMeasurementEnvironment(receipt, outputRoot) {
+  const method = receipt.methodVersion !== undefined ? await verifyMethodReceipt(receipt, outputRoot) : undefined;
   const samples = [...receipt.runs, ...(receipt.warmups ?? []), ...(receipt.developmentWarmups ?? [])];
   if (!receipt.isolatedRepresentative && !receipt.environmentBinding
     && !samples.some((run) => run.isolatedRepresentative || run.environmentBinding)
@@ -938,6 +1005,9 @@ export async function verifyMeasurementEnvironment(receipt, outputRoot) {
     throw new Error('environment binding aggregate mode missing');
   }
   const environment = await verifyEnvironmentBinding(receipt.environmentBinding, outputRoot);
+  if (method && environment.configSha256 !== environmentConfigIdentity(method.configuration)) {
+    throw new Error('FA-V2 method/environment full configuration mismatch');
+  }
   if (environment.pairBeforeBinding && environment.pairBeforeBinding.configSha256 !== environment.configSha256
     && !receipt.environmentPairRelation) throw new Error('React edit pair aggregate relation missing');
   if (receipt.environmentPairRelation) {
@@ -951,6 +1021,13 @@ export async function verifyMeasurementEnvironment(receipt, outputRoot) {
   }
   if (receipt.developmentEnvironmentBinding) {
     const development = await verifyEnvironmentBinding(receipt.developmentEnvironmentBinding, outputRoot);
+    if (method) {
+      const { verifyMethodBinding } = await import('./fa-v2.mjs');
+      const devMethod = await verifyMethodBinding(receipt.developmentMethodBinding, outputRoot);
+      if (development.configSha256 !== environmentConfigIdentity(devMethod.configuration)) {
+        throw new Error('FA-V2 development method/environment full configuration mismatch');
+      }
+    }
     if (development.pairBeforeBinding && development.pairBeforeBinding.configSha256 !== development.configSha256
       && !receipt.developmentEnvironmentPairRelation) throw new Error('React edit pair development relation missing');
     if (receipt.developmentEnvironmentPairRelation) await verifyReactEditPairRelation(
@@ -990,6 +1067,9 @@ export async function verifyTraceFiles(runs, outputRoot) {
       throw new Error(`invalid trace ${path}: ${error}`);
     }
     if (record.schemaVersion !== 1) throw new Error(`incomplete trace ${path}: schemaVersion`);
+    if (record.methodVersion || expected?.methodVersion || record.methodBinding || expected?.methodBinding) {
+      await verifyMethodTrace(record, expected, root);
+    }
     const isolated = record.isolatedRepresentative || record.environmentBinding || record.provenance?.isolatedRepresentative;
     if (expected && (isolated || expected.isolatedRepresentative || expected.environmentBinding)
       && (record.isolatedRepresentative !== true || expected.isolatedRepresentative !== true
@@ -1066,6 +1146,9 @@ export async function verifyTraceFiles(runs, outputRoot) {
         const { verifyNativeLifetimeEvidence } = await import('./native-lifetime.mjs');
         const unavailable = await verifyNativeLifetimeEvidence(lifetime, record.requests, root, {
           runId: record.runId, framework: record.framework, profile: record.profile, mode: record.mode,
+          ...(record.methodBinding ? { methodVersion: record.methodVersion,
+            measurementPurpose: record.measurementPurpose, pairId: record.methodBinding.pairId,
+            executionId: record.methodBinding.executionId } : {}),
         }, passiveCdpLedger);
         if (unavailable.some((reason) => !record.qualityFailures?.includes(reason))) {
           throw new Error(`native lifetime inconclusive reasons missing: ${path}`);
@@ -1081,6 +1164,11 @@ export async function verifyTraceFiles(runs, outputRoot) {
           isolatedRepresentative: record.isolatedRepresentative,
           environmentBinding: record.sourceEnvironmentBindings?.[index],
           environmentPairRelation: record.sourceEnvironmentPairRelations?.[index] ?? undefined,
+          ...(record.methodBinding ? { methodVersion: record.methodVersion,
+            measurementPurpose: record.measurementPurpose, methodBinding: record.sourceMethodBindings?.[index],
+            profile: record.profile, mode: record.mode, framework: record.framework, runId: record.runId,
+            ...(index === 0 ? { serverCpuSha256: record.serverCpuSha256 } : {}),
+            correctness: index === 0 ? record.correctness.production : record.correctness.development } : {}),
         }, 'combined source');
         if (isolated) {
           if (!raw.isolatedRepresentative || !isDeepStrictEqual(raw.environmentBinding, record.sourceEnvironmentBindings?.[index])
@@ -1090,7 +1178,7 @@ export async function verifyTraceFiles(runs, outputRoot) {
         }
       }
     } else {
-      await verify(path, true);
+      await verify(path, true, expected);
     }
     return record;
   }
@@ -1111,6 +1199,7 @@ async function main() {
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   if (Object.hasOwn(config, 'environmentPairRelation')) throw new Error('caller-supplied React edit pair descriptor forbidden');
   const output = resolve(outputPath);
+  if (config.methodVersion !== undefined) config.measurementKind = flags.includes('--dev') ? 'development' : 'production';
   if (invocation) {
     const pairBeforeBinding = await importEnvironmentPairBefore(flags, dirname(output));
     config.environmentBinding = await captureIsolatedEnvironment(config, invocation, dirname(output), {
@@ -1144,9 +1233,17 @@ async function main() {
   const baselinePath = flags[flags.indexOf('--baseline') + 1];
   if (flags.includes('--gate') && !baselinePath) throw new Error('--gate requires --baseline <JSON>');
   if (flags.includes('--gate')) {
-    const { evaluatePerformance } = await import('./evaluate.ts');
     const baseline = JSON.parse(await readFile(baselinePath, 'utf8'));
-    result = { ...result, evaluation: evaluatePerformance(baseline, result.runs) };
+    const { evaluateAcceptedEvidence, evaluateEvidence } = await import('./gate.mjs');
+    const traceRoot = flags.includes('--trace-root') ? resolve(flags[flags.indexOf('--trace-root') + 1]) : dirname(output);
+    if (flags.includes('--historical-replay')) {
+      result = { ...result, evaluation: await evaluateEvidence(baseline, [result], traceRoot) };
+    } else {
+      const counterpartPath = flags[flags.indexOf('--native-counterpart') + 1];
+      if (!flags.includes('--native-counterpart')) throw new Error('FA-V2 gate requires --native-counterpart');
+      const counterpart = JSON.parse(await readFile(counterpartPath, 'utf8'));
+      result = { ...result, evaluation: await evaluateAcceptedEvidence(baseline, [result], traceRoot, [counterpart]) };
+    }
     if (result.evaluation.verdict !== 'pass') process.exitCode = 1;
   }
   await mkdir(dirname(output), { recursive: true });

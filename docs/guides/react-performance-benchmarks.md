@@ -27,8 +27,108 @@ baseline and is not, by itself, proof of full CRUD or long-session jukebox behav
 
 ## Measurements and decisions
 
+### FA-V2 observed-range acceptance
+
+FA-V2 changes acceptance meaning without relaxing numeric budgets or public
+behavior. The unchanged `baseline.json` median/spread/MAD vetoes are historical
+replay only: `evaluatePerformance(..., "historical-v1")`, `evaluateEvidence`,
+CLI `--historical-replay`. Historical FAIL/
+INCONCLUSIVE or unversioned receipts cannot be relabeled as FA-V2.
+
+Use all five independent samples without removal. L/U are observed min/max,
+B the original budget and b the original band. Compare each of the three peers:
+
+| Comparison | PASS | FAIL |
+| --- | --- | --- |
+| Upper absolute | U_F <= B | L_F > B |
+| Throughput absolute | L_F >= B | U_F < B |
+| Upper peer | U_F <= b * L_peer | L_F > b * U_peer |
+| Throughput peer | b * L_F >= U_peer | b * U_F < L_peer |
+
+Boundary crossing is INCONCLUSIVE; equality passes, with exact decimal/zero
+comparisons and no tolerance widening. Spread/MAD are diagnostics, not
+independent vetoes, and cannot hide true budget failures. The old separate
+repeatability veto is lost. Five-sample extrema are not confidence intervals,
+future-population bounds or statistical guarantees. Missing/invalid/duplicate/
+quality/correctness/authentication failures cannot pass. Keep 200 requests/
+concurrency 8, five measured/two warmups, alternating order, four frameworks/
+four profiles, 22 client/six server metrics and all budgets/bands and peer
+cache/prefetch defaults.
+
+Authenticate membership and order against the frozen alternating measurement
+plan, including raw `warmup`, `cycle`, `slot`, framework, profile and run ID.
+Counts and unique IDs alone cannot distinguish warmups from measured samples.
+The approved representative production descriptor binds throughput paths,
+journeys/actions and interactions as well as 200/8; identical mutations in every
+phase or purpose remain invalid even when their hashes are recomputed.
+
+Derived configs explicitly set `measurement.methodVersion: "FA-V2"` and
+`measurement.measurementPurpose: "timing"` or `"native-conformance"`.
+Bind the same `measurement.pairId` and `measurement.pairPhase: "before"` or
+`"after"` with distinct authenticated config/execution identities. Timing
+requires `nativeLifetime: { enabled: false }`; native conformance requires
+`{ enabled: true, python: "/absolute/provisioned/python" }`. Purpose is distinct
+from cache `native`/`matched-cache` and execution `discovery`/`regression`.
+Timing retains CDP/React readiness, passive NetLog authentication, original
+cutoff and browser lifetime through throughput/server sampling without Frida.
+Native conformance requires original ownership, coverage, journal, retirement,
+raw exits and cleanup for the same product/build/stimuli/repetitions. Its
+performance values never enter timing verdicts, and terminals cannot be borrowed
+across executions. Native conformance alone is not performance PASS.
+
+`evaluateAcceptedEvidence(baseline, timingReceipts, commonOutputRoot,
+nativeReceipts)` authenticates both purposes. `evaluateAcceptedPair` additionally
+bind fresh before/after phase/pair and frozen method/stimuli/environment.
+Retain all raw/config/environment evidence under the common root; runner
+`--native-receipts <JSON>` takes an array of matching receipt paths.
+Use `--trace-root <common-root>` for sibling purpose roots. Full-suite
+`<profile>.json` is the merged production/development receipt. Without
+counterparts timing collection reports INCONCLUSIVE; normal gate CLI rejects
+unversioned evidence. Method tests do not establish actual pair PASS or issue
+closure. Fresh frozen pairs, independent reviews and full GitHub CI remain.
+
+Client adoption preserves the approved RE-A01 source-bound React-edit relation:
+before `src/document.ts`/`reload:true` versus after
+`src/catalog-destination.tsx`/`reload:false` with unchanged
+from/to/path/selector/expectedText and no other field changes. Authenticate and
+retain separate full config/source/build/edit-source hashes.
+`pairStimuliComparison` identifies the development relation but does not accept
+it. The aggregate must invoke the existing client `authenticateReactEditPair`
+on both original environment bindings, authenticate source proof and retain
+that evidence. Missing verifier/proof fails closed. Server-only production
+does not gain this exception. Timing/native counterparts within the same
+product require identical actual edit descriptors; the cross-product exception
+cannot be borrowed for purpose pairing.
+The client verifier authenticates the same FA-V2 method, pair ID and purpose
+and only the before-to-after phase transition, retaining original source proof
+and relation replay. Production permits that phase transition only, not the dev
+edit exception. Preserve
+`pairPhase` in each full config/hash and freeze distinct before/after config IDs.
+
+CPU is configured SERVER PID post-workload lifetime average/single logical CPU:
+`100 * (utime + stime) / CLK_TCK / (uptimeSeconds - starttime / CLK_TCK)`.
+Authenticate/recompute original `/proc/<pid>/stat`, a second birth/counter check,
+`/proc/uptime`, `getconf CLK_TCK` and raw `ps`. RSS stays the existing `ps`
+snapshot in bytes. No display rounding, client/window CPU or logical-core
+division substitutes for this value; the 85% budget remains. Tick/birth
+quantization and uptime's 0.01-second resolution remain explicit: unrounded
+arithmetic does not guarantee continuous-time precision.
+
+Passive NetLog does not guarantee resolution of missing CDP terminals. Actual
+Next RSC without ExtraInfo has shown renderer/native millisecond mismatch and
+absent `ResourceFinish` despite complete tracing; same-URL native ownership is
+unproved. Keep the existing exact classifier, without a clock window/nearest
+URL, guessed cancellation, peer prefetch edit or borrowed native counterpart
+terminal. Pending timing remains a quality blocker.
+Blink InspectorId/CDP and renderer-generated network request IDs occupy separate
+identity spaces. The reviewed Chromium `ResourceLoader::Dispose` GC prefinalizer
+can bypass `HandleError`/`DidFailLoading` and detach the URLLoader client. This
+source coverage counterexample does not diagnose the actual pending request;
+complete tracing is not proof that every terminal callback was instrumented.
+
 The suite's machine-readable `baseline.json` owns the absolute budgets, relative bands,
-profiles, run/warmup counts, aggregation, noise handling, and outlier policy. Preserve
+profiles, run/warmup counts and historical aggregation/noise/outlier policy.
+New acceptance uses FA-V2 above. Preserve
 the file and its review history: relaxing a budget requires an explicit reviewed change.
 The first `--mode discovery` captured the measured starting point without treating a
 confirmed deficit as a setup error; its recorded performance verdict is `fail`
@@ -84,7 +184,9 @@ requests and pending-at-warm identities. Requests retain loader/request IDs,
 initiators, settlement phase/timestamps and cancellation. Existing raw-trace
 authentication remains required.
 
-Optional production `nativeLifetime` observation is disabled by default.
+Historical production `nativeLifetime` observation was optional and disabled by default.
+FA-V2 requires separate timing/native-conformance executions; the observer-specific
+requirements below apply to native-conformance only.
 In a `run-gate.mjs` config, add
 `{ "nativeLifetime": { "enabled": true, "python": "/opt/fluo-native-debug/bin/python" } }`
 under `measurement`; the default never imports, starts, installs or requires
@@ -216,7 +318,8 @@ The sole unequal-config dev alternative is before product
 `8a09eb8d216e555b97760a86539dea31e79c86a8` using Fluo `src/document.ts` /
 `reload:true`, and reviewed final `f9f5ac6722957cbe2752b9959e657a46594c0a1b`
 or its source-verified implementation descendant using
-`src/catalog-destination.tsx` / `reload:false`. Only those two fields may differ;
+`src/catalog-destination.tsx` / `reload:false`. Apart from the authenticated
+FA-V2 before-to-after phase transition, only those two fields may differ;
 all other settings, edits, peers and budgets remain identical. Both replace
 `Editor login` once with `Editor login changed` on `/login`, observe the same
 visible `h1`, and restore exact source bytes. Original representative full hashes
@@ -225,11 +328,12 @@ final `a48953e1f5825e26afc5865a5177af988619bdceebec801cf8b4025b1a2fad73`.
 Use `--environment-before-record` and `--environment-before-root` with both original
 identity flags; original bytes/digests, containment, invocation, source/head/blob,
 build/dependency and collector evidence authenticate the relation in capture and
-replay. Production-only pairs still require exact config equality, and profile,
+replay. Production-only pairs permit only the authenticated FA-V2 phase transition,
+with all other config fields identical; profile,
 dev and warmup hashes remain separate from the aggregate.
 Prepare the before record with `--react-edit-pair-source`; aggregate and
 development captures retain its proof, while production-only children do not
-inherit this flag. A different authenticated before config makes source proof
+inherit this flag. A different authenticated edit descriptor makes source proof
 mandatory for after. Ordinary isolated captures and same-config pairs without
 the opt-in retain their existing path without pinned ancestry/blob or dev-only
 production-build requirements.
@@ -246,7 +350,7 @@ background-form, navigation, store and provider changes; product-level differenc
 are not solely #3884's causal effect or a same-upstream single-optimization control.
 Narrow pair checks do not establish performance PASS. Full four-framework/
 four-profile fresh recollection, two warmups/five alternating samples, unchanged
-budgets/statistics, exact-head reviews and final GitHub CI remain required.
+budgets and versioned FA-V2 decisions, exact-head reviews and final GitHub CI remain required.
 
 Historical load-only data sampled a different initial-work window and could trigger
 warm navigation before cold modules finished; retained Linux evidence includes cold

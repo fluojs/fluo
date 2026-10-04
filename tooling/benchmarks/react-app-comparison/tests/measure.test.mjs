@@ -49,15 +49,23 @@ test('ordinary React edit capture does not require pinned history or production 
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-test('source-bound React pair authenticates both records without equating full config hashes', async () => {
+for (const purpose of [undefined, 'native-conformance', 'timing']) {
+const methodVersion = purpose ? 'FA-V2' : undefined;
+test(`${methodVersion ? `FA-V2 ${purpose}` : 'historical replay'} source-bound React pair authenticates both records without equating full config hashes`, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'fluo-react-pair-'));
   try {
     const methods = await import('../src/measure.mjs');
     assert.equal(typeof methods.authenticateReactEditPair, 'function');
     const edit = { file: 'src/document.ts', reload: true, from: 'Editor login',
       to: 'Editor login changed', path: '/login', selector: 'h1', expectedText: 'Editor login changed' };
-    const beforeConfig = { ...config, dev: { fluo: { edits: { 'react-edit': edit } } } };
+    const beforeConfig = { ...config,
+      ...(methodVersion ? { ...JSON.parse(await readFile(new URL('../config/representative.json', import.meta.url), 'utf8')).measurement,
+        methodVersion, measurementPurpose: purpose, warmupRuns: 2, measurementRuns: 5,
+        nativeLifetime: purpose === 'timing' ? { enabled: false } : { enabled: true, python: '/python' },
+        pairId: 'source-bound-pair', pairPhase: 'before', measurementKind: 'development' } : {}),
+      dev: { fluo: { edits: { 'react-edit': edit } } } };
     const afterConfig = structuredClone(beforeConfig);
+    if (methodVersion) afterConfig.pairPhase = 'after';
     Object.assign(afterConfig.dev.fluo.edits['react-edit'], { file: 'src/catalog-destination.tsx', reload: false });
     const before = await environmentFixture(directory, 'before', beforeConfig);
     const after = await environmentFixture(directory, 'after', afterConfig);
@@ -66,9 +74,12 @@ test('source-bound React pair authenticates both records without equating full c
       /source proof/u);
     assert.notEqual(before.binding.configSha256, after.binding.configSha256);
     await assert.rejects(methods.authenticateReactEditPair(after.binding, before.binding, directory),
-      /direction|source proof/u);
-    const equal = await environmentFixture(directory, 'equal', beforeConfig);
-    assert.equal(await methods.authenticateReactEditPair(before.binding, equal.binding, directory), null);
+      /direction|source proof|phase/u);
+    const equal = await environmentFixture(directory, 'equal',
+      { ...beforeConfig, ...(methodVersion ? { pairPhase: 'after' } : {}) });
+    const equalRelation = await methods.authenticateReactEditPair(before.binding, equal.binding, directory);
+    if (methodVersion) assert.equal(equalRelation.afterConfigSha256, equal.binding.configSha256);
+    else assert.equal(equalRelation, null);
     // Preserve the authentic objects without requiring pre-squash Git history.
     const sources = JSON.parse(await readFile(new URL('./fixtures/react-edit-sources.json', import.meta.url), 'utf8'));
     const anchors = [
@@ -94,6 +105,7 @@ test('source-bound React pair authenticates both records without equating full c
       fixture.record.provenance = { ...config.provenance, root: '/product', commit: head };
       await persist(fixture);
     }
+    await assert.doesNotReject(methods.authenticateReactEditPair(before.binding, after.binding, directory));
     const relation = await methods.authenticateReactEditPair(before.binding, after.binding, directory);
     assert.equal(relation.beforeConfigSha256, before.binding.configSha256);
     assert.equal(relation.afterConfigSha256, after.binding.configSha256);
@@ -112,6 +124,29 @@ test('source-bound React pair authenticates both records without equating full c
     const bound = await methods.bindEnvironmentPair(after.binding, flags, directory);
     assert.equal(await readFile(after.binding.path, 'utf8'), originalAfterBytes);
     await methods.verifyReactEditPairRelation(bound, after.binding, directory);
+    if (methodVersion) {
+      const { captureMethodBinding } = await import('../src/fa-v2.mjs');
+      const { verifyDevelopmentPairRelation } = await import('../src/gate.mjs');
+      const baselineSha256 = createHash('sha256').update(await readFile(new URL('../baseline.json', import.meta.url))).digest('hex');
+      const methodFor = (fixture) => captureMethodBinding({
+        ...fixture.record.configurationEvidence,
+        provenance: { ...fixture.record.provenance, baselineSha256 },
+      }, directory);
+      const firstReceipt = { developmentEnvironmentBinding: imported,
+        developmentMethodBinding: await methodFor(before) };
+      const secondReceipt = { developmentEnvironmentBinding: after.binding,
+        developmentMethodBinding: await methodFor(after), developmentEnvironmentPairRelation: bound };
+      assert.deepEqual(await verifyDevelopmentPairRelation(firstReceipt, secondReceipt, directory), bound);
+      await assert.rejects(verifyDevelopmentPairRelation(firstReceipt,
+        { ...secondReceipt, developmentEnvironmentPairRelation: undefined }, directory), /receipt source relation/u);
+      await assert.rejects(verifyDevelopmentPairRelation(firstReceipt, {
+        ...secondReceipt, developmentEnvironmentPairRelation: {
+          ...bound, afterSource: { ...bound.afterSource, originalSha256: 'b'.repeat(64) },
+        },
+      }, directory), /receipt source relation/u);
+      await assert.rejects(verifyDevelopmentPairRelation(secondReceipt, firstReceipt, directory),
+        /development method/u);
+    }
     const receipt = { profile: config.profile, mode: config.mode, provenance: after.record.provenance,
       isolatedRepresentative: true, environmentBinding: after.binding, runs: [], warmups: [] };
     await assert.rejects(verifyMeasurementEnvironment(receipt, directory), /relation missing/u);
@@ -120,6 +155,14 @@ test('source-bound React pair authenticates both records without equating full c
     await persist(after);
     const good = structuredClone(after.record);
     for (const mutate of [
+      ...(methodVersion ? [
+        (record) => { record.configuration.pairPhase = 'before'; },
+        (record) => { record.configuration.pairPhase = 'unknown'; },
+        (record) => { record.configuration.pairId = 'unrelated-pair'; },
+        (record) => { record.configuration.methodVersion = 'historical-v1'; },
+        (record) => { record.configuration.measurementPurpose = purpose === 'timing' ? 'native-conformance' : 'timing'; },
+        (record) => { record.configuration.measurementKind = 'production'; },
+      ] : []),
       (record) => { record.configuration.dev.fluo.edits['react-edit'].reload = true; },
       (record) => { record.configuration.dev.fluo.edits['react-edit'].file = 'src/unrelated.tsx'; },
       ...['from', 'to', 'path', 'selector', 'expectedText'].map((key) => (record) => {
@@ -145,12 +188,14 @@ test('source-bound React pair authenticates both records without equating full c
       after.record = structuredClone(good);
       mutate(after.record);
       after.record.configurationEvidence = structuredClone(after.record.configuration);
-      after.record.configurationEvidence.nativeLifetime.python = '/python';
+      if (after.record.configuration.nativeLifetime.python) {
+        after.record.configurationEvidence.nativeLifetime.python = '/python';
+      }
       after.record.configSha256 = environmentConfigIdentity(after.record.configurationEvidence);
       after.binding.configSha256 = after.record.configSha256;
       await persist(after);
       await assert.rejects(methods.authenticateReactEditPair(before.binding, after.binding, directory),
-        /direction|other configuration/u);
+        /direction|other configuration|unsupported runtime\/browser\/observer/u);
     }
     after.record = structuredClone(good);
     after.binding.configSha256 = good.configSha256;
@@ -171,6 +216,7 @@ test('source-bound React pair authenticates both records without equating full c
       (proof) => { Object.values(proof.builds)[0].bytesBase64 = Buffer.from('tampered build').toString('base64'); },
       (proof) => { Object.values(proof.builds)[0].sha256 = 'b'.repeat(64); },
       (proof) => { proof.originalBase64 = Buffer.from('wrong product source').toString('base64'); },
+      (proof) => { proof.originalSha256 = 'b'.repeat(64); },
     ]) {
       after.record = structuredClone(good);
       mutate(after.record.reactEditSource);
@@ -186,6 +232,7 @@ test('source-bound React pair authenticates both records without equating full c
     assert.equal(after.binding.configSha256, originalHash);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+}
 
 test('a configured hot-update label without actual React edit proof is inconclusive, not a metric', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'fluo-react-edit-label-'));
@@ -207,6 +254,53 @@ test('a configured hot-update label without actual React edit proof is inconclus
     assert.equal(raw.qualityFailures.length, 1);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+for (const purpose of ['timing', 'native-conformance']) {
+test(`FA-V2 ${purpose} production phase transition retains exact stimuli and original before binding`, async (t) => {
+  const methods = await import('../src/measure.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-phase-only-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const beforeConfig = { ...config, methodVersion: 'FA-V2', measurementPurpose: purpose,
+    pairId: 'phase-only', pairPhase: 'before', measurementKind: 'production',
+    nativeLifetime: purpose === 'timing' ? { enabled: false } : { enabled: true, python: '/python' } };
+  const before = await environmentFixture(directory, 'before', beforeConfig);
+  const after = await environmentFixture(directory, 'after', { ...beforeConfig, pairPhase: 'after' });
+  const relation = await methods.authenticateReactEditPair(before.binding, after.binding, directory);
+  assert.notEqual(relation.beforeConfigSha256, relation.afterConfigSha256);
+  assert.equal(Object.hasOwn(relation, 'beforeSource'), false);
+  await methods.verifyReactEditPairRelation(JSON.parse(JSON.stringify(relation)), after.binding, directory);
+  const persist = async (fixture) => {
+    const bytes = JSON.stringify(fixture.record);
+    await writeFile(fixture.binding.path, bytes);
+    fixture.binding.sha256 = createHash('sha256').update(bytes).digest('hex');
+  };
+  after.record.pairBeforeBinding = before.binding;
+  await persist(after);
+  const bound = await methods.authenticateReactEditPair(before.binding, after.binding, directory);
+  await methods.verifyReactEditPairRelation(bound, after.binding, directory);
+  const alias = await environmentFixture(directory, 'different-before', beforeConfig);
+  const aliasRelation = await methods.authenticateReactEditPair(alias.binding, after.binding, directory);
+  await assert.rejects(methods.verifyReactEditPairRelation(aliasRelation, after.binding, directory),
+    /original before binding/u);
+  const good = structuredClone(after.record);
+  for (const change of [
+    { pairPhase: 'before' }, { pairPhase: 'unknown' }, { pairId: 'another-pair' },
+    { methodVersion: 'historical-v1' }, { extra: true },
+    { dev: { fluo: { edits: { 'react-edit': { file: 'src/catalog-destination.tsx', reload: false } } } } },
+  ]) {
+    after.record = structuredClone(good);
+    delete after.record.pairBeforeBinding;
+    Object.assign(after.record.configuration, change);
+    after.record.configurationEvidence = structuredClone(after.record.configuration);
+    if (after.record.configuration.nativeLifetime.python) after.record.configurationEvidence.nativeLifetime.python = '/python';
+    after.record.configSha256 = environmentConfigIdentity(after.record.configurationEvidence);
+    after.binding.configSha256 = after.record.configSha256;
+    await persist(after);
+    await assert.rejects(methods.authenticateReactEditPair(before.binding, after.binding, directory),
+      /other configuration|unsupported runtime\/browser\/observer/u);
+  }
+});
+}
 
 test('isolated replay rejects absent bindings on samples and combined sources', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'fluo-environment-'));
@@ -249,7 +343,8 @@ async function environmentFixture(directory, invocationId = 'invocation', measur
     State: { Running: true, Pid: container.pid, StartedAt: container.startedAt },
     HostConfig: { NanoCpus: 0, CpuQuota: 0, CpuPeriod: 0, CpusetCpus: '', Memory: 0, MemorySwap: 0 } }]),
     information: JSON.stringify({ KernelVersion: vm.kernel, NCPU: vm.logicalCpus, MemTotal: vm.memoryBytes }) };
-  const configuration = { ...measurementConfig, nativeLifetime: { enabled: true, python: '/python' } };
+  const configuration = { ...measurementConfig,
+    nativeLifetime: measurementConfig.nativeLifetime ?? { enabled: true, python: '/python' } };
   delete configuration.provenance;
   const identity = { vm, container: { imageId: container.imageId, imageReference: container.imageReference, allocation },
     guest: { platform: 'linux', arch: 'arm64', kernel: vm.kernel, logicalCpus: vm.logicalCpus,
@@ -271,16 +366,26 @@ async function environmentFixture(directory, invocationId = 'invocation', measur
     .map((name) => [name, { ...file(`/${name}/package.json`), version: name === 'typescript' ? '6.0.2' : '1.61.1' }]));
   guest.collector = Object.fromEntries(['measure.mjs', 'measure-browser.mjs', 'run-gate.mjs',
     'native-terminal.mjs', 'native-lifetime.mjs', 'native-lifetime-agent.js', 'native-lifetime-host.py',
-    'initial-readiness.mjs', 'process-group.mjs', 'gate.mjs', 'evaluate.ts', 'fluo-dev.mjs']
+    'initial-readiness.mjs', 'process-group.mjs', 'gate.mjs', 'evaluate.ts', 'fluo-dev.mjs',
+    'fa-v2.mjs', 'server-cpu.mjs']
     .map((name) => [name, file(`/collector/${name}`)]));
   guest.collectorEntrypoints = ['measure.mjs', 'run-gate.mjs'];
   guest.locks = Object.fromEntries(['.', ...frameworks.map((name) => `apps/${name}`)]
     .map((name) => [name, file(`/locks/${name}/pnpm-lock.yaml`)]));
   guest.allocation = { 'cpu.max': 'max 100000', 'cpuset.cpus.effective': '0-11', 'memory.max': 'max' };
+  if (measurementConfig.methodVersion === 'FA-V2' && measurementConfig.measurementPurpose === 'timing') {
+    delete guest.python;
+    delete guest.external;
+    delete guest.files['/python'];
+    guest.observer.enabled = false;
+  }
   const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const host = { host: { platform: 'darwin', arch: 'arm64', cpuModel: 'Apple M4 Pro' }, vm, container, raw };
   const comparable = isolatedEnvironmentIdentity(host, guest);
-  const comparableConfig = { ...configuration, nativeLifetime: { enabled: true, python: '$authenticated-python' } };
+  const comparableConfig = { ...configuration, nativeLifetime: {
+    ...configuration.nativeLifetime,
+    ...(configuration.nativeLifetime.python ? { python: '$authenticated-python' } : {}),
+  } };
   const record = { schemaVersion: 1, method: 'isolated-linux-representative-v1',
     invocation: { invocationId, host }, identity: comparable, configuration: comparableConfig,
     configurationEvidence: configuration, provenance: config.provenance,

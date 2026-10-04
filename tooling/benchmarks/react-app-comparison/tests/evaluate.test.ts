@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type Baseline, evaluatePerformance, type MeasurementRun, type Metric } from '../src/evaluate.ts';
+import { type Baseline, evaluatePerformance as evaluateVersionedPerformance, type MeasurementRun, type Metric } from '../src/evaluate.ts';
+
+const evaluatePerformance = (baseline: Baseline, runs: readonly MeasurementRun[]) =>
+  evaluateVersionedPerformance(baseline, runs, 'historical-v1');
 
 const values = {
   coldTtfbMs: 80,

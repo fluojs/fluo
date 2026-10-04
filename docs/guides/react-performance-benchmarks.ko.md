@@ -26,8 +26,104 @@ baseline이며 완전한 CRUD나 장시간 jukebox 동작의 독립적인 증거
 
 ## 측정과 판정
 
+### FA-V2 관측 범위 수용
+
+FA-V2는 수용 의미를 변경하며 numeric budget이나 public 동작을 완화하지 않습니다.
+`baseline.json`의 기존 median/spread/MAD veto는 historical replay 전용입니다.
+`evaluatePerformance(..., "historical-v1")`, `evaluateEvidence`,
+CLI `--historical-replay`는 과거 판정을 보존합니다.
+과거 FAIL/INCONCLUSIVE나 unversioned receipt를 FA-V2로 재분류할 수 없습니다.
+
+5개 independent sample을 제거 없이 모두 사용합니다. L/U는 관측 min/max,
+B는 기존 budget, b는 기존 band이며 세 peer를 각각 비교합니다:
+
+| 비교 | PASS | FAIL |
+| --- | --- | --- |
+| Upper absolute | U_F <= B | L_F > B |
+| Throughput absolute | L_F >= B | U_F < B |
+| Upper peer | U_F <= b * L_peer | L_F > b * U_peer |
+| Throughput peer | b * L_F >= U_peer | b * U_F < L_peer |
+
+경계 교차는 INCONCLUSIVE이고 equality는 PASS입니다. Decimal 및 zero 비교에
+tolerance를 넓히지 않습니다. Spread/MAD는 diagnostic이며 독립 veto가 아니므로
+진짜 budget 실패를 noise로 숨기지 않습니다. 기존의 별도 repeatability veto는
+사라집니다. 5회 관측 extrema는 confidence interval, 미래 모집단 상한이나
+통계적 보장이 아닙니다. Missing/invalid/duplicate/quality/correctness/authentication
+실패는 통과할 수 없습니다. 200 requests/concurrency 8, 5회 measured/2회 warmup,
+순서 교대, 네 framework/네 profile, 22개 client/6개 server metric 및 모든
+budget/band와 peer cache/prefetch 기본값은 그대로입니다.
+
+동결된 순서 교대 측정 plan에 대한 membership과 순서를 인증하며 raw `warmup`,
+`cycle`, `slot`, framework, profile, run ID를 함께 검증합니다. 개수와 unique ID만으로
+warmup과 measured sample을 구분하지 않습니다. 승인된 representative production
+descriptor는 200/8뿐 아니라 throughput path, journey/action과 interaction도
+결합합니다. 모든 phase/purpose에서 동일하게 변경하고 hash를 다시 계산해도
+이 descriptor 변경은 거부합니다.
+
+파생 config의 `measurement.methodVersion: "FA-V2"`와
+`measurement.measurementPurpose: "timing"` 또는 `"native-conformance"`를
+명시합니다. 같은 `measurement.pairId`와 `measurement.pairPhase: "before"` 또는
+`"after"`로 묶되 별도 config/execution identity를 인증합니다. Timing은
+`nativeLifetime: { enabled: false }`, native conformance는
+`{ enabled: true, python: "/absolute/provisioned/python" }`을 요구합니다.
+Purpose는 cache `native`/`matched-cache` 및 execution `discovery`/`regression`과
+다릅니다. Timing은 Frida 없이 CDP/React readiness, passive NetLog 인증,
+원래 cutoff와 throughput/server snapshot까지 browser lifetime을 유지합니다.
+Native conformance는 같은 product/build/stimuli/repetitions에서 기존 ownership,
+coverage, journal, retirement, raw exit와 cleanup을 모두 요구합니다.
+그 performance 값은 timing verdict에 넣지 않고 terminal을 다른 execution에
+빌려주지 않습니다. Native conformance 단독 통과는 성능 PASS가 아닙니다.
+
+`evaluateAcceptedEvidence(baseline, timingReceipts, commonOutputRoot,
+nativeReceipts)`는 두 purpose를 함께 인증합니다. `evaluateAcceptedPair`는 fresh
+before/after의 phase/pair, frozen method/stimuli/environment까지 묶습니다.
+Raw/config/environment 증거 전체를 common root에 보존하고 runner의
+`--native-receipts <JSON>`에 matching receipt path 배열을 전달합니다.
+Sibling purpose root는 `--trace-root <common-root>`로 인증합니다. Full-suite
+`<profile>.json`은 production/development를 합친 receipt입니다. Counterpart가
+없으면 timing collection은 INCONCLUSIVE이며 정상 gate CLI는 unversioned를
+거부합니다. Method 테스트는 실제 pair PASS나 issue 종료가 아닙니다. Fresh
+frozen pair, 독립 review와 full GitHub CI는 여전히 필요합니다.
+
+Client 채택은 승인된 RE-A01 source-bound React-edit 관계를 보존합니다.
+before의 `src/document.ts`/`reload:true`와 after의
+`src/catalog-destination.tsx`/`reload:false`만 같은
+from/to/path/selector/expectedText를 유지한 채 허용합니다. 그 외 field 변경은
+거부하고 full config/source/build/edit-source hash는 원본별로 인증·보존합니다.
+`pairStimuliComparison`은 development 관계를 식별할 뿐 수용하지 않습니다.
+Aggregate가 기존 client `authenticateReactEditPair`로 양쪽 원본 environment
+binding과 source proof를 인증하고 그 evidence를 보존해야 합니다. Verifier/proof
+부재는 fail-closed입니다. Server-only production에는 이 예외를 적용하지 않습니다.
+같은 product 안의 timing/native counterpart는 실제 edit descriptor까지 동일해야
+하며 cross-product 예외를 purpose pairing에 빌려 쓸 수 없습니다.
+Client verifier는 같은 FA-V2 method, pair ID, purpose와 before-to-after phase
+전환만 인증하며 원본 source proof와 relation replay를 유지합니다. Production은
+그 phase 전환만 허용하고 dev edit 예외를 허용하지 않습니다. 각 full config/hash에 `pairPhase`를 남기고
+before/after config ID를 따로 동결합니다.
+
+CPU는 configured SERVER PID의 post-workload lifetime average/single logical CPU로
+`100 * (utime + stime) / CLK_TCK / (uptimeSeconds - starttime / CLK_TCK)`를
+계산합니다. 원본 `/proc/<pid>/stat`, 재확인 birth/counter, `/proc/uptime`,
+`getconf CLK_TCK`와 raw `ps`를 인증·재계산합니다. RSS는 기존 `ps` snapshot
+byte입니다. Display rounding, client/window CPU 또는 core 수로 나누는 대체는
+없고 85% budget을 유지합니다. Tick/birth quantization과 uptime 0.01초 resolution을
+보존하므로 unrounded 계산이 연속 시간 정밀도를 보장하지 않습니다.
+
+Passive NetLog는 missing CDP terminal을 항상 해결하지 않습니다. 실제 Next RSC의
+ExtraInfo 부재, renderer/native millisecond 불일치 및 complete trace에서
+`ResourceFinish` 부재가 관측됐지만 같은 URL의 native chain 소유권은 입증되지
+않았습니다. 기존 exact classifier는 그대로이며 clock window/nearest URL,
+추정 cancellation, peer prefetch 변경 또는 native counterpart terminal 차용은
+금지합니다. Pending timing은 quality blocker로 남습니다.
+Blink InspectorId/CDP ID와 renderer가 생성한 network request ID는 별도 identity
+공간입니다. 검토한 Chromium `ResourceLoader::Dispose` GC prefinalizer는
+`HandleError`/`DidFailLoading`을 건너뛰고 URLLoader client를 detach할 수 있습니다.
+이는 source coverage 반례이지 실제 pending 요청의 원인 진단이 아닙니다.
+Complete tracing만으로 모든 terminal callback의 관측 coverage를 입증하지 않습니다.
+
 기계가 읽는 suite의 `baseline.json`은 절대 budget, 상대 비교 band, profile,
-반복/warmup 횟수, 집계법, noise 처리와 outlier 규칙을 소유합니다. 예산을
+반복/warmup 횟수와 historical 집계/noise/outlier 규칙을 소유합니다.
+새 수용은 위 FA-V2 방법을 적용합니다. 예산을
 완화하려면 검토 가능한 명시적 변경이 필요합니다.
 첫 측정 시작점을 `--mode discovery`로 기록했습니다. 실제 budget 부족을 준비
 오류로 취급하지 않으며, 실행 명령이 성공했어도 결과 파일의 성능 판정은
@@ -81,7 +177,9 @@ Next 내장 `19.3.0-canary-cbb046ab-20260731`입니다. Timeout, observer 부재
 Request에는 loader/request ID, initiator, 종료 phase/시점, cancellation을 남기며
 기존 raw-trace authentication을 그대로 요구합니다.
 
-선택적인 production `nativeLifetime` 모드는 기본 비활성입니다.
+과거 production `nativeLifetime` 모드는 선택적이며 기본 비활성이었습니다.
+FA-V2는 별도 timing/native-conformance 실행을 요구하며 아래 observer 요구 사항은
+native-conformance에만 적용합니다.
 `run-gate.mjs` config의 `measurement`에
 `{ "nativeLifetime": { "enabled": true, "python": "/opt/fluo-native-debug/bin/python" } }`
 를 추가해야 하며, 기본 경로는 Frida/Python을 import·실행·설치하거나 요구하지
@@ -206,7 +304,8 @@ root가 달라도 도구/collector content hash와 allocation은 같아야 합�
 `8a09eb8d216e555b97760a86539dea31e79c86a8`의 Fluo `src/document.ts` /
 `reload:true`와 reviewed final `f9f5ac6722957cbe2752b9959e657a46594c0a1b`
 또는 source가 검증된 후속 구현 head의 `src/catalog-destination.tsx` /
-`reload:false`입니다. 이 두 필드만 해당 방향으로 달라질 수 있고 다른 설정,
+`reload:false`입니다. 인증된 FA-V2 before-to-after phase 전환 외에는
+이 두 필드만 해당 방향으로 달라질 수 있고 다른 설정,
 편집, peer, budget은 모두 같아야 합니다. 양쪽 모두 `/login`에서 `Editor login`을
 단 한 번 `Editor login changed`로 바꾸고 동일한 visible `h1`을 관측한 뒤
 원본 source bytes를 정확히 복구합니다. 원래 representative full hash는 before
@@ -215,11 +314,12 @@ final `a48953e1f5825e26afc5865a5177af988619bdceebec801cf8b4025b1a2fad73`으로
 서로 다르게 유지합니다. 두 원래 identity flag와 함께 `--environment-before-record`,
 `--environment-before-root`를 사용합니다. 원본 bytes/digest, containment,
 invocation, source/head/blob, build/dependency와 collector 증거로 capture와 replay의
-관계를 인증합니다. Production-only pair는 여전히 exact config equality를 요구하고
+관계를 인증합니다. Production-only pair는 인증된 FA-V2 phase 전환만 허용하며
+나머지 config는 동일해야 하고,
 profile, dev와 warmup hash를 aggregate hash와 별도로 보존합니다.
 Before record는 `--react-edit-pair-source`로 준비합니다. Aggregate와 development
 capture에 이 증거를 보존하지만 production-only child에는 flag를 전달하지 않습니다.
-인증된 before config가 다르면 after의 source proof는 필수입니다. 이 opt-in 없는
+인증된 edit descriptor가 다르면 after의 source proof는 필수입니다. 이 opt-in 없는
 일반 isolated capture와 same-config pair는 기존 경로를 유지하며 pinned
 ancestry/blob 또는 dev-only 실행의 production build를 요구하지 않습니다.
 
@@ -234,7 +334,7 @@ final upstream `f3e699047bfa51bbb69d9abeb2717eeb9e1871b0`에는 CLI/HTTP/React
 typegen, background form, navigation, store, provider 변경이 포함되어 제품 차이를
 #3884만의 인과 효과나 same-upstream 단일 최적화 control로 주장하지 않습니다.
 좁은 pair 검증은 성능 PASS가 아닙니다. 네 framework/profile의 fresh 전체 재수집,
-2 warmup/5 measured 순서 교대, 원래 budget/통계, exact-head review와
+2 warmup/5 measured 순서 교대, 원래 budget과 versioned FA-V2 판정, exact-head review와
 final GitHub CI는 계속 필수입니다.
 
 과거 load-only 데이터는 다른 초기 작업 구간을 수집했고 cold module이 끝나기 전에

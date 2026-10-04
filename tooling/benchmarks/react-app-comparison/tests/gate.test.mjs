@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -132,4 +134,25 @@ test('rejects a summary value that differs from the retained raw trace', async (
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('real CLI permits legacy receipts only as explicit historical replay', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'react-historical-cli-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const receipts = await evidence(directory);
+  const baselinePath = join(directory, 'baseline.json');
+  const receiptPaths = receipts.map((_, index) => join(directory, `receipt-${index}.json`));
+  await writeFile(baselinePath, JSON.stringify(baseline));
+  await Promise.all(receipts.map((receipt, index) => writeFile(receiptPaths[index], JSON.stringify(receipt))));
+  const output = join(directory, 'replay.json');
+  const args = [new URL('../src/gate.mjs', import.meta.url).pathname,
+    '--baseline', baselinePath, '--trace-root', directory, '--output', output, ...receiptPaths];
+  const execute = promisify(execFile);
+  await assert.rejects(execute(process.execPath, args),
+    (error) => error.code === 1 && /FA-V2 timing receipts required/u.test(error.stderr));
+  await execute(process.execPath, [...args, '--historical-replay']);
+  const replay = JSON.parse(await readFile(output, 'utf8'));
+  assert.equal(replay.verdict, 'pass');
+  assert.equal(replay.methodVersion, undefined);
+  assert.equal(replay.observations['desktop-native'].next.coldTtfbMs, 70);
 });

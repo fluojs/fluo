@@ -7,7 +7,8 @@ import { isDeepStrictEqual } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
-import { evaluateEvidence } from './gate.mjs';
+import { evaluateAcceptedEvidence, evaluateEvidence } from './gate.mjs';
+import { assertMethodConfig } from './fa-v2.mjs';
 import { bindEnvironmentPair, captureIsolatedEnvironment, environmentConfigIdentity, importEnvironmentPairBefore, launchIsolatedInvocation, mergeEvidence,
   readIsolatedInvocation, verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyReactEditPairRelation } from './measure.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
@@ -232,6 +233,9 @@ async function main() {
   try {
   requireDevDefinitions(config);
   const baseline = JSON.parse(await readFile(join(suite, 'baseline.json'), 'utf8'));
+  if (!args.includes('--historical-replay')) assertMethodConfig({
+    ...config.measurement, warmupRuns: baseline.policy.warmupRuns, measurementRuns: baseline.policy.minimumRuns,
+  });
   if (FRAMEWORKS.some((framework) => !config.servers?.[framework]?.url
     || !config.servers[framework]?.readyPattern || !Array.isArray(config.servers[framework]?.command))) {
     throw new TypeError('all four production servers require a command, readiness event, and URL');
@@ -284,6 +288,7 @@ async function main() {
     commit: commit.trim(),
     dirty: dirty.length > 0,
     sourceSha256: sourceHash.digest('hex'),
+    baselineSha256: createHash('sha256').update(await readFile(join(suite, 'baseline.json'))).digest('hex'),
     environment: { platform: platform(), arch: arch(), osRelease: release(),
       cpuModel: cpus()[0]?.model, cpuCores: cpus().length, totalMemoryBytes: totalmem(),
       serverNodeEnv: 'production' },
@@ -311,6 +316,7 @@ async function main() {
     for (const [profile, settings] of Object.entries(baseline.profiles)) {
       const measurement = {
         ...config.measurement,
+        ...(config.measurement.methodVersion ? { measurementKind: 'production' } : {}),
         profile,
         mode: settings.mode,
         warmupRuns: baseline.policy.warmupRuns,
@@ -320,7 +326,7 @@ async function main() {
         provenance,
       };
       const configFile = join(output, `${profile}-config.json`);
-      const resultFile = join(output, `${profile}.json`);
+      const resultFile = join(output, `${profile}-production.json`);
       const pairFlags = args.includes('--environment-before-record')
         ? await beforeProfilePairFlags(args[args.indexOf('--environment-before-record') + 1],
           args[args.indexOf('--environment-before-root') + 1], profile, false) : [];
@@ -342,6 +348,7 @@ async function main() {
         const devMeasurement = {
           ...JSON.parse(await readFile(join(output, `${receipt.profile}-config.json`), 'utf8')),
           dev: config.dev,
+          ...(config.measurement.methodVersion ? { measurementKind: 'development' } : {}),
         };
         await writeFile(devConfig, `${JSON.stringify(devMeasurement, null, 2)}\n`);
         const pairFlags = args.includes('--environment-before-record')
@@ -357,10 +364,24 @@ async function main() {
         await verifyMeasurementEnvironment(development, output);
         if (environmentBinding) await verifyProfileEnvironment(environmentBinding, development, devMeasurement, output, true);
         receipts[index] = await mergeEvidence(receipt, development, join(output, 'combined-traces'));
+        await writeFile(join(output, `${receipt.profile}.json`), `${JSON.stringify(receipts[index], null, 2)}\n`);
     }
-    const verdict = await evaluateEvidence(baseline, receipts, output);
-    await writeFile(join(output, 'verdict.json'), `${JSON.stringify({ ...verdict, purpose: mode, provenance,
-      ...(environmentBinding ? { environmentBinding, environmentPairRelation, receipts } : {}) }, null, 2)}\n`);
+    let verdict;
+    if (args.includes('--historical-replay')) verdict = await evaluateEvidence(baseline, receipts, output);
+    else if (config.measurement.measurementPurpose === 'native-conformance') {
+      verdict = { methodVersion: 'FA-V2', measurementPurpose: 'native-conformance', checks: [],
+        verdict: receipts.every((receipt) => [...receipt.runs, ...receipt.warmups,
+          ...(receipt.developmentWarmups ?? [])].every((run) => run.correctness === 'pass'
+            && (run.metrics.errorRate === undefined || run.metrics.errorRate === 0))) ? 'pass' : 'inconclusive' };
+    } else if (args.includes('--native-receipts')) {
+      const files = JSON.parse(await readFile(args[args.indexOf('--native-receipts') + 1], 'utf8'));
+      const native = await Promise.all(files.map(async (path) => JSON.parse(await readFile(path, 'utf8'))));
+      const traceRoot = args.includes('--trace-root') ? resolve(args[args.indexOf('--trace-root') + 1]) : output;
+      verdict = await evaluateAcceptedEvidence(baseline, receipts, traceRoot, native);
+    } else verdict = { methodVersion: 'FA-V2', measurementPurpose: 'timing', verdict: 'inconclusive',
+      reason: 'FA-V2 native counterparts required before acceptance', checks: [] };
+    await writeFile(join(output, 'verdict.json'), `${JSON.stringify({ ...verdict, executionMode: mode, provenance,
+      receipts, ...(environmentBinding ? { environmentBinding, environmentPairRelation } : {}) }, null, 2)}\n`);
     console.log(`React app performance ${mode}: ${verdict.verdict}`);
     if (performanceExitCode(verdict.verdict, mode, receipts.every((receipt) =>
       receipt.runs.every((run) => run.correctness === 'pass')))) process.exitCode = 1;
