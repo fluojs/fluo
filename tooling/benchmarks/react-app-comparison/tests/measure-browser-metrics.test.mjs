@@ -274,6 +274,54 @@ test('a streamed 404 waits for browser-visible failure after the navigation shel
   }
 });
 
+test('measurement navigation failure remains primary when native cleanup also fails', { timeout: 20_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-primary-failure-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const { chromium } = await import('@playwright/test');
+  const primary = new Error('navigation failed before capture');
+  const cleanup = new Error('native close failed');
+  const launch = chromium.launchServer;
+  const connect = chromium.connect;
+  let browserExited = false;
+  t.mock.method(chromium, 'launchServer', async (options) => {
+    const server = await Reflect.apply(launch, chromium, [options]);
+    const close = server.close;
+    t.mock.method(server, 'close', async () => {
+      await Reflect.apply(close, server, []);
+      browserExited = true;
+      throw cleanup;
+    });
+    return server;
+  });
+  t.mock.method(chromium, 'connect', async (...args) => {
+    const browser = await Reflect.apply(connect, chromium, args);
+    const newContext = browser.newContext;
+    t.mock.method(browser, 'newContext', async (...contextArgs) => {
+      const context = await Reflect.apply(newContext, browser, contextArgs);
+      const newPage = context.newPage;
+      t.mock.method(context, 'newPage', async () => {
+        const page = await Reflect.apply(newPage, context, []);
+        t.mock.method(page, 'goto', async () => { throw primary; });
+        return page;
+      });
+      return context;
+    });
+    return browser;
+  });
+  const driver = await createBrowserDriver({
+    journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+      .map((name) => [name, { path: '/' }])),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    await assert.rejects(driver.measure({
+      framework: 'fluo', runId: 'primary-failure', device: 'desktop', mode: 'native',
+      nativeTraceDirectory: directory, url: 'http://127.0.0.1/',
+    }), (error) => error === primary && error.cause === cleanup);
+    assert.equal(browserExited, true);
+  } finally { await driver.close(); }
+});
+
 for (const enabled of [false, true]) {
 test(`native capture stays alive through unchanged throughput sampling with lifetime enabled=${enabled}`, { timeout: 20_000 }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'native-driver-adoption-'));

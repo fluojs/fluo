@@ -299,6 +299,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       const native = await createNativeCapture(chromium, item.nativeTraceDirectory, config.nativeLifetime?.enabled
         ? { ...config.nativeLifetime, measurement: { runId: item.runId, framework: item.framework,
           profile: item.profile, mode: item.mode } } : undefined);
+      let measurementFailed = false;
+      let measurementError;
       try {
       const { context, page, cdp } = await createPage(item, native.browser);
       await native.prepareLifetime(cdp);
@@ -604,9 +606,17 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         for (const [name, observe] of nativeSubscriptions) cdp.off(name, observe);
         cdp.removeAllListeners();
         networkChanges.removeAllListeners();
-        await native.close();
       }
-      } finally { await native.close(); }
+      } catch (error) {
+        measurementFailed = true;
+        measurementError = error;
+        throw error;
+      } finally {
+        try { await native.close(); } catch (cleanupError) {
+          if (!measurementFailed) throw cleanupError;
+          if (measurementError instanceof Error) measurementError.cause ??= cleanupError;
+        }
+      }
     },
     async measureDev(item, _config, kind) {
       const key = item.runId + item.framework;
