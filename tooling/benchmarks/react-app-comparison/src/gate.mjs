@@ -234,7 +234,7 @@ export async function evaluateAcceptedPair(baseline, before, after) {
     }
     if (!first.developmentMethodBinding) continue;
     if (before.outputRoot !== after.outputRoot) throw new Error('FA-V2 RE-A01 requires common evidence root');
-    for (const purpose of ['timing', 'native']) {
+    for (const purpose of results[0].methodVersion === 'FA-V3' ? ['timing'] : ['timing', 'native']) {
       const firstReceipt = before[purpose].find((receipt) => receipt.profile === first.profile);
       const secondReceipt = after[purpose].find((receipt) => receipt.profile === second.profile);
       const relation = await verifyDevelopmentPairRelation(firstReceipt, secondReceipt, before.outputRoot);

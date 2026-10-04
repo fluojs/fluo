@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -103,7 +103,9 @@ test(`${methodVersion ? `${methodVersion} ${purpose}` : 'historical replay'} sou
         builds: { '/product/tooling/benchmarks/react-app-comparison/apps/fluo/dist/entry.js': {
           sha256: createHash('sha256').update('compiled fixture').digest('hex'),
           bytesBase64: Buffer.from('compiled fixture').toString('base64') } }, commits: { [head]: commit } };
-      fixture.record.provenance = { ...config.provenance, root: '/product', commit: head };
+      fixture.record.provenance = { ...config.provenance, root: '/product', commit: head,
+        ...(methodVersion ? { baselineSha256: createHash('sha256')
+          .update(await readFile(new URL('../baseline.json', import.meta.url))).digest('hex') } : {}) };
       await persist(fixture);
     }
     await assert.doesNotReject(methods.authenticateReactEditPair(before.binding, after.binding, directory));
@@ -147,6 +149,145 @@ test(`${methodVersion ? `${methodVersion} ${purpose}` : 'historical replay'} sou
       }, directory), /receipt source relation/u);
       await assert.rejects(verifyDevelopmentPairRelation(secondReceipt, firstReceipt, directory),
         /development method/u);
+      if (methodVersion === 'FA-V3') {
+        const { evaluateAcceptedPair } = await import('../src/gate.mjs');
+        const { hashObject } = await import('../src/fa-v2.mjs');
+        const { readServerCpu } = await import('../src/server-cpu.mjs');
+        const frozen = JSON.parse(await readFile(new URL('../baseline.json', import.meta.url)));
+        const fields = Array(50).fill('0');
+        fields[0] = 'S'; fields[11] = '90'; fields[12] = '10'; fields[19] = '100';
+        const cpu = await readServerCpu(123, {
+          read: async (path) => path === '/proc/uptime' ? '4.01 0\n' : `123 (server) ${fields.join(' ')}`,
+          execute: async (command) => ({ stdout: command === 'getconf' ? '100\n' : '33.2 42\n' }),
+        });
+        const headroom = summarizeEnvironmentHeadroom(
+          { monotonicMs: 0, processCpu: { user: 0, system: 0 }, cpus: [{ idle: 0, user: 0 }] },
+          { monotonicMs: 1, processCpu: { user: 1, system: 0 }, cpus: [{ idle: 1, user: 1 }] });
+        const cohorts = [];
+        for (const [phase, fixture] of [['before', before], ['after', after]]) {
+          const developmentConfig = { ...fixture.record.configurationEvidence,
+            provenance: fixture.record.provenance };
+          const productionConfig = { ...developmentConfig, measurementKind: 'production',
+            measurementPurpose: 'integrated', nativeLifetime: { enabled: true, python: '/python' },
+            serverPids: Object.fromEntries(frameworks.map((framework) => [framework, 123])) };
+          // Production stimuli remain identical; only development owns RE-A01.
+          delete productionConfig.dev;
+          const productionEnvironmentConfig = { ...productionConfig };
+          delete productionEnvironmentConfig.serverPids;
+          const productionEnvironment = await environmentFixture(directory, `${phase}-production`, productionEnvironmentConfig);
+          productionEnvironment.record.provenance = fixture.record.provenance;
+          await persist(productionEnvironment);
+          const receipts = [];
+          for (const [kind, measurementConfig, environment] of [
+            ['production', productionConfig, productionEnvironment],
+            ['development', developmentConfig, { ...fixture, binding: phase === 'before' ? imported : fixture.binding }],
+          ]) {
+            const receipt = await collectMeasurements(measurementConfig, {
+              browserVersion: NATIVE_LIFETIME_IDENTITY.browserVersion,
+              async check() { return { pass: true, steps: [] }; },
+              async measure(item) {
+                if (kind === 'development') {
+                  const selected = measurementConfig.dev.fluo.edits['react-edit'];
+                  const proof = fixture.record.reactEditSource;
+                  const original = Buffer.from(proof.originalBase64, 'base64');
+                  const edited = Buffer.from(original.toString().replace(selected.from, selected.to));
+                  const initial = { documentToken: 'initial', url: 'http://127.0.0.1/login',
+                    text: selected.from, visible: true };
+                  const timing = { event: 'react-edit-visible', durationMs: 1, environmentHeadroom: headroom,
+                    interval: { clock: 'node-performance-now-ms', startedAtMs: 0, completedAtMs: 1 },
+                    editEvidence: { schemaVersion: 1, subscribedBeforeStimulus: true, subscribedAtMs: 0,
+                      source: { ...selected, path: proof.path, occurrences: 1,
+                        originalBase64: proof.originalBase64, originalSha256: proof.originalSha256,
+                        editedBase64: edited.toString('base64'), editedSha256: createHash('sha256').update(edited).digest('hex'),
+                        restoredBase64: proof.originalBase64, restoredSha256: proof.originalSha256,
+                        writeStartedAtMs: 0, writtenAtMs: 1, restoredAtMs: 1 },
+                      initial, final: { ...initial, text: selected.expectedText,
+                        documentToken: phase === 'before' ? 'reloaded' : initial.documentToken,
+                        reactCommit: { documentToken: initial.documentToken, version: '19.2.8',
+                          matchedHostNode: true, text: selected.expectedText } },
+                      completion: phase === 'before' ? 'reload-to-visible' : 'hmr-to-visible',
+                      readiness: { protocol: 'vite', requestId: 'hmr', url: 'ws://127.0.0.1/',
+                        cdpTimestamp: 10, message: { type: 'connected' } },
+                      update: { protocol: 'vite', requestId: 'hmr', url: 'ws://127.0.0.1/', cdpTimestamp: 11,
+                        message: { type: 'update', updates: [{ type: 'js-update', path: `/${selected.file}` }] } } } };
+                  return { metrics: Object.fromEntries(EVALUATOR_METRICS.filter((name) => name.startsWith('dev'))
+                    .map((name) => [name, 1])),
+                  timings: { 'cold-ready': { durationMs: 1, environmentHeadroom: headroom }, 'react-edit': timing,
+                    'css-edit': { environmentHeadroom: headroom }, 'server-edit': { environmentHeadroom: headroom } } };
+                }
+                const { pairId, executionId, pairPhase, configSha256, productSha256 } = item.methodBinding;
+                const measurement = { runId: item.runId, framework: item.framework, profile: item.profile,
+                  mode: item.mode, methodVersion, measurementPurpose: 'integrated', measurementKind: 'production',
+                  pairId, executionId, pairPhase, configSha256, productSha256 };
+                const nativeDirectory = join(item.nativeTraceDirectory, `${item.runId}-${item.framework}-native`);
+                await mkdir(nativeDirectory);
+                const observer = await createNativeLifetimeObserver({
+                  enabled: true, directory: nativeDirectory, measurement });
+                // Authenticate unavailable native evidence, never fabricate browser acceptance.
+                await observer.prepare({ version: () => 'unsupported' }, 123, {});
+                const ledger = [{ name: 'capture-boundary',
+                  data: { captureTimestamp: 10, methodBinding: item.methodBinding } }];
+                const evidence = await observer.drain(10, ledger);
+                const netlog = join(item.nativeTraceDirectory, `${item.runId}-${item.framework}-netlog.json`);
+                const cdp = join(item.nativeTraceDirectory, `${item.runId}-${item.framework}-passive.json`);
+                const netlogBytes = JSON.stringify({ constants: {}, events: [{ type: 0 }] });
+                const cdpBytes = JSON.stringify({ ledger,
+                  cleanup: { closed: true, exitCode: 0, signalCode: null } });
+                const passive = JSON.parse(cdpBytes);
+                await writeFile(netlog, netlogBytes);
+                await writeFile(cdp, JSON.stringify(passive));
+                return { metrics: { ...Object.fromEntries(EVALUATOR_METRICS.filter((name) => !name.startsWith('dev'))
+                  .map((name) => [name, name === 'errorRate' ? 0 : 1])),
+                  cpuPercent: cpu.cpuPercent, rssBytes: cpu.rssBytes, throughputRequestsPerSecond: 10000 },
+                requests: Array.from({ length: 200 }, () => ({ status: 200, resourceType: 'throughput' })),
+                qualityFailures: reconcileNativeLifetime([], evidence.observation, passive.ledger).unavailable,
+                artifacts: { serverCpu: cpu, serverCpuSha256: hashObject(cpu),
+                  throughput: measurementConfig.throughput[item.framework], environmentHeadroom: headroom,
+                  nativeLifetimeObserver: evidence.provenance,
+                  nativeTerminalObserver: { rawTrace: netlog, sha256: createHash('sha256').update(netlogBytes).digest('hex'),
+                    cdpTrace: cdp, cdpSha256: createHash('sha256').update(JSON.stringify(passive)).digest('hex'),
+                    captureTimestamp: 10 } } };
+              },
+            }, join(directory, `${phase}-${kind}`));
+            // These are replay fixtures, not observations from a live Linux guest.
+            receipt.isolatedRepresentative = true;
+            receipt.environmentBinding = environment.binding;
+            if (phase === 'after' && kind === 'development') receipt.environmentPairRelation = bound;
+            for (const run of [...receipt.runs, ...receipt.warmups]) {
+              Object.assign(run, { isolatedRepresentative: true, environmentBinding: environment.binding,
+                ...(receipt.environmentPairRelation ? { environmentPairRelation: receipt.environmentPairRelation } : {}) });
+              const raw = JSON.parse(await readFile(run.trace));
+              Object.assign(raw, { isolatedRepresentative: true, environmentBinding: environment.binding,
+                ...(receipt.environmentPairRelation ? { environmentPairRelation: receipt.environmentPairRelation } : {}) });
+              await writeFile(run.trace, JSON.stringify(raw));
+            }
+            receipts.push(receipt);
+          }
+          const combined = await mergeEvidence(receipts[0], receipts[1], join(directory, `${phase}-combined`));
+          cohorts.push({ timing: [combined], native: [], outputRoot: directory });
+        }
+
+        const paired = await evaluateAcceptedPair(frozen, cohorts[0], cohorts[1]);
+
+        assert.equal(paired.methodVersion, 'FA-V3');
+        assert.equal(paired.verdict, 'inconclusive');
+        assert.deepEqual(paired.sourceRelations, [bound]);
+        const finalReceipt = cohorts[1].timing[0];
+        await assert.rejects(evaluateAcceptedPair(frozen, cohorts[0], {
+          ...cohorts[1], timing: [{ ...finalReceipt, developmentEnvironmentPairRelation: {
+            ...bound, afterSource: { ...bound.afterSource, originalSha256: 'b'.repeat(64) },
+          } }],
+        }), /replay mismatch|receipt source relation/u);
+        await assert.rejects(evaluateAcceptedPair(frozen, cohorts[0], {
+          ...cohorts[1], timing: [{ ...finalReceipt, developmentWarmups: [] }],
+        }), /inventory|repetitions/u);
+        await assert.rejects(evaluateAcceptedPair(frozen, cohorts[0], {
+          ...cohorts[1], native: [finalReceipt],
+        }), /cannot borrow native/u);
+        await assert.rejects(evaluateAcceptedPair(frozen, cohorts[0], {
+          ...cohorts[1], timing: [{ ...finalReceipt, methodVersion: 'FA-V2' }],
+        }), /timing receipts/u);
+      }
     }
     const receipt = { profile: config.profile, mode: config.mode, provenance: after.record.provenance,
       isolatedRepresentative: true, environmentBinding: after.binding, runs: [], warmups: [] };
