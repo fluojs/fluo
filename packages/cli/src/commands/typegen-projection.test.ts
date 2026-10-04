@@ -2,10 +2,11 @@ import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { compileFunction, constants } from 'node:vm';
 
 import { tsImport } from 'tsx/esm/api';
 import ts from 'typescript';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { runTypegenCommand } from './typegen.js';
 import { TypegenCompiler } from './typegen-compiler.js';
 import { TypegenCommandError } from './typegen-options.js';
@@ -16,6 +17,79 @@ const modulePath = fileURLToPath(new URL('../fixtures/typegen-identity.ts', impo
 const tsconfigPath = fileURLToPath(new URL('../fixtures/tsconfig.json', import.meta.url));
 
 describe('frozen compiler object association', () => {
+  it.each(['success', 'failure'] as const)('releases retained declaration recorders after %s teardown', async (outcome) => {
+    // Given: actual emitted decorators can outlive the generation in the native module cache.
+    const cwd = await realpath(await mkdtemp(join(tmpdir(), 'fluo-recorder-lifecycle-')));
+    const applicationPath = join(cwd, 'app.ts');
+    const config = join(cwd, 'tsconfig.json');
+    const callbacks: Array<(value: unknown) => unknown> = [];
+    let recorderKey = '';
+    try {
+      await writeFile(applicationPath, 'export class Input { readonly value = "owned"; }\n');
+      await writeFile(config, JSON.stringify({
+        compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler' },
+        include: ['*.ts'],
+      }));
+      const snapshot = TypegenCompiler.create({ cwd, modulePath: applicationPath, tsconfigPath: config });
+      const emit = snapshot.emit.bind(snapshot);
+      const emission = vi.spyOn(snapshot, 'emit').mockImplementation((path, key) => {
+        recorderKey = key;
+        const recorder: unknown = Reflect.get(globalThis, key);
+        if (typeof recorder !== 'function') throw new TypeError('Generation recorder is unavailable.');
+        Object.defineProperty(globalThis, key, {
+          configurable: true,
+          value(id: string) {
+            const callback: unknown = Reflect.apply(recorder, undefined, [id]);
+            if (typeof callback !== 'function') throw new TypeError('Declaration recorder is unavailable.');
+            callbacks.push((value) => Reflect.apply(callback, undefined, [value]));
+            return callback;
+          },
+        });
+        return emit(path, key);
+      });
+      const recording = vi.spyOn(snapshot, 'record');
+      const failure = new Error('Consumption failed.');
+
+      // When: the real loader consumes the constructor and tears down on either result.
+      const generation = consumeTypegenSource({ modulePath: applicationPath, snapshot }, async (application) => {
+        const Input: unknown = Reflect.get(application, 'Input');
+        if (typeof Input !== 'function') throw new TypeError('Fixture constructor is unavailable.');
+        expect(snapshot.declaration(Input).source.fileName).toBe(applicationPath);
+        const record = callbacks[0];
+        if (record === undefined) throw new TypeError('Emitted decorator was not retained.');
+        class ReplacementInput {}
+        expect(record(ReplacementInput)).toBe(ReplacementInput);
+        expect(snapshot.declaration(ReplacementInput)).toBe(snapshot.declaration(Input));
+        if (outcome === 'failure') throw failure;
+        return Input;
+      });
+      if (outcome === 'failure') await expect(generation).rejects.toBe(failure);
+      else await expect(generation).resolves.toEqual(expect.any(Function));
+
+      // Then: retained callbacks cannot reach the completed snapshot; its key and hook are gone.
+      expect(callbacks).toHaveLength(1);
+      const recorded = recording.mock.calls.length;
+      for (const record of callbacks) {
+        expect(() => record(class LateInput {})).toThrow(TypegenCommandError);
+      }
+      expect(recording).toHaveBeenCalledTimes(recorded);
+      expect(Reflect.has(globalThis, recorderKey)).toBe(false);
+      const emitted = emission.mock.calls.length;
+      const importNative = compileFunction('return import(url)', ['url'], {
+        importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER,
+      });
+      const uninstrumented: unknown = await Reflect.apply(importNative, undefined, [
+        `${pathToFileURL(applicationPath).href}?fluo-typegen=${recorderKey}&teardown=1`,
+      ]);
+      expect(emission).toHaveBeenCalledTimes(emitted);
+      if (typeof uninstrumented !== 'object' || uninstrumented === null) throw new TypeError('Fixture import failed.');
+      expect(() => snapshot.declaration(Reflect.get(uninstrumented, 'Input'))).toThrow(TypegenCommandError);
+    } finally {
+      vi.restoreAllMocks();
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it('retains the caller CommonJS package identity across scoped generation', async () => {
     // Given: the caller already owns the installed React CommonJS namespace.
     const cwd = await realpath(await mkdtemp(join(tmpdir(), 'fluo-cjs-identity-')));

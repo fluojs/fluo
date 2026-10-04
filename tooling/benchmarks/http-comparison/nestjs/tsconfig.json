@@ -10,5 +10,5 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },
-  "include": ["../src/nestjs/**/*", "../src/shared/**/*"]
+  "include": ["../src/nestjs/**/*", "../src/shared/workloads.ts"]
 }

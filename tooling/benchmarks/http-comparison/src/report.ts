@@ -1,5 +1,6 @@
 import type { EnvironmentSummary } from './provenance';
 import type { Measurement } from './traffic';
+import { histogramPercentile } from './traffic';
 
 export interface TargetResult extends Measurement { readonly label: string }
 export interface ScenarioResult {
@@ -14,8 +15,9 @@ export function metricSnapshot(target: Measurement) {
     errors: result.errors, timeouts: result.timeouts, non2xx: result.non2xx,
     mismatches: result.mismatches, statusMismatches: target.statusMismatches,
     requestsAverage: result.requests.average, throughputAverage: result.throughput.average,
-    latencyAverage: result.latency.average, latencyP50: result.latency.p50,
-    latencyP97_5: result.latency.p97_5, latencyP99: result.latency.p99,
+    latencyAverage: result.latency.average, latencyP50: target.latencyPercentilesMs.p50,
+    latencyP95: target.latencyPercentilesMs.p95, latencyP99: target.latencyPercentilesMs.p99,
+    latencyHistogramMicros: target.latencyHistogramMicros,
     clientCpu: target.clientCpu,
   };
 }
@@ -44,6 +46,10 @@ export function summarizeRuns(runs: readonly (readonly ScenarioResult[])[]) {
         if (!sample) throw new Error(`Missing ${target.label} sample for ${scenario.name}`);
         return metricSnapshot(sample);
       });
+      const pooledCounts = new Map<number, number>();
+      for (const sample of samples) for (const [micros, count] of sample.latencyHistogramMicros) {
+        pooledCounts.set(micros, (pooledCounts.get(micros) ?? 0) + count);
+      }
       return {
         label: target.label, samples,
         requestsPerSecond: summarize(samples.map((sample) => sample.requestsAverage)),
@@ -53,8 +59,13 @@ export function summarizeRuns(runs: readonly (readonly ScenarioResult[])[]) {
         meanOfRunLatencyMs: {
           average: summarize(samples.map((sample) => sample.latencyAverage)).mean,
           p50: summarize(samples.map((sample) => sample.latencyP50)).mean,
-          p97_5: summarize(samples.map((sample) => sample.latencyP97_5)).mean,
+          p95: summarize(samples.map((sample) => sample.latencyP95)).mean,
           p99: summarize(samples.map((sample) => sample.latencyP99)).mean,
+        },
+        pooledLatencyMs: {
+          p50: histogramPercentile([...pooledCounts], 50),
+          p95: histogramPercentile([...pooledCounts], 95),
+          p99: histogramPercentile([...pooledCounts], 99),
         },
         clientCpuCoreEquivalentPercent: summarize(samples.map((sample) => sample.clientCpu.coreEquivalentPercent)),
       };
@@ -82,14 +93,15 @@ export function printReport(results: ReturnType<typeof summarizeRuns>, options: 
   console.log('Latency percentiles below are mean-of-run percentiles, not pooled percentiles. Deltas are descriptive, not winner/significance verdicts.');
   for (const scenario of results) {
     console.log(`\n${scenario.name}: ${scenario.description}`);
-    const baseline = scenario.targets.find((target) => target.label === 'Nest+Fastify');
     for (const target of scenario.targets) {
+      const engine = target.label.endsWith('-fastify') ? 'fastify' : target.label.endsWith('-express') ? 'express' : null;
+      const baseline = engine === null ? undefined : scenario.targets.find((candidate) => candidate.label === `nestjs-${engine}`);
       const stats = target.requestsPerSecond;
       const delta = baseline && baseline.requestsPerSecond.mean !== 0
         ? `${n((stats.mean / baseline.requestsPerSecond.mean - 1) * 100)}%` : 'N/A';
-      console.log(`  ${target.label}: req/s mean=${n(stats.mean)} median=${n(stats.median)} sample SD=${stats.standardDeviation === null ? 'N/A' : n(stats.standardDeviation)} range=${n(stats.min)}..${n(stats.max)} n=${stats.count}; delta mean vs Nest=${delta}`);
+      console.log(`  ${target.label}: req/s mean=${n(stats.mean)} median=${n(stats.median)} sample SD=${stats.standardDeviation === null ? 'N/A' : n(stats.standardDeviation)} range=${n(stats.min)}..${n(stats.max)} n=${stats.count}; delta mean vs ${baseline?.label ?? 'no matched Nest host'}=${delta}`);
       const latency = target.meanOfRunLatencyMs;
-      console.log(`    MB/s mean=${n(target.bytesPerSecond.mean / 1_048_576)}; mean-of-run latency ms: average=${n(latency.average)} p50=${n(latency.p50)} p97.5=${n(latency.p97_5)} p99=${n(latency.p99)}`);
+      console.log(`    MB/s mean=${n(target.bytesPerSecond.mean / 1_048_576)}; mean-of-run latency ms: average=${n(latency.average)} p50=${n(latency.p50)} p95=${n(latency.p95)} p99=${n(latency.p99)}`);
       const cpu = target.clientCpuCoreEquivalentPercent;
       console.log(`    client CPU/core: mean=${n(cpu.mean)}% range=${n(cpu.min)}..${n(cpu.max)}%; errors/timeouts/non2xx/body/status mismatches=0 (validated)`);
       if (cpu.max >= 100) console.log('    Potential load-generator saturation: client CPU consumed at least one core in a run; this is a diagnostic flag, not proof or a performance verdict.');

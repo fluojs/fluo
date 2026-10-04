@@ -6,6 +6,7 @@
   "description": "HTTP throughput/latency benchmark: NestJS vs fluo across Fastify and Bun",
   "scripts": {
     "bench": "tsx src/run.ts",
+    "smoke": "tsx src/smoke.ts",
     "test": "node --import tsx --test tests/*.test.mts",
     "build:nestjs": "tsc -p nestjs/tsconfig.json --outDir dist/nestjs && node -e \"require('fs').writeFileSync('dist/nestjs/package.json', '{\\\"type\\\":\\\"commonjs\\\"}\\n')\"",
     "build:fluo": "tsc src/fluo/server.ts --target ES2022 --module ESNext --moduleResolution Bundler --strict --skipLibCheck --outDir dist/fluo-fastify",
@@ -21,28 +22,43 @@
     "@fluojs/di": "link:../../../packages/di",
     "@fluojs/http": "link:../../../packages/http",
     "@fluojs/platform-bun": "link:../../../packages/platform-bun",
+    "@fluojs/platform-cloudflare-workers": "link:../../../packages/platform-cloudflare-workers",
+    "@fluojs/platform-deno": "link:../../../packages/platform-deno",
+    "@fluojs/platform-express": "link:../../../packages/platform-express",
     "@fluojs/platform-fastify": "link:../../../packages/platform-fastify",
+    "@fluojs/platform-nextjs": "link:../../../packages/platform-nextjs",
+    "@fluojs/platform-nodejs": "link:../../../packages/platform-nodejs",
     "@fluojs/runtime": "link:../../../packages/runtime",
     "@fluojs/validation": "link:../../../packages/validation",
     "@nestjs/common": "^11.1.24",
     "@nestjs/core": "^11.1.24",
+    "@nestjs/platform-express": "11.1.24",
     "@nestjs/platform-fastify": "^11.1.24",
+    "express": "5.2.1",
     "fastify": "^5.12.3",
+    "next": "16.3.5",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
     "reflect-metadata": "^0.2.0"
   },
   "devDependencies": {
     "@types/autocannon": "^7.12.7",
+    "@types/express": "5.0.6",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
     "autocannon": "^7.0.0",
+    "esbuild": "0.28.1",
     "ts-node": "^10.0.0",
     "tsx": "^4.23.1",
-    "typescript": "~5.8.3"
+    "typescript": "~5.8.3",
+    "wrangler": "4.20.0"
   },
   "pnpm": {
     "overrides": {
       "esbuild": "0.28.1",
       "fast-uri@3": "3.1.7",
       "fastify": "5.12.3",
+      "express": "5.2.1",
       "find-my-way": "9.7.0",
       "form-data": "4.0.6",
       "uuid": "11.1.1"

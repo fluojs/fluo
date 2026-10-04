@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import * as report from '../src/report';
 import * as workloads from '../src/shared/workloads';
-import { measureTargets, shoot } from '../src/traffic';
+import { measureTargets, shoot, TrafficFailure } from '../src/traffic';
+import { failureEvidence } from '../src/evidence';
+import { monitorServer, ResourceMeasurementFailure } from '../src/resources';
 
 async function withServer(handler: (req: IncomingMessage, res: ServerResponse) => void, check: (url: string) => Promise<void>) {
   const server = createServer(handler);
@@ -27,6 +32,110 @@ const sequence = [
   { path: '/first', method: 'GET' as const, expectedBody: 'first', expectedStatus: 200 },
   { path: '/second', method: 'GET' as const, expectedBody: 'second', expectedStatus: 200 },
 ];
+
+test('retains available server samples alongside failed traffic diagnostics', { timeout: 10_000 }, async () => {
+  // Given
+  await withServer((_request, response) => { response.statusCode = 503; response.end('first'); }, async (url) => {
+    // When / Then
+    await assert.rejects(monitorServer(process.pid, () => shoot({
+      url, duration: 1, amount: 1, connections: 1, requests: [sequence[0]],
+    }, 'resource-failure')), (error: unknown) => {
+      assert.ok(error instanceof ResourceMeasurementFailure);
+      assert.ok(error.samples.length > 0);
+      assert.ok(error.samples[0].processes.some((sample) => sample.pid === process.pid));
+      const retained = JSON.parse(JSON.stringify(failureEvidence(error)));
+      assert.ok(retained.serverSamples.length > 0);
+      assert.ok(retained.cause.traffic.result.non2xx > 0);
+      return true;
+    });
+  });
+});
+
+test('load subprocess returns raw failure diagnostics with a nonzero exit', { timeout: 10_000 }, async () => {
+  // Given
+  await withServer((_request, response) => { response.statusCode = 503; response.end('first'); }, async (url) => {
+    const options = { url, duration: 1, amount: 1, connections: 1, requests: [sequence[0]] };
+    // When / Then
+    await assert.rejects(promisify(execFile)(process.execPath, [
+      '--import', 'tsx', fileURLToPath(new URL('../src/load-client.ts', import.meta.url)),
+      Buffer.from(JSON.stringify(options)).toString('base64'),
+    ]), (error: unknown) => {
+      assert.ok(error instanceof Error && 'code' in error && error.code === 1);
+      assert.ok('stdout' in error && typeof error.stdout === 'string');
+      const failure = JSON.parse(error.stdout).failure;
+      assert.ok(failure.diagnostics.result.non2xx > 0);
+      assert.ok(failure.diagnostics.clientCpu.wallMicros > 0);
+      return true;
+    });
+  });
+});
+
+test('rejects non-2xx traffic even when its body and requested status match', { timeout: 10_000 }, async () => {
+  // Given
+  await withServer((_request, response) => { response.statusCode = 503; response.end('first'); }, async (url) => {
+    // When / Then
+    await assert.rejects(shoot({ url, duration: 1, amount: 2, connections: 1,
+      requests: [{ ...sequence[0], expectedStatus: 503 }] }, 'non2xx'), (error: unknown) => {
+      assert.ok(error instanceof TrafficFailure);
+      assert.ok(error.diagnostics.result);
+      assert.ok(error.diagnostics.result.non2xx > 0);
+      assert.equal(error.diagnostics.statusMismatches, 0);
+      assert.ok(error.diagnostics.clientCpu.wallMicros > 0);
+      return true;
+    });
+  });
+});
+
+test('rejects zero completions even when the SDK reports no errors', { timeout: 10_000 }, async () => {
+  // Given: FIN closes the connection without a response or SDK error count.
+  await withServer((request) => request.socket.destroy(), async (url) => {
+    // When / Then
+    await assert.rejects(shoot({ url, duration: 1, amount: 1, connections: 1, requests: [sequence[0]] }, 'reset'), (error: unknown) => {
+      assert.ok(error instanceof TrafficFailure);
+      assert.ok(error.diagnostics.result);
+      assert.equal(error.diagnostics.result.errors, 0);
+      assert.equal(error.diagnostics.result.timeouts, 0);
+      assert.equal(error.diagnostics.result.requests.total, 0);
+      assert.deepEqual(error.diagnostics.latencyHistogramMicros, []);
+      return true;
+    });
+  });
+});
+
+test('retains TCP errors after an otherwise valid completed response', { timeout: 10_000 }, async () => {
+  // Given: one valid response followed by a real TCP RST, not a graceful FIN.
+  let received = 0;
+  await withServer((request, response) => {
+    if (received++ === 0) response.end('first');
+    else request.socket.resetAndDestroy();
+  }, async (url) => {
+    // When / Then
+    await assert.rejects(shoot({ url, duration: 1, amount: 2, connections: 1, requests: [sequence[0]] }, 'rst'), (error: unknown) => {
+      assert.ok(error instanceof TrafficFailure);
+      assert.ok(error.diagnostics.result);
+      assert.ok(error.diagnostics.result.errors > 0);
+      assert.equal(error.diagnostics.result.timeouts, 0);
+      assert.equal(error.diagnostics.result.non2xx, 0);
+      assert.equal(error.diagnostics.result.requests.total, 1);
+      assert.equal(error.diagnostics.statusMismatches, 0);
+      return true;
+    });
+  });
+});
+
+test('retains actual request timeouts without accepting zero completions', { timeout: 10_000 }, async () => {
+  // Given: the server accepts the request but never responds; timeout itself is under test.
+  await withServer(() => {}, async (url) => {
+    // When / Then
+    await assert.rejects(shoot({ url, duration: 2, timeout: 1, amount: 1, connections: 1, requests: [sequence[0]] }, 'timeout'), (error: unknown) => {
+      assert.ok(error instanceof TrafficFailure);
+      assert.ok(error.diagnostics.result);
+      assert.ok(error.diagnostics.result.timeouts > 0);
+      assert.equal(error.diagnostics.result.requests.total, 0);
+      return true;
+    });
+  });
+});
 
 // Finite request counts, not wall-clock delays, determine completion.
 test('rejects a valid body belonging to a different route', { timeout: 10_000 }, async () => {

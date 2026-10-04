@@ -52,6 +52,30 @@ test('prints a machine-readable clean exact-head plan without creating a receipt
   assert.equal(plan.identity.clean, true);
 });
 
+test('hashes the complete binary diff when it exceeds the default child-process buffer', (t) => {
+  // Given: deterministic high-entropy bytes remain larger than 1 MiB after Git encoding.
+  const { root, commit } = fixture(t);
+  const base = commit();
+  const binary = Buffer.alloc(2 * 1024 * 1024);
+  let state = 0x12345678;
+  for (let index = 0; index < binary.length; index += 1) {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    binary[index] = state >>> 24;
+  }
+  writeFileSync(join(root, 'large.bin'), binary);
+  commit();
+  const completeDiff = execFileSync('git', ['diff', '--binary', `${base}...HEAD`], {
+    cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
+  });
+  assert.ok(Buffer.byteLength(completeDiff) > 1024 * 1024);
+  // When / Then: neither ENOBUFS nor a truncated/text-only digest is admissible.
+  let identity;
+  assert.doesNotThrow(() => { identity = collectIdentity(root, base); });
+  assert.equal(identity.diffDigest, digest(completeDiff));
+  assert.deepEqual(identity.changedFiles, ['large.bin']);
+  assert.equal(identity.clean, true);
+});
+
 test('the real local CLI produces a complete admissible receipt through the executor boundary', (t) => {
   // Given: only task execution is replaced; planning, source checks, aggregation,
   // receipt production and receipt authentication remain the production code.
