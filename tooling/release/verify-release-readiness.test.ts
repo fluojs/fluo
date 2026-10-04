@@ -374,7 +374,7 @@ describe('runReleaseReadinessVerification', () => {
           "@Controller('/greeting')",
           "const starter = { adapterCall: 'FastifyHttpApplicationAdapter.create({ port })' };",
           'const app = await FluoFactory.create(AppModule, {',
-          'adapter: ${starter.adapterCall}',
+          `adapter: \${starter.adapterCall}`,
           '});',
           'await app.listen();',
           'FastifyHttpApplicationAdapter.create',
