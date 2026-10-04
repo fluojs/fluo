@@ -29,7 +29,6 @@ describe('runChangesetsVersion', () => {
   it('retries transient GitHub API failures until the command succeeds', () => {
     const { spawn, spawnCalls } = createSpawnScript(['transient', 'transient', 'success']);
     const sleeps: number[] = [];
-    const outputChunks: string[] = [];
 
     expect(() =>
       runChangesetsVersion({
