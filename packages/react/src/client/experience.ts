@@ -176,12 +176,16 @@ export function ReactNavigationExperience({
   const pageKey = route.url.slice(0, route.url.length - route.hash.length);
   const activationKey = isValidElement(destination) && destination.key !== null
     ? `${pageKey}:${destination.key}` : pageKey;
+  const revoked = route.session !== undefined && route.session.status !== 'approved';
 
   return createElement('div', null,
-    ...(route.metadata === undefined ? [] : createReactPageMetadataElements(route.metadata)),
+    ...(revoked || route.metadata === undefined ? [] : createReactPageMetadataElements(route.metadata)),
     createElement('p', { 'aria-live': 'polite', role: 'status' }, message || '\u00a0'),
     createElement('div', { id: 'page-slot' },
-      createElement(SafePageBoundary, { key: activationKey },
+      revoked ? createElement('section', { role: 'status', 'data-session': route.session?.status },
+        route.session?.status === 'forbidden' ? 'Access forbidden'
+          : route.session?.status === 'signed-out' ? 'Signed out' : 'Checking session',
+      ) : createElement(SafePageBoundary, { key: activationKey },
         createElement(PageRenderBoundary, { renderError }, destination ?? page),
       ),
     ),

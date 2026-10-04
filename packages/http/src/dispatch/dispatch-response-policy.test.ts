@@ -10,9 +10,11 @@ import {
   Get,
   Head,
   Header,
+  HttpCode,
   type MiddlewareContext,
   type Next,
   Produces,
+  Post,
   Redirect,
 } from '../index.js';
 import {
@@ -79,6 +81,8 @@ describe('dispatch response policy', () => {
       readonly responseHeaders?: Readonly<Record<string, string>>;
       readonly status?: number;
       readonly abort?: AbortController;
+      readonly method?: 'POST';
+      readonly mediaType?: string;
     } = {},
   ) {
     const page = { html: '<main>Navigation page</main>' };
@@ -89,7 +93,8 @@ describe('dispatch response policy', () => {
     });
     Object.defineProperty(page, Symbol.for('fluo.http.responseRepresentation'), {
       value: {
-        mediaType: navigationMediaType,
+        mediaType: options.mediaType ?? navigationMediaType,
+        method: options.method,
         prefetch: options.prefetch,
         body: ({ applySuccessResponseMetadata, response }: CustomResponseWriterContext) => {
           applySuccessResponseMetadata();
@@ -112,6 +117,12 @@ describe('dispatch response policy', () => {
       getValue() {
         return page;
       }
+
+      @Post('/')
+      @HttpCode(200)
+      postValue() {
+        return page;
+      }
     }
 
     const dispatcher = createDispatcher({
@@ -125,9 +136,9 @@ describe('dispatch response policy', () => {
     });
     const response = createResponse();
     const request = createRequest('/navigation-cache', {
-      accept: navigationMediaType,
+      accept: options.mediaType ?? navigationMediaType,
       ...options.requestHeaders,
-    });
+    }, options.method);
     if (options.abort) {
       request.signal = options.abort.signal;
     }
@@ -150,6 +161,23 @@ describe('dispatch response policy', () => {
     expect(response.headers.ETag).toBe('"navigation-v1"');
     expect(response.headers['Content-Type']).toBe(navigationMediaType);
     expect(response.body).toEqual(navigationBody);
+  });
+
+  it.each([
+    navigationMediaType,
+    'application/vnd.fluo.form+json;v=1',
+  ])('keeps POST representation %s private despite an explicit public hint', async (mediaType) => {
+    // Given: an anonymous POST representation requests the same public hint as a GET page.
+    // When: its real HTTP handler returns a negotiated status-200 result.
+    const response = await dispatchNavigation({ method: 'POST', mediaType, prefetch: 'public' });
+
+    // Then: POST acknowledgement cannot grant speculative navigation reuse.
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['Content-Type']).toBe(mediaType);
+    expect(response.body).toEqual(navigationBody);
+    expect(response.headers['X-Fluo-Navigation-Prefetch']).toBeUndefined();
+    expect(response.headers['Cache-Control']).toBe('private, no-store');
+    expect(response.headers.Vary).toBe('Accept');
   });
 
   const deniedNavigationCases: ReadonlyArray<readonly [string, NonNullable<Parameters<typeof dispatchNavigation>[0]>]> = [

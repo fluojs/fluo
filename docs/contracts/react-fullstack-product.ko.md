@@ -14,24 +14,35 @@ Framework는 명시한 navigation/history/failure 및 취소 경계, commit 전 
 
 ## 사용자 여정 수용 표
 
-분류는 목표가 아니라 **현재 checkout**의 상태입니다. **shipped**는 범위를 한정한 근거가 있고, **verification gap**은 실제 surface 검증이 필요하며, **assembly burden**은 framework의 공식 조립이 필요하고, **unsupported**는 새 동작이 필요하며, **intentional non-goal**은 계약 밖입니다. 같은 행에 shipped 기반과 다른 목표 분류가 함께 있을 수 있습니다. 모든 행은 #3879에서 다시 실행합니다. Owner는 부족한 결과를 구현하거나 입증할 자식 이슈입니다. 각 행의 S/F/C는 제품 게이트에서 관찰할 성공/실패/취소 결과입니다. 해당될 때 취소는 사용자 또는 request abort이며 이미 제출한 POST의 rollback이 아닙니다.
+표는 현재 제공되는 seam과 아직 실행해야 할 전체 제품 수용을 구분합니다. 완료된 의존성을 미구현으로 재분류하지 않습니다. **Shipped**는 기존 소유 contract/test의 한정된 capability이며 #3886의 source harness는 실행 증거가 아닙니다. 모든 행은 #3879의 exact-head 통합 검증이 필요합니다. S/F/C는 성공/실패/취소이며 dispatch한 POST rollback이 아닙니다.
+
+### Background interaction scope
+
+기존 `useForm`은 additive background GET/POST, 독립 stable-id 상태, latest-wins
+ownership, session 철회, 합쳐진 fresh same-page HTTP approval을 제공합니다.
+공식 example과 packaged starter의 `/catalog/background`는 실제 song datasource,
+독립 search/widget read, queue row write를 사용합니다. source/types/dispatcher와
+결정적인 listener/browser fixture는 역순 response, 두 held write, 개별 실패,
+unmount, native GET/POST303GET을 검증합니다. 이 fixture는 scoped correctness
+surface이며 #3879 전체 CRUD/jukebox gate, #3886 soak, 측정된 framework parity나
+MusicKit 근거가 아닙니다. 정확한 제공 의미는 [form owner](./react-progressive-forms.ko.md)가 소유합니다.
 
 | 사용자 여정 | 관찰 가능한 S / F / C 목표 | 현재 근거와 분류 | Owner 및 실제 검증 surface |
 | --- | --- | --- | --- |
 | 첫 실행 | S: scaffold/install/`pnpm dev` 후 첫 HTTP page; F: 잘못된 bootstrap/asset에 실행 가능한 오류, 거짓 ready 없음; C: 중단 시 child/watcher와 앱 종료. | **범위를 한정해 출시된 두 page 조립**이며 전체 CRUD는 아닙니다. `packages/cli/src/new/templates/react-vite-ssr/`와 생성 앱 dev/production browser가 direct GET, hydration, native anchor를 검증합니다. | [#3871](https://github.com/fluojs/fluo/issues/3871), #3879; generated app dev browser 및 production startup. |
-| 페이지 추가 | S: 명시적 HTTP `@Path`와 build-mapped browser destination을 한 공식 경로로 추가; F: 잘못되거나 중복된 route/없는 module은 명확히 실패; C: 중단된 request가 일부 page를 commit하지 않음. | **범위를 한정해 제공된 authoring path.** 셋째 page 생성 소비자는 page/handler/DTO와 선택적 link만 수정했고 renderer/entry/manifest/store 수정은 없었습니다. 없는 module은 HTML commit 전에 실패하며 typegen은 #3880까지 path-only입니다. | #3871, [#3880](https://github.com/fluojs/fluo/issues/3880); consumer compile fixture, 실제 dispatcher, 생성 앱 browser. |
+| 페이지 추가 | S: 명시적 HTTP `@Path`와 build-mapped browser destination을 한 공식 경로로 추가; F: 잘못되거나 중복된 route/없는 module은 명확히 실패; C: 중단된 request가 일부 page를 commit하지 않음. | **범위를 한정해 제공된 authoring path.** 셋째 page 생성 소비자는 page/handler/DTO와 선택적 link만 수정했고 renderer/entry/manifest/store 수정은 없었습니다. 없는 module은 HTML commit 전에 실패하며 같은 #3880 typegen이 query wire input, module props, saved data를 연결합니다. Packaged dev/production consumer 근거는 계속 필요합니다. | #3871, [#3880](https://github.com/fluojs/fluo/issues/3880); consumer compile fixture, 실제 dispatcher, 생성 앱 browser. |
 | SSR | S: 첫 GET에서 HTTP-matched shell/content stream; F: commit 전 오류는 HTTP status/error를 유지하고 abort 시 자원 해제; C: request abort가 진행 중 stream을 취소. | **제공된 baseline; 범위가 정해진 socket 근거, 성능 판정 대기.** 빌드된 Fastify product route는 일반 middleware/asset과 flush하는 gzip proxy를 거쳐 gated shell을 전달하지만 body 전체를 모으는 gzip은 버퍼링합니다. 일시 정지된 client의 연결을 끊으면 제어된 미완료 reader를 취소하고 request scope를 폐기합니다. Browser 첫 paint나 이 정확성 테스트만으로 server 자원 예산 통과를 주장하지 않습니다. `examples/react-vite-ssr/tests/ssr-delivery.spec.ts`, `src/app.test.ts`. | [#3885](https://github.com/fluojs/fluo/issues/3885); exact-head production server 지표와 buffered host RSS는 #3879 전체 제품 수용과 분리합니다. |
 | Hydration | S: 서버 URL/params와 build asset으로 warning 없이 interactive shell hydrate; F: 없는 asset/mismatch를 진단하며 조용히 성공 처리하지 않음; C: unmount 시 browser 구독 정리. | **범위를 한정해 제공된 조립.** 생성 앱은 dev/production browser에서 hydration diagnostic 없이 shell을 유지하고 page state를 reset합니다. #3884는 다른 authoring 경로가 아닌 측정된 병목을 소유합니다. | #3871, [#3884](https://github.com/fluojs/fluo/issues/3884); production browser 및 bundle trace. |
 | 이동 | S: HTTP 승인 후에만 URL/params를 commit하고 shell/resource identity 유지; F: 일시적 network/5xx 및 복구 가능한 매핑된 import 실패에서 기존 화면 보존, 재시도 표시, 자동 blank/셸 파괴 없음; C: 이전 요청 결과는 commit/fallback 금지. | 공식 network/5xx/매핑된 import 실패 기본값과 low-level opt-in이 **shipped**입니다. 생성 starter와 production 예제의 실패 browser가 자원 identity, operation/ack 및 mount/cleanup을 확인합니다. | [#3864](https://github.com/fluojs/fluo/issues/3864), #3871; production browser 실패 주입 및 생성 조립. |
-| history와 미저장 편집 | S: back/forward마다 새 HTTP 승인, 승인 URL과 화면 일치; F: 실패한 traversal은 URL/history/화면 일치로 복구; C: opt-in dirty edit가 입력 손실·중복 entry 없이 push/replace/back/forward를 거절. | 새 승인과 opt-in된 기록 위치의 실패 history 복구는 **shipped**, 사용자 의도 취소(#3882)는 **unsupported**. `packages/react/src/client/store.ts`, `examples/react-vite-ssr/tests/navigation-failure.spec.ts`. | #3864, [#3882](https://github.com/fluojs/fluo/issues/3882); production browser back/forward와 dirty-form race. |
+| history와 미저장 편집 | S: back/forward마다 새 HTTP 승인, 승인 URL과 화면 일치; F: 실패한 traversal은 URL/history/화면 일치로 복구; C: opt-in dirty edit가 입력 손실·중복 entry 없이 push/replace/back/forward를 거절. | 기존 store의 `useNavigationGuard`와 tagged same-document 복원을 통한 **scoped opt-in 승인**입니다. Untagged/cross-document entry는 native 경계를 유지합니다. `packages/react/src/client-navigation-guard.test.ts`, `examples/react-vite-ssr/tests/navigation-guard.spec.ts`. | #3864, [#3882](https://github.com/fluojs/fluo/issues/3882); production 및 packaged dev/production back/forward, dirty-form·session race. |
 | 오류와 재시도 | S: 일시적 실패의 재시도는 **새** HTTP 요청으로 승인받은 결과만 commit; F: 반복 실패에도 기존 shell/page와 조치 가능한 오류 유지, blank/unhandled UI 없음; C: pending UI를 정리하고 fallback 없음. | 공식 network/5xx/매핑된 import 실패 복구 control과 low-level opt-in이 **shipped**, 장시간 soak는 **verification gap**입니다. `packages/react/src/client/store.ts`, 생성 starter와 예제의 실패 browser 테스트. | #3864, [#3872](https://github.com/fluojs/fluo/issues/3872), [#3886](https://github.com/fluojs/fluo/issues/3886); 실패 주입 production browser와 반복 resource probe. |
-| 조회와 검색 | S: HTTP DTO 검증된 목록/상세와 독립 검색이 작업별 pending/result로 최신 데이터 표시; F: validation/auth/transport를 구분하고 한 위젯 실패가 다른 것을 blank로 만들지 않음; C: 최신 요청만 반영하고 teardown은 해당 작업만 취소. | Handler 조회는 **shipped**, framework의 독립 background 작업은 **unsupported**. `examples/react-vite-ssr/src/app.ts`, `src/app.test.ts`, `packages/react/src/client/store.ts`(단일 navigation pending). | [#3881](https://github.com/fluojs/fluo/issues/3881), #3880; dispatcher 및 역순 응답 production browser. |
-| 폼 제출 | S: JS 없이 native POST가 HTTP DTO/guard/interceptor와 303/GET 통과, enhanced form은 pending 표시; F: 잘못된 입력은 편집 가능한 field와 안전한 오류를 유지, 인증 거절을 성공으로 표시하지 않음; C: browser 대기 중단을 서버 mutation 취소로 주장하지 않음. | Native POST/303/GET은 **shipped**, 공식 enhanced pending/field-error 조립은 **unsupported**. `examples/react-vite-ssr/src/app.ts`, `src/app.test.ts`, `tests/production-hydration.spec.ts`. | [#3874](https://github.com/fluojs/fluo/issues/3874), #3880, #3881; dispatcher 및 JS-on/off production browser. |
-| 저장 후 최신화 | S: enhanced 저장은 shell을 파괴하지 않고 승인된 최신 데이터 표시; F: 오래된 결과가 새 저장을 덮지 않고 실패를 표시; C: 취소한 재검증은 마지막 승인 화면을 유지. | 명시적 HTTP 승인 refresh와 typed completion은 **shipped**, 자동 enhanced-save 연동은 **unsupported**(#3874). `invalidate()`는 prefetch/pending만 비우며 native 303/GET도 shipped. | [#3873](https://github.com/fluojs/fluo/issues/3873), #3874, #3881; 저장 후 dispatcher와 production browser. |
-| 인증 전환 | S: 다음 soft navigation 전에 session epoch 갱신, 보호 데이터/자원은 앱 정책 적용; F: 401/403은 일시적 재시도나 public cache 성공으로 처리하지 않음; C: 이전 session의 pending 결과가 sign-out 후 commit하지 않음. | Public-prefetch 안전성은 **shipped**, mutation/session 조정은 **assembly burden**. `packages/react/src/client/store.ts`, `docs/contracts/react-navigation-payload.md`, `examples/react-vite-ssr/src/app.test.ts`. | [#3875](https://github.com/fluojs/fluo/issues/3875), #3881; guarded dispatcher 및 login/logout race browser. |
+| 조회와 검색 | S: HTTP DTO 검증된 목록/상세와 독립 검색이 작업별 pending/result로 최신 데이터 표시; F: validation/auth/transport를 구분하고 한 위젯 실패가 다른 것을 blank로 만들지 않음; C: 최신 요청만 반영하고 teardown은 해당 작업만 취소. | 기존 `useForm`의 독립 background GET/POST, latest-wins owner와 coalesced save approval이 **shipped**입니다. `client-background-form.test.ts`와 실제 jukebox fixture가 경계를 소유하며 전체 제품 gate는 별도입니다. | [#3881](https://github.com/fluojs/fluo/issues/3881), #3880; dispatcher 및 역순 응답 production browser. |
+| 폼 제출 | S: JS 없이 native POST가 HTTP DTO/guard/interceptor와 303/GET 통과, enhanced form은 pending 표시; F: 잘못된 입력은 편집 가능한 field와 안전한 오류를 유지, 인증 거절을 성공으로 표시하지 않음; C: browser 대기 중단을 서버 mutation 취소로 주장하지 않음. | Native POST/303/GET과 기존 progressive `useForm` pending/field-error 경로는 **shipped**입니다. Generated input/saved inference도 같은 경로를 사용하며 packaged browser 검증은 계속 필요합니다. `examples/react-vite-ssr/src/app.ts`, `src/app.test.ts`, `tests/production-hydration.spec.ts`. | [#3874](https://github.com/fluojs/fluo/issues/3874), #3880, #3881; dispatcher 및 JS-on/off production browser. |
+| 저장 후 최신화 | S: enhanced 저장은 shell을 파괴하지 않고 승인된 최신 데이터 표시; F: 오래된 결과가 새 저장을 덮지 않고 실패를 표시; C: 취소한 재검증은 마지막 승인 화면을 유지. | 명시적 HTTP 승인 refresh와 typed completion은 **shipped**, 기존 #3874 form 경로는 saved/read outcome을 구분하는 자동 follow-up approval을 추가합니다. `invalidate()`는 prefetch/pending만 비우며 native 303/GET도 shipped. | [#3873](https://github.com/fluojs/fluo/issues/3873), #3874, #3881; 저장 후 dispatcher와 production browser. |
+| 인증 전환 | S: 다음 soft navigation 전에 session epoch 갱신, 보호 데이터/자원은 앱 정책 적용; F: 401/403은 일시적 재시도나 public cache 성공으로 처리하지 않음; C: 이전 session의 pending 결과가 sign-out 후 commit하지 않음. | 기존 provider session 및 saved-session barrier, fresh credentialed 401/403 철회와 앱 소유 cleanup 조립이 **shipped**입니다. `client-session.test.ts`와 `tests/session-transition.spec.ts`가 경계를 기록합니다. | [#3875](https://github.com/fluojs/fluo/issues/3875), #3881; guarded dispatcher 및 login/logout race browser. |
 | 개발 중 수정 | S: React/CSS는 예측 가능하게 갱신하고 server/shared는 안전하게 재시작, config는 별도 계약 적용; F: 문법/bootstrap 실패 노출과 수정 후 회복; C: 재시작 중단 시 child/middleware 종료. | 범위가 정해진 Node React Fast Refresh/CSS HMR 및 restart baseline은 **shipped**; #3877의 일반 server/shared/config drain·복구는 **verification gap**. `packages/cli/src/dev-runner/react-vite-dev-app.ts`, `docs/architecture/dev-reload-architecture.ko.md`. | [#3876](https://github.com/fluojs/fluo/issues/3876), [#3877](https://github.com/fluojs/fluo/issues/3877); 생성 앱의 실제 dev browser 편집/복구. |
 | 배포 전환 | S: B 배포 후 build A 탭에서 호환되는 승인 목적지로 이동; F: chunk 누락/버전 불일치는 복구 UI 또는 명시적 document upgrade, 무한 재시도/blank 없음; C: 이전 import가 최신 의도 후 commit하지 않음. | **범위가 정해진 v2 build 식별자와 배포 recipe**: 전체 Vite manifest 및 `/assets/` base로 build를 구분하고 불일치는 import 전에 거부하며 명시적 update를 제공합니다. 독립 A→B browser 검증이 필요하고 이 행은 최종 제품 게이트 통과를 주장하지 않습니다. | [#3878](https://github.com/fluojs/fluo/issues/3878), #3884; 고정된 탭/host asset을 사용하는 두 build production browser. |
-| 장시간 세션 | S: 주크박스 반복 작업에서 하나의 사용 가능한 shell resource와 제한된 listener/request 수 유지; F: 주입된 복구 가능 오류에 blank/unhandled UI 없음; C: 명시적 logout/reload/탭 종료는 거짓 보존 없이 수행. | **Verification gap**이며 재현된 누수/MusicKit 장애라는 주장이 아닙니다. `packages/react/src/client/store.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`는 짧은 경로만 검증. | #3886; 결정적 1,000-action browser loop와 별도 extended soak, 이후 #3879 gate. |
+| 장시간 세션 | S: 주크박스 반복 작업에서 하나의 사용 가능한 shell resource와 제한된 listener/request 수 유지; F: 주입된 복구 가능 오류에 blank/unhandled UI 없음; C: 명시적 logout/reload/탭 종료는 거짓 보존 없이 수행. | **실행 검증 필요.** `tests/long-session.spec.ts`와 별도 soak 및 physical-device handoff를 source로 제공합니다. 이는 실행한 2시간 결과나 재현된 누수/MusicKit 장애가 아닙니다. | #3886; 결정적 1,000-action browser loop와 별도 extended soak, 이후 #3879 gate. |
 
 ## 실패와 최신화 기본값
 
@@ -65,6 +76,25 @@ document update를 표시합니다. `/assets/` 게시 순서와 asset 보존은
 **현재** `router.refresh()`는 새 HTTP 승인으로 같은 page를 재검증한 뒤 typed outcome을 반환하며 셸과 history를 유지하고 승인된 page-local state는 reset합니다. Soft destination이 없거나 실패 정책이 선택하면 문서 reload를 시작합니다. 확정적인 문서 이동에는 `window.location.reload()`를 사용합니다. `router.invalidate()`는 provider가 관리하는 제한된 single-use *public* prefetch와 pending work를 비우지만 현재 페이지 데이터를 다시 가져오지 않습니다. Application은 관련 mutation/auth 전환 후 다음 in-document navigation 전에 `prefetchScope`를 바꾸거나 invalidate해야 합니다. [refresh migration](../getting-started/migrate-react-refresh.ko.md)을 참고하세요. #3874/#3875는 저장/session 통합을 맡고 일반/private loader cache나 자동 cache policy는 배포되지 않았습니다.
 
 ## 개발과 배포 경계
+
+### Session composition boundary
+
+앱이 확인한 login, logout, permission 변경은 기존 provider의 `session` option과
+`router.sessionChanged({ epoch, reason })`으로 알립니다. 같은 epoch label도 내부
+ownership을 전진시킵니다. Barrier는 async policy나 이전 abort listener 실행 전에
+초기 SSR fallback을 포함한 approved page/head/retained form data를 철회합니다.
+Fresh credential 포함 401은 signed-out, 403은 identity를 지우지 않는 forbidden을
+선택하며 anonymous speculation은 credential 포함 session을 종료하지 못합니다.
+
+명시적 saved `ReactModule.formResult({ ..., session, data })`는 동일 경계를
+통과합니다. 이를 시작한 confirmed continuation만 fresh GET approval로 이관되며
+GET retry는 POST를 재전송하지 않습니다. 앱 보호 자원은 framework teardown registry
+대신 기존 React subtree/effect cleanup을 사용합니다. 외부 HttpOnly cookie 변경은
+즉시 notification channel이 아닙니다.
+[Session migration](../getting-started/migrate-react-session-composition.ko.md)과 owning
+navigation/forms 계약이 정확한 기본값과 override를 정합니다. Production example과
+packaged starter session 여정은 범위가 한정된 근거이며 #3879의 전체 제품 게이트나
+#3886의 extended soak 완료를 뜻하지 않습니다.
 
 | 수정 종류 | 현재 메커니즘과 결과 | 목표 owner 및 실패/복구 경계 |
 | --- | --- | --- |
@@ -109,7 +139,7 @@ document update를 표시합니다. `/assets/` 게시 순서와 asset 보존은
 
 | Framework와 문서화된 기능 | 소비자 작성 비용과 타입 경계 | 성능 근거와 안정성 경계 |
 | --- | --- | --- |
-| **Fluo, 현재 stable**: 명시적 HTTP handler/DTO와 application renderer, HTTP 승인 payload soft navigation, native POST/303/GET, 제한된 public-only prefetch. | Starter의 첫 page 비용은 낮지만 전체 CRUD/주크박스 작업, 타입이 연결되지 않은 query/page props, 장애 복구에는 **assembly burden**이 있습니다. Typegen은 path-only입니다. 위 여정 표 참고. | 동일 앱 지연/bytes/resource budget은 **미측정**이며 #3883이 numeric target을 수립합니다. Stable root는 runtime-neutral이고 RSC/Server Functions는 experimental이라 stable 비교에서 제외합니다. |
+| **Fluo, 현재 stable**: 명시적 HTTP handler/DTO와 application renderer, HTTP 승인 payload soft navigation, native POST/303/GET, 제한된 public-only prefetch. | Starter의 첫 page 비용은 낮지만 전체 CRUD/주크박스 통합에는 **assembly burden**이 남습니다. 기존 compiler projection은 limited JSON 계약 안에서 path/query/page props/form data를 연결하며 전체 제품 수용을 뜻하지 않습니다. 위 여정 표 참고. | 동일 앱 지연/bytes/resource budget은 **미측정**이며 #3883이 numeric target을 수립합니다. Stable root는 runtime-neutral이고 RSC/Server Functions는 experimental이라 stable 비교에서 제외합니다. |
 | **Next.js App Router**: `loading.js`가 page를 Suspense로 감싸 데이터 렌더 중 layout을 표시합니다([공식 fetching guide](https://nextjs.org/docs/app/getting-started/fetching-data)). `router.refresh()`는 서버에 다시 요청해 갱신된 RSC payload를 합치고 영향을 받지 않는 client React state를 보존하지만 server-side cache를 무효화하지 않습니다([공식 useRouter reference](https://nextjs.org/docs/app/api-reference/functions/use-router)). | 문서의 route/segment/component convention은 수동 layout/loading 조립을 줄입니다. 실제 form DTO, auth, 타입 제약은 앱마다 다르며 Fluo HTTP pipeline과 동등하다고 가정하지 않습니다. | 문서는 refresh 메커니즘을 보여 주지만 **측정 우위는 아닙니다**. Stable 문서 동작만 비교하며 canary/experimental 기능은 baseline에 넣지 않습니다. |
 | **React Router Framework Mode**: Server `loader`는 SSR 및 자동 client-navigation fetch에 사용됩니다([공식 data-loading guide](https://reactrouter.com/start/framework/data-loading)). Route `action` 완료 뒤 page loader를 재검증하며 비이동 `<fetcher.Form>`도 제공합니다([공식 actions guide](https://reactrouter.com/start/framework/actions)). | 함께 작성하는 `loader`/`action`과 생성 `Route.ComponentProps`가 수동 wiring을 줄이고 loader data type을 연결합니다. Auth/domain logic과 revalidation policy는 앱이 작성합니다. | 이 문서의 benchmark는 없습니다. [배포 guide](https://reactrouter.com/start/framework/deploying)는 full-stack/static hosting을 설명할 뿐 배포 버전 차이 복구의 근거가 아닙니다. |
 | **TanStack Start**: `createServerFn()`은 client에서도 호출 가능한 server-side 함수와 framework 직렬화를 제공합니다([공식 server-functions guide](https://tanstack.com/start/latest/docs/framework/react/guide/server-functions)). 같은 디렉터리의 file-based server route는 raw HTTP endpoint를 제공합니다([공식 server-routes guide](https://tanstack.com/start/latest/docs/framework/react/guide/server-routes)). | Server-function 입력/출력은 직렬화 가능성을 타입으로 검사하며 validator를 사용할 수 있습니다. Raw server route는 별도 endpoint 선택입니다. 이는 Fluo에 RPC/action router나 file route를 추가하자는 제안이 아닙니다. | 측정한 성능 주장은 없습니다. Guide는 사용자 지정 `generateFunctionId`를 **experimental**로 표시합니다. 이를 stable baseline으로 세거나 모든 Start 내부를 Fluo HTTP 소유 계약과 동일시하지 않습니다. |
@@ -132,4 +162,27 @@ native-conformance 명령과 unversioned receipt는 historical이며 FA-V3로
 retirement/raw exit와 pending-request quality는 필수입니다. Method 구현이나
 focused 테스트는 성능 pair PASS, #3884/#3885 종료 또는 #3879 제품 수용이 아닙니다.
 
-Source seam: `packages/react/src/client/store.ts`, `packages/react/src/client/navigation-payload.ts`, `packages/react/src/module.ts`, `packages/cli/src/dev-runner/react-vite-dev-app.ts`, `examples/react-vite-ssr/src/app.ts`. 기존 테스트: `packages/react/src/client.test.ts`, `examples/react-vite-ssr/src/app.test.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`; [navigation payload 계약](./react-navigation-payload.ko.md)에 HTTP/prefetch 추가 근거가 있습니다. 이는 **기존** 동작 기록이며 이 변경에서 새 browser/performance 실행을 했다는 뜻이 아닙니다. 예제의 native form과 짧은 shell counter는 실제 유료 player나 향후 제품 게이트가 아닙니다. Docs 검증은 link/구조와 EN/KO 쌍을 확인할 뿐 미래 runtime 성공은 보장하지 않습니다. Book chapter는 현재 framework 동작 또는 앱 소유 교육 정책을 설명하고 이 미래 제품 계약은 어느 쪽도 바꾸지 않으므로 이 범위의 Book chapter는 수정하지 않습니다.
+Source seam: `packages/react/src/client/store.ts`, `packages/react/src/client/navigation-payload.ts`, `packages/react/src/module.ts`, `packages/cli/src/dev-runner/react-vite-dev-app.ts`, `examples/react-vite-ssr/src/app.ts`. 기존 테스트: `packages/react/src/client.test.ts`, `examples/react-vite-ssr/src/app.test.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`; [navigation payload 계약](./react-navigation-payload.ko.md)에 HTTP/prefetch 추가 근거가 있습니다. 이는 **기존** 동작 기록이며 이 변경에서 새 browser/performance 실행을 했다는 뜻이 아닙니다. 예제의 native form과 짧은 shell counter는 실제 유료 player나 향후 제품 게이트가 아닙니다. Docs 검증은 link/구조와 EN/KO 쌍을 확인할 뿐 미래 runtime 성공은 보장하지 않습니다. 영향받는 FluoBlog 17장과 FluoShop 4장 companion은 기존 native 실습을 유지하며 typed 계약을 적용합니다. 원고 검증은 해당 DB/browser 실행 근거가 아닙니다.
+
+
+## Typed 계약 수용
+
+[End-to-end 타입 계약](./react-end-to-end-types.ko.md)이 하나의 frozen compiler/HTTP
+projection, 실제 공유 tsconfig/bootstrap options, wire alias와 converter input, URI
+selection provenance, module registry, limited JSON props/saved data를 소유합니다.
+같은 generator/check/watch lifecycle은 type-only 및 compiler/configuration freshness를
+포함해야 합니다. 기존 `--check`가 조용한 재생성 없이 일반 typecheck/build를 gate합니다.
+Strict negative consumer, 실제 HTTP query/POST round trip, clean generated dev/production
+browser 여정이 필요하며 focused type test만으로 #3880 또는 #3879를 통과하지 않습니다.
+이 계약의 존재가 generated GET decoder(#3881), 두 번째 form/provider, erased-type 복구,
+성능이나 soak를 보장하지 않습니다.
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](./react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.

@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer as createNetServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
@@ -172,7 +174,8 @@ test('retains the approved page and metadata while an HTTP destination is pendin
 
     // When: the new page is still unapproved.
     // Then: the previous page and shell are usable and its page head is unchanged.
-    await expect(page.locator('[aria-live="polite"]')).toHaveText('Loading page');
+    // The navigation announcer is separate from independent form status outputs.
+    await expect(page.locator('[aria-live="polite"]:not([data-form-state])')).toHaveText('Loading page');
     await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toBeVisible();
     await expect(page).toHaveTitle('Catalog item sku-42');
     await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
@@ -569,14 +572,23 @@ for (const status of [401, 403, 302, 400] as const) {
     const refused = status === 302 ? undefined : page.waitForResponse((response) => response.status() === status
       && new URL(response.url()).pathname === '/search'
       && response.request().headers().accept === NAVIGATION_MEDIA_TYPE);
-    const documentRequest = page.waitForRequest((request) => new URL(request.url()).pathname === '/search'
+    const auth = status === 401 || status === 403;
+    const documentRequest = auth ? undefined : page.waitForRequest((request) => new URL(request.url()).pathname === '/search'
       && request.headers().accept !== NAVIGATION_MEDIA_TYPE);
     await page.getByRole('link', { name: 'Search catalog' }).first().click();
     if (refused) await refused;
-    await documentRequest;
-    await expect(page).toHaveURL(/\/search\?q=catalog$/u);
-    await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.dataset.shellIdentity)).toBeUndefined();
+    if (auth) {
+      await expect(page.locator(`[data-session="${status === 401 ? 'signed-out' : 'forbidden'}"]`)).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Catalog item sku-42' })).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: 'Search: catalog' })).toHaveCount(0);
+      await expect(page).toHaveURL(/\/products\/sku-42\?preview=true$/u);
+      expect(await page.evaluate(() => document.documentElement.dataset.shellIdentity)).toBe('before-refusal');
+    } else {
+      await documentRequest;
+      await expect(page).toHaveURL(/\/search\?q=catalog$/u);
+      await expect(page.getByRole('heading', { name: 'Search: catalog' })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.dataset.shellIdentity)).toBeUndefined();
+    }
   });
 }
 
@@ -638,11 +650,13 @@ test('updates a React component and CSS over the app WebSocket without losing el
     expect(await page.evaluate(() => document.documentElement.dataset.hmrIdentity)).toBe('retained');
     expect(browserErrors).toEqual([]);
 
+    const invalidPage = originalPage.replace('const identifier = useId();', 'const identifier = ;');
+    expect(invalidPage).not.toBe(originalPage);
     const transformError = socket.waitForEvent('framereceived', {
       predicate: ({ payload }) => String(payload).includes('"type":"error"'),
       timeout: 15_000,
     });
-    await writeFile(pageFile, originalPage.replace("const sku = typeof props['sku'] === 'string' ? props['sku'] : '';", 'const sku = ;'));
+    await writeFile(pageFile, invalidPage);
     await transformError;
     await expect(page.locator('vite-error-overlay')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.dataset.hmrIdentity)).toBe('retained');
@@ -826,6 +840,7 @@ test('falls back to a native document for an unsupported destination', async ({ 
   const document = page.waitForResponse((result) =>
     result.url().endsWith('/not-built') && result.request().isNavigationRequest());
   await page.getByRole('link', { name: 'Missing page' }).click();
+  // Canonical HTTP errors preserve not-found status without approving a page payload.
   expect((await rejected).status()).toBe(404);
   expect((await document).status()).toBe(404);
   await expect(page).toHaveURL(/\/not-built$/u);
@@ -885,8 +900,16 @@ test('reloads a shared graph only after readiness and aligns SSR with the client
 test('rebuilds the installed dev process on watched env and Vite configuration saves', async () => {
   test.setTimeout(90_000);
   test.skip(!['dev', 'direct'].includes(process.env.FLUO_REACT_STARTER_SERVER_COMMAND ?? ''), 'Process configuration reload is development only.');
-  const root = fileURLToPath(new URL('../', import.meta.url));
-  const files = [new URL('../.env', import.meta.url), new URL('../vite.server.config.ts', import.meta.url)];
+  const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
+  const root = await mkdtemp(join(tmpdir(), 'fluo-starter-configuration-reload-'));
+  await cp(sourceRoot, root, {
+    recursive: true,
+    filter: (file) => file !== join(sourceRoot, 'node_modules')
+      && !file.startsWith(`${join(sourceRoot, 'node_modules')}/`)
+      && file !== join(sourceRoot, 'dist') && !file.startsWith(`${join(sourceRoot, 'dist')}/`),
+  });
+  await symlink(join(sourceRoot, 'node_modules'), join(root, 'node_modules'), 'dir');
+  const files = [join(root, '.env'), join(root, 'vite.server.config.ts')];
   const originals = await Promise.all(files.map((file) => readFile(file, 'utf8')));
   const reservation = createNetServer();
   await new Promise<void>((resolve) => reservation.listen(0, '127.0.0.1', resolve));
@@ -940,5 +963,6 @@ test('rebuilds the installed dev process on watched env and Vite configuration s
     const code = await exited;
     expect(code, `${stdout}\n${stderr}`).toBe(0);
     await expect(fetch(`http://127.0.0.1:${address.port}/products/sku-42`)).rejects.toThrow();
+    await rm(root, { recursive: true, force: true });
   }
 });

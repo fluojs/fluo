@@ -14,6 +14,28 @@ FluoBlog 운영자는 이제 다른 작성자에게도 계정을 발급한다. �
 
 ## 첫 화면은 서버가 만든 문서로 충분하다
 
+### Native 실습 뒤의 background companion
+
+이 장의 native 편집기와 서버 version 확인을 먼저 유지한다. 문서를 이동하지 않는
+검색이나 행 저장이 필요하면 기존 provider 안의 `useForm`에만 background를 opt-in한다.
+새 fetcher나 client matcher를 만들지 않는다. 실행 가능한 별도 companion은
+[Vite 예제](../../examples/react-vite-ssr/README.ko.md)의 `/catalog/background`다.
+실제 검색 결과와 두 행의 동시 저장을 확인하고, 저장 확인 뒤 read가 실패한 경우를 구별한다.
+
+```tsx
+const search = useForm<{ q: string }>({
+  id: 'song-search', action: '/catalog/background/search',
+  mode: 'background', method: 'get', fields: { q: 'q' },
+  allowDestination: () => false,
+});
+```
+
+Component 안에서 호출하고 native form에 `search.formProps`를 spread한다. HTTP handler는
+JSON 요청과 native HTML 검색을 같은 경로에서 처리한다. `read` data는 수동 fields라면
+`unknown`이다. 취소는 저장 rollback이 아니며 이 장의 version/idempotency 확인을 대신하지
+않는다. 역순 응답과 정리는 예제의 `tests/background-interactions.spec.ts`,
+정확한 기본값·실패·소유권은 [form 계약](../../docs/contracts/react-progressive-forms.ko.md)이 소유한다.
+
 `@fluojs/react`의 안정 경로는 HTTP를 통한 React SSR이다. `@Router`와 `@Path`는 기존 HTTP 라우트 메타데이터 위에 놓인다. React 파일 이름을 보고 라우트를 자동 발견하지 않으며, 컴포넌트가 새로운 인증 파이프라인을 만들지도 않는다. API와 같은 미들웨어, 가드, DTO 바인딩, 요청 범위가 적용된다.
 
 먼저 독자의 `fluo-blog`에서 React 통합과 peer dependency를 설치한다. 기존 Fluo·Prisma·인증 의존성은 그대로 둔다.
@@ -709,3 +731,141 @@ export default defineConfig({
 - [HTTP 요청·응답·principal 타입](../../packages/http/src/types.ts), [Fastify의 multipart 지원](../../packages/platform-fastify/README.ko.md)
 - [Passport 전략·지역 등록](../../packages/passport/README.ko.md), [principal 설정과 scope 검사](../../packages/passport/src/guard.ts)
 - [쿠키 쓰기와 삭제](../../packages/passport/src/cookie/cookie-manager.ts), [Prisma의 current·transaction](../../packages/prisma/README.ko.md)
+
+
+## Hydrated session approval and app-owned cleanup
+
+앞에서 만든 native document/form은 그대로 유효합니다. Opt-in hydrated reader/editor는
+기존 provider의 비밀이 아닌 session epoch를 조립하고 앱이 login/logout/permissions를
+확인한 뒤 `router.sessionChanged`를 호출합니다. 승인 snapshot은
+`useRouterState().session`이 소유합니다. Cookie 값에서 추측하거나 별도 notifier를
+추가하지 않습니다. Session을 포함한 `ReactModule.formResult`는 async policy 전에
+동일한 barrier를 통과하고 confirmed save를 보존한 뒤 fresh GET으로 destination을
+승인합니다. POST는 자동으로 재시도하지 않습니다.
+
+철회하면 초기 protected SSR fallback과 이후 page/head/input 상태를 모두 제거합니다.
+401은 signed-out, 403은 identity를 지우지 않는 forbidden입니다. 앱의 protected
+MessageChannel/player/listener는 기존 session-aware React subtree 안에 배치하고
+unmount 때 실제 소유 resource를 정리해야 합니다. 통지 settlement만으로 SDK disposal을
+증명하지 않습니다. Runnable fixture는 실제 channel을 사용하고 두 port close를
+확인하며 이전 HTTP body를 보류한 채 release 전에 public cancellation을 검증하고
+다른 사용자의 새 화면으로 복구합니다.
+
+아래 native exercise와 함께
+[session migration](../../docs/getting-started/migrate-react-session-composition.ko.md)과
+`examples/react-vite-ssr/tests/session-transition.spec.ts`를 참고하세요. Cross-tab cookie 감지와
+향후 dirty-navigation 확인은 제공하지 않으며 auth 철회는 해당 후속 조립보다 우선합니다.
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.
+
+이 절은 작성 화면의 progressive-interaction companion입니다. 완전한 실행 경로는
+[공식 catalog example](../../examples/react-vite-ssr/README.ko.md)의 production CRUD를
+따라갑니다. 이 chapter의 기존 native write 경로를 대체하거나 manuscript 검사를
+browser 실행 증거로 간주하지 않습니다.
+
+### 작성 화면을 타입으로 연결하는 작은 확장
+
+Hydration을 도입한 별도 확장에서 저장 결과의 필드명을 잘못 읽는 실수를 줄여 보자.
+앞의 multipart 실습을 그대로 enhanced form으로 바꾸지는 않는다. 기존 provider와
+URL-encoded parser를 구성한 뒤, 같은 `EditInput`의 body field에 raw text 계약을 선언한다.
+Body field는 `string | readonly string[]`으로 선언해 text와 duplicate value를 표현하되
+기존 runtime 검증은 유지한다. DTO를 client용 interface로 복제하지 않고 `positiveInt`, 길이 검사,
+작성자·Origin 검사와 조건부 쓰기도 그대로 둔다. 전체 application graph의 다른 query도
+지원 wire shape여야 하며 지원하지 않는 선언은 generator diagnostic을 해결한다.
+
+다음은 기존 `save`의 **저장이 확인된 성공 분기만** 바꾸는 조각이다. 실패 HTML과 409
+충돌 처리는 남겨 두며 임의 400/409를 typed validation으로 가장하지 않는다. Enhanced
+field error가 필요하면 안전한 DTO projection 또는 `HttpFormRejection`을 명시적으로 작성한다.
+
+```ts
+return ReactModule.formResult({
+  destination: `/posts/${id}/edit`,
+  followUp: 'refresh',
+  data: { kind: 'draft-saved', id },
+});
+```
+
+같은 application tsconfig/options로 `fluo typegen`을 실행하면 아래 **hydrated 편집
+component 안의 조각**은 generated route 하나로 action, field alias, saved data를 추론한다.
+`reactFormRoutes`는 `./generated/react-pages.js`, `useForm`은 `@fluojs/react/client`에서
+import한다. `post`는 앞의 편집 조회 값이며 나머지 content/slug/version control도 유지한다.
+
+```tsx
+const save = reactFormRoutes['POST /posts/:id/edit PostsPages save'];
+const action = save.href({ id: String(post.id) });
+const form = useForm({
+  id: 'draft-edit',
+  action,
+  contract: save.contract,
+  allowDestination: (destination) => destination === action,
+});
+const mutation = form.state.mutation;
+
+return (
+  <form {...form.formProps}>
+    <label htmlFor="draft-edit-title">Title</label>
+    <input {...form.fieldProps('title')} defaultValue={post.title} maxLength={120} />
+    <span id="draft-edit-title-errors">{form.fieldErrors('title').join(' ')}</span>
+    <textarea {...form.fieldProps('content')} defaultValue={post.content} maxLength={50000} />
+    <input {...form.fieldProps('slug')} defaultValue={post.slug} maxLength={80} />
+    <input {...form.fieldProps('version')} type="hidden" value={post.version} />
+    <button type="submit" disabled={form.state.pending}>Save draft</button>
+    {mutation?.status === 'saved' && mutation.data !== undefined
+      ? <output>Saved draft {mutation.data.id}</output> : null}
+  </form>
+);
+```
+
+Input generic, field map, saved-data cast가 없다. 필드 오타는 typecheck에서 드러나지만
+HTTP validation이나 CSRF 정책을 대체하지는 않는다. Generated form은 `fields`와
+`decodeSaved`를 소비하며 GET `decodeRead`를 생성하지 않는다. Saved 뒤 조회 실패는
+저장 실패가 아니므로 `retryRead()`만 제공하고, uncertain 상태에서는 입력을 보존해
+authoritative read로 확인한다. POST를 자동 반복하지 않는다. Native 성공은 계속
+POST/303/GET이며 session 전환과 public-prefetch 제한도 그대로다.
+
+[타입 계약](../../docs/contracts/react-end-to-end-types.ko.md)과
+[이주](../../docs/getting-started/migrate-react-typegen.ko.md)에 따라 일반 typecheck/build
+앞에 `--check`를 둔다. 이 확장도 DB·browser에서 검증할 실습이지 원고 검사만으로
+완료된 실행 예제가 아니다.
+
+## Hydration 뒤 미저장 입력 보호
+
+앞의 native writer form과 서버 version 충돌 검사는 그대로 둡니다. Hydrated 편집기를
+추가할 때만 기존 `useForm`의 dirty/pending을 기존 provider 안의
+`useNavigationGuard({ when })` 하나에 전달하고 현재 결정의 stay/proceed 버튼을
+작성합니다. 머무르기와 대기는 목적지 GET이나 진행 중 POST 취소를 하지 않습니다.
+Saved를 먼저 확인한 뒤 현재 dirty를 다시 보고 현재 intent에서 명시적으로 이동합니다.
+제출 중 새 편집은 dirty로 남으며 validation/uncertain을 saved로 오인하지 않습니다.
+승인한 leave 뒤 취소도 서버 rollback이 아닙니다. Form refresh는 다른 초안을 보존하고
+navigate follow-up 취소·실패는 saved를 유지하며 GET만 retry합니다.
+
+Logout/401/403은 열린 dirty 결정 전에 보호 화면·head·입력과 결정 권한을 철회합니다.
+관리되는 tagged same-document history만 복원하며 native 새 탭·JS-disabled form과
+untagged/cross-document 이탈은 별도 경계입니다. beforeunload로 async 저장이나 탭 종료
+후 복구를 보장하지 않습니다. [Owning 계약](../../docs/contracts/react-navigation-payload.ko.md#navigation-permission)과
+[migration](../../docs/getting-started/migrate-react-navigation-guards.ko.md)을 따라
+[runnable example](../../examples/react-vite-ssr/README.ko.md#navigation-permission)을 실행하세요.
+
+## 장시간 편집과 주크박스 검증
+
+한 번의 저장 성공과 장시간 수명 검증은 다른 과업입니다. 공식 조립의 기존
+navigation, `useForm` background search/row write와 session-aware resource를
+사용해 QR/songs/history를 반복합니다. 실제 MessageChannel의 다음 operation/ack,
+같은 document, warmed quiescence baseline을 함께 확인해야 합니다. Counter label이나
+heap 한 번의 감소로 리소스 보존을 증명하지 않습니다.
+
+[장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)는
+seed/index/fault trace, 최소 1,000 measured action, 별도 실제 2시간 soak와 exact-head
+handoff를 설명합니다. Source harness나 Book 검사는 실행 근거가 아닙니다.
+Logout/401/403은 보호 화면과 실제 port를 정리해야 하며 명시적 reload는 새 document입니다.
+Saved와 failed follow-up을 분리해 GET만 retry하고 uncertain POST를 자동 replay하지 않습니다.
+Physical mobile/tablet은 실제 담당자의 별도 기록이 필요하며 viewport emulation으로
+통과시키지 않습니다. 이 실습은 MusicKit 수용이나 탭 종료 뒤 재생 보장이 아닙니다.

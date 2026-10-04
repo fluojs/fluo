@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { environmentSummary } from '../src/provenance';
+import { assertInstalledLockfile, environmentSummary } from '../src/provenance';
+
+test('rejects installed dependency overrides that differ from the declared lockfile', () => {
+  // Given
+  const expected = 'lockfileVersion: 9\noverrides:\n  package: 1.0.0\n';
+  const installed = 'lockfileVersion: 9\noverrides:\n  package: 2.0.0\n';
+  // When / Then
+  assert.throws(() => assertInstalledLockfile(expected, installed), /Installed dependency lockfile differs/);
+  assert.doesNotThrow(() => assertInstalledLockfile(expected, expected));
+});
 
 test('captures installed type-only packages as well as runtime and linked packages', { timeout: 20_000 }, async () => {
   // Given: type-only packages have package.json but no executable entry point.

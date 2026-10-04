@@ -45,6 +45,11 @@ async function createFixture() {
   return { cwd, outputPath, runtime, stderr, stdout };
 }
 
+async function generateFixture(fixture: Awaited<ReturnType<typeof createFixture>>): Promise<void> {
+  const exitCode = await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], fixture.runtime);
+  expect({ exitCode, stderr: fixture.stderr }).toEqual({ exitCode: 0, stderr: [] });
+}
+
 function compile(filePath: string): readonly ts.Diagnostic[] {
   const program = ts.createProgram({
     options: {
@@ -59,6 +64,16 @@ function compile(filePath: string): readonly ts.Diagnostic[] {
   });
 
   return ts.getPreEmitDiagnostics(program);
+}
+
+function createDeferred() {
+  let resolveEvent: () => void = () => undefined;
+  let rejectEvent: (error: Error) => void = () => undefined;
+  const promise = new Promise<void>((resolve, reject) => {
+    resolveEvent = resolve;
+    rejectEvent = reject;
+  });
+  return { promise, resolve: resolveEvent, reject: rejectEvent };
 }
 
 afterEach(async () => {
@@ -122,7 +137,7 @@ describe('fluo typegen', () => {
   it('encodes required params in generated absolute href builders', async () => {
     // Given
     const fixture = await createFixture();
-    await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], fixture.runtime);
+    await generateFixture(fixture);
 
     // When
     const generated = await tsImport(pathToFileURL(fixture.outputPath).href, import.meta.url);
@@ -149,7 +164,7 @@ describe('fluo typegen', () => {
   it('compiles valid static and required-param callsites without a package build', async () => {
     // Given
     const fixture = await createFixture();
-    await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], fixture.runtime);
+    await generateFixture(fixture);
     const consumerPath = join(fixture.cwd, 'valid-consumer.ts');
     await writeFile(consumerPath, [
       "import { reactPageRoutes, type ReactPageParams, type ReactPageRouteId } from './generated/react-pages.js';",
@@ -169,7 +184,7 @@ describe('fluo typegen', () => {
   it('reports unknown ids and missing or extraneous params as type errors', async () => {
     // Given
     const fixture = await createFixture();
-    await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], fixture.runtime);
+    await generateFixture(fixture);
     const consumerPath = join(fixture.cwd, 'invalid-consumer.ts');
     await writeFile(consumerPath, [
       "import { reactPageRoutes } from './generated/react-pages.js';",
@@ -188,7 +203,7 @@ describe('fluo typegen', () => {
   it('overwrites a stale generated artifact and leaves matching output unchanged', async () => {
     // Given
     const fixture = await createFixture();
-    await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], fixture.runtime);
+    await generateFixture(fixture);
     await writeFile(fixture.outputPath, 'stale\n', 'utf8');
     fixture.stdout.splice(0);
 
@@ -205,12 +220,12 @@ describe('fluo typegen', () => {
     expect(unchangedExitCode).toBe(0);
     expect(updated).not.toBe('stale\n');
     expect(fixture.stdout.join('')).toContain('UNCHANGED');
-  });
+  }, 30_000);
 
   it('checks an unchanged artifact without rewriting it', async () => {
     // Given: the target already contains the authoritative generated artifact with an old timestamp.
     const fixture = await createFixture();
-    await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], fixture.runtime);
+    await generateFixture(fixture);
     const oldTimestamp = new Date('2020-01-01T00:00:00.000Z');
     await utimes(fixture.outputPath, oldTimestamp, oldTimestamp);
     fixture.stdout.splice(0);
@@ -228,7 +243,7 @@ describe('fluo typegen', () => {
     expect(fixture.stderr).toEqual([]);
     expect(fixture.stdout).toEqual([`UNCHANGED ${fixture.outputPath}\n`]);
     expect((await stat(fixture.outputPath)).mtimeMs).toBe(oldTimestamp.getTime());
-  });
+  }, 30_000);
 
   it('reports a missing check target without creating it', async () => {
     // Given: no generated artifact exists at the requested output path.
@@ -252,7 +267,7 @@ describe('fluo typegen', () => {
   it('reports a stale current-version artifact without updating it', async () => {
     // Given: the target is structurally valid but differs from the authoritative catalog output.
     const fixture = await createFixture();
-    await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], fixture.runtime);
+    await generateFixture(fixture);
     const stale = (await readFile(fixture.outputPath, 'utf8')).replaceAll('/products', '/stale-products');
     await writeFile(fixture.outputPath, stale, 'utf8');
     fixture.stdout.splice(0);
@@ -270,12 +285,12 @@ describe('fluo typegen', () => {
     expect(fixture.stdout).toEqual([]);
     expect(fixture.stderr.join('')).toContain(`STALE ${fixture.outputPath}`);
     expect(await readFile(fixture.outputPath, 'utf8')).toBe(stale);
-  });
+  }, 30_000);
 
   it('reports malformed output separately from stale output', async () => {
     // Given: the target does not contain a complete generated artifact header and body.
     const fixture = await createFixture();
-    await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], fixture.runtime);
+    await generateFixture(fixture);
     await writeFile(fixture.outputPath, 'not a generated artifact\n', 'utf8');
     fixture.stdout.splice(0);
 
@@ -292,13 +307,13 @@ describe('fluo typegen', () => {
     expect(fixture.stdout).toEqual([]);
     expect(fixture.stderr.join('')).toContain(`MALFORMED ${fixture.outputPath}`);
     expect(await readFile(fixture.outputPath, 'utf8')).toBe('not a generated artifact\n');
-  });
+  }, 30_000);
 
   it('reports an unsupported artifact version without replacing it', async () => {
     // Given: the target was generated by a newer artifact schema.
     const fixture = await createFixture();
-    await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], fixture.runtime);
-    const unsupported = (await readFile(fixture.outputPath, 'utf8')).replace('Artifact version: 1.', 'Artifact version: 99.');
+    await generateFixture(fixture);
+    const unsupported = (await readFile(fixture.outputPath, 'utf8')).replace(/Artifact version: \d+\./u, 'Artifact version: 99.');
     await writeFile(fixture.outputPath, unsupported, 'utf8');
     fixture.stdout.splice(0);
 
@@ -316,7 +331,7 @@ describe('fluo typegen', () => {
     expect(fixture.stderr.join('')).toContain(`UNSUPPORTED_VERSION ${fixture.outputPath}`);
     expect(fixture.stderr.join('')).toContain('version 99');
     expect(await readFile(fixture.outputPath, 'utf8')).toBe(unsupported);
-  });
+  }, 30_000);
 
   it('rejects combining non-mutating check mode with long-running watch mode', async () => {
     // Given: one invocation requests two mutually exclusive lifecycle modes.
@@ -341,35 +356,67 @@ describe('fluo typegen', () => {
   it('closes the bootstrapped application when React page catalog projection fails', async () => {
     // Given
     const fixture = await createFixture();
-    const close = vi.fn(async () => undefined);
+    const closeStarted = createDeferred();
+    const finishClose = createDeferred();
+    const events: string[] = [];
+    const close = vi.fn(async () => {
+      events.push('close-started');
+      closeStarted.resolve();
+      await finishClose.promise;
+      events.push('close-completed');
+    });
     const projectionError = new Error('React page catalog projection failed.');
+    const create = vi.fn(async () => {
+      events.push('created');
+      return { close, dispatcher: { describeRoutes: () => [] } };
+    });
+    const createReactPageCatalog = vi.fn(() => {
+      events.push('projected');
+      throw projectionError;
+    });
     const runtime: TypegenCommandRuntimeOptions = {
       ...fixture.runtime,
       loadReactTypegenModules: async () => ({
         react: {
-          createReactPageCatalog: () => {
-            throw projectionError;
-          },
+          createReactPageCatalog,
         },
         runtime: {
           FluoFactory: Object.assign(() => undefined, {
-            create: async () => ({
-              close,
-              dispatcher: { describeRoutes: () => [] },
-            }),
+            create,
           }),
         },
-        typegen: { generateReactPageTypes: () => '' },
+        typegen: { createHttpTypeProjection: () => undefined, generateReactPageTypes: () => '' },
       }),
     };
 
     // When
-    const exitCode = await runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], runtime);
+    const timeout = setTimeout(() => closeStarted.reject(new Error('Timed out awaiting application close.')), 2500);
+    const command = runTypegenCommand([fixtureModulePath, '--output', fixture.outputPath], runtime);
+    try {
+      await Promise.race([
+        closeStarted.promise,
+        command.then(() => {
+          expect(create).toHaveBeenCalledOnce();
+          throw new Error('Command completed before application close.');
+        }),
+      ]);
+      expect(events).toEqual(['created', 'projected', 'close-started']);
+      expect(fixture.stderr).toEqual([]);
+    } finally {
+      clearTimeout(timeout);
+      finishClose.resolve();
+    }
+    const exitCode = await command;
 
     // Then
     expect(exitCode).toBe(1);
+    expect(create).toHaveBeenCalledOnce();
+    expect(createReactPageCatalog).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
+    expect(events).toEqual(['created', 'projected', 'close-started', 'close-completed']);
     expect(fixture.stderr).toEqual([`${projectionError.message}\n`]);
+    expect(fixture.stdout).toEqual([]);
+    await expect(readFile(fixture.outputPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
 });

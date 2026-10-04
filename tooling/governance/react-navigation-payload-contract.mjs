@@ -9,8 +9,13 @@ const serverPath = 'packages/react/src/page-result.ts';
 const transferPath = 'packages/react/src/navigation-payload.ts';
 const metadataPath = 'packages/react/src/page-metadata.ts';
 const storePath = 'packages/react/src/client/store.ts';
+const formStorePath = 'packages/react/src/client/form-store.ts';
+const formPath = 'packages/react/src/client/form.ts';
+const formTransportPath = 'packages/react/src/client/form-transport.ts';
+const experiencePath = 'packages/react/src/client/experience.ts';
 const historyPath = 'packages/react/src/client/history.ts';
 const providerPath = 'packages/react/src/client/provider.ts';
+const guardPath = 'packages/react/src/client/navigation-guard.ts';
 const dispatchPath = 'packages/http/src/dispatch/dispatch-response-policy.ts';
 const mediaType = 'application/vnd.fluo.react-navigation+json;v=2';
 
@@ -46,8 +51,13 @@ export function enforceReactNavigationPayloadContract(
   const transfer = ts.createSourceFile(transferPath, readText(transferPath), ts.ScriptTarget.Latest, true);
   const metadataSource = ts.createSourceFile(metadataPath, readText(metadataPath), ts.ScriptTarget.Latest, true);
   const store = ts.createSourceFile(storePath, readText(storePath), ts.ScriptTarget.Latest, true);
+  const formStore = ts.createSourceFile(formStorePath, readText(formStorePath), ts.ScriptTarget.Latest, true);
+  const form = ts.createSourceFile(formPath, readText(formPath), ts.ScriptTarget.Latest, true);
+  const formTransport = ts.createSourceFile(formTransportPath, readText(formTransportPath), ts.ScriptTarget.Latest, true);
+  const experience = ts.createSourceFile(experiencePath, readText(experiencePath), ts.ScriptTarget.Latest, true);
   const history = ts.createSourceFile(historyPath, readText(historyPath), ts.ScriptTarget.Latest, true);
   const provider = ts.createSourceFile(providerPath, readText(providerPath), ts.ScriptTarget.Latest, true);
+  const guard = ts.createSourceFile(guardPath, readText(guardPath), ts.ScriptTarget.Latest, true);
   const dispatch = ts.createSourceFile(dispatchPath, readText(dispatchPath), ts.ScriptTarget.Latest, true);
   const clientMediaType = findNode(client, (node) =>
     ts.isVariableDeclaration(node) && node.name.getText(client) === 'MEDIA_TYPE');
@@ -62,16 +72,21 @@ export function enforceReactNavigationPayloadContract(
     throw new Error('React navigation HTTP and browser media types must agree on protocol version 2.');
   }
   const clientText = client.getFullText();
-  const providerText = provider.getFullText();
   const transferText = transfer.getFullText();
+  const providerLoads = findNodes(provider, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(provider) === 'loadReactNavigationDestination');
+  const providerOptions = providerLoads.map((node) => node.arguments[2]);
   if (!transferText.includes('readonly buildId: string')
     || !clientText.includes("value.version !== 2")
     || !clientText.includes("value.buildId.length === 0")
     || !clientText.includes("payload.buildId !== buildId")
     || !clientText.includes("payload.buildId !== options.buildId")
-    || clientText.indexOf("payload.buildId !== options.buildId") > clientText.lastIndexOf('module = await loader()')
-    || !providerText.includes('loadReactNavigationDestination(href, modules, { signal, buildId })')
-    || !providerText.includes('loadReactNavigationDestination(href, modules, { signal, prefetch: true, buildId })')) {
+    || clientText.indexOf("payload.buildId !== options.buildId") > clientText.lastIndexOf('Reflect.apply(loader, undefined, [])')
+    || providerLoads.length !== 2
+    || providerOptions.some((options) => !options || !ts.isObjectLiteralExpression(options)
+      || ['signal', 'buildId'].some((name) => !options.properties.some((node) =>
+        ts.isShorthandPropertyAssignment(node) && node.name.text === name)))
+    || !providerOptions.some((options) => property(options, 'prefetch')?.kind === ts.SyntaxKind.TrueKeyword)) {
     throw new Error('React navigation v2 requires a build identity checked before any destination import.');
   }
 
@@ -277,13 +292,88 @@ export function enforceReactNavigationPayloadContract(
   const ordinaryNavigationLoad = findNode(client, (node) =>
     ts.isFunctionDeclaration(node) && node.name?.text === 'loadReactNavigationDestination');
   const componentImport = ordinaryNavigationLoad && findNode(ordinaryNavigationLoad, (node) =>
-    ts.isCallExpression(node) && node.expression.getText(client) === 'loader');
+    ts.isCallExpression(node) && node.expression.getText(client) === 'Reflect.apply'
+    && node.arguments[0]?.getText(client) === 'loader');
   if (!prefetchRejection || !componentImport || prefetchRejection.end >= componentImport.pos) {
     throw new Error('React navigation prefetch must reject missing HTTP approval before importing a component.');
   }
 
+  const decodeDestination = findNode(client, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'decodeDestination');
+  if (!decodeDestination || !findNode(decodeDestination, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(client) === 'contract.decodeProps'
+    && node.arguments[0]?.getText(client) === 'payload.destination.props')
+    || providerOptions.some((options) => !findNode(options, (node) =>
+      ts.isSpreadAssignment(node)
+      && node.expression.getText(provider) === '(contracts === undefined ? {} : { contracts })'))) {
+    throw new Error('React generated props require the shared decoder on ordinary and prefetch provider loads.');
+  }
+  for (const [load, contracts] of [[initialLoad, 'contracts'], [ordinaryNavigationLoad, 'options.contracts']]) {
+    const decode = load && findNode(load, (node) => ts.isVariableDeclaration(node)
+      && node.name.getText(client) === 'decoded' && node.initializer
+      && ts.isCallExpression(node.initializer)
+      && node.initializer.expression.getText(client) === 'decodeDestination'
+      && node.initializer.arguments[0]?.getText(client) === 'payload'
+      && node.initializer.arguments[1]?.getText(client) === contracts);
+    const importCall = load && findNode(load, (node) => ts.isCallExpression(node)
+      && node.expression.getText(client) === 'Reflect.apply'
+      && node.arguments[0]?.getText(client) === 'loader');
+    const rejection = load && findNode(load, (node) => ts.isIfStatement(node)
+      && node.expression.getText(client) === 'decoded === undefined'
+      && findNode(node.thenStatement, (child) => ts.isObjectLiteralExpression(child)
+        && property(child, 'reason')?.getText(client) === "'invalid-payload'"));
+    const successes = load ? findNodes(load, (node) => ts.isObjectLiteralExpression(node)
+      && property(node, 'ok')?.kind === ts.SyntaxKind.TrueKeyword) : [];
+    if (!decode || !importCall || !rejection || rejection.end >= importCall.pos
+      || decode.end >= importCall.pos || successes.length === 0
+      || successes.some((node) => property(node, 'payload')?.getText(client) !== 'decoded')) {
+      throw new Error('React generated props must decode initial and soft destinations before import and commit.');
+    }
+  }
+
   const approvalGuard = findNode(store, (node) =>
     ts.isIfStatement(node) && node.expression.getText(store) === '!result.ok');
+  const navigation = findNode(store, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(store) === 'navigateDocument');
+  const permission = navigation && findNode(navigation, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'requestPermission');
+  const adoption = navigation && findNode(navigation, (node) =>
+    ts.isBinaryExpression(node) && node.getText(store) === 'activePrefetch.adopted = true');
+  const cancelFormsForNavigation = navigation && findNode(navigation, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'cancelForms');
+  const historyPermission = findNode(history, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(history) === 'handlers.permission');
+  const historyLoad = findNode(history, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(history) === 'handlers.loadAndCommit');
+  const permissionBoundary = findNode(store, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(store) === 'requestPermission');
+  const settleDecision = permissionBoundary && findNode(permissionBoundary, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(store) === 'settle');
+  const detachDecision = settleDecision && findNode(settleDecision, (node) =>
+    ts.isBinaryExpression(node) && node.getText(store) === 'decisionController = null');
+  const abortDecision = settleDecision && findNode(settleDecision, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'controller.abort');
+  const guardHook = findNode(guard, (node) =>
+    ts.isFunctionDeclaration(node) && node.name?.text === 'useNavigationGuard');
+  const continuationPermission = findNodes(formStore, (node) =>
+    ts.isBinaryExpression(node) && node.getText(formStore) === 'navigationCurrent?.() === false');
+  const capturedPermission = findNode(store, (node) =>
+    ts.isPropertyAssignment(node) && node.name.getText(store) === 'navigationCurrent'
+    && node.initializer.getText(store) === '() => expectedPermission === permissionGeneration');
+  if (!permission || !adoption || !cancelFormsForNavigation
+    || permission.end >= adoption.pos || permission.end >= cancelFormsForNavigation.pos
+    || !historyPermission || !historyLoad || historyPermission.end >= historyLoad.pos
+    || !detachDecision || !abortDecision || detachDecision.end >= abortDecision.pos
+    || !findNode(permissionBoundary, (node) =>
+      ts.isBinaryExpression(node) && node.getText(store) === 'expectedSession === sessionGeneration')
+    || !findNode(permissionBoundary, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'Promise.race')
+    || !guardHook || !findNode(guardHook, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(guard) === 'store.registerNavigationGuard')
+    || continuationPermission.length !== 2 || !capturedPermission
+    || !store.getFullText().includes('browser.failurePolicy !== undefined || guardOptions !== null')) {
+    throw new Error('React navigation permission must precede HTTP, prefetch adoption and form cancellation with owned bounded tagged-history decisions.');
+  }
   const requests = findNodes(store, (node) =>
     ts.isCallExpression(node) && node.expression.getText(store) === 'load');
   const historyWrites = findNodes(store, (node) =>
@@ -351,6 +441,70 @@ export function enforceReactNavigationPayloadContract(
       ts.isBinaryExpression(node) && node.getText(store) === "type === 'refresh'")) {
     throw new Error('React navigation refresh must request the current URL through fresh generation-guarded HTTP approval.');
   }
+  const formApproval = findNode(store, (node) =>
+    ts.isMethodDeclaration(node) && node.name.getText(store) === 'approveForm');
+  const formRead = formApproval && findNode(formApproval, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'loadAndCommit');
+  const formReadType = formApproval && findNode(formApproval, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(store) === 'type');
+  if (!formRead || formRead.arguments[0]?.getText(store) !== 'browser'
+    || formRead.arguments[1]?.getText(store) !== 'destination'
+    || formRead.arguments[2]?.getText(store) !== 'type'
+    || formRead.arguments[3]?.getText(store) !== 'undefined'
+    || formRead.arguments[4]?.kind !== ts.SyntaxKind.TrueKeyword
+    || formReadType?.initializer?.getText(store) !== "followUp === 'refresh' ? 'refresh' : 'push'"
+    || !findNode(formApproval, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'cached.clear')
+    || !findNode(formApproval, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'discardPrefetches')) {
+    throw new Error('React navigation form follow-up must reuse fresh HTTP approval, not a cached or alternate destination path.');
+  }
+  const sessionBarrier = findNode(store, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(store) === 'applySession');
+  const advanceSession = sessionBarrier && findNode(sessionBarrier, (node) =>
+    ts.isPrefixUnaryExpression(node) && node.getText(store) === '++sessionGeneration');
+  const revokeSnapshot = sessionBarrier && findNode(sessionBarrier, (node) =>
+    ts.isBinaryExpression(node) && node.left.getText(store) === 'snapshot'
+    && node.right.getText(store).includes('createSnapshotFromHref')
+    && node.right.getText(store).includes('session: Object.freeze'));
+  const detachPending = sessionBarrier && findNode(sessionBarrier, (node) =>
+    ts.isBinaryExpression(node) && node.getText(store) === 'pending = null');
+  const abortOld = sessionBarrier && findNode(sessionBarrier, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'oldPending?.controller.abort');
+  const formSession = findNode(formStore, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(formStore) === 'environment.sessionChanged');
+  const formReadAfterSave = findNode(formStore, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(formStore) === 'read'
+    && node.arguments[0]?.getText(formStore) === 'mutation');
+  if (!advanceSession || !revokeSnapshot || !detachPending || !abortOld
+    || detachPending.end >= abortOld.pos || revokeSnapshot.end >= abortOld.pos
+    || !findNode(sessionBarrier, (node) =>
+      ts.isBinaryExpression(node) && node.getText(store) === 'expected !== sessionGeneration')
+    || !formSession || !formReadAfterSave || formSession.end >= formReadAfterSave.pos
+    || !findNode(store, (node) => ts.isMethodDeclaration(node) && node.name.getText(store) === 'sessionChanged')
+    || !findNode(experience, (node) => ts.isConditionalExpression(node)
+      && node.condition.getText(experience) === 'revoked')) {
+    throw new Error('React navigation session must revoke approval and detach old ownership before abort, policy or form follow-up.');
+  }
+  const releaseOrigin = findNode(store, (node) =>
+    ts.isPropertyAssignment(node) && node.name.getText(store) === 'releaseFormSession');
+  const cancelOriginPolicy = releaseOrigin && findNode(releaseOrigin, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'controller?.abort');
+  const clearOriginPolicy = releaseOrigin && findNode(releaseOrigin, (node) =>
+    ts.isBinaryExpression(node) && node.getText(store) === 'sessionPolicyController = null');
+  const postAuth = findNode(store, (node) =>
+    ts.isMethodDeclaration(node) && node.name.getText(store) === 'rejectFormAuth');
+  if (!cancelOriginPolicy || !clearOriginPolicy || clearOriginPolicy.end >= cancelOriginPolicy.pos
+    || !findNode(releaseOrigin, (node) =>
+      ts.isBinaryExpression(node) && node.getText(store) === 'sessionPolicyOrigin !== origin')
+    || !findNode(postAuth, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'router.refresh')
+    || !findNode(formStore, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(formStore) === 'Promise.race'
+      && node.getText(formStore).includes('continuation')
+      && node.getText(formStore).includes('cancellation'))) {
+    throw new Error('React navigation session policy cancellation and auth refresh must preserve owned authority and bounded settlement.');
+  }
   const adoptedApproval = findNode(store, (node) =>
     ts.isConditionalExpression(node) && node.condition.getText(store).includes('prefetchedResult.ok'));
   if (!adoptedApproval || !ts.isConditionalExpression(adoptedApproval)
@@ -378,6 +532,7 @@ export function enforceReactNavigationPayloadContract(
     ts.isIfStatement(node) && node.expression.getText(dispatch) === 'grantsPrefetch');
   if (![
     'representation.mediaType === NAVIGATION_CONTENT_TYPE',
+    "request.method.toUpperCase() === 'GET'",
     "representation.prefetch === 'public'",
     'response.statusCode === 200',
     '!hasIdentityHeader',
@@ -391,5 +546,52 @@ export function enforceReactNavigationPayloadContract(
       && node.arguments[0]?.getText(dispatch) === "'X-Fluo-Navigation-Prefetch'"
       && node.arguments[1]?.getText(dispatch) === "'public'")) {
     throw new Error('React navigation prefetch grant requires final HTTP identity and header eligibility.');
+  }
+  const backgroundRead = findNode(store, (node) =>
+    ts.isMethodDeclaration(node) && node.name.getText(store) === 'approveBackground');
+  const backgroundLoad = backgroundRead && findNode(backgroundRead, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(store) === 'loadAndCommit');
+  const backgroundInvalidation = findNode(store, (node) =>
+    ts.isMethodDeclaration(node) && node.name.getText(store) === 'invalidateBackground');
+  const formSubmit = findNode(form, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(form) === 'form.submit');
+  const leaseOption = formSubmit && property(formSubmit.arguments[1], 'lease');
+  const transportFetch = findNode(formTransport, (node) =>
+    ts.isCallExpression(node) && node.expression.getText(formTransport) === 'fetch');
+  const transportOptions = transportFetch?.arguments[1];
+  const currentFormAuthority = findNode(formStore, (node) =>
+    ts.isVariableDeclaration(node) && node.name.getText(formStore) === 'current');
+  const sharedAuth = findNode(store, (node) => ts.isCallExpression(node)
+    && node.expression.getText(store) === 'applySession' && node.arguments[3]?.getText(store) === 'backgroundOrigins');
+  const sharedPolicyOwners = findNode(store, (node) => ts.isBinaryExpression(node)
+    && node.left.getText(store) === 'sessionPolicyOrigins' && node.right.getText(store) === 'new Set(savedOrigins)');
+  if (!backgroundRead || !backgroundLoad
+    || backgroundLoad.arguments[1]?.getText(store) !== 'new URL(browser.currentHref())'
+    || backgroundLoad.arguments[2]?.getText(store) !== "'refresh'"
+    || backgroundLoad.arguments[4]?.kind !== ts.SyntaxKind.TrueKeyword
+    || backgroundLoad.arguments[6]?.getText(store) !== 'revision'
+    || backgroundLoad.arguments[7]?.getText(store) !== 'origins'
+    || !sharedAuth || !sharedPolicyOwners
+    || !findNode(store, (node) => ts.isBinaryExpression(node)
+      && node.getText(store) === 'pending?.backgroundOrigins === origins')
+    || !findNode(store, (node) => ts.isBinaryExpression(node)
+      && node.getText(store) === 'expectedBackgroundRevision !== backgroundRevision')
+    || !findNode(backgroundRead, (node) => ts.isBinaryExpression(node)
+      && node.getText(store) === 'expectedSession !== sessionGeneration')
+    || !findNode(backgroundRead, (node) => ts.isBinaryExpression(node)
+      && node.getText(store) === 'pending !== null')
+    || !backgroundInvalidation || findNode(backgroundInvalidation, (node) =>
+      ts.isCallExpression(node) && node.expression.getText(store) === 'router.invalidate')
+    || leaseOption?.getText(form) !== 'navigation.sessionLease'
+    || !currentFormAuthority || !findNode(currentFormAuthority, (node) => ts.isCallExpression(node)
+      && node.expression.getText(formStore) === 'lease.current')
+    || !findNode(formStore, (node) => ts.isConditionalExpression(node)
+      && node.getText(formStore) === "mode === 'background' ? 'refresh' : saved.followUp")
+    || !transportOptions || property(transportOptions, 'credentials')?.getText(formTransport) !== "'same-origin'"
+    || property(transportOptions, 'cache')?.getText(formTransport) !== "'no-store'"
+    || property(transportOptions, 'redirect')?.getText(formTransport) !== "'manual'"
+    || !findNode(formTransport, (node) => ts.isConditionalExpression(node)
+      && node.getText(formTransport) === "reading ? 'application/json' : MEDIA_TYPE")) {
+    throw new Error('React background forms must retain session-owned JSON reads and coalesced fresh current-page approval without navigation.');
   }
 }

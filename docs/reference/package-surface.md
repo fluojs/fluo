@@ -91,12 +91,14 @@ active source; `MultipartBodyConsumedError` rejects buffered/streaming double co
   remain HTTP-owned. Runtime/CLI inspection serializes the same route-kind marker as `react-page`
   without retaining request values or creating a React route table.
 
-  The stable `@fluojs/react/typegen` tooling subpath generates deterministic, path-only TypeScript
-  declarations, absolute href builders, route-bound real-anchor props, and typed `push`/`replace`
-  methods from that catalog without widening the runtime-neutral package root. Generated navigation
-  resolves ordinary absolute href strings into the existing HTTP-first client APIs instead of adding
-  a runtime route table or matcher. It rejects versioned routes because the catalog cannot distinguish
-  URI versioning from header, media-type, or custom version strategies.
+  The stable `@fluojs/react/typegen` tooling subpath and existing CLI combine that catalog with
+  a frozen compiler graph for path/query wire helpers, a module props registry and native form
+  `fields`/`decodeSaved` contracts. `HttpWire<Server, Wire>` is a type-only HTTP converter-input
+  seam, not another validator. Generated href/Link/push/replace use ordinary absolute hrefs;
+  no matcher, server implementation or compiler/DI import enters the browser runtime.
+  Unversioned and provenance-backed URI routes are supported; versioned header/media/custom
+  or absent provenance fail. Limited JSON, strict consumers and version-2 artifact freshness
+  follow the [end-to-end types owner](../contracts/react-end-to-end-types.md).
 
   Stable root render policies are limited to `@PageLayout(...)` and `@SuspenseFallback(...)`
   component references on `@Router(...)` classes and `@Path(...)` methods. The application

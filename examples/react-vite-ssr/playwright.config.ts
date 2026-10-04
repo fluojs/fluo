@@ -9,6 +9,7 @@ export default defineConfig({
   fullyParallel: false,
   outputDir: 'node_modules/.cache/playwright-results',
   testDir: './tests',
+  testIgnore: ['long-session*.spec.ts'],
   timeout: 30_000,
   use: {
     baseURL: `http://127.0.0.1:${BROWSER_TEST_PORT}`,
@@ -21,6 +22,7 @@ export default defineConfig({
       REACT_VITE_EXAMPLE_PORT: String(BROWSER_TEST_PORT),
     },
     reuseExistingServer: false,
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
     timeout: 30_000,
     url: `http://127.0.0.1:${BROWSER_TEST_PORT}/products/sku-42`,
   },

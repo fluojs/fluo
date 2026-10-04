@@ -1,0 +1,185 @@
+import { useCallback, useEffect, useRef, useSyncExternalStore, type FormEvent } from 'react';
+import { createClientFormStore, type ReactFormSnapshot } from './form-store.js';
+import { captureFormSubmission } from './form-transport.js';
+import { useClientNavigationStore } from './provider.js';
+
+/** Typed DTO fields mapped to authored successful-control names, without a client DTO validator. */
+export type ReactFormContract<Input extends object, Data = unknown> = {
+  readonly fields: Readonly<Record<keyof Input, string>>;
+  /** Reject malformed generated saved data before asynchronous destination policy. */
+  readonly decodeSaved: (value: unknown) => Data;
+  /** Validate an untrusted ordinary JSON GET result before assigning a generated type. */
+  readonly decodeRead?: (value: unknown) => Data;
+};
+
+/** Existing progressive form options, with an optional generated contract. */
+export type ReactFormOptions<Input extends object, Data = unknown> = {
+  readonly id: string;
+  readonly action: string;
+  readonly actions?: readonly string[];
+  /** Application policy after HTTP success; an obsolete asynchronous decision cannot navigate. */
+  readonly allowDestination: (destination: string, signal: AbortSignal) => boolean | Promise<boolean>;
+  readonly onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
+} & (
+  | { /** Independent latest-request-wins work. */ readonly mode: 'background'; readonly method?: 'get' | 'post' }
+  | { /** Omission preserves navigation-oriented POST and busy skipping. */ readonly mode?: 'navigation'; readonly method?: 'post' }
+) & (
+  | { readonly fields: Readonly<Record<keyof Input, string>>; readonly contract?: never }
+  | { readonly contract: ReactFormContract<Input, Data>; readonly fields?: never }
+);
+
+/** One canonical progressive native form binding, with typed authored input/error access. */
+export type ReactFormBinding<Input extends object, Data = unknown> = {
+  /** True only after the existing provider has connected to the browser. */
+  readonly connected: boolean;
+  readonly state: ReactFormSnapshot<Data>;
+  readonly formProps: {
+    readonly id: string;
+    readonly action: string;
+    readonly method: 'get' | 'post';
+    readonly encType: 'application/x-www-form-urlencoded';
+    readonly ref: (element: HTMLFormElement | null) => void;
+    readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+    readonly onInput: () => void;
+  };
+  /** Read only the requested DTO field's safe messages. */
+  readonly fieldErrors: (field: keyof Input & string) => readonly string[];
+  /** Read browser-owned successful values using a typed DTO field name. */
+  readonly values: (field: keyof Input & string) => readonly string[];
+  /** Associate authored controls with the corresponding DTO errors and accessible error element. */
+  readonly fieldProps: (field: keyof Input & string) => {
+    readonly id: string;
+    readonly name: string;
+    readonly 'aria-invalid': boolean;
+    readonly 'aria-describedby': string | undefined;
+  };
+  /** Cancel waiting; an already-dispatched mutation may still persist. */
+  readonly cancel: () => void;
+  /** Recover a confirmed save by repeating GET approval only. */
+  readonly retryRead: () => Promise<void>;
+};
+
+/**
+ * Enhance one ordinary HTTP form through its existing React router provider.
+ *
+ * @param options Stable form identity, DTO-to-control names, supported actions and destination policy.
+ * @returns Native form attributes, independent state, safe field associations and read-only recovery.
+ */
+export function useForm<Input extends object, Data = unknown>(
+  options: ReactFormOptions<Input, Data> & { readonly contract: ReactFormContract<Input, Data> },
+): ReactFormBinding<Input, Data>;
+/**
+ * Bind authored field names without asserting a generated saved-data type.
+ *
+ * @param options Existing authored fields and progressive submission policy.
+ * @returns A form binding with unprojected saved data.
+ */
+export function useForm<Input extends object>(
+  options: ReactFormOptions<Input> & { readonly fields: Readonly<Record<keyof Input, string>> },
+): ReactFormBinding<Input>;
+/**
+ * Assemble the canonical progressive form against the provider-local store.
+ *
+ * @param options Authored names or a generated saved-data contract.
+ * @returns The independent native form binding.
+ */
+export function useForm<Input extends object>(
+  options: ReactFormOptions<Input>,
+): ReactFormBinding<Input> {
+  const fields = options.contract === undefined ? options.fields : options.contract.fields;
+  const navigation = useClientNavigationStore();
+  const route = navigation.getSnapshot();
+  const mode = options.mode ?? 'navigation';
+  const key = mode === 'background' ? `background\0${options.id}` : `${route.url.split('#', 1)[0]}\0${options.id}`;
+  let interaction = navigation.forms.get(key);
+  if (interaction === undefined) {
+    interaction = createClientFormStore(mode);
+    navigation.forms.set(key, interaction);
+  }
+  const form = interaction;
+  const element = useRef<HTMLFormElement | null>(null);
+  const owner = useRef({});
+  const currentFields = useRef(fields);
+  currentFields.current = fields;
+  const state = useSyncExternalStore(form.subscribe, form.getSnapshot, form.getSnapshot);
+  const connected = useSyncExternalStore(navigation.subscribe, navigation.isConnected, () => false);
+  const ref = useCallback((node: HTMLFormElement | null): void => {
+    element.current = node;
+    form.attach(node, owner.current);
+  }, [form]);
+  useEffect(() => () => {
+    if (form.release(owner.current) && navigation.forms.get(key) === form) navigation.forms.delete(key);
+  }, [form, key, navigation]);
+  const fieldErrors = (field: keyof Input & string): readonly string[] =>
+    state.mutation?.status === 'validation' && form.unchanged(fields[field])
+      ? state.mutation.fieldErrors[field] ?? [] : [];
+  useEffect(() => {
+    if (state.mutation?.status !== 'validation' || element.current === null || !form.canFocus()) return;
+    const current = element.current;
+    // A late result for another form never takes focus from the user's current control.
+    if (!current.contains(current.ownerDocument.activeElement)) return;
+    const names: Readonly<Record<string, string>> = currentFields.current;
+    for (const field of Object.keys(names)) {
+      if ((state.mutation.fieldErrors[field]?.length ?? 0) === 0) continue;
+      const name = names[field];
+      if (name === undefined || !form.unchanged(name)) continue;
+      const control = Array.from(current.elements).find((candidate) =>
+        candidate instanceof HTMLElement && candidate.getAttribute('name') === name);
+      if (control instanceof HTMLElement) control.focus({ preventScroll: true });
+      break;
+    }
+  }, [form, state.mutation]);
+  return {
+    connected,
+    state,
+    formProps: {
+      id: options.id, action: options.action, method: options.method ?? 'post', encType: 'application/x-www-form-urlencoded', ref,
+      onInput: form.changed,
+      onSubmit(event) {
+        options.onSubmit?.(event);
+        if (event.defaultPrevented || !connected) return;
+        // Old DOM handlers may reenter synchronously while session revocation aborts work.
+        if (navigation.forms.get(key) !== form
+          || route.session?.generation !== navigation.getSnapshot().session?.generation) {
+          event.preventDefault();
+          return;
+        }
+        if (navigation.getSnapshot().url.split('#', 1)[0]
+          !== `${window.location.pathname}${window.location.search}`) return;
+        const nativeEvent = event.nativeEvent;
+        const selected: unknown = Reflect.get(nativeEvent, 'submitter');
+        const submitter = selected instanceof HTMLElement ? selected : null;
+        const submission = captureFormSubmission(event.currentTarget, submitter, options.actions ?? [options.action], mode);
+        if (submission === undefined) return;
+        event.preventDefault();
+        void form.submit(submission, {
+          lease: navigation.sessionLease,
+          sessionChanged: (change) => navigation.applyFormSession(change, form),
+          authRejected: (reason) => navigation.rejectFormAuth(reason, form),
+          releaseSession: () => navigation.releaseFormSession(form),
+          invalidate: mode === 'background' ? navigation.invalidateBackground : navigation.router.invalidate,
+          approve: (destination, followUp, signal) =>
+            mode === 'background' ? navigation.approveBackground(signal, form)
+              : navigation.approveForm(destination, followUp, signal, form),
+          allowDestination: options.allowDestination,
+          ...(options.contract === undefined ? {} : { decodeSaved: options.contract.decodeSaved }),
+          ...(options.contract?.decodeRead === undefined ? {} : { decodeRead: options.contract.decodeRead }),
+          rememberForms: () => { for (const other of navigation.forms.values()) other.remember(); },
+        });
+      },
+    },
+    fieldErrors,
+    values(field) {
+      return element.current === null ? [] : new FormData(element.current)
+        .getAll(fields[field]).filter((value): value is string => typeof value === 'string');
+    },
+    fieldProps(field) {
+      const id = `${options.id}-${field}`;
+      const invalid = fieldErrors(field).length > 0;
+      return { id, name: fields[field], 'aria-invalid': invalid,
+        'aria-describedby': invalid ? `${id}-errors` : undefined };
+    },
+    cancel: form.cancel,
+    retryRead: form.retryRead,
+  };
+}

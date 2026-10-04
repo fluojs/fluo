@@ -3,6 +3,8 @@ import 'reflect-metadata';
 import { Body, Controller, Get, Injectable, Module, Param, Post, Query } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import { ExpressAdapter } from '@nestjs/platform-express';
+import { comparisonHeaders } from '../shared/comparison-headers';
 
 import { jsonCommandLocal, queryValue, readSearchLocal, restRouteMixLocal, toPreviewBody, toQuoteInput, type QuoteInput } from '../shared/workloads';
 
@@ -156,13 +158,19 @@ function readAppShape(): AppShape {
 
 async function main(): Promise<void> {
   const port = Number(process.env['PORT'] ?? 3002);
-  const app = await NestFactory.create<NestFastifyApplication>(
+  const app = await NestFactory.create(
     resolveAppModule(readAppShape()),
-    new FastifyAdapter(),
+    process.env['BENCH_TARGET'] === 'nestjs-express' ? new ExpressAdapter() : new FastifyAdapter(),
     { logger: false },
   );
 
-  await app.listen(port, '0.0.0.0');
+  if (process.env.BENCH_CONFIGURATION === 'equivalent') {
+    app.use((_request: unknown, response: { setHeader(name: string, value: string): void }, next: () => void) => {
+      for (const [name, value] of Object.entries(comparisonHeaders('equivalent'))) response.setHeader(name, value);
+      next();
+    });
+  }
+  await app.listen(port, process.env.BENCH_BIND_HOST ?? '127.0.0.1');
   process.stdout.write(`NestJS listening on :${port}\n`);
 }
 

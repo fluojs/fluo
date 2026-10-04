@@ -1,0 +1,78 @@
+import { InternalServerErrorException } from '@fluojs/http';
+import type { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
+import type { CatalogControl, CatalogObservation } from '../src/catalog';
+import { ReliabilityControl } from './reliability-control';
+
+type Server = Parameters<NonNullable<NonNullable<Parameters<typeof FastifyHttpApplicationAdapter.create>[0]>['configureFastify']>>[0];
+function gate<T>() {
+  let resolve: (value: T) => void = () => { throw new Error('Missing barrier'); };
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+/** Real HTTP request-scope barriers, enabled only by the explicit form test entry. */
+export class FormControl {
+  private readonly reliability = new ReliabilityControl();
+  readonly events: CatalogObservation[] = [];
+  requests = 0;
+  private readonly background = new Map<string, {
+    readonly started: ReturnType<typeof gate<unknown>>;
+    readonly release: ReturnType<typeof gate<void>>;
+    readonly cleaned: ReturnType<typeof gate<void>>;
+    readonly phase: 'handler' | 'commit';
+    readonly fail: boolean;
+    scope?: string;
+  }>();
+  readonly observe: CatalogControl = async (event) => {
+    this.reliability.observe(event);
+    this.events.push(event);
+    for (const entry of this.background.values()) {
+      if (event.phase === 'cleanup' && entry.scope === event.scope) entry.cleaned.resolve();
+    }
+    const entry = this.background.get(`${event.method}:${event.path}:${event.name ?? ''}`);
+    if (entry === undefined || entry.scope !== undefined || entry.phase !== event.phase) return;
+    entry.scope = event.scope;
+    entry.started.resolve(event);
+    await entry.release.promise;
+    if (entry.fail) throw new InternalServerErrorException('Injected independent background failure.');
+  };
+  install(server: Server): void {
+    this.reliability.install(server, () => {
+      const retained = this.events.length + this.background.size;
+      this.events.length = 0;
+      this.background.clear();
+      return retained;
+    });
+    server.post('/__background/arm', async (request) => {
+      const body: unknown = request.body;
+      if (typeof body !== 'object' || body === null) throw new TypeError('Missing barrier');
+      const key: unknown = Reflect.get(body, 'key');
+      const phase: unknown = Reflect.get(body, 'phase');
+      if (typeof key !== 'string' || phase !== 'handler' && phase !== 'commit') throw new TypeError('Invalid barrier');
+      this.background.set(key, { started: gate<unknown>(), release: gate<void>(), cleaned: gate<void>(),
+        phase, fail: Reflect.get(body, 'fail') === true });
+      return { key };
+    });
+    server.get<{ Querystring: { key: string } }>('/__background/started', async (request) => {
+      const entry = this.background.get(request.query.key);
+      if (entry === undefined) throw new TypeError('Missing barrier');
+      return entry.started.promise;
+    });
+    server.get<{ Querystring: { key: string } }>('/__background/cleaned', async (request) => {
+      const entry = this.background.get(request.query.key);
+      if (entry === undefined) throw new TypeError('Missing barrier');
+      return entry.cleaned.promise;
+    });
+    server.post('/__background/release', async (request) => {
+      const body: unknown = request.body;
+      const keys: unknown = typeof body === 'object' && body !== null ? Reflect.get(body, 'keys') : undefined;
+      if (!Array.isArray(keys) || !keys.every((key: unknown) => typeof key === 'string')) throw new TypeError('Invalid release keys');
+      for (const key of keys) this.background.get(key)?.release.resolve();
+      return { released: keys };
+    });
+    server.get('/__forms/state', async () => ({ requests: this.requests,
+      commits: this.events.filter((event) => event.phase === 'commit').length, events: this.events }));
+    server.addHook('onRequest', async (request) => {
+      if (request.method === 'POST' && request.url.startsWith('/catalog/')) this.requests++;
+    });
+  }
+}

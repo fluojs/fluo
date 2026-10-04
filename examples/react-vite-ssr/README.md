@@ -1,6 +1,45 @@
 # react-vite-ssr example
 
+## Long-session source and verification
+
+The persistent shell now connects `/admin/qr`, `/admin/songs` and
+`/catalog/background` through the same HTTP-approved navigation and existing
+`useForm` search/widget/queue path. `tests/long-session.spec.ts` prepares at least
+1,000 measured seeded actions with operational MessageChannel acknowledgements,
+fault/recovery traces and quiescent checkpoints. The explicit test build uses
+`REACT_VITE_FORM_TEST_SERVER=1 pnpm build:reliability`; run `pnpm test:reliability`
+for Chromium/Firefox/WebKit. Default browser coverage excludes the long-session
+files, especially the separate two-hour soak.
+
+These are source fixtures, not completed execution evidence. Follow the
+[long-session guide](../../docs/guides/react-long-session-reliability.md) for exact
+commands, raw heap/RSS limitations, packaged dev/production, the separate soak
+workflow and #3879's exact-head receipt consumer. Physical mobile/tablet checks
+remain external requirements; desktop viewport coverage cannot pass them.
+
+## Background interaction companion
+
+Open `/catalog/login`, then `/catalog/background`. The real song datasource
+supports native GET search and independent enhanced search/widget results; each
+stable song row sends its own guarded queue POST. Acknowledgements leave
+URL/history/head unchanged and confirmed writes share fresh current-page approval.
+Cancellation is not server rollback. App queue rules, persistence and idempotency
+stay application-owned. See the [form contract](../../docs/contracts/react-progressive-forms.md).
+
+For deterministic production verification, build with
+`REACT_VITE_FORM_TEST_SERVER=1 pnpm build`, then run
+`pnpm exec playwright test tests/background-interactions.spec.ts`.
+The explicit test entry extends `FormControl` started/release/cleaned barriers;
+normal production startup installs no fault routes. The packaged starter exercises
+the same fixture through actual `dev` and `build`/`start`. This is not a soak or
+performance measurement.
+
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
+
+Session acceptance also exercises `?legacySession=1` with plain provider children
+and no session configuration, and `?authRefresh=1` with one app-selected fresh
+auth read. These example fixture variants verify safe document exit and configured
+GET/POST auth policy consumption; they are not alternate framework APIs.
 
 Minimal Vite-backed `@fluojs/react` application for the hydration and client-navigation phases. It connects
 HTTP-owned page routes, DTO-bound parameters, streamed React SSR, Vite manifest assets, and one
@@ -69,9 +108,23 @@ See the [consumer migration](../../docs/getting-started/migrate-react-refresh.md
 ```sh
 pnpm install
 pnpm build
+pnpm --filter @fluojs/example-react-vite-ssr typegen
 pnpm --filter @fluojs/example-react-vite-ssr build
 pnpm --filter @fluojs/example-react-vite-ssr start
 ```
+
+The explicit first generation uses the exported inspection `AppModule` and
+`applicationOptions` from the same HTTP factory as runtime startup. It needs no
+production manifest and never listens. Actual startup supplies the real assets
+and document renderer from `src/presentation.ts`; an unconfigured inspection
+root cannot render pages or serve assets.
+
+The generated `reactPageRoutes`, `reactPageModules` and `reactFormRoutes` connect
+authored component props, HTTP query/control aliases and existing `useForm`
+bindings. Initial hydration and ordinary/prefetch loads share the same generated
+props decoders through `navigationContracts`. Typecheck/build begin with
+non-mutating `--check`; after source/type/config edits, explicitly rerun
+`typegen` or use `typegen:watch`. A stale artifact is not silently regenerated.
 
 Open `http://127.0.0.1:3000/products/sku-42?preview=true`, then activate `Count: 0`. The label
 changes to `Count: 1` only after the Vite-generated client entry hydrates the server HTML. Use
@@ -101,8 +154,9 @@ uses HTTP approval, but invalidating an untagged back entry loads its ordinary d
 From `/admin/qr`, hover `Prefetch public sku-84` or scroll to `Prefetch public on viewport`,
 then activate the opted-in link. The first GET fetches a public navigation representation;
 activation consumes it without another GET. `Open public sku-84 without prefetch` still makes
-a normal request. `Switch user and prefetch scope` changes the session cookie and the
-application-managed `prefetchScope` before further navigation. `Rename without reload` sends
+a normal request. `Switch user and prefetch scope` changes the demo cookie and uses
+`router.sessionChanged` to revoke the previous provider approval before fresh HTTP;
+the public prefetch label is not a competing session notifier. `Rename without reload` sends
  a guarded POST and calls `router.invalidate()` after success. Click `Refresh` to fetch and
  display the changed server value in the same page without a history entry; pending and
  preserved failure retain the last approved value. The other fixture links show
@@ -138,7 +192,7 @@ defines the tested compression boundary; untested cloud proxies are not implied.
 
 ## negotiated destination workflow
 
-`src/app.ts` verifies the application-loaded Vite manifest contains
+`src/presentation.ts` verifies the application-loaded Vite manifest contains
 `src/navigation-product.ts`, then the matched product handler returns
 `ReactNavigationPage.create(ProductDocument, { module: './navigation-product.ts', props })`.
 An ordinary document GET still streams the HTML shell, hydration scripts, Suspense content,
@@ -227,10 +281,10 @@ matched, bound, and rendered again by the ordinary dispatcher. The browser regre
 Chrome context with `javaScriptEnabled: false`, submits the rendered form, observes the `303`, and
 asserts the destination document contains the mutated value.
 
-This flow is not a React Router action/fetcher, Astro Action, Next.js Server Action, or experimental
-fluo Server Function. It does not compile action ids, own route matching, revalidate a client cache,
-or promise optimistic state. No submit-state helper is added because the native form already provides
-the complete fallback and the stable client package owns neither mutation routes nor cache policy.
+This native product exercise does not compile action IDs or own route matching.
+The separate catalog companion uses the shipped `useForm` pending/result path
+over the same native HTTP actions. Its saved follow-up is a fresh approved GET,
+not POST replay or an optimistic private cache.
 
 ## phase boundaries and limitations
 
@@ -245,9 +299,10 @@ the complete fallback and the stable client package owns neither mutation routes
   errors fall back to ordinary HTTP documents. Guards and interceptors remain server-owned.
 - This example does not promise arbitrary HTML swapping, event replay, client route matching,
   a global navigation cache, RSC-aware data, or prefetch for non-opted-in links.
-- A failed network/5xx soft load does not yet preserve the jukebox shell by default;
-  this example's fallback test deliberately observes the current full-document path.
-  Auth rejection, explicit reload and application logout are distinct from transient retry.
+- The official composition preserves transient network/5xx and mapped import failures,
+  and build mismatch offers an explicit document update. The low-level no-policy fixture
+  retains document fallback. Auth revocation, invalid current payload, explicit reload
+  and application logout keep their separate boundaries.
 - This is not a Next.js App Router, file-based router, TanStack route tree, RSC example, catch-all
   route example, or production starter-template change.
 - The asset controller is intentionally minimal and serves the flat filenames emitted by this
@@ -291,3 +346,28 @@ examples/react-vite-ssr/
 - `../../packages/react/README.md` — React package and Vite manifest contracts
 - `../../packages/vite/README.md` — TC39 decorator transform boundary for Vite builds
 - `../../docs/contracts/behavioral-contract-policy.md` — behavior/docs/test alignment rules
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../../docs/contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.
+
+Open `/catalog/login`, then `/catalog` or `/catalog/sku-42` for create/read/update/delete.
+Its process-local map and demo cookie are not durable persistence or production auth.
+`tests/progressive-forms.spec.ts` exercises JS-disabled/bootstrap-blocked journeys
+and real-listener barriers, cookies/CSRF, disconnects, manual redirects and GET-only
+recovery. Normal production uses `src/main.ts`; `REACT_VITE_FORM_TEST_SERVER=1`
+selects `tests/form-server.ts` only for explicit fault injection.
+
+## Navigation permission
+
+Enable **Protect edits** on the catalog editor, then edit or submit the existing `useForm`. One `useNavigationGuard` decision offers **Stay here** or **Proceed with navigation**. Stay retains drafts without destination HTTP or form cancellation; after permission fresh HTTP approves the page. Cancelling a pending POST is not server rollback. Logout/401/403 revoke an open decision. JS-disabled/native submission remains unchanged.
+
+See [guard migration](../../docs/getting-started/migrate-react-navigation-guards.md) and the [owning contract](../../docs/contracts/react-navigation-payload.md#navigation-permission).

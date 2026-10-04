@@ -3,12 +3,20 @@ import { createProcessIsolatedTypegenSource } from './typegen-isolated-source.js
 import type { ParsedTypegenArgs } from './typegen-options.js';
 import { TypegenCommandError } from './typegen-options.js';
 
-function readGenerationArgs(): { readonly cwd: string; readonly exportName: string; readonly modulePath: string } {
-  const [cwd, modulePath, exportName] = process.argv.slice(2);
+function readGenerationArgs(): { readonly cwd: string; readonly exportName: string; readonly modulePath: string; readonly options: Partial<ParsedTypegenArgs> } {
+  const [cwd, modulePath, exportName, encoded] = process.argv.slice(2);
   if (cwd === undefined || modulePath === undefined || exportName === undefined) {
     throw new TypegenCommandError('Typegen generation process received incomplete arguments.');
   }
-  return { cwd, exportName, modulePath };
+  const options: unknown = encoded === undefined ? {} : JSON.parse(encoded);
+  if (typeof options !== 'object' || options === null) throw new TypegenCommandError('Generation options are malformed.');
+  const parsed: Partial<ParsedTypegenArgs> = {};
+  for (const key of ['outputPath', 'optionsExport', 'tsconfigPath'] as const) {
+    const value: unknown = Reflect.get(options, key);
+    if (value !== undefined && typeof value !== 'string') throw new TypegenCommandError(`Generation ${key} is malformed.`);
+    if (typeof value === 'string') Object.defineProperty(parsed, key, { enumerable: true, value });
+  }
+  return { cwd, exportName, modulePath, options: parsed };
 }
 
 function sendGenerationMessage(message: TypegenGenerationMessage): Promise<void> {
@@ -37,6 +45,7 @@ async function runGenerationChild(): Promise<void> {
       modulePath: request.modulePath,
       outputPath: '',
       watch: false,
+      ...request.options,
     };
     message = {
       kind: 'source',

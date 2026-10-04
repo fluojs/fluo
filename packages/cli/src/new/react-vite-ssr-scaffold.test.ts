@@ -98,12 +98,15 @@ describe('React SSR + Vite scaffold', () => {
         vitest: '^4.1.11',
       }),
       scripts: expect.objectContaining({
-        build: 'vite build --config vite.client.config.ts && vite build --config vite.server.config.ts',
+        typegen: 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts',
+        'typegen:check': 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --check',
+        'typegen:watch': 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --watch',
+        build: 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --check && vite build --config vite.client.config.ts && vite build --config vite.server.config.ts',
         dev: 'fluo dev',
         start: 'node dist/server/main.js',
         test: 'vitest run',
         'test:browser': 'playwright test --config playwright.config.ts',
-        typecheck: 'tsc -p tsconfig.json --noEmit',
+        typecheck: 'fluo typegen src/app.ts --export AppModule --options applicationOptions --tsconfig tsconfig.json --output src/generated/react-pages.ts --check && tsc -p tsconfig.json --noEmit',
       }),
     }));
     expect(Object.keys(snapshot).sort()).toEqual([
@@ -116,20 +119,35 @@ describe('React SSR + Vite scaffold', () => {
       'public/favicon.svg',
       'src/app.test.ts',
       'src/app.ts',
+      'src/catalog.ts',
       'src/entry-client-dev.ts',
       'src/entry-client.tsx',
       'src/entry-server.tsx',
+      'src/import-control.ts',
       'src/load-manifest.test.ts',
       'src/load-manifest.ts',
       'src/main.ts',
+      'src/page-admin.tsx',
+      'src/page-products.tsx',
       'src/page-search.tsx',
       'src/page.tsx',
       'src/react-app.test.tsx',
       'src/react-app.tsx',
+      'src/session-controls.tsx',
       'src/styles.css',
       'src/styles.d.ts',
+      'tests/background-interactions.spec.ts',
       'tests/deployment-transition.spec.ts',
+      'tests/form-control.ts',
+      'tests/long-session-helpers.ts',
+      'tests/long-session-metrics.ts',
+      'tests/long-session-observer.ts',
+      'tests/long-session-run.ts',
+      'tests/long-session.spec.ts',
+      'tests/navigation-guard.spec.ts',
       'tests/production-hydration.spec.ts',
+      'tests/reliability-control.ts',
+      'tests/session-transition.spec.ts',
       'tsconfig.json',
       'vite.client.config.ts',
       'vite.server.config.ts',
@@ -141,6 +159,21 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['src/app.ts']).toContain("module: './page-search.tsx'");
     expect(snapshot['src/app.ts']).toContain('await options.loadPage');
     expect(snapshot['src/page.tsx']).toContain('return (');
+    expect(snapshot['tests/navigation-guard.spec.ts']).toBe(readFileSync(
+      new URL('./templates/react-vite-ssr/tests/navigation-guard.spec.ts.ejs', import.meta.url), 'utf8',
+    ));
+    for (const file of [
+      'reliability-control.ts', 'long-session.spec.ts',
+      'long-session-run.ts', 'long-session-observer.ts', 'long-session-helpers.ts',
+      'long-session-metrics.ts',
+    ]) {
+      expect(snapshot[`tests/${file}`]).toBe(readFileSync(
+        new URL(`./templates/react-vite-ssr/tests/${file}.ejs`, import.meta.url), 'utf8',
+      ));
+    }
+    expect(snapshot['src/import-control.ts']).toBe(readFileSync(
+      new URL('./templates/react-vite-ssr/src/import-control.ts.ejs', import.meta.url), 'utf8',
+    ));
     expect(snapshot['src/main.ts']).toContain("process.env.FLUO_REACT_MANIFEST_URL ?? '../client/.vite/manifest.json'");
     expect(snapshot['src/main.ts']).toContain('navigationBuildId: selectedRenderer.buildId');
     expect(snapshot['src/main.ts']).toContain('createReactPageRenderer(manifest)');
@@ -150,11 +183,11 @@ describe('React SSR + Vite scaffold', () => {
     expect(snapshot['src/react-app.tsx']).toContain('ReactClientRouterProvider');
     expect(snapshot['src/react-app.tsx']).toContain("href='/assets/favicon.svg'");
     expect(snapshot['public/favicon.svg']).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
-    expect(snapshot['src/page.tsx']).toContain("<Link href='/search?q=catalog'>");
-    expect(snapshot['src/react-app.tsx']).toContain("router.push('/products/sku-126?preview=true')");
+    expect(snapshot['src/page.tsx']).toContain("reactPageRoutes['GET /search SearchPageRouter show'].link({ q: 'catalog' })");
+    expect(snapshot['src/react-app.tsx']).toContain("reactPageRoutes['GET /products/:sku ProductPageRouter show'].push(router, { sku: 'sku-126' }, { preview: 'true' })");
     expect(snapshot['src/app.test.ts']).toContain("import { Test } from '@fluojs/testing';");
-    expect(snapshot['src/app.test.ts']?.match(/Test\.createApp\(\{ rootModule: AppModule \}\)/g)).toHaveLength(5);
-    expect(snapshot['src/app.test.ts']?.match(/defer\(\(\) => app\.close\(\)\);/g)).toHaveLength(5);
+    expect(snapshot['src/app.test.ts']?.match(/Test\.createApp\(\{ rootModule: AppModule \}\)/g)).toHaveLength(6);
+    expect(snapshot['src/app.test.ts']?.match(/defer\(\(\) => app\.close\(\)\);/g)).toHaveLength(6);
     expect(snapshot['src/app.test.ts']).toContain("expect(response.headers['Content-Type']).toBe('text/html; charset=utf-8')");
     expect(snapshot['src/load-manifest.test.ts']).toContain("expect(error.code).toBe('react-starter-manifest-missing')");
     expect(snapshot['src/app.test.ts']).toContain("expect(error.code).toBe('react-starter-entry-incompatible')");

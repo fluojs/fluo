@@ -2,21 +2,23 @@ import { ForbiddenException, FromPath, NotFoundException, RequestDto, type Reque
 import { Path, ReactNavigationPage, Router } from '@fluojs/react';
 import { createElement } from 'react';
 
-import { ProductDocument } from './page';
+import type { ReactViteExamplePresentation } from './presentation';
 
 class PrefetchRequest {
   @FromPath('scenario')
   scenario = '';
 }
 
-export function createPrefetchPageRouter(stylesheets: readonly string[]): new () => object {
+export function createPrefetchPageRouter(presentation: () => ReactViteExamplePresentation) {
   @Router('/prefetch')
   class PrefetchPageRouter {
-    private readonly visits = new Map<string, number>();
+    readonly visits = new Map<string, number>();
 
     @Path('/:scenario')
     @RequestDto(PrefetchRequest)
     show(input: PrefetchRequest, context: RequestContext) {
+      const { assets, document: ProductDocument } = presentation();
+      const stylesheets = assets.css;
       const { scenario } = input;
       if (scenario === 'missing') {
         throw new NotFoundException('Prefetch destination not found.');

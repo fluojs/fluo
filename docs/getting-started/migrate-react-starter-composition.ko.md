@@ -57,8 +57,13 @@ note page를 추가했습니다. 두 page starter와 비교해 손댄 source fil
 개였습니다: `src/app.ts`(새 path/body DTO, HTTP GET/POST, guard, 등록),
 `src/page-note.tsx`(새 page와 native form), `src/page.tsx`(note로 이동하는 선택적 link).
 renderer, client entry, manifest, router store, generated type file 수정은 **0개**였습니다.
-Page는 JSON props를 `Record<string, unknown>`으로 받아 사용 지점에서 필드를 좁힙니다.
-#3880의 후속 typed projection을 위해 다른 authoring 경로나 unsafe cast가 필요하지 않습니다.
+당시 실험은 JSON props를 `Record<string, unknown>`으로 받아 사용 지점에서 좁혔습니다.
+Typed 경로에서는 concrete JSON props를 받는 default-export browser function component와
+`ReactNavigationPage.create`의 literal module/result를 유지합니다. 같은 `fluo typegen`이
+이제 module registry, query, saved-data contract를 project하므로 DTO interface를 복제하거나
+props를 cast하지 않습니다. [Typegen 이주](./migrate-react-typegen.ko.md)에 따라 registry를
+포함하고 기존 조립에 동일한 initial/soft decoder를 연결하며 `--check`로 typecheck/build를
+gate합니다. Build importer allowlist와 application renderer는 계속 필수입니다.
 
 독립 생성 소비자 앱에서 `pnpm typecheck && pnpm build`가 exit code `0`으로 끝났고,
 Chrome case 다섯 개가 기존 두 page, HTTP 승인 셋째 page, guard 거절/validation 실패
@@ -69,3 +74,14 @@ destination이 shell commit 전에 HTML이 아닌 `500`을 반환함을 확인�
 이는 작성 부담 실험이며 내장 auth 또는 enhanced form 정책을 약속하지 않습니다.
 Identity, persistence, validation message는 여전히 application이 구현하며 공식
 form/auth 조립은 #3874/#3875가 소유합니다.
+
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](../contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.

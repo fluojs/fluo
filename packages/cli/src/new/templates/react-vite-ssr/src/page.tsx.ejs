@@ -2,6 +2,7 @@ import {
   Link,
 } from '@fluojs/react/client';
 import { type ReactElement, useEffect, useId, useState } from 'react';
+import { reactPageRoutes } from './generated/react-pages';
 
 function PageCounter(): ReactElement {
   const [count, setCount] = useState(0);
@@ -10,10 +11,12 @@ function PageCounter(): ReactElement {
   return <button disabled={!hydrated} onClick={() => setCount((value) => value + 1)} type='button'>Count: {count}</button>;
 }
 
-export function ProductPage(props: Record<string, unknown>): ReactElement {
+export function ProductPage({ sku, preview }: {
+  readonly sku: string;
+  readonly preview: boolean;
+  readonly productName: string;
+}): ReactElement {
   const identifier = useId();
-  const sku = typeof props['sku'] === 'string' ? props['sku'] : '';
-  const preview = props['preview'] === true;
   if (sku === 'render-error' && typeof window !== 'undefined'
     && Reflect.get(window, '__allowRenderRetry') !== true) {
     throw new Error('Starter destination render failed');
@@ -25,7 +28,7 @@ export function ProductPage(props: Record<string, unknown>): ReactElement {
       <p>{preview ? 'Preview mode' : 'Published mode'}</p>
       <p data-react-identifier id={identifier}>Shared hydration identifier</p>
       <PageCounter />
-      <Link href='/search?q=catalog'>Search catalog</Link>
+      <Link {...reactPageRoutes['GET /search SearchPageRouter show'].link({ q: 'catalog' })}>Search catalog</Link>
     </section>
   );
 }

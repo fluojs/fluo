@@ -43,13 +43,13 @@ validation, guard, interceptor, middleware, versioning, request scope, not-found
 | 익숙한 개념 | 현재 fluo 동등 개념 | 경계 |
 | --- | --- | --- |
 | **Page** | `@Router(...)`와 `@Path(...)`로 표시한 `GET` handler입니다. React rendering을 우회하는 일반 HTTP 값, configured application renderer가 처리할 `ReactElement` 하나, 또는 명시적인 `createReactServerEntry(...)`를 반환할 수 있습니다. | **Shipped.** Page는 file 또는 route-module convention이 아니라 여전히 HTTP handler입니다. |
-| **Route** | 일반 fluo module/controller metadata에서 compile된 effective route입니다. `@Path(...)`는 `@fluojs/http`와 같은 `GET` metadata를 기록하고, `@fluojs/react/typegen`은 compiled page catalog를 path-only href builder로 project할 수 있습니다. | **Shipped, intentionally different.** HTTP가 matching, grammar, conflict, param, versioning, dispatch를 소유합니다. Typegen은 route tree를 만들지 않고 versioned route를 표현하지 않습니다. |
+| **Route** | 일반 module/controller metadata에서 compile한 effective route입니다. 기존 typegen이 path/query wire alias를 href/Link/push/replace helper로 project합니다. | Matching, binding, validation, dispatch는 HTTP 소유입니다. Unversioned 및 provenance-backed URI route를 지원하고 header/media/custom 또는 version provenance 누락은 실패하며 client matcher는 없습니다. |
 | **Layout** | 애플리케이션 `ReactPageRenderer`가 document shell과 shared provider를 소유합니다. `@PageLayout(...)`은 같은 renderer가 compose하는 optional class/method component-reference metadata를 추가합니다. | **Shipped.** File ancestry나 framework-owned layout router는 없습니다. |
 | **Loading UI** | Application tree의 일반 React `Suspense`를 사용하고, 필요하면 `@SuspenseFallback(...)`으로 page fallback을 선택합니다. | **Shipped with a narrow boundary.** Fallback은 SSR 중 suspend하는 descendant를 다루며 handler `await`, form, effect, navigation은 관찰하지 않습니다. |
 | **Data read / loader** | HTTP DTO binding과 validation 이후 `@Path(...)` handler에서 명시적인 application provider를 통해 data를 읽고 React element에 전달합니다. `router.refresh()`는 현재 page의 HTTP 승인을 다시 받습니다. | **Shipped, intentionally different.** 별도 loader runtime이나 loader cache는 없으며 mutation 뒤 refresh는 명시적으로 호출해야 합니다. |
-| **Mutation / action** | Native form을 일반 `@Post(...)` handler로 제출하고, `@RequestDto(...)`로 bind/validate하며, 일반 guard/interceptor를 적용하고, application state를 변경한 뒤 필요하면 `303 See Other`로 redirect합니다. Auth/data mutation 후 같은 문서에서 다시 이동하기 전에 `router.invalidate()`를 호출하거나 `prefetchScope`를 바꿉니다. | **Shipped, intentionally different.** Compiled action, fetcher, optimistic-state, 자동 cache revalidation은 없습니다. |
+| **Mutation / action** | Native HTTP form과 일반 DTO/guard/interceptor handler를 유지합니다. `useForm` 옵션 생략은 navigation POST/303/GET, `mode: 'background'`는 GET JSON 검색과 acknowledgement 이동 없는 독립 POST입니다. 확인된 background write는 fresh same-page HTTP approval을 공유합니다. 이 interaction 밖의 mutation 뒤에는 navigation 전에 public speculation을 invalidate하거나 `prefetchScope`를 바꿉니다. | **Shipped, intentionally different.** Canonical `useForm` 하나이며 별도 fetcher, compiled action, optimistic engine, query cache가 아닙니다. |
 | **Navigation** | 실제 `<a>` 또는 `@fluojs/react/client`의 `Link`와 `router.push(...)`, `router.replace(...)`, `router.back()`, `router.refresh()`를 사용합니다. Build-produced importer를 `ReactClientRouterProvider`에 전달하고 승인된 destination을 application-owned page slot에 렌더링합니다. Public speculation에는 `Link prefetch="hover"` 또는 `"viewport"`와 provider `prefetchScope`를 사용합니다. | **Shipped, intentionally different.** 호환 page는 server-confirmed URL/params로 history를 갱신하면서 soft navigation하고 나머지는 document navigation을 사용합니다. Client route matcher와 일반 document/data cache는 없습니다. Prefetch는 기본 off이고 명시적인 public grant가 있는 navigation JSON만 한 번 재사용합니다. |
-| **Pending state** | `ReactNavigationExperience`가 이전 승인 page slot을 유지하면서 opt-in polite navigation 상태를 slot 밖에 표시합니다. `useNavigation()`은 low-level lifecycle이고 React `Suspense`는 descendant를 다룹니다. | **Navigation에 shipped.** Form submit-state helper나 공유 loader/action pending model은 없습니다. |
+| **Pending state** | `ReactNavigationExperience`와 `useNavigation()`은 navigation lifecycle입니다. 같은 provider의 `useForm`은 id별 pending/dirty/read/error/mutation/follow-up을 소유하고 background는 독립 latest-wins 권한을 사용합니다. 실제 owner unmount와 session/provider 변경이 철회하며 unrelated navigation은 철회하지 않습니다. | **Navigation, native form, background 작업에 shipped.** Compiled action router나 범용 loader/action pending model은 없습니다. |
 | **Error UI** | 공식 조립은 승인된 destination render 오류를 page-local로 reset하고 외부 boundary가 throwing error view를 진단합니다. HTTP pipeline status/error는 HTTP에 남고 새 HTTP transport retry는 #3864가 소유합니다. | **Page rendering에 shipped.** Segment `error` file, shell/root 복구, React-owned HTTP error router는 없습니다. |
 | **Not found** | 명시적 route가 없으면 일반 `@fluojs/http` not-found response가 되고, application lookup이 실패하면 handler가 shipped HTTP not-found exception을 throw할 수 있습니다. | **Shipped, intentionally different.** React `notFound()` helper나 catch-all requirement는 없습니다. |
 | **Metadata / head** | `@PageMetadata(...)`는 matched-page title/meta/link를 공식 SSR과 soft page-owned head로 해석합니다. Status/header는 HTTP가 계속 소유합니다. | **Opt-in page 조립에 shipped.** File-segment merge는 없고 global CSS/icon/bootstrap은 application 소유입니다. |
@@ -78,7 +78,7 @@ post-mutation action이 아닙니다.
 | `@fluojs/react` | `ReactModule.forRoot(...)`, `@Router(...)`, `@Path(...)`, page rendering policy, Web Streams SSR, diagnostic, page catalog, 명시적 hydration option. | 안정적인 runtime-neutral root입니다. Browser, Vite, typegen, RSC code를 import하지 않습니다. |
 | `@fluojs/react/client` | SSR-safe request-scoped route snapshot과 provider composition, 실제 anchor, HTTP-approved soft navigation 및 document fallback, 제한된 public navigation prefetch, URL/navigation hook. | 안정적인 SSR-and-browser subpath입니다. `createReactRouteSnapshot(...)`과 `ReactClientRouterProvider`는 SSR 및 hydration을 지원하고 browser navigation effect는 hydration 이후에만 연결됩니다. Matcher, route table, 일반 document cache는 없습니다. |
 | `@fluojs/react/vite` | 이미 로드한 Vite manifest를 deterministic React CSS, JavaScript, asset-map, hydration option으로 파싱합니다. | 안정적인 build-integration subpath입니다. File을 읽거나 Vite를 실행하지 않습니다. |
-| `@fluojs/react/typegen` | Compiled React page catalog에서 deterministic path-only declaration과 absolute href builder를 생성합니다. | 안정적인 tooling subpath입니다. Versioned route를 거부하고 query, fragment, relative-route, route-tree contract를 생성하지 않습니다. |
+| `@fluojs/react/typegen` | Compiled HTTP catalog와 frozen compiler graph를 path/query helper, module props registry, native form contract로 project합니다. | 안정적인 tooling subpath이며 erased-type reflection, 두 번째 generator, fragment/relative-route contract, client route tree는 없습니다. |
 | `@fluojs/react/experimental/rsc` | Compatibility diagnostic, application-supplied RSC manifest seam, Flight response, 명시적 HTTP endpoint에 mount하는 signed Server Function transport. | **Experimental.** 모든 stable entrypoint와 격리되며 stable RSC 또는 action promise가 아닙니다. |
 
 명시적 destination load의 자세한 동작은 [navigation payload contract](../contracts/react-navigation-payload.ko.md)와
@@ -90,6 +90,15 @@ Opt-in Link는 server grant가 있는 identity-independent 결과를 한 번 재
 생략한 speculative request, cache 한도, application auth/mutation 책임은 원본 계약을 참고하세요.
 
 ## 최소 end-to-end path
+
+Typed 경로는 [end-to-end 타입 계약](../contracts/react-end-to-end-types.ko.md)과
+[typegen 이주](../getting-started/migrate-react-typegen.ko.md)를 따릅니다. Authored browser
+props와 server JSON은 generated registry 및 공통 initial/soft decoder로 연결합니다.
+Generated form의 `fields`/`decodeSaved`는 같은 `useForm`으로 전달하며 별도 interaction API나
+generated GET decoder가 아닙니다. Raw search snapshot은 검증 전 wire data입니다.
+Typegen은 실제 application tsconfig/options를 공유하며 `--check`가 조용한 artifact 복구 없이
+일반 typecheck/build를 gate해야 합니다. 이 타입은 auth/session, native POST/303/GET,
+saved와 follow-up 실패 구분, uncertainty/no POST replay, public-only prefetch를 바꾸지 않습니다.
 
 Canonical starter composition 이전에는 application author가 첫 hydrated page를 자신 있게 편집하기 전에
 일곱 개 concept를 연결해야 했습니다. Vite manifest load, compatible server/client entry 선택, hydration
@@ -137,6 +146,22 @@ update를 제공합니다. [프로덕션 배포 recipe](./react-production-deplo
 및 policy example로 남습니다. Generated client asset이나 hydration이 필요 없는 SSR에는
 [`examples/react-stable-ssr`](../../examples/react-stable-ssr/README.ko.md)를 사용하세요.
 
+## Session approval belongs to the existing router
+
+기존 provider에 `session={{ epoch, policy? }}`를 조립하고 앱이 확인한 변경은
+`router.sessionChanged({ epoch, reason })`로 통지합니다. `useRouterState().session`에 따라
+앱의 기존 resource subtree/effect cleanup을 수행합니다. 별도 notifier, controlled epoch,
+teardown registry는 없습니다. 철회는 policy 전에 protected destination, 초기 fallback,
+head를 제거합니다. 401은 signed-out, 403은 anonymous identity 전환이 아닌 forbidden입니다.
+Cookie 변경 자체가 cross-tab signal인 것은 아닙니다.
+
+Handler의 선택적 `ReactModule.formResult({ ..., session })`은 destination policy 전에
+동일한 barrier를 통과하고 confirmed saved continuation만 fresh GET 승인으로 이관합니다.
+Saved 실패/retry와 일반 unrelated form retention은 유지합니다.
+`ReactFormContract<Input, Data>`의 `fields`와 `decodeSaved(unknown): Data`를 기존
+`useForm({ contract, ... })`에 전달하며 cast나 별도 form API를 사용하지 않습니다.
+[Session migration](../getting-started/migrate-react-session-composition.ko.md)을 참고하세요.
+
 ## Experimental surface
 
 `@fluojs/react/experimental/rsc`가 현재 유일한 RSC 및 Server Function surface입니다. 문서화된 exact
@@ -147,10 +172,18 @@ Component, server action, router, loader, cache contract로 해석하지 마세�
 
 ## 지원하지 않는 개념
 
+독립 검색과 행 mutation은 별도 fetcher/provider가 아닌 기존 `useForm`의
+`mode: 'background'`로 제공합니다. GET은 일반 HTTP JSON을 읽고 POST는 기존 saved
+protocol과 합쳐진 fresh same-page HTTP approval을 사용합니다. Stable id마다
+pending/result와 latest-wins 취소를 소유합니다. navigation만으로 살아 있는 shell owner를
+취소하지 않으며 unmount/session/provider 변경은 철회합니다. 아래의 범용 loader/cache
+개념까지 제공하는 것은 아닙니다.
+[Form 계약](../contracts/react-progressive-forms.ko.md#background-http-interactions)을 보세요.
+
 현재 패키지는 다음을 제공하지 않습니다.
 
 - file routing, React-owned matcher, nested route tree, catch-all route grammar
-- route-module loader/action runtime, fetcher, automatic data revalidation
+- route-module loader/action runtime, 별도 fetcher API, 범용 query-cache revalidation
 - 임의 HTML document swapping, 일반 client document/data cache, 자동 navigation prefetch,
   optimistic mutation policy
 - automatic metadata merging 또는 segment-level `loading`, `error`, `not-found` convention
@@ -169,3 +202,9 @@ Component, server action, router, loader, cache contract로 해석하지 마세�
 - [`@fluojs/http` package contract](../../packages/http/README.ko.md)
 - [React render policy 결정](../architecture/react-render-policy-decorators.ko.md)
 - [React RSC graduation policy](../contracts/react-rsc-graduation.ko.md)
+
+## Navigation permission
+
+Dirty/pending 보호에는 기존 provider 안의 `useNavigationGuard({ when })` 하나를 사용합니다. 승인 전 목적지 GET·prefetch adoption·navigation form 취소가 없습니다. 현재 token의 stay/proceed만 실행하고 저장 완료나 오래된 confirm으로 자동 재개하지 마세요. Saved·dirty·follow-up 실패를 구별하며 refresh는 데이터 재검증이지 leave 승인 대체물이 아닙니다. Session 철회는 dirty 결정 전에 페이지·head·입력·권한을 제거합니다. Tagged same-document history와 untagged/native document 경계를 구별합니다.
+
+[Guard migration](../getting-started/migrate-react-navigation-guards.ko.md)과 [owning 계약](../contracts/react-navigation-payload.ko.md#navigation-permission)을 참고하세요.

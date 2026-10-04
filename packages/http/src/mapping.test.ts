@@ -49,6 +49,43 @@ function createMiddlewareContext(path: string, container: Container): Middleware
 }
 
 describe('handler mapping', () => {
+  it.each([
+    { type: VersioningType.URI },
+    { header: 'x-api-version', type: VersioningType.HEADER },
+    { key: 'v=', type: VersioningType.MEDIA_TYPE },
+    { extractor: () => '2', type: VersioningType.CUSTOM },
+  ] as const)('retains authoritative $type version selection in frozen descriptors', (versioning) => {
+    // Given: a literal v-prefixed path cannot establish the selection strategy.
+    @Controller('/v2/items')
+    class ItemsController {
+      @Version('2')
+      @Get()
+      list(): string {
+        return 'items';
+      }
+    }
+
+    // When: HTTP compiles with the application's actual versioning options.
+    const mapping = createHandlerMapping([{ controllerToken: ItemsController }], { versioning });
+    const descriptor = mapping.descriptors[0];
+    const path = versioning.type === VersioningType.URI ? '/v2/v2/items' : '/v2/items';
+    const match = mapping.match({
+      cookies: {},
+      headers: { accept: 'application/json;v=2', 'x-api-version': '2' },
+      method: 'GET',
+      params: {},
+      path,
+      query: {},
+      raw: {},
+      url: path,
+    });
+
+    // Then: provenance survives snapshotting and describes the selected real route.
+    expect(descriptor?.metadata).toMatchObject({ versionSelection: versioning.type });
+    expect(Object.isFrozen(descriptor?.metadata)).toBe(true);
+    expect(match?.descriptor).toBe(descriptor);
+  });
+
   it('normalizes paths and extracts path params', () => {
     @Controller('//users/')
     class UsersController {

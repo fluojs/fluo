@@ -14,6 +14,29 @@ The code in this chapter is application code to place in the `fluo-blog` you cre
 
 ## A Server-Rendered Document Is Enough for the First Screen
 
+### Background companion after the native exercise
+
+Keep this chapter's native editor and server-side version check first. For search
+or row saves without document navigation, opt into background on the existing
+provider's `useForm`, without another fetcher or client matcher. The executable
+companion is `/catalog/background` in the [Vite example](../../examples/react-vite-ssr/README.md).
+Observe real search results, two concurrent row writes and saved/read-failed outcomes.
+
+```tsx
+const search = useForm<{ q: string }>({
+  id: 'song-search', action: '/catalog/background/search',
+  mode: 'background', method: 'get', fields: { q: 'q' },
+  allowDestination: () => false,
+});
+```
+
+Call inside a component and spread `search.formProps` on its native form. The same
+HTTP handler serves JSON reads and native HTML search. Handwritten fields keep read
+data `unknown`. Cancellation is not rollback or a replacement for this chapter's
+version/idempotency checks. `tests/background-interactions.spec.ts` exercises
+reversed responses and cleanup; the [form contract](../../docs/contracts/react-progressive-forms.md)
+owns defaults, failures and lifecycle.
+
 The stable path in `@fluojs/react` is React SSR over HTTP. `@Router` and `@Path` sit on top of existing HTTP route metadata. They do not discover routes automatically from React filenames, and components do not create a new authentication pipeline. The same middleware, guards, DTO binding, and request scope apply as for the API.
 
 First, install the React integration and its peer dependencies in your `fluo-blog`. Keep the existing Fluo, Prisma, and authentication dependencies.
@@ -709,3 +732,149 @@ This approach is not the final form of a sophisticated editor. It carries the co
 - [HTTP Request, Response, and Principal Types](../../packages/http/src/types.ts), [Fastify Multipart Support](../../packages/platform-fastify/README.md)
 - [Passport Strategies and Local Registration](../../packages/passport/README.md), [Setting the Principal and Checking Scopes](../../packages/passport/src/guard.ts)
 - [Writing and Clearing Cookies](../../packages/passport/src/cookie/cookie-manager.ts), [Prisma current and transaction](../../packages/prisma/README.md)
+
+
+## Hydrated session approval and app-owned cleanup
+
+The native document/forms earlier in this chapter stay valid. For an opt-in hydrated
+reader/editor, configure the existing provider's nonsecret session epoch and use
+`router.sessionChanged` after application-confirmed login/logout/permissions.
+`useRouterState().session` owns the approval snapshot; do not infer it from cookie
+values or add a competing notifier. A session-bearing `ReactModule.formResult`
+enters the same barrier before asynchronous policy, preserves the confirmed save,
+and approves its destination with fresh GET. It never retries POST automatically.
+
+On revocation, both protected initial SSR fallback and later page/head/input state
+disappear. 401 is signed-out; 403 is forbidden without identity erasure. The app
+must place its protected MessageChannel/player/listener under the existing
+session-aware React subtree and cleanup its actual owned resource on unmount.
+Notification settlement does not prove SDK disposal. The runnable fixture operates
+a real channel, observes both port closes, holds an old HTTP body, proves public
+cancellation before release, and recovers another user's fresh page.
+
+Use [session migration](../../docs/getting-started/migrate-react-session-composition.md)
+and `examples/react-vite-ssr/tests/session-transition.spec.ts` alongside the native
+exercises below. Cross-tab cookie detection and future dirty-navigation confirmation
+are not provided here; auth revocation takes priority over that later composition.
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../../docs/contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.
+
+This is the writer-screen progressive-interaction companion. Follow the
+[official catalog example](../../examples/react-vite-ssr/README.md) for the complete
+production CRUD execution path. Keep this chapter's native writes intact;
+manuscript checks are not evidence of browser execution.
+
+### A small typed extension for the editing screen
+
+In a separate hydrated extension, reduce mistakes when reading saved-result fields.
+Do not silently turn the multipart exercise above into an enhanced form. Configure
+the existing provider and a URL-encoded parser, then declare raw text contracts on
+the same `EditInput` body fields. Declare them as `string | readonly string[]` to
+represent text and duplicate values while retaining runtime checks. Do not copy a
+client Input interface; keep `positiveInt`, length checks, author/Origin checks and
+conditional writes. Other queries in the application graph must also have supported
+wire shapes; resolve generator diagnostics for unsupported declarations.
+
+This fragment replaces **only the confirmed-success branch** of the existing
+`save`. Keep failure HTML and 409 conflict handling; arbitrary 400/409 responses
+are not typed validation. For enhanced field errors, explicitly author a safe DTO
+projection or `HttpFormRejection`.
+
+```ts
+return ReactModule.formResult({
+  destination: `/posts/${id}/edit`,
+  followUp: 'refresh',
+  data: { kind: 'draft-saved', id },
+});
+```
+
+After running `fluo typegen` with the same application tsconfig/options, this
+**fragment inside the hydrated editor component** infers action, field aliases and
+saved data from one generated route. Import `reactFormRoutes` from
+`./generated/react-pages.js` and `useForm` from `@fluojs/react/client`. `post` is the
+editing query value above; retain the content/slug/version controls too.
+
+```tsx
+const save = reactFormRoutes['POST /posts/:id/edit PostsPages save'];
+const action = save.href({ id: String(post.id) });
+const form = useForm({
+  id: 'draft-edit',
+  action,
+  contract: save.contract,
+  allowDestination: (destination) => destination === action,
+});
+const mutation = form.state.mutation;
+
+return (
+  <form {...form.formProps}>
+    <label htmlFor="draft-edit-title">Title</label>
+    <input {...form.fieldProps('title')} defaultValue={post.title} maxLength={120} />
+    <span id="draft-edit-title-errors">{form.fieldErrors('title').join(' ')}</span>
+    <textarea {...form.fieldProps('content')} defaultValue={post.content} maxLength={50000} />
+    <input {...form.fieldProps('slug')} defaultValue={post.slug} maxLength={80} />
+    <input {...form.fieldProps('version')} type="hidden" value={post.version} />
+    <button type="submit" disabled={form.state.pending}>Save draft</button>
+    {mutation?.status === 'saved' && mutation.data !== undefined
+      ? <output>Saved draft {mutation.data.id}</output> : null}
+  </form>
+);
+```
+
+There is no Input generic, field map or saved-data cast. Field typos fail typecheck,
+but types do not replace HTTP validation or CSRF policy. Generated forms consume
+`fields` and `decodeSaved`, not a generated GET `decodeRead`. A failed read after
+save is not a failed write: offer only `retryRead()` for recovery. For uncertainty,
+retain input and confirm through an authoritative read rather than automatically
+repeating POST. Native success remains POST/303/GET, with the same session and
+public-prefetch restrictions.
+
+Follow the [type contract](../../docs/contracts/react-end-to-end-types.md) and
+[migration](../../docs/getting-started/migrate-react-typegen.md) to put `--check`
+before ordinary typecheck/build. This extension also requires DB/browser exercise;
+manuscript checks alone do not make it an executed example.
+
+## Protect unsaved input after hydration
+
+Keep the native writer form and server version-conflict checks above. Only when
+adding a hydrated editor, pass the existing `useForm` dirty/pending to one
+`useNavigationGuard({ when })` inside the existing provider and render the current
+decision's stay/proceed buttons. Waiting and staying issue no destination GET and
+do not cancel pending POST. Observe saved first, reevaluate current dirty, and
+explicitly proceed on the current intent. Edits during submission remain dirty;
+validation/uncertain are not saved. Cancellation after approved leave is not
+server rollback. Form refresh retains unrelated drafts; failed/cancelled navigate
+follow-up retains saved and retries GET only.
+
+Logout/401/403 revoke protected content/head/input and decision authority before
+an open dirty decision. Only managed tagged same-document history is recoverable;
+native new tabs, JS-disabled forms and untagged/cross-document exits are separate
+boundaries. beforeunload does not guarantee async save or tab-termination recovery.
+Follow the [owning contract](../../docs/contracts/react-navigation-payload.md#navigation-permission)
+and [migration](../../docs/getting-started/migrate-react-navigation-guards.md), then
+run the [example](../../examples/react-vite-ssr/README.md#navigation-permission).
+
+## Long editing and jukebox verification
+
+One successful save and long-lived ownership are different tasks. Use the official
+composition's existing navigation, `useForm` background search/row writes and
+session-aware resource to repeat QR/songs/history. Check the actual MessageChannel's
+next operation/ack, the same document and warmed quiescence baseline together.
+A counter label or one heap decrease does not prove resource preservation.
+
+The [long-session guide](../../docs/guides/react-long-session-reliability.md) explains
+seed/index/fault traces, at least 1,000 measured actions, a separate actual two-hour
+soak and exact-head handoff. Source harnesses and Book checks are not run evidence.
+Logout/401/403 must revoke protected content and close actual ports; explicit
+reload creates another document. Separate saved from failed follow-up, retry GET
+only and never automatically replay an uncertain POST. Actual mobile/tablet
+verification needs its responsible operator's separate record, not viewport
+emulation. This exercise is not MusicKit acceptance or playback after tab termination.

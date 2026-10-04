@@ -2,9 +2,12 @@
 
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
-Runtime-neutral React package for HTTP-first fluo applications. The
-[full-stack product contract](../../docs/contracts/react-fullstack-product.md) defines the
-additional CRUD and long-lived jukebox acceptance target; it does not mark that target shipped.
+HTTP-first full-stack React application framework for fluo, with a runtime-neutral
+package root. The official composition provides streamed SSR/hydration, approved
+navigation, progressive forms, independent background operations and session
+revocation. The [full-stack product contract](../../docs/contracts/react-fullstack-product.md)
+and [long-session guide](../../docs/guides/react-long-session-reliability.md)
+separate those capabilities from the unexecuted whole-product/soak/manual gate.
 
 Preparing for the coordinated Node 24 release? Follow the [consumer migration guide](../../docs/getting-started/migrate-node24.md) before upgrading packages. React remains a `0.x` minor release, not a `1.0` graduation.
 
@@ -586,8 +589,8 @@ const productHref = reactPageRoutes['GET /products/:productId ProductRouter show
 // /products/desk%2Fchair
 ```
 
-Generated route ids use the stable catalog `id`. Static builders accept no parameters; dynamic
-builders require every catalog path parameter and encode each value with `encodeURIComponent(...)`.
+Generated route ids use the stable catalog `id`. Static builders without query bindings accept no
+parameters; dynamic builders require every catalog path parameter and encode each value with `encodeURIComponent(...)`.
 The artifact also exports `ReactPagePathById`, `ReactPageParamsById`, `ReactPagePath<RouteId>`,
 `ReactPageParams<RouteId>`, `ReactPageRoute`, `ReactPageLinkProps`, and `ReactPageNavigator`.
 
@@ -618,18 +621,47 @@ function ProductNavigation({ productId }: { readonly productId: string }) {
 }
 ```
 
-Static `link`, `push`, and `replace` methods accept no params; parameterized methods require every
+Static `link`, `push`, and `replace` methods accept no path params; parameterized methods require every
 path param and reject missing or extra keys. The existing generated `href(...)` builders,
 `<Link href={stringOrUrl}>`, and `router.push(...)` / `router.replace(...)` string or `URL` calls remain
 supported. Generated methods only produce or pass absolute href strings into those existing APIs, so
 real-anchor fallback, full-document HTTP navigation, matching, DTO binding, guards, interceptors, and
 not-found behavior keep their current owners.
 
-This contract is deliberately path-only. It does not generate query strings, fragments, relative
-routes, optional parameters, or a client route tree. Typegen rejects every catalog entry with a
-`version` because the compiled catalog does not identify whether version selection came from the
-URI, a header, media type, or a custom strategy; emitting one absolute href would otherwise claim a
-URL contract that may be false.
+The existing generator also projects HTTP query aliases and wire omission rules from a frozen
+application compiler snapshot. Use `--tsconfig` for the application configuration and `--options`
+for the actual bootstrap options export. Converted fields declare their raw input with the type-only
+`HttpWire<Server, Wire>` from `@fluojs/http`; HTTP still owns conversion and validation.
+Query builders preserve repeated value order, empty strings and omitted optional fields, using
+`URLSearchParams` encoding rather than implicit number/boolean stringification.
+
+For a generated `SearchRouter.show` route with `@FromQuery('q') term: string`, use
+the DTO property name, not its wire alias. Query follows path params when present;
+it is optional only when all query bindings are optional:
+
+```tsx
+const search = reactPageRoutes['GET /search SearchRouter show'];
+<Link {...search.link({ term: 'tea + coffee' })}>Search</Link>;
+// /search?q=tea+%2B+coffee
+```
+
+Artifact version 2 generates `reactPageModules` JSON props contracts and `reactFormRoutes`
+contracts for the existing `useForm({ action, contract })` path. Module literals and exact props
+are checked through `ReactPagePropsRegistry`; consumers do not copy DTO interfaces or cast saved
+data. Type-only dependencies and compiler configuration participate in freshness.
+Include the generated file in the consumer TypeScript program. Pass `reactPageModules`
+to the initial loader's fourth argument and soft loader's `contracts` option; the existing
+provider composition must forward the same contracts, including public prefetch. Registry
+inclusion alone is not runtime validation. Generated forms supply `fields` and `decodeSaved`,
+not a generated GET `decodeRead`; HTTP still validates submitted successful controls.
+Run the existing `--check` before ordinary typecheck/build; repair failures by explicit
+generation, not silent regeneration. See the [migration](../../docs/getting-started/migrate-react-typegen.md).
+
+Unversioned and provenance-backed URI routes use their compiled effective paths. Versioned
+header/media/custom routes or absent selection provenance fail explicitly; a literal `/v2`
+path is not URI-strategy evidence. Fragment, relative-route and client-matcher generation remain
+outside this contract. See the [end-to-end types contract](../../docs/contracts/react-end-to-end-types.md)
+for supported JSON shapes, strict consumer requirements and migration guidance.
 
 ## Consumer Testing Loop
 
@@ -933,7 +965,13 @@ For transient failures, opt into the existing provider and router path:
 </ReactClientRouterProvider>
 ```
 
-Without `failurePolicy`, every non-cancelled failed load still falls back to a document.
+For non-auth failures, omitting `failurePolicy` keeps document fallback.
+Fresh credentialed 401/403 always revoke old approval before policy. A provider configured
+with `session`, or already activated by an explicit session outcome/notification, uses
+`session.policy` instead of `failurePolicy`: defaults are signed-out for 401 and forbidden
+for 403. An unconfigured legacy provider exits to the ordinary HTTP document after the
+barrier, rather than retaining protected plain children. `failurePolicy` cannot preserve
+revoked auth content; use session-aware composition for in-document auth UI.
 With `'preserve'`, the approved URL, params, page and shell remain; `useNavigation().failure`
 provides a safe `reason`, destination pathname and navigation type. Show an error with
 `router.retry()` for a fresh credentialed HTTP approval and `router.openDocument()` for an
@@ -948,7 +986,9 @@ v1-to-v2 payload migration is a breaking 0.x change. The official generated star
 enables network/5xx, incompatible-build and recoverable mapped import-failure preservation and shell recovery
 controls. To migrate a hand-assembled app, supply
 `navigationModules`, pass `failurePolicy`, render `navigation.failure` controls in the persistent
-shell, and leave all other categories (including absent importer keys) on the document path unless deliberately handled. The
+shell, and leave other non-auth categories (including absent importer keys) on the
+document path unless deliberately handled. Fresh 401/403 follow the mandatory
+session-aware or legacy document rules above. The
 production example verifies resource identity and operation/ack through network and 5xx failure
 and recovery. #3879 must still test the complete product journey; see the
 [product journey map](../../docs/contracts/react-fullstack-product.md#journey-acceptance-map).
@@ -1091,7 +1131,65 @@ The official shell offers an explicit update/document action, not automatic relo
 consumers should follow the [migration](../../docs/getting-started/migrate-react-production-assets.md)
 and [deployment recipe](../../docs/guides/react-production-deployment.md).
 
+## Session composition
+
+Use the existing `ReactClientRouterProvider` with
+`session={{ epoch: 'initial-nonsecret-label', policy }}` and
+`router.sessionChanged({ epoch: 'next-label', reason: 'login' })`.
+`useRouterState().session` exposes approval and generation without another provider.
+Every notification revokes old page/head/form/cache ownership before asynchronous
+policy, including the initial SSR fallback. In configured session composition, fresh credentialed 401 selects
+signed-out; 403 selects forbidden without erasing identity. Anonymous speculation
+cannot log out a credentialed user. Cookie changes alone are not a cross-tab signal.
+Policy `'refresh'` starts a new uncached credentialed GET on navigation GET, form POST
+auth rejection, and saved follow-up GET; it never replays POST. Cancelling the initiating
+saved form cancels its session-policy authority and settles waiting before a held policy
+is released, so a late document decision cannot navigate.
+
+App-owned players/channels/listeners use the existing React subtree/effect cleanup;
+there is no teardown registry and store settlement is not an SDK-disposal receipt.
+A session-bearing form result enters this same barrier before destination policy,
+then transfers only its confirmed saved continuation to fresh GET approval.
+Ordinary mutations preserve unrelated inputs/errors/focus; retries never replay POST.
+See [migration](../../docs/getting-started/migrate-react-session-composition.md).
+
 ## Native Form Mutations
+
+The same `useForm` also owns non-navigation work. Inside a component under the
+existing provider, bind a real GET form:
+
+```tsx
+const search = useForm<{ q: string }>({
+  id: 'song-search', action: '/catalog/background/search',
+  mode: 'background', method: 'get', fields: { q: 'q' },
+  allowDestination: () => false,
+});
+// Spread search.formProps on <form>; keep named input q and a submit button.
+```
+
+The application-owned HTTP handler returns ordinary `application/json` for the
+explicit read request and HTML for native GET. Background POST uses the same
+`ReactModule.formResult`, without automatically following `navigate`. Stable row
+ids have independent latest-wins pending/results; live shell owners survive
+navigation, while actual unmount, session change and provider rebind cancel old
+ownership. `read` data stays `unknown` for authored fields; generated contracts
+may add `decodeRead(unknown): Data`. Acknowledgements do not alter URL/history/head.
+Confirmed writes share a fresh current-page HTTP approval, not a private query
+cache. `saved` remains distinct from read failure and `retryRead()` never replays
+POST. Redirects fail locally except explicit existing auth-policy exits.
+Omitting mode/method keeps the navigation-oriented POST and busy-skipped default.
+Run the official example or generated starter at `/catalog/background`; see the
+owning [background contract](../../docs/contracts/react-progressive-forms.md#background-http-interactions).
+
+The canonical `ReactModule.formResult` also accepts optional JSON `data` and an
+explicit nonsecret `session: { epoch, reason: 'login' | 'logout' | 'permissions' }`.
+Its literal options remain inferred. The negotiated saved acknowledgement stays
+v1 and native success stays 303. A generated `ReactFormContract<Input, Data>`
+supplies `fields` and `decodeSaved(value: unknown): Data`; pass it as `contract`
+to the existing `useForm` instead of handwritten aliases and saved-data casts.
+Do not pass `fields` alongside `contract`. A decoder must throw on malformed data,
+which becomes `uncertain/protocol` before any asynchronous destination policy.
+This shared runtime seam does not itself generate contracts or recover erased DTOs.
 
 Use a native HTML form when a React page needs a mutation that remains functional before hydration or
 with client JavaScript disabled. Submit to an ordinary `@Post(...)` route rather than creating a
@@ -1165,10 +1263,14 @@ guard, and middleware policies as non-React routes.
 This recipe is intentionally different from React Router actions/fetchers, Astro Actions, and
 Next.js Server Actions: fluo does not compile a function reference, own route matching, revalidate a
 loader/client cache, or replace the document response. It is also separate from the experimental
-fluo Server Functions transport. No stable submit-state helper is added in this phase because the
-native form already supplies the complete fallback and `@fluojs/react/client` does not own mutation
-routes or cache invalidation. Applications may add local pending UI after hydration only when the
-real form action and native submission remain intact.
+fluo Server Functions transport. For progressive local state, use `useForm` from
+`@fluojs/react/client` through the existing provider and return
+`ReactModule.formResult({ destination, followUp })` only after confirmed persistence.
+Keep native action/method/encoding and HTTP DTO/auth/CSRF ownership. The
+[progressive form contract](../../docs/contracts/react-progressive-forms.md) and
+[migration guide](../../docs/getting-started/migrate-react-progressive-forms.md)
+define safe field errors, skipped duplicates, uncertain completion and GET-only
+recovery. A failed follow-up read does not turn a confirmed save into a failed save.
 
 ## Experimental RSC Prototype
 
@@ -1387,8 +1489,10 @@ documentation change neither adds the stable subpath nor starts the deprecation 
 
 This package currently does **not** provide:
 
-- automatic post-mutation revalidation; call `router.invalidate()` and then await `router.refresh()`
-  when the application chooses to refresh. The official starter preserves network/5xx and
+- automatic revalidation for arbitrary mutations outside `useForm`; for those mutations, call
+  `router.invalidate()` and then await `router.refresh()` when the application chooses to refresh.
+  Confirmed `useForm` saves run their HTTP-approved follow-up automatically; background saves
+  share a coalesced fresh current-page read. The official starter preserves network/5xx and
   recoverable mapped import failures, while the low-level provider defaults to document fallback
 - a stable RSC root or `@fluojs/react/rsc` subpath; RSC is available only from the explicitly unstable
   `@fluojs/react/experimental/rsc` prototype
@@ -1397,8 +1501,8 @@ This package currently does **not** provide:
 - a Next.js App Router, TanStack route tree, Angular `Routes[]`, file-route scanner, or React-owned
   `routes: []` table
 - automatic client bundle generation
-- href generation for versioned React pages; path-only typegen rejects versioned catalog entries
-  until the catalog can distinguish URI versioning from non-path version strategies
+- href generation for versioned header/media/custom routes or routes without selection provenance;
+  unversioned and provenance-backed URI routes are supported
 - filesystem scanning or automatic manifest file discovery; pass an already-loaded manifest value to
   `@fluojs/react/vite`
 - automatic serialization of arbitrary data into `bootstrapScriptContent`
@@ -1421,9 +1525,10 @@ This package currently does **not** provide:
 - `@fluojs/react/typegen` subpath — `generateReactPageTypes(...)`,
   `inspectReactPageTypeArtifact(...)`, `REACT_PAGE_TYPEGEN_ARTIFACT_VERSION`,
   `ReactPageTypeArtifactInspection`, `ReactPageTypegenError`, `REACT_PAGE_TYPEGEN_ERROR_CODES`, and
-  `ReactPageTypegenErrorCode` for deterministic path-only declarations, versioned artifact checks,
+  `ReactPageTypegenErrorCode` for deterministic path/query declarations, versioned artifact checks,
   absolute href builders, route-bound `Link` props, and typed `push`/`replace` methods without
-  widening the package root or adding a runtime route table.
+  widening the package root or adding a runtime route table. Compiler projection also emits
+  limited JSON module props and saved-data contracts through this same lifecycle.
 - `ReactModule` — runtime-neutral module facade whose `forRoot(...)` registers React routers through
   the existing fluo module/controller metadata path.
 - `ReactNavigationPage.create(...)` — opts a matched page into HTTP-negotiated JSON while keeping
@@ -1565,3 +1670,27 @@ This package currently does **not** provide:
 - `examples/react-vite-ssr/src/app.test.ts`
 - `examples/react-vite-ssr/src/hydration.test.ts`
 - `examples/react-vite-ssr/tests/production-hydration.spec.ts`
+
+## Navigation permission
+
+Combine dirty/pending and app work in one `useNavigationGuard({ when })` inside the existing provider. Protection is opt-in; only the current intent's `stay`/`proceed` controls have authority. Destination GET, prefetch adoption and form cancellation follow permission. Managed tagged history is recoverable; untagged/cross-document history is native. Session revocation takes priority.
+```tsx
+import { useForm, useNavigationGuard } from "@fluojs/react/client";
+
+function Editor() {
+  const form = useForm<{ name: string }>({
+    id: "editor", action: "/save", fields: { name: "name" },
+    allowDestination: (href) => new URL(href).pathname === "/edit",
+  });
+  const decision = useNavigationGuard({ when: form.state.dirty || form.state.pending });
+  return <>
+    <form {...form.formProps}><input name="name" /><button>Save</button></form>
+    {decision && <section role="dialog" aria-label="Unsaved navigation">
+      <button onClick={decision.stay}>Stay</button>
+      <button onClick={decision.proceed}>Proceed</button>
+    </section>}
+  </>;
+}
+```
+
+See the [permission/native/save ordering contract](../../docs/contracts/react-navigation-payload.md#navigation-permission) and [migration](../../docs/getting-started/migrate-react-navigation-guards.md).

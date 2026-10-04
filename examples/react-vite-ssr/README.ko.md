@@ -1,6 +1,42 @@
 # react-vite-ssr example
 
+## Long-session source and verification
+
+Persistent shell은 `/admin/qr`, `/admin/songs`, `/catalog/background`를 동일 HTTP
+승인 navigation과 기존 `useForm` search/widget/queue 경로로 연결합니다.
+`tests/long-session.spec.ts`는 실제 MessageChannel ack, fault/recovery trace와
+quiescent checkpoint를 포함한 최소 1,000 measured seeded action을 준비합니다.
+명시적 test build는 `REACT_VITE_FORM_TEST_SERVER=1 pnpm build:reliability`이며
+`pnpm test:reliability`로 Chromium/Firefox/WebKit을 실행합니다. 기본 browser
+coverage는 long-session file, 특히 별도 2시간 soak를 제외합니다.
+
+Source fixture이며 완료된 실행 근거가 아닙니다.
+[장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)에 exact
+command, 원시 heap/RSS의 한계, packaged dev/production, 별도 soak workflow와
+#3879 exact-head receipt consumer를 기록합니다. Physical mobile/tablet 검증은
+외부 요구로 남으며 desktop viewport coverage로 통과할 수 없습니다.
+
+## Background interaction companion
+
+`/catalog/login` 다음 `/catalog/background`를 엽니다. 실제 song datasource에서 native
+GET 검색과 독립 enhanced search/widget 결과를 사용하고 stable song row마다 guarded
+queue POST를 보냅니다. acknowledgement는 URL/history/head를 바꾸지 않으며 confirmed
+write는 fresh current-page approval을 공유합니다. 취소는 server rollback이 아닙니다.
+queue rule, persistence, idempotency는 앱 소유입니다.
+[Form 계약](../../docs/contracts/react-progressive-forms.ko.md)을 보세요.
+
+결정적인 production 검증에는 `REACT_VITE_FORM_TEST_SERVER=1 pnpm build` 후
+`pnpm exec playwright test tests/background-interactions.spec.ts`를 실행합니다.
+명시적 test entry가 `FormControl` started/release/cleaned barrier를 확장하며 정상
+production startup에는 fault route가 없습니다. Packaged starter도 실제 `dev`와
+`build`/`start`에서 같은 fixture를 실행합니다. soak나 performance 측정은 아닙니다.
+
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
+
+Session acceptance는 session 설정 없는 plain provider children의
+`?legacySession=1`과 앱이 한 번의 fresh auth read를 선택하는 `?authRefresh=1`도
+검증합니다. 안전한 document exit과 configured GET/POST auth policy 소비를 증명하는
+예제 fixture 변형이며 별도 framework API가 아닙니다.
 
 Hydration 및 client-navigation phase를 위한 최소 Vite-backed `@fluojs/react` 애플리케이션입니다.
 두 번째 routing model을 만들지 않고 HTTP-owned page route, DTO-bound parameter, streamed React
@@ -64,9 +100,22 @@ document fallback을 유지하며 공식 starter는 network/5xx 및 복구 가�
 ```sh
 pnpm install
 pnpm build
+pnpm --filter @fluojs/example-react-vite-ssr typegen
 pnpm --filter @fluojs/example-react-vite-ssr build
 pnpm --filter @fluojs/example-react-vite-ssr start
 ```
+
+명시적인 최초 생성은 실제 startup과 같은 HTTP factory에서 내보낸 inspection
+`AppModule`과 `applicationOptions`를 사용합니다. Production manifest나 listen은
+필요하지 않습니다. 실제 startup은 `src/presentation.ts`의 실제 asset과 document
+renderer를 제공합니다. Presentation이 없는 inspection root는 page나 asset을 제공할 수 없습니다.
+
+생성된 `reactPageRoutes`, `reactPageModules`, `reactFormRoutes`는 작성한 component
+props, HTTP query/control alias와 기존 `useForm` binding을 연결합니다. 초기 hydration과
+일반/prefetch load는 `navigationContracts`로 같은 generated props decoder를 사용합니다.
+Typecheck/build는 변경하지 않는 `--check`부터 실행합니다. Source/type/config 변경 뒤에는
+`typegen`을 명시적으로 다시 실행하거나 `typegen:watch`를 사용하세요.
+Stale artifact를 자동으로 재생성해 실패를 숨기지 않습니다.
 
 `http://127.0.0.1:3000/products/sku-42?preview=true`를 열고 `Count: 0`을 활성화하세요.
 Vite-generated client entry가 server HTML을 hydrate한 뒤에만 label이 `Count: 1`로 바뀝니다.
@@ -96,8 +145,9 @@ logout 뒤 보존은 입증하지 않습니다. 생성 starter는 자신의 기�
 `Prefetch public on viewport`를 화면에 표시한 뒤 opt-in link를 활성화하세요.
 첫 GET으로 받은 public navigation representation을 추가 GET 없이 한 번 소비합니다.
 `Open public sku-84 without prefetch`는 계속 일반 요청을 합니다.
-`Switch user and prefetch scope`는 다음 navigation 전에 session cookie와
-application-managed `prefetchScope`를 변경합니다. `Rename without reload`는 guard가 있는
+`Switch user and prefetch scope`는 demo cookie를 변경하고 `router.sessionChanged`로
+이전 provider 승인을 철회한 뒤 fresh HTTP를 실행합니다. Public prefetch label은
+경쟁하는 session notifier가 아닙니다. `Rename without reload`는 guard가 있는
 POST 성공 뒤 `router.invalidate()`를 호출합니다. `Refresh`로 새 서버 값을 같은 page에
 history entry 없이 표시합니다. Pending과 보존된 실패에서는 마지막 승인 값을 유지합니다.
 다른 fixture link는 거절된
@@ -132,7 +182,7 @@ stream을 시작할 수 없습니다. 테스트한 압축 경계는
 
 ## 협상된 destination workflow
 
-`src/app.ts`는 application이 로드한 Vite manifest에 `src/navigation-product.ts`가 있는지
+`src/presentation.ts`는 application이 로드한 Vite manifest에 `src/navigation-product.ts`가 있는지
 확인합니다. Matched product handler는
 `ReactNavigationPage.create(ProductDocument, { module: './navigation-product.ts', props })`를
 반환합니다. 일반 document GET은 HTML shell, hydration script, Suspense content와 request
@@ -222,10 +272,10 @@ dispatcher가 다시 match, bind, render합니다. Browser regression은 `javaSc
 context를 만들고 rendered form을 제출한 뒤 `303`을 관찰하며 destination document가 mutate된 값을
 포함하는지 확인합니다.
 
-이 flow는 React Router action/fetcher, Astro Action, Next.js Server Action, experimental fluo Server
-Function이 아닙니다. Action id를 compile하거나 route matching을 소유하거나 client cache를 revalidate하거나
-optimistic state를 약속하지 않습니다. Native form이 이미 완전한 fallback을 제공하고 stable client package가
-mutation route나 cache policy를 소유하지 않으므로 submit-state helper를 추가하지 않습니다.
+이 native product 실습은 action ID를 compile하거나 route matching을 소유하지 않습니다.
+별도 catalog companion은 같은 native HTTP action 위에서 제공되는 `useForm`
+pending/result 경로를 사용합니다. Saved follow-up은 fresh approved GET이며
+POST replay나 optimistic private cache가 아닙니다.
 
 ## phase 경계와 제한 사항
 
@@ -240,9 +290,9 @@ mutation route나 cache policy를 소유하지 않으므로 submit-state helper�
   document로 fallback합니다. Guard와 interceptor는 계속 server-owned입니다.
 - 이 예제는 임의 HTML swapping, event replay, client route matching, 전역 navigation cache,
   RSC-aware data, opt-in하지 않은 link의 prefetch를 약속하지 않습니다.
-- Network/5xx soft load 실패 시 현재 기본값은 주크박스 shell을 보존하지 않습니다.
-  이 예제의 fallback test는 의도적으로 현재 full-document 경로를 관찰합니다.
-  인증 거절, 명시적 reload, 앱 logout은 일시적 재시도와 다른 결과입니다.
+- 공식 조립은 transient network/5xx 및 mapped import 실패를 보존하고 build mismatch에
+  명시적 document update를 제공합니다. Low-level no-policy fixture는 document fallback을
+  유지합니다. Auth 철회, current invalid payload, 명시적 reload와 앱 logout은 별도 경계입니다.
 - 이 예제는 Next.js App Router, file-based router, TanStack route tree, RSC, catch-all route,
   production starter-template 변경이 아닙니다.
 - Asset controller는 의도적으로 최소 구현이며 이 예제의 Vite config가 emit하는 flat filename을
@@ -285,3 +335,27 @@ examples/react-vite-ssr/
 - `../../packages/react/README.ko.md` — React package 및 Vite manifest contract
 - `../../packages/vite/README.ko.md` — Vite build의 TC39 decorator transform boundary
 - `../../docs/contracts/behavioral-contract-policy.ko.md` — behavior/docs/test alignment rule
+
+
+## Progressive native HTTP forms
+
+[Progressive form 계약](../../docs/contracts/react-progressive-forms.ko.md)은 기존 provider의 `useForm`과 root의
+`ReactModule.formResult`를 하나의 native HTTP 경로로 연결합니다. DTO/guard/interceptor,
+request scope, status/error는 HTTP가 계속 소유하며 native POST/303/GET을 유지합니다.
+`saved`와 follow-up read 실패, validation/auth와 uncertain persistence를 구분하고
+`retryRead()`는 GET만 수행합니다. busy activation은 skip하며 자동 POST retry/replay는 없습니다.
+자동 form refresh는 다른 form의 input/error/focus와 shell을 유지하고 기존 명시적
+`useRouter().refresh()`의 승인 후 page reset 의미는 바꾸지 않습니다.
+
+`/catalog/login` 뒤 `/catalog` 또는 `/catalog/sku-42`에서 create/read/update/delete를
+실행합니다. process-local map과 demo cookie는 실서비스 persistence/auth 구현이 아닙니다.
+`tests/progressive-forms.spec.ts`가 JS-disabled/bootstrap-blocked와 실제 listener의
+barrier, Cookie/CSRF, 단절, manual redirect 및 GET-only recovery를 검증합니다.
+일반 production entry는 `src/main.ts`이고 `REACT_VITE_FORM_TEST_SERVER=1` 빌드는
+명시적인 fault-injection 전용 `tests/form-server.ts`를 선택합니다.
+
+## Navigation permission
+
+Catalog 편집 화면에서 **Protect edits**를 켠 뒤 기존 `useForm` 입력을 수정하거나 제출합니다. 하나의 `useNavigationGuard` 결정 UI에서 **Stay here** 또는 **Proceed with navigation**을 선택합니다. Stay는 목적지 HTTP와 form 취소 없이 초안을 보존합니다. 승인 후 fresh HTTP가 목적지를 확정합니다. Pending POST 취소는 서버 rollback이 아니며 logout/401/403은 열린 결정부터 철회합니다. JS-disabled/native submit은 그대로입니다.
+
+[Guard migration](../../docs/getting-started/migrate-react-navigation-guards.ko.md)과 [owning 계약](../../docs/contracts/react-navigation-payload.ko.md#navigation-permission)을 참고하세요.

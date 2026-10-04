@@ -62,9 +62,15 @@ generated source to the two-page starter showed exactly three touched files:
 `src/app.ts` (new path/body DTOs, HTTP GET/POST, guard, registration),
 `src/page-note.tsx` (new page and native form), and `src/page.tsx` (an optional
 link to the note). It changed **zero** renderer, client-entry, manifest, router
-store, or generated type files. The page accepts JSON props as
-`Record<string, unknown>` and narrows fields at use; #3880 owns a future typed
-projection, not another authoring path or a required unsafe cast.
+store, or generated type files. That historical experiment accepted JSON props as
+`Record<string, unknown>` and narrowed fields at use. For the typed path, keep a
+default-exported browser function component with concrete JSON props and preserve
+the literal module/result in `ReactNavigationPage.create`. The same `fluo typegen`
+now projects the module registry, query and saved-data contracts; do not copy DTO
+interfaces or cast props. Follow the [typegen migration](./migrate-react-typegen.md)
+to include the registry, connect identical initial/soft decoders through the
+existing composition, and gate typecheck/build with `--check`. Build importer
+allowlists and the application renderer remain mandatory.
 
 The independent generated consumer ran `pnpm typecheck && pnpm build` with exit
 code `0`, then passed five Chrome cases for the two existing pages, the third
@@ -77,3 +83,15 @@ This is an authoring-cost experiment,
 not a promise of a built-in auth or enhanced form policy: applications still
 implement identity, persistence, and validation messages; #3874/#3875 own the
 official form/auth integration.
+
+
+## Progressive native HTTP forms
+
+The [progressive form contract](../contracts/react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.

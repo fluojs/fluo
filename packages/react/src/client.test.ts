@@ -6,6 +6,7 @@ import {
   type ClientNavigationEnvironment,
   createClientNavigationStore,
 } from './client/store.js';
+import { createClientFormStore } from './client/form-store.js';
 import {
   createReactRouteSnapshot,
   Link,
@@ -117,6 +118,44 @@ function RouteStateProbe() {
 }
 
 describe('@fluojs/react/client', () => {
+  it.each(['refresh', 'navigate'] as const)('requires fresh approval after a form %s instead of reusing anonymous prefetch', async (followUp) => {
+    // Given: anonymous pre-save destination pages are already approved and cached.
+    const browser = createEnvironment();
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const target = followUp === 'refresh' ? '/products/sku-42?preview=true' : '/products/sku-84';
+    const prefetch = vi.fn(async (href: string) => approvedPrefetch(href));
+    let approve = (_result: ReactNavigationLoadResult): void => {};
+    const load = vi.fn(() => new Promise<ReactNavigationLoadResult>((resolve) => { approve = resolve; }));
+    const pushState = vi.fn();
+    store.connect({ ...browser.environment, prefetchScope: 'anonymous-v1', prefetch, load, pushState, replaceState: vi.fn() });
+    await store.prefetch('/products/sku-84', {});
+    await store.prefetch('/products/sku-126', {});
+    const committed = new Promise<void>((resolve) => {
+      const unsubscribe = store.subscribe(() => {
+        if (store.getSnapshot().params.revision === 'saved') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
+
+    // When: a confirmed save asks the existing router for its post-save GET.
+    const approval = store.approveForm(target, followUp, new AbortController().signal, createClientFormStore());
+    expect(load).toHaveBeenCalledOnce();
+    expect(pushState).not.toHaveBeenCalled();
+    const fresh = approvedPrefetch(new URL(target, browser.environment.currentHref()).href);
+    if (!fresh.ok) throw new Error('Expected a successful navigation fixture');
+    approve({ ...fresh, payload: { ...fresh.payload, params: { revision: 'saved' } } });
+    await Promise.all([approval, committed]);
+
+    // Then: only fresh HTTP data commits, and the old anonymous entry is gone.
+    expect(await approval).toEqual({ status: 'complete' });
+    expect(store.getSnapshot().params).toEqual({ revision: 'saved' });
+    store.navigatePrefetchedLink('/products/sku-126');
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(prefetch).toHaveBeenCalledTimes(2);
+  }, 5_000);
+
   it('consumes an approved prefetch once before requiring another HTTP approval', async () => {
     // Given: a completed public prefetch and a connected browser history.
     const browser = createEnvironment();
@@ -1792,17 +1831,17 @@ describe('@fluojs/react/client', () => {
     ['network', 'error'],
     ['server-error', 'error'],
     ['import-failure', 'error'],
-    ['unauthorized', 'document'],
-    ['forbidden', 'document'],
+    ['unauthorized', 'error'],
+    ['forbidden', 'error'],
     ['redirect', 'document'],
     ['not-found', 'document'],
     ['dto-rejected', 'document'],
     ['invalid-payload', 'document'],
     ['unsupported-module', 'document'],
   ] as const)('applies the existing %s failure policy to current-page refresh', async (reason, status) => {
-    // Given: the regular navigation loader reports a classified HTTP/import failure.
+    // Given: a configured session uses auth UI; other failures retain the existing policy.
     const browser = createEnvironment();
-    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }));
+    const store = createClientNavigationStore(createReactRouteSnapshot({ url: '/products/sku-42?preview=true' }), { epoch: 'a' });
     const policy = vi.fn(({ reason: cause }: { readonly reason: string }) =>
       cause === 'network' || cause === 'server-error' || cause === 'import-failure'
         ? 'preserve' as const : 'document' as const);
@@ -1816,9 +1855,15 @@ describe('@fluojs/react/client', () => {
 
     // Then: no rejected representation commits, and policy chooses one safe outcome.
     expect(result.status).toBe(status);
-    expect(policy).toHaveBeenCalledWith({
-      destination: '/products/sku-42', reason, type: 'refresh',
-    });
+    if (reason === 'unauthorized' || reason === 'forbidden') {
+      expect(policy).not.toHaveBeenCalled();
+      expect(store.getSnapshot().params).toEqual({});
+      expect(store.getSnapshot().session?.status).toBe(reason === 'unauthorized' ? 'signed-out' : 'forbidden');
+    } else {
+      expect(policy).toHaveBeenCalledWith({
+        destination: '/products/sku-42', reason, type: 'refresh',
+      });
+    }
     expect(store.getDestination()).toBeNull();
     expect(store.getSnapshot().url).toBe('/products/sku-42?preview=true');
     expect(browser.reload).toHaveBeenCalledTimes(status === 'document' ? 1 : 0);

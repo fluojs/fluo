@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createAppModule } from './app';
 import { ReactStarterEntryError, createReactPageRenderer } from './entry-server';
+import type { CatalogObservation } from './catalog';
 
 const VITE_MANIFEST = {
   'src/entry-client.tsx': {
@@ -29,6 +30,44 @@ function readHtml(body: unknown): string {
 }
 
 describe('React Vite SSR starter', () => {
+  it('dispatches JSON search and guarded queue writes with request-scope cleanup', async () => {
+    // Given: the actual generated HTTP routes, datasource and DTOs.
+    const events: CatalogObservation[] = [];
+    const AppModule = createAppModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      navigationBuildId: createReactPageRenderer(VITE_MANIFEST).buildId,
+      renderPage: createReactPageRenderer(VITE_MANIFEST),
+      catalogControl: (event) => { events.push(event); },
+    });
+    const app = await Test.createApp({ rootModule: AppModule });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      // When: a credentialed explicit JSON read and guarded negotiated POST reach HTTP.
+      const read = await app.request('GET', '/catalog/background/search').query('q', 'Blue')
+        .header('accept', 'application/json').send();
+      const saved = await app.request('POST', '/catalog/background/queue/blue', {
+        cookies: { editor: 'yes', csrf: 'catalog-demo-token' },
+      })
+        .header('host', 'localhost:3000').header('origin', 'http://localhost:3000')
+        .header('Accept', 'application/vnd.fluo.form+json;v=1')
+        .body({ intent: 'add', csrf: 'catalog-demo-token' }).send();
+      const unauthorized = await app.request('POST', '/catalog/background/queue/green')
+        .header('Accept', 'application/vnd.fluo.form+json;v=1')
+        .body({ intent: 'add', csrf: 'catalog-demo-token' }).send();
+      // Then: safe results preserve HTTP ownership and every matching request scope cleans up.
+      expect(read.status).toBe(200);
+      expect(read.body).toEqual({ rows: [{ sku: 'blue', name: 'Blue song' }], query: 'Blue' });
+      expect(saved.status).toBe(200);
+      expect(saved.body).toMatchObject({ version: 1, outcome: 'saved',
+        destination: '/catalog/background', data: { sku: 'blue', queued: true, revision: 1 } });
+      expect(unauthorized.status).toBe(401);
+      const dto = events.filter((event) => event.phase === 'dto');
+      expect(dto.map((event) => event.dto)).toEqual([true, true]);
+      for (const event of dto) {
+        expect(events.some((cleanup) => cleanup.phase === 'cleanup' && cleanup.scope === event.scope)).toBe(true);
+      }
+    });
+  });
   it('loads the latest development component after HTTP DTO validation', async () => {
     let label = 'First component';
     const AppModule = createAppModule({

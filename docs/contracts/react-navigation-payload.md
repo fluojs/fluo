@@ -4,6 +4,16 @@
 
 ## Scope and ownership
 
+Background `useForm({ mode: 'background', method: 'get' | 'post', ... })` uses
+ordinary credentialed, no-store HTTP JSON reads or negotiated form saves, not a
+navigation representation. Acknowledgements do not write history or route state.
+Confirmed writes share revision-coalesced fresh current-page approval through the
+existing loader; stale revisions and older sessions cannot commit, and newer user
+navigation wins. See the [form owner](./react-progressive-forms.md) for native
+fallback, owner cancellation, read decoding and auth-policy document exceptions.
+The companion guard and `client-navigation-payload.test.ts` enforce these boundaries
+alongside existing build/metadata/HTTP/public-prefetch/session invariants.
+
 `@fluojs/react` supports an opt-in representation for an HTTP-matched `@Path(...)` GET whose
 handler returns `ReactNavigationPage.create(page, { module, props })`. The normal result is still a
 streamed React document through the configured `ReactModule.forRoot({ renderPage })`. The `module`
@@ -105,6 +115,19 @@ error document must never be parsed as a page payload.
 
 ## Browser consumption and fallback
 
+The [end-to-end types contract](./react-end-to-end-types.md) extends the existing
+`fluo typegen` graph, not this v2 representation. Its generated
+`ReactPagePropsRegistry` ties the module literal to authored JSON props; include
+that artifact in strict consumers. Initial and soft loaders accept the same
+`reactPageModules` decoders (initial fourth argument; soft `contracts` option).
+The official provider composition must forward them for ordinary loads and public
+prefetch. After build approval, missing/invalid props contracts fail as
+`invalid-payload` before import. JSON normalization omits optional undefined
+members; it does not serialize a React tree or allow DI/Date/custom `toJSON` values
+into the generated limited-JSON contract. Typed query hrefs still request real HTTP
+validation; a raw search snapshot is not a validated DTO. Route URI provenance,
+artifact version 2 and this navigation protocol version are separate contracts.
+
 `loadReactNavigationDestination(href, modules, { buildId, signal? })` from
 `@fluojs/react/client` accepts same-origin HTTP(S) only. Each ordinary load makes one uncached
 request with
@@ -167,16 +190,21 @@ the initial request snapshot must match the browser path/search rather than sile
 and rejected prefetches still use the credentialed ordinary loader and its full-document fallback.
 
 `ReactClientRouterProvider` accepts optional `failurePolicy(failure)`, returning `'preserve'`
-or `'document'` synchronously or asynchronously. Without it the low-level default stays document
-fallback. The policy and `useNavigation().failure` expose only a public `reason`, destination
+or `'document'` synchronously or asynchronously. Without it, non-auth failures keep
+document fallback; auth rejection follows the mandatory session or legacy document
+rules below. The policy and `useNavigation().failure` expose only a public `reason`, destination
 **pathname** (not query, body, credentials or exception internals), and navigation `type`.
 Reasons distinguish `network`, `server-error` (HTTP 5xx), `unauthorized` (401), `forbidden`
 (403), `redirect`, `not-found` (404), `dto-rejected` (400/422), `invalid-payload`,
 `unsupported-module`, `import-failure`, `unavailable` (other response), and
 `unsupported-destination`, and `incompatible-build` (v2 identity mismatch before import);
 cancellation never invokes the policy. Network and 5xx can be
-preserved; auth, redirect, 404, DTO and malformed results retain document handling unless the
-application explicitly chooses otherwise. Recoverable import failure needs an explicit decision.
+preserved; redirect, 404, DTO and malformed results retain document handling unless the
+application explicitly chooses otherwise. Fresh credentialed 401/403 instead always revoke
+old approval first. Configured or explicitly activated session composition uses mandatory
+session policy; an unconfigured legacy provider exits to the ordinary HTTP document after
+the same barrier. A transient failure policy cannot preserve revoked auth content.
+Recoverable import failure needs an explicit decision.
 HTTP still owns status, validation and authentication.
 
 On preserve, the last approved page, shell and params stay mounted; push/replace commit no
@@ -287,3 +315,113 @@ router store.
 destination, browser rendering, ordinary HTML, and no-JavaScript document behavior.
 This stable SSR/Vite representation is JSON plus a built client component, not experimental
 Flight, a generic React tree serializer, or a file-routing contract.
+
+
+## Session approval and revocation
+
+Use the existing provider's `session={{ epoch, policy? }}` configuration and
+`router.sessionChanged({ epoch, reason: 'login' | 'logout' | 'permissions' })`.
+`useRouterState().session` exposes the provider-local epoch, generation and
+`approved`, `pending`, `signed-out` or `forbidden` state. Epochs are nonsecret app
+labels; every valid notification advances ownership, even with an identical label.
+No cookie value or Fetch-invisible `Set-Cookie` is used to infer authentication.
+
+The barrier first removes old page approval, metadata and form retention, detaches
+old operations and cache entries, then aborts and notifies subscribers. Old loads,
+bodies, imports, policy decisions, forms and public speculation cannot commit or
+start a document fallback. Public cancellation does not wait for abort-ignoring
+work. `ReactNavigationExperience` suppresses both its destination and initial SSR
+fallback while revoked. A later fresh credentialed approval is required to reopen it.
+
+Login and permission notifications default to a fresh credentialed current-page
+GET; explicit logout defaults to signed-out UI without a request. Fresh credentialed
+401 in configured session composition selects signed-out UI; 403 selects forbidden UI without changing the epoch to
+an anonymous identity. Anonymous speculation alone cannot revoke a credentialed
+session. Network/5xx remain governed by the existing transient policy. An optional
+`session.policy(context, signal)` runs after revocation and may select safe auth UI,
+fresh approval, or `{ document: '/same-origin-exit' }`; external/credential-bearing
+document exits are rejected. It cannot preserve revoked protected content.
+Without session configuration or explicit session activation, fresh 401/403 instead
+select a safe ordinary HTTP document exit, including for plain children. This preserves
+the low-level legacy exit without silently retaining protected content.
+Policy `'refresh'` is consumed at navigation GET, POST auth rejection and saved follow-up
+GET through a new credentialed uncached read, never a POST replay. The current generation
+must still own that decision. Cancelling the initiating saved binding cancels its owned
+session policy, settles waiting before an abort-ignoring policy resolves, and prevents
+late document assignment.
+
+App-owned players, channels and listeners should live under the application's
+existing React subtree/effect boundary driven by session approval. There is no
+public teardown registry. Notification settlement is store settlement, not a
+browser-paint or SDK-disposal receipt. Auth revocation takes priority over future
+dirty-confirm composition; it is not a dirty-navigation guard implementation.
+
+External HttpOnly cookie changes may leave an already-approved page visible until
+app notification or a fresh credentialed HTTP rejection. There is no cross-tab
+cookie detection guarantee. The internal provider session lease is available to
+later independent interactions; it is not another public notification path.
+See [migration](../getting-started/migrate-react-session-composition.md) and
+`examples/react-vite-ssr/tests/session-transition.spec.ts` for the real-surface
+acceptance fixture. Full product/soak acceptance remains owned by #3879/#3886.
+
+## Progressive native HTTP forms
+
+The [progressive form contract](./react-progressive-forms.md) connects `useForm` in the existing
+provider with root `ReactModule.formResult` through one native HTTP path. HTTP
+still owns DTO/guard/interceptor, request scope, status and errors; native
+POST/303/GET remains. Distinguish confirmed `saved` from a failed follow-up read,
+and validation/auth from uncertain persistence. `retryRead()` repeats only GET.
+Busy activation is skipped; no POST is automatically retried or replayed.
+Automatic form refresh retains unrelated form input/errors/focus and the shell;
+existing explicit `useRouter().refresh()` still resets page state after approval.
+
+## Navigation permission
+
+Import `useNavigationGuard` from `@fluojs/react/client` inside the existing provider.
+One app decision owner combines `useForm` dirty/pending and app-owned work in
+`useNavigationGuard({ when })`. Clean or unregistered owners retain the synchronous
+existing path. The returned decision is null or `{ intent, signal, stay, proceed }`;
+render nonblocking controls using the captured callbacks. A new intent replaces the
+old token; late callbacks or asynchronous `confirm(intent, signal)` cannot act on
+a newer intent, unmounted owner or revoked session. Rejection means stay.
+
+Permission precedes ordinary destination GET, public prefetch adoption and
+navigation-owned form cancellation. Already independent public speculation is not
+permission. Stay preserves inputs, approved params/head/page and shell without
+failurePolicy, POST replay or automatic document fallback. Guard-only providers
+tag their initial and soft entries and reuse the existing approvedIndex/restoringIndex
+recovery for managed same-document back/forward. Untagged entries have no reliable
+recovery delta and take their ordinary document boundary; protection of every
+previous history entry is not promised. Fragment-only anchors retain native behavior.
+
+A pending POST keeps its owner while deciding or staying. Only approved leave
+cancels obsolete navigation-owned work; cancellation does not undo server persistence.
+Confirmed saved clears dirty only for an unchanged inputRevision. Observe saved
+and current dirty, then explicitly proceed on the current decision; uncertain,
+validation and old save completions never automatically resume navigation.
+A saved navigate continuation captures leave ownership at submission and rechecks
+it after asynchronous destination policy. A newer user intent invalidates that
+authority even if the user stays; saved remains confirmed and explicit GET-only
+`retryRead()` may acquire a new decision.
+`allowDestination` remains a post-save destination constraint, not dirty permission.
+Form refresh preserves unrelated inputs/errors/focus; navigate follow-up uses the
+same permission boundary and fresh GET. Cancelled/failed reads retain saved;
+`retryRead()` repeats GET only. Explicit `router.refresh()` is current-data
+revalidation with its existing intentional page-local reset, not a substitute
+for approved leave; use form follow-up refresh when drafts must survive.
+This explicit data-revalidation exception does not invoke the leave guard: it
+revokes an older leave decision and retains the documented page-local reset.
+Applications must not wire it as a protected leave or draft-preservation action.
+
+Explicit session changes and fresh credentialed GET/POST/follow-up 401/403 revoke
+old page/head/SSR fallback, inputs and decision authority before abort and app policy.
+The guard cannot delay logout or permission revocation. Configured/activated auth
+uses signed-out/forbidden defaults; legacy unconfigured auth uses the ordinary
+document after the same barrier. Auth refresh is fresh GET, never POST replay.
+
+Modified/new-tab/download/external/non-HTTP links, pre-hydration and JS-disabled
+forms keep native behavior, including GET/POST submitter overrides. Optional
+`beforeUnload: true` adds the separate browser-constrained synchronous exit prompt:
+no custom message, async save, tab-termination recovery or persisted draft is promised.
+Draft storage remains app-owned. HTTP matching/DTO validation/security and
+runtime-neutral root/browser subpath ownership stay unchanged.
