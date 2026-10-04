@@ -274,7 +274,8 @@ test('a streamed 404 waits for browser-visible failure after the navigation shel
   }
 });
 
-test('measurement navigation failure remains primary when native cleanup also fails', { timeout: 20_000 }, async (t) => {
+for (const failure of ['navigation', 'cleanup-only']) {
+test(`measurement ${failure} failure preserves error identity and acyclic cause`, { timeout: 20_000 }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'native-primary-failure-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const { chromium } = await import('@playwright/test');
@@ -301,13 +302,21 @@ test('measurement navigation failure remains primary when native cleanup also fa
       const newPage = context.newPage;
       t.mock.method(context, 'newPage', async () => {
         const page = await Reflect.apply(newPage, context, []);
-        t.mock.method(page, 'goto', async () => { throw primary; });
+        if (failure === 'navigation') t.mock.method(page, 'goto', async () => { throw primary; });
         return page;
       });
       return context;
     });
     return browser;
   });
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(fixtureHtml('<!doctype html><h1>Listing</h1>'));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
   const driver = await createBrowserDriver({
     journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
       .map((name) => [name, { path: '/' }])),
@@ -316,11 +325,20 @@ test('measurement navigation failure remains primary when native cleanup also fa
   try {
     await assert.rejects(driver.measure({
       framework: 'fluo', runId: 'primary-failure', device: 'desktop', mode: 'native',
-      nativeTraceDirectory: directory, url: 'http://127.0.0.1/',
-    }), (error) => error === primary && error.cause === cleanup);
+      nativeTraceDirectory: directory, url: `http://127.0.0.1:${server.address().port}/`,
+    }), (error) => failure === 'navigation'
+      ? error === primary && error.cause === cleanup
+      : error === cleanup && error.cause !== error);
     assert.equal(browserExited, true);
-  } finally { await driver.close(); }
+    assert.doesNotThrow(() => JSON.stringify(cleanup));
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
 });
+}
 
 for (const enabled of [false, true]) {
 test(`native capture stays alive through unchanged throughput sampling with lifetime enabled=${enabled}`, { timeout: 20_000 }, async (t) => {
