@@ -274,13 +274,16 @@ test('a streamed 404 waits for browser-visible failure after the navigation shel
   }
 });
 
-for (const failure of ['navigation', 'cleanup-only']) {
+for (const failure of ['navigation', 'frozen-navigation', 'cleanup-only']) {
 test(`measurement ${failure} failure preserves error identity and acyclic cause`, { timeout: 20_000 }, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'native-primary-failure-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const { chromium } = await import('@playwright/test');
   const primary = new Error('navigation failed before capture');
+  if (failure === 'frozen-navigation') Object.freeze(primary);
   const cleanup = new Error('native close failed');
+  let reportedCleanup;
+  t.mock.method(console, 'error', (_message, error) => { reportedCleanup = error; });
   const launch = chromium.launchServer;
   const connect = chromium.connect;
   let browserExited = false;
@@ -302,7 +305,7 @@ test(`measurement ${failure} failure preserves error identity and acyclic cause`
       const newPage = context.newPage;
       t.mock.method(context, 'newPage', async () => {
         const page = await Reflect.apply(newPage, context, []);
-        if (failure === 'navigation') t.mock.method(page, 'goto', async () => { throw primary; });
+        if (failure !== 'cleanup-only') t.mock.method(page, 'goto', async () => { throw primary; });
         return page;
       });
       return context;
@@ -328,8 +331,10 @@ test(`measurement ${failure} failure preserves error identity and acyclic cause`
       nativeTraceDirectory: directory, url: `http://127.0.0.1:${server.address().port}/`,
     }), (error) => failure === 'navigation'
       ? error === primary && error.cause === cleanup
-      : error === cleanup && error.cause !== error);
+      : failure === 'frozen-navigation' ? error === primary && error.cause === undefined
+        : error === cleanup && error.cause !== error);
     assert.equal(browserExited, true);
+    assert.equal(reportedCleanup, failure === 'frozen-navigation' ? cleanup : undefined);
     assert.doesNotThrow(() => JSON.stringify(cleanup));
   } finally {
     await driver.close();
