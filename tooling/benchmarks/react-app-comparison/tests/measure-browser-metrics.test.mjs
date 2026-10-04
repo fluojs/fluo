@@ -939,3 +939,69 @@ test('marks cached negative transfer sizes unavailable instead of inventing CSS 
   assert.equal(result.unavailable.transferredCssBytes, 'incomplete browser resource sizes');
   assert.equal(result.unavailable.compressedCssBytes, 'incomplete browser resource sizes');
 });
+
+for (const failure of ['navigation', 'cleanup-only']) {
+test(`measurement ${failure} failure preserves error identity and acyclic cause`, { timeout: 20_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-primary-failure-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const { chromium } = await import('@playwright/test');
+  const primary = new Error('navigation failed before capture');
+  const cleanup = new Error('native close failed');
+  const launch = chromium.launchServer;
+  const connect = chromium.connect;
+  let browserExited = false;
+  t.mock.method(chromium, 'launchServer', async (options) => {
+    const server = await Reflect.apply(launch, chromium, [options]);
+    const close = server.close;
+    t.mock.method(server, 'close', async () => {
+      await Reflect.apply(close, server, []);
+      browserExited = true;
+      throw cleanup;
+    });
+    return server;
+  });
+  t.mock.method(chromium, 'connect', async (...args) => {
+    const browser = await Reflect.apply(connect, chromium, args);
+    const newContext = browser.newContext;
+    t.mock.method(browser, 'newContext', async (...contextArgs) => {
+      const context = await Reflect.apply(newContext, browser, contextArgs);
+      const newPage = context.newPage;
+      t.mock.method(context, 'newPage', async () => {
+        const page = await Reflect.apply(newPage, context, []);
+        if (failure === 'navigation') t.mock.method(page, 'goto', async () => { throw primary; });
+        return page;
+      });
+      return context;
+    });
+    return browser;
+  });
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(fixtureHtml('<!doctype html><h1>Listing</h1>'));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const driver = await createBrowserDriver({
+    journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+      .map((name) => [name, { path: '/' }])),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    await assert.rejects(driver.measure({
+      framework: 'fluo', runId: 'primary-failure', device: 'desktop', mode: 'native',
+      nativeTraceDirectory: directory, url: `http://127.0.0.1:${server.address().port}/`,
+    }), (error) => failure === 'navigation'
+      ? error === primary && error.cause === cleanup
+      : error === cleanup && error.cause !== error);
+    assert.equal(browserExited, true);
+    assert.doesNotThrow(() => JSON.stringify(cleanup));
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+}
