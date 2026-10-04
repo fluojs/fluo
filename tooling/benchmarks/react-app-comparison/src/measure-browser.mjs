@@ -881,7 +881,9 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         try { await native.close(); } catch (cleanupError) {
           if (!measurementFailed) throw cleanupError;
           if (measurementError instanceof Error && measurementError !== cleanupError) {
-            measurementError.cause ??= cleanupError;
+            try { measurementError.cause ??= cleanupError; } catch {
+              console.error('native cleanup failed after measurement failure', cleanupError);
+            }
           }
         }
       }
