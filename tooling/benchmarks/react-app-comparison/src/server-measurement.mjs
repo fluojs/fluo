@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { readMeasurementReceipt } from './run-gate.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
-import { evaluateEvidence } from './gate.mjs';
+import { evaluateAcceptedEvidence, evaluateAcceptedPair, evaluateEvidence } from './gate.mjs';
 import { captureIsolatedEnvironment, collectMeasurements, readIsolatedInvocation,
   verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from './measure.mjs';
 
@@ -24,6 +24,32 @@ export async function evaluateServerEvidence(baseline, receipts, outputRoot) {
   const verdict = checks.some((check) => check.verdict === 'fail') ? 'fail'
     : checks.some((check) => check.verdict === 'inconclusive') ? 'inconclusive' : 'pass';
   return { checks, verdict, serverMetrics };
+}
+
+export async function evaluateAcceptedServerEvidence(baseline, timing, outputRoot, native = []) {
+  const evaluation = await evaluateAcceptedEvidence(baseline, timing, outputRoot, native);
+  const serverMetrics = ['coldTtfbMs', 'warmTtfbMs', 'throughputRequestsPerSecond',
+    'errorRate', 'cpuPercent', 'rssBytes'];
+  const checks = evaluation.checks.filter((check) => check.metric === undefined || serverMetrics.includes(check.metric));
+  return { ...evaluation, serverMetrics, checks,
+    verdict: checks.some((check) => check.verdict === 'fail') ? 'fail'
+      : checks.some((check) => check.verdict === 'inconclusive') ? 'inconclusive' : 'pass' };
+}
+
+export async function evaluateAcceptedServerPair(baseline, before, after) {
+  const pair = await evaluateAcceptedPair(baseline, before, after);
+  const serverMetrics = ['coldTtfbMs', 'warmTtfbMs', 'throughputRequestsPerSecond',
+    'errorRate', 'cpuPercent', 'rssBytes'];
+  const subset = (evaluation) => {
+    const checks = evaluation.checks.filter((check) => check.metric === undefined || serverMetrics.includes(check.metric));
+    return { ...evaluation, checks, serverMetrics, verdict: checks.some((check) => check.verdict === 'fail') ? 'fail'
+      : checks.some((check) => check.verdict === 'inconclusive') ? 'inconclusive' : 'pass' };
+  };
+  const first = subset(pair.before);
+  const second = subset(pair.after);
+  return { ...pair, before: first, after: second, serverMetrics,
+    verdict: [first, second].some((result) => result.verdict === 'fail') ? 'fail'
+      : [first, second].some((result) => result.verdict === 'inconclusive') ? 'inconclusive' : 'pass' };
 }
 
 export async function runServerMeasurement(configPath, receiptPath,

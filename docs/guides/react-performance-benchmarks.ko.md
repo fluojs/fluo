@@ -26,8 +26,98 @@ baseline이며 완전한 CRUD나 장시간 jukebox 동작의 독립적인 증거
 
 ## 측정과 판정
 
+### FA-V2 관측 범위 수용
+
+FA-V2는 수용 의미를 변경하며 numeric budget이나 public 동작을 완화하지 않습니다.
+`baseline.json`의 기존 median/spread/MAD veto는 historical replay 전용입니다.
+`evaluatePerformance(..., "historical-v1")`, `evaluateEvidence`,
+`evaluateServerEvidence`, CLI `--historical-replay`는 과거 판정을 보존합니다.
+과거 FAIL/INCONCLUSIVE나 unversioned receipt를 FA-V2로 재분류할 수 없습니다.
+
+5개 independent sample을 제거 없이 모두 사용합니다. L/U는 관측 min/max,
+B는 기존 budget, b는 기존 band이며 세 peer를 각각 비교합니다:
+
+| 비교 | PASS | FAIL |
+| --- | --- | --- |
+| Upper absolute | U_F <= B | L_F > B |
+| Throughput absolute | L_F >= B | U_F < B |
+| Upper peer | U_F <= b * L_peer | L_F > b * U_peer |
+| Throughput peer | b * L_F >= U_peer | b * U_F < L_peer |
+
+경계 교차는 INCONCLUSIVE이고 equality는 PASS입니다. Decimal 및 zero 비교에
+tolerance를 넓히지 않습니다. Spread/MAD는 diagnostic이며 독립 veto가 아니므로
+진짜 budget 실패를 noise로 숨기지 않습니다. 기존의 별도 repeatability veto는
+사라집니다. 5회 관측 extrema는 confidence interval, 미래 모집단 상한이나
+통계적 보장이 아닙니다. Missing/invalid/duplicate/quality/correctness/authentication
+실패는 통과할 수 없습니다. 200 requests/concurrency 8, 5회 measured/2회 warmup,
+순서 교대, 네 framework/네 profile, 22개 client/6개 server metric 및 모든
+budget/band와 peer cache/prefetch 기본값은 그대로입니다.
+
+파생 config의 `measurement.methodVersion: "FA-V2"`와
+`measurement.measurementPurpose: "timing"` 또는 `"native-conformance"`를
+명시합니다. 같은 `measurement.pairId`와 `measurement.pairPhase: "before"` 또는
+`"after"`로 묶되 별도 config/execution identity를 인증합니다. Timing은
+`nativeLifetime: { enabled: false }`, native conformance는
+`{ enabled: true, python: "/absolute/provisioned/python" }`을 요구합니다.
+Purpose는 cache `native`/`matched-cache` 및 execution `discovery`/`regression`과
+다릅니다. Timing은 Frida 없이 CDP/React readiness, passive NetLog 인증,
+원래 cutoff와 throughput/server snapshot까지 browser lifetime을 유지합니다.
+Native conformance는 같은 product/build/stimuli/repetitions에서 기존 ownership,
+coverage, journal, retirement, raw exit와 cleanup을 모두 요구합니다.
+그 performance 값은 timing verdict에 넣지 않고 terminal을 다른 execution에
+빌려주지 않습니다. Native conformance 단독 통과는 성능 PASS가 아닙니다.
+
+`evaluateAcceptedEvidence(baseline, timingReceipts, commonOutputRoot,
+nativeReceipts)`와 server subset의 `evaluateAcceptedServerEvidence`는 두 purpose를
+함께 인증합니다. `evaluateAcceptedPair`/`evaluateAcceptedServerPair`는 fresh
+before/after의 phase/pair, frozen method/stimuli/environment까지 묶습니다.
+Raw/config/environment 증거 전체를 common root에 보존하고 runner의
+`--native-receipts <JSON>`에 matching receipt path 배열을 전달합니다.
+Sibling purpose root는 `--trace-root <common-root>`로 인증합니다. Full-suite
+`<profile>.json`은 production/development를 합친 receipt입니다. Counterpart가
+없으면 timing collection은 INCONCLUSIVE이며 정상 gate CLI는 unversioned를
+거부합니다. Method 테스트는 실제 pair PASS나 issue 종료가 아닙니다. Fresh
+frozen pair, 독립 review와 full GitHub CI는 여전히 필요합니다.
+
+Client 채택은 승인된 RE-A01 source-bound React-edit 관계를 보존합니다.
+before의 `src/document.ts`/`reload:true`와 after의
+`src/catalog-destination.tsx`/`reload:false`만 같은
+from/to/path/selector/expectedText를 유지한 채 허용합니다. 그 외 field 변경은
+거부하고 full config/source/build/edit-source hash는 원본별로 인증·보존합니다.
+`pairStimuliComparison`은 development 관계를 식별할 뿐 수용하지 않습니다.
+Aggregate가 기존 client `authenticateReactEditPair`로 양쪽 원본 environment
+binding과 source proof를 인증하고 그 evidence를 보존해야 합니다. Verifier/proof
+부재는 fail-closed입니다. Server-only production에는 이 예외를 적용하지 않습니다.
+같은 product 안의 timing/native counterpart는 실제 edit descriptor까지 동일해야
+하며 cross-product 예외를 purpose pairing에 빌려 쓸 수 없습니다.
+현재 client helper는 FA-V2 이전 구현이라 새 phase 차이를 거부합니다.
+Client owner가 인증된 method/phase 관계만 좁게 적응해야 하며 이번 server 방법이
+그 통합 통과를 주장하지 않습니다. 각 full config/hash에 `pairPhase`를 남기고
+before/after config ID를 따로 동결합니다.
+
+CPU는 configured SERVER PID의 post-workload lifetime average/single logical CPU로
+`100 * (utime + stime) / CLK_TCK / (uptimeSeconds - starttime / CLK_TCK)`를
+계산합니다. 원본 `/proc/<pid>/stat`, 재확인 birth/counter, `/proc/uptime`,
+`getconf CLK_TCK`와 raw `ps`를 인증·재계산합니다. RSS는 기존 `ps` snapshot
+byte입니다. Display rounding, client/window CPU 또는 core 수로 나누는 대체는
+없고 85% budget을 유지합니다. Tick/birth quantization과 uptime 0.01초 resolution을
+보존하므로 unrounded 계산이 연속 시간 정밀도를 보장하지 않습니다.
+
+Passive NetLog는 missing CDP terminal을 항상 해결하지 않습니다. 실제 Next RSC의
+ExtraInfo 부재, renderer/native millisecond 불일치 및 complete trace에서
+`ResourceFinish` 부재가 관측됐지만 같은 URL의 native chain 소유권은 입증되지
+않았습니다. 기존 exact classifier는 그대로이며 clock window/nearest URL,
+추정 cancellation, peer prefetch 변경 또는 native counterpart terminal 차용은
+금지합니다. Pending timing은 quality blocker로 남습니다.
+Blink InspectorId/CDP ID와 renderer가 생성한 network request ID는 별도 identity
+공간입니다. 검토한 Chromium `ResourceLoader::Dispose` GC prefinalizer는
+`HandleError`/`DidFailLoading`을 건너뛰고 URLLoader client를 detach할 수 있습니다.
+이는 source coverage 반례이지 실제 pending 요청의 원인 진단이 아닙니다.
+Complete tracing만으로 모든 terminal callback의 관측 coverage를 입증하지 않습니다.
+
 기계가 읽는 suite의 `baseline.json`은 절대 budget, 상대 비교 band, profile,
-반복/warmup 횟수, 집계법, noise 처리와 outlier 규칙을 소유합니다. 예산을
+반복/warmup 횟수와 historical 집계/noise/outlier 규칙을 소유합니다.
+새 수용은 위 FA-V2 방법을 적용합니다. 예산을
 완화하려면 검토 가능한 명시적 변경이 필요합니다.
 첫 측정 시작점을 `--mode discovery`로 기록했습니다. 실제 budget 부족을 준비
 오류로 취급하지 않으며, 실행 명령이 성공했어도 결과 파일의 성능 판정은
@@ -105,7 +195,7 @@ Desktop viewport는 1440 × 900, 태블릿급 viewport는 820 × 1180이며
 물리적 태블릿 측정 결과는 아닙니다.
 
 #3885의 [suite server-only runner](../../tooling/benchmarks/react-app-comparison/README.md)는
-동결된 네 profile의 반복 및 noise 규칙을 유지하되 production server의 TTFB,
+동결된 네 profile의 반복과 budget을 유지하고 FA-V2 관측 범위로 production server의 TTFB,
 throughput/error rate, CPU, RSS만 평가합니다. 개발 편집을 실행하거나 22개
 metric 전체의 verdict를 주장하지 않습니다. Browser의 first-contentful-paint인
 `shellArrivalMs`는 실제 socket에서 처음 받은 shell byte가 **아닙니다**.
@@ -142,6 +232,12 @@ speculative prefetch는 pending으로 기록하고, byte 값이나 request 실�
 
 ### 명시적인 Linux server-only 환경
 
+아래 observer runtime/journal/lifecycle 요구는 native-conformance에 적용합니다.
+FA-V2 timing은 Python/Frida observer identity 없이 같은 Linux/browser/collector
+환경을 인증합니다. Timing purpose와 `nativeLifetime.enabled: false`로 파생하고
+after의 `pairPhase`를 변경합니다. 각 purpose는 자기 before의 environment/config
+ID와 비교해야 합니다.
+
 과거 macOS ARM64 Apple M4 Pro/Node 24.20.0 baseline은 변경하지 않습니다.
 현재 대표 GitHub workflow는 여전히
 `self-hosted, macOS, ARM64, react-app-performance-m4-pro` label을 요구하며
@@ -164,6 +260,7 @@ cpuset, memory limit은 없습니다. 공유 capacity 관측이며 전용 reserv
 준비합니다. Container는 같은 절대 경로의 checkout과 실제 provisioned SDK,
 browser를 사용할 수 있어야 합니다. [suite README의 실제 명령](../../tooling/benchmarks/react-app-comparison/README.md#explicit-linux-server-only-invocation)은
 변경하지 않은 `config/representative.json`에서 로컬 config를 파생하고
+FA-V2 method/pair/phase와 native-conformance
 `measurement.nativeLifetime = { enabled: true, python: "/absolute/provisioned/python" }`을
 명시한 뒤 다음 runner를 사용합니다.
 
@@ -240,16 +337,19 @@ shutdown으로 구분합니다. Zombie target, 실패한 전송, 누락된 calle
 
 Runner provenance, profile receipt, production/warmup raw trace와 별도 socket
 관측에 동일한 실제 environment binding을 보존합니다. 평가 경계의
-`evaluateServerEvidence`는 공통 environment 인증과 raw/native trace 인증 후
-원래 evaluator를 6개 server metric으로 필터링합니다. Passive headroom은
+Historical `evaluateServerEvidence`는 replay 전용입니다.
+FA-V2 `evaluateAcceptedServerEvidence`는 공통 environment/raw/native 인증과
+matching native counterpart를 요구한 뒤 관측 범위 판정을 6개 server metric으로
+필터링합니다. Passive headroom은
 generator/ambient CPU 관측을 추가할 뿐 기존 sampling, browser cutoff,
 throughput 및 그 이후 `ps` CPU/RSS와 lifecycle을 변경하지 않습니다. Socket은
 native loopback이며 browser profile emulation을 상속하지 않습니다.
 Buffered 크기/concurrency 증거도 독립 실험으로 남깁니다.
 
-After에는 before runner의 top-level `server-verdict.json.environmentBinding`에서 가져온
-`--environment-identity <identitySha256>`와
-`--environment-config-identity <configSha256>`를 **함께** 전달합니다.
+FA-V2 after에는 before의 `--environment-identity <identitySha256>`를 유지하되
+after의 `--environment-config-identity <configSha256>`를 따로 동결해 전달합니다.
+`pairPhase`가 full hash를 바꾸므로 before hash를 after alias로 쓰지 않습니다.
+Historical same-config replay는 기존 두 before ID 검사를 유지합니다.
 비교 identity는 run ID/PID, 절대 product/tool locator와 product HEAD 변경을
 제외하지만 provenance에는 보존하며, 실제 tool/collector 내용, allocation,
 동결 config는 제외하지 않습니다. 전체 environment record, profile config,
@@ -261,8 +361,9 @@ Stable product/source/build provenance는 인증된 top-level invocation binding
 분리합니다. Runner와 measurement child 모두 공통 capture의
 `entrypoints: ["run-server-only.mjs"]`를 선택하며 공통 12개 소스와 runner,
 server measurement, socket-shell을 같은 경계로 인증합니다. Child는 선택과
-parent binding을 invocation transport로 전달받고 실제 환경을 driver 실행 전에
-인증·비교합니다. 엄격한 `gate.mjs` 비교는 그대로입니다. 명시적인 isolated
+`fa-v2.mjs`, `server-cpu.mjs`도 포함합니다. Parent binding을 invocation transport로 전달받고 실제 환경을 driver 실행 전에
+인증·비교합니다. FA-V2 gate는 historical strict replay에 method/purpose/config/
+CPU/counterpart 인증을 추가합니다. 명시적인 isolated
 모드만 invocation 소유 Linux Python subreaper를 통해 host SIGINT/SIGTERM을
 전달하고 descendant reap을 요구하며 `finally`에서 allocation을 재확인합니다.
 일반 disabled CI/macOS에는 Python 요구 사항이 추가되지 않습니다.

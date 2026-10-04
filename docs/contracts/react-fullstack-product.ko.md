@@ -118,4 +118,14 @@ document update를 표시합니다. `/assets/` 게시 순서와 asset 보존은
 
 ## 근거와 검증 한계
 
+성능 수용은 [FA-V2 방법](../guides/react-performance-benchmarks.ko.md#fa-v2-관측-범위-수용)을
+따릅니다. 기존 numeric budget, 200 requests/concurrency 8, 5회 measured/2회 warmup,
+네 framework/네 profile과 22개 client/6개 server metric을 유지하지만 독립
+spread/MAD repeatability veto는 제거하고 모든 관측 min/max의 결정 안정성을
+검사합니다. 이는 confidence interval이나 미래 보장이 아닙니다. 별도 인증된
+timing과 native-conformance의 fresh before/after를 모두 요구하며 native timing
+값이나 다른 실행 terminal을 차용할 수 없습니다. 원래 ownership/coverage/
+retirement/raw exit와 pending-request quality는 필수입니다. Method 구현이나
+focused 테스트는 성능 pair PASS, #3884/#3885 종료 또는 #3879 제품 수용이 아닙니다.
+
 Source seam: `packages/react/src/client/store.ts`, `packages/react/src/client/navigation-payload.ts`, `packages/react/src/module.ts`, `packages/cli/src/dev-runner/react-vite-dev-app.ts`, `examples/react-vite-ssr/src/app.ts`. 기존 테스트: `packages/react/src/client.test.ts`, `examples/react-vite-ssr/src/app.test.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`; [navigation payload 계약](./react-navigation-payload.ko.md)에 HTTP/prefetch 추가 근거가 있습니다. 이는 **기존** 동작 기록이며 이 변경에서 새 browser/performance 실행을 했다는 뜻이 아닙니다. 예제의 native form과 짧은 shell counter는 실제 유료 player나 향후 제품 게이트가 아닙니다. Docs 검증은 link/구조와 EN/KO 쌍을 확인할 뿐 미래 runtime 성공은 보장하지 않습니다. Book chapter는 현재 framework 동작 또는 앱 소유 교육 정책을 설명하고 이 미래 제품 계약은 어느 쪽도 바꾸지 않으므로 이 범위의 Book chapter는 수정하지 않습니다.

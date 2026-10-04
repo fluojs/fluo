@@ -8,8 +8,11 @@ import { PROFILES, sampleEnvironmentHeadroom, summarizeEnvironmentHeadroom } fro
 import { stopOwnedProcess } from './process-group.mjs';
 import { installInitialReadiness, waitForInitialReadiness } from './initial-readiness.mjs';
 import { createNativeCapture, reconcileNativeTerminals } from './native-terminal.mjs';
+import { readServerCpu } from './server-cpu.mjs';
+import { assertMethodConfig, hashObject } from './fa-v2.mjs';
 
 export { reconcileNativeTerminals } from './native-terminal.mjs';
+export { readServerCpu } from './server-cpu.mjs';
 
 const JOURNEYS = ['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox'];
 const execFileAsync = promisify(execFile);
@@ -161,6 +164,7 @@ function percentile(values, quantile) {
 }
 
 export async function createBrowserDriver(config, { devMode = false } = {}) {
+  if (config.methodVersion !== undefined) assertMethodConfig(config);
   if (!devMode && (!config.journeys || JOURNEYS.some((name) => !config.journeys[name]))) {
     throw new Error(`browser correctness requires configured journeys: ${JOURNEYS.join(', ')}`);
   }
@@ -298,7 +302,9 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
     async measure(item) {
       const native = await createNativeCapture(chromium, item.nativeTraceDirectory, config.nativeLifetime?.enabled
         ? { ...config.nativeLifetime, measurement: { runId: item.runId, framework: item.framework,
-          profile: item.profile, mode: item.mode } } : undefined);
+          profile: item.profile, mode: item.mode,
+          ...(item.methodBinding ? { methodVersion: item.methodVersion, measurementPurpose: item.measurementPurpose,
+            pairId: item.methodBinding.pairId, executionId: item.methodBinding.executionId } : {}) } } : undefined);
       let measurementFailed = false;
       let measurementError;
       try {
@@ -504,7 +510,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             unavailable: 'request still in flight at capture boundary' });
         }
         network.clear();
-        native.ledger.push({ name: 'capture-boundary', data: { captureTimestamp, finalRequestCapture } });
+        native.ledger.push({ name: 'capture-boundary', data: { captureTimestamp, finalRequestCapture,
+          ...(item.methodBinding ? { methodBinding: item.methodBinding } : {}) } });
         for (const [name, observe] of nativeSubscriptions) cdp.off(name, observe);
         const metrics = {};
         const unavailable = {};
@@ -545,13 +552,18 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           requests.push(...sent.map((response) => ({ ...response, url: new URL(throughput.path, item.url).href, resourceType: 'throughput' })));
         }
         const serverPid = config.serverPids?.[item.framework];
+        let serverCpu;
         let generator;
         {
           const { stdout } = await execFileAsync('ps', ['-p', String(process.pid), '-o', '%cpu=', '-o', 'rss=']);
           const [cpu, rss] = stdout.trim().split(/\s+/).map(Number);
           generator = { pid: process.pid, cpuPercent: cpu, rssBytes: rss * 1024 };
         }
-        if (Number.isSafeInteger(serverPid) && serverPid > 0) {
+        if (config.methodVersion === 'FA-V2') {
+          serverCpu = await readServerCpu(serverPid);
+          metrics.cpuPercent = serverCpu.cpuPercent;
+          metrics.rssBytes = serverCpu.rssBytes;
+        } else if (Number.isSafeInteger(serverPid) && serverPid > 0) {
           const { stdout } = await execFileAsync('ps', ['-p', String(serverPid), '-o', '%cpu=', '-o', 'rss=']);
           const [cpu, rss] = stdout.trim().split(/\s+/).map(Number);
           if (Number.isFinite(cpu) && Number.isFinite(rss)) {
@@ -593,6 +605,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             framework: item.framework,
             throughput,
             serverPid,
+            ...(serverCpu ? { serverCpu, serverCpuSha256: hashObject(serverCpu) } : {}),
             generator,
             ...(environmentHeadroom ? { environmentHeadroom } : {}),
             rscResponseWireBytes: summarizeRscBytes(requests),

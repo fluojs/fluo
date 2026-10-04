@@ -10,7 +10,8 @@ import { captureIsolatedEnvironment, launchIsolatedInvocation, readIsolatedInvoc
   requireEnvironmentPairIdentity, sampleEnvironmentHeadroom, summarizeEnvironmentHeadroom,
   verifyMeasurementEnvironment, verifyTraceFiles } from './measure.mjs';
 import { startServers, stopServers } from './run-gate.mjs';
-import { evaluateServerEvidence, runServerMeasurement } from './server-measurement.mjs';
+import { evaluateAcceptedServerEvidence, evaluateServerEvidence, runServerMeasurement } from './server-measurement.mjs';
+import { assertMethodConfig } from './fa-v2.mjs';
 import { readSocketShell } from './socket-shell.mjs';
 
 const exec = promisify(execFile);
@@ -44,6 +45,10 @@ const baseline = JSON.parse(baselineText);
 const requestedProfile = args.includes('--profile') ? args[args.indexOf('--profile') + 1] : undefined;
 if (args.includes('--profile') && !Object.hasOwn(baseline.profiles, requestedProfile ?? '')) {
   throw new RangeError(`Unknown server profile: ${requestedProfile}`);
+}
+if (!args.includes('--historical-replay')) {
+  assertMethodConfig({ ...config.measurement, warmupRuns: baseline.policy.warmupRuns,
+    measurementRuns: baseline.policy.minimumRuns });
 }
 const [{ stdout: head }, { stdout: dirty }, { stdout: tracked }] = await Promise.all([
   exec('git', ['rev-parse', 'HEAD'], { cwd: root }),
@@ -209,11 +214,29 @@ try {
   process.off('SIGINT', interrupt);
   process.off('SIGTERM', interrupt);
 }
-const { checks, verdict: evaluatedVerdict, serverMetrics } =
-  await evaluateServerEvidence(baseline, receipts, output);
+let evaluation;
+if (args.includes('--historical-replay')) {
+  evaluation = await evaluateServerEvidence(baseline, receipts, output);
+} else if (config.measurement.measurementPurpose === 'native-conformance') {
+  evaluation = { checks: [], serverMetrics: [], verdict: receipts.length === 4
+    && receipts.every((receipt) => [...receipt.runs, ...receipt.warmups].every((run) =>
+      run.correctness === 'pass' && run.metrics.errorRate === 0)) ? 'pass' : 'inconclusive' };
+} else if (args.includes('--native-receipts')) {
+  const files = JSON.parse(await readFile(args[args.indexOf('--native-receipts') + 1], 'utf8'));
+  const native = await Promise.all(files.map(async (path) => JSON.parse(await readFile(path, 'utf8'))));
+  const traceRoot = args.includes('--trace-root') ? resolve(args[args.indexOf('--trace-root') + 1]) : output;
+  evaluation = await evaluateAcceptedServerEvidence(baseline, receipts, traceRoot, native);
+} else {
+  evaluation = { checks: [], serverMetrics: [], verdict: 'inconclusive',
+    reason: 'FA-V2 native counterparts required before acceptance' };
+}
+const { checks, verdict: evaluatedVerdict, serverMetrics } = evaluation;
 const verdict = evaluatedVerdict === 'fail' ? 'fail'
   : subprocessFailed ? 'inconclusive' : evaluatedVerdict;
 const result = {
+  ...evaluation,
+  ...(config.measurement.methodVersion ? { methodVersion: config.measurement.methodVersion,
+    measurementPurpose: config.measurement.measurementPurpose, pairId: config.measurement.pairId } : {}),
   purpose: 'server-owned subset only; browser FCP shellArrivalMs and unchanged development/client metrics are not a socket or whole-product gate',
   serverMetrics,
   requestedProfile: requestedProfile ?? null,
@@ -225,6 +248,8 @@ const result = {
   checks,
   receipts: receipts.map((receipt) => ({
     profile: receipt.profile,
+    path: join(output, `${receipt.profile}.json`),
+    ...(receipt.methodBinding ? { methodBinding: receipt.methodBinding } : {}),
     measuredRuns: receipt.runs.length,
     warmups: receipt.warmups.length,
     socketTrace: `${receipt.profile}-socket.json`,

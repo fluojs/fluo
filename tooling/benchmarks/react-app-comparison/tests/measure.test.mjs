@@ -10,7 +10,7 @@ import { collectDevMeasurements, collectMeasurements, environmentConfigIdentity,
   isolatedEnvironmentIdentity, planMeasurements, summarizeEnvironmentHeadroom,
   verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from '../src/measure.mjs';
 import { createBrowserDriver } from '../src/measure-browser.mjs';
-import { evaluateEvidence } from '../src/gate.mjs';
+import { evaluateAcceptedEvidence, evaluateEvidence } from '../src/gate.mjs';
 import { readSocketShell } from '../src/socket-shell.mjs';
 import { createNativeLifetimeObserver, NATIVE_LIFETIME_IDENTITY, NATIVE_LIFETIME_METHOD,
   NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA, reconcileNativeLifetime } from '../src/native-lifetime.mjs';
@@ -65,6 +65,48 @@ test('isolated production and development aggregates cannot merge mismatched env
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
+test('FA-V2 gate authenticates separate purpose environments and refuses mismatched counterparts', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fa-v2-purpose-gate-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const baselineBytes = await readFile(new URL('../baseline.json', import.meta.url));
+  const baseline = JSON.parse(baselineBytes);
+  const receipts = [];
+  for (const measurementPurpose of ['timing', 'native-conformance']) {
+    const settings = {
+      ...config, profile: 'desktop-native', mode: 'native', warmupRuns: 2, measurementRuns: 5,
+      methodVersion: 'FA-V2', measurementPurpose, pairId: 'fixed-cycle', pairPhase: 'before',
+      nativeLifetime: measurementPurpose === 'timing' ? { enabled: false } : { enabled: true, python: '/python' },
+      throughput: Object.fromEntries(frameworks.map((framework) =>
+        [framework, { path: '/', requests: 200, concurrency: 8 }])),
+      provenance: { ...config.provenance,
+        baselineSha256: createHash('sha256').update(baselineBytes).digest('hex') },
+    };
+    const { binding } = await environmentFixture(directory, measurementPurpose, settings);
+    const receipt = await collectMeasurements(settings, {
+      browserVersion: NATIVE_LIFETIME_IDENTITY.browserVersion,
+      async check() { return { pass: false, steps: [] }; },
+    }, join(directory, measurementPurpose));
+    Object.assign(receipt, { isolatedRepresentative: true, environmentBinding: binding });
+    for (const run of [...receipt.runs, ...receipt.warmups]) {
+      Object.assign(run, { isolatedRepresentative: true, environmentBinding: binding });
+      const raw = JSON.parse(await readFile(run.trace, 'utf8'));
+      Object.assign(raw, { isolatedRepresentative: true, environmentBinding: binding });
+      await writeFile(run.trace, JSON.stringify(raw));
+    }
+    receipts.push(receipt);
+  }
+  // Correctly authenticated synthetic correctness failures cannot be performance PASS.
+  const result = await evaluateAcceptedEvidence(baseline, [receipts[0]], directory, [receipts[1]]);
+  assert.equal(result.verdict, 'fail');
+  await assert.rejects(evaluateAcceptedEvidence(baseline, [receipts[0]], directory), /counterpart/u);
+  await assert.rejects(evaluateAcceptedEvidence(baseline, [receipts[0]], directory,
+    [{ ...receipts[1], measurementPurpose: 'timing' }]), /counterpart/u);
+  await assert.rejects(evaluateAcceptedEvidence(baseline, [receipts[0]], directory,
+    [{ ...receipts[1], methodBinding: { ...receipts[1].methodBinding, pairId: 'borrowed-pair' } }]), /pairId/u);
+  await assert.rejects(evaluateAcceptedEvidence(baseline, [receipts[0]], directory,
+    [{ ...receipts[1], runs: receipts[1].runs.slice(1) }]), /independent repetitions/u);
+});
+
 async function environmentFixture(directory, invocationId = 'invocation', measurementConfig = config) {
   const allocation = { nanoCpus: 0, cpuQuota: 0, cpuPeriod: 0, cpuset: '', memory: 0, memorySwap: 0 };
   const vm = { kernel: 'kernel', logicalCpus: 12, memoryBytes: 8392974336 };
@@ -75,14 +117,15 @@ async function environmentFixture(directory, invocationId = 'invocation', measur
     State: { Running: true, Pid: container.pid, StartedAt: container.startedAt },
     HostConfig: { NanoCpus: 0, CpuQuota: 0, CpuPeriod: 0, CpusetCpus: '', Memory: 0, MemorySwap: 0 } }]),
     information: JSON.stringify({ KernelVersion: vm.kernel, NCPU: vm.logicalCpus, MemTotal: vm.memoryBytes }) };
-  const configuration = { ...measurementConfig, nativeLifetime: { enabled: true, python: '/python' } };
+  const timing = measurementConfig.methodVersion === 'FA-V2' && measurementConfig.measurementPurpose === 'timing';
+  const configuration = { ...measurementConfig, nativeLifetime: timing ? { enabled: false } : { enabled: true, python: '/python' } };
   delete configuration.provenance;
   const identity = { vm, container: { imageId: container.imageId, imageReference: container.imageReference, allocation },
     guest: { platform: 'linux', arch: 'arm64', kernel: vm.kernel, logicalCpus: vm.logicalCpus,
       memoryBytes: vm.memoryBytes, runtime: { version: 'v24.21.0' },
       browser: { version: NATIVE_LIFETIME_IDENTITY.browserVersion, sha256: NATIVE_LIFETIME_IDENTITY.binarySha256 },
       external: NATIVE_LIFETIME_RUNTIME, files: {},
-      observer: { enabled: true, method: NATIVE_LIFETIME_METHOD, schema: NATIVE_LIFETIME_SCHEMA } } };
+      observer: { enabled: !timing, method: NATIVE_LIFETIME_METHOD, schema: NATIVE_LIFETIME_SCHEMA } } };
   const guest = identity.guest;
   const file = (path, sha256 = 'a'.repeat(64)) => {
     guest.files[path] = sha256;
@@ -92,12 +135,18 @@ async function environmentFixture(directory, invocationId = 'invocation', measur
   guest.browser.path = '/headless_shell';
   guest.files[guest.browser.path] = guest.browser.sha256;
   guest.python = file('/python', NATIVE_LIFETIME_RUNTIME.pythonSha256);
+  if (timing) {
+    delete guest.python;
+    delete guest.external;
+    delete guest.files['/python'];
+  }
   guest.pnpm = { ...file('/pnpm'), version: '10.4.1' };
   guest.sdk = Object.fromEntries(['@playwright/test', 'playwright', 'playwright-core', 'typescript']
     .map((name) => [name, { ...file(`/${name}/package.json`), version: name === 'typescript' ? '6.0.2' : '1.61.1' }]));
   guest.collector = Object.fromEntries(['measure.mjs', 'measure-browser.mjs', 'run-gate.mjs',
     'native-terminal.mjs', 'native-lifetime.mjs', 'native-lifetime-agent.js', 'native-lifetime-host.py',
     'initial-readiness.mjs', 'process-group.mjs', 'gate.mjs', 'evaluate.ts', 'fluo-dev.mjs']
+    .concat(['fa-v2.mjs', 'server-cpu.mjs'])
     .map((name) => [name, file(`/collector/${name}`)]));
   guest.collectorEntrypoints = ['measure.mjs', 'run-gate.mjs'];
   guest.locks = Object.fromEntries(['.', ...frameworks.map((name) => `apps/${name}`)]
@@ -106,10 +155,11 @@ async function environmentFixture(directory, invocationId = 'invocation', measur
   const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const host = { host: { platform: 'darwin', arch: 'arm64', cpuModel: 'Apple M4 Pro' }, vm, container, raw };
   const comparable = isolatedEnvironmentIdentity(host, guest);
-  const comparableConfig = { ...configuration, nativeLifetime: { enabled: true, python: '$authenticated-python' } };
+  const comparableConfig = { ...configuration,
+    nativeLifetime: timing ? { enabled: false } : { enabled: true, python: '$authenticated-python' } };
   const record = { schemaVersion: 1, method: 'isolated-linux-representative-v1',
     invocation: { invocationId, host }, identity: comparable, configuration: comparableConfig,
-    configurationEvidence: configuration, provenance: config.provenance,
+    configurationEvidence: configuration, provenance: measurementConfig.provenance,
     identitySha256: hash(comparable), configSha256: environmentConfigIdentity(configuration),
     guestEvidence: { pid: 1, hostname: 'guest', guest } };
   const path = join(directory, `environment-${invocationId}.json`);
