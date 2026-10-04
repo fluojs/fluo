@@ -311,12 +311,6 @@ export function isObservedShutdownExit(exit, observation) {
     || !Number.isSafeInteger(e.thread) || e.thread < 1 || !Object.hasOwn(e, 'parent')
     || (e.event.startsWith('shutdown-normal-') ? e.parent !== null
       : e.parent !== null && (!Number.isSafeInteger(e.parent) || e.parent < 1 || e.parent === e.call)))) return false;
-  for (const id of new Set(calls.map((e) => e.call))) {
-    const pair = calls.filter((e) => e.call === id);
-    if (pair.length !== 2 || !/^shutdown-(normal|terminate|signal)-enter$/u.test(pair[0].event)
-      || pair[1].event !== pair[0].event.replace(/-enter$/u, '-return')
-      || pair[0].thread !== pair[1].thread || pair[0].parent !== pair[1].parent) return false;
-  }
   return events.some((signal) => {
     if (signal.event !== 'shutdown-signal-enter' || signal.signal !== 15
       || signal.target?.pid !== exit.pid
@@ -339,6 +333,14 @@ export function isObservedShutdownExit(exit, observation) {
       || normal.parent !== null || normalized.parent !== null) return false;
     const ordered = [normal, terminate, signal, returned, terminated, normalized];
     return ns(close.ns) < ns(normal.ns) && ns(returned.ns) < ns(exit.ns)
+      // Unrelated root calls may outlive the sender. Only this complete
+      // chain authorizes the exit, and its call IDs must remain unaliased.
+      && [normal, terminate, signal].every((entry) => {
+        const pair = calls.filter((event) => event.call === entry.call);
+        return pair.length === 2 && pair[0].event === entry.event
+          && pair[1].event === entry.event.replace(/-enter$/u, '-return')
+          && pair[0].thread === pair[1].thread && pair[0].parent === pair[1].parent;
+      })
       && ordered.every((e, i) => i === 0 || e.seq > ordered[i - 1].seq && ns(e.ns) >= ns(ordered[i - 1].ns));
   });
 }

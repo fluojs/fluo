@@ -157,6 +157,34 @@ test('unrelated failed root call preserves a complete post-close termination pro
   assert.deepEqual(reconcileNativeLifetime([request()], observation, ledger()).unavailable, []);
 });
 
+test('unreturned unrelated root call preserves a complete post-close termination proof', () => {
+  const observation = withUnrelatedRootCall(shutdownFixture(), '12000000021');
+  observation.lifecycle = observation.lifecycle.filter((entry) =>
+    !(entry.call === 99 && entry.event === 'shutdown-signal-return'));
+  const exit = observation.lifecycle.find((entry) => entry.event === 'owned-exit');
+  assert.equal(isObservedShutdownExit(exit, observation), true);
+  assert.deepEqual(reconcileNativeLifetime([request()], observation, ledger()).unavailable, []);
+  assert.equal(observation.lifecycle.filter((entry) => entry.call === 99).length, 1);
+});
+
+for (const event of ['shutdown-signal-return', 'shutdown-terminate-return', 'shutdown-normal-return']) {
+  test(`unrelated root entry cannot replace missing authorized ${event}`, () => {
+    const observation = withUnrelatedRootCall(shutdownFixture(), '12000000021');
+    observation.lifecycle = observation.lifecycle.filter((entry) => entry.event !== event);
+    observation.lifecycle.filter((entry) => entry.event.startsWith('shutdown-'))
+      .forEach((entry, index) => { entry.seq = index + 1; });
+    const exit = observation.lifecycle.find((entry) => entry.event === 'owned-exit');
+    assert.equal(isObservedShutdownExit(exit, observation), false);
+  });
+}
+
+test('unrelated root cannot hide a cross-thread alias of an authorized call', () => {
+  const observation = withUnrelatedRootCall(shutdownFixture(), '12000000021');
+  observation.lifecycle.filter((entry) => entry.call === 99).forEach((entry) => { entry.call = 3; });
+  const exit = observation.lifecycle.find((entry) => entry.event === 'owned-exit');
+  assert.equal(isObservedShutdownExit(exit, observation), false);
+});
+
 test('unrelated failed root call preserves a complete retirement proof', () => {
   const observation = withUnrelatedRootCall(parentStatusFixture(15), '10470000000');
   assert.deepEqual(reconcileNativeLifetime([request()], observation, ledger()).unavailable, []);
