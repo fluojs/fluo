@@ -233,6 +233,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           return { pass: false, steps: [{ name: 'dev-config', pass: false }] };
         }
         const cwd = commands.cwd ?? resolve(import.meta.dirname, `../apps/${item.framework}`);
+        const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
         const started = performance.now();
         const server = spawn(commands.start[0], commands.start.slice(1), {
           cwd, env: { ...process.env, ...commands.env }, stdio: ['ignore', 'pipe', 'pipe'],
@@ -259,7 +260,9 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           if (!response?.ok()) throw new Error(`dev page HTTP ${response?.status()}`);
           await page.locator('h1').first().waitFor({ state: 'visible', timeout: 60_000 });
           const readyMs = performance.now() - started;
-          contexts.set(item.runId + item.framework, { context, page, readyMs, serverLog: () => log });
+          const environmentHeadroom = headroomBefore
+            ? summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) : undefined;
+          contexts.set(item.runId + item.framework, { context, page, readyMs, environmentHeadroom, serverLog: () => log });
           devServers.set(item.runId + item.framework, server);
           return { pass: true, steps: [{ name: 'dev-ready', pass: true, elapsedMs: readyMs, url: commands.url, log }] };
         } catch (error) {
@@ -645,7 +648,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       if (!owned || !server) throw new Error(`dev server missing: ${key}`);
       const commands = config.dev[item.framework];
       if (kind === 'cold-ready') {
-        return { durationMs: owned.readyMs, event: 'dev-ready' };
+        return { durationMs: owned.readyMs, event: 'dev-ready',
+          ...(owned.environmentHeadroom ? { environmentHeadroom: owned.environmentHeadroom } : {}) };
       }
       const edit = commands.edits[kind];
       if (!(edit?.file || (Array.isArray(edit?.command) && edit.command.length > 0)) || !edit.selector
@@ -661,6 +665,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       const before = reload || edit.relaunch ? null : await page.locator(edit.selector).first().evaluate((element, expectedStyle) =>
         expectedStyle ? getComputedStyle(element).getPropertyValue(expectedStyle.property) : element.textContent,
       edit.expectedStyle);
+      const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
       const started = performance.now();
       const restarted = edit.restartPattern ? new Promise((accept, reject) => {
         const timeout = setTimeout(() => {
@@ -763,6 +768,9 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         method: edit.relaunch ? 'dev-server-relaunch' : edit.restartPattern
           ? 'restart-and-reload' : edit.explicitReload ? 'document-reload' : 'hot-update',
       };
+      if (headroomBefore) {
+        result.environmentHeadroom = summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom());
+      }
       return result;
     },
     async close() {

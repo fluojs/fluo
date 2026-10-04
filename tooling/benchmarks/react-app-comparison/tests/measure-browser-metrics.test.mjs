@@ -10,7 +10,7 @@ import { gzipSync } from 'node:zlib';
 
 import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForCapturedRequests, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
 import { installInitialReadiness, waitForInitialReadiness } from '../src/initial-readiness.mjs';
-import { verifyTraceFiles } from '../src/measure.mjs';
+import { collectDevMeasurements, summarizeEnvironmentHeadroom, verifyTraceFiles } from '../src/measure.mjs';
 
 const appRequire = createRequire(new URL('../apps/fluo/package.json', import.meta.url));
 const { build } = await import(appRequire.resolve('vite'));
@@ -249,6 +249,75 @@ test('a usable dev page is ready without requiring an unrelated websocket event'
     const result = await driver.check({ framework: 'next', runId: 'http-ready', device: 'desktop', mode: 'native' });
     // Then: only the observable usable page gates cold-ready; edits still check visible changes.
     assert.equal(result.pass, true);
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('development collection: successful isolated driver intervals -> original headroom observations', { timeout: 60_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'dev-headroom-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const html = '<!doctype html><style>html { --benchmark-edit: before; }</style><h1 data-benchmark-hydrated="true">Before</h1><p>Server before</p>';
+  await writeFile(join(directory, 'page.html'), html);
+  const start = [process.execPath, '-e', `
+    const { createServer } = require('node:http');
+    const { readFileSync } = require('node:fs');
+    createServer((request, response) => {
+      response.setHeader('content-type', 'text/html');
+      response.end(readFileSync('page.html'));
+    }).listen(0, '127.0.0.1', function () {
+      console.log('READY http://127.0.0.1:' + this.address().port);
+    });
+  `];
+  // The ready URL is provided by an independently owned fixture server so each
+  // measured child can bind an ephemeral port without sharing a dev process.
+  const server = createServer(async (_request, response) => {
+    response.setHeader('content-type', 'text/html');
+    response.end(await readFile(join(directory, 'page.html')));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  const commands = {
+    cwd: directory, start, url, readyPattern: 'READY',
+    edits: {
+      'react-edit': { file: 'page.html', from: 'Before', to: 'After', selector: 'h1',
+        expectedText: 'After', explicitReload: true },
+      'css-edit': { file: 'page.html', from: '--benchmark-edit: before', to: '--benchmark-edit: changed',
+        selector: 'html', expectedStyle: { property: '--benchmark-edit', value: 'changed' }, relaunch: true },
+      'server-edit': { file: 'page.html', from: 'Server before', to: 'Server after', selector: 'p',
+        expectedText: 'Server after', relaunch: true },
+    },
+  };
+  const config = {
+    profile: 'desktop-native', mode: 'native', warmupRuns: 0, measurementRuns: 1,
+    apps: Object.fromEntries(['fluo', 'next', 'react-router', 'tanstack-start'].map((name) => [name, url])),
+    dev: Object.fromEntries(['fluo', 'next', 'react-router', 'tanstack-start'].map((name) => [name, commands])),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  };
+  const driver = await createBrowserDriver({ ...config, isolatedRepresentative: true }, { devMode: true });
+  try {
+    const receipt = await collectDevMeasurements(config, driver, join(directory, 'traces'));
+
+    for (const run of receipt.runs) {
+      const raw = JSON.parse(await readFile(run.trace));
+      assert.equal(raw.correctness.pass, true);
+      let previousEnd = -Infinity;
+      for (const kind of ['cold-ready', 'react-edit', 'css-edit', 'server-edit']) {
+        const timing = raw.timings[kind];
+        assert.ok(timing.environmentHeadroom, `${kind} must retain its measured interval headroom`);
+        const { before, after } = timing.environmentHeadroom;
+        assert.deepEqual(timing.environmentHeadroom, summarizeEnvironmentHeadroom(before, after));
+        assert.ok(before.monotonicMs <= after.monotonicMs - timing.durationMs);
+        assert.ok(before.monotonicMs > previousEnd, 'each action retains its own interval');
+        previousEnd = after.monotonicMs;
+      }
+    }
+    assert.equal(await readFile(join(directory, 'page.html'), 'utf8'), html);
   } finally {
     await driver.close();
     const closed = once(server, 'close');
