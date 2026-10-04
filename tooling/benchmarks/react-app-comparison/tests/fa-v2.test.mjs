@@ -11,7 +11,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { assertMethodConfig, captureMethodBinding, hashObject, pairStimuliIdentity,
   pairStimuliComparison, verifyMethodBinding, verifyMethodReceipt, verifyMethodTrace } from '../src/fa-v2.mjs';
-import { collectDevMeasurements, collectMeasurements, environmentConfigIdentity, mergeEvidence, verifyTraceFiles } from '../src/measure.mjs';
+import { collectDevMeasurements, collectMeasurements, environmentConfigIdentity, mergeEvidence, planMeasurements, verifyTraceFiles } from '../src/measure.mjs';
 
 const frameworks = ['fluo', 'next', 'react-router', 'tanstack-start'];
 const baseline = {
@@ -145,14 +145,99 @@ test('server CPU rejects PID birth replacement instead of substituting client CP
 });
 
 const methodConfig = {
+  ...JSON.parse(await readFile(new URL('../config/representative.json', import.meta.url), 'utf8')).measurement,
   methodVersion: 'FA-V2', measurementPurpose: 'timing', pairId: 'fixed-pair', pairPhase: 'before',
   profile: 'desktop-native', mode: 'native', warmupRuns: 2, measurementRuns: 5,
   nativeLifetime: { enabled: false },
   apps: Object.fromEntries(frameworks.map((name) => [name, `http://fixture/${name}`])),
-  throughput: Object.fromEntries(frameworks.map((name) => [name, { path: '/', requests: 200, concurrency: 8 }])),
   serverPids: Object.fromEntries(frameworks.map((name) => [name, 123])),
   provenance: { baselineSha256: 'a'.repeat(64), commit: 'b'.repeat(40) },
 };
+
+test('frozen measured inventory rejects swapping warmups across both purposes without changing raw evidence', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fa-v2-inventory-swap-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const receipts = [];
+  for (const measurementPurpose of ['timing', 'native-conformance']) {
+    const config = { ...methodConfig, measurementPurpose,
+      nativeLifetime: measurementPurpose === 'timing' ? { enabled: false } : { enabled: true, python: '/python' } };
+    let breached = false;
+    const receipt = await collectMeasurements(config, {
+      async check() { return { pass: true, steps: [] }; },
+      async measure(item) {
+        const metrics = { ...samples('cpuPercent', [50, 50, 50, 50, 50])[0].metrics };
+        if (!item.warmup && item.framework === 'fluo' && !breached) {
+          metrics.cpuPercent = 150;
+          breached = true;
+        }
+        return { metrics };
+      },
+    }, join(directory, measurementPurpose));
+    await verifyMethodReceipt(receipt, directory);
+    receipts.push(receipt);
+  }
+  const before = evaluator.evaluateObservedRanges(baseline, receipts[0].runs);
+  assert.notEqual(before.verdict, 'pass');
+  const originalBytes = new Map();
+  for (const receipt of receipts) {
+    for (const run of [...receipt.runs, ...receipt.warmups]) originalBytes.set(run.trace, await readFile(run.trace, 'utf8'));
+    originalBytes.set(receipt.methodBinding.path, await readFile(receipt.methodBinding.path, 'utf8'));
+    const measured = receipt.runs.findIndex((run) => run.framework === 'fluo' && run.metrics.cpuPercent === 150);
+    const warmup = receipt.warmups.findIndex((run) => run.framework === 'fluo');
+    [receipt.runs[measured], receipt.warmups[warmup]] = [receipt.warmups[warmup], receipt.runs[measured]];
+  }
+  assert.equal(evaluator.evaluateObservedRanges(baseline, receipts[0].runs).verdict, 'pass');
+  for (const [path, bytes] of originalBytes) assert.equal(await readFile(path, 'utf8'), bytes);
+  for (const receipt of receipts) await assert.rejects(verifyMethodReceipt(receipt, directory), /frozen measured inventory/u);
+  const frozen = JSON.parse(await readFile(new URL('../baseline.json', import.meta.url), 'utf8'));
+  await assert.rejects(gate.evaluateAcceptedEvidence(frozen, [receipts[0]], directory, [receipts[1]]),
+    /frozen measured inventory/u);
+});
+
+test('approved production descriptor rejects consistently changed endpoints across both phases and purposes', () => {
+  for (const pairPhase of ['before', 'after']) {
+    for (const measurementPurpose of ['timing', 'native-conformance']) {
+      const config = structuredClone({ ...methodConfig, pairPhase, measurementPurpose,
+        nativeLifetime: measurementPurpose === 'timing' ? { enabled: false } : { enabled: true, python: '/python' } });
+      for (const throughput of Object.values(config.throughput)) throughput.path = '/';
+      assert.throws(() => assertMethodConfig(config), /approved production descriptor/u);
+    }
+  }
+});
+
+test('approved production descriptor rejects consistently rehashed counterpart configurations', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fa-v2-descriptor-rehash-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  for (const pairPhase of ['before', 'after']) {
+    for (const measurementPurpose of ['timing', 'native-conformance']) {
+      const binding = await captureMethodBinding({ ...methodConfig, pairPhase, measurementPurpose,
+        nativeLifetime: measurementPurpose === 'timing' ? { enabled: false } : { enabled: true, python: '/python' } }, directory);
+      const record = JSON.parse(await readFile(binding.path, 'utf8'));
+      for (const throughput of Object.values(record.configuration.throughput)) throughput.path = '/';
+      const { measurementPurpose: _purpose, nativeLifetime, provenance, serverPids,
+        environmentBinding, isolatedRepresentative, ...stimuli } = record.configuration;
+      record.configSha256 = hashObject(record.configuration);
+      record.stimuliSha256 = hashObject(stimuli);
+      const bytes = JSON.stringify(record);
+      await writeFile(binding.path, bytes);
+      const altered = { ...binding, configSha256: record.configSha256, stimuliSha256: record.stimuliSha256,
+        sha256: createHash('sha256').update(bytes).digest('hex') };
+      await assert.rejects(verifyMethodBinding(altered, directory), /approved production descriptor/u);
+    }
+  }
+});
+
+for (const mutate of [
+  (config) => { config.journeys.detail.path = '/products/sku-43'; },
+  (config) => { config.journeys.auth.actions[0].value = 'other-user'; },
+  (config) => { config.interactions[0].trigger = 'a[href="/jukebox/songs"]'; },
+]) {
+  test('approved production descriptor rejects route action and interaction stimulus mutations', () => {
+    const config = structuredClone(methodConfig);
+    mutate(config);
+    assert.throws(() => assertMethodConfig(config), /approved production descriptor/u);
+  });
+}
 
 for (const changes of [
   { measurementPurpose: 'native' }, { measurementPurpose: 'matched-cache' },
@@ -205,9 +290,10 @@ test('raw CPU, passive terminals and config identity cannot be altered or borrow
     cleanup: { closed: true, exitCode: 0, signalCode: null } };
   const bytes = JSON.stringify(cdp);
   await writeFile(cdpTrace, bytes);
+  const item = planMeasurements(methodConfig).find((entry) => entry.framework === 'fluo' && !entry.warmup);
   const record = {
+    ...item,
     methodVersion: 'FA-V2', measurementPurpose: 'timing', methodBinding,
-    profile: methodConfig.profile, mode: methodConfig.mode, framework: 'fluo', runId: 'one',
     provenance: methodConfig.provenance, correctness: { pass: true }, qualityFailures: [],
     timings: {}, requests: Array.from({ length: 200 }, () => ({ status: 200, resourceType: 'throughput' })),
     metrics: { cpuPercent: serverCpu.cpuPercent, rssBytes: serverCpu.rssBytes, errorRate: 0 },
@@ -243,6 +329,20 @@ test('raw CPU, passive terminals and config identity cannot be altered or borrow
   }
   await writeFile(methodBinding.path, '{}');
   await assert.rejects(verifyMethodBinding(methodBinding, directory), /digest/);
+});
+
+test('raw frozen inventory rejects warmup cycle and slot reclassification', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fa-v2-raw-inventory-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const receipt = await collectMeasurements(methodConfig, { async check() { return { pass: false, steps: [] }; } }, directory);
+  const run = receipt.runs[0];
+  const record = JSON.parse(await readFile(run.trace, 'utf8'));
+  for (const mutation of [
+    { warmup: true }, { cycle: 1 }, { slot: 4 }, { device: 'tablet' }, { url: 'http://other/' },
+  ]) {
+    await assert.rejects(verifyMethodTrace({ ...record, ...mutation }, run, directory), /frozen raw inventory/u);
+  }
+  await assert.rejects(verifyMethodTrace(record, { ...run, warmup: true }, directory), /frozen raw inventory/u);
 });
 
 test('accepted gate rejects missing counterparts and changed frozen budgets', async () => {

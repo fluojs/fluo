@@ -35,6 +35,21 @@ replay only: `evaluatePerformance(..., "historical-v1")`, `evaluateEvidence`,
 `evaluateServerEvidence` and CLI `--historical-replay`. Historical FAIL/
 INCONCLUSIVE or unversioned receipts cannot be relabeled as FA-V2.
 
+Acceptance authenticates the exact rotating plan, not merely counts. Cycles 1-2
+are warmups, 3-7 are measured, with all four framework slots in order.
+Receipts and raw/combined traces bind `warmup`/`cycle`/`slot`, run/profile/cache/
+framework and raw device/URL. Consistent swapping across both purposes while
+retaining original raw/config hashes cannot promote a warmup into measurement.
+Production journeys' actions/status/selectors, interactions and
+`/products/sku-42` at 200 requests/concurrency 8 must match approved
+`config/representative.json.measurement`. Its production-only SHA-256
+`b8d8a51b4b40660c796d952a5af3a066dc2c5837a33841e5556c5d050cedc119`
+is bound into method receipts. Consistently altering and rehashing endpoints/
+routes/actions across phases/purposes does not approve a different workload.
+Declared purpose/phase/root and separately authenticated development source-edit
+differences do not change this production descriptor. These guards do not
+resolve missing timing/native pairs or the known Next terminal coverage gap.
+
 Use all five independent samples without removal. L/U are observed min/max,
 B the original budget and b the original band. Compare each of the three peers:
 

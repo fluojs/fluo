@@ -34,6 +34,21 @@ FA-V2는 수용 의미를 변경하며 numeric budget이나 public 동작을 완
 `evaluateServerEvidence`, CLI `--historical-replay`는 과거 판정을 보존합니다.
 과거 FAIL/INCONCLUSIVE나 unversioned receipt를 FA-V2로 재분류할 수 없습니다.
 
+수용은 개수뿐 아니라 정확한 rotating plan을 인증합니다. Cycle 1-2는 warmup,
+3-7은 measured이고 각 cycle의 네 framework slot 순서를 유지합니다.
+Receipt와 raw/combined trace의 `warmup`/`cycle`/`slot`, run/profile/cache/framework,
+raw device/URL을 결합하므로 두 purpose에서 같이 바꾸고 원본 raw/config hash를
+보존해도 warmup을 measured로 옮길 수 없습니다. Production journeys의
+action/status/selector, interactions 및 `/products/sku-42`의 200 requests/
+concurrency 8은 승인된 `config/representative.json.measurement`와 일치해야
+합니다. Production-only SHA-256
+`b8d8a51b4b40660c796d952a5af3a066dc2c5837a33841e5556c5d050cedc119`를
+method receipt에 결합하며, 모든 phase/purpose를 같은 잘못된 endpoint/route/action으로
+바꾸고 self-hash를 다시 계산해도 승인된 workload가 아닙니다. 선언된
+purpose/phase/root 및 별도 인증된 development source-edit 차이는 production
+descriptor를 바꾸지 않습니다. 이 guard는 missing timing/native pair나
+알려진 Next terminal coverage gap을 해결한 것이 아닙니다.
+
 5개 independent sample을 제거 없이 모두 사용합니다. L/U는 관측 min/max,
 B는 기존 budget, b는 기존 band이며 세 peer를 각각 비교합니다:
 

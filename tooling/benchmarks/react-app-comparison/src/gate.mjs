@@ -143,12 +143,8 @@ export async function evaluateAcceptedEvidence(baseline, timingReceipts, outputR
       throw new Error('FA-V2 counterpart development inventory mismatch');
     }
     if (timing.developmentMethodBinding) {
-      const timingDev = await verifyMethodReceipt({ ...timing,
-        methodBinding: timing.developmentMethodBinding, runs: timing.developmentWarmups,
-        warmups: [], developmentWarmups: undefined, developmentMethodBinding: undefined }, outputRoot);
-      const nativeDev = await verifyMethodReceipt({ ...native,
-        methodBinding: native.developmentMethodBinding, runs: native.developmentWarmups,
-        warmups: [], developmentWarmups: undefined, developmentMethodBinding: undefined }, outputRoot);
+      const timingDev = await verifyMethodBinding(timing.developmentMethodBinding, outputRoot);
+      const nativeDev = await verifyMethodBinding(native.developmentMethodBinding, outputRoot);
       if (timingDev.stimuliSha256 !== nativeDev.stimuliSha256
         || timingDev.executionId === nativeDev.executionId || timingDev.configSha256 === nativeDev.configSha256) {
         throw new Error('FA-V2 counterpart development configuration mismatch');

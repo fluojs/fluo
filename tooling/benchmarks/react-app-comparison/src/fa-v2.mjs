@@ -3,11 +3,18 @@ import { readFile, realpath, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { replayServerCpu } from './server-cpu.mjs';
+import { planMeasurements } from './measure.mjs';
+import representative from '../config/representative.json' with { type: 'json' };
 
 export const METHOD_VERSION = 'FA-V2';
 export const hashObject = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const hashBytes = (value) => createHash('sha256').update(value).digest('hex');
 const frameworks = ['fluo', 'next', 'react-router', 'tanstack-start'];
+const approvedProduction = structuredClone(representative.measurement);
+const PRODUCTION_DESCRIPTOR_SHA256 = 'b8d8a51b4b40660c796d952a5af3a066dc2c5837a33841e5556c5d050cedc119';
+if (hashObject(approvedProduction) !== PRODUCTION_DESCRIPTOR_SHA256) {
+  throw new Error('FA-V2 approved production descriptor source mismatch');
+}
 
 export function assertMethodConfig(config) {
   if (config.methodVersion !== METHOD_VERSION || !['timing', 'native-conformance'].includes(config.measurementPurpose)
@@ -26,6 +33,10 @@ export function assertMethodConfig(config) {
     if (workload?.requests !== 200 || workload.concurrency !== 8) {
       throw new Error('FA-V2 frozen workload requires 200 requests/concurrency 8');
     }
+  }
+  if (!isDeepStrictEqual({ journeys: config.journeys, interactions: config.interactions,
+    throughput: config.throughput }, approvedProduction)) {
+    throw new Error('FA-V2 approved production descriptor mismatch');
   }
 }
 
@@ -81,6 +92,7 @@ export async function captureMethodBinding(config, directory) {
     pairId: config.pairId, pairPhase: config.pairPhase,
     executionId, configSha256: hashObject(configuration), stimuliSha256: hashObject(stimuli(configuration)),
     productSha256: hashObject(config.provenance), baselineSha256: config.provenance?.baselineSha256,
+    productionDescriptorSha256: PRODUCTION_DESCRIPTOR_SHA256,
   };
   if (!/^[a-f0-9]{64}$/u.test(binding.baselineSha256 ?? '')) throw new Error('FA-V2 baseline identity required');
   const path = resolve(directory, `method-${executionId}.json`);
@@ -102,10 +114,11 @@ export async function verifyMethodBinding(binding, root) {
   const record = JSON.parse(raw);
   assertMethodConfig(record.configuration);
   for (const key of ['methodVersion', 'measurementPurpose', 'pairId', 'pairPhase', 'executionId', 'configSha256',
-    'stimuliSha256', 'productSha256', 'baselineSha256']) {
+    'stimuliSha256', 'productSha256', 'baselineSha256', 'productionDescriptorSha256']) {
     if (binding[key] !== record[key]) throw new Error(`FA-V2 method ${key} mismatch`);
   }
   if (record.configSha256 !== hashObject(record.configuration)
+    || record.productionDescriptorSha256 !== PRODUCTION_DESCRIPTOR_SHA256
     || record.measurementPurpose !== record.configuration.measurementPurpose
     || record.pairId !== record.configuration.pairId
     || record.stimuliSha256 !== hashObject(stimuli(record.configuration))
@@ -117,12 +130,41 @@ export async function verifyMethodBinding(binding, root) {
   return record;
 }
 
+const inventoryKeys = ['profile', 'mode', 'framework', 'runId', 'warmup', 'cycle', 'slot'];
+
+function assertRawInventory(record, config, expected) {
+  const item = planMeasurements(config).find((entry) => entry.runId === record.runId
+    && entry.framework === record.framework);
+  if (!item || inventoryKeys.some((key) => record[key] !== item[key])
+    || inventoryKeys.some((key) => expected[key] !== undefined && record[key] !== expected[key])
+    || (!record.sourceTraces && (record.device !== item.device || record.url !== item.url))) {
+    throw new Error('FA-V2 frozen raw inventory mismatch');
+  }
+}
+
+async function verifyInventory(samples, config, warmup, root) {
+  const plan = planMeasurements(config).filter((item) => item.warmup === warmup);
+  if (samples.length !== plan.length || samples.some((run, index) =>
+    inventoryKeys.some((key) => run[key] !== plan[index][key]) || run.warmupRuns !== config.warmupRuns)) {
+    throw new Error(`FA-V2 frozen ${warmup ? 'warmup' : 'measured'} inventory mismatch (independent repetitions)`);
+  }
+  const base = await realpath(root);
+  for (const run of samples) {
+    if (!isAbsolute(run.trace ?? '')) throw new Error('FA-V2 frozen raw inventory trace path invalid');
+    const path = await realpath(run.trace);
+    const location = relative(base, path);
+    if (location.startsWith('..') || isAbsolute(location)) throw new Error('FA-V2 frozen raw inventory outside output root');
+    assertRawInventory(JSON.parse(await readFile(path, 'utf8')), config, run);
+  }
+}
+
 export async function verifyMethodTrace(record, expected, root) {
   if (!isDeepStrictEqual(record.methodBinding, expected?.methodBinding)
     || record.methodVersion !== METHOD_VERSION || record.methodVersion !== expected.methodVersion
     || record.measurementPurpose !== expected.measurementPurpose) throw new Error('FA-V2 sample/trace purpose mismatch');
   const method = await verifyMethodBinding(record.methodBinding, root);
   const config = method.configuration;
+  assertRawInventory(record, config, expected);
   if (record.profile !== config.profile || record.mode !== config.mode
     || record.measurementPurpose !== method.measurementPurpose
     || !isDeepStrictEqual(record.provenance, config.provenance)) throw new Error('FA-V2 raw configuration mismatch');
@@ -197,6 +239,8 @@ export async function verifyMethodReceipt(receipt, root) {
     || !isDeepStrictEqual(receipt.provenance, method.configuration.provenance)) {
     throw new Error('FA-V2 receipt identity mismatch');
   }
+  await verifyInventory(receipt.runs, method.configuration, false, root);
+  await verifyInventory(receipt.warmups, method.configuration, true, root);
   for (const run of [...receipt.runs, ...receipt.warmups]) {
     if (!isDeepStrictEqual(run.methodBinding, receipt.methodBinding)
       || run.methodVersion !== receipt.methodVersion || run.measurementPurpose !== receipt.measurementPurpose
@@ -209,6 +253,7 @@ export async function verifyMethodReceipt(receipt, root) {
     if (development.productSha256 !== method.productSha256 || development.pairId !== method.pairId
       || development.measurementPurpose !== method.measurementPurpose
       || development.executionId === method.executionId) throw new Error('FA-V2 development binding mismatch');
+    await verifyInventory(receipt.developmentWarmups ?? [], development.configuration, true, root);
     for (const run of receipt.developmentWarmups ?? []) {
       if (!isDeepStrictEqual(run.methodBinding, receipt.developmentMethodBinding)
         || run.methodVersion !== receipt.methodVersion || run.measurementPurpose !== receipt.measurementPurpose

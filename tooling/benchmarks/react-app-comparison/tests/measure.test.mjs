@@ -73,11 +73,11 @@ test('FA-V2 gate authenticates separate purpose environments and refuses mismatc
   const receipts = [];
   for (const measurementPurpose of ['timing', 'native-conformance']) {
     const settings = {
-      ...config, profile: 'desktop-native', mode: 'native', warmupRuns: 2, measurementRuns: 5,
+      ...config,
+      ...JSON.parse(await readFile(new URL('../config/representative.json', import.meta.url), 'utf8')).measurement,
+      profile: 'desktop-native', mode: 'native', warmupRuns: 2, measurementRuns: 5,
       methodVersion: 'FA-V2', measurementPurpose, pairId: 'fixed-cycle', pairPhase: 'before',
       nativeLifetime: measurementPurpose === 'timing' ? { enabled: false } : { enabled: true, python: '/python' },
-      throughput: Object.fromEntries(frameworks.map((framework) =>
-        [framework, { path: '/', requests: 200, concurrency: 8 }])),
       provenance: { ...config.provenance,
         baselineSha256: createHash('sha256').update(baselineBytes).digest('hex') },
     };

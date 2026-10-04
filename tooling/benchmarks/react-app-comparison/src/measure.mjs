@@ -600,6 +600,7 @@ export function planMeasurements(config) {
       device,
       runId: `${config.profile}-${config.mode}-cycle-${cycle + 1}-slot-${slot + 1}`,
       warmup: cycle < config.warmupRuns, url: config.apps[FRAMEWORKS[(cycle + slot) % FRAMEWORKS.length]],
+      ...(config.methodVersion === 'FA-V2' ? { cycle: cycle + 1, slot: slot + 1 } : {}),
     }))).flat();
 }
 
@@ -653,6 +654,7 @@ export async function collectMeasurements(config, driver, directory) {
     const run = {
       profile: item.profile, mode: item.mode, framework: item.framework, runId: item.runId,
       trace, warmupRuns: config.warmupRuns, ...binding, ...method,
+      ...(methodBinding ? { warmup: item.warmup, cycle: item.cycle, slot: item.slot } : {}),
       ...(methodBinding && observation.artifacts?.serverCpuSha256
         ? { serverCpuSha256: observation.artifacts.serverCpuSha256 } : {}),
       correctness: !correctness.pass ? 'fail' : observation.qualityFailures?.length ? 'inconclusive' : 'pass',
@@ -731,6 +733,7 @@ export async function mergeEvidence(production, development, directory) {
         methodBinding: run.methodBinding, sourceMethodBindings: [run.methodBinding, dev.methodBinding],
         serverCpuSha256: run.serverCpuSha256,
         profile: run.profile, mode: run.mode, framework: run.framework, runId: run.runId,
+        warmup: run.warmup, cycle: run.cycle, slot: run.slot,
         provenance: production.provenance } : {}),
       ...(isolated ? { isolatedRepresentative: true, environmentBinding: production.environmentBinding,
         sourceEnvironmentBindings: [run.environmentBinding, dev.environmentBinding] } : {}),
