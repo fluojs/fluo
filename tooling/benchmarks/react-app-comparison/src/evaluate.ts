@@ -83,8 +83,13 @@ function median(values: readonly number[]): number {
 }
 
 export function evaluatePerformance(baseline: Baseline, runs: readonly MeasurementRun[],
-  methodVersion: 'historical-v1' | 'FA-V2' = 'historical-v1'): Evaluation {
-  if (methodVersion === 'FA-V2') return evaluateObservedRanges(baseline, runs);
+  methodVersion: 'historical-v1' | 'FA-V2' | 'FA-V3' = 'historical-v1'): Evaluation {
+  switch (methodVersion) {
+    case 'FA-V2':
+    case 'FA-V3': return evaluateObservedRanges(baseline, runs, methodVersion);
+    case 'historical-v1': break;
+    default: throw new InvalidBaselineError('unsupported method version');
+  }
   const { minimumRuns, warmupRuns, maximumRelativeSpread, outlierMadMultiplier } = baseline.policy;
   if (!Number.isInteger(minimumRuns) || minimumRuns < 3) throw new InvalidBaselineError('minimumRuns');
   if (!Number.isInteger(warmupRuns) || warmupRuns < 0) throw new InvalidBaselineError('warmupRuns');
@@ -203,7 +208,8 @@ function compareProducts(left: readonly number[], right: readonly number[]): num
 }
 
 /** FA-V2 decision stability over every observed sample; legacy replay is above. */
-export function evaluateObservedRanges(baseline: Baseline, runs: readonly MeasurementRun[]): Evaluation {
+export function evaluateObservedRanges(baseline: Baseline, runs: readonly MeasurementRun[],
+  methodVersion: 'FA-V2' | 'FA-V3' = 'FA-V2'): Evaluation {
   // Keep baseline validation identical to historical replay, without adopting
   // any of its median/noise verdicts.
   evaluatePerformance(baseline, []);
@@ -225,8 +231,8 @@ export function evaluateObservedRanges(baseline: Baseline, runs: readonly Measur
       let complete = samples.length === minimumRuns && unique === samples.length;
       if (!complete) checks.push({ ...context, verdict: 'inconclusive', reason: 'insufficient-runs' });
       for (const sample of samples) {
-        if (sample.mode !== config.mode || sample.methodVersion !== 'FA-V2'
-          || sample.measurementPurpose !== 'timing') {
+        if (sample.mode !== config.mode || sample.methodVersion !== methodVersion
+          || sample.measurementPurpose !== (methodVersion === 'FA-V3' ? 'integrated' : 'timing')) {
           complete = false;
           checks.push({ ...context, verdict: 'inconclusive', reason: 'measurement-quality' });
         }

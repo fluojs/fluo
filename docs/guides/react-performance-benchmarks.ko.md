@@ -26,6 +26,60 @@ baseline이며 완전한 CRUD나 장시간 jukebox 동작의 독립적인 증거
 
 ## 측정과 판정
 
+### FA-V3 동일 실행 production 수용
+
+새 production 수용에는 `methodVersion: "FA-V3"`,
+`measurementPurpose: "integrated"`, `measurementKind: "production"`을
+명시합니다. 기존 CLI와 준비된 native observer의 명시적 opt-in을 사용하며
+별도 native counterpart는 허용하지 않습니다. `evaluateAcceptedEvidence`는 같은 run의 method/config, product,
+environment, pair/phase, warmup/measured 순서, raw CPU, request cutoff와
+canonical native raw/schema/host receipt를 먼저 인증한 뒤 평가합니다. Metric 없는 quality 실패도 유지합니다.
+FA-V2의 기존 관측 min/max 수식과 정확한 decimal equality를 상속하며 새
+MAD/spread veto, tolerance, budget이나 sample 선택 규칙을 추가하지 않습니다.
+FA-V2/unversioned capture는 historical 의미를 유지하고 재사용하지 않습니다.
+
+Fresh before/final cohort마다 변경하지 않은 representative config를 파생하고
+같은 비어 있지 않은 `pairId` 및 `pairPhase: "before"` / `"after"`를
+명시하며 full config/source/build/environment identity는 각각 동결합니다.
+Suite README의 명시적 isolated Linux 대표 invocation으로 재현합니다. Full-suite의
+`run-gate.mjs`는 `measurementKind: "development"`, `measurementPurpose: "timing"`과
+`nativeLifetime: { enabled: false }`인 fresh development timing도 수집합니다.
+Kind/purpose/phase와 공유 tool/source identity를 인증한 뒤 합치며 production
+terminal/metric을 dev 증거로 옮기지 않습니다. Client 소유 RE-A01 source-edit
+인증은 그대로 필수이며 우회하지 않습니다.
+
+Canonical agent는 seven hooks 모두에 CModule request callback, 독립
+Resource/Loader birth, 안정적인 invocation frame과 per-thread parent chain을
+사용합니다. 124-byte payload/128-byte stride/512-byte header/500000-event
+journal의 native release/acquire publication과 drop/failure/ownership 검증을
+유지합니다. 실제 canonical agent/host/collector hash를 인증하며 private
+candidate나 변환 decoder의 identity를 사용하지 않습니다. Signal entry는
+대상 exit/reap보다 먼저여야 하지만 성공한 정상 sender return은 그 뒤에
+관측될 수 있습니다. Raw NULL, missing status와 SIGTERM 15는 그대로입니다.
+Partial hooks/coverage, missing return, cutoff 변경, foreign evidence나 cleanup
+실패는 unavailable/INCONCLUSIVE이며 성공이 아닙니다. Observer/setup/drain
+비용을 차감하지 않습니다. 기본 disabled 수집에는 Python/Frida가 필요 없고
+macOS native 지원은 unsupported입니다. Development/HMR과 원래 browser/
+readiness/throughput/CPU 경계, 모든 budget, 네 framework/profile, 2 warmup/
+5 independent alternating sample과 workload 200/8을 유지합니다.
+
+준비된 SDK 검증은 `tests/native-sdk/`에 있습니다. Linux ARM64에서
+`fixture.c`를 `headless_shell`로 컴파일하고 pinned Python으로
+`run-fixture.py <fresh-output-root>`, 이어서
+`node verify-fixture.mjs <fresh-output-root>`를 실행합니다. Canonical
+agent/decoder로 65-level nesting, 실제 pthread interleaving, publication/
+accounting, pointer reuse, failure와 retirement를 검사합니다. 원래 private
+65-level bridge의 exit-1 finding은 보존하며 green으로 바꾸지 않습니다.
+`qualify-browser.mjs <prepared-root>`와 독립 `--verify`는 준비된 guest에서
+새 canonical source closure와 원래 Next 2 warmup/1 measured prefix를 묶으며
+모든 raw artifact와 원래 exit를 보존합니다. 이 유한 검증은 mechanism
+qualification이며 before/final 성능 PASS,
+issue 종료나 final-head review가 아닙니다. Fresh paired fixed-cycle gate,
+독립 exact-head review와 GitHub CI는 다음 단계로 남습니다.
+
+**Historical 방법.** 아래 FA-V2 purpose 분리와 명령은 historical 기록입니다.
+FA-V3는 별도 production timing/native-conformance 수용만 교체합니다.
+
 ### FA-V2 관측 범위 수용
 
 FA-V2는 수용 의미를 변경하며 numeric budget이나 public 동작을 완화하지 않습니다.
@@ -123,7 +177,7 @@ Complete tracing만으로 모든 terminal callback의 관측 coverage를 입증�
 
 기계가 읽는 suite의 `baseline.json`은 절대 budget, 상대 비교 band, profile,
 반복/warmup 횟수와 historical 집계/noise/outlier 규칙을 소유합니다.
-새 수용은 위 FA-V2 방법을 적용합니다. 예산을
+새 production 수용은 위 FA-V3 방법을 적용합니다. 예산을
 완화하려면 검토 가능한 명시적 변경이 필요합니다.
 첫 측정 시작점을 `--mode discovery`로 기록했습니다. 실제 budget 부족을 준비
 오류로 취급하지 않으며, 실행 명령이 성공했어도 결과 파일의 성능 판정은
@@ -178,8 +232,9 @@ Request에는 loader/request ID, initiator, 종료 phase/시점, cancellation을
 기존 raw-trace authentication을 그대로 요구합니다.
 
 과거 production `nativeLifetime` 모드는 선택적이며 기본 비활성이었습니다.
-FA-V2는 별도 timing/native-conformance 실행을 요구하며 아래 observer 요구 사항은
-native-conformance에만 적용합니다.
+FA-V3 production은 같은 실행의 integrated native 관측을 요구합니다.
+FA-V2 timing/native-conformance 분리는 historical 기록이며 아래 observer 요구 사항은
+FA-V3 production integrated에도 적용합니다.
 `run-gate.mjs` config의 `measurement`에
 `{ "nativeLifetime": { "enabled": true, "python": "/opt/fluo-native-debug/bin/python" } }`
 를 추가해야 하며, 기본 경로는 Frida/Python을 import·실행·설치하거나 요구하지
@@ -304,7 +359,7 @@ root가 달라도 도구/collector content hash와 allocation은 같아야 합�
 `8a09eb8d216e555b97760a86539dea31e79c86a8`의 Fluo `src/document.ts` /
 `reload:true`와 reviewed final `f9f5ac6722957cbe2752b9959e657a46594c0a1b`
 또는 source가 검증된 후속 구현 head의 `src/catalog-destination.tsx` /
-`reload:false`입니다. 인증된 FA-V2 before-to-after phase 전환 외에는
+`reload:false`입니다. 인증된 versioned before-to-after phase 전환 외에는
 이 두 필드만 해당 방향으로 달라질 수 있고 다른 설정,
 편집, peer, budget은 모두 같아야 합니다. 양쪽 모두 `/login`에서 `Editor login`을
 단 한 번 `Editor login changed`로 바꾸고 동일한 visible `h1`을 관측한 뒤
@@ -314,7 +369,7 @@ final `a48953e1f5825e26afc5865a5177af988619bdceebec801cf8b4025b1a2fad73`으로
 서로 다르게 유지합니다. 두 원래 identity flag와 함께 `--environment-before-record`,
 `--environment-before-root`를 사용합니다. 원본 bytes/digest, containment,
 invocation, source/head/blob, build/dependency와 collector 증거로 capture와 replay의
-관계를 인증합니다. Production-only pair는 인증된 FA-V2 phase 전환만 허용하며
+관계를 인증합니다. Production-only pair는 인증된 versioned phase 전환만 허용하며
 나머지 config는 동일해야 하고,
 profile, dev와 warmup hash를 aggregate hash와 별도로 보존합니다.
 Before record는 `--react-edit-pair-source`로 준비합니다. Aggregate와 development
@@ -334,7 +389,7 @@ final upstream `f3e699047bfa51bbb69d9abeb2717eeb9e1871b0`에는 CLI/HTTP/React
 typegen, background form, navigation, store, provider 변경이 포함되어 제품 차이를
 #3884만의 인과 효과나 same-upstream 단일 최적화 control로 주장하지 않습니다.
 좁은 pair 검증은 성능 PASS가 아닙니다. 네 framework/profile의 fresh 전체 재수집,
-2 warmup/5 measured 순서 교대, 원래 budget과 versioned FA-V2 판정, exact-head review와
+2 warmup/5 measured 순서 교대, 원래 budget과 versioned FA-V3 판정, exact-head review와
 final GitHub CI는 계속 필수입니다.
 
 과거 load-only 데이터는 다른 초기 작업 구간을 수집했고 cold module이 끝나기 전에

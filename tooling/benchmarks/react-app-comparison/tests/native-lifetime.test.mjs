@@ -150,6 +150,18 @@ function withUnrelatedRootCall(observation, timestamp) {
   return observation;
 }
 
+test('shutdown signal entry before target exit authenticates normal sender returning later', () => {
+  const observation = shutdownFixture();
+  const exit = observation.lifecycle.find((entry) => entry.event === 'owned-exit');
+  for (const entry of observation.lifecycle.filter((entry) => entry.event.startsWith('shutdown-') && entry.event !== 'shutdown-ready')) {
+    entry.ns = String(12000000000n + (BigInt(entry.ns) - 12000000000n) * 10n);
+  }
+  exit.ns = '12000000075';
+
+  assert.equal(isObservedShutdownExit(exit, observation), true);
+  assert.equal(exit.exitCodeRaw, 15);
+});
+
 test('unrelated failed root call preserves a complete post-close termination proof', () => {
   const observation = withUnrelatedRootCall(shutdownFixture(), '12000000021');
   const exit = observation.lifecycle.find((entry) => entry.event === 'owned-exit');
@@ -625,6 +637,22 @@ function parentStatusFixture(statusRaw = 0) {
   }
   return observation;
 }
+
+test('retirement signal entry before parent reap preserves raw status when sender returns later', () => {
+  const observation = parentStatusFixture(15);
+  const signal = observation.lifecycle.find((entry) => entry.event === 'shutdown-signal-enter');
+  const returned = observation.lifecycle.find((entry) => entry.event === 'shutdown-signal-return');
+  const reap = observation.lifecycle.find((entry) => entry.event === 'parent-reap');
+  reap.ns = String((BigInt(signal.ns) + BigInt(returned.ns)) / 2n);
+  reap.startedNs = String(BigInt(reap.ns) - 1n);
+
+  const result = reconcileNativeLifetime([request()], observation, ledger());
+
+  assert.deepEqual(result.unavailable, []);
+  assert.equal(reap.statusRaw, 15);
+  assert.equal(observation.lifecycle[2].exitCodeRaw, null);
+  assert.equal(observation.lifecycle[2].missing, true);
+});
 
 function lateNotificationFixture(witness, early = false) {
   const observation = parentStatusFixture();

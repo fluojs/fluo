@@ -154,6 +154,96 @@ const methodConfig = {
   provenance: { baselineSha256: 'a'.repeat(64), commit: 'b'.repeat(40) },
 };
 
+const integratedConfig = { ...methodConfig, methodVersion: 'FA-V3',
+  measurementPurpose: 'integrated', measurementKind: 'production',
+  nativeLifetime: { enabled: true, python: '/python' } };
+
+test('FA-V3 integrated config preserves frozen workload and rejects purpose or kind confusion', () => {
+  assert.doesNotThrow(() => assertMethodConfig(integratedConfig));
+  for (const mutation of [
+    { measurementPurpose: 'timing' }, { measurementPurpose: 'native-conformance' },
+    { nativeLifetime: { enabled: false } }, { measurementKind: undefined },
+    { measurementKind: 'development' }, { methodVersion: 'FA-V4' },
+  ]) assert.throws(() => assertMethodConfig({ ...integratedConfig, ...mutation }));
+  assert.doesNotThrow(() => assertMethodConfig({ ...integratedConfig, measurementKind: 'development',
+    measurementPurpose: 'timing', nativeLifetime: { enabled: false } }));
+});
+
+test('FA-V3 explicit evaluation inherits extrema without falling into historical statistics', () => {
+  const runs = samples('cpuPercent', [101, 110, 120, 130, 140])
+    .map((run) => ({ ...run, methodVersion: 'FA-V3', measurementPurpose: 'integrated' }));
+
+  assert.equal(evaluator.evaluatePerformance(baseline, runs, 'FA-V3').verdict, 'fail');
+  for (const [values, verdict] of [
+    [[100, 100, 100, 100, 100], 'pass'], [[99, 99, 99, 99, 101], 'inconclusive'],
+  ]) {
+    const result = evaluator.evaluatePerformance(baseline, samples('cpuPercent', values, [100, 100, 100, 100, 100])
+      .map((run) => ({ ...run, methodVersion: 'FA-V3', measurementPurpose: 'integrated' })), 'FA-V3');
+    assert.equal(result.checks.find((check) => check.metric === 'cpuPercent' && check.framework === 'fluo').verdict, verdict);
+  }
+});
+
+test('FA-V3 collection authenticates cycle slot kind and source-bound fresh development merge', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fa-v3-inventory-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const driver = { async check() { return { pass: false, steps: [] }; } };
+
+  const production = await collectMeasurements(integratedConfig, driver, join(directory, 'production'));
+  const development = await collectMeasurements({ ...integratedConfig, measurementKind: 'development',
+    measurementPurpose: 'timing', nativeLifetime: { enabled: false } }, driver, join(directory, 'development'));
+  const combined = await mergeEvidence(production, development, join(directory, 'combined'));
+
+  assert.equal(production.runs[0].cycle, 3);
+  assert.equal(production.runs[0].slot, 1);
+  assert.equal(production.methodBinding.measurementKind, 'production');
+  assert.equal(development.methodBinding.measurementKind, 'development');
+  await verifyMethodReceipt(combined, directory);
+  await verifyTraceFiles([...combined.runs, ...combined.warmups, ...combined.developmentWarmups], directory);
+  await assert.rejects(mergeEvidence(production, production, join(directory, 'wrong-kind')), /kind|development/u);
+  for (const mutation of [{ measurementKind: 'development' }, { measurementPurpose: 'timing' },
+    { cycle: 1 }, { slot: 4 }, { methodVersion: 'FA-V2' }]) {
+    const run = production.runs[0];
+    const raw = JSON.parse(await readFile(run.trace));
+    await assert.rejects(verifyMethodTrace({ ...raw, ...mutation }, run, directory), /FA-V[23]/u);
+  }
+  const swapped = structuredClone(production);
+  [swapped.runs[0], swapped.warmups[0]] = [swapped.warmups[0], swapped.runs[0]];
+  await assert.rejects(verifyMethodReceipt(swapped, directory), /inventory/u);
+  const first = production.runs[0];
+  await assert.rejects(verifyMethodTrace(JSON.parse(await readFile(first.trace)),
+    { ...first, measurementKind: 'development' }, directory), /measurement kind/u);
+});
+
+test('FA-V3 real gate CLI dispatches integrated evidence and rejects mixed historical purpose', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fa-v3-cli-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const receipt = join(directory, 'integrated.json');
+  await writeFile(receipt, JSON.stringify({ methodVersion: 'FA-V3',
+    measurementPurpose: 'integrated', measurementKind: 'production' }));
+  const args = [new URL('../src/gate.mjs', import.meta.url).pathname, '--baseline',
+    new URL('../baseline.json', import.meta.url).pathname, '--output', join(directory, 'result.json'),
+    '--trace-root', directory, receipt];
+
+  await assert.rejects(promisify(execFile)(process.execPath, args),
+    (error) => error.code === 1 && /authenticated method binding/u.test(error.stderr));
+  const historical = join(directory, 'historical.json');
+  await writeFile(historical, JSON.stringify({ methodVersion: 'FA-V2', measurementPurpose: 'timing' }));
+  await assert.rejects(promisify(execFile)(process.execPath, [...args, historical]),
+    (error) => error.code === 1 && /mixed historical/u.test(error.stderr));
+});
+
+test('FA-V3 measurement CLI rejects opposite kind before launching a browser', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fa-v3-kind-cli-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const config = join(directory, 'config.json');
+  await writeFile(config, JSON.stringify(integratedConfig));
+
+  await assert.rejects(promisify(execFile)(process.execPath, [
+    new URL('../src/measure.mjs', import.meta.url).pathname, '--config', config,
+    '--output', join(directory, 'result.json'), '--dev',
+  ]), (error) => error.code === 1 && /measurement kind must match explicit configuration/u.test(error.stderr));
+});
+
 test('frozen measured inventory rejects swapping warmups across both purposes without changing raw evidence', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'fa-v2-inventory-swap-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

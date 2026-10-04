@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 
 import { evaluateAcceptedEvidence, evaluateEvidence } from './gate.mjs';
 import { assertMethodConfig } from './fa-v2.mjs';
-import { bindEnvironmentPair, captureIsolatedEnvironment, environmentConfigIdentity, importEnvironmentPairBefore, launchIsolatedInvocation, mergeEvidence,
+import { assertProductionDevelopmentEnvironment, bindEnvironmentPair, captureIsolatedEnvironment, environmentConfigIdentity, importEnvironmentPairBefore, launchIsolatedInvocation, mergeEvidence,
   readIsolatedInvocation, verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyReactEditPairRelation } from './measure.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
 
@@ -20,7 +20,9 @@ export async function verifyProfileEnvironment(aggregateBinding, receipt, expect
   const aggregate = await verifyEnvironmentBinding(aggregateBinding, outputRoot);
   await verifyMeasurementEnvironment(receipt, outputRoot);
   const profile = await verifyEnvironmentBinding(receipt.environmentBinding, outputRoot);
-  if (aggregate.identitySha256 !== profile.identitySha256
+  const separateDevelopment = development && expectedConfig.methodVersion === 'FA-V3';
+  if (separateDevelopment) assertProductionDevelopmentEnvironment(aggregate, profile);
+  if (!separateDevelopment && aggregate.identitySha256 !== profile.identitySha256
     || profile.invocation.parentInvocationId !== aggregate.invocation.invocationId
     || profile.invocation.invocationId !== `${aggregate.invocation.invocationId}-${receipt.profile}-${development ? 'development' : 'production'}`
     || profile.configSha256 !== environmentConfigIdentity(expectedConfig)
@@ -52,7 +54,9 @@ export async function beforeProfilePairFlags(beforePath, beforeRoot, profile, de
     const child = { method: record.method, path, sha256: createHash('sha256').update(raw).digest('hex'),
       invocationId: record.invocation.invocationId, identitySha256: record.identitySha256, configSha256: record.configSha256 };
     await verifyEnvironmentBinding(child, beforeRoot);
-    if (child.identitySha256 !== binding.identitySha256
+    const separateDevelopment = development && record.configuration.methodVersion === 'FA-V3';
+    if (separateDevelopment) assertProductionDevelopmentEnvironment(aggregate, record);
+    if (!separateDevelopment && child.identitySha256 !== binding.identitySha256
       || child.invocationId !== `${binding.invocationId}-${profile}-${development ? 'development' : 'production'}`) {
       throw new Error('before profile environment parent/identity mismatch');
     }
@@ -349,6 +353,8 @@ async function main() {
           ...JSON.parse(await readFile(join(output, `${receipt.profile}-config.json`), 'utf8')),
           dev: config.dev,
           ...(config.measurement.methodVersion ? { measurementKind: 'development' } : {}),
+          ...(config.measurement.methodVersion === 'FA-V3' ? {
+            measurementPurpose: 'timing', nativeLifetime: { enabled: false } } : {}),
         };
         await writeFile(devConfig, `${JSON.stringify(devMeasurement, null, 2)}\n`);
         const pairFlags = args.includes('--environment-before-record')
@@ -368,6 +374,10 @@ async function main() {
     }
     let verdict;
     if (args.includes('--historical-replay')) verdict = await evaluateEvidence(baseline, receipts, output);
+    else if (config.measurement.methodVersion === 'FA-V3') {
+      if (args.includes('--native-receipts')) throw new Error('FA-V3 cannot borrow native counterparts');
+      verdict = await evaluateAcceptedEvidence(baseline, receipts, output);
+    }
     else if (config.measurement.measurementPurpose === 'native-conformance') {
       verdict = { methodVersion: 'FA-V2', measurementPurpose: 'native-conformance', checks: [],
         verdict: receipts.every((receipt) => [...receipt.runs, ...receipt.warmups,

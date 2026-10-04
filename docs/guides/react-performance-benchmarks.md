@@ -27,6 +27,61 @@ baseline and is not, by itself, proof of full CRUD or long-session jukebox behav
 
 ## Measurements and decisions
 
+### FA-V3 same-execution production acceptance
+
+New production acceptance sets `methodVersion: "FA-V3"`,
+`measurementPurpose: "integrated"` and `measurementKind: "production"`.
+Use the existing CLI and an explicitly enabled provisioned native observer;
+never a separate native counterpart. `evaluateAcceptedEvidence` authenticates the same run's method/config,
+product, environment, pair/phase, ordered warmup/measured inventory, raw CPU,
+request cutoff and canonical native raw/schema/host receipts before evaluation. Metricless quality failures remain visible.
+The existing FA-V2 observed min/max formulas and exact decimal equality apply,
+without a new MAD/spread veto, tolerance, budget or sample-selection rule.
+FA-V2/unversioned captures retain their historical meaning and cannot be reused.
+
+For each fresh before/final cohort, derive the unchanged representative config,
+set a common nonempty `pairId` and explicit `pairPhase: "before"` / `"after"`,
+and freeze each full config/source/build/environment identity separately.
+Use the explicit isolated Linux representative invocation in the suite README.
+Full-suite `run-gate.mjs` also collects fresh development timing with
+`measurementKind: "development"`, `measurementPurpose: "timing"` and
+`nativeLifetime: { enabled: false }`.
+It authenticates kind, purpose, phase and shared tools/source identity before
+merging; production terminals/metrics never become dev evidence. RE-A01's
+client-owned source-edit authentication remains required, not bypassed.
+
+The canonical agent uses CModule request callbacks for all seven hooks,
+independent Resource/Loader births, stable invocation frames and per-thread
+parent chains. The 124-byte payload/128-byte stride/512-byte header/500000-event
+journal retains native release/acquire publication and all drop/failure/ownership
+checks. Source hashes are taken from the actual canonical agent/host/collector,
+not private candidates or transformed decoders. Signal entry must precede target
+exit/reap; a successful normal sender return may be observed later. Raw NULL,
+missing statuses and SIGTERM 15 remain unchanged. Partial hooks/coverage,
+missing returns, cutoff drift, foreign evidence or cleanup failure are unavailable
+or INCONCLUSIVE, not success. Observer/setup/drain cost is not subtracted.
+Default disabled collection requires no Python/Frida; macOS native support is
+unsupported. Development/HMR and original browser/readiness/throughput/CPU
+boundaries, all budgets, four frameworks/profiles and 2 warmups/5 independent
+alternating samples with workload 200/8 remain unchanged.
+
+Provisioned SDK checks live in `tests/native-sdk/`: compile `fixture.c` as
+`headless_shell` on Linux ARM64, run `run-fixture.py <fresh-output-root>`
+with the pinned Python, then `node verify-fixture.mjs <fresh-output-root>`.
+These use the canonical agent and decoder for 65-level nesting, real pthread
+interleaving, publication/accounting, pointer reuse, failure and retirement.
+The old private 65-level bridge exit-1 finding remains preserved, not made green.
+`qualify-browser.mjs <prepared-root>` and its independent `--verify` run
+bind the new canonical source closure to the original Next 2-warmup/1-measured
+prefix in the prepared guest; preserve all raw artifacts and original exits.
+These finite checks prove mechanism qualification, not before/final performance
+PASS, issue closure or final-head reviews.
+Fresh paired fixed-cycle gates, independent exact-head reviews and GitHub CI
+remain later stages.
+
+**Historical method.** The FA-V2 purpose split and commands below are historical.
+FA-V3 supersedes only separate production timing/native-conformance acceptance.
+
 ### FA-V2 observed-range acceptance
 
 FA-V2 changes acceptance meaning without relaxing numeric budgets or public
@@ -128,7 +183,7 @@ complete tracing is not proof that every terminal callback was instrumented.
 
 The suite's machine-readable `baseline.json` owns the absolute budgets, relative bands,
 profiles, run/warmup counts and historical aggregation/noise/outlier policy.
-New acceptance uses FA-V2 above. Preserve
+New production acceptance uses FA-V3 above. Preserve
 the file and its review history: relaxing a budget requires an explicit reviewed change.
 The first `--mode discovery` captured the measured starting point without treating a
 confirmed deficit as a setup error; its recorded performance verdict is `fail`
@@ -185,8 +240,9 @@ initiators, settlement phase/timestamps and cancellation. Existing raw-trace
 authentication remains required.
 
 Historical production `nativeLifetime` observation was optional and disabled by default.
-FA-V2 requires separate timing/native-conformance executions; the observer-specific
-requirements below apply to native-conformance only.
+FA-V3 production requires same-execution integrated native observation.
+The FA-V2 timing/native-conformance split is historical; the observer-specific
+requirements below also apply to FA-V3 production integrated observation.
 In a `run-gate.mjs` config, add
 `{ "nativeLifetime": { "enabled": true, "python": "/opt/fluo-native-debug/bin/python" } }`
 under `measurement`; the default never imports, starts, installs or requires
@@ -319,7 +375,7 @@ The sole unequal-config dev alternative is before product
 `reload:true`, and reviewed final `f9f5ac6722957cbe2752b9959e657a46594c0a1b`
 or its source-verified implementation descendant using
 `src/catalog-destination.tsx` / `reload:false`. Apart from the authenticated
-FA-V2 before-to-after phase transition, only those two fields may differ;
+versioned before-to-after phase transition, only those two fields may differ;
 all other settings, edits, peers and budgets remain identical. Both replace
 `Editor login` once with `Editor login changed` on `/login`, observe the same
 visible `h1`, and restore exact source bytes. Original representative full hashes
@@ -328,7 +384,7 @@ final `a48953e1f5825e26afc5865a5177af988619bdceebec801cf8b4025b1a2fad73`.
 Use `--environment-before-record` and `--environment-before-root` with both original
 identity flags; original bytes/digests, containment, invocation, source/head/blob,
 build/dependency and collector evidence authenticate the relation in capture and
-replay. Production-only pairs permit only the authenticated FA-V2 phase transition,
+replay. Production-only pairs permit only the authenticated versioned phase transition,
 with all other config fields identical; profile,
 dev and warmup hashes remain separate from the aggregate.
 Prepare the before record with `--react-edit-pair-source`; aggregate and
@@ -350,7 +406,7 @@ background-form, navigation, store and provider changes; product-level differenc
 are not solely #3884's causal effect or a same-upstream single-optimization control.
 Narrow pair checks do not establish performance PASS. Full four-framework/
 four-profile fresh recollection, two warmups/five alternating samples, unchanged
-budgets and versioned FA-V2 decisions, exact-head reviews and final GitHub CI remain required.
+budgets and versioned FA-V3 decisions, exact-head reviews and final GitHub CI remain required.
 
 Historical load-only data sampled a different initial-work window and could trigger
 warm navigation before cold modules finished; retained Linux evidence includes cold

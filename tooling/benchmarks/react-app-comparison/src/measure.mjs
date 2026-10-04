@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual, promisify } from 'node:util';
-import { captureMethodBinding, verifyMethodReceipt, verifyMethodTrace } from './fa-v2.mjs';
+import { captureMethodBinding, verifyMethodBinding, verifyMethodReceipt, verifyMethodTrace } from './fa-v2.mjs';
 
 const execute = promisify(execFile);
 const sha256 = (raw) => createHash('sha256').update(raw).digest('hex');
@@ -439,9 +439,14 @@ function compareReactEditPairRecords(before, after) {
   }
   const expected = structuredClone(before.configuration);
   if (before.configuration.methodVersion !== undefined || after.configuration.methodVersion !== undefined) {
-    if (before.configuration.methodVersion !== 'FA-V2' || after.configuration.methodVersion !== 'FA-V2'
+    if (!['FA-V2', 'FA-V3'].includes(before.configuration.methodVersion)
+      || after.configuration.methodVersion !== before.configuration.methodVersion
+      || before.configuration.methodVersion === 'FA-V3'
+        && !['production', 'development'].includes(before.configuration.measurementKind)
       || !before.configuration.pairId || before.configuration.pairId !== after.configuration.pairId
-      || !['timing', 'native-conformance'].includes(before.configuration.measurementPurpose)
+      || !(before.configuration.methodVersion === 'FA-V3'
+        ? before.configuration.measurementKind === 'production' ? ['integrated'] : ['timing']
+        : ['timing', 'native-conformance']).includes(before.configuration.measurementPurpose)
       || before.configuration.measurementPurpose !== after.configuration.measurementPurpose
       || before.configuration.pairPhase !== 'before' || after.configuration.pairPhase !== 'after'
       || before.configuration.measurementKind !== after.configuration.measurementKind) {
@@ -449,7 +454,7 @@ function compareReactEditPairRecords(before, after) {
     }
     expected.pairPhase = 'after';
     if (expected.measurement) {
-      if (expected.measurement.methodVersion !== 'FA-V2'
+      if (expected.measurement.methodVersion !== expected.methodVersion
         || expected.measurement.pairId !== expected.pairId
         || expected.measurement.measurementPurpose !== expected.measurementPurpose
         || expected.measurement.pairPhase !== 'before') {
@@ -560,7 +565,7 @@ async function observeGuestIdentity(config, host, entrypoints) {
       { nanoCpus: 0, cpuQuota: 0, cpuPeriod: 0, cpuset: '', memory: 0, memorySwap: 0 })) {
     throw new Error('isolated environment differs from frozen Linux preparation allocation/runtime');
   }
-  const timing = config.methodVersion === 'FA-V2' && config.measurementPurpose === 'timing';
+  const timing = ['FA-V2', 'FA-V3'].includes(config.methodVersion) && config.measurementPurpose === 'timing';
   if (!timing && (!config.nativeLifetime?.enabled || !isAbsolute(config.nativeLifetime.python ?? ''))) {
     throw new Error('isolated representative requires explicit nativeLifetime enabled and absolute Python');
   }
@@ -706,7 +711,7 @@ export async function verifyEnvironmentBinding(binding, outputRoot) {
     throw new Error('environment binding comparable identity/evidence mismatch');
   }
   const native = await import('./native-lifetime.mjs');
-  const timing = record.configuration?.methodVersion === 'FA-V2'
+  const timing = ['FA-V2', 'FA-V3'].includes(record.configuration?.methodVersion)
     && record.configuration?.measurementPurpose === 'timing';
   if (guest.platform !== 'linux' || guest.arch !== 'arm64' || guest.runtime?.version !== 'v24.21.0'
     || guest.browser?.sha256 !== native.NATIVE_LIFETIME_IDENTITY.binarySha256
@@ -819,7 +824,7 @@ export function planMeasurements(config) {
       device,
       runId: `${config.profile}-${config.mode}-cycle-${cycle + 1}-slot-${slot + 1}`,
       warmup: cycle < config.warmupRuns, url: config.apps[FRAMEWORKS[(cycle + slot) % FRAMEWORKS.length]],
-      ...(config.methodVersion === 'FA-V2' ? { cycle: cycle + 1, slot: slot + 1 } : {}),
+      ...(['FA-V2', 'FA-V3'].includes(config.methodVersion) ? { cycle: cycle + 1, slot: slot + 1 } : {}),
     }))).flat();
 }
 
@@ -828,7 +833,8 @@ export async function collectMeasurements(config, driver, directory) {
   await mkdir(directory, { recursive: true });
   const methodBinding = config.methodVersion !== undefined ? await captureMethodBinding(config, directory) : undefined;
   const method = methodBinding ? { methodVersion: methodBinding.methodVersion,
-    measurementPurpose: methodBinding.measurementPurpose, methodBinding } : {};
+    measurementPurpose: methodBinding.measurementPurpose, methodBinding,
+    ...(methodBinding.methodVersion === 'FA-V3' ? { measurementKind: methodBinding.measurementKind } : {}) } : {};
   const isolated = config.isolatedRepresentative || config.environmentBinding;
   const binding = isolated ? { isolatedRepresentative: true, environmentBinding: config.environmentBinding,
     ...(config.environmentPairRelation ? { environmentPairRelation: config.environmentPairRelation } : {}) } : {};
@@ -891,7 +897,8 @@ export async function collectDevMeasurements(config, driver, directory) {
     'cold-ready': 'devColdReadyMs', 'react-edit': 'devReactEditVisibleMs',
     'css-edit': 'devCssEditVisibleMs', 'server-edit': 'devServerEditVisibleMs',
   };
-  const measurement = { ...config, ...(config.methodVersion ? { measurementKind: 'development' } : {}) };
+  const measurement = { ...config, ...(config.methodVersion ? { measurementKind: 'development' } : {}),
+    ...(config.methodVersion === 'FA-V3' ? { measurementPurpose: 'timing', nativeLifetime: { enabled: false } } : {}) };
   if (config.environmentPairRelation) Object.defineProperty(measurement, 'environmentPairRelation', {
     value: config.environmentPairRelation,
   });
@@ -942,8 +949,13 @@ export async function collectDevMeasurements(config, driver, directory) {
 
 export async function mergeEvidence(production, development, directory) {
   if (production.methodVersion || development.methodVersion) {
-    if (production.methodVersion !== 'FA-V2' || development.methodVersion !== 'FA-V2'
-      || production.measurementPurpose !== development.measurementPurpose
+    if (!['FA-V2', 'FA-V3'].includes(production.methodVersion) || development.methodVersion !== production.methodVersion
+      || (production.methodVersion === 'FA-V3'
+        ? production.measurementKind !== 'production' || development.measurementKind !== 'development'
+          || production.measurementPurpose !== 'integrated' || development.measurementPurpose !== 'timing'
+          || production.methodBinding?.pairPhase !== development.methodBinding?.pairPhase
+          || production.methodBinding?.executionId === development.methodBinding?.executionId
+        : production.measurementPurpose !== development.measurementPurpose)
       || production.methodBinding?.pairId !== development.methodBinding?.pairId
       || production.methodBinding?.productSha256 !== development.methodBinding?.productSha256) {
       throw new Error('FA-V2 production/development purpose/product mismatch');
@@ -953,12 +965,19 @@ export async function mergeEvidence(production, development, directory) {
     || production.environmentBinding || development.environmentBinding;
   if (isolated && (!production.isolatedRepresentative || !development.isolatedRepresentative
     || !production.environmentBinding?.identitySha256
-    || production.environmentBinding.identitySha256 !== development.environmentBinding?.identitySha256)) {
+    || !development.environmentBinding?.identitySha256
+    || production.methodVersion !== 'FA-V3'
+      && production.environmentBinding.identitySha256 !== development.environmentBinding.identitySha256)) {
     throw new Error('environment binding production/development mismatch');
   }
   if (isolated) {
     await verifyMeasurementEnvironment(production, dirname(directory));
     await verifyMeasurementEnvironment(development, dirname(directory));
+    if (production.methodVersion === 'FA-V3') {
+      const first = await verifyEnvironmentBinding(production.environmentBinding, dirname(directory));
+      const second = await verifyEnvironmentBinding(development.environmentBinding, dirname(directory));
+      assertProductionDevelopmentEnvironment(first, second);
+    }
   }
   await mkdir(directory, { recursive: true });
   const devRuns = new Map(development.runs.map((run) => [`${run.runId}:${run.framework}`, run]));
@@ -970,6 +989,7 @@ export async function mergeEvidence(production, development, directory) {
     await writeFile(trace, `${JSON.stringify({
       schemaVersion: 1, sourceTraces: [run.trace, dev.trace],
       ...(production.methodBinding ? { methodVersion: run.methodVersion, measurementPurpose: run.measurementPurpose,
+        ...(production.methodVersion === 'FA-V3' ? { measurementKind: 'production' } : {}),
         methodBinding: run.methodBinding, sourceMethodBindings: [run.methodBinding, dev.methodBinding],
         serverCpuSha256: run.serverCpuSha256,
         profile: run.profile, mode: run.mode, framework: run.framework, runId: run.runId,
@@ -991,6 +1011,26 @@ export async function mergeEvidence(production, development, directory) {
       ...(development.environmentPairRelation ? { developmentEnvironmentPairRelation: development.environmentPairRelation } : {}) } : {}) };
 }
 
+export function assertProductionDevelopmentEnvironment(production, development) {
+  if (production.configuration.methodVersion !== 'FA-V3' || development.configuration.methodVersion !== 'FA-V3'
+    || production.configuration.measurementKind !== 'production' || development.configuration.measurementKind !== 'development'
+    || production.configuration.measurementPurpose !== 'integrated' || development.configuration.measurementPurpose !== 'timing'
+    || production.configuration.pairId !== development.configuration.pairId
+    || production.configuration.pairPhase !== development.configuration.pairPhase) {
+    throw new Error('FA-V3 production/development environment kind/purpose mismatch');
+  }
+  // Native dependencies are deliberately absent from the non-invasive dev run.
+  // Each full identity is authenticated first; all shared tools/sources remain equal.
+  const common = ({ identity }) => {
+    const { python, external, fileContents, observer, ...guest } = identity.guest;
+    const { enabled, ...schema } = observer;
+    return { ...identity, guest: { ...guest, observer: schema } };
+  };
+  if (!isDeepStrictEqual(common(production), common(development))) {
+    throw new Error('FA-V3 production/development shared environment mismatch');
+  }
+}
+
 export async function verifyMeasurementEnvironment(receipt, outputRoot) {
   const method = receipt.methodVersion !== undefined ? await verifyMethodReceipt(receipt, outputRoot) : undefined;
   const samples = [...receipt.runs, ...(receipt.warmups ?? []), ...(receipt.developmentWarmups ?? [])];
@@ -1007,6 +1047,12 @@ export async function verifyMeasurementEnvironment(receipt, outputRoot) {
   const environment = await verifyEnvironmentBinding(receipt.environmentBinding, outputRoot);
   if (method && environment.configSha256 !== environmentConfigIdentity(method.configuration)) {
     throw new Error('FA-V2 method/environment full configuration mismatch');
+  }
+  if (receipt.methodVersion === 'FA-V3'
+    && (environment.configuration.methodVersion !== method.methodVersion
+      || environment.configuration.measurementPurpose !== method.measurementPurpose
+      || environment.configuration.measurementKind !== method.measurementKind)) {
+    throw new Error('FA-V3 method/environment configuration mismatch');
   }
   if (environment.pairBeforeBinding && environment.pairBeforeBinding.configSha256 !== environment.configSha256
     && !receipt.environmentPairRelation) throw new Error('React edit pair aggregate relation missing');
@@ -1032,10 +1078,11 @@ export async function verifyMeasurementEnvironment(receipt, outputRoot) {
       && !receipt.developmentEnvironmentPairRelation) throw new Error('React edit pair development relation missing');
     if (receipt.developmentEnvironmentPairRelation) await verifyReactEditPairRelation(
       receipt.developmentEnvironmentPairRelation, receipt.developmentEnvironmentBinding, outputRoot);
-    if (environment.identitySha256 !== development.identitySha256
-      || !isDeepStrictEqual(receipt.provenance, development.provenance)) {
+    if (!isDeepStrictEqual(receipt.provenance, development.provenance)
+      || receipt.methodVersion !== 'FA-V3' && environment.identitySha256 !== development.identitySha256) {
       throw new Error('environment binding development identity/provenance mismatch');
     }
+    if (receipt.methodVersion === 'FA-V3') assertProductionDevelopmentEnvironment(environment, development);
   }
   for (const run of samples) {
     const expected = (receipt.developmentWarmups ?? []).includes(run)
@@ -1148,7 +1195,10 @@ export async function verifyTraceFiles(runs, outputRoot) {
           runId: record.runId, framework: record.framework, profile: record.profile, mode: record.mode,
           ...(record.methodBinding ? { methodVersion: record.methodVersion,
             measurementPurpose: record.measurementPurpose, pairId: record.methodBinding.pairId,
-            executionId: record.methodBinding.executionId } : {}),
+            executionId: record.methodBinding.executionId,
+            ...(record.methodVersion === 'FA-V3' ? { measurementKind: record.measurementKind,
+              pairPhase: record.methodBinding.pairPhase, configSha256: record.methodBinding.configSha256,
+              productSha256: record.methodBinding.productSha256 } : {}) } : {}),
         }, passiveCdpLedger);
         if (unavailable.some((reason) => !record.qualityFailures?.includes(reason))) {
           throw new Error(`native lifetime inconclusive reasons missing: ${path}`);
@@ -1165,15 +1215,23 @@ export async function verifyTraceFiles(runs, outputRoot) {
           environmentBinding: record.sourceEnvironmentBindings?.[index],
           environmentPairRelation: record.sourceEnvironmentPairRelations?.[index] ?? undefined,
           ...(record.methodBinding ? { methodVersion: record.methodVersion,
-            measurementPurpose: record.measurementPurpose, methodBinding: record.sourceMethodBindings?.[index],
+            measurementPurpose: record.methodVersion === 'FA-V3' && index === 1 ? 'timing' : record.measurementPurpose,
+            ...(record.methodVersion === 'FA-V3' ? { measurementKind: index === 1 ? 'development' : 'production' } : {}),
+            methodBinding: record.sourceMethodBindings?.[index],
             profile: record.profile, mode: record.mode, framework: record.framework, runId: record.runId,
             ...(index === 0 ? { serverCpuSha256: record.serverCpuSha256 } : {}),
             correctness: index === 0 ? record.correctness.production : record.correctness.development } : {}),
         }, 'combined source');
         if (isolated) {
           if (!raw.isolatedRepresentative || !isDeepStrictEqual(raw.environmentBinding, record.sourceEnvironmentBindings?.[index])
-            || raw.environmentBinding?.identitySha256 !== record.environmentBinding.identitySha256) {
+            || record.methodVersion !== 'FA-V3'
+              && raw.environmentBinding?.identitySha256 !== record.environmentBinding.identitySha256) {
             throw new Error('environment binding combined source mismatch');
+          }
+          if (record.methodVersion === 'FA-V3' && index === 1) {
+            assertProductionDevelopmentEnvironment(
+              await verifyEnvironmentBinding(record.environmentBinding, root),
+              await verifyEnvironmentBinding(raw.environmentBinding, root));
           }
         }
       }
@@ -1199,7 +1257,13 @@ async function main() {
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   if (Object.hasOwn(config, 'environmentPairRelation')) throw new Error('caller-supplied React edit pair descriptor forbidden');
   const output = resolve(outputPath);
-  if (config.methodVersion !== undefined) config.measurementKind = flags.includes('--dev') ? 'development' : 'production';
+  if (config.methodVersion === 'FA-V3') {
+    if (config.measurementKind !== (flags.includes('--dev') ? 'development' : 'production')) {
+      throw new Error('FA-V3 CLI measurement kind must match explicit configuration');
+    }
+  } else if (config.methodVersion !== undefined) {
+    config.measurementKind = flags.includes('--dev') ? 'development' : 'production';
+  }
   if (invocation) {
     const pairBeforeBinding = await importEnvironmentPairBefore(flags, dirname(output));
     config.environmentBinding = await captureIsolatedEnvironment(config, invocation, dirname(output), {
@@ -1222,9 +1286,17 @@ async function main() {
       : await collectMeasurements(config, driver, join(dirname(output), 'traces'));
   } finally { await driver.close(); }
   if (!devOnly && config.dev) {
-    const devDriver = await createBrowserDriver(config, { devMode: true });
+    const developmentConfig = config.methodVersion === 'FA-V3'
+      ? { ...config, measurementKind: 'development', measurementPurpose: 'timing',
+        nativeLifetime: { enabled: false } } : config;
+    if (invocation && config.methodVersion === 'FA-V3') {
+      developmentConfig.environmentBinding = await captureIsolatedEnvironment(developmentConfig,
+        { ...invocation, parentInvocationId: invocation.invocationId,
+          invocationId: `${invocation.invocationId}-development` }, dirname(output));
+    }
+    const devDriver = await createBrowserDriver(developmentConfig, { devMode: true });
     try {
-      const development = await collectDevMeasurements(config, devDriver, join(dirname(output), 'dev-traces'));
+      const development = await collectDevMeasurements(developmentConfig, devDriver, join(dirname(output), 'dev-traces'));
       result = await mergeEvidence(result, development, join(dirname(output), 'combined-traces'));
     } finally { await devDriver.close(); }
   }
@@ -1239,10 +1311,15 @@ async function main() {
     if (flags.includes('--historical-replay')) {
       result = { ...result, evaluation: await evaluateEvidence(baseline, [result], traceRoot) };
     } else {
-      const counterpartPath = flags[flags.indexOf('--native-counterpart') + 1];
-      if (!flags.includes('--native-counterpart')) throw new Error('FA-V2 gate requires --native-counterpart');
-      const counterpart = JSON.parse(await readFile(counterpartPath, 'utf8'));
-      result = { ...result, evaluation: await evaluateAcceptedEvidence(baseline, [result], traceRoot, [counterpart]) };
+      let counterparts = [];
+      if (config.methodVersion === 'FA-V3') {
+        if (flags.includes('--native-counterpart')) throw new Error('FA-V3 cannot borrow native counterparts');
+      } else {
+        const counterpartPath = flags[flags.indexOf('--native-counterpart') + 1];
+        if (!flags.includes('--native-counterpart')) throw new Error('FA-V2 gate requires --native-counterpart');
+        counterparts = [JSON.parse(await readFile(counterpartPath, 'utf8'))];
+      }
+      result = { ...result, evaluation: await evaluateAcceptedEvidence(baseline, [result], traceRoot, counterparts) };
     }
     if (result.evaluation.verdict !== 'pass') process.exitCode = 1;
   }

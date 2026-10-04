@@ -40,8 +40,9 @@ Historical production measurement optionally accepts `nativeLifetime: { "enabled
 "python": "/opt/fluo-native-debug/bin/python" }` (under `measurement` in a
 `run-gate.mjs` config). Omit it for the unchanged passive NetLog path:
 the default never imports, starts, installs or requires Frida/Python.
-FA-V2 requires separate timing and native-conformance executions as described
-below; observer-specific requirements apply only to native-conformance.
+FA-V3 production requires same-execution integrated native observation.
+The FA-V2 timing/native-conformance split below is historical; its native
+requirements also apply to FA-V3 production integrated observation.
 The mode is `chromium-native-lifetime-v1`, with a retained versioned
 symbol/argument/clock schema and agent/host source hashes.
 
@@ -225,6 +226,9 @@ with Linux numbers.
 
 This mode is explicitly opt-in. Keep `config/representative.json` unchanged;
 make an isolated invocation config with
+`measurement.methodVersion: "FA-V3"`, `measurement.measurementPurpose: "integrated"`,
+`measurement.measurementKind: "production"`, a frozen nonempty `measurement.pairId`,
+`measurement.pairPhase: "before"` or `"after"`, and
 `measurement.nativeLifetime: { enabled: true, python: "/opt/fluo-native-debug/bin/python" }`.
 For direct `measure.mjs`, put `nativeLifetime` at the config root instead.
 The already-provisioned running container must see the current collector source,
@@ -297,7 +301,7 @@ descendant) with `src/catalog-destination.tsx` / `reload:false`.
 Both replace `Editor login` once with `Editor login changed` on `/login`, observe
 the same visible `h1`, and restore the exact source bytes. Only
 `/dev/fluo/edits/react-edit/file` and `/dev/fluo/edits/react-edit/reload`
-may differ in that direction in addition to the authenticated FA-V2
+may differ in that direction in addition to the authenticated versioned
 before-to-after phase transition; all other fields and peers remain identical.
 The original representative config hashes are respectively
 `b7e8cfc2c53a57006197357542b6831b9ccb58835297ee01e22a7a1afc5a5b5d` and
@@ -305,7 +309,7 @@ The original representative config hashes are respectively
 each invocation and derived profile retains its own full exact config/hash.
 The relation authenticates both contained original records, source blobs/head
 lineage, actual build/dependency identities and final collector closure.
-Production-only comparisons permit only the authenticated FA-V2 phase transition,
+Production-only comparisons permit only the authenticated versioned phase transition,
 with all other config fields identical. Aggregate, profile,
 development, warmup and combined replay must retain their distinct invocation
 bindings and relation evidence; an aggregate relation is not a shared derived hash.
@@ -342,6 +346,61 @@ cross-platform parity, macOS support or physical-device verification. Ordinary
 CI/default/macOS invocations remain unchanged and require no Docker/Python/Frida.
 
 ## Frozen decision policy
+
+### FA-V3 same-execution production acceptance
+
+New production acceptance sets `methodVersion: "FA-V3"`,
+`measurementPurpose: "integrated"` and `measurementKind: "production"`.
+Use the existing CLI and an explicitly enabled provisioned native observer;
+never a separate native counterpart. `evaluateAcceptedEvidence` authenticates the same run's method/config,
+product, environment, pair/phase, ordered warmup/measured inventory, raw CPU,
+request cutoff and canonical native raw/schema/host receipts before evaluation. Metricless quality failures remain visible.
+The existing FA-V2 observed min/max formulas and exact decimal equality apply,
+without a new MAD/spread veto, tolerance, budget or sample-selection rule.
+FA-V2/unversioned captures retain their historical meaning and cannot be reused.
+
+For each fresh before/final cohort, derive the unchanged representative config,
+set a common nonempty `pairId` and explicit `pairPhase: "before"` / `"after"`,
+and freeze each full config/source/build/environment identity separately.
+Use the explicit isolated Linux representative invocation in the suite README.
+Full-suite `run-gate.mjs` also collects fresh development timing with
+`measurementKind: "development"`, `measurementPurpose: "timing"` and
+`nativeLifetime: { enabled: false }`.
+It authenticates kind, purpose, phase and shared tools/source identity before
+merging; production terminals/metrics never become dev evidence. RE-A01's
+client-owned source-edit authentication remains required, not bypassed.
+
+The canonical agent uses CModule request callbacks for all seven hooks,
+independent Resource/Loader births, stable invocation frames and per-thread
+parent chains. The 124-byte payload/128-byte stride/512-byte header/500000-event
+journal retains native release/acquire publication and all drop/failure/ownership
+checks. Source hashes are taken from the actual canonical agent/host/collector,
+not private candidates or transformed decoders. Signal entry must precede target
+exit/reap; a successful normal sender return may be observed later. Raw NULL,
+missing statuses and SIGTERM 15 remain unchanged. Partial hooks/coverage,
+missing returns, cutoff drift, foreign evidence or cleanup failure are unavailable
+or INCONCLUSIVE, not success. Observer/setup/drain cost is not subtracted.
+Default disabled collection requires no Python/Frida; macOS native support is
+unsupported. Development/HMR and original browser/readiness/throughput/CPU
+boundaries, all budgets, four frameworks/profiles and 2 warmups/5 independent
+alternating samples with workload 200/8 remain unchanged.
+
+Provisioned SDK checks live in `tests/native-sdk/`: compile `fixture.c` as
+`headless_shell` on Linux ARM64, run `run-fixture.py <fresh-output-root>`
+with the pinned Python, then `node verify-fixture.mjs <fresh-output-root>`.
+These use the canonical agent and decoder for 65-level nesting, real pthread
+interleaving, publication/accounting, pointer reuse, failure and retirement.
+The old private 65-level bridge exit-1 finding remains preserved, not made green.
+`qualify-browser.mjs <prepared-root>` and its independent `--verify` run
+bind the new canonical source closure to the original Next 2-warmup/1-measured
+prefix in the prepared guest; preserve all raw artifacts and original exits.
+These finite checks prove mechanism qualification, not before/final performance
+PASS, issue closure or final-head reviews.
+Fresh paired fixed-cycle gates, independent exact-head reviews and GitHub CI
+remain later stages.
+
+**Historical method.** The FA-V2 purpose split and commands below are historical.
+FA-V3 supersedes only separate production timing/native-conformance acceptance.
 
 ### FA-V2 acceptance migration
 

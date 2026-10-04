@@ -49,9 +49,10 @@ test('ordinary React edit capture does not require pinned history or production 
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-for (const purpose of [undefined, 'native-conformance', 'timing']) {
-const methodVersion = purpose ? 'FA-V2' : undefined;
-test(`${methodVersion ? `FA-V2 ${purpose}` : 'historical replay'} source-bound React pair authenticates both records without equating full config hashes`, async () => {
+for (const [methodVersion, purpose] of [
+  [undefined, undefined], ['FA-V2', 'native-conformance'], ['FA-V2', 'timing'], ['FA-V3', 'timing'],
+]) {
+test(`${methodVersion ? `${methodVersion} ${purpose}` : 'historical replay'} source-bound React pair authenticates both records without equating full config hashes`, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'fluo-react-pair-'));
   try {
     const methods = await import('../src/measure.mjs');
@@ -255,12 +256,14 @@ test('a configured hot-update label without actual React edit proof is inconclus
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-for (const purpose of ['timing', 'native-conformance']) {
-test(`FA-V2 ${purpose} production phase transition retains exact stimuli and original before binding`, async (t) => {
+for (const [methodVersion, purpose] of [
+  ['FA-V2', 'timing'], ['FA-V2', 'native-conformance'], ['FA-V3', 'integrated'],
+]) {
+test(`${methodVersion} ${purpose} production phase transition retains exact stimuli and original before binding`, async (t) => {
   const methods = await import('../src/measure.mjs');
   const directory = await mkdtemp(join(tmpdir(), 'fluo-phase-only-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const beforeConfig = { ...config, methodVersion: 'FA-V2', measurementPurpose: purpose,
+  const beforeConfig = { ...config, methodVersion, measurementPurpose: purpose,
     pairId: 'phase-only', pairPhase: 'before', measurementKind: 'production',
     nativeLifetime: purpose === 'timing' ? { enabled: false } : { enabled: true, python: '/python' } };
   const before = await environmentFixture(directory, 'before', beforeConfig);
@@ -333,6 +336,39 @@ test('isolated production and development aggregates cannot merge mismatched env
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
+test('FA-V3 development child retains its own authenticated identity while matching shared aggregate sources', async (t) => {
+  const { beforeProfilePairFlags } = await import('../src/run-gate.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-fa3-profile-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const productionConfig = { ...config, methodVersion: 'FA-V3', measurementPurpose: 'integrated',
+    measurementKind: 'production', pairId: 'profile-pair', pairPhase: 'before',
+    nativeLifetime: { enabled: true, python: '/python' }, dev: { fluo: {} } };
+  const parent = await environmentFixture(directory, 'parent', productionConfig);
+  const child = await environmentFixture(directory, 'parent-desktop-matched-cache-development',
+    { ...productionConfig, measurementKind: 'development', measurementPurpose: 'timing',
+      nativeLifetime: { enabled: false } });
+  child.record.invocation.parentInvocationId = 'parent';
+  const persist = async () => {
+    const bytes = JSON.stringify(child.record);
+    await writeFile(child.binding.path, bytes);
+    child.binding.sha256 = createHash('sha256').update(bytes).digest('hex');
+  };
+  await persist();
+
+  const flags = await beforeProfilePairFlags(parent.binding.path, directory, config.profile, true);
+
+  assert.notEqual(parent.binding.identitySha256, child.binding.identitySha256);
+  assert.equal(flags[1], child.binding.identitySha256);
+  assert.equal(flags[3], child.binding.configSha256);
+  child.record.guestEvidence.guest.collector['fa-v2.mjs'].sha256 = 'b'.repeat(64);
+  child.record.guestEvidence.guest.files['/collector/fa-v2.mjs'] = 'b'.repeat(64);
+  child.record.identity = isolatedEnvironmentIdentity(child.record.invocation.host, child.record.guestEvidence.guest);
+  child.record.identitySha256 = createHash('sha256').update(JSON.stringify(child.record.identity)).digest('hex');
+  await persist();
+  await assert.rejects(beforeProfilePairFlags(parent.binding.path, directory, config.profile, true),
+    /shared environment mismatch/u);
+});
+
 async function environmentFixture(directory, invocationId = 'invocation', measurementConfig = config) {
   const allocation = { nanoCpus: 0, cpuQuota: 0, cpuPeriod: 0, cpuset: '', memory: 0, memorySwap: 0 };
   const vm = { kernel: 'kernel', logicalCpus: 12, memoryBytes: 8392974336 };
@@ -373,7 +409,7 @@ async function environmentFixture(directory, invocationId = 'invocation', measur
   guest.locks = Object.fromEntries(['.', ...frameworks.map((name) => `apps/${name}`)]
     .map((name) => [name, file(`/locks/${name}/pnpm-lock.yaml`)]));
   guest.allocation = { 'cpu.max': 'max 100000', 'cpuset.cpus.effective': '0-11', 'memory.max': 'max' };
-  if (measurementConfig.methodVersion === 'FA-V2' && measurementConfig.measurementPurpose === 'timing') {
+  if (['FA-V2', 'FA-V3'].includes(measurementConfig.methodVersion) && measurementConfig.measurementPurpose === 'timing') {
     delete guest.python;
     delete guest.external;
     delete guest.files['/python'];
