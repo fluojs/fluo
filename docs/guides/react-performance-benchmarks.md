@@ -27,7 +27,64 @@ baseline and is not, by itself, proof of full CRUD or long-session jukebox behav
 
 ## Measurements and decisions
 
+### FA-V3 same-execution production acceptance
+
+New production acceptance sets `methodVersion: "FA-V3"`,
+`measurementPurpose: "integrated"` and `measurementKind: "production"`.
+Use the existing CLI and an explicitly enabled provisioned native observer;
+never a separate native counterpart. `evaluateAcceptedEvidence` and
+`evaluateAcceptedServerEvidence` authenticate the same run's method/config,
+product, environment, pair/phase, ordered warmup/measured inventory, raw CPU,
+request cutoff and canonical native raw/schema/host receipts before evaluation
+or the six-server-metric filter. Metricless quality failures remain visible.
+The existing FA-V2 observed min/max formulas and exact decimal equality apply,
+without a new MAD/spread veto, tolerance, budget or sample-selection rule.
+FA-V2/unversioned captures retain their historical meaning and cannot be reused.
+
+For each fresh before/final cohort, derive the unchanged representative config,
+set a common nonempty `pairId` and explicit `pairPhase: "before"` / `"after"`,
+and freeze each full config/source/build/environment identity separately.
+The Linux server-only command below is the production reproduction path.
+Full-suite `run-gate.mjs` also collects fresh development timing with
+`measurementKind: "development"` and `nativeLifetime: { enabled: false }`.
+It authenticates kind, purpose, phase and shared tools/source identity before
+merging; production terminals/metrics never become dev evidence. RE-A01's
+client-owned source-edit authentication remains required, not bypassed.
+
+The canonical agent uses CModule request callbacks for all seven hooks,
+independent Resource/Loader births, stable invocation frames and per-thread
+parent chains. The 124-byte payload/128-byte stride/512-byte header/500000-event
+journal retains native release/acquire publication and all drop/failure/ownership
+checks. Source hashes are taken from the actual canonical agent/host/collector,
+not private candidates or transformed decoders. Signal entry must precede target
+exit/reap; a successful normal sender return may be observed later. Raw NULL,
+missing statuses and SIGTERM 15 remain unchanged. Partial hooks/coverage,
+missing returns, cutoff drift, foreign evidence or cleanup failure are unavailable
+or INCONCLUSIVE, not success. Observer/setup/drain cost is not subtracted.
+Default disabled collection requires no Python/Frida; macOS native support is
+unsupported. Development/HMR and original browser/readiness/throughput/CPU
+boundaries, all budgets, four frameworks/profiles and 2 warmups/5 independent
+alternating samples with workload 200/8 remain unchanged.
+
+Provisioned SDK checks live in `tests/native-sdk/`: compile `fixture.c` as
+`headless_shell` on Linux ARM64, run `run-fixture.py <fresh-output-root>`
+with the pinned Python, then `node verify-fixture.mjs <fresh-output-root>`.
+These use the canonical agent and decoder for 65-level nesting, real pthread
+interleaving, publication/accounting, pointer reuse, failure and retirement.
+The old private 65-level bridge exit-1 finding remains preserved, not made green.
+`qualify-browser.mjs <prepared-root>` and its independent `--verify` run
+bind the new canonical source closure to the original Next 2-warmup/1-measured
+prefix in the prepared guest; preserve all raw artifacts and original exits.
+These finite checks prove mechanism qualification, not before/final performance
+PASS, socket/lifecycle/buffered acceptance, issue closure or final-head reviews.
+Fresh paired fixed-cycle gates, independent exact-head reviews and GitHub CI
+remain later stages.
+
 ### FA-V2 observed-range acceptance
+
+**Historical method.** This section preserves FA-V2's separate timing/native-conformance
+commands and replay meaning. New production acceptance uses FA-V3 above; the
+observed-range formulas, decimal equality and numeric budgets remain unchanged.
 
 FA-V2 changes acceptance meaning without relaxing numeric budgets or public
 behavior. The unchanged `baseline.json` median/spread/MAD vetoes are historical
@@ -136,7 +193,7 @@ complete tracing is not proof that every terminal callback was instrumented.
 
 The suite's machine-readable `baseline.json` owns the absolute budgets, relative bands,
 profiles, run/warmup counts and historical aggregation/noise/outlier policy.
-New acceptance uses FA-V2 above. Preserve
+New production acceptance uses FA-V3 above. Preserve
 the file and its review history: relaxing a budget requires an explicit reviewed change.
 The first `--mode discovery` captured the measured starting point without treating a
 confirmed deficit as a setup error; its recorded performance verdict is `fail`
@@ -221,7 +278,7 @@ An inconclusive sample is not a pass. Do not generalize an emulated profile to d
 that were never tested.
 
 For #3885, [the suite's server-only runner](../../tooling/benchmarks/react-app-comparison/README.md)
-retains the four profiles, frozen repetitions/budgets and FA-V2 range decisions but assesses
+retains the four profiles, frozen repetitions/budgets and inherited observed-range decisions but assesses
 only production server TTFB, throughput/error rate, CPU and RSS. It does not
 run development edits or claim a complete 22-metric verdict. Its browser
 first-contentful-paint remains `shellArrivalMs`, **not** the socket's
@@ -252,10 +309,9 @@ makes the run inconclusive without fabricating byte counts or a request failure.
 ### Explicit Linux server-only environment
 
 The observer-specific runtime, journal and lifecycle requirements below apply
-to native-conformance. FA-V2 timing authenticates the same Linux/browser/
-collector environment without Python/Frida observer identity. Derive timing
-with its purpose and `nativeLifetime.enabled: false`; update `pairPhase` for
-after and compare each purpose against its own before environment/config IDs.
+to FA-V3 production `integrated`. Historical FA-V2 timing omits Python/Frida.
+FA-V3 development uses `measurementKind: "development"`, purpose `"timing"` and
+`nativeLifetime.enabled: false`; no production terminal or metric is moved to dev.
 
 The historical macOS ARM64 Apple M4 Pro/Node 24.20.0 baseline is unchanged.
 The current representative GitHub workflow still requires
@@ -280,7 +336,7 @@ builds in that environment first. The container must see the checkout at the
 same absolute path and use its actual provisioned SDK and browser.
 [The suite README's actual command](../../tooling/benchmarks/react-app-comparison/README.md#explicit-linux-server-only-invocation)
 derives a local config from the unchanged `config/representative.json`, explicitly
-sets FA-V2 method/pair/phase and native-conformance
+sets FA-V3 method/pair/phase, `measurementKind: "production"` and purpose `integrated`,
 `measurement.nativeLifetime = { enabled: true, python: "/absolute/provisioned/python" }`,
 then uses this runner:
 
@@ -359,16 +415,16 @@ not admitted; status 15 and missing statuses are never rewritten to zero.
 
 Runner provenance, profile receipts, production/warmup raw traces and separate
 socket observations retain the same actual environment binding.
-Historical `evaluateServerEvidence` is replay only. FA-V2
-`evaluateAcceptedServerEvidence` requires common environment/raw/native
-authentication and matching native counterparts before filtering range
+Historical `evaluateServerEvidence` is replay only. FA-V3
+`evaluateAcceptedServerEvidence` requires same-execution environment/raw/native
+authentication without native counterparts before filtering range
 decisions to six server metrics. Passive headroom adds generator/ambient CPU observations without
 changing original sampling, browser cutoff, throughput or subsequent `ps`
 CPU/RSS sampling and lifecycle. Sockets remain native loopback, without browser
 profile emulation; buffered size/concurrency evidence stays an independent
 experiment.
 
-For FA-V2 after, use the before `--environment-identity <identitySha256>` but a
+For FA-V3 after, use the before `--environment-identity <identitySha256>` but a
 separately frozen after `--environment-config-identity <configSha256>` because
 `pairPhase` changes the full hash. Historical same-config replay retains the
 two-before-ID check. Comparison excludes run IDs/PIDs, absolute
@@ -384,8 +440,8 @@ invocation bindings. Runner and measurement child both select the same
 `entrypoints: ["run-server-only.mjs"]` common capture boundary: 12 common sources
 plus `fa-v2.mjs`, `server-cpu.mjs`, the runner, server measurement and socket-shell sources. The child receives
 the selection and parent binding over invocation transport and authenticates/
-compares the actual environment before driver work. FA-V2 gate adds authenticated
-method/purpose/config/CPU/counterpart bindings to historical strict replay.
+compares the actual environment before driver work. FA-V3 gate adds authenticated
+method/purpose/kind/phase/config/CPU/same-execution native bindings to historical strict replay.
 Explicit isolated mode forwards host SIGINT/SIGTERM through an invocation-owned
 Linux Python subreaper, requires descendant reaping and rechecks allocation in
 `finally`; ordinary disabled CI/macOS gains no Python requirement.

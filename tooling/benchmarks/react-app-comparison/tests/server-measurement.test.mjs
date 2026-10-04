@@ -9,8 +9,36 @@ import { test } from 'node:test';
 import { promisify } from 'node:util';
 
 import { verifyTraceFiles } from '../src/measure.mjs';
-import { evaluateServerEvidence, runServerMeasurement } from '../src/server-measurement.mjs';
+import { evaluateAcceptedServerEvidence, evaluateServerEvidence, runServerMeasurement } from '../src/server-measurement.mjs';
+import { collectMeasurements } from '../src/measure.mjs';
 import { METRICS } from '../src/evaluate.ts';
+
+test('FA-V3 server gate rejects borrowed counterpart before six-metric filtering', async () => {
+  const baseline = JSON.parse(await readFile(new URL('../baseline.json', import.meta.url)));
+  const receipt = { methodVersion: 'FA-V3', measurementPurpose: 'integrated', measurementKind: 'production' };
+
+  await assert.rejects(evaluateAcceptedServerEvidence(baseline, [receipt], tmpdir(),
+    [{ methodVersion: 'FA-V2', measurementPurpose: 'native-conformance' }]), /cannot borrow/u);
+});
+
+test('FA-V3 server gate authenticates derived configuration and environment before metricless quality verdict', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fa-v3-server-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const representative = JSON.parse(await readFile(new URL('../config/representative.json', import.meta.url)));
+  const baseline = JSON.parse(await readFile(new URL('../baseline.json', import.meta.url)));
+  const config = { ...representative.measurement, methodVersion: 'FA-V3', measurementPurpose: 'integrated',
+    measurementKind: 'production', pairId: 'server-fixed', pairPhase: 'before',
+    profile: 'desktop-native', mode: 'native', warmupRuns: 2, measurementRuns: 5,
+    apps: Object.fromEntries(['fluo', 'next', 'react-router', 'tanstack-start'].map((name) => [name, `http://fixture/${name}`])),
+    nativeLifetime: { enabled: true, python: '/python' },
+    provenance: { baselineSha256: 'd40e3d48caf76ee3456949f9151dc19d0a9a60eae6aef3c0b36ec5b177ef20f5' } };
+  const receipt = await collectMeasurements(config, { async check() { return { pass: false, steps: [] }; } }, directory);
+
+  await assert.rejects(evaluateAcceptedServerEvidence(baseline, [receipt], directory), /environment authentication/u);
+  assert.ok(receipt.runs.every((run) => run.correctness === 'fail' && Object.keys(run.metrics).length === 0));
+  await assert.rejects(evaluateAcceptedServerEvidence(baseline,
+    [{ ...receipt, runs: receipt.runs.slice(1) }], directory), /inventory/u);
+});
 
 test('server-only evaluation authenticates isolated aggregate before metric filtering', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'fluo-server-environment-'));

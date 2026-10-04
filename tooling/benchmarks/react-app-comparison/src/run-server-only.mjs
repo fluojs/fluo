@@ -217,6 +217,9 @@ try {
 let evaluation;
 if (args.includes('--historical-replay')) {
   evaluation = await evaluateServerEvidence(baseline, receipts, output);
+} else if (config.measurement.methodVersion === 'FA-V3') {
+  if (args.includes('--native-receipts')) throw new Error('FA-V3 cannot borrow native counterparts');
+  evaluation = await evaluateAcceptedServerEvidence(baseline, receipts, output);
 } else if (config.measurement.measurementPurpose === 'native-conformance') {
   evaluation = { checks: [], serverMetrics: [], verdict: receipts.length === 4
     && receipts.every((receipt) => [...receipt.runs, ...receipt.warmups].every((run) =>

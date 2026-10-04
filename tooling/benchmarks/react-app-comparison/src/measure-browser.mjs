@@ -304,7 +304,10 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         ? { ...config.nativeLifetime, measurement: { runId: item.runId, framework: item.framework,
           profile: item.profile, mode: item.mode,
           ...(item.methodBinding ? { methodVersion: item.methodVersion, measurementPurpose: item.measurementPurpose,
-            pairId: item.methodBinding.pairId, executionId: item.methodBinding.executionId } : {}) } } : undefined);
+            pairId: item.methodBinding.pairId, executionId: item.methodBinding.executionId,
+            ...(item.methodVersion === 'FA-V3' ? { measurementKind: item.measurementKind,
+              pairPhase: item.methodBinding.pairPhase, configSha256: item.methodBinding.configSha256,
+              productSha256: item.methodBinding.productSha256 } : {}) } : {}) } } : undefined);
       let measurementFailed = false;
       let measurementError;
       try {
@@ -559,7 +562,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           const [cpu, rss] = stdout.trim().split(/\s+/).map(Number);
           generator = { pid: process.pid, cpuPercent: cpu, rssBytes: rss * 1024 };
         }
-        if (config.methodVersion === 'FA-V2') {
+        if (['FA-V2', 'FA-V3'].includes(config.methodVersion)) {
           serverCpu = await readServerCpu(serverPid);
           metrics.cpuPercent = serverCpu.cpuPercent;
           metrics.rssBytes = serverCpu.rssBytes;

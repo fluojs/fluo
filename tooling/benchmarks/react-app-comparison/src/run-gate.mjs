@@ -287,6 +287,8 @@ async function main() {
         const devFile = join(output, `${receipt.profile}-dev.json`);
         await writeFile(devConfig, `${JSON.stringify({
           ...JSON.parse(await readFile(join(output, `${receipt.profile}-config.json`), 'utf8')),
+          ...(config.measurement.methodVersion === 'FA-V3' ? { measurementKind: 'development',
+            measurementPurpose: 'timing', nativeLifetime: { enabled: false } } : {}),
           dev: config.dev,
         }, null, 2)}\n`);
         const development = await readMeasurementReceipt(() =>
@@ -296,7 +298,8 @@ async function main() {
             { cwd: suite, ...(invocation ? { input: JSON.stringify({ ...invocation,
               parentInvocationId: invocation.invocationId, invocationId: `${invocation.invocationId}-${receipt.profile}-development` }) } : {}) }), devFile);
         await verifyMeasurementEnvironment(development, output);
-        if (environmentBinding && development.environmentBinding?.identitySha256 !== environmentBinding.identitySha256) {
+        if (environmentBinding && config.measurement.methodVersion !== 'FA-V3'
+          && development.environmentBinding?.identitySha256 !== environmentBinding.identitySha256) {
           throw new Error('environment binding development/aggregate mismatch');
         }
         receipts[index] = await mergeEvidence(receipt, development, join(output, 'combined-traces'));
@@ -304,6 +307,10 @@ async function main() {
     }
     let verdict;
     if (args.includes('--historical-replay')) verdict = await evaluateEvidence(baseline, receipts, output);
+    else if (config.measurement.methodVersion === 'FA-V3') {
+      if (args.includes('--native-receipts')) throw new Error('FA-V3 cannot borrow native counterparts');
+      verdict = await evaluateAcceptedEvidence(baseline, receipts, output);
+    }
     else if (config.measurement.measurementPurpose === 'native-conformance') {
       verdict = { methodVersion: 'FA-V2', measurementPurpose: 'native-conformance', checks: [],
         verdict: receipts.every((receipt) => [...receipt.runs, ...receipt.warmups,

@@ -1,13 +1,33 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { promisify } from 'node:util';
 import { once } from 'node:events';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { stopOwnedProcess } from '../src/process-group.mjs';
 import { performanceExitCode, readMeasurementReceipt, requireDevDefinitions, startServers, stopServers } from '../src/run-gate.mjs';
+
+test('FA-V3 run-gate validates integrated config before any smoke or server action', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fa-v3-run-gate-'));
+  const output = new URL(`../results/fa-v3-validation-${randomUUID()}`, import.meta.url).pathname;
+  t.after(() => Promise.all([rm(directory, { recursive: true, force: true }), rm(output, { recursive: true, force: true })]));
+  const config = JSON.parse(await readFile(new URL('../config/representative.json', import.meta.url)));
+  config.measurement = { ...config.measurement, methodVersion: 'FA-V3', measurementPurpose: 'integrated',
+    measurementKind: 'production', pairId: 'fixed-runner', pairPhase: 'before',
+    nativeLifetime: { enabled: true, python: '/python' } };
+  config.servers = {};
+  const path = join(directory, 'config.json');
+  await writeFile(path, JSON.stringify(config));
+
+  await assert.rejects(promisify(execFile)(process.execPath, [
+    new URL('../src/run-gate.mjs', import.meta.url).pathname,
+    '--config', path, '--output-dir', output,
+  ]), (error) => error.code === 1 && /all four production servers/u.test(error.stderr) && error.stdout === '');
+});
 
 test('representative gate requires observable cold and all three development edits', async () => {
   // Given: the checked-in four-app representative configuration.

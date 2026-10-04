@@ -118,13 +118,17 @@ document update를 표시합니다. `/assets/` 게시 순서와 asset 보존은
 
 ## 근거와 검증 한계
 
-성능 수용은 [FA-V2 방법](../guides/react-performance-benchmarks.ko.md#fa-v2-관측-범위-수용)을
+Production 성능 수용은 [FA-V3 방법](../guides/react-performance-benchmarks.ko.md#fa-v3-동일-실행-production-수용)을
 따릅니다. 기존 numeric budget, 200 requests/concurrency 8, 5회 measured/2회 warmup,
 네 framework/네 profile과 22개 client/6개 server metric을 유지하지만 독립
 spread/MAD repeatability veto는 제거하고 모든 관측 min/max의 결정 안정성을
-검사합니다. 이는 confidence interval이나 미래 보장이 아닙니다. 별도 인증된
-timing과 native-conformance의 fresh before/after를 모두 요구하며 native timing
-값이나 다른 실행 terminal을 차용할 수 없습니다. 원래 ownership/coverage/
+검사합니다. 이는 confidence interval이나 미래 보장이 아닙니다. Fresh before/after의
+`FA-V3` / `integrated` production capture에서 metric, request inventory/cutoff와
+canonical source-bound native 증거를 같은 실행에서 수집·인증해야 합니다.
+별도 counterpart의 terminal을 차용할 수 없습니다. FA-V2의 분리된 timing/
+native-conformance 명령과 unversioned receipt는 historical이며 FA-V3로
+재분류하거나 재사용하지 않습니다. Development/HMR은 별도로 인증한
+비침습적 timing 증거를 유지합니다. 원래 ownership/coverage/
 retirement/raw exit와 pending-request quality는 필수입니다. Method 구현이나
 focused 테스트는 성능 pair PASS, #3884/#3885 종료 또는 #3879 제품 수용이 아닙니다.
 

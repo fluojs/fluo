@@ -53,8 +53,8 @@ and raw traces were retained. Omit the flag for the representative regression
 gate: a `fail` or `inconclusive` verdict then exits nonzero. Never use discovery
 mode in the representative CI workflow or describe discovery's exit status as
 a performance PASS.
-The command above reproduces the historical method. FA-V2 collection instead
-uses the explicit derived purpose/phase config described below; the unchanged
+The command above reproduces the historical method. FA-V3 production collection
+uses the explicit derived integrated/kind/phase config described below; the unchanged
 tracked config alone is not a versioned acceptance invocation.
 Keep each invocation in a fresh `results/<head-sha>/discovery/` or
 `results/<head-sha>/regression/` directory. The gate rejects nonempty output
@@ -62,7 +62,7 @@ directories so a failed retry cannot reuse an older receipt.
 
 For #3885's **server-only before/after assessment**, coordinate an exclusive
 representative-host window first, then use the same frozen builds and four
-production apps with `node src/run-server-only.mjs --config <frozen-FA-V2-purpose-config> --output-dir
+production apps with `node src/run-server-only.mjs --config <frozen-FA-V3-integrated-config> --output-dir
 results/$(git rev-parse HEAD)/before` (or `after` on the verified new head).
 This runs the existing seeded production journeys with the frozen four profiles,
 two warmups, five independent runs per app and alternating order, but **does
@@ -118,7 +118,64 @@ profile receipts through `src/gate.mjs`. A single profile is not a gate pass.
 
 ## Frozen decision policy
 
+### FA-V3 same-execution production acceptance
+
+New production acceptance sets `methodVersion: "FA-V3"`,
+`measurementPurpose: "integrated"` and `measurementKind: "production"`.
+Use the existing CLI and an explicitly enabled provisioned native observer;
+never a separate native counterpart. `evaluateAcceptedEvidence` and
+`evaluateAcceptedServerEvidence` authenticate the same run's method/config,
+product, environment, pair/phase, ordered warmup/measured inventory, raw CPU,
+request cutoff and canonical native raw/schema/host receipts before evaluation
+or the six-server-metric filter. Metricless quality failures remain visible.
+The existing FA-V2 observed min/max formulas and exact decimal equality apply,
+without a new MAD/spread veto, tolerance, budget or sample-selection rule.
+FA-V2/unversioned captures retain their historical meaning and cannot be reused.
+
+For each fresh before/final cohort, derive the unchanged representative config,
+set a common nonempty `pairId` and explicit `pairPhase: "before"` / `"after"`,
+and freeze each full config/source/build/environment identity separately.
+The Linux server-only command below is the production reproduction path.
+Full-suite `run-gate.mjs` also collects fresh development timing with
+`measurementKind: "development"` and `nativeLifetime: { enabled: false }`.
+It authenticates kind, purpose, phase and shared tools/source identity before
+merging; production terminals/metrics never become dev evidence. RE-A01's
+client-owned source-edit authentication remains required, not bypassed.
+
+The canonical agent uses CModule request callbacks for all seven hooks,
+independent Resource/Loader births, stable invocation frames and per-thread
+parent chains. The 124-byte payload/128-byte stride/512-byte header/500000-event
+journal retains native release/acquire publication and all drop/failure/ownership
+checks. Source hashes are taken from the actual canonical agent/host/collector,
+not private candidates or transformed decoders. Signal entry must precede target
+exit/reap; a successful normal sender return may be observed later. Raw NULL,
+missing statuses and SIGTERM 15 remain unchanged. Partial hooks/coverage,
+missing returns, cutoff drift, foreign evidence or cleanup failure are unavailable
+or INCONCLUSIVE, not success. Observer/setup/drain cost is not subtracted.
+Default disabled collection requires no Python/Frida; macOS native support is
+unsupported. Development/HMR and original browser/readiness/throughput/CPU
+boundaries, all budgets, four frameworks/profiles and 2 warmups/5 independent
+alternating samples with workload 200/8 remain unchanged.
+
+Provisioned SDK checks live in `tests/native-sdk/`: compile `fixture.c` as
+`headless_shell` on Linux ARM64, run `run-fixture.py <fresh-output-root>`
+with the pinned Python, then `node verify-fixture.mjs <fresh-output-root>`.
+These use the canonical agent and decoder for 65-level nesting, real pthread
+interleaving, publication/accounting, pointer reuse, failure and retirement.
+The old private 65-level bridge exit-1 finding remains preserved, not made green.
+`qualify-browser.mjs <prepared-root>` and its independent `--verify` run
+bind the new canonical source closure to the original Next 2-warmup/1-measured
+prefix in the prepared guest; preserve all raw artifacts and original exits.
+These finite checks prove mechanism qualification, not before/final performance
+PASS, socket/lifecycle/buffered acceptance, issue closure or final-head reviews.
+Fresh paired fixed-cycle gates, independent exact-head reviews and GitHub CI
+remain later stages.
+
 ### FA-V2 acceptance migration
+
+**Historical method.** This section preserves FA-V2's purpose split and commands.
+FA-V3 above supersedes only separate production timing/native-conformance
+acceptance. The min/max formulas, decimal equality, CPU units and budgets remain.
 
 FA-V2 changes acceptance meaning, not numeric budgets or product behavior.
 `baseline.json` remains unchanged. Its median/spread/MAD vetoes are historical
@@ -236,12 +293,12 @@ a source coverage counterexample, not a diagnosis of an actual pending request.
 
 ### Explicit Linux server-only invocation
 
-The observer/runtime/journal requirements below describe native-conformance.
-Timing authenticates the same Linux/browser/collector environment without
-Python/Frida observer identity and retains passive NetLog. Derive timing by
-setting its purpose and `nativeLifetime.enabled: false`; keep phase/pair/stimuli
-identical to its native counterpart. Update `pairPhase` to `"after"` for each
-final-runtime config; compare each purpose with its own frozen before identity.
+The observer/runtime/journal requirements below govern FA-V3 production
+`integrated`. Historical FA-V2 timing excludes Python/Frida. FA-V3 development
+uses `measurementKind: "development"`, purpose `"timing"` and
+`nativeLifetime.enabled: false`, preserving non-invasive HMR and separate source
+bindings. Update `pairPhase` to `"after"` for the final-runtime config; retain
+each original before/after config identity.
 
 The historical macOS ARM64 Apple M4 Pro baseline, including Node 24.20.0,
 remains unchanged. The existing representative GitHub workflow still requires
@@ -274,8 +331,9 @@ node --input-type=module -e '
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 const config = JSON.parse(await readFile("config/representative.json", "utf8"));
 config.measurement.nativeLifetime = { enabled: true, python: process.argv[1] };
-config.measurement.methodVersion = "FA-V2";
-config.measurement.measurementPurpose = "native-conformance";
+config.measurement.methodVersion = "FA-V3";
+config.measurement.measurementPurpose = "integrated";
+config.measurement.measurementKind = "production";
 config.measurement.pairId = "replace-with-frozen-pair-id";
 config.measurement.pairPhase = "before";
 await mkdir("../../../.omo/verification/issue-3885", { recursive: true });
@@ -369,7 +427,7 @@ original browser cutoff, throughput, post-throughput `ps` CPU/RSS sampling
 or lifecycle. Buffered body-size/concurrency evidence remains a separate
 experiment, not a seventh server metric.
 
-For FA-V2 final-runtime `after`, preserve the before environment identity but
+For FA-V3 final-runtime `after`, preserve the before environment identity but
 freeze the after configuration identity separately: `pairPhase` changes the
 full config hash. Do not use a before config hash as an after alias. Historical
 same-config replay retains the original two-before-ID comparison:
@@ -386,12 +444,12 @@ node src/run-server-only.mjs \
 Comparison excludes invocation IDs, PIDs, absolute product/tool locators and
 product HEAD changes, while retaining them in provenance. Tool/collector
 content, resource allocation and frozen configuration remain comparable
-identities. Historical replay calls `evaluateServerEvidence`; FA-V2 acceptance
-calls `evaluateAcceptedServerEvidence` with mandatory matching native receipts
+identities. Historical replay calls `evaluateServerEvidence`; FA-V3 acceptance
+calls `evaluateAcceptedServerEvidence` with mandatory same-execution native evidence
 before filtering the observed-range evaluator to the six server metrics.
 Do not pair a historical macOS observation with a Linux gain or relabel the
 historical Linux FAIL/inconclusive results. Fresh before/after recollection
-on the same versioned two-purpose collector is still required; an environment probe
+on the same final canonical integrated collector is still required; an environment probe
 is not performance acceptance.
 Product/source/build provenance stays stable and separate from authenticated
 top-level invocation bindings. Both runner and measurement child select
@@ -401,7 +459,7 @@ transport, authenticates it and compares the actual 17-source environment
 identity before driver work. The shared capture/replay/live checks cover the
 14 common sources, including `fa-v2.mjs` and `server-cpu.mjs`, plus
 `run-server-only.mjs`, `server-measurement.mjs` and `socket-shell.mjs`.
-FA-V2 adds method/config/CPU/counterpart authentication to strict provenance.
+FA-V3 adds method/kind/purpose/phase/config/CPU/same-execution native authentication to strict provenance.
 The isolated host launcher forwards SIGINT/SIGTERM through an invocation-owned
 Linux Python subreaper, requires complete descendant reaping and rechecks the
 host allocation in `finally`. This additional Python requirement belongs only

@@ -119,14 +119,18 @@ Feature availability, authoring cost and type-safety entries are source-backed o
 
 ## Evidence and verification limits
 
-Performance acceptance uses the [FA-V2 method](../guides/react-performance-benchmarks.md#fa-v2-observed-range-acceptance).
+Production performance acceptance uses the [FA-V3 method](../guides/react-performance-benchmarks.md#fa-v3-same-execution-production-acceptance).
 Keep original numeric budgets, 200 requests/concurrency 8, five measured/two
 warmups, four frameworks/four profiles and 22 client/six server metrics, but
 replace the independent spread/MAD repeatability veto with decision stability
 over every observed min/max. This is not a confidence interval or future
-guarantee. Require fresh before/after timing and separately authenticated
-native-conformance, without borrowing native timing values or other executions'
-terminals. Original ownership/coverage/retirement/raw exits and pending-request
+guarantee. Require fresh before/after `FA-V3` / `integrated` production captures:
+metrics, request inventory/cutoff and canonical source-bound native evidence
+must be collected and authenticated in the same execution. Separate counterparts
+cannot supply terminals. FA-V2's split timing/native-conformance commands and
+unversioned receipts remain historical, never relabeled or reused for FA-V3.
+Development/HMR remains separately authenticated, non-invasive timing evidence.
+Original ownership/coverage/retirement/raw exits and pending-request
 quality remain mandatory. Method implementation or focused tests do not
 establish pair PASS, #3884/#3885 closure or #3879 product acceptance.
 

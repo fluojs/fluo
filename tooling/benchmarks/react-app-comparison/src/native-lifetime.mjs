@@ -263,7 +263,7 @@ function observedRetirementSignal(process, status, observation) {
       || terminated.result !== 1 || terminated.parent !== terminate.parent
       || terminated.exitCode !== 0 || terminated.wait !== 0) return false;
     const chain = [normal, terminate, signal, returned, terminated, normalized];
-    return ns(signal.ns) < ns(process.endNs) && ns(returned.ns) < ns(status.ns)
+    return ns(signal.ns) < ns(process.endNs) && ns(signal.ns) < ns(status.ns)
       && ns(normal.ns) >= ns(process.readyNs)
       && chain.every((entry, index) => ns(entry.ns) < cutoff
         && (index === 0 || entry.seq > chain[index - 1].seq && ns(entry.ns) >= ns(chain[index - 1].ns)))
@@ -332,7 +332,7 @@ export function isObservedShutdownExit(exit, observation) {
       || terminated.parent !== terminate.parent || terminated.exitCode !== 0 || terminated.wait !== 0
       || normal.parent !== null || normalized.parent !== null) return false;
     const ordered = [normal, terminate, signal, returned, terminated, normalized];
-    return ns(close.ns) < ns(normal.ns) && ns(returned.ns) < ns(exit.ns)
+    return ns(close.ns) < ns(normal.ns) && ns(signal.ns) < ns(exit.ns)
       // Unrelated root calls may outlive the sender. Only this complete
       // chain authorizes the exit, and its call IDs must remain unaliased.
       && [normal, terminate, signal].every((entry) => {

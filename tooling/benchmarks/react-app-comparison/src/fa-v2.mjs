@@ -17,15 +17,20 @@ if (hashObject(approvedProduction) !== PRODUCTION_DESCRIPTOR_SHA256) {
 }
 
 export function assertMethodConfig(config) {
-  if (config.methodVersion !== METHOD_VERSION || !['timing', 'native-conformance'].includes(config.measurementPurpose)
+  const integrated = config.methodVersion === 'FA-V3';
+  const production = config.measurementKind === 'production';
+  const observer = integrated ? production : config.measurementPurpose === 'native-conformance';
+  if ((integrated ? config.measurementPurpose !== (production ? 'integrated' : 'timing')
+      || !['production', 'development'].includes(config.measurementKind)
+      : config.methodVersion !== METHOD_VERSION || !['timing', 'native-conformance'].includes(config.measurementPurpose))
     || typeof config.pairId !== 'string' || !config.pairId.trim()
     || !['before', 'after'].includes(config.pairPhase)
     || (config.measurementKind !== undefined && !['production', 'development'].includes(config.measurementKind))
     || config.warmupRuns !== 2 || config.measurementRuns !== 5
-    || config.nativeLifetime?.enabled !== (config.measurementPurpose === 'native-conformance')) {
+    || config.nativeLifetime?.enabled !== observer) {
     throw new Error('FA-V2 requires explicit purpose/pair, five measured/two warmups and purpose-specific observer');
   }
-  if (config.measurementPurpose === 'native-conformance' && !isAbsolute(config.nativeLifetime.python ?? '')) {
+  if (observer && !isAbsolute(config.nativeLifetime.python ?? '')) {
     throw new Error('FA-V2 native-conformance requires absolute Python');
   }
   for (const framework of frameworks) {
@@ -88,7 +93,8 @@ export async function captureMethodBinding(config, directory) {
   const { environmentBinding, isolatedRepresentative, ...settings } = config;
   const configuration = { ...settings, measurementKind: config.measurementKind ?? 'production' };
   const binding = {
-    methodVersion: METHOD_VERSION, measurementPurpose: config.measurementPurpose,
+    methodVersion: config.methodVersion, measurementPurpose: config.measurementPurpose,
+    ...(config.methodVersion === 'FA-V3' ? { measurementKind: config.measurementKind } : {}),
     pairId: config.pairId, pairPhase: config.pairPhase,
     executionId, configSha256: hashObject(configuration), stimuliSha256: hashObject(stimuli(configuration)),
     productSha256: hashObject(config.provenance), baselineSha256: config.provenance?.baselineSha256,
@@ -102,7 +108,7 @@ export async function captureMethodBinding(config, directory) {
 }
 
 export async function verifyMethodBinding(binding, root) {
-  if (binding?.methodVersion !== METHOD_VERSION || !isAbsolute(binding.path ?? '')) {
+  if (!['FA-V2', 'FA-V3'].includes(binding?.methodVersion) || !isAbsolute(binding.path ?? '')) {
     throw new Error('FA-V2 authenticated method binding required');
   }
   const base = await realpath(root);
@@ -113,6 +119,9 @@ export async function verifyMethodBinding(binding, root) {
   if (hashBytes(raw) !== binding.sha256) throw new Error('FA-V2 configuration digest mismatch');
   const record = JSON.parse(raw);
   assertMethodConfig(record.configuration);
+  if (record.methodVersion !== record.configuration.methodVersion
+    || record.methodVersion === 'FA-V3' && (record.measurementKind !== record.configuration.measurementKind
+      || binding.measurementKind !== record.measurementKind)) throw new Error('FA-V3 method kind/version mismatch');
   for (const key of ['methodVersion', 'measurementPurpose', 'pairId', 'pairPhase', 'executionId', 'configSha256',
     'stimuliSha256', 'productSha256', 'baselineSha256', 'productionDescriptorSha256']) {
     if (binding[key] !== record[key]) throw new Error(`FA-V2 method ${key} mismatch`);
@@ -160,10 +169,13 @@ async function verifyInventory(samples, config, warmup, root) {
 
 export async function verifyMethodTrace(record, expected, root) {
   if (!isDeepStrictEqual(record.methodBinding, expected?.methodBinding)
-    || record.methodVersion !== METHOD_VERSION || record.methodVersion !== expected.methodVersion
+    || !['FA-V2', 'FA-V3'].includes(record.methodVersion) || record.methodVersion !== expected.methodVersion
     || record.measurementPurpose !== expected.measurementPurpose) throw new Error('FA-V2 sample/trace purpose mismatch');
   const method = await verifyMethodBinding(record.methodBinding, root);
   const config = method.configuration;
+  if (record.methodVersion !== method.methodVersion || record.methodVersion === 'FA-V3'
+    && (record.measurementKind !== method.measurementKind
+      || record.measurementKind !== expected.measurementKind)) throw new Error('FA-V3 sample measurement kind mismatch');
   assertRawInventory(record, config, expected);
   if (record.profile !== config.profile || record.mode !== config.mode
     || record.measurementPurpose !== method.measurementPurpose
@@ -172,6 +184,16 @@ export async function verifyMethodTrace(record, expected, root) {
     if (expected[key] !== undefined && record[key] !== expected[key]) throw new Error('FA-V2 raw sample identity mismatch');
   }
   if (record.sourceTraces) {
+    if (record.methodVersion === 'FA-V3') {
+      if (record.sourceMethodBindings?.length !== 2) throw new Error('FA-V3 combined source inventory mismatch');
+      const [production, development] = await Promise.all(record.sourceMethodBindings.map((binding) => verifyMethodBinding(binding, root)));
+      if (!isDeepStrictEqual(record.sourceMethodBindings[0], record.methodBinding)
+        || production.measurementKind !== 'production' || production.measurementPurpose !== 'integrated'
+        || development.measurementKind !== 'development' || development.measurementPurpose !== 'timing'
+        || development.methodVersion !== production.methodVersion || development.pairId !== production.pairId
+        || development.pairPhase !== production.pairPhase || development.productSha256 !== production.productSha256
+        || development.executionId === production.executionId) throw new Error('FA-V3 combined source kind/purpose binding mismatch');
+    }
     if (record.serverCpuSha256 !== expected.serverCpuSha256) throw new Error('FA-V2 combined CPU identity mismatch');
     const values = [record.correctness.production, record.correctness.development];
     const correctness = values.includes('fail') ? 'fail' : values.includes('inconclusive') ? 'inconclusive' : 'pass';
@@ -210,11 +232,13 @@ export async function verifyMethodTrace(record, expected, root) {
       || cdp.cleanup?.closed !== true || cdp.cleanup.exitCode !== 0 || cdp.cleanup.signalCode !== null) {
       throw new Error('FA-V2 borrowed passive terminals/cutoff/exit');
     }
-    if (record.measurementPurpose === 'native-conformance') {
+    if (['native-conformance', 'integrated'].includes(record.measurementPurpose)) {
       if (!lifetime || !isDeepStrictEqual(lifetime.measurement, {
         runId: record.runId, framework: record.framework, profile: record.profile, mode: record.mode,
-        methodVersion: METHOD_VERSION, measurementPurpose: record.measurementPurpose,
+        methodVersion: record.methodVersion, measurementPurpose: record.measurementPurpose,
         pairId: method.pairId, executionId: method.executionId,
+        ...(record.methodVersion === 'FA-V3' ? { measurementKind: method.measurementKind,
+          pairPhase: method.pairPhase, configSha256: method.configSha256, productSha256: method.productSha256 } : {}),
       })) throw new Error('FA-V2 native counterpart ownership identity required');
     }
     const cpu = record.artifacts?.serverCpu;
@@ -234,16 +258,20 @@ export async function verifyMethodTrace(record, expected, root) {
 
 export async function verifyMethodReceipt(receipt, root) {
   const method = await verifyMethodBinding(receipt.methodBinding, root);
-  if (receipt.methodVersion !== METHOD_VERSION || receipt.measurementPurpose !== method.measurementPurpose
+  if (receipt.methodVersion !== method.methodVersion || receipt.measurementPurpose !== method.measurementPurpose
     || receipt.profile !== method.configuration.profile || receipt.mode !== method.configuration.mode
     || !isDeepStrictEqual(receipt.provenance, method.configuration.provenance)) {
     throw new Error('FA-V2 receipt identity mismatch');
+  }
+  if (receipt.methodVersion === 'FA-V3' && receipt.measurementKind !== method.measurementKind) {
+    throw new Error('FA-V3 receipt measurement kind mismatch');
   }
   await verifyInventory(receipt.runs, method.configuration, false, root);
   await verifyInventory(receipt.warmups, method.configuration, true, root);
   for (const run of [...receipt.runs, ...receipt.warmups]) {
     if (!isDeepStrictEqual(run.methodBinding, receipt.methodBinding)
       || run.methodVersion !== receipt.methodVersion || run.measurementPurpose !== receipt.measurementPurpose
+      || receipt.methodVersion === 'FA-V3' && run.measurementKind !== receipt.measurementKind
       || run.profile !== receipt.profile || run.mode !== receipt.mode || !frameworks.includes(run.framework)) {
       throw new Error('FA-V2 receipt sample identity mismatch');
     }
@@ -251,12 +279,17 @@ export async function verifyMethodReceipt(receipt, root) {
   if (receipt.developmentWarmups || receipt.developmentMethodBinding) {
     const development = await verifyMethodBinding(receipt.developmentMethodBinding, root);
     if (development.productSha256 !== method.productSha256 || development.pairId !== method.pairId
-      || development.measurementPurpose !== method.measurementPurpose
+      || development.methodVersion !== method.methodVersion || development.pairPhase !== method.pairPhase
+      || (method.methodVersion === 'FA-V3'
+        ? method.measurementKind !== 'production' || development.measurementKind !== 'development'
+          || method.measurementPurpose !== 'integrated' || development.measurementPurpose !== 'timing'
+        : development.measurementPurpose !== method.measurementPurpose)
       || development.executionId === method.executionId) throw new Error('FA-V2 development binding mismatch');
     await verifyInventory(receipt.developmentWarmups ?? [], development.configuration, true, root);
     for (const run of receipt.developmentWarmups ?? []) {
       if (!isDeepStrictEqual(run.methodBinding, receipt.developmentMethodBinding)
-        || run.methodVersion !== receipt.methodVersion || run.measurementPurpose !== receipt.measurementPurpose
+        || run.methodVersion !== development.methodVersion || run.measurementPurpose !== development.measurementPurpose
+        || receipt.methodVersion === 'FA-V3' && run.measurementKind !== 'development'
         || run.profile !== receipt.profile || run.mode !== receipt.mode || !frameworks.includes(run.framework)) {
         throw new Error('FA-V2 development warmup binding mismatch');
       }

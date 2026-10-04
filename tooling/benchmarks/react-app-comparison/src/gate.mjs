@@ -69,15 +69,21 @@ export async function evaluateEvidence(baseline, receipts, outputRoot) {
 
 /** Historical evaluateEvidence is replay only; this is the versioned acceptance seam. */
 export async function evaluateAcceptedEvidence(baseline, timingReceipts, outputRoot, nativeReceipts = []) {
-  if (!timingReceipts.length || timingReceipts.some((receipt) => receipt.methodVersion !== 'FA-V2'
-    || receipt.measurementPurpose !== 'timing')) throw new Error('FA-V2 timing receipts required');
+  const integrated = timingReceipts[0]?.methodVersion === 'FA-V3';
+  const methodVersion = integrated ? 'FA-V3' : 'FA-V2';
+  const purpose = integrated ? 'integrated' : 'timing';
+  if (!timingReceipts.length || timingReceipts.some((receipt) => receipt.methodVersion !== methodVersion
+    || receipt.measurementPurpose !== purpose || integrated && receipt.measurementKind !== 'production')) {
+    throw new Error('FA-V2 timing receipts required or FA-V3 production integrated receipts required');
+  }
+  if (integrated && nativeReceipts.length) throw new Error('FA-V3 cannot borrow native counterparts from another execution');
   const frozenBytes = await readFile(new URL('../baseline.json', import.meta.url));
   const frozen = JSON.parse(frozenBytes);
   const baselineSha256 = createHash('sha256').update(frozenBytes).digest('hex');
   if (!isDeepStrictEqual(baseline, frozen)) throw new Error('FA-V2 frozen baseline mutation');
-  if (nativeReceipts.length !== timingReceipts.length
+  if (!integrated && (nativeReceipts.length !== timingReceipts.length
     || nativeReceipts.some((receipt) => receipt.methodVersion !== 'FA-V2'
-      || receipt.measurementPurpose !== 'native-conformance')) throw new Error('FA-V2 matching native counterpart required');
+      || receipt.measurementPurpose !== 'native-conformance'))) throw new Error('FA-V2 matching native counterpart required');
   const identities = new Set();
   const executions = new Set();
   let product;
@@ -87,11 +93,11 @@ export async function evaluateAcceptedEvidence(baseline, timingReceipts, outputR
     if (identities.has(timing.profile)) throw new Error('FA-V2 duplicate profile');
     identities.add(timing.profile);
     const matches = nativeReceipts.filter((receipt) => receipt.profile === timing.profile);
-    if (matches.length !== 1) throw new Error('FA-V2 missing/duplicate native counterpart');
+    if (!integrated && matches.length !== 1) throw new Error('FA-V2 missing/duplicate native counterpart');
     const native = matches[0];
     const timingMethod = await verifyMethodReceipt(timing, outputRoot);
-    const nativeMethod = await verifyMethodReceipt(native, outputRoot);
-    for (const receipt of [timing, native]) {
+    const nativeMethod = integrated ? undefined : await verifyMethodReceipt(native, outputRoot);
+    for (const receipt of integrated ? [timing] : [timing, native]) {
       if (!receipt.isolatedRepresentative || !receipt.environmentBinding) {
         throw new Error('FA-V2 representative environment authentication required');
       }
@@ -126,6 +132,7 @@ export async function evaluateAcceptedEvidence(baseline, timingReceipts, outputR
         }
       }
     }
+    if (integrated) continue;
     if (timingMethod.stimuliSha256 !== nativeMethod.stimuliSha256
       || timingMethod.configSha256 === nativeMethod.configSha256
       || !isDeepStrictEqual(timing.provenance, native.provenance)) {
@@ -156,7 +163,7 @@ export async function evaluateAcceptedEvidence(baseline, timingReceipts, outputR
   // Native performance values are authenticated but never evaluated as timing.
   await authenticateEvidence(baseline, timingReceipts, outputRoot);
   await authenticateEvidence(baseline, nativeReceipts, outputRoot);
-  const evaluation = evaluateObservedRanges(baseline, timingReceipts.flatMap((receipt) => receipt.runs));
+  const evaluation = evaluatePerformance(baseline, timingReceipts.flatMap((receipt) => receipt.runs), methodVersion);
   const nativeChecks = [...timingReceipts, ...nativeReceipts].flatMap((receipt) =>
     [...receipt.runs, ...receipt.warmups, ...(receipt.developmentWarmups ?? [])]
       .filter((run) => run.correctness !== 'pass' || run.metrics.errorRate > 0)
@@ -164,8 +171,9 @@ export async function evaluateAcceptedEvidence(baseline, timingReceipts, outputR
         verdict: run.correctness === 'fail' || run.metrics.errorRate > 0 ? 'fail' : 'inconclusive', reason: 'measurement-quality',
         measurementPurpose: receipt.measurementPurpose })));
   const checks = [...evaluation.checks, ...nativeChecks];
-  return { methodVersion: 'FA-V2', measurementPurpose: 'timing', pairId, pairPhase, checks,
-    counterpartConfigurations: nativeReceipts.map((receipt) => receipt.methodBinding),
+  return { methodVersion, measurementPurpose: purpose, pairId, pairPhase, checks,
+    ...(integrated ? { integratedConfigurations: timingReceipts.map((receipt) => receipt.methodBinding) }
+      : { counterpartConfigurations: nativeReceipts.map((receipt) => receipt.methodBinding) }),
     verdict: checks.some((check) => check.verdict === 'fail') ? 'fail'
       : checks.some((check) => check.verdict === 'inconclusive') ? 'inconclusive' : 'pass' };
 }
@@ -178,6 +186,7 @@ export async function evaluateAcceptedPair(baseline, before, after) {
     methods.push(await Promise.all(cohort.timing.map((receipt) => verifyMethodReceipt(receipt, cohort.outputRoot))));
   }
   if (results[0].pairPhase !== 'before' || results[1].pairPhase !== 'after'
+    || results[0].methodVersion !== results[1].methodVersion
     || results[0].pairId !== results[1].pairId || methods[0].length !== methods[1].length
     ) throw new Error('FA-V2 before/after frozen pair mismatch');
   const sourceRelations = [];
@@ -215,7 +224,7 @@ export async function evaluateAcceptedPair(baseline, before, after) {
   }
   const verdict = results.some((result) => result.verdict === 'fail') ? 'fail'
     : results.some((result) => result.verdict === 'inconclusive') ? 'inconclusive' : 'pass';
-  return { methodVersion: 'FA-V2', pairId: results[0].pairId, verdict, sourceRelations,
+  return { methodVersion: results[0].methodVersion, pairId: results[0].pairId, verdict, sourceRelations,
     before: results[0], after: results[1] };
 }
 
@@ -233,8 +242,10 @@ async function main() {
   const baseline = JSON.parse(await readFile(baselinePath, 'utf8'));
   const receipts = await Promise.all(files.map(async (path) => JSON.parse(await readFile(path, 'utf8'))));
   const historical = args.includes('--historical-replay');
-  if (!historical && receipts.some((receipt) => receipt.methodVersion !== 'FA-V2'
-    || !['timing', 'native-conformance'].includes(receipt.measurementPurpose))) {
+  const integrated = receipts[0]?.methodVersion === 'FA-V3';
+  if (!historical && receipts.some((receipt) => integrated
+    ? receipt.methodVersion !== 'FA-V3' || receipt.measurementPurpose !== 'integrated'
+    : receipt.methodVersion !== 'FA-V2' || !['timing', 'native-conformance'].includes(receipt.measurementPurpose))) {
     throw new Error('FA-V2 timing receipts required; mixed historical/unversioned/purpose evidence rejected');
   }
   const timing = receipts.filter((receipt) => receipt.measurementPurpose === 'timing');
