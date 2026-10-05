@@ -42,6 +42,37 @@ export const isValidLocalCheck = (value, headSha, binding = null) =>
 	&& typeof value.receiptSha256 === 'string'
 	&& /^[0-9a-f]{64}$/u.test(value.receiptSha256);
 
+// A waiver is an operator assertion, never execution evidence. Keep its
+// wrapper intact so admission and later observations check the same binding.
+export const isValidLocalCiWaiver = (fact, { headSha, laneId, issue, contractSha256, binding }) => {
+	const exactKeys = (value, keys) => typeof value === 'object' && value !== null && !Array.isArray(value)
+		&& Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+	const timestamp = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+		&& new Date(value).toISOString() === value;
+	const digest = (value) => typeof value === 'string' && /^[0-9a-f]{64}$/u.test(value);
+	if (!binding || !exactKeys(fact, ['head', 'accepted_at', 'value'])
+		|| typeof fact.head !== 'string' || !/^[0-9a-f]{40}$/u.test(fact.head)
+		|| fact.head !== headSha || !timestamp(fact.accepted_at)) return false;
+	const value = fact.value;
+	if (!exactKeys(value, ['laneId', 'issue', 'status', 'scope', 'preflightSha256', 'reviewSha256',
+		'reviewAcceptedAt', 'authority', 'evidence'])
+		|| typeof value.laneId !== 'string' || !value.laneId.trim() || value.laneId !== laneId
+		|| !Number.isSafeInteger(value.issue) || value.issue < 1 || value.issue !== issue
+		|| value.status !== 'waived' || value.scope !== 'full-local-ci'
+		|| value.authority !== 'explicit-operator-instruction'
+		|| !digest(value.preflightSha256) || value.preflightSha256 !== binding.preflightSha256
+		|| !digest(value.reviewSha256) || value.reviewSha256 !== binding.reviewSha256
+		|| !timestamp(value.reviewAcceptedAt) || value.reviewAcceptedAt !== binding.reviewAcceptedAt) return false;
+	const evidence = value.evidence;
+	return exactKeys(evidence, ['kind', 'contractSha256', 'criteria'])
+		&& evidence.kind === 'accepted-preflight'
+		&& digest(evidence.contractSha256) && evidence.contractSha256 === contractSha256
+		&& Array.isArray(evidence.criteria) && evidence.criteria.length > 0
+		&& evidence.criteria.every((criterion) => typeof criterion === 'string'
+			&& criterion.trim().length > 0 && criterion === criterion.trim())
+		&& new Set(evidence.criteria).size === evidence.criteria.length;
+};
+
 // Only changes to CI execution, its build/test configuration, or the machine
 // workflow contracts need the canonical local receipt before publication.
 // Input is the observed merge-base-to-head issue diff, not the pinned-base
@@ -239,7 +270,10 @@ export const decideNext = (lane, obs) => {
 	if (obs.localChecks?.status === 'failed' && isCurrentLocalCheck(obs.localChecks, obs.headSha, binding)) {
 		return { action: 'fix-back', reason: 'local-checks-failed', head: obs.headSha };
 	}
-	if (requiresFullLocalCI(obs.changedFiles) && !isValidLocalCheck(obs.localChecks, obs.headSha, binding)) {
+	if (requiresFullLocalCI(obs.changedFiles) && !isValidLocalCheck(obs.localChecks, obs.headSha, binding)
+		&& !isValidLocalCiWaiver(obs.localCiWaiver, {
+			headSha: obs.headSha, laneId: obs.laneId, issue: lane.issue, contractSha256: obs.preflight.sha256, binding,
+		})) {
 		return { action: 'verify-local', head: obs.headSha };
 	}
 
