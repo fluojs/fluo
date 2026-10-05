@@ -67,6 +67,18 @@ export async function evaluateEvidence(baseline, receipts, outputRoot) {
   return { ...evaluatePerformance(baseline, runs), observations };
 }
 
+export function evaluateMeasurementQuality(receipts) {
+  return receipts.flatMap((receipt) =>
+    [...receipt.runs, ...receipt.warmups, ...(receipt.developmentWarmups ?? [])].flatMap((run) => {
+      const errorRateFailure = run.metrics.errorRate > 0
+        && (receipt.methodVersion !== 'FA-V3' || run.framework === 'fluo');
+      if (run.correctness === 'pass' && !errorRateFailure) return [];
+      return [{ profile: run.profile, mode: run.mode, framework: run.framework,
+        verdict: run.correctness === 'fail' || errorRateFailure ? 'fail' : 'inconclusive',
+        reason: 'measurement-quality', measurementPurpose: receipt.measurementPurpose }];
+    }));
+}
+
 /** Historical evaluateEvidence is replay only; this is the versioned acceptance seam. */
 export async function evaluateAcceptedEvidence(baseline, timingReceipts, outputRoot, nativeReceipts = []) {
   const integrated = timingReceipts[0]?.methodVersion === 'FA-V3';
@@ -171,12 +183,7 @@ export async function evaluateAcceptedEvidence(baseline, timingReceipts, outputR
   await authenticateEvidence(baseline, timingReceipts, outputRoot);
   await authenticateEvidence(baseline, nativeReceipts, outputRoot);
   const evaluation = evaluatePerformance(baseline, timingReceipts.flatMap((receipt) => receipt.runs), methodVersion);
-  const nativeChecks = [...timingReceipts, ...nativeReceipts].flatMap((receipt) =>
-    [...receipt.runs, ...receipt.warmups, ...(receipt.developmentWarmups ?? [])]
-      .filter((run) => run.correctness !== 'pass' || run.metrics.errorRate > 0)
-      .map((run) => ({ profile: run.profile, mode: run.mode, framework: run.framework,
-        verdict: run.correctness === 'fail' || run.metrics.errorRate > 0 ? 'fail' : 'inconclusive', reason: 'measurement-quality',
-        measurementPurpose: receipt.measurementPurpose })));
+  const nativeChecks = evaluateMeasurementQuality([...timingReceipts, ...nativeReceipts]);
   const checks = [...evaluation.checks, ...nativeChecks];
   return { methodVersion, measurementPurpose: purpose, pairId, pairPhase, checks,
     ...(integrated ? { integratedConfigurations: timingReceipts.map((receipt) => receipt.methodBinding) }

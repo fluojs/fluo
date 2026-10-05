@@ -38,6 +38,53 @@ function samples(metric, fluo, peer = fluo) {
   })));
 }
 
+test('FA-V3 quality classification: observed peer errors -> retains rates without quality failures', () => {
+  const receipt = { methodVersion: 'FA-V3', measurementPurpose: 'integrated',
+    runs: frameworks.slice(1).map((framework) => ({ framework, profile: 'desktop-native',
+      mode: 'native', correctness: 'pass', metrics: { errorRate: 0.125 } })),
+    warmups: [{ framework: 'next', correctness: 'pass', metrics: { errorRate: 0.25 } }] };
+  const original = structuredClone(receipt);
+
+  const checks = gate.evaluateMeasurementQuality([receipt]);
+
+  assert.deepEqual(checks, []);
+  assert.deepEqual(receipt, original);
+});
+
+test('FA-V3 quality classification: positive Fluo rate -> fails measured and warmup samples', () => {
+  const run = { framework: 'fluo', profile: 'desktop-native', mode: 'native',
+    correctness: 'pass', metrics: { errorRate: 0.001 } };
+  const receipt = { methodVersion: 'FA-V3', measurementPurpose: 'integrated',
+    runs: [run], warmups: [{ ...run, warmup: true }] };
+
+  const checks = gate.evaluateMeasurementQuality([receipt]);
+
+  assert.equal(checks.length, 2);
+  assert.ok(checks.every((check) => check.framework === 'fluo'
+    && check.verdict === 'fail' && check.reason === 'measurement-quality'));
+});
+
+test('FA-V3 quality classification: peer correctness or coverage failure -> remains blocking', () => {
+  const receipt = { methodVersion: 'FA-V3', measurementPurpose: 'integrated',
+    runs: [{ framework: 'next', correctness: 'fail', metrics: { errorRate: 0.125 } }],
+    warmups: [{ framework: 'react-router', correctness: 'inconclusive', metrics: { errorRate: 0.25 } }] };
+
+  const checks = gate.evaluateMeasurementQuality([receipt]);
+
+  assert.deepEqual(checks.map((check) => check.verdict), ['fail', 'inconclusive']);
+});
+
+test('FA-V2 quality classification: positive peer rate -> retains historical failure', () => {
+  const receipt = { methodVersion: 'FA-V2', measurementPurpose: 'native-conformance',
+    runs: [{ framework: 'next', correctness: 'pass', metrics: { errorRate: 0.125 } }],
+    warmups: [] };
+
+  const checks = gate.evaluateMeasurementQuality([receipt]);
+
+  assert.equal(checks.length, 1);
+  assert.equal(checks[0].verdict, 'fail');
+});
+
 test('explicit FA-V2 dispatch reports an all-sample budget failure despite spread', () => {
   const runs = samples('cpuPercent', [101, 110, 120, 130, 140]);
   assert.equal(evaluator.evaluatePerformance(baseline, runs, 'FA-V2').verdict, 'fail');
@@ -267,7 +314,10 @@ for (const methodVersion of ['FA-V3', 'FA-V2']) {
     assert.notEqual(timing[0].methodBinding.executionId, timing[1].methodBinding.executionId);
     if (native.length) assert.notEqual(timing[0].environmentBinding.identitySha256, native[0].environmentBinding.identitySha256);
     for (const evaluate of [gate.evaluateAcceptedEvidence, evaluateAcceptedServerEvidence]) {
-      assert.equal((await evaluate(frozen, timing, directory, native)).verdict, 'fail');
+      const result = await evaluate(frozen, timing, directory, native);
+      assert.equal(result.verdict, 'fail');
+      assert.equal(result.checks.filter((check) => check.reason === 'measurement-quality').length,
+        [...timing, ...native].reduce((count, receipt) => count + receipt.runs.length + receipt.warmups.length, 0));
     }
     const target = timing[1];
     const original = target.environmentBinding;

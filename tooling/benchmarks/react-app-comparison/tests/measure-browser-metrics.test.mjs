@@ -58,6 +58,74 @@ function fixtureResponse(request, response) {
   return true;
 }
 
+test('correctness check: failed HTTP status -> retains navigation progress before context cleanup', { timeout: 15_000 }, async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(503, { 'content-type': 'text/html' });
+    response.end('<!doctype html><h1>Unavailable</h1>');
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  const driver = await createBrowserDriver({
+    journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+      .map((name) => [name, { path: '/', status: 200 }])),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    const result = await driver.check({ framework: 'tanstack-start', runId: 'http-failure',
+      device: 'desktop', mode: 'native', url });
+
+    assert.equal(result.pass, false);
+    const diagnostics = result.steps[0].diagnostics;
+    const request = diagnostics.events.find((entry) => entry.name === 'Network.requestWillBeSent');
+    const response = diagnostics.events.find((entry) => entry.name === 'Network.responseReceived');
+    assert.equal(request.url, url);
+    assert.equal(response.requestId, request.requestId);
+    assert.equal(response.status, 503);
+    assert.ok(diagnostics.events.some((entry) => entry.name === 'page.domcontentloaded'));
+    assert.ok(diagnostics.events.every((entry) => entry.observedAtMs >= diagnostics.startedAtMs
+      && entry.observedAtMs <= diagnostics.failedAtMs));
+    assert.equal(diagnostics.events.some((entry) => entry.name === 'page.close'), false);
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('correctness check: transport abort -> retains loading failure without invented response', { timeout: 15_000 }, async () => {
+  const server = createServer((request) => request.socket.destroy());
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  const driver = await createBrowserDriver({
+    journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+      .map((name) => [name, { path: '/', status: 200 }])),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    const result = await driver.check({ framework: 'tanstack-start', runId: 'transport-failure',
+      device: 'desktop', mode: 'native', url });
+
+    assert.equal(result.pass, false);
+    const events = result.steps[0].diagnostics.events;
+    const failed = events.find((entry) => entry.name === 'Network.loadingFailed');
+    assert.ok(events.some((entry) => entry.name === 'Network.requestWillBeSent'
+      && entry.requestId === failed.requestId));
+    assert.equal(typeof failed.errorText, 'string');
+    assert.equal(events.some((entry) => entry.name === 'Network.responseReceived'), false);
+    assert.equal(events.some((entry) => entry.name === 'page.close'), false);
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
 test('collector cannot sample cold metrics or start warm with unresolved real React Suspense', { timeout: 25_000 }, async () => {
   let documents = 0;
   const server = createServer((request, response) => {
