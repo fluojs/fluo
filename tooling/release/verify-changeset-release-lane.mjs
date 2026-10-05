@@ -428,7 +428,7 @@ function hasGeneratedMajorMigrationEvidence(section) {
     /(?:^|\n) {0,3}(?:#{1,6}\s*)?(?:consumer\s+)?(?:migration|upgrade)\s+(?:guide|guidance|notes?)\s*:?\s*\n+ {0,3}\S/iu.test(section);
 }
 
-function collectInvalidConsumedGeneratedMajorVersionDeltas(versionDeltas, intents, dependencies = {}) {
+function collectInvalidConsumedGeneratedMajorVersionDeltas(versionDeltas, dependencies = {}) {
   const { existsSync: pathExists = existsSync, readFileSync: readFile = readFileSync } = dependencies;
 
   return versionDeltas.flatMap((delta) => {
@@ -448,7 +448,7 @@ function collectInvalidConsumedGeneratedMajorVersionDeltas(versionDeltas, intent
 
     const section = changelogSectionForVersion(readFile(absoluteChangelogPath, 'utf8'), delta.nextVersion);
 
-    if (!section || !section.includes('### Major Changes')) {
+    if (!section?.includes('### Major Changes')) {
       return [{ ...delta, changelogPath, reason: `missing major changelog section for ${delta.nextVersion}` }];
     }
 
@@ -777,7 +777,6 @@ export function verifyChangesetReleaseLane(options = {}, dependencies = {}) {
     : dependencyOnlyMajorVersionDeltas;
   const invalidConsumedGeneratedMajorVersionDeltas = collectInvalidConsumedGeneratedMajorVersionDeltas(
     versionDeltas,
-    intents,
     dependencies,
   );
   const authorizedConsumedGeneratedMajorPackages = new Set(
