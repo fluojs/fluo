@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { evaluateObservedRanges, evaluatePerformance, METRICS } from './evaluate.ts';
+import { evaluatePerformance, METRICS } from './evaluate.ts';
 import { verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from './measure.mjs';
 import { pairStimuliComparison, verifyMethodBinding, verifyMethodReceipt } from './fa-v2.mjs';
 import { createHash } from 'node:crypto';
@@ -86,6 +86,7 @@ export async function evaluateAcceptedEvidence(baseline, timingReceipts, outputR
       || receipt.measurementPurpose !== 'native-conformance'))) throw new Error('FA-V2 matching native counterpart required');
   const identities = new Set();
   const executions = new Set();
+  const environments = new Map();
   let product;
   let pairId;
   let pairPhase;
@@ -102,6 +103,12 @@ export async function evaluateAcceptedEvidence(baseline, timingReceipts, outputR
         throw new Error('FA-V2 representative environment authentication required');
       }
       await verifyMeasurementEnvironment(receipt, outputRoot);
+      const environment = receipt.environmentBinding.identitySha256;
+      if (environments.has(receipt.measurementPurpose)
+        && environments.get(receipt.measurementPurpose) !== environment) {
+        throw new Error('FA-V2/FA-V3 mixed profile environment identity');
+      }
+      environments.set(receipt.measurementPurpose, environment);
       const method = receipt.methodBinding;
       product ??= method.productSha256;
       pairId ??= method.pairId;

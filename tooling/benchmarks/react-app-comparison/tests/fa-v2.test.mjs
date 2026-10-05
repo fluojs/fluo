@@ -11,7 +11,11 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { assertMethodConfig, captureMethodBinding, hashObject, pairStimuliIdentity,
   pairStimuliComparison, verifyMethodBinding, verifyMethodReceipt, verifyMethodTrace } from '../src/fa-v2.mjs';
-import { collectDevMeasurements, collectMeasurements, environmentConfigIdentity, mergeEvidence, planMeasurements, verifyTraceFiles } from '../src/measure.mjs';
+import { collectDevMeasurements, collectMeasurements, environmentConfigIdentity, isolatedEnvironmentIdentity,
+  mergeEvidence, planMeasurements, verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from '../src/measure.mjs';
+import { evaluateAcceptedServerEvidence } from '../src/server-measurement.mjs';
+import { NATIVE_LIFETIME_IDENTITY, NATIVE_LIFETIME_METHOD, NATIVE_LIFETIME_RUNTIME,
+  NATIVE_LIFETIME_SCHEMA } from '../src/native-lifetime.mjs';
 
 const frameworks = ['fluo', 'next', 'react-router', 'tanstack-start'];
 const baseline = {
@@ -157,6 +161,144 @@ const methodConfig = {
 const integratedConfig = { ...methodConfig, methodVersion: 'FA-V3',
   measurementPurpose: 'integrated', measurementKind: 'production',
   nativeLifetime: { enabled: true, python: '/python' } };
+
+async function environmentFixture(directory, invocationId, measurementConfig, mutate) {
+  const allocation = { nanoCpus: 0, cpuQuota: 0, cpuPeriod: 0, cpuset: '', memory: 0, memorySwap: 0 };
+  const vm = { kernel: 'kernel', logicalCpus: 12, memoryBytes: 8392974336 };
+  const container = { id: 'container', imageId: 'image', imageReference: 'fixture', hostname: 'guest',
+    pid: 99, startedAt: 'start', allocation };
+  const raw = { inspection: JSON.stringify([{ Id: container.id, Image: container.imageId,
+    Config: { Image: container.imageReference, Hostname: container.hostname },
+    State: { Running: true, Pid: container.pid, StartedAt: container.startedAt },
+    HostConfig: { NanoCpus: 0, CpuQuota: 0, CpuPeriod: 0, CpusetCpus: '', Memory: 0, MemorySwap: 0 } }]),
+    information: JSON.stringify({ KernelVersion: vm.kernel, NCPU: vm.logicalCpus, MemTotal: vm.memoryBytes }) };
+  const timing = measurementConfig.methodVersion === 'FA-V2' && measurementConfig.measurementPurpose === 'timing';
+  const configuration = { ...measurementConfig, nativeLifetime: timing ? { enabled: false } : { enabled: true, python: '/python' } };
+  delete configuration.provenance;
+  delete configuration.serverPids;
+  const identity = { vm, container: { imageId: container.imageId, imageReference: container.imageReference, allocation },
+    guest: { platform: 'linux', arch: 'arm64', kernel: vm.kernel, logicalCpus: vm.logicalCpus,
+      memoryBytes: vm.memoryBytes, runtime: { version: 'v24.21.0' },
+      browser: { version: NATIVE_LIFETIME_IDENTITY.browserVersion, sha256: NATIVE_LIFETIME_IDENTITY.binarySha256 },
+      external: NATIVE_LIFETIME_RUNTIME, files: {},
+      observer: { enabled: !timing, method: NATIVE_LIFETIME_METHOD, schema: NATIVE_LIFETIME_SCHEMA } } };
+  const guest = identity.guest;
+  const file = (path, sha256 = 'a'.repeat(64)) => {
+    guest.files[path] = sha256;
+    return { path, sha256 };
+  };
+  guest.runtime.node = file('/node');
+  guest.browser.path = '/headless_shell';
+  guest.files[guest.browser.path] = guest.browser.sha256;
+  guest.python = file('/python', NATIVE_LIFETIME_RUNTIME.pythonSha256);
+  if (timing) {
+    delete guest.python;
+    delete guest.external;
+    delete guest.files['/python'];
+  }
+  guest.pnpm = { ...file('/pnpm'), version: '10.4.1' };
+  guest.sdk = Object.fromEntries(['@playwright/test', 'playwright', 'playwright-core', 'typescript']
+    .map((name) => [name, { ...file(`/${name}/package.json`), version: name === 'typescript' ? '6.0.2' : '1.61.1' }]));
+  file('/playwright-core/lib/coreBundle.js');
+  guest.collector = Object.fromEntries(['measure.mjs', 'measure-browser.mjs', 'run-gate.mjs',
+    'native-terminal.mjs', 'native-lifetime.mjs', 'native-lifetime-agent.js', 'native-lifetime-host.py',
+    'initial-readiness.mjs', 'process-group.mjs', 'gate.mjs', 'evaluate.ts', 'fluo-dev.mjs']
+    .concat(['fa-v2.mjs', 'server-cpu.mjs'])
+    .map((name) => [name, file(`/collector/${name}`)]));
+  guest.collectorEntrypoints = ['measure.mjs', 'run-gate.mjs'];
+  guest.locks = Object.fromEntries(['.', ...frameworks.map((name) => `apps/${name}`)]
+    .map((name) => [name, file(`/locks/${name}/pnpm-lock.yaml`)]));
+  guest.allocation = { 'cpu.max': 'max 100000', 'cpuset.cpus.effective': '0-11', 'memory.max': 'max' };
+  const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const host = { host: { platform: 'darwin', arch: 'arm64', cpuModel: 'Apple M4 Pro' }, vm, container, raw };
+  mutate?.(guest);
+  const comparable = isolatedEnvironmentIdentity(host, guest);
+  const comparableConfig = { ...configuration,
+    nativeLifetime: timing ? { enabled: false } : { enabled: true, python: '$authenticated-python' } };
+  const record = { schemaVersion: 1, method: 'isolated-linux-representative-v1',
+    invocation: { invocationId, host }, identity: comparable, configuration: comparableConfig,
+    configurationEvidence: configuration, provenance: measurementConfig.provenance,
+    identitySha256: hash(comparable), configSha256: environmentConfigIdentity(configuration),
+    guestEvidence: { pid: 1, hostname: 'guest', guest } };
+  const path = join(directory, `environment-${invocationId}.json`);
+  const bytes = JSON.stringify(record);
+  await writeFile(path, bytes);
+  return { record, binding: { method: record.method, path,
+    sha256: createHash('sha256').update(bytes).digest('hex'), invocationId,
+    identitySha256: record.identitySha256, configSha256: record.configSha256 } };
+}
+
+
+// Synthetic failed-correctness traces exercise real authentication, not performance captures.
+for (const methodVersion of ['FA-V3', 'FA-V2']) {
+  test(`accepted mixed-profile environments authenticate individually and reject tool or allocation drift ${methodVersion}`, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), 'accepted-profile-environment-'));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const frozenBytes = await readFile(new URL('../baseline.json', import.meta.url));
+    const frozen = JSON.parse(frozenBytes);
+    const timing = [];
+    const native = [];
+    const purposes = methodVersion === 'FA-V3' ? ['integrated'] : ['timing', 'native-conformance'];
+    for (const measurementPurpose of purposes) {
+      for (const profile of ['desktop-native', 'tablet-matched-cache']) {
+        const settings = { ...integratedConfig, methodVersion, measurementPurpose, profile,
+          mode: frozen.profiles[profile].mode,
+          nativeLifetime: measurementPurpose === 'timing' ? { enabled: false } : { enabled: true, python: '/python' },
+          provenance: { baselineSha256: createHash('sha256').update(frozenBytes).digest('hex'), commit: 'b'.repeat(40) } };
+        const { binding } = await environmentFixture(directory, `${profile}-${measurementPurpose}`, settings);
+        const receipt = await collectMeasurements(settings, {
+          browserVersion: NATIVE_LIFETIME_IDENTITY.browserVersion,
+          async check() { return { pass: false, steps: [] }; },
+        }, join(directory, `${profile}-${measurementPurpose}`));
+        Object.assign(receipt, { isolatedRepresentative: true, environmentBinding: binding });
+        for (const run of [...receipt.runs, ...receipt.warmups]) {
+          Object.assign(run, { isolatedRepresentative: true, environmentBinding: binding });
+          const raw = JSON.parse(await readFile(run.trace, 'utf8'));
+          Object.assign(raw, { isolatedRepresentative: true, environmentBinding: binding });
+          await writeFile(run.trace, JSON.stringify(raw));
+        }
+        await verifyEnvironmentBinding(binding, directory);
+        await verifyMeasurementEnvironment(receipt, directory);
+        (measurementPurpose === 'native-conformance' ? native : timing).push(receipt);
+      }
+    }
+    assert.equal(timing[0].environmentBinding.identitySha256, timing[1].environmentBinding.identitySha256);
+    assert.notEqual(timing[0].environmentBinding.configSha256, timing[1].environmentBinding.configSha256);
+    assert.notEqual(timing[0].methodBinding.executionId, timing[1].methodBinding.executionId);
+    if (native.length) assert.notEqual(timing[0].environmentBinding.identitySha256, native[0].environmentBinding.identitySha256);
+    for (const evaluate of [gate.evaluateAcceptedEvidence, evaluateAcceptedServerEvidence]) {
+      assert.equal((await evaluate(frozen, timing, directory, native)).verdict, 'fail');
+    }
+    const target = timing[1];
+    const original = target.environmentBinding;
+    for (const [label, mutate] of [
+      ['node', (guest) => { guest.runtime.node.sha256 = 'c'.repeat(64); guest.files['/node'] = 'c'.repeat(64); }],
+      ['sdk', (guest) => { guest.files['/playwright-core/lib/coreBundle.js'] = 'd'.repeat(64); }],
+      ['allocation', (guest) => { guest.allocation['cpu.max'] = '100000 100000'; }],
+      ['collector', (guest) => { guest.collector['gate.mjs'].sha256 = 'e'.repeat(64); guest.files['/collector/gate.mjs'] = 'e'.repeat(64); }],
+    ]) {
+      for (const receipt of native.length ? [target, native[1]] : [target]) {
+        const settings = (await verifyMethodBinding(receipt.methodBinding, directory)).configuration;
+        const { binding } = await environmentFixture(directory,
+          `${methodVersion}-${label}-${receipt.measurementPurpose}`, settings, mutate);
+        receipt.environmentBinding = binding;
+        for (const run of [...receipt.runs, ...receipt.warmups]) {
+          run.environmentBinding = binding;
+          const raw = JSON.parse(await readFile(run.trace, 'utf8'));
+          raw.environmentBinding = binding;
+          await writeFile(run.trace, JSON.stringify(raw));
+        }
+        await verifyEnvironmentBinding(binding, directory);
+        await verifyMeasurementEnvironment(receipt, directory);
+      }
+      assert.notEqual(target.environmentBinding.identitySha256, original.identitySha256);
+      for (const evaluate of [gate.evaluateAcceptedEvidence, evaluateAcceptedServerEvidence]) {
+        await assert.rejects(evaluate(frozen, timing, directory, native), /mixed profile environment/u);
+      }
+    }
+  });
+}
+
 
 test('FA-V3 integrated config preserves frozen workload and rejects purpose or kind confusion', () => {
   assert.doesNotThrow(() => assertMethodConfig(integratedConfig));
