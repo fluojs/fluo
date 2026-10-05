@@ -895,6 +895,9 @@ export async function verifyTraceFiles(runs, outputRoot) {
         throw new Error(`incomplete raw trace ${path}`);
       }
       const native = record.artifacts?.nativeTerminalObserver;
+      const passiveRequests = record.requests.map((request) =>
+        request.nativeLifetime ? request.cdpObservation : request);
+      let passiveLog;
       let passiveCdpLedger;
       if (native) {
         for (const [file, sha256] of [[native.rawTrace, native.sha256], [native.cdpTrace, native.cdpSha256]]) {
@@ -907,8 +910,18 @@ export async function verifyTraceFiles(runs, outputRoot) {
           if (file === native.rawTrace ? !parsed.constants || !parsed.events?.length : !Array.isArray(parsed.ledger)) {
             throw new Error(`incomplete native trace: ${file}`);
           }
+          if (file === native.rawTrace) passiveLog = parsed;
           if (file === native.cdpTrace) passiveCdpLedger = parsed.ledger;
         }
+        const { reconcileNativeTerminals } = await import('./native-terminal.mjs');
+        const originals = passiveRequests.map((request) =>
+          request.nativeTerminal ? request.cdpObservation : request);
+        const replay = reconcileNativeTerminals(originals, passiveLog, native, passiveCdpLedger);
+        if (!isDeepStrictEqual(replay, passiveRequests)) {
+          throw new Error(`native terminal reconciliation replay mismatch: ${path}`);
+        }
+      } else if (passiveRequests.some((request) => request.nativeTerminal)) {
+        throw new Error(`native terminal observer provenance missing: ${path}`);
       }
       const lifetime = record.artifacts?.nativeLifetimeObserver;
       if (lifetime) {

@@ -21,11 +21,12 @@ async function authenticateEvidence(baseline, receipts, outputRoot) {
   if (new Set(receipts.map((receipt) => receipt.profile)).size !== receipts.length) {
     throw new TypeError('Duplicate measurement profile receipt');
   }
-  await verifyTraceFiles(receipts.flatMap((receipt) => [
+  const samples = receipts.flatMap((receipt) => [
     ...receipt.runs, ...(receipt.warmups ?? []), ...(receipt.developmentWarmups ?? []),
-  ]), outputRoot);
+  ]);
+  await verifyTraceFiles(samples, outputRoot);
   let provenance;
-  for (const run of runs) {
+  for (const run of samples) {
     const trace = JSON.parse(await readFile(run.trace, 'utf8'));
     if (trace.profile !== undefined && (
       trace.profile !== run.profile || trace.mode !== run.mode

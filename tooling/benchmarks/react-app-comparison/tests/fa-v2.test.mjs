@@ -333,6 +333,46 @@ async function environmentFixture(directory, invocationId, measurementConfig, mu
 
 
 // Synthetic failed-correctness traces exercise real authentication, not performance captures.
+for (const evaluate of [gate.evaluateAcceptedEvidence, evaluateAcceptedServerEvidence]) {
+  for (const mutation of ['zero', 'deleted']) {
+    test(`${evaluate.name}: warmup summary errorRate ${mutation} -> rejects unchanged raw`, async (t) => {
+      const directory = await mkdtemp(join(tmpdir(), 'accepted-warmup-metrics-'));
+      t.after(() => rm(directory, { recursive: true, force: true }));
+      const frozenBytes = await readFile(new URL('../baseline.json', import.meta.url));
+      const frozen = JSON.parse(frozenBytes);
+      const settings = { ...integratedConfig, provenance: {
+        baselineSha256: createHash('sha256').update(frozenBytes).digest('hex'),
+        commit: 'b'.repeat(40),
+      } };
+      const { binding } = await environmentFixture(directory, 'warmup-metrics', settings);
+      const receipt = await collectMeasurements(settings, {
+        browserVersion: NATIVE_LIFETIME_IDENTITY.browserVersion,
+        async check() { return { pass: false, steps: [] }; },
+      }, join(directory, 'production'));
+      Object.assign(receipt, { isolatedRepresentative: true, environmentBinding: binding });
+      for (const run of [...receipt.runs, ...receipt.warmups]) {
+        Object.assign(run, { isolatedRepresentative: true, environmentBinding: binding });
+        const raw = JSON.parse(await readFile(run.trace, 'utf8'));
+        Object.assign(raw, { isolatedRepresentative: true, environmentBinding: binding });
+        await writeFile(run.trace, JSON.stringify(raw));
+      }
+      const warmup = receipt.warmups.find((run) => run.framework === 'fluo');
+      const raw = JSON.parse(await readFile(warmup.trace, 'utf8'));
+      warmup.metrics = { errorRate: 0.25 };
+      raw.metrics = { ...warmup.metrics };
+      await writeFile(warmup.trace, JSON.stringify(raw));
+      const originalBytes = await readFile(warmup.trace, 'utf8');
+      assert.equal((await evaluate(frozen, [receipt], directory)).verdict, 'fail');
+      if (mutation === 'zero') warmup.metrics.errorRate = 0;
+      else delete warmup.metrics.errorRate;
+
+      await assert.rejects(evaluate(frozen, [receipt], directory), /raw trace metrics/u);
+
+      assert.equal(await readFile(warmup.trace, 'utf8'), originalBytes);
+    });
+  }
+}
+
 for (const methodVersion of ['FA-V3', 'FA-V2']) {
   test(`accepted mixed-profile environments authenticate individually and reject tool or allocation drift ${methodVersion}`, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), 'accepted-profile-environment-'));

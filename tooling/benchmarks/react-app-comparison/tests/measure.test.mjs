@@ -12,6 +12,7 @@ import { collectDevMeasurements, collectMeasurements, environmentConfigIdentity,
 import { createBrowserDriver } from '../src/measure-browser.mjs';
 import { evaluateAcceptedEvidence, evaluateEvidence } from '../src/gate.mjs';
 import { readSocketShell } from '../src/socket-shell.mjs';
+import { reconcileNativeTerminals } from '../src/native-terminal.mjs';
 import { createNativeLifetimeObserver, NATIVE_LIFETIME_IDENTITY, NATIVE_LIFETIME_METHOD,
   NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA, reconcileNativeLifetime } from '../src/native-lifetime.mjs';
 
@@ -831,6 +832,84 @@ async function lifetimeTraceFixture() {
     requests: [], artifacts: { nativeLifetimeObserver: evidence.provenance } };
   await writeFile(trace, JSON.stringify(record));
   return { directory, trace, record, evidence };
+}
+
+for (const lifetime of [false, true]) {
+  for (const boundary of ['production', 'warmup', 'combined']) {
+    test(`verifyTraceFiles rejects passive derived mutations at ${boundary} with lifetime=${lifetime}`, async (t) => {
+      const fixture = await lifetimeTraceFixture();
+      try {
+        const source = { id: 96, type: 1, start_time: '1000' };
+        const job = { id: 99, type: 17, start_time: '1000' };
+        const url = 'http://fixture/ignored';
+        const event = (type, phase, params, owner = source, time = '1000') =>
+          ({ type, phase, time, source: owner, ...(params ? { params } : {}) });
+        const logBytes = JSON.stringify({
+          constants: {
+            logEventTypes: { CANCELLED: 0, REQUEST_ALIVE: 2, URL_REQUEST_START_JOB: 134,
+              HTTP_STREAM_REQUEST_BOUND_TO_JOB: 186, HTTP_STREAM_JOB_BOUND_TO_REQUEST: 188 },
+            logEventPhase: { PHASE_NONE: 0, PHASE_BEGIN: 1, PHASE_END: 2 },
+            logSourceType: { URL_REQUEST: 1 },
+          },
+          events: [event(2, 1, { url }), event(134, 1, { url, method: 'GET' }),
+            event(186, 0, { source_dependency: job }),
+            event(188, 0, { source_dependency: source }, job), event(0, 0),
+            event(2, 2, undefined, source, '1001')],
+        });
+        const cdpBytes = JSON.stringify({ ledger: [] });
+        const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+        const observer = { rawTrace: join(fixture.directory, 'netlog.json'),
+          cdpTrace: join(fixture.directory, 'passive-cdp.json'), sha256: hash(logBytes),
+          cdpSha256: hash(cdpBytes), captureTimestamp: 10 };
+        await writeFile(observer.rawTrace, logBytes);
+        await writeFile(observer.cdpTrace, cdpBytes);
+        const original = { requestId: '123.7', loaderId: 'old-loader', method: 'GET', url,
+          startedTimestamp: 1.00007, kind: 'request-pending', status: null,
+          unavailable: 'request still in flight at capture boundary' };
+        const passive = reconcileNativeTerminals([original], JSON.parse(logBytes), observer, []);
+        const requests = lifetime
+          ? reconcileNativeLifetime(passive, fixture.evidence.observation, []).requests : passive;
+        assert.equal(requests[0].kind, 'request-failed');
+        assert.deepEqual(requests[0].cdpObservation, original);
+        fixture.record.requests = requests;
+        fixture.record.metrics = { errorRate: 1 };
+        fixture.record.artifacts.nativeTerminalObserver = observer;
+        if (!lifetime) {
+          delete fixture.record.artifacts.nativeLifetimeObserver;
+          fixture.record.qualityFailures = [];
+        }
+        await writeFile(fixture.trace, JSON.stringify(fixture.record));
+        let run = { trace: fixture.trace, warmup: boundary === 'warmup' };
+        if (boundary === 'combined') {
+          const combined = join(fixture.directory, 'combined.json');
+          await writeFile(combined, JSON.stringify({ schemaVersion: 1,
+            sourceTraces: [fixture.trace, fixture.trace], correctness: {
+              production: lifetime ? 'inconclusive' : 'pass', development: 'inconclusive',
+            } }));
+          run = { trace: combined };
+        }
+        await verifyTraceFiles([run], fixture.directory);
+        t.diagnostic(`normal fixture accepted; NetLog=${observer.sha256}; CDP=${observer.cdpSha256}`);
+
+        for (const mutate of [
+          (terminal) => { terminal.end.time = '1002'; },
+          (terminal) => { terminal.source.id++; },
+          (terminal) => { terminal.reciprocal.params.source_dependency.id++; },
+          (terminal) => { terminal.captureTimestamp = 11; },
+        ]) {
+          fixture.record.requests = structuredClone(requests);
+          mutate(fixture.record.requests[0].nativeTerminal);
+          await writeFile(fixture.trace, JSON.stringify(fixture.record));
+          assert.equal(await readFile(observer.rawTrace, 'utf8'), logBytes);
+          assert.equal(await readFile(observer.cdpTrace, 'utf8'), cdpBytes);
+          assert.deepEqual(fixture.record.artifacts.nativeTerminalObserver, observer);
+          assert.equal(fixture.record.requests[0].kind, 'request-failed');
+          assert.deepEqual(fixture.record.metrics, { errorRate: 1 });
+          await assert.rejects(verifyTraceFiles([run], fixture.directory), /native terminal reconciliation replay mismatch/u);
+        }
+      } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+    });
+  }
 }
 
 test('native lifetime unavailable evidence authenticates in raw, combined and warmup paths', async () => {
