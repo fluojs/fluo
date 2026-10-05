@@ -77,7 +77,7 @@ function withJournals(observation) {
     const raw = Buffer.alloc(512 + entries.length * 128);
     const execEpoch = Number(process.processBirth.split(':').at(-1));
     [0x4e4c4a32, 2, 500000, 128, 512, process.pid, execEpoch, entries.length, entries.length]
-      .forEach((value, index) => raw.writeUInt32LE(value, index * 4));
+      .forEach((value, index) => { raw.writeUInt32LE(value, index * 4); });
     raw.writeUInt32LE(1, 52);
     raw.write(observation.runId, 64);
     raw.write(process.processBirth, 192);
