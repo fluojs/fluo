@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual, promisify } from 'node:util';
-import { captureMethodBinding, verifyMethodBinding, verifyMethodReceipt, verifyMethodTrace } from './fa-v2.mjs';
+import { captureMethodBinding, verifyMethodReceipt, verifyMethodTrace } from './fa-v2.mjs';
 
 const execute = promisify(execFile);
 const sha256 = (raw) => createHash('sha256').update(raw).digest('hex');
