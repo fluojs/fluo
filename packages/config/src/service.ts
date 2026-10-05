@@ -94,7 +94,7 @@ export function replaceConfigServiceSnapshot<T extends Record<string, unknown>>(
   service: ConfigService<T>,
   values: T,
 ): void {
-  service['values'] = cloneConfigDictionary(values);
+  Object.assign(service, { values: cloneConfigDictionary(values) });
 }
 
 /**
@@ -107,7 +107,7 @@ export function replaceConfigServiceSnapshotUnchecked<T extends Record<string, u
   service: ConfigService<T>,
   values: T,
 ): void {
-  service['values'] = values;
+  Object.assign(service, { values });
 }
 
 /**
@@ -118,7 +118,7 @@ export function replaceConfigServiceSnapshotUnchecked<T extends Record<string, u
  */
 export function createConfigServiceFromSnapshot<T extends Record<string, unknown>>(values: T): ConfigService<T> {
   const service = Object.create(ConfigService.prototype) as ConfigService<T>;
-  service['values'] = values;
+  Object.assign(service, { values });
 
   return service;
 }
