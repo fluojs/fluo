@@ -13,29 +13,29 @@ import {
   type GuardContext,
   NotFoundException,
   Post,
-  RequestDto,
   type RequestContext,
+  RequestDto,
   UnauthorizedException,
   UseGuards,
 } from '@fluojs/http';
 import {
+  createReactServerEntry,
   Path,
+  type ReactInitialNavigationPage,
   ReactModule,
   ReactNavigationPage,
   Router,
-  createReactServerEntry,
-  type ReactInitialNavigationPage,
 } from '@fluojs/react';
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { cloneElement, createElement, isValidElement } from 'react';
 
 import {
-  SESSION_COOKIE,
-  SESSION_VALUE,
-  SONGS,
   authenticate,
   createCatalog,
   isEditor,
+  SESSION_COOKIE,
+  SESSION_VALUE,
+  SONGS,
   validateProduct,
 } from '../../../fixture/domain.mjs';
 import { BenchmarkDocument, type PageData } from './document';
@@ -266,6 +266,8 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL) {
 
   @Controller('/assets')
   class Assets {
+    readonly #gzipAssets = new Map<string, { readonly body: Buffer; readonly compressed: Buffer }>();
+
     @Get('/:file')
     @RequestDto(AssetPath)
     async serve(input: AssetPath, context: RequestContext) {
@@ -281,11 +283,17 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL) {
         context.response.setHeader('Vary', 'Accept-Encoding');
         const accepted = context.request.headers['accept-encoding'];
         if (typeof accepted === 'string' && /\bgzip\b/u.test(accepted)) {
+          let asset = this.#gzipAssets.get(input.file);
+          if (!asset?.body.equals(body)) {
+            asset = { body, compressed: gzipSync(body) };
+            this.#gzipAssets.set(input.file, asset);
+          }
           context.response.setHeader('Content-Encoding', 'gzip');
-          return gzipSync(body);
+          return Buffer.from(asset.compressed);
         }
         return body;
       } catch (error) {
+        this.#gzipAssets.delete(input.file);
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
           throw new NotFoundException('Asset not found.', { cause: error });
         }
