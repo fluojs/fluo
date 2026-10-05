@@ -224,6 +224,7 @@ export async function launchIsolatedInvocation(script, flags) {
   let interrupt;
   let timeout;
   let controlError;
+  let invocationFailure;
   const forward = (signal) => {
     interrupt ??= signal;
     if (child && !child.stdin.destroyed) child.stdin.write(`${JSON.stringify({ signal: interrupt })}\n`);
@@ -241,37 +242,44 @@ export async function launchIsolatedInvocation(script, flags) {
   const boundedExecute = (command, args) => execute(command, args, { timeout: 10_000 });
   try {
     host = await observeIsolatedHost(container, boundedExecute);
-    if (interrupt) { process.exitCode = interrupt === 'SIGINT' ? 130 : 143; return true; }
-    const { stdout: node } = await boundedExecute('docker', ['exec', host.container.id, 'sh', '-c', 'command -v node']);
-    if (interrupt) { process.exitCode = interrupt === 'SIGINT' ? 130 : 143; return true; }
-    const invocation = { method: ENVIRONMENT_METHOD, invocationId: randomUUID(),
-      observedAt: new Date().toISOString(), hostPid: process.pid, host };
-    const args = flags.filter((_, position) => position !== index && position !== index + 1);
-    child = spawn('docker', ['exec', '-i', host.container.id, 'python3', '-u', '-c',
-      isolatedSupervisor, node.trim(), script, ...args, '--isolated-guest'],
-    { stdio: ['pipe', 'inherit', 'pipe'] });
-    let reaped = false;
-    let output = '';
-    child.stderr.on('data', (chunk) => {
-      process.stderr.write(chunk);
-      output += chunk;
-      if (output.includes(`ISOLATED_GUEST_REAPED ${invocation.invocationId} `)) reaped = true;
-      output = output.slice(-4096);
-    });
-    child.stdin.on('error', (error) => { controlError = error; });
-    const completed = new Promise((resolveExit, rejectExit) => {
-      child.once('error', rejectExit);
-      child.once('close', (code, signal) => resolveExit({ code, signal }));
-    });
-    child.stdin.write(`${JSON.stringify({ invocation })}\n`);
-    const result = await completed;
-    if (controlError) throw controlError;
-    if (!reaped) throw new Error('isolated guest exited without owned teardown/reap acknowledgement');
-    if (result.signal || (interrupt && result.code !== 0 && result.code !== (interrupt === 'SIGINT' ? 130 : 143))) {
-      throw new Error(`isolated guest teardown failed: code=${result.code} signal=${result.signal}`);
+    let node;
+    if (!interrupt) {
+      ({ stdout: node } = await boundedExecute('docker', ['exec', host.container.id, 'sh', '-c', 'command -v node']));
     }
-    if (interrupt) process.exitCode = interrupt === 'SIGINT' ? 130 : 143;
-    else if (result.signal || result.code !== 0) process.exitCode = result.code || 1;
+    if (interrupt) {
+      process.exitCode = interrupt === 'SIGINT' ? 130 : 143;
+    } else {
+      const invocation = { method: ENVIRONMENT_METHOD, invocationId: randomUUID(),
+        observedAt: new Date().toISOString(), hostPid: process.pid, host };
+      const args = flags.filter((_, position) => position !== index && position !== index + 1);
+      child = spawn('docker', ['exec', '-i', host.container.id, 'python3', '-u', '-c',
+        isolatedSupervisor, node.trim(), script, ...args, '--isolated-guest'],
+      { stdio: ['pipe', 'inherit', 'pipe'] });
+      let reaped = false;
+      let output = '';
+      child.stderr.on('data', (chunk) => {
+        process.stderr.write(chunk);
+        output += chunk;
+        if (output.includes(`ISOLATED_GUEST_REAPED ${invocation.invocationId} `)) reaped = true;
+        output = output.slice(-4096);
+      });
+      child.stdin.on('error', (error) => { controlError = error; });
+      const completed = new Promise((resolveExit, rejectExit) => {
+        child.once('error', rejectExit);
+        child.once('close', (code, signal) => resolveExit({ code, signal }));
+      });
+      child.stdin.write(`${JSON.stringify({ invocation })}\n`);
+      const result = await completed;
+      if (controlError) throw controlError;
+      if (!reaped) throw new Error('isolated guest exited without owned teardown/reap acknowledgement');
+      if (result.signal || (interrupt && result.code !== 0 && result.code !== (interrupt === 'SIGINT' ? 130 : 143))) {
+        throw new Error(`isolated guest teardown failed: code=${result.code} signal=${result.signal}`);
+      }
+      if (interrupt) process.exitCode = interrupt === 'SIGINT' ? 130 : 143;
+      else if (result.signal || result.code !== 0) process.exitCode = result.code || 1;
+    }
+  } catch (error) {
+    invocationFailure = { error };
   } finally {
     clearTimeout(timeout);
     child?.stdin.destroy();
@@ -279,14 +287,17 @@ export async function launchIsolatedInvocation(script, flags) {
       if (host) {
         const after = await observeIsolatedHost(host.container.id, boundedExecute);
         if (!isDeepStrictEqual({ vm: host.vm, container: host.container }, { vm: after.vm, container: after.container })) {
-          throw new Error('isolated environment host allocation/container changed during invocation');
+          invocationFailure = { error: new Error('isolated environment host allocation/container changed during invocation') };
         }
       }
+    } catch (error) {
+      invocationFailure = { error };
     } finally {
       process.off('SIGINT', onInterrupt);
       process.off('SIGTERM', onTerminate);
     }
   }
+  if (invocationFailure) throw invocationFailure.error;
   return true;
 }
 
