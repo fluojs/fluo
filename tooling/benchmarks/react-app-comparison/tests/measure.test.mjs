@@ -49,8 +49,9 @@ test('ordinary React edit capture does not require pinned history or production 
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
-for (const [methodVersion, purpose] of [
+for (const [methodVersion, purpose, measurementKind = 'development'] of [
   [undefined, undefined], ['FA-V2', 'native-conformance'], ['FA-V2', 'timing'], ['FA-V3', 'timing'],
+  ['FA-V3', 'integrated', 'production'],
 ]) {
 test(`${methodVersion ? `${methodVersion} ${purpose}` : 'historical replay'} source-bound React pair authenticates both records without equating full config hashes`, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'fluo-react-pair-'));
@@ -63,10 +64,17 @@ test(`${methodVersion ? `${methodVersion} ${purpose}` : 'historical replay'} sou
       ...(methodVersion ? { ...JSON.parse(await readFile(new URL('../config/representative.json', import.meta.url), 'utf8')).measurement,
         methodVersion, measurementPurpose: purpose, warmupRuns: 2, measurementRuns: 5,
         nativeLifetime: purpose === 'timing' ? { enabled: false } : { enabled: true, python: '/python' },
-        pairId: 'source-bound-pair', pairPhase: 'before', measurementKind: 'development' } : {}),
+        pairId: 'source-bound-pair', pairPhase: 'before', measurementKind } : {}),
       dev: { fluo: { edits: { 'react-edit': edit } } } };
+    if (measurementKind === 'production') {
+      beforeConfig.measurement = { ...JSON.parse(await readFile(new URL('../config/representative.json', import.meta.url), 'utf8')).measurement,
+        methodVersion, measurementPurpose: purpose, measurementKind,
+        pairId: beforeConfig.pairId, pairPhase: 'before',
+        warmupRuns: 2, measurementRuns: 5, nativeLifetime: beforeConfig.nativeLifetime };
+    }
     const afterConfig = structuredClone(beforeConfig);
     if (methodVersion) afterConfig.pairPhase = 'after';
+    if (afterConfig.measurement) afterConfig.measurement.pairPhase = 'after';
     Object.assign(afterConfig.dev.fluo.edits['react-edit'], { file: 'src/catalog-destination.tsx', reload: false });
     const before = await environmentFixture(directory, 'before', beforeConfig);
     const after = await environmentFixture(directory, 'after', afterConfig);
@@ -77,7 +85,8 @@ test(`${methodVersion ? `${methodVersion} ${purpose}` : 'historical replay'} sou
     await assert.rejects(methods.authenticateReactEditPair(after.binding, before.binding, directory),
       /direction|source proof|phase/u);
     const equal = await environmentFixture(directory, 'equal',
-      { ...beforeConfig, ...(methodVersion ? { pairPhase: 'after' } : {}) });
+      { ...beforeConfig, ...(methodVersion ? { pairPhase: 'after' } : {}),
+        ...(beforeConfig.measurement ? { measurement: { ...beforeConfig.measurement, pairPhase: 'after' } } : {}) });
     const equalRelation = await methods.authenticateReactEditPair(before.binding, equal.binding, directory);
     if (methodVersion) assert.equal(equalRelation.afterConfigSha256, equal.binding.configSha256);
     else assert.equal(equalRelation, null);
@@ -127,7 +136,7 @@ test(`${methodVersion ? `${methodVersion} ${purpose}` : 'historical replay'} sou
     const bound = await methods.bindEnvironmentPair(after.binding, flags, directory);
     assert.equal(await readFile(after.binding.path, 'utf8'), originalAfterBytes);
     await methods.verifyReactEditPairRelation(bound, after.binding, directory);
-    if (methodVersion) {
+    if (methodVersion && measurementKind === 'development') {
       const { captureMethodBinding } = await import('../src/fa-v2.mjs');
       const { verifyDevelopmentPairRelation } = await import('../src/gate.mjs');
       const baselineSha256 = createHash('sha256').update(await readFile(new URL('../baseline.json', import.meta.url))).digest('hex');
@@ -149,7 +158,7 @@ test(`${methodVersion ? `${methodVersion} ${purpose}` : 'historical replay'} sou
       }, directory), /receipt source relation/u);
       await assert.rejects(verifyDevelopmentPairRelation(secondReceipt, firstReceipt, directory),
         /development method/u);
-      if (methodVersion === 'FA-V3') {
+      if (methodVersion === 'FA-V3' && purpose === 'timing') {
         const { evaluateAcceptedPair } = await import('../src/gate.mjs');
         const { hashObject } = await import('../src/fa-v2.mjs');
         const { readServerCpu } = await import('../src/server-cpu.mjs');
@@ -303,7 +312,13 @@ test(`${methodVersion ? `${methodVersion} ${purpose}` : 'historical replay'} sou
         (record) => { record.configuration.pairId = 'unrelated-pair'; },
         (record) => { record.configuration.methodVersion = 'historical-v1'; },
         (record) => { record.configuration.measurementPurpose = purpose === 'timing' ? 'native-conformance' : 'timing'; },
-        (record) => { record.configuration.measurementKind = 'production'; },
+        (record) => { record.configuration.measurementKind = measurementKind === 'production' ? 'development' : 'production'; },
+        ...(measurementKind === 'production' ? [
+          (record) => { record.configuration.measurement.throughput.fluo.requests += 1; },
+          (record) => { record.configuration.measurement.measurementKind = 'development'; },
+          (record) => { record.configuration.measurement.pairPhase = 'before'; },
+          (record) => { delete record.configuration.measurement; },
+        ] : []),
       ] : []),
       (record) => { record.configuration.dev.fluo.edits['react-edit'].reload = true; },
       (record) => { record.configuration.dev.fluo.edits['react-edit'].file = 'src/unrelated.tsx'; },

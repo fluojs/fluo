@@ -468,13 +468,16 @@ function compareReactEditPairRecords(before, after) {
       if (expected.measurement.methodVersion !== expected.methodVersion
         || expected.measurement.pairId !== expected.pairId
         || expected.measurement.measurementPurpose !== expected.measurementPurpose
+        || expected.measurement.measurementKind !== expected.measurementKind
         || expected.measurement.pairPhase !== 'before') {
         throw new Error('React edit pair other configuration/aggregate phase mismatch');
       }
       expected.measurement.pairPhase = 'after';
     }
     if (isDeepStrictEqual(expected, after.configuration)) return true;
-    if (before.configuration.measurementKind === 'production' || !before.configuration.dev) {
+    if ((before.configuration.measurementKind === 'production'
+      && (before.configuration.methodVersion !== 'FA-V3' || !expected.measurement))
+      || !before.configuration.dev) {
       throw new Error('React edit pair other configuration/production mismatch');
     }
   } else if (before.configSha256 === after.configSha256) return false;
