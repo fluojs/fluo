@@ -97,6 +97,16 @@ hashes, host logs and cleanup receipts remain in each fresh output root and
 are authenticated and replayed by `verifyTraceFiles`, including warmups and
 combined production/development sources.
 
+FA-V3 final pair numerical acceptance uses every original AFTER absolute
+budget, peer band and observed min/max decision. Preserve and report BEFORE
+numerical FAIL/INCONCLUSIVE and its raw evidence without changing it to PASS.
+Only BEFORE budget breaches and boundary crossing are excluded from the final
+product numerical veto. Both phases still require source/environment/method
+authentication, complete inventory, correctness, valid available metrics,
+native observation and ownership/cleanup. Fluo measured/warmup error rate must
+remain zero in both phases. AFTER numerical FAIL/INCONCLUSIVE still blocks;
+FA-V2's existing pair aggregation remains unchanged.
+
 Each owned Frida session and child gate remain resident until
 that process exits naturally. Original observer hooks stop at drain without
 changing a resuming exec child's gate. Final close cleans remaining sessions;
