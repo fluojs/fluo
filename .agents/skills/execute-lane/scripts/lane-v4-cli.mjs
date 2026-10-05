@@ -7,7 +7,7 @@
 //   plan-all        --root . --lane <path>
 //   watch           --root . --lane <path> [--interval 60] [--once] [--stall-after 15]
 //   record          --root . --lane <path> --issue <n> --phase <p> --result-json <json>
-//   set-fact        --root . --lane <path> --issue <n> --kind local-checks|review --head <sha> --value <json>
+//   set-fact        --root . --lane <path> --issue <n> --kind local-checks|local-ci-waiver|review --head <sha> --value <json>
 //   set-fact        --root . --lane <path> --issue <n> --kind preflight --value <json>
 //   approve-merge   --root . --lane <path> --issue <n>
 //
@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { applyChildResult, decideNext, localCheckBinding, summarizeTransitions, trackStalls } from './lane-v4.mjs';
+import { applyChildResult, decideNext, isValidLocalCiWaiver, localCheckBinding, summarizeTransitions, trackStalls } from './lane-v4.mjs';
 import { evaluatePreflight, issueDigest, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
 import { buildReviewFact, validateReviewFact } from '../../review-head/scripts/contracts.mjs';
 import { collectIdentity } from '../../../../tooling/ci/verify-local.mjs';
@@ -274,15 +274,17 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 	const preflightStatus = evaluatePreflight(preflight, { issue, issueSha256, baseSha, changedFiles, reviewAxisFloor });
 	const review = headSha ? factIfCurrent(entry, 'review', headSha) : null;
 	const reviewAcceptedAt = review ? entry.facts?.review?.accepted_at ?? null : null;
-	const localChecks = (() => {
-		const fact = factIfCurrent(entry, 'local-checks', headSha);
-		if (!fact || !headSha || !worktreeExists || !preflightStatus.valid) return null;
-		let binding;
+	const binding = (() => {
+		if (!headSha || !worktreeExists || !preflightStatus.valid) return null;
 		try {
-			binding = localCheckBinding(validateReviewFact(review, headSha, preflightStatus.policy), reviewAcceptedAt);
+			return localCheckBinding(validateReviewFact(review, headSha, preflightStatus.policy), reviewAcceptedAt);
 		} catch {
 			return null;
 		}
+	})();
+	const localChecks = (() => {
+		const fact = factIfCurrent(entry, 'local-checks', headSha);
+		if (!fact || !binding) return null;
 		if (fact.preflightSha256 !== binding.preflightSha256 || fact.reviewSha256 !== binding.reviewSha256) return null;
 		if (fact.status === 'failed') return fact;
 		try {
@@ -291,6 +293,10 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 			return { ...fact, status: 'failed', valid: false };
 		}
 	})();
+	const waiver = entry.facts?.['local-ci-waiver'];
+	const localCiWaiver = isValidLocalCiWaiver(waiver, {
+		headSha, laneId: lane.lane_id, issue, contractSha256: preflight?.sha256, binding,
+	}) ? waiver : null;
 
 	const unmetDependencies = (entry.depends_on ?? []).filter((dep) => {
 		const s = run(root, 'gh', ['issue', 'view', String(dep), '--json', 'state', '--jq', '.state']);
@@ -298,6 +304,8 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 	});
 
 	return {
+		laneId: lane.lane_id,
+		issue,
 		issueState,
 		issueSha256,
 		changedFiles,
@@ -310,6 +318,7 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 		baseSha,
 		hasNewCommits,
 		localChecks,
+		localCiWaiver,
 		publicPackagesTouched,
 		changesetPresent,
 		review,
@@ -481,7 +490,9 @@ const main = () => {
 	}
 	if (command === 'set-fact') {
 		const kind = arg(args, '--kind');
-		if (!['preflight', 'local-checks', 'review'].includes(kind)) throw new TypeError('kind must be preflight, local-checks or review');
+		if (!['preflight', 'local-checks', 'local-ci-waiver', 'review'].includes(kind)) {
+			throw new TypeError('kind must be preflight, local-checks, local-ci-waiver or review');
+		}
 		const value = JSON.parse(arg(args, '--value'));
 		entry.facts ??= {};
 		if (kind === 'preflight') {
@@ -501,20 +512,31 @@ const main = () => {
 				entry.facts.preflight = { value };
 				delete entry.facts.review;
 				delete entry.facts['local-checks'];
+				delete entry.facts['local-ci-waiver'];
 			}
 		} else {
 			const head = arg(args, '--head');
 			let storedValue;
 			const obs = observeIssue(root, lane, issue);
 			if (head !== obs.headSha || !obs.preflightPolicy) throw new TypeError(`${kind} requires current head and valid preflight`);
+			const acceptedAt = new Date().toISOString();
 			if (kind === 'local-checks') {
 				const binding = localCheckBinding(validateReviewFact(obs.review, head, obs.preflightPolicy), obs.reviewAcceptedAt);
 				storedValue = validateLocalCheckFact(resolve(root, '.worktrees', branchFor(entry)), head, obs.baseSha, value, binding);
+			} else if (kind === 'local-ci-waiver') {
+				const binding = localCheckBinding(validateReviewFact(obs.review, head, obs.preflightPolicy), obs.reviewAcceptedAt);
+				if (obs.localChecks?.status === 'failed') throw new TypeError('local-ci-waiver cannot override failed local checks');
+				if (!isValidLocalCiWaiver({ head, accepted_at: acceptedAt, value }, {
+					headSha: obs.headSha, laneId: lane.lane_id, issue, contractSha256: obs.preflight.sha256, binding,
+				})) throw new TypeError('local-ci-waiver requires exact operator evidence and current bindings');
+				storedValue = value;
 			} else {
 				storedValue = buildReviewFact(value, head, obs.preflightPolicy);
 				delete entry.facts['local-checks'];
+				delete entry.facts['local-ci-waiver'];
 			}
-			entry.facts[kind] = { head, value: storedValue, ...(kind === 'review' ? { accepted_at: new Date().toISOString() } : {}) };
+			entry.facts[kind] = { head, value: storedValue,
+				...(['review', 'local-ci-waiver'].includes(kind) ? { accepted_at: acceptedAt } : {}) };
 		}
 		saveLane(lanePath, lane);
 		process.stdout.write('ok\n');
