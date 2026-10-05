@@ -39,6 +39,20 @@ The existing FA-V2 observed min/max formulas and exact decimal equality apply,
 without a new MAD/spread veto, tolerance, budget or sample-selection rule.
 FA-V2/unversioned captures retain their historical meaning and cannot be reused.
 
+Active FA-V3 separates observed peer performance from collection quality.
+A fully observed, authenticated same-execution peer cancellation/error remains
+in raw evidence and computed peer `errorRate`; a positive peer rate alone is
+not a metricless measurement-quality failure. Fluo `errorRate` must be zero in
+both measured and warmup runs; original Fluo absolute/errorRate budgets and
+peer numeric comparisons remain active. Failed correctness, unavailable/missing
+terminals/native hooks/schema/coverage, `qualityFailures`, ownership/cleanup
+failures and INCONCLUSIVE cannot pass. Do not guess or borrow terminals, remove
+samples, subtract observer cost or change peer defaults, budgets, workload,
+profiles, repetitions, binary/source/environment or statistics. Preserve FA-V2's
+historical quality classification and prior raw/verdicts; replay cannot be
+relabeled as a new acceptance PASS. A new canonical before/final pair is required;
+all three exact-head reviews and full GitHub CI remain merge gates.
+
 For each fresh before/final cohort, derive the unchanged representative config,
 set a common nonempty `pairId` and explicit `pairPhase: "before"` / `"after"`,
 and freeze each full config/source/build/environment identity separately.

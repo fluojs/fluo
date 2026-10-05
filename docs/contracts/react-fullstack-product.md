@@ -159,6 +159,17 @@ Feature availability, authoring cost and type-safety entries are source-backed o
 
 ## Evidence and verification limits
 
+In active FA-V3, fully observed, authenticated same-execution peer
+cancellations/errors remain in raw evidence and computed peer `errorRate`.
+A positive peer rate alone is not a metricless collection-quality failure.
+Fluo `errorRate` must be zero in both measured and warmup runs; original Fluo
+absolute/errorRate budgets and peer numeric comparisons remain active.
+Failed correctness, unavailable/missing terminals/native hooks/schema/coverage,
+`qualityFailures`, ownership/cleanup failures and INCONCLUSIVE cannot pass.
+Preserve FA-V2's historical quality classification and prior raw/verdicts;
+replay cannot be relabeled as a new acceptance PASS. A new canonical before/final
+pair, all three exact-head reviews and full GitHub CI remain required.
+
 Source seams: `packages/react/src/client/store.ts`, `packages/react/src/client/navigation-payload.ts`, `packages/react/src/module.ts`, `packages/cli/src/dev-runner/react-vite-dev-app.ts`, `examples/react-vite-ssr/src/app.ts`. Existing tests: `packages/react/src/client.test.ts`, `examples/react-vite-ssr/src/app.test.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`; the [navigation payload contract](./react-navigation-payload.md) contains additional HTTP/prefetch coverage. These are **existing** behavior records, not newly executed browser or performance results. The example models a native form and a short-lived shell counter, not an actual licensed player or the future product gate. Documentation validation checks links/structure and EN/KO pairing, not future runtime success. The affected FluoBlog chapter 17 and FluoShop chapter 4 companions apply the typed contract alongside their unchanged native exercises; manuscript validation is not their DB/browser execution evidence.
 
 

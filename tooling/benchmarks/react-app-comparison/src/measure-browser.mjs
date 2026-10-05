@@ -217,7 +217,7 @@ export function verifyDevEditObservation(observation, edit, sourceProof) {
     const commit = evidence.final.reactCommit;
     const socket = evidence.readiness?.url && new URL(evidence.readiness.url);
     if (socket) socket.protocol = socket.protocol === 'wss:' ? 'https:' : 'http:';
-    if (!sameDocument || !commit || !commit.matchedHostNode || commit.text !== edit.expectedText
+    if (!sameDocument || !commit?.matchedHostNode || commit.text !== edit.expectedText
       || commit.documentToken !== evidence.final.documentToken || !['19.2.8', '19.3.0-canary-cbb046ab-20260731'].includes(commit.version)
       || !update || update.protocol !== 'vite' || update.message?.type !== 'update'
       || !update.message.updates?.some((item) => item.type === 'js-update'
@@ -534,10 +534,32 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             reactReadiness: error.cause, log }] };
         }
       }
-      const { context, page } = await createPage(item);
+      const { context, page, cdp } = await createPage(item);
       const steps = [];
+      const events = [];
+      const subscriptions = [];
+      const startedAtMs = performance.now();
+      for (const name of ['Network.requestWillBeSent', 'Network.responseReceived',
+        'Network.loadingFinished', 'Network.loadingFailed', 'Page.domContentEventFired']) {
+        const observe = (data) => events.push({
+          name, observedAtMs: performance.now(),
+          requestId: data.requestId, loaderId: data.loaderId, type: data.type,
+          url: data.request?.url ?? data.response?.url,
+          method: data.request?.method, status: data.response?.status,
+          timestamp: data.timestamp, encodedDataLength: data.encodedDataLength,
+          errorText: data.errorText, canceled: data.canceled,
+        });
+        cdp.on(name, observe);
+        subscriptions.push([cdp, name, observe]);
+      }
+      for (const name of ['domcontentloaded', 'crash', 'close']) {
+        const observe = () => events.push({ name: `page.${name}`, observedAtMs: performance.now() });
+        page.on(name, observe);
+        subscriptions.push([page, name, observe]);
+      }
       let createdPath = null;
       try {
+        await cdp.send('Page.enable');
         for (const name of JOURNEYS) {
           const journey = config.journeys[name];
           const path = resolveJourneyValue(journey.path, createdPath);
@@ -557,12 +579,14 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           if (name === 'create') createdPath = new URL(page.url()).pathname;
           steps.push({ name, pass: true });
         }
-        await context.close();
         return { pass: true, steps };
       } catch (error) {
-        steps.push({ name: JOURNEYS[steps.length], pass: false, error: String(error) });
-        await context.close();
+        steps.push({ name: JOURNEYS[steps.length], pass: false, error: String(error),
+          diagnostics: { startedAtMs, failedAtMs: performance.now(), events } });
         return { pass: false, steps };
+      } finally {
+        for (const [source, name, observe] of subscriptions) source.off(name, observe);
+        await context.close();
       }
     },
     async measure(item) {
@@ -576,8 +600,10 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
               productSha256: item.methodBinding.productSha256 } : {}) } : {}) } } : undefined);
       let measurementFailed = false;
       let measurementError;
+      let observation;
+      let cleanupFailure;
       try {
-      const { context, page, cdp } = await createPage(item, native.browser);
+      const { page, cdp } = await createPage(item, native.browser);
       await native.prepareLifetime(cdp);
       const lifetimeIdentity = native.lifetimeIdentity;
       const nativeSubscriptions = [];
@@ -864,7 +890,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         }
         const errorRate = summarizeErrorRate(requests);
         if (errorRate !== null) metrics.errorRate = errorRate;
-        return {
+        observation = {
           metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions, initialBoundary, warmBoundary, finalRequestCapture },
           artifacts: {
             nativeTerminalObserver: nativeEvidence.provenance,
@@ -895,7 +921,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         throw error;
       } finally {
         try { await native.close(); } catch (cleanupError) {
-          if (!measurementFailed) throw cleanupError;
+          if (!measurementFailed) cleanupFailure = { error: cleanupError };
           if (measurementError instanceof Error && measurementError !== cleanupError) {
             try { measurementError.cause ??= cleanupError; } catch {
               console.error('native cleanup failed after measurement failure', cleanupError);
@@ -903,6 +929,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           }
         }
       }
+      if (cleanupFailure) throw cleanupFailure.error;
+      return observation;
     },
     async measureDev(item, _config, kind) {
       const key = item.runId + item.framework;

@@ -40,7 +40,7 @@ test('native lifetime cancellation preserves the failure denominator and unavail
     events, cleanup: { closed: true, detached: true, exitCode: 0, signal: null } };
   const raw = Buffer.alloc(512 + events.length * 128);
   [0x4e4c4a32, 2, 500000, 128, 512, 42, 0, events.length, events.length]
-    .forEach((value, index) => raw.writeUInt32LE(value, index * 4));
+    .forEach((value, index) => { raw.writeUInt32LE(value, index * 4); });
   raw.writeUInt32LE(1, 52);
   raw.write('run', 64);
   raw.write(binding.processBirth, 192);
@@ -197,6 +197,74 @@ test('readiness observes the installed Vite client in a real browser', { timeout
   } finally {
     await browser?.close();
     await server.close();
+  }
+});
+
+test('correctness check: failed HTTP status -> retains navigation progress before context cleanup', { timeout: 15_000 }, async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(503, { 'content-type': 'text/html' });
+    response.end('<!doctype html><h1>Unavailable</h1>');
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  const driver = await createBrowserDriver({
+    journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+      .map((name) => [name, { path: '/', status: 200 }])),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    const result = await driver.check({ framework: 'tanstack-start', runId: 'http-failure',
+      device: 'desktop', mode: 'native', url });
+
+    assert.equal(result.pass, false);
+    const diagnostics = result.steps[0].diagnostics;
+    const request = diagnostics.events.find((entry) => entry.name === 'Network.requestWillBeSent');
+    const response = diagnostics.events.find((entry) => entry.name === 'Network.responseReceived');
+    assert.equal(request.url, url);
+    assert.equal(response.requestId, request.requestId);
+    assert.equal(response.status, 503);
+    assert.ok(diagnostics.events.some((entry) => entry.name === 'page.domcontentloaded'));
+    assert.ok(diagnostics.events.every((entry) => entry.observedAtMs >= diagnostics.startedAtMs
+      && entry.observedAtMs <= diagnostics.failedAtMs));
+    assert.equal(diagnostics.events.some((entry) => entry.name === 'page.close'), false);
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('correctness check: transport abort -> retains loading failure without invented response', { timeout: 15_000 }, async () => {
+  const server = createServer((request) => request.socket.destroy());
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  const driver = await createBrowserDriver({
+    journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+      .map((name) => [name, { path: '/', status: 200 }])),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    const result = await driver.check({ framework: 'tanstack-start', runId: 'transport-failure',
+      device: 'desktop', mode: 'native', url });
+
+    assert.equal(result.pass, false);
+    const events = result.steps[0].diagnostics.events;
+    const failed = events.find((entry) => entry.name === 'Network.loadingFailed');
+    assert.ok(events.some((entry) => entry.name === 'Network.requestWillBeSent'
+      && entry.requestId === failed.requestId));
+    assert.equal(typeof failed.errorText, 'string');
+    assert.equal(events.some((entry) => entry.name === 'Network.responseReceived'), false);
+    assert.equal(events.some((entry) => entry.name === 'page.close'), false);
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
   }
 });
 
@@ -576,7 +644,7 @@ test(`${framework} counts common React completion in cold and edit navigation re
       url, readyPattern: 'READY', reactReadiness: { timeoutMs: 60_000 },
       edits: { 'react-edit': {
         path: '/edit', selector: 'h1', expectedText: 'Edited',
-        command: [process.execPath, '-e', `fetch(${JSON.stringify(url + 'stimulus')}).then(r => r.text())`],
+        command: [process.execPath, '-e', `fetch(${JSON.stringify(`${url}stimulus`)}).then(r => r.text())`],
       } },
     } },
   };
