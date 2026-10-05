@@ -79,6 +79,15 @@ export function evaluateMeasurementQuality(receipts) {
     }));
 }
 
+export function evaluatePairVerdict(before, after, methodVersion) {
+  const beforeChecks = methodVersion === 'FA-V3' ? before.checks.filter((check) =>
+    check.metric === undefined || check.metric === 'errorRate' && check.framework === 'fluo'
+    || !['absolute-budget', 'relative-band'].includes(check.reason)) : before.checks;
+  const checks = [...beforeChecks, ...after.checks];
+  return checks.some((check) => check.verdict === 'fail') ? 'fail'
+    : checks.some((check) => check.verdict === 'inconclusive') ? 'inconclusive' : 'pass';
+}
+
 /** Historical evaluateEvidence is replay only; this is the versioned acceptance seam. */
 export async function evaluateAcceptedEvidence(baseline, timingReceipts, outputRoot, nativeReceipts = []) {
   const integrated = timingReceipts[0]?.methodVersion === 'FA-V3';
@@ -236,9 +245,9 @@ export async function evaluateAcceptedPair(baseline, before, after) {
       sourceRelations.push(relation);
     }
   }
-  const verdict = results.some((result) => result.verdict === 'fail') ? 'fail'
-    : results.some((result) => result.verdict === 'inconclusive') ? 'inconclusive' : 'pass';
+  const verdict = evaluatePairVerdict(results[0], results[1], results[0].methodVersion);
   return { methodVersion: results[0].methodVersion, pairId: results[0].pairId, verdict, sourceRelations,
+    ...(results[0].methodVersion === 'FA-V3' ? { numericAcceptancePhase: 'after' } : {}),
     before: results[0], after: results[1] };
 }
 

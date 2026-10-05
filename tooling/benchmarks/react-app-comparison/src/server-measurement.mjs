@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { readMeasurementReceipt } from './run-gate.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
-import { evaluateAcceptedEvidence, evaluateAcceptedPair, evaluateEvidence } from './gate.mjs';
+import { evaluateAcceptedEvidence, evaluateAcceptedPair, evaluateEvidence, evaluatePairVerdict } from './gate.mjs';
 import { captureIsolatedEnvironment, collectMeasurements, readIsolatedInvocation,
   verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from './measure.mjs';
 
@@ -48,8 +48,7 @@ export async function evaluateAcceptedServerPair(baseline, before, after) {
   const first = subset(pair.before);
   const second = subset(pair.after);
   return { ...pair, before: first, after: second, serverMetrics,
-    verdict: [first, second].some((result) => result.verdict === 'fail') ? 'fail'
-      : [first, second].some((result) => result.verdict === 'inconclusive') ? 'inconclusive' : 'pass' };
+    verdict: evaluatePairVerdict(first, second, pair.methodVersion) };
 }
 
 export async function runServerMeasurement(configPath, receiptPath,

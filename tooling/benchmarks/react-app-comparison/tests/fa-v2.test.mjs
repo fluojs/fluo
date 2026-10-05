@@ -27,6 +27,62 @@ const baseline = {
   } },
   policy: { minimumRuns: 5, warmupRuns: 2, maximumRelativeSpread: 0.15, outlierMadMultiplier: 3 },
 };
+for (const reason of ['absolute-budget', 'relative-band']) {
+  for (const verdict of ['fail', 'inconclusive']) {
+    test(`FA-V3 pair: before ${reason} ${verdict} -> passing after determines numerical acceptance`, () => {
+      const before = { verdict, checks: [{ metric: 'cpuPercent', framework: 'fluo', reason, verdict }] };
+      const after = { verdict: 'pass', checks: [{ metric: 'cpuPercent', reason: 'within-budget', verdict: 'pass' }] };
+      const original = structuredClone({ before, after });
+
+      const result = gate.evaluatePairVerdict(before, after, 'FA-V3');
+
+      assert.equal(result, 'pass');
+      assert.deepEqual({ before, after }, original);
+      assert.equal(gate.evaluatePairVerdict(before, after, 'FA-V2'), verdict);
+    });
+  }
+}
+
+for (const [reason, metric, verdict] of [
+  ['missing-metric', 'cpuPercent', 'inconclusive'],
+  ['invalid-value', 'rssBytes', 'inconclusive'],
+  ['correctness-failure', undefined, 'fail'],
+  ['measurement-quality', undefined, 'inconclusive'],
+  ['missing-trace', undefined, 'inconclusive'],
+  ['insufficient-runs', undefined, 'inconclusive'],
+  ['insufficient-warmup', undefined, 'inconclusive'],
+  ['absolute-budget', 'errorRate', 'fail'],
+]) {
+  test(`FA-V3 pair: before ${reason}/${metric ?? 'quality'} -> remains blocking`, () => {
+    const before = { verdict, checks: [{ framework: 'fluo', reason, metric, verdict }] };
+    const after = { verdict: 'pass', checks: [] };
+
+    const result = gate.evaluatePairVerdict(before, after, 'FA-V3');
+
+    assert.equal(result, verdict);
+  });
+}
+
+for (const verdict of ['fail', 'inconclusive']) {
+  test(`FA-V3 pair: after numerical ${verdict} -> remains blocking`, () => {
+    const before = { verdict: 'pass', checks: [] };
+    const after = { verdict, checks: [{ metric: 'cpuPercent', reason: 'relative-band', verdict }] };
+
+    const result = gate.evaluatePairVerdict(before, after, 'FA-V3');
+
+    assert.equal(result, verdict);
+  });
+}
+
+test('FA-V3 pair: before positive Fluo warmup rate -> remains blocking', () => {
+  const run = { framework: 'fluo', correctness: 'pass', metrics: { errorRate: 0.01 } };
+  const checks = gate.evaluateMeasurementQuality([{ methodVersion: 'FA-V3', runs: [], warmups: [run] }]);
+
+  const result = gate.evaluatePairVerdict({ checks }, { checks: [] }, 'FA-V3');
+
+  assert.equal(result, 'fail');
+});
+
 function samples(metric, fluo, peer = fluo) {
   return frameworks.flatMap((framework) => Array.from({ length: 5 }, (_, index) => ({
     methodVersion: 'FA-V2', measurementPurpose: 'timing',

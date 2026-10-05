@@ -167,10 +167,18 @@ raw 증거와 계산된 peer `errorRate`에 그대로 포함합니다. 양수 pe
 metric 없는 수집 품질 실패로 분류하지 않습니다. Fluo `errorRate`는 measured와
 warmup 모두 0이어야 하며 기존 Fluo absolute/errorRate budget과 peer numeric
 비교는 유지합니다. Correctness 실패, unavailable/missing terminal/native hook/
-schema/coverage, `qualityFailures`, ownership/cleanup 실패와 INCONCLUSIVE는
-통과할 수 없습니다. FA-V2의 historical quality 분류와 이전 raw/verdict를
+schema/coverage, `qualityFailures`, ownership/cleanup 실패와 품질 INCONCLUSIVE는
+양쪽 단계 모두 통과할 수 없습니다. FA-V2의 historical quality 분류와 이전 raw/verdict를
 보존하고 replay를 새 수용 PASS로 재분류하지 않습니다. 새 canonical before/final
 pair, exact-head 세 review와 full GitHub CI가 여전히 필요합니다.
+
+FA-V3 pair의 최종 수치 수용은 AFTER의 기존 모든 absolute budget, peer band 및
+관측 min/max 판정으로 결정합니다. BEFORE의 수치 FAIL/INCONCLUSIVE와 원본은
+그대로 보고하며 PASS로 바꾸지 않습니다. BEFORE의 budget 초과·경계 교차만
+최종 제품 수치 veto에서 제외합니다. 양쪽 출처·환경·method 인증, 완전한 inventory,
+correctness, 유효하고 누락 없는 metric, native 관측과 ownership/cleanup은
+계속 필수이며 Fluo measured/warmup error rate는 양쪽 모두 0이어야 합니다.
+AFTER 수치 FAIL/INCONCLUSIVE는 계속 차단하고 FA-V2의 기존 pair 판정은 유지합니다.
 
 Source seam: `packages/react/src/client/store.ts`, `packages/react/src/client/navigation-payload.ts`, `packages/react/src/module.ts`, `packages/cli/src/dev-runner/react-vite-dev-app.ts`, `examples/react-vite-ssr/src/app.ts`. 기존 테스트: `packages/react/src/client.test.ts`, `examples/react-vite-ssr/src/app.test.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`; [navigation payload 계약](./react-navigation-payload.ko.md)에 HTTP/prefetch 추가 근거가 있습니다. 이는 **기존** 동작 기록이며 이 변경에서 새 browser/performance 실행을 했다는 뜻이 아닙니다. 예제의 native form과 짧은 shell counter는 실제 유료 player나 향후 제품 게이트가 아닙니다. Docs 검증은 link/구조와 EN/KO 쌍을 확인할 뿐 미래 runtime 성공은 보장하지 않습니다. 영향받는 FluoBlog 17장과 FluoShop 4장 companion은 기존 native 실습을 유지하며 typed 계약을 적용합니다. 원고 검증은 해당 DB/browser 실행 근거가 아닙니다.
 

@@ -46,12 +46,20 @@ FA-V2/unversioned capture는 historical 의미를 유지하고 재사용하지 �
 분류하지 않습니다. Fluo `errorRate`는 measured와 warmup 모두 0이어야 하며 기존
 Fluo absolute/errorRate budget과 peer numeric 비교는 그대로 적용합니다.
 Correctness 실패, unavailable/missing terminal/native hook/schema/coverage,
-`qualityFailures`, ownership/cleanup 실패와 INCONCLUSIVE는 통과할 수 없습니다.
+`qualityFailures`, ownership/cleanup 실패와 품질 INCONCLUSIVE는 양쪽 단계 모두 통과할 수 없습니다.
 Terminal 추정·차용, sample 제거, observer 비용 차감이나 peer 기본값·budget·
 workload·profile·반복·binary/source/environment·통계 변경은 허용하지 않습니다.
 FA-V2의 historical quality 분류와 이전 raw/verdict는 그대로 보존하며 replay를
 새 수용 PASS로 재분류하지 않습니다. 새 canonical before/final pair가 필요하고,
 exact-head 세 review와 full GitHub CI는 merge gate로 유지합니다.
+
+FA-V3 pair의 최종 수치 수용은 AFTER의 기존 모든 absolute budget, peer band 및
+관측 min/max 판정으로 결정합니다. BEFORE의 수치 FAIL/INCONCLUSIVE와 원본은
+그대로 보고하며 PASS로 바꾸지 않습니다. BEFORE의 budget 초과·경계 교차만
+최종 제품 수치 veto에서 제외합니다. 양쪽 출처·환경·method 인증, 완전한 inventory,
+correctness, 유효하고 누락 없는 metric, native 관측과 ownership/cleanup은
+계속 필수이며 Fluo measured/warmup error rate는 양쪽 모두 0이어야 합니다.
+AFTER 수치 FAIL/INCONCLUSIVE는 계속 차단하고 FA-V2의 기존 pair 판정은 유지합니다.
 
 Fresh before/final cohort마다 변경하지 않은 representative config를 파생하고
 같은 비어 있지 않은 `pairId` 및 `pairPhase: "before"` / `"after"`를

@@ -48,12 +48,22 @@ not a metricless measurement-quality failure. Fluo `errorRate` must be zero in
 both measured and warmup runs; original Fluo absolute/errorRate budgets and
 peer numeric comparisons remain active. Failed correctness, unavailable/missing
 terminals/native hooks/schema/coverage, `qualityFailures`, ownership/cleanup
-failures and INCONCLUSIVE cannot pass. Do not guess or borrow terminals, remove
+failures and quality INCONCLUSIVE cannot pass in either phase. Do not guess or borrow terminals, remove
 samples, subtract observer cost or change peer defaults, budgets, workload,
 profiles, repetitions, binary/source/environment or statistics. Preserve FA-V2's
 historical quality classification and prior raw/verdicts; replay cannot be
 relabeled as a new acceptance PASS. A new canonical before/final pair is required;
 all three exact-head reviews and full GitHub CI remain merge gates.
+
+FA-V3 final pair numerical acceptance uses every original AFTER absolute
+budget, peer band and observed min/max decision. Preserve and report BEFORE
+numerical FAIL/INCONCLUSIVE and its raw evidence without changing it to PASS.
+Only BEFORE budget breaches and boundary crossing are excluded from the final
+product numerical veto. Both phases still require source/environment/method
+authentication, complete inventory, correctness, valid available metrics,
+native observation and ownership/cleanup. Fluo measured/warmup error rate must
+remain zero in both phases. AFTER numerical FAIL/INCONCLUSIVE still blocks;
+FA-V2's existing pair aggregation remains unchanged.
 
 For each fresh before/final cohort, derive the unchanged representative config,
 set a common nonempty `pairId` and explicit `pairPhase: "before"` / `"after"`,
