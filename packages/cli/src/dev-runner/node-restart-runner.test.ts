@@ -847,6 +847,47 @@ describe('React Vite development restart', () => {
     await expect(running).resolves.toBe(0);
   });
 
+  it.each([
+    { env: {}, expected: 50 },
+    { env: { FLUO_DEV_RELOAD_DEBOUNCE_MS: '175' }, expected: 175 },
+  ])('uses the configured trailing-edge delay $expected', async ({ env, expected }) => {
+    const projectDirectory = mkdtempSync(join(tmpdir(), 'fluo-cli-debounce-default-'));
+    createdDirectories.push(projectDirectory);
+    const source = join(projectDirectory, 'src');
+    mkdirSync(source);
+    const file = join(source, 'main.ts');
+    writeFileSync(file, 'export const value = 1;\n');
+    const scheduler = createManualRestartScheduler();
+    const delays: number[] = [];
+    const set = scheduler.set.bind(scheduler);
+    scheduler.set = (callback, delay) => {
+      delays.push(delay);
+      return set(callback, delay);
+    };
+    const signals = new EventEmitter();
+    const child = createMockChild([]);
+    let onChange: ((event: string, filename: string | Buffer | null) => void) | undefined;
+    const running = runNodeRestartRunner({
+      env, projectDirectory, restartScheduler: scheduler, signalTarget: signals,
+      spawnChild: () => child,
+      watchTarget: (target, optionsOrListener, listener) => {
+        if (target === source) onChange = typeof optionsOrListener === 'function' ? optionsOrListener : listener;
+        return new TestWatcher();
+      },
+    });
+    try {
+      writeFileSync(file, 'export const value = 2;\n');
+      onChange?.('change', 'main.ts');
+      onChange?.('change', 'main.ts');
+      expect(delays).toEqual([expected, expected]);
+      expect(scheduler.clearCalls).toHaveLength(1);
+    } finally {
+      signals.emit('SIGTERM');
+      closeMockChild(child, 0);
+      await expect(running).resolves.toBe(0);
+    }
+  });
+
   it('reconciles atomic replacements and deleted source by content', () => {
     const directory = mkdtempSync(join(tmpdir(), 'fluo-cli-atomic-restart-'));
     createdDirectories.push(directory);

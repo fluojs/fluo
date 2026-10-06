@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { test } from 'node:test';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { test } from 'node:test';
 import * as collector from '../src/measure-browser.mjs';
 import { createNativeCapture } from '../src/native-terminal.mjs';
 

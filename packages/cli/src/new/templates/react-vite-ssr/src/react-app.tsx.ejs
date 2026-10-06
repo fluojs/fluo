@@ -107,13 +107,15 @@ function LongLivedResource(): ReactElement {
 
 function SharedNavigation(): ReactElement {
   const [count, setCount] = useState(0);
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => { setHydrated(true); }, []);
   const router = useRouter();
   const route = useRouterState();
   const params = useParams();
   const navigation = useNavigation();
   return (
     <header>
-      <button onClick={() => setCount((value) => value + 1)} type='button'>Shell taps: {count}</button>
+      <button disabled={!hydrated} onClick={() => setCount((value) => value + 1)} type='button'>Shell taps: {count}</button>
       <p aria-label='Current route'>{route.url} ({JSON.stringify(params)})</p>
       <SessionResources><LongLivedResource /></SessionResources>
       <SessionResources><BackgroundSearch id='song-widget' /></SessionResources>

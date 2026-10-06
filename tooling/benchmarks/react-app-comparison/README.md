@@ -30,6 +30,161 @@ prefetch defaults, repetitions, budgets and all metric definitions remain
 unchanged, including post-workload `ps` CPU/RSS snapshots. Development runners
 remain separate from this production startup helper.
 
+The shared passive Chromium NetLog observer authenticates missing CDP cancellation
+terminals only through a unique exact native source clock and reciprocal lifetime
+chain before capture. Original CDP observations remain intact; missing, contradictory
+or ambiguous chains remain inconclusive. Native/CDP trace hashes and containment
+are checked before evaluation. Logging overhead is included on both matched sides,
+not measured separately. The page stays live through throughput and the unchanged
+post-workload `ps` CPU/RSS snapshot; budgets, peer defaults and metric meanings do
+not change.
+
+### Opt-in exact native lifetime observation
+
+Historical production measurement optionally accepts `nativeLifetime: { "enabled": true,
+"python": "/opt/fluo-native-debug/bin/python" }` (under `measurement` in a
+`run-gate.mjs` config). Omit it for the unchanged passive NetLog path:
+the default never imports, starts, installs or requires Frida/Python.
+FA-V3 production requires same-execution integrated native observation.
+The FA-V2 timing/native-conformance split below is historical; its native
+requirements also apply to FA-V3 production integrated observation.
+The mode is `chromium-native-lifetime-v1`, with a retained versioned
+symbol/argument/clock schema and agent/host source hashes.
+
+The initial adapter supports only Linux/AArch64 ELF64 little-endian canonical
+Playwright revision `1228` **headless_shell**, Chromium `149.0.7827.0`,
+SHA-256 `b6f53f7e40c3ad6727cb3a12536026dcd93281e5965923752c8130ed53e5e8c4`,
+GNU build ID `afcd146a627911fb30269f995d093903636ed886`.
+It checks the executed executable, executable renderer mappings, native ABI
+and exact retained symbols/offsets before installing hooks. A version string
+alone is insufficient. Full Chromium, other builds/architectures and macOS
+are unsupported; Linux evidence does not establish macOS representative support.
+The external runtime is Python `3.11.2` executable SHA-256
+`304aa87a76ebb13fd22d253ac157f14980ff2cdb23e6274f3b045571405e07dc`,
+Frida `17.21.0`, and the exact Python/Frida file identities enforced by the
+adapter. Provision that runtime separately in an isolated environment; the
+benchmark does not install it or change host signing/attach permissions.
+
+For the retained diagnostic container, verify and execute the opt-in config:
+
+```sh
+docker exec fluo-3884-native-debug-20261003 /opt/fluo-native-debug/bin/python --version
+docker exec fluo-3884-native-debug-20261003 /opt/fluo-native-debug/bin/python \
+  -c 'import frida; print(frida.__version__)'
+docker exec fluo-3884-native-debug-20261003 sha256sum \
+  /opt/fluo-native-debug/bin/python \
+  /benchmark/browsers/chromium_headless_shell-1228/chrome-linux/headless_shell
+# Run from an isolated copy of the collector with Linux-installed dependencies.
+# Supply a fresh output root and the unchanged frozen config plus measurement.nativeLifetime.
+PLAYWRIGHT_BROWSERS_PATH=/benchmark/browsers node src/run-gate.mjs \
+  --config /absolute/native-opt-in-config.json --output-dir /absolute/fresh-results
+```
+
+Hooks are ready before entry navigation. Only owned browser descendants are
+gated; new children get independent hooks before resume, and CDP must prove
+their renderer role. PID/process birth, Resource birth and independent native
+Loader birth, target/session and request occurrence must form a unique chain
+through actual `IdentifiersFactory::RequestId` calls. Native loader pointers
+are not CDP `loaderId`s. Only pending records can acquire cancellation from
+matching `Cancel` entry, nested `HandleError` entry and both normal returns
+strictly before the original CDP cutoff, with authenticated monotonic-clock
+units. Actual CDP terminals stay unchanged. Cancellation is
+`request-failed`, `canceled:true`, and counts in the existing error-rate
+numerator/denominator; no body bytes, CDP status/error code or settled time
+are synthesized.
+
+Native events are buffered in host-retained shared memory without per-event IPC. Hook overhead
+remains in measured work; setup/drain and separate observer costs are retained,
+not separately measured or subtracted. Drain happens before BrowserServer
+close but after unchanged throughput and `ps` samples, without moving the
+original request cutoff. Raw native events, CDP ledger, coverage, schema/source
+hashes, host logs and cleanup receipts remain in each fresh output root and
+are authenticated and replayed by `verifyTraceFiles`, including warmups and
+combined production/development sources.
+
+FA-V3 final pair numerical acceptance uses every original AFTER absolute
+budget, peer band and observed min/max decision. Preserve and report BEFORE
+numerical FAIL/INCONCLUSIVE and its raw evidence without changing it to PASS.
+Only BEFORE budget breaches and boundary crossing are excluded from the final
+product numerical veto. Both phases still require source/environment/method
+authentication, complete inventory, correctness, valid available metrics,
+native observation and ownership/cleanup. Fluo measured/warmup error rate must
+remain zero in both phases. AFTER numerical FAIL/INCONCLUSIVE still blocks;
+FA-V2's existing pair aggregation remains unchanged.
+
+Each owned Frida session and child gate remain resident until
+that process exits naturally. Original observer hooks stop at drain without
+changing a resuming exec child's gate. Final close cleans remaining sessions;
+session detach/unload follows process exit, never precedes
+BrowserServer close. Resident memory/runtime overhead stays
+included, without subtraction. An eternalized inert script per session prevents live-agent unload when
+failed/aborted preparation forces bounded observer-child termination.
+Transport schema v2 retains an append-only memfd journal for each
+PID/starttime/exec epoch. The host acquires and verifies its descriptor before
+acknowledging hooks readiness or gated resume. The 500000 fixed-width records
+never wrap: the native writer publishes each payload with AArch64 release
+ordering, and the host reads markers with acquire ordering. Attempted/committed
+counts, sequence markers, drops, native callback and invocation counts, ownership
+and the original binary header/records remain in hashed raw evidence. Missing
+ownership, an interrupted publication/callback, overflow or an incomplete call
+cannot become complete by recomputing hashes.
+
+Retired images are read from the retained mapping, without RPC to a destroyed
+script. A live interval must cover the original cutoff; an earlier retired
+interval requires authenticated detach plus a birth-bound normal status.
+The early browser lifecycle observer may retain a separate zombie `/proc` status
+witness; it never replaces a missing pidfd status or treats a signal to a zombie
+as its cause.
+When that witness is unavailable, only the authenticated owned browser/zygote
+parent's actual `waitpid`/`wait4` normal return can supply an independent raw
+reap status. Its pre-call kernel PID/starttime/parent, original stat, return PID,
+status and observer sequence are retained. A NULL wait
+status destination remains NULL; a separate birth-bound zombie `stat` exit-code
+field captured before the actual reap may supply status, without rewriting
+either the wait result or pidfd status. Raw SIGTERM 15 is admitted for an
+earlier retirement only with its own complete pre-cutoff Chromium normal
+termination caller/return chain and successful live-target send. It stays 15;
+missing pidfd status stays missing. This proof does not borrow or backdate
+`graceful-close` and is separate from the existing post-close shutdown proof.
+Successful gated exec retains distinct old/new histories and
+requires successor readiness before resume; failed exec cannot close the old
+epoch. Unknown roles/status, crashes and unproved transitions stay inconclusive.
+Neither the production COOP first navigation nor the capture boundary changes.
+Nonempty retirement is also checked in a separately labeled two-document
+correctness fixture, never a preliminary navigation in a measured cohort.
+Journal mappings, native writer/callback accounting and lifecycle observation
+costs remain included. Correctness evidence is not a paired performance verdict.
+
+The Python host retains pidfd exit subscriptions through BrowserServer termination
+and then finalizes the original-cutoff
+evidence. Main exit/error/disconnect and owned descendant wait statuses are
+retained even on failure. Known abnormal exits are rejected before NetLog parsing;
+Python exit 0 or successful detach is not browser health. A reaped descendant's
+unavailable wait status remains missing, not zero, so main exit 0 does not prove
+every descendant exited normally.
+Separate post-drain shutdown observation classifies raw status 15 as intentional
+only when the authenticated Chromium main's normal-shutdown caller, live owned
+target PID/start identity, successful SIGTERM send, explicit-close ordering and
+normal main exit all agree. Its IPC/setup cost is not subtracted. Zombie targets,
+failed sends, missing callers, unknown causes and other abnormal exits are not
+admitted; status 15 and missing statuses are never rewritten to zero.
+
+Unsupported identity, late attach, partial hooks, drops, incomplete returns,
+transport/script errors, unproven renderer retirement, ambiguous reuse,
+unverified child role or worker target coverage produce unavailable/inconclusive
+evidence, never fallback coverage or invented cancellation. Observer sessions,
+listeners and children are closed with bounded event-based waits on success,
+failure, timeout and abort; cleanup failures remain recorded. Worker/service-worker
+paths are not supported by the frame adapter. The two earlier canonical headless
+diagnostics had no unresolved pending requests: their 36 already-canceled
+bindings demonstrate viability, not missing-terminal integration or performance
+acceptance. Focused runtime checks likewise do not replace identical-collector
+before/after recollection across four frameworks/profiles, five samples/two
+warmups or original budgets/statistics. The amended local representative pair
+uses the explicit isolated Linux boundary below; macOS native observation
+remains unsupported.
+Historical fail/inconclusive receipts remain unchanged.
+
 ```sh
 pnpm install --frozen-lockfile
 pnpm build
@@ -109,12 +264,147 @@ HTTP comparison retains its separate `isolated-benchmark` selector. It is a corr
 one noisy shared-runner performance sample. A separate representative-environment
 workflow runs repeated profile measurements. A genuine failed measurement must remain
 a failed gate; unknown or noisy data has an inconclusive verdict, never `pass`.
-The representative workflow requires a provisioned `self-hosted, macOS, ARM64,
+The existing GitHub representative workflow requires a provisioned `self-hosted, macOS, ARM64,
 react-app-performance-m4-pro` runner. Without that runner, its GitHub dispatch
 cannot be claimed as executed; local results must identify the actual host.
 The runner starts built production servers with exact ready events, keeps raw
 trace files under the supplied `results/` directory, then combines all four
 profile receipts through `src/gate.mjs`. A single profile is not a gate pass.
+
+### Explicit isolated Linux representative pair
+
+The amended local #3884/#3885 pair uses one OrbStack Linux ARM64 environment
+on the Apple M4 Pro host: kernel `7.0.14-orbstack-00380-ga7e0a2dc9535`,
+12 logical CPUs and 8392974336 bytes of VM memory, image reference
+`fluo-verification:sha256-81a185cd17d652f2d9fe7dbbaad1647262d17094e49eac533e7de30d2b37293e`
+and actual immutable image ID
+`sha256:f240abbe0c9fadb08df3b4f8b409111f5fd87733dfade0c69d6dfd839682d56b`.
+Container CPU quota/period/nanoCPUs, memory/swap limits are zero and cpuset is
+empty. These mean shared VM capacity, **not** a dedicated 12-CPU reservation.
+Actual Node is `v24.21.0`; historical macOS observations used Node `24.20.0`.
+`baseline.json` retains those historical facts and is not rewritten or paired
+with Linux numbers.
+
+This mode is explicitly opt-in. Keep `config/representative.json` unchanged;
+make an isolated invocation config with
+`measurement.methodVersion: "FA-V3"`, `measurement.measurementPurpose: "integrated"`,
+`measurement.measurementKind: "production"`, a frozen nonempty `measurement.pairId`,
+`measurement.pairPhase: "before"` or `"after"`, and
+`measurement.nativeLifetime: { enabled: true, python: "/opt/fluo-native-debug/bin/python" }`.
+For direct `measure.mjs`, put `nativeLifetime` at the config root instead.
+The already-provisioned running container must see the current collector source,
+config and fresh output paths, the existing Linux SDK and the canonical browser.
+No Docker socket mount, permission change, install or browser rebuild is needed
+by the launcher. Python/Frida were provisioned after image creation and are
+authenticated separately, not inferred from the image ID.
+
+Run the launcher **on the host**, substituting real paths visible inside the
+selected running container:
+
+```sh
+node tooling/benchmarks/react-app-comparison/src/run-gate.mjs \
+  --isolated-container fluo-3884-native-debug-20261003 \
+  --config <isolated-config.json> --output-dir <fresh-suite-output> \
+  --mode discovery
+# For the after invocation, also require the before receipt's immutable hash:
+# --environment-identity <before-environmentBinding.identitySha256>
+# --environment-config-identity <before-environmentBinding.configSha256>
+```
+
+`measure.mjs --config <config> --output <receipt>` accepts the same
+`--isolated-container` and both pair identity flags for focused invocation.
+Pair comparison requires the environment and configuration hashes together;
+matching tools with different frozen settings is rejected except for the
+authenticated directional Fluo React-edit relation below. For that alternative,
+also pass `--environment-before-record <original-before-environment.json>` and
+`--environment-before-root <original-before-output-root>`. The collector authenticates
+the original record before importing its unchanged bytes into the after output.
+The flags alone do not authorize a config difference.
+Capture the before side with `--react-edit-pair-source` when preparing this
+unequal-config comparison. `run-gate.mjs` forwards that intent to development
+children, not production-only children. The after side requires source proof
+automatically when its authenticated before record has a different edit descriptor.
+Ordinary isolated captures and exact-config pairs without this opt-in do not
+require the historical source anchors or a production build for a dev-only run.
+The internal `--isolated-guest` stdin transport is owned by the host launcher;
+prepared environment JSON and caller-supplied image/version strings are not
+observation inputs. The host actually runs Docker inspect/info against the selected
+running container and rechecks container/VM/allocation after execution. The guest
+cross-checks its hostname, kernel, CPUs/memory and cgroup allocation and measures
+Node, pnpm, Playwright/TypeScript SDK, actual headless executable, external
+Python/Frida files and observer schema/source hashes. Executable/source/allocation
+bindings are revalidated around each sample.
+
+Each fresh invocation retains `environment-<invocationId>.json` inside its output
+root. Its byte digest, immutable `identitySha256`, separate `configSha256` and
+invocation identity propagate through production/development/warmup samples,
+combined source bindings, receipt provenance and aggregate provenance.
+`verifyEnvironmentBinding`, `verifyMeasurementEnvironment` and `verifyTraceFiles`
+reject missing/mismatched bindings, changed bytes, escaped realpaths, config/run
+reuse and inconsistent combined sources. Missing observation exits nonzero rather
+than synthesizing evidence. Run-specific PID/container instance/timestamps and
+CPU samples are separate from immutable before/after comparison identity;
+source provenance still identifies each runtime being compared. Comparable
+identity uses content hashes rather than executable/SDK/collector absolute paths;
+the actual paths and file bindings remain in `guestEvidence.guest` and the original
+config remains in `configurationEvidence`. Product commit/build differences stay
+in provenance, not in the comparable environment hash. Config locators under the
+observed product root or framework development cwd normalize to root labels, and
+the separately authenticated Python locator is excluded from comparable config.
+Relocating before/after worktree/build roots therefore preserves comparability;
+changing tool/collector content, allocation or frozen measurement settings does not.
+
+The only unequal-config development pair is before product
+`8a09eb8d216e555b97760a86539dea31e79c86a8` with Fluo
+`src/document.ts` / `reload:true`, versus reviewed final product
+`f9f5ac6722957cbe2752b9959e657a46594c0a1b` (or its source-verified implementation
+descendant) with `src/catalog-destination.tsx` / `reload:false`.
+Both replace `Editor login` once with `Editor login changed` on `/login`, observe
+the same visible `h1`, and restore the exact source bytes. Only
+`/dev/fluo/edits/react-edit/file` and `/dev/fluo/edits/react-edit/reload`
+may differ in that direction in addition to the authenticated versioned
+before-to-after phase transition; all other fields and peers remain identical.
+The original representative config hashes are respectively
+`b7e8cfc2c53a57006197357542b6831b9ccb58835297ee01e22a7a1afc5a5b5d` and
+`a48953e1f5825e26afc5865a5177af988619bdceebec801cf8b4025b1a2fad73`;
+each invocation and derived profile retains its own full exact config/hash.
+The relation authenticates both contained original records, source blobs/head
+lineage, actual build/dependency identities and final collector closure.
+Production-only comparisons permit only the authenticated versioned phase transition,
+with all other config fields identical. Aggregate, profile,
+development, warmup and combined replay must retain their distinct invocation
+bindings and relation evidence; an aggregate relation is not a shared derived hash.
+
+Before completion is a changed marker in a new main-frame document
+(`reload-to-visible`); final completion requires the correlated component update
+and changed marker in the same document (`hmr-to-visible`). Observers subscribe
+before the source edit. Fallback document replacement is recorded as fallback,
+not HMR, and cannot satisfy the selected HMR alternative. Raw edit evidence
+retains initial/final visible markers, document tokens, exact HMR socket/update
+identity and original/edited/restored bytes and hashes.
+This product-native comparison was selected by the lead on best judgment after
+the unanswered question expired, not by an affirmative user choice or waiver.
+Merge base `942f673d34d58a9093d7012253913aec9143ff45` and final upstream
+`f3e699047bfa51bbb69d9abeb2717eeb9e1871b0` include CLI/HTTP/React typegen,
+background-form, navigation, store and provider changes. Product-level gains
+cannot be attributed solely to #3884 or a same-upstream single optimization.
+Narrow relation/runtime checks are not performance acceptance: the full fresh
+four-framework/four-profile pair, two warmups/five alternating samples, original
+budgets and versioned FA-V3 decisions, exact-head reviews and final GitHub CI remain required.
+
+Schedule exclusive timing windows for the pair, including all four frameworks,
+with the same actual toolchain/browser/observer/config/resources and final
+collector. CPU-counter snapshots over entry-navigation through the unchanged
+post-throughput `ps` boundary record actual generator CPU, ambient VM busy
+percentage and idle CPU equivalents; development records its existing cold-ready
+and edit-to-visible windows. They do not replace server CPU/RSS metrics, subtract
+observer overhead or introduce an acceptance budget. VM idle capacity is a
+measured observation, not proof of exclusivity; coordinate other timing work
+before starting. Preserve five samples/two warmups, all profiles, alternating
+order, budgets, versioned FA-V3 decisions and every historical fail/inconclusive.
+Small runtime/replay checks establish the boundary, not full performance acceptance,
+cross-platform parity, macOS support or physical-device verification. Ordinary
+CI/default/macOS invocations remain unchanged and require no Docker/Python/Frida.
 
 ## Frozen decision policy
 
@@ -146,22 +436,14 @@ historical quality classification and prior raw/verdicts; replay cannot be
 relabeled as a new acceptance PASS. A new canonical before/final pair is required;
 all three exact-head reviews and full GitHub CI remain merge gates.
 
-FA-V3 final pair numerical acceptance uses every original AFTER absolute
-budget, peer band and observed min/max decision. Preserve and report BEFORE
-numerical FAIL/INCONCLUSIVE and its raw evidence without changing it to PASS.
-Only BEFORE budget breaches and boundary crossing are excluded from the final
-product numerical veto. Both phases still require source/environment/method
-authentication, complete inventory, correctness, valid available metrics,
-native observation and ownership/cleanup. Fluo measured/warmup error rate must
-remain zero in both phases. AFTER numerical FAIL/INCONCLUSIVE still blocks;
-FA-V2's existing pair aggregation remains unchanged.
-
 For each fresh before/final cohort, derive the unchanged representative config,
 set a common nonempty `pairId` and explicit `pairPhase: "before"` / `"after"`,
 and freeze each full config/source/build/environment identity separately.
-The Linux server-only command below is the production reproduction path.
+Use the explicit isolated Linux representative invocation above for the full client suite.
+The Linux server-only command below reproduces production server evidence.
 Full-suite `run-gate.mjs` also collects fresh development timing with
-`measurementKind: "development"` and `nativeLifetime: { enabled: false }`.
+`measurementKind: "development"`, `measurementPurpose: "timing"` and
+`nativeLifetime: { enabled: false }`.
 It authenticates kind, purpose, phase and shared tools/source identity before
 merging; production terminals/metrics never become dev evidence. RE-A01's
 client-owned source-edit authentication remains required, not bypassed.
@@ -286,10 +568,10 @@ Server-only production comparisons require identical stimuli. Timing/native
 counterparts within each product still require identical stimuli, including the
 actual React-edit descriptor; the cross-product exception cannot be borrowed
 for purpose pairing.
-The current client helper predates FA-V2 and does not yet accept its authenticated
-`pairPhase` difference. The client owner must adapt that narrow method/phase
-relation during adoption; this server change does not claim that integration
-passed. Keep `pairPhase` in each original full config/hash. Freeze separate
+The client verifier authenticates the same FA-V2 method, pair ID and purpose
+and only the before-to-after phase transition, retaining original source proof
+and relation replay. Production permits that phase transition only, not the dev
+edit exception. Keep `pairPhase` in each original full config/hash. Freeze separate
 before/after config identities, not a shared hash alias.
 
 CPU is the configured SERVER PID post-workload lifetime average on one logical
@@ -528,7 +810,8 @@ check. Per-check reasons remain in the ignored local
 [run manifest](./evidence/3883-baseline.json). The budget numbers are
 **targets set before optimization**; the separate observations are measured.
 Missing data, absent traces, failed correctness, insufficient repetitions, and
-noisy runs cannot pass the evaluator.
+noisy runs cannot pass the historical evaluator. FA-V2 applies the observed-range
+decision policy above, with spread/MAD retained as diagnostics.
 The approved interaction marker belongs to the rendered destination rather than
 the pending route location. Document replacement and response-body capture errors
 mark the run inconclusive; failed browser requests remain in `errorRate` alongside
@@ -539,6 +822,65 @@ SIGKILL if SIGTERM leaves descendants alive.
 Development cold start and React/CSS/server edit-to-visible are distinct timed
 experiments; they must not be synthesized from production timings. Record native
 cache controls separately and never set identity-dependent data to `public`.
+
+Fluo development runs the existing canonical `fluo dev --runner fluo` integration,
+not a production build/watch adapter. The fixture follows the shipped CLI template:
+Vite middleware and its gateway WebSocket, refresh preamble before hydration,
+current SSR destination loads, and the existing graph supervisor. The original
+production entry and manifest keys, hashed split destinations and `/assets/`
+serving remain independent of development. CSS observes visible HMR; the final
+React stimulus uses the source-bound HMR alternative above, while the unchanged
+before product uses its document reload path. The server stimulus waits for app-generation
+readiness, then requests a fresh document to observe its changed HTTP data.
+The edit-to-visible interval still starts before the source edit and ends at the
+same visible text/computed-style assertion.
+For document reloads, completion observes that marker in the newly committed
+main-frame document without waiting for unrelated resources to finish loading.
+Required generation readiness and relaunch readiness remain inside their
+recorded intervals. The same collector applies to every peer and the baseline.
+This observation correction also requires
+identical-method baseline remeasurement; it does not relax budgets or turn
+historical fail/inconclusive results into a performance PASS.
+
+Optional `dev.<framework>.readiness` authenticates HMR before source edits.
+The collector subscribes to CDP before navigation and requires the exact socket
+origin/path, successful upgrade and structured readiness message. Installed Vite
+8.0.3/8.2.2/8.3.1 uses the `vite-hmr` subprotocol and `{"type":"connected"}`;
+Next 16.3.6 App Router with `--webpack` uses `/_next/hmr?id=...` (no subprotocol)
+and a `type: "sync"` message with a compilation hash and no errors.
+Arbitrary sockets, console text and socket-open events cannot satisfy readiness.
+The event wait is bounded, cleans up listeners, and adds no sleep or polling.
+HTTP-only fixtures without this optional field still require no WebSocket.
+
+All initial HMR waiting is included in `devColdReadyMs` and each subsequent
+edit experiment's recorded restart readiness. An edit-specific document
+navigation authenticates its new connection too; its navigation/readiness time
+is added to that experiment's ready step, before the unchanged edit interval.
+Relaunch edits include readiness in their edit interval and retain the restart
+observation. Raw timings retain the socket identity, exact message, CDP timestamp
+and elapsed observation time. HMR connection is not hydration or module
+registration completion. All four representative dev peers additionally opt into
+`dev.<framework>.reactReadiness: { "timeoutMs": 60000 }`, using the same
+`react-initial-completion-v1` observer before initial and edit-route navigation.
+The entire React completion wait is included in cold-ready or the edit-navigation
+ready step, never hidden before the React edit timer. Raw `reactReadiness` evidence
+records renderer versions/bundle types, load, commit/passive events and completion.
+The synthetic hook supplies the renderer registry required by Fast Refresh;
+installed hooks retain their identity and callbacks. Omitting `reactReadiness`
+or setting it to `false` preserves HTTP-only/no-React fixtures. Production keeps
+its existing 10-second observer deadline and completion contract.
+Recollect the baseline with this same readiness method before comparing edit
+latencies. Budgets, counts, peer commands and production capture remain frozen.
+
+The focused real-dev check requires installed linked packages and Chromium:
+
+```sh
+node --test tooling/benchmarks/react-app-comparison/tests/fluo-dev.test.mjs
+```
+
+It subscribes to browser mutations and app readiness before edits, restores the
+stimulus sources after shutdown, checks fresh SSR, and verifies child exit and
+public-port release. This is a correctness check, not a performance gate.
 
 The mandatory metrics are cold/warm TTFB, shell arrival, LCP, hydration/main-thread
 work, interaction-to-pending and approved-view p50/p95, transferred and compressed
@@ -681,21 +1023,20 @@ compression codec: the measured hosts may deliver gzip, Brotli, or identity
 bytes. Relative encoded-byte bands compare **delivered wire cost under each
 host's recorded encoding**, not equal-codec compression ratios. Neither mode
 makes session responses public-cacheable.
-Historical CPU/RSS are post-workload `ps` snapshots; FA-V2 replaces only displayed
-CPU with authenticated unrounded lifetime ticks as above and keeps RSS. Neither
-is request-interval CPU. The trace records generator PID, CPU, and RSS alongside the
+Historical CPU/RSS are post-workload `ps` snapshots of the actual server PID.
+FA-V2 replaces displayed CPU with authenticated unrounded lifetime ticks and
+retains RSS; neither is request-interval CPU. The trace records generator PID, CPU, and RSS alongside the
 server sample; inspect competing processes and generator headroom before
 interpreting throughput or inferring capacity.
 
 `config/representative.json` drives separate development runs against each
-framework's dev command. The Fluo fixture uses `src/fluo-dev.mjs`: its existing
-production Vite build and server are restarted after each source edit, then
-the browser reloads. This measures today's build/restart baseline, **not**
-Fast Refresh or CSS HMR; #3876/#3877 own those capabilities. This benchmark-only Fluo
-build/restart harness is **not** the generated starter's `fluo dev` Vite
-middleware lifecycle; its edit times describe this fixture and do not establish
-canonical Fluo development latency or peer development parity. The three peer
-fixtures run their own development commands. TanStack's route loader edit
+framework's dev command. The Fluo fixture uses `src/fluo-dev.mjs` to launch the
+canonical `fluo dev --runner fluo` Vite middleware lifecycle. React and CSS
+edits use browser-visible updates; server edits wait for application-generation
+readiness and reload the document to observe the changed marker. These are
+measurements of the seeded fixture through canonical Fluo development, not a
+production-build restart proxy or proof of peer development parity. The three
+peer fixtures run their own development commands. TanStack's route loader edit
 in `src/routes/index.tsx` is measured by restarting its development server
 and opening the changed page: its Vite client update is not a reliable
 server-edit visibility signal. The recorded server-edit time includes that

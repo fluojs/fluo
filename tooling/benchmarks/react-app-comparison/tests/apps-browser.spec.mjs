@@ -48,6 +48,48 @@ test('Next products expose client hydration before development edits', async ({ 
   await expect(page.locator('[data-benchmark-hydrated="true"]')).toBeAttached();
 });
 
+test('Fluo listing does not load unrelated destination controls', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'fluo');
+  const scripts = [];
+  page.on('response', (response) => {
+    if (response.request().resourceType() === 'script') scripts.push(response);
+  });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Product catalog');
+  const code = (await Promise.all(scripts.map((response) => response.text()))).join('\n');
+  expect(code.includes('edit-name')).toBe(false);
+  expect(code.includes('data-approved-view')).toBe(false);
+});
+
+test('Fluo hydrates from one HTTP-selected initial data transfer', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'fluo');
+  await page.goto('/');
+  const transfer = await page.locator('#fluo-initial-page').textContent();
+  const initial = JSON.parse(transfer);
+  expect(initial.version).toBe(2);
+  expect(initial.destination.props.data.products).toHaveLength(PRODUCTS.length);
+  expect(await page.locator('html').getAttribute('data-benchmark-page')).toBeNull();
+  await page.locator(`a[href="/products/${PRODUCTS[0].sku}"]`).first().click();
+  await expect(page).toHaveURL(new RegExp(`/products/${PRODUCTS[0].sku}$`, 'u'));
+  await expect(page.getByText(PRODUCTS[0].name).first()).toBeVisible();
+});
+
+test('Fluo catalog defers the audio resource until approved jukebox navigation', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'fluo');
+  await page.goto('/');
+  await expect(page.getByTestId('jukebox-resource')).toHaveCount(0);
+  await page.evaluate(() => { window.__benchmarkDocument = 'catalog-shell'; });
+  await page.locator('nav[aria-label="Main navigation"] a[href="/jukebox/songs"]').click();
+  await expect(page.locator('[data-approved-view="songs"]')).toBeVisible();
+  expect(await page.evaluate(() => window.__benchmarkDocument)).toBe('catalog-shell');
+  const resource = page.getByTestId('jukebox-resource');
+  await expect(resource).toHaveAttribute('data-instance', /.+/u);
+  const identity = await resource.getAttribute('data-instance');
+  await page.locator('nav[aria-label="Main navigation"] a[href="/jukebox/qr"]').click();
+  await expect(page.locator('[data-approved-view="qr"]')).toBeVisible();
+  await expect(resource).toHaveAttribute('data-instance', identity);
+});
+
 test('public listing, detail, and production asset budgets', async ({ page }, testInfo) => {
   // Given: a fresh production browser observing its actual network responses.
   const assets = [];

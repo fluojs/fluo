@@ -4,16 +4,67 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { arch, cpus, platform, release, totalmem } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
-
-import { evaluateAcceptedEvidence, evaluateEvidence } from './gate.mjs';
+import { isDeepStrictEqual, promisify } from 'node:util';
 import { assertMethodConfig } from './fa-v2.mjs';
-import { captureIsolatedEnvironment, launchIsolatedInvocation, mergeEvidence,
-  readIsolatedInvocation, requireEnvironmentPairIdentity, verifyMeasurementEnvironment } from './measure.mjs';
+import { evaluateAcceptedEvidence, evaluateEvidence } from './gate.mjs';
+import { assertProductionDevelopmentEnvironment, bindEnvironmentPair, captureIsolatedEnvironment, environmentConfigIdentity, importEnvironmentPairBefore, launchIsolatedInvocation, mergeEvidence,
+  readIsolatedInvocation, verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyReactEditPairRelation } from './measure.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
 
 const execFileAsync = promisify(execFile);
 const FRAMEWORKS = ['fluo', 'next', 'react-router', 'tanstack-start'];
+
+export async function verifyProfileEnvironment(aggregateBinding, receipt, expectedConfig, outputRoot, development = false) {
+  const aggregate = await verifyEnvironmentBinding(aggregateBinding, outputRoot);
+  await verifyMeasurementEnvironment(receipt, outputRoot);
+  const profile = await verifyEnvironmentBinding(receipt.environmentBinding, outputRoot);
+  const separateDevelopment = development && expectedConfig.methodVersion === 'FA-V3';
+  if (separateDevelopment) assertProductionDevelopmentEnvironment(aggregate, profile);
+  if (!separateDevelopment && aggregate.identitySha256 !== profile.identitySha256
+    || profile.invocation.parentInvocationId !== aggregate.invocation.invocationId
+    || profile.invocation.invocationId !== `${aggregate.invocation.invocationId}-${receipt.profile}-${development ? 'development' : 'production'}`
+    || profile.configSha256 !== environmentConfigIdentity(expectedConfig)
+    || !isDeepStrictEqual(profile.provenance, expectedConfig.provenance)
+    || (development ? !profile.configuration.dev : Boolean(profile.configuration.dev))) {
+    throw new Error('environment binding profile/aggregate configuration/invocation mismatch');
+  }
+  if (receipt.environmentPairRelation) await verifyReactEditPairRelation(receipt.environmentPairRelation, receipt.environmentBinding, outputRoot);
+}
+
+// Select the original child record by authenticated parent/profile/mode, not by
+// its filename or a caller-provided shared/derived config hash.
+export async function beforeProfilePairFlags(beforePath, beforeRoot, profile, development) {
+  const aggregateRaw = await readFile(beforePath);
+  const aggregate = JSON.parse(aggregateRaw);
+  const binding = { method: aggregate.method, path: resolve(beforePath),
+    sha256: createHash('sha256').update(aggregateRaw).digest('hex'),
+    invocationId: aggregate.invocation.invocationId, identitySha256: aggregate.identitySha256,
+    configSha256: aggregate.configSha256 };
+  await verifyEnvironmentBinding(binding, beforeRoot);
+  const candidates = [];
+  for (const entry of await readdir(beforeRoot)) {
+    if (!/^environment-.*\.json$/u.test(entry)) continue;
+    const path = join(beforeRoot, entry);
+    const raw = await readFile(path);
+    const record = JSON.parse(raw);
+    if (record.invocation.parentInvocationId !== binding.invocationId || record.configuration.profile !== profile
+      || Boolean(record.configuration.dev) !== development) continue;
+    const child = { method: record.method, path, sha256: createHash('sha256').update(raw).digest('hex'),
+      invocationId: record.invocation.invocationId, identitySha256: record.identitySha256, configSha256: record.configSha256 };
+    await verifyEnvironmentBinding(child, beforeRoot);
+    const separateDevelopment = development && record.configuration.methodVersion === 'FA-V3';
+    if (separateDevelopment) assertProductionDevelopmentEnvironment(aggregate, record);
+    if (!separateDevelopment && child.identitySha256 !== binding.identitySha256
+      || child.invocationId !== `${binding.invocationId}-${profile}-${development ? 'development' : 'production'}`) {
+      throw new Error('before profile environment parent/identity mismatch');
+    }
+    candidates.push(child);
+  }
+  if (candidates.length !== 1) throw new Error('before profile environment missing/ambiguous');
+  const child = candidates[0];
+  return ['--environment-identity', child.identitySha256, '--environment-config-identity', child.configSha256,
+    '--environment-before-record', child.path, '--environment-before-root', beforeRoot];
+}
 
 export function performanceExitCode(verdict, mode, correct) {
   if (mode !== 'discovery' && mode !== 'regression') {
@@ -133,13 +184,14 @@ async function main() {
   await mkdir(output, { recursive: true });
   if ((await readdir(output)).length) throw new Error(`evidence output must start empty: ${output}`);
   const config = JSON.parse(await readFile(configPath, 'utf8'));
-  const environmentBinding = invocation
-    ? await captureIsolatedEnvironment({ ...config, ...config.measurement,
-      provenance: { root: resolve(suite, '../../..') } }, invocation, output) : undefined;
+  if (Object.hasOwn(config, 'environmentPairRelation') || Object.hasOwn(config.measurement ?? {}, 'environmentPairRelation')) {
+    throw new Error('caller-supplied React edit pair descriptor forbidden');
+  }
+  let environmentBinding;
+  let environmentPairRelation;
   if (!invocation && (config.measurement?.isolatedRepresentative || config.measurement?.environmentBinding)) {
     throw new Error('isolated representative requires live host launcher');
   }
-  requireEnvironmentPairIdentity(environmentBinding, args);
   const owned = new Set();
   let servers = [];
   const interrupt = (code) => {
@@ -244,6 +296,14 @@ async function main() {
       serverNodeEnv: 'production' },
     root,
   };
+  if (invocation) {
+    const pairBeforeBinding = await importEnvironmentPairBefore(args, output);
+    environmentBinding = await captureIsolatedEnvironment({ ...config, ...config.measurement,
+      provenance }, invocation, output, {
+      pairBeforeBinding, reactEditPairSource: args.includes('--react-edit-pair-source'),
+    });
+  }
+  environmentPairRelation = await bindEnvironmentPair(environmentBinding, args, output);
   servers = await startServers(FRAMEWORKS.map((framework) => ({
     name: framework,
     ...config.servers[framework],
@@ -258,6 +318,7 @@ async function main() {
     for (const [profile, settings] of Object.entries(baseline.profiles)) {
       const measurement = {
         ...config.measurement,
+        ...(config.measurement.methodVersion ? { measurementKind: 'production' } : {}),
         profile,
         mode: settings.mode,
         warmupRuns: baseline.policy.warmupRuns,
@@ -268,40 +329,46 @@ async function main() {
       };
       const configFile = join(output, `${profile}-config.json`);
       const resultFile = join(output, `${profile}-production.json`);
+      const pairFlags = args.includes('--environment-before-record')
+        ? await beforeProfilePairFlags(args[args.indexOf('--environment-before-record') + 1],
+          args[args.indexOf('--environment-before-root') + 1], profile, false) : [];
       await writeFile(configFile, `${JSON.stringify(measurement, null, 2)}\n`);
       const receipt = await readMeasurementReceipt(() =>
         runOwned(process.execPath,
           [join(suite, 'src/measure.mjs'), '--config', configFile, '--output', resultFile,
-            ...(invocation ? ['--isolated-guest'] : [])],
+            ...(invocation ? ['--isolated-guest'] : []), ...pairFlags],
           { cwd: suite, ...(invocation ? { input: JSON.stringify({ ...invocation,
             parentInvocationId: invocation.invocationId, invocationId: `${invocation.invocationId}-${profile}-production` }) } : {}) }), resultFile);
       await verifyMeasurementEnvironment(receipt, output);
-      if (environmentBinding && receipt.environmentBinding?.identitySha256 !== environmentBinding.identitySha256) {
-        throw new Error('environment binding profile/aggregate mismatch');
-      }
+      if (environmentBinding) await verifyProfileEnvironment(environmentBinding, receipt, measurement, output);
       receipts.push(receipt);
     }
     await stopServers(servers);
     for (const [index, receipt] of receipts.entries()) {
         const devConfig = join(output, `${receipt.profile}-dev-config.json`);
         const devFile = join(output, `${receipt.profile}-dev.json`);
-        await writeFile(devConfig, `${JSON.stringify({
+        const devMeasurement = {
           ...JSON.parse(await readFile(join(output, `${receipt.profile}-config.json`), 'utf8')),
           ...(config.measurement.methodVersion === 'FA-V3' ? { measurementKind: 'development',
             measurementPurpose: 'timing', nativeLifetime: { enabled: false } } : {}),
           dev: config.dev,
-        }, null, 2)}\n`);
+          ...(config.measurement.methodVersion ? { measurementKind: 'development' } : {}),
+          ...(config.measurement.methodVersion === 'FA-V3' ? {
+            measurementPurpose: 'timing', nativeLifetime: { enabled: false } } : {}),
+        };
+        await writeFile(devConfig, `${JSON.stringify(devMeasurement, null, 2)}\n`);
+        const pairFlags = args.includes('--environment-before-record')
+          ? await beforeProfilePairFlags(args[args.indexOf('--environment-before-record') + 1],
+            args[args.indexOf('--environment-before-root') + 1], receipt.profile, true)
+          : args.includes('--react-edit-pair-source') ? ['--react-edit-pair-source'] : [];
         const development = await readMeasurementReceipt(() =>
           runOwned(process.execPath,
             [join(suite, 'src/measure.mjs'), '--config', devConfig, '--output', devFile, '--dev',
-              ...(invocation ? ['--isolated-guest'] : [])],
+              ...(invocation ? ['--isolated-guest'] : []), ...pairFlags],
             { cwd: suite, ...(invocation ? { input: JSON.stringify({ ...invocation,
               parentInvocationId: invocation.invocationId, invocationId: `${invocation.invocationId}-${receipt.profile}-development` }) } : {}) }), devFile);
         await verifyMeasurementEnvironment(development, output);
-        if (environmentBinding && config.measurement.methodVersion !== 'FA-V3'
-          && development.environmentBinding?.identitySha256 !== environmentBinding.identitySha256) {
-          throw new Error('environment binding development/aggregate mismatch');
-        }
+        if (environmentBinding) await verifyProfileEnvironment(environmentBinding, development, devMeasurement, output, true);
         receipts[index] = await mergeEvidence(receipt, development, join(output, 'combined-traces'));
         await writeFile(join(output, `${receipt.profile}.json`), `${JSON.stringify(receipts[index], null, 2)}\n`);
     }
@@ -324,12 +391,7 @@ async function main() {
     } else verdict = { methodVersion: 'FA-V2', measurementPurpose: 'timing', verdict: 'inconclusive',
       reason: 'FA-V2 native counterparts required before acceptance', checks: [] };
     await writeFile(join(output, 'verdict.json'), `${JSON.stringify({ ...verdict, executionMode: mode, provenance,
-      receipts: receipts.map((receipt) => ({ profile: receipt.profile, methodBinding: receipt.methodBinding,
-        runs: receipt.runs, warmups: receipt.warmups, developmentWarmups: receipt.developmentWarmups,
-        provenance: receipt.provenance, methodVersion: receipt.methodVersion,
-        measurementPurpose: receipt.measurementPurpose, mode: receipt.mode,
-        environmentBinding: receipt.environmentBinding, developmentEnvironmentBinding: receipt.developmentEnvironmentBinding,
-        developmentMethodBinding: receipt.developmentMethodBinding, isolatedRepresentative: receipt.isolatedRepresentative })) }, null, 2)}\n`);
+      receipts, ...(environmentBinding ? { environmentBinding, environmentPairRelation } : {}) }, null, 2)}\n`);
     console.log(`React app performance ${mode}: ${verdict.verdict}`);
     if (performanceExitCode(verdict.verdict, mode, receipts.every((receipt) =>
       receipt.runs.every((run) => run.correctness === 'pass')))) process.exitCode = 1;

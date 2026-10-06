@@ -1,15 +1,16 @@
 import { execFile, spawn } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
 import { EventEmitter, once } from 'node:events';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, realpath, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { promisify } from 'node:util';
-import { PROFILES, sampleEnvironmentHeadroom, summarizeEnvironmentHeadroom } from './measure.mjs';
-import { stopOwnedProcess } from './process-group.mjs';
-import { installInitialReadiness, waitForInitialReadiness } from './initial-readiness.mjs';
-import { createNativeCapture, reconcileNativeTerminals } from './native-terminal.mjs';
-import { readServerCpu } from './server-cpu.mjs';
+import { promisify, stripVTControlCharacters } from 'node:util';
 import { assertMethodConfig, hashObject } from './fa-v2.mjs';
+import { installInitialReadiness, waitForInitialReadiness } from './initial-readiness.mjs';
+import { PROFILES, sampleEnvironmentHeadroom, summarizeEnvironmentHeadroom } from './measure.mjs';
+import { createNativeCapture, reconcileNativeTerminals } from './native-terminal.mjs';
+import { stopOwnedProcess } from './process-group.mjs';
+import { readServerCpu } from './server-cpu.mjs';
 
 export { reconcileNativeTerminals } from './native-terminal.mjs';
 export { readServerCpu } from './server-cpu.mjs';
@@ -129,7 +130,9 @@ export async function waitForEditMarker(page, edit) {
       const element = document.querySelector(selector);
       const value = element && (expectedStyle
         ? getComputedStyle(element).getPropertyValue(expectedStyle.property) : element.textContent);
-      if (!value?.includes(expected)) return;
+      const style = element && getComputedStyle(element);
+      if (!element?.getClientRects().length || style.visibility === 'hidden' || style.display === 'none'
+        || (expectedStyle ? !value?.includes(expected) : value?.trim() !== expected)) return;
       observer.disconnect();
       document.removeEventListener('load', visible, true);
       clearTimeout(timeout);
@@ -148,19 +151,268 @@ export async function waitForEditMarker(page, edit) {
 }
 
 export async function editSourceFile(edit, cwd) {
-  const path = resolve(cwd, edit.file);
-  if (!path.startsWith(`${resolve(cwd)}/`)) throw new TypeError(`edit outside application: ${edit.file}`);
-  const original = await readFile(path, 'utf8');
-  if (!edit.from || !edit.to || original.split(edit.from).length !== 2) {
+  const root = await realpath(cwd);
+  const path = await realpath(resolve(root, edit.file));
+  if (!path.startsWith(`${root}/`)) throw new TypeError(`edit outside application: ${edit.file}`);
+  const bytes = await readFile(path);
+  const original = bytes.toString('utf8');
+  if (!Buffer.from(original).equals(bytes) || !edit.from || !edit.to || original.split(edit.from).length !== 2) {
     throw new Error(`missing or ambiguous edit stimulus: ${edit.file}`);
   }
-  await writeFile(path, original.replace(edit.from, edit.to));
-  return () => writeFile(path, original);
+  const edited = Buffer.from(original.replace(edit.from, edit.to));
+  const hash = (raw) => createHash('sha256').update(raw).digest('hex');
+  const evidence = { path, file: edit.file, from: edit.from, to: edit.to, occurrences: 1,
+    originalBase64: bytes.toString('base64'), originalSha256: hash(bytes),
+    editedBase64: edited.toString('base64'), editedSha256: hash(edited),
+    restoredBase64: null, restoredSha256: null, writeStartedAtMs: performance.now() };
+  await writeFile(path, edited);
+  evidence.writtenAtMs = performance.now();
+  const restore = async () => {
+    const current = await readFile(path);
+    if (!current.equals(bytes) && !current.equals(edited)) throw new Error('edit source changed outside exact stimulus');
+    if (!current.equals(bytes)) await writeFile(path, bytes);
+    const restored = await readFile(path);
+    if (!restored.equals(bytes)) throw new Error('edit source exact restoration failed');
+    evidence.restoredBase64 = restored.toString('base64');
+    evidence.restoredSha256 = hash(restored);
+    evidence.restoredAtMs = performance.now();
+  };
+  restore.evidence = evidence;
+  return restore;
+}
+
+export function verifyDevEditObservation(observation, edit, sourceProof) {
+  const evidence = observation?.editEvidence;
+  const source = evidence?.source;
+  const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+  const original = Buffer.from(source?.originalBase64 ?? '', 'base64');
+  const edited = Buffer.from(source?.editedBase64 ?? '', 'base64');
+  const restored = Buffer.from(source?.restoredBase64 ?? '', 'base64');
+  const interval = observation?.interval;
+  if (!evidence || evidence.schemaVersion !== 1 || !source || source.file !== edit.file
+    || source.from !== edit.from || source.to !== edit.to || source.occurrences !== 1
+    || original.toString().split(edit.from).length !== 2
+    || !Buffer.from(original.toString().replace(edit.from, edit.to)).equals(edited)
+    || !restored.equals(original) || source.originalSha256 !== hash(original)
+    || source.editedSha256 !== hash(edited) || source.restoredSha256 !== hash(restored)
+    || (sourceProof && (source.originalSha256 !== sourceProof.originalSha256
+      || source.file !== sourceProof.file || source.path !== sourceProof.path))
+    || evidence.initial.url !== evidence.final.url || new URL(evidence.initial.url).pathname !== (edit.path ?? '/')
+    || !evidence.initial.documentToken || !evidence.final.documentToken || !evidence.final.visible
+    || evidence.final.text !== edit.expectedText || evidence.initial.text !== edit.from
+    || !evidence.subscribedBeforeStimulus || !Number.isFinite(observation.durationMs)
+    || interval?.clock !== 'node-performance-now-ms'
+    || !Number.isFinite(interval.startedAtMs) || !Number.isFinite(interval.completedAtMs)
+    || interval.completedAtMs - interval.startedAtMs !== observation.durationMs
+    || !(evidence.subscribedAtMs >= interval.startedAtMs)
+    || !(source.writeStartedAtMs >= evidence.subscribedAtMs)
+    || !(source.writtenAtMs >= source.writeStartedAtMs)
+    || !(interval.completedAtMs >= source.writtenAtMs)
+    || !(source.restoredAtMs >= interval.completedAtMs)) {
+    throw new Error('dev edit source/document evidence missing/mismatched');
+  }
+  const sameDocument = evidence.initial.documentToken === evidence.final.documentToken;
+  if (evidence.completion === 'hmr-to-visible') {
+    const update = evidence.update;
+    const commit = evidence.final.reactCommit;
+    const socket = evidence.readiness?.url && new URL(evidence.readiness.url);
+    if (socket) socket.protocol = socket.protocol === 'wss:' ? 'https:' : 'http:';
+    if (!sameDocument || !commit?.matchedHostNode || commit.text !== edit.expectedText
+      || commit.documentToken !== evidence.final.documentToken || !['19.2.8', '19.3.0-canary-cbb046ab-20260731'].includes(commit.version)
+      || !update || update.protocol !== 'vite' || update.message?.type !== 'update'
+      || !update.message.updates?.some((item) => item.type === 'js-update'
+        && [item.path, item.acceptedPath].includes(`/${edit.file}`))
+      || update.requestId !== evidence.readiness?.requestId || update.url !== evidence.readiness?.url) {
+      throw new Error('dev edit actual component HMR evidence missing/mismatched');
+    }
+    if (!socket || socket.origin !== new URL(evidence.initial.url).origin || socket.pathname !== '/'
+      || evidence.readiness.protocol !== 'vite' || evidence.readiness.message?.type !== 'connected'
+      || !Number.isFinite(update.cdpTimestamp) || !Number.isFinite(evidence.readiness.cdpTimestamp)
+      || update.cdpTimestamp < evidence.readiness.cdpTimestamp) {
+      throw new Error('dev edit authenticated HMR socket evidence missing/mismatched');
+    }
+  } else if (sameDocument || !['reload-to-visible', 'fallback-reload-to-visible',
+    'restart-and-reload-to-visible', 'relaunch-to-visible'].includes(evidence.completion)) {
+    throw new Error('dev edit actual main-document replacement evidence missing/mismatched');
+  }
+  if (edit.reload === false && evidence.completion !== 'hmr-to-visible') {
+    throw new Error('selected same-document HMR path unavailable');
+  }
+  if (edit.reload === true && evidence.completion !== 'reload-to-visible') {
+    throw new Error('selected reload path unavailable');
+  }
+}
+
+export function observeReactEditUpdate(cdp, readiness, edit, timeoutMs = 60_000) {
+  let accept;
+  let reject;
+  let timer;
+  const promise = new Promise((resolveUpdate, rejectUpdate) => { accept = resolveUpdate; reject = rejectUpdate; });
+  const cancel = () => { clearTimeout(timer); cdp.off('Network.webSocketFrameReceived', observe); };
+  const observe = ({ requestId, timestamp, response }) => {
+    if (readiness?.protocol !== 'vite' || requestId !== readiness.requestId || response.opcode !== 1) return;
+    let message;
+    try { message = JSON.parse(response.payloadData); } catch { return; }
+    if (message.type !== 'update' || !message.updates?.some((item) =>
+      item.type === 'js-update' && [item.path, item.acceptedPath].includes(`/${edit.file}`))) return;
+    cancel();
+    accept({ protocol: 'vite', requestId, url: readiness.url, message, cdpTimestamp: timestamp });
+  };
+  timer = setTimeout(() => { cancel(); reject(new Error('source-correlated component HMR unavailable')); }, timeoutMs);
+  cdp.on('Network.webSocketFrameReceived', observe);
+  promise.catch(() => {});
+  return { promise, cancel };
+}
+
+export async function observeDevEditDocument(page, edit) {
+  const token = randomUUID();
+  let resolveNavigation;
+  let rejectNavigation;
+  let timer;
+  const navigation = new Promise((accept, reject) => { resolveNavigation = accept; rejectNavigation = reject; });
+  const onNavigation = async (frame) => {
+    if (frame !== page.mainFrame()) return;
+    try {
+      await waitForEditMarker(page, edit);
+      const snapshot = await page.evaluate(() => {
+        window.__benchmarkDevDocument ??= crypto.randomUUID();
+        return { documentToken: window.__benchmarkDevDocument, url: location.href };
+      });
+      if (snapshot.documentToken === token) return;
+      const marker = await page.locator(edit.selector).first().evaluate((element) => ({
+        text: element.textContent.trim(), visible: Boolean(element.getClientRects().length)
+          && getComputedStyle(element).visibility !== 'hidden' && getComputedStyle(element).display !== 'none',
+      }));
+      resolveNavigation({ ...snapshot, ...marker });
+    } catch (error) { rejectNavigation(error); }
+  };
+  page.on('framenavigated', onNavigation);
+  timer = setTimeout(() => rejectNavigation(new Error('main-document edit completion timeout')), 60_000);
+  navigation.catch(() => {});
+  let initial;
+  try {
+    initial = await page.evaluate(({ token, selector, expectedText }) => {
+      window.__benchmarkDevDocument = token;
+      const element = document.querySelector(selector);
+      const snapshot = { documentToken: token, url: location.href, text: element?.textContent.trim(),
+        visible: Boolean(element?.getClientRects().length) && getComputedStyle(element).visibility !== 'hidden' };
+      let reactCommit = null;
+      const hook = window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+      const originalCommit = hook?.onCommitFiberRoot;
+      const commitObserver = function (id, root, ...rest) {
+        const result = originalCommit?.call(this, id, root, ...rest);
+        const target = document.querySelector(selector);
+        const visit = (node) => Boolean(node && (node.stateNode === target || visit(node.child) || visit(node.sibling)));
+        if (target?.textContent.trim() === expectedText && visit(root.current)) {
+          reactCommit = { rendererId: id, version: window.__benchmarkInitialReadiness?.renderers.find((renderer) => renderer.id === id)?.version,
+            documentToken: window.__benchmarkDevDocument, text: target.textContent.trim(),
+            matchedHostNode: true, at: performance.now() };
+        }
+        return result;
+      };
+      if (hook) hook.onCommitFiberRoot = commitObserver;
+      window.__benchmarkDevEdit = new Promise((accept, reject) => {
+        const observe = () => {
+          const target = document.querySelector(selector);
+          if (!target?.getClientRects().length || getComputedStyle(target).visibility === 'hidden'
+            || getComputedStyle(target).display === 'none' || target.textContent.trim() !== expectedText || !reactCommit) return;
+          observer.disconnect();
+          clearTimeout(timeout);
+          accept({ documentToken: window.__benchmarkDevDocument, url: location.href,
+            text: target.textContent.trim(), visible: true, reactCommit });
+        };
+        const observer = new MutationObserver(observe);
+        const timeout = setTimeout(() => { observer.disconnect(); reject(new Error('component marker timeout')); }, 60_000);
+        window.__benchmarkDevEditCancel = () => {
+          observer.disconnect();
+          clearTimeout(timeout);
+          if (hook?.onCommitFiberRoot === commitObserver) hook.onCommitFiberRoot = originalCommit;
+        };
+        observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+      });
+      window.__benchmarkDevEdit.catch(() => {});
+      return snapshot;
+    }, { token, selector: edit.selector, expectedText: edit.expectedText });
+  } catch (error) {
+    clearTimeout(timer);
+    page.off('framenavigated', onNavigation);
+    throw error;
+  }
+  return { initial, subscribedAtMs: performance.now(),
+    wait: () => Promise.any([page.evaluate(() => window.__benchmarkDevEdit), navigation]),
+    async cancel() {
+      clearTimeout(timer);
+      page.off('framenavigated', onNavigation);
+      await page.evaluate(() => window.__benchmarkDevEditCancel?.()).catch(() => {});
+    } };
 }
 
 function percentile(values, quantile) {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.ceil(quantile * sorted.length) - 1];
+}
+
+// CDP subscriptions are installed before navigation, including the upgrade
+// handshake. A socket opening (or a console log) alone is not HMR readiness.
+export function observeDevReadiness(cdp, readiness, pageUrl, started = performance.now()) {
+  if (!readiness) return { promise: Promise.resolve(null), cancel() {} };
+  if (!['vite', 'next-webpack'].includes(readiness.protocol) || !readiness.path?.startsWith('/')) {
+    throw new TypeError('dev readiness requires an exact protocol and socket path');
+  }
+  const origin = new URL(pageUrl).origin;
+  const sockets = new Map();
+  const subscriptions = [];
+  let cancel;
+  const promise = new Promise((accept, reject) => {
+    const cleanup = () => {
+      clearTimeout(timeout);
+      for (const [name, listener] of subscriptions) cdp.off(name, listener);
+      sockets.clear();
+    };
+    const fail = (error) => { cleanup(); reject(error); };
+    const timeout = setTimeout(() => fail(new Error(`${readiness.protocol} HMR readiness timeout`)),
+      readiness.timeoutMs ?? 60_000);
+    cancel = () => fail(new Error('HMR readiness cancelled'));
+    const on = (name, listener) => { subscriptions.push([name, listener]); cdp.on(name, listener); };
+    const header = (headers, name) => Object.entries(headers ?? {})
+      .find(([key]) => key.toLowerCase() === name)?.[1];
+    on('Network.webSocketCreated', ({ requestId, url }) => {
+      const socket = new URL(url);
+      socket.protocol = socket.protocol === 'wss:' ? 'https:' : 'http:';
+      if (socket.origin !== origin || socket.pathname !== readiness.path) return;
+      if (readiness.protocol === 'next-webpack' && !socket.searchParams.get('id')) return;
+      sockets.set(requestId, { url, upgraded: false });
+    });
+    on('Network.webSocketHandshakeResponseReceived', ({ requestId, response }) => {
+      const socket = sockets.get(requestId);
+      if (!socket || response.status !== 101) return;
+      const protocol = header(response.headers, 'sec-websocket-protocol');
+      if (readiness.protocol === 'vite' ? protocol !== 'vite-hmr' : Boolean(protocol)) return;
+      socket.upgraded = true;
+    });
+    on('Network.webSocketFrameReceived', ({ requestId, timestamp, response }) => {
+      const socket = sockets.get(requestId);
+      if (!socket?.upgraded || response.opcode !== 1) return;
+      let message;
+      try { message = JSON.parse(response.payloadData); } catch { return; }
+      if (!message || typeof message !== 'object') return;
+      if (readiness.protocol === 'vite') {
+        if (message.type !== 'connected') return;
+      } else {
+        if (message.type !== 'sync' || typeof message.hash !== 'string'
+          || !message.hash || !Array.isArray(message.errors) || !Array.isArray(message.warnings)) return;
+        if (message.errors.length) { fail(new Error('Next webpack HMR sync has compilation errors')); return; }
+      }
+      const observation = { protocol: readiness.protocol, requestId, url: socket.url,
+        message, cdpTimestamp: timestamp, elapsedMs: performance.now() - started };
+      cleanup();
+      accept(observation);
+    });
+    on('Network.webSocketClosed', ({ requestId }) => sockets.delete(requestId));
+  });
+  // Navigation can fail before the bounded readiness wait is awaited.
+  promise.catch(() => {});
+  return { promise, cancel };
 }
 
 export async function createBrowserDriver(config, { devMode = false } = {}) {
@@ -244,7 +496,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           const timeout = setTimeout(() => reject(new Error('dev-ready timeout')), 60_000);
           const onData = (chunk) => {
             log += chunk.toString();
-            if (log.includes(commands.readyPattern)) { clearTimeout(timeout); accept(); }
+            if (stripVTControlCharacters(log).includes(commands.readyPattern)) { clearTimeout(timeout); accept(); }
           };
           server.stdout.on('data', onData);
           server.stderr.on('data', onData);
@@ -252,23 +504,34 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           server.once('exit', (code) => { clearTimeout(timeout); reject(new Error(`dev server exited: ${code}`)); });
         });
         let created;
+        let hmr;
         try {
           await ready;
           created = await createPage(item);
-          const { context, page } = created;
+          const { context, page, cdp } = created;
+          if (commands.reactReadiness) await installInitialReadiness(page, commands.reactReadiness);
+          hmr = observeDevReadiness(cdp, commands.readiness, commands.url ?? item.url, started);
           const response = await page.goto(commands.url ?? item.url, { waitUntil: 'domcontentloaded' });
           if (!response?.ok()) throw new Error(`dev page HTTP ${response?.status()}`);
           await page.locator('h1').first().waitFor({ state: 'visible', timeout: 60_000 });
+          const hmrReadiness = await hmr.promise;
+          const reactReadiness = commands.reactReadiness ? await waitForInitialReadiness(page) : null;
           const readyMs = performance.now() - started;
           const environmentHeadroom = headroomBefore
             ? summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) : undefined;
-          contexts.set(item.runId + item.framework, { context, page, readyMs, environmentHeadroom, serverLog: () => log });
+          const readyStep = { name: 'dev-ready', pass: true, elapsedMs: readyMs,
+            hmrReadiness, reactReadiness, url: commands.url, log,
+            ...(environmentHeadroom ? { environmentHeadroom } : {}) };
+          contexts.set(item.runId + item.framework, { context, page, cdp, readyMs,
+            hmrReadiness, reactReadiness, readyStep, serverLog: () => log });
           devServers.set(item.runId + item.framework, server);
-          return { pass: true, steps: [{ name: 'dev-ready', pass: true, elapsedMs: readyMs, url: commands.url, log }] };
+          return { pass: true, steps: [readyStep] };
         } catch (error) {
+          hmr?.cancel();
           await stopDevServer(server);
           await created?.context.close();
-          return { pass: false, steps: [{ name: 'dev-ready', pass: false, error: String(error), log }] };
+          return { pass: false, steps: [{ name: 'dev-ready', pass: false, error: String(error),
+            reactReadiness: error.cause, log }] };
         }
       }
       const { context, page, cdp } = await createPage(item);
@@ -676,8 +939,9 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       if (!owned || !server) throw new Error(`dev server missing: ${key}`);
       const commands = config.dev[item.framework];
       if (kind === 'cold-ready') {
-        return { durationMs: owned.readyMs, event: 'dev-ready',
-          ...(owned.environmentHeadroom ? { environmentHeadroom: owned.environmentHeadroom } : {}) };
+        return { durationMs: owned.readyMs, event: 'dev-ready', hmrReadiness: owned.hmrReadiness,
+          reactReadiness: owned.reactReadiness,
+          ...(owned.readyStep.environmentHeadroom ? { environmentHeadroom: owned.readyStep.environmentHeadroom } : {}) };
       }
       const edit = commands.edits[kind];
       if (!(edit?.file || (Array.isArray(edit?.command) && edit.command.length > 0)) || !edit.selector
@@ -685,9 +949,57 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         throw new Error(`missing ${kind} edit stimulus and visibility marker`);
       }
       const { page } = owned;
-      if (edit.path) await page.goto(new URL(edit.path, commands.url ?? item.url).href, { waitUntil: 'load' });
-      if (item.framework === 'next' && kind === 'react-edit') {
-        await page.locator('[data-benchmark-hydrated="true"]').waitFor({ state: 'attached', timeout: 60_000 });
+      if (edit.path) {
+        const navigationStarted = performance.now();
+        const url = new URL(edit.path, commands.url ?? item.url).href;
+        const hmr = observeDevReadiness(owned.cdp, commands.readiness, url, navigationStarted);
+        try {
+          await page.goto(url, { waitUntil: 'load' });
+          const hmrReadiness = await hmr.promise;
+          const reactReadiness = commands.reactReadiness ? await waitForInitialReadiness(page) : null;
+          const durationMs = performance.now() - navigationStarted;
+          owned.readyMs += durationMs;
+          owned.readyStep.elapsedMs += durationMs;
+          owned.readyStep.editNavigation = { url, durationMs, hmrReadiness, reactReadiness };
+        } finally {
+          hmr.cancel();
+        }
+      }
+      if (kind === 'react-edit' && item.framework === 'fluo' && edit.file
+        && edit.from === 'Editor login' && edit.expectedText === 'Editor login changed') {
+        const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
+        const started = performance.now();
+        const documents = await observeDevEditDocument(page, edit);
+        const readiness = owned.readyStep.editNavigation?.hmrReadiness ?? owned.hmrReadiness;
+        const update = edit.reload === false ? observeReactEditUpdate(owned.cdp, readiness, edit) : null;
+        let restore;
+        try {
+          if (!documents.initial.visible || documents.initial.text !== edit.from) throw new Error('initial React edit marker missing');
+          restore = await editSourceFile(edit, commands.cwd ?? resolve(import.meta.dirname, '../apps/fluo'));
+          const restores = editsToRestore.get(key) ?? [];
+          restores.push(restore);
+          editsToRestore.set(key, restores);
+          const final = await documents.wait();
+          const sameDocument = documents.initial.documentToken === final.documentToken;
+          const actualUpdate = sameDocument && update ? await update.promise : null;
+          const completedAtMs = performance.now();
+          const durationMs = completedAtMs - started;
+          await restore();
+          const completion = sameDocument ? 'hmr-to-visible' : edit.relaunch ? 'relaunch-to-visible'
+            : edit.restartPattern ? 'restart-and-reload-to-visible'
+              : edit.reload ? 'reload-to-visible' : 'fallback-reload-to-visible';
+          return { durationMs, event: `${kind}-visible`,
+            method: sameDocument ? 'hot-update' : 'document-reload',
+            interval: { clock: 'node-performance-now-ms', startedAtMs: started, completedAtMs },
+            editEvidence: { schemaVersion: 1, subscribedBeforeStimulus: true, subscribedAtMs: documents.subscribedAtMs, initial: documents.initial,
+              final, completion, readiness, update: actualUpdate, source: restore.evidence },
+            ...(headroomBefore ? { environmentHeadroom:
+              summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) } : {}) };
+        } finally {
+          await restore?.();
+          update?.cancel();
+          await documents.cancel();
+        }
       }
       const reload = edit.reload === true;
       const before = reload || edit.relaunch ? null : await page.locator(edit.selector).first().evaluate((element, expectedStyle) =>
@@ -709,19 +1021,17 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         server.stdout.on('data', observe);
       }) : null;
       const visible = edit.explicitReload || edit.relaunch ? null : reload
-        ? (restarted ? restarted.then(() => page.reload({ waitUntil: 'load' }))
-          : page.waitForEvent('load', { timeout: 60_000 })).then(async () => {
+        ? (restarted ? restarted.then(() => page.reload({ waitUntil: 'commit' }))
+          : page.waitForEvent('framenavigated', {
+            predicate: (frame) => frame === page.mainFrame(), timeout: 60_000,
+          })).then(async () => {
           const element = page.locator(edit.selector);
           await element.waitFor({ state: 'visible', timeout: 60_000 });
           if (edit.expectedText) {
             await element.filter({ hasText: edit.expectedText }).waitFor({ state: 'visible', timeout: 60_000 });
             return;
           }
-          const value = await element.evaluate((target, expectedStyle) => expectedStyle
-            ? getComputedStyle(target).getPropertyValue(expectedStyle.property) : target.textContent, edit.expectedStyle);
-          if (!value?.includes(edit.expectedStyle?.value ?? edit.expectedText)) {
-            throw new Error(`${kind} marker not visible after reload`);
-          }
+          await waitForEditMarker(page, edit);
         })
         : Promise.any([page.evaluate(({ selector, expectedText, expectedStyle, previous }) => new Promise((resolveVisible, rejectVisible) => {
           const observer = new MutationObserver(() => {
@@ -779,7 +1089,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             await waitForEditMarker(restartedPage, edit);
           }
         } else if (edit.explicitReload) {
-          await page.reload({ waitUntil: 'load' });
+          await page.reload({ waitUntil: 'commit' });
           await page.locator(edit.selector).filter({ hasText: edit.expectedText }).waitFor({ state: 'visible', timeout: 60_000 });
         } else {
           await visible;
@@ -794,7 +1104,10 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         durationMs: performance.now() - started,
         event: `${kind}-visible`,
         method: edit.relaunch ? 'dev-server-relaunch' : edit.restartPattern
-          ? 'restart-and-reload' : edit.explicitReload ? 'document-reload' : 'hot-update',
+          ? 'restart-and-reload' : edit.explicitReload || reload ? 'document-reload' : 'hot-update',
+        ...(edit.relaunch ? { restartReadiness: contexts.get(key).readyStep } : {}),
+        ...(headroomBefore ? { environmentHeadroom:
+          summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) } : {}),
       };
       if (headroomBefore) {
         result.environmentHeadroom = summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom());

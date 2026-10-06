@@ -68,9 +68,10 @@ FA-V2's existing pair aggregation remains unchanged.
 For each fresh before/final cohort, derive the unchanged representative config,
 set a common nonempty `pairId` and explicit `pairPhase: "before"` / `"after"`,
 and freeze each full config/source/build/environment identity separately.
-The Linux server-only command below is the production reproduction path.
+Use the suite README’s explicit isolated Linux representative invocation for the full client suite; the Linux server-only command below reproduces production server evidence.
 Full-suite `run-gate.mjs` also collects fresh development timing with
-`measurementKind: "development"` and `nativeLifetime: { enabled: false }`.
+`measurementKind: "development"`, `measurementPurpose: "timing"` and
+`nativeLifetime: { enabled: false }`.
 It authenticates kind, purpose, phase and shared tools/source identity before
 merging; production terminals/metrics never become dev evidence. RE-A01's
 client-owned source-edit authentication remains required, not bypassed.
@@ -189,9 +190,10 @@ that evidence. Missing verifier/proof fails closed. Server-only production
 does not gain this exception. Timing/native counterparts within the same
 product require identical actual edit descriptors; the cross-product exception
 cannot be borrowed for purpose pairing.
-The current client helper predates FA-V2 and rejects its new phase difference.
-The client owner must adapt only the authenticated method/phase relation during
-adoption; this server method does not claim that integration passed. Preserve
+The client verifier authenticates the same FA-V2 method, pair ID and purpose
+and only the before-to-after phase transition, retaining original source proof
+and relation replay. Production permits that phase transition only, not the dev
+edit exception. Preserve
 `pairPhase` in each full config/hash and freeze distinct before/after config IDs.
 
 CPU is configured SERVER PID post-workload lifetime average/single logical CPU:
@@ -232,15 +234,17 @@ runs, not production-navigation timings repurposed as dev measurements.
 The TanStack fixture pins `react` and `react-dom` to `19.2.8` in both its
 manifest and isolated lockfile; production and development results must use
 that same resolved graph.
-The current Fluo fixture rebuilds and restarts before a browser reload rather
-than claiming Fast Refresh; the TanStack route loader edit restarts its
-development server before reopening the changed page. Both timings include
-their actual restart paths. Next.js CSS edits likewise use a server restart
+Historical Fluo discovery used a build/restart harness, not the canonical
+generated starter's development path; those receipts do not establish current
+Fluo development latency. The current fixture runs canonical
+`fluo dev --runner fluo` through Vite middleware and the gateway. CSS uses
+visible HMR, server edits include generation readiness before a fresh document,
+and React uses the source-bound before reload/final HMR relation described below.
+The TanStack route loader edit restarts its development server before reopening
+the changed page and includes that actual restart path. Next.js CSS edits likewise use a server restart
 and reopened document after the tablet-class browser failed to observe CSS HMR;
 Next.js server edits also restart and reopen after a source update did not
-become browser-visible. Neither measurement is a native HMR time. The Fluo fixture's build/restart harness is not
-the generated starter's `fluo dev` Vite middleware path: its measurements
-cannot establish canonical Fluo development latency or peer development parity.
+become browser-visible. Neither measurement is a native HMR time.
 Shell arrival uses first-contentful-paint; initial main-thread work uses CDP
 `Performance.TaskDuration`, which includes work outside hydration. The raw trace
 records these method labels and unavailable measurements rather than silently
@@ -270,6 +274,175 @@ load/completion/sample/warm timestamps, raw CDP metrics/paint entries, initial
 requests and pending-at-warm identities. Requests retain loader/request IDs,
 initiators, settlement phase/timestamps and cancellation. Existing raw-trace
 authentication remains required.
+
+Historical production `nativeLifetime` observation was optional and disabled by default.
+FA-V3 production requires same-execution integrated native observation.
+The FA-V2 timing/native-conformance split is historical; the observer-specific
+requirements below also apply to FA-V3 production integrated observation.
+In a `run-gate.mjs` config, add
+`{ "nativeLifetime": { "enabled": true, "python": "/opt/fluo-native-debug/bin/python" } }`
+under `measurement`; the default never imports, starts, installs or requires
+Frida/Python. The initial `chromium-native-lifetime-v1` adapter supports only
+Linux/AArch64 ELF64 little-endian canonical Playwright revision `1228`
+headless_shell, Chromium `149.0.7827.0`. The actual executed executable and
+loaded renderer mappings must match SHA-256
+`b6f53f7e40c3ad6727cb3a12536026dcd93281e5965923752c8130ed53e5e8c4`,
+GNU build ID `afcd146a627911fb30269f995d093903636ed886`, the retained versioned
+symbol/argument/clock schema, and agent/host source identities. A version string
+or ELF offsets do not establish macOS, another binary or full Chromium support.
+The external runtime is separately provisioned isolated Python `3.11.2` and
+Frida `17.21.0`, with executable and dependency-file hashes checked.
+The exact executable hash, runtime checks and opt-in reproduction commands are
+in the [suite's observation boundary](../../tooling/benchmarks/react-app-comparison/README.md#opt-in-exact-native-lifetime-observation).
+
+Hooks are ready before entry navigation. Owned browser-tree children receive
+independent hooks before resume; CDP must prove their renderer role. Actual
+`IdentifiersFactory::RequestId` calls, PID/process birth, Resource and independent
+native Loader birth, and CDP target/session/request occurrence must form a unique
+chain. Native loader pointers are not CDP `loaderId`s. Only pending records can
+acquire cancellation from matching `Cancel` entry, its nested `HandleError` entry
+and both normal returns strictly before the original cutoff. Monotonic clock
+units must be verified; URL, nearest-time, GC and teardown inference are excluded.
+Actual CDP terminals and original observations remain intact. Cancellation is
+`request-failed`, `canceled:true`, and a failure in the existing errorRate;
+status, body bytes, CDP error codes and settledTimestamp are not invented.
+
+Native events buffer in host-retained shared memory without per-event IPC. Hook costs are
+not subtracted; setup/drain and separate observer costs are retained in provenance,
+not separately measured. Drain follows unchanged throughput and `ps` snapshots,
+before BrowserServer close, while preserving the original request cutoff.
+Each owned session retains its Frida agent and child gating until natural
+process exit. Observer hooks stop at drain without changing a resuming exec
+child's gate. Final close cleans remaining sessions, while session detach/unload
+follows process exit rather than preceding BrowserServer close.
+An eternalized inert script prevents live-agent unload if failed/aborted
+preparation forces bounded observer-child termination.
+Resident memory/runtime overhead remains included without subtraction. The
+Transport schema v2 retains an append-only memfd journal per
+PID/starttime/exec epoch, owned and verified by the host before hooks readiness
+or gated resume. Its 500000 fixed-width records never wrap. The native writer
+uses AArch64 release publication and the host uses acquire reads; raw binary
+headers/records, ownership, attempted/committed counts, sequence markers, drops
+and native callback/invocation state are authenticated and replayed. Missing
+ownership, interrupted publication/callbacks, overflow and incomplete calls
+remain inconclusive even after hashes are recomputed.
+
+A live interval must cover the original cutoff. Earlier retirement instead
+requires authenticated detach and birth-bound normal status, without RPC to a
+destroyed script or artificial cutoff padding. A separate early browser
+lifecycle zombie-status witness does not replace missing pidfd status or assign
+causality to a signal sent to a zombie.
+If no such status witness exists, the authenticated owned browser/zygote
+parent's actual `waitpid`/`wait4` normal return supplies only its genuine raw
+reap status, with pre-call kernel PID/starttime/parent, original stat, return PID
+and observer sequence.
+NULL wait destinations remain NULL. A separate birth-bound zombie `stat`
+exit-code field captured before the actual reap may supply status; neither
+the wait result nor pidfd status is rewritten. Earlier raw SIGTERM 15 additionally
+requires its own complete pre-cutoff Chromium normal termination caller/return chain and
+successful live-target send. It is never rewritten to zero; missing pidfd
+status stays missing. This retirement proof does not borrow/backdate
+`graceful-close` and remains separate from post-close shutdown authentication.
+Successful gated exec keeps distinct
+histories and verifies successor readiness before resume; failed exec does not
+close an epoch. Unknown roles/status, crashes and unsupported transitions are
+rejected. Production COOP navigation and capture boundaries remain unchanged.
+The separate two-document nonempty-retirement correctness fixture is never
+pre-navigation in a measured cohort. Journal, writer/callback and lifecycle
+overhead remain included; these correctness checks are not performance PASS.
+
+Python host retains pidfd exit subscriptions through BrowserServer termination,
+then finalizes evidence at the original cutoff. Main exit/error/disconnect and
+available descendant wait statuses are retained; known abnormal exits are rejected
+before NetLog parsing. Python exit 0 or successful detach is not browser health.
+Reaped descendant statuses stay missing, not zero; main exit 0 does not prove
+all descendants exited normally.
+Separate post-drain shutdown observation classifies raw status 15 as intentional
+only when the authenticated Chromium main's normal-shutdown caller, live owned
+target PID/start identity, successful SIGTERM send, explicit-close ordering and
+normal main exit all agree. Its IPC/setup cost is not subtracted. Zombie targets,
+failed sends, missing callers, unknown causes and other abnormal exits are not
+admitted; status 15 and missing statuses are never rewritten to zero.
+Native/CDP, coverage/process, schema/source hashes, host logs and cleanup raw
+artifacts stay in the fresh output root; `verifyTraceFiles` checks hashes, realpath
+containment, run identity and reconciliation replay, including warmup and combined
+traces. Unsupported environments, late attach, partial hooks, drops, incomplete
+returns, script/transport errors, unproven renderer retirement, identity ambiguity,
+unverified child roles and worker/service-worker coverage are unavailable/inconclusive.
+Success, failure, timeout and abort close observer sessions/children/listeners with
+bounded event waits, retaining cleanup failures. The two earlier headless diagnostics
+had no pending requests; their 36 already-canceled native bindings establish backend
+viability only. New focused runtime checks likewise prove neither a missing-terminal
+reproduction nor final performance PASS. The amended local representative pair
+uses explicit opt-in OrbStack Linux ARM64 on the existing Apple M4 Pro host;
+macOS native observation remains unsupported. Identical-final-collector before/after recollection
+across four frameworks/profiles, existing samples/warmups/budgets/statistics and
+historical fail/inconclusive preservation remain required.
+
+The [isolated Linux invocation boundary](../../tooling/benchmarks/react-app-comparison/README.md#explicit-isolated-linux-representative-pair)
+owns the command and frozen allocation: kernel
+`7.0.14-orbstack-00380-ga7e0a2dc9535`, 12 logical CPUs/8392974336 bytes,
+zero additional container quotas, actual Node `v24.21.0` and the recorded immutable
+image ID. This is shared VM capacity, not a dedicated reservation.
+`--isolated-container` performs real host Docker observation against the selected
+running container and guest executable/SDK/browser/Python/Frida/schema/source
+authentication per invocation. Preparation JSON or image identity alone is not
+live evidence. The contained environment record's digest, immutable identity/config
+hashes and distinct invocation evidence bind every production/dev/warmup/combined
+trace, receipt and aggregate; missing/mismatched/tampered bindings fail closed.
+Use the before hashes with `--environment-identity` and
+`--environment-config-identity` together for after, preserve
+identical actual tools/resources and frozen settings except the authenticated
+two-field React-edit alternative below, and schedule exclusive timing windows.
+Passive generator CPU and ambient contention snapshots use existing timing
+windows without changing CPU/RSS, capture or throughput boundaries or budgets.
+Historical `baseline.json` stays untouched, including macOS Node `24.20.0`;
+do not report a gain by comparing old macOS and new Linux observations.
+Tracked representative defaults do not enable Frida. Ordinary default/CI/macOS
+paths need no Docker/Python/Frida, and this local mode claims no cross-platform
+performance acceptance.
+Comparable identity excludes invocation locators and product commit/build
+differences: actual absolute paths/config stay in evidence and provenance, while
+tool/collector content hashes and allocation must match even when worktree/build
+roots differ. Every invocation retains its full exact configuration and hash.
+
+The sole unequal-config dev alternative is before product
+`8a09eb8d216e555b97760a86539dea31e79c86a8` using Fluo `src/document.ts` /
+`reload:true`, and reviewed final `f9f5ac6722957cbe2752b9959e657a46594c0a1b`
+or its source-verified implementation descendant using
+`src/catalog-destination.tsx` / `reload:false`. Apart from the authenticated
+versioned before-to-after phase transition, only those two fields may differ;
+all other settings, edits, peers and budgets remain identical. Both replace
+`Editor login` once with `Editor login changed` on `/login`, observe the same
+visible `h1`, and restore exact source bytes. Original representative full hashes
+remain distinct: before `b7e8cfc2c53a57006197357542b6831b9ccb58835297ee01e22a7a1afc5a5b5d`,
+final `a48953e1f5825e26afc5865a5177af988619bdceebec801cf8b4025b1a2fad73`.
+Use `--environment-before-record` and `--environment-before-root` with both original
+identity flags; original bytes/digests, containment, invocation, source/head/blob,
+build/dependency and collector evidence authenticate the relation in capture and
+replay. Production-only pairs permit only the authenticated versioned phase transition,
+with all other config fields identical; profile,
+dev and warmup hashes remain separate from the aggregate.
+Prepare the before record with `--react-edit-pair-source`; aggregate and
+development captures retain its proof, while production-only children do not
+inherit this flag. A different authenticated edit descriptor makes source proof
+mandatory for after. Ordinary isolated captures and same-config pairs without
+the opt-in retain their existing path without pinned ancestry/blob or dev-only
+production-build requirements.
+
+Pre-stimulus observers distinguish new main-frame document `reload-to-visible`
+before from correlated same-document component `hmr-to-visible` final.
+Fallback/restart/relaunch is recorded as observed and cannot substitute for
+selected HMR evidence. Initial/final visible markers and original/edited/restored
+bytes/hashes remain in raw evidence. The lead selected product-native paths on
+best judgment after an unanswered question, not an affirmative user choice or waiver.
+Merge base `942f673d34d58a9093d7012253913aec9143ff45` and final upstream
+`f3e699047bfa51bbb69d9abeb2717eeb9e1871b0` include CLI/HTTP/React typegen,
+background-form, navigation, store and provider changes; product-level differences
+are not solely #3884's causal effect or a same-upstream single-optimization control.
+Narrow pair checks do not establish performance PASS. Full four-framework/
+four-profile fresh recollection, two warmups/five alternating samples, unchanged
+budgets and versioned FA-V3 decisions, exact-head reviews and final GitHub CI remain required.
 
 Historical load-only data sampled a different initial-work window and could trigger
 warm navigation before cold modules finished; retained Linux evidence includes cold
@@ -327,6 +500,60 @@ request failures remain counted together with throughput errors. Decoded and
 encoded asset bytes come from browser CDP network data events; a speculative
 prefetch still pending at the capture boundary is recorded as pending and
 makes the run inconclusive without fabricating byte counts or a request failure.
+
+## Client delivery diagnostics
+
+Issue #3884 adds a supplemental production observation path in
+`tooling/benchmarks/react-app-comparison/src/client-delivery.mjs`. From the repository root:
+
+```sh
+node tooling/benchmarks/react-app-comparison/src/client-delivery.mjs \
+  --build-root tooling/benchmarks/react-app-comparison/apps/fluo \
+  --output-dir tooling/benchmarks/react-app-comparison/results/issue-3884/<fresh-invocation>/fluo
+node tooling/benchmarks/react-app-comparison/src/client-delivery.mjs \
+  --build-root examples/react-vite-ssr --lockfile pnpm-lock.yaml \
+  --output-dir tooling/benchmarks/react-app-comparison/results/issue-3884/<fresh-invocation>/example
+```
+
+For an installed generated starter, pass its absolute path as `--build-root` and
+the source repository as `--source-root`; its own frozen lockfile identifies the
+installed package graph. The observer uses the app's production configuration and
+records emitted module membership, static/dynamic import edges, rendered code bytes,
+content hashes and duplicate module owners without adding chunks or changing the manifest.
+`graph.json`, `manifest.json`, `source.patch` and `untracked-inputs.json` retain
+source/build/package/lock/runtime/host identity. Use a fresh output directory.
+
+Build the installed starter with this observer first, then start that exact build with
+its ordinary `pnpm start`. To collect its cold/warm private-ordinary journeys without
+rebuilding under an already-running server:
+
+```sh
+node tooling/benchmarks/react-app-comparison/src/client-delivery.mjs \
+  --observe-output tooling/benchmarks/react-app-comparison/results/issue-3884/<fresh-invocation>/starter \
+  --capture-url 'http://127.0.0.1:<port>/products/sku-42?preview=true'
+```
+
+The retained and served manifest must agree. The generated correctness test also warms
+the shell resource, then acknowledges resource operations and native form input while a
+real search approval is deferred; it does not introduce a background form/search API.
+
+The example's `tests/client-delivery.spec.ts` attaches CDP and exact DOM observers
+before each stimulus. Separate cold/warm and public-prefetch/private-ordinary traces
+retain HTML, bootstrap, HTTP-selected initial module, real hydration control acknowledgment,
+negotiated payload, built destination module and destination DOM/frame observations.
+CDP monotonic seconds and document performance milliseconds are separate clock domains.
+`decodedBytes` is the captured decoded body; `encodedTransportBytes` includes protocol
+overhead and is **not** the canonical compressed-body budget metric. Cache hits, content
+encoding and repeated network transfers remain explicit. A body capture failure, absent
+stage or missing provenance cannot be turned into a complete trace.
+
+These unthrottled correctness traces include observation overhead and are not five-run
+profile receipts. Keep their complete directories under `results/issue-3884/`, verify
+their artifacts with `verifyDeliveryTraceFiles(...)`, and run the unchanged representative
+regression gate separately. Do not replace canonical metrics, peer measurements, profile
+settings or thresholds with this diagnostic. A client subset pass does not make a failing
+server/dev/full verdict pass. Public prefetch remains HTTP-approved and single-use;
+ordinary private activation, refresh, retry and history still obtain fresh approval.
 
 ## Reproducing evidence
 

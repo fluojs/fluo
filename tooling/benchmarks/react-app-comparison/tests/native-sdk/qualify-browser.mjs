@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
-import { captureCollectorSources, captureIsolatedEnvironment, planMeasurements, PROFILES,
-  verifyTraceFiles, verifyEnvironmentBinding } from '../../src/measure.mjs';
 import { captureMethodBinding, verifyMethodBinding, verifyMethodTrace } from '../../src/fa-v2.mjs';
+import { captureCollectorSources, captureIsolatedEnvironment, PROFILES,planMeasurements, verifyEnvironmentBinding,
+  verifyTraceFiles } from '../../src/measure.mjs';
 import { createBrowserDriver } from '../../src/measure-browser.mjs';
+import { NATIVE_LIFETIME_IDENTITY, verifyNativeLifetimeEvidence } from '../../src/native-lifetime.mjs';
 import { startServers, stopServers } from '../../src/run-gate.mjs';
-import { verifyNativeLifetimeEvidence, NATIVE_LIFETIME_IDENTITY } from '../../src/native-lifetime.mjs';
 
 const suite = fileURLToPath(new URL('../../', import.meta.url));
 const root = resolve(process.argv[2]);
@@ -20,7 +20,8 @@ const original = JSON.parse(await readFile(resolve(root, 'original-config.json')
 const host = JSON.parse(await readFile(resolve(root, 'host.json')));
 const receiptPath = resolve(root, 'qualification.json');
 const expectedSources = JSON.parse(await readFile(resolve(root, 'source-closure.json')));
-const output = resolve(root, 'browser');
+const output = resolve(root, process.argv.includes('--development-prefix')
+  ? 'development-qualification' : 'browser');
 const verifySources = async () => {
   const actual = Object.fromEntries((await readdir(resolve(suite, 'src'))).sort().map((name) => [name, null]));
   for (const name of Object.keys(actual)) actual[name] = sha(await readFile(resolve(suite, 'src', name)));
@@ -83,15 +84,18 @@ if (process.argv.includes('--verify')) {
     const representative = JSON.parse(await readFile(resolve(suite, 'config/representative.json')));
     const definition = representative.servers.next;
     servers = await startServers([{ ...definition, name: 'next',
-      cwd: original.provenance.root + '/tooling/benchmarks/react-app-comparison/apps/next',
+      cwd: process.argv.includes('--development-prefix') ? resolve(root, 'next-product')
+        : original.provenance.root + '/tooling/benchmarks/react-app-comparison/apps/next',
       readyPattern: new RegExp(definition.readyPattern), urlForMatch: () => definition.url }], (child) => children.push(child));
     const config = { ...original, methodVersion: 'FA-V3', measurementPurpose: 'integrated',
-      measurementKind: 'production', pairId: 'finite-canonical-3885', pairPhase: 'before',
+      measurementKind: 'production', pairId: process.argv.includes('--development-prefix')
+        ? 'finite-canonical-3884' : 'finite-canonical-3885', pairPhase: 'before',
       serverPids: { ...original.serverPids, next: servers[0].child.pid },
       provenance: { ...original.provenance, baselineSha256: sha(await readFile(resolve(suite, 'baseline.json'))),
         collectorSources: await captureCollectorSources() } };
     await save(resolve(output, 'config.json'), config);
-    const invocation = { method: 'isolated-linux-representative-v1', invocationId: 'canonical-3885-prefix', host };
+    const invocation = { method: 'isolated-linux-representative-v1', invocationId: process.argv.includes('--development-prefix')
+      ? 'canonical-client-3884-prefix' : 'canonical-3885-prefix', host };
     config.environmentBinding = await captureIsolatedEnvironment(config, invocation, output);
     config.isolatedRepresentative = true;
     receipt.environmentBinding = config.environmentBinding;

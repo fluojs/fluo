@@ -8,7 +8,7 @@ import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { expect, test } from '@playwright/test';
 
 const example = resolve(import.meta.dirname, '..');
-const evidence = resolve(example, '../../.omo/verification/issue-3878');
+const evidence = resolve(example, '../../tooling/benchmarks/react-app-comparison/results/issue-3884');
 const mediaType = 'application/vnd.fluo.react-navigation+json;v=2';
 
 type Build = {

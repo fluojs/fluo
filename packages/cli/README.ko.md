@@ -198,6 +198,15 @@ redirect하며 JavaScript 없이도 form이 동작합니다. 셸을 교체하지
 클릭하세요. 요청 중에는 이전 값이 남고 승인된 새 이름만 history entry 없이 표시됩니다.
 
 React `dev` script는 이제 직접 실행한 CLI와 동일한 `fluo dev` 경로로 위임합니다.
+생성된 production asset controller는 application instance별로 immutable build 파일의
+bytes를 재사용하고 동시 읽기를 공유합니다. 실패한 읽기는 보관하지 않으며,
+개발 자산은 수정 내용이 반영되도록 다시 읽습니다.
+Node restart runner는 기본 50ms trailing-edge debounce로 source 이벤트를 합칩니다.
+`FLUO_DEV_RELOAD_DEBOUNCE_MS`의 명시적 override는 유지하며, 내용 hash가 같은
+저장은 여전히 application을 재시작하지 않습니다.
+개발 gateway는 대상 JavaScript와 CSS 응답에 streaming gzip을 협상하며 원래 내용과
+backpressure를 유지합니다. 이미 인코딩된 응답, range, HEAD, `no-transform` 응답은
+변환하지 않습니다. 압축 응답은 `Accept-Encoding`에 따라 달라지며 weak ETag를 사용합니다.
 의존성 설치 후 어느 경로든 수동 production build 없이 시작합니다. Vite가 SSR entry를
 변환하며 안정된 개발 gateway가 공개 HTTP port와 WebSocket을 유지합니다. 각 Fastify
 app generation은 임시 private port에서 client module, refresh preamble, CSS를
@@ -238,6 +247,12 @@ application file과 다시 실행할 lifecycle command를 정확히 가리킵니
 미지원 page와 JavaScript 비활성 상태는 native document 이동을 유지합니다. 일반 page를 추가할 때는
 page module과 HTTP handler/DTO만 작성하며 client entry, renderer, manifest, router store를
 편집하지 않습니다.
+생성된 production hydration test는 page를 열기 전에 negotiated GET을 관찰합니다.
+Hydration과 실제 control acknowledgment는 initial-data GET을 추가하지 않아야 하고,
+search는 HTTP approval 한 번을 요구합니다. 실제 build manifest와 browser asset inventory를
+검사하여 첫 상품 page가 search destination을 eager-load하지 않는지도 확인합니다.
+이는 correctness coverage이며 hydration 시간이나 navigation percentile 성능 영수증이 아닙니다.
+[Client delivery diagnostics](../../docs/guides/react-performance-benchmarks.ko.md#client-delivery-diagnostics)를 참고하세요.
 Generated shell은 `ReactNavigationExperience`를 opt-in으로 사용합니다. Pending 및 polite
 상태 알림은 key가 지정된 page slot 밖에 유지되고 destination render 오류는 local reset을
 제공합니다. `@PageMetadata(...)`는 request에서 선택한 title/meta/link descriptor를 SSR과

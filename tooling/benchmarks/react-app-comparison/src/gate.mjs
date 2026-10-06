@@ -1,12 +1,11 @@
+import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-import { evaluatePerformance, METRICS } from './evaluate.ts';
-import { verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from './measure.mjs';
-import { pairStimuliComparison, verifyMethodBinding, verifyMethodReceipt } from './fa-v2.mjs';
-import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+import { evaluatePerformance, METRICS } from './evaluate.ts';
+import { pairStimuliComparison, verifyMethodBinding, verifyMethodReceipt } from './fa-v2.mjs';
+import { verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from './measure.mjs';
 
 async function authenticateEvidence(baseline, receipts, outputRoot) {
   const runs = receipts.flatMap((receipt) => {
@@ -202,6 +201,39 @@ export async function evaluateAcceptedEvidence(baseline, timingReceipts, outputR
       : checks.some((check) => check.verdict === 'inconclusive') ? 'inconclusive' : 'pass' };
 }
 
+export async function verifyDevelopmentPairRelation(first, second, outputRoot) {
+  const firstDev = await verifyMethodBinding(first.developmentMethodBinding, outputRoot);
+  const secondDev = await verifyMethodBinding(second.developmentMethodBinding, outputRoot);
+  if (firstDev.configuration.measurementKind !== 'development'
+    || secondDev.configuration.measurementKind !== 'development'
+    || firstDev.pairPhase !== 'before' || secondDev.pairPhase !== 'after'
+    || firstDev.pairId !== secondDev.pairId || firstDev.measurementPurpose !== secondDev.measurementPurpose
+    || firstDev.executionId === secondDev.executionId) {
+    throw new Error('FA-V2 before/after development method mismatch');
+  }
+  const measurement = await import('./measure.mjs');
+  for (const [receipt, method] of [[first, firstDev], [second, secondDev]]) {
+    const environment = await verifyEnvironmentBinding(receipt.developmentEnvironmentBinding, outputRoot);
+    if (environment.configSha256 !== measurement.environmentConfigIdentity(method.configuration)) {
+      throw new Error('FA-V2 development method/environment full configuration mismatch');
+    }
+  }
+  const comparison = pairStimuliComparison(firstDev.configuration, secondDev.configuration);
+  if (comparison === 'mismatch') throw new Error('FA-V2 before/after development stimuli mismatch');
+  if (comparison === 'identical') return null;
+  const relation = await measurement.authenticateReactEditPair(
+    first.developmentEnvironmentBinding, second.developmentEnvironmentBinding, outputRoot);
+  if (!relation) throw new Error('FA-V2 RE-A01 source relation missing');
+  const captured = second.developmentEnvironmentPairRelation;
+  if (!captured || !isDeepStrictEqual({
+    ...relation, before: { ...relation.before, path: captured.before?.path },
+  }, captured)) {
+    throw new Error('FA-V2 RE-A01 receipt source relation mismatch');
+  }
+  await measurement.verifyReactEditPairRelation(captured, second.developmentEnvironmentBinding, outputRoot);
+  return captured;
+}
+
 export async function evaluateAcceptedPair(baseline, before, after) {
   const results = [];
   const methods = [];
@@ -227,23 +259,12 @@ export async function evaluateAcceptedPair(baseline, before, after) {
       throw new Error('FA-V2 before/after development inventory mismatch');
     }
     if (!first.developmentMethodBinding) continue;
-    const firstDev = await verifyMethodBinding(first.developmentMethodBinding, before.outputRoot);
-    const secondDev = await verifyMethodBinding(second.developmentMethodBinding, after.outputRoot);
-    const comparison = pairStimuliComparison(firstDev.configuration, secondDev.configuration);
-    if (comparison === 'mismatch') throw new Error('FA-V2 before/after development stimuli mismatch');
-    if (comparison === 'react-edit-source-relation-required') {
-      // Client adoption retains its existing RE-A01 verifier. Do not fork it or
-      // accept a caller's descriptor/hash as authentication. Server-only pairs
-      // never enter this path; absent source authentication fails closed.
-      const measurement = await import('./measure.mjs');
-      if (typeof measurement.authenticateReactEditPair !== 'function') {
-        throw new Error('FA-V2 RE-A01 authenticated source verifier unavailable');
-      }
-      if (before.outputRoot !== after.outputRoot) throw new Error('FA-V2 RE-A01 requires common evidence root');
-      const relation = await measurement.authenticateReactEditPair(
-        first.developmentEnvironmentBinding, second.developmentEnvironmentBinding, before.outputRoot);
-      if (!relation) throw new Error('FA-V2 RE-A01 source relation missing');
-      sourceRelations.push(relation);
+    if (before.outputRoot !== after.outputRoot) throw new Error('FA-V2 RE-A01 requires common evidence root');
+    for (const purpose of results[0].methodVersion === 'FA-V3' ? ['timing'] : ['timing', 'native']) {
+      const firstReceipt = before[purpose].find((receipt) => receipt.profile === first.profile);
+      const secondReceipt = after[purpose].find((receipt) => receipt.profile === second.profile);
+      const relation = await verifyDevelopmentPairRelation(firstReceipt, secondReceipt, before.outputRoot);
+      if (relation) sourceRelations.push(relation);
     }
   }
   const verdict = evaluatePairVerdict(results[0], results[1], results[0].methodVersion);

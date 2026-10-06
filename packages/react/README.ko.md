@@ -105,6 +105,12 @@ Advanced application은 generated renderer를 교체하거나 `createReactServer
 hydration option을 전달할 수 있으며 아래 stable API도 그대로 사용할 수 있습니다. Runtime-neutral root
 export는 Node.js, Vite, browser code를 import하지 않고, starter는 별도 route matcher를 추가하지 않습니다.
 
+Delivery 증거에서는 emitted shell/shared module과 destination-only module을 구분하고,
+store completion만이 아니라 hydration과 실제 destination render를 관찰합니다.
+[Client delivery diagnostic](../../docs/guides/react-performance-benchmarks.ko.md#client-delivery-diagnostics)은
+build membership, request byte/cache 동작, cold/warm public/private trace를 기록합니다.
+이 correctness 관측은 frozen representative performance gate를 대체하지 않습니다.
+
 ## Stable SSR Mental Model
 
 안정 `0.1.0` 모델은 HTTP-first React SSR입니다. `@Router(...)`와 `@Path(...)`는

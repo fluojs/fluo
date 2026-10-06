@@ -1,21 +1,21 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import * as evaluator from '../src/evaluate.ts';
-import * as gate from '../src/gate.mjs';
-import * as browser from '../src/measure-browser.mjs';
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { test } from 'node:test';
 import { promisify } from 'node:util';
-import { assertMethodConfig, captureMethodBinding, hashObject, pairStimuliIdentity,
-  pairStimuliComparison, verifyMethodBinding, verifyMethodReceipt, verifyMethodTrace } from '../src/fa-v2.mjs';
+import * as evaluator from '../src/evaluate.ts';
+import { assertMethodConfig, captureMethodBinding, hashObject,
+  pairStimuliComparison, pairStimuliIdentity,verifyMethodBinding, verifyMethodReceipt, verifyMethodTrace } from '../src/fa-v2.mjs';
+import * as gate from '../src/gate.mjs';
 import { collectDevMeasurements, collectMeasurements, environmentConfigIdentity, isolatedEnvironmentIdentity,
   mergeEvidence, planMeasurements, verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from '../src/measure.mjs';
-import { evaluateAcceptedServerEvidence } from '../src/server-measurement.mjs';
+import * as browser from '../src/measure-browser.mjs';
 import { NATIVE_LIFETIME_IDENTITY, NATIVE_LIFETIME_METHOD, NATIVE_LIFETIME_RUNTIME,
   NATIVE_LIFETIME_SCHEMA } from '../src/native-lifetime.mjs';
+import { evaluateAcceptedServerEvidence } from '../src/server-measurement.mjs';
 
 const frameworks = ['fluo', 'next', 'react-router', 'tanstack-start'];
 const baseline = {
@@ -415,6 +415,7 @@ for (const methodVersion of ['FA-V3', 'FA-V2']) {
       assert.equal(result.checks.filter((check) => check.reason === 'measurement-quality').length,
         [...timing, ...native].reduce((count, receipt) => count + receipt.runs.length + receipt.warmups.length, 0));
     }
+    t.diagnostic(`${methodVersion}: same environment with different profile config and execution authenticated`);
     const target = timing[1];
     const original = target.environmentBinding;
     for (const [label, mutate] of [
@@ -441,6 +442,7 @@ for (const methodVersion of ['FA-V3', 'FA-V2']) {
       for (const evaluate of [gate.evaluateAcceptedEvidence, evaluateAcceptedServerEvidence]) {
         await assert.rejects(evaluate(frozen, timing, directory, native), /mixed profile environment/u);
       }
+      t.diagnostic(`${methodVersion}: individually authenticated ${label} drift rejected`);
     }
   });
 }

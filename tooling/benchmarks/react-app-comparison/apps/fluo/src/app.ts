@@ -28,6 +28,7 @@ import {
 } from '@fluojs/react';
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { cloneElement, createElement, isValidElement } from 'react';
+import type { ViteDevServer } from 'vite';
 
 import {
   authenticate,
@@ -39,6 +40,9 @@ import {
   validateProduct,
 } from '../../../fixture/domain.mjs';
 import { BenchmarkDocument, type PageData } from './document';
+import CatalogDestination from './navigation-catalog';
+import JukeboxDestination from './navigation-jukebox';
+import ProductDestination from './navigation-product';
 
 class ProductInput {
   @FromBody('name')
@@ -104,38 +108,57 @@ function productName(name: unknown): string {
   return result.name;
 }
 
-export function createBenchmarkModule(manifest: unknown, clientDirectory: URL) {
-  const result = createReactViteAssetManifest({
+export function createBenchmarkModule(manifest: unknown, clientDirectory: URL, vite?: ViteDevServer) {
+  const result = vite ? undefined : createReactViteAssetManifest({
     base: '/assets/',
     entries: { client: 'src/entry-client.ts', server: 'src/entry-server.ts' },
     identifierPrefix: 'benchmark-fluo-',
     manifest,
   });
-  if (!result.ok) {
+  if (result && !result.ok) {
     throw new TypeError(result.diagnostics.map((diagnostic) => diagnostic.message).join('\n'));
   }
-  const assets = result.manifest;
+  const developmentAssetMap: Readonly<Record<string, string>> = {};
+  const assets = result?.manifest ?? {
+    buildId: 'vite-development',
+    css: ['/src/styles.css?direct'],
+    assetMap: developmentAssetMap,
+    hydrationOptions: {
+      bootstrapModules: ['/@vite/client', '/src/entry-client-dev.ts'],
+      identifierPrefix: 'benchmark-fluo-',
+    },
+  };
+  const immutableAssets = new Set([...Object.values(assets.assetMap), ...assets.css]);
   const destinationFiles = [
     'src/navigation-catalog.ts',
     'src/navigation-product.ts',
     'src/navigation-jukebox.ts',
   ];
   for (const file of destinationFiles) {
-    if (!assets.assetMap[file]) throw new TypeError(`Missing browser destination: ${file}`);
+    if (!vite && !assets.assetMap[file]) throw new TypeError(`Missing browser destination: ${file}`);
   }
 
-  function page(data: PageData, context: RequestContext) {
+  async function page(data: PageData, context: RequestContext) {
     privateResponse(context);
     if (data.kind === 'jukebox') {
-      context.response.setHeader('Content-Security-Policy', "default-src 'self'; media-src 'self' blob:");
+      context.response.setHeader('Content-Security-Policy', vite
+        ? "default-src 'self'; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:"
+        : "default-src 'self'; media-src 'self' blob:");
     }
     const module = data.kind === 'catalog'
       ? './navigation-catalog.ts'
       : data.kind === 'product' ? './navigation-product.ts'
       : data.kind === 'jukebox' ? './navigation-jukebox.ts' : './navigation-catalog.ts';
+    const initialElement = vite
+      ? createElement((await vite.ssrLoadModule(`/src/${module.slice(2)}`))['default'], { data, editor: editor(context) })
+      : data.kind === 'product'
+      ? createElement(ProductDestination, { data, editor: editor(context) })
+      : data.kind === 'jukebox'
+        ? createElement(JukeboxDestination, { data, editor: editor(context) })
+        : createElement(CatalogDestination, { data, editor: editor(context) });
     return ReactNavigationPage.create(
       createElement(BenchmarkDocument, {
-        data,
+        initialElement,
         editor: editor(context),
         routeParams: context.request.params,
         routeUrl: context.request.url,
@@ -266,6 +289,7 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL) {
 
   @Controller('/assets')
   class Assets {
+    readonly #assets = new Map<string, Promise<{ readonly body: Buffer; gzip?: Buffer }>>();
     readonly #gzipAssets = new Map<string, { readonly body: Buffer; readonly compressed: Buffer }>();
 
     @Get('/:file')
@@ -275,7 +299,17 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL) {
         throw new NotFoundException('Asset not found.');
       }
       try {
-        const body = await readFile(new URL(input.file, clientDirectory));
+        const file = new URL(input.file, clientDirectory);
+        const immutable = !vite && immutableAssets.has(`/assets/${input.file}`);
+        let asset = this.#assets.get(input.file);
+        if (!asset) {
+          asset = readFile(file).then((body) => ({ body })).catch((error: unknown) => {
+            this.#assets.delete(input.file);
+            throw error;
+          });
+          if (immutable) this.#assets.set(input.file, asset);
+        }
+        const bytes = await asset;
         context.response.setHeader(
           'Content-Type',
           input.file.endsWith('.css') ? 'text/css; charset=utf-8' : 'text/javascript; charset=utf-8',
@@ -283,16 +317,18 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL) {
         context.response.setHeader('Vary', 'Accept-Encoding');
         const accepted = context.request.headers['accept-encoding'];
         if (typeof accepted === 'string' && /\bgzip\b/u.test(accepted)) {
-          let asset = this.#gzipAssets.get(input.file);
-          if (!asset?.body.equals(body)) {
-            asset = { body, compressed: gzipSync(body) };
-            this.#gzipAssets.set(input.file, asset);
-          }
           context.response.setHeader('Content-Encoding', 'gzip');
-          return Buffer.from(asset.compressed);
+          if (immutable) return Buffer.from(bytes.gzip ??= gzipSync(bytes.body));
+          let compressed = this.#gzipAssets.get(input.file);
+          if (!compressed?.body.equals(bytes.body)) {
+            compressed = { body: bytes.body, compressed: gzipSync(bytes.body) };
+            this.#gzipAssets.set(input.file, compressed);
+          }
+          return Buffer.from(compressed.compressed);
         }
-        return body;
+        return bytes.body;
       } catch (error) {
+        this.#assets.delete(input.file);
         this.#gzipAssets.delete(input.file);
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
           throw new NotFoundException('Asset not found.', { cause: error });

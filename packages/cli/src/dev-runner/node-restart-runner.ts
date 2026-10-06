@@ -51,7 +51,7 @@ export type NodeRestartRunnerOptions = {
   watchTarget?: RestartWatcherFactory;
 };
 
-const DEFAULT_DEBOUNCE_MS = 100;
+const DEFAULT_DEBOUNCE_MS = 50;
 const DEFAULT_CHILD_SHUTDOWN_TIMEOUT_MS = 5_000;
 const PRETTY_TTY_COLOR_ENV = 'FLUO_DEV_PRETTY_TTY_COLOR';
 const DEFAULT_IGNORES = [
