@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { promisify } from 'node:util';
 
 import { METRICS } from '../src/evaluate.ts';
 import { evaluateEvidence } from '../src/gate.mjs';
@@ -186,3 +186,33 @@ test('real CLI permits legacy receipts only as explicit historical replay', asyn
   assert.equal(replay.methodVersion, undefined);
   assert.equal(replay.observations['desktop-native'].next.coldTtfbMs, 70);
 });
+
+for (const kind of ['warmups', 'developmentWarmups']) {
+  for (const mutation of ['zero', 'deleted']) {
+    test(`evaluateEvidence: ${kind} summary errorRate ${mutation} -> rejects unchanged raw`, async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'react-gate-warmup-'));
+      try {
+        const receipts = await evidence(directory);
+        const original = receipts[0].runs[0];
+        const raw = JSON.parse(await readFile(original.trace, 'utf8'));
+        const warmup = { ...original, runId: `${original.runId}-${kind}`,
+          trace: join(directory, `${kind}.json`), warmup: true,
+          metrics: { ...original.metrics, errorRate: 0.25 } };
+        await writeFile(warmup.trace, JSON.stringify({ ...raw,
+          runId: warmup.runId, warmup: true, metrics: warmup.metrics }));
+        receipts[0][kind] = [warmup];
+        const originalBytes = await readFile(warmup.trace, 'utf8');
+        assert.equal((await evaluateEvidence(baseline, receipts, directory)).verdict, 'pass');
+        warmup.metrics = { ...warmup.metrics };
+        if (mutation === 'zero') warmup.metrics.errorRate = 0;
+        else delete warmup.metrics.errorRate;
+
+        await assert.rejects(evaluateEvidence(baseline, receipts, directory), /raw trace metrics/u);
+
+        assert.equal(await readFile(warmup.trace, 'utf8'), originalBytes);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+  }
+}

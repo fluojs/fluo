@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { test } from 'node:test';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { test } from 'node:test';
 import * as collector from '../src/measure-browser.mjs';
 import { createNativeCapture } from '../src/native-terminal.mjs';
 
@@ -373,4 +373,29 @@ test('opt-in lifetime evidence drains before browser server closes at the origin
   assert.deepEqual(evidence.lifetime.observation.events, []);
   assert.equal(evidence.provenance.cleanup.closed, true);
   await capture.close();
+});
+
+test('opt-in capture exposes lifetime preparation before workload without external runtime on unsupported hosts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-adoption-'));
+  const child = Object.assign(new EventEmitter(), { pid: 125, exitCode: null, signalCode: null });
+  let path;
+  let spawned = false;
+  const capture = await createNativeCapture({
+    async launchServer(options) {
+      path = options.args[0].slice('--log-net-log='.length);
+      return { process: () => child, wsEndpoint: () => 'fixture',
+        async close() { await writeFile(path, JSON.stringify(log())); child.exitCode = 0; child.emit('exit', 0, null); },
+        async kill() { assert.fail('unsupported observation must not kill browser'); } };
+    },
+    async connect() { return Object.assign(new EventEmitter(), { version: () => 'unsupported', async close() {} }); },
+  }, directory, { enabled: true, spawn() { spawned = true; throw new Error('must not spawn'); } });
+  try {
+    assert.equal(typeof capture.prepareLifetime, 'function');
+    await capture.prepareLifetime({});
+    capture.ledger.push({ name: 'capture-boundary', data: { captureTimestamp: 123 } });
+    const evidence = await capture.read(123);
+    assert.equal(evidence.lifetime.observation.captureTimestamp, 123);
+    assert.equal(evidence.lifetime.observation.coverage.complete, false);
+    assert.equal(spawned, false);
+  } finally { await capture.close(); }
 });

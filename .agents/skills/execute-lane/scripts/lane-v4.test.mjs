@@ -182,6 +182,122 @@ test('focused-first: reviewed source heads publish without a full receipt, but C
 	assert.equal(decideNext(makeLane(), ciObs).reason, 'local-checks-failed');
 });
 
+const makeWaivedObs = () => {
+	const obs = makeObs({
+		laneId: 'fixture', localChecks: null, changedFiles: ['packages/http/package.json'],
+	});
+	obs.localCiWaiver = {
+		head: obs.headSha, accepted_at: '2026-01-01T00:00:02.000Z',
+		value: {
+			laneId: obs.laneId, issue: obs.issue, status: 'waived', scope: 'full-local-ci',
+			...localCheckBinding(obs.review, obs.reviewAcceptedAt),
+			authority: 'explicit-operator-instruction',
+			evidence: { kind: 'accepted-preflight', contractSha256: obs.preflight.sha256, criteria: ['A12', 'V12', 'SE-V05'] },
+		},
+	};
+	return obs;
+};
+
+test('local-ci-waiver: exact operator exception -> publication without a local receipt', () => {
+	const obs = makeWaivedObs();
+
+	assert.equal(decideNext(makeLane(), { ...obs, localCiWaiver: null }).action, 'verify-local');
+	assert.equal(decideNext(makeLane(), obs).action, 'create-pr');
+	assert.equal(obs.localChecks, null);
+	assert.notEqual(obs.localCiWaiver.value.preflightSha256, obs.preflight.sha256);
+});
+
+test('local-ci-waiver: stale or malformed stored facts -> mandatory local gate', () => {
+	const mutations = [
+		['head', (f) => { f.head = 'f'.repeat(40); }],
+		['lane', (f) => { f.value.laneId = 'other'; }],
+		['issue', (f) => { f.value.issue = 42; }],
+		['contract', (f) => { f.value.evidence.contractSha256 = 'f'.repeat(64); }],
+		['policy', (f) => { f.value.preflightSha256 = 'f'.repeat(64); }],
+		['review digest', (f) => { f.value.reviewSha256 = 'f'.repeat(64); }],
+		['review time', (f) => { f.value.reviewAcceptedAt = '2025-01-01T00:00:00.000Z'; }],
+		['audit time', (f) => { f.accepted_at = 'invalid'; }],
+		['missing audit time', (f) => { delete f.accepted_at; }],
+		['wrapper extra', (f) => { f.valid = true; }],
+		['value extra', (f) => { f.value.valid = true; }],
+		['receipt', (f) => { f.value.receiptPath = '.omo/verification/receipt.json'; }],
+		['passed', (f) => { f.value.status = 'passed'; }],
+		['scope', (f) => { f.value.scope = 'all-ci'; }],
+		['authority', (f) => { f.value.authority = 'inferred'; }],
+		['evidence kind', (f) => { f.value.evidence.kind = 'receipt'; }],
+		['evidence extra', (f) => { f.value.evidence.path = 'fake.json'; }],
+		['empty criteria', (f) => { f.value.evidence.criteria = []; }],
+		['blank criterion', (f) => { f.value.evidence.criteria = [' ']; }],
+		['duplicate criteria', (f) => { f.value.evidence.criteria = ['A12', 'A12']; }],
+		['non-string criterion', (f) => { f.value.evidence.criteria = [12]; }],
+		['missing field', (f) => { delete f.value.authority; }],
+		['null value', (f) => { f.value = null; }],
+		['array evidence', (f) => { f.value.evidence = []; }],
+	];
+	for (const [name, mutate] of mutations) {
+		const obs = makeWaivedObs();
+		mutate(obs.localCiWaiver);
+
+		assert.equal(decideNext(makeLane(), obs).action, 'verify-local', name);
+	}
+	for (const localCiWaiver of [null, [], true, 'waived']) {
+		assert.equal(decideNext(makeLane(), { ...makeWaivedObs(), localCiWaiver }).action, 'verify-local');
+	}
+});
+
+test('local-ci-waiver: changed current review content or acceptance -> explicit registration required', () => {
+	for (const change of [
+		(obs) => { obs.reviewAcceptedAt = '2026-01-02T00:00:00.000Z'; },
+		(obs) => { obs.review.reviews.reverse(); },
+	]) {
+		const obs = makeWaivedObs();
+		change(obs);
+
+		assert.equal(decideNext(makeLane(), obs).action, 'verify-local');
+	}
+});
+
+test('local-ci-waiver: prior gates and applicable local failures -> original decisions', () => {
+	for (const [patch, action, reason] of [
+		[{ preflight: null }, 'preflight', 'invalid-preflight'],
+		[{ changedFiles: ['outside.md'] }, 'preflight', 'scope-expansion'],
+		[{ review: null }, 'review', undefined],
+		[{ review: makeReview('BLOCK') }, 'fix-back', 'review-block'],
+		[{ review: makeReview('NEEDS-HUMAN-CHECK') }, 'blocked', 'needs-human-check'],
+		[{ unmetDependencies: [42] }, 'wait-dependencies', undefined],
+		[{ changesetPresent: false }, 'fix-back', 'changeset-missing'],
+		[{ localChecks: { ...makeObs().localChecks, status: 'failed', valid: false } }, 'fix-back', 'local-checks-failed'],
+	]) {
+		const obs = { ...makeWaivedObs(), ...patch };
+
+		const next = decideNext(makeLane(), obs);
+		assert.equal(next.action, action);
+		assert.equal(next.reason, reason);
+	}
+	assert.equal(decideNext(makeLane({ blocker: { type: 'attempts-exhausted' } }), makeWaivedObs()).action, 'blocked');
+});
+
+test('local-ci-waiver: publication and remote gates -> unchanged head, CI, conflict and approval decisions', () => {
+	const obs = makeWaivedObs();
+	const pr = { number: 1, state: 'OPEN', headSha: obs.headSha, mergeable: 'MERGEABLE', ciStatus: 'passing' };
+	for (const [patch, approved, action] of [
+		[{ headSha: 'f'.repeat(40) }, true, 'push'],
+		[{ ciStatus: 'pending' }, true, 'wait-ci'],
+		[{ ciStatus: null }, true, 'wait-ci'],
+		[{ ciStatus: 'failing' }, true, 'fix-back'],
+		[{ mergeable: 'CONFLICTING' }, true, 'resolve-conflict'],
+		[{ mergeable: 'UNKNOWN' }, true, 'wait-mergeability'],
+		[{ mergeable: null }, true, 'wait-mergeability'],
+		[{ state: 'CLOSED' }, true, 'blocked'],
+		[{}, false, 'request-merge-approval'],
+		[{}, true, 'merge'],
+	]) {
+		const next = decideNext(makeLane({ approvals: { merge: approved } }), { ...obs, pr: { ...pr, ...patch } });
+
+		assert.equal(next.action, action);
+	}
+});
+
 test('C1: resumes with open PR and pending CI -> wait-ci', () => {
 	const next = decideNext(
 		makeLane(),

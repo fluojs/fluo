@@ -1,20 +1,21 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import * as evaluator from '../src/evaluate.ts';
-import * as gate from '../src/gate.mjs';
-import * as browser from '../src/measure-browser.mjs';
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { test } from 'node:test';
 import { promisify } from 'node:util';
-import { assertMethodConfig, captureMethodBinding, hashObject, pairStimuliIdentity,
-  pairStimuliComparison, verifyMethodBinding, verifyMethodReceipt, verifyMethodTrace } from '../src/fa-v2.mjs';
+import * as evaluator from '../src/evaluate.ts';
+import { assertMethodConfig, captureMethodBinding, hashObject,
+  pairStimuliComparison, pairStimuliIdentity,verifyMethodBinding, verifyMethodReceipt, verifyMethodTrace } from '../src/fa-v2.mjs';
+import * as gate from '../src/gate.mjs';
 import { collectDevMeasurements, collectMeasurements, environmentConfigIdentity, isolatedEnvironmentIdentity,
   mergeEvidence, planMeasurements, verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from '../src/measure.mjs';
+import * as browser from '../src/measure-browser.mjs';
 import { NATIVE_LIFETIME_IDENTITY, NATIVE_LIFETIME_METHOD, NATIVE_LIFETIME_RUNTIME,
   NATIVE_LIFETIME_SCHEMA } from '../src/native-lifetime.mjs';
+import { evaluateAcceptedServerEvidence } from '../src/server-measurement.mjs';
 
 const frameworks = ['fluo', 'next', 'react-router', 'tanstack-start'];
 const baseline = {
@@ -332,7 +333,7 @@ async function environmentFixture(directory, invocationId, measurementConfig, mu
 
 
 // Synthetic failed-correctness traces exercise real authentication, not performance captures.
-for (const evaluate of [gate.evaluateAcceptedEvidence]) {
+for (const evaluate of [gate.evaluateAcceptedEvidence, evaluateAcceptedServerEvidence]) {
   for (const mutation of ['zero', 'deleted']) {
     test(`${evaluate.name}: warmup summary errorRate ${mutation} -> rejects unchanged raw`, async (t) => {
       const directory = await mkdtemp(join(tmpdir(), 'accepted-warmup-metrics-'));
@@ -408,10 +409,12 @@ for (const methodVersion of ['FA-V3', 'FA-V2']) {
     assert.notEqual(timing[0].environmentBinding.configSha256, timing[1].environmentBinding.configSha256);
     assert.notEqual(timing[0].methodBinding.executionId, timing[1].methodBinding.executionId);
     if (native.length) assert.notEqual(timing[0].environmentBinding.identitySha256, native[0].environmentBinding.identitySha256);
-    const result = await gate.evaluateAcceptedEvidence(frozen, timing, directory, native);
-    assert.equal(result.verdict, 'fail');
-    assert.equal(result.checks.filter((check) => check.reason === 'measurement-quality').length,
-      [...timing, ...native].reduce((count, receipt) => count + receipt.runs.length + receipt.warmups.length, 0));
+    for (const evaluate of [gate.evaluateAcceptedEvidence, evaluateAcceptedServerEvidence]) {
+      const result = await evaluate(frozen, timing, directory, native);
+      assert.equal(result.verdict, 'fail');
+      assert.equal(result.checks.filter((check) => check.reason === 'measurement-quality').length,
+        [...timing, ...native].reduce((count, receipt) => count + receipt.runs.length + receipt.warmups.length, 0));
+    }
     t.diagnostic(`${methodVersion}: same environment with different profile config and execution authenticated`);
     const target = timing[1];
     const original = target.environmentBinding;
@@ -436,7 +439,9 @@ for (const methodVersion of ['FA-V3', 'FA-V2']) {
         await verifyMeasurementEnvironment(receipt, directory);
       }
       assert.notEqual(target.environmentBinding.identitySha256, original.identitySha256);
-      await assert.rejects(gate.evaluateAcceptedEvidence(frozen, timing, directory, native), /mixed profile environment/u);
+      for (const evaluate of [gate.evaluateAcceptedEvidence, evaluateAcceptedServerEvidence]) {
+        await assert.rejects(evaluate(frozen, timing, directory, native), /mixed profile environment/u);
+      }
       t.diagnostic(`${methodVersion}: individually authenticated ${label} drift rejected`);
     }
   });

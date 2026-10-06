@@ -9,8 +9,14 @@ import { createReactViteExamplePresentation } from './presentation';
 const manifest: unknown = JSON.parse(
   await readFile(new URL(process.env.REACT_VITE_EXAMPLE_MANIFEST_URL ?? '../client/.vite/manifest.json', import.meta.url), 'utf8'),
 );
+let releaseDelivery = (): void => {};
+const deliveryPending = new Promise<void>((resolve) => {
+  releaseDelivery = resolve;
+});
 const AppModule = createReactViteExampleModule({
   clientDirectory: new URL(process.env.REACT_VITE_EXAMPLE_CLIENT_URL ?? '../client/', import.meta.url),
+  ...(process.env.REACT_SSR_DELIVERY_PROBE === '1'
+    ? { deliveryProbe: { pending: deliveryPending, release: releaseDelivery } } : {}),
   presentation: createReactViteExamplePresentation(manifest),
 });
 const port = Number(process.env.REACT_VITE_EXAMPLE_PORT ?? '3000');

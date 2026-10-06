@@ -175,6 +175,20 @@ client entry and a JavaScript-disabled context. It fails on
 missing or non-200 bootstrap/style assets, hydration warnings or errors, an identifier-prefix
 mismatch, a counter that does not hydrate, client navigation whose URL and server-rendered route
 state do not agree, or a native form that cannot complete its `POST` → `303` → `GET` flow.
+`src/app.test.ts` also exercises a separately gated Suspense descendant over a real
+Fastify HTTP socket, pending-read and paused-client disconnect cleanup, and an
+incrementally flushed gzip proxy versus a whole-body-buffering proxy. The
+`tests/ssr-delivery.spec.ts` production test starts the **built** example with
+`REACT_SSR_DELIVERY_PROBE=1`: the regular DTO-bound product route keeps its
+application middleware, CSP and built asset route, while an HTTP test-only
+release endpoint controls its recommendations descendant. The built route
+also verifies the flushed gzip and whole-body-buffered gzip proxy outcomes
+through actual Node HTTP sockets. The standard
+`build`/`start` path does not register that endpoint unless the flag is set. The
+browser's first paint is not the socket's first shell byte. A page handler
+that awaits required data cannot stream before that await resolves. The
+[Fastify streaming recipe](../../packages/platform-fastify/README.md#streaming-responses)
+defines the tested compression boundary; untested cloud proxies are not implied.
 
 ## negotiated destination workflow
 

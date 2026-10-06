@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { promisify } from 'node:util';
 import { once } from 'node:events';
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { promisify } from 'node:util';
 
 import { stopOwnedProcess } from '../src/process-group.mjs';
 import { performanceExitCode, readMeasurementReceipt, requireDevDefinitions, startServers, stopServers } from '../src/run-gate.mjs';
@@ -70,7 +70,7 @@ for (const [signal, boundary, exitCode] of [
   ['SIGINT', 'guest-ready', 130], ['SIGTERM', 'guest-ready', 143],
   ['SIGTERM', 'before-ready', 143], [null, 'normal', 0], [null, 'error', 7],
 ]) {
-  test(`nonTTY launcher ${signal ?? boundary} at ${boundary} reaps its independent guest and rechecks host`, { timeout: 20_000 }, async () => {
+  test(`nonTTY launcher ${signal ?? boundary} at ${boundary} reaps its independent guest and rechecks host`, { timeout: 20_000 }, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), 'fluo-isolated-launcher-'));
     const docker = join(directory, 'docker');
     const log = join(directory, 'transport.jsonl');
@@ -147,22 +147,7 @@ for (const [signal, boundary, exitCode] of [
       host.stderr.on('data', (chunk) => { output += chunk; });
       exited.then(() => rejectReady(new Error(`host exited before guest readiness: ${output}`)), rejectReady);
     });
-    try {
-      await ready;
-      // Subscribe to exit before the action, and assert actual process liveness.
-      if (signal) {
-        process.kill(guestPid, 0);
-        host.kill(signal);
-      }
-      const [code] = await exited;
-      assert.equal(code, exitCode, output);
-      await closed;
-      assert.throws(() => process.kill(guestPid, 0), { code: 'ESRCH' });
-      const commands = (await readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
-      assert.equal(commands.filter((entry) => entry[0] === 'inspect').length, 2);
-      if (signal) assert.ok(commands.some((entry) => entry.forwarded === signal));
-      assert.match(output, /OWNED_GUEST_REAPED/u);
-    } finally {
+    t.after(async () => {
       host.kill('SIGKILL');
       if (!guestPid) guestPid = Number(await readFile(join(directory, 'guest.pid'), 'utf8').catch(() => '0'));
       if (guestPid) {
@@ -171,7 +156,21 @@ for (const [signal, boundary, exitCode] of [
         }
       }
       await rm(directory, { recursive: true, force: true });
+    });
+    await ready;
+    // Subscribe to exit before the action, and assert actual process liveness.
+    if (signal) {
+      process.kill(guestPid, 0);
+      host.kill(signal);
     }
+    const [code] = await exited;
+    assert.equal(code, exitCode, output);
+    await closed;
+    assert.throws(() => process.kill(guestPid, 0), { code: 'ESRCH' });
+    const commands = (await readFile(log, 'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(commands.filter((entry) => entry[0] === 'inspect').length, 2);
+    if (signal) assert.ok(commands.some((entry) => entry.forwarded === signal));
+    assert.match(output, /OWNED_GUEST_REAPED/u);
   });
 }
 

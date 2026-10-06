@@ -163,6 +163,20 @@ export class MyGateway {}
 ### Streaming Responses
 Fastify-backed response streams support the shared fluo stream contract used by SSE and other streaming writers. `response.stream.waitForDrain()` settles when the underlying response emits `drain`, `close`, or `error`, so writers do not hang when a client disconnects or the stream closes before backpressure clears.
 
+For early React shell delivery, keep the official Fastify Node listener and the
+HTTP-selected page route, then configure any reverse proxy to forward response
+headers and chunks as they arrive. If gzip is applied at that boundary, use
+incremental compression with `Z_SYNC_FLUSH` (or verify an equivalent flush);
+the real-socket gzip proxy fixture receives and decodes shell bytes before its
+Suspense descendant is released. A proxy that collects the entire body and
+then calls `gzipSync(...)` buffers the shell until completion and is **not**
+an early-delivery configuration. Static assets remain under the application's
+HTTP asset route and retain their own MIME/encoding policy. An upstream
+`flushHeaders()` alone does not override proxy or compression buffering.
+Node's `writableHighWaterMark` and `writableLength` describe a local writable
+queue, not an upper bound on React queues, socket buffers, or RSS; measure
+actual sizes and concurrency for your deployment.
+
 ### CORS Configuration
 CORS is handled via bootstrap options. fluo manages the underlying CORS logic rather than relying on a separate Fastify plugin.
 

@@ -163,6 +163,18 @@ export class MyGateway {}
 ### 스트리밍 응답
 Fastify 기반 응답 스트림은 SSE 및 기타 스트리밍 writer가 사용하는 공통 fluo 스트림 계약을 지원합니다. `response.stream.waitForDrain()`은 기본 응답이 `drain`, `close`, 또는 `error`를 내보낼 때 settle되므로, 클라이언트가 연결을 끊거나 backpressure가 해소되기 전에 스트림이 닫혀도 writer가 멈춰 있지 않습니다.
 
+React shell을 일찍 전달하려면 공식 Fastify Node listener와 HTTP가 선택한 page route를
+유지하고, reverse proxy가 header와 chunk를 도착하는 대로 전달하도록 설정하세요.
+그 경계에서 gzip을 적용한다면 `Z_SYNC_FLUSH`를 사용하는 점진적 압축(또는 동등한
+flush의 실측 검증)을 사용하세요. 실제 socket gzip proxy fixture는 Suspense descendant를
+해제하기 전에 shell byte를 수신하고 압축 해제합니다. Body 전체를 모은 뒤
+`gzipSync(...)`하는 proxy는 완료될 때까지 shell을 버퍼링하므로 **early delivery를
+지원하지 않는 설정**입니다. Static asset은 애플리케이션의 HTTP asset route와 각자의
+MIME/encoding 정책을 유지합니다. Upstream `flushHeaders()`만으로 proxy나 compression
+buffering을 무효화할 수는 없습니다. Node `writableHighWaterMark`와 `writableLength`는
+로컬 writable queue를 설명할 뿐 React queue, socket buffer, RSS 전체 상한이 아닙니다.
+배포하는 body 크기와 concurrency에서 직접 측정하세요.
+
 ### CORS 설정
 CORS는 부트스트랩 옵션을 통해 처리됩니다. fluo는 별도의 Fastify 플러그인에 의존하지 않고 내부 CORS 로직을 관리합니다.
 

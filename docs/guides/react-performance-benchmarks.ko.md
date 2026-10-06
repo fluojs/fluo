@@ -31,9 +31,11 @@ baseline이며 완전한 CRUD나 장시간 jukebox 동작의 독립적인 증거
 새 production 수용에는 `methodVersion: "FA-V3"`,
 `measurementPurpose: "integrated"`, `measurementKind: "production"`을
 명시합니다. 기존 CLI와 준비된 native observer의 명시적 opt-in을 사용하며
-별도 native counterpart는 허용하지 않습니다. `evaluateAcceptedEvidence`는 같은 run의 method/config, product,
+별도 native counterpart는 허용하지 않습니다. `evaluateAcceptedEvidence`와
+`evaluateAcceptedServerEvidence`는 같은 run의 method/config, product,
 environment, pair/phase, warmup/measured 순서, raw CPU, request cutoff와
-canonical native raw/schema/host receipt를 먼저 인증한 뒤 평가합니다. Metric 없는 quality 실패도 유지합니다.
+canonical native raw/schema/host receipt를 먼저 인증한 뒤 평가하거나 여섯
+server metric으로 필터링합니다. Metric 없는 quality 실패도 유지합니다.
 FA-V2의 기존 관측 min/max 수식과 정확한 decimal equality를 상속하며 새
 MAD/spread veto, tolerance, budget이나 sample 선택 규칙을 추가하지 않습니다.
 FA-V2/unversioned capture는 historical 의미를 유지하고 재사용하지 않습니다.
@@ -62,7 +64,8 @@ AFTER 수치 FAIL/INCONCLUSIVE는 계속 차단하고 FA-V2의 기존 pair 판�
 Fresh before/final cohort마다 변경하지 않은 representative config를 파생하고
 같은 비어 있지 않은 `pairId` 및 `pairPhase: "before"` / `"after"`를
 명시하며 full config/source/build/environment identity는 각각 동결합니다.
-Suite README의 명시적 isolated Linux 대표 invocation으로 재현합니다. Full-suite의
+전체 client suite는 suite README의 명시적 isolated Linux 대표 invocation으로 재현하고,
+production server 증거는 아래 Linux server-only 명령으로 재현합니다. Full-suite의
 `run-gate.mjs`는 `measurementKind: "development"`, `measurementPurpose: "timing"`과
 `nativeLifetime: { enabled: false }`인 fresh development timing도 수집합니다.
 Kind/purpose/phase와 공유 tool/source identity를 인증한 뒤 합치며 production
@@ -94,20 +97,36 @@ accounting, pointer reuse, failure와 retirement를 검사합니다. 원래 priv
 `qualify-browser.mjs <prepared-root>`와 독립 `--verify`는 준비된 guest에서
 새 canonical source closure와 원래 Next 2 warmup/1 measured prefix를 묶으며
 모든 raw artifact와 원래 exit를 보존합니다. 이 유한 검증은 mechanism
-qualification이며 before/final 성능 PASS,
+qualification이며 before/final 성능 PASS, socket/lifecycle/buffered 수용,
 issue 종료나 final-head review가 아닙니다. Fresh paired fixed-cycle gate,
 독립 exact-head review와 GitHub CI는 다음 단계로 남습니다.
 
-**Historical 방법.** 아래 FA-V2 purpose 분리와 명령은 historical 기록입니다.
-FA-V3는 별도 production timing/native-conformance 수용만 교체합니다.
-
 ### FA-V2 관측 범위 수용
+
+**Historical 방법.** 이 절은 FA-V2의 별도 timing/native-conformance 명령과
+replay 의미를 보존합니다. 새 production 수용에는 위 FA-V3를 사용하며
+관측 범위 수식, decimal equality와 numeric budget은 그대로 유지합니다.
 
 FA-V2는 수용 의미를 변경하며 numeric budget이나 public 동작을 완화하지 않습니다.
 `baseline.json`의 기존 median/spread/MAD veto는 historical replay 전용입니다.
 `evaluatePerformance(..., "historical-v1")`, `evaluateEvidence`,
-CLI `--historical-replay`는 과거 판정을 보존합니다.
+`evaluateServerEvidence`, CLI `--historical-replay`는 과거 판정을 보존합니다.
 과거 FAIL/INCONCLUSIVE나 unversioned receipt를 FA-V2로 재분류할 수 없습니다.
+
+수용은 개수뿐 아니라 정확한 rotating plan을 인증합니다. Cycle 1-2는 warmup,
+3-7은 measured이고 각 cycle의 네 framework slot 순서를 유지합니다.
+Receipt와 raw/combined trace의 `warmup`/`cycle`/`slot`, run/profile/cache/framework,
+raw device/URL을 결합하므로 두 purpose에서 같이 바꾸고 원본 raw/config hash를
+보존해도 warmup을 measured로 옮길 수 없습니다. Production journeys의
+action/status/selector, interactions 및 `/products/sku-42`의 200 requests/
+concurrency 8은 승인된 `config/representative.json.measurement`와 일치해야
+합니다. Production-only SHA-256
+`b8d8a51b4b40660c796d952a5af3a066dc2c5837a33841e5556c5d050cedc119`를
+method receipt에 결합하며, 모든 phase/purpose를 같은 잘못된 endpoint/route/action으로
+바꾸고 self-hash를 다시 계산해도 승인된 workload가 아닙니다. 선언된
+purpose/phase/root 및 별도 인증된 development source-edit 차이는 production
+descriptor를 바꾸지 않습니다. 이 guard는 missing timing/native pair나
+알려진 Next terminal coverage gap을 해결한 것이 아닙니다.
 
 5개 independent sample을 제거 없이 모두 사용합니다. L/U는 관측 min/max,
 B는 기존 budget, b는 기존 band이며 세 peer를 각각 비교합니다:
@@ -128,13 +147,6 @@ tolerance를 넓히지 않습니다. Spread/MAD는 diagnostic이며 독립 veto�
 순서 교대, 네 framework/네 profile, 22개 client/6개 server metric 및 모든
 budget/band와 peer cache/prefetch 기본값은 그대로입니다.
 
-동결된 순서 교대 측정 plan에 대한 membership과 순서를 인증하며 raw `warmup`,
-`cycle`, `slot`, framework, profile, run ID를 함께 검증합니다. 개수와 unique ID만으로
-warmup과 measured sample을 구분하지 않습니다. 승인된 representative production
-descriptor는 200/8뿐 아니라 throughput path, journey/action과 interaction도
-결합합니다. 모든 phase/purpose에서 동일하게 변경하고 hash를 다시 계산해도
-이 descriptor 변경은 거부합니다.
-
 파생 config의 `measurement.methodVersion: "FA-V2"`와
 `measurement.measurementPurpose: "timing"` 또는 `"native-conformance"`를
 명시합니다. 같은 `measurement.pairId`와 `measurement.pairPhase: "before"` 또는
@@ -150,7 +162,8 @@ coverage, journal, retirement, raw exit와 cleanup을 모두 요구합니다.
 빌려주지 않습니다. Native conformance 단독 통과는 성능 PASS가 아닙니다.
 
 `evaluateAcceptedEvidence(baseline, timingReceipts, commonOutputRoot,
-nativeReceipts)`는 두 purpose를 함께 인증합니다. `evaluateAcceptedPair`는 fresh
+nativeReceipts)`와 server subset의 `evaluateAcceptedServerEvidence`는 두 purpose를
+함께 인증합니다. `evaluateAcceptedPair`/`evaluateAcceptedServerPair`는 fresh
 before/after의 phase/pair, frozen method/stimuli/environment까지 묶습니다.
 Raw/config/environment 증거 전체를 common root에 보존하고 runner의
 `--native-receipts <JSON>`에 matching receipt path 배열을 전달합니다.
@@ -435,6 +448,18 @@ profile로 측정하지 않은 기기까지 결과를 일반화하지 않습니�
 Desktop viewport는 1440 × 900, 태블릿급 viewport는 820 × 1180이며
 태블릿급 CPU는 4배 감속, downlink는 1.6 Mbps로 에뮬레이션합니다.
 물리적 태블릿 측정 결과는 아닙니다.
+
+#3885의 [suite server-only runner](../../tooling/benchmarks/react-app-comparison/README.md)는
+동결된 네 profile의 반복과 budget을 유지하고 기존 관측 범위로 production server의 TTFB,
+throughput/error rate, CPU, RSS만 평가합니다. 개발 편집을 실행하거나 22개
+metric 전체의 verdict를 주장하지 않습니다. Browser의 first-contentful-paint인
+`shellArrivalMs`는 실제 socket에서 처음 받은 shell byte가 **아닙니다**.
+별도 gate가 있는 Fastify 실제 socket에서 shell 전달과 request-abort 정리를
+검증하고, 읽기를 멈춘 client에서 `write(false)`/drain 또는 close 및 request-scope
+폐기를 검증합니다. 점진적으로 flush하는 gzip proxy는 descendant 해제 전
+압축 해제된 shell을 전달할 수 있지만 전체 body를 모은 뒤 gzip하는 proxy는
+이를 버퍼링합니다. Buffered host는 선언한 body 크기와 concurrency에서
+따로 측정합니다. Node writable high-water mark는 전체 RSS 상한이 아닙니다.
 Native profile은 각 host의 기본 cache 동작을 유지하고, matched-cache
 profile은 네 앱 모두에서 browser cache 재사용을 비활성화합니다. Fluo가
 압축 없이 보낸 asset을 경쟁 앱의 gzip 응답과 동등한 압축 전송량으로
@@ -513,6 +538,160 @@ Public prefetch는 HTTP-approved single-use를 유지하며 ordinary private act
 refresh, retry, history는 여전히 fresh approval을 얻습니다.
 
 ## 증거 재현
+
+### 명시적인 Linux server-only 환경
+
+아래 observer runtime/journal/lifecycle 요구는 FA-V3 production `integrated`에
+적용합니다. Historical FA-V2 timing에는 Python/Frida가 없습니다.
+FA-V3 development는 `measurementKind: "development"`, purpose `"timing"`과
+`nativeLifetime.enabled: false`를 사용하며 production terminal/metric을 옮기지 않습니다.
+
+과거 macOS ARM64 Apple M4 Pro/Node 24.20.0 baseline은 변경하지 않습니다.
+현재 대표 GitHub workflow는 여전히
+`self-hosted, macOS, ARM64, react-app-performance-m4-pro` label을 요구하며
+새 Linux 경로를 dispatch하지 않습니다. 일반 CI/macOS의 기본 native lifetime
+observer는 disabled이며 Docker, Python, Frida를 요구하지 않습니다.
+
+#3885의 새 대표 경로는 같은 Apple M4 Pro host의 실제 실행 중인 Linux ARM64
+container를 명시적으로 선택합니다. 동결 환경은 OrbStack kernel
+`7.0.14-orbstack-00380-ga7e0a2dc9535`, image reference
+`fluo-verification:sha256-81a185cd17d652f2d9fe7dbbaad1647262d17094e49eac533e7de30d2b37293e`,
+actual image ID
+`sha256:f240abbe0c9fadb08df3b4f8b409111f5fd87733dfade0c69d6dfd839682d56b`,
+Node `v24.21.0`/V8 `13.6.233.17-node.53`, logical CPU 12개,
+shared VM memory 8,392,974,336 byte입니다. 추가 per-container CPU quota,
+cpuset, memory limit은 없습니다. 공유 capacity 관측이며 전용 reservation이
+아닙니다. 사용자 질문이 응답 없이 만료된 뒤 lead가 best judgment로 선택한
+환경으로, affirmative user selection이나 budget 면제가 아닙니다.
+
+독점 측정 창을 조정하고 해당 환경에서 dependency와 production build를 먼저
+준비합니다. Container는 같은 절대 경로의 checkout과 실제 provisioned SDK,
+browser를 사용할 수 있어야 합니다. [suite README의 실제 명령](../../tooling/benchmarks/react-app-comparison/README.md#explicit-linux-server-only-invocation)은
+변경하지 않은 `config/representative.json`에서 로컬 config를 파생하고
+FA-V3 method/pair/phase, `measurementKind: "production"`과 purpose `integrated`,
+`measurement.nativeLifetime = { enabled: true, python: "/absolute/provisioned/python" }`을
+명시한 뒤 다음 runner를 사용합니다.
+
+```sh
+node src/run-server-only.mjs \
+  --config ../../../.omo/verification/issue-3885/server-environment-config.json \
+  --output-dir "$(pwd)/results/$(git rev-parse HEAD)/before" \
+  --isolated-container <running-container>
+```
+
+Host Docker info/inspect에서 선택한 running container로 fresh invocation을 전달하고
+guest가 OS/kernel, image/allocation, 실제 Node/pnpm executable,
+Playwright/TypeScript SDK 구현, 실행한 browser, Python/Frida executable/dependency
+hash, collector/observer/schema와 cgroup allocation을 인증합니다. Image 생성 후
+provisioned SDK는 image ID와 별도로 검증합니다. 준비 JSON은 실제 invocation의
+대체물이 아닙니다. Missing/mismatch/tamper/unsupported binding은 수집과
+server 평가를 통과할 수 없습니다.
+
+`chromium-native-lifetime-v1`은 opt-in입니다. 지원 경계는 Linux ARM64
+revision 1228 `headless_shell` `149.0.7827.0`, binary SHA-256
+`b6f53f7e40c3ad6727cb3a12536026dcd93281e5965923752c8130ed53e5e8c4`,
+build ID `afcd146a627911fb30269f995d093903636ed886`, ELF64-LE-AArch64,
+Python `3.11.2`/Frida `17.21.0`의 동결 hash와 versioned hook/agent/host schema입니다.
+macOS를 포함한 미지원 host에서 요청하면 native PASS로 대체하지 않고
+unavailable/nonzero/inconclusive로 남깁니다.
+
+Transport schema v2는 PID/starttime/exec epoch별 append-only memfd journal을
+보존하고 hook readiness 또는 gated resume 전에 host가 소유권을 획득·검증합니다.
+500000개 fixed-width record는 wrap하지 않습니다. Native writer는 AArch64
+release publication을, host는 acquire read를 사용합니다. 원본 binary
+header/record, ownership, attempted/committed count, sequence marker, drop,
+native callback/invocation 상태를 인증하고 replay합니다. 소유권 누락,
+publication/callback 중단, overflow와 불완전한 call은 hash를 다시 계산해도
+inconclusive입니다.
+
+Live interval은 원래 cutoff를 포함해야 합니다. 그보다 이른 retirement는
+인증된 detach와 birth-bound 정상 status로 입증하며 destroyed script RPC 또는
+인위적인 cutoff padding을 사용하지 않습니다. 조기 browser lifecycle observer의
+별도 zombie-status witness는 누락된 pidfd status를 대체하거나 zombie에 보낸
+signal을 종료 원인으로 지정하지 않습니다.
+이 status witness가 없으면 인증된 소유 browser/zygote parent의 실제
+`waitpid`/`wait4` 정상 반환에서 genuine raw reap status만 확보합니다. 호출 전
+kernel PID/starttime/parent, 원본 stat, 반환 PID와 observer sequence를 보존합니다.
+NULL wait status destination은 NULL로 유지합니다. 실제 reap 전에 확보한 별도의
+birth-bound zombie `stat` exit-code field로 status를 입증할 수 있지만 wait 반환과
+pidfd status를 다시 쓰지 않습니다.
+이른 retirement의 raw SIGTERM 15는 별도로 완전한 pre-cutoff Chromium 정상
+termination caller/return chain과 live target에 대한 성공한 send를 요구합니다.
+15를 0으로 바꾸거나 missing pidfd status를 채우지 않습니다. 이 retirement 증명은
+`graceful-close`를 빌리거나 소급하지 않으며 기존 post-close shutdown 인증과
+분리합니다. 성공한 gated exec는 독립된 이전·이후
+history를 보존하고 resume 전에 successor readiness를 검증합니다. 실패한 exec는
+epoch를 닫지 않습니다. 알 수 없는 role/status, crash와 미지원 transition은
+거부합니다. Production COOP navigation과 capture boundary는 유지합니다.
+별도의 두 문서 nonempty-retirement correctness fixture를 측정 cohort의 사전
+navigation으로 사용하지 않습니다. Journal, writer/callback과 lifecycle overhead는
+차감하지 않으며 이 correctness 검증은 performance PASS가 아닙니다.
+
+공통 production observer는 원래 cutoff에서 request hook을 drain/stop하지만
+child gating, Frida session/agent와 pidfd 종료 구독은 소유 process의 자연
+종료까지 유지합니다. Release는 재개 중인 exec child의 gate를 변경하지 않으며
+최종 close가 남은 session을 정리합니다. BrowserServer 종료 전에 살아 있는 agent를
+detach/unload하지 않습니다. 실패·abort된 preparation에서 observer child를
+bounded 종료해도 eternalize된 inert script는 live-agent unload를 방지합니다.
+Resident memory/runtime 비용과 drain 이후 shutdown IPC 비용을 차감하지 않습니다.
+Main exit/error/disconnect와 관측 가능한 descendant wait status를 원시 증거에
+보존하고 알려진 비정상 종료는 NetLog parse 전에 거부합니다. 이미 reap된
+status는 0이 아니라 missing이며 Python exit 0이나 main exit 0만으로 모든
+descendant의 정상 종료를 입증하지 않습니다. 명시적 close 이후 shutdown의 raw status 15는 인증된 Chromium
+정상 종료 caller, 살아 있는 소유 target의 PID/start identity, 성공한 SIGTERM
+전송, 명시적 close 이후 순서와 정상 main 종료가 모두 일치할 때만 의도적인
+shutdown으로 구분합니다. Zombie target, 실패한 전송, 누락된 caller와 원인 불명
+종료는 허용하지 않으며 status 15나 missing을 0으로 바꾸지 않습니다.
+
+Runner provenance, profile receipt, production/warmup raw trace와 별도 socket
+관측에 동일한 실제 environment binding을 보존합니다. 평가 경계의
+Historical `evaluateServerEvidence`는 replay 전용입니다.
+FA-V3 `evaluateAcceptedServerEvidence`는 native counterpart 없이 동일 실행의
+environment/raw/native 인증을 요구한 뒤 관측 범위 판정을 6개 server metric으로
+필터링합니다. Passive headroom은
+generator/ambient CPU 관측을 추가할 뿐 기존 sampling, browser cutoff,
+throughput 및 그 이후 `ps` CPU/RSS와 lifecycle을 변경하지 않습니다. Socket은
+native loopback이며 browser profile emulation을 상속하지 않습니다.
+Buffered 크기/concurrency 증거도 독립 실험으로 남깁니다.
+
+FA-V3 after에는 before의 `--environment-identity <identitySha256>`를 유지하되
+after의 `--environment-config-identity <configSha256>`를 따로 동결해 전달합니다.
+`pairPhase`가 full hash를 바꾸므로 before hash를 after alias로 쓰지 않습니다.
+Historical same-config replay는 기존 두 before ID 검사를 유지합니다.
+비교 identity는 run ID/PID, 절대 product/tool locator와 product HEAD 변경을
+제외하지만 provenance에는 보존하며, 실제 tool/collector 내용, allocation,
+동결 config는 제외하지 않습니다. 전체 environment record, profile config,
+receipt, raw/native trace, socket 파일과 verdict를 함께 보관해야 replay할 수
+있습니다. 과거 macOS와 새 Linux를 paired gain으로 묶거나 과거 Linux
+FAIL/inconclusive를 재분류하지 않습니다. 같은 최종 collector의 새 before/after
+재수집은 여전히 필요하며 환경 probe는 성능 수용이 아닙니다.
+Stable product/source/build provenance는 인증된 top-level invocation binding과
+분리합니다. Runner와 measurement child 모두 공통 capture의
+`entrypoints: ["run-server-only.mjs"]`를 선택하며 공통 12개 소스와 runner,
+server measurement, socket-shell을 같은 경계로 인증합니다. Child는 선택과
+`fa-v2.mjs`, `server-cpu.mjs`도 포함합니다. Parent binding을 invocation transport로 전달받고 실제 환경을 driver 실행 전에
+인증·비교합니다. FA-V3 gate는 historical strict replay에 method/purpose/kind/
+phase/config/CPU/same-execution native 인증을 추가합니다. 명시적인 isolated
+모드만 invocation 소유 Linux Python subreaper를 통해 host SIGINT/SIGTERM을
+전달하고 descendant reap을 요구하며 `finally`에서 allocation을 재확인합니다.
+일반 disabled CI/macOS에는 Python 요구 사항이 추가되지 않습니다.
+
+이전 공통 환경의 four-warmup probe에서 truncated NetLog와 browser 종료 후
+incomplete coverage가 남았고 원인은 미해결입니다. 이후 DEBUG/zero-warmup
+small-fixture 통과는 warmup 안정성 증거가 아닙니다. JSON repair, sleep/poll
+flush 또는 동결 acceptance warmup 축소 없이 실패를 nonzero/inconclusive로
+보존합니다.
+
+소스를 고정한 독립 재현에서는 Frida detach 후 `server.close` 전에 main browser가
+SIGSEGV로 종료했고 실제 network-service writer도 JSON footer 없이 닫혔습니다.
+그 재현은 flush 대기로 설명할 수 없습니다. Resident-agent 개입의 제한된 행
+완료는 production 수정이나 안정성 증명이 아닙니다. JSON이 완전하고 main exit가
+0인 별도 행에서도 zygote crash가 있었으므로 두 조건만으로 descendant teardown
+안전을 증명하지 않습니다. 원래 과거 capture에는 browser exit 증거가 없었으므로
+이번 원인을 소급해 단정하거나 diagnostic 결과를 성능 수용 증거로 재사용하지 않습니다.
+이후 공통 production 수정은 위 resident 종료 경계와 인증된 shutdown 관측을
+함께 채택합니다. 새 source의 제한된 fixture/replay 통과도 과거 실패를 지우거나
+전체 before/after 성능 수용·장기 안정성·독립 reviewer PASS를 대신하지 않습니다.
 
 정확한 frozen-lockfile 설치, build, browser, 측정 및 판정 명령은
 [suite README](../../tooling/benchmarks/react-app-comparison/README.md)에 기록합니다.

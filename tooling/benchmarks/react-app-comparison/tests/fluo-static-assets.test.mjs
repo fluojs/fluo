@@ -81,7 +81,7 @@ async function exercise() {
   try {
     const { createBenchmarkModule } = await vite.ssrLoadModule('/src/app.ts');
     const manifest = Object.fromEntries([
-      'entry-client', 'entry-server', 'navigation-catalog', 'navigation-product', 'navigation-jukebox', 'navigation-admin',
+      'entry-client', 'entry-server', 'navigation-catalog', 'navigation-product', 'navigation-jukebox', 'navigation-admin', 'parallel',
     ]
       .map((name) => [`src/${name}.ts`, {
         file: `${name}.js`,

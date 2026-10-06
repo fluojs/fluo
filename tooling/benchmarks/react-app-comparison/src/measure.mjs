@@ -1,12 +1,12 @@
-import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { arch, availableParallelism, cpus, hostname, platform, release, totalmem } from 'node:os';
+import { mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { arch, availableParallelism, cpus, hostname, platform, release, totalmem } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual, promisify } from 'node:util';
-import { captureMethodBinding, verifyMethodReceipt, verifyMethodTrace } from './fa-v2.mjs';
+import { captureMethodBinding, verifyMethodBinding, verifyMethodReceipt, verifyMethodTrace } from './fa-v2.mjs';
 
 const execute = promisify(execFile);
 const sha256 = (raw) => createHash('sha256').update(raw).digest('hex');

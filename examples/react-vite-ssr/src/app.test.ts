@@ -1,8 +1,14 @@
-import { Module } from '@fluojs/core';
-import { createReactPageCatalog, Path, ReactModule, Router } from '@fluojs/react';
+import { createServer, request as requestHttp, ServerResponse, type IncomingMessage } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { constants as zlibConstants, createGunzip, createGzip, gzipSync } from 'node:zlib';
+
+import { Inject, Module, Scope } from '@fluojs/core';
+import { Controller, Get, type RequestContext } from '@fluojs/http';
+import { FastifyHttpApplicationAdapter } from '@fluojs/platform-fastify';
 import { FluoFactory } from '@fluojs/runtime';
+import { Path, ReactModule, Router, createReactPageCatalog, createReactServerEntry, renderReactResponse } from '@fluojs/react';
 import { Test } from '@fluojs/testing';
-import { createElement } from 'react';
+import { Suspense, createElement, use } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { withCleanup } from '../../../tooling/testing/with-cleanup.js';
@@ -44,6 +50,42 @@ const assets = createReactViteAssetManifest({
 });
 if (!assets.ok) throw new Error('The test manifest must be valid.');
 
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
+function bounded<T>(promise: Promise<T>, event = 'socket event'): Promise<T> {
+  let deadline: ReturnType<typeof setTimeout>;
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      deadline = setTimeout(() => reject(new Error(`${event} deadline expired.`)), 5_000);
+    }),
+  ]).finally(() => clearTimeout(deadline));
+}
+
+function openSocket(port: number, path: string) {
+  const firstChunk = deferred<{ readonly response: IncomingMessage; readonly chunk: string }>();
+  const complete = deferred<string>();
+  const client = requestHttp({ host: '127.0.0.1', port, path });
+  client.on('response', (response) => {
+    const chunks: Buffer[] = [];
+    response.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      if (chunks.length === 1) {
+        firstChunk.resolve({ response, chunk: chunk.toString('utf8') });
+      }
+    });
+    response.on('end', () => complete.resolve(Buffer.concat(chunks).toString('utf8')));
+  });
+  client.end();
+  return { client, firstChunk: firstChunk.promise, complete: complete.promise };
+}
+
 function readHtml(body: unknown): string {
   if (body instanceof Uint8Array) {
     return TEXT_DECODER.decode(body);
@@ -53,6 +95,367 @@ function readHtml(body: unknown): string {
 }
 
 describe('react-vite-ssr example', () => {
+  it('delivers the HTTP-owned shell through a real Fastify socket before a gated descendant settles', async () => {
+    // Given: the ordinary React HTTP module with a Suspense descendant controlled independently of the handler.
+    const gate = deferred<void>();
+    let descendantResolved = false;
+    function Descendant() {
+      use(gate.promise);
+      descendantResolved = true;
+      return createElement('p', null, 'Descendant ready');
+    }
+
+    @Router('/socket-shell')
+    class ShellRouter {
+      @Path('/')
+      show() {
+        return createReactServerEntry(createElement('html', null,
+          createElement('body', null,
+            createElement('h1', null, 'Shell received'),
+            createElement(Suspense, { fallback: createElement('p', null, 'Descendant pending') },
+              createElement(Descendant)))));
+      }
+    }
+
+    @Module({ imports: [ReactModule.forRoot({ controllers: [ShellRouter] })] })
+    class ShellModule {}
+
+    const adapter = FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
+    const app = await FluoFactory.create(ShellModule, { adapter });
+    await app.listen();
+    const address = (adapter.getServer() as { address: () => AddressInfo | string | null }).address();
+    if (typeof address !== 'object' || address === null) throw new TypeError('Expected a bound Fastify listener.');
+
+    const socket = openSocket(address.port, '/socket-shell');
+    try {
+      // When: the client receives bytes while the descendant gate is still held.
+      const { response, chunk } = await bounded(socket.firstChunk);
+
+      // Then: the actual HTTP status and shell bytes precede descendant completion.
+      expect(response.statusCode).toBe(200);
+      expect(response.headers['content-type']).toContain('text/html');
+      expect(chunk).toContain('Shell received');
+      expect(chunk).toContain('Descendant pending');
+      expect(descendantResolved).toBe(false);
+      gate.resolve();
+      expect(await bounded(socket.complete)).toContain('Descendant ready');
+    } finally {
+      gate.resolve();
+      socket.client.destroy();
+      await app.close();
+    }
+  });
+
+  it('does not promise socket shell bytes before a required handler await resolves', async () => {
+    // Given: HTTP-owned handler work that must finish before React receives its page entry.
+    const gate = deferred<void>();
+    const enteredHandler = deferred<void>();
+    @Router('/awaited-shell')
+    class AwaitedRouter {
+      @Path('/')
+      async show() {
+        enteredHandler.resolve();
+        await gate.promise;
+        return createReactServerEntry(createElement('h1', null, 'Awaited shell'));
+      }
+    }
+    @Module({ imports: [ReactModule.forRoot({ controllers: [AwaitedRouter] })] })
+    class AwaitedModule {}
+    const adapter = FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
+    const app = await FluoFactory.create(AwaitedModule, { adapter });
+    await app.listen();
+    const address = (adapter.getServer() as { address: () => AddressInfo | string | null }).address();
+    if (typeof address !== 'object' || address === null) throw new TypeError('Expected a bound Fastify listener.');
+    const socket = openSocket(address.port, '/awaited-shell');
+    try {
+      // When: the handler has begun but its required data is still gated.
+      await bounded(enteredHandler.promise);
+      gate.resolve();
+
+      // Then: the delivered HTML is the result of the completed handler, not proof of pre-await streaming.
+      const { response, chunk } = await bounded(socket.firstChunk);
+      expect(response.statusCode).toBe(200);
+      expect(chunk).toContain('Awaited shell');
+      expect(await bounded(socket.complete)).toContain('Awaited shell');
+    } finally {
+      gate.resolve();
+      socket.client.destroy();
+      await app.close();
+    }
+  });
+
+  it('delivers a gzip-flushed shell through a streaming proxy but labels whole-body gzip as buffered', async () => {
+    // Given: one Fastify React page with an independently gated Suspense descendant.
+    const gate = deferred<void>();
+    let gateReleased = false;
+    function Descendant() {
+      use(gate.promise);
+      return createElement('p', null, 'After gate');
+    }
+    @Router('/proxy-shell')
+    class ProxyRouter {
+      @Path('/')
+      show() {
+        return createReactServerEntry(createElement('html', null,
+          createElement('body', null, createElement('h1', null, 'Early proxy shell'),
+            createElement(Suspense, { fallback: createElement('p', null, 'Pending proxy descendant') },
+              createElement(Descendant)))));
+      }
+    }
+    @Module({ imports: [ReactModule.forRoot({ controllers: [ProxyRouter] })] })
+    class ProxyModule {}
+    const adapter = FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
+    const app = await FluoFactory.create(ProxyModule, { adapter });
+    await app.listen();
+    const upstreamAddress = (adapter.getServer() as { address: () => AddressInfo | string | null }).address();
+    if (typeof upstreamAddress !== 'object' || upstreamAddress === null) throw new TypeError('Expected an upstream listener.');
+    const streamingUpstreamData = deferred<void>();
+    const bufferedUpstreamData = deferred<void>();
+    const streaming = createServer((_request, downstream) => {
+      const upstream = requestHttp({ host: '127.0.0.1', port: upstreamAddress.port, path: '/proxy-shell' });
+      upstream.on('response', (response) => {
+        downstream.writeHead(response.statusCode ?? 502, {
+          'content-encoding': 'gzip',
+          'content-type': response.headers['content-type'] ?? 'text/html',
+          vary: 'Accept-Encoding',
+        });
+        const gzip = createGzip({ flush: zlibConstants.Z_SYNC_FLUSH });
+        response.once('data', () => streamingUpstreamData.resolve());
+        response.pipe(gzip).pipe(downstream);
+      });
+      upstream.end();
+    });
+    const buffered = createServer((_request, downstream) => {
+      const upstream = requestHttp({ host: '127.0.0.1', port: upstreamAddress.port, path: '/proxy-shell' });
+      upstream.on('response', (response) => {
+        const chunks: Buffer[] = [];
+        response.once('data', () => bufferedUpstreamData.resolve());
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => {
+          downstream.writeHead(response.statusCode ?? 502, { 'content-encoding': 'gzip' });
+          downstream.end(gzipSync(Buffer.concat(chunks)));
+        });
+      });
+      upstream.end();
+    });
+    await Promise.all([new Promise<void>((resolve) => streaming.listen(0, '127.0.0.1', resolve)),
+      new Promise<void>((resolve) => buffered.listen(0, '127.0.0.1', resolve))]);
+    const streamingAddress = streaming.address();
+    const bufferedAddress = buffered.address();
+    if (typeof streamingAddress !== 'object' || streamingAddress === null
+      || typeof bufferedAddress !== 'object' || bufferedAddress === null) throw new TypeError('Expected proxy listeners.');
+    const streamedFirstHtml = deferred<string>();
+    const streamedComplete = deferred<string>();
+    const streamedClient = requestHttp({ host: '127.0.0.1', port: streamingAddress.port, path: '/' });
+    streamedClient.on('response', (response) => {
+      if (response.headers['content-encoding'] !== 'gzip') {
+        throw new TypeError('Expected gzip at the streaming proxy.');
+      }
+      const gunzip = createGunzip();
+      const chunks: Buffer[] = [];
+      response.pipe(gunzip);
+      gunzip.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
+        if (chunks.length === 1) streamedFirstHtml.resolve(chunk.toString('utf8'));
+      });
+      gunzip.on('end', () => streamedComplete.resolve(Buffer.concat(chunks).toString('utf8')));
+    });
+    streamedClient.end();
+    let bufferedArrivedBeforeRelease = false;
+    const bufferedClient = requestHttp({ host: '127.0.0.1', port: bufferedAddress.port, path: '/' });
+    const bufferedComplete = deferred<Buffer>();
+    bufferedClient.on('response', (response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => {
+        if (!gateReleased) bufferedArrivedBeforeRelease = true;
+        chunks.push(chunk);
+      });
+      response.on('end', () => bufferedComplete.resolve(Buffer.concat(chunks)));
+    });
+    bufferedClient.end();
+    try {
+      // When: the streaming client receives compressed bytes before releasing the descendant.
+      const first = await bounded(streamedFirstHtml.promise, 'streaming proxy first decoded shell byte');
+      expect(first).toContain('Early proxy shell');
+      await bounded(Promise.all([streamingUpstreamData.promise, bufferedUpstreamData.promise]), 'both proxy upstream bytes');
+      expect(gateReleased).toBe(false);
+      expect(bufferedArrivedBeforeRelease).toBe(false);
+      gateReleased = true;
+      gate.resolve();
+
+      // Then: both hosts complete, but whole-body gzip did not supply a pre-gate client chunk.
+      expect(await bounded(streamedComplete.promise, 'streaming proxy completion')).toContain('After gate');
+      expect((await bounded(bufferedComplete.promise, 'buffered proxy completion')).byteLength).toBeGreaterThan(0);
+      expect(bufferedArrivedBeforeRelease).toBe(false);
+    } finally {
+      gate.resolve();
+      streamedClient.destroy();
+      bufferedClient.destroy();
+      await Promise.all([new Promise<void>((resolve, reject) => streaming.close((error) => error ? reject(error) : resolve())),
+        new Promise<void>((resolve, reject) => buffered.close((error) => error ? reject(error) : resolve()))]);
+      await app.close();
+    }
+  });
+
+  for (const blockedAt of ['source-read', 'socket-drain'] as const) {
+    it(`cancels the unfinished reader and disposes its request scope after ${blockedAt} disconnect`, async () => {
+      // Given: a real Node response, a controlled HWM=0 producer, and a request-owned provider.
+      const canceled = deferred<void>();
+      const disposed = deferred<void>();
+      const writeBlocked = deferred<{ readonly highWaterMark: number; readonly writableLength: number }>();
+      const sourceRead = deferred<void>();
+      const releaseRead = deferred<void>();
+      const responseClosed = deferred<void>();
+      let pulls = 0;
+      let cancellations = 0;
+      let disposals = 0;
+      let drains = 0;
+      let readCalls = 0;
+      let readsInFlight = 0;
+      let maximumReadsInFlight = 0;
+      let readCallsAtWriteFalse = 0;
+      let sourceDesiredSize: number | null | undefined;
+      let blockedSize: { readonly highWaterMark: number; readonly writableLength: number } | undefined;
+      let source: ReadableStream<Uint8Array> | undefined;
+      @Scope('request')
+      class RequestOwner {
+        onDestroy() {
+          disposals++;
+          disposed.resolve();
+        }
+      }
+      @Inject(RequestOwner)
+      @Scope('request')
+      @Controller('/slow-socket')
+      class SlowSocketController {
+        constructor(private readonly owner: RequestOwner) {}
+
+        @Get('/')
+        async stream(_input: undefined, context: RequestContext) {
+          void this.owner;
+          const reply = context.response.raw;
+          if (typeof reply !== 'object' || reply === null) throw new TypeError('Expected a Fastify reply.');
+          const native: unknown = Reflect.get(reply, 'raw');
+          if (!(native instanceof ServerResponse)) throw new TypeError('Expected a Node Fastify response.');
+          native.once('close', () => responseClosed.resolve());
+          native.on('drain', () => { drains++; });
+          const sink = context.response.stream;
+          if (!sink) throw new TypeError('Expected a Fastify streaming response.');
+          const write = sink.write.bind(sink);
+          sink.write = (chunk) => {
+            const accepted = write(chunk);
+            if (!accepted) {
+              readCallsAtWriteFalse = readCalls;
+              writeBlocked.resolve({
+                highWaterMark: native.writableHighWaterMark,
+                writableLength: native.writableLength,
+              });
+            }
+            return accepted;
+          };
+          const readable = new ReadableStream<Uint8Array>({
+            cancel() {
+              cancellations++;
+              releaseRead.resolve();
+              canceled.resolve();
+            },
+            async pull(controller) {
+              pulls++;
+              sourceDesiredSize = controller.desiredSize;
+              if (blockedAt === 'socket-drain') {
+                controller.enqueue(new Uint8Array(4 * 1024 * 1024).fill(65));
+                return;
+              }
+              if (pulls === 1) {
+                controller.enqueue(new TextEncoder().encode('<main>first shell byte</main>'));
+                return;
+              }
+              sourceRead.resolve();
+              await releaseRead.promise;
+            },
+          }, { highWaterMark: 0 });
+          const getReader = readable.getReader.bind(readable);
+          Object.defineProperty(readable, 'getReader', {
+            value: () => {
+              const reader = getReader();
+              const read = reader.read.bind(reader);
+              reader.read = async () => {
+                readCalls++;
+                readsInFlight++;
+                maximumReadsInFlight = Math.max(maximumReadsInFlight, readsInFlight);
+                try {
+                  return await read();
+                } finally {
+                  readsInFlight--;
+                }
+              };
+              return reader;
+            },
+          });
+          source = readable;
+          await renderReactResponse(createReactServerEntry(createElement('main')), context, {
+            renderToReadableStream: async () => readable,
+          });
+        }
+      }
+      @Module({ controllers: [SlowSocketController], providers: [RequestOwner] })
+      class SlowSocketModule {}
+      const adapter = FastifyHttpApplicationAdapter.create({ host: '127.0.0.1', port: 0 });
+      const app = await FluoFactory.create(SlowSocketModule, { adapter });
+      await app.listen();
+      const address = (adapter.getServer() as { address: () => AddressInfo | string | null }).address();
+      if (typeof address !== 'object' || address === null) throw new TypeError('Expected a bound Fastify listener.');
+      const socket = requestHttp({ host: '127.0.0.1', port: address.port, path: '/slow-socket' });
+      const responseReady = deferred<IncomingMessage>();
+      socket.on('response', (response) => {
+        if (blockedAt === 'socket-drain') response.pause();
+        responseReady.resolve(response);
+      });
+      socket.end();
+      try {
+        // When: the reader is pending or a genuine socket write reports backpressure, disconnect the client.
+        const response = await bounded(responseReady.promise, 'response headers');
+        expect(response.statusCode).toBe(200);
+        if (blockedAt === 'source-read') {
+          response.resume();
+          await bounded(sourceRead.promise, 'pending source read');
+        } else {
+          const blocked = await bounded(writeBlocked.promise, 'socket write false');
+          blockedSize = blocked;
+          expect(blocked.writableLength).toBeGreaterThanOrEqual(blocked.highWaterMark);
+          expect(pulls).toBe(1);
+        }
+        socket.destroy();
+
+        // Then: no producer read escapes blocked drain, and all request-owned work ends exactly once.
+        await bounded(responseClosed.promise, 'response close');
+        await bounded(canceled.promise, 'reader cancellation');
+        await bounded(disposed.promise, 'request disposal');
+        expect(cancellations).toBe(1);
+        expect(disposals).toBe(1);
+        expect(source?.locked).toBe(false);
+        expect(maximumReadsInFlight).toBe(1);
+        expect(readsInFlight).toBe(0);
+        expect(socket.destroyed).toBe(true);
+        if (blockedAt === 'socket-drain') {
+          expect(pulls).toBe(1);
+          expect(readCalls).toBe(readCallsAtWriteFalse);
+        }
+        console.info('SLOW_SOCKET_EVIDENCE', JSON.stringify({
+          blockedAt, highWaterMark: blockedSize?.highWaterMark ?? null,
+          writableLengthAtFalse: blockedSize?.writableLength ?? null,
+          sourceChunkBytes: blockedAt === 'socket-drain' ? 4 * 1024 * 1024 : 29,
+          pulls, drains, cancellations, disposals, readerLocked: source?.locked,
+          readCalls, readCallsAtWriteFalse, maximumReadsInFlight, readsInFlight,
+          sourceHighWaterMark: 0, sourceDesiredSize,
+        }));
+      } finally {
+        socket.destroy();
+        await app.close();
+      }
+    }, 15_000);
+  }
+
   it('approves the guard destination query through the real HTTP DTO and generated-props page', async () => {
     // Given: the actual catalog router and a build manifest containing its destination.
     const AppModule = createReactViteExampleModule({

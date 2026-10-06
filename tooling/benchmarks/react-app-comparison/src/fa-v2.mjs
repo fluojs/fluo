@@ -2,9 +2,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile, realpath, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { replayServerCpu } from './server-cpu.mjs';
-import { planMeasurements } from './measure.mjs';
 import representative from '../config/representative.json' with { type: 'json' };
+import { planMeasurements } from './measure.mjs';
+import { replayServerCpu } from './server-cpu.mjs';
 
 export const METHOD_VERSION = 'FA-V2';
 export const hashObject = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -90,8 +90,7 @@ export function pairStimuliComparison(before, after) {
 export async function captureMethodBinding(config, directory) {
   assertMethodConfig(config);
   const executionId = randomUUID();
-  const { environmentBinding, isolatedRepresentative, ...settings } = config;
-  const configuration = { ...settings, measurementKind: config.measurementKind ?? 'production' };
+  const { environmentBinding, isolatedRepresentative, ...configuration } = config;
   const binding = {
     methodVersion: config.methodVersion, measurementPurpose: config.measurementPurpose,
     ...(config.methodVersion === 'FA-V3' ? { measurementKind: config.measurementKind } : {}),

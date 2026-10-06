@@ -181,6 +181,8 @@ document shell, server/client route snapshot wiring을 함께 다루지 않습�
 `@Router(...)` / `@Path(...)` handler가 HTTP 검증 DTO data로
 `ReactNavigationPage.create(page, { module, props })`를 반환하므로 기존 HTTP
 dispatcher가 계속 authoritative합니다.
+Production shell 전달은 host/proxy가 전체 body를 모으지 않고 chunk를 전달해야 합니다.
+[Fastify streaming 레시피](../platform-fastify/README.ko.md#스트리밍-응답)를 참고하세요.
 
 생성된 공통 셸은 `useRouter().refresh()`로 같은 page에 credential 포함 HTTP 재검증을
 명시적으로 실행합니다. 승인 전에는 셸 자원과 history, 이전 page를 유지하고 승인된

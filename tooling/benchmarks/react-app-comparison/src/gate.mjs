@@ -1,12 +1,11 @@
+import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-import { evaluatePerformance, METRICS } from './evaluate.ts';
-import { verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from './measure.mjs';
-import { pairStimuliComparison, verifyMethodBinding, verifyMethodReceipt } from './fa-v2.mjs';
-import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
+import { evaluatePerformance, METRICS } from './evaluate.ts';
+import { pairStimuliComparison, verifyMethodBinding, verifyMethodReceipt } from './fa-v2.mjs';
+import { verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyTraceFiles } from './measure.mjs';
 
 async function authenticateEvidence(baseline, receipts, outputRoot) {
   const runs = receipts.flatMap((receipt) => {

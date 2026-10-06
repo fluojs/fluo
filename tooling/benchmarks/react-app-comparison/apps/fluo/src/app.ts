@@ -13,36 +13,36 @@ import {
   type GuardContext,
   NotFoundException,
   Post,
-  RequestDto,
   type RequestContext,
+  RequestDto,
   UnauthorizedException,
   UseGuards,
 } from '@fluojs/http';
 import {
+  createReactServerEntry,
   Path,
+  type ReactInitialNavigationPage,
   ReactModule,
   ReactNavigationPage,
   Router,
-  createReactServerEntry,
-  type ReactInitialNavigationPage,
 } from '@fluojs/react';
 import { createReactViteAssetManifest } from '@fluojs/react/vite';
 import { cloneElement, createElement, isValidElement } from 'react';
 import type { ViteDevServer } from 'vite';
 
 import {
-  SESSION_COOKIE,
-  SESSION_VALUE,
-  SONGS,
   authenticate,
   createCatalog,
   isEditor,
+  SESSION_COOKIE,
+  SESSION_VALUE,
+  SONGS,
   validateProduct,
 } from '../../../fixture/domain.mjs';
 import { BenchmarkDocument, type PageData } from './document';
 import CatalogDestination from './navigation-catalog';
-import ProductDestination from './navigation-product';
 import JukeboxDestination from './navigation-jukebox';
+import ProductDestination from './navigation-product';
 
 class ProductInput {
   @FromBody('name')
@@ -128,6 +128,7 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL, v
       identifierPrefix: 'benchmark-fluo-',
     },
   };
+  const immutableAssets = new Set([...Object.values(assets.assetMap), ...assets.css]);
   const destinationFiles = [
     'src/navigation-catalog.ts',
     'src/navigation-product.ts',
@@ -289,6 +290,7 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL, v
   @Controller('/assets')
   class Assets {
     readonly #assets = new Map<string, Promise<{ readonly body: Buffer; gzip?: Buffer }>>();
+    readonly #gzipAssets = new Map<string, { readonly body: Buffer; readonly compressed: Buffer }>();
 
     @Get('/:file')
     @RequestDto(AssetPath)
@@ -297,13 +299,15 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL, v
         throw new NotFoundException('Asset not found.');
       }
       try {
+        const file = new URL(input.file, clientDirectory);
+        const immutable = !vite && immutableAssets.has(`/assets/${input.file}`);
         let asset = this.#assets.get(input.file);
         if (!asset) {
-          asset = readFile(new URL(input.file, clientDirectory)).then((body) => ({ body })).catch((error: unknown) => {
+          asset = readFile(file).then((body) => ({ body })).catch((error: unknown) => {
             this.#assets.delete(input.file);
             throw error;
           });
-          if (!vite) this.#assets.set(input.file, asset);
+          if (immutable) this.#assets.set(input.file, asset);
         }
         const bytes = await asset;
         context.response.setHeader(
@@ -314,10 +318,18 @@ export function createBenchmarkModule(manifest: unknown, clientDirectory: URL, v
         const accepted = context.request.headers['accept-encoding'];
         if (typeof accepted === 'string' && /\bgzip\b/u.test(accepted)) {
           context.response.setHeader('Content-Encoding', 'gzip');
-          return bytes.gzip ??= gzipSync(bytes.body);
+          if (immutable) return Buffer.from(bytes.gzip ??= gzipSync(bytes.body));
+          let compressed = this.#gzipAssets.get(input.file);
+          if (!compressed?.body.equals(bytes.body)) {
+            compressed = { body: bytes.body, compressed: gzipSync(bytes.body) };
+            this.#gzipAssets.set(input.file, compressed);
+          }
+          return Buffer.from(compressed.compressed);
         }
         return bytes.body;
       } catch (error) {
+        this.#assets.delete(input.file);
+        this.#gzipAssets.delete(input.file);
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
           throw new NotFoundException('Asset not found.', { cause: error });
         }

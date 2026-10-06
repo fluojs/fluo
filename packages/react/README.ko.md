@@ -733,6 +733,15 @@ throw합니다. Recoverable Suspense error는 `onRecoverableError`로 보고되�
 Streaming host에서는 response sink가 일찍 닫히거나 `write(...)` / `waitForDrain()`이 실패하면 완료되지
 않은 React reader를 정확히 한 번 cancel하고 lock을 해제합니다. Sink failure는 reader cancellation cleanup에
 의해 대체되지 않고 원래 failure로 보고됩니다.
+Producer read는 한 번에 하나만 활성화됩니다. Sink `write(...)`가 `false`를 반환한 뒤에는
+`drain` 또는 close 전까지 다음 read를 시작하지 않습니다. 연결이 끊기면 완료되지 않은
+작업을 취소하고 HTTP dispatcher가 request scope를 폐기합니다. 이는 producer 진행
+규칙이지 process 전체 메모리 상한이 아닙니다. HTTP handler가 필요로 하는 `await`가
+끝나고 사이에 있는 모든 host가 부분 response를 flush할 때에만, Suspense descendant가
+gate된 동안 shell이 client에 도착할 수 있습니다. Buffered host는 모든 chunk를 모은
+뒤 최종 연속 배열을 만들고 나서 commit합니다(수집 중 body 약 두 사본과 부가 메모리).
+공개 HTML 출력 크기 제한은 없습니다. [Node/Fastify 배포 레시피](../platform-fastify/README.ko.md#스트리밍-응답)와
+[socket 및 buffered 근거](../../docs/guides/react-performance-benchmarks.ko.md)를 참고하세요.
 
 ## Hydration Asset Contract
 

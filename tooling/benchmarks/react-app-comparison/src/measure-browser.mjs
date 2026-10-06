@@ -1,16 +1,16 @@
 import { execFile, spawn } from 'node:child_process';
-import { EventEmitter, once } from 'node:events';
 import { createHash, randomUUID } from 'node:crypto';
+import { EventEmitter, once } from 'node:events';
 import { readFile, realpath, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { promisify, stripVTControlCharacters } from 'node:util';
-import { PROFILES, sampleEnvironmentHeadroom, summarizeEnvironmentHeadroom } from './measure.mjs';
-import { stopOwnedProcess } from './process-group.mjs';
-import { installInitialReadiness, waitForInitialReadiness } from './initial-readiness.mjs';
-import { createNativeCapture, reconcileNativeTerminals } from './native-terminal.mjs';
-import { readServerCpu } from './server-cpu.mjs';
 import { assertMethodConfig, hashObject } from './fa-v2.mjs';
+import { installInitialReadiness, waitForInitialReadiness } from './initial-readiness.mjs';
+import { PROFILES, sampleEnvironmentHeadroom, summarizeEnvironmentHeadroom } from './measure.mjs';
+import { createNativeCapture, reconcileNativeTerminals } from './native-terminal.mjs';
+import { stopOwnedProcess } from './process-group.mjs';
+import { readServerCpu } from './server-cpu.mjs';
 
 export { reconcileNativeTerminals } from './native-terminal.mjs';
 export { readServerCpu } from './server-cpu.mjs';
@@ -1109,6 +1109,9 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         ...(headroomBefore ? { environmentHeadroom:
           summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) } : {}),
       };
+      if (headroomBefore) {
+        result.environmentHeadroom = summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom());
+      }
       return result;
     },
     async close() {

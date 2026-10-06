@@ -74,7 +74,7 @@ test('synthetic hook exposes real renderer objects for Fast Refresh and both fro
     assert.equal(state.hook.renderers.get(id), renderer);
     const handler = () => {};
     // This is the renderer-registry protocol used by react-refresh's hook injection.
-    state.hook.renderers.forEach((registered) => registered.setRefreshHandler(handler));
+    state.hook.renderers.forEach((registered) => { registered.setRefreshHandler(handler); });
     assert.equal(refreshHandler, handler);
     state.hook.onScheduleFiberRoot(id, root());
     state.load();

@@ -2,15 +2,14 @@ import assert from 'node:assert/strict';
 import { EventEmitter, once } from 'node:events';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
-
-import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, observeDevReadiness, observeReactEditUpdate, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForCapturedRequests, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
 import { installInitialReadiness, waitForInitialReadiness } from '../src/initial-readiness.mjs';
-import { collectDevMeasurements, summarizeEnvironmentHeadroom } from '../src/measure.mjs';
+import { collectDevMeasurements, summarizeEnvironmentHeadroom, verifyTraceFiles } from '../src/measure.mjs';
+import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, observeDevReadiness, observeReactEditUpdate, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForCapturedRequests, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
 import { NATIVE_LIFETIME_IDENTITY, NATIVE_LIFETIME_RUNTIME, NATIVE_LIFETIME_SCHEMA,
   reconcileNativeLifetime } from '../src/native-lifetime.mjs';
 
@@ -749,6 +748,75 @@ test('server edit visibility does not wait for an unrelated async resource', { t
   }
 });
 
+test('development collection: successful isolated driver intervals -> original headroom observations', { timeout: 60_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'dev-headroom-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const html = '<!doctype html><style>html { --benchmark-edit: before; }</style><h1 data-benchmark-hydrated="true">Before</h1><p>Server before</p>';
+  await writeFile(join(directory, 'page.html'), html);
+  const start = [process.execPath, '-e', `
+    const { createServer } = require('node:http');
+    const { readFileSync } = require('node:fs');
+    createServer((request, response) => {
+      response.setHeader('content-type', 'text/html');
+      response.end(readFileSync('page.html'));
+    }).listen(0, '127.0.0.1', function () {
+      console.log('READY http://127.0.0.1:' + this.address().port);
+    });
+  `];
+  // The ready URL is provided by an independently owned fixture server so each
+  // measured child can bind an ephemeral port without sharing a dev process.
+  const server = createServer(async (_request, response) => {
+    response.setHeader('content-type', 'text/html');
+    response.end(await readFile(join(directory, 'page.html')));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  const commands = {
+    cwd: directory, start, url, readyPattern: 'READY',
+    edits: {
+      'react-edit': { file: 'page.html', from: 'Before', to: 'After', selector: 'h1',
+        expectedText: 'After', explicitReload: true },
+      'css-edit': { file: 'page.html', from: '--benchmark-edit: before', to: '--benchmark-edit: changed',
+        selector: 'html', expectedStyle: { property: '--benchmark-edit', value: 'changed' }, relaunch: true },
+      'server-edit': { file: 'page.html', from: 'Server before', to: 'Server after', selector: 'p',
+        expectedText: 'Server after', relaunch: true },
+    },
+  };
+  const config = {
+    profile: 'desktop-native', mode: 'native', warmupRuns: 0, measurementRuns: 1,
+    apps: Object.fromEntries(['fluo', 'next', 'react-router', 'tanstack-start'].map((name) => [name, url])),
+    dev: Object.fromEntries(['fluo', 'next', 'react-router', 'tanstack-start'].map((name) => [name, commands])),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  };
+  const driver = await createBrowserDriver({ ...config, isolatedRepresentative: true }, { devMode: true });
+  try {
+    const receipt = await collectDevMeasurements(config, driver, join(directory, 'traces'));
+
+    for (const run of receipt.runs) {
+      const raw = JSON.parse(await readFile(run.trace));
+      assert.equal(raw.correctness.pass, true);
+      let previousEnd = -Infinity;
+      for (const kind of ['cold-ready', 'react-edit', 'css-edit', 'server-edit']) {
+        const timing = raw.timings[kind];
+        assert.ok(timing.environmentHeadroom, `${kind} must retain its measured interval headroom`);
+        const { before, after } = timing.environmentHeadroom;
+        assert.deepEqual(timing.environmentHeadroom, summarizeEnvironmentHeadroom(before, after));
+        assert.ok(before.monotonicMs <= after.monotonicMs - timing.durationMs);
+        assert.ok(before.monotonicMs > previousEnd, 'each action retains its own interval');
+        previousEnd = after.monotonicMs;
+      }
+    }
+    assert.equal(await readFile(join(directory, 'page.html'), 'utf8'), html);
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
 test('a streamed 404 waits for browser-visible failure after the navigation shell', { timeout: 10_000 }, async () => {
   // Given: the initial response paints navigation before streaming an error.
   const { chromium } = await import('@playwright/test');
@@ -766,7 +834,10 @@ test('a streamed 404 waits for browser-visible failure after the navigation shel
   }
 });
 
-test('native capture stays alive through unchanged throughput sampling', { timeout: 20_000 }, async (t) => {
+for (const enabled of [false, true]) {
+test(`native capture stays alive through unchanged throughput sampling with lifetime enabled=${enabled}`, { timeout: 20_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-driver-adoption-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
   const { chromium } = await import('@playwright/test');
   const launch = chromium.launchServer;
   let captureClosed = false;
@@ -794,17 +865,38 @@ test('native capture stays alive through unchanged throughput sampling', { timeo
   server.listen(0, '127.0.0.1');
   await listening;
   let driver;
+  let spawned = false;
   try {
     driver = await createBrowserDriver({
       journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
         .map((name) => [name, { path: '/' }])),
       throughput: { fluo: { path: '/throughput', requests: 2, concurrency: 1 } },
+      nativeLifetime: { enabled, python: '/absent/native-python',
+        spawn() { spawned = true; throw new Error('fixture runtime unavailable'); } },
       provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
     });
-    await driver.measure({ framework: 'fluo', runId: 'native-lifetime', device: 'desktop',
-      mode: 'native', url: `http://127.0.0.1:${server.address().port}/` });
+    const item = { framework: 'fluo', runId: 'native-lifetime', device: 'desktop',
+      profile: 'desktop-native', mode: 'native', nativeTraceDirectory: directory,
+      url: `http://127.0.0.1:${server.address().port}/` };
+    const observation = await driver.measure(item);
     assert.deepEqual(observedAtThroughput, [false, false]);
     assert.equal(captureClosed, true);
+    assert.equal(observation.requests.filter((request) => request.resourceType === 'throughput').length, 2);
+    assert.equal(observation.metrics.errorRate, summarizeErrorRate(observation.requests));
+    assert.equal(observation.timings.finalRequestCapture.captureTimestamp,
+      observation.artifacts.nativeTerminalObserver.captureTimestamp);
+    if (enabled) {
+      assert.ok(observation.qualityFailures.includes('native lifetime: external runtime identity mismatch'));
+      assert.equal(observation.artifacts.nativeLifetimeObserver.captureTimestamp,
+        observation.artifacts.nativeTerminalObserver.captureTimestamp);
+      const trace = join(directory, 'trace.json');
+      await writeFile(trace, JSON.stringify({ schemaVersion: 1, ...item, ...observation,
+        provenance: {}, environment: {}, profileSettings: {}, correctness: { pass: true } }));
+      await verifyTraceFiles([{ trace }], directory);
+    } else {
+      assert.equal(spawned, false);
+      assert.equal(Object.hasOwn(observation.artifacts, 'nativeLifetimeObserver'), false);
+    }
   } finally {
     await driver?.close();
     const closed = once(server, 'close');
@@ -812,6 +904,7 @@ test('native capture stays alive through unchanged throughput sampling', { timeo
     await closed;
   }
 });
+}
 
 test('matched-cache disables browser reuse without changing native policy', () => {
   assert.deepEqual(cacheSettings('matched-cache'), { cacheDisabled: true });

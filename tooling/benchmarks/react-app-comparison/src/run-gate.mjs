@@ -3,12 +3,10 @@ import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { arch, cpus, platform, release, totalmem } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { isDeepStrictEqual } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
-
-import { evaluateAcceptedEvidence, evaluateEvidence } from './gate.mjs';
+import { isDeepStrictEqual, promisify } from 'node:util';
 import { assertMethodConfig } from './fa-v2.mjs';
+import { evaluateAcceptedEvidence, evaluateEvidence } from './gate.mjs';
 import { assertProductionDevelopmentEnvironment, bindEnvironmentPair, captureIsolatedEnvironment, environmentConfigIdentity, importEnvironmentPairBefore, launchIsolatedInvocation, mergeEvidence,
   readIsolatedInvocation, verifyEnvironmentBinding, verifyMeasurementEnvironment, verifyReactEditPairRelation } from './measure.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
@@ -351,6 +349,8 @@ async function main() {
         const devFile = join(output, `${receipt.profile}-dev.json`);
         const devMeasurement = {
           ...JSON.parse(await readFile(join(output, `${receipt.profile}-config.json`), 'utf8')),
+          ...(config.measurement.methodVersion === 'FA-V3' ? { measurementKind: 'development',
+            measurementPurpose: 'timing', nativeLifetime: { enabled: false } } : {}),
           dev: config.dev,
           ...(config.measurement.methodVersion ? { measurementKind: 'development' } : {}),
           ...(config.measurement.methodVersion === 'FA-V3' ? {

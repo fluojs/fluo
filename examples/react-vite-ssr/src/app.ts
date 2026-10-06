@@ -34,8 +34,9 @@ import {
   type ReactPageRenderer,
 } from '@fluojs/react';
 import { IsIn, IsString, MinLength } from '@fluojs/validation';
-import { createElement } from 'react';
+import { cloneElement, createElement, isValidElement } from 'react';
 
+import type { ProductDocumentProps } from './page';
 import type { ReactViteExamplePresentation } from './presentation';
 import { createPrefetchPageRouter } from './prefetch-page';
 import { createCatalogRouter, type CatalogControl } from './catalog';
@@ -45,6 +46,10 @@ const ASSET_FILE_PATTERN = /^[a-zA-Z0-9._-]+\.(?:css|js|svg)$/u;
 export type ReactViteExampleModuleOptions = {
   readonly catalogControl?: CatalogControl;
   readonly clientDirectory?: URL;
+  readonly deliveryProbe?: {
+    readonly pending: Promise<void>;
+    readonly release: () => void;
+  };
   readonly presentation?: ReactViteExamplePresentation;
 };
 
@@ -149,7 +154,11 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
       routeParams: context.request.params, routeUrl: context.request.url, saved: false, sku: '', stylesheets: assets.css,
     }), { module: './navigation-catalog.ts', props: { ...props } }, props.sessionDemo ? undefined : { prefetch: 'public' });
   }, options.catalogControl);
-  const renderPage: ReactPageRenderer = (...args) => presentation().renderPage(...args);
+  const renderPage: ReactPageRenderer = (page, ...args) => presentation().renderPage(
+    options.deliveryProbe && isValidElement<ProductDocumentProps>(page)
+      ? cloneElement(page, { recommendationsGate: options.deliveryProbe.pending }) : page,
+    ...args,
+  );
 
   @Inject(ProductCatalog)
   @Router('/products')
@@ -239,6 +248,15 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
 
   const PrefetchPageRouter = createPrefetchPageRouter(presentation);
 
+  @Controller('/__delivery-probe')
+  class DeliveryProbeController {
+    @Post('/release')
+    release() {
+      options.deliveryProbe?.release();
+      return { released: true };
+    }
+  }
+
   @Router('/deployment')
   class DeploymentRouter {
     @Path('/b-only')
@@ -307,7 +325,7 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
   }
 
   @Module({
-    controllers: [ViteAssetController],
+    controllers: [ViteAssetController, ...(options.deliveryProbe ? [DeliveryProbeController] : [])],
     imports: [
       ReactModule.forRoot({
         ...(options.presentation === undefined ? {} : { navigationBuildId: options.presentation.assets.buildId }),
