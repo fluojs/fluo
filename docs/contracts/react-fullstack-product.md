@@ -32,7 +32,7 @@ The [form owner](./react-progressive-forms.md) defines the exact shipped semanti
 | --- | --- | --- | --- |
 | First run | S: scaffold, install, `pnpm dev`, first HTTP page; F: actionable bootstrap/asset error, no false ready; C: stop child/watchers and close app. | **Shipped scoped two-page composition**, not complete CRUD. `packages/cli/src/new/templates/react-vite-ssr/` and generated app dev/production browser cover direct GET, hydration and native anchors. | [#3871](https://github.com/fluojs/fluo/issues/3871), #3879; generated app dev browser and production startup. |
 | Add a page | S: add explicit HTTP `@Path` and build-mapped browser destination through one documented composition; F: invalid/duplicate route or absent module fails clearly; C: interrupted request cannot commit a partial page. | **Shipped scoped authoring path.** A third-page generated consumer changed page/handler/DTO, an optional link and no renderer/entry/manifest/store file. Missing module fails before HTML commit; the same #3880 typegen connects query wire inputs, module props and saved data. Packaged dev/production consumer proof remains required. | #3871, [#3880](https://github.com/fluojs/fluo/issues/3880); consumer compile fixture, actual dispatcher and generated-app browser. |
-| SSR | S: first GET streams the HTTP-matched shell and content; F: pre-commit error retains HTTP status/error ownership and abort releases resources; C: request abort cancels unfinished stream. | **Shipped baseline; verification gap** for delivered shell, slow client and resource budget. `packages/react/README.md`, `examples/react-vite-ssr/src/app.test.ts`. | [#3885](https://github.com/fluojs/fluo/issues/3885); production HTTP socket/slow-client and #3879 browser. |
+| SSR | S: first GET streams the HTTP-matched shell and content; F: pre-commit error retains HTTP status/error ownership and abort releases resources; C: request abort cancels unfinished stream. | **Shipped baseline; scoped socket evidence, performance verdict pending.** The built Fastify product route delivers a gated shell through normal middleware/assets and a flushing gzip proxy, while whole-body gzip buffers it. A paused client disconnect cancels the controlled unfinished reader and disposes request scope. Neither first browser paint nor these correctness tests prove the server resource budget. `examples/react-vite-ssr/tests/ssr-delivery.spec.ts`, `src/app.test.ts`. | [#3885](https://github.com/fluojs/fluo/issues/3885); exact-head production server metrics and buffered-host RSS remain separate from #3879 whole-product acceptance. |
 | Hydration | S: server URL/params and built assets hydrate one interactive shell without warnings; F: missing assets/mismatch is diagnosable, not silently accepted; C: unmount cleans browser subscriptions. | **Shipped scoped composition.** Generated app passes dev/production browser without hydration diagnostics, retains shell and resets page state; #3884 owns measured bottlenecks, not another authoring path. | #3871, [#3884](https://github.com/fluojs/fluo/issues/3884); production browser and bundle trace. |
 | Navigation | S: HTTP approves destination before URL/params commit and keeps shell/resource identity; F: transient network/5xx and recoverable mapped import failure retain committed view, show actionable retry and never auto-blank or destroy the jukebox shell; C: superseded request cannot commit or fall back. | **Shipped** official network/5xx/mapped-import-failure default and low-level opt-in; generated starter and production example failure browsers verify resource identity, operation/ack and mount/cleanup. | [#3864](https://github.com/fluojs/fluo/issues/3864), #3871; injected network/5xx/import-failure production browser and generated composition. |
 | History and unsaved edits | S: back/forward obtains fresh HTTP approval and approved URL/view agree; F: failed traversal restores coherent history/view; C: opted-in dirty edit can decline push/replace/back/forward without losing input or creating a duplicate entry. | **Scoped opt-in permission** through `useNavigationGuard` in the existing store and tagged same-document recovery; untagged/cross-document entries retain native boundaries. `packages/react/src/client-navigation-guard.test.ts`, `examples/react-vite-ssr/tests/navigation-guard.spec.ts`. | #3864, [#3882](https://github.com/fluojs/fluo/issues/3882); production and packaged dev/production back/forward, dirty-form and session races. |
@@ -158,6 +158,43 @@ Compare authenticated CRUD and a long-lived jukebox under equivalent authenticat
 Feature availability, authoring cost and type-safety entries are source-backed or explicitly inferred from the described wiring; none proves the same CRUD/jukebox task passes in a browser. [#3883](https://github.com/fluojs/fluo/issues/3883) pins stable versions, equivalent workload/cache policy, desktop/low-end environment and numeric absolute/relative budgets **before** optimization. #3884/#3885 measure and fix client/server paths, and #3886/#3879 gate long-lived correctness. Do not call this roadmap competitor API parity or graduation to 1.0.
 
 ## Evidence and verification limits
+
+Production performance acceptance uses the [FA-V3 method](../guides/react-performance-benchmarks.md#fa-v3-same-execution-production-acceptance).
+Keep original numeric budgets, 200 requests/concurrency 8, five measured/two
+warmups, four frameworks/four profiles and 22 client/six server metrics, but
+replace the independent spread/MAD repeatability veto with decision stability
+over every observed min/max. This is not a confidence interval or future
+guarantee. Require fresh before/after `FA-V3` / `integrated` production captures:
+metrics, request inventory/cutoff and canonical source-bound native evidence
+must be collected and authenticated in the same execution. Separate counterparts
+cannot supply terminals. FA-V2's split timing/native-conformance commands and
+unversioned receipts remain historical, never relabeled or reused for FA-V3.
+Development/HMR remains separately authenticated, non-invasive timing evidence.
+Original ownership/coverage/retirement/raw exits and pending-request
+quality remain mandatory. Method implementation or focused tests do not
+establish pair PASS, #3884/#3885 closure or #3879 product acceptance.
+
+In active FA-V3, fully observed, authenticated same-execution peer
+cancellations/errors remain in raw evidence and computed peer `errorRate`.
+A positive peer rate alone is not a metricless collection-quality failure.
+Fluo `errorRate` must be zero in both measured and warmup runs; original Fluo
+absolute/errorRate budgets and peer numeric comparisons remain active.
+Failed correctness, unavailable/missing terminals/native hooks/schema/coverage,
+`qualityFailures`, ownership/cleanup failures and quality INCONCLUSIVE cannot
+pass in either phase.
+Preserve FA-V2's historical quality classification and prior raw/verdicts;
+replay cannot be relabeled as a new acceptance PASS. A new canonical before/final
+pair, all three exact-head reviews and full GitHub CI remain required.
+
+FA-V3 final pair numerical acceptance uses every original AFTER absolute
+budget, peer band and observed min/max decision. Preserve and report BEFORE
+numerical FAIL/INCONCLUSIVE and its raw evidence without changing it to PASS.
+Only BEFORE budget breaches and boundary crossing are excluded from the final
+product numerical veto. Both phases still require source/environment/method
+authentication, complete inventory, correctness, valid available metrics,
+native observation and ownership/cleanup. Fluo measured/warmup error rate must
+remain zero in both phases. AFTER numerical FAIL/INCONCLUSIVE still blocks;
+FA-V2's existing pair aggregation remains unchanged.
 
 Source seams: `packages/react/src/client/store.ts`, `packages/react/src/client/navigation-payload.ts`, `packages/react/src/module.ts`, `packages/cli/src/dev-runner/react-vite-dev-app.ts`, `examples/react-vite-ssr/src/app.ts`. Existing tests: `packages/react/src/client.test.ts`, `examples/react-vite-ssr/src/app.test.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`; the [navigation payload contract](./react-navigation-payload.md) contains additional HTTP/prefetch coverage. These are **existing** behavior records, not newly executed browser or performance results. The example models a native form and a short-lived shell counter, not an actual licensed player or the future product gate. Documentation validation checks links/structure and EN/KO pairing, not future runtime success. The affected FluoBlog chapter 17 and FluoShop chapter 4 companions apply the typed contract alongside their unchanged native exercises; manuscript validation is not their DB/browser execution evidence.
 

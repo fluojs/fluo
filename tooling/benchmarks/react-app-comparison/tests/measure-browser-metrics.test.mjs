@@ -1,13 +1,225 @@
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { test } from 'node:test';
 import { gzipSync } from 'node:zlib';
 
-import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
+import { cacheSettings, createBrowserDriver, editSourceFile, initialClientWork, initialRequestCount, summarizeAssets, summarizeErrorRate, summarizeInteractions, summarizeRscBytes, waitForCapturedRequests, waitForEditMarker, waitForFailureText } from '../src/measure-browser.mjs';
+import { installInitialReadiness, waitForInitialReadiness } from '../src/initial-readiness.mjs';
+import { collectDevMeasurements, summarizeEnvironmentHeadroom, verifyTraceFiles } from '../src/measure.mjs';
+
+const appRequire = createRequire(new URL('../apps/fluo/package.json', import.meta.url));
+const { build } = await import(appRequire.resolve('vite'));
+const fixtureBuild = await build({
+  configFile: false, logLevel: 'silent',
+  plugins: [{
+    name: 'real-react-readiness-fixture',
+    resolveId(id) {
+      if (id.endsWith('virtual:readiness-test')) return '\0readiness-test';
+      if (id === 'react' || id === 'react-dom/client') return appRequire.resolve(id);
+    },
+    load(id) {
+      if (id !== '\0readiness-test') return;
+      return `
+        import { createElement, Suspense, lazy, useEffect, useState } from 'react';
+        import { createRoot } from 'react-dom/client';
+        const Never = lazy(() => new Promise(() => {}));
+        const Gated = lazy(() => new Promise((accept) => {
+          window.__releaseInitial = () => accept({ default: Ready });
+        }));
+        function Ready() {
+          const [ready, setReady] = useState(false);
+          useEffect(() => { setReady(true); window.__fixturePassive?.(); }, []);
+          return createElement('span', { 'data-initial-effect': String(ready) }, 'Ready');
+        }
+        const node = document.createElement('div');
+        document.body.append(node);
+        createRoot(node).render(window.__holdWarm || ['/suspended', '/gated'].includes(location.pathname)
+          ? createElement(Suspense, { fallback: createElement(Ready) },
+            createElement(location.pathname === '/gated' ? Gated : Never))
+          : createElement(Ready));
+      `;
+    },
+  }],
+  define: { 'process.env.NODE_ENV': '"production"' },
+  build: { write: false, lib: { entry: 'virtual:readiness-test', name: 'ReadinessFixture', formats: ['iife'] } },
+});
+const fixtureScript = (Array.isArray(fixtureBuild) ? fixtureBuild[0] : fixtureBuild)
+  .output.find((entry) => entry.type === 'chunk').code;
+const fixtureHtml = (body) => `${body}<script src="/real-react.js"></script>`;
+function fixtureResponse(request, response) {
+  if (request.url !== '/real-react.js') return false;
+  response.writeHead(200, { 'content-type': 'text/javascript' });
+  response.end(fixtureScript);
+  return true;
+}
+
+test('correctness check: failed HTTP status -> retains navigation progress before context cleanup', { timeout: 15_000 }, async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(503, { 'content-type': 'text/html' });
+    response.end('<!doctype html><h1>Unavailable</h1>');
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  const driver = await createBrowserDriver({
+    journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+      .map((name) => [name, { path: '/', status: 200 }])),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    const result = await driver.check({ framework: 'tanstack-start', runId: 'http-failure',
+      device: 'desktop', mode: 'native', url });
+
+    assert.equal(result.pass, false);
+    const diagnostics = result.steps[0].diagnostics;
+    const request = diagnostics.events.find((entry) => entry.name === 'Network.requestWillBeSent');
+    const response = diagnostics.events.find((entry) => entry.name === 'Network.responseReceived');
+    assert.equal(request.url, url);
+    assert.equal(response.requestId, request.requestId);
+    assert.equal(response.status, 503);
+    assert.ok(diagnostics.events.some((entry) => entry.name === 'page.domcontentloaded'));
+    assert.ok(diagnostics.events.every((entry) => entry.observedAtMs >= diagnostics.startedAtMs
+      && entry.observedAtMs <= diagnostics.failedAtMs));
+    assert.equal(diagnostics.events.some((entry) => entry.name === 'page.close'), false);
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('correctness check: transport abort -> retains loading failure without invented response', { timeout: 15_000 }, async () => {
+  const server = createServer((request) => request.socket.destroy());
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  const driver = await createBrowserDriver({
+    journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+      .map((name) => [name, { path: '/', status: 200 }])),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    const result = await driver.check({ framework: 'tanstack-start', runId: 'transport-failure',
+      device: 'desktop', mode: 'native', url });
+
+    assert.equal(result.pass, false);
+    const events = result.steps[0].diagnostics.events;
+    const failed = events.find((entry) => entry.name === 'Network.loadingFailed');
+    assert.ok(events.some((entry) => entry.name === 'Network.requestWillBeSent'
+      && entry.requestId === failed.requestId));
+    assert.equal(typeof failed.errorText, 'string');
+    assert.equal(events.some((entry) => entry.name === 'Network.responseReceived'), false);
+    assert.equal(events.some((entry) => entry.name === 'page.close'), false);
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('collector cannot sample cold metrics or start warm with unresolved real React Suspense', { timeout: 25_000 }, async () => {
+  let documents = 0;
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
+    documents++;
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(fixtureHtml('<!doctype html><h1>SSR shell, not complete React</h1>'));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const journeys = Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+    .map((name) => [name, { path: '/suspended' }]));
+  const driver = await createBrowserDriver({
+    journeys, provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    await assert.rejects(driver.measure({
+      framework: 'fluo', runId: 'unresolved-suspense', device: 'desktop', mode: 'native',
+      url: `http://127.0.0.1:${server.address().port}/`,
+    }), /initial React completion/u);
+    assert.equal(documents, 1, 'a visible SSR shell must not trigger warm navigation');
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('collector cannot leave an unresolved warm React document for the next workload', { timeout: 25_000 }, async () => {
+  let documents = 0;
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
+    documents++;
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(fixtureHtml(`<!doctype html><h1>Warm fixture</h1><script>window.__holdWarm=${documents === 2}</script>`));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  let driver;
+  try {
+    driver = await createBrowserDriver({
+      journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+        .map((name) => [name, { path: '/ready' }])),
+      provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+    });
+    await assert.rejects(driver.measure({
+      framework: 'fluo', runId: 'unresolved-warm', device: 'desktop', mode: 'native',
+      url: `http://127.0.0.1:${server.address().port}/`,
+    }), /initial React completion/u);
+    assert.equal(documents, 2);
+  } finally {
+    await driver?.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
+test('first real root commit and fallback passive effect cannot complete pending Suspense', { timeout: 15_000 }, async () => {
+  const { chromium } = await import('@playwright/test');
+  const browser = await chromium.launch({ headless: true });
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(fixtureHtml('<!doctype html><h1>SSR shell</h1>'));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  try {
+    const page = await browser.newPage();
+    let acceptPassive;
+    const passive = new Promise((accept) => { acceptPassive = accept; });
+    await page.exposeBinding('__fixturePassive', () => acceptPassive());
+    await installInitialReadiness(page);
+    await page.goto(`http://127.0.0.1:${server.address().port}/gated`);
+    await passive;
+    assert.equal(await page.evaluate(() => window.__benchmarkInitialReadiness.completedAt), null);
+    await page.evaluate(() => window.__releaseInitial());
+    const readiness = await waitForInitialReadiness(page);
+    assert.equal(readiness.events.at(-1).suspensePending, 0);
+    assert.equal(readiness.events.at(-1).passivePending, false);
+    assert.equal(await page.locator('[data-initial-effect]').getAttribute('data-initial-effect'), 'true');
+    assert.ok(readiness.events.some((entry) => entry.suspensePending > 0));
+  } finally {
+    await browser.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
 
 test('waits for a late development stylesheet before accepting its computed marker', { timeout: 10_000 }, async () => {
   const { chromium } = await import('@playwright/test');
@@ -113,6 +325,75 @@ test('a usable dev page is ready without requiring an unrelated websocket event'
   }
 });
 
+test('development collection: successful isolated driver intervals -> original headroom observations', { timeout: 60_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'dev-headroom-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const html = '<!doctype html><style>html { --benchmark-edit: before; }</style><h1 data-benchmark-hydrated="true">Before</h1><p>Server before</p>';
+  await writeFile(join(directory, 'page.html'), html);
+  const start = [process.execPath, '-e', `
+    const { createServer } = require('node:http');
+    const { readFileSync } = require('node:fs');
+    createServer((request, response) => {
+      response.setHeader('content-type', 'text/html');
+      response.end(readFileSync('page.html'));
+    }).listen(0, '127.0.0.1', function () {
+      console.log('READY http://127.0.0.1:' + this.address().port);
+    });
+  `];
+  // The ready URL is provided by an independently owned fixture server so each
+  // measured child can bind an ephemeral port without sharing a dev process.
+  const server = createServer(async (_request, response) => {
+    response.setHeader('content-type', 'text/html');
+    response.end(await readFile(join(directory, 'page.html')));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  const commands = {
+    cwd: directory, start, url, readyPattern: 'READY',
+    edits: {
+      'react-edit': { file: 'page.html', from: 'Before', to: 'After', selector: 'h1',
+        expectedText: 'After', explicitReload: true },
+      'css-edit': { file: 'page.html', from: '--benchmark-edit: before', to: '--benchmark-edit: changed',
+        selector: 'html', expectedStyle: { property: '--benchmark-edit', value: 'changed' }, relaunch: true },
+      'server-edit': { file: 'page.html', from: 'Server before', to: 'Server after', selector: 'p',
+        expectedText: 'Server after', relaunch: true },
+    },
+  };
+  const config = {
+    profile: 'desktop-native', mode: 'native', warmupRuns: 0, measurementRuns: 1,
+    apps: Object.fromEntries(['fluo', 'next', 'react-router', 'tanstack-start'].map((name) => [name, url])),
+    dev: Object.fromEntries(['fluo', 'next', 'react-router', 'tanstack-start'].map((name) => [name, commands])),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  };
+  const driver = await createBrowserDriver({ ...config, isolatedRepresentative: true }, { devMode: true });
+  try {
+    const receipt = await collectDevMeasurements(config, driver, join(directory, 'traces'));
+
+    for (const run of receipt.runs) {
+      const raw = JSON.parse(await readFile(run.trace));
+      assert.equal(raw.correctness.pass, true);
+      let previousEnd = -Infinity;
+      for (const kind of ['cold-ready', 'react-edit', 'css-edit', 'server-edit']) {
+        const timing = raw.timings[kind];
+        assert.ok(timing.environmentHeadroom, `${kind} must retain its measured interval headroom`);
+        const { before, after } = timing.environmentHeadroom;
+        assert.deepEqual(timing.environmentHeadroom, summarizeEnvironmentHeadroom(before, after));
+        assert.ok(before.monotonicMs <= after.monotonicMs - timing.durationMs);
+        assert.ok(before.monotonicMs > previousEnd, 'each action retains its own interval');
+        previousEnd = after.monotonicMs;
+      }
+    }
+    assert.equal(await readFile(join(directory, 'page.html'), 'utf8'), html);
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+
 test('a streamed 404 waits for browser-visible failure after the navigation shell', { timeout: 10_000 }, async () => {
   // Given: the initial response paints navigation before streaming an error.
   const { chromium } = await import('@playwright/test');
@@ -129,6 +410,149 @@ test('a streamed 404 waits for browser-visible failure after the navigation shel
     await browser.close();
   }
 });
+
+for (const failure of ['navigation', 'frozen-navigation', 'cleanup-only']) {
+test(`measurement ${failure} failure preserves error identity and acyclic cause`, { timeout: 20_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-primary-failure-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const { chromium } = await import('@playwright/test');
+  const primary = new Error('navigation failed before capture');
+  if (failure === 'frozen-navigation') Object.freeze(primary);
+  const cleanup = new Error('native close failed');
+  let reportedCleanup;
+  t.mock.method(console, 'error', (_message, error) => { reportedCleanup = error; });
+  const launch = chromium.launchServer;
+  const connect = chromium.connect;
+  let browserExited = false;
+  t.mock.method(chromium, 'launchServer', async (options) => {
+    const server = await Reflect.apply(launch, chromium, [options]);
+    const close = server.close;
+    t.mock.method(server, 'close', async () => {
+      await Reflect.apply(close, server, []);
+      browserExited = true;
+      throw cleanup;
+    });
+    return server;
+  });
+  t.mock.method(chromium, 'connect', async (...args) => {
+    const browser = await Reflect.apply(connect, chromium, args);
+    const newContext = browser.newContext;
+    t.mock.method(browser, 'newContext', async (...contextArgs) => {
+      const context = await Reflect.apply(newContext, browser, contextArgs);
+      const newPage = context.newPage;
+      t.mock.method(context, 'newPage', async () => {
+        const page = await Reflect.apply(newPage, context, []);
+        if (failure !== 'cleanup-only') t.mock.method(page, 'goto', async () => { throw primary; });
+        return page;
+      });
+      return context;
+    });
+    return browser;
+  });
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(fixtureHtml('<!doctype html><h1>Listing</h1>'));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const driver = await createBrowserDriver({
+    journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+      .map((name) => [name, { path: '/' }])),
+    provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+  });
+  try {
+    await assert.rejects(driver.measure({
+      framework: 'fluo', runId: 'primary-failure', device: 'desktop', mode: 'native',
+      nativeTraceDirectory: directory, url: `http://127.0.0.1:${server.address().port}/`,
+    }), (error) => failure === 'navigation'
+      ? error === primary && error.cause === cleanup
+      : failure === 'frozen-navigation' ? error === primary && error.cause === undefined
+        : error === cleanup && error.cause !== error);
+    assert.equal(browserExited, true);
+    assert.equal(reportedCleanup, failure === 'frozen-navigation' ? cleanup : undefined);
+    assert.doesNotThrow(() => JSON.stringify(cleanup));
+  } finally {
+    await driver.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+}
+
+for (const enabled of [false, true]) {
+test(`native capture stays alive through unchanged throughput sampling with lifetime enabled=${enabled}`, { timeout: 20_000 }, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'native-driver-adoption-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const { chromium } = await import('@playwright/test');
+  const launch = chromium.launchServer;
+  let captureClosed = false;
+  t.mock.method(chromium, 'launchServer', async (options) => {
+    const server = await Reflect.apply(launch, chromium, [options]);
+    const close = server.close;
+    t.mock.method(server, 'close', async () => {
+      captureClosed = true;
+      await Reflect.apply(close, server, []);
+    });
+    return server;
+  });
+  const observedAtThroughput = [];
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
+    if (request.url === '/throughput') {
+      observedAtThroughput.push(captureClosed);
+      response.end('sample');
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'text/html' });
+    response.end(fixtureHtml('<!doctype html><h1>Listing</h1>'));
+  });
+  const listening = once(server, 'listening');
+  server.listen(0, '127.0.0.1');
+  await listening;
+  let driver;
+  let spawned = false;
+  try {
+    driver = await createBrowserDriver({
+      journeys: Object.fromEntries(['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox']
+        .map((name) => [name, { path: '/' }])),
+      throughput: { fluo: { path: '/throughput', requests: 2, concurrency: 1 } },
+      nativeLifetime: { enabled, python: '/absent/native-python',
+        spawn() { spawned = true; throw new Error('fixture runtime unavailable'); } },
+      provenance: { browser: 'Chromium', runtime: process.version, lockfile: {}, builds: {}, dataset: 'fixture' },
+    });
+    const item = { framework: 'fluo', runId: 'native-lifetime', device: 'desktop',
+      profile: 'desktop-native', mode: 'native', nativeTraceDirectory: directory,
+      url: `http://127.0.0.1:${server.address().port}/` };
+    const observation = await driver.measure(item);
+    assert.deepEqual(observedAtThroughput, [false, false]);
+    assert.equal(captureClosed, true);
+    assert.equal(observation.requests.filter((request) => request.resourceType === 'throughput').length, 2);
+    assert.equal(observation.metrics.errorRate, summarizeErrorRate(observation.requests));
+    assert.equal(observation.timings.finalRequestCapture.captureTimestamp,
+      observation.artifacts.nativeTerminalObserver.captureTimestamp);
+    if (enabled) {
+      assert.ok(observation.qualityFailures.includes('native lifetime: external runtime identity mismatch'));
+      assert.equal(observation.artifacts.nativeLifetimeObserver.captureTimestamp,
+        observation.artifacts.nativeTerminalObserver.captureTimestamp);
+      const trace = join(directory, 'trace.json');
+      await writeFile(trace, JSON.stringify({ schemaVersion: 1, ...item, ...observation,
+        provenance: {}, environment: {}, profileSettings: {}, correctness: { pass: true } }));
+      await verifyTraceFiles([{ trace }], directory);
+    } else {
+      assert.equal(spawned, false);
+      assert.equal(Object.hasOwn(observation.artifacts, 'nativeLifetimeObserver'), false);
+    }
+  } finally {
+    await driver?.close();
+    const closed = once(server, 'close');
+    server.close();
+    await closed;
+  }
+});
+}
 
 test('matched-cache disables browser reuse without changing native policy', () => {
   assert.deepEqual(cacheSettings('matched-cache'), { cacheDisabled: true });
@@ -166,10 +590,44 @@ test('a pending prefetch is inconclusive, not a completed request or a failed re
   assert.equal(summarizeErrorRate([{ kind: 'request-pending', status: null }]), null);
 });
 
+test('capture retains the actual terminal outcome of each already-started finite response', async () => {
+  const network = new Map([['success', {}], ['failure', {}]]);
+  const changes = new EventEmitter();
+  const controller = new AbortController();
+  const capture = waitForCapturedRequests(network, changes, controller.signal);
+  const requests = [];
+  requests.push({ status: 200 });
+  network.delete('success');
+  changes.emit('settled');
+  network.set('later-producer', {});
+  requests.push({ kind: 'request-failed', error: 'net::ERR_ABORTED' });
+  network.delete('failure');
+  changes.emit('settled');
+  const result = await capture;
+  assert.deepEqual(result.requestIds, ['success', 'failure']);
+  assert.deepEqual(result.pendingRequestIds, []);
+  assert.equal(summarizeErrorRate(requests), 0.5);
+  // A captured-ID drain is not native producer closure or permission to drop new work.
+  assert.equal(network.has('later-producer'), true);
+  assert.equal(changes.listenerCount('settled'), 0);
+});
+
+test('capture deadline preserves an unresolved request rather than inventing its terminal state', async () => {
+  const network = new Map([['unresolved', {}]]);
+  const changes = new EventEmitter();
+  const controller = new AbortController();
+  const capture = waitForCapturedRequests(network, changes, controller.signal);
+  controller.abort();
+  assert.deepEqual((await capture).pendingRequestIds, ['unresolved']);
+  assert.equal(network.has('unresolved'), true);
+  assert.equal(changes.listenerCount('settled'), 0);
+});
+
 test('records real decoded and compressed asset bytes from browser network events', { timeout: 20_000 }, async () => {
   const javascript = Buffer.from('window.benchmarkAsset = "decoded browser response";');
   const encoded = gzipSync(javascript);
   const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
     if (request.url === '/asset.js') {
       response.writeHead(200, {
         'content-type': 'text/javascript', 'content-encoding': 'gzip', 'content-length': encoded.length,
@@ -178,7 +636,7 @@ test('records real decoded and compressed asset bytes from browser network event
       return;
     }
     response.writeHead(200, { 'content-type': 'text/html' });
-    response.end('<!doctype html><h1>Listing</h1><script src="/asset.js"></script>');
+    response.end(fixtureHtml('<!doctype html><h1>Listing</h1><script src="/asset.js"></script>'));
   });
   const listening = once(server, 'listening');
   server.listen(0, '127.0.0.1');
@@ -199,8 +657,12 @@ test('records real decoded and compressed asset bytes from browser network event
     assert.equal(script?.status, 200);
     assert.equal(script.bodyBytes, javascript.length);
     assert.equal(script.compressedBodyBytes, encoded.length);
-    assert.equal(observation.metrics.transferredJsBytes, javascript.length);
-    assert.equal(observation.metrics.compressedJsBytes, encoded.length);
+    const initialScripts = observation.timings.initialBoundary.requests.filter((entry) => entry.resourceType === 'script');
+    assert.equal(observation.metrics.transferredJsBytes, initialScripts.reduce((sum, entry) => sum + entry.bodyBytes, 0));
+    assert.equal(observation.metrics.compressedJsBytes, initialScripts.reduce((sum, entry) => sum + entry.compressedBodyBytes, 0));
+    assert.equal(observation.timings.initialBoundary.readiness.method, 'react-initial-completion-v1');
+    assert.ok(observation.timings.initialBoundary.readiness.completedAt <= observation.timings.initialBoundary.sampledAt);
+    assert.ok(observation.timings.initialBoundary.readiness.events.some((entry) => entry.event === 'post-passive'));
     assert.deepEqual(observation.qualityFailures, []);
   } finally {
     await driver.close();
@@ -212,9 +674,10 @@ test('records real decoded and compressed asset bytes from browser network event
 
 test('browser request failures remain in error rate after successful throughput requests', { timeout: 20_000 }, async () => {
   const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
     if (request.url === '/drop') { request.socket.destroy(); return; }
     response.writeHead(200, { 'content-type': 'text/html' });
-    response.end('<!doctype html><h1>Listing</h1><img src="/drop">');
+    response.end(fixtureHtml('<!doctype html><h1>Listing</h1><img src="/drop">'));
   });
   const listening = once(server, 'listening');
   server.listen(0, '127.0.0.1');
@@ -243,10 +706,11 @@ test('browser request failures remain in error rate after successful throughput 
 
 test('full document navigation retains an inconclusive interaction instead of a false approval', { timeout: 20_000 }, async () => {
   const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
     response.writeHead(200, { 'content-type': 'text/html' });
-    response.end(request.url === '/jukebox/qr'
+    response.end(fixtureHtml(request.url === '/jukebox/qr'
       ? '<!doctype html><div data-approved-view="qr">QR destination</div>'
-      : '<!doctype html><div data-benchmark-hydrated="true"><a href="/jukebox/qr">QR</a></div>');
+      : '<!doctype html><div data-benchmark-hydrated="true"><a href="/jukebox/qr">QR</a></div>'));
   });
   const listening = once(server, 'listening');
   server.listen(0, '127.0.0.1');
@@ -276,9 +740,10 @@ test('full document navigation retains an inconclusive interaction instead of a 
 });
 
 test('same-document pushState, replaceState, and hash navigation keep rendered approval', { timeout: 20_000 }, async () => {
-  const server = createServer((_request, response) => {
+  const server = createServer((request, response) => {
+    if (fixtureResponse(request, response)) return;
     response.writeHead(200, { 'content-type': 'text/html' });
-    response.end(`<!doctype html><div data-benchmark-hydrated="true">
+    response.end(fixtureHtml(`<!doctype html><div data-benchmark-hydrated="true">
       <a href="/jukebox/qr" data-mode="pushState">Push</a>
       <a href="/jukebox/qr" data-mode="replaceState">Replace</a>
       <a href="#qr" data-mode="hash">Hash</a></div>
@@ -287,7 +752,7 @@ test('same-document pushState, replaceState, and hash navigation keep rendered a
         if (link.dataset.mode === 'hash') location.hash = 'qr';
         else history[link.dataset.mode]({}, '', '/jukebox/qr');
         document.body.insertAdjacentHTML('beforeend', '<div data-approved-view="qr">Rendered QR</div>');
-      });</script>`);
+      });</script>`));
   });
   const listening = once(server, 'listening');
   server.listen(0, '127.0.0.1');

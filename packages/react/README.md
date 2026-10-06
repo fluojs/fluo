@@ -735,6 +735,16 @@ handler needs to finalize the response itself instead of returning the entry to 
 On streaming hosts, an early response-sink close or a failed `write(...)` / `waitForDrain()` cancels
 the unfinished React reader exactly once and releases its lock. Sink failures remain the reported
 failure rather than being replaced by reader-cancellation cleanup.
+One producer read is active at a time. After a sink `write(...)` returns `false`, no
+next read starts until `drain` or close; disconnect cancels unfinished work and
+the HTTP dispatcher disposes the request scope. This is a producer scheduling
+rule, not a whole-process memory bound. A shell can reach the client while a
+Suspense descendant is gated only after the HTTP handler's required awaits and
+only if every intervening host flushes partial responses. Buffered hosts first
+collect all chunks into a final contiguous array (roughly two body copies plus
+overhead during collection), then commit; no public HTML output-size cap exists.
+See the [Node/Fastify deployment recipe](../platform-fastify/README.md#streaming-responses)
+and [socket and buffered evidence](../../docs/guides/react-performance-benchmarks.md).
 
 ## Hydration Asset Contract
 

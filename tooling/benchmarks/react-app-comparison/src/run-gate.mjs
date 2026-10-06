@@ -6,8 +6,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
-import { evaluateEvidence } from './gate.mjs';
-import { mergeEvidence } from './measure.mjs';
+import { evaluateAcceptedEvidence, evaluateEvidence } from './gate.mjs';
+import { assertMethodConfig } from './fa-v2.mjs';
+import { captureIsolatedEnvironment, launchIsolatedInvocation, mergeEvidence,
+  readIsolatedInvocation, requireEnvironmentPairIdentity, verifyMeasurementEnvironment } from './measure.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -44,7 +46,7 @@ export async function startServers(definitions, onStart = () => {}) {
     for (const definition of definitions) {
       const child = spawn(definition.command[0], definition.command.slice(1), {
         cwd: definition.cwd,
-        env: { ...process.env, ...definition.env },
+        env: { ...process.env, ...definition.env, NODE_ENV: 'production' },
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: true,
       });
@@ -116,6 +118,8 @@ export async function readMeasurementReceipt(run, path) {
 
 async function main() {
   const args = process.argv.slice(2);
+  if (await launchIsolatedInvocation(fileURLToPath(import.meta.url), args)) return;
+  const invocation = await readIsolatedInvocation(args);
   const configPath = args[args.indexOf('--config') + 1];
   const outputDirectory = args[args.indexOf('--output-dir') + 1];
   const mode = args.includes('--mode') ? args[args.indexOf('--mode') + 1] : 'regression';
@@ -129,6 +133,13 @@ async function main() {
   await mkdir(output, { recursive: true });
   if ((await readdir(output)).length) throw new Error(`evidence output must start empty: ${output}`);
   const config = JSON.parse(await readFile(configPath, 'utf8'));
+  const environmentBinding = invocation
+    ? await captureIsolatedEnvironment({ ...config, ...config.measurement,
+      provenance: { root: resolve(suite, '../../..') } }, invocation, output) : undefined;
+  if (!invocation && (config.measurement?.isolatedRepresentative || config.measurement?.environmentBinding)) {
+    throw new Error('isolated representative requires live host launcher');
+  }
+  requireEnvironmentPairIdentity(environmentBinding, args);
   const owned = new Set();
   let servers = [];
   const interrupt = (code) => {
@@ -141,7 +152,9 @@ async function main() {
   process.once('SIGINT', onInterrupt);
   process.once('SIGTERM', onTerminate);
   async function runOwned(command, args, options) {
-    const child = spawn(command, args, { ...options, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, { ...options, detached: true,
+      stdio: [options.input ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
+    if (options.input) child.stdin.end(options.input);
     owned.add(child);
     let stdout = '';
     let stderr = '';
@@ -170,6 +183,9 @@ async function main() {
   try {
   requireDevDefinitions(config);
   const baseline = JSON.parse(await readFile(join(suite, 'baseline.json'), 'utf8'));
+  if (!args.includes('--historical-replay')) assertMethodConfig({
+    ...config.measurement, warmupRuns: baseline.policy.warmupRuns, measurementRuns: baseline.policy.minimumRuns,
+  });
   if (FRAMEWORKS.some((framework) => !config.servers?.[framework]?.url
     || !config.servers[framework]?.readyPattern || !Array.isArray(config.servers[framework]?.command))) {
     throw new TypeError('all four production servers require a command, readiness event, and URL');
@@ -222,8 +238,10 @@ async function main() {
     commit: commit.trim(),
     dirty: dirty.length > 0,
     sourceSha256: sourceHash.digest('hex'),
+    baselineSha256: createHash('sha256').update(await readFile(join(suite, 'baseline.json'))).digest('hex'),
     environment: { platform: platform(), arch: arch(), osRelease: release(),
-      cpuModel: cpus()[0]?.model, cpuCores: cpus().length, totalMemoryBytes: totalmem() },
+      cpuModel: cpus()[0]?.model, cpuCores: cpus().length, totalMemoryBytes: totalmem(),
+      serverNodeEnv: 'production' },
     root,
   };
   servers = await startServers(FRAMEWORKS.map((framework) => ({
@@ -249,12 +267,19 @@ async function main() {
         provenance,
       };
       const configFile = join(output, `${profile}-config.json`);
-      const resultFile = join(output, `${profile}.json`);
+      const resultFile = join(output, `${profile}-production.json`);
       await writeFile(configFile, `${JSON.stringify(measurement, null, 2)}\n`);
-      receipts.push(await readMeasurementReceipt(() =>
+      const receipt = await readMeasurementReceipt(() =>
         runOwned(process.execPath,
-          [join(suite, 'src/measure.mjs'), '--config', configFile, '--output', resultFile],
-          { cwd: suite }), resultFile));
+          [join(suite, 'src/measure.mjs'), '--config', configFile, '--output', resultFile,
+            ...(invocation ? ['--isolated-guest'] : [])],
+          { cwd: suite, ...(invocation ? { input: JSON.stringify({ ...invocation,
+            parentInvocationId: invocation.invocationId, invocationId: `${invocation.invocationId}-${profile}-production` }) } : {}) }), resultFile);
+      await verifyMeasurementEnvironment(receipt, output);
+      if (environmentBinding && receipt.environmentBinding?.identitySha256 !== environmentBinding.identitySha256) {
+        throw new Error('environment binding profile/aggregate mismatch');
+      }
+      receipts.push(receipt);
     }
     await stopServers(servers);
     for (const [index, receipt] of receipts.entries()) {
@@ -262,16 +287,49 @@ async function main() {
         const devFile = join(output, `${receipt.profile}-dev.json`);
         await writeFile(devConfig, `${JSON.stringify({
           ...JSON.parse(await readFile(join(output, `${receipt.profile}-config.json`), 'utf8')),
+          ...(config.measurement.methodVersion === 'FA-V3' ? { measurementKind: 'development',
+            measurementPurpose: 'timing', nativeLifetime: { enabled: false } } : {}),
           dev: config.dev,
         }, null, 2)}\n`);
         const development = await readMeasurementReceipt(() =>
           runOwned(process.execPath,
-            [join(suite, 'src/measure.mjs'), '--config', devConfig, '--output', devFile, '--dev'],
-            { cwd: suite }), devFile);
+            [join(suite, 'src/measure.mjs'), '--config', devConfig, '--output', devFile, '--dev',
+              ...(invocation ? ['--isolated-guest'] : [])],
+            { cwd: suite, ...(invocation ? { input: JSON.stringify({ ...invocation,
+              parentInvocationId: invocation.invocationId, invocationId: `${invocation.invocationId}-${receipt.profile}-development` }) } : {}) }), devFile);
+        await verifyMeasurementEnvironment(development, output);
+        if (environmentBinding && config.measurement.methodVersion !== 'FA-V3'
+          && development.environmentBinding?.identitySha256 !== environmentBinding.identitySha256) {
+          throw new Error('environment binding development/aggregate mismatch');
+        }
         receipts[index] = await mergeEvidence(receipt, development, join(output, 'combined-traces'));
+        await writeFile(join(output, `${receipt.profile}.json`), `${JSON.stringify(receipts[index], null, 2)}\n`);
     }
-    const verdict = await evaluateEvidence(baseline, receipts, output);
-    await writeFile(join(output, 'verdict.json'), `${JSON.stringify({ ...verdict, purpose: mode, provenance }, null, 2)}\n`);
+    let verdict;
+    if (args.includes('--historical-replay')) verdict = await evaluateEvidence(baseline, receipts, output);
+    else if (config.measurement.methodVersion === 'FA-V3') {
+      if (args.includes('--native-receipts')) throw new Error('FA-V3 cannot borrow native counterparts');
+      verdict = await evaluateAcceptedEvidence(baseline, receipts, output);
+    }
+    else if (config.measurement.measurementPurpose === 'native-conformance') {
+      verdict = { methodVersion: 'FA-V2', measurementPurpose: 'native-conformance', checks: [],
+        verdict: receipts.every((receipt) => [...receipt.runs, ...receipt.warmups,
+          ...(receipt.developmentWarmups ?? [])].every((run) => run.correctness === 'pass'
+            && (run.metrics.errorRate === undefined || run.metrics.errorRate === 0))) ? 'pass' : 'inconclusive' };
+    } else if (args.includes('--native-receipts')) {
+      const files = JSON.parse(await readFile(args[args.indexOf('--native-receipts') + 1], 'utf8'));
+      const native = await Promise.all(files.map(async (path) => JSON.parse(await readFile(path, 'utf8'))));
+      const traceRoot = args.includes('--trace-root') ? resolve(args[args.indexOf('--trace-root') + 1]) : output;
+      verdict = await evaluateAcceptedEvidence(baseline, receipts, traceRoot, native);
+    } else verdict = { methodVersion: 'FA-V2', measurementPurpose: 'timing', verdict: 'inconclusive',
+      reason: 'FA-V2 native counterparts required before acceptance', checks: [] };
+    await writeFile(join(output, 'verdict.json'), `${JSON.stringify({ ...verdict, executionMode: mode, provenance,
+      receipts: receipts.map((receipt) => ({ profile: receipt.profile, methodBinding: receipt.methodBinding,
+        runs: receipt.runs, warmups: receipt.warmups, developmentWarmups: receipt.developmentWarmups,
+        provenance: receipt.provenance, methodVersion: receipt.methodVersion,
+        measurementPurpose: receipt.measurementPurpose, mode: receipt.mode,
+        environmentBinding: receipt.environmentBinding, developmentEnvironmentBinding: receipt.developmentEnvironmentBinding,
+        developmentMethodBinding: receipt.developmentMethodBinding, isolatedRepresentative: receipt.isolatedRepresentative })) }, null, 2)}\n`);
     console.log(`React app performance ${mode}: ${verdict.verdict}`);
     if (performanceExitCode(verdict.verdict, mode, receipts.every((receipt) =>
       receipt.runs.every((run) => run.correctness === 'pass')))) process.exitCode = 1;

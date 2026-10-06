@@ -1,0 +1,245 @@
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { promisify } from 'node:util';
+
+import { verifyTraceFiles } from '../src/measure.mjs';
+import { evaluateAcceptedServerEvidence, evaluateServerEvidence, runServerMeasurement } from '../src/server-measurement.mjs';
+import { collectMeasurements } from '../src/measure.mjs';
+import { METRICS } from '../src/evaluate.ts';
+
+test('FA-V3 server gate rejects borrowed counterpart before six-metric filtering', async () => {
+  const baseline = JSON.parse(await readFile(new URL('../baseline.json', import.meta.url)));
+  const receipt = { methodVersion: 'FA-V3', measurementPurpose: 'integrated', measurementKind: 'production' };
+
+  await assert.rejects(evaluateAcceptedServerEvidence(baseline, [receipt], tmpdir(),
+    [{ methodVersion: 'FA-V2', measurementPurpose: 'native-conformance' }]), /cannot borrow/u);
+});
+
+test('FA-V3 server gate authenticates derived configuration and environment before metricless quality verdict', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fa-v3-server-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const representative = JSON.parse(await readFile(new URL('../config/representative.json', import.meta.url)));
+  const baseline = JSON.parse(await readFile(new URL('../baseline.json', import.meta.url)));
+  const config = { ...representative.measurement, methodVersion: 'FA-V3', measurementPurpose: 'integrated',
+    measurementKind: 'production', pairId: 'server-fixed', pairPhase: 'before',
+    profile: 'desktop-native', mode: 'native', warmupRuns: 2, measurementRuns: 5,
+    apps: Object.fromEntries(['fluo', 'next', 'react-router', 'tanstack-start'].map((name) => [name, `http://fixture/${name}`])),
+    nativeLifetime: { enabled: true, python: '/python' },
+    provenance: { baselineSha256: 'd40e3d48caf76ee3456949f9151dc19d0a9a60eae6aef3c0b36ec5b177ef20f5' } };
+  const receipt = await collectMeasurements(config, { async check() { return { pass: false, steps: [] }; } }, directory);
+
+  await assert.rejects(evaluateAcceptedServerEvidence(baseline, [receipt], directory), /environment authentication/u);
+  assert.ok(receipt.runs.every((run) => run.correctness === 'fail' && Object.keys(run.metrics).length === 0));
+  await assert.rejects(evaluateAcceptedServerEvidence(baseline,
+    [{ ...receipt, runs: receipt.runs.slice(1) }], directory), /inventory/u);
+});
+
+test('server-only evaluation authenticates isolated aggregate before metric filtering', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-server-environment-'));
+  try {
+    await assert.rejects(evaluateServerEvidence({ profiles: {}, policy: {} }, [{
+      isolatedRepresentative: true, profile: 'desktop-native', mode: 'native',
+      provenance: {}, runs: [], warmups: [],
+    }], directory), /environment binding/u);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('server-only CLI reads derived config and refuses isolated metadata without live launcher', async () => {
+  const suite = new URL('../', import.meta.url);
+  const output = new URL(`results/environment-validation-${randomUUID()}`, suite);
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-server-environment-'));
+  try {
+    const config = JSON.parse(await readFile(new URL('config/representative.json', suite), 'utf8'));
+    config.measurement.isolatedRepresentative = true;
+    const path = join(directory, 'config.json');
+    await writeFile(path, JSON.stringify(config));
+    await assert.rejects(promisify(execFile)(process.execPath, [
+      'src/run-server-only.mjs', '--config', path, '--output-dir', output.pathname,
+    ], { cwd: suite }), (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stderr, /isolated representative requires live host launcher/u);
+      assert.equal(error.stdout, '');
+      return true;
+    });
+  } finally {
+    await rm(output, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('server measurement propagates fresh guest invocation without changing config bytes', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'fluo-server-environment-'));
+  try {
+    const configPath = join(directory, 'config.json');
+    const receiptPath = join(directory, 'receipt.json');
+    const script = join(directory, 'invocation.mjs');
+    const configBytes = '{"profile":"desktop-native","mode":"native","nativeLifetime":{"enabled":true}}';
+    const invocation = {
+      method: 'isolated-linux-representative-v1', invocationId: 'runner-profile-production',
+      parentInvocationId: 'runner', host: { raw: { inspection: 'live', information: 'live' } },
+      collectorEntrypoints: ['run-server-only.mjs'],
+      parentEnvironmentBinding: { identitySha256: 'runner-environment' },
+    };
+    await writeFile(configPath, configBytes);
+    await writeFile(script, `import { readFile, writeFile } from 'node:fs/promises';
+let raw = '';
+for await (const chunk of process.stdin) raw += chunk;
+await writeFile(process.argv[process.argv.indexOf('--output') + 1], JSON.stringify({
+  invocation: JSON.parse(raw), guest: process.argv.includes('--isolated-guest'),
+  config: await readFile(process.argv[process.argv.indexOf('--config') + 1], 'utf8'),
+}));`);
+    const result = await runServerMeasurement(configPath, receiptPath, script, { invocation });
+    assert.equal(result.exitCode, 0);
+    assert.deepEqual(result.receipt, { invocation, guest: true, config: configBytes });
+    assert.equal(await readFile(configPath, 'utf8'), configBytes);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+for (const mutation of ['metrics', 'provenance']) {
+  test(`server-only evaluation rejects mismatched raw ${mutation} before filtering`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'fluo-server-evaluation-'));
+    try {
+      const metrics = Object.fromEntries(METRICS.map((metric) => [metric, 70]));
+      const runs = [];
+      for (let index = 0; index < 3; index++) {
+        const runId = `server-${index}`;
+        const trace = join(directory, `${runId}.json`);
+        const run = {
+          profile: 'desktop-native', mode: 'native', framework: 'fluo', runId, trace,
+          warmupRuns: 1, correctness: 'pass', metrics,
+        };
+        await writeFile(trace, JSON.stringify({
+          ...run,
+          schemaVersion: 1,
+          provenance: { commit: mutation === 'provenance' && index === 1 ? 'b'.repeat(40) : 'a'.repeat(40) },
+          environment: { runtime: 'Node 24' },
+          correctness: { pass: true },
+          metrics: mutation === 'metrics' && index === 1 ? { ...metrics, coldTtfbMs: 130 } : metrics,
+          unavailable: {}, profileSettings: {}, requests: [],
+        }));
+        runs.push(run);
+      }
+      const baseline = {
+        policy: { minimumRuns: 3, warmupRuns: 1, maximumRelativeSpread: 0.1, outlierMadMultiplier: 3 },
+        profiles: {
+          'desktop-native': {
+            mode: 'native',
+            absoluteBudgets: Object.fromEntries(METRICS.map((metric) => [metric, 100])),
+            relativeBands: Object.fromEntries(METRICS.map((metric) => [metric, 1.5])),
+          },
+        },
+      };
+      await assert.rejects(evaluateServerEvidence(baseline, [
+        { profile: 'desktop-native', mode: 'native', runs },
+      ], directory), new RegExp(`raw trace ${mutation}`, 'u'));
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
+
+test('an unknown single-window profile fails before starting measurement servers', async () => {
+  const suite = new URL('../', import.meta.url);
+  const output = new URL(`results/profile-validation-${randomUUID()}`, suite);
+  try {
+    await assert.rejects(promisify(execFile)(process.execPath, [
+      'src/run-server-only.mjs', '--output-dir', output.pathname, '--profile', 'unknown',
+    ], { cwd: suite }), (error) => {
+      assert.equal(error.code, 1);
+      assert.match(error.stderr, /RangeError/u);
+      assert.equal(error.stdout, '');
+      return true;
+    });
+  } finally {
+    await rm(output, { recursive: true, force: true });
+  }
+});
+
+test('an interrupted pending measurement is reaped and cannot accept a receipt',
+  { timeout: 5_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'fluo-server-interrupt-'));
+    const script = join(directory, 'pending.mjs');
+    const controller = new AbortController();
+    let notifyReady;
+    const ready = new Promise((resolve) => { notifyReady = resolve; });
+    let response;
+    const server = createServer((request, reply) => {
+      response = reply;
+      reply.writeHead(200);
+      reply.flushHeaders();
+      notifyReady(Number(request.url.slice(1)));
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    let measured;
+    let deadline;
+    try {
+      const port = server.address().port;
+      await writeFile(script, `const response = await fetch('http://127.0.0.1:${port}/' + process.pid);
+await response.text();`);
+      measured = runServerMeasurement(join(directory, 'config.json'),
+        join(directory, 'receipt.json'), script, { signal: controller.signal });
+      // Subscribe to child readiness before interrupting an actual pending body.
+      const pid = await ready;
+      const settled = Promise.race([measured, new Promise((_, reject) => {
+        deadline = setTimeout(() => reject(new Error('measurement ignored cancellation')), 1_000);
+      })]);
+      controller.abort();
+      await assert.rejects(settled, /abort/iu);
+      assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+    } finally {
+      clearTimeout(deadline);
+      response?.end();
+      await measured?.catch(() => {});
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+test('a failed server subprocess without a receipt preserves its exit rather than masking it with ENOENT',
+  { timeout: 5_000 }, async () => {
+    // Given: a real measurement subprocess that exits before writing any receipt.
+    const directory = await mkdtemp(join(tmpdir(), 'fluo-server-receipt-'));
+    const script = join(directory, 'failed.mjs');
+    const receipt = join(directory, 'receipt.json');
+    try {
+      await writeFile(script, 'process.exitCode = 1;');
+      // When / Then: failure includes the subprocess exit and retains the missing-file cause.
+      await assert.rejects(runServerMeasurement(join(directory, 'config.json'), receipt, script), (error) => {
+        assert.match(error.message, /server measurement exited 1/u);
+        assert.equal(error.cause?.code, 'ENOENT');
+        assert.equal(error.cause?.path, receipt);
+        return true;
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+test('a failed server receipt retains its nonzero exit and cannot pass missing raw trace validation',
+  { timeout: 5_000 }, async () => {
+    // Given: a real subprocess writes a failed receipt, but its raw trace is absent.
+    const directory = await mkdtemp(join(tmpdir(), 'fluo-server-receipt-'));
+    const script = join(directory, 'failed.mjs');
+    const receiptPath = join(directory, 'receipt.json');
+    const receipt = { runs: [{ correctness: 'fail', trace: join(directory, 'absent.json') }], warmups: [] };
+    try {
+      await writeFile(script, `import { writeFile } from 'node:fs/promises';
+await writeFile(process.argv[process.argv.indexOf('--output') + 1], ${JSON.stringify(JSON.stringify(receipt))});
+process.exitCode = 1;`);
+      // When: the failed child has an actual receipt.
+      const result = await runServerMeasurement(join(directory, 'config.json'), receiptPath, script);
+      // Then: neither its exit nor its missing trace becomes a successful measurement.
+      assert.equal(result.exitCode, 1);
+      assert.deepEqual(result.receipt, receipt);
+      await assert.rejects(verifyTraceFiles(result.receipt.runs, directory), /invalid trace/u);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });

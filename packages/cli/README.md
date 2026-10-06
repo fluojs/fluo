@@ -183,6 +183,9 @@ the document shell, or the server/client route snapshot wiring. Both explicit `@
 `@Path(...)` handlers in `src/app.ts` return `ReactNavigationPage.create(page, { module, props })`
 with their HTTP-validated DTO data, so the existing HTTP
 dispatcher remains authoritative.
+Production shell delivery depends on the host/proxy forwarding chunks instead of
+collecting the whole body; see the
+[Fastify streaming recipe](../platform-fastify/README.md#streaming-responses).
 
 The generated shared shell includes `useRouter().refresh()` for an explicit same-page
 credentialed HTTP revalidation: it retains shell resources and history, resets page-local

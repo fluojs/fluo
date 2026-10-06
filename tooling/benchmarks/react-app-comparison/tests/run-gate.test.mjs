@@ -1,13 +1,33 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { promisify } from 'node:util';
 import { once } from 'node:events';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { stopOwnedProcess } from '../src/process-group.mjs';
 import { performanceExitCode, readMeasurementReceipt, requireDevDefinitions, startServers, stopServers } from '../src/run-gate.mjs';
+
+test('FA-V3 run-gate validates integrated config before any smoke or server action', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'fa-v3-run-gate-'));
+  const output = new URL(`../results/fa-v3-validation-${randomUUID()}`, import.meta.url).pathname;
+  t.after(() => Promise.all([rm(directory, { recursive: true, force: true }), rm(output, { recursive: true, force: true })]));
+  const config = JSON.parse(await readFile(new URL('../config/representative.json', import.meta.url)));
+  config.measurement = { ...config.measurement, methodVersion: 'FA-V3', measurementPurpose: 'integrated',
+    measurementKind: 'production', pairId: 'fixed-runner', pairPhase: 'before',
+    nativeLifetime: { enabled: true, python: '/python' } };
+  config.servers = {};
+  const path = join(directory, 'config.json');
+  await writeFile(path, JSON.stringify(config));
+
+  await assert.rejects(promisify(execFile)(process.execPath, [
+    new URL('../src/run-gate.mjs', import.meta.url).pathname,
+    '--config', path, '--output-dir', output,
+  ]), (error) => error.code === 1 && /all four production servers/u.test(error.stderr) && error.stdout === '');
+});
 
 test('representative gate requires observable cold and all three development edits', async () => {
   // Given: the checked-in four-app representative configuration.
@@ -82,18 +102,22 @@ test('waits for a real HTTP ready event and stops the owned process group', asyn
   // Given: an app reports readiness only after binding a socket.
   const command = [
     process.execPath, '-e',
-    'require("node:http").createServer((_, response) => response.end("ready")).listen(0, "127.0.0.1", function () { console.log("READY " + this.address().port) })',
+    'require("node:http").createServer((_, response) => { response.setHeader("x-benchmark-mode", process.env.NODE_ENV ?? "unset"); response.end("ready") }).listen(0, "127.0.0.1", function () { console.log("READY " + this.address().port) })',
   ];
   // When: a pre-registered stdout event reports the bound port.
   const servers = await startServers([
-    { name: 'fixture', command, readyPattern: /READY (\d+)/u,
+    { name: 'fixture', command, env: { NODE_ENV: 'development' }, readyPattern: /READY (\d+)/u,
       urlForMatch: (match) => `http://127.0.0.1:${match[1]}/` },
   ]);
   const server = servers[0];
   assert.ok(server);
   // Then: the real HTTP endpoint responds before the runner proceeds.
-  assert.equal(await (await fetch(server.url)).text(), 'ready');
-  await stopServers(servers);
+  try {
+    assert.equal(await (await fetch(server.url)).text(), 'ready');
+    assert.equal((await fetch(server.url)).headers.get('x-benchmark-mode'), 'production');
+  } finally {
+    await stopServers(servers);
+  }
   await assert.rejects(fetch(server.url, { signal: AbortSignal.timeout(1000) }));
 });
 

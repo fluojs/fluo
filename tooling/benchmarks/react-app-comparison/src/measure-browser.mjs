@@ -1,11 +1,18 @@
 import { execFile, spawn } from 'node:child_process';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';
-import { PROFILES } from './measure.mjs';
+import { PROFILES, sampleEnvironmentHeadroom, summarizeEnvironmentHeadroom } from './measure.mjs';
 import { stopOwnedProcess } from './process-group.mjs';
+import { installInitialReadiness, waitForInitialReadiness } from './initial-readiness.mjs';
+import { createNativeCapture, reconcileNativeTerminals } from './native-terminal.mjs';
+import { readServerCpu } from './server-cpu.mjs';
+import { assertMethodConfig, hashObject } from './fa-v2.mjs';
+
+export { reconcileNativeTerminals } from './native-terminal.mjs';
+export { readServerCpu } from './server-cpu.mjs';
 
 const JOURNEYS = ['listing', 'detail', 'auth', 'create', 'update', 'delete', 'failure', 'jukebox'];
 const execFileAsync = promisify(execFile);
@@ -61,6 +68,22 @@ export function summarizeInteractions(interactions) {
 
 export function initialRequestCount(requests) {
   return requests.length;
+}
+
+export async function waitForCapturedRequests(network, networkChanges, signal) {
+  const requestIds = [...network.keys()];
+  return new Promise((accept) => {
+    const check = () => {
+      const pendingRequestIds = requestIds.filter((id) => network.has(id));
+      if (pendingRequestIds.length && !signal.aborted) return;
+      networkChanges.off('settled', check);
+      signal.removeEventListener('abort', check);
+      accept({ requestIds, pendingRequestIds });
+    };
+    networkChanges.on('settled', check);
+    signal.addEventListener('abort', check, { once: true });
+    check();
+  });
 }
 
 export function summarizeErrorRate(requests) {
@@ -141,6 +164,7 @@ function percentile(values, quantile) {
 }
 
 export async function createBrowserDriver(config, { devMode = false } = {}) {
+  if (config.methodVersion !== undefined) assertMethodConfig(config);
   if (!devMode && (!config.journeys || JOURNEYS.some((name) => !config.journeys[name]))) {
     throw new Error(`browser correctness requires configured journeys: ${JOURNEYS.join(', ')}`);
   }
@@ -158,8 +182,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
     await stopOwnedProcess(server);
   }
 
-  async function createPage(item) {
-    const context = await browser.newContext({ viewport: PROFILES[item.device].viewport });
+  async function createPage(item, owner = browser) {
+    const context = await owner.newContext({ viewport: PROFILES[item.device].viewport });
     const page = await context.newPage();
     const cdp = await context.newCDPSession(page);
     const profile = PROFILES[item.device];
@@ -209,6 +233,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           return { pass: false, steps: [{ name: 'dev-config', pass: false }] };
         }
         const cwd = commands.cwd ?? resolve(import.meta.dirname, `../apps/${item.framework}`);
+        const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
         const started = performance.now();
         const server = spawn(commands.start[0], commands.start.slice(1), {
           cwd, env: { ...process.env, ...commands.env }, stdio: ['ignore', 'pipe', 'pipe'],
@@ -235,7 +260,9 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           if (!response?.ok()) throw new Error(`dev page HTTP ${response?.status()}`);
           await page.locator('h1').first().waitFor({ state: 'visible', timeout: 60_000 });
           const readyMs = performance.now() - started;
-          contexts.set(item.runId + item.framework, { context, page, readyMs, serverLog: () => log });
+          const environmentHeadroom = headroomBefore
+            ? summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) : undefined;
+          contexts.set(item.runId + item.framework, { context, page, readyMs, environmentHeadroom, serverLog: () => log });
           devServers.set(item.runId + item.framework, server);
           return { pass: true, steps: [{ name: 'dev-ready', pass: true, elapsedMs: readyMs, url: commands.url, log }] };
         } catch (error) {
@@ -244,10 +271,32 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           return { pass: false, steps: [{ name: 'dev-ready', pass: false, error: String(error), log }] };
         }
       }
-      const { context, page } = await createPage(item);
+      const { context, page, cdp } = await createPage(item);
       const steps = [];
+      const events = [];
+      const subscriptions = [];
+      const startedAtMs = performance.now();
+      for (const name of ['Network.requestWillBeSent', 'Network.responseReceived',
+        'Network.loadingFinished', 'Network.loadingFailed', 'Page.domContentEventFired']) {
+        const observe = (data) => events.push({
+          name, observedAtMs: performance.now(),
+          requestId: data.requestId, loaderId: data.loaderId, type: data.type,
+          url: data.request?.url ?? data.response?.url,
+          method: data.request?.method, status: data.response?.status,
+          timestamp: data.timestamp, encodedDataLength: data.encodedDataLength,
+          errorText: data.errorText, canceled: data.canceled,
+        });
+        cdp.on(name, observe);
+        subscriptions.push([cdp, name, observe]);
+      }
+      for (const name of ['domcontentloaded', 'crash', 'close']) {
+        const observe = () => events.push({ name: `page.${name}`, observedAtMs: performance.now() });
+        page.on(name, observe);
+        subscriptions.push([page, name, observe]);
+      }
       let createdPath = null;
       try {
+        await cdp.send('Page.enable');
         for (const name of JOURNEYS) {
           const journey = config.journeys[name];
           const path = resolveJourneyValue(journey.path, createdPath);
@@ -267,23 +316,53 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           if (name === 'create') createdPath = new URL(page.url()).pathname;
           steps.push({ name, pass: true });
         }
-        await context.close();
         return { pass: true, steps };
       } catch (error) {
-        steps.push({ name: JOURNEYS[steps.length], pass: false, error: String(error) });
-        await context.close();
+        steps.push({ name: JOURNEYS[steps.length], pass: false, error: String(error),
+          diagnostics: { startedAtMs, failedAtMs: performance.now(), events } });
         return { pass: false, steps };
+      } finally {
+        for (const [source, name, observe] of subscriptions) source.off(name, observe);
+        await context.close();
       }
     },
     async measure(item) {
-      const { context, page, cdp } = await createPage(item);
+      const native = await createNativeCapture(chromium, item.nativeTraceDirectory, config.nativeLifetime?.enabled
+        ? { ...config.nativeLifetime, measurement: { runId: item.runId, framework: item.framework,
+          profile: item.profile, mode: item.mode,
+          ...(item.methodBinding ? { methodVersion: item.methodVersion, measurementPurpose: item.measurementPurpose,
+            pairId: item.methodBinding.pairId, executionId: item.methodBinding.executionId,
+            ...(item.methodVersion === 'FA-V3' ? { measurementKind: item.measurementKind,
+              pairPhase: item.methodBinding.pairPhase, configSha256: item.methodBinding.configSha256,
+              productSha256: item.methodBinding.productSha256 } : {}) } : {}) } } : undefined);
+      let measurementFailed = false;
+      let measurementError;
+      let observation;
+      let cleanupFailure;
+      try {
+      const { page, cdp } = await createPage(item, native.browser);
+      await native.prepareLifetime(cdp);
+      const lifetimeIdentity = native.lifetimeIdentity;
+      const nativeSubscriptions = [];
+      for (const name of ['Network.requestWillBeSent', 'Network.requestWillBeSentExtraInfo',
+        'Network.responseReceived', 'Network.responseReceivedExtraInfo', 'Network.dataReceived',
+        'Network.loadingFinished', 'Network.loadingFailed', 'Page.frameNavigated', 'Page.frameDetached']) {
+        const observe = (data) => native.ledger.push({ name, data, ...lifetimeIdentity });
+        cdp.on(name, observe);
+        nativeSubscriptions.push([name, observe]);
+      }
+      await cdp.send('Page.enable');
+      await installInitialReadiness(page);
       const requests = [];
       const qualityFailures = [];
       const network = new Map();
+      const networkChanges = new EventEmitter();
       let phase = 'cold';
       let collecting = true;
-      cdp.on('Network.requestWillBeSent', ({ requestId, request, type, redirectResponse }) => {
+      const occurrences = new Map();
+      cdp.on('Network.requestWillBeSent', ({ requestId, loaderId, frameId, initiator, timestamp, wallTime, request, type, redirectResponse }) => {
         if (!collecting) return;
+        occurrences.set(requestId, (occurrences.get(requestId) ?? 0) + 1);
         if (redirectResponse) {
           const previous = network.get(requestId);
           requests.push({
@@ -293,6 +372,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           });
         }
         network.set(requestId, {
+          ...(lifetimeIdentity ? { ...lifetimeIdentity, occurrence: occurrences.get(requestId) } : {}),
+          requestId, loaderId, frameId, initiator, startedTimestamp: timestamp, wallTime, method: request.method,
           url: request.url, resourceType: type?.toLowerCase() ?? 'other', phase,
           documentUrl: page.url(), pageClosed: page.isClosed(), status: null,
           compressedBodyBytes: 0,
@@ -317,15 +398,18 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           entry.bodyBytes = (entry.bodyBytes ?? 0) + dataLength;
         }
       });
-      cdp.on('Network.loadingFailed', ({ requestId, errorText }) => {
+      cdp.on('Network.loadingFailed', ({ requestId, errorText, canceled, timestamp }) => {
         const entry = network.get(requestId);
         if (!collecting || !entry) return;
-        requests.push({ ...entry, kind: 'request-failed', error: errorText });
+        requests.push({ ...entry, kind: 'request-failed', error: errorText, canceled,
+          settledPhase: phase, settledTimestamp: timestamp });
         network.delete(requestId);
+        networkChanges.emit('settled');
       });
-      cdp.on('Network.loadingFinished', ({ requestId, encodedDataLength }) => {
+      cdp.on('Network.loadingFinished', ({ requestId, encodedDataLength, timestamp }) => {
         const entry = network.get(requestId);
         if (!collecting || !entry) return;
+        Object.assign(entry, { settledPhase: phase, settledTimestamp: timestamp });
         if (entry.status === null || (entry.bodyBytes === undefined && ![204, 205, 304].includes(entry.status))) {
           const reason = entry.status === null ? 'HTTP response status unavailable'
             : 'decoded body bytes unavailable: no Network.dataReceived event';
@@ -338,24 +422,74 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           requests.push({ ...entry, transferBytes: encodedDataLength, bodyBytes: entry.bodyBytes ?? 0 });
         }
         network.delete(requestId);
+        networkChanges.emit('settled');
       });
       try {
+        const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
         const listing = new URL(config.journeys.listing.path, item.url).href;
         await page.goto(listing, { waitUntil: 'load' });
+        const initialReadiness = await waitForInitialReadiness(page);
+        // Subscribe before checking the identity inventory: no lost settlement event,
+        // no network-idle heuristic and no waiting for unrelated speculative RSC.
+        const waitForInitialResources = async (ownerPhase) => {
+          await new Promise((accept, reject) => {
+            const check = () => {
+              if ([...network.values()].some((entry) => entry.phase === ownerPhase
+                && ['document', 'script', 'stylesheet'].includes(entry.resourceType))) return;
+              cleanup();
+              accept();
+            };
+            const timeout = setTimeout(() => {
+              cleanup();
+              reject(new Error('initial React completion resource timeout'));
+            }, 10_000);
+            const cleanup = () => {
+              clearTimeout(timeout);
+              networkChanges.off('settled', check);
+            };
+            networkChanges.on('settled', check);
+            check();
+          });
+          const failedInitialResources = requests.filter((entry) => entry.phase === ownerPhase
+            && ['document', 'script', 'stylesheet'].includes(entry.resourceType) && entry.error);
+          if (failedInitialResources.length) throw new Error('initial React completion resource failure');
+        };
+        await waitForInitialResources('cold');
         const cold = await page.evaluate(() => ({
           navigation: performance.getEntriesByType('navigation')[0]?.toJSON() ?? null,
           lcp: window.__benchmarkLcp,
           hydration: performance.getEntriesByName('hydration')[0]?.duration ?? null,
           shell: performance.getEntriesByName('shell-arrival')[0]?.startTime ?? null,
         }));
-        const clientWork = initialClientWork(
-          (await cdp.send('Performance.getMetrics')).metrics,
-          await page.evaluate(() => performance.getEntriesByType('paint').map((entry) => ({
-            name: entry.name, startTime: entry.startTime,
-          }))),
-        );
+        const initialCdpMetrics = (await cdp.send('Performance.getMetrics')).metrics;
+        const initialPaintEntries = await page.evaluate(() => performance.getEntriesByType('paint').map((entry) => ({
+          name: entry.name, startTime: entry.startTime,
+        })));
+        const clientWork = initialClientWork(initialCdpMetrics, initialPaintEntries);
+        const initialRequests = [
+          ...requests.filter((request) => request.phase === 'cold'),
+          ...[...network.values()].filter((request) => request.phase === 'cold')
+            .map((request) => ({ ...request, kind: 'request-pending',
+              unavailable: 'request still in flight at initial completion boundary' })),
+        ];
+        const initialBoundary = {
+          readiness: initialReadiness,
+          sampledAt: await page.evaluate(() => performance.now()),
+          cdpMetrics: initialCdpMetrics,
+          paintEntries: initialPaintEntries,
+          requests: initialRequests,
+          pendingAtWarmTrigger: [...network.values()].map((entry) => ({ ...entry })),
+        };
+        initialBoundary.warmTriggeredAt = await page.evaluate(() => performance.now());
         phase = 'warm';
         await page.goto(listing, { waitUntil: 'load' });
+        const warmReadiness = await waitForInitialReadiness(page);
+        await waitForInitialResources('warm');
+        const warmBoundary = {
+          readiness: warmReadiness,
+          completedAt: await page.evaluate(() => performance.now()),
+          pendingAtInteraction: [...network.values()].map((entry) => ({ ...entry })),
+        };
         const warm = await page.evaluate(() => performance.getEntriesByType('navigation')[0]?.toJSON() ?? null);
         const interactions = [];
         phase = 'interaction';
@@ -396,14 +530,21 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           interactions.push(observation);
           if (observation.unavailable) qualityFailures.push(observation.unavailable);
         }
+        // Keep approved DOM latency unchanged. Capture actual HTTP terminals before
+        // closing the context; this finite ID inventory is not producer closure.
+        const finalRequestCapture = await waitForCapturedRequests(network, networkChanges, AbortSignal.timeout(10_000));
+        const captureMetrics = (await native.captureClock(() => cdp.send('Performance.getMetrics'))).metrics;
+        const captureTimestamp = captureMetrics.find((metric) => metric.name === 'Timestamp')?.value;
+        if (!Number.isFinite(captureTimestamp)) throw new Error('native terminal capture monotonic clock unavailable');
         collecting = false;
         for (const entry of network.values()) {
           requests.push({ ...entry, kind: 'request-pending',
             unavailable: 'request still in flight at capture boundary' });
-          qualityFailures.push(`request pending at capture boundary: ${entry.url}`);
         }
         network.clear();
-        const initialRequests = requests.filter((request) => request.phase === 'cold');
+        native.ledger.push({ name: 'capture-boundary', data: { captureTimestamp, finalRequestCapture,
+          ...(item.methodBinding ? { methodBinding: item.methodBinding } : {}) } });
+        for (const [name, observe] of nativeSubscriptions) cdp.off(name, observe);
         const metrics = {};
         const unavailable = {};
         if (cold.navigation) {
@@ -442,16 +583,19 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
           metrics.throughputRequestsPerSecond = sent.length * 1000 / elapsedMs;
           requests.push(...sent.map((response) => ({ ...response, url: new URL(throughput.path, item.url).href, resourceType: 'throughput' })));
         }
-        const errorRate = summarizeErrorRate(requests);
-        if (errorRate !== null) metrics.errorRate = errorRate;
         const serverPid = config.serverPids?.[item.framework];
+        let serverCpu;
         let generator;
         {
           const { stdout } = await execFileAsync('ps', ['-p', String(process.pid), '-o', '%cpu=', '-o', 'rss=']);
           const [cpu, rss] = stdout.trim().split(/\s+/).map(Number);
           generator = { pid: process.pid, cpuPercent: cpu, rssBytes: rss * 1024 };
         }
-        if (Number.isSafeInteger(serverPid) && serverPid > 0) {
+        if (['FA-V2', 'FA-V3'].includes(config.methodVersion)) {
+          serverCpu = await readServerCpu(serverPid);
+          metrics.cpuPercent = serverCpu.cpuPercent;
+          metrics.rssBytes = serverCpu.rssBytes;
+        } else if (Number.isSafeInteger(serverPid) && serverPid > 0) {
           const { stdout } = await execFileAsync('ps', ['-p', String(serverPid), '-o', '%cpu=', '-o', 'rss=']);
           const [cpu, rss] = stdout.trim().split(/\s+/).map(Number);
           if (Number.isFinite(cpu) && Number.isFinite(rss)) {
@@ -459,25 +603,71 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
             metrics.rssBytes = rss * 1024;
           }
         }
-        return {
-          metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions },
+        const environmentHeadroom = headroomBefore
+          ? summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom()) : undefined;
+        // Keep the original page lifetime through throughput and post-workload
+        // CPU/RSS snapshots. Only the browser-request cutoff precedes them.
+        const nativeEvidence = await native.read(captureTimestamp);
+        let reconciled = reconcileNativeTerminals(requests, nativeEvidence.log, nativeEvidence.provenance, native.ledger);
+        if (nativeEvidence.lifetime) {
+          const { reconcileNativeLifetime } = await import('./native-lifetime.mjs');
+          const result = reconcileNativeLifetime(reconciled, nativeEvidence.lifetime.observation, native.ledger);
+          reconciled = result.requests;
+          qualityFailures.push(...result.unavailable);
+        }
+        requests.splice(0, requests.length, ...reconciled);
+        finalRequestCapture.cdpPendingRequestIds = finalRequestCapture.pendingRequestIds;
+        finalRequestCapture.pendingRequestIds = requests.filter((entry) => entry.kind === 'request-pending')
+          .map((entry) => entry.requestId);
+        finalRequestCapture.nativeResolvedRequestIds = requests.filter((entry) => entry.nativeTerminal || entry.nativeLifetime)
+          .map((entry) => entry.requestId);
+        finalRequestCapture.captureTimestamp = captureTimestamp;
+        for (const entry of requests.filter((request) => request.kind === 'request-pending')) {
+          qualityFailures.push(`request pending at capture boundary: ${entry.url}`);
+        }
+        const errorRate = summarizeErrorRate(requests);
+        if (errorRate !== null) metrics.errorRate = errorRate;
+        observation = {
+          metrics, unavailable, qualityFailures, requests, timings: { cold, warm, interactions, initialBoundary, warmBoundary, finalRequestCapture },
           artifacts: {
+            nativeTerminalObserver: nativeEvidence.provenance,
+            ...(nativeEvidence.lifetime ? { nativeLifetimeObserver: nativeEvidence.lifetime.provenance } : {}),
             cachePolicy: item.mode,
             browserCacheDisabled: cacheSettings(item.mode).cacheDisabled,
             framework: item.framework,
             throughput,
             serverPid,
+            ...(serverCpu ? { serverCpu, serverCpuSha256: hashObject(serverCpu) } : {}),
             generator,
+            ...(environmentHeadroom ? { environmentHeadroom } : {}),
             rscResponseWireBytes: summarizeRscBytes(requests),
             rscMethod: 'separate text/x-component responses only; inline RSC data stays in document bytes',
             fullJourneyRequestCount: requests.length,
             shellArrivalMethod: 'first-contentful-paint',
-            clientWorkMethod: 'CDP Performance.TaskDuration for initial navigation, not hydration alone',
+            clientWorkMethod: 'CDP Performance.TaskDuration through react-initial-completion-v1, not hydration alone',
           },
         };
       } finally {
-        await context.close();
+        for (const [name, observe] of nativeSubscriptions) cdp.off(name, observe);
+        cdp.removeAllListeners();
+        networkChanges.removeAllListeners();
       }
+      } catch (error) {
+        measurementFailed = true;
+        measurementError = error;
+        throw error;
+      } finally {
+        try { await native.close(); } catch (cleanupError) {
+          if (!measurementFailed) cleanupFailure = { error: cleanupError };
+          if (measurementError instanceof Error && measurementError !== cleanupError) {
+            try { measurementError.cause ??= cleanupError; } catch {
+              console.error('native cleanup failed after measurement failure', cleanupError);
+            }
+          }
+        }
+      }
+      if (cleanupFailure) throw cleanupFailure.error;
+      return observation;
     },
     async measureDev(item, _config, kind) {
       const key = item.runId + item.framework;
@@ -486,7 +676,8 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       if (!owned || !server) throw new Error(`dev server missing: ${key}`);
       const commands = config.dev[item.framework];
       if (kind === 'cold-ready') {
-        return { durationMs: owned.readyMs, event: 'dev-ready' };
+        return { durationMs: owned.readyMs, event: 'dev-ready',
+          ...(owned.environmentHeadroom ? { environmentHeadroom: owned.environmentHeadroom } : {}) };
       }
       const edit = commands.edits[kind];
       if (!(edit?.file || (Array.isArray(edit?.command) && edit.command.length > 0)) || !edit.selector
@@ -502,6 +693,7 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
       const before = reload || edit.relaunch ? null : await page.locator(edit.selector).first().evaluate((element, expectedStyle) =>
         expectedStyle ? getComputedStyle(element).getPropertyValue(expectedStyle.property) : element.textContent,
       edit.expectedStyle);
+      const headroomBefore = config.isolatedRepresentative ? sampleEnvironmentHeadroom() : null;
       const started = performance.now();
       const restarted = edit.restartPattern ? new Promise((accept, reject) => {
         const timeout = setTimeout(() => {
@@ -604,6 +796,9 @@ export async function createBrowserDriver(config, { devMode = false } = {}) {
         method: edit.relaunch ? 'dev-server-relaunch' : edit.restartPattern
           ? 'restart-and-reload' : edit.explicitReload ? 'document-reload' : 'hot-update',
       };
+      if (headroomBefore) {
+        result.environmentHeadroom = summarizeEnvironmentHeadroom(headroomBefore, sampleEnvironmentHeadroom());
+      }
       return result;
     },
     async close() {
