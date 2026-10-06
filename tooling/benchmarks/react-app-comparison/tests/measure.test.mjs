@@ -152,6 +152,21 @@ test(`${methodVersion ? `${methodVersion} ${purpose}` : 'historical replay'} sou
       const secondReceipt = { developmentEnvironmentBinding: after.binding,
         developmentMethodBinding: await methodFor(after), developmentEnvironmentPairRelation: bound };
       assert.deepEqual(await verifyDevelopmentPairRelation(firstReceipt, secondReceipt, directory), bound);
+      assert.deepEqual(await verifyDevelopmentPairRelation({
+        ...firstReceipt, developmentEnvironmentBinding: before.binding,
+      }, secondReceipt, directory), bound);
+      for (const field of ['sha256', 'invocationId', 'identitySha256', 'configSha256']) {
+        await assert.rejects(verifyDevelopmentPairRelation(firstReceipt, {
+          ...secondReceipt, developmentEnvironmentPairRelation: {
+            ...bound, before: { ...bound.before, [field]: 'b'.repeat(64) },
+          },
+        }, directory), /receipt source relation/u);
+      }
+      await assert.rejects(verifyDevelopmentPairRelation(firstReceipt, {
+        ...secondReceipt, developmentEnvironmentPairRelation: {
+          ...bound, before: { ...bound.before, path: before.binding.path },
+        },
+      }, directory), /original before binding/u);
       await assert.rejects(verifyDevelopmentPairRelation(firstReceipt,
         { ...secondReceipt, developmentEnvironmentPairRelation: undefined }, directory), /receipt source relation/u);
       await assert.rejects(verifyDevelopmentPairRelation(firstReceipt, {
@@ -192,7 +207,7 @@ test(`${methodVersion ? `${methodVersion} ${purpose}` : 'historical replay'} sou
           const receipts = [];
           for (const [kind, measurementConfig, environment] of [
             ['production', productionConfig, productionEnvironment],
-            ['development', developmentConfig, { ...fixture, binding: phase === 'before' ? imported : fixture.binding }],
+            ['development', developmentConfig, fixture],
           ]) {
             const receipt = await collectMeasurements(measurementConfig, {
               browserVersion: NATIVE_LIFETIME_IDENTITY.browserVersion,

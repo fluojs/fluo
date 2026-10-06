@@ -224,11 +224,14 @@ export async function verifyDevelopmentPairRelation(first, second, outputRoot) {
   const relation = await measurement.authenticateReactEditPair(
     first.developmentEnvironmentBinding, second.developmentEnvironmentBinding, outputRoot);
   if (!relation) throw new Error('FA-V2 RE-A01 source relation missing');
-  await measurement.verifyReactEditPairRelation(relation, second.developmentEnvironmentBinding, outputRoot);
-  if (!isDeepStrictEqual(relation, second.developmentEnvironmentPairRelation)) {
+  const captured = second.developmentEnvironmentPairRelation;
+  if (!captured || !isDeepStrictEqual({
+    ...relation, before: { ...relation.before, path: captured.before?.path },
+  }, captured)) {
     throw new Error('FA-V2 RE-A01 receipt source relation mismatch');
   }
-  return relation;
+  await measurement.verifyReactEditPairRelation(captured, second.developmentEnvironmentBinding, outputRoot);
+  return captured;
 }
 
 export async function evaluateAcceptedPair(baseline, before, after) {
