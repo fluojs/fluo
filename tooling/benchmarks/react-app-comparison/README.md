@@ -390,7 +390,7 @@ background-form, navigation, store and provider changes. Product-level gains
 cannot be attributed solely to #3884 or a same-upstream single optimization.
 Narrow relation/runtime checks are not performance acceptance: the full fresh
 four-framework/four-profile pair, two warmups/five alternating samples, original
-budgets and versioned FA-V2 decisions, exact-head reviews and final GitHub CI remain required.
+budgets and versioned FA-V3 decisions, exact-head reviews and final GitHub CI remain required.
 
 Schedule exclusive timing windows for the pair, including all four frameworks,
 with the same actual toolchain/browser/observer/config/resources and final
@@ -401,7 +401,7 @@ and edit-to-visible windows. They do not replace server CPU/RSS metrics, subtrac
 observer overhead or introduce an acceptance budget. VM idle capacity is a
 measured observation, not proof of exclusivity; coordinate other timing work
 before starting. Preserve five samples/two warmups, all profiles, alternating
-order, budgets, versioned FA-V2 decisions and every historical fail/inconclusive.
+order, budgets, versioned FA-V3 decisions and every historical fail/inconclusive.
 Small runtime/replay checks establish the boundary, not full performance acceptance,
 cross-platform parity, macOS support or physical-device verification. Ordinary
 CI/default/macOS invocations remain unchanged and require no Docker/Python/Frida.
