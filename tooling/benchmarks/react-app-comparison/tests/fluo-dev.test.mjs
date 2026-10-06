@@ -5,6 +5,7 @@ import { readFile, writeFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { stripVTControlCharacters } from 'node:util';
 
 import { chromium } from '@playwright/test';
 import { installInitialReadiness, waitForInitialReadiness } from '../src/initial-readiness.mjs';
@@ -35,7 +36,7 @@ test('canonical dev serves live edits without a production rebuild and shuts dow
   let output = '';
   const observers = new Set();
   const observe = (chunk) => {
-    const text = chunk.toString().replace(/\u001b\[[0-9;]*m/gu, '');
+    const text = stripVTControlCharacters(chunk.toString());
     output += text;
     process.stdout.write(text);
     for (const observer of observers) observer(text);
