@@ -7,6 +7,7 @@ for (const phase of ['handler', 'commit'] as const) {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto('/catalog/session');
+    await expect(page.getByRole('form', { name: 'Session login', exact: true })).toHaveAttribute('data-enhanced', 'true');
     const origin = new URL(page.url()).origin;
     expect((await page.request.post('/catalog/session/login', {
       form: { identity: 'a', csrf: 'catalog-demo-token' }, headers: { Origin: origin }, maxRedirects: 0,
@@ -61,6 +62,7 @@ for (const phase of ['handler', 'commit'] as const) {
 
 test('authenticated product: credentialed permission refusal -> forbidden identity and fresh relogin', async ({ page }) => {
   await page.goto('/catalog/session');
+  await expect(page.getByRole('form', { name: 'Session login', exact: true })).toHaveAttribute('data-enhanced', 'true');
   const origin = new URL(page.url()).origin;
   expect((await page.request.post('/catalog/session/login', {
     form: { identity: 'a', csrf: 'catalog-demo-token' }, headers: { Origin: origin }, maxRedirects: 0,
