@@ -3,7 +3,7 @@ import { FromBody, FromPath, FromQuery, Post, RequestDto, UseGuards, UseIntercep
   type HttpErrorRepresentationOptions, type RequestContext } from '@fluojs/http';
 import type { MiddlewareContext, Next } from '@fluojs/http';
 import { PageMetadata, Path, Router, ReactModule } from '@fluojs/react';
-import { IsIn, IsString, MinLength } from '@fluojs/validation';
+import { IsIn, IsString, Matches, MinLength } from '@fluojs/validation';
 import type { CatalogPageProps } from './catalog-page';
 
 export type CatalogObservation = {
@@ -77,6 +77,12 @@ class CatalogSearch {
   @FromQuery('q')
   @IsString()
   q?: string;
+}
+class CatalogDetail {
+  @FromPath('sku')
+  @IsString()
+  @Matches(/\S/)
+  sku = '';
 }
 class QueueWrite {
   @FromBody('csrf')
@@ -194,11 +200,13 @@ export function createCatalogRouter<Result>(
     }
     @PageMetadata(({ request }) => ({ title: `Private product ${request.params.sku ?? ''}` }))
     @Path('/session/products/:sku')
+    @RequestDto(CatalogDetail)
     @UseGuards(ProductSessionGuard)
     @UseInterceptors(CatalogInterceptor)
-    async authenticatedDetail(_input: undefined, context: RequestContext) {
+    async authenticatedDetail(input: CatalogDetail, context: RequestContext) {
+      await observe(context, 'dto', { dto: input instanceof CatalogDetail });
       await observe(context, 'handler');
-      const sku = context.request.params.sku ?? '';
+      const sku = input.sku;
       const name = sessionProducts.get(sku);
       if (name === undefined) throw new NotFoundException('Product not found.');
       return render({ products: [{ sku, name }], selected: sku, authenticatedCrud: true,

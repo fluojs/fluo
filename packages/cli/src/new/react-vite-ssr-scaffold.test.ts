@@ -79,6 +79,9 @@ describe('React SSR + Vite scaffold', () => {
     const snapshot = readDirectorySnapshot(targetDirectory);
     const packageJson: unknown = JSON.parse(snapshot['package.json'] ?? '{}');
 
+    expect(snapshot['src/catalog.ts']).toBe(readFileSync(
+      new URL('./templates/react-vite-ssr/src/catalog.ts.ejs', import.meta.url), 'utf8',
+    ));
     expect(packageJson).toEqual(expect.objectContaining({
       dependencies: expect.objectContaining({
         // This deterministically proves the emitted range resolves the workspace React release version.
