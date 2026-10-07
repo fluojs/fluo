@@ -2,20 +2,20 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { once } from 'node:events';
-import { createServer } from 'node:net';
-import { finished } from 'node:stream/promises';
 import { cpSync, createWriteStream, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { finished } from 'node:stream/promises';
 import test, { after } from 'node:test';
-import { browserReport, consumeProduct, externalEvidence, productDomainPlan, reliabilityRun, requiredRows, validateMeasurementDiagnostics,
-  validateMeasurementInventory, validateReliabilityInventory } from './react-product-acceptance.mjs';
-import { buildReviewFact } from '../../.agents/skills/review-head/scripts/contracts.mjs';
+import { fileURLToPath } from 'node:url';
 import { localCheckBinding } from '../../.agents/skills/execute-lane/scripts/lane-v4.mjs';
+import { buildReviewFact } from '../../.agents/skills/review-head/scripts/contracts.mjs';
 import representative from '../benchmarks/react-app-comparison/config/representative.json' with { type: 'json' };
 import { hashObject } from '../benchmarks/react-app-comparison/src/fa-v2.mjs';
 import { environmentConfigIdentity, planMeasurements } from '../benchmarks/react-app-comparison/src/measure.mjs';
+import { browserReport, consumeProduct, externalEvidence, productDomainPlan, reliabilityRun, requiredRows, validateMeasurementDiagnostics,
+  validateMeasurementInventory, validateReliabilityInventory } from './react-product-acceptance.mjs';
 
 const head = '1'.repeat(40);
 const tree = '2'.repeat(40);
