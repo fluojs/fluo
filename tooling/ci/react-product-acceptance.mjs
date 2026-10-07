@@ -591,6 +591,24 @@ export function validateMeasurementInventory(value, rawFiles) {
           && Array.isArray(trace.sourceEnvironmentBindings) && trace.sourceEnvironmentBindings.length === 2
           && Array.isArray(trace.sourceEnvironmentPairRelations) && trace.sourceEnvironmentPairRelations.length === 2,
         'Composite source phase binding inventory mismatch');
+      } else {
+        const development = receipt.developmentWarmups?.includes(run) === true;
+        const method = development ? receipt.developmentMethodBinding : receipt.methodBinding;
+        const environment = development ? receipt.developmentEnvironmentBinding : receipt.environmentBinding;
+        const relation = development ? receipt.developmentEnvironmentPairRelation : receipt.environmentPairRelation;
+        requireValue(method && environment && trace.methodVersion === receipt.methodVersion
+          && trace.measurementPurpose === (development ? 'timing' : 'integrated')
+          && trace.measurementKind === (development ? 'development' : 'production')
+          && trace.isolatedRepresentative === true
+          && isDeepStrictEqual(trace.methodBinding, method)
+          && isDeepStrictEqual(trace.environmentBinding, environment)
+          && isDeepStrictEqual(trace.environmentPairRelation, relation)
+          && method.methodVersion === receipt.methodVersion
+          && method.measurementPurpose === trace.measurementPurpose && method.measurementKind === trace.measurementKind
+          && method.pairId === receipt.methodBinding.pairId && method.pairPhase === receipt.methodBinding.pairPhase
+          && method.productSha256 === receipt.methodBinding.productSha256
+          && (!development || method.executionId !== receipt.methodBinding.executionId),
+        'Direct source phase binding mismatch');
       }
       const sources = Array.isArray(trace.sourceTraces) ? trace.sourceTraces.map((path, index) => {
         requireValue(!traceLocators.has(path), 'Reused measurement trace locator');
