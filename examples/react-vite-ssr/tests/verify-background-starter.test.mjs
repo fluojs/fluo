@@ -35,7 +35,8 @@ async function exercise(t, options) {
       await received;
     }
     if (!options.before && !options.between) {
-      try { await run('first', ['-e', options.script], process.cwd(), {}, process.execPath, expected); }
+      try { await run('first', ['-e', options.script], process.cwd(), {}, process.execPath, expected,
+        options.kind === 'negative-types' ? 2 : 1); }
       catch (error) { failures.push(error.message); }
     }
     try { await run('later', ['-e', 'process.stdout.write("LATER\\\\n")'], process.cwd(), {}, process.execPath); }
@@ -109,12 +110,13 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
 }
 
 for (const [kind, diagnostic] of Object.entries(diagnostics)) {
+  const validationExit = kind === 'negative-types' ? 2 : 1;
   for (const [scenario, script, rejected] of [
-    ['intended diagnostic', `console.error(${JSON.stringify(diagnostic)}); process.exit(1)`, false],
-    ['unrelated failure', 'console.error("unrelated tool failure"); process.exit(1)', true],
-    ['missing diagnostic', 'process.exit(1)', true],
-    ['wrong exit code', `console.error(${JSON.stringify(diagnostic)}); process.exit(2)`, true],
-    ['wrong identity', `console.error(${JSON.stringify(diagnostic.replaceAll('third', 'other').replaceAll('absent-page', 'other-page').replaceAll('(12,17)', '(11,17)'))}); process.exit(1)`, true],
+    ['intended diagnostic', `console.error(${JSON.stringify(diagnostic)}); process.exit(${validationExit})`, false],
+    ['unrelated failure', `console.error("unrelated tool failure"); process.exit(${validationExit})`, true],
+    ['missing diagnostic', `process.exit(${validationExit})`, true],
+    ['wrong exit code', `console.error(${JSON.stringify(diagnostic)}); process.exit(${validationExit === 1 ? 2 : 1})`, true],
+    ['wrong identity', `console.error(${JSON.stringify(diagnostic.replaceAll('third', 'other').replaceAll('absent-page', 'other-page').replaceAll('(12,17)', '(11,17)'))}); process.exit(${validationExit})`, true],
     ['unexpected success', `console.error(${JSON.stringify(diagnostic)}); process.exit(0)`, true],
   ]) {
     test(`run: ${kind} ${scenario} -> ${rejected ? 'rejects' : 'accepts normal validation failure'}`, async (t) => {

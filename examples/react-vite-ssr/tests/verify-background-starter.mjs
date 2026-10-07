@@ -34,7 +34,7 @@ const terminate = (signal) => {
 const onTerm = () => terminate('SIGTERM');
 const onInt = () => terminate('SIGINT');
 process.on('SIGTERM', onTerm); process.on('SIGINT', onInt);
-async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedRejection = false) {
+async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedRejection = false, expectedExit = 1) {
   if (cancelled) throw new Error(`${label} cancelled by ${cancelled}; no command started.`);
   console.log(`COMMAND ${label}: ${JSON.stringify({ command: [executable, ...args], cwd, env })}`);
   const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -64,7 +64,7 @@ async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedReje
       browserReport: env.PLAYWRIGHT_JSON_OUTPUT_NAME, browserReportSha256: sha(env.PLAYWRIGHT_JSON_OUTPUT_NAME),
     } : {}) });
   if (cancelled || signal !== null || exit === null
-    || (expectedRejection ? exit !== 1 || !expectedRejection.test(diagnostics) : exit !== 0)) {
+    || (expectedRejection ? exit !== expectedExit || !expectedRejection.test(diagnostics) : exit !== 0)) {
     throw new Error(`${label} unexpected exit ${exit}, signal ${signal}, cancellation ${cancelled}; complete raw log: ${log}`);
   }
   return diagnostics;
@@ -249,7 +249,7 @@ void props; void saved; void serverOnlyProps;
 `);
     try {
       const diagnostics = await run('authoring-negative-types', ['exec', 'tsc', '-p', 'tsconfig.json', '--noEmit'],
-        directory, {}, 'pnpm', authoringRejections['negative-types']);
+        directory, {}, 'pnpm', authoringRejections['negative-types'], 2);
       const errors = diagnostics.split('\n').filter((line) => /error TS\d+/u.test(line));
       const positions = errors.map((line) => {
         const match = /acceptance-negative\.ts\((\d+),(\d+)\): error TS(\d+):/u.exec(line);
