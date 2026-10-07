@@ -26,10 +26,10 @@ const reliabilityEnv = reliability ? { FLUO_REACT_RELIABILITY: '1', FLUO_RELIABI
   FLUO_RELIABILITY_REPO: repo } : {};
 export function createCommandRunner(output, commands, attempt = randomUUID()) {
 let cancelled = null;
-let activeChild;
+const activeChildren = new Set();
 const terminate = (signal) => {
   cancelled = signal;
-  activeChild?.kill('SIGTERM');
+  for (const child of activeChildren) child.kill('SIGTERM');
 };
 const onTerm = () => terminate('SIGTERM');
 const onInt = () => terminate('SIGINT');
@@ -38,7 +38,7 @@ async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedReje
   if (cancelled) throw new Error(`${label} cancelled by ${cancelled}; no command started.`);
   console.log(`COMMAND ${label}: ${JSON.stringify({ command: [executable, ...args], cwd, env })}`);
   const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
-  activeChild = child;
+  activeChildren.add(child);
   const started = performance.now();
   const chunks = [];
   const log = join(output, `${label}-${attempt}.log`);
@@ -52,7 +52,7 @@ async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedReje
       child.once('error', fail); child.once('close', (exit, signal) => done({ exit, signal }));
     });
   } finally {
-    activeChild = undefined;
+    activeChildren.delete(child);
     raw.end(); await finished(raw);
   }
   const { exit, signal } = outcome;

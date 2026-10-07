@@ -135,3 +135,104 @@ test('run: normal positive exit zero -> accepts and runs next command', async (t
   assert.equal(result.commands.length, 2);
   assert.equal(result.commands[0].exit, 0);
 });
+
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  for (const firstExit of [null, 'success', 'validation', 'failure', 'signal']) {
+    test(`run: parallel children, first ${firstExit ?? 'still live'}, parent ${signal} -> terminates every owned child and blocks later commands`, async (t) => {
+      mkdirSync(root, { recursive: true });
+      const output = mkdtempSync(join(root, 'parallel-process-'));
+      const leaf = (id) => `
+        const emit = (state) => console.log('CHILD_EVENT ' + JSON.stringify({ id: ${JSON.stringify(id)}, pid: process.pid, state }));
+        process.on('SIGTERM', () => { emit('stopped'); process.exit(0); });
+        process.on('SIGUSR2', () => {
+          emit('released');
+          if (${JSON.stringify(firstExit)} === 'signal') {
+            process.removeAllListeners('SIGTERM');
+            process.kill(process.pid, 'SIGTERM');
+          } else {
+            if (${JSON.stringify(firstExit)} === 'validation') console.error(${JSON.stringify(diagnostics['duplicate-route'])});
+            process.exit(${firstExit === 'validation' || firstExit === 'failure' ? 1 : 0});
+          }
+        });
+        require('node:net').createServer().listen(0, () => emit('ready'));
+      `;
+      const driver = `
+        import { createCommandRunner, authoringRejections } from ${JSON.stringify(harness)};
+        const commands = [];
+        const { run, dispose } = createCommandRunner(${JSON.stringify(output)}, commands);
+        process.channel.ref();
+        const first = run('first', ['-e', ${JSON.stringify(leaf('first'))}], process.cwd(), {}, process.execPath,
+          ${firstExit === 'validation' ? "authoringRejections['duplicate-route']" : 'false'});
+        const second = run('second', ['-e', ${JSON.stringify(leaf('second'))}], process.cwd(), {}, process.execPath);
+        const completed = (result) => { process.send('first-complete'); return result; };
+        const results = await Promise.allSettled([first.then(completed, (error) => { completed(); throw error; }), second]);
+        let laterFailure;
+        try { await run('later', ['-e', 'console.log("LATER")'], process.cwd(), {}, process.execPath); }
+        catch (error) { laterFailure = error.message; }
+        dispose();
+        process.send({ commands, results: results.map(({ status }) => status), laterFailure });
+        process.disconnect();
+      `;
+      const child = spawn(process.execPath, ['--input-type=module', '-e', driver], {
+        stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      });
+      const controller = new AbortController();
+      const pids = new Map();
+      const events = [];
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      const closed = once(child, 'close', { signal: controller.signal });
+      // Subscribe to both terminal outcomes before releasing either process.
+      const observed = new Promise((resolve, reject) => {
+        child.on('message', (message) => {
+          if (message === 'first-complete') {
+            if (firstExit !== null) child.kill(signal);
+          } else resolve(message);
+        });
+        controller.signal.addEventListener('abort', () => {
+          reject(new assert.AssertionError({ message: 'Every owned child must close after parent cancellation' }));
+        }, { once: true });
+      });
+      const outcome = Promise.all([observed, closed]);
+      t.after(() => {
+        clearTimeout(timeout);
+        for (const pid of pids.values()) {
+          try { process.kill(pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+        }
+        child.kill('SIGKILL');
+      });
+      let pending = '';
+      let stderr = '';
+      child.stderr.on('data', (chunk) => { stderr += chunk; });
+      child.stdout.on('data', (chunk) => {
+        pending += chunk;
+        const lines = pending.split('\n');
+        pending = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('CHILD_EVENT ')) continue;
+          const event = JSON.parse(line.slice('CHILD_EVENT '.length));
+          events.push(event);
+          if (event.state !== 'ready') continue;
+          pids.set(event.id, event.pid);
+          if (pids.size === 2) {
+            if (firstExit === null) child.kill(signal);
+            else process.kill(pids.get('first'), 'SIGUSR2');
+          }
+        }
+      });
+
+      const [result, [exit, exitSignal]] = await outcome;
+
+      assert.equal(exit, 0, stderr);
+      assert.equal(exitSignal, null);
+      assert.equal(result.commands.length, 2);
+      assert.match(result.laterFailure, /no command started/u);
+      assert.equal(result.results[1], 'rejected');
+      assert.equal(result.results[0], firstExit === 'success' || firstExit === 'validation' ? 'fulfilled' : 'rejected');
+      assert.deepEqual(events.filter(({ state }) => state === 'stopped').map(({ id }) => id).sort(),
+        firstExit === null ? ['first', 'second'] : ['second']);
+      for (const pid of pids.values()) {
+        assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+      }
+    });
+  }
+}
