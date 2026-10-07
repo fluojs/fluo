@@ -598,25 +598,38 @@ function measurementFixture(direct = false, development = false) {
     rawFiles.set(path, { bytes, sha256: digest(bytes) });
     return { path, sha256: digest(bytes) };
   };
-  const methodBinding = store('/original/method.json', { methodVersion: 'FA-V3' });
+  const methodBinding = { ...store('/original/method.json', { methodVersion: 'FA-V3' }),
+    methodVersion: 'FA-V3', measurementPurpose: 'integrated', measurementKind: 'production',
+    pairId: 'fixture-pair', pairPhase: 'before', productSha256: 'a'.repeat(64), executionId: 'production' };
+  const developmentMethodBinding = { ...methodBinding, ...store('/original/dev-method.json', { methodVersion: 'FA-V3' }),
+    measurementPurpose: 'timing', measurementKind: 'development', executionId: 'development' };
   const environmentBinding = store('/original/environment.json', { isolated: true });
+  const developmentEnvironmentBinding = store('/original/dev-environment.json', { isolated: true, development: true });
   const receipts = ['desktop-native', 'desktop-matched-cache', 'tablet-native', 'tablet-matched-cache'].map((profile) => {
     const mode = profile.endsWith('matched-cache') ? 'matched-cache' : 'native';
     const sample = (framework, index, warmup, phase = 'production') => {
       const runId = `${profile}-${framework}-${warmup ? 'warmup' : 'measured'}-${index}`;
       const identity = { profile, mode, framework, runId };
+      const productionMetadata = { methodVersion: 'FA-V3', measurementPurpose: 'integrated',
+        measurementKind: 'production', methodBinding, environmentBinding, isolatedRepresentative: true };
+      const developmentMetadata = { ...productionMetadata, measurementPurpose: 'timing',
+        measurementKind: 'development', methodBinding: developmentMethodBinding,
+        environmentBinding: developmentEnvironmentBinding };
       const sourceTraces = direct ? [] : [
-        store(`/original/${runId}-${phase}-production.json`, { ...identity,
+        store(`/original/${runId}-${phase}-production.json`, { ...identity, ...productionMetadata,
           correctness: { pass: true, steps: [{ name: 'crud', pass: true }] }, qualityFailures: [],
           metrics: { shellArrivalMs: 800, errorRate: 0 } }).path,
-        store(`/original/${runId}-${phase}-development.json`, { ...identity,
+        store(`/original/${runId}-${phase}-development.json`, { ...identity, ...developmentMetadata,
           correctness: { pass: true, steps: [{ name: 'dev-ready', pass: true }] }, qualityFailures: [],
           metrics: { devReadyMs: 900 } }).path,
       ];
       const metrics = { shellArrivalMs: 800, errorRate: 0, devReadyMs: 900 };
       const trace = store(`/original/${runId}-${phase}-combined.json`, { ...identity,
+        ...(phase === 'development' ? developmentMetadata : productionMetadata),
         ...(direct ? { correctness: { pass: true, steps: [{ name: 'crud', pass: true }] } }
-          : { sourceTraces, correctness: { production: 'pass', development: 'pass' } }),
+          : { ...productionMetadata, sourceTraces, sourceMethodBindings: [methodBinding, developmentMethodBinding],
+            sourceEnvironmentBindings: [environmentBinding, developmentEnvironmentBinding],
+            sourceEnvironmentPairRelations: [null, null], correctness: { production: 'pass', development: 'pass' } }),
         metrics }).path;
       return { ...identity, correctness: 'pass', qualityFailures: [], metrics, trace };
     };
@@ -625,14 +638,89 @@ function measurementFixture(direct = false, development = false) {
       isolatedRepresentative: true, provenance: { commit: head }, methodBinding, environmentBinding,
       runs: frameworks.flatMap((framework) => Array.from({ length: 5 }, (_, index) => sample(framework, index, false))),
       warmups: frameworks.flatMap((framework) => Array.from({ length: 2 }, (_, index) => sample(framework, index, true))),
-      ...(development ? {
-        developmentMethodBinding: methodBinding, developmentEnvironmentBinding: environmentBinding,
+      ...(!direct || development ? {
+        developmentMethodBinding, developmentEnvironmentBinding,
         developmentWarmups: frameworks.flatMap((framework) => Array.from({ length: 2 },
           (_, index) => sample(framework, index, true, 'development'))),
       } : {}),
     };
   });
   return { value: { provenance: { commit: head }, receipts }, rawFiles };
+}
+
+for (const defect of ['missing-production', 'missing-development', 'empty', 'extra', 'non-array']) {
+  test(`measurement phase inventory: ${defect} composite -> rejects even with matching remaining metrics`, () => {
+    const { value, rawFiles } = measurementFixture(false, true);
+    const run = value.receipts[0].runs[5];
+    const trace = JSON.parse(rawFiles.get(run.trace).bytes);
+    if (defect.startsWith('missing-')) {
+      trace.sourceTraces.splice(defect === 'missing-production' ? 0 : 1, 1);
+      run.metrics = JSON.parse(rawFiles.get(trace.sourceTraces[0]).bytes).metrics;
+    }
+    if (defect === 'empty') trace.sourceTraces = [];
+    if (defect === 'extra') trace.sourceTraces.push('/original/extra.json');
+    if (defect === 'non-array') trace.sourceTraces = {};
+    const bytes = Buffer.from(JSON.stringify(trace));
+    rawFiles.set(run.trace, { bytes, sha256: digest(bytes) });
+
+    assert.throws(() => validateMeasurementInventory(value, rawFiles), /Composite source phase inventory/u);
+  });
+}
+
+for (const target of ['composite', 'production', 'development']) {
+  for (const field of ['methodVersion', 'measurementPurpose', 'measurementKind', 'methodBinding',
+    'environmentBinding', 'isolatedRepresentative', 'environmentPairRelation']) {
+    for (const defect of ['missing', 'wrong']) {
+      test(`measurement phase binding: ${target} ${defect} ${field} -> rejects authoritative phase mismatch`, () => {
+        const { value, rawFiles } = measurementFixture(false, true);
+        const receipt = value.receipts[0];
+        const run = receipt.runs[0];
+        const composite = JSON.parse(rawFiles.get(run.trace).bytes);
+        const path = target === 'composite' ? run.trace : composite.sourceTraces[target === 'production' ? 0 : 1];
+        const trace = JSON.parse(rawFiles.get(path).bytes);
+        if (field === 'environmentPairRelation') {
+          receipt.environmentPairRelation = { path: '/original/pair.json', sha256: 'b'.repeat(64) };
+          receipt.developmentEnvironmentPairRelation = receipt.environmentPairRelation;
+          composite.environmentPairRelation = receipt.environmentPairRelation;
+          composite.sourceEnvironmentPairRelations = [receipt.environmentPairRelation, receipt.environmentPairRelation];
+          for (const sourcePath of composite.sourceTraces) {
+            const source = JSON.parse(rawFiles.get(sourcePath).bytes);
+            source.environmentPairRelation = receipt.environmentPairRelation;
+            const bytes = Buffer.from(JSON.stringify(source));
+            rawFiles.set(sourcePath, { bytes, sha256: digest(bytes) });
+          }
+          trace.environmentPairRelation = receipt.environmentPairRelation;
+          const bytes = Buffer.from(JSON.stringify(composite));
+          rawFiles.set(run.trace, { bytes, sha256: digest(bytes) });
+        }
+        if (defect === 'missing') delete trace[field];
+        else trace[field] = field.endsWith('Binding') ? { ...trace[field], sha256: 'c'.repeat(64) } : 'wrong-phase';
+        const bytes = Buffer.from(JSON.stringify(trace));
+        rawFiles.set(path, { bytes, sha256: digest(bytes) });
+
+        assert.throws(() => validateMeasurementInventory(value, rawFiles), /Composite source phase binding/u);
+      });
+    }
+  }
+}
+
+for (const field of ['sourceMethodBindings', 'sourceEnvironmentBindings', 'sourceEnvironmentPairRelations']) {
+  for (const defect of ['missing', 'incomplete', 'extra', 'swapped']) {
+    test(`measurement phase binding: ${defect} ${field} -> rejects incomplete phase authentication`, () => {
+      const { value, rawFiles } = measurementFixture(false, true);
+      const run = value.receipts[0].runs[0];
+      const trace = JSON.parse(rawFiles.get(run.trace).bytes);
+      if (field === 'sourceEnvironmentPairRelations') trace[field] = [{ phase: 'production' }, { phase: 'development' }];
+      if (defect === 'missing') delete trace[field];
+      if (defect === 'incomplete') trace[field].pop();
+      if (defect === 'extra') trace[field].push(trace[field][0]);
+      if (defect === 'swapped') trace[field].reverse();
+      const bytes = Buffer.from(JSON.stringify(trace));
+      rawFiles.set(run.trace, { bytes, sha256: digest(bytes) });
+
+      assert.throws(() => validateMeasurementInventory(value, rawFiles), /Composite source phase binding/u);
+    });
+  }
 }
 
 test('measurement inventory: complete original four-profile composite sources -> remains usable with nonblocking numeric verdicts', () => {

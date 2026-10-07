@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { finished } from 'node:stream/promises';
+import { isDeepStrictEqual } from 'node:util';
 import { validateReviewFact } from '../../.agents/skills/review-head/scripts/contracts.mjs';
 import { isValidLocalCiWaiver, localCheckBinding } from '../../.agents/skills/execute-lane/scripts/lane-v4.mjs';
 
@@ -578,7 +579,20 @@ export function validateMeasurementInventory(value, rawFiles) {
         && trace.correctness !== 'inconclusive', 'Raw quality failure or inconclusive correctness');
       if (Array.isArray(trace.sourceTraces)) requireValue(trace.correctness?.production === 'pass'
         && trace.correctness?.development === 'pass', 'Raw composite phase correctness failure or inconclusive');
-      const sources = Array.isArray(trace.sourceTraces) ? trace.sourceTraces.map((path) => {
+      if (trace.sourceTraces !== undefined) {
+        requireValue(Array.isArray(trace.sourceTraces) && trace.sourceTraces.length === 2,
+          'Composite source phase inventory must contain production and development');
+        requireValue(trace.methodVersion === receipt.methodVersion && trace.measurementPurpose === 'integrated'
+          && trace.measurementKind === 'production' && trace.isolatedRepresentative === true
+          && isDeepStrictEqual(trace.methodBinding, receipt.methodBinding)
+          && isDeepStrictEqual(trace.environmentBinding, receipt.environmentBinding)
+          && isDeepStrictEqual(trace.environmentPairRelation, receipt.environmentPairRelation)
+          && Array.isArray(trace.sourceMethodBindings) && trace.sourceMethodBindings.length === 2
+          && Array.isArray(trace.sourceEnvironmentBindings) && trace.sourceEnvironmentBindings.length === 2
+          && Array.isArray(trace.sourceEnvironmentPairRelations) && trace.sourceEnvironmentPairRelations.length === 2,
+        'Composite source phase binding inventory mismatch');
+      }
+      const sources = Array.isArray(trace.sourceTraces) ? trace.sourceTraces.map((path, index) => {
         requireValue(!traceLocators.has(path), 'Reused measurement trace locator');
         traceLocators.add(path);
         const file = rawFiles.get(path);
@@ -587,6 +601,25 @@ export function validateMeasurementInventory(value, rawFiles) {
         requireValue(source.profile === run.profile && source.mode === run.mode
           && source.framework === run.framework && source.runId === run.runId,
         'Original source trace identity mismatch');
+        const method = index === 0 ? receipt.methodBinding : receipt.developmentMethodBinding;
+        const environment = index === 0 ? receipt.environmentBinding : receipt.developmentEnvironmentBinding;
+        const relation = index === 0 ? receipt.environmentPairRelation : receipt.developmentEnvironmentPairRelation;
+        requireValue(method && environment && source.methodVersion === receipt.methodVersion
+          && source.measurementPurpose === (index === 0 ? 'integrated' : 'timing')
+          && source.measurementKind === (index === 0 ? 'production' : 'development')
+          && source.isolatedRepresentative === true
+          && isDeepStrictEqual(source.methodBinding, method)
+          && isDeepStrictEqual(trace.sourceMethodBindings[index], method)
+          && isDeepStrictEqual(source.environmentBinding, environment)
+          && isDeepStrictEqual(trace.sourceEnvironmentBindings[index], environment)
+          && isDeepStrictEqual(source.environmentPairRelation, relation)
+          && isDeepStrictEqual(trace.sourceEnvironmentPairRelations[index] ?? undefined, relation)
+          && method.methodVersion === receipt.methodVersion
+          && method.measurementPurpose === source.measurementPurpose && method.measurementKind === source.measurementKind
+          && method.pairId === receipt.methodBinding.pairId && method.pairPhase === receipt.methodBinding.pairPhase
+          && method.productSha256 === receipt.methodBinding.productSha256
+          && (index === 0 || method.executionId !== receipt.methodBinding.executionId),
+        'Composite source phase binding mismatch');
         return source;
       }) : [trace];
       for (const source of sources) requireValue((source.qualityFailures ?? []).length === 0
