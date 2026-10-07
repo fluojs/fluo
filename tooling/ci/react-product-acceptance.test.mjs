@@ -1086,12 +1086,14 @@ async function captureCancellation(t, signal, phase) {
     };
     if (phase === 'between-commands') fs.createWriteStream = (...args) => {
       const stream = originalStream(...args);
-      const emit = stream.emit;
-      stream.emit = function(event, ...values) {
-        if (event === 'finish' && !injected) {
-          void cancel().then(() => emit.call(this, event, ...values)); return true;
+      const end = stream.end;
+      stream.end = function(...values) {
+        if (!injected) {
+          injected = true;
+          void cancel().then(() => end.apply(this, values));
+          return this;
         }
-        return emit.call(this, event, ...values);
+        return end.apply(this, values);
       };
       return stream;
     };
