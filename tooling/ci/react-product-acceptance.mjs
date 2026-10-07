@@ -26,6 +26,255 @@ const faultBrowser = ['tests/progressive-forms.spec.ts', 'tests/background-inter
   'tests/session-transition.spec.ts', 'tests/navigation-guard.spec.ts', 'tests/revalidation.spec.ts',
   'tests/product-faults.spec.ts'];
 
+// These titles are Playwright report identifiers, not display-copy assertions.
+const commonCaseTitles = {
+  "background-interactions.spec.ts": [
+    'real held searches complete out of order while an independent widget and shell remain usable',
+    'two held row POSTs keep independent outcomes and confirm writes without history navigation',
+    'actual page unmount settles its held row without reviving an old route or replaying POST',
+    'native GET search and POST 303 GET queue remain usable without JavaScript',
+    'a held shell widget survives approved tagged push replace back forward and explicit refresh',
+    'two successful row writes acknowledge in reverse order and coalesce one latest page approval',
+    'a live shell widget survives page approval while the departing page row does not',
+    'logout closes the real shell ports and revokes held background results before late acknowledgements'
+  ],
+  "navigation-guard.spec.ts": [
+    'stay and proceed preserve the actual editing DOM, head and operational shell before HTTP permission',
+    'real backward and forward cancellation restore managed entry order without destination reads',
+    'two actual POST acknowledgements settle out of order without overriding dirty navigation intent',
+    'an open dirty decision cannot postpone explicit logout or actual resource cleanup'
+  ],
+  "product-acceptance.spec.ts": [
+    'authenticated product: enhanced invalid/correct/save/logout/relogin -> confirmed persistence and revocation',
+    'authenticated product: js-disabled -> native POST303GET validation CRUD and relogin',
+    'authenticated product: bootstrap-blocked -> native POST303GET validation CRUD and relogin'
+  ],
+  "product-faults.spec.ts": [
+    'authenticated product: logout during handler save -> old continuation revoked without rollback claim',
+    'authenticated product: logout during commit save -> old continuation revoked without rollback claim',
+    'authenticated product: credentialed permission refusal -> forbidden identity and fresh relogin'
+  ]
+};
+const exampleCaseTitles = {
+  ...commonCaseTitles,
+  "deployment-transition.spec.ts": [
+    'serves direct HTML, negotiated v2, guarded writes and missing assets through real HTTP',
+    'retains A assets and shell on B mismatch, then explicitly updates to B',
+    'classifies a missing mapped A chunk as import failure without losing the shell'
+  ],
+  "navigation-failure.spec.ts": [
+    'preserves a functional resource and approved page across network failure and fresh retry',
+    'preserves a functional resource and approved page across server-error failure and fresh retry',
+    'explicit document exit remains available after a preserved failure',
+    'failed back and forward restore the approved history entry and remain traversable',
+    'invalidation during back approval restores the approved URL without remounting the shell',
+    'default navigation invalidation loads the activated document for an untagged back entry',
+    'a rejected replace does not commit URL or params before retry',
+    'repeated failures remain actionable without remounting the shell resource',
+    'a recoverable chunk import failure keeps the page and offers document recovery'
+  ],
+  "production-hydration.spec.ts": [
+    'hydrates streamed production HTML with generated Vite assets',
+    'traverses admin QR and songs with a preserved shell, reset page state and focus',
+    'keeps the approved page and head while a later HTTP destination is pending',
+    'removes an approved page stylesheet without removing the global stylesheet',
+    'ignores a superseded approval without replacing the newer route or head',
+    'resets an approved render failure without reloading the document or the shell resource',
+    'shows a separate usable view if the application error view throws',
+    'applies pathname, query, fragment and traversal focus and scroll defaults',
+    'preserves page-local state when a fragment focuses a target inside the approved slot',
+    'keeps the shell resource operational after a malformed fragment',
+    'keeps the official page slot and navigation controls reachable at mobile width',
+    'keeps native new tabs and full-document fallback on server rejection',
+    'submits the native mutation form without client JavaScript'
+  ],
+  "ssr-delivery.spec.ts": [
+    'built Fastify product route sends a socket shell before the gated descendant'
+  ],
+  "progressive-forms.spec.ts": [
+    'real HTTP JSON compatibility records native submission classification',
+    'native production CRUD with disabled',
+    'native production CRUD with bootstrap-blocked',
+    'enhanced production save keeps unrelated input and recovers a failed read without POST replay',
+    'cookie authorization and CSRF reject enhanced mutations without save acknowledgement',
+    'actual listener barrier skips click Enter and requestSubmit while another form validates',
+    'real transport failure before-drop never repeats a POST',
+    'real transport failure before503 never repeats a POST',
+    'real transport failure drop-after never repeats a POST',
+    'real transport failure after500 never repeats a POST',
+    'real transport failure bad-media never repeats a POST',
+    'real transport failure bad-schema never repeats a POST',
+    'real transport failure bad-version never repeats a POST',
+    'real transport failure unsafe never repeats a POST',
+    'real transport failure redirect303 never repeats a POST',
+    'real transport failure redirect307 never repeats a POST',
+    'late response body and cancelled commit cannot overwrite an explicit later save',
+    'confirmed save survives incompatible follow-up and GET-only recovery',
+    'confirmed save survives import follow-up and GET-only recovery',
+    'listener records native and negotiated DTO pipeline identity and actual successful controls',
+    'native and enhanced listeners enforce missing expired and tampered credentials identically',
+    'unsupported get activation remains exactly native',
+    'unsupported multipart activation remains exactly native',
+    'unsupported image activation remains exactly native',
+    'unsupported target activation remains exactly native',
+    'unsupported external activation remains exactly native',
+    'constraint-invalid and consumer-prevented submissions never reach the listener',
+    'public prefetch and an older streamed read cannot replace fresh saved data or its resource',
+    'a late committed acknowledgement cannot outlive cancel intent',
+    'a late committed acknowledgement cannot outlive navigate intent',
+    'a late committed acknowledgement cannot outlive scope intent',
+    'explicit domain form rejection keeps HTTP status and editable input without persistence'
+  ],
+  "revalidation.spec.ts": [
+    'revalidates external changes without replacing page history or the live shell',
+    'retains the last value on a failed refresh and retries through fresh HTTP',
+    'a second refresh supersedes a held older HTTP approval without losing the shell',
+    'refresh during an unapproved back restores the approved page before failure and retry'
+  ],
+  "session-transition.spec.ts": [
+    'legacy plain children leave through a real unauthorized document after revocation',
+    'configured POST auth policy refresh performs one fresh GET and never replays POST',
+    'configured GET auth refresh dispatches a fresh read then settles signed out',
+    'revokes initial and soft protected pages, closes owned ports, and cancels held HTTP before release',
+    '403 stays forbidden and a confirmed permissions save is separate from its rejected GET',
+    'anonymous 401 keeps approval and external HttpOnly logout is applied only on a fresh credentialed 401'
+  ],
+  "long-session-cache.spec.ts": [
+    'repeated public cache cycles preserve 32 entries single use and the 64 KiB entry ceiling',
+    'four live prefetches admit no fifth queue and excess activation uses fresh HTTP'
+  ],
+  "long-session-ownership.spec.ts": [
+    'a correctly framed incompatible build preserves the operational document and recovers by fresh approval',
+    'obsolete import completion cannot replace fresh HTTP approval or initiate fallback',
+    'obsolete policy completion cannot replace fresh HTTP approval or initiate fallback',
+    'a superseded partial HTTP body and invalid payload cannot restore their obsolete authority',
+    'saved plus failed follow-up is recovered by GET only without a second POST',
+    'invalid current payload uses the native document boundary and explicit reload creates a new resource'
+  ],
+  "long-session.spec.ts": [
+    'settles at least 1000 seeded jukebox actions in one operational document'
+  ]
+};
+const packedCaseTitles = {
+  ...commonCaseTitles,
+  "product-authoring.spec.ts": [
+    'authored third page: generated props and enhanced saved data -> real HTTP approval without manual wiring',
+    'authored third page: disabled JavaScript -> typed native POST303GET roundtrip',
+    'authored third page: interrupted HTTP approval -> no partial destination commit'
+  ],
+  "production-hydration.spec.ts": [
+    'opens modified links as native documents without replacing the current page',
+    'hydrates two DTO pages and preserves the shell during HTTP-approved navigation',
+    'retains the approved page and metadata while an HTTP destination is pending',
+    'resets a throwing approved page locally without a second request',
+    'refreshes the same page without remounting the generated shell or adding history',
+    'keeps native POST, 303 and GET usable without client JavaScript',
+    'preserves a generated page on refresh error and retries a fresh approval',
+    'preserves the generated shell resource across network and fresh retry',
+    'preserves the generated shell resource across server-error and fresh retry',
+    'a failed replace commits no unapproved URL or params and explicit document exit remains available',
+    'failed back and forward recover the approved entry and remain traversable',
+    'repeated transient failures keep one resource and a usable next retry',
+    'does not preserve an HTTP 401 refusal in the generated starter',
+    'does not preserve an HTTP 403 refusal in the generated starter',
+    'does not preserve an HTTP 302 refusal in the generated starter',
+    'does not preserve an HTTP 400 refusal in the generated starter',
+    'updates a React component and CSS over the app WebSocket without losing eligible state',
+    'retains the document and worker through server restart and failed-bootstrap correction',
+    'keeps document navigation when JavaScript is disabled',
+    'keeps modified links as native new-tab documents',
+    'keeps native anchors usable before hydration',
+    'falls back to a native document for an unsupported destination',
+    'reloads a shared graph only after readiness and aligns SSR with the client',
+    'rebuilds the installed dev process on watched env and Vite configuration saves',
+    'retains the approved shell after a mapped page import fails until explicit document exit'
+  ],
+  "session-transition.spec.ts": [
+    'packaged session forms revoke initial protected content and recover a distinct session',
+    'native session login and logout retain POST 303 GET without JavaScript'
+  ],
+  "deployment-transition.spec.ts": [
+    'keeps an A shell on B navigation and updates only after explicit document choice',
+    'reports a real missing mapped asset and preserves the last approved page'
+  ]
+};
+const developmentOnlyCases = [
+  'updates a React component and CSS over the app WebSocket without losing eligible state',
+  'retains the document and worker through server restart and failed-bootstrap correction',
+  'reloads a shared graph only after readiness and aligns SSR with the client',
+  'rebuilds the installed dev process on watched env and Vite configuration saves'
+];
+const productionOnlyCases = [
+  'retains the approved shell after a mapped page import fails until explicit document exit'
+];
+const browserFiles = {
+  "ordinary-browser": [
+    'deployment-transition.spec.ts',
+    'navigation-failure.spec.ts',
+    'production-hydration.spec.ts',
+    'ssr-delivery.spec.ts'
+  ],
+  "product-browser": [
+    'product-acceptance.spec.ts'
+  ],
+  "fault-browser": [
+    'background-interactions.spec.ts',
+    'navigation-guard.spec.ts',
+    'product-faults.spec.ts',
+    'progressive-forms.spec.ts',
+    'revalidation.spec.ts',
+    'session-transition.spec.ts'
+  ],
+  "reliability-browser": [
+    'background-interactions.spec.ts',
+    'long-session-cache.spec.ts',
+    'long-session-ownership.spec.ts',
+    'long-session.spec.ts',
+    'product-acceptance.spec.ts',
+    'product-faults.spec.ts',
+    'session-transition.spec.ts'
+  ],
+  "packed-dev": [
+    'background-interactions.spec.ts',
+    'navigation-guard.spec.ts',
+    'product-acceptance.spec.ts',
+    'product-authoring.spec.ts',
+    'product-faults.spec.ts',
+    'production-hydration.spec.ts',
+    'session-transition.spec.ts'
+  ],
+  "packed-production": [
+    'background-interactions.spec.ts',
+    'navigation-guard.spec.ts',
+    'product-acceptance.spec.ts',
+    'product-authoring.spec.ts',
+    'product-faults.spec.ts',
+    'production-hydration.spec.ts',
+    'session-transition.spec.ts'
+  ],
+  "packed-deployment": [
+    'deployment-transition.spec.ts'
+  ],
+  "soak-browser": [
+    'long-session-soak.spec.ts'
+  ]
+};
+
+function requiredBrowserCases(surface) {
+  if (!browserFiles[surface]) return [];
+  const packed = surface.startsWith('packed-');
+  const titles = surface === 'soak-browser'
+    ? { 'long-session-soak.spec.ts': ['operates the seeded event-driven jukebox for the declared soak duration'] }
+    : packed ? packedCaseTitles : exampleCaseTitles;
+  const projects = surface === 'reliability-browser' ? engines
+    : surface === 'soak-browser' ? ['chromium'] : packed ? ['chrome'] : [''];
+  return browserFiles[surface].flatMap((file) => titles[file]
+    .filter((title) => !(surface === 'packed-dev' && productionOnlyCases.includes(title))
+      && !(surface === 'packed-production' && developmentOnlyCases.includes(title)))
+    .flatMap((title) => projects.map((project) => JSON.stringify([file, title, project]))));
+}
+
+
 export function productDomainPlan(domain, output) {
   const browser = (id, files, env = {}) => ({
     id, executable: 'pnpm', args: [...exampleFilter, 'exec', 'playwright', 'test', ...files, '--reporter=json',
@@ -134,7 +383,7 @@ export async function captureDomain(domain, outputDirectory) {
       requireValue(exitCode === 0, `Product domain command failed: ${command.id} (${exitCode}); ${logPath}`);
       if (command.browserReport) {
         const reportPath = resolve(output, command.browserReport);
-        browserReport(JSON.parse(readFileSync(reportPath)));
+        browserReport(JSON.parse(readFileSync(reportPath)), browserFiles[command.id], command.id);
         observed.browserReport = reference(reportPath);
       }
       if (command.id.endsWith('-build')) {
@@ -163,7 +412,7 @@ export async function captureDomain(domain, outputDirectory) {
           requireValue(entries.length === 1 && entries[0].exit === 0 && entries[0].expectedRejection === false,
             `Missing actual packed journey: ${id}`);
           const entry = entries[0];
-          browserReport(JSON.parse(readFileSync(entry.browserReport)));
+          browserReport(JSON.parse(readFileSync(entry.browserReport)), browserFiles[id], id);
           receipt.checks.push({ id, head: source.head, status: 'passed', exitCode: entry.exit,
             elapsedMs: entry.elapsedMs, command: entry.command.join(' '), env: entry.env,
             log: reference(entry.log), browserReport: reference(entry.browserReport),
@@ -203,14 +452,20 @@ function artifact(root, reference) {
   return { path, bytes };
 }
 
-function browserReport(value, requiredFiles = []) {
+export function browserReport(value, requiredFiles = [], surface) {
   let tests = 0;
   const files = new Set();
+  const cases = new Set();
+  const requiredCases = requiredBrowserCases(surface);
   const visit = (suite) => {
     if (typeof suite.file === 'string') files.add(suite.file);
     for (const spec of suite.specs ?? []) {
       if (typeof spec.file === 'string') files.add(spec.file);
       for (const test of spec.tests ?? []) {
+        const file = spec.file ?? suite.file;
+        const identity = JSON.stringify([file?.split('/').at(-1), spec.title, test.projectName]);
+        requireValue(!cases.has(identity), `Duplicate browser case/project: ${identity}`);
+        cases.add(identity);
         tests++;
         requireValue(test.expectedStatus === 'passed' && test.status === 'expected'
           && test.results.length === 1 && test.results[0].status === 'passed',
@@ -221,6 +476,8 @@ function browserReport(value, requiredFiles = []) {
   };
   requireValue(Array.isArray(value.suites) && (value.errors ?? []).length === 0, 'Invalid browser report');
   for (const suite of value.suites) visit(suite);
+  requireValue(requiredCases.every((identity) => cases.has(identity)),
+    `Missing mandatory browser case/project inventory: ${surface}`);
   requireValue(tests > 0, 'Empty browser execution cannot pass');
   requireValue(requiredFiles.every((required) => [...files].some((file) => file.endsWith(required))),
     'Missing mandatory browser file inventory');
@@ -306,7 +563,16 @@ export function validateMeasurementInventory(value, rawFiles) {
       const sources = Array.isArray(trace.sourceTraces) ? trace.sourceTraces.map((path) => {
         const file = rawFiles.get(path);
         requireValue(file, 'Missing original source trace');
-        return JSON.parse(file.bytes);
+        const source = JSON.parse(file.bytes);
+        requireValue(source.profile === run.profile && source.mode === run.mode
+          && source.framework === run.framework && source.runId === run.runId,
+        'Original source trace identity mismatch');
+        requireValue((source.qualityFailures ?? []).length === 0
+          && (source.correctness === 'pass' || source.correctness?.pass === true
+            && Array.isArray(source.correctness.steps)
+            && source.correctness.steps.every((step) => step.pass === true)),
+        'Original source trace quality/correctness failure or inconclusive');
+        return source;
       }) : [trace];
       requireValue(JSON.stringify(Object.assign({}, ...sources.map((source) => source.metrics)))
         === JSON.stringify(run.metrics), 'Raw sample metrics do not match immutable receipt');
@@ -405,10 +671,11 @@ export function validateReliabilityInventory(correctness, soak) {
   requireValue(Array.isArray(correctness) && correctness.length === 3
     && engines.every((engine) => correctness.filter((run) => run.engine === engine && run.kind === 'correctness').length === 1),
   'Duplicate or missing correctness engine');
-  requireValue(soak?.kind === 'soak' && soak.elapsedMs >= 3600000, 'Fresh one-hour terminal soak required');
+  requireValue(soak?.kind === 'soak' && soak.engine === 'chromium' && soak.elapsedMs >= 3600000,
+    'Fresh one-hour Chromium terminal soak required');
 }
 
-function externalEvidence(root, receipt, head) {
+export function externalEvidence(root, receipt, head) {
   requireValue(receipt.external && typeof receipt.external.laneId === 'string', 'Missing lead-owned external proof');
   const policy = JSON.parse(artifact(root, receipt.external.policy).bytes);
   requireValue(policy.active_axes?.length === 3
@@ -428,7 +695,8 @@ function externalEvidence(root, receipt, head) {
     && Array.isArray(remote.jobs?.jobs) && remote.jobs.jobs.length > 0
     && remote.jobs.jobs.every((job) => job.status === 'completed'
       && ['success', 'skipped'].includes(job.conclusion)), 'Missing or failed exact-head full GitHub CI');
-  requireValue(['Verify', 'Primary build', 'Verify task (tooling-1)', 'Verify task (starters)'].every((name) =>
+  requireValue(['Verify', 'Primary build / build', 'Verify task (tooling-1) / tooling-1',
+    'Verify task (starters) / starters'].every((name) =>
     remote.jobs.jobs.some((job) => job.name === name && job.conclusion === 'success')),
   'Full canonical CI and product domain jobs are required');
   requireValue(Array.isArray(receipt.external.ciDomains) && receipt.external.ciDomains.length === 2,
@@ -471,21 +739,9 @@ export async function consumeProduct(matrix, receipt, outputRoot, expectedHead, 
       && typeof check.command === 'string' && check.command.length > 0
       && Number.isFinite(check.elapsedMs) && check.elapsedMs >= 0, `Unverified execution: ${check.id}`);
     artifact(root, check.log);
-    const requiredFiles = {
-      'ordinary-browser': productionBrowser.map((path) => path.split('/').at(-1)),
-      'product-browser': ['product-acceptance.spec.ts'],
-      'fault-browser': faultBrowser.map((path) => path.split('/').at(-1)),
-      'reliability-browser': ['long-session.spec.ts', 'long-session-ownership.spec.ts', 'long-session-cache.spec.ts',
-        'background-interactions.spec.ts', 'session-transition.spec.ts', 'product-acceptance.spec.ts', 'product-faults.spec.ts'],
-      'soak-browser': ['long-session-soak.spec.ts'],
-      'packed-dev': ['production-hydration.spec.ts', 'background-interactions.spec.ts', 'session-transition.spec.ts',
-        'navigation-guard.spec.ts', 'product-acceptance.spec.ts', 'product-faults.spec.ts', 'product-authoring.spec.ts'],
-      'packed-production': ['production-hydration.spec.ts', 'background-interactions.spec.ts', 'session-transition.spec.ts',
-        'navigation-guard.spec.ts', 'product-acceptance.spec.ts', 'product-faults.spec.ts', 'product-authoring.spec.ts'],
-      'packed-deployment': ['deployment-transition.spec.ts'],
-    }[check.id];
+    const requiredFiles = browserFiles[check.id];
     requireValue(requiredFiles === undefined || check.browserReport, `Missing actual browser report: ${check.id}`);
-    if (check.browserReport) browserReport(JSON.parse(artifact(root, check.browserReport).bytes), requiredFiles);
+    if (check.browserReport) browserReport(JSON.parse(artifact(root, check.browserReport).bytes), requiredFiles, check.id);
     for (const reference of check.artifacts ?? []) artifact(root, reference);
     checks.set(check.id, check);
   }
