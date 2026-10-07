@@ -589,7 +589,7 @@ test('product consumption: native case removed from authenticated report -> fail
   await assert.rejects(consumeProduct(value.matrix, value.receipt, value.root, head, tree), /mandatory browser case\/project/u);
 });
 
-function measurementFixture() {
+function measurementFixture(direct = false) {
   const rawFiles = new Map();
   const store = (path, value) => {
     const bytes = Buffer.from(JSON.stringify(value));
@@ -603,7 +603,7 @@ function measurementFixture() {
     const sample = (framework, index, warmup) => {
       const runId = `${profile}-${framework}-${warmup ? 'warmup' : 'measured'}-${index}`;
       const identity = { profile, mode, framework, runId };
-      const sourceTraces = [
+      const sourceTraces = direct ? [] : [
         store(`/original/${runId}-production.json`, { ...identity,
           correctness: { pass: true, steps: [{ name: 'crud', pass: true }] }, qualityFailures: [],
           metrics: { shellArrivalMs: 800, errorRate: 0 } }).path,
@@ -612,8 +612,10 @@ function measurementFixture() {
           metrics: { devReadyMs: 900 } }).path,
       ];
       const metrics = { shellArrivalMs: 800, errorRate: 0, devReadyMs: 900 };
-      const trace = store(`/original/${runId}-combined.json`, { ...identity, sourceTraces,
-        correctness: { production: 'pass', development: 'pass' }, metrics }).path;
+      const trace = store(`/original/${runId}-combined.json`, { ...identity,
+        ...(direct ? { correctness: { pass: true, steps: [{ name: 'crud', pass: true }] } }
+          : { sourceTraces, correctness: { production: 'pass', development: 'pass' } }),
+        metrics }).path;
       return { ...identity, correctness: 'pass', qualityFailures: [], metrics, trace };
     };
     const frameworks = ['fluo', 'next', 'react-router', 'tanstack-start'];
@@ -636,6 +638,28 @@ test('measurement inventory: complete original four-profile composite sources ->
     }).originalVerdict, verdict);
   }
 });
+
+test('measurement inventory: complete direct object correctness -> remains usable', () => {
+  const { value, rawFiles } = measurementFixture(true);
+
+  assert.doesNotThrow(() => validateMeasurementInventory(value, rawFiles));
+});
+
+for (const inventory of ['runs', 'warmups']) {
+  for (const defect of ['object-fail', 'step-fail']) {
+    test(`measurement direct: ${inventory} ${defect} -> raw failure cannot hide behind receipt success`, () => {
+      const { value, rawFiles } = measurementFixture(true);
+      const run = value.receipts[0][inventory][0];
+      const trace = JSON.parse(rawFiles.get(run.trace).bytes);
+      if (defect === 'object-fail') trace.correctness.pass = false;
+      else trace.correctness.steps[0].pass = false;
+      const bytes = Buffer.from(JSON.stringify(trace));
+      rawFiles.set(run.trace, { bytes, sha256: digest(bytes) });
+
+      assert.throws(() => validateMeasurementInventory(value, rawFiles), /source trace.*correctness/u);
+    });
+  }
+}
 
 for (const sourceIndex of [0, 1]) {
   for (const defect of ['correctness-fail', 'correctness-inconclusive', 'object-fail', 'step-fail',

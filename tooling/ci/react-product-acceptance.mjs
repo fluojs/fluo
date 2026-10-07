@@ -567,13 +567,13 @@ export function validateMeasurementInventory(value, rawFiles) {
         requireValue(source.profile === run.profile && source.mode === run.mode
           && source.framework === run.framework && source.runId === run.runId,
         'Original source trace identity mismatch');
-        requireValue((source.qualityFailures ?? []).length === 0
-          && (source.correctness === 'pass' || source.correctness?.pass === true
-            && Array.isArray(source.correctness.steps)
-            && source.correctness.steps.every((step) => step.pass === true)),
-        'Original source trace quality/correctness failure or inconclusive');
         return source;
       }) : [trace];
+      for (const source of sources) requireValue((source.qualityFailures ?? []).length === 0
+        && (source.correctness === 'pass' || source.correctness?.pass === true
+          && Array.isArray(source.correctness.steps)
+          && source.correctness.steps.every((step) => step.pass === true)),
+      'Original source trace quality/correctness failure or inconclusive');
       requireValue(JSON.stringify(Object.assign({}, ...sources.map((source) => source.metrics)))
         === JSON.stringify(run.metrics), 'Raw sample metrics do not match immutable receipt');
     }
