@@ -114,14 +114,14 @@ export default function AcceptancePage({ label, savedName }: AcceptancePageProps
   const route = reactFormRoutes['POST /products/third/save ProductPageRouter thirdSave'];
   const form = useForm({ id: 'third-page-save', action: route.href(), contract: route.contract,
     allowDestination: (destination: string) => new URL(destination).pathname === '/products/third' });
-  const saved = form.state.mutation?.status === 'saved' ? form.state.mutation.data.name : savedName;
+  const saved = form.state.mutation?.status === 'saved' ? form.state.mutation.data?.name : savedName;
   return <section aria-label="Authored third page"><h1>{label}</h1>
     <form {...form.formProps} aria-label="Third page save" data-enhanced={String(form.connected)}>
       <label htmlFor="third-name">Third page name</label>
       <input {...form.fieldProps('name')} id="third-name" defaultValue={savedName ?? ''} minLength={3} required />
       <button type="submit">Save third page</button>
     </form><output data-third-saved>{saved}</output>
-    <Link {...reactPageRoutes['GET /products/third ProductPageRouter third'].link(undefined, { label: 'Delayed' })}>Delayed third page</Link>
+    <Link {...reactPageRoutes['GET /products/third ProductPageRouter third'].link({ label: 'Delayed' })}>Delayed third page</Link>
     <Link {...reactPageRoutes['GET /products/:sku ProductPageRouter show'].link({ sku: 'sku-42' })}>Leave third page</Link></section>;
 }
 `;
@@ -206,7 +206,7 @@ class ThirdPageWrite {
     const negativePath = join(directory, 'src/acceptance-negative.ts');
     writeFileSync(negativePath, `import { useForm } from '@fluojs/react/client';
 import { reactPageRoutes, reactFormRoutes, type ReactPagePropsByModule } from './generated/react-pages';
-reactPageRoutes['GET /products/third ProductPageRouter third'].href(undefined, { label: 42 });
+reactPageRoutes['GET /products/third ProductPageRouter third'].href({ label: 42 });
 reactPageRoutes['GET /products/:sku ProductPageRouter show'].href({ sku: 42 });
 reactPageRoutes['GET /private InternalRouter serverOnly'].href();
 const props: ReactPagePropsByModule['./page-acceptance.tsx'] = { label: 42 };
@@ -220,7 +220,9 @@ void props; void saved; void serverOnlyProps;
       const diagnostics = await run('authoring-negative-types', ['exec', 'tsc', '-p', 'tsconfig.json', '--noEmit'],
         directory, {}, 'pnpm', true);
       const errors = diagnostics.split('\n').filter((line) => /error TS\d+/u.test(line));
-      if (errors.length < 7 || errors.some((line) => !line.includes('acceptance-negative.ts'))) {
+      const rejectedLines = new Set(errors.map((line) => Number(/acceptance-negative\.ts\((\d+),/u.exec(line)?.[1])));
+      if (![3, 4, 5, 6, 7, 9, 10].every((line) => rejectedLines.has(line))
+        || errors.some((line) => !line.includes('acceptance-negative.ts'))) {
         throw new Error('Negative inference must reject each authored path/query/route/props/server-only/saved/input value.');
       }
     } finally {
