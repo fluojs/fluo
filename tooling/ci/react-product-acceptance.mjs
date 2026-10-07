@@ -560,6 +560,8 @@ export function validateMeasurementInventory(value, rawFiles) {
       'Raw sample identity mismatch');
       requireValue((trace.qualityFailures ?? []).length === 0 && trace.correctness !== 'fail'
         && trace.correctness !== 'inconclusive', 'Raw quality failure or inconclusive correctness');
+      if (Array.isArray(trace.sourceTraces)) requireValue(trace.correctness?.production === 'pass'
+        && trace.correctness?.development === 'pass', 'Raw composite phase correctness failure or inconclusive');
       const sources = Array.isArray(trace.sourceTraces) ? trace.sourceTraces.map((path) => {
         const file = rawFiles.get(path);
         requireValue(file, 'Missing original source trace');

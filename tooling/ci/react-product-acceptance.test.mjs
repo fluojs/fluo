@@ -661,6 +661,24 @@ for (const inventory of ['runs', 'warmups']) {
   }
 }
 
+for (const inventory of ['runs', 'warmups']) {
+  for (const phase of ['production', 'development']) {
+    for (const verdict of ['fail', 'inconclusive', 'missing']) {
+      test(`measurement composite: ${inventory} ${phase} ${verdict} -> valid sources cannot hide summary failure`, () => {
+        const { value, rawFiles } = measurementFixture();
+        const run = value.receipts[0][inventory][0];
+        const trace = JSON.parse(rawFiles.get(run.trace).bytes);
+        if (verdict === 'missing') delete trace.correctness[phase];
+        else trace.correctness[phase] = verdict;
+        const bytes = Buffer.from(JSON.stringify(trace));
+        rawFiles.set(run.trace, { bytes, sha256: digest(bytes) });
+
+        assert.throws(() => validateMeasurementInventory(value, rawFiles), /composite.*correctness/u);
+      });
+    }
+  }
+}
+
 for (const sourceIndex of [0, 1]) {
   for (const defect of ['correctness-fail', 'correctness-inconclusive', 'object-fail', 'step-fail',
     'quality-fail', 'profile', 'mode', 'framework', 'runId', 'missing-identity', 'metrics']) {

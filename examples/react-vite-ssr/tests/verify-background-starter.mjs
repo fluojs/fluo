@@ -213,15 +213,23 @@ const props: ReactPagePropsByModule['./page-acceptance.tsx'] = { label: 42 };
 const serverOnlyProps: ReactPagePropsByModule['./page-acceptance.tsx'] = { label: new Map() };
 const route = reactFormRoutes['POST /products/third/save ProductPageRouter thirdSave'];
 const saved: ReturnType<typeof route.contract.decodeSaved> = { name: 42 };
-useForm({ id: 'negative', action: route.href(), contract: route.contract }).fieldProps('unknown');
+const form = useForm({ id: 'negative', action: route.href(), contract: route.contract,
+  allowDestination: (destination: string) => new URL(destination).pathname === '/products/third' });
+form.fieldProps('unknown');
 void props; void saved; void serverOnlyProps;
 `);
     try {
       const diagnostics = await run('authoring-negative-types', ['exec', 'tsc', '-p', 'tsconfig.json', '--noEmit'],
         directory, {}, 'pnpm', true);
       const errors = diagnostics.split('\n').filter((line) => /error TS\d+/u.test(line));
-      const rejectedLines = new Set(errors.map((line) => Number(/acceptance-negative\.ts\((\d+),/u.exec(line)?.[1])));
-      if (![3, 4, 5, 6, 7, 9, 10].every((line) => rejectedLines.has(line))
+      const positions = errors.map((line) => {
+        const match = /acceptance-negative\.ts\((\d+),(\d+)\): error TS(\d+):/u.exec(line);
+        return match && { line: Number(match[1]), column: Number(match[2]), code: Number(match[3]) };
+      });
+      const rejectedLines = new Set(positions.map((position) => position?.line));
+      if (![3, 4, 5, 6, 7, 9, 12].every((line) => rejectedLines.has(line))
+        || !positions.some((position) => position?.line === 12 && position.column === 17 && position.code === 2345)
+        || positions.some((position) => position?.line === 10 || position?.line === 11)
         || errors.some((line) => !line.includes('acceptance-negative.ts'))) {
         throw new Error('Negative inference must reject each authored path/query/route/props/server-only/saved/input value.');
       }
