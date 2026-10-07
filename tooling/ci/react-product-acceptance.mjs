@@ -45,6 +45,8 @@ const commonCaseTitles = {
     'an open dirty decision cannot postpone explicit logout or actual resource cleanup'
   ],
   "product-acceptance.spec.ts": [
+    'authenticated product: negotiated CSRF refusal -> no saved result or persisted CRUD change',
+    'authenticated product: native CSRF refusal -> no saved result or persisted CRUD change',
     'authenticated product: enhanced invalid/correct/save/logout/relogin -> confirmed persistence and revocation',
     'authenticated product: js-disabled -> native POST303GET validation CRUD and relogin',
     'authenticated product: bootstrap-blocked -> native POST303GET validation CRUD and relogin'
@@ -555,7 +557,7 @@ export function validateMeasurementInventory(value, rawFiles) {
       const raw = rawFiles.get(run.trace);
       requireValue(raw, 'Missing original raw sample trace');
       const trace = JSON.parse(raw.bytes);
-      requireValue(trace.profile === undefined || trace.profile === run.profile
+      requireValue(trace.profile === run.profile
         && trace.mode === run.mode && trace.framework === run.framework && trace.runId === run.runId,
       'Raw sample identity mismatch');
       requireValue((trace.qualityFailures ?? []).length === 0 && trace.correctness !== 'fail'

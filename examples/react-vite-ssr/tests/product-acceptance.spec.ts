@@ -3,6 +3,76 @@ import { expect, test, type Page, type TestInfo } from '@playwright/test';
 const products = '/catalog/session/products';
 const navigationType = 'application/vnd.fluo.react-navigation+json;v=2';
 
+for (const transport of ['negotiated', 'native'] as const) {
+  test(`authenticated product: ${transport} CSRF refusal -> no saved result or persisted CRUD change`, async ({ request, baseURL }) => {
+    if (baseURL === undefined) throw new Error('Missing application origin');
+    const origin = new URL(baseURL).origin;
+    await request.get('/catalog/session');
+    const signedIn = await request.post('/catalog/session/login', {
+      headers: { origin, Accept: 'text/html' }, form: { identity: 'a', csrf: 'catalog-demo-token' }, maxRedirects: 0,
+    });
+    expect(signedIn.status()).toBe(303);
+    const read = async () => {
+      const response = await request.get(products, { headers: { Accept: navigationType } });
+      expect(response.status()).toBe(200);
+      const value = await response.json();
+      expect(value.destination.props.sessionIdentity).toBe('a');
+      return value.destination.props.products;
+    };
+    const write = (path: string, form: Record<string, string>, accept: string) => request.post(path, {
+      headers: { origin, Accept: accept }, form, maxRedirects: 0,
+    });
+    const accept = transport === 'negotiated' ? 'application/vnd.fluo.form+json;v=1' : 'text/html';
+    for (const operation of ['create', 'update', 'delete'] as const) {
+      const created = await write(`${products}/create`, {
+        display_name: `CSRF ${transport} ${operation}`, csrf: 'catalog-demo-token',
+      }, 'application/vnd.fluo.form+json;v=1');
+      expect(created.status()).toBe(200);
+      const sku = (await created.json()).data.sku;
+      const cleanup = new Set<string>([sku]);
+      try {
+        const path = operation === 'create' ? `${products}/create` : `${products}/${sku}/${operation}`;
+        const fields: Record<string, string> = operation === 'delete' ? {} : { display_name: 'CSRF protected product' };
+        const before = await read();
+        for (const token of ['tampered', 'missing'] as const) {
+          const rejected = await write(path, { ...fields,
+            ...(token === 'tampered' ? { csrf: 'tampered-token' } : {}) }, accept);
+
+          expect(rejected.status()).toBe(403);
+          expect(rejected.headers().location).toBeUndefined();
+          if (transport === 'negotiated') {
+            const failure = await rejected.json();
+            expect(failure.error).toMatchObject({ code: 'FORBIDDEN', status: 403 });
+            expect(failure.outcome).not.toBe('saved');
+          } else {
+            expect(rejected.headers()['content-type']).toContain('text/html');
+            await rejected.text();
+          }
+          expect(await read()).toEqual(before);
+        }
+        const accepted = await write(path, { ...fields, csrf: 'catalog-demo-token' }, accept);
+        expect(accepted.status()).toBe(transport === 'negotiated' ? 200 : 303);
+        if (transport === 'negotiated') {
+          const saved = await accepted.json();
+          expect(saved.outcome).toBe('saved');
+          if (operation === 'create') cleanup.add(saved.data.sku);
+        } else if (operation === 'create') {
+          const savedSku = accepted.headers().location?.split('/').at(-1);
+          if (savedSku === undefined) throw new Error('Missing created product redirect');
+          cleanup.add(savedSku);
+        }
+        if (operation === 'delete') cleanup.delete(sku);
+      } finally {
+        for (const item of cleanup) {
+          const deleted = await write(`${products}/${item}/delete`, { csrf: 'catalog-demo-token' },
+            'application/vnd.fluo.form+json;v=1');
+          expect(deleted.status()).toBe(200);
+        }
+      }
+    }
+  });
+}
+
 async function capture(page: Page, info: TestInfo, surface: string) {
   for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);

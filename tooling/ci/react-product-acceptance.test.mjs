@@ -33,6 +33,8 @@ const commonCaseTitles = {
     'an open dirty decision cannot postpone explicit logout or actual resource cleanup'
   ],
   "product-acceptance.spec.ts": [
+    'authenticated product: negotiated CSRF refusal -> no saved result or persisted CRUD change',
+    'authenticated product: native CSRF refusal -> no saved result or persisted CRUD change',
     'authenticated product: enhanced invalid/correct/save/logout/relogin -> confirmed persistence and revocation',
     'authenticated product: js-disabled -> native POST303GET validation CRUD and relogin',
     'authenticated product: bootstrap-blocked -> native POST303GET validation CRUD and relogin'
@@ -644,6 +646,37 @@ test('measurement inventory: complete direct object correctness -> remains usabl
 
   assert.doesNotThrow(() => validateMeasurementInventory(value, rawFiles));
 });
+
+for (const inventory of ['runs', 'warmups']) {
+  for (const field of ['profile', 'mode', 'framework', 'runId']) {
+    for (const defect of ['missing', 'mismatched']) {
+      test(`measurement direct identity: ${inventory} ${defect} ${field} -> rejects valid metrics and correctness`, () => {
+        const { value, rawFiles } = measurementFixture(true);
+        const run = value.receipts[0][inventory][0];
+        const trace = JSON.parse(rawFiles.get(run.trace).bytes);
+        if (defect === 'missing') delete trace[field];
+        else trace[field] = 'other-identity';
+        const bytes = Buffer.from(JSON.stringify(trace));
+        rawFiles.set(run.trace, { bytes, sha256: digest(bytes) });
+
+        assert.throws(() => validateMeasurementInventory(value, rawFiles), /Raw sample identity mismatch/u);
+      });
+    }
+  }
+  for (const field of ['framework', 'runId']) {
+    test(`measurement direct identity: ${inventory} absent profile and wrong ${field} -> cannot bypass identity`, () => {
+      const { value, rawFiles } = measurementFixture(true);
+      const run = value.receipts[0][inventory][0];
+      const trace = JSON.parse(rawFiles.get(run.trace).bytes);
+      delete trace.profile;
+      trace[field] = 'other-identity';
+      const bytes = Buffer.from(JSON.stringify(trace));
+      rawFiles.set(run.trace, { bytes, sha256: digest(bytes) });
+
+      assert.throws(() => validateMeasurementInventory(value, rawFiles), /Raw sample identity mismatch/u);
+    });
+  }
+}
 
 for (const inventory of ['runs', 'warmups']) {
   for (const defect of ['object-fail', 'step-fail']) {

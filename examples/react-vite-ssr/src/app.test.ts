@@ -95,6 +95,87 @@ function readHtml(body: unknown): string {
 }
 
 describe('react-vite-ssr example', () => {
+  for (const transport of ['negotiated', 'native'] as const) {
+    for (const operation of ['create', 'update', 'delete'] as const) {
+      for (const token of ['missing', 'tampered'] as const) {
+        it(`authenticated CSRF: ${transport} ${operation} ${token} -> rejects before writes and preserves persistence`, async () => {
+          const events: CatalogObservation[] = [];
+          const AppModule = createReactViteExampleModule({
+            clientDirectory: new URL('../dist/client/', import.meta.url),
+            presentation: createReactViteExamplePresentation({
+              ...VITE_MANIFEST,
+              'src/navigation-catalog.ts': {
+                file: 'navigation-catalog-hash.js', isDynamicEntry: true, src: 'src/navigation-catalog.ts',
+              },
+            }),
+            catalogControl: (event) => { events.push(event); },
+          });
+          const adapter = FastifyHttpApplicationAdapter.create({
+            host: '127.0.0.1', port: 0,
+            configureFastify(server) {
+              server.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => {
+                const fields: Record<string, string | string[]> = Object.create(null);
+                for (const [name, value] of new URLSearchParams(String(body))) {
+                  const prior = fields[name];
+                  fields[name] = prior === undefined ? value : Array.isArray(prior) ? [...prior, value] : [prior, value];
+                }
+                done(null, fields);
+              });
+            },
+          });
+          const app = await FluoFactory.create(AppModule, { ...AppModule.applicationOptions, adapter });
+          await withCleanup(async (defer) => {
+            defer(() => app.close());
+            await app.listen();
+            const address = (adapter.getServer() as { address: () => AddressInfo | string | null }).address();
+            if (typeof address !== 'object' || address === null) throw new TypeError('Expected a bound Fastify listener.');
+            const origin = `http://127.0.0.1:${address.port}`;
+            const cookie = 'catalogSession=a; catalogAccess=allowed; csrf=catalog-demo-token';
+            const read = async () => {
+              const response = await fetch(`${origin}/catalog/session/products`, {
+                headers: { cookie, Accept: 'application/vnd.fluo.react-navigation+json;v=2' },
+              });
+              expect(response.status).toBe(200);
+              return response.json();
+            };
+            const before = await read();
+            const path = operation === 'create' ? '/catalog/session/products/create'
+              : `/catalog/session/products/sku-42/${operation}`;
+            const body = new URLSearchParams(operation === 'delete' ? {} : { display_name: 'CSRF protected product' });
+            if (token === 'tampered') body.set('csrf', 'tampered-token');
+            const headers = { cookie, origin, Accept: transport === 'negotiated'
+              ? 'application/vnd.fluo.form+json;v=1' : 'text/html' };
+            const start = events.length;
+
+            const rejected = await fetch(`${origin}${path}`, { method: 'POST', headers, body, redirect: 'manual' });
+
+            expect(rejected.status).toBe(403);
+            expect(rejected.headers.get('location')).toBeNull();
+            if (transport === 'negotiated') {
+              expect(await rejected.json()).toMatchObject({ error: { code: 'FORBIDDEN', status: 403 } });
+            } else {
+              expect(rejected.headers.get('content-type')).toContain('text/html');
+              await rejected.text();
+            }
+            const observed = events.slice(start);
+            expect(observed.map((event) => event.phase)).toEqual(['middleware', 'guard', 'guard', 'cleanup']);
+            expect(new Set(observed.map((event) => event.scope)).size).toBe(1);
+            expect(observed.filter((event) => event.phase === 'handler' || event.phase === 'commit')).toHaveLength(0);
+            expect(await read()).toEqual(before);
+
+            // The identical identity, origin, DTO and route succeed with only CSRF corrected.
+            body.set('csrf', 'catalog-demo-token');
+            const accepted = await fetch(`${origin}${path}`, { method: 'POST', headers, body, redirect: 'manual' });
+            expect(accepted.status).toBe(transport === 'negotiated' ? 200 : 303);
+            if (transport === 'negotiated') expect(await accepted.json()).toMatchObject({ outcome: 'saved' });
+            else await accepted.text();
+            expect(events.filter((event) => event.phase === 'commit')).toHaveLength(1);
+          });
+        });
+      }
+    }
+  }
+
   it('authenticated detail: blank SKU -> path validation rejects the matched request and cleans its scope', async () => {
     // Given: an authenticated request through the real application dispatcher.
     const events: CatalogObservation[] = [];
