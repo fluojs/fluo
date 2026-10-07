@@ -8,6 +8,9 @@ import { browserReport, consumeProduct, externalEvidence, productDomainPlan, rel
   validateMeasurementInventory, validateReliabilityInventory } from './react-product-acceptance.mjs';
 import { buildReviewFact } from '../../.agents/skills/review-head/scripts/contracts.mjs';
 import { localCheckBinding } from '../../.agents/skills/execute-lane/scripts/lane-v4.mjs';
+import representative from '../benchmarks/react-app-comparison/config/representative.json' with { type: 'json' };
+import { hashObject } from '../benchmarks/react-app-comparison/src/fa-v2.mjs';
+import { environmentConfigIdentity, planMeasurements } from '../benchmarks/react-app-comparison/src/measure.mjs';
 
 const head = '1'.repeat(40);
 const tree = '2'.repeat(40);
@@ -598,21 +601,51 @@ function measurementFixture(direct = false, development = false, relations = fal
     rawFiles.set(path, { bytes, sha256: digest(bytes) });
     return { path, sha256: digest(bytes) };
   };
-  const methodBinding = { ...store('/original/method.json', { methodVersion: 'FA-V3' }),
-    methodVersion: 'FA-V3', measurementPurpose: 'integrated', measurementKind: 'production',
-    pairId: 'fixture-pair', pairPhase: 'before', productSha256: 'a'.repeat(64), executionId: 'production' };
-  const developmentMethodBinding = { ...methodBinding, ...store('/original/dev-method.json', { methodVersion: 'FA-V3' }),
-    measurementPurpose: 'timing', measurementKind: 'development', executionId: 'development' };
-  const environmentBinding = store('/original/environment.json', { isolated: true });
-  const developmentEnvironmentBinding = store('/original/dev-environment.json', { isolated: true, development: true });
-  const environmentPairRelation = relations ? { phase: 'production', after: environmentBinding } : undefined;
-  const developmentEnvironmentPairRelation = relations
-    ? { phase: 'development', after: developmentEnvironmentBinding } : undefined;
+  const provenance = { commit: head, root: '/original', baselineSha256: 'a'.repeat(64),
+    sourceSha256: 'b'.repeat(64), lockfile: { '.': 'c'.repeat(64) }, builds: { fluo: 'pnpm build' } };
   const receipts = ['desktop-native', 'desktop-matched-cache', 'tablet-native', 'tablet-matched-cache'].map((profile) => {
     const mode = profile.endsWith('matched-cache') ? 'matched-cache' : 'native';
-    const sample = (framework, index, warmup, phase = 'production') => {
-      const runId = `${profile}-${framework}-${warmup ? 'warmup' : 'measured'}-${index}`;
-      const identity = { profile, mode, framework, runId };
+    const configuration = { ...structuredClone(representative.measurement), methodVersion: 'FA-V3',
+      measurementPurpose: 'integrated', measurementKind: 'production', pairId: 'fixture-pair',
+      pairPhase: 'before', warmupRuns: 2, measurementRuns: 5,
+      nativeLifetime: { enabled: true, python: '/original/python' }, profile, mode,
+      apps: Object.fromEntries(['fluo', 'next', 'react-router', 'tanstack-start']
+        .map((framework, index) => [framework, `http://127.0.0.1:${32000 + index}/`])), provenance };
+    const developmentConfiguration = { ...configuration, measurementPurpose: 'timing',
+      measurementKind: 'development', nativeLifetime: { enabled: false } };
+    const bindMethod = (config, phase) => {
+      const { measurementPurpose, nativeLifetime, provenance, serverPids,
+        environmentBinding, isolatedRepresentative, ...stimuli } = config;
+      const record = { methodVersion: config.methodVersion, measurementPurpose, measurementKind: config.measurementKind,
+        pairId: config.pairId, pairPhase: config.pairPhase, executionId: `${profile}-${phase}`,
+        configSha256: hashObject(config), stimuliSha256: hashObject(stimuli), productSha256: hashObject(provenance),
+        baselineSha256: provenance.baselineSha256, productionDescriptorSha256: hashObject(representative.measurement),
+        configuration: config };
+      const { configuration, ...binding } = record;
+      return { ...binding, ...store(`/original/${profile}-${phase}-method.json`, record) };
+    };
+    const bindEnvironment = (config, phase) => {
+      const { provenance, serverPids, environmentBinding, isolatedRepresentative, ...configurationEvidence } = config;
+      const configuration = structuredClone(configurationEvidence);
+      if (configuration.nativeLifetime.python) configuration.nativeLifetime.python = '$authenticated-python';
+      const identity = { guest: { platform: 'linux', arch: 'arm64', browser: { version: '149.0.7827.0' } } };
+      const record = { schemaVersion: 1, method: 'isolated-linux-representative-v1',
+        invocation: { invocationId: `${profile}-${phase}` }, identity, configuration, configurationEvidence, provenance,
+        identitySha256: hashObject(identity), configSha256: environmentConfigIdentity(config) };
+      return { method: record.method, invocationId: record.invocation.invocationId,
+        identitySha256: record.identitySha256, configSha256: record.configSha256,
+        ...store(`/original/${profile}-${phase}-environment.json`, record) };
+    };
+    const methodBinding = bindMethod(configuration, 'production');
+    const developmentMethodBinding = bindMethod(developmentConfiguration, 'development');
+    const environmentBinding = bindEnvironment(configuration, 'production');
+    const developmentEnvironmentBinding = bindEnvironment(developmentConfiguration, 'development');
+    const environmentPairRelation = relations ? { phase: 'production', after: environmentBinding } : undefined;
+    const developmentEnvironmentPairRelation = relations
+      ? { phase: 'development', after: developmentEnvironmentBinding } : undefined;
+    const sample = (item, phase = 'production') => {
+      const { runId } = item;
+      const identity = { ...item, provenance };
       const productionMetadata = { methodVersion: 'FA-V3', measurementPurpose: 'integrated',
         measurementKind: 'production', methodBinding, environmentBinding, isolatedRepresentative: true,
         environmentPairRelation };
@@ -636,21 +669,137 @@ function measurementFixture(direct = false, development = false, relations = fal
             sourceEnvironmentPairRelations: [environmentPairRelation ?? null, developmentEnvironmentPairRelation ?? null],
             correctness: { production: 'pass', development: 'pass' } }),
         metrics }).path;
-      return { ...identity, correctness: 'pass', qualityFailures: [], metrics, trace };
+      return { ...identity, warmupRuns: configuration.warmupRuns,
+        correctness: 'pass', qualityFailures: [], metrics, trace };
     };
-    const frameworks = ['fluo', 'next', 'react-router', 'tanstack-start'];
+    const plan = planMeasurements(configuration);
     return { profile, mode, methodVersion: 'FA-V3', measurementPurpose: 'integrated',
-      isolatedRepresentative: true, provenance: { commit: head }, methodBinding, environmentBinding, environmentPairRelation,
-      runs: frameworks.flatMap((framework) => Array.from({ length: 5 }, (_, index) => sample(framework, index, false))),
-      warmups: frameworks.flatMap((framework) => Array.from({ length: 2 }, (_, index) => sample(framework, index, true))),
+      isolatedRepresentative: true, provenance, methodBinding, environmentBinding, environmentPairRelation,
+      runs: plan.filter((item) => !item.warmup).map((item) => sample(item)),
+      warmups: plan.filter((item) => item.warmup).map((item) => sample(item)),
       ...(!direct || development ? {
         developmentMethodBinding, developmentEnvironmentBinding, developmentEnvironmentPairRelation,
-        developmentWarmups: frameworks.flatMap((framework) => Array.from({ length: 2 },
-          (_, index) => sample(framework, index, true, 'development'))),
+        developmentWarmups: plan.filter((item) => item.warmup).map((item) => sample(item, 'development')),
       } : {}),
     };
   });
-  return { value: { provenance: { commit: head }, receipts }, rawFiles };
+  return { value: { provenance, receipts }, rawFiles };
+}
+
+function replaceMeasurementRaw(rawFiles, path, value) {
+  const bytes = Buffer.from(JSON.stringify(value));
+  rawFiles.set(path, { bytes, sha256: digest(bytes) });
+}
+
+for (const direct of [true, false]) {
+  test(`measurement frozen authentication: ${direct ? 'direct' : 'composite'} measured/warmup swap -> rejects unchanged raw promotion`, () => {
+    const { value, rawFiles } = measurementFixture(direct, true, true);
+    const receipt = value.receipts[0];
+    const measured = receipt.runs.findIndex((run) => run.framework === receipt.warmups[0].framework);
+    [receipt.runs[measured], receipt.warmups[0]] = [receipt.warmups[0], receipt.runs[measured]];
+
+    assert.throws(() => validateMeasurementInventory(value, rawFiles), /Frozen measured inventory mismatch/u);
+  });
+
+  for (const inventory of ['runs', 'warmups', 'developmentWarmups']) {
+    for (const defect of ['warmup', 'cycle', 'slot', 'order', 'warmupRuns']) {
+      test(`measurement frozen authentication: ${direct ? 'direct' : 'composite'} ${inventory} ${defect} -> rejects original plan mismatch`, () => {
+        const { value, rawFiles } = measurementFixture(direct, true, true);
+        const samples = value.receipts[0][inventory];
+        if (defect === 'order') [samples[0], samples[1]] = [samples[1], samples[0]];
+        else samples[0][defect] = defect === 'warmup' ? !samples[0].warmup : 99;
+
+        assert.throws(() => validateMeasurementInventory(value, rawFiles), /Frozen (measured|warmup|development warmup) inventory mismatch/u);
+      });
+    }
+
+    for (const target of direct ? ['direct'] : ['composite', 'production', 'development']) {
+      for (const field of ['warmup', 'cycle', 'slot', 'provenance',
+        ...(target === 'composite' ? [] : ['device', 'url'])]) {
+        for (const defect of ['missing', 'wrong']) {
+          test(`measurement frozen authentication: ${inventory} ${target} ${defect} ${field} -> rejects rehashed original raw mismatch`, () => {
+            const { value, rawFiles } = measurementFixture(direct, true, true);
+            const run = value.receipts[0][inventory][0];
+            const composite = JSON.parse(rawFiles.get(run.trace).bytes);
+            const path = target === 'production' || target === 'development'
+              ? composite.sourceTraces[target === 'production' ? 0 : 1] : run.trace;
+            const raw = JSON.parse(rawFiles.get(path).bytes);
+            if (defect === 'missing') delete raw[field];
+            else raw[field] = field === 'provenance' ? { ...raw.provenance, commit: '0'.repeat(40) }
+              : field === 'warmup' ? !raw.warmup : 99;
+            replaceMeasurementRaw(rawFiles, path, raw);
+
+            assert.throws(() => validateMeasurementInventory(value, rawFiles),
+              field === 'provenance' ? /Original raw source provenance mismatch/u : /Frozen raw inventory mismatch/u);
+          });
+        }
+      }
+    }
+  }
+
+  for (const phase of ['production', 'development']) {
+    for (const target of ['method', 'environment']) {
+      for (const defect of ['missing-configuration', 'wrong-configuration', 'missing-provenance', 'wrong-provenance',
+        ...(target === 'method' && phase === 'production' ? ['wrong-python'] : []),
+        ...(target === 'environment' ? ['rebound-configuration'] : [])]) {
+        test(`measurement frozen authentication: ${direct ? 'direct' : 'composite'} ${phase} ${target} ${defect} -> rejects rehashed artifact content`, () => {
+          const { value, rawFiles } = measurementFixture(direct, true, true);
+          const receipt = value.receipts[0];
+          const binding = target === 'method'
+            ? phase === 'production' ? receipt.methodBinding : receipt.developmentMethodBinding
+            : phase === 'production' ? receipt.environmentBinding : receipt.developmentEnvironmentBinding;
+          const raw = JSON.parse(rawFiles.get(binding.path).bytes);
+          const config = target === 'method' ? raw.configuration : raw;
+          if (defect === 'missing-configuration') delete raw.configuration;
+          if (defect === 'wrong-configuration') raw.configuration.profile = 'tablet-native';
+          if (defect === 'missing-provenance') delete config.provenance;
+          if (defect === 'wrong-provenance') config.provenance.commit = '0'.repeat(40);
+          if (defect === 'wrong-python') raw.configuration.nativeLifetime.python = '/original/other-python';
+          if (defect === 'rebound-configuration') {
+            raw.configuration.apps.next = 'http://127.0.0.1:39999/';
+            raw.configurationEvidence.apps.next = raw.configuration.apps.next;
+            raw.configSha256 = hashObject(raw.configuration);
+            binding.configSha256 = raw.configSha256;
+          }
+          replaceMeasurementRaw(rawFiles, binding.path, raw);
+          binding.sha256 = rawFiles.get(binding.path).sha256;
+          for (const [path, entry] of rawFiles) {
+            const trace = JSON.parse(entry.bytes);
+            if (trace.methodBinding?.path === binding.path) trace.methodBinding = binding;
+            if (trace.environmentBinding?.path === binding.path) trace.environmentBinding = binding;
+            if (trace.environmentPairRelation?.after?.path === binding.path) trace.environmentPairRelation.after = binding;
+            for (const relation of trace.sourceEnvironmentPairRelations ?? []) {
+              if (relation?.after?.path === binding.path) relation.after = binding;
+            }
+            for (const bindings of [trace.sourceMethodBindings, trace.sourceEnvironmentBindings]) {
+              if (bindings) bindings.forEach((entry, index) => { if (entry.path === binding.path) bindings[index] = binding; });
+            }
+            replaceMeasurementRaw(rawFiles, path, trace);
+          }
+
+          assert.throws(() => validateMeasurementInventory(value, rawFiles),
+            target === 'method' ? /Original method configuration/u : /Original environment (configuration|provenance)/u);
+        });
+      }
+    }
+    for (const field of ['configSha256', 'stimuliSha256', 'baselineSha256', 'productionDescriptorSha256']) {
+      test(`measurement frozen authentication: ${direct ? 'direct' : 'composite'} ${phase} rebound ${field} -> rejects original method header mismatch`, () => {
+        const { value, rawFiles } = measurementFixture(direct, true, true);
+        const binding = phase === 'production' ? value.receipts[0].methodBinding : value.receipts[0].developmentMethodBinding;
+        binding[field] = '0'.repeat(64);
+        for (const [path, entry] of rawFiles) {
+          const trace = JSON.parse(entry.bytes);
+          if (trace.methodBinding?.path === binding.path) trace.methodBinding = binding;
+          for (const [index, sourceBinding] of (trace.sourceMethodBindings ?? []).entries()) {
+            if (sourceBinding.path === binding.path) trace.sourceMethodBindings[index] = binding;
+          }
+          replaceMeasurementRaw(rawFiles, path, trace);
+        }
+
+        assert.throws(() => validateMeasurementInventory(value, rawFiles), /Original method configuration\/product identity mismatch/u);
+      });
+    }
+  }
 }
 
 for (const inventory of ['runs', 'warmups', 'developmentWarmups']) {
@@ -741,7 +890,7 @@ for (const inventory of ['warmups', 'developmentWarmups']) {
 for (const defect of ['missing-production', 'missing-development', 'empty', 'extra', 'non-array']) {
   test(`measurement phase inventory: ${defect} composite -> rejects even with matching remaining metrics`, () => {
     const { value, rawFiles } = measurementFixture(false, true);
-    const run = value.receipts[0].runs[5];
+    const run = value.receipts[0].runs.find((sample) => sample.framework === 'next');
     const trace = JSON.parse(rawFiles.get(run.trace).bytes);
     if (defect.startsWith('missing-')) {
       trace.sourceTraces.splice(defect === 'missing-production' ? 0 : 1, 1);
@@ -837,8 +986,9 @@ for (const direct of [true, false]) {
         const { value, rawFiles } = measurementFixture(direct, true);
         const runs = value.receipts[0][inventory];
         const first = runs[0];
-        const second = runs[1];
-        if (defect === 'sample') runs[1] = structuredClone(first);
+        const secondIndex = runs.findIndex((run, index) => index > 0 && run.framework === first.framework);
+        const second = runs[secondIndex];
+        if (defect === 'sample') runs[secondIndex] = structuredClone(first);
         if (defect === 'identity') second.runId = first.runId;
         if (defect === 'trace') second.trace = first.trace;
 

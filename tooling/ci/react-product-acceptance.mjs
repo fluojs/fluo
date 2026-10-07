@@ -8,6 +8,8 @@ import { finished } from 'node:stream/promises';
 import { isDeepStrictEqual } from 'node:util';
 import { validateReviewFact } from '../../.agents/skills/review-head/scripts/contracts.mjs';
 import { isValidLocalCiWaiver, localCheckBinding } from '../../.agents/skills/execute-lane/scripts/lane-v4.mjs';
+import { assertMethodConfig, hashObject } from '../benchmarks/react-app-comparison/src/fa-v2.mjs';
+import { environmentConfigIdentity, planMeasurements } from '../benchmarks/react-app-comparison/src/measure.mjs';
 
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const requiredRows = Object.freeze([
@@ -647,6 +649,80 @@ export function validateMeasurementInventory(value, rawFiles) {
       'Original source trace quality/correctness failure or inconclusive');
       requireValue(JSON.stringify(Object.assign({}, ...sources.map((source) => source.metrics)))
         === JSON.stringify(run.metrics), 'Raw sample metrics do not match immutable receipt');
+    }
+    // Replay the original producer's content identities and planner synchronously
+    // over already authenticated archive bytes; original locators need not exist
+    // on this host, and historical provenance must not become the product HEAD.
+    const configurations = new Map();
+    for (const development of [false, ...(receipt.developmentMethodBinding ? [true] : [])]) {
+      const binding = development ? receipt.developmentMethodBinding : receipt.methodBinding;
+      const method = JSON.parse(rawFiles.get(binding.path).bytes);
+      const config = method.configuration;
+      requireValue(config && typeof config === 'object', 'Original method configuration missing');
+      try { assertMethodConfig(config); } catch (error) {
+        throw new TypeError(`Original method configuration invalid: ${error.message}`);
+      }
+      const { measurementPurpose, nativeLifetime, provenance, serverPids,
+        environmentBinding, isolatedRepresentative, ...stimuli } = config;
+      requireValue(['methodVersion', 'measurementPurpose', 'measurementKind', 'pairId', 'pairPhase',
+        'executionId', 'configSha256', 'stimuliSha256', 'productSha256', 'baselineSha256',
+        'productionDescriptorSha256'].every((key) => binding[key] === method[key])
+        && method.methodVersion === config.methodVersion && method.measurementKind === config.measurementKind
+        && method.measurementPurpose === measurementPurpose && method.pairId === config.pairId
+        && method.pairPhase === config.pairPhase && typeof method.executionId === 'string' && method.executionId.length > 0
+        && method.configSha256 === hashObject(config) && method.stimuliSha256 === hashObject(stimuli)
+        && provenance && method.productSha256 === hashObject(provenance)
+        && /^[a-f0-9]{64}$/u.test(method.baselineSha256) && method.baselineSha256 === provenance.baselineSha256
+        && method.productionDescriptorSha256 === hashObject({
+          journeys: config.journeys, interactions: config.interactions, throughput: config.throughput })
+        && config.profile === receipt.profile && config.mode === receipt.mode
+        && config.measurementKind === (development ? 'development' : 'production')
+        && isDeepStrictEqual(provenance, receipt.provenance),
+      'Original method configuration/product identity mismatch');
+      const environment = development ? receipt.developmentEnvironmentBinding : receipt.environmentBinding;
+      const record = JSON.parse(rawFiles.get(environment.path).bytes);
+      requireValue(record.schemaVersion === 1 && record.method === 'isolated-linux-representative-v1'
+        && record.method === environment.method && record.invocation?.invocationId === environment.invocationId
+        && record.identity && record.identitySha256 === environment.identitySha256
+        && hashObject(record.identity) === environment.identitySha256
+        && record.configuration && record.configurationEvidence
+        && record.configSha256 === environment.configSha256
+        && hashObject(record.configuration) === environment.configSha256
+        && environmentConfigIdentity({ ...record.configurationEvidence, provenance: record.provenance }) === environment.configSha256
+        && environmentConfigIdentity(config) === environment.configSha256,
+      'Original environment configuration/identity mismatch');
+      requireValue(isDeepStrictEqual(record.provenance, provenance), 'Original environment provenance mismatch');
+      configurations.set(development ? 'development' : 'production', config);
+    }
+    const inventoryKeys = ['profile', 'mode', 'framework', 'runId', 'warmup', 'cycle', 'slot'];
+    for (const [name, runs, phase, warmup] of [
+      ['measured', receipt.runs, 'production', false],
+      ['warmup', receipt.warmups, 'production', true],
+      ...(receipt.developmentMethodBinding
+        ? [['development warmup', receipt.developmentWarmups, 'development', true]] : []),
+    ]) {
+      const config = configurations.get(phase);
+      const plan = planMeasurements(config).filter((item) => item.warmup === warmup);
+      requireValue(runs.length === plan.length && runs.every((run, index) =>
+        inventoryKeys.every((key) => run[key] === plan[index][key]) && run.warmupRuns === config.warmupRuns),
+      `Frozen ${name} inventory mismatch`);
+      for (const [index, run] of runs.entries()) {
+        const trace = JSON.parse(rawFiles.get(run.trace).bytes);
+        const records = [{ trace, phase: trace.sourceTraces ? 'production' : phase }];
+        if (trace.sourceTraces) records.push(...trace.sourceTraces.map((path, index) => ({
+          trace: JSON.parse(rawFiles.get(path).bytes), phase: index === 0 ? 'production' : 'development',
+        })));
+        for (const { trace: raw, phase: sourcePhase } of records) {
+          const original = configurations.get(sourcePhase);
+          const item = planMeasurements(original).find((entry) =>
+            entry.runId === plan[index].runId && entry.framework === plan[index].framework);
+          requireValue(item && inventoryKeys.every((key) => raw[key] === item[key])
+            && (raw.sourceTraces || raw.device === item.device && raw.url === item.url),
+          'Frozen raw inventory mismatch');
+          requireValue(isDeepStrictEqual(raw.provenance, original.provenance),
+            'Original raw source provenance mismatch');
+        }
+      }
     }
   }
 }
