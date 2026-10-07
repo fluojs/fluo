@@ -10,24 +10,35 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const output = process.env.FLUO_BACKGROUND_EVIDENCE;
 const ciEvidence = process.env.FLUO_PRODUCT_ACCEPTANCE === '1' && process.env.FLUO_PRODUCT_CI === '1'
   && output && resolve(output).startsWith('/evidence/react-product/');
-if (!output || !resolve(output).startsWith(`${repo}/`) && !ciEvidence) {
-  throw new TypeError('Evidence must stay in this worktree or the canonical CI product evidence mount.');
-}
 const attempt = randomUUID();
 const target = { projectName: 'starter-react-vite-ssr', starter: 'react-vite-ssr' };
 const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
 const commands = [];
 const reliability = process.env.FLUO_RELIABILITY_STARTER === '1';
 const product = process.env.FLUO_PRODUCT_ACCEPTANCE === '1';
-const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
-if ((reliability || product) && execFileSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8' }).trim() !== '') {
-  throw new Error('Packaged reliability requires a clean committed source head');
-}
+export const authoringRejections = {
+  'missing-module': /^.*\/src\/app\.ts:\d+:\d+: Browser module \.\/absent-page\.tsx is not in the frozen tsconfig graph; use its build-mapped module literal\.$/mu,
+  'duplicate-route': /^Duplicate route registration detected for GET:\/products\/third:<none>\.$/mu,
+  'invalid-route': /^@GET\(\) path "\/third\/:" is invalid at segment ":": Parameter names must match \/\[a-zA-Z_\]\[a-zA-Z0-9_\]\*\/\. Only literal segments and full-segment ":param" placeholders are supported\.$/mu,
+  'negative-types': /^src\/acceptance-negative\.ts\(12,17\): error TS2345:/mu,
+};
 const reliabilityEnv = reliability ? { FLUO_REACT_RELIABILITY: '1', FLUO_RELIABILITY_STARTER: '1',
   FLUO_RELIABILITY_REPO: repo } : {};
+export function createCommandRunner(output, commands, attempt = randomUUID()) {
+let cancelled = null;
+let activeChild;
+const terminate = (signal) => {
+  cancelled = signal;
+  activeChild?.kill('SIGTERM');
+};
+const onTerm = () => terminate('SIGTERM');
+const onInt = () => terminate('SIGINT');
+process.on('SIGTERM', onTerm); process.on('SIGINT', onInt);
 async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedRejection = false) {
+  if (cancelled) throw new Error(`${label} cancelled by ${cancelled}; no command started.`);
   console.log(`COMMAND ${label}: ${JSON.stringify({ command: [executable, ...args], cwd, env })}`);
   const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  activeChild = child;
   const started = performance.now();
   const chunks = [];
   const log = join(output, `${label}-${attempt}.log`);
@@ -35,26 +46,44 @@ async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedReje
   for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => {
     chunks.push(chunk); raw.write(chunk); process.stdout.write(chunk);
   });
-  const terminate = () => child.kill('SIGTERM');
-  process.once('SIGTERM', terminate); process.once('SIGINT', terminate);
   let outcome;
   try {
     outcome = await new Promise((done, fail) => {
       child.once('error', fail); child.once('close', (exit, signal) => done({ exit, signal }));
     });
   } finally {
-    process.off('SIGTERM', terminate); process.off('SIGINT', terminate);
+    activeChild = undefined;
     raw.end(); await finished(raw);
   }
   const { exit, signal } = outcome;
+  if (signal !== null || exit === null) cancelled ??= signal ?? 'unknown termination';
+  const diagnostics = Buffer.concat(chunks).toString();
   commands.push({ label, command: [executable, ...args], cwd, env, exit,
-    signal, expectedRejection, elapsedMs: performance.now() - started, log, logSha256: sha(log),
+    signal, expectedRejection: Boolean(expectedRejection), elapsedMs: performance.now() - started, log, logSha256: sha(log),
     ...(env.PLAYWRIGHT_JSON_OUTPUT_NAME && exit === 0 ? {
       browserReport: env.PLAYWRIGHT_JSON_OUTPUT_NAME, browserReportSha256: sha(env.PLAYWRIGHT_JSON_OUTPUT_NAME),
     } : {}) });
-  if (expectedRejection ? exit === 0 : exit !== 0) throw new Error(`${label} unexpected exit ${exit}; complete raw log: ${log}`);
-  return Buffer.concat(chunks).toString();
+  if (cancelled || signal !== null || exit === null
+    || (expectedRejection ? exit !== 1 || !expectedRejection.test(diagnostics) : exit !== 0)) {
+    throw new Error(`${label} unexpected exit ${exit}, signal ${signal}, cancellation ${cancelled}; complete raw log: ${log}`);
+  }
+  return diagnostics;
 }
+return { run, dispose() {
+  process.off('SIGTERM', onTerm); process.off('SIGINT', onInt);
+} };
+}
+
+async function main() {
+if (!output || !resolve(output).startsWith(`${repo}/`) && !ciEvidence) {
+  throw new TypeError('Evidence must stay in this worktree or the canonical CI product evidence mount.');
+}
+const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim();
+if ((reliability || product) && execFileSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8' }).trim() !== '') {
+  throw new Error('Packaged reliability requires a clean committed source head');
+}
+const { run, dispose } = createCommandRunner(output, commands, attempt);
+try {
 const directory = join(tmpdir(), `fluo-issue-${product ? '3879' : '3881'}-${attempt}`);
 await run('starter-provision', ['packages/cli/scripts/local-test-env.mjs', 'create', target.projectName], repo, {
   FLUO_CLI_SANDBOX_ROOT: directory, FLUO_CLI_SANDBOX_STARTER: target.starter,
@@ -199,7 +228,7 @@ class ThirdPageWrite {
     try {
       for (const [name, source] of invalidCases) {
         writeFileSync(appPath, source);
-        await run(`authoring-${name}-rejection`, ['typegen'], directory, {}, 'pnpm', true);
+        await run(`authoring-${name}-rejection`, ['typegen'], directory, {}, 'pnpm', authoringRejections[name]);
         if (sha(projection) !== projectionDigest) throw new Error(`${name} published a partial projection.`);
       }
     } finally { writeFileSync(appPath, acceptedApp); }
@@ -220,7 +249,7 @@ void props; void saved; void serverOnlyProps;
 `);
     try {
       const diagnostics = await run('authoring-negative-types', ['exec', 'tsc', '-p', 'tsconfig.json', '--noEmit'],
-        directory, {}, 'pnpm', true);
+        directory, {}, 'pnpm', authoringRejections['negative-types']);
       const errors = diagnostics.split('\n').filter((line) => /error TS\d+/u.test(line));
       const positions = errors.map((line) => {
         const match = /acceptance-negative\.ts\((\d+),(\d+)\): error TS(\d+):/u.exec(line);
@@ -228,6 +257,8 @@ void props; void saved; void serverOnlyProps;
       });
       const rejectedLines = new Set(positions.map((position) => position?.line));
       if (![3, 4, 5, 6, 7, 9, 12].every((line) => rejectedLines.has(line))
+        || ![[3, 2322], [4, 2322], [5, 7053], [6, 2322], [7, 2322], [9, 2322]]
+          .every(([line, code]) => positions.some((position) => position?.line === line && position.code === code))
         || !positions.some((position) => position?.line === 12 && position.column === 17 && position.code === 2345)
         || positions.some((position) => position?.line === 10 || position?.line === 11)
         || errors.some((line) => !line.includes('acceptance-negative.ts'))) {
@@ -298,3 +329,7 @@ void props; void saved; void serverOnlyProps;
   writeFileSync(join(output, `pack-release-${attempt}.json`), `${JSON.stringify(receipt, null, 2)}\n`);
 }
 console.log(`PACKAGED_BACKGROUND_PASS ${JSON.stringify({ directory, attempt })}`);
+} finally { dispose(); }
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
