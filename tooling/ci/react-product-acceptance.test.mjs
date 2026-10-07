@@ -591,7 +591,7 @@ test('product consumption: native case removed from authenticated report -> fail
   await assert.rejects(consumeProduct(value.matrix, value.receipt, value.root, head, tree), /mandatory browser case\/project/u);
 });
 
-function measurementFixture(direct = false) {
+function measurementFixture(direct = false, development = false) {
   const rawFiles = new Map();
   const store = (path, value) => {
     const bytes = Buffer.from(JSON.stringify(value));
@@ -602,19 +602,19 @@ function measurementFixture(direct = false) {
   const environmentBinding = store('/original/environment.json', { isolated: true });
   const receipts = ['desktop-native', 'desktop-matched-cache', 'tablet-native', 'tablet-matched-cache'].map((profile) => {
     const mode = profile.endsWith('matched-cache') ? 'matched-cache' : 'native';
-    const sample = (framework, index, warmup) => {
+    const sample = (framework, index, warmup, phase = 'production') => {
       const runId = `${profile}-${framework}-${warmup ? 'warmup' : 'measured'}-${index}`;
       const identity = { profile, mode, framework, runId };
       const sourceTraces = direct ? [] : [
-        store(`/original/${runId}-production.json`, { ...identity,
+        store(`/original/${runId}-${phase}-production.json`, { ...identity,
           correctness: { pass: true, steps: [{ name: 'crud', pass: true }] }, qualityFailures: [],
           metrics: { shellArrivalMs: 800, errorRate: 0 } }).path,
-        store(`/original/${runId}-development.json`, { ...identity,
+        store(`/original/${runId}-${phase}-development.json`, { ...identity,
           correctness: { pass: true, steps: [{ name: 'dev-ready', pass: true }] }, qualityFailures: [],
           metrics: { devReadyMs: 900 } }).path,
       ];
       const metrics = { shellArrivalMs: 800, errorRate: 0, devReadyMs: 900 };
-      const trace = store(`/original/${runId}-combined.json`, { ...identity,
+      const trace = store(`/original/${runId}-${phase}-combined.json`, { ...identity,
         ...(direct ? { correctness: { pass: true, steps: [{ name: 'crud', pass: true }] } }
           : { sourceTraces, correctness: { production: 'pass', development: 'pass' } }),
         metrics }).path;
@@ -625,6 +625,11 @@ function measurementFixture(direct = false) {
       isolatedRepresentative: true, provenance: { commit: head }, methodBinding, environmentBinding,
       runs: frameworks.flatMap((framework) => Array.from({ length: 5 }, (_, index) => sample(framework, index, false))),
       warmups: frameworks.flatMap((framework) => Array.from({ length: 2 }, (_, index) => sample(framework, index, true))),
+      ...(development ? {
+        developmentMethodBinding: methodBinding, developmentEnvironmentBinding: environmentBinding,
+        developmentWarmups: frameworks.flatMap((framework) => Array.from({ length: 2 },
+          (_, index) => sample(framework, index, true, 'development'))),
+      } : {}),
     };
   });
   return { value: { provenance: { commit: head }, receipts }, rawFiles };
@@ -646,6 +651,53 @@ test('measurement inventory: complete direct object correctness -> remains usabl
 
   assert.doesNotThrow(() => validateMeasurementInventory(value, rawFiles));
 });
+
+for (const direct of [true, false]) {
+  for (const inventory of ['runs', 'warmups', 'developmentWarmups']) {
+    for (const defect of ['sample', 'identity', 'trace']) {
+      test(`measurement uniqueness: ${direct ? 'direct' : 'composite'} ${inventory} reused ${defect} -> rejects independent repetition substitution`, () => {
+        const { value, rawFiles } = measurementFixture(direct, true);
+        const runs = value.receipts[0][inventory];
+        const first = runs[0];
+        const second = runs[1];
+        if (defect === 'sample') runs[1] = structuredClone(first);
+        if (defect === 'identity') second.runId = first.runId;
+        if (defect === 'trace') second.trace = first.trace;
+
+        assert.throws(() => validateMeasurementInventory(value, rawFiles),
+          defect === 'trace' ? /Reused measurement trace locator/u : /Duplicate measurement sample identity/u);
+      });
+    }
+  }
+
+  test(`measurement uniqueness: ${direct ? 'direct' : 'composite'} distinct paired warmup executions -> accepts shared logical IDs`, () => {
+    const { value, rawFiles } = measurementFixture(direct, true);
+
+    assert.doesNotThrow(() => validateMeasurementInventory(value, rawFiles));
+  });
+
+  for (const target of ['runs', 'developmentWarmups']) {
+    test(`measurement uniqueness: ${direct ? 'direct' : 'composite'} warmup trace reused in ${target} -> rejects missing execution phase`, () => {
+      const { value, rawFiles } = measurementFixture(direct, true);
+      value.receipts[0][target][0].trace = value.receipts[0].warmups[0].trace;
+
+      assert.throws(() => validateMeasurementInventory(value, rawFiles), /Reused measurement trace locator/u);
+    });
+  }
+}
+
+for (const inventory of ['runs', 'warmups']) {
+  test(`measurement uniqueness: composite ${inventory} repeated source locator -> rejects missing source execution`, () => {
+    const { value, rawFiles } = measurementFixture();
+    const run = value.receipts[0][inventory][0];
+    const trace = JSON.parse(rawFiles.get(run.trace).bytes);
+    trace.sourceTraces[1] = trace.sourceTraces[0];
+    const bytes = Buffer.from(JSON.stringify(trace));
+    rawFiles.set(run.trace, { bytes, sha256: digest(bytes) });
+
+    assert.throws(() => validateMeasurementInventory(value, rawFiles), /Reused measurement trace locator/u);
+  });
+}
 
 for (const inventory of ['runs', 'warmups']) {
   for (const field of ['profile', 'mode', 'framework', 'runId']) {

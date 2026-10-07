@@ -546,7 +546,21 @@ export function validateMeasurementInventory(value, rawFiles) {
         && receipt.developmentWarmups.filter((run) => run.framework === framework).length === 2,
       'Incomplete development warmup inventory');
     }
-    for (const run of [...receipt.runs, ...receipt.warmups, ...(receipt.developmentWarmups ?? [])]) {
+    for (const phase of [[...receipt.runs, ...receipt.warmups], receipt.developmentWarmups ?? []]) {
+      const identities = new Set();
+      for (const run of phase) {
+        const identity = JSON.stringify([run.framework, run.runId]);
+        requireValue(!identities.has(identity), 'Duplicate measurement sample identity');
+        identities.add(identity);
+      }
+    }
+    const samples = [...receipt.runs, ...receipt.warmups, ...(receipt.developmentWarmups ?? [])];
+    const traceLocators = new Set();
+    for (const run of samples) {
+      requireValue(!traceLocators.has(run.trace), 'Reused measurement trace locator');
+      traceLocators.add(run.trace);
+    }
+    for (const run of samples) {
       requireValue(run.profile === receipt.profile && run.mode === receipt.mode
         && frameworks.includes(run.framework) && run.correctness === 'pass' && (run.qualityFailures ?? []).length === 0
         && run.metrics && Object.keys(run.metrics).length > 0
@@ -565,6 +579,8 @@ export function validateMeasurementInventory(value, rawFiles) {
       if (Array.isArray(trace.sourceTraces)) requireValue(trace.correctness?.production === 'pass'
         && trace.correctness?.development === 'pass', 'Raw composite phase correctness failure or inconclusive');
       const sources = Array.isArray(trace.sourceTraces) ? trace.sourceTraces.map((path) => {
+        requireValue(!traceLocators.has(path), 'Reused measurement trace locator');
+        traceLocators.add(path);
         const file = rawFiles.get(path);
         requireValue(file, 'Missing original source trace');
         const source = JSON.parse(file.bytes);
