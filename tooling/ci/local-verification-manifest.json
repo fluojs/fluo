@@ -39,6 +39,7 @@
         { "executable": "pnpm", "argv": ["vitest", "run", "--project", "apps", "--maxWorkers=1"], "cwd": "." },
         { "executable": "pnpm", "argv": ["vitest", "run", "--project", "examples", "--maxWorkers=1"], "cwd": "." },
         { "executable": "node", "argv": ["--test", "examples/react-vite-ssr/tests/reliability-handoff.test.mjs"], "cwd": "." },
+        { "executable": "node", "argv": ["--test", "examples/react-vite-ssr/tests/verify-background-starter.test.mjs"], "cwd": ".", "env": { "FLUO_BACKGROUND_EVIDENCE": "/evidence/react-product/runner-regressions" } },
         { "executable": "node", "argv": ["--test", "tooling/ci/react-product-acceptance.test.mjs"], "cwd": "." },
         { "executable": "pnpm", "argv": ["--filter", "@fluojs/example-react-vite-ssr", "exec", "playwright", "install", "chromium", "firefox", "webkit"], "cwd": ".", "env": { "PLAYWRIGHT_BROWSERS_PATH": "/tmp/fluo-react-reliability-browsers" } },
         { "executable": "node", "argv": ["tooling/ci/react-product-acceptance.mjs", "capture", "tooling", "/evidence/react-product/tooling"], "cwd": ".", "env": { "FLUO_PRODUCT_CI": "1", "PLAYWRIGHT_BROWSERS_PATH": "/tmp/fluo-react-reliability-browsers" } },

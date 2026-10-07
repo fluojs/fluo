@@ -24,12 +24,79 @@ export const authoringRejections = {
 };
 const reliabilityEnv = reliability ? { FLUO_REACT_RELIABILITY: '1', FLUO_RELIABILITY_STARTER: '1',
   FLUO_RELIABILITY_REPO: repo } : {};
+// Only this factory creates the groups it signals. Ownership ends at close,
+// not exit: inherited grandchild pipes can outlive the group leader.
+export function spawnOwnedCommand(executable, args, options, graceMs = 2_000) {
+  if (process.platform === 'win32') {
+    throw new Error('Product command descendant ownership requires POSIX process groups; Windows is not supported.');
+  }
+  const owner = randomUUID();
+  const parentOwner = process.env.FLUO_PRODUCT_COMMAND_OWNER;
+  const announce = (action, pid) => {
+    if (parentOwner && process.connected) process.send({ owner: parentOwner, action, pid });
+  };
+  const child = spawn(executable, args, { ...options, detached: true,
+    env: { ...options.env, FLUO_PRODUCT_COMMAND_OWNER: owner },
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+  });
+  const groups = new Set(child.pid ? [child.pid] : []);
+  if (child.pid) announce('register', child.pid);
+  const owned = { child, forced: false, stop };
+  let stopping = false;
+  let closed = false;
+  let escalation;
+  const signalGroup = (signal) => {
+    let signalled = false;
+    for (const pid of groups) {
+      try {
+        process.kill(-pid, signal);
+        signalled = true;
+      } catch (error) {
+        if (error.code !== 'ESRCH') throw error;
+      }
+    }
+    return signalled;
+  };
+  function stop() {
+    if (closed || stopping) return;
+    stopping = true;
+    if (!signalGroup('SIGTERM')) return;
+    escalation = setTimeout(() => {
+      owned.forced = signalGroup('SIGKILL');
+    }, graceMs);
+  }
+  // Nested runners transfer their separately created groups through this
+  // child's private IPC channel. The ancestor retains them if the runner dies.
+  child.on('message', (message) => {
+    if (message?.owner !== owner || !Number.isSafeInteger(message.pid) || message.pid <= 0
+      || message.pid === process.pid || closed) return;
+    if (message.action === 'register') {
+      groups.add(message.pid);
+      announce('register', message.pid);
+      child.emit('owned-descendant', message.pid);
+      if (stopping) signalGroup(owned.forced ? 'SIGKILL' : 'SIGTERM');
+    } else if (message.action === 'release') {
+      groups.delete(message.pid);
+      announce('release', message.pid);
+    }
+  });
+  child.once('exit', stop);
+  child.once('close', () => {
+    // A final owned-group sweep also covers descendants without inherited pipes.
+    signalGroup('SIGKILL');
+    closed = true;
+    clearTimeout(escalation);
+    for (const pid of groups) announce('release', pid);
+    groups.clear();
+  });
+  return owned;
+}
 export function createCommandRunner(output, commands, attempt = randomUUID()) {
 let cancelled = null;
 const activeChildren = new Set();
 const terminate = (signal) => {
-  cancelled = signal;
-  for (const child of activeChildren) child.kill('SIGTERM');
+  cancelled ??= signal;
+  for (const owned of activeChildren) owned.stop();
 };
 const onTerm = () => terminate('SIGTERM');
 const onInt = () => terminate('SIGINT');
@@ -37,8 +104,11 @@ process.on('SIGTERM', onTerm); process.on('SIGINT', onInt);
 async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedRejection = false, expectedExit = 1) {
   if (cancelled) throw new Error(`${label} cancelled by ${cancelled}; no command started.`);
   console.log(`COMMAND ${label}: ${JSON.stringify({ command: [executable, ...args], cwd, env })}`);
-  const child = spawn(executable, args, { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
-  activeChildren.add(child);
+  const owned = spawnOwnedCommand(executable, args, {
+    cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const { child } = owned;
+  activeChildren.add(owned);
   const started = performance.now();
   const chunks = [];
   const log = join(output, `${label}-${attempt}.log`);
@@ -52,11 +122,12 @@ async function run(label, args, cwd, env = {}, executable = 'pnpm', expectedReje
       child.once('error', fail); child.once('close', (exit, signal) => done({ exit, signal }));
     });
   } finally {
-    activeChildren.delete(child);
     raw.end(); await finished(raw);
+    activeChildren.delete(owned);
   }
   const { exit, signal } = outcome;
   if (signal !== null || exit === null) cancelled ??= signal ?? 'unknown termination';
+  if (owned.forced) cancelled ??= 'forced descendant termination';
   const diagnostics = Buffer.concat(chunks).toString();
   commands.push({ label, command: [executable, ...args], cwd, env, exit,
     signal, expectedRejection: Boolean(expectedRejection), elapsedMs: performance.now() - started, log, logSha256: sha(log),

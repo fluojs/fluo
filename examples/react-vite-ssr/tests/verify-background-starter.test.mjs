@@ -1,20 +1,218 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { createWriteStream, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { join } from 'node:path';
+import { finished } from 'node:stream/promises';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const root = process.env.FLUO_BACKGROUND_EVIDENCE;
 if (!root) throw new Error('FLUO_BACKGROUND_EVIDENCE is required for subprocess regression evidence.');
-const harness = fileURLToPath(new URL('./verify-background-starter.mjs', import.meta.url));
+const harness = process.env.FLUO_BACKGROUND_TEST_IMPLEMENTATION
+  ?? fileURLToPath(new URL('./verify-background-starter.mjs', import.meta.url));
 const diagnostics = {
   'missing-module': '/consumer/src/app.ts:126:5: Browser module ./absent-page.tsx is not in the frozen tsconfig graph; use its build-mapped module literal.',
   'duplicate-route': 'Duplicate route registration detected for GET:/products/third:<none>.',
   'invalid-route': '@GET() path "/third/:" is invalid at segment ":": Parameter names must match /[a-zA-Z_][a-zA-Z0-9_]*/. Only literal segments and full-segment ":param" placeholders are supported.',
   'negative-types': 'src/acceptance-negative.ts(12,17): error TS2345: Argument is not assignable.',
 };
+
+async function descendantLifecycle(t, signal, mode) {
+  mkdirSync(root, { recursive: true });
+  const output = mkdtempSync(join(root, 'descendants-'));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new assert.AssertionError({
+    message: 'Owned grandchildren must release inherited pipes and sockets before command settlement',
+  })), 15_000);
+  const pids = new Set();
+  const sockets = [];
+  const socketClosures = [];
+  const socketErrors = [];
+  const ready = new Set();
+  const exited = new Set();
+  const registered = new Set();
+  const nested = mode.startsWith('nested');
+  let leader;
+  let leaderKilled = false;
+  const events = [];
+  let child;
+  let triggered = false;
+  const count = mode === 'parallel' || nested ? 2 : 1;
+  const trigger = () => {
+    if (triggered || ready.size !== count || mode === 'normal') return;
+    if ((mode === 'parent-exit' || mode === 'forced-exit') && exited.size !== count) return;
+    if (mode === 'nested-forced') {
+      if (registered.size !== count) return;
+      if (!leaderKilled) { leaderKilled = true; process.kill(leader, 'SIGKILL'); return; }
+      if (!exited.has(0)) return;
+    }
+    triggered = true; child.kill(signal);
+  };
+  const server = createServer((socket) => {
+    sockets.push(socket);
+    socket.on('error', (error) => socketErrors.push(error.code));
+    const closure = new Promise((done, reject) => {
+      socket.once('close', done);
+      controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true });
+    });
+    void closure.catch(() => {});
+    socketClosures.push(closure);
+    let pending = '';
+    socket.on('data', (chunk) => {
+      pending += chunk;
+      const lines = pending.split('\n'); pending = lines.pop();
+      for (const line of lines) {
+        const event = JSON.parse(line);
+        events.push(event);
+        if (event.state === 'ready') {
+          pids.add(event.pid); pids.add(event.parent); ready.add(event.id);
+        }
+        if (mode === 'normal' && event.state === 'stopped') socket.write('release\n');
+      }
+      trigger();
+    });
+    socket.resume();
+  });
+  const listening = once(server, 'listening', { signal: controller.signal });
+  server.listen(0, '127.0.0.1');
+  await listening;
+  const grandchild = (id) => `
+    const socket = require('node:net').connect(${server.address().port}, '127.0.0.1');
+    const emit = (state) => socket.write(JSON.stringify({ id: ${JSON.stringify(id)}, pid: process.pid, parent: process.ppid, state }) + '\\n');
+    let stopped = false;
+    let released = false;
+    const finish = () => { if (stopped && released) socket.end(() => process.exit(0)); };
+    socket.on('data', () => { released = true; finish(); });
+    process.on('SIGTERM', () => {
+      ${mode === 'stubborn' ? '' : "if (stopped) return; stopped = true; emit('stopped'); finish();"}
+    });
+    socket.on('connect', () => { console.log('GRANDCHILD_READY ' + process.pid); emit('ready'); if (process.send) process.send('ready'); });
+  `;
+  const parent = (id) => `
+    const cp = require('node:child_process');
+    const script = ${JSON.stringify(grandchild(id))};
+    if (${JSON.stringify(mode)} === 'active-sync' || ${JSON.stringify(mode)} === 'stubborn') {
+      cp.spawnSync(process.execPath, ['-e', script], { stdio: 'inherit' });
+    } else {
+      const child = cp.spawn(process.execPath, ['-e', script], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+      child.on('message', () => {
+        if (${JSON.stringify(mode)} === 'parent-exit' || ${JSON.stringify(mode)} === 'normal') process.exit(0);
+        if (${JSON.stringify(mode)} === 'forced-exit') process.kill(process.pid, 'SIGTERM');
+      });
+      if (${JSON.stringify(mode)} !== 'forced-exit') process.on('SIGTERM', () => child.kill('SIGTERM'));
+      child.on('close', () => process.exit(0));
+    }
+  `;
+  const scripts = Array.from({ length: count }, (_, i) => parent(String(i)));
+  const inner = `
+    if (${JSON.stringify(mode)} === 'nested-late') {
+      const send = process.send.bind(process);
+      const pending = [];
+      process.send = (message) => {
+        if (message.action === 'register') { pending.push(message); return true; }
+        return send(message);
+      };
+      process.on('SIGTERM', () => { for (const message of pending.splice(0)) send(message); });
+    }
+    import { createCommandRunner } from ${JSON.stringify(harness)};
+    const commands = [];
+    const { run, dispose } = createCommandRunner(${JSON.stringify(output)}, commands);
+    const results = await Promise.allSettled(${JSON.stringify(scripts)}.map((script, i) =>
+      run('inner-' + i, ['-e', script], process.cwd(), {}, process.execPath)));
+    dispose();
+    if (results.some(({ status }) => status === 'rejected')) process.exitCode = 1;
+  `;
+  const driver = `
+    import cp from 'node:child_process';
+    import { syncBuiltinESMExports } from 'node:module';
+    const spawn = cp.spawn;
+    cp.spawn = (...args) => {
+      const child = spawn(...args);
+      process.send({ ownedLeader: child.pid });
+      child.on('owned-descendant', (pid) => process.send({ registered: pid }));
+      child.once('exit', () => process.send({ leaderExit: 0 }));
+      return child;
+    };
+    syncBuiltinESMExports();
+    const { createCommandRunner } = await import(${JSON.stringify(harness)});
+    const listeners = [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')];
+    const commands = [];
+    const { run, dispose } = createCommandRunner(${JSON.stringify(output)}, commands);
+    let cancellations = 0;
+    let repeated;
+    const repetition = new Promise((done) => { repeated = done; });
+    const acknowledge = () => { process.send({ cancellation: ++cancellations }); if (cancellations === 2) repeated(); };
+    process.on(${JSON.stringify(signal)}, acknowledge);
+    process.channel.ref();
+    const scripts = ${JSON.stringify(nested ? [inner] : scripts)};
+    const results = await Promise.allSettled(scripts.map((script, i) =>
+      run('owned-' + i, [${nested ? "'--input-type=module'," : ''} '-e', script], process.cwd(), {}, process.execPath)));
+    if (cancellations) await repetition;
+    let laterFailure;
+    try { await run('later', ['-e', 'console.log("LATER")'], process.cwd(), {}, process.execPath); }
+    catch (error) { laterFailure = error.message; }
+    dispose(); process.off(${JSON.stringify(signal)}, acknowledge);
+    process.send({ result: { commands, results: results.map(({ status }) => status), laterFailure,
+      listenersRestored: listeners.every((count, i) => count === process.listenerCount(['SIGINT', 'SIGTERM'][i])) } });
+    process.disconnect();
+  `;
+  child = spawn(process.execPath, ['--input-type=module', '-e', driver], { stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+  const raw = createWriteStream(join(output, 'driver.log'));
+  const terminalClosed = once(child, 'close');
+  const closed = once(child, 'close', { signal: controller.signal });
+  const observed = new Promise((resolveResult, rejectResult) => {
+    child.on('message', (message) => {
+      if (message.ownedLeader !== undefined) { leader = message.ownedLeader; pids.add(leader); trigger(); }
+      else if (message.registered !== undefined) { registered.add(message.registered); trigger(); }
+      else if (message.leaderExit !== undefined) { exited.add(message.leaderExit); trigger(); }
+      else if (message.cancellation === 1) child.kill(signal);
+      else if (message.cancellation === 2 && mode !== 'nested-forced') {
+        for (const socket of sockets) socket.write('release\n');
+      }
+      else if (message.result) resolveResult(message.result);
+    });
+    controller.signal.addEventListener('abort', () => rejectResult(controller.signal.reason), { once: true });
+  });
+  for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => raw.write(chunk));
+  t.after(async () => {
+    clearTimeout(timeout);
+    for (const pid of pids) {
+      try { process.kill(pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    }
+    child.kill('SIGKILL');
+    await terminalClosed;
+    for (const socket of sockets) socket.destroy();
+    server.close();
+    raw.end(); await finished(raw);
+    writeFileSync(join(output, 'socket-events.json'), JSON.stringify({ signal, mode, ready: [...ready], exited: [...exited], registered: [...registered], events }, null, 2));
+  });
+
+  const [result, [exit, exitSignal]] = await Promise.all([observed, closed]);
+  await Promise.all(socketClosures);
+
+  assert.equal(exit, 0);
+  assert.equal(exitSignal, null);
+  assert.equal(ready.size, count);
+  assert.equal(sockets.length, count);
+  assert.deepEqual(socketErrors.filter((code) => mode !== 'nested-forced' || code !== 'ECONNRESET'), []);
+  assert.equal(result.listenersRestored, true);
+  if (mode === 'nested-late' || mode === 'nested-forced') assert.equal(registered.size, 2);
+  if (mode === 'nested-forced') assert.equal(result.commands[0].signal, 'SIGKILL');
+  assert.equal(result.commands.length, mode === 'normal' ? 2 : nested ? 1 : scripts.length);
+  assert.deepEqual(result.results, Array.from({ length: nested ? 1 : scripts.length },
+    () => mode === 'normal' ? 'fulfilled' : 'rejected'));
+  if (mode === 'normal') assert.equal(result.laterFailure, undefined);
+  else assert.match(result.laterFailure, /no command started/u);
+}
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  for (const mode of ['active-sync', 'parallel', 'parent-exit', 'forced-exit', 'stubborn', 'nested', 'nested-forced', 'nested-late', 'normal']) {
+    test(`run descendants: ${signal} ${mode} -> settles real inherited pipes and owned sockets`,
+      (t) => descendantLifecycle(t, signal, mode));
+  }
+}
 
 async function exercise(t, options) {
   mkdirSync(root, { recursive: true });

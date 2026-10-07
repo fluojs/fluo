@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { createReadStream, createWriteStream, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
@@ -10,7 +10,7 @@ import { validateReviewFact } from '../../.agents/skills/review-head/scripts/con
 import { isValidLocalCiWaiver, localCheckBinding } from '../../.agents/skills/execute-lane/scripts/lane-v4.mjs';
 import { assertMethodConfig, hashObject } from '../benchmarks/react-app-comparison/src/fa-v2.mjs';
 import { environmentConfigIdentity, planMeasurements } from '../benchmarks/react-app-comparison/src/measure.mjs';
-import { authoringRejections } from '../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
+import { authoringRejections, spawnOwnedCommand } from '../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
 
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const requiredRows = Object.freeze([
@@ -359,7 +359,7 @@ export async function captureDomain(domain, outputDirectory) {
   let activeChild;
   const terminate = (signal) => {
     cancelled ??= signal;
-    activeChild?.kill('SIGTERM');
+    activeChild?.stop();
   };
   const onTerm = () => terminate('SIGTERM');
   const onInt = () => terminate('SIGINT');
@@ -371,11 +371,14 @@ export async function captureDomain(domain, outputDirectory) {
       const started = performance.now();
       const logPath = resolve(output, `${command.id}.log`);
       const log = createWriteStream(logPath);
-      const child = spawn(command.executable, command.args, {
+      // Packed runners own nested command groups. Give their bounded cleanup
+      // time to settle before escalating the outer capture group.
+      const owned = spawnOwnedCommand(command.executable, command.args, {
         cwd: sourceRoot, env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: '0', ...command.env },
         stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      activeChild = child;
+      }, 4_000);
+      const { child } = owned;
+      activeChild = owned;
       for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => {
         log.write(chunk); process.stdout.write(chunk);
       });
@@ -390,6 +393,7 @@ export async function captureDomain(domain, outputDirectory) {
       }
       const { exitCode, signal } = outcome;
       if (signal !== null || exitCode === null) cancelled ??= signal ?? 'unknown termination';
+      if (owned.forced) cancelled ??= 'forced descendant termination';
       const observed = { id: command.id, head: source.head, status: !cancelled && exitCode === 0 ? 'passed' : 'failed',
         exitCode, signal, elapsedMs: performance.now() - started,
         command: [command.executable, ...command.args].join(' '), env: command.env, log: reference(logPath) };
