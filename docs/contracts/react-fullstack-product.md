@@ -183,18 +183,24 @@ Failed correctness, unavailable/missing terminals/native hooks/schema/coverage,
 `qualityFailures`, ownership/cleanup failures and quality INCONCLUSIVE cannot
 pass in either phase.
 Preserve FA-V2's historical quality classification and prior raw/verdicts;
-replay cannot be relabeled as a new acceptance PASS. A new canonical before/final
-pair, all three exact-head reviews and full GitHub CI remain required.
+Replay cannot be relabeled as a fresh acceptance PASS. Preserve authenticated
+canonical historical before/final evidence under the numerical policy below;
+fresh current-head integrated correctness, all three exact-head reviews and
+full GitHub CI remain required.
 
-FA-V3 final pair numerical acceptance uses every original AFTER absolute
-budget, peer band and observed min/max decision. Preserve and report BEFORE
-numerical FAIL/INCONCLUSIVE and its raw evidence without changing it to PASS.
-Only BEFORE budget breaches and boundary crossing are excluded from the final
-product numerical veto. Both phases still require source/environment/method
-authentication, complete inventory, correctness, valid available metrics,
-native observation and ownership/cleanup. Fluo measured/warmup error rate must
-remain zero in both phases. AFTER numerical FAIL/INCONCLUSIVE still blocks;
-FA-V2's existing pair aggregation remains unchanged.
+For final #3879 acceptance, the operator's 2026-10-06
+`whole_product_numeric_acceptance=apply` decision makes original numerical
+FAIL/INCONCLUSIVE disclosed, nonblocking diagnostics in both BEFORE and AFTER.
+Keep every original absolute budget, peer band, observed min/max decision,
+profile, workload, pinned peer and raw verdict; never relabel them PASS.
+Source/environment/method authentication, complete inventory, valid available
+metrics, quality, correctness, stability and ownership/cleanup still block.
+Fluo measured and warmup error rates must remain zero in both phases.
+Existing FA-V2/FA-V3 evaluators retain their original numerical verdicts.
+Authenticated historical evidence retains its original collector/evaluator
+head and file hashes, with explicit seam equivalence and limits; it is not
+a fresh measurement of the integrated product. Do not recollect or optimize
+solely to turn those numerical diagnostics green.
 
 Source seams: `packages/react/src/client/store.ts`, `packages/react/src/client/navigation-payload.ts`, `packages/react/src/module.ts`, `packages/cli/src/dev-runner/react-vite-dev-app.ts`, `examples/react-vite-ssr/src/app.ts`. Existing tests: `packages/react/src/client.test.ts`, `examples/react-vite-ssr/src/app.test.ts`, `examples/react-vite-ssr/tests/production-hydration.spec.ts`; the [navigation payload contract](./react-navigation-payload.md) contains additional HTTP/prefetch coverage. These are **existing** behavior records, not newly executed browser or performance results. The example models a native form and a short-lived shell counter, not an actual licensed player or the future product gate. Documentation validation checks links/structure and EN/KO pairing, not future runtime success. The affected FluoBlog chapter 17 and FluoShop chapter 4 companions apply the typed contract alongside their unchanged native exercises; manuscript validation is not their DB/browser execution evidence.
 

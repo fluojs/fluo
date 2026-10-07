@@ -95,6 +95,68 @@ function readHtml(body: unknown): string {
 }
 
 describe('react-vite-ssr example', () => {
+  it('authenticated CRUD: session and permission boundaries -> private reads and persisted writes', async () => {
+    const events: CatalogObservation[] = [];
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation({
+        ...VITE_MANIFEST,
+        'src/navigation-catalog.ts': {
+          file: 'navigation-catalog-hash.js', isDynamicEntry: true, src: 'src/navigation-catalog.ts',
+        },
+      }),
+      catalogControl: (event) => { events.push(event); },
+    });
+    const app = await Test.createApp({ rootModule: AppModule, ...AppModule.applicationOptions });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      const cookies = { catalogSession: 'a', catalogAccess: 'allowed', csrf: 'catalog-demo-token' };
+      const write = (path: string, name: string) => app.request('POST', path, { cookies })
+        .header('host', 'localhost:3000').header('origin', 'http://localhost:3000')
+        .header('Accept', 'application/vnd.fluo.form+json;v=1')
+        .body({ display_name: name, csrf: 'catalog-demo-token' }).send();
+
+      const anonymous = await app.request('GET', '/catalog/session/products').send();
+      const forbidden = await app.request('GET', '/catalog/session/products', {
+        cookies: { ...cookies, catalogAccess: 'forbidden' },
+      }).send();
+      const invalid = await write('/catalog/session/products/create', 'x');
+      const created = await write('/catalog/session/products/create', 'Private product');
+
+      expect(anonymous.status).toBe(401);
+      expect(forbidden.status).toBe(403);
+      expect(invalid.status).toBe(400);
+      expect(created.status).toBe(200);
+      expect(created.body).toMatchObject({ outcome: 'saved', destination: '/catalog/session/products/item-1',
+        data: { sku: 'item-1', name: 'Private product' } });
+      expect((await app.request('GET', '/catalog/item-1').send()).status).toBe(404);
+      const publicList = await app.request('GET', '/catalog')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
+      expect(publicList.body).toMatchObject({ destination: { props: {
+        products: [{ sku: 'sku-42', name: 'Seeded product' }],
+      } } });
+      const updated = await write('/catalog/session/products/item-1/update', 'Corrected product');
+      expect(updated.body).toMatchObject({ outcome: 'saved', followUp: 'refresh' });
+      const read = await app.request('GET', '/catalog/session/products', { cookies })
+        .query('q', 'Corrected').header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
+      expect(read.body).toMatchObject({ destination: { props: {
+        authenticatedCrud: true, sessionIdentity: 'a', products: [{ sku: 'item-1', name: 'Corrected product' }],
+      } } });
+      const removed = await app.request('POST', '/catalog/session/products/item-1/delete', { cookies })
+        .header('host', 'localhost:3000').header('origin', 'http://localhost:3000')
+        .header('Accept', 'application/vnd.fluo.form+json;v=1')
+        .body({ csrf: 'catalog-demo-token' }).send();
+      expect(removed.body).toMatchObject({ outcome: 'saved', destination: '/catalog/session/products' });
+      expect((await app.request('GET', '/catalog/session/products/item-1', { cookies }).send()).status).toBe(404);
+      const commits = events.filter((event) => event.phase === 'commit');
+      expect(commits).toHaveLength(3);
+      for (const event of commits) {
+        expect(events.some((cleanup) => cleanup.phase === 'cleanup' && cleanup.scope === event.scope)).toBe(true);
+      }
+      expect((await app.request('GET', '/catalog').send()).status).toBe(200);
+    });
+  });
+
   it('delivers the HTTP-owned shell through a real Fastify socket before a gated descendant settles', async () => {
     // Given: the ordinary React HTTP module with a Suspense descendant controlled independently of the handler.
     const gate = deferred<void>();

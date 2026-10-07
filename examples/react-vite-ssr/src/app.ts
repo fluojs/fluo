@@ -152,7 +152,8 @@ export function createReactViteExampleModule(options: ReactViteExampleModuleOpti
     return ReactNavigationPage.create(createElement(ProductDocument, {
       catalog: props, navigationBuildId: assets.buildId, preview: false, productName: '',
       routeParams: context.request.params, routeUrl: context.request.url, saved: false, sku: '', stylesheets: assets.css,
-    }), { module: './navigation-catalog.ts', props: { ...props } }, props.sessionDemo ? undefined : { prefetch: 'public' });
+    }), { module: './navigation-catalog.ts', props: { ...props } },
+      props.sessionDemo || props.authenticatedCrud ? undefined : { prefetch: 'public' });
   }, options.catalogControl);
   const renderPage: ReactPageRenderer = (page, ...args) => presentation().renderPage(
     options.deliveryProbe && isValidElement<ProductDocumentProps>(page)

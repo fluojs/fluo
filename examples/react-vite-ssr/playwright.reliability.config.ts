@@ -8,6 +8,7 @@ export default defineConfig({
   testMatch: soak ? 'long-session-soak.spec.ts' : [
     'long-session.spec.ts', 'long-session-ownership.spec.ts', 'long-session-cache.spec.ts',
     'background-interactions.spec.ts', 'session-transition.spec.ts',
+    'product-acceptance.spec.ts', 'product-faults.spec.ts',
   ],
   retries: 0,
   workers: 1,

@@ -11,11 +11,30 @@ fault/recovery traces and quiescent checkpoints. The explicit test build uses
 for Chromium/Firefox/WebKit. Default browser coverage excludes the long-session
 files, especially the separate two-hour soak.
 
-These are source fixtures, not completed execution evidence. Follow the
+Shipped source coverage is separate from current-head execution evidence. Follow the
 [long-session guide](../../docs/guides/react-long-session-reliability.md) for exact
 commands, raw heap/RSS limitations, packaged dev/production, the separate soak
 workflow and #3879's exact-head receipt consumer. Physical mobile/tablet checks
-remain external requirements; desktop viewport coverage cannot pass them.
+are explicitly deferred to #3906, not PASS; desktop viewport coverage cannot pass them.
+
+## Authenticated product companion
+
+Open `/catalog/session`, choose **Login A** or **Login B**, then
+**Authenticated products**. `/catalog/session/products` connects guarded
+list/search/detail and native/enhanced create/update/delete, invalid/correct/save,
+logout/relogin and confirmed process-local persistence. Private products do not
+enter the unchanged public catalog or its public prefetch results. This is demo
+HttpOnly identity/permissions and fixed-token CSRF, not production authentication
+or durable/per-user storage.
+
+The [product acceptance guide](../../docs/guides/react-product-acceptance.md)
+documents the 20-row matrix, sealed packed third-page/dev/production journeys
+and authentic receipt consumer. Code presence is not product PASS. Final #3879
+keeps original numerical FAIL/INCONCLUSIVE as disclosed nonblocking diagnostics,
+while validity/quality/correctness/stability/cleanup and zero Fluo errors block.
+The lane soak needs a complete fresh one-hour trace when changed seams are not
+proven equivalent; scheduled default stays two hours. Reviews, canonical waiver
+and full GitHub CI remain lead-owned; full local CI is prohibited in this lane.
 
 ## Background interaction companion
 

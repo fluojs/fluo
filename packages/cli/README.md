@@ -7,6 +7,17 @@ The canonical CLI for fluo — bootstrap new applications, generate components a
 
 ## Canonical command vocabulary
 
+The same `react-vite-ssr` starter includes `/catalog/session` sign-in and an
+authenticated list/search/detail/create/update/delete companion at
+`/catalog/session/products`, using the existing HTTP/typegen/`Link`/`useForm`
+composition. Private process-local products are separate from the unchanged
+public catalog/editor-cookie demos. These demo sessions are not production auth
+or durable storage. The [product acceptance guide](../../docs/guides/react-product-acceptance.md)
+distinguishes shipped code, actual packed dev/production receipts and lead-owned
+final gates. Original numeric FAIL/INCONCLUSIVE remains disclosed diagnostics;
+quality/correctness/stability/cleanup still block. The lane soak is one hour,
+scheduled default two hours, and physical devices are deferred to #3906, not PASS.
+
 `fluo new my-react-app --starter react-vite-ssr` also ships the same native
 `useForm` background interaction at `/catalog/background`: real GET search and
 widget reads, stable-id queue POSTs and fresh current-page approval. `pnpm dev`

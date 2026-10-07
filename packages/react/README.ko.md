@@ -7,7 +7,15 @@ fluo를 위한 HTTP-first 풀스택 React application framework이며 package ro
 form, 독립 background 작업 및 session 철회를 제공합니다.
 [풀스택 제품 계약](../../docs/contracts/react-fullstack-product.ko.md)과
 [장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)는 해당
-capability와 미실행 whole-product/soak/manual gate를 구분합니다.
+shipped capability, 실제 current-head 실행 및 lead-owned 최종 제품 gate를 구분합니다.
+[제품 수용 guide](../../docs/guides/react-product-acceptance.ko.md)는
+`/catalog/session/products` authenticated CRUD, jukebox lifetime, packed
+authoring/dev/production과 machine-consumed receipt를 연결합니다. Demo session과
+process-local private product는 production authentication이나 durable storage가 아닙니다.
+최종 #3879의 원래 수치 FAIL/INCONCLUSIVE는 공개된 비차단 diagnostics이며,
+증거 품질/correctness/stability/cleanup 및 Fluo error 0은 계속 필수입니다.
+이번 lane은 완료된 1시간 soak를 요구하고 scheduled 2시간 default를 유지하며,
+physical mobile/tablet은 PASS 없이 #3906으로 명시적으로 분리합니다.
 
 Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전에 [소비자 마이그레이션 가이드](../../docs/getting-started/migrate-node24.ko.md)를 따르세요. React는 `0.x`의 `minor` 릴리스를 유지하며 `1.0`으로 승격하지 않습니다.
 

@@ -1,0 +1,70 @@
+import { expect, test } from '@playwright/test';
+
+const route = '/products/third?label=Integrated%20third%20page';
+const navigation = 'application/vnd.fluo.react-navigation+json;v=2';
+
+test('authored third page: generated props and enhanced saved data -> real HTTP approval without manual wiring', async ({ page }) => {
+  await page.goto(route);
+  await expect(page.getByRole('heading', { name: 'Integrated third page', exact: true })).toBeVisible();
+  const form = page.getByRole('form', { name: 'Third page save' });
+  await expect(form).toHaveAttribute('data-enhanced', 'true');
+  await form.getByRole('textbox').fill('Typed enhanced third page');
+  const saved = page.waitForResponse((response) => response.request().method() === 'POST'
+    && new URL(response.url()).pathname === '/products/third/save');
+  const approved = page.waitForResponse((response) => response.request().headers().accept === navigation
+    && new URL(response.url()).pathname === '/products/third');
+
+  await form.getByRole('button', { name: 'Save third page', exact: true }).click();
+
+  expect((await saved).status()).toBe(200);
+  expect((await approved).status()).toBe(200);
+  await expect(page.locator('[data-third-saved]')).toHaveText('Typed enhanced third page');
+  expect((await page.request.get('/products/third?label=x')).status()).toBe(400);
+});
+
+test('authored third page: disabled JavaScript -> typed native POST303GET roundtrip', async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ baseURL, javaScriptEnabled: false });
+  try {
+    const page = await context.newPage();
+    await page.goto(route);
+    await page.getByRole('textbox', { name: 'Third page name' }).fill('Typed native third page');
+    const saved = page.waitForResponse((response) => response.status() === 303
+      && new URL(response.url()).pathname === '/products/third/save');
+
+    await page.getByRole('button', { name: 'Save third page', exact: true }).click();
+
+    await saved;
+    await expect(page.locator('[data-third-saved]')).toHaveText('Typed native third page');
+  } finally { await context.close(); }
+});
+
+test('authored third page: interrupted HTTP approval -> no partial destination commit', async ({ page }) => {
+  await page.goto(route);
+  await expect(page.getByRole('form', { name: 'Third page save' })).toHaveAttribute('data-enhanced', 'true');
+  let resolveStarted: () => void = () => { throw new Error('Missing started signal'); };
+  let release: () => void = () => { throw new Error('Missing release signal'); };
+  const started = new Promise<void>((resolve) => { resolveStarted = resolve; });
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  await page.route((url) => url.pathname === '/products/third' && url.searchParams.get('label') === 'Delayed', async (request) => {
+    if (request.request().headers().accept !== navigation) return request.continue();
+    resolveStarted();
+    await released;
+    await request.continue();
+  });
+  const departed = page.waitForResponse((response) => response.request().headers().accept === navigation
+    && new URL(response.url()).pathname === '/products/sku-42');
+  try {
+    await page.getByRole('link', { name: 'Delayed third page', exact: true }).click();
+    await Promise.race([started, new Promise<never>((_, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Missing third-page request')), 10_000);
+      started.finally(() => clearTimeout(timeout));
+    })]);
+
+    await page.getByRole('link', { name: 'Leave third page', exact: true }).click();
+
+    expect((await departed).status()).toBe(200);
+    release();
+    await expect(page).toHaveURL(/\/products\/sku-42$/u);
+    await expect(page.getByRole('heading', { name: 'Integrated third page', exact: true })).toHaveCount(0);
+  } finally { release(); await page.unrouteAll({ behavior: 'wait' }); }
+});

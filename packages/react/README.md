@@ -7,7 +7,15 @@ package root. The official composition provides streamed SSR/hydration, approved
 navigation, progressive forms, independent background operations and session
 revocation. The [full-stack product contract](../../docs/contracts/react-fullstack-product.md)
 and [long-session guide](../../docs/guides/react-long-session-reliability.md)
-separate those capabilities from the unexecuted whole-product/soak/manual gate.
+separate shipped capabilities from actual current-head execution and the
+lead-owned final product gate. The [product acceptance guide](../../docs/guides/react-product-acceptance.md)
+connects authenticated CRUD at `/catalog/session/products`, jukebox lifetimes,
+packed authoring/dev/production and machine-consumed receipts. Demo sessions and
+process-local private products are not production authentication or durable storage.
+Original numeric FAIL/INCONCLUSIVE is disclosed nonblocking diagnostics for final
+#3879; evidence quality/correctness/stability/cleanup and zero Fluo errors still
+block. This lane requires a completed one-hour soak, keeps the scheduled two-hour
+default and explicitly defers physical mobile/tablet to #3906 without PASS.
 
 Preparing for the coordinated Node 24 release? Follow the [consumer migration guide](../../docs/getting-started/migrate-node24.md) before upgrading packages. React remains a `0.x` minor release, not a `1.0` graduation.
 
