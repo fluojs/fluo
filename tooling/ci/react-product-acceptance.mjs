@@ -10,6 +10,7 @@ import { validateReviewFact } from '../../.agents/skills/review-head/scripts/con
 import { isValidLocalCiWaiver, localCheckBinding } from '../../.agents/skills/execute-lane/scripts/lane-v4.mjs';
 import { assertMethodConfig, hashObject } from '../benchmarks/react-app-comparison/src/fa-v2.mjs';
 import { environmentConfigIdentity, planMeasurements } from '../benchmarks/react-app-comparison/src/measure.mjs';
+import { authoringRejections } from '../../examples/react-vite-ssr/tests/verify-background-starter.mjs';
 
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const requiredRows = Object.freeze([
@@ -354,8 +355,18 @@ export async function captureDomain(domain, outputDirectory) {
   const receiptFile = resolve(output, `${domain}-receipt.json`);
   const save = () => writeFileSync(receiptFile, `${JSON.stringify(receipt, null, 2)}\n`);
   save();
+  let cancelled = null;
+  let activeChild;
+  const terminate = (signal) => {
+    cancelled ??= signal;
+    activeChild?.kill('SIGTERM');
+  };
+  const onTerm = () => terminate('SIGTERM');
+  const onInt = () => terminate('SIGINT');
+  process.on('SIGTERM', onTerm); process.on('SIGINT', onInt);
   try {
     for (const command of productDomainPlan(domain, output)) {
+      requireValue(!cancelled, `Product capture cancelled by ${cancelled}; no command started`);
       if (command.id === 'packed-product') mkdirSync(resolve(output, 'packed-product'), { recursive: true });
       const started = performance.now();
       const logPath = resolve(output, `${command.id}.log`);
@@ -364,27 +375,27 @@ export async function captureDomain(domain, outputDirectory) {
         cwd: sourceRoot, env: { ...process.env, COREPACK_ENABLE_DOWNLOAD_PROMPT: '0', ...command.env },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
+      activeChild = child;
       for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => {
         log.write(chunk); process.stdout.write(chunk);
       });
-      const terminate = () => child.kill('SIGTERM');
-      process.once('SIGTERM', terminate);
-      process.once('SIGINT', terminate);
       let outcome;
       try {
         outcome = await new Promise((complete, reject) => {
           child.once('error', reject); child.once('close', (exitCode, signal) => complete({ exitCode, signal }));
         });
       } finally {
-        process.off('SIGTERM', terminate); process.off('SIGINT', terminate);
         log.end(); await finished(log);
+        activeChild = undefined;
       }
       const { exitCode, signal } = outcome;
-      const observed = { id: command.id, head: source.head, status: exitCode === 0 ? 'passed' : 'failed',
+      if (signal !== null || exitCode === null) cancelled ??= signal ?? 'unknown termination';
+      const observed = { id: command.id, head: source.head, status: !cancelled && exitCode === 0 ? 'passed' : 'failed',
         exitCode, signal, elapsedMs: performance.now() - started,
         command: [command.executable, ...command.args].join(' '), env: command.env, log: reference(logPath) };
       receipt.commands.push(observed);
       save();
+      requireValue(!cancelled, `Product capture cancelled by ${cancelled}; ${logPath}`);
       requireValue(exitCode === 0, `Product domain command failed: ${command.id} (${exitCode}); ${logPath}`);
       if (command.browserReport) {
         const reportPath = resolve(output, command.browserReport);
@@ -406,10 +417,7 @@ export async function captureDomain(domain, outputDirectory) {
         const paths = readdirSync(directory).filter((name) => /^pack-release-.*\.json$/u.test(name));
         requireValue(paths.length === 1, 'Missing/duplicate packed source receipt');
         const packedPath = resolve(directory, paths[0]);
-        const packed = JSON.parse(readFileSync(packedPath));
-        requireValue(packed.head === source.head && packed.status === 'passed' && packed.product === true
-          && packed.source?.clean === true && packed.authoring?.manualWiring?.length === 0,
-        'Packed product source/authoring incomplete');
+        const packed = packedEvidence(output, reference(packedPath), source.head, source.tree);
         observed.packagedReceipt = reference(packedPath);
         receipt.checks.push({ ...observed, id: 'packed-authoring' });
         for (const id of ['packed-dev', 'packed-production', 'packed-deployment']) {
@@ -437,11 +445,16 @@ export async function captureDomain(domain, outputDirectory) {
       }
     };
     inventory(output);
+    requireValue(!cancelled, `Product capture cancelled by ${cancelled}`);
     receipt.status = 'domain-evidence-complete';
+    if (domain !== 'soak') domainEvidence(output, receipt, source.head, source.tree);
   } catch (error) {
     receipt.status = 'failed';
     throw error;
-  } finally { save(); }
+  } finally {
+    process.off('SIGTERM', onTerm); process.off('SIGINT', onInt);
+    save();
+  }
   return receipt;
 }
 
@@ -455,6 +468,223 @@ function artifact(root, reference) {
   const bytes = readFileSync(path);
   requireValue(sha(bytes) === reference.sha256, 'Artifact digest mismatch');
   return { path, bytes };
+}
+
+function executions(root, entries, head) {
+  requireValue(Array.isArray(entries), 'Missing executions');
+  const checks = new Map();
+  for (const check of entries) {
+    requireValue(typeof check.id === 'string' && !checks.has(check.id), 'Duplicate execution identity');
+    requireValue(check.head === head && check.status === 'passed' && check.exitCode === 0
+      && (check.signal === undefined || check.signal === null)
+      && typeof check.command === 'string' && check.command.length > 0
+      && Number.isFinite(check.elapsedMs) && check.elapsedMs >= 0, `Unverified execution: ${check.id}`);
+    artifact(root, check.log);
+    const requiredFiles = browserFiles[check.id];
+    requireValue(requiredFiles === undefined || check.browserReport, `Missing actual browser report: ${check.id}`);
+    if (check.browserReport) browserReport(JSON.parse(artifact(root, check.browserReport).bytes), requiredFiles, check.id);
+    for (const reference of check.artifacts ?? []) artifact(root, reference);
+    checks.set(check.id, check);
+  }
+  return checks;
+}
+
+function packedEvidence(root, reference, head, tree) {
+  const file = artifact(root, reference);
+  const packed = JSON.parse(file.bytes);
+  requireValue(packed.head === head && packed.source?.head === head && packed.source.clean === true
+    && packed.source.tree === tree && packed.status === 'passed' && packed.product === true
+    && packed.target?.projectName === 'starter-react-vite-ssr' && packed.target.starter === 'react-vite-ssr'
+    && typeof packed.directory === 'string' && isAbsolute(packed.directory)
+    && ['snapshotSha256', 'installedLockfileSha256'].every((key) => /^[a-f0-9]{64}$/u.test(packed.lockedGraph?.[key])),
+  'Packed product source/lock/target incomplete');
+  // Producer paths are absolute at capture time. Relocate their authenticated
+  // bytes together, without requiring that original CI mount on the consumer.
+  const originalRoot = dirname(packed.authoring?.generatedArtifact ?? '');
+  requireValue(isAbsolute(originalRoot), 'Missing packed artifact root');
+  const relocate = (path, sha256) => {
+    requireValue(typeof path === 'string' && isAbsolute(path), 'Missing packed artifact path');
+    const inside = relative(originalRoot, path);
+    requireValue(inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside),
+      'Packed artifact escaped producer root');
+    return artifact(root, { path: relative(root, resolve(dirname(file.path), inside)), sha256 });
+  };
+  for (const [collection, key, required] of [
+    ['tarballs', 'name', ['core', 'http', 'platform-fastify', 'react', 'runtime', 'validation', 'cli', 'testing', 'vite']
+      .map((name) => `@fluojs/${name}`)],
+    ['installedFiles', 'file', ['client.js', 'client.d.ts', 'client/form.js', 'client/form.d.ts',
+      'client/form-store.js', 'client/form-transport.js', 'client/store.js']],
+    ['installedTemplates', 'file', ['src/catalog.ts', 'src/page-products.tsx', 'tests/background-interactions.spec.ts',
+      'tests/form-control.ts', 'tests/product-acceptance.spec.ts', 'tests/product-faults.spec.ts',
+      'tests/product-authoring.spec.ts', 'src/app.ts', 'src/react-app.tsx', 'src/session-controls.tsx', 'src/page-admin.tsx']],
+  ]) {
+    requireValue(Array.isArray(packed[collection]) && required.every((id) =>
+      packed[collection].filter((entry) => entry[key] === id).length === 1)
+      && new Set(packed[collection].map((entry) => entry[key])).size === packed[collection].length,
+    `Missing/duplicate packed ${collection} inventory`);
+    for (const entry of packed[collection]) {
+      const bytes = relocate(entry.artifact, entry.sha256).bytes;
+      if (collection === 'tarballs') requireValue(entry.bytes === bytes.length, 'Packed tarball byte count mismatch');
+    }
+  }
+  const authoring = packed.authoring;
+  requireValue(isDeepStrictEqual(authoring.authored, ['src/page-acceptance.tsx', 'src/app.ts'])
+    && isDeepStrictEqual(authoring.manualWiring, []) && isDeepStrictEqual(authoring.generated, ['src/generated/react-pages.ts'])
+    && isDeepStrictEqual(authoring.validationFiles, ['src/acceptance-negative.ts'])
+    && authoring.files?.length === 2
+    && authoring.authored.every((path) => authoring.files.filter((file) => file.path === path).length === 1)
+    && isDeepStrictEqual(authoring.journeys, {
+      authenticatedCrud: { authored: ['src/catalog.ts', 'src/page-products.tsx', 'src/app.ts'],
+        reused: ['src/react-app.tsx', 'src/session-controls.tsx'], manualWiring: [], generated: ['src/generated/react-pages.ts'] },
+      jukebox: { authored: [], reused: ['src/page-admin.tsx', 'src/catalog.ts', 'src/react-app.tsx', 'src/session-controls.tsx'],
+        manualWiring: [], generated: ['src/generated/react-pages.ts'] },
+    }), 'Missing packed authoring file/journey inventory');
+  for (const entry of authoring.files) relocate(entry.artifact, entry.sha256);
+  relocate(authoring.generatedArtifact, authoring.generatedSha256);
+  const labels = ['starter-provision', 'starter-typegen', 'starter-types', 'authoring-missing-module-rejection',
+    'authoring-duplicate-route-rejection', 'authoring-invalid-route-rejection', 'authoring-negative-types',
+    'authoring-positive-types', 'authoring-positive-compile', 'packed-dev', 'starter-tests', 'starter-build',
+    'packed-production', 'packed-deployment'];
+  requireValue(packed.commands?.length === labels.length && labels.every((label, index) =>
+    packed.commands[index].label === label), 'Missing/duplicate/out-of-order packed command inventory');
+  for (const entry of packed.commands) {
+    const kind = Object.keys(authoringRejections).find((kind) => entry.label === `authoring-${kind}-rejection`
+      || kind === 'negative-types' && entry.label === 'authoring-negative-types');
+    const log = relocate(entry.log, entry.logSha256);
+    const browser = browserFiles[entry.label];
+    const args = entry.label === 'starter-provision'
+      ? ['packages/cli/scripts/local-test-env.mjs', 'create', 'starter-react-vite-ssr']
+      : entry.label === 'authoring-negative-types' ? ['exec', 'tsc', '-p', 'tsconfig.json', '--noEmit']
+      : browser ? ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', '--workers=1', '--reporter=json',
+        `--output=${resolve(originalRoot, `${entry.label}-${packed.attempt}`)}`,
+        ...(entry.label === 'packed-deployment' ? ['tests/deployment-transition.spec.ts']
+          : ['tests/production-hydration.spec.ts', 'tests/background-interactions.spec.ts',
+            'tests/session-transition.spec.ts', 'tests/navigation-guard.spec.ts', 'tests/product-acceptance.spec.ts',
+            'tests/product-faults.spec.ts', 'tests/product-authoring.spec.ts', '--grep-invert',
+            entry.label === 'packed-dev' ? productionOnlyCases[0]
+              : 'updates a React component|retains the document and worker|reloads a shared graph|rebuilds the installed dev process'])]
+      : [entry.label === 'starter-tests' ? 'test' : entry.label === 'starter-build' ? 'build'
+        : ['starter-types', 'authoring-positive-compile'].includes(entry.label) ? 'typecheck' : 'typegen'];
+    const env = entry.label === 'starter-provision'
+      ? { FLUO_CLI_SANDBOX_ROOT: packed.directory, FLUO_CLI_SANDBOX_STARTER: 'react-vite-ssr',
+        FLUO_CLI_SANDBOX_DEPENDENCIES: 'locked', FLUO_CLI_SANDBOX_PROFILE: 'smoke' }
+      : browser ? { FLUO_PRODUCT_ACCEPTANCE: '1',
+        ...(entry.label === 'packed-dev' ? { FLUO_REACT_STARTER_SERVER_COMMAND: 'dev' } : {}),
+        FLUO_REACT_STARTER_TEST_PORT: entry.label === 'packed-dev' ? '44981'
+          : entry.label === 'packed-production' ? '44982' : '44983',
+        PLAYWRIGHT_JSON_OUTPUT_NAME: resolve(originalRoot, `${entry.label}-${packed.attempt}.json`) }
+      : {};
+    requireValue(entry.signal === null && entry.expectedRejection === Boolean(kind)
+      && entry.exit === (kind ? kind === 'negative-types' ? 2 : 1 : 0)
+      && Array.isArray(entry.command) && entry.command.length > 1
+      && entry.command.every((arg) => typeof arg === 'string' && arg.length > 0)
+      && (entry.label === 'starter-provision' ? isAbsolute(entry.command[0]) : entry.command[0] === 'pnpm')
+      && isDeepStrictEqual(entry.command.slice(1), args) && isDeepStrictEqual(entry.env, env)
+      && Number.isFinite(entry.elapsedMs) && entry.elapsedMs >= 0
+      && (entry.label === 'starter-provision' || entry.cwd === packed.directory)
+      && (!kind || authoringRejections[kind].test(log.bytes.toString())),
+    `Unverified packed execution: ${entry.label}`);
+    if (kind === 'negative-types') {
+      const errors = log.bytes.toString().split('\n').filter((line) => /error TS\d+/u.test(line));
+      const positions = errors.map((line) => {
+        const match = /acceptance-negative\.ts\((\d+),(\d+)\): error TS(\d+):/u.exec(line);
+        return match && { line: Number(match[1]), column: Number(match[2]), code: Number(match[3]) };
+      });
+      requireValue([[3, 2322], [4, 2322], [5, 7053], [6, 2322], [7, 2322], [9, 2322]]
+        .every(([line, code]) => positions.some((position) => position?.line === line && position.code === code))
+        && positions.some((position) => position?.line === 12 && position.column === 17 && position.code === 2345)
+        && !positions.some((position) => position?.line === 10 || position?.line === 11)
+        && errors.every((line) => line.includes('acceptance-negative.ts')),
+      'Incomplete packed negative consumer diagnostic inventory');
+    }
+    if (browser) {
+      requireValue(entry.browserReport === env.PLAYWRIGHT_JSON_OUTPUT_NAME, 'Packed report command identity mismatch');
+      browserReport(JSON.parse(relocate(entry.browserReport, entry.browserReportSha256).bytes),
+        browserFiles[entry.label], entry.label);
+    }
+  }
+  return packed;
+}
+
+function domainEvidence(root, domain, head, tree) {
+  requireValue(domain.version === 1 && domain.issue === 3879 && domain.head === head
+    && domain.source?.head === head && domain.source.tree === tree && domain.source.clean === true
+    && domain.status === 'domain-evidence-complete' && ['tooling', 'starters'].includes(domain.domain),
+  'Unbound or incomplete CI journey receipt');
+  const inputPaths = ['pnpm-lock.yaml', 'examples/react-vite-ssr/package.json',
+    'examples/react-vite-ssr/vite.client.config.ts', 'examples/react-vite-ssr/vite.server.config.ts',
+    'examples/react-vite-ssr/playwright.config.ts', 'examples/react-vite-ssr/playwright.reliability.config.ts',
+    'tooling/ci/react-product-acceptance.mjs'];
+  requireValue(isDeepStrictEqual(domain.inputDigests, Object.fromEntries(inputPaths.map((path) =>
+    [path, sha(readFileSync(resolve(sourceRoot, path)))]))), 'CI domain reviewed input digest mismatch');
+  const checks = executions(root, domain.checks, head);
+  const commands = executions(root, domain.commands, head);
+  const plannedReport = domain.domain === 'tooling'
+    ? commands.get('ordinary-browser')?.env?.PLAYWRIGHT_JSON_OUTPUT_NAME
+    : commands.get('packed-product')?.env?.FLUO_BACKGROUND_EVIDENCE;
+  requireValue(typeof plannedReport === 'string' && isAbsolute(plannedReport), 'Missing mandatory CI domain command configuration');
+  const plan = productDomainPlan(domain.domain, dirname(plannedReport));
+  requireValue(commands.size === plan.length && checks.size === plan.length + (domain.domain === 'starters' ? 4 : 0),
+    'Missing mandatory CI domain execution inventory');
+  requireValue(typeof domain.runtime?.executable === 'string' && isAbsolute(domain.runtime.executable),
+    'Missing CI command runtime identity');
+  for (const command of plan) {
+    const observed = commands.get(command.id);
+    requireValue(observed && observed.signal === null
+      && observed.command === [command.id === 'packed-product' ? domain.runtime.executable : command.executable,
+        ...command.args].join(' ') && isDeepStrictEqual(observed.env, command.env)
+      && resolve(root, observed.log.path) === resolve(root, `${command.id}.log`)
+      && isDeepStrictEqual(observed, checks.get(command.id)),
+    `CI domain canonical command/check mismatch: ${command.id}`);
+    if (command.browserReport) requireValue(resolve(root, observed.browserReport.path) === resolve(root, command.browserReport),
+      `CI domain browser report identity mismatch: ${command.id}`);
+    if (command.id.endsWith('-build')) {
+      requireValue(observed.artifacts?.length === 1, 'Missing CI build identity artifact');
+      requireValue(resolve(root, observed.artifacts[0].path) === resolve(root, `${command.id}-identity.json`),
+        'CI build artifact identity mismatch');
+      const identity = JSON.parse(artifact(root, observed.artifacts[0]).bytes);
+      requireValue(identity.head === head && identity.command === observed.command
+        && isDeepStrictEqual(identity.env, command.env) && isDeepStrictEqual(identity.inputDigests, domain.inputDigests)
+        && isDeepStrictEqual(Object.keys(identity.identity ?? {}).sort(), ['dist/client/.vite/manifest.json', 'dist/server/main.js'])
+        && Object.values(identity.identity).every((digest) => /^[a-f0-9]{64}$/u.test(digest)),
+      'CI build source/config/output identity mismatch');
+    }
+    if (command.id === 'packed-product') {
+      const packed = packedEvidence(root, observed.packagedReceipt, head, tree);
+      requireValue(isDeepStrictEqual(checks.get('packed-authoring'), { ...observed, id: 'packed-authoring' }),
+        'Packed authoring check/producer mismatch');
+      const packedRoot = dirname(artifact(root, observed.packagedReceipt).path);
+      for (const id of ['packed-dev', 'packed-production', 'packed-deployment']) {
+        const entry = packed.commands.find((entry) => entry.label === id);
+        const check = checks.get(id);
+        requireValue(check && check.command === entry.command.join(' ') && check.exitCode === entry.exit
+          && check.elapsedMs === entry.elapsedMs && isDeepStrictEqual(check.env, entry.env)
+          && isDeepStrictEqual(check.packagedReceipt, observed.packagedReceipt)
+          && check.log.sha256 === entry.logSha256 && check.browserReport.sha256 === entry.browserReportSha256
+          && resolve(root, check.log.path) === resolve(packedRoot, relative(dirname(packed.authoring.generatedArtifact), entry.log))
+          && resolve(root, check.browserReport.path) === resolve(packedRoot, relative(dirname(packed.authoring.generatedArtifact), entry.browserReport)),
+        `Packed journey check/producer mismatch: ${id}`);
+      }
+    }
+  }
+  requireValue(Array.isArray(domain.artifacts) && domain.artifacts.length > 0, 'Missing CI domain artifact inventory');
+  const inventory = new Set();
+  for (const reference of domain.artifacts) {
+    const file = artifact(root, reference);
+    requireValue(!inventory.has(file.path), 'Duplicate CI domain artifact');
+    inventory.add(file.path);
+  }
+  // The capture producer inventories every retained file, not just one log.
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (entry.isFile() && path !== resolve(root, `${domain.domain}-receipt.json`)) {
+        requireValue(inventory.has(path), 'Missing CI domain artifact inventory member');
+      }
+    }
+  };
+  visit(root);
 }
 
 export function browserReport(value, requiredFiles = [], surface) {
@@ -851,10 +1081,7 @@ export function externalEvidence(root, receipt, head) {
   const domains = receipt.external.ciDomains.map((reference) => {
     const file = artifact(root, reference);
     const domain = JSON.parse(file.bytes);
-    requireValue(domain.head === head && domain.source?.head === head && domain.source.clean === true
-      && domain.status === 'domain-evidence-complete' && domain.checks?.length > 0
-      && domain.artifacts?.length > 0, 'Unbound or incomplete CI journey receipt');
-    for (const reference of domain.artifacts) artifact(dirname(file.path), reference);
+    domainEvidence(dirname(file.path), domain, head, receipt.source.tree);
     return domain.domain;
   });
   requireValue(['tooling', 'starters'].every((name) => domains.filter((domain) => domain === name).length === 1),
@@ -870,6 +1097,12 @@ export async function consumeProduct(matrix, receipt, outputRoot, expectedHead, 
   requireValue(matrix.numericPolicy === 'disclosed-nonblocking-numeric-diagnostics'
     && matrix.soakProfile === 'lane-3886-one-hour' && matrix.scheduledSoakMs === 7200000
     && matrix.physicalDevices === 'deferred-to-3906', 'Product policy mismatch');
+  const canonical = JSON.parse(readFileSync(resolve(sourceRoot, 'examples/react-vite-ssr/tests/product-acceptance-matrix.json')));
+  const configuration = (value) => value.rows.map((row) => Object.fromEntries(
+    ['id', 'implementation', 'source', 'tests', 'prerequisites', 'surfaces', 'checks', 'receipt']
+      .filter((key) => row[key] !== undefined).map((key) => [key, row[key]])));
+  requireValue(isDeepStrictEqual(configuration(matrix), configuration(canonical)),
+    'Product canonical matrix configuration mismatch');
   requireValue(receipt?.version === 1 && receipt.issue === 3879 && receipt.head === expectedHead
     && /^[a-f0-9]{40}$/u.test(expectedHead) && receipt.source?.head === expectedHead
     && receipt.source.clean === true && /^[a-f0-9]{40}$/u.test(expectedTree) && receipt.source.tree === expectedTree
@@ -878,20 +1111,8 @@ export async function consumeProduct(matrix, receipt, outputRoot, expectedHead, 
   if (receipt.stage === 'final') externalEvidence(root, receipt, expectedHead);
   requireValue(receipt.matrixSha256 === sha(Buffer.from(`${JSON.stringify(matrix, null, 2)}\n`)),
     'Matrix identity mismatch');
-  requireValue(Array.isArray(receipt.checks) && Array.isArray(receipt.rows), 'Missing executions/rows');
-  const checks = new Map();
-  for (const check of receipt.checks) {
-    requireValue(typeof check.id === 'string' && !checks.has(check.id), 'Duplicate execution identity');
-    requireValue(check.head === expectedHead && check.status === 'passed' && check.exitCode === 0
-      && typeof check.command === 'string' && check.command.length > 0
-      && Number.isFinite(check.elapsedMs) && check.elapsedMs >= 0, `Unverified execution: ${check.id}`);
-    artifact(root, check.log);
-    const requiredFiles = browserFiles[check.id];
-    requireValue(requiredFiles === undefined || check.browserReport, `Missing actual browser report: ${check.id}`);
-    if (check.browserReport) browserReport(JSON.parse(artifact(root, check.browserReport).bytes), requiredFiles, check.id);
-    for (const reference of check.artifacts ?? []) artifact(root, reference);
-    checks.set(check.id, check);
-  }
+  requireValue(Array.isArray(receipt.rows), 'Missing executions/rows');
+  const checks = executions(root, receipt.checks, expectedHead);
   const rows = [];
   for (const row of matrix.rows) {
     requireValue(['shipped-composition', 'product-fixture', 'shipped-harness', 'shipped-projection',

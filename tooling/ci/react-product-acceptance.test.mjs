@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { once } from 'node:events';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import test from 'node:test';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import test, { after } from 'node:test';
 import { browserReport, consumeProduct, externalEvidence, productDomainPlan, reliabilityRun, requiredRows, validateMeasurementDiagnostics,
   validateMeasurementInventory, validateReliabilityInventory } from './react-product-acceptance.mjs';
 import { buildReviewFact } from '../../.agents/skills/review-head/scripts/contracts.mjs';
@@ -312,6 +315,21 @@ test('product receipt: wrong clean source/head -> cannot reuse prior execution',
   await assert.rejects(consumeProduct(value.matrix, value.receipt, value.root, head, tree), /source\/head/u);
 });
 
+for (const defect of ['reduced-checks', 'removed-reports', 'changed-surface', 'changed-receipt']) {
+  test(`product matrix source binding: rehashed ${defect} -> rejects at canonical matrix guard`, async (t) => {
+    const value = fixture(t);
+    if (defect === 'reduced-checks' || defect === 'removed-reports') {
+      value.matrix.rows.forEach((row) => { row.checks = ['docs-release']; });
+      if (defect === 'removed-reports') value.receipt.checks = value.receipt.checks.filter((check) => !check.browserReport);
+    }
+    if (defect === 'changed-surface') value.matrix.rows[0].surfaces = ['source-only'];
+    if (defect === 'changed-receipt') value.matrix.rows[0].receipt = 'external';
+    value.receipt.matrixSha256 = digest(Buffer.from(`${JSON.stringify(value.matrix, null, 2)}\n`));
+
+    await assert.rejects(consumeProduct(value.matrix, value.receipt, value.root, head, tree), /canonical matrix/u);
+  });
+}
+
 for (const verdict of ['skip', 'todo', 'missing', 'failed', 'source-only-pass']) {
   test(`product row: ${verdict} -> no mandatory product PASS`, async (t) => {
     const value = fixture(t);
@@ -506,13 +524,411 @@ function externalFixture(t) {
       },
     }),
     remoteCi: save('remote.json', remote),
-    ciDomains: ['tooling', 'starters'].map((domain) => save(`${domain}.json`, {
-      head, source: { head, clean: true }, status: 'domain-evidence-complete', domain,
-      checks: [{ id: 'fixture-command' }], artifacts: [value.receipt.checks[0].log],
-    })),
+    ciDomains: [],
   };
+  const domains = ['tooling', 'starters'].map((domain) => domainFixture(join(value.root, domain), domain));
+  value.receipt.external.ciDomains = domains.map((domain) => save(`${domain.domain}/${domain.domain}-receipt.json`, domain));
   value.receipt.rows.forEach((row) => { row.verdict = 'passed'; });
-  return { ...value, remote, save };
+  return { ...value, remote, save, domains };
+}
+
+function domainFixture(root, domain) {
+  mkdirSync(root, { recursive: true });
+  const artifacts = [];
+  const save = (path, data) => {
+    const bytes = Buffer.from(typeof data === 'string' ? data : JSON.stringify(data));
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), bytes);
+    const reference = { path, sha256: digest(bytes) };
+    artifacts.push(reference);
+    return reference;
+  };
+  const inputPaths = ['pnpm-lock.yaml', 'examples/react-vite-ssr/package.json',
+    'examples/react-vite-ssr/vite.client.config.ts', 'examples/react-vite-ssr/vite.server.config.ts',
+    'examples/react-vite-ssr/playwright.config.ts', 'examples/react-vite-ssr/playwright.reliability.config.ts',
+    'tooling/ci/react-product-acceptance.mjs'];
+  const repo = fileURLToPath(new URL('../..', import.meta.url));
+  const inputDigests = Object.fromEntries(inputPaths.map((path) => [path, digest(readFileSync(join(repo, path)))]));
+  const commands = productDomainPlan(domain, root).map((command) => ({
+    id: command.id, head, status: 'passed', exitCode: 0, signal: null, elapsedMs: 1,
+    command: [command.executable, ...command.args].join(' '), env: command.env,
+    log: save(`${command.id}.log`, `fixture execution ${command.id}\n`),
+    ...(command.browserReport ? { browserReport: save(command.browserReport, reportFixture(command.id)) } : {}),
+    ...(command.id.endsWith('-build') ? { artifacts: [save(`${command.id}-identity.json`, {
+      head, command: [command.executable, ...command.args].join(' '), env: command.env, inputDigests,
+      identity: { 'dist/client/.vite/manifest.json': 'a'.repeat(64), 'dist/server/main.js': 'b'.repeat(64) },
+    })] } : {}),
+  }));
+  const checks = structuredClone(commands);
+  if (domain === 'starters') {
+    const artifactEntry = (key, value) => {
+      const reference = save(`packed-product/${value.replaceAll('/', '-')}`, `fixture artifact ${value}\n`);
+      return { [key]: value, artifact: join(root, reference.path), sha256: reference.sha256, bytes: statBytes(reference) };
+    };
+    const statBytes = (reference) => readFileSync(join(root, reference.path)).length;
+    const rejectionDiagnostics = {
+      'missing-module': '/consumer/src/app.ts:126:5: Browser module ./absent-page.tsx is not in the frozen tsconfig graph; use its build-mapped module literal.',
+      'duplicate-route': 'Duplicate route registration detected for GET:/products/third:<none>.',
+      'invalid-route': '@GET() path "/third/:" is invalid at segment ":": Parameter names must match /[a-zA-Z_][a-zA-Z0-9_]*/. Only literal segments and full-segment ":param" placeholders are supported.',
+      'negative-types': [[3, 1, 2322], [4, 1, 2322], [5, 1, 7053], [6, 1, 2322], [7, 1, 2322],
+        [9, 1, 2322], [12, 17, 2345]].map(([line, column, code]) =>
+        `src/acceptance-negative.ts(${line},${column}): error TS${code}: Argument is not assignable.`).join('\n'),
+    };
+    const packed = {
+      head, source: { head, tree, clean: true }, status: 'passed', product: true, attempt: 'fixture',
+      target: { projectName: 'starter-react-vite-ssr', starter: 'react-vite-ssr' }, directory: '/consumer',
+      lockedGraph: { snapshotSha256: 'c'.repeat(64), installedLockfileSha256: 'd'.repeat(64) },
+      tarballs: ['core', 'http', 'platform-fastify', 'react', 'runtime', 'validation', 'cli', 'testing', 'vite']
+        .map((name) => artifactEntry('name', `@fluojs/${name}`)),
+      installedFiles: ['client.js', 'client.d.ts', 'client/form.js', 'client/form.d.ts',
+        'client/form-store.js', 'client/form-transport.js', 'client/store.js'].map((file) => artifactEntry('file', file)),
+      installedTemplates: ['src/catalog.ts', 'src/page-products.tsx', 'tests/background-interactions.spec.ts',
+        'tests/form-control.ts', 'tests/product-acceptance.spec.ts', 'tests/product-faults.spec.ts',
+        'tests/product-authoring.spec.ts', 'src/app.ts', 'src/react-app.tsx', 'src/session-controls.tsx',
+        'src/page-admin.tsx'].map((file) => artifactEntry('file', file)),
+      authoring: {
+        authored: ['src/page-acceptance.tsx', 'src/app.ts'], manualWiring: [],
+        generated: ['src/generated/react-pages.ts'], validationFiles: ['src/acceptance-negative.ts'],
+        files: ['src/page-acceptance.tsx', 'src/app.ts'].map((path) => artifactEntry('path', `authored/${path}`))
+          .map((entry) => ({ ...entry, path: entry.path.slice('authored/'.length) })),
+        journeys: {
+          authenticatedCrud: { authored: ['src/catalog.ts', 'src/page-products.tsx', 'src/app.ts'],
+            reused: ['src/react-app.tsx', 'src/session-controls.tsx'], manualWiring: [], generated: ['src/generated/react-pages.ts'] },
+          jukebox: { authored: [], reused: ['src/page-admin.tsx', 'src/catalog.ts', 'src/react-app.tsx', 'src/session-controls.tsx'],
+            manualWiring: [], generated: ['src/generated/react-pages.ts'] },
+        },
+      },
+      commands: [],
+    };
+    const projection = save('packed-product/projection.ts', 'fixture generated projection\n');
+    packed.authoring.generatedArtifact = join(root, projection.path);
+    packed.authoring.generatedSha256 = projection.sha256;
+    const labels = ['starter-provision', 'starter-typegen', 'starter-types', 'authoring-missing-module-rejection',
+      'authoring-duplicate-route-rejection', 'authoring-invalid-route-rejection', 'authoring-negative-types',
+      'authoring-positive-types', 'authoring-positive-compile', 'packed-dev', 'starter-tests', 'starter-build',
+      'packed-production', 'packed-deployment'];
+    for (const label of labels) {
+      const rejection = Object.keys(rejectionDiagnostics).find((kind) => label === `authoring-${kind}-rejection`
+        || kind === 'negative-types' && label === 'authoring-negative-types');
+      const log = save(`packed-product/${label}.log`, `${rejection ? rejectionDiagnostics[rejection] : label}\n`);
+      const report = browserFiles[label] ? save(`packed-product/${label}-${packed.attempt}.json`, reportFixture(label)) : undefined;
+      const args = label === 'starter-provision'
+        ? ['packages/cli/scripts/local-test-env.mjs', 'create', 'starter-react-vite-ssr']
+        : label === 'authoring-negative-types' ? ['exec', 'tsc', '-p', 'tsconfig.json', '--noEmit']
+        : report ? ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', '--workers=1', '--reporter=json',
+          `--output=${join(root, 'packed-product', `${label}-${packed.attempt}`)}`,
+          ...(label === 'packed-deployment' ? ['tests/deployment-transition.spec.ts']
+            : ['tests/production-hydration.spec.ts', 'tests/background-interactions.spec.ts',
+              'tests/session-transition.spec.ts', 'tests/navigation-guard.spec.ts', 'tests/product-acceptance.spec.ts',
+              'tests/product-faults.spec.ts', 'tests/product-authoring.spec.ts', '--grep-invert',
+              label === 'packed-dev' ? productionOnlyCases[0]
+                : 'updates a React component|retains the document and worker|reloads a shared graph|rebuilds the installed dev process'])]
+        : [label === 'starter-tests' ? 'test' : label === 'starter-build' ? 'build'
+          : ['starter-types', 'authoring-positive-compile'].includes(label) ? 'typecheck' : 'typegen'];
+      const env = label === 'starter-provision'
+        ? { FLUO_CLI_SANDBOX_ROOT: packed.directory, FLUO_CLI_SANDBOX_STARTER: 'react-vite-ssr',
+          FLUO_CLI_SANDBOX_DEPENDENCIES: 'locked', FLUO_CLI_SANDBOX_PROFILE: 'smoke' }
+        : report ? { FLUO_PRODUCT_ACCEPTANCE: '1',
+          ...(label === 'packed-dev' ? { FLUO_REACT_STARTER_SERVER_COMMAND: 'dev' } : {}),
+          FLUO_REACT_STARTER_TEST_PORT: label === 'packed-dev' ? '44981' : label === 'packed-production' ? '44982' : '44983',
+          PLAYWRIGHT_JSON_OUTPUT_NAME: join(root, report.path) } : {};
+      packed.commands.push({ label, command: [label === 'starter-provision' ? process.execPath : 'pnpm', ...args],
+        cwd: packed.directory, env,
+        exit: rejection ? rejection === 'negative-types' ? 2 : 1 : 0, signal: null,
+        expectedRejection: Boolean(rejection), elapsedMs: 1, log: join(root, log.path), logSha256: log.sha256,
+        ...(report ? { browserReport: join(root, report.path), browserReportSha256: report.sha256 } : {}) });
+    }
+    const reference = save('packed-product/pack-release-fixture.json', packed);
+    commands.find((command) => command.id === 'packed-product').packagedReceipt = reference;
+    checks.find((command) => command.id === 'packed-product').packagedReceipt = reference;
+    checks.push({ ...checks.find((command) => command.id === 'packed-product'), id: 'packed-authoring' });
+    for (const id of ['packed-dev', 'packed-production', 'packed-deployment']) {
+      const entry = packed.commands.find((command) => command.label === id);
+      checks.push({ id, head, status: 'passed', exitCode: entry.exit, elapsedMs: entry.elapsedMs,
+        command: entry.command.join(' '), env: entry.env,
+        log: { path: `packed-product/${id}.log`, sha256: entry.logSha256 },
+        browserReport: { path: `packed-product/${id}-${packed.attempt}.json`, sha256: entry.browserReportSha256 },
+        packagedReceipt: reference });
+    }
+  }
+  return { version: 1, issue: 3879, head, source: { head, tree, clean: true }, inputDigests,
+    runtime: { node: process.version, executable: process.execPath, platform: process.platform, arch: process.arch, pnpm: '10.4.1' },
+    status: 'domain-evidence-complete', domain, commands, checks, artifacts };
+}
+
+for (const domain of ['tooling', 'starters']) {
+  for (const defect of ['fixture-only', 'missing-command', 'missing-check', 'wrong-head', 'failed-exit',
+    'missing-log', 'wrong-log-digest', 'missing-report', 'removed-case', 'missing-artifact', 'wrong-input',
+    'failed-status', 'signal', 'invalid-duration', 'wrong-command', 'wrong-env', 'wrong-tree', 'removed-project']) {
+    test(`final CI domain authentication: ${domain} ${defect} -> rejects incomplete mandatory execution`, (t) => {
+      const value = externalFixture(t);
+      const receipt = value.domains.find((entry) => entry.domain === domain);
+      if (defect === 'fixture-only') { receipt.commands = []; receipt.checks = [{ id: 'fixture-command' }]; }
+      if (defect === 'missing-command') receipt.commands.pop();
+      if (defect === 'missing-check') receipt.checks.pop();
+      if (defect === 'wrong-head') receipt.commands[0].head = '0'.repeat(40);
+      if (defect === 'failed-exit') receipt.commands[0].exitCode = 1;
+      if (defect === 'failed-status') receipt.commands[0].status = 'failed';
+      if (defect === 'signal') receipt.commands[0].signal = 'SIGTERM';
+      if (defect === 'invalid-duration') receipt.commands[0].elapsedMs = -1;
+      if (defect === 'wrong-command') receipt.commands[0].command = 'pnpm source-only';
+      if (defect === 'wrong-env') receipt.commands[0].env = { OMIT_MANDATORY_CASES: '1' };
+      if (defect === 'wrong-tree') receipt.source.tree = '0'.repeat(40);
+      if (defect === 'missing-log') delete receipt.commands[0].log;
+      if (defect === 'wrong-log-digest') receipt.commands[0].log.sha256 = '0'.repeat(64);
+      const browser = receipt.checks.find((entry) => entry.browserReport);
+      if (defect === 'missing-report') delete browser.browserReport;
+      if (defect === 'removed-case' || defect === 'removed-project') {
+        const report = JSON.parse(readFileSync(join(value.root, domain, browser.browserReport.path)));
+        if (defect === 'removed-case') report.suites[0].suites[0].specs.pop();
+        else report.suites[0].suites[0].specs[0].tests[0].projectName = 'unrelated-project';
+        const updated = value.save(`${domain}/${browser.browserReport.path}`, report);
+        browser.browserReport.sha256 = updated.sha256;
+        receipt.artifacts.find((entry) => entry.path === browser.browserReport.path).sha256 = updated.sha256;
+      }
+      if (defect === 'missing-artifact') receipt.artifacts.pop();
+      if (defect === 'wrong-input') receipt.inputDigests['pnpm-lock.yaml'] = '0'.repeat(64);
+      value.receipt.external.ciDomains[domain === 'tooling' ? 0 : 1] = value.save(`${domain}/${domain}-receipt.json`, receipt);
+
+      assert.throws(() => externalEvidence(value.root, value.receipt, head),
+        defect === 'removed-case' || defect === 'removed-project' ? /mandatory browser case\/project/u
+          : defect === 'missing-report' ? /Missing actual browser report/u : undefined);
+    });
+  }
+  for (const command of productDomainPlan(domain, '/fixture')) {
+    for (const collection of ['commands', 'checks']) {
+      test(`final CI required inventory: ${domain} removed ${collection} ${command.id} -> rejects canonical plan omission`, (t) => {
+        const value = externalFixture(t);
+        const receipt = value.domains.find((entry) => entry.domain === domain);
+        receipt[collection] = receipt[collection].filter((entry) => entry.id !== command.id);
+        value.receipt.external.ciDomains[domain === 'tooling' ? 0 : 1] =
+          value.save(`${domain}/${domain}-receipt.json`, receipt);
+
+        assert.throws(() => externalEvidence(value.root, value.receipt, head), /mandatory CI domain|canonical command\/check/u);
+      });
+    }
+  }
+  for (const collection of ['commands', 'checks']) {
+    test(`final CI required inventory: ${domain} extra ${collection} -> rejects noncanonical execution`, (t) => {
+      const value = externalFixture(t);
+      const receipt = value.domains.find((entry) => entry.domain === domain);
+      receipt[collection].push({ ...structuredClone(receipt[collection][0]), id: 'unreviewed-extra-command' });
+      value.receipt.external.ciDomains[domain === 'tooling' ? 0 : 1] =
+        value.save(`${domain}/${domain}-receipt.json`, receipt);
+
+      assert.throws(() => externalEvidence(value.root, value.receipt, head), /mandatory CI domain execution inventory/u);
+    });
+  }
+  for (const field of ['head', 'exitCode', 'command', 'env', 'log']) {
+    test(`final CI canonical authentication: ${domain} mutually matching wrong ${field} -> rejects rehashed command and check`, (t) => {
+      const value = externalFixture(t);
+      const receipt = value.domains.find((entry) => entry.domain === domain);
+      const command = receipt.commands[0];
+      if (field === 'head') command.head = '0'.repeat(40);
+      if (field === 'exitCode') command.exitCode = 1;
+      if (field === 'command') command.command = 'pnpm source-only';
+      if (field === 'env') command.env = { SOURCE_ONLY: '1' };
+      if (field === 'log') command.log.sha256 = '0'.repeat(64);
+      receipt.checks[0] = structuredClone(command);
+      value.receipt.external.ciDomains[domain === 'tooling' ? 0 : 1] =
+        value.save(`${domain}/${domain}-receipt.json`, receipt);
+
+      assert.throws(() => externalEvidence(value.root, value.receipt, head),
+        ['head', 'exitCode'].includes(field) ? /Unverified execution/u
+          : field === 'log' ? /Artifact digest mismatch/u : /canonical command\/check/u);
+    });
+  }
+}
+
+for (const collection of ['tarballs', 'installedFiles', 'installedTemplates', 'commands', 'authoring-files']) {
+  test(`final CI packed inventory: removed ${collection} -> rejects rehashed producer receipt`, (t) => {
+    const value = externalFixture(t);
+    const domain = value.domains[1];
+    const reference = domain.commands.find((entry) => entry.id === 'packed-product').packagedReceipt;
+    const packed = JSON.parse(readFileSync(join(value.root, 'starters', reference.path)));
+    (collection === 'authoring-files' ? packed.authoring.files : packed[collection]).pop();
+    const updated = { ...value.save(`starters/${reference.path}`, packed), path: reference.path };
+    for (const entry of [...domain.commands, ...domain.checks]) {
+      if (entry.packagedReceipt) entry.packagedReceipt = updated;
+    }
+    domain.artifacts.find((entry) => entry.path === reference.path).sha256 = updated.sha256;
+    value.receipt.external.ciDomains[1] = value.save('starters/starters-receipt.json', domain);
+
+    assert.throws(() => externalEvidence(value.root, value.receipt, head), /packed|Packed/u);
+  });
+}
+
+for (const defect of ['wrong-head', 'wrong-tree', 'signal', 'wrong-exit', 'wrong-command', 'wrong-env',
+  'wrong-log-digest', 'wrong-report-digest', 'wrong-artifact-digest', 'missing-negative-diagnostic']) {
+  test(`final CI packed authentication: rehashed ${defect} -> rejects producer mismatch`, (t) => {
+    const value = externalFixture(t);
+    const domain = value.domains[1];
+    const reference = domain.commands.find((entry) => entry.id === 'packed-product').packagedReceipt;
+    const packed = JSON.parse(readFileSync(join(value.root, 'starters', reference.path)));
+    if (defect === 'wrong-head') packed.head = '0'.repeat(40);
+    if (defect === 'wrong-tree') packed.source.tree = '0'.repeat(40);
+    if (defect === 'signal') packed.commands[0].signal = 'SIGINT';
+    if (defect === 'wrong-exit') packed.commands[0].exit = 1;
+    if (defect === 'wrong-command') packed.commands[0].command = ['pnpm', 'stub'];
+    if (defect === 'wrong-env') packed.commands[0].env = {};
+    if (defect === 'wrong-log-digest') packed.commands[0].logSha256 = '0'.repeat(64);
+    if (defect === 'wrong-report-digest') packed.commands.find((entry) => entry.label === 'packed-dev').browserReportSha256 = '0'.repeat(64);
+    if (defect === 'wrong-artifact-digest') packed.installedFiles[0].sha256 = '0'.repeat(64);
+    if (defect === 'missing-negative-diagnostic') {
+      const entry = packed.commands.find((entry) => entry.label === 'authoring-negative-types');
+      const bytes = Buffer.from('src/acceptance-negative.ts(12,17): error TS2345: Argument is not assignable.\n');
+      writeFileSync(entry.log, bytes);
+      entry.logSha256 = digest(bytes);
+      domain.artifacts.find((ref) => join(value.root, 'starters', ref.path) === entry.log).sha256 = entry.logSha256;
+    }
+    const updated = { ...value.save(`starters/${reference.path}`, packed), path: reference.path };
+    for (const entry of [...domain.commands, ...domain.checks]) if (entry.packagedReceipt) entry.packagedReceipt = updated;
+    domain.artifacts.find((entry) => entry.path === reference.path).sha256 = updated.sha256;
+    value.receipt.external.ciDomains[1] = value.save('starters/starters-receipt.json', domain);
+
+    assert.throws(() => externalEvidence(value.root, value.receipt, head), /packed|Packed|digest mismatch/u);
+  });
+}
+
+let captureCheckout;
+after(() => { if (captureCheckout) rmSync(captureCheckout, { recursive: true, force: true }); });
+
+async function captureCancellation(t, signal, phase) {
+  const implementation = process.env.FLUO_PRODUCT_TEST_IMPLEMENTATION
+    ?? fileURLToPath(new URL('./react-product-acceptance.mjs', import.meta.url));
+  if (!captureCheckout) {
+    captureCheckout = realpathSync(mkdtempSync(join(tmpdir(), 'fluo-capture-checkout-')));
+    execFileSync('git', ['clone', '--quiet', '--shared', '--no-hardlinks',
+      fileURLToPath(new URL('../..', import.meta.url)), captureCheckout]);
+  }
+  // The disposable checkout really is clean. Load the assigned implementation
+  // in memory; never override git status or label the shared dirty tree clean.
+  assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: captureCheckout, encoding: 'utf8' }), '');
+  const evidenceRoot = join(captureCheckout, '.omo/verification/issue-3879');
+  mkdirSync(evidenceRoot, { recursive: true });
+  const output = mkdtempSync(join(evidenceRoot, 'cancellation-'));
+  const modulePath = join(captureCheckout, 'tooling/ci/react-product-acceptance.mjs');
+  const driver = `
+    import cp from 'node:child_process';
+    import fs from 'node:fs';
+    import { once } from 'node:events';
+    import { registerHooks, syncBuiltinESMExports } from 'node:module';
+    import { pathToFileURL } from 'node:url';
+    const signal = ${JSON.stringify(signal)};
+    const phase = ${JSON.stringify(phase)};
+    process.channel.ref();
+    const target = pathToFileURL(${JSON.stringify(modulePath)}).href;
+    registerHooks({ load(url, context, next) {
+      if (url === target) return { format: 'module', source: fs.readFileSync(${JSON.stringify(implementation)}, 'utf8'), shortCircuit: true };
+      return next(url, context);
+    } });
+    const originalSpawn = cp.spawn;
+    const originalStream = fs.createWriteStream;
+    let starts = 0;
+    const pids = [];
+    let injected = false;
+    const cancel = async () => {
+      const received = once(process, signal);
+      process.kill(process.pid, signal);
+      await received;
+      injected = true;
+    };
+    cp.spawn = (_executable, _args, options) => {
+      starts++;
+      const script = phase === 'active' && starts === 1
+        ? 'process.on("SIGTERM", () => { console.log("HANDLED_EXIT_ZERO"); process.exit(0); }); require("node:net").createServer().listen(0, () => console.log("READY"));'
+        : 'console.log("SUCCESS");';
+      const child = originalSpawn(process.execPath, ['-e', script], options);
+      pids.push(child.pid);
+      process.stdout.write('CAPTURE_CHILD ' + child.pid + '\\n');
+      if (starts === 1 && phase === 'active') {
+        let pending = '';
+        child.stdout.on('data', (chunk) => {
+          pending += chunk;
+          if (pending.includes('READY\\n') && !injected) { injected = true; void cancel(); }
+        });
+      }
+      if (starts === 1 && phase === 'exit-before-close') {
+        let cancellation;
+        child.once('exit', () => { cancellation = cancel(); });
+        const emit = child.emit;
+        child.emit = function(event, ...args) {
+          if (event === 'close') { void cancellation.then(() => emit.call(this, event, ...args)); return true; }
+          return emit.call(this, event, ...args);
+        };
+      }
+      return child;
+    };
+    if (phase === 'between-commands') fs.createWriteStream = (...args) => {
+      const stream = originalStream(...args);
+      const emit = stream.emit;
+      stream.emit = function(event, ...values) {
+        if (event === 'finish' && !injected) {
+          void cancel().then(() => emit.call(this, event, ...values)); return true;
+        }
+        return emit.call(this, event, ...values);
+      };
+      return stream;
+    };
+    syncBuiltinESMExports();
+    const listeners = [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')];
+    const { captureDomain } = await import(target);
+    let failure;
+    try { await captureDomain('tooling', ${JSON.stringify(output)}); }
+    catch (error) { failure = error.message; }
+    const receipt = JSON.parse(fs.readFileSync(${JSON.stringify(join(output, 'tooling-receipt.json'))}, 'utf8'));
+    process.send({ failure, starts, pids, receipt, listeners, after: [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')] });
+    process.disconnect();
+  `;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', driver], {
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+  });
+  const controller = new AbortController();
+  const ownedPids = new Set();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  t.after(() => {
+    clearTimeout(timeout);
+    for (const pid of ownedPids) {
+      try { process.kill(pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    }
+    child.kill('SIGKILL');
+  });
+  // Subscribe to the terminal result before any child readiness can trigger a signal.
+  const result = once(child, 'message', { signal: controller.signal });
+  const closed = once(child, 'close', { signal: controller.signal });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk;
+    for (const match of stdout.matchAll(/^CAPTURE_CHILD (\d+)$/gmu)) ownedPids.add(Number(match[1]));
+  });
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+
+  const [[observed], [exit, exitSignal]] = await Promise.all([result, closed]);
+  assert.equal(exit, 0, stderr);
+  assert.equal(exitSignal, null);
+  if (process.env.FLUO_PRODUCT_TEST_EVIDENCE) {
+    const destination = mkdtempSync(join(resolve(process.env.FLUO_PRODUCT_TEST_EVIDENCE), `${signal}-${phase}-`));
+    cpSync(output, destination, { recursive: true });
+  }
+  assert.equal(observed.starts, phase === 'uncancelled' ? 3 : 1, stdout);
+  assert.equal(observed.receipt.commands.length, observed.starts);
+  assert.equal(observed.receipt.commands[0].exitCode, 0);
+  assert.equal(observed.receipt.status, 'failed');
+  if (phase === 'uncancelled') assert.doesNotMatch(observed.failure, /cancelled/u);
+  else assert.match(observed.failure, /cancelled/u);
+  assert.deepEqual(observed.after, observed.listeners);
+  for (const pid of observed.pids) assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+}
+
+test('capture commands: no cancellation -> retains sequential zero-exit execution and listener cleanup',
+  (t) => captureCancellation(t, 'SIGTERM', 'uncancelled'));
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  for (const phase of ['active', 'exit-before-close', 'between-commands']) {
+    test(`capture cancellation: ${signal} ${phase} with child exit zero -> latches and blocks next command`,
+      (t) => captureCancellation(t, signal, phase));
+  }
 }
 
 test('final external evidence: expanded reusable job identities -> passes through product domain guards', async (t) => {
