@@ -7,6 +7,17 @@ fluo 공식 CLI — 새 애플리케이션 부트스트랩, 컴포넌트와 Reac
 
 ## Canonical command vocabulary
 
+같은 `react-vite-ssr` starter에 `/catalog/session` sign-in과
+`/catalog/session/products`의 authenticated list/search/detail/create/update/delete
+companion을 제공합니다. 기존 HTTP/typegen/`Link`/`useForm` 조립을 사용하며 private
+process-local product는 변경하지 않은 public catalog/editor-cookie demo와 분리합니다.
+Demo session은 production auth나 durable storage가 아닙니다.
+[제품 수용 guide](../../docs/guides/react-product-acceptance.ko.md)는 shipped code,
+실제 packed dev/production receipt 및 lead-owned 최종 gate를 구분합니다. 원래 수치
+FAIL/INCONCLUSIVE는 공개된 diagnostics이고 quality/correctness/stability/cleanup은
+계속 차단합니다. Lane soak는 1시간, scheduled default는 2시간이며 physical
+device는 PASS 없이 #3906으로 분리합니다.
+
 `fluo new my-react-app --starter react-vite-ssr`는 `/catalog/background`에 동일한 native
 `useForm` background 작업도 제공합니다. 실제 GET search/widget read, stable-id queue
 POST, fresh current-page approval을 사용합니다. `pnpm dev`와 production `build`/`start`는

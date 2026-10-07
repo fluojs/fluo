@@ -318,7 +318,7 @@ export function ProductDocument({
         createElement(SessionResources, { children: createElement(ResourceProbe) }),
         createElement('a', { href: '#details', id: 'details', tabIndex: -1 }, 'Page details'),
         createElement(SessionResources, { children: createElement(LongLivedResource) }),
-        sessionDemo || catalog?.backgroundDemo === true || routeUrl.startsWith('/catalog/background')
+        sessionDemo || catalog?.authenticatedCrud === true || catalog?.backgroundDemo === true || routeUrl.startsWith('/catalog/background')
           ? createElement(SessionControls) : null,
         createElement(ProductNavigation, {
           onSwitchUser: () => {

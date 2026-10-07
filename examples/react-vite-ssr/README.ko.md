@@ -10,11 +10,30 @@ quiescent checkpoint를 포함한 최소 1,000 measured seeded action을 준비�
 `pnpm test:reliability`로 Chromium/Firefox/WebKit을 실행합니다. 기본 browser
 coverage는 long-session file, 특히 별도 2시간 soak를 제외합니다.
 
-Source fixture이며 완료된 실행 근거가 아닙니다.
+Shipped source coverage와 current-head 실행 근거는 별개입니다.
 [장시간 세션 guide](../../docs/guides/react-long-session-reliability.ko.md)에 exact
 command, 원시 heap/RSS의 한계, packaged dev/production, 별도 soak workflow와
 #3879 exact-head receipt consumer를 기록합니다. Physical mobile/tablet 검증은
-외부 요구로 남으며 desktop viewport coverage로 통과할 수 없습니다.
+PASS 없이 #3906으로 명시적으로 분리하며 desktop viewport coverage로 통과할 수 없습니다.
+
+## Authenticated product companion
+
+`/catalog/session`에서 **Login A** 또는 **Login B** 다음
+**Authenticated products**로 이동합니다. `/catalog/session/products`는 guarded
+list/search/detail, native/enhanced create/update/delete, invalid/correct/save,
+logout/relogin 및 실제 process-local persistence를 연결합니다. Private product는
+변경하지 않은 public catalog나 public prefetch 결과에 들어가지 않습니다.
+HttpOnly demo identity/permission과 fixed-token CSRF이며 production authentication,
+durable/per-user storage가 아닙니다.
+
+[제품 수용 guide](../../docs/guides/react-product-acceptance.ko.md)에 20행 matrix,
+sealed packed third-page/dev/production journey와 authentic receipt consumer를
+기록합니다. Code 존재는 제품 PASS가 아닙니다. 최종 #3879의 원래 수치
+FAIL/INCONCLUSIVE는 공개된 비차단 diagnostics이고 validity/quality/correctness/
+stability/cleanup 및 Fluo error 0은 계속 필수입니다. 변경된 seam이 동등하다고
+증명되지 않으면 완료된 fresh 1시간 trace가 필요하며 scheduled default는 2시간을
+유지합니다. Review, canonical waiver와 full GitHub CI는 lead-owned이고 이번 lane의
+full local CI는 금지됩니다.
 
 ## Background interaction companion
 

@@ -11,15 +11,20 @@ another router. See the [product owner](../contracts/react-fullstack-product.md)
 [navigation owner](../contracts/react-navigation-payload.md) and
 [form owner](../contracts/react-progressive-forms.md).
 
-This change supplies source harnesses, not executed product acceptance. Build and
-run verification, exact-head reviews, final remote CI, a separate two-hour soak
-remain required for #3879. By maintainer decision, actual physical mobile/tablet
+Shipped source/harness coverage is separate from current-head product execution.
+Focused actual journeys, three-engine correctness, exact-head reviews and final
+remote CI remain required for #3879. This lane accepts a separate completed
+`lane-3886-one-hour` soak of at least 3600000ms; the scheduled default stays
+7200000ms. Historical `ca5e37bb` completion retains its original head and raw trace,
+not current integrated proof; changed unproven seams require a fresh run. See the
+[product acceptance guide](./react-product-acceptance.md).
+By maintainer decision, actual physical mobile/tablet
 verification is deferred to [#3906](https://github.com/fluojs/fluo/issues/3906),
 not reported as passed and not a blocker for the current lane.
 Use a clean committed checkout, Node `>=24.11.0 <27`, pnpm `10.4.1`, built workspace
 packages and the installed Playwright Chromium/Firefox/WebKit binaries with their
 OS dependencies. Initial provisioning is separate from a prepared-run verdict.
-The source-only pass neither provisions nor runs these commands.
+Source classification alone neither provisions nor passes these commands.
 
 ## Deterministic workload
 

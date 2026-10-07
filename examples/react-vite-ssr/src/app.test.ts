@@ -95,6 +95,258 @@ function readHtml(body: unknown): string {
 }
 
 describe('react-vite-ssr example', () => {
+  for (const transport of ['negotiated', 'native'] as const) {
+    for (const operation of ['create', 'update', 'delete'] as const) {
+      for (const token of ['missing', 'tampered'] as const) {
+        it(`authenticated CSRF: ${transport} ${operation} ${token} -> rejects before writes and preserves persistence`, async () => {
+          const events: CatalogObservation[] = [];
+          const AppModule = createReactViteExampleModule({
+            clientDirectory: new URL('../dist/client/', import.meta.url),
+            presentation: createReactViteExamplePresentation({
+              ...VITE_MANIFEST,
+              'src/navigation-catalog.ts': {
+                file: 'navigation-catalog-hash.js', isDynamicEntry: true, src: 'src/navigation-catalog.ts',
+              },
+            }),
+            catalogControl: (event) => { events.push(event); },
+          });
+          const adapter = FastifyHttpApplicationAdapter.create({
+            host: '127.0.0.1', port: 0,
+            configureFastify(server) {
+              server.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => {
+                const fields: Record<string, string | string[]> = Object.create(null);
+                for (const [name, value] of new URLSearchParams(String(body))) {
+                  const prior = fields[name];
+                  fields[name] = prior === undefined ? value : Array.isArray(prior) ? [...prior, value] : [prior, value];
+                }
+                done(null, fields);
+              });
+            },
+          });
+          const app = await FluoFactory.create(AppModule, { ...AppModule.applicationOptions, adapter });
+          await withCleanup(async (defer) => {
+            defer(() => app.close());
+            await app.listen();
+            const address = (adapter.getServer() as { address: () => AddressInfo | string | null }).address();
+            if (typeof address !== 'object' || address === null) throw new TypeError('Expected a bound Fastify listener.');
+            const origin = `http://127.0.0.1:${address.port}`;
+            const cookie = 'catalogSession=a; catalogAccess=allowed; csrf=catalog-demo-token';
+            const read = async () => {
+              const response = await fetch(`${origin}/catalog/session/products`, {
+                headers: { cookie, Accept: 'application/vnd.fluo.react-navigation+json;v=2' },
+              });
+              expect(response.status).toBe(200);
+              return response.json();
+            };
+            const before = await read();
+            const path = operation === 'create' ? '/catalog/session/products/create'
+              : `/catalog/session/products/sku-42/${operation}`;
+            const body = new URLSearchParams(operation === 'delete' ? {} : { display_name: 'CSRF protected product' });
+            if (token === 'tampered') body.set('csrf', 'tampered-token');
+            const headers = { cookie, origin, Accept: transport === 'negotiated'
+              ? 'application/vnd.fluo.form+json;v=1' : 'text/html' };
+            const start = events.length;
+
+            const rejected = await fetch(`${origin}${path}`, { method: 'POST', headers, body, redirect: 'manual' });
+
+            expect(rejected.status).toBe(403);
+            expect(rejected.headers.get('location')).toBeNull();
+            if (transport === 'negotiated') {
+              expect(await rejected.json()).toMatchObject({ error: { code: 'FORBIDDEN', status: 403 } });
+            } else {
+              expect(rejected.headers.get('content-type')).toContain('text/html');
+              await rejected.text();
+            }
+            const observed = events.slice(start);
+            expect(observed.map((event) => event.phase)).toEqual(['middleware', 'guard', 'guard', 'cleanup']);
+            expect(new Set(observed.map((event) => event.scope)).size).toBe(1);
+            expect(observed.filter((event) => event.phase === 'handler' || event.phase === 'commit')).toHaveLength(0);
+            expect(await read()).toEqual(before);
+
+            // The identical identity, origin, DTO and route succeed with only CSRF corrected.
+            body.set('csrf', 'catalog-demo-token');
+            const accepted = await fetch(`${origin}${path}`, { method: 'POST', headers, body, redirect: 'manual' });
+            expect(accepted.status).toBe(transport === 'negotiated' ? 200 : 303);
+            if (transport === 'negotiated') expect(await accepted.json()).toMatchObject({ outcome: 'saved' });
+            else await accepted.text();
+            expect(events.filter((event) => event.phase === 'commit')).toHaveLength(1);
+          });
+        });
+      }
+    }
+  }
+
+  it('authenticated detail: blank SKU -> path validation rejects the matched request and cleans its scope', async () => {
+    // Given: an authenticated request through the real application dispatcher.
+    const events: CatalogObservation[] = [];
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
+      catalogControl: (event) => { events.push(event); },
+    });
+    const app = await Test.createApp({ rootModule: AppModule, ...AppModule.applicationOptions });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+
+      // When: the test adapter passes a blank path segment to the real dispatcher.
+      const response = await app.request('GET', '/catalog/session/products/ ', {
+        cookies: { catalogSession: 'a', catalogAccess: 'allowed' },
+      }).send();
+
+      // Then: a field-level validation failure is distinct from a route or product miss.
+      const guard = events.find((event) => event.phase === 'guard');
+      expect(guard).toMatchObject({ matched: 'authenticatedDetail' });
+      expect(response.status).toBe(400);
+      expect(response.body).toMatchObject({ error: {
+        code: 'BAD_REQUEST', status: 400,
+        details: [expect.objectContaining({ field: 'sku', source: 'path' })],
+      } });
+      expect(events.some((event) => event.phase === 'handler' || event.phase === 'commit')).toBe(false);
+      expect(events.filter((event) => event.phase === 'cleanup')).toEqual([
+        expect.objectContaining({ scope: guard?.scope, matched: 'authenticatedDetail' }),
+      ]);
+    });
+  });
+
+  it.each([
+    { sku: 'sku-42', name: 'Seeded product', create: false, status: 200 },
+    { sku: 'item-1', name: 'Private product', create: true, status: 200 },
+    { sku: 'unknown-product', name: '', create: false, status: 404 },
+    { sku: 'x', name: '', create: false, status: 404 },
+  ])('authenticated detail: $sku -> $status through a materialized path DTO', async ({ sku, name, create, status }) => {
+    // Given: seeded, newly created or unknown products in an authenticated catalog.
+    const events: CatalogObservation[] = [];
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation({
+        ...VITE_MANIFEST,
+        'src/navigation-catalog.ts': {
+          file: 'navigation-catalog-hash.js', isDynamicEntry: true, src: 'src/navigation-catalog.ts',
+        },
+      }),
+      catalogControl: (event) => { events.push(event); },
+    });
+    const app = await Test.createApp({ rootModule: AppModule, ...AppModule.applicationOptions });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      const cookies = { catalogSession: 'a', catalogAccess: 'allowed', csrf: 'catalog-demo-token' };
+      if (create) {
+        const created = await app.request('POST', '/catalog/session/products/create', { cookies })
+          .header('host', 'localhost:3000').header('origin', 'http://localhost:3000')
+          .header('Accept', 'application/vnd.fluo.form+json;v=1')
+          .body({ display_name: name, csrf: 'catalog-demo-token' }).send();
+        expect(created.status).toBe(200);
+      }
+      events.length = 0;
+
+      // When: the detail request traverses ordinary DTO binding, guards and interceptors.
+      const response = await app.request('GET', `/catalog/session/products/${sku}`, { cookies })
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
+
+      // Then: existing product data or domain NotFound remains distinct from validation.
+      expect(response.status).toBe(status);
+      if (status === 200) {
+        expect(response.body).toMatchObject({ destination: { props: {
+          products: [{ sku, name }], selected: sku, authenticatedCrud: true, sessionIdentity: 'a',
+        } } });
+      } else {
+        expect(response.body).toMatchObject({ error: { code: 'NOT_FOUND', status: 404 } });
+      }
+      expect(response.headers['X-Catalog-Interceptor']).toBe('approved');
+      expect(events.map((event) => event.phase)).toEqual(['middleware', 'guard', 'interceptor', 'dto', 'handler', 'cleanup']);
+      expect(events.find((event) => event.phase === 'dto')).toMatchObject({ dto: true, matched: 'authenticatedDetail' });
+      expect(new Set(events.map((event) => event.scope)).size).toBe(1);
+    });
+  });
+
+  it.each([
+    { cookies: {}, status: 401 },
+    { cookies: { catalogSession: 'a', catalogAccess: 'forbidden' }, status: 403 },
+  ])('authenticated detail: rejected session -> $status before the handler', async ({ cookies, status }) => {
+    // Given: an anonymous or forbidden session on a valid seeded detail route.
+    const events: CatalogObservation[] = [];
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation(VITE_MANIFEST),
+      catalogControl: (event) => { events.push(event); },
+    });
+    const app = await Test.createApp({ rootModule: AppModule, ...AppModule.applicationOptions });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+
+      // When: the dispatcher runs the existing session guard.
+      const response = await app.request('GET', '/catalog/session/products/sku-42', { cookies }).send();
+
+      // Then: authorization and cleanup remain owned by the HTTP request.
+      expect(response.status).toBe(status);
+      expect(events.map((event) => event.phase)).toEqual(['middleware', 'guard', 'cleanup']);
+      expect(events.find((event) => event.phase === 'guard')).toMatchObject({ matched: 'authenticatedDetail' });
+      expect(new Set(events.map((event) => event.scope)).size).toBe(1);
+    });
+  });
+
+  it('authenticated CRUD: session and permission boundaries -> private reads and persisted writes', async () => {
+    const events: CatalogObservation[] = [];
+    const AppModule = createReactViteExampleModule({
+      clientDirectory: new URL('../dist/client/', import.meta.url),
+      presentation: createReactViteExamplePresentation({
+        ...VITE_MANIFEST,
+        'src/navigation-catalog.ts': {
+          file: 'navigation-catalog-hash.js', isDynamicEntry: true, src: 'src/navigation-catalog.ts',
+        },
+      }),
+      catalogControl: (event) => { events.push(event); },
+    });
+    const app = await Test.createApp({ rootModule: AppModule, ...AppModule.applicationOptions });
+    await withCleanup(async (defer) => {
+      defer(() => app.close());
+      const cookies = { catalogSession: 'a', catalogAccess: 'allowed', csrf: 'catalog-demo-token' };
+      const write = (path: string, name: string) => app.request('POST', path, { cookies })
+        .header('host', 'localhost:3000').header('origin', 'http://localhost:3000')
+        .header('Accept', 'application/vnd.fluo.form+json;v=1')
+        .body({ display_name: name, csrf: 'catalog-demo-token' }).send();
+
+      const anonymous = await app.request('GET', '/catalog/session/products').send();
+      const forbidden = await app.request('GET', '/catalog/session/products', {
+        cookies: { ...cookies, catalogAccess: 'forbidden' },
+      }).send();
+      const invalid = await write('/catalog/session/products/create', 'x');
+      const created = await write('/catalog/session/products/create', 'Private product');
+
+      expect(anonymous.status).toBe(401);
+      expect(forbidden.status).toBe(403);
+      expect(invalid.status).toBe(400);
+      expect(created.status).toBe(200);
+      expect(created.body).toMatchObject({ outcome: 'saved', destination: '/catalog/session/products/item-1',
+        data: { sku: 'item-1', name: 'Private product' } });
+      expect((await app.request('GET', '/catalog/item-1').send()).status).toBe(404);
+      const publicList = await app.request('GET', '/catalog')
+        .header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
+      expect(publicList.body).toMatchObject({ destination: { props: {
+        products: [{ sku: 'sku-42', name: 'Seeded product' }],
+      } } });
+      const updated = await write('/catalog/session/products/item-1/update', 'Corrected product');
+      expect(updated.body).toMatchObject({ outcome: 'saved', followUp: 'refresh' });
+      const read = await app.request('GET', '/catalog/session/products', { cookies })
+        .query('q', 'Corrected').header('Accept', 'application/vnd.fluo.react-navigation+json;v=2').send();
+      expect(read.body).toMatchObject({ destination: { props: {
+        authenticatedCrud: true, sessionIdentity: 'a', products: [{ sku: 'item-1', name: 'Corrected product' }],
+      } } });
+      const removed = await app.request('POST', '/catalog/session/products/item-1/delete', { cookies })
+        .header('host', 'localhost:3000').header('origin', 'http://localhost:3000')
+        .header('Accept', 'application/vnd.fluo.form+json;v=1')
+        .body({ csrf: 'catalog-demo-token' }).send();
+      expect(removed.body).toMatchObject({ outcome: 'saved', destination: '/catalog/session/products' });
+      expect((await app.request('GET', '/catalog/session/products/item-1', { cookies }).send()).status).toBe(404);
+      const commits = events.filter((event) => event.phase === 'commit');
+      expect(commits).toHaveLength(3);
+      for (const event of commits) {
+        expect(events.some((cleanup) => cleanup.phase === 'cleanup' && cleanup.scope === event.scope)).toBe(true);
+      }
+      expect((await app.request('GET', '/catalog').send()).status).toBe(200);
+    });
+  });
+
   it('delivers the HTTP-owned shell through a real Fastify socket before a gated descendant settles', async () => {
     // Given: the ordinary React HTTP module with a Suspense descendant controlled independently of the handler.
     const gate = deferred<void>();
