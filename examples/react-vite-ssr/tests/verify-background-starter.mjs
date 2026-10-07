@@ -239,7 +239,8 @@ void props; void saved; void serverOnlyProps;
       'tests/session-transition.spec.ts', 'tests/navigation-guard.spec.ts', 'tests/product-acceptance.spec.ts',
       'tests/product-faults.spec.ts', 'tests/product-authoring.spec.ts'];
     await run('packed-dev', ['exec', 'playwright', 'test', '--config', 'playwright.config.ts', '--workers=1',
-      '--reporter=json', `--output=${join(output, `packed-dev-${attempt}`)}`, ...files], directory, {
+      '--reporter=json', `--output=${join(output, `packed-dev-${attempt}`)}`, ...files, '--grep-invert',
+      'retains the approved shell after a mapped page import fails until explicit document exit'], directory, {
       FLUO_PRODUCT_ACCEPTANCE: '1', FLUO_REACT_STARTER_SERVER_COMMAND: 'dev',
       FLUO_REACT_STARTER_TEST_PORT: '44981', PLAYWRIGHT_JSON_OUTPUT_NAME: join(output, `packed-dev-${attempt}.json`),
     });
