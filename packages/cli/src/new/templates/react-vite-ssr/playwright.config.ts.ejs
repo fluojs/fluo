@@ -20,11 +20,11 @@ export default defineConfig({
   timeout: 30_000,
   use: {
     baseURL: `http://127.0.0.1:${BROWSER_TEST_PORT}`,
-    ...(reliability ? {} : { channel: 'chrome' }),
+    ...(reliability ? {} : { channel: 'chrome', launchOptions: { args: ['--disable-gpu'] } }),
     headless: true,
   },
   projects: reliability ? [
-    { name: 'chromium', use: { browserName: 'chromium' } },
+    { name: 'chromium', use: { browserName: 'chromium', launchOptions: { args: ['--disable-gpu'] } } },
     { name: 'firefox', use: { browserName: 'firefox' } },
     { name: 'webkit', use: { browserName: 'webkit' } },
   ] : [{ name: 'chrome', use: { browserName: 'chromium' } }],

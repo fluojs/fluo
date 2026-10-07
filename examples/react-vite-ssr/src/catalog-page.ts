@@ -114,7 +114,8 @@ export function CatalogForm({ id, sku, name = '', label, authenticated = false, 
     createElement('input', { ...form.fieldProps('name'), defaultValue: name, required: true, minLength: 3,
       'aria-describedby': `${id}-name-errors`, 'aria-invalid': form.fieldErrors('name').length > 0 }),
     createElement('p', { id: `${id}-name-errors` }, form.fieldErrors('name').join(' ')),
-    createElement('button', { ...form.fieldProps('intent'), type: 'submit', value: 'save' }, label),
+    createElement('button', { ...form.fieldProps('intent'), type: 'submit', value: 'save',
+      onClick(event) { if (authenticated) event.currentTarget.focus(); } }, label),
     createElement(FormStatus, { id, form, ...(onProtection === undefined ? {} : { onProtection }) }),
   );
 }

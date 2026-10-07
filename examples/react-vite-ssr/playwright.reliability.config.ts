@@ -20,7 +20,7 @@ export default defineConfig({
     ?? 'node_modules/.cache/react-reliability-report.json' }]],
   use: { baseURL: `http://127.0.0.1:${port}`, headless: true, actionTimeout: 10_000, navigationTimeout: 10_000 },
   projects: [
-    { name: 'chromium', use: { browserName: 'chromium' } },
+    { name: 'chromium', use: { browserName: 'chromium', launchOptions: { args: ['--disable-gpu'] } } },
     { name: 'firefox', use: { browserName: 'firefox' } },
     { name: 'webkit', use: { browserName: 'webkit' } },
   ],
