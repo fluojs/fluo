@@ -15,9 +15,9 @@ await buildTarget(target);
 if (process.env.BENCH_LOAD_PROCESS === '1') {
   await runCommand('pnpm', ['exec', 'esbuild', 'src/load-client.ts', '--bundle', '--platform=node', '--format=esm', '--packages=external', '--outfile=dist/load-client.mjs']);
 }
+const environment = await environmentSummary();
 const servers = startTargets(scenario.appShape, [target]);
 const observations: unknown[] = [];
-const environment = await environmentSummary();
 try {
   await waitForTarget(servers[0]);
   const pid = servers[0].pid;
