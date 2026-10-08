@@ -41,6 +41,10 @@ pnpm exec tsx src/profile.ts
 
 CLI는 `BENCH_SUITE=business|stages|all`, `BENCH_TARGETS`, `BENCH_SCENARIOS`를 사용한다. `BENCH_PROFILE_MODES=cpu,allocation,gc-eventloop`로 mode를 선택한다. `BENCH_PROFILE_RUNS` 기본값은 1, `BENCH_CONFIGURATION` 기본값은 equivalent, concurrency 기본값은 64, warmup은 5초, capture/control은 각각 15초다. HTTP 포트 기본 base는 `35111`, inspector base는 `35211`이며 `BENCH_PROFILE_PORT_BASE`와 `BENCH_INSPECTOR_PORT_BASE`로 별도 배정한다.
 
+측정 전에 root와 benchmark 각각의 선언·설치 lockfile을 YAML 내용으로 비교한다.
+pnpm이 importer map의 key 순서만 바꾼 경우는 허용하지만, dependency 버전·override·
+integrity·설정 등 내용이 다르면 실패한다. 원본 lockfile의 기록된 해시는 변경하지 않는다.
+
 기본 실행은 준비된 build를 사용한다. `BENCH_PROFILE_BUILD=1`은 선택한 target만 `buildTarget`으로 빌드하며 root build를 하지 않는다. build 중인 다른 writer와 실행을 겹치지 않는다. reuse는 fresh root build claim이 아니다. canonical Next `.next/trace`의 `next-build`/`bundler=turbopack`와 `BUILD_ID`를 보존하며 webpack probe fixture를 acceptance로 대체하지 않는다.
 
 ## Mode와 serving subject
