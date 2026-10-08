@@ -118,6 +118,39 @@ Disable the GitHub pager in monitor commands (`GH_PAGER=cat`) so an earlier
 identity query cannot block the watch inside the terminal pager.
 Do not poll from the coordinator or create a child merely to wait.
 
+## Retrospective capture and lane completion
+
+Read `../retrospective-lane/SKILL.md` when starting or resuming execution. The lead
+retains individual reviewer responses before aggregation/adjudication and
+unsuccessful implementer returns before retry using `retro-record`. Keep task,
+head, model, failed command and actual receipt/log references when available.
+Record reproduction/adjudication separately: a reported BLOCK is not proof of
+an implementation defect. Success must not overwrite the original incident.
+
+The CLI retains `record` outcomes and review `set-fact` inputs outside the lane
+ledger. CI failures are captured by actual run/attempt/job identity. Call
+`retro-ci` on a failure notification before fix-back; merge/fix-back recording
+and CI watch transitions also capture history. Missing API evidence becomes an
+explicit collection gap, never a passing gate or an absent-failure claim.
+
+Use `plan-all --with-retro` for the completion handoff. It preserves the issue
+decisions but reports `settled: false` and a `retrospective.action: retro`
+until the completed merge set has its report. The legacy `plan-all` array
+remains an execution-only interface, not a retrospective completion verdict.
+When fresh issue decisions are all `done`, execution is finished but the
+completion handoff still includes the one aggregate retrospective. `watch`
+emits `RETRO-READY` at that boundary. Follow the retrospective skill's
+`retro-plan -> retro-evidence -> fluo-retrospective -> retro-report` flow, then
+return the report and strongest evidence-backed improvement proposals.
+Repeated observations of the same completed merge set reuse the report.
+Legacy execution ledgers remain unchanged and completed issues never reopen
+for analysis; missing older history is reported as partial coverage.
+
+Recommendations do not automatically change workflow, tests, skills, rules,
+models, or remote state. Applying them is separate scoped work. All incident
+data and reports live in `.omo/retros/`, outside disposable issue worktrees
+and separate from `.omo/lanes/` and `.omo/lanes-v4/`.
+
 ## Local and remote gates
 
 Public consumer-visible package changes require a Changeset before review.
