@@ -1,6 +1,6 @@
 import {
   BadRequestException, Body, Controller, type ExecutionContext, Get, Inject, Injectable, Module, Param,type PipeTransform,
-  Post, Query, Res, Scope, UseGuards, 
+  Post, Query, Res, Scope, UseGuards,
 } from '@nestjs/common';
 import { bodyFields, materializeStageDto, StageDto, StageService, type StageShape, serializedStage, serviceResult } from './stage-workloads';
 

@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { EvidenceJournal } from './evidence';
 import { load } from './load';
 import {
-  type CaptureStatus, 
+  type CaptureStatus,
   object, PROFILE_MODES, type ProfileCapture, type ProfileCondition, ProfileFailure, type ProfileMode, type ProfileRun,profileCompleteness, profileSummary, sha256, validateCapture,
 } from './profile-report';
 import { RawCapture, RuntimeCapture } from './profiling';

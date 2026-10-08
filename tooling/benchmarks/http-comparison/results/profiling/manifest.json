@@ -663,8 +663,8 @@
     },
     {
       "path": "teardown-red-20261009.log",
-      "bytes": 3624,
-      "sha256": "567d1cd43b2c22a80232d609151d61f0e6484e0bcd4f28cb0b84ee499d12ba3b"
+      "bytes": 3612,
+      "sha256": "a6f85257d58ac6bf1ae488390dc82cc524989d5832489605cc5a84059ceefdbb"
     }
   ],
   "rawArchive": {
@@ -3387,5 +3387,13 @@
       "2026-10-08T17-26-31.466Z-9010910a-5d7d-4c95-bc5c-4d2bb23627ad"
     ],
     "requiredAlongsideOriginal": true
-  }
+  },
+  "logProjections": [
+    {
+      "path": "teardown-red-20261009.log",
+      "sourceRaw": "/Users/ayden/Documents/fluo/.omo/verification/3910-teardown/red-fixture-corrected-20261008T2014.log",
+      "sourceRawSha256": "567d1cd43b2c22a80232d609151d61f0e6484e0bcd4f28cb0b84ee499d12ba3b",
+      "transformation": "Trailing line whitespace removed in Git presentation copy only; original raw log preserved."
+    }
+  ]
 }
