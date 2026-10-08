@@ -466,6 +466,10 @@ importers:
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(happy-dom@20.9.0)(vite@8.2.2(@types/node@22.19.15)(esbuild@0.28.1)(tsx@4.23.1))
 
   packages/core:
+    dependencies:
+      '@fluojs/persistence':
+        specifier: workspace:^
+        version: link:../persistence
     devDependencies:
       vitest:
         specifier: ^4.1.11
@@ -549,6 +553,9 @@ importers:
       '@fluojs/di':
         specifier: workspace:^
         version: link:../di
+      '@fluojs/persistence':
+        specifier: workspace:^
+        version: link:../persistence
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
@@ -780,6 +787,9 @@ importers:
       '@fluojs/http':
         specifier: workspace:^
         version: link:../http
+      '@fluojs/persistence':
+        specifier: workspace:^
+        version: link:../persistence
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
@@ -849,6 +859,12 @@ importers:
       '@fluojs/runtime':
         specifier: workspace:^
         version: link:../runtime
+    devDependencies:
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@22.19.15)(happy-dom@20.9.0)(vite@8.2.2(@types/node@22.19.15)(esbuild@0.28.1)(tsx@4.23.1))
+
+  packages/persistence:
     devDependencies:
       vitest:
         specifier: ^4.1.11
@@ -1019,6 +1035,9 @@ importers:
       '@fluojs/http':
         specifier: workspace:^
         version: link:../http
+      '@fluojs/persistence':
+        specifier: workspace:^
+        version: link:../persistence
       '@prisma/client':
         specifier: '>=5.0.0'
         version: 7.5.0(typescript@6.0.2)
@@ -1116,6 +1135,9 @@ importers:
       '@fluojs/http':
         specifier: workspace:^
         version: link:../http
+      '@fluojs/persistence':
+        specifier: workspace:^
+        version: link:../persistence
     devDependencies:
       '@fluojs/serialization':
         specifier: workspace:^

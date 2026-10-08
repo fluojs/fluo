@@ -9,6 +9,13 @@
 
 ## 목차
 
+공유 boundary 타입, rollback observation 계약과 공통 오류 constructor는
+[`@fluojs/persistence`](../persistence/README.ko.md)가 소유하고 기존 Mongoose
+root import는 직접 재노출합니다. Session-owning connection correlation, manual 및
+delegated native 실행, callback/commit retry, model/session option은 Mongoose에
+남습니다. `AfterCommitCleanupError`는 여기서 소유하는 `AggregateError` 직접 하위
+클래스입니다. [선택적 import 마이그레이션](../../docs/getting-started/migrate-persistence-contracts.ko.md)을 참고하세요.
+
 - [설치](#설치)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)

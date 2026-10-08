@@ -4,6 +4,12 @@
 
 모듈 그래프를 컴파일하고 DI와 HTTP를 실행 가능한 애플리케이션 셸로 연결하는 어셈블리 레이어입니다.
 
+Request-transaction abort forwarding 및 active-work helper의 소유자는
+[`@fluojs/persistence`](../persistence/README.ko.md)이며 이 root에서 직접 재노출합니다.
+기존 import, listener cleanup, reason identity와 settlement 동작은 호환됩니다.
+Eager Node 또는 ORM 의존성을 추가하지 않으며 runtime shutdown orchestration은
+여기에 남습니다. [선택적 import 마이그레이션](../../docs/getting-started/migrate-persistence-contracts.ko.md)을 참고하세요.
+
 Coordinated Node 24 릴리스를 준비한다면 패키지 업그레이드 전에 [소비자 마이그레이션 가이드](../../docs/getting-started/migrate-node24.ko.md)를 따르세요.
 
 ## 목차

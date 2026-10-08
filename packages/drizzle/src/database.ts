@@ -1,4 +1,5 @@
 import { observeRollback, type TransactionRollbackObserver } from './result-rollback.js';
+import { settleAfterCommitCallbacks } from '@fluojs/persistence/internal';
 import { markDrizzleDatabaseHandle } from './database-brand.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Inject } from '@fluojs/core';
@@ -6,11 +7,13 @@ import { FrameworkService } from '@fluojs/core/internal';
 import type { OnApplicationShutdown } from '@fluojs/runtime';
 import {
   createAbortError,
-  createRequestAbortContext,
   raceWithAbort,
+} from '@fluojs/runtime';
+import {
+  createRequestAbortContext,
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
-} from '@fluojs/runtime';
+} from '@fluojs/persistence';
 import {
   type AfterCommitCallback,
   AfterCommitCapabilityError,
@@ -737,11 +740,7 @@ export class DrizzleDatabase<
 
   private async drainAfterCommit(callbacks: readonly AfterCommitCallback[]): Promise<void> {
     await this.callbackScopes.exit(() => this.transactions.exit(async () => {
-      const results: PromiseSettledResult<void>[] = [];
-
-      for (const callback of callbacks) {
-        results.push(...await Promise.allSettled([Promise.resolve().then(callback)]));
-      }
+      const results = await settleAfterCommitCallbacks(callbacks);
 
       if (results.some((result) => result.status === 'rejected')) {
         throw new AfterCommitError(results);

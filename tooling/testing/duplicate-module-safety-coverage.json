@@ -399,6 +399,30 @@
       "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
     },
     {
+      "package": "@fluojs/persistence",
+      "status": "applied",
+      "topologies": [
+        "same-version-different-path",
+        "compatible-patch-skew"
+      ],
+      "surfaces": [
+        "errors",
+        "rollback"
+      ],
+      "platforms": {
+        "node": "native",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Packed dependency closure includes physical persistence copies through core and runtime. The Node fixture exercises common error re-exports and Mongoose rollback without claiming cross-copy transaction-state sharing or additional host support."
+    },
+    {
       "package": "@fluojs/platform-bun",
       "status": "not-applicable",
       "topologies": [],
