@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## 2.1.3
+
+### Patch Changes
+
+- [#3930](https://github.com/fluojs/fluo/pull/3930) [`8500d74`](https://github.com/fluojs/fluo/commit/8500d74bef6e4d9efbfd79087693d6258c7ff035) Thanks [@ayden94](https://github.com/ayden94)! - Introduce portable `@fluojs/diagnostics` as the single owner of shared platform status, graph, trace, timing and static/report/live data contracts and readers. Existing runtime, core/internal, Studio root and feature status imports remain compatible. Preserve wire version 1, legacy route normalization, validation/privacy behavior, typed status details, Node support and runtime resource/lifecycle ownership.
+
+  Migration: existing imports and stored artifacts require no changes. New data-only consumers may install `@fluojs/diagnostics` instead of runtime or Studio implementation. Filters, Mermaid rendering and viewer APIs stay in `@fluojs/studio`; the previously removed `@fluojs/studio/contracts` subpath is not restored. See `docs/getting-started/migrate-diagnostics.md`.
+
+- Updated dependencies [[`a719508`](https://github.com/fluojs/fluo/commit/a7195088aaaa787db909bcdb63e1fe31bf15bfa3), [`a34789a`](https://github.com/fluojs/fluo/commit/a34789af807b87f134feb66f756ab1242946bf05), [`00525a8`](https://github.com/fluojs/fluo/commit/00525a81b37166889cbf9d742d5a7cc0ca2b92ef), [`6320fdd`](https://github.com/fluojs/fluo/commit/6320fdd52f40a9c3d2e5dca3694e84c17a6e1dcf), [`63920ab`](https://github.com/fluojs/fluo/commit/63920ab592ec57e39c3155906b0068de26238b5a), [`adedc3a`](https://github.com/fluojs/fluo/commit/adedc3a1f4dcdfde8c9325d063ce36cfbb5f5d7e), [`985dcd0`](https://github.com/fluojs/fluo/commit/985dcd0e532bc63d59253bafc0a9bf8cf73781f6), [`942f673`](https://github.com/fluojs/fluo/commit/942f673d34d58a9093d7012253913aec9143ff45), [`8f7c69d`](https://github.com/fluojs/fluo/commit/8f7c69d3c0c50b8a0cbd6abff51dba4d08e67991), [`12c47ae`](https://github.com/fluojs/fluo/commit/12c47ae9a3da31bc6a6d336ccfc6f5f61d11674d), [`8500d74`](https://github.com/fluojs/fluo/commit/8500d74bef6e4d9efbfd79087693d6258c7ff035)]:
+  - @fluojs/http@3.2.0
+  - @fluojs/core@2.1.3
+  - @fluojs/runtime@3.1.3
+  - @fluojs/diagnostics@0.2.0
+
 ## 2.1.2
 
 ### Patch Changes
