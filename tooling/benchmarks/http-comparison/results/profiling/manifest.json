@@ -394,7 +394,9 @@
         "head": "807d112afddbc3e8f67401d3fa6247c6ff384194",
         "inputDigest": "11bff16e264ecc10978581177bd86dd26b714e35fd0f4da63e43758dfa63458b"
       }
-    }
+    },
+    "latestValidatorHead": "f73fc4b4f8514d5ccccdd3b11941075dc83385be",
+    "latestRawAudit": "primary-raw-audit-boundary-20261009.log"
   },
   "hotspotConfirmation": {
     "expected": 9,
@@ -421,7 +423,7 @@
   },
   "focusedVerification": {
     "tests": {
-      "passed": 110,
+      "passed": 123,
       "failed": 0
     },
     "typecheckExit": 0,
@@ -433,7 +435,7 @@
       "requestsPerReceipt": 25,
       "trafficErrors": 0,
       "sourceHead": "bd47ec3aa8d5479fca7fc0556acb18f6a1be203c",
-      "runtimeAndFixtureDeltaAfterSmoke": "none; only collector GC source label and its tests changed"
+      "runtimeAndFixtureDeltaAfterSmoke": "none; collector metadata/classifier/time-field validation and regression tests only"
     },
     "commandExit": 0,
     "fullLocalCi": "not-required: no CI execution/configuration changes",
@@ -500,8 +502,8 @@
     },
     {
       "path": "REPORT.md",
-      "bytes": 8070,
-      "sha256": "1e941a9957558698411d5e1527a63eca4027bd1c3413225d8b4d916f7b04e99e"
+      "bytes": 8829,
+      "sha256": "84fae204138d7e061e1e9e2aadbd105fccffb79a3bad9d79ddf6efb851fe9bc7"
     },
     {
       "path": "final-correctness-smoke-20261008.json",
@@ -522,6 +524,16 @@
       "path": "primary-raw-audit-fixed-inputs-20261008.log",
       "bytes": 315903,
       "sha256": "0ab17a1bb508a6b69ddc50ee713fb4795e89e662c5c7edc54607b307f4e6f633"
+    },
+    {
+      "path": "review-boundary-focused-20261009.log",
+      "bytes": 16703,
+      "sha256": "9fb9d4dd958d9f8ecd187063f0394fd1d026429b4cfe6c869a4e3d2838e60fc7"
+    },
+    {
+      "path": "primary-raw-audit-boundary-20261009.log",
+      "bytes": 315903,
+      "sha256": "8224449dec0c431d01d7435b36330b75f0da664732ba80ff77a0d148ec83a617"
     }
   ],
   "rawArchive": {
@@ -863,5 +875,5 @@
       "reason": "empty-or-startup-profile"
     }
   ],
-  "collectorHeadAtLatestFocusedChecks": "f2350bbccf710a84ded56b80c5c3ed607ab6cf1a"
+  "collectorHeadAtLatestFocusedChecks": "f73fc4b4f8514d5ccccdd3b11941075dc83385be"
 }

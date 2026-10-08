@@ -13,7 +13,7 @@
 | 원본 검증 | 5,360개 파일, 8,314,371,516 bytes; SHA-256, subject, traffic, coverage 통과 | `audit-primary-20261008.mjs` |
 | hotspot 재확인 | 7개 Fluo 플랫폼 + native Deno/Next 대조, CPU 9개 capture | `hotspot-confirmations.json` |
 | generator 진단 | 14개 조건, 1-vs-4 generators, 3회 교차 비교, 84개 관측 | `headroom-summary.json` |
-| 최종 focused checks | 초기 107 tests·fresh build 통과; GC 표기 수정 후 110 tests·typecheck·lint 통과 | `final-focused-checks-20261008.log`, `gc-metadata-focused-20261008.log` |
+| 최종 focused checks | 초기 107 tests·fresh build 통과; GC 표기 수정 후 110 tests, review fix-back 후 123 tests·typecheck·lint 통과 | `final-focused-checks-20261008.log`, `gc-metadata-focused-20261008.log`, `review-boundary-focused-20261009.log` |
 | 실제 host smoke | 16 targets × 11 scenarios = 176 receipts; 각 25개 요청의 body/status/counters 통과 | `final-correctness-smoke-20261008.json` |
 
 Primary condition은 `equivalent`, concurrency 64, warmup 5초, capture 15초다.
@@ -120,3 +120,13 @@ Archive 전체 읽기가 exit 0으로 완료됐다. 보관 방식 질문의 time
 원격 원본 배포는 하지 않았으며, 이 경로를 외부에서 다운로드 가능한 증거로 표시하지 않는다.
 원본 archive를 가진 환경에서 `tar -xzf <archive> -C results/profiling`으로 복원한 뒤
 위 검증 명령을 실행한다. 요약만 받은 외부 독자는 raw evidence를 독립 검증할 수 없다.
+
+## 리뷰 fix-back 검증
+
+Next bundle 경로만으로 startup 프레임을 요청으로 인정하던 결함과 V8 CPU
+`startTime`/`endTime`/`timeDeltas` 검증 누락을 exact reviewed head에서 재현했다.
+검증된 Next host 요청 ancestry, shared source의 알려진 요청 함수, native stage
+handler 위치로 인식을 제한하고, 유한한 양의 CPU interval과 sample/delta 대응을 검사한다.
+0인 delta는 실제 V8 기록에도 존재하므로 허용한다. 인접 startup 반례까지 포함한
+123개 테스트와 전체 528개 primary 조건의 강화된 raw 감사가 통과했다.
+원본을 재측정하거나 기존 실패 판정을 덮어쓰지 않았다.
