@@ -1,5 +1,7 @@
 # Auth & JWT Contract
 
+Neutral identity/results/account-linking belong to `@fluojs/auth`; HTTP guards/strategies/credentials/refresh integration to `@fluojs/auth-http`; crypto and rotation/replay to `@fluojs/jwt`; Passport.js binding to `@fluojs/passport`. Existing Passport examples/imports are compatibility paths; canonical HTTP registration uses auth-http `AuthModule.forRoot(...)`.
+
 <p><strong><kbd>English</kbd></strong> <a href="./auth-and-jwt.ko.md"><kbd>한국어</kbd></a></p>
 
 This document defines the current JWT signing, verification, and principal-normalization contract across `@fluojs/jwt`, `@fluojs/passport`, and `@fluojs/http`.

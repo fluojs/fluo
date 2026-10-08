@@ -1,5 +1,7 @@
 # NestJS → fluo Migration Map
 
+Neutral identity/results/account-linking belong to `@fluojs/auth`; HTTP guards/strategies/credentials/refresh integration to `@fluojs/auth-http`; crypto and rotation/replay to `@fluojs/jwt`; Passport.js binding to `@fluojs/passport`. Existing Passport examples/imports are compatibility paths; canonical HTTP registration uses auth-http `AuthModule.forRoot(...)`.
+
 <p><strong><kbd>English</kbd></strong> <a href="./migrate-from-nestjs.ko.md"><kbd>한국어</kbd></a></p>
 
 For OpenAPI, use module-owned `OpenApiModule.forRoot(...)` / `forRootAsync(...)`, replace numeric `ApiResponse` calls with object options, and use `OpenApiDocumentBuilder.build(...)`; see [OpenAPI 3 Migration Guide](../architecture/openapi-migration.md).

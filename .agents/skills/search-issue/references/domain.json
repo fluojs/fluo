@@ -86,6 +86,8 @@
     "openapi",
     "graphql",
     "cache-manager",
+    "auth",
+    "auth-http",
     "jwt",
     "passport",
     "redis",
@@ -132,7 +134,7 @@
       "graphql",
       "cache-manager"
     ],
-    "auth": ["jwt", "passport"],
+    "auth": ["auth", "auth-http", "jwt", "passport"],
     "infra-messaging": [
       "redis",
       "queue",
@@ -223,6 +225,8 @@
     "openapi": "area:request-pipeline",
     "graphql": "area:request-pipeline",
     "cache-manager": "area:request-pipeline",
+    "auth": "area:auth",
+    "auth-http": "area:auth",
     "jwt": "area:auth",
     "passport": "area:auth",
     "redis": "area:infra-messaging",

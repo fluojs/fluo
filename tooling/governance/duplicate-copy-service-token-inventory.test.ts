@@ -44,7 +44,7 @@ const expectedPublicServiceIdentities = [
   { path: 'packages/microservices/src/service.ts', id: '@fluojs/microservices/MicroserviceLifecycleService', version: 1 },
   { path: 'packages/mongoose/src/connection.ts', id: '@fluojs/mongoose/MongooseConnection', version: 1 },
   { path: 'packages/notifications/src/service.ts', id: '@fluojs/notifications/NotificationsService', version: 1 },
-  { path: 'packages/passport/src/guard.ts', id: '@fluojs/passport/AuthGuard', version: 1 },
+  { path: 'packages/auth-http/src/guard.ts', id: '@fluojs/passport/AuthGuard', version: 1 },
   { path: 'packages/prisma/src/service.ts', id: '@fluojs/prisma/PrismaService', version: 1 },
   { path: 'packages/redis/src/redis-service.ts', id: '@fluojs/redis/RedisService', version: 1 },
   { path: 'packages/slack/src/channel.ts', id: '@fluojs/slack/SlackChannel', version: 1 },

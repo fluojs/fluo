@@ -1,8 +1,10 @@
 # auth-jwt-passport 예제
 
+이 예제의 실행 소스는 `@fluojs/auth-http`의 canonical HTTP integration과 `@fluojs/jwt`를 조합합니다. 이전 `@fluojs/passport` import도 호환 alias로 유지됩니다.
+
 <p><a href="./README.md"><kbd>English</kbd></a> <strong><kbd>한국어</kbd></strong></p>
 
-`@fluojs/jwt`와 `@fluojs/passport`를 가장 단순한 공식 bearer-token 흐름으로 묶어 보여주는 runnable fluo 인증 예제입니다.
+`@fluojs/jwt`와 `@fluojs/auth-http`를 가장 단순한 공식 bearer-token 흐름으로 묶어 보여주는 runnable fluo 인증 예제입니다.
 
 ## 이 예제가 보여주는 것
 
@@ -10,7 +12,7 @@
 - JWT가 소유하는 `RefreshTokenService`를 통한 refresh token 발급과 rotation
 - `@UseAuth('jwt')`, `@RequireScopes(...)`를 사용한 보호 라우트
 - `@UseAuth('refresh-token')`로 body-presented refresh token 교환
-- `@fluojs/passport`의 내장 `BearerJwtStrategy` preset을 통한 bearer token 검증
+- `@fluojs/auth-http`의 내장 `BearerJwtStrategy` preset을 통한 bearer token 검증
 - reflection 기반 주입 대신 명시적 DI token metadata
 - auth 라우트와 함께 동작하는 runtime-owned `/health`, `/ready`
 - `@fluojs/testing`을 사용한 unit / integration / e2e 스타일 테스트

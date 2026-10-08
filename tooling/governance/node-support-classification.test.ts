@@ -71,9 +71,9 @@ describe('Node support classification', () => {
     const publicManifests = packages.filter((manifest) => !manifest.private);
     const nodeBound = publicManifests.filter((manifest) => !portablePackages.includes(manifest.name));
 
-    // Then: 35 Node-bound public packages remain, each on its classified floor,
+    // Then: 37 Node-bound public packages, including auth and auth-http, use their classified floor,
     // and the private root workspace compiles through the Babel 8 toolchain.
-    expect(nodeBound).toHaveLength(35);
+    expect(nodeBound).toHaveLength(37);
     for (const manifest of nodeBound) {
       expect(manifest.engines?.node, manifest.name).toBe(requiredNodeEngineRange(manifest));
     }

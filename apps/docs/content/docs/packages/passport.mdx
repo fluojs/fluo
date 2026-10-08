@@ -1,12 +1,14 @@
 ---
 title: Passport
-description: How @fluojs/passport routes auth strategies through AuthGuard onto requestContext.principal, with bearer, cookie, refresh-token, and Passport.js bridge presets.
+description: Passport.js strategy action binding and compatibility exports for general authentication.
 package: "@fluojs/passport"
 ---
 
-`@fluojs/passport` is the auth execution layer. It answers one question on every protected route: *who is calling, and may they proceed?* A strategy produces a `Principal`; the shared `AuthGuard` writes it to `requestContext.principal` and enforces declared scopes. Everything else — token crypto, credential formats, session state — lives elsewhere on purpose.
+Neutral identity/results/account-linking belong to `@fluojs/auth`; HTTP guards/strategies/credentials/refresh integration to `@fluojs/auth-http`; crypto and rotation/replay to `@fluojs/jwt`; Passport.js binding to `@fluojs/passport`. Existing Passport examples/imports are compatibility paths; canonical HTTP registration uses auth-http `AuthModule.forRoot(...)`.
 
-The package ships one core (`PassportModule` + `AuthGuard` + decorators) and four first-party presets built on that core: the **bearer JWT strategy**, the **cookie-auth module**, the **refresh-token module**, and the **Passport.js bridge** for adapting existing `passport-*` strategies. It does *not* verify tokens itself (that is [`@fluojs/jwt`](/docs/packages/jwt)), does not manage users or sessions, and does not enforce anything on routes that lack an auth decorator or guard metadata.
+`@fluojs/passport` owns Passport.js strategy action binding. Its retained general exports are compatibility re-exports from auth/auth-http: a strategy produces a `Principal`, and the shared `AuthGuard` writes it to `requestContext.principal` and enforces declared scopes. For new general HTTP authentication, start with [auth-http](/docs/packages/auth-http).
+
+The **Passport.js bridge** adapts existing `passport-*` strategies. `PassportModule`, `AuthGuard`, decorators, **bearer JWT**, **cookie-auth** and **refresh-token** presets remain available here for compatibility, while auth-http owns their implementation. JWT owns token verification; the bridge does not manage users or sessions and does not enforce routes without auth decorator or guard metadata.
 
 Prerequisites: Node.js `>=24.0.0 <27`. The package depends on `@fluojs/core`, `@fluojs/di`, `@fluojs/http`, `@fluojs/jwt`, and `@fluojs/runtime`; the `passport` npm package itself is only needed when you use the bridge with real Passport.js strategies.
 
@@ -75,7 +77,7 @@ A request without a token gets `401`; a valid token whose principal lacks `profi
 
 ### What `PassportModule.forRoot(...)` registers
 
-`forRoot(options?, strategies?)` returns a module with three providers: `PASSPORT_OPTIONS` (the options, captured by value), `AUTH_STRATEGY_REGISTRY` (a frozen name → token map built from `strategies`), and `AuthGuard`. Only `AuthGuard` is exported. Two registration rules fire immediately, at `forRoot` call time:
+`forRoot(options?, strategies?)` returns a module with three providers: `PASSPORT_OPTIONS` (the options, captured by value), `AUTH_STRATEGY_REGISTRY` (a name → token map with a readonly type, not runtime freezing, built from `strategies`), and `AuthGuard`. Only `AuthGuard` is exported. Two registration rules fire immediately, at `forRoot` call time:
 
 - **Duplicate strategy names** throw `AuthStrategyResolutionError` — a registry with two `'jwt'` entries can never be built.
 - `global` defaults to `false`. Controllers in other modules can only use the guard when their module can see it: import the module that registered passport, or set `global: true`. A guard class that is not visible to the controller's module fails guard resolution at request time, so keep the passport registration on the same module path as the controllers it protects.

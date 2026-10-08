@@ -1,1 +1,1 @@
-export { BearerJwtStrategy } from '@fluojs/passport';
+export { BearerJwtStrategy } from '@fluojs/auth-http';

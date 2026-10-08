@@ -1,0 +1,46 @@
+---
+title: HTTP Authentication
+description: HTTP strategy registration, guards, bearer, cookie and refresh integration.
+package: "@fluojs/auth-http"
+---
+
+`@fluojs/auth-http` is the explicit HTTP adapter for [auth](/docs/packages/auth). Node support is `>=24.0.0 <27`; its root deliberately loads concrete HTTP, JWT and runtime integration.
+
+```sh
+pnpm add @fluojs/auth-http @fluojs/jwt
+```
+
+## Register and protect routes
+
+```ts
+import { Module } from '@fluojs/core';
+import { JwtModule } from '@fluojs/jwt';
+import {
+  AuthModule, BearerJwtStrategy, createBearerJwtStrategyRegistration,
+} from '@fluojs/auth-http';
+
+@Module({
+  imports: [
+    JwtModule.forRoot({ algorithms: ['HS256'], secret: 'application-owned-secret' }),
+    AuthModule.forRoot({ defaultStrategy: 'jwt' }, [createBearerJwtStrategyRegistration()]),
+  ],
+  providers: [BearerJwtStrategy],
+})
+export class ApplicationAuthModule {}
+```
+
+Import `UseAuth`, `UseOptionalAuth`, `RequireScopes` and HTTP `AuthStrategy` here. `AuthModule` equals the legacy `PassportModule` class token. Registries are application-local, support prototype-shadowing names and reject duplicates; `global` defaults to false. The registry is readonly by type, not a runtime freezing promise. Internal options and registry tokens are not root exports.
+
+Guards resolve a request-local strategy, validate Principal, return canonical 401 for authentication errors with their original cause and 403 for missing scopes. All required scopes must match; roles are passed through without automatic role authorization. Optional auth needs explicit absence without scopes; missing bearer credentials still fail. A handled result must commit a response and then skips even principal validation and the protected handler.
+
+## Credentials and refresh
+
+Bearer parsing preserves RFC 6750 b64token, ASCII-space separators, case-insensitive scheme/header and first array entry. Missing/malformed credentials emit bare Bearer; invalid/expired JWT emits `Bearer error="invalid_token"`. Infrastructure errors are not converted into credential errors.
+
+`CookieAuthModule.forRoot(config, options, additionalStrategies)` composes one registry and shared reader/writer settings. Missing cookies can report absence with `requireAccessToken: false`; malformed present cookies cannot. CookieManager retains Secure/HttpOnly/SameSite=Strict, Path=/, second-based TTL precedence and ordered Set-Cookie append.
+
+`RefreshTokenModule.forRoot()` aliases the exact JWT-owned service. Extraction order is body.refreshToken, Authorization bearer, x-refresh-token; malformed present body never falls back. Custom ports retain four methods and require JWT verification of rotated access tokens. Store/crypto/rotation/replay remain JWT-owned.
+
+For [Passport.js](/docs/packages/passport), import the bridge there and register its strategy/provider bundle here or with cookie additional strategies. Legacy Passport imports remain compatibility aliases with unchanged class, DI, metadata and error identities.
+
+Evidence: `tooling/docs/fixtures/package-guides/security/auth-http-guide.test.ts`, `packages/passport/src/auth-http.compatibility.test.ts`, the canonical `examples/auth-jwt-passport` application and the [package owner](https://github.com/fluojs/fluo/blob/main/packages/auth-http/README.md).

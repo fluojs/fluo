@@ -1,5 +1,7 @@
 # fluo — AI Context Document
 
+일반 identity·인증 결과·account-linking 정책은 `@fluojs/auth`, HTTP guard·strategy·credential·refresh integration은 `@fluojs/auth-http`, crypto와 rotation/replay는 `@fluojs/jwt`, Passport.js bridge는 `@fluojs/passport`가 소유합니다. 기존 Passport 예제와 import는 compatibility 경로이며 canonical HTTP 등록은 auth-http의 `AuthModule.forRoot(...)`입니다.
+
 Background HTTP 작업은 기존 `useForm`의 additive `mode: 'background'`와
 `method: 'get' | 'post'`를 사용하며 생략하면 legacy navigation POST/busy skip을
 유지합니다. [Form owner](./contracts/react-progressive-forms.ko.md)는 독립 latest-wins

@@ -31,6 +31,8 @@ describe('resolveWorkspaceBuildOrder', () => {
 
     expectBefore(order, '@fluojs/persistence', '@fluojs/core');
     expectBefore(order, '@fluojs/core', '@fluojs/di');
+    expectBefore(order, '@fluojs/core', '@fluojs/auth');
+    expectBefore(order, '@fluojs/auth', '@fluojs/http');
     expectBefore(order, '@fluojs/di', '@fluojs/validation');
     expectBefore(order, '@fluojs/validation', '@fluojs/http');
     expectBefore(order, '@fluojs/http', '@fluojs/runtime');
@@ -39,6 +41,7 @@ describe('resolveWorkspaceBuildOrder', () => {
       '@fluojs/persistence',
       '@fluojs/core',
       '@fluojs/di',
+      '@fluojs/auth',
       '@fluojs/validation',
       '@fluojs/http',
       '@fluojs/runtime',

@@ -1,6 +1,6 @@
 {
   "name": "@fluojs/passport",
-  "description": "Strategy-agnostic authentication guard wiring and strategy registry for Fluo.",
+  "description": "Passport.js strategy bridge and compatible general authentication exports for Fluo.",
   "keywords": [
     "fluo",
     "passport",
@@ -43,6 +43,8 @@
     "test:watch": "pnpm exec vitest -c vitest.config.ts"
   },
   "dependencies": {
+    "@fluojs/auth": "workspace:^",
+    "@fluojs/auth-http": "workspace:^",
     "@fluojs/core": "workspace:^",
     "@fluojs/di": "workspace:^",
     "@fluojs/http": "workspace:^",
@@ -50,6 +52,7 @@
     "@fluojs/runtime": "workspace:^"
   },
   "devDependencies": {
+    "@fluojs/testing": "workspace:^",
     "vitest": "^4.1.11"
   }
 }

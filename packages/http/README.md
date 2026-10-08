@@ -1,5 +1,7 @@
 # @fluojs/http
 
+`Principal` is declared by `@fluojs/auth` and re-exported here with the same mutable contract. Authentication guards, credentials and challenges belong to `@fluojs/auth-http`; HTTP does not depend back on that integration.
+
 <p><strong><kbd>English</kbd></strong> <a href="./README.ko.md"><kbd>한국어</kbd></a></p>
 
 Node.js support is `>=24.0.0 <27`. See [Node.js support and migration](../../docs/reference/node-support.md) before upgrading.

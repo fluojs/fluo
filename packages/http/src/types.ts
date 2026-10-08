@@ -1,3 +1,4 @@
+import type { Principal } from '@fluojs/auth';
 import type { Constructor, MaybePromise, MetadataPropertyKey, MetadataSource, Token } from '@fluojs/core';
 import type { RequestScopeContainer } from '@fluojs/di';
 import type { ErrorResponse, HttpException } from './exceptions.js';
@@ -333,15 +334,8 @@ export interface HttpErrorRepresentationOptions {
   readonly form?: import('./form-representation.js').HttpFormRepresentationProvider;
 }
 
-/** Authenticated caller identity attached to the active request context. */
-export interface Principal {
-  subject: string;
-  issuer?: string;
-  audience?: string | string[];
-  roles?: string[];
-  scopes?: string[];
-  claims: Record<string, unknown>;
-}
+/** Shared identity owned by the transport-neutral auth package. */
+export type { Principal } from '@fluojs/auth';
 
 /**
  * Per-request execution context shared across binding, guards, interceptors,
