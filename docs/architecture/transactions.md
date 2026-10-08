@@ -4,7 +4,21 @@
 <!-- fluo-mongoose-contract: application-owned-connection, ambient-session-merge, preserves-operation-options, strict-fail-open, explicit-target -->
 <!-- fluo:transaction-compatible-copy: same-realm-owner-version, complete-consumed-surface, original-receiver, separate-rollback-after-commit-cleanup-result-identity -->
 
-This document defines the current transaction-context contract across `@fluojs/prisma`, `@fluojs/drizzle`, and `@fluojs/mongoose`.
+This document defines the current transaction-context contract across `@fluojs/persistence`, `@fluojs/prisma`, `@fluojs/drizzle`, and `@fluojs/mongoose`.
+
+`@fluojs/persistence` owns common boundary types/errors and rollback observation declarations,
+Result policy, FIFO hook settlement, abort forwarding, and active-work registration/settlement.
+Existing core/ORM errors/types and runtime root request helpers directly re-export the originals.
+The [persistence README](../../packages/persistence/README.md) owns public primitive APIs;
+the [migration guide](../getting-started/migrate-persistence-contracts.md) explains the optional import transition.
+Concrete native observers, ALS, connections/sessions, callback attempts and driver cleanup remain ORM-owned.
+The Mongoose observer retains session-owning connection context, and `AfterCommitCleanupError` remains
+a Mongoose-owned direct `AggregateError` subclass. Portable primitives imply neither new ORM host support,
+new retry/savepoint/durability guarantees, nor diagnostics/status ownership changes.
+
+Shared sources are `packages/persistence/src/{transaction,result-rollback,request-transaction,after-commit}.ts`,
+exercised by `packages/persistence/src/*.test.ts` and `tooling/governance/after-commit-contract.test.ts`.
+Verify actual native and packed imports separately through the fixtures below and duplicate-module-safety receipts.
 
 ## Compatible wrapper copies
 

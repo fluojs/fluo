@@ -9,6 +9,13 @@ Mongoose integration for fluo with session-aware transaction handling and lifecy
 
 ## Table of Contents
 
+Shared boundary types, rollback observation contracts and common error constructors
+are owned by [`@fluojs/persistence`](../persistence/README.md), with existing Mongoose
+root imports directly re-exported. Session-owning connection correlation, manual and
+delegated native execution, callback/commit retries and model/session options stay
+Mongoose-owned. `AfterCommitCleanupError` remains a direct `AggregateError` subclass
+owned here. See the [optional import migration](../../docs/getting-started/migrate-persistence-contracts.md).
+
 - [Installation](#installation)
 - [When to Use](#when-to-use)
 - [Quick Start](#quick-start)

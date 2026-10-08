@@ -125,6 +125,7 @@
           "title": "글 발행을 하나의 작업으로 보장하기",
           "part": 3,
           "packages": [
+            "@fluojs/persistence",
             "@fluojs/prisma"
           ],
           "kind": "chapter"

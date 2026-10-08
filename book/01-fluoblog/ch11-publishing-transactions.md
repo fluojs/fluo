@@ -14,6 +14,13 @@ This does not mean wrapping every HTTP request in a transaction. There is no rea
 
 ## Stating the Publication Contract in Words
 
+`@fluojs/prisma` owns native transaction execution in this chapter. The canonical
+import for shared boundary types and errors is `@fluojs/persistence`; existing core/ORM imports remain valid.
+Read the [shared transaction owner](../../docs/architecture/transactions.md) and
+[persistence API](../../packages/persistence/README.md) together.
+Extracting common primitives changes neither the requirement for both repositories to use the same native owner
+nor application publication policy. Portable primitives do not establish new Prisma driver host support.
+
 The inputs are `postId`, `actorId`, and `expectedVersion`. `postId` is a positive integer post ID, and `actorId` identifies the actor as a string, just like the existing user ID. In local exercises before authentication is introduced, we pass the operator ID `'author-1'`. We do not adopt an author ID from external JSON as an authoritative value. `expectedVersion` is the post version the user saw in the editing screen.
 
 To publish a draft, the author must match, the version read must equal the current version, and the title and content must not be empty. The slug must also follow the allowed format. On success, the status changes, the version increments once, and the publication time is set. Publishing a new draft at `version=1` without editing it makes both the post and its publication record `version=2`. This chapter does not allow ordinary editing after publication. The previous chapter's `editDraft` also includes `status=draft` in its update condition.

@@ -1,15 +1,18 @@
 import { observeRollback, type TransactionRollbackObserver } from './result-rollback.js';
+import { settleAfterCommitCallbacks } from '@fluojs/persistence/internal';
 import { markMongooseConnectionHandle } from './connection-brand.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Inject } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/core/internal';
 import type { OnApplicationShutdown } from '@fluojs/runtime';
+import { raceWithAbort } from '@fluojs/runtime';
 import {
+  type ActiveRequestTransaction,
+  type ActiveRequestTransactionHandle,
   createRequestAbortContext,
-  raceWithAbort,
   trackActiveRequestTransaction,
   untrackActiveRequestTransaction,
-} from '@fluojs/runtime';
+} from '@fluojs/persistence';
 import { AfterCommitCapabilityError, AfterCommitCleanupError, AfterCommitError } from './after-commit.js';
 import { evaluateResult, ResultBoundary, type RollbackOwner, TransactionRollbackCapabilityError } from './result-rollback.js';
 import { createMongoosePlatformStatusSnapshot } from './status.js';
@@ -25,16 +28,6 @@ import type {
 
 const TRANSACTIONS_NOT_SUPPORTED_ERROR = 'Transaction not supported: Mongoose connection does not implement startSession.';
 const TRANSACTION_UNAVAILABLE_ERROR = 'Mongoose transactions are unavailable during application shutdown.';
-
-type ActiveRequestTransaction = {
-  abort(reason?: unknown): void;
-  settled: Promise<void>;
-};
-
-type ActiveRequestTransactionHandle = {
-  active: ActiveRequestTransaction;
-  settle(): void;
-};
 
 type ActiveSessionScope = {
   settled: Promise<void>;
@@ -751,13 +744,7 @@ export class MongooseConnection<TConnection extends MongooseConnectionLike = Mon
     cleanupFailure?: { readonly reason: unknown },
   ): Promise<void> {
     await this.sessions.exit(async () => {
-      const results: PromiseSettledResult<void>[] = [];
-      for (const callback of owner.callbacks) {
-        results.push(await Promise.resolve().then(callback).then(
-          () => ({ status: 'fulfilled', value: undefined } as const),
-          (reason: unknown) => ({ status: 'rejected', reason } as const),
-        ));
-      }
+      const results = await settleAfterCommitCallbacks(owner.callbacks);
       owner.callbacks.length = 0;
       if (cleanupFailure) {
         throw new AfterCommitCleanupError(cleanupFailure.reason, results);

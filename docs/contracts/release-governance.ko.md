@@ -91,6 +91,7 @@ Prerelease workflowëŠ” Changesets prerelease mode(`changeset pre enter <tag>`)ë¥
 - `@fluojs/notifications`
 - `@fluojs/openapi`
 - `@fluojs/passport`
+- `@fluojs/persistence`
 - `@fluojs/platform-bun`
 - `@fluojs/platform-cloudflare-workers`
 - `@fluojs/platform-deno`

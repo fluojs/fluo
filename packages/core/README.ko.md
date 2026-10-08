@@ -217,15 +217,16 @@ class-local입니다. Request-pipeline seam의 `getOwnConstructorRequestPipeline
 constructor 자체 bag만 읽고 `getRequestPipelineMetadataBag`는 inherited key를 포함합니다.
 이 reader 구분, frozen snapshot, write-version invalidation은 대체 authoring API가 아닙니다.
 
-Root package는 `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`가
-공유하는 transaction boundary primitive도 소유합니다. Framework-level 코드에서는
+Root package는 `@fluojs/persistence`가 소유하고 `@fluojs/prisma`, `@fluojs/drizzle`, `@fluojs/mongoose`가
+공유하는 transaction boundary primitive도 재노출합니다. 기존 코드에서는
 `AfterCommitCallback`, `TransactionBoundaryOptions`,
 `AfterCommitCapabilityError`, `AfterCommitError`,
 `TransactionRollbackCapabilityError`, `TransactionRollbackOnlyError`,
-`TransactionRollbackUnconfirmedError`를 `@fluojs/core`에서 import하세요. 각 ORM
+`TransactionRollbackUnconfirmedError`를 `@fluojs/core`에서 계속 import하거나 canonical `@fluojs/persistence`를 사용하세요. 각 ORM
 root는 같은 값과 타입을 re-export하므로 import 경로가 달라도 `instanceof` identity가
-유지됩니다. Driver rollback observer와 Mongoose `AfterCommitCleanupError`는 계속
-driver가 소유합니다.
+유지됩니다. 구체 Driver rollback observer와 Mongoose `AfterCommitCleanupError`는 계속
+driver가 소유하며 공통 observation 선언은 persistence에 있습니다.
+[선택적인 import 전환](../../docs/getting-started/migrate-persistence-contracts.ko.md)을 참고하세요.
 
 - **데코레이터**: `Module`, `Inject`, `Scope`
 - **에러**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`, `AfterCommitCapabilityError`, `AfterCommitError`, `TransactionRollbackCapabilityError`, `TransactionRollbackOnlyError`, `TransactionRollbackUnconfirmedError`

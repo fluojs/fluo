@@ -6,6 +6,12 @@ fluo 애플리케이션을 위한 Node.js `>=24.0.0 <27` Prisma lifecycle 및 AL
 
 ## 목차
 
+공유 boundary 타입, rollback observation 계약과 공통 오류 constructor는
+[`@fluojs/persistence`](../persistence/README.ko.md)가 소유합니다. 기존 Prisma root
+import는 원본을 직접 재노출하며 SQL rollback 관찰, native option,
+client 추론, retry와 cleanup은 Prisma에 남습니다.
+[선택적 import 마이그레이션](../../docs/getting-started/migrate-persistence-contracts.ko.md)을 참고하세요.
+
 - [설치](#설치)
 - [사용 시점](#사용-시점)
 - [빠른 시작](#빠른-시작)

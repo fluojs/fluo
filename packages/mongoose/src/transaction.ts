@@ -1,7 +1,7 @@
 import { AfterCommitCapabilityError } from './after-commit.js';
 import { isCompatibleMongooseConnectionHandle } from './connection-brand.js';
 import { TransactionRollbackCapabilityError } from './result-rollback.js';
-import type { MongooseConnectionLike, TransactionBoundaryOptions } from './types.js';
+import type { TransactionBoundaryOptions } from './types.js';
 
 type TransactionConnection = {
   transaction<T>(fn: () => Promise<T>, boundary?: TransactionBoundaryOptions<T>): Promise<T>;

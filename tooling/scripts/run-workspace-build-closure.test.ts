@@ -29,6 +29,7 @@ describe('resolveWorkspaceBuildOrder', () => {
     const order = resolveWorkspaceBuildOrder('@fluojs/runtime', repoRoot);
 
     expectBefore(order, '@fluojs/diagnostics', '@fluojs/core');
+    expectBefore(order, '@fluojs/persistence', '@fluojs/core');
     expectBefore(order, '@fluojs/core', '@fluojs/di');
     expectBefore(order, '@fluojs/di', '@fluojs/validation');
     expectBefore(order, '@fluojs/validation', '@fluojs/http');
@@ -36,6 +37,7 @@ describe('resolveWorkspaceBuildOrder', () => {
     expect(order).not.toContain('@fluojs/studio');
     expect(order).toEqual([
       '@fluojs/diagnostics',
+      '@fluojs/persistence',
       '@fluojs/core',
       '@fluojs/di',
       '@fluojs/validation',

@@ -1,4 +1,5 @@
 import { observeRollback, type TransactionRollbackObserver } from './result-rollback.js';
+import { settleAfterCommitCallbacks } from '@fluojs/persistence/internal';
 import { Inject } from '@fluojs/core';
 import { FrameworkService } from '@fluojs/core/internal';
 import {
@@ -274,15 +275,7 @@ export class PrismaService<
   private async drainAfterCommit(owner: TransactionContext<TTransactionClient>['owner']): Promise<void> {
     const hooks = owner.hooks.splice(0);
     await this.transactions.run(undefined, async () => {
-      const results: PromiseSettledResult<void>[] = [];
-      for (const hook of hooks) {
-        try {
-          await hook();
-          results.push({ status: 'fulfilled', value: undefined });
-        } catch (reason) {
-          results.push({ status: 'rejected', reason });
-        }
-      }
+      const results = await settleAfterCommitCallbacks(hooks);
       if (results.some((result) => result.status === 'rejected')) {
         throw new AfterCommitError(results);
       }

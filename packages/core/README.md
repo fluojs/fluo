@@ -222,15 +222,17 @@ empty inject list. Module metadata stays class-local. On the request-pipeline se
 `getRequestPipelineMetadataBag` includes inherited keys. These reader distinctions,
 frozen snapshots, and write-version invalidation are not alternate authoring APIs.
 
-The root package also owns the transaction-boundary primitives shared by
+The root package also re-exports the transaction-boundary primitives owned by
+`@fluojs/persistence` and shared by
 `@fluojs/prisma`, `@fluojs/drizzle`, and `@fluojs/mongoose`. Import
 `AfterCommitCallback`, `TransactionBoundaryOptions`, `AfterCommitCapabilityError`,
 `AfterCommitError`, `TransactionRollbackCapabilityError`,
 `TransactionRollbackOnlyError`, and `TransactionRollbackUnconfirmedError` from
-`@fluojs/core` when framework-level code needs the common identity. Each ORM root
+`@fluojs/core` for existing callers, or use the canonical `@fluojs/persistence` import. Each ORM root
 re-exports these same values and types, so `instanceof` is stable across imports.
-Driver rollback observers and Mongoose `AfterCommitCleanupError` remain
-driver-owned.
+Concrete driver rollback observers and Mongoose `AfterCommitCleanupError` remain
+driver-owned; common observation declarations live in persistence.
+See the [optional import migration](../../docs/getting-started/migrate-persistence-contracts.md).
 
 - **Decorators**: `Module`, `Inject`, `Scope`
 - **Errors**: `FluoError`, `InvariantError`, `FluoCodeError`, `FluoErrorOptions`, `formatTokenName`, `AfterCommitCapabilityError`, `AfterCommitError`, `TransactionRollbackCapabilityError`, `TransactionRollbackOnlyError`, `TransactionRollbackUnconfirmedError`

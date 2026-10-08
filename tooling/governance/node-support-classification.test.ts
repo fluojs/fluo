@@ -12,6 +12,7 @@ const portablePackages = [
   '@fluojs/diagnostics',
   '@fluojs/email',
   '@fluojs/i18n',
+  '@fluojs/persistence',
   '@fluojs/platform-bun',
   '@fluojs/platform-cloudflare-workers',
   '@fluojs/platform-deno',

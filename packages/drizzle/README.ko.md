@@ -6,6 +6,13 @@
 
 ## 목차
 
+공유 boundary 타입, rollback observation 계약과 공통 오류 constructor는
+[`@fluojs/persistence`](../persistence/README.ko.md)가 소유합니다. 기존 Drizzle root
+import는 원본을 직접 재노출합니다. SQL rollback과 pooled release 관찰,
+native option과 client 추론은 Drizzle에 남으며 status 활동과 shutdown
+settlement는 별도 수명을 유지합니다.
+[선택적 import 마이그레이션](../../docs/getting-started/migrate-persistence-contracts.ko.md)을 참고하세요.
+
 - [설치](#설치)
 - [런타임 지원](#런타임-지원)
 - [사용 시점](#사용-시점)

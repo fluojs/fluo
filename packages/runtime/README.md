@@ -4,6 +4,12 @@
 
 The assembly layer that compiles a module graph and wires DI and HTTP into a runnable application shell.
 
+Request-transaction abort forwarding and active-work helpers are now owned by
+[`@fluojs/persistence`](../persistence/README.md) and directly re-exported from this
+root. Existing imports, listener cleanup, reason identity and settlement behavior
+remain compatible. This adds no eager Node or ORM dependency and leaves runtime
+shutdown orchestration here; see the [optional import migration](../../docs/getting-started/migrate-persistence-contracts.md).
+
 Preparing for the coordinated Node 24 release? Follow the [consumer migration guide](../../docs/getting-started/migrate-node24.md) before upgrading packages.
 
 ## Table of Contents

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import * as Persistence from '../../packages/persistence/src/index.js';
+import * as Core from '../../packages/core/src/index.js';
 
 import {
   AfterCommitCapabilityError as DrizzleAfterCommitCapabilityError,
@@ -27,6 +29,20 @@ import {
 
 describe('shared transaction error identity', () => {
   it('re-exports the canonical constructors through every ORM root', () => {
+    for (const [core, persistence] of [
+      [Core.AfterCommitCapabilityError, Persistence.AfterCommitCapabilityError],
+      [Core.AfterCommitError, Persistence.AfterCommitError],
+      [Core.TransactionRollbackCapabilityError, Persistence.TransactionRollbackCapabilityError],
+      [Core.TransactionRollbackOnlyError, Persistence.TransactionRollbackOnlyError],
+      [Core.TransactionRollbackUnconfirmedError, Persistence.TransactionRollbackUnconfirmedError],
+    ] as const) {
+      expect(core).toBe(persistence);
+    }
+    expect(PrismaAfterCommitCapabilityError).toBe(Persistence.AfterCommitCapabilityError);
+    expect(PrismaAfterCommitError).toBe(Persistence.AfterCommitError);
+    expect(PrismaTransactionRollbackCapabilityError).toBe(Persistence.TransactionRollbackCapabilityError);
+    expect(PrismaTransactionRollbackOnlyError).toBe(Persistence.TransactionRollbackOnlyError);
+    expect(PrismaTransactionRollbackUnconfirmedError).toBe(Persistence.TransactionRollbackUnconfirmedError);
     expect(PrismaAfterCommitCapabilityError).toBe(DrizzleAfterCommitCapabilityError);
     expect(PrismaAfterCommitCapabilityError).toBe(MongooseAfterCommitCapabilityError);
     expect(PrismaAfterCommitError).toBe(DrizzleAfterCommitError);
