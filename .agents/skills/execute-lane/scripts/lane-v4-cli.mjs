@@ -4,12 +4,17 @@
 // Commands:
 //   init            --root . --lane-id <id> --issue <n> [--issue <n> ...]
 //   plan            --root . --lane <path> --issue <n>
-//   plan-all        --root . --lane <path>
+//   plan-all        --root . --lane <path> [--with-retro]
 //   watch           --root . --lane <path> [--interval 60] [--once] [--stall-after 15]
 //   record          --root . --lane <path> --issue <n> --phase <p> --result-json <json>
 //   set-fact        --root . --lane <path> --issue <n> --kind local-checks|local-ci-waiver|review --head <sha> --value <json>
 //   set-fact        --root . --lane <path> --issue <n> --kind preflight --value <json>
 //   approve-merge   --root . --lane <path> --issue <n>
+//   retro-record    --root . --lane <path> --issue <n> --kind review|implementer|incident --value <json>
+//   retro-ci        --root . --lane <path> --issue <n>
+//   retro-plan      --root . --lane <path>
+//   retro-evidence  --root . --lane <path>
+//   retro-report    --root . --lane <path> --value <json>
 //
 // The lane file stores intent (attempts, approvals, blockers) and
 // head-bound review/local-CI facts plus a head-independent preflight contract.
@@ -17,16 +22,38 @@
 // no session identity or event journal. Head movement invalidates reviews and
 // local checks, not the issue/base-bound preflight.
 
-import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { applyChildResult, decideNext, isValidLocalCiWaiver, localCheckBinding, summarizeTransitions, trackStalls } from './lane-v4.mjs';
-import { evaluatePreflight, issueDigest, validatePreflight } from '../../issue-preflight/scripts/contracts.mjs';
-import { buildReviewFact, validateReviewFact } from '../../review-head/scripts/contracts.mjs';
-import { collectIdentity } from '../../../../tooling/ci/verify-local.mjs';
+import {
+	applyChildResult,
+	decideNext,
+	isValidLocalCiWaiver,
+	localCheckBinding,
+	summarizeTransitions,
+	trackStalls,
+} from "./lane-v4.mjs";
+import {
+	evaluatePreflight,
+	issueDigest,
+	validatePreflight,
+} from "../../issue-preflight/scripts/contracts.mjs";
+import {
+	buildReviewFact,
+	validateReviewFact,
+} from "../../review-head/scripts/contracts.mjs";
+import { collectIdentity } from "../../../../tooling/ci/verify-local.mjs";
+import {
+	readRetroEvents,
+	recordCiSnapshot,
+	recordRetroEvent,
+	recordRetrospective,
+	retrospectiveEvidence,
+	retrospectiveRequest,
+} from "../../retrospective-lane/scripts/retro.mjs";
 import {
 	buildVerificationPlan,
 	manifestPath,
@@ -34,7 +61,7 @@ import {
 	receiptMatchesPlan,
 	validateReceipt,
 	validateReceiptEvidence,
-} from '../../../../tooling/ci/local-verification.mjs';
+} from "../../../../tooling/ci/local-verification.mjs";
 
 const arg = (args, flag, fallback) => {
 	const i = args.indexOf(flag);
@@ -45,17 +72,131 @@ const arg = (args, flag, fallback) => {
 	return args[i + 1];
 };
 
+const retroInput = (root, args) => {
+	const file = args.includes("--value-file");
+	if (file === args.includes("--value")) {
+		throw new TypeError(
+			"Provide exactly one retrospective value or value file",
+		);
+	}
+	return JSON.parse(
+		file
+			? readFileSync(resolve(root, arg(args, "--value-file")), "utf8")
+			: arg(args, "--value"),
+	);
+};
+
 const run = (cwd, cmd, cmdArgs, trim = true) => {
 	try {
-		const output = execFileSync(cmd, cmdArgs, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+		const output = execFileSync(cmd, cmdArgs, {
+			cwd,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
 		return trim ? output.trim() : output;
 	} catch {
 		return null;
 	}
 };
 
-const loadLane = (path) => JSON.parse(readFileSync(path, 'utf8'));
-const saveLane = (path, lane) => writeFileSync(path, `${JSON.stringify(lane, null, 2)}\n`);
+/** Supplementary incident capture never supplies execution or merge approval. */
+export const captureRetroCi = (root, lane, issue, query = run) => {
+	const entry = issueEntry(lane, issue);
+	const recorded = [];
+	const gap = (code) => {
+		recorded.push(recordRetroEvent(root, lane.lane_id, issue, "gap", {
+			source: "GitHub Actions",
+			code,
+			branch: entry.branch,
+		}));
+	};
+	const output = query(root, "gh", [
+		"api",
+		"--paginate",
+		"--slurp",
+		`repos/{owner}/{repo}/actions/runs?branch=${
+			encodeURIComponent(entry.branch)
+		}&event=pull_request&per_page=100`,
+	]);
+	if (output === null) {
+		gap("ci-run-history-unavailable");
+		return recorded;
+	}
+	const pages = JSON.parse(output);
+	if (
+		!Array.isArray(pages) ||
+		pages.some((page) => !Array.isArray(page.workflow_runs))
+	) {
+		throw new TypeError("Invalid GitHub CI history response");
+	}
+	const known = new Set(
+		readRetroEvents(root, lane.lane_id)
+			.filter((event) =>
+				event.issue === issue && event.kind === "ci" &&
+				Object.hasOwn(event.data, "conclusion")
+			)
+			.map((event) => `${event.data.run.id}:${event.data.run.attempt}`),
+	);
+	if (
+		pages[0]?.total_count !==
+			pages.flatMap((page) => page.workflow_runs).length
+	) {
+		gap("ci-run-history-incomplete");
+	}
+	for (const latest of pages.flatMap((page) => page.workflow_runs)) {
+		if (
+			!Number.isSafeInteger(latest.run_attempt) || latest.run_attempt < 1
+		) {
+			throw new TypeError("Missing GitHub run attempt");
+		}
+		for (let attempt = 1; attempt <= latest.run_attempt; attempt++) {
+			if (known.has(`${latest.id}:${attempt}`)) continue;
+			const attemptJson = attempt === latest.run_attempt
+				? null
+				: query(root, "gh", [
+					"api",
+					`repos/{owner}/{repo}/actions/runs/${latest.id}/attempts/${attempt}`,
+				]);
+			if (attempt !== latest.run_attempt && attemptJson === null) {
+				gap(`ci-attempt-unavailable:${latest.id}:${attempt}`);
+				continue;
+			}
+			const current = attempt === latest.run_attempt
+				? latest
+				: JSON.parse(attemptJson);
+			const jobsJson = query(root, "gh", [
+				"api",
+				"--paginate",
+				"--slurp",
+				`repos/{owner}/{repo}/actions/runs/${latest.id}/attempts/${attempt}/jobs?per_page=100`,
+			]);
+			if (jobsJson === null) {
+				gap(`ci-jobs-unavailable:${latest.id}:${attempt}`);
+				continue;
+			}
+			const jobPages = JSON.parse(jobsJson);
+			if (
+				!Array.isArray(jobPages) ||
+				jobPages.some((page) => !Array.isArray(page.jobs))
+			) {
+				throw new TypeError("Invalid GitHub CI jobs response");
+			}
+			const jobs = jobPages.flatMap((page) => page.jobs);
+			if (jobPages[0]?.total_count !== jobs.length) {
+				gap(`ci-jobs-incomplete:${latest.id}:${attempt}`);
+				continue;
+			}
+			recorded.push(
+				...recordCiSnapshot(root, lane.lane_id, issue, current, jobs),
+			);
+		}
+	}
+	return recorded;
+};
+
+const loadLane = (path) => JSON.parse(readFileSync(path, "utf8"));
+const saveLane = (path, lane) =>
+	writeFileSync(path, `${JSON.stringify(lane, null, 2)}\n`);
 
 const issueEntry = (lane, issue) => {
 	const entry = lane.issues[String(issue)];
@@ -68,40 +209,65 @@ const branchFor = (entry) => entry.branch;
 const factIfCurrent = (entry, kind, headSha) => {
 	const fact = entry.facts?.[kind];
 	if (!fact || fact.head !== headSha) return null;
-	return typeof fact.value === 'object' && fact.value !== null
+	return typeof fact.value === "object" && fact.value !== null
 		? { ...fact.value, head: fact.head }
 		: fact.value;
 };
 
-const sha256 = (value) => createHash('sha256').update(value).digest('hex');
+const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 
-const nestedPath = (root, candidate) => candidate === root || candidate.startsWith(`${root}${sep}`);
+const nestedPath = (root, candidate) =>
+	candidate === root || candidate.startsWith(`${root}${sep}`);
 
-export const validateLocalCheckFact = (worktree, headSha, baseRef, value, binding) => {
-	if (!value || typeof value !== 'object' || value.status !== 'passed' || value.valid !== true
-		|| typeof value.receiptPath !== 'string' || typeof value.receiptSha256 !== 'string'
-		|| !/^[0-9a-f]{64}$/u.test(value.receiptSha256)) {
-		throw new TypeError('local-checks requires a passed receipt reference and sha256');
+export const validateLocalCheckFact = (
+	worktree,
+	headSha,
+	baseRef,
+	value,
+	binding,
+) => {
+	if (
+		!value || typeof value !== "object" || value.status !== "passed" ||
+		value.valid !== true ||
+		typeof value.receiptPath !== "string" ||
+		typeof value.receiptSha256 !== "string" ||
+		!/^[0-9a-f]{64}$/u.test(value.receiptSha256)
+	) {
+		throw new TypeError(
+			"local-checks requires a passed receipt reference and sha256",
+		);
 	}
 	const root = resolve(worktree);
-	const evidenceRoot = resolve(root, '.omo', 'verification');
+	const evidenceRoot = resolve(root, ".omo", "verification");
 	const receiptPath = resolve(root, value.receiptPath);
-	if (!nestedPath(evidenceRoot, receiptPath)) throw new TypeError('local-checks receipt path escapes verification evidence root');
-	if (!existsSync(receiptPath)) throw new TypeError('local-checks receipt is missing');
+	if (!nestedPath(evidenceRoot, receiptPath)) {
+		throw new TypeError(
+			"local-checks receipt path escapes verification evidence root",
+		);
+	}
+	if (!existsSync(receiptPath)) {
+		throw new TypeError("local-checks receipt is missing");
+	}
 	const bytes = readFileSync(receiptPath);
-	if (sha256(bytes) !== value.receiptSha256) throw new TypeError('local-checks receipt digest mismatch');
+	if (sha256(bytes) !== value.receiptSha256) {
+		throw new TypeError("local-checks receipt digest mismatch");
+	}
 	let receipt;
 	try {
-		receipt = JSON.parse(bytes.toString('utf8'));
+		receipt = JSON.parse(bytes.toString("utf8"));
 	} catch {
-		throw new TypeError('local-checks receipt is malformed');
+		throw new TypeError("local-checks receipt is malformed");
 	}
-	if (!validateReceiptEvidence(receipt, {
-		receiptPath: value.receiptPath,
-		receiptSha256: value.receiptSha256,
-		worktree: root,
-	}).valid) {
-		throw new TypeError('local-checks receipt evidence is missing or tampered');
+	if (
+		!validateReceiptEvidence(receipt, {
+			receiptPath: value.receiptPath,
+			receiptSha256: value.receiptSha256,
+			worktree: root,
+		}).valid
+	) {
+		throw new TypeError(
+			"local-checks receipt evidence is missing or tampered",
+		);
 	}
 	const identity = collectIdentity(root, baseRef);
 	const plan = buildVerificationPlan({
@@ -111,13 +277,24 @@ export const validateLocalCheckFact = (worktree, headSha, baseRef, value, bindin
 	});
 	// Native v1 evidence is historical; only the exact Linux PR profile can
 	// satisfy the lane's post-review local gate.
-	if (receipt.version !== 2 || receipt.profile !== 'pr' || plan.profile !== 'pr'
-		|| !validateReceipt(receipt).valid || receipt.identity.headSha !== headSha
-		|| !receiptMatchesPlan(receipt, identity, plan)) {
-		throw new TypeError('local-checks receipt is not a valid passed receipt for --head');
+	if (
+		receipt.version !== 2 || receipt.profile !== "pr" ||
+		plan.profile !== "pr" ||
+		!validateReceipt(receipt).valid ||
+		receipt.identity.headSha !== headSha ||
+		!receiptMatchesPlan(receipt, identity, plan)
+	) {
+		throw new TypeError(
+			"local-checks receipt is not a valid passed receipt for --head",
+		);
 	}
-	if (!binding || !(Date.parse(receipt.startedAt) > Date.parse(binding.reviewAcceptedAt))) {
-		throw new TypeError('local-checks receipt must start after the current passing review was accepted');
+	if (
+		!binding ||
+		!(Date.parse(receipt.startedAt) > Date.parse(binding.reviewAcceptedAt))
+	) {
+		throw new TypeError(
+			"local-checks receipt must start after the current passing review was accepted",
+		);
 	}
 	return {
 		...binding,
@@ -125,7 +302,7 @@ export const validateLocalCheckFact = (worktree, headSha, baseRef, value, bindin
 		receiptStartedAt: receipt.startedAt,
 		receiptPath: relative(root, receiptPath),
 		receiptSha256: value.receiptSha256,
-		status: 'passed',
+		status: "passed",
 		valid: true,
 	};
 };
@@ -142,23 +319,27 @@ export const validateLocalCheckFact = (worktree, headSha, baseRef, value, bindin
 // showed README.md and README.ko.md in the tarball. Root-level only — npm's
 // auto-include does not apply to nested paths — and CHANGELOG is not in npm's
 // auto-include set.
-const packageRootAlwaysPacked = /^packages\/[^/]+\/(?:README|LICEN[SC]E)[^/]*$/i;
+const packageRootAlwaysPacked =
+	/^packages\/[^/]+\/(?:README|LICEN[SC]E)[^/]*$/i;
 
 export const isConsumerVisibleFile = (file) => {
 	if (packageRootAlwaysPacked.test(file)) {
 		return true;
 	}
-	if (!file.startsWith('packages/') || file.endsWith('.md')) {
+	if (!file.startsWith("packages/") || file.endsWith(".md")) {
 		return false;
 	}
 	if (/\.(test|test-fixture)\.[cm]?ts$/.test(file)) {
 		return false;
 	}
-	const withinPackage = file.replace(/^packages\/[^/]+\//, '');
-	return !/(^|\/)(test-types|test-fixtures|__tests__|test)\//.test(withinPackage);
+	const withinPackage = file.replace(/^packages\/[^/]+\//, "");
+	return !/(^|\/)(test-types|test-fixtures|__tests__|test)\//.test(
+		withinPackage,
+	);
 };
 
-export const isChangesetFile = (file) => /^\.changeset\/.+\.md$/.test(file) && !file.endsWith('README.md');
+export const isChangesetFile = (file) =>
+	/^\.changeset\/.+\.md$/.test(file) && !file.endsWith("README.md");
 
 // `$create-lane` emits a canonical lane v2 ledger at `.omo/lanes/<lane-id>.json`.
 // v4 consumes only the issue set and the dependency edges from it; every other v2
@@ -171,13 +352,16 @@ export const isChangesetFile = (file) => /^\.changeset\/.+\.md$/.test(file) && !
 // from. Hashing the exact bytes (not the parsed value) makes later ledger
 // edits detectable.
 export const sourceLedgerRef = (path, contents) => {
-	if (typeof path !== 'string' || path.length === 0) {
-		throw new TypeError('source ledger path must be a non-empty string');
+	if (typeof path !== "string" || path.length === 0) {
+		throw new TypeError("source ledger path must be a non-empty string");
 	}
-	if (typeof contents !== 'string') {
-		throw new TypeError('source ledger contents must be a string');
+	if (typeof contents !== "string") {
+		throw new TypeError("source ledger contents must be a string");
 	}
-	return { path, sha256: createHash('sha256').update(contents).digest('hex') };
+	return {
+		path,
+		sha256: createHash("sha256").update(contents).digest("hex"),
+	};
 };
 
 export const laneV2ToInitSpecs = (laneV2) => {
@@ -185,8 +369,13 @@ export const laneV2ToInitSpecs = (laneV2) => {
 		throw new TypeError('lane v2 intake requires "version": 2');
 	}
 	const issues = laneV2.confirmed_issues;
-	if (!Array.isArray(issues) || issues.length === 0 || issues.some((n) => !Number.isSafeInteger(n) || n < 1)) {
-		throw new TypeError('lane v2 confirmed_issues must be a non-empty array of positive integers');
+	if (
+		!Array.isArray(issues) || issues.length === 0 ||
+		issues.some((n) => !Number.isSafeInteger(n) || n < 1)
+	) {
+		throw new TypeError(
+			"lane v2 confirmed_issues must be a non-empty array of positive integers",
+		);
 	}
 	const members = new Set(issues);
 	const graph = laneV2.dependency_graph ?? {};
@@ -194,14 +383,16 @@ export const laneV2ToInitSpecs = (laneV2) => {
 		const deps = (graph[String(n)] ?? []).map(Number);
 		for (const d of deps) {
 			if (!members.has(d)) {
-				throw new TypeError(`lane v2 dependency ${d} of issue ${n} is not in confirmed_issues`);
+				throw new TypeError(
+					`lane v2 dependency ${d} of issue ${n} is not in confirmed_issues`,
+				);
 			}
 		}
 		return { n, deps };
 	});
 	return {
 		laneId: laneV2.lane_id,
-		baseBranch: laneV2.base_branch ?? 'main',
+		baseBranch: laneV2.base_branch ?? "main",
 		specs,
 		// The maintainer's lane-plan approval already covers merging every
 		// issue in this lane; import it so the merge gate does not re-ask.
@@ -212,48 +403,108 @@ export const laneV2ToInitSpecs = (laneV2) => {
 export const observeIssue = (root, lane, issue, candidateBase = null) => {
 	const entry = issueEntry(lane, issue);
 	const branch = branchFor(entry);
-	const branchExists = run(root, 'git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]) !== null;
-	const worktreePath = resolve(root, '.worktrees', branch);
+	const branchExists = run(root, "git", [
+		"show-ref",
+		"--verify",
+		"--quiet",
+		`refs/heads/${branch}`,
+	]) !== null;
+	const worktreePath = resolve(root, ".worktrees", branch);
 	const worktreeExists = existsSync(worktreePath);
-	const headSha = branchExists ? run(root, 'git', ['rev-parse', branch]) : null;
-	const sourceSha = run(root, 'git', ['rev-parse', '--verify', `refs/remotes/origin/${lane.base_branch}^{commit}`]);
+	const headSha = branchExists
+		? run(root, "git", ["rev-parse", branch])
+		: null;
+	const sourceSha = run(root, "git", [
+		"rev-parse",
+		"--verify",
+		`refs/remotes/origin/${lane.base_branch}^{commit}`,
+	]);
 	const preflight = entry.facts?.preflight?.value ?? null;
 	const anchor = candidateBase ?? preflight?.base_sha ?? sourceSha;
-	const baseSha = sourceSha && anchor
-		&& run(root, 'git', ['rev-parse', '--verify', `${anchor}^{commit}`]) === anchor
-		&& run(root, 'git', ['merge-base', '--is-ancestor', anchor, sourceSha]) !== null
-		&& (!branchExists || run(root, 'git', ['merge-base', '--is-ancestor', anchor, headSha]) !== null)
-		? anchor : null;
-	const mergeBase = branchExists ? run(root, 'git', ['merge-base', branch, `origin/${lane.base_branch}`]) : null;
-	const hasNewCommits = branchExists && headSha !== null && mergeBase !== null && headSha !== mergeBase;
+	const baseSha = sourceSha && anchor &&
+			run(root, "git", [
+					"rev-parse",
+					"--verify",
+					`${anchor}^{commit}`,
+				]) === anchor &&
+			run(root, "git", [
+					"merge-base",
+					"--is-ancestor",
+					anchor,
+					sourceSha,
+				]) !== null &&
+			(!branchExists ||
+				run(root, "git", [
+						"merge-base",
+						"--is-ancestor",
+						anchor,
+						headSha,
+					]) !== null)
+		? anchor
+		: null;
+	const mergeBase = branchExists
+		? run(root, "git", ["merge-base", branch, `origin/${lane.base_branch}`])
+		: null;
+	const hasNewCommits = branchExists && headSha !== null &&
+		mergeBase !== null && headSha !== mergeBase;
 
 	// NUL separation and --no-renames preserve every path, including rename
 	// sources, so a move out of approved scope cannot hide behind rename detection.
 	// Scope belongs to the issue diff, not upstream work incorporated by a
 	// merge/rebase. Local verification keeps its independent pinned base.
 	const changed = baseSha && branchExists && mergeBase
-		? run(root, 'git', ['diff', '--name-only', '--no-renames', '-z', `${mergeBase}...${headSha}`], false)
-		: baseSha && !branchExists ? '' : null;
-	const changedFiles = changed === null ? null : changed.split('\0').filter(Boolean);
-	const publicPackagesTouched = (changedFiles ?? []).some(isConsumerVisibleFile);
+		? run(root, "git", [
+			"diff",
+			"--name-only",
+			"--no-renames",
+			"-z",
+			`${mergeBase}...${headSha}`,
+		], false)
+		: baseSha && !branchExists
+		? ""
+		: null;
+	const changedFiles = changed === null
+		? null
+		: changed.split("\0").filter(Boolean);
+	const publicPackagesTouched = (changedFiles ?? []).some(
+		isConsumerVisibleFile,
+	);
 	const changesetPresent = (changedFiles ?? []).some(isChangesetFile);
 
 	let pr = null;
-	const prJson = run(root, 'gh', [
-		'pr', 'view', branch, '--json', 'number,state,headRefOid,mergeable,statusCheckRollup',
+	const prJson = run(root, "gh", [
+		"pr",
+		"view",
+		branch,
+		"--json",
+		"number,state,headRefOid,mergeable,statusCheckRollup,mergeCommit,mergedAt",
 	]);
 	if (prJson !== null) {
 		const parsed = JSON.parse(prJson);
 		const rollup = parsed.statusCheckRollup ?? [];
-		const states = rollup.map((c) => c.conclusion ?? c.state ?? 'PENDING');
+		const states = rollup.map((c) => c.conclusion ?? c.state ?? "PENDING");
 		let ciStatus = null;
 		if (states.length > 0) {
-			if (states.some((s) => ['FAILURE', 'ERROR', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED'].includes(s))) {
-				ciStatus = 'failing';
-			} else if (states.every((s) => ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(s))) {
-				ciStatus = 'passing';
+			if (
+				states.some((s) =>
+					[
+						"FAILURE",
+						"ERROR",
+						"CANCELLED",
+						"TIMED_OUT",
+						"ACTION_REQUIRED",
+					].includes(s)
+				)
+			) {
+				ciStatus = "failing";
+			} else if (
+				states.every((s) =>
+					["SUCCESS", "NEUTRAL", "SKIPPED"].includes(s)
+				)
+			) {
+				ciStatus = "passing";
 			} else {
-				ciStatus = 'pending';
+				ciStatus = "pending";
 			}
 		}
 		pr = {
@@ -262,45 +513,89 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 			headSha: parsed.headRefOid,
 			mergeable: parsed.mergeable,
 			ciStatus,
+			mergeCommit: parsed.mergeCommit?.oid ?? null,
+			mergedAt: parsed.mergedAt ?? null,
 		};
 	}
 
-	const issueJson = run(root, 'gh', ['issue', 'view', String(issue), '--json', 'state,title,body']);
+	const issueJson = run(root, "gh", [
+		"issue",
+		"view",
+		String(issue),
+		"--json",
+		"state,title,body",
+	]);
 	const issueData = issueJson === null ? null : JSON.parse(issueJson);
-	const issueState = issueData?.state ?? 'OPEN';
-	const issueSha256 = typeof issueData?.title === 'string' && typeof issueData?.body === 'string'
-		? issueDigest(issueData) : null;
+	const issueState = issueData?.state ?? "OPEN";
+	const issueSha256 = typeof issueData?.title === "string" &&
+			typeof issueData?.body === "string"
+		? issueDigest(issueData)
+		: null;
 	const reviewAxisFloor = entry.facts?.review?.value?.active_axes ?? [];
-	const preflightStatus = evaluatePreflight(preflight, { issue, issueSha256, baseSha, changedFiles, reviewAxisFloor });
-	const review = headSha ? factIfCurrent(entry, 'review', headSha) : null;
-	const reviewAcceptedAt = review ? entry.facts?.review?.accepted_at ?? null : null;
+	const preflightStatus = evaluatePreflight(preflight, {
+		issue,
+		issueSha256,
+		baseSha,
+		changedFiles,
+		reviewAxisFloor,
+	});
+	const review = headSha ? factIfCurrent(entry, "review", headSha) : null;
+	const reviewAcceptedAt = review
+		? entry.facts?.review?.accepted_at ?? null
+		: null;
 	const binding = (() => {
 		if (!headSha || !worktreeExists || !preflightStatus.valid) return null;
 		try {
-			return localCheckBinding(validateReviewFact(review, headSha, preflightStatus.policy), reviewAcceptedAt);
+			return localCheckBinding(
+				validateReviewFact(review, headSha, preflightStatus.policy),
+				reviewAcceptedAt,
+			);
 		} catch {
 			return null;
 		}
 	})();
 	const localChecks = (() => {
-		const fact = factIfCurrent(entry, 'local-checks', headSha);
+		const fact = factIfCurrent(entry, "local-checks", headSha);
 		if (!fact || !binding) return null;
-		if (fact.preflightSha256 !== binding.preflightSha256 || fact.reviewSha256 !== binding.reviewSha256) return null;
-		if (fact.status === 'failed') return fact;
+		if (
+			fact.preflightSha256 !== binding.preflightSha256 ||
+			fact.reviewSha256 !== binding.reviewSha256
+		) return null;
+		if (fact.status === "failed") return fact;
 		try {
-			return validateLocalCheckFact(worktreePath, headSha, baseSha, fact, binding);
+			return validateLocalCheckFact(
+				worktreePath,
+				headSha,
+				baseSha,
+				fact,
+				binding,
+			);
 		} catch {
-			return { ...fact, status: 'failed', valid: false };
+			return { ...fact, status: "failed", valid: false };
 		}
 	})();
-	const waiver = entry.facts?.['local-ci-waiver'];
+	const waiver = entry.facts?.["local-ci-waiver"];
 	const localCiWaiver = isValidLocalCiWaiver(waiver, {
-		headSha, laneId: lane.lane_id, issue, contractSha256: preflight?.sha256, binding,
-	}) ? waiver : null;
+			headSha,
+			laneId: lane.lane_id,
+			issue,
+			contractSha256: preflight?.sha256,
+			binding,
+		})
+		? waiver
+		: null;
 
 	const unmetDependencies = (entry.depends_on ?? []).filter((dep) => {
-		const s = run(root, 'gh', ['issue', 'view', String(dep), '--json', 'state', '--jq', '.state']);
-		return s !== 'CLOSED';
+		const s = run(root, "gh", [
+			"issue",
+			"view",
+			String(dep),
+			"--json",
+			"state",
+			"--jq",
+			".state",
+		]);
+		return s !== "CLOSED";
 	});
 
 	return {
@@ -330,33 +625,37 @@ export const observeIssue = (root, lane, issue, candidateBase = null) => {
 
 const main = () => {
 	const [command, ...args] = process.argv.slice(2);
-	const root = resolve(arg(args, '--root', '.'));
+	const root = resolve(arg(args, "--root", "."));
 
-	if (command === 'init') {
+	if (command === "init") {
 		// Either translate a `$create-lane` v2 ledger, or take explicit --issue specs.
-		const fromLaneV2 = args.includes('--from-lane-v2') ? arg(args, '--from-lane-v2') : null;
+		const fromLaneV2 = args.includes("--from-lane-v2")
+			? arg(args, "--from-lane-v2")
+			: null;
 		let laneId;
-		let baseBranch = 'main';
+		let baseBranch = "main";
 		let specs;
 		let ledgerRef = null;
 		let mergeApproved = false;
 		if (fromLaneV2 !== null) {
-			const raw = readFileSync(resolve(root, fromLaneV2), 'utf8');
+			const raw = readFileSync(resolve(root, fromLaneV2), "utf8");
 			const translated = laneV2ToInitSpecs(JSON.parse(raw));
-			laneId = args.includes('--lane-id') ? arg(args, '--lane-id') : translated.laneId;
+			laneId = args.includes("--lane-id")
+				? arg(args, "--lane-id")
+				: translated.laneId;
 			baseBranch = translated.baseBranch;
 			specs = translated.specs;
 			ledgerRef = sourceLedgerRef(fromLaneV2, raw);
 			mergeApproved = translated.mergeApproved;
 		} else {
-			laneId = arg(args, '--lane-id');
+			laneId = arg(args, "--lane-id");
 			// --issue accepts `N` or `N:dep1,dep2` (deps must be lane members).
 			specs = [];
 			for (let i = 0; i < args.length; i += 1) {
-				if (args[i] !== '--issue') continue;
-				const [numRaw, depsRaw] = String(args[i + 1]).split(':');
+				if (args[i] !== "--issue") continue;
+				const [numRaw, depsRaw] = String(args[i + 1]).split(":");
 				const n = Number(numRaw);
-				const deps = depsRaw ? depsRaw.split(',').map(Number) : [];
+				const deps = depsRaw ? depsRaw.split(",").map(Number) : [];
 				specs.push({ n, deps });
 			}
 		}
@@ -366,9 +665,11 @@ const main = () => {
 			specs.some((s) => !Number.isSafeInteger(s.n) || s.n < 1) ||
 			specs.some((s) => s.deps.some((d) => !all.includes(d)))
 		) {
-			throw new TypeError('init requires positive --issue values; deps must be lane members (N:dep1,dep2)');
+			throw new TypeError(
+				"init requires positive --issue values; deps must be lane members (N:dep1,dep2)",
+			);
 		}
-		const dir = resolve(root, '.omo', 'lanes-v4');
+		const dir = resolve(root, ".omo", "lanes-v4");
 		mkdirSync(dir, { recursive: true });
 		const lane = {
 			version: 4,
@@ -395,57 +696,138 @@ const main = () => {
 		return;
 	}
 
-	const lanePath = resolve(root, arg(args, '--lane'));
+	const lanePath = resolve(root, arg(args, "--lane"));
 	const lane = loadLane(lanePath);
 
 	// Watch runs for a long time: re-load the lane file every tick so
 	// facts/approvals recorded by concurrent operator commands are seen.
-	const snapshotAll = () => {
+	const snapshotAll = (withObservations = false) => {
 		const fresh = loadLane(lanePath);
 		return Object.keys(fresh.issues).map((key) => {
 			const n = Number(key);
 			const obs = observeIssue(root, fresh, n);
 			const decision = decideNext(fresh.issues[key], obs);
-			return { issue: n, decision };
+			return {
+				issue: n,
+				decision,
+				...(withObservations
+					? {
+						obs: {
+							...obs,
+							attempts: fresh.issues[key].attempts,
+							facts: fresh.issues[key].facts,
+						},
+					}
+					: {}),
+			};
 		});
 	};
 
-	if (command === 'plan-all') {
-		process.stdout.write(`${JSON.stringify(snapshotAll(), null, 2)}\n`);
+	if (["retro-plan", "retro-evidence", "retro-report"].includes(command)) {
+		const snapshots = snapshotAll(true);
+		const request = retrospectiveRequest(root, lane.lane_id, snapshots);
+		const result = command === "retro-evidence"
+			? retrospectiveEvidence(root, lane.lane_id, snapshots)
+			: command === "retro-report" && request.action === "retro"
+			? recordRetrospective(root, request, retroInput(root, args))
+			: request;
+		process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 		return;
 	}
-	if (command === 'watch') {
+
+	if (command === "plan-all") {
+		const withRetro = args.includes("--with-retro");
+		const snapshots = snapshotAll(withRetro);
+		const issues = snapshots.map(({ issue, decision }) => ({
+			issue,
+			decision,
+		}));
+		const retrospective = withRetro
+			? retrospectiveRequest(root, lane.lane_id, snapshots)
+			: null;
+		process.stdout.write(
+			`${
+				JSON.stringify(
+					withRetro
+						? {
+							issues,
+							retrospective,
+							settled: issues.every((item) =>
+								item.decision.action === "done"
+							) && retrospective.action === "done",
+						}
+						: issues,
+					null,
+					2,
+				)
+			}\n`,
+		);
+		return;
+	}
+	if (command === "watch") {
 		// Auto-tick: re-observe the lane, print ONLY decision transitions,
 		// exit 0 when the lane settles (every issue done or blocked). This
 		// closes the dependent-release wake gap without any journal: each
 		// tick is a fresh GitHub/git observation.
-		const intervalSec = Number(arg(args, '--interval', '60'));
-		const once = args.includes('--once');
+		const intervalSec = Number(arg(args, "--interval", "60"));
+		const once = args.includes("--once");
 		// A decision that stops moving is owed an operator action; transitions
 		// alone hide that (issue 3400 sat in `review` for hours unnoticed).
 		// Fires at every threshold multiple; 0 disables.
-		const stallAfter = Number(arg(args, '--stall-after', '15'));
+		const stallAfter = Number(arg(args, "--stall-after", "15"));
 		const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 		const loop = async () => {
 			let prev = null;
 			let stallCounts = null;
-			for (; ;) {
-				const next = snapshotAll();
+			for (;;) {
+				const next = snapshotAll(true);
 				const { changes, settled } = summarizeTransitions(prev, next);
 				for (const c of changes) {
+					if (
+						c.to === "fix-back" &&
+						next.find((item) => item.issue === c.issue)?.decision
+								.reason === "ci-failing"
+					) {
+						captureRetroCi(root, loadLane(lanePath), c.issue);
+					}
 					process.stdout.write(
-						`${new Date().toISOString()} issue ${c.issue}: ${c.from ?? '(start)'} -> ${c.to}\n`,
+						`${new Date().toISOString()} issue ${c.issue}: ${
+							c.from ?? "(start)"
+						} -> ${c.to}\n`,
 					);
 				}
 				const tracked = trackStalls(stallCounts, next, stallAfter);
 				stallCounts = tracked.counts;
 				for (const s of tracked.stalled) {
 					process.stdout.write(
-						`${new Date().toISOString()} STALLED issue ${s.issue}: ${s.action} x ${s.ticks} ticks\n`,
+						`${
+							new Date().toISOString()
+						} STALLED issue ${s.issue}: ${s.action} x ${s.ticks} ticks\n`,
 					);
 				}
 				if (settled) {
-					process.stdout.write(`LANE-SETTLED ${JSON.stringify(next.map((r) => ({ issue: r.issue, action: r.decision.action })))}\n`);
+					if (next.every((item) => item.decision.action === "done")) {
+						const request = retrospectiveRequest(
+							root,
+							lane.lane_id,
+							next,
+						);
+						if (request.action === "retro") {
+							process.stdout.write(
+								`RETRO-READY ${JSON.stringify(request)}\n`,
+							);
+						}
+					}
+					process.stdout.write(
+						`LANE-SETTLED ${
+							JSON.stringify(
+								next.map((r) => ({
+									issue: r.issue,
+									action: r.decision.action,
+								})),
+							)
+						}\n`,
+					);
 					return;
 				}
 				if (once) return;
@@ -457,95 +839,210 @@ const main = () => {
 		return;
 	}
 
-	const issue = Number(arg(args, '--issue'));
+	const issue = Number(arg(args, "--issue"));
 	const entry = issueEntry(lane, issue);
 
-	if (command === 'plan') {
-		const obs = observeIssue(root, lane, issue);
-		const decision = decideNext(entry, obs);
-		process.stdout.write(`${JSON.stringify({ issue, decision, obs }, null, 2)}\n`);
+	if (command === "retro-record") {
+		const kind = arg(args, "--kind");
+		if (!["review", "implementer", "incident"].includes(kind)) {
+			throw new TypeError("Use retro-ci for authoritative CI snapshots");
+		}
+		const result = recordRetroEvent(
+			root,
+			lane.lane_id,
+			issue,
+			kind,
+			retroInput(root, args),
+		);
+		process.stdout.write(`${JSON.stringify(result)}\n`);
 		return;
 	}
-	if (command === 'record') {
-		const phase = arg(args, '--phase');
-		const result = JSON.parse(arg(args, '--result-json'));
+	if (command === "retro-ci") {
+		process.stdout.write(
+			`${JSON.stringify(captureRetroCi(root, lane, issue))}\n`,
+		);
+		return;
+	}
+
+	if (command === "plan") {
+		const obs = observeIssue(root, lane, issue);
+		const decision = decideNext(entry, obs);
+		process.stdout.write(
+			`${JSON.stringify({ issue, decision, obs }, null, 2)}\n`,
+		);
+		return;
+	}
+	if (command === "record") {
+		const phase = arg(args, "--phase");
+		const result = JSON.parse(arg(args, "--result-json"));
 		const next = applyChildResult(entry, phase, result);
-		if (phase === 'verify-local' && result?.ok === false) {
+		if (phase === "verify-local" && result?.ok === false) {
 			const obs = observeIssue(root, lane, issue);
-			if (result.head_sha !== obs.headSha || !obs.preflightPolicy
-				|| typeof result.evidence !== 'string' || !result.evidence.trim()) {
-				throw new TypeError('failed local CI requires current head_sha and failure evidence');
+			if (
+				result.head_sha !== obs.headSha || !obs.preflightPolicy ||
+				typeof result.evidence !== "string" || !result.evidence.trim()
+			) {
+				throw new TypeError(
+					"failed local CI requires current head_sha and failure evidence",
+				);
 			}
-			const binding = localCheckBinding(validateReviewFact(obs.review, obs.headSha, obs.preflightPolicy), obs.reviewAcceptedAt);
+			const binding = localCheckBinding(
+				validateReviewFact(
+					obs.review,
+					obs.headSha,
+					obs.preflightPolicy,
+				),
+				obs.reviewAcceptedAt,
+			);
 			next.facts ??= {};
-			next.facts['local-checks'] = {
+			next.facts["local-checks"] = {
 				head: obs.headSha,
-				value: { ...binding, head: obs.headSha, status: 'failed', valid: false, evidence: result.evidence },
+				value: {
+					...binding,
+					head: obs.headSha,
+					status: "failed",
+					valid: false,
+					evidence: result.evidence,
+				},
 			};
 		}
 		lane.issues[String(issue)] = next;
 		saveLane(lanePath, lane);
-		process.stdout.write(`${JSON.stringify({ issue, attempts: next.attempts, blocker: next.blocker }, null, 2)}\n`);
+		recordRetroEvent(root, lane.lane_id, issue, "stage", {
+			phase,
+			result,
+			attempts: next.attempts,
+		});
+		if (["merge", "fix-back"].includes(phase)) {
+			captureRetroCi(root, lane, issue);
+		}
+		process.stdout.write(
+			`${
+				JSON.stringify(
+					{ issue, attempts: next.attempts, blocker: next.blocker },
+					null,
+					2,
+				)
+			}\n`,
+		);
 		return;
 	}
-	if (command === 'set-fact') {
-		const kind = arg(args, '--kind');
-		if (!['preflight', 'local-checks', 'local-ci-waiver', 'review'].includes(kind)) {
-			throw new TypeError('kind must be preflight, local-checks, local-ci-waiver or review');
+	if (command === "set-fact") {
+		const kind = arg(args, "--kind");
+		if (
+			!["preflight", "local-checks", "local-ci-waiver", "review"]
+				.includes(kind)
+		) {
+			throw new TypeError(
+				"kind must be preflight, local-checks, local-ci-waiver or review",
+			);
 		}
-		const value = JSON.parse(arg(args, '--value'));
+		const value = JSON.parse(arg(args, "--value"));
+		if (kind === "review") {
+			recordRetroEvent(root, lane.lane_id, issue, "review", value);
+		}
 		entry.facts ??= {};
-		if (kind === 'preflight') {
+		if (kind === "preflight") {
 			validatePreflight(value);
 			const previousObs = observeIssue(root, lane, issue);
 			const obs = observeIssue(root, lane, issue, value.base_sha);
 			const status = evaluatePreflight(value, { ...obs, issue });
-			if (!status.valid) throw new TypeError(`preflight rejected: ${status.reason}`);
-			const previous = previousObs.preflightPolicy?.active_axes ?? previousObs.preflight?.active_axes ?? [];
-			if (previous.some((axis) => !value.active_axes.includes(axis))) {
-				throw new TypeError('preflight cannot shrink previously approved review axes');
+			if (!status.valid) {
+				throw new TypeError(`preflight rejected: ${status.reason}`);
 			}
-			if (status.policy.active_axes.some((axis) => !value.active_axes.includes(axis))) {
-				throw new TypeError('preflight active_axes must include axes required by the actual diff');
+			const previous = previousObs.preflightPolicy?.active_axes ??
+				previousObs.preflight?.active_axes ?? [];
+			if (previous.some((axis) => !value.active_axes.includes(axis))) {
+				throw new TypeError(
+					"preflight cannot shrink previously approved review axes",
+				);
+			}
+			if (
+				status.policy.active_axes.some((axis) =>
+					!value.active_axes.includes(axis)
+				)
+			) {
+				throw new TypeError(
+					"preflight active_axes must include axes required by the actual diff",
+				);
 			}
 			if (entry.facts.preflight?.value?.sha256 !== value.sha256) {
 				entry.facts.preflight = { value };
 				delete entry.facts.review;
-				delete entry.facts['local-checks'];
-				delete entry.facts['local-ci-waiver'];
+				delete entry.facts["local-checks"];
+				delete entry.facts["local-ci-waiver"];
 			}
 		} else {
-			const head = arg(args, '--head');
+			const head = arg(args, "--head");
 			let storedValue;
 			const obs = observeIssue(root, lane, issue);
-			if (head !== obs.headSha || !obs.preflightPolicy) throw new TypeError(`${kind} requires current head and valid preflight`);
+			if (head !== obs.headSha || !obs.preflightPolicy) {
+				throw new TypeError(
+					`${kind} requires current head and valid preflight`,
+				);
+			}
 			const acceptedAt = new Date().toISOString();
-			if (kind === 'local-checks') {
-				const binding = localCheckBinding(validateReviewFact(obs.review, head, obs.preflightPolicy), obs.reviewAcceptedAt);
-				storedValue = validateLocalCheckFact(resolve(root, '.worktrees', branchFor(entry)), head, obs.baseSha, value, binding);
-			} else if (kind === 'local-ci-waiver') {
-				const binding = localCheckBinding(validateReviewFact(obs.review, head, obs.preflightPolicy), obs.reviewAcceptedAt);
-				if (obs.localChecks?.status === 'failed') throw new TypeError('local-ci-waiver cannot override failed local checks');
-				if (!isValidLocalCiWaiver({ head, accepted_at: acceptedAt, value }, {
-					headSha: obs.headSha, laneId: lane.lane_id, issue, contractSha256: obs.preflight.sha256, binding,
-				})) throw new TypeError('local-ci-waiver requires exact operator evidence and current bindings');
+			if (kind === "local-checks") {
+				const binding = localCheckBinding(
+					validateReviewFact(obs.review, head, obs.preflightPolicy),
+					obs.reviewAcceptedAt,
+				);
+				storedValue = validateLocalCheckFact(
+					resolve(root, ".worktrees", branchFor(entry)),
+					head,
+					obs.baseSha,
+					value,
+					binding,
+				);
+			} else if (kind === "local-ci-waiver") {
+				const binding = localCheckBinding(
+					validateReviewFact(obs.review, head, obs.preflightPolicy),
+					obs.reviewAcceptedAt,
+				);
+				if (obs.localChecks?.status === "failed") {
+					throw new TypeError(
+						"local-ci-waiver cannot override failed local checks",
+					);
+				}
+				if (
+					!isValidLocalCiWaiver({
+						head,
+						accepted_at: acceptedAt,
+						value,
+					}, {
+						headSha: obs.headSha,
+						laneId: lane.lane_id,
+						issue,
+						contractSha256: obs.preflight.sha256,
+						binding,
+					})
+				) {
+					throw new TypeError(
+						"local-ci-waiver requires exact operator evidence and current bindings",
+					);
+				}
 				storedValue = value;
 			} else {
 				storedValue = buildReviewFact(value, head, obs.preflightPolicy);
-				delete entry.facts['local-checks'];
-				delete entry.facts['local-ci-waiver'];
+				delete entry.facts["local-checks"];
+				delete entry.facts["local-ci-waiver"];
 			}
-			entry.facts[kind] = { head, value: storedValue,
-				...(['review', 'local-ci-waiver'].includes(kind) ? { accepted_at: acceptedAt } : {}) };
+			entry.facts[kind] = {
+				head,
+				value: storedValue,
+				...(["review", "local-ci-waiver"].includes(kind)
+					? { accepted_at: acceptedAt }
+					: {}),
+			};
 		}
 		saveLane(lanePath, lane);
-		process.stdout.write('ok\n');
+		process.stdout.write("ok\n");
 		return;
 	}
-	if (command === 'approve-merge') {
+	if (command === "approve-merge") {
 		entry.approvals.merge = true;
 		saveLane(lanePath, lane);
-		process.stdout.write('ok\n');
+		process.stdout.write("ok\n");
 		return;
 	}
 	throw new TypeError(`unknown command: ${command}`);
@@ -553,6 +1050,9 @@ const main = () => {
 
 // Only run the CLI when this file is the process entrypoint, so the pure
 // helpers above can be imported by tests without argument parsing exploding.
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (
+	process.argv[1] &&
+	resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
 	main();
 }

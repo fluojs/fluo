@@ -67,6 +67,13 @@ remediated with no remaining blockers. `commit_sha` must equal the new
 `head_sha`; `previous_head_sha` must equal `starting_head_sha`.
 
 Return the exact object accepted by `assertIssueImplementResult`. A malformed
+or unsuccessful raw return must first be retained by the lead through
+`lane-v4-cli.mjs retro-record --kind implementer`; include available task/head,
+failed command and raw log references without inventing missing measurements.
+The separate retrospective observation is not implementation acceptance.
+See `../retrospective-lane/SKILL.md` for work-unit capture and the lane-end analysis.
+
+A malformed
 report, unchanged head, failing focused check, or unresolved blocker is not
 completion. Report the evidence to the lane for retry or escalation, without
 inventing a successful result or managing retries inside this stage. Local
