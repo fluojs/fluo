@@ -80,10 +80,11 @@ function requestFrame(value: unknown): boolean {
   const name = String(frame.functionName ?? frame.name ?? '');
   const url = String(frame.url ?? '');
   if (/^\(program\)$|^\(root\)$|^createNativeStage$|^resolveStageModule$/.test(name)) return false;
-  const stage = /shared\/(?:native-stages|fluo-stages|stage-workloads)\.[cm]?[jt]s/.test(url);
+  const stage = /shared\/(?:native-stages|fluo-stages|stage-workloads)\.[cm]?[jt]s$/.test(url);
   const line = frame.lineNumber ?? (typeof frame.line === 'number' ? frame.line - 1 : null);
   const stageHandler = /^(?:read|canActivate|serviceResult|bodyFields|materializeStageDto|serializedStage)$/.test(name)
-    || (name === '' && typeof line === 'number' && line >= 3);
+    || (name === '' && ((/shared\/native-stages\.js$/.test(url) && line === 4)
+      || (/shared\/native-stages\.ts$/.test(url) && line === 5)));
   const fastRequest = /packages\/http\/(?:dist|src)\/dispatch\//.test(url)
     && /^(?:dispatch|dispatchMatchedRoute|runDispatchPipeline|tryFastPathExecution|executeFastPath|consumeFrameworkRequestNativeRouteHandoff)$/.test(name);
   const nestRequest = /(?:^|\/)(?:src\/nestjs|dist\/nestjs\/nestjs)\/server\.[jt]s$/.test(url)
@@ -96,9 +97,12 @@ function requestFrame(value: unknown): boolean {
     && /^(?:search|quote|project|tasks|task|preview|comments|createDeferredWebFrameworkRequest|createDispatchRequest|createDispatchContext|startWebRequestDispatch|writeSuccessResponse|runWithRequestContext|dispatchMatchedRoute|runDispatchPipeline|tryFastPathExecution|executeFastPath|canActivate|serviceResult|bodyFields|serializedStage)$/.test(name);
   const workerRequest = url === 'server.js'
     && /^(?:startWebRequestDispatch|createDeferredWebFrameworkRequest|createDispatchContext|dispatchMatchedRoute|runDispatchPipeline|tryFastPathExecution|executeFastPath|writeSuccessResponse)$/.test(name);
-  return /readSearchLocal|jsonCommandLocal|restRouteMixLocal|nativeResponse|nativeFetch/.test(name)
-    || (stage && stageHandler) || fastRequest || nestRequest || nestStageRequest || denoBundleRequest || workerRequest
-    || /(?:shared\/(?:workloads|native-app|fluo-app)|\.next\/server\/(?:app|chunks)|request-pipeline|request-execution)/.test(url);
+  const nextRequest = /\/next\/dist\/server\/(?:base-server|next-server)\.js$/.test(url)
+    && /^(?:handleRequest|handleRequestImpl|renderToResponse|renderToResponseImpl|renderToResponseWithComponents|renderToResponseWithComponentsImpl)$/.test(name);
+  const fluoController = /shared\/fluo-app\.[jt]s$/.test(url)
+    && /^(?:search|quote|project|tasks|task|preview|comments)$/.test(name);
+  return /^(?:readSearchLocal|jsonCommandLocal|restRouteMixLocal|nativeResponse|nativeFetch)$/.test(name)
+    || (stage && stageHandler) || fastRequest || nestRequest || nestStageRequest || denoBundleRequest || workerRequest || nextRequest || fluoController;
 }
 export function requestSamples(profile: unknown, format: ProfileCapture['format']): number {
   const data = object(profile);
@@ -206,6 +210,17 @@ export function validateCapture(capture: ProfileCapture, raw: ReadonlyMap<string
       || (subject.kind === 'application-isolate' && (!/workerd/.test(String(identity.command)) || !subject.isolateId || identity.workerRuntime !== true))
       || (subject.kind === 'process' && identity.runtimePid !== subject.pid)) errors.push('wrong-serving-subject');
     const profile = profileBytes ? JSON.parse(new TextDecoder().decode(profileBytes)) : null;
+    if (capture.status === 'supported' && capture.format === 'v8-cpu') {
+      const cpu = object(profile);
+      const deltas = cpu.timeDeltas;
+      if (typeof cpu.startTime !== 'number' || !Number.isFinite(cpu.startTime) || cpu.startTime < 0
+        || typeof cpu.endTime !== 'number' || !Number.isFinite(cpu.endTime) || cpu.endTime <= cpu.startTime
+        || !Array.isArray(cpu.samples) || !Array.isArray(deltas) || deltas.length !== cpu.samples.length
+        || deltas.some((delta) => typeof delta !== 'number' || !Number.isFinite(delta) || delta < 0)
+        || deltas.reduce((sum: number, delta: number) => sum + delta, 0) > cpu.endTime - cpu.startTime) {
+        errors.push('invalid-cpu-time-fields');
+      }
+    }
     if (capture.status === 'supported' && capture.condition.mode === 'gc-eventloop') {
       const diagnostics = object(profile);
       if (subject?.kind === 'application-isolate' || !Number.isFinite(diagnostics.wallDelayMaxMs)

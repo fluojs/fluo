@@ -224,11 +224,11 @@ for (const format of ['v8-cpu', 'v8-allocation'] as const) {
     assert.equal(matched, 3);
   });
 
-  test(`requestSamples: preserved Workers and Next bundle request ancestry in ${format} -> remains recognized`, () => {
+  test(`requestSamples: Workers and verified Next host request ancestry in ${format} -> remains recognized`, () => {
     // Given
     const frames = [
       { functionName: 'nativeFetch', url: 'server.js' },
-      { functionName: 'tB', url: 'file:///benchmark/nextjs/native/.next/server/chunks/[root-of-the-server]__1jnewc0._.js' },
+      { functionName: 'renderToResponseWithComponentsImpl', url: 'file:///benchmark/node_modules/next/dist/server/base-server.js' },
     ];
     for (const callFrame of frames) {
       const profile = requestStack(callFrame, format);
@@ -238,6 +238,59 @@ for (const format of ['v8-cpu', 'v8-allocation'] as const) {
 
       // Then
       assert.equal(matched, 3);
+    }
+  });
+
+  test(`requestSamples: Next startup bundle in ${format} -> rejects path-only attribution`, () => {
+    // Given
+    for (const url of ['file:///benchmark/.next/server/chunks/startup.js',
+      'file:///benchmark/.next/server/app/route.js']) {
+      const profile = requestStack({ functionName: 'bootstrap', url }, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 0);
+    }
+  });
+
+  test(`requestSamples: Next bundle beneath request handler in ${format} -> counts descendants only`, () => {
+    // Given
+    const profile = requestStack({
+      functionName: 'handleRequestImpl', url: '/benchmark/node_modules/next/dist/server/base-server.js',
+    }, format);
+    const frame = { functionName: 'tB', url: '/benchmark/.next/server/chunks/route.js' };
+    if (profile.nodes !== undefined) profile.nodes[3].callFrame = frame;
+    else profile.head.children[0].children[0].children[0].callFrame = frame;
+
+    // When
+    const matched = requestSamples(profile, format);
+
+    // Then
+    assert.equal(matched, 3);
+  });
+
+  test(`requestSamples: adjacent startup sources in ${format} -> requires a known request frame`, () => {
+    // Given
+    const frames = [
+      { functionName: 'bootstrap', url: 'shared/fluo-app.js' },
+      { functionName: 'bootstrap', url: 'shared/native-app.js' },
+      { functionName: 'bootstrap', url: 'shared/workloads.js' },
+      { functionName: 'bootstrap', url: 'request-pipeline.js' },
+      { functionName: 'readSearchLocalSetup', url: 'unrelated.js' },
+      { functionName: '', url: 'shared/fluo-stages.js', lineNumber: 120 },
+      { functionName: '', url: 'shared/native-stages.js', lineNumber: 100 },
+      { functionName: 'read', url: 'shared/fluo-stages.js.map' },
+    ];
+    for (const frame of frames) {
+      const profile = requestStack(frame, format);
+
+      // When
+      const matched = requestSamples(profile, format);
+
+      // Then
+      assert.equal(matched, 0, frame.url);
     }
   });
 }
@@ -359,6 +412,34 @@ test('empty CPU samples fail even when raw bytes and hashes agree', () => {
   // When / Then
   assert.ok(validateCapture(changed, raw).includes('empty-or-startup-profile'));
 });
+
+for (const defect of ['missing-timing', 'nonfinite-interval', 'reversed-interval',
+  'mismatched-deltas', 'negative-delta', 'nonfinite-delta', 'excess-deltas'] as const) {
+  test(`validateCapture: ${defect} with valid raw hash -> rejects CPU time fields`, () => {
+    // Given
+    const { capture, raw, profile } = fixture();
+    let malformed: unknown;
+    switch (defect) {
+      case 'missing-timing': malformed = { nodes: profile.nodes, samples: profile.samples }; break;
+      case 'nonfinite-interval': malformed = { ...profile, startTime: null }; break;
+      case 'reversed-interval': malformed = { ...profile, endTime: profile.startTime }; break;
+      case 'mismatched-deltas': malformed = { ...profile, timeDeltas: [] }; break;
+      case 'negative-delta': malformed = { ...profile, timeDeltas: [-1] }; break;
+      case 'nonfinite-delta': malformed = { ...profile, timeDeltas: [null] }; break;
+      case 'excess-deltas': malformed = { ...profile, timeDeltas: [1001] }; break;
+    }
+    const bytes = Buffer.from(JSON.stringify(malformed));
+    raw.set('attempt/profile.json', bytes);
+    const changed = { ...capture, artifacts: capture.artifacts.map((artifact) => artifact.kind === 'profile'
+      ? { ...artifact, bytes: bytes.byteLength, sha256: sha256(bytes) } : artifact) };
+
+    // When
+    const errors = validateCapture(changed, raw);
+
+    // Then
+    assert.ok(errors.includes('invalid-cpu-time-fields'), errors.join(', '));
+  });
+}
 
 for (const defect of ['missing-raw', 'wrong-hash', 'wrong-subject', 'partial-controls', 'wrong-mode', 'missing-provenance', 'failed', 'fake-unsupported', 'abnormal-signal'] as const) {
   test(`capture validity rejects ${defect}`, () => {
