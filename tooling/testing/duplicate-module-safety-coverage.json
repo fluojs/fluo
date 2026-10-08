@@ -136,6 +136,26 @@
       "rationale": "Packed physical A/B instances execute this package on Node; patch skew changes only @fluojs/core and strict-peer rejects only core where declared."
     },
     {
+      "package": "@fluojs/diagnostics",
+      "status": "not-applicable",
+      "topologies": [],
+      "surfaces": [],
+      "platforms": {
+        "node": "not-applicable",
+        "bun": "not-applicable",
+        "deno": "not-applicable",
+        "workers": "not-applicable",
+        "next": "not-applicable"
+      },
+      "evidence": [
+        "packages/diagnostics/package.json",
+        "packages/diagnostics/src/contracts.test.ts",
+        "tooling/testing/duplicate-module-safety.test.mjs",
+        "tooling/testing/fixtures/duplicate-module-safety/consumer-a.mjs"
+      ],
+      "rationale": "Included in the packed transitive closure and physical artifact inventory through core/runtime dependencies. Portable data contracts and readers do not own any of this fixture's identity-bearing observable surfaces; package-owned contract checks govern reader behavior."
+    },
+    {
       "package": "@fluojs/discord",
       "status": "not-applicable",
       "topologies": [],

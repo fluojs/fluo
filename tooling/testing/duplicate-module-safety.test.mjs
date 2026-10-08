@@ -21,7 +21,7 @@ test('coverage manifest exactly tracks the current public workspace package surf
   const coverage = loadCoverageManifest(root);
   const expected = publicPackageNames(root);
 
-  assert.equal(expected.length, 43);
+  assert.equal(expected.length, 44);
   assert.deepEqual(coverage.packages.map((entry) => entry.package), expected);
   assert.deepEqual(validateCoverageManifest(coverage, { root }), []);
 });
@@ -51,17 +51,18 @@ test('coverage validation rejects stale, duplicate, unsupported, and invented ev
 test('packed closure includes every internal dependency of applied packages', () => {
   const closure = workspaceDependencyClosure(root);
 
-  for (const packageName of ['@fluojs/core', '@fluojs/di', '@fluojs/http', '@fluojs/runtime', '@fluojs/react',
+  for (const packageName of ['@fluojs/diagnostics', '@fluojs/core', '@fluojs/di', '@fluojs/http', '@fluojs/runtime', '@fluojs/react',
     '@fluojs/platform-nodejs', '@fluojs/platform-fastify', '@fluojs/platform-express']) {
     assert.ok(closure.includes(packageName));
   }
+  assert.ok(closure.indexOf('@fluojs/diagnostics') < closure.indexOf('@fluojs/core'));
   assert.ok(closure.indexOf('@fluojs/core') < closure.indexOf('@fluojs/di'));
   assert.ok(closure.indexOf('@fluojs/http') < closure.indexOf('@fluojs/platform-fastify'));
 });
 
 test('coverage file remains checked JSON rather than generated runtime state', () => {
   const source = readFileSync(coverageManifestPath(root), 'utf8');
-  assert.equal(JSON.parse(source).packages.length, 43);
+  assert.equal(JSON.parse(source).packages.length, 44);
   assert.deepEqual(loadCoverageManifest(root).packages.map((entry) => entry.package), publicPackageNames(root));
 });
 
@@ -193,7 +194,7 @@ test('packed runner records distinct artifact paths, topology evidence, and tear
       assert.equal(cross.react.status, 200);
       assert.match(cross.react.body, new RegExp(`data-artifact="${side}"`, 'u'));
     }
-    for (const packageName of ['@fluojs/core', '@fluojs/di', '@fluojs/http', '@fluojs/jwt', '@fluojs/passport',
+    for (const packageName of ['@fluojs/diagnostics', '@fluojs/core', '@fluojs/di', '@fluojs/http', '@fluojs/jwt', '@fluojs/passport',
       '@fluojs/mongoose', '@fluojs/react', '@fluojs/runtime', '@fluojs/platform-nodejs', '@fluojs/platform-fastify', '@fluojs/platform-express']) {
       assert.ok(run.closure.includes(packageName));
     }
