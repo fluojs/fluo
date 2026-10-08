@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "issue": 3914,
+  "preflightSha256": "0c187df4dc4be8509c067d34c60c2dc418608a376f73fdb26fe50af63bd27e74",
+  "startingHead": "1a17fc4fb6d2e0e3cde2a02c0b7049c1f8bd3f18",
+  "kind": "local-implementation-correctness",
+  "notPerformanceAcceptance": true,
+  "finalCorrectness": {
+    "status": "passed",
+    "conditions": 132,
+    "requests": 540,
+    "rawArtifactsVerified": 660,
+    "benchmarkSourceSha256": "9ba55f03a2ba9edb94b530eabd2cfec0effc0242e96717e5ce45253b2944293d",
+    "runtimes": {
+      "node": "24.20.0",
+      "next": "16.3.5",
+      "workerd": "2025-06-04"
+    }
+  },
+  "checks": {
+    "harnessTests": 142,
+    "workersTests": 54,
+    "nextTests": 105,
+    "portabilityTests": 47,
+    "governanceTests": 475,
+    "pagesRegressionTests": 3,
+    "packageAndHarnessTypechecks": "passed",
+    "sourceAndFixtureBiome": "passed",
+    "testBiomeStdin": "passed-unchanged-output",
+    "publicExportTsdoc": "passed"
+  },
+  "unverified": {
+    "releaseReadiness": "watcher-timeout; no completed verdict; full sequence not repeated in focused-only stage",
+    "stockNextE2e": "hardcoded persistent .omo output is outside assigned evidence boundary",
+    "deployedWorkers": "account/project/endpoint, authority, credential availability, budget/quota, telemetry, isolate generation unknown",
+    "representativePerformance": "lead-owned; not run"
+  },
+  "preservedOutOfScopeFixture": "packages/cli/src/fixtures/typegen-check-process-WawAA2/",
+  "preservedOutOfScopeFiles": [
+    "packages/cli/src/fixtures/typegen-check-process-WawAA2/app.ts",
+    "packages/cli/src/fixtures/typegen-check-process-WawAA2/tsconfig.json",
+    "packages/cli/src/fixtures/typegen-check-process-WawAA2/generated/react-pages.ts"
+  ],
+  "leadHandoff": {
+    "fullLocalReleaseReadinessDuplicationRequired": false,
+    "finalExactHeadRemoteCiRequired": true,
+    "heavyWorkPaused": true
+  },
+  "evidence": [
+    {
+      "path": "red-20261008-2309.log",
+      "bytes": 1099,
+      "sha256": "2696f289d5b1d34d5e28bd2159b313ebff514aeeba7ca43bda9b5cb222eebc06"
+    },
+    {
+      "path": "build-green-20261008-2320.log",
+      "bytes": 8994,
+      "sha256": "23d8cadb65b1c6b05a23514b5344198313d58f8adf08705900aec5452c0284fd"
+    },
+    {
+      "path": "regression-governance-20261008-2331.log",
+      "bytes": 89024,
+      "sha256": "975f75e88b0be67fc7d33ccaba6b79707f66222724e1b42ab309c4386b6b9782"
+    },
+    {
+      "path": "focused-20261008-2350.log",
+      "bytes": 13808,
+      "sha256": "6bd723f86604960220cd06c31dc0e4a3840fe3cd8f3bc14304c296d3f995c53a"
+    },
+    {
+      "path": "final-focused-20261008.log",
+      "bytes": 1251,
+      "sha256": "55c3f44da6176f81cc4d6d2ee20a3475479c8e75a33ba28c2da514c61854203f"
+    },
+    {
+      "path": "biome-tests-20261008.log",
+      "bytes": 390,
+      "sha256": "59e24f40778bebd9ad69765ae1171afb6bcdb20bdaee80501948d2adeb13f988"
+    },
+    {
+      "path": "correctness-20261008-2330.json",
+      "bytes": 493585,
+      "sha256": "4046bb13d974c5505d22b7867f426eb02e67a1fd07bb3ed809c41e7829f67444"
+    },
+    {
+      "path": "correctness-20261008-2340.json",
+      "bytes": 503089,
+      "sha256": "8e36b8a9f26b8240c21ccf798e7b88545c78e700ce3ec1c1e609e0381e5d990e"
+    },
+    {
+      "path": "correctness-20261008-final.json",
+      "bytes": 877263,
+      "sha256": "fa615aa9865c873507121e54b8dde635376f6be47e5342871a10c556e47bcbde"
+    },
+    {
+      "path": "exclusive-host-20261008.log",
+      "bytes": 10011,
+      "sha256": "305cda89369f43d6f61a50853c46d81c9290f2816393d83146556b32fcf8b758"
+    }
+  ]
+}

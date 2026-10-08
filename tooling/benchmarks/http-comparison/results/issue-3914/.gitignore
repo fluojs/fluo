@@ -1,0 +1,6 @@
+# Local raw verification remains available at manifest-bound paths.
+*.log
+correctness-*.json
+correctness-*-subjects/
+result-*.json
+!manifest.json

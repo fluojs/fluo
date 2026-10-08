@@ -3,6 +3,7 @@ import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AppShape } from './scenarios';
+import type { ScenarioRequest } from './traffic';
 
 export const WDIR = fileURLToPath(new URL('../', import.meta.url));
 const FLUO_FASTIFY_BUILD_DIR = join(WDIR, 'dist/fluo-fastify');
@@ -27,7 +28,7 @@ process.once('exit', () => {
 
 export type Platform = 'fastify' | 'express' | 'nodejs' | 'bun' | 'deno' | 'workers' | 'nextjs';
 export type Product = 'native' | 'fluo' | 'nestjs';
-type TargetName = `${Product}-${Platform}`;
+type TargetName = `${Product}-${Platform}` | 'native-nextjs-pages' | 'fluo-nextjs-pages';
 export interface TargetConfig {
   name: TargetName;
   platform: Platform;
@@ -36,6 +37,7 @@ export interface TargetConfig {
   port: number;
   command: string;
   args: string[];
+  readonly nextRouter?: 'pages';
 }
 
 export const PLATFORMS: readonly Platform[] = ['fastify', 'express', 'nodejs', 'bun', 'deno', 'workers', 'nextjs'];
@@ -53,6 +55,42 @@ export const TARGETS: TargetConfig[] = PLATFORMS.flatMap((platform) => {
     return { name, platform, product, label: name, port, command: platform === 'bun' ? 'bun' : platform === 'deno' ? 'deno' : 'node', args };
   });
 });
+
+// Opt-in inventory: old target names, ports, and default matrices stay intact.
+export const NEXT_PAGES_TARGETS: TargetConfig[] = (['native', 'fluo'] as const).map((product, index) => {
+  const port = Number(process.env.BENCH_PORT_BASE ?? 33909) + PLATFORMS.length * 3 + index;
+  return {
+    name: `${product}-nextjs-pages`, platform: 'nextjs', product,
+    label: `${product}-nextjs-pages`, port, command: 'node', nextRouter: 'pages',
+    args: ['node_modules/next/dist/bin/next', 'start', `nextjs-pages/${product}`, '--hostname', process.env.BENCH_BIND_HOST ?? '127.0.0.1', '--port', String(port)],
+  };
+});
+export const AVAILABLE_TARGETS = [...TARGETS, ...NEXT_PAGES_TARGETS];
+
+export function nextFixtureDirectory(target: TargetConfig): string {
+  return `${target.nextRouter === 'pages' ? 'nextjs-pages' : 'nextjs'}/${target.product}`;
+}
+
+export function nextBuildEntry(target: TargetConfig): string {
+  return `${nextFixtureDirectory(target)}/.next/server/${target.nextRouter === 'pages' ? 'pages/api/[[...path]].js' : 'app/[[...path]]/route.js'}`;
+}
+
+export function targetRequests(target: TargetConfig, requests: readonly ScenarioRequest[]): readonly ScenarioRequest[] {
+  return target.nextRouter === 'pages' ? requests.map((request) => ({ ...request, path: `/api${request.path}` })) : requests;
+}
+
+export function hostBoundaries(target: TargetConfig) {
+  return {
+    environment: target.platform === 'workers' ? 'local-workerd' : target.platform === 'nextjs' ? `next-production-${target.nextRouter ?? 'app'}-node` : target.platform,
+    processReadiness: 'process-spawn-to-host-ready',
+    firstRequest: target.platform === 'nextjs' && target.product === 'fluo'
+      ? 'first-http-request-including-lazy-backend-import-bootstrap; not-exclusive-bootstrap-time'
+      : 'first-http-request-after-host-ready',
+    warm: 'subsequent-requests-in-the-same-host',
+    applicationGeneration: 'not-observed',
+    deployedIsolateCold: 'not-observed; local-restart-is-not-deployed-isolate-cold',
+  };
+}
 
 export function waitForTarget(child: ChildProcess): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -278,7 +316,7 @@ export async function buildTarget(target: TargetConfig): Promise<void> {
     if (target.product === 'fluo') {
       await runCommand('pnpm', ['exec', 'tsc', 'src/shared/fluo-app.ts', '--target', 'ES2022', '--module', 'ESNext', '--moduleResolution', 'Bundler', '--strict', '--skipLibCheck', '--declaration', '--outDir', 'dist/next-backend']);
     }
-    await runCommand('node', ['node_modules/next/dist/bin/next', 'build', `nextjs/${target.product}`, '--turbopack']);
+    await runCommand('node', ['node_modules/next/dist/bin/next', 'build', nextFixtureDirectory(target), '--turbopack']);
     return;
   }
   if (target.platform === 'workers') return; // Wrangler compiles the entrypoint for real workerd.

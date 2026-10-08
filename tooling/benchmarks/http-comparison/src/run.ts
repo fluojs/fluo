@@ -7,7 +7,7 @@ import { printReport, type ScenarioResult, summarizeRuns, type TargetResult } fr
 import { monitorServer, type ProcessSample } from './resources';
 import type { ScenarioConfig } from './scenarios';
 import { selectSuite } from './suites';
-import { buildCommands, buildTarget, runCommand, startTargets, stopTargets, TARGETS, type TargetConfig, WDIR, waitForTarget } from './targets';
+import { AVAILABLE_TARGETS, buildCommands, buildTarget, hostBoundaries, runCommand, startTargets, stopTargets, TARGETS, type TargetConfig, targetRequests, WDIR, waitForTarget } from './targets';
 import { measureTargets } from './traffic';
 
 const WARMUP_SEC = readPositiveIntegerEnv('BENCH_WARMUP_SEC', 10);
@@ -69,8 +69,8 @@ function selectedTargets(): readonly TargetConfig[] {
     return TARGETS;
   }
 
-  const selected = TARGETS.filter((target) => filter.has(target.name));
-  const knownNames = new Set<string>(TARGETS.map((target) => target.name));
+  const selected = AVAILABLE_TARGETS.filter((target) => filter.has(target.name));
+  const knownNames = new Set<string>(AVAILABLE_TARGETS.map((target) => target.name));
   const unknown = [...filter].filter((name) => !knownNames.has(name));
   if (unknown.length > 0) {
     throw new Error(`Unknown BENCH_TARGETS entries: ${unknown.join(', ')}`);
@@ -113,7 +113,7 @@ async function runScenario(scenario: ScenarioConfig, run: {
     const processToReadyMs = performance.now() - start;
     const traffic = (target: TargetConfig, duration: number) => ({
       url: `http://${process.env.BENCH_SERVER_HOST ?? '127.0.0.1'}:${target.port}`,
-      duration, connections, requests: scenario.requests,
+      duration, connections, requests: targetRequests(target, scenario.requests),
     });
     journal.current = { ...condition, phase: 'cold-request', processToReadyMs };
     const firstRequest = await load({ ...traffic(target, 1), connections: 1, amount: 1 }, `${target.name} cold request`);
@@ -134,7 +134,7 @@ async function runScenario(scenario: ScenarioConfig, run: {
         process.stdout.write(' done\n');
         return {
           label: target.label, ...measured.value, server: measured.server,
-          coldStart: { processToReadyMs, firstRequest, boundary: 'process-spawn-to-ready-and-first-http-request; not deployed isolate cold start' },
+          coldStart: { processToReadyMs, firstRequest, boundary: 'process-spawn-to-ready-and-first-http-request; not deployed isolate cold start', host: hostBoundaries(target) },
         };
       },
     });

@@ -1,0 +1,6 @@
+import { createNextPagesRouterHandler, type NextPagesRouterConfig } from '@fluojs/platform-nextjs/pages-router';
+
+export default createNextPagesRouterHandler(() =>
+  import('../../backend').then(({ adapter }) => adapter),
+);
+export const config = { api: { bodyParser: false } } satisfies NextPagesRouterConfig;

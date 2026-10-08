@@ -13,7 +13,7 @@ import { type EnvironmentSummary, environmentSummary } from './provenance';
 import { monitorServer } from './resources';
 import type { ScenarioConfig } from './scenarios';
 import { selectSuite } from './suites';
-import { buildTarget, startTargets, stopTargets, TARGETS, type TargetConfig, type TargetLaunchOptions, targetLaunch, WDIR, waitForTarget } from './targets';
+import { AVAILABLE_TARGETS, buildTarget, nextBuildEntry, nextFixtureDirectory, startTargets, stopTargets, TARGETS, type TargetConfig, type TargetLaunchOptions, targetLaunch, targetRequests, WDIR, waitForTarget } from './targets';
 
 export interface CapturePlan {
   readonly targets: readonly TargetConfig[];
@@ -32,10 +32,10 @@ export interface CapturePlan {
 
 export function selectProfileTargets(names?: readonly string[]): readonly TargetConfig[] {
   if (!names) return TARGETS;
-  if (names.length === 0 || new Set(names).size !== names.length || names.some((name) => !TARGETS.some((target) => target.name === name))) {
+  if (names.length === 0 || new Set(names).size !== names.length || names.some((name) => !AVAILABLE_TARGETS.some((target) => target.name === name))) {
     throw new ProfileFailure('selection', 'Profile targets must be unique known TARGETS', names);
   }
-  return TARGETS.filter((target) => names.includes(target.name));
+  return AVAILABLE_TARGETS.filter((target) => names.includes(target.name));
 }
 
 function withPort(target: TargetConfig, port: number): TargetConfig {
@@ -56,7 +56,7 @@ export async function captureCondition(input: {
   readonly journal: EvidenceJournal;
 }): Promise<ProfileCapture> {
   const { plan, scenario, condition, journal } = input;
-  const index = TARGETS.findIndex((target) => target.name === input.target.name);
+  const index = AVAILABLE_TARGETS.findIndex((target) => target.name === input.target.name);
   const target = withPort(input.target, plan.portBase + index);
   const directory = join(plan.outputDirectory, `${condition.target}-${condition.scenario}-${condition.mode}-${condition.repeat}-${randomUUID()}`);
   await mkdir(directory, { recursive: true });
@@ -78,7 +78,7 @@ export async function captureCondition(input: {
   ];
   try {
     if (target.platform === 'nextjs') {
-      const traceBytes = await readFile(join(WDIR, 'nextjs', target.product, '.next/trace'), 'utf8');
+      const traceBytes = await readFile(join(WDIR, nextFixtureDirectory(target), '.next/trace'), 'utf8');
       const trace = traceBytes.split('\n').filter(Boolean).flatMap((line) => {
         const parsed: unknown = JSON.parse(line);
         if (!Array.isArray(parsed)) throw new ProfileFailure('build', 'Malformed canonical Next build trace');
@@ -87,10 +87,10 @@ export async function captureCondition(input: {
       if (!trace.some((event) => event.name === 'next-build' && object(event.tags).bundler === 'turbopack')) {
         throw new ProfileFailure('build', 'Canonical production Next requires Turbopack build evidence');
       }
-      raw.save('build', 'next-build.json', { buildId: await readFile(join(WDIR, 'nextjs', target.product, '.next/BUILD_ID'), 'utf8'), trace });
+      raw.save('build', 'next-build.json', { buildId: await readFile(join(WDIR, nextFixtureDirectory(target), '.next/BUILD_ID'), 'utf8'), trace });
     }
     const entry = target.platform === 'workers' ? target.args[2]
-      : target.platform === 'nextjs' ? `nextjs/${target.product}/.next/server/app/[[...path]]/route.js`
+      : target.platform === 'nextjs' ? nextBuildEntry(target)
       : target.platform === 'deno' ? target.args[target.args.length - 2] : target.args[target.args.length - 1];
     raw.save('build', 'entry.json', { path: entry, sha256: sha256(await readFile(join(WDIR, entry))) });
     for (const phase of ['control-before', 'capture', 'control-after'] as const) {
@@ -112,7 +112,7 @@ export async function captureCondition(input: {
         await waitForTarget(child);
         const pid = child.pid;
         if (pid === undefined) throw new ProfileFailure('subject', 'Missing launcher PID');
-        const traffic = { url: `http://${process.env.BENCH_SERVER_HOST ?? '127.0.0.1'}:${target.port}`, connections: plan.connections, requests: scenario.requests };
+        const traffic = { url: `http://${process.env.BENCH_SERVER_HOST ?? '127.0.0.1'}:${target.port}`, connections: plan.connections, requests: targetRequests(target, scenario.requests) };
         await load({ ...traffic, duration: 1, connections: 1, amount: 1 }, `${target.name}/profile-cold`);
         await load({ ...traffic, duration: plan.warmupSeconds }, `${target.name}/profile-warmup`);
         if (instrumented) {
