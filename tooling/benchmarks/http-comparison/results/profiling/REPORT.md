@@ -9,11 +9,11 @@
 | 증거 | 결과 | 원본 연결 |
 | --- | --- | --- |
 | 비계측 timing | 16 targets × 11 scenarios × 2 configurations × 2 concurrency × 3 repeats = 2,112 samples | `timing-collection-audit-20261008.json` |
-| primary profiling | 528개 고유 조건: supported 506, unsupported 22 | `primary-raw-audit-20261008.log` |
-| 원본 검증 | 5,360개 파일, 8,314,371,516 bytes; SHA-256, subject, traffic, coverage 통과 | `audit-primary-20261008.mjs` |
+| primary profiling | 528개 고유 조건: supported 506, unsupported 22; allocation 112조건 교체 | `primary-raw-audit-recovered-runtime-20261009.log` |
+| 선택 원본 | 5,472개 파일, 11,650,130,417 bytes; 이전 실패 원본은 별도 보존 | `audit-primary-20261008.mjs` |
 | hotspot 재확인 | 7개 Fluo 플랫폼 + native Deno/Next 대조, CPU 9개 capture | `hotspot-confirmations.json` |
 | generator 진단 | 14개 조건, 1-vs-4 generators, 3회 교차 비교, 84개 관측 | `headroom-summary.json` |
-| 최종 focused checks | 초기 107 tests·fresh build 통과; GC 표기 수정 후 110 tests, review fix-back 후 123 tests·typecheck·lint 통과 | `final-focused-checks-20261008.log`, `gc-metadata-focused-20261008.log`, `review-boundary-focused-20261009.log` |
+| 최종 focused checks | 초기 fresh build와 이후 collector 회귀 131 tests·typecheck·lint 통과 | `final-focused-checks-20261008.log`, `priming-focused-20261009.log` |
 | 실제 host smoke | 16 targets × 11 scenarios = 176 receipts; 각 25개 요청의 body/status/counters 통과 | `final-correctness-smoke-20261008.json` |
 
 Primary condition은 `equivalent`, concurrency 64, warmup 5초, capture 15초다.
@@ -104,7 +104,7 @@ primary matrix에 중복 포함하지 않는다.
 ```sh
 cd tooling/benchmarks/http-comparison
 node --max-old-space-size=4096 --import tsx results/profiling/audit-primary-20261008.mjs
-node --max-old-space-size=4096 results/profiling/summarize-primary-20261008.mjs
+node --max-old-space-size=4096 --import tsx results/profiling/summarize-primary-20261008.mjs
 ```
 
 위 명령은 보존된 raw 디렉터리가 필요하다. 요약 파일만으로 원본 검증을 통과하지 않는다.
@@ -118,7 +118,11 @@ SHA-256은 `f7c5e6158192a6f68588e6df29040012983e4e66a47e355e701a824ad51a5b1e`다
 Archive 전체 읽기가 exit 0으로 완료됐다. 보관 방식 질문의 timeout 후 lead 판단으로 Git에는 분석·manifest·재현 도구를,
 로컬에는 원본 archive를 보존한다. 사용자의 명시적 선택으로 기록하지 않는다.
 원격 원본 배포는 하지 않았으며, 이 경로를 외부에서 다운로드 가능한 증거로 표시하지 않는다.
-원본 archive를 가진 환경에서 `tar -xzf <archive> -C results/profiling`으로 복원한 뒤
+allocation 복구·진단·실패 원본을 담은 추가 archive는
+`.omo/3910-allocation-recovery-20261009.tar.gz`이며 크기는 1,300,498,419 bytes다.
+SHA-256은 `83e3a9d30cdb3e4bf23e2245b38f6e30241aed77eb26a4a083b734ec657dd763`이고
+전체 읽기도 exit 0으로 완료됐다.
+두 archive를 가진 환경에서 각각 `tar -xzf <archive> -C results/profiling`으로 복원한 뒤
 위 검증 명령을 실행한다. 요약만 받은 외부 독자는 raw evidence를 독립 검증할 수 없다.
 
 ## 리뷰 fix-back 검증
@@ -128,5 +132,26 @@ Next bundle 경로만으로 startup 프레임을 요청으로 인정하던 결�
 검증된 Next host 요청 ancestry, shared source의 알려진 요청 함수, native stage
 handler 위치로 인식을 제한하고, 유한한 양의 CPU interval과 sample/delta 대응을 검사한다.
 0인 delta는 실제 V8 기록에도 존재하므로 허용한다. 인접 startup 반례까지 포함한
-123개 테스트와 전체 528개 primary 조건의 강화된 raw 감사가 통과했다.
-원본을 재측정하거나 기존 실패 판정을 덮어쓰지 않았다.
+당시 123개 테스트가 통과했으나, 다음 리뷰에서 sample-node 연결 검증 누락이 발견됐다.
+강화된 검사로 기존 V8 allocation 154조건 중 112조건에서 트리에 없는 node를 참조하는
+sample 531개를 확인했다. 이전 감사의 PASS는 이 검사를 포함하지 않았던 역사적 결과다.
+
+해당 누락은 저장 변환이 아니라 실제 V8 `stopSampling` wire 응답에도 존재했다.
+[V8 구현](https://github.com/nodejs/node/blob/e36633a53108a0fff71b2236a3426c607f30bd6e/deps/v8/src/profiler/sampling-heap-profiler.cc)은
+트리 변환 중 문자열 할당이 sampling될 수 있음을 명시한다. 이는 원인 후보이지
+모든 누락의 인과관계를 입증한 것은 아니다.
+종료 전 snapshot priming을 추가하고 실제 Node 3회·Deno 3조건·Next 1조건을 확인한 뒤,
+`feea7bcb3431c28fee9d2cf60b977762efa4d8b2`에서 실패한 112조건을 모두 새로 수집했다.
+새 원본은 엄격한 node 연결·시간 필드·traffic 검사를 통과했다. priming 응답도 별도
+protocol 파일로 보존하며 파일별 64 MiB 제한을 유지한다. priming 자체가 성공의 보장은 아니다.
+
+기존 112조건의 bytes와 실패 원인을 보존하고 `primary-inputs-20261008.json`의
+`superseded` 항목으로 새 원본과 일대일 연결했다. 해당 원본이 여전히 검증에 실패하는지,
+교체 원본은 실제로 통과하는지도 감사한다. Timing·CPU·GC·Bun heap과 나머지 allocation은
+재측정하지 않았다. 최종 collector 회귀는 131 tests·typecheck·lint가 통과했다.
+
+수집 중 설치된 Bun은 1.4.0에서 1.4.2로 바뀌었으나 복구된 조건은 Bun을 실행하지 않는다.
+실제 serving Bun 원본은 1.4.0 그대로이며, collector Node·dependency·플랫폼별 serving
+runtime은 따로 일치 여부를 검사한다. 전체 환경 metadata가 하나였다고 주장하지 않는다.
+다섯 collector source snapshot의 정확한 해시와 허용된 변경을 입력에 명시하고,
+그 외 serving source의 동일성을 확인한다.

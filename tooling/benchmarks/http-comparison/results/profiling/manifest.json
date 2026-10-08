@@ -373,8 +373,8 @@
     "observedUnique": 528,
     "supported": 506,
     "unsupported": 22,
-    "rawArtifactCount": 5360,
-    "rawArtifactBytes": 8314371516,
+    "rawArtifactCount": 5472,
+    "rawArtifactBytes": 11650130417,
     "validator": "audit-primary-20261008.mjs",
     "inputDirectories": "primary-inputs-20261008.json",
     "originalSources": {
@@ -395,8 +395,62 @@
         "inputDigest": "11bff16e264ecc10978581177bd86dd26b714e35fd0f4da63e43758dfa63458b"
       }
     },
-    "latestValidatorHead": "f73fc4b4f8514d5ccccdd3b11941075dc83385be",
-    "latestRawAudit": "primary-raw-audit-boundary-20261009.log"
+    "latestValidatorHead": "feea7bcb3431c28fee9d2cf60b977762efa4d8b2",
+    "latestRawAudit": "primary-raw-audit-recovered-runtime-20261009.log",
+    "selectedSources": {
+      "336169230cb0b4e00a0c487c4906a6f82bcfe1be7a4f3460f6a845274f0fa921": {
+        "head": "b02cde867cab4b9dd2dc7824f8c5ee177639899b",
+        "inputDigest": "7405e754a014cc23ed10d2678b9b3de988aa745961b47ea6c8238b13920e2ade"
+      },
+      "0df91f6ede2a216c147d81d14e0ca3b707e89e9f07931f86c4548ad0fe807c07": {
+        "head": "c3641fd6fca4bf04a9c71656842a2737a35b50eb",
+        "inputDigest": "7405e754a014cc23ed10d2678b9b3de988aa745961b47ea6c8238b13920e2ade"
+      },
+      "5cc5f120fd79f56c5e8c558bd3db70e13ca6421b5119536f003711d8b43e57de": {
+        "head": "4b425946a15c8f2bffc2d6cf3a7c83a1c36b0af8",
+        "inputDigest": "7405e754a014cc23ed10d2678b9b3de988aa745961b47ea6c8238b13920e2ade"
+      },
+      "8270f67bfeba2a02964cd25c58e845850b56f411fd127a831be8b13b1f6285b4": {
+        "head": "807d112afddbc3e8f67401d3fa6247c6ff384194",
+        "inputDigest": "7405e754a014cc23ed10d2678b9b3de988aa745961b47ea6c8238b13920e2ade"
+      },
+      "3d9ab2133e358e2ad6b7e55f5aaa2bb87ff8d6b3cd70aa7ff775006133e9e651": {
+        "head": "feea7bcb3431c28fee9d2cf60b977762efa4d8b2",
+        "inputDigest": "7405e754a014cc23ed10d2678b9b3de988aa745961b47ea6c8238b13920e2ade"
+      }
+    },
+    "supersededCaptures": 112,
+    "supersededArtifactCount": 1146,
+    "supersededArtifactBytes": 6133676846,
+    "environmentGroups": 2,
+    "collectorEnvironmentGroups": 1,
+    "servingRuntimes": {
+      "nodejs": [
+        "v24.20.0"
+      ],
+      "fastify": [
+        "v24.20.0"
+      ],
+      "express": [
+        "v24.20.0"
+      ],
+      "bun": [
+        "1.4.2"
+      ],
+      "deno": [
+        "deno 2.9.7 (stable, release, aarch64-apple-darwin)\nv8 15.0.245.2-rusty\ntypescript 6.0.3"
+      ],
+      "workers": [
+        "v24.20.0"
+      ],
+      "nextjs": [
+        "v24.20.0"
+      ]
+    },
+    "installedBunVersions": [
+      "1.4.0",
+      "1.4.2"
+    ]
   },
   "hotspotConfirmation": {
     "expected": 9,
@@ -423,7 +477,7 @@
   },
   "focusedVerification": {
     "tests": {
-      "passed": 123,
+      "passed": 131,
       "failed": 0
     },
     "typecheckExit": 0,
@@ -435,7 +489,7 @@
       "requestsPerReceipt": 25,
       "trafficErrors": 0,
       "sourceHead": "bd47ec3aa8d5479fca7fc0556acb18f6a1be203c",
-      "runtimeAndFixtureDeltaAfterSmoke": "none; collector metadata/classifier/time-field validation and regression tests only"
+      "runtimeAndFixtureDeltaAfterSmoke": "none; collector parsing, validation, metadata and allocation snapshot priming only"
     },
     "commandExit": 0,
     "fullLocalCi": "not-required: no CI execution/configuration changes",
@@ -462,13 +516,13 @@
     },
     {
       "path": "profile-metrics.json",
-      "bytes": 1148661,
-      "sha256": "4bfbdede0e5e996136fcaeca56a86ccb4f42db3d222cbbc2d312adb361cc1c5e"
+      "bytes": 1148291,
+      "sha256": "3ef1e237dca5021f2295d8cd9988eff5ff720a92b186b2e5a04eeaaf1229ca58"
     },
     {
       "path": "primary-inputs-20261008.json",
-      "bytes": 12377,
-      "sha256": "4c369dc334be3d5ff38689a36c87c82f55933ca1c0ae795efe7bc7ab98101a0a"
+      "bytes": 375987,
+      "sha256": "30f4b29923134aa822c346f6678b885a5a7987581c2a2f0c5c150e3be7bc6ade"
     },
     {
       "path": "primary-raw-audit-20261008.log",
@@ -502,8 +556,8 @@
     },
     {
       "path": "REPORT.md",
-      "bytes": 8829,
-      "sha256": "84fae204138d7e061e1e9e2aadbd105fccffb79a3bad9d79ddf6efb851fe9bc7"
+      "bytes": 11011,
+      "sha256": "853dd0a82c3a4ef8c29eab9095b594affd2623795d3ce6f18eaaeea4d269e250"
     },
     {
       "path": "final-correctness-smoke-20261008.json",
@@ -534,6 +588,31 @@
       "path": "primary-raw-audit-boundary-20261009.log",
       "bytes": 315903,
       "sha256": "8224449dec0c431d01d7435b36330b75f0da664732ba80ff77a0d148ec83a617"
+    },
+    {
+      "path": "priming-focused-20261009.log",
+      "bytes": 17378,
+      "sha256": "b1dd003e6fa8ed5e6754a37c4ddf6d502cefb52274980e6fe703fbc36a4f7383"
+    },
+    {
+      "path": "primary-raw-audit-graph-20261009.log",
+      "bytes": 339756,
+      "sha256": "67bedd4ca70f693e424974f0585661d4c4e83a44f9311878924ab7ae1daedf26"
+    },
+    {
+      "path": "primary-raw-audit-recovered-20261009.log",
+      "bytes": 418858,
+      "sha256": "bb114c0a80bd4db3e1bd8a84ce03fe01e11ea4b77dcfbbf9d291db4756fff06c"
+    },
+    {
+      "path": "primary-raw-audit-recovered-runtime-20261009.log",
+      "bytes": 419359,
+      "sha256": "e9048706aa3f564e7718f0d57570b9d5ca49e0cba4bfd61e78ad6f5abad650bd"
+    },
+    {
+      "path": "primary-metrics-recovered-20261009.log",
+      "bytes": 1148329,
+      "sha256": "c0e52f2eea6fbd36f7fb0b62e4434faeee1080b25f4772cda402cbaf3c01eccc"
     }
   ],
   "rawArchive": {
@@ -801,9 +880,891 @@
     "GC phase logs include warmup; exact GC interval attribution and source mapping limits are documented.",
     "Same-host generator scaling does not prove independent server capacity.",
     "No public raw download exists yet; audit commands require the preserved raw archive contents.",
-    "Historical Bun GC raw gcTraceSource label incorrectly says --trace-gc; actual JSC event source is authenticated by protocol/launch and corrected in derived metrics, without mutating raw bytes."
+    "Historical Bun GC raw gcTraceSource label incorrectly says --trace-gc; actual JSC event source is authenticated by protocol/launch and corrected in derived metrics, without mutating raw bytes.",
+    "112 allocation snapshots with 531 dangling samples remain preserved but superseded by strictly validated recovery captures. Priming may include profiler serialization overhead after measured traffic.",
+    "Installed Bun metadata changed 1.4.0 to 1.4.2 only for non-Bun recovery; serving Bun remains 1.4.0. See per-runtime identities rather than assuming one global environment metadata group."
   ],
   "failedAttemptsPreserved": [
+    {
+      "directory": "2026-10-08T04-12-17.054Z-70c598e9-1d5d-4e99-aa15-f30478b62873",
+      "condition": {
+        "target": "native-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-minimal",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-31-27.706Z-df109f67-8817-49a5-9953-efdff71587ad",
+      "profileSha256": "0f7dc62f039377354b806eb1456aac7b0b464a3f1d810207bc7000d6f87a9931",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-16-19.222Z-df0ef4d6-197b-4718-984f-fe73b9ef6e51",
+      "condition": {
+        "target": "native-nodejs",
+        "platform": "nodejs",
+        "scenario": "read-search-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-32-32.222Z-bab58679-23eb-4b48-a984-1cb29b51a730",
+      "profileSha256": "2e3ce19f04df23c72c510963a1fc8b660be1871935b226580e63863f62c5ebd1",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-19-32.817Z-8f221df6-dcd5-401b-95c9-1661bf3a0791",
+      "condition": {
+        "target": "native-nodejs",
+        "platform": "nodejs",
+        "scenario": "json-command-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-33-36.850Z-53d23e57-d6f4-497a-a651-9df5bb42f5a7",
+      "profileSha256": "87398657da4147afd9313bcc5345491564969b5993ea826b588628d43d72540a",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-22-46.507Z-5f99269f-dbad-42ec-83f4-029534240005",
+      "condition": {
+        "target": "native-nodejs",
+        "platform": "nodejs",
+        "scenario": "rest-route-mix-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-34-41.608Z-b1f2df96-27be-42c8-93f8-8e9370c4abd5",
+      "profileSha256": "276628e02b980c79302d758629e9abac271092c9c3950efbe5ce4f7715fe935c",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-26-00.210Z-17191ad3-ebc7-4f2e-b0d3-18a61cce25e3",
+      "condition": {
+        "target": "native-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-routing-params",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-35-46.392Z-eebfabec-3cd2-4719-8330-bf3b5ef5f6ce",
+      "profileSha256": "4283590ae369c62fb509773d24b27788289cf23d09d24def8c52f7b1865a801c",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-29-14.072Z-fe9532fb-3e94-44aa-8fb9-d83eba952b4e",
+      "condition": {
+        "target": "native-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-singleton-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-36-51.183Z-190fb567-2371-46d1-8e63-239c1e50a890",
+      "profileSha256": "ab928ea924de11455bc5abc1f264d69a15bd54eadecd21cbb687a1cd2fc63665",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-32-27.926Z-42b57e6b-431e-4044-aed0-8ae10cbb81a1",
+      "condition": {
+        "target": "native-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-request-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-37-55.985Z-ec3e796e-d748-4b50-acfd-8a79e7c982a7",
+      "profileSha256": "8de70b4ffb177d0213e08050141176f2c1be233773a0e3e06c766c8667f7ad18",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-35-41.734Z-7da79948-1d23-4df4-8db0-f99bf1b75bb4",
+      "condition": {
+        "target": "native-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-body",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-39-00.811Z-9054db9b-c64b-44a0-aee5-1f6232ec4ede",
+      "profileSha256": "1d824e6342bee411568196662fae6a648649327b92a4f7ea4d113158c14bca67",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-38-55.491Z-09e7d0ad-1de9-4ab0-92f1-f28285c0153b",
+      "condition": {
+        "target": "native-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-guards",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-40-05.634Z-58fcf8af-cb01-4436-b1e0-1c3a84660c2c",
+      "profileSha256": "f54b11b2f166c3f0f6f9d75e0b113c4cd553b8bcf001bc101ad6f8094a82444f",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-42-09.346Z-1dfcbf93-c842-419a-83de-a493c1a77257",
+      "condition": {
+        "target": "native-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-dto-validation",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-41-10.475Z-533f8f93-3d44-4b7c-974b-4a2981f3ef66",
+      "profileSha256": "39bfae6057f53c6363228971e8791c9a7897afc48a747ddf6be02826f84c7b9a",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-45-23.176Z-1f0e71f3-31ff-41ad-8230-a5984feb2a36",
+      "condition": {
+        "target": "native-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-serialization",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-42-15.323Z-b6ef2ffb-efc8-438d-ad04-e68fe9cb1c9c",
+      "profileSha256": "04ac880c4d49e90b81e6701f06e968c29e7ac66e75569c0d88451388f7850956",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-48-36.964Z-55b4731c-ce47-47d6-b6df-31e79c4dc600",
+      "condition": {
+        "target": "fluo-nodejs",
+        "platform": "nodejs",
+        "scenario": "read-search-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-43-20.146Z-7daa6859-e05c-4300-b012-5ff9281094d3",
+      "profileSha256": "e712e221a8a1625814032a6778ec3860ca16cc141cdc56eb4e0d3000803f09df",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-51-51.372Z-8d31f37e-c06f-4bc5-b3e0-e73aeb370831",
+      "condition": {
+        "target": "fluo-nodejs",
+        "platform": "nodejs",
+        "scenario": "json-command-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-44-25.500Z-3eb8312a-953b-4e1e-a7d8-db0e2bef769a",
+      "profileSha256": "e1e13fefc67b6cd1b8a44c80c1d3c8c6ca09b7cf71601924f86cf97cd689a8db",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-55-06.031Z-96cd0126-8520-419e-bbfa-2cb8107f46e9",
+      "condition": {
+        "target": "fluo-nodejs",
+        "platform": "nodejs",
+        "scenario": "rest-route-mix-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-45-30.951Z-666f768c-d177-4c9b-87d1-7e3bbe155922",
+      "profileSha256": "ae6b79e66736eed06b8fa83d2fbfb9a58bffa9b3348b3860aa8a554904899344",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T04-58-20.704Z-dde2ffb4-4615-48ab-b152-074e9fcbae17",
+      "condition": {
+        "target": "fluo-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-minimal",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-46-36.484Z-d7de65dd-dd34-40cc-9776-351b6a1b2801",
+      "profileSha256": "3d4a2543363e1e1c19759e202b73a3aa9e85b07b24a9c54426a2bcca02c1ec0c",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-01-35.425Z-3d16b2ce-ae0d-4587-a9aa-a3a10ee8428b",
+      "condition": {
+        "target": "fluo-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-routing-params",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-47-42.107Z-baca42e0-25c7-4116-b7ef-22f895e263bb",
+      "profileSha256": "9d3e0f1119ace365090707b01baf1e23dd0778e5357337e237a0772075e5f910",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-04-49.980Z-20f456a5-74f7-4223-a59a-b3120a1cc170",
+      "condition": {
+        "target": "fluo-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-singleton-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-48-47.701Z-7a8f773f-8a57-4aad-932e-77bbff0eda68",
+      "profileSha256": "b586b727d7384f9a015924844ad673dec461e44106ba41f7c5f013e518e77fc6",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-08-04.626Z-b87989f8-a704-4ce8-b205-06214c73d938",
+      "condition": {
+        "target": "fluo-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-request-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-49-53.268Z-e6208a95-7aec-490b-bb20-0e42f2a82fec",
+      "profileSha256": "2f63ad975f54e7c1bc744d332a8a5361c17e23aec42c72c138cfc098a4ea7974",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-11-19.627Z-dba0ec65-74f1-497f-bfc2-397207a93831",
+      "condition": {
+        "target": "fluo-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-body",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-50-59.313Z-47ccece9-0e1c-40d6-a6a7-265165a8559f",
+      "profileSha256": "f729e444a1139f6c79a1a77c34244aa680f369f91d185e0ade9f51092fbdd53e",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-14-34.334Z-4f14614e-a211-4b9f-a822-4e9f26fd8702",
+      "condition": {
+        "target": "fluo-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-guards",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-52-04.846Z-b8aee0d8-063d-4f05-85f7-31d2563d1dd8",
+      "profileSha256": "ed5f5ea6a9ce4ddc1c6652338ffdcedd1d84d5506f87dcc55baaf74cc2f3db9c",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-17-49.400Z-e7814636-3c77-4870-9699-6ddc35516930",
+      "condition": {
+        "target": "fluo-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-dto-validation",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-53-10.813Z-aa3676fb-d17f-4c67-a7d2-cf46ca502ea8",
+      "profileSha256": "68dff19631010f059d3b2bead202f69d44268867fd5634ad3daca94ef5b0d056",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-21-04.142Z-ab44d544-e2a7-49e5-a7eb-3bede91a2a05",
+      "condition": {
+        "target": "fluo-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-serialization",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-54-16.393Z-e44410fe-4220-4c61-bd34-23c187daf382",
+      "profileSha256": "b24ca8f474a546eaf47d32601b9ceb71e17d2cbfa0465c781a336a57d19398f0",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-24-18.764Z-e64c5c91-fb2e-47d5-a3fd-1c3e6f151466",
+      "condition": {
+        "target": "native-fastify",
+        "platform": "fastify",
+        "scenario": "read-search-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-55-21.931Z-f39e5381-f6cb-4457-931f-6e887fa23c8a",
+      "profileSha256": "0f99850678e76a7f28bd5b09bffa22423ccb1ad2cd76f04501f6ae75b7796c99",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-27-32.944Z-a2fdf890-45f3-4e90-86cb-aa127efa0216",
+      "condition": {
+        "target": "native-fastify",
+        "platform": "fastify",
+        "scenario": "json-command-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-56-26.858Z-bb2786f1-e00a-4670-a5fd-20cd5d3b8417",
+      "profileSha256": "dc248ecc4781d2758513e7eccb1e929aeffa7f0bdfde483f23cf0b14c13604d2",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-30-47.179Z-e5dcc654-7e44-4894-9ffb-5a8beec36fd5",
+      "condition": {
+        "target": "native-fastify",
+        "platform": "fastify",
+        "scenario": "rest-route-mix-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-57-31.740Z-940973ba-2280-4974-bb5c-287db6e88acd",
+      "profileSha256": "4c19036fb5532676c7b39551f7ab92120000db69159c72bf2f8b57148eec8a1c",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-34-01.358Z-69b17c85-d3f7-44e0-9de3-51c498078c2a",
+      "condition": {
+        "target": "native-fastify",
+        "platform": "fastify",
+        "scenario": "stage-minimal",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-58-36.620Z-713ae445-8d76-48ef-ac8d-f7b961550108",
+      "profileSha256": "c7aaca5b70e46631ebdf5c246575901a451f1a8570b1338d0af113d21e4ed7f8",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-37-15.637Z-bd037709-521a-4099-898a-12cea1857f6c",
+      "condition": {
+        "target": "native-fastify",
+        "platform": "fastify",
+        "scenario": "stage-routing-params",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T17-59-41.366Z-d5802767-ff24-4b86-991f-e02b5c28af52",
+      "profileSha256": "1e2cdf3439c968d3d9d851e265d1dee733454fb8fcfe5e5dadf9362ad9919e65",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-40-29.799Z-1893f3e9-9068-4a1f-bfe7-26268439f2bd",
+      "condition": {
+        "target": "native-fastify",
+        "platform": "fastify",
+        "scenario": "stage-singleton-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-00-46.219Z-bda9c30d-80aa-4af5-b10e-b8d08a80a02c",
+      "profileSha256": "cd09ae7eba802ccb0749d2edd201adc3472f2b797d800027d405086093036f24",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-43-43.976Z-7144047f-a91c-4129-be6a-823e522b2e76",
+      "condition": {
+        "target": "native-fastify",
+        "platform": "fastify",
+        "scenario": "stage-request-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-01-51.156Z-04196ec1-d58f-43c7-b734-6f37bc1d442e",
+      "profileSha256": "d972d3b1ae5fcf64af2276f4f8211e989eae54e26057545ea70bf617b34065c3",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-46-58.118Z-6fa5c2c0-cf52-4c8f-b86d-df4acf6a3e5c",
+      "condition": {
+        "target": "native-fastify",
+        "platform": "fastify",
+        "scenario": "stage-body",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-02-55.965Z-046400bb-3aa2-4c3f-acf0-e180aebd79ab",
+      "profileSha256": "54f476c906e33f32919ca6b3903ff6935282e684b806a6ddd54119bcf2becc5c",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-50-12.298Z-fdbe2dcf-7e9e-4b30-9cd7-9ef9cbe322c7",
+      "condition": {
+        "target": "native-fastify",
+        "platform": "fastify",
+        "scenario": "stage-guards",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-04-00.810Z-cabfe4c4-0c43-49cb-9c22-e8b5b2fd709b",
+      "profileSha256": "f9eb20fc58b181fcea943d36447eb449a576e25f0b5c912f1f3c5d699f7da393",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-53-26.437Z-2dac8c78-9434-4e27-862c-a1d60e58a4b3",
+      "condition": {
+        "target": "native-fastify",
+        "platform": "fastify",
+        "scenario": "stage-dto-validation",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-05-05.630Z-07ec7a51-7e9b-42ca-a2a4-93438ce69fb5",
+      "profileSha256": "d6c0ab15189a9645a5e7d38209d9b1ae052e8c65b04c2d911626aa4af8fae469",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-56-40.586Z-9b7328a4-5fbd-46b4-bde7-671bbe14bef8",
+      "condition": {
+        "target": "native-fastify",
+        "platform": "fastify",
+        "scenario": "stage-serialization",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-06-10.486Z-0b2ce2da-dc12-4f27-8865-f3a9acc4e78b",
+      "profileSha256": "6098548a4b5e17a7bde7c73579e3aad1eeddab8a182cbb1cfa5875879219dad6",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T05-59-54.759Z-9badb13b-78cd-46ca-91c2-4c8eed7ace9c",
+      "condition": {
+        "target": "fluo-fastify",
+        "platform": "fastify",
+        "scenario": "read-search-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-07-15.481Z-548792ca-385d-4349-bd3f-15a4eb6ff66c",
+      "profileSha256": "f6ecd9717154a09ef0464ea7a6bffeba8a442908d1424f9b4e8b785cbac46418",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-03-09.680Z-59124485-2ad7-41bd-bbae-361ed34bf2da",
+      "condition": {
+        "target": "fluo-fastify",
+        "platform": "fastify",
+        "scenario": "json-command-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-08-20.919Z-46735915-8f78-4876-bc75-9848890e9f54",
+      "profileSha256": "2aa911ff448ccdcb451fb4bf867253fdc8ac6d4507b02c817336c50e7688e441",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-06-24.753Z-5ebc07f0-f48b-437e-8c86-ab0770980060",
+      "condition": {
+        "target": "fluo-fastify",
+        "platform": "fastify",
+        "scenario": "rest-route-mix-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-09-26.464Z-4b581ad7-4a56-4723-806a-152608aac938",
+      "profileSha256": "71431adf1b7876b891f6d691d35860d9bbb39452e0a89b7fe91dc384f99e50c1",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-09-39.807Z-eecef791-e6ce-4aa7-885a-4beeaebd07e5",
+      "condition": {
+        "target": "fluo-fastify",
+        "platform": "fastify",
+        "scenario": "stage-minimal",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-10-31.783Z-04fb1e77-d376-4cd4-9c77-2fca3ed0156b",
+      "profileSha256": "f11f333ea676da852cbbebc108a9384802ba735c9ec136db244d705e0e2775a5",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-12-54.879Z-447fa40c-da6c-42d5-a65c-6ba7dba595ae",
+      "condition": {
+        "target": "fluo-fastify",
+        "platform": "fastify",
+        "scenario": "stage-routing-params",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-11-37.373Z-30af017e-5748-4d61-bb16-24ddb3144a85",
+      "profileSha256": "4f1982fe7ccfdb546c6657e312b37e6ca62b764991c712c44674bc28522bdb2a",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-16-09.996Z-2b7792d1-b8c3-47b1-b22b-c0f515d1a4a2",
+      "condition": {
+        "target": "fluo-fastify",
+        "platform": "fastify",
+        "scenario": "stage-singleton-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-12-43.001Z-2ddbbfc5-b158-494d-84db-ff97ceb5fa65",
+      "profileSha256": "c2a2b0e6ad141710c75dd71090e45465f58df283155fb2df6e71a23fab60b52b",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-19-25.283Z-34b42e47-22a4-4371-a04f-26958db224fd",
+      "condition": {
+        "target": "fluo-fastify",
+        "platform": "fastify",
+        "scenario": "stage-request-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-13-48.551Z-3c5fc041-21bc-4b31-b3a3-a290bada83e8",
+      "profileSha256": "c0a234bce701fb195404f73ba6b009c7f6fdfac33bafc7e256d2dfeb62055b17",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-22-40.721Z-d99d0a51-54d7-47f9-b54e-9bca501d0e5e",
+      "condition": {
+        "target": "fluo-fastify",
+        "platform": "fastify",
+        "scenario": "stage-body",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-14-54.822Z-adf368f1-b313-428c-b497-263004513499",
+      "profileSha256": "91947a948f7e59dbbbd415b6f556a5a1c3421423871ec3aa3573df8f5f1ae085",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-25-55.614Z-0813f4c4-7e2c-4629-8cae-365fa8cba2fa",
+      "condition": {
+        "target": "fluo-fastify",
+        "platform": "fastify",
+        "scenario": "stage-guards",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-16-00.181Z-ca649d22-4c89-4c0e-9352-aee936ecb8a5",
+      "profileSha256": "616e0421596faed67d039a1d9e99d0af27f92e827d000ee2d1f766d25b5833a7",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-29-11.080Z-941981fa-6d61-4805-a0ae-8f9f6f91f664",
+      "condition": {
+        "target": "fluo-fastify",
+        "platform": "fastify",
+        "scenario": "stage-dto-validation",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-17-06.307Z-ac27bf8f-5898-403b-ad55-d9bf3306ec03",
+      "profileSha256": "f01092a15341ccede4bd6e4871afad6ac25b2feb9dfaeb97bbe2fdd70b1c5e5b",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-32-26.072Z-8b8b56cd-fb92-45c0-9b26-4d92517c35e8",
+      "condition": {
+        "target": "fluo-fastify",
+        "platform": "fastify",
+        "scenario": "stage-serialization",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-18-11.853Z-c9a69db2-c1d4-4742-a33a-fbad9524b30d",
+      "profileSha256": "464ec61f433b77f7f5df2ba1e0d6a38997a9e0fa14feaac3699c29f55f191847",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
     {
       "directory": "2026-10-08T06-35-41.003Z-c0321e25-8a0b-427c-9f71-d0befef48321",
       "condition": {
@@ -819,6 +1780,886 @@
       "reason": "empty-or-startup-profile"
     },
     {
+      "directory": "2026-10-08T06-49-08.040Z-875cb7e5-eb6d-4e36-bc45-2de425155cbe",
+      "condition": {
+        "target": "nestjs-fastify",
+        "platform": "fastify",
+        "scenario": "read-search-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-19-17.462Z-e2a92677-6fbb-44b9-a442-73276c172682",
+      "profileSha256": "3ca25d4ce5487b93692d19ddea0ec3ab74eea4fad1a6ba3fa19b455ce54ddc0c",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-50-14.245Z-da0807ed-c568-4cf0-91c1-7c47c9b5fc04",
+      "condition": {
+        "target": "nestjs-fastify",
+        "platform": "fastify",
+        "scenario": "json-command-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-20-23.190Z-6484d6c4-9c83-4d62-81a7-b4050cc2f37a",
+      "profileSha256": "10d64722cfb3694b1884e69aab409ebf886526bcdbd0816f3c135bfcaa651329",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-53-30.209Z-2be4ec2c-0652-4086-baf5-ae50a23fa3cc",
+      "condition": {
+        "target": "nestjs-fastify",
+        "platform": "fastify",
+        "scenario": "rest-route-mix-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-21-28.830Z-05778a0f-82d9-47f0-a371-8735e5d94611",
+      "profileSha256": "e7752a9806470edde16ae3f99752002a54fd1dd459c203e374f9261444fdfee1",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T06-56-46.059Z-1cf7af7a-3ca0-43a4-b3f2-6e01a188d21e",
+      "condition": {
+        "target": "nestjs-fastify",
+        "platform": "fastify",
+        "scenario": "stage-minimal",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-22-34.632Z-af08b98c-19ab-4758-920c-8a1ca73d534f",
+      "profileSha256": "88e134e6d9755f473879b87872b566c07cd0c1451314def41a7cf6980587ddd0",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-00-01.624Z-800261d3-8c2e-4f3f-b1ca-a52534d02d42",
+      "condition": {
+        "target": "nestjs-fastify",
+        "platform": "fastify",
+        "scenario": "stage-routing-params",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-23-40.329Z-240e8824-fd5a-41d9-9669-4b519f6785d1",
+      "profileSha256": "86dd02d2781a043a681e199e5134191ed533cb01aefd942cea03d632eb4235bf",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-03-17.307Z-a47627c4-8ed6-4688-b746-8a3f74437ead",
+      "condition": {
+        "target": "nestjs-fastify",
+        "platform": "fastify",
+        "scenario": "stage-singleton-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-24-46.142Z-e06fc796-dcaf-47a0-b95b-c8a232772ae8",
+      "profileSha256": "903cb599cb79b44b36b818b4ec814151382a2bff8714b105e5cde91a9cff468b",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-06-32.694Z-dba946bd-70cf-47a4-985b-7d9220870c97",
+      "condition": {
+        "target": "nestjs-fastify",
+        "platform": "fastify",
+        "scenario": "stage-request-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-25-52.187Z-58664dd5-0fee-44b4-afa0-9130bac02370",
+      "profileSha256": "d9983f3f424c62bea0430c3bf76be3552842fedaf234596f112635750fee4658",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-09-48.927Z-79909678-3d57-4072-bbaa-5374952d1ed7",
+      "condition": {
+        "target": "nestjs-fastify",
+        "platform": "fastify",
+        "scenario": "stage-body",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-26-58.756Z-50a685ab-4306-4c78-8451-7f713d35261d",
+      "profileSha256": "f22a27b4267c1825ab8513f1d23df8bbf110082f0f23b8077a60a4057f2f4bc9",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-13-04.337Z-1071e2be-1856-443c-9c01-feef1d0d06bf",
+      "condition": {
+        "target": "nestjs-fastify",
+        "platform": "fastify",
+        "scenario": "stage-guards",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-28-04.279Z-2917ef92-004f-43c4-8559-c970feb6353f",
+      "profileSha256": "d0de91a406e30f05d8b933d009823170ff719a0c8204de3b63b592b8075415bf",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-16-19.685Z-840bf2ac-c9c1-434c-937c-ae889b6f9cf3",
+      "condition": {
+        "target": "nestjs-fastify",
+        "platform": "fastify",
+        "scenario": "stage-dto-validation",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-29-09.920Z-d934d8d0-00b6-4cd4-b822-fe597642f465",
+      "profileSha256": "938880cf10096ffd638f79d3a5416bbc406e2acc0fcb6e9d4670f145d0be4e42",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-19-35.114Z-2d745cea-6f68-4d32-a149-5e24de33f945",
+      "condition": {
+        "target": "nestjs-fastify",
+        "platform": "fastify",
+        "scenario": "stage-serialization",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-30-15.394Z-2ea68ceb-7fe2-4f59-9f77-b824a9597e8d",
+      "profileSha256": "db21aaf08b3724a1e1680b41bf0ef1e02ddc94be78f7ffc5f47f0db4d4cfd23e",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-22-50.347Z-afe91a62-89b0-4910-92d9-67f0c889e1c9",
+      "condition": {
+        "target": "native-express",
+        "platform": "express",
+        "scenario": "read-search-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-31-21.429Z-9215dbf2-c2dc-4d98-8296-82b2657fd871",
+      "profileSha256": "2f379ac08ef402407c42f6e6ea83c15148217f80402874a6176aafd0f10399a4",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-26-04.272Z-d0bce1ca-c2be-4800-a6ec-44a21b491d99",
+      "condition": {
+        "target": "native-express",
+        "platform": "express",
+        "scenario": "json-command-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-32-26.215Z-c6114e05-6ab6-4952-b8bc-51bf3cc94043",
+      "profileSha256": "41f8404129c7cf6b862afd3426f10550e589db9c00f3ceed0cac1e7937e74565",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-29-18.222Z-16815bba-4e0f-495a-b733-00608bb17569",
+      "condition": {
+        "target": "native-express",
+        "platform": "express",
+        "scenario": "rest-route-mix-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-33-31.065Z-1109c0e1-cd95-40b3-9cdf-a48ea939400f",
+      "profileSha256": "26f4d29af5420f7719429bf3f2007ba2f20cdb79ce4eca7febe3093029925e54",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-32-32.222Z-79e9e0ed-e137-4fe2-a209-e8127f45203b",
+      "condition": {
+        "target": "native-express",
+        "platform": "express",
+        "scenario": "stage-minimal",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-34-35.946Z-598f3177-e577-4153-ad76-1b7de7d9d442",
+      "profileSha256": "0741faef58a3983ca89ac88503034bf3703b66e57ef9621e9bbdfbff5879b603",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-35-46.230Z-2ba8ce41-68f0-4ffa-a81f-41f5ff0fcef5",
+      "condition": {
+        "target": "native-express",
+        "platform": "express",
+        "scenario": "stage-routing-params",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-35-40.808Z-781ecab9-5f2e-4bf4-b61f-10962b09e007",
+      "profileSha256": "00817577bd0d3d9f644cf6000e9b8f8645baabda84ad64e0228b07d204c3bd7b",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-39-00.355Z-6cb8e4d8-f44b-4423-b1bb-eba62b5ccc0e",
+      "condition": {
+        "target": "native-express",
+        "platform": "express",
+        "scenario": "stage-singleton-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-36-45.737Z-8060b9c8-8e4f-4d97-91d3-d4672430a012",
+      "profileSha256": "3f0f1e6374b09c7ca49d31dab7fe305430239ed24150afaaff38842ab3305c40",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-42-14.339Z-e6bf5158-8641-4c1f-b3f0-bcfcb7e03e0b",
+      "condition": {
+        "target": "native-express",
+        "platform": "express",
+        "scenario": "stage-request-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-37-50.562Z-1bd3a2a4-2a7a-4054-b6fd-58639cf896f1",
+      "profileSha256": "ac18c7d04decb8f8556bef1c055956ba3e2eee1e2c32f338ba5de16853f720c0",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-45-28.327Z-cca521dd-27e2-44e4-8d0c-ef5e3dba7122",
+      "condition": {
+        "target": "native-express",
+        "platform": "express",
+        "scenario": "stage-body",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-38-55.327Z-12b09a8d-7886-465d-b002-01d6446c4a36",
+      "profileSha256": "0c0ad525ed3e76eb8a577f167fa890ccfe2c6830b3763c6c6013ba104488486e",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-48-42.348Z-2935a726-350d-4508-acb5-3388b2a5fa0e",
+      "condition": {
+        "target": "native-express",
+        "platform": "express",
+        "scenario": "stage-guards",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-40-00.084Z-b5d37e5a-7fa4-4b20-9b49-643470906bf9",
+      "profileSha256": "0099f5089d0d3bc72a8fa59a5d6f014dece8f173fcb189d0b118e8cee00918af",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-51-56.433Z-6bf8471b-cea1-4aa6-9e25-e200e547df04",
+      "condition": {
+        "target": "native-express",
+        "platform": "express",
+        "scenario": "stage-dto-validation",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-41-04.945Z-61f255bc-895d-4619-b015-6aa66c344512",
+      "profileSha256": "c7a823af113a69bceadc8b426fd13f082d6a66cf169b0d413fb7e4828bf66753",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-55-10.523Z-8d74fefb-8f5a-4841-b969-21997c43cfbe",
+      "condition": {
+        "target": "native-express",
+        "platform": "express",
+        "scenario": "stage-serialization",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-42-09.781Z-6a0853c0-7f34-4d11-a318-15b4ae90d7f2",
+      "profileSha256": "28051401cfca2922b411bdd01729d55285ddc4b215c6f6c7b255ef6352c6bf9b",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T07-58-24.631Z-3ecee5ea-2064-42ad-a3c7-db87d2b19c03",
+      "condition": {
+        "target": "fluo-express",
+        "platform": "express",
+        "scenario": "read-search-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-43-14.641Z-6464add9-238d-4fab-9f16-8fecbe4f1382",
+      "profileSha256": "edd84d9373b1eaa19b771db3a1429324cb00120b74dc75baf173a8ad9bd5db6c",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-01-39.822Z-727aad47-12a5-4789-bb52-299975c3ff75",
+      "condition": {
+        "target": "fluo-express",
+        "platform": "express",
+        "scenario": "json-command-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-44-20.017Z-983e5aef-c494-4135-bc9e-f672df0e6f41",
+      "profileSha256": "c56352a53d7c31139630525b092645c3c26f3618c2f26e653981c6863c9efb12",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-04-54.757Z-addf519a-c238-4b54-89a6-545b2c01fcd2",
+      "condition": {
+        "target": "fluo-express",
+        "platform": "express",
+        "scenario": "rest-route-mix-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-45-25.554Z-4a6f6fd0-56cd-456a-840c-1253cb2becc6",
+      "profileSha256": "273f745d4adccffcefabb57770dcb13d0652892fb5adf752fb309914e007eb0c",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-08-09.718Z-5fdd86fd-a145-49e4-8d17-2628296d107c",
+      "condition": {
+        "target": "fluo-express",
+        "platform": "express",
+        "scenario": "stage-minimal",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-46-31.058Z-36bbbff7-5ff7-4b62-b1d4-80ae670f6c1f",
+      "profileSha256": "92dfa4067abb5f614675b7e9739f33e9a2a16f6bd480c086eac04044a96a687b",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-11-24.689Z-75338224-4538-4d1c-bd0d-a29c7f4e898c",
+      "condition": {
+        "target": "fluo-express",
+        "platform": "express",
+        "scenario": "stage-routing-params",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-47-36.601Z-79c36081-80cb-4c36-9315-48a29e63eaff",
+      "profileSha256": "f905c9a021975f7f9700b2b96c850336cd44c6860c725384ed00eea76662ce2d",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-14-39.523Z-e1be73aa-3664-4865-b96a-42daf2f3f4cb",
+      "condition": {
+        "target": "fluo-express",
+        "platform": "express",
+        "scenario": "stage-singleton-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-48-42.061Z-fa59d303-73fc-4fdf-b415-8d05bef28b31",
+      "profileSha256": "53c103d25df7359ddf328c52e65741da6afc8de73c7c6723cc73d0815cc3aba4",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-17-54.329Z-60d78aba-7e55-4c10-adb1-3d2a9f9082ce",
+      "condition": {
+        "target": "fluo-express",
+        "platform": "express",
+        "scenario": "stage-request-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-49-47.664Z-0952e733-0294-4a32-81fe-b0495272047b",
+      "profileSha256": "50ebcfcb7761f93fed0a7c0d99fc0bb527e2fc2529057df5f9231750ac707e79",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-21-09.473Z-dcde36d2-fc57-426c-92ad-e127220f6644",
+      "condition": {
+        "target": "fluo-express",
+        "platform": "express",
+        "scenario": "stage-body",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-50-53.581Z-2a7d77fd-092c-48d1-b4c3-37da44b2b751",
+      "profileSha256": "a12ece311f232cc6d091e2414e60510101a6f659bcd65afefd2cbc034c9b17a8",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-24-24.285Z-748e64cd-6d47-411c-a10c-2507c3f3f6b9",
+      "condition": {
+        "target": "fluo-express",
+        "platform": "express",
+        "scenario": "stage-guards",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-51-59.015Z-3fe584ff-b266-4668-85c3-0cf158183fe6",
+      "profileSha256": "44cbd8566ce549f714e19a05ec585fc94b34dccb44175874f23b1d8223c93c14",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-27-39.386Z-6a70ec43-31ab-45bd-9426-efec8552318c",
+      "condition": {
+        "target": "fluo-express",
+        "platform": "express",
+        "scenario": "stage-dto-validation",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-53-04.981Z-dd831f48-2a8c-43b8-ad59-4847ecc9f8d1",
+      "profileSha256": "62faad74528fe2ee01d62399b11bd4b69e1632f570b2af8006b4030e3514a8a2",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-30-54.393Z-63b938d8-b1fa-4e95-84a6-3c45cbd026b0",
+      "condition": {
+        "target": "fluo-express",
+        "platform": "express",
+        "scenario": "stage-serialization",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-54-10.548Z-56ed0584-a50b-4cef-9505-97382d5e129f",
+      "profileSha256": "587ca926d243852a87a0a4824b346d220180e76762eed4b975591414ce706141",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-34-09.177Z-e7909655-d63f-4cc5-8576-e78d3a37bb63",
+      "condition": {
+        "target": "nestjs-express",
+        "platform": "express",
+        "scenario": "read-search-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-55-15.986Z-3df652a6-27d8-4d48-90a4-dbc4cfbcdff1",
+      "profileSha256": "27348b87874bdb0cd46cf6e9b2069271c27bdaf7a3b7f625aba7c42f818ff178",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-37-24.410Z-61ffce07-97ac-44fa-b459-43f930d22ede",
+      "condition": {
+        "target": "nestjs-express",
+        "platform": "express",
+        "scenario": "json-command-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-56-21.400Z-c18078d4-1b4d-483e-a222-1592efa59fd9",
+      "profileSha256": "a3ec3c06aded4cbfd6d459a4f24fb8ce017da3e89387a9f47d2267386d3b4170",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-40-39.427Z-f94337a9-0252-425d-bf1e-61b178dcf1c3",
+      "condition": {
+        "target": "nestjs-express",
+        "platform": "express",
+        "scenario": "rest-route-mix-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-57-27.069Z-249ad455-be3b-48ef-b138-164da16f42fe",
+      "profileSha256": "773636912813402a17014f78dcceb0120e228e3398ed2ff174828e4b536122fc",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-43-54.557Z-c2dc01d5-74c9-4023-b1dd-911671b75047",
+      "condition": {
+        "target": "nestjs-express",
+        "platform": "express",
+        "scenario": "stage-minimal",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-58-32.797Z-d2f75352-f62a-4ef4-9fc3-129dd658894e",
+      "profileSha256": "96594234ece63fa630778acd7d08624bcbbb3b0022ea9d7484b103331bebd937",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-47-09.943Z-e00d1a4b-a1f4-45c8-8389-7b8d37b85622",
+      "condition": {
+        "target": "nestjs-express",
+        "platform": "express",
+        "scenario": "stage-routing-params",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T18-59-38.598Z-341e08f1-8d13-4422-9490-72c166b9e872",
+      "profileSha256": "205216b8fbf41a6d2bba2b4e3b85c118b9771199e1750f90c565f9fe0f9b0710",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-50-26.058Z-396034c7-ec53-4acd-99a8-4e8e4fa41790",
+      "condition": {
+        "target": "nestjs-express",
+        "platform": "express",
+        "scenario": "stage-singleton-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-00-44.023Z-a74ee63a-660e-4099-8270-70051633d06d",
+      "profileSha256": "4c64371371648b9b8eec86286790a789744b37e8f5f729ad9570986a7eb7a28a",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-53-41.359Z-db0c03ad-6c7b-45d3-82fd-93a9d286d577",
+      "condition": {
+        "target": "nestjs-express",
+        "platform": "express",
+        "scenario": "stage-request-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-01-49.731Z-03ddb064-fa38-4d9b-816e-8b4b11e06562",
+      "profileSha256": "e7be322ae9ce564c01fb305714ce364e688144578beff2e2843b54e776ad8f35",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T08-56-56.745Z-e69e6b40-29a2-4dc6-aa2c-d18497a9f790",
+      "condition": {
+        "target": "nestjs-express",
+        "platform": "express",
+        "scenario": "stage-body",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-02-55.889Z-16a520d7-3d82-40f2-91a1-a0d6c8fd6537",
+      "profileSha256": "4f84da12adcecfcc636caaffe85eb816f3efad5008cab3c98ff62fc516e79093",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T09-00-11.724Z-ac446e76-0f36-4df5-8c7a-4409bd36bcbf",
+      "condition": {
+        "target": "nestjs-express",
+        "platform": "express",
+        "scenario": "stage-guards",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-04-01.335Z-738e028f-0197-42be-94d4-2b2db6acf46a",
+      "profileSha256": "7592c1e139e523598d2447f64cf01adce1f73aa29b81bb27de8a418936723b0b",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T09-03-26.810Z-e4246d9e-31a1-4598-a6f5-fe5c5ffed9b1",
+      "condition": {
+        "target": "nestjs-express",
+        "platform": "express",
+        "scenario": "stage-dto-validation",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-05-07.104Z-640ef84a-7b56-4566-ac7f-19c72090856b",
+      "profileSha256": "d6ce83bdd9bbdabedeb02d4e320eb5374633fc005a8c2fc8058ef1ac4c838108",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T09-06-41.797Z-122d364e-1f57-4448-9cbf-e551f9bf3a71",
+      "condition": {
+        "target": "nestjs-express",
+        "platform": "express",
+        "scenario": "stage-serialization",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-06-12.649Z-8cd6e3c6-0b5f-44e0-afe6-1bca975b0af7",
+      "profileSha256": "eceda42f31ec9fcd3b6c5f0589e859a967f8231cbb1749fa53cd40a17fd42182",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
       "directory": "2026-10-08T10-56-25.732Z-af5f2dec-d532-4ef0-a698-ee7a456f855a",
       "condition": {
         "target": "fluo-deno",
@@ -847,6 +2688,46 @@
       "reason": "empty-or-startup-profile"
     },
     {
+      "directory": "2026-10-08T11-15-27.803Z-68ff36fc-defb-4b8f-9b39-23ffcae5d66a",
+      "condition": {
+        "target": "fluo-deno",
+        "platform": "deno",
+        "scenario": "rest-route-mix-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-07-18.291Z-f9954d3a-577e-4e9c-938f-c69b1be02a91",
+      "profileSha256": "11fe6de07e6606a80cf1b81b0cf6d7c0bd53fa6ad83dc2367bfc643e51fc0d58",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T11-38-10.376Z-a1a3de09-67c3-40a9-827c-e9d63c26f4a3",
+      "condition": {
+        "target": "fluo-deno",
+        "platform": "deno",
+        "scenario": "stage-dto-validation",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-08-23.912Z-429ab8c8-c05b-454c-b079-659801165a21",
+      "profileSha256": "7916985cb7f4e88381b33dc255e2ddff69b3d00f0c04e0ca3a0517b96e9bb967",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
       "directory": "2026-10-08T12-23-50.195Z-7b58c9a0-76c7-46bc-8031-a57aa31f4992",
       "condition": {
         "target": "fluo-workers",
@@ -873,7 +2754,586 @@
       },
       "status": "failed",
       "reason": "empty-or-startup-profile"
+    },
+    {
+      "directory": "2026-10-08T13-10-09.666Z-4de8a4fe-7412-45cf-a8c4-756632e96452",
+      "condition": {
+        "target": "native-nextjs",
+        "platform": "nextjs",
+        "scenario": "read-search-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-09-29.667Z-abd9d3d7-d068-4051-8f3a-472679a2b6eb",
+      "profileSha256": "a4cb31e720fc67baadb944da51080994ccb6f6863a2830eb0ae0676ecd2134de",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-13-25.061Z-85d16c5d-ca1c-48b6-95ce-ae57cfaca980",
+      "condition": {
+        "target": "native-nextjs",
+        "platform": "nextjs",
+        "scenario": "json-command-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-10-35.531Z-571efff4-ea7a-4284-be78-649bc5cb70eb",
+      "profileSha256": "87a43d01349b566d9e775fdfbe05c7c53ce1cc76280749fdeabfc2e60134ac22",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-16-40.159Z-59d299e7-724c-4d90-a214-b87134841d13",
+      "condition": {
+        "target": "native-nextjs",
+        "platform": "nextjs",
+        "scenario": "rest-route-mix-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-11-41.426Z-d75cb95b-65ab-4313-8c34-e4b5d86b45f1",
+      "profileSha256": "47034db2468c8f469ebc806d4174723b3e3a09c62580b144fe2ce4e376a44a30",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-19-55.246Z-3a2bc6f7-8dd5-47c2-b2fd-842ba03b1c0a",
+      "condition": {
+        "target": "native-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-minimal",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-12-47.234Z-a45eb444-e7d0-4751-8dc9-d67af0ef24c0",
+      "profileSha256": "02493791f986b8196ae736db85989fe4d48379e367e8f4b6e4466537f47a494b",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-23-10.735Z-6b5d1a57-e451-4086-9575-886eb345c3fa",
+      "condition": {
+        "target": "native-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-routing-params",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-13-53.107Z-623ff7dc-1cff-4e4f-a4bb-65dc69a5a9e3",
+      "profileSha256": "75c5be8c8fecb1c0b8a87f1edf9de9fd5a55900949ac9845d11cf2aa9404c9e1",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-26-26.114Z-fc6a0c44-2fc1-4c5c-a8bf-23490efe74a6",
+      "condition": {
+        "target": "native-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-singleton-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-14-59.041Z-f08cb80c-559a-4b4d-88ca-9b5e4e6f805e",
+      "profileSha256": "0b113488af72d63321251fbfe503131dee7edd5653701d751b13f908d967ed46",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-29-41.497Z-b8839e41-cd03-4745-a920-301d99ec36d0",
+      "condition": {
+        "target": "native-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-request-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-16-04.955Z-ddff20e6-d16b-4c5b-ba8e-ef2c16bb8427",
+      "profileSha256": "f20720ab271064d682cbb02ebf892ff0f1befe2b4131eaf0cde6d8325169c147",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-32-56.825Z-6efef283-476a-426f-928a-4ef982c8f9c1",
+      "condition": {
+        "target": "native-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-body",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-17-10.758Z-427e9597-1368-456d-b3f0-6129bd164a7d",
+      "profileSha256": "7e60119126f80dd57949ec388784633fa4a3ceedc7f47aae914f1aabbf28064b",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-36-12.237Z-746e0d3a-2750-4b7f-aa97-cd0b7c89f51e",
+      "condition": {
+        "target": "native-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-guards",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-18-16.613Z-513b6f20-e931-4671-96ae-d52ff617090f",
+      "profileSha256": "8223b117562e54db51a5401fcd85167310ff51cdf579ef8bc3f201684f9e8a24",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-39-27.596Z-a7e6d4a5-c301-4983-886a-06ab3fb8a82e",
+      "condition": {
+        "target": "native-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-dto-validation",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-19-22.477Z-ca23e891-3faf-41f8-ab00-3eb605fc3638",
+      "profileSha256": "fd0a4f48ec3215f42d1190f8ef63c5c9b90f277e9d3dcd0c672d69ac63a5e18c",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-42-42.962Z-291862c6-747d-4b9c-bf9a-ac94f7ead006",
+      "condition": {
+        "target": "native-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-serialization",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-20-28.320Z-9c79ccb9-999f-4186-8a0e-0921eea95bce",
+      "profileSha256": "d7c658cf6a9200e2937304894a93581525c8d9ca5c4ddd7cb44217dd05f6a3f3",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-45-58.206Z-717448bb-f0d9-48e6-8d28-24b5f7a2e6f2",
+      "condition": {
+        "target": "fluo-nextjs",
+        "platform": "nextjs",
+        "scenario": "read-search-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-21-34.133Z-dbad0de4-8082-4eb8-a7b0-e4ea5117c6a4",
+      "profileSha256": "64c99616d85546f17b969d6e55207d887d32e426805c3cd29a7efe1657202b45",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-49-13.593Z-badceb23-eafb-4947-86af-b4596f19f3ed",
+      "condition": {
+        "target": "fluo-nextjs",
+        "platform": "nextjs",
+        "scenario": "json-command-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-22-40.011Z-e2647ef7-eca7-474f-84d8-88b880fa9378",
+      "profileSha256": "272f24f37718e78a9718aadae1e5b85c38aa92023089cc5d778c2fbc19744048",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-52-28.974Z-ebfba237-3ef5-4f5d-bebc-4885f69fe21d",
+      "condition": {
+        "target": "fluo-nextjs",
+        "platform": "nextjs",
+        "scenario": "rest-route-mix-local",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-23-46.103Z-d1b8a09e-cae3-42ba-8f4a-43c6a569b44e",
+      "profileSha256": "e0f30779e54a966741587d8ad3400f72da3d45698a1958a7e247d6837ced8d15",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-55-44.347Z-1f5fe2e7-7752-4e84-97eb-d2d89bb97443",
+      "condition": {
+        "target": "fluo-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-minimal",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-24-51.962Z-c6581054-3efd-42b2-aabb-ce4745c0cf08",
+      "profileSha256": "072b2b68682ebee8c7a7dfa553271c292ddafe2ea7d42ffa6d0ae7acb26c6205",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T13-58-59.708Z-10307d43-4a34-461f-9cbc-c3d9981689ab",
+      "condition": {
+        "target": "fluo-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-routing-params",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-25-57.961Z-70d8e76e-8007-4654-bfe6-8154b1ea25e8",
+      "profileSha256": "05b1344fd25c9155e5d8fa2c270ecbdcb2c52988fd2a2da773245cf65b20be91",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T14-02-14.985Z-4d000a72-5291-4ded-9234-c1f17bb143e5",
+      "condition": {
+        "target": "fluo-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-singleton-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-27-03.928Z-b08590cd-23da-46b6-9548-3f19eac0fce3",
+      "profileSha256": "fcba7dc760f7e9827d69713a2277ab848c3273a22e925342b88db44b556f54e4",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T14-05-30.325Z-35bfc926-9621-4f0a-a50a-e96bf8bc8777",
+      "condition": {
+        "target": "fluo-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-request-di",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-28-09.999Z-96312fde-848d-414d-921c-39feed0d82a5",
+      "profileSha256": "3e32bf38979d6cce4017a633ab57890ab006c52ae8455cc4bca1dd8cc3627ab2",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T14-08-45.705Z-08acc1d0-5723-476f-b5f4-39c2098b6860",
+      "condition": {
+        "target": "fluo-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-body",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-29-16.101Z-30feaab8-4c4c-490f-8ae8-a1c6d5618fc9",
+      "profileSha256": "a6d1e61876890fc1f6dcbd9ed280127b32d708cccb5f7bd37f7ac297f630e271",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T14-12-01.247Z-66427361-0808-4409-8bd9-78eaf2f6b863",
+      "condition": {
+        "target": "fluo-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-guards",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-30-21.928Z-cb5fc054-46f9-4932-8033-129b96389110",
+      "profileSha256": "a1c2473887449dbe599f232fa8223bc383cc7b52712b3cafddd4d1af1781fd20",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T14-15-16.810Z-adf0f2dc-115f-4b81-8e3f-e39c5c8e4a35",
+      "condition": {
+        "target": "fluo-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-dto-validation",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-31-27.867Z-3e29b131-9699-4c7b-93d3-52303340fc67",
+      "profileSha256": "84b5c36923be8d1564b318cf8d9ec3228994b1fee0034b219ded1c6cb91e365c",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T14-18-32.189Z-3c984e45-f158-48ef-91a9-77c11f4d4d5e",
+      "condition": {
+        "target": "fluo-nextjs",
+        "platform": "nextjs",
+        "scenario": "stage-serialization",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "superseded",
+      "originalStatus": "supported",
+      "errors": [
+        "malformed-profile-or-identity"
+      ],
+      "replacementDirectory": "2026-10-08T19-32-33.805Z-69988d2d-cb8b-40b8-8b82-be7496783335",
+      "profileSha256": "811242918444803ceef517008f8b54d6107e3e60840e993eec22f8dcda7af74e",
+      "reason": "malformed allocation: samples reference absent nodes"
+    },
+    {
+      "directory": "2026-10-08T17-12-27.498Z-57bddce4-187f-4c3e-a807-9bb74c7bad7a",
+      "condition": {
+        "target": "native-nodejs",
+        "platform": "nodejs",
+        "scenario": "stage-minimal",
+        "configuration": "equivalent",
+        "connections": 64,
+        "repeat": 0,
+        "mode": "allocation"
+      },
+      "status": "failed",
+      "reason": "malformed-profile-or-identity"
     }
   ],
-  "collectorHeadAtLatestFocusedChecks": "f73fc4b4f8514d5ccccdd3b11941075dc83385be"
+  "collectorHeadAtLatestFocusedChecks": "feea7bcb3431c28fee9d2cf60b977762efa4d8b2",
+  "supplementaryRawArchive": {
+    "path": "/Users/ayden/Documents/fluo/.omo/3910-allocation-recovery-20261009.tar.gz",
+    "bytes": 1300498419,
+    "sha256": "83e3a9d30cdb3e4bf23e2245b38f6e30241aed77eb26a4a083b734ec657dd763",
+    "archiveReadExit": 0,
+    "members": [
+      "2026-10-08T17-31-27.706Z-df109f67-8817-49a5-9953-efdff71587ad",
+      "2026-10-08T17-32-32.222Z-bab58679-23eb-4b48-a984-1cb29b51a730",
+      "2026-10-08T17-33-36.850Z-53d23e57-d6f4-497a-a651-9df5bb42f5a7",
+      "2026-10-08T17-34-41.608Z-b1f2df96-27be-42c8-93f8-8e9370c4abd5",
+      "2026-10-08T17-35-46.392Z-eebfabec-3cd2-4719-8330-bf3b5ef5f6ce",
+      "2026-10-08T17-36-51.183Z-190fb567-2371-46d1-8e63-239c1e50a890",
+      "2026-10-08T17-37-55.985Z-ec3e796e-d748-4b50-acfd-8a79e7c982a7",
+      "2026-10-08T17-39-00.811Z-9054db9b-c64b-44a0-aee5-1f6232ec4ede",
+      "2026-10-08T17-40-05.634Z-58fcf8af-cb01-4436-b1e0-1c3a84660c2c",
+      "2026-10-08T17-41-10.475Z-533f8f93-3d44-4b7c-974b-4a2981f3ef66",
+      "2026-10-08T17-42-15.323Z-b6ef2ffb-efc8-438d-ad04-e68fe9cb1c9c",
+      "2026-10-08T17-43-20.146Z-7daa6859-e05c-4300-b012-5ff9281094d3",
+      "2026-10-08T17-44-25.500Z-3eb8312a-953b-4e1e-a7d8-db0e2bef769a",
+      "2026-10-08T17-45-30.951Z-666f768c-d177-4c9b-87d1-7e3bbe155922",
+      "2026-10-08T17-46-36.484Z-d7de65dd-dd34-40cc-9776-351b6a1b2801",
+      "2026-10-08T17-47-42.107Z-baca42e0-25c7-4116-b7ef-22f895e263bb",
+      "2026-10-08T17-48-47.701Z-7a8f773f-8a57-4aad-932e-77bbff0eda68",
+      "2026-10-08T17-49-53.268Z-e6208a95-7aec-490b-bb20-0e42f2a82fec",
+      "2026-10-08T17-50-59.313Z-47ccece9-0e1c-40d6-a6a7-265165a8559f",
+      "2026-10-08T17-52-04.846Z-b8aee0d8-063d-4f05-85f7-31d2563d1dd8",
+      "2026-10-08T17-53-10.813Z-aa3676fb-d17f-4c67-a7d2-cf46ca502ea8",
+      "2026-10-08T17-54-16.393Z-e44410fe-4220-4c61-bd34-23c187daf382",
+      "2026-10-08T17-55-21.931Z-f39e5381-f6cb-4457-931f-6e887fa23c8a",
+      "2026-10-08T17-56-26.858Z-bb2786f1-e00a-4670-a5fd-20cd5d3b8417",
+      "2026-10-08T17-57-31.740Z-940973ba-2280-4974-bb5c-287db6e88acd",
+      "2026-10-08T17-58-36.620Z-713ae445-8d76-48ef-ac8d-f7b961550108",
+      "2026-10-08T17-59-41.366Z-d5802767-ff24-4b86-991f-e02b5c28af52",
+      "2026-10-08T18-00-46.219Z-bda9c30d-80aa-4af5-b10e-b8d08a80a02c",
+      "2026-10-08T18-01-51.156Z-04196ec1-d58f-43c7-b734-6f37bc1d442e",
+      "2026-10-08T18-02-55.965Z-046400bb-3aa2-4c3f-acf0-e180aebd79ab",
+      "2026-10-08T18-04-00.810Z-cabfe4c4-0c43-49cb-9c22-e8b5b2fd709b",
+      "2026-10-08T18-05-05.630Z-07ec7a51-7e9b-42ca-a2a4-93438ce69fb5",
+      "2026-10-08T18-06-10.486Z-0b2ce2da-dc12-4f27-8865-f3a9acc4e78b",
+      "2026-10-08T18-07-15.481Z-548792ca-385d-4349-bd3f-15a4eb6ff66c",
+      "2026-10-08T18-08-20.919Z-46735915-8f78-4876-bc75-9848890e9f54",
+      "2026-10-08T18-09-26.464Z-4b581ad7-4a56-4723-806a-152608aac938",
+      "2026-10-08T18-10-31.783Z-04fb1e77-d376-4cd4-9c77-2fca3ed0156b",
+      "2026-10-08T18-11-37.373Z-30af017e-5748-4d61-bb16-24ddb3144a85",
+      "2026-10-08T18-12-43.001Z-2ddbbfc5-b158-494d-84db-ff97ceb5fa65",
+      "2026-10-08T18-13-48.551Z-3c5fc041-21bc-4b31-b3a3-a290bada83e8",
+      "2026-10-08T18-14-54.822Z-adf368f1-b313-428c-b497-263004513499",
+      "2026-10-08T18-16-00.181Z-ca649d22-4c89-4c0e-9352-aee936ecb8a5",
+      "2026-10-08T18-17-06.307Z-ac27bf8f-5898-403b-ad55-d9bf3306ec03",
+      "2026-10-08T18-18-11.853Z-c9a69db2-c1d4-4742-a33a-fbad9524b30d",
+      "2026-10-08T18-19-17.462Z-e2a92677-6fbb-44b9-a442-73276c172682",
+      "2026-10-08T18-20-23.190Z-6484d6c4-9c83-4d62-81a7-b4050cc2f37a",
+      "2026-10-08T18-21-28.830Z-05778a0f-82d9-47f0-a371-8735e5d94611",
+      "2026-10-08T18-22-34.632Z-af08b98c-19ab-4758-920c-8a1ca73d534f",
+      "2026-10-08T18-23-40.329Z-240e8824-fd5a-41d9-9669-4b519f6785d1",
+      "2026-10-08T18-24-46.142Z-e06fc796-dcaf-47a0-b95b-c8a232772ae8",
+      "2026-10-08T18-25-52.187Z-58664dd5-0fee-44b4-afa0-9130bac02370",
+      "2026-10-08T18-26-58.756Z-50a685ab-4306-4c78-8451-7f713d35261d",
+      "2026-10-08T18-28-04.279Z-2917ef92-004f-43c4-8559-c970feb6353f",
+      "2026-10-08T18-29-09.920Z-d934d8d0-00b6-4cd4-b822-fe597642f465",
+      "2026-10-08T18-30-15.394Z-2ea68ceb-7fe2-4f59-9f77-b824a9597e8d",
+      "2026-10-08T18-31-21.429Z-9215dbf2-c2dc-4d98-8296-82b2657fd871",
+      "2026-10-08T18-32-26.215Z-c6114e05-6ab6-4952-b8bc-51bf3cc94043",
+      "2026-10-08T18-33-31.065Z-1109c0e1-cd95-40b3-9cdf-a48ea939400f",
+      "2026-10-08T18-34-35.946Z-598f3177-e577-4153-ad76-1b7de7d9d442",
+      "2026-10-08T18-35-40.808Z-781ecab9-5f2e-4bf4-b61f-10962b09e007",
+      "2026-10-08T18-36-45.737Z-8060b9c8-8e4f-4d97-91d3-d4672430a012",
+      "2026-10-08T18-37-50.562Z-1bd3a2a4-2a7a-4054-b6fd-58639cf896f1",
+      "2026-10-08T18-38-55.327Z-12b09a8d-7886-465d-b002-01d6446c4a36",
+      "2026-10-08T18-40-00.084Z-b5d37e5a-7fa4-4b20-9b49-643470906bf9",
+      "2026-10-08T18-41-04.945Z-61f255bc-895d-4619-b015-6aa66c344512",
+      "2026-10-08T18-42-09.781Z-6a0853c0-7f34-4d11-a318-15b4ae90d7f2",
+      "2026-10-08T18-43-14.641Z-6464add9-238d-4fab-9f16-8fecbe4f1382",
+      "2026-10-08T18-44-20.017Z-983e5aef-c494-4135-bc9e-f672df0e6f41",
+      "2026-10-08T18-45-25.554Z-4a6f6fd0-56cd-456a-840c-1253cb2becc6",
+      "2026-10-08T18-46-31.058Z-36bbbff7-5ff7-4b62-b1d4-80ae670f6c1f",
+      "2026-10-08T18-47-36.601Z-79c36081-80cb-4c36-9315-48a29e63eaff",
+      "2026-10-08T18-48-42.061Z-fa59d303-73fc-4fdf-b415-8d05bef28b31",
+      "2026-10-08T18-49-47.664Z-0952e733-0294-4a32-81fe-b0495272047b",
+      "2026-10-08T18-50-53.581Z-2a7d77fd-092c-48d1-b4c3-37da44b2b751",
+      "2026-10-08T18-51-59.015Z-3fe584ff-b266-4668-85c3-0cf158183fe6",
+      "2026-10-08T18-53-04.981Z-dd831f48-2a8c-43b8-ad59-4847ecc9f8d1",
+      "2026-10-08T18-54-10.548Z-56ed0584-a50b-4cef-9505-97382d5e129f",
+      "2026-10-08T18-55-15.986Z-3df652a6-27d8-4d48-90a4-dbc4cfbcdff1",
+      "2026-10-08T18-56-21.400Z-c18078d4-1b4d-483e-a222-1592efa59fd9",
+      "2026-10-08T18-57-27.069Z-249ad455-be3b-48ef-b138-164da16f42fe",
+      "2026-10-08T18-58-32.797Z-d2f75352-f62a-4ef4-9fc3-129dd658894e",
+      "2026-10-08T18-59-38.598Z-341e08f1-8d13-4422-9490-72c166b9e872",
+      "2026-10-08T19-00-44.023Z-a74ee63a-660e-4099-8270-70051633d06d",
+      "2026-10-08T19-01-49.731Z-03ddb064-fa38-4d9b-816e-8b4b11e06562",
+      "2026-10-08T19-02-55.889Z-16a520d7-3d82-40f2-91a1-a0d6c8fd6537",
+      "2026-10-08T19-04-01.335Z-738e028f-0197-42be-94d4-2b2db6acf46a",
+      "2026-10-08T19-05-07.104Z-640ef84a-7b56-4566-ac7f-19c72090856b",
+      "2026-10-08T19-06-12.649Z-8cd6e3c6-0b5f-44e0-afe6-1bca975b0af7",
+      "2026-10-08T19-07-18.291Z-f9954d3a-577e-4e9c-938f-c69b1be02a91",
+      "2026-10-08T19-08-23.912Z-429ab8c8-c05b-454c-b079-659801165a21",
+      "2026-10-08T19-09-29.667Z-abd9d3d7-d068-4051-8f3a-472679a2b6eb",
+      "2026-10-08T19-10-35.531Z-571efff4-ea7a-4284-be78-649bc5cb70eb",
+      "2026-10-08T19-11-41.426Z-d75cb95b-65ab-4313-8c34-e4b5d86b45f1",
+      "2026-10-08T19-12-47.234Z-a45eb444-e7d0-4751-8dc9-d67af0ef24c0",
+      "2026-10-08T19-13-53.107Z-623ff7dc-1cff-4e4f-a4bb-65dc69a5a9e3",
+      "2026-10-08T19-14-59.041Z-f08cb80c-559a-4b4d-88ca-9b5e4e6f805e",
+      "2026-10-08T19-16-04.955Z-ddff20e6-d16b-4c5b-ba8e-ef2c16bb8427",
+      "2026-10-08T19-17-10.758Z-427e9597-1368-456d-b3f0-6129bd164a7d",
+      "2026-10-08T19-18-16.613Z-513b6f20-e931-4671-96ae-d52ff617090f",
+      "2026-10-08T19-19-22.477Z-ca23e891-3faf-41f8-ab00-3eb605fc3638",
+      "2026-10-08T19-20-28.320Z-9c79ccb9-999f-4186-8a0e-0921eea95bce",
+      "2026-10-08T19-21-34.133Z-dbad0de4-8082-4eb8-a7b0-e4ea5117c6a4",
+      "2026-10-08T19-22-40.011Z-e2647ef7-eca7-474f-84d8-88b880fa9378",
+      "2026-10-08T19-23-46.103Z-d1b8a09e-cae3-42ba-8f4a-43c6a569b44e",
+      "2026-10-08T19-24-51.962Z-c6581054-3efd-42b2-aabb-ce4745c0cf08",
+      "2026-10-08T19-25-57.961Z-70d8e76e-8007-4654-bfe6-8154b1ea25e8",
+      "2026-10-08T19-27-03.928Z-b08590cd-23da-46b6-9548-3f19eac0fce3",
+      "2026-10-08T19-28-09.999Z-96312fde-848d-414d-921c-39feed0d82a5",
+      "2026-10-08T19-29-16.101Z-30feaab8-4c4c-490f-8ae8-a1c6d5618fc9",
+      "2026-10-08T19-30-21.928Z-cb5fc054-46f9-4932-8033-129b96389110",
+      "2026-10-08T19-31-27.867Z-3e29b131-9699-4c7b-93d3-52303340fc67",
+      "2026-10-08T19-32-33.805Z-69988d2d-cb8b-40b8-8b82-be7496783335",
+      "2026-10-08T17-12-27.498Z-57bddce4-187f-4c3e-a807-9bb74c7bad7a",
+      "2026-10-08T17-15-15.274Z-7bef0503-81d8-4578-904e-ba2d44e54446",
+      "2026-10-08T17-23-15.427Z-1ab72e07-dbdc-4c86-8d50-5fb1ee1f798d",
+      "2026-10-08T17-26-31.466Z-9010910a-5d7d-4c95-bc5c-4d2bb23627ad"
+    ],
+    "requiredAlongsideOriginal": true
+  }
 }

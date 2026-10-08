@@ -1,14 +1,17 @@
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { conditionKey } from '../../src/profile-report.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const inputs = JSON.parse(await readFile(join(root, 'primary-inputs-20261008.json'), 'utf8'));
 const summaries = [];
+const superseded = new Set(inputs.superseded.map((item) => `${item.directory}:${conditionKey(item.condition)}`));
 for (const directory of inputs.directories) {
   const manifest = JSON.parse(await readFile(join(root, directory, 'manifest.json'), 'utf8'));
   for (const capture of manifest.captures) {
     if (!['supported', 'unsupported'].includes(capture.status)) continue;
+    if (superseded.has(`${directory}:${conditionKey(capture.condition)}`)) continue;
     const phases = capture.runs.map((run) => ({
       phase: run.phase, requests: run.value.result.requests.total,
       requestsPerSecond: run.value.result.requests.total / run.server.wallSeconds,
